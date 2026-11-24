@@ -128,6 +128,19 @@ pure val viewerOffsetValues = Set(-480, 0, 840)
 pure val utcMinuteValues = Set(0, 1439)
 ```
 
+### A create that names its event, its day and its clock range keeps that range
+
+When the owner's whole message asks to add, create or schedule an event
+called, named or titled exactly the create's title, followed only by its day
+(today, tomorrow, the day after tomorrow or a `YYYY-MM-DD` date), a range
+from one clock time to another, and at most "on my built-in calendar" and
+"with no guests", a timed create starts and ends at that day and range in
+its wall zone, whatever times the model sent. A clock the owner spoke in
+words with am or pm ("one ten PM", "twelve forty-five am", "one oh five pm")
+is that clock written in digits. Any other request, a range whose end is not
+after its start, or a wall time the zone skips or repeats keeps the times
+the model sent.
+
 ### A stated year wins, a wrong extracted year is corrected, and a past start asks first
 
 When a create's request names a date or a year, the year comes from the

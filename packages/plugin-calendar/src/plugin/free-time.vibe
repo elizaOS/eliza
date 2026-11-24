@@ -92,6 +92,19 @@ export function openings(window: TimeWindow, durationMs: number, busy: TimeWindo
   return found
 }
 
+export function openingText(span: TimeWindow, timeZone: string): string {
+  try {
+    const day = new Intl.DateTimeFormat("en-US", { timeZone, weekday: "long", month: "long", day: "numeric" })
+    const clock = new Intl.DateTimeFormat("en-US", { timeZone, hour: "numeric", minute: "2-digit" })
+    const zoneName = new Intl.DateTimeFormat("en-US", { timeZone, timeZoneName: "long" }).formatToParts(new Date(span.begin)).find((part) => part.type === "timeZoneName")?.value
+    const [startDay, endDay] = [day.format(new Date(span.begin)), day.format(new Date(span.finish))]
+    const end = `${endDay === startDay ? "" : `${endDay}, `}${clock.format(new Date(span.finish))}`
+    return `${startDay}, from ${clock.format(new Date(span.begin))} to ${end}${zoneName === undefined ? "" : ` ${zoneName}`}`
+  } catch {
+    return spanText(span, timeZone)
+  }
+}
+
 export function spanText(span: TimeWindow, timeZone: string): string {
   try {
     return new Intl.DateTimeFormat("en-US", { timeZone, weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short" })
