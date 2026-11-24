@@ -456,10 +456,14 @@ attached documents exceeded what can be read in one turn. When anything is
 unreported, or the reply states a time the turn did not observe (the clock
 rules below), the model is asked once more: the turn's system prompt, its
 tools with none to be chosen, the planner's transcript, the reply as the
-assistant's, and one host note that names each such fact. Its answer takes
-the place of the model's prose, and the action's own copy stays where
-composition puts it (below). That reply is kept when it is not blank and
-the clock rules hold of it. Otherwise, or when the call fails, the first
+assistant's, and one host note that names each such fact and says the reply
+is not final yet. A failure's own words reach that note cut to a tool
+message's length, and as external data unless the action marked them as its
+words for the owner. Its answer takes the place of the model's prose, and
+the action's own copy stays where composition puts it (below). That reply is
+kept when it answers (it is neither blank nor a pending-work cue, read as
+below), it is not the first reply again, and the clock rules hold of it.
+Otherwise, or when the call fails, the first
 reply is kept, the clock's or the calendar change's own words (below) take
 its place when it stated a time they did not observe, and the own words of
 each unreported fact follow it. A reply with nothing unreported and no
@@ -479,6 +483,7 @@ pure def replySource(unreported: bool, ungrounded: bool, cutOff: bool, answered:
   else if (asksAgain(unreported, ungrounded, cutOff) and answered and grounded) RevisedReply
   else FixedWords
 pure def putToTheModel(held: bool, safetyCopy: bool): bool = not(held) and not(safetyCopy)
+pure def answeredAgain(draft: Draft, sameAsFirst: bool): bool = draft == Answer and not(sameAsFirst)
 pure def lawAGroundedReplyMakesNoFurtherCall(cutOff: bool): bool = not(asksAgain(false, false, cutOff))
 pure def lawAGroundedReplyIsTheModels(cutOff: bool, answered: bool, grounded: bool): bool = replySource(false, false, cutOff, answered, grounded) == ModelReply
 pure def lawASecondAnswerThatHoldsIsKept(unreported: bool, ungrounded: bool): bool =
@@ -488,6 +493,9 @@ pure def lawFixedWordsAreTheLastResort(unreported: bool, ungrounded: bool, cutOf
 pure def lawACutOffTurnIsNeverAskedAgain(unreported: bool, ungrounded: bool): bool = not(asksAgain(unreported, ungrounded, true))
 pure def lawSafetyCopyIsNeverRewritten(held: bool): bool = not(putToTheModel(held, true))
 pure def lawWordsTheReplyHoldsAreNotAskedFor(safetyCopy: bool): bool = not(putToTheModel(true, safetyCopy))
+pure def lawACueIsNoSecondAnswer(sameAsFirst: bool): bool = not(answeredAgain(Cue, sameAsFirst)) and not(answeredAgain(Silent, sameAsFirst))
+pure def lawTheFirstReplyAgainIsNoSecondAnswer(draft: Draft): bool = not(answeredAgain(draft, true))
+pure def lawANewAnswerIsASecondAnswer(sameAsFirst: bool): bool = answeredAgain(Answer, sameAsFirst) == not(sameAsFirst)
 ```
 
 ### A coaching response stays in the planner transcript

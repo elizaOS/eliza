@@ -5,11 +5,11 @@
 import {
   type Action, type ActionParameterSchema, type ActionResult, type AgentRuntime, type EffectReceipt, type IAgentRuntime, type GenerateTextParams, type GenerateTextResult,
   type AgentContext, type HistorySource, type Memory, type RoleGateRole, type State, type StreamChunkCallback, type ToolCall, type ToolDefinition,
-  buildPlannerToolsFromActions, DISCOVER_ACTIONS_NAME, executePlannedToolCall, getDirectActionRoutingRules, isDiscoveryActionName, isModelOutputLimitFinishReason, ModelType, modelAttemptCapture, modelOutputIncompleteEvidence, normalizeContextId, resolveActionContexts, sha256Hex, sleepWithAbort, stableStringify,
+  buildPlannerToolsFromActions, DISCOVER_ACTIONS_NAME, executePlannedToolCall, getDirectActionRoutingRules, isDiscoveryActionName, isModelOutputLimitFinishReason, ModelType, modelAttemptCapture, modelOutputIncompleteEvidence, normalizeContextId, resolveActionContexts, sha256Hex, sleepWithAbort, stableStringify, wrapExternalContent,
 } from "@elizaos/core"
 import { tagsMayProduceEffects } from "@elizaos/core/protocol"
 import {
-  acknowledges, actionNoteSent, callAdmission, cutOffReply, failedOpen, isTurnStep, maxPlanSteps, nextMove, offered, openOutcomes, plannerOnlyCoaching, plansOn, resendWait, toolActivity,
+  acknowledges, actionNoteSent, answeredAgain, callAdmission, cutOffReply, failedOpen, isTurnStep, maxPlanSteps, nextMove, offered, openOutcomes, plannerOnlyCoaching, plansOn, resendWait, toolActivity,
   admitsPlannerWork, contextRestoreOf, maxRestoredHistoryBytes, offersContextRestore, terminalAnswerOf, toolDispatch, turnNarrowed, unavailableNotice, type CallFailure, type PlanStep, type StepOutcome, type ToolSettlement,
 } from "../../gen/agent__conversation__planning.ts"
 import { ModelRefusal } from "../models/chat.vibe"
@@ -20,7 +20,7 @@ type ChatMessage = NonNullable<GenerateTextParams["messages"]>[number]
 const toolNamePattern = /^[A-Za-z0-9_-]{1,64}$/
 const toolMessageLimit = 4_000
 const answerNow = "Note from the agent host, not the person: no further work will run in this turn. Answer the person's latest message now with what this turn holds."
-const answerAgain = "Note from the agent host, not the person: nothing has been delivered yet. Write your whole reply to the person's latest message again, in your own words, so that it is true to what follows. Call no tools."
+const answerAgain = "Note from the agent host, not the person: your reply is not final yet. Write your whole reply to the person's latest message again, in your own words, so that it is true to what follows. Call no tools."
 const restoreContext: ToolDefinition = {
   name: "RESTORE_CONTEXT",
   description: "Restore only context named in this request’s deferral notice. Scope defaults to full. Call alone before actions. Sibling calls do not run. Use live tools for current saved records.",
@@ -47,6 +47,12 @@ export interface PlannedStep {
 export interface FailureNotice {
   readonly words: string
   readonly safetyCopy: boolean
+  readonly verified: boolean
+}
+
+export function failureNote({ words, verified }: FailureNotice): string {
+  const cut = words.length > toolMessageLimit ? `${words.slice(0, toolMessageLimit)}…` : words
+  return `A step of this turn did not happen as asked. The reply must tell the person so truthfully, never claiming it happened. The step's own report: ${verified ? JSON.stringify(cut) : wrapExternalContent(cut, { source: "unknown" })}`
 }
 
 export interface PlannedTurn {
@@ -324,13 +330,16 @@ function shownBy(result: ActionResult, captured: readonly string[]): string[] {
   return captured.map((text) => text.trim()).filter(Boolean)
 }
 
-function failureNotice(step: PlannedStep): string {
+function failureNotice(step: PlannedStep): { readonly words: string; readonly verified: boolean } {
   if (step.outcomes.some(({ outcome }) => outcome === "Rejected")) {
-    if (step.result.failureProvenance?.code === "ACTION_UNAVAILABLE") return unavailableNotice
+    if (step.result.failureProvenance?.code === "ACTION_UNAVAILABLE") return { words: unavailableNotice, verified: true }
     const words = step.result.verifiedUserFacing === true ? step.result.userFacingText?.trim() : undefined
-    return words || `A ${step.action} call did not start.`
+    return { words: words || `A ${step.action} call did not start.`, verified: true }
   }
-  return (step.result.userFacingText ?? errorText(step.result.error) ?? step.result.text)?.trim() || `The ${step.action} action did not complete.`
+  const own = step.result.verifiedUserFacing === true ? step.result.userFacingText?.trim() : undefined
+  if (own) return { words: own, verified: true }
+  const words = (step.result.userFacingText ?? errorText(step.result.error) ?? step.result.text)?.trim()
+  return words ? { words, verified: false } : { words: `The ${step.action} action did not complete.`, verified: true }
 }
 
 export function activityLabel(runtime: IAgentRuntime, action: Action | undefined, params: Record<string, unknown> = {}, selected: ReadonlySet<string> = new Set()): string {
@@ -374,13 +383,16 @@ function settleReply(steps: readonly PlannedStep[]): SettledReply {
   const ownCopy = open.some(({ outcome }) => outcome === "Proposed")
   const alone = delivered.some(({ result }) => safetyCopyOf(result))
   const failedKeys = new Set(failed.map(entryKey))
-  const notices = new Map<string, boolean>()
+  const notices = new Map<string, FailureNotice>()
   for (const step of steps.filter(({ outcomes }) => outcomes.some((entry) => failedKeys.has(entryKey(entry))))) {
-    const words = failureNotice(step)
-    notices.set(words, notices.get(words) === true || alone || safetyCopyOf(step.result))
+    const { words, verified } = failureNotice(step)
+    const earlier = notices.get(words)
+    notices.set(words, {
+      words, safetyCopy: earlier?.safetyCopy === true || alone || safetyCopyOf(step.result), verified: (earlier?.verified ?? true) && verified,
+    })
   }
   return {
-    notices: [...notices].map(([words, safetyCopy]) => ({ words, safetyCopy })),
+    notices: [...notices.values()],
     compose: (prose) => composeReply(toolText || undefined, prose, ownCopy, alone),
   }
 }
@@ -565,8 +577,9 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
         messages: [...conversation, ...(reply.trim() ? [{ role: "assistant" as const, content: reply }] : []), { role: "user" as const, content: [answerAgain, ...notes].join("\n") }],
         ...(tools.length === 0 ? {} : { tools, toolChoice: "none" as const }),
       })), signal)
-      const revised = settled.compose(answerOf(said).text)
-      return revised === settled.compose(undefined) ? undefined : revised
+      const answer = answerOf(said).text
+      const revised = settled.compose(answer)
+      return answeredAgain(draftOf(answer, instruction, 0), revised.trim() === reply.trim()) && revised !== settled.compose(undefined) ? revised : undefined
     } catch (error: unknown) {
       if (signal.aborted) throw error
       return undefined

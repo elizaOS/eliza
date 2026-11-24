@@ -2,7 +2,7 @@
 import { assert, it } from "@effect/vitest"
 import type { ActionResult, Memory, UUID } from "@elizaos/core"
 import { wrapExternalContent } from "@elizaos/core"
-import { answerJson, held, insufficientCredits, rateLimited, refusal, requestFault, text, toolCalls, type CloudFake } from "./support/cloud-fake.ts"
+import { answerJson, cutOff, held, insufficientCredits, rateLimited, refusal, requestFault, text, toolCalls, type CloudFake } from "./support/cloud-fake.ts"
 import { cutOffReply, maxPlanSteps, unavailableNotice } from "../gen/agent__conversation__planning.ts"
 import { ungroundedEventReply } from "../src/conversation/clock.vibe"
 import { basicActionsModuleName } from "../src/plugins/basic-actions.vibe"
@@ -27,8 +27,42 @@ interface Reply {
 
 module node {
   import { randomUUID } from "node:crypto"
-  import { ChannelType, conversationClientUserMemoryId, hashStableJson, systemNoticeText, type AgentRuntime, type Memory, type UUID } from "@elizaos/core"
+  import { Effect } from "effect"
+  import { ChannelType, conversationClientUserMemoryId, hashStableJson, systemNoticeText, type ActionResult, type AgentRuntime, type Memory, type UUID } from "@elizaos/core"
   import type { CloudFake } from "./support/cloud-fake.ts"
+  import type { ModuleFactory } from "../src/host/module.vibe"
+  import { builtinModuleFactories } from "../src/plugins/profile.vibe"
+
+  export const movedDentist = "Updated Dentist, Mar 4, 2030, 9:00 AM."
+
+  /** @throws {never} */
+  export function calendarProbe(name: string): ReadonlyMap<string, ModuleFactory<never>> {
+    let moved = 0
+    const move = (agentId: string): ActionResult => {
+      moved += 1
+      const version = `v${moved + 1}`
+      return {
+        success: true, text: movedDentist,
+        data: { event: { id: "dentist", agentId, isAllDay: false, startAt: "2030-03-04T17:00:00.000Z", endAt: "2030-03-04T18:00:00.000Z", timezone: "America/Los_Angeles", title: "Dentist", metadata: { etag: version } } },
+        effectReceipts: [{
+          receiptId: `receipt-dentist-${version}`, operation: "calendar.event.update", resource: { kind: "calendar.event", id: "dentist", version }, artifacts: [],
+          idempotency: { key: `dentist-${version}`, replayed: false }, observedAt: "2030-03-01T00:00:00.000Z", outcome: "applied",
+          commit: { kind: "durable", id: `dentist-${version}`, committedAt: "2030-03-01T00:00:00.000Z" },
+        }],
+      }
+    }
+    const factory: ModuleFactory<never> = () => Effect.sync(() => ({
+      name,
+      plugin: {
+        name, description: "Moves one calendar event for the reply-grounding journey",
+        actions: [{
+          name: "MOVE_EVENT", description: "Moves the owner's dentist appointment to the time they asked for.", similes: [], parameters: [],
+          validate: async () => true, handler: async (runtime) => move(runtime.agentId),
+        }],
+      },
+    }))
+    return new Map([...builtinModuleFactories, [name, factory]])
+  }
   import { request, type LocalAnswer, type Refusal } from "./support/socket-client.ts"
 
   /** @throws {never} */
@@ -117,7 +151,7 @@ module node {
     return text
   }
 }
-import { completions, cutTurn, lastTurnHistory, lastTurnPrompt, localDay, overlapping, roomMessages, seedHistory, storeNotice } from node
+import { calendarProbe, completions, cutTurn, lastTurnHistory, lastTurnPrompt, localDay, movedDentist, overlapping, roomMessages, seedHistory, storeNotice } from node
 
 const answerOf = (answer: LocalAnswer | Refusal) => "status" in answer ? { status: answer.status, body: answer.json } : { status: 0, body: answer.refused }
 
@@ -366,7 +400,7 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
     const [said, note] = body?.messages.slice(-2) ?? []
     return { toolChoice: body?.tool_choice, said: said?.role === "assistant" ? said.content : undefined, note: typeof note?.content === "string" ? note.content : "" }
   }
-  const asksAgain = "Note from the agent host, not the person: nothing has been delivered yet. Write your whole reply to the person's latest message again, in your own words, so that it is true to what follows. Call no tools.\n"
+  const asksAgain = "Note from the agent host, not the person: your reply is not final yet. Write your whole reply to the person's latest message again, in your own words, so that it is true to what follows. Call no tools.\n"
 
   try Effect.sync(() => cloud.script(toolCalls("Let me check.", { name: "CALCULATE", arguments: { expression: "3847 * 292" } }), text("That is 1,123,324.")))
   const { answer: solved, calls: solvedCalls } = try callsFor({ text: "What is 3847 times 292?" })
@@ -384,6 +418,22 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
   try Effect.sync(() => cloud.script(toolCalls("", { name: "CALCULATE", arguments: { expression: "two plus two" } }), text("Done!"), text("I couldn't add two plus two: the calculator didn't take it.")))
   const { answer: failed, calls: failedCalls } = try callsFor({ text: "Add two plus two." })
   const failedAsked = reasked()
+
+  const divided = `CALCULATE could not evaluate "7 / 0": division by zero. Supported: numbers with + - * / % ^ and parentheses.`
+  const dividing = { name: "CALCULATE", arguments: { expression: "7 / 0" } }
+  const secondAnswer = effect (...second: readonly string[]) => {
+    try Effect.sync(() => cloud.script(toolCalls("", dividing), text("Done!"), ...second.map((said) => text(said))))
+    const { answer, calls } = try callsFor({ text: "Divide 7 by 0." })
+    return [answer.text, calls]
+  }
+  const cuedAgain = try secondAnswer("One sec.")
+  const sameAgain = try secondAnswer("Done!")
+  const blankAgain = try secondAnswer("", "", "", "")
+  const quotedNote = reasked().note
+  try Effect.sync(() => cloud.script(toolCalls("", dividing), text(`It returned: ${divided}`)))
+  const { answer: quoted, calls: quotedCalls } = try callsFor({ text: "Divide 7 by 0." })
+  try Effect.sync(() => cloud.script(toolCalls("", dividing), cutOff("A long answer that")))
+  const { answer: cutAfterFailure, calls: cutAfterFailureCalls } = try callsFor({ text: "Divide 7 by 0." })
 
   try Effect.sync(() => cloud.script(toolCalls("",
     { name: "CALCULATE", arguments: { expression: "8 + 9", stray: true } },
@@ -414,6 +464,9 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
     actions: solved.actionResults.map(({ action }) => action),
     unrendered: [unrendered.text, unrenderedCalls, unrenderedAsked.toolChoice, unrenderedAsked.said, unrenderedAsked.note],
     failed: [failed.text, failedCalls, failedAsked.said, failedAsked.note.startsWith(asksAgain) && failedAsked.note.includes("A step of this turn did not happen as asked.")],
+    notFinal: { cuedAgain, sameAgain, blankAgain, fencedReport: quotedNote.includes(wrapExternalContent(divided, { source: "unknown" })) },
+    quoted: [quoted.text, quotedCalls],
+    cutAfterFailure: [cutAfterFailure.text, cutAfterFailureCalls],
     separate: [separate.text, separateCalls],
     corrected: [corrected.text, correctedCalls],
     refusalStatuses: [separate, corrected].map(({ actionResults }) => actionResults.map(({ data }) => data.executionStatus)),
@@ -431,6 +484,9 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
       `${asksAgain}A step of this turn did not happen as asked. The reply must tell the person so truthfully, never claiming it happened. The step's own report: ${JSON.stringify(unavailableNotice)}`,
     ],
     failed: ["I couldn't add two plus two: the calculator didn't take it.", 3, "Done!", true],
+    notFinal: { cuedAgain: [`Done!\n\n${divided}`, 3], sameAgain: [`Done!\n\n${divided}`, 3], blankAgain: [`Done!\n\n${divided}`, 6], fencedReport: true },
+    quoted: [`It returned: ${divided}`, 2],
+    cutAfterFailure: [`${cutOffReply}\n\n${divided}`, 2],
     separate: ["The second result is 36. The first calculation didn't run.", 3],
     corrected: ["The result is 17.\n\nA CALCULATE call did not start.", 4],
     refusalStatuses: [["not_started", undefined], ["not_started", undefined]],
@@ -822,3 +878,30 @@ it.effect(`A calendar change is reported at the time it got, and the model is as
   ]))
   try Effect.try(() => assert.include(note, JSON.stringify(own)))
 })
+
+it.live(`A reply that misstates the time a calendar change got is asked for once more, a right second answer is kept and a still-wrong one gives way to the change's own words (${planning}, "A reply that gives a just-changed calendar event a time range other than the one it got is asked for again, and the change's own words are the last resort"; ${planning}, "A reply that leaves a failure unreported is written again by the model once, and the failure's own words follow it only when that fails")`, effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const agent = try startInProcess({
+    launch: { backend: { kind: "cloud", origin: cloud.origin }, callerRole: "owner", load: [basicActionsModuleName], allowed: ["REPLY", "IGNORE", "NONE", "MOVE_EVENT"] },
+    frame: { credential: { version: 1, value: deviceKey } }, modules: calendarProbe(basicActionsModuleName),
+  })
+  const { id } = try conversation(agent)
+  const turn = effect (...said: readonly string[]) => {
+    try Effect.sync(() => cloud.script(toolCalls("", { name: "MOVE_EVENT", arguments: {} }), ...said.map((words) => text(words))))
+    const before = completions(cloud)
+    const answer = replyOf(try send(agent, id, { text: "Move my dentist to 9am" }))
+    return { reply: answer.text, calls: completions(cloud) - before, note: lastTurnPrompt(cloud) }
+  }
+  const right = try turn("Done, your dentist is now 9–10 AM.")
+  const corrected = try turn("Done, your dentist is now 3–4 PM.", "Sorry, your dentist is now 9–10 AM.")
+  const stillWrong = try turn("Done, your dentist is now 3–4 PM.", "Done, your dentist is now 2–3 PM.")
+  try Effect.try(() => assert.deepStrictEqual({
+    right: [right.reply, right.calls],
+    corrected: [corrected.reply, corrected.calls, corrected.note.includes(JSON.stringify(movedDentist))],
+    stillWrong: [stillWrong.reply, stillWrong.calls],
+  }, {
+    right: ["Done, your dentist is now 9–10 AM.", 2],
+    corrected: ["Sorry, your dentist is now 9–10 AM.", 3, true],
+    stillWrong: [movedDentist, 3],
+  }))
+}, 120_000)

@@ -15,7 +15,7 @@ import { textForTurn } from "./heard.vibe"
 import { storedText } from "./history.vibe"
 import { ModelRefusal } from "../models/chat.vibe"
 import { readTurnContext, type BrowserPage } from "./turn-context.schema.vibe"
-import { actionNotes, offeredActions, planTurn, type PlannedTurn } from "./planning.vibe"
+import { actionNotes, failureNote, offeredActions, planTurn, type PlannedTurn } from "./planning.vibe"
 import { cueRule } from "./reply-text.vibe"
 import { runTurnEvaluators } from "./turn-evaluators.vibe"
 
@@ -260,17 +260,13 @@ function evaluateLater(runtime: AgentRuntime, message: Memory, state: State, res
 const omittedDocuments = "Some attached documents exceeded the amount of text I can read in one turn."
 const omittedNote = "Some attached documents exceeded the amount of text you can read in this turn, and the reply must tell the person."
 
-function failureNote(words: string): string {
-  return `A step of this turn did not happen as asked. The reply must tell the person so truthfully, never claiming it happened. The step's own report: ${JSON.stringify(words)}`
-}
-
 function withWords(reply: string, words: readonly string[]): string {
   return [reply, ...words.filter((said) => !reply.includes(said))].filter((part) => part.trim()).join("\n\n")
 }
 
 async function settledReply(planned: PlannedTurn, omitted: boolean, misgrounded: (reply: string) => Ungrounded | undefined): Promise<string> {
   const unreported = [
-    ...planned.notices.flatMap(({ words, safetyCopy }) => putToTheModel(planned.reply.includes(words), safetyCopy) ? [failureNote(words)] : []),
+    ...planned.notices.flatMap((notice) => putToTheModel(planned.reply.includes(notice.words), notice.safetyCopy) ? [failureNote(notice)] : []),
     ...(omitted ? [omittedNote] : []),
   ]
   const wrong = misgrounded(planned.reply)
