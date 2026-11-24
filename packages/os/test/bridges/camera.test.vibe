@@ -100,9 +100,10 @@ module android {
         await live("switchCamera")
         return receipt
       },
-      capturePhoto: async () => {
+      capturePhoto: async (options) => {
         await live("capturePhoto")
-        return { base64: "/9j/AA==", format: "jpeg", width: 1920, height: 1080 }
+        const libraryId = options?.saveToGallery === true ? "m:external_primary:i:42" : undefined
+        return { base64: "/9j/AA==", format: "jpeg", width: 1920, height: 1080, ...(libraryId === undefined ? {} : { libraryId }) }
       },
       startRecording: async (options?: VideoCaptureOptions) => {
         await live("startRecording")
@@ -266,7 +267,7 @@ it.live("Capture with the camera only from the live view (spec/os/android/camera
   const captured = try promise(() => session.exclusive(async () => {
     nested.control = await session.control(() => client.setZoom({ zoom: 4 }))
     nested.capture = (await session.exclusive(async () => "second")).status
-    return client.capturePhoto({ format: "jpeg" })
+    return client.capturePhoto({ format: "jpeg", saveToGallery: true })
   }))
   const failedCapture = try refusal(() => session.exclusive(async () => {
     throw new Error("The scan page was not added")
@@ -370,7 +371,7 @@ it.live("Capture with the camera only from the live view (spec/os/android/camera
       earlyControl: "skipped",
       zoomed: "done",
       nested: { control: "skipped", capture: "busy" },
-      captured: { status: "done", value: { base64: "/9j/AA==", format: "jpeg", width: 1920, height: 1080 } },
+      captured: { status: "done", value: { base64: "/9j/AA==", format: "jpeg", width: 1920, height: 1080, libraryId: "m:external_primary:i:42" } },
       failedCapture: "The scan page was not added",
       freedAfterFailure: false,
       microphoneRefused: "denied",
