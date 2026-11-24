@@ -43,7 +43,7 @@ import dispatchOnce as D from "../shared/dispatchOnce"
 type SagaStep = CancelBilling | RevokeGoogle | EraseData
 type DeletionPhase = NotRequested | Running({ at: SagaStep }) | ActionNeeded({ at: SagaStep }) | Erased
 type StepResult = Open | NothingToDo | Applied
-type BillingBoundary = BillingUnsettled | BillingShared | BillingCheckoutSettled | BillingSettled
+type BillingBoundary = BillingUnsettled | BillingCheckoutSettled | BillingSettled
 type Deletion = { phase: DeletionPhase, userId: str, organizationId: str, attemptBudget: int, attempts: int, receipt: D::Receipt, usedKeys: List[ProviderKey], billing: StepResult, google: StepResult }
 type DeletionEffect = Fence({ sessions: Iss::SessionEffect, deviceKeys: DK::DeviceKeysRevoked }) | EraseAccount({ userId: str, organizationId: str })
 type DeletionStep = { state: Deletion, out: List[DeletionEffect] }
@@ -64,13 +64,13 @@ pure def stepEffectsOnlyAtFenceAndErasure(before: Deletion, via: str, after: Del
 
 ### The steps run in order, and a step is finished only once every step before it is
 
-Resolving the person's exclusively owned billing comes first. An issued
+Resolving the person's billing comes first; each account has its own
+organization, so its billing is the person's alone. An issued
 checkout can still charge until the provider confirms an end. Before the
 shell chooses which subscription to cancel, it resolves an opening checkout
 or obtains a terminal result for an issued session. It reuses the checkout's
 stable expiry key and reads back an uncertain result. An already paid
-checkout identifies the exact subscription for cancellation. Billing for
-another account sharing the organization stays in place.
+checkout identifies the exact subscription for cancellation.
 Revoking Google comes next. Erasing comes last, so a provider is never left
 holding a grant or a subscription for an account that no longer exists here.
 
@@ -111,9 +111,8 @@ pure def ownerFor(d: Deletion, kind: ProviderKind): S::SessionOwner = { agentId:
 pure def callBase(d: Deletion): D::Receipt = if (noCall(d.receipt)) d.receipt else fresh(d.receipt)
 pure def checkoutSettled(billingBoundary: BillingBoundary): bool =
   billingBoundary == BillingCheckoutSettled or billingBoundary == BillingSettled
-pure def billingSettled(billingBoundary: BillingBoundary): bool =
-  billingBoundary == BillingShared or billingBoundary == BillingSettled
-pure val billingBoundaryValues = Set(BillingUnsettled, BillingShared, BillingCheckoutSettled, BillingSettled)
+pure def billingSettled(billingBoundary: BillingBoundary): bool = billingBoundary == BillingSettled
+pure val billingBoundaryValues = Set(BillingUnsettled, BillingCheckoutSettled, BillingSettled)
 pure def canPrepareCall(d: Deletion, digest: str, providerKey: ProviderKey, staleAfter: Millis, expiresAt: Millis, billingBoundary: BillingBoundary): bool =
   isCalling(d) and (if (isRunning(d, CancelBilling)) checkoutSettled(billingBoundary) else billingSettled(billingBoundary))
   and providerKey.providerKind == kindFor(currentStep(d.phase)) and d.attempts < d.attemptBudget and not(d.usedKeys.includes(providerKey))
@@ -150,7 +149,7 @@ pure def alwaysNoProviderKeyIsUsedTwice(d: Deletion): bool = d.usedKeys.every(k 
 A refusal because the subscription or grant is already gone at the provider
 counts as done, and for Google so does a token Google already treats as
 revoked. Before a step finishes, the shell confirms that no owned checkout
-or its linked subscription can still charge, or that the billing is shared.
+or its linked subscription can still charge.
 After a connection is revoked, the shell erases its sealed tokens in the
 same transaction. If another connection remains, it starts with a fresh
 budget. The shell checks both server and legacy Worker token
@@ -212,7 +211,7 @@ pure def resume(d: Deletion, attemptBudget: int): Deletion =
 
 ### The account's data is erased once, last, and the erased deletion never changes again
 
-Erasure needs a settled billing result or shared billing. The same check
+Erasure needs a settled billing result. The same check
 applies to a retained deletion that had already advanced under an earlier
 version. Unresolved billing keeps its recorded phase and receipts.
 In the erasing transaction the shell applies `erase` of `identity/accounts`

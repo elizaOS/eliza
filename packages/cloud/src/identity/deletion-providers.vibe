@@ -45,12 +45,8 @@ const missingGoogle: ProviderReply<never> = { kind: "unknown", cause: "the recor
 
 export effect function billingAuthority(tx: Tx, userId: string, organizationId: string) {
   try tx.query("SELECT id FROM organizations WHERE id = $1 FOR UPDATE", [organizationId])
-  const row = (try tx.query(`SELECT a.status, EXISTS (
-    SELECT 1 FROM accounts peer WHERE peer.organization_id = a.organization_id AND peer.key <> a.key AND peer.status <> 'erased'
-  ) AS shared FROM accounts a WHERE a.key = $1 AND a.organization_id = $2`, [userId, organizationId]))[0]
-  if (row?.status !== "deleting" || typeof row.shared !== "boolean")
-    throw new RowCorrupt({ table: "deletion_requests", key: userId, cause: "billing needs the deleting account's organization" })
-  return !row.shared
+  const row = (try tx.query("SELECT status FROM accounts WHERE key = $1 AND organization_id = $2", [userId, organizationId]))[0]
+  if (row?.status !== "deleting") throw new RowCorrupt({ table: "deletion_requests", key: userId, cause: "billing needs the deleting account's organization" })
 }
 
 export effect function billingSourceOf(tx: Tx, organizationId: string) {

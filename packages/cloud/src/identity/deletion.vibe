@@ -34,7 +34,6 @@ type Work =
 
 type BillingScope =
   | { readonly kind: "pending" }
-  | { readonly kind: "shared" }
   | { readonly kind: "owned"; readonly source: BillingSource | undefined; readonly checkout: BillingTarget | undefined }
 
 const table = "deletion_requests"
@@ -123,7 +122,7 @@ effect function erasePersonalData(tx: Tx, userId: string, organizationId: string
     ["DELETE FROM code_challenges WHERE user_id = $1 OR destination_digest = ANY($2::text[])", [userId, digests]],
     ["DELETE FROM cloud_code_challenges WHERE destination = ANY($1::text[])", [destinations]],
     ["DELETE FROM loopback_messages WHERE destination = ANY($1::text[])", [destinations]],
-    ["UPDATE organizations SET name = 'Deleted account' WHERE id = $2 AND NOT EXISTS (SELECT 1 FROM accounts peer WHERE peer.organization_id = $2 AND peer.key <> $1 AND peer.status <> 'erased')", [userId, organizationId]]
+    ["UPDATE organizations SET name = 'Deleted account' WHERE id = $1", [organizationId]]
   ]
   for (const [statement, params] of owned) try tx.query(statement, params)
   try stepAccount(tx, userId, { type: "erase" }, now, { email: null, phone: null, name: null })
@@ -240,7 +239,7 @@ effect function finishStep(tx: Tx, deletion: Deletion, target: ProviderTarget | 
 
 effect function billingScope(tx: Tx, deletion: Deletion, now: number) {
   const { userId, organizationId } = deletion
-  if (!(try billingAuthority(tx, userId, organizationId))) return { kind: "shared" } satisfies BillingScope
+  try billingAuthority(tx, userId, organizationId)
   const source = try billingSourceOf(tx, organizationId)
   const checkout = try settleOwnedCheckouts(tx, { organizationId, customerId: source?.customerId, workerSessionId: source?.workerSessionId }, now)
   if (checkout.kind === "pending") return { kind: "pending" } satisfies BillingScope
@@ -249,7 +248,6 @@ effect function billingScope(tx: Tx, deletion: Deletion, now: number) {
 
 function settledBoundary(scope: BillingScope): BillingBoundary {
   if (scope.kind === "pending") return "BillingUnsettled"
-  if (scope.kind === "shared") return "BillingShared"
   return scope.checkout === undefined ? "BillingSettled" : "BillingCheckoutSettled"
 }
 
@@ -269,7 +267,6 @@ effect function nextWork(tx: Tx, userId: string, now: number, firstRound: boolea
   }
   if (noCall(receipt)) {
     if (step === "RevokeGoogle") return try openCall(tx, deletion, step, try googleTargetOf(tx, organizationId, userId), boundary, checkedAt)
-    if (scope.kind === "shared") return try openCall(tx, deletion, step, undefined, "BillingShared", checkedAt)
     const retained = scope.source === undefined || scope.checkout?.subscriptionId === scope.source.subscriptionId
       ? undefined : try identifyBilling(scope.source)
     if (scope.checkout !== undefined && retained !== undefined && scope.checkout.subscriptionId !== retained.subscriptionId)
@@ -289,7 +286,7 @@ effect function nextWork(tx: Tx, userId: string, now: number, firstRound: boolea
       try stepDeletion(tx, userId, { type: "requireAction" }, now)
       return done
     }
-    if (!firstRound || (step === "CancelBilling" && scope.kind === "shared")) return done
+    if (!firstRound) return done
     return try openCall(tx, deletion, step, target, boundary, checkedAt)
   }
   if (isUnknown(receipt)) return { kind: "lookUp", organizationId, target, call: { providerKey: renderProviderKey(receipt.providerKey), deadline: checkedAt + receipt.staleAfter } } satisfies Work
@@ -321,8 +318,8 @@ effect function sendCall(userId: string, organizationId: string, target: Provide
     return try revokeGoogle(connection)
   }
   return try store.transaction(effect (tx: Tx) => {
-    const admitted = try billingAuthority(tx, userId, organizationId)
-    if (!admitted || (try billingSourceOf(tx, organizationId))?.customerId !== target.customerId)
+    try billingAuthority(tx, userId, organizationId)
+    if ((try billingSourceOf(tx, organizationId))?.customerId !== target.customerId)
       return { kind: "refused", code: "AuthorizationLost" } satisfies ProviderReply<void>
     return try cancelBilling(target, call.deadline)
   })

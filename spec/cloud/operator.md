@@ -2,7 +2,7 @@
 
 The operator runs a deployment through the `elizaos-cloud` command line only;
 there is no HTTP admin route. The commands are `migrate`, `client
-register|update|apply|disable`, `grants mint|disable|revoke`, `prices set|refresh|check`,
+register|update|apply|disable`, `grants mint|disable|revoke`, `prices set|check`,
 `credits add --organization <id> --amount <µUSD> --request <id>` and
 `account delete|devices|revoke-devices --user <id>`; `serve` belongs to
 `deployment`. The organization or user named resolves to its one account
@@ -22,7 +22,7 @@ count or by the operator's own identifiers.
 > their account or sign out a lost device from one command line, so that I
 > never need to open a database row, a token or a provider secret to do it.
 
-### Thirteen commands exist, and only credits add and the three account commands name an account
+### Fourteen commands exist, and only credits add and the three account commands name an account
 
 Each command goes through the spec that owns its record. `client register`
 registers a client or replaces its registration
@@ -33,9 +33,7 @@ registers a client or replaces its registration
 reviewed file"). `grants
 revoke --reason <text> (--grant-id <id>… | --code <code>…)` ends each grant
 (`billing/grantCodes` `revokeGrant`), and with `--code` also disables the
-code. `prices refresh` reads the provider's catalogue price of each model the
-profile offers and writes each row through `services/models` `setPrice` under
-`priceRowAccepted`, then reports like `prices check`.
+code.
 
 ```quint
 import types.* from "./shared/types"
@@ -43,7 +41,7 @@ import deployment.* from "./deployment"
 import accounts as A from "./identity/accounts"
 type OperatorCommand =
   Migrate | RegisterClient | DisableClient | MintGrantCodes | DisableGrantCodes | RevokeGrants
-  | SetPrices | RefreshPrices | CheckPrices | AddCredits | RequestDeletion | ListDevices | RevokeDevices
+  | SetPrices | CheckPrices | AddCredits | RequestDeletion | ListDevices | RevokeDevices
 pure def namesAnAccount(command: OperatorCommand): bool = Set(AddCredits, RequestDeletion, ListDevices, RevokeDevices).contains(command)
 ```
 
@@ -53,7 +51,10 @@ A command refuses a profile that `deployment` would not start with. Reads
 (`prices check`, `account devices`) are refused on another database too,
 because they read price or personal rows. The shell reads the connected
 database's identity digest; an unreadable one is refused as unavailable,
-another one as a failed precondition. A missing account is `A::Unopened`.
+another one as a failed precondition. `migrate`, like `serve`, reads a
+database that holds no table yet as the profile's own, so it stamps a new
+database; one that holds tables but no identity is unreadable. A missing
+account is `A::Unopened`.
 
 ```quint
 type OperatorVerdict = Proceed | ExistingDeletion | Refused({ refusal: Refusal })
