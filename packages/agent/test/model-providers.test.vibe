@@ -22,21 +22,31 @@ module node {
 }
 import { digest } from node
 
-effect function bound(backend: Backend, key: string, environment?: Readonly<Record<string, string>>) {
+effect function modelRuntime(agentId?: AgentRuntime["agentId"]) {
+  return try Effect.try(() => new AgentRuntime({ agentId, character: { name: "Eliza", bio: [] } }))
+}
+
+effect function bound(backend: Backend, key: string, { environment, runtime }: { environment?: Readonly<Record<string, string>>; runtime?: AgentRuntime } = {}) {
   const parsed = try parseLaunch(JSON.stringify(launchDocument({ backend, ...(environment === undefined ? {} : { environment }) })), JSON.stringify(launchFrame({ credential: { version: 1, value: key } })))
   const binding = try bindModels(parsed.launch, parsed.authority)
+  if (runtime !== undefined) return { binding, runtime }
   const state = try scratch("model-providers")
   const store = try acquireRelease(host("device storage", () => openDeviceStorage({ stateDirectory: state.path, persistMemory: false, account: null, embeddingDimensions: 0 })),
     (opened) => orDie(host("device storage close", () => opened.adapter.close())))
-  const runtime = try Effect.try(() => new AgentRuntime({ agentId: store.agentId, character: { name: "Eliza", bio: [] } }))
-  try Effect.try(() => runtime.registerDatabaseAdapter(store.adapter))
-  return { binding, runtime }
+  const stored = try modelRuntime(store.agentId)
+  try Effect.try(() => stored.registerDatabaseAdapter(store.adapter))
+  return { binding, runtime: stored }
 }
 
-effect function cloudAgent(cloud: CloudFake, large = "large") {
-  const made = try bound({ kind: "cloud", origin: cloud.origin, imageModel: "vision" }, deviceKey)
+effect function cloudAgent(cloud: CloudFake, { large = "large", runtime }: { large?: string; runtime?: AgentRuntime } = {}) {
+  const made = try bound({ kind: "cloud", origin: cloud.origin, imageModel: "vision" }, deviceKey, { runtime })
   registerCloudModels(made.runtime, made.binding, { baseUrl: cloud.origin, small: "small", large, image: "vision" })
   return made
+}
+
+effect function refusedCloudAgent(cloud: CloudFake) {
+  const runtime = try modelRuntime()
+  return try cloudAgent(cloud, { runtime })
 }
 
 function completions(cloud: CloudFake): number {
@@ -99,7 +109,7 @@ it.effect('An outage or a dropped connection is retried on the next registration
 
 it.effect('A rate limit ends the call, blocks the next one without reaching the cloud, and funding is not retried (spec/agent/models/binding.md, "Each refusal is one account state, and the last failure records its kind and time without text")', effect () => {
   const cloud = try cloudFake(deviceKey)
-  const limited = try cloudAgent(cloud)
+  const limited = try refusedCloudAgent(cloud)
   const retryAt = Date.now() + 60_000
   try Effect.sync(() => cloud.script(rateLimited(retryAt)))
   const ended = try refusalOf(limited.runtime, { prompt: "Limited." })
@@ -109,19 +119,19 @@ it.effect('A rate limit ends the call, blocks the next one without reaching the 
   assert.strictEqual(completions(cloud), 1)
   const view = try limited.binding.read()
   assert.deepStrictEqual([view.accountState, view.blocked, view.lastCloudFailure?.retryAt], ["limit_reached", true, retryAt])
-  const unfunded = try cloudAgent(cloud)
+  const unfunded = try refusedCloudAgent(cloud)
   try Effect.sync(() => cloud.script(insufficientCredits()))
   const denied = try refusalOf(unfunded.runtime, { prompt: "Unfunded." })
   assert.strictEqual(denied?.code, "MODEL_FUNDING_AUTHORITY_FAILED")
   assert.strictEqual(completions(cloud), 2)
   assert.strictEqual((try unfunded.binding.read()).accountState, "insufficient_credits")
-  const spent = try cloudAgent(cloud)
+  const spent = try refusedCloudAgent(cloud)
   try Effect.sync(() => cloud.script(allowanceExhausted(Date.now() + 86_400_000)))
   const exhausted = try refusalOf(spent.runtime, { prompt: "Allowance spent." })
   assert.strictEqual(exhausted?.code, "MODEL_FUNDING_AUTHORITY_FAILED")
   assert.strictEqual(completions(cloud), 3)
   assert.strictEqual((try spent.binding.read()).accountState, "insufficient_credits")
-  const replaced = try cloudAgent(cloud)
+  const replaced = try refusedCloudAgent(cloud)
   try Effect.sync(() => cloud.acceptKey("rotated-device-key"))
   const invalid = try refusalOf(replaced.runtime, { prompt: "Old key." })
   assert.strictEqual(invalid?.status, 401)
@@ -181,7 +191,7 @@ it.effect('The own-key backend answers text and image description, classifies it
 
 it.effect('A tool call and its token use reach the caller as one result, a streamed call asks for its token use and records the cached prompt tokens of its last chunk, each tool result follows the call that asked for it, and a thinking hint sets the reasoning effort only on a model that documents it (spec/agent/models/binding.md, "A tool call, a structured answer and the token use reach the caller as one result"; spec/agent/models/binding.md, "A call sends an output cap only when its caller names one, and a thinking hint sets the reasoning effort only on a model that documents it")', effect () => {
   const cloud = try cloudFake(deviceKey)
-  const { runtime, binding } = try cloudAgent(cloud, "cerebras/qwen-3.8-27b")
+  const { runtime, binding } = try cloudAgent(cloud, { large: "cerebras/qwen-3.8-27b" })
   try Effect.sync(() => cloud.route("POST", "/api/v1/chat/completions", answerJson({
     choices: [{ message: { role: "assistant", content: null, tool_calls: [{ id: "call-1", type: "function", function: { name: "CALCULATE", arguments: "{\"expression\":\"2+2\"}" } }] }, finish_reason: "tool_calls" }],
     usage: { prompt_tokens: 12, completion_tokens: 5, total_tokens: 17, prompt_tokens_details: { cached_tokens: 4 }, completion_tokens_details: { reasoning_tokens: 0 } },
@@ -246,7 +256,7 @@ it.effect('A tool call and its token use reach the caller as one result, a strea
 
 it.effect('A tool is offered without its pattern constraints, and the rest of its schema is sent as declared (spec/agent/models/binding.md, "A tool call, a structured answer and the token use reach the caller as one result")', effect () => {
   const cloud = try cloudFake(deviceKey)
-  const { runtime } = try cloudAgent(cloud, "cerebras/qwen-3.8-27b")
+  const { runtime } = try cloudAgent(cloud, { large: "cerebras/qwen-3.8-27b" })
   try Effect.sync(() => cloud.route("POST", "/api/v1/chat/completions", answerJson({
     choices: [{ message: { role: "assistant", content: "Done." }, finish_reason: "stop" }],
     usage: { prompt_tokens: 12, completion_tokens: 2, total_tokens: 14 },

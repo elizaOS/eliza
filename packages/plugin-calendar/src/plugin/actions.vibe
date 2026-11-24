@@ -174,7 +174,6 @@ function changeResult(subaction: Subaction, result: CalendarChangeResult, zone: 
   return { success: true, text: `Deleted ${title}.${note}`, effectReceipts, data: { subaction, targetEvent: receipt.target, deleted: true, requestId: request.id } }
 }
 
-/** Who asked for a Calendar action, the stable id of the request that asked, what they said, and the zones of their client and of the owner. */
 export interface CalendarAsk {
   readonly by: string
   readonly id: string
@@ -202,7 +201,6 @@ function ownerWords(message: Memory): string {
   }
 }
 
-/** The ask of one message: its conversation, text, selected event, and client/owner zones. */
 export function calendarAsk(message: Memory, ownerZone?: string): CalendarAsk {
   const context = readTurnContext(message)
   const clientZone = context.observation?.timeZone ?? context.voiceUi?.uiTimeZone
@@ -448,7 +446,6 @@ effect function handle(host: CalendarHost, ask: CalendarAsk, parameters: Paramet
   }
 }
 
-/** One Calendar action run for an ask, from the planner's untrusted parameters. */
 export effect function runCalendarAction(host: CalendarHost, ask: CalendarAsk, input: unknown, _message?: Memory): ActionResult!! {
   const parameters = parametersOf({ parameters: input })
   if (parameters === undefined) return { success: false, text: `${calendarActionName} needs a subaction: ${subactions.join(", ")}.` }
@@ -470,7 +467,6 @@ async function ownerZone(runtime: IAgentRuntime): Promise<string | undefined> {
   return typeof zone === "string" ? zone : undefined
 }
 
-/** The Calendar action: read the active account's events, or make one change the owner asked for through the ledger. */
 export const calendarAction: Action = {
   name: calendarActionName,
   description: "The owner's calendar. search_events lists events in a time range (optionally matching a query against titles, notes, places and guests); next_event finds the next upcoming event; trip_window shows everything on the calendar while the owner is at the place in query (for example what's on while I'm in Denver); check_availability says whether the whole timeMin to timeMax window is free; propose_times finds up to two openings of durationMinutes inside that window, for a shorter slot within a longer period such as 20 minutes tomorrow morning (keep the window to the period asked: a morning ends by noon); neither books anything; create_event, update_event and delete_event change one event, or for a repeating event this one, this and following, or all (deleting an event you were invited to declines it), with connected provider changes requiring the owner's approval. Chat creates are reviewed unless the owner plainly asked to save now; a delete on the agent's own calendar removes one occurrence at most and runs at once only when the owner's words ask to delete and hold the whole title of one event, or it is the event selected on screen; otherwise nothing is deleted and the reply asks the owner, and after the owner's yes call delete_event again with the eventId it returned.",
