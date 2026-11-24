@@ -456,6 +456,17 @@ it.effect(`Review a reload of a page the phone withheld on the phone, and refuse
     try outcome("Can you open https://bank.example.com/statement#heading in the browser?", samePage, withheld("unreadable")),
     try outcome("Summarize https://bank.example.com/statement#heading", samePage),
   ]
+  const statement = { type: "browser_navigate", url: "https://bank.example.com/statement" } as const
+  const dictatedSite = { type: "browser_navigate", url: "https://alphacompute.ai/" } as const
+  const exactReopen = [
+    try outcome("Please summarize https://bank.example.com/statement in two sentences.", statement, withheld("unreadable")),
+    try outcome("reload this page", statement, withheld("unreadable")),
+    try outcome("open https://bank.example.com/statement#details", statement, withheld("unreadable")),
+    try outcome("Eliza, can you open https://bank.example.com/statement?", statement, withheld("unreadable")),
+    try outcome("open https://bank.example.com/statement", statement, withheld("unreadable")),
+    try outcome("Eliza, can you open https://bank.example.com/statement", statement, withheld("unreadable")),
+    try outcome("Can you open alphacompute. AI in the browser, please?", dictatedSite, { ...withheld("unreadable"), url: "https://alphacompute.ai/" }),
+  ]
   const reloadCommand = browserPlugin.actions?.find((action) => action.name === "BROWSER_RELOAD")
   try Effect.try(() => assert.isTrue(reloadCommand !== undefined))
   const device = renderer([replied(dispatched), replied(dispatched), replied(dispatched)])
@@ -477,6 +488,11 @@ it.effect(`Review a reload of a page the phone withheld on the phone, and refuse
       { operation: { type: "browser_history", action: "back" }, reviewed: false },
     ])
     assert.deepStrictEqual(reopen.map(result => typeof result === "string" ? result : result.operation), ["DEVICE_BROWSER_NOT_REQUESTED", "DEVICE_BROWSER_NOT_REQUESTED", samePage, samePage, samePage])
+    assert.deepStrictEqual(exactReopen, [
+      "DEVICE_BROWSER_NOT_REQUESTED", "DEVICE_BROWSER_NOT_REQUESTED",
+      { operation: { type: "browser_navigate", url: "https://bank.example.com/statement#details" }, reviewed: false }, { operation: statement, reviewed: false },
+      { operation: statement, reviewed: false }, { operation: statement, reviewed: false }, { operation: dictatedSite, reviewed: false },
+    ])
     assert.deepStrictEqual([unasked, sensitive, withdrawn].map((result) => [result.success, failureKind(result), result.text]), Array.from({ length: 3 }, () => [false, "POLICY_BLOCKED", BROWSER_RELOAD_WITHHELD_REFUSAL]))
     assert.strictEqual(asksAfterRefusal, 0)
     assert.deepStrictEqual([asked, askedSensitive].map((result) => [result.success, failureKind(result), result.text]), Array.from({ length: 2 }, () => [false, "POLICY_BLOCKED", BROWSER_RELOAD_WITHHELD_REFUSAL]))
