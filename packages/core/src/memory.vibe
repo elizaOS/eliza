@@ -133,6 +133,7 @@ module edge {
   import type { Memory } from "./types/memory.vibe"
   import type { UUID } from "./types/primitives.vibe"
   import { runDetachedSync } from "./edge.vibe"
+  import type { ElizaError } from "./errors.vibe"
   import { stampAppConversationProvenance } from "./memory.vibe"
 
   /** @throws {ElizaError} */
