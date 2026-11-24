@@ -50,7 +50,8 @@ export function writesUnreadableNumber(text: string, number: string): boolean {
   const wanted = number.replace(/\D/g, "")
   return regexMatches(text, numberShaped).some(([written = ""]) => {
     const digits = written.replace(/\D/g, "")
-    return digits.length >= 7 && digits.length <= 15 && samePhoneNumber(digits, wanted) && phoneDialNumber(written.trim()) === undefined
+    const holdsWanted = samePhoneNumber(digits, wanted) || (wanted.length >= 7 && digits.includes(wanted))
+    return digits.length >= 7 && digits.length <= 15 && holdsWanted && phoneDialNumber(written.trim()) === undefined
   })
 }
 

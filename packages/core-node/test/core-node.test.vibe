@@ -124,6 +124,14 @@ module node {
 }
 import { closeLoopback, fakeRequest, makeTempDir, randomBytesOf, removeDir, startLoopback, swapPath, writeBin } from node
 
+module proxyClient {
+  export async function trustVerdict(url: string, forwardedFor: string | undefined): Promise<unknown> {
+    const response = await fetch(url, { headers: forwardedFor === undefined ? {} : { "x-forwarded-for": forwardedFor } })
+    return await response.json()
+  }
+}
+import { trustVerdict } from proxyClient
+
 effect function host<A>(f: () => Promise<A>) {
   return try Effect.tryPromise({ try: f, catch: (error) => error })
 }
@@ -887,3 +895,21 @@ it.live("Generate the first-party catalog from plugin-owned and curated manifest
   assert.nestedPropertyVal(refusedApp, "registry._tag", "InvalidRegistryEntryFile")
   assert.deepStrictEqual(snapshots.conflict, { ids: ["alpha-two", "alphaone", "bravo", "charlie", "delta", "echo", "foxtrot", "gamma"], registry: { _tag: "RegistryClaimConflict", message: "[registry/generate] channel \"discord\" claimed by both @fx/plugin-bravo and @fx/plugin-gamma" } })
 }), 300_000)
+
+it.live('A request from this machine keeps its trust only while every proxy client element names this machine (spec/core/security.md, "Story: Trust only a request from this machine"; spec/core/security.md, "Every element of a proxy client header must name this machine for a request to be trusted as local")', () => scoped(effect {
+  const server = try acquireRelease(host(() => loopback((request, response) => {
+    response.writeHead(200, { "content-type": "application/json" })
+    response.end(JSON.stringify(isTrustedLocalRequest(request, { localAuthRequired: false, cloudProvisioned: false })))
+  })), (opened) => orDie(host(() => opened.close())))
+  const judged = (forwardedFor?: string) => host(async () => [forwardedFor, await trustVerdict(server.url("127.0.0.1"), forwardedFor)])
+  const sent = [undefined, "for=127.0.0.1, 203.0.113.5", "for=\"[::1]:4000\", 2001:db8::7", "for=127.0.0.1, xfor=127.0.0.1", "for=127.0.0.1, ::1", "127.0.0.1, unknown"]
+  const verdicts = try Effect.forEach(sent, judged)
+  try Effect.try(() => assert.deepStrictEqual(verdicts, [
+    [undefined, true],
+    ["for=127.0.0.1, 203.0.113.5", false],
+    ["for=\"[::1]:4000\", 2001:db8::7", false],
+    ["for=127.0.0.1, xfor=127.0.0.1", false],
+    ["for=127.0.0.1, ::1", true],
+    ["127.0.0.1, unknown", true],
+  ]))
+}))

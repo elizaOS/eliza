@@ -11,7 +11,7 @@ module node {
   import { telephonyFamily } from "../src/device-actions/proposal/families/telephony.vibe"
   import type { MessageAvailability } from "../src/device-actions/proposal/family.vibe"
   import { openRequest } from "../src/device-actions/store.vibe"
-  import { text, toolCalls, type CloudFake, type Completion } from "./support/cloud-fake.ts"
+  import { requestFault, text, toolCalls, type CloudFake, type Completion } from "./support/cloud-fake.ts"
   import { deviceClient, type DeviceClient } from "./support/device.ts"
 
   export const proposeTool = "PROPOSE_DEVICE_ACTION"
@@ -197,17 +197,18 @@ module node {
     const learned = (said: unknown, words: string) => JSON.stringify(said ?? "").includes(words)
 
     cloud.script(toolCalls("", { name: proposeTool, arguments: { operation: { type: "create_reminder", title: "Milk" } } },
-      { name: proposeTool, arguments: { operation: JSON.stringify({ type: "create_reminder", title: "Milk", dueAt }) } }, reminder("Milk")), text("Done."))
+      { name: proposeTool, arguments: { operation: JSON.stringify({ type: "create_reminder", title: "Milk", dueAt }) } }, reminder("Milk")), text("I sent it."))
     const asked = await say("Remind me to buy milk", direct)
     const offeredTool = lastCompletion(cloud, 2).tools?.find(({ function: tool }) => tool?.name === proposeTool)?.function
     const askedNote = JSON.stringify((lastCompletion(cloud, 2).messages ?? []).filter(({ role }) => role === "user").at(-1)?.content ?? "")
     const [milk] = await proposals(client)
 
-    cloud.script(toolCalls("", reminder("Eggs")), text("Okay."))
+    cloud.script(toolCalls("", reminder("Eggs")), text("Okay."), text("I didn't set that one. What should the reminder say?"))
     const refusedTurn = await say("Buy eggs too")
+    const refusalNote = JSON.stringify(lastCompletion(cloud).messages?.at(-1)?.content ?? "")
     const afterRefusal = (await proposals(client)).length
 
-    cloud.script(toolCalls("", reminder("Milk")), text("Okay."))
+    cloud.script(toolCalls("", reminder("Milk")), text("Okay."), requestFault("invalid_request"))
     const askedAgain = await say("Did that go out?")
     const afterAskedAgain = (await proposals(client)).length
 
@@ -286,7 +287,7 @@ module node {
         action: "device_action", version: 1, installationId: runtime.agentId, enrollmentId: enrolled.enrollmentId,
         requestMessageId: asked.userMessageId, operation: { type: "create_reminder", title: "Milk", dueAt },
       },
-      refusalReply: refusedTurn.text.includes("Tell me what to remind you of."), afterRefusal,
+      refusalReply: [refusedTurn.text, refusalNote.includes("Tell me what to remind you of.")], afterRefusal,
       askedAgain: { refused: askedAgain.text.includes("Tell me what to remind you of."), afterAskedAgain },
       held: { reply: heldTurn.text.includes("Review the reminder “Mom” on your phone."), afterHeld },
       hostOnlyOffered: hostOnlyTools.includes(proposeTool),
@@ -327,7 +328,7 @@ module node {
 
 import { alphaTool, proposeFromChat, proposeTool, sharedRules } from node
 
-it.live(`An owner's chat request becomes one reviewed device proposal in its own words, a refusal offers nothing, and later turns learn what applied and what never ran (spec/agent/deviceActions/index.md, "Story: Propose what I asked for on my phone, in my own words"; spec/agent/deviceActions/index.md, "A proposal is offered only on an owner turn of the enrolled device, as its family grounded it, and re-admitted under the turn's negotiation"; spec/agent/deviceActions/index.md, "Each wire type belongs to at most one proposal family, and a family offers forms only of its own types"; spec/agent/deviceActions/index.md, "A proposal carries the owner's message only for a live turn that asked for it directly, so otherwise the phone shows its card"; spec/agent/deviceActions/index.md, "A proposal's identity is its request message and its operation, so a repeat returns the same request"; spec/agent/deviceActions/index.md, "A grounding refusal offers nothing and is a refusal before dispatch"; spec/agent/deviceActions/index.md, "A later turn of the same conversation learns at most six outcomes of its own requests: what changed, and what ended without running"; spec/agent/deviceActions/index.md, "An unclaimed offer retires at its deadline or at the end of its turn"; spec/agent/deviceActions/index.md, "Only a confirmed review settles an uncertain request"; spec/agent/conversation/planning.md, "An action may narrow its tool to the turn, never beyond its registered form"; spec/agent/conversation/planning.md, "Every call of a turn is one the model chose, and a call this message serves in another place is refused before it runs and is no step of the turn"; spec/agent/conversation/planning.md, "A failure or proposal the turn made stays reported unless a later success of the same operation supersedes it"; spec/agent/conversation/planning.md, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history")`, effect () => {
+it.live(`An owner's chat request becomes one reviewed device proposal in its own words, a refusal offers nothing, and later turns learn what applied and what never ran (spec/agent/conversation/planning.md, "A recognized card is delivered unfenced, other multi-line tool output is fenced, and grounded prose follows unless one already holds the other"; spec/agent/conversation/planning.md, "A reply that leaves a failure unreported is written again once, and the delivered reply still reports open failures and attachment omissions"; spec/agent/deviceActions/index.md, "Story: Propose what I asked for on my phone, in my own words"; spec/agent/deviceActions/index.md, "A proposal is offered only on an owner turn of the enrolled device, as its family grounded it, and re-admitted under the turn's negotiation"; spec/agent/deviceActions/index.md, "Each wire type belongs to at most one proposal family, and a family offers forms only of its own types"; spec/agent/deviceActions/index.md, "A proposal carries the owner's message only for a live turn that asked for it directly, so otherwise the phone shows its card"; spec/agent/deviceActions/index.md, "A proposal's identity is its request message and its operation, so a repeat returns the same request"; spec/agent/deviceActions/index.md, "A grounding refusal offers nothing and is a refusal before dispatch"; spec/agent/deviceActions/index.md, "A later turn of the same conversation learns at most six outcomes of its own requests: what changed, and what ended without running"; spec/agent/deviceActions/index.md, "An unclaimed offer retires at its deadline or at the end of its turn"; spec/agent/deviceActions/index.md, "Only a confirmed review settles an uncertain request"; spec/agent/conversation/planning.md, "An action may narrow its tool to the turn, never beyond its registered form"; spec/agent/conversation/planning.md, "Every call of a turn is one the model chose, and a call this message serves in another place is refused before it runs and is no step of the turn"; spec/agent/conversation/planning.md, "A failure or proposal the turn made stays reported unless a later success of the same operation supersedes it"; spec/agent/conversation/planning.md, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history")`, effect () => {
   const observed = try deviceJourney({ allowed: ["REPLY", "IGNORE", "NONE", proposeTool] }, "propose from chat", proposeFromChat)
   const { expectedPayload, ...seen } = observed
   try Effect.try(() => assert.deepStrictEqual(seen, {
@@ -336,7 +337,7 @@ it.live(`An owner's chat request becomes one reviewed device proposal in its own
     notHere: { grouped: true, reasonsSaid: 1 },
     proposalReply: "Review the reminder “Milk” on your phone.",
     milk: { state: "pending", payload: expectedPayload },
-    refusalReply: true, afterRefusal: 1,
+    refusalReply: ["I didn't set that one. What should the reminder say?\n\nTell me what to remind you of.", true], afterRefusal: 1,
     askedAgain: { refused: true, afterAskedAgain: 1 },
     held: { reply: true, afterHeld: 2 },
     hostOnlyOffered: false,
@@ -360,7 +361,7 @@ it.live(`The device tool an Alpha phone is sent states each rule once, names no 
       stated: sharedRules.map((rule) => [rule, 1]),
       capabilitiesNamed: [],
       sameBytes: true,
-      shape: { forms: 23, branches: 17, sameTypes: true },
+      shape: { forms: 23, branches: 18, sameTypes: true },
       everyFormSampled: true,
       differing: [],
       compared: { inForms: true, outsideForms: true },

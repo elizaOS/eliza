@@ -1,4 +1,5 @@
-// spec/core/privacy.md, "Admission checks shutdown again after the asynchronous marker lookup"; spec/core/privacy.md, "A marker follows successful scrub and persisted pseudonym assignments"; spec/core/privacy.md, "Stop waits for lazy startup and active work before disposing the queue"; spec/core/privacyService.md, "Each marker lookup captures its own result before queue admission"; spec/core/privacyService.md, "Each processor attempt preserves its own marker and retry ownership"; spec/core/privacyService.md, "Stop captures lazy startup, flushes eligible work and finalizes its own promise"
+// spec/core/privacy.md, "Admission checks shutdown again after the asynchronous marker lookup"; spec/core/privacy.md, "A marker follows successful scrub and persisted pseudonym assignments"; spec/core/privacy.md, "Stop waits for lazy startup and active work before disposing the queue"; spec/core/privacyService.md, "Each marker lookup captures its own result before queue admission"; spec/core/privacyService.md, "Each processor attempt preserves its own marker and retry ownership"; spec/core/privacyService.md, "Stop captures lazy startup, flushes eligible work and finalizes its own promise"; spec/core/corpusPseudonyms.md, "Scrub items that assemble the pseudonym map do so one at a time, so every pseudonym they mint stays in the stored map"
+import { mapStagePermits } from "../../gen/core__corpusPseudonyms.effect.vibe"
 import { errorText } from "../utils/errors.vibe"
 import { asLegacy, Foreign, foreign, runDetached, thrownValue } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
@@ -57,7 +58,7 @@ function scrubState(runtime: () => IAgentRuntime): Scrub {
     get runtime() {
       return runtime()
     },
-    corpusMapWrites: Semaphore.makeUnsafe(1),
+    corpusMapWrites: Semaphore.makeUnsafe(mapStagePermits),
     batchQueue: null,
     drainStart: null,
     stopping: false,

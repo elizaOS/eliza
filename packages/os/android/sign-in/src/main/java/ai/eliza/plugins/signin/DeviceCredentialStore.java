@@ -1,10 +1,15 @@
-// spec/os/signIn/credential.md, "Story: Keep me signed in without a second copy of my key"; spec/os/signIn/credential.md, "Story: Sign out or reset cleanly"; spec/os/signIn/credential.md, "Story: Confirm it is me before a billing change"; spec/os/signIn/credential.md, "Story: Keep my key fresh without signing in again"
+// spec/os/signIn/credential.md, "Story: Keep me signed in without a second copy of my key"; spec/os/signIn/credential.md, "Story: Sign out or reset cleanly"; spec/os/signIn/credential.md, "Story: Confirm it is me before a billing change"
 package ai.eliza.plugins.signin;
 
 import ai.eliza.plugins.signin.CredentialPolicy.Account;
 import ai.eliza.plugins.signin.CredentialPolicy.Attempt;
 import ai.eliza.plugins.signin.CredentialPolicy.Custody;
 import ai.eliza.plugins.signin.CredentialPolicy.Duty;
+import ai.eliza.plugins.signin.CredentialPolicy.Lease;
+import ai.eliza.plugins.signin.CredentialPolicy.LeaseAnswer;
+import ai.eliza.plugins.signin.CredentialPolicy.LeaseOffer;
+import ai.eliza.plugins.signin.CredentialPolicy.LeaseUse;
+import ai.eliza.plugins.signin.CredentialPolicy.MailLeaseUpgrade;
 import ai.eliza.plugins.signin.CredentialPolicy.Notice;
 import ai.eliza.plugins.signin.CredentialPolicy.Reason;
 import ai.eliza.plugins.signin.CredentialPolicy.RefreshAnswer;
@@ -17,6 +22,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -37,16 +43,26 @@ public final class DeviceCredentialStore implements CredentialReader {
     StorageFailure(String what, Throwable cause) { super("device credential storage failed: " + what, cause); }
   }
 
-  public record Token(String credentialId, String value, Account account, long keyExpiresAt) {
-    @Override public String toString() { return "Token[credentialId=" + credentialId + ", account=" + account + ", keyExpiresAt=" + keyExpiresAt + "]"; }
+  public record LeaseSecret(String refresh, long refreshExpiresAt) {
+    @Override public String toString() { return "LeaseSecret[refreshExpiresAt=" + refreshExpiresAt + "]"; }
+  }
+
+  public record Token(String credentialId, String value, Account account, long keyExpiresAt, LeaseSecret lease) {
+    public Token(String credentialId, String value, Account account, long keyExpiresAt) { this(credentialId, value, account, keyExpiresAt, null); }
+    LeaseOffer offer() { return lease == null ? CredentialPolicy.NO_OFFER : new LeaseOffer.Offered(lease.refreshExpiresAt()); }
+    @Override public String toString() { return "Token[credentialId=" + credentialId + ", account=" + account + ", keyExpiresAt=" + keyExpiresAt + ", lease=" + (lease != null) + "]"; }
   }
 
   public record Pending(int attempt, String credentialId, String value) {
     @Override public String toString() { return "Pending[attempt=" + attempt + ", credentialId=" + credentialId + "]"; }
   }
 
-  public record Owed(int version, String value, int tries, String successor) {
-    @Override public String toString() { return "Owed[version=" + version + ", tries=" + tries + ", successor=" + successor + "]"; }
+  public record Owed(int version, String value, String lease, int tries, String successor) {
+    @Override public String toString() { return "Owed[version=" + version + ", tries=" + tries + ", lease=" + (lease != null) + "]"; }
+  }
+
+  public record HeldLease(int version, String refresh) {
+    @Override public String toString() { return "HeldLease[version=" + version + "]"; }
   }
 
   public enum Outcome { ACCEPTED, REFUSED }
@@ -54,6 +70,8 @@ public final class DeviceCredentialStore implements CredentialReader {
   public enum Kept { KEPT, NOT_KEPT, REFUSED }
 
   public enum SessionRead { USABLE, START_REFRESH, AWAIT_REFRESH, NONE }
+  public record LeaseRead(SessionRead stage, int version) {}
+  public record Renewal(int attempt, int version, Account account) {}
 
   private final Object lock = new Object();
   private final Slots slots;
@@ -62,7 +80,10 @@ public final class DeviceCredentialStore implements CredentialReader {
   private final List<Listener> listeners = new CopyOnWriteArrayList<>();
   private final Set<Integer> sweep = new TreeSet<>();
   private volatile Runnable verifyAccount = () -> {};
+  private volatile Runnable renewKey = () -> {};
   private State state;
+  private record Upgrade(int attempt, MailLeaseUpgrade expected) {}
+  private Upgrade upgrade;
   private String written = "";
 
   public DeviceCredentialStore(Slots slots, String authorityDigest, LongSupplier clock) {
@@ -76,6 +97,10 @@ public final class DeviceCredentialStore implements CredentialReader {
       if (saved != null) {
         Map<String, Object> record = CredentialJson.object(CredentialJson.parse(saved), "record");
         loaded = CredentialPolicy.restart(CredentialPolicy.state(record.get("state")));
+        if (record.containsKey("leaseUpgrade")) {
+          int stoppedAttempt = CredentialJson.small(record, "leaseUpgrade");
+          if (CredentialPolicy.canSignInEnded(loaded, stoppedAttempt)) loaded = CredentialPolicy.signInEnded(loaded, stoppedAttempt);
+        }
         for (Object version : CredentialJson.list(record.get("sweep"), "sweep")) {
           if (!(version instanceof Long v) || v < 1 || v > Integer.MAX_VALUE) throw new CredentialJson.Malformed("sweep");
           sweep.add(v.intValue());
@@ -100,6 +125,8 @@ public final class DeviceCredentialStore implements CredentialReader {
   }
 
   public void onVerifyAccount(Runnable verify) { verifyAccount = verify; }
+
+  public void onRenewKey(Runnable renew) { renewKey = renew; }
 
   public State state() {
     synchronized (lock) { advance(); return state; }
@@ -147,22 +174,31 @@ public final class DeviceCredentialStore implements CredentialReader {
     return attempt;
   }
 
-  public int beginRenewal() {
+  public int beginMailLeaseUpgrade(MailLeaseUpgrade expected) {
     synchronized (lock) {
       advance();
-      if (!CredentialPolicy.canBeginRenewal(state)) return 0;
-      commit(new Step(CredentialPolicy.beginRenewal(state), List.of()));
-      return state.generation();
+      if (!(state.attempt() instanceof Attempt.NoAttempt) || !CredentialPolicy.mailLeaseUpgradeAdmits(state, expected)) return 0;
+      State next = CredentialPolicy.beginSignIn(state);
+      commit(new Step(next, List.of()), new Upgrade(next.generation(), expected));
+      return next.generation();
     }
+  }
+
+  public boolean isMailLeaseUpgrade(int attempt) {
+    synchronized (lock) { return upgrade != null && upgrade.attempt() == attempt; }
   }
 
   public Kept tokenAnswered(int attempt, Token token) {
     synchronized (lock) {
       advance();
-      if (!CredentialPolicy.canTokenAnswered(state, attempt, token.credentialId(), token.account(), token.keyExpiresAt())) return Kept.REFUSED;
+      if (!CredentialPolicy.canTokenAnswered(state, attempt, token.credentialId(), token.account(), token.keyExpiresAt(), token.offer())) return Kept.REFUSED;
       int version = state.lastVersion() + 1;
-      Stored stored = writeKey(version, token);
-      commit(new Step(CredentialPolicy.tokenAnswered(state, attempt, token.credentialId(), token.account(), token.keyExpiresAt(), stored), List.of()));
+      int active = CredentialPolicy.activeVersion(state);
+      String binding = CredentialPolicy.isRenewal(state.attempt()) && active > 0
+        ? bindingOf(active) : fingerprint(token.value());
+      Stored stored = writeKey(version, token, binding);
+      if (stored == Stored.WRITTEN && token.lease() != null) stored = writeLease(version, token.lease().refresh());
+      commit(new Step(CredentialPolicy.tokenAnswered(state, attempt, token.credentialId(), token.account(), token.keyExpiresAt(), token.offer(), stored), List.of()));
       return stored == Stored.WRITTEN ? Kept.KEPT : Kept.NOT_KEPT;
     }
   }
@@ -172,7 +208,82 @@ public final class DeviceCredentialStore implements CredentialReader {
     synchronized (lock) {
       advance();
       if (!CredentialPolicy.canAcknowledged(state, attempt, credentialId, keyExpiresAt)) return Outcome.REFUSED;
+      if (!upgradeStillAdmitted()) return Outcome.REFUSED;
+      if (state.attempt() instanceof Attempt.Acknowledging k && k.lease() instanceof LeaseOffer.Renewal && state.lease() instanceof Lease.Held held
+        && writeLease(k.version(), leaseOf(held.version())) != Stored.WRITTEN) throw new StorageFailure("lease " + k.version(), null);
       out = commit(CredentialPolicy.acknowledged(state, attempt, credentialId, keyExpiresAt));
+    }
+    deliver(out);
+    return Outcome.ACCEPTED;
+  }
+
+  public Renewal beginRenewal() {
+    synchronized (lock) {
+      advance();
+      if (!CredentialPolicy.canBeginRenewal(state)) return null;
+      commit(new Step(CredentialPolicy.beginRenewal(state), List.of()));
+      return new Renewal(state.generation(), CredentialPolicy.leaseVersionOf(state.lease()), CredentialPolicy.accountOf(state));
+    }
+  }
+
+  public boolean renewDue() {
+    synchronized (lock) { advance(); return CredentialPolicy.renewDue(state); }
+  }
+
+  public HeldLease lease() {
+    synchronized (lock) {
+      advance();
+      int version = CredentialPolicy.leaseVersionOf(state.lease());
+      return version == 0 ? null : new HeldLease(version, leaseOf(version));
+    }
+  }
+
+  public int usableLeaseVersion() {
+    synchronized (lock) {
+      advance();
+      return CredentialPolicy.leaseUsable(state) ? CredentialPolicy.leaseVersionOf(state.lease()) : 0;
+    }
+  }
+
+  public LeaseRead readLease() {
+    synchronized (lock) {
+      advance();
+      int version = CredentialPolicy.leaseVersionOf(state.lease());
+      if (CredentialPolicy.leaseUsable(state)) return new LeaseRead(SessionRead.USABLE, version);
+      if (!CredentialPolicy.canReadLease(state)) return new LeaseRead(SessionRead.NONE, 0);
+      boolean start = commit(CredentialPolicy.readLease(state)).stream().anyMatch(n -> n instanceof Notice.RefreshLease);
+      return new LeaseRead(start ? SessionRead.START_REFRESH : SessionRead.AWAIT_REFRESH, version);
+    }
+  }
+
+  public Kept leaseRotated(int version, String refresh, long accessExpiresAt, long refreshExpiresAt) {
+    synchronized (lock) {
+      advance();
+      if (!CredentialPolicy.canLeaseRefreshAnswered(state, version)) return Kept.REFUSED;
+      boolean fits = accessExpiresAt > state.now() && refreshExpiresAt > state.now();
+      Stored stored = fits ? writeLease(version, refresh) : Stored.REFUSED;
+      LeaseAnswer rotation = new LeaseAnswer.Rotated(accessExpiresAt, refreshExpiresAt, stored);
+      boolean taken = CredentialPolicy.rotationTaken(state, rotation);
+      commit(new Step(CredentialPolicy.leaseRefreshAnswered(state, version, rotation), List.of()));
+      return taken ? Kept.KEPT : Kept.NOT_KEPT;
+    }
+  }
+
+  public Outcome leaseUnanswered(int version) {
+    synchronized (lock) {
+      advance();
+      if (!CredentialPolicy.canLeaseRefreshAnswered(state, version)) return Outcome.REFUSED;
+      commit(new Step(CredentialPolicy.leaseRefreshAnswered(state, version, new LeaseAnswer.Unanswered()), List.of()));
+    }
+    return Outcome.ACCEPTED;
+  }
+
+  public Outcome leaseRejected(int version, Reason reason, LeaseUse presented) {
+    List<Notice> out;
+    synchronized (lock) {
+      advance();
+      if (!CredentialPolicy.canLeaseRejected(state, version, reason)) return Outcome.REFUSED;
+      out = commit(CredentialPolicy.leaseRejected(state, version, reason, presented));
     }
     deliver(out);
     return Outcome.ACCEPTED;
@@ -242,11 +353,27 @@ public final class DeviceCredentialStore implements CredentialReader {
     }
   }
 
+  public boolean maySendAcknowledgement(Pending pending) {
+    synchronized (lock) {
+      advance();
+      if (!(state.attempt() instanceof Attempt.Acknowledging current) || current.attempt() != pending.attempt()
+          || !current.credentialId().equals(pending.credentialId())) return false;
+      return upgradeStillAdmitted();
+    }
+  }
+
+  public Pending pendingRenewal() {
+    synchronized (lock) {
+      advance();
+      return CredentialPolicy.isRenewal(state.attempt()) ? pending() : null;
+    }
+  }
+
   public List<Owed> owed() {
     synchronized (lock) {
       advance();
       List<Owed> out = new ArrayList<>();
-      for (Duty d : state.duties()) if (d.tries() > 0) out.add(new Owed(d.version(), keyOf(d.version()), d.tries(), d.successor()));
+      for (Duty d : state.duties()) if (d.tries() > 0) out.add(new Owed(d.version(), keyOf(d.version()), d.lease() ? leaseOf(d.version()) : null, d.tries(), d.successor()));
       return out;
     }
   }
@@ -300,6 +427,8 @@ public final class DeviceCredentialStore implements CredentialReader {
 
   private String keySlot(int version) { return prefix + "key:" + version; }
 
+  private String leaseSlot(int version) { return prefix + "lease:" + version; }
+
   private void advance() {
     long elapsed = clock.getAsLong() - state.now();
     if (CredentialPolicy.canElapse(state, elapsed)) commit(new Step(CredentialPolicy.elapse(state, elapsed), List.of()));
@@ -314,12 +443,24 @@ public final class DeviceCredentialStore implements CredentialReader {
   }
 
   private List<Notice> commit(Step step) {
+    Upgrade stillOpen = upgrade != null && CredentialPolicy.attemptOf(step.state()) == upgrade.attempt() ? upgrade : null;
+    return commit(step, stillOpen);
+  }
+
+  private List<Notice> commit(Step step, Upgrade nextUpgrade) {
     Set<Integer> dropped = held(state);
     dropped.removeAll(held(step.state()));
-    persist(step.state(), dropped);
+    persist(step.state(), dropped, nextUpgrade);
     state = step.state();
+    upgrade = nextUpgrade;
     sweepKeys();
     return step.out();
+  }
+
+  private boolean upgradeStillAdmitted() {
+    if (upgrade == null || CredentialPolicy.mailLeaseUpgradeMayAcknowledge(state, upgrade.expected())) return true;
+    commit(new Step(CredentialPolicy.signInEnded(state, upgrade.attempt()), List.of()));
+    return false;
   }
 
   private void sweepKeys() {
@@ -327,6 +468,7 @@ public final class DeviceCredentialStore implements CredentialReader {
     for (int version : sweep) {
       try {
         slots.remove(keySlot(version));
+        slots.remove(leaseSlot(version));
         removed.add(version);
       } catch (Exception unremoved) {
         break;
@@ -336,14 +478,20 @@ public final class DeviceCredentialStore implements CredentialReader {
   }
 
   private void persist(State next, Set<Integer> dropped) {
+    persist(next, dropped, null);
+  }
+
+  private void persist(State next, Set<Integer> dropped, Upgrade nextUpgrade) {
     Set<Integer> owed = new TreeSet<>(sweep);
     owed.addAll(dropped);
-    State durable = new State(0, next.generation(), next.lastVersion(), next.custody(), next.attempt(), next.duties(), CredentialPolicy.NO_SESSION);
-    String kept = CredentialPolicy.json(durable) + owed;
+    Lease lease = CredentialPolicy.restLease(next.lease());
+    State durable = new State(0, next.generation(), next.lastVersion(), next.custody(), next.attempt(), next.duties(), CredentialPolicy.NO_SESSION, lease);
+    String upgradeMarker = nextUpgrade == null ? "" : ",\"leaseUpgrade\":" + nextUpgrade.attempt();
+    String kept = CredentialPolicy.json(durable) + owed + upgradeMarker;
     if (kept.equals(written)) return;
-    State dated = new State(next.now(), next.generation(), next.lastVersion(), next.custody(), next.attempt(), next.duties(), CredentialPolicy.NO_SESSION);
+    State dated = new State(next.now(), next.generation(), next.lastVersion(), next.custody(), next.attempt(), next.duties(), CredentialPolicy.NO_SESSION, lease);
     try {
-      slots.write(recordSlot(), "{\"state\":" + CredentialPolicy.json(dated) + ",\"sweep\":" + owed + "}");
+      slots.write(recordSlot(), "{\"state\":" + CredentialPolicy.json(dated) + ",\"sweep\":" + owed + upgradeMarker + "}");
     } catch (Exception failed) {
       throw new StorageFailure("record", failed);
     }
@@ -351,8 +499,9 @@ public final class DeviceCredentialStore implements CredentialReader {
     sweep.addAll(dropped);
   }
 
-  private Stored writeKey(int version, Token token) {
-    String value = "{\"credentialId\":" + CredentialJson.quote(token.credentialId()) + ",\"key\":" + CredentialJson.quote(token.value()) + "}";
+  private Stored writeKey(int version, Token token, String binding) {
+    String value = "{\"credentialId\":" + CredentialJson.quote(token.credentialId()) + ",\"key\":" + CredentialJson.quote(token.value())
+      + ",\"binding\":" + CredentialJson.quote(binding) + "}";
     try {
       slots.write(keySlot(version), value);
     } catch (Exception failed) {
@@ -361,18 +510,61 @@ public final class DeviceCredentialStore implements CredentialReader {
     return confirm(version, value);
   }
 
-  private Stored confirm(int version, String value) {
+  private Stored writeLease(int version, String refresh) {
+    String value = "{\"refresh\":" + CredentialJson.quote(refresh) + "}";
     try {
-      return value.equals(slots.read(keySlot(version))) ? Stored.WRITTEN : Stored.FAILED;
+      slots.write(leaseSlot(version), value);
+    } catch (Exception failed) {
+      return confirm(leaseSlot(version), value);
+    }
+    return confirm(leaseSlot(version), value);
+  }
+
+  private Stored confirm(int version, String value) { return confirm(keySlot(version), value); }
+
+  private Stored confirm(String slot, String value) {
+    try {
+      return value.equals(slots.read(slot)) ? Stored.WRITTEN : Stored.FAILED;
     } catch (Exception unreadable) {
       return Stored.UNCONFIRMED;
     }
   }
 
-  private String keyOf(int version) {
+  private Map<String, Object> keyRecord(int version) {
     String saved = readSlot(keySlot(version));
     if (saved == null) throw new StorageFailure("key " + version + " is missing", null);
-    return CredentialJson.text(CredentialJson.object(CredentialJson.parse(saved), "key"), "key");
+    return CredentialJson.object(CredentialJson.parse(saved), "key");
+  }
+
+  private String keyOf(int version) {
+    return CredentialJson.text(keyRecord(version), "key");
+  }
+
+  private String bindingOf(int version) {
+    Map<String, Object> stored = keyRecord(version);
+    return stored.containsKey("binding") ? CredentialJson.text(stored, "binding") : fingerprint(CredentialJson.text(stored, "key"));
+  }
+
+  String accountBinding(String currentSecret) {
+    synchronized (lock) {
+      Credential current = current();
+      return current != null && current.value().equals(currentSecret) ? bindingOf(current.version()) : null;
+    }
+  }
+
+  private static String fingerprint(String key) {
+    try {
+      return Base64.getUrlEncoder().withoutPadding().encodeToString(MessageDigest.getInstance("SHA-256")
+        .digest(key.getBytes(StandardCharsets.UTF_8)));
+    } catch (NoSuchAlgorithmException unavailable) {
+      throw new IllegalStateException(unavailable);
+    }
+  }
+
+  private String leaseOf(int version) {
+    String saved = readSlot(leaseSlot(version));
+    if (saved == null) throw new StorageFailure("lease " + version + " is missing", null);
+    return CredentialJson.text(CredentialJson.object(CredentialJson.parse(saved), "lease"), "refresh");
   }
 
   private String readSlot(String slot) {
@@ -386,7 +578,8 @@ public final class DeviceCredentialStore implements CredentialReader {
   private void deliver(List<Notice> out) {
     for (Notice notice : out) {
       if (notice instanceof Notice.VerifyAccount) verifyAccount.run();
-      else if (!(notice instanceof Notice.RefreshAccountSession)) for (Listener listener : listeners) listener.notice(notice);
+      else if (notice instanceof Notice.RenewKey) renewKey.run();
+      else if (!(notice instanceof Notice.RefreshAccountSession) && !(notice instanceof Notice.RefreshLease)) for (Listener listener : listeners) listener.notice(notice);
     }
   }
 }

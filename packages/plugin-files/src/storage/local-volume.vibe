@@ -1,4 +1,4 @@
-// spec/files/reviewedOperations.md, "The mutation re-reads each selected row and reports each outcome"; spec/files/reviewedOperations.md, "Trash owns a journal entry before moving the row"; spec/files/requests.md, "An empty or complete claim needs a full, known listing"; spec/files/requests.md, "Downloads is the Download folder with its folders, and a missing one is empty"; spec/os/android/files/storage.md, "A rename never replaces a different entry and reports the new path only when it happened"
+// spec/files/reviewedOperations.md, "The mutation re-reads each selected row and reports each outcome"; spec/files/reviewedOperations.md, "Trash owns a journal entry before moving the row"; spec/files/requests.md, "An empty or complete claim needs a full, known listing"; spec/files/requests.md, "Downloads is the Download folder with its folders, and a missing one is empty"; spec/os/android/files/storage.md, "A rename never replaces a different entry and reports the new path only when it happened"; spec/files/reviewedOperations.md, "A trash record that cannot be read is listed as unreadable, refuses only its own restore, and can be emptied"
 module node {
   import { createHash, randomUUID } from "node:crypto"
   import { lstat } from "node:fs/promises"
@@ -18,13 +18,18 @@ module node {
   }
 }
 import { identityOf, linked, trashId } from node
-import { apply, canPrune, classifyRow, machineOver, initial as fresh, type TrashRow } from "../../gen/files__reviewedOperations.effect.vibe"
+import { apply, canPrune, classifyRow, emptyErases, machineOver, initial as fresh, type TrashRow } from "../../gen/files__reviewedOperations.effect.vibe"
 import { renameOutcome, type FilesOp, type FilesRowCheck } from "../../gen/os__android__files__storage.effect.vibe"
 import {
-  baseName, downloadsListing, filterMatches, freeName, inCategory, joinPath, listing, mimeFromName, parentOf, validName, validPath, within, DOWNLOAD_FOLDER, type StorageEntry, type TrashEntry, checkSelection, FilesVolume, succeeded, type RowOutcome, type VolumeRefused, ANSWERS, checkErase, decodeRecord, listShown, newestFirst, refused, TRASH, trashEach, type TrashRecord,
+  baseName, downloadsListing, filterMatches, freeName, inCategory, joinPath, listing, mimeFromName, parentOf, validName, validPath, within, DOWNLOAD_FOLDER, type StorageEntry, type TrashEntry, checkSelection, FilesVolume, succeeded, type RowOutcome, type VolumeRefused, ANSWERS, checkErase, decodeRecord, listShown, listUnreadable, newestFirst, recordRead, refused, TRASH, trashEach, unrestorable, type TrashRecord,
 } from "@elizaos/plugin-files-client"
 
 const WALK_LIMIT = 10_000
+const localTrashId = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+
+function journalIds(files: readonly string[]): string[] {
+  return files.filter((file) => file.endsWith(".json")).map((file) => file.slice(0, -".json".length)).filter((id) => localTrashId.test(id))
+}
 
 export function localVolume(root: string, name = "Internal storage") {
   return Layer.effect(FilesVolume, effect {
@@ -108,12 +113,15 @@ export function localVolume(root: string, name = "Internal storage") {
     }
 
     effect function record(id: string) {
-      const raw = (fs.readFileString(trashInfo(id)) catch () => undefined)
-      return raw === undefined ? undefined : (decodeRecord(raw) catch () => undefined)
+      if (!localTrashId.test(id)) return { kept: undefined, read: "RecordAbsent" as const }
+      const raw = (fs.readFileString(trashInfo(id)) catch (failure) => failure.reason._tag === "NotFound" ? undefined : null)
+      if (raw === null) return { kept: undefined, read: undefined }
+      const kept = raw === undefined ? undefined : (decodeRecord(raw) catch () => undefined)
+      return { kept, read: recordRead(raw !== undefined, kept) }
     }
 
     effect function journalOf(id: string, base: Omit<typeof TrashRecord.Type, "row">) {
-      return try machineOver(effect () => (try record(id))?.row ?? fresh, (row: TrashRow) => row.phase === "Visible" || row.phase === "Gone"
+      return try machineOver(effect () => (try record(id)).kept?.row ?? fresh, (row: TrashRow) => row.phase === "Visible" || row.phase === "Gone"
         ? Effect.void : orDie(fs.writeFileString(trashInfo(id), JSON.stringify({ ...base, row }))))
     }
 
@@ -150,10 +158,7 @@ export function localVolume(root: string, name = "Internal storage") {
       return written ? { path, status: op === "Copy" ? "copied" : "moved", to: target } : { path, status: "failed" }
     }
 
-    effect function trashIds() {
-      return (fs.readDirectory(paths.join(root, TRASH, "info")) catch (): string[] => [])
-        .filter((file) => file.endsWith(".json")).map((file) => file.slice(0, -".json".length))
-    }
+    effect function trashIds() { return journalIds(fs.readDirectory(paths.join(root, TRASH, "info")) catch (): string[] => []) }
 
     effect function prune(id: string, kept: typeof TrashRecord.Type, now: number) {
       const { row: _row, ...base } = kept
@@ -207,9 +212,10 @@ export function localVolume(root: string, name = "Internal storage") {
         const now = try Clock.currentTimeMillis
         const items: TrashEntry[] = []
         for (const id of try trashIds()) {
-          const kept = try record(id)
-          if (kept === undefined) continue
-          const resident = try exists(trashFile(id))
+          const { kept, read } = try record(id)
+          const resident = read === undefined ? undefined : (fs.exists(trashFile(id)) catch () => undefined)
+          if (read === undefined || resident === undefined) throw refused("unavailable", "The Trash item could not be read")
+          if (listUnreadable(items, id, read, resident) || kept === undefined) continue
           if (!resident) {
             fs.remove(trashInfo(id)) catch () => undefined
             continue
@@ -225,9 +231,10 @@ export function localVolume(root: string, name = "Internal storage") {
       restore: (ids) => namespace(effect {
         const outcomes: RowOutcome[] = []
         for (const id of ids) {
-          const kept = try record(id)
-          if (kept === undefined || !(try exists(trashFile(id)))) {
-            outcomes.push({ path: id, status: "missing" })
+          const { kept, read } = try record(id)
+          const resident = kept === undefined ? false : (fs.exists(trashFile(id)) catch () => undefined)
+          if (kept === undefined || !resident) {
+            outcomes.push(read === undefined || resident === undefined ? { path: id, status: "failed" } : unrestorable(id, read, resident) ?? { path: id, status: "missing" })
             continue
           }
           const origin = parentOf(kept.origin)
@@ -246,7 +253,10 @@ export function localVolume(root: string, name = "Internal storage") {
         let count = 0
         for (const id of ids) {
           if (!known.has(id)) continue
-          const data = try succeeded(fs.remove(trashFile(id), { recursive: true }))
+          const { read } = try record(id)
+          const resident = (fs.exists(trashFile(id)) catch () => undefined)
+          if (read === undefined || resident === undefined || !emptyErases(read, resident)) continue
+          const data = !resident || (try succeeded(fs.remove(trashFile(id), { recursive: true })))
           if (data && (try succeeded(fs.remove(trashInfo(id))))) count++
         }
         return count

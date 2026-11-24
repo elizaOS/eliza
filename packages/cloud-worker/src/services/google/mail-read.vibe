@@ -3,7 +3,7 @@
 import { htmlMaxBytes, inboxWatchCanAnswer, mailMaxBytes, mebibyte, offeredReads, threadMaxMessages, threadOutcome, threadPageMax, type MailSurface, type ThreadAsk } from "../../../gen/cloud__services__google__mailRead.effect.vibe"
 import { refused, Refused } from "../../http/refusal.vibe"
 import { json, owner as ownerOf, type Route, type RouteContext } from "../../http/routes.vibe"
-import { bearerToken, recheckServiceAccess, signed } from "../../http/request-auth.vibe"
+import { bearerToken, recheckAccess, signed } from "../../http/request-auth.vibe"
 import { Deployment } from "@elizaos/cloud"
 import { seal, sha256Hex, tokenDigest, unseal } from "../../shared/sealing.vibe"
 import { googleJson, type GoogleFailure } from "../../providers/google.vibe"
@@ -137,7 +137,7 @@ effect function mailCard(message: MailMessage, selfEmail: string) {
   const headers = GoogleRead.headerMap(message.payload)
   const labels = (message.labelIds ?? []).map((label) => label.trim()).filter((label) => label !== "")
   return {
-    id: message.id, threadId: message.threadId, subject: headers.get("subject") ?? "", from: headers.get("from") ?? "",
+    id: message.id, externalId: message.id, threadId: message.threadId, subject: headers.get("subject") ?? "", from: headers.get("from") ?? "",
     snippet: message.snippet ?? "", receivedAt, labels, ...GoogleRead.mailTriageFields(labels, headers, selfEmail),
     metadata: { historyId: message.historyId ?? null }
   }
@@ -202,11 +202,13 @@ effect function messageView(grant: ReadGrant, message: MailMessage, selfEmail: s
     if (plain !== undefined && failure.refusal.code === "ContentTooLarge") return null
     throw failure
   }
-  const bodyText = plain ?? (typeof html === "string" ? GoogleRead.htmlText(html) : message.snippet ?? "")
+  const text = plain ?? (typeof html === "string" ? GoogleRead.htmlText(html) : message.snippet)
+  const bodyText = text ?? ""
   if (utf8Length(bodyText) > mailMaxBytes) throw refused("ContentTooLarge")
   return {
     message: try mailCard(message, selfEmail),
     bodyText,
+    bodyTextAvailable: text !== undefined,
     ...GoogleRead.mailHtmlView(html, parts.partsWithinLimit),
     attachments: parts.attachments.map(GoogleRead.attachmentDescriptor),
     authenticationResults: GoogleRead.receivedAuthentication(message.payload?.headers ?? [])
@@ -250,7 +252,7 @@ effect function grantOf(context: RouteContext, surface: MailSurface) {
   if (owner === undefined) throw refused("AuthenticationRequired")
   const grantId = context.query.get("grantId") ?? ""
   const grant: Grant = try useMailReadGrant(owner, grantId === "" ? undefined : grantId, context.query.get("side"), surface)
-  return grant
+  return { ...grant, accountId: owner.userId }
 }
 
 effect function param(context: RouteContext, name: string, pattern: RegExp) {
@@ -269,14 +271,18 @@ effect function pageTokenOf(context: RouteContext) {
 const syncedAt = (context: RouteContext) => new Date(context.now).toISOString()
 
 effect function triageRoute(context: RouteContext) {
-  const limit = GoogleRead.mailListCount("TriageList", context.query.get("maxResults"))
-  if (limit === null) throw refused("InvalidRequest")
+  const { limit, folder, label, q } = GoogleRead.gmailTriageInput(context.query) catch effect () => { throw refused("InvalidRequest") }
+  const pageToken = try pageTokenOf(context)
   const grant = try grantOf(context, "TriageSurface")
   const mailboxHistoryId = try mailboxHistory(grant)
-  const page = try listed(grant, new URLSearchParams({ maxResults: String(limit), labelIds: "INBOX" }), limit, undefined)
-  const messages = page.messages.filter(({ labels }) => labels.includes("INBOX") && !labels.includes("TRASH"))
-    .sort(GoogleRead.compareMailTriage)
-  return json({ messages, syncedAt: syncedAt(context), mailboxHistoryId })
+  const query = new URLSearchParams({ maxResults: String(limit), labelIds: label })
+  if (label === "TRASH") query.set("includeSpamTrash", "true")
+  if (q !== "") query.set("q", q)
+  if (pageToken !== undefined) query.set("pageToken", pageToken)
+  const page = try listed(grant, query, limit, pageToken)
+  const messages = page.messages.filter(({ labels }) => labels.includes(label) && (label === "TRASH" || !(labels.includes("TRASH") || labels.includes("SPAM"))))
+  if (folder === "inbox") messages.sort(GoogleRead.compareMailTriage)
+  return json({ ...page, accountId: grant.accountId, folder, q, messages, syncedAt: syncedAt(context), mailboxHistoryId })
 }
 
 effect function searchRoute(context: RouteContext) {
@@ -290,13 +296,15 @@ effect function searchRoute(context: RouteContext) {
   const search = new URLSearchParams({ q: query, maxResults: String(limit), includeSpamTrash: String(trashQuery.test(query)) })
   if (pageToken !== undefined) search.set("pageToken", pageToken)
   const page = try listed(grant, search, limit, pageToken)
-  return json({ ...page, syncedAt: syncedAt(context), mailboxHistoryId, supportsSpamTrash: true })
+  return json({ ...page, accountId: grant.accountId, q: query, syncedAt: syncedAt(context), mailboxHistoryId, supportsSpamTrash: true })
 }
 
 effect function readRoute(context: RouteContext) {
   const messageId = try param(context, "messageId", providerId)
   const grant = try grantOf(context, "MessageSurface")
-  return json(try messageView(grant, try readMessage(grant, messageId, "full"), grant.email))
+  const message = try readMessage(grant, messageId, "full")
+  const historyId = message.historyId !== undefined && historyPattern.test(message.historyId) ? message.historyId : null
+  return json({ accountId: grant.accountId, historyId, ...try messageView(grant, message, grant.email) })
 }
 
 effect function capabilitiesRoute(context: RouteContext) {
@@ -348,7 +356,7 @@ effect function arrivalRoute(context: RouteContext) {
     }
     const cursor = presentedCursor ?? encodeCursor(try seal("gmail-arrival", binding + JSON.stringify(answer.watch)))
     const current = try readGrantStatus(caller, grantId, null, try Clock.currentTimeMillis)
-    try recheckServiceAccess(authorization, caller)
+    try recheckAccess(authorization, caller, "ServiceAccess")
     const grantCurrent = current.connected && current.connectionId === grantId && current.identity?.id === subject && current.grantedCapabilities.includes(capability)
     if (!inboxWatchCanAnswer(answer.watch, try Clock.currentTimeMillis, grantCurrent, true, true)) throw refused("GoogleReauthRequired")
     return json({ cursor, arrived: answer.arrived })
@@ -449,13 +457,13 @@ effect function draftRoute(context: RouteContext) {
 const gmailPath = "/api/v1/eliza/google/gmail"
 
 export const mailReadRoutes: ReadonlyArray<Route> = [
-  { method: "GET", path: `${gmailPath}/triage`, auth: "ServiceAccess", capability: "managedGoogle", handler: triageRoute },
-  { method: "GET", path: `${gmailPath}/search`, auth: "ServiceAccess", capability: "managedGoogle", handler: searchRoute },
-  { method: "GET", path: `${gmailPath}/read`, auth: "ServiceAccess", capability: "managedGoogle", handler: readRoute },
+  { method: "GET", path: `${gmailPath}/triage`, auth: "MailAccess", capability: "managedGoogle", handler: triageRoute },
+  { method: "GET", path: `${gmailPath}/search`, auth: "MailAccess", capability: "managedGoogle", handler: searchRoute },
+  { method: "GET", path: `${gmailPath}/read`, auth: "MailAccess", capability: "managedGoogle", handler: readRoute },
   { method: "GET", path: inboxArrivalPath, auth: "ServiceAccess", capability: "managedGoogle", handler: arrivalRoute },
-  { method: "GET", path: `${gmailPath}/inbox-v1/capabilities`, auth: "ServiceAccess", capability: "managedGoogle", handler: capabilitiesRoute },
-  { method: "GET", path: `${gmailPath}/inbox-v1/thread`, auth: "ServiceAccess", capability: "managedGoogle", handler: threadRoute },
-  { method: "GET", path: `${gmailPath}/inbox-v1/attachment`, auth: "ServiceAccess", capability: "managedGoogle", handler: attachmentRoute },
-  { method: "GET", path: `${gmailPath}/inbox-v1/drafts`, auth: "ServiceAccess", capability: "managedGoogle", handler: draftsRoute },
-  { method: "GET", path: `${gmailPath}/inbox-v1/draft`, auth: "ServiceAccess", capability: "managedGoogle", handler: draftRoute }
+  { method: "GET", path: `${gmailPath}/inbox-v1/capabilities`, auth: "MailAccess", capability: "managedGoogle", handler: capabilitiesRoute },
+  { method: "GET", path: `${gmailPath}/inbox-v1/thread`, auth: "MailAccess", capability: "managedGoogle", handler: threadRoute },
+  { method: "GET", path: `${gmailPath}/inbox-v1/attachment`, auth: "MailAccess", capability: "managedGoogle", handler: attachmentRoute },
+  { method: "GET", path: `${gmailPath}/inbox-v1/drafts`, auth: "MailAccess", capability: "managedGoogle", handler: draftsRoute },
+  { method: "GET", path: `${gmailPath}/inbox-v1/draft`, auth: "MailAccess", capability: "managedGoogle", handler: draftRoute }
 ]

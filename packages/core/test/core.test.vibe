@@ -1004,7 +1004,7 @@ it.live("Answer a message: compose, plan, act, deliver, cancel (spec/core/journe
     heldOutcome,
   ], [true, [true, false], true, "TURN_ABORTED", "Turn aborted: user", "run-cancelled", 0, [false, "run-held"]]))
 
-  // spec/core/confirmation.md, "Story: Settle an explicit confirmation from the user's reply"
+  // spec/core/confirmation.md, "Story: Settle an explicit confirmation from the user's reply"; spec/core/confirmation.md, "A refusal overrides an initial affirmative and an unclear reply stays pending"
   const confirm = (id: string, roomId: UUID, text: string, pendingKey = "all") =>
     host(() => requireConfirmation({ runtime, message: say(id, roomId, text), actionName: "DELETE_NOTES", pendingKey, prompt: "Delete every note? Reply yes to confirm.", metadata: { scope: "all" } }))
   const decisions = [
@@ -1016,10 +1016,10 @@ it.live("Answer a message: compose, plan, act, deliver, cancel (spec/core/journe
     try confirm("j02-c6", dm, "yes, actually no", "again"),
   ]
   try Effect.try(() => assert.deepStrictEqual(decisions, [{ status: "pending" }, { status: "pending" }, { status: "pending" }, { status: "confirmed", metadata: { scope: "all" } }, { status: "pending" }, { status: "cancelled", metadata: { scope: "all" } }]))
-  for (const [i, refusal] of ["だめ", "やめて", "算了"].entries()) {
+  for (const [i, refusal] of ["だめ", "やめて", "算了", "确认，算了", "確認、だめです", "確認、やめてください"].entries()) {
     const offered = try confirm(`j02-offer-${i}`, dm, "delete all my notes", refusal)
     const declined = try confirm(`j02-refuse-${i}`, dm, refusal, refusal)
-    try Effect.try(() => assert.deepStrictEqual([offered, declined], [{ status: "pending" }, { status: "cancelled", metadata: { scope: "all" } }]))
+    try Effect.try(() => assert.deepStrictEqual([refusal, offered, declined], [refusal, { status: "pending" }, { status: "cancelled", metadata: { scope: "all" } }]))
   }
 
   // spec/core/responseEvaluation.md, "Story: Apply response evaluator decisions in priority order"; spec/core/diagnostics.md, "Story: Observe a failure without failing the reporting path"
@@ -4980,3 +4980,101 @@ console.log(JSON.stringify({
     passed("PackedImports", "two copies"),
   ]))
 }, 600_000)
+
+it.live('Two scrub items drained together keep both people\'s pseudonyms, and a failed one retries behind the queue (spec/core/corpusPseudonyms.md, "Story: Preserve one pseudonym per verified cluster across corpus writes"; spec/core/corpusPseudonyms.md, "Scrub items that assemble the pseudonym map do so one at a time, so every pseudonym they mint stays in the stored map")', () => scoped(effect {
+  try withEnv({ SECRET_SALT: "map-stage-pseudonym-salt" })
+  const people: Record<string, string> = { "Ada Lovelace": "ada", "Grace Hopper": "grace" }
+  class People extends Service {
+    static serviceType = "eliza_knowledge_graph"
+    capabilityDescription = "The two people the scrub names"
+    static async start(runtime: IAgentRuntime): Promise<Service> {
+      return new People(runtime)
+    }
+    async stop(): Promise<void> {}
+    getEntityStore() {
+      return {
+        resolve: async (query: { name?: string }) => query.name !== undefined && people[query.name] !== undefined
+          ? [{ entity: { entityId: people[query.name], type: "person", preferredName: query.name, identities: [] }, confidence: 0.95, evidence: [] }]
+          : [],
+      }
+    }
+  }
+  const services: Plugin = { name: "map-stage-host", description: "Host services of the map stage", services: [PiiScrubService, People] }
+  const runtime = try kernel({ plugins: [services] })
+  const ruleset = "map-stage-ruleset"
+  const contents: Record<string, string> = { ada: "Please call Ada Lovelace tomorrow.", grace: "Please ask Grace Hopper today." }
+  const open = new Map<string, { readonly surrogate: string; readonly settle: (succeed: boolean) => void }>()
+  const surrogates: Record<string, string[]> = { ada: [], grace: [] }
+  const completed = new Set<string>()
+  const opened: string[] = []
+  const personOf = (text: string) => Object.keys(contents).find((person) => contents[person] === text) ?? ""
+  try Effect.orDie(Effect.try(() => runtime.registerModel(ModelType.PII_SCRUB, async (_runtime, params) => {
+    const scrub = params as { text: string; candidateSpans: string[]; rulesetVersion: string; pseudonymAssignments?: Array<{ entityClusterId: string; surrogate: string }> }
+    const person = personOf(scrub.text)
+    const surrogate = scrub.pseudonymAssignments?.find((assignment) => assignment.entityClusterId === `entity:${person}`)?.surrogate ?? ""
+    surrogates[person]?.push(surrogate)
+    opened.push(person)
+    const succeed = await new Promise<boolean>((settle) => {
+      open.set(person, { surrogate, settle })
+    })
+    open.delete(person)
+    if (!succeed) throw new Error("the scrub model refused this item")
+    return { modelId: "map-stage-scrubber", rulesetVersion: scrub.rulesetVersion, verdicts: scrub.candidateSpans.map((span) => ({ span, kind: "pii", replacement: surrogate })) }
+  }, "map-stage", 10)))
+  try Effect.orDie(Effect.try(() => runtime.registerEvent(EventType.PII_SCRUB_COMPLETED, async (payload) => {
+    completed.add(personOf((payload as { content: string }).content))
+  })))
+  const until = (what: string, check: () => boolean) => effect {
+    for (let attempt = 0; attempt < 500; attempt++) {
+      if (check()) return
+      try sleep("10 millis")
+    }
+    try die(new Error(`map stage: ${what} did not happen within 5 s`))
+  }
+  const stored = () => host(async () => Object.fromEntries(((await new EncryptedCachePseudonymMapStore(runtime).load())?.clusters ?? []).map((cluster) => [cluster.clusterId, cluster.pseudonym])))
+  for (const [person, name] of [["ada", "Ada Lovelace"], ["grace", "Grace Hopper"]]) {
+    try host(() => runtime.emitEvent(EventType.PII_SCRUB_REQUESTED, { runtime, content: contents[person], rulesetVersion: ruleset, candidateSpans: [name], priority: "normal", source: "map-stage" }))
+  }
+  try until("both items to be queued", () => runtime.getService<PiiScrubService>("pii-scrub")?.getQueueSize() === 2)
+  const [task] = try host(() => runtime.getTasksByName("PII_SCRUB_DRAIN"))
+  const worker = runtime.getTaskWorker("PII_SCRUB_DRAIN")
+  const drained = try sync(() => ({ settled: task !== undefined && worker !== undefined ? worker.execute(runtime, {}, task) : Promise.reject(new Error("map stage: the PII scrub drain is not registered")) }))
+
+  try until("the first item to reach the model", () => open.size === 1)
+  try sleep("150 millis")
+  const first = [...open.keys()]
+  const second = first[0] === "ada" ? "grace" : "ada"
+  open.get(first[0] ?? "")?.settle(false)
+  try until("the second item to reach the model", () => open.has(second))
+  try sleep("500 millis")
+  const whileSecondHolds = [...open.keys()]
+  open.get(second)?.settle(true)
+  try until("the second item to complete", () => completed.has(second))
+  const afterSecond = try stored()
+  try until("the failed item to retry", () => open.has(first[0] ?? ""))
+  open.get(first[0] ?? "")?.settle(true)
+  try until("the failed item to complete", () => completed.has(first[0] ?? ""))
+  try host(async () => drained.settled)
+  const final = try stored()
+  try Effect.try(() => assert.deepStrictEqual({
+    first: first.length,
+    whileSecondHolds,
+    opened,
+    afterSecond: Object.keys(afterSecond),
+    secondKept: afterSecond[`entity:${second}`] === surrogates[second][0],
+    final: Object.keys(final).sort(),
+    adaKept: final["entity:ada"] === surrogates.ada.at(-1) && surrogates.ada.at(-1) !== "",
+    graceKept: final["entity:grace"] === surrogates.grace.at(-1) && surrogates.grace.at(-1) !== "",
+    distinct: final["entity:ada"] !== final["entity:grace"],
+  }, {
+    first: 1,
+    whileSecondHolds: [second],
+    opened: [first[0], second, first[0]],
+    afterSecond: [`entity:${second}`],
+    secondKept: true,
+    final: ["entity:ada", "entity:grace"],
+    adaKept: true,
+    graceKept: true,
+    distinct: true,
+  }))
+}), 60_000)

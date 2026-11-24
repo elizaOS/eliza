@@ -1,11 +1,13 @@
 // spec/os/signIn/flow.md, "Story: Sign in with a code, Google or a second factor"; spec/os/signIn/flow.md, "Story: Cancel or resend exactly the request I mean"; spec/os/signIn/flow.md, "Story: Re-authenticate the signed-in account"; spec/os/signIn/readiness.md, "Story: Show only the methods the cloud is ready for"; spec/os/signIn/readiness.md, "Story: Read the service's own terms"
 import { assert, it } from "@effect/vitest"
 import { MalformedReply } from "../../src/bridges/bridge.vibe"
+import { CloudRefused, cloudClient, type CloudPath } from "../../src/bridges/cloud.vibe"
 import { SignInRefused, signInClient, signInCode } from "../../src/bridges/sign-in.vibe"
 import type { CredentialId, EnvironmentName, SignInAttempt, SignInRequest } from "../../src/bridges/definitions/sign-in.ts"
 
 module android {
   import { CapacitorException } from "@capacitor/core"
+  import type { ElizaCloudPlugin } from "../../src/bridges/definitions/cloud.ts"
   import type { ElizaSignInPlugin } from "../../src/bridges/definitions/sign-in.ts"
 
   export interface Device {
@@ -21,6 +23,19 @@ module android {
   /** @throws {never} */
   function rejection(code: string): Error {
     return Object.assign(new CapacitorException(code), { code })
+  }
+
+  /** @throws {never} */
+  export function androidCloud(phone: Device): ElizaCloudPlugin {
+    return {
+      request: async ({ target }) => {
+        phone.calls.push(target)
+        throw rejection(phone.signedIn ? "mail-lease-upgrade-required" : "sign-in-required")
+      },
+      readGrant: async () => { throw rejection("grant-unknown") },
+      cancel: async () => ({ cancelled: false }),
+      openExternal: async () => { throw rejection("link-refused") },
+    }
   }
 
   /** @throws {never} */
@@ -59,6 +74,13 @@ module android {
         phone.attempt += 1
         return settle(phone, { verdict: "factor-asked", factors: ["totp"], expiresAt: 1800000600000 })
       },
+      upgradeMailLease: async () => {
+        if (!phone.signedIn) throw rejection("rejected")
+        phone.calls.push("upgradeMailLease")
+        phone.attempt += 1
+        return settle(phone, { verdict: "signed-in-as", credentialId: "key-2", google: "not-requested" })
+      },
+      cancelMailLeaseUpgrade: async () => ({ cancelled: false }),
       reauthenticate: async (options) => {
         phone.calls.push(`reauthenticate ${options.method}`)
         phone.attempt += 1
@@ -98,7 +120,7 @@ module android {
     }
   }
 }
-import { androidSignIn, announce, device } from android
+import { androidCloud, androidSignIn, announce, device } from android
 
 const PRODUCTION = "production" as EnvironmentName
 const first = { request: 1 as SignInRequest, attempt: 1 as SignInAttempt }
@@ -107,6 +129,22 @@ effect function failure(call: () => Promise<unknown>) {
   const { cause } = try flip(tryPromise(() => call()))
   return cause
 }
+
+it.live('The native bridges report and start the one-time mail sign-in separately (spec/os/signIn/cloudRequests.md, "A mail or calendar route is sent only with the lease, never with the device key"; spec/os/signIn/credential.md, "A mail lease upgrade can only replace the active key for the same account")', () => effect {
+  const phone = device()
+  const cloud = cloudClient(androidCloud(phone))
+  const path = "/api/v1/eliza/google/calendar/feed" as CloudPath
+  const signedOut = try failure(() => cloud.request({ method: "GET", path }))
+  phone.signedIn = true
+  const upgrade = try failure(() => cloud.request({ method: "GET", path }))
+  assert.instanceOf(signedOut, CloudRefused)
+  assert.instanceOf(upgrade, CloudRefused)
+  assert.deepStrictEqual([(signedOut as CloudRefused).failure, (upgrade as CloudRefused).failure, phone.calls],
+    ["sign-in-required", "mail-lease-upgrade-required", [path, path]])
+  const signedIn = try promise(() => signInClient(androidSignIn(phone)).upgradeMailLease({ environment: PRODUCTION }))
+  assert.deepStrictEqual(signedIn.verdict, { kind: "SignedInAs", credentialId: "key-2" as CredentialId, google: "GoogleNotRequested" })
+  assert.deepStrictEqual(phone.calls, [path, path, "upgradeMailLease"])
+})
 
 it.live("Sign in with a code, Google or a second factor (spec/os/signIn/flow.md, \"Story: Sign in with a code, Google or a second factor\"; spec/os/signIn/flow.md, \"One renderer request is open at a time, it is open exactly while the slot waits for an answer, and only it is settled\"; spec/os/signIn/flow.md, \"A wrong or unanswered code keeps the step, and a locked or rate-limited one ends the attempt as too many attempts\"; spec/os/signIn/flow.md, \"Story: Cancel or resend exactly the request I mean\")", () => effect {
   const phone = device()

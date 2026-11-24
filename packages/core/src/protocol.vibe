@@ -14,7 +14,6 @@ export { default as channelPluginMap } from "./catalog/channel-plugin-map.json" 
 export { loadRegistryFromRawEntriesOrThrow as loadRegistryFromRawEntries } from "./catalog/loader.vibe"
 export { default as providerPluginMap } from "./catalog/provider-plugin-map.json" with { type: "json" }
 export { default as shortIdPluginMap } from "./catalog/short-id-plugin-map.json" with { type: "json" }
-export type { ValidationKeywordLocale } from "./i18n/keywords.vibe"
 export { type FenceSpan, findFenceSpanAt, isSafeFenceBreak, parseFenceSpans } from "./markdown/code.vibe"
 export { isInternalBridgeMessage } from "./messaging/automated-turns.vibe"
 export {
