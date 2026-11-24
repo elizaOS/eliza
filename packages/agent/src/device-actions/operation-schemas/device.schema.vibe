@@ -1,5 +1,7 @@
-// spec/agent/deviceActions/operations.md, "A proposal is valid only when its shape, its need and its binding all hold"; spec/agent/deviceActions/operations.md, "A receipt is admitted only when its evidence agrees with what it reports"; spec/agent/deviceActions/operations.md, "A captured photo's library ID reaches the agent only when the request negotiated it"; spec/agent/deviceActions/operations.md, "A photo capture names the front or back lens only when the request negotiated it"; spec/agent/deviceActions/operations.md, "Each operation has one capability need, which a clock-only device meets only for the Clock handoff"; spec/files/shownTargets.md, "Files operations need files.browser.v1, and a shown share, move or trash also needs files.shown-target.v1"
-import { libraryIdAdmitted, photoTargets, type OperationType } from "../../../gen/agent__deviceActions__operations.effect.vibe"
+// spec/agent/deviceActions/operations.md, "A proposal is valid only when its shape, its need and its binding all hold"; spec/agent/deviceActions/operations.md, "A receipt is admitted only when its evidence agrees with what it reports"; spec/agent/deviceActions/operations.md, "A captured photo's library ID reaches the agent only when the request negotiated it"; spec/agent/deviceActions/operations.md, "A photo capture names the front or back lens only when the request negotiated it"; spec/agent/deviceActions/operations.md, "A Photos operation names no more items than its review takes"; spec/agent/deviceActions/operations.md, "Each operation has one capability need, which a clock-only device meets only for the Clock handoff"; spec/files/shownTargets.md, "Files operations need files.browser.v1, and a shown share, move or trash also needs files.shown-target.v1"
+import {
+  albumMostItems, albumNameUnits, libraryIdAdmitted, librarySearchMostItems, photosFilterUnits, photoTargets, reviewedMostItems, shareMostItems, type OperationType,
+} from "../../../gen/agent__deviceActions__operations.effect.vibe"
 import { opensTelephonyView, supportedViews } from "../capabilities.vibe"
 import { digestOf as revisionOf } from "./digest.vibe"
 import type { Evidence, FamilySchemas, OperationSchema, WireOperation } from "./family.vibe"
@@ -267,14 +269,14 @@ const orderedMediaDates = ({ from, to }: { readonly from?: number; readonly to?:
 const mediaDates = { from: Schema.optionalKey(MediaCount), to: Schema.optionalKey(MediaCount) }
 const LibrarySearch = Schema.Struct({
   type: Schema.Literal("photo_library_search"), kind: Schema.optionalKey(Schema.Literals(["image", "video", "all"])),
-  ...mediaDates, favorites: Schema.optionalKey(Schema.Boolean), limit: Schema.optionalKey(bounded(1, 50))
+  ...mediaDates, favorites: Schema.optionalKey(Schema.Boolean), limit: Schema.optionalKey(bounded(1, librarySearchMostItems))
 }).check(Schema.makeFilter(orderedMediaDates))
 const LibraryInspect = Schema.Struct({ type: Schema.Literal("photo_library_inspect"), id: MediaId })
-const LibrarySelect = Schema.Struct({ type: Schema.Literal("photo_library_select"), ids: MediaIds(20) })
+const LibrarySelect = Schema.Struct({ type: Schema.Literal("photo_library_select"), ids: MediaIds(reviewedMostItems) })
 const LibraryReview = Schema.Struct({
   type: Schema.Literal("photo_library_review"), action: MediaAction,
   items: Schema.Array(Schema.Struct({ id: MediaId, revision: MediaRevision })).check(
-    Schema.isMinLength(1), Schema.isMaxLength(20),
+    Schema.isMinLength(1), Schema.isMaxLength(reviewedMostItems),
     Schema.makeFilter((items) => new Set(items.map(({ id }) => id)).size === items.length)
   )
 })
@@ -288,19 +290,19 @@ const MediaSummary = Schema.Struct({
 }))
 const LibrarySearchResult = Schema.Struct({
   kind: Schema.Literal("photo_library_search"), scope: Schema.Literals(["full", "partial", "selected"]),
-  items: Schema.Array(MediaSummary).check(Schema.isMaxLength(50)), more: Schema.Boolean
+  items: Schema.Array(MediaSummary).check(Schema.isMaxLength(librarySearchMostItems)), more: Schema.Boolean
 })
 const LibraryInspectResult = Schema.Struct({ kind: Schema.Literal("photo_library_inspect"), item: MediaSummary })
 const LibrarySelectResult = Schema.Struct({
-  kind: Schema.Literal("photo_library_select"), selected: bounded(0, 20), missing: bounded(0, 20)
+  kind: Schema.Literal("photo_library_select"), selected: bounded(0, reviewedMostItems), missing: bounded(0, reviewedMostItems)
 })
 const LibraryReviewResult = Schema.Struct({
-  kind: Schema.Literal("photo_library_review"), status: Schema.Literal("review_opened"), action: MediaAction, count: bounded(1, 20)
+  kind: Schema.Literal("photo_library_review"), status: Schema.Literal("review_opened"), action: MediaAction, count: bounded(1, reviewedMostItems)
 })
 
 const PhotosFilter = Schema.Struct({
   type: Schema.Literal("photos_filter"), ...mediaDates, kind: Schema.optionalKey(MediaKind),
-  favorite: Schema.optionalKey(Schema.Boolean), text: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(80), Schema.makeFilter(noControl))),
+  favorite: Schema.optionalKey(Schema.Boolean), text: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(photosFilterUnits), Schema.makeFilter(noControl))),
   album: Schema.optionalKey(Schema.Union([
     Schema.Literals(["favorites", "videos", "camera", "screenshots"]),
     Schema.String.check(Schema.isPattern(/^custom:[A-Za-z0-9_-]{1,80}$/))
@@ -308,16 +310,16 @@ const PhotosFilter = Schema.Struct({
 }).check(Schema.makeFilter(orderedMediaDates))
 const PhotosOpen = Schema.Struct({ type: Schema.Literal("photos_open"), id: MediaId })
 const AlbumName = Schema.String.check(Schema.makeFilter(noControl)).pipe(Schema.decodeTo(
-  Schema.Trimmed.check(Schema.isMinLength(1), Schema.isMaxLength(80)),
+  Schema.Trimmed.check(Schema.isMinLength(1), Schema.isMaxLength(albumNameUnits)),
   SchemaTransformation.transform({ decode: (value) => value.trim(), encode: (value) => value })
 ))
 const OpenItem = { ids: Schema.optionalKey(Schema.Array(MediaId).check(Schema.isMaxLength(0))), selected: Schema.Literal(true) }
 const PhotosAlbumCreate = Schema.Union([
-  Schema.Struct({ type: Schema.Literal("photos_album_create"), name: AlbumName, ids: MediaIds(200) }),
+  Schema.Struct({ type: Schema.Literal("photos_album_create"), name: AlbumName, ids: MediaIds(albumMostItems) }),
   Schema.Struct({ type: Schema.Literal("photos_album_create"), name: AlbumName, ...OpenItem }),
 ])
 const PhotosShare = Schema.Union([
-  Schema.Struct({ type: Schema.Literal("photos_share"), ids: MediaIds(100) }),
+  Schema.Struct({ type: Schema.Literal("photos_share"), ids: MediaIds(shareMostItems) }),
   Schema.Struct({ type: Schema.Literal("photos_share"), ...OpenItem }),
 ])
 type PhotoReview = (typeof PhotosAlbumCreate)["Type"] | (typeof PhotosShare)["Type"]
@@ -340,7 +342,7 @@ function photoOperation<Op extends WireOperation, Result>(
 
 const photoOperations = {
   photo_library_search: photoOperation(LibrarySearch, LibrarySearchResult, "PhotoLibrarySearch", (result, operation) =>
-    result.items.length <= (operation.limit ?? 50)),
+    result.items.length <= (operation.limit ?? librarySearchMostItems)),
   photo_library_inspect: photoOperation(LibraryInspect, LibraryInspectResult, "PhotoLibraryInspect", (result, operation) => result.item.id === operation.id),
   photo_library_select: photoOperation(LibrarySelect, LibrarySelectResult, "PhotoLibrarySelect", (result, operation) =>
     result.selected + result.missing === operation.ids.length),
@@ -348,9 +350,9 @@ const photoOperations = {
     result.action === operation.action && result.count === operation.items.length),
   photos_filter: photoOperation(PhotosFilter, PhotosFilterResult, "PhotosFilter", () => true),
   photos_open: photoOperation(PhotosOpen, PhotosOpenResult, "PhotosOpen", (result) => result.opened),
-  photos_album_create: photoOperation(PhotosAlbumCreate, photosReviewResult("photos_album_create", 200), "PhotosAlbumCreate", (result, operation) =>
+  photos_album_create: photoOperation(PhotosAlbumCreate, photosReviewResult("photos_album_create", albumMostItems), "PhotosAlbumCreate", (result, operation) =>
     result.count + result.missing === targetsOf(operation), openItem),
-  photos_share: photoOperation(PhotosShare, photosReviewResult("photos_share", 100), "PhotosShare", (result, operation) =>
+  photos_share: photoOperation(PhotosShare, photosReviewResult("photos_share", shareMostItems), "PhotosShare", (result, operation) =>
     result.count + result.missing === targetsOf(operation), openItem)
 } satisfies FamilySchemas
 

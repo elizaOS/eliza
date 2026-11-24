@@ -6,8 +6,9 @@ well formed and what a receipt may claim. Exact keys and result shapes are
 the agent's wire schemas (`device-actions/operations.schema.vibe`); field
 bounds are owned where the data is ([calendar availability](../../calendar/availability.md),
 [note reads](../../notes/read.md), the [workflow](../../workflow/index.md)
-protocol, the os executor specs); offer, claim and settlement are the
-[device request](./index.md)'s.
+protocol, the os executor specs), and the bounds of calendar events,
+reminders, Clock handoffs, Maps reads and Photos operations are stated
+here; offer, claim and settlement are the [device request](./index.md)'s.
 
 ## Story: Propose only operations the device can check
 
@@ -315,6 +316,127 @@ pure def lawALensNeedsItsCapability(prop: Proposal, neg: Negotiation): bool =
   (validate(prop, neg) and prop.opType == CameraCapturePhoto and prop.versionTwo) implies negotiatedHas(neg, CameraCaptureLensV1)
 pure def lawACaptureWithoutALensNeedsNoLens(neg: Negotiation): bool =
   negotiatedHas(neg, CameraCapturePhotoV1) implies validate({ opType: CameraCapturePhoto, versionTwo: false, binding: NoBinding, shapeValid: true }, neg)
+```
+
+### A calendar event has a nonblank title, bounded text, a known zone and a span of at most 370 days
+
+A calendar create, update or named update, and the record a selected
+calendar read returns, carries a title of 1 to 500 UTF-16 units that is
+not only white space, a description of at most 16,000 units and a location
+of at most 2,000, either of which may be blank; none holds NUL. Its start
+and end are UTC instants written to the millisecond with a four-digit
+year: the start is not before 1970, and the end comes after the start by
+at most 370 days. Its zone is a nonblank name of at most 128 units that
+Intl knows. Anything else gives the proposal no valid shape.
+
+```quint
+pure val calendarTitleUnits = 500
+pure val calendarDescriptionUnits = 16000
+pure val calendarLocationUnits = 2000
+pure val zoneNameUnits = 128
+pure val longestEventMs = 31968000000
+pure def fieldTextAdmitted(units: int, limit: int, blank: bool, blankAllowed: bool, hasNul: bool): bool =
+  units >= 0 and units <= limit and not(hasNul) and (blankAllowed or not(blank))
+pure def eventSpanAdmitted(startMs: int, endMs: int): bool =
+  startMs >= 0 and endMs > startMs and endMs - startMs <= longestEventMs
+pure def lawAnEventTitleIsNeverBlank(units: int, hasNul: bool): bool =
+  not(fieldTextAdmitted(units, calendarTitleUnits, true, false, hasNul))
+pure def lawAnEventRunsForwardForAtMost370Days(startMs: int, endMs: int): bool =
+  eventSpanAdmitted(startMs, endMs) implies (endMs > startMs and endMs - startMs <= 370 * 86400000)
+```
+
+### A reminder has a nonblank title of at most 200 units, a body of at most 4,000 and an alert at most a week before it is due
+
+A reminder update, named update or create, and the record a selected
+reminder read returns, carries a title of 1 to 200 UTF-16 units that is
+not only white space and a body of at most 4,000 units that may be blank;
+neither holds NUL, and a created reminder's title has no white space at
+either end. Its alert comes 0 to 10,080 minutes (one week) before it is
+due, or it has no alert, and a repeat leads by the same minutes. A
+reminder record the phone returns is at most 32,000 bytes of JSON.
+
+```quint
+pure val reminderTitleUnits = 200
+pure val reminderBodyUnits = 4000
+pure val longestAlertLeadMinutes = 10080
+pure val reminderRecordBytes = 32000
+pure def alertLeadAdmitted(minutes: int): bool = minutes >= 0 and minutes <= longestAlertLeadMinutes
+pure def lawAReminderTitleIsNeverBlank(units: int, hasNul: bool): bool =
+  not(fieldTextAdmitted(units, reminderTitleUnits, true, false, hasNul))
+pure def lawAnAlertLeadsByAtMostAWeek(minutes: int): bool =
+  alertLeadAdmitted(minutes) implies minutes * 60000 <= 7 * 86400000
+```
+
+### A Clock handoff names a real time, a short label and zone, and a snooze of at most an hour
+
+A Clock set names an hour from 0 to 23 and a minute from 0 to 59, a label
+of at most 200 UTF-16 units with no control character (it may be empty),
+a named zone of at most 100 units that Intl knows, such as `UTC` or
+`America/New_York`, and, when it carries repeat days, each day at most
+once, from Sunday 1 to Saturday 7. A Clock snooze asks for 1 to 60 minutes.
+Show and dismiss carry nothing else.
+
+```quint
+pure val lastClockHour = 23
+pure val lastClockMinute = 59
+pure val clockLabelUnits = 200
+pure val clockZoneUnits = 100
+pure val longestClockSnoozeMinutes = 60
+pure def clockTimeAdmitted(hour: int, minute: int): bool =
+  hour >= 0 and hour <= lastClockHour and minute >= 0 and minute <= lastClockMinute
+pure def clockLabelAdmitted(units: int, hasControl: bool): bool = units >= 0 and units <= clockLabelUnits and not(hasControl)
+pure def clockSnoozeAdmitted(minutes: int): bool = minutes >= 1 and minutes <= longestClockSnoozeMinutes
+pure def lawASetTimeFallsWithinOneDay(hour: int, minute: int): bool =
+  clockTimeAdmitted(hour, minute) implies (hour * 60 + minute >= 0 and hour * 60 + minute < 1440)
+pure def lawASnoozeLastsAtMostAnHour(minutes: int): bool =
+  clockSnoozeAdmitted(minutes) implies (minutes > 0 and minutes <= 60)
+```
+
+### A Maps read reports a bounded place or route
+
+A selected Maps read names a place or route by its `maps_` UUID and a
+decimal revision. Its receipt's provider ID is at most 80 UTF-16 units,
+the provider revision at most 128, the attribution at most 2,000 and a
+place's label at most 300, each nonblank and free of ASCII C0 control
+characters.
+A coordinate lies within 90 degrees of latitude and 180 of longitude; a
+route's distance in meters and duration in seconds are each from 0 to
+100,000,000. The whole receipt is at most 7,600 bytes of JSON.
+
+```quint
+pure val mapsProviderIdUnits = 80
+pure val mapsProviderRevisionUnits = 128
+pure val mapsAttributionUnits = 2000
+pure val mapsLabelUnits = 300
+pure val longestMapsMeasure = 100000000
+pure val mapsReceiptBytes = 7600
+pure def mapsTextAdmitted(units: int, limit: int, blank: bool, hasControl: bool): bool =
+  units >= 1 and units <= limit and not(blank) and not(hasControl)
+pure def lawMapsTextIsNeverEmpty(limit: int, blank: bool, hasControl: bool): bool =
+  not(mapsTextAdmitted(0, limit, blank, hasControl))
+```
+
+### A Photos operation names no more items than its review takes
+
+A library search asks for 1 to 50 items, and its receipt lists at most as
+many as it asked for; a library selection and a reviewed library action
+each name 1 to 20 distinct items; a share names 1 to 100 distinct items
+and an album 1 to 200, the most a custom album on the phone holds
+([albums](../../os/android/media/albums.md)), unless either names the one
+open item instead. An album name is 1 to 80 UTF-16 units once trimmed and
+a filter's text at most 80; neither holds a control character.
+
+```quint
+pure val librarySearchMostItems = 50
+pure val reviewedMostItems = 20
+pure val shareMostItems = 100
+pure val albumMostItems = 200
+pure val albumNameUnits = 80
+pure val photosFilterUnits = 80
+pure def itemCountAdmitted(count: int, most: int): bool = count >= 1 and count <= most
+pure def lawEveryPhotosReviewNamesAnItem(most: int): bool = not(itemCountAdmitted(0, most))
+pure def lawAReviewedSelectionFitsAShareAndAnAlbum(count: int): bool =
+  itemCountAdmitted(count, reviewedMostItems) implies (itemCountAdmitted(count, shareMostItems) and itemCountAdmitted(count, albumMostItems))
 ```
 
 ### Only a reversible local operation bound to the owner's current message may run without a review

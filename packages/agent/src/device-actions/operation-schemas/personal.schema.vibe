@@ -1,12 +1,17 @@
-// spec/agent/deviceActions/operations.md, "A proposal is valid only when its shape, its need and its binding all hold"; spec/agent/deviceActions/operations.md, "A receipt is admitted only when its evidence agrees with what it reports"; spec/agent/deviceActions/capabilities.md, "A newer operation cannot use an older capability version"; spec/calendar/availability.md, "Choose a bounded interval and accept occupancy-only rows"; spec/calendar/availability.md, "Return sorted rows and preserve their multiplicity"; spec/notes/read.md, "A query receipt carries the original query, an allowed basis and a record only on a match"; spec/notes/read.md, "Wire and authored content have different boundaries"
+// spec/agent/deviceActions/operations.md, "A proposal is valid only when its shape, its need and its binding all hold"; spec/agent/deviceActions/operations.md, "A calendar event has a nonblank title, bounded text, a known zone and a span of at most 370 days"; spec/agent/deviceActions/operations.md, "A reminder has a nonblank title of at most 200 units, a body of at most 4,000 and an alert at most a week before it is due"; spec/agent/deviceActions/operations.md, "A Clock handoff names a real time, a short label and zone, and a snooze of at most an hour"; spec/agent/deviceActions/operations.md, "A Maps read reports a bounded place or route"; spec/agent/deviceActions/operations.md, "A receipt is admitted only when its evidence agrees with what it reports"; spec/agent/deviceActions/capabilities.md, "A newer operation cannot use an older capability version"; spec/calendar/availability.md, "Choose a bounded interval and accept occupancy-only rows"; spec/calendar/availability.md, "Return sorted rows and preserve their multiplicity"; spec/notes/read.md, "A query receipt carries the original query, an allowed basis and a record only on a match"; spec/notes/read.md, "Wire and authored content have different boundaries"
 import { SchemaGetter } from "effect"
-import type { OperationType } from "../../../gen/agent__deviceActions__operations.effect.vibe"
+import {
+  calendarDescriptionUnits, calendarLocationUnits, calendarTitleUnits, clockLabelAdmitted, clockLabelUnits, clockZoneUnits, eventSpanAdmitted, fieldTextAdmitted,
+  lastClockHour, lastClockMinute, longestAlertLeadMinutes, longestClockSnoozeMinutes, longestEventMs, longestMapsMeasure, mapsAttributionUnits, mapsLabelUnits,
+  mapsProviderIdUnits, mapsProviderRevisionUnits, mapsReceiptBytes, mapsTextAdmitted, reminderBodyUnits, reminderRecordBytes, reminderTitleUnits, zoneNameUnits,
+  type OperationType,
+} from "../../../gen/agent__deviceActions__operations.effect.vibe"
 import type { Classification, Evidence, FamilySchemas, OperationSchema, WireOperation } from "./family.vibe"
 
 export const day = 86_400_000
 
 function plainText(value: string, max: number, blank: boolean) {
-  return value.length <= max && !value.includes("\0") && (blank || value.trim() !== "")
+  return fieldTextAdmitted(value.length, max, value.trim() === "", blank, value.includes("\0"))
 }
 
 export function isoInstant(value: string) {
@@ -18,7 +23,7 @@ export function isoInstant(value: string) {
 }
 
 export function knownZone(name: string) {
-  if (!plainText(name, 128, false)) return false
+  if (!plainText(name, zoneNameUnits, false)) return false
   try {
     new Intl.DateTimeFormat("en-US", { timeZone: name })
     return true
@@ -97,7 +102,7 @@ const ZoneSeed = Schema.Literals(["UTC", "America/New_York", "Europe/Berlin", "A
 const Instant = sampled(Schema.String.check(Schema.isPattern(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/), Schema.makeFilter(isoInstant)), between(firstInstant, lastInstant), instantText)
 const ZoneName = sampled(Schema.String.check(Schema.makeFilter(knownZone)), ZoneSeed, (zone) => zone)
 const Epoch = between(0, 8_640_000_000_000_000)
-const AlertMinutes = between(0, 10_080)
+const AlertMinutes = between(0, longestAlertLeadMinutes)
 const CivilDate = sampled(Schema.String.check(Schema.isPattern(/^\d{4}-\d\d-\d\d$/), Schema.makeFilter(realDate)), between(firstInstant / day, Math.floor(lastInstant / day)), (date) => dateText(date * day))
 const version = Schema.Literal(1)
 
@@ -105,10 +110,10 @@ const calendarSpan = (maximum: number) => Schema.Struct({ from: between(0, lastI
 function calendarRange({ from, duration, timeZone }: typeof CalendarSpan.Type) {
   return { start: instantText(from), end: instantText(from + duration), timeZone }
 }
-const CalendarSpan = calendarSpan(370 * day)
-const calendarText = { title: Text(500), description: BlankText(16_000), location: BlankText(2_000) }
+const CalendarSpan = calendarSpan(longestEventMs)
+const calendarText = { title: Text(calendarTitleUnits), description: BlankText(calendarDescriptionUnits), location: BlankText(calendarLocationUnits) }
 const CalendarFields = sampled(
-  Schema.Struct({ ...calendarText, start: Instant, end: Instant, timeZone: ZoneName }).check(Schema.makeFilter(({ start, end }) => interval(start, end, 370 * day))),
+  Schema.Struct({ ...calendarText, start: Instant, end: Instant, timeZone: ZoneName }).check(Schema.makeFilter(({ start, end }) => eventSpanAdmitted(Date.parse(start), Date.parse(end)))),
   Schema.Struct({ ...calendarText, ...CalendarSpan.fields }),
   ({ title, description, location, ...span }) => ({ title, description, location, ...calendarRange(span) }),
 )
@@ -210,7 +215,7 @@ function timingAgrees(schedule: { readonly at: number; readonly recurrence: { re
 const ReminderSchedule = Schema.Struct({
   at: Epoch, recurrence: Schema.NullOr(ReminderRepeat), dueAt: Schema.optionalKey(Epoch), alertMinutes: Schema.optionalKey(Schema.NullOr(AlertMinutes)),
 }).check(Schema.makeFilter(timingAgrees))
-const ReminderFields = Schema.Struct({ title: Text(200), body: BlankText(4_000), schedule: Schema.optionalKey(ReminderSchedule) })
+const ReminderFields = Schema.Struct({ title: Text(reminderTitleUnits), body: BlankText(reminderBodyUnits), schedule: Schema.optionalKey(ReminderSchedule) })
 
 const reminderOn = <K extends string>(type: K) => Schema.Struct({ type: Schema.Literal(type), target: ReminderTarget })
 const ReminderReadSelected = reminderOn("reminder_read_selected")
@@ -231,7 +236,7 @@ function reminderRecordCoherent(record: { readonly status: string; readonly dueA
   return (record.dueAt === undefined) === (record.alertMinutes === undefined)
     && (record.status !== "pending" || record.alertMinutes === null)
     && (record.alertMinutes !== null || ["pending", "completed", "cancelled"].includes(record.status))
-    && utf8Bytes(record) <= 32_000
+    && utf8Bytes(record) <= reminderRecordBytes
 }
 
 const reminderRecord = <K extends string>(kind: K) => Schema.Struct(reminderRecordFields(kind)).check(Schema.makeFilter(reminderRecordCoherent))
@@ -303,7 +308,7 @@ const CreateSchedule = sampled(
   ScheduleSeed, scheduleFromSeed,
 )
 const CreateFields = Schema.Struct({
-  title: Text(200).check(Schema.makeFilter((title: string) => title === title.trim())), body: BlankText(4_000), schedule: CreateSchedule,
+  title: Text(reminderTitleUnits).check(Schema.makeFilter((title: string) => title === title.trim())), body: BlankText(reminderBodyUnits), schedule: CreateSchedule,
 })
 export const ReminderCreate = Schema.Struct({ type: Schema.Literal("reminder_create"), fields: CreateFields })
 export const ReminderCreateResult = Schema.Struct({
@@ -444,7 +449,7 @@ function namedMatches(result: NamedResult, op: NamedTarget) {
 }
 
 // eslint-disable-next-line no-control-regex -- Maps fields exclude C0 controls and retain their existing DEL handling.
-const MapsText = (max: number) => Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(max), Schema.makeFilter((value: string) => value.trim() !== "" && !/[\u0000-\u001f]/.test(value)))
+const MapsText = (max: number) => Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(max), Schema.makeFilter((value: string) => mapsTextAdmitted(value.length, max, value.trim() === "", /[\u0000-\u001f]/.test(value))))
 const MapsTarget = Schema.Struct({
   kind: Schema.Literals(["map-place", "map-route"]),
   id: Schema.String.check(Schema.isPattern(/^maps_[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/)),
@@ -454,19 +459,19 @@ const Point = Schema.Struct({
   latitude: Schema.Finite.check(Schema.isBetween({ minimum: -90, maximum: 90 })),
   longitude: Schema.Finite.check(Schema.isBetween({ minimum: -180, maximum: 180 })),
 })
-const Measure = Schema.Finite.check(Schema.isBetween({ minimum: 0, maximum: 100_000_000 }))
-const provider = { providerId: MapsText(80), providerRevision: MapsText(128), attribution: MapsText(2_000) }
+const Measure = Schema.Finite.check(Schema.isBetween({ minimum: 0, maximum: longestMapsMeasure }))
+const provider = { providerId: MapsText(mapsProviderIdUnits), providerRevision: MapsText(mapsProviderRevisionUnits), attribution: MapsText(mapsAttributionUnits) }
 export const MapsReadSelected = Schema.Struct({ type: Schema.Literal("maps_read_selected"), target: MapsTarget })
 export const MapsResult = Schema.Struct({
   kind: Schema.Literal("maps_read_selected"), version, target: MapsTarget,
   fields: Schema.Union([
-    Schema.Struct({ kind: Schema.Literal("map-place"), ...provider, label: MapsText(300), coordinate: Point }),
+    Schema.Struct({ kind: Schema.Literal("map-place"), ...provider, label: MapsText(mapsLabelUnits), coordinate: Point }),
     Schema.Struct({
       kind: Schema.Literal("map-route"), ...provider, from: Point, to: Point, mode: Schema.Literals(["drive", "walk", "bicycle"]),
       distanceMeters: Measure, durationSeconds: Measure, traffic: Schema.Literals(["none", "approximated", "live"]),
     }),
   ]),
-}).check(Schema.makeFilter((result) => result.fields.kind === result.target.kind && utf8Bytes(result) <= 7_600))
+}).check(Schema.makeFilter((result) => result.fields.kind === result.target.kind && utf8Bytes(result) <= mapsReceiptBytes))
 export type MapsReadSelected = typeof MapsReadSelected.Type
 export type MapsResult = typeof MapsResult.Type
 
@@ -511,16 +516,16 @@ function queryMatches(result: NotesQueryResult, op: NotesQuery) {
   return sameValue(result.query, op.query) && (result.basis === "no-match" || selectedNoteMatches(result.target, result.record))
 }
 
-const ClockZone = Schema.String.check(Schema.isMaxLength(100), Schema.isPattern(/^[A-Za-z_]+(?:\/[A-Za-z0-9_+.-]+)*$/), Schema.makeFilter(knownZone))
+const ClockZone = Schema.String.check(Schema.isMaxLength(clockZoneUnits), Schema.isPattern(/^[A-Za-z_]+(?:\/[A-Za-z0-9_+.-]+)*$/), Schema.makeFilter(knownZone))
 // eslint-disable-next-line no-control-regex -- Clock labels exclude C0 controls and DEL.
-const ClockLabel = Schema.String.check(Schema.isMaxLength(200), Schema.makeFilter((label: string) => !/[\u0000-\u001f\u007f]/.test(label)))
+const ClockLabel = Schema.String.check(Schema.isMaxLength(clockLabelUnits), Schema.makeFilter((label: string) => clockLabelAdmitted(label.length, /[\u0000-\u001f\u007f]/.test(label))))
 const ClockDays = Schema.Array(between(1, 7)).check(Schema.isMaxLength(7), Schema.makeFilter((days) => new Set(days).size === days.length))
 export const ClockHandoff = Schema.Union([
   Schema.Struct({
-    type: Schema.Literal("clock_handoff"), action: Schema.Literal("set"), hour: between(0, 23), minute: between(0, 59),
+    type: Schema.Literal("clock_handoff"), action: Schema.Literal("set"), hour: between(0, lastClockHour), minute: between(0, lastClockMinute),
     label: ClockLabel, timeZone: ClockZone, days: Schema.optionalKey(ClockDays),
   }),
-  Schema.Struct({ type: Schema.Literal("clock_handoff"), action: Schema.Literal("snooze"), snoozeMinutes: between(1, 60) }),
+  Schema.Struct({ type: Schema.Literal("clock_handoff"), action: Schema.Literal("snooze"), snoozeMinutes: between(1, longestClockSnoozeMinutes) }),
   Schema.Struct({ type: Schema.Literal("clock_handoff"), action: Schema.Literals(["show", "dismiss"]) }),
 ])
 export const ClockHandoffResult = Schema.Struct({
