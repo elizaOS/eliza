@@ -135,7 +135,7 @@ effect function perform(tx: Tx, userId: string, out: ReadonlyArray<DeletionEffec
       case "Fence":
         try tx.query(
           "UPDATE accounts SET sessions_revoked_before = GREATEST(sessions_revoked_before, $2), device_epoch = GREATEST(device_epoch, $3), devices_revoked_before = GREATEST(devices_revoked_before, $4), updated_at = $4 WHERE key = $1",
-          [userId, item.sessions.toEpoch, item.deviceKeys.toDeviceEpoch, now]
+          [userId, item.sessions.tag === "RevokePersonSessions" ? item.sessions.toEpoch : 0, item.deviceKeys.toDeviceEpoch, now]
         )
         break
       case "EraseAccount":

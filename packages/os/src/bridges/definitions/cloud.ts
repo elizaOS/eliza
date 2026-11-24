@@ -17,6 +17,7 @@ export type CloudFailure =
   | "body-too-large"
   | "header-refused"
   | "sign-in-required"
+  | "mail-lease-upgrade-required"
   | "reauth-required"
   | "reply-too-large"
   | "network"
