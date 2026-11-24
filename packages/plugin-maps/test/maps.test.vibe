@@ -1,8 +1,9 @@
 // spec/maps/navigation.md, "Story: Plan directions and keep me in control of guidance"; spec/maps/relay.md, "Story: Navigate again when the phone never received my request"; spec/maps/cloudConnection.md, "Story: Keep Cloud Maps on the account that requested it"; spec/maps/phonePosition.md, "Story: Search near me with where my phone is now"
+import { randomUUID } from "node:crypto"
 import { assert, it, layer } from "@effect/vitest"
 import * as KeyValueStore from "effect/persistence/KeyValueStore"
 import { CloudError } from "@elizaos/cloud/client"
-import type { IAgentRuntime, JsonObject, Memory } from "@elizaos/core"
+import { getDirectActionRoutingRules, type IAgentRuntime, type JsonObject, type Memory } from "@elizaos/core"
 import { mapsChat, mapsToolCall } from "./support/cloud.ts"
 import { appendMapsCard, recognizedMapsCards, withoutMapsCards } from "../src/cards.vibe"
 import { cloudMaps, viewportAttribution, type CloudMapsBasemap, type MapsCloud } from "../src/client/cloud-provider.vibe"
@@ -613,6 +614,54 @@ it.live('See the map result and hear the rest of the answer (spec/maps/chatCards
   })
 }, 120_000)
 
+it.live('Resume a route through two numbered questions using the offered places and original mode (spec/maps/routing.md, "A route choice uses the offered place and keeps either endpoint already settled")', effect () => {
+  const model = try ownerCloudFake(deviceKey)
+  const { link, bodies } = linkFake()
+  const plugin = createMapsPlugin({ cloud: () => link, navigation: () => sync(() => undefined), savedPlaces: () => undefined, namesView: () => false })
+  const agent = try startInProcess({
+    launch: { callerRole: "owner", backend: { kind: "cloud", origin: model.origin }, load: [plugin.name], allowed: ["REPLY", "IGNORE", "NONE", "MAPS_ROUTE"] },
+    frame: { credential: { version: 1, value: deviceKey } },
+    bundled: new Map([[plugin.name, plugin]]),
+  })
+  const opened = try call(agent, { method: "POST", path: "/api/conversations", body: {} })
+  if (!("json" in opened) || opened.status !== 201) return try Effect.die(new Error("Conversation did not open"))
+  const { conversation: { id } } = opened.json as { conversation: { id: string } }
+  const path = `/api/conversations/${id}/messages`
+  const nothingElse = modelText("")
+  try sync(() => model.script(
+    toolCalls("", { name: "MAPS_ROUTE", arguments: { origin: "Starbucks", destination: "pharmacy", travelMode: "walk" } }),
+    nothingElse,
+  ))
+  const original = try call(agent, { method: "POST", path, body: { text: "Walking directions from Starbucks to the pharmacy." } })
+  try sync(() => model.script(nothingElse))
+  const first = { text: "2", channelType: "VOICE_DM", clientMessageId: "maps-route-origin" }
+  const destination = try call(agent, { method: "POST", path, body: first })
+  const replay = try call(agent, { method: "POST", path, body: first })
+  try sync(() => model.script(nothingElse))
+  const second = { text: "1", channelType: "VOICE_DM", clientMessageId: "maps-route-destination" }
+  const planned = try call(agent, { method: "POST", path, body: second })
+  const replayPlanned = try call(agent, { method: "POST", path, body: second })
+
+  try Effect.try(() => {
+    const reply = (answer: typeof original): { text: string; messageId: string } => {
+      if (!("json" in answer) || answer.status !== 200) throw new Error(`Missing Maps reply: ${JSON.stringify(answer)}`)
+      return answer.json as { text: string; messageId: string }
+    }
+    assert.include(reply(original).text, "starting place")
+    assert.include(reply(destination).text, "Far Pharmacy")
+    assert.deepStrictEqual(reply(replay), reply(destination))
+    assert.deepStrictEqual(reply(replayPlanned), reply(planned))
+    assert.deepStrictEqual(recognizedMapsCards(reply(planned).text).map(({ card }) =>
+      card.kind === "route" ? [card.origin.providerPlaceId, card.destination.providerPlaceId, card.travelMode] : [card.kind]),
+    [["powell", "far", "walk"]])
+    const searches = bodies.filter(({ path }) => path === "/api/v1/maps/places/search")
+    assert.deepStrictEqual(searches.map(({ body }) => (body as { query: string }).query), ["Starbucks", "pharmacy"])
+    assert.deepStrictEqual(bodies.filter(({ path }) => path === "/api/v1/maps/places/details"), [])
+    assert.deepStrictEqual(bodies.filter(({ path }) => path === "/api/v1/maps/routes").map(({ body }) => body),
+      [{ from: here, to: tower, mode: "walk", alternatives: true }])
+  })
+}, 120_000)
+
 function locateCard(result: { readonly text?: string }) {
   const card = recognizedMapsCards(result.text ?? "")[0]?.card
   return card?.kind === "locate" ? [card.intent, card.query, card.destination?.name, card.travelMode] : card?.kind
@@ -832,8 +881,41 @@ function memoryStore(): AgentSavedPlaceStore {
 }
 
 function ownerTurn(text: string, roomId = "00000000-0000-4000-8000-000000000002"): Memory {
-  return { entityId: "00000000-0000-4000-8000-000000000001", roomId, content: { text, source: "device" } } as unknown as Memory
+  return { id: randomUUID(), entityId: "00000000-0000-4000-8000-000000000001", roomId, content: { text, source: "device" } } as unknown as Memory
 }
+
+it.live('An unrelated owner turn closes the Maps choice, while routing the immediate answer twice keeps it tied to the original request (spec/maps/routing.md, "A choice reply answers only the open question of the same conversation, within its options and ten minutes")', effect () => {
+  const { link } = linkFake()
+  const plugin = createMapsPlugin({ cloud: () => link, navigation: () => sync(() => undefined), savedPlaces: () => undefined, namesView: () => false })
+  const runtime = {} as IAgentRuntime
+  const navigation = plugin.actions?.find(({ name }) => name === "MAPS_NAVIGATION_START")
+  if (navigation === undefined) throw new Error("Missing Maps navigation action")
+  try promise(async () => { await plugin.init?.({}, runtime) })
+  const route = getDirectActionRoutingRules(runtime).find(({ id }) => id === "maps.place-choice.navigation-start")?.wholeRequest
+  if (route === undefined) throw new Error("Missing Maps choice route")
+  const keyed = (text: string, key: number, roomId?: string): Memory => ({
+    ...ownerTurn(text, roomId), id: `00000000-0000-4000-8000-0000000000${key}` as Memory["entityId"],
+  })
+  const act = (message: Memory, parameters: JsonObject) => promise(async () => await navigation.handler(runtime, message, undefined, { parameters }))
+  const ask = { destination: "pharmacy" }
+  const first = try act(keyed("take me to the pharmacy", 10), ask)
+  const otherRoom = keyed("call Mom", 11, "00000000-0000-4000-8000-000000000003")
+  const immediate = keyed("2", 12)
+  const otherOwner = { ...keyed("2", 16), entityId: otherRoom.roomId }
+  const unkeyed = { ...keyed("2", 17), id: undefined } as Memory
+  const foreign = [route.matches("call Mom", otherRoom), route.matches("2", otherOwner), route.matches("2", unkeyed)]
+  const immediateRoutes = [route.matches("2", immediate), route.matches("2", immediate)]
+  const answer = try act(immediate, {})
+  const second = try act(keyed("take me to the pharmacy", 13), ask)
+  const moveOn = route.matches("call Mom", keyed("call Mom", 14))
+  const stale = keyed("2", 15)
+  const staleRoute = route.matches("2", stale)
+  const staleResult = try act(stale, {})
+  try Effect.try(() => assert.deepStrictEqual(
+    [first.data?.choice, foreign, immediateRoutes, answer.success, second.data?.choice, moveOn, staleRoute, staleResult.success],
+    ["destination", [false, false, false], [true, true], true, "destination", false, false, false],
+  ))
+})
 
 it.live('Save a place with my assistant once, and answer the question Maps asked: a repeat saves nothing, a superseded repeat is a new change, a reused key is refused, and "the second one" continues the request that asked (spec/maps/savedPlaces.md, "Story: Save a place with my assistant once"; spec/maps/routing.md, "Story: Send my directions request to Maps, not to a view")', effect () => {
   const { link } = linkFake()

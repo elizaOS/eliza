@@ -1,14 +1,15 @@
 // spec/maps/navigation.md, "A valid agent request prepares a route and never turns on guidance itself"; spec/maps/routing.md, "A choice reply answers only the open question of the same conversation, within its options and ten minutes"; spec/maps/routing.md, "A place named with its locality is taken only from that locality, and otherwise Maps asks which one"; spec/maps/routing.md, "Same-named areas close together are one place, and same-named street addresses still ask"; spec/maps/savedPlaces.md, "A save under a known key repeats its first outcome, and only a new change writes"; spec/maps/phonePosition.md, "A position reported with the message serves a nearby search only while it is recent"; spec/maps/phonePosition.md, "A reported position never becomes a route origin"; spec/maps/phonePosition.md, "Where I am is the place at my phone's recent position, and only its area when that position is rough"; spec/maps/phonePosition.md, "A kind of place near a named place is searched around that place, never around the phone"; spec/maps/phonePosition.md, "Coordinates the owner names are looked up or searched around as given, never the phone's position"; spec/maps/routing.md, "A route's destination that names no locality is taken from within 100 km of its start when any result is there"; spec/maps/routing.md, "A place's location is shared only after the owner's own later yes to sharing that place"; spec/maps/routing.md, "Asked where Maps works, the reply states only what Cloud Maps reports"; spec/maps/attribution.md, "Only the reply to the latest request, for the current view, is shown"; spec/maps/routing.md, "A Maps screen selection asks the planner to name the place"; spec/maps/routing.md, "A place id Cloud refuses or no longer knows falls back to the place's name"; spec/maps/routing.md, "An answer Maps cannot use is said in the owner's words, naming the place a start could not look up"; spec/maps/chatCards.md, "A successful Maps result with a valid card supplies verified reply text"
-import { readTurnContext, type AgentPlugin } from "@elizaos/agent"
+// spec/maps/routing.md, "A route choice uses the offered place and keeps either endpoint already settled"
+import { readTurnContext, registerTurnFirstCall, type AgentPlugin } from "@elizaos/agent"
 import { nearbyPositionUsable, pointRequest, roughPosition, searchAround, whereAnswer, type PhonePosition } from "../gen/maps__phonePosition.effect.vibe"
-import { aroundTheStart, coverageAnswer, mapsSelectionTarget, placePick, sameLandmark, sharesLocation, type ShareDecision } from "../gen/maps__routing.effect.vibe"
+import { aroundTheStart, coverageAnswer, endpointSource, mapsSelectionTarget, placePick, sameLandmark, sharesLocation, type ShareDecision } from "../gen/maps__routing.effect.vibe"
 import { appendInteractionBlock, requireConfirmation, type Action, type ActionResult, type IAgentRuntime, type Memory, type Provider } from "@elizaos/core"
 import { appendMapsCard, MapsCard, type MapsCardPlace, type MapsCardRouteOption } from "./cards.vibe"
 import { MapsFailure, TravelMode, travelModes, type Coordinate, type Place } from "./client/contracts.vibe"
 import type { AgentPlaceRef, DeviceNavigationFailure, MapsDeviceNavigationStatus } from "./client/device-navigation.vibe"
 import { cardCopyAdmitted } from "../gen/maps__chatCards.effect.vibe"
 import type { MapsDeviceNavigation } from "./relay.vibe"
-import { anchoredPlace, answeredChoice, choiceActions, closeChoice, isMapsSelectionHandle, mapsSelectionHandlePattern, namesOwnPosition, nearbyPlaceKind, openChoice, registerMapsRouting, type ChoiceOperation, type PlaceChoice } from "./routing.vibe"
+import { anchoredPlace, answeredChoice, choiceActions, closeChoice, isMapsSelectionHandle, mapsSelectionHandlePattern, namesOwnPosition, nearbyPlaceKind, openChoice, registerMapsRouting, type ChoiceOperation, type PlaceChoice, type SettledPlaces } from "./routing.vibe"
 import { agentSaves, type AgentSavedPlaceStore } from "./saves.vibe"
 import { agentPlace, mapsService, type MapsCloudLink, type MapsOffer, type MapsService, type PlaceResults } from "./service.vibe"
 
@@ -21,7 +22,7 @@ export interface MapsPluginPorts {
   namesView(runtime: IAgentRuntime, destination: string): boolean | undefined
 }
 
-type Ask = (field: PlaceChoice["field"], options: readonly AgentPlaceRef[], asked?: Params) => void
+type Ask = (field: PlaceChoice["field"], options: readonly Place[], asked?: Params, settled?: SettledPlaces) => void
 
 type Params = Readonly<Record<string, unknown>>
 type Refusal = MapsFailure | DeviceNavigationFailure
@@ -197,7 +198,7 @@ effect function placeAt(service: MapsService, point: Coordinate): ActionResult!R
   return place === null ? answered("No named place is known at those coordinates.", "", { status: "empty", place: null }) : placeThere(place, attribution)
 }
 
-effect function findPlaces(service: MapsService, message: Memory, params: Params, ask: Ask): ActionResult!Refusal {
+effect function findPlaces(service: MapsService, message: Memory, params: Params, ask: Ask, settled: SettledPlaces): ActionResult!Refusal {
   const query = text(params.query)
   const point = coordinatesOf(params)
   if (point === undefined && (params.latitude !== undefined || params.longitude !== undefined)) {
@@ -219,7 +220,7 @@ effect function findPlaces(service: MapsService, message: Memory, params: Params
   }
   const asked = said === undefined ? params : { ...params, query: `${said.kind} near ${said.anchor}` }
   const anchor = anchored === undefined ? undefined
-    : try resolvePlace(service, anchored.anchor, text(params.placeId), "place to search near", (field, options) => ask(field, options, asked), "placeId")
+    : try resolvePlace(service, anchored.anchor, text(params.placeId), "place to search near", (field, options) => ask(field, options, asked), "placeId", { settled: settled.placeId })
   if (anchor?.kind === "reply") return anchor.result
   const nearPlace = anchor?.place
   const near = point ?? nearPlace?.coordinate ?? (around === "AroundPhone" ? phone : undefined)
@@ -259,7 +260,11 @@ function inNamedLocality(query: string, places: readonly Place[]): readonly Plac
   })
 }
 
-effect function resolvePlace(service: MapsService, query: string | undefined, placeId: string | undefined, role: "starting place" | "destination" | "place" | "place to search near", ask: Ask, field: PlaceChoice["field"], near?: Coordinate, start?: Coordinate): Resolved!Refusal {
+effect function resolvePlace(service: MapsService, query: string | undefined, placeId: string | undefined, role: "starting place" | "destination" | "place" | "place to search near", ask: Ask, field: PlaceChoice["field"], hints: { readonly near?: Coordinate; readonly start?: Coordinate; readonly settled?: Place } = {}): Resolved!Refusal {
+  const { near, start, settled } = hints
+  if (endpointSource(settled !== undefined) === "UseSettledEndpoint" && settled !== undefined) {
+    return { kind: "place", place: settled, attribution: settled.attribution }
+  }
   if (placeId !== undefined) {
     const known = service.detail(placeId) catch effect (failure) => {
       if (failure.code === "unsupported" && query !== undefined) return null
@@ -284,7 +289,7 @@ effect function resolvePlace(service: MapsService, query: string | undefined, pl
   }
   if (pick === "TakePlace" && first !== undefined) return { kind: "place", place: first, attribution: found.attribution }
   const options = (candidates.length > 0 ? candidates : found.places).slice(0, 5)
-  ask(field, options.map(agentPlace))
+  ask(field, options)
   return {
     kind: "reply",
     result: reply(false, [`Which “${query}” did you mean as the ${role}?`, ...options.map((item, index) => `${index + 1}. ${item.name}${item.address === undefined ? "" : `, ${item.address}`}`)].join("\n"),
@@ -307,7 +312,7 @@ effect function routeFromHere(service: MapsService, query: string | undefined, p
     { destination: cardPlace(destination.place), ...(travelMode === undefined ? {} : { travelMode }) }, "route-origin")
 }
 
-effect function planRoute(service: MapsService, params: Params, ask: Ask): ActionResult!Refusal {
+effect function planRoute(service: MapsService, params: Params, ask: Ask, settled: SettledPlaces): ActionResult!Refusal {
   const originQuery = text(params.origin)
   const destinationQuery = text(params.destination)
   const named = travelModeOf(params.travelMode)
@@ -318,9 +323,12 @@ effect function planRoute(service: MapsService, params: Params, ask: Ask): Actio
   const offer = try service.offer()
   if (offer === undefined) return reply(false, "Cloud Maps is not available yet.", { code: "unconfigured" })
   if (!offer.modes.includes(travelMode)) return reply(false, `Cloud Maps does not plan ${travelMode} routes.`, { code: "unsupported" })
-  const origin = try resolvePlace(service, originQuery, text(params.originPlaceId), "starting place", ask, "originPlaceId")
+  const origin = try resolvePlace(service, originQuery, text(params.originPlaceId), "starting place", ask, "originPlaceId", { settled: settled.originPlaceId })
   if (origin.kind === "reply") return origin.result
-  const destination = try resolvePlace(service, destinationQuery, text(params.destinationPlaceId), "destination", ask, "destinationPlaceId", undefined, origin.place.coordinate)
+  const askDestination: Ask = (field, options) => ask(field, options, params, { originPlaceId: origin.place })
+  const destination = try resolvePlace(service, destinationQuery, text(params.destinationPlaceId), "destination", askDestination, "destinationPlaceId", {
+    start: origin.place.coordinate, settled: settled.destinationPlaceId,
+  })
   if (destination.kind === "reply") return destination.result
   const planned = try service.routes(origin.place.coordinate, destination.place.coordinate, travelMode, offer.alternatives)
   const choice = typeof params.routeIndex === "number" && Number.isInteger(params.routeIndex) ? params.routeIndex : 1
@@ -366,15 +374,15 @@ effect function onPhone(work: MapsDeviceNavigationStatus!DeviceNavigationFailure
   return reply(true, statusText(status), { status })
 }
 
-effect function startNavigation(service: MapsService, navigation: MapsDeviceNavigation | undefined, message: Memory, params: Params, ask: Ask): ActionResult!Refusal {
+effect function startNavigation(service: MapsService, navigation: MapsDeviceNavigation | undefined, message: Memory, params: Params, ask: Ask, settled: SettledPlaces): ActionResult!Refusal {
   const named = text(params.destination) ?? text(params.query) ?? "that place"
-  return planStart(service, navigation, message, params, ask) catch effect (failure) => {
+  return planStart(service, navigation, message, params, ask, settled) catch effect (failure) => {
     if (failure._tag === "MapsFailure" ? failure.code !== "invalid-response" : failure.code !== "MAPS_MALFORMED_RESPONSE") throw failure
     throw new MapsFailure({ code: "invalid-response", message: `Maps couldn't look up ${named} right now, so the route isn't planned. Try again in a moment.` })
   }
 }
 
-effect function planStart(service: MapsService, navigation: MapsDeviceNavigation | undefined, message: Memory, params: Params, ask: Ask): ActionResult!Refusal {
+effect function planStart(service: MapsService, navigation: MapsDeviceNavigation | undefined, message: Memory, params: Params, ask: Ask, settled: SettledPlaces): ActionResult!Refusal {
   const query = text(params.destination) ?? text(params.query)
   const travelMode = travelModeOf(params.travelMode) ?? "drive"
   const kind = query === undefined ? undefined : nearbyPlaceKind(query)
@@ -383,7 +391,7 @@ effect function planStart(service: MapsService, navigation: MapsDeviceNavigation
     const wanted = kind ?? query ?? "place"
     return locate(`I need your precise location to start the route to ${wanted}. If the phone can't get a location fix, tell me where you're starting from, or name a place to search near, such as “${wanted} near the Ferry Building”.`, { query: kind ?? query ?? "", travelMode }, "route-origin")
   }
-  const destination = try resolvePlace(service, kind ?? query, text(params.placeId), "destination", ask, "placeId", near)
+  const destination = try resolvePlace(service, kind ?? query, text(params.placeId), "destination", ask, "placeId", { near, settled: settled.placeId })
   if (destination.kind === "reply") return destination.result
   const target = agentPlace(destination.place)
   if (navigation !== undefined && (try navigation.available())) return try onPhone(navigation.start({ destination: target, travelMode }))
@@ -395,8 +403,8 @@ effect function onConnectedPhone(navigation: MapsDeviceNavigation | undefined, w
   return try onPhone(work(navigation))
 }
 
-effect function selectPlace(service: MapsService, navigation: MapsDeviceNavigation | undefined, params: Params, ask: Ask): ActionResult!Refusal {
-  const found = try resolvePlace(service, text(params.query), text(params.placeId), "place", ask, "placeId")
+effect function selectPlace(service: MapsService, navigation: MapsDeviceNavigation | undefined, params: Params, ask: Ask, settled: SettledPlaces): ActionResult!Refusal {
+  const found = try resolvePlace(service, text(params.query), text(params.placeId), "place", ask, "placeId", { settled: settled.placeId })
   if (found.kind === "reply") return found.result
   const target = agentPlace(found.place)
   if (navigation === undefined || !(try navigation.available())) {
@@ -406,9 +414,9 @@ effect function selectPlace(service: MapsService, navigation: MapsDeviceNavigati
   return { ...shown, data: { ...shown.data, place: target } }
 }
 
-effect function savePlace(service: MapsService, saves: AgentSavedPlaceStore | undefined, message: Memory, params: Params, ask: Ask): ActionResult!Refusal {
+effect function savePlace(service: MapsService, saves: AgentSavedPlaceStore | undefined, message: Memory, params: Params, ask: Ask, settled: SettledPlaces): ActionResult!Refusal {
   if (saves === undefined) return reply(false, "Saving places with your assistant is not available here.", { code: "storage" })
-  const found = try resolvePlace(service, text(params.query), text(params.placeId), "place", ask, "placeId")
+  const found = try resolvePlace(service, text(params.query), text(params.placeId), "place", ask, "placeId", { settled: settled.placeId })
   if (found.kind === "reply") return found.result
   const saved = try agentSaves(saves).save(message.entityId, agentPlace(found.place), text(params.label), text(params.idempotencyKey))
   const data = { savedPlace: saved.savedPlace, replayed: saved.replayed, commitId: saved.commitId, committedAt: saved.committedAt, currentlyApplied: saved.currentlyApplied, current: saved.current }
@@ -440,8 +448,8 @@ function shareCard(place: AgentPlaceRef, sharedAt: string): Extract<MapsCard, { 
 
 const unconfirmed = () => new MapsFailure({ code: "storage", message: "Your answer to sharing couldn't be kept. Ask again to share the place." })
 
-effect function sharePlace(service: MapsService, runtime: IAgentRuntime, message: Memory, params: Params, ask: Ask): ActionResult!Refusal {
-  const found = try resolvePlace(service, text(params.query), text(params.placeId), "place", ask, "placeId")
+effect function sharePlace(service: MapsService, runtime: IAgentRuntime, message: Memory, params: Params, ask: Ask, settled: SettledPlaces): ActionResult!Refusal {
+  const found = try resolvePlace(service, text(params.query), text(params.placeId), "place", ask, "placeId", { settled: settled.placeId })
   if (found.kind === "reply") return found.result
   const target = agentPlace(found.place)
   const prompt = `Share the location of ${target.name}?`
@@ -504,22 +512,23 @@ const ownerOnly = { minRole: "OWNER" as const }
 const modeParameter = { name: "travelMode", required: false, description: "drive, walk, bicycle or transit; drive when the owner named none.", schema: { type: "string" as const, enum: [...travelModes] } }
 
 function mapsActions(ports: MapsPluginPorts): Action[] {
-  const handle = (operation: PlaceOperation | undefined, work: (service: MapsService, navigation: MapsDeviceNavigation | undefined, message: Memory, params: Params, ask: Ask, runtime: IAgentRuntime) => ActionResult!Refusal): Action["handler"] =>
+  const handle = (operation: PlaceOperation | undefined, work: (service: MapsService, navigation: MapsDeviceNavigation | undefined, message: Memory, params: Params, ask: Ask, runtime: IAgentRuntime, settled: SettledPlaces) => ActionResult!Refusal): Action["handler"] =>
     (runtime, message, _state, options) => {
       const answered = operation === undefined ? undefined : answeredChoice(runtime, message, Date.now())
       const chosen = answered !== undefined && answered.choice.operation === operation ? answered : undefined
-      if (chosen !== undefined) closeChoice(runtime, message.roomId)
-      const offered = chosen === undefined ? parameters(options) : { ...chosen.choice.params, [chosen.choice.field]: chosen.place.providerPlaceId }
+      if (chosen !== undefined) closeChoice(runtime, message)
+      const offered = chosen?.choice.params ?? parameters(options)
+      const settled = chosen === undefined ? {} : { ...chosen.choice.settled, [chosen.choice.field]: chosen.place }
       const prepared = operation === undefined ? { kind: "ready" as const, params: offered } : preparePlaces(operation, offered)
       if (prepared.kind === "refused") return Promise.resolve(prepared.result)
       const { params } = prepared
-      const ask: Ask = (field, choices, asked = params) => {
-        if (operation !== undefined) openChoice(runtime, message.roomId, { operation, field, options: choices, params: asked, askedAt: Date.now() })
+      const ask: Ask = (field, choices, asked = params, endpoints = settled) => {
+        if (operation !== undefined) openChoice(runtime, message, { operation, field, options: choices, params: asked, settled: endpoints, askedAt: Date.now() })
       }
-      return settle(linked(ports, runtime, effect (service) => try work(service, try ports.navigation(runtime, message), message, params, ask, runtime)))
+      return settle(linked(ports, runtime, effect (service) => try work(service, try ports.navigation(runtime, message), message, params, ask, runtime, settled)))
     }
   const always: Action["validate"] = () => Promise.resolve(true)
-  return [
+  const actions: Action[] = [
     {
       name: "MAPS_PLACE",
       description: "Find places by name, category or address. For near me, nearby or nearest, set useCurrentLocation; the phone's reported position for this turn is used when it is recent, and otherwise the phone is asked for its location. For a kind of place near a named place (pharmacy near the Ferry Building), put the whole phrase in query. Asked where the owner is, set useCurrentLocation and leave query out: the place at the phone's reported position is looked up, and only its area when that position is rough. For coordinates the owner names, set latitude and longitude: with no query the place there is looked up, and with one the search is around that point.",
@@ -535,7 +544,7 @@ function mapsActions(ports: MapsPluginPorts): Action[] {
         { name: "limit", required: false, description: "At most this many results, from 1 to 20.", schema: { type: "number" } },
       ],
       validate: always,
-      handler: handle("place", (service, _navigation, message, params, ask) => findPlaces(service, message, params, ask)),
+      handler: handle("place", (service, _navigation, message, params, ask, _runtime, settled) => findPlaces(service, message, params, ask, settled)),
     },
     {
       name: "MAPS_WHERE_AM_I",
@@ -554,7 +563,7 @@ function mapsActions(ports: MapsPluginPorts): Action[] {
       roleGate: ownerOnly,
       parameters: [
         { name: "origin", required: false, description: "The starting place the owner named; left out for a route from where the owner is.", schema: { type: "string" } },
-        { name: "destination", required: true, description: "The destination the owner named.", schema: { type: "string" } },
+        { name: "destination", required: false, description: "The destination the owner named. Required for new routes.", schema: { type: "string" } },
         modeParameter,
         { name: "originPlaceId", required: false, description: "The provider place id (providerPlaceId) of a starting place from an earlier Maps result, such as one the owner chose from a list. Never the device context's selected object id; name the place in origin instead.", schema: { type: "string" } },
         { name: "destinationPlaceId", required: false, description: "The provider place id (providerPlaceId) of a destination from an earlier Maps result, such as one the owner chose from a list. Never the device context's selected object id; name the place in destination instead.", schema: { type: "string" } },
@@ -562,7 +571,7 @@ function mapsActions(ports: MapsPluginPorts): Action[] {
         { name: "useCurrentLocation", required: false, description: "True when the route starts where the owner is now.", schema: { type: "boolean" } },
       ],
       validate: always,
-      handler: handle("route", (service, _navigation, _message, params, ask) => planRoute(service, params, ask)),
+      handler: handle("route", (service, _navigation, _message, params, ask, _runtime, settled) => planRoute(service, params, ask, settled)),
     },
     {
       name: "MAPS_NAVIGATION_START",
@@ -577,7 +586,7 @@ function mapsActions(ports: MapsPluginPorts): Action[] {
         { name: "useCurrentLocation", required: false, description: "True when the destination is the nearest or a nearby kind of place.", schema: { type: "boolean" } },
       ],
       validate: always,
-      handler: handle("navigation-start", (service, navigation, message, params, ask) => startNavigation(service, navigation, message, params, ask)),
+      handler: handle("navigation-start", (service, navigation, message, params, ask, _runtime, settled) => startNavigation(service, navigation, message, params, ask, settled)),
     },
     {
       name: "MAPS_NAVIGATION_REROUTE",
@@ -605,7 +614,7 @@ function mapsActions(ports: MapsPluginPorts): Action[] {
         { name: "placeId", required: false, description: "The provider place id (providerPlaceId) of a place from an earlier Maps result, such as one the owner chose from a list. Never the device context's selected object id; name the place in query instead.", schema: { type: "string" } },
       ],
       validate: always,
-      handler: handle("select", (service, navigation, _message, params, ask) => selectPlace(service, navigation, params, ask)),
+      handler: handle("select", (service, navigation, _message, params, ask, _runtime, settled) => selectPlace(service, navigation, params, ask, settled)),
     },
     {
       name: "MAPS_SAVE",
@@ -619,7 +628,7 @@ function mapsActions(ports: MapsPluginPorts): Action[] {
         { name: "idempotencyKey", required: false, description: "A key that makes a retried save repeat its first outcome.", schema: { type: "string" } },
       ],
       validate: always,
-      handler: handle("save", (service, _navigation, message, params, ask, runtime) => savePlace(service, ports.savedPlaces(runtime), message, params, ask)),
+      handler: handle("save", (service, _navigation, message, params, ask, runtime, settled) => savePlace(service, ports.savedPlaces(runtime), message, params, ask, settled)),
     },
     {
       name: "MAPS_SHARE",
@@ -632,7 +641,7 @@ function mapsActions(ports: MapsPluginPorts): Action[] {
         { name: "placeId", required: false, description: "The provider place id (providerPlaceId) of a place from an earlier Maps result, such as one the owner chose from a list. Never the device context's selected object id; name the place in query instead.", schema: { type: "string" } },
       ],
       validate: always,
-      handler: handle("share", (service, _navigation, message, params, ask, runtime) => sharePlace(service, runtime, message, params, ask)),
+      handler: handle("share", (service, _navigation, message, params, ask, runtime, settled) => sharePlace(service, runtime, message, params, ask, settled)),
     },
     {
       name: "MAPS_COVERAGE",
@@ -652,6 +661,15 @@ function mapsActions(ports: MapsPluginPorts): Action[] {
       handler: handle(undefined, (_service, _navigation, message, _params, _ask, runtime) => listSaved(ports.savedPlaces(runtime), message)),
     },
   ]
+  for (const action of actions) {
+    if (Object.values(choiceActions).some((name) => name === action.name)) {
+      registerTurnFirstCall(action, (runtime, message) => {
+        const answer = answeredChoice(runtime, message, Date.now())
+        return answer !== undefined && choiceActions[answer.choice.operation] === action.name ? {} : undefined
+      })
+    }
+  }
+  return actions
 }
 
 export const phonePositionProvider: Provider = {

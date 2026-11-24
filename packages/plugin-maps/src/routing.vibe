@@ -1,7 +1,7 @@
 // spec/maps/routing.md, "A plain Maps request of the owner's own chat turn goes to the Maps action for its shape"; spec/maps/phonePosition.md, "A kind of place near a named place is searched around that place, never around the phone"; spec/maps/phonePosition.md, "A reported position never becomes a route origin"; spec/maps/routing.md, "A choice reply answers only the open question of the same conversation, within its options and ten minutes"
-import { containsResourceAddress, registerDirectActionRoutingRule, type IAgentRuntime, type Memory } from "@elizaos/core"
+import { containsResourceAddress, registerDirectActionRoutingRule, type DirectActionRoutingRule, type IAgentRuntime, type Memory } from "@elizaos/core"
 import { choiceBinds, mapsRouteOf, type RequestShape, type RoutedTo } from "../gen/maps__routing.effect.vibe"
-import type { AgentPlaceRef } from "./client/device-navigation.vibe"
+import type { Place } from "./client/contracts.vibe"
 
 const courtesy = String.raw`(?:(?:please|hey|ok(?:ay)?|so)[,\s]+)*(?:(?:can|could|would|will)\s+you\s+)?(?:please\s+)?`
 const travelMode = String.raw`(?:driving|walking|cycling|bike|transit)`
@@ -77,26 +77,49 @@ export function isMapsSelectionHandle(id: string | undefined): boolean {
   return id !== undefined && mapsSelectionHandlePattern.test(id)
 }
 
+export type PlaceChoiceField = "originPlaceId" | "destinationPlaceId" | "placeId"
+export type SettledPlaces = Readonly<Partial<Record<PlaceChoiceField, Place>>>
+
 export interface PlaceChoice {
   readonly operation: ChoiceOperation
-  readonly field: "originPlaceId" | "destinationPlaceId" | "placeId"
-  readonly options: readonly AgentPlaceRef[]
+  readonly field: PlaceChoiceField
+  readonly options: readonly Place[]
+  readonly settled: SettledPlaces
   readonly params: Readonly<Record<string, unknown>>
   readonly askedAt: number
 }
 
-const choices = new WeakMap<IAgentRuntime, Map<string, PlaceChoice>>()
+interface OpenChoice {
+  readonly choice: PlaceChoice
+  readonly askingTurn: string
+  answeringTurn?: string
+}
 
-function roomChoices(runtime: IAgentRuntime): Map<string, PlaceChoice> {
+const maxOpenChoices = 256
+const choices = new WeakMap<IAgentRuntime, Map<string, OpenChoice>>()
+
+function ownerChoices(runtime: IAgentRuntime): Map<string, OpenChoice> {
   const known = choices.get(runtime)
   if (known !== undefined) return known
-  const made = new Map<string, PlaceChoice>()
+  const made = new Map<string, OpenChoice>()
   choices.set(runtime, made)
   return made
 }
 
-export function openChoice(runtime: IAgentRuntime, roomId: string, choice: PlaceChoice): void {
-  roomChoices(runtime).set(roomId, choice)
+function conversationKey(message: Memory): string {
+  return JSON.stringify([message.roomId, message.entityId])
+}
+
+export function openChoice(runtime: IAgentRuntime, message: Memory, choice: PlaceChoice): void {
+  if (!isOwnerChatTurn(message) || message.id === undefined) return
+  const open = ownerChoices(runtime)
+  const key = conversationKey(message)
+  open.delete(key)
+  if (open.size >= maxOpenChoices) {
+    const oldest = open.keys().next().value
+    if (oldest !== undefined) open.delete(oldest)
+  }
+  open.set(key, { choice, askingTurn: message.id })
 }
 
 export function choicePosition(reply: string, count: number): number | undefined {
@@ -106,18 +129,27 @@ export function choicePosition(reply: string, count: number): number | undefined
   return word === "last" ? count : /^\d+$/u.test(word) ? Number(word) : ordinals[word]
 }
 
-export function answeredChoice(runtime: IAgentRuntime, message: Memory, now: number): { readonly choice: PlaceChoice; readonly place: AgentPlaceRef } | undefined {
-  const open = roomChoices(runtime).get(message.roomId)
+export function answeredChoice(runtime: IAgentRuntime, message: Memory, now: number): { readonly choice: PlaceChoice; readonly place: Place } | undefined {
+  if (!isOwnerChatTurn(message) || message.id === undefined) return undefined
+  const open = ownerChoices(runtime)
+  const key = conversationKey(message)
+  const pending = open.get(key)
+  if (pending === undefined || pending.askingTurn === message.id) return undefined
+  const { choice } = pending
   const reply = typeof message.content.text === "string" ? message.content.text : ""
-  if (open === undefined) return undefined
-  const position = choicePosition(reply, open.options.length) ?? 0
-  if (!choiceBinds({ open: true, sameConversation: true, age: Math.floor(now - open.askedAt), position, options: open.options.length })) return undefined
-  const place = open.options[position - 1]
-  return place === undefined ? undefined : { choice: open, place }
+  const position = choicePosition(reply, choice.options.length) ?? 0
+  const nextOwnerTurn = pending.answeringTurn === undefined || pending.answeringTurn === message.id
+  if (!choiceBinds({ open: true, sameConversation: true, nextOwnerTurn, age: Math.floor(now - choice.askedAt), position, options: choice.options.length })) {
+    open.delete(key)
+    return undefined
+  }
+  pending.answeringTurn = message.id
+  const place = choice.options[position - 1]
+  return place === undefined ? undefined : { choice, place }
 }
 
-export function closeChoice(runtime: IAgentRuntime, roomId: string): void {
-  roomChoices(runtime).delete(roomId)
+export function closeChoice(runtime: IAgentRuntime, message: Memory): void {
+  ownerChoices(runtime).delete(conversationKey(message))
 }
 
 function compound(destination: string): boolean {
@@ -192,13 +224,17 @@ export function requestShape(text: string, openChoiceAnswered: boolean): { reado
   return { shape: "OtherRequest" }
 }
 
+function isOwnerChatTurn(message: Memory | undefined): boolean {
+  return message !== undefined && (
+    (message.content.source === "device" && ownerChannels.has(message.content.channelType))
+    || (message.content.source === "client_chat" && (message.content.channelType === "DM" || message.content.channelType === "VOICE_DM"))
+  )
+}
+
 export function routeOf(text: string, message: Memory | undefined, openChoiceAnswered: boolean, namesView: (destination: string) => boolean): RoutedTo {
   const { shape, destination } = requestShape(text, openChoiceAnswered)
   return mapsRouteOf({
-    ownerTurn: message !== undefined && (
-      (message.content.source === "device" && ownerChannels.has(message.content.channelType))
-      || (message.content.source === "client_chat" && (message.content.channelType === "DM" || message.content.channelType === "VOICE_DM"))
-    ),
+    ownerTurn: isOwnerChatTurn(message),
     shape,
     compound: destination !== undefined && compound(destination),
     webAddress: destination !== undefined && containsResourceAddress(destination),
@@ -215,16 +251,17 @@ const routedActions: Record<Exclude<RoutedTo, "ToPlanner" | "ToChoice">, readonl
 }
 
 export function registerMapsRouting(runtime: IAgentRuntime, namesView: (destination: string) => boolean): void {
-  const rule = (id: string, actionNames: readonly string[], matches: (text: string, message?: Memory) => boolean) =>
-    registerDirectActionRoutingRule(runtime, { id, actionNames, replacesActionNames: ["VIEWS", "VIEWS_SHOW"], requiredActionTags: ["domain:maps"], contexts: ["maps"], matches })
+  const rule = (id: string, actionNames: readonly string[], matches: DirectActionRoutingRule["matches"], wholeRequest?: DirectActionRoutingRule["wholeRequest"]) =>
+    registerDirectActionRoutingRule(runtime, { id, actionNames, replacesActionNames: ["VIEWS", "VIEWS_SHOW"], requiredActionTags: ["domain:maps"], contexts: ["maps"], matches, wholeRequest })
   for (const [routed, actionNames] of Object.entries(routedActions)) {
     rule(`maps.${routed}`, actionNames, (text, message) => routeOf(text, message, false, namesView) === routed)
   }
   for (const [operation, actionName] of Object.entries(choiceActions)) {
-    rule(`maps.place-choice.${operation}`, [actionName], (text, message) => {
+    const matches: DirectActionRoutingRule["matches"] = (text, message) => {
       if (message === undefined) return false
       const answered = answeredChoice(runtime, message, Date.now())
       return answered?.choice.operation === operation && routeOf(text, message, true, namesView) === "ToChoice"
-    })
+    }
+    rule(`maps.place-choice.${operation}`, [actionName], matches, { matches, invalidateFields: [] })
   }
 }

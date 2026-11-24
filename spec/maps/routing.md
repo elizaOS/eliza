@@ -99,23 +99,46 @@ pure def lawAFarNamesakeIsNotAroundTheStart(meters: int): bool = meters > startA
 
 ### A choice reply answers only the open question of the same conversation, within its options and ten minutes
 
-When Maps asks "which one did you mean?", the question stays open in that
-conversation for ten minutes. A reply that names a position ("the second
-one", "2", "the last one") answers it only while it is open, in the same
-conversation, and for a position among the options offered; it continues
-the operation that asked. Any other turn leaves the question to the planner.
+When Maps asks "which one did you mean?", the next keyed turn from that owner
+in that conversation can answer within ten minutes. A reply that names a
+position ("the second one", "2", "the last one") among the offered options
+continues the operation that asked. A new owner turn about something else
+closes the question and goes to the planner. Routing the same answer more
+than once before dispatch keeps its binding. The asking and answering
+messages must have distinct turn identities. At ten minutes the question
+expires.
 
 ```quint
 pure val choiceLifetime = 600000
-type ChoiceAnswer = { open: bool, sameConversation: bool, age: int, position: int, options: int }
+type ChoiceAnswer = { open: bool, sameConversation: bool, nextOwnerTurn: bool, age: int, position: int, options: int }
 pure def choiceBinds(a: ChoiceAnswer): bool =
-  a.open and a.sameConversation and a.age >= 0 and a.age <= choiceLifetime and a.position >= 1 and a.position <= a.options
-pure val aValues = Set({ open: true, sameConversation: true, age: 0, position: 2, options: 3 }, { open: true, sameConversation: false, age: 0, position: 1, options: 3 },
-  { open: true, sameConversation: true, age: 600001, position: 1, options: 3 }, { open: true, sameConversation: true, age: 10, position: 4, options: 3 },
-  { open: false, sameConversation: true, age: 10, position: 1, options: 3 })
-pure def lawExpiredChoiceNeverBinds(a: ChoiceAnswer): bool = a.age > choiceLifetime implies not(choiceBinds(a))
+  a.open and a.sameConversation and a.nextOwnerTurn and a.age >= 0 and a.age < choiceLifetime and a.position >= 1 and a.position <= a.options
+pure val aValues = Set({ open: true, sameConversation: true, nextOwnerTurn: true, age: 0, position: 2, options: 3 },
+  { open: true, sameConversation: true, nextOwnerTurn: false, age: 10, position: 2, options: 3 },
+  { open: true, sameConversation: false, nextOwnerTurn: true, age: 0, position: 1, options: 3 },
+  { open: true, sameConversation: true, nextOwnerTurn: true, age: 600000, position: 1, options: 3 },
+  { open: true, sameConversation: true, nextOwnerTurn: true, age: 10, position: 4, options: 3 },
+  { open: false, sameConversation: true, nextOwnerTurn: true, age: 10, position: 1, options: 3 })
+pure def lawExpiredChoiceNeverBinds(a: ChoiceAnswer): bool = a.age >= choiceLifetime implies not(choiceBinds(a))
 pure def lawChoiceStaysInItsConversation(a: ChoiceAnswer): bool = not(a.sameConversation) implies not(choiceBinds(a))
+pure def lawChoiceCannotBindAfterAnInterveningOwnerTurn(a: ChoiceAnswer): bool = not(a.nextOwnerTurn) implies not(choiceBinds(a))
 pure def lawPositionIsAmongTheOptions(a: ChoiceAnswer): bool = choiceBinds(a) implies a.position <= a.options
+```
+
+### A route choice uses the offered place and keeps either endpoint already settled
+
+Answering with a number continues the same request and travel mode. Maps
+uses the chosen place from the numbered list and keeps any endpoint already
+settled when it asked. A second question about the other endpoint has its
+own asking turn and ordered list. Maps looks up only an endpoint that has
+yet to be settled.
+
+```quint
+type EndpointSource = UseSettledEndpoint | ResolveNamedEndpoint
+pure def endpointSource(hasSnapshot: bool): EndpointSource =
+  if (hasSnapshot) UseSettledEndpoint else ResolveNamedEndpoint
+pure def lawSettledEndpointNeedsNoLookup(hasSnapshot: bool): bool =
+  (endpointSource(hasSnapshot) == UseSettledEndpoint) == hasSnapshot
 ```
 
 ### Same-named areas close together are one place, and same-named street addresses still ask
