@@ -268,7 +268,8 @@ describe("WP2 Native clients and pages: return pages (spec/cloud/returnPages.md)
         forwarded,
         missing: [elsewhere.status, (elsewhere.body as { readonly error?: string }).error, onApi.status, payerOnWeb.status],
         payer: [paid.status, String(paid.body).includes("Check the subscription"), other.status, String(other.body).includes("Checkout closed")],
-        payerScript: [/script-src/.test(paid.headers["content-security-policy"] ?? ""), /<script/.test(String(paid.body)), paid.headers["cache-control"]]
+        payerScript: [/script-src/.test(paid.headers["content-security-policy"] ?? ""), /<script/.test(String(paid.body)), paid.headers["cache-control"]],
+        unfilled: [html, String(connect.body), billingPage, String(paid.body), String(other.body)].filter((page) => page.includes("{{")).length
       },
       {
         status: 200,
@@ -287,7 +288,8 @@ describe("WP2 Native clients and pages: return pages (spec/cloud/returnPages.md)
         ],
         missing: [404, "not_found", 404, 404],
         payer: [200, true, 200, true],
-        payerScript: [false, false, "no-store"]
+        payerScript: [false, false, "no-store"],
+        unfilled: 0
       }
     ))
     provide deploymentLayer(profile, "staging") {
@@ -2102,7 +2104,8 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
       history("&startHistoryId=0100"), history("&startHistoryId=1000&startHistoryId=1001"), history("&unexpected=1"), history("&side=agent"), cloud.call(`${path}?grantId=${grant}`)
     ])
     const otherOrganization = try cloud.call(`${path}?grantId=${grant}`, { headers: other.headers })
-    try sql(cloud, "UPDATE accounts SET organization_id = $1 WHERE key = $2", [device.organizationId, other.userId])
+    try sql(cloud, "ALTER TABLE accounts DROP CONSTRAINT accounts_organization_id_key", [])
+    try sql(cloud, "UPDATE accounts SET organization_id = $1, state = jsonb_set(state, '{organizationId}', to_jsonb($1::text)) WHERE key = $2", [device.organizationId, other.userId])
     const otherUser = try cloud.call(`${path}?grantId=${grant}`, { headers: other.headers })
     const providerCallsOnRefusal = cloud.fakes.seen.length - beforeRefusals
 

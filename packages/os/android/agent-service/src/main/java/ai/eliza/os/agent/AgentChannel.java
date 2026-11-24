@@ -174,9 +174,13 @@ public final class AgentChannel {
     for (ChannelPolicy.Entry entry : policy.pending()) if (entry.owner().equals(owner)) abort(owner, entry.id());
   }
 
+  public CompletableFuture<Response> request(CallerKind kind, String method, String path, byte[] body) {
+    return request(kind, method, path, body, Map.of());
+  }
+
   public CompletableFuture<Response> request(CallerKind kind, String method, String path, byte[] body, Map<String, ?> headers) {
     CompletableFuture<Response> answer = new CompletableFuture<>();
-    FailCode refused = ask(kind, NATIVE_OWNER, UUID.randomUUID().toString(), method, path, false, body, headers, new Listener() {
+    FailCode refused = ask(kind, NATIVE_OWNER, UUID.randomUUID().toString(), method, path, false, body, named(headers), new Listener() {
       @Override public void head(String id, long index, int status, Map<String, String> head) { }
       @Override public void chunk(String id, long index, byte[] data) { }
       @Override public void event(String id, long index, JSONObject event) { }
@@ -189,9 +193,13 @@ public final class AgentChannel {
     return answer;
   }
 
+  public Call requestStream(CallerKind kind, String method, String path, byte[] body, Listener listener) {
+    return requestStream(kind, method, path, body, Map.of(), listener);
+  }
+
   public Call requestStream(CallerKind kind, String method, String path, byte[] body, Map<String, ?> headers, Listener listener) {
     String id = UUID.randomUUID().toString();
-    FailCode refused = ask(kind, NATIVE_OWNER, id, method, path, true, body, headers, listener);
+    FailCode refused = ask(kind, NATIVE_OWNER, id, method, path, true, body, named(headers), listener);
     if (refused != null) listener.settled(id, Outcome.failed(refused), null);
     return new Call(this, NATIVE_OWNER, id);
   }
@@ -213,6 +221,8 @@ public final class AgentChannel {
     }
     return client.pushCredential(target, token, push);
   }
+
+  private static Map<String, ?> named(Map<String, ?> headers) { return headers == null ? Map.of() : headers; }
 
   private FailCode begin(Step step, Listener listener, Outgoing outgoing) {
     for (Out out : step.out()) {

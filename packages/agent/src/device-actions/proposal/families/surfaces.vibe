@@ -1,15 +1,15 @@
-// spec/agent/deviceActions/surfaces.md, "Story: Propose a photo, a view, a Maps read or a Photos change only as my words and my screen name them"; spec/agent/deviceActions/surfaces.md, "A surface operation is bound to the owner's message only on a direct-request turn and as the owner asked"; spec/agent/deviceActions/surfaces.md, "A photo runs without its card only when the owner's own message asks for one now"; spec/agent/deviceActions/surfaces.md, "An app view opens with VIEWS where views arrive as completed actions, else with open_view as the installation's profile enables it"; spec/agent/deviceActions/surfaces.md, "A whole-message photo command is routed to the capture, never to opening Camera"; spec/agent/deviceActions/surfaces.md, "A new note is proposed only while the owner's Notes screen selects the phone's own Notes"; spec/agent/deviceActions/surfaces.md, "A new note runs without its card only when its title and body are the owner's own words"; spec/agent/deviceActions/surfaces.md, "A Maps read names exactly the place or route selected on the owner's Maps screen"; spec/agent/deviceActions/operations.md, "Each operation has one capability need, which a clock-only device meets only for the Clock handoff"; spec/agent/deviceActions/index.md, "The proposal tool states each rule once, names no capability, and shares a branch only between forms that accept the same calls"
+// spec/agent/deviceActions/surfaces.md, "Story: Propose a photo, a view, a Maps read or a Photos change only as my words and my screen name them"; spec/agent/deviceActions/surfaces.md, "A surface operation is bound to the owner's message only on a direct-request turn and as the owner asked"; spec/agent/deviceActions/surfaces.md, "A photo runs without its card only when the owner's own message asks for one now"; spec/agent/deviceActions/surfaces.md, "An app view opens with VIEWS where views arrive as completed actions, else with open_view as the installation's profile enables it"; spec/agent/deviceActions/surfaces.md, "A new note is proposed only while the owner's Notes screen selects the phone's own Notes"; spec/agent/deviceActions/surfaces.md, "A new note runs without its card only when its title and body are the owner's own words"; spec/agent/deviceActions/surfaces.md, "A Maps read names exactly the place or route selected on the owner's Maps screen"; spec/agent/deviceActions/operations.md, "Each operation has one capability need, which a clock-only device meets only for the Clock handoff"; spec/agent/deviceActions/index.md, "The proposal tool states each rule once, names no capability, and shares a branch only between forms that accept the same calls"
 import type { ActionParameterSchema } from "@elizaos/core"
 import { meets, negotiatedHas, revisionOf } from "../../../../gen/agent__deviceActions__capabilities.effect.vibe"
 import { operationNeed, type OperationType } from "../../../../gen/agent__deviceActions__operations.effect.vibe"
-import { captureLensVerdict, mapsVerdict, noteAvailable, noteVerdict, openViewAvailable, openViewVerdict, photoCommandRouted, requestedCamera, surfaceBound, viewsShowsOnDevice, type CameraChoice, type SurfaceVerdict } from "../../../../gen/agent__deviceActions__surfaces.effect.vibe"
+import { captureLensVerdict, mapsVerdict, noteAvailable, noteVerdict, openViewAvailable, openViewVerdict, surfaceBound, viewsShowsOnDevice, type CameraChoice, type SurfaceVerdict } from "../../../../gen/agent__deviceActions__surfaces.effect.vibe"
 import type { Observation } from "../../../conversation/turn-context.schema.vibe"
 import { openViewAllowed, supportedViews, viewProfileWire } from "../../capabilities.vibe"
 import { CalendarSource, type MapsReadSelected } from "../../operation-schemas/personal.schema.vibe"
 import { readOperation, type CheckedOperation, type DeviceOperation, type DeviceOperationType } from "../../operations.schema.vibe"
 import { photosDecision, photosViewGuidance, returnedIdsGuidance } from "../../photos-view.vibe"
 import { viewProfile, type DeviceStoreUnavailable } from "../../store.vibe"
-import { directRequests, type DeviceProposalFamily, type DeviceTurn, type Grounding, type MessageAvailability, type NegotiatedDevice, type ProposalForm, type WholeRequestRoute } from "../family.vibe"
+import { directRequests, type DeviceProposalFamily, type DeviceTurn, type Grounding, type MessageAvailability, type NegotiatedDevice, type ProposalForm } from "../family.vibe"
 import { cameraWords } from "../surfaces/camera-request.ts"
 
 type Refusal = Extract<Grounding, { readonly kind: "Refused" }>
@@ -35,7 +35,6 @@ const libraryGuidance = [
 const mapsGuidance = "maps_read_selected requires the exact current observation selectedObject kind, id and revision of the place or route selected in Maps; never infer coordinates from the opaque identifier."
 const noteGuidance = "create_note creates a text note in the phone's own Notes. It can be proposed only on a message whose Notes screen selects the phone's own Notes; on any other message a request to make or save a note uses the canonical NOTES service."
 const canonicalNoteGuidance = "This phone offers no note of its own to chat: a request to make or save a note uses the canonical NOTES service."
-const photoCommandLead = "The owner's whole message asks for a photo now: use camera_capture_photo only as requested. If a named lens is unavailable on this turn or phone, explain the limitation without substituting the showing lens. No other device operation is accepted on this message, and VIEWS, which would open Camera without taking a photo, is refused on it."
 const viewsLead = "Open app views with VIEWS (mode show) on this message."
 const viewsUnavailable = "VIEWS cannot show a view on this message."
 
@@ -78,26 +77,21 @@ const captureForm: ProposalForm = {
   },
 }
 
-type RoutedCapture = { readonly form: ProposalForm; readonly operation?: CameraCapture }
-
 function offersLens(device: NegotiatedDevice): boolean {
   return captureForm.offered(device) && negotiatedHas(device.negotiation, "CameraCaptureLensV1")
 }
 
-function namedCapture(choice: "FrontCamera" | "BackCamera"): RoutedCapture {
+function namedCapture(choice: "FrontCamera" | "BackCamera"): ProposalForm {
   const lens = choice === "FrontCamera" ? "front" : "back"
   return {
-    form: {
-      types: ["camera_capture_photo"],
-      schema: branch("camera_capture_photo", ["lens"], { lens: { type: "string", enum: [lens] } }),
-      guidance: ["Name lens front for a selfie or a request for the front camera, and lens back for the back, rear or main camera. Carry only the lens the owner's whole message requested. A photo of the owner without a named camera uses the camera already showing."],
-      offered: offersLens,
-      now: {
-        unavailable: "the named camera form requires the owner's request to name that lens",
-        available: (turn) => cameraVerdict(turn, choice) !== "SurfaceRefused",
-      },
+    types: ["camera_capture_photo"],
+    schema: branch("camera_capture_photo", ["lens"], { lens: { type: "string", enum: [lens] } }),
+    guidance: ["Name lens front for a selfie or a request for the front camera, and lens back for the back, rear or main camera. Carry only the lens the owner's whole message requested. A photo of the owner without a named camera uses the camera already showing."],
+    offered: offersLens,
+    now: {
+      unavailable: "the named camera form requires the owner's request to name that lens",
+      available: (turn) => cameraVerdict(turn, choice) !== "SurfaceRefused",
     },
-    operation: { type: "camera_capture_photo", lens },
   }
 }
 
@@ -116,31 +110,6 @@ function cameraVerdict(turn: DeviceTurn, lens: CameraChoice): SurfaceVerdict {
   return captureLensVerdict(cameraWords(turn.ownerText, turn.assistantName), canNameCamera(turn), lens)
 }
 
-function routedCapture(turn: DeviceTurn): RoutedCapture | undefined {
-  const words = cameraWords(turn.ownerText, turn.assistantName)
-  if (!photoCommandRouted(ownerChat(turn), captureForm.offered(turn), words)) return undefined
-  const requested = requestedCamera(words)
-  switch (requested) {
-    case "ShowingCamera": return { form: captureForm, operation: { type: "camera_capture_photo" } }
-    case "FrontCamera":
-    case "BackCamera":
-      return canNameCamera(turn) ? namedCaptures[requested] : { form: captureForm }
-    case "ConflictingCameras": return undefined
-  }
-}
-
-const photoCommand: WholeRequestRoute = {
-  id: "device.camera-capture",
-  replaces: ["VIEWS", "VIEWS_SHOW"],
-  tags: ["domain:camera", "capability:capture", "effect:receipt-required", "target:selected-device"],
-  contexts: ["media", "general"],
-  lead: photoCommandLead,
-  claims: (turn) => {
-    const capture = routedCapture(turn)
-    return capture === undefined ? [] : [capture.form]
-  },
-}
-
 function normalWords(text: string): string {
   return text.toLowerCase().replace(/\s+/g, " ").trim().replace(/[.!?]+$/, "")
 }
@@ -152,8 +121,8 @@ function noteSaidByOwner(ownerText: string, note: { readonly title: string; read
 
 const forms: readonly ProposalForm[] = [
   captureForm,
-  namedCaptures.FrontCamera.form,
-  namedCaptures.BackCamera.form,
+  namedCaptures.FrontCamera,
+  namedCaptures.BackCamera,
   {
     types: ["photo_library_search"], guidance: libraryGuidance, offered: needed("PhotoLibrarySearch"),
     schema: branch("photo_library_search", [], {
@@ -262,7 +231,6 @@ export const surfacesFamily: DeviceProposalFamily = {
   name: "surfaces",
   types,
   forms,
-  route: photoCommand,
   guidance: (device) => [
     ...(negotiatedHas(device.negotiation, "CameraCapturePhotoV1") && negotiatedHas(device.negotiation, "CameraLibraryIdV1") ? [libraryIdGuidance] : []),
     ...photosViewGuidance(device.negotiation),
@@ -270,7 +238,6 @@ export const surfacesFamily: DeviceProposalFamily = {
     ...profileGuidance(device),
   ],
   now: (turn) => viewsShowsOnDevice(turn.completedActionNavigation) ? viewsLead : viewsUnavailable,
-  wholeMessageOperation: (turn) => routedCapture(turn)?.operation,
   effect ground(proposed: CheckedOperation, turn: DeviceTurn) {
     const operation = proposed.operation
     switch (operation.type) {

@@ -1,5 +1,3 @@
 // spec/agent/deviceActions/index.md, "A proposal is offered only on an owner turn of the enrolled device, as its family grounded it, and re-admitted under the turn's negotiation"
-// The agent-side entry (`@elizaos/agent/device-actions`): the client operation vocabulary plus the owner turn a plugin reads.
-// `@elizaos/agent/operations` stays the client entry; it must not reach the turn, whose node module loads the agent runtime.
 export * from "./operations.vibe"
 export { deviceTurnFor } from "./proposal/turn.vibe"

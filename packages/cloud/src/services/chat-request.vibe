@@ -8,9 +8,7 @@ import { acceptedFields, ChatRequest, type ChatMessage, type ContentPart, type R
 export type { ChatRequest }
 
 export interface Quote {
-  /** What the hold is priced on: the input and the output held, the whole cap only when the caller set one. */
   readonly counts: TokenCounts
-  /** The output cap the provider receives. */
   readonly outputCap: number
   readonly micros: number
 }
@@ -86,6 +84,6 @@ export effect function quote(body: ChatRequest, model: Model): Quote!Refused {
   const chars = body.messages.reduce((sum, message) => sum + textChars(message), 0)
   const capped = body.max_completion_tokens !== undefined || body.max_tokens !== undefined
   const counts = quoteCounts(chars, heldOutput(capped, limit.tokens))
-  if (!countsInBound(counts) || !countsInBound({ inputTokens: 0, cachedTokens: 0, outputTokens: limit.tokens })) throw refused("InvalidRequest")
+  if (!countsInBound(counts) || !countsInBound(quoteCounts(0, limit.tokens))) throw refused("InvalidRequest")
   return { counts, outputCap: limit.tokens, micros: callCost(model, counts) }
 }

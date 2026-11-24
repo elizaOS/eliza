@@ -221,6 +221,6 @@ effect function hear(context: RouteContext): HttpServerResponse.HttpServerRespon
 }
 
 export const batchSpeechRoutes: ReadonlyArray<Route> = [
-  { method: "POST", path: "/api/v1/voice/tts", auth: "ServiceAccess", capability: "speech", rateClass: "StandardRequests", handler: speak },
-  { method: "POST", path: "/api/v1/voice/stt", auth: "ServiceAccess", capability: "speech", rateClass: "StandardRequests", maxBodyBytes: uploadLimit, handler: hear }
+  { method: "POST", path: "/api/v1/voice/tts", auth: "ServiceAccess", area: "BatchSpeechRoutes", rateClass: "StandardRequests", handler: speak },
+  { method: "POST", path: "/api/v1/voice/stt", auth: "ServiceAccess", area: "BatchSpeechRoutes", rateClass: "StandardRequests", maxBodyBytes: uploadLimit, handler: hear }
 ]
