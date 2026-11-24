@@ -82,7 +82,7 @@ jobs:
     needs: preflight
   quint:
     name: Quint (${{ matrix.shard }}/4)
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main-v3'
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     strategy:
@@ -143,7 +143,7 @@ jobs:
         run: |
           set -euo pipefail
           jar="$RUNNER_TEMP/json-20250517.jar"
-          curl -fsSL --retry 3 -o "$jar" https://repo.maven.apache.org/maven2/org/json/json/20250517/json-20250517.jar
+          curl -fsSL --retry 3 -o "$jar" https://maven-central.storage-download.googleapis.com/maven2/org/json/json/20250517/json-20250517.jar
           echo "3ea61b2a06e31edf1c91134fe9106b0ebb16628be169f3db75bc7a2b06b45796  $jar" | sha256sum -c -
           echo "ELIZA_JSON_JAR=$jar" >> "$GITHUB_ENV"
       - name: Install local Redis for protocol conformance
@@ -199,7 +199,7 @@ jobs:
           retention-days: 7
   quint-result:
     name: Complete Quint coverage
-    if: ${{ always() && !cancelled() && github.ref == 'refs/heads/main' }}
+    if: ${{ always() && !cancelled() && github.ref == 'refs/heads/main-v3' }}
     needs: [quint]
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -320,7 +320,7 @@ jobs:
             os=${{ needs.os.result }}:${{ needs.preflight.outputs.os }}
             quality=${{ needs.quality.result }}:${{ needs.preflight.outputs.source }}
             tests_auth_integration=${{ needs.tests_auth_integration.result }}:${{ needs.preflight.outputs.auth }}
-            quint-result=${{ needs.quint-result.result }}:${{ github.ref == 'refs/heads/main' }}
+            quint-result=${{ needs.quint-result.result }}:${{ github.ref == 'refs/heads/main-v3' }}
             preflight=${{ needs.preflight.result }}:true
             remote-capabilities=${{ needs.remote-capabilities.result }}:${{ needs.preflight.outputs.runtime }}
             agent-integration=${{ needs.agent-integration.result }}:${{ needs.preflight.outputs.runtime }}

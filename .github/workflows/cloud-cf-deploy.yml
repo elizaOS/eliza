@@ -140,7 +140,7 @@ jobs:
           CARTESIA_STT_USD_PER_CREDIT: ${{ vars.CARTESIA_STT_USD_PER_CREDIT || secrets.CARTESIA_STT_USD_PER_CREDIT }}
         run: |
           node --input-type=module <<'NODE'
-          if (process.env.SOURCE_REF !== 'refs/heads/staging' || process.env.TARGET_ENVIRONMENT !== 'staging') {
+          if (process.env.SOURCE_REF !== 'refs/heads/staging-v3' || process.env.TARGET_ENVIRONMENT !== 'staging') {
             throw new Error('Secret provisioning is restricted to the staging branch and environment');
           }
           const names = ['CARTESIA_API_KEY', 'DATABASE_URL', 'CARTESIA_STT_USD_PER_CREDIT'];
@@ -394,9 +394,9 @@ jobs:
           fi
 
           if [ "$TARGET_ENVIRONMENT" = "production" ]; then
-            expected_ref="refs/heads/main"
+            expected_ref="refs/heads/main-v3"
           else
-            expected_ref="refs/heads/staging"
+            expected_ref="refs/heads/staging-v3"
           fi
 
           if [ "$SOURCE_REF" != "$expected_ref" ]; then
@@ -416,7 +416,7 @@ jobs:
   admit-staging:
     name: Authorize and admit staging release
     needs: validate-deploy-source
-    if: ${{ inputs.provision_speech_secrets != true && (always() && (needs.validate-deploy-source.result == 'success' || needs.validate-deploy-source.result == 'skipped') && github.event_name != 'pull_request' && inputs.telegram_authority_canary != true && !((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main')) }}
+    if: ${{ inputs.provision_speech_secrets != true && (always() && (needs.validate-deploy-source.result == 'success' || needs.validate-deploy-source.result == 'skipped') && github.event_name != 'pull_request' && inputs.telegram_authority_canary != true && !((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main-v3')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 2
     permissions:
@@ -446,12 +446,12 @@ jobs:
           latest_eligible_run_id=""
           if [ "$EVENT_NAME" = "push" ] \
             && [ "$TARGET_ENVIRONMENT" != "production" ] \
-            && [ "$GITHUB_REF" != "refs/heads/main" ] \
+            && [ "$GITHUB_REF" != "refs/heads/main-v3" ] \
             && [ "$FORCE" != "true" ] \
             && [ "$RUN_DEPLOYED_RENDERER_STAGING" != "true" ]; then
             latest_eligible_run_id="$(
               gh api \
-                "repos/${GITHUB_REPOSITORY}/actions/workflows/cloud-cf-deploy.yml/runs?branch=staging&event=push&per_page=1" \
+                "repos/${GITHUB_REPOSITORY}/actions/workflows/cloud-cf-deploy.yml/runs?branch=staging-v3&event=push&per_page=1" \
                 --jq '.workflow_runs[0].id'
             )"
           fi
@@ -474,7 +474,7 @@ jobs:
   validate-staging-certification:
     name: Validate staging certification for production tree
     needs: validate-deploy-source
-    if: ${{ inputs.provision_speech_secrets != true && (always() && (needs.validate-deploy-source.result == 'success' || needs.validate-deploy-source.result == 'skipped') && github.event_name != 'pull_request' && inputs.telegram_authority_canary != true && ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main')) }}
+    if: ${{ inputs.provision_speech_secrets != true && (always() && (needs.validate-deploy-source.result == 'success' || needs.validate-deploy-source.result == 'skipped') && github.event_name != 'pull_request' && inputs.telegram_authority_canary != true && ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main-v3')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -545,13 +545,13 @@ jobs:
             }
             git fetch --no-tags \
               "https://github.com/${GITHUB_REPOSITORY}.git" \
-              staging:refs/remotes/origin/staging
+              staging-v3:refs/remotes/origin/staging-v3
             git cat-file -e "${CERTIFIED_RECOVERY_POLICY_SHA}^{commit}" || {
               echo "::error::Certified recovery policy commit is unavailable."
               exit 1
             }
             git merge-base --is-ancestor \
-              "$CERTIFIED_RECOVERY_POLICY_SHA" refs/remotes/origin/staging || {
+              "$CERTIFIED_RECOVERY_POLICY_SHA" refs/remotes/origin/staging-v3 || {
               echo "::error::Certified recovery policy is not contained in staging."
               exit 1
             }
@@ -614,7 +614,7 @@ jobs:
               '.status == "completed"
                 and .conclusion == "success"
                 and (.event == "push" or .event == "workflow_dispatch")
-                and .head_branch == "staging"
+                and .head_branch == "staging-v3"
                 and .path == ".github/workflows/cloud-cf-deploy.yml"
                 and .repository.full_name == $repo' \
               "$run_file" >/dev/null; then
@@ -730,7 +730,7 @@ jobs:
               '.status == "completed"
                 and .conclusion == "success"
                 and (.event == "push" or .event == "workflow_dispatch")
-                and .head_branch == "staging"
+                and .head_branch == "staging-v3"
                 and .path == ".github/workflows/cloud-cf-deploy.yml"
                 and .repository.full_name == $repo' \
               "$run_file" >/dev/null; then
@@ -821,7 +821,7 @@ jobs:
   authorize-production:
     name: Authorize production environment
     needs: [validate-deploy-source, validate-staging-certification]
-    if: ${{ inputs.provision_speech_secrets != true && (always() && (needs.validate-deploy-source.result == 'success' || needs.validate-deploy-source.result == 'skipped') && needs.validate-staging-certification.result == 'success' && github.event_name != 'pull_request' && inputs.telegram_authority_canary != true && ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main')) }}
+    if: ${{ inputs.provision_speech_secrets != true && (always() && (needs.validate-deploy-source.result == 'success' || needs.validate-deploy-source.result == 'skipped') && needs.validate-staging-certification.result == 'success' && github.event_name != 'pull_request' && inputs.telegram_authority_canary != true && ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main-v3')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     # Approval only. This job must not share a mutation concurrency group, or
@@ -932,8 +932,8 @@ jobs:
           chmod 0600 "$response"
           git fetch --no-tags \
             "https://github.com/${GITHUB_REPOSITORY}.git" \
-            staging:refs/remotes/origin/staging
-          git merge-base --is-ancestor "$POLICY_SHA" refs/remotes/origin/staging || {
+            staging-v3:refs/remotes/origin/staging-v3
+          git merge-base --is-ancestor "$POLICY_SHA" refs/remotes/origin/staging-v3 || {
             echo "::error::Certified recovery policy is no longer contained in staging."
             exit 1
           }
@@ -1015,7 +1015,7 @@ jobs:
           if ! GITHUB_TOKEN='${{ github.token }}' \
             bun packages/cloud/scripts/canonical-deploy-source-guard.ts \
             --run-sha "$GITHUB_SHA" \
-            --canonical-ref refs/heads/main \
+            --canonical-ref refs/heads/main-v3 \
             > "$evidence_dir/freshness.stdout" \
             2> "$evidence_dir/freshness.stderr"; then
             echo "::error::Bounded recovery source is no longer canonical main"
@@ -1051,7 +1051,7 @@ jobs:
           ) > "$output_dir/dry-run.stdout" 2> "$output_dir/dry-run.stderr"
           bun packages/cloud/scripts/canonical-deploy-source-guard.ts \
             --run-sha "$GITHUB_SHA" \
-            --canonical-ref refs/heads/main \
+            --canonical-ref refs/heads/main-v3 \
             > "$output_dir/freshness.stdout" \
             2> "$output_dir/freshness.stderr"
           echo "Exact production Worker build and dry-run passed."
@@ -1084,14 +1084,14 @@ jobs:
         validate-staging-certification,
         authorize-production,
       ]
-    if: ${{ inputs.provision_speech_secrets != true && (always() && github.event_name != 'pull_request' && inputs.telegram_authority_canary != true && needs.bind-telegram-release-attempt.result == 'success' && (((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && needs.resolve-telegram-environment-authority.result == 'skipped' && (needs.validate-deploy-source.result == 'success' || needs.validate-deploy-source.result == 'skipped') && needs.validate-staging-certification.result == 'success' && needs.authorize-production.result == 'success' || !((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && needs.resolve-telegram-environment-authority.result == 'success' && needs.admit-staging.outputs.should_deploy == 'true')) }}
+    if: ${{ inputs.provision_speech_secrets != true && (always() && github.event_name != 'pull_request' && inputs.telegram_authority_canary != true && needs.bind-telegram-release-attempt.result == 'success' && (((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main-v3') && needs.resolve-telegram-environment-authority.result == 'skipped' && (needs.validate-deploy-source.result == 'success' || needs.validate-deploy-source.result == 'skipped') && needs.validate-staging-certification.result == 'success' && needs.authorize-production.result == 'success' || !((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main-v3') && needs.resolve-telegram-environment-authority.result == 'success' && needs.admit-staging.outputs.should_deploy == 'true')) }}
     # One critical section for migrate + API + Pages + routing proof.
     # `queue: max` is GitHub's production-deploy contract: up to 100 approved
     # releases wait instead of the default one-pending eviction. FIFO is by
     # wait-start, not dispatch; ordering is not guaranteed. Incompatible with
     # cancel-in-progress: true (#18092).
     concurrency:
-      group: cloud-cf-release-v6-${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging' }}
+      group: cloud-cf-release-v6-${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main-v3') && 'production' || 'staging' }}
       cancel-in-progress: false
       queue: max
     uses: ./.github/workflows/cloud-cf-release.yml
@@ -1172,7 +1172,7 @@ jobs:
       VAST_BASE_URL: ${{ secrets.VAST_BASE_URL }}
       VOICE_REALTIME_ELIZA_AUTHORIZATION: ${{ secrets.VOICE_REALTIME_ELIZA_AUTHORIZATION }}
     with:
-      target_environment: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging' }}
+      target_environment: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main-v3') && 'production' || 'staging' }}
       telegram_authority_run_attempt: ${{ needs.resolve-telegram-environment-authority.result == 'success' && needs.resolve-telegram-environment-authority.outputs.telegram_authority_run_attempt || needs.bind-telegram-release-attempt.outputs.run_attempt }}
       admitted_telegram_bot_id: ${{ needs.resolve-telegram-environment-authority.outputs.telegram_bot_id }}
       admitted_telegram_bot_username: ${{ needs.resolve-telegram-environment-authority.outputs.telegram_bot_username }}
@@ -1198,7 +1198,7 @@ jobs:
     # A freshness-guard skip also ends green without deploying, so only a run
     # that released BOTH the Worker and Pages (and therefore ran their exact
     # commit verification) may certify its tree (#27229/#28746).
-    if: ${{ inputs.provision_speech_secrets != true && (always() && inputs.telegram_authority_canary != true && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/staging' && needs.release.result == 'success' && needs.release.outputs.superseded != 'true' && needs.release.outputs.api_deployed == 'true' && needs.release.outputs.pages_deployed == 'true') }}
+    if: ${{ inputs.provision_speech_secrets != true && (always() && inputs.telegram_authority_canary != true && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/staging-v3' && needs.release.result == 'success' && needs.release.outputs.superseded != 'true' && needs.release.outputs.api_deployed == 'true' && needs.release.outputs.pages_deployed == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:

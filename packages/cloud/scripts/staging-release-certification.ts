@@ -17,7 +17,7 @@ export const CERTIFICATION_SCHEMA =
 export const CERTIFICATION_WORKFLOW = ".github/workflows/cloud-cf-deploy.yml";
 export const CERTIFICATION_ENVIRONMENT = "staging";
 export const CERTIFICATION_EVENTS = ["push", "workflow_dispatch"];
-export const CERTIFICATION_REF = "refs/heads/staging";
+export const CERTIFICATION_REF = "refs/heads/staging-v3";
 export const CERTIFICATION_ARTIFACT_PREFIX = "cloud-staging-certification-v1-";
 export const CERTIFICATION_FILENAME = "staging-cloud-certification.json";
 export const CERTIFICATION_TTL_MS = 14 * 24 * 60 * 60 * 1000;
@@ -207,7 +207,7 @@ export function verifyStagingReleaseCertification({
   if (
     !CERTIFICATION_EVENTS.includes(runMetadata.event) ||
     runMetadata.event !== cert.event ||
-    runMetadata.head_branch !== "staging" ||
+    runMetadata.head_branch !== "staging-v3" ||
     runMetadata.path !== CERTIFICATION_WORKFLOW
   ) {
     fail("originating run is not the canonical staging Cloud workflow");
