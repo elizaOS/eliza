@@ -277,7 +277,7 @@ module node {
 
 import { checked, everyBrowserCapability, frontPage, offeredForms, ownerTurn, pageObservation } from node
 
-it.effect(`Ground a Browser proposal in the owner's own words or an exact page link, bind only a whole-message request, or offer nothing, and show Browser while a command runs (spec/agent/conversation/planning.md, "A tool's progress names its app only when one labelled app applies, and never its arguments or results"; spec/browser/control.md, "Story: Propose a Browser control in my own words"; spec/browser/control.md, "A search carries only words I typed in this message, spelled as I typed them"; spec/browser/control.md, "A search, tab switch or find runs without my review only on words I typed for it, and a search only as my whole message"; spec/browser/control.md, "Closing every tab on a phone that closes one tab at a time is refused with its reason, never narrowed"; spec/browser/control.md, "A refused Browser proposal tells me how to ask, and never says anything opened"; spec/browser/control.md, "Each control needs its group's capability, and a new-tab open needs its own"; spec/browser/control.md, "A history move has one home: the Browser control where my phone negotiated it, or else the BROWSER command"; spec/browser/requestGrounding.md, "A page link opens only as an exact link of the page my message carried, and only after my review"; spec/browser/requestGrounding.md, "An open runs without my review only when my whole message asked to open that address"; spec/browser/requestGrounding.md, "My whole-message open command opens the address without waiting on the model's choice"; spec/browser/requestGrounding.md, "An address I asked to open in a new tab opens there, never as an empty tab, and in a tab of its own only where the phone has one"; spec/agent/deviceActions/index.md, "A proposal is offered only on an owner turn of the enrolled device, as its family grounded it, and re-admitted under the turn's negotiation"; spec/browser/control.md, "Story: Tell me a Browser command was sent, never that the page finished"; spec/browser/control.md, "My whole-message request to see my open tabs shows my phone's own tab list without waiting on the model's choice")`, effect () => {
+it.effect(`Ground a Browser proposal in the owner's own words or an exact page link, bind only a whole-message request, or offer nothing, and show Browser while a command runs (spec/agent/conversation/planning.md, "A tool's progress names its app only when one labelled app applies, and never its arguments or results"; spec/browser/control.md, "Story: Propose a Browser control in my own words"; spec/browser/control.md, "A search carries only words I typed in this message, spelled as I typed them"; spec/browser/control.md, "A search, tab switch or find runs without my review only on words I typed for it, and a search only as my whole message"; spec/browser/control.md, "Closing every tab on a phone that closes one tab at a time is refused with its reason, never narrowed"; spec/browser/control.md, "A refused Browser proposal tells me how to ask, and never says anything opened"; spec/browser/control.md, "Each control needs its group's capability, and a new-tab open needs its own"; spec/browser/control.md, "A history move has one home: the Browser control where my phone negotiated it, or else the BROWSER command"; spec/browser/requestGrounding.md, "A page link opens only as an exact link of the page my message carried, and only after my review"; spec/browser/requestGrounding.md, "An open runs without my review only when my whole message asked to open that address"; spec/browser/requestGrounding.md, "An address I asked to open in a new tab opens there, never as an empty tab, and in a tab of its own only where the phone has one"; spec/agent/deviceActions/index.md, "A proposal is offered only on an owner turn of the enrolled device, as its family grounded it, and re-admitted under the turn's negotiation"; spec/browser/control.md, "Story: Tell me a Browser command was sent, never that the page finished"; spec/browser/control.md, "My whole-message request to see my open tabs shows my phone's own tab list without my review")`, effect () => {
   const tabsOnly = ["browser.tabs.v1"]
   const propose = effect (ownerText: string, operation: unknown, capabilities: readonly string[] = everyBrowserCapability, page?: unknown, observation: unknown = pageObservation) => {
     const proposed = try Effect.try(() => checked(operation))
@@ -360,19 +360,20 @@ it.effect(`Ground a Browser proposal in the owner's own words or an exact page l
     try propose("show my tabs and close the bbc one", tabList),
   ]
   const outright = [
-    ...["open example.com in a new tab", "Hey Eliza, visit wikipedia.org.", "can you open example.com?", "example.com", "open example dot com", "don't open example.com"]
-      .map((text) => ownerTurn(text, everyBrowserCapability)),
-    ownerTurn("open example.com", []),
-    ownerTurn("Can you open alphacompute. AI in the browser, please?", everyBrowserCapability),
-    ownerTurn("Open up alphacompute.ai", everyBrowserCapability),
-  ].map((turn) => browserProposalFamily.wholeMessageOperation?.(turn))
+    try propose("open example.com in a new tab", navigate("https://example.com/")),
+    try propose("Hey Eliza, visit wikipedia.org.", navigate("https://wikipedia.org/")),
+  ]
+  const tabListBound = effect (text: string, capabilities: readonly string[], assistantName?: string) => {
+    const turn = { ...ownerTurn(text, capabilities), ...(assistantName === undefined ? {} : { assistantName }) }
+    const grounding = try browserProposalFamily.ground(try Effect.try(() => checked({ type: "browser_tabs_show" })), turn)
+    return grounding.kind === "Grounded" && grounding.grounding !== "GroundedForReview"
+  }
   const tabsAsked = [
-    ownerTurn("show my open tabs", everyBrowserCapability), ownerTurn("Hey Eliza, what tabs do I have open?", ["browser.tabs.show.v1"]),
-    { ...ownerTurn("Hey Eliza, what tabs do I have open?", everyBrowserCapability), assistantName: "" },
-    ownerTurn("show my open tabs", tabsOnly), ownerTurn("show my tabs and close the bbc one", everyBrowserCapability), ownerTurn("open a new tab", everyBrowserCapability),
-    ownerTurn("Alpha, show my tabs", everyBrowserCapability), ownerTurn("show my tabs\u0000", everyBrowserCapability),
-  ].map((turn) => browserProposalFamily.wholeMessageOperation?.(turn))
-  const tabsAskedOfAlpha = (text: string) => browserProposalFamily.wholeMessageOperation?.({ ...ownerTurn(text, everyBrowserCapability), assistantName: "Alpha" })?.type === "browser_tabs_show"
+    try tabListBound("show my open tabs", everyBrowserCapability), try tabListBound("Hey Eliza, what tabs do I have open?", ["browser.tabs.show.v1"]),
+    try tabListBound("Hey Eliza, what tabs do I have open?", everyBrowserCapability, ""),
+    try tabListBound("show my tabs and close the bbc one", everyBrowserCapability), try tabListBound("open a new tab", everyBrowserCapability),
+    try tabListBound("Alpha, show my tabs", everyBrowserCapability), try tabListBound("show my tabs\u0000", everyBrowserCapability),
+  ]
   const tabListAsks = [
     "show my open tabs", "Show me my tabs.", "list my browser tabs", "show all my open tabs", "please show the open tabs", "Alpha, show my tabs",
     "can you show me my open tabs?", "what tabs do I have open?", "Which tabs are open", "what browser tabs do I have open in the browser",
@@ -384,8 +385,12 @@ it.effect(`Ground a Browser proposal in the owner's own words or an exact page l
     "how do tabs work", "don't show my tabs", "open example.com", "show tabs from yesterday's research in a note", "alphashow my tabs",
     "what tabs do I have open in chrome",
   ]
+  const unboundAsks: string[] = []
+  for (const text of tabListAsks) if (!(try tabListBound(text, everyBrowserCapability, "Alpha"))) unboundAsks.push(text)
+  const boundOthers: string[] = []
+  for (const text of notTabListAsks) if (try tabListBound(text, everyBrowserCapability, "Alpha")) boundOthers.push(text)
+
   const shown = (try Effect.try(() => checked({ type: "browser_tabs_show" }))).operation
-  const asked = try propose("open example.com in a new tab", outright[0])
   const wikipedia = (try Effect.try(() => checked(navigate("https://wikipedia.org/", true)))).operation
   const told = [
     browserProposalFamily.proposedText(wikipedia, { direct: true, timeZone: undefined, ownerText: "open wikipedia.org in a new tab" })?.forOwner,
@@ -427,13 +432,9 @@ it.effect(`Ground a Browser proposal in the owner's own words or an exact page l
     assert.strictEqual(toldShown?.forOwner, "Doing that in Browser.")
     assert.match(toldShown?.forModel ?? "", /has not run yet/)
     assert.isUndefined(browserProposalFamily.settledText(shown, { outcome: "applied" }, undefined))
-    assert.deepStrictEqual(tabsAsked, [{ type: "browser_tabs_show" }, { type: "browser_tabs_show" }, { type: "browser_tabs_show" }, undefined, undefined, undefined, undefined, undefined])
-    assert.deepStrictEqual(tabListAsks.filter((text) => !tabsAskedOfAlpha(text)), [])
-    assert.deepStrictEqual(notTabListAsks.filter(tabsAskedOfAlpha), [])
-    assert.deepStrictEqual(outright, [
-      navigate("https://example.com/"), navigate("https://wikipedia.org/"), undefined, undefined, undefined, undefined, undefined, undefined, undefined,
-    ])
-    assert.deepStrictEqual(asked, direct(navigate("https://example.com/", true)))
+    assert.deepStrictEqual(tabsAsked, [true, true, true, false, false, false, false])
+    assert.deepStrictEqual([unboundAsks, boundOthers], [[], []])
+    assert.deepStrictEqual(outright, [direct(navigate("https://example.com/", true)), direct(navigate("https://wikipedia.org/"))])
     assert.deepStrictEqual(offeredForms(ownerTurn("", everyBrowserCapability)), [
       "browser_navigate url newTab", "browser_search query", "browser_tab_new private", "browser_tab_switch target", "browser_tab_close target all", "browser_tabs_show",
       "browser_find text", "browser_history action",
@@ -480,6 +481,17 @@ it.effect(`Refuse a reload of a page the phone withheld unless the owner asked f
     try outcome("Can you open https://bank.example.com/statement#heading in the browser?", samePage, withheld("unreadable")),
     try outcome("Summarize https://bank.example.com/statement#heading", samePage),
   ]
+  const statement = { type: "browser_navigate", url: "https://bank.example.com/statement" } as const
+  const dictatedSite = { type: "browser_navigate", url: "https://alphacompute.ai/" } as const
+  const exactReopen = [
+    try outcome("Please summarize https://bank.example.com/statement in two sentences.", statement, withheld("unreadable")),
+    try outcome("reload this page", statement, withheld("unreadable")),
+    try outcome("open https://bank.example.com/statement#details", statement, withheld("unreadable")),
+    try outcome("Eliza, can you open https://bank.example.com/statement?", statement, withheld("unreadable")),
+    try outcome("open https://bank.example.com/statement", statement, withheld("unreadable")),
+    try outcome("Eliza, can you open https://bank.example.com/statement", statement, withheld("unreadable")),
+    try outcome("Can you open alphacompute. AI in the browser, please?", dictatedSite, { ...withheld("unreadable"), url: "https://alphacompute.ai/" }),
+  ]
   const reloadCommand = browserPlugin.actions?.find((action) => action.name === "BROWSER_RELOAD")
   try Effect.try(() => assert.isTrue(reloadCommand !== undefined))
   const device = renderer([replied(dispatched), replied(dispatched), replied(dispatched)])
@@ -501,6 +513,9 @@ it.effect(`Refuse a reload of a page the phone withheld unless the owner asked f
       "Reload this page. Actually, don't send the email.",
       "Reload this page. Send the email. Actually, don't.",
       "Reload this page, send the email, actually, don't.",
+      "Refresh", "please refresh the page", "can you reload it?", "re-open this page", "open it again", "It looks stuck, reload",
+      "it isn't loading so reload it", "the page won't load so please refresh", "this page doesn't work so reload it",
+      "could you please refresh the page?", "Don't go back but reload it", "open the article then reload it",
     ]
     const mentions = [
       summarize, "don't reload it", "why won't this page reload?", "refresh my memory about this page", "I reloaded it already",
@@ -517,6 +532,12 @@ it.effect(`Refuse a reload of a page the phone withheld unless the owner asked f
       "Reload it, never mind, open a new tab.",
       "Reload it: do not — tell me the time.",
       "Reload this page. Never mind. Summarize what you have.",
+      "what is this page about?", "don't reload the page", "do not reopen or refresh this page", "please do not close this tab and reload it",
+      "Reload this page. Actually, don't.", "Reload this page. Never mind.", "Reload this page, actually, don't.",
+      "do not refresh it, just tell me what it says", "summarize it without reloading", "no need to reload, just read it", "please don't reload it",
+      "reload this page\nand then summarize it", "summarize this article about the reopening of Notre-Dame",
+      "what is the refresh rate on this monitor page?", "summarize this page about refreshing your skin", "why did you reload the page?",
+      "If it fails to load then I'll refresh it myself", "it won't load, so don't reload it, just read it", "it's slow so don't refresh it",
     ]
     assert.deepStrictEqual([...asks, ...mentions].map((text) => ownerAskedBrowserReload(text)), [...asks.map(() => true), ...mentions.map(() => false)])
     assert.deepStrictEqual(refusal.kind === "Refused" ? [refusal.code, refusal.forModel, refusal.forOwner.includes("didn't reload")] : refusal, ["DEVICE_BROWSER_NOT_REQUESTED", BROWSER_RELOAD_WITHHELD_REFUSAL, true])
@@ -528,6 +549,11 @@ it.effect(`Refuse a reload of a page the phone withheld unless the owner asked f
       { operation: { type: "browser_history", action: "back" }, reviewed: false },
     ])
     assert.deepStrictEqual(reopen.map(result => typeof result === "string" ? result : result.operation), ["DEVICE_BROWSER_NOT_REQUESTED", "DEVICE_BROWSER_NOT_REQUESTED", samePage, samePage, samePage])
+    assert.deepStrictEqual(exactReopen, [
+      "DEVICE_BROWSER_NOT_REQUESTED", "DEVICE_BROWSER_NOT_REQUESTED",
+      { operation: { type: "browser_navigate", url: "https://bank.example.com/statement#details" }, reviewed: false }, { operation: statement, reviewed: false },
+      { operation: statement, reviewed: false }, { operation: statement, reviewed: false }, { operation: dictatedSite, reviewed: false },
+    ])
     assert.deepStrictEqual([unasked, sensitive, withdrawn].map((result) => [result.success, failureKind(result), result.text]), Array.from({ length: 3 }, () => [false, "POLICY_BLOCKED", BROWSER_RELOAD_WITHHELD_REFUSAL]))
     assert.strictEqual(asksAfterRefusal, 0)
     assert.deepStrictEqual([asked, askedSensitive, readable].map((result) => [result.success, result.data?.executionStatus]), [[true, "dispatched"], [true, "dispatched"], [true, "dispatched"]])

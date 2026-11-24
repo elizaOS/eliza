@@ -234,32 +234,29 @@ pure val proposedValues = Set(typedSearch, { ...typedSearch, wholeMessage: false
   { ...typedSearch, control: TabListControl, wordsTyped: false }, { ...typedSearch, control: TabListControl, wholeMessage: false, wordsTyped: false })
 ```
 
-### My whole-message request to see my open tabs shows my phone's own tab list without waiting on the model's choice
+### My whole-message request to see my open tabs shows my phone's own tab list without my review
 
-When the owner's whole message asks only to see the open Browser tabs, it is
-the turn's first call to show the phone's own list of open tabs, before the
-model is asked; it is bound to that message and runs without the owner's
-review. Such a message may open with a greeting ("hey", "hi", "ok", "okay")
-and the assistant's name, Eliza where the character has none, followed by a
-space, a comma or a colon, and may ask with "please", "can you", "could you"
-or "let me" before it or ", please" after it; it then shows, lists or lets
-the owner see their (open) (browser) tabs or tab list, optionally "open" or
-"in the browser", or asks what or which tabs they have open or are open, or
-what their open tabs are. A request that also asks for something else, a
-negated one, one about another app, a name joined to the next word, or a
-request about anything other than the open tabs is not one, and is left to
-the model. The call runs first only where the phone negotiated
-`browser.tabs.show.v1`. The phone keeps the list, its titles, addresses and
-count; the agent learns only that the phone was asked to show it, and never
-says which tabs are open or how many.
+When the owner's whole message asks only to see the open Browser tabs, a
+tab list the model proposes for it is bound to that message and runs
+without the owner's review. Whether to show the list is the model's
+choice, as for any request: nothing shows it before the model has seen the
+message. Such a message may open with a greeting ("hey", "hi", "ok",
+"okay") and the assistant's name, Eliza where the character has none,
+followed by a space, a comma or a colon, and may ask with "please", "can
+you", "could you" or "let me" before it or ", please" after it; it then
+shows, lists or lets the owner see their (open) (browser) tabs or tab list,
+optionally "open" or "in the browser", or asks what or which tabs they have
+open or are open, or what their open tabs are. A request that also asks for
+something else, a negated one, one about another app, a name joined to the
+next word, or a request about anything other than the open tabs is not one,
+and a tab list the model proposes for it is reviewed. The list is offered
+only where the phone negotiated `browser.tabs.show.v1`. The phone keeps the
+list, its titles, addresses and count; the agent learns only that the phone
+was asked to show it, and never says which tabs are open or how many.
 
 ```quint
-pure def tabListAskedFirst(wholeMessageAsks: bool, tabListNegotiated: bool): bool = wholeMessageAsks and tabListNegotiated
-pure def lawOnlyAWholeMessageAskShowsTabsFirst(wholeMessageAsks: bool, tabListNegotiated: bool): bool =
-  tabListAskedFirst(wholeMessageAsks, tabListNegotiated) implies wholeMessageAsks
-pure def lawTheTabListIsAskedFirstOnlyWhereNegotiated(tabListNegotiated: bool): bool = tabListAskedFirst(true, tabListNegotiated) iff tabListNegotiated
-pure def lawAnAskedTabListRunsWithoutReview(wholeMessageAsks: bool, tabListNegotiated: bool): bool =
-  tabListAskedFirst(wholeMessageAsks, tabListNegotiated) implies
+pure def lawAWholeMessageTabListRunsWithoutReview(tabListNegotiated: bool): bool =
+  tabListNegotiated implies
     runsUnreviewed({ control: TabListControl, boundToMessage: controlBound({ control: TabListControl, wholeMessage: true, wordsTyped: false }), wordsTyped: false })
 ```
 
