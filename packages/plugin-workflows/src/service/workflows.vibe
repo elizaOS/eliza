@@ -13,7 +13,7 @@ import {
 } from "../contract/phone.vibe"
 import { validateWorkflowReadResult, workflowOperationAdmitted, type WorkflowDeviceBinding, type WorkflowDeviceOperation, type WorkflowPhoneReview } from "../contract/device.vibe"
 import { HOSTED_DIGEST_METADATA_KEY } from "../contract/digest.vibe"
-import { checkWorkflowScope, WORKFLOW_OPERATION_LABELS } from "../scope.vibe"
+import { WORKFLOW_OPERATION_LABELS } from "../scope.vibe"
 import { WORKFLOW_ENGINE, WORKFLOW_PHONE_SPEC_METADATA_KEY } from "../client/workflow-client.vibe"
 import { workflowRunDeepLink } from "../client/notices.vibe"
 import { TYPED_STEPS_NODE, type ParentMessage, type WorkerMessage, type WorkerResume } from "../worker/protocol.vibe"
@@ -306,8 +306,6 @@ function workflowDrafts(host: WorkflowHost) {
     const operations = p.operations
     if (!Array.isArray(operations) || operations.length === 0 || operations.length > 16 || new Set(operations).size !== operations.length
       || operations.some((op) => typeof op !== "string" || !offered.includes(op))) return try refuse(409, "Workflow generation capabilities changed")
-    const scope = checkWorkflowScope(p.prompt, operations as string[])
-    if (scope.refused) return try refuse(422, `Workflow needs clarification: ${scope.message}`)
     const existing = p.existing === undefined ? undefined : try normalized(p.existing)
     const device = p.device === undefined ? existing?.device : (try normalized({
       version: 1, name: "Target", description: "", trigger: { kind: "manual" }, steps: [{ id: "input", kind: "Read", operation: "supplied_text", text: "" }], device: p.device,
@@ -321,7 +319,7 @@ function workflowDrafts(host: WorkflowHost) {
     const draft = host.draft
     if (draft === undefined) return try refuse(409, "Typed generation is unavailable on this agent")
     const { device: _device, trigger: _trigger, ...existing } = input.existing ?? {}
-    const prompt = `Return one JSON object describing a manual phone workflow, or {"unsupported":"brief reason"} if the request cannot be represented in the permitted operations and selected scopes. Do not silently drop requested behavior. Never return code, source, tools, credentials, device identity, schedules or activation. This creates an editable draft only; it does not save or run anything.
+    const prompt = `Return one JSON object describing a manual phone workflow, or {"unsupported":"brief reason"} if the request cannot be represented in the permitted operations and selected scopes. Do not silently drop requested behavior: no operation here calls, texts, messages, emails or pays anyone, runs code or reaches the web, so a request for any of those is unsupported. Never return code, source, tools, credentials, device identity, schedules or activation. This creates an editable draft only; it does not save or run anything.
 Schema: {"version":1,"name":"1–200 chars","description":"0–4000 chars","trigger":{"kind":"manual"},"steps":[...]}.
 Use 1–32 steps. Every step has a unique id matching [A-Za-z][A-Za-z0-9_-]* (max 80). A source must be an earlier step id. Only these exact operation field shapes exist:
 Read/supplied_text: {id,kind:"Read",operation:"supplied_text",text} (max 16000).
