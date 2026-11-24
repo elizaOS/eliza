@@ -221,15 +221,6 @@ available. Clients that bind a local vault to the organization require this
 header and verify both IDs against the signed-in account before using the
 approval.
 
-For Android Credential Manager the same endpoint accepts `approval=native-google`
-with the registered client, environment and redirect. It advertises version 3
-only when the tenant registers that Android package and Google presenter for
-this callback. The shared Android client requests a challenge with its
-acknowledged device key. Steward verifies the linked account for that challenge
-without opening a session. A verification returns the owner and organization.
-A data operation receives one short-lived grant for its requested purpose.
-Both flows use the existing encrypted snapshots and revision numbers.
-
 ### App-owned managed Google returns
 
 App-owned connector callbacks use `APP_OAUTH_RETURN_URLS` for exact HTTPS

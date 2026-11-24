@@ -54,6 +54,13 @@ subprojects { subproject ->
             }
         }
     }
+    // Robolectric fetches android-all-instrumented at test time with its own
+    // HTTP client, outside Gradle. Use the Maven Central mirror that Gradle
+    // already uses: repo1.maven.org refuses these requests on hosted runners.
+    // Robolectric still checks the SHA-512 of each jar.
+    subproject.tasks.withType(Test).configureEach { task ->
+        task.systemProperty 'robolectric.dependency.repo.url', rootProject.ext.mavenCentralMirrorUrl
+    }
 }
 
 // Shared WebView contract tests are test-only sources. Production plugin AARs
