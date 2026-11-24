@@ -1,4 +1,4 @@
-// spec/core/asyncContext.md, "Story: Keep concurrent turn context isolated"; spec/core/asyncContext.md, "Scope restoration and peer isolation are exact for every context value"
+// spec/core/asyncContext.md, "Story: Keep concurrent turn context isolated"; spec/core/asyncContext.md, "Scope restoration and peer isolation are exact for every context value"; spec/core/asyncContext.md, "A scope on a host with no asynchronous storage is refused before its callback runs"
 export interface AsyncContextStorage<T> {
   getStore(): T | undefined
   run<R>(store: T, fn: () => R): R
@@ -9,10 +9,6 @@ export type AsyncContextStorageFactory = <T>() => AsyncContextStorage<T>
 module platform {
   import type { AsyncContextStorage, AsyncContextStorageFactory } from "./async-context-storage.vibe"
 
-  /**
-   * No storage on this host carries a context across `await`. A scope is refused rather than entered: a synchronous
-   * stack would drop the context at the scope's first continuation, and a check that reads it there would pass open.
-   */
   export class AsyncContextUnavailableError extends Error {
     constructor() {
       super("No asynchronous context storage is installed on this host, so a context scope cannot reach its continuations: import @elizaos/core-node or register a storage with registerAsyncContextStorageFactory")
@@ -34,11 +30,7 @@ module platform {
     }
   }
 
-  /**
-   * The host's own `AsyncLocalStorage`, as Node offers it through `process.getBuiltinModule`, found without a static
-   * import so that the browser build of this package names no Node module; else a storage that refuses every scope.
-   * @throws {never}
-   */
+  /** @throws {never} */
   export function asyncContextStorageFactoryFor(host: unknown): AsyncContextStorageFactory {
     const runtime = (host as { process?: { getBuiltinModule?: (id: string) => unknown } } | null | undefined)?.process
     let hooks: unknown
@@ -56,14 +48,17 @@ import { AsyncContextUnavailableError, asyncContextStorageFactoryFor, refusingSt
 export { AsyncContextUnavailableError, asyncContextStorageFactoryFor }
 
 let activeFactory: AsyncContextStorageFactory = asyncContextStorageFactoryFor(globalThis)
-/** Bumped by each registration that changes the kind of storage; a storage made before it re-makes its inner storage. */
 let generation = 0
+
+function storageClass(factory: AsyncContextStorageFactory): object | null {
+  const prototype: unknown = Object.getPrototypeOf(factory<unknown>())
+  return typeof prototype === "object" && prototype !== null && prototype !== Object.prototype ? prototype : null
+}
 
 export function registerAsyncContextStorageFactory(factory: AsyncContextStorageFactory): void {
   if (factory === activeFactory) return
-  const sameKind = activeFactory !== refusingStorage
-    && Object.getPrototypeOf(factory<unknown>()) === Object.getPrototypeOf(activeFactory<unknown>())
-  if (sameKind) return
+  const active = activeFactory === refusingStorage ? null : storageClass(activeFactory)
+  if (active !== null && storageClass(factory) === active) return
   activeFactory = factory
   generation += 1
 }

@@ -26,8 +26,8 @@ module traceBoundary {
 import { isProxy, throwOnRead } from traceBoundary
 registerProxyInspector(isProxy)
 
-// spec/core/asyncContext.md, "Story: Keep concurrent turn context isolated"; spec/core/asyncContext.md, "Scope restoration and peer isolation are exact for every context value"
-it.live('A host with no asynchronous context storage refuses a scope rather than drop it at the first await, and Node keeps each scope without any registration (spec/core/asyncContext.md, "Story: Keep concurrent turn context isolated")', () => effect {
+// spec/core/asyncContext.md, "Story: Keep concurrent turn context isolated"; spec/core/asyncContext.md, "Scope restoration and peer isolation are exact for every context value"; spec/core/asyncContext.md, "A scope on a host with no asynchronous storage is refused before its callback runs"
+it.live('A host with no asynchronous context storage refuses a scope rather than drop it at the first await, and Node keeps each scope without any registration (spec/core/asyncContext.md, "A scope on a host with no asynchronous storage is refused before its callback runs"; spec/core/asyncContext.md, "Story: Keep concurrent turn context isolated")', () => effect {
   let entered = false
   const refusing = asyncContextStorageFactoryFor({})<string>()
   const refused = try Effect.flip(Effect.try({ try: () => refusing.run("turn-one", () => { entered = true }), catch: (error) => error }))
