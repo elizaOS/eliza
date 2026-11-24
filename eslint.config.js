@@ -176,6 +176,7 @@ const barrelImports = {
   "packages/plugin-browser/test/browser.test.vibe": ["@elizaos/agent/device-actions"],
   "packages/plugin-calendar/src/index.vibe": ["@elizaos/agent/device-actions"],
   "packages/plugin-calendar/src/plugin/device-proposals.vibe": ["@elizaos/agent/device-actions"],
+  "packages/plugin-calendar/src/plugin/phone-turn.vibe": ["@elizaos/agent/device-actions"],
   "packages/plugin-calendar/src/series/deletions.vibe": ["@elizaos/os/bridges/deletion-window"],
   "packages/plugin-calendar/test/reviewed-reads.test.vibe": ["@elizaos/agent/device-actions"],
   "packages/plugin-elizacloud/src/index.vibe": ["@elizaos/cloud/client"],
