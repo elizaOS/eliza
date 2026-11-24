@@ -2102,7 +2102,7 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
       history("&startHistoryId=0100"), history("&startHistoryId=1000&startHistoryId=1001"), history("&unexpected=1"), history("&side=agent"), cloud.call(`${path}?grantId=${grant}`)
     ])
     const otherOrganization = try cloud.call(`${path}?grantId=${grant}`, { headers: other.headers })
-    try sql(cloud, "UPDATE accounts SET organization_id = $1 WHERE key = $2", [device.organizationId, other.userId])
+    try shareOrganization(cloud, other.userId, device.organizationId)
     const otherUser = try cloud.call(`${path}?grantId=${grant}`, { headers: other.headers })
     const providerCallsOnRefusal = cloud.fakes.seen.length - beforeRefusals
 
@@ -2523,6 +2523,11 @@ effect function linkedGrant(cloud: TestCloud, owner: Owner, connectionId: string
     connectionId, owner, subject: `subject-${connectionId}`, email: `${connectionId}@example.com`, grantedScopes: scopes,
     tokens: { refreshToken, accessToken: `stale-${connectionId}`, expiresAt }, now: expiresAt - 1
   }))
+}
+
+effect function shareOrganization(cloud: TestCloud, userId: string, organizationId: string) {
+  try sql(cloud, "ALTER TABLE accounts DROP CONSTRAINT accounts_organization_id_key", [])
+  try sql(cloud, "UPDATE accounts SET organization_id=$2, state=jsonb_set(state,'{organizationId}',to_jsonb($2::text)) WHERE key=$1", [userId, organizationId])
 }
 
 effect function serveOnStore(cloud: TestCloud, routes: ReadonlyArray<Route>, edit?: ProfileEdit) {
@@ -3086,11 +3091,6 @@ describe("WP10 Operator and deletion (spec/cloud/identity/deletion.md, \"Story: 
   effect function requestRemoval(cloud: TestCloud, owner: Owner) {
     const result = try printed(operator(cloud, ["account", "delete", "--user", owner.userId, "--confirmed-with-owner"]))
     try check(() => assert.ok(Exit.isSuccess(result.exit), result.err.join("\n")))
-  }
-
-  effect function shareOrganization(cloud: TestCloud, userId: string, organizationId: string) {
-    try sql(cloud, "ALTER TABLE accounts DROP CONSTRAINT accounts_organization_id_key", [])
-    try sql(cloud, "UPDATE accounts SET organization_id=$2, state=jsonb_set(state,'{organizationId}',to_jsonb($2::text)) WHERE key=$1", [userId, organizationId])
   }
 
   effect function checkoutDeletion(cloud: TestCloud, owner: Owner) {
