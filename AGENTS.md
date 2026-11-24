@@ -48,7 +48,14 @@ The spec format, naming rules and everything the tools accept are in
   including Quint, Dafny, Bombadil, and every other repository test and CI check.
 - **Evidence.** For every code change, show reproducible before-and-after
   results under comparable conditions. For every UI change, attach
-  before-and-after screenshots of the same flow and state.
+  before-and-after screenshots of the same flow and state. Complete the
+  [Evidence section](CONTRIBUTING.md#evidence) before opening or marking a PR
+  ready. Include test results and proof of a useful change on the tested
+  revision, plus video, runtime logs, benchmarks, or physical-device results
+  as applicable. Maintainers close work with no demonstrated benefit and
+  extra complexity for unlikely paths without evidence of reachability and
+  impact. Eligible Slop.cash submissions can lose Points under the published
+  policy.
 - **Diff quality.** Keep changes focused and remove unnecessary files
   and dead, redundant, or superseded code and legacy paths. Follow the
   code comment ban and satisfy every Vibestack requirement and TypeScript
