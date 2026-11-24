@@ -34,6 +34,30 @@ pure def lawProjectionAccountsForEveryConstraint(constraints: Set[SchemaConstrai
 }
 ```
 
+### A tool's parameters keep the nested shape of its input schema down to a fixed depth
+
+Each property of a tool's input schema becomes a parameter the agent offers the model and checks a call against. Down to the depth limit a typed value keeps every part of its shape it declares: the properties of a nested object, which of them are required, whether it allows other names and of what shape, and the shape of an array's items. A value that names no type, or lies deeper than the limit, accepts a value of any type, and an array in it holds values of any type down to the limit; the original schema still checks it before the call.
+
+```quint
+type ShapeFacet = NestedProperties | RequiredNames | OtherNames | ArrayItems
+type ParameterShape = { facets: Set[ShapeFacet], anyValue: bool }
+pure val maxShapeDepth = 4
+pure def keepsDeclaredShape(typed: bool, depth: int): bool = typed and depth <= maxShapeDepth
+pure def projectShape(declared: Set[ShapeFacet], typed: bool, depth: int): ParameterShape =
+  if (keepsDeclaredShape(typed, depth)) { facets: declared, anyValue: false } else { facets: Set(), anyValue: true }
+pure def anyValueNestsArray(depth: int): bool = depth < maxShapeDepth
+pure def lawDeclaredShapeReachesTheModel(declared: Set[ShapeFacet], typed: bool, depth: int): bool = {
+  val shape = projectShape(declared, typed, depth)
+  keepsDeclaredShape(typed, depth) implies (declared.subseteq(shape.facets) and shape.facets.subseteq(declared) and not(shape.anyValue))
+}
+pure def lawUntypedOrDeepValueAcceptsAnyValue(declared: Set[ShapeFacet], typed: bool, depth: int): bool = {
+  val shape = projectShape(declared, typed, depth)
+  not(keepsDeclaredShape(typed, depth)) implies (shape.anyValue and shape.facets.size() == 0)
+}
+pure def lawAnyValueArraysStopAtTheLimit(depth: int): bool =
+  anyValueNestsArray(depth) implies depth + 1 <= maxShapeDepth
+```
+
 ### An invocation can be sent once only after its original schema accepts the arguments
 
 A callback carries the exact tool, server generation and invocation identifier. Validation may ask the model to repair arguments. Exhausting the bounded attempts or a transport ambiguity does not authorize another submission.

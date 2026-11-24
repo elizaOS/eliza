@@ -1,9 +1,10 @@
-// spec/mcp/index.md, "Story: Call an explicitly enabled server with valid tool arguments"
+// spec/mcp/index.md, "Story: Call an explicitly enabled server with valid tool arguments"; spec/mcp/index.md, "A tool's parameters keep the nested shape of its input schema down to a fixed depth"; spec/mcp/index.md, "Provider schema projections retain the meaning of omitted constraints in the prompt"
+import type { Action, ActionParameter, ActionParameterSchema, ActionResult } from "@elizaos/core"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 import { Ajv } from "ajv"
-import { connectionAllowed, Machine, machine, type McpServer } from "../gen/mcp.effect.vibe"
+import { anyValueNestsArray, connectionAllowed, Machine, machine, type McpServer, projectShape, type ShapeFacet } from "../gen/mcp.effect.vibe"
 
 export error McpUnavailable { serverId: string; operation: string }
 export error McpRefused { serverId: string; reason: string }
@@ -80,4 +81,149 @@ export effect function callMcpTool(server: McpServer, toolName: string, argument
       throw new McpRefused({ serverId: server.serverId, reason: "invalid tool arguments" })
     }
   })
+}
+
+type SchemaNode = Readonly<Record<string, unknown>>
+
+const VALUE_TYPES = ["string", "number", "integer", "boolean", "object", "array"] as const
+const WIRE_KEYWORDS = new Set(["type", "nullable", "properties", "required", "additionalProperties", "items", "description", "title"])
+
+function isSchemaNode(value: unknown): value is SchemaNode {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+
+function typeNames(node: SchemaNode): string[] {
+  const branches = node.anyOf ?? node.oneOf
+  const named = node.type !== undefined
+    ? [node.type]
+    : Array.isArray(branches) && branches.length > 0 && branches.every((branch) => isSchemaNode(branch) && branch.type !== undefined)
+      ? branches.map((branch) => isSchemaNode(branch) ? branch.type : undefined)
+      : []
+  return named.flat().filter((name): name is string => typeof name === "string")
+}
+
+function anyValue(depth: number): ActionParameterSchema {
+  return {
+    anyOf: [
+      { type: "string" },
+      { type: "number" },
+      { type: "boolean" },
+      { type: "null" },
+      { type: "object", additionalProperties: true },
+      ...(anyValueNestsArray(depth) ? [{ type: "array", items: anyValue(depth + 1) }] : []),
+    ],
+  }
+}
+
+function declaredFacets(node: SchemaNode): ShapeFacet[] {
+  return [
+    ...(isSchemaNode(node.properties) ? ["NestedProperties" as const] : []),
+    ...(Array.isArray(node.required) ? ["RequiredNames" as const] : []),
+    ...(node.additionalProperties !== undefined || node.patternProperties !== undefined ? ["OtherNames" as const] : []),
+    ...(isSchemaNode(node.items) && node.prefixItems === undefined ? ["ArrayItems" as const] : []),
+  ]
+}
+
+function parameterShape(node: unknown, depth: number): ActionParameterSchema {
+  if (!isSchemaNode(node)) return anyValue(depth)
+  const names = typeNames(node)
+  const typed = names.length > 0 && names.every((name) => name === "null" || VALUE_TYPES.some((type) => type === name))
+  const shape = projectShape(declaredFacets(node), typed, depth)
+  if (shape.anyValue) return anyValue(depth)
+  const has = (facet: ShapeFacet) => shape.facets.includes(facet)
+  const branches: ActionParameterSchema[] = VALUE_TYPES.filter((type) => names.includes(type)).map((type) => {
+    if (type === "object") {
+      const properties = has("NestedProperties") && isSchemaNode(node.properties) ? node.properties : {}
+      const required = has("RequiredNames") && Array.isArray(node.required) ? node.required : []
+      return {
+        type,
+        properties: Object.fromEntries(Object.entries(properties).map(([name, child]) => [name, parameterShape(child, depth + 1)])),
+        required: required.filter((name) => typeof name === "string" && Object.hasOwn(properties, name)),
+        additionalProperties: !has("OtherNames") || node.patternProperties !== undefined || node.additionalProperties === true
+          ? true
+          : isSchemaNode(node.additionalProperties) ? parameterShape(node.additionalProperties, depth + 1) : false,
+      }
+    }
+    if (type === "array") return { type, items: has("ArrayItems") ? parameterShape(node.items, depth + 1) : anyValue(depth + 1) }
+    return { type }
+  })
+  if (names.includes("null") || node.nullable === true) branches.push({ type: "null" })
+  const description = depth > 0 && typeof node.description === "string" ? { description: node.description } : {}
+  return branches.length === 1 ? { ...branches[0], ...description } : { anyOf: branches, ...description }
+}
+
+function omitsConstraints(node: unknown): boolean {
+  if (!isSchemaNode(node)) return false
+  return Object.entries(node).some(([keyword, value]) =>
+    !WIRE_KEYWORDS.has(keyword) ||
+    (keyword === "properties" && isSchemaNode(value) && Object.values(value).some(omitsConstraints)) ||
+    ((keyword === "items" || keyword === "additionalProperties") && omitsConstraints(value)))
+}
+
+function parameterDescription(node: unknown): string {
+  const stated = isSchemaNode(node) && typeof node.description === "string" ? node.description : ""
+  if (!omitsConstraints(node)) return stated
+  const original = serialized(node)
+  return original === undefined ? stated : `${stated} JSON schema: ${original}`.trim()
+}
+
+function serialized(node: unknown): string | undefined {
+  try {
+    return JSON.stringify(node)
+  } catch {
+    return undefined
+  }
+}
+
+export function mcpToolParameters(inputSchema: SchemaNode): ActionParameter[] {
+  const properties = isSchemaNode(inputSchema.properties) ? inputSchema.properties : {}
+  const required = Array.isArray(inputSchema.required) ? inputSchema.required : []
+  return Object.entries(properties).map(([name, node]) => ({
+    name,
+    description: parameterDescription(node),
+    required: required.includes(name),
+    schema: parameterShape(node, 0),
+  }))
+}
+
+function actionName(serverId: string, toolName: string, taken: Set<string>): string {
+  const base = `MCP_${serverId}_${toolName}`.toUpperCase().replace(/[^A-Z0-9_]+/g, "_")
+  let name = base
+  for (let suffix = 2; taken.has(name); suffix++) name = `${base}_${suffix}`
+  taken.add(name)
+  return name
+}
+
+function toolText(result: SchemaNode): string {
+  return (Array.isArray(result.content) ? result.content : [])
+    .flatMap((part) => isSchemaNode(part) && part.type === "text" && typeof part.text === "string" ? [part.text] : [])
+    .join("\n")
+}
+
+effect function toolResult(server: McpServer, toolName: string, parameters: Readonly<Record<string, unknown>>) {
+  return effect {
+    const result: SchemaNode = try callMcpTool(server, toolName, [parameters])
+    const text = toolText(result)
+    return (result.isError === true ? { success: false, text, error: text || `${toolName} failed` } : { success: true, text }) satisfies ActionResult
+  } catch (failure) => ({ success: false, error: failure instanceof McpRefused ? failure.reason : `The ${server.serverId} MCP server could not run ${toolName}.` }) satisfies ActionResult
+}
+
+export effect function mcpToolActions(server: McpServer) {
+  const policy = try McpConnectionPolicy
+  const listed = try listMcpTools(server)
+  const taken = new Set<string>()
+  return listed.tools.map((tool): Action => ({
+    name: actionName(server.serverId, tool.name, taken),
+    description: tool.description ?? `Call ${tool.name} on the ${server.serverId} MCP server.`,
+    contexts: ["connectors"],
+    roleGate: { minRole: "ADMIN" },
+    parameters: mcpToolParameters(tool.inputSchema),
+    validate: async () => true,
+    handler: (_runtime, _message, _state, options) => runPromise(effect {
+      const parameters = options?.parameters
+      provide McpConnectionPolicy = policy {
+        return try toolResult(server, tool.name, isSchemaNode(parameters) ? parameters : {})
+      }
+    }),
+  }))
 }
