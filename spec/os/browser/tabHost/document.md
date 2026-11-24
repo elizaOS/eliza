@@ -192,10 +192,14 @@ pure def sometimesPrivatePopup(s: BrowserTab): bool = s.opening == FreshPopup an
 
 The shell classifies the link: a `tel:` link only opens the dialer, a
 `mailto:`, `sms:` or `smsto:` link only opens a compose screen, and a
-`geo:`, `market:` or `intent:` link is viewed; any other link, one over
+`geo:`, `market:` or `intent:` link is viewed. A host may take app links:
+for it, a link with any other well-formed scheme is viewed too, unless the
+scheme is the web's or the browser's own (`http`, `https`, `about`, `blob`,
+`data`, `file`, `content`, `javascript`, `filesystem`, `ws`, `wss`,
+`chrome`, `android-app`) or one of the host's. Any other link, one over
 4,096 units or with a control character, an `intent:` link with another
-action, a forbidden data scheme or the host's own package or schemes, is
-unsupported. A tab hands a link off only while selected and with a native
+action, a forbidden data scheme or the host's own package or schemes, and an
+app link on a host that does not take them, is unsupported. A tab hands a link off only while selected and with a native
 gesture. A fresh pop-up, not yet committed, carries its opener's tap once:
 it hands off while it or its opener is selected, and its first handoff,
 refused or not, spends that tap; the host then closes it unless it loads
@@ -205,13 +209,15 @@ is handed off. When no app resolves the intent, the shell may load the
 link's HTTPS fallback address as a navigation.
 
 ```quint
-type LinkKind = PhoneLink | MailLink | TextLink | MapLink | StoreLink | AppIntentLink | UnsupportedLink
-type LinkTap = { kind: LinkKind, gesture: bool, tabSelected: bool, openerSelected: bool, ownHandler: bool }
+type LinkKind = PhoneLink | MailLink | TextLink | MapLink | StoreLink | AppIntentLink | AppSchemeLink | UnsupportedLink
+type LinkTap = { kind: LinkKind, gesture: bool, tabSelected: bool, openerSelected: bool, ownHandler: bool, hostTakesAppLinks: bool }
 pure def systemLink(kind: LinkKind): bool = kind == PhoneLink or kind == MailLink or kind == TextLink or kind == MapLink
 pure def tapAllowed(fresh: bool, tap: LinkTap): bool =
   if (fresh) tap.tabSelected or tap.openerSelected else tap.tabSelected and tap.gesture
+pure def supportedLink(tap: LinkTap): bool =
+  tap.kind != UnsupportedLink and (tap.kind != AppSchemeLink or tap.hostTakesAppLinks)
 pure def linkHandoff(fresh: bool, tap: LinkTap): Handoff =
-  if (not(tapAllowed(fresh, tap)) or tap.kind == UnsupportedLink or (tap.ownHandler and not(systemLink(tap.kind)))) HandoffRefused
+  if (not(tapAllowed(fresh, tap)) or not(supportedLink(tap)) or (tap.ownHandler and not(systemLink(tap.kind)))) HandoffRefused
   else if (tap.kind == PhoneLink) DialHandoff
   else if (tap.kind == MailLink or tap.kind == TextLink) ComposeHandoff
   else ViewHandoff
@@ -224,15 +230,19 @@ pure def lawHandoffNeedsMyTap(fresh: bool, tap: LinkTap): bool =
   linkHandoff(fresh, tap) != HandoffRefused implies tapAllowed(fresh, tap)
 pure def lawOwnHandlerTakesOnlySystemLinks(fresh: bool, tap: LinkTap): bool =
   (tap.ownHandler and linkHandoff(fresh, tap) != HandoffRefused) implies systemLink(tap.kind)
+pure def lawAppLinkNeedsAHostThatTakesThem(fresh: bool, tap: LinkTap): bool =
+  (tap.kind == AppSchemeLink and linkHandoff(fresh, tap) != HandoffRefused) implies tap.hostTakesAppLinks
 pure def stepOnlyANewPopupCarriesItsOpenersTap(before: BrowserTab, via: str, after: BrowserTab): bool =
   (freshPopup(after) and not(freshPopup(before))) implies via == "openPopup"
 pure def stepAHandoffSpendsTheOpenersTap(before: BrowserTab, via: str, after: BrowserTab): bool =
   via == "handOff" implies not(freshPopup(after))
 pure val tapValues: Set[LinkTap] = List(
-  { kind: MailLink, gesture: false, tabSelected: false, openerSelected: true, ownHandler: false },
-  { kind: PhoneLink, gesture: true, tabSelected: true, openerSelected: false, ownHandler: true },
-  { kind: AppIntentLink, gesture: true, tabSelected: true, openerSelected: false, ownHandler: true },
-  { kind: MapLink, gesture: false, tabSelected: true, openerSelected: false, ownHandler: false }
+  { kind: MailLink, gesture: false, tabSelected: false, openerSelected: true, ownHandler: false, hostTakesAppLinks: false },
+  { kind: PhoneLink, gesture: true, tabSelected: true, openerSelected: false, ownHandler: true, hostTakesAppLinks: false },
+  { kind: AppIntentLink, gesture: true, tabSelected: true, openerSelected: false, ownHandler: true, hostTakesAppLinks: false },
+  { kind: MapLink, gesture: false, tabSelected: true, openerSelected: false, ownHandler: false, hostTakesAppLinks: false },
+  { kind: AppSchemeLink, gesture: true, tabSelected: true, openerSelected: false, ownHandler: false, hostTakesAppLinks: true },
+  { kind: AppSchemeLink, gesture: true, tabSelected: true, openerSelected: false, ownHandler: false, hostTakesAppLinks: false }
 ).foldl(Set(), (acc, t) => acc.union(Set(t)))
 pure def sometimesPopupHandedOff(s: BrowserTab): bool = s.opening == UsedPopup and s.status == PageLoading and s.lastHandoff == ComposeHandoff
 pure def sometimesUntappedLinkRefused(s: BrowserTab): bool = s.custody == Owned and s.lastHandoff == HandoffRefused
