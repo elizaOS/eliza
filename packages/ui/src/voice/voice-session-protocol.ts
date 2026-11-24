@@ -182,7 +182,7 @@ export interface ServerUsageEvent {
   traceId: string;
 }
 export type ServerControlFrame =
-  | { t: "lease_extended"; sessionId: string; expiresAt: number }
+  | { t: "lease_extended"; sessionId: string; expiresAt: number; final?: true }
   | {
       t: "turn_terminal";
       traceId: string;
@@ -271,8 +271,9 @@ export function parseServerControl(raw: string): ServerControlFrame | null {
       typeof frame.sessionId !== "string" ||
       !frame.sessionId ||
       !Number.isSafeInteger(frame.expiresAt) ||
+      (frame.final !== undefined && frame.final !== true) ||
       Object.keys(frame).some(
-        (key) => !["t", "sessionId", "expiresAt"].includes(key),
+        (key) => !["t", "sessionId", "expiresAt", "final"].includes(key),
       )
     )
       return null;
@@ -280,6 +281,7 @@ export function parseServerControl(raw: string): ServerControlFrame | null {
       t,
       sessionId: frame.sessionId,
       expiresAt: frame.expiresAt as number,
+      ...(frame.final === true ? { final: true as const } : {}),
     };
   }
   if (t === "turn_terminal") {

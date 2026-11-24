@@ -17,6 +17,7 @@ import {
   SPEECH_RECOVERY_HEADER,
   SPEECH_RELAY_EXTEND_HEADER,
   SPEECH_RELAY_EXTEND_OFFER,
+  SPEECH_RELAY_WINDOWS_HEADER,
   SPEECH_RETIREMENT_HEADER,
 } from "@elizaos/host/voice/speech-relay-wire";
 import { Hono } from "hono";
@@ -270,8 +271,11 @@ app.post("/session", async (c) => {
   url.search = `?sessionId=${sessionId}`;
   c.header("Cache-Control", "no-store");
   // Every renewed window retains its own bounded admission and retirement receipt.
-  if (speechRelayMaxWindows(c.env) > 1)
+  const maxWindows = speechRelayMaxWindows(c.env);
+  if (maxWindows > 1) {
     c.header(SPEECH_RELAY_EXTEND_HEADER, SPEECH_RELAY_EXTEND_OFFER);
+    c.header(SPEECH_RELAY_WINDOWS_HEADER, String(maxWindows));
+  }
   return timer.apply(
     c.json({
       version: 1,

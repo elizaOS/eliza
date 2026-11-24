@@ -34,6 +34,14 @@ export interface SpeechRelayConsent {
  */
 export const SPEECH_RELAY_EXTEND_HEADER = "X-Eliza-Speech-Extend";
 export const SPEECH_RELAY_EXTEND_OFFER = "1";
+/**
+ * Response header beside the extend offer: the most windows, the first
+ * included, that the relay grants this session. A client that knows it holds
+ * the last one can move to a fresh session at an idle moment instead of
+ * losing a turn still in flight when that window ends. Optional; a client
+ * without it renews as before.
+ */
+export const SPEECH_RELAY_WINDOWS_HEADER = "X-Eliza-Speech-Windows";
 export type SpeechRelayHello = {
   t: "hello";
   token: string;

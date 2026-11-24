@@ -862,11 +862,19 @@ it("a paid Cloud renewal updates the active host lease without reopening speech"
   if (!relay.onLeaseExtended)
     throw new Error("Cloud lease renewal was not negotiated");
   const update = once(ws, "message");
-  relay.onLeaseExtended(clock + 110000);
+  relay.onLeaseExtended(clock + 110000, false);
   expect(JSON.parse(String((await update)[0]))).toEqual({
     t: "lease_extended",
     sessionId: ticket.sessionId,
     expiresAt: clock + 110000,
+  });
+  const last = once(ws, "message");
+  relay.onLeaseExtended(clock + 160000, true);
+  expect(JSON.parse(String((await last)[0]))).toEqual({
+    t: "lease_extended",
+    sessionId: ticket.sessionId,
+    expiresAt: clock + 160000,
+    final: true,
   });
   clock += 61000;
   expect(() => relay.assertCurrent()).not.toThrow();
@@ -875,7 +883,7 @@ it("a paid Cloud renewal updates the active host lease without reopening speech"
   ws.send(JSON.stringify({ t: "bye" }));
   await closed;
   expect(() => relay.assertCurrent()).toThrow();
-  expect(() => relay.onLeaseExtended?.(clock + 60000)).toThrow();
+  expect(() => relay.onLeaseExtended?.(clock + 60000, false)).toThrow();
   expect(opens).toBe(1);
 });
 

@@ -379,6 +379,108 @@ test("paid lease renewals preserve one microphone and socket across minute bound
   expect(h.activeCaptures).toBe(0);
   expect(h.errors).toEqual([]);
 });
+test("the relay's last window rotates at its first idle moment, so a later turn is answered on a fresh session (after-13win turn 9)", async () => {
+  const h = harness(false, undefined, true, true, true, true);
+  await h.client.start();
+  await h.settle();
+  const old = h.sockets[0];
+  let deadline = 1800000000000 + 60000;
+  for (let window = 2; window <= 9; window++) {
+    await h.advance(50_000);
+    deadline += 50_000;
+    old.frame({
+      t: "lease_extended",
+      sessionId: "session-1",
+      expiresAt: deadline,
+    });
+    await h.settle();
+  }
+  expect(h.mints).toBe(1);
+  expect(h.marks).not.toContain("token_rotation");
+  await h.advance(10_000);
+  deadline += 50_000;
+  old.frame({
+    t: "lease_extended",
+    sessionId: "session-1",
+    expiresAt: deadline,
+    final: true,
+  });
+  await h.advance(2_000);
+  expect(h.mints).toBe(2);
+  expect(h.consents).toBe(2);
+  expect(h.marks).toContain("token_rotation");
+  expect(old.sent.some((frame) => (frame as { t?: string }).t === "bye")).toBe(
+    true,
+  );
+  expect(h.sockets).toHaveLength(2);
+  expect(h.captures).toBe(1);
+  expect(h.maxCaptures).toBe(1);
+  expect(h.client.state.phase).toBe("listening");
+  // Turn 9 is spoken 23 s before the old cap and lands on the new session.
+  await h.advance(27_000);
+  const fresh = h.sockets[1];
+  fresh.frame({ t: "stt_final", text: "Hey, what's up?", traceId: "turn-9" });
+  fresh.frame({ t: "speaking_start", traceId: "turn-9" });
+  await h.advance(30_000);
+  expect(h.mints).toBe(2);
+  expect(h.client.state.phase).toBe("speaking");
+  expect(h.errors).toEqual([]);
+  await h.client.stop();
+  expect(h.activeCaptures).toBe(0);
+});
+test("a last window that begins mid-turn rotates only once that turn has played", async () => {
+  const h = harness(false, undefined, false, "missing", false, true);
+  await h.client.start();
+  await h.settle();
+  const old = h.sockets[0];
+  old.frame({ t: "stt_final", text: "Hey, what's up?", traceId: "turn-9" });
+  old.frame({
+    t: "lease_extended",
+    sessionId: "session-1",
+    expiresAt: 1800000000000 + 110000,
+    final: true,
+  });
+  await h.advance(5_000);
+  expect(h.mints).toBe(1);
+  expect(h.marks).toContain("token_rotation_deferred");
+  old.frame({ t: "speaking_start", traceId: "turn-9" });
+  await h.advance(5_000);
+  expect(h.mints).toBe(1);
+  old.frame({ t: "speaking_end", traceId: "turn-9" });
+  old.frame({ t: "usage", sttMs: 1000, ttsChars: 12, traceId: "turn-9" });
+  await h.advance(1_000);
+  expect(h.mints).toBe(2);
+  expect(
+    h.events.filter((event) => (event as { t: string }).t === "stt_final"),
+  ).toHaveLength(1);
+  expect(h.bodies.some((body) => "text" in body)).toBe(false);
+  expect(h.maxCaptures).toBe(1);
+  expect(h.errors).toEqual([]);
+});
+test("only a literal final flag ends renewal ownership, and an ordinary renewal never rotates", async () => {
+  const h = harness(false, undefined, false, "missing", false, true);
+  await h.client.start();
+  await h.settle();
+  const old = h.sockets[0];
+  for (const final of [false, "true", 1])
+    old.frame({
+      t: "lease_extended",
+      sessionId: "session-1",
+      expiresAt: 1800000000000 + 110000,
+      final,
+    });
+  old.frame({
+    t: "lease_extended",
+    sessionId: "session-1",
+    expiresAt: 1800000000000 + 110000,
+  });
+  await h.advance(100_000);
+  expect(h.mints).toBe(1);
+  expect(h.marks).not.toContain("token_rotation");
+  expect(h.client.state.phase).toBe("listening");
+  await h.client.stop();
+  expect(h.errors).toEqual([]);
+});
 test("foreign, expanded and delayed renewal acknowledgements cannot replace the active deadline", async () => {
   const h = harness(false, undefined, true, true, true, true);
   await h.client.start();
