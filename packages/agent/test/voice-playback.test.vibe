@@ -1,6 +1,11 @@
 // spec/agent/voice/clientAudio.md, "Story: Record and play speech in the screen without losing a segment"
 import { assert, it } from "@effect/vitest"
-import { host } from "./support/kernel.vibe"
+
+error PlaybackTestFailed { step: string; cause: unknown }
+
+effect function host<A>(step: string, call: () => Promise<A>) {
+  return try tryPromise({ try: () => call(), catch: (cause) => new PlaybackTestFailed({ step, cause }) })
+}
 
 module node {
   import { Effect } from "effect"

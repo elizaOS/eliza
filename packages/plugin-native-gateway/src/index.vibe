@@ -13,7 +13,7 @@ import { native } from capacitor
 
 export const Gateway = native
 
-import { nativeCall, nativeReply } from "@elizaos/os/bridges/bridge"
+import { nativeCall, nativeReply } from "@elizaos/os-bridges"
 import { confirmGateway, connectGateway, initial, mayRouteGatewayRpc } from "../gen/nativeGateway.effect.vibe"
 import type { GatewayConnectOptions, GatewaySendOptions } from "./native-contract.vibe"
 

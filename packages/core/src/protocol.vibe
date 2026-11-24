@@ -295,7 +295,7 @@ export {
   isExpectedLocalEmbeddingUnavailability,
   modelProviderFailureDetails,
 } from "./utils/expected-local-embedding-unavailability.vibe"
-export type { SymlinkType } from "./utils/filesystem.vibe"
+export type SymlinkType = "file" | "dir" | "junction"
 export { getLogPrefix } from "./utils/log-prefix.vibe"
 export { userRequestFromAugmentedText } from "./utils/message-text.vibe"
 export {

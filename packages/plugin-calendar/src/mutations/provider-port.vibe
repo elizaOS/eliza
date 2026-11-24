@@ -1,14 +1,8 @@
 // spec/calendar/actions.md, "An approved change runs only with its reviewed fields for the account that approved it"; spec/calendar/actions.md, "A create is reported only after it reads back from the same calendar"; spec/calendar/actions.md, "A change's result names its target as read before the change and the version it produced"; spec/calendar/seriesScope.md, "A write names its scope: this event, this and following, or all"; spec/calendar/actions.md, "A repeating create carries its reviewed recurrence and reads back with it"; spec/calendar/actions.md, "Only an invitee answers an invitation, and an invitee's delete is a decline"; spec/calendar/actions.md, "Attendees hear of a change only when the owner asked and the calendar can tell them"; spec/calendar/actions.md, "The managed Google calendar is read and changed as one of the active account's calendars"
 import { sha256Hex } from "@elizaos/core"
 import { createOutcome, invitationVerdict, managedEditTargetAllowed, repeatingCreateAllowed, receiptVersion, reviewStillBinds, type InvitationChange, type InvitationVerdict, type OwnerRole } from "../../gen/calendar__actions.effect.vibe"
-import { knownTimeZone } from "../clock.vibe"
-import { holdsRecurrence, type CalendarRecurrence } from "../series/recurrence-rule.vibe"
-import { sameSourceKey, utcInstant, type CalendarEvent, type CalendarEventFields, type CalendarSourceKey } from "../model.vibe"
+import { knownTimeZone, holdsRecurrence, type CalendarRecurrence, sameSourceKey, utcInstant, type CalendarEvent, type CalendarEventFields, type CalendarSourceKey, CalendarPreflightRefused, CalendarWriteNotAccepted, CalendarWriteUnconfirmed, type CalendarMutationFailure, type CalendarMutationPayload, type CalendarMutationPort, type CalendarMutationReceipt, type CalendarMutationRequest } from "@elizaos/plugin-calendar-client"
 import { answeredWith, eventVersion, fieldsOf, holdsFields, ownerRole, type CalendarAccount, type CalendarProviderPort } from "../plugin/providers.vibe"
-import {
-  CalendarPreflightRefused, CalendarWriteNotAccepted, CalendarWriteUnconfirmed,
-  type CalendarMutationFailure, type CalendarMutationPayload, type CalendarMutationPort, type CalendarMutationReceipt, type CalendarMutationRequest,
-} from "./ledger.vibe"
 
 export interface CalendarProviders {
   active(): (CalendarAccount | undefined)!!

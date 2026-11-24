@@ -2,8 +2,8 @@
 import { Effect, Exit, Fiber } from "effect";
 import type { Driver, Options } from "../../gen/maps__navigation.conformance.ts";
 import type { Directions, Travel } from "../../gen/maps__navigation.ts";
-import type { TravelMode } from "../../src/client/contracts.vibe";
-import { usableNavigationFix } from "../../src/client/navigation-fix.vibe";
+import type { TravelMode } from "@elizaos/plugin-maps-client";
+import { usableNavigationFix } from "@elizaos/plugin-maps-client";
 import { until } from "../support/gates.ts";
 import { coordinateOf, heldScreen, positionOf, routeTo, type HeldScreen } from "../support/screen.ts";
 

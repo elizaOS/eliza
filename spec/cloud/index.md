@@ -32,8 +32,8 @@ differ only where a spec says so.
 > My account shows the subscription the billing provider currently recognizes.
 
 Both hosts answer it with the server's chat route, as `services/inference`
-and `services/models` specify it (`src/services/chat.vibe`,
-`src/services/models.vibe`), metered through `shared/metering`.
+and `services/models` specify it (`packages/cloud-worker/src/services/chat.vibe`,
+`packages/cloud-worker/src/services/models.vibe`), metered through `shared/metering`.
 
 ### A request needs an active account and sufficient funding for its quote
 
@@ -269,7 +269,7 @@ pure def canReadCloudCalendarReminder(activeDevice: bool, ownerMatches: bool, gr
 
 Both hosts answer it with the server's speech session and relay routes, as
 `services/speechSession` and `services/speechRelay` specify them
-(`src/services/speech-session.vibe`, `src/services/speech-relay.vibe`); a
+(`packages/cloud-worker/src/services/speech-session.vibe`, `packages/cloud-worker/src/services/speech-relay.vibe`); a
 Worker runs the relay on a socket pair (`deployment`, "Story: Serve the
 deployment from a Worker").
 

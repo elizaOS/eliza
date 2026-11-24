@@ -1,6 +1,5 @@
 // spec/browser/remoteControl.md, "Story: Go back, forward or reload only on the tab the turn observed"; spec/browser/control.md, "Story: Tell me a Browser command was sent, never that the page finished"; spec/browser/control.md, "Story: Propose a Browser control in my own words"; spec/browser/control.md, "A history move has one home: the Browser control where my phone negotiated it, or else the BROWSER command"; spec/agent/conversation/planning.md, "An action may narrow its tool to the turn, never beyond its registered form"
-import { offeredOnlyWhere, showsApp } from "@elizaos/agent"
-import { registerDeviceProposalFamily } from "@elizaos/agent/device-actions"
+import { offeredOnlyWhere, showsApp, registerDeviceProposalFamily } from "@elizaos/agent-host"
 import { promoteSubactionsToActions, type Plugin } from "@elizaos/core"
 import { browserAction, browserContext, historyAsCommand } from "./native-browser.vibe"
 import { browserProposalFamily } from "./proposal.vibe"
@@ -8,6 +7,7 @@ import { browserProposalFamily } from "./proposal.vibe"
 export { BROWSER_VIEW, NativeBrowser, browserAction, browserViewAsker, historyActionResult, viewNativeBrowser } from "./native-browser.vibe"
 export type { BrowserFailureCode, BrowserViewAsked, BrowserViewAsker, BrowserViewGrant, BrowserViewWait, HistoryOutcome, HistoryRequest } from "./native-browser.vibe"
 export { BROWSER_PROPOSAL_TYPES, browserProposalFamily } from "./proposal.vibe"
+export * from "@elizaos/plugin-browser-client"
 
 const browserActions = promoteSubactionsToActions(browserAction)
 for (const action of browserActions) {

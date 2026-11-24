@@ -12,9 +12,10 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
+    "@elizaos/core-node": "workspace:*",
+    "@slack/bolt": "^5.0.0",
     "effect": "4.1.1",
-    "vibelang-runtime": "0.0.13",
-    "@slack/bolt": "^5.0.0"
+    "vibelang-runtime": "0.0.13"
   },
   "devDependencies": {
     "@types/node": "catalog:",
