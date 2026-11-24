@@ -210,6 +210,8 @@ connection failure before streaming begins, it is charged the quote.
 A hang-up cancels the provider call itself
 and is charged the larger of the quoted and reported input tokens and a
 token per four delivered characters, each capped at `Mo::maxTokensPerSide`.
+Delivered characters are those of each delta sent: its text, its reasoning
+text and its tool calls' names and arguments.
 
 ```quint
 type UsageReport = NoUsage | Usage({ usage: Mo::ProviderUsage })
