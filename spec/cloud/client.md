@@ -1,6 +1,6 @@
 # Cloud client
 
-What `@elizaos/cloud/client` speaks: the device side of the cloud. The agent,
+What the `@elizaos/cloud` root speaks: the device side of the cloud. The agent,
 os and the apps around them call the cloud through one client created from
 the API origin and a credential getter. The client never stores or clears a
 credential: custody belongs to os (`spec/os/signIn/credential.md`). Sources

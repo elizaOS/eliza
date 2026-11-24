@@ -6,8 +6,10 @@ through a source projection of its own. The
 published names and signatures, and the [npm release](./release.md)
 owns the freshness of release evidence. This spec owns which entry a
 consumer's import reaches, which evidence may certify it, and which
-browser-safe leaves the package declares and packs. Source, TypeScript
-declaration and packed ESM resolution are separate observations.
+browser-safe leaves the package declares and packs. The package declares one
+code entry, its root, beside its JSON assets; the host-only modules ship
+separately as `@elizaos/core-node`. Source, TypeScript declaration and packed
+ESM resolution are separate observations.
 A compatibility projection keeps every required field and its exact
 discriminant; Effect environment requirements stay internal, and a public
 Promise entry point keeps the typed outcome (see the
@@ -33,7 +35,8 @@ The private source subpath stays outside the package exports.
 ### The selected build profile determines which bytes may satisfy an import
 
 Every recorded manifest of the package exposes the same ordered conditions.
-For a code entry, `eliza-source` precedes `types`, `import`, and `default`.
+The root is the only code entry; every other entry is a JSON asset. For the
+code entry, `eliza-source` precedes `types`, `import`, and `default`.
 The last two target the same ESM file. JSON entries expose `eliza-source`
 and `default`. The packed package lists `dist` as its shipped files, so a
 validation intended for ordinary package consumers must exercise declaration
@@ -116,7 +119,8 @@ pure def lawPackedBrowserValueCannotLoadHostCode(candidate: str, evidence: Impor
 > exactly as declared and free of host-only code, so that my bundle never
 > pulls the Node runtime in.
 
-Each browser-safe leaf names the core spec whose rules own its behavior:
+Each browser-safe leaf is served through the root entry, and none has a code
+subpath of its own. Each names the core spec whose rules own its behavior:
 
 | Leaf | Owner |
 | --- | --- |
@@ -136,11 +140,17 @@ Each browser-safe leaf names the core spec whose rules own its behavior:
 
 A leaf's resolved static import closure is observed once, at pack time:
 browser-safe leaves load only other browser-safe modules. A pack is admitted
-only when every declared leaf is in the packed export map, the packed map
-exports nothing undeclared, and no packed leaf's closure reaches a host-only
-module. A missing leaf breaks its consumers, an undeclared one is an unowned
+only when the root serves every declared leaf, the packed export map exports
+no code entry but the root, and no packed leaf's closure reaches a host-only
+module. A missing leaf breaks its consumers, a code subpath is an unowned
 public surface, and a host-only closure pulls the Node runtime into a
-browser bundle.
+browser bundle. A code subpath the package used to export, such as
+`./protocol` or `./logging`, is no longer exported, and resolving it is
+refused. The host-only modules (media fetch, the network guard, the
+filesystem and state directory helpers, the hook service, the catalog
+generator and the Node adapters behind async context) are
+`@elizaos/core-node`'s, which a Node host imports to install those
+adapters.
 
 ```quint
 type CoreLeaf = LoggingLeaf | ReadMemoLeaf | ViewInteractionLeaf | SpeechLeaf | SchemaTypesLeaf | ProtocolLeaf | EventsLeaf
