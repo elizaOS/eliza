@@ -551,7 +551,7 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
     separate: [separate.text, separateCalls],
     corrected: [corrected.text, correctedCalls],
     correctedAgain: [correctedAgain.text, correctedAgainCalls, correctedNote.includes("a later call of the same action did run") && correctedNote.includes("A CALCULATE call did not start.")],
-    otherLater: [otherLater.text, otherLaterCalls, otherLaterNote.includes("unless that later call did what this step was for")],
+    otherLater: [otherLater.text, otherLaterCalls, otherLaterNote.includes("If it did not, the reply must tell the person truthfully that this step did not happen.")],
     refusalStatuses: [separate, corrected].map(({ actionResults }) => actionResults.map(({ data }) => data.executionStatus)),
     duration: duration.text,
     labels: { text: solved.action, voice: spoken.action },

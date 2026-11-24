@@ -56,7 +56,7 @@ export function failureNote({ words, verified, answerableLater }: FailureNotice)
   const cut = words.length > toolMessageLimit ? `${words.slice(0, toolMessageLimit)}…` : words
   const report = `The step's own report: ${verified ? JSON.stringify(cut) : wrapExternalContent(cut, { source: "unknown" })}`
   return answerableLater
-    ? `A step of this turn did not happen as asked, and a later call of the same action did run. The reply must tell the person truthfully that this step did not happen, unless that later call did what this step was for. ${report}`
+    ? `A step of this turn did not happen as asked, and a later call of the same action did run. If that later call did what this step was for, leave this step out: the person needs only what happened, and your reply may stay as it was. If it did not, the reply must tell the person truthfully that this step did not happen. ${report}`
     : `A step of this turn did not happen as asked. The reply must tell the person so truthfully, never claiming it happened. ${report}`
 }
 
