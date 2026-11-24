@@ -1,4 +1,4 @@
-// spec/agent/conversation/conversations.md, "Story: Read history a page at a time"; spec/agent/conversation/conversations.md, "The first page is the newest 200 messages"; spec/agent/conversation/conversations.md, "An older page holds only messages before its cursor, and hasMore says whether any are left"; spec/agent/conversation/conversations.md, "A jump to a message answers it with up to 100 messages on each side, and an unknown one is 404"; spec/agent/conversation/conversations.md, "A search page is a slice of the complete set of visible matches"; spec/agent/conversation/conversations.md, "A history row carries its send key only on the owner's message, and a failure kind only on the agent's reply"; spec/agent/schedule/triggers.md, "A run's prompt is told to the model as the trigger that fired, and the history never shows it as the owner's message"
+// spec/agent/conversation/conversations.md, "Story: Read history a page at a time"; spec/agent/conversation/conversations.md, "The first page is the newest 200 messages"; spec/agent/conversation/conversations.md, "An older page holds only messages before its cursor, and hasMore says whether any are left"; spec/agent/conversation/conversations.md, "A jump to a message answers it with up to 100 messages on each side, and an unknown one is 404"; spec/agent/conversation/conversations.md, "A search page is a slice of the complete set of visible matches"; spec/agent/conversation/conversations.md, "A history row carries its send key only on the owner's message, and a failure kind, what ended its turn and Cloud's funds code only on the agent's reply"; spec/agent/schedule/triggers.md, "A run's prompt is told to the model as the trigger that fired, and the history never shows it as the owner's message"
 module node {
   import { createHash } from "node:crypto"
   import { MESSAGE_CONTENT_SEGMENT_TABLE, MESSAGE_SOURCE_TRIGGER_PROMPT, messageContentSegmentId, messageTextSourceDescriptor, parseCanonicalInteger, readDurableConversationChatMarker, readMessageContentProjection, type AgentRuntime, type IDatabaseAdapter, type Memory, type MessageContentSegmentMetadata, type UUID } from "@elizaos/core"
@@ -71,14 +71,17 @@ module node {
 
   export async function messageView(runtime: AgentRuntime, memory: Memory) {
     const fromAgent = memory.entityId === runtime.agentId
-    const failed = memory.content.failureKind
+    const { failureKind: failed, abortCause: cause, stopReason, cloudCode } = memory.content
     const marks = rowMarks(fromAgent ? "Agent" : "User",
-      readDurableConversationChatMarker(memory.content.chatIdempotency)?.clientMessageId ?? "", typeof failed === "string" ? failed : "")
+      readDurableConversationChatMarker(memory.content.chatIdempotency)?.clientMessageId ?? "", typeof failed === "string" ? failed : "", typeof cause === "string" ? cause : "",
+      typeof cloudCode === "string" ? cloudCode : "")
     return {
       id: String(memory.id), role: fromAgent ? "assistant" as const : "user" as const,
       text: shownText(bodyOf(await storedText(runtime.adapter, memory))), timestamp: memory.createdAt ?? 0,
       ...(marks.sendKey === "" ? {} : { clientMessageId: marks.sendKey }),
       ...(marks.failed === "" ? {} : { failureKind: marks.failed }),
+      ...(marks.cause === "" ? {} : { abortCause: marks.cause, ...(typeof stopReason === "string" ? { stopReason } : {}) }),
+      ...(marks.cloudCode === "" ? {} : { cloudCode: marks.cloudCode }),
     }
   }
 

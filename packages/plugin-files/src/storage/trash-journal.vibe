@@ -1,5 +1,5 @@
-// spec/files/reviewedOperations.md, "The mutation re-reads each selected row and reports each outcome"; spec/files/reviewedOperations.md, "Trash owns a journal entry before moving the row"
-import { listed } from "../../gen/files__reviewedOperations.effect.vibe"
+// spec/files/reviewedOperations.md, "The mutation re-reads each selected row and reports each outcome"; spec/files/reviewedOperations.md, "Trash owns a journal entry before moving the row"; spec/files/reviewedOperations.md, "A trash record that cannot be read is listed as unreadable, refuses only its own restore, and can be emptied"
+import { listed, trashItemAnswer, type TrashRecordRead } from "../../gen/files__reviewedOperations.effect.vibe"
 import { batchMax, type FileOutcome } from "../../gen/os__android__files__storage.effect.vibe"
 import type { TrashEntry } from "./model.vibe"
 import { checkSelection, VolumeRefused, type RowOutcome, type RowStatus } from "./volume.vibe"
@@ -27,8 +27,24 @@ export function listShown(items: TrashEntry[], id: string, kept: typeof TrashRec
   if (listed(kept.row, at)) items.push({ id, name: kept.name, origin: kept.origin, directory: kept.directory, mimeType: kept.mimeType, size: kept.size, deletedAt: kept.row.deletedAt })
 }
 
+export function recordRead(present: boolean, kept: typeof TrashRecord.Type | undefined): TrashRecordRead {
+  return kept !== undefined ? "RecordRead" : present ? "RecordUnreadable" : "RecordAbsent"
+}
+
+export function listUnreadable(items: TrashEntry[], id: string, read: TrashRecordRead, resident: boolean): boolean {
+  if (trashItemAnswer(read, resident) !== "ItemUnreadable") return false
+  items.push({ id, name: id, unreadable: true })
+  return true
+}
+
+export function unrestorable(id: string, read: TrashRecordRead, resident: boolean): RowOutcome | undefined {
+  const answer = trashItemAnswer(read, resident)
+  return answer === "ItemRestorable" ? undefined : { path: id, status: answer === "ItemUnreadable" ? "failed" : "missing" }
+}
+
 export function newestFirst(items: TrashEntry[]): TrashEntry[] {
-  return items.sort((a, b) => b.deletedAt - a.deletedAt)
+  const at = (item: TrashEntry) => item.unreadable === true ? Number.NEGATIVE_INFINITY : item.deletedAt
+  return items.sort((a, b) => at(a) === at(b) ? 0 : at(b) > at(a) ? 1 : -1)
 }
 
 export effect function checkErase(ids: readonly string[], confirmed: boolean, invalid: string): void!VolumeRefused {

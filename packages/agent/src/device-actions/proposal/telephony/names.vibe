@@ -1,42 +1,20 @@
-// spec/agent/deviceActions/telephony.md, "A proposed contact name is one the owner wrote as whole words, outside the text to send"; spec/agent/deviceActions/telephony.md, "A whole-message call, text or dial command hands through the owner's own recipient"; spec/agent/deviceActions/telephony.md, "An addressed draft request drafts to the addressed recipient unless the owner asked to send it there"
+// spec/agent/deviceActions/telephony.md, "A proposed contact name is one the owner wrote as whole words, outside the text to send"
 const notAName: ReadonlySet<string> = new Set((
   "a an the this that these those it its me my mine myself i you your yours he him his she her hers we us our ours they them their " +
   "someone somebody anyone anybody everyone everybody nobody no one back up now please thanks thank and or to for of at on in with " +
   "from about call ring phone dial text sms message send tell ask say saying number cell mobile contact"
 ).split(" "))
-const notANameAround: ReadonlySet<string> = new Set([...notAName, ..."again right away asap home work office landline line phone".split(" ")])
 
-export function isWrittenCallbackName(word: string): boolean {
-  return /^(?:back|again)$/iu.test(word) && word !== word.toLowerCase()
-}
-
-function normalizedWords(text: string, preserveCase = false): string {
-  const normalized = text.normalize("NFKC")
-  return (preserveCase ? normalized : normalized.toLowerCase())
+function normalizedWords(text: string): string {
+  return text.normalize("NFKC").toLowerCase()
     .replace(/[’‘]/g, "'").replace(/'s(?![\p{L}\p{N}])/giu, "").replace(/[^\p{L}\p{N}']+/gu, " ").trim()
 }
 
-export function namesSomeone(name: string): boolean {
+function namesSomeone(name: string): boolean {
   const words = normalizedWords(name)
   return words !== "" && !/^[\d\s+]+$/.test(words) && !words.split(" ").every((word) => notAName.has(word))
 }
 
 export function writesContactName(text: string, name: string): boolean {
   return namesSomeone(name) && ` ${normalizedWords(text)} `.includes(` ${normalizedWords(name)} `)
-}
-
-export function ownerNameWithoutFiller(authored: string, proposed: string): boolean {
-  const owner = normalizedWords(authored, true).split(" ").flatMap((spelling) =>
-    normalizedWords(spelling).split(" ").map((word) => ({
-      word,
-      omittable: notANameAround.has(word) && !isWrittenCallbackName(spelling),
-    })),
-  )
-  const name = normalizedWords(proposed).split(" ")
-  if (name[0] === undefined || name[0] === "" || name.length >= owner.length) return false
-  for (let at = 0; at + name.length <= owner.length; at++) {
-    const here = name.every((word, index) => owner[at + index]?.word === word)
-    if (here && [...owner.slice(0, at), ...owner.slice(at + name.length)].every(({ omittable }) => omittable)) return true
-  }
-  return false
 }

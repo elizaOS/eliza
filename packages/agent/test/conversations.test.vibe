@@ -141,3 +141,44 @@ it.effect('Create, list, page history to the start, jump to a message and search
     })
   })
 }, 180_000)
+
+effect function seedMarked(agent: InProcess, roomId: UUID, rows: readonly { readonly text: string; readonly at: number; readonly agent: boolean; readonly failureKind?: string; readonly cloudCode?: string }[]) {
+  const runtime = agent.agent.runtime
+  return try host("seed marked messages", async () => {
+    const memories = rows.map(({ text, at, agent: fromAgent, failureKind, cloudCode }): Memory => ({
+      id: freshId(), roomId, agentId: runtime.agentId, createdAt: at, entityId: fromAgent ? runtime.agentId : freshId(),
+      content: { text, source: "device", ...(failureKind === undefined ? {} : { failureKind }), ...(cloudCode === undefined ? {} : { cloudCode }) },
+    }))
+    await runtime.adapter.createMemories(memories.map((memory) => ({ memory, tableName: "messages" })))
+    return memories
+  })
+}
+
+it.effect('A reopened reply refused for spent plan allowance and credits carries Cloud\'s funds code, and no other row does (spec/agent/conversation/conversations.md, "A history row carries its send key only on the owner\'s message, and a failure kind, what ended its turn and Cloud\'s funds code only on the agent\'s reply")', effect () => {
+  const agent = try startInProcess()
+  const chat = try open(agent, {})
+  const base = 1_700_000_000_000
+  try seedMarked(agent, chat.conversation.roomId, [
+    { text: "Answer me.", at: base, agent: false, failureKind: "insufficient_credits", cloudCode: "allowance_exhausted" },
+    { text: "", at: base + 1, agent: true, failureKind: "insufficient_credits", cloudCode: "allowance_exhausted" },
+    { text: "", at: base + 2, agent: true, failureKind: "insufficient_credits", cloudCode: "insufficient_credits" },
+    { text: "", at: base + 3, agent: true, failureKind: "insufficient_credits" },
+    { text: "Hello there.", at: base + 4, agent: true, cloudCode: "insufficient_credits" },
+    { text: "", at: base + 5, agent: true, failureKind: "limit_reached" },
+  ])
+  const read = try history(agent, chat.conversation.id, "")
+  try Effect.try(() => {
+    const rows = read.page.messages as readonly (Message & { readonly failureKind?: string; readonly cloudCode?: string })[]
+    assert.deepStrictEqual({ status: read.status, rows: rows.map(({ role, failureKind, cloudCode }) => ({ role, failureKind, cloudCode })) }, {
+      status: 200,
+      rows: [
+        { role: "user", failureKind: undefined, cloudCode: undefined },
+        { role: "assistant", failureKind: "insufficient_credits", cloudCode: "allowance_exhausted" },
+        { role: "assistant", failureKind: "insufficient_credits", cloudCode: "insufficient_credits" },
+        { role: "assistant", failureKind: "insufficient_credits", cloudCode: undefined },
+        { role: "assistant", failureKind: undefined, cloudCode: undefined },
+        { role: "assistant", failureKind: "limit_reached", cloudCode: undefined },
+      ],
+    })
+  })
+}, 60_000)
