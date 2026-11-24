@@ -106,7 +106,7 @@ module node {
     })
   }
 
-  export async function listenOnHttp(port: number, route: AgentRouter, feeds: FeedAccess): Promise<() => Promise<void>> {
+  export async function listenOnHttp(port: number, route: AgentRouter, feeds: FeedAccess): Promise<{ port: number; close(): Promise<void> }> {
     const exchanges = new Exchanges()
     exchanges.listen("LoopbackHttp")
     let connections = 0
@@ -116,8 +116,10 @@ module node {
     })
     server.listen(port, "127.0.0.1")
     await once(server, "listening")
+    const address = server.address()
+    if (address === null || typeof address === "string") throw new Error("The loopback listener has no TCP address")
     let closing: Promise<void> | undefined
-    return () => closing ??= new Promise<void>((resolve, reject) => {
+    const close = () => closing ??= new Promise<void>((resolve, reject) => {
       exchanges.stop()
       server.closeAllConnections()
       server.close((failure) => {
@@ -126,6 +128,7 @@ module node {
         else resolve()
       })
     })
+    return { port: address.port, close }
   }
 }
 export { listenOnHttp } from node

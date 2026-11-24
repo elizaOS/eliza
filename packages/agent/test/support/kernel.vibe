@@ -48,20 +48,20 @@ export interface BootOptions {
 
 export const deviceKey = "device-key-1"
 
-effect function prepare(options: BootOptions) {
+effect function prepare(options: BootOptions, asChild: boolean) {
   const state = options.state === undefined ? try scratch("agent-state") : options.state
   const cloud = options.cloud === true ? try cloudFake(deviceKey) : undefined
   const launch = cloud === undefined ? options.launch : { ...options.launch, backend: options.launch?.backend ?? { kind: "cloud" as const, origin: cloud.origin } }
   const document = launchDocument(launch)
   const frame = launchFrame(cloud === undefined ? options.frame : { credential: { version: 1, value: deviceKey }, ...options.frame })
   const transport: Transport = options.http === true
-    ? { kind: "http", port: try host("free port", () => freePort()) }
+    ? { kind: "http", port: asChild ? try host("free port", () => freePort()) : 0 }
     : { kind: "socket", path: state.file("agent.sock") }
   return { state, cloud, document, frame, transport }
 }
 
 export effect function boot(options: BootOptions = {}) {
-  const { state, cloud, document, frame, transport } = try prepare(options)
+  const { state, cloud, document, frame, transport } = try prepare(options, true)
   const launchFile = try host("launch file", () => writeLaunch(state, document))
   const child = try agentChild({
     launchFile,
@@ -92,7 +92,7 @@ export interface InProcess {
 }
 
 export effect function startInProcess(options: InProcessOptions = {}) {
-  const { state, cloud, document, frame, transport } = try prepare(options)
+  const { state, cloud, document, frame, transport } = try prepare(options, false)
   const [{ parseLaunch }, { startAgent }] = try host("agent host modules", () =>
     Promise.all([import("../../src/host/launch.vibe"), import("../../src/host/process.vibe")]))
   const parsed = try parseLaunch(JSON.stringify(document), JSON.stringify(frame))
@@ -105,7 +105,7 @@ export effect function startInProcess(options: InProcessOptions = {}) {
     }),
     (running: RunningAgent) => orDie(host("agent stop", () => running.stop())),
   )
-  return { agent, state, frame, transport, cloud } satisfies InProcess
+  return { agent, state, frame, transport: agent.endpoint, cloud } satisfies InProcess
 }
 
 export interface Reachable {

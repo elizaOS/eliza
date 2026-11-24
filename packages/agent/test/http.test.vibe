@@ -7,7 +7,6 @@ module node {
   import { createRouter } from "../src/access/router.vibe"
   import { listenOnHttp } from "../src/access/http.vibe"
   import type { AgentEvent, EventSubscriptions } from "../src/access/events-port.vibe"
-  import { freePort } from "./support/child.ts"
 
   const token = "loopback-token"
   const authorization = `Bearer ${token}`
@@ -73,8 +72,7 @@ module node {
         } },
       ],
     })
-    const port = await freePort()
-    const stop = await listenOnHttp(port, router, { token: Redacted.make(token), events: hub.subscriptions })
+    const { port, close: stop } = await listenOnHttp(0, router, { token: Redacted.make(token), events: hub.subscriptions })
     return { origin: `http://127.0.0.1:${port}`, publish: hub.publish, open: hub.open, aborts, calls, stop }
   }
 

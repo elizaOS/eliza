@@ -20,6 +20,7 @@ module node {
   export interface RunningAgent {
     readonly runtime: AgentRuntime
     readonly status: AgentStatus
+    readonly endpoint: Endpoint
     readonly workflowWorker?: WorkflowWorkerHost
     phase(): AgentProcess
     stop(): Promise<number>
@@ -341,10 +342,13 @@ module node {
         ],
       })
       const feeds = { token: authority.token, events: feedsOver(events.hub) }
-      return binding.kind === "socket"
-        ? listenOnSocket(binding.path, router, feeds)
-        : listenOnHttp(binding.port, router, feeds)
-    })().then((close) => ({ kind: "bound" as const, close }), (error: unknown) => ({ kind: "refused" as const, error }))
+      if (binding.kind === "socket") {
+        return { endpoint: binding, close: await listenOnSocket(binding.path, router, feeds) }
+      }
+      const listener = await listenOnHttp(binding.port, router, feeds)
+      const endpoint: Endpoint = { kind: "http", port: listener.port }
+      return { endpoint, close: listener.close }
+    })().then((listener) => ({ kind: "bound" as const, ...listener }), (error: unknown) => ({ kind: "refused" as const, error }))
     if (bound.kind === "refused") {
       logger.error({ src: "agent", agentId, phase: "BindTransport", error: String(bound.error) }, "The transport could not be bound")
       lifecycle.send({ type: "bindTransport", ok: false })
@@ -358,7 +362,7 @@ module node {
         { token: authority.token, credential: authority.credential?.value, storageKey: authority.storageKey },
         (offered) => Effect.runPromise(composed.workerEnvironment(offered)))
     installedWorker = workflowWorker
-    return Result.succeed({ runtime, status, phase: () => lifecycle.get(), stop, ...(workflowWorker === undefined ? {} : { workflowWorker }) })
+    return Result.succeed({ runtime, status, endpoint: bound.endpoint, phase: () => lifecycle.get(), stop, ...(workflowWorker === undefined ? {} : { workflowWorker }) })
   }
   export { boot }
 }

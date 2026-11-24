@@ -54,11 +54,6 @@ describe("WP7 Maps (spec/cloud/services/maps.md)", () => {
     const broke = try post("geocode", "geo-broke", { query: "Brandenburger Tor" }, unfunded)
     const usage = try sql(cloud, "SELECT r.operation, r.status, r.result IS NULL AS unkept, u.quote, u.charged, u.outcome FROM maps_requests r JOIN usage_records u ON u.hold_key = r.hold_key ORDER BY u.settled_at, r.hold_key", [])
 
-    const off = try testCloud({ edit: (profile) => ({ ...profile, environments: { ...profile.environments, staging: { ...profile.environments.staging, maps: { provider: "none" }, capabilities: ["inference", "speech", "managedGoogle", "billing"] } } }) })
-    const offCaller = try signedCaller(off, "offline")
-    const offCapabilities = try off.call("/api/v1/maps/capabilities", { headers: offCaller.headers })
-    const offGeocode = try off.call("/api/v1/maps/geocode", { json: { query: "Brandenburger Tor" }, headers: { ...offCaller.headers, "idempotency-key": "geo-off" } })
-
     try check(() => assert.deepStrictEqual(
       {
         lost: [lost.status, errorOf(lost)],
@@ -70,8 +65,7 @@ describe("WP7 Maps (spec/cloud/services/maps.md)", () => {
         tiles: [tileOne.status, tileOne.headers["cache-control"], tileOne.headers["content-type"], String(tileOne.body).length > 0, tileAgain.status, tileAgain.headers["cache-control"], tileRepeated.status, errorOf(tileRepeated), tilesFetched],
         reverse: [nearbyFound.status, lookupsWithPlace, nearbyEmpty.status, (nearbyEmpty.body as { readonly place: unknown }).place !== null, lookupsWithoutPlace],
         broke: [broke.status, errorOf(broke), maps.calls.length - callsBeforeBroke],
-        usage: usage.map((row) => [row.operation, row.status, row.unkept, Number(row.quote), Number(row.charged), row.outcome]),
-        off: [offCapabilities.status, offCapabilities.body, offGeocode.status, errorOf(offGeocode)]
+        usage: usage.map((row) => [row.operation, row.status, row.unkept, Number(row.quote), Number(row.charged), row.outcome])
       },
       {
         lost: [503, "provider_unavailable"],
@@ -91,9 +85,19 @@ describe("WP7 Maps (spec/cloud/services/maps.md)", () => {
           ["tile", "answered", true, 600, 600, "known"],
           ["reverse", "answered", false, 37_000, 32_000, "known"],
           ["reverse", "answered", false, 37_000, 37_000, "known"]
-        ],
-        off: [200, { available: false }, 404, "capability_unavailable"]
+        ]
       }
+    ))
+  }), 60_000)
+
+  it.live("Report Maps unavailable on a surface with Maps off (spec/cloud/services/maps.md, \"Story: Keep maps requests within the provider's terms\")", () => scoped(effect {
+    const off = try testCloud({ edit: (profile) => ({ ...profile, environments: { ...profile.environments, staging: { ...profile.environments.staging, maps: { provider: "none" }, capabilities: ["inference", "speech", "managedGoogle", "billing"] } } }) })
+    const offCaller = try signedCaller(off, "offline")
+    const offCapabilities = try off.call("/api/v1/maps/capabilities", { headers: offCaller.headers })
+    const offGeocode = try off.call("/api/v1/maps/geocode", { json: { query: "Brandenburger Tor" }, headers: { ...offCaller.headers, "idempotency-key": "geo-off" } })
+    try check(() => assert.deepStrictEqual(
+      [offCapabilities.status, offCapabilities.body, offGeocode.status, (offGeocode.body as { readonly error?: string }).error],
+      [200, { available: false }, 404, "capability_unavailable"]
     ))
   }), 60_000)
 

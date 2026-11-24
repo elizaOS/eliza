@@ -2882,7 +2882,7 @@ it.live("Story: Execute due work within its owning agent, across scheduler stora
 
     // spec/core/taskServiceOwners.md, "An orphaned task is quarantined only after the startup grace and leaves quarantine when its worker returns or a heal succeeds"
     let orphanNow = 0
-    const orphanService = try Effect.try(() => new TaskService(runtimeA, { now: () => orphanNow, setTimeout: () => undefined, clearTimeout: () => {} }))
+    const orphanService = try Effect.try(() => new TaskService(runtimeA, { now: () => orphanNow, "setTimeout": () => undefined, clearTimeout: () => {} }))
     const orphanId = try host(() => runtimeA.createTask({ name: "J07_ORPHAN_ONCE", description: "one-shot whose worker is late", tags: ["manual"], metadata: {} }))
     const orphanRow = () => host(async () => {
       const stored = (await runtimeA.getTasksByIds([orphanId]))[0]
