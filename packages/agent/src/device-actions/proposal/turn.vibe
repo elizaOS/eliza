@@ -1,9 +1,10 @@
-// spec/agent/deviceActions/index.md, "A proposal is offered only on an owner turn of the enrolled device, as its family grounded it, and re-admitted under the turn's negotiation"; spec/agent/deviceActions/index.md, "A later turn of the same conversation learns at most six outcomes of its own requests: what changed, and what ended without running"; spec/agent/deviceActions/index.md, "An unclaimed offer retires at its deadline or at the end of its turn"; spec/agent/conversation/turnContext.md, "Story: Tell the agent what my screen shows, and nothing more"
+// spec/agent/deviceActions/index.md, "A proposal is offered only on an owner turn of the enrolled device, as its family grounded it, and re-admitted under the turn's negotiation"; spec/agent/deviceActions/index.md, "A later turn of the same conversation learns at most six outcomes of its own requests: what changed, and what ended without running"; spec/agent/deviceActions/index.md, "An unclaimed offer retires at its deadline or at the end of its turn"; spec/agent/conversation/turnContext.md, "Story: Tell the agent what my screen shows, and nothing more"; spec/agent/deviceActions/surfaces.md, "An app view opens with VIEWS where views arrive as completed actions, else with open_view as the installation's profile enables it"; spec/agent/views.md, "The agent prepares a navigation only for the renderer bound to its turn and one view its name resolves to"
 module node {
   import { AsyncLocalStorage } from "node:async_hooks"
   import { Effect } from "effect"
-  import { extractUserText, getTrajectoryContext, unwrapUserMessageText, type AgentRuntime, type IAgentRuntime, type Memory, type UUID } from "@elizaos/core"
+  import { extractUserText, getTrajectoryContext, readViewInteractionClientId, unwrapUserMessageText, type AgentRuntime, type IAgentRuntime, type Memory, type UUID } from "@elizaos/core"
   import { capabilityName, isRefused } from "../../../gen/agent__deviceActions__capabilities.ts"
+  import { navigationCompletes } from "../../../gen/agent__deviceActions__surfaces.ts"
   import type { RouteInput } from "../../access/routes.vibe"
   import { readTurnContext } from "../../conversation/turn-context.schema.vibe"
   import { capabilitiesHeader, negotiation } from "../capabilities.vibe"
@@ -36,6 +37,7 @@ module node {
 
   export interface DeviceTurnOptions {
     readonly completesReads: boolean
+    readonly viewsAllowed: boolean
     readonly agenda?: TurnOffer
   }
 
@@ -44,6 +46,13 @@ module node {
 
   export function ownerWords(message: Memory): string {
     return extractUserText(unwrapUserMessageText(message))
+  }
+
+  /** @throws {never} */
+  export function completedActionRenderer(message: Memory): string | undefined {
+    const metadata = message.content.metadata
+    const completedAction = typeof metadata === "object" && metadata !== null && "viewDelivery" in metadata && metadata.viewDelivery === "completed-action"
+    return completedAction ? readViewInteractionClientId(message) : undefined
   }
 
   export function turnLive(turn: DeviceTurn): boolean {
@@ -68,7 +77,7 @@ module node {
           capabilities: negotiated.tag === "Negotiated" ? negotiated.capabilities.map(capabilityName) : [],
           ownerText: ownerWords(message),
           observation: context.observation,
-          completedActionNavigation: context.voiceUi?.viewDelivery === "completed-action",
+          completedActionNavigation: navigationCompletes(completedActionRenderer(message) !== undefined, options.viewsAllowed),
           completesReads: options.completesReads,
           assistantName: runtime.character.name ?? "",
           get swapped() {
@@ -98,4 +107,4 @@ module node {
   }
 }
 
-export { deviceTurnFor, deviceTurnPort, ownerWords, turnLive, type DeviceTurnOptions, type DeviceTurnPort, type DeviceTurnSession, type DeviceTurnStart, type TurnOffer } from node
+export { completedActionRenderer, deviceTurnFor, deviceTurnPort, ownerWords, turnLive, type DeviceTurnOptions, type DeviceTurnPort, type DeviceTurnSession, type DeviceTurnStart, type TurnOffer } from node

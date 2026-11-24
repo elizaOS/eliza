@@ -130,9 +130,12 @@ How views are delivered is stated anew with each message: the phone leaves
 it out while its screen is sensitive. So a device conversation's tools keep
 both homes of a view, `VIEWS` and, where the device negotiated it, the
 `open_view` form, and each message opens a view in one of them. When the
-message's voice view context says views arrive as completed actions, the
-model opens a view with `VIEWS` directly, and `open_view`, which would ask
-the phone for a review it does not need, is refused before dispatch.
+message names its renderer for views that arrive as completed actions
+(`viewDelivery: "completed-action"` with `viewClientId`, read as
+[views](../views.md) reads them) and the product allows `VIEWS`, the model
+opens a view with `VIEWS` directly, and `open_view`, which would ask
+the phone for a review it does not need, is refused before dispatch. A
+product that does not allow `VIEWS` keeps `open_view` on every message.
 Otherwise a `VIEWS` call is refused before it runs, and a view is proposed
 with `open_view` only when the installation's
 [enabled-view profile](./capabilities.md) as it is now enables it, and
@@ -148,12 +151,14 @@ model is told which views it enables.
 ```quint
 type ViewHome = ViewsShows | OpenViewProposes
 pure def viewHome(completedNavigation: bool): ViewHome = if (completedNavigation) ViewsShows else OpenViewProposes
+pure def navigationCompletes(rendererNamed: bool, viewsAllowed: bool): bool = rendererNamed and viewsAllowed
 pure def openViewAvailable(completedNavigation: bool): bool = viewHome(completedNavigation) == OpenViewProposes
 pure def viewsShowsOnDevice(completedNavigation: bool): bool = viewHome(completedNavigation) == ViewsShows
 pure def openViewVerdict(profileEnables: bool): SurfaceVerdict = if (profileEnables) SurfaceGrounded else SurfaceRefused
 pure def lawCompletedNavigationProposesNoView(completedNavigation: bool): bool = completedNavigation implies not(openViewAvailable(completedNavigation))
 pure def lawAMessageOpensAViewInOnePlace(completedNavigation: bool): bool =
   viewsShowsOnDevice(completedNavigation) != openViewAvailable(completedNavigation)
+pure def lawWithoutViewsAViewIsProposed(rendererNamed: bool): bool = openViewAvailable(navigationCompletes(rendererNamed, false))
 pure def lawADisabledViewIsNeverProposed(profileEnables: bool): bool = not(profileEnables) implies openViewVerdict(profileEnables) == SurfaceRefused
 ```
 

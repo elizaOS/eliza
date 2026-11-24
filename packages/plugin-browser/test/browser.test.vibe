@@ -16,7 +16,7 @@ import {
 } from "../src/grounding.vibe"
 import { browserAction, browserPlugin } from "../src/index.vibe"
 import { browserProposalFamily } from "../src/proposal.vibe"
-import type { BrowserViewAsked, BrowserViewAsker, BrowserViewWait } from "../src/native-browser.vibe"
+import { BROWSER_VIEW, type BrowserViewAsked, type BrowserViewAsker, type BrowserViewWait } from "../src/native-browser.vibe"
 import { observedTabCurrent, parseNativeHistoryCommand } from "../src/native-command.vibe"
 
 it.effect('Open only a destination the owner wrote in this message, spelled as written, or an exact link of its page (spec/browser/requestGrounding.md, "Story: Open a destination stated in this message"; spec/browser/requestGrounding.md, "A negated destination cannot be authorized by a proposal"; spec/browser/requestGrounding.md, "A page link opens only as an exact link of the page my message carried, and only after my review"; spec/browser/requestGrounding.md, "A closing mark that could belong to the address leaves the open for my review")', effect () => {
@@ -221,6 +221,8 @@ it.effect('Go back on the tab the turn observed and say only that the browser wa
     assert.deepStrictEqual(
       [completed, refusedFirst, unknownCode, lost, notOffered, noFeed, noClient].map((result) => [result.success, failureKind(result)]),
       [[false, "UNCERTAIN_OUTCOME"], [false, "UNAVAILABLE"], [false, "UNCERTAIN_OUTCOME"], [false, "UNCERTAIN_OUTCOME"], [false, "UNSUPPORTED"], [false, "UNAVAILABLE"], [false, "UNAVAILABLE"]])
+    assert.deepStrictEqual(browserPlugin.views?.map(({ id, path, modalities, capabilities }) => [id, path, modalities, capabilities?.map((offered) => offered.id)]),
+      [[BROWSER_VIEW.viewId, "/browser", ["gui"], [BROWSER_VIEW.capability]]])
     assert.deepStrictEqual(command, { ok: true, command: { subaction: "back", selection: { id: "tab-a", revision: "r1" } } })
     assert.isFalse(parseNativeHistoryCommand({ subaction: "click" }).ok)
     assert.isFalse(parseNativeHistoryCommand({ subaction: "back" }, { id: "tab-a" }).ok)

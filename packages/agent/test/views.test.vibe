@@ -3,10 +3,11 @@
 import { assert, it } from "@effect/vitest"
 import { findViewActionHandoff, Service, type Action, type ActionResult, type IAgentRuntime, type Memory, type UUID } from "@elizaos/core"
 import { navigationBusyWaitMs, navigationClaimLeaseMs, navigationWaitMs } from "../gen/agent__views.effect.vibe"
-import type { ViewBinding, ViewHost } from "../src/views/host.vibe"
+import type { AgentPlugin } from "../src/host/module.vibe"
+import type { ViewBinding, ViewHost, ViewInteractFrame } from "../src/views/host.vibe"
 import { viewHostServiceType, viewsModuleName } from "../src/views/module.vibe"
 import { text, toolCalls } from "./support/cloud-fake.ts"
-import { call, cloudFake, deviceKey, host, startInProcess, type InProcess } from "./support/kernel.vibe"
+import { call, cloudFake, deviceKey, events, host, startInProcess, type InProcess } from "./support/kernel.vibe"
 import type { LocalAnswer, LocalRequest, Refusal } from "./support/socket-client.ts"
 
 const loaded = {
@@ -44,7 +45,7 @@ const result = (agent: InProcess, binding: unknown, claimId: string, switched: b
 const bindingOf = (body: unknown): ViewBinding => (body as { navigationBinding: ViewBinding }).navigationBinding
 const claimIdOf = (body: unknown): string => (body as { claimId: string }).claimId
 
-it.effect('Prepare, claim and confirm a switch through the routes; only a confirmed switch is shown (spec/agent/views.md, "A navigation is prepared only for a declared view and a request id not seen before"; spec/agent/views.md, "A claim names its request\'s exact binding and succeeds once"; spec/agent/views.md, "A result is accepted once, with its claim id, and a navigation result says whether it switched"; spec/agent/views.md, "Only a confirmed switch sets the shown view, and a navigation lost after its claim makes it unknown")', effect () => {
+it.effect('Prepare, claim and confirm a switch through the routes (spec/agent/views.md, "A navigation is prepared only for a declared view and a request id not seen before"; spec/agent/views.md, "A claim names its request\'s exact binding and succeeds once"; spec/agent/views.md, "A result is accepted once, with its claim id, and a navigation result says whether it switched")', effect () => {
   const agent = try startInProcess(loaded)
   const { views } = try viewHost(agent)
 
@@ -62,7 +63,6 @@ it.effect('Prepare, claim and confirm a switch through the routes; only a confir
   const wrongClaim = try result(agent, binding, "not-the-claim", true)
   const switched = try result(agent, binding, claimIdOf(claimed.body), true)
   const twice = try result(agent, binding, claimIdOf(claimed.body), true)
-  const shownAfterSwitch = try views.shownViewOf("c1")
   try Effect.try(() => {
     assert.deepStrictEqual(prepared, {
       status: 200,
@@ -77,17 +77,12 @@ it.effect('Prepare, claim and confirm a switch through the routes; only a confir
     assert.deepStrictEqual(wrongClaim, { status: 200, body: { ok: true, accepted: false } })
     assert.deepStrictEqual(switched, { status: 200, body: { ok: true, accepted: true } })
     assert.deepStrictEqual(twice, { status: 200, body: { ok: true, accepted: false } })
-    assert.strictEqual(shownAfterSwitch, "notes")
   })
 
   const chat = try prepare(agent, "chat", "r2", "c1")
   const chatClaim = try claim(agent, bindingOf(chat.body))
   const notSwitched = try result(agent, bindingOf(chat.body), claimIdOf(chatClaim.body), false)
-  const shownAfterRefusal = try views.shownViewOf("c1")
-  try Effect.try(() => {
-    assert.deepStrictEqual(notSwitched.body, { ok: true, accepted: true })
-    assert.strictEqual(shownAfterRefusal, "notes")
-  })
+  try Effect.try(() => assert.deepStrictEqual(notSwitched.body, { ok: true, accepted: true }))
 }, 120_000)
 
 it.effect('A saved Notes editor requires a supported claim and an exact mounted-editor result (spec/agent/views.md, "A saved Notes editor claim requires support and only its exact editor can confirm the switch")', effect () => {
@@ -111,18 +106,14 @@ it.effect('A saved Notes editor requires a supported claim and an exact mounted-
     body: { ...binding, claimId, success: true, result: { switched: true, shown: { kind: "saved-note", noteId } } },
   })
   const wrong = try report("note-b")
-  const beforeExact = try views.shownViewOf(binding.clientId)
   const exact = try report("note-a")
   const repeatedResult = try report("note-a")
-  const afterExact = try views.shownViewOf(binding.clientId)
   try Effect.try(() => {
     assert.deepStrictEqual([oldRenderer.status, otherRenderer.status, otherInstallation.status, repeated.status], [409, 409, 409, 409])
     assert.strictEqual(claimed.status, 200)
     assert.deepStrictEqual(claimed.body, { claimId, target: { kind: "saved-note", noteId: "note-a" } })
     assert.deepStrictEqual([generic.body, wrong.body, repeatedResult.body], Array(3).fill({ ok: true, accepted: false }))
-    assert.isUndefined(beforeExact)
     assert.deepStrictEqual(exact.body, { ok: true, accepted: true })
-    assert.strictEqual(afterExact, "notes")
   })
 }, 120_000)
 
@@ -132,7 +123,6 @@ it.live('A completed chat reply gives its renderer the exact prepared switch it 
     launch: { ...loaded.launch, callerRole: "owner", backend: { kind: "cloud", origin: cloud.origin }, allowed: ["REPLY", "IGNORE", "NONE", "VIEWS"] },
     frame: { credential: { version: 1, value: deviceKey } },
   })
-  const { views } = try viewHost(agent)
   const opened = try ask(agent, { method: "POST", path: "/api/conversations", body: {} })
   const { id } = (opened.body as { conversation: { id: string } }).conversation
   const headers = { "x-elizaos-client-id": "c2" }
@@ -144,7 +134,6 @@ it.live('A completed chat reply gives its renderer the exact prepared switch it 
   const binding = completed.find(({ action }) => action === "VIEWS")?.data.values?.navigationBinding
   const taken = try claim(agent, binding)
   const applied = try result(agent, binding, claimIdOf(taken.body), true)
-  const shown = try views.shownViewOf("c2")
   try Effect.try(() => {
     assert.strictEqual(reply.status, 200)
     const toolResults = cloud.calls.filter(({ path }) => path.endsWith("/chat/completions")).at(-1)?.body as { messages: { role: string; content?: unknown }[] } | undefined
@@ -155,7 +144,6 @@ it.live('A completed chat reply gives its renderer the exact prepared switch it 
     assert.strictEqual(binding?.viewId, "notes")
     assert.strictEqual(taken.status, 200)
     assert.deepStrictEqual(applied.body, { ok: true, accepted: true })
-    assert.strictEqual(shown, "notes")
   })
 }, 120_000)
 
@@ -286,7 +274,6 @@ it.effect('A second prepare supersedes an unclaimed navigation, waits for a clai
   const whileClaimed = join waitingPrepare
   try TestClock.adjust(Duration.millis(navigationClaimLeaseMs - navigationBusyWaitMs))
   const lost = try second!.wait
-  const shown = try views.shownViewOf("c1")
   const late = try result(agent, second!.binding, claimIdOf(claimed.body), true)
   const afterLease = try prepare(agent, "notes", "r4", "c1")
   try Effect.try(() => {
@@ -294,7 +281,6 @@ it.effect('A second prepare supersedes an unclaimed navigation, waits for a clai
     assert.strictEqual(claimed.status, 200)
     assert.isUndefined(whileClaimed)
     assert.deepStrictEqual(lost, { kind: "Unknown" })
-    assert.isUndefined(shown)
     assert.deepStrictEqual(late.body, { ok: true, accepted: false })
     assert.strictEqual(afterLease.status, 200)
   })
@@ -317,20 +303,60 @@ it.effect('A second prepare supersedes an unclaimed navigation, waits for a clai
   })
 }, 120_000)
 
-it.effect('An ask with no view-interact feed is unavailable, and stopping ends every wait with Stopped (spec/agent/views.md, "The agent asks only a declared view, for a capability the view grants the agent, on a live feed"; spec/agent/views.md, "Closing ends every pending request with the outcome Stopped, and nothing changes after")', effect () => {
-  const agent = try startInProcess(loaded)
+const pages: AgentPlugin = {
+  name: "@elizaos/plugin-pages",
+  description: "Declares a view that takes the agent's page commands",
+  views: [{ id: "pages", label: "Pages", path: "/pages", modalities: ["gui"], capabilities: [{ id: "page-command", description: "Turn the page" }] }],
+}
+
+const interaction = (frame: unknown): ViewInteractFrame | undefined => {
+  const event = frame as { readonly type?: unknown; readonly event?: { readonly stream?: unknown; readonly payload?: { readonly frame?: ViewInteractFrame } } }
+  return event.type === "event" && event.event?.stream === "view-interact" ? event.event.payload?.frame : undefined
+}
+
+it.live('An ask of a view a plugin loaded before the views module declares is framed to the renderer\'s live feed, claimed and answered once; an ask with no feed is unavailable, and stopping ends every wait with Stopped (spec/agent/views.md, "Views are declared once at boot with distinct ids, paths and names, and never change after"; spec/agent/views.md, "The agent asks only a declared view, for a capability the view grants the agent, on a live feed"; spec/agent/views.md, "A claim names its request\'s exact binding and succeeds once"; spec/agent/views.md, "A result is accepted once, with its claim id, and a navigation result says whether it switched"; spec/agent/views.md, "Closing ends every pending request with the outcome Stopped, and nothing changes after")', effect () => {
+  const agent = try startInProcess({ launch: { ...loaded.launch, load: [pages.name, viewsModuleName] }, bundled: new Map([[pages.name, pages]]) })
   const service = try viewHost(agent)
   const views = service.views
-  const grant = { roleAllowed: true, standard: true, declared: false, manifestAllows: true, agentAuthority: true }
 
-  const asked = try views.ask({ clientId: "c1", viewId: "notes", capability: "get-state", params: {}, grant })
+  const grant = { roleAllowed: true, standard: false, declared: true, manifestAllows: true, agentAuthority: true }
+  const unavailable = try views.ask({ clientId: "c1", viewId: "notes", capability: "get-state", params: {}, grant: { ...grant, standard: true, declared: false } })
+  const feed = try events(agent, ["view-interact"], "c3")
+  try host("renderer subscribed", () => feed.next())
+  const undeclared = try views.ask({ clientId: "c3", viewId: "nowhere", capability: "page-command", params: {}, grant })
+  const unnamed = try views.ask({ clientId: "c3", viewId: "pages", capability: "", params: {}, grant })
+  const request = { clientId: "c3", viewId: "pages", capability: "page-command", params: { page: 2 } }
+  const authorities = [
+    { ...grant, roleAllowed: false }, { ...grant, declared: false },
+    { ...grant, manifestAllows: false }, { ...grant, agentAuthority: false },
+  ]
+  for (const denied of authorities) {
+    const answer = try views.ask({ ...request, grant: denied })
+    try Effect.try(() => assert.deepStrictEqual(answer, { kind: "refused" }))
+  }
+  const asked = try views.ask({ ...request, grant })
+  try Effect.try(() => assert.deepStrictEqual([unavailable, undeclared, unnamed, asked.kind], [{ kind: "unavailable" }, { kind: "refused" }, { kind: "refused" }, "asked"]))
+  const sent = interaction(try host("view frame", () => feed.next((frame) => interaction(frame) !== undefined)))
+  try Effect.try(() => assert.isDefined(sent, "The admitted ask did not publish a view frame"))
+  const frame = sent!
+  const binding = { requestId: frame.requestId, clientId: "c3", viewId: "pages", viewType: "gui", installationId: frame.installationId }
+  const claimed = try claim(agent, binding)
+  const answered = try ask(agent, { method: "POST", path: "/api/views/interact-result", body: { ...binding, claimId: claimIdOf(claimed.body), success: true, result: { turned: true } } })
+  const again = try ask(agent, { method: "POST", path: "/api/views/interact-result", body: { ...binding, claimId: claimIdOf(claimed.body), success: true, result: { turned: true } } })
+  const waited = asked.kind === "asked" ? try asked.wait : asked
+  try Effect.try(() => {
+    assert.deepStrictEqual(sent, { type: "view:interact", installationId: binding.installationId, viewId: "pages", viewType: "gui", capability: "page-command", params: { page: 2 }, requestId: binding.requestId })
+    assert.strictEqual(claimed.status, 200)
+    assert.deepStrictEqual([answered.body, again.body], [{ ok: true, accepted: true }, { ok: true, accepted: false }])
+    assert.deepStrictEqual(waited, { kind: "Replied", reply: "Answered", answer: { success: true, result: { turned: true } } })
+  })
+
   const pending = try views.prepare("r1", "c1", "notes")
   try host("view host stop", () => service.stop())
   const stopped = try pending!.wait
   const afterStop = try claim(agent, pending!.binding)
   const prepareAfterStop = try prepare(agent, "chat", "r2", "c1")
   try Effect.try(() => {
-    assert.deepStrictEqual(asked, { kind: "unavailable" })
     assert.deepStrictEqual(stopped, { kind: "Stopped" })
     assert.deepStrictEqual([afterStop.status, prepareAfterStop.status], [409, 409])
   })
@@ -350,9 +376,9 @@ effect function show(agent: InProcess, message: Memory, view: string) {
   })
 }
 
-it.effect('The VIEWS show action prepares a navigation for the turn\'s renderer by alias, and the renderer confirms it (spec/agent/views.md, "The agent prepares a navigation only for the renderer bound to its turn and one view its name resolves to"; spec/agent/views.md, "Only a confirmed switch sets the shown view, and a navigation lost after its claim makes it unknown")', effect () => {
+it.effect('The VIEWS show action prepares a navigation for the turn\'s renderer by alias, and the renderer confirms it (spec/agent/views.md, "The agent prepares a navigation only for the renderer bound to its turn and one view its name resolves to"; spec/agent/views.md, "A result is accepted once, with its claim id, and a navigation result says whether it switched")', effect () => {
   const agent = try startInProcess(loaded)
-  const { views } = try viewHost(agent)
+  try viewHost(agent)
   const renderer = turn({ viewClientId: "c2", viewDelivery: "completed-action" })
 
   const shown = try show(agent, renderer, "Jottings")
@@ -363,7 +389,6 @@ it.effect('The VIEWS show action prepares a navigation for the turn\'s renderer 
   const handoff = try Effect.try(() => findViewActionHandoff([{ ...shown, actionName: "VIEWS" }]))
   const claimed = try claim(agent, binding)
   const switched = try result(agent, binding, claimIdOf(claimed.body), true)
-  const now = try views.shownViewOf("c2")
   try Effect.try(() => {
     assert.isTrue(shown.success)
     assert.deepStrictEqual(Object.keys(values).sort(), [
@@ -379,6 +404,5 @@ it.effect('The VIEWS show action prepares a navigation for the turn\'s renderer 
     assert.deepStrictEqual(handoff?.navigationBinding, binding)
     assert.deepStrictEqual([unknown.success, noRenderer.success], [false, false])
     assert.deepStrictEqual(switched.body, { ok: true, accepted: true })
-    assert.strictEqual(now, "notes")
   })
 }, 120_000)

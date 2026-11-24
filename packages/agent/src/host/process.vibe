@@ -62,6 +62,7 @@ module node {
   import { deviceEnrollment } from "../device-actions/enrollment.vibe"
   import { agendaOffer } from "../device-actions/agenda.vibe"
   import { deviceTurnPort } from "../device-actions/proposal/turn.vibe"
+  import { viewsActionName } from "../views/show-action.vibe"
   import { proposalReviewRoutes } from "../device-actions/proposal-review.vibe"
   import { retireAbandonedAgenda } from "../device-actions/store.vibe"
   import { readCompletionRoutes } from "../device-actions/read-completion.vibe"
@@ -306,7 +307,7 @@ module node {
       const agenda = launch.callerRole === "owner" && completesReads ? agendaOffer(runtime) : undefined
       if (agenda !== undefined) await Effect.runPromise(retireAbandonedAgenda(adapter))
       const device = launch.callerRole === "owner"
-        ? deviceTurnPort(runtime, enrollment.deviceSender, { completesReads, ...(agenda === undefined ? {} : { agenda }) }) : undefined
+        ? deviceTurnPort(runtime, enrollment.deviceSender, { completesReads, viewsAllowed: composed.allowed.has(viewsActionName), ...(agenda === undefined ? {} : { agenda }) }) : undefined
       const router = createRouter({
         token: authority.token, epoch: authority.epoch, instanceId: status.serverInstanceId,
         health: () => healthAnswer(lifecycle.get()),

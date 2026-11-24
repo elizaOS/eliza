@@ -2,7 +2,7 @@
 import { offeredOnlyWhere, showsApp } from "@elizaos/agent"
 import { registerDeviceProposalFamily } from "@elizaos/agent/device-actions"
 import { promoteSubactionsToActions, type Plugin } from "@elizaos/core"
-import { browserAction, browserContext, historyAsCommand } from "./native-browser.vibe"
+import { browserAction, browserContext, browserView, historyAsCommand } from "./native-browser.vibe"
 import { browserProposalFamily } from "./proposal.vibe"
 
 export { BROWSER_VIEW, NativeBrowser, browserAction, browserViewAsker, historyActionResult, viewNativeBrowser } from "./native-browser.vibe"
@@ -19,6 +19,7 @@ export const browserPlugin: Plugin = {
   name: "@elizaos/plugin-browser",
   description: "Authenticated native device browser control",
   actions: [...browserActions],
+  views: [browserView],
   init: async (_config, runtime) => {
     runtime.contexts.tryRegister(browserContext)
     await runPromise(registerDeviceProposalFamily(runtime, browserProposalFamily))
