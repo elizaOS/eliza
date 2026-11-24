@@ -88,3 +88,31 @@ lemma PlanningKeepsOpen(steps: seq<PlanStep>, earlier: PlanStep, later: PlanStep
     ProofLib.FilterMember((p: PlanStep) => !(supersedes(later, p)), held, earlier);
   }
 }
+
+lemma lawANarrowedSchemaForAnUnregisteredParameterIsDropped_ensures(params: seq<string>, narrowed: seq<string>)
+  ensures (lawANarrowedSchemaForAnUnregisteredParameterIsDropped(params, narrowed) == true)
+{
+  PlanNarrowedFilter(params, narrowed);
+  forall p | p in narrowed && !(p in params)
+    ensures !(p in turnNarrowed(params, narrowed))
+  {
+    ProofLib.FilterMember((set_x: string) => (set_x in narrowed), params, p);
+  }
+}
+
+lemma lawARegisteredParameterTheTurnNamesIsNarrowed_ensures(params: seq<string>, narrowed: seq<string>)
+  ensures (lawARegisteredParameterTheTurnNamesIsNarrowed(params, narrowed) == true)
+{
+  PlanNarrowedFilter(params, narrowed);
+  forall p | p in params && p in narrowed
+    ensures p in turnNarrowed(params, narrowed)
+  {
+    ProofLib.FilterMember((set_x: string) => (set_x in narrowed), params, p);
+  }
+}
+
+lemma PlanNarrowedFilter(params: seq<string>, narrowed: seq<string>)
+  ensures turnNarrowed(params, narrowed) == ProofLib.Filter((set_x: string) => (set_x in narrowed), params)
+{
+}
+
