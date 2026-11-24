@@ -426,7 +426,7 @@ it.effect(`Ground a Browser proposal in the owner's own words or an exact page l
   })
 })
 
-it.effect(`Review a reload of a page the phone withheld on the phone, and refuse it as the BROWSER command (spec/browser/control.md, "Story: Tell me you cannot read my page, and never reload it unasked"; spec/browser/control.md, "A reload of a page my phone withheld runs only after my review on the phone, and the BROWSER command never reloads it"; spec/browser/control.md, "A refused Browser proposal tells me how to ask, and never says anything opened")`, effect () => {
+it.effect(`Review a reload of a page the phone withheld on the phone, and run it as the BROWSER command only when the model says the owner asked, on the observed tab and never on a sign-in page (spec/browser/control.md, "Story: Tell me you cannot read my page, and never reload it unasked"; spec/browser/control.md, "A reload of a page my phone withheld runs only after my review on the phone, or as the BROWSER command only when the model says I asked for it"; spec/browser/control.md, "A refused Browser proposal tells me how to ask, and never says anything opened")`, effect () => {
   const summarize = "summarize this page in two sentences"
   const withheld = (reason: "unreadable" | "sensitive-page", tabId = "session:tab", revision = "4") =>
     ({ tabId, revision, url: "https://bank.example.com/statement", title: "Statement", capturedAt: 1, withheld: reason })
@@ -470,16 +470,54 @@ it.effect(`Review a reload of a page the phone withheld on the phone, and refuse
   ]
   const reloadCommand = browserPlugin.actions?.find((action) => action.name === "BROWSER_RELOAD")
   try Effect.try(() => assert.isTrue(reloadCommand !== undefined))
-  const device = renderer([replied(dispatched), replied(dispatched), replied(dispatched)])
-  const commandTurn = (text: string, browserPage: unknown): Memory =>
-    ({ ...turn(browserTab), content: { text, metadata: { viewClientId: "client-1", observation: browserTab, browserPage } } }) as Memory
-  const command = (text: string, browserPage: unknown) => promise(() => reloadCommand!.handler(device.runtime, commandTurn(text, browserPage), undefined, {}))
+  const asks = [
+    "reload this page", "please refresh", "can you re-open this page?", "Couldn't you refresh it?", "Don't go back, just refresh it",
+    "Please don't navigate away; just refresh", "Don't open anything new, just reload this page",
+    "try reloading", "hit refresh", "can you open it again?",
+    "Reload this page. Actually, don't send the email.",
+    "Reload this page. Send the email. Actually, don't.",
+    "Reload this page, send the email, actually, don't.",
+    "Refresh", "please refresh the page", "can you reload it?", "re-open this page", "open it again", "It looks stuck, reload",
+    "it isn't loading so reload it", "the page won't load so please refresh", "this page doesn't work so reload it",
+    "could you please refresh the page?", "Don't go back but reload it", "open the article then reload it",
+  ]
+  const mentions = [
+    summarize, "don't reload it", "why won't this page reload?", "refresh my memory about this page", "I reloaded it already",
+    "This page keeps asking me to refresh, why?", "Summarize this. If it fails to load I'll refresh it myself", "Refresh me on what this page says",
+    "Summarize this refreshing article", "Reload it. Actually, no, don't.", "yes please",
+    "Reload this page. Actually, don't reload it.",
+    "Reload this page. Actually, don't open it again.",
+    "Reload this page. Actually, do not close the tab or reload it.",
+    "Reload this page. Actually, don't. Tell me the time.",
+    "Reload this page — wait, do not.",
+    "Reload this page — actually don't reload it.",
+    "Reload this page; never mind; tell me the time.",
+    "Reload it. Actually don’t, thanks.",
+    "Reload it, never mind, open a new tab.",
+    "Reload it: do not — tell me the time.",
+    "Reload this page. Never mind. Summarize what you have.",
+    "what is this page about?", "don't reload the page", "do not reopen or refresh this page", "please do not close this tab and reload it",
+    "Reload this page. Actually, don't.", "Reload this page. Never mind.", "Reload this page, actually, don't.",
+    "do not refresh it, just tell me what it says", "summarize it without reloading", "no need to reload, just read it", "please don't reload it",
+    "reload this page\nand then summarize it", "summarize this article about the reopening of Notre-Dame",
+    "what is the refresh rate on this monitor page?", "summarize this page about refreshing your skin", "why did you reload the page?",
+    "If it fails to load then I'll refresh it myself", "it won't load, so don't reload it, just read it", "it's slow so don't refresh it",
+  ]
+  const modelSays = (text: string) => asks.includes(text) ? { ownerAskedReload: true } : {}
+  const device = renderer(Array.from({ length: asks.length + 1 }, () => replied(dispatched)))
+  const commandTurn = (text: string, browserPage: unknown, observation: unknown = browserTab): Memory =>
+    ({ ...turn(observation), content: { text, metadata: { viewClientId: "client-1", observation, browserPage } } }) as Memory
+  const command = (text: string, browserPage: unknown, parameters: { readonly ownerAskedReload?: boolean } = modelSays(text), observation: unknown = browserTab) =>
+    promise(() => reloadCommand!.handler(device.runtime, commandTurn(text, browserPage, observation), undefined, { parameters }))
+  const refusedMentions: string[] = []
+  for (const text of mentions) if ((try command(text, withheld("unreadable", "tab-a", "r1"))).success) refusedMentions.push(text)
   const unasked = try command(summarize, withheld("unreadable", "tab-a", "r1"))
   const sensitive = try command(summarize, withheld("sensitive-page", "tab-a", "r1"))
   const withdrawn = try command("Reload this page. Actually, don't. Tell me the time.", withheld("unreadable", "tab-a", "r1"))
+  const askedSensitive = try command("refresh it", withheld("sensitive-page", "tab-a", "r1"), { ownerAskedReload: true })
   const asksAfterRefusal = device.asks.length
-  const askedSensitive = try command("refresh it", withheld("sensitive-page", "tab-a", "r1"))
-  const asked = try command("reload this page", withheld("unreadable", "tab-a", "r1"))
+  const askedRuns: string[] = []
+  for (const text of asks) if (!(try command(text, withheld("unreadable", "tab-a", "r1"))).success) askedRuns.push(text)
   const readable = try command(summarize, { ...frontPage(), tabId: "tab-a", revision: "r1" })
   try Effect.try(() => {
     assert.deepStrictEqual(proposals, [
@@ -494,10 +532,12 @@ it.effect(`Review a reload of a page the phone withheld on the phone, and refuse
       { operation: { type: "browser_navigate", url: "https://bank.example.com/statement#details" }, reviewed: false }, { operation: statement, reviewed: false },
       { operation: statement, reviewed: false }, { operation: statement, reviewed: false }, { operation: dictatedSite, reviewed: false },
     ])
-    assert.deepStrictEqual([unasked, sensitive, withdrawn].map((result) => [result.success, failureKind(result), result.text]), Array.from({ length: 3 }, () => [false, "POLICY_BLOCKED", BROWSER_RELOAD_WITHHELD_REFUSAL]))
+    assert.deepStrictEqual(refusedMentions, [])
+    assert.deepStrictEqual([unasked, sensitive, withdrawn, askedSensitive].map((result) => [result.success, failureKind(result), result.text]),
+      Array.from({ length: 4 }, () => [false, "POLICY_BLOCKED", BROWSER_RELOAD_WITHHELD_REFUSAL]))
     assert.strictEqual(asksAfterRefusal, 0)
-    assert.deepStrictEqual([asked, askedSensitive].map((result) => [result.success, failureKind(result), result.text]), Array.from({ length: 2 }, () => [false, "POLICY_BLOCKED", BROWSER_RELOAD_WITHHELD_REFUSAL]))
+    assert.deepStrictEqual(askedRuns, [])
     assert.deepStrictEqual([readable.success, readable.data?.executionStatus], [true, "dispatched"])
-    assert.strictEqual(device.asks.length, 1)
+    assert.strictEqual(device.asks.length, asks.length + 1)
   })
 })

@@ -17,11 +17,11 @@ import { fieldsSpanValid } from "../mutations/provider-port.vibe"
 import { FieldsRecord } from "../mutations/records.schema.vibe"
 import {
   addressWrittenInWords, asksToDeleteInWords, declinesInWords, deleteWords, eventDayInWords, eventNamedInWords, guestIs, guestNamedInWords, noticeAskedInWords, noticeDeclinedInWords, saysYes, scopesInWords,
-  zoneNamedIn,
+  statedCreateRange, zoneNamedIn,
 } from "../request-time.vibe"
 import { RecurrenceRecord, WriteScopeRecord } from "../series/rows.schema.vibe"
 import { tripEvents } from "./lookup.vibe"
-import { asksOnlyAboutTomorrowMorning, blockingSpans, openings, spanText, tomorrowMorning, windowFitsWeek } from "./free-time.vibe"
+import { asksOnlyAboutTomorrowMorning, blockingSpans, openingText, openings, spanText, tomorrowMorning, windowFitsWeek } from "./free-time.vibe"
 import type { CalendarWriteScope } from "../series/document.vibe"
 import type { CalendarChangeResult, CalendarFound, CalendarHost, CalendarSearch, CalendarSearchResult } from "./host.vibe"
 import { guestAddresses } from "./providers.vibe"
@@ -600,7 +600,7 @@ effect function freeTime(host: CalendarHost, ask: CalendarAsk, parameters: Param
   const slots = openings(asked, minutes * 60_000, busy)
   return {
     success: true,
-    text: slots.length === 0 ? `I found no ${minutes}-minute opening on the quarter hour in that time.` : `I found these ${minutes}-minute openings: ${slots.map((slot) => spanText(slot, zone)).join(" and ")}.`,
+    text: slots.length === 0 ? `I found no ${minutes}-minute opening on the quarter hour in that time.` : `I found these ${minutes}-minute openings: ${new Intl.ListFormat("en-US", { type: "disjunction" }).format(slots.map((slot) => openingText(slot, zone)))}.`,
     data: {
       subaction, ...range, durationMinutes: minutes,
       slots: slots.map((slot) => ({ startAt: new Date(slot.begin).toISOString(), endAt: new Date(slot.finish).toISOString(), durationMinutes: minutes, timeZone: zone })),
@@ -665,9 +665,10 @@ effect function handle(host: CalendarHost, ask: CalendarAsk, sent: Parameters): 
       if (length === "RefuseLength") {
         return failed(subaction, "A new event's length is a whole number of minutes from 1 to 44640. For anything else send endAt. Nothing was saved.", { code: "CALENDAR_EVENT_LENGTH_INVALID" })
       }
-      const begin = sentEvent.startAt === undefined ? undefined : Date.parse(sentEvent.startAt)
-      const finish = begin === undefined ? undefined
-        : createEndMs(begin, length === "KeepEnd", sentEvent.endAt === undefined ? begin : Date.parse(sentEvent.endAt), length === "UseLength" ? minutes : 0, sentEvent.isAllDay === true)
+      const statedRange = statedCreateRange(sentEvent.title ?? "", text, wall, new Date(now), sentEvent.isAllDay !== true)
+      const begin = statedRange?.begin ?? (sentEvent.startAt === undefined ? undefined : Date.parse(sentEvent.startAt))
+      const finish = statedRange?.finish ?? (begin === undefined ? undefined
+        : createEndMs(begin, length === "KeepEnd", sentEvent.endAt === undefined ? begin : Date.parse(sentEvent.endAt), length === "UseLength" ? minutes : 0, sentEvent.isAllDay === true))
       const fields = decodeFields({
         title: sentEvent.title ?? "", description: sentEvent.description ?? "", location: sentEvent.location ?? "",
         startAt: begin === undefined ? "" : new Date(begin).toISOString(), endAt: finish === undefined ? "" : new Date(finish).toISOString(),
