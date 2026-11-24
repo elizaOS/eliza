@@ -14,8 +14,9 @@ const trailing = String.raw`(?:,?\s+(?:please|now|right\s+now|right\s+away|again
 const trailingWord = new RegExp(`${trailing}$`, "iu")
 const courtesy = String.raw`^(?:(?:hey|hi|ok|okay)[,.!]?\s+)?(?:please,?\s+)?(?:(?:can|could|would|will)\s+you\s+(?:please\s+)?)?`
 const callCommand = new RegExp(`${courtesy}(?:call|ring|phone|dial)\\s+(${targetOf("{0,2}")})(${trailing}*)[.!?]*$`, "iu")
+const thanks = String.raw`(?:(?:thanks|thank\s+you)[,.!]\s+(?:(?:can|could|would|will)\s+you\s+(?:please\s+)?)?)?`
 const textCommand = (recipient: string) => new RegExp(
-  `${courtesy}(?:text|sms|send\\s+(?:an?\\s+)?(?:text|sms)(?:\\s+message)?\\s+to)\\s+(${recipient})\\s*,?\\s+(?:saying|that|to\\s+say)\\s+\\S[\\s\\S]*$`, "iu",
+  `${courtesy}${thanks}(?:text|sms|send\\s+(?:an?\\s+)?(?:text|sms)(?:\\s+message)?\\s+to)\\s+(${recipient})\\s*,?\\s+(?:saying|that|to\\s+say|and\\s+say|and\\s+tell\\s+(?:him|her|them)\\s+(?:to|that))\\s+\\S[\\s\\S]*$`, "iu",
 )
 const textRequest = textCommand(targetOf("{0,2}"))
 const textRecipient = textCommand(targetOf("{0,2}?"))
