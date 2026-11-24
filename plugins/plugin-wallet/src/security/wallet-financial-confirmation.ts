@@ -90,6 +90,16 @@ export function requiresWalletFinancialConfirmation(
   return ON_CHAIN_SUBACTIONS.has(params.subaction);
 }
 
+// Values are joined as key=value|key=value, so free text must not be able to
+// forge a separator. Escaping is injective; values without "|", "," or a
+// backslash keep their exact previous shape.
+function escapeKeyPart(value: string): string {
+  return value.replace(/[\\|]/g, (c) => `\\${c}`);
+}
+function escapeListPart(value: string): string {
+  return value.replace(/[\\,]/g, (c) => `\\${c}`);
+}
+
 export function walletFinancialPendingKey(
   params: Pick<
     WalletFinancialWriteParams,
@@ -142,13 +152,26 @@ export function walletFinancialPendingKey(
     entries.push(["support", String(params.support)]);
   }
   if (params.targets !== undefined) {
-    entries.push(["targets", params.targets.join(",").toLowerCase()]);
+    entries.push([
+      "targets",
+      params.targets
+        .map((t) => escapeListPart(String(t).toLowerCase()))
+        .join(","),
+    ]);
   }
   if (params.values !== undefined) {
-    entries.push(["values", params.values.join(",")]);
+    entries.push([
+      "values",
+      params.values.map((v) => escapeListPart(String(v))).join(","),
+    ]);
   }
   if (params.calldatas !== undefined) {
-    entries.push(["calldatas", params.calldatas.join(",").toLowerCase()]);
+    entries.push([
+      "calldatas",
+      params.calldatas
+        .map((c) => escapeListPart(String(c).toLowerCase()))
+        .join(","),
+    ]);
   }
   if (params.description !== undefined) {
     entries.push(["description", params.description]);
@@ -183,7 +206,9 @@ export function walletFinancialPendingKey(
   if (rangeKey) {
     entries.push(["range", rangeKey]);
   }
-  return entries.map(([key, value]) => `${key}=${value}`).join("|");
+  return entries
+    .map(([key, value]) => `${key}=${escapeKeyPart(value)}`)
+    .join("|");
 }
 
 // The authorized slippage is part of what the user confirms, so the prompt

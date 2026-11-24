@@ -5,6 +5,11 @@
  */
 import { describe, expect, it } from "vitest";
 import {
+  encodeWalletGovData,
+  validateWalletGovParams,
+} from "../chains/evm/gov-router";
+import { parseWalletRouterParams } from "../types/wallet-router";
+import {
   walletFinancialPendingKey,
   walletFinancialPreview,
 } from "./wallet-financial-confirmation";
@@ -111,6 +116,62 @@ describe("Solana address confirmation key", () => {
         ...transfer,
         recipient: "9wzdxwbbmkg8ztbnmquxvqrayrzzdsgydlvl9zytawwm",
       } as never),
+    );
+  });
+});
+
+describe("pending key separator injection", () => {
+  const G1 = `0x${"11".repeat(20)}`;
+  const G2 = `0x${"22".repeat(20)}`;
+  const T = `0x${"33".repeat(20)}`;
+  const calls = {
+    targets: [T],
+    values: ["0"],
+    calldatas: ["0x"],
+    description: "d",
+  };
+
+  it("two different valid gov requests do not share a pending key", () => {
+    // A: propose on G1; proposalId is unchecked free text for propose.
+    const a = parseWalletRouterParams({
+      subaction: "gov",
+      chain: "base",
+      op: "propose",
+      governor: G1,
+      proposalId: `x|slippageBps=|op=vote|governor=${G2}|proposalId=5`,
+      support: 1,
+      ...calls,
+    });
+    // B: castVote(5, for) on G2; toToken is ignored by the gov encoding.
+    const b = parseWalletRouterParams({
+      subaction: "gov",
+      chain: "base",
+      toToken: `|slippageBps=|op=propose|governor=${G1}|proposalId=x`,
+      op: "vote",
+      governor: G2,
+      proposalId: "5",
+      support: 1,
+      ...calls,
+    });
+    expect(validateWalletGovParams(a)).toBeNull();
+    expect(validateWalletGovParams(b)).toBeNull();
+    expect(encodeWalletGovData(a)).not.toBe(encodeWalletGovData(b));
+    expect(walletFinancialPendingKey(a)).not.toBe(walletFinancialPendingKey(b));
+  });
+
+  it("a backslash in a value cannot mimic an escaped separator", () => {
+    const mk = (proposalId: string, support?: number) =>
+      parseWalletRouterParams({
+        subaction: "gov",
+        chain: "base",
+        op: "propose",
+        governor: G1,
+        proposalId,
+        support,
+        ...calls,
+      });
+    expect(walletFinancialPendingKey(mk("p\\", 1))).not.toBe(
+      walletFinancialPendingKey(mk("p|support=1")),
     );
   });
 });
