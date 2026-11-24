@@ -128,29 +128,28 @@ pure val viewerOffsetValues = Set(-480, 0, 840)
 pure val utcMinuteValues = Set(0, 1439)
 ```
 
-### A create that names its event, its day and its clock range keeps that range
+### A clock time the owner stated is one the owner's words hold
 
-When the owner's whole message asks to add, create or schedule an event
-called, named or titled exactly the create's title, followed only by its day
-(today, tomorrow, the day after tomorrow or a `YYYY-MM-DD` date), a range
-from one clock time to another, and at most "on my built-in calendar" and
-"with no guests", a timed create starts and ends at that day and range in
-its wall zone, whatever times the model sent. A clock the owner spoke in
-words with am or pm ("one ten PM", "twelve forty-five am", "one oh five pm")
-is that clock written in digits. Any other request, a range whose end is not
-after its start, or a wall time the zone skips or repeats keeps the times
-the model sent.
+A chat create or change carries the times the model read from the
+owner's request, and says which clock times the owner stated: the start,
+or the start and the end. Code reads no day or time from the words; it
+checks each stated clock time against them instead. A stated time is held
+by the owner's words when they write it in digits ("1:10 pm", "13:10",
+"4"), spell it with its minutes ("one ten PM", "one oh five pm", "six
+PM"), or say noon, midnight, or half past, a quarter past or a quarter to
+the hour; written with am or pm, it is that half of the day only. A stated
+time the words do not hold changes nothing, and the result tells the model
+which time it sent, so it sends the time the owner said or says that the
+owner left the time open ("tomorrow afternoon"). A time the model does
+not call stated is kept as sent.
 
 ```quint
-type CreateRangeSource = StatedCreateRange | ModelCreateRange
-pure def createRangeSource(timed: bool, wholeRequestStated: bool, wallResolved: bool, endAfterStart: bool): CreateRangeSource =
-  if (timed and wholeRequestStated and wallResolved and endAfterStart) StatedCreateRange else ModelCreateRange
-pure def lawStatedRangeOverridesModelOnTimedCreate(timed: bool, wholeRequestStated: bool, wallResolved: bool, endAfterStart: bool): bool =
-  createRangeSource(timed, wholeRequestStated, wallResolved, endAfterStart) == StatedCreateRange iff (timed and wholeRequestStated and wallResolved and endAfterStart)
-pure def lawAllDayCreateKeepsModelRange(wholeRequestStated: bool, wallResolved: bool, endAfterStart: bool): bool =
-  createRangeSource(false, wholeRequestStated, wallResolved, endAfterStart) == ModelCreateRange
-pure def lawUnresolvedOrReversedRangeKeepsModelRange(timed: bool, wholeRequestStated: bool, wallResolved: bool, endAfterStart: bool): bool =
-  (not(wallResolved) or not(endAfterStart)) implies createRangeSource(timed, wholeRequestStated, wallResolved, endAfterStart) == ModelCreateRange
+type StatedClockCheck = ClockAsSent | ClockUnsaid
+pure def statedClockCheck(statedByOwner: bool, heldByOwnerWords: bool): StatedClockCheck =
+  if (statedByOwner and not(heldByOwnerWords)) ClockUnsaid else ClockAsSent
+pure def lawAStatedClockTheWordsDoNotHoldChangesNothing(heldByOwnerWords: bool): bool =
+  (statedClockCheck(true, heldByOwnerWords) == ClockUnsaid) iff not(heldByOwnerWords)
+pure def lawAnOpenTimeIsKept(heldByOwnerWords: bool): bool = statedClockCheck(false, heldByOwnerWords) == ClockAsSent
 ```
 
 ### A stated year wins, a wrong extracted year is corrected, and a past start asks first

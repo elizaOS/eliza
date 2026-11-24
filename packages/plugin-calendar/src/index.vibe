@@ -60,7 +60,7 @@ export function calendarPlugin(): CalendarPlugin {
     init: async (_config, runtime) => {
       started = runtime
       runtime.contexts.tryRegister(calendarContext)
-      await runPromise(registerDeviceProposalFamily(runtime, calendarProposalFamily))
+      await runPromise(registerDeviceProposalFamily(runtime, calendarProposalFamily(runtime)))
     },
   }
 }
