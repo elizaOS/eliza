@@ -1,4 +1,4 @@
-// spec/calendar/actions.md, "Story: Ask when I am free and get openings from my real calendar"; spec/calendar/actions.md, "A free-time question reads exactly the asked window and answers only from a complete read"; spec/calendar/actions.md, "A morning-only question reads only that morning, from midnight to noon"; spec/calendar/actions.md, "A period is free only when no blocking event overlaps it"; spec/calendar/actions.md, "Openings are at most two quarter-hour starts of the asked length inside the window"
+// spec/calendar/actions.md, "Story: Ask when I am free and get openings from my real calendar"; spec/calendar/actions.md, "A free-time question reads exactly the asked window and answers only from a complete read"; spec/calendar/actions.md, "A morning-only question reads only that morning, from midnight to noon"; spec/calendar/actions.md, "An afternoon-only question reads only that afternoon, from noon to five"; spec/calendar/actions.md, "A period is free only when no blocking event overlaps it"; spec/calendar/actions.md, "Openings are at most two quarter-hour starts of the asked length inside the window"
 import { alignedStart, eventBlocks, nextSearchStart, quarterHour, slotOffered } from "../../gen/calendar__actions.effect.vibe"
 import type { TimeWindow } from "../../gen/calendar__availability.effect.vibe"
 import { addDaysToLocalDate, buildUtcDateFromLocalParts, getZonedDateParts, startOfCivilDay, type LocalDate } from "../clock.vibe"
@@ -6,9 +6,9 @@ import type { CalendarEvent } from "../model.vibe"
 
 const dayMs = 86_400_000
 
-export function noonOf(instant: number, timeZone: string): number | undefined {
+export function hourOfDay(instant: number, timeZone: string, hour: number): number | undefined {
   const day = getZonedDateParts(new Date(instant), timeZone)
-  return day === undefined ? undefined : buildUtcDateFromLocalParts(timeZone, { year: day.year, month: day.month, day: day.day, hour: 12, minute: 0, second: 0 })?.getTime()
+  return day === undefined ? undefined : buildUtcDateFromLocalParts(timeZone, { year: day.year, month: day.month, day: day.day, hour, minute: 0, second: 0 })?.getTime()
 }
 
 export function windowFitsWeek(begin: number, finish: number, timeZone: string): boolean {

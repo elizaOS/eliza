@@ -3,7 +3,8 @@ import type { Client } from "pg"
 import { CLEF_DECISIONS_PATH } from "../clef-decisions.vibe"
 import { clefRequest, type ClefEnv } from "../clef-worker.vibe"
 import { deviceAttachmentPath, googleRequest, googleResponse, reminderSchedule, selectedAttachmentPath, type GoogleEnv } from "../google.vibe"
-import { cloudCredential, identityRequest, inferenceAccount, sessionAccount, type IdentityEnv } from "../identity.vibe"
+import { cloudCredential, identityRequest, inferenceAccount, leaseAccount, sessionAccount, type IdentityEnv } from "../identity.vibe"
+import { bearerToken, leaseAccessPattern } from "../identity/sessions.vibe"
 import { ownsPasswordBackupPath } from "../password-backup.vibe"
 import { inboxArrivalPath } from "../services/google/inbox-arrival.vibe"
 import { limitedBody, WorkerHeaders, WorkerResponse, withRequestBody } from "../worker-platform.ts"
@@ -25,26 +26,33 @@ interface WorkerOnlyRoute<E extends LegacyBindings> {
 
 const remindersPath = "/api/v1/calendar-reminders/device"
 const compatibleGmailPaths: ReadonlySet<string> = new Set([
-  "/api/v1/eliza/google/gmail/triage", "/api/v1/eliza/google/gmail/search", "/api/v1/eliza/google/gmail/read", inboxArrivalPath,
+  "/api/v1/eliza/google/status", "/api/v1/eliza/google/gmail/triage", "/api/v1/eliza/google/gmail/search", "/api/v1/eliza/google/gmail/read",
+  "/api/v1/eliza/google/calendar/feed", inboxArrivalPath,
 ])
 const refusal = (status: number, error: string) => WorkerResponse.json({ error }, { status })
 
 export async function legacyGmailResponse(request: Request, routePath: string, env: LegacyBindings, db: Client, providerFetch: typeof fetch): Promise<HttpServerResponse.HttpServerResponse | undefined> {
   if (request.method !== "GET" || !compatibleGmailPaths.has(routePath)) return undefined
-  const credential = await cloudCredential(request)
-  if (credential === null) return undefined
-  const browser = credential.kind === "browser"
-  const account = () => browser ? sessionAccount(request, db) : inferenceAccount(request, db, env, "recorded")
+  const authorization = bearerToken(request.headers.get("authorization") ?? undefined)
+  const lease = authorization !== undefined && leaseAccessPattern.test(authorization)
+  const credential = lease ? null : await cloudCredential(request)
+  if (!lease && credential === null) return undefined
+  const browser = credential?.kind === "browser"
+  const account = () => lease ? leaseAccount(request, db) : browser ? sessionAccount(request, db) : inferenceAccount(request, db, env, "recorded")
   const owner = await account()
   if (!owner) return undefined
   const canonical = async () => (await db.query("SELECT 1 FROM google_connections WHERE user_id = $1 AND status <> 'Pending' LIMIT 1", [owner])).rows.length > 0
   if (await canonical()) return undefined
+  if (routePath === "/api/v1/eliza/google/status") {
+    const legacy = await db.query("SELECT 1 FROM cloud_google_connections WHERE account_id = $1 LIMIT 1", [owner])
+    if (legacy.rows.length === 0) return undefined
+  }
   const denied = (status: number, error: string) => HttpServerResponse.jsonUnsafe({ error }, { status, headers: { "cache-control": "no-store" } })
   if (corsFor(request, env, routePath).foreign) return denied(403, "forbidden_origin")
   const arrival = routePath === inboxArrivalPath
-  if (!browser && !arrival) return denied(401, "authentication_required")
+  if (!browser && !lease && !arrival) return denied(401, "authentication_required")
   const current = async () => await account() === owner && !await canonical()
-  const response = await googleResponse(request, env, db, owner, providerFetch, arrival ? { credential, current } : undefined)
+  const response = await googleResponse(request, env, db, owner, providerFetch, arrival && credential !== null ? { credential, current } : undefined)
   return response.status === 200 && !arrival && !await current() ? denied(401, "authentication_required") : response
 }
 

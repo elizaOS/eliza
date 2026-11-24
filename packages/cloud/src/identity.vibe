@@ -1,4 +1,4 @@
-// spec/cloud/index.md, "Story: Sign in to the Cloud"; spec/cloud/index.md, "Google sign-in for backup returns to the protected approval page"
+// spec/cloud/index.md, "Story: Sign in to the Cloud"; spec/cloud/index.md, "Google sign-in for backup returns to the protected approval page"; spec/cloud/identity/sessions.md, "Story: Keep a tablet signed in to mail and calendar"; spec/cloud/nativeClients/deviceKeys.md, "Story: Keep a tablet's key without signing in again"
 import type { Client } from "pg"
 import type { JWTVerifyGetKey } from "jose"
 import { browserGoogleReturn, mayIssueAccountBoundDeviceGrant, type BrowserGooglePurpose } from "../gen/cloud.effect.vibe"
@@ -7,17 +7,25 @@ import { FetchHttpClient, HttpClient, HttpClientRequest, HttpIncomingMessage, Ht
 
 import {
   accessCookie, refreshCookie, accessDigest, deviceDigest, digestCredential, readCookie, newSecret,
-  authQuery as query, accountTransaction, identityTx, browserAccount, signInWithProof, renewBrowserSession, logoutBrowserSession,
+  authQuery as query, accountTransaction, browserAccount, signInWithProof, renewBrowserSession, logoutBrowserSession,
   rateLimit, RateLimited, StorageUnavailable, IdentityConflict, type BrowserSession, type Identity
 } from "./identity-store.vibe"
 
-import { endKey, inspectKey } from "./native-clients/grants.vibe"
+import { endKey, inspectKey, supersedeGrant } from "./native-clients/grants.vibe"
+import { activateLease, admitLeaseRefresh, bearerToken, endLease, leaseAccessPattern, leaseRefreshExpiresIn, leaseRefreshPattern, moveLease, offerLease, presentedLease, leaseRefusedOr, rotateLease } from "./identity/sessions.vibe"
+import { refusalBody, refused, Refused } from "./http/refusal.vibe"
+import { authenticate } from "./http/request-auth.vibe"
+import { Store, toText, type Tx } from "./store/connection.vibe"
+import { clientStore } from "./worker-store.vibe"
+import { sealWith, unsealWith } from "./shared/sealing.vibe"
+import { statusOf } from "../gen/cloud__shared__types.effect.vibe"
 
 import { browserNativeRegistration, type NativeRegistryEnv } from "./native-registry.vibe"
 import type { GoogleEnv } from "./google.vibe"
 import { ownsPasswordBackupPath, passwordBackupApprovalPath, passwordBackupRequest } from "./password-backup.vibe"
 
 export type IdentityEnv = NativeRegistryEnv & GoogleEnv & {
+  DEVICE_LEASE_SEAL_KEY?: string
   SIGN_IN_EMAIL?: { send(message: { from: string; to: string; subject: string; text: string }): Promise<unknown> }
   RESEND_API_KEY?: string
   EMAIL_FROM?: string
@@ -99,8 +107,46 @@ function sessionCookies(session: BrowserSession) {
   return [cookieValue(accessCookie, session.access, session.accessSeconds), cookieValue(refreshCookie, session.refresh, session.refreshSeconds)]
 }
 
-export function sessionAccount(request: Request, db: Client): Promise<string | null> {
-  return runPromise(Effect.provide(effect { return (try browserAccount(request, db))?.id ?? null }, cryptoServices))
+export function sessionAccount(request: Request, db: Client, source: "cookie" | "bearer" = "cookie"): Promise<string | null> {
+  return runPromise(Effect.provide(effect { return (try browserAccount(request, db, source))?.id ?? null }, cryptoServices))
+}
+
+function leaseSealKey(env: IdentityEnv) {
+  const key = env.DEVICE_LEASE_SEAL_KEY
+  return key !== undefined && /^[A-Za-z0-9+/]{43}=$/.test(key) ? key : undefined
+}
+
+effect function sealDeviceReply(key: string, secret: string) {
+  const value = try Effect.try({
+    try: () => sealWith(key, "standalone-device-reply-v1", secret),
+    catch: () => new ProviderUnavailable()
+  })
+  return [value.iv, value.tag, value.data].join(".")
+}
+
+effect function openDeviceReply(key: string, value: string | undefined) {
+  const [iv, tag, data] = value?.split(".") ?? []
+  if (!iv || !tag || !data) throw new StorageUnavailable()
+  return try Effect.try({
+    try: () => unsealWith(key, "standalone-device-reply-v1", iv, tag, data),
+    catch: () => new StorageUnavailable()
+  })
+}
+
+function leaseBearer(request: Request) {
+  const token = request.headers.get("authorization")?.match(/^Bearer (\S+)$/)?.[1]
+  return token !== undefined && leaseRefreshPattern.test(token) ? token : null
+}
+
+effect function transact<A, E, R>(db: Client, body: (tx: Tx) => A!E!R) {
+  const program = effect {
+    const store = try Store
+    return try store.transaction(body)
+  }
+  return Effect.provide(program, Layer.effect(Store, clientStore(db))) catch effect (failure) => {
+    if (failure instanceof Refused || failure instanceof Unauthorized) throw failure
+    throw new StorageUnavailable()
+  }
 }
 
 effect function requestCredential(request: Request) {
@@ -114,6 +160,15 @@ effect function requestCredential(request: Request) {
 
 export function cloudCredential(request: Request) {
   return runPromise(Effect.provide(requestCredential(request), cryptoServices))
+}
+
+export function leaseAccount(request: Request, db: Client): Promise<string | null> {
+  const token = bearerToken(request.headers.get("authorization") ?? undefined)
+  if (token === undefined || !leaseAccessPattern.test(token)) return Promise.resolve(null)
+  return runPromise(Effect.provide(effect {
+    const caller = authenticate(request.headers.get("authorization") ?? undefined, "MailAccess", false) catch () => ({ kind: "anonymous" } as const)
+    return caller.kind === "lease" ? caller.userId : null
+  }, Layer.merge(cryptoServices, Layer.effect(Store, clientStore(db)))))
 }
 
 type DeviceAuthority = "any" | "recorded"
@@ -456,23 +511,57 @@ effect function exchangeDevice(request: Request, env: IdentityEnv, db: Client) {
   const bearerHash = try digestCredential(bearer)
   const credential = try (try SecureRandom.SecureRandom).uuidV4()
   const now = try Clock.currentTimeMillis
-  const { rows } = try query<{ id: string; organization_id: string }>(db, `
+  const sealKey = leaseSealKey(env)
+  const issued = try transact(db, effect (tx: Tx) => {
+    const locked = (try tx.query(
+      "SELECT a.key FROM accounts a JOIN device_grants d ON d.user_id = a.key WHERE d.code_digest = $1 FOR UPDATE OF a", [codeHash]
+    ))[0]
+    if (locked === undefined) throw new Unauthorized()
+    if (sealKey !== undefined) {
+      const previous = (try tx.query(`
+        SELECT d.key, d.sealed_copy, d.sealed_lease, d.key_expires_at, a.key AS id, a.organization_id
+        FROM device_grants d JOIN accounts a ON a.key = d.user_id
+        JOIN cloud_device_proofs p ON p.grant_key = d.key JOIN sessions s ON s.key = p.session_key
+        WHERE d.code_digest = $1 AND p.challenge = $2 AND d.client_id = $4 AND d.phase = 'exchanged'
+          AND d.code_expires_at > $3 AND d.key_expires_at > $3 AND d.device_epoch = a.device_epoch
+          AND a.status = 'active' AND s.live AND s.refresh_expires_at > $3
+          AND (s.state->>'epoch')::bigint = a.sessions_revoked_before
+        FOR UPDATE OF a, d
+      `, [codeHash, challenge, now, registration.clientId]))[0]
+      const grantKey = toText(previous?.key)
+      if (grantKey !== undefined) return {
+        token: try openDeviceReply(sealKey, toText(previous?.sealed_copy)),
+        expiresIn: Math.floor((Number(previous?.key_expires_at) - now) / 1000),
+        accountId: toText(previous?.id), organizationId: toText(previous?.organization_id),
+        lease: { refresh: try openDeviceReply(sealKey, toText(previous?.sealed_lease)),
+          refreshExpiresIn: try leaseRefreshExpiresIn(tx, grantKey, now) }
+      }
+    }
+    const device = (try tx.query(`
     WITH owner AS MATERIALIZED (
       SELECT a.* FROM accounts a JOIN device_grants d ON d.user_id = a.key WHERE d.code_digest = $1 FOR UPDATE OF a
     )
     UPDATE device_grants d SET phase = 'exchanged', state = jsonb_build_object('flatDeviceGrant','FlatTokenStarted','phase','Exchanged'),
-      credential_id = $4, secret_digest = $5, key_expires_at = $6, revision = d.revision + 1, updated_at = $3, code_digest = NULL
+      credential_id = $4, secret_digest = $5, key_expires_at = $6, revision = d.revision + 1, updated_at = $3, code_digest = CASE WHEN $8::boolean THEN d.code_digest ELSE NULL END
     FROM cloud_device_proofs p JOIN sessions s ON s.key = p.session_key JOIN owner a ON a.key = s.user_id
     WHERE d.key = p.grant_key AND d.user_id = a.key AND d.phase = 'code_issued' AND d.code_digest = $1 AND p.challenge = $2
       AND d.state->>'flatDeviceGrant' = 'FlatTokenStarted'
       AND d.code_expires_at > $3 AND s.refresh_expires_at > $3 AND s.live AND a.status = 'active'
       AND (s.state->>'epoch')::bigint = a.sessions_revoked_before
       AND d.device_epoch = a.device_epoch AND d.client_id = $7
-    RETURNING a.key AS id, a.organization_id
-  `, [codeHash, challenge, now, credential, bearerHash, now + registration.credentialTtl, registration.clientId])
-  const device = rows[0]
-  if (!device) throw new Unauthorized()
-  return json(200, { token: bearer, expiresIn: Math.floor(registration.credentialTtl / 1000), accountId: device.id, organizationId: device.organization_id })
+    RETURNING a.key AS id, a.organization_id, d.key AS grant_key
+  `, [codeHash, challenge, now, credential, bearerHash, now + registration.credentialTtl, registration.clientId, sealKey !== undefined]))[0]
+    const accountId = toText(device?.id)
+    const grantKey = toText(device?.grant_key)
+    if (accountId === undefined || grantKey === undefined) throw new Unauthorized()
+    const response = { token: bearer, expiresIn: Math.floor(registration.credentialTtl / 1000), accountId, organizationId: toText(device?.organization_id) }
+    if (sealKey === undefined) return response
+    const lease = try offerLease(tx, { userId: accountId, grantKey, now })
+    const saved = try sealDeviceReply(sealKey, bearer), refresh = try sealDeviceReply(sealKey, lease.refresh)
+    try tx.query("UPDATE device_grants SET sealed_copy = $2, sealed_lease = $3 WHERE key = $1", [grantKey, saved, refresh])
+    return { ...response, lease: { refresh: lease.refresh, refreshExpiresIn: lease.refreshExpiresIn } }
+  })
+  return json(200, issued)
 }
 
 const empty = () => HttpServerResponse.empty({ status: 204, headers: { "cache-control": "no-store" } })
@@ -483,44 +572,146 @@ effect function acknowledgeDevice(request: Request, env: IdentityEnv, db: Client
   const hash = try deviceDigest(request)
   if (hash === null) throw new Unauthorized()
   const now = try Clock.currentTimeMillis
-  const { rowCount } = try query(db, `
+  try transact(db, effect (tx: Tx) => {
+    const before = (try tx.query(`
+      SELECT d.key, d.phase, d.renewed_from FROM device_grants d JOIN accounts a ON a.key = d.user_id
+      WHERE d.secret_digest = $1 FOR UPDATE OF a, d
+    `, [hash]))[0]
+    const acknowledged = try tx.query(`
     WITH owner AS MATERIALIZED (
-      SELECT a.* FROM accounts a JOIN device_grants d ON d.user_id = a.key WHERE d.secret_digest = $1 FOR UPDATE OF a
+      SELECT a.* FROM accounts a JOIN device_grants d ON d.user_id = a.key WHERE d.secret_digest = $1
     )
     UPDATE device_grants d SET phase = 'active',
       state = CASE WHEN d.phase = 'active' THEN d.state ELSE jsonb_build_object('flatDeviceGrant','FlatTokenStarted','phase','Active','ackedAt',$2::bigint) END,
       revision = d.revision + CASE WHEN d.phase = 'exchanged' THEN 1 ELSE 0 END,
-      updated_at = CASE WHEN d.phase = 'exchanged' THEN $2 ELSE d.updated_at END
+      updated_at = CASE WHEN d.phase = 'exchanged' THEN $2 ELSE d.updated_at END,
+      code_digest = NULL, sealed_copy = NULL, sealed_lease = NULL
     FROM cloud_device_proofs p JOIN sessions s ON s.key = p.session_key JOIN owner a ON a.key = s.user_id
     WHERE d.key = p.grant_key AND d.user_id = a.key AND d.secret_digest = $1
       AND d.key_expires_at > $2 AND d.device_epoch = a.device_epoch AND a.status = 'active' AND d.client_id = $3
       AND (d.phase = 'active' OR (d.phase = 'exchanged' AND d.state->>'flatDeviceGrant' = 'FlatTokenStarted' AND d.code_expires_at > $2 AND s.live
-        AND s.refresh_expires_at > $2 AND (s.state->>'epoch')::bigint = a.sessions_revoked_before))
+        AND s.refresh_expires_at > $2 AND (s.state->>'epoch')::bigint = a.sessions_revoked_before
+        AND (d.renewed_from IS NULL OR (s.kind = 'device_lease' AND s.grant_key = d.renewed_from))))
     RETURNING d.key
   `, [hash, now, registration.clientId])
-  if (!rowCount) throw new Unauthorized()
+    const grantKey = toText(before?.key)
+    if (acknowledged.length === 0 || grantKey === undefined) throw new Unauthorized()
+    if (before?.phase !== "exchanged") return
+    const predecessor = toText(before.renewed_from)
+    if (predecessor === undefined) return try activateLease(tx, grantKey, now)
+    try supersedeGrant(tx, predecessor)
+    try moveLease(tx, predecessor, grantKey, now)
+  })
   return empty()
 }
 
 effect function revokeDevice(request: Request, db: Client) {
   const hash = try deviceDigest(request)
-  if (hash === null) throw new Unauthorized()
-  try accountTransaction(db, effect {
-    const row = (try query(db, `
+  const refresh = leaseBearer(request)
+  if (hash === null && refresh === null) throw new Unauthorized()
+  const now = try Clock.currentTimeMillis
+  try transact(db, effect (tx: Tx) => {
+    const lease = refresh === null ? undefined : try presentedLease(tx, refresh, now)
+    if (refresh !== null && lease !== undefined && lease.presented < lease.family.generation) try rotateLease(tx, refresh, now)
+    const row = (try tx.query(`
       SELECT d.key, d.state, d.phase, d.key_expires_at, d.device_epoch AS grant_epoch, a.device_epoch AS account_epoch, a.status
-      FROM device_grants d JOIN accounts a ON a.key = d.user_id WHERE d.secret_digest = $1 FOR UPDATE OF a, d
-    `, [hash])).rows[0]
-    if (row === undefined) return
-    const now = try Clock.currentTimeMillis
+      FROM device_grants d JOIN accounts a ON a.key = d.user_id WHERE d.secret_digest = $1 OR d.key = $2 FOR UPDATE OF a, d
+    `, [hash, lease?.grantKey ?? null]))[0]
+    const grantKey = toText(row?.key)
+    if (row === undefined || grantKey === undefined) return
     if (row.phase === "exchanged") {
-      try query(db, "UPDATE device_grants SET phase = 'ended', state = state || jsonb_build_object('endedBy','SelfRevoked'), sealed_copy = NULL, revision = revision + 1, updated_at = $2 WHERE key = $1 AND state->>'flatDeviceGrant' = 'FlatTokenStarted'", [row.key, now])
+      try tx.query("UPDATE device_grants SET phase = 'ended', state = state || jsonb_build_object('endedBy','SelfRevoked'), code_digest = NULL, sealed_copy = NULL, sealed_lease = NULL, revision = revision + 1, updated_at = $2 WHERE key = $1 AND state->>'flatDeviceGrant' = 'FlatTokenStarted'", [grantKey, now])
     } else if (row.phase === "active") {
       if (row.status !== "active") throw new Unauthorized()
-      const reason = endKey(identityTx(db), row, now) catch effect () => { throw new StorageUnavailable() }
-      if (reason !== "NoReason") throw new Unauthorized()
+      const reason = endKey(tx, row, now) catch effect () => { throw new StorageUnavailable() }
+      if (reason !== "NoReason" && reason !== "CredentialExpired") throw new Unauthorized()
     }
+    try endLease(tx, grantKey, now)
   })
   return empty()
+}
+
+effect function refreshLease(request: Request, db: Client) {
+  const refresh = leaseBearer(request)
+  if (refresh === null) throw refused("AuthenticationRequired", "CredentialUnknown")
+  try rateLimit(db, "lease:refresh:ip", request.headers.get("cf-connecting-ip") ?? "local", 60, 60)
+  const now = try Clock.currentTimeMillis
+  return json(200, try leaseRefusedOr(try transact(db, (tx: Tx) => rotateLease(tx, refresh, now))))
+}
+
+effect function renewDevice(request: Request, env: IdentityEnv, db: Client) {
+  const sealKey = leaseSealKey(env)
+  if (sealKey === undefined) throw new ProviderUnavailable()
+  const registration = browserNativeRegistration(env)
+  if (!registration) throw new ProviderUnavailable()
+  const refresh = leaseBearer(request)
+  if (refresh === null) throw refused("AuthenticationRequired", "CredentialUnknown")
+  try rateLimit(db, "lease:renew:ip", request.headers.get("cf-connecting-ip") ?? "local", 10, 60)
+  const bearer = try newSecret("device")
+  const bearerHash = try digestCredential(bearer)
+  const random = try SecureRandom.SecureRandom
+  const credential = try random.uuidV4()
+  const key = try random.uuidV4()
+  const now = try Clock.currentTimeMillis
+  const renewed = try transact(db, effect (tx: Tx) => {
+    const admitted = try admitLeaseRefresh(tx, refresh, now)
+    if (admitted.kind === "refused") return admitted
+    const lease = admitted.value
+    const previous = (try tx.query(`
+      SELECT d.credential_id, d.sealed_copy, d.key_expires_at
+      FROM device_grants d JOIN cloud_device_proofs p ON p.grant_key = d.key
+      WHERE d.renewed_from = $1 AND d.user_id = $2 AND p.session_key = $3 AND d.phase = 'exchanged'
+        AND d.code_expires_at > $4 AND d.key_expires_at > $4
+      ORDER BY d.issued_at DESC LIMIT 1 FOR UPDATE OF d
+    `, [lease.grantKey, lease.userId, lease.key, now]))[0]
+    if (previous !== undefined) return { kind: "done", value: {
+      token: try openDeviceReply(sealKey, toText(previous.sealed_copy)),
+      credentialId: toText(previous.credential_id), accountId: lease.userId,
+      expiresIn: Math.floor((Number(previous.key_expires_at) - now) / 1000)
+    } } as const
+    const sealed = try sealDeviceReply(sealKey, bearer)
+    const created = try tx.query(`
+      WITH predecessor AS MATERIALIZED (
+        SELECT d.key, d.user_id, d.client_id, d.device_epoch FROM device_grants d JOIN accounts a ON a.key = d.user_id
+        WHERE d.key = $1 AND d.user_id = $2 AND d.client_id = $3 AND d.phase IN ('active', 'expired')
+          AND d.device_epoch = a.device_epoch AND a.status = 'active'
+        FOR UPDATE OF a, d
+      ), created AS (
+        INSERT INTO device_grants (key,state,revision,user_id,client_id,phase,credential_id,secret_digest,code_expires_at,key_expires_at,device_epoch,renewed_from,issued_at,updated_at,sealed_copy)
+        SELECT $4, jsonb_build_object('flatDeviceGrant','FlatTokenStarted','phase','Exchanged','renewedFrom',key), 1, user_id, client_id, 'exchanged',
+          $5, $6, $7, $8, device_epoch, key, $9, $9, $11 FROM predecessor
+        RETURNING key
+      )
+      INSERT INTO cloud_device_proofs (grant_key, session_key, challenge) SELECT key, $10, 'renewal' FROM created RETURNING grant_key
+    `, [lease.grantKey, lease.userId, registration.clientId, key, credential, bearerHash, now + deviceGrantSeconds * 1000,
+      now + registration.credentialTtl, now, lease.key, sealed])
+    return created.length === 1 ? { kind: "done", value: {
+      token: bearer, credentialId: credential, expiresIn: Math.floor(registration.credentialTtl / 1000), accountId: lease.userId
+    } } as const : { kind: "refused", reason: "CredentialRevoked" } as const
+  })
+  return json(200, try leaseRefusedOr(renewed))
+}
+
+export function sweepDeviceOffers(db: Client): Promise<void> {
+  return runPromise(effect {
+    const now = try Clock.currentTimeMillis
+    const { rows } = try query<{ key: string; user_id: string }>(db, `
+      SELECT key, user_id FROM device_grants
+      WHERE phase = 'exchanged' AND state ? 'flatDeviceGrant' AND code_expires_at <= $1
+      ORDER BY code_expires_at LIMIT 100
+    `, [now])
+    for (const row of rows) {
+      try transact(db, effect (tx: Tx) => {
+        try tx.query("SELECT key FROM accounts WHERE key = $1 FOR UPDATE", [row.user_id])
+        const ended = try tx.query(`
+          UPDATE device_grants SET phase = 'ended', code_digest = NULL, sealed_copy = NULL, sealed_lease = NULL,
+            state = state || '{"endedBy":"NeverAcknowledged"}'::jsonb, revision = revision + 1, updated_at = $2
+          WHERE key = $1 AND phase = 'exchanged' AND code_expires_at <= $2 RETURNING key
+        `, [row.key, now])
+        if (ended.length === 1) try endLease(tx, row.key, now)
+      })
+    }
+  })
 }
 
 effect function handleIdentity(request: Request, env: IdentityEnv, db: Client) {
@@ -552,6 +743,8 @@ effect function handleIdentity(request: Request, env: IdentityEnv, db: Client) {
     if (url.pathname === "/api/auth/device/exchange") return try exchangeDevice(request, env, db)
     if (url.pathname === "/api/auth/device/ack") return try acknowledgeDevice(request, env, db)
     if (url.pathname === "/api/auth/device/revoke") return try revokeDevice(request, db)
+    if (url.pathname === "/api/auth/device/lease") return try refreshLease(request, db)
+    if (url.pathname === "/api/auth/device/renew") return try renewDevice(request, env, db)
     const origin = request.headers.get("origin")
     if (origin !== env.WEB_ORIGIN && origin !== env.PUBLIC_API_ORIGIN) return json(403, { error: "forbidden_origin" })
     switch (url.pathname) {
@@ -590,6 +783,7 @@ export function identityRequest(request: Request, env: IdentityEnv, db: Client, 
       when ProviderUnavailable: json(503, { error: "provider_unavailable" });
       when StorageUnavailable: json(503, { error: "storage_unavailable" });
       when IdentityConflict: json(409, { error: "identity_conflict" });
+      when Refused: json(statusOf(error.refusal.code), refusalBody(error.refusal));
     }
     return HttpServerResponse.toWeb(response)
   }, services))

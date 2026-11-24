@@ -13,11 +13,13 @@ import { deviceKeyHex } from "./support/device.ts"
 
 module node {
   import { Effect } from "effect"
-  import { registerDirectActionRoutingRule, sleepWithAbort, type Action } from "@elizaos/core"
+  import { registerDirectActionRoutingRule, sleepWithAbort, stringToUuid, validateUuid, type Action, type AgentRuntime, type UUID } from "@elizaos/core"
   import type { EffectReceipt } from "@elizaos/core/protocol"
   import { readReplyStream, type ReplyOutcome } from "../src/client/stream-reader.vibe"
   import type { AgentPlugin } from "../src/host/module.vibe"
   import { registerDeviceProposalFamily, unoffered } from "../src/device-actions/proposal/registry.vibe"
+  import { processTurn } from "../src/conversation/turns.vibe"
+  import { account } from "./support/scratch.ts"
 
   export interface Read {
     readonly outcome: ReplyOutcome
@@ -138,6 +140,17 @@ module node {
     return { outcome, reads }
   }
 
+  export async function unheardCueTurn(runtime: AgentRuntime, roomId: string, request: string, reports: false | undefined): Promise<readonly string[]> {
+    const room = await runtime.getRoom(roomId as UUID)
+    if (!room) throw new Error("The conversation has no room")
+    const owner = { user: validateUuid(account.userId) ?? stringToUuid(`account:${account.userId}`), world: stringToUuid(`device:${runtime.agentId}`) }
+    const offered: string[] = []
+    await processTurn(runtime, owner, room, request, AbortSignal.timeout(60_000), {
+      display: { restart: () => undefined, acknowledge: (cue) => { offered.push(cue); return reports }, tool: () => undefined, ready: () => undefined },
+    })
+    return offered
+  }
+
   export async function leftRead(): Promise<boolean> {
     const leave = new AbortController()
     const reason = new Error("Stop")
@@ -146,7 +159,7 @@ module node {
     return reading.then(() => false, (answered: unknown) => answered === reason)
   }
 }
-import { agendaApp, appliedReceiptId, effectApp, leftRead, privateEffectPayload, readErrorBeforeEof, readSplit, slowAgendaReads } from node
+import { agendaApp, appliedReceiptId, effectApp, leftRead, privateEffectPayload, readErrorBeforeEof, readSplit, slowAgendaReads, unheardCueTurn } from node
 
 
 effect function streamed(agent: InProcess, id: string, body: object, abortAfterChunks?: number) {
@@ -441,6 +454,65 @@ it.live(`Hear bare assent as a cue only in its own short forms, only with work a
     leadForms: ["Am I free Friday", "Any meetings today", instruction].map((request) => [request, "Sure! Let me check your calendar.", ["Sure! Let me check your calendar."], "Done."]),
     twoSentences: [instruction, "Sure, one sec. Let me check your calendar.", ["Sure, one sec. Let me check your calendar."], "Done."],
     afterFillers: ["Hey, text Sam I'm late", "Okay, Eliza, set an alarm for 7:30", "hey alpha text Sam I'm late"].map((request) => [request, "Sure.", ["Sure."], "Done."]),
+  }))
+}, 120_000)
+
+it.live(`Hear the result after the cue, never the cue again, and only a cue I heard counts (${planning}, "A delivered cue is told to the model as already said, so the reply never repeats it or takes it as evidence"; ${planning}, "A turn acknowledges at most once, with a cue that comes with its first tool calls, and bare assent is a cue only with work after an instruction")`, effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const agent = try startInProcess({
+    launch: { backend: { kind: "cloud", origin: cloud.origin }, load: [agendaApp.name], allowed: ["REPLY", "IGNORE", "NONE", "AGENDA_READ"] },
+    frame: { credential: { version: 1, value: deviceKey } }, modules: builtinModuleFactories, bundled: new Map([[agendaApp.name, agendaApp]]),
+  })
+  const { id, roomId } = try conversation(agent)
+  const agenda = { name: "AGENDA_READ", arguments: {} }
+  const sentNote = "was already sent to the person as progress"
+  const planned = (before: number) => cloud.calls.filter(({ path }) => path === "/api/v1/chat/completions").slice(before)
+    .map(({ body }) => (body as { messages: { role: string; content?: unknown; tool_calls?: unknown }[] }).messages)
+  const transcript = (messages: readonly { role: string; content?: unknown; tool_calls?: unknown }[] | undefined) => ({
+    stepText: (messages ?? []).filter(({ role, tool_calls }) => role === "assistant" && tool_calls !== undefined).map(({ content }) => content ?? null),
+    notes: (messages ?? []).filter(({ role, content }) => role === "user" && typeof content === "string" && content.includes(sentNote)).map(({ content }) => content),
+  })
+  const turn = (request: string, streams: boolean) => effect {
+    const before = cloud.calls.filter(({ path }) => path === "/api/v1/chat/completions").length
+    if (!streams) {
+      try call(agent, { method: "POST", path: `/api/conversations/${id}/messages`, body: { text: request } })
+      return { heard: [] as string[], ...transcript(planned(before).at(-1)) }
+    }
+    const chunks = try streamed(agent, id, { text: request })
+    const whole = try read(chunks, 0)
+    return { heard: whole.seen.filter((entry) => entry.startsWith("acknowledgment:")), ...transcript(planned(before).at(-1)) }
+  }
+
+  try Effect.sync(() => cloud.script(toolCalls("Let me check your calendar.", agenda), text("Nothing is booked tomorrow.")))
+  const delivered = try turn("What do I have tomorrow?", true)
+  try Effect.sync(() => cloud.script(toolCalls("Let me check your calendar.", agenda), text("Nothing is booked tomorrow.")))
+  const unstreamed = try turn("What do I have on Friday?", false)
+  try Effect.sync(() => cloud.script(toolCalls("Let me check.", agenda), text("Friday is open.")))
+  const quiet = try turn("Check my availability without a cue", true)
+  try Effect.sync(() => cloud.script(toolCalls("Your agenda is open.", agenda), text("Your agenda is open.")))
+  const notACue = try turn("Open my agenda", true)
+  try Effect.sync(() => cloud.script(toolCalls("", agenda), toolCalls("Let me check.", agenda), text("Nothing booked.")))
+  const laterStep = try turn("What is on my agenda this week?", true)
+  try Effect.sync(() => cloud.script(toolCalls("Let me check your calendar.", agenda), text("Nothing is booked on Sunday.")))
+  const refusedFrom = cloud.calls.filter(({ path }) => path === "/api/v1/chat/completions").length
+  const offered = try host("a turn whose reply stream refuses its cue", () => unheardCueTurn(agent.agent.runtime, roomId, "What do I have on Sunday?", false))
+  const refused = { offered, ...transcript(planned(refusedFrom).at(-1)) }
+  try Effect.sync(() => cloud.script(toolCalls("Let me check your calendar.", agenda), text("Nothing is booked on Saturday.")))
+  const unreportedFrom = cloud.calls.filter(({ path }) => path === "/api/v1/chat/completions").length
+  const reportedNothing = try host("a turn whose display reports nothing about its cue", () => unheardCueTurn(agent.agent.runtime, roomId, "What do I have on Saturday?", undefined))
+  const unreported = { offered: reportedNothing, ...transcript(planned(unreportedFrom).at(-1)) }
+
+  try Effect.try(() => assert.deepStrictEqual({ delivered, unstreamed, quiet, notACue, laterStep, refused, unreported }, {
+    delivered: {
+      heard: ["acknowledgment:Let me check your calendar."], stepText: ["Let me check your calendar."],
+      notes: [`Note from the agent host, not the person: "Let me check your calendar." ${sentNote}. Do not repeat or paraphrase it. Go straight to the result, any blocker, or the question you need answered. The cue is not evidence that any work succeeded.`],
+    },
+    unstreamed: { heard: [], stepText: [null], notes: [] },
+    quiet: { heard: [], stepText: [null], notes: [] },
+    notACue: { heard: [], stepText: [null], notes: [] },
+    laterStep: { heard: [], stepText: [null, null], notes: [] },
+    refused: { offered: ["Let me check your calendar."], stepText: [null], notes: [] },
+    unreported: { offered: ["Let me check your calendar."], stepText: [null], notes: [] },
   }))
 }, 120_000)
 

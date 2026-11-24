@@ -285,7 +285,7 @@ effect function sweepAttempts() {
 }
 
 export const browserConnectRoutes: ReadonlyArray<Route> = [
-  { method: "POST", path: "/api/v1/eliza/google/connect/initiate", auth: "ServiceAccess", maxBodyBytes: 16 * 1024, handler: init },
+  { method: "POST", path: "/api/v1/eliza/google/connect/initiate", auth: "SignedSession", maxBodyBytes: 16 * 1024, handler: init },
   { method: "GET", path: callbackPath, auth: "Public", handler: callback }
 ]
 

@@ -6,6 +6,7 @@ import { apply, decodeState, initial, accepts, canRefresh, canLogout, type Famil
 import { landAccount } from "./identity/accounts.vibe"
 import { Refused } from "./http/refusal.vibe"
 import { secretText, tokenDigest } from "./shared/credential-crypto.vibe"
+import { bearerToken } from "./identity/sessions.vibe"
 
 export type Account = { id: string; email: string | null }
 export type Identity = { provider: "google" | "email" | "sms"; subject: string; email: string | null }
@@ -154,7 +155,7 @@ function browserSession(account: AccountRow, access: string, refresh: string, se
   }
 }
 
-effect function openSignInFamily(db: Client, identity: Identity) {
+export effect function openSignInFamily(db: Client, identity: Identity) {
   const now = try Clock.currentTimeMillis
   const account = try accountForIdentity(db, identity, now)
   const epoch = Number(account.sessions_revoked_before)
@@ -180,9 +181,15 @@ export effect function signInWithProof(db: Client, identity: Identity) {
   })
 }
 
-export effect function browserAccount(request: Request, db: Client) {
-  const token = try accessDigest(request)
-  if (!token) return null
+export function browserAccessBearer(request: Request): string | undefined {
+  const token = bearerToken(request.headers.get("authorization") ?? undefined)
+  return token !== undefined && accessPattern.test(token) ? token : undefined
+}
+
+export effect function browserAccount(request: Request, db: Client, source: "cookie" | "bearer" = "cookie") {
+  const access = source === "bearer" ? browserAccessBearer(request) : readCookie(request, accessCookie)
+  if (!access || !accessPattern.test(access)) return null
+  const token = try digestCredential(access)
   const { rows } = try authQuery<SessionRow>(db, `
     SELECT a.key AS id, a.email, a.organization_id, a.sessions_revoked_before::text, s.state, s.key
     FROM sessions s JOIN accounts a ON a.key = s.user_id

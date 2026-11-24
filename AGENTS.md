@@ -37,7 +37,7 @@ The spec format, naming rules and everything the tools accept are in
 
 ## Pull requests
 
-- **Base.** Open every pull request against `vibestack`, the primary branch.
+- **Base.** Open contribution pull requests against `develop`.
 - **Spec conformance.** Verify through the application's normal entry
   points that the top-level stories, rules, and Quint models are fully
   implemented and integrated. Every change must follow them exactly.

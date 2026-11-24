@@ -160,12 +160,16 @@ effect function readConfig(context: RouteContext) {
   if (url === undefined) throw refused("RedirectMismatch")
   const deployment = try Deployment
   const answer = configAnswer(registration, rowOf(deployment.profile.name, deployment.settings).signIn, deployment.settings.google?.serverClientId ?? "")
+  const nativeClientId = deployment.secret("NATIVE_CLIENT_ID") catch () => undefined
+  const sealKey = deployment.secret("DEVICE_LEASE_SEAL_KEY") catch () => undefined
+  const mailLease = nativeClientId === answer.clientId && sealKey !== undefined && /^[A-Za-z0-9+/]{43}=$/.test(sealKey)
   return json({
     clientId: answer.clientId,
     environment: wireEnvironment[answer.environment],
     redirectUri: returnText(answer.redirectUri),
     codeChallengeMethod: answer.codeChallengeMethod,
     credentialTtlMs: answer.credentialTtlMs,
+    ...(mailLease ? { mailLease: true } : {}),
     methods: answer.methods,
     google: answer.google
   })

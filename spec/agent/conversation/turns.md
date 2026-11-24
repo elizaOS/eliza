@@ -304,6 +304,30 @@ pure def publishesCutOffEffect(stored: bool, negotiated: bool): bool =
   stored and negotiated
 ```
 
+### An aborted reply records what ended its turn, and never in its text
+
+An `aborted` reply stores `abortCause`, a code naming what ended its turn,
+so a stopped reply can be told from a dropped one afterwards: `stop` for a
+Stop, `client_left` when the client that sent or streams the turn left,
+`runtime` when the runtime ended the turn's work without either, and
+`restart` for a turn a restart cut. Whichever reached the turn first names
+it. A Stop's reason is stored with it as `stopReason` when the reason is a
+code: a letter, then at most 63 letters, digits, `_`, `-`, `.` or `:`. A
+`timeout` and every other kind store no cause. The cause is never part of
+the reply's text, its frames or its speech.
+
+```quint
+type TurnEnder = StopEnded | ClientEnded | RuntimeEnded
+pure def abortCauseOf(ended: ReplyKind, ender: TurnEnder): str = match ended {
+  | Aborted => match ender { | StopEnded => "stop" | ClientEnded => "client_left" | RuntimeEnded => "runtime" }
+  | Unfinished => "restart"
+  | _ => "" }
+pure val enderValues = Set(StopEnded, ClientEnded, RuntimeEnded)
+pure def lawOnlyAnAbortedReplyNamesWhatEndedIt(ended: ReplyKind, ender: TurnEnder): bool =
+  (abortCauseOf(ended, ender) != "") iff (failureKind(ended) == "aborted")
+pure def lawACutTurnNamesTheRestart(ender: TurnEnder): bool = abortCauseOf(Unfinished, ender) == "restart"
+```
+
 ### After a restart a repeat replays the stored reply, and a turn the restart cut is never run again
 
 A restart loses every running turn and every five-minute receipt; the

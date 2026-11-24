@@ -335,18 +335,23 @@ effect function mailboxHistory<E, R>(api: GoogleReadApi<E, R>) {
   return profile.value.historyId
 }
 
-export effect function googleGmailTriage<E, R>(api: GoogleReadApi<E, R>, url: URL, syncedAt: string, selfEmail: string) {
-  const limit = mailListCount("TriageList", url.searchParams.get("maxResults"))
-  const folder = url.searchParams.get("folder") ?? "inbox"
+export effect function gmailTriageInput(params: URLSearchParams) {
+  const limit = mailListCount("TriageList", params.get("maxResults"))
+  const folder = params.get("folder") ?? "inbox"
   const label = folderLabels.get(folder)
-  const search = url.searchParams.get("q") ?? ""
-  const counts = url.searchParams.get("counts")
+  const search = params.get("q") ?? ""
+  const counts = params.get("counts")
   if (!label || limit === null ||
       search.length > 512 || hasControlCharacter(search) || (counts !== null && counts !== "1")) throw new GoogleReadInput()
+  return { limit, folder, label, q: search.trim(), counts: counts === "1" }
+}
+
+export effect function googleGmailTriage<E, R>(api: GoogleReadApi<E, R>, url: URL, syncedAt: string, selfEmail: string) {
+  const { limit, folder, label, q, counts } = try gmailTriageInput(url.searchParams)
   const mailboxHistoryId = try mailboxHistory(api)
   const query = new URLSearchParams({ maxResults: String(limit), labelIds: label, fields: "messages/id,nextPageToken" })
   if (label === "TRASH") query.set("includeSpamTrash", "true")
-  if (search.trim()) query.set("q", search.trim())
+  if (q !== "") query.set("q", q)
   paging(url.searchParams, query)
   const raw = try api(gmail + "/messages?" + query)
   const result = Schema.decodeUnknownOption(MessageList)(raw)
@@ -354,13 +359,13 @@ export effect function googleGmailTriage<E, R>(api: GoogleReadApi<E, R>, url: UR
   const messages = try Effect.forEach(result.value.messages ?? [], effect (entry) => {
     return try mailCard(try readMessage(api, entry.id, "metadata"), selfEmail)
   }, { concurrency: 4 })
-  const totals = counts === "1" ? {
+  const totals = counts ? {
     inboxUnread: try labelCount(api, "INBOX", "messagesUnread"),
     drafts: try labelCount(api, "DRAFT", "messagesTotal")
   } : undefined
   const current = messages.filter(({ labels }) => labels.includes(label) && (label === "TRASH" || !(labels.includes("TRASH") || labels.includes("SPAM"))))
   if (folder === "inbox") current.sort(compareMailTriage)
-  return { folder, q: search.trim(), messages: current, syncedAt, mailboxHistoryId,
+  return { folder, q, messages: current, syncedAt, mailboxHistoryId,
     nextPageToken: result.value.nextPageToken ?? null, ...(totals && { counts: totals }) }
 }
 
