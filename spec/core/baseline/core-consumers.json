@@ -749,7 +749,10 @@
         }
       ],
       "text": "import { type Action, type ActionResult, type AwarenessRegistry, getValidationKeywordTerms, type HandlerOptions, type IAgentRuntime, logger, type Memory, textIncludesKeywordTerm, toWellFormedUnicode, type UUID, } from \"@elizaos/core\";",
-      "v4Package": "agent"
+      "v4Package": "agent",
+      "v4RetiredNames": [
+        "getValidationKeywordTerms"
+      ]
     },
     {
       "file": "packages/agent/src/actions/self-api-no-listener.test.ts",
@@ -7631,7 +7634,10 @@
         }
       ],
       "text": "import { actionGateRejection, buildCrossWorldConversationAccessContext, getValidationKeywordTerms, type IAgentRuntime, type Media, type Memory, markOwnerExclusiveDisclosureUsed, OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS, type Provider, type ProviderResult, type Room, recordOwnerExclusiveSuppression, revalidateOwnerExclusiveDisclosure, type State, toWellFormedUnicode, type UUID, } from \"@elizaos/core\";",
-      "v4Package": "agent"
+      "v4Package": "agent",
+      "v4RetiredNames": [
+        "getValidationKeywordTerms"
+      ]
     },
     {
       "file": "packages/agent/src/providers/relevant-conversations.ts",
@@ -7745,7 +7751,10 @@
         }
       ],
       "text": "import { type AccessContext, buildAccessContext, type CanonicalRecallResult, ChannelType, filterByAccessContext, getUserMessageText, getValidationKeywordTerms, type IAgentRuntime, type Memory, markOwnerExclusiveDisclosureUsed, OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS, type Provider, type ProviderResult, type Room, recordOwnerExclusiveSuppression, revalidateOwnerExclusiveDisclosure, type State, searchCanonicalConversationMemories, stringToUuid, type UUID, } from \"@elizaos/core\";",
-      "v4Package": "agent"
+      "v4Package": "agent",
+      "v4RetiredNames": [
+        "getValidationKeywordTerms"
+      ]
     },
     {
       "file": "packages/agent/src/providers/role-backfill.ts",
@@ -7957,7 +7966,10 @@
         }
       ],
       "text": "import { getValidationKeywordTerms, type IAgentRuntime, type Memory, type Provider, type ProviderResult, type Service, type State, } from \"@elizaos/core\";",
-      "v4Package": "agent"
+      "v4Package": "agent",
+      "v4RetiredNames": [
+        "getValidationKeywordTerms"
+      ]
     },
     {
       "file": "packages/agent/src/providers/session-bridge.ts",
@@ -8123,7 +8135,10 @@
         }
       ],
       "text": "import { ChannelType, getValidationKeywordTerms, type IAgentRuntime, logger, type Memory, type Provider, type State, } from \"@elizaos/core\";",
-      "v4Package": "agent"
+      "v4Package": "agent",
+      "v4RetiredNames": [
+        "getValidationKeywordTerms"
+      ]
     },
     {
       "file": "packages/agent/src/providers/user-name.ts",
@@ -40936,7 +40951,10 @@
         }
       ],
       "text": "import { type CharacterLanguage, getValidationKeywordTerms, normalizeCharacterLanguage, } from \"@elizaos/core\";",
-      "v4Package": "agent"
+      "v4Package": "agent",
+      "v4RetiredNames": [
+        "getValidationKeywordTerms"
+      ]
     },
     {
       "file": "plugins/plugin-assistant/src/actions/context-signal.ts",
@@ -42629,7 +42647,10 @@
         }
       ],
       "text": "import { asRecord, ChannelType, canModifyRole, findKeywordTermMatch, getLiveEntityMetadataFromMessage, getCatalogValidationKeywordTerms as getValidationKeywordTerms, logger, normalizeRole, type RoleName, resolveCanonicalOwnerId, resolveEntityRole, resolveWorldForMessage, setEntityRoleCas, toWellFormedUnicode, validateUuid, } from \"@elizaos/core\";",
-      "v4Package": "agent"
+      "v4Package": "agent",
+      "v4RetiredNames": [
+        "getCatalogValidationKeywordTerms"
+      ]
     },
     {
       "file": "plugins/plugin-assistant/src/features/advanced-capabilities/actions/room.mute.test.ts",
@@ -42767,7 +42788,10 @@
         }
       ],
       "text": "import { type Action, type ActionExample, type ActionResult, findKeywordTermMatch, getCatalogValidationKeywordTerms as getValidationKeywordTerms, type HandlerCallback, type HandlerOptions, type IAgentRuntime, logger, type Memory, ModelType, parseBooleanFromText, type State, type UUID, } from \"@elizaos/core\";",
-      "v4Package": "agent"
+      "v4Package": "agent",
+      "v4RetiredNames": [
+        "getCatalogValidationKeywordTerms"
+      ]
     },
     {
       "file": "plugins/plugin-assistant/src/features/advanced-capabilities/evaluators/_factCandidates.ts",
@@ -59603,7 +59627,10 @@
         }
       ],
       "text": "import { collectKeywordTermMatches, splitKeywordDoc, VALIDATION_KEYWORD_DOCS, } from \"@elizaos/core\";",
-      "v4Package": "agent"
+      "v4Package": "agent",
+      "v4RetiredNames": [
+        "VALIDATION_KEYWORD_DOCS"
+      ]
     },
     {
       "file": "plugins/plugin-assistant/src/runtime/addressed-to.handles.test.ts",
@@ -107057,7 +107084,10 @@
         }
       ],
       "text": "import { findKeywordTermMatch, getValidationKeywordTerms } from \"@elizaos/core\";",
-      "v4Package": "assistant"
+      "v4Package": "assistant",
+      "v4RetiredNames": [
+        "getValidationKeywordTerms"
+      ]
     },
     {
       "file": "plugins/plugin-personal-assistant/src/lifeops/voice/grounded-reply.ts",
@@ -124328,7 +124358,6 @@
         "UpdateTriggerRequest",
         "UpsertConnectorAccountParams",
         "UserVisibleModelOutput",
-        "VALIDATION_KEYWORD_DOCS",
         "VECTOR_DIMS",
         "VISION_IMAGE_FETCH_TIMEOUT_MS",
         "VISION_IMAGE_MAX_BYTES",
@@ -124579,7 +124608,6 @@
         "getBoundOperationDenialOperation",
         "getCandidateActionBackstopRules",
         "getCapabilityRouter",
-        "getCatalogValidationKeywordTerms",
         "getClientChatRooms",
         "getConfiguredOwnerEntityIds",
         "getConnectorAccountManager",
@@ -124624,7 +124652,6 @@
         "getTurnActionConstraint",
         "getUnresolvedSenderRoleFloor",
         "getUserMessageText",
-        "getValidationKeywordTerms",
         "getVerifiedRelatedEntityIds",
         "getViewModalities",
         "getWorldMetadataRevision",
@@ -125360,6 +125387,102 @@
         }
       ],
       "activeProjection": "Only each row's explicit v4RetiredNames are excluded from active consumer requirements. Original names/text/file/line/package remain factual historical evidence. byModule reflects this active projection and preserves file counts."
+    },
+    "keywordCatalogRetirement": {
+      "specification": "spec/core/protocols.md",
+      "decision": "v4-model-reads-requests",
+      "imports": [
+        {
+          "file": "packages/agent/src/actions/runtime.ts",
+          "line": 3,
+          "module": "@elizaos/core",
+          "names": [
+            "getValidationKeywordTerms"
+          ],
+          "reason": "Retired v4 request keyword catalog: deciding what a person asked for is the model's, and current source has no caller of the catalog or its lookups. Original import facts remain in this row; every other name remains required."
+        },
+        {
+          "file": "packages/agent/src/providers/recent-conversations.ts",
+          "line": 11,
+          "module": "@elizaos/core",
+          "names": [
+            "getValidationKeywordTerms"
+          ],
+          "reason": "Retired v4 request keyword catalog: deciding what a person asked for is the model's, and current source has no caller of the catalog or its lookups. Original import facts remain in this row; every other name remains required."
+        },
+        {
+          "file": "packages/agent/src/providers/relevant-conversations.ts",
+          "line": 13,
+          "module": "@elizaos/core",
+          "names": [
+            "getValidationKeywordTerms"
+          ],
+          "reason": "Retired v4 request keyword catalog: deciding what a person asked for is the model's, and current source has no caller of the catalog or its lookups. Original import facts remain in this row; every other name remains required."
+        },
+        {
+          "file": "packages/agent/src/providers/rolodex.ts",
+          "line": 9,
+          "module": "@elizaos/core",
+          "names": [
+            "getValidationKeywordTerms"
+          ],
+          "reason": "Retired v4 request keyword catalog: deciding what a person asked for is the model's, and current source has no caller of the catalog or its lookups. Original import facts remain in this row; every other name remains required."
+        },
+        {
+          "file": "packages/agent/src/providers/ui-catalog.ts",
+          "line": 5,
+          "module": "@elizaos/core",
+          "names": [
+            "getValidationKeywordTerms"
+          ],
+          "reason": "Retired v4 request keyword catalog: deciding what a person asked for is the model's, and current source has no caller of the catalog or its lookups. Original import facts remain in this row; every other name remains required."
+        },
+        {
+          "file": "plugins/plugin-assistant/src/actions/context-signal-lexicon.ts",
+          "line": 12,
+          "module": "@elizaos/core",
+          "names": [
+            "getValidationKeywordTerms"
+          ],
+          "reason": "Retired v4 request keyword catalog: deciding what a person asked for is the model's, and current source has no caller of the catalog or its lookups. Original import facts remain in this row; every other name remains required."
+        },
+        {
+          "file": "plugins/plugin-assistant/src/features/advanced-capabilities/actions/role.ts",
+          "line": 21,
+          "module": "@elizaos/core",
+          "names": [
+            "getCatalogValidationKeywordTerms"
+          ],
+          "reason": "Retired v4 request keyword catalog: deciding what a person asked for is the model's, and current source has no caller of the catalog or its lookups. Original import facts remain in this row; every other name remains required."
+        },
+        {
+          "file": "plugins/plugin-assistant/src/features/advanced-capabilities/actions/room.ts",
+          "line": 13,
+          "module": "@elizaos/core",
+          "names": [
+            "getCatalogValidationKeywordTerms"
+          ],
+          "reason": "Retired v4 request keyword catalog: deciding what a person asked for is the model's, and current source has no caller of the catalog or its lookups. Original import facts remain in this row; every other name remains required."
+        },
+        {
+          "file": "plugins/plugin-assistant/src/runtime/action-search-keywords.ts",
+          "line": 8,
+          "module": "@elizaos/core",
+          "names": [
+            "VALIDATION_KEYWORD_DOCS"
+          ],
+          "reason": "Retired v4 request keyword catalog: deciding what a person asked for is the model's, and current source has no caller of the catalog or its lookups. Original import facts remain in this row; every other name remains required."
+        },
+        {
+          "file": "plugins/plugin-personal-assistant/src/lifeops/validate/coding-task-request.ts",
+          "line": 10,
+          "module": "@elizaos/core",
+          "names": [
+            "getValidationKeywordTerms"
+          ],
+          "reason": "Retired v4 request keyword catalog: deciding what a person asked for is the model's, and current source has no caller of the catalog or its lookups. Original import facts remain in this row; every other name remains required."
+        }
+      ]
     }
   }
 }
