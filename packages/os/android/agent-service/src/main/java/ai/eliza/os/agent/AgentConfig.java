@@ -45,6 +45,9 @@ public final class AgentConfig {
 
   public record Notification(String channel, String title, String text) {}
 
+  /** What the owner allowed the agent to change in Google, as the service subclass keeps it for the next launch. */
+  public record GoogleConsent(boolean gmailChanges, boolean calendarEdits) {}
+
   public record WorkflowWorker(String runtimeDir, String executable, String sha256) {
     public WorkflowWorker {
       if (!nonblank(runtimeDir) || !nonblank(executable) || sha256 == null || !SHA256.matcher(sha256).matches())
@@ -98,7 +101,10 @@ public final class AgentConfig {
     return LaunchFrame.first(token, epoch, credential, storageKey);
   }
 
-  public String launchDocument(AgentCredentials.Account account, WorkflowWorker workflowWorker) {
+  public String launchDocument(AgentCredentials.Account account, WorkflowWorker workflowWorker) { return launchDocument(account, workflowWorker, null); }
+
+  /** The launch document; a consent the owner saved replaces the host file's {@code google} for this launch, and none keeps the host file's. */
+  public String launchDocument(AgentCredentials.Account account, WorkflowWorker workflowWorker, GoogleConsent consent) {
     if (cloud && account == null) throw new IllegalArgumentException("A cloud launch names the signed-in account");
     Map<String, Object> document = new LinkedHashMap<>();
     document.put("schema", BigDecimal.ONE);
@@ -107,6 +113,7 @@ public final class AgentConfig {
     document.put("model", launch.get("model"));
     if (account != null) document.put("account", ordered("userId", account.userId(), "organizationId", account.organizationId()));
     for (Map.Entry<String, Object> entry : launch.entrySet()) if (!entry.getKey().equals("model")) document.put(entry.getKey(), entry.getValue());
+    if (consent != null) document.put("google", ordered("gmailChanges", consent.gmailChanges(), "calendarEdits", consent.calendarEdits()));
     if (workflowWorker != null)
       document.put("workflowWorker", ordered("runtimeDir", workflowWorker.runtimeDir(), "executable", workflowWorker.executable(), "sha256", workflowWorker.sha256()));
     return json(document);

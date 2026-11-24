@@ -226,44 +226,47 @@ pure def lawOnlyLiteralTrueProves(verifier: CleanupVerifier): bool =
 ## Story: Delete the phone note I asked to delete
 
 > As the owner, I want a note my phone looked up to be offered for deletion
-> only when my own message told the agent to delete a note, and only once I
-> chose exactly which note it is.
+> only when I asked the agent to delete a note, and only once I chose exactly
+> which note it is.
 
-### A phone note a lookup found is offered for deletion only on the owner's direct deletion command
+### A phone note a lookup found is offered for deletion only when the model read the request as a deletion
 
-The owner's own words in the original message decide, never the model's.
-They are a direct deletion command when, after an optional please or a
-can, could, would or will you, they begin with delete, remove or erase and
-then a note, optionally only, the, this, that, my, one or a note, whatever
-the note is called or is about. A message with a later clause, split at a
-semicolon, but, however or instead, that asks to explain, describe or say
-how or why is not one, and neither is one with a clause that forbids or
-cancels the deletion, keeps it read-only or asks to read or show instead.
-After the owner shares the note a title or latest lookup found, its exact
-target is offered for a separate deletion review, bound to the original
-message, with the answer "The note is ready for deletion review. Approve
-the exact note to delete it. Nothing has been deleted yet." A lookup that
+The model reads the owner's original message in whatever words it uses and
+gives each title or latest lookup it proposes an intent: read, edit or
+delete. A lookup proposed with no intent is a read. After the owner shares
+the note a lookup with the delete intent found, its exact target is offered
+for a separate deletion review on the phone, bound to the original message,
+with the answer "The note is ready for deletion review. Approve the exact
+note to delete it. Nothing has been deleted yet." A deleting lookup that
 found no note answers "No matching note was shared. Nothing was deleted.",
 and one that left the choice to the owner's uncertain pick answers "The
 lookup did not establish which note you meant. Nothing was deleted. Choose
-the exact note before continuing."; neither deletes anything.
+the exact note before continuing."; neither deletes anything. A read or an
+edit lookup is never offered for deletion. The intent is the model's
+reading, not the owner's words, so the deletion review on the phone, which
+names the exact note and runs only on the owner's approval, is what stands
+between a deletion intent that text from a page, an email or a connector
+led the model to and a deleted note. A deletion intent also needs words of
+the owner's own in the message, and a title lookup's title must be words
+the owner said ([read](read.md)).
 
 ```quint
-type DeletionWords = DirectDeletion | DeletionWithdrawn | ExplanationAsked | NoDeletionWords
+type LookupIntent = ReadIntent | EditIntent | DeleteIntent
 type LookupOutcome = NoteFound | NoNoteFound | ChoiceUncertain
 type DeletionReply = OffersDeletionReview | SaysNothingWasDeleted | NotADeletion
-pure def deletionCommand(words: DeletionWords): bool = words == DirectDeletion
-pure def deleteAfterLookup(words: DeletionWords, found: LookupOutcome): bool = deletionCommand(words) and found == NoteFound
-pure def deletionReply(words: DeletionWords, found: LookupOutcome): DeletionReply =
-  if (not(deletionCommand(words))) NotADeletion
-  else if (deleteAfterLookup(words, found)) OffersDeletionReview
+pure def deletionIntent(intent: LookupIntent): bool = intent == DeleteIntent
+pure def deleteAfterLookup(intent: LookupIntent, found: LookupOutcome): bool = deletionIntent(intent) and found == NoteFound
+pure def deletionReply(intent: LookupIntent, found: LookupOutcome): DeletionReply =
+  if (not(deletionIntent(intent))) NotADeletion
+  else if (deleteAfterLookup(intent, found)) OffersDeletionReview
   else SaysNothingWasDeleted
-pure def lawOnlyTheOwnersCommandDeletes(words: DeletionWords, found: LookupOutcome): bool =
-  deleteAfterLookup(words, found) implies words == DirectDeletion
-pure def lawAnUnresolvedLookupDeletesNothing(words: DeletionWords): bool =
-  not(deleteAfterLookup(words, NoNoteFound)) and not(deleteAfterLookup(words, ChoiceUncertain))
-pure def lawAWithdrawnDeletionDeletesNothing(found: LookupOutcome): bool =
-  not(deleteAfterLookup(DeletionWithdrawn, found)) and not(deleteAfterLookup(ExplanationAsked, found))
-pure def lawACommandAlwaysAnswersWhatItDeleted(found: LookupOutcome): bool =
-  deletionReply(DirectDeletion, found) != NotADeletion
+pure def lawOnlyADeleteIntentDeletes(intent: LookupIntent, found: LookupOutcome): bool =
+  deleteAfterLookup(intent, found) implies intent == DeleteIntent
+pure def lawAnUnresolvedLookupDeletesNothing(intent: LookupIntent): bool =
+  not(deleteAfterLookup(intent, NoNoteFound)) and not(deleteAfterLookup(intent, ChoiceUncertain))
+pure def lawAReadOrAnEditDeletesNothing(found: LookupOutcome): bool =
+  not(deleteAfterLookup(ReadIntent, found)) and not(deleteAfterLookup(EditIntent, found)) and
+    deletionReply(ReadIntent, found) == NotADeletion and deletionReply(EditIntent, found) == NotADeletion
+pure def lawADeletionAlwaysAnswersWhatItDeleted(found: LookupOutcome): bool =
+  deletionReply(DeleteIntent, found) != NotADeletion
 ```

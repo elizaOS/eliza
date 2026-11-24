@@ -38,6 +38,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -45,6 +46,7 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import okhttp3.Call;
 import okhttp3.Callback;
@@ -131,7 +133,7 @@ public abstract class SpeechStreamBridgePlugin extends Plugin {
 
   private static final MediaType JSON = MediaType.get("application/json; charset=utf-8");
   private static final int RATE = CloudSpeechWire.RATE;
-  private static final long HTTP_STARTUP_MS = 12_000, RELAY_STARTUP_MS = 8_000, PROGRESS_MS = 100, JOIN_MS = 1500, SILENCE_MS = 32;
+  private static final long HTTP_STARTUP_MS = 12_000, RELAY_STARTUP_MS = 8_000, PROGRESS_MS = 100, JOIN_MS = 1500, SILENCE_MS = 32, WARMUP_MS = 5_000;
   private static final long LEVEL_NS = 50_000_000L, FEED_BYTES = 8 * 1024 * 1024;
   private static final int FEED_TASKS = 1024, MAX_BODY = 32768, MAX_REFUSAL = 16384, MIC_FRAME = 1024, SILENCE_FRAMES = 30;
   private static final int MAX_QUEUE = 64000, TIMINGS = 100, PLAYBACK_CAPACITY = RATE * 5, CHUNK = 1600;
@@ -152,6 +154,7 @@ public abstract class SpeechStreamBridgePlugin extends Plugin {
       .build();
   private final SpeechOutputGate gate = new SpeechOutputGate();
   private final ArrayDeque<JSObject> timings = new ArrayDeque<>();
+  private final CloudSpeechWire.Warmups warmups = new CloudSpeechWire.Warmups();
   private SpeechAudioFocus focus;
   private Utterance focusHolder;
   private Session listener;
@@ -195,6 +198,36 @@ public abstract class SpeechStreamBridgePlugin extends Plugin {
     JSArray rows = new JSArray();
     for (JSObject row : timings) rows.put(row);
     call.resolve(new JSObject().put("format", diagnosticFormat()).put("records", rows));
+  }
+
+  @PluginMethod
+  public void prewarmCloudSpeech(PluginCall call) {
+    String environment = call.getString("environment");
+    call.resolve();
+    if (environment != null && !destroyed) submit(control, () -> prewarm(environment), () -> {});
+  }
+
+  private void prewarm(String environment) {
+    try {
+      if (destroyed || !foreground || session != null || sensitiveSurfaceActive()) return;
+      String origin = cloudOrigin(environment);
+      if (!CloudSpeechWire.origin(origin) || !warmups.admit(origin, SystemClock.elapsedRealtime())) return;
+      Call warm = http.newCall(new Request.Builder().url(origin + CloudSpeechWire.HEALTH).build());
+      warm.timeout().timeout(WARMUP_MS, TimeUnit.MILLISECONDS);
+      warm.enqueue(new Callback() {
+        @Override public void onFailure(Call call, IOException failure) {}
+
+        @Override public void onResponse(Call call, Response response) {
+          try (response; InputStream in = response.body().byteStream()) {
+            byte[] chunk = new byte[4096];
+            int read = 0, n;
+            while (read <= MAX_BODY && (n = in.read(chunk)) != -1) read += n;
+          } catch (IOException unread) {
+          }
+        }
+      });
+    } catch (Exception unavailable) {
+    }
   }
 
   @PluginMethod
@@ -280,6 +313,7 @@ public abstract class SpeechStreamBridgePlugin extends Plugin {
     }
     mark(own, "start");
     own.scheduleStartupDeadline();
+    if (!own.muted) submit(media, () -> prepareMicrophone(own), () -> {});
     submit(control, () -> open(own), () -> refuse(own, "closed", null));
   }
 
@@ -424,12 +458,14 @@ public abstract class SpeechStreamBridgePlugin extends Plugin {
   /** A non-2xx consent or mint answer. */
   private static final class Refused extends IOException {
     final int status;
+    final String retryAfter;
     final JSObject data;
     final Answer answer;
 
-    Refused(int status, JSObject data, Answer answer) {
+    Refused(int status, String retryAfter, JSObject data, Answer answer) {
       super("Cloud speech HTTP refused");
       this.status = status;
+      this.retryAfter = retryAfter;
       this.data = data;
       this.answer = answer;
     }
@@ -459,15 +495,19 @@ public abstract class SpeechStreamBridgePlugin extends Plugin {
         data = null;
       }
     }
-    return new Refused(status, data, CloudSpeechWire.refused(status, body, retryAfter, System.currentTimeMillis()));
+    return new Refused(status, retryAfter, data, CloudSpeechWire.refused(status, body, retryAfter, System.currentTimeMillis()));
   }
 
   private JSONObject consentAnswer(Session own) throws Exception {
     try {
       return post(own, "consent", new JSONObject());
     } catch (IOException failure) {
-      if (!CloudSpeechWire.droppedConnection(failure)) throw failure;
+      long wait = failure instanceof Refused refused
+          ? CloudSpeechWire.consentRetryMs(refused.status, refused.retryAfter, System.currentTimeMillis(), own.startupEndsMs - SystemClock.elapsedRealtime())
+          : CloudSpeechWire.droppedConnection(failure) ? 0 : -1;
+      if (wait < 0) throw failure;
       mark(own, "consent-retry");
+      own.ended.await(wait, TimeUnit.MILLISECONDS);
       return post(own, "consent", new JSONObject());
     }
   }
@@ -584,7 +624,10 @@ public abstract class SpeechStreamBridgePlugin extends Plugin {
   /** Main thread. A repeated mute sends another silence tail without reopening the microphone. */
   private void mute(Session own, PluginCall call) {
     own.muted = true;
-    if (apply(own, new Event.Mute(), null) == null && own.captured && !own.closed.get()) silence(own, own.muteGeneration.incrementAndGet(), SILENCE_FRAMES);
+    if (apply(own, new Event.Mute(), null) == null) {
+      if (own.captured && !own.closed.get()) silence(own, own.muteGeneration.incrementAndGet(), SILENCE_FRAMES);
+      closeLater(own);
+    }
     releaseListening(own);
     if (call != null) submit(media, call::resolve, () -> call.reject("Voice is closed"));
   }
@@ -875,6 +918,7 @@ public abstract class SpeechStreamBridgePlugin extends Plugin {
   }
 
   private void report(Session own, String code, JSObject data, boolean beforeAudio) {
+    retireMicrophone(own);
     mark(own, "error");
     JSObject event = new JSObject().put("code", code).put("status", own.httpStatus).put("beforeAudio", beforeAudio);
     if (data != null) event.put("data", data);
@@ -884,6 +928,7 @@ public abstract class SpeechStreamBridgePlugin extends Plugin {
 
   private void detach(Session own) {
     if (!own.closed.compareAndSet(false, true)) return;
+    own.ended.countDown();
     mark(own, "stop");
     synchronized (this) {
       if (session == own) session = null;
@@ -957,6 +1002,7 @@ public abstract class SpeechStreamBridgePlugin extends Plugin {
       own.muted = true;
       settleStart(own, false);
     } else unmute(own, null);
+    if (own.machine.state().capture() == CloudSpeechPolicy.Capture.MUTED) closeLater(own);
   }
 
   private void settleStart(Session own, boolean echoCancelled) {
@@ -968,29 +1014,33 @@ public abstract class SpeechStreamBridgePlugin extends Plugin {
     }
   }
 
-  /** Media thread: reserves the microphone slot as live capture, opens it, and reports the answer. */
+  /** Media thread: listens on the microphone the start opened, or reserves the slot as live capture and opens it, and reports the answer. */
   private void openMicrophone(Session own) {
     if (own.closed.get() || own.machine.state().capture() != CloudSpeechPolicy.Capture.RESERVING) {
       settleUnmutes(own, settledAway(own));
       return;
     }
-    LocalMicrophoneLease lease;
-    try {
-      lease = LocalMicrophoneLease.PROCESS.reserve(LocalMicrophoneLease.User.LIVE_CAPTURE, false, () -> main.post(() -> draftRequested(own)));
-    } catch (LocalMicrophoneLease.Refused refused) {
-      SlotAnswer answer = refused.refusal == LocalMicrophoneLease.Refusal.FENCED_REOPEN ? SlotAnswer.FENCED_REOPEN : SlotAnswer.SLOT_BUSY;
-      apply(own, new Event.CaptureAnswered(answer), Why.code("capture"));
+    Microphone microphone;
+    SlotAnswer refusal = SlotAnswer.SLOT_BUSY;
+    synchronized (own.warming) {
+      microphone = own.microphone;
+      if (!own.retired && (microphone == null || !microphone.ready())) {
+        closeMicrophone(own);
+        try {
+          microphone = openDevice(own);
+          own.microphone = microphone;
+        } catch (LocalMicrophoneLease.Refused refused) {
+          microphone = null;
+          if (refused.refusal == LocalMicrophoneLease.Refusal.FENCED_REOPEN) refusal = SlotAnswer.FENCED_REOPEN;
+        } catch (Exception | Error unavailable) {
+          microphone = null;
+        }
+      }
+    }
+    if (microphone == null) {
+      apply(own, new Event.CaptureAnswered(refusal), Why.code("capture"));
       return;
     }
-    Microphone microphone = new Microphone(own, lease);
-    try {
-      microphone.open();
-    } catch (Exception | Error unavailable) {
-      microphone.close();
-      apply(own, new Event.CaptureAnswered(SlotAnswer.SLOT_BUSY), Why.code("capture"));
-      return;
-    }
-    own.microphone = microphone;
     Step step = apply(own, new Event.CaptureAnswered(SlotAnswer.NO_REFUSAL), null);
     if (step == null || CloudSpeechPolicy.ended(step.state())) {
       if (own.microphone == microphone) own.microphone = null;
@@ -999,9 +1049,44 @@ public abstract class SpeechStreamBridgePlugin extends Plugin {
       return;
     }
     own.captured = true;
-    microphone.listen(step.state().generation());
+    if (!microphone.listen(step.state().generation())) {
+      deviceEnded(own, DeviceCause.MICROPHONE_LOST, "capture");
+      return;
+    }
     settleStart(own, microphone.echoEnabled);
     settleUnmutes(own, true);
+  }
+
+  private void prepareMicrophone(Session own) {
+    synchronized (own.warming) {
+      if (own.retired || own.muted || !valid(own) || !microphoneGranted() || focus.callActive()) return;
+      try {
+        own.microphone = openDevice(own);
+      } catch (Exception | Error unavailable) {
+      }
+    }
+  }
+
+  private Microphone openDevice(Session own) throws Exception {
+    LocalMicrophoneLease lease = LocalMicrophoneLease.PROCESS.reserve(LocalMicrophoneLease.User.LIVE_CAPTURE, false, () -> main.post(() -> draftRequested(own)));
+    Microphone microphone = new Microphone(own, lease);
+    try {
+      microphone.open();
+    } catch (Exception | Error unavailable) {
+      microphone.close();
+      throw unavailable;
+    }
+    return microphone;
+  }
+
+  private void retireMicrophone(Session own) {
+    synchronized (own.warming) {
+      own.retired = true;
+      Microphone microphone = own.microphone;
+      if (microphone == null || microphone.listened()) return;
+      own.microphone = null;
+      microphone.close();
+    }
   }
 
   /** An unmute overtaken by a mute or a focus pause still succeeds: the mute won, or the regain opens the microphone. */
@@ -1018,6 +1103,10 @@ public abstract class SpeechStreamBridgePlugin extends Plugin {
   private void releaseMicrophone(Session own, boolean ending) {
     long generation = own.muteGeneration.incrementAndGet();
     if (!ending && own.captured) main.post(() -> silence(own, generation, SILENCE_FRAMES));
+    closeLater(own);
+  }
+
+  private void closeLater(Session own) {
     submit(media, () -> closeMicrophone(own), () -> {
       Thread thread = new Thread(() -> closeMicrophone(own), "eliza-cloud-speech-microphone-release");
       thread.setDaemon(true);
@@ -1041,8 +1130,10 @@ public abstract class SpeechStreamBridgePlugin extends Plugin {
 
   /** One live capture holding the process microphone slot. */
   private final class Microphone {
+    static final int UNHEARD = 0, FAILED = -1;
     final Session own;
     final LocalMicrophoneLease lease;
+    final AtomicInteger generation = new AtomicInteger(UNHEARD);
     AudioRecord recorder;
     AcousticEchoCanceler echo;
     Thread reader;
@@ -1073,40 +1164,63 @@ public abstract class SpeechStreamBridgePlugin extends Plugin {
       recorder.startRecording();
       if (recorder.getRecordingState() != AudioRecord.RECORDSTATE_RECORDING) throw new IOException("Capture unavailable");
       if (!lease.opened()) throw new IOException("Microphone slot was reclaimed");
-    }
-
-    /** Streams PCM only while the machine says capture {@code generation} listens; levels always. */
-    synchronized void listen(int generation) {
       AudioRecord source = recorder;
-      reader = new Thread(() -> {
-        byte[] frame = new byte[MIC_FRAME];
-        long levelAt = 0;
-        try {
-          while (!stopping && !own.closed.get()) {
-            int count = source.read(frame, 0, frame.length, AudioRecord.READ_BLOCKING);
-            if (stopping) break;
-            if (count <= 0 || count % 2 != 0) throw new IOException("Microphone stopped");
-            if (!valid(own)) {
-              main.post(() -> invalidate(own));
-              break;
-            }
-            State s = own.machine.state();
-            boolean listening = s.capture() == CloudSpeechPolicy.Capture.LISTENING && s.generation() == generation;
-            long now = System.nanoTime();
-            if (now - levelAt > LEVEL_NS) {
-              levelAt = now;
-              emit(own, "level", new JSObject().put("peak", listening ? CloudSpeechWire.peak(frame, count) : 0));
-            }
-            if (listening && !own.sendPcm(frame, count)) throw new IOException("Speech upload stalled");
-          }
-        } catch (Exception failure) {
-          if (!stopping && !own.closed.get()) main.post(() -> deviceEnded(own, DeviceCause.MICROPHONE_LOST, "capture"));
-        } finally {
-          Arrays.fill(frame, (byte) 0);
-        }
-      }, "eliza-cloud-speech-microphone");
+      reader = new Thread(() -> read(source), "eliza-cloud-speech-microphone");
       reader.setDaemon(true);
       reader.start();
+      mark(own, "capture-open");
+    }
+
+    synchronized boolean ready() {
+      return generation.get() == UNHEARD && !closed && reader != null && reader.isAlive();
+    }
+
+    boolean listened() {
+      return generation.get() > UNHEARD;
+    }
+
+    boolean listen(int generation) {
+      return this.generation.compareAndSet(UNHEARD, generation);
+    }
+
+    /** Streams PCM only while the machine says capture {@code generation} listens; levels always once it listens, and nothing before. */
+    private void read(AudioRecord source) {
+      byte[] frame = new byte[MIC_FRAME];
+      long levelAt = 0;
+      boolean sent = false;
+      try {
+        while (!stopping && !own.closed.get()) {
+          int count = source.read(frame, 0, frame.length, AudioRecord.READ_BLOCKING);
+          if (stopping) break;
+          if (count <= 0 || count % 2 != 0) throw new IOException("Microphone stopped");
+          if (!valid(own)) {
+            main.post(() -> invalidate(own));
+            break;
+          }
+          int listened = generation.get();
+          if (listened == UNHEARD) {
+            Arrays.fill(frame, (byte) 0);
+            continue;
+          }
+          State s = own.machine.state();
+          boolean listening = s.capture() == CloudSpeechPolicy.Capture.LISTENING && s.generation() == listened;
+          long now = System.nanoTime();
+          if (now - levelAt > LEVEL_NS) {
+            levelAt = now;
+            emit(own, "level", new JSObject().put("peak", listening ? CloudSpeechWire.peak(frame, count) : 0));
+          }
+          if (!listening) continue;
+          if (!own.sendPcm(frame, count)) throw new IOException("Speech upload stalled");
+          if (!sent) {
+            sent = true;
+            mark(own, "first-frame-sent");
+          }
+        }
+      } catch (Exception failure) {
+        if (!stopping && !own.closed.get() && !generation.compareAndSet(UNHEARD, FAILED)) main.post(() -> deviceEnded(own, DeviceCause.MICROPHONE_LOST, "capture"));
+      } finally {
+        Arrays.fill(frame, (byte) 0);
+      }
     }
 
     /** Stops the source and frees the slot with its release receipt, or holds it unconfirmed when the release cannot be confirmed. */
@@ -1578,6 +1692,9 @@ public abstract class SpeechStreamBridgePlugin extends Plugin {
     volatile Call pending;
     volatile WebSocket socket;
     volatile Microphone microphone;
+    final Object warming = new Object();
+    boolean retired;
+    final CountDownLatch ended = new CountDownLatch(1);
     volatile Utterance spoken;
     volatile StreamingSpeechPlayback lastPlayback;
 

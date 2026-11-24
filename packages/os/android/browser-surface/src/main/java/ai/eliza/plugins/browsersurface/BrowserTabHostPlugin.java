@@ -421,7 +421,7 @@ public abstract class BrowserTabHostPlugin extends Plugin {
     @Override public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r) {
      String target = r.getUrl().toString();
      // mailto/tel/sms/geo/intent/market belong to other apps. The current page stays.
-     if (BrowserExternalHandoff.external(target)) { if (r.isForMainFrame()) handoff(t, target, r.hasGesture()); return true; }
+     if (BrowserExternalHandoff.external(target, config())) { if (r.isForMainFrame()) handoff(t, target, r.hasGesture()); return true; }
      // A page that already shows keeps showing: only a tap gets a notice, a script's scheme probe stays silent.
      if (!safe(target)) { if (r.isForMainFrame()) { if (t.committed && t.error.isEmpty()) { if (r.hasGesture()) notice(t,"This address type is not supported."); } else fail(t,"This address type is not supported."); } return true; }
      if (r.isForMainFrame()) t.pendingMain=target;
@@ -820,7 +820,7 @@ public abstract class BrowserTabHostPlugin extends Plugin {
    if(!Objects.equals(presentedId,t.id))return;
    if(!gesture){notice(t,"Blocked a link to another app that opened without a tap.");return;}
   }
-  Intent intent=BrowserExternalHandoff.intentFor(raw,getContext().getPackageName(),config().hostSchemes);
+  Intent intent=BrowserExternalHandoff.intentFor(raw,getContext().getPackageName(),config());
   if(intent==null||(!BrowserExternalLinkPolicy.systemLink(raw)&&ownsRoute(intent))){notice(report,"This link type is not supported.");if(fresh)closePopup(t);return;}
   for(Tab tab:tabs.values())disableAutofill(tab);
   try{getActivity().startActivity(intent);if(fresh)closePopup(t);}

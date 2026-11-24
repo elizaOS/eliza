@@ -193,7 +193,13 @@ the provider sends in a last chunk without choices, and a call that is not
 streamed sends no stream options. A tool's parameter schema is sent without
 its `pattern` constraints: a provider may refuse a whole call over one
 (Cerebras does on a closed object), and the action validates its arguments
-against its own schema when it runs. Token use carries the provider's
+against its own schema when it runs. A Cerebras own-key endpoint, and a Cloud
+call for a model Cloud serves on Cerebras (Qwen 3.8 27B, GPT-OSS 120B, GLM 4.7
+or Gemma 4 31B), is sent its tools as strict only when every one of them is:
+Cerebras refuses a whole call whose tools mix strict and non-strict schemas,
+Cloud forwards each tool's strictness unchanged, and a planner call that
+offers actions also offers its non-strict context restore. Any other call gets each
+tool's own strictness. Token use carries the provider's
 cache-read and reasoning counts when supplied, including an explicit zero.
 A missing count stays absent, so a streamed call is measured as a whole one is.
 
@@ -318,6 +324,34 @@ pure def alwaysLastFailureIsNotInTheFuture(s: ModelBinding): bool = failedAt(s.l
 pure def sometimesInsufficientCredits(s: ModelBinding): bool = s.accountState == Failing({ failure: InsufficientCredits })
 pure def sometimesCredentialInvalid(s: ModelBinding): bool = accountStateName(s.accountState) == "credential_invalid"
 pure def sometimesProviderIssue(s: ModelBinding): bool = s.accountState == Failing({ failure: ProviderIssue })
+```
+
+### A cloud refusal that names spent credits or a spent allowance carries Cloud's own code, and no other refusal carries one
+
+`insufficient_credits` stands for every cloud `402` and for an own-key
+provider's spent quota, so it cannot tell a client that the account has no
+plan allowance and no credits left. A refusal of a call on the cloud route
+whose `402` body names `insufficient_credits` or `allowance_exhausted`
+carries that code as its `cloudCode`. A `402` whose body names neither, any
+other status, an own-key provider's refusal and a call the binding refuses
+itself (a rate limit still in force) carry none, and each keeps its failure
+kind.
+
+```quint
+type FundsCode = NoFundsCode | CreditsSpent | AllowanceSpent
+pure def fundsCodeOf(cloudRoute: bool, refusalStatus: int, bodyCode: str): FundsCode =
+  if (not(cloudRoute) or refusalStatus != 402) NoFundsCode
+  else if (bodyCode == "insufficient_credits") CreditsSpent
+  else if (bodyCode == "allowance_exhausted") AllowanceSpent
+  else NoFundsCode
+pure def fundsCodeName(code: FundsCode): str = match code { | NoFundsCode => "" | CreditsSpent => "insufficient_credits" | AllowanceSpent => "allowance_exhausted" }
+pure val refusalStatusValues = Set(400, 401, 402, 429, 503)
+pure val bodyCodeValues = Set("", "insufficient_credits", "allowance_exhausted", "payment_required", "rate_limited")
+pure def lawOnlyACloud402NamingFundsCarriesACode(cloudRoute: bool, refusalStatus: int, bodyCode: str): bool =
+  fundsCodeOf(cloudRoute, refusalStatus, bodyCode) != NoFundsCode implies (cloudRoute and refusalStatus == 402)
+pure def lawTheCodeIsTheOneCloudNamed(cloudRoute: bool, refusalStatus: int, bodyCode: str): bool =
+  fundsCodeName(fundsCodeOf(cloudRoute, refusalStatus, bodyCode)) == "" or fundsCodeName(fundsCodeOf(cloudRoute, refusalStatus, bodyCode)) == bodyCode
+pure def lawAnOwnKeyRefusalCarriesNoCode(refusalStatus: int, bodyCode: str): bool = fundsCodeOf(false, refusalStatus, bodyCode) == NoFundsCode
 ```
 
 ### No call starts before a rate limit's retry time, and a provider issue does not lift a limit still in force
