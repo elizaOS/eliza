@@ -5,7 +5,7 @@
 import {
   type Action, type ActionParameterSchema, type ActionResult, type AgentRuntime, type EffectReceipt, type IAgentRuntime, type GenerateTextParams, type GenerateTextResult,
   type HistorySource, type Memory, type RoleGateRole, type State, type StreamChunkCallback, type ToolCall, type ToolDefinition,
-  buildPlannerToolsFromActions, DISCOVER_ACTIONS_NAME, executePlannedToolCall, getDirectActionRoutingRules, isDiscoveryActionName, isModelOutputLimitFinishReason, ModelType, modelOutputIncompleteEvidence, normalizeContextId, resolveActionContexts, sha256Hex, sleepWithAbort, stableStringify,
+  buildPlannerToolsFromActions, DISCOVER_ACTIONS_NAME, executePlannedToolCall, getDirectActionRoutingRules, isDiscoveryActionName, isModelOutputLimitFinishReason, ModelType, modelAttemptCapture, modelOutputIncompleteEvidence, normalizeContextId, resolveActionContexts, sha256Hex, sleepWithAbort, stableStringify,
   type DirectActionRoutingRule,
 } from "@elizaos/core"
 import { tagsMayProduceEffects } from "@elizaos/core/protocol"
@@ -313,15 +313,16 @@ export function conversationCache(runtime: IAgentRuntime, roomId: string, stage:
   return { cerebras: { promptCacheKey: `eliza-workflow-v1:${sha256Hex(`${JSON.stringify([runtime.agentId, roomId])}:${stage}`)}` } }
 }
 
-export async function sentAtMostTwice<T>(send: () => Promise<T>, signal: AbortSignal): Promise<T> {
+export async function sentAtMostTwice<T>(send: (bind: (params: GenerateTextParams) => GenerateTextParams) => Promise<T>, signal: AbortSignal): Promise<T> {
+  const attempts = modelAttemptCapture()
   try {
-    return await send()
+    return await send(attempts.bind)
   } catch (error: unknown) {
-    const wait = resendWait(callFailureOf(error), false)
+    const wait = resendWait(callFailureOf(error), attempts.spent())
     if (wait < 0 || signal.aborted) throw error
     await sleepWithAbort(wait, signal)
     signal.throwIfAborted()
-    return send()
+    return send((params) => params)
   }
 }
 
@@ -493,7 +494,7 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
     const onStreamChunk = input.onStreamChunk
     let said: unknown
     try {
-      said = await sentAtMostTwice(() => runtime.useModel(ModelType.TEXT_LARGE, {
+      said = await sentAtMostTwice((bind) => runtime.useModel(ModelType.TEXT_LARGE, bind({
         system: input.system, messages: conversation, reasoning: "off", signal, providerOptions: conversationCache(runtime, message.roomId, "planner"),
         ...(tools.length === 0 ? {} : { tools, toolChoice: taken === maxPlanSteps - 1 ? "none" as const : "auto" as const }),
         ...(onStreamChunk === undefined ? {} : {
@@ -508,7 +509,7 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
             return onStreamChunk(chunk, messageId, accumulated)
           },
         }),
-      }), signal)
+      })), signal)
     } catch (error: unknown) {
       if (signal.aborted || !stoppedAtOutputLimit(error)) throw error
       prose = cutOffReply

@@ -5,9 +5,10 @@ import { AgentRuntime, ModelType, type GenerateTextParams, type GenerateTextResu
 import { allowanceExhausted, answerJson, cachedText, dropped, echoImages, insufficientCredits, rateLimited, refusal, text, textWithoutEof, unavailable, type CloudFake } from "./support/cloud-fake.ts"
 import { parseLaunch } from "../src/host/launch.vibe"
 import { bindModels } from "../src/models/binding.vibe"
+import { ModelRefusal } from "../src/models/chat.vibe"
 import { registerCloudModels } from "../src/models/cloud-provider.vibe"
 import { probeOwnKey, registerOwnKeyModels } from "../src/models/own-key-provider.vibe"
-import { conversationCache } from "../src/conversation/planning.vibe"
+import { conversationCache, sentAtMostTwice } from "../src/conversation/planning.vibe"
 import { openDeviceStorage } from "../src/storage/index.vibe"
 import { cloudFake, deviceKey, host, scratch } from "./support/kernel.vibe"
 import { launchDocument, launchFrame, type Backend } from "./support/scratch.ts"
@@ -78,6 +79,26 @@ it.live('A completed provider stream returns while the HTTP connection is still 
   const arrived = try Effect.timeout(host("receive the terminal stream marker", () => runtime.useModel(ModelType.TEXT_LARGE, { prompt: "Reply once.", stream: true })), "15 seconds")
   assert.strictEqual(arrived, "Complete.")
   assert.strictEqual(completions(cloud), 1)
+}, 45_000)
+
+it.live('A planner resend does not follow two provider sends in the failed dispatch (spec/agent/conversation/planning.md, "A model call is sent again at most once, after a temporary rate limit or a tool call the provider could not parse")', effect () => {
+  const failedOver = try cloudFake(deviceKey)
+  const retried = try cloudFake(deviceKey)
+  const first = try cloudAgent(failedOver)
+  const second = try cloudAgent(retried)
+  try Effect.sync(() => {
+    failedOver.script(unavailable(1), rateLimited(Date.now() + 300), text("Unexpected third request."))
+    retried.script(rateLimited(Date.now() + 300), text("The second request answered."))
+  })
+  const send = (runtime: AgentRuntime) => {
+    const signal = new AbortController().signal
+    return sentAtMostTwice((bind) => runtime.useModel(ModelType.TEXT_LARGE, bind({ prompt: "Reply once.", signal })), signal)
+  }
+  const refused = try host("a failed dispatch that already sent twice", () => send(first.runtime).then(() => undefined, (failure: unknown) => failure))
+  const answered = try host("one admitted resend after a temporary limit", () => send(second.runtime))
+  assert.strictEqual(refused instanceof ModelRefusal ? refused.status : undefined, 429)
+  assert.strictEqual(answered, "The second request answered.")
+  assert.deepStrictEqual([completions(failedOver), completions(retried)], [2, 2])
 }, 45_000)
 
 it.effect('An outage or a dropped connection is retried on the next registration under the same idempotency key and the answer clears the account state (spec/agent/models/binding.md, "Only a network failure, an outage or a provider issue is retried, and a rate limit ends the call for its turn to re-send once")', effect () => {
