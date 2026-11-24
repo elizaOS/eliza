@@ -127,25 +127,19 @@ const scheduled = {
   "packages/agent/test/client-turns.test.vibe": 2,
   "packages/agent/test/device-read-completion.test.vibe": 1,
   "packages/agent/test/device-telephony.test.vibe": 1,
-  "packages/agent/test/drivers/agent__host__resources.ts": 1,
   "packages/agent/test/events.test.vibe": 2,
   "packages/agent/test/http.test.vibe": 2,
   "packages/agent/test/schedule-triggers.test.vibe": 1,
   "packages/agent/test/scheduled-tasks.test.vibe": 1,
   "packages/agent/test/support/audio-fake.ts": 2,
-  "packages/agent/test/support/child.ts": 1,
   "packages/agent/test/transport.test.vibe": 2,
   "packages/agent/test/voice-playback.test.vibe": 1,
   "packages/agent/test/voice-recorded-transcription.test.vibe": 1,
-  "packages/cloud/test/support/clock.ts": 1,
   "packages/core/src/runtime/provider-execution.vibe": 1,
   "packages/core/src/services/task.vibe": 6,
   "packages/core/src/utils/retry.vibe": 1,
-  "packages/core/test/support/atomic-json-writer.ts": 1,
-  "packages/core/test/support/models.ts": 2,
   "packages/os/src/bridges/voice.vibe": 1,
   "packages/os/test/bridges/messages.test.vibe": 1,
-  "packages/os/test/drivers/os__browser__pageCommands.ts": 1
 }
 const consoleCounts = { "packages/core/src/logger.vibe": 3 }
 

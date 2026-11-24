@@ -70,6 +70,7 @@ export interface PhotoResult {
   width: number;
   height: number;
   path?: string;
+  libraryId?: string;
   exif?: Record<string, string | number>;
 }
 
