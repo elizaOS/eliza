@@ -2,7 +2,7 @@
 import { type ChildProcessWithoutNullStreams, execFileSync, spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { once } from "node:events";
-import { accessSync, constants, copyFileSync, existsSync, globSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { accessSync, constants, copyFileSync, existsSync, globSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 import readline from "node:readline";
@@ -128,6 +128,7 @@ interface FileStamp {
 
 interface JarIdentity extends FileStamp {
   readonly digest: string;
+  readonly selfContained: boolean;
 }
 
 const jarIdentities = new Map<string, JarIdentity>();
@@ -141,8 +142,14 @@ function identifyJar(file: string): JarIdentity {
   const stamp = fileStamp(file);
   const cached = jarIdentities.get(file);
   if (cached?.stamp === stamp) return cached;
-  const digest = createHash("sha256").update(readFileSync(file)).digest("hex");
-  const identity = { file, stamp, digest };
+  const bytes = readFileSync(file);
+  const digest = createHash("sha256").update(bytes).digest("hex");
+  let selfContained = digest === JSON_JAVA_SHA256;
+  if (!selfContained && !bytes.includes("META-INF/services/") && !bytes.includes("META-INF/INDEX.LIST")) {
+    const manifest = spawnSync("/usr/bin/unzip", ["-p", "-C", path.resolve(file), "META-INF/MANIFEST.MF"], { encoding: "utf8", env: {} });
+    selfContained = manifest.status === 11 || (manifest.status === 0 && !/^Class-Path:/im.test(manifest.stdout));
+  }
+  const identity = { file, stamp, digest, selfContained };
   assertInputs([identity]);
   jarIdentities.set(file, identity);
   return identity;
@@ -169,11 +176,6 @@ function compilerInputs() {
   if (process.platform === "darwin" && compiler === "/usr/bin/javac") {
     home = execFileSync("/usr/libexec/java_home", { encoding: "utf8" }).trim();
     command = path.join(home, "bin", name);
-  } else if (!existsSync(path.join(home, "lib", "modules"))) {
-    const probe = spawnSync(launcher, ["-J-XshowSettings:properties", "-version"], { encoding: "utf8" });
-    const reported = /^\s*java\.home = (.+)$/m.exec(probe.stderr ?? "")?.[1]?.trim();
-    if (probe.status !== 0 || !reported) throw new Error(`Cannot determine the JDK used by ${launcher}`);
-    home = reported;
   }
   const files = [
     command,
@@ -182,7 +184,26 @@ function compilerInputs() {
     path.join(home, "lib", "modules"),
     path.join(home, "lib", "ct.sym"),
   ];
-  return { command, inputs: files.map((file) => ({ file, stamp: fileStamp(file) })) };
+  const inputs = files.map((file) => ({ file, stamp: fileStamp(file) }));
+  const stockLauncher = existsSync(path.join(home, "lib", "modules")) && existsSync(path.join(home, "bin", name))
+    && realpathSync(command) === realpathSync(path.join(home, "bin", name))
+    && !readFileSync(command).subarray(0, 2).equals(Buffer.from("#!"));
+  return { command, stockLauncher, inputs };
+}
+
+function compiledClasses(directory: string): string | undefined {
+  const digest = createHash("sha256");
+  for (const relative of readdirSync(directory, { recursive: true, encoding: "utf8" }).sort()) {
+    const file = path.join(directory, relative);
+    const stat = lstatSync(file);
+    digest.update(JSON.stringify([relative, stat.mode]));
+    if (stat.isFile()) {
+      const bytes = readFileSync(file);
+      digest.update(JSON.stringify(bytes.length)).update(bytes);
+    } else if (stat.isSymbolicLink()) throw new Error(`javac output contains a symbolic link: ${relative}`);
+    else if (!stat.isDirectory()) return undefined;
+  }
+  return path.join(CACHE, `compiled-${digest.digest("hex")}`);
 }
 
 export function compileAdapter(main: string, found: Sources = sources(), dependencies: readonly string[] = []): string {
@@ -193,21 +214,20 @@ export function compileAdapter(main: string, found: Sources = sources(), depende
   const jars = classpath.map(identifyJar);
   const compiler = compilerInputs();
   const inputs = [...compiler.inputs, ...jars];
-  const key = [
-    compiler.inputs.map((input) => input.stamp),
-    jars.map((jar) => jar.digest),
-    process.env.JDK_JAVAC_OPTIONS,
-    process.env.JAVA_TOOL_OPTIONS,
-    process.env._JAVA_OPTIONS,
-  ];
+  const options = [process.env.JDK_JAVAC_OPTIONS, process.env.JAVA_TOOL_OPTIONS, process.env._JAVA_OPTIONS];
+  const external = options.some(Boolean) || process.env.JDK_ALTERNATE_VM
+    || Object.entries(process.env).some(([name, value]) => value && (name.endsWith("JAVA_OPTIONS") || /^(LD_|DYLD_)/.test(name)));
+  const key = [compiler.inputs.map((input) => input.stamp), jars.map((jar) => jar.digest), ...options];
   const dependencyKey = createHash("sha256").update(JSON.stringify(key)).digest("hex");
-  const classes = path.join(CACHE, `${found.digest}-${main}-${dependencyKey}`);
-  if (existsSync(classes)) {
+  const classes = !external && compiler.stockLauncher && jars.every((jar) => jar.selfContained)
+    ? path.join(CACHE, `${found.digest}-${main}-${dependencyKey}`) : undefined;
+  if (classes && existsSync(classes)) {
     assertInputs(inputs);
     return classes;
   }
   mkdirSync(CACHE, { recursive: true });
   const staging = mkdtempSync(path.join(CACHE, ".compiling-"));
+  let published: string | undefined;
   try {
     execFileSync(compiler.command, [
       "--release", "21", "-encoding", "UTF-8", "-nowarn", "-implicit:class", "-d", staging,
@@ -215,15 +235,17 @@ export function compileAdapter(main: string, found: Sources = sources(), depende
       "-sourcepath", found.roots.join(path.delimiter), adapter,
     ], { stdio: ["ignore", "ignore", "pipe"] });
     assertInputs(inputs);
-    renameSync(staging, classes);
+    published = classes ?? compiledClasses(staging);
+    if (!published) return staging;
+    renameSync(staging, published);
+    return published;
   } catch (error) {
     rmSync(staging, { recursive: true, force: true });
     assertInputs(inputs);
-    if (existsSync(classes)) return classes;
+    if (published && existsSync(published)) return published;
     const stderr = (error as { stderr?: Buffer }).stderr?.toString("utf8") ?? "";
     throw new Error(`javac could not compile ${main}:\n${stderr || String(error)}`, { cause: error });
   }
-  return classes;
 }
 
 export async function orgJsonAdapterClasspath(main: string): Promise<string> {
