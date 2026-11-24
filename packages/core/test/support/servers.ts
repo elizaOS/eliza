@@ -2,13 +2,11 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo, Socket } from "node:net";
 
-/** One request the server saw, and whether its connection has since closed. */
 export interface Seen {
   readonly path: string;
   closed: boolean;
 }
 
-/** A plain HTTP server on 127.0.0.1 that a model transport reaches; `close` ends every connection still open. */
 export interface Loopback {
   readonly port: number;
   readonly requests: Seen[];

@@ -3,11 +3,9 @@ import { spawn } from "node:child_process";
 import { cp, mkdir, readdir, realpath, symlink } from "node:fs/promises";
 import path from "node:path";
 
-/** Where this package and the core package it serves are checked out. */
 export const coreNodeDir = path.resolve(import.meta.dirname, "../..");
 export const coreDir = path.resolve(coreNodeDir, "../core");
 
-/** A Node child: one inline module (`script`) or a file, with VibeLang's loader and workspace sources when `vibe` is set. */
 export interface ChildRun {
   readonly file?: string;
   readonly script?: string;
@@ -27,14 +25,12 @@ export interface ChildExit {
 
 export interface Child {
   readonly exited: Promise<ChildExit>;
-  /** Resolves once the child has printed `text`, and rejects if it exits first. */
   output(text: string): Promise<void>;
   kill(signal: NodeJS.Signals): void;
 }
 
 export function spawnNode(run: ChildRun): Child {
   const entry = run.script === undefined ? [run.file ?? ""] : ["--input-type=module", "--eval", run.script, "--"];
-  // From source, as the workspace resolves it: core's modules are then the ones core-node's adapters register into.
   const argv = ["--no-warnings", ...(run.vibe ? ["--conditions", "eliza-source", "--import", "vibelang/register"] : []), ...entry, ...(run.args ?? [])];
   const env: NodeJS.ProcessEnv = { ...process.env };
   for (const [name, value] of Object.entries(run.env ?? {})) {
@@ -77,10 +73,6 @@ export function runNode(run: ChildRun): Promise<ChildExit> {
   return spawnNode(run).exited;
 }
 
-/**
- * A copy of this package's sources beside core's catalog, under `work`, laid out as the repository is: the catalog
- * generator reads the plugins and packages of the copy's root and writes core's catalog there, never the checkout's.
- */
 export async function catalogWorkspace(work: string): Promise<{ root: string; sourceDir: string; catalog: string }> {
   const root = path.join(await realpath(work), "producer");
   const sourceDir = path.join(root, "packages/core-node");

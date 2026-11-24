@@ -3,7 +3,6 @@ import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-/** A private directory the device-execution driver keeps its journal in, removed when the walk ends. */
 export interface Scratch {
   readonly path: string;
   /** @throws {never} */
