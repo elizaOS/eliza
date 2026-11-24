@@ -19,7 +19,7 @@ export interface Ports {
 }
 
 const statusAfter: Readonly<Record<TaskVerb["tag"], string>> = {
-  SnoozeFor: "Scheduled", Skip: "Skipped", Complete: "Completed", Dismiss: "Dismissed", Acknowledge: "Acknowledged", Reopen: "Scheduled",
+  SnoozeUntil: "Scheduled", SnoozeFor: "Scheduled", Skip: "Skipped", Complete: "Completed", Dismiss: "Dismissed", Acknowledge: "Acknowledged", Reopen: "Scheduled",
 }
 
 export function ports(now = Date.UTC(2026, 10, 22, 15, 0)): Ports {

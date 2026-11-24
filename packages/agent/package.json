@@ -35,10 +35,10 @@
       "default": "./dist/src/device-actions/operations.js"
     },
     "./device-actions": {
-      "eliza-source": "./src/device-actions/operations.vibe",
-      "types": "./dist/src/device-actions/operations.d.ts",
-      "import": "./dist/src/device-actions/operations.js",
-      "default": "./dist/src/device-actions/operations.js"
+      "eliza-source": "./src/device-actions/index.vibe",
+      "types": "./dist/src/device-actions/index.d.ts",
+      "import": "./dist/src/device-actions/index.js",
+      "default": "./dist/src/device-actions/index.js"
     },
     "./launch": {
       "eliza-source": "./src/host/launch.schema.vibe",

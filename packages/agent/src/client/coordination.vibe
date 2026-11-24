@@ -1,4 +1,4 @@
-// spec/agent/client/runtimeClient.md, "Story: Call the runtime for my current account", "Story: Reach a runtime that is not running yet", "Story: Understand why the runtime refused", "A stream is sent at most once and only in its generation"
+// spec/agent/client/runtimeClient.md, "Story: Call the runtime for my current account"; spec/agent/client/runtimeClient.md, "Story: Reach a runtime that is not running yet"; spec/agent/client/runtimeClient.md, "Story: Understand why the runtime refused"; spec/agent/client/runtimeClient.md, "A stream is sent at most once and only in its generation"
 import {
   enabled, initial, machineOver,
   type BridgeCall, type Event, type Stage, type StatusReport,

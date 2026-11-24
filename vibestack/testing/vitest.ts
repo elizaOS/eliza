@@ -61,7 +61,10 @@ export const project = ({ root, tests = TESTS, plugins = [] }: Project) =>
     return {
       root,
       plugins: [vibelang(), ...plugins],
+      resolve: { dedupe: ["vitest"] },
       test: {
+        // Keep Effect's test adapter on the same runner instance as the owning package.
+        server: { deps: { inline: ["@effect/vitest"] } },
         reporters: ["default", record],
         allowOnly: false,
         passWithNoTests: true,

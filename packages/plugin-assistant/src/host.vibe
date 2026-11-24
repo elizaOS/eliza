@@ -39,6 +39,7 @@ export interface TaskEdit {
 }
 
 export type TaskVerb =
+  | { readonly tag: "SnoozeUntil"; readonly until: number }
   | { readonly tag: "SnoozeFor"; readonly minutes: number }
   | { readonly tag: "Skip" }
   | { readonly tag: "Complete" }

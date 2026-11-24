@@ -50,11 +50,17 @@ export interface DeviceReceipt {
 
 export type DeviceReview = "applied" | "not_applied" | "unresolved"
 
+/** The saved evidence an applied review carries: the operation id and typed result the journal kept for the attempt. */
+export interface DeviceReviewEvidence {
+  readonly operationId: string
+  readonly result?: unknown
+}
+
 export interface DeviceAgent {
   decide(proposalId: string, body: { readonly digest: string; readonly approved: boolean }): Promise<unknown>
   claim(proposalId: string, body: { readonly digest: string }): Promise<unknown>
   receipt(proposalId: string, body: DeviceClaim & { readonly digest: string; readonly receipt: DeviceReceipt }): Promise<unknown>
-  reconcile(proposalId: string, body: DeviceClaim & { readonly digest: string; readonly review: DeviceReview }): Promise<unknown>
+  reconcile(proposalId: string, body: DeviceClaim & { readonly digest: string; readonly review: DeviceReview; readonly applied?: DeviceReviewEvidence }): Promise<unknown>
 }
 
 export interface DeviceExecutionPorts<Op> {
@@ -83,7 +89,7 @@ type Finished = { readonly kind: "history" } | Settled
 export type RecoverResult = { readonly kind: "live" } | Finished
 export type ReviewResult = "sent" | "unsent" | "refused"
 
-export const NOT_DISPATCHED = "not_dispatched"
+export const NOT_DISPATCHED = "DEVICE_NOT_DISPATCHED"
 
 const reviewWire = {
   ReviewedApplied: "applied", ReviewedNotApplied: "not_applied", ReviewedUnresolved: "unresolved",
@@ -406,7 +412,11 @@ effect function confirmReview<Op>(ports: DeviceExecutionPorts<Op>, live: Map<str
   for (const emitted of step.out) {
     if (emitted.tag !== "SendReview") continue
     const { binding, agentAttemptId } = attempt.slot
-    const body = { digest: binding.digest, attemptId: emitted.attemptId, review: reviewWire[emitted.review], ...(agentAttemptId === undefined ? {} : { agentAttemptId }) }
+    const { result: savedResult } = attempt.slot.evidence
+    const applied = emitted.review === "ReviewedApplied"
+      ? { applied: { operationId: binding.operationId, ...(savedResult === undefined ? {} : { result: savedResult }) } }
+      : {}
+    const body = { digest: binding.digest, attemptId: emitted.attemptId, review: reviewWire[emitted.review], ...applied, ...(agentAttemptId === undefined ? {} : { agentAttemptId }) }
     if (try agentAnswered(() => ports.agent.reconcile(proposalId, body))) result = "sent"
   }
   return result

@@ -12,8 +12,7 @@
   "dependencies": {
     "effect": "4.1.1",
     "vibelang-runtime": "0.0.13",
-    "react": "catalog:",
-    "@repo/ui": "workspace:*"
+    "react": "catalog:"
   },
   "devDependencies": {
     "@types/node": "catalog:",

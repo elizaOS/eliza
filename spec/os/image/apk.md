@@ -35,6 +35,11 @@ pure def lawMatchingDigestsAreEqual(digest: Digest, otherDigest: Digest): bool =
 
 ### A signer observation names exactly one certificate for the requested API
 
+An explicit API level must be a positive integer in the supported
+representation. An invalid explicit level refuses before opening the APK.
+Callers that already have apksigner output use the same signer-observation
+rule to select a digest.
+
 The report has legacy rows (`Signer #n`) or rotated rows with an inclusive
 API range, never both. A legacy report needs exactly one row numbered 1. A
 rotated report needs an API of at least 1 and exactly one range holding it.

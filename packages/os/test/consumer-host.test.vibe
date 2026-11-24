@@ -1,6 +1,9 @@
 // spec/os/build/sourceIntegrity.md, "Story: Build and register only the plugins my host selected"
 import { assert, it } from "@effect/vitest"
 import * as NodeServices from "@effect/platform-node/NodeServices"
+import { consumerBuildNames, consumerImageNames, consumerPathNames, consumerPaths, withdrawnFromConsumers } from "../gen/os.effect.vibe"
+import * as buildEntry from "../src/build/index.vibe"
+import * as imageEntry from "../src/image/index.vibe"
 import { scratch, writeTree } from "./support/scratch.vibe"
 
 interface ConsumerHost {
@@ -88,5 +91,27 @@ it.effect('Build and register only the plugins my host selected: a parent pnpm w
     const normalized = try files.readFileString(path.join(member, "android/.eliza-consumer-profile.json"))
     assert.match(normalized, /"embeddedAgentProjects":\s*\[\s*"eliza-runtime-files",\s*"eliza-secure-store"\s*\]/)
     assert.isTrue(try files.exists(path.join(java, "ai/eliza/plugins/agent/embedded/EmbeddedAgentService.java")))
+  }
+})
+
+it.effect('Keep building my product against the paths and names I import (spec/os/index.md, "Story: Keep building my product against the paths and names I import"; spec/os/index.md, "Every promised path and name is still published")', effect () => {
+  provide NodeServices.layer {
+    const files = try FileSystem.FileSystem
+    const path = try Path.Path
+    const root = path.resolve(import.meta.dirname, "..")
+    const paths: string[] = []
+    for (const file of consumerPaths) {
+      if (try files.exists(path.join(root, file))) paths.push(file)
+    }
+    const names: string[] = []
+    for (const promised of consumerPathNames) {
+      const [file = "", name = ""] = promised.split("#")
+      const loaded: Readonly<Record<string, unknown>> = try Effect.promise(() => import(path.join(root, file)))
+      if (name in loaded) names.push(promised)
+    }
+    assert.deepStrictEqual(
+      { paths: withdrawnFromConsumers(paths, consumerPaths), names: withdrawnFromConsumers(names, consumerPathNames), build: withdrawnFromConsumers(Object.keys(buildEntry), consumerBuildNames), image: withdrawnFromConsumers(Object.keys(imageEntry), consumerImageNames) },
+      { paths: [], names: [], build: [], image: [] },
+    )
   }
 })

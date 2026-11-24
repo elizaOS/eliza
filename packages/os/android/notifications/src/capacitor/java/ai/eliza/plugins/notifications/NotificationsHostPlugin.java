@@ -1,3 +1,4 @@
+// spec/os/android/noticeRoutes.md, "The host answers presentation protocol 2, and a renderer presents only through a host that answers it"
 package ai.eliza.plugins.notifications;
 
 import android.app.Activity;
@@ -146,8 +147,9 @@ public abstract class NotificationsHostPlugin extends Plugin {
    ()->inbox.release(intent,key.substring(0,36)));
  }
 
- /** Presentation protocol of workflow notices the renderer may rely on. */
- @PluginMethod public void workflowPresentationCapabilities(PluginCall call){JSObject result=new JSObject();result.put("protocol",2);call.resolve(result);}
+ /** The one presentation protocol of workflow notices this host implements; the rule cited above names the number. */
+ static final int WORKFLOW_PRESENTATION_PROTOCOL=2;
+ @PluginMethod public void workflowPresentationCapabilities(PluginCall call){JSObject result=new JSObject();result.put("protocol",WORKFLOW_PRESENTATION_PROTOCOL);call.resolve(result);}
 
  /** The newest pending tap. An Ask whose own notice is gone opens like the notice body. */
  @PluginMethod public void pendingWorkflowTap(PluginCall call){

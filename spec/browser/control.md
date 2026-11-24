@@ -290,8 +290,9 @@ pure def lawOneTabClosesAreProposedAsAsked(form: TabCloseForm, negotiated: Negot
 
 ### A refused Browser proposal tells me how to ask, and never says anything opened
 
-A refused open answers the owner with how to ask for an address, as the
-open command it takes such as "open nytimes.com", when the message has
+A refused open answers the owner with how to ask for an address, with a
+plain example address such as example.com that reads aloud as an ordinary
+sentence, with no quotes and no command phrase, when the message has
 none, and only that the address was not opened when it has one; a refused search asks for the words to search for; a refused close of
 every tab says the phone closes one tab at a time and nothing closed; a
 refused reload of a page the phone withheld says the page was not reloaded
@@ -339,10 +340,18 @@ a message that carried no page are unchanged. An open of the page's own
 address already needs the owner's words ([request grounding](./requestGrounding.md)):
 a withheld page carries no links to ground one.
 
+The owner may withdraw a reload by naming it in a refusal or with a short
+withdrawal directly after its clause. A short withdrawal after another
+request applies to that request. Opening the same withheld page requires
+a direct request to open the exact normalized address. A fragment change
+still reaches the same page and its exact address must be authorized.
+
 ```quint
 type CarriedPage = NoPageCarried | PageTextRead | PageTextUnreadable | PageTextSensitive
 type HistoryMove = MoveBack | MoveForward | MoveReload | MoveStop
 pure def pageWithheld(page: CarriedPage): bool = page == PageTextUnreadable or page == PageTextSensitive
+pure def pageReopenRefused(page: CarriedPage, samePage: bool, exactOpen: bool): bool =
+  pageWithheld(page) and samePage and not(exactOpen)
 pure def historyMoveRefused(move: HistoryMove, page: CarriedPage, ownerAskedReload: bool): bool =
   move == MoveReload and pageWithheld(page) and not(ownerAskedReload)
 pure def lawAnUnaskedReloadOfAWithheldPageIsRefused(page: CarriedPage): bool =

@@ -44,7 +44,7 @@ async function runOne(runtime: AgentRuntime, evaluator: RegisteredEvaluator, mes
   } else {
     const modelType = evaluator.modelType?.trim().toUpperCase() ?? ModelType.TEXT_SMALL
     if (!isTextGenerationModelType(modelType)) throw new Error(`Unsupported evaluator model type: ${evaluator.modelType}`)
-    raw = outputOf(await sentAtMostTwice(() => runtime.useModel(modelType, { prompt: evaluator.prompt(prompted), responseSchema: evaluator.schema, reasoning: "off", signal, providerOptions: conversationCache(runtime, message.roomId, "evaluator") }), signal))
+    raw = outputOf(await sentAtMostTwice((bind) => runtime.useModel(modelType, bind({ prompt: evaluator.prompt(prompted), responseSchema: evaluator.schema, reasoning: "off", signal, providerOptions: conversationCache(runtime, message.roomId, "evaluator") })), signal))
   }
   const output = evaluator.parse === undefined ? raw : evaluator.parse(raw, { ...prompted, outputSource: resolved ? "resolved" : "model" })
   if (output === null || output === undefined) return

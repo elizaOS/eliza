@@ -1,7 +1,8 @@
-// spec/maps/cloudConnection.md, "Maps requests and tiles retain the captured account through completion"; spec/maps/routing.md, "Asked where Maps works, the reply states only what Cloud Maps reports"; spec/maps/attribution.md, "Only the reply to the latest request, for the current view, is shown"; spec/cloud/services/maps.md, "Every operation except capabilities and viewport needs an idempotency key and runs over one hold of the calling credential"; spec/maps/routing.md, "A Maps screen selection asks the planner to name the place"
+// spec/maps/cloudConnection.md, "Maps requests and tiles retain the captured account through completion"; spec/maps/routing.md, "Asked where Maps works, the reply states only what Cloud Maps reports"; spec/maps/attribution.md, "Only the reply to the latest request, for the current view, is shown"; spec/cloud/services/maps.md, "Every operation except capabilities and viewport needs an idempotency key and runs over one hold of the calling credential"; spec/maps/routing.md, "A Maps screen selection asks the planner to name the place"; spec/maps/routing.md, "An answer Maps cannot use is said in the owner's words, naming the place a start could not look up"; spec/maps/phonePosition.md, "A search around a point asks Cloud for the closest places whenever Cloud ranks by distance"
 import type { CloudLinkReply, CloudLinkRequest } from "@elizaos/agent"
 import { readCloudError } from "@elizaos/cloud/client"
-import { cloudMapsFailure } from "./client/cloud-provider.vibe"
+import { asksForClosest } from "../gen/maps__phonePosition.effect.vibe"
+import { cloudMapsFailure, unusableMapsAnswer } from "./client/cloud-provider.vibe"
 import { boundedText, type Coordinate, MapsFailure, place, route, TravelMode, type Place, type Route } from "./client/contracts.vibe"
 import type { AgentPlaceRef } from "./client/device-navigation.vibe"
 import { isMapsSelectionHandle } from "./routing.vibe"
@@ -33,7 +34,7 @@ const Capabilities = Schema.Union([
     disclosure: Schema.optionalKey(Schema.Struct({ recipients: Schema.Array(Recipient).check(Schema.isMaxLength(16)) })),
     capabilities: Schema.Struct({
       modes: Schema.Array(TravelMode), alternatives: Schema.Boolean, traffic: Schema.Literals(["none", "live"]),
-      reverseGeocode: Schema.optionalKey(Schema.Boolean), transit: Schema.optionalKey(Schema.Literals(["none", "scheduled"])),
+      reverseGeocode: Schema.optionalKey(Schema.Boolean), distanceRank: Schema.optionalKey(Schema.Boolean), transit: Schema.optionalKey(Schema.Literals(["none", "scheduled"])),
       offline: Schema.optionalKey(Schema.Struct({ map: Schema.Boolean, search: Schema.Boolean, routing: Schema.Boolean })),
     }),
   }),
@@ -63,14 +64,28 @@ export interface MapsOffer {
   readonly regions: readonly string[]
   readonly liveTraffic: boolean
   readonly reverseGeocode?: boolean
+  readonly distanceRank?: boolean
   readonly transitSchedules?: boolean
   readonly offline?: boolean
   readonly recipients: ReadonlyArray<{ readonly role: string; readonly name: string; readonly operator: string }>
 }
 
+export const coordinatesProvider = "coordinates"
+
+export function pointRef(point: Coordinate, name: string | undefined): AgentPlaceRef {
+  return { provider: coordinatesProvider, providerPlaceId: `coordinates:${point.latitude},${point.longitude}`, name: name ?? `${point.latitude}, ${point.longitude}`, coordinates: point }
+}
+
+export function placeOf(ref: AgentPlaceRef, fetchedAt: number): Place {
+  return {
+    providerId: ref.provider, id: ref.providerPlaceId, name: ref.name, coordinate: ref.coordinates, attribution: "", fetchedAt,
+    ...(ref.formattedAddress === undefined ? {} : { address: ref.formattedAddress }), ...(ref.categories === undefined ? {} : { categories: ref.categories }),
+  }
+}
+
 export function agentPlace(found: Place): AgentPlaceRef {
   return {
-    provider: agentCloudProvider,
+    provider: found.providerId === coordinatesProvider ? coordinatesProvider : agentCloudProvider,
     providerPlaceId: found.id,
     name: found.name,
     coordinates: found.coordinate,
@@ -80,6 +95,7 @@ export function agentPlace(found: Place): AgentPlaceRef {
 }
 
 const unreachable = () => new MapsFailure({ code: "offline", message: "Cloud Maps is unreachable. Check the connection." })
+const unusable = () => new MapsFailure({ code: "invalid-response", message: unusableMapsAnswer })
 
 export function mapsService(link: MapsCloudLink) {
   effect function call<A>(request: Omit<CloudLinkRequest, "signal" | "idempotencyKey">, schema: Schema.Codec<A>, metered: boolean): A!MapsFailure {
@@ -97,55 +113,61 @@ export function mapsService(link: MapsCloudLink) {
       })
       throw cloudMapsFailure(refused.failure, now)
     }
-    return try mapError(Schema.decodeUnknownEffect(schema)(reply.body), () => new MapsFailure({ code: "invalid-response", message: "Cloud Maps sent an invalid response." }))
+    return try mapError(Schema.decodeUnknownEffect(schema)(reply.body), unusable)
   }
 
   effect function offer(): (MapsOffer | undefined)!MapsFailure {
     const answer = try call({ method: "GET", path: "/api/v1/maps/capabilities" }, Capabilities, false)
     if (!answer.available) return undefined
-    const { modes, alternatives, traffic, reverseGeocode, transit, offline } = answer.capabilities
+    const { modes, alternatives, traffic, reverseGeocode, distanceRank, transit, offline } = answer.capabilities
     return {
       providerId: answer.providerId, attribution: answer.attribution, modes, alternatives,
       ...(answer.revision === undefined ? {} : { revision: answer.revision }),
       regions: (answer.regions ?? []).map((region) => region.name),
       liveTraffic: traffic === "live",
       ...(reverseGeocode === undefined ? {} : { reverseGeocode }),
+      ...(distanceRank === undefined ? {} : { distanceRank }),
       ...(transit === undefined ? {} : { transitSchedules: transit === "scheduled" }),
       ...(offline === undefined ? {} : { offline: offline.map || offline.search || offline.routing }),
       recipients: answer.disclosure?.recipients ?? [],
     }
   }
 
-  effect function search(query: string, near?: Coordinate, limit?: number): PlaceResults!MapsFailure {
+  effect function search(query: string, near?: Coordinate, limit?: number, rank?: "distance"): PlaceResults!MapsFailure {
     const text = query.trim()
     if (!boundedText(text, 300)) throw new MapsFailure({ code: "unsupported", message: "Search text is too long or empty." })
+    const aroundPoint = near !== undefined && rank === "distance"
+    const cloudRanks = aroundPoint ? (try offer())?.distanceRank === true : false
     const answer = try call({
       method: "POST", path: "/api/v1/maps/places/search",
-      body: { query: text, ...(near === undefined ? {} : { near }), ...(limit === undefined ? {} : { limit: Math.max(1, Math.min(20, Math.round(limit))) }) },
+      body: {
+        query: text, ...(near === undefined ? {} : { near }), ...(asksForClosest(aroundPoint, cloudRanks) ? { rank: "distance" } : {}),
+        ...(limit === undefined ? {} : { limit: Math.max(1, Math.min(20, Math.round(limit))) }),
+      },
     }, Places, true)
     const places: Place[] = []
-    for (const item of answer.places) places.push(try place(item, answer.providerId))
+    for (const item of answer.places) places.push(try mapError(place(item, answer.providerId), unusable))
     return { providerId: answer.providerId, attribution: answer.attribution, places }
   }
 
   effect function detail(id: string): (Place | null)!MapsFailure {
     if (isMapsSelectionHandle(id) || !/^[A-Za-z0-9][A-Za-z0-9:._-]{0,255}$/.test(id)) return null
     const answer = try call({ method: "POST", path: "/api/v1/maps/places/details", body: { id } }, Detail, true)
-    return answer.place === null ? null : try place(answer.place, answer.providerId)
+    return answer.place === null ? null : try mapError(place(answer.place, answer.providerId), unusable)
   }
 
   effect function reverse(at: Coordinate): { readonly attribution: string; readonly place: Place | null }!MapsFailure {
     const answer = try call({ method: "POST", path: "/api/v1/maps/reverse", body: { coordinate: at } }, Detail, true)
-    return { attribution: answer.attribution, place: answer.place === null ? null : try place(answer.place, answer.providerId) }
+    return { attribution: answer.attribution, place: answer.place === null ? null : try mapError(place(answer.place, answer.providerId), unusable) }
   }
 
   effect function routes(from: Coordinate, to: Coordinate, mode: TravelMode, alternatives: boolean): RouteResults!MapsFailure {
     const answer = try call({ method: "POST", path: "/api/v1/maps/routes", body: { from, to, mode, ...(alternatives ? { alternatives: true } : {}) } }, Routes, true)
-    if (!alternatives && answer.routes.length > 1) throw new MapsFailure({ code: "invalid-response", message: "The Maps route response is invalid." })
+    if (!alternatives && answer.routes.length > 1) throw unusable()
     const planned: Route[] = []
     for (const item of answer.routes) {
-      const checked = try route(item, answer.providerId)
-      if (checked.mode !== mode) throw new MapsFailure({ code: "invalid-response", message: "The Maps route response is invalid." })
+      const checked = try mapError(route(item, answer.providerId), unusable)
+      if (checked.mode !== mode) throw unusable()
       planned.push(checked)
     }
     return { providerId: answer.providerId, attribution: answer.attribution, routes: planned }

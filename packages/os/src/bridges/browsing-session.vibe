@@ -1,5 +1,5 @@
-// spec/os/browser/tabHost/storage.md, "An address is saved only when it is a web address of at most 4,096 units, and bookmarked only over HTTPS"; spec/os/browser/tabHost/storage.md, "A saved session keeps the first valid row of each tab and address"; spec/os/browser/tabHost/storage.md, "A snapshot offers the codec at most eight normal tabs whose address is known"; spec/os/browser/tabHost/storage.md, "Saved tabs replace only an untouched single new tab, and otherwise only history is merged"
-import { bookmarkAddress, maxSavedHistory, maxSavedTabs, mayKeepTab, normalizeSession, restoreSession, savedAddress, snapshotSession, type SavedSession, type SavedTab as SessionRow } from "../../gen/os__browser__tabHost__storage.effect.vibe"
+// spec/os/browser/tabHost/storage.md, "An address is saved only when it is a web address of at most 4,096 units, and bookmarked only over HTTPS"; spec/os/browser/tabHost/storage.md, "A saved session keeps the first valid row of each tab and address"; spec/os/browser/tabHost/storage.md, "A visit time is kept only for a kept history address, as a positive whole number of milliseconds"; spec/os/browser/tabHost/storage.md, "A snapshot offers the codec at most eight normal tabs whose address is known"; spec/os/browser/tabHost/storage.md, "Saved tabs replace only an untouched single new tab, and otherwise only history is merged"
+import { bookmarkAddress, maxSavedHistory, maxSavedTabs, mayKeepTab, normalizeSession, restoreSession, retainedVisitTimes, savedAddress, snapshotSession, type SavedSession, type SavedTab as SessionRow, type VisitTime } from "../../gen/os__browser__tabHost__storage.effect.vibe"
 import { webAddress } from "../browser/address.ts"
 
 export interface BrowsingLimits {
@@ -16,10 +16,13 @@ export interface SavedTab {
   readonly title: string
 }
 
+export type VisitTimes = Readonly<Record<string, number>>
+
 export interface SavedBrowsing {
   readonly history: string[]
   readonly tabs: SavedTab[]
   readonly cur: string
+  readonly visitTimes?: VisitTimes
 }
 
 export interface BrowsingTab {
@@ -31,6 +34,7 @@ export interface BrowsingRestore {
   readonly visits: string[]
   readonly restored: SavedTab[]
   readonly cur?: string
+  readonly visitTimes?: VisitTimes
 }
 
 interface TitledRow {
@@ -61,17 +65,29 @@ function titledRow(id: string, url: string, title: unknown, privateTab: boolean)
   return { row: { id, validId: TAB_ID.test(id), address: webAddress(url), privateTab }, title: savedTitle(title) }
 }
 
-function savedSession(record: unknown): { readonly session: SavedSession; readonly rows: readonly TitledRow[] } {
+function visitTimes(record: unknown): VisitTime[] {
+  const times = field(record, "visitTimes")
+  if (typeof times !== "object" || times === null || Array.isArray(times)) return []
+  return Object.entries(times as Readonly<Record<string, unknown>>).flatMap(([visited, millis]) => typeof millis === "number" && Number.isSafeInteger(millis) ? [{ visited, millis }] : [])
+}
+
+function timed(hrefs: readonly string[], times: VisitTime[]): { readonly visitTimes?: VisitTimes } {
+  const retained = retainedVisitTimes([...hrefs], times)
+  return retained.length > 0 ? { visitTimes: Object.fromEntries(retained.map((time) => [time.visited, time.millis])) } : {}
+}
+
+function savedSession(record: unknown): { readonly session: SavedSession; readonly rows: readonly TitledRow[]; readonly times: VisitTime[] } {
   const rows = list(field(record, "tabs")).map((tab) => titledRow(text(field(tab, "id")), text(field(tab, "url")), field(tab, "title"), false))
-  return { session: { history: list(field(record, "history")).map((url) => webAddress(text(url))), tabs: rows.map((titled) => titled.row), selected: text(field(record, "cur")) }, rows }
+  return { session: { history: list(field(record, "history")).map((url) => webAddress(text(url))), tabs: rows.map((titled) => titled.row), selected: text(field(record, "cur")) }, rows, times: visitTimes(record) }
 }
 
 function savedTabs(kept: readonly SessionRow[], rows: readonly TitledRow[]): SavedTab[] {
   return kept.map((row) => ({ id: row.id, url: row.address.href, title: rows.find((titled) => titled.row.id === row.id && mayKeepTab([], titled.row))?.title ?? "" }))
 }
 
-function browsing(canonical: SavedSession, rows: readonly TitledRow[]): SavedBrowsing {
-  return { history: canonical.history.map((address) => address.href), tabs: savedTabs(canonical.tabs, rows), cur: canonical.selected }
+function browsing(canonical: SavedSession, rows: readonly TitledRow[], times: VisitTime[]): SavedBrowsing {
+  const history = canonical.history.map((address) => address.href)
+  return { history, tabs: savedTabs(canonical.tabs, rows), cur: canonical.selected, ...timed(history, times) }
 }
 
 export function savedBrowserUrl(value: unknown): value is string {
@@ -83,12 +99,12 @@ export function bookmarkBrowserUrl(value: unknown): value is string {
 }
 
 export function normalizeBrowsing(input: unknown): SavedBrowsing {
-  const { session, rows } = savedSession(input)
-  return browsing(normalizeSession("RendererCodec", session), rows)
+  const { session, rows, times } = savedSession(input)
+  return browsing(normalizeSession("RendererCodec", session), rows, times)
 }
 
 export function browsingSnapshot(
-  state: { readonly tabs: readonly BrowsingTab[]; readonly visits: readonly string[]; readonly cur: string },
+  state: { readonly tabs: readonly BrowsingTab[]; readonly visits: readonly string[]; readonly cur: string; readonly visitTimes?: VisitTimes },
   page: (id: string) => { readonly url?: string; readonly title?: string } | undefined,
 ): SavedBrowsing {
   const rows = state.tabs.map((tab) => {
@@ -96,13 +112,13 @@ export function browsingSnapshot(
     const known = page(tab.id)
     return titledRow(tab.id, known?.url ?? "", known?.title, false)
   })
-  return browsing(snapshotSession({ history: state.visits.map(webAddress), tabs: rows.map((titled) => titled.row), selected: state.cur }), rows)
+  return browsing(snapshotSession({ history: state.visits.map(webAddress), tabs: rows.map((titled) => titled.row), selected: state.cur }), rows, visitTimes(state))
 }
 
 export function restoreBrowsing(saved: unknown, state: { readonly visits: readonly string[] }, pristine: boolean): BrowsingRestore {
-  const { session, rows } = savedSession(saved)
+  const { session, rows, times } = savedSession(saved)
   const result = restoreSession(session, [...state.visits], pristine)
   return result.restored.length > 0
-    ? { visits: result.visits, restored: savedTabs(result.restored, rows), cur: result.selected }
-    : { visits: result.visits, restored: [] }
+    ? { visits: result.visits, restored: savedTabs(result.restored, rows), cur: result.selected, ...timed(result.visits, times) }
+    : { visits: result.visits, restored: [], ...timed(result.visits, times) }
 }
