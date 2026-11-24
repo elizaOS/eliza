@@ -86,11 +86,16 @@ Consent and mint answer here as one; a wrong shape or a `wsUrl` off the
 deployment origin is `Misdirected`. A `401` with a credential reason goes
 to `C::rejected`; every refusal ends its request and passes on its retry
 or reset time (a `429` or `402` limit). The consent request comes before any
-paid admission, so the shell sends it once more after its connection was
-dropped: reset by the peer, or a pooled connection that ended before its
-answer (OkHttp's "unexpected end of stream"); a mint request is never sent
-again. The shell's content-free startup timings mark each consent and mint
-request's start, headers, body or failure, and a consent sent again.
+paid admission and writes nothing before the cloud's rate limiter, so the
+shell sends it once more, and only once: after its connection was dropped
+(reset by the peer, or a pooled connection that ended before its answer,
+OkHttp's "unexpected end of stream"), or after a `503` whose `Retry-After`
+is at most 2 s, once that wait is over, when the wait and one more request
+of 2 s still end before the startup deadline. A `503` without `Retry-After`
+or a second refusal ends the request as before; a mint request is never
+sent again. The shell's content-free
+startup timings mark each consent and mint request's start, headers, body
+or failure, and a consent sent again.
 
 ```quint
 type CloudAnswer = Answered | Misdirected | Unreachable | Refused({ refusal: Refusal })

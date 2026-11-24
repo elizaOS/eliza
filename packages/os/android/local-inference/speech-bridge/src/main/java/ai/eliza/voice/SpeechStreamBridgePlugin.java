@@ -38,6 +38,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -424,12 +425,14 @@ public abstract class SpeechStreamBridgePlugin extends Plugin {
   /** A non-2xx consent or mint answer. */
   private static final class Refused extends IOException {
     final int status;
+    final String retryAfter;
     final JSObject data;
     final Answer answer;
 
-    Refused(int status, JSObject data, Answer answer) {
+    Refused(int status, String retryAfter, JSObject data, Answer answer) {
       super("Cloud speech HTTP refused");
       this.status = status;
+      this.retryAfter = retryAfter;
       this.data = data;
       this.answer = answer;
     }
@@ -459,15 +462,19 @@ public abstract class SpeechStreamBridgePlugin extends Plugin {
         data = null;
       }
     }
-    return new Refused(status, data, CloudSpeechWire.refused(status, body, retryAfter, System.currentTimeMillis()));
+    return new Refused(status, retryAfter, data, CloudSpeechWire.refused(status, body, retryAfter, System.currentTimeMillis()));
   }
 
   private JSONObject consentAnswer(Session own) throws Exception {
     try {
       return post(own, "consent", new JSONObject());
     } catch (IOException failure) {
-      if (!CloudSpeechWire.droppedConnection(failure)) throw failure;
+      long wait = failure instanceof Refused refused
+          ? CloudSpeechWire.consentRetryMs(refused.status, refused.retryAfter, System.currentTimeMillis(), own.startupEndsMs - SystemClock.elapsedRealtime())
+          : CloudSpeechWire.droppedConnection(failure) ? 0 : -1;
+      if (wait < 0) throw failure;
       mark(own, "consent-retry");
+      own.ended.await(wait, TimeUnit.MILLISECONDS);
       return post(own, "consent", new JSONObject());
     }
   }
@@ -884,6 +891,7 @@ public abstract class SpeechStreamBridgePlugin extends Plugin {
 
   private void detach(Session own) {
     if (!own.closed.compareAndSet(false, true)) return;
+    own.ended.countDown();
     mark(own, "stop");
     synchronized (this) {
       if (session == own) session = null;
@@ -1585,6 +1593,7 @@ public abstract class SpeechStreamBridgePlugin extends Plugin {
     volatile Call pending;
     volatile WebSocket socket;
     volatile Microphone microphone;
+    final CountDownLatch ended = new CountDownLatch(1);
     volatile Utterance spoken;
     volatile StreamingSpeechPlayback lastPlayback;
 

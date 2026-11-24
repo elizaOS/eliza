@@ -18,7 +18,7 @@ import org.json.JSONObject;
 final class CloudSpeechWire {
   static final int RATE = 16000, MAX_UPLINK = 3200, MAX_DOWNLINK = 65536, MAX_CONTROL = 8192;
   static final int MAX_TRANSCRIPT = 16384, MAX_TEXT = 4096, MAX_PHRASE = 1024, MAX_TOKEN = 6144, MAX_BEARER = 16384;
-  static final long MAX_WINDOW_MS = 65000;
+  static final long MAX_WINDOW_MS = 65000, MAX_CONSENT_RETRY_AFTER_MS = 2000, CONSENT_RETRY_REQUEST_MS = 2000;
   static final String BASE = "/api/v1/voice/speech/";
   static final String EXTEND_HEADER = "X-Eliza-Speech-Extend", EXTEND_OFFER = "1";
   static final String INSUFFICIENT_CREDITS = "insufficient_credits", ALLOWANCE_EXHAUSTED = "allowance_exhausted";
@@ -135,6 +135,13 @@ final class CloudSpeechWire {
     if (message == null) return false;
     if (failure instanceof java.net.SocketException) return !(failure instanceof java.net.ConnectException) && message.startsWith("Connection reset");
     return failure instanceof java.io.IOException && message.startsWith("unexpected end of stream");
+  }
+
+  static long consentRetryMs(int status, String retryAfter, long now, long remainingMs) {
+    long at = status == 503 ? retryAfter(retryAfter, now) : 0;
+    if (at <= 0) return -1;
+    long wait = Math.max(0, at - now);
+    return wait <= MAX_CONSENT_RETRY_AFTER_MS && wait + CONSENT_RETRY_REQUEST_MS <= remainingMs ? wait : -1;
   }
 
   static long millis(long pcmBytes) {
