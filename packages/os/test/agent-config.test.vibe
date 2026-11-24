@@ -242,8 +242,7 @@ it.effect('Start my agent with my character, policy and model: the service and t
     )
     assert.deepStrictEqual((try decodeLaunchDocument((try admittedAnswer(record)).document)).model,
       { backend: "cloud", cloudBaseUrl: "https://cloud.example", smallModel: "", largeModel: "", imageModel: "" })
-    // spec/os/agentService/config.md, "A launch carries the Google consent the owner saved, else the host file's": the host file's consent stands
-    // until the subclass gives the owner's, which replaces it whole and changes nothing else in the document.
+    // spec/os/agentService/config.md, "A launch carries the Google consent the owner saved, else the host file's"
     const consents: unknown[] = []
     for (const answer of [full, record, replaced, savedOnly]) consents.push((try decodeLaunchDocument((try admittedAnswer(answer)).document)).google)
     assert.deepStrictEqual(consents,

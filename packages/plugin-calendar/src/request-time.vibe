@@ -1,8 +1,6 @@
-// spec/calendar/readClock.md, "A create that names its event, its day and its clock range keeps that range"; spec/calendar/readClock.md, "A stated year wins, a wrong extracted year is corrected, and a past start asks first"; spec/calendar/reviewedReads.md, "A new phone event starts at the day and time the owner stated, in the phone's zone"; spec/calendar/reviewedReads.md, "A change after a shared read is the edits the owner's words gave, keeping every other field"; spec/calendar/availability.md, "An availability window is the day and time the owner asked about, in the phone's zone"; spec/calendar/reviewedReads.md, "A selected target, a chosen calendar and a named event are the ones the owner gave"; spec/calendar/reviewedReads.md, "A delete is proposed only when the owner's own words ask for it, and a no keeps the event"; spec/calendar/actions.md, "Attendees hear of a change only when the owner asked and the calendar can tell them"; spec/calendar/actions.md, "A resident delete runs at once only for the one event the owner named, and otherwise asks in chat"; spec/calendar/actions.md, "A new event's guests and a change of guests are the ones the owner's words give"; spec/calendar/seriesScope.md, "A chat change to a repeating event asks which occurrences unless the request or the owner's words say"; spec/calendar/actions.md, "A change finds its one event from a year back to five years ahead, and never calls an unread calendar empty"
-import { createRangeSource } from "../gen/calendar__readClock.effect.vibe"
+// spec/calendar/readClock.md, "A clock time the owner stated is one the owner's words hold"; spec/calendar/readClock.md, "A stated year wins, a wrong extracted year is corrected, and a past start asks first"; spec/calendar/reviewedReads.md, "A new phone event is the timed event the model read, at a clock time the owner said, on the phone's clock"; spec/calendar/reviewedReads.md, "A selected target, a chosen calendar and a named event are the ones the owner gave"; spec/calendar/actions.md, "A resident delete runs at once only for the one event the owner named, and otherwise asks in chat"; spec/calendar/actions.md, "A new event's guests and a change of guests are the ones the owner's words give"; spec/calendar/actions.md, "A change finds its one event from a year back to five years ahead, and never calls an unread calendar empty"
 import { nameSaid } from "../gen/calendar__reviewedReads.effect.vibe"
-import { addDaysToLocalDate, buildUtcDateFromLocalParts, getZonedDateParts, knownTimeZone, type LocalDate } from "./clock.vibe"
-import type { CalendarWriteScope } from "./series/document.vibe"
+import { addDaysToLocalDate, getZonedDateParts, knownTimeZone, type LocalDate } from "./clock.vibe"
 
 export interface StatedClockTime {
   readonly hour: number
@@ -160,7 +158,7 @@ export function parseExplicitLocalDate(value: string, timeZone: string, now: Dat
   return offset === undefined ? undefined : addDaysToLocalDate(today, offset)
 }
 
-export const destinationMarker = /\b(?:to|(?:for|until|till)(?=\s+(?:today|tonight|tomorrow|(?:this|next)\s+(?:week(?:end)?|month|morning|afternoon|evening|(?:mon|tues|wednes|thurs|fri|satur|sun)day)\b|(?:mon|tue|tues|wed|thu|thur|thurs|fri|sat|sun)(?:day)?\b|(?:tues|wednes|thurs|satur)day\b|(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sept?(?:ember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?(?=\s+\d|\s*$)|noon\b|midnight\b|\d{1,2}(?:[:/.-]\d|\s*(?:a\.?m\b|p\.?m\b)|(?:st|nd|rd|th)\b|\s*$|\s+(?:a\.?m\b|p\.?m\b|o['’]clock\b)))))\b/i
+const destinationMarker = /\b(?:to|(?:for|until|till)(?=\s+(?:today|tonight|tomorrow|(?:this|next)\s+(?:week(?:end)?|month|morning|afternoon|evening|(?:mon|tues|wednes|thurs|fri|satur|sun)day)\b|(?:mon|tue|tues|wed|thu|thur|thurs|fri|sat|sun)(?:day)?\b|(?:tues|wednes|thurs|satur)day\b|(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sept?(?:ember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?(?=\s+\d|\s*$)|noon\b|midnight\b|\d{1,2}(?:[:/.-]\d|\s*(?:a\.?m\b|p\.?m\b)|(?:st|nd|rd|th)\b|\s*$|\s+(?:a\.?m\b|p\.?m\b|o['’]clock\b)))))\b/i
 const eventDayMarker = /\b(?:on|from|of)\s+(?:the\s+)?(?:today|tonight|tomorrow|yesterday|this\b|next\b|last\b|(?:mon|tue|wed|thu|fri|sat|sun)[a-z]*\b|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\b|\d)|\b(?:today|tonight|tomorrow|yesterday|(?:mon|tues|wednes|thurs|fri|satur|sun)day)['’]s?\b/i
 
 interface EventDayAsk {
@@ -231,115 +229,56 @@ export function parseStatedClockTimes(value: string): StatedClockTimes {
   return distinct.size > 1 ? { kind: "several" } : { kind: "one", start: only }
 }
 
-export function statedLengths(value: string): readonly number[] | undefined {
-  const found = [...value.matchAll(/\b(\d+(?:\.\d+)?)\s*(minutes?|mins?|hours?|hrs?)\b/giu)]
-  if (/(?:[-+]\s*\d+|\d+\s*\/\s*\d+)\s*(?:minutes?|mins?|hours?|hrs?)/iu.test(value)) return undefined
-  if (found.length === 0 && /\b(?:minutes?|mins?|hours?|hrs?)\b/iu.test(value)) return undefined
-  return found.map(([, amount, unit]) => Math.round(Number(amount) * (/^h/i.test(unit ?? "") ? 3_600_000 : 60_000)))
+const hourNames = ["twelve", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven"]
+const unitNames = ["", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen"]
+const tenNames = ["", "", "twenty", "thirty", "forty", "fifty"]
+
+function minuteNames(minute: number): readonly string[] {
+  if (minute < 10) return [`oh ${unitNames[minute]}`, `o ${unitNames[minute]}`]
+  if (minute < 20) return [unitNames[minute] ?? ""]
+  const tens = tenNames[Math.floor(minute / 10)] ?? ""
+  return [minute % 10 === 0 ? tens : `${tens} ${unitNames[minute % 10]}`]
 }
 
-export type StatedShift =
-  | { readonly kind: "span"; readonly ms: number }
-  | { readonly kind: "days"; readonly days: number }
-
-const shiftCount = String.raw`\d+(?:\.\d+)?|an?|one|two|three|four|five|six|seven|eight|nine|ten`
-const shiftAmount = compiled(String.raw`\bhalf\s+an?\s+hour\b|\b(${shiftCount})\s+(?:hours?\s+and\s+a\s+half|and\s+a\s+half\s+hours?)\b|\b(${shiftCount})\s*(minutes?|mins?|hours?|hrs?|days?|weeks?)\b`, "giu")
-const laterShift = /\b(?:later|back|delay(?:ed)?|postpone(?:d)?|push(?:ed)?)\b/iu
-const earlierShift = /\b(?:earlier|sooner|up)\b/iu
-
-export function statedShift(value: string): StatedShift | "unclear" | undefined {
-  const text = normalized(value)
-  const amounts = [...text.matchAll(shiftAmount)]
-  const later = laterShift.test(text), earlier = earlierShift.test(text)
-  const [only] = amounts
-  if (only === undefined || (!later && !earlier)) return undefined
-  if (amounts.length > 1 || (later && earlier)) return "unclear"
-  const sign = later ? 1 : -1
-  const counted = (token: string) => /^\d/.test(token) ? Number(token) : count(token) ?? 0
-  if (only[1] !== undefined) return { kind: "span", ms: sign * Math.round((counted(only[1]) + 0.5) * 3_600_000) }
-  if (only[2] === undefined) return { kind: "span", ms: sign * 1_800_000 }
-  const amount = counted(only[2])
-  const unit = only[3] ?? ""
-  if (/^(?:day|week)/i.test(unit)) {
-    const days = amount * (/^week/i.test(unit) ? 7 : 1)
-    return Number.isInteger(days) && days > 0 ? { kind: "days", days: sign * days } : "unclear"
+function clockSpellings(clock: StatedClockTime): readonly string[] {
+  const { hour, minute } = clock
+  const twelve = hour % 12 === 0 ? 12 : hour % 12
+  const name = hourNames[hour % 12] ?? ""
+  const padded = String(hour).padStart(2, "0")
+  if (minute === 0) {
+    return [String(twelve), `${twelve}:00`, `${hour}:00`, `${padded}:00`, String(hour), name, `${name} oclock`, `${twelve} oclock`,
+      ...(hour === 12 ? ["noon", "midday"] : hour === 0 ? ["midnight"] : [])]
   }
-  const ms = Math.round(amount * (/^h/i.test(unit) ? 3_600_000 : 60_000))
-  return Number.isSafeInteger(ms) && ms > 0 ? { kind: "span", ms: sign * ms } : "unclear"
+  const mm = String(minute).padStart(2, "0")
+  const next = hourNames[(hour + 1) % 12] ?? ""
+  return [`${twelve}:${mm}`, `${hour}:${mm}`, `${padded}:${mm}`, `${twelve}.${mm}`, `${twelve} ${mm}`, ...minuteNames(minute).map((words) => `${name} ${words}`),
+    ...(minute === 30 ? [`half past ${name}`, `half past ${twelve}`] : minute === 15 ? [`quarter past ${name}`, `quarter past ${twelve}`]
+      : minute === 45 ? [`quarter to ${next}`, `quarter to ${(hour + 1) % 12 === 0 ? 12 : (hour + 1) % 12}`] : [])]
 }
 
-export function localInstant(zone: string, date: LocalDate, clock: StatedClockTime): number | undefined {
-  return buildUtcDateFromLocalParts(zone, { ...date, hour: clock.hour, minute: clock.minute, second: 0 }, "reject")?.getTime()
+function clockWords(text: string): string {
+  const words = text.normalize("NFKC").toLowerCase()
+    .replace(/\b([ap])\.?\s?m\b\.?/gu, " $1m ")
+    .replace(/\bo['’]\s?clock\b/gu, "oclock")
+    .replace(/(\d)(?=[a-z])/gu, "$1 ")
+    .replace(/\.(?!\d)|[^\p{L}\p{N}:.]+/gu, " ")
+  return ` ${words.replace(/\s+/gu, " ").trim()} `
 }
 
-const spokenUnits = ["", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen"]
-const spokenTens = ["", "", "twenty", "thirty", "forty", "fifty"]
-const spokenClock = compiled(String.raw`\b(${spokenUnits.slice(1, 13).join("|")})(?:\s+(?:oh\s+)?([a-z]+(?:[ -][a-z]+)?))?\s+([ap]\.?m\.?)(?![a-z])`, "giu")
-
-function spokenMinutes(words: string): number | undefined {
-  const unit = spokenUnits.indexOf(words)
-  if (unit > 0) return unit
-  const [tens = "", ones, extra] = words.split(/[ -]/u)
-  const ten = spokenTens.indexOf(tens)
-  const one = ones === undefined ? 0 : spokenUnits.indexOf(ones)
-  return ten >= 2 && extra === undefined && one >= 0 && one < 10 ? ten * 10 + one : undefined
-}
-
-export function writtenClocks(text: string): string {
-  return text.replace(spokenClock, (phrase: string, hour: string, minutes: string | undefined, half: string) => {
-    const minute = minutes === undefined ? 0 : spokenMinutes(minutes.toLowerCase())
-    return minute === undefined ? phrase : `${spokenUnits.indexOf(hour.toLowerCase())}:${String(minute).padStart(2, "0")} ${half}`
+export function clockHeldByWords(clock: StatedClockTime, text: string): boolean {
+  const words = clockWords(text)
+  const otherHalf = clock.hour < 12 ? "pm" : "am"
+  return clockSpellings(clock).some((spelled) => {
+    const half = spelled === "noon" || spelled === "midday" || spelled === "midnight" || (clock.hour >= 13 && spelled.startsWith(String(clock.hour))) ? undefined : otherHalf
+    for (let at = words.indexOf(` ${spelled} `); at !== -1; at = words.indexOf(` ${spelled} `, at + 1)) {
+      if (half === undefined || !words.startsWith(` ${half} `, at + spelled.length + 1)) return true
+    }
+    return false
   })
-}
-
-const createLead = String.raw`^(?:please\s+)?(?:add|create|schedule)\s+(?:an?\s+)?(?:calendar\s+)?event\s+(?:called|named|titled)\s+`
-const createDayAndRange = compiled(
-  String.raw`^(?<day>today|tomorrow|(?:the\s+)?day\s+after\s+tomorrow|\d{4}-\d{2}-\d{2})\s+from\s+(?<range>(?:${clockMentionSource})\s+(?:to|until)\s+(?:${clockMentionSource}))(?:\s+(?:on|in)\s+(?:my|the)\s+built[ -]in\s+(?:eliza\s+)?calendar)?(?:\s+with\s+no\s+guests)?[.!?]?$`,
-  "iu",
-)
-
-export function statedCreateRange(title: string, text: string, zone: string, now: Date, timed: boolean = true): { readonly begin: number; readonly finish: number } | undefined {
-  const name = normalized(title)
-  if (name === "") return undefined
-  const words = normalized(writtenClocks(text))
-  const lead = compiled(`${createLead}["“]?${literal(name)}["”]?\\s+`, "iu").exec(words)
-  const stated = lead === null ? undefined : createDayAndRange.exec(words.slice(lead[0].length))?.groups
-  const date = stated?.day === undefined ? undefined : parseExplicitLocalDate(stated.day, zone, now)
-  const clock = stated?.range === undefined ? undefined : parseStatedClockTimes(stated.range)
-  if (date === undefined || clock?.kind !== "one" || clock.end === undefined) return undefined
-  const begin = localInstant(zone, date, clock.start)
-  const finish = localInstant(zone, date, clock.end)
-  const wallResolved = begin !== undefined && finish !== undefined
-  return createRangeSource(timed, true, wallResolved, wallResolved && finish > begin) === "StatedCreateRange" && wallResolved ? { begin, finish } : undefined
 }
 
 const leadingDecline = /^[\s"“'‘]*(?:no(?!\s+(?:need|longer)\b)|nope|nah|wait|hold\s+on|never\s*mind|nevermind|keep\s+it|leave\s+it|forget\s+(?:it|that))\b|^\s*cancel\s+that\s*[.!]*\s*$/iu
 const folded = (text: string) => text.normalize("NFKC").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim()
-
-export const deleteWords = /\b(?:delete|remove|cancel|clear|drop|erase|get\s+rid\s+of)\b|\btake\b[\s\S]*\boff\b/i
-
-export function asksToDeleteInWords(text: string): boolean {
-  return deleteWords.test(text) || denseDeleteTarget(text) !== undefined
-}
-
-const yesWords = /^[\s"“'‘]*(?:(?:yes|yeah|yea|yep|yup|sure|ok|okay|confirm(?:ed)?|correct|right|absolutely|definitely|please\s+do|go\s+ahead|do\s+it|delete\s+it|remove\s+it|that\s+one)\b|y\s*[.!]?\s*$)/iu
-
-export function saysYes(text: string): boolean {
-  return yesWords.test(text)
-}
-
-const people = String.raw`(?:all\s+|the\s+|my\s+|our\s+|both\s+)?(?:attendees?|guests?|invitees?|participants?|everyone|everybody|people|team|others|them|him|her)\b`
-const someone = String.raw`(?!(?:me|us|you|it|this|that|the|a|an|my|our|what|when|how|why|where|if)\b)\p{L}+`
-const noticeWords = compiled(String.raw`\b(?:notify|tell|e-?mail|inform|alert)\s+(?:${people}|${someone})|\b(?:message|update)\s+${people}|\blet\s+(?:${people}|${someone})\s+know\b|\bsend\s+(?:out\s+)?(?:an?\s+)?(?:updates?|notices?|notifications?)\b`, "iu")
-const noticeVerbs = /notify|tell|e-?mail|inform|message|alert|let|send/
-
-export function noticeAskedInWords(text: string): boolean {
-  return noticeWords.test(text)
-}
-
-export function noticeDeclinedInWords(text: string): boolean {
-  return compiled(String.raw`\b(?:don['’]?t|do\s+not|never|not|without|no\s+need\s+to)\s+(?:\p{L}+\s+){0,2}?(?:${noticeVerbs.source})\b`, "iu").test(text)
-}
 
 export interface NamedGuest {
   readonly email: string | null
@@ -383,7 +322,7 @@ const denseDeletes = [
   /^(.+?)\s*(?:을|를)\s*(?:삭제해줘|삭제해\s*주세요)$/u,
 ]
 
-export function denseDeleteTarget(text: string): string | undefined {
+function denseDeleteTarget(text: string): string | undefined {
   const spoken = folded(text)
   for (const pattern of denseDeletes) {
     const target = pattern.exec(spoken)?.[1]?.trim()
@@ -456,14 +395,4 @@ export function zoneNamedIn(text: string): NamedZone {
   const named = short === null ? undefined : singleZoneAbbreviations[short[1] ?? short[2] ?? ""]
   if (named !== undefined) return { kind: "zone", zone: named }
   return /\b(?:utc|gmt)\b/iu.test(text) ? { kind: "zone", zone: "UTC" } : { kind: "unknown" }
-}
-
-const scopeWords: readonly (readonly [CalendarWriteScope, RegExp])[] = [
-  ["instance", /\b(?:just|only)\s+(?:this|that)(?:\s+(?:one|time|occurrence|instance|event|meeting|week))?\b|\bthis\s+(?:one|occurrence|instance)\s+only\b|\bsingle\s+occurrence\b/i],
-  ["this_and_following", /\b(?:this|that)(?:\s+(?:one|occurrence|instance|event|meeting|[a-z0-9_-]+))?\s+(?:and|&)\s+(?:(?:all|every)\s+)?(?:following|future|everything\s+after)(?:\s+(?:events|occurrences|instances|ones))?\b|\bfrom\s+(?:this|that)(?:\s+(?:one|occurrence|instance|event|meeting))?\s+(?:forward|onwards?|on)\b|\bstarting\s+(?:with|at)\s+(?:this|that)(?:\s+(?:one|occurrence|instance|event|meeting))?\b/i],
-  ["series", /\b(?:whole|entire|full)\s+series\b|\bthe\s+series\b|\ball\s+(?:occurrences|instances|of\s+them)\b|\bevery\s+(?:occurrence|instance|single\s+one)\b|\bstop\s+(?:it\s+)?(?:from\s+)?(?:repeating|recurring)\b|\bcancel\s+the\s+recurring\b/i],
-]
-
-export function scopesInWords(text: string): CalendarWriteScope[] {
-  return scopeWords.filter(([, pattern]) => pattern.test(text)).map(([scope]) => scope)
 }

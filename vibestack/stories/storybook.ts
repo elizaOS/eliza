@@ -13,8 +13,8 @@ interface Watcher { on(event: string, listener: (file: string) => void): unknown
 export function defineMain(dir: string, options: Omit<Options, "root"> = {}) {
   const root = dirname(dir);
   const generate = generator({ ...options, root });
-  const run = () => {
-    for (const line of generate().diagnostics) console.warn(`stories: ${line}`);
+  const run = (observe?: (file: string) => void) => {
+    for (const line of generate(observe).diagnostics) console.warn(`stories: ${line}`);
   };
   // Storybook lists stories before Vite starts, so they are written now.
   run();
@@ -23,18 +23,24 @@ export function defineMain(dir: string, options: Omit<Options, "root"> = {}) {
     stories: [`${relative(dir, resolve(root, options.out ?? outOf(root))).replaceAll("\\", "/")}/*.stories.tsx`, "../src/**/*.stories.@(ts|tsx)"],
     addons: ["@storybook/addon-a11y", "@storybook/addon-vitest"],
     core: { disableTelemetry: true },
-    viteFinal: <Config extends { plugins?: unknown[] }>(config: Config) => ({
-      ...config,
-      plugins: [
-        ...(config.plugins ?? []),
-        {
-          name: "vibestack-stories",
-          configureServer(server: { watcher: Watcher }) {
-            const changed = listener(root, options.out, run);
-            for (const event of ["add", "change", "unlink"]) server.watcher.on(event, changed);
+    viteFinal: <Config extends { plugins?: unknown[] }>(config: Config) => {
+      let release: (() => void) | undefined;
+      return {
+        ...config,
+        plugins: [
+          ...(config.plugins ?? []),
+          {
+            name: "vibestack-stories",
+            configureServer(server: { watcher: Watcher }) {
+              release?.();
+              const changed = listener(root, options.out, run);
+              release = changed.close;
+              for (const event of ["add", "change", "unlink"]) server.watcher.on(event, changed.change);
+            },
+            closeBundle() { release?.(); },
           },
-        },
-      ],
-    }),
+        ],
+      };
+    },
   };
 }

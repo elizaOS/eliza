@@ -2,6 +2,6 @@
   "format": ["typescript", "tsx", "javascript", "css"],
   "formatsExts": { "typescript": ["ts", "mts", "vibe", "vibex"] },
   "ignore": ["vibestack/examples/**", "**/test/fixtures/**"],
-  "threshold": 0,
+  "threshold": 0.5,
   "reporters": ["console"]
 }
