@@ -641,8 +641,10 @@ it.effect(`The stager a consumer runs by path takes the descriptors, launchers a
     }
     assert.deepStrictEqual([...stager.REVIEWED_PRIVILEGED_PERMISSIONS], reviewedPrivilegedPermissions)
     const installed: readonly LauncherDescriptor[] = [plain, pinned, { ...pinned, partition: "system" }]
-    for (const descriptor of installed)
-      assert.include(renderOverlay(descriptor, { abi: "x86_64", rule: "make", libraries: [{ name: "libagent.so", sha256: other }] })["config.fs"] ?? "", `[${stager.launcherInstallDirectory(descriptor).slice(1)}/lib/x86_64/libagent.so]`)
+    for (const descriptor of installed) {
+      const installedAt = try Effect.try(() => stager.launcherInstallDirectory(descriptor))
+      assert.include(renderOverlay(descriptor, { abi: "x86_64", rule: "make", libraries: [{ name: "libagent.so", sha256: other }] })["config.fs"] ?? "", `[${installedAt.slice(1)}/lib/x86_64/libagent.so]`)
+    }
 
     const base = { aapt: s.tool, apksigner: s.tool, development: false }
     const companions = { ExampleUpdater: updater.apk }

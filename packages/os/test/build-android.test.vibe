@@ -352,7 +352,7 @@ it.effect(`The build a consumer runs by path refuses a malformed request before 
     const unparsed: readonly (readonly [Readonly<Record<string, unknown>>, RegExp])[] = [
       [{ variants: ["../outside"] }, /Invalid Android distributions/],
       [{ archive: { name: "Bad Name", metadata: {} } }, /Invalid Android archive name/],
-      [{ archive: { name: "production", metadata: BigInt(1) } }, /BigInt/],
+      [{ archive: { name: "production", metadata: 1n } }, /BigInt/],
       [{ archive: { name: "production", metadata: {}, files: [] } }, /Android archive files must be a function/],
       [{ project: "../android" }, /must be relative paths/],
       [{ output: "/tmp/artifacts" }, /must be relative paths/],
@@ -366,7 +366,7 @@ it.effect(`The build a consumer runs by path refuses a malformed request before 
       [{ record: { name: "../build-record.json", metadata: {} } }, /Invalid Android build record name/],
       [{ record: { name: "build-record.txt", metadata: {} } }, /Invalid Android build record name/],
       [{ record: { name: "build-record.json" } }, /build record metadata is required/],
-      [{ record: { name: "build-record.json", metadata: BigInt(1) } }, /BigInt/],
+      [{ record: { name: "build-record.json", metadata: 1n } }, /BigInt/],
       [{ verify: { command: "", args: [] } }, /Invalid Android admission command/],
       [{ verify: null }, /Invalid Android admission command/],
       [{ prepare: [{ gradleTasks: [] }] }, /Invalid Android admission command/],
