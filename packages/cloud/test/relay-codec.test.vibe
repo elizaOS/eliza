@@ -2,7 +2,7 @@
 import { assert, describe, it } from "@effect/vitest"
 import { decodeDeviceFrame, decodeRelayFrame, decodeServerFrame, encodeClientFrame, encodeRelayAudio, encodeWireFrame, relayCloseCodes } from "../src/client/relay-codec.vibe"
 
-describe("wp9 relay codec scratch", () => {
+describe("Speech relay codec", () => {
   it.live("Relay codec round trips and bounds (spec/cloud/services/speechRelay.md, \"The wire is version 1 with 16 kHz mono PCM16 and bounded frames\")", () => Effect.try(() => {
     const pcm = Uint8Array.from([1, 2, 3, 4])
     const frame = encodeRelayAudio({ id: "utt_1-a", pcm })

@@ -36,6 +36,7 @@ import types.* from "../shared/types"
 import oauth as O from "../../core/oauth"
 import registry as N from "../nativeClients/registry"
 import secondFactor as F from "./secondFactor"
+import rateLimit as R from "../shared/rateLimit"
 type ResponseType = CodeResponse | OtherResponse
 type PkceMethod = S256 | PlainMethod
 type AuthorizeRequest = { responseType: ResponseType, method: PkceMethod, client: N::ClientCheck, hasState: bool }
@@ -206,6 +207,18 @@ pure def stepSignInStartsExactlyOneThing(before: GoogleAttempt, via: str, after:
   and ((out.includes(BeginSession) or out.includes(MintDeviceKey) or out.includes(BeginSecondFactor)) iff out.includes(FirstSightOfGoogle))
 pure def sometimesSignedInWithGoogle(a: GoogleAttempt): bool = a.code == CodeRedeemed({ redeemedAs: SessionYield })
 pure def sometimesBrowserSecondFactor(a: GoogleAttempt): bool = a.code == CodeRedeemed({ redeemedAs: SecondFactorYield })
+```
+
+### A client address may call the Google sign-in routes 30 times a minute, and over that is refused before anything is stored
+
+`authorize`, `callback`, `exchange` and `native/challenge` share one window
+per client address, checked with `shared/rateLimit` before the attempt row
+is read or written; a browser sign-in spends three of them and a native one
+spends one. Over the limit a call answers `429 rate_limited` with the
+window's end, and nothing is stored or sent to Google.
+
+```quint
+pure val googleSignInPerIp: R::RateLimit = R::perMinute("googleSignInPerIp", 30)
 ```
 
 ## Story: Sign in with the device's Google account
