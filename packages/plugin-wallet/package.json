@@ -5,6 +5,7 @@
   "license": "MIT",
   "scripts": {
     "build": "vibelang -p tsconfig.build.json && vite build",
+    "test": "vitest run",
     "typecheck": "vibelang --noEmit -p ."
   },
   "dependencies": {
@@ -26,7 +27,10 @@
     "@types/react": "catalog:",
     "react-dom": "catalog:",
     "vite": "catalog:",
-    "vibelang-vite": "0.0.13"
+    "vibelang-vite": "0.0.13",
+    "@effect/vitest": "4.1.1",
+    "vibestack": "workspace:*",
+    "vitest": "catalog:"
   },
   "exports": {
     ".": {
