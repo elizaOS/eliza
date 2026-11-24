@@ -1,7 +1,7 @@
 // spec/agent/plugins/profile.md, "The worker is installed only after its executable digest matches the launch"; spec/workflow/approvals.md, "Device steps require the exact reviewed scope and enrolled device"; spec/workflow/execution.md, "Retirement releases host reservations without rewriting the terminal result"
 import type { WorkflowDeviceBinding, WorkflowDeviceOperation } from "../contract/device.vibe"
 import type { PhoneDeviceTarget } from "../contract/phone.vibe"
-import type { HostedNativeSelection } from "../contract/digest.vibe"
+import type { DigestTemplate, HostedNativeSelection } from "../contract/digest.vibe"
 import { decodeParentMessage, serveWorker, type ParentMessage, type WorkerChannel, type WorkerMessage } from "../worker/protocol.vibe"
 import type { WorkflowSql } from "./store.vibe"
 import type { ManagedGoogleReads } from "./google.vibe"
@@ -41,7 +41,7 @@ export interface WorkflowScheduler {
 
 export interface WorkflowNativeDigests {
   grant(selection: HostedNativeSelection, expiresAt: number): { readonly timeZone: string }!WorkflowDeviceFailed
-  read(selection: HostedNativeSelection, at: number): string!WorkflowDeviceFailed
+  read(selection: HostedNativeSelection, at: number, window: DigestTemplate): string!WorkflowDeviceFailed
 }
 
 export interface WorkflowHost {

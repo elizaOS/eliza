@@ -59,7 +59,7 @@ type Arrival = { ingress: R::Window, auth: RA::Admission, policy: E::PolicyAnswe
 type Catalog = { profile: List[Mo::ProfiledModel], prices: List[Mo::PriceRow] }
 type Funding = { allowanceAvailable: Micros, creditAvailable: Micros }
 type Stage = AtIngress | AtAuth | AtPlanLimit | AtBody | AtModel | AtQuote | AtHold
-type AdmittedCall = { model: Mo::Model, counts: Mo::TokenCounts, quote: Micros, lane: M::FundingLane, hold: M::Hold }
+type AdmittedCall = { model: Mo::Model, counts: Mo::TokenCounts, outputCap: int, quote: Micros, lane: M::FundingLane, hold: M::Hold }
 type CompletionAdmission = RefusedAt({ stage: Stage, refusal: Refusal }) | Admit({ call: AdmittedCall })
 pure val acceptedFields: Set[str] = Set("model", "messages", "stream", "stream_options", "temperature", "max_tokens", "max_completion_tokens", "reasoning_effort", "response_format", "tools", "tool_choice",
   "top_p", "stop", "seed", "frequency_penalty", "presence_penalty", "prompt_cache_key")
@@ -72,19 +72,19 @@ pure def hasImage(b: ChatBody): bool = b.parts.includes(ImagePart)
 pure def bodyAccepted(b: ChatBody): bool = b.fields.subseteq(acceptedFields) and b.messageCount >= 1 and not(b.parts.includes(SourcelessImagePart))
 pure def bodyRefusal(b: ChatBody): Refusal = if (b.fields.subseteq(acceptedFields)) refuse(InvalidRequest) else refuseFor(InvalidRequest, UnsupportedField)
 pure def inferenceHoldKey(organization: str, requestId: str): HoldKey = { service: MeteredInference, caller: organization, requestId: requestId, part: WholeRequest }
-pure def holdStage(a: Arrival, model: Mo::Model, counts: Mo::TokenCounts, funding: Funding): CompletionAdmission = {
+pure def holdStage(a: Arrival, model: Mo::Model, counts: Mo::TokenCounts, outputCap: int, funding: Funding): CompletionAdmission = {
   val lane = E::fundingLane(a.policy)
   val quote = Mo::callCost(model, counts)
   val verdict = M::admission(M::initial, true, lane, quote, funding.allowanceAvailable, funding.creditAvailable)
   match verdict {
     | RefuseHold(x) => RefusedAt({ stage: AtHold, refusal: refuse(x.code) })
-    | _ => Admit({ call: { model: model, counts: counts, quote: quote, lane: lane,
+    | _ => Admit({ call: { model: model, counts: counts, outputCap: outputCap, quote: quote, lane: lane,
         hold: M::reserve(M::initial, inferenceHoldKey(a.organization, a.requestId), quote, lane, funding.allowanceAvailable, funding.creditAvailable, a.now) } })
   }
 }
 pure def quoteStage(a: Arrival, model: Mo::Model, outputTokens: int, funding: Funding): CompletionAdmission = {
-  val counts = quoteCounts(a.body.inputChars, outputTokens)
-  if (Mo::countsInBound(counts)) holdStage(a, model, counts, funding) else RefusedAt({ stage: AtQuote, refusal: refuse(InvalidRequest) })
+  val counts = quoteCounts(a.body.inputChars, heldOutput(callerCapped(a.body), outputTokens))
+  if (Mo::countsInBound(counts) and outputTokens <= Mo::maxTokensPerSide) holdStage(a, model, counts, outputTokens, funding) else RefusedAt({ stage: AtQuote, refusal: refuse(InvalidRequest) })
 }
 pure def afterModel(a: Arrival, model: Mo::Model, funding: Funding): CompletionAdmission = {
   val limit = outputLimit(a.body.maxCompletionTokens, a.body.maxTokens, model.defaultMaxTokens)
@@ -135,7 +135,7 @@ pure val bodyValues: Set[ChatBody] = Set(textBody, { ...textBody, parts: List(Te
   { ...textBody, model: "m9" }, { ...textBody, maxTokens: AskFor({ tokens: 9 }), maxCompletionTokens: AskFor({ tokens: 3000000 }) })
 pure val otherBodyValues: Set[ChatBody] = bodyValues
 pure val catalogValues: Set[Catalog] = {
-  val seeing = { profile: List({ id: "m1", provider: "p1", upstreamModel: "u1", vision: true, defaultMaxTokens: Mo::OutputDefaultOf({ tokens: 4096 }) }), prices: List({ modelId: "m1", inputPer1K: 3, outputPer1K: 15 }) }
+  val seeing = { profile: List({ id: "m1", provider: "p1", upstreamModel: "u1", vision: true, defaultMaxTokens: Mo::OutputDefaultOf({ tokens: 4096 }) }), prices: List({ modelId: "m1", inputPer1K: 3, cachedInputPer1K: 1, outputPer1K: 15 }) }
   Set({ profile: List(), prices: List() }, seeing, { ...seeing, profile: List({ id: "m1", provider: "p1", upstreamModel: "u1", vision: false, defaultMaxTokens: Mo::NoOutputDefault }) })
 }
 pure val fundingValues: Set[Funding] = Set({ allowanceAvailable: 0, creditAvailable: 0 }, { allowanceAvailable: 0, creditAvailable: 20 }, { allowanceAvailable: 5, creditAvailable: 5 }, { allowanceAvailable: 0, creditAvailable: -1 })
@@ -143,10 +143,17 @@ pure val fundingValues: Set[Funding] = Set({ allowanceAvailable: 0, creditAvaila
 
 ### A request is admitted only for a live caller under its plan limit, held under the policy's lane at its quote, and otherwise refused well formed
 
-The quote counts a token per four input characters, rounded up, and the
-output the request allows: `max_completion_tokens`, else `max_tokens`, else
-the selected upstream model’s configured maximum generation length. The
-provider receives the resulting cap for both whole replies and streams. A
+The output cap is the output the request allows: `max_completion_tokens`,
+else `max_tokens`, else the selected upstream model’s configured maximum
+generation length. The provider receives that cap for both whole replies and
+streams. The quote counts a token per four input characters, rounded up, none
+of them as read from a prompt cache, and the output it holds: the whole cap
+when the caller set one, and for a call that set none the smaller of the cap
+and `uncappedHoldTokens` (500, develop's `DEFAULT_OUTPUT_TOKENS`). An uncapped
+call is mostly a short agent turn, so holding the model's full maximum would
+hold far more than it spends and refuse a funded account that still has a few
+cents; settlement charges what was used, beyond the hold from free credits
+([metering](../shared/metering.md)). A
 model with no configured maximum requires a caller cap. An uncapped request
 for it is refused `400 model_unavailable` before any hold or provider call.
 A side that is negative or over `Mo::maxTokensPerSide` is refused
@@ -161,7 +168,21 @@ pure def outputLimit(maxCompletionTokens: TokenAsk, maxTokens: TokenAsk, default
   else if (maxTokens != NoAsk) maxTokens
   else match defaultMaxTokens { | OutputDefaultOf(x) => AskFor({ tokens: x.tokens }) | NoOutputDefault => NoAsk }
 pure def quoteCounts(chars: CharCount, outputTokens: int): Mo::TokenCounts =
-  { inputTokens: tokensOf(chars), outputTokens: outputTokens }
+  { inputTokens: tokensOf(chars), cachedTokens: 0, outputTokens: outputTokens }
+pure val uncappedHoldTokens: int = 500
+pure def callerCapped(b: ChatBody): bool = b.maxCompletionTokens != NoAsk or b.maxTokens != NoAsk
+pure def heldOutput(capped: bool, outputCap: int): int = if (capped) outputCap else M::minOf(outputCap, uncappedHoldTokens)
+pure def lawAnUncappedCallHoldsAtMostItsEstimateAndSendsTheModelCap(ingress: R::Window, auth: RA::Admission, policy: E::PolicyAnswer, planWindow: R::Window, body: ChatBody, catalog: Catalog, funding: Funding): bool = {
+  val a = arrivalOf(ingress, auth, policy, planWindow, body)
+  val result = admitCompletion(a, catalog, funding)
+  match result {
+    | Admit(x) => x.call.counts.outputTokens <= x.call.outputCap
+        and (callerCapped(body) implies x.call.counts.outputTokens == x.call.outputCap)
+        and (not(callerCapped(body)) implies (x.call.counts.outputTokens <= uncappedHoldTokens
+          and outputLimit(NoAsk, NoAsk, x.call.model.defaultMaxTokens) == AskFor({ tokens: x.call.outputCap })))
+    | RefusedAt(r) => true
+  }
+}
 pure val charsValues = Set(-1, 0, 1, 4, 5, 8000000, 8000001)
 pure def lawEveryInputCharacterIsQuoted(chars: CharCount): bool = chars >= 0 implies (tokensOf(chars) * 4 >= chars and tokensOf(chars) * 4 < chars + 4)
 pure def lawAnAdmittedCallIsHeldAtItsQuote(ingress: R::Window, auth: RA::Admission, policy: E::PolicyAnswer, planWindow: R::Window, body: ChatBody, catalog: Catalog, funding: Funding): bool = {
@@ -208,21 +229,22 @@ A finished response or a failed stream is charged any usable usage report
 already received. When either has no such report, including a provider
 connection failure before streaming begins, it is charged the quote.
 A hang-up cancels the provider call itself
-and is charged the larger of the quoted and reported input tokens and a
-token per four delivered characters, each capped at `Mo::maxTokensPerSide`.
+and is charged the larger of the quoted and reported input tokens, all at
+the input price, and a token per four delivered characters, each capped at
+`Mo::maxTokensPerSide`.
 
 ```quint
 type UsageReport = NoUsage | Usage({ usage: Mo::ProviderUsage })
 type CompletionEnd = Finished({ report: UsageReport }) | HungUp({ reportedInput: int, deliveredChars: CharCount }) | ProviderRejected({ status: int }) | ProviderFailed({ report: UsageReport })
 type CompletionCharge = ChargeCounts({ counts: Mo::TokenCounts }) | ChargeQuote | ReleaseHold
-pure val noTokens: Mo::TokenCounts = { inputTokens: 0, outputTokens: 0 }
+pure val noTokens: Mo::TokenCounts = { inputTokens: 0, cachedTokens: 0, outputTokens: 0 }
 pure def chargeOfUsage(u: Mo::ProviderUsage): CompletionCharge = {
   val billed = Mo::billedUsage(u)
   match billed { | Reported(r) => ChargeCounts({ counts: r.counts }) | Unreadable => ChargeQuote }
 }
 pure def chargeOfReport(report: UsageReport): CompletionCharge = match report { | NoUsage => ChargeQuote | Usage(u) => chargeOfUsage(u.usage) }
 pure def hangUpCounts(quoted: Mo::TokenCounts, reportedInput: int, deliveredChars: CharCount): Mo::TokenCounts =
-  { inputTokens: Mo::billedSide(quoted.inputTokens, reportedInput), outputTokens: Mo::billedSide(tokensOf(deliveredChars), 0) }
+  { inputTokens: Mo::billedSide(quoted.inputTokens, reportedInput), cachedTokens: 0, outputTokens: Mo::billedSide(tokensOf(deliveredChars), 0) }
 pure def chargeOf(dispatched: bool, end: CompletionEnd, quoted: Mo::TokenCounts): CompletionCharge =
   if (not(dispatched)) ReleaseHold
   else match end {
@@ -249,7 +271,7 @@ pure def lawAProviderReportDeterminesTheCharge(u: Mo::ProviderUsage, quoted: Mo:
   val expected = match billed { | Reported(r) => ChargeCounts({ counts: r.counts }) | Unreadable => ChargeQuote }
   chargeOf(true, Finished({ report: report }), quoted) == expected and chargeOf(true, ProviderFailed({ report: report }), quoted) == expected
 }
-pure val quotedValues: Set[Mo::TokenCounts] = Set(noTokens, { inputTokens: 10, outputTokens: 500 })
+pure val quotedValues: Set[Mo::TokenCounts] = Set(noTokens, { inputTokens: 10, cachedTokens: 0, outputTokens: 500 })
 pure val endValues: Set[CompletionEnd] = {
   val used = { promptTokens: 10, cachedTokens: 0, completionTokens: 7, reasoningTokens: 2 }
   Set(Finished({ report: NoUsage }), Finished({ report: Usage({ usage: used }) }), Finished({ report: Usage({ usage: { ...used, promptTokens: -1 } }) }),
@@ -273,16 +295,21 @@ before any byte was delivered; any other failure after dispatch (a 5xx, the
 timeout, the network, a failure mid-stream) is `ProviderFailed`. A mid-stream
 failure retains any usage report received before it. A provider
 `400` or `422` (a parameter or a strict `json_schema` it cannot serve)
-answers `400 invalid_request`, a `413` answers `413 content_too_large`, any
-other failure `503 provider_unavailable`, the only retryable one.
-Closure preserves the original hold key. A closed hold refuses a second
-settlement or release.
+answers `400 invalid_request`, a `413` answers `413 content_too_large`, a
+`429` answers `429 rate_limited`, and any other failure answers
+`503 provider_unavailable`. Only the last two are retryable, and both carry
+a retry time. A stated `Retry-After` is kept for either refusal so neither the
+agent nor other callers send before the provider is ready. Without a wait
+from the provider, an outage waits five seconds and a rate limit waits four.
+The agent's turn has a separate five-second retry budget. Closure
+preserves the original hold key. A closed hold refuses a second settlement
+or release.
 
 ```quint
 pure val rejectionStatuses: Set[int] = Set(400, 401, 402, 403, 404, 405, 406, 409, 410, 413, 415, 422, 429)
 pure def endOfFailure(status: int, delivered: bool): CompletionEnd =
   if (not(delivered) and rejectionStatuses.contains(status)) ProviderRejected({ status: status }) else ProviderFailed({ report: NoUsage })
-pure val pricedModel: Mo::Model = { id: "m1", provider: "p1", upstreamModel: "u1", vision: false, defaultMaxTokens: Mo::NoOutputDefault, inputPer1K: 3, outputPer1K: 15 }
+pure val pricedModel: Mo::Model = { id: "m1", provider: "p1", upstreamModel: "u1", vision: false, defaultMaxTokens: Mo::NoOutputDefault, inputPer1K: 3, cachedInputPer1K: 1, outputPer1K: 15 }
 pure def lawEveryCallClosesItsHoldOnce(lane: M::FundingLane, quote: Micros, allowanceAvailable: Micros, creditAvailable: Micros, dispatched: bool, end: CompletionEnd, quoted: Mo::TokenCounts, creditFree: Micros): bool = {
   val held = M::reserve(M::initial, inferenceHoldKey("o1", "r1"), quote, lane, allowanceAvailable, creditAvailable, 0)
   val sent = if (dispatched) M::markDispatched(held, 0) else held
@@ -296,14 +323,60 @@ pure def lawEveryCallClosesItsHoldOnce(lane: M::FundingLane, quote: Micros, allo
 pure val statusValues = Set(0, 400, 413, 429, 500)
 pure def lawOnlyAnUndeliveredRejectionIsFree(status: int, delivered: bool, quoted: Mo::TokenCounts): bool =
   (chargeOf(true, endOfFailure(status, delivered), quoted) == ChargeCounts({ counts: noTokens })) iff (not(delivered) and rejectionStatuses.contains(status))
-pure def failureRefusal(end: CompletionEnd): Refusal = match end {
-  | ProviderRejected(r) => if (r.status == 400 or r.status == 422) refuse(InvalidRequest) else if (r.status == 413) refuse(ContentTooLarge) else refuse(ProviderUnavailable)
-  | _ => refuse(ProviderUnavailable)
+pure val providerPause: Millis = 5 * millisPerSecond
+pure val rateLimitPause: Millis = 4 * millisPerSecond
+pure def failureWait(status: int, hint: Millis): Millis =
+  if (hint >= 0) hint else if (status == 429) rateLimitPause else providerPause
+pure def failureRefusal(end: CompletionEnd, retryAt: Millis): Refusal = match end {
+  | ProviderRejected(r) => if (r.status == 400 or r.status == 422) refuse(InvalidRequest) else if (r.status == 413) refuse(ContentTooLarge)
+      else if (r.status == 429) refuseUntil(RateLimited, retryAt) else refuseUntil(ProviderUnavailable, retryAt)
+  | _ => refuseUntil(ProviderUnavailable, retryAt)
 }
-pure def lawFailureRefusalsAreWellFormed(status: int, delivered: bool): bool = {
-  val r = failureRefusal(endOfFailure(status, delivered))
-  wellFormed(r) and (retryableOf(r) iff r.code == ProviderUnavailable)
+pure def lawFailureRefusalsAreWellFormed(status: int, delivered: bool, retryAt: Millis): bool = {
+  val r = failureRefusal(endOfFailure(status, delivered), retryAt)
+  wellFormed(r) and (retryableOf(r) iff (r.code == ProviderUnavailable or r.code == RateLimited))
 }
+pure def lawOnlyAnUndeliveredProviderRateLimitIsARateLimit(status: int, delivered: bool, retryAt: Millis): bool =
+  (failureRefusal(endOfFailure(status, delivered), retryAt).code == RateLimited) iff (status == 429 and not(delivered))
+pure val hintValues = Set(-1, 0, 1000, 4000, 4001, 59000)
+pure def lawProviderRetryTimeIsKept(status: int, hint: Millis): bool =
+  if (hint >= 0) failureWait(status, hint) == hint
+  else failureWait(status, hint) == (if (status == 429) rateLimitPause else providerPause)
+```
+
+### A provider's refusal of the request passes on its listed code and parameter and nothing else
+
+A provider `400` may say what was wrong with the request, flat or inside an
+`error` envelope. The `400 invalid_request` answer carries the provider's
+`code` when it is one of `requestFaultCodes` and its `param` when it is one
+of `requestFaultParams`, beside the refusal's own fields, so the agent can
+tell a tool call the provider could not parse out of the model's own
+generation (`parser_error`, sent once more by the turn) and a context that
+is too long (`context_length_exceeded`) from a request it must change. Any
+other value is left out, and so is every other field of the provider's
+body: its message can echo the request, and a billing, quota or credential
+code speaks of the deployment's provider account, not the caller's. A
+refusal with any other status passes nothing on, and its body is not read.
+
+```quint
+type ProviderFault = { code: str, param: str }
+pure val requestFaultCodes: Set[str] = Set("parser_error", "context_length_exceeded", "context_window_exceeded", "input_too_long", "invalid_json_schema",
+  "schema_validation_error", "wrong_api_format", "unsupported_parameter", "unsupported_value", "invalid_value", "invalid_type", "invalid_request", "tool_use_failed")
+pure val requestFaultParams: Set[str] = Set("tool_calls", "messages", "tools", "response_format")
+pure val noFault: ProviderFault = { code: "", param: "" }
+pure def readsFault(status: int): bool = status == 400
+pure def passedFault(status: int, faultCode: str, faultParam: str): ProviderFault =
+  if (not(readsFault(status))) noFault
+  else { code: if (requestFaultCodes.contains(faultCode)) faultCode else "", param: if (requestFaultParams.contains(faultParam)) faultParam else "" }
+pure val faultCodeValues = Set("", "parser_error", "insufficient_quota")
+pure val faultParamValues = Set("", "tool_calls", "prompt")
+pure def lawOnlyAListedFaultIsPassed(status: int, faultCode: str, faultParam: str): bool = {
+  val fault = passedFault(status, faultCode, faultParam)
+  (fault.code == "" or (status == 400 and fault.code == faultCode and requestFaultCodes.contains(faultCode)))
+    and (fault.param == "" or (status == 400 and fault.param == faultParam and requestFaultParams.contains(faultParam)))
+}
+pure def lawAParseFailureReachesTheAgent(faultParam: str): bool = passedFault(400, "parser_error", faultParam).code == "parser_error"
+pure def lawAnUnreadRefusalPassesNothing(status: int, faultCode: str, faultParam: str): bool = not(readsFault(status)) implies passedFault(status, faultCode, faultParam) == noFault
 ```
 
 ## Story: Stream a reply in the shape clients read

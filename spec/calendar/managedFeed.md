@@ -1,8 +1,8 @@
 # Managed Calendar provider feed, cache drain and mapped pull
 
-The resident calendar reads a managed account's calendar through the
-device's private broker, caches what it read under its exact source, and
-pulls provider edits of mapped events. [Linked control](./linkedSync.md)
+The resident calendar reads a managed account's calendar from the Cloud
+through the agent's [cloud link](../agent/models/binding.md), caches what it read under its exact source, and pulls provider edits of
+mapped events. [Linked control](./linkedSync.md)
 owns user commands and control receipts, the Cloud side of the read is
 [managed Google calendar](../cloud/index.md#an-approved-connection-grants-the-owner-only-the-selected-reads), and
 [reconciliation](./linkedReconcile.md) owns the per-link merge.
@@ -12,43 +12,38 @@ owns user commands and control receipts, the Cloud side of the read is
 > As the owner, I want my connected calendar read only from the source and
 > window I selected, and its imported copy removed completely when I ask.
 
-### The resident accepts only complete broker data for the exact selected source and window
+### The resident accepts only a whole Cloud answer for the exact selected calendar
 
-The broker is reached only on the device's private loopback endpoint
-with its bearer token and a deadline. Sources and ordinary responses have
-a 256 KiB byte limit and a feed 512 KiB. A response must succeed and parse
-to a JSON object; diagnostics of a failed read describe the attempt
-without granting source authority. A source catalog holds at most 1,000
-rows, each of the owner side with a grant equal to the connector account.
-The resident checks the request grant before calling the broker.
-
-A feed echoes the exact calendar ID and request window, declares complete
-synced coverage and carries exactly one fresh health row for the selected
-grant, calendar, provider and side; every event belongs to the same
-grant, calendar, provider and side. The resident sets the agent ID itself
-and checks the source result before persisting the cache.
+The managed calendar is reached only through the agent's cloud link, never
+with a credential or address of its own, so an agent without the link has
+no managed calendar. Its sources are the calendars the Cloud lists as
+readable for each connected Google account that holds calendar read; a
+catalog holds at most 1,000 rows, each calendar once per account, and a
+row is writable only when the Cloud says its grant may write it. A read
+names a grant the last catalog listed; any other is refused before the
+Cloud is asked. An answer must succeed and have the Cloud's shape. A feed
+names the requested calendar and comes whole, with no further page and
+nothing cut, and every event belongs to that calendar, ends no earlier
+than it starts and has its own Google id. The resident sets the agent,
+grant and account of every event itself and checks the answer before
+persisting the cache.
 
 ```quint
-type BrokerCalendarCall = CalendarSourcesCall | CalendarFeedCall | CalendarOtherCall
-type BrokerCalendarWire = { scopeValid: bool, httpSuccess: bool, bodyReadable: bool, bytesRead: int,
-  jsonObject: bool, envelopeValid: bool, exactWindowAndCalendar: bool, onlyFreshHealth: bool, exactEvents: bool }
-pure def brokerCalendarByteLimit(callKind: BrokerCalendarCall): int =
-  if (callKind == CalendarFeedCall) 524288 else 262144
-pure def managedCalendarWireAccepted(callKind: BrokerCalendarCall, wire: BrokerCalendarWire): bool =
-  wire.scopeValid and wire.httpSuccess and wire.bodyReadable and wire.bytesRead >= 0 and
-  wire.bytesRead <= brokerCalendarByteLimit(callKind) and wire.jsonObject and wire.envelopeValid and
-  (callKind != CalendarFeedCall or (wire.exactWindowAndCalendar and wire.onlyFreshHealth and wire.exactEvents))
+type ManagedCalendarCall = CalendarSourcesCall | CalendarFeedCall | CalendarOtherCall
+type ManagedCalendarAnswer = { grantListed: bool, answered: bool, shapeValid: bool, exactCalendar: bool, exactEvents: bool }
+pure def managedCalendarAnswerAccepted(callKind: ManagedCalendarCall, answer: ManagedCalendarAnswer): bool =
+  answer.grantListed and answer.answered and answer.shapeValid and
+  (callKind != CalendarFeedCall or (answer.exactCalendar and answer.exactEvents))
 pure def managedCatalogAccepted(rowCount: int, everySourceValid: bool): bool =
   rowCount >= 0 and rowCount <= 1000 and everySourceValid
-pure def lawManagedFeedRequiresExactSource(wire: BrokerCalendarWire): bool =
-  managedCalendarWireAccepted(CalendarFeedCall,wire) implies wire.exactWindowAndCalendar and wire.onlyFreshHealth and wire.exactEvents
-pure def lawManagedFeedByteOverflowRefused(callKind: BrokerCalendarCall, wire: BrokerCalendarWire): bool =
-  wire.bytesRead > brokerCalendarByteLimit(callKind) implies not(managedCalendarWireAccepted(callKind,wire))
-pure val correctWire: BrokerCalendarWire = { scopeValid: true, httpSuccess: true, bodyReadable: true, bytesRead: 512,
-  jsonObject: true, envelopeValid: true, exactWindowAndCalendar: true, onlyFreshHealth: true, exactEvents: true }
-pure val wireValues = Set(correctWire,{ ...correctWire,scopeValid:false },{ ...correctWire,exactEvents:false },
-  { ...correctWire,onlyFreshHealth:false },{ ...correctWire,bytesRead:262145 },{ ...correctWire,bytesRead:524289 })
-pure val rowCountValues = Set(0,1,1000,1001)
+pure def lawManagedFeedRequiresExactSource(answer: ManagedCalendarAnswer): bool =
+  managedCalendarAnswerAccepted(CalendarFeedCall, answer) implies answer.exactCalendar and answer.exactEvents
+pure def lawARefusedOrUnlistedAnswerIsNeverAccepted(callKind: ManagedCalendarCall, answer: ManagedCalendarAnswer): bool =
+  not(answer.answered and answer.grantListed) implies not(managedCalendarAnswerAccepted(callKind, answer))
+pure val correctAnswer: ManagedCalendarAnswer = { grantListed: true, answered: true, shapeValid: true, exactCalendar: true, exactEvents: true }
+pure val answerValues = Set(correctAnswer, { ...correctAnswer, grantListed: false }, { ...correctAnswer, answered: false },
+  { ...correctAnswer, shapeValid: false }, { ...correctAnswer, exactCalendar: false }, { ...correctAnswer, exactEvents: false })
+pure val rowCountValues = Set(0, 1, 1000, 1001)
 ```
 
 ### A purge drains preexisting writes for its grant before acknowledging local removal

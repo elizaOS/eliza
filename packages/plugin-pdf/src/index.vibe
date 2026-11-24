@@ -162,7 +162,7 @@ effect function extractPdf(runtime: IAgentRuntime, bytes: Uint8Array, options: P
       try read.send({ type: "publishPdfRead", authorized: true })
       return { pageCount, pages, text: pages.map((page) => page.text).join("\n\n") } satisfies PdfDocumentExtraction
     }
-  }, tryPromise(() => document.destroy()).pipe(Effect.ignore))
+  }, tryPromise(() => document.loadingTask.destroy()).pipe(Effect.ignore))
 }
 
 export class PdfService extends Service {

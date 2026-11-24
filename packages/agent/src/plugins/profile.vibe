@@ -22,9 +22,10 @@ export const builtinModuleFactories: ReadonlyMap<string, ModuleFactory<never>> =
   [scheduledTasksModuleName, scheduledTasksModuleFactory],
   [tasksModuleName, tasksModule()],
   [surfaceModuleName, surfaceModule],
-  [triggersModuleName, triggersModule(effect ({ runtime, conversationOwner }) => {
+  [triggersModuleName, triggersModule(effect ({ runtime, conversationOwner, conversationNews }) => {
     if (conversationOwner === undefined) throw new ModuleRefused({ module: triggersModuleName, reason: "The launch has no conversation identity" })
-    return openPromptTriggers(runtime, conversationOwner)
+    if (conversationNews === undefined) throw new ModuleRefused({ module: triggersModuleName, reason: "The agent has no conversation feed for a run's reply" })
+    return openPromptTriggers(runtime, conversationOwner, conversationNews)
   })],
   [viewsModuleName, viewsModule],
 ])

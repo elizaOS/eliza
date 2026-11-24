@@ -90,6 +90,7 @@ export function designSystem<Plugin>({ tailwind, tokens, entryPoint }: { tailwin
     { pattern: `${variants}shadow-\\[.+\\]!?$`, message: `"$0" is an arbitrary shadow. ${shadow}` },
     { pattern: `${variants}shadow-(?:${besides(Object.keys(tokens.shadow))})!?$`, message: `"$0" is a shadow the tokens do not define. ${shadow}` },
     { pattern: `${variants}font-serif!?$`, message: `"$0" is a font the tokens do not define. Use a font token: ${names(tokens.font, "font-")}.` },
+    { pattern: `${variants}(?:drop-shadow-\\[.+\\]|\\[(?:box-shadow|filter):.+\\])$`, message: `"$0" is an arbitrary shadow or filter. Use a token: ${names(tokens.shadow, "shadow-")}, ${names(tokens.dropShadow, "drop-shadow-")}.` },
     ...declared,
   ]
   return [{

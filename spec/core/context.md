@@ -96,9 +96,18 @@ depends only on its record and the label of its request, so the same input
 gives the same bytes. A request inside the current dialogue window is named
 `history:hN`, the label the request already carries, as are its
 interruption and read-continuation notes. A later proposal state takes the
-place of the one preview it supersedes, in that preview's own row.
+place of the one preview it supersedes, in that preview's own row. Since that
+row drops the ending's own scope, the proposal legend also says that a reason
+saying a request never ran means the owner declined it or it expired, which
+answers whether the request ran, not what the resource holds now.
 
 ```quint
+type ProposalEnding = OwnerDeclinedEnding | ExpiredEnding
+pure def endingSaysTheRequestRan(ending: ProposalEnding): bool = false
+pure def endingSaysWhatTheResourceHolds(ending: ProposalEnding): bool = false
+pure val endingValues = Set(OwnerDeclinedEnding, ExpiredEnding)
+pure def lawAnEndingAnswersOnlyWhetherTheRequestRan(ending: ProposalEnding): bool =
+  not(endingSaysTheRequestRan(ending)) and not(endingSaysWhatTheResourceHolds(ending))
 type ReceiptField = OperationField | ResourceField | ArtifactsField | OutcomeField | ReasonField | CommitField | FailureField | RollbackField | ReceiptIdField | IdempotencyField | ObservedAtField
 pure def slimKeeps(part: ReceiptField, rolledBack: bool): bool =
   if (part == IdempotencyField or part == ObservedAtField) false
@@ -172,4 +181,41 @@ pure def lawNoteLeavesWithItsRequest(requestShown: bool, replyShown: bool): bool
   (not(requestShown) and not(replyShown)) implies not(noteShown(true, requestShown, replyShown))
 pure def lawUnboundNoteStaysInline(requestShown: bool, replyShown: bool): bool =
   noteShown(false, requestShown, replyShown)
+```
+
+## Story: Know when each earlier message was said
+
+> As the owner, I want the agent to know when each earlier message was
+> said, so that it can answer "what did I ask this morning" and order what
+> was said against the clock.
+
+### A message's stamp is its local date and minute, with the year only when it is not the newest year and an offset only when the minute alone names no one instant
+
+A historical message reaches the model as `[message_at=MM-DD HH:MM] `
+followed by its own text: the date and minute it was recorded, in the
+display zone its host names. Position already orders the messages within
+a minute, and the clock line states the zone, so the stamp carries no
+seconds, milliseconds or offset. `YYYY-` leads the date when the
+message's local year is not the year of the newest event shown with it: a
+recalled exchange can be older than that. With no usable display zone the
+stamp is the UTC date and minute followed by `Z`. In the hour a zone sets
+its clocks back the same minute is shown twice, and only there the stamp
+ends with its `+HH:MM` or `-HH:MM` offset; the hour skipped in spring is
+shown by no clock and needs none. A message with no recorded time, or one
+that is not a positive whole number of milliseconds, carries no stamp.
+Nothing parses a stamp back, and the stored text is never changed.
+Reading the zone's calendar is the shell's.
+
+```quint
+type StampOffset = OffsetOmitted | UtcMarked | OffsetNamed
+pure def stampNamesYear(messageYear: str, newestYear: str): bool = messageYear != newestYear
+pure def stampOffset(zoneUsable: bool, minuteRepeats: bool): StampOffset =
+  if (not(zoneUsable)) UtcMarked else if (minuteRepeats) OffsetNamed else OffsetOmitted
+pure val messageYearValues = Set("2025", "2026")
+pure val newestYearValues = Set("", "2025", "2026")
+pure def lawAMessageOfTheNewestYearOmitsIt(messageYear: str): bool = not(stampNamesYear(messageYear, messageYear))
+pure def lawAnyOtherYearIsNamed(messageYear: str, newestYear: str): bool = messageYear != newestYear implies stampNamesYear(messageYear, newestYear)
+pure def lawWithoutAUsableZoneTheStampIsMarkedUtc(minuteRepeats: bool): bool = stampOffset(false, minuteRepeats) == UtcMarked
+pure def lawOnlyARepeatedLocalMinuteNamesItsOffset(zoneUsable: bool, minuteRepeats: bool): bool =
+  (stampOffset(zoneUsable, minuteRepeats) == OffsetNamed) iff (zoneUsable and minuteRepeats)
 ```

@@ -21,6 +21,7 @@ services belong to their domain owners.
 | --- | --- |
 | Creating reminders the owner asked for | [Reminders](./reminders.md), [reminder presentation](./reminderPresentation.md) |
 | Nudging again about an unanswered reminder, outside quiet hours and as persistently as the owner asked | [Reminder escalation](./reminderEscalation.md) |
+| Naming a reminder or a goal by its title or some of its words | [Names](./names.md) |
 | The owner's local time zone | [Time zone](./timezone.md) |
 | Trips the owner tells the assistant about | [Travel](./travel.md) |
 | Follow-ups on open approvals | [Follow-ups](./followups.md) |

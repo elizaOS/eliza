@@ -1,4 +1,4 @@
-// spec/calendar/linkedSync.md, "A link writes only to a verified owner destination, and a saved destination never switches"; spec/calendar/managedFeed.md, "The resident accepts only complete broker data for the exact selected source and window"
+// spec/calendar/linkedSync.md, "A link writes only to a verified owner destination, and a saved destination never switches"; spec/calendar/managedFeed.md, "The resident accepts only a whole Cloud answer for the exact selected calendar"
 import type { ManagedGoogleCalendar, ManagedGoogleCalendarFeed, ManagedGoogleEvent } from "../feed/cloud-wire.schema.vibe"
 
 export const GOOGLE_CALENDAR_READ_CAPABILITY = "google.calendar.read"

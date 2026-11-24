@@ -1,4 +1,4 @@
-// spec/os/android/phone.md, "Story: Hand an approved number to my phone"; spec/os/android/phone.md, "Story: Read my recent calls"; spec/os/android/voicemail.md, "Story: See my voicemail only when my carrier offers it"; spec/os/android/voicemail.md, "Story: Hear a voicemail"; spec/os/android/voicemail.md, "Story: Change a voicemail only as the provider confirms it"; spec/os/android/deferredDeletion.md, "Story: Undo a deleted message, conversation, voicemail or contact"
+// spec/os/android/phone.md, "Story: Hand an approved number to my phone"; spec/os/android/phone.md, "Story: Read my recent calls"; spec/os/android/voicemail.md, "Story: See my voicemail only when my carrier offers it"; spec/os/android/voicemail.md, "Story: Hear a voicemail"; spec/os/android/voicemail.md, "Story: Change a voicemail only as the provider confirms it"; spec/os/android/deferredDeletion.md, "Story: Undo a deleted message, conversation, voicemail or contact"; spec/os/android/phone.md, "Story: See my SIM lines without guesses"
 import { assert, it } from "@effect/vitest"
 import { createDeferredDeletions } from "../../src/bridges/action-journal.vibe"
 import { MalformedReply, rejectionCode } from "../../src/bridges/bridge.vibe"
@@ -36,6 +36,7 @@ module android {
     dialed: string[]
     calls: Call[]
     callReply: unknown
+    infoReply: unknown
     voicemailGrant: boolean
     sources: "ready" | "unconfigured" | "unsupported"
     voicemails: Voicemail[]
@@ -67,6 +68,7 @@ module android {
         { id: 1, number: "+15550100101", date: 1000, type: "voicemail" },
       ],
       callReply: undefined,
+      infoReply: undefined,
       voicemailGrant: false,
       sources: "unsupported",
       voicemails: [
@@ -181,10 +183,10 @@ module android {
         phone.placed.push(number)
         return { status: "placed", message: "Android accepted the call request. This does not show whether the call connects." }
       },
-      phoneInfo: async () => ({
+      phoneInfo: async () => phone.infoReply ?? {
         access: { phoneState: true, phoneNumbers: false, deviceIdentifiers: false },
         lines: [{ subscriptionId: 1, slot: 0, displayName: "Line 1", carrierName: "Carrier", number: null, countryIso: "us", networkType: "5g", roaming: false, signalLevel: 3, embedded: false, iccid: null, imei: null }],
-      }),
+      },
       voicemailStatus: async () => ({ access: voicemailReadable(), state: voicemailReadable() ? phone.sources : null }),
       listVoicemail: async ({ limit }) => {
         if (!voicemailReadable()) throw rejection("Voicemail access is not granted", "permission-required")
@@ -318,6 +320,41 @@ it.live("Open the dial screen with an approved number, and place a call only whe
       lines: 1,
       dialed: ["+15550100105", "+442079460958", "+41446681800", "+390551234567", "+3780549882123", "+2250712345678", "5550100", "911"],
       placedLog: ["+493012345678"],
+    },
+  ))
+})
+
+it.live("Show a SIM line's number and identifiers only when Android let the app read them (spec/os/android/phone.md, \"Story: See my SIM lines without guesses\"; spec/os/android/phone.md, \"A SIM line shows a field only when Android let this app read it\")", () => effect {
+  const phone = device()
+  const client = phoneClient(androidTelephony(phone), androidJournal(phone))
+  const line = { subscriptionId: 1, slot: 0, displayName: "Line 1", carrierName: "Carrier", number: null, countryIso: "us", networkType: "unknown", roaming: null, signalLevel: null, embedded: false, iccid: null, imei: null }
+  const unread = { phoneState: true, phoneNumbers: false, deviceIdentifiers: false }
+  const shown = (info: { lines: readonly { number: string | null; iccid: string | null; imei: string | null }[] }) => info.lines.map((one) => [one.number, one.iccid, one.imei])
+
+  const refusedFields = shown(try promise(() => client.phoneInfo()))
+  phone.infoReply = { access: unread, lines: [{ ...line, number: "+15550100101" }] }
+  const guessedNumber = try refusal(() => client.phoneInfo())
+  phone.infoReply = { access: unread, lines: [{ ...line, imei: "356938035643809" }] }
+  const guessedIdentifier = try refusal(() => client.phoneInfo())
+  phone.infoReply = { access: { ...unread, phoneState: false }, lines: [line] }
+  const lineWithoutPhoneState = try refusal(() => client.phoneInfo())
+  phone.infoReply = { access: { ...unread, phoneState: false }, lines: [] }
+  const simListUnread = try promise(() => client.phoneInfo())
+  phone.infoReply = { access: { phoneState: true, phoneNumbers: true, deviceIdentifiers: true }, lines: [{ ...line, number: "+15550100101", iccid: "8901260123456789012", imei: "356938035643809" }] }
+  const allowed = shown(try promise(() => client.phoneInfo()))
+  phone.infoReply = { access: unread, lines: [0, 1, 2, 3, 4].map((slot) => ({ ...line, subscriptionId: slot + 1, slot })) }
+  const tooManyLines = try refusal(() => client.phoneInfo())
+
+  try Effect.try(() => assert.deepStrictEqual(
+    { refusedFields, guessedNumber, guessedIdentifier, lineWithoutPhoneState, simListUnread, allowed, tooManyLines },
+    {
+      refusedFields: [[null, null, null]],
+      guessedNumber: "malformed phoneInfo",
+      guessedIdentifier: "malformed phoneInfo",
+      lineWithoutPhoneState: "malformed phoneInfo",
+      simListUnread: { access: { phoneState: false, phoneNumbers: false, deviceIdentifiers: false }, lines: [] },
+      allowed: [["+15550100101", "8901260123456789012", "356938035643809"]],
+      tooManyLines: "malformed phoneInfo",
     },
   ))
 })
