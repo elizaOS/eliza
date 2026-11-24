@@ -8,7 +8,7 @@ import { expect, onTestFinished, test } from "vitest"
 import { designSystem } from "../eslint.ts"
 import { check, syncDoc, themeCss, tokensCss } from "../generate.ts"
 import { buildTokenProject, checkTokenProject } from "../project.ts"
-import { type Tokens, applyChanges, palette, parseTokens } from "../tokens.ts"
+import { type Tokens, applyChanges, contrast, palette, parseTokens } from "../tokens.ts"
 
 const here = (file: string) => resolve(import.meta.dirname, file)
 const dir = here("../../../packages/design-system")
@@ -64,13 +64,15 @@ test("apply accepts a valid change and rejects an unknown path, an invalid color
   expect(() => parseTokens({ ...tokens, text: { ...tokens.text, primary: "1rem" } })).toThrow("text.primary: also a color")
 })
 
-test("a palette color, radius, size, blur and gradient each become a utility; a palette color without a dark value keeps its light one", () => {
-  const next = parseTokens({ ...tokens, color: { light: { ...tokens.color.light, brand: "oklch(0.5 0.1 200)" }, dark: tokens.color.dark }, rounded: { pill: "999px" }, text: { hero: "3rem" }, blur: { frost: "20px" }, keyframes: { blink: "50%{opacity:0}" }, animate: { blink: "blink 1s step-end infinite" }, gradient: { sky: "linear-gradient(var(--brand), var(--primary))" } })
+test("a palette color, radius, size, blur, drop shadow and gradient each become a utility; a palette color without a dark value keeps its light one", () => {
+  const next = parseTokens({ ...tokens, color: { light: { ...tokens.color.light, brand: "oklch(0.5 0.1 200)" }, dark: tokens.color.dark }, rounded: { pill: "999px" }, text: { hero: "3rem" }, blur: { frost: "20px" }, dropShadow: { lift: "0 8px 18px rgb(0 0 0 / 0.14)" }, keyframes: { blink: "50%{opacity:0}" }, animate: { blink: "blink 1s step-end infinite" }, gradient: { sky: "linear-gradient(var(--brand), var(--primary))" } })
   const [css, theme] = [tokensCss(next), themeCss(next)]
   // Set in :root and .light; .dark and a dark system inherit it.
   expect(css.match(/--brand: [^;]+;/g)).toEqual(["--brand: oklch(0.5 0.1 200);", "--brand: oklch(0.5 0.1 200);"])
-  for (const line of ["--color-brand: var(--brand);", "--radius-pill: 999px;", "--text-hero: 3rem;", "--blur-frost: 20px;", "--animate-blink: blink 1s step-end infinite;", "@keyframes blink { 50%{opacity:0} }", "@utility bg-gradient-sky {"]) expect(theme).toContain(line)
+  for (const line of ["--color-brand: var(--brand);", "--radius-pill: 999px;", "--text-hero: 3rem;", "--blur-frost: 20px;", "--drop-shadow-lift: 0 8px 18px rgb(0 0 0 / 0.14);", "--animate-blink: blink 1s step-end infinite;", "@keyframes blink { 50%{opacity:0} }", "@utility bg-gradient-sky {"]) expect(theme).toContain(line)
   expect(css).toContain("--gradient-sky: linear-gradient(var(--brand), var(--primary));")
+  expect(contrast("oklch(1 0 0)", "oklch(0 0 0)")).toBeCloseTo(21, 5)
+  expect(contrast(tokens.color.light.primary, tokens.color.light["primary-foreground"])).toBeGreaterThanOrEqual(4.5)
 })
 
 test("a font size may carry its line height and letter spacing; weights, line heights, letter spacing, layers and the focus ring are scales", () => {
@@ -135,7 +137,8 @@ test("Tailwind compiles each scale into its utility, and design.md lists each pa
   const doc = syncDoc(readFileSync(join(dir, "design.md"), "utf8"), scaled)
   expect(check(scaled, doc)).toEqual([])
   expect(doc).toContain("| `text.body` | 1rem |\n| `text.display.size` | 3rem |\n| `text.display.leading` | 1 |\n| `text.display.tracking` | -0.04em |\n")
-  expect(doc).toContain("| `z.10` | 10 |\n| `z.overlay` | 40 |\n| `focus.width` | 3px |\n| `focus.offset` | -2px |\n")
+  for (const row of ["| `z.10` | 10 |\n", "| `z.overlay` | 40 |\n", "| `focus.width` | 3px |\n", "| `focus.offset` | -2px |\n"])
+    expect(doc).toContain(row)
 })
 
 test("a token name Tailwind's utilities already give another meaning is refused, as is one name in two groups that share a utility", async () => {
@@ -208,7 +211,7 @@ test("a build that changes nothing rewrites nothing, and the ESLint config flags
     mkdirSync(join(copy, name))
     writeFileSync(join(copy, name, "tokens.json"), json)
     cpSync(join(dir, "design.md"), join(copy, name, "design.md"))
-    execFileSync("node", [here("../cli.ts"), "build"], { cwd: join(copy, name) })
+    buildTokenProject(join(copy, name))
     const config = designSystem({ tailwind, tokens: parseTokens(JSON.parse(json)), entryPoint: join(copy, name, "generated/theme.css") })
     return new ESLint({ cwd: dir, overrideConfigFile: true, overrideConfig: [{ files: ["**/*.tsx"], languageOptions: { parser } }, ...config] })
   }
@@ -217,13 +220,24 @@ test("a build that changes nothing rewrites nothing, and the ESLint config flags
     linter("project", readFileSync(join(dir, "tokens.json"), "utf8")), linter("scaled", JSON.stringify(scaled)),
     linter("empty", JSON.stringify({ ...tokens, text: {}, weight: {}, leading: {}, tracking: {}, z: {} })),
   ]
-  const lint = async (name: string, using = eslint) => (await using.lintText(readFileSync(here(`fixtures/${name}`), "utf8"), { filePath: name }))[0]!.messages
+  const lint = async (name: string, using = eslint, text = readFileSync(here(`fixtures/${name}`), "utf8")) => (await using.lintText(text, { filePath: name }))[0]!.messages
   const [restricted, literal] = ["better-tailwindcss/no-restricted-classes", "design-system/no-literal-colors"]
   expect((await lint("bad.tsx")).map(({ line, ruleId }: { line: number; ruleId: string }) => [line, ruleId])).toEqual([
     [1, literal], [3, restricted], [4, restricted], [5, literal], [6, literal],
-    ...Array.from({ length: 10 }, (_, i) => [8 + i, restricted]), [18, literal], [19, literal],
+    ...Array.from({ length: 10 }, (_, i) => [8 + i, restricted]), [18, literal], [19, literal], [20, restricted], [21, restricted],
   ])
-  expect(await lint("good.tsx")).toEqual([])
+  const pick = (scale: Record<string, unknown>, prefix: string, fallback: string) => {
+    const names = Object.keys(scale)
+    return names.length && !names.includes(fallback.slice(prefix.length)) ? `${prefix}${names[0]}` : fallback
+  }
+  const projectGood = readFileSync(here("fixtures/good.tsx"), "utf8")
+    .replace("z-50", pick(tokens.z, "z-", "z-50"))
+    .replace("shadow-sm", pick(tokens.shadow, "shadow-", "shadow-sm"))
+    .replace("shadow-lg", pick(tokens.shadow, "shadow-", "shadow-lg"))
+    .replace("leading-none", pick(tokens.leading, "leading-", "leading-none"))
+    .replace("font-medium", pick(tokens.weight, "font-", "font-medium"))
+    .replace("tracking-tight", pick(tokens.tracking, "tracking-", "tracking-tight"))
+  expect(await lint("good.tsx", eslint, projectGood)).toEqual([])
   expect(await lint("good.tsx", empty)).toEqual([])
   expect((await lint("scales.tsx", withScales)).map(({ line, ruleId }: { line: number; ruleId: string }) => [line, ruleId]))
     .toEqual(Array.from({ length: 12 }, (_, i) => [3 + i, restricted]))

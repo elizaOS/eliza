@@ -17,7 +17,7 @@ import { dispatchOnce, receiptOwner, renderProviderKey, replyOf, requestDigest, 
 import { Store, type Tx } from "../store/connection.vibe"
 import { commandIdOf, idempotencyKeyPattern, readRetainedCommand, refuseRetainedCommandConflict } from "./commands.vibe"
 import { commandAt, insertPlanCommand, lockOrganization, planCommandActor, planCommandView, readPlanCommand, savePlanCommand, type PlanCommandRecord } from "./plan-command-state.vibe"
-import { consumeReviewedPlanQuote, freshOwner, PlanConfirmation, PlanReviewBody, readReviewedPlanQuote, reviewPlanChange, type ReviewedPlanQuote } from "./plan-quotes.vibe"
+import { consumeReviewedPlanQuote, freshOwner, PlanConfirmation, PlanReviewBody, readReviewedPlanQuote, readSubscriptionForConfirmation, reviewPlanChange, type ReviewedPlanQuote } from "./plan-quotes.vibe"
 import { wirePlanKey } from "./plans.vibe"
 import { claimLiveCommand, readSubscription, releaseLiveCommand, scheduleDowngrade } from "./subscriptions.vibe"
 
@@ -52,18 +52,6 @@ effect function withCommand<A, E, R>(store: Store.Shape, row: PlanCommandRecord,
     try tx.query("SELECT key FROM subscriptions WHERE key=$1 FOR UPDATE", [row.organizationId])
     return try update(tx, try commandFor(tx, row.organizationId, row.command.commandId, true))
   })
-}
-
-effect function readCurrentQuote(tx: Tx, organizationId: string, quote: ReviewedPlanQuote, input: PlanConfirmation, now: number) {
-  const subscription = try readSubscription(tx, organizationId)
-  const terms = quote.command.quote
-  if (quote.command.kind !== "DowngradeCommand" || now >= terms.expiresAt || now >= terms.periodEnd ||
-      subscription.customer.tag !== "PinnedCustomer" || subscription.customer.customerId !== quote.binding.customerId)
-    throw refused("BillingStateConflict")
-  if (subscription.revision !== quote.command.expectedRevision ||
-      (input.expectedSubscriptionRevision !== undefined && input.expectedSubscriptionRevision !== quote.command.expectedRevision))
-    throw refused("StaleRevision")
-  return subscription
 }
 
 effect function ownPlanBinding(row: ReviewedPlanQuote) {
@@ -290,7 +278,7 @@ effect function confirmDowngrade(authorization: string | undefined, input: PlanC
   if (existing !== undefined) return planCommandView(try observeDowngrade(existing), try Clock.currentTimeMillis)
   const quote = try store.transaction(effect (tx: Tx) => {
     const quoted = try readReviewedPlanQuote(tx, own, input.quoteId)
-    try readCurrentQuote(tx, own.organizationId, quoted, input, try Clock.currentTimeMillis)
+    try readSubscriptionForConfirmation(tx, own.organizationId, quoted, "DowngradeCommand", input.expectedSubscriptionRevision, try Clock.currentTimeMillis)
     return quoted
   })
   recheckDowngrade(quote) catch effect (failure) => {
@@ -308,7 +296,7 @@ effect function confirmDowngrade(authorization: string | undefined, input: PlanC
     if (prior !== undefined) return { row: prior, stage: undefined }
     const now = try Clock.currentTimeMillis
     const retained = try consumeReviewedPlanQuote(tx, own, input.quoteId)
-    const subscription = try readCurrentQuote(tx, own.organizationId, retained, input, now)
+    const subscription = try readSubscriptionForConfirmation(tx, own.organizationId, retained, "DowngradeCommand", input.expectedSubscriptionRevision, now)
     const quoted = commandAt(retained.command, now)
     const expectedRevision = quoted.expectedRevision
     const attachmentProviderId = quoted.schedule.tag === "ReviewedUnscheduled" ? `${commandId}:attach` : ""

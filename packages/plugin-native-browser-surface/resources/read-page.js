@@ -1,5 +1,5 @@
-/** Reads visible page text through a bundled native operation, not caller-supplied JavaScript. Native hosts wrap this function before invoking it with a CSS selector; page text remains untrusted data. */
-// biome-ignore lint/correctness/noUnusedVariables: Native hosts evaluate this resource as a function expression.
+// spec/os/browser/surface/commands.md, "Reading needs the shown, loaded page, and a paused page is never driven or observed"
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- Native hosts evaluate this resource as a function expression.
 function readPage(selector) {
   try {
     if (document.readyState === "loading") {
@@ -11,12 +11,6 @@ function readPage(selector) {
       "script,style,template,noscript,input,textarea,select,[hidden],[aria-hidden=true]";
     const visible = (element) => {
       if (element.closest(excluded)) return false;
-      // visibility is inherited but overridable: a descendant that sets
-      // visibility:visible renders even inside a hidden subtree, and the
-      // element's own computed style already resolves that. Judge it on
-      // the element alone — walking ancestors for it drops text the page
-      // actually shows. display and opacity cannot be overridden by a
-      // descendant, so those keep the ancestor walk.
       const own = getComputedStyle(element);
       if (own.visibility === "hidden" || own.visibility === "collapse")
         return false;
@@ -49,7 +43,6 @@ function readPage(selector) {
       truncated: false,
     };
   } catch (error) {
-    // error-policy:J1 Native transport reports an explicit read failure, never partial text.
     return {
       error:
         error instanceof Error ? error.message : "Native page read failed.",

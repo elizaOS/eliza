@@ -1,4 +1,5 @@
-// spec/core/privacy.md, "Story: Publish scrub completion only after durable privacy work"
+// spec/core/privacy.md, "Story: Publish scrub completion only after durable privacy work"; spec/core/models.md, "A failure is eligible only as a refused connection, a busy or failing provider or a spent retry budget, and never for speech"
+import { failsOver, type FailureClass } from "../../gen/core__models.ts"
 import { TrajectoryLimitExceeded } from "../runtime/limits.vibe"
 import { readActionFailureProvenance } from "../types/action-failure.vibe"
 import { ModelType } from "../types/model.vibe"
@@ -192,40 +193,25 @@ const TRANSIENT_NETWORK_ERROR_CODES: ReadonlySet<string> = new Set([
   "FailedToOpenSocket",
 ])
 
-export function isModelProviderFallbackError(
-  error: unknown,
-  modelType?: string,
-): boolean {
-  if (
-    isModelFundingAuthorityError(error)
-    || isProcessingPolicyDenial(error)
-    || modelType === ModelType.TEXT_TO_SPEECH
-  ) {
-    return false
-  }
+function failureClassOf(error: unknown): FailureClass {
+  if (isModelFundingAuthorityError(error)) return "FundingRefused"
+  if (isProcessingPolicyDenial(error)) return "PolicyRefused"
   const unwrapped = unwrapRetryError(error)
 
-  if (isModelCancellationError(error)) return false
-  if (isModelProviderRetryBudgetExhaustedError(unwrapped)) {
-    return true
-  }
+  if (isModelCancellationError(error)) return "CallCancelled"
+  if (isModelProviderRetryBudgetExhaustedError(unwrapped)) return "RetryBudgetSpent"
 
   const localFailure = asErrorObject(unwrapped)
 
-  if (hasModelErrorCode(unwrapped, TRANSIENT_NETWORK_ERROR_CODES)) return true
+  if (hasModelErrorCode(unwrapped, TRANSIENT_NETWORK_ERROR_CODES)) return "SocketRefused"
   if (localFailure?.code === "LOCAL_INFERENCE_UNAVAILABLE") {
-    return (
-      localFailure.reason === "backend_unavailable"
-      || localFailure.reason === "capability_unavailable"
-    )
+    return localFailure.reason === "backend_unavailable" || localFailure.reason === "capability_unavailable"
+      ? "LocalBackendAbsent"
+      : "LocalRefusal"
   }
-  if (isRateLimitError(error)) {
-    return true
-  }
-  if (hasHttpStatus(error, [500, 502, 503, 504, 529])) {
-    return true
-  }
-  if (!(error instanceof Error)) return false
+  if (isRateLimitError(error)) return "RateLimited"
+  if (hasHttpStatus(error, [500, 502, 503, 504, 529])) return "ServerFailing"
+  if (!(error instanceof Error)) return "UnclassedFailure"
   const haystack = `${error.name} ${error.message}`.toLowerCase()
   return (
     haystack.includes("timeout")
@@ -241,7 +227,14 @@ export function isModelProviderFallbackError(
     || haystack.includes("network error")
     || haystack.includes("fetch failed")
     || /\b529\b/.test(haystack)
-  )
+  ) ? "TransientWording" : "UnclassedFailure"
+}
+
+export function isModelProviderFallbackError(
+  error: unknown,
+  modelType?: string,
+): boolean {
+  return failsOver(failureClassOf(error), modelType === ModelType.TEXT_TO_SPEECH)
 }
 
 export type StructuredFailureCause =

@@ -1,8 +1,7 @@
-// spec/inbox/grants.md, "An approved change is prepared only under the capability it needs, and otherwise offers the upgrade"; spec/inbox/grants.md, "Read is asked for first, changes are one consent, and a reconnect keeps what the account holds"
+// spec/inbox/managedRead.md, "Story: Read my managed inbox fresh, and only for me"; spec/inbox/grants.md, "An approved change is prepared only under the capability it needs, and otherwise offers the upgrade"; spec/inbox/grants.md, "Read is asked for first, changes are one consent, and a reconnect keeps what the account holds"
 import { OWNER_EXCLUSIVE_DISCLOSURE_GATE, type IAgentRuntime, type Provider, type ProviderResult } from "@elizaos/core"
-import { gmailGrantTier, type GmailGrantTier } from "../mailbox/grants.vibe"
-import type { GoogleConnection } from "../mailbox/types.vibe"
-import { agentGmailClient } from "./cloud.vibe"
+import type { GmailGrantTier } from "../mailbox/grants.vibe"
+import { agentGmailClient, observeManagedReadGrant } from "./cloud.vibe"
 
 export const inboxAccessProviderName = "INBOX_ACCESS"
 
@@ -15,10 +14,10 @@ const tierText = {
 export effect function inboxAccess(runtime: IAgentRuntime): ProviderResult!! {
   const client = agentGmailClient(runtime)
   if (client === undefined) return { text: "Gmail is available only when this agent uses the cloud.", values: { gmailTier: "none" } }
-  const status: GoogleConnection | null = client.gmailStatus() catch () => null
-  if (status === null) return { text: "Gmail access could not be checked right now.", values: { gmailTier: "unknown" } }
-  const tier = gmailGrantTier({ ...status, label: "" })
-  return { text: tierText[tier], values: { gmailTier: tier } }
+  const access = observeManagedReadGrant(client) catch () => null
+  if (access === null) return { text: "Gmail access could not be checked right now.", values: { gmailTier: "unknown" } }
+  if (access.grant.tag === "SeveralReadableGrants") return { text: "More than one Gmail account has read access. Manage your Gmail connections in Inbox.", values: { gmailTier: "none" } }
+  return { text: tierText[access.tier], values: { gmailTier: access.tier } }
 }
 
 export const inboxAccessProvider: Provider = {

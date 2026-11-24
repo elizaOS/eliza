@@ -3,14 +3,14 @@ import { mayApplySqliteMigration, mayOpenSqlite, type DatabaseOwner, type Sqlite
 
 export error SqliteFailure { reason: string }
 
-export interface SqliteMigration {
-  readonly revision: number
-  readonly sql: string
-}
-
 module node {
   import { isAbsolute } from "node:path"
   import { DatabaseSync } from "node:sqlite"
+
+  export interface SqliteMigration {
+    readonly revision: number
+    readonly sql: string
+  }
 
   export function openSqliteFile(path: string) {
     if (!isAbsolute(path)) throw new Error("SQLite requires an absolute path")
@@ -47,7 +47,8 @@ module node {
     database.exec("PRAGMA user_version = " + migration.revision)
   }
 }
-import { openSqliteFile, sqliteVersion, sqliteOwner, bindSqliteOwner, applySqliteVersion } from node
+import { openSqliteFile, sqliteVersion, sqliteOwner, bindSqliteOwner, applySqliteVersion, type SqliteMigration } from node
+export { type SqliteMigration } from node
 
 export effect function openSqlite(path: string, agentId: string, lease: SqliteLease, migrations: readonly SqliteMigration[]) {
   const database = try Effect.try({ try: () => openSqliteFile(path), catch: () => new SqliteFailure({ reason: "database could not be opened exclusively" }) })

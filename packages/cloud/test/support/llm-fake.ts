@@ -12,7 +12,7 @@ export type LlmScript =
   | { readonly kind: "malformedFrame" }
   | { readonly kind: "oversizedFrame" }
   | { readonly kind: "refuse"; readonly retryAfterSeconds?: number }
-  | { readonly kind: "reject"; readonly status: number }
+  | { readonly kind: "reject"; readonly status: number; readonly body?: object }
   | { readonly kind: "hang"; readonly after: number }
   | { readonly kind: "notJson" };
 
@@ -96,7 +96,7 @@ function answerFor(script: LlmScript, cut: () => void): FakeAnswer {
         headers: script.retryAfterSeconds === undefined ? {} : { "retry-after": String(script.retryAfterSeconds) },
       };
     case "reject":
-      return { status: script.status, body: { error: { code: "context_length_exceeded", param: "messages", message: "too long" } } };
+      return { status: script.status, body: script.body ?? { error: { code: "context_length_exceeded", param: "messages", message: "too long" } } };
     case "hang":
       return { status: 200, chunks: contentFrames, hangAfter: script.after, onClose: (finished) => { if (!finished) cut(); } };
     case "notJson":

@@ -72,6 +72,24 @@ pure def lawANamedPlaceNeverAsksThePhone(nearMe: bool, p: PhonePosition): bool =
 pure def lawNearMeWithoutAPositionAsks(p: PhonePosition): bool = not(nearbyPositionUsable(p)) implies searchAround(false, true, p) == AskForPosition
 ```
 
+### A search around a point asks Cloud for the closest places whenever Cloud ranks by distance
+
+A place search around the phone's position, a named place or coordinates
+the owner names is a request for what is nearest, so it asks Cloud Maps
+for the closest places it finds around that point (`rank: "distance"`),
+not the closest of the few it ranks most relevant. Cloud's capabilities,
+read for that search, decide: a Cloud whose capabilities do not report
+`distanceRank` is asked without the rank, because it refuses a field it
+does not know. Looking a place up by its name, such as a route's start or
+destination or the place a search is around, asks for the most relevant.
+Either way the places found are listed nearest the point first.
+
+```quint
+pure def asksForClosest(aroundPoint: bool, cloudRanksByDistance: bool): bool = aroundPoint and cloudRanksByDistance
+pure def lawOnlyAPointSearchOnACloudThatRanksAsksForTheClosest(aroundPoint: bool, cloudRanksByDistance: bool): bool =
+  asksForClosest(aroundPoint, cloudRanksByDistance) implies (aroundPoint and cloudRanksByDistance)
+```
+
 ### A reported position never becomes a route origin
 
 The reported position carries no precision, so it is never the precise fix

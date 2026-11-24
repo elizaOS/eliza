@@ -47,6 +47,9 @@ interface EventBody {
   readonly start?: EventTime
   readonly end?: EventTime
   readonly attendees?: ReadonlyArray<AttendeeInput>
+  readonly recurrence?: readonly string[]
+  readonly visibility?: "private"
+  readonly reminders?: { readonly useDefault: false }
 }
 
 interface Planned {
@@ -90,6 +93,8 @@ const keyPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/
 const eventIdPattern = /^[A-Za-z0-9_-]{1,1024}$/
 const isoDateTime = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/
 const isoDate = /^\d{4}-\d{2}-\d{2}$/
+const reviewedRule = /^RRULE:FREQ=(?:DAILY|WEEKLY(?:;BYDAY=MO,TU,WE,TH,FR)?)(?:;UNTIL=(\d{8}(?:T\d{6}Z)?))?$/
+const reviewedException = /^EXDATE(;VALUE=DATE)?:(\d{8}(?:T\d{6}Z)?)$/
 const mailAddress = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)+$/
 const writableRoles: ReadonlyArray<string> = ["writer", "owner"]
 const readableRoles: ReadonlyArray<string> = ["reader", "writer", "owner"]
@@ -108,6 +113,10 @@ const GoogleEventSchema = Schema.Struct({
   hangoutLink: Schema.optionalKey(Schema.String),
   iCalUID: Schema.optionalKey(Schema.String),
   recurringEventId: Schema.optionalKey(Schema.String),
+  recurrence: Schema.optionalKey(Schema.Array(Schema.String)),
+  visibility: Schema.optionalKey(Schema.String),
+  reminders: Schema.optionalKey(Schema.Struct({ useDefault: Schema.Boolean })),
+  originalStartTime: Schema.optionalKey(TimeSchema),
   created: Schema.optionalKey(Schema.String),
   updated: Schema.optionalKey(Schema.String),
   start: Schema.optionalKey(TimeSchema),
@@ -147,7 +156,9 @@ const CreateBody = Schema.Struct({
   endAt: Schema.String,
   timeZone: Schema.optionalKey(Schema.String),
   allDay: Schema.optionalKey(Schema.Boolean),
-  attendees: Schema.optionalKey(Schema.Array(AttendeeSchema))
+  attendees: Schema.optionalKey(Schema.Array(AttendeeSchema)),
+  recurrence: Schema.optionalKey(Schema.Array(Schema.String)),
+  privateCreate: Schema.optionalKey(Schema.Literal(true))
 })
 const ChangeBody = Schema.Struct({
   side: Side,
@@ -169,12 +180,12 @@ function decoded<A>(schema: Schema.Codec<A>, raw: unknown): A | undefined {
   return Option.getOrUndefined(Schema.decodeUnknownOption(schema)(raw))
 }
 
-function validZone(name: string): boolean {
+function canonicalZone(name: string | undefined): string | undefined {
+  if (name === undefined) return undefined
   try {
-    new Intl.DateTimeFormat("en-US", { timeZone: name })
-    return true
+    return new Intl.DateTimeFormat("en-US", { timeZone: name }).resolvedOptions().timeZone
   } catch {
-    return false
+    return undefined
   }
 }
 
@@ -215,6 +226,7 @@ function eventCard(calendarId: string, event: GoogleEvent, timeZone: string | nu
   const allDay = event.start?.date !== undefined && event.end?.date !== undefined
   const start = allDay ? event.start?.date : event.start?.dateTime
   const end = allDay ? event.end?.date : event.end?.dateTime
+  const originalStartTime = event.originalStartTime?.date ?? event.originalStartTime?.dateTime
   const pattern = allDay ? isoDate : isoDateTime
   if (start === undefined || end === undefined || !pattern.test(start) || !pattern.test(end) || !(Date.parse(start) <= Date.parse(end))) return null
   return {
@@ -232,6 +244,7 @@ function eventCard(calendarId: string, event: GoogleEvent, timeZone: string | nu
     conferenceLink: event.hangoutLink ?? event.conferenceData?.entryPoints?.find((entry) => entry.uri !== undefined)?.uri ?? null,
     etag: event.etag ?? null,
     seriesId: event.recurringEventId ?? null,
+    ...(event.recurrence === undefined ? {} : { recurrence: event.recurrence }),
     organizer: event.organizer === undefined ? null : { email: event.organizer.email ?? null, displayName: event.organizer.displayName ?? null, self: event.organizer.self ?? false },
     attendees: (event.attendees ?? []).map((who) => ({
       email: who.email ?? null,
@@ -241,7 +254,8 @@ function eventCard(calendarId: string, event: GoogleEvent, timeZone: string | nu
       organizer: who.organizer ?? false,
       optional: who.optional ?? false
     })),
-    metadata: { iCalUID: event.iCalUID ?? null, createdAt: event.created ?? null, updatedAt: event.updated ?? null }
+    metadata: { iCalUID: event.iCalUID ?? null, createdAt: event.created ?? null, updatedAt: event.updated ?? null,
+      ...(originalStartTime === undefined ? {} : { originalStartTime }) }
   }
 }
 
@@ -251,12 +265,23 @@ function sameTime(wanted: EventTime | undefined, seen: EventTime | undefined): b
   return seen?.dateTime !== undefined && Date.parse(seen.dateTime) === Date.parse(wanted.dateTime ?? "")
 }
 
+function sameRecurrence(wanted: readonly string[], seen: readonly string[] | undefined): boolean {
+  const actual = [...new Set(seen)].sort()
+  return actual.length === wanted.length && [...wanted].sort().every((line, index) => actual[index] === line)
+}
+
 function matches(wanted: EventBody, seen: GoogleEvent): boolean {
+  const repeatingZone = wanted.recurrence !== undefined && wanted.start?.dateTime !== undefined
+    ? canonicalZone(wanted.start.timeZone) : undefined
   return (wanted.summary === undefined || seen.summary === wanted.summary)
     && (wanted.description === undefined || (seen.description ?? "") === wanted.description)
     && (wanted.location === undefined || (seen.location ?? "") === wanted.location)
     && sameTime(wanted.start, seen.start)
     && sameTime(wanted.end, seen.end)
+    && (wanted.recurrence === undefined || sameRecurrence(wanted.recurrence, seen.recurrence))
+    && (repeatingZone === undefined || canonicalZone(seen.start?.timeZone) === repeatingZone)
+    && (wanted.visibility === undefined || seen.visibility === wanted.visibility)
+    && (wanted.reminders === undefined || seen.reminders?.useDefault === wanted.reminders.useDefault)
 }
 
 function readRefusal(failure: { readonly _tag: string }): Refused {
@@ -318,7 +343,7 @@ effect function eventBody(fields: Fields): EventBody!Refused {
   const timed = fields.startAt !== undefined && fields.endAt !== undefined
   if ((fields.startAt === undefined) !== (fields.endAt === undefined) || (fields.allDay !== undefined && !timed)) throw refused("InvalidRequest")
   if (fields.title !== undefined && fields.title.trim() === "") throw refused("InvalidRequest")
-  if (fields.timeZone !== undefined && (allDay || !timed || !validZone(fields.timeZone))) throw refused("InvalidRequest")
+  if (fields.timeZone !== undefined && (allDay || !timed || canonicalZone(fields.timeZone) === undefined)) throw refused("InvalidRequest")
   if (timed) {
     const pattern = allDay ? isoDate : isoDateTime
     if (!pattern.test(fields.startAt ?? "") || !pattern.test(fields.endAt ?? "") || !(Date.parse(fields.startAt ?? "") < Date.parse(fields.endAt ?? ""))) throw refused("InvalidRequest")
@@ -335,6 +360,24 @@ effect function eventBody(fields: Fields): EventBody!Refused {
   }
   if (Object.keys(body).length === 0) throw refused("InvalidRequest")
   return body
+}
+
+effect function createEventBody(body: typeof CreateBody.Type): EventBody!Refused {
+  const fields = try eventBody(body)
+  const event: EventBody = body.privateCreate === true
+    ? { ...fields, visibility: "private", reminders: { useDefault: false } }
+    : fields
+  if (body.recurrence === undefined) return event
+  const [rule, ...exceptions] = body.recurrence
+  const parts = rule === undefined ? null : reviewedRule.exec(rule)
+  const allDay = body.allDay === true
+  const calendarStamp = allDay ? /^\d{8}$/ : /^\d{8}T\d{6}Z$/
+  if (rule === undefined || parts === null || (parts[1] !== undefined && !calendarStamp.test(parts[1])) ||
+    (!allDay && body.timeZone === undefined) || exceptions.some((line) => {
+      const match = reviewedException.exec(line)
+      return match === null || (match[1] !== undefined) !== allDay || !calendarStamp.test(match[2] ?? "")
+    })) throw refused("InvalidRequest", "UnsupportedField")
+  return { ...event, recurrence: [rule, ...[...new Set(exceptions)].sort()] }
 }
 
 effect function readPages(grant: Grant, path: string, query: Readonly<Record<string, string>>, keep: (items: ReadonlyArray<unknown>, timeZone: string | null) => void!Refused) {
@@ -355,7 +398,7 @@ effect function readPages(grant: Grant, path: string, query: Readonly<Record<str
 effect function calendarsRoute(context: RouteContext) {
   const owner = try ownerFrom(context)
   const query = try queryOf(context)
-  const grant = try useGrant(owner, query.grantId, "google.calendar.read")
+  const grant = try useGrant(owner, query.grantId, "google.calendar.read", query.expectedAccountId)
   const writable = holds(grant.scopes, "google.calendar.write")
   const rows: Array<unknown> = []
   try readPages(grant, "/users/me/calendarList", { minAccessRole: "reader", showHidden: "false", maxResults: "250" }, effect (items) => {
@@ -363,6 +406,7 @@ effect function calendarsRoute(context: RouteContext) {
       const entry = decoded(CalendarEntry, item)
       if (entry === undefined) throw refused("ProviderInvalidResponse")
       if (entry.deleted === true || entry.hidden === true) continue
+      const mayWrite = writable && writableRoles.includes(entry.accessRole)
       rows.push({
         calendarId: entry.id,
         accountId: grant.subject,
@@ -370,7 +414,8 @@ effect function calendarsRoute(context: RouteContext) {
         label: entry.summaryOverride ?? entry.summary ?? entry.id,
         accessRole: entry.accessRole,
         read: readableRoles.includes(entry.accessRole),
-        write: writable && writableRoles.includes(entry.accessRole)
+        write: mayWrite,
+        ...(mayWrite ? { recurrenceLines: true, privateCreate: true } : {})
       })
     }
   })
@@ -383,8 +428,8 @@ effect function feedRoute(context: RouteContext) {
   const timeMin = context.query.get("timeMin") ?? ""
   const timeMax = context.query.get("timeMax") ?? ""
   const timeZone = context.query.get("timeZone") ?? "UTC"
-  if (!isoDateTime.test(timeMin) || !isoDateTime.test(timeMax) || !(Date.parse(timeMin) < Date.parse(timeMax)) || !validZone(timeZone)) throw refused("InvalidRequest")
-  const grant = try useGrant(owner, query.grantId, "google.calendar.read")
+  if (!isoDateTime.test(timeMin) || !isoDateTime.test(timeMax) || !(Date.parse(timeMin) < Date.parse(timeMax)) || canonicalZone(timeZone) === undefined) throw refused("InvalidRequest")
+  const grant = try useGrant(owner, query.grantId, "google.calendar.read", query.expectedAccountId)
   const events: Array<Card> = []
   const encoder = new TextEncoder()
   let bytes = 0
@@ -414,7 +459,7 @@ effect function eventRoute(context: RouteContext) {
   const owner = try ownerFrom(context)
   const query = try queryOf(context)
   const eventId = try eventIdOf(context)
-  const grant = try useGrant(owner, query.grantId, "google.calendar.read")
+  const grant = try useGrant(owner, query.grantId, "google.calendar.read", query.expectedAccountId)
   return json({ event: try readEvent(grant, query.calendarId, eventId) })
 }
 
@@ -428,7 +473,11 @@ effect function lookupWrite(grant: Grant, planned: Planned): (Seen | undefined)!
   const card = event === undefined ? null : eventCard(planned.calendarId, event, null)
   const nothing: Seen = { lookup: { tag: "NothingSeen" }, event: null }
   switch (planned.kind) {
-    case "create": return live ? { lookup: { tag: "EffectSeen" }, event: card } : event === undefined ? nothing : { lookup: { tag: "EffectSeen" }, event: null }
+    case "create": {
+      if (planned.body !== null && (planned.body.recurrence !== undefined || planned.body.visibility !== undefined)
+        && (event === undefined || !live || !matches(planned.body, event))) return event === undefined ? nothing : undefined
+      return live ? { lookup: { tag: "EffectSeen" }, event: card } : event === undefined ? nothing : { lookup: { tag: "EffectSeen" }, event: null }
+    }
     case "change": return event !== undefined && live && event.etag !== planned.ifMatch && planned.body !== null && matches(planned.body, event) ? { lookup: { tag: "EffectSeen" }, event: card } : nothing
     case "delete": return live ? nothing : { lookup: { tag: "EffectSeen" }, event: null }
     default: {
@@ -532,7 +581,11 @@ effect function answer(grant: Grant, write: Write, event: Card | null) {
   switch (phase) {
     case "succeeded": {
       if (write.planned.kind === "delete") return json({ ok: true })
-      const shown = event ?? (try readEvent(grant, write.planned.calendarId, write.planned.eventId))
+      const held = write.planned.body
+      const reviewed = write.planned.kind === "create" && (held?.recurrence !== undefined || held?.visibility !== undefined)
+      const reread = event === null && reviewed ? try lookupWrite(grant, write.planned) : undefined
+      if (event === null && reviewed && (reread?.lookup.tag !== "EffectSeen" || reread.event === null)) return writeRefusal(unknownRefusal, "unknown")
+      const shown = event ?? reread?.event ?? (try readEvent(grant, write.planned.calendarId, write.planned.eventId))
       return json({ event: shown }, { status: write.planned.kind === "create" ? 201 : 200, ...(shown.etag === null ? {} : { headers: { etag: shown.etag } }) })
     }
     case "rejected": throw refused(write.rejection ?? "ProviderUnavailable")
@@ -603,7 +656,7 @@ effect function createRoute(context: RouteContext) {
   if (key === undefined || !keyPattern.test(key)) throw refused("InvalidRequest")
   const body = try jsonBody(context, CreateBody)
   const calendarId = try calendarOf(body.calendarId)
-  const event = try eventBody(body)
+  const event = try createEventBody(body)
   const grant = try useGrant(owner, body.grantId, "google.calendar.write", body.expectedAccountId)
   const eventId = sha256Hex(`${owner.organizationId}/${owner.userId}/${key}`)
   const planned: Planned = { kind: "create", key: rowKey("create", owner, key), idempotencyKey: key, calendarId, eventId, ifMatch: null, body: { id: eventId, ...event } }

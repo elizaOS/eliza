@@ -25,9 +25,10 @@ it says the reminder is important or urgent.
 
 A plan's due time is a duration, an instant with its offset, a wall time
 on a day of the owner's clock, a day alone, which comes at 09:00 that day
-as a deadline "by the 20th" does, or a repeat at a wall time every day or
-on the weekdays the owner named. A repeat keeps the owner's clock and
-follows it when they state a new zone.
+as a deadline "by the 20th" does, a repeat at a wall time every day or
+on the weekdays the owner named, or a repeat on an interval ("every two
+hours"). A repeat keeps the owner's clock and follows it when they state a
+new zone.
 
 ```quint
 type ReminderPhase = NoReminderIntent | IntentPending | IntentReady | IntentRejected | IntentCancelled | ReminderSaved
@@ -64,6 +65,19 @@ pure def cancelReminder(s: ReminderIntent): ReminderIntent = { ...s, reminderPha
 pure def alwaysCheckedBeforeWrite(s: ReminderIntent): bool = s.writes > 0 implies (s.checked and s.requested)
 ```
 
+### An alert nobody stated is an alert
+
+The first alternative of the alert choice is an alert and the second a
+silent reminder. A reminder alerts unless the owner asked for a silent
+one: when neither the plan nor the message states the choice, it is saved
+with an alert, and the owner is not asked.
+
+```quint
+pure def alertWhenUnstated(stated: DeliveryChoice): DeliveryChoice = if (stated == UnknownChoice) FirstChoice else stated
+pure def lawAnUnstatedAlertIsAnAlert(stated: DeliveryChoice): bool =
+  alertWhenUnstated(stated) != UnknownChoice and (stated != UnknownChoice implies alertWhenUnstated(stated) == stated)
+```
+
 ### A reminder is written at most once, and a refusal writes nothing
 
 ```quint
@@ -71,7 +85,8 @@ pure def recoveredChoice(planned: DeliveryChoice, extracted: DeliveryChoice): De
 pure def canSaveReminder(s: ReminderIntent): bool = s.reminderPhase == IntentReady and s.checked and s.requested
 pure def saveReminder(s: ReminderIntent): ReminderIntent =
   { ...s, reminderPhase: ReminderSaved, writes: s.writes + 1, savedClock: s.plannedClock,
-    savedDestination: recoveredChoice(s.plannedDestination, s.extractedDestination), savedAlert: recoveredChoice(s.plannedAlert, s.extractedAlert), savedHigh: s.saidHigh }
+    savedDestination: recoveredChoice(s.plannedDestination, s.extractedDestination),
+    savedAlert: alertWhenUnstated(recoveredChoice(s.plannedAlert, s.extractedAlert)), savedHigh: s.saidHigh }
 pure def alwaysWrittenAtMostOnce(s: ReminderIntent): bool = s.writes >= 0 and s.writes <= 1 and ((s.writes == 1) == (s.reminderPhase == ReminderSaved))
 pure def alwaysRefusalWritesNothing(s: ReminderIntent): bool = (s.reminderPhase == IntentRejected or s.reminderPhase == IntentCancelled) implies s.writes == 0
 ```
@@ -86,9 +101,64 @@ pure def alwaysPlannedClockKept(s: ReminderIntent): bool = s.writes > 0 implies 
 
 ### A known delivery choice is kept, and only an unknown one is taken from the message
 
+An alert choice that the message leaves unknown too is saved as an alert.
+
 ```quint
 pure def alwaysDeliveryChoicesKept(s: ReminderIntent): bool =
-  s.writes > 0 implies (s.savedDestination == recoveredChoice(s.plannedDestination, s.extractedDestination) and s.savedAlert == recoveredChoice(s.plannedAlert, s.extractedAlert))
+  s.writes > 0 implies (s.savedDestination == recoveredChoice(s.plannedDestination, s.extractedDestination)
+    and s.savedAlert == alertWhenUnstated(recoveredChoice(s.plannedAlert, s.extractedAlert)))
+pure def sometimesSavedWithAnUnstatedAlert(s: ReminderIntent): bool =
+  s.reminderPhase == ReminderSaved and s.plannedAlert == UnknownChoice and s.extractedAlert == UnknownChoice and s.savedAlert == FirstChoice
+```
+
+### A silent reminder comes due without a phone notification
+
+A reminder saved with an alert notifies the phone when it comes due and
+posts its text in the conversation it was asked in. One saved silent
+only posts its text in that conversation, and with no conversation it
+comes due unannounced, still listed with the owner's reminders.
+
+```quint
+type DueNotice = NotifiesPhone | ConversationOnly | Unannounced
+pure def firstAlert(savedAlert: DeliveryChoice, hasConversation: bool): DueNotice =
+  if (savedAlert != SecondChoice) NotifiesPhone else if (hasConversation) ConversationOnly else Unannounced
+pure def lawASilentReminderNeverNotifiesThePhone(hasConversation: bool): bool = firstAlert(SecondChoice, hasConversation) != NotifiesPhone
+pure def lawAnAlertingReminderNotifiesThePhone(hasConversation: bool): bool = firstAlert(FirstChoice, hasConversation) == NotifiesPhone
+```
+
+### A reminder for a day comes at 09:00 that day, and a repeat at its time on the days it names, or every day when it names none
+
+A reminder asked for a day without a time, as a deadline "by the 25th"
+is, comes at 09:00 on that day on the owner's clock. A repeat at a time
+comes at that time on each weekday it names, and every day when it names
+no day or names all seven, which the reply then calls every day.
+
+```quint
+pure val dayReminderMinute = 540
+pure def repeatsOnDay(namedDays: int, namesThisDay: bool): bool = namedDays == 0 or namesThisDay
+pure def lawARepeatNamingNoDayComesEveryDay(namesThisDay: bool): bool = repeatsOnDay(0, namesThisDay)
+pure def lawARepeatNamingDaysComesOnlyOnThem(namedDays: int): bool = namedDays > 0 implies not(repeatsOnDay(namedDays, false))
+```
+
+### A reminder repeats on an interval only when the interval divides the hour or the day evenly
+
+An interval is whole minutes, from five minutes to a day. One shorter
+than an hour must divide the hour, and a longer one must be whole hours
+that divide the day, so every firing keeps its place on the owner's clock:
+every 5, 6, 10, 12, 15, 20 or 30 minutes, or every 1, 2, 3, 4, 6, 8, 12 or
+24 hours. The first firing comes one interval after the request. Any other
+interval saves nothing, and the reply names the intervals that repeat.
+
+```quint
+pure val everyMinutesValues = Set(0, 4, 5, 7, 20, 45, 60, 90, 120, 300, 1440, 2880)
+pure def intervalRepeats(everyMinutes: int): bool =
+  if (everyMinutes < 5 or everyMinutes > 1440) false
+  else if (everyMinutes < 60) 60 % everyMinutes == 0
+  else everyMinutes % 60 == 0 and 1440 % everyMinutes == 0
+pure def lawAnIntervalUnderFiveMinutesNeverRepeats(everyMinutes: int): bool = everyMinutes < 5 implies not(intervalRepeats(everyMinutes))
+pure def lawAnIntervalLongerThanADayNeverRepeats(everyMinutes: int): bool = everyMinutes > 1440 implies not(intervalRepeats(everyMinutes))
+pure def lawAnIntervalOfHoursIsWholeHours(everyMinutes: int): bool =
+  (everyMinutes >= 60 and intervalRepeats(everyMinutes)) implies everyMinutes % 60 == 0
 ```
 
 ### A reminder is high priority only when the owner's message says so
@@ -119,6 +189,39 @@ pure def sometimesSavedWithRecoveredDestination(s: ReminderIntent): bool =
   s.reminderPhase == ReminderSaved and s.plannedDestination == UnknownChoice and s.savedDestination != UnknownChoice
 pure def sometimesRejected(s: ReminderIntent): bool = s.reminderPhase == IntentRejected and s.checked
 pure def sometimesCancelledWhenReady(s: ReminderIntent): bool = s.reminderPhase == IntentCancelled and s.checked
+```
+
+## Story: Answer the question a reminder I asked for drew
+
+> As an owner, when the assistant asks me when to remind me because the
+> time it had could not be used, I want my answer to finish that reminder
+> without saying all of it again.
+
+### An answer finishes only the reminder this conversation asked about, from a later message within five minutes
+
+A reminder the owner's message asked for, whose time could not be read,
+had already passed or was an interval that does not repeat, saves nothing
+and is kept for its conversation with the title, body, delivery choices
+and priority its checked message gave. The owner's next message need not
+ask for a reminder again. It is read again, and when it gives a time for
+the kept reminder, that reminder is saved at the time the new plan
+carries, on the check of the message that asked for it. Only a later
+message than the one that drew the question finishes it, within five
+minutes of the question. A message that does not answer finishes nothing
+and leaves the kept reminder waiting, a message that itself asks for a
+reminder is a new request and discards it, and a plan alone still saves
+nothing.
+
+```quint
+pure val answerWindowMs = 300000
+pure def answersKeptReminder(keptAt: int, now: int, sameMessage: bool, givesATime: bool): bool =
+  givesATime and not(sameMessage) and now >= keptAt and now - keptAt <= answerWindowMs
+pure def lawAStaleQuestionIsNeverFinished(keptAt: int, now: int, sameMessage: bool, givesATime: bool): bool =
+  now - keptAt > answerWindowMs implies not(answersKeptReminder(keptAt, now, sameMessage, givesATime))
+pure def lawTheMessageThatDrewTheQuestionNeverFinishesIt(keptAt: int, now: int, givesATime: bool): bool =
+  not(answersKeptReminder(keptAt, now, true, givesATime))
+pure def lawAMessageThatGivesNoTimeFinishesNothing(keptAt: int, now: int, sameMessage: bool): bool =
+  not(answersKeptReminder(keptAt, now, sameMessage, false))
 ```
 
 ## Story: Take back the reminder I just saved
@@ -205,14 +308,57 @@ pure def lawAReminderThatWentOffIsNeverMovedToATime(dueAt: int, now: int): bool 
 ### Listing reminders changes nothing, and a rename changes the title of the one reminder named
 
 A list tells every live reminder with its next time or its repeat on the
-owner's clock. A rename names a reminder by its title or its id and gives
-a nonblank new title; it applies only when exactly one live reminder is
+owner's clock. A rename names a reminder as [names](./names.md) says and
+gives a nonblank new title; it applies only when exactly one live reminder is
 named, and keeps its time, delivery choices and escalation plan.
 
 ```quint
 pure def renameAdmitted(matches: int, newTitle: str): bool = matches == 1 and newTitle != ""
 pure def lawOnlyOneNamedReminderIsRenamed(matches: int, newTitle: str): bool = renameAdmitted(matches, newTitle) implies matches == 1
 pure def lawABlankTitleNeverRenames(matches: int): bool = not(renameAdmitted(matches, ""))
+```
+
+## Story: Answer or put off a reminder I keep
+
+> As an owner, I want to mark a reminder done, dismiss it, acknowledge
+> it, skip its next occurrence, or snooze it for some minutes, until
+> tonight or until tomorrow morning.
+
+### A skip passes over one occurrence of a repeating reminder, and a reminder that does not repeat is not skipped
+
+Each of these names its reminder among the live ones as [names](./names.md)
+says. Skipping a repeating reminder settles the occurrence it waits for, or the
+one that just fired, and the reminder comes again at the occurrence after
+it ([scheduled tasks](../agent/schedule/scheduledTasks.md)). A reminder
+that comes once has no later occurrence, so a skip changes nothing and the
+reply says to dismiss it instead.
+
+```quint
+pure def skipAdmitted(named: int, repeats: bool): bool = named == 1 and repeats
+pure def lawAOneOffReminderIsNeverSkipped(named: int): bool = not(skipAdmitted(named, false))
+pure def lawASkipNamesOneReminder(named: int, repeats: bool): bool = skipAdmitted(named, repeats) implies named == 1
+```
+
+### A snooze until tonight comes at 20:00, and one until tomorrow morning at 08:00, on the owner's clock
+
+A snooze lasts the minutes the owner gave, ten when they gave none, or
+until a named time: tonight is the next 20:00 on the owner's clock, today
+when it is still ahead and tomorrow otherwise, and tomorrow morning is
+08:00 on the next day.
+
+```quint
+pure val tonightMinute = 1200
+pure val morningMinute = 480
+pure val minuteOfDayValues = Set(0, 479, 480, 1199, 1200, 1439)
+pure def minutesUntilTonight(minuteOfDay: int): int =
+  if (minuteOfDay < tonightMinute) tonightMinute - minuteOfDay else tonightMinute + 1440 - minuteOfDay
+pure def minutesUntilTomorrowMorning(minuteOfDay: int): int = 1440 - minuteOfDay + morningMinute
+pure def lawTonightIsAheadAndWithinADay(minuteOfDay: int): bool =
+  (minuteOfDay >= 0 and minuteOfDay < 1440) implies (minutesUntilTonight(minuteOfDay) > 0 and minutesUntilTonight(minuteOfDay) <= 1440)
+pure def lawTonightLandsAtTwenty(minuteOfDay: int): bool =
+  (minuteOfDay >= 0 and minuteOfDay < 1440) implies (minuteOfDay + minutesUntilTonight(minuteOfDay)) % 1440 == tonightMinute
+pure def lawTomorrowMorningIsTheNextDayAtEight(minuteOfDay: int): bool =
+  minuteOfDay + minutesUntilTomorrowMorning(minuteOfDay) == 1440 + morningMinute
 ```
 
 ## Story: Propose a reminder or alarm on my phone only as I asked

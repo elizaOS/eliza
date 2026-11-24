@@ -3,11 +3,10 @@ import { assert, it } from "@effect/vitest"
 import type { IAgentRuntime, UUID } from "@elizaos/core"
 import { negotiation, readOperation, validate, type CheckedOperation, type DeviceTurn } from "@elizaos/agent/device-actions"
 import { calendarProposalFamily } from "../src/plugin/device-proposals.vibe"
-import { machine } from "../gen/calendar__reviewedReads.effect.vibe"
 import { createNeedsConfirmation, createTimeZone, createYear, createdUtcInstant, displayDay, displayWallTime, buildUtcDateFromLocalParts,
   requestTimeZone, startOfCivilDay } from "../src/clock.vibe"
 import { CALENDAR_CAPABILITY, CALENDAR_NAMED_READ_CAPABILITY, NamedReadRefused, executeNamedCalendarRead, namedReadWindow,
-  type NamedCalendarReadContext, type NamedCalendarReadProvider } from "../src/client/named-read.vibe"
+  reviewedReadsMachine, type NamedCalendarReadContext, type NamedCalendarReadProvider } from "../src/client/index.vibe"
 
 const selected = { kind: "calendar-event", accountId: "device-home", sourceRevision: "a".repeat(64), id: "evt-1", revision: "b".repeat(64) }
 const context: NamedCalendarReadContext = { view: "calendar", owner: "alice", selectedObject: selected }
@@ -29,7 +28,7 @@ function share() {
 }
 
 it.effect('Share only the exact current Calendar information I reviewed (spec/calendar/reviewedReads.md, "Story: Share only the exact current Calendar information I reviewed")', effect () => {
-  provide machine() {
+  provide reviewedReadsMachine() {
     const { controls, provider } = share()
     let active = context
     const run = (op: unknown = read, ctx = context, caps: readonly string[] = capabilities) =>

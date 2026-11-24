@@ -1,5 +1,5 @@
 // spec/cloud/services/models.md, "Story: Price a model call before it runs"; spec/cloud/services/models.md, "Story: Learn which models my key can call"; spec/cloud/operator.md, "Story: Operate the deployment without reading secrets"
-import { billedUsage, callCost, chooseModel, countsInBound, listModels, maxTokensPerSide, priceMismatches, priceRowAccepted, usageCapped, type BilledUsage, type Model, type ModelListing, type PriceRow, type ProfiledModel, type ProviderUsage, type TokenCounts } from "../../gen/cloud__services__models.effect.vibe"
+import { billedUsage, callCost, chooseModel, countsInBound, listModels, maxTokensPerSide, namedRow, priceMismatches, priceRowAccepted, usageCapped, type BilledUsage, type Model, type ModelListing, type PriceRow, type ProfiledModel, type ProviderUsage, type TokenCounts } from "../../gen/cloud__services__models.effect.vibe"
 import { refused, type Refused } from "../http/refusal.vibe"
 import { json, type Route } from "../http/routes.vibe"
 import { Deployment, type EnvironmentProfile } from "../profile/profile.vibe"
@@ -20,7 +20,9 @@ export interface PriceCheck {
   readonly listing: ReadonlyArray<ModelListing>
 }
 
-const PriceSeed = Schema.Array(Schema.Struct({ modelId: Schema.String, inputPer1K: Schema.Int, outputPer1K: Schema.Int }))
+export type PriceOffer = Omit<PriceRow, "cachedInputPer1K"> & { readonly cachedInputPer1K?: number }
+
+const PriceSeed = Schema.Array(Schema.Struct({ modelId: Schema.String, inputPer1K: Schema.Int, cachedInputPer1K: Schema.optionalKey(Schema.Int), outputPer1K: Schema.Int }))
 
 const Count = Schema.optionalKey(Schema.NullOr(Schema.Int))
 
@@ -39,8 +41,8 @@ function profiledModels(settings: InferenceSettings): ProfiledModel[] {
 }
 
 export effect function readPriceRows(tx: Tx): PriceRow[]!StoreFailure {
-  const rows = try tx.query("SELECT model_id, input_per_1k, output_per_1k FROM model_prices ORDER BY model_id")
-  return rows.map((row) => ({ modelId: toText(row.model_id) ?? "", inputPer1K: toInt(row.input_per_1k), outputPer1K: toInt(row.output_per_1k) }))
+  const rows = try tx.query("SELECT model_id, input_per_1k, cached_input_per_1k, output_per_1k FROM model_prices ORDER BY model_id")
+  return rows.map((row) => ({ modelId: toText(row.model_id) ?? "", inputPer1K: toInt(row.input_per_1k), cachedInputPer1K: toInt(row.cached_input_per_1k), outputPer1K: toInt(row.output_per_1k) }))
 }
 
 export effect function chooseFor(tx: Tx, settings: InferenceSettings, id: string, hasImage: boolean): ChosenModel!(Refused | StoreFailure) {
@@ -51,12 +53,13 @@ export effect function chooseFor(tx: Tx, settings: InferenceSettings, id: string
   return { model: choice.model, provider }
 }
 
-export effect function setModelPrice(tx: Tx, settings: InferenceSettings, row: PriceRow): PriceRow!(Refused | StoreFailure) {
+export effect function setModelPrice(tx: Tx, settings: InferenceSettings, offer: PriceOffer): PriceRow!(Refused | StoreFailure) {
+  const row = namedRow(offer.modelId, offer.inputPer1K, offer.cachedInputPer1K === undefined ? { tag: "SameAsInput" } : { tag: "CachedPriceOf", price: offer.cachedInputPer1K }, offer.outputPer1K)
   if (!priceRowAccepted(profiledModels(settings), row)) throw refused("InvalidRequest")
   const now = try Clock.currentTimeMillis
   try tx.query(
-    "INSERT INTO model_prices (model_id, input_per_1k, output_per_1k, updated_at) VALUES ($1, $2, $3, $4) ON CONFLICT (model_id) DO UPDATE SET input_per_1k = EXCLUDED.input_per_1k, output_per_1k = EXCLUDED.output_per_1k, updated_at = EXCLUDED.updated_at",
-    [row.modelId, row.inputPer1K, row.outputPer1K, now]
+    "INSERT INTO model_prices (model_id, input_per_1k, cached_input_per_1k, output_per_1k, updated_at) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (model_id) DO UPDATE SET input_per_1k = EXCLUDED.input_per_1k, cached_input_per_1k = EXCLUDED.cached_input_per_1k, output_per_1k = EXCLUDED.output_per_1k, updated_at = EXCLUDED.updated_at",
+    [row.modelId, row.inputPer1K, row.cachedInputPer1K, row.outputPer1K, now]
   )
   return row
 }
@@ -68,9 +71,10 @@ export effect function checkPrices(tx: Tx, settings: InferenceSettings): PriceCh
 }
 
 export effect function pricesFromSeed(tx: Tx, settings: InferenceSettings, input: unknown): ReadonlyArray<PriceRow>!(Refused | StoreFailure) {
-  const rows = Schema.decodeUnknownEffect(PriceSeed, { onExcessProperty: "error" })(input) catch effect () => { throw refused("InvalidRequest") }
-  for (const row of rows) {
-    try setModelPrice(tx, settings, row)
+  const offers = Schema.decodeUnknownEffect(PriceSeed, { onExcessProperty: "error" })(input) catch effect () => { throw refused("InvalidRequest") }
+  const rows: PriceRow[] = []
+  for (const offer of offers) {
+    rows.push(try setModelPrice(tx, settings, offer))
   }
   return rows
 }
@@ -81,8 +85,8 @@ function bounded(tokens: number): number {
 
 export effect function callCostFor(model: Model, counts: TokenCounts): number!! {
   if (countsInBound(counts)) return callCost(model, counts)
-  try annotateLogs(logError("a call's token count is past the bound and is priced at the bound"), { model: model.id, inputTokens: counts.inputTokens, outputTokens: counts.outputTokens })
-  return callCost(model, { inputTokens: bounded(counts.inputTokens), outputTokens: bounded(counts.outputTokens) })
+  try annotateLogs(logError("a call's token count is past the bound and is priced at the bound"), { model: model.id, inputTokens: counts.inputTokens, cachedTokens: counts.cachedTokens, outputTokens: counts.outputTokens })
+  return callCost(model, { inputTokens: bounded(counts.inputTokens), cachedTokens: bounded(counts.cachedTokens), outputTokens: bounded(counts.outputTokens) })
 }
 
 export effect function billedFromUsage(usage: unknown): BilledUsage!! {

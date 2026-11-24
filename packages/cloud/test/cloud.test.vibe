@@ -13,7 +13,7 @@ import { createStripeFake, fakeSecretKey } from "./support/fakes/stripe.ts"
 import { refusalBody } from "../src/http/refusal.vibe"
 import { markDispatched, reserve, settle } from "../src/shared/metering.vibe"
 import { migrate, Store, StoreFailure, type Tx } from "../src/store/store.vibe"
-import { organization, testCloud, type FakeServer, type ProfileEdit, type TestCloud } from "./support/cloud.vibe"
+import { organization, testCloud, type Answer, type FakeServer, type ProfileEdit, type TestCloud } from "./support/cloud.vibe"
 import type { FakeRequest } from "./support/fakes.ts"
 import { catalogPrices, fixtureSeedFile, testProfile } from "./support/profile.ts"
 import { periodRows } from "../src/shared/metering.vibe"
@@ -1396,7 +1396,7 @@ describe("WP6 Speech batch (spec/cloud/services/speech.md)", () => {
   }), 60_000)
 })
 describe("WP6 Speech realtime (spec/cloud/services/speechRelay.md)", () => {
-  it.effect("Consent, mint and open one socket, hear connected before turns, speak, renew a window and end on refused funding; a spent allowance refuses the mint (spec/cloud/services/speechRelay.md, \"Story: Start speech only from a consent I gave\"; spec/cloud/services/speechRelay.md, \"Story: Speak the relay protocol on one socket\"; spec/cloud/services/speechRelay.md, \"Story: Keep a live session funded and close it with receipts\")", () => scoped(effect {
+  it.effect("Consent, mint and open one socket, hear connected before turns, speak, renew while each ended window settles at its use, and end on refused funding; a spent allowance refuses the mint (spec/cloud/services/speechRelay.md, \"Story: Start speech only from a consent I gave\"; spec/cloud/services/speechRelay.md, \"Story: Speak the relay protocol on one socket\"; spec/cloud/services/speechRelay.md, \"Story: Keep a live session funded and close it with receipts\"; spec/cloud/services/speechRelay.md, \"Each admitted window settles once, and a retiring session closes only after all its receipts\")", () => scoped(effect {
     try TestClock.setTime(Date.UTC(2026, 10, 19, 12))
     const speech = try sync(() => speechFake())
     const cloud = try testCloud({ mount: (fakes) => speech.install(fakes) })
@@ -1424,9 +1424,19 @@ describe("WP6 Speech realtime (spec/cloud/services/speechRelay.md)", () => {
     const extended = try promise(() => socket.next())
     try TestClock.adjust(Duration.seconds(10))
     try TestClock.withLive(sleep(Duration.millis(200)))
+    const longReply = "Here is the whole story again. ".repeat(26).slice(0, 800)
+    try sync(() => {
+      socket.send({ t: "prepare", id: "reply-2" })
+      for (const flush of [false, false, true]) socket.send({ t: "tts", id: "reply-2", text: longReply, flush })
+      socket.send({ t: "finish", id: "reply-2" })
+    })
+    try promise(() => socket.until((received) => received.kind === "text" && received.frame.t === "complete"))
     try TestClock.adjust(Duration.seconds(50))
-    try TestClock.withLive(sleep(Duration.millis(200)))
-    try TestClock.adjust(Duration.seconds(10))
+    const extendedAgain = try promise(() => socket.next())
+    for (const step of [10, 50, 10]) {
+      try TestClock.withLive(sleep(Duration.millis(200)))
+      try TestClock.adjust(Duration.seconds(step))
+    }
     const ending = try promise(() => socket.until((received) => received.kind === "close"))
     let phase: unknown = undefined
     for (let attempt = 0; attempt < 100 && phase !== "closed"; attempt += 1) {
@@ -1434,7 +1444,7 @@ describe("WP6 Speech realtime (spec/cloud/services/speechRelay.md)", () => {
       phase = (try sql(cloud, "SELECT phase FROM speech_sessions WHERE key = $1", [session.sessionId]))[0]?.phase
     }
     const windows = try sql(cloud, "SELECT number, expires_at, settled_at IS NOT NULL AS settled FROM speech_windows WHERE session_id = $1 ORDER BY number", [session.sessionId])
-    const usage = try sql(cloud, `SELECT w.number, u.quote, u.outcome,
+    const usage = try sql(cloud, `SELECT w.number, u.quote, u.charged, u.outcome,
       CASE WHEN u.hold_key = w.transcribe_hold THEN 'transcribe' ELSE 'synthesize' END AS direction
       FROM speech_windows w JOIN usage_records u ON u.hold_key IN (w.transcribe_hold, w.synthesize_hold)
       WHERE w.session_id = $1 AND u.organization_id = $2 ORDER BY w.number, direction DESC`, [session.sessionId, caller.organizationId])
@@ -1455,12 +1465,12 @@ describe("WP6 Speech realtime (spec/cloud/services/speechRelay.md)", () => {
         opened: shown(opened),
         heard: shown(heard),
         spoken: shown(spoken),
-        extended: shown([extended]),
+        extended: shown([extended, extendedAgain]),
         ending: shown(ending),
         forwarded: speech.sttPcmBytes,
         phase,
         windows: windows.map((row) => [Number(row.number), Number(row.expires_at) - mintedAt, row.settled]),
-        usage: usage.map((row) => [Number(row.number), row.direction, Number(row.quote), row.outcome]),
+        usage: usage.map((row) => [Number(row.number), row.direction, Number(row.quote), row.outcome === "known" ? Number(row.charged) : row.outcome]),
         spent: [spent.status, (spent.body as { readonly error?: string }).error]
       },
       {
@@ -1482,12 +1492,16 @@ describe("WP6 Speech realtime (spec/cloud/services/speechRelay.md)", () => {
           { t: "flush_complete", id: "reply-1" },
           { t: "complete", id: "reply-1" }
         ],
-        extended: [{ t: "extended", expiresAt: new Date(mintedAt + 120_000).toISOString() }],
+        extended: [{ t: "extended", expiresAt: new Date(mintedAt + 120_000).toISOString() }, { t: "extended", expiresAt: new Date(mintedAt + 180_000).toISOString() }],
         ending: [{ t: "error", code: "unavailable", reason: "insufficient_credits" }, { close: 4402 }],
         forwarded: 3_200,
         phase: "closed",
-        windows: [[1, 60_000, true], [2, 120_000, true]],
-        usage: [[1, "transcribe", 6_000, "unknown"], [1, "synthesize", 122_880, "unknown"], [2, "transcribe", 6_000, "unknown"], [2, "synthesize", 122_880, "unknown"]],
+        windows: [[1, 60_000, true], [2, 120_000, true], [3, 180_000, true]],
+        usage: [
+          [1, "transcribe", 6_000, 10], [1, "synthesize", 122_880, 18 * 30],
+          [2, "transcribe", 6_000, 0], [2, "synthesize", 122_880, 3 * 800 * 30],
+          [3, "transcribe", 6_000, "unknown"], [3, "synthesize", 122_880, "unknown"]
+        ],
         spent: [402, "allowance_exhausted"]
       }
     ))
@@ -1664,6 +1678,64 @@ describe("WP7 Maps (spec/cloud/services/maps.md)", () => {
     ))
   }), 60_000)
 
+  it.live("Blame the caller only for a place id the provider refuses, and answer a route to the same place (spec/cloud/services/maps.md, \"A dispatched request is charged what the provider billed, or its quote when the reply was lost, and one never dispatched is charged nothing\"; spec/cloud/services/maps.md, \"A route whose endpoints coincide is a zero-length route, never a malformed answer\")", () => scoped(effect {
+    const maps = try sync(() => googleMapsFake())
+    const cloud = try testCloud({ mount: (fakes) => fakes.mount("/maps/", maps.handler) })
+    const caller = try signedCaller(cloud, "refused-mapper")
+    try cloud.inside(addCredits({ organizationId: caller.organizationId, amount: 1_000_000, requestKey: "refused-maps-funding" }))
+    const post = (path: string, key: string, body: unknown) => cloud.call(`/api/v1/maps/${path}`, { json: body, headers: { ...caller.headers, "idempotency-key": key } })
+    const errorOf = (answer: { readonly body: unknown }) => (answer.body as { readonly error?: string }).error
+    const handle = "maps_3b0f6a52-6a4e-4c1b-9d55-0d1f2e3a4b5c"
+    const invalidArgument = { kind: "reply", status: 400, body: { error: { code: 400, message: `Not a valid Place ID: ${handle}`, status: "INVALID_ARGUMENT" } } } as const
+    const keyRefused = (reason: string) => ({ kind: "reply", status: 400, body: { error: { code: 400, message: "API key not valid.", status: "INVALID_ARGUMENT", details: [{ "@type": "type.googleapis.com/google.rpc.ErrorInfo", reason, domain: "googleapis.com" }] } } }) as const
+    const start = { latitude: 52.517, longitude: 13.3888 }
+
+    try sync(() => maps.script(invalidArgument))
+    const refusedHandle = try post("places/details", "details-handle", { id: handle })
+    const keyed: Array<readonly [number, string | undefined]> = []
+    for (const reason of ["API_KEY_INVALID", "API_KEY_EXPIRED", "SERVICE_DISABLED"]) {
+      try sync(() => maps.script(keyRefused(reason)))
+      const answer = try post("places/details", `details-${reason}`, { id: "ChIJgUbEo8cfqokR5lP9_Wh_DaM" })
+      keyed.push([answer.status, errorOf(answer)])
+    }
+    const unexplained: Array<readonly [number, string | undefined]> = []
+    for (const [index, body] of ["not json", {}, { error: { code: 400, status: "FAILED_PRECONDITION" } }, { error: { code: 400, status: "INVALID_ARGUMENT", details: "x" } }].entries()) {
+      try sync(() => maps.script({ kind: "reply", status: 400, body }))
+      const answer = try post("places/details", `details-unexplained-${index}`, { id: "ChIJgUbEo8cfqokR5lP9_Wh_DaM" })
+      unexplained.push([answer.status, errorOf(answer)])
+    }
+    try sync(() => maps.script(invalidArgument, invalidArgument, invalidArgument))
+    const searched = try post("places/search", "search-400", { query: "casino" })
+    const reversed = try post("reverse", "reverse-400", { coordinate: start, preferPlace: true })
+    const routed = try post("routes", "routes-400", { from: start, to: start, mode: "walk" })
+    try sync(() => maps.script({ kind: "zeroLengthRoute", points: 1 }, { kind: "zeroLengthRoute", points: 0 }))
+    const onePoint = try post("routes", "routes-same-1", { from: start, to: start, mode: "walk" })
+    const noPoint = try post("routes", "routes-same-0", { from: start, to: start, mode: "walk" })
+    const routeOf = (answer: { readonly status: number; readonly body: unknown }) => {
+      const [route] = (answer.body as { readonly routes: ReadonlyArray<{ readonly distanceMeters: number; readonly durationSeconds: number; readonly geometry: ReadonlyArray<unknown> }> }).routes
+      return [answer.status, route?.distanceMeters, route?.durationSeconds, route?.geometry]
+    }
+    const usage = try sql(cloud, "SELECT r.status, r.result IS NULL AS unkept, u.outcome FROM maps_requests r JOIN usage_records u ON u.hold_key = r.hold_key ORDER BY u.settled_at, r.hold_key LIMIT 1", [])
+
+    try check(() => assert.deepStrictEqual(
+      {
+        refusedHandle: [refusedHandle.status, errorOf(refusedHandle)],
+        keyed, unexplained,
+        othersBlameTheProvider: [searched, reversed, routed].map((answer) => [answer.status, errorOf(answer)]),
+        samePlace: [routeOf(onePoint), routeOf(noPoint)],
+        handleUsage: usage.map((row) => [row.status, row.unkept, row.outcome]),
+      },
+      {
+        refusedHandle: [400, "invalid_request"],
+        keyed: [[502, "provider_invalid_response"], [502, "provider_invalid_response"], [502, "provider_invalid_response"]],
+        unexplained: [[502, "provider_invalid_response"], [502, "provider_invalid_response"], [502, "provider_invalid_response"], [502, "provider_invalid_response"]],
+        othersBlameTheProvider: [[502, "provider_invalid_response"], [502, "provider_invalid_response"], [502, "provider_invalid_response"]],
+        samePlace: [[200, 0, 0, [start, start]], [200, 0, 0, [start, start]]],
+        handleUsage: [["lost", true, "unknown"]],
+      }
+    ))
+  }), 60_000)
+
   it.live("Hold Maps to its credential and plan limits, send the viewport unmetered, and forget old answers (spec/cloud/services/maps.md, \"Story: Answer a maps request once and pay for it once\")", () => scoped(effect {
     const clock = try sync(() => manualClock())
     try sync(() => clock.set(3_600_100))
@@ -1814,6 +1886,63 @@ describe("WP7 Maps (spec/cloud/services/maps.md)", () => {
         ]
       }
     ))
+    const callsBeforeDistance = osm.calls.length
+    const nearest = try post("places/search", "osm-distance-1", { query: "Pariser Platz", near: to, rank: "distance", limit: 1 })
+    const distanceCall = osm.calls[callsBeforeDistance]
+    try check(() => assert.deepStrictEqual(
+      [nearest.status, placesOf(nearest), osm.calls.length - callsBeforeDistance, distanceCall?.query.get("limit"), distanceCall?.query.get("viewbox"), distanceCall?.query.has("rankPreference")],
+      [200, [["W4031000", "1 Pariser Platz"]], 1, "20", osm.calls[1]?.query.get("viewbox"), false]
+    ))
+  }), 60_000)
+
+  it.live("Find the closest places, not the closest of the most relevant: a distance search reads Google's largest page and answers its nearest places first at the same quote, a relevance search keeps Google's order, and a distance rank with no point is refused before any call (spec/cloud/services/maps.md, \"Story: Find the closest places, not the closest of the most relevant\"; spec/cloud/services/maps.md, \"A search ranked by distance needs a point to measure from\"; spec/cloud/services/maps.md, \"A search ranked by distance reads the provider's largest page and answers its nearest places first\")", () => scoped(effect {
+    const maps = try sync(() => googleMapsFake())
+    const cloud = try testCloud({ mount: (fakes) => fakes.mount("/maps/", maps.handler) })
+    const caller = try signedCaller(cloud, "closest-mapper")
+    try cloud.inside(addCredits({ organizationId: caller.organizationId, amount: 1_000_000, requestKey: "closest-maps-funding" }))
+    const search = (key: string, body: unknown) => cloud.call("/api/v1/maps/places/search", { json: body, headers: { ...caller.headers, "idempotency-key": key } })
+    const errorOf = (answer: { readonly body: unknown }) => (answer.body as { readonly error?: string }).error
+    const namesOf = (answer: { readonly body: unknown }) => (answer.body as { readonly places: ReadonlyArray<{ readonly name: string }> }).places.map((place) => place.name)
+    const near = { latitude: 52.5163, longitude: 13.3777 }
+    const at = (name: string, latitude: number) => ({ id: `ChIJ_${name}_pharmacy`, displayName: { text: name }, location: { latitude, longitude: near.longitude } })
+    const page = [at("far", 52.53), at("level", 52.517), at("middle", 52.52), at("nearest", 52.5164), at("tied", 52.517)]
+
+    try sync(() => maps.script({ kind: "places", places: page }, { kind: "places", places: page }, { kind: "places", places: page }))
+    const ranked = try search("closest-1", { query: "pharmacy", near, rank: "distance", limit: 3 })
+    const relevant = try search("relevant-1", { query: "pharmacy", near, limit: 3 })
+    const withoutPoint = try search("relevant-2", { query: "pharmacy", limit: 3 })
+    const callsBeforeRefusals = maps.calls.length
+    const pointless = try search("closest-2", { query: "pharmacy", rank: "distance" })
+    const unknownRank = try search("closest-3", { query: "pharmacy", near, rank: "rating" })
+    const callsAfterRefusals = maps.calls.length
+    const capabilities = try cloud.call("/api/v1/maps/capabilities", { headers: caller.headers })
+    const sent = try Effect.try(() => maps.calls.filter((call) => call.operation === "searchText").map((call): unknown => JSON.parse(call.request.body)))
+    const quotes = try sql(cloud, "SELECT u.quote FROM maps_requests r JOIN usage_records u ON u.hold_key = r.hold_key WHERE r.operation = 'places_search' ORDER BY u.settled_at", [])
+
+    try check(() => assert.deepStrictEqual(
+      {
+        ranked: [ranked.status, namesOf(ranked)],
+        relevant: [relevant.status, namesOf(relevant)],
+        withoutPoint: [withoutPoint.status, namesOf(withoutPoint)],
+        sent,
+        refused: [pointless.status, errorOf(pointless), unknownRank.status, errorOf(unknownRank), callsAfterRefusals - callsBeforeRefusals],
+        offered: (capabilities.body as { readonly capabilities: { readonly distanceRank?: boolean } }).capabilities.distanceRank,
+        quotes: quotes.map((row) => Number(row.quote))
+      },
+      {
+        ranked: [200, ["nearest", "level", "tied"]],
+        relevant: [200, ["far", "level", "middle"]],
+        withoutPoint: [200, ["far", "level", "middle"]],
+        sent: [
+          { textQuery: "pharmacy", pageSize: 20, rankPreference: "DISTANCE", locationBias: { circle: { center: near, radius: 50_000 } } },
+          { textQuery: "pharmacy", pageSize: 3, locationBias: { circle: { center: near, radius: 50_000 } } },
+          { textQuery: "pharmacy", pageSize: 3 }
+        ],
+        refused: [400, "invalid_request", 400, "invalid_request", 0],
+        offered: true,
+        quotes: [32_000, 32_000, 32_000]
+      }
+    ))
   }), 60_000)
 })
 describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story: Connect my Google account with the access I chose\")", () => {
@@ -1919,6 +2048,103 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
         assert.equal(cloud.fakes.seen.length, beforeRevoked)
       })
     }
+  }))
+
+  it.live('Hear about new mail while the phone is idle: a baseline, ordered pages with current labels, a reset, refusals before Google, and nothing once the grant is gone (spec/cloud/services/google/mailRead.md, "Story: Hear about new mail while my phone is idle")', () => scoped(effect {
+    const google = try sync(() => googleFakeState())
+    const now = try Clock.currentTimeMillis
+    let historyRead = Promise.withResolvers<void>()
+    let releaseHistory = Promise.withResolvers<void>()
+    let provider = "pages"
+    const added = (id: string, thread: string) => ({ message: { id, threadId: thread } })
+    const cloud = try testCloud({ mount: (fakes) => {
+      fakes.mount("/google/", mountGoogleToken(google))
+      fakes.mount("/google/api/", (request) => {
+        if (bearerGrant(google, request) === undefined) return { status: 401 }
+        if (request.path === "/gmail/v1/users/me/profile") return { status: 200, body: { historyId: "1000" } }
+        if (request.path === "/gmail/v1/users/me/messages/new-mail") return { status: 200, body: { id: "new-mail", threadId: "thread-new", labelIds: ["INBOX", "UNREAD", "INBOX"] } }
+        if (request.path === "/gmail/v1/users/me/messages/gone-mail") return { status: 404 }
+        if (request.path !== "/gmail/v1/users/me/history") return undefined
+        if (request.query.get("startHistoryId") === "900") return { status: 404 }
+        if (provider === "held") {
+          historyRead.resolve()
+          return releaseHistory.promise.then(() => ({ status: 200, body: { historyId: "1001", history: [{ id: "1001", messagesAdded: [added("new-mail", "thread-new")] }] } }))
+        }
+        if (provider === "reordered") return { status: 200, body: { historyId: "1003", history: [{ id: "1002", messagesAdded: [added("new-mail", "thread-new")] }, { id: "1001", messagesDeleted: [added("old-mail", "thread-old")] }] } }
+        if (!request.query.has("pageToken")) return { status: 200, body: { historyId: "1003", nextPageToken: "more", history: [{ id: "1001", messagesAdded: [added("new-mail", "thread-new")] }] } }
+        return { status: 200, body: { historyId: "1003", history: [
+          { id: "1002", messagesAdded: [added("gone-mail", "thread-gone")] },
+          { id: "1003", labelsRemoved: [{ ...added("new-mail", "thread-new"), labelIds: ["UNREAD"] }] }
+        ] } }
+      })
+    } })
+    const device = try signedCaller(cloud, "mail-history")
+    const other = try signedCaller(cloud, "mail-history-other")
+    const grant = "5f0c2b7e-8d1a-4c3e-9b6f-2a7d4e1c9b30"
+    const scopes = [...scopeFor("google.basic_identity"), ...scopeFor("google.gmail.triage")]
+    const refresh = try sync(() => seedGrant(google, { subject: `subject-${grant}`, email: `${grant}@example.com`, scopes }))
+    try cloud.inside(linkedGrant(cloud, device, grant, refresh, scopes, now - 1000))
+    const path = "/api/v1/eliza/google/gmail/history"
+    const history = (query: string) => cloud.call(`${path}?grantId=${grant}${query}`, { headers: device.headers })
+    const page = { version: 1, grantId: grant, startHistoryId: "1000", historyId: "1003", backfillRequired: false }
+    const newMail = { messageId: "new-mail", threadId: "thread-new" }
+
+    const baseline = try history("&maxResults=50")
+    const first = try history("&maxResults=50&startHistoryId=1000")
+    const second = try history("&maxResults=50&startHistoryId=1000&pageToken=more")
+    const expired = try history("&startHistoryId=900&side=owner")
+    const asked = cloud.fakes.seen.filter((request) => request.path.endsWith("/history")).map(({ query }) => [query.get("startHistoryId"), query.get("maxResults"), query.get("pageToken")])
+    provider = "reordered"
+    const beforeReordered = cloud.fakes.seen.length
+    const reordered = try history("&startHistoryId=1000")
+    const readAfterReordered = cloud.fakes.seen.slice(beforeReordered).map((request) => request.path.split("/").at(-1))
+    const beforeRefusals = cloud.fakes.seen.length
+    const refusals = try all([
+      cloud.call(`${path}?startHistoryId=1000`, { headers: device.headers }), history("&maxResults=101"), history("&maxResults=0"), history("&pageToken=more"),
+      history("&startHistoryId=0100"), history("&startHistoryId=1000&startHistoryId=1001"), history("&unexpected=1"), history("&side=agent"), cloud.call(`${path}?grantId=${grant}`)
+    ])
+    const otherOrganization = try cloud.call(`${path}?grantId=${grant}`, { headers: other.headers })
+    try sql(cloud, "UPDATE accounts SET organization_id = $1 WHERE key = $2", [device.organizationId, other.userId])
+    const otherUser = try cloud.call(`${path}?grantId=${grant}`, { headers: other.headers })
+    const providerCallsOnRefusal = cloud.fakes.seen.length - beforeRefusals
+
+    const heldRead = (end: () => Answer!!) => effect {
+      historyRead = Promise.withResolvers<void>()
+      releaseHistory = Promise.withResolvers<void>()
+      provider = "held"
+      const reading = try forkChild(history("&startHistoryId=1000"))
+      try timeout(promise(() => historyRead.promise), "5 seconds")
+      const ended = try end()
+      try sync(() => releaseHistory.resolve())
+      return [ended, try Fiber.join(reading)] as const
+    }
+    const [disconnected, lostDuringRead] = try heldRead(() => cloud.call("/api/v1/eliza/google/disconnect", { headers: device.headers, json: { grantId: grant } }))
+    const relinked = try sync(() => seedGrant(google, { subject: `subject-${grant}`, email: `${grant}@example.com`, scopes }))
+    try cloud.inside(linkedGrant(cloud, device, grant, relinked, scopes, now - 1000))
+    const [revoked, revokedDuringRead] = try heldRead(() => cloud.call("/api/v1/api-keys/current", { method: "DELETE", headers: device.headers }))
+    try check(() => {
+      assert.deepStrictEqual([baseline.status, first.status, second.status, expired.status, baseline.headers["cache-control"]], [200, 200, 200, 200, "no-store"])
+      assert.deepStrictEqual([baseline.body, expired.body], [
+        { version: 1, grantId: grant, status: "baseline-required", startHistoryId: null, historyId: "1000", checkpoint: null, nextPageToken: null, events: [], backfillRequired: true },
+        { version: 1, grantId: grant, status: "reset-required", startHistoryId: "900", historyId: null, checkpoint: null, nextPageToken: null, events: [], backfillRequired: true }
+      ])
+      assert.deepStrictEqual([first.body, second.body], [
+        { ...page, status: "page", checkpoint: null, nextPageToken: "more", events: [
+          { id: "1001:message-added:new-mail", historyId: "1001", type: "message-added", ...newMail, labelIds: ["INBOX", "UNREAD"], messageAvailable: true }
+        ] },
+        { ...page, status: "page", checkpoint: "1003", nextPageToken: null, events: [
+          { id: "1002:message-added:gone-mail", historyId: "1002", type: "message-added", messageId: "gone-mail", threadId: "thread-gone", labelIds: [], messageAvailable: false },
+          { id: "1003:labels-removed:new-mail", historyId: "1003", type: "labels-removed", ...newMail, labelIds: ["UNREAD"] }
+        ] }
+      ])
+      assert.deepStrictEqual(asked, [["1000", "50", null], ["1000", "50", "more"], ["900", "50", null]])
+      assert.deepStrictEqual([errorOf(reordered), readAfterReordered], [[502, "provider_invalid_response"], ["history"]])
+      assert.deepStrictEqual(refusals.map((answer) => answer.status), [400, 400, 400, 400, 400, 400, 400, 400, 401])
+      assert.deepStrictEqual([errorOf(otherUser), errorOf(otherOrganization)], [[404, "not_found"], [404, "not_found"]])
+      assert.equal(providerCallsOnRefusal, 0)
+      assert.deepStrictEqual([disconnected.status, errorOf(lostDuringRead)], [200, [409, "google_reauth_required"]])
+      assert.deepStrictEqual([revoked.status, errorOf(revokedDuringRead)], [204, [401, "authentication_required"]])
+    })
   }))
 
   it.live("Triage, search and read my mail at the history Google answered, refusing a stale attachment and an oversized body (spec/cloud/services/google/mailRead.md, \"Story: Read my mail through the grant I chose\")", () => scoped(effect {
@@ -2536,21 +2762,29 @@ describe("WP8 Managed Google: calendar (spec/cloud/services/google/calendar.md)"
   const calendarBase = "/api/v1/eliza/google/calendar"
 
   it.live("Read my calendars, a window of events and one event, refusing a window that is empty or in no time zone (spec/cloud/services/google/calendar.md, \"Story: Read my calendar for a window\")", () => scoped(effect {
-    const { cloud, headers } = try calendarSetup("calendar-reads@example.com")
+    const { cloud, google, headers } = try calendarSetup("calendar-reads@example.com")
+    try Effect.try(() => seedEvent(google, "own@example.com", "standup-moved", {
+      summary: "Moved standup", start: { dateTime: "2026-12-01T10:00:00Z" }, end: { dateTime: "2026-12-01T10:15:00Z" },
+      recurringEventId: "daily-standup", originalStartTime: { dateTime: "2026-12-01T09:00:00Z" },
+    }))
     const window = "timeMin=2026-12-01T00:00:00Z&timeMax=2026-12-02T00:00:00Z"
     const calendars = try cloud.call(`${calendarBase}/calendars`, { headers })
     const feed = try cloud.call(`${calendarBase}/feed?${window}&timeZone=Europe/Berlin`, { headers })
     const reversed = try cloud.call(`${calendarBase}/feed?timeMin=2026-12-02T00:00:00Z&timeMax=2026-12-01T00:00:00Z`, { headers })
     const empty = try cloud.call(`${calendarBase}/feed?timeMin=2026-12-01T00:00:00Z&timeMax=2026-12-01T00:00:00Z`, { headers })
     const noZone = try cloud.call(`${calendarBase}/feed?${window}&timeZone=Mars/Olympus`, { headers })
-    const one = try cloud.call(`${calendarBase}/events/standup`, { headers })
+    const one = try cloud.call(`${calendarBase}/events/standup?expectedAccountId=subject-cal`, { headers })
+    const wrongOwner = try cloud.call(`${calendarBase}/feed?${window}&expectedAccountId=subject-other`, { headers })
+    const wrongEventOwner = try cloud.call(`${calendarBase}/events/standup?expectedAccountId=subject-other`, { headers })
     const missing = try cloud.call(`${calendarBase}/events/nothere`, { headers })
     const anonymous = try cloud.call(`${calendarBase}/calendars`)
-    const events = (feed.body as { readonly events: ReadonlyArray<{ readonly externalId: string; readonly title: string; readonly etag: string | null }> }).events
+    const events = (feed.body as { readonly events: ReadonlyArray<{ readonly externalId: string; readonly title: string; readonly etag: string | null; readonly seriesId: string | null; readonly metadata: { readonly originalStartTime?: string } }> }).events
     try check(() => assert.deepStrictEqual(
       {
         calendars: [calendars.status, calendars.body],
         feed: [feed.status, (feed.body as { readonly calendarId: string }).calendarId, events.map((event) => [event.externalId, event.title, event.etag !== null]), typeof (feed.body as { readonly syncedAt: unknown }).syncedAt],
+        moved: [events[1]?.seriesId, events[1]?.metadata.originalStartTime],
+        wrongOwner: [wrongOwner, wrongEventOwner].map((reply) => [reply.status, ...calendarRefusal(reply.body)]),
         refused: [reversed.status, empty.status, noZone.status, calendarRefusal(reversed.body)],
         one: [one.status, (one.body as { readonly event: { readonly externalId: string } }).event.externalId],
         missing: [missing.status, calendarRefusal(missing.body)],
@@ -2558,10 +2792,12 @@ describe("WP8 Managed Google: calendar (spec/cloud/services/google/calendar.md)"
       },
       {
         calendars: [200, [
-          { calendarId: "own@example.com", accountId: "subject-cal", accountEmail: "cal@example.com", label: "Own", accessRole: "owner", read: true, write: true },
+          { calendarId: "own@example.com", accountId: "subject-cal", accountEmail: "cal@example.com", label: "Own", accessRole: "owner", read: true, write: true, recurrenceLines: true, privateCreate: true },
           { calendarId: "team@example.com", accountId: "subject-cal", accountEmail: "cal@example.com", label: "Team", accessRole: "reader", read: true, write: false }
         ]],
-        feed: [200, "primary", [["standup", "Standup", true]], "string"],
+        feed: [200, "primary", [["standup", "Standup", true], ["standup-moved", "Moved standup", true]], "string"],
+        moved: ["daily-standup", "2026-12-01T09:00:00Z"],
+        wrongOwner: [[403, "access_denied", "google_account_changed", undefined], [403, "access_denied", "google_account_changed", undefined]],
         refused: [400, 400, 400, ["invalid_request", undefined, undefined]],
         one: [200, "standup"],
         missing: [404, ["not_found", undefined, undefined]],
@@ -2621,6 +2857,51 @@ describe("WP8 Managed Google: calendar (spec/cloud/services/google/calendar.md)"
         rows: [["change", "rejected"], ["change", "succeeded"], ["create", "succeeded"], ["create", "succeeded"], ["delete", "rejected"], ["delete", "succeeded"]]
       }
     ))
+  }))
+
+  it.live("Read back a reviewed repeating create and recover a lost reply without repeating it (spec/cloud/services/google/calendar.md, \"Story: Change an event only at the revision I read\")", () => scoped(effect {
+    const { google, cloud, headers } = try calendarSetup("calendar-series@example.com")
+    const create = (key: string, json: unknown) => cloud.call(`${calendarBase}/events`, { method: "POST", headers: { ...headers, "idempotency-key": key }, json })
+    const day = { title: "Daily note", allDay: true, startAt: "2026-12-01", endAt: "2026-12-02", privateCreate: true,
+      recurrence: ["RRULE:FREQ=DAILY;UNTIL=20261212", "EXDATE;VALUE=DATE:20261204"] }
+    const made = try create("calendar-series-01", day)
+    const repeat = try create("calendar-series-01", day)
+    const conflict = try create("calendar-series-01", { ...day, recurrence: ["RRULE:FREQ=WEEKLY"] })
+    const timed = { title: "Weekly note", startAt: "2026-12-01T09:00:00+01:00", endAt: "2026-12-01T09:20:00+01:00", recurrence: ["RRULE:FREQ=WEEKLY"] }
+    const unzoned = try create("calendar-series-02", timed)
+    google.switches.dropNextReply = true
+    const recovered = try create("calendar-series-02", { ...timed, timeZone: "Europe/Berlin" })
+    const written = (reply: typeof made) => (reply.body as { readonly event: { readonly externalId: string; readonly recurrence: readonly string[]; readonly etag: string } }).event
+    const patch = try cloud.call(`${calendarBase}/events/${written(made).externalId}`, {
+      method: "PATCH", headers: { ...headers, "if-match": written(made).etag }, json: { recurrence: ["RRULE:FREQ=WEEKLY"] },
+    })
+    const stored = google.events.get(`own@example.com/${written(made).externalId}`)
+    const privacy = [stored?.body.visibility, stored?.body.reminders]
+    if (stored !== undefined) stored.body = { ...stored.body, visibility: "public" }
+    const changedPrivacy = try create("calendar-series-01", day)
+    try check(() => assert.deepStrictEqual({
+      first: [made.status, written(made).recurrence],
+      replay: [repeat.status, written(repeat).externalId === written(made).externalId],
+      privacy,
+      changedPrivacy: calendarRefusal(changedPrivacy.body),
+      conflict: [conflict.status, calendarRefusal(conflict.body)],
+      unzoned: [unzoned.status, calendarRefusal(unzoned.body)],
+      recovered: [recovered.status, written(recovered).recurrence],
+      patches: google.calls.filter((call) => call.method === "PATCH").length,
+      inserts: google.calls.filter((call) => call.method === "POST" && call.path.endsWith("/events")).length,
+      patch: patch.status,
+    }, {
+      first: [201, day.recurrence],
+      replay: [201, true],
+      privacy: ["private", { useDefault: false }],
+      changedPrivacy: ["provider_unavailable", undefined, "unknown"],
+      conflict: [409, ["idempotency_conflict", undefined, "not_accepted"]],
+      unzoned: [400, ["invalid_request", "unsupported_field", "not_accepted"]],
+      recovered: [201, timed.recurrence],
+      patches: 0,
+      inserts: 2,
+      patch: 400,
+    }))
   }))
 })
 describe("WP9 Client library (spec/cloud/client.md, \"Story: Use the cloud from the device as configured\")", () => {
@@ -3220,20 +3501,23 @@ describe("WP10 Operator and deletion: prices (spec/cloud/operator.md)", () => {
     const refusedSets = [
       try run(["prices", "set", "--model", "unoffered", "--input-per-1k", "100", "--output-per-1k", "200"]),
       try run(["prices", "set", "--model", "test-chat", "--input-per-1k", "1.5", "--output-per-1k", "200"]),
-      try run(["prices", "set", "--model", "test-chat", "--output-per-1k", "200"])
+      try run(["prices", "set", "--model", "test-chat", "--output-per-1k", "200"]),
+      try run(["prices", "set", "--model", "test-chat", "--input-per-1k", "150", "--cached-input-per-1k", "151", "--output-per-1k", "600"])
     ]
-    const set = try run(["prices", "set", "--model", "test-chat", "--input-per-1k", "150", "--output-per-1k", "600"])
+    const sameAsInput = try run(["prices", "set", "--model", "test-chat", "--input-per-1k", "150", "--output-per-1k", "600"])
+    const set = try run(["prices", "set", "--model", "test-chat", "--input-per-1k", "150", "--cached-input-per-1k", "0", "--output-per-1k", "600"])
     const admittedAfter = try admission
     const listedAfter = try listed()
     const checkAfter = try run(["prices", "check"])
     try check(() => assert.deepStrictEqual(
-      { checkBefore, admittedBefore, listedBefore, refusedSets, set, admittedAfter, listedAfter, checkAfter },
+      { checkBefore, admittedBefore, listedBefore, refusedSets, sameAsInput, set, admittedAfter, listedAfter, checkAfter },
       {
         checkBefore: "PricesMismatched",
         admittedBefore: "model_unavailable",
         listedBefore: [200, []],
-        refusedSets: ["Refused", "PriceFlagsInvalid", "PriceFlagsInvalid"],
-        set: 'succeeded with {"kind":"done","lines":["priced test-chat: input 150, output 600 µUSD per 1,000 tokens"]}',
+        refusedSets: ["Refused", "PriceFlagsInvalid", "PriceFlagsInvalid", "Refused"],
+        sameAsInput: 'succeeded with {"kind":"done","lines":["priced test-chat: input 150, cached input 150, output 600 µUSD per 1,000 tokens"]}',
+        set: 'succeeded with {"kind":"done","lines":["priced test-chat: input 150, cached input 0, output 600 µUSD per 1,000 tokens"]}',
         admittedAfter: "admitted test-chat at 150/600 via llm",
         listedAfter: [200, ["test-chat"]],
         checkAfter: 'succeeded with {"kind":"done","lines":["0 price mismatches; usable models: test-chat","payment catalog verified"]}'
@@ -4103,11 +4387,16 @@ module node {
           "GET https://gmail.googleapis.com/gmail/v1/users/me/history",
         ].includes(call)),
       }
-      const client = createCloudClient({ baseUrl: api, credential: () => owner.access, fetch: (input, init) => {
+      const client = createCloudClient({ baseUrl: api, credential: () => owner.access, fetch: async (input, init) => {
         const request = new Request(input, init)
         request.headers.delete("authorization")
         request.headers.set("cookie", "__Host-eliza-session=" + owner.access)
-        return worker.fetch(request, env)
+        const completed: Promise<unknown>[] = []
+        try {
+          return await worker.fetch(request, env, { waitUntil: (pending) => { completed.push(pending) } })
+        } finally {
+          await Promise.all(completed)
+        }
       } })
       const readMail = (messageId: string) => client.gmailRead({ messageId, grantId: grant })
       const whole = await readMail("mail-whole")

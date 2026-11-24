@@ -1,4 +1,5 @@
 // spec/cloud/billing/subscriptionCommands.md, "A review quotes an upgrade, a downgrade or an undo of a live, active subscription with no command running"; spec/cloud/billing/subscriptionCommands.md, "An upgrade quote moves up a plan and adds exactly the allowance difference left in the period; a downgrade or undo takes effect at the period end"
+// spec/cloud/billing/subscriptionCommands.md, "A command starts only while its quote holds, the subscription is at the reviewed revision and no other command is live"
 import { canReview, elapse, initial, parseState, recordScheduleReview, review, type Command } from "../../gen/cloud__billing__subscriptionCommands.effect.vibe"
 import { amountCentsOf } from "../../gen/cloud__billing__plans.effect.vibe"
 import { authenticate, type Caller } from "../http/request-auth.vibe"
@@ -31,7 +32,7 @@ export effect function freshOwner(authorization: string | undefined) {
 }
 
 type ReviewOwner = Pick<Extract<Caller, { readonly kind: "session" }>, "organizationId" | "userId">
-type ChangeKind = "UpgradeCommand" | "DowngradeCommand"
+type ChangeKind = Extract<Command["kind"], "UpgradeCommand" | "DowngradeCommand">
 
 export type ReviewPlanChange = {
   readonly subscriptionId?: string
@@ -88,6 +89,19 @@ export effect function consumeReviewedPlanQuote(tx: Tx, owner: ReviewOwner, quot
     [quoteId, owner.organizationId, owner.userId]
   ))[0]
   return try reviewedQuote(row, quoteId)
+}
+
+export effect function readSubscriptionForConfirmation(tx: Tx, organizationId: string, quote: ReviewedPlanQuote,
+  kind: ChangeKind, expectedRevision: number | undefined, now: number) {
+  const subscription = try readSubscription(tx, organizationId)
+  const terms = quote.command.quote
+  if (quote.command.kind !== kind || now >= terms.expiresAt || (kind === "DowngradeCommand" && now >= terms.periodEnd) ||
+    subscription.customer.tag !== "PinnedCustomer" || subscription.customer.customerId !== quote.binding.customerId)
+    throw refused("BillingStateConflict")
+  const revision = quote.command.expectedRevision
+  if (subscription.revision !== revision || (expectedRevision !== undefined && expectedRevision !== revision))
+    throw refused("StaleRevision")
+  return subscription
 }
 
 export effect function reviewPlanChange(authorization: string | undefined, request: ReviewPlanChange) {

@@ -1,4 +1,4 @@
-// spec/agent/deviceActions/operations.md, "The operation vocabulary is closed, and each wire type belongs to one family"; spec/agent/deviceActions/operations.md, "A proposal is valid only when its shape, its need and its binding all hold"; spec/agent/deviceActions/operations.md, "A receipt is admitted only when its evidence agrees with what it reports"; spec/agent/deviceActions/capabilities.md, "A newer operation cannot use an older capability version"
+// spec/agent/deviceActions/operations.md, "The operation vocabulary is closed, and each wire type belongs to one family"; spec/agent/deviceActions/operations.md, "A calendar event has a nonblank title, bounded text, a known zone and a span of at most 370 days"; spec/agent/deviceActions/operations.md, "A reminder has a nonblank title of at most 200 units, a body of at most 4,000 and an alert at most a week before it is due"; spec/agent/deviceActions/operations.md, "A Clock handoff names a real time, a short label and zone, and a snooze of at most an hour"; spec/agent/deviceActions/operations.md, "A Maps read reports a bounded place or route"; spec/agent/deviceActions/operations.md, "A proposal is valid only when its shape, its need and its binding all hold"; spec/agent/deviceActions/operations.md, "A receipt is admitted only when its evidence agrees with what it reports"; spec/agent/deviceActions/capabilities.md, "A newer operation cannot use an older capability version"
 import { assert, it } from "@effect/vitest"
 import { family, wireType } from "../gen/agent__deviceActions__operations.effect.vibe"
 import type { Classification, Evidence, OperationSchema } from "../src/device-actions/operation-schemas/family.vibe"
@@ -107,6 +107,37 @@ it('A proposal outside its owning bounds has no valid shape (spec/agent/deviceAc
   for (const op of invalid) assert.isUndefined(classified(op), JSON.stringify(op))
 })
 
+it('Each calendar, reminder and Clock field is admitted up to its stated bound and refused one past it (spec/agent/deviceActions/operations.md, "Story: Propose only operations the device can check")', () => {
+  const day = 86_400_000
+  const after = (start: string, ms: number) => new Date(Date.parse(start) + ms).toISOString()
+  const event = (changed: Partial<typeof fields>): Wire => ({ type: "calendar_create_local", fields: { ...fields, ...changed } })
+  const reminder = (title: string, body: string): Wire => ({ type: "reminder_update", target: reminderTarget, fields: { title, body } })
+  const dueAt = 1_800_000_000_000
+  const alerted = (alertMinutes: number): Wire => ({
+    type: "reminder_create", fields: { title: "Call mom", body: "", schedule: { at: dueAt - alertMinutes * 60_000, recurrence: null, dueAt, alertMinutes } },
+  })
+  const set = (changed: Record<string, unknown>): Wire => ({ type: "clock_handoff", action: "set", hour: 7, minute: 0, label: "", timeZone: "UTC", ...changed })
+  const bounded: ReadonlyArray<readonly [Wire, Wire]> = [
+    [event({ title: "t".repeat(500) }), event({ title: "t".repeat(501) })],
+    [event({ description: "d".repeat(16_000) }), event({ description: "d".repeat(16_001) })],
+    [event({ location: "l".repeat(2_000) }), event({ location: "l".repeat(2_001) })],
+    [event({ end: after(fields.start, 370 * day) }), event({ end: after(fields.start, 370 * day + 1) })],
+    [event({ start: "1970-01-01T00:00:00.000Z", end: "1970-01-01T01:00:00.000Z" }), event({ start: "1969-12-31T23:00:00.000Z", end: "1970-01-01T01:00:00.000Z" })],
+    [reminder("r".repeat(200), ""), reminder("r".repeat(201), "")],
+    [reminder("Call mom", "b".repeat(4_000)), reminder("Call mom", "b".repeat(4_001))],
+    [alerted(10_080), alerted(10_081)],
+    [set({ hour: 23, minute: 59 }), set({ hour: 24, minute: 0 })],
+    [set({ hour: 0, minute: 59 }), set({ hour: 0, minute: 60 })],
+    [set({ label: "w".repeat(200) }), set({ label: "w".repeat(201) })],
+    [{ type: "clock_handoff", action: "snooze", snoozeMinutes: 60 }, { type: "clock_handoff", action: "snooze", snoozeMinutes: 0 }],
+  ]
+  for (const [within, beyond] of bounded) {
+    assert.isDefined(classified(within), JSON.stringify(within).slice(0, 120))
+    assert.isUndefined(classified(beyond), JSON.stringify(beyond).slice(0, 120))
+  }
+  for (const blank of [event({ title: "   " }), reminder(" ", ""), set({ label: "Wake\u0007" }), event({ location: "Main\u0000St" })]) assert.isUndefined(classified(blank))
+})
+
 it('A newer reminder timing or Clock repeat is classified as version two (spec/agent/deviceActions/capabilities.md, "Story: Offer the agent only what my device advertised")', () => {
   const dueAt = 1_800_000_000_000
   const schedule = { at: dueAt - 600_000, recurrence: null, dueAt, alertMinutes: 10 }
@@ -171,6 +202,21 @@ it('A result counts as evidence only when it is the record the operation named (
   const place = { kind: "map-place", providerId: "osm", providerRevision: "1", attribution: "Map data", label: "Cafe", coordinate: { latitude: 52.5, longitude: 13.4 } }
   assert.deepStrictEqual(shown(maps, { kind: "maps_read_selected", version: 1, target: mapsTarget, fields: place }), applied)
   assert.isUndefined(shown(maps, { kind: "maps_read_selected", version: 1, target: { ...mapsTarget, revision: "4" }, fields: place }))
+
+  const route = {
+    kind: "map-route", providerId: "osm", providerRevision: "1", attribution: "a".repeat(2_000), from: place.coordinate, to: { latitude: -90, longitude: 180 },
+    mode: "walk", distanceMeters: 100_000_000, durationSeconds: 0, traffic: "none",
+  }
+  const routeTarget = { ...mapsTarget, kind: "map-route" }
+  const routeRead = (routeFields: Record<string, unknown>) => shown({ type: "maps_read_selected", target: routeTarget }, { kind: "maps_read_selected", version: 1, target: routeTarget, fields: routeFields })
+  assert.deepStrictEqual(routeRead(route), applied)
+  assert.deepStrictEqual(shown(maps, { kind: "maps_read_selected", version: 1, target: mapsTarget, fields: { ...place, label: "c".repeat(300), providerId: "p".repeat(80) } }), applied)
+  for (const beyond of [{ ...route, attribution: "a".repeat(2_001) }, { ...route, distanceMeters: 100_000_001 }, { ...route, providerRevision: "r".repeat(129) }, { ...route, attribution: "  " }])
+    assert.isUndefined(routeRead(beyond))
+  assert.isUndefined(shown(maps, { kind: "maps_read_selected", version: 1, target: mapsTarget, fields: { ...place, label: "c".repeat(301) } }))
+  const wide = { ...place, attribution: "€".repeat(2_000) }
+  assert.deepStrictEqual(shown(maps, { kind: "maps_read_selected", version: 1, target: mapsTarget, fields: wide }), applied)
+  assert.isUndefined(shown(maps, { kind: "maps_read_selected", version: 1, target: mapsTarget, fields: { ...wide, label: "€".repeat(300), providerRevision: "€".repeat(128), providerId: "€".repeat(80) } }))
 
   const availability = { type: "calendar_availability", start: "2026-11-24T00:00:00.000Z", end: "2026-11-25T00:00:00.000Z", timeZone: "UTC" }
   const busy = [{ start: "2026-11-24T15:00:00.000Z", end: "2026-11-24T16:00:00.000Z", allDay: false, tentative: false }]

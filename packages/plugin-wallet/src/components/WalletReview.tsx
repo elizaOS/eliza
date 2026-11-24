@@ -17,13 +17,6 @@ export function WalletReview({ runtime, details, decide }: WalletReviewProps) {
   const [submitting, start] = useTransition();
   const [error, setError] = useState("");
   const matching = state?.intent.intentId === details.intent.intentId && state?.intent.commitment === details.intent.commitment;
-  const approving = {
-    type: "approveWallet" as const,
-    intentId: details.intent.intentId,
-    commitment: details.intent.commitment,
-    wallTime: Date.now(),
-    ownerConfirmed: true,
-  };
   const ready = matching && !submitting;
   const outcome = matching && (state?.phase === "WalletInFlight" || state?.phase === "WalletUncertain") ? "Awaiting transaction outcome"
     : matching && state?.phase === "WalletSigning" ? "Preparing transaction"
@@ -31,10 +24,16 @@ export function WalletReview({ runtime, details, decide }: WalletReviewProps) {
     : matching && state?.phase === "WalletFinal" ? "Final"
     : "";
   const choose = (decision: WalletOwnerDecision["decision"]) => {
+    if (!ready || state?.phase !== "AwaitingWalletApproval") return;
+    const { intentId, commitment } = details.intent;
+    if (decision === "approve" && !can({ type: "approveWallet", intentId, commitment, wallTime: Date.now(), ownerConfirmed: true })) {
+      setError("This wallet review expired.");
+      return;
+    }
     setError("");
     start(async () => {
       try {
-        await decide({ decision, intentId: details.intent.intentId, commitment: details.intent.commitment });
+        await decide({ decision, intentId, commitment });
       } catch {
         setError("The transfer could not be submitted. Refresh the review.");
       }
@@ -68,7 +67,7 @@ export function WalletReview({ runtime, details, decide }: WalletReviewProps) {
       {state.phase !== "AwaitingWalletApproval" ? null : (
         <CardFooter>
           <Button variant="outline" disabled={!ready || !can({ type: "declineWallet" })} onClick={() => choose("decline")}>Decline</Button>
-          <Button disabled={!ready || !can(approving)} onClick={() => choose("approve")}>{submitting ? "Submitting…" : "Approve and send"}</Button>
+          <Button disabled={!ready} onClick={() => choose("approve")}>{submitting ? "Submitting…" : "Approve and send"}</Button>
         </CardFooter>
       )}
     </Card>
