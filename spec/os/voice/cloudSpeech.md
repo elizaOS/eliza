@@ -153,7 +153,15 @@ pure def stepTheSessionOpensInOrder(before: CloudSpeech, after: CloudSpeech): bo
 ### Capture starts muted, and listens only once the microphone slot is granted with RECORD_AUDIO
 
 Unmuting reserves the slot as a live capture; a refused slot ends the
-session, as in develop. Each granted capture gets the next number; muting
+session, as in develop. A start that is not muted and has `RECORD_AUDIO`
+reserves the slot and opens the microphone at once, so the device's
+start-up is off the path to listening: until capture listens, each frame it
+reads is zeroed and dropped, and none is sent, kept or shown as a level.
+Unmuting then answers from that held slot; a busy slot at the start leaves
+unmuting to reserve it as before. A mute, a draft request, a focus pause or
+a start that settles muted closes it, and every end of the session closes
+it, freeing the slot before a failure is reported so that a fallback finds
+it free. Each granted capture gets the next number; muting
 releases the slot and keeps it, so a turn the capture began may finish.
 Muting a session paused by a focus loss also ends the pause.
 
