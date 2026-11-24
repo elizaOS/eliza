@@ -75,7 +75,7 @@ export interface ManifestRow {
   readonly flavor: string
   readonly name: string
   readonly sha256: string
-  readonly signer: string
+  readonly signer: string | null
 }
 
 export interface ArchiveFile {
@@ -158,6 +158,7 @@ interface Artifact {
 }
 
 const VARIANT = /^[a-z][A-Za-z0-9]*$/
+const APK_NAME = /^([a-z][A-Za-z0-9]*)-(debug|release|release-unsigned)\.apk$/
 const GRADLE_ARGUMENT = /^-P[A-Za-z_][A-Za-z0-9_.]*=[A-Za-z0-9_.,:+-]*$/
 const RECORD_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*\.json$/
 const ENVIRONMENT_NAME = /^[A-Z][A-Z0-9_]*$/
@@ -496,7 +497,7 @@ effect function manifestRows(file: string) {
   for (const row of raw) {
     if (typeof row !== "object" || row === null) continue
     const [flavor, name, sha256, signer] = ["flavor", "name", "sha256", "signer"].map((key) => Reflect.get(row, key))
-    if (typeof flavor === "string" && typeof name === "string" && typeof sha256 === "string" && typeof signer === "string") rows.push({ flavor, name, sha256, signer })
+    if (typeof flavor === "string" && typeof name === "string" && typeof sha256 === "string" && (typeof signer === "string" || signer === null)) rows.push({ flavor, name, sha256, signer })
   }
   return rows
 }
@@ -506,9 +507,17 @@ effect function publishedRow(run: AndroidBuildRun, row: ManifestRow, apks: reado
   const path = try Path.Path
   const file = path.join(run.work, NEXT, row.name)
   const listed = apks.includes(row.name)
-  const fresh = listed && sha256Hex((files.readFile(file) catch () => new Uint8Array())) === row.sha256
+  const [, fileFlavor = "", build] = APK_NAME.exec(row.name) ?? []
   const signer = listed ? (readApkSignerDigest(file, { env: run.environment }) catch () => undefined) : undefined
-  const published: PublishedApk = { flavor: row.flavor, apk: parseDigest(row.sha256), signer: signer !== undefined && signer === row.signer ? parseDigest(signer) : { tag: "NotADigest" }, fresh }
+  const fresh = listed && sha256Hex((files.readFile(file) catch () => new Uint8Array())) === row.sha256 && (signer ?? null) === row.signer
+  const published: PublishedApk = {
+    flavor: row.flavor,
+    fileFlavor,
+    build: build === "debug" ? "DebugApk" : "ReleaseApk",
+    apk: parseDigest(row.sha256),
+    signer: signer === undefined ? { tag: "NotADigest" } : parseDigest(signer),
+    fresh,
+  }
   return published
 }
 
@@ -537,7 +546,7 @@ effect function verifyAndroidBuild(run: AndroidBuildRun) {
   const detail = !source.held ? source.detail
     : code !== 0 ? `The verify command exited with ${code}`
     : !clean ? "An APK of a host without local inference carries a model, inference library, model server or model directory"
-    : `${APK_MANIFEST} does not list each variant's fresh APK once with one shared signer, or the staged payload changed`
+    : `${APK_MANIFEST} does not list each variant's own fresh APK of this build once with one shared signer, or none for an unsigned release, or the staged payload changed`
   return try send(run, { type: "verify", report: { verifierSucceeded: code === 0 && clean, rows: published, sourceAtPin: source.held, payload } }, detail)
 }
 

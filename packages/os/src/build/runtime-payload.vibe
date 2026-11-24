@@ -1,7 +1,5 @@
 // spec/os/build/runtimePayload.md, "Story: Ship the agent with a pinned Node runtime"; spec/os/build/runtimePayload.md, "Story: Ship only the files my build listed"
 import { HttpClient } from "effect/http"
-import { ChildProcess } from "effect/process"
-import { ChildProcessSpawner } from "effect/process/ChildProcessSpawner"
 import {
   allAbis,
   contentAllowed,
@@ -32,7 +30,6 @@ import { BundleFacts, NodeLockFile, NodeRuntimeBuild, type AndroidAbi } from "./
 module node {
   import { createHash } from "node:crypto"
   import { lstat, readdir } from "node:fs/promises"
-  import { availableParallelism } from "node:os"
   import { join } from "node:path"
   import { fileURLToPath } from "node:url"
   import { inflateRawSync } from "node:zlib"
@@ -48,11 +45,6 @@ module node {
   /** @throws {never} */
   export function sha256Hex(bytes: Uint8Array): string {
     return createHash("sha256").update(bytes).digest("hex")
-  }
-
-  /** @throws {never} */
-  export function cpuCount(): number {
-    return availableParallelism()
   }
 
   export function filePath(url: string): string {
@@ -131,7 +123,7 @@ module node {
     return false
   }
 }
-import { cpuCount, filePath, isAndroidExecutable, isElfFor, listRegularFiles, sha256Hex, zipEntry, type Listing } from node
+import { filePath, isAndroidExecutable, isElfFor, listRegularFiles, sha256Hex, zipEntry, type Listing } from node
 
 export type { AndroidAbi }
 
@@ -178,30 +170,11 @@ interface StagedRuntimePayload {
   readonly workflowWorker: WorkflowWorker | undefined
 }
 
-export interface BuildNodeRuntime {
-  readonly source: string
-  readonly ndk: string
-  readonly abi: AndroidAbi
-  readonly output: string
-  readonly jobs?: number
-  readonly lock?: string
-}
-
-interface BuiltNodeRuntime {
-  readonly dir: string
-  readonly abi: AndroidAbi
-  readonly version: string
-  readonly sha256: string
-  readonly size: number
-}
-
 error PayloadInputInvalid { reason: string }
 export error PayloadRefused { reason: PayloadRefusal; subject: string }
 error RuntimeFetchFailed { url: string; message: string }
 error RuntimeNotAndroidExecutable { abi: AndroidAbi; path: string }
 error PayloadOutputExists { output: string }
-error NodeBuildRefused { reason: string }
-error NodeBuildFailed { command: string; code: number; output: string }
 
 export const INVENTORY_ASSET = "assets/agent/inventory.json"
 const WORKER_RUNTIME_DIR = "agent/workflow-worker"
@@ -210,7 +183,6 @@ const ANDROID_MAIN = "android/app/src/main"
 export const INFERENCE_LIBRARY = /^(?:lib(?:llama|llama-common|ggml|mtmd|eliza-llama|elizainference)[^/]*\.so(?:\.\d[^/]*)?|llama-server|llama-omnivoice-server)$/
 const LIBRARY_NAME = /^lib[A-Za-z0-9_.+-]+\.so$/
 const ASSET_NAME = /^[A-Za-z0-9][A-Za-z0-9_.-]*$/
-const CONFIGURE_ARCH: Readonly<Record<AndroidAbi, string>> = { "arm64-v8a": "arm64", x86_64: "x86_64" }
 
 interface Staged {
   readonly file: StagedFile
@@ -467,43 +439,4 @@ export effect function stageRuntimePayload(options: StageRuntimePayload) {
     workflowWorker: named.tag === "NamedWorker" ? { runtimeDir: named.runtimeDir, executable: named.executable, sha256: named.sha256 } : undefined,
   }
   return result
-}
-
-effect function run(command: string, args: readonly string[], cwd: string) {
-  const spawner = try ChildProcessSpawner
-  return try scoped(effect {
-    const child = try spawner.spawn(ChildProcess.make(command, [...args], { cwd, extendEnv: true, stdin: "ignore" }))
-    const [stdout, stderr] = try.all [Stream.mkString(Stream.decodeText(child.stdout)), Stream.mkString(Stream.decodeText(child.stderr))]
-    const code: number = try child.exitCode
-    if (code !== 0) throw new NodeBuildFailed({ command: [command, ...args].join(" "), code, output: `${stdout}${stderr}`.slice(-4000) })
-  })
-}
-
-export effect function buildNodeRuntime(options: BuildNodeRuntime) {
-  const files = try FileSystem.FileSystem
-  const path = try Path.Path
-  const lock = try readLock(options.lock)
-  const header = try files.readFileString(path.join(options.source, "src", "node_version.h"))
-  const part = (name: string) => new RegExp(`#define NODE_${name}_VERSION (\\d+)`).exec(header)?.[1]
-  const version = `${part("MAJOR")}.${part("MINOR")}.${part("PATCH")}`
-  if (version !== lock.version) throw new NodeBuildRefused({ reason: `The Node source is ${version}; the lock pins ${lock.version}` })
-  const revision = /^Pkg\.Revision\s*=\s*(\S+)\s*$/m.exec(try files.readFileString(path.join(options.ndk, "source.properties")))?.[1]
-  if (revision !== lock.ndk) throw new NodeBuildRefused({ reason: `The NDK is ${revision ?? "unknown"}; the lock pins ${lock.ndk}` })
-  const destination = path.resolve(options.output)
-  if (try files.exists(destination)) throw new PayloadOutputExists({ output: destination })
-  try run("./android-configure", [options.ndk, String(lock.apiLevel), CONFIGURE_ARCH[options.abi]], options.source)
-  try run("make", [`-j${options.jobs ?? cpuCount()}`], options.source)
-  const bytes = try files.readFile(path.join(options.source, "out", "Release", "node"))
-  if (!isAndroidExecutable(bytes, options.abi)) throw new RuntimeNotAndroidExecutable({ abi: options.abi, path: path.join(options.source, "out", "Release", "node") })
-  const sha256 = sha256Hex(bytes)
-  try files.makeDirectory(path.dirname(destination), { recursive: true })
-  const scratch = try files.makeTempDirectory({ directory: path.dirname(destination), prefix: `${path.basename(destination)}.staging-` })
-  try ensuring(effect {
-    try files.writeFile(path.join(scratch, nodeLibraryName), bytes, { flag: "wx" })
-    try files.chmod(path.join(scratch, nodeLibraryName), 0o755)
-    try files.writeFileString(path.join(scratch, "node-runtime.json"), `${JSON.stringify({ schema: 1, abi: options.abi, version: lock.version, ndk: lock.ndk, apiLevel: lock.apiLevel, sha256 }, null, 2)}\n`, { flag: "wx" })
-    try files.rename(scratch, destination)
-  }, Effect.ignore(files.remove(scratch, { recursive: true, force: true })))
-  const built: BuiltNodeRuntime = { dir: destination, abi: options.abi, version: lock.version, sha256, size: bytes.byteLength }
-  return built
 }

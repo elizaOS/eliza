@@ -1,5 +1,5 @@
 // spec/os/build/runtimePayload.md, "Story: Ship the agent with a pinned Node runtime"; spec/os/build/sourceIntegrity.md, "Story: Build only from the committed tree I pinned"; spec/os/build/androidHost.md, "Story: Generate my app's Android host from data"; spec/os/build/androidBuild.md, "Story: Replace published APKs only with this run's verified set"
 export { generateAndroidHost } from "./android-host.vibe"
 export { buildAndroid } from "./android-build.vibe"
-export { buildNodeRuntime, stageRuntimePayload } from "./runtime-payload.vibe"
+export { stageRuntimePayload } from "./runtime-payload.vibe"
 export { exportCommittedSources, verifyCommittedWorkspace } from "./source-integrity.vibe"
