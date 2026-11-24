@@ -11,10 +11,17 @@ const upstream = (path: string) => ({ root: "upstream", path })
 const MAIN = "android/AndroidManifest.xml"
 const manifest = (permissions: readonly string[], application = "") =>
   `<manifest xmlns:android="http://schemas.android.com/apk/res/android">${permissions.map((name) => `<uses-permission android:name="android.permission.${name}"/>`).join("")}<application>${application}</application></manifest>\n`
+const AGENT_HOST_FILE = {
+  schema: 1,
+  service: "example.fixture.host.FixtureAgentService",
+  notification: { channel: "Agent", title: "Fixture", text: "Your agent is running", failure: { channel: "Agent alerts", title: "Fixture stopped", text: "Open the app to check your agent" } },
+  routes: [{ method: "GET", path: "/api/status" }],
+  model: { backend: "none" },
+}
 const AGENT_FILES: Tree = {
-  "agent/host.json": JSON.stringify({ schema: 1, service: "example.fixture.host.FixtureAgentService" }),
-  "agent/character.json": JSON.stringify({ name: "Fixture" }),
-  "agent/policy.json": JSON.stringify({ schema: 1 }),
+  "agent/host.json": JSON.stringify(AGENT_HOST_FILE),
+  "agent/character.json": JSON.stringify({ name: "Fixture", system: "Answer briefly." }),
+  "agent/policy.json": JSON.stringify({ schema: 1, actions: { allowed: ["REPLY"] }, plugins: { load: ["inbox"] } }),
 }
 
 const AGENT_HOST = {
@@ -167,6 +174,13 @@ it.effect('Generate my app\'s Android host from data: an agent host gets the age
     }
     assert.strictEqual(((try files.stat(path.join(output, "gradlew"))).mode & 0o777), 0o755)
     assert.include(try text("gradle/wrapper/gradle-wrapper.properties"), "distributionSha256Sum=20f1b1176237254a6fc204d8434196fa11a4cfb387567519c61556e8710aed78\n")
+
+    const unadmitted = try consumerWith("agent-host-unadmitted", { ...AGENT_HOST.tree, "agent/host.json": JSON.stringify({ ...AGENT_HOST_FILE, embeddings: "local" }) })
+    const refused = (effect {
+      try generateAndroidHost({ consumerRoot: unadmitted, output: path.join(unadmitted, "android/host"), identity: IDENTITY, profile: AGENT_HOST.profile })
+      return "generated"
+    } catch (error) => `${tagOf(error)}: ${(error as { readonly reason?: string }).reason ?? ""}`)
+    assert.strictEqual(refused, "HostInputRefused: The agent model, embeddings, retention or environment are not ones the agent admits")
   }
 })
 
