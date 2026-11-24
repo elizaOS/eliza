@@ -26,6 +26,7 @@ storybook-static/
 *.d.vibe.ts
 packages/*/src/**/*.d.ts
 .vibelang-sidecar-*
+.cli-test-*/
 build/
 !spec/**/build/
 !packages/*/src/**/build/
