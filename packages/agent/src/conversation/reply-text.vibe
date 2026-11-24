@@ -81,6 +81,11 @@ const commandVerb = new Set([
   "toggle", "translate", "turn", "unlock", "unmute", "update", "wake", "write",
 ])
 
+// spec/agent/conversation/planning.md, "A directly routed call acknowledges once if it is still running after 400 milliseconds"
+export function requestedNoCue(request: string): boolean {
+  return /\b(?:(?:no|without|skip)(?:\s+(?:an?|any|the))?\s+(?:acknowledg(?:e?ment)s?|cues?|preamble)|(?:don['’]t|do not|no need to|never)\s+(?:acknowledge|speak|say anything)|(?:stay|keep|be)\s+(?:quiet|silent)|silently|quietly)\b/iu.test(request)
+}
+
 function clauseWords(clause: string): string[] {
   return [...clause.matchAll(/[\p{L}'‘’ʼ]+/gu)].map((match) => match[0].toLowerCase().replace(/['‘’ʼ]/gu, ""))
 }
