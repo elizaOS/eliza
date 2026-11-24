@@ -1,15 +1,17 @@
 // spec/agent/conversation/conversations.md, "Messages and model-call log rows arrive only in a published conversation"; spec/agent/plugins/profile.md, "The agent is ready only when every allowed action is registered"; spec/agent/conversation/turns.md, "Every turn ends once, storing its reply with its kind, or answering that no reply exists"; spec/agent/conversation/turns.md, "The heard part and the unheard remainder together are the whole reply"; spec/agent/conversation/turnContext.md, "Story: Tell the agent what my screen shows, and nothing more"; spec/agent/conversation/turnContext.md, "A location is kept on any screen only when each coordinate, its accuracy and its time are in range, and it counts within the 2,048 bytes"; spec/agent/conversation/turnContext.md, "A Browser page is kept only when every field is valid, it is the Browser tab the kept observation selects at that revision on a screen not sensitive, and it fits 16,384 bytes"; spec/agent/deviceActions/index.md, "A later turn of the same conversation learns at most six outcomes of its own requests: what changed, and what ended without running"; spec/agent/conversation/planning.md, "Story: Ask the agent to do something and hear what happened"; spec/agent/conversation/planning.md, "Story: Ask what time it is and hear my own clock"; spec/agent/conversation/planning.md, "Story: Let my plugins learn from a finished turn"; spec/agent/conversation/planning.md, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history"; spec/agent/conversation/planning.md, "A call this message serves in another place is refused before it runs, and is no step of the turn"; spec/agent/conversation/planning.md, "The model reads what was said in the conversation, in a window taken once for the whole turn"; spec/agent/conversation/planning.md, "What the person said earlier reaches the model with the minute it was said, on the turn's clock"; spec/core/context.md, "A host with no reviewer defers old history by position, in fixed steps from a user message"; spec/core/secretSession.md, "A conversation with stable references gives a value the same reference in every turn, and restores only references its session wrote"; spec/agent/conversation/turns.md, "A failed reply names the owner's fix, and only a live rate limit carries its wait"; spec/agent/conversation/turns.md, "A turn that failed before any reply, for no cause the binding named, is stored as a provider issue"; spec/agent/conversation/planning.md, "Attached documents share a bounded text allowance and images stay images"
 // spec/agent/conversation/turns.md, "An interrupted reply keeps proof of an applied effect"
+// spec/agent/conversation/planning.md, "History includes a short reference to earlier attachments in this conversation"
 import {
   type Action, type ActionResult, type AgentRuntime, type GenerateTextParams, type HandlerCallback, type IMessageService,
   type Media, type Memory, type MessageProcessingOptions, type MessageProcessingResult, type RoleGateRole, type RoomHandlerLease, type State,
   executePlannedToolCall, getTrajectoryContext, historyWindowNotice, readSystemNotice, runWithTrajectoryContext, RunTerminalOwner, ServiceType, stampedMessage, stampYear, toElizaError, trackPostDeliveryTask, windowHistory, withActionGatePolicy, withRoomDeliverySettlement, wrapExternalContent,
 } from "@elizaos/core"
 import { revertedEffectReceiptIds, utf8ByteLength, type EffectReceipt } from "@elizaos/core/protocol"
-import { attachedDocumentBytes, attachedRead, documentTextFits, hostNoteLabels, offersContextRestore, stampedForTheModel, type AttachedKind } from "../../gen/agent__conversation__planning.ts"
+import { attachedDocumentBytes, attachedRead, documentTextFits, hostNoteLabels, offersContextRestore, retainsDialogueRow, stampedForTheModel, type AttachedKind } from "../../gen/agent__conversation__planning.ts"
 import { carriesCutOffEffect, replyQuoteChars, storedFailureName } from "../../gen/agent__conversation__turns.ts"
 import type { BindingView, LastCloudFailure } from "../models/binding.vibe"
 import { groundedEventReply, groundedTimeReply, turnClock } from "./clock.vibe"
+import { attachmentReference, dialogueText } from "./dialogue-history.vibe"
 import { textForTurn } from "./heard.vibe"
 import { storedText } from "./history.vibe"
 import { ModelRefusal } from "../models/chat.vibe"
@@ -87,7 +89,7 @@ export function ownerMessageService(
   for (const action of [reply, ignore, none])
     runtime.registerAction(action)
   return {
-    shouldRespond: (_runtime, message) => ({ shouldRespond: Boolean(message.content.text?.trim()), skipEvaluation: true, reason: "direct_message" }),
+    shouldRespond: (_runtime, message) => ({ shouldRespond: Boolean(message.content.text?.trim() || message.content.attachments?.length), skipEvaluation: true, reason: "direct_message" }),
     handleMessage: (_runtime, message, callback, options) => respond(runtime, message, roles, actionGate, accountFailure, launchZone, callback, options),
     deleteMessage: (_runtime, message) => message.id ? runtime.deleteMemory(message.id) : Promise.resolve(),
     clearChannel: async () => { throw new Error("This host does not expose conversation clearing") },
@@ -99,7 +101,6 @@ const unreadable = "[This message's stored text could not be read back.]"
 const storedAtOf = (memory: Memory) => typeof memory.createdAt === "number" && Number.isSafeInteger(memory.createdAt) ? memory.createdAt : 0
 
 async function spoken(runtime: AgentRuntime, memory: Memory): Promise<string> {
-  if (memory.entityId === runtime.agentId && readSystemNotice(memory.content.systemNotice) !== undefined) return ""
   const read = await storedText(runtime.adapter, memory).then((text) => ({ text }), () => undefined)
   if (read === undefined) return unreadable
   return memory.entityId === runtime.agentId ? textForTurn(memory, read.text) : read.text
@@ -293,21 +294,33 @@ async function respond(
         signal.throwIfAborted()
         const recent = await runtime.getMemories({ tableName: "messages", roomId: message.roomId, count: historyReadCount, orderBy: "createdAt", orderDirection: "desc" })
         const sources = (await Promise.all(recent.slice().reverse().map(async (previous, position) => {
-          const content = previous.id === message.id ? "" : await spoken(runtime, previous)
-          return content ? [{ id: previous.id ?? "", fromUser: previous.entityId !== runtime.agentId, text: content, position, storedAt: storedAtOf(previous) }] : []
+          const fromUser = previous.entityId !== runtime.agentId
+          if (previous.id === message.id || previous.roomId !== message.roomId || (!fromUser && readSystemNotice(previous.content.systemNotice) !== undefined)) return []
+          const content = await spoken(runtime, previous)
+          const reference = attachmentReference(previous.content.attachments)
+          return retainsDialogueRow(content.length, reference !== undefined)
+            ? [{ id: previous.id ?? "", fromUser, text: content, position, storedAt: storedAtOf(previous),
+              ...(reference === undefined ? {} : { attachmentReference: reference }) }]
+            : []
         }))).flat()
         const earlier = recent.length < historyReadCount ? 0 : Math.max(0, await runtime.countMemories(message.roomId, false, "messages") - recent.length)
         const window = windowHistory(sources, asked, { earlier, readCount: recent.length, positions: sources.map(({ position }) => position) })
         const clockYear = stampYear(clock.instant, clock.zone)
-        const history: ChatMessage[] = window.shown.map(({ fromUser, text, storedAt }) => ({
-          role: fromUser ? "user" : "assistant", content: stampedForTheModel(fromUser, storedAt) ? stampedMessage(text, storedAt, clock.zone, clockYear) : text,
-        }))
+        const history: ChatMessage[] = window.shown.map((row) => {
+          const text = dialogueText(row)
+          return {
+            role: row.fromUser ? "user" : "assistant",
+            content: stampedForTheModel(row.fromUser, row.storedAt) ? stampedMessage(text, row.storedAt, clock.zone, clockYear) : text,
+          }
+        })
         const actions = offeredActions(runtime, message, actionGate)
         const attachments = attachmentParts(await Promise.all((message.content.attachments ?? []).map((media) => readAttachment(runtime, media))))
         const messages: ChatMessage[] = [...history, said(attachments.parts, asked, [
           options?.replyTarget === undefined ? undefined : await replyQuote(runtime, options.replyTarget),
           contextNote(message), clock.line, options?.deviceContext, ...actionNotes(runtime, message, actions), options?.taskContext,
-          window.windowed ? historyWindowNotice(window, offersContextRestore(actions.length) && window.deferred.length > 0 ? { kind: "restoreContext" } : undefined) : undefined,
+          window.windowed ? historyWindowNotice({
+            deferred: window.deferred, recalled: window.recalled.map((row) => ({ ...row, text: dialogueText(row) })),
+          }, offersContextRestore(actions.length) && window.deferred.length > 0 ? { kind: "restoreContext" } : undefined) : undefined,
         ])]
         const character = runtime.character
         const examples = (character.messageExamples ?? []).map(({ examples }) =>
