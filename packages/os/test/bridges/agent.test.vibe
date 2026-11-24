@@ -3,6 +3,20 @@ import { assert, it } from "@effect/vitest"
 import { BridgeUnavailable, MalformedReply, rejectionCode } from "../../src/bridges/bridge.vibe"
 import { agentClient } from "../../src/bridges/agent.vibe"
 
+module node {
+  import { execFileSync } from "node:child_process"
+  import path from "node:path"
+  import { orgJsonAdapterClasspath } from "../drivers/jvm-adapter.ts"
+
+  const MAIN = "ai.eliza.os.agent.NativeAsk"
+  const java = process.env.JAVA_HOME ? path.join(process.env.JAVA_HOME, "bin", "java") : "java"
+
+  export async function nativeAsk(): Promise<unknown> {
+    return JSON.parse(execFileSync(java, ["-cp", await orgJsonAdapterClasspath(MAIN), MAIN], { encoding: "utf8", timeout: 120_000 }))
+  }
+}
+import { nativeAsk } from node
+
 module android {
   import { CapacitorException } from "@capacitor/core"
   import type { AgentEvents, AgentRoute, AgentStatus, ElizaAgentPlugin } from "../../src/bridges/definitions/agent.ts"
@@ -177,3 +191,12 @@ it.live("Stream a reply in order, stop it once, and hear my screen's live events
     },
   ))
 })
+
+it.effect("Native code asks the agent on its own route list and carries the device headers the runtime client carries (spec/os/agentService/channel.md, \"Story: Ask the agent only on the routes my app allows\"; spec/os/agentService/channel.md, \"Only the device headers and client id the runtime client carries cross the channel\")", effect () => {
+  const asked = try tryPromise(() => nativeAsk())
+  try Effect.try(() => assert.deepStrictEqual(asked, {
+    described: { "x-eliza-device-id": "device-1", "x-eliza-device-key": "a".repeat(64), "x-eliza-device-capabilities": "notes.query.v1" },
+    credential: "ROUTE_REFUSED",
+    bare: {},
+  }))
+}, 180_000)
