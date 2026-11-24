@@ -14,7 +14,7 @@ import { activityLabel, admitRoute } from "@elizaos/agent"
 import { changeGoal, goalCheckinKind, listGoals, deliverGoalCheckin } from "../src/goals.vibe"
 import { heardReply, replyKind } from "../src/replies.vibe"
 import { answerReminder, checkOriginalMessage, createReminder, deliverReminder, escalateReminder, listReminders, moveReminder, ownerRemindersAction, reminderKind, reminderReply, remindersContext, renameReminder, retractRecentSave, setReminderIntensity } from "../src/reminders.vibe"
-import { onAgent } from "../src/host.vibe"
+import { Model, onAgent } from "../src/host.vibe"
 import { deliverEscalation, escalationKind } from "../src/escalation.vibe"
 import { changeRoutine, createRoutine, deleteRoutine, deliverRoutine, routineKind, routineNudgeKind, routineRoutes, updateRoutine } from "../src/routines.vibe"
 import { ownerCalendarZone, ownerClockAt, ownerFacts, recordTravel, stateOwnerZone } from "../src/timezone.vibe"
@@ -103,11 +103,12 @@ it.effect('An answer to "when should I remind you?" finishes the reminder that d
   }
 })
 
-it.effect('The owner\'s message is checked again with no output limit on the model (spec/assistant/reminders.md, "The original message is checked before a reminder is written")', effect () => {
-  const asked: object[] = []
-  const runtime = { agentId: "agent-1", useModel: async (_model: unknown, params: object) => { asked.push(params); return check({}) } } as unknown as IAgentRuntime
+it.effect('The owner\'s message is checked again with no output limit on the model and with low reasoning (spec/assistant/reminders.md, "The original message is checked before a reminder is written")', effect () => {
+  const asked: Array<{ readonly providerOptions?: unknown }> = []
+  const runtime = { agentId: "agent-1", useModel: async (_model: unknown, params: { readonly providerOptions?: unknown }) => { asked.push(params); return check({}) } } as unknown as IAgentRuntime
   const checked = try tryPromise(() => onAgent(runtime, checkOriginalMessage("remind me in 20 minutes to call the dentist")))
-  try equal([checked?.requested, asked.map((params) => Object.keys(params).sort())], [true, [["prompt", "system"]]])
+  try tryPromise(() => onAgent(runtime, effect { return try (try Model).complete("Write the owner's day.", "No events.") }))
+  try equal([checked?.requested, asked.map((params) => Object.keys(params).sort()), asked.map((params) => params.providerOptions)], [true, [["prompt", "providerOptions", "system"], ["prompt", "system"]], [{ eliza: { thinking: "low" } }, undefined]])
 })
 
 it.effect('A save that failed and then succeeded is reported saved, and one that never proved itself is not (spec/assistant/replies.md, "A claim that something was not done needs a cited result that failed and was not superseded"; spec/assistant/replies.md, "A claim that something was done needs a result that applied it to that record")', effect () => {

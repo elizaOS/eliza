@@ -74,7 +74,7 @@ export service Scheduler {
 }
 
 export service Model {
-  complete(system: string, prompt: string): string!ModelUnavailable
+  complete(system: string, prompt: string, thinking?: "low" | "off"): string!ModelUnavailable
 }
 
 export service Presenter {
@@ -210,9 +210,9 @@ function runtimeScheduler(runtime: IAgentRuntime): Scheduler.Shape {
 
 function runtimeModel(runtime: IAgentRuntime): Model.Shape {
   return {
-    effect complete(system, prompt) {
+    effect complete(system, prompt, thinking) {
       const text = try tryPromise({
-        try: () => runtime.useModel(ModelType.TEXT_SMALL, { system, prompt }),
+        try: () => runtime.useModel(ModelType.TEXT_SMALL, thinking === undefined ? { system, prompt } : { system, prompt, providerOptions: { eliza: { thinking } } }),
         catch: (cause) => new ModelUnavailable({ reason: cause instanceof Error ? cause.message : String(cause) }),
       })
       if (typeof text !== "string") throw new ModelUnavailable({ reason: "The model returned no text" })
