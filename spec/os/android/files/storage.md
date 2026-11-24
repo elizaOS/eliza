@@ -172,6 +172,32 @@ pure def lawWrittenRowMatchesItsReceipt(op: FilesOp, row: FilesRowCheck, result:
 }
 ```
 
+### A move into another volume takes the copy path, and its copy is written and cleaned up on that volume
+
+A copy or move may name a destination folder on another mounted volume. The
+destination resolves as a path of that volume, and every copied or moved row
+names its new path there. Android refuses a rename across volumes, so such a
+move always copies, checks and then removes the source as above. A copy that
+fails part way is removed again from the destination volume, the only place
+it was written.
+
+```quint
+type VolumeTransfer = { crossVolume: bool, renameAccepted: bool, copied: CopyResult, sourceRemoved: bool }
+pure def transferMovePath(transfer: VolumeTransfer): MovePath =
+  if (not(transfer.crossVolume) and transfer.renameAccepted) RenameInPlace else CopyThenRemove
+pure def transferReceipt(transfer: VolumeTransfer): MoveReceipt =
+  moveReceipt(EntryComplete, transferMovePath(transfer), transfer.copied, transfer.sourceRemoved)
+pure val crossComplete: VolumeTransfer = { crossVolume: true, renameAccepted: false, copied: CopyComplete, sourceRemoved: true }
+pure val transferValues = Set(crossComplete, { ...crossComplete, sourceRemoved: false }, { ...crossComplete, copied: CopyCleanFailure },
+  { ...crossComplete, copied: CopyLeftRemnant }, { ...crossComplete, renameAccepted: true }, { ...crossComplete, crossVolume: false, renameAccepted: true })
+pure def lawACrossVolumeMoveTakesTheCopyPath(transfer: VolumeTransfer): bool =
+  transfer.crossVolume implies transferMovePath(transfer) == CopyThenRemove
+pure def lawACrossVolumeMoveIsAcknowledgedOnlyAfterACompleteCopy(transfer: VolumeTransfer): bool =
+  (transfer.crossVolume and transferReceipt(transfer).result == WriteMoved) implies (transfer.copied == CopyComplete and transfer.sourceRemoved)
+pure def lawAFailedCrossVolumeCopyLeavesNoCompleteCopy(transfer: VolumeTransfer): bool =
+  (transfer.crossVolume and transfer.copied != CopyComplete) implies transferReceipt(transfer).destination != EntryComplete
+```
+
 ## Story: Get back exactly what I trashed
 
 > As the owner, I want a trashed file to keep the way back to where it was,
@@ -313,4 +339,54 @@ pure def stepEraseIsReportedOnlyWhenDataAndRecordAreGone(before: NativeTrashCust
   via == "eraseForever" implies ((after.answer == ErasedForever) iff (after.payload == EntryMissing and after.record == NoRecord))
 pure def sometimesErased(s: NativeTrashCustody): bool = s.answer == ErasedForever
 pure def sometimesErasureLeavesItsRecord(s: NativeTrashCustody): bool = s.answer == EraseFailed and s.record != NoRecord
+```
+
+## Story: Browse my storage as I asked
+
+> As the owner, I want to see hidden files only when I ask for them, never
+> the app's own Trash folder, and an honest size for each category, so that
+> browsing never surprises me or hides what takes up space.
+
+### A listing or folder walk shows dot entries only when asked, and never the Trash under any spelling
+
+A folder listing and the folder filter's walk skip dot entries unless the
+owner asks for hidden entries, and a folder's child count follows the same
+choice. The Trash folder at the volume root is never listed, counted or
+walked into, whatever the case of its name: shared storage ignores case, so a
+`.TRASH-x` another app made is the Trash. A dot folder elsewhere named like
+the Trash is an ordinary hidden folder.
+
+```quint
+type ListedEntry = { dotName: bool, trashName: bool, atVolumeRoot: bool }
+pure def entryShown(listed: ListedEntry, hidden: bool): bool =
+  not(listed.dotName) or (hidden and not(listed.trashName and listed.atVolumeRoot))
+pure val plainEntry: ListedEntry = { dotName: false, trashName: false, atVolumeRoot: true }
+pure val listedValues = Set(plainEntry, { ...plainEntry, dotName: true }, { ...plainEntry, dotName: true, trashName: true },
+  { dotName: true, trashName: true, atVolumeRoot: false })
+pure def lawDotEntriesAreShownOnlyWhenAsked(listed: ListedEntry, hidden: bool): bool =
+  (listed.dotName and entryShown(listed, hidden)) implies hidden
+pure def lawTheTrashIsNeverListed(listed: ListedEntry, hidden: bool): bool =
+  (listed.trashName and listed.atVolumeRoot) implies not(entryShown(listed, hidden))
+pure def lawAVisibleNameIsAlwaysListed(listed: ListedEntry, hidden: bool): bool =
+  not(listed.dotName) implies entryShown(listed, hidden)
+```
+
+### A category count totals the sizes its files record, and a file without one adds nothing
+
+A Browse category count answers how many visible files the category holds
+and `bytes`, the sum of their sizes: Downloads counts the files directly in
+its folder, every other category its media provider rows. A row with no
+recorded size, or a negative one, adds nothing, so the total is never
+negative and never guessed.
+
+```quint
+type CategoryRow = { sized: bool, size: int }
+pure def categoryRowBytes(categoryRow: CategoryRow): int = if (categoryRow.sized and categoryRow.size > 0) categoryRow.size else 0
+pure def categoryBytes(rows: List[CategoryRow]): int = rows.foldl(0, (total, counted) => total + categoryRowBytes(counted))
+pure val unsizedRow: CategoryRow = { sized: false, size: 0 }
+pure val rowsValues: Set[List[CategoryRow]] = Set(List(), List({ sized: true, size: 5 }), List({ sized: true, size: 5 }, { sized: true, size: -1 }, unsizedRow))
+pure def lawAnUnsizedRowAddsNothing(rows: List[CategoryRow]): bool = categoryBytes(rows.append(unsizedRow)) == categoryBytes(rows)
+pure def lawACategoryTotalIsNeverNegative(rows: List[CategoryRow]): bool = categoryBytes(rows) >= 0
+pure def lawASizedRowAddsItsSize(rows: List[CategoryRow]): bool =
+  categoryBytes(rows.append({ sized: true, size: 5 })) == categoryBytes(rows) + 5
 ```
