@@ -1,6 +1,6 @@
 // spec/agent/deviceActions/telephony.md, "A proposed number is the owner's own, written or spoken in this message and not only inside the text to send"; spec/agent/deviceActions/telephony.md, "A proposed contact name is one the owner wrote as whole words, outside the text to send"; spec/agent/deviceActions/telephony.md, "A whole-message call, text or dial command hands through the owner's own recipient"; spec/agent/deviceActions/telephony.md, "A request to open the dialer opens the keypad as the owner wrote it"; spec/agent/deviceActions/telephony.md, "An emergency request is never refused for its recipient, and the owner dials it themselves on the keypad"; spec/agent/deviceActions/telephony.md, "A contact change saves only numbers and email addresses the owner wrote, when the message writes any"; spec/agent/deviceActions/telephony.md, "A refused recipient is explained truthfully, and the owner hears that nothing ran"
 import {
-  commandVerdict, contactValueVerdict, emailVerdict, emergencyVerdict, nameVerdict, numberVerdict, ownedMatch, refusalReply, targetGrounded,
+  commandSmsRecipients, commandVerdict, contactValueVerdict, emailVerdict, emergencyVerdict, nameVerdict, numberVerdict, ownedMatch, refusalReply, targetGrounded,
   type CommandRecipient, type NumberMatch, type TargetVerdict,
 } from "../../../../gen/agent__deviceActions__telephony.effect.vibe"
 import { smsComposeTarget } from "../../operation-schemas/telephony.vibe"
@@ -138,7 +138,7 @@ function withTarget(operation: DeviceOperation, target: PhoneTarget): DeviceOper
     case "sms_compose":
       return "target" in operation ? { ...operation, target } : target.kind === "contact" ? { ...operation, query: target.query } : undefined
     case "sms_send":
-      return target.kind === "number" ? { ...operation, recipients: [target.number] } : undefined
+      return target.kind === "number" ? { ...operation, recipients: commandSmsRecipients(target.number) } : undefined
     default:
       return undefined
   }

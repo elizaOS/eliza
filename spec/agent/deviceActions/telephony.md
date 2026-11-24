@@ -186,10 +186,10 @@ number asks the owner to type it again. A SIM send takes numbers only, and a
 Messages text named by its `query` takes contact names only, so the other
 kind of recipient is refused for its form; a Messages text named by its
 `target`, a call and a dial take either, and a dial to a name needs a phone
-that looks contacts up. A command names one recipient, so a SIM send the
-model proposed to several numbers is offered to the owner's one number
-alone, still on its card: a number the owner did not write is never offered
-beside it. A command that names no one ("call me", "call
+that looks contacts up. For a whole-message SIM send command naming one
+number, the review card contains exactly that number in its dial form.
+The command replaces the model's entire recipient list. A command that
+names no one ("call me", "call
 everyone", "call it a day"), two people, another service ("on WhatsApp"), a
 time, or the police or an ambulance is not a command, and the model's
 recipient is grounded as above.
@@ -204,8 +204,10 @@ pure def lawACommandHandsThroughTheOwnersRecipientOrRefuses(command: CommandReci
   commandVerdict(command, takesNames, takesNumbers) != TargetGrounded
 pure def lawASimSendNeverTakesAName(takesNumbers: bool): bool = commandVerdict(CommandName, false, takesNumbers) == RecipientForm
 pure def lawAContactQueryNeverTakesANumber(takesNames: bool): bool = commandVerdict(CommandNumber, takesNames, false) == RecipientForm
-pure def commandRecipients(verdict: TargetVerdict, proposed: int): int = if (verdict == TargetHandedThrough) 1 else proposed
-pure def lawAHandedThroughCommandOffersTheOwnersOneRecipient(proposed: int): bool = commandRecipients(TargetHandedThrough, proposed) == 1
+pure def commandSmsRecipients(ownerNumber: str): List[str] = [ownerNumber]
+pure def lawAHandedThroughCommandOffersTheOwnersOneRecipient(ownerNumber: str): bool =
+  commandSmsRecipients(ownerNumber) == [ownerNumber]
+pure val ownerNumberValues = Set("4155550100", "+14155550100")
 ```
 
 ### A request to open the dialer opens the keypad as the owner wrote it
