@@ -2,6 +2,7 @@
 // spec/agent/conversation/planning.md, "An identical call runs at most once per model response, and a settled effect is never repeated in the turn"
 // spec/agent/conversation/planning.md, "Story: Ask the agent to do something and hear what happened"; spec/agent/conversation/planning.md, "A turn offers the model only registered actions the launch allows, and plans at most eight steps"; spec/agent/conversation/planning.md, "An action may narrow its tool to the turn, never beyond its registered form"; spec/agent/conversation/planning.md, "Every call of a turn is one the model chose, and a call this message serves in another place is refused before it runs and is no step of the turn"; spec/agent/conversation/planning.md, "A failure or proposal the turn made stays reported unless a later success of the same operation supersedes it"; spec/agent/conversation/planning.md, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"; spec/agent/conversation/planning.md, "A turn acknowledges at most once, with a cue that comes with its first tool calls, and bare assent is a cue only with work after an instruction"; spec/agent/conversation/planning.md, "A tool's progress names its app only when one labelled app applies, and never its arguments or results"; spec/agent/conversation/planning.md, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history"; spec/agent/conversation/planning.md, "A model call is sent again at most once, after a temporary rate limit or a tool call the provider could not parse"; spec/agent/conversation/planning.md, "A call that stopped at the model's own output limit ends planning"; spec/agent/conversation/planning.md, "A coaching response stays in the planner transcript"
 // spec/agent/conversation/planning.md, "A response with competing terminal decisions runs no sibling action and can be repaired once"
+// spec/agent/conversation/planning.md, "A delivered cue is told to the model as already said, so the reply never repeats it or takes it as evidence"
 import {
   type Action, type ActionParameterSchema, type ActionResult, type AgentRuntime, type EffectReceipt, type IAgentRuntime, type GenerateTextParams, type GenerateTextResult,
   type AgentContext, type HistorySource, type Memory, type RoleGateRole, type State, type StreamChunkCallback, type ToolCall, type ToolDefinition,
@@ -9,7 +10,7 @@ import {
 } from "@elizaos/core"
 import { tagsMayProduceEffects } from "@elizaos/core/protocol"
 import {
-  acknowledges, actionNoteSent, callAdmission, cutOffReply, failedOpen, isTurnStep, maxPlanSteps, nextMove, offered, openOutcomes, plannerOnlyCoaching, plansOn, resendWait, toolActivity,
+  acknowledges, actionNoteSent, callAdmission, cueDelivered, cutOffReply, failedOpen, isTurnStep, maxPlanSteps, nextMove, offered, openOutcomes, plannerOnlyCoaching, plansOn, resendWait, toolActivity,
   admitsPlannerWork, contextRestoreOf, maxRestoredHistoryBytes, nothingRan, offersContextRestore, terminalAnswerOf, toolDispatch, turnNarrowed, unavailableNotice, writtenMarkupOf, type CallFailure, type PlanStep, type StepOutcome, type ToolSettlement,
 } from "../../gen/agent__conversation__planning.ts"
 import { ModelRefusal } from "../models/chat.vibe"
@@ -24,6 +25,8 @@ const answerNothingRan = "Note from the agent host, not the person: no further w
 const callWrittenAsText = "Note from the agent host, not the person: your last response wrote a tool call as text. Text never runs as a tool, so nothing ran, and the person did not see it."
 const callWithATool = `${callWrittenAsText} Make the call with one of the offered tools, or answer the person in words.`
 const answerInWords = `${callWrittenAsText} No tool is offered in this turn: answer the person in words.`
+const deliveredCueNote = (cue: string) =>
+  `Note from the agent host, not the person: ${JSON.stringify(cue)} was already sent to the person as progress. Do not repeat or paraphrase it. Go straight to the result, any blocker, or the question you need answered. The cue is not evidence that any work succeeded.`
 const restoreContext: ToolDefinition = {
   name: "RESTORE_CONTEXT",
   description: "Restore only context named in this request’s deferral notice. Scope defaults to full. Call alone before actions. Sibling calls do not run. Use live tools for current saved records.",
@@ -65,7 +68,7 @@ export interface PlanInput {
   readonly signal: AbortSignal
   readonly onStreamChunk?: StreamChunkCallback
   readonly onReplyRestart?: (fullText: string) => void
-  readonly onPlanningAcknowledgment?: (text: string) => void | Promise<void>
+  readonly onPlanningAcknowledgment?: (text: string) => boolean | void | Promise<boolean | void>
   readonly onActivityStatus?: (activity: { actionName: string; label: string }) => void | Promise<void>
   readonly onStepResult?: (result: ActionResult) => void | Promise<void>
 }
@@ -518,17 +521,20 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
     const draft = draftOf(words, instruction, work.length)
     let cutOff = false
     if (work.length > 0) {
-      if (!quiet && acknowledges(draft, work.length, steps.length)) await input.onPlanningAcknowledgment?.(words.trim())
+      const cue = words.trim()
+      const spoken = !quiet && acknowledges(draft, work.length, steps.length)
+      const delivered = cueDelivered(draft, work.length, steps.length, quiet, spoken && (await input.onPlanningAcknowledgment?.(cue)) === true)
       if (displayed) {
         input.onReplyRestart?.("")
         displayed = false
       }
-      conversation.push({ role: "assistant", content: words || null, toolCalls: work })
+      conversation.push({ role: "assistant", content: delivered ? cue : null, toolCalls: work })
       seen.clear()
       for (const call of work) {
         cutOff ||= stoppedAtModelMaximum(await execute(call))
         if (cutOff) break
       }
+      if (delivered && reply === undefined && plansOn(cutOff, taken, work.length, false)) conversation.push({ role: "user", content: deliveredCueNote(cue) })
     }
     if (reply !== undefined) {
       prose = replyText(reply) ?? (draft === "Answer" ? words : undefined)

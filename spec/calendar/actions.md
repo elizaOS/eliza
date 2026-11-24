@@ -232,6 +232,61 @@ pure def lawWiderRequestIsRead(endsAfterNoon: bool): bool =
   morningAdmission(false, endsAfterNoon) == ReadMorning
 ```
 
+### An afternoon-only question reads only that afternoon, from noon to five
+
+The model reads from the owner's request whether it asks about an
+afternoon and no other period ("am I free tomorrow afternoon?", "find me
+30 minutes tomorrow afternoon"), also when an errand explains the time
+("tomorrow when I can pick up groceries in the afternoon"), and says so
+with the request; code reads no period words. Such a window starts no
+earlier than noon of the day it starts on and ends no later than five PM
+that day in the request's zone; a window that starts before noon or runs
+past five is refused before anything is read, pointing to a slot search
+for a shorter opening. Noon and five are inside the afternoon. A request
+the model does not call afternoon-only is read as asked.
+
+```quint
+type AfternoonAdmission = ReadAfternoon | RefuseOutsideAfternoon
+pure def afternoonAdmission(afternoonOnly: bool, startsBeforeNoon: bool, endsAfterFive: bool): AfternoonAdmission =
+  if (afternoonOnly and (startsBeforeNoon or endsAfterFive)) RefuseOutsideAfternoon else ReadAfternoon
+pure def lawAfternoonReadStaysInAfternoon(startsBeforeNoon: bool, endsAfterFive: bool): bool =
+  afternoonAdmission(true, startsBeforeNoon, endsAfterFive) == ReadAfternoon implies not(startsBeforeNoon) and not(endsAfterFive)
+pure def lawWiderAfternoonRequestIsRead(startsBeforeNoon: bool, endsAfterFive: bool): bool =
+  afternoonAdmission(false, startsBeforeNoon, endsAfterFive) == ReadAfternoon
+```
+
+### A free-time window starts no earlier than the current minute
+
+A free-time question asks about time still to come. A window that starts
+before the current minute is refused before anything is read, and the
+result says what to send instead. A window still under way at the current
+minute is the rest of a period the owner asked about ("is today free?",
+"am I free this afternoon?" at 2 PM, "between noon and five today" at 1
+PM): the result tells the model to start it at the current time and keep
+its end and what it said of the owner's clock times, since a start at the
+current minute is not checked against the owner's words (readClock.md, "A
+free-time window's clock times the owner stated are ones the owner's
+words hold"). A window that ended by the current time asks about a past
+period ("was I free yesterday afternoon?"), which no opening answers: the
+result tells the model to list that period's events with search_events
+instead. A window that starts within the current minute or later is read
+as asked.
+
+```quint
+type WindowStartAdmission = ReadFromStart | RefusePastStart
+pure def windowStartAdmission(startMs: int, nowMs: int): WindowStartAdmission =
+  if (startMs < nowMs - nowMs % 60000) RefusePastStart else ReadFromStart
+pure def lawAWindowBeforeThisMinuteReadsNothing(startMs: int, nowMs: int): bool =
+  (windowStartAdmission(startMs, nowMs) == RefusePastStart) iff startMs < nowMs - nowMs % 60000
+pure def lawAWindowFromThisMinuteIsRead(nowMs: int): bool =
+  windowStartAdmission(nowMs - nowMs % 60000, nowMs) == ReadFromStart
+pure val startMsValues = Set(0, 59999, 60000, 120000)
+pure val nowMsValues = Set(0, 60000, 119999, 120000)
+type PastWindowNext = StartAtNow | SearchThePast
+pure def pastWindowNext(endedByNow: bool): PastWindowNext = if (endedByNow) SearchThePast else StartAtNow
+pure def lawAPastPeriodIsSearched(endedByNow: bool): bool = (pastWindowNext(endedByNow) == SearchThePast) iff endedByNow
+```
+
 ### A period is free only when no blocking event overlaps it
 
 An event blocks the time it overlaps with positive length; a zero-length
@@ -758,6 +813,27 @@ pure def createOutcome(written: bool, readBack: bool, sameSource: bool, fieldsMa
   else CreatedUnconfirmed
 pure def lawCreatedNeedsSameCalendarReadback(written: bool, readBack: bool, sameSource: bool, fieldsMatch: bool): bool =
   createOutcome(written, readBack, sameSource, fieldsMatch) == CreatedAndRead implies readBack and sameSource and fieldsMatch
+```
+
+### A create the owner gave a start and an end for reports the saved range
+
+A created event's reply names its title and when it starts. When the
+model says the owner stated the new event's start and end ("from one ten
+PM to one thirty PM", "from 3pm to 3:45pm") and sends that end, and those
+clock times are ones the owner's words hold, the reply names the saved
+start and end, so the owner hears the range as it was saved. An all-day
+event, and a create whose end the model worked out or chose, reports its
+start only; so does a create called a stated range that sends no end,
+whose end code worked out from a length.
+
+```quint
+type CreateReplyTime = SavedStart | SavedRange
+pure def createReplyTime(statedRange: bool, endSent: bool, allDay: bool): CreateReplyTime =
+  if (statedRange and endSent and not(allDay)) SavedRange else SavedStart
+pure def lawAStatedRangeIsReportedWhole(allDay: bool): bool =
+  (createReplyTime(true, true, allDay) == SavedRange) iff not(allDay)
+pure def lawAnUnstatedEndIsNotReported(endSent: bool, allDay: bool): bool = createReplyTime(false, endSent, allDay) == SavedStart
+pure def lawAnUnsentEndIsNotReported(statedRange: bool, allDay: bool): bool = createReplyTime(statedRange, false, allDay) == SavedStart
 ```
 
 ### A repeating create carries its reviewed recurrence and reads back with it

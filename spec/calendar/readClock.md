@@ -138,9 +138,12 @@ A time is held by the owner's words when they write it in digits ("1:10
 pm", "13:10", "4"), spell it with its minutes ("one ten PM", "one oh five
 pm", "six PM"), or say noon, midnight, or half past, a quarter past or a
 quarter to the hour; written with am or pm, it is that half of the day
-only. A time the words hold is kept. A time the words do not hold is kept
-only when the model says the owner stated no clock time ("tomorrow
-afternoon", "push it back an hour"): a time the model chose is no misread,
+only. The "am" of "am I" and "I am" ("between 2 and 4, am I free?") is
+the verb, no half of the day; an "am" written onto its number ("9am I
+think") is still the morning. A time the words hold is kept. A time the
+words do not hold is kept only when the model says the owner stated no
+clock time ("tomorrow afternoon", "push it back an hour"): a time the
+model chose is no misread,
 and a check of every time would refuse those requests. A time the words
 do not hold that the model calls stated, or sent without saying which,
 changes nothing, and the result tells the model which time it sent, so it
@@ -167,6 +170,129 @@ pure def lawAnOpenTimeIsKept(heldByOwnerWords: bool): bool = statedClockCheck(tr
 pure def lawAHeldTimeIsKept(declared: bool, statedByOwner: bool): bool = statedClockCheck(declared, statedByOwner, true) == ClockAsSent
 pure def lawAnUndeclaredUnheldTimeChangesNothing(statedByOwner: bool): bool =
   statedClockCheck(false, statedByOwner, false) == ClockUndeclared
+```
+
+### A free-time window's clock times the owner stated are ones the owner's words hold
+
+A free-time question through the Calendar action says, as a create does,
+which of its window's clock times the owner stated: the start, the start
+and the end, or none. An owner who names the window ("between noon and
+five", "from 2 to 4", "from one ten PM to two PM") states its start and
+its end. Each stated clock time is checked against the owner's words as a
+new event's is: one the words hold is read, and one they do not hold reads
+nothing, and the result names the time sent so the model sends the window
+the owner said. A window the model did not call stated, or called none, is
+read as asked: a window the model chose ("tomorrow afternoon", "is
+Wednesday free?") holds no clock time the owner said. A window's start
+within the current minute is not checked: a window already under way
+starts at the current time, which the result of a window that starts
+before now asks for ("between noon and five today" at 1 PM starts at 1
+PM), and that start is no clock time the owner said; its end is still
+checked. Only the Calendar action's free-time questions send a window;
+their story is "Ask when I am free and get openings from my real
+calendar" in actions.md.
+
+```quint
+pure def windowClockCheck(declared: bool, statedByOwner: bool, heldByOwnerWords: bool): StatedClockCheck =
+  if (declared) statedClockCheck(true, statedByOwner, heldByOwnerWords) else ClockAsSent
+pure def windowStartChecked(startsThisMinute: bool): bool = not(startsThisMinute)
+pure def lawAWindowStartAtNowIsNotChecked(startsThisMinute: bool): bool = windowStartChecked(startsThisMinute) iff not(startsThisMinute)
+pure def lawAStatedWindowClockTheWordsDoNotHoldReadsNothing(heldByOwnerWords: bool): bool =
+  (windowClockCheck(true, true, heldByOwnerWords) == ClockUnsaid) iff not(heldByOwnerWords)
+pure def lawAnUndeclaredWindowIsReadAsAsked(statedByOwner: bool, heldByOwnerWords: bool): bool =
+  windowClockCheck(false, statedByOwner, heldByOwnerWords) == ClockAsSent
+pure def lawAWindowCheckNeverAsksForADeclaration(declared: bool, statedByOwner: bool, heldByOwnerWords: bool): bool =
+  windowClockCheck(declared, statedByOwner, heldByOwnerWords) != ClockUndeclared
+```
+
+### A stated window is read only when the owner's words fit it one way on its day
+
+A free-time window the model calls a stated range is read only when the
+owner's words fit it one way on its day and that way is the window sent.
+Code finds every range in the owner's words: clock words for the start
+and for the end, joined by "and" after "between", or by "to", "until",
+"till", "through" or a dash ("between noon and five", "from 2 to 4 PM",
+"2pm-4pm"); the "to" of "quarter to" joins nothing, a dash inside a
+spoken clock ("between noon and five-thirty", "from one-twenty-five to
+three PM", "five-oh-five") is part of the clock and joins nothing, while
+one between two hour names ("nine-ten") joins a range, a hedge before a
+clock ("between noon and around 5", "from noon till about five") leaves
+the range a range, and a range followed by a unit of length ("30 to 45
+minutes", "1 to 2 hours") is a length, no range. It reads each range's
+start only from the clock words before its join and its end only from
+those after it, so a date or a length elsewhere in the request ("on the
+12th", "find me 12 minutes", "1 to 2 hours") adds no reading. Only a
+range one of whose sides holds the window's start or its end, in either
+half of the day, is the window's range: another number range in the
+request ("can 3 to 6 of us meet between noon and around 5?") is not
+paired. In each range it takes each reading of the window's start and of
+its end, in either half of the day, that its side holds, and pairs them
+where the end comes after the start on that day. A reading of the start
+by the current minute counts only while the window from it to its
+nearest end reading is under way, and then from the current minute (a
+free-time window starts no earlier than the current minute: actions.md,
+"A free-time window starts no earlier than the current minute"): "from 2
+to 4 today" asked at 11 AM fits only 2 to 4 PM, and "from 9 to 11 today"
+asked at 10 AM fits 10 to 11 AM, 10 AM to 11 PM, or 9 to 11 PM. A window
+whose start is the current minute is under way: its start is the one
+sent, which is not checked against the owner's words, and pairs with the
+end only when a range's start side holds a reading by now whose window is
+under way, so "between 1 and 5 today" at 1 PM is 1 to 5 PM, and "between
+3 and 5 today" sent from 1 PM fits no way. When one side holds a single
+reading, the other side takes the reading nearest it, so the window fits
+at most one way: "from 2 to 4 PM" is 2 to 4 PM, and "from 9 AM to 11" is
+9 to 11 AM. "Between noon and five" and "from one ten PM to two PM" fit
+one way and are read. A range that fits the window sent one way settles
+it, whatever another range fits ("can 2 to 4 people meet from 2 to 4
+PM?"). Bare hours on both sides that fit more than one way ("from 2 to 4"
+tomorrow: 2 to 4 AM, 2 AM to 4 PM, or 2 to 4 PM) read nothing, and the
+result lists each pairing, so the model asks the owner which one they
+mean or, when the conversation already settles it, sends that window as
+one it read (statedClock none). A window the words fit one other way
+("from 2 to 4 PM" sent as 2 AM to 4 PM) reads nothing, and the result
+names the window that fits and the time sent on the side that differs, so
+the model sends it. A window whose range fits it no way ("find me 12
+minutes between 2 and 4" sent from noon) reads nothing, and the result
+names the request's ranges, so the model sends the window the owner
+stated. A window that runs past midnight, one whose request holds no
+range of its start or end, and one the model did not call a stated range,
+are not paired.
+
+```quint
+type WindowPairing = PairingSettled | PairingOpen | PairingOther | PairingNone
+pure def windowPairing(statedRange: bool, sameDay: bool, rangeInWords: bool, pairings: int, sentFits: bool): WindowPairing =
+  if (not(statedRange and sameDay and rangeInWords)) PairingSettled
+  else if (pairings == 0) PairingNone
+  else if (pairings > 1) PairingOpen
+  else if (sentFits) PairingSettled
+  else PairingOther
+pure def windowFits(startReadings: int, endReadings: int, pairings: int): int =
+  if ((startReadings == 1 or endReadings == 1) and pairings > 1) 1 else pairings
+pure def lawAWindowTheWordsFitMoreThanOneWayReadsNothing(pairings: int, sentFits: bool): bool =
+  (windowPairing(true, true, true, pairings, sentFits) == PairingOpen) iff pairings > 1
+pure def lawAWindowTheWordsFitAnotherWayReadsNothing(sentFits: bool): bool =
+  (windowPairing(true, true, true, 1, sentFits) == PairingOther) iff not(sentFits)
+pure def lawAWindowItsRangeFitsNoWayReadsNothing(sentFits: bool): bool =
+  windowPairing(true, true, true, 0, sentFits) == PairingNone
+pure def lawAnUnstatedWindowIsNotPaired(sameDay: bool, rangeInWords: bool, pairings: int, sentFits: bool): bool =
+  windowPairing(false, sameDay, rangeInWords, pairings, sentFits) == PairingSettled
+pure def lawAWindowPastMidnightIsNotPaired(statedRange: bool, rangeInWords: bool, pairings: int, sentFits: bool): bool =
+  windowPairing(statedRange, false, rangeInWords, pairings, sentFits) == PairingSettled
+pure def lawAWindowWithoutARangeIsNotPaired(statedRange: bool, sameDay: bool, pairings: int, sentFits: bool): bool =
+  windowPairing(statedRange, sameDay, false, pairings, sentFits) == PairingSettled
+pure def lawASideWithOneReadingFitsOneWay(readings: int, pairings: int): bool =
+  windowFits(1, readings, pairings) <= 1 and windowFits(readings, 1, pairings) <= 1
+pure def lawBareSidesKeepEveryFit(pairings: int): bool = windowFits(2, 2, pairings) == pairings
+type StartReading = StartAsSaid | StartUnderWay | StartPassed
+pure def startReading(byThisMinute: bool, nearestEndAhead: bool): StartReading =
+  if (not(byThisMinute)) StartAsSaid else if (nearestEndAhead) StartUnderWay else StartPassed
+pure def lawALaterStartReadingIsReadAsSaid(nearestEndAhead: bool): bool = startReading(false, nearestEndAhead) == StartAsSaid
+pure def lawAStartReadingByNowCountsOnlyWhileUnderWay(nearestEndAhead: bool): bool =
+  (startReading(true, nearestEndAhead) == StartUnderWay) iff nearestEndAhead
+pure def lawAStartReadingIsNeverPassedAfterNow(byThisMinute: bool, nearestEndAhead: bool): bool =
+  startReading(byThisMinute, nearestEndAhead) == StartPassed implies byThisMinute
+pure val pairingsValues = Set(0, 1, 2, 3)
+pure val readingsValues = Set(0, 1, 2)
 ```
 
 ### A stated year wins, a wrong extracted year is corrected, and a past start asks first

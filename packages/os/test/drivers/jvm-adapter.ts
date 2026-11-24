@@ -254,7 +254,7 @@ export async function orgJsonAdapterClasspath(main: string): Promise<string> {
 }
 
 const needsOrgJson = (main: string) =>
-  main.startsWith("ai.eliza.plugins.media.") || main.startsWith("ai.eliza.plugins.actionjournal.") || main === "ai.eliza.plugins.signin.ReadinessJourney" || main === "ai.eliza.plugins.browsersurface.SessionRecordJourney" || main === "ai.eliza.systemupdater.JournalReplay";
+  main.startsWith("ai.eliza.plugins.media.") || main.startsWith("ai.eliza.plugins.actionjournal.") || main.startsWith("ai.eliza.plugins.notifications.") || main === "ai.eliza.plugins.signin.ReadinessJourney" || main === "ai.eliza.plugins.browsersurface.SessionRecordJourney" || main === "ai.eliza.systemupdater.JournalReplay" || main === "ai.eliza.files.StorageBrowsingCheck";
 
 export async function compileAdapters(): Promise<{ readonly compiled: readonly string[]; readonly failed: readonly string[] }> {
   const found = sources();

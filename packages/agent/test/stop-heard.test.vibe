@@ -65,7 +65,7 @@ effect function cloudAgent() {
 
 const receipt = (roomId: string, outcome: string) => ({ status: 200, body: { aborted: outcome !== "nothingRunning", roomId, reason: "client-stop", outcome } })
 
-it.live('Stop a streaming turn: confirmed when it ends in time, nothing running after, and only an owned room (spec/agent/conversation/turns.md, "A Stop is confirmed only when its turn ends within five seconds, and is otherwise uncertain")', effect () => {
+it.live('Stop a streaming turn: confirmed when it ends in time, nothing running after, and only an owned room (spec/agent/conversation/turns.md, "A Stop is confirmed only when its turn ends within five seconds, and is otherwise uncertain"; spec/agent/conversation/turns.md, "An aborted reply records what ended its turn, and never in its text")', effect () => {
   const { cloud, agent } = try cloudAgent()
   const chat = try open(agent)
   try Effect.sync(() => cloud.script({ kind: "hang" }))
@@ -75,6 +75,8 @@ it.live('Stop a streaming turn: confirmed when it ends in time, nothing running 
   const completion = cloud.calls.find((made) => made.path.endsWith("/chat/completions"))
   try host("model call cancelled", () => completion?.aborted ?? Promise.resolve())
   const streamed = try join sending
+  const history = try ask(agent, { method: "GET", path: `/api/conversations/${chat.id}/messages` })
+  const row = (history.body as { messages: readonly { role: string; failureKind?: string; abortCause?: string; stopReason?: string }[] }).messages.find(({ role }) => role === "assistant")
   const idle = try stop(agent, chat.roomId)
   const unowned = try stop(agent, fresh[0])
   const malformed = try stop(agent, "not-a-room")
@@ -82,8 +84,9 @@ it.live('Stop a streaming turn: confirmed when it ends in time, nothing running 
   const omittedReason = try stop(agent, chat.roomId, {})
   try Effect.try(() => assert.deepStrictEqual({
     confirmed, idle, omittedReason, streamed: streamed.status, refused: [unowned.status, malformed.status, noReason.status],
+    marks: [row?.failureKind, row?.abortCause, row?.stopReason],
   }, {
-    confirmed: receipt(chat.roomId, "stopped"), idle: receipt(chat.roomId, "nothingRunning"),
+    confirmed: receipt(chat.roomId, "stopped"), idle: receipt(chat.roomId, "nothingRunning"), marks: ["aborted", "stop", "client-stop"],
     omittedReason: { status: 200, body: { aborted: false, roomId: chat.roomId, reason: "owner_requested_abort", outcome: "nothingRunning" } }, streamed: 200, refused: [404, 404, 400],
   }))
 }, 120_000)
