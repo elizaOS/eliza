@@ -81,11 +81,11 @@ const dialGuidance = "A reviewed dial uses phone_dial. After the owner's approva
 const composeGuidance = "drafted proves only that the draft is there. submitted proves submission only; sent is not delivery; only delivered establishes delivery."
 
 const roleQuery = "when the owner names them by a role or relation. Use that word alone as the contact query, such as brother for my brother or dentist for the dentist. The phone resolves the contact and lets the owner choose among multiple matches."
-const roleGuidance: Readonly<Record<RoleRule, string>> = {
-  CallOrTextByRole: `Propose phone_call or sms_compose with a contact target ${roleQuery}`,
-  CallByRole: `Propose phone_call with a contact target ${roleQuery}`,
-  TextByRole: `Propose sms_compose with a contact target ${roleQuery}`,
-  NoRoleRule: "",
+const roleGuidance: Readonly<Record<RoleRule, { readonly operation: string; readonly request: string } | undefined>> = {
+  CallOrTextByRole: { operation: "phone_call or sms_compose", request: "a call or text" },
+  CallByRole: { operation: "phone_call", request: "a call" },
+  TextByRole: { operation: "sms_compose", request: "a text" },
+  NoRoleRule: undefined,
 }
 
 const forms: readonly ProposalForm[] = [
@@ -423,9 +423,12 @@ function familyGuidance(device: NegotiatedDevice): readonly string[] {
     schema.properties.target.properties.query !== undefined)
   const role = roleRule(offersContact("phone_call"), offersContact("sms_compose"))
   const searchOffered = admitted.some(({ types }) => types.includes("contact_show"))
+  const guidance = roleGuidance[role]
   return [
-    ...(role === "NoRoleRule" ? [] : [roleGuidance[role]]),
-    ...(searchFirstRefused(role, searchOffered) ? ["Do not propose contact_show first for a call or text."] : []),
+    ...(guidance === undefined ? [] : [
+      `Propose ${guidance.operation} with a contact target ${roleQuery}`,
+      ...(searchFirstRefused(role, searchOffered) ? [`Do not propose contact_show first for ${guidance.request}.`] : []),
+    ]),
     routeGuidance,
     ...(!keypad && has(device, "PhoneDialV1") ? [dialerGuidance] : []),
     ...(!keypad && (has(device, "PhoneDialV1") || has(device, "PhoneCallV1")) ? [emergencyGuidance] : []),

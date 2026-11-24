@@ -146,8 +146,8 @@ query is that word alone, brother for my brother and dentist for the
 dentist, and the phone finds the contact and lets the owner pick when
 several match. It names the call, the text or both, as the phone is
 offered them with a contact target, and where a contact search
-(`contact_show`) is offered too, it says never to propose that search
-first, since its result gives a call or text nothing to use. A phone
+(`contact_show`) is offered too, it says to skip that search first for
+the operations that admit a contact target, since they resolve it themselves. A phone
 offered neither is told none of it. The role word is a name the owner
 wrote, so it is grounded as any contact name is (above).
 

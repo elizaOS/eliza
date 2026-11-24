@@ -81,9 +81,10 @@ module node {
     const turns = [
       { text: "First check.", caps: ["phone.call.v1", "sms.compose.v1", "sms.compose.v2", "contacts.show.v1"] },
       { text: "Second check.", caps: ["phone.call.v1", "sms.compose.v1", "sms.compose.v2", "contacts.show.v1"] },
-      { text: "Third check.", caps: ["phone.call.v1", "contacts.show.v1"] },
+      { text: "Third check.", caps: ["phone.call.v1", "sms.compose.v1", "contacts.show.v1"] },
       { text: "Fourth check.", caps: ["sms.compose.v1", "sms.compose.v2"] },
       { text: "Fifth check.", caps: ["phone.dial.v1", "phone.keypad.v1", "sms.compose.v1", "contacts.show.v1"] },
+      { text: "Sixth check.", caps: ["sms.compose.v1", "sms.compose.v2", "contacts.show.v1"] },
     ]
     const offered = []
     for (const row of turns) {
@@ -105,7 +106,7 @@ module node {
         return {
           scopes: ["phone_call or sms_compose", "phone_call", "sms_compose"].filter((scope) => description.includes(`Propose ${scope} with a contact target`)),
           mentions: description.split("names them by a role or relation").length - 1,
-          skipLookup: description.includes("Do not propose contact_show first for a call or text."),
+          skipLookup: /Do not propose contact_show first for a (call or text|call|text)\./u.exec(description)?.[1] ?? null,
         }
       }),
       calls: requests().length - before,
@@ -287,11 +288,12 @@ it.live('An admitted contact target tells the planner to propose a role directly
   try Effect.try(() => assert.deepStrictEqual(observed, {
     stable: true,
     guidance: [
-      { scopes: ["phone_call or sms_compose"], mentions: 1, skipLookup: true },
-      { scopes: ["phone_call or sms_compose"], mentions: 1, skipLookup: true },
-      { scopes: ["phone_call"], mentions: 1, skipLookup: true },
-      { scopes: ["sms_compose"], mentions: 1, skipLookup: false },
-      { scopes: [], mentions: 0, skipLookup: false },
+      { scopes: ["phone_call or sms_compose"], mentions: 1, skipLookup: "call or text" },
+      { scopes: ["phone_call or sms_compose"], mentions: 1, skipLookup: "call or text" },
+      { scopes: ["phone_call"], mentions: 1, skipLookup: "call" },
+      { scopes: ["sms_compose"], mentions: 1, skipLookup: null },
+      { scopes: [], mentions: 0, skipLookup: null },
+      { scopes: ["sms_compose"], mentions: 1, skipLookup: "text" },
     ],
     calls: 2,
     proposal: "pending",
