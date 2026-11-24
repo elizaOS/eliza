@@ -2,7 +2,7 @@
 import type { HostFacts, PluginPresence } from "../../gen/os__android__bridge.ts"
 import { meteredHint, type CostRead } from "../../gen/os__android__networkPolicy.effect.vibe"
 import { nativeReply } from "./bridge.vibe"
-import type { MeteredHint, NetworkPolicyPlugin, PathHints } from "./definitions/network-policy.ts"
+import type { MeteredHint, NetworkPolicyPlugin } from "./definitions/network-policy.ts"
 
 module capacitor {
   import { registerPlugin } from "@capacitor/core"
@@ -19,8 +19,6 @@ export { networkPolicyPlugin }
 const ANSWERED: HostFacts = { foreground: true, unlocked: true, focused: true, granted: true, featurePresent: true }
 
 const NOT_REGISTERED = new Set(["UNIMPLEMENTED", "DISABLED"])
-
-const UNKNOWN_PATH: PathHints = { isExpensive: null, isConstrained: null, source: "nw-path-monitor" }
 
 schema Metered { metered: boolean | null; source: "android-os" }
 
@@ -42,6 +40,5 @@ effect function hint(name: string, plugin: NetworkPolicyPlugin) {
 export function networkPolicyClient(plugin: NetworkPolicyPlugin = networkPolicyPlugin(), name = "ElizaNetworkPolicy"): NetworkPolicyPlugin {
   return {
     getMeteredHint: () => runPromise(hint(name, plugin)),
-    getPathHints: async () => UNKNOWN_PATH,
   }
 }

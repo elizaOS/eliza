@@ -1,6 +1,6 @@
 # Native location
 
-The bridge reads an immediate fix or subscribes to updates from the registered Android, iOS or browser provider.
+The bridge reads an immediate fix or subscribes to updates from Android's location provider.
 
 ## Story: Use a fresh device location and stop updates when I close the view
 

@@ -76,13 +76,4 @@ object NetworkPolicyReader {
         response.put("metered", !notMetered)
         return response
     }
-
-    /** iOS-only path hints; on Android always the safe "no info" shape. */
-    fun readPathHints(): JSObject {
-        val response = JSObject()
-        response.put("isExpensive", JSObject.NULL)
-        response.put("isConstrained", JSObject.NULL)
-        response.put("source", "nw-path-monitor")
-        return response
-    }
 }
