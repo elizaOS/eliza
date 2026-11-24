@@ -230,6 +230,34 @@ pure def startCourse(phoneOffered: bool, phoneReady: bool): StartCourse = if (ph
 pure def lawWithoutAReadyPhoneDirectionsAreALink(phoneOffered: bool): bool = startCourse(phoneOffered, false) == HandOffLink
 ```
 
+### Only a kind of place near a named place is searched around that place
+
+"Pharmacy near Union Square" and "gas station near US 101" name a kind of
+place and the place to search around. The words after "near", "around",
+"close to" or "next to" name no place when they are the owner's own
+position ("me", "us", "by", "me, please", "us right now", "me open now"),
+which is a search around the phone; a time ("around midnight", "near
+5pm", "around Christmas"); a price ("around 500 dollars", "around 150 a
+night", "around 100 euros a night"); or the owner's own places ("near
+home", "near my office"). A place whose name only begins like the owner's
+position, such as "US Bank Tower", "us post office" or "Here East", is
+still a named place, and courtesy after it ("near Union Square, please")
+is not part of its name. The words before "near" name no kind of place
+when they are something the phone keeps ("photos near the Ferry
+Building") or something about the place itself ("the weather near
+Austin", "traffic near the Bay Bridge", "news around Austin"). Neither is
+searched around a named place.
+
+```quint
+type NearWords = NamedPlace | OwnPosition | NotAPlace
+type NearKind = PlaceKind | NotAPlaceKind
+type NearSearch = AroundTheNamedPlace | NoNamedPlaceSearch
+pure def nearSearch(nearKind: NearKind, nearWords: NearWords): NearSearch =
+  if (nearKind == PlaceKind and nearWords == NamedPlace) AroundTheNamedPlace else NoNamedPlaceSearch
+pure def lawOnlyAPlaceKindNearANamedPlaceIsSearchedAroundIt(nearKind: NearKind, nearWords: NearWords): bool =
+  nearSearch(nearKind, nearWords) == AroundTheNamedPlace iff (nearKind == PlaceKind and nearWords == NamedPlace)
+```
+
 ## Story: Ask for directions to the place on my phone's map
 
 > As the owner, after "show me Coit Tower" I want "directions to it" to

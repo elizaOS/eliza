@@ -1,6 +1,6 @@
-// spec/maps/phonePosition.md, "A kind of place near a named place is searched around that place, never around the phone"; spec/maps/phonePosition.md, "A reported position never becomes a route origin"; spec/maps/routing.md, "Only the owner's next turn answers an open question, by its position or the place's name, within ten minutes"
+// spec/maps/phonePosition.md, "A kind of place near a named place is searched around that place, never around the phone"; spec/maps/phonePosition.md, "A reported position never becomes a route origin"; spec/maps/routing.md, "Only the owner's next turn answers an open question, by its position or the place's name, within ten minutes"; spec/maps/routing.md, "Only a kind of place near a named place is searched around that place"
 import type { IAgentRuntime, Memory } from "@elizaos/core"
-import { choiceBinds, choiceOpenAt, namedOption, type ChoiceTurn } from "../gen/maps__routing.effect.vibe"
+import { choiceBinds, choiceOpenAt, namedOption, nearSearch, type ChoiceTurn } from "../gen/maps__routing.effect.vibe"
 import type { AgentPlaceRef } from "./client/device-navigation.vibe"
 
 const courtesy = String.raw`(?:(?:please|hey|ok(?:ay)?|so)[,\s]+)*(?:(?:can|could|would|will)\s+you\s+)?(?:please\s+)?`
@@ -166,7 +166,9 @@ export function anchoredPlace(query: string): { readonly kind: string; readonly 
   const match = anchoredQuery.exec(query)
   const kind = match?.[1]?.trim()
   const anchor = match?.[2] === undefined ? undefined : withoutTail(match[2])
-  if (kind === undefined || kind === "" || anchor === undefined || anchor === "" || ownPosition.test(anchor) || nearNotAPlace.test(anchor) || nearNotAPlaceKind.test(kind)) return undefined
+  if (kind === undefined || kind === "" || anchor === undefined || anchor === "") return undefined
+  const words = ownPosition.test(anchor) ? "OwnPosition" : nearNotAPlace.test(anchor) ? "NotAPlace" : "NamedPlace"
+  if (nearSearch(nearNotAPlaceKind.test(kind) ? "NotAPlaceKind" : "PlaceKind", words) !== "AroundTheNamedPlace") return undefined
   return { kind, anchor: anchor.replace(/^the\s+/iu, "") }
 }
 
