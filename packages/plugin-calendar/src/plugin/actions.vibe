@@ -6,7 +6,7 @@ import {
   lookupNearBack, lookupReadLimit, lookupSpanDays, lookupStep, morningAdmission, occurrenceChoice, offDay, ownerPointedAt, pastWindowNext, residentDeleteStep, slotMinutesAllowed, createStore, windowStartAdmission, type GuestChange, type OwnerAnswer,
 } from "../../gen/calendar__actions.effect.vibe"
 import { positiveOverlap } from "../../gen/calendar__availability.effect.vibe"
-import { clockReal, instantRead, statedClockCheck, wallZone, windowClockCheck, windowFits, windowPairing, windowStartChecked } from "../../gen/calendar__readClock.effect.vibe"
+import { clockReal, instantRead, statedClockCheck, wallZone, windowClockCheck, startReading, windowFits, windowPairing, windowStartChecked } from "../../gen/calendar__readClock.effect.vibe"
 import { scopeChoice } from "../../gen/calendar__seriesScope.effect.vibe"
 import {
   addDaysToLocalDate, buildUtcDateFromLocalParts, createNeedsConfirmation, createTimeZone, deviceTimeZone, getZonedDateParts, knownTimeZone, requestTimeZone, startOfCivilDay, statedYearCreate, type LocalDate,
@@ -620,21 +620,42 @@ function windowPairings(begin: number, finish: number, zone: string, text: strin
   const start = getZonedDateParts(new Date(begin), zone)
   const end = getZonedDateParts(new Date(finish), zone)
   if (start === undefined || end === undefined || start.year !== end.year || start.month !== end.month || start.day !== end.day) return undefined
+  const onDay = (hour: number, minute: number) => buildUtcDateFromLocalParts(zone, { year: start.year, month: start.month, day: start.day, hour, minute, second: 0 })?.getTime()
   const readings = (wall: { readonly hour: number; readonly minute: number }, side: string) => [wall.hour % 12, (wall.hour % 12) + 12]
     .filter((hour) => clockHeldByWords({ hour, minute: wall.minute }, side))
-    .map((hour) => buildUtcDateFromLocalParts(zone, { year: start.year, month: start.month, day: start.day, hour, minute: wall.minute, second: 0 })?.getTime())
+    .map((hour) => onDay(hour, wall.minute))
     .filter((at): at is number => at !== undefined)
-  const ranges = windowRangesInWords(text)
-  const paired = ranges.map((sides) => {
+  const thisMinute = now - now % 60000
+  const nextMinute = thisMinute + 60000
+  // Each start reading by the current minute counts only while the window to its nearest end reading is under way, and then from now.
+  const reading = (from: number, ends: readonly number[]) => {
+    const later = ends.filter((to) => to > from)
+    return startReading(from < nextMinute, later.length > 0 && Math.min(...later) > now)
+  }
+  // A window starting this minute has no start reading of the sent clock: its start side's readings are each minute of the day so far that the side holds.
+  const readingsByNow = (side: string) => Array.from({ length: start.hour * 60 + start.minute + 1 }, (_, minute) => minute)
+    .filter((minute) => clockHeldByWords({ hour: Math.floor(minute / 60), minute: minute % 60 }, side))
+    .map((minute) => onDay(Math.floor(minute / 60), minute % 60))
+    .filter((at): at is number => at !== undefined && at < nextMinute)
+  const ranges = windowRangesInWords(text).map((sides) => {
     const said = readings(start, sides.start)
-    const starts = startChecked ? said.filter((at) => windowStartAdmission(at, now) === "ReadFromStart") : [begin]
     const ends = readings(end, sides.end)
+    const underWay = !startChecked && readingsByNow(sides.start).some((from) => reading(from, ends) === "StartUnderWay")
+    return { sides, said, ends, underWay }
+  }).filter((range) => range.said.length > 0 || range.ends.length > 0 || range.underWay)
+  const paired = ranges.map(({ said, ends, underWay }) => {
+    const opened = said.flatMap((from) => {
+      const read = reading(from, ends)
+      return read === "StartAsSaid" ? [from] : read === "StartUnderWay" ? [thisMinute] : []
+    })
+    const starts = startChecked ? [...new Set(opened)] : underWay ? [begin] : []
     const pairs = starts.flatMap((from) => ends.filter((to) => to > from).map((to) => ({ begin: from, finish: to })))
     const kept = windowFits(starts.length, ends.length, pairs.length)
-    return { startSaid: !startChecked || said.includes(begin), fits: kept === pairs.length ? pairs : starts.length > 1 ? pairs.slice(-kept) : pairs.slice(0, kept) }
+    return { startSaid: startChecked ? said.includes(begin) : underWay, fits: kept === pairs.length ? pairs : starts.length > 1 ? pairs.slice(-kept) : pairs.slice(0, kept) }
   })
-  const fits = paired.flatMap((range) => range.fits).filter((fit, at, all) => all.findIndex((known) => known.begin === fit.begin && known.finish === fit.finish) === at)
-  return { ranges: ranges.map((sides) => sides.phrase), fits, startSaid: !startChecked || paired.some((range) => range.startSaid) }
+  const settles = paired.find((range) => range.fits.length === 1 && range.fits[0]?.begin === begin && range.fits[0]?.finish === finish)
+  const fits = settles?.fits ?? paired.flatMap((range) => range.fits).filter((fit, at, all) => all.findIndex((known) => known.begin === fit.begin && known.finish === fit.finish) === at)
+  return { ranges: ranges.map((range) => range.sides.phrase), fits, startSaid: paired.some((range) => range.startSaid) }
 }
 
 effect function freeTime(host: CalendarHost, parameters: Parameters, zone: string, text: string, now: number): ActionResult!! {

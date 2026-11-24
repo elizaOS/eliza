@@ -422,6 +422,13 @@ it.effect(`Ask when I am free and get openings from my real calendar (spec/calen
   assert.deepStrictEqual([twelveFromNoon.success, at(twelveFromNoon.data, "code"), at(twelveFromNoon.data, "sent"), at(twelveFromNoon.data, "windows"), twelveFromNoon.text, hoursAndRange.success, at(hoursAndRange.data, "slots", "0", "startAt")],
     [false, "CALENDAR_CLOCK_UNSAID", "2030-03-04T20:00:00.000Z", [], "Nothing was read: the window sent is not the range the request states (\"between 2 and 4\").", true, "2030-03-04T20:00:00.000Z"])
   assert.deepStrictEqual([minutesAndApproximateRange.success, at(minutesAndApproximateRange.data, "slots", "0", "startAt")], [true, "2030-03-04T20:00:00.000Z"])
+  const hoursTillAbout = try asked("Find me 1 to 2 hours tomorrow from noon till about five", { ...noonToFive, subaction: "propose_times", durationMinutes: 60 })
+  const headCountAround = try asked("Can 3 to 6 of us meet tomorrow between noon and around 5?", noonToFive)
+  const headCountWindow = try asked("Can 2 to 4 people meet tomorrow from 2 to 4 PM?", twoToFourPm)
+  const dashed = try asked("Am I free tomorrow 2pm-4pm?", twoToFourPm)
+  const quarterToTwo = try asked("Am I free tomorrow from quarter to 2 to 4 PM?", { ...twoToFourPm, timeMin: "2030-03-04T13:45:00-08:00" })
+  assert.deepStrictEqual([hoursTillAbout.success, at(hoursTillAbout.data, "slots", "0", "startAt"), headCountAround.success, at(headCountAround.data, "isFree"), headCountWindow.success, at(headCountWindow.data, "isFree"),
+    dashed.success, at(dashed.data, "isFree"), quarterToTwo.success, at(quarterToTwo.data, "isFree")], [true, "2030-03-04T20:00:00.000Z", true, true, true, true, true, true, true, true])
   const overnight = try asked("Am I free tomorrow night from 10 to 1?", { ...noonToFive, timeMin: "2030-03-04T22:00:00-08:00", timeMax: "2030-03-05T01:00:00-08:00" })
   assert.deepStrictEqual([onTheTwelfth.success, at(onTheTwelfth.data, "isFree"), twelveMinutes.success, at(twelveMinutes.data, "slots", "length"), overnight.success, at(overnight.data, "isFree")], [true, true, true, 2, true, true])
   const fromThree = { subaction: "check_availability", timeMin: "2030-03-04T15:00:00-08:00", timeMax: "2030-03-04T17:00:00-08:00", statedClock: "start" }
@@ -434,7 +441,8 @@ it.effect(`Ask when I am free and get openings from my real calendar (spec/calen
   const fromNow = try asked(underWay, { ...noonToFive, timeMin: "2030-03-03T13:00:00-08:00", timeMax: "2030-03-03T17:00:00-08:00" })
   const nowToSix = try asked(underWay, { ...noonToFive, timeMin: "2030-03-03T13:00:00-08:00", timeMax: "2030-03-03T18:00:00-08:00" })
   const oneToFive = try asked("Am I free between 1 and 5 today?", { ...noonToFive, timeMin: "2030-03-03T13:00:00-08:00", timeMax: "2030-03-03T17:00:00-08:00" })
-  assert.deepStrictEqual([oneToFive.success, at(oneToFive.data, "isFree")], [true, true])
+  const threeToFive = try asked("Am I free between 3 and 5 today?", { ...noonToFive, timeMin: "2030-03-03T13:00:00-08:00", timeMax: "2030-03-03T17:00:00-08:00" })
+  assert.deepStrictEqual([oneToFive.success, at(oneToFive.data, "isFree"), threeToFive.success, at(threeToFive.data, "code"), at(threeToFive.data, "sent")], [true, true, false, "CALENDAR_CLOCK_UNSAID", "2030-03-03T21:00:00.000Z"])
   const yesterday = try asked("Was I free yesterday afternoon?", { subaction: "check_availability", timeMin: "2030-03-02T12:00:00-08:00", timeMax: "2030-03-02T17:00:00-08:00", afternoonOnly: true })
   const pastNext = (result: { readonly data?: unknown }) => {
     const next = at(result.data, "next")
@@ -443,6 +451,14 @@ it.effect(`Ask when I am free and get openings from my real calendar (spec/calen
   assert.deepStrictEqual([at(fromNoon.data, "code"), pastNext(fromNoon).includes("keep its end and statedClock"), pastNext(fromNoon).includes("between noon and five today"), fromNow.success, at(fromNow.data, "isFree"), at(nowToSix.data, "code"),
     at(yesterday.data, "code"), pastNext(yesterday).includes("search_events"), pastNext(yesterday).includes("start it at now")],
     ["CALENDAR_AVAILABILITY_PAST_WINDOW", true, true, true, true, "CALENDAR_CLOCK_UNSAID", "CALENDAR_AVAILABILITY_PAST_WINDOW", true, false])
+  try TestClock.setTime(Date.parse("2030-03-03T18:00:00Z"))
+  const nineToEleven = { ...noonToFive, timeMin: "2030-03-03T21:00:00-08:00", timeMax: "2030-03-03T23:00:00-08:00" }
+  const eveningAsked = try asked("Am I free from 9 to 11 today?", nineToEleven)
+  const restOfMorning = try asked("Am I free from 9 to 11 today?", { ...nineToEleven, timeMin: "2030-03-03T10:00:00-08:00", timeMax: "2030-03-03T11:00:00-08:00" })
+  assert.deepStrictEqual([at(eveningAsked.data, "code"), at(eveningAsked.data, "windows"), restOfMorning.success, at(restOfMorning.data, "isFree")], ["CALENDAR_CLOCK_AMBIGUOUS", [
+    { startAt: "2030-03-03T18:00:00.000Z", endAt: "2030-03-03T19:00:00.000Z" }, { startAt: "2030-03-03T18:00:00.000Z", endAt: "2030-03-04T07:00:00.000Z" },
+    { startAt: "2030-03-04T05:00:00.000Z", endAt: "2030-03-04T07:00:00.000Z" },
+  ], true, true])
   try TestClock.setTime(Date.parse("2030-03-03T19:00:00Z"))
   const twoToFourToday = { ...noonToFive, timeMin: "2030-03-03T14:00:00-08:00", timeMax: "2030-03-03T16:00:00-08:00" }
   const laterToday = try asked("Am I free from 2 to 4 today?", twoToFourToday)

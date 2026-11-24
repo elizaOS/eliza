@@ -293,6 +293,8 @@ export function clockHeldByWords(clock: StatedClockTime, text: string): boolean 
 const windowClockWord = /^(?:\d{1,2}(?:[:.]\d{2})?|am|pm|oclock|noon|midday|midnight|half|past|quarter|oh|o|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty)$/u
 const windowJoins = new Set(["and", "to", "until", "till", "through", "-"])
 const durationUnit = /^(?:seconds?|minutes?|hours?|days?|weeks?|months?)$/u
+// A hedge before a clock ("between noon and around 5", "from noon till about five") leaves the range a range.
+const windowHedges = new Set(["around", "about", "approximately", "roughly", "circa"])
 
 export interface WindowSides {
   readonly start: string
@@ -301,7 +303,7 @@ export interface WindowSides {
 }
 
 export function windowRangesInWords(text: string): readonly WindowSides[] {
-  const words = clockTokens(text)
+  const words = clockTokens(text).filter((word) => !windowHedges.has(word))
   const quarterTo = (at: number) => words[at] === "to" && words[at - 1] === "quarter"
   const clockWord = (at: number) => windowClockWord.test(words[at] ?? "") || quarterTo(at)
   const ranges: WindowSides[] = []
