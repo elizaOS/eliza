@@ -17,6 +17,7 @@ import { observeIdentity } from "../store/identity.vibe"
 import { WorkerRequest, WorkerResponse, type WorkerLifetime } from "../worker-platform.ts"
 import { clientStore, closeCloudDatabase, openCloudDatabase, type WorkerDatabase } from "../worker-store.vibe"
 import { legacyGmailResponse, type LegacyBindings } from "./legacy.vibe"
+import { sweepDeviceOffers } from "../identity.vibe"
 import { dueSweeps, relayRoutes, workerRoutes } from "./routes.vibe"
 import { dialSocket, socketPair } from "./sockets.ts"
 import type { Registration } from "../../gen/cloud__nativeClients__registry.effect.vibe"
@@ -217,9 +218,12 @@ export function sweepTable(env: ProfileBindings, scheduledAt: number): Promise<v
   const ticked = scoped(effect {
     if (due.length === 0) return
     const ready = try preparedFor(env)
-    const { store } = try connected(env)
+    const { db, store } = try connected(env)
     provide platformLayer(env, ready, store) {
       try start(env, ready)
+      tryPromise({ try: () => sweepDeviceOffers(db), catch: (error) => error }) catch effect () => {
+        try annotateLogs(logError("a sweep failed"), { sweep: "device offers" })
+      }
       for (const sweep of due) {
         const outcome = try exit(sweep.run)
         if (Exit.isFailure(outcome)) try annotateLogs(logError("a sweep failed"), { sweep: sweep.name })

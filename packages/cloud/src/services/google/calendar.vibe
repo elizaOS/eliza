@@ -443,7 +443,7 @@ effect function feedRoute(context: RouteContext) {
       events.push(card)
     }
   })
-  const answer = { calendarId: query.calendarId, events, syncedAt: new Date(context.now).toISOString() }
+  const answer = { accountId: owner.userId, calendarId: query.calendarId, events, syncedAt: new Date(context.now).toISOString(), nextPageToken: null }
   if (encoder.encode(JSON.stringify(answer)).length > feedLimitBytes) throw refused("ContentTooLarge")
   return json(answer)
 }
@@ -715,12 +715,12 @@ effect function sweepStaleWrites(): number!!CloudContext {
 const calendar = "/api/v1/eliza/google/calendar"
 
 export const calendarRoutes: ReadonlyArray<Route> = [
-  { method: "GET", path: `${calendar}/calendars`, auth: "ServiceAccess", capability: "managedGoogle", handler: calendarsRoute },
-  { method: "GET", path: `${calendar}/feed`, auth: "ServiceAccess", capability: "managedGoogle", handler: feedRoute },
-  { method: "GET", path: `${calendar}/events/:eventId`, auth: "ServiceAccess", capability: "managedGoogle", handler: eventRoute },
-  { method: "POST", path: `${calendar}/events`, auth: "ServiceAccess", capability: "managedGoogle", handler: (context) => refusingWrite(createRoute(context)) },
-  { method: "PATCH", path: `${calendar}/events/:eventId`, auth: "ServiceAccess", capability: "managedGoogle", handler: (context) => refusingWrite(changeRoute(context)) },
-  { method: "DELETE", path: `${calendar}/events/:eventId`, auth: "ServiceAccess", capability: "managedGoogle", handler: (context) => refusingWrite(deleteRoute(context)) }
+  { method: "GET", path: `${calendar}/calendars`, auth: "MailAccess", capability: "managedGoogle", handler: calendarsRoute },
+  { method: "GET", path: `${calendar}/feed`, auth: "MailAccess", capability: "managedGoogle", handler: feedRoute },
+  { method: "GET", path: `${calendar}/events/:eventId`, auth: "MailAccess", capability: "managedGoogle", handler: eventRoute },
+  { method: "POST", path: `${calendar}/events`, auth: "SignedSession", capability: "managedGoogle", handler: (context) => refusingWrite(createRoute(context)) },
+  { method: "PATCH", path: `${calendar}/events/:eventId`, auth: "SignedSession", capability: "managedGoogle", handler: (context) => refusingWrite(changeRoute(context)) },
+  { method: "DELETE", path: `${calendar}/events/:eventId`, auth: "SignedSession", capability: "managedGoogle", handler: (context) => refusingWrite(deleteRoute(context)) }
 ]
 
 export const calendarSweeps: ReadonlyArray<Sweep> = [

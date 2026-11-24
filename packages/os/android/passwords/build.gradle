@@ -21,7 +21,7 @@ dependencies {
 android.testVariants.configureEach { variant ->
  variant.javaCompileProvider.configure {
   source fileTree('../secure-store/src/main/java/ai/eliza/plugins/securestore/nativeonly') {
-   include 'CloudDeviceAccount.java', 'CloudPasswordBackup.java', 'JsonCredentialSlots.java', 'PasswordBackupApproval.java'
+   include 'CloudDeviceAccount.java', 'CloudPasswordBackup.java', 'JsonCredentialSlots.java', 'MailReadRoutes.java', 'PasswordBackupApproval.java'
   }
  }
 }

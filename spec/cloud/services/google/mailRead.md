@@ -70,7 +70,11 @@ pure def lawAnAcceptedCountIsWithinItsBound(list: MailList, requested: Requested
 
 ### Triage scores each inbox message by fixed signal weights, and a message likely needing a reply outranks all automated mail
 
-Triage lists the newest inbox messages that are not in Trash, each
+Triage uses Inbox by default. The owner's Inbox, Sent, Drafts or Trash may be
+selected with a search and provider continuation. The response names the
+authorized Cloud account, selected folder and trimmed search. Every message
+retains its provider ID, including the ID used by Grace to reopen it. The
+default triage lists the newest Inbox messages that are not in Trash, each
 `{id, threadId, subject, from, to, cc, snippet, receivedAt, labels, isUnread,
 isImportant, likelyReplyNeeded, triageScore, triageReason, metadata:
 {historyId}}`, ordered by score, then newest first. Unread adds 30, the

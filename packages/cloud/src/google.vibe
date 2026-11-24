@@ -783,7 +783,7 @@ effect function routeGoogle(request: Request, env: GoogleEnv, db: Client, accoun
   if (request.method === "POST" && path === "/connect/native") return try connectNative(request, env, db, account)
   if (request.method === "POST") {
     const origin = request.headers.get("origin")
-    if (origin !== env.PUBLIC_API_ORIGIN && origin !== env.WEB_ORIGIN) return body(403, { error: "forbidden_origin" })
+    if (!request.headers.has("authorization") && origin !== env.PUBLIC_API_ORIGIN && origin !== env.WEB_ORIGIN) return body(403, { error: "forbidden_origin" })
     if (path === "/connect/initiate") return try authorize(request, env, db, account)
     if (path === "/disconnect") return try disconnect(db, account)
     if (path === "/gmail/trash") return try changeTrash(request, env, db, account)
@@ -848,8 +848,13 @@ effect function routeGoogle(request: Request, env: GoogleEnv, db: Client, accoun
       return body(200, { accountId: account, occurrenceId: id, event: target.item })
     }
     if (path === "/calendar/feed") {
-      const api = googleReadApi(try accessFor(env, db, account, "calendar", selected))
-      return body(200, { accountId: account, ...try googleCalendarFeed(api, url, now) })
+      const current = () => query(db, "SELECT id FROM cloud_google_connections WHERE account_id = $1 AND ($2::text IS NULL OR id::text = $2) AND calendar", [account, selected])
+      const grant = (try current()).rows[0]?.id
+      if (typeof grant !== "string") throw new ConnectionUnavailable()
+      const api = googleReadApi(try accessFor(env, db, account, "calendar", grant))
+      const feed = try googleCalendarFeed(api, url, now)
+      if ((try current()).rows[0]?.id !== grant) throw new ConnectionUnavailable()
+      return body(200, { accountId: account, ...feed })
     }
   }
   return body(404, { error: "route_not_found" })
@@ -880,7 +885,7 @@ export function googleResponse(request: Request, env: GoogleEnv, db: Client, acc
     }
   }
   return runPromise(Effect.provideService(Effect.provide(routed, providerLayer), FetchHttpClient.Fetch, send),
-    arrivalAuthorization === undefined ? undefined : { signal: request.signal })
+    { signal: request.signal })
 }
 
 export function googleRequest(request: Request, env: GoogleEnv, db: Client, account: string, send: typeof fetch, arrivalAuthorization?: ArrivalAuthorization): Promise<Response> {

@@ -29,6 +29,7 @@ module node {
   }
 }
 import { hmacHex, sealWith, unsealWith } from node
+export { sealWith, unsealWith }
 export { newId, secretText, tokenDigest, sameText, sha256Hex } from "./credential-crypto.vibe"
 
 export type SealPurpose = "device-key" | "google-tokens" | "gmail-arrival" | "totp-secret" | "provider-secret"

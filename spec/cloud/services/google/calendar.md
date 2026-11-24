@@ -49,7 +49,9 @@ pure def lawAWritableCalendarIsReadable(scopes: List[G::GoogleScope], role: Cale
 ### A feed is served only for a window that ends after it starts, in a known time zone, and whole or not at all
 
 `GET feed?calendarId&timeMin&timeMax&timeZone` needs calendar read and a
-calendar whose row is readable, else `403 access_denied`. It answers
+calendar whose row is readable, else `403 access_denied`. Its answer names
+the authorized Cloud account and gives a null continuation after completing
+all provider pages for the requested window. It answers
 `{calendarId, events, syncedAt}` with every page Google returns; a body over
 512 KiB is refused whole as `413 content_too_large`, never cut. A bad window
 or an unknown IANA zone is `400 invalid_request`. Feed and event cards keep
