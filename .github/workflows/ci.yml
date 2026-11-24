@@ -139,6 +139,27 @@ jobs:
         uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
         with:
           packages: platforms;android-36
+      - name: Route Gradle's Maven Central through the mirror
+        run: |
+          mkdir -p "$HOME/.gradle/init.d"
+          cat > "$HOME/.gradle/init.d/maven-central-mirror.gradle" <<'GRADLE'
+          def mirror = new URI('https://maven-central.storage-download.googleapis.com/maven2/')
+          def central = ['repo.maven.apache.org', 'repo1.maven.org'] as Set
+          def redirect = { RepositoryHandler repositories ->
+            repositories.withType(MavenArtifactRepository).configureEach { repository ->
+              if (central.contains(repository.url?.host)) repository.url = mirror
+            }
+          }
+          beforeSettings { settings ->
+            redirect(settings.buildscript.repositories)
+            redirect(settings.pluginManagement.repositories)
+            redirect(settings.dependencyResolutionManagement.repositories)
+          }
+          allprojects { project ->
+            redirect(project.buildscript.repositories)
+            redirect(project.repositories)
+          }
+          GRADLE
       - name: Fetch pinned JSON library for native capture conformance
         run: |
           set -euo pipefail
