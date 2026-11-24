@@ -17,5 +17,7 @@ export const Bad = () => (
     <p className="font-serif">m</p>
     <p style={{ color: "red" }}>n</p>
     <p style={{ background: "color-mix(in oklch, var(--primary), var(--card))" }}>o</p>
+    <p className="[box-shadow:0_0_0_4px_var(--primary)]">d</p>
+    <p className="drop-shadow-[0_8px_18px_var(--primary)]">e</p>
   </div>
 )

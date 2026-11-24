@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync } from "node:fs"
+import { readFileSync } from "node:fs"
 import { relative, sep } from "node:path"
 import js from "@eslint/js"
 import react from "@eslint-react/eslint-plugin"
@@ -11,21 +11,16 @@ import tseslint from "typescript-eslint"
 import vibelang from "vibelang/eslint"
 import { designSystem } from "./vibestack/design/eslint.ts"
 import { parseTokens } from "./vibestack/design/tokens.ts"
+import { withWorkspaceBarrels } from "./vibestack/eslint.ts"
 
 const stack = 'AGENTS.md, "The stack"'
 const monorepo = 'CONTRIBUTING.md, "The monorepo"'
 const banned = ["redux", "react-redux", "zustand", "mobx", "jotai", "recoil", "valtio", "xstate", "vue", "svelte", "jest"]
 const scopes = ["reduxjs", "angular", "xstate", "vue", "sveltejs", "jest"]
-// Each workspace package's `exports` beyond its root: "@repo/design-system/theme.css".
-const exported = readdirSync("packages").filter((dir) => existsSync(`packages/${dir}/package.json`)).flatMap((dir) => {
-  const { name, exports = {} } = JSON.parse(readFileSync(`packages/${dir}/package.json`, "utf8"))
-  return Object.keys(exports).filter((key) => key !== ".").map((key) => RegExp.escape(`${name}/${key.slice(2)}`))
-})
 const imports = {
   patterns: [
     // A package, its subpaths and its family: zustand/middleware, redux-saga, @angular/core.
     { regex: `^(?:@(?:${scopes.join("|")})/|(?:${banned.join("|")})(?:[/-]|$))`, message: `Not part of the stack: ${stack}.` },
-    { regex: `^(?!(?:${exported.join("|")})$)@repo/[^/]+/`, message: `Import a workspace package by a path its "exports" names: ${monorepo}.` },
   ],
 }
 const noReact = { patterns: [...imports.patterns, { regex: "^react(?:-dom)?(?:/|$)", message: `Tool and domain code does not import React: ${monorepo}.` }] }
@@ -37,7 +32,7 @@ const tsx = ["packages/ui/**/*.{ts,tsx}", "packages/cloud/src/pages/**/*.{ts,tsx
 const design = "packages/design-system"
 const writing = 'AGENTS.md, "Writing code"'
 const citation = String.raw`spec\/\S+\.md, "[^"]+"`
-const suppressible = String.raw`(?!code\/|no-console\b)[\w@/-]+`
+const suppressible = String.raw`(?!code\/|barrel\/|no-console\b)[\w@/-]+`
 const cited = new RegExp(String.raw`^\s*${citation}(?:; ${citation})*\s*$`)
 const suppression = new RegExp(String.raw`^ eslint-disable(?:-next-line|-line)? ${suppressible}(?:, ${suppressible})* -- \S`)
 const configs = [suppression, /^ eslint-enable\b/]
@@ -54,7 +49,7 @@ const guarded = (parser) => ({
   parseForESLint: (text, options) => {
     const parsed = parser.parseForESLint(text, options)
     const loose = parsed.ast.comments.find((comment) => inline.test(comment.value) && !configs.some((form) => form.test(comment.value)))
-    if (loose) throw Object.assign(new SyntaxError(`Inline config here is only "eslint-disable[-next-line|-line] <rule>, … -- <reason>", never for code/* or no-console, and "eslint-enable" (${writing}).`), { lineNumber: loose.loc.start.line, column: loose.loc.start.column + 1 })
+    if (loose) throw Object.assign(new SyntaxError(`Inline config here is only "eslint-disable[-next-line|-line] <rule>, … -- <reason>", never for code/*, barrel/* or no-console, and "eslint-enable" (${writing}).`), { lineNumber: loose.loc.start.line, column: loose.loc.start.column + 1 })
     return parsed
   },
 })
@@ -130,6 +125,115 @@ const scheduled = {
   "packages/os/test/bridges/messages.test.vibe": 1,
 }
 const consoleCounts = { "packages/core/src/logger.vibe": 3 }
+const barrelExports = {
+  "packages/agent/package.json": ["./bundle", "./cli", "./client", "./device-actions", "./launch", "./operations", "./routes", "./tasks", "./voice"],
+  "packages/cloud/package.json": ["./clef-decisions", "./client", "./profile", "./store", "./worker"],
+  "packages/core/package.json": ["./logging", "./permissions", "./protocol", "./read-memo", "./schema-types", "./security/redact", "./speech", "./task-events", "./task-widgets", "./view-interaction"],
+  "packages/os/package.json": ["./android/*", "./aosp/*", "./app-update", "./bridges/*", "./bridges/definitions/*", "./browser", "./browser/address", "./browser/chromium/component/*", "./browser/protection/*", "./browser/runtime/*", "./build", "./image", "./inference"],
+  "packages/plugin-assistant/package.json": ["./clock", "./goals", "./reminders", "./review", "./todos"],
+  "packages/plugin-browser/package.json": ["./contract", "./grounding", "./native-command"],
+  "packages/plugin-calendar/package.json": ["./availability", "./client", "./feed", "./linked-sync", "./request-time", "./series"],
+  "packages/plugin-files/package.json": ["./client", "./contract", "./documents/*", "./local-volume"],
+  "packages/plugin-inbox/package.json": ["./client", "./mailbox"],
+  "packages/plugin-localinference/package.json": ["./speech-output", "./speech-route"],
+  "packages/plugin-maps/package.json": ["./cards", "./client", "./client/cloud-provider", "./client/contracts", "./client/device-navigation", "./client/guidance", "./client/location", "./client/navigation-fix", "./client/observation", "./client/route-distance", "./client/saved-places", "./relay"],
+  "packages/plugin-native-contacts/package.json": ["./bridge", "./ui"],
+  "packages/plugin-native-messages/package.json": ["./bridge", "./ui"],
+  "packages/plugin-native-phone/package.json": ["./bridge", "./ui"],
+  "packages/plugin-native-settings/package.json": ["./ui"],
+  "packages/plugin-native-wifi/package.json": ["./bridge", "./ui"],
+  "packages/plugin-notes/package.json": ["./client", "./format", "./organize", "./selected-read", "./types"],
+  "packages/plugin-trajectory-logger/package.json": ["./ui"],
+  "packages/plugin-wallet/package.json": ["./review"],
+  "packages/plugin-workflows/package.json": ["./client", "./digests", "./scope", "./worker"],
+}
+const barrelImports = {
+  "packages/agent/src/client/index.vibe": ["@elizaos/core/task-events"],
+  "packages/agent/src/client/task-lifecycle.vibe": ["@elizaos/core/task-events"],
+  "packages/agent/src/conversation/heard.vibe": ["@elizaos/core/protocol"],
+  "packages/agent/src/conversation/message-service.vibe": ["@elizaos/core/protocol"],
+  "packages/agent/src/conversation/planning.vibe": ["@elizaos/core/protocol"],
+  "packages/agent/src/conversation/reply-text.vibe": ["@elizaos/core/protocol"],
+  "packages/agent/src/conversation/turn-context.schema.vibe": ["@elizaos/core/view-interaction"],
+  "packages/agent/src/conversation/turns.vibe": ["@elizaos/core/protocol"],
+  "packages/agent/src/models/chat.vibe": ["@elizaos/cloud/client"],
+  "packages/agent/src/tasks/chat-task.vibe": ["@elizaos/core/protocol"],
+  "packages/agent/test/client-stream.test.vibe": ["@elizaos/core/protocol"],
+  "packages/agent/test/tasks-chat.test.vibe": ["@elizaos/core/protocol"],
+  "packages/os/src/build/runtime-payload.vibe": ["@elizaos/os/aosp/runtime/node.lock.json"],
+  "packages/os/test/agent-config.test.vibe": ["@elizaos/agent/cli", "@elizaos/agent/launch"],
+  "packages/os/test/drivers/os__browser__pageCommands.ts": ["@elizaos/os/browser/runtime/surface-task-handler.mjs", "@elizaos/os/browser/runtime/task-bindings.mjs"],
+  "packages/plugin-assistant/src/clock.vibe": ["@elizaos/agent/device-actions"],
+  "packages/plugin-assistant/src/device-proposals.vibe": ["@elizaos/agent/device-actions", "@elizaos/plugin-calendar/request-time"],
+  "packages/plugin-assistant/src/index.vibe": ["@elizaos/agent/device-actions"],
+  "packages/plugin-assistant/src/review.vibe": ["@elizaos/agent/device-actions"],
+  "packages/plugin-assistant/test/assistant.test.vibe": ["@elizaos/agent/device-actions"],
+  "packages/plugin-browser/src/contract.vibe": ["@elizaos/agent/client"],
+  "packages/plugin-browser/src/grounding.vibe": ["@elizaos/os/browser/address"],
+  "packages/plugin-browser/src/index.vibe": ["@elizaos/agent/device-actions"],
+  "packages/plugin-browser/src/native-browser.vibe": ["@elizaos/agent/device-actions"],
+  "packages/plugin-browser/src/proposal.vibe": ["@elizaos/agent/client", "@elizaos/agent/device-actions"],
+  "packages/plugin-browser/test/browser.test.vibe": ["@elizaos/agent/device-actions"],
+  "packages/plugin-calendar/src/index.vibe": ["@elizaos/agent/device-actions"],
+  "packages/plugin-calendar/src/plugin/device-proposals.vibe": ["@elizaos/agent/device-actions"],
+  "packages/plugin-calendar/src/plugin/phone-turn.vibe": ["@elizaos/agent/device-actions"],
+  "packages/plugin-calendar/src/series/deletions.vibe": ["@elizaos/os/bridges/deletion-window"],
+  "packages/plugin-calendar/test/reviewed-reads.test.vibe": ["@elizaos/agent/device-actions"],
+  "packages/plugin-elizacloud/src/index.vibe": ["@elizaos/cloud/client"],
+  "packages/plugin-files/src/device-proposals.vibe": ["@elizaos/agent/device-actions"],
+  "packages/plugin-files/src/index.vibe": ["@elizaos/agent/device-actions"],
+  "packages/plugin-files/src/storage/volume.vibe": ["@elizaos/os/bridges/files"],
+  "packages/plugin-files/test/files.test.vibe": ["@elizaos/agent/device-actions", "@elizaos/os/bridges/files"],
+  "packages/plugin-localinference/src/catalog.vibe": ["@elizaos/core/protocol"],
+  "packages/plugin-localinference/src/embeddings.vibe": ["@elizaos/core/protocol"],
+  "packages/plugin-localinference/src/routes.vibe": ["@elizaos/agent/routes"],
+  "packages/plugin-localinference/test/local-inference.test.vibe": ["@elizaos/agent/launch", "@elizaos/agent/routes", "@elizaos/core/protocol"],
+  "packages/plugin-maps/src/client/cloud-provider.vibe": ["@elizaos/cloud/client"],
+  "packages/plugin-maps/src/relay.vibe": ["@elizaos/agent/routes"],
+  "packages/plugin-maps/src/service.vibe": ["@elizaos/cloud/client"],
+  "packages/plugin-maps/test/maps.test.vibe": ["@elizaos/cloud/client"],
+  "packages/plugin-maps/test/support/cloud.ts": ["@elizaos/cloud/client"],
+  "packages/plugin-native-action-journal/src/index.vibe": ["@elizaos/os/bridges/action-journal"],
+  "packages/plugin-native-agent/src/index.vibe": ["@elizaos/os/bridges/agent", "@elizaos/os/bridges/definitions/agent"],
+  "packages/plugin-native-appblocker/src/index.vibe": ["@elizaos/os/bridges/bridge"],
+  "packages/plugin-native-browser-surface/src/index.vibe": ["@elizaos/os/bridges/definitions/surface", "@elizaos/os/bridges/surface"],
+  "packages/plugin-native-bun-runtime/src/index.vibe": ["@elizaos/os/bridges/agent", "@elizaos/os/bridges/definitions/agent"],
+  "packages/plugin-native-calendar/src/index.vibe": ["@elizaos/os/bridges/bridge", "@elizaos/os/bridges/calendar", "@elizaos/os/bridges/definitions/calendar"],
+  "packages/plugin-native-camera/src/index.vibe": ["@elizaos/os/bridges/camera", "@elizaos/os/bridges/definitions/camera"],
+  "packages/plugin-native-canvas/src/index.vibe": ["@elizaos/os/bridges/bridge"],
+  "packages/plugin-native-contacts/src/components/ContactsPanel.tsx": ["@elizaos/os/bridges/definitions/contacts"],
+  "packages/plugin-native-contacts/src/index.vibe": ["@elizaos/os/bridges/contacts", "@elizaos/os/bridges/definitions/contacts"],
+  "packages/plugin-native-desktop/src/index.vibe": ["@elizaos/os/bridges/bridge"],
+  "packages/plugin-native-eliza-tasks/src/index.vibe": ["@elizaos/os/bridges/bridge"],
+  "packages/plugin-native-filesystem/src/index.vibe": ["@elizaos/os/bridges/definitions/files", "@elizaos/os/bridges/files"],
+  "packages/plugin-native-gateway/src/index.vibe": ["@elizaos/os/bridges/bridge"],
+  "packages/plugin-native-inference/src/index.vibe": ["@elizaos/os/inference"],
+  "packages/plugin-native-location/src/index.vibe": ["@elizaos/os/bridges/definitions/location", "@elizaos/os/bridges/location"],
+  "packages/plugin-native-media/src/index.vibe": ["@elizaos/os/bridges/definitions/media", "@elizaos/os/bridges/media"],
+  "packages/plugin-native-messages/src/components/MessagesPanel.tsx": ["@elizaos/os/bridges/definitions/messages"],
+  "packages/plugin-native-messages/src/index.vibe": ["@elizaos/os/bridges/definitions/messages", "@elizaos/os/bridges/messages"],
+  "packages/plugin-native-mobile-signals/src/index.vibe": ["@elizaos/os/bridges/bridge"],
+  "packages/plugin-native-network-policy/src/index.vibe": ["@elizaos/os/bridges/bridge", "@elizaos/os/bridges/definitions/network-policy", "@elizaos/os/bridges/network-policy"],
+  "packages/plugin-native-notifications/src/index.vibe": ["@elizaos/os/bridges/definitions/notices", "@elizaos/os/bridges/notices"],
+  "packages/plugin-native-passwords/src/index.vibe": ["@elizaos/os/bridges/definitions/passwords", "@elizaos/os/bridges/passwords"],
+  "packages/plugin-native-phone/src/components/PhonePanel.tsx": ["@elizaos/os/bridges/definitions/phone"],
+  "packages/plugin-native-phone/src/index.vibe": ["@elizaos/os/bridges/definitions/phone", "@elizaos/os/bridges/phone"],
+  "packages/plugin-native-reminders/src/index.vibe": ["@elizaos/os/bridges/definitions/reminders", "@elizaos/os/bridges/reminders"],
+  "packages/plugin-native-secure-store/src/index.vibe": ["@elizaos/os/bridges/bridge", "@elizaos/os/bridges/definitions/secure-store", "@elizaos/os/bridges/secure-store"],
+  "packages/plugin-native-settings/src/components/DeviceSettingsPanel.tsx": ["@elizaos/os/bridges/definitions/system"],
+  "packages/plugin-native-settings/src/index.vibe": ["@elizaos/os/bridges/definitions/system", "@elizaos/os/bridges/system"],
+  "packages/plugin-native-system/src/index.vibe": ["@elizaos/os/bridges/definitions/system", "@elizaos/os/bridges/system"],
+  "packages/plugin-native-websiteblocker/src/index.vibe": ["@elizaos/os/bridges/bridge"],
+  "packages/plugin-native-wifi/src/components/WifiPanel.tsx": ["@elizaos/os/bridges/definitions/wifi"],
+  "packages/plugin-native-wifi/src/index.vibe": ["@elizaos/os/bridges/definitions/wifi", "@elizaos/os/bridges/wifi"],
+  "packages/plugin-notes/src/agent.vibe": ["@elizaos/agent/device-actions", "@elizaos/agent/routes"],
+  "packages/plugin-notes/src/device-proposals.vibe": ["@elizaos/agent/device-actions"],
+  "packages/plugin-notes/test/notes.test.vibe": ["@elizaos/agent/device-actions", "@elizaos/agent/routes"],
+  "packages/plugin-workflows/src/routes.vibe": ["@elizaos/agent/routes"],
+  "packages/plugin-workflows/src/runtime.vibe": ["@elizaos/cloud/client"],
+  "packages/plugin-workflows/src/service/google.vibe": ["@elizaos/cloud/client"],
+  "packages/plugin-workflows/test/workflows.test.vibe": ["@elizaos/agent/routes"],
+}
 
 const unused = { argsIgnorePattern: "^_", varsIgnorePattern: "^_", caughtErrorsIgnorePattern: "^_" }
 const coreUnused = { ...unused, ignoreRestSiblings: true }
@@ -137,7 +241,7 @@ const coreUnused = { ...unused, ignoreRestSiblings: true }
 // The tool reads Quint's JSON and the TypeScript compiler API as `any` at its boundaries; packages and apps stay strict.
 const loose = Object.fromEntries(["no-explicit-any", "no-unsafe-argument", "no-unsafe-assignment", "no-unsafe-call", "no-unsafe-member-access", "no-unsafe-return"].map((rule) => [`@typescript-eslint/${rule}`, "off"]))
 
-export default defineConfig(
+export default withWorkspaceBarrels(defineConfig(
   // Generated or disposable, .claude/worktrees holds other checkouts of this repository, and os ships the Android, AOSP, browser and Go trees it copies as files.
   globalIgnores(["**/gen/", "!vibestack/gen/", "**/.vibe/", "**/dist/", "**/.cache/", "**/.spec-cache/", "**/generated/", "**/storybook-static/", "**/test/fixtures/", "packages/os/{android,aosp,browser,native}/", "vibestack/examples/", "vibestack/fixtures/", ".claude/", ".lemmascript/", ".studio/", ".turbo/", "_apalache-out/"]),
   // The iOS host loads this native browser resource without the TypeScript pipeline.
@@ -218,7 +322,7 @@ export default defineConfig(
   { files: ["packages/agent/**/*.{vibe,vibex}"], rules: { "no-empty": ["error", { allowEmptyCatch: true }] } },
   { files: ["packages/agent/src/access/routes.vibe", "packages/agent/src/client/index.vibe", "packages/agent/src/host/launch.schema.vibe"], rules: { "no-control-regex": "off" } },
   { files: ["packages/**/*.{vibe,vibex}"], rules: { "no-redeclare": "off" } },
-  { files: ["packages/cloud/src/client/relay-frames.ts", "packages/cloud/src/services/sse.ts"], rules: { "prefer-const": "off" } },
+  { files: ["packages/cloud/src/client/relay-frames.ts", "packages/cloud/src/services/sse.ts"], rules: { "prefer-const": "off", "@typescript-eslint/no-unused-vars": ["error", { ...unused, argsIgnorePattern: "^(?:_|id$|pcm$|frame$|s$|a$|b$|d$)" }] } },
   { files: ["packages/agent/src/voice/echo-filter.ts"], rules: { "@typescript-eslint/no-unused-vars": ["error", { ...unused, varsIgnorePattern: "^(?:_|echoOverlapPercent$|isEcho$|turnAccepted$)" }] } },
   {
     files: ["packages/core/src/utils/filesystem.vibe"],
@@ -241,8 +345,8 @@ export default defineConfig(
     rules: { "no-useless-assignment": "off" },
   },
   {
-    files: ["packages/core/src/runtime/room-handler-queue.vibe", "packages/core/src/security/pii-pseudonymizer.vibe", "packages/core/src/security/pii-scrub-seam.vibe", "packages/core/src/utils/unicode.vibe"],
-    rules: { "@typescript-eslint/no-unused-vars": ["error", { ...coreUnused, varsIgnorePattern: "^(?:_|ElizaError$|Foreign$|PiiScrubFabricationError$)" }] },
+    files: ["packages/core/src/runtime/context-registry.vibe", "packages/core/src/runtime/room-handler-queue.vibe", "packages/core/src/runtime/run-terminal-owner.vibe", "packages/core/src/security/pii-pseudonymizer.vibe", "packages/core/src/security/pii-scrub-seam.vibe", "packages/core/src/utils/unicode.vibe"],
+    rules: { "@typescript-eslint/no-unused-vars": ["error", { ...coreUnused, varsIgnorePattern: "^(?:_|ContextRegistryError$|ElizaError$|Foreign$|PiiScrubFabricationError$)" }] },
   },
   {
     files: ["packages/core/src/catalog/loader.vibe"],
@@ -280,7 +384,7 @@ export default defineConfig(
   { files: own, plugins: { code }, rules: { "no-console": "error", "code/comments": ["error", { left: commented }], "code/effects": ["error", { left: scheduled }] } },
   { files: ["packages/ui/src/components/**"], ignores: ["**/*.meta.tsx"], rules: { "code/comments": ["error", { jsdoc: true, left: commented }] } },
   { files: Object.keys(consoleCounts), rules: { "no-console": "off", "code/console": ["error", { left: consoleCounts }] } },
-)
+), { root: import.meta.dirname, allowExports: barrelExports, allowImports: barrelImports })
 
 if (import.meta.main) {
   const { spawn, spawnSync } = await import("node:child_process")

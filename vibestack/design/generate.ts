@@ -33,6 +33,7 @@ export const themeCss = (tokens: Tokens) =>
   `@custom-variant dark {\n  &:is(.dark, .dark *) {\n    @slot;\n  }\n  @media (prefers-color-scheme: dark) {\n    &:not(:is(.light, .light *)) {\n      @slot;\n    }\n  }\n}\n` +
   block("@theme inline", [
     ...names(tokens).map((name) => `--color-${name}: var(--${name});`),
+    ...vars("drop-shadow-", tokens.dropShadow),
     "--radius-sm: calc(var(--radius) - 4px);", "--radius-md: calc(var(--radius) - 2px);",
     "--radius-lg: var(--radius);", "--radius-xl: calc(var(--radius) + 4px);",
   ]) +

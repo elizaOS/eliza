@@ -30,7 +30,8 @@
     "vibestack/testing/vitest.ts",
     "vibestack/stories/meta.ts",
     "vibestack/stories/storybook.ts",
-    "vibestack/design/eslint.ts"
+    "vibestack/design/eslint.ts",
+    "vibestack/eslint.ts"
   ],
   "vibe": {
     "sidecarDir": ".vibe/build"

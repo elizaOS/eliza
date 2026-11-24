@@ -14,6 +14,8 @@ export interface Tokens {
   radius: string
   font: { sans: string; mono: string } & Named
   shadow: Named
+  /** Filter shadows that follow a shape's outline, such as an icon's or a speech tail's: `drop-shadow-<name>`. */
+  dropShadow: Named
   motion: { duration: Named; ease: Named }
   breakpoint: Named
   /** Named radii beside the derived `rounded-sm` … `rounded-xl`: `rounded-<name>`. */
@@ -54,7 +56,7 @@ const tracking: [RegExp, string] = [/^(?:0|-?\d*\.?\d+em)$/, "a letter spacing i
 /** What each token path holds; `*` is a name the project chooses, `#` one that may also start with a digit (`2xl`, `10`). */
 const kinds: [path: string, [RegExp, string]][] = [
   ["color.(?:light|dark).*", [/^oklch\((?:0|1|0?\.\d+) (?:0|0?\.\d+) \d{1,3}(?:\.\d+)?\)$/, "oklch(L C H), opaque, with L from 0 to 1"]],
-  ["radius", length], ["font.*", text], ["shadow.*", text],
+  ["radius", length], ["font.*", text], ["shadow.*", text], ["dropShadow.*", text],
   ["motion.duration.*", [/^\d+ms$/, "a duration in ms"]], ["motion.ease.*", text], ["breakpoint.*", length],
   ["rounded.*", length], ["gradient.*", text], ["text.#", length], ["blur.*", length],
   ["text.#.size", length], ["text.#.leading", leading], ["text.#.tracking", tracking],
@@ -62,6 +64,10 @@ const kinds: [path: string, [RegExp, string]][] = [
   ["z.#", [/^-?(?:0|[1-9]\d{0,8})$/, "an integer z-index"]], ["focus.width", length], ["focus.offset", [/^-?\d*\.?\d+(?:rem|px)$/, "a length in rem or px"]],
   ["keyframes.*", [/^(?:[^{}]*\{[^{}]*\})+$/, "keyframe stops, such as 50%{opacity:0}"]], ["animate.*", text],
 ]
+const tokenPath = (pattern: string) => new RegExp(`^${pattern.replaceAll(".", "\\.").replace("*", "[a-z][a-z0-9-]*").replace("#", "[a-z0-9][a-z0-9-]*")}$`)
+const tokenKinds = kinds.map(([pattern, kind]) => ({ path: tokenPath(pattern), kind }))
+const kindOf = (path: string) => tokenKinds.find((entry) => entry.path.test(path))?.kind
+const tokenGroups = [...new Set(kinds.flatMap(([pattern]) => pattern.split(".").slice(0, -1).map((_, at, parts) => parts.slice(0, at + 1).join("."))))].map(tokenPath)
 const required = ["light", "dark"].flatMap((theme) => colorNames.map((name) => `color.${theme}.${name}`)).concat("radius", "font.sans", "font.mono")
 
 /** Tailwind v4's default palette (tailwindcss 4.3 theme.css): the colors of `bg-red-500` and the like. */
@@ -99,11 +105,8 @@ export function parseTokens(input: unknown): Tokens {
     return isRecord(value) ? value : {}
   }
   const names = (path: string) => Object.keys(group(path))
-  const matches = (pattern: string, path: string) => new RegExp(`^${pattern.replaceAll(".", "\\.").replace("*", "[a-z][a-z0-9-]*").replace("#", "[a-z0-9][a-z0-9-]*")}$`).test(path)
-  const kindOf = (path: string) => kinds.find(([pattern]) => matches(pattern, path))?.[1]
-  const groups = [...new Set(kinds.flatMap(([pattern]) => pattern.split(".").slice(0, -1).map((_, at, parts) => parts.slice(0, at + 1).join("."))))]
-  // An empty group (`shadow: {}`) is fine; an empty object at a value's path (`weight.a`, `text.body.size`) or anywhere else is not.
-  const problems = found.concat(holes(input, "").filter(([path]) => path && !(groups.some((pattern) => matches(pattern, path)) && !kindOf(path)))).flatMap(([path, value]) => {
+  // An empty object where a value belongs has no leaves, so it would pass unseen; it is a value, and not a valid one.
+  const problems = found.concat(holes(input, "").filter(([path]) => path && !(tokenGroups.some((pattern) => pattern.test(path)) && !kindOf(path)))).flatMap(([path, value]) => {
     const kind = kindOf(path)
     if (!kind) return [`unknown token path: ${path}`]
     return typeof value === "string" && kind[0].test(value) ? [] : [`${path}: expected ${kind[1]}, got ${JSON.stringify(value)}`]
@@ -119,7 +122,7 @@ export function parseTokens(input: unknown): Tokens {
     .concat(names("color.light").includes("focus") && group("focus").width !== undefined ? ["color.light.focus: also the focus ring width, so outline-focus would be ambiguous; rename one"] : [])
   if (problems.length) throw new Error(problems.join("\n"))
   const given = structuredClone(input) as Partial<Tokens>
-  return { ...given, shadow: given.shadow ?? {}, motion: { duration: {}, ease: {}, ...given.motion }, breakpoint: given.breakpoint ?? {}, rounded: given.rounded ?? {}, gradient: given.gradient ?? {}, text: given.text ?? {}, weight: given.weight ?? {}, leading: given.leading ?? {}, tracking: given.tracking ?? {}, z: given.z ?? {}, blur: given.blur ?? {}, keyframes: given.keyframes ?? {}, animate: given.animate ?? {} } as Tokens
+  return { ...given, shadow: given.shadow ?? {}, dropShadow: given.dropShadow ?? {}, motion: { duration: {}, ease: {}, ...given.motion }, breakpoint: given.breakpoint ?? {}, rounded: given.rounded ?? {}, gradient: given.gradient ?? {}, text: given.text ?? {}, weight: given.weight ?? {}, leading: given.leading ?? {}, tracking: given.tracking ?? {}, z: given.z ?? {}, blur: given.blur ?? {}, keyframes: given.keyframes ?? {}, animate: given.animate ?? {} } as Tokens
 }
 
 const linear = (color: string) => {
@@ -139,7 +142,7 @@ const luminance = (color: string) => {
   return 0.2126 * r + 0.7152 * g + 0.0722 * b
 }
 /** WCAG 2 contrast ratio of two oklch colors. */
-const contrast = (one: string, other: string) => {
+export const contrast = (one: string, other: string) => {
   const [dark, light] = [luminance(one), luminance(other)].sort((x, y) => x - y) as [number, number]
   return (light + 0.05) / (dark + 0.05)
 }

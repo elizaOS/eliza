@@ -9,11 +9,13 @@ import { trusted } from "vibelang-runtime";
 import { acceptable, type Result } from "../../pipeline.ts";
 import { isStd, parseSpec, readSpecs, specFiles, specName } from "../../parse.ts";
 import { citationLookup, ledgerFile, pending, pendingContracts, pendingKey, pendingSpecs, type Lock, type Pending, type ReviewSpec } from "../../review.ts";
-import { appScript as scriptOfApp, filesUnder, packageScripts, projectRoot, servedAt, short } from "../../util.ts";
+import { appScript as scriptOfApp, citations, filesUnder, packageScripts, projectRoot, servedAt, short } from "../../util.ts";
 import type { Session, Verdict } from "../gen/index.ts";
 import type { Outline } from "../gen/outline.ts";
 import { manifestOf, nodesOf, type Ids, type Manifest } from "./doc.ts";
+import { graphOfSpec, simulateModule, type SpecModelGraph } from "./graph.ts";
 import { outlineOf, specOrder } from "./markdown.ts";
+import { closePreview, ensurePreview, type PreviewInfo } from "./preview.ts";
 import type { ComponentIndex } from "../../stories/emit.ts";
 
 const EXT = path.extname(import.meta.filename);
@@ -142,12 +144,17 @@ export interface ProjectTree {
  * The specs as the page shows them, and everything `accept` would record (../../pipeline.ts, the `review` stage), or the
  * `problem` that keeps the specs from being read as one tree. A trusted call.
  */
-export const readTree = trusted(function readTree(tree: ProjectTree): Pick<Snapshot, "specs" | "review" | "problem"> {
+export const readTree = trusted(function readTree(tree: ProjectTree): Pick<Snapshot, "specs" | "review" | "problem" | "graphs"> {
   const { root } = tree;
   const texts = specTexts(root);
   const entries = Object.entries(texts);
   const specs = entries.sort(([a], [b]) => specOrder(a, b))
     .map(([file, text]) => ({ file, module: specName(file), hash: short(text), text, outline: outlineOf(file, text) }));
+  const components = (() => { try { return componentsOf(root); } catch { return undefined; } })();
+  const allCitations = (() => { try { return citations(root); } catch { return []; } })();
+  const graphs: Record<string, SpecModelGraph> = Object.fromEntries(
+    specs.map((s) => [s.file, graphOfSpec(s.file, s.text, components, allCitations)]),
+  );
   try {
     const previous = tree.parsed;
     let read: ReviewSpec[];
@@ -162,9 +169,25 @@ export const readTree = trusted(function readTree(tree: ProjectTree): Pick<Snaps
     }
     const locks = new Map<string, Lock>();
     const citedAt = citationLookup(root);
-    return { specs, review: [...read.flatMap((s) => pending(root, s, read, locks, citedAt).map((p) => reviewItem(p, s.file))), ...[...pendingSpecs(root, read), ...pendingContracts(root)].map((p) => reviewItem(p))] };
-  } catch (e) { return { specs, review: [], problem: (e as Error).message }; }
+    return { specs, graphs, review: [...read.flatMap((s) => pending(root, s, read, locks, citedAt).map((p) => reviewItem(p, s.file))), ...[...pendingSpecs(root, read), ...pendingContracts(root)].map((p) => reviewItem(p))] };
+  } catch (e) { return { specs, graphs, review: [], problem: (e as Error).message }; }
 }, [Error]);
+
+/** Build a live SpecModelGraph for an unsaved spec draft with project component and test backlinks. A trusted call. */
+export const graphOfDraft = trusted(function graphOfDraft(root: string, file: string, text: string): SpecModelGraph {
+  const components = (() => { try { return componentsOf(root); } catch { return undefined; } })();
+  const allCitations = (() => { try { return citations(root); } catch { return []; } })();
+  return graphOfSpec(file, text, components, allCitations);
+}, [Error]);
+
+/** Start or reuse the embedded Vite preview server for `root`, or return `{ url: null, mode: "none" }`. */
+export async function studioPreview(root: string): Promise<PreviewInfo> {
+  let components: ComponentIndex | undefined;
+  try { components = componentsOf(root); } catch { components = undefined; }
+  return ensurePreview(root, components);
+}
+
+export { closePreview, simulateModule };
 
 let pageBuild: Promise<unknown> | undefined;
 
@@ -212,6 +235,7 @@ export const componentsOf = trusted(function componentsOf(root: string): Compone
         ...c, source: { ...c.source, file },
         ...(c.model && { model: { ...c.model, spec: here(c.model.spec) } }),
         ...(c.design && { design: c.design.map(here) }),
+        ...(c.citations && { citations: c.citations.map((cit) => ({ ...cit, spec: here(cit.spec) })) }),
       }] as const;
     }))).values()],
   };
@@ -227,6 +251,7 @@ export interface Snapshot {
   session: Session;
   heard: boolean;
   specs: SpecView[];
+  graphs: Record<string, SpecModelGraph>;
   review: ReviewItem[];
   problem?: string;
   manifest?: Manifest;

@@ -181,6 +181,11 @@ Check each point before you write, and again after.
   feature flags, environment variables or settings for a change.
 - **Reuse.** Search for existing code and types first. Extend and share; no
   duplicates or one-offs.
+- **Barrel exports.** Expose a workspace package's code only through its root
+  barrel (`"."` in `exports`), plus explicit non-code static assets (`.css`,
+  `.json`, etc.); no subpath code routes or wildcards. Import workspace packages
+  by package name or declared static asset path. `pnpm lint:js` enforces both
+  (`barrel/exports` and `barrel/no-subpath-imports`) without inline disables.
 - **Compact.** Reread for needless branches, `try` blocks, wrappers and
   indirection. Shorter, if it reads as well.
 - **No code comments.** Use clear names and structure to make the code readable.
@@ -188,8 +193,9 @@ Check each point before you write, and again after.
   `//@` contracts, spec citations and Vitest environment directives, and a doc
   comment only where a generator reads it: on a `@repo/ui` component and its
   props. This holds for the project's own code, tests, scripts and proof files;
-  `vibestack/` and vendored checkouts are upstream's. In `packages/`, `pnpm lint:js` enforces it, with no effect hooks, timers or
-  `console`. An `eslint-disable` there names its rules, never `code/*` or
+  `vibestack/` and vendored checkouts are upstream's. In `packages/`,
+  `pnpm lint:js` enforces it, with no effect hooks, timers or `console`. An
+  `eslint-disable` there names its rules, never `code/*`, `barrel/*` or
   `no-console`, and says why; any other inline config fails the lint.
 - **Scripts and tests.** Extend existing ones before adding; no new scripts.
   Delete code that becomes unused. Tests follow "Tests" below.

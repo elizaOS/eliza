@@ -1,6 +1,6 @@
 // The generator on a copy of test/fixtures that nothing else reads or writes, in the system's temporary
 // directory. The copy needs no install: fixtures/modules, its `node_modules`, declares what the fixtures import.
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
 import { afterAll, expect, it } from "vitest";
@@ -14,6 +14,11 @@ afterAll(() => rmSync(root, { recursive: true }));
 const out = join(root, "generated", "stories");
 const run = generator({ root });
 const first = run();
+const component = (name: string, from = first): Component => from.index.components.find((c) => c.name === name)!;
+const stories = (name: string, from = first) => component(name, from).stories.map((s) => `${s.kind} ${s.id}`);
+const read = (name: string) => readFileSync(join(out, name), "utf8");
+const everything = () => Object.fromEntries(readdirSync(out, { recursive: true, withFileTypes: true }).filter((e) => e.isFile()).map((e) => relative(out, join(e.parentPath, e.name))).sort().map((name) => [name, read(name)]));
+const edit = (file: string, change: (text: string) => string) => writeFileSync(join(root, file), change(readFileSync(join(root, file), "utf8")));
 const writeFiles = (dir: string, files: Record<string, string>) => {
   for (const [file, text] of Object.entries(files)) {
     const path = join(dir, file);
@@ -21,11 +26,6 @@ const writeFiles = (dir: string, files: Record<string, string>) => {
     writeFileSync(path, text);
   }
 };
-const component = (name: string, from = first): Component => from.index.components.find((c) => c.name === name)!;
-const stories = (name: string, from = first) => component(name, from).stories.map((s) => `${s.kind} ${s.id}`);
-const read = (name: string) => readFileSync(join(out, name), "utf8");
-const everything = () => Object.fromEntries(readdirSync(out, { recursive: true, withFileTypes: true }).filter((e) => e.isFile()).map((e) => relative(out, join(e.parentPath, e.name))).sort().map((name) => [name, read(name)]));
-const edit = (file: string, change: (text: string) => string) => writeFileSync(join(root, file), change(readFileSync(join(root, file), "utf8")));
 
 it("finds the exported components and nothing else", () => {
   expect(first.index.components.map((c) => c.id)).toEqual(["kit-chip", "kit-kinds", "kit-many", "kit-meter", "kit-receipt", "kit-table", "kit-tag"]);
@@ -232,6 +232,10 @@ it("writes the catalog Studio reads, and tests that run every generated and manu
 it("writes the same bytes again, and nothing when nothing changed", () => {
   const before = everything();
   expect(run()).toMatchObject({ written: [], removed: [], analyzed: 0 });
+  writeFileSync(join(out, "catalog.json"), "{");
+  rmSync(join(out, "stories.browser.test.tsx"));
+  expect(run()).toMatchObject({ written: ["catalog.json", "stories.browser.test.tsx"], removed: [], analyzed: 0 });
+  expect(everything()).toEqual(before);
   rmSync(out, { recursive: true });
   expect(generator({ root })().written).toHaveLength(10);
   expect(everything()).toEqual(before);
@@ -264,7 +268,7 @@ it("rewrites only what a change touches, and removes what a deleted component le
   edit("src/Tag.tsx", (text) => text.replace('lg: "l" }', 'lg: "l", xl: "x" }'));
   expect(run()).toMatchObject({ written: ["kit-tag.stories.tsx", "catalog.json", ".cache/manifest.json"], removed: [], analyzed: 1 });
   expect(stories("Tag", run())).toContain("prop kit-tag--size-xl");
-  expect(["src/Tag.tsx", "tsconfig.json", "package.json", "generated/stories/kit-tag.stories.tsx", "node_modules/react/index.ts", ".cache/Tag.tsx"].filter(watched(root))).toEqual(["src/Tag.tsx", "tsconfig.json", "package.json"]);
+  expect(["src/Tag.tsx", "packages/views/src/New.tsx", "src/Tag.test.tsx", "test/unrelated.test.ts", "src/unreferenced.ts", "tsconfig.json", "package.json", "generated/stories/kit-tag.stories.tsx", "node_modules/react/index.ts", ".cache/Tag.tsx"].filter(watched(root))).toEqual(["src/Tag.tsx", "packages/views/src/New.tsx", "tsconfig.json", "package.json"]);
 
   // A type reached through a path alias is an input, and so is the tsconfig that names the alias.
   edit("src/shades.ts", (text) => text.replace('"red"', '"crimson"'));
@@ -306,6 +310,66 @@ it("rewrites only what a change touches, and removes what a deleted component le
   writeFiles(workspace, { "fields/noise.ts": props("unused") });
   expectField(["second"], 0);
 
+  writeFiles(workspace, { "ui/tsconfig.json": '{"extends":"../options"}' });
+  expectField(["second"]);
+  writeFiles(workspace, { options: options(["./preferred"]) });
+  expectField(["first"]);
+  rmSync(join(workspace, "options"));
+  expectField(["second"]);
+
+  writeFiles(workspace, {
+    "ui/tsconfig.json": '{"extends":"@settings/base"}',
+    "node_modules/@settings/base/package.json": '{"name":"@settings/base"}',
+    "node_modules/@settings/base/tsconfig.json": options([join(workspace, "fields")]),
+  });
+  expectField(["second"]);
+  writeFiles(workspace, {
+    "ui/node_modules/@settings/base/package.json": '{"name":"@settings/base"}',
+    "ui/node_modules/@settings/base/tsconfig.json": options([join(workspace, "preferred")]),
+  });
+  expectField(["first"]);
+  rmSync(join(ui, "node_modules/@settings"), { recursive: true });
+  expectField(["second"]);
+
+  const link = join(ui, "node_modules/@workspace/fields");
+  mkdirSync(dirname(link), { recursive: true });
+  symlinkSync(join(workspace, "fields"), link, "junction");
+  writeFiles(workspace, {
+    "ui/src/View.tsx": 'import type { Props } from "@workspace/fields"; export function View({ first, second }: Props) { return <button>{first ?? second}</button>; }',
+  });
+  for (const preserveSymlinks of [false, true]) {
+    writeFiles(workspace, {
+      "ui/tsconfig.json": JSON.stringify({ extends: "../options.json", compilerOptions: { preserveSymlinks } }),
+      "fields/package.json": '{"types":"one.d.ts"}',
+    });
+    expectField(["first"]);
+    writeFiles(workspace, { "fields/package.json": '{"types":"two.d.ts"}' });
+    expectField(["second"]);
+    expectField(["second"], 0);
+    writeFiles(workspace, { "elsewhere/package.json": '{"types":"two.d.ts"}', "elsewhere/two.d.ts": props("first") });
+    rmSync(link);
+    symlinkSync(join(workspace, "elsewhere"), link, "junction");
+    expectField(["first"]);
+    rmSync(link);
+    symlinkSync(join(workspace, "fields"), link, "junction");
+    expectField(["second"]);
+  }
+  const outer = join(workspace, "node_modules/@workspace/fields");
+  mkdirSync(dirname(outer), { recursive: true });
+  symlinkSync(join(workspace, "elsewhere"), outer, "junction");
+  rmSync(link);
+  expectField(["first"]);
+  symlinkSync(join(workspace, "fields"), link, "junction");
+  expectField(["second"]);
+  writeFiles(workspace, {
+    "ui/tsconfig.json": '{"compilerOptions":{"jsx":"preserve","noLib":true,"types":[]}}',
+    "ui/src/Owner.tsx": 'export function Owner() { return <button/> }',
+  });
+  expect(component("Owner", generate()).package).toBe("@fixture/kit");
+  writeFiles(workspace, { "ui/src/package.json": '{"name":"@fixture/nested"}' });
+  expect(component("Owner", generate()).package).toBe("@fixture/nested");
+  rmSync(join(ui, "src/package.json"));
+  expect(component("Owner", generate()).package).toBe("@fixture/kit");
 
   writeFileSync(join(root, "src/Table.meta.ts"), 'export const meta = { args: { rows: [{ id: 1 }], sort: { by: "id" } } };\n');
   const given = run();
@@ -331,4 +395,43 @@ it("rewrites only what a change touches, and removes what a deleted component le
   expect(gone.index.components.map((c) => c.name)).not.toContain("Chip");
   expect(read("stories.test.tsx")).not.toContain("Chip.stories.tsx");
   expect(read("stories.browser.test.tsx")).not.toContain("Chip.stories.tsx");
+});
+
+it("records optional part, children, citations, and gen uses metadata and omits empty keys", () => {
+  const workspace = join(root, "metadata");
+  writeFiles(workspace, {
+    "package.json": '{"name":"@fixture/meta"}',
+    "tsconfig.json": readFileSync(join(root, "tsconfig.json"), "utf8"),
+    "gen/order.ts": "export interface Order { id: string }\nexport const canPay = () => true;\nexport const total = () => 1;\n",
+    "gen/status.ts": 'export type Status = "Draft" | "Paid";\n',
+    "gen/order.effect.vibe": "export const send = () => {};\n",
+    "src/helper.ts": "export const helper = () => 1;\n",
+    "src/Badge.tsx": 'import type { Status } from "../gen/status.ts";\nexport function Badge({ status }: { status?: Status }) { return <span>{status}</span>; }\n',
+  });
+  const result = generator({ root: workspace })();
+  const badge = component("Badge", result);
+  const card = component("Card", result);
+  const title = component("CardTitle", result);
+  const footer = component("CardFooter", result);
+
+  expect("part" in badge).toBe(false);
+  expect("children" in badge).toBe(false);
+  expect("citations" in badge).toBe(false);
+  expect("uses" in badge).toBe(false);
+
+  expect("part" in card).toBe(false);
+  expect(card.children).toEqual(["Badge", "CardTitle"]);
+  expect(card.citations).toEqual([
+    { spec: "spec/order.md", heading: "Story: Pay" },
+    { spec: "spec/order.md", heading: "A payment never exceeds the balance" },
+  ]);
+  expect(card.uses).toEqual(["canPay", "send", "total"]);
+
+  expect(title.part).toBe("Card");
+  expect("children" in title).toBe(false);
+  expect(title.citations).toEqual(card.citations);
+  expect(title.uses).toEqual(["canPay", "send", "total"]);
+
+  expect(footer.part).toBe("Card");
+  expect(footer.children).toEqual(["Badge"]);
 });

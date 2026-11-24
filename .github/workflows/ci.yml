@@ -1,18 +1,12 @@
 name: ci
 
-# Every run is the tasks of `pnpm verify`, the tools' own self-test included,
-# split over jobs that run side by side: the self-test of the tools in three,
-# the root check's simulations in four shards, and everything else in one,
-# which starts once the shards have simulated and checks with what they found.
-# Turborepo and spec skip what the change does not reach, from the cache of the
-# last run. The fixed normal profile is the
-# same locally and in CI. The self-test also installs and checks each
-# standalone example.
+# The tool project runs its root checks alongside the three self-test jobs.
+# Consumer verification can precompute root simulations on four runners.
 on:
   pull_request:
-    branches: [vibestack, develop, main]
+    branches: [develop, staging, main]
   push:
-    branches: [vibestack, develop, main]
+    branches: [develop, staging, main]
 
 concurrency:
   group: ci-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.run_attempt == '1' && github.ref || github.run_id }}
@@ -104,8 +98,12 @@ jobs:
           mkdir -p .turbo/cache
           rm -f ".turbo/cache/$HASH-manifest.json"
           mv "$archive" "$meta" .turbo/cache/
+      - name: Materialize UI stories before tests
+        if: github.repository == 'lalalune/vibestack' && matrix.name == 'verify'
+        continue-on-error: true
+        run: node vibestack/spec.ts tasks '@repo/ui#gen'
       - id: simulations
-        if: matrix.name == 'verify'
+        if: matrix.name == 'verify' && github.repository != 'lalalune/vibestack'
         continue-on-error: true
         uses: actions/download-artifact@v8
         with:
@@ -142,7 +140,30 @@ jobs:
       - if: steps.simulations.outcome == 'failure' || steps.import-simulations.outcome == 'failure'
         run: echo "::warning::The shard receipts were not fully imported; the ordinary check will compute missing results."
       - id: verify-tasks
-        run: ${{ matrix.name == 'verify' && 'VITEST_MAX_WORKERS=2' || '' }} node vibestack/spec.ts tasks ${{ matrix.tasks }} ${{ startsWith(matrix.name, 'selftest-') && '--only' || '' }} --continue=dependencies-successful --summarize ${{ matrix.name == 'verify' && '--log-order=stream --concurrency=4' || '' }}
+        env:
+          JOB: ${{ matrix.name }}
+          TASKS: ${{ matrix.tasks }}
+        run: |
+          read -ra tasks <<< "$TASKS"
+          options=()
+          if [[ $JOB == verify ]]; then
+            export VITEST_MAX_WORKERS=2
+            options+=(--log-order=stream --concurrency=4)
+            config=.cache/verify-turbo.json
+            if [[ $GITHUB_REPOSITORY == lalalune/vibestack && -z ${TURBO_ROOT_TURBO_JSON+x} && ! -e turbo.jsonc && ! -L turbo.jsonc &&
+              -d spec/app && -f apps/app/package.json && ! -e apps/app/spec && ! -e apps/app/turbo.json && ! -e apps/app/turbo.jsonc ]] &&
+              jq -e --slurpfile app apps/app/package.json '
+                select($app[0] | .name == "@repo/app" and .scripts.build == "vite build" and (.scripts | has("prebuild") or has("postbuild") | not))
+                | select(.tasks | (has("@repo/app#build") | not) and (.build | type == "object" and (has("inputs") or has("command") | not) and (.dependsOn | index("//#gen") != null)))
+                | select(.tasks["//#gen"].outputs | index("apps/*/gen/**") != null and all(.[]; startswith("!") | not))
+                | .tasks["@repo/app#build"] = (.tasks.build + {inputs: ["$TURBO_DEFAULT$", {mode: "dependencyOutputs", from: ["//#gen"], globs: ["apps/app/gen/**"]}]})
+              ' turbo.json > "$config"; then
+              options+=(--root-turbo-json "$config")
+            fi
+          elif [[ $JOB == selftest-* ]]; then
+            options+=(--only)
+          fi
+          node vibestack/spec.ts tasks "${tasks[@]}" --continue=dependencies-successful --summarize "${options[@]}"
       - id: publish-tool-selftest
         if: >-
           github.event_name == 'push' && steps.tool-selftest-cache.outputs.key != '' &&
@@ -320,6 +341,7 @@ jobs:
           include-hidden-files: true
 
   vibestack-precompute-simulations:
+    if: github.repository != 'lalalune/vibestack'
     name: simulate-${{ matrix.shard }}
     permissions:
       actions: read

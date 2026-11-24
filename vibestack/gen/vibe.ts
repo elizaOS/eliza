@@ -76,9 +76,11 @@ export function effectAdapter(name: string, source: string, text: string, namesp
   const emits = step.type!.getText(file) !== step.parameters[0].type!.getText(file);
   const by = sender ? `, by: ${sender}` : "";
   const passed = sender ? ", by" : "";
+  const guard = `, isCurrent?: (state: ${state}) => boolean`;
   return [
     ...out,
     `import * as KeyValueStore from "effect/persistence/KeyValueStore"`,
+    `import { PreventSchedulerYield } from "effect/References"`,
     `import type * as T from "./${name}.ts"`,
     ``,
     `/** The rules do not allow this event in this state${sender ? " from this sender" : ""}. */`,
@@ -127,8 +129,8 @@ export function effectAdapter(name: string, source: string, text: string, namesp
     `  readonly changes: Stream.Stream<${state}>`,
     `  /** The state as it is kept now. */`,
     `  get(): ${state}!!`,
-    `  /** An event already parsed; a value from outside goes through \`receive\`. */`,
-    `  send(event: T.Event${by}): ${stepped}!Rejected`,
+    `  /** An event already parsed. An optional source check runs under the writer immediately before saving. A value from outside goes through \`receive\`. */`,
+    `  send(event: T.Event${by}${guard}): ${stepped}!Rejected`,
     `  receive(input: unknown${by}): ${stepped}!(NotAnEvent | Rejected)`,
     `}`,
     ``,
@@ -140,12 +142,17 @@ export function effectAdapter(name: string, source: string, text: string, namesp
     ` */`,
     `export effect function machineOver<E>(load: () => ${state}!E, keep: (next: ${state}) => void!!): Machine.Shape!E {`,
     `  const shown = try SubscriptionRef.make(${snapshot}(try load()))`,
-    `  effect function send(event: T.Event${by}): ${stepped}!Rejected {`,
+    `  effect function send(event: T.Event${by}${guard}): ${stepped}!Rejected {`,
     `    const input = ${snapshot}({ event${passed} })`,
     `    uninterruptible {`,
     `      return try SubscriptionRef.modifyEffect(shown, effect () => {`,
-    `        const next = try apply(${snapshot}(try orDie(load())), input.event${sender ? ", input.by" : ""})`,
-    `        try keep(${snapshot}(${emits ? "next.state" : "next"}))`,
+    `        const current = ${snapshot}(try orDie(load()))`,
+    `        const next = try apply(current, input.event${sender ? ", input.by" : ""})`,
+    `        const save = effect {`,
+    `          if (isCurrent && !isCurrent(${snapshot}(current))) throw new Rejected({ ...input, state: current })`,
+    `          try keep(${snapshot}(${emits ? "next.state" : "next"}))`,
+    `        }`,
+    `        try (isCurrent ? Effect.provideService(save, PreventSchedulerYield, true) : save)`,
     `        return [${snapshot}(next), ${emits ? "next.state" : "next"}] as const`,
     `      })`,
     `    }`,

@@ -83,7 +83,7 @@ The specs of every package are in the one tree at the root ([SPEC.md, "One spec 
 [Architecture](#architecture) maps what is generated from what, which test is for what, and the
 budgets and CI.
 
-A package states what it offers in `exports`; import a package by name, never by a path into its `src/`. Domain code
+A package exposes its code only through its root barrel (`"."` in `exports`), plus explicit non-code static assets such as `.css` and `.json`; no code subpaths or wildcards. Import a workspace package by name (or a declared static asset path), never by a code subpath or into its `src/`. Domain code
 does not import React, and a UI package holds no business rules. A shared type lives with the contract that owns it.
 
 | Command | Does |
@@ -117,8 +117,7 @@ the UI stories and the design theme before analysis reads their outputs.
 
 ## Changing the tools
 
-Eliza's vendored toolchain incorporates upstream changes through [Vibestack `747bf8d`](https://github.com/lalalune/vibestack/commit/747bf8da8b0818062f9428936230e2fb3bffeccf).
-The simulation workers and package verification incorporate [Vibestack `790ef39`](https://github.com/lalalune/vibestack/commit/790ef3978e2330b475ff23065a6d20a512e9dcb5).
+Eliza's vendored toolchain incorporates upstream changes through [Vibestack `b7f1827`](https://github.com/lalalune/vibestack/commit/b7f1827be748d4a97aee094d9961371d553012a7), with later [page exploration](https://github.com/lalalune/vibestack/pull/271), [witness verification](https://github.com/lalalune/vibestack/pull/270), [model generation](https://github.com/lalalune/vibestack/pull/272) and [incremental story generation](https://github.com/lalalune/vibestack/pull/269) updates.
 Eliza also carries its product-specific proof rendering, positive guard probes, check phase reporting,
 and workspace and CI integration.
 
@@ -142,6 +141,7 @@ and workspace and CI integration.
 | `vibestack/conformance.ts` | the comparing: journeys, malformed-input probes, walks, shrinking and replay; copied into `gen/` for a driver's types |
 | `vibestack/testing/` | what packages import: `project()` (the Vitest configuration), the property-test generator, `effectDriver` |
 | `vibestack/stories/`, `vibestack/design/` | generated stories and their tests; design tokens and their lint rules. The design project module in [`vibestack/design/project.ts`](vibestack/design/project.ts) builds or checks several token directories in one process. |
+| `vibestack/eslint.ts` | `withWorkspaceBarrels`: ESLint rules enforcing barrel-only workspace `exports` and imports, with per-file ratchets |
 | `vibestack/gen.ts` | the translator: reads what a module imports and defines |
 | `vibestack/gen/types.ts` | everything decided by a type |
 | `vibestack/gen/print.ts` | expressions |
@@ -159,10 +159,10 @@ it is reported, then that object as its last line. Each result has `ok`, `stage`
 line ends with. `pnpm selftest` builds scratch projects from this project's spec or from `vibestack/fixtures/`, breaks
 one thing at a time and asserts which stage catches each. It runs as five cached tasks, each keyed by what its tests
 read: `selftest:docs` the documents against every file they can name, `selftest:examples` each standalone example
-against its own files and the tools. The tool shards build scratch projects from the order
-example and fixtures. The rest shard also rebuilds the packaged CLI from the workspace, so app manifest changes and changes under
-`packages/` or `spec/` invalidate its isolated CI run. The first two shards each run the `describe`
-named `in shard a` or `in shard b` in `vibestack/selftest.ts`. The third runs the remaining tool tests there.
+against its own files and the tools. `selftest:tools:a` and `selftest:tools:b` build scratch projects from the order
+example and fixtures. `selftest:tools:rest` also rebuilds the packaged CLI from the workspace, so app manifest changes and changes under
+`packages/` or `spec/` invalidate its isolated CI run. The first two each run one shard of the kinds of mistake, the
+`describe` named `in shard a` or `in shard b` in `vibestack/selftest.ts`. The third runs the remaining tool tests there.
 Changes to either docs or standalone example test code keep the tool shards cached. Keep the longest tests spread over the three.
 Changes to the root README rerun the docs and packaged tool checks.
 The two suites of the tools, the command line and each kind of mistake, run side by side under one parent, each at most four tests at a time. The order project the
@@ -336,7 +336,8 @@ again during the run. The template install generates locally with `gen --if-vali
 The install command runs its listed root prerequisite tasks together before generation.
 The three tool selftest jobs in `ci.yml` run only the listed `//#build` task and generate their scratch
 projects on demand. The packaged CLI test rebuilds from a clean copy of the
-workspace. Other GitHub Actions jobs use the same strict root
+workspace. The nightly check builds the tools during install and generates the
+application in its nightly task graph. Other GitHub Actions jobs use the same strict root
 `gen` task as verification, so a successful install warms the task cache. A failed generation leaves the
 remaining checks runnable and is retried by verification. Generated stories,
 browser build artifacts, compiler declarations and successful test receipts
@@ -457,7 +458,11 @@ compare screenshots.
 Asynchronous Effect programs are tested, not proved. Each `proof` line says
 how many obligations are proved and how many are simulated only.
 
-ESLint enforces package exports and the stack boundaries, and in `packages/` the code rules of AGENTS.md, "Writing code": no comment but a spec
+ESLint enforces workspace barrel exports (`barrel/exports` on workspace
+`package.json` manifests, including `publishConfig.exports`, and
+`barrel/no-subpath-imports` on code files, via `withWorkspaceBarrels` in
+`vibestack/eslint.ts` with `allowExports` / `allowImports` ratchets for
+adopting repositories) and the stack boundaries, and in `packages/` the code rules of AGENTS.md, "Writing code": no comment but a spec
 citation or tool directive, no effect hook, timer or `console`, and no inline
 config but a reasoned `eslint-disable` of another rule. `commented` and
 `scheduled` in `eslint.config.js` give each file that still breaks them the
@@ -475,7 +480,7 @@ configured scopes are in `knip.config.js`, `.madgerc`, `.jscpd.json` and
 
 | When | Runs |
 |---|---|
-| Pull request or push to `vibestack`, `develop` or `main` | The tasks of `pnpm verify`, with `--continue=dependencies-successful`, over eight jobs, beside the Android Node lock check: `simulate-1` to `simulate-4` each simulate the specs assigned by file hash, starting from the spec cache `verify` saved. A shard fills missing receipts from an earlier run of its layout and lockfile. When native simulation starts on a pull request, waiting models can also reuse the validated archive from the push to its exact base commit. An unavailable archive leaves the ordinary computation running. When it creates simulation aggregates, it saves its certified typechecks and simulation results for later runs, including reproducible failures. A visible immutable cache with the same content fingerprint avoids a duplicate save after a late transfer. It transfers the available receipts to verification and reports failures. When the shards finish, `verify` keeps its restored receipts, imports missing keys on which the shards agree, computes the rest, and runs build, types, tests, browser tests, all checks, ESLint, Stylelint, Knip, Madge, jscpd and the selftest of the documents and the examples; beside them all, `selftest-a`, `selftest-b` and `selftest-rest` each run one `selftest:tools` task |
+| Pull request or push to `vibestack`, `develop` or `main` | The tasks of `pnpm verify`, with up to four concurrent Turbo tasks on the hosted runner and `--continue=dependencies-successful`, over eight jobs, beside the Android Node lock check: `simulate-1` to `simulate-4` each simulate the specs assigned by file hash, starting from the spec cache `verify` saved. A shard fills missing receipts from an earlier run of its layout and lockfile. When native simulation starts on a pull request, waiting models can also reuse the validated archive from the push to its exact base commit. An unavailable archive leaves the ordinary computation running. When it creates simulation aggregates, it saves its certified typechecks and simulation results for later runs, including reproducible failures. A visible immutable cache with the same content fingerprint avoids a duplicate save after a late transfer. It transfers the available receipts to verification and reports failures. When the shards finish, `verify` keeps its restored receipts, imports missing keys on which the shards agree, computes the rest, and runs build, types, tests, browser tests, all checks, ESLint, Stylelint, Knip, Madge, jscpd and the selftest of the documents and the examples; beside them all, `selftest-a`, `selftest-b` and `selftest-rest` each run one `selftest:tools` task |
 | Nightly | Every check fresh under the fixed nightly profile; saved counterexamples become a pull request into the branch the run checked, or the default branch for a tag run. Beside it, the three `selftest:tools` tasks without the selftest's shared tool runs |
 | A `vibestack-v*` tag (`release.yml`) | Build, `pnpm pack`, the prerequisites and `pnpm selftest --only --concurrency=1`, and the tarball attached to a GitHub release |
 
@@ -483,6 +488,25 @@ In the canonical `ci.yml` workspace, simulation precompute installs the root
 tool workspace’s production dependencies when its prepare script matches the
 standard tool preparation. Verification owns application builds and generation.
 Other workflows and custom prepares retain the full frozen install.
+
+This repository runs its six root specs in the ordinary check. Consumer
+workflows using the four simulation jobs assign modules by file hash. Each
+shard can fill gaps in its restored spec cache from a previous run of the same
+shard layout and lockfile. When a pull request starts native simulations, it
+can also read that shard’s published receipts from the push to its exact base
+commit while ordinary verification runs. Queued models can reuse receipts
+that arrive before they start. A missing or unavailable archive leaves the
+ordinary computation running. When the shard produces new simulation
+aggregates, it saves its certified snapshot for later runs, even if a rule
+failed. A late import only needs another save when its final snapshot has
+no visible cache with the same content fingerprint. It also
+transfers the available receipts to the ordinary check and reports failures.
+The check keeps its restored receipts, imports missing keys on which the shards
+agree, and computes the rest.
+
+In the canonical `ci.yml` workspace, simulation precompute installs the root
+tool workspace's production dependencies. The root prepare script leaves
+application builds and generation to verification.
 
 Each row's budget is in [Seeds and budgets](#seeds-and-budgets). A failing
 run keeps `test/counterexamples/` and `test/__traces__/`, where a broken
@@ -493,8 +517,10 @@ Each run installs Dafny from its pinned release, checked against its SHA-256,
 and restores pnpm's store, Quint's evaluator, and what the job adds to: a `selftest-*` job the selftest's shared
 tool runs, any other the spec cache of the root, each workspace package and each example. The key is of the job, the
 lockfile and the commit. A job tries both key layouts for its own name and current lockfile, then tries the current
-layout for another lockfile. Each entry is named by the tools and inputs that produced it, so a job reads only the
-entries that still apply.
+layout for another lockfile. Selftest jobs on pull requests first try an archive for that pull request and lockfile.
+A successful replay of the entire fixture task can reuse that archive when setup leaves the cached evaluator intact.
+Fixture jobs restore their pull request’s Turbo archive before the shared fallback. A full replay keeps that archive when the cached files stay unchanged and no files need pruning. Turbo refreshes its checkout-specific restore manifests locally.
+Each entry is named by the tools and inputs that produced it, so a job reads only the entries that still apply.
 Nightly jobs restore the pinned Quint evaluator and run with fresh verification
 results.
 The default branch's `verify` job publishes the pnpm store after the frozen

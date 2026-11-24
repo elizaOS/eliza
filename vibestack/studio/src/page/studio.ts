@@ -7,12 +7,14 @@ import { enabled, step, type Event as Edit, type Outline, type Rule, type Story 
 import { bodyOf, nodeId, nodesOfOutline, specOrder, textBody, textOf, type Item } from "../markdown.ts";
 import type { Result } from "../../../pipeline.ts";
 import type { Snapshot, SpecView } from "../project.ts";
+import type { SimResult, SpecModelGraph } from "../graph.ts";
 import type { ComponentIndex } from "../../../stories/emit.ts";
 
 /** One spec as this page holds it: the outline being edited, and what it was when loaded (`base` is its hash on disk). */
 export interface Working { file: string; base: string | null; orig: string | null; was: Outline; outline: Outline; deleted: boolean }
 /** A story or rule on the page: `<file>#<number>`, or `<file>#head` for the title. */
 export const ui = (file: string, id: number | "head") => `${file}#${id}`;
+export type StudioView = "specs" | "states" | "components" | "split";
 
 export const S = {
   projects: [] as { id: string; name: string }[],
@@ -34,7 +36,16 @@ export const S = {
   publishing: false,
   /** The project's components (./Components.tsx), if it has a catalog, and which view the page shows. */
   components: undefined as ComponentIndex | undefined,
-  view: "specs" as "specs" | "components",
+  view: "specs" as StudioView,
+  density: "quint" as "prose" | "quint",
+  drawer: false,
+  cmdOpen: false,
+  theme: "system" as "system" | "dark" | "light",
+  peekComponent: undefined as string | undefined,
+  focusNode: undefined as string | undefined,
+  focusEdge: undefined as string | undefined,
+  selectedComponentId: undefined as string | undefined,
+  draftGraphs: new Map<string, SpecModelGraph>(),
   toast: undefined as { text: string; action?: { label: string; run: () => void } } | undefined,
 };
 
@@ -56,6 +67,85 @@ export function toast(text: string, action?: { label: string; run: () => void })
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => { S.toast = undefined; redraw(); }, action ? 6000 : 2600);
   redraw();
+}
+
+// --- view, theme and navigation helpers ------------------------------------------------------------------------
+
+export function setView(v: StudioView) {
+  if ((v === "components" || v === "split") && !S.components) return;
+  S.view = v;
+  if (v !== "specs") S.peekComponent = undefined;
+  redraw();
+}
+
+export function setDensity(density: "prose" | "quint") {
+  S.density = density;
+  redraw();
+}
+
+export function setDrawer(open: boolean) {
+  S.drawer = open;
+  redraw();
+}
+
+export function setCmdOpen(open: boolean) {
+  S.cmdOpen = open;
+  redraw();
+}
+
+export function openStateFocus(file: string, opts?: { node?: string; edge?: string }) {
+  S.sel = file;
+  S.view = "states";
+  S.focusNode = opts?.node;
+  S.focusEdge = opts?.edge;
+  S.peekComponent = undefined;
+  redraw();
+}
+
+export function openComponent(idOrName?: string) {
+  if (!S.components) return;
+  if (idOrName) {
+    const match = S.components.components.find((c) => c.id === idOrName || c.name === idOrName);
+    S.selectedComponentId = match?.id ?? idOrName;
+  }
+  S.view = "components";
+  S.peekComponent = undefined;
+  redraw();
+}
+
+export function peekComponent(name?: string) {
+  S.peekComponent = !name || S.peekComponent === name ? undefined : name;
+  redraw();
+}
+
+export function isDarkTheme(): boolean {
+  return S.theme === "dark" || (S.theme === "system" && typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+}
+
+export function toggleTheme() {
+  S.theme = isDarkTheme() ? "light" : "dark";
+  document.documentElement.classList.remove("light", "dark");
+  document.documentElement.classList.add(S.theme);
+  redraw();
+}
+
+/** Strip leading Markdown blockquote `> ` markers from a story narrative for clean inline editing. */
+export function stripQuote(body: string): string {
+  const trimmed = body.trim();
+  if (!trimmed) return "";
+  const lines = trimmed.split("\n");
+  if (lines.every((l) => !l.trim() || /^\s*>/.test(l))) {
+    return lines.map((l) => l.replace(/^\s*>\s?/, "")).join("\n").trim();
+  }
+  return trimmed;
+}
+
+/** Format a story narrative as a Markdown blockquote; empty text becomes a blank line. */
+export function quoteBody(text: string): string {
+  const trimmed = text.trim();
+  if (!trimmed) return "\n";
+  const quoted = trimmed.split("\n").map((l) => (l.trim() ? (l.trimStart().startsWith(">") ? l.trimStart() : `> ${l}`) : ">")).join("\n");
+  return `\n${quoted}\n\n`;
 }
 
 // --- the working copy ------------------------------------------------------------------------------------------
@@ -83,6 +173,12 @@ export const can = (event: SessionEvent) => !!S.snap && allowed(session(), event
 export const current = () => S.specs.find((s) => s.file === S.sel);
 /** A spec's name in the rail: its path below spec/, and its directory for an index. */
 export const specLabel = (file: string) => file.slice(5, -3).replace(/(^|\/)index$/, "") || "index";
+
+/** The state-machine and story-link graph of one spec, preferring a live draft graph for dirty specs. */
+export function graphOf(file: string): SpecModelGraph | undefined {
+  const spec = S.specs.find((s) => s.file === file);
+  return (spec && isDirty(spec) ? S.draftGraphs.get(file) : undefined) ?? S.snap?.graphs?.[file];
+}
 
 /** Whether a story or rule differs from what was loaded: new, edited, or somewhere else. */
 export function storyChanged(spec: Working, s: Story, i: number) {
@@ -119,6 +215,7 @@ function merge(snap: Snapshot, mine: Working[]): Working[] {
   S.open = new Set([...S.open].flatMap((id) => remap(id) ?? []));
   S.editing = new Set([...S.editing].flatMap((id) => remap(id) ?? []));
   S.items = new Map([...S.items].flatMap(([id, v]) => { const to = remap(id); return to ? [[to, v] as const] : []; }));
+  for (const f of [...S.draftGraphs.keys()]) if (!out.some((w) => w.file === f && isDirty(w))) S.draftGraphs.delete(f);
   return out;
 }
 
@@ -131,6 +228,18 @@ async function api(route: string, body?: unknown) {
   const json = await res.json().catch(() => ({}));
   if (!res.ok) throw Object.assign(new Error(json.error ?? res.statusText), { status: res.status, body: json });
   return json;
+}
+
+export function postSim(body: { module: string; state?: unknown; event?: unknown; by?: unknown }): Promise<SimResult> {
+  return api("sim", body) as Promise<SimResult>;
+}
+
+export function fetchPreview(): Promise<{ url: string | null; mode: "embedded" | "storybook" | "none" }> {
+  return api("preview") as Promise<{ url: string | null; mode: "embedded" | "storybook" | "none" }>;
+}
+
+export function postGraph(file: string, text: string): Promise<SpecModelGraph> {
+  return api("graph", { file, text }) as Promise<SpecModelGraph>;
 }
 
 export async function refresh(published?: { specs: Map<string, { text: string | null; outline: Outline }>; history: number }) {
@@ -153,6 +262,7 @@ export async function refresh(published?: { specs: Map<string, { text: string | 
   }
   S.snap = snap;
   S.components = components;
+  if (!components && (S.view === "components" || S.view === "split")) S.view = "specs";
   S.specs = merge(snap, S.specs);
   if (!S.specs.some((s) => s.file === S.sel)) S.sel = S.specs[0]?.file ?? "";
   redraw();
@@ -285,6 +395,7 @@ export function undo() {
   S.specs = was;
   S.editing.clear();
   S.items.clear();
+  S.draftGraphs.clear();
   redraw();
 }
 
@@ -316,9 +427,10 @@ export function toggle(id: string) {
   if (!S.open.delete(id)) S.open.add(id);
   redraw();
 }
-export function select(file: string) {
+export function select(file: string, keepView = false) {
   S.sel = file;
-  S.view = "specs";
+  if (!keepView || S.view === "components") S.view = "specs";
+  S.peekComponent = undefined;
   redraw();
 }
 
@@ -330,6 +442,37 @@ export function addRule(spec: Working, s: number) {
   const id = spec.outline.counter;
   S.open.add(ui(spec.file, spec.outline.stories[s].id));
   change(() => apply(spec, { type: "addRule", s, at: spec.outline.stories[s].rules.length, title: "", body: "\n", origin: "" }) && editNode(ui(spec.file, id), false));
+}
+/** Add a rule (and its story if missing) from the visual StateGraph editor, as real outline events. */
+export function addRuleFromGraph(spec: Working, storyTitle: string, heading: string, quint: string, prose = ""): boolean {
+  const title = storyTitle.trim() || "Story: Transitions";
+  const ruleTitle = heading.trim();
+  if (!ruleTitle) return false;
+  const items: Item[] = [
+    ...(prose.trim() ? [{ quint: false, text: prose.trim() }] : []),
+    ...(quint.trim() ? [{ quint: true, text: quint.trim() }] : []),
+  ];
+  const body = items.length ? bodyOf(items) : "\n";
+  let ok = false;
+  change(() => {
+    const existing = spec.outline.stories.findIndex((s) => s.title.trim() === title);
+    if (existing >= 0) {
+      ok = apply(spec, { type: "addRule", s: existing, at: spec.outline.stories[existing].rules.length, title: ruleTitle, body, origin: "" });
+    } else {
+      const at = spec.outline.stories.length;
+      ok = apply(
+        spec,
+        { type: "addStory", at, title, body: "\n", origin: "" },
+        { type: "addRule", s: at, at: 0, title: ruleTitle, body, origin: "" },
+      );
+    }
+    return ok;
+  }, `Added “${ruleTitle}”`);
+  if (ok) {
+    const text = publishedText(spec);
+    if (text !== null) void postGraph(spec.file, text).then((g) => { S.draftGraphs.set(spec.file, g); redraw(); }).catch(() => undefined);
+  }
+  return ok;
 }
 export function removeNode(id: string) {
   const f = find(id);
@@ -432,10 +575,11 @@ export function takeTheirs(file: string) {
   const fresh = S.snap!.specs.find((s) => s.file === file);
   S.specs = S.specs.flatMap((s) => (s.file !== file ? [s] : fresh ? [working(fresh)] : []));
   S.conflicts = S.conflicts.filter((f) => f !== file);
+  S.draftGraphs.delete(file);
   redraw();
 }
 // spec/index.md, "Edits stay in the page until they are published or discarded"
-export const discard = () => change(() => { S.specs = S.snap!.specs.map(working); S.conflicts = []; S.editing.clear(); S.items.clear(); });
+export const discard = () => change(() => { S.specs = S.snap!.specs.map(working); S.conflicts = []; S.editing.clear(); S.items.clear(); S.draftGraphs.clear(); });
 
 // --- publishing ------------------------------------------------------------------------------------------------------
 
@@ -449,10 +593,11 @@ export async function publish(force = false): Promise<void> {
   S.publishing = true;
   try {
     await api("publish", { files: dirty.map((s) => ({ file: s.file, base: s.base, text: submitted.get(s.file)!.text })), origins, force });
-  } catch (e: any) {
+  } catch (e: unknown) {
     S.publishing = false;
-    if (e.status !== 409 || !e.body.conflicts) return toast(e.message);
-    S.overwrite = e.body.conflicts;
+    const err = e as Error & { status?: number; body?: { conflicts?: string[] } };
+    if (err.status !== 409 || !err.body?.conflicts) return toast(err.message);
+    S.overwrite = err.body.conflicts;
     return redraw();
   }
   // spec/index.md, "Edits stay in the page until they are published or discarded"

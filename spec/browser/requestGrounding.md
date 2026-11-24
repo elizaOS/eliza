@@ -83,6 +83,35 @@ pure def lawWithoutAPageOnlyTypedAddressesGround(readable: bool, https: bool, ve
   pageLinkDestination(readable, https, vetoed, candidates, List(), proposedLink) == groundProposedDestination(readable, https, vetoed, candidates)
 ```
 
+### An address the model proposes for a site my message does not name opens only after my review
+
+The owner may name a site without typing its address ("take me to the New
+York Times site"), and the model may then propose the address it knows for
+it. A proposed address that neither the owner's message nor the page it
+carried grounds (above) is still offered when it is a valid web address:
+HTTPS, every label well formed, a top-level domain IANA lists, and no port.
+It is always offered unbound to the message, so the owner reviews it on the
+phone before it loads. This holds only for a host the owner's message does
+not name at all, typed, spoken or split across words: an address whose host
+the message names is decided by the owner's words as above, so a host the
+owner refused, or an open they took back, is never offered. A message that
+cannot be read offers nothing, and an address that is not valid is refused
+as before. Whether the words ask for a site at all
+is the model's to judge; the card is the owner's check.
+
+```quint
+pure def proposedDestination(linked: str, readable: bool, validAddress: bool, hostNamed: bool, proposedAddress: str): str =
+  if (linked != "") linked else if (readable and validAddress and not(hostNamed)) proposedAddress else ""
+pure val linkedValues = Set("", "https://one.example/story")
+pure val proposedAddressValues = Set("", "https://news.example/")
+pure def lawAHostMyMessageNamesIsDecidedByMyWords(readable: bool, validAddress: bool, proposedAddress: str): bool =
+  proposedDestination("", readable, validAddress, true, proposedAddress) == ""
+pure def lawAnInvalidAddressIsNeverProposed(readable: bool, hostNamed: bool, proposedAddress: str): bool =
+  proposedDestination("", readable, false, hostNamed, proposedAddress) == ""
+pure def lawAnUnreadableMessageProposesNoUnstatedAddress(validAddress: bool, hostNamed: bool, proposedAddress: str): bool =
+  proposedDestination("", false, validAddress, hostNamed, proposedAddress) == ""
+```
+
 ### An open runs without my review only when my whole message asked to open that address
 
 A grounded open is bound to the owner's current message only when that
@@ -91,31 +120,13 @@ command, a polite question, an everyday command or the bare address. An
 address the owner only mentioned, one whose dots they spoke as words, and
 a link of the page their message carried are grounding evidence alone: such
 an open is offered unbound to the message, so the owner reviews it on the
-phone before it loads.
+phone before it loads, as is an address the model proposed that the message
+does not state (above).
 
 ```quint
 pure def openBound(pageLink: bool, wholeMessageOpen: bool): bool = not(pageLink) and wholeMessageOpen
 pure def lawAPageLinkIsAlwaysReviewed(wholeMessageOpen: bool): bool = not(openBound(true, wholeMessageOpen))
 pure def lawOnlyMyWholeMessageOpenIsBound(pageLink: bool, wholeMessageOpen: bool): bool = openBound(pageLink, wholeMessageOpen) implies wholeMessageOpen
-```
-
-### My whole-message open command opens the address without waiting on the model's choice
-
-When the owner's whole message is the strict open command, "open",
-"visit", "go to" or "navigate to" an address, with an optional greeting
-and the assistant's name before it, "in the browser" or "in a new tab", a
-polite suffix and closing marks after it, on a phone that opens addresses
-from chat, the open of that address is the turn's first call, before the
-model is asked. The model can no longer answer it by opening the Browser
-view, which loads no address. The open is grounded, bound and placed in a
-new tab as any whole-message open. A polite question, an everyday command,
-the bare address and a spoken hostname still wait on the model's choice.
-
-```quint
-pure def openAskedFirst(strictCommand: bool, opensAddresses: bool): bool = strictCommand and opensAddresses
-pure def lawOnlyTheStrictCommandSkipsTheModel(strictCommand: bool, opensAddresses: bool): bool =
-  openAskedFirst(strictCommand, opensAddresses) implies strictCommand
-pure def lawTheStrictCommandOpensWhereThePhoneOpensAddresses(opensAddresses: bool): bool = openAskedFirst(true, opensAddresses) iff opensAddresses
 ```
 
 ### A closing mark that could belong to the address leaves the open for my review
@@ -144,34 +155,24 @@ pure def lawAMarkThatChangesAnAddressAloneOpensNothingDirectly(readable: bool, a
 pure def lawAMarkThatLeavesTheAddressKeepsTheOpen(addressAlone: bool, afterTypedPath: bool): bool = closingMarkIsProse(addressAlone, afterTypedPath, false)
 ```
 
-### An address I asked to open in a new tab opens there, never as an empty tab, and in a tab of its own only where the phone has one
+### An address opens in a tab of its own only when the model asked for one and the phone has one, and an empty tab stays empty
 
-When the owner's whole message asks to open an address in a new tab,
-written as an address or with its dots spoken as words, the owner's words
-decide: an empty tab proposed for that message, unless it is private, is the
-open of that address in a new tab, grounded as any proposed address is, so
-the address opens once and no blank tab does. A private tab, and an empty
-tab proposed for any other message, stays the empty tab it was asked for.
-The model is told to open a typed address with an open, never an empty tab.
-An open goes to a tab of its own only on a phone that negotiated
-`browser.open-new-tab.v1`, and there when the model asked for one, as an
-empty tab that became the open does, or the owner's whole message, with the
-address written as one, opened that same address in a new tab; anywhere
-else the phone opens it as it always has.
+Whether the owner wants an address in a new tab is the model's to read: it
+asks for one with the open's own new-tab argument, and the tool tells it to
+open an address with an open, never with an empty tab. An open goes to a
+tab of its own only on a phone that negotiated `browser.open-new-tab.v1`
+and only when the model asked for one; anywhere else the phone opens it as
+it always has. No reading of the owner's words moves an open to a new tab
+or turns a proposed empty tab into an open: an empty tab, private or not,
+is the empty tab that was proposed.
 
 ```quint
-type Placement = { proposedNewTab: bool, ownerAskedNewTab: bool, ownerAddressIsDestination: bool, newTabNegotiated: bool }
-pure def opensInNewTab(placement: Placement): bool =
-  placement.newTabNegotiated and (placement.proposedNewTab or (placement.ownerAskedNewTab and placement.ownerAddressIsDestination))
-pure def emptyTabOpensAddress(proposedPrivate: bool, ownerOpensAddressInNewTab: bool): bool = ownerOpensAddressInNewTab and not(proposedPrivate)
-pure val askedPlacement: Placement = { proposedNewTab: false, ownerAskedNewTab: true, ownerAddressIsDestination: true, newTabNegotiated: true }
-pure val placementValues = Set(askedPlacement, { ...askedPlacement, newTabNegotiated: false }, { ...askedPlacement, ownerAskedNewTab: false },
-  { ...askedPlacement, ownerAddressIsDestination: false }, { ...askedPlacement, ownerAskedNewTab: false, proposedNewTab: true },
-  { ...askedPlacement, ownerAskedNewTab: false, proposedNewTab: true, newTabNegotiated: false })
-pure def lawAnAddressAskedInANewTabIsNeverAnEmptyTab(proposedPrivate: bool): bool = not(proposedPrivate) implies emptyTabOpensAddress(proposedPrivate, true)
-pure def lawAPrivateTabOrAnotherMessageKeepsItsEmptyTab(proposedPrivate: bool, ownerOpensAddressInNewTab: bool): bool =
-  (proposedPrivate or not(ownerOpensAddressInNewTab)) implies not(emptyTabOpensAddress(proposedPrivate, ownerOpensAddressInNewTab))
+type Placement = { proposedNewTab: bool, newTabNegotiated: bool }
+pure def opensInNewTab(placement: Placement): bool = placement.newTabNegotiated and placement.proposedNewTab
+pure val placementValues = Set({ proposedNewTab: true, newTabNegotiated: true }, { proposedNewTab: true, newTabNegotiated: false },
+  { proposedNewTab: false, newTabNegotiated: true }, { proposedNewTab: false, newTabNegotiated: false })
 pure def lawATabOfItsOwnNeedsItsCapability(placement: Placement): bool = opensInNewTab(placement) implies placement.newTabNegotiated
-pure def lawMyNewTabOpensWhereThePhoneHasOne(placement: Placement): bool =
-  (placement.newTabNegotiated and placement.ownerAskedNewTab and placement.ownerAddressIsDestination) implies opensInNewTab(placement)
+pure def lawOnlyTheModelsRequestOpensANewTab(placement: Placement): bool = opensInNewTab(placement) implies placement.proposedNewTab
+pure def lawTheModelsNewTabOpensWhereThePhoneHasOne(placement: Placement): bool =
+  (placement.newTabNegotiated and placement.proposedNewTab) implies opensInNewTab(placement)
 ```
