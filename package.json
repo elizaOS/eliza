@@ -37,7 +37,6 @@
     "nativeAgent": "packages/plugin-native-agent",
     "nativeAppblocker": "packages/plugin-native-appblocker",
     "nativeBrowserSurface": "packages/plugin-native-browser-surface",
-    "nativeBunRuntime": "packages/plugin-native-bun-runtime",
     "nativeCalendar": "packages/plugin-native-calendar",
     "nativeCamera": "packages/plugin-native-camera",
     "nativeCanvas": "packages/plugin-native-canvas",
