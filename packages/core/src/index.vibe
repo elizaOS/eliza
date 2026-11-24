@@ -92,8 +92,6 @@ export {
   collectKeywordTermMatches,
   collectPreparedKeywordTermMatches,
   findKeywordTermMatch,
-  getCatalogValidationKeywordTermsOrThrow as getCatalogValidationKeywordTerms,
-  getValidationKeywordTermsOrThrow as getValidationKeywordTerms,
   hasPreparedKeywordTermMatch,
   normalizeKeywordMatchText,
   type PreparedKeywordTerm,
@@ -101,7 +99,6 @@ export {
   splitKeywordDoc,
   textIncludesKeywordTerm,
 } from "./i18n/keyword-matching.vibe"
-export { VALIDATION_KEYWORD_DOCS, VALIDATION_KEYWORD_LOCALES } from "./i18n/keywords.vibe"
 export {
   type CreateIntegrationSpanOptions,
   createIntegrationTelemetrySpan,
@@ -448,8 +445,6 @@ export {
   getActiveRoutingContextsForTurn,
   getContextRoutingFromMessage,
   getContextRoutingFromState,
-  inferContextRoutingFromMessage,
-  inferContextRoutingFromText,
   mergeContextRouting,
   parseContextList,
   parseContextRoutingMetadata,

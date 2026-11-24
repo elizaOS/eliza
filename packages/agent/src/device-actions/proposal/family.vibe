@@ -50,7 +50,7 @@ export interface DeviceTurn extends NegotiatedDevice {
 
 export type Grounding =
   | { readonly kind: "Grounded"; readonly operation: DeviceOperation; readonly grounding?: ProposalGrounding }
-  | { readonly kind: "Refused"; readonly code: string; readonly forModel: string; readonly forOwner: string }
+  | { readonly kind: "Refused"; readonly code: string; readonly forModel: string; readonly forOwner: string; readonly safetyCopy?: boolean }
   | { readonly kind: "Coached"; readonly code: string; readonly forModel: string }
 
 export interface ReadContinuation {

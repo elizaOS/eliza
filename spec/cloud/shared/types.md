@@ -64,14 +64,14 @@ type ProviderKind = CheckoutSession | SubscriptionUpdate | SubscriptionSchedule 
 type ProviderKey = { providerKind: ProviderKind, providerId: str }
 ```
 
-### A person signs in by one of three methods and calls with one of two credentials
+### A person signs in by one of three methods and calls with one of three credentials
 
 A spec that accepts only some methods, such as code sign-in by email or
 phone, guards `SignInMethod` rather than declaring its own.
 
 ```quint
 type SignInMethod = EmailSignIn | PhoneSignIn | GoogleSignIn
-type CredentialKind = DeviceKeyCredential | SessionCredential
+type CredentialKind = DeviceKeyCredential | SessionCredential | LeaseCredential
 type IdempotencyKey = str
 ```
 
@@ -155,21 +155,23 @@ pure def lawEveryCodeHasAClassStatus(code: RefusalCode): bool = statusOf(code) !
 `authentication_required` always carries a credential reason; a missing or
 malformed bearer is `credential_unknown`. `account_inactive` answers an action
 on an account that is not Active (the operator adding credits, a redeem).
-`provider_rate_limited` marks a `rate_limited` that the model provider set,
-so a caller can tell it from a limit of Cloud's own.
+`device_key_not_allowed` answers a device key on a mail or calendar route,
+which only a session or a device lease may call. `provider_rate_limited` marks
+a `rate_limited` that the model provider set, so a caller can tell it from a
+limit of Cloud's own.
 
 ```quint
 type RefusalReason =
   NoReason | GrantRequired | UnsupportedField
   | CredentialExpired | CredentialRevoked | CredentialUnknown
   | ChallengeLocked | GoogleAccountChanged | AccountInactive | CapabilityMissing
-  | GoogleNotConfigured | ProviderRateLimited
+  | GoogleNotConfigured | DeviceKeyNotAllowed | ProviderRateLimited
 pure def isCredentialReason(reason: RefusalReason): bool = Set(CredentialExpired, CredentialRevoked, CredentialUnknown).contains(reason)
 pure def reasonFits(code: RefusalCode, reason: RefusalReason): bool =
   if (code == AuthenticationRequired) isCredentialReason(reason)
   else if (reason == NoReason) true
   else if (code == InvalidRequest) Set(GrantRequired, UnsupportedField).contains(reason)
-  else if (code == AccessDenied) Set(ChallengeLocked, GoogleAccountChanged, AccountInactive, CapabilityMissing).contains(reason)
+  else if (code == AccessDenied) Set(ChallengeLocked, GoogleAccountChanged, AccountInactive, CapabilityMissing, DeviceKeyNotAllowed).contains(reason)
   else if (code == ProviderUnavailable) reason == GoogleNotConfigured
   else if (code == RateLimited) reason == ProviderRateLimited
   else false

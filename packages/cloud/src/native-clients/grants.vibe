@@ -117,6 +117,36 @@ export effect function endKey(tx: Tx, row: Row, now: number) {
   return "NoReason" as const
 }
 
+effect function endByLease(tx: Tx, key: string, event: { readonly type: "endForLeaseTheft" | "supersede" }) {
+  const row = (try tx.query("SELECT key, state FROM device_grants WHERE key = $1 FOR UPDATE", [key]))[0]
+  if (row === undefined) return false
+  if (isFlatGrant(row.state)) {
+    const endedBy = event.type === "supersede" ? "Superseded" : "LeaseReused"
+    const ended = try tx.query("UPDATE device_grants SET phase = 'ended', state = state || jsonb_build_object('endedBy', $2::text), sealed_copy = NULL, revision = revision + 1, updated_at = $3 WHERE key = $1 AND phase IN ('active', 'expired') RETURNING key", [key, endedBy, try Clock.currentTimeMillis])
+    return ended.length === 1
+  }
+  const stepped = stepGrant(tx, key, event, (grant) => ({ phase: phaseColumn(grant), sealed_copy: null, sealed_lease: null, updated_at: grant.now })) catch effect (failure) => {
+    if (failure._tag !== "Rejected") throw failure
+    return undefined
+  }
+  return stepped !== undefined
+}
+
+export effect function cancelLegacySuccessor(tx: Tx, key: string) {
+  const row = (try tx.query("SELECT sign_in_at FROM device_grants WHERE key = $1 FOR UPDATE", [key]))[0]
+  const legacy = row?.sign_in_at !== undefined && row.sign_in_at !== null
+  return try stepGrant(tx, key, { type: "cancelLegacySuccessor", legacy },
+    (grant) => ({ phase: phaseColumn(grant), sealed_copy: null, sealed_lease: null, updated_at: grant.now }))
+}
+
+export effect function endGrantForLeaseTheft(tx: Tx, key: string) {
+  return try endByLease(tx, key, { type: "endForLeaseTheft" })
+}
+
+export effect function supersedeGrant(tx: Tx, key: string) {
+  return try endByLease(tx, key, { type: "supersede" })
+}
+
 export function phaseColumn(grant: Grant): string {
   return match (grant.phase.tag) {
     when "Unissued": "ended";
