@@ -579,7 +579,7 @@ const RELOAD_VERB =
   /\b(?:re-?load|refresh|re-?open|(?:load|open)\s+(?:it|this|that|(?:the|this|that)\s+(?:page|site|tab))\s+again)(ing)?\b/gi;
 // Coordinated verbs can share a negation: "don't reopen or refresh it".
 // A separate instruction can follow a transition such as "it won't load, so reload it".
-const RELOAD_CLAUSE_END = /[.!?;,:]|\b(?:so|then|but)\b/gi;
+const RELOAD_CLAUSE_END = /[.!?;,:–—]|\b(?:so|then|but)\b/gi;
 // What may come before the verb in a request, and nothing else: an imperative
 // ("reload it"), "please", "can you", "I need you to", "try", "hit the". So a
 // negation ("don't reload", "no need to refresh", "without reloading"), a noun
@@ -591,6 +591,14 @@ const RELOAD_REQUEST_LEAD =
 const RELOAD_NOUN_AFTER =
   /^\s+(?:rates?|tokens?|intervals?|cycles?|periods?)\b/i;
 
+const RELOAD_RETRACTION_LEAD =
+  /^\s*(?:(?:actually|instead|please|pls|just|now|no|wait)\s+)*(?:don['’]?t|do\s+not|never|stop|no\s+need\s+to|i\s+(?:don['’]?t|do\s+not)\s+(?:want|need)\s+you\s+to)\s+(?:.*\b(?:and|or)\s+)?(?:(?:just|ever|even|please|try(?:\s+to)?|need\s+to|have\s+to|bother\s+to)\s+)*$/i;
+
+// A short withdrawal names no verb. It refers to a reload only when it follows
+// the reload clause directly, without another intervening request.
+const SHORT_RELOAD_RETRACTION =
+  /^[^.?!;,:\n–—]*[.?!;,:\n–—]+\s*(?:(?:actually|wait|no|please)[,.!]?\s+)*(?:don['’]?t|do\s+not|never\s+mind)(?:[.!?;]+(?=\s|$)|\s*$)/i;
+
 /** Whether the owner's own message asks to reload, refresh or reopen the page
  * that is showing ("reload this page", "it won't load, so refresh", "can you
  * open it again?"). Only the request form asks: a negated reload ("don't
@@ -598,6 +606,7 @@ const RELOAD_NOUN_AFTER =
  * reopening of") or a question about one ("why did you reload?") does not. */
 export function asksToReloadBrowserPage(text: string): boolean {
   if (unreadable(text)) return false;
+  let requested = false;
   for (const match of text.matchAll(RELOAD_VERB)) {
     const before = text.slice(0, match.index);
     const clause = before
@@ -610,15 +619,18 @@ export function asksToReloadBrowserPage(text: string): boolean {
         ),
       )
       .trim();
-    const lead = RELOAD_REQUEST_LEAD.test(`${clause} `);
     // "try reloading" asks; "reloading it" on its own does not.
     const form = match[1] ? /\btry$/i.test(clause) : true;
-    const noun = RELOAD_NOUN_AFTER.test(
-      text.slice((match.index ?? 0) + match[0].length),
-    );
-    if (lead && form && !noun) return true;
+    const after = text.slice((match.index ?? 0) + match[0].length);
+    const noun = RELOAD_NOUN_AFTER.test(after);
+    if (noun) continue;
+    if (RELOAD_RETRACTION_LEAD.test(`${clause} `)) return false;
+    if (form && RELOAD_REQUEST_LEAD.test(`${clause} `)) {
+      if (SHORT_RELOAD_RETRACTION.test(after)) return false;
+      requested = true;
+    }
   }
-  return false;
+  return requested;
 }
 
 /** The model-facing refusal of a reload, refresh or reopen of the Browser page
