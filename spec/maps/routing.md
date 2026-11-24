@@ -1,10 +1,10 @@
 # Maps turn routing
 
-A short owner request that is plainly Maps work goes straight to the Maps
-action that answers it, instead of a view switch or a small-talk reply. The
-shell reads the request's shape from its words; this spec decides what each
-shape is routed to. Anything uncertain keeps the planner's own choice.
-[Maps navigation](./navigation.md) owns what those actions may do.
+How an owner request reaches the Maps action that answers it, and how the
+owner's next turn answers a question Maps asked. Which action a request
+needs is the model's to judge from the actions' own descriptions; this
+spec decides how an open question binds the answer and how a place is
+taken. [Maps navigation](./navigation.md) owns what those actions may do.
 
 ## Story: Send my directions request to Maps, not to a view
 
@@ -12,58 +12,16 @@ shape is routed to. Anything uncertain keeps the planner's own choice.
 > me to settings" to open Settings, and "the second one" to answer the
 > question Maps just asked me.
 
-### A plain Maps request of the owner's own chat turn goes to the Maps action for its shape
+### A Maps request is the model's to recognize, and opening the Maps view never answers one
 
-Only the owner's own direct chat or voice turn is routed. A request with
-further work or a condition in it ("then text Sam", "if it's open"), one
-that names a web address, or one whose destination is part of an app or a
-document is never routed. Directions between places, and directions to a
-place, go to route planning or navigation from here; a place to show on the
-map goes to showing or finding it; travelling to a destination, or going to
-a named place or street address, goes to navigation from here unless the
-destination names one of the agent's views; a nearby or nearest kind of
-place, and a kind of place near a named place, go to place search.
-"Get to" before a verb is a chance to do something, not a trip: "how do I
-get to talk to someone" or "can I get to see my results" is no travel
-request. See, hear and try still travel before a place ("get to see the
-Eiffel Tower") and stop it only before a possessive or a person.
-Weather, traffic, news or a forecast near a place, and things kept on the
-phone such as photos, messages or notes, are not a kind of place; a time,
-a holiday, a price or the owner's own place after "near" is not a named
-place. Those requests keep the planner's own choice. A routed request
-owns the whole message: while every Maps action it is routed to is
-offered this turn, a call of the view actions `VIEWS` and `VIEWS_SHOW` is
-refused before it runs ([planning](../agent/conversation/planning.md)),
-so the request is never answered by only opening the Maps view.
-
-```quint
-type RequestShape = DirectionsRequest | PlaceOnMap | TravelTo | GoToNamedPlace | NearbyKind | KindNearNamedPlace | ChoiceReply | OtherRequest
-type RoutedTo = ToDirections | ToShowPlace | ToTravel | ToPlaceSearch | ToChoice | ToPlanner
-type MapsRequest = { ownerTurn: bool, shape: RequestShape, compound: bool, webAddress: bool, appDestination: bool, namesView: bool }
-pure def mapsRouteOf(r: MapsRequest): RoutedTo =
-  if (not(r.ownerTurn) or r.compound or r.webAddress or r.appDestination) ToPlanner
-  else if (r.shape == DirectionsRequest) ToDirections
-  else if (r.shape == PlaceOnMap) ToShowPlace
-  else if (r.shape == TravelTo or r.shape == GoToNamedPlace) (if (r.namesView) ToPlanner else ToTravel)
-  else if (r.shape == NearbyKind or r.shape == KindNearNamedPlace) ToPlaceSearch
-  else if (r.shape == ChoiceReply) ToChoice
-  else ToPlanner
-pure val plainMapsRequest: MapsRequest = { ownerTurn: true, shape: DirectionsRequest, compound: false, webAddress: false, appDestination: false, namesView: false }
-pure val rValues = Set(plainMapsRequest, { ...plainMapsRequest, ownerTurn: false }, { ...plainMapsRequest, compound: true },
-  { ...plainMapsRequest, webAddress: true }, { ...plainMapsRequest, appDestination: true }, { ...plainMapsRequest, shape: PlaceOnMap },
-  { ...plainMapsRequest, shape: TravelTo }, { ...plainMapsRequest, shape: TravelTo, namesView: true },
-  { ...plainMapsRequest, shape: GoToNamedPlace, namesView: true }, { ...plainMapsRequest, shape: KindNearNamedPlace },
-  { ...plainMapsRequest, shape: ChoiceReply }, { ...plainMapsRequest, shape: OtherRequest },
-  { ...plainMapsRequest, shape: OtherRequest, ownerTurn: false, namesView: true })
-pure def lawOnlyTheOwnersTurnIsRouted(r: MapsRequest): bool = not(r.ownerTurn) implies mapsRouteOf(r) == ToPlanner
-pure def lawAViewDestinationStaysViewNavigation(r: MapsRequest): bool =
-  (r.namesView and (r.shape == TravelTo or r.shape == GoToNamedPlace)) implies mapsRouteOf(r) != ToTravel
-pure def lawCompoundRequestKeepsThePlanner(r: MapsRequest): bool = (r.compound or r.webAddress or r.appDestination) implies mapsRouteOf(r) == ToPlanner
-pure def lawOtherRequestKeepsThePlanner(r: MapsRequest): bool = r.shape == OtherRequest implies mapsRouteOf(r) == ToPlanner
-pure def ownsWholeRequest(routed: RoutedTo): bool = routed != ToPlanner
-pure def lawARequestLeftToThePlannerRefusesNoView(r: MapsRequest): bool =
-  (not(r.ownerTurn) or r.shape == OtherRequest) implies not(ownsWholeRequest(mapsRouteOf(r)))
-```
+The Maps actions are offered to the model like any other action, and each
+description says what it serves: directions and routes, a place to find
+or show on the map, travel to a destination, places of a kind near a point.
+Whether a message is Maps work, and which Maps action serves it, is the
+model's choice: nothing routes a request before the model has seen it, and
+no action is refused for the words of a request. The `VIEWS` description
+says that showing a view acts on nothing in it, so showing Maps finds no
+place and plans no route, and a request for one is a Maps action's.
 
 ### A place named with its locality is taken only from that locality, and otherwise Maps asks which one
 
@@ -113,8 +71,12 @@ one" said later about another list is never taken as this answer. The
 next turn answers by a position among the options offered ("the second
 one", "2", "the last one"), or by naming exactly one option: its name
 with its address as listed, or its name alone when no other option
-shares it. The answer continues the operation that asked. Any other
-reply leaves the question to the planner.
+shares it. The answer continues the operation that asked. While the
+question is open, the owner's next message reaches the model with a note
+on the action that asked, listing the options it offered, so the model
+may call that action again; the place is then taken from the owner's
+answer as above, never from the model's arguments. Any other reply leaves
+the question to the planner.
 
 ```quint
 pure val choiceLifetime = 600000

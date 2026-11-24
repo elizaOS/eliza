@@ -2,7 +2,6 @@
 import type { Action, ActionResult, RoleGateRole } from "@elizaos/core"
 import { calculateAction as calculateDecl } from "../../gen/agent__plugins__profile.effect.vibe"
 import type { Role } from "../../gen/core__authorization.effect.vibe"
-import { turnFirstCalls } from "../conversation/planning.vibe"
 import type { AgentModule, ModuleFactory } from "../host/module.vibe"
 
 export const basicActionsModuleName = "@elizaos/agent/basic-actions"
@@ -194,14 +193,6 @@ const calculateAction: Action = {
   validate: async () => true,
   handler: async (_runtime, _message, _state, options) => evaluate(options),
 }
-
-const calculatorCommand = /^(?:(?:please)[, ]+|(?:can|could|would) you (?:please )?)?(?:calculate|use (?:the )?calculator (?:for|to calculate)) +([0-9,.+*\/%^()_\t -]+?)[.!?]?$/iu
-
-// spec/agent/conversation/planning.md, "An explicit calculator command uses its literal expression first"
-turnFirstCalls.set(calculateAction, (_runtime, { content }) => {
-  const expression = typeof content.text === "string" ? calculatorCommand.exec(content.text.trim())?.[1]?.trim() : undefined
-  return expression !== undefined && /\d/.test(expression) && expression.length <= calculationLimits.expressionCharacters ? { expression } : undefined
-})
 
 export const basicActionsModule: ModuleFactory<never> = effect () => {
   return {

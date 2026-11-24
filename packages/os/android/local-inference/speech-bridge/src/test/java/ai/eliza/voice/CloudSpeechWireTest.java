@@ -129,4 +129,30 @@ public final class CloudSpeechWireTest {
     require(!CloudSpeechWire.droppedConnection(new java.io.IOException("Oversized speech response")), "oversized answer");
     require(!CloudSpeechWire.droppedConnection(new java.io.IOException()), "no message");
   }
+
+  @Test public void onlyAShortServiceUnavailableThatFitsTheDeadlineSendsConsentAgain() {
+    long now = 1_800_000_000_000L, room = 10_000;
+    require(CloudSpeechWire.consentRetryMs(503, "1", now, room) == 1000, "cold limiter, one second");
+    require(CloudSpeechWire.consentRetryMs(503, "2", now, room) == 2000, "two seconds is the most");
+    require(CloudSpeechWire.consentRetryMs(503, "0", now, room) == 0, "at once");
+    require(CloudSpeechWire.consentRetryMs(503, "3", now, room) == -1, "a longer wait falls back as before");
+    require(CloudSpeechWire.consentRetryMs(503, null, now, room) == -1, "no Retry-After");
+    require(CloudSpeechWire.consentRetryMs(503, "soon", now, room) == -1, "an unreadable Retry-After");
+    String date = java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME.format(java.time.Instant.ofEpochMilli(now + 1000).atZone(java.time.ZoneOffset.UTC));
+    require(CloudSpeechWire.consentRetryMs(503, date, now, room) == 1000, "an HTTP date");
+    for (int status : new int[] {429, 500, 502, 504, 401}) require(CloudSpeechWire.consentRetryMs(status, "1", now, room) == -1, "only 503, not " + status);
+    require(CloudSpeechWire.consentRetryMs(503, "1", now, 3000) == 1000, "the wait and one request fit exactly");
+    require(CloudSpeechWire.consentRetryMs(503, "1", now, 2999) == -1, "past the startup deadline");
+    require(CloudSpeechWire.consentRetryMs(503, "0", now, -1) == -1, "deadline already passed");
+  }
+
+  @Test public void theConnectionIsWarmedAtMostOnceAMinuteForEachOrigin() {
+    CloudSpeechWire.Warmups warmups = new CloudSpeechWire.Warmups();
+    long now = 5_000_000;
+    require(warmups.admit("https://cloud.example", now), "first warm-up");
+    require(!warmups.admit("https://cloud.example", now + 59_999), "again within a minute");
+    require(warmups.admit("https://staging.cloud.example", now + 1), "another origin");
+    require(warmups.admit("https://cloud.example", now + 60_000), "a minute later");
+    require(!warmups.admit("https://cloud.example", now + 60_001), "counted from the last warm-up");
+  }
 }

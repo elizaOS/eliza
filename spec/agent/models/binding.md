@@ -320,6 +320,34 @@ pure def sometimesCredentialInvalid(s: ModelBinding): bool = accountStateName(s.
 pure def sometimesProviderIssue(s: ModelBinding): bool = s.accountState == Failing({ failure: ProviderIssue })
 ```
 
+### A cloud refusal that names spent credits or a spent allowance carries Cloud's own code, and no other refusal carries one
+
+`insufficient_credits` stands for every cloud `402` and for an own-key
+provider's spent quota, so it cannot tell a client that the account has no
+plan allowance and no credits left. A refusal of a call on the cloud route
+whose `402` body names `insufficient_credits` or `allowance_exhausted`
+carries that code as its `cloudCode`. A `402` whose body names neither, any
+other status, an own-key provider's refusal and a call the binding refuses
+itself (a rate limit still in force) carry none, and each keeps its failure
+kind.
+
+```quint
+type FundsCode = NoFundsCode | CreditsSpent | AllowanceSpent
+pure def fundsCodeOf(cloudRoute: bool, refusalStatus: int, bodyCode: str): FundsCode =
+  if (not(cloudRoute) or refusalStatus != 402) NoFundsCode
+  else if (bodyCode == "insufficient_credits") CreditsSpent
+  else if (bodyCode == "allowance_exhausted") AllowanceSpent
+  else NoFundsCode
+pure def fundsCodeName(code: FundsCode): str = match code { | NoFundsCode => "" | CreditsSpent => "insufficient_credits" | AllowanceSpent => "allowance_exhausted" }
+pure val refusalStatusValues = Set(400, 401, 402, 429, 503)
+pure val bodyCodeValues = Set("", "insufficient_credits", "allowance_exhausted", "payment_required", "rate_limited")
+pure def lawOnlyACloud402NamingFundsCarriesACode(cloudRoute: bool, refusalStatus: int, bodyCode: str): bool =
+  fundsCodeOf(cloudRoute, refusalStatus, bodyCode) != NoFundsCode implies (cloudRoute and refusalStatus == 402)
+pure def lawTheCodeIsTheOneCloudNamed(cloudRoute: bool, refusalStatus: int, bodyCode: str): bool =
+  fundsCodeName(fundsCodeOf(cloudRoute, refusalStatus, bodyCode)) == "" or fundsCodeName(fundsCodeOf(cloudRoute, refusalStatus, bodyCode)) == bodyCode
+pure def lawAnOwnKeyRefusalCarriesNoCode(refusalStatus: int, bodyCode: str): bool = fundsCodeOf(false, refusalStatus, bodyCode) == NoFundsCode
+```
+
 ### No call starts before a rate limit's retry time, and a provider issue does not lift a limit still in force
 
 A refused credential, spent credits or a newer limit replace a limit.

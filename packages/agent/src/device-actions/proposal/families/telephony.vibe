@@ -1,5 +1,5 @@
 // spec/agent/deviceActions/telephony.md, "A call or text to someone the owner names by a role is proposed at once, with that word as the contact query"
-// spec/agent/deviceActions/telephony.md, "Alternative SMS recipients are clarified before any lookup"
+// spec/agent/deviceActions/telephony.md, "The model asks which of alternative SMS recipients is meant, in its own words, before any lookup"
 // spec/agent/deviceActions/index.md, "Story: Propose what I asked for on my phone, in my own words"; spec/agent/deviceActions/index.md, "The proposal tool states each rule once, names no capability, and shares a branch only between forms that accept the same calls"; spec/agent/deviceActions/telephony.md, "Story: Call or text the person I named, as I named them"; spec/agent/deviceActions/telephony.md, "A request to open the dialer opens the keypad as the owner wrote it"; spec/agent/deviceActions/telephony.md, "An emergency request is never refused for its recipient, and the owner dials it themselves on the keypad"; spec/agent/deviceActions/telephony.md, "Story: Draft my text to the person I addressed, and read the sender only as I asked"; spec/agent/deviceActions/telephony.md, "An addressed draft request drafts to the addressed recipient unless the owner asked to send it there"; spec/agent/deviceActions/telephony.md, "A draft to them goes only to the whole sender address the agent just delivered"; spec/agent/deviceActions/telephony.md, "A latest-sender read names the whole address only when the owner asked who sent it, on a phone that names it"; spec/agent/deviceActions/telephony.md, "A keypad, a Messages draft or a who-texted-me read runs without its card only as the owner asked"; spec/agent/deviceActions/telephony.md, "A settled telephony request is answered by the model from its stored result"; spec/agent/deviceActions/operations.md, "A latest-sender read is answered in fixed words from its approved result, and the model is offered the whole address only when the device negotiated it"; spec/agent/deviceActions/capabilities.md, "A newer operation cannot use an older capability version"; spec/agent/deviceActions/index.md, "A proposal's identity is its request message and its operation, so a repeat returns the same request"; spec/agent/deviceActions/index.md, "A proposal carries the owner's message only for a live turn that asked for it directly, so otherwise the phone shows its card"
 import type { ActionParameterSchema, Memory } from "@elizaos/core"
 import { completionOpen, retainedHint } from "../../../../gen/agent__deviceActions.effect.vibe"
@@ -18,7 +18,7 @@ import { samePhoneNumber, withDialNumber, writesDialNumber } from "../telephony/
 import { groundTelephonyTarget, swappedPhoneReferences, telephonyTargetRefusalReply } from "../telephony/grounding.vibe"
 import { writesContactName } from "../telephony/names.vibe"
 import {
-  asksForReview, authoredKeypadRequest, emergencyServicesRequest, offersAlternativeSmsRecipients, requestedSmsDraftRecipient, smsDraftRequestAlsoSends, smsSenderDisclosure,
+  asksForReview, authoredKeypadRequest, emergencyServicesRequest, requestedSmsDraftRecipient, smsDraftRequestAlsoSends, smsSenderDisclosure,
   type DraftRecipient, type PhoneTarget,
 } from "../telephony/request.vibe"
 
@@ -69,7 +69,7 @@ const offeredWithAll = (capabilities: readonly Capability[], unless?: Capability
   capabilities.every((capability) => has(device, capability)) && (unless === undefined || !has(device, unless))
 
 const referenceGuidance = "Phone numbers in the owner's message appear to you as contact references (__ELIZA_CONTACT_…__), never as digits. To call, dial or text that number, copy its whole reference verbatim as the number, every character and underscore; a country code such as +1 before it is allowed. Never write digits for a number you only saw as a reference: they are invented, and the proposal is refused."
-const targetGuidance = "A target is {kind: number, number} or {kind: contact, query: the contact name as the owner said it}; the phone resolves a contact locally and its number is never returned."
+const targetGuidance = "A target is {kind: number, number} or {kind: contact, query: the contact name as the owner said it}; the phone resolves a contact locally and its number is never returned. A proposal has one recipient: when the owner gives alternatives (this person or that one), ask which one in your own words before proposing or looking anyone up."
 const emergencyGuidance = "When the owner asks for emergency services in words (an ambulance, the police, the fire department, help) and writes no number, propose nothing: this phone has no keypad to open for chat, so tell the owner to dial their local emergency number on the phone's own dialer."
 const dialerGuidance = "This phone has no keypad to open for chat: a request to open the dialer or keypad with a number filled in is a reviewed phone_dial of that number, and an empty keypad is not a phone proposal."
 const routeGuidance = "A request to call, text or open the dialer with a number is that phone operation, not a view change; a plain request to open or show the Phone, Messages or Contacts app, including show my contacts with no name, is navigation to that view. The phone operations offered here are current for this turn: an earlier reply in this conversation saying calls, texts or contacts were unavailable is outdated and is never a reason to refuse now."
@@ -441,10 +441,6 @@ export const telephonyFamily: DeviceProposalFamily = {
   types: telephonyTypes,
   forms,
   guidance: familyGuidance,
-  clarifyRequest(turn) {
-    const canText = has(turn, "SmsSendV1") || has(turn, "SmsComposeV1")
-    return canText && !emergencyServicesRequest(turn.ownerText) && offersAlternativeSmsRecipients(turn.ownerText) ? "Which person should get the text?" : undefined
-  },
   effect ground(proposed, turn) {
     const operation = keypadAsked(proposed.operation, turn) ?? proposed.operation
     if (operation.type === "sms_latest_sender") return senderRead(turn)

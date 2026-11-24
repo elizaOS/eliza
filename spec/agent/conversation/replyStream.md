@@ -13,7 +13,7 @@ framing and its heartbeats. The frames are:
 | `status` | `{activity}`: what the turn is doing, display only |
 | `tool` | `{name, label}`: a tool the turn runs and its label for the owner, `Using <app>` or `Working` ([planning](./planning.md)), display only |
 | `reply_ready` | `{fullText, actionResults}`: the stored reply ahead of the terminal frame |
-| `done` | `{fullText, messageId, userMessageId, agentName, actionResults, taskChoices?, failureKind?, planAction?, retryAfterMs?, cutOffEffect?}`, with the fix, live wait and negotiated effect marker of [turns](./turns.md) |
+| `done` | `{fullText, messageId, userMessageId, agentName, actionResults, taskChoices?, failureKind?, cloudCode?, planAction?, retryAfterMs?, cutOffEffect?}`, with Cloud's own funding code, the fix, live wait and negotiated effect marker of [turns](./turns.md) |
 | `error` | `{code, message}`: the turn left no reply |
 
 One machine follows one request. The turn itself (admission, deadline,
