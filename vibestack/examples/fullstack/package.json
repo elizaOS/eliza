@@ -54,7 +54,8 @@
   },
   "pnpm": {
     "overrides": {
-      "@effect/platform-node-shared": "4.1.1"
+      "@effect/platform-node-shared": "4.1.1",
+      "esbuild": "0.28.2"
     }
   }
 }
