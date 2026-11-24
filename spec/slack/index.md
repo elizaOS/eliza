@@ -92,3 +92,14 @@ pure def slackSendOutcome(parts: SlackParts): SlackSendOutcome = if (parts.reque
 pure val partsValues = Set({ requestedParts: 1, observedParts: List(SlackPartAccepted({ receiptId: "provider-ts" })) }, { requestedParts: 2, observedParts: List(SlackPartUnknown, SlackPartRefused) }, { requestedParts: 0, observedParts: List() })
 pure def lawSlackCompleteRequiresEvidence(parts: SlackParts): bool = slackSendOutcome(parts) == SlackSendComplete implies (parts.requestedParts > 0 and parts.observedParts.length() == parts.requestedParts and parts.observedParts.every(part => slackPartAccepted(part)))
 ```
+
+### A Slack post is sent again only after a rate limit, never after a lost answer
+
+A message post or file upload, the pairing reply included, has no idempotency key: when Slack kept it but the answer was a server error or never arrived, sending it again would post it twice. Such a write is repeated only after Slack refused it with a rate limit, which stores nothing; a server error or a failed request ends it, and its part counts as unconfirmed. Reads, such as the installation check and a conversation lookup, keep the client's ordinary retries.
+
+```quint
+type SlackCall = SlackRead | SlackWrite
+type SlackCallFailure = SlackRateLimited | SlackServerAnswer | SlackRequestLost
+pure def slackRetries(call: SlackCall, failure: SlackCallFailure): bool = call == SlackRead or failure == SlackRateLimited
+pure def lawSlackWriteRepeatsOnlyAfterRateLimit(failure: SlackCallFailure): bool = slackRetries(SlackWrite, failure) iff failure == SlackRateLimited
+```
