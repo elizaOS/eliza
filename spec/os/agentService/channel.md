@@ -10,9 +10,11 @@ checked by the imported route gate (`spec/agent/access/routes.md`). An
 admitted call goes to the agent's owner-only socket as one frame of the
 agent's transport (`http_request`, `http_request_stream` or
 `events_subscribe`, one call per connection), with the launch's root token
-attached by the service. The renderer's `request` and `requestStream` may
+attached by the service. Both callers' `request` and `requestStream` may
 name request headers, which cross only as the runtime client carries them
-(`spec/agent/client/runtimeClient.md`); native callers name none.
+(`spec/agent/client/runtimeClient.md`): a native host that serves the
+renderer's runtime client over its own bridge passes that client's headers
+on, so a device-action proposal starts the same way on either path.
 
 The channel holds no lifecycle state of its own: the shell forwards the
 service's launches (`spec/os/agentService/lifecycle.md`) as `open` when a
@@ -124,7 +126,8 @@ pure def stepRefusalOpensNothing(before: AgentChannel, via: str, after: AgentCha
 
 ### Only the device headers and client id the runtime client carries cross the channel
 
-The service classifies a call's headers by the runtime client's rule: a call
+The service classifies a call's headers by the runtime client's rule, the
+same for a renderer call and a native one: a call
 naming a header the client would not carry (a credential such as
 `x-eliza-device-token`, an `x-eliza-device-key` whose value is not 64
 lowercase hexadecimal digits, an authorization, cookie or hop-by-hop header,
