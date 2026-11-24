@@ -185,6 +185,9 @@ it.effect('Keep notes as one collection edited only on the owner\'s words (spec/
   const routing = (plugin.providers ?? []).find((provider) => provider.name === "NAMED_NOTE_ROUTING")
   const availability = try promise(() => routing!.get(undefined as never, message("what is in my trip note"), undefined as never))
   assert.equal(availability.data?.namedNoteMatchAvailable, true)
+  const saved = (plugin.providers ?? []).find((provider) => provider.name === "SAVED_NOTES")
+  const savedText = (try promise(() => saved!.get(undefined as never, message("what is in my trip note"), undefined as never))).text ?? ""
+  assert.include(savedText, "If no row has the note title the owner asked for, ask which note to use before citing another note.")
   const groceries = (try notes.snapshot()).notes.find((note) => note.id === "note-1")!
   const reference = notes.sourceReference(groceries)
   try notes.assertSourceReference(reference)
