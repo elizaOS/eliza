@@ -34,14 +34,14 @@ module node {
         pollsUntilRunning = 2
         return Promise.resolve({ available: true, state: phase })
       },
-      request({ path, method }) {
+      request({ path, method, headers }) {
         calls.push(`${method} ${path}`)
         if (phase !== "running") return Promise.reject(new Error("RUNTIME_NOT_READY"))
-        return Promise.resolve({ status: 200, data: { path, account } })
+        return Promise.resolve({ status: 200, data: { path, account, ...(headers === undefined ? {} : { headers }) } })
       },
     }
     const client = createRuntimeJsonClient({ bridge: () => bridge, startupTimeoutMs: 5000, pollMs: 5, requestTimeoutMs: 5000 })
-    const first = await Promise.all([client.request("/a"), client.request("/b", { note: "posted" })])
+    const first = await Promise.all([client.request("/a"), client.request("/b", { note: "posted" }, { "X-Eliza-Device-Capabilities": "notes.query.v1" })])
     const refreshed = client.refreshNativeAccount()
     const afterRefresh = client.request("/c")
     await refreshed
@@ -70,8 +70,13 @@ module node {
     const client = createRuntimeJsonClient({ bridge: () => { asked += 1; return undefined }, startupTimeoutMs: 1000, pollMs: 5, requestTimeoutMs: 1000 })
     const missing = await client.request("/api/health").then(() => "answered", failure)
     const unrooted = await client.request("//elsewhere.example/api").then(() => "answered", failure)
+    const withheld = await Promise.all([
+      { "x-eliza-device-key": "k" }, { Authorization: "Bearer t" }, { "x-eliza-device-id": "a\nb" },
+      { "x-eliza-device-id": "a", "X-Eliza-Device-Id": "b" }, { "x-eliza-device-capabilities": "n".repeat(8192) },
+    ].map((headers) => client.request("/api/health", undefined, headers).then(() => "answered", failure)))
+    const unstreamed = await client.stream("/api/turn", {}, undefined, { connection: "close" }).then(() => "opened", failure)
     await client.refreshNativeAccount()
-    return { missing, unrooted, asked }
+    return { missing, unrooted, withheld, unstreamed, asked }
   }
 
   const bytes = (text: string) => new TextEncoder().encode(text)
@@ -156,7 +161,7 @@ module node {
       open.add(response)
       request.on("close", () => { if (!response.writableEnded) aborts.push(request.url ?? "") })
       response.writeHead(200, { "content-type": "application/x-ndjson", "x-run": "r1" })
-      response.write(`{"seq":1,"credentials":${request.headers.cookie === undefined && request.headers.authorization === undefined ? "none" : "sent"}}\n`)
+      response.write(`{"seq":1,"credentials":${request.headers.cookie === undefined && request.headers.authorization === undefined ? "none" : "sent"},"device":${JSON.stringify(request.headers["x-eliza-device-capabilities"] ?? null)}}\n`)
       if (request.url === "/whole") response.end('{"seq":2}\n')
     })
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve))
@@ -164,7 +169,7 @@ module node {
     const port = typeof address === "object" && address ? address.port : 0
     try {
       const client = createRuntimeJsonClient({ httpBase: new URL(`http://127.0.0.1:${port}`), startupTimeoutMs: 1000, pollMs: 5, requestTimeoutMs: 1000 })
-      const whole = await client.stream("/whole", { text: "hi" })
+      const whole = await client.stream("/whole", { text: "hi" }, undefined, { "x-eliza-device-capabilities": "notes.query.v1" })
       const read = { status: whole.status, run: whole.headers["x-run"], text: await readAll(whole) }
       const refreshed = await firstThen(await client.stream("/held", { text: "hi" }), () => client.refreshNativeAccount())
       for (let tries = 0; tries < 50 && aborts.length === 0; tries += 1) await new Promise((resolve) => setTimeout(resolve, 10))
@@ -190,10 +195,10 @@ module node {
 
 import { failedStartup, noRoute, overLoopback, sharedStartupThenRefresh, streamedOverBridge, streamedOverHttp, streamRefusedByAgent } from node
 
-it.live('Requests to a stopped runtime share one startup, and a refresh restarts it before the next request (spec/agent/client/runtimeClient.md, "Story: Reach a runtime that is not running yet"; spec/agent/client/runtimeClient.md, "Story: Call the runtime for my current account")', effect () => {
+it.live('Requests to a stopped runtime share one startup, carry their device headers over the bridge, and a refresh restarts it before the next request (spec/agent/client/runtimeClient.md, "Story: Reach a runtime that is not running yet"; spec/agent/client/runtimeClient.md, "Story: Call the runtime for my current account"; spec/agent/client/runtimeClient.md, "A request carries only device headers and the client id, a bounded few")', effect () => {
   const observed = try host("shared startup", () => sharedStartupThenRefresh())
   try Effect.try(() => assert.deepStrictEqual(observed, {
-    first: [{ path: "/a", account: 1 }, { path: "/b", account: 1 }],
+    first: [{ path: "/a", account: 1 }, { path: "/b", account: 1, headers: { "x-eliza-device-capabilities": "notes.query.v1" } }],
     afterRefresh: { path: "/c", account: 2 },
     limit: 4096,
     starts: 1,
@@ -206,9 +211,12 @@ it.live('A startup that never reports running fails every request waiting for it
   try Effect.try(() => assert.deepStrictEqual(observed, ["StartupFailed", "StartupFailed"]))
 })
 
-it.live('With no bridge and no HTTP base a request fails as NoRoute and nothing is called (spec/agent/client/runtimeClient.md, "Story: Call the runtime for my current account")', effect () => {
+it.live('With no bridge and no HTTP base a request fails as NoRoute, and an unrooted path or an uncarried header is refused before anything is called (spec/agent/client/runtimeClient.md, "Story: Call the runtime for my current account"; spec/agent/client/runtimeClient.md, "A request carries only device headers and the client id, a bounded few")', effect () => {
   const observed = try host("no route", () => noRoute())
-  try Effect.try(() => assert.deepStrictEqual(observed, { missing: "NoRoute", unrooted: "InvalidPath", asked: 2 }))
+  try Effect.try(() => assert.deepStrictEqual(observed, {
+    missing: "NoRoute", unrooted: "InvalidPath",
+    withheld: ["InvalidHeaders", "InvalidHeaders", "InvalidHeaders", "InvalidHeaders", "InvalidHeaders"], unstreamed: "InvalidHeaders", asked: 2,
+  }))
 })
 
 it.live('A page with no bridge reaches a real agent over loopback HTTP and reads its refusal (spec/agent/client/runtimeClient.md, "Story: Understand why the runtime refused"; spec/agent/client/runtimeClient.md, "Story: Call the runtime for my current account")', effect () => {
@@ -235,11 +243,11 @@ it.live('A stream waits for the shared startup, is sent once over the bridge, an
   }))
 })
 
-it.live('A page streams over HTTP without credentials, and a refresh aborts the HTTP body (spec/agent/client/runtimeClient.md, "A stream is sent at most once and only in its generation")', effect () => {
+it.live('A page streams over HTTP with its device headers and without credentials, and a refresh aborts the HTTP body (spec/agent/client/runtimeClient.md, "A stream is sent at most once and only in its generation"; spec/agent/client/runtimeClient.md, "A request carries only device headers and the client id, a bounded few")', effect () => {
   const observed = try host("http stream", () => streamedOverHttp())
   try Effect.try(() => assert.deepStrictEqual(observed, {
-    read: { status: 200, run: "r1", text: '{"seq":1,"credentials":none}\n{"seq":2}\n' },
-    refreshed: { first: '{"seq":1,"credentials":none}\n', rest: "AccountChanged" },
+    read: { status: 200, run: "r1", text: '{"seq":1,"credentials":none,"device":"notes.query.v1"}\n{"seq":2}\n' },
+    refreshed: { first: '{"seq":1,"credentials":none,"device":null}\n', rest: "AccountChanged" },
     aborts: ["/held"],
   }))
 })

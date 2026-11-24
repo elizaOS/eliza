@@ -1,11 +1,23 @@
-// spec/os/agentService/channel.md, "A call is refused before any I/O unless the agent is serving, its id is free and its list admits it"; spec/os/agentService/channel.md, "A pending call settles exactly once, and nothing else leaves the pending list"; spec/os/agentService/channel.md, "At most one subscription per topic is open, and no more than the agent serves at once"
+// spec/os/agentService/channel.md, "A call is refused before any I/O unless the agent is serving, its id is free and its list admits it"; spec/os/agentService/channel.md, "Only the device headers and client id the runtime client carries cross the channel"; spec/agent/client/runtimeClient.md, "A request carries only device headers and the client id, a bounded few"; spec/os/agentService/channel.md, "A pending call settles exactly once, and nothing else leaves the pending list"; spec/os/agentService/channel.md, "At most one subscription per topic is open, and no more than the agent serves at once"
 package ai.eliza.os.agent;
 
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public final class ChannelPolicy {
   public static final int FEED_LIMIT = 2;
+  public static final int HEADER_COUNT_LIMIT = 16, HEADER_BYTES_LIMIT = 8192;
+  private static final Pattern HEADER_NAME = Pattern.compile("^[A-Za-z0-9-]+$");
+  private static final Pattern DEVICE_HEADER = Pattern.compile("^x-eliza-device-(?:[a-z0-9]+-)*([a-z0-9]+)$");
+  private static final Pattern PRINTABLE = Pattern.compile("^[\\x20-\\x7e]*$");
+  private static final Set<String> CREDENTIAL_WORDS = Set.of("key", "token", "secret", "password", "signature");
 
   public enum CallerKind { RENDERER, NATIVE }
   public enum Topic { VOICE, VIEW, NOTICES }
@@ -13,6 +25,9 @@ public final class ChannelPolicy {
   public enum ModeKind { PLAIN, STREAM, WATCH }
   public enum OutcomeKind { RESPONSE, END, ERROR, ABORTED, FAILED }
   public enum FrameKind { RESULT, REFUSAL, HEAD, CHUNK, COMPLETE, COMPLETE_FAILED, SUBSCRIBED, AGENT_EVENT }
+  public enum HeaderName { DEVICE_FACT, DEVICE_CREDENTIAL, CLIENT_ID_HEADER, OTHER_HEADER }
+
+  public record Header(String key, HeaderName name, long bytes, boolean printable) {}
 
   public record Mode(ModeKind kind, Topic topic) {
     public static final Mode PLAIN = new Mode(ModeKind.PLAIN, null), STREAM = new Mode(ModeKind.STREAM, null);
@@ -84,19 +99,57 @@ public final class ChannelPolicy {
     return emit(out);
   }
 
-  public synchronized Step ask(CallerKind kind, String owner, String id, String method, String target, boolean streamed, byte[] body) {
-    return ask(kind, owner, id, gate(kind).request(method, target, streamed, body));
+  public synchronized Step ask(CallerKind kind, String owner, String id, String method, String target, boolean streamed, byte[] body, List<Header> headers) {
+    return ask(kind, owner, id, gate(kind).request(method, target, streamed, body), headers);
   }
 
-  public synchronized Step ask(CallerKind kind, String owner, String id, RouteGate.Request request) {
+  public synchronized Step ask(CallerKind kind, String owner, String id, RouteGate.Request request, List<Header> headers) {
     RouteGate.Admission admission = gate(kind).admit(request);
     FailCode refusal = !serving ? FailCode.NOT_READY
       : idTaken(id) ? FailCode.ID_IN_USE
       : admission.verdict() == RouteGate.Verdict.ROUTE_REFUSED ? FailCode.ROUTE_REFUSED
       : admission.verdict() == RouteGate.Verdict.TOO_LARGE ? FailCode.TOO_LARGE
-      : null;
+      : headerRefusal(headers);
     if (refusal != null) return emit(List.of(new Refused(id, refusal)));
     return admitEntry(id, owner, request.delivery() == RouteGate.Delivery.STREAMED ? Mode.STREAM : Mode.PLAIN);
+  }
+
+  public static List<Header> headers(Map<String, ?> raw) {
+    List<Header> described = new ArrayList<>(raw.size());
+    raw.forEach((name, value) -> {
+      String key = keyOf(name);
+      String text = value instanceof String plain ? plain : null;
+      long bytes = key.getBytes(StandardCharsets.UTF_8).length + (text == null ? 0 : text.getBytes(StandardCharsets.UTF_8).length);
+      described.add(new Header(key, headerName(key), bytes, text != null && PRINTABLE.matcher(text).matches()));
+    });
+    return described;
+  }
+
+  public static Map<String, String> carried(Map<String, ?> raw) {
+    Map<String, String> sent = new LinkedHashMap<>();
+    raw.forEach((name, value) -> sent.put(keyOf(name), String.valueOf(value)));
+    return sent;
+  }
+
+  private static String keyOf(String name) {
+    return HEADER_NAME.matcher(name).matches() ? name.toLowerCase(Locale.ROOT) : name;
+  }
+
+  private static HeaderName headerName(String key) {
+    if (key.equals("x-elizaos-client-id")) return HeaderName.CLIENT_ID_HEADER;
+    Matcher device = DEVICE_HEADER.matcher(key);
+    if (!device.matches()) return HeaderName.OTHER_HEADER;
+    return CREDENTIAL_WORDS.contains(device.group(1)) ? HeaderName.DEVICE_CREDENTIAL : HeaderName.DEVICE_FACT;
+  }
+
+  private static FailCode headerRefusal(List<Header> headers) {
+    long bytes = 0;
+    for (Header header : headers) {
+      boolean crosses = header.printable() && (header.name() == HeaderName.DEVICE_FACT || header.name() == HeaderName.CLIENT_ID_HEADER);
+      if (!crosses || headers.stream().filter(other -> other.key().equals(header.key())).count() != 1) return FailCode.ROUTE_REFUSED;
+      bytes += header.bytes();
+    }
+    return headers.size() > HEADER_COUNT_LIMIT || bytes > HEADER_BYTES_LIMIT ? FailCode.TOO_LARGE : null;
   }
 
   public synchronized Step subscribe(String owner, String id, Topic topic) {

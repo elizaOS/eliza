@@ -2,10 +2,11 @@
 
 The request client a screen uses to call the agent of the account signed in
 now (`createRuntimeJsonClient`, with `refreshNativeAccount()`,
-`request(path, body?)`, `stream(path, body, signal?)` and the refusal error
-`RuntimeRequestError {message, status, code?, retryAfter?}`). The host gives it
-a bridge `RuntimeJsonBridge {status(), start(), restart(), request({path,
-method, body?}), requestStream?({path, method, body?}, signal)}`, whose
+`request(path, body?, headers?)`, `stream(path, body, signal?, headers?)` and
+the refusal error `RuntimeRequestError {message, status, code?, retryAfter?}`).
+The host gives it a bridge `RuntimeJsonBridge {status(), start(), restart(),
+request({path, method, body?, headers?}), requestStream?({path, method, body?,
+headers?}, signal)}`, whose
 status `RuntimeStatus {available, state: stopped|starting|running, error?,
 requestBodyLimit?}` the shell reads as `Unavailable` or `Available({ phase })`;
 with no bridge object (a browser page) it reports `Unavailable` without a
@@ -91,6 +92,46 @@ pure def submit(c: RuntimeClient, path: PathShape, delivery: Delivery): RuntimeC
 }
 pure val pathValues = Set(Rooted, Unrooted)
 pure val deliveryValues = Set(Plain, Stream)
+```
+
+### A request carries only device headers and the client id, a bounded few
+
+`request` and `stream` take optional headers, and the client carries them
+over either route only when every one is carried: its name, compared without
+case, is `x-elizaos-client-id` or `x-eliza-device-` followed by words of
+letters and digits joined by hyphens, its value is printable ASCII, and no
+other header of the request has that name. A device header whose last word
+is `key`, `token`, `secret`, `password` or `signature` is a credential and is
+never carried; an authorization, cookie, host or hop-by-hop header has no
+such name, so it never is either. At most `headerCountLimit` headers go with
+one request, of at most `headerBytesLimit` bytes of names and values
+together. A request with any other header is refused as `InvalidHeaders`
+before it is numbered or sent, so the bridge and the HTTP base carry the same
+headers, with lowercase names, beside the content type the HTTP route adds.
+The native agent channel holds its callers to this rule
+(`spec/os/agentService/channel.md`).
+
+```quint
+type HeaderName = DeviceFact | DeviceCredential | ClientIdHeader | OtherHeader
+type RequestHeader = { key: str, name: HeaderName, bytes: int, printable: bool }
+pure val headerCountLimit = 16
+pure val headerBytesLimit = 8192
+pure def headerCrosses(header: RequestHeader): bool = header.printable and (header.name == DeviceFact or header.name == ClientIdHeader)
+pure def headersCross(headers: List[RequestHeader]): bool =
+  headers.every(h => headerCrosses(h) and headers.select(o => o.key == h.key).length() == 1)
+pure def headersFit(headers: List[RequestHeader]): bool =
+  headers.length() <= headerCountLimit and headers.foldl(0, (total, h) => total + h.bytes) <= headerBytesLimit
+pure def headersCarried(headers: List[RequestHeader]): bool = headersCross(headers) and headersFit(headers)
+pure val headersValues = Set(
+  List(),
+  List({ key: "x-eliza-device-capabilities", name: DeviceFact, bytes: 61, printable: true }, { key: "x-elizaos-client-id", name: ClientIdHeader, bytes: 27, printable: true }),
+  List({ key: "x-eliza-device-id", name: DeviceFact, bytes: 53, printable: true }, { key: "x-eliza-device-id", name: DeviceFact, bytes: 53, printable: true }),
+  List({ key: "x-eliza-device-key", name: DeviceCredential, bytes: 82, printable: true }),
+  List({ key: "authorization", name: OtherHeader, bytes: 40, printable: true }),
+  List({ key: "x-eliza-device-enrollment-id", name: DeviceFact, bytes: 30, printable: false }),
+  List({ key: "x-eliza-device-protocol", name: DeviceFact, bytes: 9000, printable: true }))
+pure def lawOnlyDeviceFactsAndTheClientIdAreCarried(headers: List[RequestHeader]): bool =
+  headersCarried(headers) implies headers.every(h => h.printable and (h.name == DeviceFact or h.name == ClientIdHeader))
 ```
 
 ### Each request has a number no other request has

@@ -17,6 +17,7 @@ export interface AgentRoute {
   method: AgentMethod;
   path: string;
   body?: Record<string, unknown>;
+  headers?: Readonly<Record<string, string>>;
 }
 
 export interface AgentRequest extends AgentRoute {
