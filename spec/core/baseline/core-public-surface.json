@@ -6476,18 +6476,6 @@
           ]
         },
         {
-          "name": "CandidateActionBackstopRule",
-          "typeOnly": true,
-          "declarations": [
-            {
-              "path": "packages/core/src/runtime/candidate-action-backstop.ts",
-              "line": 24,
-              "kind": "InterfaceDeclaration",
-              "signature": "export interface CandidateActionBackstopRule { /** * Action names this rule protects. Compared against candidate actions using * the pipeline's canonical action-identifier normalization, so callers may * register either the canonical or a loosely-cased form. */ readonly actionNames: readonly string[]; /** * True when `messageText` is genuinely a request for this rule's actions. * Used to decide whether the candidates are protected from the coding * backstop on a given turn. */ matches(messageText: string): boolean; }"
-            }
-          ]
-        },
-        {
           "name": "canModifyRole",
           "typeOnly": false,
           "declarations": [
@@ -16915,18 +16903,6 @@
               "line": 1578,
               "kind": "FunctionDeclaration",
               "signature": "(result: object): NotesRequestOperation | undefined"
-            }
-          ]
-        },
-        {
-          "name": "getCandidateActionBackstopRules",
-          "typeOnly": false,
-          "declarations": [
-            {
-              "path": "packages/core/src/runtime/candidate-action-backstop.ts",
-              "line": 53,
-              "kind": "FunctionDeclaration",
-              "signature": "(runtime: IAgentRuntime): readonly CandidateActionBackstopRule[]"
             }
           ]
         },
@@ -34990,18 +34966,6 @@
           ]
         },
         {
-          "name": "registerCandidateActionBackstopRule",
-          "typeOnly": false,
-          "declarations": [
-            {
-              "path": "packages/core/src/runtime/candidate-action-backstop.ts",
-              "line": 41,
-              "kind": "FunctionDeclaration",
-              "signature": "(runtime: IAgentRuntime, rule: CandidateActionBackstopRule): void"
-            }
-          ]
-        },
-        {
           "name": "registerConnectorSourceAliases",
           "typeOnly": false,
           "declarations": [
@@ -51647,18 +51611,6 @@
           ]
         },
         {
-          "name": "CandidateActionBackstopRule",
-          "typeOnly": true,
-          "declarations": [
-            {
-              "path": "packages/core/src/runtime/candidate-action-backstop.ts",
-              "line": 24,
-              "kind": "InterfaceDeclaration",
-              "signature": "export interface CandidateActionBackstopRule { /** * Action names this rule protects. Compared against candidate actions using * the pipeline's canonical action-identifier normalization, so callers may * register either the canonical or a loosely-cased form. */ readonly actionNames: readonly string[]; /** * True when `messageText` is genuinely a request for this rule's actions. * Used to decide whether the candidates are protected from the coding * backstop on a given turn. */ matches(messageText: string): boolean; }"
-            }
-          ]
-        },
-        {
           "name": "CANONICAL_JSON_UNBOUNDED",
           "typeOnly": false,
           "declarations": [
@@ -58465,18 +58417,6 @@
               "line": 54,
               "kind": "FunctionDeclaration",
               "signature": "(): AnthropicAccountPoolBridge | null"
-            }
-          ]
-        },
-        {
-          "name": "getCandidateActionBackstopRules",
-          "typeOnly": false,
-          "declarations": [
-            {
-              "path": "packages/core/src/runtime/candidate-action-backstop.ts",
-              "line": 53,
-              "kind": "FunctionDeclaration",
-              "signature": "(runtime: IAgentRuntime): readonly CandidateActionBackstopRule[]"
             }
           ]
         },
@@ -70157,18 +70097,6 @@
               "line": 80,
               "kind": "InterfaceDeclaration",
               "signature": "export interface RegexEntityRecognizerOptions { /** Detect US-style street addresses. Default `true`. */ address?: boolean; /** Detect emails as `email` spans (see note above). Default `false`. */ email?: boolean; /** Detect phone numbers as `phone` spans (see note above). Default `false`. */ phone?: boolean; }"
-            }
-          ]
-        },
-        {
-          "name": "registerCandidateActionBackstopRule",
-          "typeOnly": false,
-          "declarations": [
-            {
-              "path": "packages/core/src/runtime/candidate-action-backstop.ts",
-              "line": 41,
-              "kind": "FunctionDeclaration",
-              "signature": "(runtime: IAgentRuntime, rule: CandidateActionBackstopRule): void"
             }
           ]
         },
@@ -222959,6 +222887,103 @@
               "line": 462,
               "kind": "FunctionDeclaration",
               "signature": "(text: string | null | undefined): ContextRoutingDecision"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "v4BackstopRetirement": {
+    "specification": "spec/core/registries.md",
+    "decision": "v4-model-chooses-every-call",
+    "reason": "Retired v4 candidate backstop registry: a backstop matched the person's words to add candidate actions before the model; the model now chooses every call, and current source registers none.",
+    "historicalExports": [
+      {
+        "entry": ".",
+        "export": {
+          "name": "CandidateActionBackstopRule",
+          "typeOnly": true,
+          "declarations": [
+            {
+              "path": "packages/core/src/runtime/candidate-action-backstop.ts",
+              "line": 24,
+              "kind": "InterfaceDeclaration",
+              "signature": "export interface CandidateActionBackstopRule { /** * Action names this rule protects. Compared against candidate actions using * the pipeline's canonical action-identifier normalization, so callers may * register either the canonical or a loosely-cased form. */ readonly actionNames: readonly string[]; /** * True when `messageText` is genuinely a request for this rule's actions. * Used to decide whether the candidates are protected from the coding * backstop on a given turn. */ matches(messageText: string): boolean; }"
+            }
+          ]
+        }
+      },
+      {
+        "entry": ".",
+        "export": {
+          "name": "getCandidateActionBackstopRules",
+          "typeOnly": false,
+          "declarations": [
+            {
+              "path": "packages/core/src/runtime/candidate-action-backstop.ts",
+              "line": 53,
+              "kind": "FunctionDeclaration",
+              "signature": "(runtime: IAgentRuntime): readonly CandidateActionBackstopRule[]"
+            }
+          ]
+        }
+      },
+      {
+        "entry": ".",
+        "export": {
+          "name": "registerCandidateActionBackstopRule",
+          "typeOnly": false,
+          "declarations": [
+            {
+              "path": "packages/core/src/runtime/candidate-action-backstop.ts",
+              "line": 41,
+              "kind": "FunctionDeclaration",
+              "signature": "(runtime: IAgentRuntime, rule: CandidateActionBackstopRule): void"
+            }
+          ]
+        }
+      },
+      {
+        "entry": "./protocol",
+        "export": {
+          "name": "CandidateActionBackstopRule",
+          "typeOnly": true,
+          "declarations": [
+            {
+              "path": "packages/core/src/runtime/candidate-action-backstop.ts",
+              "line": 24,
+              "kind": "InterfaceDeclaration",
+              "signature": "export interface CandidateActionBackstopRule { /** * Action names this rule protects. Compared against candidate actions using * the pipeline's canonical action-identifier normalization, so callers may * register either the canonical or a loosely-cased form. */ readonly actionNames: readonly string[]; /** * True when `messageText` is genuinely a request for this rule's actions. * Used to decide whether the candidates are protected from the coding * backstop on a given turn. */ matches(messageText: string): boolean; }"
+            }
+          ]
+        }
+      },
+      {
+        "entry": "./protocol",
+        "export": {
+          "name": "getCandidateActionBackstopRules",
+          "typeOnly": false,
+          "declarations": [
+            {
+              "path": "packages/core/src/runtime/candidate-action-backstop.ts",
+              "line": 53,
+              "kind": "FunctionDeclaration",
+              "signature": "(runtime: IAgentRuntime): readonly CandidateActionBackstopRule[]"
+            }
+          ]
+        }
+      },
+      {
+        "entry": "./protocol",
+        "export": {
+          "name": "registerCandidateActionBackstopRule",
+          "typeOnly": false,
+          "declarations": [
+            {
+              "path": "packages/core/src/runtime/candidate-action-backstop.ts",
+              "line": 41,
+              "kind": "FunctionDeclaration",
+              "signature": "(runtime: IAgentRuntime, rule: CandidateActionBackstopRule): void"
             }
           ]
         }

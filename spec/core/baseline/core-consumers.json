@@ -40521,7 +40521,10 @@
         }
       ],
       "text": "import type { Action, CandidateActionBackstopRule, IAgentRuntime, Memory, ResponseHandlerEvaluator, State, } from \"@elizaos/core/protocol\";",
-      "v4Package": "agent"
+      "v4Package": "agent",
+      "v4RetiredNames": [
+        "CandidateActionBackstopRule"
+      ]
     },
     {
       "file": "plugins/plugin-assistant/src/__tests__/stage1/fixtures.ts",
@@ -65427,7 +65430,10 @@
         }
       ],
       "text": "import { __resetDirectActionRoutingRulesForTests, getDirectActionRoutingRules, promoteSubactionsToActions, registerCandidateActionBackstopRule, registerDirectActionRoutingRule, runResponseHandlerEvaluators, stringToUuid, } from \"@elizaos/core\";",
-      "v4Package": "agent"
+      "v4Package": "agent",
+      "v4RetiredNames": [
+        "registerCandidateActionBackstopRule"
+      ]
     },
     {
       "file": "plugins/plugin-assistant/src/services/message.source-repeat-delivery.test.ts",
@@ -71437,7 +71443,10 @@
         }
       ],
       "text": "import { buildModelInputBudget, buildResponseGrammar, buildSpanSamplerPlan, completionContextSources, computePrefixHashes, createHandleResponseTool, ElizaError, getCandidateActionBackstopRules, getStreamingContext, getUserMessageText, guardOutboundEnvelopeText, HANDLE_RESPONSE_TOOL_NAME, hashString, isObjectRecord, ModelType, providerReviewSources, recordInferenceSpan, sanitizeUserVisibleModelOutput, TurnAbortedError, timeInferenceSpan, withGuidedDecodeProviderOptions, withModelInputBudgetProviderOptions, withProviderReviewSchema, withRequiredCompletionSourceIdentity, } from \"@elizaos/core\";",
-      "v4Package": "agent"
+      "v4Package": "agent",
+      "v4RetiredNames": [
+        "getCandidateActionBackstopRules"
+      ]
     },
     {
       "file": "plugins/plugin-assistant/src/services/message/stage1-evaluators.recent-effect-reroute.test.ts",
@@ -71599,7 +71608,10 @@
         }
       ],
       "text": "import { activeCommittedEffectReceipts, canActionRun, type DirectActionRoutingRule, evaluateConnectorAccountPolicies, getCandidateActionBackstopRules, getDirectActionRoutingRules, getUserMessageText, normalizeContextId, } from \"@elizaos/core\";",
-      "v4Package": "agent"
+      "v4Package": "agent",
+      "v4RetiredNames": [
+        "getCandidateActionBackstopRules"
+      ]
     },
     {
       "file": "plugins/plugin-assistant/src/services/message/stage1-generation.ts",
@@ -71916,7 +71928,10 @@
         }
       ],
       "text": "import type { Action, CandidateActionBackstopRule, GenerateTextResult, IAgentRuntime, MessageHandlerResult, ResponseHandlerFieldRunResult, ResponseHandlerResult, UserVisibleModelOutput, } from \"@elizaos/core\";",
-      "v4Package": "agent"
+      "v4Package": "agent",
+      "v4RetiredNames": [
+        "CandidateActionBackstopRule"
+      ]
     },
     {
       "file": "plugins/plugin-assistant/src/services/message/stage1-output.ts",
@@ -105651,7 +105666,10 @@
         }
       ],
       "text": "import type { CandidateActionBackstopRule } from \"@elizaos/core\";",
-      "v4Package": "assistant"
+      "v4Package": "assistant",
+      "v4RetiredNames": [
+        "CandidateActionBackstopRule"
+      ]
     },
     {
       "file": "plugins/plugin-personal-assistant/src/lifeops/scheduled-task/deferred-inbound-scans.integration.test.ts",
@@ -107354,7 +107372,10 @@
         }
       ],
       "text": "import { type EventPayload, EventType, type IAgentRuntime, type MessagePayload, promoteSubactionsToActions, registerCandidateActionBackstopRule, registerDirectActionRoutingRule, registerLocalizedExamplesProvider, ServiceType, } from \"@elizaos/core\";",
-      "v4Package": "assistant"
+      "v4Package": "assistant",
+      "v4RetiredNames": [
+        "registerCandidateActionBackstopRule"
+      ]
     },
     {
       "file": "plugins/plugin-personal-assistant/src/plugin.ts",
@@ -123561,7 +123582,6 @@
         "CONTEXT_ROUTING_STATE_KEY",
         "CONVERSATION_MESSAGES_HEADER_PREFIX",
         "CORE_PLANNER_TERMINALS",
-        "CandidateActionBackstopRule",
         "CanonicalJsonOptions",
         "CanonicalRecallResult",
         "CapabilityAvailability",
@@ -124609,7 +124629,6 @@
         "getAnthropicAccountPoolBridge",
         "getBoundOperationDenialAttempt",
         "getBoundOperationDenialOperation",
-        "getCandidateActionBackstopRules",
         "getCapabilityRouter",
         "getClientChatRooms",
         "getConfiguredOwnerEntityIds",
@@ -124900,7 +124919,6 @@
         "redactSensitiveRequestMetadata",
         "redactSensitiveText",
         "referencePlannerQueryTokens",
-        "registerCandidateActionBackstopRule",
         "registerDirectActionRoutingRule",
         "registerLocalizedExamplesProvider",
         "registerProviderModels",
@@ -125095,7 +125113,6 @@
         "AgentCapabilityNextAction",
         "AgentCapabilityTransport",
         "CANONICAL_JSON_UNBOUNDED",
-        "CandidateActionBackstopRule",
         "CapabilityHandoffRequest",
         "ChannelType",
         "ChatImageAttachment",
@@ -125498,6 +125515,75 @@
             "inferContextRoutingFromMessage"
           ],
           "reason": "Retired v4 word-list context router: which contexts a request needs is the model's, and current source has no caller of inferContextRoutingFromText or inferContextRoutingFromMessage. Original import facts remain in this row; every other name remains required."
+        }
+      ]
+    },
+    "backstopRetirement": {
+      "specification": "spec/core/registries.md",
+      "decision": "v4-model-chooses-every-call",
+      "imports": [
+        {
+          "file": "plugins/plugin-assistant/src/__tests__/stage1/fixtures.ts",
+          "line": 4,
+          "module": "@elizaos/core/protocol",
+          "names": [
+            "CandidateActionBackstopRule"
+          ],
+          "reason": "Retired v4 candidate backstop registry: a backstop matched the person's words to add candidate actions before the model; the model now chooses every call, and current source registers none. Original import facts remain in this row; every other name remains required."
+        },
+        {
+          "file": "plugins/plugin-assistant/src/services/message.side-effect-claim.test.ts",
+          "line": 20,
+          "module": "@elizaos/core",
+          "names": [
+            "registerCandidateActionBackstopRule"
+          ],
+          "reason": "Retired v4 candidate backstop registry: a backstop matched the person's words to add candidate actions before the model; the model now chooses every call, and current source registers none. Original import facts remain in this row; every other name remains required."
+        },
+        {
+          "file": "plugins/plugin-assistant/src/services/message/stage1-decision.ts",
+          "line": 19,
+          "module": "@elizaos/core",
+          "names": [
+            "getCandidateActionBackstopRules"
+          ],
+          "reason": "Retired v4 candidate backstop registry: a backstop matched the person's words to add candidate actions before the model; the model now chooses every call, and current source registers none. Original import facts remain in this row; every other name remains required."
+        },
+        {
+          "file": "plugins/plugin-assistant/src/services/message/stage1-evaluators.ts",
+          "line": 13,
+          "module": "@elizaos/core",
+          "names": [
+            "getCandidateActionBackstopRules"
+          ],
+          "reason": "Retired v4 candidate backstop registry: a backstop matched the person's words to add candidate actions before the model; the model now chooses every call, and current source registers none. Original import facts remain in this row; every other name remains required."
+        },
+        {
+          "file": "plugins/plugin-assistant/src/services/message/stage1-output.ts",
+          "line": 4,
+          "module": "@elizaos/core",
+          "names": [
+            "CandidateActionBackstopRule"
+          ],
+          "reason": "Retired v4 candidate backstop registry: a backstop matched the person's words to add candidate actions before the model; the model now chooses every call, and current source registers none. Original import facts remain in this row; every other name remains required."
+        },
+        {
+          "file": "plugins/plugin-personal-assistant/src/lifeops/scheduled-task/candidate-backstop.ts",
+          "line": 19,
+          "module": "@elizaos/core",
+          "names": [
+            "CandidateActionBackstopRule"
+          ],
+          "reason": "Retired v4 candidate backstop registry: a backstop matched the person's words to add candidate actions before the model; the model now chooses every call, and current source registers none. Original import facts remain in this row; every other name remains required."
+        },
+        {
+          "file": "plugins/plugin-personal-assistant/src/plugin.ts",
+          "line": 13,
+          "module": "@elizaos/core",
+          "names": [
+            "registerCandidateActionBackstopRule"
+          ],
+          "reason": "Retired v4 candidate backstop registry: a backstop matched the person's words to add candidate actions before the model; the model now chooses every call, and current source registers none. Original import facts remain in this row; every other name remains required."
         }
       ]
     }

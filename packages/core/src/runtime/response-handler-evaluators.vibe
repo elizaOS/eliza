@@ -12,7 +12,6 @@ import type { Memory } from "../types/memory.vibe"
 import type { IAgentRuntime } from "../types/runtime.vibe"
 import type { State } from "../types/state.vibe"
 import type { ContextProviderEvent } from "./context-object.vibe"
-import type { DirectActionRoutingRule } from "./direct-action-routing.vibe"
 import { TurnAbortedError } from "./turn-aborted-error.vibe"
 import { scopeProtectedKeys } from "../../gen/core__responseEvaluation.effect.vibe"
 
@@ -26,8 +25,6 @@ export interface ResponseHandlerPatch {
   replaceIntentScope?: {
     intents: readonly string[]
     invalidateFields: readonly string[]
-
-    owner?: DirectActionRoutingRule
   }
 
   contextSources?: readonly ContextProviderEvent[]
@@ -47,7 +44,6 @@ type ResponseHandlerEvaluatorResult = ResponseHandlerPatch | undefined
 
 export interface ResponseHandlerEvaluatorContext {
   invalidatedScopeFields?: ReadonlySet<string>
-  wholeRequestOwner?: DirectActionRoutingRule
   runtime: IAgentRuntime
   message: Memory
   state: State
@@ -331,14 +327,12 @@ interface EvaluationRun {
   readonly available: Set<string> | null
   readonly invalidatedScopeFields: Set<string>
   readonly result: ResponseHandlerEvaluationRunResult
-  wholeRequestOwner?: DirectActionRoutingRule
 }
 
 effect function runCandidate(run: EvaluationRun, evaluator: ResponseHandlerEvaluator): void!(Foreign | ElizaError) {
   const { args, result } = run
   const context: ResponseHandlerEvaluatorContext = {
     invalidatedScopeFields: run.invalidatedScopeFields,
-    wholeRequestOwner: run.wholeRequestOwner,
     runtime: args.runtime,
     message: args.message,
     state: args.state,
@@ -365,7 +359,6 @@ effect function runCandidate(run: EvaluationRun, evaluator: ResponseHandlerEvalu
   )
   if (applied) {
     if (patch.replaceIntentScope) {
-      run.wholeRequestOwner = patch.replaceIntentScope.owner
       for (const field of patch.replaceIntentScope.invalidateFields) {
         run.invalidatedScopeFields.add(field)
       }

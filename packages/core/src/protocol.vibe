@@ -1004,11 +1004,6 @@ export {
 } from "./retrieval.vibe"
 export { matchActionWildcardParts } from "./runtime/action-wildcard-glob.vibe"
 export {
-  type CandidateActionBackstopRule,
-  getCandidateActionBackstopRules,
-  registerCandidateActionBackstopRule,
-} from "./runtime/candidate-action-backstop.vibe"
-export {
   deriveCompactionContentManifestsOrThrow as deriveCompactionContentManifests,
   type DeriveCompactionContentManifestsOptions,
 } from "./runtime/content-access-manifest.vibe"
