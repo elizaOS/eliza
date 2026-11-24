@@ -335,8 +335,10 @@ the BROWSER command, goes ahead only when the owner's own message asks to
 reload, refresh or reopen it, as a command or a "can you" request that
 starts a sentence or clause. An explicit withdrawal of reload refuses the
 operation. A short withdrawal such as "don't" or "never mind" refers to
-the immediately preceding request. A mention, a question about reloading,
-a reload the owner says they will do and a bare "yes" give no authority. Any other reload on
+the immediately preceding request. A comma, colon or dash can end the
+withdrawal before the owner goes on to another request. A mention, a
+question about reloading, a reload the owner says they will do and a bare
+"yes" give no authority. Any other reload on
 that turn is refused before anything is sent: the model learns that the
 phone shares no text of that page, only its title and address, that
 reloading does not change that and nothing was reloaded, and that it should
