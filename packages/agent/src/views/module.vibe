@@ -52,7 +52,7 @@ export const viewsModule: ModuleFactory<never> = effect (context) => {
       name: viewsModuleName,
       description: "The owner's views: prepare, claim and confirm navigations, and the VIEWS show action",
       services: [hostService(views)],
-      actions: [viewsShowAction(views, declared.labels)],
+      actions: [viewsShowAction(views, declared.labels, declared.views)],
       routes: viewRoutes(views),
     },
   } satisfies AgentModule

@@ -1,13 +1,15 @@
-// spec/cloud/index.md, "Story: Use inference on my subscription or funded pilot account"; spec/cloud/index.md, "A streamed answer sends complete OpenAI frames and settles the same hold"
+// spec/cloud/index.md, "Story: Use inference on my subscription or funded pilot account"; spec/cloud/index.md, "A streamed answer sends complete OpenAI frames and settles the same hold"; spec/cloud/services/inference.md, "A provider's refusal of the request passes on its listed code and parameter and nothing else"
 import { FetchHttpClient, HttpClient, HttpClientRequest, type HttpClientResponse } from "effect/http"
+import { noFault, passedFault, readsFault, type ProviderFault } from "../../gen/cloud__services__inference.effect.vibe"
 import type { Millis } from "../../gen/cloud__shared__types.ts"
 import type { InferenceSettings } from "../profile/profile.schema.ts"
 import { Deployment } from "../profile/profile.vibe"
+import { boundedText } from "./bounded-body.vibe"
 
 export type LlmProvider = (typeof InferenceSettings.Type)["providers"][number]
 export type ChatBody = Readonly<Record<string, unknown>>
 
-export error ProviderRefused { status: number; retryAfter?: Millis }
+export error ProviderRefused { status: number; retryAfter?: Millis; fault?: ProviderFault }
 export error ProviderUnreachable
 export error ProviderTimedOut
 export error ProviderInvalidResponse
@@ -20,6 +22,10 @@ export interface LlmAnswer {
 
 const providerBudget: Millis = 800_000
 export const maxReplyBytes = 16 * 1024 * 1024
+const refusalBytes = 64 * 1024
+const FaultFields = Schema.Struct({ code: Schema.optionalKey(Schema.Unknown), param: Schema.optionalKey(Schema.Unknown) })
+const readNestedFault = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Struct({ error: FaultFields })))
+const readFlatFault = Schema.decodeUnknownOption(Schema.fromJsonString(FaultFields))
 
 type LlmContext = Deployment | HttpClient.HttpClient
 
@@ -40,6 +46,21 @@ effect function released(response: HttpClientResponse.HttpClientResponse): void!
   Stream.runHead(response.stream) catch () => undefined
 }
 
+function word(value: unknown): string {
+  return typeof value === "string" ? value : ""
+}
+
+effect function refusalFault(response: HttpClientResponse.HttpClientResponse): ProviderFault!! {
+  if (!readsFault(response.status) || Number(response.headers["content-length"] ?? "0") > refusalBytes) {
+    try released(response)
+    return noFault
+  }
+  const text = timeout(boundedText(response, refusalBytes), "10 seconds") catch () => ""
+  const nested = readNestedFault(text)
+  const fields = nested._tag === "Some" ? nested.value.error : Option.getOrUndefined(readFlatFault(text))
+  return passedFault(response.status, word(fields?.code), word(fields?.param))
+}
+
 effect function accepted(provider: LlmProvider, body: ChatBody): HttpClientResponse.HttpClientResponse!(ProviderRefused | ProviderUnreachable)!LlmContext {
   const key = try orDie((try Deployment).secret(provider.apiKeyEnv))
   const request = HttpClientRequest.post(`${provider.baseUrl}/chat/completions`).pipe(
@@ -48,9 +69,9 @@ effect function accepted(provider: LlmProvider, body: ChatBody): HttpClientRespo
   )
   const response = Effect.provideService(HttpClient.execute(request), FetchHttpClient.RequestInit, { redirect: "manual" }) catch effect () => { throw new ProviderUnreachable() }
   if (response.status >= 200 && response.status < 300) return response
-  try released(response)
+  const fault = try refusalFault(response)
   const wait = retryAfter(response.headers["retry-after"])
-  throw new ProviderRefused(wait === undefined ? { status: response.status } : { status: response.status, retryAfter: wait })
+  throw new ProviderRefused({ status: response.status, fault, ...(wait === undefined ? {} : { retryAfter: wait }) })
 }
 
 export effect function complete(provider: LlmProvider, body: ChatBody): LlmAnswer!LlmFailure!LlmContext {

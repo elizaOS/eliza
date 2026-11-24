@@ -91,7 +91,7 @@ function listEvents(state: GoogleFakeState, calendar: FakeCalendar, query: URLSe
 function insertEvent(state: GoogleFakeState, calendar: FakeCalendar, request: FakeRequest): FakeAnswer {
   if (!writable.includes(calendar.accessRole)) return forbidden;
   const body = bodyOf(request);
-  if (body === undefined || "recurrence" in body) return failure(400, "invalid");
+  if (body === undefined || ("recurrence" in body && (!Array.isArray(body.recurrence) || !body.recurrence.every((line) => typeof line === "string")))) return failure(400, "invalid");
   const id = typeof body.id === "string" ? body.id : `generated${revisions + 1}`;
   if (state.events.has(eventKey(calendar.id, id))) return duplicate;
   const now = new Date().toISOString();

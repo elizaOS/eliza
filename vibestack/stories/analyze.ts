@@ -54,6 +54,12 @@ export interface Found {
   inherited: string[];
   /** The component this one only works inside, when its file is named after another of its exports. */
   part?: string;
+  /** Sorted unique capitalized JSX component names rendered in this component's body. */
+  children?: string[];
+  /** Deduplicated spec citations found in this component's source file. */
+  citations?: { spec: string; heading: string }[];
+  /** Sorted unique value identifiers imported from `gen/*.ts` or `gen/*.effect.vibe` in this file. */
+  uses?: string[];
 }
 
 /** The package a directory belongs to: the nearest `package.json` above it. */
@@ -69,15 +75,15 @@ const moduleOf = (spec: string) => spec.replace(/^(\.\/)?spec\//, "").replace(/\
  * The generated module of `spec`: in the component's own package, or, for a shared package such as a component
  * library, in the spec's owner, else the root's (SPEC.md, "One spec tree").
  */
-const modelInputs = (abs: string, spec: string): [model: string, ...manifests: string[]] => {
+export const modelFile = (abs: string, spec: string): string | undefined => {
   const own = packageOf(dirname(abs)).dir, name = `${moduleOf(spec)}.ts`;
   const root = ancestors(own).find((dir) => existsSync(join(dir, spec)));
   const dir = root && owner(root, spec.replace(/^\.\//, ""));
   const candidates = [join(own, "gen", name), ...(root && dir ? [join(root, dir, "gen", name)] : []), ...(root ? [join(root, "gen", name)] : [])];
-  return [candidates.find(existsSync) ?? candidates[0]!, ...(root ? [join(root, "package.json")] : [])];
+  return candidates.find(existsSync);
 };
 const ancestors = (dir: string): string[] => (dirname(dir) === dir ? [dir] : [dir, ...ancestors(dirname(dir))]);
-const modelTag = (text: string) => /@model\s+(\S+)/.exec(text)?.[1];
+export const modelTag = (text: string) => /@model\s+(\S+)/.exec(text)?.[1];
 
 /** The component files the globs name, sorted: never tests, stories, metadata or anything installed. */
 export function sources(root: string, globs: string[]): string[] {
@@ -94,7 +100,8 @@ const sibling = (abs: string, name: string, kind: "meta" | "stories") => ["tsx",
 /** The files beside a component that change its stories, present or not: metadata, hand-written stories, its model. */
 export function beside(abs: string, names: string[]): string[] {
   const spec = existsSync(abs) ? modelTag(readFileSync(abs, "utf8")) : undefined;
-  return [...names.flatMap((name) => [...sibling(abs, name, "meta"), ...sibling(abs, name, "stories")]), ...(spec ? modelInputs(abs, spec) : [])];
+  const model = spec && modelFile(abs, spec);
+  return [...names.flatMap((name) => [...sibling(abs, name, "meta"), ...sibling(abs, name, "stories")]), ...(model ? [model] : [])];
 }
 
 /**
@@ -199,7 +206,9 @@ function readManual(file: string): Manual {
 
 /** A generated module as a model: its state is the type of `initial`, its events the `type`s of `Event`. */
 function readModel(checker: ts.TypeChecker, file: ts.SourceFile, spec: string): { model: Model; state: ts.Type } | undefined {
-  const exports = new Map(checker.getExportsOfModule(checker.getSymbolAtLocation(file)!).map((s) => [s.name, s]));
+  const namespace = checker.getSymbolAtLocation(file);
+  if (!namespace) return;
+  const exports = new Map(checker.getExportsOfModule(namespace).map((s) => [s.name, s]));
   const initial = exports.get("initial");
   const event = exports.get("Event");
   if (!initial) return undefined;
@@ -238,10 +247,68 @@ function shape(checker: ts.TypeChecker, type: ts.Type, text: string): Pick<Prop,
 }
 
 /** The function a component is, through `forwardRef(…)` and `memo(…)`. */
-function body(decl: ts.Declaration): ts.SignatureDeclaration | undefined {
+function body(decl: ts.Declaration): ts.FunctionDeclaration | ts.FunctionExpression | ts.ArrowFunction | undefined {
   let node: ts.Node | undefined = ts.isVariableDeclaration(decl) ? decl.initializer : decl;
-  while (node && ts.isCallExpression(node)) node = node.arguments[0];
-  return node && ts.isFunctionLike(node) ? node : undefined;
+  while (node && ts.isExpression(node)) {
+    const unwrapped = bare(node);
+    if (!ts.isCallExpression(unwrapped)) {
+      node = unwrapped;
+      break;
+    }
+    node = unwrapped.arguments[0];
+  }
+  return node && (ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node) || ts.isArrowFunction(node)) ? node : undefined;
+}
+
+const CITATION = /(?<![\w/.-])(spec\/(?:[A-Za-z0-9]+\/)*[A-Za-z0-9]+\.md), "([^"]+)"/g;
+const GEN_MODULE = /(?:^|\/)gen\/[^/]+\.(?:ts|effect\.vibe)$/;
+
+function readCitations(text: string): { spec: string; heading: string }[] {
+  if (!text.includes("spec/")) return [];
+  const seen = new Set<string>();
+  const out: { spec: string; heading: string }[] = [];
+  for (const line of text.split("\n")) {
+    if (!line.includes("spec/")) continue;
+    for (const [, spec, heading] of line.matchAll(CITATION)) {
+      const id = `${spec}\0${heading}`;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      out.push({ spec, heading });
+    }
+  }
+  return out;
+}
+
+function genUses(file: ts.SourceFile): string[] {
+  const names = new Set<string>();
+  for (const statement of file.statements) {
+    if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)) continue;
+    if (!GEN_MODULE.test(statement.moduleSpecifier.text)) continue;
+    const clause = statement.importClause;
+    if (!clause || clause.isTypeOnly) continue;
+    if (clause.name) names.add(clause.name.text);
+    const bindings = clause.namedBindings;
+    if (!bindings) continue;
+    if (ts.isNamespaceImport(bindings)) names.add(bindings.name.text);
+    else for (const element of bindings.elements) if (!element.isTypeOnly) names.add(element.propertyName?.text ?? element.name.text);
+  }
+  return [...names].sort(compare);
+}
+
+function jsxChildren(decl: ts.Declaration, self: string): string[] {
+  const root = body(decl)?.body;
+  if (!root) return [];
+  const names = new Set<string>();
+  const visit = (node: ts.Node) => {
+    if (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) {
+      const tag = node.tagName;
+      const name = ts.isIdentifier(tag) ? tag.text : ts.isPropertyAccessExpression(tag) && tag.name.text !== "Fragment" ? tag.getText() : "";
+      if (/^[A-Z]/.test(name) && name !== "Fragment" && name !== self) names.add(name);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(root);
+  return [...names].sort(compare);
 }
 
 /** `defaultVariants` of the `cva(…)` call a variant prop was declared in. */
@@ -261,7 +328,10 @@ export function analyze(built: ts.Program, abs: string): Found[] {
   if (!file || !module) return [];
   const own = (d: ts.Declaration) => !built.isSourceFileFromExternalLibrary(d.getSourceFile()) && !built.isSourceFileDefaultLibrary(d.getSourceFile());
   const spec = modelTag(file.text);
-  const gen = spec && built.getSourceFile(modelInputs(abs, spec)[0]);
+  const model = spec && modelFile(abs, spec);
+  const gen = model && built.getSourceFile(model);
+  const citations = readCitations(file.text);
+  const uses = genUses(file);
 
   const found = checker.getExportsOfModule(module).flatMap((exportOf): Found[] => {
     const symbol = exportOf.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(exportOf) : exportOf;
@@ -298,6 +368,7 @@ export function analyze(built: ts.Program, abs: string): Found[] {
         ...(description ? { description } : {}),
       };
     });
+    const children = jsxChildren(decl, exportOf.name);
     return [{
       name: exportOf.name,
       file: abs,
@@ -312,6 +383,9 @@ export function analyze(built: ts.Program, abs: string): Found[] {
       ...(gen && tags("model").length && !model ? { unlinked: `@model ${spec} has no state to show: ${moduleOf(spec!)}.ts exports no \`initial\`; name the spec whose model holds what it shows` } : {}),
       design: tags("design"),
       inherited: symbols.filter((p) => !p.declarations?.some(own)).map((p) => p.name),
+      ...(children.length ? { children } : {}),
+      ...(citations.length ? { citations } : {}),
+      ...(uses.length ? { uses } : {}),
     }];
   });
   const whole = basename(abs).replace(/\.tsx?$/, "");

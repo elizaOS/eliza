@@ -1,5 +1,4 @@
 // spec/calendar/managedFeed.md, "Story: Read the connected Calendar and keep its source information intact"; spec/calendar/managedFeed.md, "A purge drains preexisting writes for its grant before acknowledging local removal"; spec/calendar/managedFeed.md, "Story: Show one checked copy of a mapped event after a provider read"; spec/calendar/managedFeed.md, "A successful provider feed only offers pull for an exact clean mapping"
-import type { HttpClient } from "effect/http"
 import { canCancelManagedRead, canRequestManagedPurge, machine, Machine, managedReadPermit, shouldOfferManagedPull } from "../../gen/calendar__managedFeed.effect.vibe"
 import type { CalendarEvent, CalendarFeed, CalendarSummary } from "../model.vibe"
 import { ManagedCalendarUnavailable, type FeedWindow, type ManagedCalendarBroker } from "./broker.vibe"
@@ -40,9 +39,9 @@ export interface AggregateRead {
 }
 
 export interface ManagedFeed {
-  read(source: CalendarSummary, window: FeedWindow, signal?: AbortSignal): CalendarFeed!(ManagedCalendarUnavailable | ManagedReadCancelled | CacheStoreFailed)!HttpClient.HttpClient
+  read(source: CalendarSummary, window: FeedWindow, signal?: AbortSignal): CalendarFeed!(ManagedCalendarUnavailable | ManagedReadCancelled | CacheStoreFailed)
   purge(request: PurgeRequest): PurgeReceipt!PurgeRefused
-  aggregate(sources: readonly CalendarSummary[], window: FeedWindow, ports: AggregatePorts, signal?: AbortSignal): AggregateRead!(ManagedReadCancelled | CacheStoreFailed)!HttpClient.HttpClient
+  aggregate(sources: readonly CalendarSummary[], window: FeedWindow, ports: AggregatePorts, signal?: AbortSignal): AggregateRead!(ManagedReadCancelled | CacheStoreFailed)
 }
 
 export interface ManagedFeedOptions {
@@ -210,7 +209,7 @@ export effect function managedFeed(options: ManagedFeedOptions): ManagedFeed!!Sc
     })
   }
 
-  effect function component(source: CalendarSummary, window: FeedWindow, signal: AbortSignal | undefined): FeedComponent!(ManagedReadCancelled | CacheStoreFailed)!HttpClient.HttpClient {
+  effect function component(source: CalendarSummary, window: FeedWindow, signal: AbortSignal | undefined): FeedComponent!(ManagedReadCancelled | CacheStoreFailed) {
     const feed = read(source, window, signal) catch effect (failure) => {
       if (!(failure instanceof ManagedCalendarUnavailable)) throw failure
       const scope = { provider: source.provider, side: source.side, grantId: source.grantId, connectorAccountId: source.connectorAccountId }

@@ -22,6 +22,7 @@ const BindingBody = Schema.Struct({
   viewType: Schema.Literal("gui"),
   installationId: Identity,
 })
+const ClaimBody = Schema.Struct({ ...BindingBody.fields, targetProtocol: Schema.optionalKey(Schema.Literal("saved-note-v1")) })
 const ResultBody = Schema.Struct({
   ...BindingBody.fields,
   claimId: Schema.String,
@@ -31,7 +32,7 @@ const ResultBody = Schema.Struct({
 })
 
 const prepareBody = Schema.decodeUnknownOption(PrepareBody, { onExcessProperty: "error" })
-const bindingBody = Schema.decodeUnknownOption(BindingBody)
+const claimBody = Schema.decodeUnknownOption(ClaimBody)
 const resultBody = Schema.decodeUnknownOption(ResultBody)
 const clientIdOf = Schema.decodeUnknownOption(ClientId)
 
@@ -70,12 +71,12 @@ export function viewRoutes(views: ViewHost.Shape): LocalRoute[] {
     {
       method: "POST", path: "/api/views/interact-claim",
       handler: (input) => {
-        const sent = Option.getOrUndefined(bindingBody(input.body ?? {}))
+        const sent = Option.getOrUndefined(claimBody(input.body ?? {}))
         const binding = sent === undefined ? undefined : bindingOf(input, sent)
-        if (binding === undefined) return failure(400, "invalid_binding")
+        if (sent === undefined || binding === undefined) return failure(400, "invalid_binding")
         return runPromise(effect {
-          const claimId = try views.claim(binding)
-          return claimId === undefined ? failure(409, "claim_refused") : { status: 200, body: { claimId } }
+          const claimed = try views.claim(binding, sent.targetProtocol)
+          return claimed === undefined ? failure(409, "claim_refused") : { status: 200, body: claimed }
         })
       },
     },

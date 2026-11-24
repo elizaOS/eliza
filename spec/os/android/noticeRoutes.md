@@ -303,3 +303,25 @@ pure def lawTerminalApprovalWithdraws(notice: SuspendedNotice, reads: NoticeRead
 pure def lawChangedSessionDecidesNothing(notice: SuspendedNotice, reads: NoticeReads, approval: A::Approval): bool =
   not(reads.sessionValid) implies revalidateNotice(notice, reads, approval) == StaleNotice
 ```
+
+## Story: Tell my app which workflow notices this phone can present
+
+> As a device owner, I want my app to know how this phone's host presents
+> workflow notices before it offers the phone to my agent, so that my agent
+> never sends my phone a notice it cannot show.
+
+### The host answers presentation protocol 2, and a renderer presents only through a host that answers it
+
+The bridge's `workflowPresentationCapabilities` answers `{protocol}`, the
+one presentation of workflow notices the host implements: a result posted
+once under its operation and binding, a receipt, and an approval notice
+bound to its exact run route, as the rules above say. This host answers 2.
+A renderer that reads another number does not present through the host.
+
+```quint
+pure val workflowPresentationProtocol = 2
+pure def presentsWorkflowNotices(answeredProtocol: int): bool = answeredProtocol == workflowPresentationProtocol
+pure val answeredProtocolValues = Set(1, 2, 3)
+pure def lawOnlyProtocolTwoPresents(answeredProtocol: int): bool =
+  presentsWorkflowNotices(answeredProtocol) iff (answeredProtocol == 2)
+```

@@ -52,19 +52,16 @@ snap, shoot or capture a picture, photo, photograph, pic, snapshot or
 selfie, optionally greeted ("hey", "ok"), addressed to the assistant by
 name, with "please", "quick", "of me", a named camera, "now" or "thanks",
 or the same command asked as "can, could, would or will you (please) …?".
-A message that asks for a selfie or a photo of the owner with the back,
-rear or main camera, that is longer than 512 characters or holds a control
-character, or that is any other phrasing ("don't take a photo", "did you
-take a photo?", "take a photo of the whiteboard", "summarize the page I
-have open") does not. A capture for any other message is still proposed,
-grounded for review, so the owner gets the phone's Take photo card; a
-capture is never refused for its words. A second capture in the same turn,
+A message that asks for both lenses, that is longer than 512 characters or
+holds a control character, or that is any other phrasing ("don't take a
+photo", "did you take a photo?", "take a photo of the whiteboard",
+"summarize the page I have open") does not. Outside the lens refusals below,
+a capture without a named lens for any other message is grounded for review,
+so the owner gets the phone's Take photo card. A second capture in the same turn,
 grounded the same way, is that same request ([proposal identity](./index.md)),
 so one message takes one photo; a photo asked for again in a later message is
 a request of its own, since a capture that runs without its card runs only
 for the message that asked for it.
-The capture names no lens: the [camera](../../os/android/camera.md) has no
-lens capability, so the phone uses the camera that is showing.
 
 ```quint
 type CameraWords = { units: int, hasControl: bool, commanded: bool, front: bool, back: bool }
@@ -87,15 +84,49 @@ pure val wordsValues = Set(
   { units: 45, hasControl: false, commanded: true, front: true, back: true })
 ```
 
+### A named camera is captured only as the owner requested and the phone supports
+
+A whole-message command for a selfie or the front camera names the front
+lens. A command for the back, rear or main camera names the back lens. A
+photo of the owner without a named camera uses the camera that is showing.
+A named capture needs the owner's chat command and the negotiated
+`camera.capture-lens.v1` capability. Without the capability, the tool asks
+the model to explain the limitation and offers no capture. Conflicting
+names and a proposal for a different or unrequested lens offer no capture.
+An unnamed proposal cannot substitute for the lens the owner's command
+named. A named capture without the direct-request preference keeps its
+review card, which names the requested camera lens. Other messages can
+still get the unnamed capture's review card under the previous rule.
+
+```quint
+type CameraChoice = ShowingCamera | FrontCamera | BackCamera | ConflictingCameras
+pure def requestedCamera(words: CameraWords): CameraChoice =
+  if (words.commanded and words.front and words.back) ConflictingCameras
+  else if (asksForPhotoNow(words) and words.front) FrontCamera
+  else if (asksForPhotoNow(words) and words.back) BackCamera
+  else ShowingCamera
+pure val chosenCameraValues = Set(ShowingCamera, FrontCamera, BackCamera, ConflictingCameras)
+pure def captureLensVerdict(words: CameraWords, namedLensAvailable: bool, chosenCamera: CameraChoice): SurfaceVerdict =
+  if (requestedCamera(words) != chosenCamera or chosenCamera == ConflictingCameras or (chosenCamera != ShowingCamera and not(namedLensAvailable))) SurfaceRefused
+  else captureVerdict(words)
+pure def lawANamedCaptureUsesOnlyTheRequestedAvailableLens(words: CameraWords, namedLensAvailable: bool, chosenCamera: CameraChoice): bool =
+  (chosenCamera != ShowingCamera and captureLensVerdict(words, namedLensAvailable, chosenCamera) != SurfaceRefused)
+    implies (namedLensAvailable and asksForPhotoNow(words) and requestedCamera(words) == chosenCamera)
+pure def lawAnUnnamedCaptureDoesNotSubstituteForAnotherLens(words: CameraWords, namedLensAvailable: bool): bool =
+  (requestedCamera(words) != ShowingCamera) implies captureLensVerdict(words, namedLensAvailable, ShowingCamera) == SurfaceRefused
+```
+
 ### A whole-message photo command is routed to the capture, never to opening Camera
 
 Opening the Camera view takes no photo, so on an owner chat turn (a direct
 or voice message of the phone's client chat) of the enrolled phone that is
 offered the capture, a message that asks for a photo now (the rule above)
 owns the whole request. The capture is the operation that message is a
-strict command for, so it is proposed as the turn's first call, before the
-model's choice ([proposals](./index.md)); the device tool's note for the
-message says first that it asks for a photo now and to use the capture;
+strict command for, so an available capture is proposed as the turn's first
+call, before the model's choice ([proposals](./index.md)). An unavailable
+named capture produces no first call. The device tool's note for the
+message says first that it asks for a photo now and to use the capture only
+as requested;
 the device tool accepts no other operation on that message; and the
 [planner](../conversation/planning.md) refuses a call of the view
 navigation it replaces, so `VIEWS` never opens Camera instead. Both

@@ -25,8 +25,23 @@ export const onPath = (name: string) => (process.env.PATH ?? "").split(path.deli
     try { fs.accessSync(file, fs.constants.X_OK); return fs.statSync(file).isFile(); } catch { return false; }
   });
 
+/** Write a file whole or not at all: to a file of its own beside it, then renamed into place. */
+export function writeWhole(file: string, text: string | Uint8Array) {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const temporary = `${file}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
+  try {
+    fs.writeFileSync(temporary, text);
+    fs.renameSync(temporary, file);
+  } finally {
+    fs.rmSync(temporary, { force: true });
+  }
+}
+
+/** Format stat fields that change whenever a file or link is written again. */
+export const formatStamp = (s: fs.BigIntStats) => `${s.dev}:${s.ino}:${s.size}:${s.mtimeNs}:${s.ctimeNs}`;
+
 /** Installed files as they are: a reinstall writes them again, at a new inode, size or modification or change time, which a copy or an archive cannot set back. */
-export const stamp = (files: string[]) => files.map((f) => { const s = fs.statSync(f, { bigint: true }); return `${s.dev}:${s.ino}:${s.size}:${s.mtimeNs}:${s.ctimeNs}`; }).join(" ");
+export const stamp = (files: string[]) => files.map((f) => formatStamp(fs.statSync(f, { bigint: true }))).join(" ");
 
 /** An executable from the toolchain's dependencies, wherever npm put it: beside the tools, or in the project. */
 export function findBin(cmd: string, root: string): string | undefined {
@@ -263,29 +278,34 @@ export function startAttached(exe: string, args: string[], cwd: string) {
   return child;
 }
 
-/** How many programs run at once; the others wait for one to end. */
+/** How many programs run at once; the others wait for one to end, higher priority first. */
+type Priority = 0 | 1 | 2;
 const SLOTS = availableParallelism();
 let busy = 0;
-const waiting = new Set<() => void>();
+const waiting: [Set<() => void>, Set<() => void>, Set<() => void>] = [new Set(), new Set(), new Set()];
+const abortedTables = new WeakMap<AbortSignal, number[][]>();
 
-function waitForSlot(signal: AbortSignal | undefined): Promise<boolean> {
+function waitForSlot(signal: AbortSignal | undefined, priority: Priority): Promise<boolean> {
+  const queue = waiting[priority];
   return new Promise((settle) => {
     const grant = () => {
       subscription?.[Symbol.dispose]();
       settle(true);
     };
     const subscription = signal && addAbortListener(signal, () => {
-      if (waiting.delete(grant)) settle(false);
+      if (queue.delete(grant)) settle(false);
     });
-    waiting.add(grant);
+    queue.add(grant);
   });
 }
 
 function releaseSlot() {
-  for (const next of waiting) {
-    waiting.delete(next);
-    next();
-    return;
+  for (const queue of waiting) {
+    for (const next of queue) {
+      queue.delete(next);
+      next();
+      return;
+    }
   }
   busy--;
 }
@@ -294,11 +314,11 @@ function releaseSlot() {
  * Run a program to the end, once fewer than SLOTS are running, and return what it wrote. One that cannot be started
  * is an error; one that writes too much, runs too long or is killed by a signal is stopped, and `stopped` says so.
  */
-export async function exec(exe: string, args: string[], cwd: string, env?: NodeJS.ProcessEnv, input?: string, cancellation?: AbortSignal): Promise<{ status: number; stdout: string; stderr: string; stopped?: string }> {
+export async function exec(exe: string, args: string[], cwd: string, env?: NodeJS.ProcessEnv, input?: string, cancellation?: AbortSignal, priority: Priority = 1): Promise<{ status: number; stdout: string; stderr: string; stopped?: string }> {
   const canceled = { status: -1, stdout: "", stderr: "", stopped: "proof work was canceled after simulation failed" };
   if (cancellation?.aborted) return canceled;
   if (busy < SLOTS) busy++;
-  else if (!await waitForSlot(cancellation)) return canceled;
+  else if (!await waitForSlot(cancellation, priority)) return canceled;
   // On Windows anything but an .exe (an npm .cmd shim, or a name on the PATH) needs a shell, which reads each argument quoted for cmd.exe.
   const shell = WINDOWS && !/\.exe$/i.test(exe);
   const quote = (a: string) => (shell && (a === "" || /[\s"&|<>^%()!,;=]/.test(a)) ? `"${a.replace(/"/g, '""')}"` : a);
@@ -319,7 +339,11 @@ export async function exec(exe: string, args: string[], cwd: string, env?: NodeJ
         child.stdout.destroy();
         child.stderr.destroy();
       };
-      if (cancellation && !WINDOWS) unabort = addAbortListener(cancellation, () => stop("was canceled after simulation failed"));
+      if (cancellation && !WINDOWS) unabort = addAbortListener(cancellation, () => {
+        let table = abortedTables.get(cancellation);
+        if (!table) abortedTables.set(cancellation, table = processes());
+        stop("was canceled after simulation failed", table);
+      });
       const minutes = TOOL_TIMEOUT / 60_000;
       let lastComplete: { seconds: number; since: number } | undefined;
       let observedAt = started;

@@ -94,6 +94,8 @@ export interface CalendarSummary extends CalendarSourceKey {
   readonly timeZone: string | null
   readonly selected: boolean
   readonly includeInFeed: boolean
+  readonly recurrenceLines?: boolean
+  readonly privateCreate?: boolean
 }
 
 const canonicalInstant = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/

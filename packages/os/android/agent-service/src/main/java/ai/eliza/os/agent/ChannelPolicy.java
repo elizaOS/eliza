@@ -1,4 +1,4 @@
-// spec/os/agentService/channel.md, "A call is refused before any I/O unless the agent is serving, its id is free and its list admits it"; spec/os/agentService/channel.md, "Only the device headers and client id the runtime client carries cross the channel"; spec/agent/client/runtimeClient.md, "A request carries only device headers and the client id, a bounded few"; spec/os/agentService/channel.md, "A pending call settles exactly once, and nothing else leaves the pending list"; spec/os/agentService/channel.md, "At most one subscription per topic is open, and no more than the agent serves at once"
+// spec/os/agentService/channel.md, "A call is refused before any I/O unless the agent is serving, its id is free and its list admits it"; spec/os/agentService/channel.md, "The token is written only to a socket whose peer is this app"; spec/os/agentService/channel.md, "Only the device headers and client id the runtime client carries cross the channel"; spec/agent/client/runtimeClient.md, "A request carries only device headers and the client id, a bounded few"; spec/os/agentService/channel.md, "A pending call settles exactly once, and nothing else leaves the pending list"; spec/os/agentService/channel.md, "At most one subscription per topic is open, and no more than the agent serves at once"
 package ai.eliza.os.agent;
 
 import java.nio.charset.StandardCharsets;
@@ -19,6 +19,9 @@ public final class ChannelPolicy {
   private static final Pattern PRINTABLE = Pattern.compile("^[\\x20-\\x7e]*$");
   private static final Set<String> CREDENTIAL_WORDS = Set.of("key", "token", "secret", "password", "signature");
   private static final Pattern ENROLLMENT_KEY = Pattern.compile("^[a-f0-9]{64}$");
+
+  /** Whether the agent socket's peer may be written to. {@code peerUid} is the user id the kernel reports, or null when it could not be read. */
+  public static boolean peerTrusted(Integer peerUid, int appUid) { return peerUid != null && peerUid == appUid; }
 
   public enum CallerKind { RENDERER, NATIVE }
   public enum Topic { VOICE, VIEW, NOTICES }

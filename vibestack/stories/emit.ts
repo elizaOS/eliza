@@ -5,13 +5,13 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import ts from "typescript";
-import { type Found, type Prop, analyze, beside, compare, packageOf, programs, sources } from "./analyze.ts";
+import { type Found, type Prop, analyze, beside, compare, modelFile, modelTag, packageOf, programs, sources } from "./analyze.ts";
 import { type Plan, type Story, plan } from "./variants.ts";
 
 export type { Prop, Story };
 
 /** Part of every hash: raise it when the same inputs would be written differently. */
-const VERSION = 8;
+const VERSION = 9;
 
 export interface Component {
   id: string;
@@ -24,6 +24,10 @@ export interface Component {
   stories: Story[];
   model?: { spec: string; module: string; state: string; events: string[] };
   design?: string[];
+  part?: string;
+  children?: string[];
+  citations?: { spec: string; heading: string }[];
+  uses?: string[];
   diagnostics: string[];
 }
 /** `catalog.json`. */
@@ -172,7 +176,19 @@ export function generator({ root, out = outOf(root), cap = 12 }: Options): () =>
   const from = (file: string) => JSON.stringify(relative(out, file).replaceAll("\\", "/").replace(/^(?!\.)/, "./"));
   // A file the Program read is hashed as the Program read it, so an edit made while it ran is seen by the next run.
   const text = (file: string) => built?.getSourceFile(file)?.text ?? (existsSync(file) ? readFileSync(file, "utf8") : "");
-  const hash = (inputs: string[]) => inputs.reduce((sum, file) => sum.update(`${file}\0${text(join(root, file))}\0`), createHash("sha1").update(`${VERSION}:${cap}:${rel(out)}`)).digest("hex");
+  const hash = (component: string, inputs: string[]) => {
+    const sum = createHash("sha1").update(`${VERSION}:${cap}:${rel(out)}`);
+    for (const file of inputs) {
+      const content = text(join(root, file));
+      if (file === component) {
+        const spec = modelTag(content);
+        const model = spec && modelFile(join(root, file), spec);
+        if (model) sum.update(`model\0${rel(model)}\0`);
+      }
+      sum.update(`${file}\0${content}\0`);
+    }
+    return sum.digest("hex");
+  };
 
   /**
    * A component file's inputs: itself, what stands beside it, its package's name, the project's tsconfig, and every
@@ -206,8 +222,8 @@ export function generator({ root, out = outOf(root), cap = 12 }: Options): () =>
     };
 
     const files = sources(root, COMPONENTS);
-    const fresh = (e: Entry | undefined) => e && e.hash === hash(e.inputs) && e.outputs.every((name) => existsSync(join(out, name)));
-    const stale = files.filter((file) => !fresh(known[rel(file)]));
+    const fresh = (file: string, e: Entry | undefined) => e && e.hash === hash(file, e.inputs) && e.outputs.every((name) => existsSync(join(out, name)));
+    const stale = files.filter((file) => !fresh(rel(file), known[rel(file)]));
     if (stale.length) built = build(files);
     const entries: Record<string, Entry> = {};
     for (const file of files) {
@@ -219,7 +235,7 @@ export function generator({ root, out = outOf(root), cap = 12 }: Options): () =>
       const inputs = inputsOf(file, found.map(({ c }) => c.name));
       for (const { c, p } of found) if (p.stories.length) write(`${p.id}.stories.tsx`, story(c, p, from));
       entries[rel(file)] = {
-        hash: hash(inputs),
+        hash: hash(rel(file), inputs),
         inputs,
         outputs: found.filter(({ p }) => p.stories.length).map(({ p }) => `${p.id}.stories.tsx`),
         manual: [...new Set(found.flatMap(({ c }) => c.manual ? [rel(c.manual.file)] : []))].sort(compare),
@@ -235,6 +251,10 @@ export function generator({ root, out = outOf(root), cap = 12 }: Options): () =>
           stories: p.catalog,
           ...(c.model ? { model: { spec: c.model.spec, module: c.model.module, state: c.model.state, events: c.model.events } } : {}),
           ...(c.design.length ? { design: c.design } : {}),
+          ...(c.part ? { part: c.part } : {}),
+          ...(c.children?.length ? { children: c.children } : {}),
+          ...(c.citations?.length ? { citations: c.citations } : {}),
+          ...(c.uses?.length ? { uses: c.uses } : {}),
           diagnostics: p.diagnostics,
         })))),
       };

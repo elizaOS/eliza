@@ -1,11 +1,12 @@
 // spec/os/image/staging.md, "Story: Stage my launcher into an image exactly once"; spec/os/image/harness.md, "Story: Run instrumentation on a device I hold alone"; spec/os/image/harness.md, "Story: Run a test in a fresh Android user that is removed afterwards"
 import { assert, it } from "@effect/vitest"
 import * as NodeServices from "@effect/platform-node/NodeServices"
-import { NATIVE_TARGETS, createDevelopmentLauncherDescriptor, finalizeNative, readNativeLibraries, renderOverlay, stageLauncher, validateDescriptor, type LauncherDescriptor } from "../src/image/stage-launcher.vibe"
+import { NATIVE_INSTALLS, NATIVE_TARGETS, createDevelopmentLauncherDescriptor, finalizeNative, readNativeLibraries, renderOverlay, stageLauncher, validateDescriptor, type LauncherDescriptor } from "../src/image/stage-launcher.vibe"
 import { androidTools, buildApk, testSigner, type NativeAbi } from "./support/android-tools.ts"
 import { commitTree, git, readTree, scratch, writeTree } from "./support/scratch.vibe"
 import { composeProduct } from "../src/image/compose-product.vibe"
 import { admitProduct } from "../gen/os__image__sourceLock.effect.vibe"
+import { reviewedPrivilegedPermissions } from "../gen/os__image__staging.effect.vibe"
 import { loadProfile, verifySource, verifyDeviceSource, admitPatchEnvelope } from "../src/image/source-lock.vibe"
 import { main as qualify, qualifyDevice } from "../src/image/device-qualification.vibe"
 import { readOnlyCommands } from "../src/image/device-qualification-facts.vibe"
@@ -18,6 +19,7 @@ import {
 } from "../src/image/index.vibe"
 
 module node {
+  import { spawnSync } from "node:child_process"
   import { createHash } from "node:crypto"
   import { chmod, cp, mkdir, readFile, stat, symlink, utimes, writeFile } from "node:fs/promises"
   import { join } from "node:path"
@@ -137,6 +139,106 @@ module node {
     readonly state?: { readonly phase: { readonly tag: string } }
   }
 
+  export interface PathStager {
+    readonly REVIEWED_PRIVILEGED_PERMISSIONS: readonly string[]
+    readonly validateDescriptor: (value: unknown) => unknown
+    readonly launcherInstallDirectory: (descriptor: object) => string
+    readonly renderOverlay: (descriptor: object) => { readonly blueprint: string; readonly product: string; readonly permissions: string | null; readonly privilegedPermissions: string | null }
+    readonly renderNativeOverlay: (descriptor: object, abi: NativeAbi, libraries: readonly { readonly name: string; readonly sha256: string }[], install: "make" | "soong") => {
+      readonly blueprint: string
+      readonly makefile: string | null
+      readonly config: string
+      readonly report: { readonly soongPatch?: { readonly name: string } }
+    }
+    readonly stageLauncher: (options: Readonly<Record<string, unknown>>) => { readonly output: string; readonly provisioning: Readonly<Record<string, string | null>> | null }
+  }
+
+  export interface StandInApk {
+    readonly packageName: string
+    readonly signers: readonly string[]
+    readonly home?: boolean
+    readonly debuggable?: boolean
+    readonly permissions?: readonly string[]
+  }
+
+  export interface StandInCall {
+    readonly apk: string
+    readonly companions?: Readonly<Record<string, string>>
+    readonly development?: boolean
+  }
+
+  /** @throws {never} */
+  export function standInApk(shape: StandInApk): Uint8Array {
+    const named = (indent: number, value: string) => `${" ".repeat(indent)}A: android:name(0x01010003)="${value}" (Raw: "${value}")`
+    const permissions = shape.permissions ?? []
+    const xml = [
+      "N: android=http://schemas.android.com/apk/res/android",
+      "  E: manifest (line=2)",
+      `    A: package="${shape.packageName}" (Raw: "${shape.packageName}")`,
+      ...permissions.flatMap((permission) => ["    E: uses-permission (line=3)", named(6, permission)]),
+      "    E: application (line=4)",
+      ...(shape.debuggable === true ? ["      A: android:debuggable(0x0101000f)=(type 0x12)0xffffffff"] : []),
+      "      E: activity (line=5)",
+      named(8, ".MainActivity"),
+      "        A: android:exported(0x01010010)=(type 0x12)0xffffffff",
+      "        E: intent-filter (line=6)",
+      "          E: action (line=7)",
+      named(12, "android.intent.action.MAIN"),
+      "          E: category (line=8)",
+      named(12, shape.home === false ? "android.intent.category.LAUNCHER" : "android.intent.category.HOME"),
+      "          E: category (line=9)",
+      named(12, "android.intent.category.DEFAULT"),
+    ].join("\n")
+    const answers = {
+      badging: [`package: name='${shape.packageName}' versionCode='3' versionName='1.3'`, ...permissions.map((permission) => `uses-permission: name='${permission}'`)].join("\n"),
+      xml,
+      signatures: shape.signers.map((certificate, index) => `Signer #${index + 1} certificate SHA-256 digest: ${certificate}`).join("\n"),
+    }
+    const emptyDirectory = new Uint8Array(22)
+    emptyDirectory.set([0x50, 0x4b, 0x05, 0x06])
+    return Buffer.concat([Buffer.from(JSON.stringify(answers)), emptyDirectory])
+  }
+
+  /** @throws {never} */
+  export function standInTool(): string {
+    return `#!${process.execPath}
+const { readFileSync } = require("node:fs")
+const args = process.argv.slice(2)
+const bytes = readFileSync(args.find((value) => value.endsWith(".apk")))
+const answers = JSON.parse(bytes.subarray(0, bytes.length - 22).toString("utf8"))
+process.stdout.write(args[0] === "verify" ? answers.signatures : args[1] === "badging" ? answers.badging : answers.xml)
+`
+  }
+
+  /** @throws {never} */
+  export function digestOf(bytes: Uint8Array): string {
+    return sourceDigest(bytes)
+  }
+
+  /** @throws {never} */
+  export function runByPath(file: string, argv: readonly string[]) {
+    const run = spawnSync(process.execPath, [file, ...argv], { encoding: "utf8" })
+    return { status: run.status, stdout: String(run.stdout).trim(), failure: String(run.stderr) }
+  }
+
+  /** @throws {never} */
+  export function overlayDeclarations(tree: Readonly<Record<string, string>>) {
+    const uncommented = (text: string | undefined) => text?.split("\n").filter((line) => !line.startsWith("<!--")).join("\n")
+    return {
+      files: Object.keys(tree).filter((name) => !name.startsWith("sepolicy/")).sort(),
+      modules: soongModules(tree["Android.bp"]),
+      packages: (tree["product.mk"] ?? "").split("\n").filter((line) => line.startsWith("PRODUCT_PACKAGES")),
+      grants: uncommented(tree["default-permissions.xml"]),
+      allowList: uncommented(tree["privapp-permissions.xml"]),
+      apks: Object.entries(tree).filter(([name]) => name.endsWith(".apk")),
+    }
+  }
+
+  /** @throws {never} */
+  export function soongModules(blueprint: string | undefined): string[] {
+    return [...(blueprint ?? "").matchAll(/^\w+ \{\n(?: {4}.*\n)*\}$/gm)].map((block) => block[0])
+  }
+
   export const ARM_ELF = standInElf("arm64-v8a")
   export const X86_ELF = standInElf("x86_64")
 
@@ -186,7 +288,7 @@ module node {
     return { "libeliza_node.so": elf, "libagent.so": elf }
   }
 }
-import { ARM_ELF, X86_ELF, companionManifest, launcherManifest, parsed, runtimeNatives } from node
+import { ARM_ELF, X86_ELF, companionManifest, digestOf, launcherManifest, overlayDeclarations, parsed, runByPath, runtimeNatives, soongModules, standInApk, standInTool, type PathStager, type StandInApk, type StandInCall } from node
 
 import { changeMode, copySystemui, directoryMode, linkTo, swapVariable, fixedSourceStat, patchFixture, platformProjectTree, qualificationBinary, rewriteWithSameStat, sourceLockFixture, verificationBinary, virtualCompositionLock } from node
 
@@ -223,6 +325,22 @@ effect function leftovers(directory: string) {
 
 effect function outcome(options: Parameters<typeof stageLauncher>[0]) {
   return (effect { const staged = try stageLauncher(options); return staged.evidence.tag } catch (error) => error._tag === "StagingRefused" ? error.reason : error._tag)
+}
+
+effect function standIns(prefix: string) {
+  const path = try Path.Path
+  const work = try scratch(prefix)
+  try writeTree(work, { tool: { kind: "executable", content: standInTool() } })
+  const apk = effect (name: string, shape: StandInApk) => {
+    const bytes = standInApk(shape)
+    try writeTree(work, { [`apks/${name}.apk`]: bytes })
+    return { apk: path.join(work, "apks", `${name}.apk`), sha256: digestOf(bytes) }
+  }
+  return { work, tool: path.join(work, "tool"), apk, checkout: path.join(work, "aosp", "vendor") }
+}
+
+effect function pathStaged(stager: PathStager, options: Readonly<Record<string, unknown>>) {
+  return ((Effect.try({ try: () => stager.stageLauncher(options), catch: (cause) => (cause instanceof Error ? cause.message : String(cause)) }) |> map(%, () => "staged")) catch (message) => message)
 }
 
 effect function finalized(output: string) {
@@ -448,6 +566,155 @@ it.effect.skipIf(skipped !== null)(`Defer the Soong conversion of a privileged r
     assert.strictEqual(try finalized(development.output), "Converted")
     const resumed = try composeProduct({ ...compose, output: development.output })
     assert.deepStrictEqual([resumed.product, resumed.claims], [product.productName, ["ProductStaged"]])
+  }
+}, 240_000)
+
+it.effect('The stager a consumer runs by path declares the modules, native rules and file modes of the staged overlay (spec/os/image/staging.md, "An APK that carries the Node runtime is staged only with its natives for the image ABI, under the install rules the target supports"; spec/os/image/staging.md, "The overlay grants only declared permissions, and places the launcher in priv-app with its allow-list and the agent socket policy only when it names privileged permissions")', effect () => {
+  provide NodeServices.layer {
+    const path = try Path.Path
+    const stager: PathStager = try Effect.promise(() => import(path.join(import.meta.dirname, "../aosp/stage-launcher-overlay.ts")))
+    const pinned: LauncherDescriptor = { schemaVersion: 1, ...IDENTITY, apkSha256: "a".repeat(64), certificateSha256: "b".repeat(64) }
+    const libraries = [{ name: "libagent.so", sha256: "c".repeat(64) }, { name: "libeliza_node.so", sha256: "d".repeat(64) }]
+    const descriptors: readonly LauncherDescriptor[] = [
+      pinned,
+      { ...pinned, privilegedPermissions: [PRIVILEGED] },
+      { ...pinned, partition: "system", defaultPermissions: ["android.permission.CAMERA"], companions: [{ moduleName: "ExampleUpdater", packageName: COMPANION, apkSha256: "e".repeat(64) }] },
+    ]
+    for (const descriptor of descriptors) {
+      for (const rule of NATIVE_INSTALLS) {
+        const byPath = try Effect.try(() => stager.renderNativeOverlay(descriptor, "x86_64", libraries, rule))
+        const staged = renderOverlay(descriptor, { abi: "x86_64", rule, libraries })
+        const makefile = byPath.makefile === null ? undefined : byPath.makefile.slice(byPath.makefile.indexOf("\n") + 1)
+        assert.deepStrictEqual(
+          { modules: soongModules(byPath.blueprint), modes: byPath.config, makefile, patch: byPath.report.soongPatch?.name },
+          { modules: soongModules(staged["Android.bp"]), modes: staged["config.fs"], makefile: staged["Android.mk"], patch: rule === "soong" ? "soong-app-native" : undefined },
+          `${rule} rules for a launcher with ${descriptor.privilegedPermissions?.length ?? 0} privileged permissions on ${descriptor.partition ?? "product"}`,
+        )
+      }
+    }
+  }
+})
+
+it.effect(`The stager a consumer runs by path takes the descriptors, launchers and companions the staging rules take, refuses the ones they refuse and stages nothing then, and publishes once the modules, packages, grants and allow-list the rule-bound stager publishes; the agent socket policy of a privileged launcher is left to its caller (spec/os/image/staging.md, "Story: Stage my launcher into an image exactly once"; spec/os/image/staging.md, "A descriptor names a valid launcher, at most 32 unique first-boot grants, only reviewed privileged permissions, and distinct companions"; spec/os/image/staging.md, "The launcher is the descriptor's APK, home launcher and only signer, and declares every permission the descriptor names"; spec/os/image/staging.md, "The overlay grants only declared permissions, and places the launcher in priv-app with its allow-list and the agent socket policy only when it names privileged permissions"; spec/os/image/staging.md, "Only an admitted, rendered overlay is published, once, and never over an existing output")`, effect () => {
+  provide NodeServices.layer {
+    const files = try FileSystem.FileSystem
+    const path = try Path.Path
+    const file = path.join(import.meta.dirname, "../aosp/stage-launcher-overlay.ts")
+    const stager: PathStager = try Effect.promise(() => import(file))
+    const s = try standIns("path-stager")
+    const certificate = "b".repeat(64)
+    const other = "c".repeat(64)
+    const declared = ["android.permission.CAMERA", PRIVILEGED]
+    const release = try s.apk("release", { packageName: LAUNCHER, signers: [certificate], permissions: declared })
+    const debug = try s.apk("debug", { packageName: LAUNCHER, signers: [certificate], debuggable: true })
+    const foreign = try s.apk("foreign", { packageName: LAUNCHER, signers: [other] })
+    const twice = try s.apk("twice", { packageName: LAUNCHER, signers: [certificate, certificate] })
+    const renamed = try s.apk("renamed", { packageName: "example.fixture.other", signers: [certificate] })
+    const shortcut = try s.apk("shortcut", { packageName: LAUNCHER, signers: [certificate], home: false })
+    const updater = try s.apk("updater", { packageName: COMPANION, signers: [certificate], home: false })
+    const updaterHome = try s.apk("updater-home", { packageName: COMPANION, signers: [certificate] })
+    const updaterForeign = try s.apk("updater-foreign", { packageName: COMPANION, signers: [other], home: false })
+    const updaterRenamed = try s.apk("updater-renamed", { packageName: "example.fixture.other", signers: [certificate], home: false })
+
+    const plain: LauncherDescriptor = { schemaVersion: 1, ...IDENTITY, apkSha256: release.sha256, certificateSha256: certificate }
+    const reviewed: LauncherDescriptor = { ...plain, defaultPermissions: ["android.permission.CAMERA"], privilegedPermissions: [PRIVILEGED] }
+    const companion = { moduleName: "ExampleUpdater", packageName: COMPANION, apkSha256: updater.sha256 }
+    const pinned: LauncherDescriptor = { ...reviewed, companions: [companion] }
+    const admitted: readonly unknown[] = [plain, reviewed, pinned, { ...plain, partition: "system" }]
+    const refusedDescriptors: readonly unknown[] = [
+      null, { ...plain, schemaVersion: 2 }, { ...plain, brand: '../evil"' }, { ...plain, moduleName: '../evil"' }, { ...plain, packageName: '../evil"' }, { ...plain, apkSha256: "A".repeat(64) }, { ...plain, certificateSha256: "short" },
+      { ...plain, defaultPermissions: [] }, { ...plain, defaultPermissions: ["android.permission.CAMERA", "android.permission.CAMERA"] }, { ...plain, defaultPermissions: ['android.permission.X"/><permission name="android.permission.Y'] },
+      { ...plain, defaultPermissions: ["com.example.permission.PRIVATE"] }, { ...plain, defaultPermissions: Array.from({ length: 33 }, (_, index) => `android.permission.P${index}`) },
+      { ...plain, privilegedPermissions: [] }, { ...plain, privilegedPermissions: PRIVILEGED }, { ...plain, privilegedPermissions: [PRIVILEGED, PRIVILEGED] }, { ...plain, privilegedPermissions: ["android.permission.WRITE_SECURE_SETTINGS"] },
+      { ...plain, privilegedPermissions: [null] }, { ...reviewed, defaultPermissions: ["android.permission.CAMERA", PRIVILEGED] }, { ...plain, partition: "vendor" },
+      { ...plain, companions: [] }, { ...plain, companions: [{ ...companion, moduleName: IDENTITY.moduleName }] }, { ...plain, companions: [{ ...companion, moduleName: "Launcher" }] },
+      { ...plain, companions: [{ ...companion, moduleName: "ExampleHomeDefaultPermissions" }] }, { ...plain, companions: [{ ...companion, packageName: LAUNCHER }] },
+      { ...plain, companions: [companion, { ...companion, packageName: "example.fixture.other" }] }, { ...plain, companions: [{ ...companion, apkSha256: "C".repeat(64) }] },
+      { ...plain, companions: [{ ...companion, certificateSha256: certificate }] },
+    ]
+    for (const [verdict, candidates] of [["valid", admitted], ["refused", refusedDescriptors]] as const) {
+      for (const candidate of candidates) {
+        const byPath = (Effect.try(() => stager.validateDescriptor(candidate)) |> map(%, () => "valid")) catch () => "refused"
+        const byRule = (validateDescriptor(candidate) |> map(%, () => "valid")) catch () => "refused"
+        assert.deepStrictEqual([byPath, byRule], [verdict, verdict], JSON.stringify(candidate))
+      }
+    }
+    assert.deepStrictEqual([...stager.REVIEWED_PRIVILEGED_PERMISSIONS], reviewedPrivilegedPermissions)
+    const installed: readonly LauncherDescriptor[] = [plain, pinned, { ...pinned, partition: "system" }]
+    for (const descriptor of installed) {
+      const installedAt = try Effect.try(() => stager.launcherInstallDirectory(descriptor))
+      assert.include(renderOverlay(descriptor, { abi: "x86_64", rule: "make", libraries: [{ name: "libagent.so", sha256: other }] })["config.fs"] ?? "", `[${installedAt.slice(1)}/lib/x86_64/libagent.so]`)
+    }
+
+    const base = { aapt: s.tool, apksigner: s.tool, development: false }
+    const companions = { ExampleUpdater: updater.apk }
+    const staged: readonly (readonly [string, LauncherDescriptor, StandInCall])[] = [
+      ["phone", reviewed, { apk: release.apk }],
+      ["phone-development", { ...plain, apkSha256: debug.sha256, partition: "system" }, { apk: debug.apk, development: true }],
+      ["companion", pinned, { apk: release.apk, companions }],
+    ]
+    for (const [name, descriptor, call] of staged) {
+      const described = try writeDescriptor(path.join(s.work, `${name}.json`), descriptor)
+      const output = path.join(s.checkout, "staged", name)
+      const run = runByPath(file, [
+        "--descriptor", described, "--apk", call.apk, "--output", output, "--aapt", s.tool, "--apksigner", s.tool,
+        ...Object.entries(call.companions ?? {}).flatMap(([module, apk]) => ["--companion", `${module}=${apk}`]), ...(call.development === true ? ["--development"] : []),
+      ])
+      assert.deepStrictEqual([run.status, run.stdout], [0, output], run.failure)
+      assert.strictEqual(try outcome({ ...base, ...call, descriptor: described, output: path.join(s.checkout, "ruled", name) }), "OverlayStaged", name)
+      const tree = try readTree(output)
+      assert.deepStrictEqual(overlayDeclarations(tree), overlayDeclarations(try readTree(path.join(s.checkout, "ruled", name))), name)
+      const rendered = try Effect.try(() => stager.renderOverlay(descriptor))
+      assert.deepStrictEqual(
+        [tree["Android.bp"], tree["product.mk"], tree["default-permissions.xml"] ?? null, tree["privapp-permissions.xml"] ?? null, tree["launcher.json"]],
+        [rendered.blueprint, rendered.product, rendered.permissions, rendered.privilegedPermissions, `${JSON.stringify({ ...descriptor, development: call.development === true }, null, 2)}\n`],
+        name,
+      )
+    }
+
+    const pinnedTo = (apk: { readonly sha256: string }, extra: Partial<LauncherDescriptor> = {}): LauncherDescriptor => ({ ...plain, apkSha256: apk.sha256, ...extra })
+    const withCompanion = (apk: { readonly sha256: string }): LauncherDescriptor => ({ ...plain, companions: [{ ...companion, apkSha256: apk.sha256 }] })
+    const refused: readonly (readonly [string, unknown, StandInCall, RegExp, string])[] = [
+      ["digest", plain, { apk: debug.apk }, /Launcher APK hash mismatch/, "LauncherDigestMismatch"],
+      ["package", pinnedTo(renamed), { apk: renamed.apk }, /Launcher package mismatch/, "NotTheLauncherPackage"],
+      ["not-home", pinnedTo(shortcut), { apk: shortcut.apk }, /not a MAIN\/HOME\/DEFAULT launcher/, "NotTheLauncherPackage"],
+      ["debuggable", pinnedTo(debug), { apk: debug.apk }, /Debug launcher requires --development/, "BuildNotAllowed"],
+      ["signer", pinnedTo(foreign), { apk: foreign.apk }, /signer mismatch or multiple signers/, "SignerNotTheDescriptors"],
+      ["two-signers", pinnedTo(twice), { apk: twice.apk }, /Exactly one valid launcher signer/, "SignerNotTheDescriptors"],
+      ["undeclared", pinnedTo(debug, { defaultPermissions: ["android.permission.RECORD_AUDIO"] }), { apk: debug.apk, development: true }, /does not declare android\.permission\.RECORD_AUDIO/, "PermissionUndeclared"],
+      ["unreviewed", { ...plain, privilegedPermissions: ["android.permission.CAMERA"] }, { apk: release.apk }, /Invalid privileged permissions/, "DescriptorInvalid"],
+      ["no-companion", pinned, { apk: release.apk }, /exactly one APK for each descriptor companion/, "CompanionRefused"],
+      ["unnamed-companion", pinned, { apk: release.apk, companions: { ...companions, Other: updater.apk } }, /exactly one APK for each descriptor companion/, "CompanionRefused"],
+      ["companion-digest", pinned, { apk: release.apk, companions: { ExampleUpdater: release.apk } }, /ExampleUpdater APK hash mismatch/, "CompanionRefused"],
+      ["companion-home", withCompanion(updaterHome), { apk: release.apk, companions: { ExampleUpdater: updaterHome.apk } }, /ExampleUpdater must not be a launcher/, "CompanionRefused"],
+      ["companion-signer", withCompanion(updaterForeign), { apk: release.apk, companions: { ExampleUpdater: updaterForeign.apk } }, /ExampleUpdater signer differs from the launcher signer/, "CompanionRefused"],
+      ["companion-package", withCompanion(updaterRenamed), { apk: release.apk, companions: { ExampleUpdater: updaterRenamed.apk } }, /ExampleUpdater package mismatch/, "CompanionRefused"],
+    ]
+    for (const [name, descriptor, call, pattern, reason] of refused) {
+      const described = try writeDescriptor(path.join(s.work, `${name}.json`), descriptor)
+      assert.match(try pathStaged(stager, { ...base, ...call, descriptor: described, output: path.join(s.checkout, "refused", name) }), pattern, name)
+      assert.strictEqual(try outcome({ ...base, ...call, descriptor: described, output: path.join(s.checkout, "ruled-refused", name) }), reason, name)
+    }
+    const untooled = { development: false, aapt: "must-not-run", apksigner: "must-not-run", output: path.join(s.checkout, "refused", "untooled") }
+    assert.match(try pathStaged(stager, { ...untooled, descriptor: path.join(s.work, "digest.json"), apk: debug.apk }), /Launcher APK hash mismatch/, "a digest is checked before any SDK tool runs")
+    assert.match(try pathStaged(stager, { ...untooled, descriptor: path.join(s.work, "companion-digest.json"), apk: release.apk, companions: { ExampleUpdater: release.apk } }), /ExampleUpdater APK hash mismatch/)
+    assert.deepStrictEqual(try files.readDirectory(path.join(s.checkout, "refused")), [], "a refusal stages nothing and leaves no private copy")
+    assert.deepStrictEqual(try files.readDirectory(path.join(s.checkout, "ruled-refused")), [])
+
+    const again = { ...base, descriptor: path.join(s.work, "companion.json"), apk: release.apk, companions }
+    const before = try readTree(path.join(s.checkout, "staged", "companion"))
+    assert.match(try pathStaged(stager, { ...again, output: path.join(s.checkout, "staged", "companion") }), /Output exists/)
+    assert.strictEqual(try outcome({ ...again, output: path.join(s.checkout, "ruled", "companion") }), "OutputNotPublished")
+    assert.deepStrictEqual(try readTree(path.join(s.checkout, "staged", "companion")), before)
+
+    const home = { ...base, descriptor: try writeDescriptor(path.join(s.work, "plain.json"), plain), apk: release.apk }
+    const provisioned = try Effect.try(() => stager.stageLauncher({ ...home, output: path.join(s.checkout, "staged", "provisioned"), provisioning: { assistant: false } }))
+    assert.deepStrictEqual(provisioned.provisioning, { home: `${LAUNCHER}.MainActivity`, assistant: null, autofill: null })
+    const provisioning = try readTree(provisioned.output)
+    assert.include(provisioning["provisioning/preferred-apps/launcher-home.xml"] ?? "", `<set name="${LAUNCHER}/${LAUNCHER}.MainActivity" />`)
+    assert.include(provisioning["product.mk"] ?? "", "PRODUCT_PACKAGE_OVERLAYS += $(launcher_provisioning_dir)/overlay\n")
+    assert.match(try pathStaged(stager, { ...home, output: path.join(s.checkout, "staged", "assistant"), provisioning: { assistant: true } }), /exactly one ACTION_ASSIST activity; found 0/)
+    assert.deepStrictEqual((try files.readDirectory(path.join(s.checkout, "staged"))).sort(), ["companion", "phone", "phone-development", "provisioned"], "first-boot defaults the APK cannot back stage nothing: the overlay is renamed into place whole")
   }
 }, 240_000)
 

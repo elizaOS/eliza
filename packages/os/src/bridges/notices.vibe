@@ -1,10 +1,10 @@
-// spec/os/android/noticeRoutes.md, "Story: Keep my notices to the account I am signed in to"; spec/os/android/noticeRoutes.md, "The owner fence is published once for each change of the signed-in account"; spec/os/android/noticeRoutes.md, "A failed fence publication of the current generation is retried, and a superseded one is forgotten"; spec/os/android/noticeRoutes.md, "A tap opens only its exact route, in the account it belongs to, and only with the current tap token"; spec/os/android/noticeRoutes.md, "An approval notice has one identity per approval, bound to its exact run route"; spec/os/android/noticeRoutes.md, "An approval notice is offered or kept only while its approval is pending"; spec/os/android/notificationMirror.md, "Story: Mirror only the notifications I allowed"; spec/os/android/notificationMirror.md, "Story: Act on exactly the notice I see"
+// spec/os/android/noticeRoutes.md, "Story: Keep my notices to the account I am signed in to"; spec/os/android/noticeRoutes.md, "The owner fence is published once for each change of the signed-in account"; spec/os/android/noticeRoutes.md, "A failed fence publication of the current generation is retried, and a superseded one is forgotten"; spec/os/android/noticeRoutes.md, "A tap opens only its exact route, in the account it belongs to, and only with the current tap token"; spec/os/android/noticeRoutes.md, "An approval notice has one identity per approval, bound to its exact run route"; spec/os/android/noticeRoutes.md, "An approval notice is offered or kept only while its approval is pending"; spec/os/android/notificationMirror.md, "Story: Mirror only the notifications I allowed"; spec/os/android/notificationMirror.md, "Story: Act on exactly the notice I see"; spec/os/android/noticeRoutes.md, "The host answers presentation protocol 2, and a renderer presents only through a host that answers it"
 import type { Approval, ApprovalPhase } from "../../gen/core__approvals.ts"
 import { initial as approvalInitial } from "../../gen/core__approvals.effect.vibe"
 import type { Account, DeviceCredential } from "../../gen/os__signIn__credential.ts"
 import { accountOf } from "../../gen/os__signIn__credential.effect.vibe"
 import type { NoticeDecision, NoticeFence, NoticeReads, SuspendedNotice, TapResolution } from "../../gen/os__android__noticeRoutes.ts"
-import { approvalOffered, fenceFailed, freshFence, resolveTap, revalidateNotice, updateFence } from "../../gen/os__android__noticeRoutes.effect.vibe"
+import { approvalOffered, fenceFailed, freshFence, presentsWorkflowNotices, resolveTap, revalidateNotice, updateFence } from "../../gen/os__android__noticeRoutes.effect.vibe"
 import { nativeReply, settled } from "./bridge.vibe"
 import {
   PENDING_WORKFLOW_TAP_EVENT,
@@ -188,6 +188,7 @@ export function revalidateWorkflowApprovalNotice<Run, Review>(notice: SuspendedA
 }
 
 schema Status { status: string }
+schema Presentation { protocol: number }
 schema Route { scope: string; origin: string; ownerId: string; agentId: string; workflowId: string; runId: string; versionId: string }
 schema Suspended { id: string; bindingHash: string; expiresAt: number; route: Route }
 schema OwnerFence { withdrawn: number; suspended: Suspended[] }
@@ -212,6 +213,7 @@ export function noticesClient(options: NoticesClientOptions = {}): NoticesClient
   const status = (method: string, run: () => Promise<unknown>) => settled(call(method, Status, run)).then((reply) => reply.status as never)
   const done = (method: string, run: () => Promise<unknown>) => settled(call(method, Done, run)).then(() => undefined)
   return {
+    presentsWorkflow: () => settled(call("workflowPresentationCapabilities", Presentation, () => plugin.workflowPresentationCapabilities())).then((reply) => presentsWorkflowNotices(reply.protocol)),
     pendingTap: () => settled(call("pendingWorkflowTap", Tap, () => plugin.pendingWorkflowTap())) as Promise<Partial<PendingNoticeTap>>,
     consumeTap: (input) => done("consumeWorkflowTap", () => plugin.consumeWorkflowTap(input)),
     postWorkflow: (input) => status("postWorkflow", () => plugin.postWorkflow(input)),
