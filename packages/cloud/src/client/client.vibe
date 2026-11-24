@@ -3,7 +3,8 @@ import { callOf, originAccepted } from "../../gen/cloud__client.effect.vibe"
 import { answerOf, bodyOf, bytesOf, queryOf, unreadable, type CallOptions, type CloudAnswer } from "./answer.vibe"
 import type { ChatRequest } from "../services/chat-request.schema.ts"
 import type { SynthesisBody } from "../services/speech-batch.schema.ts"
-import { isDone, pushByte, segmenter } from "../services/sse.ts"
+import { isDone } from "../services/sse.ts"
+import { sseReader } from "../services/sse-reader.vibe"
 import { parseEntitlementKeys, type EntitlementKey } from "./entitlement.vibe"
 import { CloudError, networkError, readCloudError } from "./errors.vibe"
 import { googleCalls } from "./google.vibe"
@@ -349,7 +350,7 @@ async function* chunksOf(call: () => Promise<TransportAnswer>, signal: AbortSign
   const reader = answer.stream().getReader()
   const aborted = () => { void reader.cancel(signal?.reason).catch(() => undefined) }
   signal?.addEventListener("abort", aborted, { once: true })
-  let state = segmenter()
+  const state = sseReader()
   try {
     const contentType = answer.headers.get("content-type")
     if (contentType?.split(";", 1)[0]?.trim().toLowerCase() !== "text/event-stream") throw unreadable("expected an event stream")
@@ -363,13 +364,9 @@ async function* chunksOf(call: () => Promise<TransportAnswer>, signal: AbortSign
       }
       signal?.throwIfAborted()
       if (read.done) throw networkError("stream ended before [DONE]")
-      for (const byte of read.value) {
-        const fed = pushByte(state, byte)
-        state = fed.segmenter
-        for (const event of fed.events) {
-          if (isDone(event)) return
-          yield await chunkOf(event)
-        }
+      for (const event of state.read(read.value)) {
+        if (isDone(event)) return
+        yield await chunkOf(event)
       }
     }
   } finally {

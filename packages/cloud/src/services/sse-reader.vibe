@@ -1,0 +1,49 @@
+// spec/cloud/index.md, "A streamed answer sends complete OpenAI frames and settles the same hold"; spec/cloud/services/inference.md, "Reading the provider's stream yields the same events however its bytes were split"
+import { classifySseByte, classifySseLine } from "./sse.ts"
+
+export function sseReader() {
+  const line: number[] = []
+  let data: number[] = []
+  let cr = false
+  let hasData = false
+  let finished = false
+
+  function endLine(): number[] | undefined {
+    const field = classifySseLine(line)
+    let event: number[] | undefined
+    if (field.kind === "Data") {
+      if (hasData) data.push(10)
+      for (let at = field.start; at < line.length; at++) data.push(line[at])
+      hasData = true
+    } else if (field.kind === "Blank" && hasData) {
+      event = data
+      data = []
+      hasData = false
+    }
+    line.length = 0
+    return event
+  }
+
+  return {
+    *read(chunk: Uint8Array): IterableIterator<number[]> {
+      if (finished) return
+      for (const byte of chunk) {
+        const kind = classifySseByte(cr, byte)
+        cr = kind === "CarriageReturn"
+        if (kind === "Data") line.push(byte)
+        else if (kind !== "Skip") {
+          const event = endLine()
+          if (event !== undefined) yield event
+        }
+      }
+    },
+    pendingBytes(): number {
+      return line.length + data.length
+    },
+    finish(): number[] | undefined {
+      if (finished) return undefined
+      finished = true
+      return endLine() ?? endLine()
+    },
+  }
+}

@@ -429,10 +429,14 @@ pure def lawOnlyAFailedStreamSendsAnError(deltas: List[int], ending: StreamEndin
 
 ### Reading the provider's stream yields the same events however its bytes were split
 
-The cloud reads the provider's lines for usage and delivered characters: a
-line feed ends a line, carriage returns are dropped, and a non-empty line is
-one event. `src/services/sse.ts` holds this law as its `//@` contract, on
-code points decoded at UTF-8 boundaries.
+The cloud uses the provider's complete events to read usage and count
+delivered characters. LF, CR and CRLF end a line. Data fields in one event
+are joined with LF and a blank line emits the event. The byte model and
+UTF-8 chunking contracts live in `packages/cloud/src/services/sse.ts`.
+Cloud and its client use the same framing rules and hold the unfinished
+line and event once per stream. Reading another chunk appends its bytes
+without copying the already-held prefix. Complete events are handed off
+as soon as the reader reaches their boundary.
 
 ```quint
 type SseReader = { fragment: List[int], events: List[int] }

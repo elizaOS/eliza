@@ -4,7 +4,8 @@ import { refusalBody, refused, Refused, type Refusal } from "../http/refusal.vib
 import { maxReplyBytes, ProviderInvalidResponse, ProviderRefused, ProviderTimedOut, ProviderUnreachable, readLlmObject, type LlmFailure } from "../providers/llm.vibe"
 import type { Settlement } from "../shared/metering.vibe"
 import { billedFromUsage, type TokenCounts } from "./models.vibe"
-import { chunkFrame, doneFrame, errorFrame, feed, finish, isDone, segmenter } from "./sse.ts"
+import { chunkFrame, doneFrame, errorFrame, isDone } from "./sse.ts"
+import { sseReader } from "./sse-reader.vibe"
 
 const frameBytes = 256 * 1024
 const chunkBytes = 16 * 1024
@@ -44,7 +45,7 @@ export function meteredChatStream({ upstream, publicModelId, quoted, holdKey, pr
   readonly finishHold: (settlement: ChatSettlement) => void!({ readonly _tag: string })
   readonly includeUsage: boolean
 }) {
-  let pending = segmenter()
+  const pending = sseReader()
   let total = 0
   let reported: TokenCounts | undefined
   let deliveredChars = 0
@@ -56,10 +57,8 @@ export function meteredChatStream({ upstream, publicModelId, quoted, holdKey, pr
     const length = Math.min(chunk.byteLength, maxReplyBytes - total)
     const events: number[][] = []
     for (let start = 0; start < length; start += chunkBytes) {
-      const next = feed(pending, Array.from(chunk.subarray(start, Math.min(length, start + chunkBytes))))
-      pending = next.segmenter
-      events.push(...next.events)
-      if (pending.line.length + pending.data.length > frameBytes) {
+      for (const event of pending.read(chunk.subarray(start, Math.min(length, start + chunkBytes)))) events.push(event)
+      if (pending.pendingBytes() > frameBytes) {
         return Stream.concat(Stream.fromIterable(events), Stream.fail(new ProviderInvalidResponse()))
       }
     }
@@ -67,7 +66,10 @@ export function meteredChatStream({ upstream, publicModelId, quoted, holdKey, pr
     const frames = Stream.fromIterable(events)
     return length < chunk.byteLength ? Stream.concat(frames, Stream.fail(new ProviderInvalidResponse())) : frames
   })
-  const frames = Stream.concat(delivered, Stream.suspend(() => Stream.fromIterable(finish(pending).events)))
+  const frames = Stream.concat(delivered, Stream.suspend(() => {
+    const tail = pending.finish()
+    return Stream.fromIterable(tail === undefined ? [] : [tail])
+  }))
   const replies = Stream.flatMap(Stream.takeUntil(frames, isDone), (frame) => Stream.fromEffect(effect {
     if (frame.length > frameBytes) throw new ProviderInvalidResponse()
     if (isDone(frame)) {

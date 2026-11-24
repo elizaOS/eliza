@@ -40,21 +40,29 @@ function isDataField(line: number[]): boolean {
   return line.length >= 4 && line[0] === 100 && line[1] === 97 && line[2] === 116 && line[3] === 97 && (line.length === 4 || line[4] === 58)
 }
 
+type SseLine = { kind: "Blank" } | { kind: "Ignored" } | { kind: "Data"; start: number }
+
 //@ pure
-function valueOf(line: number[]): number[] {
-  //@ requires isDataField(line)
-  if (line.length === 4) return []
-  if (line.length > 5 && line[5] === 32) return line.slice(6)
-  return line.slice(5)
+export function classifySseLine(line: number[]): SseLine {
+  if (line.length === 0) return { kind: "Blank" }
+  if (!isDataField(line)) return { kind: "Ignored" }
+  if (line.length === 4) return { kind: "Data", start: 4 }
+  return { kind: "Data", start: line.length > 5 && line[5] === 32 ? 6 : 5 }
+}
+
+//@ pure
+export function classifySseByte(cr: boolean, byte: number): "Skip" | "CarriageReturn" | "LineFeed" | "Data" {
+  if (byte === 10) return cr ? "Skip" : "LineFeed"
+  return byte === 13 ? "CarriageReturn" : "Data"
 }
 
 //@ pure
 function endLine(s: Segmenter, cr: boolean): Fed {
   //@ ensures \result.segmenter.line.length === 0 && \result.segmenter.terminal === s.terminal
-  if (s.line.length === 0 && s.hasData) return { segmenter: { line: [], cr: cr, data: [], hasData: false, terminal: s.terminal }, events: [s.data] }
-  if (s.line.length === 0) return { segmenter: { line: [], cr: cr, data: s.data, hasData: false, terminal: s.terminal }, events: [] }
-  if (!isDataField(s.line)) return { segmenter: { line: [], cr: cr, data: s.data, hasData: s.hasData, terminal: s.terminal }, events: [] }
-  const value = valueOf(s.line)
+  const line = classifySseLine(s.line)
+  if (line.kind === "Blank" && s.hasData) return { segmenter: { line: [], cr: cr, data: [], hasData: false, terminal: s.terminal }, events: [s.data] }
+  if (line.kind !== "Data") return { segmenter: { line: [], cr: cr, data: s.data, hasData: s.hasData, terminal: s.terminal }, events: [] }
+  const value = s.line.slice(line.start)
   return { segmenter: { line: [], cr: cr, data: s.hasData ? s.data.concat([10]).concat(value) : value, hasData: true, terminal: s.terminal }, events: [] }
 }
 
@@ -62,8 +70,9 @@ function endLine(s: Segmenter, cr: boolean): Fed {
 export function pushByte(s: Segmenter, b: number): Fed {
   //@ ensures s.terminal ==> \result.segmenter === s && \result.events.length === 0
   if (s.terminal) return { segmenter: s, events: [] }
-  if (b === 10 && s.cr) return { segmenter: { line: s.line, cr: false, data: s.data, hasData: s.hasData, terminal: false }, events: [] }
-  if (b === 10 || b === 13) return endLine(s, b === 13)
+  const kind = classifySseByte(s.cr, b)
+  if (kind === "Skip") return { segmenter: { line: s.line, cr: false, data: s.data, hasData: s.hasData, terminal: false }, events: [] }
+  if (kind !== "Data") return endLine(s, kind === "CarriageReturn")
   return { segmenter: { line: s.line.concat([b]), cr: false, data: s.data, hasData: s.hasData, terminal: false }, events: [] }
 }
 

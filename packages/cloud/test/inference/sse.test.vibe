@@ -5,6 +5,7 @@ import { deploymentLayer, parseProfile } from "../../src/profile/profile.vibe"
 import { stream, type LlmProvider } from "../../src/providers/llm.vibe"
 import { billedFromUsage } from "../../src/services/models.vibe"
 import { abort, chunkFrame, doneFrame, feed, finish, isDone, segmenter, utf8Text } from "../../src/services/sse.ts"
+import { sseReader } from "../../src/services/sse-reader.vibe"
 import { startFakeServer } from "../support/fakes.ts"
 import { llmFake, replyText, streamText, upstreamModel } from "../support/llm-fake.ts"
 import { secrets, testProfile } from "../support/profile.ts"
@@ -30,7 +31,7 @@ effect function adapter() {
 
 const request = { model: upstreamModel, messages: [{ role: "user", content: "Say hello" }], max_tokens: 16 }
 
-function segmented(chunks: ReadonlyArray<ReadonlyArray<number>>, end: "finish" | "abort" = "finish"): ReadonlyArray<string> {
+function referenceEvents(chunks: readonly Uint8Array[], end: "finish" | "abort"): number[][] {
   let state = segmenter()
   const events: number[][] = []
   for (const chunk of chunks) {
@@ -39,6 +40,19 @@ function segmented(chunks: ReadonlyArray<ReadonlyArray<number>>, end: "finish" |
     events.push(...next.events)
   }
   events.push(...(end === "finish" ? finish(state) : feed(abort(), [10, 10])).events)
+  return events
+}
+
+function eventsFrom(chunks: readonly Uint8Array[], end: "finish" | "abort"): number[][] {
+  const reader = sseReader()
+  const events = chunks.flatMap((chunk) => [...reader.read(chunk)])
+  const tail = end === "finish" ? reader.finish() : undefined
+  if (tail !== undefined) events.push(tail)
+  return events
+}
+
+function segmented(chunks: ReadonlyArray<ReadonlyArray<number>>, end: "finish" | "abort" = "finish"): ReadonlyArray<string> {
+  const events = eventsFrom(chunks.map((chunk) => Uint8Array.from(chunk)), end)
   return events.map((event) => isDone(event) ? "[DONE]" : String.fromCodePoint(...utf8Text(event)))
 }
 
@@ -49,6 +63,25 @@ function bytesOf(text: string): ReadonlyArray<number> {
 const cut = bytesOf("data: {\"a\":1}\n\ndata: {\"b\"")
 
 describe("WP5 Inference: SSE segmentation", () => {
+  it('The stream reader matches the byte model at every transport split and yields one detached event at a time (spec/cloud/services/inference.md, "Reading the provider\'s stream yields the same events however its bytes were split")', () => {
+    const bytes = Uint8Array.from([...bytesOf(": ignored\r\ndata:\r\ndata: café 🙂\r\n\r\ndata\n\ndata: [DONE]\r\n\r\ndata: "), 0xe2, 0x82])
+    for (let split = 0; split <= bytes.length; split++) {
+      const chunks = [bytes.subarray(0, split), bytes.subarray(split)]
+      for (const end of ["finish", "abort"] as const) assert.deepStrictEqual(eventsFrom(chunks, end), referenceEvents(chunks, end))
+    }
+    const reader = sseReader()
+    const other = sseReader()
+    const frames = reader.read(Uint8Array.from(bytesOf("data: first\n\ndata: second\n\ndata: last")))
+    const first = frames.next().value
+    assert.deepStrictEqual(first, bytesOf("first"))
+    assert.equal(reader.pendingBytes(), 0)
+    assert.deepStrictEqual([...other.read(Uint8Array.from(bytesOf("data: alone\n\n")))], [bytesOf("alone")])
+    assert.deepStrictEqual([...frames], [bytesOf("second")])
+    assert.deepStrictEqual(reader.finish(), bytesOf("last"))
+    assert.deepStrictEqual(first, bytesOf("first"))
+    assert.isUndefined(reader.finish())
+  })
+
   it.live("Read the provider's stream as whole events whatever its byte chunking (spec/cloud/services/inference.md, \"Story: Stream a reply in the shape clients read\")", () => scoped(effect {
     const { llm, provider, layer } = try adapter()
     provide layer {
