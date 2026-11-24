@@ -127,7 +127,7 @@ jobs:
         with:
           job: ${{ matrix.name }}
       - id: verify-tasks
-        run: node vibestack/spec.ts tasks ${{ matrix.tasks }} ${{ startsWith(matrix.name, 'selftest-') && '--only' || '' }} --continue --summarize ${{ matrix.name == 'verify' && '--log-order=stream' || '' }}
+        run: node vibestack/spec.ts tasks ${{ matrix.tasks }} ${{ startsWith(matrix.name, 'selftest-') && '--only' || '' }} --continue --summarize ${{ matrix.name == 'verify' && '--log-order=stream --concurrency=2' || '' }}
       - name: Report Turbo task timings
         if: ${{ !cancelled() }}
         run: |
