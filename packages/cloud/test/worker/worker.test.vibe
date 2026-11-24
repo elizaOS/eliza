@@ -4,7 +4,7 @@ import { operate, type OperatorDocument, type OperatorOutcome } from "../../src/
 import { deploymentLayer, parseProfile } from "../../src/profile/profile.vibe"
 import { migrate, storeLayer } from "../../src/store/store.vibe"
 import { cloudWorker, type CloudBindings } from "../../src/worker.vibe"
-import { fakeServer } from "../support/cloud.vibe"
+import { check, fakeServer } from "../support/cloud.vibe"
 import { serveDatabase } from "../support/database.ts"
 import { stripeCatalog } from "../support/fakes.ts"
 import { webRequest } from "../support/password-backup.ts"
@@ -20,10 +20,6 @@ const phone = {
   signInReturn: `${web}/phone/auth/callback`,
   billingReturn: `${web}/phone/billing/return`,
   credentialTtlDays: 30
-}
-
-effect function check(run: () => void) {
-  try Effect.try(run)
 }
 
 function workerProfile(fakesUrl: string) {

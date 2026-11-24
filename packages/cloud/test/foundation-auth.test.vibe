@@ -30,12 +30,9 @@ import { createStripeFake, fakeSecretKey, type StripeFake } from "./support/fake
 import { stripePlanDowngrade, stripePlanPreview, stripePlanUpgrade, stripeRenewalPreview } from "./support/fakes/stripe-commands.ts"
 import { changeInvoiceAllowance, openRenewal } from "../src/billing/allowance.vibe"
 import { catalogPrices, secrets, testProfile } from "./support/profile.ts"
+import { check } from "./support/cloud.vibe"
 
 const minuteMs = 60_000
-
-effect function check(run: () => void) {
-  try Effect.try(run)
-}
 
 effect function sql(cloud: HttpFixture, text: string, params: ReadonlyArray<unknown>) {
   return try cloud.store.transaction((tx) => tx.query(text, params))
@@ -364,6 +361,40 @@ describe("WP0 Foundation: request authentication", () => {
     try check(() => assert.deepStrictEqual(
       [statuses.every((status) => status === 200), over.status, overBody.error, typeof overBody.retryAt, over.headers["retry-after"] !== undefined, reached.length, unknownStatuses.slice(0, 120).every((status) => status === 401), unknownStatuses[120]],
       [true, 429, "rate_limited", "number", true, 120, true, 429]
+    ))
+  }))
+
+  it.live("Answer a failed credential or revocation lookup as an outage (spec/cloud/identity/requestAuth.md, \"A failed credential or revocation lookup is an outage, never a credential refusal\")", () => scoped(effect {
+    const reached: Array<string> = []
+    const cloud = try testHttp(probes(reached))
+    const call = cloud.call
+    const now = try Clock.currentTimeMillis
+    const day = 24 * 60 * minuteMs
+    try account(cloud, "owner", "active", { sessions: 0, devices: 0 }, now)
+    const token = sessionToken("o")
+    try session(cloud, "owner", token, { live: true, epoch: 0, authAt: now - minuteMs, accessExpiresAt: now + 10 * minuteMs, refreshExpiresAt: now + day, stepUpAt: 0, mfaAt: now - minuteMs }, now)
+    const key = deviceKey("c")
+    try grant(cloud, "owner", key, "active", now - minuteMs, now + day)
+    effect function outage(path: string, credential: string) {
+      const asked = try Clock.currentTimeMillis
+      const answer = try call(path, credential)
+      const body = answer.body as { readonly retryable?: boolean; readonly retryAt?: number }
+      return [outcome(answer), body.retryable, (body.retryAt ?? 0) >= asked + 5000, answer.headers["retry-after"] !== undefined]
+    }
+    const unavailable = ["503 service_unavailable", true, true, true]
+    const before = [outcome(try call("/probe/session", token)), outcome(try call("/probe/service", key))]
+    try sql(cloud, "ALTER TABLE sessions RENAME TO sessions_unavailable", [])
+    const sessionLookup = try outage("/probe/session", token)
+    try sql(cloud, "ALTER TABLE sessions_unavailable RENAME TO sessions", [])
+    try sql(cloud, "ALTER TABLE accounts RENAME TO accounts_unavailable", [])
+    const sessionRevocation = try outage("/probe/session", token)
+    const keyRevocation = try outage("/probe/service", key)
+    try sql(cloud, "ALTER TABLE accounts_unavailable RENAME TO accounts", [])
+    const after = [outcome(try call("/probe/session", token)), outcome(try call("/probe/service", key))]
+    try check(() => assert.deepStrictEqual(
+      { before, sessionLookup, sessionRevocation, keyRevocation, after, reached },
+      { before: ["200 session", "200 deviceKey"], sessionLookup: unavailable, sessionRevocation: unavailable, keyRevocation: unavailable,
+        after: ["200 session", "200 deviceKey"], reached: ["/probe/session", "/probe/service", "/probe/session", "/probe/service"] }
     ))
   }))
 })

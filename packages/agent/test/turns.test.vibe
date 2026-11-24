@@ -5,12 +5,12 @@ import { wrapExternalContent } from "@elizaos/core"
 import { answerJson, held, insufficientCredits, rateLimited, refusal, requestFault, text, toolCalls, type CloudFake } from "./support/cloud-fake.ts"
 import { cutOffReply, maxPlanSteps, unavailableNotice } from "../gen/agent__conversation__planning.ts"
 import { groundedEventReply } from "../src/conversation/clock.vibe"
+import { composeReply } from "../src/conversation/reply-text.vibe"
 import { basicActionsModuleName } from "../src/plugins/basic-actions.vibe"
 import { builtinModuleFactories } from "../src/plugins/profile.vibe"
 import { viewsModuleName } from "../src/views/module.vibe"
-import { call, cloudFake, deviceKey, host, scratch, startInProcess, type InProcess } from "./support/kernel.vibe"
+import { answerOf, call, cloudFake, deviceKey, host, scratch, startInProcess, type InProcess } from "./support/kernel.vibe"
 import type { Scratch } from "./support/scratch.ts"
-import type { LocalAnswer, Refusal } from "./support/socket-client.ts"
 
 interface Reply {
   readonly text: string
@@ -19,6 +19,7 @@ interface Reply {
   readonly userMessageId: string
   readonly actionResults: readonly { readonly action: string; readonly data: { readonly executionStatus?: string } }[]
   readonly failureKind?: string
+  readonly cloudCode?: string
   readonly planAction?: string
   readonly retryAfterMs?: number
   readonly action?: { readonly kind: string; readonly validatedCard: boolean; readonly verbatimAsked: boolean }
@@ -26,9 +27,65 @@ interface Reply {
 
 module node {
   import { randomUUID } from "node:crypto"
-  import { ChannelType, conversationClientUserMemoryId, hashStableJson, systemNoticeText, type AgentRuntime, type Memory, type UUID } from "@elizaos/core"
+  import { ChannelType, conversationClientUserMemoryId, hashStableJson, systemNoticeText, type Action, type AgentRuntime, type EffectReceipt, type Memory, type UUID } from "@elizaos/core"
+  import type { AgentPlugin } from "../src/host/module.vibe"
   import type { CloudFake } from "./support/cloud-fake.ts"
   import { request, type LocalAnswer, type Refusal } from "./support/socket-client.ts"
+
+  const failingOnce = new Set<string>()
+  const issued = { receipts: 0 }
+
+  /** @throws {never} */
+  export function failNext(...ids: readonly string[]): void {
+    for (const id of ids) failingOnce.add(id)
+  }
+
+  function parameter(options: unknown, name: string): string {
+    const value = (options as { readonly parameters?: Readonly<Record<string, unknown>> } | undefined)?.parameters?.[name]
+    return typeof value === "string" ? value : ""
+  }
+
+  const fixtureWrite = (name: string, operation: string, kind: string, param: string, failure: (id: string) => string): Action => ({
+    name, description: `Makes one fixture ${operation} change to the ${kind} it names.`,
+    parameters: [{ name: param, required: true, description: `The ${kind} to change.`, schema: { type: "string" } }],
+    validate: async () => true,
+    handler: async (_runtime, _message, _state, options) => {
+      const id = parameter(options, param)
+      const failed = failingOnce.delete(id)
+      issued.receipts += 1
+      const base = {
+        receiptId: `fixture-${issued.receipts}`, operation, resource: { kind, id }, artifacts: [],
+        idempotency: { key: `${operation}:${id}`, replayed: false }, observedAt: new Date().toISOString(),
+      }
+      const receipt: EffectReceipt = failed
+        ? { ...base, outcome: "failed", failure: { code: "FIXTURE_UNREACHABLE", retryable: true, acceptance: "rejected" } }
+        : { ...base, outcome: "applied", commit: { kind: "durable", id: base.receiptId, committedAt: base.observedAt } }
+      return failed ? { success: false, text: failure(id), effectReceipts: [receipt] } : { success: true, text: `Done for ${id}.`, effectReceipts: [receipt] }
+    },
+  })
+
+  export const nearestCafes = `Nearest first:\n1. Blue Bottle, 0.2 mi\n2. Ritual Coffee, 0.4 mi\n\n[MAPSCARD]\n${JSON.stringify({ kind: "places", places: [{ name: "Blue Bottle" }, { name: "Ritual Coffee" }] })}\n[/MAPSCARD]`
+  export const plainLog = "Step one finished.\nStep two finished."
+
+  const showResult: Action = {
+    name: "SHOW_RESULT", description: "Shows the owner a fixture result: nearby cafes or a run log.",
+    parameters: [{ name: "which", required: true, description: "cafes or log.", schema: { type: "string" } }],
+    tags: ["capability:read"],
+    validate: async () => true,
+    handler: async (_runtime, _message, _state, options) => {
+      const shown = parameter(options, "which") === "cafes" ? nearestCafes : plainLog
+      return { success: true, text: shown, verifiedUserFacing: true, userFacingText: shown }
+    },
+  }
+
+  export const fixtureApp: AgentPlugin = {
+    name: "fixture-app", description: "Fixture writes with receipts on texts and calendar events, and verified results to show",
+    actions: [
+      fixtureWrite("SEND_TEXT", "message.send", "message.recipient", "to", (id) => `The text to ${id} did not send.`),
+      fixtureWrite("UPDATE_EVENT", "calendar.event.update", "calendar.event", "event", (id) => `The ${id} event did not change.`),
+      showResult,
+    ],
+  }
 
   /** @throws {never} */
   export function completions(cloud: CloudFake): number {
@@ -116,9 +173,7 @@ module node {
     return text
   }
 }
-import { completions, cutTurn, lastTurnHistory, lastTurnPrompt, localDay, overlapping, roomMessages, seedHistory, storeNotice } from node
-
-const answerOf = (answer: LocalAnswer | Refusal) => "status" in answer ? { status: answer.status, body: answer.json } : { status: 0, body: answer.refused }
+import { completions, cutTurn, failNext, fixtureApp, lastTurnHistory, lastTurnPrompt, localDay, nearestCafes, overlapping, plainLog, roomMessages, seedHistory, storeNotice } from node
 
 effect function cloudAgent(cloud: CloudFake, state?: Scratch) {
   return try startInProcess({
@@ -170,7 +225,7 @@ it.live('A reply quotes only the selected message in its own conversation and re
   })
 })
 
-it.live('A repeat joins, replays or conflicts by its key, a busy room is 429, a failed turn keeps its kind and names its fix and live wait, a turn that failed for no named cause is a provider issue I can retry, and a restart replays or answers a cut turn once (spec/agent/conversation/turns.md, "A message is refused, joined, replayed or admitted by its key, its room and the backend"; spec/agent/conversation/turns.md, "A turn that failed before any reply, for no cause the binding named, is stored as a provider issue"; spec/agent/conversation/turns.md, "A room runs one turn at a time, and only an admitted or recovered message changes anything"; spec/agent/conversation/turns.md, "Every turn ends once, storing its reply with its kind, or answering that no reply exists"; spec/agent/conversation/turns.md, "A failed reply names the owner\'s fix, and only a live rate limit carries its wait"; spec/agent/conversation/turns.md, "After a restart a repeat replays the stored reply, and a turn the restart cut is never run again"; spec/agent/conversation/conversations.md, "A history row carries its send key only on the owner\'s message, and a failure kind only on the agent\'s reply")', effect () => {
+it.live('A repeat joins, replays or conflicts by its key, a busy room is 429, a failed turn keeps its kind and names its fix, live wait and Cloud\'s own code, a turn that failed for no named cause is a provider issue I can retry, and a restart replays or answers a cut turn once (spec/agent/conversation/turns.md, "A message is refused, joined, replayed or admitted by its key, its room and the backend"; spec/agent/conversation/turns.md, "A turn that failed before any reply, for no cause the binding named, is stored as a provider issue"; spec/agent/conversation/turns.md, "A room runs one turn at a time, and only an admitted or recovered message changes anything"; spec/agent/conversation/turns.md, "Every turn ends once, storing its reply with its kind, or answering that no reply exists"; spec/agent/conversation/turns.md, "A failed reply names the owner\'s fix, and only a live rate limit carries its wait"; spec/agent/conversation/turns.md, "After a restart a repeat replays the stored reply, and a turn the restart cut is never run again"; spec/agent/conversation/conversations.md, "A history row carries its send key only on the owner\'s message, and a failure kind only on the agent\'s reply"; spec/agent/conversation/turns.md, "A reply that spent credits on a refusal naming Cloud\'s own code carries that code, and every other reply carries none")', effect () => {
   const cloud = try cloudFake(deviceKey)
   const state = try scratch("turns")
   const first = try cloudAgent(cloud, state)
@@ -197,6 +252,7 @@ it.live('A repeat joins, replays or conflicts by its key, a busy room is 429, a 
 
   try Effect.sync(() => cloud.script(insufficientCredits()))
   const unfunded = try send(first, id, { text: "Answer me.", clientMessageId: "m-3" })
+  const unfundedAgain = try send(first, id, { text: "Answer me.", clientMessageId: "m-3" })
   const storedFailure = try host("stored failure", () => first.agent.runtime.getMemoryById(replyOf(unfunded).messageId as UUID))
   const limitedUntil = Date.now() + 60_000
   try Effect.sync(() => cloud.script(rateLimited(limitedUntil)))
@@ -224,7 +280,7 @@ it.live('A repeat joins, replays or conflicts by its key, a busy room is 429, a 
       sendKeys: rows.filter((row) => row.role === "user").flatMap((row) => row.clientMessageId ?? []).sort(),
       failureKinds: rows.filter((row) => row.role === "assistant").flatMap((row) => row.failureKind ?? []).sort(),
       crossed: rows.filter((row) => row.role === "user" ? row.failureKind !== undefined : row.clientMessageId !== undefined).length,
-    }, { status: 200, sendKeys: ["m-1", "m-2", "m-3", "m-4", "m-cut"], failureKinds: ["aborted", "insufficient_credits", "limit_reached"], crossed: 0 })
+    }, { status: 200, sendKeys: ["m-1", "m-2", "m-3", "m-4", "m-5", "m-cut"], failureKinds: ["aborted", "insufficient_credits", "limit_reached", "provider_issue"], crossed: 0 })
     const p = replyOf(plain)
     assert.deepStrictEqual({ status: plain.status, text: p.text, actionResults: p.actionResults, failureKind: p.failureKind }, { status: 200, text: "Hello there.", actionResults: [], failureKind: undefined })
     assert.deepStrictEqual(
@@ -239,14 +295,17 @@ it.live('A repeat joins, replays or conflicts by its key, a busy room is 429, a 
       status: unnamed.status, text: replyOf(unnamed).text, failureKind: replyOf(unnamed).failureKind, planAction: replyOf(unnamed).planAction,
       replayed: replyOf(unnamedAgain).messageId === replyOf(unnamed).messageId, stored: storedUnnamed?.content.failureKind,
     }, { status: 200, text: "", failureKind: "provider_issue", planAction: "retry", replayed: true, stored: "provider_issue" })
-    assert.deepStrictEqual({ status: unfunded.status, failureKind: replyOf(unfunded).failureKind, planAction: replyOf(unfunded).planAction, stored: storedFailure?.content.failureKind },
-      { status: 200, failureKind: "insufficient_credits", planAction: "funding", stored: "insufficient_credits" })
+    assert.deepStrictEqual({
+      status: unfunded.status, failureKind: replyOf(unfunded).failureKind, cloudCode: replyOf(unfunded).cloudCode, planAction: replyOf(unfunded).planAction,
+      replayed: [replyOf(unfundedAgain).messageId === replyOf(unfunded).messageId, replyOf(unfundedAgain).cloudCode],
+      stored: [storedFailure?.content.failureKind, storedFailure?.content.cloudCode],
+    }, { status: 200, failureKind: "insufficient_credits", cloudCode: "insufficient_credits", planAction: "funding", replayed: [true, "insufficient_credits"], stored: ["insufficient_credits", "insufficient_credits"] })
     const wait = replyOf(limited).retryAfterMs ?? -1
     assert.deepStrictEqual({
-      status: limited.status, failureKind: replyOf(limited).failureKind, planAction: replyOf(limited).planAction, waits: wait > 0 && wait <= 60_000,
+      status: limited.status, failureKind: replyOf(limited).failureKind, cloudCode: replyOf(limited).cloudCode, planAction: replyOf(limited).planAction, waits: wait > 0 && wait <= 60_000,
       replayed: [replyOf(limitedAgain).messageId === replyOf(limited).messageId, replyOf(limitedAgain).failureKind, replyOf(limitedAgain).retryAfterMs],
       stored: [storedLimit?.content.failureKind, storedLimit?.content.retryAt],
-    }, { status: 200, failureKind: "limit_reached", planAction: undefined, waits: true, replayed: [true, "limit_reached", undefined], stored: ["limit_reached", undefined] })
+    }, { status: 200, failureKind: "limit_reached", cloudCode: undefined, planAction: undefined, waits: true, replayed: [true, "limit_reached", undefined], stored: ["limit_reached", undefined] })
     assert.deepStrictEqual({ status: afterRestart.status, same: replyOf(afterRestart).messageId === replyOf(keyed).messageId, text: replyOf(afterRestart).text, calls: completions(cloud) - before },
       { status: 200, same: true, text: "Keyed answer.", calls: 0 })
     assert.deepStrictEqual({ status: cut.status, text: replyOf(cut).text, failureKind: replyOf(cut).failureKind, again: replyOf(cutAgain).messageId === replyOf(cut).messageId, calls: completions(cloud) - before },
@@ -287,7 +346,7 @@ it.live('The boundary refuses a malformed body, client id or voice view context,
 
 const planning = 'spec/agent/conversation/planning.md'
 
-it.live(`An explicit calculator command reaches its tool before the only model call (${planning}, "An explicit calculator command uses its literal expression first")`, effect () => {
+it.live(`An explicit calculator command is planned by the model, and nothing runs before the model has seen it (${planning}, "Every call of a turn is one the model chose, and a call this message serves in another place is refused before it runs and is no step of the turn")`, effect () => {
   const cloud = try cloudFake(deviceKey)
   const agent = try startInProcess({
     launch: {
@@ -298,10 +357,11 @@ it.live(`An explicit calculator command reaches its tool before the only model c
   })
   const { id } = try conversation(agent)
   const before = completions(cloud)
-  try Effect.sync(() => cloud.script(text("It is 408.")))
+  try Effect.sync(() => cloud.script(toolCalls("", { name: "CALCULATE", arguments: { expression: "(17 * 24)" } }), text("It is 408.")))
   const answered = replyOf(try send(agent, id, { text: "Use the calculator for (17 * 24)." }))
+  const firstAsked = cloud.calls.filter(({ path }) => path.endsWith("/chat/completions")).at(before)?.body as { messages?: { role: string }[] } | undefined
   try Effect.try(() => {
-    assert.deepStrictEqual([answered.text, answered.actionResults.map(({ action }) => action), completions(cloud) - before], ["It is 408.", ["CALCULATE"], 1])
+    assert.deepStrictEqual([answered.text, answered.actionResults.map(({ action }) => action), completions(cloud) - before, firstAsked?.messages?.at(-1)?.role], ["It is 408.", ["CALCULATE"], 2, "user"])
     assert.include(lastTurnPrompt(cloud), "408")
   })
 }, 120_000)
@@ -334,7 +394,7 @@ it.live(`Competing terminal decisions run no sibling tool and get one repair rou
       [200, "One clear answer.", [], 2])
     assert.include(repairPrompt, "None of its tools ran")
     assert.notInclude(repairPrompt, "First terminal copy.")
-    assert.deepStrictEqual([refused.status, completions(cloud) - beforeRepeat], [503, 2])
+    assert.deepStrictEqual([refused.status, replyOf(refused).failureKind, replyOf(refused).planAction, completions(cloud) - beforeRepeat], [200, "provider_issue", "retry", 2])
   })
 })
 
@@ -412,6 +472,76 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
     labels: { text: undefined, voice: { kind: "CALCULATE", validatedCard: false, verbatimAsked: true } },
   }))
 }, 120_000)
+
+it.live(`A failure on one recipient or event stays reported beside a success on another, in either order, and a retry of the same operation that succeeds closes it (${planning}, "A failure or proposal the turn made stays reported unless a later success of the same operation supersedes it")`, effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const agent = try startInProcess({
+    launch: {
+      backend: { kind: "cloud", origin: cloud.origin }, callerRole: "owner",
+      load: [fixtureApp.name], allowed: ["REPLY", "IGNORE", "NONE", "SEND_TEXT", "UPDATE_EVENT"],
+    },
+    frame: { credential: { version: 1, value: deviceKey } }, modules: builtinModuleFactories, bundled: new Map([[fixtureApp.name, fixtureApp]]),
+  })
+  const { id } = try conversation(agent)
+  const textTo = (to: string) => ({ name: "SEND_TEXT", arguments: { to } })
+  const turn = (request: string) => effect {
+    const before = completions(cloud)
+    const answered = replyOf(try send(agent, id, { text: request }))
+    return { text: answered.text, calls: completions(cloud) - before }
+  }
+
+  try Effect.sync(() => { failNext("Alice"); cloud.script(toolCalls("", textTo("Bob"), textTo("Alice")), text("Both texts are sent.")) })
+  const bobFirst = try turn("Text Bob and Alice that I'm running late.")
+  try Effect.sync(() => { failNext("Alice"); cloud.script(toolCalls("", textTo("Alice")), toolCalls("", textTo("Bob")), text("Both texts are sent.")) })
+  const aliceFirst = try turn("Text Alice and Bob that I'm running late.")
+  try Effect.sync(() => { failNext("Alice"); cloud.script(toolCalls("", textTo("Alice")), toolCalls("", textTo("Alice")), text("Alice has your text.")) })
+  const retried = try turn("Text Alice that I'm running late.")
+  try Effect.sync(() => {
+    failNext("standup")
+    cloud.script(toolCalls("", { name: "UPDATE_EVENT", arguments: { event: "standup" } }, { name: "UPDATE_EVENT", arguments: { event: "dentist" } }), text("Both events moved."))
+  })
+  const events = try turn("Move my standup and my dentist to Friday.")
+
+  try Effect.try(() => assert.deepStrictEqual({ bobFirst, aliceFirst, retried, events }, {
+    bobFirst: { text: "Both texts are sent.\n\nThe text to Alice did not send.", calls: 2 },
+    aliceFirst: { text: "Both texts are sent.\n\nThe text to Alice did not send.", calls: 3 },
+    retried: { text: "Alice has your text.", calls: 3 },
+    events: { text: "Both events moved.\n\nThe standup event did not change.", calls: 2 },
+  }))
+}, 120_000)
+
+it.live(`A recognized card a tool verified reaches the owner unfenced with the grounded prose after it, while other multi-line tool output is fenced (${planning}, "A recognized card is delivered unfenced, other multi-line tool output is fenced, and grounded prose follows unless one already holds the other")`, effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const agent = try startInProcess({
+    launch: {
+      backend: { kind: "cloud", origin: cloud.origin }, callerRole: "owner",
+      load: [fixtureApp.name], allowed: ["REPLY", "IGNORE", "NONE", "SHOW_RESULT"],
+    },
+    frame: { credential: { version: 1, value: deviceKey } }, modules: builtinModuleFactories, bundled: new Map([[fixtureApp.name, fixtureApp]]),
+  })
+  const { id } = try conversation(agent)
+  try Effect.sync(() => cloud.script(toolCalls("", { name: "SHOW_RESULT", arguments: { which: "cafes" } }), text("Blue Bottle is the closest.")))
+  const card = replyOf(try send(agent, id, { text: "Find coffee near me." }))
+  try Effect.sync(() => cloud.script(toolCalls("", { name: "SHOW_RESULT", arguments: { which: "log" } }), text("Both steps finished.")))
+  const log = replyOf(try send(agent, id, { text: "Show me the run log." }))
+  try Effect.try(() => assert.deepStrictEqual({ card: card.text, log: log.text }, {
+    card: `${nearestCafes}\n\nBlue Bottle is the closest.`,
+    log: `\`\`\`\n${plainLog}\n\`\`\`\n\nBoth steps finished.`,
+  }))
+}, 120_000)
+
+it.effect(`Only a card block with its own markers around one JSON object is a card (${planning}, "A recognized card is delivered unfenced, other multi-line tool output is fenced, and grounded prose follows unless one already holds the other")`, effect () => {
+  const prose = "Here it is."
+  const cards = ['[CHECKLIST]\n{"items":[]}\n[/CHECKLIST]', '[WORKFLOW]\n{"steps":[]}\n[/WORKFLOW]', 'Your list:\n[MAPSCARD]\n{"kind":"place"}\n[/MAPSCARD]']
+  const notCards = ['[MAPSCARD]\n{"kind":"place"}', '[MAPSCARD]\n{"kind":"place"}\n[/CHECKLIST]', "[MAPSCARD]\n{not json}\n[/MAPSCARD]", "[NOTE]\n[1,2]\n[/NOTE]"]
+  try Effect.try(() => assert.deepStrictEqual({
+    cards: cards.map((tool) => composeReply(tool, prose, false)),
+    notCards: notCards.map((tool) => composeReply(tool, prose, false)),
+  }, {
+    cards: cards.map((tool) => `${tool}\n\n${prose}`),
+    notCards: notCards.map((tool) => `\`\`\`\n${tool}\n\`\`\`\n\n${prose}`),
+  }))
+})
 
 it.live(`A current-time question hears the phone's clock, else the owner's launch zone, a date the clock did not observe is replaced by its reading, and what the person said earlier is read with its minute on that clock (${planning}, "Each turn's model sees the clock of the phone's zone, else the launch zone, else the host's, and it is the owner's local time only from the phone or, for the owner, the launch"; ${planning}, "A standalone answer to a current-time question that names a date, weekday or clock the clock did not observe is replaced by the clock's own reading"; ${planning}, "What the person said earlier reaches the model with the minute it was said, on the turn's clock"; spec/core/context.md, "A message's stamp is its local date and minute, with the year only when it is not the newest year and an offset only when the minute alone names no one instant")`, effect () => {
   const cloud = try cloudFake(deviceKey)
@@ -677,6 +807,33 @@ it.live(`A long conversation keeps its prefix, recalls earlier dialogue at the t
     restored: "Your locker number is 4417.", calls: 3,
   }))
 }, 240_000)
+
+it.live(`A restore with a blank or missing reason or a scope other than history, providers or full is answered as invalid, and nothing is restored (${planning}, "A planner can restore the turn's deferred history once and runs no sibling action from that response")`, effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const agent = try startInProcess({
+    launch: { backend: { kind: "cloud", origin: cloud.origin }, persistMemory: true, load: [basicActionsModuleName], allowed: ["REPLY", "IGNORE", "NONE", "CALCULATE"] },
+    frame: { credential: { version: 1, value: deviceKey } }, modules: builtinModuleFactories,
+  })
+  const { id } = try conversation(agent)
+  const asks: readonly Record<string, unknown>[] = [
+    { scope: "history", reason: "   " },
+    { scope: "history" },
+    {},
+    { scope: "documents", reason: "Find the earlier detail" },
+    { reason: "Find the earlier detail" },
+  ]
+  const answered: { readonly status: string | undefined; readonly reply: string; readonly calls: number }[] = []
+  for (const args of asks) {
+    const before = completions(cloud)
+    try Effect.sync(() => cloud.script(toolCalls("", { name: "RESTORE_CONTEXT", arguments: args }), text("Nothing earlier to read.")))
+    const reply = replyOf(try send(agent, id, { text: "What did I say before?" }))
+    const [, corrected] = cloud.calls.filter(({ path }) => path.endsWith("/chat/completions")).slice(before)
+      .map(({ body }) => (body as { messages: { content?: unknown }[] }).messages.at(-1)?.content)
+    answered.push({ status: /"status":"(\w+)"/.exec(typeof corrected === "string" ? corrected : "")?.[1], reply: reply.text, calls: completions(cloud) - before })
+  }
+  const invalid = { status: "invalid", reply: "Nothing earlier to read.", calls: 2 }
+  try Effect.try(() => assert.deepStrictEqual(answered, [invalid, invalid, invalid, invalid, { status: "unavailable", reply: "Nothing earlier to read.", calls: 2 }]))
+}, 120_000)
 
 const browserTurn = 'spec/agent/conversation/turnContext.md, "A Browser page is kept only when every field is valid, it is the Browser tab the kept observation selects at that revision on a screen not sensitive, and it fits 16,384 bytes"'
 

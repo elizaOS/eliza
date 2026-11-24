@@ -6,6 +6,7 @@ module node {
   import { deviceEmbeddingsPlugin, embeddingServer, localEmbeddingsBoot, type BootFailure, type LaunchDocument as LaunchModel, type LaunchFrame as FrameModel, type UrlShape } from "../../gen/agent__host__launch.ts"
   import type { AgentProcess, Event as ProcessEvent } from "../../gen/agent__host__process.ts"
   import type { Endpoint, LaunchDocument, LaunchFrame } from "./launch.vibe"
+  import { launchChoices } from "./launch-choices.vibe"
   import type { AgentPlugin, ModuleFactory } from "./module.vibe"
   import { measureWorker, workerHost, workflowWorkerService, type WorkflowWorkerHost } from "./workflow-worker.vibe"
 
@@ -91,10 +92,7 @@ module node {
       },
       backend: backend.tag === "NoBackend" ? backend : { ...backend, baseUrlShape: urlShape(backend.baseUrl) },
       account: launch.account === undefined ? { tag: "NoAccount" } : { tag: "SignedIn", ...launch.account },
-      embeddings: launch.embeddings === "local" ? { tag: "LocalEmbeddings", dimensions: launch.embeddingDimensions ?? 0 } : { tag: "NoEmbeddings" },
-      persistMemory: launch.persistMemory ?? false,
-      callerRole: launch.callerRole === "owner" ? "ChatAsOwner" : "ChatAsUser",
-      google: { gmailChanges: launch.google?.gmailChanges ?? false, calendarEdits: launch.google?.calendarEdits ?? false },
+      ...launchChoices(launch),
       retention: launch.retention === undefined ? { tag: "KeepLogs" }
         : { tag: "PruneLogs", dayThousandths: Math.round(launch.retention.days * 1000), maxRowsPerRoom: launch.retention.maxRowsPerRoom, intervalMinutes: launch.retention.intervalMinutes },
       environment: Object.entries(launch.environment ?? {}).map(([key, value]) => ({ key, keyKind: "PluginSetting", singleLine: !/[\r\n]/.test(value) })),

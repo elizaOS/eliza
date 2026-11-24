@@ -119,7 +119,7 @@ module edge {
   import { runDetachedSync } from "../edge.vibe"
   import type { AgentContext, ContextDefinition, RoleGateRole } from "../types/contexts.vibe"
   import { normalizeContextId } from "./context-normalization.vibe"
-  import { registerContextDefinitions, tryRegisterContextDefinitions } from "./context-registry.vibe"
+  import { registerContextDefinitions, tryRegisterContextDefinitions, type ContextRegistryError } from "./context-registry.vibe"
 
   export class ContextRegistry {
     #definitions: ReadonlyMap<AgentContext, ContextDefinition> = new Map()

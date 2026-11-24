@@ -6,6 +6,7 @@ import { dispatchReceipt, loadReceipt, mayFollowWith, prepareReceipt, receiptOwn
 import { Store, type StoreFailure, storeLayer } from "../src/store/store.vibe"
 import { manualClock } from "./support/clock.ts"
 import { startFakeServer, type FakeServer } from "./support/fakes.ts"
+import { check } from "./support/cloud.vibe"
 
 type Mode = "apply" | "lose-reply" | "hang"
 
@@ -83,10 +84,6 @@ effect function lookupChange(cloud: Bench, providerKey: string): ProviderReply<L
   if (status === 200) return { kind: "applied", value: { tag: "EffectSeen" } }
   if (status === 404) return { kind: "applied", value: { tag: "NothingSeen" } }
   return { kind: "unknown", cause: `the provider answered ${status}` }
-}
-
-effect function check(run: () => void) {
-  try Effect.try(run)
 }
 
 effect function stored(cloud: Bench, key: string) {

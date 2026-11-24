@@ -3,14 +3,10 @@ import { assert, describe, it } from "@effect/vitest"
 import type { Refused } from "../../src/http/refusal.vibe"
 import { deliverMail } from "../../src/providers/mail.vibe"
 import { deliverSms } from "../../src/providers/sms.vibe"
-import { testCloud, type Answer, type ProfileEdit } from "../support/cloud.vibe"
+import { check, testCloud, type Answer, type ProfileEdit } from "../support/cloud.vibe"
 import type { FakeRequest } from "../support/fakes.ts"
 import { callCloud } from "../support/http.ts"
 import { mountDeliveryProviders, externalAddress, latestCode } from "../support/inbox.ts"
-
-effect function check(run: () => void) {
-  try Effect.try(run)
-}
 
 effect function refusalOf(sent: void!Refused) {
   return sent catch (failure) => failure.refusal.code

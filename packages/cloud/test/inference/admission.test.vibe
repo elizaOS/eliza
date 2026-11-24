@@ -8,17 +8,13 @@ import { chatBody, chatIngressPerMinute, hasImage, quote } from "../../src/servi
 import { Store } from "../../src/store/store.vibe"
 import { signedCaller } from "../support/caller.vibe"
 import { manualClock } from "../support/clock.ts"
-import { testCloud, type TestCloud } from "../support/cloud.vibe"
+import { check, testCloud, type TestCloud } from "../support/cloud.vibe"
 import { callCloud, type CallInit } from "../support/http.ts"
 import { testProfile } from "../support/profile.ts"
 
 const minuteMs = 60_000
 const model: Model = { id: "test-chat", provider: "llm", upstreamModel: "upstream-chat", vision: true, defaultMaxTokens: { tag: "OutputDefaultOf", tokens: 4096 }, inputPer1K: 1000, cachedInputPer1K: 1000, outputPer1K: 2000 }
 const shortModel: Model = { ...model, id: "test-chat-short", defaultMaxTokens: { tag: "OutputDefaultOf", tokens: 500 } }
-
-effect function check(run: () => void) {
-  try Effect.try(run)
-}
 
 function chatProbe(reached: Array<string>): Route {
   return {

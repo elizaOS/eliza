@@ -1,0 +1,80 @@
+// spec/blocker/index.md, "Story: Block distractions for a chosen interval"; spec/blocker/index.md, "A requested app is named by the id its device installed, whatever its letter case"
+import { assert, it } from "@effect/vitest"
+import type { AppBlockerPlugin, AppBlockerStatus, BlockAppsOptions, InstalledApp } from "@elizaos/capacitor-appblocker"
+import type { WebsiteBlockerPlugin } from "@elizaos/capacitor-websiteblocker"
+import * as KeyValueStore from "effect/persistence/KeyValueStore"
+import { FocusBackend, clearFocus, createNativeFocusBackend, enableFocus } from "../src/index.vibe"
+
+interface Device {
+  installed: readonly InstalledApp[] | undefined
+  readonly blocked: string[][]
+  listings: number
+}
+
+const device = (installed: readonly InstalledApp[] | undefined): Device => ({ installed, blocked: [], listings: 0 })
+const app = (packageName: string): InstalledApp => ({ packageName, displayName: packageName })
+const equal = <A>(actual: A, expected: A) => Effect.try(() => assert.deepStrictEqual(actual, expected))
+
+function appPort(seen: Device): AppBlockerPlugin {
+  const status = (): AppBlockerStatus => ({
+    status: seen.blocked.length > 0 ? "active" : "inactive", available: true, active: seen.blocked.length > 0, platform: "android",
+    engine: "usage-stats-overlay", capabilities: { canSelectApps: true, canBlockApps: true, canScheduleTimedBlocks: true, canUnblockEarly: true, requiresFamilyControls: false, requiresUsageAccess: true, requiresOverlay: true }, blockedCount: seen.blocked.at(-1)?.length ?? 0,
+    blockedPackageNames: seen.blocked.at(-1) ?? [], endsAt: null, permissionStatus: "granted", canRequest: false, canOpenSettings: false, settingsTarget: null,
+  })
+  return {
+    checkPermissions: async () => { throw new Error("not used") },
+    requestPermissions: async () => { throw new Error("not used") },
+    getInstalledApps: async () => {
+      seen.listings += 1
+      if (seen.installed === undefined) throw new Error("installed apps are unavailable")
+      return { apps: [...seen.installed] }
+    },
+    selectApps: async () => ({ apps: [], cancelled: true }),
+    blockApps: async (options: BlockAppsOptions) => {
+      seen.blocked.push([...(options.packageNames ?? [])])
+      return { success: true, endsAt: null, blockedCount: options.packageNames?.length ?? 0 }
+    },
+    unblockApps: async () => ({ success: true }),
+    getStatus: async () => status(),
+  }
+}
+
+const noWebsites = {} as WebsiteBlockerPlugin
+
+it.effect('A requested app is blocked under the id its device installed: a case-only difference takes the one installed id, which the device then reports back so the block can be cleared, and an unknown id, an id two installed apps share apart from case, or an unreadable app list keeps the id as given (spec/blocker/index.md, "A requested app is named by the id its device installed, whatever its letter case")', effect () => {
+  const request = (ownerId: string, targets: readonly string[]) => ({ ownerId, blockKind: "ApplicationBlock" as const, targets, deadline: 30 * 60_000 })
+  const listed = device([app("com.Slack"), app("com.whatsapp"), app("com.Example"), app("com.example")])
+  const unreadable = device(undefined)
+  provide KeyValueStore.layerMemory {
+    provide Layer.succeed(FocusBackend, createNativeFocusBackend(appPort(listed), noWebsites)) {
+      const blocked = try enableFocus(request("owner-1", ["com.slack", " com.whatsapp ", "com.Slack"]))
+      const cleared = try clearFocus("owner-1", "ApplicationBlock", blocked.generation, false)
+      const kept = try enableFocus(request("owner-2", ["COM.EXAMPLE", "org.unknown.App"]))
+      try equal({ blocked: [blocked.phase, blocked.targets], cleared: cleared.phase, kept: [kept.phase, kept.targets], sent: listed.blocked, listings: listed.listings }, {
+        blocked: ["Blocking", ["com.Slack", "com.whatsapp"]],
+        cleared: "BlockIdle",
+        kept: ["Blocking", ["COM.EXAMPLE", "org.unknown.App"]],
+        sent: [["com.Slack", "com.whatsapp"], ["COM.EXAMPLE", "org.unknown.App"]],
+        listings: 2,
+      })
+    }
+    provide Layer.succeed(FocusBackend, createNativeFocusBackend(appPort(unreadable), noWebsites)) {
+      const fallback = try enableFocus(request("owner-3", ["com.slack"]))
+      try equal({ fallback: [fallback.phase, fallback.targets], sent: unreadable.blocked, listings: unreadable.listings }, { fallback: ["Blocking", ["com.slack"]], sent: [["com.slack"]], listings: 1 })
+    }
+  }
+})
+
+it.effect('A website block lowercases its domains and never reads the installed apps (spec/blocker/index.md, "A requested app is named by the id its device installed, whatever its letter case")', effect () => {
+  const asked: string[] = []
+  const backend: FocusBackend.Shape = {
+    effect apply(block) { asked.push(`apply:${block.targets.join(",")}`); return true },
+    effect read() { return true },
+    effect clear() { return true },
+    effect installedApps() { asked.push("installedApps"); return ["com.Slack"] },
+  }
+  provide KeyValueStore.layerMemory, Layer.succeed(FocusBackend, backend) {
+    const block = try enableFocus({ ownerId: "owner-1", blockKind: "WebsiteBlock", targets: [" Social.Example ", "social.example"], deadline: 30 * 60_000 })
+    try equal({ phase: block.phase, targets: block.targets, asked }, { phase: "Blocking", targets: ["social.example"], asked: ["apply:social.example"] })
+  }
+})

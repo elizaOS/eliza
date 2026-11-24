@@ -4,6 +4,7 @@ module node {
   import type { LocalRoute } from "../access/routes.vibe"
   import { enabled, initial, roleFor, step, type Event, type Frame, type Progress, type ReplyStream } from "../../gen/agent__conversation__replyStream.ts"
   import { failureKind, type Admission, type ReplyKind } from "../../gen/agent__conversation__turns.ts"
+  import { textOf, unitsOf } from "./code-units.vibe"
 
   export type Activity = "thinking" | "streaming" | "running_action" | "running_tool" | "evaluating" | "waking" | "speaking"
 
@@ -15,7 +16,7 @@ module node {
   export interface DoneFrame {
     readonly type: "done"; readonly fullText: string; readonly messageId: string; readonly userMessageId: string; readonly agentName: string
     readonly actionResults: readonly ActionResultFrame[]; readonly taskChoices?: readonly unknown[]; readonly failureKind?: string
-    readonly planAction?: "sign-in" | "funding" | "retry"; readonly retryAfterMs?: number
+    readonly cloudCode?: string; readonly planAction?: "sign-in" | "funding" | "retry"; readonly retryAfterMs?: number
     readonly cutOffEffect?: "applied"
     readonly action?: { readonly kind: string; readonly validatedCard: boolean; readonly verbatimAsked: boolean }
   }
@@ -66,12 +67,6 @@ module node {
 
   const serverFailure: ErrorFrame = { type: "error", code: "SERVER_ERROR", message: "The turn failed" }
 
-  const unitsOf = (text: string): number[] => Array.from({ length: text.length }, (_, at) => text.charCodeAt(at))
-  function textOf(units: readonly number[]): string {
-    let text = ""
-    for (let at = 0; at < units.length; at += 8192) text += String.fromCharCode(...units.slice(at, at + 8192))
-    return text
-  }
   const mark = (provisional: boolean): Mark => provisional ? { provisional: true } : {}
 
   export class ReplyWire {

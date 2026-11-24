@@ -1,7 +1,8 @@
 // spec/agent/conversation/replyStream.md, "Story: See a reply as it is written"
 import { assert, describe, it } from "@effect/vitest"
-import { held, insufficientCredits, partial, text, type CloudFake } from "./support/cloud-fake.ts"
-import { call, cloudFake, deviceKey, host, startInProcess, stream, type InProcess } from "./support/kernel.vibe"
+import { held, insufficientCredits, partial, text } from "./support/cloud-fake.ts"
+import { call, host, stream, type InProcess } from "./support/kernel.vibe"
+import { streamingConversation } from "./support/streaming.vibe"
 import type { StreamCut, StreamedAnswer } from "./support/socket-client.ts"
 
 type Frame = {
@@ -15,14 +16,14 @@ type Frame = {
 
 module node {
   import type { AgentRuntime } from "@elizaos/core"
-  import { setTimeout } from "node:timers/promises"
+  import { Effect } from "effect"
 
   /** @throws {never} */
   export function delayReplyWrite(runtime: AgentRuntime, reject: boolean): void {
     const save = runtime.createMessageMemory.bind(runtime)
     runtime.createMessageMemory = async (memory, unique) => {
       if (memory.entityId === runtime.agentId && memory.content.actions?.includes("REPLY")) {
-        await setTimeout(300)
+        await Effect.runPromise(Effect.sleep("300 millis"))
         if (reject) throw new Error("Reply storage refused the write")
       }
       return save(memory, unique)
@@ -31,8 +32,6 @@ module node {
 }
 import { delayReplyWrite } from node
 
-schema Created { conversation: { id: string } }
-const created = Schema.decodeUnknownOption(Created)
 const parsed = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Record(Schema.String, Schema.Unknown)))
 
 function framesOf(answer: StreamedAnswer): Frame[] {
@@ -47,17 +46,6 @@ function rebuilt(frames: readonly Frame[]): string {
 const kinds = (frames: readonly Frame[]) => frames.map((frame) =>
   frame.type !== "token" ? frame.type : frame.text === undefined ? "replace" : frame.fullText === undefined ? "append" : "snapshot")
 
-effect function cloudAgent(cloud: CloudFake, http: boolean) {
-  return try startInProcess({ http, launch: { backend: { kind: "cloud", origin: cloud.origin } }, frame: { credential: { version: 1, value: deviceKey } } })
-}
-
-effect function conversation(agent: InProcess) {
-  const answer = try call(agent, { method: "POST", path: "/api/conversations", body: {} })
-  const decoded = "json" in answer ? created(answer.json) : Option.none()
-  if (decoded._tag !== "Some") return try Effect.die(new Error(`The conversation was not created: ${JSON.stringify(answer)}`))
-  return decoded.value.conversation.id
-}
-
 effect function send(agent: InProcess, id: string, body: object, cut?: StreamCut, opened?: (status: number) => void) {
   return try stream(agent, { method: "POST", path: `/api/conversations/${id}/messages/stream`, body }, cut, opened)
 }
@@ -67,9 +55,7 @@ const piece = (letter: string) => letter.repeat(1500)
 for (const transport of ["socket", "http"] as const) {
   describe(`See a reply as it is written over the ${transport} (spec/agent/conversation/replyStream.md, "Story: See a reply as it is written")`, () => {
     it.live('Appended text carries the whole text again at the cadence, and retries receive only the same done (spec/agent/conversation/replyStream.md, "Appended text carries the whole text again once the units appended since the last whole text reach the larger of 2048 and that text\'s length"; spec/agent/conversation/replyStream.md, "Only a message that starts its own turn streams text, a repeat waits for its reply, and a refusal opens no stream")', effect () => {
-      const cloud = try cloudFake(deviceKey)
-      const agent = try cloudAgent(cloud, transport === "http")
-      const id = try conversation(agent)
+      const { cloud, agent, id } = try streamingConversation(transport)
       try Effect.sync(() => delayReplyWrite(agent.agent.runtime, false))
       const offered = { text: "Write at length.", channelType: "VOICE_DM", metadata: { voiceUi: { surface: "voice" } }, clientMessageId: "cadence" }
       const release = Promise.withResolvers<void>()
@@ -124,10 +110,7 @@ for (const transport of ["socket", "http"] as const) {
     }, 120_000)
 
     it.live('A client that leaves aborts the turn it streams (spec/agent/conversation/replyStream.md, "A client that leaves aborts the turn it streams, and nothing more is written to it")', effect () => {
-      const cloud = try cloudFake(deviceKey)
-      const agent = try cloudAgent(cloud, transport === "http")
-      const id = try conversation(agent)
-      try Effect.sync(() => cloud.script(partial("Let me think")))
+      const { cloud, agent, id } = try streamingConversation(transport, () => partial("Let me think"))
       const started = try Effect.sync(() => cloud.nextCompletion())
       const body = { text: "Think forever.", clientMessageId: "cut-with-text" }
       const answer = try send(agent, id, body, { afterChunks: 2, ready: started })
@@ -147,9 +130,7 @@ for (const transport of ["socket", "http"] as const) {
     }, 120_000)
 
     it.live('A refused reply write ends without announcing the preview (spec/agent/conversation/replyStream.md, "The early reply is written at most once, and a stream that announced it ends with an answered done carrying the same action results")', effect () => {
-      const cloud = try cloudFake(deviceKey)
-      const agent = try cloudAgent(cloud, transport === "http")
-      const id = try conversation(agent)
+      const { cloud, agent, id } = try streamingConversation(transport)
       try Effect.sync(() => {
         delayReplyWrite(agent.agent.runtime, true)
         cloud.script(text("This reply never committed."))
@@ -165,10 +146,7 @@ for (const transport of ["socket", "http"] as const) {
     }, 120_000)
 
     it.live('An account refusal still ends with done and its failure kind (spec/agent/conversation/replyStream.md, "Every stream that is not dropped ends with exactly one done or error frame, after which nothing is written")', effect () => {
-      const cloud = try cloudFake(deviceKey)
-      const agent = try cloudAgent(cloud, transport === "http")
-      const id = try conversation(agent)
-      try Effect.sync(() => cloud.script(insufficientCredits()))
+      const { agent, id } = try streamingConversation(transport, () => insufficientCredits())
       const answer = try send(agent, id, { text: "Answer me." })
       const frames = framesOf(answer)
       try Effect.try(() => assert.deepStrictEqual(

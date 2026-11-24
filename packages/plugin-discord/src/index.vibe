@@ -1,7 +1,13 @@
-// spec/discord/index.md, "Account DM and guild rules decide admission before an agent turn"; spec/discord/index.md, "Every accepted Discord event keeps the captured account and channel"; spec/discord/index.md, "A stale response is tagged, suppressed, or left alone by its policy"
-import { Client, Events, GatewayIntentBits, Partials, type AttachmentPayload, type Message } from "discord.js"
+// spec/discord/index.md, "Account DM and guild rules decide admission before an agent turn"; spec/discord/index.md, "Every accepted Discord event keeps the captured account and channel"; spec/discord/index.md, "A stale response is tagged, suppressed, or left alone by its policy"; spec/discord/index.md, "Each Discord reply part is stored once even when its send is repeated"
+import { Client, Events, GatewayIntentBits, Partials, type AttachmentPayload, type Message, type SendableChannels } from "discord.js"
 import { ChannelType, Service, checkPairingAllowed, chunkText, createUniqueUuid, fetchRemoteMedia, type Content, type IAgentRuntime, type Memory, type Plugin, type SendHandlerOutcome, type TargetInfo, requireConfirmedSendHandlerDelivery } from "@elizaos/core"
 import { initial, machineOver, discordStalenessDecision, type DiscordPolicy } from "../gen/discord.effect.vibe"
+
+module node {
+  import { randomBytes } from "node:crypto"
+  export function nextDiscordNonce(): string { return randomBytes(12).toString("hex") }
+}
+import { nextDiscordNonce } from node
 
 export interface DiscordConnection {
   readonly accountId: string
@@ -18,6 +24,19 @@ export interface DiscordConnection {
 }
 
 export error DiscordRequestFailed { stage: string }
+
+export effect function postDiscordPart(channel: SendableChannels, part: string, files: readonly AttachmentPayload[]) {
+  const nonce = try Effect.try({ try: () => nextDiscordNonce(), catch: () => new DiscordRequestFailed({ stage: "nonce" }) })
+  const post: () => Promise<{ id: string }> = () => channel.send({
+    ...(part === "" ? {} : { content: part }),
+    ...(files.length > 0 ? { files: [...files] } : {}),
+    allowedMentions: { parse: [] },
+    nonce,
+    enforceNonce: true,
+  })
+  const answer = tryPromise(post) catch () => undefined
+  return answer === undefined || answer.id === "" ? undefined : answer.id
+}
 
 export effect function connectDiscordAccount(runtime: IAgentRuntime, config: DiscordConnection) {
   const client = try Effect.try({ try: () => new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.DirectMessages, GatewayIntentBits.MessageContent], partials: [Partials.Channel] }), catch: () => new DiscordRequestFailed({ stage: "client" }) })
@@ -43,14 +62,9 @@ export effect function connectDiscordAccount(runtime: IAgentRuntime, config: Dis
     const ids: string[] = []
     for (const [index, part] of parts.entries()) {
       if (!(try admission.get()).connected) break
-      const post: () => Promise<{ id: string }> = () => channel.send({
-        ...(part === "" ? {} : { content: part }),
-        ...(index === 0 && files.length > 0 ? { files } : {}),
-        allowedMentions: { parse: [] },
-      })
-      const answer = tryPromise(post) catch () => undefined
-      if (answer === undefined || answer.id === "") break
-      ids.push(answer.id)
+      const id = try postDiscordPart(channel, part, index === 0 ? files : [])
+      if (id === undefined) break
+      ids.push(id)
     }
     const [first, ...rest] = ids
     if (first === undefined) throw new DiscordRequestFailed({ stage: "delivery-unknown" })

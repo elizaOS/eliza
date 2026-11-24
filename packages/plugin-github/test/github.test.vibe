@@ -1,0 +1,72 @@
+// spec/github/index.md, "Story: List pull requests and triage notifications under the selected account"; spec/github/index.md, "Story: Review the exact GitHub operation before it changes a repository"
+import { assert, describe, it } from "@effect/vitest"
+import type { ActionResult, IAgentRuntime, Memory, UUID } from "@elizaos/core"
+import type { HttpClient } from "effect/http"
+import { githubActionRun } from "../src/index.vibe"
+
+module node {
+  import { Effect, Layer } from "effect"
+  import { HttpClient, HttpClientResponse } from "effect/http"
+
+  export interface Sent { readonly method: string; readonly url: string; readonly body: string }
+
+  export function githubApi(answers: Readonly<Record<string, unknown>>) {
+    const sent: Sent[] = []
+    const client = HttpClient.make((request, url) => {
+      const body = request.body._tag === "Uint8Array" ? new TextDecoder().decode(request.body.body) : ""
+      sent.push({ method: request.method, url: url.href, body })
+      const answer = answers[`${request.method} ${url.pathname}`]
+      return Effect.succeed(HttpClientResponse.fromWeb(request, new Response(JSON.stringify(answer ?? { message: "Not Found" }), { status: answer === undefined ? 404 : 200 })))
+    })
+    return { sent, layer: Layer.succeed(HttpClient.HttpClient, client) }
+  }
+}
+import { githubApi } from node
+
+function ownerRuntime(): IAgentRuntime {
+  const rows = new Map<string, unknown>()
+  const settings: Record<string, string> = { GITHUB_AGENT_PAT: "github-local-agent-token" }
+  const runtime = {
+    agentId: "00000000-0000-4000-8000-000000000001",
+    getSetting: (key: string) => settings[key] ?? null,
+    getCache: async (key: string) => rows.get(key),
+    setCache: async (key: string, value: unknown) => { rows.set(key, value); return true },
+    deleteCache: async (key: string) => rows.delete(key),
+  }
+  return runtime as unknown as IAgentRuntime
+}
+
+const turn = (id: string, text: string): Memory => ({ id: id as UUID, entityId: "00000000-0000-4000-8000-0000000000aa" as UUID, roomId: "00000000-0000-4000-8000-0000000000bb" as UUID, agentId: "00000000-0000-4000-8000-000000000001" as UUID, content: { text, source: "client_chat" } })
+
+effect function run(runtime: IAgentRuntime, message: Memory, options: unknown, layer: Layer.Layer<HttpClient.HttpClient>) {
+  return try Effect.provide(githubActionRun(runtime, message, options, undefined), layer)
+}
+
+const outcome = (result: ActionResult) => ({ success: result.success, text: result.text })
+
+describe("List pull requests and triage notifications under the selected account (spec/github/index.md, \"Story: List pull requests and triage notifications under the selected account\")", () => {
+  it.effect("An operation and state written with space or capitals still list the closed pull requests (spec/github/index.md, \"Pull request listing requires an explicit repository or author, and me uses the selected account's login\")", () => effect {
+    const api = try Effect.try(() => githubApi({ "GET /user": { login: "octo" }, "GET /repos/octo/projects/pulls": [{ number: 7, title: "Fix the build", html_url: "https://github.com/octo/projects/pull/7", state: "closed" }] }))
+    const result = try run(ownerRuntime(), turn("00000000-0000-4000-8000-000000000010", "list closed PRs"), { parameters: { action: " PR_List ", repo: "octo/projects", state: "Closed" } }, api.layer)
+    try Effect.try(() => assert.deepStrictEqual({ result: outcome(result), sent: api.sent.map(entry => entry.url) }, {
+      result: { success: true, text: "- #7 Fix the build (closed) https://github.com/octo/projects/pull/7" },
+      sent: ["https://api.github.com/user", "https://api.github.com/repos/octo/projects/pulls?state=closed&per_page=100&page=1"],
+    }))
+  })
+})
+
+describe("Review the exact GitHub operation before it changes a repository (spec/github/index.md, \"Story: Review the exact GitHub operation before it changes a repository\")", () => {
+  it.effect("A request_changes review is previewed, confirmed and sent as a change request (spec/github/index.md, \"Each GitHub mutation requires the fields appropriate to its operation\")", () => effect {
+    const api = try Effect.try(() => githubApi({ "POST /repos/octo/projects/pulls/42/reviews": { id: 9001, html_url: "https://github.com/octo/projects/pull/42#pullrequestreview-9001" } }))
+    const runtime = ownerRuntime()
+    const review = { parameters: { action: "PR_REVIEW", repo: "octo/projects", number: 42, review_action: " Request_Changes ", body: "Please add tests." } }
+    const preview = try run(runtime, turn("00000000-0000-4000-8000-000000000020", "request changes on PR 42"), review, api.layer)
+    const applied = try run(runtime, turn("00000000-0000-4000-8000-000000000021", "yes"), review, api.layer)
+    try Effect.try(() => assert.deepStrictEqual({ preview: preview.data, previewed: preview.text?.includes("\"reviewKind\":\"RequestChanges\""), applied: outcome(applied), sent: api.sent.map(entry => ({ method: entry.method, url: entry.url, body: JSON.parse(entry.body) })) }, {
+      preview: { status: "pending" },
+      previewed: true,
+      applied: { success: true, text: "GitHub confirmed the operation. https://github.com/octo/projects/pull/42#pullrequestreview-9001" },
+      sent: [{ method: "POST", url: "https://api.github.com/repos/octo/projects/pulls/42/reviews", body: { event: "REQUEST_CHANGES", body: "Please add tests." } }],
+    }))
+  })
+})

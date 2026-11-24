@@ -2,9 +2,10 @@
 import { assert, it } from "@effect/vitest"
 import type { CloudLinkReply, CloudLinkRequest } from "@elizaos/agent"
 import type { CalendarEvent, CalendarSummary } from "../src/model.vibe"
-import { calendarHost, runCalendarAction, type CalendarApprovalRow, type CalendarCache } from "../src/index.vibe"
+import { calendarHost, runCalendarAction, type CalendarApprovalRow } from "../src/index.vibe"
 import { cloudCalendar, managedEventId, managedFeed, mergeFeedEvents, parseManagedGoogleCalendarFeed, type PurgeRefused,
   type AggregatePorts, type CalendarLinkRecord, type FeedComponent, type ImportedSourceScope, type ManagedCacheStore } from "../src/feed/index.vibe"
+import { memoryCache } from "./support/memory-cache.ts"
 
 const api = "/api/v1/eliza/google"
 const grant = "0f6c2a5e-8b1d-4c3a-9e7f-2a4b6c8d0e1f"
@@ -155,15 +156,6 @@ function at(value: unknown, ...path: string[]): unknown {
   return path.reduce<unknown>((inner, key) => typeof inner === "object" && inner !== null && key in inner ? (inner as Record<string, unknown>)[key] : undefined, value)
 }
 
-function memoryCache(): CalendarCache {
-  const rows = new Map<string, unknown>()
-  return {
-    async getCache<T>(key: string) { return rows.get(key) as T | undefined },
-    async setCache<T>(key: string, value: T) { rows.set(key, value); return true },
-    async deleteCache(key: string) { return rows.delete(key) },
-  }
-}
-
 it.effect(`Read and change the managed Google calendar beside the resident one through the cloud link (spec/calendar/actions.md, "Story: Ask the agent about my calendar and get my active account's events"; spec/calendar/actions.md, "The managed Google calendar is read and changed as one of the active account's calendars"; spec/calendar/actions.md, "An event is shown only from a listed calendar of the active account")`, effect () => {
   const held = new Map<string, Record<string, unknown>>([["e1", card("work", "e1", {}, { etag: "\"1\"", organizer: self })]])
   const health = { feed: true, edits: true, recurringCreate: false, privateCreate: true }
@@ -211,7 +203,7 @@ it.effect(`Read and change the managed Google calendar beside the resident one t
       const row = filed.at(-1)
       return row === undefined ? { result: "missing", text: "" } : try host.executeApproval({ id: row.id, action: row.action, payload: row.payload })
     }
-    const created = try runCalendarAction(host, ask, { subaction: "create_event", calendarId: "work", title: "Review", startAt: "2026-11-23T19:00:00Z", endAt: "2026-11-23T20:00:00Z", timeZone: "UTC" })
+    const created = try runCalendarAction(host, ask, { subaction: "create_event", calendarId: "work", title: "Review", startAt: "2026-11-23T19:00:00Z", endAt: "2026-11-23T20:00:00Z", timeZone: "UTC", statedClock: "none" })
     assert.deepEqual([created.success, at(filed.at(-1)?.payload.change, "source", "grantId"), (try approve()).result], [true, grant, "ChangeSucceeded"])
     assert.deepEqual([writes[0]?.method, writes[0]?.path, writes[0]?.idempotencyKey, at(writes[0]?.body, "grantId"), at(writes[0]?.body, "expectedAccountId"), at(writes[0]?.body, "title"), at(writes[0]?.body, "timeZone")],
       ["POST", `${api}/calendar/events`, filed.at(-1)?.id, grant, "subject-1", "Review", "UTC"])
@@ -234,8 +226,9 @@ it.effect(`Read and change the managed Google calendar beside the resident one t
     const kept = try host.search(day)
     assert.deepEqual([kept?.events.map((event) => event.title).sort(), kept?.complete, kept?.sources.map((source) => source.status)], [["Review", "Standup, moved"], false, ["fresh", "stale"]])
 
+    health.feed = true
     health.edits = true
-    const series = { subaction: "create_event", calendarId: "work", title: "Piano", startAt: "2030-03-04T17:00:00Z", endAt: "2030-03-04T18:00:00Z", timeZone: "UTC",
+    const series = { subaction: "create_event", calendarId: "work", title: "Piano", startAt: "2030-03-04T17:00:00Z", endAt: "2030-03-04T18:00:00Z", timeZone: "UTC", statedClock: "none",
       repeat: "weekly", repeatUntil: "2030-03-25T17:00:00Z", skipStarts: ["2030-03-11T17:00:00Z"] }
     const beforeSeries = writes.length
     const old = try runCalendarAction(host, { ...ask, id: "message-5" }, series)
@@ -253,7 +246,7 @@ it.effect(`Read and change the managed Google calendar beside the resident one t
     assert.deepEqual([parentEdit.success, at(denied, "failure", "code"), writes.length], [true, "CALENDAR_MANAGED_SERIES_REVIEW_REQUIRED", beforeSeries + 1])
     health.privateCreate = false
     const olderCloud = try runCalendarAction(host, { ...ask, id: "message-8" }, { subaction: "create_event", calendarId: "work",
-      title: "Private lesson", startAt: series.startAt, endAt: series.endAt, timeZone: series.timeZone })
+      title: "Private lesson", startAt: "2030-03-04T19:00:00Z", endAt: "2030-03-04T20:00:00Z", timeZone: series.timeZone, statedClock: "none" })
     const noPrivacy = try approve()
     assert.deepEqual([olderCloud.success, at(noPrivacy, "failure", "code"), writes.length], [true, "CALENDAR_PRIVATE_CREATE_UNAVAILABLE", beforeSeries + 1])
   })

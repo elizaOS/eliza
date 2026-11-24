@@ -13,7 +13,7 @@ import { filesProposalFamily } from "../src/device-proposals.vibe"
 module node {
   import { Effect } from "effect"
   import { AgentRuntime, stringToUuid } from "@elizaos/core"
-  import { negotiation, readOperation, validate, type DeviceTurn, type Grounding } from "@elizaos/agent/device-actions"
+  import { negotiatedOwnerTurn, readOperation, type DeviceTurn, type Grounding } from "@elizaos/agent/device-actions"
   import { filesProposalFamily } from "../src/device-proposals.vibe"
 
   const asked = "Trash the first two files"
@@ -28,18 +28,15 @@ module node {
   export const onHome: Screen = { observation: { view: "home", revision: 1, sensitive: false } }
 
   function chatTurn(runtime: AgentRuntime, capabilities: readonly string[], screen: Screen): DeviceTurn {
-    const negotiated = negotiation(true, capabilities.join(","))
     const id = stringToUuid(`files-chat:${capabilities.join(",")}`)
-    return {
-      runtime, by: { agentId: runtime.agentId, actorId: "owner", connector: runtime.agentId }, negotiation: negotiated, capabilities,
+    return negotiatedOwnerTurn(capabilities, {
+      runtime, by: { agentId: runtime.agentId, actorId: "owner", connector: runtime.agentId },
       message: { id, entityId: id, roomId: id, content: { text: asked, ...(screen.direct === true ? { metadata: directRequest } : {}) } }, ownerText: asked,
       observation: screen.observation, completedActionNavigation: screen.direct === true, completesReads: false,
-      conversationId: "files-chat", requestId: "files-chat-1", assistantName: "Eliza", swapped: [], startedAt: 0, timeZone: undefined,
-      signal: new AbortController().signal,
-      admit: (operation) => validate(operation, negotiated, "NoBinding"),
-      earlier: () => Effect.succeed([]),
-    }
+      conversationId: "files-chat", requestId: "files-chat-1", startedAt: 0, timeZone: undefined,
+    })
   }
+
 
   export async function proposeFiles(runtime: AgentRuntime, capabilities: readonly string[], operation: unknown, screen: Screen = onFiles): Promise<Grounding | undefined> {
     const checked = readOperation(operation)

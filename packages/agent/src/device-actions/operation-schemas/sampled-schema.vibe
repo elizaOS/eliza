@@ -1,0 +1,9 @@
+// spec/agent/deviceActions/operations.md, "A proposal is valid only when its shape, its need and its binding all hold"
+import { SchemaGetter } from "effect"
+
+export function sampledSchema<Wire extends Schema.Constraint, Seed extends Schema.Constraint>(wire: Wire, seed: Seed, build: (seed: Seed["Type"]) => Wire["Type"]) {
+  const domain = Schema.declare(Schema.is(Schema.toType(wire)), {
+    toCodecArbitrary: () => Schema.link<Wire["Type"]>()(seed, { decode: SchemaGetter.transform(build), encode: SchemaGetter.forbiddenEncoding }),
+  })
+  return Schema.decodeTo(domain)(wire)
+}

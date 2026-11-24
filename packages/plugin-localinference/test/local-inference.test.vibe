@@ -97,14 +97,18 @@ effect function call(routes: readonly LocalRoute[], method: string, path: string
 
 const refusalOf = <A, E extends { readonly _tag: string }>(work: A!E) => map(Effect.flip(work), (failure) => failure._tag)
 
+effect function modelState(prefix: string) {
+  const fs = try FileSystem.FileSystem
+  const path = try Path.Path
+  const state = try fs.makeTempDirectoryScoped({ prefix })
+  return { fs, path, state, modelsDirectory: path.join(state, "local-inference", "models") }
+}
+
 it.effect('Download, verify, assign, activate and remove models, keeping the owner\'s choices across restarts (spec/localInference/models.md, "Story: Run a model of my choice on my device"; spec/localInference/models.md, "A download is installed only when every file matches its published digest"; spec/localInference/models.md, "A slot is assigned only to an installed model whose role serves it, one slot per change"; spec/localInference/models.md, "An unreadable assignment record is reported, never rewritten from empty"; spec/localInference/models.md, "Only an installed model whose evaluations passed is activated"; spec/localInference/models.md, "Removing a model first unloads it and clears every slot that named it"; spec/localInference/models.md, "A model whose files cannot be read is reported unreadable, never as absent")', effect () => {
   const published = hub()
   const { engine, calls, controls } = fakeEngine()
   provide NodeServices.layer, Layer.succeed(HttpClient.HttpClient, published.client), InferenceEngine = engine {
-    const fs = try FileSystem.FileSystem
-    const path = try Path.Path
-    const state = try fs.makeTempDirectoryScoped({ prefix: "local-inference-models-" })
-    const modelsDirectory = path.join(state, "local-inference", "models")
+    const { fs, path, state, modelsDirectory } = try modelState("local-inference-models-")
     const assignmentsFile = path.join(state, "local-inference", "assignments.json")
     const models = try openLocalModels(state, testCatalog)
     assert.deepStrictEqual((try models.view()).models.map((model) => [model.name, model.install]), [["eliza-1-2b", "absent"], ["bge-small-en-v1.5", "absent"]])
@@ -228,10 +232,7 @@ it.effect('Embed with the assigned model in its vector space and serve speech on
   const published = hub()
   const { engine, calls, controls } = fakeEngine()
   provide NodeServices.layer, Layer.succeed(HttpClient.HttpClient, published.client), InferenceEngine = engine {
-    const fs = try FileSystem.FileSystem
-    const path = try Path.Path
-    const state = try fs.makeTempDirectoryScoped({ prefix: "local-inference-embeddings-" })
-    const modelsDirectory = path.join(state, "local-inference", "models")
+    const { fs, path, state, modelsDirectory } = try modelState("local-inference-embeddings-")
     try fs.makeDirectory(modelsDirectory, { recursive: true })
     try fs.writeFileString(path.join(modelsDirectory, "bge-small-en-v1.5-f16.gguf"), embeddingWeights)
 

@@ -6,7 +6,7 @@ import {
 import type { RuntimeRequestHeaders, RuntimeStream } from "./index.vibe"
 import type { TaskPresentation } from "../tasks/chat-task.vibe"
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- the schema declarations below read these schemas as values
-import { ActionResultFrame, PlanAction, ProviderWait } from "./reply-frame.schema.vibe"
+import { ActionResultFrame, CloudFundsCode, PlanAction, ProviderWait } from "./reply-frame.schema.vibe"
 import { readReplyStream, type ReplyOutcome, type ReplyStreamHooks, type StreamedReply } from "./stream-reader.vibe"
 import { newClientMessageId, type ClientMessageId } from "./stopped-turn.vibe"
 
@@ -20,6 +20,7 @@ schema BufferedReply {
   readonly actionResults: readonly ActionResultFrame[]
   readonly taskChoices?: readonly Schema.Unknown[]
   readonly failureKind?: Schema.NonEmptyString
+  readonly cloudCode?: CloudFundsCode
   readonly planAction?: PlanAction
   readonly retryAfterMs?: ProviderWait
   readonly cutOffEffect?: "applied"

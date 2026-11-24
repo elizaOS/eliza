@@ -11,8 +11,8 @@ document (`spec/agent/host/launch.md`, imported as `Launch`), which owns every
 launch field and its meaning; os adds only its service fields.
 
 The host file holds os's own fields, `service` (the subclass's class name),
-`notification {channel, title, text}` and `routes` (the renderer's route list,
-`spec/agent/access/routes.md`), and the launch objects `Launch` types: `model`
+`notification {channel, title, text, failure {channel, title, text}}` and
+`routes` (the renderer's route list, `spec/agent/access/routes.md`), and the launch objects `Launch` types: `model`
 (backend, `cloudBaseUrl`, `smallModel`, `largeModel`, `imageModel`, own-key
 fields), `embeddings` and `embeddingDimensions`, `persistMemory`,
 `callerRole`, `views`, `timeZone`, `privacy`, `google`, `retention` and
@@ -22,8 +22,8 @@ fields), `embeddings` and `embeddingDimensions`, `persistMemory`,
 list is not part of it. Reading the assets, JSON decoding, the class-name and
 URL patterns, trimming and digests stay in the shell: a file that is missing
 or does not decode under its schema is a configuration error before this
-spec sees it. The subclass may override `runtimeNotification()` and the
-channel hook; the words below are what it shows when it does not. Sources:
+spec sees it. The subclass may override `runtimeNotification()`,
+`runtimeFailureNotification()` and the channel hooks; the words below are what it shows when it does not. Sources:
 the pinned `EmbeddedAgentConfig.java` (asset limit, notification words,
 service class, environment and character checks) and the launch settings of
 the device hosts it replaces.
@@ -45,7 +45,8 @@ import credential as C from "../signIn/credential"
 import runtimePayload as RP from "../build/runtimePayload"
 type ServiceClass = QualifiedClass({ className: str }) | MalformedClass
 type Words = { words: str, units: int }
-type Notification = { channel: Words, title: Words, text: Words }
+type NoticeWords = { channel: Words, title: Words, text: Words }
+type Notification = { channel: Words, title: Words, text: Words, failure: NoticeWords }
 type HostLaunch = { backend: Launch::Backend, embeddings: Launch::Embeddings, persistMemory: bool, callerRole: Launch::CallerRole, google: Launch::GoogleConsent, retention: Launch::Retention, environment: List[Launch::EnvEntry] }
 type HostFile = { schema: int, service: ServiceClass, notification: Notification, routes: Routes::RouteList, launch: HostLaunch }
 type PolicyFile = { schema: int, policy: Launch::LaunchPolicy }
@@ -55,15 +56,23 @@ pure def filesFit(d: AgentData): bool =
   d.hostBytes <= maxFileBytes and d.characterBytes <= maxFileBytes and d.policyBytes <= maxFileBytes and d.host.schema == 1 and d.policy.schema == 1
 ```
 
-### The host file names a qualified service class and notification words of 1 to 200 characters
+### The host file names a qualified service class, and status and failure notification words of 1 to 200 characters on two differently named channels
 
-The channel name, title and text are each counted after trimming. The class
-must be a qualified Java name (`a.b.C`), decided by the shell's pattern.
+The status words (`channel`, `title`, `text`) are shown while the agent
+starts, runs or stops; the failure words (`failure.channel`, `failure.title`,
+`failure.text`) are shown while it has failed, on their own alerts channel, so
+an owner who silences the status channel still sees a failure. Each channel
+name, title and text is counted after trimming, and the two channel names
+differ after trimming, so the owner can tell the channels apart in the
+system settings. The class must be a qualified Java name (`a.b.C`), decided
+by the shell's pattern.
 
 ```quint
 pure val maxWordUnits: int = 200
 pure def wordsAdmitted(w: Words): bool = w.units >= 1 and w.units <= maxWordUnits
-pure def notificationAdmitted(n: Notification): bool = wordsAdmitted(n.channel) and wordsAdmitted(n.title) and wordsAdmitted(n.text)
+pure def noticeWordsAdmitted(n: NoticeWords): bool = wordsAdmitted(n.channel) and wordsAdmitted(n.title) and wordsAdmitted(n.text)
+pure def notificationAdmitted(n: Notification): bool =
+  noticeWordsAdmitted({ channel: n.channel, title: n.title, text: n.text }) and noticeWordsAdmitted(n.failure) and n.failure.channel.words != n.channel.words
 pure def serviceNamed(s: ServiceClass): bool = match s { | QualifiedClass(q) => q.className != "" | MalformedClass => false }
 ```
 
@@ -148,6 +157,44 @@ pure def lawLaunchNamesOnlyTheActiveKeysAccount(d: AgentData, cred: C::DeviceCre
   launchAccount(startVerdict(d, cred, worker)) == Launch::NoAccount
     or (C::activeVersion(cred) >= 1 and launchAccount(startVerdict(d, cred, worker)) == Launch::SignedIn({ userId: a.userId, organizationId: a.organizationId }))
 }
+```
+
+### A launch carries the Google consent the owner saved, else the host file's
+
+The host file's `google` is what the agent may change in the owner's Gmail
+and Calendar until the owner chooses. A service subclass that keeps the
+owner's own choice gives it once per launch, after the launch hook, and that
+launch carries it whole in place of the host file's; the rest of the
+document is unchanged. A subclass that keeps none leaves the host file's.
+The agent reads consent only from its launch, so a changed choice reaches
+it only through a new launch, and the subclass restarts the agent when the
+owner changes it. Source: a consumer's Settings switches for Gmail changes
+and Calendar edits, which its phone saved while the agent still launched
+with both off.
+
+```quint
+type SavedConsent = HostConsent | OwnerChose({ consent: Launch::GoogleConsent })
+pure def launchConsent(host: Launch::GoogleConsent, saved: SavedConsent): Launch::GoogleConsent =
+  match saved { | OwnerChose(o) => o.consent | HostConsent => host }
+pure def consentedLaunch(v: StartVerdict, saved: SavedConsent): StartVerdict = match v {
+  | LaunchReady(r) => LaunchReady({ launch: { ...r.launch, document: { ...r.launch.document, google: launchConsent(r.launch.document.google, saved) } } })
+  | LaunchWithheld(w) => LaunchWithheld(w)
+}
+pure def launchGoogle(v: StartVerdict): Launch::GoogleConsent = match v {
+  | LaunchReady(r) => r.launch.document.google
+  | _ => { gmailChanges: false, calendarEdits: false }
+}
+pure def lawLaunchCarriesTheSavedConsentElseTheHostFiles(d: AgentData, cred: C::DeviceCredential, worker: RP::LaunchWorker, saved: SavedConsent): bool = {
+  val v = startVerdict(d, cred, worker)
+  val c = consentedLaunch(v, saved)
+  val chosen = match saved { | OwnerChose(o) => o.consent | HostConsent => d.host.launch.google }
+  match v {
+    | LaunchReady(r) => launchGoogle(c) == chosen and launchAccount(c) == r.launch.document.account
+    | LaunchWithheld(w) => withheldAs(c, w.cause)
+  }
+}
+pure val savedValues = Set(HostConsent, OwnerChose({ consent: { gmailChanges: true, calendarEdits: true } }),
+  OwnerChose({ consent: { gmailChanges: false, calendarEdits: true } }), OwnerChose({ consent: { gmailChanges: false, calendarEdits: false } }))
 ```
 
 ### Only a cloud launch is framed with the device key, and an own-key launch with the owner's provider key or none
@@ -235,11 +282,12 @@ pure val credValues = {
 pure val otherCredValues = credValues
 pure val dValues = {
   val words: Words = { words: "Agent", units: 5 }
+  val failure: NoticeWords = { channel: { words: "Agent alerts", units: 12 }, title: words, text: words }
   val status: Routes::Route = { method: Routes::Get, delivery: Routes::Buffered, path: List(Routes::Literal({ text: "api" }), Routes::Literal({ text: "status" })), query: List(), limit: Routes::AnySize }
   val cloud = Launch::CloudBackend({ baseUrl: "https://cloud.example", baseUrlShape: Launch::HttpsOrigin, smallModel: "", largeModel: "", imageModel: "" })
   val launch: HostLaunch = { backend: cloud, embeddings: Launch::NoEmbeddings, persistMemory: false, callerRole: Launch::ChatAsUser,
     google: { gmailChanges: false, calendarEdits: false }, retention: Launch::KeepLogs, environment: List() }
-  val host: HostFile = { schema: 1, service: QualifiedClass({ className: "app.example.AgentService" }), notification: { channel: words, title: words, text: words },
+  val host: HostFile = { schema: 1, service: QualifiedClass({ className: "app.example.AgentService" }), notification: { channel: words, title: words, text: words, failure: failure },
     routes: List({ prefixes: List(List()), id: Routes::flatParam, routes: List(status) }), launch: launch }
   val good: AgentData = { hostBytes: 900, characterBytes: 400, policyBytes: 300, host: host,
     character: { name: "Agent", nameUnits: 5, systemBlank: false },
@@ -249,7 +297,9 @@ pure val dValues = {
     { ...good, host: { ...host, launch: { ...launch, backend: Launch::OwnKeyBackend({ baseUrl: "https://own.example/v1", baseUrlShape: Launch::HttpsWithPath, smallModel: "small", largeModel: "large" }) } } },
     { ...good, host: { ...host, launch: { ...launch, backend: Launch::CloudBackend({ baseUrl: "https://cloud.example/api/v1", baseUrlShape: Launch::HttpsWithPath, smallModel: "", largeModel: "", imageModel: "" }) } } },
     { ...good, hostBytes: maxFileBytes + 1 },
-    { ...good, host: { ...host, notification: { channel: words, title: words, text: { words: "", units: 0 } } } },
+    { ...good, host: { ...host, notification: { channel: words, title: words, text: { words: "", units: 0 }, failure: failure } } },
+    { ...good, host: { ...host, notification: { channel: words, title: words, text: words, failure: { ...failure, text: { words: "", units: 0 } } } } },
+    { ...good, host: { ...host, notification: { channel: words, title: words, text: words, failure: { ...failure, channel: words } } } },
     { ...good, host: { ...host, service: MalformedClass } },
     { ...good, host: { ...host, routes: List() } },
     { ...good, policy: { ...good.policy, schema: 2 } },

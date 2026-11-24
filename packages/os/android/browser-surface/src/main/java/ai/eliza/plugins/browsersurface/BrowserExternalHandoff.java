@@ -4,7 +4,6 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.net.Uri;
 import java.util.Locale;
-import java.util.Set;
 
 /**
  * Android intents for links a page hands to another app, and the resolver probe for an explicit
@@ -19,18 +18,23 @@ import java.util.Set;
 public final class BrowserExternalHandoff {
   private BrowserExternalHandoff() {}
 
-  /** Whether {@code raw} is a link another app handles (mailto, tel, sms, geo, market, intent). */
-  public static boolean external(String raw) {
-    return BrowserExternalLinkPolicy.external(raw);
+  /**
+   * Whether {@code raw} is a link another app handles (mailto, tel, sms, geo, market, intent), or an
+   * app link such as {@code whatsapp:} on a host that takes them.
+   */
+  public static boolean external(String raw, BrowserTabHostConfig host) {
+    return BrowserExternalLinkPolicy.external(raw)
+        || (host.appLinks && BrowserExternalLinkPolicy.appLink(raw, host.hostSchemes));
   }
 
   /**
    * A sanitized implicit intent for {@code raw}, or null when the link must be refused.
    *
    * @param ownPackage the host's package, which a page may never address
-   * @param hostSchemes the URI schemes of the host's own routes, which an intent: URI may never carry
+   * @param host the host's config: its own route schemes, which an intent: URI may never carry,
+   *     and whether it takes app links
    */
-  public static Intent intentFor(String raw, String ownPackage, Set<String> hostSchemes) {
+  public static Intent intentFor(String raw, String ownPackage, BrowserTabHostConfig host) {
     if (raw == null || raw.length() > BrowserExternalLinkPolicy.MAX_LINK
         || raw.matches("(?s).*[\\x00-\\x1f\\x7f].*")) return null;
     Uri uri;
@@ -66,7 +70,7 @@ public final class BrowserExternalHandoff {
         Uri data = parsed.getData();
         String dataScheme = data == null ? null : (data.getScheme() == null ? "" : data.getScheme());
         if (BrowserExternalLinkPolicy.decide(raw, true, parsed.getAction(), dataScheme,
-                parsed.getPackage(), ownPackage, hostSchemes)
+                parsed.getPackage(), ownPackage, host.hostSchemes)
             == BrowserExternalLinkPolicy.Handoff.REFUSE) return null;
         intent = new Intent(Intent.ACTION_VIEW);
         if (data != null) intent.setDataAndType(data, parsed.getType());
@@ -77,7 +81,8 @@ public final class BrowserExternalHandoff {
         break;
       }
       default:
-        return null;
+        if (!host.appLinks || !BrowserExternalLinkPolicy.appLink(raw, host.hostSchemes)) return null;
+        intent = new Intent(Intent.ACTION_VIEW, uri).addCategory(Intent.CATEGORY_BROWSABLE);
     }
     // A fresh Intent never inherits a page-chosen component, selector, clip data or URI-grant
     // flags. Re-assert that for defence in depth.

@@ -4,7 +4,7 @@ import { refusalBody, refusalResponse, type Refusal } from "../src/http/refusal.
 import { admit, admitAll, minute, perWindow, readWindow, windowEndOf } from "../src/shared/rate-limit.vibe"
 import { Store, StoreFailure, type Tx } from "../src/store/store.vibe"
 import { manualClock, type ManualClock } from "./support/clock.ts"
-import { testCloud } from "./support/cloud.vibe"
+import { check, testCloud } from "./support/cloud.vibe"
 
 effect function clockAt(at: number) {
   const time = try Effect.orDie(Effect.try(() => manualClock()))
@@ -14,10 +14,6 @@ effect function clockAt(at: number) {
 
 effect function setClock(time: ManualClock, at: number) {
   try Effect.orDie(Effect.try(() => time.set(at)))
-}
-
-effect function check(run: () => void) {
-  try Effect.try(run)
 }
 
 function answered(refusal: Refusal | void, now: number) {

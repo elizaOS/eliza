@@ -1,0 +1,122 @@
+// spec/mcp/index.md, "Story: Call an explicitly enabled server with valid tool arguments"; spec/mcp/index.md, "A tool's parameters keep the nested shape of its input schema down to a fixed depth"; spec/mcp/index.md, "An invocation can be sent once only after its original schema accepts the arguments"
+import { assert, it } from "@effect/vitest"
+import { type Action, type ActionParameters, actionToTool, AgentRuntime, stringToUuid, validateToolArgs } from "@elizaos/core"
+import { McpConnectionPolicy, mcpToolActions } from "../src/index.vibe"
+
+module node {
+  import { once } from "node:events"
+  import { createServer } from "node:http"
+  import { Server } from "@modelcontextprotocol/sdk/server/index.js"
+  import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js"
+  import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js"
+  import { Ajv } from "ajv"
+
+  const text = { type: "string" }
+  const deep = (levels: number): object => levels === 0 ? { type: "integer" } : { type: "object", properties: { next: deep(levels - 1) }, required: ["next"] }
+
+  const tools = [
+    { name: "push_files", inputSchema: { type: "object", properties: { branch: text, files: { type: "array", items: { type: "object", properties: { path: text, content: text }, required: ["path", "content"], additionalProperties: false } } }, required: ["branch", "files"] } },
+    { name: "create_page", inputSchema: { type: "object", properties: { parent: { type: "object", properties: { page_id: text }, required: ["page_id"] }, title: { type: "string", minLength: 1, description: "Page title" } }, required: ["parent", "title"] } },
+    { name: "sum_ids", inputSchema: { type: "object", properties: { ids: { type: "array", items: { type: "integer" } } }, required: ["ids"] } },
+    { name: "echo_value", inputSchema: { type: "object", properties: { value: {} }, required: ["value"] } },
+    { name: "set_labels", inputSchema: { type: "object", properties: { labels: { type: "object", additionalProperties: text } }, required: ["labels"] } },
+    { name: "nest", inputSchema: { type: "object", properties: { root: deep(7) }, required: ["root"] } },
+  ]
+
+  export async function startServer(signal: AbortSignal): Promise<{ connection: { readonly kind: "http"; readonly url: URL; readonly fetch: typeof fetch }; called: string[]; delivered: unknown[]; stop(): Promise<void> }> {
+    const called: string[] = []
+    const delivered: unknown[] = []
+    const ajv = new Ajv({ strict: true })
+    const http = createServer((request, response) => {
+      const server = new Server({ name: "nested-shape-server", version: "1.0.0" }, { capabilities: { tools: {} } })
+      server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools }))
+      server.setRequestHandler(CallToolRequestSchema, async ({ params }) => {
+        called.push(params.name)
+        const tool = tools.find((entry) => entry.name === params.name)
+        if (tool === undefined || !ajv.validate(tool.inputSchema, params.arguments ?? {})) return { isError: true, content: [{ type: "text", text: "refused" }] }
+        delivered.push({ [params.name]: params.arguments })
+        return { content: [{ type: "text", text: "done" }] }
+      })
+      const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true })
+      response.on("close", () => { void transport.close(); void server.close() })
+      void server.connect(transport).then(() => transport.handleRequest(request, response))
+    })
+    http.listen(0, "127.0.0.1")
+    await once(http, "listening", { signal })
+    const address = http.address()
+    if (address === null || typeof address === "string") throw new Error("Could not reserve a loopback port")
+    return { connection: { kind: "http", url: new URL(`http://127.0.0.1:${address.port}/mcp`), fetch }, called, delivered, stop: () => new Promise<void>((resolve) => http.close(() => resolve())) }
+  }
+}
+import { startServer } from node
+
+const server = { serverId: "peer", serverEpoch: 1, transport: "HttpTransport" as const, enabled: true }
+const nested = (levels: number, leaf: unknown): unknown => levels === 0 ? leaf : { next: nested(levels - 1, leaf) }
+
+const cases: ReadonlyArray<readonly [string, Record<string, unknown>, string | null, boolean]> = [
+  ["push_files", { branch: "main", files: [{ path: "a.md", content: "#" }] }, null, true],
+  ["push_files", { branch: "main", files: [{ path: "a.md" }] }, "Missing required argument 'files[0].content'", false],
+  ["push_files", { branch: "main", files: [{ path: "a.md", content: "#", mode: "100644" }] }, "Unexpected argument 'files[0].mode'", false],
+  ["create_page", { parent: { page_id: "59833787" }, title: "Notes" }, null, true],
+  ["create_page", { parent: {}, title: "Notes" }, "Missing required argument 'parent.page_id'", false],
+  ["sum_ids", { ids: [3, 4] }, null, true],
+  ["sum_ids", { ids: ["three"] }, "Argument 'ids[0]' expected integer, got string", false],
+  ["echo_value", { value: "hello" }, null, true],
+  ["echo_value", { value: [[["a"], []], [[1]]] }, null, true],
+  ["echo_value", { value: { a: [1, { b: null }] } }, null, true],
+  ["set_labels", { labels: { team: "core" } }, null, true],
+  ["set_labels", { labels: { team: 1 } }, "Argument 'labels.team' expected string, got number", false],
+  ["nest", { root: nested(7, 1) }, null, true],
+  ["nest", { root: nested(7, "one") }, null, false],
+]
+
+it.live("An MCP tool's nested argument shapes reach the planner and the server (spec/mcp/index.md, \"A tool's parameters keep the nested shape of its input schema down to a fixed depth\")", () => scoped(effect {
+  const fixture = try acquireRelease(tryPromise((signal) => startServer(signal)), (fixture) => promise(() => fixture.stop()))
+  let actions: Action[] = []
+  provide McpConnectionPolicy = { admit: () => succeed(fixture.connection) } {
+    actions = try mcpToolActions(server)
+  }
+  const runtime = try Effect.try(() => new AgentRuntime({ character: { name: "Eliza", bio: [] } }))
+  const byName = new Map(actions.map((action) => [action.name, action]))
+  const action = (tool: string) => byName.get(`MCP_PEER_${tool.toUpperCase()}`)
+  const outcomes: Array<{ tool: string; refused: string | null; called: boolean; delivered: boolean }> = []
+  for (const [tool, args] of cases) {
+    const found = action(tool)
+    const admitted = found === undefined ? undefined : try Effect.try(() => validateToolArgs(found, args))
+    const before = fixture.delivered.length
+    const calledBefore = fixture.called.length
+    const result = found !== undefined && admitted?.valid === true
+      ? try tryPromise(() => found.handler(runtime, { entityId: stringToUuid("owner"), roomId: stringToUuid("room"), content: { text: tool } }, undefined, { parameters: admitted.args as ActionParameters }))
+      : undefined
+    outcomes.push({ tool, refused: admitted?.valid === true ? null : admitted?.errors.join("; ") ?? "no action", called: fixture.called.length > calledBefore, delivered: result?.success === true && fixture.delivered.length === before + 1 })
+  }
+  const planned = (tool: string) => Effect.try(() => { const found = action(tool); return found === undefined ? undefined : actionToTool(found).function.parameters })
+  const arrayLevels = (schema: unknown): number => {
+    const branch = typeof schema === "object" && schema !== null && "anyOf" in schema && Array.isArray(schema.anyOf) ? schema.anyOf.find((entry) => entry.type === "array") : undefined
+    return branch === undefined ? 0 : 1 + arrayLevels(branch.items)
+  }
+  const pushFiles = try planned("push_files")
+  const setLabels = try planned("set_labels")
+  const echoValue = try planned("echo_value")
+  const createPage = try planned("create_page")
+  const shapes = { pushFiles, setLabels, anyValueArrayLevels: arrayLevels(echoValue?.properties.value), title: createPage?.properties.title }
+  try Effect.try(() => {
+    assert.deepStrictEqual(actions.map((entry) => entry.name), ["MCP_PEER_PUSH_FILES", "MCP_PEER_CREATE_PAGE", "MCP_PEER_SUM_IDS", "MCP_PEER_ECHO_VALUE", "MCP_PEER_SET_LABELS", "MCP_PEER_NEST"])
+    assert.deepStrictEqual(shapes, {
+      pushFiles: {
+        type: "object",
+        properties: {
+          branch: { type: "string" },
+          files: { type: "array", items: { type: "object", properties: { path: { type: "string" }, content: { type: "string" } }, required: ["path", "content"], additionalProperties: false } },
+        },
+        required: ["branch", "files"],
+        additionalProperties: false,
+      },
+      setLabels: { type: "object", properties: { labels: { type: "object", properties: {}, required: [], additionalProperties: { type: "string" } } }, required: ["labels"], additionalProperties: false },
+      anyValueArrayLevels: 4,
+      title: { type: "string", description: 'Page title JSON schema: {"type":"string","minLength":1,"description":"Page title"}' },
+    })
+    assert.deepStrictEqual(outcomes, cases.map(([tool, , refused, delivered]) => ({ tool, refused, called: delivered, delivered })))
+    assert.deepStrictEqual(fixture.delivered, cases.filter(([, , , delivered]) => delivered).map(([tool, args]) => ({ [tool]: args })))
+  })
+}), 30_000)

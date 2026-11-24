@@ -7,6 +7,7 @@ import {
 import type { CloudError } from "../../gen/cloud__client.ts"
 import type { LocalRoute } from "../access/routes.vibe"
 import type { LaunchDocument, LaunchFrame } from "../host/launch.schema.vibe"
+import { launchChoices } from "../host/launch-choices.vibe"
 
 export type FailureKind = "credential_invalid" | "insufficient_credits" | "limit_reached" | "provider_issue"
 export type BackendName = "cloud" | "own-key" | "none"
@@ -85,10 +86,7 @@ function launchModel(launch: LaunchDocument): LaunchModel {
     },
     backend: backendOf(launch.model),
     account: account === undefined ? { tag: "NoAccount" } : { tag: "SignedIn", userId: account.userId, organizationId: account.organizationId },
-    embeddings: launch.embeddings === "local" ? { tag: "LocalEmbeddings", dimensions: launch.embeddingDimensions ?? 0 } : { tag: "NoEmbeddings" },
-    persistMemory: launch.persistMemory ?? false,
-    callerRole: launch.callerRole === "owner" ? "ChatAsOwner" : "ChatAsUser",
-    google: { gmailChanges: launch.google?.gmailChanges ?? false, calendarEdits: launch.google?.calendarEdits ?? false },
+    ...launchChoices(launch),
     retention: retention === undefined ? { tag: "KeepLogs" }
       : { tag: "PruneLogs", dayThousandths: Math.ceil(retention.days * 1000), maxRowsPerRoom: retention.maxRowsPerRoom, intervalMinutes: retention.intervalMinutes },
     environment: Object.keys(launch.environment ?? {}).map((key) => ({ key, keyKind: "PluginSetting", singleLine: true })),
@@ -113,7 +111,6 @@ function shapeOf(key: Redacted.Redacted<string>): KeyShape {
 
 const noKey: HeldCredential = { version: 0, value: Redacted.make("") }
 
-/** Whether an endpoint's host is `cerebras.ai` or under it. */
 export function onCerebras(baseUrl: string): boolean {
   return /(?:^|\.)cerebras\.ai$/i.test(URL.parse(baseUrl)?.hostname ?? "")
 }

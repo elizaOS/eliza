@@ -153,7 +153,7 @@ const datePatterns = [
 ]
 const nextDate = new RegExp(`\\bnext\\s+(?:${monthWord}\\b\\.?(?:\\s+${dayWord}\\b)?|(1[0-2]|0?[1-9])[/-](3[01]|[12]\\d|0?[1-9])\\b)`, "u")
 
-export function namesCalendarDate(text: string): boolean {
+function namesCalendarDate(text: string): boolean {
   const folded = text.normalize("NFKC").toLowerCase()
   return datePatterns.some((pattern) => pattern.test(folded))
 }

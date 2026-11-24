@@ -1,22 +1,14 @@
 // spec/cloud/deployment.md, "Story: Answer only the deployment's own callers"; spec/cloud/shared/types.md, "Story: Speak one refusal language"
 import { assert, describe, it } from "@effect/vitest"
 import { allowedMethods, allowedRequestHeaders, exposedResponseHeaders } from "../gen/cloud__deployment.effect.vibe"
-import { listening, respond } from "../src/http/server.vibe"
 import { json, type Method, type Route, type RouteArea, type RouteContext } from "../src/http/routes.vibe"
 import type { Capability } from "../src/profile/profile.vibe"
-import { deploymentLayer, parseProfile } from "../src/profile/profile.vibe"
-import { Store } from "../src/store/store.vibe"
 import { signedCaller } from "./support/caller.vibe"
-import { testCloud, type TestCloud } from "./support/cloud.vibe"
+import { check, serveOnStore, testCloud, type TestCloud } from "./support/cloud.vibe"
 import { callCloud, type Answer, type CallInit } from "./support/http.ts"
-import { testProfile } from "./support/profile.ts"
 
 const ownOrigin = "https://www.staging.example.com"
 const mintedRequestId = /^[A-Za-z0-9._:-]{8,128}$/
-
-effect function check(run: () => void) {
-  try Effect.try(run)
-}
 
 interface Gate {
   readonly area?: RouteArea
@@ -44,15 +36,7 @@ function probes(reached: Array<string>): ReadonlyArray<Route> {
 }
 
 effect function probeServer(cloud: TestCloud, routes: ReadonlyArray<Route>) {
-  const base = try sync(() => testProfile(cloud.fakes.url))
-  const withoutBilling = { ...base, environments: { ...base.environments, staging: { ...base.environments.staging, capabilities: ["inference", "speech", "maps", "managedGoogle"] } } }
-  const profile = try parseProfile(withoutBilling)
-  const built = try Layer.build(HttpServer.serve(respond(routes)).pipe(
-    Layer.provideMerge(listening(0, "127.0.0.1")),
-    Layer.provide(Layer.mergeAll(deploymentLayer(profile, "staging"), Layer.succeed(Store, cloud.store), FetchHttpClient.layer))
-  ))
-  const { address } = Context.get(built, HttpServer.HttpServer)
-  return "port" in address ? `http://127.0.0.1:${address.port}` : ""
+  return try serveOnStore(cloud, routes, (base) => ({ ...base, environments: { ...base.environments, staging: { ...base.environments.staging, capabilities: ["inference", "speech", "maps", "managedGoogle"] } } }))
 }
 
 function refusal(answer: Answer): string {

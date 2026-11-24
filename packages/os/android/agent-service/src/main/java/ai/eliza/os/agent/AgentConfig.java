@@ -1,4 +1,4 @@
-// spec/os/agentService/config.md, "Story: Start my agent with my character, policy and model"; spec/agent/host/launch.md, "The launch document is accepted whole or refused whole"; spec/agent/access/routes.md, "A list is loaded whole or not at all"; spec/os/agentService/config.md, "Only a cloud launch is framed with the device key, and an own-key launch with the owner's provider key or none"
+// spec/os/agentService/config.md, "Story: Start my agent with my character, policy and model"; spec/os/agentService/config.md, "The host file names a qualified service class, and status and failure notification words of 1 to 200 characters on two differently named channels"; spec/agent/host/launch.md, "The launch document is accepted whole or refused whole"; spec/agent/access/routes.md, "A list is loaded whole or not at all"; spec/os/agentService/config.md, "Only a cloud launch is framed with the device key, and an own-key launch with the owner's provider key or none"
 package ai.eliza.os.agent;
 
 import java.math.BigDecimal;
@@ -43,7 +43,12 @@ public final class AgentConfig {
     Refused(String message) { super(message); }
   }
 
-  public record Notification(String channel, String title, String text) {}
+  public record Words(String channel, String title, String text) {}
+
+  public record Notification(Words status, Words failure) {}
+
+  /** What the owner allowed the agent to change in Google, as the service subclass keeps it for the next launch. */
+  public record GoogleConsent(boolean gmailChanges, boolean calendarEdits) {}
 
   public record WorkflowWorker(String runtimeDir, String executable, String sha256) {
     public WorkflowWorker {
@@ -65,8 +70,11 @@ public final class AgentConfig {
     schemaOne(policy, "policy");
     if (!(host.get("service") instanceof String named) || !CLASS_NAME.matcher(named).matches()) throw new Refused("The agent service is not a class name");
     service = named;
-    Map<String, Object> words = exact(host.get("notification"), Set.of("channel", "title", "text"), "notification");
-    notification = new Notification(words(words, "channel"), words(words, "title"), words(words, "text"));
+    Map<String, Object> words = exact(host.get("notification"), Set.of("channel", "title", "text", "failure"), "notification");
+    Words status = words(words, "notification");
+    Words failure = words(exact(words.get("failure"), Set.of("channel", "title", "text"), "notification failure"), "notification failure");
+    if (failure.channel().equals(status.channel())) throw new Refused("The agent notification failure channel needs a name other than the status channel's");
+    notification = new Notification(status, failure);
     rendererRoutes = routes(host.get("routes"), "routes");
     nativeRoutes = host.containsKey("nativeRoutes") ? routes(host.get("nativeRoutes"), "nativeRoutes") : List.of();
     this.character = character(character);
@@ -98,7 +106,10 @@ public final class AgentConfig {
     return LaunchFrame.first(token, epoch, credential, storageKey);
   }
 
-  public String launchDocument(AgentCredentials.Account account, WorkflowWorker workflowWorker) {
+  public String launchDocument(AgentCredentials.Account account, WorkflowWorker workflowWorker) { return launchDocument(account, workflowWorker, null); }
+
+  /** The launch document; a consent the owner saved replaces the host file's {@code google} for this launch, and none keeps the host file's. */
+  public String launchDocument(AgentCredentials.Account account, WorkflowWorker workflowWorker, GoogleConsent consent) {
     if (cloud && account == null) throw new IllegalArgumentException("A cloud launch names the signed-in account");
     Map<String, Object> document = new LinkedHashMap<>();
     document.put("schema", BigDecimal.ONE);
@@ -107,6 +118,7 @@ public final class AgentConfig {
     document.put("model", launch.get("model"));
     if (account != null) document.put("account", ordered("userId", account.userId(), "organizationId", account.organizationId()));
     for (Map.Entry<String, Object> entry : launch.entrySet()) if (!entry.getKey().equals("model")) document.put(entry.getKey(), entry.getValue());
+    if (consent != null) document.put("google", ordered("gmailChanges", consent.gmailChanges(), "calendarEdits", consent.calendarEdits()));
     if (workflowWorker != null)
       document.put("workflowWorker", ordered("runtimeDir", workflowWorker.runtimeDir(), "executable", workflowWorker.executable(), "sha256", workflowWorker.sha256()));
     return json(document);
@@ -131,10 +143,14 @@ public final class AgentConfig {
     if (!(file.get("schema") instanceof BigDecimal schema) || schema.compareTo(BigDecimal.ONE) != 0) throw new Refused("The agent " + name + " file is not schema 1");
   }
 
-  private static String words(Map<String, Object> words, String key) throws Refused {
-    if (!(words.get(key) instanceof String value)) throw new Refused("The agent notification needs a " + key);
+  private static Words words(Map<String, Object> words, String name) throws Refused {
+    return new Words(words(words, "channel", name), words(words, "title", name), words(words, "text", name));
+  }
+
+  private static String words(Map<String, Object> words, String key, String name) throws Refused {
+    if (!(words.get(key) instanceof String value)) throw new Refused("The agent " + name + " needs a " + key);
     String trimmed = value.trim();
-    if (trimmed.isEmpty() || trimmed.length() > NOTIFICATION_TEXT_LIMIT) throw new Refused("The agent notification " + key + " is not 1 to 200 characters");
+    if (trimmed.isEmpty() || trimmed.length() > NOTIFICATION_TEXT_LIMIT) throw new Refused("The agent " + name + " " + key + " is not 1 to 200 characters");
     return trimmed;
   }
 

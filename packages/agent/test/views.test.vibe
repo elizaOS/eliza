@@ -6,8 +6,7 @@ import { navigationBusyWaitMs, navigationClaimLeaseMs, navigationWaitMs } from "
 import type { ViewBinding, ViewHost } from "../src/views/host.vibe"
 import { viewHostServiceType, viewsModuleName } from "../src/views/module.vibe"
 import { text, toolCalls } from "./support/cloud-fake.ts"
-import { call, cloudFake, deviceKey, host, startInProcess, type InProcess } from "./support/kernel.vibe"
-import type { LocalAnswer, LocalRequest, Refusal } from "./support/socket-client.ts"
+import { ask, cloudFake, deviceKey, host, startInProcess, type InProcess } from "./support/kernel.vibe"
 
 const loaded = {
   launch: {
@@ -17,12 +16,6 @@ const loaded = {
       { id: "chat", label: "Chat", path: "/chat" },
     ],
   },
-}
-
-const answerOf = (answer: LocalAnswer | Refusal) => "status" in answer ? { status: answer.status, body: answer.json } : { status: 0, body: answer.refused }
-
-effect function ask(agent: InProcess, asked: LocalRequest) {
-  return answerOf(try call(agent, asked))
 }
 
 effect function viewHost(agent: InProcess) {
@@ -159,19 +152,17 @@ it.live('A completed chat reply gives its renderer the exact prepared switch it 
   })
 }, 120_000)
 
-it.live('A completed turn prepares the saved editor only after its current Notes lookup (spec/agent/views.md, "A specific saved Notes editor is prepared only after a matching current lookup on a supported renderer")', effect () => {
+it.live('A completed turn prepares the saved editor for the note the model named, only after its current Notes lookup (spec/agent/views.md, "A specific saved Notes editor is prepared only after a matching current lookup on a supported renderer")', effect () => {
   const cloud = try cloudFake(deviceKey)
   let current = true
+  const saved: Readonly<Record<string, string>> = { "Ferry checklist": "note-ferry", Calendar: "note-calendar", "Q3 offsite": "note-offsite", "shopping list": "note-shopping" }
   class NotesFixture extends Service {
     static override serviceType = "notes"
     override capabilityDescription = "Current note fixture"
     static override start(runtime: IAgentRuntime): Promise<Service> { return Promise.resolve(new NotesFixture(runtime)) }
     override stop(): Promise<void> { return Promise.resolve() }
     matchesSavedEditor(id: string, query: string): Promise<boolean> {
-      return Promise.resolve(current && (
-        (id === "note-ferry" && query === "Ferry checklist") ||
-        (id === "note-calendar" && query === "Calendar")
-      ))
+      return Promise.resolve(current && saved[query] === id)
     }
   }
   const lookup: Action = {
@@ -180,8 +171,8 @@ it.live('A completed turn prepares the saved editor only after its current Notes
     parameters: [{ name: "content", required: true, description: "Note title", schema: { type: "string" } }],
     handler: async (_runtime, _message, _state, options) => {
       const params = options?.parameters
-      const calendar = typeof params === "object" && params !== null && "content" in params && params.content === "Calendar"
-      return { success: true, data: { actionName: "NOTES_GET", noteId: calendar ? "note-calendar" : "note-ferry" } }
+      const content = typeof params === "object" && params !== null && "content" in params && typeof params.content === "string" ? params.content : ""
+      return { success: true, data: { actionName: "NOTES_GET", noteId: saved[content] ?? "note-ferry" } }
     },
   }
   const name = "notes-test-fixture"
@@ -198,57 +189,79 @@ it.live('A completed turn prepares the saved editor only after its current Notes
   const headers = { "x-elizaos-client-id": clientId }
   const metadata = { viewDelivery: "completed-action", viewClientId: clientId,
     voiceUi: { viewDelivery: "completed-action", uiClientId: clientId, uiNotesEditor: "saved-note-v1" } }
-  const get = { name: "NOTES_GET", arguments: { content: "Ferry checklist" } }
-  const editor = { name: "VIEWS", arguments: { action: "show", view: "notes-editor" } }
+  const get = (content: string) => ({ name: "NOTES_GET", arguments: { content } })
+  const editor = (note: string) => ({ name: "VIEWS", arguments: { action: "show", view: "notes-editor", note } })
+  const view = (named: string) => ({ name: "VIEWS", arguments: { action: "show", view: named } })
   const send = (request: string, data: object) => ask(agent, { method: "POST", path: "/api/conversations/" + id + "/messages",
     headers, body: { text: request, metadata: data } })
   const handoff = (response: { body: unknown }) => {
     const steps = (response.body as { actionResults: readonly { action: string; data?: { values?: { subview?: string; navigationBinding?: ViewBinding; noteId?: string } } }[] }).actionResults
     return steps.find(({ action }) => action === "VIEWS")?.data?.values
   }
-  try Effect.sync(() => cloud.script(toolCalls("", get), toolCalls("", editor), text("The editor is prepared.")))
-  const found = handoff(try send("Open my Ferry checklist in Notes.", metadata))
-  const claimed = try claim(agent, { ...found?.navigationBinding, targetProtocol: "saved-note-v1" })
-  const applied = try ask(agent, {
+  const claimed = (found: ReturnType<typeof handoff>) => claim(agent, { ...found?.navigationBinding, targetProtocol: "saved-note-v1" })
+  const shown = (found: ReturnType<typeof handoff>, claimId: string, noteId: string) => ask(agent, {
     method: "POST", path: "/api/views/interact-result",
-    body: { ...found?.navigationBinding, claimId: claimIdOf(claimed.body), success: true,
-      result: { switched: true, shown: { kind: "saved-note", noteId: "note-ferry" } } },
+    body: { ...found?.navigationBinding, claimId, success: true, result: { switched: true, shown: { kind: "saved-note", noteId } } },
   })
+  const opensNote = effect (request: string, content: string) => {
+    try Effect.sync(() => cloud.script(toolCalls("", get(content)), toolCalls("", editor(content)), text("The note is open.")))
+    const found = handoff(try send(request, metadata))
+    const { claimId, target } = (try claimed(found)).body as { claimId?: string; target?: { kind: string; noteId: string } }
+    try shown(found, claimId ?? "", target?.noteId ?? "")
+    return { subview: found?.subview, noteId: found?.noteId, target }
+  }
+
+  try Effect.sync(() => cloud.script(toolCalls("", get("Ferry checklist")), toolCalls("", editor("Ferry checklist")), text("The editor is prepared.")))
+  const found = handoff(try send("Open my Ferry checklist in Notes.", metadata))
+  const ferryClaim = try claimed(found)
+  const applied = try shown(found, claimIdOf(ferryClaim.body), "note-ferry")
   try Effect.sync(() => { current = false })
-  try Effect.sync(() => cloud.script(toolCalls("", get), toolCalls("", editor), text("That note is unavailable.")))
+  try Effect.sync(() => cloud.script(toolCalls("", get("Ferry checklist")), toolCalls("", editor("Ferry checklist")), text("That note is unavailable.")))
   const stale = handoff(try send("Open my Ferry checklist in Notes.", metadata))
-  const calendarLookup = { name: "NOTES_GET", arguments: { content: "Calendar" } }
+  try Effect.sync(() => { current = true })
+  try Effect.sync(() => cloud.script(toolCalls("", get("Ferry checklist")), toolCalls("", view("notes-editor")), text("Which note?")))
+  const unnamed = handoff(try send("Open my Ferry checklist in Notes.", metadata))
+  const modelSaw = effect (request: string, data: object, replies: () => void) => {
+    const from = cloud.calls.length
+    try Effect.sync(replies)
+    const values = handoff(try send(request, data))
+    return { values, seen: JSON.stringify(cloud.calls.slice(from).filter(({ path }) => path.endsWith("/chat/completions"))) }
+  }
+  const mismatched = try modelSaw("Open my Ferry checklist in Notes.", metadata, () => cloud.script(toolCalls("", get("Ferry checklist")), toolCalls("", editor("Calendar")), text("Which note?")))
+  const unsupported = { viewDelivery: "completed-action", viewClientId: clientId, voiceUi: { viewDelivery: "completed-action", uiClientId: clientId } }
+  const noEditor = try modelSaw("Open my Ferry checklist in Notes.", unsupported, () => cloud.script(toolCalls("", get("Ferry checklist")), toolCalls("", view("notes-editor")), text("I can't open that note here.")))
   const calendarCallStart = cloud.calls.length
-  try Effect.sync(() => {
-    current = true
-    cloud.script(toolCalls("", calendarLookup), toolCalls("", editor), text("Calendar is ready."))
-  })
+  try Effect.sync(() => cloud.script(toolCalls("", view("Calendar")), text("Calendar is ready.")))
   const calendar = handoff(try send("Open Calendar.", metadata))
   const calendarCompletions = cloud.calls.slice(calendarCallStart).filter(({ path }) => path.endsWith("/chat/completions"))
-  try Effect.sync(() => cloud.script(toolCalls("", editor), text("Appointments are ready.")))
+  try Effect.sync(() => cloud.script(toolCalls("", view("appointments")), text("Appointments are ready.")))
   const alias = handoff(try send("Open the appointments.", metadata))
-  const explicitCallStart = cloud.calls.length
-  try Effect.sync(() => cloud.script(toolCalls("", calendarLookup), toolCalls("", editor), text("The saved note is ready.")))
-  const explicit = handoff(try send("Open my note called Calendar.", metadata))
-  const explicitCompletions = cloud.calls.slice(explicitCallStart).filter(({ path }) => path.endsWith("/chat/completions"))
-  const explicitClaim = try claim(agent, { ...explicit?.navigationBinding, targetProtocol: "saved-note-v1" })
-  const savedNoteCoaching = "To open one saved note the owner requested"
+  const noted = [
+    try opensNote("Open my note called Calendar.", "Calendar"),
+    try opensNote("open the notes for the Q3 offsite", "Q3 offsite"),
+    try opensNote("open the note titled shopping list", "shopping list"),
+    try opensNote("pull up my shopping list", "shopping list"),
+  ]
+  const savedNoteCoaching = "To open one saved note the owner asks for, in any words, first resolve it with NOTES_GET."
   try Effect.try(() => {
     assert.strictEqual(found?.subview, "saved-note-v1")
     assert.isUndefined(found?.noteId)
-    assert.strictEqual(claimed.status, 200)
-    assert.deepStrictEqual(claimed.body, { claimId: claimIdOf(claimed.body), target: { kind: "saved-note", noteId: "note-ferry" } })
+    assert.strictEqual(ferryClaim.status, 200)
+    assert.deepStrictEqual(ferryClaim.body, { claimId: claimIdOf(ferryClaim.body), target: { kind: "saved-note", noteId: "note-ferry" } })
     assert.deepStrictEqual(applied.body, { ok: true, accepted: true })
     assert.isUndefined(stale?.navigationBinding)
+    assert.isUndefined(unnamed?.navigationBinding)
+    assert.isUndefined(mismatched.values?.navigationBinding)
+    assert.include(mismatched.seen, "did not match note to the one note NOTES_GET found")
+    assert.isUndefined(noEditor.values?.navigationBinding)
+    assert.include(noEditor.seen, "This turn cannot open a saved Notes editor.")
+    assert.notInclude(noEditor.seen, "Name the saved note to open")
     assert.strictEqual(calendar?.navigationBinding?.viewId, "agenda")
     assert.isUndefined(calendar?.subview)
     assert.strictEqual(alias?.navigationBinding?.viewId, "agenda")
     assert.isUndefined(alias?.subview)
-    assert.isNotEmpty(calendarCompletions)
-    assert.notInclude(JSON.stringify(calendarCompletions), savedNoteCoaching)
-    assert.include(JSON.stringify(explicitCompletions), savedNoteCoaching)
-    assert.strictEqual(explicit?.subview, "saved-note-v1")
-    assert.deepStrictEqual(explicitClaim.body, { claimId: claimIdOf(explicitClaim.body), target: { kind: "saved-note", noteId: "note-calendar" } })
+    assert.include(JSON.stringify(calendarCompletions), savedNoteCoaching)
+    assert.deepStrictEqual(noted, ["note-calendar", "note-offsite", "note-shopping", "note-shopping"].map((noteId) => ({ subview: "saved-note-v1", noteId: undefined, target: { kind: "saved-note", noteId } })))
   })
 }, 120_000)
 

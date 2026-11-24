@@ -84,6 +84,19 @@ pure def discordStalenessDecision(behavior: DiscordStaleness, enabledGuard: bool
 pure def lawDiscordIgnoresStaleness(threshold: int, startedAt: int, currentSequence: int): bool = discordStalenessDecision(DiscordIgnoreStale, true, threshold, startedAt, currentSequence) == DiscordSendFresh
 ```
 
+### Each Discord reply part is stored once even when its send is repeated
+
+Discord's client sends a message create again after a server error or a timeout, and Discord may already have stored the first one. Every create the connector sends, each channel or thread chunk and each direct message, carries its own fresh nonce of one to 25 characters and asks Discord to enforce it. Discord answers a create whose enforced nonce it already stored with that message instead of storing a copy, so a repeated create leaves one message.
+
+```quint
+type DiscordCreate = { nonce: str, nonceLength: int, enforceNonce: bool }
+pure def discordCreateGuarded(post: DiscordCreate): bool = post.enforceNonce and post.nonce != "" and post.nonceLength > 0 and post.nonceLength <= 25
+pure def discordKeptNonces(kept: List[str], post: DiscordCreate): List[str] = if (post.enforceNonce and kept.includes(post.nonce)) kept else kept.append(post.nonce)
+pure val postValues = Set({ nonce: "n1", nonceLength: 24, enforceNonce: true }, { nonce: "n1", nonceLength: 24, enforceNonce: false }, { nonce: "", nonceLength: 0, enforceNonce: true }, { nonce: "n2", nonceLength: 26, enforceNonce: true })
+pure val keptValues = Set(List(), List("n1"), List("n2"))
+pure def lawDiscordRepeatedGuardedCreateIsKeptOnce(kept: List[str], post: DiscordCreate): bool = discordCreateGuarded(post) implies discordKeptNonces(discordKeptNonces(kept, post), post) == discordKeptNonces(kept, post)
+```
+
 ### A coalesced Discord batch keeps the ordered message and attachment identifiers
 
 The batch starts with its ordered ingress candidates from one channel. Each admitted original contributes its attachments in provider order. The renderer retains the chosen anchor for delivery addressing.
