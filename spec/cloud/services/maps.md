@@ -46,10 +46,10 @@ under the names it already reads: `providerId`, `connectionId`, `revision`,
 `attribution`, `sources`, `disclosure`, `regions`, `capabilities` and, where
 tiles are served, `tiles`. `providerId`, `regions` and `revision` come from
 the profile's `provider`, `coverage` and `datasetRevision`, and
-`capabilities` from `offerOf` and `supportsMode`. Every provider that
-serves search ranks a search by distance, so `capabilities.distanceRank`
-is true wherever maps is available; a device sends `rank: "distance"`
-only to a deployment that says so, since an older one refuses the field.
+`capabilities` from `offerOf` and `supportsMode`. Every deployment that
+serves search can order the returned candidates by distance, so
+`capabilities.distanceRank` is true wherever maps is available. A device
+sends `rank: "distance"` only when the deployment advertises it.
 
 ```quint
 import types.* from "../shared/types"
@@ -427,14 +427,15 @@ pure def lawEveryProviderThatSearchesRanksByDistance(provider: MapsProvider): bo
 
 ### A search ranked by distance reads the provider's largest page and answers its nearest places first
 
-The provider orders a text search by relevance inside its bias circle, so
-a search ranked by distance asks it for its largest page, 20 places,
-whatever `limit` asked for, at the same quote as any search. Each place
-found is measured from `near` along the Earth's surface, in whole metres,
-and the answer is the `limit` nearest of them (10 when `limit` is not
-given), nearest first; places the same number of metres away keep the
-provider's order. A search ranked by relevance asks the provider for
-`limit` places and answers them in its order.
+A search ranked by distance asks for one page of up to 20 places at the
+same quote as any search. Cloud asks Google Text Search for distance
+ranking with the existing location bias. Google applies that preference
+to supported queries. For OpenStreetMap, Cloud orders the page Nominatim
+returns. Cloud measures each returned place from `near` along the Earth's
+surface in whole metres and keeps the `limit` nearest (10 by default).
+Places the same number of metres away retain the provider's order. A
+relevance search asks for `limit` places and returns them in provider
+order without requesting distance ranking.
 
 ```quint
 pure val searchPageMax: int = 20

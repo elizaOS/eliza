@@ -284,9 +284,9 @@ function nearestFirst(found: MapsPlacesResponse, near: Coordinate, limit: number
 function rankedSearch(provider: MapsProvider, body: PlacesSearchRequest, rank: SearchRank): MapsReply<MapsPlacesResponse>!!MapsContext {
   const limit = body.limit ?? searchLimitDefault
   const near = body.near
-  const asked = { query: body.query, ...(near === undefined ? {} : { near }), limit: searchPageSize(rank, limit) }
-  if (rank === "RankByRelevance" || near === undefined) return provider.search(asked)
-  return Effect.map(provider.search(asked), (reply): MapsReply<MapsPlacesResponse> => reply.kind === "answered" ? { ...reply, value: nearestFirst(reply.value, near, limit) } : reply)
+  const asked = { query: body.query, limit: searchPageSize(rank, limit) }
+  if (rank === "RankByRelevance" || near === undefined) return provider.search({ ...asked, rank: "RankByRelevance", ...(near === undefined ? {} : { near }) })
+  return Effect.map(provider.search({ ...asked, rank, near }), (reply): MapsReply<MapsPlacesResponse> => reply.kind === "answered" ? { ...reply, value: nearestFirst(reply.value, near, limit) } : reply)
 }
 
 effect function search(context: RouteContext) {

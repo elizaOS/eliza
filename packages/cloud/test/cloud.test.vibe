@@ -1870,6 +1870,13 @@ describe("WP7 Maps (spec/cloud/services/maps.md)", () => {
         ]
       }
     ))
+    const callsBeforeDistance = osm.calls.length
+    const nearest = try post("places/search", "osm-distance-1", { query: "Pariser Platz", near: to, rank: "distance", limit: 1 })
+    const distanceCall = osm.calls[callsBeforeDistance]
+    try check(() => assert.deepStrictEqual(
+      [nearest.status, placesOf(nearest), osm.calls.length - callsBeforeDistance, distanceCall?.query.get("limit"), distanceCall?.query.get("viewbox"), distanceCall?.query.has("rankPreference")],
+      [200, [["W4031000", "1 Pariser Platz"]], 1, "20", osm.calls[1]?.query.get("viewbox"), false]
+    ))
   }), 60_000)
 
   it.live("Find the closest places, not the closest of the most relevant: a distance search reads Google's largest page and answers its nearest places first at the same quote, a relevance search keeps Google's order, and a distance rank with no point is refused before any call (spec/cloud/services/maps.md, \"Story: Find the closest places, not the closest of the most relevant\"; spec/cloud/services/maps.md, \"A search ranked by distance needs a point to measure from\"; spec/cloud/services/maps.md, \"A search ranked by distance reads the provider's largest page and answers its nearest places first\")", () => scoped(effect {
@@ -1884,9 +1891,10 @@ describe("WP7 Maps (spec/cloud/services/maps.md)", () => {
     const at = (name: string, latitude: number) => ({ id: `ChIJ_${name}_pharmacy`, displayName: { text: name }, location: { latitude, longitude: near.longitude } })
     const page = [at("far", 52.53), at("level", 52.517), at("middle", 52.52), at("nearest", 52.5164), at("tied", 52.517)]
 
-    try sync(() => maps.script({ kind: "places", places: page }, { kind: "places", places: page }))
+    try sync(() => maps.script({ kind: "places", places: page }, { kind: "places", places: page }, { kind: "places", places: page }))
     const ranked = try search("closest-1", { query: "pharmacy", near, rank: "distance", limit: 3 })
     const relevant = try search("relevant-1", { query: "pharmacy", near, limit: 3 })
+    const withoutPoint = try search("relevant-2", { query: "pharmacy", limit: 3 })
     const callsBeforeRefusals = maps.calls.length
     const pointless = try search("closest-2", { query: "pharmacy", rank: "distance" })
     const unknownRank = try search("closest-3", { query: "pharmacy", near, rank: "rating" })
@@ -1899,6 +1907,7 @@ describe("WP7 Maps (spec/cloud/services/maps.md)", () => {
       {
         ranked: [ranked.status, namesOf(ranked)],
         relevant: [relevant.status, namesOf(relevant)],
+        withoutPoint: [withoutPoint.status, namesOf(withoutPoint)],
         sent,
         refused: [pointless.status, errorOf(pointless), unknownRank.status, errorOf(unknownRank), callsAfterRefusals - callsBeforeRefusals],
         offered: (capabilities.body as { readonly capabilities: { readonly distanceRank?: boolean } }).capabilities.distanceRank,
@@ -1907,13 +1916,15 @@ describe("WP7 Maps (spec/cloud/services/maps.md)", () => {
       {
         ranked: [200, ["nearest", "level", "tied"]],
         relevant: [200, ["far", "level", "middle"]],
+        withoutPoint: [200, ["far", "level", "middle"]],
         sent: [
-          { textQuery: "pharmacy", pageSize: 20, locationBias: { circle: { center: near, radius: 50_000 } } },
-          { textQuery: "pharmacy", pageSize: 3, locationBias: { circle: { center: near, radius: 50_000 } } }
+          { textQuery: "pharmacy", pageSize: 20, rankPreference: "DISTANCE", locationBias: { circle: { center: near, radius: 50_000 } } },
+          { textQuery: "pharmacy", pageSize: 3, locationBias: { circle: { center: near, radius: 50_000 } } },
+          { textQuery: "pharmacy", pageSize: 3 }
         ],
         refused: [400, "invalid_request", 400, "invalid_request", 0],
         offered: true,
-        quotes: [32_000, 32_000]
+        quotes: [32_000, 32_000, 32_000]
       }
     ))
   }), 60_000)
