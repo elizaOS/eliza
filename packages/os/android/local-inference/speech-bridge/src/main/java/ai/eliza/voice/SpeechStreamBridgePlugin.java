@@ -1193,14 +1193,14 @@ public abstract class SpeechStreamBridgePlugin extends Plugin {
           int count = source.read(frame, 0, frame.length, AudioRecord.READ_BLOCKING);
           if (stopping) break;
           if (count <= 0 || count % 2 != 0) throw new IOException("Microphone stopped");
+          if (!valid(own)) {
+            main.post(() -> invalidate(own));
+            break;
+          }
           int listened = generation.get();
           if (listened == UNHEARD) {
             Arrays.fill(frame, (byte) 0);
             continue;
-          }
-          if (!valid(own)) {
-            main.post(() -> invalidate(own));
-            break;
           }
           State s = own.machine.state();
           boolean listening = s.capture() == CloudSpeechPolicy.Capture.LISTENING && s.generation() == listened;
