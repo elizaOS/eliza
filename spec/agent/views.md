@@ -202,9 +202,14 @@ unique match for the owner's open request. An uncertain or changed record,
 a private surface, a phone-native Notes source, or a renderer without the
 saved-editor protocol has no prepared saved-editor switch. The prepared
 action has `subview: "saved-note-v1"` and carries no note id or note text.
-A plain Notes navigation still opens the Notes view.
+A bare open request matching a declared view id, label or alias opens that
+view, including the Notes list. Explicitly naming a note (for example,
+`open my note called Calendar` or `open Calendar in Notes`) selects the
+saved-note lookup when a declared view has the same name.
 
 ```quint
+pure def savedNoteIntent(explicitNote: bool, declaredViewMatches: bool): bool =
+  explicitNote or not(declaredViewMatches)
 pure def savedNotePreparationAllowed(explicitOpen: bool, rendererBound: bool, rendererSupports: bool, residentSource: bool, privateView: bool, exactCurrentLookup: bool): bool =
   explicitOpen and rendererBound and rendererSupports and residentSource and not(privateView) and exactCurrentLookup
 ```

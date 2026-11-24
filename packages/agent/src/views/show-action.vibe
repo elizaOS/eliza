@@ -1,7 +1,7 @@
 // spec/agent/views.md, "The agent prepares a navigation only for the renderer bound to its turn and one view its name resolves to"; spec/agent/views.md, "A specific saved Notes editor is prepared only after a matching current lookup on a supported renderer"; spec/agent/deviceActions/surfaces.md, "An app view opens with VIEWS where views arrive as completed actions, else with open_view as the installation's profile enables it"; spec/agent/conversation/planning.md, "An action may narrow its tool to the turn, never beyond its registered form"; spec/agent/conversation/planning.md, "A call this message serves in another place is refused before it runs, and is no step of the turn"
 import { readViewInteractionClientId, type Action, type ActionResult, type HandlerOptions, type IAgentRuntime, type Memory } from "@elizaos/core"
 import { viewsShowsOnDevice } from "../../gen/agent__deviceActions__surfaces.ts"
-import { declaredAt, savedNotePreparationAllowed } from "../../gen/agent__views.effect.vibe"
+import { declaredAt, namesOf, savedNoteIntent, savedNotePreparationAllowed, type DeclaredView } from "../../gen/agent__views.effect.vibe"
 import { turnElsewhere, turnNotes } from "../conversation/planning.vibe"
 import { readTurnContext } from "../conversation/turn-context.schema.vibe"
 import { deviceTurnFor, ownerWords } from "../device-actions/proposal/turn.vibe"
@@ -19,13 +19,23 @@ const refused = (text: string): ActionResult => ({ success: false, text })
 const savedNoteEditor = "notes-editor"
 const noteIdPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/u
 
-function editorQuery(message: Memory): string | undefined {
+type OpenTarget = { kind: "view"; viewId: string } | { kind: "note"; query: string }
+
+const notePrefix = /^(?:(?:my|the)\s+)?note\s+(?:called|titled|about)\s+/iu
+const notesSuffix = /\s+in (?:my )?notes$/iu
+const trimTitle = (title: string): string => title.replace(/^["“']|["”']$/gu, "").trim()
+
+function openTarget(message: Memory, viewNames: ReadonlyMap<string, string>): OpenTarget | undefined {
   const request = ownerWords(message).trim()
   const matched = /^(?:(?:(?:can|could|would|will)\s+you\s+)?please\s+|(?:can|could|would|will)\s+you\s+)?(?:open|bring up|take me to)\s+(.+?)[.!?]?\s*$/iu.exec(request)
-  if (!matched?.[1] || /(?:[,;]|\.\s|\s[—–-]\s)\s*(?:actually,?\s*)?(?:never mind|do not|don['’]t|stop|cancel)(?:\s|[.!]|$)/iu.test(request)) return undefined
-  const query = matched[1].replace(/^(?:(?:my|the)\s+)?note\s+(?:called|titled|about)\s+/iu, "")
-    .replace(/^(?:my|the)\s+/iu, "").replace(/\s+in (?:my )?notes$/iu, "").replace(/^["“']|["”']$/gu, "").trim()
-  return query === "" || /^(?:notes?|notes app)$/iu.test(query) ? undefined : query
+  const title = matched?.[1]?.trim()
+  if (!title || /(?:[,;]|\.\s|\s[—–-]\s)\s*(?:actually,?\s*)?(?:never mind|do not|don['’]t|stop|cancel)(?:\s|[.!]|$)/iu.test(request)) return undefined
+  const explicit = notePrefix.test(title) || notesSuffix.test(title)
+  const query = trimTitle(title.replace(notePrefix, "").replace(/^(?:my|the)\s+/iu, "").replace(notesSuffix, ""))
+  const viewId = viewNames.get(foldName(trimTitle(title))) ?? viewNames.get(foldName(query))
+  if (!savedNoteIntent(explicit, viewId !== undefined) && viewId !== undefined) return { kind: "view", viewId }
+  if (query === "" || (!explicit && /^(?:notes?|notes app)$/iu.test(query))) return undefined
+  return { kind: "note", query }
 }
 
 function offersEditor(message: Memory, clientId: string, requested: string | undefined, lookupConfirmed: boolean): boolean {
@@ -65,13 +75,15 @@ function targetOf(options: unknown): string | undefined {
   return target === "" ? undefined : target
 }
 
-effect function show(views: ViewHost.Shape, labels: ReadonlyMap<string, string>, runtime: IAgentRuntime, message: Memory, options: HandlerOptions | undefined) {
+effect function show(views: ViewHost.Shape, labels: ReadonlyMap<string, string>, viewNames: ReadonlyMap<string, string>, runtime: IAgentRuntime, message: Memory, options: HandlerOptions | undefined) {
   const clientId = rendererOf(message)
   if (clientId === undefined) return refused("No renderer is bound to this turn, so no view can be shown.")
-  const target = targetOf(options)
-  if (target === undefined) return refused("Name the view to show by its id, label or alias.")
+  const proposed = targetOf(options)
+  if (proposed === undefined) return refused("Name the view to show by its id, label or alias.")
+  const requested = proposed === savedNoteEditor ? openTarget(message, viewNames) : undefined
+  const target = requested?.kind === "view" ? requested.viewId : proposed
   const exact = target === savedNoteEditor
-  const query = exact ? editorQuery(message) : undefined
+  const query = requested?.kind === "note" ? requested.query : undefined
   if (exact && !offersEditor(message, clientId, query, true)) return refused("This turn cannot open a saved Notes editor.")
   const noteId = exact ? resolvedNote(options) : undefined
   if (exact && noteId === undefined) return {
@@ -112,7 +124,8 @@ const elsewhere = {
   text: "Views do not open with VIEWS on this message, so it did not run and nothing was shown. Open the view with the device tool's open_view where that tool offers it, or tell the person it can't be opened here.",
 }
 
-export function viewsShowAction(views: ViewHost.Shape, labels: ReadonlyMap<string, string>): Action {
+export function viewsShowAction(views: ViewHost.Shape, labels: ReadonlyMap<string, string>, declaredViews: readonly DeclaredView[]): Action {
+  const viewNames = new Map(declaredViews.flatMap((view) => namesOf(view).map((name) => [name, view.viewId] as const)))
   const action: Action = {
     name: "VIEWS",
     similes: ["VIEWS_SHOW", "OPEN_VIEW", "NAVIGATE_VIEW"],
@@ -126,11 +139,12 @@ export function viewsShowAction(views: ViewHost.Shape, labels: ReadonlyMap<strin
       const turn = deviceTurnFor(runtime, message)
       return rendererOf(message) !== undefined && (turn === undefined || viewsShowsOnDevice(turn.completedActionNavigation))
     },
-    handler: (runtime, message, _state, options) => runPromise(show(views, labels, runtime, message, options)),
+    handler: (runtime, message, _state, options) => runPromise(show(views, labels, viewNames, runtime, message, options)),
   }
   turnNotes.set(action, (_runtime, message) => {
     const clientId = rendererOf(message)
-    return clientId !== undefined && offersEditor(message, clientId, editorQuery(message), true)
+    const requested = openTarget(message, viewNames)
+    return clientId !== undefined && requested?.kind === "note" && offersEditor(message, clientId, requested.query, true)
       ? "To open one saved note the owner requested, first resolve it with NOTES_GET. When it found one current note, call VIEWS with view=notes-editor. If there are several matches, ask which one. For the Notes list, use view=notes."
       : undefined
   })
