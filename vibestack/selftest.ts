@@ -21,7 +21,7 @@ import { heading } from "./parse.ts";
 import { precomputeSimulations, prepareSimulationReceipts } from "./formal.ts";
 import { exec, run as tool, toolCpuSeconds } from "./run.ts";
 import { pendingSpecs, showPending, writeLedger } from "./review.ts";
-import { codeDirs, filesUnder, packageScripts, testInputs, testReceipt, writeWhole } from "./util.ts";
+import { codeDirs, filesUnder, packageScripts, specCompanionPaths, testInputs, testReceipt, writeWhole } from "./util.ts";
 import { profile } from "./testing/profile.ts";
 import { installChromium } from "./chromium.ts";
 import { hostedCachedFixture, isolatedInstalls } from "./selftests/install.ts";
@@ -3542,7 +3542,7 @@ function eachCheck() {
       "packages/target-client/package.json": JSON.stringify({ name: "@repo/target-client" }),
       "packages/target/package.json": JSON.stringify({ name: "@repo/conventional" }),
       "spec/index.md": "# Project",
-      "spec/target/index.md": ruleSpec("pure val targetValue = 1"),
+      "spec/target/index.md": ruleSpec(COUNTER),
     }), "quint", "lsc");
     const mappedGen = await runCli(path.join(mapped, "vibestack/spec.ts"), mapped, "gen", "--owner", "target");
     assert.equal(mappedGen.status, 0, mappedGen.stdout + mappedGen.stderr);
@@ -3551,6 +3551,17 @@ function eachCheck() {
     // SPEC.md, "One spec tree": a companion gets its owner's gen/, and every stage reads its code.
     assert.equal(fs.readFileSync(path.join(mapped, "packages/target-client/gen/target.ts"), "utf8"), fs.readFileSync(path.join(mapped, "packages/plugin-target/gen/target.ts"), "utf8"));
     assert.deepEqual(codeDirs(mapped), ["", "packages/plugin-target/", "packages/target-client/"]);
+    // Each package's Effect adapter names its Machine under its own package, so the owner's and the companion's never share a key.
+    assert.match(fs.readFileSync(path.join(mapped, "packages/plugin-target/gen/target.effect.vibe"), "utf8"), /key = "@repo\/target\/spec\/target\/index\.md#Machine"/);
+    assert.match(fs.readFileSync(path.join(mapped, "packages/target-client/gen/target.effect.vibe"), "utf8"), /key = "@repo\/target-client\/spec\/target\/index\.md#Machine"/);
+    // A companion list that is not a map of areas to workspace directories, or that gives a directory two roles, is refused.
+    const declaring = (specCompanions: unknown, specOwners: Record<string, string> = {}) => scratch({ "package.json": JSON.stringify({ name: "@repo/root", specOwners, specCompanions }) });
+    assert.throws(() => specCompanionPaths(declaring(["packages/target-client"]), "target"), /specCompanions must map spec areas to lists of workspace directories/);
+    assert.throws(() => specCompanionPaths(declaring({ target: [] }), "target"), /specCompanions\.target must list workspace directories under apps\/ or packages\//);
+    assert.throws(() => specCompanionPaths(declaring({ target: ["lib/target-client"] }), "target"), /specCompanions\.target must list workspace directories under apps\/ or packages\//);
+    assert.throws(() => specCompanionPaths(declaring({ target: ["packages/shared"], other: ["packages/shared"] }), "target"), /assigns packages\/shared to more than one spec area/);
+    assert.throws(() => specCompanionPaths(declaring({ target: ["packages/plugin-other"] }, { other: "packages/plugin-other" }), "target"), /assigns packages\/plugin-other to more than one spec area or also owns an area/);
+    assert.deepEqual(specCompanionPaths(declaring({ target: ["packages/target-client"] }), "other"), []);
   });
 
   test("the command line checks, generates and watches a project directory from its parent", async () => {

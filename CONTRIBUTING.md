@@ -119,7 +119,10 @@ the UI stories and the design theme before analysis reads their outputs.
 
 Eliza's vendored toolchain incorporates upstream changes through [Vibestack `b7f1827`](https://github.com/lalalune/vibestack/commit/b7f1827be748d4a97aee094d9961371d553012a7), with later [page exploration](https://github.com/lalalune/vibestack/pull/271), [witness verification](https://github.com/lalalune/vibestack/pull/270), [model generation](https://github.com/lalalune/vibestack/pull/272) and [incremental story generation](https://github.com/lalalune/vibestack/pull/269) updates.
 Eliza also carries its product-specific proof rendering, positive guard probes, check phase reporting,
-and workspace and CI integration.
+and workspace and CI integration, and spec companions: `specCompanions` in the root `package.json`,
+read by `specCompanionPaths`, `areaDirs` and `codeDirs` (`vibestack/util.ts`), `mirrorGen`'s owner
+directories (`vibestack/units.ts`) and the companion counting in `vibestack/testing/check.ts`
+(SPEC.md, "One spec tree"). These are not upstream yet; a sync from Vibestack keeps them.
 
 | File | Role |
 |---|---|
