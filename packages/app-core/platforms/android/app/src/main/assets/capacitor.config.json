@@ -1,0 +1,35 @@
+{
+	"appId": "ai.elizaos.app",
+	"appName": "Eliza",
+	"webDir": "dist",
+	"loggingBehavior": "none",
+	"server": {
+		"androidScheme": "https",
+		"allowNavigation": [
+			"cloud.eliza.app",
+			"cloud-staging.eliza.app"
+		]
+	},
+	"plugins": {
+		"CapacitorHttp": {
+			"enabled": false
+		},
+		"Keyboard": {
+			"resize": "body",
+			"resizeOnFullScreen": true
+		},
+		"SplashScreen": {
+			"launchShowDuration": 0,
+			"backgroundColor": "#000000",
+			"androidScaleType": "CENTER_CROP",
+			"splashFullScreen": true,
+			"splashImmersive": true
+		}
+	},
+	"android": {
+		"backgroundColor": "#000000",
+		"allowMixedContent": false,
+		"captureInput": true,
+		"webContentsDebuggingEnabled": false
+	}
+}

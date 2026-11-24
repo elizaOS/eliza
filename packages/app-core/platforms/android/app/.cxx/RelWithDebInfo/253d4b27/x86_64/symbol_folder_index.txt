@@ -1,0 +1,1 @@
+/home/shaw/Work/eliza/packages/app-core/platforms/android/app/build/intermediates/cxx/RelWithDebInfo/253d4b27/obj/x86_64

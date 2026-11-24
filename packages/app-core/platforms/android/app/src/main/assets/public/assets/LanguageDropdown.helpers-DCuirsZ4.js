@@ -1,0 +1,1 @@
+const l=[{id:"en",flag:"🇺🇸",label:"English"},{id:"zh-CN",flag:"🇨🇳",label:"中文"},{id:"ko",flag:"🇰🇷",label:"한국어"},{id:"es",flag:"🇪🇸",label:"Español"},{id:"pt",flag:"🇧🇷",label:"Português"},{id:"vi",flag:"🇻🇳",label:"Tiếng Việt"},{id:"tl",flag:"🇵🇭",label:"Tagalog"},{id:"ja",flag:"🇯🇵",label:"日本語"}],a="!h-11 !min-h-11 !rounded-sm !px-3.5";export{l as L,a};

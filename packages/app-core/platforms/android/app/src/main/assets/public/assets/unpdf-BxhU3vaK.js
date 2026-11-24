@@ -1,0 +1,1 @@
+async function r(){throw new Error("PDF text extraction is unavailable in the browser renderer.")}async function e(){throw new Error("PDF document proxy is unavailable in the browser renderer.")}export{r as extractText,e as getDocumentProxy};

@@ -1,0 +1,3 @@
+/home/shaw/Work/eliza/packages/app-core/platforms/android/app/.cxx/RelWithDebInfo/253d4b27/x86_64/CMakeFiles/elizavoicejni.dir
+/home/shaw/Work/eliza/packages/app-core/platforms/android/app/.cxx/RelWithDebInfo/253d4b27/x86_64/CMakeFiles/edit_cache.dir
+/home/shaw/Work/eliza/packages/app-core/platforms/android/app/.cxx/RelWithDebInfo/253d4b27/x86_64/CMakeFiles/rebuild_cache.dir

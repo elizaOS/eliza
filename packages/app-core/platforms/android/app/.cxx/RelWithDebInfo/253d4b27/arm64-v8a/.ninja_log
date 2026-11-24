@@ -1,0 +1,4 @@
+# ninja log v5
+0	754	1787693940843898209	CMakeFiles/elizavoicejni.dir/elizavoice-jni.cpp.o	14550a8cdfe2c5cf
+755	773	1787693940870423089	/home/shaw/Work/eliza/packages/app-core/platforms/android/app/build/intermediates/cxx/RelWithDebInfo/253d4b27/obj/arm64-v8a/libelizavoicejni.so	3c59a2fd1faeafa6
+2	25	1787694531511783219	/home/shaw/Work/eliza/packages/app-core/platforms/android/app/build/intermediates/cxx/RelWithDebInfo/253d4b27/obj/arm64-v8a/libelizavoicejni.so	3c59a2fd1faeafa6

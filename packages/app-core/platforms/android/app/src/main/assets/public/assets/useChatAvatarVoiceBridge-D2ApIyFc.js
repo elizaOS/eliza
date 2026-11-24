@@ -1,0 +1,1 @@
+import{r}from"./vendor-react-S1QEnNN_.js";import{ae as u}from"./index-DOK35GOm.js";function A({mouthOpen:e,isSpeaking:t,onSpeakingChange:c}){const f=r.useRef(t);r.useEffect(()=>{f.current!==t&&(f.current=t,c(t))},[t,c]),r.useEffect(()=>{const o={mouthOpen:e,isSpeaking:t};window.dispatchEvent(new CustomEvent(u,{detail:o}))},[e,t])}export{A as u};

@@ -1,0 +1,1 @@
+import{b as a}from"./vendor-react-S1QEnNN_.js";import{B as e,c as r}from"./region-C5bTKpWn.js";const c="h-11 w-11 rounded-sm";function u({className:o,size:s="icon",variant:t="surfaceAccent",...n}){return a.jsx(e,{size:s,variant:t,className:r(c,o),...n})}export{u as S};

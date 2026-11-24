@@ -1,0 +1,27 @@
+{
+  "buildFiles": [
+    "/home/shaw/Work/eliza/packages/app-core/platforms/android/app/src/main/elizavoice-jni/CMakeLists.txt"
+  ],
+  "cleanCommandsComponents": [
+    [
+      "/home/shaw/Android/Sdk/cmake/3.22.1/bin/ninja",
+      "-C",
+      "/home/shaw/Work/eliza/packages/app-core/platforms/android/app/.cxx/RelWithDebInfo/253d4b27/x86_64",
+      "clean"
+    ]
+  ],
+  "buildTargetsCommandComponents": [
+    "/home/shaw/Android/Sdk/cmake/3.22.1/bin/ninja",
+    "-C",
+    "/home/shaw/Work/eliza/packages/app-core/platforms/android/app/.cxx/RelWithDebInfo/253d4b27/x86_64",
+    "{LIST_OF_TARGETS_TO_BUILD}"
+  ],
+  "libraries": {
+    "elizavoicejni::@6890427a1f51a3e7e1df": {
+      "artifactName": "elizavoicejni",
+      "abi": "x86_64",
+      "output": "/home/shaw/Work/eliza/packages/app-core/platforms/android/app/build/intermediates/cxx/RelWithDebInfo/253d4b27/obj/x86_64/libelizavoicejni.so",
+      "runtimeFiles": []
+    }
+  }
+}

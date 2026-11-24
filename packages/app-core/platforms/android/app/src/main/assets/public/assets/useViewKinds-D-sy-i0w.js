@@ -1,0 +1,1 @@
+import{u as i,g as r,h as n}from"./index-DOK35GOm.js";import"./runtime-shims-Cth2VvDS.js";import{r as o}from"./vendor-react-S1QEnNN_.js";function t(){const e=i(),s=r();return o.useMemo(()=>({developer:e,preview:s}),[e,s])}function d(){const e=t();return o.useMemo(()=>s=>n(s,e),[e])}export{d as a,t as u};

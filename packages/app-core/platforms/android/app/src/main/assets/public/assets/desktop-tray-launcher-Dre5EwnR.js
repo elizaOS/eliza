@@ -1,0 +1,1 @@
+import{r as o}from"./vendor-react-S1QEnNN_.js";let r=[];const t=new Set;function i(e){r=e;for(const s of t)s()}function n(){return r}function u(e){return t.add(e),()=>{t.delete(e)}}function a(){return o.useSyncExternalStore(u,n,n)}export{i as s,a as u};

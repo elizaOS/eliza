@@ -1,0 +1,1 @@
+function s(e){if(typeof e!="object"||e===null)return!1;const t=e;return typeof t.id=="string"&&t.id.length>0&&(t.role==="user"||t.role==="assistant")&&typeof t.text=="string"&&typeof t.timestamp=="number"&&Number.isFinite(t.timestamp)}export{s as i};

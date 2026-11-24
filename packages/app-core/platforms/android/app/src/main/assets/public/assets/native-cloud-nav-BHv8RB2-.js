@@ -1,0 +1,1 @@
+import{aw as s,aB as i,aC as l,x as u,l as c,aD as e}from"./index-DOK35GOm.js";function o(){return u.isNativePlatform()||c()}function f(t){const r=s().cloudApiBase?.trim()||i,a=l(r),n=t.startsWith("/")?t:`/${t}`;return`${a}${n}`}function C(t){return o()?(e(f(t)),!0):!1}function d(t){return!o()||/^(mailto:|tel:)/i.test(t)?!1:(e(t),!0)}export{C as a,o as i,d as o,f as r};

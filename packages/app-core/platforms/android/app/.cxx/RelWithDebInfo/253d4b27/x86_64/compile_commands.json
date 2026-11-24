@@ -1,0 +1,7 @@
+[
+{
+  "directory": "/home/shaw/Work/eliza/packages/app-core/platforms/android/app/.cxx/RelWithDebInfo/253d4b27/x86_64",
+  "command": "/home/shaw/Android/Sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/linux-x86_64/bin/clang++ --target=x86_64-none-linux-android26 --sysroot=/home/shaw/Android/Sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/linux-x86_64/sysroot -Delizavoicejni_EXPORTS -g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security   -O2 -g -DNDEBUG -fPIC -std=gnu++17 -o CMakeFiles/elizavoicejni.dir/elizavoice-stub.cpp.o -c /home/shaw/Work/eliza/packages/app-core/platforms/android/app/.cxx/RelWithDebInfo/253d4b27/x86_64/elizavoice-stub.cpp",
+  "file": "/home/shaw/Work/eliza/packages/app-core/platforms/android/app/.cxx/RelWithDebInfo/253d4b27/x86_64/elizavoice-stub.cpp"
+}
+]

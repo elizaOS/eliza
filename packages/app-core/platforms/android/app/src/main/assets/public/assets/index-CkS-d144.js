@@ -1,0 +1,2 @@
+const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["assets/region-DQvvtSgF.css"])))=>i.map(i=>d[i]);
+import{_ as o}from"./runtime-shims-Cth2VvDS.js";import{au as i}from"./index-DOK35GOm.js";import"./vendor-react-S1QEnNN_.js";import"./index-BM6tvBFC.js";import"./vendor-boot-leaves-L-emBv9P.js";import"./region-C5bTKpWn.js";import"./vendor-lucide-DoyUa8Wu.js";import"./boot-failure-BN5fAyDz.js";const r=()=>o(()=>import("./web-CxYxZSFu.js"),__vite__mapDeps([0])).then(e=>new e.MobileAgentBridgeWeb),l=i("MobileAgentBridge",{web:r});export{l as MobileAgentBridge};

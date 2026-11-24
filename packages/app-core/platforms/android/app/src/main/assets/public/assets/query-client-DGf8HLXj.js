@@ -1,0 +1,1 @@
+import{aA as s}from"./index-DOK35GOm.js";import{Q as r}from"./vendor-crypto-CGsn0HsW.js";const n=new r({defaultOptions:{queries:{staleTime:3e4,gcTime:5*6e4,retry:(t,e)=>e instanceof s&&e.status>=400&&e.status<500?!1:t<2,refetchOnWindowFocus:!1},mutations:{retry:!1}}});export{n as q};

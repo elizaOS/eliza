@@ -1,0 +1,3 @@
+/home/shaw/Work/eliza/packages/app-core/platforms/android/app/.cxx/RelWithDebInfo/253d4b27/armeabi-v7a/CMakeFiles/elizavoicejni.dir
+/home/shaw/Work/eliza/packages/app-core/platforms/android/app/.cxx/RelWithDebInfo/253d4b27/armeabi-v7a/CMakeFiles/edit_cache.dir
+/home/shaw/Work/eliza/packages/app-core/platforms/android/app/.cxx/RelWithDebInfo/253d4b27/armeabi-v7a/CMakeFiles/rebuild_cache.dir

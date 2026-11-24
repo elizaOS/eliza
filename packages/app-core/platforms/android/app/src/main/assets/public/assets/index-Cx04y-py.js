@@ -1,0 +1,2 @@
+const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["assets/region-DQvvtSgF.css"])))=>i.map(i=>d[i]);
+import{_ as t}from"./runtime-shims-Cth2VvDS.js";import{au as r}from"./index-DOK35GOm.js";import"./vendor-react-S1QEnNN_.js";import"./index-BM6tvBFC.js";import"./vendor-boot-leaves-L-emBv9P.js";import"./region-C5bTKpWn.js";import"./vendor-lucide-DoyUa8Wu.js";import"./boot-failure-BN5fAyDz.js";const l=r("ElizaBunRuntime",{web:()=>t(()=>import("./web-BNeFNmoT.js"),__vite__mapDeps([0])).then(i=>new i.ElizaBunRuntimeWeb)});export{l as ElizaBunRuntime};

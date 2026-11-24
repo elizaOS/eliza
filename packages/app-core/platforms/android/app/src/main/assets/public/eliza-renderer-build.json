@@ -1,0 +1,13 @@
+{
+  "schema": "elizaos.renderer.build/v1",
+  "buildId": "c0fb9dbb23be38c7edd0a662220a83e4bdceb76f67c5ffe65dbfbfbd33088b26",
+  "indexHtmlSha256": "54e60934351b64ac8f708c345a18ecb7a3d88f4e07ef9c885b955fd0c6680ca5",
+  "assetCount": 352,
+  "builtAt": "2026-08-26T07:30:56.023Z",
+  "commit": "049056273600161582658485792ffd0faa0c36e7",
+  "variant": "direct",
+  "capacitorTarget": "android",
+  "runtimeMode": "cloud",
+  "playwrightTestAuth": false,
+  "iosApnsEnabled": null
+}
