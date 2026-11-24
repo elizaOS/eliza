@@ -179,7 +179,6 @@ export default {
       "entry": ["src/**/*.{schema,contract}.{ts,vibe}"]
     },
     "packages/plugin-trajectory-logger": {
-      "entry": ["src/TrajectoryView.tsx"],
       "ignoreDependencies": ["react", "@types/react"]
     },
     "packages/plugin-workflows": {
