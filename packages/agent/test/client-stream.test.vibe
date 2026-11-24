@@ -70,6 +70,7 @@ module node {
     actions: [agendaRead, agendaFind, plannerShow],
   }
 
+  /** @throws {never} */
   export const privateNarrationApp = (narrate: () => string): AgentPlugin => ({
     name: "private-narration-fixture",
     description: "Reads a fixture result and narrates it.",

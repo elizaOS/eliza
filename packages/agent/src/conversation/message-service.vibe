@@ -23,6 +23,14 @@ import { ownerNotesAdmission } from "./notes-admission.vibe"
 import { cueRule } from "./reply-text.vibe"
 import { runTurnEvaluators } from "./turn-evaluators.vibe"
 
+module node {
+  /** @throws {never} */
+  export function replyPrivacyEnvironment(key: string): string {
+    return process.env[key]?.trim().toLowerCase() ?? ""
+  }
+}
+import { replyPrivacyEnvironment } from node
+
 type ChatMessage = NonNullable<GenerateTextParams["messages"]>[number]
 type ContentPart = Exclude<NonNullable<ChatMessage["content"]>, string>[number]
 
@@ -233,7 +241,7 @@ async function respond(
           const normalized = typeof value === "string" ? value.trim().toLowerCase() : ""
           if (["false", "0", "no", "off"].includes(normalized)) return false
           return ["true", "1", "yes", "on"].includes(normalized)
-            || ["true", "1", "yes", "on"].includes(globalThis.process?.env[key]?.trim().toLowerCase() ?? "")
+            || ["true", "1", "yes", "on"].includes(replyPrivacyEnvironment(key))
         })
         if (privateReplyCheckNeeded(owner, privacyEnabled)
           || privateAudienceCheckNeeded(owner, actions.some(({ disclosureGate }) => disclosureGate !== undefined))) {
@@ -246,7 +254,7 @@ async function respond(
         const previousAsk = previous?.content.inReplyTo
         const privateOwner = disclosure?.allowed === true && disclosure.basis === OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS
         const currentTurn = getTrajectoryContext()
-        const visibleText = (text: string): string => {
+        const visibleText = (text: string) => effect {
           const sameRoom = currentTurn?.roomId === message.roomId
           const sameMessage = message.id !== undefined && currentTurn?.messageId === message.id
           if (currentTurn === undefined || !sameRoom || !sameMessage) return text
@@ -255,7 +263,7 @@ async function respond(
             const named = piiSwapSession?.restoreText(text) ?? text
             return secretSwapSession?.redactRestoredSecretValues(named) ?? named
           }
-          const masked = secretSwapSession?.substituteText(text) ?? text
+          const masked = try Effect.try({ try: () => secretSwapSession?.substituteText(text) ?? text, catch: toElizaError })
           return piiSwapSession?.substituteText(masked) ?? masked
         }
         const canStream = onStreamChunk !== undefined && (!privacyEnabled || privateOwner)
@@ -312,14 +320,14 @@ async function respond(
             options.onReplyRestart?.(fullText)
           } }),
           ...(options?.onPlanningAcknowledgment === undefined ? {} : {
-            onPlanningAcknowledgment: (text: string) => options.onPlanningAcknowledgment?.(visibleText(text)),
+            onPlanningAcknowledgment: async (text: string) => options.onPlanningAcknowledgment?.(await Effect.runPromise(visibleText(text))),
           }),
           ...(options?.onActivityStatus === undefined ? {} : { onActivityStatus: options.onActivityStatus }),
         }, actions))
         planningLive = false
         signal.throwIfAborted()
         const grounded = groundedEventReply(groundedTimeReply(planned.reply, asked, clock), asked, planned.steps.map(({ result }) => result), runtime.agentId)
-        const replyText = visibleText(grounded)
+        const replyText = await Effect.runPromise(visibleText(grounded))
         if (!replyText.trim()) throw new Error("The turn produced no reply")
         if (onStreamChunk !== undefined && replyText !== written) options?.onReplyRestart?.(replyText)
         written = replyText
