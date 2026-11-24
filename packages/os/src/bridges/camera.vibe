@@ -2,6 +2,7 @@
 import type { Admission } from "../../gen/os__android__bridge.ts"
 import {
   answerOf,
+  captureLibraryIdAllowed,
   canDismissDenial,
   canDispatchPreview,
   canEnterView,
@@ -106,6 +107,7 @@ schema Preview {
   hasFlash: boolean
   flash: "on" | "off"
 }
+schema OptionalLibraryIdentity = Schema.Unknown
 schema Photo {
   base64?: string
   thumbnail?: string
@@ -113,7 +115,7 @@ schema Photo {
   width: number
   height: number
   path?: string
-  libraryId?: string
+  libraryId?: OptionalLibraryIdentity
   exif?: Record<string, string | number>
 }
 schema Video { path: string; duration: number; width: number; height: number; fileSize: number; mimeType: string }
@@ -138,6 +140,14 @@ function done(method: keyof CameraClient, call: () => Promise<unknown>): Promise
   return settled(asVoid(nativeCall(PLUGIN, method, call)))
 }
 
+// spec/os/android/camera.md, "The optional library id of a saved photo names the provider's own row"
+function photoLibraryId(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined
+  const match = /^m:(?!(?:external|internal):)[A-Za-z0-9_-]{1,80}:i:([1-9][0-9]{0,18})$/.exec(value)
+  const row = match?.[1]
+  return match?.[0] === value && row !== undefined && (row.length < 19 || row <= "9223372036854775807") ? value : undefined
+}
+
 export function cameraClient(plugin: CameraPlugin = cameraPlugin()): CameraClient {
   return {
     checkCameraPermission: () => settled(nativeReply(PLUGIN, "checkCameraPermission", CameraAccess, () => plugin.checkCameraPermission())),
@@ -147,7 +157,13 @@ export function cameraClient(plugin: CameraPlugin = cameraPlugin()): CameraClien
     stopPreview: () => done("stopPreview", () => plugin.stopPreview()),
     setCaptureMode: (options) => done("setCaptureMode", () => plugin.setCaptureMode(options)),
     switchCamera: (options) => settled(nativeReply(PLUGIN, "switchCamera", Preview, () => plugin.switchCamera(options))),
-    capturePhoto: (options) => settled(nativeReply(PLUGIN, "capturePhoto", Photo, () => plugin.capturePhoto(options))),
+    capturePhoto: async (options) => {
+      const { libraryId, ...photo } = await settled(nativeReply(PLUGIN, "capturePhoto", Photo, () => plugin.capturePhoto(options)))
+      const key = photoLibraryId(libraryId)
+      return captureLibraryIdAllowed(options?.saveToGallery === true, Boolean(photo.path), key !== undefined)
+        ? { ...photo, libraryId: key }
+        : photo
+    },
     startRecording: (options) => done("startRecording", () => plugin.startRecording(options)),
     stopRecording: () => settled(nativeReply(PLUGIN, "stopRecording", Video, () => plugin.stopRecording())),
     getRecordingState: () => settled(nativeReply(PLUGIN, "getRecordingState", RecordingState, () => plugin.getRecordingState())),

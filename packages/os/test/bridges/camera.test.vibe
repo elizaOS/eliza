@@ -27,6 +27,7 @@ module android {
     zoom: number
     holdPreviews: boolean
     previewLostOnRecord: boolean
+    photoLibraryId: string
     video: unknown
     calls: string[]
     held: (() => void)[]
@@ -43,6 +44,7 @@ module android {
       zoom: 1,
       holdPreviews: false,
       previewLostOnRecord: false,
+      photoLibraryId: "m:external_primary:i:42",
       video: { path: "/data/user/0/app/cache/clip-1.mp4", duration: 3.2, width: 1920, height: 1080, fileSize: 524288, mimeType: "video/mp4" },
       calls: [],
       held: [],
@@ -102,8 +104,8 @@ module android {
       },
       capturePhoto: async (options) => {
         await live("capturePhoto")
-        const libraryId = options?.saveToGallery === true ? "m:external_primary:i:42" : undefined
-        return { base64: "/9j/AA==", format: "jpeg", width: 1920, height: 1080, ...(libraryId === undefined ? {} : { libraryId }) }
+        const path = options?.saveToGallery === true ? "content://media/external/images/media/42" : undefined
+        return { base64: "/9j/AA==", format: "jpeg", width: 1920, height: 1080, ...(path === undefined ? {} : { path }), libraryId: phone.photoLibraryId }
       },
       startRecording: async (options?: VideoCaptureOptions) => {
         await live("startRecording")
@@ -254,7 +256,7 @@ it.live("See the live view I opened (spec/os/android/camera.md, \"Story: See the
   ))
 })
 
-it.live("Capture with the camera only from the live view (spec/os/android/camera.md, \"Story: Capture with the camera only from the live view\"; spec/os/android/camera.md, \"A capture, a viewfinder control and a recording share one slot\"; spec/os/android/camera.md, \"A recording start that still owns the view came from its ready preview\"; spec/os/android/camera.md, \"A recording is confirmed only by a complete bridge receipt that the host read back\")", () => effect {
+it.live("Capture with the camera only from the live view (spec/os/android/camera.md, \"Story: Capture with the camera only from the live view\"; spec/os/android/camera.md, \"A capture, a viewfinder control and a recording share one slot\"; spec/os/android/camera.md, \"A recording start that still owns the view came from its ready preview\"; spec/os/android/camera.md, \"A recording is confirmed only by a complete bridge receipt that the host read back\"; spec/os/android/camera.md, \"The optional library id of a saved photo names the provider's own row\")", () => effect {
   const phone = device({ microphone: "prompt" })
   const host: Host = { adopted: [], refuseAdoption: false, finishing: 0, failed: 0 }
   const client = cameraClient(androidCamera(phone))
@@ -269,6 +271,11 @@ it.live("Capture with the camera only from the live view (spec/os/android/camera
     nested.capture = (await session.exclusive(async () => "second")).status
     return client.capturePhoto({ format: "jpeg", saveToGallery: true })
   }))
+  const localOnly = try promise(() => client.capturePhoto({ format: "jpeg" }))
+  phone.photoLibraryId = "m:external_primary:i:9223372036854775808"
+  const savedWithoutIdentity = try promise(() => client.capturePhoto({ format: "jpeg", saveToGallery: true }))
+  assert.strictEqual(localOnly.libraryId, undefined)
+  assert.deepStrictEqual(savedWithoutIdentity, { base64: "/9j/AA==", format: "jpeg", width: 1920, height: 1080, path: "content://media/external/images/media/42" })
   const failedCapture = try refusal(() => session.exclusive(async () => {
     throw new Error("The scan page was not added")
   }))
@@ -371,7 +378,7 @@ it.live("Capture with the camera only from the live view (spec/os/android/camera
       earlyControl: "skipped",
       zoomed: "done",
       nested: { control: "skipped", capture: "busy" },
-      captured: { status: "done", value: { base64: "/9j/AA==", format: "jpeg", width: 1920, height: 1080, libraryId: "m:external_primary:i:42" } },
+      captured: { status: "done", value: { base64: "/9j/AA==", format: "jpeg", width: 1920, height: 1080, path: "content://media/external/images/media/42", libraryId: "m:external_primary:i:42" } },
       failedCapture: "The scan page was not added",
       freedAfterFailure: false,
       microphoneRefused: "denied",

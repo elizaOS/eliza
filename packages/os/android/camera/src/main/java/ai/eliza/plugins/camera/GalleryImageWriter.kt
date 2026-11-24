@@ -1,6 +1,7 @@
 package ai.eliza.plugins.camera
 
 import android.content.ContentResolver
+import android.content.ContentUris
 import android.content.ContentValues
 import android.net.Uri
 import android.os.Build
@@ -49,9 +50,12 @@ internal fun galleryMediaValues(displayName: String, mimeType: String, pending: 
 internal fun savedImageLibraryId(resolver: ContentResolver, uri: Uri): String? {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return null
     return try {
-        resolver.query(uri, arrayOf(BaseColumns._ID, MediaStore.MediaColumns.VOLUME_NAME), null, null, null)?.use { row ->
-            if (!row.moveToFirst() || row.isNull(0) || row.isNull(1)) null
-            else CapturedLibraryId.image(row.getString(1), row.getLong(0))
+        val columns = arrayOf(BaseColumns._ID, MediaStore.MediaColumns.VOLUME_NAME, MediaStore.MediaColumns.IS_PENDING)
+        resolver.query(uri, columns, null, null, null)?.use { row ->
+            if (!row.moveToFirst() || row.isNull(0) || row.isNull(1) || row.isNull(2) ||
+                row.getLong(0) != ContentUris.parseId(uri) || row.getInt(2) != 0) return@use null
+            val id = CapturedLibraryId.image(row.getString(1), row.getLong(0))
+            if (row.moveToNext()) null else id
         }
     } catch (error: RuntimeException) {
         // error-policy:J1 the photo is saved; only its optional library id is unavailable.

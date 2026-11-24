@@ -42,7 +42,15 @@ class GalleryFailureProvider : ContentProvider() {
         if (mode == "query-error") throw IllegalStateException("Intentional fixture query failure")
         val values = row ?: return null
         return MatrixCursor(requireNotNull(projection)).apply {
-            addRow(projection.map { if (it == MediaStore.MediaColumns.VOLUME_NAME) values[1] else values[0] })
+            val fields = projection.map {
+                when (it) {
+                    MediaStore.MediaColumns.VOLUME_NAME -> values[1]
+                    MediaStore.MediaColumns.IS_PENDING -> if (mode == "pending-row") 1 else 0
+                    else -> values[0]
+                }
+            }
+            addRow(fields)
+            if (mode == "duplicate-row") addRow(fields)
         }
     }
     override fun insert(uri: Uri, values: ContentValues?): Uri? {
@@ -130,18 +138,25 @@ class GalleryImageWriterInstrumentedTest {
         val bytes = byteArrayOf(1, 4, 9, 16)
         val saved = GalleryImageWriter(resolver, collection).save(bytes, "jpeg")
         try {
-            GalleryFailureProvider.row = arrayOf(42L, "external_primary")
-            assertEquals("m:external_primary:i:42", savedImageLibraryId(resolver, saved))
-            GalleryFailureProvider.row = arrayOf(7L, "1a2b-3c4d")
-            assertEquals("m:1a2b-3c4d:i:7", savedImageLibraryId(resolver, saved))
-            GalleryFailureProvider.row = arrayOf(42L, "external")
+            GalleryFailureProvider.row = arrayOf(1L, "external_primary")
+            assertEquals("m:external_primary:i:1", savedImageLibraryId(resolver, saved))
+            GalleryFailureProvider.mode = "pending-row"
             assertNull(savedImageLibraryId(resolver, saved))
-            GalleryFailureProvider.row = arrayOf(42L, null)
+            GalleryFailureProvider.mode = "duplicate-row"
+            assertNull(savedImageLibraryId(resolver, saved))
+            GalleryFailureProvider.mode = "success"
+            GalleryFailureProvider.row = arrayOf(1L, "1a2b-3c4d")
+            assertEquals("m:1a2b-3c4d:i:1", savedImageLibraryId(resolver, saved))
+            GalleryFailureProvider.row = arrayOf(7L, "1a2b-3c4d")
+            assertNull(savedImageLibraryId(resolver, saved))
+            GalleryFailureProvider.row = arrayOf(1L, "external")
+            assertNull(savedImageLibraryId(resolver, saved))
+            GalleryFailureProvider.row = arrayOf(1L, null)
             assertNull(savedImageLibraryId(resolver, saved))
             GalleryFailureProvider.row = null
             assertNull(savedImageLibraryId(resolver, saved))
             GalleryFailureProvider.mode = "query-error"
-            GalleryFailureProvider.row = arrayOf(42L, "external_primary")
+            GalleryFailureProvider.row = arrayOf(1L, "external_primary")
             assertNull(savedImageLibraryId(resolver, saved))
             assertArrayEquals(bytes, requireNotNull(resolver.openInputStream(saved)).use { it.readBytes() })
         } finally {
