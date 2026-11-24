@@ -360,6 +360,7 @@
         "@elizaos/plugin-workflow#test",
         "@elizaos/plugin-agent-orchestrator#build",
         "@elizaos/plugin-agent-orchestrator#typecheck",
+        "@elizaos/plugin-agent-orchestrator#test",
         "@elizaos/plugin-anthropic#build",
         "@elizaos/plugin-anthropic#typecheck",
         "@elizaos/plugin-blocker#build",
