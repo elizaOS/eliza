@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Works on the current directory: ./tokens.json and ./design.md in, ./generated/{tokens,theme}.css out.
-import { readFileSync, writeFileSync } from "node:fs"
+import { readFileSync } from "node:fs"
+import { writeWhole } from "../run.ts"
 import { buildTokenProject, checkTokenProject, loadTokens } from "./project.ts"
 import { applyChanges } from "./tokens.ts"
 
@@ -17,7 +18,7 @@ try {
     const { tokens, diff } = applyChanges(loadTokens(directory), JSON.parse(read(file)))
     console.log(diff)
     if (rest.includes("--write")) {
-      writeFileSync("tokens.json", `${JSON.stringify(tokens, null, 2)}\n`)
+      writeWhole("tokens.json", `${JSON.stringify(tokens, null, 2)}\n`)
       buildTokenProject(directory, tokens)
     } else console.log("Not written. Pass --write to apply.")
   } else throw new Error("usage: cli.ts build | check | apply <changes.json> [--write]")

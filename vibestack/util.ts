@@ -1,11 +1,19 @@
 import { createHash } from "node:crypto";
 import fs from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
+import type * as TS from "typescript";
+import { writeWhole } from "./run.ts";
 import { evaluatorIdentity } from "./installed.ts";
 import { badSpecName, heading, type Spec } from "./parse.ts";
 import type { Result } from "./pipeline.ts";
-import ts from "typescript";
 import { profile, type TestProfile } from "./testing/profile.ts";
+
+export { writeWhole };
+
+let tsModule: typeof TS | undefined;
+/** Load TypeScript lazily so commands that never touch it skip its startup cost. */
+export const tsApi = (): typeof TS => (tsModule ??= createRequire(import.meta.url)("typescript") as typeof TS);
 
 export const digest = (text: string) => createHash("sha256").update(text).digest("hex");
 /** A hash of several texts, in which no two lists of texts give the same input. */
@@ -22,18 +30,6 @@ export async function allDone(promises: readonly unknown[]): Promise<unknown[]> 
   });
 }
 
-/** Write a file whole or not at all: to a file of its own beside it, then renamed into place. */
-export function writeWhole(file: string, text: string | Uint8Array) {
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  const temporary = `${file}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
-  try {
-    fs.writeFileSync(temporary, text);
-    fs.renameSync(temporary, file);
-  } finally {
-    fs.rmSync(temporary, { force: true });
-  }
-}
-
 /** Files and symbolic links below a project directory, excluding directory entries. */
 export const filesUnder = (root: string, dir: string) => !fs.existsSync(path.join(root, dir)) ? []
   : fs.readdirSync(path.join(root, dir), { recursive: true, withFileTypes: true }).filter((e) => e.isFile() || e.isSymbolicLink())
@@ -42,11 +38,14 @@ export const filesUnder = (root: string, dir: string) => !fs.existsSync(path.joi
 const sidecarSource = /^(.*?)(?:\.vibex?\.[^./]+\.d\.ts|\.d\.vibex?\.tsx?|\.d\.ts)$/;
 
 export function pruneSidecars(dir: string) {
+  const ts = tsApi();
   const { config } = ts.readConfigFile(path.join(dir, "tsconfig.json"), ts.sys.readFile);
   const sidecarDir = config?.vibe?.sidecarDir;
   if (typeof sidecarDir !== "string") return;
   const sidecars = path.resolve(dir, sidecarDir);
-  for (const mirror of ts.parseJsonConfigFileContent(config, ts.sys, dir).options.rootDirs ?? []) {
+  if (!fs.existsSync(sidecars)) return;
+  const host: TS.ParseConfigHost = { ...ts.sys, readDirectory: () => [] };
+  for (const mirror of ts.parseJsonConfigFileContent(config, host, dir).options.rootDirs ?? []) {
     const within = path.relative(sidecars, mirror);
     if (within.startsWith("..") || path.isAbsolute(within)) continue;
     const base = path.resolve(dir, ...within.split(path.sep).filter(Boolean).map(() => ".."));
@@ -59,6 +58,7 @@ export function pruneSidecars(dir: string) {
 
 /** What a package's tsconfig.json names: itself, the configurations it extends and the files it includes, VibeLang's among them. */
 export function configured(dir: string): string[] {
+  const ts = tsApi();
   const config = path.resolve(dir, "tsconfig.json");
   const source = ts.readJsonConfigFile(config, ts.sys.readFile);
   const { fileNames } = ts.parseJsonSourceFileConfigFileContent(source, ts.sys, path.dirname(config), undefined, config, undefined,
@@ -77,6 +77,7 @@ export function projectRoot(directory: string, base = process.cwd()): string {
 /** The declarations the VibeLang compiler writes for a `.vibe` module: its output, not the package's code. */
 const SIDECAR = /\.d\.vibex?\.ts$/;
 
+/** The directories a spec area may map to: an entry in `package.json` `specOwners`, or conventional `apps/<name>` and `packages/<name>`. */
 export function specOwnerPaths(root: string, name: string): string[] {
   const conventional = [`apps/${name}`, `packages/${name}`];
   const declared: unknown = manifest(root).specOwners;
@@ -98,10 +99,17 @@ export function specOwnerPaths(root: string, name: string): string[] {
   return match ? [match] : conventional.filter((dir) => !claimed.has(dir));
 }
 
-export function owner(root: string, spec: string): string | undefined {
+/**
+ * The workspace package a spec belongs to by name, as a path from the root: `spec/<name>/…` is `apps/<name>` or
+ * `packages/<name>`, if that is a package with no `spec/` of its own. The root's check generates into its `gen/` and
+ * checks its code (SPEC.md, "One spec tree").
+ */
+export function owner(root: string, spec: string, observe?: (file: string) => void): string | undefined {
   const [top, name, below] = spec.split("/");
   if (top !== "spec" || below === undefined) return undefined;
-  return specOwnerPaths(root, name).find((dir) => fs.existsSync(path.join(root, dir, "package.json")) && !fs.existsSync(path.join(root, dir, "spec")));
+  observe?.(path.join(root, "package.json"));
+  const exists = observe ? (file: string) => { observe(file); return fs.existsSync(file); } : fs.existsSync;
+  return specOwnerPaths(root, name).find((dir) => exists(path.join(root, dir, "package.json")) && !exists(path.join(root, dir, "spec")));
 }
 /**
  * The directories whose code a check reads, each as the prefix of a path from the root: "" for the root's own
@@ -194,7 +202,7 @@ export function testInputs(root: string, mode: TestProfile = "normal", read: Inp
   const served = (file: string) => !isTestFile(file) && ![DRIVERS, TRACES, COUNTEREXAMPLES].some((dir) => file.startsWith(`${dir}/`));
   const reads: Record<Inputs, (file: string) => boolean> = {
     tests: (file) => !PROSE.test(file) && !file.startsWith(`${SIMULATIONS}/`),
-    types: (file) => /\.(?:[cm]?[jt]sx?|json|vibex?)$/.test(file) && ![TRACES, COUNTEREXAMPLES, SIMULATIONS].some((dir) => file.startsWith(`${dir}/`)),
+    types: (file) => /\.(?:[cm]?[jt]sx?|json|vibex?)$/.test(file) && file !== "spec/lock.json" && ![TRACES, COUNTEREXAMPLES, SIMULATIONS].some((dir) => file.startsWith(`${dir}/`)),
   };
   const update = (from: string, file: string) => {
     const bytes = fs.readFileSync(path.join(from, file));
@@ -214,7 +222,7 @@ export function testInputs(root: string, mode: TestProfile = "normal", read: Inp
       if (!gen && /\.(?:[cm]?[jt]sx?|vibex?)$/.test(file))
         gen = [...bytes.toString("utf8").matchAll(SPECIFIER)].some(([, to]) => path.posix.join(path.posix.dirname(file), to).startsWith("gen/"));
     }
-    const top = gen && fs.existsSync(path.join(from, "gen")) ? fs.readdirSync(path.join(from, "gen"), { withFileTypes: true }).filter((e) => e.isFile()).map((e) => `gen/${e.name}`) : [];
+    const top = gen && fs.existsSync(path.join(from, "gen")) ? fs.readdirSync(path.join(from, "gen"), { withFileTypes: true }).filter((e) => e.isFile()).map((e) => `gen/${e.name}`).sort() : [];
     for (const file of top.filter(reads[read])) update(from, file);
   }
   const { lock } = packageManager(root);
@@ -226,18 +234,34 @@ export function testInputs(root: string, mode: TestProfile = "normal", read: Inp
 export const testReceipt = (root: string, mode: TestProfile = "normal") => path.join(root, ".cache", `test-result-${mode}.json`);
 
 /** Where code cites a story or rule (AGENTS.md, "Tests"). */
-export const CITATION = /(?<![\w/.-])(spec\/(?:[A-Za-z0-9]+\/)*[A-Za-z0-9]+\.md), "([^"]+)"/g;
+const CITATION = /(?<![\w/.-])(spec\/(?:[A-Za-z0-9]+\/)*[A-Za-z0-9]+\.md), "([^"]+)"/g;
+export const HAS_CITATION = new RegExp(CITATION.source);
 /** A citation of `heading` in `spec`; `at` is `file:line`, a path from the checking root. */
 export interface Citation { at: string; spec: string; heading: string }
-/** Every citation in the code of `dirs`, which are `codeDirs` (all of them unless given): an owner cites as the root does. */
-export const citations = (root: string, dirs = codeDirs(root)): Citation[] => dirs.flatMap((dir) => packageCode(path.join(root, dir)).map((f) => dir + f)
-  .flatMap((f) => fs.readFileSync(path.join(root, f), "utf8").split("\n").flatMap((line, i) => [...line.matchAll(CITATION)].map(([, spec, heading]) => ({ at: `${f}:${i + 1}`, spec, heading })))));
-
-/** Every citation in a package's code whose heading is no story or rule of that spec, as `file:line  citation`. */
-export function danglingCitations(root: string, specs: Spec[], dir = ""): string[] {
-  const names = (s: Spec, h: string) => s.stories.some((t) => t.title === h) || s.rules.some((r) => heading(r) === h);
-  return citations(root, [dir]).filter((c) => !specs.some((s) => s.file === c.spec && names(s, c.heading))).map((c) => `${c.at}  ${c.spec}, "${c.heading}"`);
+export function fileCitations(file: string, text: string): Citation[] {
+  if (!text.includes("spec/")) return [];
+  const out: Citation[] = [];
+  const lines = text.split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    if (!lines[i].includes("spec/")) continue;
+    for (const [, spec, heading] of lines[i].matchAll(CITATION)) out.push({ at: `${file}:${i + 1}`, spec, heading });
+  }
+  return out;
 }
+/** Every citation in the code of `dirs`, which are `codeDirs` (all of them unless given): an owner cites as the root does. */
+export const citations = (root: string, dirs = codeDirs(root)): Citation[] => dirs.flatMap((dir) => packageCode(path.join(root, dir))
+  .flatMap((f) => fileCitations(dir + f, fs.readFileSync(path.join(root, dir, f), "utf8"))));
+
+export function missingCitations(specs: Spec[], found: Citation[]): string[] {
+  const valid = new Set<string>();
+  for (const s of specs) {
+    for (const t of s.stories) valid.add(`${s.file}\0${t.title}`);
+    for (const r of s.rules) valid.add(`${s.file}\0${heading(r)}`);
+  }
+  return found.filter((c) => !valid.has(`${c.spec}\0${c.heading}`)).map((c) => `${c.at}  ${c.spec}, "${c.heading}"`);
+}
+/** Every citation in a package's code whose heading is no story or rule of that spec, as `file:line  citation`. */
+export const danglingCitations = (root: string, specs: Spec[], dir = ""): string[] => missingCitations(specs, citations(root, [dir]));
 
 /** A directory no stage reads in a package: build output, dependencies, saved explorations and hidden directories. */
 export const UNREAD = /^(node_modules|dist|build|out|coverage|storybook-static|__traces__|__screenshots__|\..*)$/;
@@ -252,10 +276,10 @@ export function packageFiles(root: string, keep: (file: string) => boolean, dir 
     const rel = dir ? `${dir}/${e.name}` : e.name;
     if (e.name === ".git" || e.name === ".DS_Store") return [];
     if (e.isFile()) return keep(rel) ? [rel] : [];
+    if (!e.isDirectory() || UNREAD.test(e.name)) return [];
     const nested = fs.existsSync(path.join(root, rel, "package.json"));
-    const skip = UNREAD.test(e.name)
-      || (nested && (e.name === "gen" || !fixtures || !/(?:^|\/)test\//.test(rel)));
-    return e.isDirectory() && !skip ? packageFiles(root, keep, rel, fixtures) : [];
+    const skip = nested && (e.name === "gen" || !fixtures || !/(?:^|\/)test\//.test(rel));
+    return skip ? [] : packageFiles(root, keep, rel, fixtures);
   }).sort();
 }
 export const packageCode = (root: string) => packageFiles(root, (file) => /\.(?:[cm]?[jt]sx?|vibex?)$/.test(file) && !SIDECAR.test(file));
@@ -272,8 +296,8 @@ export const SIMULATIONS = "gen/traces";
 interface Token { text: string; pos: number; start: number; depth: number; fresh: boolean }
 /** A script's tokens, or nothing if its brackets do not balance; TypeScript's scanner reads VibeLang's too. */
 export function tokenize(text: string): Token[] | undefined {
-  const K = ts.SyntaxKind;
-  const scanner = ts.createScanner(ts.ScriptTarget.Latest, true, ts.LanguageVariant.Standard, text);
+  const K = tsApi().SyntaxKind;
+  const scanner = tsApi().createScanner(tsApi().ScriptTarget.Latest, true, tsApi().LanguageVariant.Standard, text);
   const out: Token[] = [];
   const open: boolean[] = []; // each bracket that is open: true for a template's `${`
   for (let kind = scanner.scan(); kind !== K.EndOfFileToken; kind = scanner.scan()) {

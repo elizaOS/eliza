@@ -2,16 +2,16 @@
 // Vitest files that run every story: one for a simulated DOM and one for a real browser.
 // A component whose inputs hash as they did last time is not analyzed or written again.
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, join, relative, resolve } from "node:path";
+import { type FSWatcher, type Stats, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, unwatchFile, watch, watchFile, writeFileSync } from "node:fs";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import ts from "typescript";
-import { type Found, type Prop, analyze, beside, compare, packageOf, programs, sources } from "./analyze.ts";
+import { type Found, type Prop, analyze, beside, compare, modelFile, modelTag, packageOf, programs, sources } from "./analyze.ts";
 import { type Plan, type Story, plan } from "./variants.ts";
 
 export type { Prop, Story };
 
 /** Part of every hash: raise it when the same inputs would be written differently. */
-const VERSION = 8;
+const VERSION = "eliza-9";
 
 export interface Component {
   id: string;
@@ -49,20 +49,113 @@ export const watched = (root: string, out = outOf(root)) => (file: string) => {
   const path = relative(root, resolve(root, file));
   return /\.tsx?$|^tsconfig\.json$|(^|[\\/])package\.json$/.test(path) && !/(^|[\\/])(node_modules|\.[^\\/]+)[\\/]/.test(path) && relative(resolve(root, out), resolve(root, file)).startsWith("..");
 };
-/** A listener for changed paths: it runs `run` once they go quiet, and reports what `run` throws so the next change is still heard. */
-export function listener(root: string, out: string | undefined, run: () => void): (file: string) => void {
-  const changes = watched(root, out);
+export function listener(root: string, out: string | undefined, run: (observe: (file: string) => void) => void) {
+  const output = resolve(root, out ?? outOf(root));
+  const changes = watched(root, output);
+  const subscriptions = new Map<string, { id: string; names: Set<string>; watcher: FSWatcher }>();
+  const missing = new Set<string>();
+  const reappeared = (stat: Stats) => { if (stat.nlink) schedule(); };
+  let inputs = new Set<string>();
   let timer: NodeJS.Timeout | undefined;
-  return (file) => {
-    if (!changes(file)) return;
+  let closed = false;
+  const inside = (dir: string, file: string) => {
+    const rel = relative(dir, file);
+    return rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel);
+  };
+  const schedule = () => {
+    if (closed) return;
     clearTimeout(timer);
     timer = setTimeout(() => {
       try {
-        run();
+        refresh();
       } catch (error) {
         console.error(error);
       }
     }, 20);
+  };
+  const refresh = () => {
+    const paths = new Set<string>();
+    run((file) => paths.add(file));
+    const directories = new Map<string, Set<string>>();
+    for (const file of paths) {
+      if (inside(root, file)) continue;
+      for (let child = file; !inside(child, root); child = dirname(child)) {
+        const parent = dirname(child);
+        if (parent === child) break;
+        let names = directories.get(parent);
+        if (!names) directories.set(parent, names = new Set());
+        names.add(basename(child));
+      }
+    }
+    inputs = paths;
+    const present = new Set<string>();
+    let changed = false;
+    for (const [dir, names] of directories) {
+      const stat = statSync(dir, { bigint: true, throwIfNoEntry: false });
+      if (!stat?.isDirectory()) continue;
+      present.add(dir);
+      const id = `${stat.dev}:${stat.ino}`;
+      const prior = subscriptions.get(dir);
+      if (prior?.id === id) {
+        if ([...names].some((name) => !prior.names.has(name))) changed = true;
+        prior.names = names;
+        continue;
+      }
+      let watcher: FSWatcher;
+      try {
+        watcher = watch(dir, { persistent: false }, (_, name) => {
+          if (!name || subscriptions.get(dir)?.names.has(name)) schedule();
+        });
+      } catch (error) {
+        if (statSync(dir, { throwIfNoEntry: false })?.isDirectory()) throw error;
+        schedule();
+        continue;
+      }
+      watcher.on("error", () => {
+        if (subscriptions.get(dir)?.watcher === watcher) subscriptions.delete(dir);
+        watcher.close();
+        schedule();
+      });
+      subscriptions.set(dir, { id, names, watcher });
+      changed = true;
+      prior?.watcher.close();
+    }
+    for (const [dir, sub] of subscriptions) if (!present.has(dir)) {
+      subscriptions.delete(dir);
+      sub.watcher.close();
+      changed = true;
+    }
+    const absent = new Set<string>();
+    for (const [dir, names] of directories) if (present.has(dir)) {
+      for (const name of names) {
+        const path = join(dir, name);
+        if (existsSync(path)) continue;
+        absent.add(path);
+        if (missing.has(path)) continue;
+        watchFile(path, { persistent: false, interval: 500 }, reappeared);
+        missing.add(path);
+      }
+    }
+    for (const path of missing) if (!absent.has(path)) {
+      unwatchFile(path, reappeared);
+      missing.delete(path);
+    }
+    if (changed) schedule();
+  };
+  refresh();
+  return {
+    change(file: string) {
+      const absolute = resolve(root, file);
+      if (!inside(output, absolute) && (inputs.has(absolute) || changes(file))) schedule();
+    },
+    close() {
+      closed = true;
+      clearTimeout(timer);
+      for (const sub of subscriptions.values()) sub.watcher.close();
+      subscriptions.clear();
+      for (const path of missing) unwatchFile(path, reappeared);
+      missing.clear();
+    },
   };
 }
 
@@ -162,7 +255,7 @@ const browser = (files: string[], preview: string | undefined) =>
   );
 
 /** A generator for one project. Each call brings the output up to date and says what it changed. */
-export function generator({ root, out = outOf(root), cap = 12 }: Options): () => Result {
+export function generator({ root, out = outOf(root), cap = 12 }: Options): (observe?: (file: string) => void) => Result {
   out = resolve(root, out);
   const config = join(root, "tsconfig.json");
   let configured: string | undefined;
@@ -172,7 +265,21 @@ export function generator({ root, out = outOf(root), cap = 12 }: Options): () =>
   const from = (file: string) => JSON.stringify(relative(out, file).replaceAll("\\", "/").replace(/^(?!\.)/, "./"));
   // A file the Program read is hashed as the Program read it, so an edit made while it ran is seen by the next run.
   const text = (file: string) => built?.getSourceFile(file)?.text ?? (existsSync(file) ? readFileSync(file, "utf8") : "");
-  const hash = (inputs: string[]) => inputs.reduce((sum, file) => sum.update(`${file}\0${text(join(root, file))}\0`), createHash("sha1").update(`${VERSION}:${cap}:${rel(out)}`)).digest("hex");
+  const hash = (component: string, inputs: string[], observe?: (file: string) => void, read = text) => {
+    const sum = createHash("sha1").update(`${VERSION}:${cap}:${rel(out)}`);
+    for (const file of inputs) {
+      const absolute = join(root, file);
+      observe?.(absolute);
+      const content = read(absolute);
+      if (file === component) {
+        const spec = modelTag(content);
+        const model = spec && modelFile(absolute, spec, observe);
+        if (model) sum.update(`model\0${rel(model)}\0`);
+      }
+      sum.update(`${file}\0${content}\0`);
+    }
+    return sum.digest("hex");
+  };
 
   /**
    * A component file's inputs: itself, what stands beside it, its package's name, the project's tsconfig, and every
@@ -191,7 +298,7 @@ export function generator({ root, out = outOf(root), cap = 12 }: Options): () =>
     return [...seen].map(rel).sort();
   };
 
-  return () => {
+  return (observe?: (file: string) => void) => {
     built = undefined;
     // Compiler options are read again only when the tsconfig changed.
     if (configured !== (configured = text(config))) build = programs(root);
@@ -206,8 +313,14 @@ export function generator({ root, out = outOf(root), cap = 12 }: Options): () =>
     };
 
     const files = sources(root, COMPONENTS);
-    const fresh = (e: Entry | undefined) => e && e.hash === hash(e.inputs) && e.outputs.every((name) => existsSync(join(out, name)));
-    const stale = files.filter((file) => !fresh(known[rel(file)]));
+    const sourceText = new Map<string, string>();
+    const read = (file: string) => {
+      let value = sourceText.get(file);
+      if (value === undefined) sourceText.set(file, value = text(file));
+      return value;
+    };
+    const fresh = (file: string, e: Entry | undefined) => e && e.hash === hash(file, e.inputs, observe, read) && e.outputs.every((name) => existsSync(join(out, name)));
+    const stale = files.filter((file) => !fresh(rel(file), known[rel(file)]));
     if (stale.length) built = build(files);
     const entries: Record<string, Entry> = {};
     for (const file of files) {
@@ -219,7 +332,7 @@ export function generator({ root, out = outOf(root), cap = 12 }: Options): () =>
       const inputs = inputsOf(file, found.map(({ c }) => c.name));
       for (const { c, p } of found) if (p.stories.length) write(`${p.id}.stories.tsx`, story(c, p, from));
       entries[rel(file)] = {
-        hash: hash(inputs),
+        hash: hash(rel(file), inputs, observe),
         inputs,
         outputs: found.filter(({ p }) => p.stories.length).map(({ p }) => `${p.id}.stories.tsx`),
         manual: [...new Set(found.flatMap(({ c }) => c.manual ? [rel(c.manual.file)] : []))].sort(compare),
