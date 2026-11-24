@@ -1071,6 +1071,7 @@ it.live('Ask for directions to the place on my phone\'s map: a selection handle 
   const lookedUpForHandles = bodies.length - before
   const shown = try act("MAPS_SELECT", "show Coit Tower", { placeId: handle, query: "Coit Tower" })
   const directions = try act("MAPS_NAVIGATION_START", "directions to it", { placeId: placeOf(shown) ?? "" })
+  const idRoute = try act("MAPS_ROUTE", "walk from the earlier pharmacy to Coit Tower", { originPlaceId: "near", destinationPlaceId: "tower", travelMode: "walk" })
   const routedByName = try act("MAPS_ROUTE", "walk from the Ferry Building to Coit Tower", { origin: "Ferry Building", destination: "Coit Tower", destinationPlaceId: handle, travelMode: "walk" })
   const refusedWithName = try act("MAPS_SELECT", "show Coit Tower", { placeId: "refused-id", query: "Coit Tower" })
   const refusedAlone = try act("MAPS_SELECT", "show it", { placeId: "refused-id" })
@@ -1085,6 +1086,8 @@ it.live('Ask for directions to the place on my phone\'s map: a selection handle 
   try Effect.try(() => assert.deepStrictEqual({
     handleOnly: [select, save, share, start, place, toIt, fromIt].map(sentBack), lookedUpForHandles, handleSentToCloud,
     shown: [shown.success, placeOf(shown)], directions: said(directions), routedByName: routedByName.success,
+    idRoute: recognizedMapsCards(idRoute.text ?? "").map(({ card }) =>
+      card.kind === "route" ? [card.origin.providerPlaceId, card.destination.providerPlaceId, card.travelMode] : [card.kind]),
     refusedWithName: [refusedWithName.success, placeOf(refusedWithName)], refusedAlone: said(refusedAlone),
     asked: [asked.success, (asked.data as { readonly choice?: string }).choice], picked: said(picked),
     broken: said(broken), brokenSearch: said(brokenSearch),
@@ -1099,6 +1102,7 @@ it.live('Ask for directions to the place on my phone\'s map: a selection handle 
     ],
     lookedUpForHandles: 0, handleSentToCloud: false,
     shown: [true, "tower"], directions: [true, "The route to Coit Tower is on your phone. Press Start on the phone to begin guidance."], routedByName: true,
+    idRoute: [["near", "tower", "walk"]],
     refusedWithName: [true, "tower"], refusedAlone: [false, "Cloud Maps could not use this request."],
     asked: [false, "destination"], picked: [true, "The route to Far Pharmacy is on your phone. Press Start on the phone to begin guidance."],
     broken: [false, "Maps couldn't look up Broken Plaza right now, so the route isn't planned. Try again in a moment."],
