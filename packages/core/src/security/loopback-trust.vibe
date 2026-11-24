@@ -1,5 +1,6 @@
-// spec/core/privacy.md, "Story: Publish scrub completion only after durable privacy work"
+// spec/core/privacy.md, "Story: Publish scrub completion only after durable privacy work"; spec/core/security.md, "Every element of a proxy client header must name this machine for a request to be trusted as local"
 import type http from "node:http"
+import { headerAllowsLocalTrust, type ProxyElement } from "../../gen/core__security.effect.vibe"
 import { isLoopbackBindHost } from "./bind-host.vibe"
 import { firstHeaderValue } from "./request-token.vibe"
 
@@ -187,6 +188,7 @@ function normalizeProxyClientIp(raw: string): string | null {
 export function proxyClientHeaderBlocksLocalTrust(
   headers: http.IncomingHttpHeaders,
 ): boolean {
+  const elements: ProxyElement[] = []
   for (const [rawName, rawValue] of Object.entries(headers)) {
     const headerName = rawName.toLowerCase()
     if (!isClientIpProxyHeaderName(headerName)) continue
@@ -198,14 +200,19 @@ export function proxyClientHeaderBlocksLocalTrust(
           value,
         )
       ) {
-        if (isNeutralProxyClientAddress(candidate)) continue
-        const ip = normalizeProxyClientIp(candidate)
-        if (!ip || !isLoopbackRemoteAddress(ip)) return true
+        elements.push(proxyElement(candidate))
       }
     }
   }
 
-  return false
+  return !headerAllowsLocalTrust(elements)
+}
+
+function proxyElement(candidate: string): ProxyElement {
+  if (isNeutralProxyClientAddress(candidate)) return "NeutralElement"
+  const ip = normalizeProxyClientIp(candidate)
+  if (!ip) return "UnparseableElement"
+  return isLoopbackRemoteAddress(ip) ? "LoopbackElement" : "RemoteElement"
 }
 
 export function isLoopbackRemoteAddress(

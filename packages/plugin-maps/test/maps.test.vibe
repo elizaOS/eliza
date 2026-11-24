@@ -21,7 +21,7 @@ import { savedPlaces } from "../src/client/saved-places.vibe"
 import { mapsPlugin } from "../src/index.vibe"
 import { addressArea, createMapsPlugin, phonePositionProvider } from "../src/plugin.vibe"
 import { mapsNavigationRelay, type MapsDeviceNavigation } from "../src/relay.vibe"
-import { nearbyPlaceKind } from "../src/routing.vibe"
+import { anchoredPlace, nearbyPlaceKind } from "../src/routing.vibe"
 import type { AgentSavedPlaceStore } from "../src/saves.vibe"
 import type { MapsCloudLink } from "../src/service.vibe"
 
@@ -700,6 +700,35 @@ it.live('Search near me with where my phone is now: a recent reported position s
     whichAnchor: [false, "place to search near"],
     second: [true, true, { latitude: 37.788, longitude: -122.4075 }],
     ranks: [["distance"], [undefined], [undefined], true, [undefined]],
+  }))
+})
+
+it.live('A kind of place near me goes to the phone, a kind of place near a named place keeps that place, and a time, a price or something about the place is no place to search around (spec/maps/phonePosition.md, "A kind of place near a named place is searched around that place, never around the phone"; spec/maps/routing.md, "Only a kind of place near a named place is searched around that place")', effect () => {
+  const { link, bodies } = linkFake()
+  const plugin = createMapsPlugin({ cloud: () => link, navigation: () => sync(() => undefined), savedPlaces: () => undefined })
+  const place = plugin.actions?.find((found) => found.name === "MAPS_PLACE")
+  if (place === undefined) throw new Error("MAPS_PLACE is not registered")
+  const nearMe = ["find a pharmacy near me, please", "find a pharmacy near me please", "is there a pharmacy near me open now?", "find a pharmacy near us open now", "find a pharmacy near us right now", "find a pharmacy near by"]
+  const handed: unknown[] = []
+  for (const said of nearMe) {
+    const result = try promise(async () => await place.handler({} as IAgentRuntime, messageWith(undefined, said), undefined, { parameters: { query: "pharmacy", useCurrentLocation: true } }))
+    handed.push([said, result?.success, (result?.data as { readonly state?: string } | undefined)?.state, nearbyPlaceKind(said)])
+  }
+  const searched = bodies.filter((made) => made.path === "/api/v1/maps/places/search").length
+  const notAPlace = ["what's the weather near Austin", "weather near Austin", "traffic near the Bay Bridge", "news around Austin", "find a TV around 500 dollars", "find a hotel around 150 a night", "find a hotel around 100 euros a night",
+    "find a pharmacy open around midnight", "find a pharmacy near home", "photos near the Ferry Building"]
+  try Effect.try(() => assert.deepStrictEqual({
+    handed,
+    searched,
+    anchors: [anchoredPlace("find a pharmacy near Union Square, please"), anchoredPlace("find a gas station near us 101"), anchoredPlace("find a coffee shop near US Bank Tower"),
+      anchoredPlace("find a coffee shop near us bank tower"), anchoredPlace("find a pharmacy near us post office"), anchoredPlace("find a pharmacy near Here East")],
+    notAPlace: notAPlace.map((said) => [said, anchoredPlace(said), nearbyPlaceKind(said)]),
+  }, {
+    handed: nearMe.map((said) => [said, false, "awaiting-location", "pharmacy"]),
+    searched: 0,
+    anchors: [{ kind: "pharmacy", anchor: "Union Square" }, { kind: "gas station", anchor: "us 101" }, { kind: "coffee shop", anchor: "US Bank Tower" },
+      { kind: "coffee shop", anchor: "us bank tower" }, { kind: "pharmacy", anchor: "us post office" }, { kind: "pharmacy", anchor: "Here East" }],
+    notAPlace: notAPlace.map((said) => [said, undefined, undefined]),
   }))
 })
 
