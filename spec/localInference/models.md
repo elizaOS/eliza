@@ -76,7 +76,7 @@ pure def slotsChanged(before: LocalModels, after: LocalModels): int =
 pure def stepOneAssignmentPerChange(before: LocalModels, via: str, after: LocalModels): bool =
   (via == "assignModel" or via == "clearAssignment") implies slotsChanged(before, after) <= 1
 pure def alwaysSlotsMatchTheirModelsRole(s: LocalModels): bool =
-  allSlots.foldl(true, (ok, slot) => ok and (assignedTo(s, slot) == "" or servesSlot(modelOf(s, assignedTo(s, slot)).role, slot)))
+  allSlots.every(slot => assignedTo(s, slot) == "" or servesSlot(modelOf(s, assignedTo(s, slot)).role, slot))
 ```
 
 ### An unreadable assignment record is reported, never rewritten from empty
@@ -130,7 +130,7 @@ pure def uninstallModel(s: LocalModels, modelId: str): LocalModels = {
     assignments: allSlots.foldl(s.assignments, (m, slot) => if (m.getOr(slot, "") == modelId) m.put(slot, "") else m) }
 }
 pure def alwaysAssignedModelsAreInstalled(s: LocalModels): bool =
-  allSlots.foldl(true, (ok, slot) => ok and (assignedTo(s, slot) == "" or installed(s, assignedTo(s, slot))))
+  allSlots.every(slot => assignedTo(s, slot) == "" or installed(s, assignedTo(s, slot)))
 ```
 
 ### A model whose files cannot be read is reported unreadable, never as absent

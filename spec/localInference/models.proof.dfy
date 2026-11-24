@@ -7,32 +7,12 @@ lemma LocalClearedAssignments(xs: seq<ModelSlot>, m: map<ModelSlot, string>, mod
   }
 }
 
-lemma LocalAssignedFold(s: LocalModels, ok: bool, xs: seq<ModelSlot>)
-  ensures Std.Collections.Seq.FoldLeft((ok: bool, slot: ModelSlot) => (ok && ((assignedTo(s, slot) == "") || installed(s, assignedTo(s, slot)))), ok, xs) == (ok && forall slot :: slot in xs ==> (assignedTo(s, slot) == "") || installed(s, assignedTo(s, slot)))
-  decreases |xs|
-{
-  if |xs| > 0 {
-    LocalAssignedFold(s, ok && ((assignedTo(s, xs[0]) == "") || installed(s, assignedTo(s, xs[0]))), xs[1..]);
-    assert xs == [xs[0]] + xs[1..];
-  }
-}
-
 lemma LocalOtherModelKept(s: LocalModels, modelId: string, other: string)
   requires other != modelId
   ensures modelOf(uninstallModel(s, modelId), other) == modelOf(s, other)
 {
   assert ("$" + other)[1..] == other && ("$" + modelId)[1..] == modelId;
   assert ("$" + other) != ("$" + modelId);
-}
-
-lemma LocalSlotsMatchFold(s: LocalModels, ok: bool, xs: seq<ModelSlot>)
-  ensures Std.Collections.Seq.FoldLeft((ok: bool, slot: ModelSlot) => (ok && ((assignedTo(s, slot) == "") || servesSlot(modelOf(s, assignedTo(s, slot)).role, slot))), ok, xs) == (ok && forall slot :: slot in xs ==> (assignedTo(s, slot) == "") || servesSlot(modelOf(s, assignedTo(s, slot)).role, slot))
-  decreases |xs|
-{
-  if |xs| > 0 {
-    LocalSlotsMatchFold(s, ok && ((assignedTo(s, xs[0]) == "") || servesSlot(modelOf(s, assignedTo(s, xs[0])).role, xs[0])), xs[1..]);
-    assert xs == [xs[0]] + xs[1..];
-  }
 }
 
 lemma LocalUninstallSlot(s: LocalModels, modelId: string, slot: ModelSlot)
@@ -56,10 +36,6 @@ lemma LocalUninstallKeeps(s: LocalModels, modelId: string)
   if s.active != modelId {
     LocalOtherModelKept(s, modelId, s.active);
   }
-  LocalAssignedFold(s, true, allSlots);
-  LocalAssignedFold(after, true, allSlots);
-  LocalSlotsMatchFold(s, true, allSlots);
-  LocalSlotsMatchFold(after, true, allSlots);
   forall slot | slot in allSlots
     ensures (assignedTo(after, slot) == "") || (installed(after, assignedTo(after, slot)) && servesSlot(modelOf(after, assignedTo(after, slot)).role, slot))
   {
