@@ -160,6 +160,7 @@ const barrelImports = {
   "packages/agent/src/tasks/chat-task.vibe": ["@elizaos/core/protocol"],
   "packages/agent/test/client-stream.test.vibe": ["@elizaos/core/protocol"],
   "packages/agent/test/tasks-chat.test.vibe": ["@elizaos/core/protocol"],
+  "packages/os/src/build/agent-config.vibe": ["@elizaos/agent/routes"],
   "packages/os/src/build/runtime-payload.vibe": ["@elizaos/os/aosp/runtime/node.lock.json"],
   "packages/os/test/agent-config.test.vibe": ["@elizaos/agent/cli", "@elizaos/agent/launch"],
   "packages/os/test/drivers/os__browser__pageCommands.ts": ["@elizaos/os/browser/runtime/surface-task-handler.mjs", "@elizaos/os/browser/runtime/task-bindings.mjs"],
