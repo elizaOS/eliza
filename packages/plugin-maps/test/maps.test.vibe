@@ -788,7 +788,7 @@ it.live('Ask where I am: a recent precise position names the place there, a roug
   const { link, bodies } = linkFake()
   const plugin = createMapsPlugin({ cloud: () => link, navigation: () => sync(() => undefined), savedPlaces: () => undefined, namesView: () => false })
   const action = plugin.actions?.find((found) => found.name === "MAPS_PLACE")
-  const ask = (location: unknown) => promise(async () => {
+  const ask = (location: JsonObject | undefined) => promise(async () => {
     if (action === undefined) throw new Error("MAPS_PLACE is not registered")
     return await action.handler({} as IAgentRuntime, messageWith(location), undefined, { parameters: { useCurrentLocation: true } })
   })
