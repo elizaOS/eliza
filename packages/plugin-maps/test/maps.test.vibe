@@ -590,13 +590,13 @@ it.live('See the map result and hear the rest of the answer (spec/maps/chatCards
     modelText(JSON.stringify({ grounded: true, claims: [{ quote: needsLocation, change: "None", receiptId: null, failedResult: null, supported: true }] })),
   ))
   const refused = try call(agent, { method: "POST", path, body: { text: "Find a pharmacy near me." } })
+  if (!("json" in original) || !("json" in replay) || !("json" in refused)) throw new Error("Missing owner reply")
 
   try Effect.try(() => {
     assert.propertyVal(original, "status", 200)
     assert.propertyVal(replay, "status", 200)
     assert.propertyVal(refused, "status", 200)
     assert.strictEqual(streamed.status, 200)
-    if (!("json" in original) || !("json" in replay) || !("json" in refused)) throw new Error("Missing owner reply")
     const reply = original.json as { text: string; messageId: string; action: { kind: string; validatedCard: boolean } }
     const frames = streamed.text.split("\n\n").flatMap((part) => part.startsWith("data: ") ? [JSON.parse(part.slice(6)) as { type: string; fullText?: string }] : [])
     assert.deepStrictEqual(frames.filter(({ type }) => type === "done").map(({ fullText }) => fullText), [reply.text])
@@ -626,7 +626,7 @@ it.live('Resume a route through two numbered questions using the offered places 
   if (!("json" in opened) || opened.status !== 201) return try Effect.die(new Error("Conversation did not open"))
   const { conversation: { id } } = opened.json as { conversation: { id: string } }
   const path = `/api/conversations/${id}/messages`
-  const nothingElse = modelText("")
+  const nothingElse = try Effect.try(() => modelText(""))
   try sync(() => model.script(
     toolCalls("", { name: "MAPS_ROUTE", arguments: { origin: "Starbucks", destination: "pharmacy", travelMode: "walk" } }),
     nothingElse,
@@ -641,17 +641,22 @@ it.live('Resume a route through two numbered questions using the offered places 
   const planned = try call(agent, { method: "POST", path, body: second })
   const replayPlanned = try call(agent, { method: "POST", path, body: second })
 
+  const reply = effect (answer: typeof original) => {
+    if (!("json" in answer) || answer.status !== 200) throw new Error(`Missing Maps reply (HTTP ${answer.status})`)
+    const { text, messageId } = answer.json as { text: string; messageId: string }
+    return { text, messageId }
+  }
+  const firstPrompt = try reply(original)
+  const secondPrompt = try reply(destination)
+  const repeatedPrompt = try reply(replay)
+  const route = try reply(planned)
+  const repeatedRoute = try reply(replayPlanned)
   try Effect.try(() => {
-    const reply = (answer: typeof original): { text: string; messageId: string } => {
-      if (!("json" in answer) || answer.status !== 200) throw new Error(`Missing Maps reply: ${JSON.stringify(answer)}`)
-      const { text, messageId } = answer.json as { text: string; messageId: string }
-      return { text, messageId }
-    }
-    assert.include(reply(original).text, "starting place")
-    assert.include(reply(destination).text, "Far Pharmacy")
-    assert.deepStrictEqual(reply(replay), reply(destination))
-    assert.deepStrictEqual(reply(replayPlanned), reply(planned))
-    assert.deepStrictEqual(recognizedMapsCards(reply(planned).text).map(({ card }) =>
+    assert.include(firstPrompt.text, "starting place")
+    assert.include(secondPrompt.text, "Far Pharmacy")
+    assert.deepStrictEqual(repeatedPrompt, secondPrompt)
+    assert.deepStrictEqual(repeatedRoute, route)
+    assert.deepStrictEqual(recognizedMapsCards(route.text).map(({ card }) =>
       card.kind === "route" ? [card.origin.providerPlaceId, card.destination.providerPlaceId, card.travelMode] : [card.kind]),
     [["powell", "far", "walk"]])
     const searches = bodies.filter(({ path }) => path === "/api/v1/maps/places/search")
