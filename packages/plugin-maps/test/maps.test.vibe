@@ -678,7 +678,7 @@ function nearPlace(result: { readonly text?: string }) {
   return card?.kind === "places" ? card.near?.name : undefined
 }
 
-function messageWith(location: unknown, text = "coffee near me"): Memory {
+function messageWith(location: JsonObject | undefined, text = "coffee near me"): Memory {
   const observation = { view: "maps", revision: 1, sensitive: false, ...(location === undefined ? {} : { location }) }
   const turn = ownerTurn(text)
   return { ...turn, content: { ...turn.content, metadata: { observation } } }
