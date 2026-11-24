@@ -42,25 +42,31 @@ events the last good read of that calendar kept, and the answer is never
 complete. A change to one of them waits for the owner's approval like any
 provider calendar, goes to Google only at the revision that was read, and
 is refused without reaching the Cloud while the owner has calendar edits
-turned off. That calendar creates single events and edits one occurrence:
-it cannot email attendees, answer invitations or delete events, so such a
-request is refused before anything is queued; it cannot save a repeating
-event or edit more than one occurrence of one, so such a change is refused
-before Google is asked, and nothing is changed. An agent without the cloud
-link lists only the resident calendar.
+turned off. A managed create requires the selected calendar to advertise
+support for private visibility with Google default reminders disabled. A
+repeating create also requires support for saving the reviewed rules. A
+create without the required support is refused before reaching Google.
+The agent edits one occurrence at a time, at its reviewed revision. A series
+master with its own recurrence rule cannot be the target of an occurrence
+edit. It cannot email attendees, answer invitations or delete events. An
+agent without the cloud link lists only the resident calendar.
 
 ```quint
 type ManagedChange = ManagedCreate | ManagedEdit | ManagedDelete | ManagedAnswer
 type SourceRead = ReadFresh | ReadStale | ReadFailed
-pure def managedChangeAllowed(change: ManagedChange, oneOccurrence: bool): bool =
-  (change == ManagedCreate or change == ManagedEdit) and oneOccurrence
+pure def managedChangeAllowed(change: ManagedChange, oneOccurrence: bool, recurringCreate: bool): bool =
+  (change == ManagedCreate and (oneOccurrence or recurringCreate)) or (change == ManagedEdit and oneOccurrence)
+pure def managedEditTargetAllowed(holdsRules: bool, hasParentSeries: bool): bool = not(holdsRules) or hasParentSeries
 pure def sourceRead(answered: bool, complete: bool, keptEvents: bool): SourceRead =
   if (answered and complete) ReadFresh
   else if (answered or keptEvents) ReadStale
   else ReadFailed
-pure def lawAManagedDeleteIsRefused(oneOccurrence: bool): bool = not(managedChangeAllowed(ManagedDelete, oneOccurrence))
-pure def lawAManagedAnswerIsRefused(oneOccurrence: bool): bool = not(managedChangeAllowed(ManagedAnswer, oneOccurrence))
-pure def lawNoManagedChangeSpansASeries(change: ManagedChange): bool = not(managedChangeAllowed(change, false))
+pure def lawAManagedDeleteIsRefused(oneOccurrence: bool, recurringCreate: bool): bool = not(managedChangeAllowed(ManagedDelete, oneOccurrence, recurringCreate))
+pure def lawAManagedAnswerIsRefused(oneOccurrence: bool, recurringCreate: bool): bool = not(managedChangeAllowed(ManagedAnswer, oneOccurrence, recurringCreate))
+pure def lawOnlyAnOfferedCreateSpansASeries(change: ManagedChange, recurringCreate: bool): bool =
+  managedChangeAllowed(change, false, recurringCreate) iff (change == ManagedCreate and recurringCreate)
+pure def lawAManagedOccurrenceEditDoesNotTargetTheSeriesMaster(holdsRules: bool, hasParentSeries: bool): bool =
+  (holdsRules and not(hasParentSeries)) implies not(managedEditTargetAllowed(holdsRules, hasParentSeries))
 pure def lawOnlyAnAnsweredCompleteReadIsFresh(answered: bool, complete: bool, keptEvents: bool): bool =
   sourceRead(answered, complete, keptEvents) == ReadFresh iff (answered and complete)
 ```

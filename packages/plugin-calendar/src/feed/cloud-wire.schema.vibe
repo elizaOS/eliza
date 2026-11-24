@@ -31,6 +31,8 @@ export const ManagedGoogleCalendarRow = Schema.Struct({
   accessRole: NonBlank,
   read: Schema.Boolean,
   write: Schema.Boolean,
+  recurrenceLines: Schema.optionalKey(Schema.Literal(true)),
+  privateCreate: Schema.optionalKey(Schema.Literal(true)),
 })
 
 export const ManagedGoogleAttendee = Schema.Struct({
@@ -60,6 +62,7 @@ export const ManagedGoogleEvent = Schema.Struct({
   attendees: Schema.Array(ManagedGoogleAttendee),
   etag: Schema.optionalKey(NullableNonBlank),
   seriesId: Schema.optionalKey(NullableNonBlank),
+  recurrence: Schema.optionalKey(Schema.Array(NonBlank)),
 })
 
 export const ManagedGoogleEventAnswer = Schema.Struct({ event: ManagedGoogleEvent })

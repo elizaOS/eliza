@@ -4,6 +4,7 @@ import { managedCalendarAnswerAccepted, managedCatalogAccepted, type ManagedCale
 import { sourceKeyId, type CalendarEvent, type CalendarEventFields, type CalendarFeed, type CalendarSourceKey, type CalendarSummary } from "../model.vibe"
 import { CalendarWriteNotAccepted, CalendarWriteUnconfirmed } from "../mutations/ledger.vibe"
 import { providerChangeTime } from "./cache.vibe"
+import { reviewedGoogleRecurrenceLines, type CalendarRecurrence } from "../series/recurrence-rule.vibe"
 import {
   exactFeedEvents, isManagedGoogleAccounts, isManagedGoogleCalendarRows, isManagedGoogleEventAnswer, isManagedGoogleFeed, isManagedGoogleRefusal,
   type ManagedGoogleCalendarRow, type ManagedGoogleEvent,
@@ -29,6 +30,8 @@ export interface ManagedCalendarTarget {
   readonly grantId: string
   readonly calendarId: string
   readonly googleAccountId: string
+  readonly recurrenceLines: boolean
+  readonly privateCreate: boolean
 }
 
 type WriteFailure = CalendarWriteNotAccepted | CalendarWriteUnconfirmed
@@ -38,7 +41,7 @@ export interface ManagedCalendarBroker {
   sources(): readonly ManagedCalendarSource[]!ManagedCalendarUnavailable
   feed(source: CalendarSummary, window: FeedWindow, agentId: string): CalendarFeed!ManagedCalendarUnavailable
   event(source: CalendarSourceKey, externalId: string, agentId: string): (CalendarEvent | undefined)!ManagedCalendarUnavailable
-  create(target: ManagedCalendarTarget, fields: CalendarEventFields, idempotencyKey: string, agentId: string): CalendarEvent!WriteFailure
+  create(target: ManagedCalendarTarget, fields: CalendarEventFields, recurrence: CalendarRecurrence | null, idempotencyKey: string, agentId: string): CalendarEvent!WriteFailure
   change(target: ManagedCalendarTarget, externalId: string, revision: string, fields: CalendarEventFields, agentId: string): CalendarEvent!WriteFailure
 }
 
@@ -64,7 +67,7 @@ export function cloudEventOf(card: ManagedGoogleEvent, grantId: string, agentId:
     id: managedEventId(grantId, card.calendarId, card.externalId), externalId: card.externalId, agentId, provider: "google", side: "owner",
     calendarId: card.calendarId, title: card.title, description: card.description, location: card.location, status: card.status,
     startAt: card.startAt, endAt: card.endAt, isAllDay: card.isAllDay, timezone: card.timezone, htmlLink: card.htmlLink,
-    conferenceLink: card.conferenceLink, organizer: card.organizer, attendees: card.attendees, metadata, recurrence: null,
+    conferenceLink: card.conferenceLink, organizer: card.organizer, attendees: card.attendees, metadata, recurrence: card.recurrence ?? null,
     recurringEventId: card.seriesId ?? null, syncedAt, updatedAt: providerChangeTime(metadata) ?? "", grantId, connectorAccountId: grantId,
   }
 }
@@ -74,7 +77,7 @@ function sourceOf(grantId: string, row: ManagedGoogleCalendarRow): ManagedCalend
     provider: "google", side: "owner", grantId, connectorAccountId: grantId, calendarId: row.calendarId,
     accountEmail: row.accountEmail === "" ? null : row.accountEmail, summary: row.label === "" ? row.calendarId : row.label, description: null,
     primary: row.calendarId === row.accountEmail, accessRole: row.write ? row.accessRole : "reader", timeZone: null, selected: true,
-    includeInFeed: true, googleAccountId: row.accountId,
+    includeInFeed: true, googleAccountId: row.accountId, recurrenceLines: row.recurrenceLines === true, privateCreate: row.privateCreate === true,
   }
 }
 
@@ -98,8 +101,8 @@ function answerOf(reply: CloudLinkReply, facts: Pick<ManagedCalendarAnswer, "sha
 }
 
 export function cloudCalendar(link: CloudCalendarLink): ManagedCalendarBroker {
-  let listedGrants = new Set<string>()
-  const acceptsGrant = (grantId: string) => listedGrants.has(grantId)
+  let listed = { grants: new Set<string>(), sources: new Map<string, ManagedCalendarSource>() }
+  const acceptsGrant = (grantId: string) => listed.grants.has(grantId)
   const notAccepted = (code: string, message: string, retryable: boolean) => new CalendarWriteNotAccepted({ failure: { code, message, retryable } })
   const unconfirmed = (code: string, message: string) => new CalendarWriteUnconfirmed({ failure: { code, message, retryable: false } })
   const unknownWrite = () => unconfirmed("CALENDAR_MANAGED_WRITE_UNKNOWN", "The managed calendar did not confirm the change, so check it before trying again.")
@@ -155,13 +158,14 @@ export function cloudCalendar(link: CloudCalendarLink): ManagedCalendarBroker {
       if (!managedCatalogAccepted(rows.length, new Set(rows.map(sourceKeyId)).size === rows.length)) {
         throw new ManagedCalendarUnavailable({ operation: "sources", stage: "schema", httpStatus: 200 })
       }
-      listedGrants = new Set(rows.map((row) => row.grantId))
+      listed = { grants: new Set(rows.map((row) => row.grantId)), sources: new Map(rows.map((row) => [sourceKeyId(row), row])) }
       return rows
     },
 
     effect feed(source, window, agentId) {
-      if (!acceptsGrant(source.grantId)) throw new ManagedCalendarUnavailable({ operation: "feed", stage: "scope", httpStatus: null })
-      const reply = try ask("feed", { method: "GET", path: `${google}/calendar/feed?${query({ grantId: source.grantId, calendarId: source.calendarId, ...window })}` })
+      const bound = listed.sources.get(sourceKeyId(source))
+      if (bound === undefined) throw new ManagedCalendarUnavailable({ operation: "feed", stage: "scope", httpStatus: null })
+      const reply = try ask("feed", { method: "GET", path: `${google}/calendar/feed?${query({ grantId: source.grantId, calendarId: source.calendarId, expectedAccountId: bound.googleAccountId, ...window })}` })
       const answered = reply.kind === "answered" && isManagedGoogleFeed(reply.body) ? reply.body : undefined
       try admit("feed", "CalendarFeedCall", reply, answerOf(reply, {
         shapeValid: answered !== undefined,
@@ -184,17 +188,22 @@ export function cloudCalendar(link: CloudCalendarLink): ManagedCalendarBroker {
     },
 
     effect event(source, externalId, agentId) {
-      if (!acceptsGrant(source.grantId)) throw new ManagedCalendarUnavailable({ operation: "event", stage: "scope", httpStatus: null })
-      const reply = try ask("event", { method: "GET", path: `${eventPath(externalId)}?${query({ grantId: source.grantId, calendarId: source.calendarId })}` })
+      const bound = listed.sources.get(sourceKeyId(source))
+      if (bound === undefined) throw new ManagedCalendarUnavailable({ operation: "event", stage: "scope", httpStatus: null })
+      const reply = try ask("event", { method: "GET", path: `${eventPath(externalId)}?${query({ grantId: source.grantId, calendarId: source.calendarId, expectedAccountId: bound.googleAccountId })}` })
       if (reply.kind === "refused" && reply.status === 404) return undefined
       const card = reply.kind === "answered" && isManagedGoogleEventAnswer(reply.body) ? reply.body.event : undefined
       try admit("event", "CalendarOtherCall", reply, answerOf(reply, { shapeValid: card?.calendarId === source.calendarId && card.externalId === externalId }))
       return card === undefined ? undefined : cloudEventOf(card, source.grantId, agentId, "")
     },
 
-    effect create(target, fields, idempotencyKey, agentId) {
+    effect create(target, fields, recurrence, idempotencyKey, agentId) {
+      if (!target.privateCreate) throw notAccepted("CALENDAR_PRIVATE_CREATE_UNAVAILABLE", "The managed calendar cannot confirm a private event with provider reminders disabled.", false)
+      const lines = reviewedGoogleRecurrenceLines(recurrence, fields.isAllDay ? fields.timeZone : undefined)
+      if (lines === undefined) throw notAccepted("CALENDAR_RECURRENCE_INVALID", "The reviewed recurrence does not name valid dates.", false)
       const reply = try send({ method: "POST", path: `${google}/calendar/events`, idempotencyKey,
-        body: { grantId: target.grantId, calendarId: target.calendarId, expectedAccountId: target.googleAccountId, ...eventBody(fields) } })
+        body: { grantId: target.grantId, calendarId: target.calendarId, expectedAccountId: target.googleAccountId, privateCreate: true, ...eventBody(fields),
+          ...(recurrence === null ? {} : { recurrence: lines }) } })
       return try written(target, reply, agentId)
     },
 

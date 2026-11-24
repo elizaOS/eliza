@@ -87,12 +87,12 @@ export effect function managedGoogleCalendar(options: ManagedCalendarOptions): C
     if (row === undefined || (row.accessRole !== "owner" && row.accessRole !== "writer")) {
       throw notAccepted("CALENDAR_SOURCE_NOT_WRITABLE", "That calendar is not one this account can write.", false)
     }
-    return { grantId: row.grantId, calendarId: row.calendarId, googleAccountId: row.googleAccountId }
+    return { grantId: row.grantId, calendarId: row.calendarId, googleAccountId: row.googleAccountId, recurrenceLines: row.recurrenceLines === true, privateCreate: row.privateCreate === true }
   }
 
   return {
     provider: "google",
-    recurrenceLines: false,
+    recurrenceLines: true,
     notifies: false,
     effect sources(account) {
       if (!mine(account)) return []
@@ -116,14 +116,14 @@ export effect function managedGoogleCalendar(options: ManagedCalendarOptions): C
       return event === undefined ? undefined : owned(account, event)
     },
     effect create(account, source, fields, recurrence, idempotencyKey) {
-      if (!managedChangeAllowed("ManagedCreate", recurrence === null)) {
+      const target = try writable(source)
+      if (!managedChangeAllowed("ManagedCreate", recurrence === null, target.recurrenceLines)) {
         throw notAccepted("CALENDAR_RECURRENCE_UNSUPPORTED", "That calendar's provider can't save a repeating event, so it was not created.", false)
       }
-      const target = try writable(source)
-      return owned(account, try broker.create(target, fields, idempotencyKey, account.agentId))
+      return owned(account, try broker.create(target, fields, recurrence, idempotencyKey, account.agentId))
     },
     effect update(account, source, eventId, scope, fields, expectedVersion) {
-      if (!managedChangeAllowed("ManagedEdit", scope === "instance")) {
+      if (!managedChangeAllowed("ManagedEdit", scope === "instance", false)) {
         throw notAccepted("CALENDAR_MANAGED_SERIES_REVIEW_REQUIRED", "The managed Google calendar edits one occurrence at a time; change the whole series in Calendar. Nothing was changed.", false)
       }
       const externalId = managedExternalId(source, eventId)
