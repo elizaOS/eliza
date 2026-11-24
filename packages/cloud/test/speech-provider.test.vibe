@@ -15,7 +15,7 @@ effect function failureTag<A, E extends { readonly _tag: string }, R>(program: A
 }
 
 describe("WP6 Speech provider (spec/cloud/services/speechRelay.md)", () => {
-  it.live("Speak, time, transcribe and stream turns through the provider, and type every refusal (spec/cloud/services/speechRelay.md, \"Story: Speak the relay protocol on one socket\"; spec/cloud/index.md, \"Story: Transcribe a recording\")", () => scoped(effect {
+  it.live("Speak, time, transcribe and stream turns through the provider, and type every refusal (spec/cloud/services/speechRelay.md, \"Story: Speak the relay protocol on one socket\"; spec/cloud/services/speechRelay.md, \"A final synthesis charge uses measured text only after completion and confirmed transport close\"; spec/cloud/index.md, \"Story: Transcribe a recording\")", () => scoped(effect {
     const fake = try sync(() => speechFake())
     const fakes = try acquireRelease(promise(() => startFakeServer()), (server) => promise(() => server.close()))
     try sync(() => fake.install(fakes))
@@ -40,6 +40,10 @@ describe("WP6 Speech provider (spec/cloud/services/speechRelay.md)", () => {
       try tts.speak("u1", "Hi", true)
       try tts.finish("u1")
       const spoken = Array.from(try Stream.runCollect(Stream.take(tts.edges, 3)))
+      const synthesisClosed = try tts.close()
+      try sync(() => fake.scriptRealtime({ kind: "unclean_close" }))
+      const unclean = try openTts()
+      const uncleanClose = try unclean.close()
       try sync(() => fake.scriptRealtime({ kind: "refuse", status: 401 }))
       const badOpen = try failureTag(openStt())
       return {
@@ -49,6 +53,8 @@ describe("WP6 Speech provider (spec/cloud/services/speechRelay.md)", () => {
         refusals: [refused, outage, garbled, badOpen],
         edges: edges.map((edge) => [edge.kind, edge.transcript]),
         drained,
+        synthesisClosed,
+        uncleanClose,
         spoken: spoken.map((edge) => edge.kind === "audio" ? `audio:${edge.pcm.byteLength}` : edge.kind)
       }
     }), layer)
@@ -69,11 +75,14 @@ describe("WP6 Speech provider (spec/cloud/services/speechRelay.md)", () => {
           refusals: ["ProviderRefused", "ProviderRefused", "ProviderInvalidResponse", "ProviderUnreachable"],
           edges: [["SttConnected", ""], ["StartOfTurn", ""], ["TranscriptUpdate", spokenTranscript.slice(0, 7)], ["EndOfTurn", spokenTranscript]],
           drained: true,
+          synthesisClosed: true,
+          uncleanClose: false,
           spoken: [`audio:${pcmChunkBytes}`, "flushed", "completed"]
         },
         transcribed: [["audio/wav", "ink-whisper", "en", 4], ["audio/wav", "ink-whisper", null, 2]],
         connections: [
           ["/stt/turns/websocket", "ink-2", "16000", secrets.SPEECH_API_KEY],
+          ["/tts/websocket", null, null, secrets.SPEECH_API_KEY],
           ["/tts/websocket", null, null, secrets.SPEECH_API_KEY],
           ["/stt/turns/websocket", "ink-2", "16000", secrets.SPEECH_API_KEY],
           ["/stt/turns/websocket", "ink-2", "16000", secrets.SPEECH_API_KEY]

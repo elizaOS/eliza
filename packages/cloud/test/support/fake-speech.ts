@@ -19,7 +19,8 @@ export type BatchScript =
 export type RealtimeScript =
   | { readonly kind: "accept" }
   | { readonly kind: "refuse"; readonly status: number }
-  | { readonly kind: "fail" };
+  | { readonly kind: "fail" }
+  | { readonly kind: "unclean_close" };
 
 export type ProviderTurn = { readonly type: "turn.start" | "turn.resume" | "turn.update" | "turn.eager_end" | "turn.end"; readonly transcript?: string };
 
@@ -120,7 +121,7 @@ interface Peer {
 
 type Inbound = { readonly kind: "text"; readonly text: string } | { readonly kind: "binary"; readonly bytes: Uint8Array };
 
-function accept(request: IncomingMessage, socket: Duplex, received: (peer: Peer, message: Inbound) => void): Peer {
+function accept(request: IncomingMessage, socket: Duplex, received: (peer: Peer, message: Inbound) => void, closingCode?: number): Peer {
   const digest = createHash("sha1").update(`${String(request.headers["sec-websocket-key"])}258EAFA5-E914-47DA-95CA-C5AB0DC85B11`).digest("base64");
   socket.write(`HTTP/1.1 101 Switching Protocols\r\nupgrade: websocket\r\nconnection: Upgrade\r\nsec-websocket-accept: ${digest}\r\n\r\n`);
   let closing = false;
@@ -148,7 +149,7 @@ function accept(request: IncomingMessage, socket: Duplex, received: (peer: Peer,
       const payload = Buffer.from(pending.subarray(size + 4, size + 4 + length).map((byte, index) => byte ^ (mask[index % 4] ?? 0)));
       pending = pending.subarray(size + 4 + length);
       if (opcode === 0x8) {
-        const code = payload.length >= 2 ? payload.readUInt16BE(0) : 1000;
+        const code = closingCode ?? (payload.length >= 2 ? payload.readUInt16BE(0) : 1000);
         peer.close(code);
         socket.end();
         return;
@@ -234,7 +235,7 @@ export function speechFake(): SpeechFake {
       socket.end(`HTTP/1.1 ${status} Refused\r\ncontent-length: 7\r\n\r\nrefused`);
       return;
     }
-    const peer = accept(request, socket, route);
+    const peer = accept(request, socket, route, scripted.kind === "unclean_close" ? 1011 : undefined);
     if (scripted.kind === "fail") peer.text({ type: "error", context_id: "provider", message: "scripted failure" });
     else if (route === stt) peer.text({ type: "connected" });
   };

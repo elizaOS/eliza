@@ -73,6 +73,7 @@ export type TtsEdge =
 export interface SttLink {
   readonly send: (pcm: Uint8Array) => void!SpeechFailure
   readonly drain: () => boolean!!
+  readonly close: () => boolean!!
   readonly edges: Stream.Stream<SttEdge, SpeechFailure>
 }
 
@@ -80,6 +81,7 @@ export interface TtsLink {
   readonly speak: (id: string, text: string, flush: boolean) => void!SpeechFailure
   readonly finish: (id: string) => void!SpeechFailure
   readonly cancel: (id: string) => void!SpeechFailure
+  readonly close: () => boolean!!
   readonly edges: Stream.Stream<TtsEdge, SpeechFailure>
 }
 
@@ -357,10 +359,17 @@ effect function connected<A>(url: string, version: string, decode: (chunk: strin
   const edges = try Queue.unbounded<A, SpeechFailure | Cause.Done>()
   const closed = try Deferred.make<boolean>()
   fork.scoped pump(reader, edges, closed, decode)
-  const write = effect (chunk: string | Uint8Array) => {
+  const write = effect (chunk: string | Uint8Array | Socket.CloseEvent) => {
     writer.write(chunk) catch effect () => { throw new ProviderUnreachable() }
   }
-  return { settings, write, closed, edges: Stream.fromQueue(edges) }
+  const closeWith = effect (chunk: string | Socket.CloseEvent) => {
+    const awaitingPeer = Effect.interruptible(effect {
+      try write(chunk)
+      return try Deferred.await(closed)
+    })
+    return try timeoutOrElse(awaitingPeer, { duration: drainBudget, orElse: () => succeed(false) }) catch () => false
+  }
+  return { write, closeWith, edges: Stream.fromQueue(edges) }
 }
 
 export effect function openStt(): SttLink!SpeechFailure!(Deployment | Scope.Scope) {
@@ -372,11 +381,8 @@ export effect function openStt(): SttLink!SpeechFailure!(Deployment | Scope.Scop
   const link = try connected(`${settings.realtimeUrl}/stt/turns/websocket?${query.toString()}`, sttVersion, sttEdgeOf)
   return {
     send: (pcm: Uint8Array) => link.write(pcm),
-    drain: effect () => {
-      const sent = link.write(JSON.stringify({ type: "close" })) catch () => false
-      if (sent === false) return false
-      return try timeoutOrElse(Deferred.await(link.closed), { duration: drainBudget, orElse: () => succeed(false) })
-    },
+    drain: () => link.closeWith(JSON.stringify({ type: "close" })),
+    close: () => link.closeWith(new Socket.CloseEvent(1000)),
     edges: link.edges
   }
 }
@@ -398,6 +404,7 @@ export effect function openTts(): TtsLink!SpeechFailure!(Deployment | Scope.Scop
     speak: (id: string, text: string, flush: boolean) => phrase(id, text, true, flush),
     finish: (id: string) => phrase(id, "", false, false),
     cancel: (id: string) => link.write(JSON.stringify({ context_id: id, cancel: true })),
+    close: () => link.closeWith(new Socket.CloseEvent(1000)),
     edges: link.edges
   }
 }

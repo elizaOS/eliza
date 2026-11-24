@@ -2,6 +2,7 @@
 import { apply, canSettleWindow, consentLifetime, decodeState, firstSessionDeadline, initial, nextWindowDeadline, Rejected, retryWindowAdmitted, windowLength, windowTtsChars, windowRequestAdmitted, type Event, type Session, type NotAState, type SettlementEvidence } from "../../gen/cloud__services__speechRelay.effect.vibe"
 import { realtimeSpeechAdmits, realtimeSpeechResetsAt, utcDayStart } from "../../gen/cloud__billing__plans.effect.vibe"
 import { relayChannels, relaySampleRate } from "../../gen/cloud__services__speechRelay.effect.vibe"
+import { settlementOf } from "../../gen/cloud__services__speechSession.effect.vibe"
 import type { HoldKey, SpeechDirection } from "../../gen/cloud__shared__types.ts"
 import { refused, Refused, wireName } from "../http/refusal.vibe"
 import { signed, type Signed } from "../http/request-auth.vibe"
@@ -118,11 +119,12 @@ function holdOf(holds: WindowHolds, direction: SpeechDirection): string {
 }
 
 function settlementFor(direction: SpeechDirection, dispatched: boolean, usage: WindowUsage, rates: Rates): Settlement {
-  if (!dispatched) return { kind: "release" }
-  if (direction === "Transcribe") {
-    return usage.superseded === true || usage.sttDrained ? { kind: "known", actual: Math.ceil(usage.pcmBytes * rates.microsPerSecond / pcmBytesPerSecond) } : { kind: "unknown" }
-  }
-  return usage.superseded === true || usage.ttsConfirmed ? { kind: "known", actual: usage.ttsChars * rates.microsPerCharacter } : { kind: "unknown" }
+  const transcription = direction === "Transcribe"
+  const disposition = settlementOf(dispatched, transcription ? usage.sttDrained : usage.ttsConfirmed, usage.superseded === true)
+  if (disposition === "ReleaseHold") return { kind: "release" }
+  if (disposition === "ChargeQuote") return { kind: "unknown" }
+  const actual = transcription ? Math.ceil(usage.pcmBytes * rates.microsPerSecond / pcmBytesPerSecond) : usage.ttsChars * rates.microsPerCharacter
+  return { kind: "known", actual }
 }
 
 export function sessionColumns(now: number) {

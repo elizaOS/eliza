@@ -271,19 +271,23 @@ pure def sometimesEndedAtTheOldDeadlineAfterARefusal(s: Session): bool = isRetir
 
 ### Each window settles each direction once, and a session closes only with every receipt
 
-Each hold is settled by metering: never dispatched, `M::release` (0);
-transcription dispatched without a graceful drain, `M::settleUnknown` (the
-quote); otherwise `M::settleKnown` with PCM bytes / 32000 seconds or the
-TTS `CharCount` submitted. Recording a receipt here follows that settle in
-the same transaction. When a successor has started after the previous
-window's deadline, that previous window can settle during ongoing speech
-using its frozen submitted counters. Those counters do not attest that
-either transport has closed.
+Each hold is settled by metering. An unused reservation is released.
+A final transcription charge needs a graceful drain to use measured
+PCM bytes. A final synthesis charge needs complete utterances and
+a confirmed normal transport close to use measured submitted characters.
+Without the respective evidence, a dispatched hold settles at its quote.
+Recording a receipt here follows that settle in the same transaction.
+When a successor has started after the previous window's deadline, that
+previous window can settle during ongoing speech using its frozen
+submitted counters. Those counters do not attest that either transport
+has closed.
 
 ```quint
 type Settlement = ReleaseHold | ChargeQuote | ChargeMeasured
-pure def settlementOf(direction: SpeechDirection, dispatched: bool, drained: bool): Settlement =
-  if (not(dispatched)) ReleaseHold else if (direction == Transcribe and not(drained)) ChargeQuote else ChargeMeasured
+pure def settlementOf(dispatched: bool, confirmed: bool, frozen: bool): Settlement =
+  if (not(dispatched)) ReleaseHold else if (confirmed or frozen) ChargeMeasured else ChargeQuote
+pure def lawUnknownFinalSpeechSettlesAtTheQuote(dispatched: bool): bool =
+  dispatched implies settlementOf(dispatched, false, false) == ChargeQuote
 pure def settledIn(s: Session, direction: SpeechDirection): Set[int] = if (direction == Transcribe) s.sttSettled else s.ttsSettled
 pure def canRecordReceipt(s: Session, window: int, direction: SpeechDirection, evidence: Rl::SettlementEvidence): bool =
   window >= 1 and window <= s.windows and not(settledIn(s, direction).contains(window))

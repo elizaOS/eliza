@@ -466,3 +466,23 @@ pure def stepReceiptsNeverDisappear(before: Session, after: Session): bool = bef
 pure def sometimesSessionRetiring(s: Session): bool = s.phase == Retiring
 pure def sometimesSessionClosed(s: Session): bool = s.phase == Closed
 ```
+
+### A final synthesis charge uses measured text only after completion and confirmed transport close
+
+When the relay retires, it stops both existing provider transports before
+waiting for any in-progress renewal. A graceful stop and complete
+utterances can qualify measured synthesis only if the provider socket
+also confirms a normal close. A send of the closing frame, a timeout,
+an abnormal close or the scope's own cleanup supplies no confirmation.
+For a dispatched direction with unconfirmed final use the quote is
+settled conservatively. A superseded window keeps its own submitted
+counter and basis independently of the final provider close.
+
+```quint
+pure def synthesisUsageConfirmed(graceful: bool, utterancesFinished: bool, transportClosed: bool): bool =
+  graceful and utterancesFinished and transportClosed
+pure def lawAnUtteranceCompletionAloneDoesNotConfirmSynthesis(graceful: bool): bool =
+  not(synthesisUsageConfirmed(graceful, true, false))
+pure def lawMeasuredFinalSynthesisNeedsAConfirmedGracefulClose(graceful: bool, utterancesFinished: bool, transportClosed: bool): bool =
+  synthesisUsageConfirmed(graceful, utterancesFinished, transportClosed) iff (graceful and utterancesFinished and transportClosed)
+```

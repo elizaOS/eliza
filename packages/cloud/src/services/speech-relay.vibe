@@ -1,7 +1,7 @@
 // spec/cloud/services/speechRelay.md, "Story: Speak the relay protocol on one socket"; spec/cloud/services/speechRelay.md, "Story: Keep a live session funded and close it with receipts"; spec/cloud/index.md, "Story: Use a cloud speech session"; spec/cloud/index.md, "A speech window bounds the audio and text sent to providers"
 import { Socket } from "effect/socket"
 import {
-  acceptsAudio, helloDeadline, isSttFrame, maxDownlinkPcmBytes, relayAtUpgrade, relayChannels, relaySampleRate, relayStep, speaking, stageIs, windowLength, windowTtsChars,
+  acceptsAudio, helloDeadline, isSttFrame, maxDownlinkPcmBytes, relayAtUpgrade, relayChannels, relaySampleRate, relayStep, speaking, stageIs, synthesisUsageConfirmed, windowLength, windowTtsChars,
   type Relay, type RelayInput, type ServerFrame, type Shortfall
 } from "../../gen/cloud__services__speechRelay.effect.vibe"
 import { readDevice, validUplink, writeRelay, type RelayWire } from "../client/relay-frames.ts"
@@ -484,13 +484,18 @@ effect function readDeviceFrames(reader: Socket.Reader, shell: Shell, arrivals: 
 
 effect function settleAll(shell: Shell, ports: RelayPorts, sessionId: string) {
   const stt = shell.stt
-  const drained = shell.graceful && stt !== undefined ? try stt.drain() : false
-  const forwarded = shell.windows.reduce((sum, window) => sum + window.pcmBytes, 0)
-  const sttDrained = shell.graceful && (forwarded === 0 || drained)
-  const ttsConfirmed = shell.graceful && !shell.ttsUncertain && shell.relay.utterances.every((utterance) => utterance.stage === "UtteranceDone" || !shell.spoken.has(utterance.id))
-  ports.session.retire(sessionId) catch effect (failure) => {
-    try annotateLogs(logError("a speech session could not be retired"), { sessionId, failure: failure._tag })
-  }
+  const tts = shell.tts
+  const { sttStopped, ttsStopped } = try Effect.all({
+    sttStopped: stt === undefined ? succeed(false) : shell.graceful ? stt.drain() : stt.close(),
+    ttsStopped: tts === undefined ? succeed(false) : tts.close(),
+    retired: ports.session.retire(sessionId) catch effect (failure) => {
+      try annotateLogs(logError("a speech session could not be retired"), { sessionId, failure: failure._tag })
+    },
+  }, { concurrency: 3 })
+  const forwarded = shell.windows.some((window) => window.pcmBytes > 0)
+  const sttDrained = shell.graceful && (!forwarded || sttStopped)
+  const utterancesFinished = !shell.ttsUncertain && shell.relay.utterances.every((utterance) => utterance.stage === "UtteranceDone" || !shell.spoken.has(utterance.id))
+  const ttsConfirmed = synthesisUsageConfirmed(shell.graceful, utterancesFinished, ttsStopped)
   const renewal = shell.renewal
   if (renewal !== undefined) try Deferred.await(renewal)
   for (const window of shell.windows) {
