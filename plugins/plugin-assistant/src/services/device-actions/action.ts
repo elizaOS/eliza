@@ -2359,6 +2359,23 @@ export const proposeDeviceAction: Action = {
       requestedCameraCapture ||
       requestedBrowserControl ||
       requestedKeypad;
+    const viewClientId =
+      metadata &&
+      typeof metadata === "object" &&
+      !Array.isArray(metadata) &&
+      "viewClientId" in metadata
+        ? metadata.viewClientId
+        : undefined;
+    const presentsView =
+      requestedBrowserOpen &&
+      typeof viewClientId === "string" &&
+      usesCompletedActionNavigation(metadata)
+        ? {
+            viewId: "browser",
+            clientId: viewClientId,
+            installationId: payload.installationId,
+          }
+        : undefined;
     return {
       success: true,
       transcriptVisibility: "internal",
@@ -2413,6 +2430,7 @@ export const proposeDeviceAction: Action = {
           ? { awaitingDeviceExecution: true }
           : { awaitingUserInput: request.state === "pending" }),
         ...(requestedHandoff ? { directRequest: true } : {}),
+        ...(presentsView ? { presentsView } : {}),
         approvalRequired: request.state === "pending" && !requestedHandoff,
       },
     };

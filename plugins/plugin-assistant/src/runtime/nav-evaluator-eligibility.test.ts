@@ -108,6 +108,49 @@ test("requires a matching view and installation, and treats active preparation a
   Object.assign(t, { archivedSteps: t.steps, steps: [] });
   expect(status()).toBe("missing");
 });
+
+test("uses a current direct Browser handoff only as bound preparation", () => {
+  const t = replay();
+  const required = {
+    viewId: "browser",
+    clientId: "client-1",
+    installationId: "install-1",
+  };
+  const data = {
+    state: "pending",
+    executed: false,
+    directRequest: true,
+    awaitingDeviceExecution: true,
+    approvalRequired: false,
+    presentsView: { ...required },
+  };
+  const step = {
+    toolCall: { name: "DEVICE_BROWSER_OPEN" },
+    result: {
+      success: true,
+      transcriptVisibility: "internal",
+      modelReplyRequired: true,
+      data,
+    },
+  };
+  Object.assign(t.context, { metadata: { requiredViewNavigation: required } });
+  Object.assign(t, { steps: [step], archivedSteps: [] });
+  const status = () =>
+    Reflect.apply(requiredViewNavigationStatus, undefined, [t]);
+  expect(status()).toBe("prepared");
+  required.clientId = "client-2";
+  expect(status()).toBe("missing");
+  required.clientId = "client-1";
+  required.installationId = "install-2";
+  expect(status()).toBe("missing");
+  required.installationId = "install-1";
+  data.approvalRequired = true;
+  expect(status()).toBe("missing");
+  data.approvalRequired = false;
+  Object.assign(t, { steps: [], archivedSteps: [step] });
+  expect(status()).toBe("missing");
+});
+
 /** The decision state the real evaluator sends the model for this turn. */
 async function decisionState(
   trajectory: Replay,
