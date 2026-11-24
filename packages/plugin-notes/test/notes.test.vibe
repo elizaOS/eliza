@@ -114,7 +114,7 @@ function action(plugin: ReturnType<typeof notesPlugin>, name: string, runtime?: 
 
 const voice = (id: string, audioId: string) => ({ kind: "voice", data: { recordingId: audioId, audio: { audioId }, lines: [{ s: "speaker-1", t: `Said in ${id}` }] } })
 
-it.effect('Keep notes as one collection edited only on the owner\'s words (spec/notes/records.md, "Story: Keep my notes as one collection the agent edits only as I asked"; spec/notes/records.md, "A Notes write runs when the model calls a write action, and a read action never writes"; spec/notes/records.md, "A calendar draft made from a note is admitted only while that exact note is unchanged"; spec/notes/records.md, "A move by name takes the identical copies of the note along"; spec/notes/records.md, "A delete or an edit by name leaves no identical copy behind"; spec/notes/records.md, "A Notes change answers with a receipt of the note and the revision it committed, and a refusal says what it waits on"; spec/notes/records.md, "A read tells a note\'s times in the owner\'s zone when the turn knows it"; spec/notes/records.md, "The agent reads and changes Notes only for the owner, and changes the note the model picked"; spec/notes/records.md, "A note\'s title and body are saved as well-formed text")', effect () => {
+it.effect('Keep notes as one collection edited only on the owner\'s words (spec/notes/records.md, "Story: Keep my notes as one collection the agent edits only as I asked"; spec/notes/records.md, "A checklist the owner asks for is a new note holding the owner\'s items"; spec/notes/records.md, "A read by a title no saved note has cites no other note and asks which one"; spec/notes/records.md, "A Notes write runs when the model calls a write action, and a read action never writes"; spec/notes/records.md, "A calendar draft made from a note is admitted only while that exact note is unchanged"; spec/notes/records.md, "A move by name takes the identical copies of the note along"; spec/notes/records.md, "A delete or an edit by name leaves no identical copy behind"; spec/notes/records.md, "A Notes change answers with a receipt of the note and the revision it committed, and a refusal says what it waits on"; spec/notes/records.md, "A read tells a note\'s times in the owner\'s zone when the turn knows it"; spec/notes/records.md, "The agent reads and changes Notes only for the owner, and changes the note the model picked"; spec/notes/records.md, "A note\'s title and body are saved as well-formed text")', effect () => {
   const f = fixture()
   const notes = notesOver(f)
   const first = try notes.create({ content: "Groceries\n- milk", creationId: "step-1" })
@@ -238,6 +238,41 @@ it.effect('Keep notes as one collection edited only on the owner\'s words (spec/
   assert.deepEqual(f.published, ["note:created", "note:created", "note:updated", "note:updated", "note:deleted", "note:created", "note:deleted", "note:created", "note:created", "note:deleted", "note:created", "note:created", "note:updated", "note:deleted", "note:created", "note:created", "note:updated", "note:created", "note:created", "note:updated", "note:updated", "note:updated", "note:moved", "note:created", "note:created", "note:moved", "note:updated"])
   const asked = try action(plugin, "NOTES_CREATE")(message("add a note: call the plumber Tuesday"), { content: "Call the plumber Tuesday" })
   assert.deepEqual([asked.success, asked.data?.op, (try notes.snapshot()).notes.some((note) => note.title === "Call the plumber Tuesday")], [true, "create", true])
+  const creating = action(plugin, "NOTES_CREATE")
+  const trek = try creating(message("start a trek checklist: tent, stove"), { content: "Trek", checklist: ["tent", "stove"] })
+  const trekAgain = try creating(message("make me a new trek checklist with tent and stove"), { content: "Trek", checklist: ["tent", "stove"] })
+  const beforeRefused = (try notes.snapshot()).revision
+  const refusedLists = [
+    try creating(message("make an empty checklist"), { content: "Empty", checklist: [] }),
+    try creating(message("make a checklist with tent and a blank line"), { content: "Blank", checklist: ["tent", " "] }),
+    try creating(message("make a trek checklist with tent and a note to bring snacks"), { content: "Trek\nbring snacks", checklist: ["tent"] }),
+  ]
+  const trekList = { kind: "list", data: { items: [{ t: "tent", done: false }, { t: "stove", done: false }] } }
+  const afterRefused = try notes.snapshot()
+  assert.deepEqual([
+    [trek.success, trek.data?.op, trekAgain.success, trekAgain.data?.op, trekAgain.data?.noteId === trek.data?.noteId],
+    afterRefused.notes.filter((note) => note.title === "Trek").map((note) => [note.body, note.format]),
+    refusedLists.map((result) => [result.success, result.data?.code]),
+    afterRefused.revision === beforeRefused,
+  ], [
+    [true, "create", true, "create", false],
+    [["", trekList], ["", trekList]],
+    [[false, "NOTES_VALIDATION_FAILED"], [false, "NOTES_VALIDATION_FAILED"], [false, "NOTES_VALIDATION_FAILED"]],
+    true,
+  ])
+  const getting = action(plugin, "NOTES_GET")
+  const weekend = try notes.create({ content: "Weekend\nbring the gear bag" })
+  const absentTitle = try getting(message("what's in my gear note"), { title: "gear" })
+  const weekendRead = try getting(message("what's in my weekend note"), { title: "weekend" })
+  assert.deepEqual([
+    [absentTitle.success, absentTitle.data?.code, absentTitle.data?.awaitingUserInput, absentTitle.data?.candidates, absentTitle.text?.includes("bring the gear bag")],
+    [weekendRead.success, weekendRead.data?.noteId],
+    (try getting(message("what's in my gear note"), { title: "gear", content: "gear" })).success,
+  ], [
+    [false, "NOTES_TITLE_NOT_FOUND", true, [{ id: weekend.value.note.id, title: "Weekend" }], false],
+    [true, weekend.value.note.id],
+    false,
+  ])
 
   const camp = try notes.create({ content: "Camp", format: { kind: "list", data: { items: [{ t: "tent", done: false }] } } })
   const oversized = { field: "checklist", index: 0, expectedText: "tent", text: "x".repeat(262_145) } as const

@@ -1,4 +1,4 @@
-// spec/notes/records.md, "A creation the client names is made once, and every record is one bounded note"; spec/notes/trash.md, "Canonical Trash restores the exact deleted ID against the current revision"; spec/notes/trash.md, "Fresh Notes references and the exact audio operation receipt govern cleanup"
+// spec/notes/records.md, "A creation the client names is made once, and every record is one bounded note"; spec/notes/records.md, "A checklist the owner asks for is a new note holding the owner's items"; spec/notes/trash.md, "Canonical Trash restores the exact deleted ID against the current revision"; spec/notes/trash.md, "Fresh Notes references and the exact audio operation receipt govern cleanup"
 import { SchemaGetter } from "effect"
 import { authoredNoteText, parseNoteFormat } from "./format.vibe"
 import { STICKY_COLORS, type NoteFormat } from "./types.vibe"
@@ -137,6 +137,7 @@ const NoteDraftFields = {
 
 export const CreateRequest = Schema.Struct({
   ...NoteDraftFields,
+  checklist: Schema.optionalKey(Schema.Array(Schema.String.check(Schema.isMaxLength(noteLimits.body)))),
   forceNew: Schema.optionalKey(Schema.Boolean),
   creationId: Schema.optionalKey(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(noteLimits.creationId))),
 })
