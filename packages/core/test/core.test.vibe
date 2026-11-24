@@ -1,6 +1,6 @@
 // spec/core/index.md, "Story: Compose a kernel through explicit services"
 import { assert, it } from "@effect/vitest"
-import { type Action, addLogListener, asyncContextStorageFactoryFor, AsyncContextUnavailableError, type AgentEventPayload, AgentEventService, type AgentNotification, AgentRuntime, annotateActiveTrajectoryStep, type ApprovalRequest, type ApprovalResult, ApprovalService, BatchProcessor, bindIncomingMessagePersistence, bridgeActionCompletedToStreams, bridgeActionStartedToStreams, bridgeRunEndedToStreams, bridgeRunStartedToStreams, buildPairingReplyMessage, buildPlannerActionGrammarStrict, callModelWithValidation, canModifyRole, ChannelTopicsService, ChannelType, checkPairingAllowed, clearSaltCache, collectMessageContentSegmentIds, compactHistoricalReceiptSegments, completionContextSources, type ConnectorAccount, type ConnectorAccountProvider, type Content, type ContextObject, createCharacter, createLogger, createMessageMemory, createModelAttemptAllowance, createPreparedModelRequestGuard, createService, createUniqueUuid, decryptStringValue, effectDeliveryBindingIsValid, effectDeliveryBindingProvesApplication, ElizaError, EmbeddingGenerationService, EncryptedCachePseudonymMapStore, ensureAgentVoice, ensureTaskTrajectory, EventType, executePlannedToolCall, getConnectorAccountManager, getEmbeddingVectorSpace, getTrajectoryContext, getWorldSettings, type HandlerCallback, handoffTaskSchedulerAdapter, type IAgentRuntime, identifyEmbeddingVector, incomingMessagePersistenceSnapshot, inheritIncomingMessagePersistence, isElizaError, isInAllowlist, isScrubDone, logActiveTrajectoryLlmCall, type LogEntry, type Memory, MESSAGE_CONTENT_SEGMENT_MAX_BYTES, MESSAGE_CONTENT_SEGMENT_TABLE, type MessageHandlerResult, MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED, ModelType, NoModelProviderConfiguredError, normalizeEffectReceipt, type NotificationInboxSnapshot, NotificationNativeError, NotificationService, PairingService, persistIncomingMessageMemory, PiiScrubService, PseudonymSession, type PipelineHookContext, type Plugin, recentLogs, recordLlmCall, registerProxyInspector, registerScheduledProcessTask, removeLogListener, requireConfirmation, resolveCanonicalOwnerId, resolveEntityRole, resolveOwnerEntityIdOrDefault, type ResponseHandlerFieldEvaluator, ResponseHandlerFieldRegistry, Role, ROLE_WRITE_AUDIT_LOG_TYPE, type RoleName, RoomHandlerQueueAbortedError, RoomHandlerQueueClosedError, runExtractorPipeline, runResponseHandlerEvaluators, RunTerminalOwner, runWithStreamingContext, runWithTrajectoryContext, selectCompletionContext, Service, type ServiceClass, ServiceType, setEntityRoleCas, SecretSwapSession, STANDARD_OPTIONS, startTaskScheduler, stopTaskScheduler, type StreamingContext, stringToUuid, TaskDrain, TaskService, type TaskWorker, type TrajectoryContext, TurnAbortedError, updateWorldSettings, type UUID, VoiceCancellationRegistry, withEvaluatorStep, withRoomDeliverySettlement, withStandaloneTrajectory, withVisibleComponents, type World } from "../src/index.vibe"
+import { type Action, addLogListener, asyncContextStorageFactoryFor, AsyncContextUnavailableError, type AgentEventPayload, AgentEventService, type AgentNotification, AgentRuntime, annotateActiveTrajectoryStep, type ApprovalRequest, type ApprovalResult, ApprovalService, BatchProcessor, bindIncomingMessagePersistence, bridgeActionCompletedToStreams, bridgeActionStartedToStreams, bridgeRunEndedToStreams, bridgeRunStartedToStreams, buildPairingReplyMessage, buildPlannerActionGrammarStrict, callModelWithValidation, canModifyRole, ChannelTopicsService, ChannelType, checkPairingAllowed, clearSaltCache, collectMessageContentSegmentIds, compactHistoricalReceiptSegments, completionContextSources, type ConnectorAccount, type ConnectorAccountProvider, type Content, type ContextObject, createCharacter, createLogger, createMessageMemory, createModelAttemptAllowance, createPreparedModelRequestGuard, createService, createUniqueUuid, decryptStringValue, effectDeliveryBindingIsValid, effectDeliveryBindingProvesApplication, ElizaError, EmbeddingGenerationService, EncryptedCachePseudonymMapStore, ensureAgentVoice, ensureTaskTrajectory, EventType, executePlannedToolCall, getConnectorAccountManager, getEmbeddingVectorSpace, getTrajectoryContext, getWorldSettings, type HandlerCallback, handoffTaskSchedulerAdapter, type IAgentRuntime, identifyEmbeddingVector, incomingMessagePersistenceSnapshot, inheritIncomingMessagePersistence, isElizaError, isInAllowlist, isScrubDone, logActiveTrajectoryLlmCall, type LogEntry, type Memory, MESSAGE_CONTENT_SEGMENT_MAX_BYTES, MESSAGE_CONTENT_SEGMENT_TABLE, type MessageHandlerResult, MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED, ModelType, NoModelProviderConfiguredError, nodeSecretCipher, normalizeEffectReceipt, type NotificationInboxSnapshot, NotificationNativeError, NotificationService, PairingService, persistIncomingMessageMemory, PiiScrubService, PseudonymSession, type PipelineHookContext, type Plugin, recentLogs, recordLlmCall, registerProxyInspector, registerScheduledProcessTask, registerSecretCipher, removeLogListener, requireConfirmation, resolveCanonicalOwnerId, resolveEntityRole, resolveOwnerEntityIdOrDefault, type ResponseHandlerFieldEvaluator, ResponseHandlerFieldRegistry, Role, ROLE_WRITE_AUDIT_LOG_TYPE, type RoleName, RoomHandlerQueueAbortedError, RoomHandlerQueueClosedError, runExtractorPipeline, runResponseHandlerEvaluators, RunTerminalOwner, runWithStreamingContext, runWithTrajectoryContext, selectCompletionContext, Service, type ServiceClass, ServiceType, setEntityRoleCas, SecretCipherUnavailableError, SecretSwapSession, STANDARD_OPTIONS, startTaskScheduler, stopTaskScheduler, type StreamingContext, stringToUuid, TaskDrain, TaskService, type TaskWorker, type TrajectoryContext, TurnAbortedError, updateWorldSettings, type UUID, VoiceCancellationRegistry, withEvaluatorStep, withRoomDeliverySettlement, withStandaloneTrajectory, withVisibleComponents, type World } from "../src/index.vibe"
 import { coreDir, installPacked, packCandidate, runNode, sha256File } from "./support/child.ts"
 import { host, kernel, scratch, withEnv } from "./support/kernel.vibe"
 import { providerError, scriptedModels, type ScriptedReply, type SeenCall } from "./support/models.ts"
@@ -9,6 +9,7 @@ import { loopback } from "./support/servers.ts"
 import { DatabaseAdapter } from "../src/database.vibe"
 import { parseAndValidateCharacter } from "../src/character-schema.vibe"
 import { SqliteAdapter, SqliteStore } from "./support/sqlite-adapter.ts"
+import { sha1Digest, sha256HexDigest } from "../src/utils/crypto-primitives.vibe"
 
 module traceBoundary {
   import { types } from "node:util"
@@ -24,6 +25,16 @@ module traceBoundary {
   }
 }
 import { isProxy, throwOnRead } from traceBoundary
+
+module cryptoBoundary {
+  import * as nodeCrypto from "node:crypto"
+
+  /** @throws {never} */
+  export function nodeCryptoModule(): unknown {
+    return nodeCrypto
+  }
+}
+import { nodeCryptoModule } from cryptoBoundary
 registerProxyInspector(isProxy)
 
 // spec/core/asyncContext.md, "Story: Keep concurrent turn context isolated"; spec/core/asyncContext.md, "Scope restoration and peer isolation are exact for every context value"; spec/core/asyncContext.md, "A scope on a host with no asynchronous storage is refused before its callback runs"
@@ -38,6 +49,68 @@ it.live('A host with no asynchronous context storage refuses a scope rather than
     runWithTrajectoryContext({ runId: "run-one" }, async () => { await Effect.runPromise(Effect.sleep("5 millis")); return getTrajectoryContext()?.runId }),
   ]))
   assert.deepStrictEqual([refused instanceof AsyncContextUnavailableError, entered, refusing.getStore(), observed, node.getStore()], [true, false, undefined, ["turn-one", "turn-two", "run-one"], undefined])
+})
+
+// spec/core/settingsKeys.md, "Story: Keep persisted settings decryptable under the selected key"; spec/core/settingsKeys.md, "Recognized ciphertext fails explicitly when authentication or decryption fails"; spec/core/protocols.md, "Story: Share canonical values across hosts and plugins"
+it.live('Envelopes and a pseudonym map that node:crypto wrote still open, ids and digests keep their published values, and a host with no cipher refuses (spec/core/settingsKeys.md, "Recognized ciphertext fails explicitly when authentication or decryption fails"; spec/core/settingsKeys.md, "Story: Keep persisted settings decryptable under the selected key"; spec/core/protocols.md, "Story: Share canonical values across hosts and plugins")', () => effect {
+  const fromHex = (text: string) => Uint8Array.from(text.match(/../g) ?? [], (pair) => Number.parseInt(pair, 16))
+  const toHex = (bytes: Uint8Array) => Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("")
+  const salt = "fixture-private-salt-5b2e"
+  const v2Envelope = "v2:00112233445566778899aabb:14e068184b1883184cab8b491aa2cd7ee92bb5c7:45c50104db1337129d17ef696fcddaf6"
+  const v1Envelope = "0f0e0d0c0b0a09080706050403020100:051e28df09c03f5d1e6b17602ec3bd5988eec6405ec0d9d6e8e4ddf2f0222e25"
+  const mapBlob = "v2:a1a2a3a4a5a6a7a8a9aaabac:ae7d2a4af8314fc193b681c546f33096849724e414b8d5a4c1df0b42a253faafe8b49666f5cddcb82f27cfe32bf6f9ab7a088f6f9d32:3478cc31b6516ba713e237809415d217"
+  const stored = new Map<string, unknown>([["pii:pseudonym-map:v1", mapBlob]])
+  const cache = {
+    getCache: async <T,>(key: string) => stored.get(key) as T | undefined,
+    setCache: async <T,>(key: string, value: T) => { stored.set(key, value); return true },
+  }
+  const native = nodeSecretCipher(nodeCryptoModule())
+  assert.isDefined(native)
+  const nistKey = fromHex("feffe9928665731c6d6a8f9467308308feffe9928665731c6d6a8f9467308308")
+  const nistIv = fromHex("cafebabefacedbaddecaf888")
+  const nistAad = fromHex("feedfacedeadbeeffeedfacedeadbeefabaddad2")
+  const nistPlaintext = fromHex("d9313225f88406e5a55909c5aff5269a86a7a9531534f7da2e4c303d8a318a721c3c0c95956809532fcf0e2449a6b525b16aedf5aa0de657ba637b39")
+  const nist = native!.encryptAes256Gcm(nistKey, nistIv, nistPlaintext, nistAad)
+  const store = try Effect.orDie(Effect.try(() => new EncryptedCachePseudonymMapStore(cache, { encryptionSalt: salt })))
+  const opened = {
+    v2: decryptStringValue(v2Envelope, salt),
+    v1: decryptStringValue(v1Envelope, salt),
+    map: try Effect.promise(() => store.load()),
+  }
+  const refused = try ensuring(effect {
+    try sync(() => registerSecretCipher(undefined))
+    const read = try Effect.flip(Effect.try({ try: () => decryptStringValue(v2Envelope, salt), catch: (error) => error }))
+    const map = try Effect.flip(Effect.tryPromise({ try: () => store.load(), catch: (error) => error }))
+    return {
+      read: read instanceof ElizaError ? [read.code, read.cause instanceof SecretCipherUnavailableError] : [String(read)],
+      map: [map instanceof Error, (map instanceof Error ? map.message : String(map)).includes("No AES cipher is installed")],
+    }
+  }, sync(() => registerSecretCipher(native)))
+  assert.deepStrictEqual({
+    opened,
+    reopened: decryptStringValue(v2Envelope, salt),
+    nist: [toHex(nist.ciphertext), toHex(nist.tag), toHex(native!.decryptAes256Gcm(nistKey, nistIv, nist.ciphertext, nist.tag, nistAad))],
+    uuids: [stringToUuid("hello world"), stringToUuid("j01-agent"), stringToUuid("caf\u00e9 \u{1F600}"), stringToUuid(42)],
+    digests: [toHex(sha1Digest("abc")), toHex(sha1Digest("abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq")), sha256HexDigest(""), sha256HexDigest("abc"), sha256HexDigest("abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq")],
+    refused,
+  }, {
+    opened: { v2: "sk-fixture-v2-\u00e9\u{1F511}", v1: "legacy-cbc-fixture-value", map: { version: 1, salt: "fixture-mint-salt", clusters: [] } },
+    reopened: "sk-fixture-v2-\u00e9\u{1F511}",
+    nist: [
+      "522dc1f099567d07f47f37a32a84427d643a8cdcbfe5c0c97598a2bd2555d1aa8cb08e48590dbb3da7b08b1056828838c5f61e6393ba7a0abcc9f662",
+      "76fc6ece0f4e1768cddf8853bb2d551b",
+      toHex(nistPlaintext),
+    ],
+    uuids: ["f0355dd5-2823-054c-ae66-a0b12842c215", "6a03da5d-19e0-0868-8d96-8ad7fb1e0a1e", "f6b56b10-bbae-00fb-9279-09317f98afde", "92cfceb3-9d57-0914-ad8b-14d0e37643de"],
+    digests: [
+      "a9993e364706816aba3e25717850c26c9cd0d89d",
+      "84983e441c3bd26ebaae4aa1f95129e5e54670f1",
+      "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+      "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1",
+    ],
+    refused: { read: ["SETTING_DECRYPTION_FAILED", true], map: [true, true] },
+  })
 })
 
 effect function storeAt(prefix: string) {

@@ -3,7 +3,7 @@ import { errorText } from "../utils/errors.vibe"
 import { Foreign, foreign } from "../edge.vibe"
 import { getSalt } from "../settings.vibe"
 import { BufferUtils } from "../utils/buffer.vibe"
-import { decryptAes256GcmSync, encryptAes256GcmSync, sha256Bytes } from "../utils/web-crypto-sync.ts"
+import { installedSecretCipher, sha256Digest } from "../utils/crypto-primitives.vibe"
 import { assertValidSnapshot, type PseudonymMapSnapshot } from "./pii-pseudonym-map.vibe"
 import type { ScrubMarkerCache } from "./pii-scrub-markers.vibe"
 
@@ -43,8 +43,15 @@ export effect function pseudonymMapKey(options: EncryptedCachePseudonymMapStoreO
     )
   }
   return try Effect.try({
-    try: () => sha256Bytes(salt).slice(0, 32),
+    try: () => sha256Digest(salt).slice(0, 32),
     catch: (cause) => new Foreign({ cause }),
+  })
+}
+
+effect function mapCipher() {
+  return try Effect.try({
+    try: () => installedSecretCipher(),
+    catch: (cause) => new PseudonymMapStoreError(errorText(cause)),
   })
 }
 
@@ -62,8 +69,9 @@ export effect function loadPseudonymMap(cache: ScrubMarkerCache, key: Uint8Array
       "stored artifact is not v2 ciphertext; refusing to interpret it",
     )
   }
+  const cipher = try mapCipher()
   const bytes = try Effect.try({
-    try: () => decryptAes256GcmSync(
+    try: () => cipher.decryptAes256Gcm(
       key,
       BufferUtils.fromHex(parts[1]),
       BufferUtils.fromHex(parts[2]),
@@ -92,8 +100,9 @@ export effect function savePseudonymMap(
   try assertValidSnapshot(snapshot)
   const plaintext = JSON.stringify(snapshot)
   const iv = BufferUtils.randomBytes(12)
+  const cipher = try mapCipher()
   const { ciphertext, tag } = try Effect.try({
-    try: () => encryptAes256GcmSync(
+    try: () => cipher.encryptAes256Gcm(
       key,
       iv,
       BufferUtils.fromString(plaintext, "utf8"),

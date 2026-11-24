@@ -3,11 +3,11 @@ import { failingAs, thrown } from "../edge.vibe"
 import { uuidFromString } from "./uuid.vibe"
 
 module platform {
-  import { sha1Bytes } from "./web-crypto-sync.ts"
+  import { sha1Digest } from "./crypto-primitives.vibe"
 
   /** @throws {never} */
   export function sha1(input: string): Uint8Array {
-    return sha1Bytes(input)
+    return sha1Digest(input)
   }
 }
 import { sha1 } from platform

@@ -11,7 +11,7 @@ import type { World } from "./types/environment.vibe"
 import type { IAgentRuntime } from "./types/runtime.vibe"
 import type { Setting, SetupConfig, WorldSettings } from "./types/settings.vibe"
 import { BufferUtils } from "./utils/buffer.vibe"
-import { decryptAes256CbcSync, decryptAes256GcmSync, encryptAes256GcmSync } from "./utils/web-crypto-sync.ts"
+import { installedSecretCipher } from "./utils/crypto-primitives.vibe"
 import { getEnv, getEnvironment } from "./utils/environment.vibe"
 
 export function createSettingFromConfig(
@@ -156,7 +156,7 @@ export effect function encryptStringValue(value: string, salt: string) {
   const iv = BufferUtils.randomBytes(12)
   const plaintextBytes = BufferUtils.fromString(value, "utf8")
   const { ciphertext, tag } = try Effect.try({
-    try: () => encryptAes256GcmSync(key, iv, plaintextBytes, SETTINGS_V2_AAD),
+    try: () => installedSecretCipher().encryptAes256Gcm(key, iv, plaintextBytes, SETTINGS_V2_AAD),
     catch: (cause) => new Foreign({ cause }),
   })
 
@@ -178,14 +178,14 @@ effect function decryptEnvelope(value: string, salt: string) {
     const ciphertext = BufferUtils.fromHex(parts[2])
     const tag = BufferUtils.fromHex(parts[3])
     const plaintextBytes = try Effect.try({
-      try: () => decryptAes256GcmSync(key, iv, ciphertext, tag, SETTINGS_V2_AAD),
+      try: () => installedSecretCipher().decryptAes256Gcm(key, iv, ciphertext, tag, SETTINGS_V2_AAD),
       catch: (cause) => new Foreign({ cause }),
     })
     return BufferUtils.bufferToString(plaintextBytes, "utf8")
   }
 
   const plaintextBytes = try Effect.try({
-    try: () => decryptAes256CbcSync(key, BufferUtils.fromHex(parts[0]), BufferUtils.fromHex(parts[1])),
+    try: () => installedSecretCipher().decryptAes256Cbc(key, BufferUtils.fromHex(parts[0]), BufferUtils.fromHex(parts[1])),
     catch: (cause) => new Foreign({ cause }),
   })
   return BufferUtils.bufferToString(plaintextBytes, "utf8")

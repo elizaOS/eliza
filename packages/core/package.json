@@ -44,6 +44,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@noble/hashes": "^1.8.0",
     "adze": "^2.2.5",
     "effect": "4.1.1",
     "file-type": "^22.0.0",

@@ -22,11 +22,11 @@ interface ProviderTextSnapshot {
 }
 
 module node {
-  import { sha256HexSync } from "../utils/web-crypto-sync.ts"
+  import { sha256HexDigest } from "../utils/crypto-primitives.vibe"
 
   /** @throws {never} */
   export function sha256Hex(value: string | Uint8Array): string {
-    return sha256HexSync(value)
+    return sha256HexDigest(value)
   }
 }
 import { sha256Hex } from node

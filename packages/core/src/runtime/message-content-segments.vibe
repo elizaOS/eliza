@@ -67,11 +67,11 @@ interface ReconstructedMessageContentPage {
 
 module node {
   import { concat, fromHex, fromString, toHex } from "../utils/buffer.vibe"
-  import { sha1Bytes } from "../utils/web-crypto-sync.ts"
+  import { sha1Digest } from "../utils/crypto-primitives.vibe"
 
   /** @throws {never} */
   export function nameBasedUuid(namespaceHex: string, name: string): string {
-    const digest = sha1Bytes(concat([fromHex(namespaceHex), fromString(name, "utf8")]))
+    const digest = sha1Digest(concat([fromHex(namespaceHex), fromString(name, "utf8")]))
     const id = digest.slice(0, 16)
     id[6] = (id[6] & 0x0f) | 0x50
     id[8] = (id[8] & 0x3f) | 0x80

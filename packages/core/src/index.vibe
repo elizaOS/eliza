@@ -1207,6 +1207,12 @@ export {
   registerProxyInspector,
 } from "./security/runtime-abort-signal.vibe"
 export {
+  nodeSecretCipher,
+  registerSecretCipher,
+  type SecretCipher,
+  SecretCipherUnavailableError,
+} from "./utils/crypto-primitives.vibe"
+export {
   type OptimizationRootDirResolver,
   registerOptimizationRootDirResolver,
 } from "./runtime/agent-settings.vibe"
