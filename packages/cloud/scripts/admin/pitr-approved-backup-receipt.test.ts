@@ -10,7 +10,7 @@ function fixture() {
     runId: 1,
     repository: "elizaOS/eliza",
     event: "workflow_dispatch",
-    branch: "main",
+    branch: "main-v3",
     workflowPath: ".github/workflows/production-pitr-safety-backup.yml",
     conclusion: "success",
     backupStepConclusion: "success",

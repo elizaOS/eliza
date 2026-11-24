@@ -53,7 +53,7 @@ async function loadEvidence(input: ProtectedBackupInput) {
   if (
     run.id !== input.runId ||
     run.head_sha !== input.reviewedSourceHead ||
-    run.head_branch !== "main" ||
+    run.head_branch !== "main-v3" ||
     run.event !== "workflow_dispatch" ||
     run.conclusion !== "success" ||
     run.path !== ".github/workflows/production-pitr-safety-backup.yml" ||
@@ -123,7 +123,7 @@ async function loadEvidence(input: ProtectedBackupInput) {
       runId: input.runId,
       repository: "elizaOS/eliza",
       event: "workflow_dispatch",
-      branch: "main",
+      branch: "main-v3",
       workflowPath: ".github/workflows/production-pitr-safety-backup.yml",
       conclusion: "success",
       backupStepConclusion: "success",

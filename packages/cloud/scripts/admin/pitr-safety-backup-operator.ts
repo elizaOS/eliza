@@ -405,14 +405,14 @@ if (import.meta.main) {
             "--run-sha",
             process.env.GITHUB_SHA ?? "",
             "--canonical-ref",
-            "refs/heads/main",
+            "refs/heads/main-v3",
           ],
           { timeout: 120000, maxBuffer: 1024 * 1024, signal: abort.signal },
           (error) => resolve(!error),
         );
       });
     if (
-      process.env.GITHUB_REF !== "refs/heads/main" ||
+      process.env.GITHUB_REF !== "refs/heads/main-v3" ||
       process.env.GITHUB_ACTIONS !== "true"
     )
       throw Error("protected_runner_required");

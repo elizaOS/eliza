@@ -54,7 +54,7 @@ test("placement policy is read from the deployed commit and participates in cont
     );
     await assert.rejects(
       verifyCertificationSource(
-        { sourceRef: "refs/heads/staging", sourceSha, deploySha },
+        { sourceRef: "refs/heads/staging-v3", sourceSha, deploySha },
         { cwd },
       ),
       /require acknowledgement/,
@@ -149,7 +149,7 @@ test("real Git ancestry rejects untrusted revisions and binds changed verifier c
     const base = await commit("ordinary.txt", "base");
     const sourceSha = await commit("ordinary.txt", "later");
     const config = {
-      sourceRef: "refs/heads/staging",
+      sourceRef: "refs/heads/staging-v3",
       sourceSha,
       deploySha: base,
     };
@@ -171,7 +171,7 @@ test("real Git ancestry rejects untrusted revisions and binds changed verifier c
         await verifyCertificationSource(
           {
             ...config,
-            sourceRef: "refs/heads/main",
+            sourceRef: "refs/heads/main-v3",
             environment: "production",
           },
           { cwd },
@@ -188,7 +188,7 @@ test("real Git ancestry rejects untrusted revisions and binds changed verifier c
     );
     await assert.rejects(
       verifyCertificationSource(
-        { ...config, sourceRef: "refs/heads/main" },
+        { ...config, sourceRef: "refs/heads/main-v3" },
         { cwd },
       ),
       /trusted environment/,

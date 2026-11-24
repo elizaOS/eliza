@@ -37,8 +37,8 @@ jobs:
           SOURCE_REF: ${{ github.ref }}
         run: |
           set -euo pipefail
-          if [ "$SOURCE_REF" != "refs/heads/main" ]; then
-            echo "::error::Production database authority audits must run from refs/heads/main"
+          if [ "$SOURCE_REF" != "refs/heads/main-v3" ]; then
+            echo "::error::Production database authority audits must run from refs/heads/main-v3"
             exit 1
           fi
 
@@ -173,7 +173,7 @@ jobs:
           if ! GITHUB_TOKEN='${{ github.token }}' \
             bun packages/cloud/scripts/canonical-deploy-source-guard.ts \
             --run-sha "$GITHUB_SHA" \
-            --canonical-ref refs/heads/main \
+            --canonical-ref refs/heads/main-v3 \
             > "$evidence_dir/freshness.stdout" \
             2> "$evidence_dir/freshness.stderr"; then
             echo "::error::Production database audit source is no longer canonical"
@@ -235,7 +235,7 @@ jobs:
           set -e
           if ! GITHUB_TOKEN='${{ github.token }}' \
             bun packages/cloud/scripts/canonical-deploy-source-guard.ts \
-            --run-sha "$GITHUB_SHA" --canonical-ref refs/heads/main \
+            --run-sha "$GITHUB_SHA" --canonical-ref refs/heads/main-v3 \
             > "$BACKUP_EVIDENCE_DIR/backup-freshness.stdout" \
             2> "$BACKUP_EVIDENCE_DIR/backup-freshness.stderr"; then
             echo "::error::Backup evidence source is no longer canonical"
@@ -288,7 +288,7 @@ jobs:
           set -e
           if ! GITHUB_TOKEN='${{ github.token }}' \
             bun packages/cloud/scripts/canonical-deploy-source-guard.ts \
-            --run-sha "$GITHUB_SHA" --canonical-ref refs/heads/main \
+            --run-sha "$GITHUB_SHA" --canonical-ref refs/heads/main-v3 \
             > "$BACKUP_EVIDENCE_DIR/plan-freshness.stdout" \
             2> "$BACKUP_EVIDENCE_DIR/plan-freshness.stderr"; then
             echo "::error::PITR plan source is no longer canonical"
