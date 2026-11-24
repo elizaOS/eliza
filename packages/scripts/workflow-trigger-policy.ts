@@ -21,7 +21,7 @@ const CANONICAL_ADMISSION_WORKFLOW = "pr-validation.yml";
 const PROMOTION_AUTHORITY_WORKFLOW = "develop-full.yml";
 const PROMOTION_PUSH_BRANCHES = ["staging-v3", "main-v3"];
 const FORBIDDEN_AUTOMATION_EVENTS = new Set(["schedule", "workflow_run"]);
-const REQUIRED_PR_BRANCHES = ["develop", "staging", "main"];
+const REQUIRED_PR_BRANCHES = ["develop-v3", "staging-v3", "main-v3"];
 const REQUIRED_PR_TYPES = [
   "opened",
   "ready_for_review",
