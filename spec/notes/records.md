@@ -77,6 +77,46 @@ pure def lawLoneSurrogateSavedAsReplacement(codeUnit: int): bool = surrogateCode
 pure def lawPairedOrPlainUnitKept(codeUnit: int, paired: bool): bool = (paired or not(surrogateCodeUnit(codeUnit))) implies savedNoteCodeUnit(codeUnit, paired) == codeUnit
 ```
 
+### A checklist the owner asks for is a new note holding the owner's items
+
+A new checklist the owner asks Notes for is a creation, never an edit: one
+new note whose label is the title the owner gave, holding the owner's items
+as checklist entries in the order given, each unchecked. The Notes actions
+tell the model so, that the model asks the owner what to call a checklist
+they gave no title, and that adding items to a checklist already saved is an
+edit of that note. A checklist creation is never answered by a saved note,
+not even a checklist of the same title, unless it repeats the client's own
+creation ID. A checklist holds 1 to 100 items, each at most 240 units, the
+bound of a title, since an item is one line of the list. A checklist with a
+blank title, with no item, with a blank item, with more items or a longer
+item than that, or with a body or other authored content beside its label
+and items is refused with nothing written. Text the owner supplied without
+asking for a checklist is saved as written, never turned into one.
+
+```quint
+pure def creationForcesNew(editorDraft: bool, authoredContent: bool, clientCreationId: bool): bool =
+  editorDraft or authoredContent or clientCreationId
+pure def checklistCreationAdmitted(titled: bool, itemCount: int, blankItemCount: int, longestItemUnits: int, besideItems: bool): bool =
+  titled and itemCount >= 1 and itemCount <= 100 and blankItemCount == 0 and longestItemUnits <= 240 and not(besideItems)
+pure val itemCountValues = Set(0, 1, 2, 100, 101)
+pure val blankItemCountValues = Set(0, 1, 2)
+pure val longestItemUnitsValues = Set(1, 240, 241)
+pure def lawAChecklistIsNeverAnsweredByASavedNote(editorDraft: bool, clientCreationId: bool, plainMatch: bool): bool =
+  not(creationReturnsExisting({ creationKnown: false, createdNoteKept: false, forceNew: creationForcesNew(editorDraft, true, clientCreationId), plainMatch: plainMatch }))
+pure def lawAChecklistNeedsItsTitle(itemCount: int, blankItemCount: int, longestItemUnits: int, besideItems: bool): bool =
+  not(checklistCreationAdmitted(false, itemCount, blankItemCount, longestItemUnits, besideItems))
+pure def lawAChecklistNeedsAnItem(titled: bool, blankItemCount: int, longestItemUnits: int, besideItems: bool): bool =
+  not(checklistCreationAdmitted(titled, 0, blankItemCount, longestItemUnits, besideItems))
+pure def lawABlankChecklistItemIsRefused(titled: bool, itemCount: int, blankItemCount: int, longestItemUnits: int, besideItems: bool): bool =
+  blankItemCount != 0 implies not(checklistCreationAdmitted(titled, itemCount, blankItemCount, longestItemUnits, besideItems))
+pure def lawAChecklistIsBounded(titled: bool, itemCount: int, blankItemCount: int, longestItemUnits: int, besideItems: bool): bool =
+  (itemCount > 100 or longestItemUnits > 240) implies not(checklistCreationAdmitted(titled, itemCount, blankItemCount, longestItemUnits, besideItems))
+pure def lawATitledChecklistWithinBoundsIsAdmitted(itemCount: int, longestItemUnits: int): bool =
+  (itemCount >= 1 and itemCount <= 100 and longestItemUnits <= 240) implies checklistCreationAdmitted(true, itemCount, 0, longestItemUnits, false)
+pure def lawNothingBesideTheChecklistItems(titled: bool, itemCount: int, blankItemCount: int, longestItemUnits: int): bool =
+  not(checklistCreationAdmitted(titled, itemCount, blankItemCount, longestItemUnits, true))
+```
+
 ### The agent reads and changes Notes only for the owner, and changes the note the model picked
 
 Only the owner reaches the Notes actions, the saved-notes context and the
@@ -120,6 +160,26 @@ pure def pickedNoteChanged(isOwner: bool, titleShared: bool, ownerChoseEarlier: 
 pure def lawAGuessBetweenSharedTitlesAsksFirst(isOwner: bool): bool = not(pickedNoteChanged(isOwner, true, false))
 pure def lawTheOwnersChoiceIsChanged(titleShared: bool): bool = pickedNoteChanged(true, titleShared, true)
 pure def lawAnUnsharedTitleNeedsNoChoice(ownerChoseEarlier: bool): bool = pickedNoteChanged(true, false, ownerChoseEarlier)
+```
+
+### A read by a title no saved note has cites no other note and asks which one
+
+When the owner names the note to read by its title, the agent reads by that
+title: the saved notes whose title it is, case and spacing aside. One such
+note is read. Several are offered for the owner to choose, and none is read.
+When no saved note has the title, no note is read and no other note is
+cited in its place: the agent answers that no note has that title, with
+the titles of the notes whose text mentions it, and waits on the owner to
+say which note to use. A read by text the note contains, rather than by its
+title, searches every note's text.
+
+```quint
+type TitledRead = ReadsTitledNote | AsksAmongTitledNotes | AsksWhichNote
+pure def titledRead(titledNotes: int): TitledRead =
+  if (titledNotes == 1) ReadsTitledNote else if (titledNotes > 1) AsksAmongTitledNotes else AsksWhichNote
+pure val titledNotesValues = Set(0, 1, 2, 3)
+pure def lawOnlyTheOneTitledNoteIsRead(titledNotes: int): bool = (titledRead(titledNotes) == ReadsTitledNote) iff (titledNotes == 1)
+pure def lawAnAbsentTitleAsksWhichNote(titledNotes: int): bool = titledNotes <= 0 implies titledRead(titledNotes) == AsksWhichNote
 ```
 
 ### A move by name takes the identical copies of the note along
