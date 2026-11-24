@@ -1,0 +1,21 @@
+{
+  "origin": "journey \"Start voice from a trusted gesture, once\" / \"Without an admitted listener a listener launch only opens the assistant\"",
+  "seed": 1,
+  "trace": [
+    [
+      "invocation",
+      {
+        "type": "bind",
+        "session": 1
+      }
+    ],
+    [
+      "invocation",
+      {
+        "type": "arrive",
+        "caller": "SenseListener",
+        "locked": false
+      }
+    ]
+  ]
+}
