@@ -764,7 +764,7 @@ function workflowWorker(
         if (effectCall !== undefined) try lock(effect { try persist(try journaled(try runOf(runId), { type: "dispatchEffect", call: effectCall.call, digest: effectCall.digest })) })
         const prompt = !generated && message?.type === "needsDraft" ? message.prompt : effectCall?.request.prompt
         const draft = host.draft
-        const drafted = prompt === undefined || draft === undefined ? undefined : Option.getOrUndefined(try beforeDeadline(draft(prompt) catch () => undefined, deadline))
+        const drafted = prompt === undefined || draft === undefined ? undefined : Option.getOrUndefined(try beforeDeadline(effect { return draft(prompt) catch () => undefined }, deadline))
         const handled = try lock(effect {
           const stored = try runOf(runId)
           const next = generated ? try handleGenerated(stored, message, connection, drafted) : try handle(stored, message, connection, drafted)

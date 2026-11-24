@@ -172,7 +172,7 @@ export function commandBinding(words: string, proposed: ProposedWorkflowChange):
   return { binding: bindToCommand(command === undefined ? "NoCommand" : commands[command.op], proposed), names: commandNames(command) }
 }
 
-export function workflowRequestOwned(words: string): boolean {
+function workflowRequestOwned(words: string): boolean {
   const command = authoredWorkflowRequest(words)
   return commandOwnsRequest(command === undefined ? "NoCommand" : commands[command.op], command?.op === "list" && command.showWording)
 }
