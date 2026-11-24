@@ -122,7 +122,7 @@ export interface EarlierRows {
   readonly takenRuns: readonly string[]
   readonly takenSources: readonly string[]
 }
-export type EarlierRead = { readonly kind: "kept"; readonly receipt: EarlierImportReceipt } | { readonly kind: "absent" } | { readonly kind: "readable"; readonly rows: EarlierRows }
+type EarlierRead = { readonly kind: "kept"; readonly receipt: EarlierImportReceipt } | { readonly kind: "absent" } | { readonly kind: "readable"; readonly rows: EarlierRows }
 export interface ReceiptRow { readonly mutationId: string; readonly owner: string; readonly kind: "typed" | "metadata" | "lifecycle" | "digest" | "generated"; readonly data: Readonly<Record<string, unknown>> }
 
 const schema = `
