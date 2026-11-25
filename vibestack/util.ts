@@ -266,11 +266,11 @@ export function testInputs(root: string, mode: TestProfile = "normal", read: Inp
     const top = gen && fs.existsSync(path.join(from, "gen")) ? fs.readdirSync(path.join(from, "gen"), { withFileTypes: true }).filter((e) => e.isFile()).map((e) => `gen/${e.name}`).sort() : [];
     for (const file of top.filter(reads[read])) update(from, file);
   }
-  // The OS package's tests also run the Android journeys, so its fingerprint covers the toolchain that ran.
+  // Turbo runs OS tests directly. Their Vibestack receipt covers the installed Android toolchain.
   const isOs = read === "tests" && manifest(root).name === "@elizaos/os";
   const android = isOs ? androidToolchainIdentity() : undefined;
   if (android) hash.update(android);
-  if (isOs && !android) return undefined; 
+  if (isOs && !android) return undefined;
   const { lock } = packageManager(root);
   if (lock) hash.update(fs.readFileSync(lock));
   return hash.digest("hex");

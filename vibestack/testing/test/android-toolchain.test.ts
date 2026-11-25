@@ -1,9 +1,8 @@
 /**
  * The OS test fingerprint and the Android toolchain that actually ran: a
  * fingerprint is recorded only while a complete toolchain is installed, it
- * changes when any part of that toolchain changes, and it comes back when the
- * toolchain is restored, so a pass recorded against one SDK cannot be reused
- * after the SDK moves.
+ * changes when a selected tool changes, and comes back when the original
+ * bytes are restored.
  */
 import { describe, expect, it } from "vitest";
 import fs from "node:fs";
@@ -13,27 +12,24 @@ import { testInputs } from "../../util.ts";
 
 const root = path.resolve(import.meta.dirname, "../../..");
 
-/** A fresh copy of the fixture package, with `overlay` over it. */
-function fixture(name: string, overlay?: string) {
-  const dir = path.join(import.meta.dirname, ".cache", name);
+function fixture(directory: string, name: string) {
+  const dir = path.join(import.meta.dirname, ".cache", directory);
   fs.rmSync(dir, { recursive: true, force: true });
   fs.cpSync(path.join(import.meta.dirname, "fixture/good"), dir, { recursive: true });
-  if (overlay) fs.cpSync(path.join(import.meta.dirname, "fixture", overlay), dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, "package.json"), JSON.stringify({ name }) + "\n");
+  fs.copyFileSync(path.join(root, "pnpm-lock.yaml"), path.join(dir, "pnpm-lock.yaml"));
   return dir;
 }
 
 describe("Android toolchain fingerprints", () => {
   it("keys the OS test fingerprint to the Android toolchain that actually ran", () => {
-    const dir = fixture("android-toolchain");
-    fs.copyFileSync(path.join(root, "pnpm-lock.yaml"), path.join(dir, "pnpm-lock.yaml"));
-    const json = path.join(dir, "package.json");
-    const osManifest = JSON.parse(fs.readFileSync(json, "utf8")) as { name?: string };
-    osManifest.name = "@elizaos/os";
-    fs.writeFileSync(json, `${JSON.stringify(osManifest, null, 2)}\n`);
-    const controlDir = fixture("android-toolchain-control");
-    fs.copyFileSync(path.join(root, "pnpm-lock.yaml"), path.join(controlDir, "pnpm-lock.yaml"));
+    const dir = fixture("android-toolchain", "@elizaos/os");
+    const controlDir = fixture("android-toolchain-control", "android-toolchain-control");
     const home = fs.mkdtempSync(path.join(tmpdir(), "vibestack-home-"));
-    const bin = fs.mkdtempSync(path.join(tmpdir(), "vibestack-bin-"));
+    const jdk = path.join(home, "jdk");
+    const bin = path.join(jdk, "bin");
+    const release = path.join(jdk, "release");
+    const java = "#!/bin/sh\nexit 0\n";
     const sdk = path.join(home, "sdk");
     const aapt = path.join(sdk, "build-tools", "36.0.0", "aapt");
     const tools = ["aapt", "aapt2", "apksigner", "zipalign"].map((tool) =>
@@ -62,11 +58,10 @@ describe("Android toolchain fingerprints", () => {
       delete process.env.ANDROID_HOME;
       delete process.env.ANDROID_SDK_ROOT;
       delete process.env.JAVA_HOME;
-      for (const name of ["java", "keytool"]) {
-        const stub = path.join(bin, name);
-        fs.writeFileSync(stub, "#!/bin/sh\nexit 0\n");
-        fs.chmodSync(stub, 0o755);
-      }
+      fs.mkdirSync(bin, { recursive: true });
+      fs.writeFileSync(release, 'JAVA_VERSION="21"\n');
+      for (const name of ["java", "javac", "keytool"])
+        fs.writeFileSync(path.join(bin, name), java, { mode: 0o755 });
       process.env.PATH = `${bin}${path.delimiter}${process.env.PATH ?? ""}`;
       // Cold: with no toolchain anywhere the OS tests would look, the OS
       // tests record no fingerprint, so no pass can be reused for them.
@@ -95,6 +90,15 @@ describe("Android toolchain fingerprints", () => {
       // Restoration: restoring the replaced bytes records the cold fingerprint.
       fs.writeFileSync(aapt, original);
       expect(testInputs(dir)).toBe(cold);
+      const javac = path.join(bin, "javac");
+      fs.writeFileSync(javac, "#!/bin/sh\nexit 1\n");
+      expect(testInputs(dir)).not.toBe(cold);
+      fs.writeFileSync(javac, java);
+      expect(testInputs(dir)).toBe(cold);
+      fs.rmSync(release);
+      expect(testInputs(dir)).toBeUndefined();
+      fs.writeFileSync(release, 'JAVA_VERSION="21"\n');
+      expect(testInputs(dir)).toBe(cold);
       // Removal: with the SDK gone, no fingerprint is recorded again.
       fs.rmSync(sdk, { force: true, recursive: true });
       expect(testInputs(dir)).toBeUndefined();
@@ -105,7 +109,6 @@ describe("Android toolchain fingerprints", () => {
         else process.env[key] = value;
       }
       fs.rmSync(home, { force: true, recursive: true });
-      fs.rmSync(bin, { force: true, recursive: true });
     }
   });
 });

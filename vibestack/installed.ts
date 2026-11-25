@@ -171,7 +171,9 @@ export const ANDROID_PLATFORM = "android-36";
 /** The executable named `name` that the PATH finds first, as the stock apksigner launcher finds java. */
 function pathExecutable(name: string): string | undefined {
   const extensions = process.platform === "win32" ? [".exe", ".cmd", ""] : [""];
-  for (const dir of (process.env.PATH ?? "").split(path.delimiter).filter(Boolean)) {
+  for (const dir of (process.env.PATH ?? "").split(path.delimiter)) {
+    // A relative entry can choose a different program from a package's working directory.
+    if (!path.isAbsolute(dir)) return undefined;
     for (const extension of extensions) {
       const file = path.join(dir, name + extension);
       try {
@@ -183,6 +185,14 @@ function pathExecutable(name: string): string | undefined {
     }
   }
   return undefined;
+}
+
+function jdkFor(executable: string): string | undefined {
+  fs.accessSync(executable, fs.constants.X_OK);
+  const bin = path.dirname(fs.realpathSync(executable));
+  const home = path.dirname(bin);
+  return path.basename(bin) === "bin" && fs.statSync(path.join(home, "release"), { throwIfNoEntry: false })?.isFile()
+    ? home : undefined;
 }
 
 /** The files of one directory tree, in a stable order, with the label each is hashed under. */
@@ -208,7 +218,7 @@ function androidTreeFiles(root: string, label: string): { file: string; label: s
 /**
  * The Android toolchain the OS tests actually ran against, as one digest over the bytes of the
  * pinned build tools and platform of the selected SDK, the configured JDK, the JDK of the java the
- * stock apksigner launcher resolves through PATH, and that java and keytool themselves. The digest
+ * stock apksigner launcher resolves through PATH, and the selected Java compiler and keytool. The digest
  * covers bytes, not directories, so installing the same toolchain at another path, or restoring a
  * replaced file's bytes, records the same toolchain again, while any changed file records a
  * different one. Nothing is returned when the SDK is absent or incomplete, so a run without the
@@ -236,20 +246,26 @@ function readAndroidToolchain(observed?: string[]): string | undefined {
       if (!fs.existsSync(file)) return undefined;
     }
     const javaHome = process.env.JAVA_HOME;
-    if (javaHome && !fs.existsSync(path.join(javaHome, "bin", "java"))) return undefined;
     const pathJava = pathExecutable("java");
     if (!pathJava) return undefined;
+    const java = javaHome ? path.join(javaHome, "bin", "java") : pathJava;
+    const javac = javaHome ? path.join(javaHome, "bin", "javac") : pathExecutable("javac");
     const keytool =
       javaHome && fs.existsSync(path.join(javaHome, "bin", "keytool"))
         ? path.join(javaHome, "bin", "keytool")
         : pathExecutable("keytool");
-    if (!keytool) return undefined;
-    const pathJavaHome = path.dirname(path.dirname(fs.realpathSync(pathJava)));
+    if (!javac || !keytool) return undefined;
+    const executables = { java, javac, keytool, "apksigner-java": pathJava };
+    const jdks = new Map<string, string>();
+    for (const [name, executable] of Object.entries(executables)) {
+      const home = jdkFor(executable);
+      if (!home) return undefined;
+      if (!jdks.has(home)) jdks.set(home, name);
+    }
     const files = [
       ...androidTreeFiles(tools, "build-tools"),
       ...androidTreeFiles(platform, "platform"),
-      ...(javaHome ? androidTreeFiles(javaHome, "jdk") : []),
-      ...(fs.existsSync(path.join(pathJavaHome, "release")) ? androidTreeFiles(pathJavaHome, "path-jdk") : []),
+      ...[...jdks].flatMap(([home, name]) => androidTreeFiles(home, `jdk/${name}`)),
     ];
     const digests: string[] = [];
     const seen = new Set<string>();
@@ -266,10 +282,10 @@ function readAndroidToolchain(observed?: string[]): string | undefined {
     for (const { file, label } of files) {
       if (!add(label, file)) return undefined;
     }
-    if (!add("path/java", pathJava)) return undefined;
-    if (!add("path/keytool", keytool)) return undefined;
-    if (observed) observed.push(sdk, javaHome ?? "", pathJava, keytool);
-    return createHash("sha256").update(JSON.stringify(["android-toolchain-v1", ...digests])).digest("hex");
+    for (const [name, executable] of Object.entries(executables))
+      digests.push(`${name} ${digestFile(executable)}`);
+    if (observed) observed.push(sdk, ...Object.values(executables));
+    return createHash("sha256").update(JSON.stringify(["android-toolchain-v2", ...digests])).digest("hex");
   } catch {
     return undefined;
   }

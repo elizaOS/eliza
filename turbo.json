@@ -70,6 +70,17 @@
         ".cache/test-result-*.json"
       ],
       "env": [
+        "VIBESTACK_QUINT_EVALUATOR"
+      ]
+    },
+    "@elizaos/os#test": {
+      "dependsOn": [
+        "gen",
+        "//#gen",
+        "^build"
+      ],
+      "cache": false,
+      "passThroughEnv": [
         "ANDROID_HOME",
         "ANDROID_SDK_ROOT",
         "JAVA_HOME",
