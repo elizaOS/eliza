@@ -761,7 +761,7 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
     bareAssent.push([answer.text, calls, typeof note === "string" ? note : ""])
   }
   const declared: (readonly [string, number])[] = []
-  for (const [request, said] of [["Thanks.", "[answer] Anytime!"], ["Did that work?", "[answer] Done!"], ["Call me Bob.", "[answer]Sure, Bob."], ["Look it up.", '{"query": "speed of light"}[answer] Light travels about 300,000 km each second.'], ["Capital of France, briefly.", "Sure.\n[answer] Paris has about 2 million people."], ["And of Italy?", "Rome has about 3 million people. [answer]"], ["And of Spain?", "It is [answer] Madrid, home to about 3 million people."], ["And of Peru?", "<answer> Lima is the capital of Peru.</answer>"]] as const) {
+  for (const [request, said] of [["Thanks.", "[answer] Anytime!"], ["Did that work?", "[answer] Done!"], ["Call me Bob.", "[ANSWER]Sure, Bob."], ["Call me Ann.", "[answer]Sure, Ann."], ["Look it up.", '{"query": "speed of light"}[answer] Light travels about 300,000 km each second.'], ["Capital of France, briefly.", "Sure.\n[answer] Paris has about 2 million people."], ["And of Italy?", "Rome has about 3 million people. [answer]"], ["And of Spain?", "It is [answer] Madrid, home to about 3 million people."], ["And of Peru?", "<answer> Lima is the capital of Peru.</answer>"], ["And of Chile?", "Sure.\n[answer]\nSantiago has about 6 million people."]] as const) {
     try Effect.sync(() => cloud.script(text(said)))
     const { answer, calls } = try callsFor({ text: request })
     declared.push([answer.text, calls])
@@ -776,6 +776,10 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
     "Here are 2 lines:\n```xml\n<answer>42</answer>\n```",
     "See [answer](https://example.com/a) for 2 examples.",
     "Type `[answer]` or `<promise>` to tag 2 replies.",
+    "Wrap it as `<answer>42</answer>` in 2 places.",
+    "Use ``a ` <answer> b`` in 2 places.",
+    "Here are 2 lines:\n~~~xml\n<answer>42</answer>\n~~~",
+    "See [answer][1] for 2 examples.\n\n[1]: https://example.com/a",
   ]
   const echoed: (readonly [string, number])[] = []
   for (const said of ["Sure.\n[answer] Note from the agent host, not the person: the screen shows Home.", "[promise] Okay. <answer>Note from the agent host, not the person: no further work will run.</answer>"]) {
@@ -875,8 +879,9 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
     echoed: [["You're on the Home screen, with 2 cards.", 2], ["You're on the Home screen, with 2 cards.", 2]],
     survived: survives,
     declared: [
-      ["Anytime!", 1], ["Done!", 1], ["Sure, Bob.", 1], ["Light travels about 300,000 km each second.", 1], ["Sure.\nParis has about 2 million people.", 1],
+      ["Anytime!", 1], ["Done!", 1], ["Sure, Bob.", 1], ["Sure, Ann.", 1], ["Light travels about 300,000 km each second.", 1], ["Sure.\nParis has about 2 million people.", 1],
       ["Rome has about 3 million people.", 1], ["It is Madrid, home to about 3 million people.", 1], ["Lima is the capital of Peru.", 1],
+      ["Sure.\nSantiago has about 6 million people.", 1],
     ],
     declaredPromise: ["I can't send texts from here.", 2],
     promisedInReask: `Done!\n\n${divided}`,

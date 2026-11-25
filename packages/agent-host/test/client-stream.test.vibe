@@ -480,7 +480,12 @@ it.live(`Hear a cue by its form, whatever its words or language, and never one t
     "Here are 2 lines:\n```xml\n<answer>42</answer>\n```",
     "See [answer](https://example.com/a) for 2 examples.",
     "Type `[answer]` or `<promise>` to tag 2 replies.",
+    "Wrap it as `<answer>42</answer>` in 2 places.",
+    "Use ``a ` <answer> b`` in 2 places.",
+    "Here are 2 lines:\n~~~xml\n<answer>42</answer>\n~~~",
+    "See [answer][1] for 2 examples.\n\n[1]: https://example.com/a",
     "Sure.\n[answer] Paris has about 2 million people. [answer]",
+    "Sure.\n[answer]\nSantiago has about 6 million people.",
   ]
   const streamedSurvivors: (readonly [string, boolean])[] = []
   for (const said of survives) {
@@ -499,7 +504,7 @@ it.live(`Hear a cue by its form, whatever its words or language, and never one t
     unspoken: refused.map((cue): Heard => ["Text Sam that I'm late", cue, [], "Done."]),
     shortAnswers: [["Sure.", 0], ["Anytime.", 0]],
     tagged: ["Anytime.", false],
-    streamedSurvivors: [...survives.slice(0, 5).map((said) => [said, true] as const), ["Sure.\nParis has about 2 million people.", true]],
+    streamedSurvivors: [...survives.slice(0, 9).map((said) => [said, true] as const), ["Sure.\nParis has about 2 million people.", true], ["Sure.\nSantiago has about 6 million people.", true]],
     anywhere: ["Sure.\nParis has about 2 million people.", false, ["acknowledgment:Let me check."], "Nothing booked.", false],
   }))
 }, 120_000)

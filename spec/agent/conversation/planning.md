@@ -718,14 +718,17 @@ bracketed calls counts too, and what came before it is no part of the reply
 `[answer]`, `[promise]`, `<answer>`, `</answer>`, `<promise>` and
 `</promise>` wherever they stand in the text (`Sure.\n[answer] Paris`,
 `Paris. [answer]`, `<promise>`), from what is streamed, acknowledged, spoken
-and stored, but never inside a fenced or inline code span and never a
-link's label (`[answer](https://…)`), so `useState<Answer>(null)`,
+and stored, dropping the line a tag stands on alone, but never inside a
+fenced code block (backticks or tildes) or an inline code span of any
+backtick count, and never a link's label (`[answer](https://…)`,
+`[answer][1]`), so `useState<Answer>(null)`,
 `Promise<Answer>` and an xml fence holding `<answer>42</answer>` reach the
 person whole; while streaming it holds back a partial tag at the tail
-(`[ans`, `<pro`) and a closing `[answer]` until the next text shows it is
-no link, and
+(`[ans`, `<pro`), a closing `[answer]` until the next text shows it is
+no link, and an inline code span until it closes, so what it streams is
+always the start of what it delivers, and
 streams nothing while the text so far is only an untagged object. Only a
-tag that leads the text, after nothing but JSON objects or bracketed calls,
+tag that leads the text, in any letter case (`[ANSWER]Sure, Bob.`), after nothing but JSON objects or bracketed calls,
 says what the response is, and the shell reads it before the form: with no tool call, text
 tagged `[answer]` is an `Answer` delivered at once, however short (`[answer]
 Done!`, `[answer] Hello!`), and text tagged `[promise]` is a `Cue`, never
