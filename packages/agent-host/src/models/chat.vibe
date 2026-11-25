@@ -1,12 +1,12 @@
 // spec/agent/models/binding.md, "A planner warm-up is sent only while the account is not blocked, and neither its answer nor its refusal changes the account state"
-// spec/agent/models/binding.md, "No text handler is ever served by a model on the device"; spec/agent/models/binding.md, "Only a network failure, an outage or a provider issue is retried, and a rate limit ends the call for its turn to re-send once"; spec/agent/models/binding.md, "A tool call the provider could not parse, or a streamed answer silent for a minute, ends the call without a retry"; spec/agent/models/binding.md, "Each refusal is one account state, and the last failure records its kind and time without text"; spec/agent/models/binding.md, "A tool call, a structured answer and the token use reach the caller as one result"; spec/agent/models/binding.md, "A call sends an output cap only when its caller names one, and a thinking hint sets the reasoning effort only on a model that documents it"; spec/agent/models/binding.md, "A Qwen call on a Cerebras route sends the prompt cache key its caller names, and no call invents one"; spec/agent/models/binding.md, "A rate limit holds the account for the provider's whole retry time, and for at most 4 s on a Cerebras own-key endpoint"; spec/agent/conversation/turns.md, "A failed reply names the owner's fix, and only a live rate limit carries its wait"; spec/agent/models/binding.md, "A cloud refusal that names spent credits or a spent allowance carries Cloud's own code, and no other refusal carries one"
+// spec/agent/models/binding.md, "No text handler is ever served by a model on the device"; spec/agent/models/binding.md, "Only a network failure, an outage or a provider issue is retried, and a rate limit ends the call for its turn to re-send once"; spec/agent/models/binding.md, "A tool call the provider could not parse, or a streamed answer silent for a minute, ends the call without a retry"; spec/agent/models/binding.md, "Each refusal is one account state, and the last failure records its kind and time without text"; spec/agent/models/binding.md, "A tool call, a structured answer and the token use reach the caller as one result"; spec/agent/models/binding.md, "A call sends an output cap only when its caller names one, and a thinking hint sets the reasoning effort only on a model that documents it"; spec/agent/models/binding.md, "A Qwen call on a Cerebras route sends the prompt cache key its caller names, and no call invents one"; spec/agent/models/binding.md, "A rate limit holds the account for the provider's whole retry time, and for at most 4 s on a Cerebras own-key endpoint"; spec/agent/conversation/turns.md, "A failed reply names the owner's fix, and only a live rate limit carries its wait"; spec/agent/models/binding.md, "A cloud refusal that names spent credits or a spent allowance carries Cloud's own code, and no other refusal carries one"; spec/agent/models/binding.md, "A rate limit names whether the model provider or Cloud set it, and no other refusal names one"; spec/agent/models/binding.md, "A Qwen call on a Cerebras route reads a tool call the model wrote as text as that call, when it names an offered tool"
 import { readCloudError, type CloudFailure } from "@elizaos/cloud"
 import type { GenerateTextParams, GenerateTextResult, IAgentRuntime, ModelRegistrationMetadata, StreamChunkCallback, TokenUsage, ToolCall } from "@elizaos/core"
 import { runSquashed } from "./run-squashed.vibe"
 import { FetchHttpClient, HttpClient, HttpClientRequest, type HttpClientResponse } from "effect/http"
 import {
-  cacheKeySent, capSent, chatReturn, clockAt, effortFor, failureOf, fundsCodeName, fundsCodeOf, outcomeOf, reportedRetryAt, shellOutcome, streamIdleSeconds, usageAsked, warmUpSent,
-  type CapAsk, type ChatAsk, type ChatReturn, type FundsCode, type ModelBinding, type ModelHandler, type ReasoningEffort, type ReasoningFamily, type ShellRefusal, type ThinkingHint,
+  cacheKeySent, capSent, chatReturn, clockAt, effortFor, writtenCallsRead, failureOf, fundsCodeName, fundsCodeOf, limitOriginOf, outcomeOf, reportedRetryAt, shellOutcome, streamIdleSeconds, usageAsked, warmUpSent,
+  type CapAsk, type ChatAsk, type ChatReturn, type FundsCode, type LimitOrigin, type ModelBinding, type ModelHandler, type ReasoningEffort, type ReasoningFamily, type ShellRefusal, type ThinkingHint,
 } from "../../gen/agent__models__binding.effect.vibe"
 import { failureKindName, type BoundModels, type FailureKind } from "./binding.vibe"
 
@@ -36,9 +36,9 @@ interface Reply {
   readonly reasoning: string
 }
 
-export error ModelRefusal { message: string; code: string | undefined; status: number | undefined; failureKind: FailureKind; retryAt: number | undefined; retryAfterMs: number | undefined; cloudCode?: string }
+export error ModelRefusal { message: string; code: string | undefined; status: number | undefined; failureKind: FailureKind; retryAt: number | undefined; retryAfterMs: number | undefined; cloudCode?: string; limitOrigin?: LimitOrigin; limitCallId?: number }
 
-export error Refused { cloud: CloudFailure; funds?: FundsCode }
+export error Refused { cloud: CloudFailure; funds?: FundsCode; origin?: LimitOrigin }
 
 interface Hold {
   readonly retryAt: number | undefined
@@ -99,7 +99,7 @@ const ProviderFields = Schema.Struct({
 const decodeNestedError = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Struct({ error: ProviderFields })))
 const decodeFlatError = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Struct({ message: Schema.String, type: Schema.optionalKey(Schema.Unknown), code: Schema.optionalKey(Schema.Unknown) })))
 const decodeFlatFields = Schema.decodeUnknownOption(Schema.fromJsonString(ProviderFields))
-const decodeRefusalCode = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Struct({ error: Schema.String })))
+const decodeRefusalCode = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Struct({ error: Schema.String, reason: Schema.optionalKey(Schema.Unknown) })))
 schema Listing { data: { id: string }[] }
 const decodeListing = Schema.decodeUnknownOption(Listing)
 
@@ -272,6 +272,79 @@ module wireFormat {
     }
   }
 
+  const writtenBlock = /<tool_call>([\s\S]*?)<\/tool_call>/g
+  const writtenMarker = /<\s*\/?\s*tool_call\b|<\s*function(?:=|_call\b)/i
+  const writtenFunction = /^<function=([^>\s]+)>([\s\S]*?)<\/function>$/
+  const writtenParameter = /<parameter=([^>\s]+)>([\s\S]*?)<\/parameter>/g
+
+  type WrittenArguments = Exclude<ToolCall["arguments"], string>
+
+  export interface WrittenCall {
+    readonly name: string
+    readonly arguments: WrittenArguments
+  }
+
+  function writtenAsText(tool: ToolDefinition, key: string): boolean {
+    const properties: unknown = (tool.parameters as { properties?: unknown } | undefined)?.properties
+    const type: unknown = typeof properties === "object" && properties !== null ? (properties as Record<string, { type?: unknown } | undefined>)[key]?.type : undefined
+    return type === undefined || type === "string" || (Array.isArray(type) && type.includes("string"))
+  }
+
+  function writtenValue(tool: ToolDefinition, key: string, raw: string): WrittenArguments[string] {
+    const value = raw.replace(/^\r?\n/, "").replace(/\r?\n$/, "")
+    if (writtenAsText(tool, key)) return value
+    try {
+      return JSON.parse(value)
+    } catch {
+      return value
+    }
+  }
+
+  function writtenObject(value: unknown): WrittenArguments | undefined {
+    return typeof value === "object" && value !== null && !Array.isArray(value) ? value as WrittenArguments : undefined
+  }
+
+  function writtenJson(body: string, offered: ReadonlyMap<string, ToolDefinition>): WrittenCall | undefined {
+    try {
+      const parsed = writtenObject(JSON.parse(body))
+      const given: unknown = parsed?.arguments ?? {}
+      const args = writtenObject(typeof given === "string" ? JSON.parse(given) : given)
+      const name = parsed?.name
+      return typeof name === "string" && offered.has(name) && args !== undefined ? { name, arguments: args } : undefined
+    } catch {
+      return undefined
+    }
+  }
+
+  function writtenCall(body: string, offered: ReadonlyMap<string, ToolDefinition>): WrittenCall | undefined {
+    const inner = body.trim()
+    const named = writtenFunction.exec(inner)
+    if (named === null) return writtenJson(inner, offered)
+    const tool = offered.get(named[1] ?? "")
+    if (tool === undefined) return undefined
+    const args: WrittenArguments = {}
+    const rest = (named[2] ?? "").replace(writtenParameter, (_whole: string, key: string, raw: string) => {
+      args[key] = writtenValue(tool, key, raw)
+      return ""
+    })
+    return rest.trim() === "" ? { name: tool.name, arguments: args } : undefined
+  }
+
+  /** @throws {never} */
+  export function writtenCalls(text: string, tools: readonly ToolDefinition[]): { readonly text: string; readonly calls: readonly WrittenCall[] } | undefined {
+    if (!writtenMarker.test(text)) return undefined
+    const offered = new Map(tools.map((tool) => [tool.name, tool]))
+    const calls: WrittenCall[] = []
+    let unread = false
+    const rest = text.replace(writtenBlock, (_whole: string, body: string) => {
+      const call = writtenCall(body, offered)
+      if (call === undefined) unread = true
+      else calls.push(call)
+      return ""
+    })
+    return unread || calls.length === 0 || writtenMarker.test(rest) ? undefined : { text: rest.trim(), calls }
+  }
+
   /** @throws {never} */
   export function description(prompt: string, imageUrl: string): object[] {
     return [{ role: "user", content: [{ type: "text", text: prompt }, { type: "image_url", image_url: { url: imageUrl } }] }]
@@ -283,7 +356,7 @@ module wireFormat {
     return found?.[1]?.replace(/\*\*/g, "").trim() || "Image Analysis"
   }
 }
-import { conversation, description, parsedArguments, responseFormatOf, titleOf, toolChoiceOf, toolsOf } from wireFormat
+import { conversation, description, parsedArguments, responseFormatOf, titleOf, toolChoiceOf, toolsOf, writtenCalls } from wireFormat
 
 function run<A>(program: A!unknown, signal: AbortSignal | undefined): Promise<A> {
   return runSquashed(program, { signal, message: "The model call was aborted" })
@@ -303,13 +376,21 @@ module calls {
     keys.set(attempts, kept)
     return kept
   }
-}
-import { callKeyOf } from calls
 
-function refusalOf(cloud: CloudFailure, hold: Hold = unheld, funds: FundsCode = "NoFundsCode"): ModelRefusal {
+  /** @throws {never} */
+  export function freshCallId(): string {
+    return `call_${randomUUID()}`
+  }
+}
+import { callKeyOf, freshCallId } from calls
+
+function refusalOf(cloud: CloudFailure, hold: Hold = unheld, funds: FundsCode = "NoFundsCode", origin: LimitOrigin = "NoLimitOrigin", limitCallId?: number): ModelRefusal {
   const failureKind = failureKindName(failureOf(cloud, 0))
   const cloudCode = fundsCodeName(funds)
-  const refused = (message: string, status?: number, code?: string) => new ModelRefusal({ message, code, status, failureKind, ...hold, ...(cloudCode === "" ? {} : { cloudCode }) })
+  const refused = (message: string, status?: number, code?: string) => new ModelRefusal({
+    message, code, status, failureKind, ...hold, ...(cloudCode === "" ? {} : { cloudCode }),
+    ...(origin === "NoLimitOrigin" ? {} : { limitOrigin: origin }), ...(limitCallId === undefined ? {} : { limitCallId }),
+  })
   const outcome = outcomeOf(cloud)
   switch (outcome) {
     case "RefusedConnection": return refused("The model connection failed", undefined, "ECONNRESET")
@@ -367,8 +448,11 @@ effect function refusalFrom(result: HttpClientResponse.HttpClientResponse, cloud
   if (classified !== undefined) return new Refused({ cloud: classified })
   const response = { status: result.status, headers: { get: (name: string) => result.headers[name] ?? null }, text: async () => raw }
   const read = try Effect.promise(() => readCloudError(response, now))
-  const funds = fundsCodeOf(cloudRoute, result.status, Option.getOrUndefined(decodeRefusalCode(raw))?.error ?? "")
-  return new Refused({ cloud: read.failure, ...(funds === "NoFundsCode" ? {} : { funds }) })
+  const body = Option.getOrUndefined(decodeRefusalCode(raw))
+  const funds = fundsCodeOf(cloudRoute, result.status, body?.error ?? "")
+  const reason = body?.error === "rate_limited" && typeof body.reason === "string" ? body.reason : ""
+  const origin = limitOriginOf(cloudRoute, read.failure.tag === "CloudRateLimited", reason)
+  return new Refused({ cloud: read.failure, ...(funds === "NoFundsCode" ? {} : { funds }), ...(origin === "NoLimitOrigin" ? {} : { origin }) })
 }
 
 function usageOf(usage: WireUsage | null | undefined): TokenUsage | undefined {
@@ -490,7 +574,9 @@ effect function serve(binding: Binding, handler: ChatHandler, endpoint: Endpoint
     return try send(endpoint, binding.credential(), callKey, body, sink, ask)
   }
   const started = try binding.startCall(handler, began)
-  if (typeof started !== "number") throw refusalOf({ tag: "CloudRateLimited", retryAt: started.limitedUntil }, holdAt(started.limitedUntil, began))
+  if (typeof started !== "number") {
+    throw refusalOf({ tag: "CloudRateLimited", retryAt: started.limitedUntil }, holdAt(started.limitedUntil, began), undefined, undefined, started.limitedByCallId)
+  }
   const answer = send(endpoint, binding.credential(), callKey, body, sink, ask) catch effect (failure) => {
     const refused = try Clock.currentTimeMillis
     if (failure instanceof ShellRefused) {
@@ -499,7 +585,8 @@ effect function serve(binding: Binding, handler: ChatHandler, endpoint: Endpoint
     }
     if (!(failure instanceof Refused)) throw failure
     try binding.refuseCall(started, refused, failure.cloud)
-    throw refusalOf(failure.cloud, failure.cloud.tag === "CloudRateLimited" ? reportedFor(try binding.state(), refused) : unheld, failure.funds)
+    const limited = failure.cloud.tag === "CloudRateLimited"
+    throw refusalOf(failure.cloud, limited ? reportedFor(try binding.state(), refused) : unheld, failure.funds, failure.origin, limited ? started : undefined)
   }
   const at = try Clock.currentTimeMillis
   try binding.answerCall(started, at)
@@ -581,13 +668,24 @@ function askOf(params: GenerateTextParams): ChatAsk {
 
 const textAsk: ChatAsk = { offersTools: false, choosesTool: false, asksSchema: false }
 
-function returned(answer: { reply: Reply; form: Exclude<ChatReturn, "AnswerProviderIssue"> }): string | GenerateTextResult {
+type Answer = { readonly reply: Reply; readonly form: Exclude<ChatReturn, "AnswerProviderIssue"> }
+
+function returned(answer: Answer): string | GenerateTextResult {
   return answer.form === "AnswerResult" ? resultOf(answer.reply) : answer.reply.text
+}
+
+function readingWritten(endpoint: Endpoint, handler: ChatHandler, params: GenerateTextParams): (answer: Answer) => Answer {
+  const tools = params.tools ?? []
+  return (answer) => {
+    const written = tools.length === 0 ? undefined : writtenCalls(answer.reply.text, tools)
+    if (written === undefined || !writtenCallsRead(familyOf(endpoint.models[handler]), endpoint.reasoningHints, params.toolChoice !== "none", answer.reply.toolCalls.length, true)) return answer
+    return { ...answer, reply: { ...answer.reply, text: written.text, toolCalls: written.calls.map((call): ToolCall => ({ id: freshCallId(), name: call.name, arguments: call.arguments })) } }
+  }
 }
 
 export function generateText(binding: Binding, endpoint: Endpoint, handler: ChatHandler) {
   return (_runtime: IAgentRuntime, params: GenerateTextParams): Promise<string | GenerateTextResult> => run(
-    Effect.provide(Effect.map(serve(binding, handler, endpoint, callKeyOf(params), requestOf(endpoint, handler, params), params, askOf(params), warmsUp(params)), returned), FetchHttpClient.layer),
+    Effect.provide(Effect.map(Effect.map(serve(binding, handler, endpoint, callKeyOf(params), requestOf(endpoint, handler, params), params, askOf(params), warmsUp(params)), readingWritten(endpoint, handler, params)), returned), FetchHttpClient.layer),
     params.signal,
   )
 }

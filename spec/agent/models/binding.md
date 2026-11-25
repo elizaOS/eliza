@@ -47,9 +47,9 @@ type AccountState = Usable | Failing({ failure: AccountFailure })
 type LastCloudFailure = NoCloudFailure | CloudFailedAt({ failure: AccountFailure, at: int })
 type Call = { id: int, credentialVersion: int }
 type ModelBinding = { phase: BindPhase, backend: Backend, account: OwnerAccount, embeddings: Embeddings, google: GoogleConsent,
-  credentialVersion: int, cerebrasRoute: bool, accountState: AccountState, providerRetryAt: int, lastCloudFailure: LastCloudFailure, calls: List[Call], nextCall: int, clock: int }
+  credentialVersion: int, cerebrasRoute: bool, accountState: AccountState, providerRetryAt: int, rateLimitCallId: int, lastCloudFailure: LastCloudFailure, calls: List[Call], nextCall: int, clock: int }
 pure val initial: ModelBinding = { phase: Unbound, backend: NoBackend, account: NoAccount, embeddings: NoEmbeddings,
-  google: { gmailChanges: false, calendarEdits: false }, credentialVersion: 0, cerebrasRoute: false, accountState: Usable, providerRetryAt: 0, lastCloudFailure: NoCloudFailure, calls: List(), nextCall: 0, clock: 0 }
+  google: { gmailChanges: false, calendarEdits: false }, credentialVersion: 0, cerebrasRoute: false, accountState: Usable, providerRetryAt: 0, rateLimitCallId: -1, lastCloudFailure: NoCloudFailure, calls: List(), nextCall: 0, clock: 0 }
 pure val viewValues = Set({ epoch: 1, credentialVersion: 1 }, { epoch: 1, credentialVersion: 0 }, { epoch: 2, credentialVersion: 2 })
 pure def canBind(s: ModelBinding, doc: LaunchDocument, view: FrameView, cerebrasRoute: bool): bool =
   s.phase == Unbound and documentAdmitted(doc) and view.epoch >= 1 and view.credentialVersion >= 0 and (needsCredential(doc.backend) implies view.credentialVersion >= 1)
@@ -279,6 +279,38 @@ pure def lawOnlyQwenOnACerebrasRouteSendsTheKey(family: ReasoningFamily, cerebra
   cacheKeySent(family, cerebrasRoute, true) iff (cerebrasRoute and family == QwenReasoning)
 ```
 
+### A Qwen call on a Cerebras route reads a tool call the model wrote as text as that call, when it names an offered tool
+
+`qwen-3.8-27b` sometimes writes its tool call into the text in its own
+template instead of the structured field: a `<tool_call>` block holding a
+`<function=NAME>` with a `<parameter=KEY>` value for each argument, or one
+JSON object with `name` and `arguments`. On the routes that take reasoning
+hints, a call that offers tools and leaves the model free to use them (its
+tool choice is not `none`) and gets an answer with no structured tool call
+reads each such block as a tool call when every block parses and names a
+tool the call offered: the answer carries those calls, with fresh ids, and
+its text without the blocks. A value is read as JSON when the tool's schema
+gives that parameter a type other than string and it parses, and as the
+written text otherwise. A block that does not parse or names a tool the
+call did not offer leaves the whole text as it was, for the turn to refuse
+([planning](../conversation/planning.md)). Any other model, route or call,
+and an answer that already has a structured tool call, reads its text as
+text.
+
+```quint
+pure def writtenCallsRead(family: ReasoningFamily, cerebrasRoute: bool, freeToolChoice: bool, structuredCalls: int, writtenAllOffered: bool): bool =
+  family == QwenReasoning and cerebrasRoute and freeToolChoice and structuredCalls == 0 and writtenAllOffered
+pure val structuredCallsValues = Set(0, 1, 2)
+pure def lawOnlyQwenOnACerebrasRouteReadsWrittenCalls(family: ReasoningFamily, cerebrasRoute: bool, freeToolChoice: bool, structuredCalls: int, writtenAllOffered: bool): bool =
+  writtenCallsRead(family, cerebrasRoute, freeToolChoice, structuredCalls, writtenAllOffered) implies (family == QwenReasoning and cerebrasRoute)
+pure def lawAWrittenCallNamingAnUnofferedToolIsNeverRead(family: ReasoningFamily, cerebrasRoute: bool, freeToolChoice: bool, structuredCalls: int): bool =
+  not(writtenCallsRead(family, cerebrasRoute, freeToolChoice, structuredCalls, false))
+pure def lawAStructuredCallKeepsTheTextAsText(family: ReasoningFamily, cerebrasRoute: bool, freeToolChoice: bool, writtenAllOffered: bool): bool =
+  not(writtenCallsRead(family, cerebrasRoute, freeToolChoice, 1, writtenAllOffered))
+pure def lawACallOfferingNoFreeChoiceReadsNoWrittenCall(family: ReasoningFamily, cerebrasRoute: bool, structuredCalls: int, writtenAllOffered: bool): bool =
+  not(writtenCallsRead(family, cerebrasRoute, false, structuredCalls, writtenAllOffered))
+```
+
 ## Story: Keep the account state honest
 
 > As the owner, I want to see why my agent cannot answer, from what the
@@ -313,9 +345,11 @@ pure def refuseCall(s: ModelBinding, id: int, now: int, e: C::CloudError): Model
   val provider = failureOf(e, callVersion(s.calls, id))
   val failure = heldFailure(provider, t, s.cerebrasRoute)
   val ignored = staleRefusal(failure, s.credentialVersion)
+  val limitCallId = match provider { | LimitReached(_) => id | _ => s.rateLimitCallId }
   { ...s, calls: s.calls.select(c => c.id != id), clock: t,
     accountState: if (ignored) s.accountState else afterFailure(s.accountState, failure, t),
     providerRetryAt: if (ignored or retryAtOf(provider) <= s.providerRetryAt) s.providerRetryAt else retryAtOf(provider),
+    rateLimitCallId: limitCallId,
     lastCloudFailure: if (ignored) s.lastCloudFailure else CloudFailedAt({ failure: failure, at: t }) }
 }
 pure def alwaysFailingAccountHasALastFailure(s: ModelBinding): bool = s.accountState != Usable implies s.lastCloudFailure != NoCloudFailure
@@ -354,9 +388,41 @@ pure def lawTheCodeIsTheOneCloudNamed(cloudRoute: bool, refusalStatus: int, body
 pure def lawAnOwnKeyRefusalCarriesNoCode(refusalStatus: int, bodyCode: str): bool = fundsCodeOf(false, refusalStatus, bodyCode) == NoFundsCode
 ```
 
+### A rate limit names whether the model provider or Cloud set it, and no other refusal names one
+
+A rate limit on an own-key endpoint names the provider. The cloud route
+names `provider` when Cloud sends `provider_rate_limited` and `cloud`
+when it sends `cloud_gate_rate_limited`. If the reason is missing or
+unrecognized, the origin is unknown. Other refusals and refusals from the
+binding itself leave the origin unset.
+
+```quint
+type LimitOrigin = NoLimitOrigin | ProviderSetLimit | CloudSetLimit
+pure def limitOriginOf(cloudRoute: bool, limited: bool, bodyReason: str): LimitOrigin =
+  if (not(limited)) NoLimitOrigin
+  else if (not(cloudRoute) or bodyReason == "provider_rate_limited") ProviderSetLimit
+  else if (bodyReason == "cloud_gate_rate_limited") CloudSetLimit
+  else NoLimitOrigin
+pure def limitOriginName(origin: LimitOrigin): str = match origin { | NoLimitOrigin => "" | ProviderSetLimit => "provider" | CloudSetLimit => "cloud" }
+pure val limitedValues = Set(true, false)
+pure val bodyReasonValues = Set("", "provider_rate_limited", "cloud_gate_rate_limited", "google_not_configured")
+pure def lawOnlyARateLimitNamesAnOrigin(cloudRoute: bool, limited: bool, bodyReason: str): bool =
+  (limitOriginOf(cloudRoute, limited, bodyReason) != NoLimitOrigin) implies limited
+pure def lawAnOwnKeyLimitIsTheProviders(bodyReason: str): bool = limitOriginOf(false, true, bodyReason) == ProviderSetLimit
+pure def lawCloudsOwnLimitNamesCloud(bodyReason: str): bool =
+  (limitOriginOf(true, true, bodyReason) == CloudSetLimit) iff (bodyReason == "cloud_gate_rate_limited")
+pure def lawAnUnmarkedCloudLimitHasNoOrigin(bodyReason: str): bool =
+  (limitOriginOf(true, true, bodyReason) == NoLimitOrigin)
+    iff not(Set("provider_rate_limited", "cloud_gate_rate_limited").contains(bodyReason))
+```
+
 ### No call starts before a rate limit's retry time, and a provider issue does not lift a limit still in force
 
 A refused credential, spent credits or a newer limit replace a limit.
+The binding keeps the call number of the last rate limit it received.
+When an active hold refuses another call, the refusal carries that
+number internally. A re-send can use it to identify the limit its own
+call met, even if another call received a limit with the same retry time.
 
 ```quint
 pure def limitedBy(f: AccountFailure, t: int): bool = match f { | LimitReached(x) => t < x.retryAt | _ => false }
@@ -364,6 +430,11 @@ pure def limitedAt(st: AccountState, t: int): bool = match st { | Failing(x) => 
 pure def afterFailure(st: AccountState, failure: AccountFailure, t: int): AccountState =
   if (failure == ProviderIssue and limitedAt(st, t)) st else Failing({ failure: failure })
 pure def stepNoCallBeforeRetryAt(before: ModelBinding, via: str, after: ModelBinding): bool = via == "startCall" implies not(limitedAt(before.accountState, after.clock))
+pure def alwaysActiveLimitNamesASettledCall(s: ModelBinding): bool = limitedAt(s.accountState, s.clock) implies
+  (s.rateLimitCallId >= 0 and s.rateLimitCallId < s.nextCall and not(s.calls.some(c => c.id == s.rateLimitCallId)))
+pure def stepChangedLimitNamesTheNewlyRefusedCall(before: ModelBinding, via: str, after: ModelBinding): bool =
+  after.rateLimitCallId != before.rateLimitCallId implies
+    (via == "refuseCall" and lastFailureKind(after.lastCloudFailure) == "limit_reached" and before.calls.some(c => c.id == after.rateLimitCallId) and not(after.calls.some(c => c.id == after.rateLimitCallId)))
 pure def sometimesLimitReached(s: ModelBinding): bool = limitedAt(s.accountState, s.clock)
 pure def sometimesProviderIssueKeepsTheLimit(s: ModelBinding): bool =
   limitedAt(s.accountState, s.clock) and lastFailureKind(s.lastCloudFailure) == "provider_issue"

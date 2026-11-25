@@ -1,0 +1,27 @@
+// spec/wallet/index.md, "Inventory and venue observations retain their chain and account scope"
+module node {
+  export type Rpc = (method: string, params: readonly unknown[]) => Promise<unknown>
+
+  export function field(value: unknown, name: string): unknown {
+    return typeof value === "object" && value !== null ? Object.getOwnPropertyDescriptor(value, name)?.value : undefined
+  }
+
+  export function jsonRpc(url: string): Rpc {
+    let asked = 0
+    return async (method, params) => {
+      asked += 1
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ jsonrpc: "2.0", id: asked, method, params }),
+        signal: AbortSignal.timeout(20_000),
+      })
+      const answer: unknown = await response.json()
+      if (typeof answer !== "object" || answer === null || Array.isArray(answer)) throw new Error(`The wallet RPC gave no JSON-RPC answer to ${method}`)
+      const refusal = field(answer, "error")
+      if (refusal !== undefined && refusal !== null) throw new Error(`The wallet RPC refused ${method}`, { cause: field(refusal, "code") })
+      return field(answer, "result")
+    }
+  }
+}
+export { field, jsonRpc, type Rpc } from node
