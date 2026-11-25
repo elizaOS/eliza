@@ -527,3 +527,45 @@ it.live("Mark a voicemail heard only as the provider confirms it, hold the next 
     },
   ))
 })
+
+// spec/os/android/voicemail.md, "A retired observer admits no refresh and a replacement waits for acknowledged cleanup"
+it.effect("retired voicemail callbacks stay inert while a replacement waits for Android", () => effect {
+  const phone = device({ voicemailGrant: true, sources: "ready" })
+  const native = androidTelephony(phone)
+  const switches: boolean[] = []
+  let disableRefused = true
+  let reads = 0
+  const client = phoneClient({
+    ...native,
+    observeVoicemail: async ({ enabled }) => {
+      switches.push(enabled)
+      if (!enabled && disableRefused) throw new Error("Voicemail disable was not confirmed")
+      return native.observeVoicemail({ enabled })
+    },
+    listVoicemail: async (options) => {
+      reads += 1
+      return native.listVoicemail(options)
+    },
+  }, androidJournal(phone))
+  const changes: Promise<VoicemailListing>[] = []
+  const receive = (listing: Promise<VoicemailListing>) => { changes.push(listing) }
+  const stop = try promise(() => client.observeVoicemail(receive))
+  const retired = phone.listeners[0]
+  try refusal(stop)
+  try Effect.try(() => retired?.({ sequence: 1 }))
+  try refusal(() => client.observeVoicemail(receive))
+  try Effect.try(() => assert.deepStrictEqual({ switches, reads, listened: phone.listeners.length }, {
+    switches: [true, false, false], reads: 0, listened: 0,
+  }))
+
+  disableRefused = false
+  const close = try promise(() => client.observeVoicemail(receive))
+  try promise(stop)
+  try Effect.try(() => retired?.({ sequence: 2 }))
+  try Effect.try(() => phone.listeners[0]?.({ sequence: 3 }))
+  try promise(() => changes[0] ?? Promise.reject(new Error("No current voicemail notice")))
+  try promise(close)
+  try Effect.try(() => assert.deepStrictEqual({ switches, reads, published: changes.length, observing: phone.observing }, {
+    switches: [true, false, false, false, true, false], reads: 1, published: 1, observing: false,
+  }))
+})

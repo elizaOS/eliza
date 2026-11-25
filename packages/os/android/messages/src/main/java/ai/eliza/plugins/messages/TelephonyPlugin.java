@@ -775,45 +775,71 @@ public abstract class TelephonyPlugin extends Plugin {
   return (roles != null && roles.isRoleHeld(android.app.role.RoleManager.ROLE_DIALER)) || context.checkSelfPermission(WRITE_VOICEMAIL) == PackageManager.PERMISSION_GRANTED;
  }
 
- private boolean voicemailWanted, voicemailObserving;
+ private boolean voicemailWanted;
+ private volatile VoicemailObserver voicemailObserver;
+ private VoicemailObserver voicemailRetiring;
  private long voicemailSequence;
- private final Runnable emitVoicemailChange = () -> {
-  if (!voicemailObserving || !unlockedForeground() || !admitted() || !voicemailReadable()) return;
-  JSObject value = new JSObject(); value.put("sequence", ++voicemailSequence);
-  // No content leaves here: the renderer re-reads a bounded list.
-  notifyListeners("voicemailChanged", value);
- };
- private final android.database.ContentObserver voicemailObserver = new android.database.ContentObserver(main) {
-  @Override public void onChange(boolean self) { main.removeCallbacks(emitVoicemailChange); main.postDelayed(emitVoicemailChange, 750); }
- };
- private void startObservingVoicemail() {
-  if (voicemailObserving) return;
+
+ private final class VoicemailObserver extends android.database.ContentObserver {
+  final Runnable emit = () -> {
+   if (voicemailObserver != this || !unlockedForeground() || !admitted() || !voicemailReadable()) return;
+   JSObject value = new JSObject(); value.put("sequence", ++voicemailSequence);
+   notifyListeners("voicemailChanged", value);
+  };
+  VoicemailObserver() { super(main); }
+  @Override public void onChange(boolean self) {
+   if (voicemailObserver != this) return;
+   main.removeCallbacks(emit); main.postDelayed(emit, 750);
+  }
+ }
+
+ private synchronized void startObservingVoicemail() {
+  if (voicemailObserver != null || !stopObservingVoicemail()) return;
   android.content.ContentResolver resolver = getContext().getContentResolver();
+  VoicemailObserver next = new VoicemailObserver();
+  voicemailRetiring = next;
   try {
-   resolver.registerContentObserver(android.provider.VoicemailContract.Voicemails.CONTENT_URI, true, voicemailObserver);
-   resolver.registerContentObserver(android.provider.VoicemailContract.Status.CONTENT_URI, true, voicemailObserver);
-   voicemailObserving = true;
-  } catch (RuntimeException refusedObserver) { resolver.unregisterContentObserver(voicemailObserver); voicemailObserving = false; }
+   resolver.registerContentObserver(android.provider.VoicemailContract.Voicemails.CONTENT_URI, true, next);
+   resolver.registerContentObserver(android.provider.VoicemailContract.Status.CONTENT_URI, true, next);
+   voicemailObserver = next;
+   voicemailRetiring = null;
+  } catch (RuntimeException refusedObserver) { stopObservingVoicemail(); }
  }
- private void stopObservingVoicemail() {
-  main.removeCallbacks(emitVoicemailChange);
-  if (!voicemailObserving) return;
-  voicemailObserving = false;
-  getContext().getContentResolver().unregisterContentObserver(voicemailObserver);
+
+ private synchronized boolean stopObservingVoicemail() {
+  if (voicemailObserver != null) {
+   voicemailRetiring = voicemailObserver;
+   voicemailObserver = null;
+  }
+  VoicemailObserver previous = voicemailRetiring;
+  if (previous == null) return true;
+  main.removeCallbacks(previous.emit);
+  try { getContext().getContentResolver().unregisterContentObserver(previous); }
+  catch (RuntimeException unconfirmed) { return false; }
+  voicemailRetiring = null;
+  return true;
  }
- private void resumeObservingVoicemail() {
+
+ private synchronized void resumeObservingVoicemail() {
   if (!voicemailWanted || !admitted() || !voicemailReadable() || !unlockedForeground()) return;
   startObservingVoicemail();
-  main.removeCallbacks(emitVoicemailChange); main.post(emitVoicemailChange);
+  VoicemailObserver observer = voicemailObserver;
+  if (observer != null) { main.removeCallbacks(observer.emit); main.post(observer.emit); }
  }
+
  /** Starts or stops content-free change notices ("voicemailChanged") while the host is unlocked in the foreground. */
- @PluginMethod public void observeVoicemail(PluginCall call) {
+ @PluginMethod public synchronized void observeVoicemail(PluginCall call) {
   if (refused(call)) return;
   Boolean enabled = call.getBoolean("enabled", false);
-  if (enabled == null || !enabled) { voicemailWanted = false; stopObservingVoicemail(); call.resolve(); return; }
+  if (enabled == null || !enabled) {
+   voicemailWanted = false;
+   if (stopObservingVoicemail()) call.resolve();
+   else call.reject("Voicemail observation could not be retired", "unavailable");
+   return;
+  }
   if (!voicemailReadable()) { call.reject("Voicemail access is not granted", "permission-required"); return; }
   voicemailWanted = true; startObservingVoicemail();
-  if (!voicemailObserving) { voicemailWanted = false; call.reject("Voicemail could not be observed", "unavailable"); return; }
+  if (voicemailObserver == null) { voicemailWanted = false; call.reject("Voicemail could not be observed", "unavailable"); return; }
   call.resolve();
  }
 
