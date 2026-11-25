@@ -1,0 +1,71 @@
+// spec/agent/conversation/planning.md, "An earlier reply reaches the model with the host's record of the tools its turn ran and how each ended"
+import { carriesARecord, maxRecordedValueChars, maxRecordedValuesChars, recordedOutcome, recordedSteps, type RecordedOutcome } from "../../gen/agent__conversation__planning.ts"
+import type { PlannedStep } from "./planning.vibe"
+
+export interface RecordedStep {
+  readonly action: string
+  readonly values: string
+  readonly outcome: RecordedOutcome
+}
+
+export interface ToolRecord {
+  readonly steps: readonly RecordedStep[]
+  readonly more: number
+}
+
+export const toolRecordLead = "[Host record of the tools run for this reply:"
+
+const outcomeWords: Readonly<Record<RecordedOutcome, string>> = {
+  RecordedDone: "done",
+  RecordedUnchanged: "no change",
+  RecordedProposed: "proposed",
+  RecordedFailed: "failed",
+  RecordedPartly: "partly failed",
+  RecordedRefused: "refused",
+}
+
+const cut = (text: string, limit: number) => text.length > limit ? `${text.slice(0, limit - 1)}…` : text
+
+function valueOf(value: unknown): string | undefined {
+  if (value === undefined || value === null) return undefined
+  const written = typeof value === "string" ? value : typeof value === "number" || typeof value === "boolean" ? String(value) : JSON.stringify(value)
+  const plain = (written ?? "").replace(/\s+/gu, " ").trim()
+  return plain === "" ? undefined : cut(plain, maxRecordedValueChars)
+}
+
+function valuesOf(params: Readonly<Record<string, unknown>>): string {
+  return cut(Object.values(params).flatMap((value) => valueOf(value) ?? []).join(", "), maxRecordedValuesChars)
+}
+
+export function toolRecordOf(steps: readonly PlannedStep[]): ToolRecord | undefined {
+  if (!carriesARecord(true, false, steps.length)) return undefined
+  const kept = steps.slice(0, recordedSteps(steps.length))
+  return {
+    steps: kept.map(({ action, params, outcomes, result }) => ({
+      action, values: valuesOf(params), outcome: recordedOutcome(outcomes.map(({ outcome }) => outcome), (result.effectReceipts ?? []).length > 0),
+    })),
+    more: steps.length - kept.length,
+  }
+}
+
+const isOutcome = (value: unknown): value is RecordedOutcome => typeof value === "string" && Object.hasOwn(outcomeWords, value)
+
+function storedRecord(value: unknown): ToolRecord | undefined {
+  if (typeof value !== "object" || value === null) return undefined
+  const { steps, more } = value as { steps?: unknown; more?: unknown }
+  if (!Array.isArray(steps) || typeof more !== "number" || !Number.isSafeInteger(more) || more < 0) return undefined
+  const read = steps.flatMap((step: unknown) => {
+    if (typeof step !== "object" || step === null) return []
+    const { action, values, outcome } = step as { action?: unknown; values?: unknown; outcome?: unknown }
+    return typeof action === "string" && action !== "" && typeof values === "string" && isOutcome(outcome)
+      ? [{ action: cut(action, maxRecordedValueChars), values: cut(values, maxRecordedValuesChars), outcome }] : []
+  })
+  return read.length === steps.length ? { steps: read.slice(0, recordedSteps(read.length)), more } : undefined
+}
+
+export function recordLine(stored: unknown, redacted: boolean): string | undefined {
+  const record = storedRecord(stored)
+  if (record === undefined || !carriesARecord(true, redacted, record.steps.length)) return undefined
+  const steps = record.steps.map(({ action, values, outcome }) => `${action}${values === "" ? "" : `(${values})`}: ${outcomeWords[outcome]}`)
+  return `${toolRecordLead} ${steps.join("; ")}${record.more > 0 ? `; and ${record.more} more` : ""}]`
+}
