@@ -70,6 +70,9 @@
         ".cache/test-result-*.json"
       ],
       "env": [
+        "ANDROID_HOME",
+        "ANDROID_SDK_ROOT",
+        "JAVA_HOME",
         "VIBESTACK_QUINT_EVALUATOR"
       ]
     },
