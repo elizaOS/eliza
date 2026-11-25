@@ -158,7 +158,7 @@ effect function observe(accessToken: string, start: string | undefined, token: s
   return { ...page, read: { ...page.read, consistent: labels.every(([, found]) => found.matches) }, events }
 }
 
-effect function historyRoute(context: RouteContext, auth: "ServiceAccess" | "MailRoute") {
+effect function historyRoute(context: RouteContext, auth: "ServiceAccess" | "MailAccess") {
   const ask = try askOf(context.query)
   const owner = signed(context.caller)
   if (owner === undefined) throw refused("AuthenticationRequired", "CredentialUnknown")
@@ -191,5 +191,5 @@ effect function historyRoute(context: RouteContext, auth: "ServiceAccess" | "Mai
 
 export const mailHistoryRoutes: ReadonlyArray<Route> = [
   { method: "GET", path: historyPath, auth: "ServiceAccess", area: "GoogleRoutes", handler: (context) => historyRoute(context, "ServiceAccess") },
-  { method: "GET", path: inboxHistoryPath, auth: "MailRoute", area: "GoogleRoutes", handler: (context) => historyRoute(context, "MailRoute") }
+  { method: "GET", path: inboxHistoryPath, auth: "MailAccess", area: "GoogleRoutes", handler: (context) => historyRoute(context, "MailAccess") }
 ]
