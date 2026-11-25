@@ -383,6 +383,7 @@ it.effect('The VIEWS show action prepares a navigation for the turn\'s renderer 
   const now = try views.shownViewOf("c2")
   try Effect.try(() => {
     assert.isTrue(shown.success)
+    assert.include(agent.agent.runtime.actions.find((candidate: Action) => candidate.name === "VIEWS")?.description ?? "", "The owner's views are Notes, Chat.")
     assert.deepStrictEqual(Object.keys(values).sort(), [
       "completedActionDelivered", "completedActionHandoffId", "label", "mode", "navigationBinding", "navigationPrepared", "viewId", "viewPath", "viewType",
     ])

@@ -516,7 +516,7 @@ owner's message as `requestMessageId` only while its turn is live, and then
 only for a step on the open selection, or for an operation grounded as
 asked on a turn whose message is a direct request for its family
 (`voiceUi.agentActionMode` is `direct-request-v1` for every family, or
-`direct-files-v1` for the Files family alone, so a phone that runs only
+`direct-files-v1` or `direct-files-only-v1` for the Files family alone, so a phone that runs only
 Files directly keeps every other family's card). Any other proposal carries none, so the phone
 never runs it without its card, whatever the operation and the owner's
 [direct-request preference](./execution.md); its origin is still the

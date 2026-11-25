@@ -131,11 +131,15 @@ const elsewhere = {
   text: "Views do not open with VIEWS on this message, so it did not run and nothing was shown. Open the view with the device tool's open_view where that tool offers it, or tell the person it can't be opened here.",
 }
 
+function namedViews(labels: ReadonlyMap<string, string>): string {
+  return labels.size === 0 ? "" : ` The owner's views are ${[...labels.values()].join(", ")}.`
+}
+
 export function viewsShowAction(views: ViewHost.Shape, labels: ReadonlyMap<string, string>): Action {
   const action: Action = {
     name: "VIEWS",
     similes: ["VIEWS_SHOW", "OPEN_VIEW", "NAVIGATE_VIEW"],
-    description: "Show one of the owner's views, named by its id, label or alias, on the renderer of this turn. Navigation only: it does not read or change the view's records, and showing a view acts on nothing in it. Showing Camera takes no photo, and showing Maps finds no place, gives no directions and plans no route: when the owner asks for those, use the action that does it.",
+    description: `Show one of the owner's views, named by its id, label or alias, on the renderer of this turn.${namedViews(labels)} Navigation only: it does not read or change the view's records, and showing a view acts on nothing in it. Showing Camera takes no photo, and showing Maps finds no place, gives no directions and plans no route: when the owner asks for those, use the action that does it.`,
     roleGate: { minRole: "OWNER" },
     parameters: [
       { name: "action", description: "show", required: false, schema: { type: "string", enum: ["show"] } },
