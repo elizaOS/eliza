@@ -21,6 +21,10 @@ the run belongs to that workflow and still names the notice's version. Any
 other read opens nothing, so a notice never reaches a run or version it was
 not posted for. The run's identity is retained, so a later edit of the
 workflow never redirects an older notice to a newer run.
+The phone can read result candidates from the same bounded notification
+list. It offers a result only after reading the exact, finished run for
+the current owner. The result uses one durable identity for that run and
+version.
 
 ```quint
 type NoticeOpen = OpenRun | OpenNothing

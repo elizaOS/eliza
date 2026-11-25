@@ -26,19 +26,50 @@ export schema WorkflowApprovalOffer {
   readonly expiresAt: NoticeDeadline
 }
 
-const NoticePage = Schema.Struct({ serviceStatus: Schema.Literal("ready"), notifications: Schema.Array(Schema.Unknown).check(Schema.isMaxLength(50)) })
-const NoticeRow = Schema.Struct({ category: Schema.Literal("workflow"), data: WorkflowApprovalOffer })
-const readOffer = Schema.decodeUnknownOption(NoticeRow)
+const ResultRoute = Schema.Struct({
+  kind: Schema.Literal("result"), workflowId: NoticeRouteId, runId: NoticeRouteId, versionId: NoticeRouteId,
+})
+const ResultRow = Schema.Struct({
+  category: Schema.Literal("workflow"), data: ResultRoute,
+  title: Schema.NonEmptyString.check(Schema.isMaxLength(200)), body: Schema.NonEmptyString.check(Schema.isMaxLength(2000)),
+})
 
-// spec/workflow/notices.md, "A pending approval is offered again only while its run is unchanged and unsettled"
-export effect function workflowApprovalOffers(request: WorkflowRequest): readonly WorkflowApprovalOffer[]!WorkflowClientError {
+export interface WorkflowResultOffer extends Pick<WorkflowNoticeRoute, "workflowId" | "runId" | "versionId"> {
+  readonly title: string
+  readonly body: string
+}
+
+const NoticePage = Schema.Struct({ serviceStatus: Schema.Literal("ready"), notifications: Schema.Array(Schema.Unknown).check(Schema.isMaxLength(50)) })
+const ApprovalRow = Schema.Struct({ category: Schema.Literal("workflow"), data: WorkflowApprovalOffer })
+const readApproval = Schema.decodeUnknownOption(ApprovalRow)
+const readResult = Schema.decodeUnknownOption(ResultRow)
+
+export interface WorkflowNoticeOffers {
+  readonly approvals: readonly WorkflowApprovalOffer[]
+  readonly results: readonly WorkflowResultOffer[]
+}
+
+// spec/workflow/notices.md, "A pending approval is offered again only while its run is unchanged and unsettled"; spec/workflow/notices.md, "A notice opens only its own run, at its own version, of a workflow still present"
+export effect function workflowNoticeOffers(request: WorkflowRequest): WorkflowNoticeOffers!WorkflowClientError {
   const raw = try request("/api/notifications?category=workflow&limit=50", undefined)
   const page = Option.getOrUndefined(Schema.decodeUnknownOption(NoticePage)(raw))
   if (page === undefined) throw workflowHttpError(502, { code: "WORKFLOW_NOTICE_INBOX_INVALID", error: "Workflow notices could not be read" })
-  return page.notifications.flatMap((entry) => {
-    const offer = Option.getOrUndefined(readOffer(entry))
-    return offer === undefined ? [] : [offer.data]
-  })
+  const approvals: WorkflowApprovalOffer[] = []
+  const results: WorkflowResultOffer[] = []
+  for (const entry of page.notifications) {
+    const approval = Option.getOrUndefined(readApproval(entry))
+    if (approval !== undefined) {
+      approvals.push(approval.data)
+      continue
+    }
+    const result = Option.getOrUndefined(readResult(entry))
+    if (result !== undefined) results.push({ ...result.data, title: result.title, body: result.body })
+  }
+  return { approvals, results }
+}
+
+export effect function workflowApprovalOffers(request: WorkflowRequest): readonly WorkflowApprovalOffer[]!WorkflowClientError {
+  return (try workflowNoticeOffers(request)).approvals
 }
 
 export interface WorkflowApprovalNoticeIdentity { readonly id: string; readonly bindingHash: string }
@@ -51,6 +82,12 @@ export effect function workflowApprovalNoticeIdentity(route: WorkflowNoticeRoute
     id: `approval-${try workflowSha(["workflow-approval-notice", route.scope, route.runId, proposalId])}`,
     bindingHash: try workflowSha(["workflow-approval-route", route.scope, route.origin, route.ownerId, route.agentId, route.workflowId, route.runId, route.versionId, proposalId]),
   }
+}
+
+export effect function workflowResultNoticeIdentity(route: WorkflowNoticeRoute): { readonly operationId: string; readonly bindingHash: string }!! {
+  const { scope, origin, ownerId, agentId, workflowId, runId, versionId } = route
+  const bindingHash = try workflowSha(["workflow-result-route", scope, origin, ownerId, agentId, workflowId, runId, versionId])
+  return { operationId: "result-" + bindingHash, bindingHash }
 }
 
 export function workflowApprovalProposalId(approval: Pick<WorkflowApproval, "nodeId" | "iteration">): string {
