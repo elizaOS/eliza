@@ -38,12 +38,16 @@ or to the loopback inbox; a binding is not loopback, and `serve`, which has
 no bindings, refuses to start with one, as for a missing secret.
 
 The profile's schema composes the parts other specs own and read from it:
-the models and their prices (`services/models`), the maps provider
+the models and their prices (`services/models`), their inference providers
+(`services/inference`), the maps provider
 (`services/maps`; the `maps` capability is on exactly when the provider is
 not `none`), the SMS countries (`identity/codeChallenges`), the Google client
 ids (`nativeClients/registry`, `identity/federatedSignIn`), the provider base
 URLs, and each paid plan's provider price and product id, which the catalog
-check below reads.
+check below reads. An HTTPS inference provider names its base URL and API
+key environment variable. A Workers AI inference provider identifies its
+transport with `kind: "workers-ai"` and names its Worker `binding`. Each
+provider has an `id` for the model catalog.
 
 ```quint
 import types.* from "./shared/types"
@@ -318,13 +322,14 @@ pure def lawAnAcceptedProfileServesCompleteDocuments(p: Profile, environment: En
 > As the operator of a product deployment on Cloudflare Workers, I want the
 > Worker to answer the same routes, from the same handlers and the same
 > reviewed profile, as `elizaos-cloud serve` does, so that my app signs in,
-> renews its key, subscribes, speaks, maps and reads Google the same way on
-> either host.
+> renews its key, subscribes, uses inference, speaks, maps and reads Google
+> the same way on either host.
 
 The Worker (`@elizaos/cloud-worker`) reads its profile from the
 `CLOUD_PROFILE` binding (the profile's JSON) and its environment from
-`CLOUD_ENVIRONMENT`, its secrets and mail binding from the Worker's other bindings, and its
-database from Hyperdrive. Each request gets one connection to the database,
+`CLOUD_ENVIRONMENT`, its secrets and named mail and inference bindings from
+the Worker's other bindings, and its database from Hyperdrive. Each request
+gets one connection to the database,
 held until the answer's body ends. It never migrates and never seeds:
 `elizaos-cloud migrate` and `elizaos-cloud client apply` (`operator`) prepare
 the database first. Its bindings `PUBLIC_API_ORIGIN`, `WEB_ORIGIN` and
@@ -339,9 +344,12 @@ assets `ASSETS`, with the Worker run first so no template is served bare;
 
 The first request of an isolate runs the start checks of `serve` for a
 Postgres store without a seed: the profile, the database identity, loopback
-delivery, the secrets and mail binding and, with billing on, the payment catalog. Until they
-pass, and while a binding disagrees with the profile, every request is
-answered `503 service_unavailable`, retryable.
+delivery, the secrets, configured mail and inference bindings and, with
+billing on, the payment catalog. Each named Workers AI inference binding
+must provide a callable `run` method. Starting `serve` with a profile that
+requires such a binding in its selected environment fails the binding
+check. Until the Worker's checks pass, and while a binding disagrees with
+the profile, every request is answered `503 service_unavailable`, retryable.
 
 ```quint
 type WorkerStart = WorkerServes | WorkerBindingsDisagree | WorkerRefused({ problem: StartProblem })
