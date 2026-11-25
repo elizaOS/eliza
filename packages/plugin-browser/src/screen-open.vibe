@@ -32,7 +32,7 @@ function urlOf(options: unknown): string | undefined {
   return typeof url === "string" && url.trim() !== "" ? url.trim() : undefined
 }
 
-const SHOWN = "The screen the owner asked from shows this address for the owner to open, with an Open choice; it opens in Browser only if they choose Open there. Browser has not opened and is not showing: do not claim it opened, that it loaded, what it shows, or that Browser is open."
+const SHOWN = "The screen the owner asked from shows this address in its Browser for the owner to open; it opens only if they choose Open there. It has not opened; do not claim it opened, that it loaded or what it shows. Which screen shows later is what each later message's screen context says, not this result."
 
 effect function opened(runtime: IAgentRuntime, message: Memory, options: HandlerOptions | undefined): ActionResult!! {
   const clientId = screenOf(message)
