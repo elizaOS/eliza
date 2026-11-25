@@ -200,7 +200,7 @@ test("a prepared named note keeps its prospective reply after reply grounding fa
     viewId: "notes",
     noteEditor: true,
   };
-  a.held = "Let me open your notes.";
+  a.held = "Let me find that note.";
   step.toolCall.params = { view: "notes", noteId: "note-fixture" };
   step.result.data.values.noteId = "note-fixture";
   step.result.data.navigation.noteId = "note-fixture";

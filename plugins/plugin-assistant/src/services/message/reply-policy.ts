@@ -572,8 +572,10 @@ export function preparedViewReply(args: {
   )
     return;
   const reply = args.reply.trim();
+  // The exact note ID already binds this editor handoff. The held response
+  // can refer to that note naturally without naming the Notes app.
   if (
-    !replyNamesStructuredEffectDestination(reply, effect) ||
+    (!plannedNoteEditor && !replyNamesStructuredEffectDestination(reply, effect)) ||
     !args.allow(reply)
   )
     return;
