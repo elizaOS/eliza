@@ -1,256 +1,189 @@
-// spec/wallet/index.md, "Story: Recover the real outcome of an on-chain operation"; spec/wallet/index.md, "A submitted operation retains one durable binding through reconciliation"
+// spec/wallet/custody.md, "Story: Hold my own keys on my device"; spec/wallet/requests.md, "Story: Let the agent ask, and decide myself"; spec/wallet/index.md, "Story: Recover the real outcome of an on-chain operation"; spec/wallet/index.md, "Story: Preview an exact wallet operation before executing it"; spec/wallet/index.md, "Story: Inspect wallet holdings and venue quotes before making changes"
+import * as NodeServices from "@effect/platform-node/NodeServices"
 import { assert, it } from "@effect/vitest"
-import type { IAgentRuntime, Memory, UUID } from "@elizaos/core"
-import { bindWalletOwnerReview, walletAction, type WalletOwnerReviewResult } from "../src/index.vibe"
-
-module chain {
-  import { mkdtempSync, rmSync } from "node:fs"
-  import { createServer, type Server } from "node:http"
-  import type { AddressInfo } from "node:net"
-  import { tmpdir } from "node:os"
-  import { join } from "node:path"
-  import { Transaction, Wallet, id, keccak256, toQuantity } from "ethers"
-
-  export type Gateway = "pass" | "lost" | "refused" | "gatewayError" | "secondCopy" | "missingHash" | "nullHash" | "malformedHash" | "otherHash" | "uppercaseHash"
-
-  interface Call { readonly id: unknown; readonly method: string; readonly params: readonly unknown[] }
-  interface Answer { readonly result?: unknown; readonly error?: { readonly code: number; readonly message: string } }
-  interface Pooled { readonly hash: string; readonly from: string; readonly to: string; readonly value: bigint; readonly price: bigint }
-  interface Mined extends Pooled { readonly block: number }
-
-  export interface Chain {
-    readonly url: string
-    readonly signingKey: string
-    readonly recipient: string
-    gateway: Gateway
-    automine: boolean
-    readonly sent: string[]
-    readonly refusals: string[]
-    /** @throws {never} */
-    balance(address: string): bigint
-    /** @throws {never} */
-    landed(hash: string): boolean
-    /** @throws {never} */
-    mine(): void
-    close(): Promise<void>
-  }
-
-  const chainId = 31337n
-  const baseFee = 1_000_000_000n
-  const tip = 1_000_000_000n
-  const transferGas = 21_000n
-
-  /** @throws {never} */
-  export function signedHash(raw: string): string {
-    return keccak256(raw)
-  }
-
-  /** @throws {never} */
-  export async function startChain(): Promise<Chain> {
-    const signer = Wallet.createRandom()
-    const balances = new Map<string, bigint>([[signer.address.toLowerCase(), 10n ** 19n]])
-    const pool = new Map<string, Pooled>()
-    const mined = new Map<string, Mined>()
-    const blocks: string[][] = [[]]
-    const balance = (address: string) => balances.get(address.toLowerCase()) ?? 0n
-    const minedNonce = (address: string) => [...mined.values()].filter((tx) => tx.from === address.toLowerCase()).length
-    const pendingNonce = (address: string) => minedNonce(address) + [...pool.values()].filter((tx) => tx.from === address.toLowerCase()).length
-    const mine = () => {
-      const included = [...pool.values()]
-      for (const tx of included) {
-        balances.set(tx.from, balance(tx.from) - tx.value - transferGas * tx.price)
-        balances.set(tx.to, balance(tx.to) + tx.value)
-        mined.set(tx.hash, { ...tx, block: blocks.length })
-      }
-      pool.clear()
-      blocks.push(included.map((tx) => tx.hash))
-    }
-    const blockHash = (number: number) => id(`fake-chain-block-${number}`)
-    const block = (tag: unknown) => {
-      const number = typeof tag === "string" && tag.startsWith("0x") ? Number(BigInt(tag)) : blocks.length - 1
-      const transactions = blocks[number]
-      if (transactions === undefined) return null
-      return {
-        number: toQuantity(number), hash: blockHash(number), parentHash: number === 0 ? `0x${"0".repeat(64)}` : blockHash(number - 1),
-        timestamp: toQuantity(1_800_000_000 + number * 12), nonce: "0x0000000000000000", difficulty: "0x0", gasLimit: toQuantity(30_000_000),
-        gasUsed: toQuantity(transferGas * BigInt(transactions.length)), miner: `0x${"0".repeat(40)}`, extraData: "0x",
-        baseFeePerGas: toQuantity(baseFee), transactions,
-      }
-    }
-    const receipt = (hash: unknown) => {
-      const tx = typeof hash === "string" ? mined.get(hash.toLowerCase()) : undefined
-      if (tx === undefined) return null
-      const index = blocks[tx.block]?.indexOf(tx.hash) ?? 0
-      return {
-        transactionHash: tx.hash, transactionIndex: toQuantity(index), blockHash: blockHash(tx.block), blockNumber: toQuantity(tx.block),
-        from: tx.from, to: tx.to, gasUsed: toQuantity(transferGas), cumulativeGasUsed: toQuantity(transferGas * BigInt(index + 1)),
-        effectiveGasPrice: toQuantity(tx.price), contractAddress: null, logs: [], logsBloom: `0x${"0".repeat(512)}`, status: "0x1", type: "0x2",
-      }
-    }
-    const refusals: string[] = []
-    const refuse = (message: string): Answer => {
-      refusals.push(message)
-      return { error: { code: -32000, message } }
-    }
-    const accept = (raw: string): Answer => {
-      const tx = Transaction.from(raw)
-      const hash = tx.hash
-      if (hash === null || tx.chainId !== chainId || tx.from === null || tx.to === null || tx.maxFeePerGas === null || tx.maxPriorityFeePerGas === null) return refuse("invalid transaction")
-      if (pool.has(hash)) return refuse("already known")
-      if (tx.nonce < pendingNonce(tx.from)) return refuse("nonce too low")
-      if (tx.nonce > pendingNonce(tx.from)) return refuse("nonce too high")
-      if (tx.maxFeePerGas < baseFee) return refuse("max fee per gas less than block base fee")
-      if (balance(tx.from) < tx.value + tx.gasLimit * tx.maxFeePerGas) return refuse("insufficient funds for gas * price + value")
-      const price = baseFee + (tx.maxPriorityFeePerGas < tx.maxFeePerGas - baseFee ? tx.maxPriorityFeePerGas : tx.maxFeePerGas - baseFee)
-      pool.set(hash, { hash, from: tx.from.toLowerCase(), to: tx.to.toLowerCase(), value: tx.value, price })
-      if (state.automine) mine()
-      return { result: hash }
-    }
-    const node = (call: Call): Answer => {
-      const [first, second] = call.params
-      switch (call.method) {
-        case "eth_chainId": return { result: toQuantity(chainId) }
-        case "eth_blockNumber": return { result: toQuantity(blocks.length - 1) }
-        case "eth_getBlockByNumber": return { result: block(first) }
-        case "eth_getBalance": return { result: toQuantity(balance(String(first))) }
-        case "eth_getTransactionCount": return { result: toQuantity(second === "pending" ? pendingNonce(String(first)) : minedNonce(String(first))) }
-        case "eth_estimateGas": return { result: toQuantity(transferGas) }
-        case "eth_gasPrice": return { result: toQuantity(baseFee + tip) }
-        case "eth_maxPriorityFeePerGas": return { result: toQuantity(tip) }
-        case "eth_getTransactionReceipt": return { result: receipt(first) }
-        case "eth_sendRawTransaction": return accept(String(first))
-        default: return { error: { code: -32601, message: `the method ${call.method} does not exist` } }
-      }
-    }
-    const relay = (call: Call): Answer | "lost" => {
-      if (call.method !== "eth_sendRawTransaction") return node(call)
-      state.sent.push(String(call.params[0]))
-      switch (state.gateway) {
-        case "pass": return node(call)
-        case "refused": return { error: { code: -32000, message: "insufficient funds for gas * price + value" } }
-        case "lost": node(call); return "lost"
-        case "gatewayError": node(call); return { error: { code: -32603, message: "Upstream response timed out" } }
-        case "secondCopy": node(call); return node(call)
-        case "missingHash": node(call); return {}
-        case "nullHash": node(call); return { result: null }
-        case "malformedHash": node(call); return { result: "0x1234" }
-        case "otherHash": node(call); return { result: `0x${"a".repeat(64)}` }
-        case "uppercaseHash": return { result: `0x${String(node(call).result).slice(2).toUpperCase()}` }
-      }
-    }
-    const server: Server = createServer((request, response) => {
-      let body = ""
-      request.on("data", (chunk: Buffer) => { body += chunk.toString("utf8") })
-      request.on("end", () => {
-        const parsed: unknown = JSON.parse(body)
-        const calls = (Array.isArray(parsed) ? parsed : [parsed]) as Call[]
-        const replies: object[] = []
-        for (const call of calls) {
-          const answer = relay(call)
-          if (answer === "lost") {
-            response.destroy()
-            return
-          }
-          replies.push({ jsonrpc: "2.0", id: call.id, ...answer })
-        }
-        response.setHeader("content-type", "application/json")
-        response.end(JSON.stringify(Array.isArray(parsed) ? replies : replies[0]))
-      })
-    })
-    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()))
-    const state: Chain = {
-      url: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
-      signingKey: signer.privateKey,
-      recipient: Wallet.createRandom().address,
-      gateway: "pass",
-      automine: true,
-      sent: [],
-      refusals,
-      balance,
-      landed: (hash) => mined.has(hash.toLowerCase()),
-      mine,
-      close: () => {
-        server.closeAllConnections()
-        return new Promise((resolve) => server.close(() => resolve()))
-      },
-    }
-    return state
-  }
-
-  export function useStateDirectory(): () => void {
-    const directory = mkdtempSync(join(tmpdir(), "eliza-wallet-"))
-    const previous = process.env.ELIZA_STATE_DIR
-    process.env.ELIZA_STATE_DIR = directory
-    return () => {
-      if (previous === undefined) delete process.env.ELIZA_STATE_DIR
-      else process.env.ELIZA_STATE_DIR = previous
-      rmSync(directory, { recursive: true, force: true })
-    }
-  }
-
-  /** @throws {never} */
-  export async function settle<A>(run: () => Promise<A>): Promise<{ readonly value?: A; readonly refused?: string }> {
-    try {
-      return { value: await run() }
-    } catch (failure) {
-      return { refused: typeof failure === "object" && failure !== null && "reason" in failure ? String(failure.reason) : String(failure) }
-    }
-  }
-}
-import { settle, signedHash, startChain, useStateDirectory, type Chain, type Gateway } from chain
+import type { ActionResult, IAgentRuntime, Memory, ProviderResult, State, UUID } from "@elizaos/core"
+import type { WalletDecided, WalletHoldings, WalletOperation, WalletRequestRow, WalletReview, WalletStatus } from "@elizaos/plugin-wallet-client"
+import type { ModuleContext } from "@elizaos/agent-host"
+import { openWallet, walletModule, walletPlugin, type Wallet, type WalletHost, type WalletRoute } from "../src/index.vibe"
+import type { AssetTransfer, WalletNetwork } from "../src/chain.vibe"
+import { openSolanaAccount, openSolanaSigner, solanaAccountOf } from "../src/solana.vibe"
+import { scratch, signedHash, startChain, storageKey, type Chain, type Gateway, type Scratch } from "./support/evm-chain.ts"
+import { startSolanaChain, type SolanaChain, type SolanaGateway, type TokenProgram } from "./support/solana-chain.ts"
 
 const OWNER = "6f1c2a52-8a4e-4b7d-9c1e-2f3a4b5c6d7e"
-const AMOUNT = "1000000000000000"
+const STRANGER = "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+const AGENT = "1b2c3d4e-5f60-4a7b-8c9d-0e1f2a3b4c5d"
 const CLOSED = "This decision no longer matches an open review for the authenticated owner."
+const OFF = "The wallet is off."
+const AMOUNT = "1000000000000000"
 
-function walletRuntime(chain: Chain): IAgentRuntime {
-  const settings: Record<string, string> = {
-    ELIZA_ADMIN_ENTITY_ID: OWNER,
-    WALLET_EVM_RPC_URL: chain.url,
-    WALLET_EVM_CHAIN_ID: "31337",
-    WALLET_EVM_SIGNING_KEY: chain.signingKey,
-    WALLET_TRANSFER_MAX_ATOMIC: "1000000000000000000",
-    WALLET_TRANSFER_RECIPIENTS: chain.recipient,
-    WALLET_TRANSFER_MAX_FEE_ATOMIC: "100000000000000",
+interface World {
+  readonly chain: Chain
+  readonly files: Scratch
+  readonly wallet: Wallet
+  readonly routes: readonly WalletRoute[]
+  readonly account: string
+}
+
+interface Answer<A> {
+  readonly status: number
+  readonly body: A
+  readonly reason: string | undefined
+}
+
+function hostOver(files: Scratch, chain: Chain, settings: Record<string, string> = {}, seals = true): WalletHost {
+  const storageKey = seals ? new Uint8Array(32).fill(7) : undefined
+  const all: Record<string, string> = { WALLET_EVM_RPC_URL: chain.url, WALLET_EVM_CHAIN_ID: "31337", WALLET_EVM_TOKENS: chain.token, ...settings }
+  return { agentId: AGENT, ownerId: OWNER, stateDirectory: files.directory, storageKey, setting: (key) => all[key] ?? "", ownerPresent: () => Promise.resolve(true) }
+}
+
+function launched(files: Scratch, chain: Chain): ModuleContext {
+  const settings: Record<string, string> = { WALLET_EVM_RPC_URL: chain.url, WALLET_EVM_CHAIN_ID: "31337" }
+  return {
+    runtime: { agentId: AGENT, getSetting: (key: string) => settings[key] ?? null },
+    stateDirectory: files.directory, storageKey: Redacted.make(storageKey), ownerEntityId: OWNER,
+  } as unknown as ModuleContext
+}
+
+effect function called<A>(routes: readonly WalletRoute[], method: string, path: string, body?: unknown): Answer<A>!! {
+  const segments = path.split("/")
+  const parameters = new Map<string, string>()
+  const route = routes.find((candidate) => {
+    const pattern = candidate.path.split("/")
+    return candidate.method === method && pattern.length === segments.length && pattern.every((part, index) => part.startsWith("{") || part === segments[index])
+  })
+  if (route === undefined) return { status: 404, body: {} as A, reason: undefined }
+  route.path.split("/").forEach((part, index) => {
+    if (part.startsWith("{")) parameters.set(part.slice(1, -1), segments[index] ?? "")
+  })
+  const answer = try promise(() => Promise.resolve(route.handler({ parameters, query: new Map(), headers: new Map(), body, signal: new AbortController().signal })))
+  if ("headers" in answer) return { status: answer.status, body: {} as A, reason: undefined }
+  return { status: answer.status, body: answer.body as A, reason: "code" in answer.body && "error" in answer.body && typeof answer.body.error === "string" ? answer.body.error : undefined }
+}
+
+effect function world(settings: Record<string, string> = {}) {
+  const files = try acquireRelease(sync(() => scratch()), (made) => sync(() => made.remove()))
+  const chain = try acquireRelease(promise(() => startChain()), (running) => promise(() => running.close()))
+  const wallet = try openWallet(hostOver(files, chain, settings))
+  const routes = walletPlugin(wallet, OWNER).routes ?? []
+  const made = try called<WalletStatus>(routes, "POST", "/api/wallet")
+  const account = made.body.accounts.find((held) => held.family === "evm")?.address ?? ""
+  chain.fund(account, 10n ** 19n)
+  chain.grant(account, 50_000_000n)
+  return { chain, files, wallet, routes, account } satisfies World
+}
+
+function message(entityId: string): Memory {
+  return { entityId: entityId as UUID, roomId: "2c3d4e5f-6071-4b8c-9d0e-1f2a3b4c5d6e" as UUID, content: { text: "wallet" } }
+}
+
+effect function acted(wallet: Wallet, entityId: string, parameters: Record<string, string>): ActionResult!! {
+  const action = walletPlugin(wallet, OWNER).actions?.[0]
+  if (action === undefined) return { success: false, text: "no action" }
+  return try promise(() => action.handler({} as IAgentRuntime, message(entityId), undefined, { parameters }))
+}
+
+effect function offered(wallet: Wallet, entityId: string) {
+  const action = walletPlugin(wallet, OWNER).actions?.[0]
+  return action === undefined ? false : try promise(() => action.validate({} as IAgentRuntime, message(entityId)))
+}
+
+effect function told(wallet: Wallet, entityId: string): ProviderResult!! {
+  const provider = walletPlugin(wallet, OWNER).providers?.[0]
+  return provider === undefined ? {} : try promise(() => provider.get({} as IAgentRuntime, message(entityId), {} as State))
+}
+
+it.live('Make the wallet once on the device, seal its keys, and serve nothing while it is off (spec/wallet/custody.md, "Story: Hold my own keys on my device"; spec/wallet/custody.md, "Only the owner makes the wallet, once, with an account for each family"; spec/wallet/custody.md, "The owner switches the wallet off and on, and off means nothing is read or signed")', () => effect {
+  provide NodeServices.layer {
+    const files = try acquireRelease(sync(() => scratch()), (made) => sync(() => made.remove()))
+    const chain = try acquireRelease(promise(() => startChain()), (running) => promise(() => running.close()))
+    const unsealing = try openWallet(hostOver(files, chain, {}, false))
+    const bare = walletPlugin(unsealing, OWNER).routes ?? []
+    const noKey = { before: (try called<WalletStatus>(bare, "GET", "/api/wallet")).body, made: try called<WalletStatus>(bare, "POST", "/api/wallet") }
+    const wallet = try openWallet(hostOver(files, chain))
+    const routes = walletPlugin(wallet, OWNER).routes ?? []
+    const first = (try called<WalletStatus>(routes, "POST", "/api/wallet")).body
+    const second = (try called<WalletStatus>(routes, "POST", "/api/wallet")).body
+    const reopened = try (try openWallet(hostOver(files, chain))).status()
+    const sealed = files.sealed()
+    const off = (try called<WalletStatus>(routes, "POST", "/api/wallet/switch", { on: false })).body
+    const whileOff = {
+      holdings: (try called<WalletHoldings>(routes, "GET", "/api/wallet/holdings")).reason,
+      asked: (try called<WalletRequestRow>(routes, "POST", "/api/wallet/requests", { family: "evm", recipient: chain.recipient, amount: "1" })).reason,
+      offered: try offered(wallet, OWNER),
+      told: try told(wallet, OWNER),
+    }
+    const on = (try called<WalletStatus>(routes, "POST", "/api/wallet/switch", { on: true })).body
+    const evm = first.accounts.find((account) => account.family === "evm")
+    const malformed = (try called<WalletStatus>(routes, "POST", "/api/wallet/switch", { on: "yes" })).status
+    const offeredOn = [try offered(wallet, OWNER), try offered(wallet, STRANGER)]
+    const hosted = (try walletModule(launched(files, chain))).plugin
+    const viaModule = (try called<WalletStatus>(hosted.routes ?? [], "GET", "/api/wallet")).body
+    try sync(() => files.tearCustody())
+    const torn = (try walletModule(launched(files, chain))).plugin
+    const unopened = {
+      status: (try called<WalletStatus>(torn.routes ?? [], "GET", "/api/wallet")).body,
+      holdings: (try called<WalletHoldings>(torn.routes ?? [], "GET", "/api/wallet/holdings")).status,
+      actions: torn.actions?.length ?? 0,
+    }
+    try Effect.try(() => assert.deepStrictEqual({
+      noKey: { custody: noKey.before.custody, canHold: noKey.before.canHold, status: noKey.made.status, reason: noKey.made.reason },
+      custody: first.custody,
+      accounts: first.accounts.map((account) => ({ family: account.family, connected: account.connected, network: account.network, canSend: account.canSend, held: account.address !== "" })),
+      same: [second, reopened, on, viaModule].map((status) => status.accounts.map((account) => account.address)),
+      sealed: { marked: sealed.startsWith("wallet-keys-v1."), plain: /[{}":,]/.test(sealed) },
+      off: { custody: off.custody, canSend: off.accounts.map((account) => account.canSend) },
+      whileOff,
+      malformed,
+      offeredOn,
+      hosted: [hosted.actions?.length ?? 0, hosted.providers?.length ?? 0, hosted.routes?.length ?? 0],
+      unopened,
+    }, {
+      noKey: { custody: "none", canHold: false, status: 409, reason: "This device gave no storage key to seal a wallet under." },
+      custody: "ready",
+      accounts: [
+        { family: "evm", connected: true, network: "Local chain", canSend: true, held: true },
+        { family: "solana", connected: false, network: "", canSend: false, held: true },
+      ],
+      same: [0, 1, 2, 3].map(() => [evm?.address, first.accounts.find((account) => account.family === "solana")?.address]),
+      sealed: { marked: true, plain: false },
+      off: { custody: "off", canSend: [false, false] },
+      whileOff: { holdings: OFF, asked: OFF, offered: false, told: {} },
+      malformed: 400,
+      offeredOn: [true, false],
+      hosted: [1, 1, 9],
+      unopened: { status: { custody: "unavailable", canHold: false, accounts: [] }, holdings: 404, actions: 0 },
+    }))
   }
-  return { agentId: "1b2c3d4e-5f60-4a7b-8c9d-0e1f2a3b4c5d", getSetting: (key: string) => settings[key] ?? null } as unknown as IAgentRuntime
+})
+
+function sent(decided: Answer<WalletDecided>, signed: string) {
+  return decided.body.status === "declined" || decided.status !== 200 ? { status: decided.status } : { status: decided.body.status, signedHash: decided.body.operationRef === signed }
 }
 
-effect function approve(runtime: IAgentRuntime, chain: Chain, requestId: string) {
-  const review = try bindWalletOwnerReview(runtime, { requestId, family: "evm", recipient: chain.recipient, atomicUnits: AMOUNT }, () => Promise.resolve(OWNER))
-  const decision = { decision: "approve" as const, intentId: review.details.intent.intentId, commitment: review.details.intent.commitment }
-  const outcome = try promise(() => settle(() => review.decide(decision)))
-  const retried = try promise(() => settle(() => review.decide(decision)))
-  try promise(() => review.close())
-  return { intentId: decision.intentId, outcome: outcome.value, refused: outcome.refused, retried: retried.refused }
-}
-
-effect function reconcile(runtime: IAgentRuntime, intentId: string) {
-  const message = { entityId: OWNER as UUID, roomId: "2c3d4e5f-6071-4b8c-9d0e-1f2a3b4c5d6e" as UUID, content: { text: "did my transfer go through?" } } satisfies Memory
-  const settled = try promise(() => settle(() => walletAction.handler(runtime, message, undefined, { parameters: { subaction: "reconcile", chain: "evm", intentId } })))
-  return settled.value?.data?.receipt ?? settled.refused
-}
-
-function sent(outcome: WalletOwnerReviewResult | undefined, signed: string) {
-  return outcome === undefined || outcome.status === "declined" ? { status: outcome?.status } : { status: outcome.status, signedHash: outcome.operationRef === signed }
-}
-
-effect function broadcastThrough(runtime: IAgentRuntime, chain: Chain, gateway: Gateway, automine: boolean) {
+effect function broadcastThrough({ chain, files, routes }: World, gateway: Gateway, automine: boolean) {
   chain.gateway = gateway
   chain.automine = automine
   const before = { paid: chain.balance(chain.recipient), sends: chain.sent.length }
-  const requestId = `transfer-${gateway}-${automine ? "mined" : "pooled"}`
-  const first = try approve(runtime, chain, requestId)
+  const asked = (try called<WalletRequestRow>(routes, "POST", "/api/wallet/requests", { family: "evm", recipient: chain.recipient, amount: "0.001" })).body
+  try sync(() => files.keepDesk())
+  const review = (try called<WalletReview>(routes, "POST", `/api/wallet/requests/${asked.id}/review`)).body
+  const decision = { decision: "approve", intentId: review.intentId, commitment: review.commitment }
+  const decided = try called<WalletDecided>(routes, "POST", `/api/wallet/requests/${asked.id}/decide`, decision)
+  const retried = try called<WalletDecided>(routes, "POST", `/api/wallet/requests/${asked.id}/decide`, decision)
   if (!automine) chain.mine()
   const signed = try Effect.try(() => signedHash(chain.sent.at(-1) ?? ""))
   const afterFirst = { paid: chain.balance(chain.recipient) - before.paid, sends: chain.sent.length - before.sends }
   chain.gateway = "pass"
-  const reopened = try approve(runtime, chain, requestId)
+  try sync(() => files.restoreDesk())
+  const reopened = try called<WalletReview>(routes, "POST", `/api/wallet/requests/${asked.id}/review`)
+  const operations = (try called<{ readonly operations: readonly WalletOperation[] }>(routes, "GET", "/api/wallet/activity")).body.operations
   return {
-    gateway, automine, ...sent(first.outcome, signed), refused: first.refused, retried: first.retried,
+    gateway, automine, ...sent(decided, signed), retried: retried.reason,
     landed: chain.landed(signed), paid: String(afterFirst.paid), sends: afterFirst.sends,
-    reopened: { ...sent(reopened.outcome, signed), paid: String(chain.balance(chain.recipient) - before.paid), sends: chain.sent.length - before.sends },
-    reconciled: try reconcile(runtime, first.intentId),
+    reopened: { reason: reopened.reason, paid: String(chain.balance(chain.recipient) - before.paid), sends: chain.sent.length - before.sends },
+    waiting: (try called<{ readonly requests: readonly WalletRequestRow[] }>(routes, "GET", "/api/wallet/requests")).body.requests.length,
+    reconciled: operations.find((operation) => operation.intentId === review.intentId)?.status,
   }
 }
 
@@ -259,16 +192,312 @@ const cases: readonly (readonly [Gateway, boolean])[] = [
   ["lost", true], ["gatewayError", true], ["secondCopy", true], ["secondCopy", false], ["refused", true],
 ]
 
-it.live('Recover the real outcome of an EVM transfer whatever the RPC answers to its broadcast, and never pay twice on a retry (spec/wallet/index.md, "Story: Recover the real outcome of an on-chain operation"; spec/wallet/index.md, "A submitted operation retains one durable binding through reconciliation")', () => effect {
-  try acquireRelease(Effect.try(() => useStateDirectory()), (release) => sync(release))
-  const chain = try acquireRelease(promise(() => startChain()), (running) => promise(() => running.close()))
-  const runtime = walletRuntime(chain)
-  const rows = try Effect.forEach(cases, ([gateway, automine]) => broadcastThrough(runtime, chain, gateway, automine))
-  const expected = cases.map(([gateway, automine]) => ({
-    gateway, automine, status: gateway === "pass" ? "submitted" : "unresolved", signedHash: true, refused: undefined, retried: CLOSED,
-    landed: gateway !== "refused", paid: gateway === "refused" ? "0" : AMOUNT, sends: 1,
-    reopened: { status: "unresolved", signedHash: true, paid: gateway === "refused" ? "0" : AMOUNT, sends: 1 },
-    reconciled: gateway === "refused" ? "unresolved" : "confirmed",
+it.live(`Recover the real outcome of an EVM transfer whatever the RPC answers to its broadcast, and never sign it again after a restart that forgot the decision (spec/wallet/index.md, "Story: Recover the real outcome of an on-chain operation"; spec/wallet/index.md, "A submitted operation retains one durable binding through reconciliation"; spec/wallet/requests.md, "Only the owner's decision takes a request off the desk")`, () => effect {
+  provide NodeServices.layer {
+    const all = try world()
+    const rows = try Effect.forEach(cases, ([gateway, automine]) => broadcastThrough(all, gateway, automine))
+    const expected = cases.map(([gateway, automine]) => ({
+      gateway, automine, status: gateway === "pass" ? "submitted" : "unresolved", signedHash: true, retried: CLOSED,
+      landed: gateway !== "refused", paid: gateway === "refused" ? "0" : AMOUNT, sends: 1,
+      reopened: { reason: "That request was already decided.", paid: gateway === "refused" ? "0" : AMOUNT, sends: 1 },
+      waiting: 0,
+      reconciled: gateway === "refused" ? "pending" : "confirmed",
+    }))
+    try Effect.try(() => assert.deepStrictEqual({ rows, refusals: all.chain.refusals }, { rows: expected, refusals: ["nonce too low", "already known"] }))
+  }
+}, 60_000)
+
+it.live('The agent reads the wallet and asks for a token transfer, and only the owner\'s review on the wallet route sends it (spec/wallet/requests.md, "Story: Let the agent ask, and decide myself"; spec/wallet/requests.md, "A request waits with the exact terms it was asked with"; spec/wallet/index.md, "Story: Inspect wallet holdings and venue quotes before making changes"; spec/wallet/index.md, "A review binds the complete immutable wallet operation")', () => effect {
+  provide NodeServices.layer {
+    const { chain, wallet, routes, account } = try world()
+    const transfer = { chain: "evm", token: chain.token, recipient: chain.recipient }
+    const holdings = try acted(wallet, OWNER, { subaction: "holdings" })
+    const quoted = try acted(wallet, OWNER, { subaction: "quote", ...transfer, amount: "2.5" })
+    const refusedAsks = [
+      try acted(wallet, OWNER, { subaction: "request", ...transfer, amount: "0.0000001" }),
+      try acted(wallet, OWNER, { subaction: "request", ...transfer, amount: "0" }),
+      try acted(wallet, OWNER, { subaction: "request", ...transfer, recipient: "0x1234", amount: "1" }),
+      try acted(wallet, OWNER, { subaction: "request", chain: "solana", recipient: chain.recipient, amount: "1" }),
+      try acted(wallet, STRANGER, { subaction: "request", ...transfer, amount: "1" }),
+      try acted(wallet, OWNER, { subaction: "approve", ...transfer, amount: "1" }),
+    ].map((result) => [result.success, result.text])
+    const asked = try acted(wallet, OWNER, { subaction: "request", ...transfer, amount: "2.50" })
+    const waiting = (try called<{ readonly requests: readonly WalletRequestRow[] }>(routes, "GET", "/api/wallet/requests")).body.requests
+    const id = waiting[0]?.id ?? 0
+    const untouched = { sends: chain.sent.length, tokens: String(chain.tokens(chain.recipient)) }
+    const review = (try called<WalletReview>(routes, "POST", `/api/wallet/requests/${id}/review`)).body
+    const wrong = try called<WalletDecided>(routes, "POST", `/api/wallet/requests/${id}/decide`, { decision: "approve", intentId: review.intentId, commitment: "0".repeat(64) })
+    const again = (try called<WalletReview>(routes, "POST", `/api/wallet/requests/${id}/review`)).body
+    const decided = (try called<WalletDecided>(routes, "POST", `/api/wallet/requests/${id}/decide`, { decision: "approve", intentId: again.intentId, commitment: again.commitment })).body
+    const context = (try told(wallet, OWNER)).data
+    const filled = try Effect.forEach([1, 2, 3, 4, 5, 6, 7, 8, 9], (count) => acted(wallet, OWNER, { subaction: "request", ...transfer, amount: String(count) }))
+    const first = (try called<{ readonly requests: readonly WalletRequestRow[] }>(routes, "GET", "/api/wallet/requests")).body.requests[0]?.id ?? 0
+    const declined = (try called<WalletDecided>(routes, "POST", `/api/wallet/requests/${first}/decide`, { decision: "decline" })).body
+    const beyond = [
+      (try called<WalletRequestRow>(routes, "POST", "/api/wallet/requests", { family: "evm", token: chain.token, recipient: chain.recipient, amount: "48" })).body.id,
+      (try called<WalletRequestRow>(routes, "POST", "/api/wallet/requests", { family: "evm", recipient: chain.recipient, amount: "10" })).body.id,
+    ]
+    const short = try Effect.forEach(beyond, effect (id) => [
+      (try called<WalletReview>(routes, "POST", `/api/wallet/requests/${id}/review`)).reason,
+      (try called<WalletDecided>(routes, "POST", `/api/wallet/requests/${id}/decide`, { decision: "decline" })).body.status,
+    ])
+    const left = (try called<{ readonly requests: readonly WalletRequestRow[] }>(routes, "GET", "/api/wallet/requests")).body.requests.length
+    const stranger = [try offered(wallet, STRANGER), try told(wallet, STRANGER)]
+    try Effect.try(() => assert.deepStrictEqual({
+      holdings: holdings.data,
+      quoted: [quoted.success, quoted.data?.atomicUnits, quoted.data?.symbol, quoted.data?.maximumFee, quoted.data?.feeSymbol],
+      refusedAsks,
+      asked: asked.success,
+      waiting,
+      untouched,
+      review: { account: review.account, recipient: review.recipient, asset: review.asset, symbol: review.symbol, decimals: review.decimals, atomicUnits: review.atomicUnits, network: review.network, feeSymbol: review.feeSymbol, sameIntent: again.intentId === review.intentId },
+      wrong: [wrong.status, wrong.reason],
+      decided: decided.status,
+      moved: { tokens: String(chain.tokens(chain.recipient)), sends: chain.sent.length },
+      context: {
+        holdings: Array.isArray(context?.holdings) ? context.holdings.length : undefined,
+        requests: context?.requests,
+        operations: Array.isArray(context?.operations) ? context.operations.length : undefined,
+      },
+      filled: filled.map((result) => result.success),
+      declined: [declined.status, left, chain.sent.length],
+      short,
+      stranger,
+    }, {
+      holdings: {
+        holdings: [
+          { family: "evm", chainId: "31337", asset: "native", symbol: "ETH", decimals: 18, atomicUnits: "10000000000000000000" },
+          { family: "evm", chainId: "31337", asset: chain.token, symbol: "TKN", decimals: 6, atomicUnits: "50000000" },
+        ],
+        unread: [],
+      },
+      quoted: [true, "2500000", "TKN", "75600000000000", "ETH"],
+      refusedAsks: [
+        [false, "TKN has at most 6 decimal places."],
+        [false, "The amount must be more than zero and fit the chain exactly."],
+        [false, "That is not an address on this chain."],
+        [false, "This wallet has no network configured for that chain."],
+        [false, "Only the wallet's owner may use it."],
+        [false, "Name a wallet subaction: accounts, holdings, quote, request, requests, activity, reconcile."],
+      ],
+      asked: true,
+      waiting: [{ id: 1, family: "evm", asset: chain.token, symbol: "TKN", recipient: chain.recipient, amount: "2.5", asker: "agent" }],
+      untouched: { sends: 0, tokens: "0" },
+      review: { account, recipient: chain.recipient, asset: chain.token, symbol: "TKN", decimals: 6, atomicUnits: "2500000", network: "Local chain", feeSymbol: "ETH", sameIntent: true },
+      wrong: [409, CLOSED],
+      decided: "submitted",
+      moved: { tokens: "2500000", sends: 1 },
+      context: { holdings: 2, requests: [], operations: 1 },
+      filled: [true, true, true, true, false, false, false, false, false],
+      declined: ["declined", 3, 1],
+      short: [
+        ["This wallet holds less TKN than the transfer sends.", "declined"],
+        ["This wallet holds too little ETH for the transfer and its network fee.", "declined"],
+      ],
+      stranger: [false, {}],
+    }))
+  }
+}, 60_000)
+
+effect function outcome<A, E>(run: A!E): { readonly value?: A; readonly reason?: string }!! {
+  return effect {
+    return { value: try run }
+  } catch (failure) => ({ reason: typeof failure === "object" && failure !== null && "reason" in failure ? String(failure.reason) : "unreachable" })
+}
+
+it.effect('A review refuses terms outside the wallet\'s limits and an approval that arrives after its minute (spec/wallet/index.md, "Story: Preview an exact wallet operation before executing it"; spec/wallet/index.md, "An approval and fresh quote belong to the same operation")', () => effect {
+  provide NodeServices.layer {
+    const limited = try world({ WALLET_EVM_MAX_FEE_ATOMIC: "1" })
+    const fenced = try world({ WALLET_TRANSFER_RECIPIENTS: "0x000000000000000000000000000000000000dEaD" })
+    const { wallet, chain } = try world()
+    const transfer = (to: Chain) => ({ family: "EvmWallet" as const, token: "", recipient: to.recipient, amount: "0.001" })
+    const outside = try Effect.forEach([limited, fenced], effect (other) => {
+      const asked = try other.wallet.ask(transfer(other.chain), "OwnerAsks")
+      return (try outcome(other.wallet.review(asked.id))).reason
+    })
+    const asked = try wallet.ask(transfer(chain), "OwnerAsks")
+    const review = try wallet.review(asked.id)
+    try TestClock.adjust("61 seconds")
+    const late = try outcome(wallet.decide(asked.id, { decision: "approve", intentId: review.intentId, commitment: review.commitment }))
+    const sentLate = chain.sent.length
+    const fresh = try wallet.review(asked.id)
+    const timely = try outcome(wallet.decide(asked.id, { decision: "approve", intentId: fresh.intentId, commitment: fresh.commitment }))
+    try Effect.try(() => assert.deepStrictEqual({
+      outside, late: late.reason, sentLate, timely: timely.value?.status, sends: chain.sent.length, paid: String(chain.balance(chain.recipient)),
+    }, {
+      outside: ["The recipient or the network fee is outside this wallet's limits.", "The recipient or the network fee is outside this wallet's limits."],
+      late: "This wallet review expired.", sentLate: 0, timely: "submitted", sends: 1, paid: AMOUNT,
+    }))
+  }
+}, 60_000)
+
+const SOLANA_FEE = "5000"
+const SOLANA_FUNDED = 2_000_000_000n
+
+function solanaNetwork(chain: SolanaChain): WalletNetwork {
+  return { family: "SolanaWallet", chainId: chain.genesisHash, rpc: chain.url }
+}
+
+function mintSymbol(mint: string): string {
+  return `${mint.slice(0, 4)}…${mint.slice(-4)}`
+}
+
+effect function solanaRunning() {
+  return try acquireRelease(promise(() => startSolanaChain()), (chain) => promise(() => chain.close()))
+}
+
+effect function solanaOutcome(run: () => Promise<unknown>) {
+  return tryPromise({
+    try: async () => {
+      await run()
+      return "accepted"
+    },
+    catch: (cause) => cause instanceof Error ? cause.message : String(cause),
+  }) catch (refusal) => refusal
+}
+
+it.live('Send SOL once, see it confirmed only when final, and see a transfer the chain rejected as failed (spec/wallet/index.md, "Story: Recover the real outcome of an on-chain operation")', () => effect {
+  const chain = try solanaRunning()
+  const payer = chain.wallet(SOLANA_FUNDED)
+  const payee = chain.wallet(0n)
+  const signer = try promise(() => openSolanaSigner(solanaNetwork(chain), payer.seed))
+  const send = (atomicUnits: string): AssetTransfer => ({ asset: { kind: "native" }, recipient: payee.address, atomicUnits })
+  const quote = try promise(() => signer.quote(send("1200000000")))
+  const signed = try promise(() => signer.sign(send("1200000000"), quote))
+  const pooled = [try solanaOutcome(() => signed.broadcast()), try solanaOutcome(() => signed.broadcast())]
+  chain.mine()
+  const mined = try promise(() => signer.receipt(signed.operationRef))
+  const repeated = try solanaOutcome(() => signed.broadcast())
+  chain.finalize()
+  const first = { spent: String(SOLANA_FUNDED - chain.balance(payer.address)), received: String(chain.balance(payee.address)), sends: chain.sent.length }
+  const landing = try promise(() => signer.sign(send("500000000"), quote))
+  const overdrawing = try promise(() => signer.sign(send("400000000"), quote))
+  const rivals = [try solanaOutcome(() => landing.broadcast()), try solanaOutcome(() => overdrawing.broadcast())]
+  chain.mine()
+  chain.finalize()
+  const receipts = [try promise(() => signer.receipt(signed.operationRef)), try promise(() => signer.receipt(landing.operationRef)), try promise(() => signer.receipt(overdrawing.operationRef))]
+  const beyondBudget = try solanaOutcome(() => signer.sign(send("1"), { maximumFee: "4999" }))
+  try Effect.try(() => assert.deepStrictEqual(
+    { account: signer.account, signs: signer.supportsSigning, quote, pooled, mined, repeated, first, rivals, receipts, received: String(chain.balance(payee.address)), beyondBudget, sends: chain.sent.length },
+    {
+      account: payer.address, signs: true, quote: { maximumFee: SOLANA_FEE }, pooled: ["accepted", "accepted"], mined: "unresolved",
+      repeated: "The wallet RPC refused sendTransaction",
+      first: { spent: "1200005000", received: "1200000000", sends: 3 }, rivals: ["accepted", "accepted"], receipts: ["confirmed", "confirmed", "failed"],
+      received: "1700000000", beyondBudget: "The transaction exceeds the reviewed fee budget", sends: 5,
+    },
+  ))
+})
+
+effect function solanaTokenTransfer(chain: SolanaChain, program: TokenProgram) {
+  const payer = chain.wallet(SOLANA_FUNDED)
+  const payee = chain.wallet(0n)
+  const stranger = chain.wallet(0n)
+  const mint = chain.mint(program, 6)
+  chain.tokenAccount(payer.address, mint, 5_000_000n)
+  chain.tokenAccount(payee.address, mint, 0n)
+  const before = chain.sent.length
+  const signer = try promise(() => openSolanaSigner(solanaNetwork(chain), payer.seed))
+  const send = (recipient: string, atomicUnits: string): AssetTransfer => ({ asset: { kind: "token", address: mint }, recipient, atomicUnits })
+  const quote = try promise(() => signer.quote(send(payee.address, "1250000")))
+  const signed = try promise(() => signer.sign(send(payee.address, "1250000"), quote))
+  try promise(() => signed.broadcast())
+  chain.mine()
+  chain.finalize()
+  return {
+    program, quote, receipt: try promise(() => signer.receipt(signed.operationRef)),
+    payer: String(chain.tokens(payer.address, mint)), payee: String(chain.tokens(payee.address, mint)), lamports: String(SOLANA_FUNDED - chain.balance(payer.address)),
+    stranger: try solanaOutcome(() => signer.sign(send(stranger.address, "1"), quote)),
+    overdrawn: try solanaOutcome(() => signer.sign(send(payee.address, "3750001"), quote)),
+    withoutTokens: try solanaOutcome(() => openSolanaAccount(solanaNetwork(chain), stranger.address).then((bare) => bare.quote(send(payee.address, "1")))),
+    sends: chain.sent.length - before,
+  }
+}
+
+it.live('Send a token under either token program to a wallet that already holds it, and sign nothing for a wallet that does not (spec/wallet/index.md, "Story: Recover the real outcome of an on-chain operation")', () => effect {
+  const chain = try solanaRunning()
+  const programs: readonly TokenProgram[] = ["token", "token2022"]
+  const rows = try Effect.forEach(programs, (program) => solanaTokenTransfer(chain, program))
+  try Effect.try(() => assert.deepStrictEqual(rows, programs.map((program) => ({
+    program, quote: { maximumFee: SOLANA_FEE }, receipt: "confirmed", payer: "3750000", payee: "1250000", lamports: SOLANA_FEE,
+    stranger: "The recipient has no account for this token yet", overdrawn: "This wallet holds less of this token than the transfer sends",
+    withoutTokens: "This wallet has no account for this token", sends: 1,
+  }))))
+})
+
+it.live('Read a Solana account\'s balance and its tokens under both token programs from the chain it was opened on (spec/wallet/index.md, "Story: Inspect wallet holdings and venue quotes before making changes")', () => effect {
+  const chain = try solanaRunning()
+  const owner = chain.wallet(42_000_000n)
+  const other = chain.wallet(0n)
+  const dollars = chain.mint("token", 6)
+  const points = chain.mint("token2022", 9)
+  const spent = chain.mint("token", 0)
+  chain.tokenAccount(owner.address, dollars, 7_000_000n)
+  chain.tokenAccount(owner.address, dollars, 500_000n, false)
+  chain.tokenAccount(owner.address, points, 3n)
+  chain.tokenAccount(owner.address, spent, 0n)
+  chain.tokenAccount(other.address, dollars, 99n)
+  const account = try promise(() => openSolanaAccount(solanaNetwork(chain), owner.address))
+  const read = {
+    derived: try promise(() => solanaAccountOf(owner.seed)),
+    scope: { family: account.family, chainId: account.chainId, account: account.account, signs: account.supportsSigning },
+    balance: try promise(() => account.nativeBalance()),
+    holdings: try promise(() => account.tokenHoldings([])),
+    facts: try promise(() => account.tokenFacts(points)),
+    recipient: account.recipient(other.address),
+    notAnAddress: try solanaOutcome(async () => account.recipient("0x52908400098527886E0F7030069857D2E4169EE7")),
+    notAMint: try solanaOutcome(() => account.tokenFacts(other.address)),
+    anotherChain: try solanaOutcome(() => openSolanaAccount({ ...solanaNetwork(chain), chainId: dollars }, owner.address)),
+  }
+  chain.servesToken2022 = false
+  const onAnOlderNode = try promise(() => account.tokenHoldings([]))
+  try Effect.try(() => assert.deepStrictEqual({ ...read, onAnOlderNode }, {
+    derived: owner.address,
+    scope: { family: "SolanaWallet", chainId: chain.genesisHash, account: owner.address, signs: false },
+    balance: "42000000",
+    holdings: [
+      { address: dollars, symbol: mintSymbol(dollars), decimals: 6, atomicUnits: "7500000" },
+      { address: points, symbol: mintSymbol(points), decimals: 9, atomicUnits: "3" },
+    ],
+    facts: { address: points, symbol: mintSymbol(points), decimals: 9 },
+    recipient: other.address,
+    notAnAddress: "A Solana address is 32 bytes written in base58",
+    notAMint: "That address is not a token mint",
+    anotherChain: "Wallet RPC answered from a different Solana chain",
+    onAnOlderNode: [{ address: dollars, symbol: mintSymbol(dollars), decimals: 6, atomicUnits: "7500000" }],
   }))
-  try Effect.try(() => assert.deepStrictEqual({ rows, refusals: chain.refusals }, { rows: expected, refusals: ["nonce too low", "already known"] }))
+})
+
+effect function solanaBroadcastThrough(chain: SolanaChain, gateway: SolanaGateway) {
+  const payer = chain.wallet(SOLANA_FUNDED)
+  const payee = chain.wallet(0n)
+  const signer = try promise(() => openSolanaSigner(solanaNetwork(chain), payer.seed))
+  const transfer: AssetTransfer = { asset: { kind: "native" }, recipient: payee.address, atomicUnits: "1000000" }
+  const quote = try promise(() => signer.quote(transfer))
+  const signed = try promise(() => signer.sign(transfer, quote))
+  chain.gateway = gateway
+  const answered = try solanaOutcome(() => signed.broadcast())
+  chain.gateway = "pass"
+  chain.mine()
+  chain.finalize()
+  return { gateway, answered, receipt: try promise(() => signer.receipt(signed.operationRef)), paid: String(chain.balance(payee.address)) }
+}
+
+it.live('Find a Solana transfer by its signature after its broadcast answer was lost, and send nothing once the RPC answers from another chain (spec/wallet/index.md, "Story: Recover the real outcome of an on-chain operation")', () => effect {
+  const chain = try solanaRunning()
+  const rows = [try solanaBroadcastThrough(chain, "lost"), try solanaBroadcastThrough(chain, "refused")]
+  const payer = chain.wallet(SOLANA_FUNDED)
+  const signer = try promise(() => openSolanaSigner(solanaNetwork(chain), payer.seed))
+  const transfer: AssetTransfer = { asset: { kind: "native" }, recipient: payer.address, atomicUnits: "1" }
+  const quote = try promise(() => signer.quote(transfer))
+  const signed = try promise(() => signer.sign(transfer, quote))
+  chain.genesisHash = payer.address
+  const moved = [try solanaOutcome(() => signer.sign(transfer, quote)), try solanaOutcome(() => signed.broadcast())]
+  try Effect.try(() => assert.deepStrictEqual({ rows, moved, sends: chain.sent.length }, {
+    rows: [
+      { gateway: "lost", answered: "fetch failed", receipt: "confirmed", paid: "1000000" },
+      { gateway: "refused", answered: "The wallet RPC refused sendTransaction", receipt: "unresolved", paid: "0" },
+    ],
+    moved: ["The Solana chain changed before signing", "The Solana chain changed before broadcast"],
+    sends: 2,
+  }))
 })
