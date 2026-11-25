@@ -68,6 +68,8 @@ public abstract class NotificationsHostPlugin extends Plugin {
  protected abstract HostNoticePoster.Config posterConfig();
  /** The host's cross-app mirror, or null when the host offers no notification access. */
  protected NotificationMirror mirror(){return null;}
+ /** Hosts with a native account store may require its current authority before changing workflow notices. */
+ protected void requireWorkflowNoticeOwner(JSONObject owner)throws Exception{}
  /**
   * The kind of one of the host's own notices, from its channel. The default recognizes the
   * workflow channels; hosts add their own (reminders, navigation, results). Unknown is "other".
@@ -187,6 +189,42 @@ public abstract class NotificationsHostPlugin extends Plugin {
  /** The retained receipt for an exact notice (never posts). */
  @PluginMethod public void workflowReceipt(PluginCall call){noticeWork(call,"Workflow notification receipt is unavailable.",()->{
   String status=delivery().receipt(call.getString("operationId"),call.getString("bindingHash"),call.getString("title"),call.getString("body"));
+  JSObject result=new JSObject();result.put("status",status);call.resolve(result);
+ });}
+
+ // spec/os/android/noticeRoutes.md, "The owner fence is published once for each change of the signed-in account"
+ @PluginMethod public void noticeOwner(PluginCall call){noticeWork(call,"Workflow notification ownership could not be confirmed.",()->{
+  Object input=call.getData().get("owner");
+  if(input!=JSONObject.NULL&&!(input instanceof JSONObject))throw new IllegalArgumentException("Expected a notice owner or sign-out");
+  JSONObject owner=NoticeOwner.identity(input==JSONObject.NULL?null:(JSONObject)input);
+  requireWorkflowNoticeOwner(owner);
+  long now=System.currentTimeMillis();
+  int withdrawn=coordinator().withdrawOtherOwners(owner,now);
+  JSONArray suspended=routes().suspendedApprovals(owner,now);
+  requireNoticeForeground();
+  JSObject result=new JSObject();result.put("withdrawn",withdrawn);result.put("suspended",new JSArray(suspended.toString()));call.resolve(result);
+ });}
+
+ // spec/os/android/noticeRoutes.md, "An approval notice is offered or kept only while its approval is pending"
+ @PluginMethod public void postWorkflowApproval(PluginCall call){workflowApproval(call,false);}
+ @PluginMethod public void resumeWorkflowApproval(PluginCall call){workflowApproval(call,true);}
+ @PluginMethod public void withdrawWorkflowApproval(PluginCall call){noticeWork(call,"Approval notification could not be withdrawn.",()->{
+  coordinator().withdrawApproval(call.getString("id"),System.currentTimeMillis());
+  call.resolve();
+ });}
+
+ private void workflowApproval(PluginCall call,boolean resume){noticeWork(call,"Approval notification could not be confirmed.",()->{
+  Object expiry=call.getData().get("expiresAt");
+  if(!(expiry instanceof Integer||expiry instanceof Long))throw new IllegalArgumentException("Expected an approval expiry");
+  long expiresAt=((Number)expiry).longValue(),now=System.currentTimeMillis();
+  String id=call.getString("id"),binding=call.getString("bindingHash");
+  JSONObject route=call.getObject("route");
+  NoticeCoordinator notices=coordinator();
+  JSONObject owner=NoticeOwner.fromRoute(route);
+  NoticeCoordinator.Check allowed=()->{requireWorkflowNoticeOwner(owner);requireNoticeForeground();};
+  String status=resume?notices.resumeApproval(id,binding,route,null,expiresAt,now,allowed)
+   :notices.postApproval(id,binding,route,null,expiresAt,now,allowed);
+  requireNoticeForeground();
   JSObject result=new JSObject();result.put("status",status);call.resolve(result);
  });}
 

@@ -6,7 +6,7 @@ import { activityLabel } from "@elizaos/agent-host"
 import { computeNextCronRunAtMs, ContextRegistry, type ActionResult, type Content, type IAgentRuntime, type JsonObject, type Memory, type Provider } from "@elizaos/core"
 import { activeWorkflowsProvider, workflowAction, workflowInstances, workflowsContext } from "../src/agent.vibe"
 import {
-  keyValueIntentBackend, openWorkflowNotice, parseWorkflowRunDeepLink, resolvePhoneCalendarRange, workflowClient, workflowIntentKey, workflowIntentOwnerPrefix, workflowIntentStore, validatePhoneWorkflowSpec, workflowRecovery, workflowSha, WorkflowLifecycleRejected, type PhoneWorkflowSpec, type WorkflowClient, type WorkflowRequest, type WorkflowRun, digestInbox, hostedDigestProtocol, missedRunNowOffers, DIGEST_MISSED_TEXT, workflowHttpError,
+  keyValueIntentBackend, openWorkflowNotice, parseWorkflowRunDeepLink, revalidateWorkflowApprovalNotice, workflowApprovalNoticeIdentity, workflowApprovalProposalId, workflowNoticeReads, resolvePhoneCalendarRange, workflowClient, workflowIntentKey, workflowIntentOwnerPrefix, workflowIntentStore, validatePhoneWorkflowSpec, workflowRecovery, workflowSha, WorkflowLifecycleRejected, type PhoneWorkflowSpec, type WorkflowClient, type WorkflowRequest, type WorkflowRun, digestInbox, hostedDigestProtocol, missedRunNowOffers, DIGEST_MISSED_TEXT, workflowHttpError,
 } from "@elizaos/plugin-workflow-client"
 import { importWorkflowSource, publishWorkflowSource, SourceRefused } from "../src/worker/source.vibe"
 import { verifyWorkerArtifact, workerArtifactClosure, workerProvenance, WorkerArtifactRefused } from "@elizaos/plugin-workflow-worker"
@@ -681,7 +681,7 @@ export default async function (ctx: WorkflowContext) {
 }
 `
 
-it.live('Turn on generated code only after review and resume it without repeating an effect (spec/workflow/generated.md, "Story: Turn on generated code only after I review exactly what it does"; spec/workflow/generated.md, "Story: Resume generated code after a wait without repeating what it already did"; spec/workflow/generated.md, "A draft the check refuses is repaired once before it is refused"; spec/workflow/lifecycle.md, "A retained mutation has the same receipt after later definition changes")', effect () => {
+it.live('Turn on generated code only after review and resume it without repeating an effect (spec/workflow/generated.md, "Story: Turn on generated code only after I review exactly what it does"; spec/workflow/generated.md, "Story: Resume generated code after a wait without repeating what it already did"; spec/workflow/generated.md, "A draft the check refuses is repaired once before it is refused"; spec/workflow/lifecycle.md, "A retained mutation has the same receipt after later definition changes"; spec/workflow/notices.md, "A pending approval is offered again only while its run is unchanged and unsettled")', effect () => {
   const asked: string[] = []
   const leaky = `import { readFileSync } from "node:fs"\n${generatedSource}`
   const repairing = try harness({ draft: (prompt) => { asked.push(prompt); return JSON.stringify({ name: "Summary", description: "", source: asked.length === 1 ? leaky : generatedSource }) } })
@@ -711,8 +711,19 @@ it.live('Turn on generated code only after review and resume it without repeatin
   const run = try rig.client.run(receipt.workflowId, on.versionId, () => succeed(undefined))
   const asking = try settled(rig.client, run, (found) => found.status === "waiting-approval")
   const approval = (try rig.client.approvals(asking))?.approvals[0]
-  if (approval === undefined) return try die(new Error("The generated approval was not requested"))
+  if (approval?.expiresAt === undefined) return try die(new Error("The generated approval was not requested"))
+  const route = { scope: "alpha-phone", origin: "agent:local", ownerId: "organization:owner", agentId: "agent",
+    workflowId: asking.workflowId, runId: asking.id, versionId: asking.versionId }
+  const binding = try workflowApprovalNoticeIdentity(route, workflowApprovalProposalId(approval))
+  const notice = { ...binding, route, expiresAt: approval.expiresAt }
+  const noticeReads = workflowNoticeReads(rig.client)
+  const pending = try revalidateWorkflowApprovalNotice(notice, noticeReads, () => true)
+  const changed = try revalidateWorkflowApprovalNotice({ ...notice, expiresAt: notice.expiresAt + 1 }, noticeReads, () => true)
+  const staleOwner = try revalidateWorkflowApprovalNotice(notice, noticeReads, () => false)
+  try check(() => assert.deepStrictEqual([pending, changed, staleOwner], ["resume", "withdraw", "stale"]))
   try rig.client.decideApproval(asking, approval, true)
+  const decided = try revalidateWorkflowApprovalNotice(notice, noticeReads, () => true)
+  try check(() => assert.strictEqual(decided, "withdraw"))
   const waiting = try settled(rig.client, asking, (found) => found.status === "waiting-event")
   const early = try Effect.flip(rig.request(`/api/workflow/executions/${waiting.id}/signals/other`, { payload: null }))
   try check(() => assert.equal(early._tag === "WorkflowHttpError" ? early.status : 0, 409))
