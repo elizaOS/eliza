@@ -1,8 +1,8 @@
-// spec/files/shownTargets.md, "A Files operation the owner asks for in chat is proposed within the Files bounds as the peer negotiated it, wherever the owner is"; spec/files/shownTargets.md, "Files operations need files.browser.v1, and a shown share, move or trash also needs files.shown-target.v1"; spec/files/shownTargets.md, "A move or trash binds the identity of each reviewed file, and a share binds none"
+// spec/files/shownTargets.md, "A Files operation the owner asks for in chat is proposed within the Files bounds as the peer negotiated it, wherever the owner is"; spec/files/shownTargets.md, "A client that shows no review card is proposed only a filter or an open, which it runs directly"; spec/files/shownTargets.md, "Files operations need files.browser.v1, and a shown share, move or trash also needs files.shown-target.v1"; spec/files/shownTargets.md, "A move or trash binds the identity of each reviewed file, and a share binds none"
 import type { ContextDefinition } from "@elizaos/core"
-import { directRequests, type DeviceProposalFamily, type DeviceTurn, type Grounding, type NegotiatedDevice, type ProposalForm } from "@elizaos/agent-host"
+import { directRequests, showsReviewCards, type DeviceProposalFamily, type DeviceTurn, type Grounding, type NegotiatedDevice, type ProposalForm } from "@elizaos/agent-host"
 import { readOperation, type CheckedOperation } from "@elizaos/agent"
-import { chatKeepsSentIdentities, filesChatAnswer, filesChatBound } from "../gen/files__shownTargets.effect.vibe"
+import { chatKeepsSentIdentities, filesChatAnswer, filesChatBound, filesProposedOnTurn } from "../gen/files__shownTargets.effect.vibe"
 import {
   decodeFilesOperation, FILES_CAPABILITY, FILES_OPERATION_TYPES, FILES_SHOWN_TARGET_CAPABILITY, filesForm, filesToolSurface, type FilesAgentOperation,
 } from "@elizaos/plugin-files-client"
@@ -37,6 +37,12 @@ const notNegotiated: Refusal = {
   forOwner: "Your phone can't do that in Files from chat right now.",
 }
 
+const reviewedInChat: Refusal = {
+  kind: "Refused", code: "FILES_REVIEW_UNAVAILABLE",
+  forModel: "The owner's client shows no review card on this turn, so it can only filter Files or open a file. No device proposal was created. Tell the owner to ask for this in the chat, where they can review it.",
+  forOwner: "Ask me in the chat, so you can review that on your phone.",
+}
+
 function sentIdentitiesDropped(operation: FilesAgentOperation): FilesAgentOperation {
   if ((operation.type !== "files_move" && operation.type !== "files_trash") || !("reviewed" in operation) || chatKeepsSentIdentities(filesForm(operation).kind)) return operation
   const { reviewed: _reviewed, ...unbound } = operation
@@ -57,6 +63,7 @@ export const filesProposalFamily: DeviceProposalFamily = {
     switch (answer) {
       case "FilesNotNegotiated": return notNegotiated
       case "FilesProposed": {
+        if (!filesProposedOnTurn(kind, showsReviewCards(turn))) return reviewedInChat
         const operation = readOperation(sentIdentitiesDropped(decoded.success))?.operation
         return operation === undefined
           ? invalid("not a device operation")
