@@ -39,9 +39,6 @@ export const sparseArrayHolesOmittedInOmitMode = contract({
     if (text === undefined) return false;
     const element = canonical(value);
     if (element === undefined) return false;
-    // "omit" reproduces array.map(fn).join(","): the hole leaves an empty
-    // slot between the two separators, so the sparse array keeps different
-    // digest bytes from the dense array with the same elements.
     return text === `[${element},,${element}]` && text !== canonical([value, value]);
   },
 });
