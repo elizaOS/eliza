@@ -1,7 +1,7 @@
 // spec/maps/routing.md, "Only the owner's next turn answers an open question, with a listed place's id the model passes, within ten minutes"
 import type { IAgentRuntime, Memory } from "@elizaos/core"
 import { choiceCourse, choiceOpenAt, type ChoiceTurn } from "../gen/maps__routing.effect.vibe"
-import type { AgentPlaceRef } from "./client/device-navigation.vibe"
+import type { AgentPlaceRef } from "@elizaos/plugin-maps-client"
 
 export const choiceActions = { place: "MAPS_PLACE", route: "MAPS_ROUTE", select: "MAPS_SELECT", save: "MAPS_SAVE", share: "MAPS_SHARE", "navigation-start": "MAPS_NAVIGATION_START" } as const
 export type ChoiceOperation = keyof typeof choiceActions

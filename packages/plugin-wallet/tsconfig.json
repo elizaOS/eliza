@@ -9,15 +9,13 @@
       "dom.iterable"
     ],
     "types": [
-      "node",
-      "vite/client"
+      "node"
     ],
     "rootDir": ".",
     "rootDirs": [
       ".",
       ".vibe/declarations"
-    ],
-    "jsx": "react-jsx"
+    ]
   },
   "include": [
     "src",

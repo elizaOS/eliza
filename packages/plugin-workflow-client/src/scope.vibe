@@ -1,0 +1,13 @@
+// spec/workflow/authoring.md, "A draft uses the advertised operation catalog and only earlier step outputs"
+export const WORKFLOW_OPERATION_LABELS: Readonly<Record<string, string>> = {
+  supplied_text: "Read supplied text",
+  selected_notes: "Read selected Notes",
+  selected_reminders: "Read today’s reminders",
+  calendar_range: "Read a Calendar range",
+  contains: "Continue if text matches",
+  compose_draft: "Compose text",
+  model_draft: "Ask the agent to draft text",
+  save_note: "Save a note",
+  app_notification: "Post a notification",
+  read_aloud: "Read aloud",
+}

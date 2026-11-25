@@ -1,16 +1,11 @@
 // spec/inbox/grants.md, "Story: Grant Gmail access one step at a time"; spec/inbox/reads.md, "Story: Read my mailbox without mixing account pages or endlessly reusing a cursor"; spec/inbox/drafts.md, "Story: Keep drafts recoverable across account switches and provider failures"; spec/inbox/readState.md, "Story: Change a message's read state once, and never repeat a change I did not ask for"; spec/inbox/backgroundNotices.md, "Story: Open the Inbox or ask about the exact notification I tapped"; spec/inbox/managedRead.md, "Story: Read my managed inbox fresh, and only for me"; spec/inbox/handoff.md, "Story: Put the agent's words into an email draft without sending it"; spec/inbox/failures.md, "Story: Know what happened when Gmail fails"; spec/inbox/outgoing.md, "Story: Attach files and send exactly the email I reviewed"
 import { assert, it } from "@effect/vitest"
-import { activityLabel } from "@elizaos/agent"
+import { activityLabel } from "@elizaos/agent-host"
 import { ContextRegistry, type IAgentRuntime, type Memory } from "@elizaos/core"
-import { managedGmailClient, type ManagedGmailTransport } from "../src/client/index.vibe"
-import { emailDraftAnswer, inboxPlugin, managedInboxRead } from "../src/index.vibe"
 import {
-  AttachmentRefused, MailProtocolFailed, MailUnreachable, checkOutgoingAttachments, classifyGmailFailure, createMailBackground, disconnectGmailAccount,
-  encodeInboxUnsaved, gmailActionGrant, gmailConsentCapabilities, gmailGrantChange, gmailReadCacheKey, gmailReadable, inboxOperation,
-  inboxOperationKey, mailCaches, mailReadKey, mailReadStateGuard, mailboxFeed, openNoticeTap, openProviderDraft, readInboxUnsaved, readSavedMailbox,
-  reviewOpaqueAttachment, saveMailbox, clearMailbox, sha256Hex, type GmailAccount, type InboxOperationStore, type MailBackgroundNative,
-  type MailNoticeTap, type NoticeTapPorts, type ProviderDraftPorts, type SavedLocalDraft, type SavedMailboxStore,
-} from "../src/mailbox/index.vibe"
+  managedGmailClient, type ManagedGmailTransport, AttachmentRefused, MailProtocolFailed, MailUnreachable, checkOutgoingAttachments, classifyGmailFailure, createMailBackground, disconnectGmailAccount, encodeInboxUnsaved, gmailActionGrant, gmailConsentCapabilities, gmailGrantChange, gmailReadCacheKey, gmailReadable, inboxOperation, inboxOperationKey, mailCaches, mailReadKey, mailReadStateGuard, mailboxFeed, openNoticeTap, openProviderDraft, readInboxUnsaved, readSavedMailbox, reviewOpaqueAttachment, saveMailbox, clearMailbox, sha256Hex, type GmailAccount, type InboxOperationStore, type MailBackgroundNative, type MailNoticeTap, type NoticeTapPorts, type ProviderDraftPorts, type SavedLocalDraft, type SavedMailboxStore,
+} from "@elizaos/plugin-inbox-client"
+import { emailDraftAnswer, inboxPlugin, managedInboxRead } from "../src/index.vibe"
 
 const story = {
   grants: 'spec/inbox/grants.md, "Story: Grant Gmail access one step at a time"',

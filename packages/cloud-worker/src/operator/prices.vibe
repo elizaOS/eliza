@@ -1,0 +1,66 @@
+// spec/cloud/operator.md, "Story: Operate the deployment without reading secrets"; spec/cloud/services/models.md, "Story: Price a model call before it runs"; spec/cloud/deployment.md, "Story: Configure a deployment from one reviewed profile"
+import { priceMismatches } from "../../gen/cloud__services__models.effect.vibe"
+import { checkCatalog } from "../billing/plans.vibe"
+import { refused, type Refused } from "../http/refusal.vibe"
+import { capabilityEnabled, Deployment } from "@elizaos/cloud"
+import { checkPrices, pricesFromSeed, readPriceRows, setModelPrice, type InferenceSettings, type PriceCheck } from "../services/models.vibe"
+import type { Tx } from "../store/store.vibe"
+import type { OperatorCommandHandler, OperatorFlags } from "./admin.vibe"
+
+error PriceFlagsInvalid { problem: string }
+error PricesMismatched { mismatches: number; usable: ReadonlyArray<string> }
+
+effect function offered(): InferenceSettings!Refused!Deployment {
+  const inference = (try Deployment).settings.inference
+  if (inference === undefined) throw refused("InvalidRequest")
+  return inference
+}
+
+effect function needed(flags: OperatorFlags, name: string): string!PriceFlagsInvalid {
+  const value = flags.values(name)[0]
+  if (value === undefined) throw new PriceFlagsInvalid({ problem: `--${name} is required` })
+  return value
+}
+
+effect function per1K(name: string, text: string): number!PriceFlagsInvalid {
+  if (!/^\d{1,15}$/.test(text)) throw new PriceFlagsInvalid({ problem: `--${name} must be a whole number of µUSD per 1,000 tokens` })
+  return Number(text)
+}
+
+effect function neededPer1K(flags: OperatorFlags, name: string): number!PriceFlagsInvalid {
+  return try per1K(name, try needed(flags, name))
+}
+
+effect function setFromFlags(tx: Tx, flags: OperatorFlags) {
+  const cached = flags.values("cached-input-per-1k")[0]
+  const cachedInputPer1K = cached === undefined ? undefined : try per1K("cached-input-per-1k", cached)
+  const row = try setModelPrice(tx, try offered(), {
+    modelId: try needed(flags, "model"),
+    inputPer1K: try neededPer1K(flags, "input-per-1k"),
+    outputPer1K: try neededPer1K(flags, "output-per-1k"),
+    ...(cachedInputPer1K === undefined ? {} : { cachedInputPer1K })
+  })
+  return [`priced ${row.modelId}: input ${row.inputPer1K}, cached input ${row.cachedInputPer1K}, output ${row.outputPer1K} µUSD per 1,000 tokens`]
+}
+
+effect function checkFromFlags(tx: Tx) {
+  const deployment = try Deployment
+  const sold = capabilityEnabled(deployment.settings, "billing")
+  if (sold) try checkCatalog()
+  const inference = deployment.settings.inference
+  const report: PriceCheck = inference === undefined
+    ? { mismatches: priceMismatches([], try readPriceRows(tx)), listing: [] }
+    : try checkPrices(tx, inference)
+  const usable = report.listing.map((model) => model.id)
+  if (report.mismatches > 0) throw new PricesMismatched({ mismatches: report.mismatches, usable })
+  return [`0 price mismatches; usable models: ${usable.join(", ") || "none"}`, ...(sold ? ["payment catalog verified"] : [])]
+}
+
+export effect function seedPrices(tx: Tx, entries: unknown) {
+  return (try pricesFromSeed(tx, try offered(), entries)).map((row) => row.modelId)
+}
+
+export const commands: ReadonlyArray<OperatorCommandHandler> = [
+  { words: ["prices", "set"], operatorCommand: "SetPrices", valued: ["model", "input-per-1k", "cached-input-per-1k", "output-per-1k"], repeated: [], switches: [], run: setFromFlags },
+  { words: ["prices", "check"], operatorCommand: "CheckPrices", valued: [], repeated: [], switches: [], run: checkFromFlags }
+]

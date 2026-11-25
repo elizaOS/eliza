@@ -1,5 +1,5 @@
 // spec/localInference/textAndEmbeddings.md, "An embedding is computed only by the model assigned to embeddings"; spec/localInference/textAndEmbeddings.md, "Vectors are compared only within one vector space"; spec/localInference/textAndEmbeddings.md, "The operator's embedding endpoint wins, then the hosted service when chosen, then the device"
-import { identifyEmbeddingVector } from "@elizaos/core/protocol"
+import { identifyEmbeddingVector } from "@elizaos/core"
 import { embeddingOwner, vectorsComparable, type EmbeddingOwner } from "../gen/localInference__textAndEmbeddings.effect.vibe"
 import { InferenceEngine } from "./engine.vibe"
 import type { LocalModelsApi } from "./models.vibe"

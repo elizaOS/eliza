@@ -10,7 +10,7 @@
     "typecheck": "vibelang --noEmit -p ."
   },
   "dependencies": {
-    "@elizaos/os": "workspace:*",
+    "@elizaos/os-bridges": "workspace:*",
     "effect": "4.1.1",
     "vibelang-runtime": "0.0.13"
   },

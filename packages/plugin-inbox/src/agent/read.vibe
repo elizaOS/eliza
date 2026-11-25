@@ -1,9 +1,7 @@
 // spec/inbox/managedRead.md, "Only a bounded read is dispatched; any other request fails without a call"; spec/inbox/managedRead.md, "A read returns mail only for the current owner while permission holds"; spec/inbox/grants.md, "An approved change is prepared only under the capability it needs, and otherwise offers the upgrade"
 import { OWNER_EXCLUSIVE_DISCLOSURE_GATE, type Action, type ActionResult, type ContextDefinition, type IAgentRuntime, type Memory } from "@elizaos/core"
 import { enabled, initial, machineOver, type Event, type ManagedInboxRead, type ManagedReadKind } from "../../gen/inbox__managedRead.effect.vibe"
-import type { ManagedGmailClient } from "../client/index.vibe"
-import { classifyGmailFailure, type GmailFailureKind, type MailFailure } from "../mailbox/failures.vibe"
-import type { GmailMessage } from "../mailbox/types.vibe"
+import { type ManagedGmailClient, classifyGmailFailure, type GmailFailureKind, type MailFailure, type GmailMessage } from "@elizaos/plugin-inbox-client"
 import { agentGmailClient, observeManagedReadGrant } from "./cloud.vibe"
 
 export const inboxReadActionName = "INBOX_READ"

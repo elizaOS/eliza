@@ -1,4 +1,4 @@
-// spec/agent/deviceActions/operations.md, "The operation vocabulary is closed, and each wire type belongs to one family"; spec/agent/deviceActions/operations.md, "A receipt is admitted only when its evidence agrees with what it reports"; spec/agent/deviceActions/capabilities.md, "A request negotiates exactly the capabilities its header names, and only on a live enrollment"; spec/agent/deviceActions/operations.md, "A turn targets the photo open on the owner's screen only from the Photos view, never on a sensitive screen, and names its library ID only under the library capability"; spec/agent/deviceActions/index.md, "Story: Propose what I asked for on my phone, in my own words"
+// spec/agent/deviceActions/operations.md, "The operation vocabulary is closed, and each wire type belongs to one family"; spec/agent/deviceActions/operations.md, "A receipt is admitted only when its evidence agrees with what it reports"; spec/agent/deviceActions/capabilities.md, "A request negotiates exactly the capabilities its header names, and only on a live enrollment"
 export {
   capabilityNamesOf, deviceOperationTypes, DeviceReceipt, mayRunDirectly, notDispatchedCode, operationOf, readOperation, readResult, receiptOutcome, validate,
   type CheckedOperation, type Classification, type DeviceOperation, type DeviceOperationType, type Evidence, type OperationResultOf, type ReceiptVerdict,
@@ -6,9 +6,3 @@ export {
 export { capabilitiesHeader, negotiation } from "./capabilities.vibe"
 export { bindingHash, readLatestSender, type LatestSenderResult } from "./operation-schemas/telephony.vibe"
 export { latestSenderGuidance, latestSenderReply, latestSenderReplyFor } from "./latest-sender.vibe"
-export { photosViewGuidance, shownPhoto, type ShownPhoto } from "./photos-view.vibe"
-export {
-  directRequests, FamilyConflict, registerDeviceProposalFamily, unoffered, untrustedReturnGuidance,
-  type DeviceProposalFamily, type DeviceTurn, type EarlierRequest, type FamilyName, type Grounding, type NegotiatedDevice, type PendingRequest, type ProposalForm,
-  type ProposalGrounding, type ProposalText, type ReadContinuation, type SwappedValue,
-} from "./proposal/registry.vibe"

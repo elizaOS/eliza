@@ -3,14 +3,14 @@
   "version": "4.0.0-alpha.0",
   "private": true,
   "type": "module",
-  "description": "Android + iOS native shims surfacing the `metered` / `isExpensive` hints used by the voice-model auto-updater (R5-versioning \u00a74).",
+  "description": "Android + iOS native shims surfacing the `metered` / `isExpensive` hints used by the voice-model auto-updater (R5-versioning §4).",
   "license": "MIT",
   "scripts": {
     "build": "vibelang -p tsconfig.build.json",
     "typecheck": "vibelang --noEmit -p ."
   },
   "dependencies": {
-    "@elizaos/os": "workspace:*",
+    "@elizaos/os-bridges": "workspace:*",
     "effect": "4.1.1",
     "vibelang-runtime": "0.0.13"
   },

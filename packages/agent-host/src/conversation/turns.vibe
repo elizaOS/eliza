@@ -1,0 +1,599 @@
+// spec/agent/conversation/conversations.md, "Story: Create and find my conversations"; spec/agent/conversation/conversations.md, "Messages and model-call log rows arrive only in a published conversation"; spec/core/turnControllers.md, "Story: Cancel room work without cancelling the cancel request"; spec/agent/conversation/planning.md, "A voice turn that ran an action answers with that action's label: its kind, whether the reply is a validated card, and whether the owner asked for exact wording"; spec/agent/conversation/turns.md, "A failed reply names the owner's fix, and only a live rate limit carries its wait"; spec/agent/conversation/turns.md, "A reply that spent credits on a refusal naming Cloud's own code carries that code, and every other reply carries none"
+// spec/agent/conversation/turns.md, "A message is refused, joined, replayed or admitted by its key, its room and the backend"; spec/agent/conversation/turns.md, "A room runs one turn at a time, and only an admitted or recovered message changes anything"; spec/agent/conversation/turns.md, "A heard report only moves the heard boundary of an agent reply back, and never changes the reply"
+// spec/agent/conversation/turns.md, "A Stop is confirmed only when its turn ends within five seconds, and is otherwise uncertain"
+// spec/agent/conversation/turns.md, "An interrupted reply keeps proof of an applied effect"; spec/agent/conversation/turns.md, "An aborted reply records what ended its turn, and never in its text"
+// spec/agent/conversation/turnContext.md, "A voice view context is accepted only when every stated field has an allowed value and direct requests have completed-action delivery and a routing identity"; spec/agent/conversation/turnContext.md, "A Browser page is kept only when every field is valid, it is the Browser tab the kept observation selects at that revision on a screen not sensitive, and it fits 16,384 bytes"
+// spec/agent/conversation/events.md, "Story: Hear about my conversations while my screen is open"
+// spec/agent/conversation/replyStream.md, "Only a message that starts its own turn streams text, a repeat waits for its reply, and a refusal opens no stream"; spec/agent/conversation/planning.md, "A turn acknowledges at most once, with a cue that comes with its first tool calls, and bare assent is a cue only with work after an instruction"; spec/agent/conversation/planning.md, "A delivered cue is told to the model as already said, so the reply never repeats it or takes it as evidence"
+// spec/agent/tasks/wire.md, "A chat turn names a task only while the host presents it at that epoch"
+// spec/agent/deviceActions/index.md, "A proposal is offered only on an owner turn of the enrolled device, as its family grounded it, and re-admitted under the turn's negotiation"; spec/agent/deviceActions/index.md, "An unclaimed offer retires at its deadline or at the end of its turn"
+// spec/agent/conversation/turns.md, "A quoted reply uses only the selected message from this conversation"
+module node {
+  import { randomUUID } from "node:crypto"
+  import { Effect, Result, Schema } from "effect"
+  import {
+    CHAT_IMAGE_MIME_TYPE_SET, CHAT_UPLOAD_MIME_TYPE_SET, MAX_CHAT_ATTACHMENT_NAME_LENGTH, MAX_CHAT_IMAGE_BASE64_BYTES, MAX_CHAT_MEDIA_BASE64_BYTES, MAX_CHAT_UPLOAD_ATTACHMENTS, ChannelType, ModelType, bindIncomingMessagePersistence, conversationClientUserMemoryId, findViewActionHandoff, hashStableJson, parseViewInteractionClientId, normalizeChatIdempotencyKey, readDurableConversationChatMarker, readSystemNotice, stringToUuid, validateUuid, type ActionResult, type AgentRuntime, type Content, type DurableConversationChatMarker, type JsonObject, type Media, type Memory, type MemoryMetadata, type MessageProcessingResult, type Room, type UUID, type TaskChoiceWidget,
+  } from "@elizaos/core"
+  import { defaultTitle } from "../../gen/agent__conversation__conversations.ts"
+  import { fundsCodeOf } from "../../gen/agent__models__binding.ts"
+  import { creationTitle } from "./conversations.vibe"
+  import { abortCauseOf, admitsReplyTarget, cloudCodeOn, decide, planActionOf, providerWaitMs, publishesCutOffEffect, receiptRetentionMs, stopConfirmMs, stopWindowOpen, turnDeadlineMs, type Admission, type KeyView, type ReplyKind, type TurnEnder } from "../../gen/agent__conversation__turns.ts"
+  import { type LocalRoute, decodeBrowserPage, decodeObservation, decodeVoiceUiContext } from "@elizaos/agent"
+  import type { VoiceAction } from "../../gen/agent__conversation__planning.ts"
+  import { voiceActionLabel } from "./reply-text.vibe"
+  import type { DeviceTurnPort, DeviceTurnSession } from "../device-actions/proposal/turn.vibe"
+  import { beginChatTask, replayTaskChoices, type ChatTaskEnding, type ChatTaskTurn } from "../tasks/chat-task.vibe"
+  import type { AgentTurnProcessingOptions } from "./message-service.vibe"
+  import { recordHeard } from "./heard.vibe"
+  import { streamRoutes, type ReplyWriter, type StreamStart, type TurnEnd } from "./stream.vibe"
+
+  export interface TurnReply {
+    readonly fullText: string
+    readonly text: string
+    readonly agentName: string
+    readonly messageId: UUID
+    readonly userMessageId: UUID
+    readonly actionResults: readonly { readonly action: string; readonly data: unknown }[]
+    readonly failureKind?: string
+    readonly cloudCode?: string
+    readonly planAction?: "sign-in" | "funding" | "retry"
+    readonly retryAfterMs?: number
+    readonly cutOffEffect?: "applied"
+    readonly taskChoices?: readonly TaskChoiceWidget[]
+    readonly action?: VoiceAction
+  }
+
+  interface Failure {
+    readonly kind: string
+    readonly cloudCode?: string
+    readonly retryAt?: number
+    readonly cutOffEffect?: "applied"
+  }
+
+  const base64 = /^[A-Za-z0-9+/]+={0,2}$/
+  const hasBytes = (data: string) => base64.test(data) && data.replace(/=+$/, "").length > 1
+  const Attachment = Schema.Struct({
+    data: Schema.String,
+    mimeType: Schema.String,
+    name: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(MAX_CHAT_ATTACHMENT_NAME_LENGTH)),
+    thumbnail: Schema.optionalKey(Schema.Struct({ data: Schema.String, mimeType: Schema.String })),
+  }).check(Schema.makeFilter(({ data, mimeType, thumbnail }) => {
+    const type = mimeType.toLowerCase()
+    const limit = CHAT_IMAGE_MIME_TYPE_SET.has(type) ? MAX_CHAT_IMAGE_BASE64_BYTES : MAX_CHAT_MEDIA_BASE64_BYTES
+    return CHAT_UPLOAD_MIME_TYPE_SET.has(type) && data.length <= limit && hasBytes(data)
+      && (thumbnail === undefined || (thumbnail.mimeType.toLowerCase().startsWith("image/") && thumbnail.data.length <= MAX_CHAT_IMAGE_BASE64_BYTES && hasBytes(thumbnail.data)))
+  }))
+  const TurnBody = Schema.Struct({
+    text: Schema.optionalKey(Schema.Trimmed.check(Schema.isMaxLength(32768))),
+    images: Schema.optionalKey(Schema.Array(Attachment).check(Schema.isMaxLength(MAX_CHAT_UPLOAD_ATTACHMENTS))),
+    channelType: Schema.optionalKey(Schema.Literals([ChannelType.DM, ChannelType.VOICE_DM])),
+    metadata: Schema.optionalKey(Schema.JsonObject.check(Schema.makeFilter((data) => Buffer.byteLength(JSON.stringify(data)) <= 64 * 1024))),
+    task: Schema.optionalKey(Schema.JsonObject),
+    clientMessageId: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(128))),
+  })
+  type TurnBody = typeof TurnBody.Type
+  const Stamp = Schema.Struct({
+    id: Schema.String,
+    createdAt: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+    updatedAt: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+  })
+  const turnBody = Schema.decodeUnknownOption(TurnBody, { onExcessProperty: "error" })
+  const stopBody = Schema.decodeUnknownOption(Schema.Struct({ reason: Schema.optionalKey(Schema.Trimmed.check(Schema.isMinLength(1), Schema.isMaxLength(128))) }), { onExcessProperty: "error" })
+  const stamp = Schema.decodeUnknownOption(Stamp)
+  const stopRequested = Schema.decodeUnknownOption(Schema.Struct({ _tag: Schema.Literal("StopRequested"), reason: Schema.String }))
+  const stopReasonCode = Schema.decodeUnknownOption(Schema.String.check(Schema.isPattern(/^[A-Za-z][A-Za-z0-9_.:-]{0,63}$/)))
+  const failure = (status: number, error: string) => ({ status, body: { error } })
+  const okay = <T extends object>(body: T) => ({ status: 200, body })
+
+  type ParsedTurn = { readonly kind: "input"; readonly body: TurnBody; readonly metadata?: JsonObject; readonly clientId?: string }
+    | { readonly kind: "refused"; readonly status: number; readonly error: string }
+
+  function parseTurn(body: unknown, headers: ReadonlyMap<string, string>): ParsedTurn {
+    const sent = headers.get("x-elizaos-client-id")
+    const clientId = parseViewInteractionClientId(sent)
+    if (sent !== undefined && clientId === undefined) return { kind: "refused", status: 400, error: "invalid_client_id" }
+    const parsed = turnBody(body)
+    if (parsed._tag !== "Some" || (!parsed.value.text && !parsed.value.images?.length)) {
+      return { kind: "refused", status: 400, error: "invalid_message" }
+    }
+    const metadata = parsed.value.metadata
+    if (metadata === undefined) return { kind: "input", body: parsed.value, clientId }
+    const { observation, voiceUi, browserPage, ...rest } = metadata
+    const voice = voiceUi === undefined ? undefined : Effect.runSync(Effect.result(decodeVoiceUiContext(voiceUi, clientId)))
+    if (voice !== undefined && Result.isFailure(voice)) return { kind: "refused", status: 400, error: "VOICE_UI_CONTEXT_INVALID" }
+    const seen = observation === undefined ? undefined : Effect.runSync(Effect.result(decodeObservation(observation)))
+    const kept = seen !== undefined && Result.isSuccess(seen) ? seen.success : undefined
+    const page = browserPage === undefined ? undefined : Effect.runSync(Effect.result(decodeBrowserPage(browserPage, kept)))
+    return {
+      kind: "input", body: parsed.value, clientId, metadata: {
+        ...rest,
+        ...(voice === undefined ? {} : { voiceUi: voice.success }),
+        ...(kept === undefined ? {} : { observation: kept }),
+        ...(page !== undefined && Result.isSuccess(page) ? { browserPage: page.success } : {}),
+      } as JsonObject,
+    }
+  }
+  const storedCutOff = (content: Content | null | undefined): { readonly cutOffEffect?: "applied" } =>
+    content?.cutOffEffect === "applied" ? { cutOffEffect: "applied" } : {}
+  const storedFailure = (content: Content | undefined): Failure | undefined =>
+    typeof content?.failureKind === "string"
+      ? { kind: content.failureKind, ...(typeof content.cloudCode === "string" ? { cloudCode: content.cloudCode } : {}), ...storedCutOff(content) } : undefined
+  const liveFailure = (stored: Failure, content: Content | null | undefined): Failure =>
+    typeof content?.retryAt === "number" ? { ...stored, retryAt: content.retryAt } : stored
+
+  function abortFields(ended: ReplyKind, signal: AbortSignal): { readonly abortCause: string; readonly stopReason?: string } {
+    const stop = stopRequested(signal.reason)
+    const ender: TurnEnder = stop._tag === "Some" ? "StopEnded" : signal.aborted ? "ClientEnded" : "RuntimeEnded"
+    const reason = stop._tag === "Some" ? stopReasonCode(stop.value.reason) : undefined
+    return { abortCause: abortCauseOf(ended, ender), ...(reason?._tag === "Some" ? { stopReason: reason.value } : {}) }
+  }
+
+  export function conversation(room: Room) {
+    const metadata = stamp(room.metadata?.deviceConversation)
+    if (metadata._tag !== "Some") return undefined
+    return { ...metadata.value, roomId: room.id, title: room.name ?? defaultTitle }
+  }
+
+  export interface ConversationOwner {
+    readonly user: UUID
+    readonly world: UUID
+  }
+
+  export interface TurnDisplay {
+    readonly restart: (fullText: string) => void
+    readonly acknowledge: (text: string) => boolean | void
+    readonly tool: (name: string, label: string) => void
+    readonly ready: (fullText: string, ran: TurnReply["actionResults"]) => void
+  }
+
+  export interface TurnOptions {
+    readonly onStreamChunk?: (chunk: string) => void
+    readonly display?: TurnDisplay
+    readonly metadata?: MemoryMetadata
+    readonly input?: {
+      readonly channelType?: TurnBody["channelType"]
+      readonly metadata?: JsonObject
+      readonly attachments?: Media[]
+      readonly task?: JsonObject
+      readonly clientId?: string
+      readonly source?: string
+    }
+    readonly deadline?: AbortSignal
+    readonly key?: KeyedTurn
+    readonly device?: (message: Memory & { readonly id: UUID }, signal: AbortSignal) => Promise<DeviceTurnSession | undefined>
+    readonly taskPresentation?: ChatTaskTurn
+  }
+
+  interface KeyedTurn {
+    readonly inputId: UUID
+    readonly replyId: UUID
+    readonly boot: UUID
+    readonly marker: DurableConversationChatMarker
+  }
+
+  type SendAnswer = ReturnType<typeof okay<TurnReply>> | ReturnType<typeof failure>
+
+  function replyKind(failure: Failure | undefined): ReplyKind {
+    switch (failure?.kind) {
+      case undefined: return { tag: "Answered" }
+      case "credential_invalid": return { tag: "AccountFailed", failure: { tag: "CredentialInvalid", version: 0 } }
+      case "insufficient_credits": return { tag: "AccountFailed", failure: { tag: "InsufficientCredits" } }
+      case "limit_reached": return { tag: "AccountFailed", failure: { tag: "LimitReached", retryAt: failure.retryAt ?? 0 } }
+      case "provider_issue": return { tag: "AccountFailed", failure: { tag: "ProviderIssue" } }
+      case "timeout": return { tag: "TimedOut" }
+      default: return { tag: "Aborted" }
+    }
+  }
+
+  type OpenVerdict = Extract<Admission, { readonly tag: "Owner" | "Unkeyed" | "Duplicate" | "Settled" }>
+
+  interface StreamDelivery {
+    readonly admit: (verdict: OpenVerdict) => void
+    readonly attached: Promise<{ readonly writer: ReplyWriter; readonly signal: AbortSignal }>
+  }
+
+  interface RunningSend {
+    readonly key: KeyedTurn | undefined
+    readonly admitted: Promise<boolean>
+    readonly result: Promise<SendAnswer>
+    readonly interrupt: AbortController
+  }
+
+  function memory(runtime: AgentRuntime, owner: ConversationOwner, room: Room, text: string, metadata?: MemoryMetadata): Memory {
+    return {
+      id: randomUUID(), entityId: owner.user, agentId: runtime.agentId, roomId: room.id,
+      worldId: owner.world, createdAt: Date.now(), content: { text, source: "device" },
+      ...(metadata === undefined ? {} : { metadata }),
+    }
+  }
+
+  export async function createConversation(runtime: AgentRuntime, owner: ConversationOwner, title: string) {
+    const id = randomUUID()
+    const roomId = randomUUID()
+    const time = Date.now()
+    const created = { id, roomId, title: title || defaultTitle, createdAt: time, updatedAt: time }
+    await runtime.ensureConnection({
+      entityId: owner.user, roomId, roomName: created.title, worldId: owner.world, userName: "person",
+      name: "Person", source: "device", type: ChannelType.DM, channelId: roomId,
+    })
+    const room = await runtime.getRoom(roomId)
+    if (!room) return undefined
+    await runtime.updateRooms([{ ...room, metadata: {
+      ...room.metadata, deviceConversation: { id, createdAt: time, updatedAt: time },
+    } }])
+    return created
+  }
+
+  export async function processTurn(runtime: AgentRuntime, owner: ConversationOwner, room: Room, text: string, signal: AbortSignal, options: TurnOptions = {}) {
+    const service = runtime.messageService ?? (() => { throw new Error("A conversation requires the message service") })()
+    return runtime.roomHandlerQueue.withLease(room.id, async (lease) => {
+      signal.throwIfAborted()
+      const input = memory(runtime, owner, room, text, options.metadata)
+      const { key } = options
+      if (options.input?.channelType !== undefined) input.content.channelType = options.input.channelType
+      if (options.input?.metadata !== undefined) input.content.metadata = options.input.metadata
+      if (options.input?.attachments !== undefined) input.content.attachments = options.input.attachments
+      if (options.input?.task !== undefined) input.content.task = options.input.task
+      if (options.input?.clientId !== undefined) input.content.clientId = options.input.clientId
+      if (options.input?.source !== undefined) input.content.source = options.input.source
+      if (key !== undefined) {
+        input.id = key.inputId
+        input.content.chatIdempotency = { ...key.marker }
+      }
+      const rawReply = options.input?.metadata?.replyToMessageId
+      const requestedReply = typeof rawReply === "string" ? validateUuid(rawReply.toLowerCase()) : null
+      const [candidate] = requestedReply === null || requestedReply === input.id ? []
+        : await runtime.getMemoriesByIds([requestedReply], "messages")
+      const replyTarget = candidate !== undefined && candidate.id === requestedReply && admitsReplyTarget(
+        candidate.roomId === room.id,
+        candidate.entityId === owner.user || candidate.entityId === runtime.agentId,
+        readSystemNotice(candidate.content.systemNotice) === undefined,
+      ) ? candidate : undefined
+      if (replyTarget?.id !== undefined) input.content.inReplyTo = replyTarget.id
+      signal.throwIfAborted()
+      bindIncomingMessagePersistence(input, {
+        ...input, content: { text, source: input.content.source, ...(replyTarget?.id === undefined ? {} : { inReplyTo: replyTarget.id }) },
+      })
+      const userMessageId = await runtime.createMessageMemory(input)
+      let taskEnding: ChatTaskEnding | undefined
+      const storeReply = async (content: Content): Promise<Memory[]> => {
+        const kind = storedFailure(content)
+        if (!content.text?.trim() && kind === undefined) return []
+        if (kind === undefined && options.taskPresentation !== undefined) {
+          taskEnding = await options.taskPresentation.end(signal)
+          signal.throwIfAborted()
+          if (taskEnding.kind === "Refused") return []
+        }
+        const response = {
+          ...memory(runtime, owner, room, content.text ?? "", options.metadata),
+          ...(key === undefined ? {} : { id: key.replyId }),
+          entityId: runtime.agentId, content: {
+            ...content, inReplyTo: userMessageId, ...(key === undefined ? {} : { turnBoot: key.boot }),
+            ...(kind === undefined && taskEnding?.kind === "Shown" ? { taskPresentationReceipt: taskEnding.receipt } : {}),
+          },
+        }
+        await runtime.createMessageMemory(response)
+        return [response]
+      }
+      const [current] = await runtime.adapter.getRoomsByIds([room.id])
+      const metadata = stamp(current?.metadata?.deviceConversation)
+      if (metadata._tag === "Some" && current !== undefined) {
+        await runtime.updateRooms([{
+          ...current, metadata: {
+            ...current.metadata, deviceConversation: { ...metadata.value, updatedAt: Math.max(metadata.value.updatedAt, input.createdAt ?? 0) },
+          },
+        }])
+      }
+      let session: DeviceTurnSession | undefined
+      const interrupted = async (result: MessageProcessingResult): Promise<MessageProcessingResult> => {
+        if (result.responseMessages.length > 0) return result
+        const timedOut = options.deadline?.aborted === true
+        const content = {
+          text: result.responseContent?.text ?? "", failureKind: timedOut ? "timeout" : "aborted",
+          ...(timedOut ? {} : abortFields({ tag: "Aborted" }, signal)),
+          ...storedCutOff(result.responseContent),
+        }
+        return { ...result, responseContent: content, responseMessages: await storeReply(content) }
+      }
+      try {
+        session = await options.device?.({ ...input, id: userMessageId }, signal)
+        const processing: AgentTurnProcessingOptions = {
+          roomHandlerLease: lease, abortSignal: signal, ...(options.onStreamChunk === undefined ? {} : { onStreamChunk: options.onStreamChunk }),
+          ...(replyTarget === undefined ? {} : { replyTarget }),
+          ...(session?.context === undefined ? {} : { deviceContext: session.context }),
+          ...(options.display === undefined ? {} : {
+            onReplyRestart: options.display.restart, onPlanningAcknowledgment: options.display.acknowledge,
+            onActivityStatus: ({ actionName, label }: { actionName: string; label: string }) => options.display?.tool(actionName, label),
+          }),
+          ...(options.taskPresentation === undefined
+            ? { onReplyStored: (fullText: string, ran: readonly ActionResult[]) => options.display?.ready(fullText, turnActions(ran)) }
+            : { taskContext: options.taskPresentation.context }),
+        }
+        const handle = () => service.handleMessage(runtime, input, storeReply, processing)
+        const result = await (session === undefined ? handle() : session.run(handle))
+        const ended = result.outcome.status === "cancelled" ? await interrupted(result) : result
+        return { ...ended, userMessageId, taskEnding }
+      } catch (cause) {
+        if (!signal.aborted) throw cause
+        return { ...await interrupted({ didRespond: false, responseMessages: [], outcome: { status: "cancelled", reason: "aborted", effects: [] } }), userMessageId, taskEnding: undefined }
+      } finally {
+        await session?.end()
+      }
+    }, { signal })
+  }
+
+  function turnActions(results: readonly ActionResult[]): TurnReply["actionResults"] {
+    return results.flatMap(({ data, success, values }) => {
+      const action = data?.actionName
+      if (typeof action !== "string" || action === "REPLY") return []
+      const handoff = action === "VIEWS" ? findViewActionHandoff([{ success, values, actionName: action }]) : null
+      return [{ action, data: handoff?.navigationPrepared === true ? { ...data, values: handoff } : data ?? null }]
+    })
+  }
+
+  function failureFields(failure: Failure): Pick<TurnReply, "failureKind" | "cloudCode" | "planAction" | "retryAfterMs" | "cutOffEffect"> {
+    const kind = replyKind(failure)
+    const planAction = planActionOf(kind)
+    const wait = providerWaitMs(kind, Date.now())
+    const cloudCode = cloudCodeOn(kind, fundsCodeOf(true, 402, failure.cloudCode ?? ""))
+    return {
+      failureKind: failure.kind,
+      ...(cloudCode === "" ? {} : { cloudCode }),
+      ...(planAction === "sign-in" || planAction === "funding" || planAction === "retry" ? { planAction } : {}),
+      ...(wait < 0 ? {} : { retryAfterMs: wait }),
+      ...(failure.cutOffEffect === undefined ? {} : { cutOffEffect: failure.cutOffEffect }),
+    }
+  }
+
+  function replyForRequest(body: SendAnswer["body"], headers: ReadonlyMap<string, string>): SendAnswer["body"] {
+    if ("error" in body || body.cutOffEffect === undefined || publishesCutOffEffect(true, headers.get("x-eliza-device-cut-off-effect") === "applied")) return body
+    const { cutOffEffect: _cutOffEffect, ...reply } = body
+    return reply
+  }
+
+  export function conversationRoutes(runtime: AgentRuntime, owner: ConversationOwner, agentName: string, publish: (payload: unknown) => void, device?: DeviceTurnPort): LocalRoute[] {
+    if (!runtime.messageService) throw new Error("A conversation requires the message service")
+    const rooms = () => runtime.getRooms(owner.world)
+    const find = async (id: string | undefined): Promise<Room | undefined> =>
+      (await rooms()).find((room) => conversation(room)?.id === id)
+    const updated = (room: Room) => publish({ type: "conversation-updated", conversationId: conversation(room)?.id, roomId: room.id })
+    const live = new Map<UUID, RunningSend>()
+    const stopping = new Map<UUID, Promise<ReturnType<typeof okay>>>()
+    const boot = randomUUID()
+    const answer = (text: string, messageId: UUID, userMessageId: UUID, failure?: Failure, taskChoices?: readonly TaskChoiceWidget[], actionResults: TurnReply["actionResults"] = [], action?: VoiceAction) =>
+      okay({ fullText: text, text, agentName, messageId, userMessageId, actionResults, ...(action === undefined ? {} : { action }),
+        ...(failure === undefined ? {} : failureFields(failure)), ...(taskChoices === undefined ? {} : { taskChoices }) } satisfies TurnReply)
+
+    async function send(
+      room: Room, parsed: Extract<ParsedTurn, { kind: "input" }>, signal: AbortSignal, headers: ReadonlyMap<string, string>, stream?: StreamDelivery,
+    ): Promise<SendAnswer> {
+      const { text = "", channelType, metadata, images, task, clientMessageId } = parsed.body
+      const id = normalizeChatIdempotencyKey(clientMessageId)
+      if (clientMessageId !== undefined && id === null) return failure(400, "invalid_message")
+      const scope = JSON.stringify([runtime.agentId, owner.user, room.id])
+      const inputId = id === null ? undefined : conversationClientUserMemoryId(scope, id)
+      const key: KeyedTurn | undefined = inputId === undefined || id === null ? undefined : {
+        inputId, replyId: stringToUuid(`conversation-reply:${inputId}`), boot,
+        marker: { version: 1, scope, clientMessageId: id, fingerprint: hashStableJson({ text, channelType: channelType ?? ChannelType.DM, metadata, ...(images === undefined ? {} : { images }), ...(task === undefined ? {} : { task }) }) },
+      }
+      if (runtime.getModel(ModelType.TEXT_LARGE) === undefined) return failure(503, "INFERENCE_UNAVAILABLE")
+      const current = live.get(room.id)
+      const busy = current !== undefined || activeWork(room.id)
+      if (current !== undefined && key !== undefined && current.key?.inputId === key.inputId) {
+        const admission = decide(true, { tag: "HeldRunning", fingerprint: 1 }, true, true,
+          current.key.marker.fingerprint === key.marker.fingerprint ? 1 : 2, 1)
+        if (admission.tag !== "Duplicate") return failure(409, "CHAT_IDEMPOTENCY_CONFLICT")
+        if (await current.admitted) stream?.admit(admission)
+        return current.result
+      }
+
+      const admitted = Promise.withResolvers<boolean>()
+      const admit = (verdict: OpenVerdict) => { admitted.resolve(true); stream?.admit(verdict) }
+      const present = () => task === undefined ? undefined : beginChatTask(runtime, task, owner.user)
+
+      async function sendOwned(interrupt: AbortSignal) {
+        if (key !== undefined) {
+          const saved = await runtime.getMemoryById(key.inputId)
+          if (saved !== null) {
+            const expected = readDurableConversationChatMarker(saved.content.chatIdempotency)
+            if (saved.roomId !== room.id || saved.entityId !== owner.user || expected?.scope !== scope || expected.clientMessageId !== id) {
+              return failure(409, "CHAT_IDEMPOTENCY_CONFLICT")
+            }
+            const reply = await runtime.getMemoryById(key.replyId)
+            const now = Date.now()
+            const answered = reply?.roomId === room.id && reply.entityId === runtime.agentId && reply.content.inReplyTo === key.inputId
+            const view: KeyView = answered
+              ? { tag: "HeldAnswered", fingerprint: 1, reply: 1,
+                live: reply.content.turnBoot === boot && reply.createdAt !== undefined && now - reply.createdAt <= receiptRetentionMs }
+              : { tag: "HeldUnanswered", fingerprint: 1 }
+            const admission = decide(true, view, true, busy, expected.fingerprint === key.marker.fingerprint ? 1 : 2, 1)
+            if (admission.tag === "Conflict") return failure(409, "CHAT_IDEMPOTENCY_CONFLICT")
+            if (admission.tag !== "Settled") return failure(429, "ROOM_BUSY")
+            if (answered) {
+              const recordedFailure = storedFailure(reply.content)
+              const shown = await present()
+              if (shown?.kind === "Refused") return failure(shown.status, shown.error)
+              const replayed = shown === undefined || recordedFailure !== undefined ? undefined
+                : replayTaskChoices(await shown.end(AbortSignal.any([interrupt, AbortSignal.timeout(turnDeadlineMs)])), reply.content.taskPresentationReceipt)
+              if (replayed?.kind === "Refused") return failure(replayed.status, replayed.error)
+              admit(admission)
+              return answer(reply.content.text ?? "", key.replyId, key.inputId, recordedFailure, replayed?.choices)
+            }
+            const shown = await present()
+            if (shown?.kind === "Refused") return failure(shown.status, shown.error)
+            admit(admission)
+            const recovered = memory(runtime, owner, room, "")
+            await runtime.createMessageMemory({
+              ...recovered, id: key.replyId, entityId: runtime.agentId,
+              content: { ...recovered.content, inReplyTo: key.inputId, failureKind: "aborted", abortCause: abortCauseOf({ tag: "Unfinished" }, "RuntimeEnded"), turnBoot: boot },
+            })
+            return answer("", key.replyId, key.inputId, { kind: "aborted" })
+          }
+        }
+        const admission = decide(true, { tag: "NoKey" }, key !== undefined, busy, 1, 1)
+        if (admission.tag !== "Owner" && admission.tag !== "Unkeyed") return failure(429, "ROOM_BUSY")
+        const taskPresentation = await present()
+        if (taskPresentation?.kind === "Refused") return failure(taskPresentation.status, taskPresentation.error)
+        admit(admission)
+        const attached = stream === undefined ? undefined : await stream.attached
+        const deadline = AbortSignal.timeout(turnDeadlineMs)
+        const turnSignal = AbortSignal.any(attached === undefined ? [interrupt, deadline] : [interrupt, attached.signal, deadline])
+        const conversationId = conversation(room)?.id
+        const deviceTurn: TurnOptions["device"] = device === undefined || conversationId === undefined
+          ? undefined : (message, active) => device.begin({ headers, conversationId, message, requestId: id ?? message.id, signal: active })
+        const result = await processTurn(runtime, owner, room, text, turnSignal, {
+          input: { channelType, metadata: parsed.metadata, clientId: parsed.clientId, task: task as JsonObject | undefined, attachments: images?.map(({ data, mimeType, name }) => ({
+            id: randomUUID(), url: `data:${mimeType.toLowerCase()};base64,${data}`, title: name, filename: name, mimeType: mimeType.toLowerCase(),
+          })) },
+          deadline, ...(key === undefined ? {} : { key }), ...(attached === undefined ? {} : {
+            onStreamChunk: (chunk: string) => attached.writer.append(chunk, true),
+            display: {
+              restart: (fullText: string) => attached.writer.restart(fullText, true), acknowledge: (cue: string) => attached.writer.acknowledge(cue),
+              tool: (name: string, label: string) => attached.writer.tool(name, label),
+              ready: attached.writer.ready,
+            },
+          }),
+          ...(deviceTurn === undefined ? {} : { device: deviceTurn }),
+          ...(taskPresentation === undefined ? {} : { taskPresentation }),
+        })
+        updated(room)
+        const [reply] = result.responseMessages
+        const failed = storedFailure(reply?.content)
+        if (failed !== undefined && reply?.id !== undefined) return answer(reply.content.text ?? "", reply.id, result.userMessageId, liveFailure(failed, result.responseContent))
+        if (result.taskEnding?.kind === "Refused") return failure(result.taskEnding.status, result.taskEnding.error)
+        if (!result.didRespond || !result.responseContent?.text || reply?.id === undefined) return failure(503, "ASSISTANT_RESPONSE_UNAVAILABLE")
+        const shown = taskPresentation === undefined ? undefined
+          : replayTaskChoices(await taskPresentation.end(turnSignal), reply.content.taskPresentationReceipt)
+        if (shown?.kind === "Refused") return failure(shown.status, shown.error)
+        const ran = turnActions(result.actionResults ?? [])
+        return answer(result.responseContent.text, reply.id, result.userMessageId, undefined, shown?.choices, ran,
+          voiceActionLabel(channelType === ChannelType.VOICE_DM, text, result.responseContent.text, ran.map(({ action }) => action)))
+      }
+
+      if (busy) return sendOwned(signal)
+      const interrupt = new AbortController()
+      const result = sendOwned(AbortSignal.any([signal, interrupt.signal]))
+      live.set(room.id, { key, admitted: admitted.promise, result, interrupt })
+      try {
+        return await result
+      } finally {
+        admitted.resolve(false)
+        live.delete(room.id)
+      }
+    }
+
+    const activeWork = (roomId: UUID) =>
+      runtime.roomHandlerQueue.pendingFor(roomId) > 0 || runtime.turnControllers.hasActiveTurn(roomId)
+
+    async function waitForIdle(roomId: UUID) {
+      while (activeWork(roomId)) {
+        if (runtime.roomHandlerQueue.pendingFor(roomId) > 0) await runtime.roomHandlerQueue.quiesce(roomId)
+        else await new Promise<void>((resolve) => {
+          const off = runtime.turnControllers.onEvent((event) => {
+            if (event.roomId !== roomId || event.type === "started" || event.type === "aborted") return
+            off()
+            resolve()
+          })
+        })
+      }
+    }
+
+    async function stop(roomId: UUID, reason: string) {
+      const pending = stopping.get(roomId)
+      if (pending !== undefined) return pending
+      const running = live.get(roomId)
+      const result = (outcome: "nothingRunning" | "stopped" | "uncertain") =>
+        okay({ aborted: outcome !== "nothingRunning", roomId, reason, outcome })
+      if (running === undefined && !activeWork(roomId)) return result("nothingRunning")
+      const requestedAt = Date.now()
+      const released = running === undefined
+        ? waitForIdle(roomId)
+        : running.result.then(() => undefined, () => undefined)
+      running?.interrupt.abort({ _tag: "StopRequested", reason })
+      runtime.turnControllers.abortTurn(roomId, reason)
+      const completion = Effect.runPromise(Effect.timeoutOption(Effect.promise(() => released), stopConfirmMs))
+        .then((ended) => result(ended._tag === "Some" && stopWindowOpen({ tag: "Stopping", requestedAt }, Date.now()) ? "stopped" : "uncertain"))
+      stopping.set(roomId, completion)
+      try {
+        return await completion
+      } finally {
+        stopping.delete(roomId)
+      }
+    }
+
+    return [
+      {
+        method: "POST", path: "/api/conversations",
+        handler: async ({body}) => {
+          const asked = creationTitle(body)
+          if (!("title" in asked)) return asked
+          const created = await createConversation(runtime, owner, asked.title)
+          return created === undefined ? failure(500, "room_unavailable") : { status: 201, body: { conversation: created } }
+        },
+      },
+      {
+        method: "GET", path: "/api/conversations",
+        handler: async () => okay({ conversations: (await rooms()).flatMap((room) => conversation(room) ?? [])
+          .sort((a, b) => b.updatedAt - a.updatedAt || b.id.localeCompare(a.id)) }),
+      },
+      {
+        method: "POST", path: "/api/conversations/{id}/messages",
+        handler: async ({ parameters, body, headers, signal }) => {
+          const room = await find(parameters.get("id"))
+          if (!room) return failure(404, "unknown_conversation")
+          const payload = parseTurn(body, headers)
+          if (payload.kind === "refused") return failure(payload.status, payload.error)
+          const result = await send(room, payload, signal, headers)
+          return { ...result, body: replyForRequest(result.body, headers) }
+        },
+      },
+      {
+        method: "POST", path: "/api/conversations/{id}/messages/{messageId}/heard",
+        handler: async ({ parameters, body }) => {
+          const room = await find(parameters.get("id"))
+          if (!room) return failure(404, "unknown_conversation")
+          return recordHeard(runtime, room.id, parameters.get("messageId"), body)
+        },
+      },
+      ...streamRoutes(async (id, body, headers, signal) => {
+        const room = await find(id)
+        if (!room) return { kind: "refused", status: 404, error: "unknown_conversation" }
+        const payload = parseTurn(body, headers)
+        if (payload.kind === "refused") return payload
+        const opening = Promise.withResolvers<OpenVerdict | Extract<StreamStart, { kind: "refused" }>>()
+        const attached = Promise.withResolvers<Awaited<StreamDelivery["attached"]>>()
+        const result = send(room, payload, signal, headers, { admit: opening.resolve, attached: attached.promise })
+        void result.then(({ status, body }) => {
+          if ("error" in body) opening.resolve({ kind: "refused", status, error: body.error })
+        }, opening.reject)
+        const verdict = await opening.promise
+        if ("kind" in verdict) return verdict
+        return { kind: "admitted", verdict, run: async (writer, left): Promise<TurnEnd> => {
+          attached.resolve({ writer, signal: left })
+          const body = replyForRequest((await result).body, headers)
+          if ("error" in body) return { type: "error", code: body.error, message: "The turn did not complete" }
+          const { fullText, messageId, userMessageId, agentName, actionResults, failureKind, cloudCode, planAction, retryAfterMs, cutOffEffect, taskChoices, action } = body
+          return {
+            type: "done", fullText, messageId, userMessageId, agentName, actionResults, kind: replyKind(failureKind === undefined ? undefined : { kind: failureKind }),
+            ...(cloudCode === undefined ? {} : { cloudCode }),
+            ...(planAction === undefined ? {} : { planAction }), ...(retryAfterMs === undefined ? {} : { retryAfterMs }),
+            ...(cutOffEffect === undefined ? {} : { cutOffEffect }),
+            ...(taskChoices === undefined ? {} : { taskChoices }), ...(action === undefined ? {} : { action }),
+          }
+        } }
+      }),
+      {
+        method: "POST", path: "/api/turns/{room}/abort",
+        handler: async ({ parameters, body }) => {
+          const requested = parameters.get("room")
+          const room = (await rooms()).find((candidate) => candidate.id === requested && conversation(candidate) !== undefined)
+          if (!room) return failure(404, "unknown_conversation")
+          const payload = stopBody(body ?? {})
+          if (payload._tag !== "Some") return failure(400, "invalid_stop")
+          return stop(room.id, payload.value.reason ?? "owner_requested_abort")
+        },
+      },
+    ]
+  }
+}
+export { conversation as deviceConversation, conversationRoutes, createConversation, processTurn, type ConversationOwner, type TurnOptions, type TurnReply } from node

@@ -1,6 +1,0 @@
-{
-  "extends": "./tsconfig.build.json",
-  "include": [
-    "src/client/index.vibe"
-  ]
-}

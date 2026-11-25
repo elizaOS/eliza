@@ -4,9 +4,9 @@ import { canRedeliverCommand, initial as idleRelay, machineOver, type Event, typ
 import {
   DeviceNavigationFailure, DeviceNavigationMapsCode, MapsDeviceNavigationStatus,
   type AgentPlaceRef, type DeviceNavigationOperation,
-} from "./client/device-navigation.vibe"
-import type { TravelMode } from "./client/contracts.vibe"
-import type { LocalRoute, RouteInput } from "@elizaos/agent/routes"
+} from "@elizaos/plugin-maps-client"
+import type { TravelMode } from "@elizaos/plugin-maps-client"
+import type { LocalRoute, RouteInput } from "@elizaos/agent-host"
 
 module node {
   /** @throws {never} */
