@@ -6,7 +6,7 @@ import { activityLabel } from "@elizaos/agent-host"
 import { computeNextCronRunAtMs, ContextRegistry, type ActionResult, type Content, type IAgentRuntime, type JsonObject, type Memory, type Provider } from "@elizaos/core"
 import { activeWorkflowsProvider, workflowAction, workflowInstances, workflowsContext } from "../src/agent.vibe"
 import {
-  keyValueIntentBackend, openWorkflowNotice, parseWorkflowRunDeepLink, resolvePhoneCalendarRange, workflowClient, workflowIntentKey, workflowIntentOwnerPrefix, workflowIntentStore, validatePhoneWorkflowSpec, workflowRecovery, workflowSha, WorkflowLifecycleRejected, type PhoneWorkflowSpec, type WorkflowClient, type WorkflowRequest, type WorkflowRun, digestInbox, hostedDigestProtocol, missedRunNowOffers, DIGEST_MISSED_TEXT, checkWorkflowScope as scopeEntry, workflowHttpError,
+  keyValueIntentBackend, openWorkflowNotice, parseWorkflowRunDeepLink, resolvePhoneCalendarRange, workflowClient, workflowIntentKey, workflowIntentOwnerPrefix, workflowIntentStore, validatePhoneWorkflowSpec, workflowRecovery, workflowSha, WorkflowLifecycleRejected, type PhoneWorkflowSpec, type WorkflowClient, type WorkflowRequest, type WorkflowRun, digestInbox, hostedDigestProtocol, missedRunNowOffers, DIGEST_MISSED_TEXT, workflowHttpError,
 } from "@elizaos/plugin-workflow-client"
 import { importWorkflowSource, publishWorkflowSource, SourceRefused } from "../src/worker/source.vibe"
 import { verifyWorkerArtifact, workerArtifactClosure, workerProvenance, WorkerArtifactRefused } from "@elizaos/plugin-workflow-worker"
@@ -225,10 +225,26 @@ it.effect('Show Workflows while a workflow call runs, without changing which cal
   assert.deepStrictEqual([label, workflowAction.contexts], ["Using Workflows", ["general", "automation", "tasks", "agent_internal"]])
 })
 
+it.live('Every workflow request reaches the drafting model, which refuses what the typed steps cannot do and drafts the rest (spec/workflow/authoring.md, "A draft uses the advertised operation catalog and only earlier step outputs")', effect () => {
+  provide KeyValueStore.layerMemory {
+    const asked: string[] = []
+    const answer = (prompt: string) => prompt.includes("call Maya")
+      ? JSON.stringify({ unsupported: "Workflows here cannot place phone calls." })
+      : JSON.stringify({ version: 1, name: "Greeting", description: "", steps: [{ id: "text", kind: "Read", operation: "supplied_text", text: "good morning" }] })
+    const rig = try harness({ draft: (prompt) => { asked.push(prompt); return answer(prompt) } })
+    const catalog = try rig.client.phoneCatalog()
+    const refused = try Effect.flip(rig.client.generatePhone("call Maya at noon", catalog, ["supplied_text"]))
+    const drafted = try rig.client.generatePhone("give me a good morning line", catalog, ["supplied_text"])
+    try check(() => assert.deepStrictEqual(
+      [asked.length, refused._tag, JSON.stringify(refused).includes("cannot place phone calls"), drafted.name, drafted.steps.map((step) => step.operation)],
+      [2, "WorkflowResponseInvalid", true, "Greeting", ["supplied_text"]],
+    ))
+  }
+})
+
 it.live('Recover one reviewed run across an interrupted reply (spec/workflow/index.md, "Story: Recover one reviewed run across an interrupted reply"; spec/workflow/intents.md, "Story: Preserve the owner’s pending action across transport uncertainty"; spec/workflow/authoring.md, "Story: Review the exact typed workflow that my agent will save")', effect () => {
   provide KeyValueStore.layerMemory {
     const rig = try harness()
-    try check(() => assert.deepStrictEqual([scopeEntry("call Maya at noon", ["supplied_text"]).refused, scopeEntry("summarize the notes on the website redesign", []).refused], [true, false]))
     const { catalog, receipt, mutationId, specDigest } = try saved(rig, greeting)
     const replay = try rig.client.savePhone(greeting, catalog, { mutationId, specDigest, compilerRevision: catalog.compilerRevision })
     try check(() => assert.deepStrictEqual(replay, receipt))
