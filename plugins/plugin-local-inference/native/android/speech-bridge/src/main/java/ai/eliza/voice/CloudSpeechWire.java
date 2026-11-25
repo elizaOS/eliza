@@ -6,6 +6,8 @@ import java.util.Arrays;
 /** The bounded speech-only v1 binary wire. No URL, account or arbitrary control payload. */
 final class CloudSpeechWire {
  static final int RATE=16000, MAX_UPLINK=3200, MAX_DOWNLINK=65536;
+ /** Bounded pre-ready PCM16 ring buffer (5 s at 16 kHz mono): keeps newest speech during WS/STT startup. */
+ static final int PRE_BUFFER_MAX_BYTES=RATE*2*5;
  /** One relay window (60 s) plus clock slack: the furthest end a mint or a renewal may name. */
  static final long MAX_WINDOW_MS=65000;
  /** The mint's offer to renew windows for a hello that sends extend; older relays refuse that key. */
@@ -41,4 +43,29 @@ final class CloudSpeechWire {
  }
  static long millis(long pcmBytes){return pcmBytes/2*1000/RATE;}
  static double peak(byte[] pcm,int size){double peak=0;for(int i=0;i+1<size;i+=2){int sample=(short)((pcm[i]&255)|(pcm[i+1]<<8));peak=Math.max(peak,Math.abs(sample)/32768.0);}return Math.min(1,peak);}
+ /**
+  * Bounded FIFO pre-ready PCM16 buffer for parallel microphone capture during session/WS startup.
+  * Evicts oldest frames when full and zeroes every evicted or cleared byte array.
+  */
+ static final class PreBuffer {
+  private final int maxBytes;
+  private final java.util.ArrayDeque<byte[]> frames=new java.util.ArrayDeque<>();
+  private int bytes;
+  private long droppedBytes;
+  PreBuffer(){this(PRE_BUFFER_MAX_BYTES);}
+  PreBuffer(int maxBytes){if(maxBytes<2)throw new IllegalArgumentException("Invalid pre-buffer bound");this.maxBytes=maxBytes;}
+  synchronized void push(byte[] frame,int length){
+   if(frame==null||length<=0||length>frame.length||length>maxBytes)return;
+   while(!frames.isEmpty()&&bytes+length>maxBytes){
+    byte[] evicted=frames.removeFirst();bytes-=evicted.length;droppedBytes+=evicted.length;Arrays.fill(evicted,(byte)0);
+   }
+   frames.addLast(Arrays.copyOf(frame,length));bytes+=length;
+  }
+  synchronized byte[] peek(){return frames.peekFirst();}
+  synchronized byte[] poll(){byte[] next=frames.pollFirst();if(next!=null)bytes-=next.length;return next;}
+  synchronized boolean isEmpty(){return frames.isEmpty();}
+  synchronized int bytes(){return bytes;}
+  synchronized long droppedBytes(){return droppedBytes;}
+  synchronized void clear(){while(!frames.isEmpty())Arrays.fill(frames.removeFirst(),(byte)0);bytes=0;}
+ }
 }

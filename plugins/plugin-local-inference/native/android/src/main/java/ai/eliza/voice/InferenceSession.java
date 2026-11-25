@@ -234,6 +234,38 @@ public final class InferenceSession implements AutoCloseable {
     }
 
     /**
+     * Native Silero VAD is compiled in and the bundle contains a {@code vad/} model.
+     * Opens no native context or detector.
+     */
+    public boolean vadAvailable() {
+        if (closed || VoiceNative.nativeVadSupported() != 1) return false;
+        File dir = new File(bundleDir, "vad");
+        File[] files = dir.listFiles();
+        if (files == null) return false;
+        for (File file : files) {
+            if (file.isFile() && file.getName().endsWith(".gguf")) return true;
+        }
+        return false;
+    }
+
+    /**
+     * Pre-creates the dedicated VAD native context and acquires its {@code vad}
+     * region so the first {@link #openVad()} avoids cold setup latency.
+     * No-op when VAD is unavailable.
+     */
+    public void prewarmVad() {
+        synchronized (vadLock) {
+            if (closed) throw new IllegalStateException("Inference session closed");
+            if (!vadAvailable()) return;
+            if (vadContext == 0L) {
+                vadContext = VoiceNative.nativeContextCreate(bundleDir.getAbsolutePath());
+                if (vadContext == 0L) throw new IllegalStateException("VAD context creation failed");
+            }
+            VoiceNative.nativeMmapAcquire(vadContext, "vad");
+        }
+    }
+
+    /**
      * Opens one Silero VAD detector (16 kHz mono, one probability per 512-sample
      * window) from the bundle's {@code vad/} model. It never waits for the speech
      * lock and is not fenced by {@link #cancel}. {@link #trimMemory} keeps open

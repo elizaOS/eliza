@@ -829,6 +829,83 @@ describe("renderer transport and readiness", () => {
       }).open(out.open(signal)),
     ).rejects.toThrow(/not connected/);
   });
+
+  it("coalesces concurrent liveCaptureStatus probes and reuses a positive result across ready and open", async () => {
+    const bridge = fakeBridge({ available: true, nativeTransport: true });
+    let resolveStatus!: (value: {
+      available: boolean;
+      nativeTransport: boolean;
+    }) => void;
+    let statusCalls = 0;
+    bridge.port.liveCaptureStatus = () => {
+      statusCalls++;
+      return new Promise((resolve) => {
+        resolveStatus = resolve;
+      });
+    };
+    const agent = residentAgent();
+    let bridgeAvailable = true;
+    const voice = createNativeLiveVoice({
+      port: bridge.port,
+      available: () => bridgeAvailable,
+      resident: agent.resident,
+      endedTimeoutMs: 5,
+    });
+    const out = handlers();
+    const signal = new AbortController().signal;
+    const r1 = voice.ready(signal);
+    const r2 = voice.ready(signal);
+    const opening = voice.open(out.open(signal));
+    await flush();
+    expect(statusCalls).toBe(1);
+    resolveStatus({ available: true, nativeTransport: true });
+    expect(await r1).toBe(true);
+    expect(await r2).toBe(true);
+    const first = await opening;
+    expect(bridge.starts[0]).toMatchObject({ nativeAsr: true });
+    await first.cancel();
+    // Subsequent ready() and open() reuse the cached positive status without another bridge call.
+    expect(await voice.ready(signal)).toBe(true);
+    const second = await voice.open(out.open(signal));
+    expect(statusCalls).toBe(1);
+    await second.cancel();
+    // Losing availability invalidates the cached status so recovery re-probes.
+    bridgeAvailable = false;
+    expect(await voice.ready(signal)).toBe(false);
+    bridgeAvailable = true;
+    bridge.port.liveCaptureStatus = async () => {
+      statusCalls++;
+      return { available: true, nativeTransport: false };
+    };
+    const third = await voice.open(out.open(signal));
+    expect(statusCalls).toBe(2);
+    expect(bridge.starts.at(-1)).not.toHaveProperty("nativeAsr");
+    await third.cancel();
+  });
+
+  it("does not cache negative or failed liveCaptureStatus probes", async () => {
+    const bridge = fakeBridge();
+    let calls = 0;
+    bridge.port.liveCaptureStatus = async () => {
+      calls++;
+      if (calls === 1) throw new Error("bridge busy");
+      if (calls === 2) return { available: false, nativeTransport: true };
+      return { available: true, nativeTransport: true };
+    };
+    const voice = createNativeLiveVoice({
+      port: bridge.port,
+      available: () => true,
+      resident: residentAgent().resident,
+    });
+    const signal = new AbortController().signal;
+    expect(await voice.ready(signal)).toBe(false);
+    expect(await voice.ready(signal)).toBe(false);
+    expect(await voice.ready(signal)).toBe(true);
+    expect(calls).toBe(3);
+    // Once positive, a subsequent ready() reuses it.
+    expect(await voice.ready(signal)).toBe(true);
+    expect(calls).toBe(3);
+  });
 });
 
 /**

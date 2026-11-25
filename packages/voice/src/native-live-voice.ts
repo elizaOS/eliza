@@ -601,13 +601,49 @@ export function residentLiveTransport(
 /** The native live voice of one host: readiness, capture, assistant listen port and dictation. */
 export function createNativeLiveVoice(options: NativeLiveVoiceOptions) {
   const { port } = options;
+  type LiveCaptureStatus =
+    | { available?: unknown; nativeTransport?: unknown }
+    | null
+    | undefined;
+  let cachedStatus: { available: true; nativeTransport?: unknown } | null =
+    null;
+  let pendingStatus: Promise<LiveCaptureStatus> | null = null;
+  /**
+   * Coalesces concurrent `liveCaptureStatus()` probes and reuses a positive
+   * bridge capability result across `ready()` -> `open()` and reopens.
+   * Negative or failed probes are never cached so recovery still re-probes.
+   */
+  const readStatus = (): Promise<LiveCaptureStatus> => {
+    if (cachedStatus) return Promise.resolve(cachedStatus);
+    if (!pendingStatus) {
+      const request = Promise.resolve()
+        .then(() => port.liveCaptureStatus())
+        .then((status) => {
+          if (status?.available === true) {
+            cachedStatus = {
+              available: true,
+              nativeTransport: status.nativeTransport,
+            };
+          }
+          return status;
+        })
+        .finally(() => {
+          if (pendingStatus === request) pendingStatus = null;
+        });
+      pendingStatus = request;
+    }
+    return pendingStatus;
+  };
   /** The bridge has VAD capture and the agent reports a streaming live ASR loader. */
   async function ready(signal: AbortSignal): Promise<boolean> {
-    if (!options.available()) return false;
+    if (!options.available()) {
+      cachedStatus = null;
+      return false;
+    }
     const resident = options.resident();
     if (!resident) return false;
     try {
-      const status = await port.liveCaptureStatus();
+      const status = await readStatus();
       signal.throwIfAborted();
       if (status?.available !== true) return false;
       const agent = (await resident.request(
@@ -626,11 +662,14 @@ export function createNativeLiveVoice(options: NativeLiveVoiceOptions) {
   async function open(
     input: LiveCaptureOpenOptions,
   ): Promise<LiveCaptureStream> {
-    if (!options.available()) throw Error("Live voice is unavailable.");
+    if (!options.available()) {
+      cachedStatus = null;
+      throw Error("Live voice is unavailable.");
+    }
     input.signal.throwIfAborted();
     const transport = residentLiveTransport(options.resident);
     if (!transport) throw Error("The on-device agent is not connected.");
-    const capability = await port.liveCaptureStatus();
+    const capability = await readStatus();
     input.signal.throwIfAborted();
     const captureId = options.newCaptureId?.();
     if (capability?.nativeTransport === true) {

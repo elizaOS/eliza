@@ -148,10 +148,17 @@ final class ElizaBionicInferenceServer {
     private final BionicAsrStreams asrStreams = new BionicAsrStreams(
         new BionicAsrStreams.Native() {
             @Override
+            public int probeSupported(String bundleDir) {
+                return probeAsrStreamSupported(
+                    bundleDir,
+                    ElizaVoiceNative::nativeAsrSupported,
+                    ElizaVoiceNative::nativeAsrStreamSupported);
+            }
+
+            @Override
             public int supported(long ctx) {
-                // stream_supported is 0 until some context has loaded the
-                // parakeet backend, so acquire "asr" first (idempotent).
-                ElizaVoiceNative.nativeMmapAcquire(ctx, "asr");
+                // Never call nativeMmapAcquire(ctx, "asr") here: /live/status is a
+                // read-only probe and must not trigger a second Phonon-2 model load.
                 return ElizaVoiceNative.nativeAsrStreamSupported();
             }
 
@@ -644,6 +651,12 @@ final class ElizaBionicInferenceServer {
             }
             String bundleDir = confined(req.optString("bundleDir", ""), "bundleDir");
             final String bundle = bundleDir.isEmpty() ? defaultBundleDir : bundleDir;
+            if ("asr_stream_supported".equals(op)) {
+                // Status probe (/live/status): never take residentLock, never create or
+                // reset residentCtx, and never mmap-acquire Phonon-2.
+                req.put("bundleDir", bundle);
+                return asrStreams.handle(client, op, req, () -> 0L);
+            }
             synchronized (residentLock) {
                 try {
                     return asrStreams.handle(client, op, req, () -> ensureResidentCtx(bundle));
@@ -1197,6 +1210,206 @@ final class ElizaBionicInferenceServer {
             at += part.length;
         }
         return toks;
+    }
+
+    /**
+     * Non-loading probe for {@code op="asr_stream_supported"} ({@code /live/status}).
+     * Verifies the bundle has an {@code asr/*.gguf} model and native ASR is built without
+     * taking {@code residentLock}, creating/resetting {@code residentCtx}, or calling
+     * {@code nativeMmapAcquire(ctx, "asr")} (which would trigger a second Phonon-2 load).
+     * When warm ({@code nativeAsrStreamSupported() == 1}), answers 1 immediately.
+     * When cold, inspects {@code ELIZA_ASR_BACKEND} and the GGUF header's
+     * {@code general.architecture} (a bounded 64 KiB header read, zero model load) so
+     * Parakeet/Phonon-2 reports 1 and non-streaming backends such as {@code qwen3} report 0.
+     */
+    static int probeAsrStreamSupported(
+            String bundleDir,
+            java.util.function.IntSupplier asrSupported,
+            java.util.function.IntSupplier asrStreamSupported) {
+        return probeAsrStreamSupported(
+            bundleDir,
+            asrSupported,
+            asrStreamSupported,
+            () -> System.getenv("ELIZA_ASR_BACKEND"));
+    }
+
+    static int probeAsrStreamSupported(
+            String bundleDir,
+            java.util.function.IntSupplier asrSupported,
+            java.util.function.IntSupplier asrStreamSupported,
+            java.util.function.Supplier<String> asrBackendEnv) {
+        if (bundleDir == null || bundleDir.isEmpty()) {
+            throw new IllegalStateException("asr_stream_supported: no asr/ model in bundle");
+        }
+        final File asrDir = new File(bundleDir, "asr");
+        final File[] entries = asrDir.listFiles();
+        final List<File> ggufs = new ArrayList<>();
+        if (entries != null) {
+            for (File entry : entries) {
+                if (entry.isFile()
+                        && entry.getName().toLowerCase(java.util.Locale.ROOT).endsWith(".gguf")) {
+                    ggufs.add(entry);
+                }
+            }
+        }
+        if (ggufs.isEmpty()) {
+            throw new IllegalStateException("asr_stream_supported: no asr/ model in bundle");
+        }
+        if (asrSupported.getAsInt() != 1) {
+            throw new IllegalStateException("asr_stream_supported: native ASR unsupported");
+        }
+        if (asrStreamSupported.getAsInt() == 1) {
+            return 1;
+        }
+        final String backend = asrBackendEnv == null ? null : asrBackendEnv.get();
+        if (backend != null && "qwen3".equalsIgnoreCase(backend.trim())) {
+            return 0;
+        }
+        for (File gguf : ggufs) {
+            final String arch = readGgufArchitecture(gguf);
+            if (arch != null && arch.toLowerCase(java.util.Locale.ROOT).startsWith("parakeet")) {
+                return 1;
+            }
+        }
+        return 0;
+    }
+
+    private static final int GGUF_HEADER_READ_LIMIT = 64 * 1024;
+    private static final int MAX_REGION_FILE_BYTES = 4096;
+    private static final String REGION_FILE_MAGIC = "eliza-file-region v1";
+
+    /**
+     * Reads {@code general.architecture} from the leading scalar/string KV entries of a GGUF
+     * header (at most 64 KiB, resolving {@code eliza-file-region v1} region files), or null if
+     * unreadable, not a GGUF, or absent. Mirrors {@code asr-provenance.ts#readGgufArchitecture}.
+     */
+    static String readGgufArchitecture(File file) {
+        final byte[] head = readGgufHeaderBytes(file);
+        if (head == null || head.length < 24
+                || head[0] != 'G' || head[1] != 'G' || head[2] != 'U' || head[3] != 'F') {
+            return null;
+        }
+        final ByteBuffer bb = ByteBuffer.wrap(head).order(ByteOrder.LITTLE_ENDIAN);
+        final long kvCount = bb.getLong(16);
+        if (kvCount <= 0) {
+            return null;
+        }
+        int offset = 24;
+        for (long i = 0; i < kvCount; i++) {
+            final int keyStart = offset + 8;
+            if (keyStart > head.length) return null;
+            final long keyLenLong = bb.getLong(offset);
+            if (keyLenLong < 0 || keyLenLong > head.length - keyStart) return null;
+            final int keyLen = (int) keyLenLong;
+            final String key = new String(head, keyStart, keyLen, StandardCharsets.UTF_8);
+            offset = keyStart + keyLen;
+            if (offset + 4 > head.length) return null;
+            final int type = bb.getInt(offset);
+            offset += 4;
+            if (type == 8) {
+                final int valStart = offset + 8;
+                if (valStart > head.length) return null;
+                final long valLenLong = bb.getLong(offset);
+                if (valLenLong < 0 || valLenLong > head.length - valStart) return null;
+                final int valLen = (int) valLenLong;
+                final String value = new String(head, valStart, valLen, StandardCharsets.UTF_8);
+                offset = valStart + valLen;
+                if ("general.architecture".equals(key)) {
+                    return value;
+                }
+            } else {
+                final int skip = ggufScalarBytes(type);
+                if (skip < 0 || skip > head.length - offset) return null;
+                offset += skip;
+            }
+        }
+        return null;
+    }
+
+    private static int ggufScalarBytes(int type) {
+        switch (type) {
+            case 0:
+            case 1:
+            case 7:
+                return 1;
+            case 2:
+            case 3:
+                return 2;
+            case 4:
+            case 5:
+            case 6:
+                return 4;
+            case 10:
+            case 11:
+            case 12:
+                return 8;
+            default:
+                return -1;
+        }
+    }
+
+    private static byte[] readGgufHeaderBytes(File file) {
+        if (file == null || !file.isFile()) return null;
+        File target = file;
+        long offset = 0L;
+        long length = file.length();
+        if (length > REGION_FILE_MAGIC.length() && length <= MAX_REGION_FILE_BYTES) {
+            final byte[] raw = readSpan(file, 0L, (int) length);
+            if (raw == null) return null;
+            final String text = new String(raw, StandardCharsets.UTF_8);
+            if (text.startsWith(REGION_FILE_MAGIC + "\n")) {
+                Long regionOffset = null;
+                Long regionLength = null;
+                String regionPath = null;
+                for (String line : text.substring(REGION_FILE_MAGIC.length() + 1).split("\n", -1)) {
+                    if (line.isEmpty()) continue;
+                    final int eq = line.indexOf('=');
+                    if (eq < 0) return null;
+                    final String k = line.substring(0, eq);
+                    final String v = line.substring(eq + 1);
+                    if ("offset".equals(k) && regionOffset == null && v.matches("[0-9]{1,18}")) {
+                        regionOffset = Long.valueOf(v);
+                    } else if ("length".equals(k) && regionLength == null && v.matches("[0-9]{1,18}")) {
+                        regionLength = Long.valueOf(v);
+                    } else if ("path".equals(k) && regionPath == null && v.startsWith("/")) {
+                        regionPath = v;
+                    } else {
+                        return null;
+                    }
+                }
+                if (regionOffset == null || regionLength == null || regionPath == null
+                        || regionLength <= 0 || regionOffset % 16L != 0L) {
+                    return null;
+                }
+                final File container = new File(regionPath);
+                if (!container.isFile() || regionOffset > container.length()
+                        || regionLength > container.length() - regionOffset) {
+                    return null;
+                }
+                target = container;
+                offset = regionOffset;
+                length = regionLength;
+            }
+        }
+        final int toRead = (int) Math.min(length, GGUF_HEADER_READ_LIMIT);
+        if (toRead <= 0) return null;
+        return readSpan(target, offset, toRead);
+    }
+
+    private static byte[] readSpan(File file, long offset, int length) {
+        try (java.io.RandomAccessFile raf = new java.io.RandomAccessFile(file, "r")) {
+            raf.seek(offset);
+            final byte[] out = new byte[length];
+            int total = 0;
+            while (total < length) {
+                final int n = raf.read(out, total, length - total);
+                if (n < 0) break;
+                total += n;
+            }
+            return total == length ? out : java.util.Arrays.copyOf(out, total);
+        } catch (IOException unreadable) {
+            return null;
+        }
     }
 
     /**

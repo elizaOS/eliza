@@ -58,6 +58,24 @@ public final class LiveSegmentPipeTest {
    check(!changedPipe.close(false,1).get(3,TimeUnit.SECONDS)&&changed.bodies.size()==1,"re-enrollment forbids further dispatch and cleanup using new authority");
    Sink refused=new Sink();ExecutorService stopped=Executors.newSingleThreadExecutor();stopped.shutdown();LiveSegmentPipe busy=new LiveSegmentPipe(new Transport(),refused,ID,null);
    check(!busy.start(stopped)&&refused.errors.equals(List.of("BUSY"))&&!busy.ready().get(1,TimeUnit.SECONDS)&&!busy.close(true,1).get(1,TimeUnit.SECONDS),"refused worker fails closed without dispatch");
+   // Graceful close after pre-ready offers still warms, flushes queued speech up to cutoff, and closes.
+   Transport preReady=new Transport();Sink preReadySink=new Sink();LiveSegmentPipe buffered=new LiveSegmentPipe(preReady,preReadySink,ID,null);
+   check(buffered.offer(frames(10),new JSONArray()),"pre-ready offer");
+   CompletableFuture<Boolean> preClosed=buffered.close(false,15);
+   check(buffered.start(worker),"pre-ready start");
+   check(preClosed.get(3,TimeUnit.SECONDS),"pre-ready graceful close acknowledged");
+   check(preReady.bodies.size()==3&&preReady.bodies.get(1).getJSONArray("frames").getJSONObject(0).getDouble("timestamp")==10,"pre-ready buffered speech flushed before close");
+   // Startup timeout cancels an in-flight warm-up and reports TRANSPORT once.
+   CountDownLatch stuckEntered=new CountDownLatch(1),stuckCancelled=new CountDownLatch(1);
+   Transport stuck=new Transport(){
+    public JSONObject post(JSONObject body)throws Exception{if(!body.optBoolean("close")){stuckEntered.countDown();await(stuckCancelled);throw new java.io.IOException("timed out");}return super.post(body);}
+    public void cancelInFlight(){stuckCancelled.countDown();}
+   };
+   Sink timedOut=new Sink();LiveSegmentPipe timeoutPipe=new LiveSegmentPipe(stuck,timedOut,ID,null);
+   check(timeoutPipe.start(worker),"timeout start");await(stuckEntered);
+   timeoutPipe.failStartupTimeout();
+   check(!timeoutPipe.ready().get(3,TimeUnit.SECONDS)&&timedOut.errors.equals(List.of("TRANSPORT")),"startup timeout reports TRANSPORT once");
+   timeoutPipe.close(true,1).get(3,TimeUnit.SECONDS);
    try{new LiveSegmentPipe(new Transport(),new Sink(),"not-a-session",null);throw new AssertionError("invalid session accepted");}catch(IllegalArgumentException expected){}
    System.out.println("PASS live segment pipe: cutoff, close, failed-tail close, cancel, bounded queue, re-enrollment, refused worker");
   }finally{worker.shutdownNow();}

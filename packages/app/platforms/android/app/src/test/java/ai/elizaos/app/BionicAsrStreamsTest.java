@@ -311,4 +311,106 @@ public final class BionicAsrStreamsTest {
         }
         assertEquals(0, BionicAsrStreams.decodePcm("").length);
     }
+
+    @Test
+    public void nonLoadingStatusProbeNeverRequestsContextOrAcquiresModel() throws Exception {
+        final AtomicReference<Boolean> ctxRequested = new AtomicReference<>(false);
+        final AtomicReference<String> probedBundle = new AtomicReference<>();
+        final BionicAsrStreams.Native nonLoading = new BionicAsrStreams.Native() {
+            @Override public int probeSupported(String bundleDir) {
+                probedBundle.set(bundleDir);
+                return bundleDir.isEmpty() ? 0 : 1;
+            }
+            @Override public int supported(long ctx) {
+                throw new AssertionError("supported(ctx) must not run when probeSupported answers");
+            }
+            @Override public long open(long ctx, int sampleRate) { return 1L; }
+            @Override public int feed(long stream, float[] pcm) { return pcm.length; }
+            @Override public String partial(long stream) { return ""; }
+            @Override public String finish(long stream) { return ""; }
+            @Override public void cancel(long stream) {}
+            @Override public void close(long stream) {}
+        };
+        final BionicAsrStreams probeStreams = new BionicAsrStreams(nonLoading, logs::add);
+        final BionicAsrStreams.Client c = new BionicAsrStreams.Client();
+        final JSONObject res = new JSONObject(probeStreams.handle(
+            c,
+            "asr_stream_supported",
+            new JSONObject().put("op", "asr_stream_supported").put("bundleDir", "/tmp/voice-bundle"),
+            () -> {
+                ctxRequested.set(true);
+                throw new AssertionError("asr_stream_supported must not create or reset residentCtx");
+            }));
+        assertTrue(res.getBoolean("ok"));
+        assertTrue(res.getBoolean("supported"));
+        assertFalse(ctxRequested.get());
+        assertEquals("/tmp/voice-bundle", probedBundle.get());
+    }
+
+    private static byte[] syntheticGguf(String architecture) {
+        final byte[] key = "general.architecture".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        final byte[] val = architecture.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        final int size = 24 + 8 + key.length + 4 + 8 + val.length;
+        final ByteBuffer bb = ByteBuffer.allocate(size).order(ByteOrder.LITTLE_ENDIAN);
+        bb.put((byte) 'G').put((byte) 'G').put((byte) 'U').put((byte) 'F');
+        bb.putInt(3); // GGUF v3
+        bb.putLong(0L); // tensor_count
+        bb.putLong(1L); // kv_count
+        bb.putLong(key.length).put(key);
+        bb.putInt(8); // GGUF_TYPE_STRING
+        bb.putLong(val.length).put(val);
+        return bb.array();
+    }
+
+    @Test
+    public void probeAsrStreamSupportedChecksBundleWithoutLoadingModel() throws Exception {
+        final java.io.File bundle = java.nio.file.Files.createTempDirectory("bionic-asr-probe-").toFile();
+        final java.io.File asrDir = new java.io.File(bundle, "asr");
+        final java.io.File model = new java.io.File(asrDir, "phonon-2-fv5.gguf");
+        final java.io.File container = new java.io.File(bundle, "base.apk");
+        try {
+            // Missing asr/ directory -> unavailable.
+            try {
+                ElizaBionicInferenceServer.probeAsrStreamSupported(bundle.getAbsolutePath(), () -> 1, () -> 0, () -> null);
+                throw new AssertionError("expected missing asr/ to throw");
+            } catch (IllegalStateException expected) {
+                assertTrue(expected.getMessage().contains("no asr/ model"));
+            }
+            assertTrue(asrDir.mkdir());
+            // Cold parakeet-tdt GGUF -> supported (1) without loading the model.
+            java.nio.file.Files.write(model.toPath(), syntheticGguf("parakeet-tdt"));
+            assertEquals(1, ElizaBionicInferenceServer.probeAsrStreamSupported(bundle.getAbsolutePath(), () -> 1, () -> 0, () -> null));
+            // Explicit ELIZA_ASR_BACKEND=qwen3 overrides to unsupported (0) when cold.
+            assertEquals(0, ElizaBionicInferenceServer.probeAsrStreamSupported(bundle.getAbsolutePath(), () -> 1, () -> 0, () -> "qwen3"));
+            // Warm (asrStreamSupported == 1) -> supported (1).
+            assertEquals(1, ElizaBionicInferenceServer.probeAsrStreamSupported(bundle.getAbsolutePath(), () -> 1, () -> 1, () -> null));
+            // Cold qwen3 GGUF -> unsupported (0) so transcribeViaBionicHost takes batch op="asr".
+            java.nio.file.Files.write(model.toPath(), syntheticGguf("qwen3"));
+            assertEquals(0, ElizaBionicInferenceServer.probeAsrStreamSupported(bundle.getAbsolutePath(), () -> 1, () -> 0, () -> null));
+            // Non-GGUF file -> unsupported (0).
+            java.nio.file.Files.write(model.toPath(), "not-a-gguf".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            assertEquals(0, ElizaBionicInferenceServer.probeAsrStreamSupported(bundle.getAbsolutePath(), () -> 1, () -> 0, () -> null));
+            // Cold parakeet-tdt via eliza-file-region v1 region file -> supported (1).
+            final byte[] parakeetHeader = syntheticGguf("parakeet-tdt");
+            final byte[] padded = new byte[32 + parakeetHeader.length];
+            System.arraycopy(parakeetHeader, 0, padded, 32, parakeetHeader.length);
+            java.nio.file.Files.write(container.toPath(), padded);
+            final String region = "eliza-file-region v1\noffset=32\nlength=" + parakeetHeader.length
+                + "\npath=" + container.getAbsolutePath() + "\n";
+            java.nio.file.Files.write(model.toPath(), region.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            assertEquals(1, ElizaBionicInferenceServer.probeAsrStreamSupported(bundle.getAbsolutePath(), () -> 1, () -> 0, () -> null));
+            // Native ASR unsupported -> unavailable.
+            try {
+                ElizaBionicInferenceServer.probeAsrStreamSupported(bundle.getAbsolutePath(), () -> 0, () -> 0, () -> null);
+                throw new AssertionError("expected native ASR unsupported to throw");
+            } catch (IllegalStateException expected) {
+                assertTrue(expected.getMessage().contains("native ASR unsupported"));
+            }
+        } finally {
+            model.delete();
+            container.delete();
+            asrDir.delete();
+            bundle.delete();
+        }
+    }
 }
