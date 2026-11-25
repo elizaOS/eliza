@@ -6,7 +6,6 @@ import type {
   ActionJournalEntry,
   ActionJournalPlugin,
   ActionJournalTarget,
-  DeferredDeletionEntry,
   DeferredDeletionKey,
   DeferredDeletionsClient,
   DismissOutcome,
