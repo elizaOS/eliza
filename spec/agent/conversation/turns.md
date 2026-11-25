@@ -260,6 +260,48 @@ pure def lawSpentCreditsCarriesTheCodeTheRefusalNamed(refused: B::FundsCode): bo
   cloudCodeOn(AccountFailed({ failure: B::InsufficientCredits }), refused) == B::fundsCodeName(refused)
 ```
 
+### A rate-limited reply stores who set the limit, and every other reply stores none
+
+A turn ended `limit_reached` by a model refusal that names who set the limit
+(the [binding](../models/binding.md)'s `provider` or `cloud`) stores it with
+the reply as `limitOrigin`, so the stored conversation tells a limit of
+Cloud's own from the model provider's. Every other reply stores none: an
+answer, another kind, and a limit the binding enforced from a refusal in
+an earlier turn. The origin is never part of the reply's text.
+
+```quint
+pure def limitOriginOn(storedKind: str, origin: B::LimitOrigin): str =
+  if (storedKind == B::failureName(B::LimitReached({ retryAt: 0 }))) B::limitOriginName(origin) else ""
+pure val storedKindValues = Set("", "limit_reached", "provider_issue", "aborted")
+pure val originValues = Set(B::NoLimitOrigin, B::ProviderSetLimit, B::CloudSetLimit)
+pure def lawOnlyARateLimitedReplyStoresAnOrigin(storedKind: str, origin: B::LimitOrigin): bool =
+  limitOriginOn(storedKind, origin) != "" implies storedKind == "limit_reached"
+pure def lawARateLimitedReplyKeepsTheOriginTheRefusalNamed(origin: B::LimitOrigin): bool =
+  limitOriginOn("limit_reached", origin) == B::limitOriginName(origin)
+```
+
+### A re-send the binding refuses for the limit its turn met keeps who set that limit
+
+When a turn's model call is rate limited and the turn re-sends it once, the
+binding may refuse the re-send while the limit is still in force. The turn
+keeps the first refusal's origin only when the binding identifies that same
+call as the source of the hold. A different hold or a new refusal with no
+origin leaves it unset. A re-send that names its own origin keeps it.
+
+```quint
+pure def originAfterResend(met: B::LimitOrigin, again: B::LimitOrigin, sameHold: bool): B::LimitOrigin =
+  if (again == B::NoLimitOrigin and sameHold) met else again
+pure val metValues = Set(B::NoLimitOrigin, B::ProviderSetLimit, B::CloudSetLimit)
+pure val againValues = Set(B::NoLimitOrigin, B::ProviderSetLimit, B::CloudSetLimit)
+pure val sameHoldValues = Set(false, true)
+pure def lawAHeldResendKeepsTheOriginTheTurnMet(met: B::LimitOrigin): bool =
+  originAfterResend(met, B::NoLimitOrigin, true) == met
+pure def lawADifferentHoldOrFreshRefusalKeepsItsOwnOrigin(met: B::LimitOrigin, again: B::LimitOrigin): bool =
+  originAfterResend(met, again, false) == again
+pure def lawANamedResendKeepsItsOwnOrigin(met: B::LimitOrigin, again: B::LimitOrigin, sameHold: bool): bool =
+  again != B::NoLimitOrigin implies originAfterResend(met, again, sameHold) == again
+```
+
 ### A turn that failed before any reply, for no cause the binding named, is stored as a provider issue
 
 A turn that fails without being stopped stores what it wrote with the
