@@ -6,11 +6,7 @@ import { chooseManagedReadGrant, mailReaderOf, type ManagedReadGrant } from "../
 import {
   managedGmailClient, type ManagedGmailClient, type ManagedGmailTransport, AttachmentRefused, MailProtocolFailed, MailUnreachable, type MailFailure, gmailGrantTier, gmailReadable, type GmailGrantTier,
 } from "@elizaos/plugin-inbox-client"
-import { brokerPrivate, brokerTransport } from "./broker.vibe"
-
-function refusalCode(body: unknown): string {
-  return typeof body === "object" && body !== null && "error" in body && typeof body.error === "string" ? body.error : ""
-}
+import { brokerPrivate, brokerTransport, refusalCode } from "./broker.vibe"
 
 function cloudLinkOf(runtime: IAgentRuntime): CloudLinkService | undefined {
   const found = runtime.getService<CloudLinkService>(cloudServiceType)

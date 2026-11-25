@@ -1,19 +1,23 @@
-// spec/os/signIn/cloudRequests.md, "Story: Let my agent read my mail without holding a mail credential"; spec/os/signIn/cloudRequests.md, "The agent reaches the broker only by a bodiless GET on the loopback host, without an origin, with the current launch's bearer"; spec/os/signIn/cloudRequests.md, "The broker forwards only the owner's Gmail account list and search, with the lease, while the launch's owner holds it"; spec/os/signIn/cloudRequests.md, "The agent gets the cloud's status and body, or a refusal naming why nothing was read, and never the credential that read it"
+// spec/os/signIn/cloudRequests.md, "Story: Let my agent read my mail without holding a mail credential"; spec/os/agentService/config.md, "Only a cloud launch is handed the mail broker, by its address and a bearer for that launch, never a credential"; spec/os/signIn/cloudRequests.md, "The agent reaches the broker only by a bodiless GET on the loopback host, without an origin, with the current launch's bearer"; spec/os/signIn/cloudRequests.md, "The broker forwards only the owner's Gmail account list and search, with the lease, while the launch's owner holds it"; spec/os/signIn/cloudRequests.md, "The agent gets the cloud's status and body, or a refusal naming why nothing was read, and never the credential that read it"
 package ai.eliza.plugins.signin;
 
 import ai.eliza.os.agent.AgentCredentials;
+import ai.eliza.os.agent.BrokerLaunches;
 import ai.eliza.os.agent.GoogleBroker;
 import ai.eliza.plugins.signin.CredentialPolicy.Account;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.net.ConnectException;
 import java.net.InetAddress;
 import java.net.Socket;
+import java.net.SocketException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 public final class GoogleBrokerJourney {
@@ -61,8 +65,27 @@ public final class GoogleBrokerJourney {
   private static long closedAfterMs(Socket socket) throws IOException {
     long began = System.nanoTime();
     socket.setSoTimeout(10_000);
-    if (socket.getInputStream().read() >= 0) throw new IllegalStateException("The broker answered a connection it should have closed");
+    try {
+      if (socket.getInputStream().read() >= 0) throw new IllegalStateException("The broker answered a connection it should have closed");
+    } catch (SocketException reset) {
+      if (socket.isClosed()) throw reset;
+    }
     return (System.nanoTime() - began) / 1_000_000;
+  }
+
+  private static List<Socket> connections(GoogleBroker.Endpoint endpoint, int count) throws IOException {
+    List<Socket> held = new ArrayList<>();
+    for (int at = 0; at < count; at++) held.add(new Socket(InetAddress.getByAddress(new byte[] {127, 0, 0, 1}), endpoint.port()));
+    return held;
+  }
+
+  private static String listening(GoogleBroker.Endpoint endpoint) throws IOException {
+    try (Socket socket = new Socket(InetAddress.getByAddress(new byte[] {127, 0, 0, 1}), endpoint.port())) { return "listening"; }
+    catch (ConnectException refused) { return "closed"; }
+  }
+
+  private static GoogleBroker.Endpoint opened(BrokerLaunches.Launch launch) {
+    return launch.open(true, OWNER, failed -> { throw new IllegalStateException(failed); });
   }
 
   public static void main(String[] args) throws Exception {
@@ -73,7 +96,7 @@ public final class GoogleBrokerJourney {
     List<String> forwarded = new CopyOnWriteArrayList<>();
     List<String> reported = new CopyOnWriteArrayList<>();
     List<String> seen = new ArrayList<>();
-    try (GoogleBrokerHost broker = new GoogleBrokerHost(new GoogleBrokerHost.MailReads() {
+    GoogleBrokerHost.MailReads reads = new GoogleBrokerHost.MailReads() {
       @Override public GoogleBrokerHost.Standing standing() {
         Account account = signedIn.get();
         return new GoogleBrokerHost.Standing(account, account == null ? 0 : OWNER_LEASE.version(), authority.get());
@@ -84,7 +107,8 @@ public final class GoogleBrokerJourney {
         forwarded.add(target + (OWNER_LEASE.equals(expected) ? " as owner" : " as " + expected));
         return answer.get();
       }
-    }, failure -> reported.add(failure.getMessage()))) {
+    };
+    try (GoogleBrokerHost broker = new GoogleBrokerHost(reads, failure -> reported.add(failure.getMessage()))) {
       GoogleBroker.Endpoint first = broker.open(OWNER);
       answer.set(new CloudRequests.Answered(200, null, "application/json", null, "{\"accounts\":[]}".getBytes(StandardCharsets.UTF_8), null));
       seen.add(take("accounts", read(first, ACCOUNTS)));
@@ -96,6 +120,7 @@ public final class GoogleBrokerJourney {
       seen.add(take("post", ask(first, "POST", ACCOUNTS, first.bearer(), "", "{}")));
       seen.add(take("withBody", ask(first, "GET", ACCOUNTS, first.bearer(), "", "{}")));
       seen.add(take("withOrigin", ask(first, "GET", ACCOUNTS, first.bearer(), "Origin: https://evil.test\r\n", null)));
+      seen.add(take("headTooLarge", ask(first, "GET", ACCOUNTS, first.bearer(), "X-Padding: " + "p".repeat(8_192) + "\r\n", null)));
       seen.add(take("withoutBearer", ask(first, "GET", ACCOUNTS, null, "", null)));
       seen.add(take("wrongBearer", ask(first, "GET", ACCOUNTS, "x".repeat(64), "", null)));
       GoogleBroker.Endpoint second = broker.open(OWNER);
@@ -129,17 +154,27 @@ public final class GoogleBrokerJourney {
         "{\"error\":\"authentication_required\",\"reason\":\"credential_revoked\"}".getBytes(StandardCharsets.UTF_8), null));
       seen.add(take("cloudRefusal", read(second, ACCOUNTS)));
       answer.set(new CloudRequests.Answered(200, null, "application/json", null, "{\"accounts\":[]}".getBytes(StandardCharsets.UTF_8), null));
-      GoogleBroker.Endpoint cloudLaunch = GoogleBroker.forLaunch(true, OWNER, broker, failed -> { throw new IllegalStateException(failed); });
-      seen.add(take("handedToOwnKeyLaunch", GoogleBroker.forLaunch(false, OWNER, broker, failed -> { throw new IllegalStateException(failed); })));
+      List<String> unclosed = new CopyOnWriteArrayList<>();
+      AtomicInteger relaunches = new AtomicInteger();
+      BrokerLaunches launches = new BrokerLaunches(failure -> unclosed.add(failure.getMessage()));
+      launches.install(broker);
+      BrokerLaunches.Launch service = launches.launch(relaunches::incrementAndGet);
+      GoogleBroker.Endpoint cloudLaunch = opened(service);
+      seen.add(take("handedToOwnKeyLaunch", service.open(false, OWNER, failed -> { throw new IllegalStateException(failed); })));
       seen.add(take("cloudBearerAfterOwnKeyLaunch", read(cloudLaunch, ACCOUNTS)));
-      GoogleBroker.Endpoint exited = broker.open(OWNER);
-      broker.revoke(exited);
+      GoogleBroker.Endpoint unspawned = opened(service);
+      service.revoke();
+      seen.add(take("spawnFailedBearer", read(unspawned, ACCOUNTS)));
+      GoogleBroker.Endpoint exited = opened(service);
+      service.revoke();
       seen.add(take("exitedLaunchBearer", read(exited, ACCOUNTS)));
-      GoogleBroker.Endpoint earlier = broker.open(OWNER), relaunched = broker.open(OWNER);
-      broker.revoke(earlier);
-      seen.add(take("relaunchAfterEarlierExit", read(relaunched, ACCOUNTS)));
-      List<Socket> idle = new ArrayList<>();
-      for (int held = 0; held < 8; held++) idle.add(new Socket(InetAddress.getByAddress(new byte[] {127, 0, 0, 1}), relaunched.port()));
+      BrokerLaunches.Launch ending = launches.launch(relaunches::incrementAndGet);
+      opened(ending);
+      GoogleBroker.Endpoint relaunched = opened(service);
+      ending.end();
+      seen.add(take("relaunchAfterEarlierServiceEnded", read(relaunched, ACCOUNTS)));
+      seen.add(take("endedServiceOpens", opened(ending)));
+      List<Socket> idle = connections(relaunched, 8);
       try (Socket beyond = new Socket(InetAddress.getByAddress(new byte[] {127, 0, 0, 1}), relaunched.port())) {
         seen.add(take("beyondCapacityClosedAtOnce", closedAfterMs(beyond) < 2_000));
       }
@@ -148,6 +183,32 @@ public final class GoogleBrokerJourney {
       for (Socket held : idle) held.close();
       String afterIdle = readOnceAdmitted(relaunched, ACCOUNTS);
       seen.add(take("readAfterIdle", afterIdle));
+      try (GoogleBrokerHost replacement = new GoogleBrokerHost(reads, failure -> reported.add(failure.getMessage()));
+           GoogleBrokerHost third = new GoogleBrokerHost(reads, failure -> reported.add(failure.getMessage()))) {
+        launches.install(replacement);
+        seen.add(take("relaunchAskedOfTheHolder", relaunches.get() + " " + service.replaced()));
+        seen.add(take("replacedServesItsLaunch", read(relaunched, ACCOUNTS)));
+        service.revoke();
+        seen.add(take("replacedClosedOnceRevoked", listening(relaunched)));
+        String reopened;
+        try { reopened = String.valueOf(broker.open(OWNER)); }
+        catch (GoogleBroker.Closed refused) { reopened = refused.getMessage(); }
+        seen.add(take("closedBrokerOpens", reopened));
+        List<String> unavailable = new ArrayList<>();
+        seen.add(take("closedBrokerHandedToALaunch", GoogleBroker.forLaunch(true, OWNER, broker, failed -> unavailable.add(failed.getClass().getSimpleName())) + " " + unavailable));
+        GoogleBroker.Endpoint next = opened(service);
+        seen.add(take("nextLaunchReadsThroughReplacement", read(next, ACCOUNTS)));
+        service.revoke();
+        List<Socket> waiting = connections(next, 8);
+        Thread.sleep(500);
+        launches.install(third);
+        long closing = System.nanoTime();
+        for (Socket queued : waiting.subList(4, 8)) closedAfterMs(queued);
+        seen.add(take("queuedClosedWithAnUnheldReplacedBroker", (System.nanoTime() - closing) / 1_000_000 < 2_000 && "closed".equals(listening(next))));
+        for (Socket held : waiting) held.close();
+        seen.add(take("relaunchesAsked", relaunches.get()));
+        seen.add(take("unclosed", String.join(",", unclosed)));
+      }
       seen.add(take("forwarded", String.join(",", forwarded)));
     }
     System.out.println("{" + String.join(",", seen) + "}");

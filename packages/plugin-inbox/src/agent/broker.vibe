@@ -1,11 +1,23 @@
-// spec/inbox/managedRead.md, "The agent reads managed mail through the device's broker when the host names one, and otherwise through its cloud link"; spec/os/signIn/cloudRequests.md, "The agent gets the cloud's status and body, or a refusal naming why nothing was read, and never the credential that read it"
+// spec/inbox/managedRead.md, "The agent reads managed mail through the device's broker when the host names one, and otherwise through its cloud link"; spec/inbox/managedRead.md, "The agent tells a broker refusal as the cloud refusal of the same cause"; spec/os/signIn/cloudRequests.md, "The agent gets the cloud's status and body, or a refusal naming why nothing was read, and never the credential that read it"
 import { FetchHttpClient, HttpClient, HttpClientRequest, type HttpClientResponse } from "effect/http"
 import { AttachmentRefused, MailProtocolFailed, MailUnreachable, type ManagedGmailTransport } from "@elizaos/plugin-inbox-client"
+import { brokerFailureOf, type BrokerRefusalReason } from "../../gen/inbox__managedRead.effect.vibe"
 
 const brokerPath = "/__owner-gmail"
 const brokerReplyLimit = 8_388_608
-const brokerTimeout = "60 seconds"
+const brokerTimeout = "120 seconds"
 const decodeJson = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Unknown))
+
+const brokerRefusals: ReadonlyMap<string, BrokerRefusalReason> = new Map<string, BrokerRefusalReason>([
+  ["not-private", "NotPrivateRefusal"],
+  ["request-too-large", "RequestTooLargeRefusal"],
+  ["not-brokered", "NotBrokeredRefusal"],
+  ["not-authorized", "NotAuthorizedRefusal"],
+  ["sign-in-required", "SignInRequiredRefusal"],
+  ["mail-lease-upgrade-required", "LeaseUpgradeRequiredRefusal"],
+  ["reply-too-large", "ReplyTooLargeRefusal"],
+  ["cloud-unreachable", "CloudUnreachableRefusal"],
+])
 
 export function brokerPrivate(endpoint: string, bearer: string): boolean {
   const url = URL.parse(endpoint)
@@ -13,10 +25,21 @@ export function brokerPrivate(endpoint: string, bearer: string): boolean {
     && url.search === "" && url.hash === "" && url.username === "" && url.password === "" && /^[A-Za-z0-9_-]{64}$/.test(bearer)
 }
 
-function reasonOf(body: unknown): string {
-  if (typeof body !== "object" || body === null) return ""
-  if ("error" in body && typeof body.error === "string") return body.error
-  return "reason" in body && typeof body.reason === "string" ? body.reason : ""
+export function refusalCode(body: unknown): string {
+  return typeof body === "object" && body !== null && "error" in body && typeof body.error === "string" ? body.error : ""
+}
+
+function brokerRefusalOf(status: number, body: unknown): BrokerRefusalReason | undefined {
+  if (status < 400 || typeof body !== "object" || body === null || "error" in body || !("reason" in body) || typeof body.reason !== "string") return undefined
+  return brokerRefusals.get(body.reason)
+}
+
+function brokerFailure(reason: BrokerRefusalReason): MailProtocolFailed | MailUnreachable {
+  const failure = brokerFailureOf(reason)
+  switch (failure.tag) {
+    case "BrokerConnectionLost": return new MailUnreachable({ cause: "the device could not reach the cloud" })
+    case "BrokerStatus": return new MailProtocolFailed({ code: "http", status: failure.status, reason: "" })
+  }
 }
 
 effect function boundedText(response: HttpClientResponse.HttpClientResponse): string!(MailProtocolFailed | MailUnreachable) {
@@ -27,7 +50,7 @@ effect function boundedText(response: HttpClientResponse.HttpClientResponse): st
     if (size > brokerReplyLimit) break
     chunks.push(chunk)
   }
-  if (size > brokerReplyLimit) throw new MailProtocolFailed({ code: "invalid-response", status: response.status, reason: "reply-too-large" })
+  if (size > brokerReplyLimit) throw brokerFailure("ReplyTooLargeRefusal")
   const bytes = new Uint8Array(size)
   chunks.reduce((offset, chunk) => { bytes.set(chunk, offset); return offset + chunk.length }, 0)
   return new TextDecoder().decode(bytes)
@@ -44,8 +67,9 @@ export function brokerTransport(endpoint: string, bearer: string, http: Layer.La
           catch effect (cause) => { throw new MailUnreachable({ cause }) }
         const decoded = decodeJson(try boundedText(response))
         const body = decoded._tag === "Some" ? decoded.value : undefined
-        if (response.status === 503 && reasonOf(body) === "cloud-unreachable") throw new MailUnreachable({ cause: "the device could not reach the cloud" })
-        if (response.status < 200 || response.status >= 300) throw new MailProtocolFailed({ code: "http", status: response.status, reason: reasonOf(body) })
+        const refused = brokerRefusalOf(response.status, body)
+        if (refused !== undefined) throw brokerFailure(refused)
+        if (response.status < 200 || response.status >= 300) throw new MailProtocolFailed({ code: "http", status: response.status, reason: refusalCode(body) })
         if (body === undefined) throw new MailProtocolFailed({ code: "invalid-response", status: response.status, reason: "" })
         return body
       }

@@ -36,6 +36,7 @@ const story = {
   notices: 'spec/inbox/backgroundNotices.md, "Story: Open the Inbox or ask about the exact notification I tapped"',
   managed: 'spec/inbox/managedRead.md, "Story: Read my managed inbox fresh, and only for me"',
   broker: 'spec/inbox/managedRead.md, "The agent reads managed mail through the device\'s broker when the host names one, and otherwise through its cloud link"',
+  brokerRefusals: 'spec/inbox/managedRead.md, "The agent tells a broker refusal as the cloud refusal of the same cause"',
   handoff: 'spec/inbox/handoff.md, "Story: Put the agent\'s words into an email draft without sending it"',
   failures: 'spec/inbox/failures.md, "Story: Know what happened when Gmail fails"',
   progress: 'spec/agent/conversation/planning.md, "A tool\'s progress names its app only when one labelled app applies, and never its arguments or results"',
@@ -504,7 +505,7 @@ it.effect(`Read the managed inbox fresh for the current account, and hand a new 
   assert.deepEqual(inboxPlugin.actions?.map((action) => activityLabel(runtime, action)), ["Using Inbox", "Using Inbox"])
 })
 
-it.effect(`Read managed mail through the device's broker when the host names one, and through the cloud link otherwise (${story.managed}; ${story.broker})`, effect () => {
+it.effect(`Read managed mail through the device's broker when the host names one, and through the cloud link otherwise (${story.managed}; ${story.broker}; ${story.brokerRefusals})`, effect () => {
   const cloud = fakeCloud()
   const bearer = "t".repeat(64)
   const endpoint = "http://127.0.0.1:40123/__owner-gmail"
@@ -552,11 +553,18 @@ it.effect(`Read managed mail through the device's broker when the host names one
     const answer = try managedInboxRead(client, { limit: 5 })
     return answer.kind === "failed" ? answer.failure : answer.kind
   }
-  assert.strictEqual(try failureOf(503, { reason: "cloud-unreachable" }), "offline")
+  const told: Record<string, string> = {}
+  for (const [status, reason] of [[403, "not-private"], [431, "request-too-large"], [404, "not-brokered"], [401, "not-authorized"], [403, "sign-in-required"],
+    [403, "mail-lease-upgrade-required"], [502, "reply-too-large"], [503, "cloud-unreachable"]] as const) {
+    told[reason] = try failureOf(status, { reason })
+  }
+  assert.deepEqual(told, {
+    "not-private": "rejected", "request-too-large": "rejected", "not-brokered": "rejected", "not-authorized": "unavailable", "sign-in-required": "unavailable",
+    "mail-lease-upgrade-required": "revoked", "reply-too-large": "unavailable", "cloud-unreachable": "offline",
+  }, `${story.brokerRefusals}: each broker refusal is told as the cloud refusal of the same cause`)
+  assert.strictEqual(try failureOf(403, { error: "access_denied", reason: "device_key_not_allowed" }), "revoked", `${story.brokerRefusals}: the cloud's own refusal keeps its code`)
+  assert.strictEqual(try failureOf(409, { error: "google_reauth_required", reason: "sign-in-required" }), "revoked", `${story.brokerRefusals}: a cloud code is never read as a broker reason`)
   assert.strictEqual(try failureOf(503, { error: "temporarily_unavailable" }), "unavailable")
-  assert.strictEqual(try failureOf(403, { reason: "sign-in-required" }), "revoked")
-  assert.strictEqual(try failureOf(403, { reason: "mail-lease-upgrade-required" }), "revoked")
-  assert.strictEqual(try failureOf(502, { reason: "reply-too-large" }), "unavailable")
   assert.strictEqual(try failureOf(200, "not json"), "unavailable")
   assert.strictEqual(try failureOf(200, JSON.stringify({ padding: "x".repeat(8_388_608) })), "unavailable")
   assert.isFalse(fake.sent.some((sent) => sent.url.includes(bearer)), "the bearer never travels in a URL")

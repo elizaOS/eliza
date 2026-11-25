@@ -326,7 +326,9 @@ A request with another method, a body, a `Host` other than `127.0.0.1` with
 the broker's port, or any `Origin` header is not private; one without the
 bearer handed to the current launch, compared in constant time, is not
 authorized. Each is refused, as `403 not-private` or `401 not-authorized`,
-before anything is forwarded. Every launch gets a new bearer, and the
+before anything is forwarded. A request head over 8 KiB is refused `431
+request-too-large` before any of it is checked, so a request too long to
+read is never taken for a foreign one. Every launch gets a new bearer, and the
 previous launch's bearer is refused from then on; so is every bearer once a
 launch is handed none, and a launch's own once its agent exits or the agent
 service stops. A request is checked against the launch that is current
@@ -415,8 +417,9 @@ the status, within the inline limit above; a larger one is refused whole as
 not-brokered`; one refused for want of a sign-in for the launch's owner is
 `403 sign-in-required`, and for want of the lease `403
 mail-lease-upgrade-required`; one the device could not send, including one
-its credential store failed to plan, or that got no answer is `503
-cloud-unreachable`, and a failure on the device is also reported in the
+its credential store failed to plan, or that got no answer within 45
+seconds of being forwarded, is `503 cloud-unreachable`, and the broker
+abandons that call. A failure on the device is also reported in the
 app's log. A refusal carries only that reason. No key, lease or session
 reaches the agent.
 

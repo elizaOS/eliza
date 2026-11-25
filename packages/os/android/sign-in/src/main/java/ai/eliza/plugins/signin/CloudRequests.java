@@ -27,6 +27,10 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 
 public final class CloudRequests {
   public record MailAuthority(CredentialPolicy.Account account, int version) {}
@@ -60,7 +64,13 @@ public final class CloudRequests {
     }
   }
 
+  private static final long MAIL_READ_DEADLINE_MS = 45_000;
   private static final int TIMEOUT_MS = 30_000;
+  private static final ScheduledExecutorService DEADLINES = Executors.newSingleThreadScheduledExecutor(task -> {
+    Thread thread = new Thread(task, "ElizaMailReadDeadline");
+    thread.setDaemon(true);
+    return thread;
+  });
   private static final int UNAUTHORIZED = 401;
 
   private static final class Call {
@@ -83,7 +93,11 @@ public final class CloudRequests {
 
   public boolean cancel(String name) {
     Call call = name == null ? null : calls.get(name);
-    if (call == null || call.cancelled) return false;
+    return call != null && stop(call);
+  }
+
+  private static boolean stop(Call call) {
+    if (call.cancelled) return false;
     call.cancelled = true;
     HttpURLConnection connection = call.connection;
     if (connection != null) connection.disconnect();
@@ -107,7 +121,14 @@ public final class CloudRequests {
 
   public Outcome readMail(String apiOrigin, Custody custody, MailAuthority expected, String target, Map<String, String> headers) {
     if (expected == null) return new Failed(Failure.SIGN_IN_REQUIRED);
-    return sent(new Call(), apiOrigin, custody, "GET", target, headers, null, expected);
+    Call call = new Call();
+    ScheduledFuture<?> deadline = DEADLINES.schedule(() -> stop(call), MAIL_READ_DEADLINE_MS, TimeUnit.MILLISECONDS);
+    try {
+      Outcome outcome = sent(call, apiOrigin, custody, "GET", target, headers, null, expected);
+      return call.cancelled ? new Failed(Failure.NETWORK) : outcome;
+    } finally {
+      deadline.cancel(false);
+    }
   }
 
   private Outcome sent(Call call, String apiOrigin, Custody custody, String method, String target, Map<String, String> headers, byte[] body, MailAuthority expected) {

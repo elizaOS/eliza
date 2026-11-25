@@ -246,7 +246,14 @@ registered or could not open, is handed none, and the agent then reads mail
 as it would without a device; no earlier launch's bearer is admitted from
 then on. The broker opens for a launch only once the live service goes on
 to spawn it, and that launch's bearer is refused if the spawn fails, once
-its agent exits, and when the service stops. The bearer admits only the
+its agent exits, and when the service stops. A launch is named only a
+broker that the consumer has registered and that has not been closed: a
+closed broker opens for no launch. When the consumer registers another
+broker, one that no launch holds is closed at once; one a running launch
+holds keeps serving that launch, the agent is restarted so that its next
+launch is handed the new broker, and the old broker is closed once its
+launch's bearer is refused, so the agent never names a port that its
+broker no longer serves. The bearer admits only the
 broker's reads for that account; the device key, the account session and
 the lease stay in the app. Source: the old line's
 `native-managed-google-host.ts`, which published the broker the same way.

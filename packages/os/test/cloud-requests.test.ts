@@ -99,7 +99,7 @@ describe("Reach my account's cloud services without holding my key", () => {
 });
 
 describe("Let my agent read my mail without holding a mail credential", () => {
-  it("forwards only the launch owner's Gmail account list and search from a private, current bearer, and says why anything else read nothing (spec/os/signIn/cloudRequests.md, \"The agent reaches the broker only by a bodiless GET on the loopback host, without an origin, with the current launch's bearer\"; spec/os/signIn/cloudRequests.md, \"The broker forwards only the owner's Gmail account list and search, with the lease, while the launch's owner holds it\"; spec/os/signIn/cloudRequests.md, \"The agent gets the cloud's status and body, or a refusal naming why nothing was read, and never the credential that read it\")", () => {
+  it("forwards only the launch owner's Gmail account list and search from a private, current bearer, and says why anything else read nothing (spec/os/signIn/cloudRequests.md, \"The agent reaches the broker only by a bodiless GET on the loopback host, without an origin, with the current launch's bearer\"; spec/os/signIn/cloudRequests.md, \"The broker forwards only the owner's Gmail account list and search, with the lease, while the launch's owner holds it\"; spec/os/signIn/cloudRequests.md, \"The agent gets the cloud's status and body, or a refusal naming why nothing was read, and never the credential that read it\"; spec/os/agentService/config.md, \"Only a cloud launch is handed the mail broker, by its address and a bearer for that launch, never a credential\")", () => {
     const main = "ai.eliza.plugins.signin.GoogleBrokerJourney";
     const seen = JSON.parse(execFileSync(javaTool("java"), ["-cp", compileAdapter(main), main], { encoding: "utf8", timeout: 120_000 })) as Record<string, string>;
     const notBrokered = '404 {"reason":"not-brokered"}';
@@ -116,6 +116,7 @@ describe("Let my agent read my mail without holding a mail credential", () => {
       post: notPrivate,
       withBody: notPrivate,
       withOrigin: notPrivate,
+      headTooLarge: '431 {"reason":"request-too-large"}',
       withoutBearer: notAuthorized,
       wrongBearer: notAuthorized,
       samePortForNextLaunch: "true",
@@ -134,15 +135,26 @@ describe("Let my agent read my mail without holding a mail credential", () => {
       cloudRefusal: '401 {"error":"authentication_required","reason":"credential_revoked"}',
       handedToOwnKeyLaunch: "null",
       cloudBearerAfterOwnKeyLaunch: notAuthorized,
+      spawnFailedBearer: notAuthorized,
       exitedLaunchBearer: notAuthorized,
-      relaunchAfterEarlierExit: '200 {"accounts":[]}',
+      relaunchAfterEarlierServiceEnded: '200 {"accounts":[]}',
+      endedServiceOpens: "null",
       beyondCapacityClosedAtOnce: "true",
       idleClosedAtDeadline: "true",
       readAfterIdle: '200 {"accounts":[]}',
+      relaunchAskedOfTheHolder: "1 true",
+      replacedServesItsLaunch: '200 {"accounts":[]}',
+      replacedClosedOnceRevoked: "closed",
+      closedBrokerOpens: "The mail broker was closed and opens for no launch",
+      closedBrokerHandedToALaunch: "null [Closed]",
+      nextLaunchReadsThroughReplacement: '200 {"accounts":[]}',
+      queuedClosedWithAnUnheldReplacedBroker: "true",
+      relaunchesAsked: "1",
+      unclosed: "",
       forwarded: [
         "/api/v1/eliza/google/accounts?side=owner as owner",
         "/api/v1/eliza/google/gmail/search?side=owner&grantId=g1&query=in%3Ainbox&maxResults=25 as owner",
-        ...Array.from({ length: 8 }, () => "/api/v1/eliza/google/accounts?side=owner as owner"),
+        ...Array.from({ length: 10 }, () => "/api/v1/eliza/google/accounts?side=owner as owner"),
       ].join(","),
     });
   });

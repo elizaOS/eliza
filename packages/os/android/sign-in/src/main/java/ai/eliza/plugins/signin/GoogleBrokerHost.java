@@ -60,6 +60,17 @@ public final class GoogleBrokerHost implements GoogleBroker {
 
   private record Listening(ServerSocket server, ExecutorService workers, Semaphore admitted) {}
 
+  private record Admitted(GoogleBrokerHost host, Socket socket, Semaphore places) implements Runnable {
+    @Override public void run() {
+      try { host.answer(socket); }
+      finally { places.release(); }
+    }
+  }
+
+  private static final class HeadTooLarge extends IOException {
+    HeadTooLarge() { super("The request head is over the broker's limit"); }
+  }
+
   private static final int WORKERS = 4, WAITING = 4, BACKLOG = 8, DEADLINE_MS = 5_000, ACCEPT_RETRY_MS = 250, HEAD_LIMIT = 8192, DRAIN_LIMIT = 65_536;
   private static final byte[] LOOPBACK = {127, 0, 0, 1};
   private static final SecureRandom RANDOM = new SecureRandom();
@@ -67,6 +78,7 @@ public final class GoogleBrokerHost implements GoogleBroker {
   private final MailReads reads;
   private final Consumer<RuntimeException> failed;
   private Listening listening;
+  private boolean closed;
   private volatile Launch launch;
 
   public GoogleBrokerHost(MailReads reads, Consumer<RuntimeException> failed) {
@@ -89,6 +101,7 @@ public final class GoogleBrokerHost implements GoogleBroker {
   }
 
   @Override public synchronized Endpoint open(AgentCredentials.Account owner) throws IOException {
+    if (closed) throw new Closed();
     if (listening == null) {
       ServerSocket bound = new ServerSocket(0, BACKLOG, InetAddress.getByAddress(LOOPBACK));
       listening = new Listening(bound, Executors.newFixedThreadPool(WORKERS, task -> {
@@ -115,11 +128,12 @@ public final class GoogleBrokerHost implements GoogleBroker {
   @Override public synchronized void revoke() { launch = null; }
 
   @Override public synchronized void close() throws IOException {
+    closed = true;
     launch = null;
     if (listening == null) return;
     Listening closing = listening;
     listening = null;
-    closing.workers().shutdownNow();
+    for (Runnable queued : closing.workers().shutdownNow()) if (queued instanceof Admitted admitted) quietly(admitted.socket());
     closing.server().close();
   }
 
@@ -145,10 +159,7 @@ public final class GoogleBrokerHost implements GoogleBroker {
         continue;
       }
       try {
-        serving.workers().execute(() -> {
-          try { answer(socket); }
-          finally { serving.admitted().release(); }
-        });
+        serving.workers().execute(new Admitted(this, socket, serving.admitted()));
       } catch (RejectedExecutionException closed) {
         serving.admitted().release();
         quietly(socket);
@@ -159,7 +170,9 @@ public final class GoogleBrokerHost implements GoogleBroker {
   private void answer(Socket socket) {
     try (socket) {
       InputStream in = socket.getInputStream();
-      Exchange reply = exchange(head(socket, in, deadline()), socket.getLocalPort());
+      Exchange reply;
+      try { reply = exchange(head(socket, in, deadline()), socket.getLocalPort()); }
+      catch (HeadTooLarge large) { reply = refusal(431, "request-too-large"); }
       OutputStream out = socket.getOutputStream();
       out.write(("HTTP/1.1 " + reply.status() + " " + (reply.status() < 300 ? "OK" : "Refused") + "\r\nContent-Type: application/json\r\n"
         + "Cache-Control: no-store\r\nContent-Length: " + reply.body().length + "\r\nConnection: close\r\n\r\n").getBytes(StandardCharsets.US_ASCII));
@@ -262,7 +275,7 @@ public final class GoogleBrokerHost implements GoogleBroker {
         return text.substring(0, text.length() - 4);
       }
     }
-    return null;
+    throw new HeadTooLarge();
   }
 
   private static void drain(Socket socket, InputStream in, long deadline) throws IOException {

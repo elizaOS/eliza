@@ -12,6 +12,10 @@ public interface GoogleBroker extends AutoCloseable {
   String BEARER_VARIABLE = "ELIZA_MANAGED_GMAIL_READ_BROKER_TOKEN";
   Pattern BEARER = Pattern.compile("[A-Za-z0-9_-]{64}");
 
+  final class Closed extends IOException {
+    public Closed() { super("The mail broker was closed and opens for no launch"); }
+  }
+
   record Endpoint(int port, String bearer) {
     public Endpoint {
       if (port < 1024 || port > 65535 || bearer == null || !BEARER.matcher(bearer).matches())
