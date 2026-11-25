@@ -365,17 +365,20 @@ const countedToTheHour = /^.+ (?:to|of|till|til|before) \S+$/u
 const countedPastTheHour = /^(?:.+ (?:past|after) \S+|half \S+)$/u
 const digitsAlone = /^(?:\d{4}|\d{1,2}\.\d{2}|\d{1,2} \d{2})$/u
 const dottedDigits = /^\d{1,2}\.\d{2}$/u
-const readAsAYear = /^(?:19|20|21)\d{2}$/u
+const twoNumbers = /^\d{1,2} \d{2}$/u
+const leadingZero = /^0\d{3}$/u
+const hourAndH = /^\d{2} h\d{2}$/u
 const clockLead = /^(?:at|from|to|till|til|until|by|before|after|between|and|around|about|through|thru)$/u
 const countLead = /^(?:at|to|till|til|until|by|before|after|around|about)$/u
 const countedToLead = /^(?:at|by|before|after|around|about)$/u
 const countedPastLead = /^(?:at|by|before|after|around|about|from|between)$/u
+const hourAndHLead = /^(?:at|by|before|from|between)$/u
 const rangeOpens = /^(?:from|between)$/u
 const hourAlone = /^(?:[01]?\d|2[0-4]|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)$/u
 const halfOfAClock = /^(?:\d{1,2}(?::\d{2})?|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)$/u
 const clockByItself = /^(?:noon|midnight|midday|\d{1,2}:\d{2})$/u
 const numberWord = /\p{N}|^(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|million|half|quarter|dozen|noon|midnight|midday|oclock|amount)$/u
-const amountOrDottedDate = /[$€£¥₹]\s?\d[\d,]*(?:\.\d+)?|\d[\d,]*(?:\.\d+)?\s?[$€£¥₹]|(?<![\d.])\d{1,2}\.\d{1,2}\.(?!\d)/gu
+const amountOrDottedDate = /[\p{S}#%@'’"′″]+\s?\d[\d,]*(?:\.\d+)?|\d[\d,]*(?:\.\d+)?\s?[\p{S}#%@'’"′″]+|(?<![\d.])\d{1,2}\.\d{1,2}\.(?!\d)/gu
 const furtherBreak = /[;()[\]{}]+|,(?!\s*\d{4}\b)|(?<!\d)\/|\/(?!\d)/gu
 
 const dayWord = /^(?:today|tonight|tomorrow|date|(?:mon|tues|wednes|thurs|fri|satur|sun)day)$/u
@@ -420,23 +423,25 @@ function dayFollows({ list, breaks }: ClockWords, at: number): boolean {
 }
 
 function digitsEndAClock(read: ClockWords, at: number): boolean {
-  if (clauseEndsAfter(read, at)) return true
-  return !read.breaks.has(at) && (/^[ap]m$/u.test(read.list[at] ?? "") || dayFollows(read, at))
+  return clauseEndsAfter(read, at) || (!read.breaks.has(at) && /^[ap]m$/u.test(read.list[at] ?? ""))
 }
 
-function countedEndAClock(read: ClockWords, at: number): boolean {
+function clockEndsBefore(read: ClockWords, at: number): boolean {
   const word = read.list[at] ?? ""
   if (clauseEndsAfter(read, at) || read.breaks.has(at)) return true
   if (/^(?:[ap]m|oclock)$/u.test(word) || dayWord.test(word) || dayFollows(read, at)) return true
-  if (word === "in" && read.list[at + 1] === "the" && dayPart.test(read.list[at + 2] ?? "")) return true
-  return joinWord.test(word) && !read.breaks.has(at + 1) && (clockByItself.test(read.list[at + 1] ?? "") || hourAlone.test(read.list[at + 1] ?? ""))
+  return word === "in" && read.list[at + 1] === "the" && dayPart.test(read.list[at + 2] ?? "")
+}
+
+function countedEndAClock(read: ClockWords, at: number): boolean {
+  const next = read.list[at + 1] ?? ""
+  if (clockEndsBefore(read, at)) return true
+  return joinWord.test(read.list[at] ?? "") && !read.breaks.has(at + 1) && (clockByItself.test(next) || (hourAlone.test(next) && clockEndsBefore(read, at + 2)))
 }
 
 function clockStandsAt(read: ClockWords, at: number): boolean {
   const word = read.list[at] ?? ""
-  if (clockByItself.test(word)) return true
-  if (halfOfAClock.test(word) && /^[ap]m$/u.test(read.list[at + 1] ?? "") && !read.breaks.has(at + 1)) return true
-  return /^\d{4}$/u.test(word) && !readAsAYear.test(word) && digitsEndAClock(read, at + 1)
+  return clockByItself.test(word) || (halfOfAClock.test(word) && /^[ap]m$/u.test(read.list[at + 1] ?? "") && !read.breaks.has(at + 1))
 }
 
 function joinedAt(read: ClockWords, at: number): boolean {
@@ -448,20 +453,20 @@ function startSideIsAClock(read: ClockWords, join: number): boolean {
   const word = list[join - 1] ?? ""
   if (breaks.has(join)) return false
   if (clockByItself.test(word)) return true
-  if (/^[ap]m$/u.test(word)) return !breaks.has(join - 1) && halfOfAClock.test(list[join - 2] ?? "")
-  return /^\d{4}$/u.test(word) && !readAsAYear.test(word) && !breaks.has(join - 1) && rangeOpens.test(list[join - 2] ?? "")
+  return /^[ap]m$/u.test(word) && !breaks.has(join - 1) && halfOfAClock.test(list[join - 2] ?? "")
 }
 
 function standsAsAClock(read: ClockWords, spelled: string, from: number, to: number): boolean {
   const { list, breaks } = read
   const before = breaks.has(from) ? "" : list[from - 1] ?? ""
-  if (countedToTheHour.test(spelled)) return countedStandsAsAClock(countedToLead.test(before), countedEndAClock(read, to))
-  if (countedPastTheHour.test(spelled)) return countedStandsAsAClock(countedPastLead.test(before), countedEndAClock(read, to))
+  if (countedToTheHour.test(spelled)) return countedStandsAsAClock(true, spelled.startsWith("quarter "), countedToLead.test(before), countedEndAClock(read, to))
+  if (countedPastTheHour.test(spelled)) return countedStandsAsAClock(false, false, countedPastLead.test(before), countedEndAClock(read, to))
+  if (hourAndH.test(spelled)) return countedStandsAsAClock(false, false, hourAndHLead.test(before), countedEndAClock(read, to))
   if (!digitsAlone.test(spelled)) return true
   const split = Array.from({ length: to - from - 1 }, (_, step) => from + step + 1).some((at) => breaks.has(at))
   const opensARange = rangeOpens.test(before) && joinedAt(read, to) && clockStandsAt(read, to + 1)
   const closesARange = joinWord.test(before) && from >= 2 && !breaks.has(from) && startSideIsAClock(read, from - 1)
-  return digitsStandAsAClock(before === "at", opensARange, closesARange, digitsEndAClock(read, to), readAsAYear.test(spelled), dottedDigits.test(spelled) || split)
+  return digitsStandAsAClock(before === "at", opensARange, closesARange, digitsEndAClock(read, to), leadingZero.test(spelled), dottedDigits.test(spelled) || twoNumbers.test(spelled) || split)
 }
 
 function rangePartner({ list, clauseEnds, breaks }: ClockWords, from: number, to: number): Span {
