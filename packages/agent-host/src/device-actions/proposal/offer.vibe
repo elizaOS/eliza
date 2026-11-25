@@ -8,7 +8,7 @@ module node {
   import { bindingHash, type CheckedOperation, type DeviceOperation } from "@elizaos/agent"
   import { devicePayload, type CalendarAgendaSource } from "../proposal-review.vibe"
   import { enrollment, offerRequest, openRequest, viewProfile, type DeviceRequestRecord, type DeviceStoreUnavailable } from "../store.vibe"
-  import { directRequests, type DeviceTurn } from "./family.vibe"
+  import { directRequests, type DeviceTurn, type FamilyName } from "./family.vibe"
   import { turnLive } from "./turn.vibe"
 
   export type OfferTurn = Pick<DeviceTurn, "runtime" | "by" | "negotiation" | "message" | "conversationId" | "requestId">
@@ -17,6 +17,7 @@ module node {
     readonly readBack: boolean
     readonly agenda?: CalendarAgendaSource
     readonly grounding?: ProposalGrounding
+    readonly family?: FamilyName
   }
 
   export type ProposalOffer =
@@ -29,8 +30,8 @@ module node {
     return stringToUuid(JSON.stringify(["device-proposal", messageId, bindingHash(operation)]))
   }
 
-  export function carriesMessage(current: DeviceTurn | undefined, grounding: ProposalGrounding | undefined): boolean {
-    return current !== undefined && carriesRequestMessage(grounding ?? "GroundedAsAsked", directRequests(current), turnLive(current))
+  export function carriesMessage(current: DeviceTurn | undefined, grounding: ProposalGrounding | undefined, family?: FamilyName): boolean {
+    return current !== undefined && carriesRequestMessage(grounding ?? "GroundedAsAsked", family !== undefined && directRequests(current, family), turnLive(current))
   }
 
   function capabilityOf(checked: CheckedOperation, negotiation: Negotiation, agenda: boolean): string | undefined {
@@ -44,7 +45,7 @@ module node {
   }
 
   export function offerProposal(
-    turn: OfferTurn, checked: CheckedOperation, { readBack, agenda, grounding }: OfferTerms, current?: DeviceTurn,
+    turn: OfferTurn, checked: CheckedOperation, { readBack, agenda, grounding, family }: OfferTerms, current?: DeviceTurn,
   ): Effect.Effect<ProposalOffer, DeviceStoreUnavailable> {
     return Effect.gen(function* () {
       const adapter = turn.runtime.adapter
@@ -56,7 +57,7 @@ module node {
       const boundProfile: RevisionRead = checked.operation.type === "open_view" ? revisionOf(yield* viewProfile(adapter)) : { tag: "NoRevisionRead" }
       const enrolled = yield* enrollment(adapter)
       if (current !== undefined && !turnLive(current)) return { kind: "ended" } satisfies ProposalOffer
-      const reviewed = !carriesMessage(current, grounding)
+      const reviewed = !carriesMessage(current, grounding, family)
       const expiresAt = Date.now() + offeredFor
       const payload = devicePayload({
         operation: checked.operation,

@@ -44,7 +44,7 @@ module node {
 
   /** @throws {Error} */
   export function project(asks: readonly Ask[]): Answer[] {
-    const out = execFileSync(java, ["-cp", compileAdapter(MAIN), MAIN], { input: asks.map((ask) => JSON.stringify(ask)).join("\n") + "\n", encoding: "utf8", timeout: 120_000 })
+    const out = execFileSync(java, ["-Duser.timezone=Asia/Tokyo", "-cp", compileAdapter(MAIN), MAIN], { input: asks.map((ask) => JSON.stringify(ask)).join("\n") + "\n", encoding: "utf8", timeout: 120_000 })
     return out.trim().split("\n").map((line) => JSON.parse(line) as Answer)
   }
 
@@ -174,6 +174,7 @@ const ADMITTED: readonly { readonly name: string; readonly files: Files; readonl
 
 const REFUSED: readonly { readonly name: string; readonly files: Files }[] = [
   { name: "a host file over 256 KiB", files: { ...files(HOST), host: JSON.stringify({ ...HOST, cloud: { baseUrl: "https://cloud.example" } }) + " ".repeat(262_144) } },
+  { name: "a host file with a UTF-8 byte order mark", files: { ...files(HOST), host: `\uFEFF${JSON.stringify({ ...HOST, model: { backend: "none" } })}` } },
   { name: "a schema 2 policy", files: files({ ...HOST, cloud: { baseUrl: "https://cloud.example" } }, CHARACTER, { ...POLICY, schema: 2 }) },
   { name: "an unqualified service class", files: files({ ...HOST, service: "AgentService", model: { backend: "none" } }) },
   { name: "notification text of 201 characters", files: files({ ...HOST, notification: { ...HOST.notification, text: "x".repeat(201) }, model: { backend: "none" } }) },
@@ -251,9 +252,8 @@ it.effect('Start my agent with my character, policy and model: the service and t
     )
     assert.strictEqual(fullDocument.hostContextRevision, Number.MAX_SAFE_INTEGER)
     const recordDocument = try decodeLaunchDocument((try admittedAnswer(record)).document)
-    assert.deepStrictEqual(recordDocument.model,
-      { backend: "cloud", cloudBaseUrl: "https://cloud.example", smallModel: "", largeModel: "", imageModel: "" })
-    assert.isUndefined(recordDocument.hostContextRevision)
+    assert.deepStrictEqual([recordDocument.model, recordDocument.timeZone, recordDocument.hostContextRevision],
+      [{ backend: "cloud", cloudBaseUrl: "https://cloud.example", smallModel: "", largeModel: "", imageModel: "" }, "Asia/Tokyo", undefined])
     // spec/os/agentService/config.md, "A launch carries the Google consent the owner saved, else the host file's"
     const consents: unknown[] = []
     for (const answer of [full, record, replaced, savedOnly]) consents.push((try decodeLaunchDocument((try admittedAnswer(answer)).document)).google)

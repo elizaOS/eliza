@@ -58,10 +58,8 @@ The optional integrations and native bridge contracts are specified below.
 | `@elizaos/plugin-meetings` | [Meeting transcription](./meetings/) |
 | `@elizaos/capacitor-action-journal` | [Native action journal](./nativeActionJournal/) |
 | `@elizaos/native-activity-tracker` | [Native activity tracker](./nativeActivityTracker/) |
-| `@elizaos/capacitor-agent` | [Native agent bridge](./nativeAgent/) |
 | `@elizaos/capacitor-appblocker` | [Native app blocking](./nativeAppblocker/) |
 | `@elizaos/capacitor-browser-surface` | [Native browser surface](./nativeBrowserSurface/) |
-| `@elizaos/capacitor-bun-runtime` | [Native embedded runtime bridge](./nativeBunRuntime/) |
 | `@elizaos/capacitor-calendar` | [Native calendar](./nativeCalendar/) |
 | `@elizaos/capacitor-camera` | [Native camera](./nativeCamera/) |
 | `@elizaos/capacitor-canvas` | [Native canvas](./nativeCanvas/) |
@@ -80,7 +78,6 @@ The optional integrations and native bridge contracts are specified below.
 | `@elizaos/capacitor-passwords` | [Native passwords](./nativePasswords/) |
 | `@elizaos/plugin-native-phone` | [Native phone](./nativePhone/) |
 | `@elizaos/macosreminders` | [Native reminders](./nativeReminders/) |
-| `@elizaos/capacitor-secure-store` | [Native secure store](./nativeSecureStore/) |
 | `@elizaos/plugin-native-settings` | [Native settings](./nativeSettings/) |
 | `@elizaos/native-plugin-shared-types` | [Native plugin shared types](./nativeSharedTypes/) |
 | `@elizaos/capacitor-swabble` | [Native wake detection](./nativeSwabble/) |

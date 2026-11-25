@@ -641,6 +641,8 @@ empty, with the work still done, when the person asked for silence; later
 tool calls come with no text. A cue comes only with a tool call: when no
 offered tool can do what was asked, the model writes no cue and says
 plainly, in its own words, that it can't.
+The same rule asks the model to say that something was saved, sent,
+opened or changed only when a tool result of this turn shows it.
 
 The shell reads the model's text as a `Cue` only when the whole of it is
 one to three sentences of the closed acknowledgment grammar (`On it`,
@@ -655,15 +657,26 @@ never a cue. The shell reads the text without its JSON objects (those
 outside any other object) and without a code fence or tag they leave empty,
 since an object beside a cue is a tool call written as text, which runs
 nothing. So a cue beside any object (`Sure, one sec. {"type":
-"send_message"}`) is still a cue, delivered without it. An object that
-names an action or a tool (an `action` or `tool` field with a text value,
-a text value that is a snake_case name such as `send_message`, or an action
-envelope as core reads one) and a bracketed snake_case name
-with `key=value` arguments (`[send_message contact="Sam"]`) are written
-calls: bare assent beside one promises work as `Sure, one sec.` does
-(below), and text that is only written calls is a blank. Bare assent beside
-any other object (`Sure! {"name": "Bob"}`), and text that is only such
-objects, are an `Answer`.
+"send_message"}`) is still a cue, delivered without it, and so is a cue
+beside a bracketed snake_case name with `key=value` arguments
+(`[send_message contact="Sam"]`). Bare assent beside any object or
+bracketed call (`Sure. {"type": "send_message", "recipient": "Sam"}`) may
+promise work: beside one that names a tool offered this turn it promises
+work as `Sure, one sec.` does (below), and beside any other it is a draft
+that may be an answer (below). Text that is only objects
+or bracketed calls is a blank when one of them looks like a call: core
+reads it as an action envelope, its `action` or `tool` field is a
+snake_case call name (`{"action": "open_app", "app": "Maps"}`), or its
+`action`, `tool`, `type` or `name` field names a tool offered this turn,
+ignoring case and underscores; otherwise (`{"status": "in_progress"}`,
+`{"theme": "dark_mode"}`, `{"type": "line_chart"}`) it is an `Answer`. An
+answer is delivered without the objects and bracketed calls that name a
+tool offered this turn or come straight after a cue
+(`Let me check.{"tool": "search", …}The speed of light is …`), and keeps
+every other object, so a typed call beside a real answer never reaches the
+person, while an example the person asked for
+(`{"name": "get_weather", "arguments": {…}}`), a record (`{"name":
+"GitHub", "url": …}`) or a command (`{"action": "turn_on", …}`) stays.
 A wait cue followed by more text that is not progress (`One second is
 1,000 milliseconds.`, `Just a second, your dentist is Thursday.`) is an
 `Answer`. A cue that comes with the turn's first tool calls is the turn's
@@ -675,32 +688,48 @@ tool call is not an answer, and neither is assent that goes on to a cue
 asked once more, with the turn's tools still offered unless that call is
 the last step, and one host note
 saying that its response gave the person no answer and was not sent. Before
-any tool ran in the turn, the note also says the response called no tool,
-and that the model either does the work now with an offered tool or, if no
-offered tool can do it, tells the person plainly, in its own words, that it
-can't; when no tool can be called on the next step, it says instead that nothing the
-model writes can do the work, so it tells the person plainly, in its own
-words, that it can't. After a tool ran, it says the tool results are what
-the turn did and that the model answers from them, in its own words. A turn asks this at
-most once. When the response after that note
-is again a cue or a blank with no tool call, or steps run out, whatever text
-streamed with it is restarted to empty and the turn's failure fallback is
-the reply, so a cue alone is never the turn's last word.
+the turn recorded a step, the note also says the response called no tool,
+and that the model answers now, in its own words, a question it can answer
+from what it already knows, and otherwise does the work now with an offered
+tool or, if no offered tool can do it, tells the person plainly, in its own
+words, that it can't; when no tool can be called on the next step, it says
+that nothing can be done, opened, sent or looked up in the turn, that the
+model answers such a question now in its own words, and that otherwise it
+tells the person plainly that it can't and writes no tool call as text. After a step was recorded, it says
+the tool results are what the turn did and that the model answers from
+them, in its own words. A turn asks this at most once before it records a
+step and at most once after, so a turn that recovered from a promise by
+running a tool can still be asked to report what that tool did. When the response
+after a note is again a cue or a blank with no tool call, or steps run out,
+whatever text streamed with it is restarted to empty and the turn's failure
+fallback is the reply, so a cue alone is never the turn's last word. A
+draft that may be an answer (bare assent beside objects that name no
+offered tool, such as `Sure! {"name": "Bob"}`, which is either a promise
+beside a typed call or the JSON the person asked for) is asked again in the
+same way, and when the response after the note is that kind of draft again,
+or steps run out, it is delivered: only a repeated cue or blank, or a
+repeated object that names an offered tool, ends on the failure fallback.
 
 ```quint
-type Draft = Cue | Answer | Silent
+type Draft = Cue | Answer | Silent | MaybeAnswer
 type PlanMove = RunTools | Deliver | AskAgain | GiveUp
 pure def acknowledges(draft: Draft, calls: int, earlierCalls: int): bool = draft == Cue and calls > 0 and earlierCalls == 0
 pure def nextMove(draft: Draft, calls: int, stepsLeft: int, askedAgain: bool): PlanMove =
   if (calls > 0) RunTools
   else if (draft == Answer) Deliver
   else if (stepsLeft > 0 and not(askedAgain)) AskAgain
+  else if (draft == MaybeAnswer) Deliver
   else GiveUp
 pure val stepsLeftValues = Set(0, 1, 3)
 pure def lawAnAnswerIsDeliveredWhole(stepsLeft: int, askedAgain: bool): bool = nextMove(Answer, 0, stepsLeft, askedAgain) == Deliver
 pure def lawACueIsNeverTheReply(calls: int, stepsLeft: int, askedAgain: bool): bool = nextMove(Cue, calls, stepsLeft, askedAgain) != Deliver
+pure def askedAgainAt(worked: bool, askedBeforeWork: bool, askedAfterWork: bool): bool = if (worked) askedAfterWork else askedBeforeWork
+pure def lawWorkGetsItsOwnReAsk(askedBeforeWork: bool): bool = not(askedAgainAt(true, askedBeforeWork, false))
+pure def lawEachReAskIsSpentOnce(worked: bool): bool = askedAgainAt(worked, not(worked), worked)
 pure def lawAPromiseWithoutWorkIsAskedAgainOnce(draft: Draft, stepsLeft: int): bool =
-  (draft != Answer and stepsLeft > 0) implies (nextMove(draft, 0, stepsLeft, false) == AskAgain and nextMove(draft, 0, stepsLeft, true) == GiveUp)
+  ((draft == Cue or draft == Silent) and stepsLeft > 0) implies (nextMove(draft, 0, stepsLeft, false) == AskAgain and nextMove(draft, 0, stepsLeft, true) == GiveUp)
+pure def lawAMaybeAnswerIsAskedOnceThenDelivered(stepsLeft: int): bool =
+  nextMove(MaybeAnswer, 0, stepsLeft, true) == Deliver and (stepsLeft > 0 implies nextMove(MaybeAnswer, 0, stepsLeft, false) == AskAgain)
 pure val earlierCallsValues = Set(0, 1, 2)
 pure def lawACueIsSpokenOnlyBeforeWork(draft: Draft, calls: int, earlierCalls: int): bool =
   acknowledges(draft, calls, earlierCalls) implies (calls > 0 and draft == Cue and earlierCalls == 0)
@@ -733,11 +762,13 @@ model confirms the destination alongside its tool call still gives the owner
 only the reply.
 
 ```quint
-type DraftShape = Blank | GrammarCue | Assent | AssentCue | OtherText
+type DraftShape = Blank | GrammarCue | Assent | AssentCue | AssentObject | OtherText
 pure def readDraft(shape: DraftShape, instruction: bool, calls: int): Draft = match shape {
   | Blank => Silent | GrammarCue => Cue | Assent => if (instruction and calls > 0) Cue else Answer
-  | AssentCue => if (instruction or calls == 0) Cue else Answer | OtherText => Answer
+  | AssentCue => if (instruction or calls == 0) Cue else Answer
+  | AssentObject => if (calls == 0) MaybeAnswer else if (instruction) Cue else Answer | OtherText => Answer
 }
+pure def lawAssentBesideAnUnofferedObjectMayBeTheAnswer(instruction: bool): bool = readDraft(AssentObject, instruction, 0) == MaybeAnswer
 pure def lawBareAssentIsACueOnlyWithWorkAfterAnInstruction(instruction: bool, calls: int): bool =
   (readDraft(Assent, instruction, calls) == Cue) iff (instruction and calls > 0)
 pure def lawBareAssentWithoutWorkIsDelivered(instruction: bool, stepsLeft: int, askedAgain: bool): bool =
@@ -751,6 +782,58 @@ pure def lawNoCueOrADestinationConfirmationNeverAcknowledges(instruction: bool, 
   not(acknowledges(readDraft(Blank, instruction, calls), calls, earlierCalls)) and not(acknowledges(readDraft(OtherText, instruction, calls), calls, earlierCalls))
 pure def lawATurnAcknowledgesAtMostOnce(draft: Draft, calls: int, earlierCalls: int, laterDraft: Draft, laterCalls: int): bool =
   acknowledges(draft, calls, earlierCalls) implies not(acknowledges(laterDraft, laterCalls, earlierCalls + calls))
+```
+
+### A tool call the model wrote as text never reaches the owner, and its step is asked again once
+
+A model may write a tool call into its text instead of making it: a
+`<tool_call>` or `</tool_call>` tag, `<function=` or `<function_call>`.
+What the [binding](../models/binding.md) did not read as a call is
+markup, never words for the owner. The stream holds the text from the
+first marker on, and a trailing `<` that could still begin one, so the
+owner never sees markup, even for a moment. A step whose answer carries
+markup and no tool call runs nothing; the model reads, after its own
+answer with the markup left out, that the tool call it wrote as text did
+not run, and is asked once more, within the step bound, to call an
+offered tool or answer in words. A second such answer in the turn, an
+answer with markup beside its tool calls, and an answer at the last step
+are read without the markup: the text before the first marker is the
+draft. A `REPLY` call's text is read the same way.
+
+```quint
+type WrittenMarkup = NoMarkup | AskForTheCall | DropTheMarkup
+pure def writtenMarkupOf(markup: bool, calls: int, markupAskedBefore: bool, stepsLeft: int): WrittenMarkup =
+  if (not(markup)) NoMarkup
+  else if (calls == 0 and not(markupAskedBefore) and stepsLeft > 0) AskForTheCall
+  else DropTheMarkup
+pure def lawWrittenMarkupIsAskedAgainAtMostOnce(calls: int, stepsLeft: int): bool =
+  writtenMarkupOf(true, calls, true, stepsLeft) == DropTheMarkup
+pure def lawMarkupBesideARealCallIsDropped(calls: int, markupAskedBefore: bool, stepsLeft: int): bool =
+  calls > 0 implies writtenMarkupOf(true, calls, markupAskedBefore, stepsLeft) == DropTheMarkup
+pure def lawMarkupAtTheLastStepIsDropped(calls: int, markupAskedBefore: bool): bool =
+  writtenMarkupOf(true, calls, markupAskedBefore, 0) == DropTheMarkup
+pure def lawTextWithoutMarkupIsReadAsItIs(calls: int, markupAskedBefore: bool, stepsLeft: int): bool =
+  writtenMarkupOf(false, calls, markupAskedBefore, stepsLeft) == NoMarkup
+```
+
+### When nothing ran in a turn, the answer it asks for is told so
+
+When a step is asked once more after the turn's tool calls (a cue or a
+blank answer with no tool call, above) and no call of the turn was
+dispatched, so every step it holds was refused before it ran, the note
+says, in place of the tool results being what the turn did, that no action
+ran in this turn and nothing was saved, sent or changed, so the answer must
+not say that anything was. Before any tool call, the note already says the
+response called no tool. The fact is the turn's own record of its steps,
+never read from the model's words.
+
+```quint
+pure def nothingRan(outcomes: List[StepOutcome]): bool = not(outcomes.some(o => o != Rejected))
+pure val outcomesValues = Set(List(), List(Rejected), List(Applied), List(Rejected, Failed), List(NoEffect))
+pure def lawADispatchedStepIsNeverNothing(outcomes: List[StepOutcome]): bool =
+  outcomes.some(o => o != Rejected) implies not(nothingRan(outcomes))
+pure def lawRefusalsAloneAreNothing(outcomes: List[StepOutcome]): bool =
+  nothingRan(outcomes.select(o => o == Rejected))
 ```
 
 ### A delivered cue is told to the model as already said, so the reply never repeats it or takes it as evidence
@@ -837,7 +920,10 @@ A recognized card is a `[MAPSCARD]`, `[CHECKLIST]` or `[WORKFLOW]` open
 marker on its own line, one JSON object on the next and its close marker;
 any other bracketed text is ordinary output. Tool text the action marked
 verified for the owner is kept verbatim; prose that holds it is the whole
-reply, and prose it already holds adds nothing. Prose carrying a tool-call
+reply, and prose it already holds adds nothing. A result that marks no words
+for the owner tells the model, in its tool message, that the owner sees
+none of that tool text, so the reply says what the call did or found. What
+the phone itself shows the owner is a separate fact the result may state. Prose carrying a tool-call
 or reasoning marker is never shown. An open confirmation proposal or an
 interaction block (`[CHOICE]`, `[FORM]`) is the action's own copy. It and
 the emergency keypad's safety copy are delivered without model prose.

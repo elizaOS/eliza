@@ -1,11 +1,17 @@
 // spec/cloud/identity/secondFactor.md, "Story: Finish sign-in with my second factor"; spec/cloud/identity/secondFactor.md, "Story: Set up and change my second factor"; spec/cloud/identity/secondFactor.md, "Story: Confirm it is me before a sensitive change"
 import { assert, describe, it } from "@effect/vitest"
+import { identityTx } from "../../src/identity-store.vibe"
+import { landAccount } from "../../src/identity/accounts.vibe"
 import { afterFirstFactor } from "../../src/identity/second-factor.vibe"
+import { issueSession } from "../../src/identity/sessions.vibe"
 import { s256, secretText } from "../../src/shared/credential-crypto.vibe"
+import { cloudWorker, type CloudBindings } from "../../src/worker.vibe"
 import { authenticatorCode } from "../support/authenticator.ts"
 import { check, testCloud, type Answer, type TestCloud } from "../support/cloud.vibe"
 import { signedIn } from "../support/identity-fixture.ts"
 import { latestCode } from "../support/inbox.ts"
+import { openBackupDatabase, webRequest } from "../support/password-backup.ts"
+import { workerBindings } from "../support/worker.ts"
 
 interface Enrolled {
   readonly secret: string
@@ -35,6 +41,17 @@ effect function signInAgain(cloud: TestCloud, email: string) {
     const row = (try tx.query("SELECT key, organization_id FROM accounts WHERE email = $1", [email]))[0]
     return try afterFirstFactor(tx, { userId: String(row?.key), organizationId: String(row?.organization_id), email, created: false }, "test-client", now)
   })
+}
+
+const browserApi = "https://api.browser.example.test"
+const browserWeb = "https://browser.example.test"
+const browserDigest = "b".repeat(64)
+
+function browserBindings(databaseUrl: string, mailed: Array<string>) {
+  return {
+    ...workerBindings({ api: browserApi, web: browserWeb, digest: browserDigest }), DATABASE_URL: databaseUrl, EMAIL_FROM: "signin@browser.example.test", EMAIL_CODE_SECRET: "k".repeat(32),
+    SIGN_IN_EMAIL: { send: async (message: { text: string }) => { mailed.push(message.text) } }
+  } satisfies CloudBindings
 }
 
 effect function enrollTotp(cloud: TestCloud, token: string) {
@@ -166,6 +183,45 @@ describe("WP1 Identity: second factor", () => {
       }
     ))
   }))
+
+  it.live("A browser email code for a person with a second factor opens no session, and one for a closed account is refused as inactive (spec/cloud/index.md, \"A browser sign-in opens no session for a person with a confirmed second factor\"; spec/cloud/identity/secondFactor.md, \"Story: Finish sign-in with my second factor\"; spec/cloud/identity/accounts.md, \"A sign-in lands on the account holding its subject, else on the one holding its proven address, else on a new account, and never on an account that is not active\")", () => scoped(effect {
+    const { db, databaseUrl } = try acquireRelease(tryPromise(() => openBackupDatabase()), (fixture) => promise(() => fixture.close()))
+    try tryPromise(() => db.query("INSERT INTO cloud_identity (digest, environment, created_at) VALUES ($1, 'staging', 1)", [browserDigest]))
+    const mailed: Array<string> = []
+    const env = browserBindings(databaseUrl, mailed)
+    const worker = cloudWorker<CloudBindings>()
+    const post = (route: string, body: object, headers: Record<string, string>) =>
+      tryPromise(() => worker.fetch(webRequest(browserApi + route, { method: "POST", headers: { "content-type": "application/json", ...headers }, body: JSON.stringify(body) }), env))
+    const now = try Clock.currentTimeMillis
+    const landed = try landAccount(identityTx(db), { method: "EmailSignIn", subject: "kim@example.com" }, "kim@example.com", now)
+    const first = try issueSession(identityTx(db), { userId: landed.userId, organizationId: landed.organizationId, assurance: "SingleFactor", accountCreated: true, now })
+    const owner = { authorization: `Bearer ${first.accessToken}` }
+    const enrolling = try post("/api/v1/auth/mfa/totp/enroll", {}, owner)
+    const enrolled = (try tryPromise(() => enrolling.json())) as Enrolled
+    const confirmedAt = try Clock.currentTimeMillis
+    const confirmed = try post("/api/v1/auth/mfa/totp/confirm", { code: try sync(() => authenticatorCode(enrolled.secret, confirmedAt)) }, owner)
+    const sent = try post("/api/auth/email/send", { email: "kim@example.com" }, { origin: browserWeb })
+    const verifier = sent.headers.getSetCookie().find((cookie) => cookie.startsWith("__Host-eliza-code-email="))?.split(";")[0] ?? ""
+    const code = /\d{6}/.exec(mailed.at(-1) ?? "")?.[0] ?? ""
+    const verified = try post("/api/auth/email/verify", { email: "kim@example.com", code }, { origin: browserWeb, cookie: verifier })
+    const sessions = try tryPromise(() => db.query("SELECT count(*)::int AS live FROM sessions WHERE user_id = $1 AND live", [landed.userId]))
+    try tryPromise(() => db.query("UPDATE accounts SET status = 'deleting' WHERE key = $1", [landed.userId]))
+    const resent = try post("/api/auth/email/send", { email: "kim@example.com" }, { origin: browserWeb })
+    const closedVerifier = resent.headers.getSetCookie().find((cookie) => cookie.startsWith("__Host-eliza-code-email="))?.split(";")[0] ?? ""
+    const closedCode = /\d{6}/.exec(mailed.at(-1) ?? "")?.[0] ?? ""
+    const closed = try post("/api/auth/email/verify", { email: "kim@example.com", code: closedCode }, { origin: browserWeb, cookie: closedVerifier })
+    const closedBody = (try tryPromise(() => closed.json())) as { error: string; reason?: string }
+    try check(() => assert.deepStrictEqual(
+      {
+        confirmed: confirmed.status,
+        sent: [sent.status, code.length],
+        verified: [verified.status, verified.headers.getSetCookie().some((cookie) => cookie.startsWith("__Host-eliza-session=eliza_session_"))],
+        liveSessions: sessions.rows[0]?.live,
+        closed: [closed.status, closedBody.error, closedBody.reason]
+      },
+      { confirmed: 200, sent: [200, 6], verified: [403, false], liveSessions: 1, closed: [403, "access_denied", "account_inactive"] }
+    ))
+  }), 180_000)
 
   it.live("An SMS step-up on a live session keeps the token and reports stepUpAt (spec/cloud/identity/secondFactor.md, \"Story: Confirm it is me before a sensitive change\"; spec/cloud/identity/sessions.md, \"Story: Confirm it is me before a sensitive change\")", () => scoped(effect {
     const cloud = try testCloud()

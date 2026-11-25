@@ -747,3 +747,5 @@ export function notesModuleWith(options: NotesOptions = {}): ModuleFactory<never
 }
 
 export const notesModule: ModuleFactory<never> = notesModuleWith()
+
+export { notesRecordingCleanupHost, type NotesRecordingCleanupHost } from "./service.vibe"
