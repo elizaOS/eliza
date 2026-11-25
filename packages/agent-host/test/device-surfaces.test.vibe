@@ -298,11 +298,11 @@ module node {
     const photo = await send("Take a photo of me", direct,
       toolCalls("", capture), text("Okay."))
     const selfie = await send("Take a selfie", direct, toolCalls("", captureFront), text("Okay."))
-    const selfieAndSend = await send("Take a selfie and text it to Mom", direct, toolCalls("", captureFront), text("Okay."))
     const wrongLens = await send("Take a selfie", direct, toolCalls("", captureBack), text("Okay."))
     const rear = await send("Take a photo with the rear camera", direct, toolCalls("", captureBack), text("Okay."))
     const reviewed = await send("Take a photo with the front camera", undefined, toolCalls("", captureFront), text("Okay."))
     const conflicting = await send("Take a photo with the front and back cameras", direct, toolCalls("", capture), text("Okay."))
+    const selfieAndSend = await send("Take a selfie and text it to Mom", direct, toolCalls("", captureFront), text("Okay."))
     const plain = await send("What's the capital of France?", undefined, text("Paris."))
     const noteElsewhere = await send("Make a note to buy milk", { observation: { view: "home", revision: 6, sensitive: false } },
       toolCalls("", propose({ type: "create_note", title: "Milk", body: "Buy milk" })), text("Okay."))
@@ -344,7 +344,7 @@ module node {
           offers: reviewed.fresh.map(({ payload, state }) => ({ operation: payload.operation, bound: payload.requestMessageId !== undefined, state })),
         },
         conflicting: { ranFirst: conflicting.ranFirst, offers: cards(conflicting) },
-        selfieAndSend: { ranFirst: selfieAndSend.ranFirst, refused: selfieAndSend.toolText.includes("DEVICE_OPERATION_NOT_AVAILABLE_NOW"), offers: cards(selfieAndSend) },
+        selfieAndSend: { ranFirst: selfieAndSend.ranFirst, refused: selfieAndSend.toolText.includes("DEVICE_OPERATION_NOT_AVAILABLE_NOW"), reviewed: selfieAndSend.reply.includes(reviewText) },
         wrongLens: { ranFirst: wrongLens.ranFirst, refused: wrongLens.toolText.includes("DEVICE_OPERATION_NOT_AVAILABLE_NOW"), offers: cards(wrongLens) },
       },
       plain: { noteNotHere: plain.note.includes("create_note is not available on this message"), lead: plain.note.includes("asks for a photo now") },
@@ -362,7 +362,7 @@ import { navigationHomes, oneConversation, proposeSurfaces, proposeTool, reviewT
 it.live(`Take a photo, open a view, read a Maps place, find and share photos and write a phone note only as the owner's words and screen name them (spec/agent/conversation/planning.md, "A recognized card is delivered unfenced, other multi-line tool output is fenced, and grounded prose follows unless one already holds the other"; spec/agent/conversation/planning.md, "A reply that leaves a failure unreported is written again once, and the delivered reply still reports open failures and attachment omissions"; spec/agent/deviceActions/surfaces.md, "Story: Propose a photo, a view, a Maps read or a Photos change only as my words and my screen name them"; spec/agent/deviceActions/surfaces.md, "A surface operation is bound to the owner's message only on a direct-request turn and as the owner asked"; spec/agent/deviceActions/surfaces.md, "A photo runs without its card only when the owner's own message asks for one now"; spec/agent/deviceActions/surfaces.md, "An app view opens with VIEWS where views arrive as completed actions, else with open_view as the installation's profile enables it"; spec/agent/conversation/planning.md, "Every call of a turn is one the model chose, and a call this message serves in another place is refused before it runs and is no step of the turn"; spec/agent/deviceActions/surfaces.md, "A new note is proposed only while the owner's Notes screen selects the phone's own Notes"; spec/agent/deviceActions/surfaces.md, "A new note runs without its card only when its title and body are the owner's own words"; spec/agent/deviceActions/surfaces.md, "A Maps read names exactly the place or route selected on the owner's Maps screen"; spec/agent/deviceActions/surfaces.md, "A Photos proposal names only the item open in the viewer or library IDs the phone returned"; spec/agent/deviceActions/operations.md, "A turn targets the photo open on the owner's screen only from the Photos view, never on a sensitive screen, and names its library ID only under the library capability"; spec/agent/deviceActions/index.md, "A proposal's identity is its request message and its operation, so a repeat returns the same request"; spec/agent/deviceActions/index.md, "A proposal carries the owner's message only for a live turn that asked for it directly, so otherwise the phone shows its card"; spec/agent/deviceActions/index.md, "A later turn of the same conversation learns at most six outcomes of its own requests: what changed, and what ended without running"; spec/agent/deviceActions/operations.md, "A captured photo's library ID reaches the agent only when the request negotiated it")`, effect () => {
   const observed = try deviceJourney({ load: [deviceActionsModuleName, viewsModuleName], allowed: ["REPLY", "IGNORE", "NONE", proposeTool, "VIEWS"] }, "propose device surfaces", proposeSurfaces)
   try Effect.try(() => assert.deepStrictEqual(observed, {
-    unasked: true, photo: true, selfie: { reviewed: true, refused: false }, whiteboard: true, captures: 3, taken: "done", justTaken: true,
+    unasked: true, photo: true, selfie: { reviewed: true, refused: false }, whiteboard: true, captures: 2, taken: "done", justTaken: true,
     retaken: { state: "done", told: true },
     photoTurn: { sameTools: true, lead: false, inTool: false, views: true, ranFirst: false },
     whiteboardTurn: { allForms: true, views: true },
@@ -429,7 +429,7 @@ it.live(`One device conversation sends the same tools on every message, whatever
       rear: { ranFirst: false, operations: [{ type: "camera_capture_photo", lens: "back" }] },
       reviewed: { ranFirst: false, reply: reviewText, offers: [{ operation: { type: "camera_capture_photo", lens: "front" }, bound: false, state: "pending" }] },
       conflicting: { ranFirst: false, offers: [{ operation: { type: "camera_capture_photo" }, bound: false, state: "pending" }] },
-      selfieAndSend: { ranFirst: false, refused: false, offers: [{ operation: { type: "camera_capture_photo", lens: "front" }, bound: false, state: "pending" }] },
+      selfieAndSend: { ranFirst: false, refused: false, reviewed: true },
       wrongLens: { ranFirst: false, refused: false, offers: [{ operation: { type: "camera_capture_photo", lens: "back" }, bound: false, state: "pending" }] },
     },
     plain: { noteNotHere: true, lead: false },
