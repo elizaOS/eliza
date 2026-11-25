@@ -257,6 +257,8 @@ export const codingSessionChangesProvider: Provider = {
   description: "Recent git change set from the latest completed coding subagent with staleness guard and bounded diff.",
   descriptionCompressed: "Recent coding subagent file changes + bounded diff.",
   position: 1,
+  contexts: ["code", "tasks", "agent_internal"],
+  contextGate: { anyOf: ["code", "tasks", "agent_internal"] },
   alwaysInResponseState: true,
   cacheStable: false,
   cacheScope: "turn",

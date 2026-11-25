@@ -12,10 +12,10 @@ import {
 } from "./types.vibe"
 import { ORDERED_ADAPTER_IDS } from "./adapters.vibe"
 
-export const DEFAULT_MAX_OUTPUT_LINES = 200
-export const DEFAULT_MAX_OUTPUT_BYTES = 16_384
-export const PI_HARD_MAX_LINES = 2_000
-export const PI_HARD_MAX_BYTES = 51_200
+const DEFAULT_MAX_OUTPUT_LINES = 200
+const DEFAULT_MAX_OUTPUT_BYTES = 16_384
+const PI_HARD_MAX_LINES = 2_000
+const PI_HARD_MAX_BYTES = 51_200
 export const TOOL_OUTPUT_END_MARKER = "[/tool output]"
 export const SPAWN_ACK_FALLBACK = "On it."
 
@@ -144,7 +144,7 @@ export function buildShiftHandoffDigest(args: {
   const tail = truncateTail(args.rawHistory, 40, args.maxTailBytes ?? 2_048)
   const sortedFiles = [...new Set(args.changedFiles)].sort()
   const sortedArtifacts = [...new Set(args.activeArtifacts)].sort()
-  const compactJson = JSON.stringify({
+  const body = {
     taskId: args.task.id,
     goal: args.task.goal,
     status: args.task.status,
@@ -153,17 +153,10 @@ export function buildShiftHandoffDigest(args: {
     activeArtifacts: sortedArtifacts,
     recentTail: tail.text,
     nextAction: args.nextAction,
-  })
+  }
   return {
-    taskId: args.task.id,
-    goal: args.task.goal,
-    status: args.task.status,
-    changedFiles: sortedFiles,
-    verificationStatus: args.verificationStatus,
-    activeArtifacts: sortedArtifacts,
-    recentTail: tail.text,
-    nextAction: args.nextAction,
-    estimatedTokens: estimateTextTokens(compactJson),
+    ...body,
+    estimatedTokens: estimateTextTokens(JSON.stringify(body)),
   }
 }
 

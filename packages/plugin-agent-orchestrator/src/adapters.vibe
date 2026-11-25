@@ -393,13 +393,15 @@ export function readCodingRouting(
   }
 }
 
-export function resolveCodingBackend(args: {
+interface CodingBackendResolveArgs {
   readonly runtime?: IAgentRuntime
   readonly explicit?: string
   readonly tag?: string
   readonly plannerGuess?: string
   readonly env?: Readonly<Record<string, string | undefined>>
-}): CodingBackendResolution | undefined {
+}
+
+export function resolveCodingBackend(args: CodingBackendResolveArgs): CodingBackendResolution | undefined {
   const env = args.env ?? readHostEnv()
   const entry = readCodingRouting(args.runtime, env)
   const allowConfigured = Array.isArray(entry?.routing.allow)
@@ -436,13 +438,7 @@ export function resolveCodingBackend(args: {
   return { agentType: chosen, source: "planner" }
 }
 
-export function resolveCodingBackendLogged(args: {
-  readonly runtime?: IAgentRuntime
-  readonly explicit?: string
-  readonly tag?: string
-  readonly plannerGuess?: string
-  readonly env?: Readonly<Record<string, string | undefined>>
-}): CodingBackendResolution | undefined {
+export function resolveCodingBackendLogged(args: CodingBackendResolveArgs): CodingBackendResolution | undefined {
   const resolved = resolveCodingBackend(args)
   if (resolved) {
     logger.info(

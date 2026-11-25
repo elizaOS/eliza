@@ -54,9 +54,11 @@ import {
 } from "./security.vibe"
 import {
   IN_FLIGHT_TASK_STATUSES,
+  type AgentType,
   type ApprovalPreset,
   type OrchestratorTaskStatus,
   type SessionInfo,
+  type SpawnOptions,
 } from "./types.vibe"
 
 export const SUPPORTED_OPS = [
@@ -230,6 +232,24 @@ async function resolveActionWorkdir(bag: Bag, fallbackSlug: string): Promise<str
   return runPromise(effect { return ensureTaskWorkdir(fallbackSlug, roots[0]) catch () => undefined })
 }
 
+function buildSpawnOptionsFromBag(
+  bag: Bag,
+  base: {
+    readonly agentType: AgentType
+    readonly workdir: string
+    readonly task: string
+    readonly label: string
+    readonly taskId?: string
+  },
+): SpawnOptions {
+  return {
+    ...base,
+    approvalPreset: parseApprovalPreset(strParam(bag, "approvalPreset")),
+    model: strParam(bag, "model"),
+    providerRoute: strParam(bag, "providerRoute"),
+  }
+}
+
 async function handleCreate(
   runtime: IAgentRuntime,
   acp: AcpService,
@@ -295,16 +315,13 @@ async function handleCreate(
     const existingLabels = acp.listSessions().map((s) => s.label)
     const waveResults = await runPromise(dispatchParallelBatch(waveLanes, plan.maxParallel, (lane, idx) => effect {
       const label = strParam(bag, "label") ?? pickSubAgentName([...existingLabels, ...Array.from({ length: idx }, (_, n) => `Lane-${waveIndex}-${n + 1}`)])
-      const res = acp.spawnSessionEffect({
+      const res = acp.spawnSessionEffect(buildSpawnOptionsFromBag(bag, {
         agentType,
         workdir,
         task: lane.task,
         label,
-        approvalPreset: parseApprovalPreset(strParam(bag, "approvalPreset")),
-        model: strParam(bag, "model"),
-        providerRoute: strParam(bag, "providerRoute"),
         taskId: doc?.task.id,
-      }) catch () => undefined
+      })) catch () => undefined
       if (!res) {
         return { laneId: lane.id, sessionId: `err-${lane.id}`, agentType, workdir, status: "errored", label, ok: false }
       }
@@ -367,16 +384,13 @@ async function handleSpawnAgent(
   const existingTaskId = strParam(bag, "taskId") ?? strParam(bag, "threadId")
   const doc = existingTaskId ? tasks?.getTask(existingTaskId) : tasks?.createTask({ title: taskText.slice(0, 80), goal: taskText, workdir })
   const spawned = await runPromise(effect {
-    return acp.spawnSessionEffect({
+    return acp.spawnSessionEffect(buildSpawnOptionsFromBag(bag, {
       agentType,
       workdir,
       task: taskText,
       label,
-      approvalPreset: parseApprovalPreset(strParam(bag, "approvalPreset")),
-      model: strParam(bag, "model"),
-      providerRoute: strParam(bag, "providerRoute"),
       taskId: doc?.task.id,
-    }) catch () => undefined
+    })) catch () => undefined
   })
   if (!spawned) return failResult("spawn_agent", "SPAWN_FAILED", "Unable to spawn coding session within capacity limits.")
   if (doc && tasks) {
@@ -935,10 +949,22 @@ export function buildPromotedTaskActions(): Action[] {
   return promoted.map((action) => {
     const suffix = action.name.startsWith("TASKS_") ? action.name.slice("TASKS_".length).toLowerCase() : ""
     const matchedOp = SUPPORTED_OPS.find((op) => op === suffix)
-    if (!matchedOp) return { ...action, modelClass: "TEXT_LARGE" as const }
+    if (!matchedOp) {
+      return {
+        ...action,
+        private: true,
+        modelClass: "TEXT_LARGE" as const,
+        summarize: action.summarize ?? tasksAction.summarize,
+      }
+    }
     const modelClass = FAST_SMALL_OPS.has(matchedOp) ? "TEXT_SMALL" as const : "TEXT_LARGE" as const
     const asyncHandoff = READ_ONLY_OPS.has(matchedOp) ? false : action.asyncHandoff
-    return { ...action, modelClass, asyncHandoff }
+    return {
+      ...action,
+      modelClass,
+      asyncHandoff,
+      summarize: action.summarize ?? tasksAction.summarize,
+    }
   })
 }
 

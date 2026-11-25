@@ -1,8 +1,7 @@
 // spec/agentOrchestrator/index.md, "Story: Direct an authorized task to the intended subagent and evaluate its result"; spec/agentOrchestrator/taskLifecycle.md, "Story: Track an orchestrated coding task from creation through verified completion"; spec/agentOrchestrator/sessionAdmission.md, "Story: Admit coding agent sessions within concurrency, disk, and spend limits"
 import { type TaskLifecycle, type TaskRole, type TaskStatus } from "../gen/agentOrchestrator__taskLifecycle.effect.vibe"
 import { type AdmissionPool, type PriorityLevel, type SessionSlotStatus } from "../gen/agentOrchestrator__sessionAdmission.effect.vibe"
-import { type RouterGuardState } from "../gen/agentOrchestrator__routerGuard.effect.vibe"
-import { type BackendId, type WaveState } from "../gen/agentOrchestrator__lanesAndRouting.effect.vibe"
+import { type BackendId } from "../gen/agentOrchestrator__lanesAndRouting.effect.vibe"
 
 export type AgentType = "elizaos" | "pi-agent" | "claude" | "codex" | "kimi" | "grok" | (string & {})
 
@@ -537,4 +536,4 @@ export function fromSpecBackendId(id: BackendId): KnownAdapterId | undefined {
   }
 }
 
-export type { TaskLifecycle, AdmissionPool, RouterGuardState, WaveState }
+export type { TaskLifecycle, AdmissionPool }

@@ -88,8 +88,8 @@ import { reviewDiff } from "./verification.vibe"
 import { truncateTail } from "./optimization.vibe"
 
 export const CODING_WORKSPACE_SERVICE_TYPE = "CODING_WORKSPACE_SERVICE"
-export const DEFAULT_WORKSPACE_DISK_CAP_BYTES = 10 * 1024 * 1024 * 1024
-export const DEFAULT_WORKSPACE_MIN_FREE_BYTES = 1 * 1024 * 1024 * 1024
+const DEFAULT_WORKSPACE_DISK_CAP_BYTES = 10 * 1024 * 1024 * 1024
+const DEFAULT_WORKSPACE_MIN_FREE_BYTES = 1 * 1024 * 1024 * 1024
 
 export interface DiskBudgetConfig {
   readonly capBytes: number

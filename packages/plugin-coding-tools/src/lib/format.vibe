@@ -42,10 +42,11 @@ function sliceUtf8Tail(value: string, maxBytes: number): string {
   return new TextDecoder("utf-8", { fatal: false }).decode(bytes.subarray(start))
 }
 
-export function truncateHead(
+function truncateWindow(
   input: string,
-  maxLines = DEFAULT_OUTPUT_MAX_LINES,
-  maxBytes = DEFAULT_OUTPUT_MAX_BYTES,
+  direction: "head" | "tail",
+  maxLines: number,
+  maxBytes: number,
 ): TruncationResult {
   const effectiveMaxLines = Math.min(Math.max(1, maxLines), HARD_OUTPUT_MAX_LINES)
   const effectiveMaxBytes = Math.min(Math.max(64, maxBytes), HARD_OUTPUT_MAX_BYTES)
@@ -66,53 +67,29 @@ export function truncateHead(
   }
   const kept: string[] = []
   let bytesUsed = 0
-  for (let i = 0; i < Math.min(lines.length, effectiveMaxLines); i += 1) {
-    const piece = (i === 0 ? "" : "\n") + lines[i]
-    const pieceBytes = utf8ByteLength(piece)
-    if (bytesUsed + pieceBytes > effectiveMaxBytes) {
-      if (kept.length === 0) kept.push(sliceUtf8Head(lines[i], effectiveMaxBytes))
-      break
+  if (direction === "head") {
+    for (let i = 0; i < Math.min(lines.length, effectiveMaxLines); i += 1) {
+      const piece = (i === 0 ? "" : "\n") + lines[i]
+      const pieceBytes = utf8ByteLength(piece)
+      if (bytesUsed + pieceBytes > effectiveMaxBytes) {
+        if (kept.length === 0) kept.push(sliceUtf8Head(lines[i], effectiveMaxBytes))
+        break
+      }
+      kept.push(lines[i])
+      bytesUsed += pieceBytes
     }
-    kept.push(lines[i])
-    bytesUsed += pieceBytes
-  }
-  const text = kept.join("\n")
-  return {
-    text,
-    truncated: true,
-    totalLines: lines.length,
-    totalBytes,
-    shownLines: kept.length,
-    shownBytes: utf8ByteLength(text),
-    startLine: kept.length === 0 ? 0 : 1,
-    endLine: kept.length,
-  }
-}
-
-export function truncateTail(
-  input: string,
-  maxLines = DEFAULT_OUTPUT_MAX_LINES,
-  maxBytes = DEFAULT_OUTPUT_MAX_BYTES,
-): TruncationResult {
-  const effectiveMaxLines = Math.min(Math.max(1, maxLines), HARD_OUTPUT_MAX_LINES)
-  const effectiveMaxBytes = Math.min(Math.max(64, maxBytes), HARD_OUTPUT_MAX_BYTES)
-  const lines = input.length === 0 ? [] : input.split("\n")
-  const totalBytes = utf8ByteLength(input)
-  const projection = projectOutput(lines.length, totalBytes, effectiveMaxLines, effectiveMaxBytes)
-  if (!projection.truncated) {
+    const text = kept.join("\n")
     return {
-      text: input,
-      truncated: false,
+      text,
+      truncated: true,
       totalLines: lines.length,
       totalBytes,
-      shownLines: lines.length,
-      shownBytes: totalBytes,
-      startLine: lines.length === 0 ? 0 : 1,
-      endLine: lines.length,
+      shownLines: kept.length,
+      shownBytes: utf8ByteLength(text),
+      startLine: kept.length === 0 ? 0 : 1,
+      endLine: kept.length,
     }
   }
-  const kept: string[] = []
-  let bytesUsed = 0
   const floor = Math.max(0, lines.length - effectiveMaxLines)
   for (let i = lines.length - 1; i >= floor; i -= 1) {
     const piece = (kept.length === 0 ? "" : "\n") + lines[i]
@@ -127,7 +104,6 @@ export function truncateTail(
   kept.reverse()
   const text = kept.join("\n")
   const endLine = lines.length
-  const startLine = Math.max(1, endLine - kept.length + 1)
   return {
     text,
     truncated: true,
@@ -135,9 +111,25 @@ export function truncateTail(
     totalBytes,
     shownLines: kept.length,
     shownBytes: utf8ByteLength(text),
-    startLine,
+    startLine: Math.max(1, endLine - kept.length + 1),
     endLine,
   }
+}
+
+export function truncateHead(
+  input: string,
+  maxLines = DEFAULT_OUTPUT_MAX_LINES,
+  maxBytes = DEFAULT_OUTPUT_MAX_BYTES,
+): TruncationResult {
+  return truncateWindow(input, "head", maxLines, maxBytes)
+}
+
+export function truncateTail(
+  input: string,
+  maxLines = DEFAULT_OUTPUT_MAX_LINES,
+  maxBytes = DEFAULT_OUTPUT_MAX_BYTES,
+): TruncationResult {
+  return truncateWindow(input, "tail", maxLines, maxBytes)
 }
 
 export function fencePreformatted(text: string): string {
@@ -234,19 +226,23 @@ export function readStringSetting(runtime: IAgentRuntime, key: string): string |
   return typeof raw === "string" && raw.trim().length > 0 ? raw.trim() : undefined
 }
 
+function payloadFields(
+  data?: ProviderDataRecord,
+  promptData?: ProviderDataRecord,
+): Pick<ActionResult, "data" | "promptData" | "promptDataMode"> {
+  return {
+    ...(data === undefined ? {} : { data: data as ActionResultData }),
+    ...(promptData === undefined ? {} : { promptData, promptDataMode: "replace-data" as const }),
+  }
+}
+
 export function failureToActionResult(
   toolFailure: ToolFailure,
   data?: ProviderDataRecord,
   promptData?: ProviderDataRecord,
 ): ActionResult {
   const text = `${FAILURE_TEXT_PREFIX} ${toolFailure.reason}: ${toolFailure.message}`
-  return {
-    success: false,
-    text,
-    error: new Error(text),
-    ...(data === undefined ? {} : { data: data as ActionResultData }),
-    ...(promptData === undefined ? {} : { promptData, promptDataMode: "replace-data" as const }),
-  }
+  return { success: false, text, error: new Error(text), ...payloadFields(data, promptData) }
 }
 
 export function successActionResult(
@@ -254,12 +250,7 @@ export function successActionResult(
   data?: ProviderDataRecord,
   promptData?: ProviderDataRecord,
 ): ActionResult {
-  return {
-    success: true,
-    text,
-    ...(data === undefined ? {} : { data: data as ActionResultData }),
-    ...(promptData === undefined ? {} : { promptData, promptDataMode: "replace-data" as const }),
-  }
+  return { success: true, text, ...payloadFields(data, promptData) }
 }
 
 export function basename(filePath: string): string {

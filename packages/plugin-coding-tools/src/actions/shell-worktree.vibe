@@ -430,6 +430,18 @@ export const shellAction: Action = {
   },
 }
 
+function resolveWorktreeContext(
+  runtime: IAgentRuntime,
+  message: Memory,
+): { readonly ok: true; readonly conversationId: string; readonly sandbox: SandboxService; readonly session: SessionCwdService } | { readonly ok: false; readonly result: ActionResult } {
+  const conversationId = conversationIdOf(message)
+  if (!conversationId) return { ok: false, result: failureToActionResult({ reason: "missing_param", message: "no roomId" }) }
+  const sandbox = runtime.getService(SANDBOX_SERVICE) as SandboxService | null
+  const session = runtime.getService(SESSION_CWD_SERVICE) as SessionCwdService | null
+  if (!sandbox || !session) return { ok: false, result: failureToActionResult({ reason: "internal", message: "coding-tools services unavailable" }) }
+  return { ok: true, conversationId, sandbox, session }
+}
+
 export async function enterWorktreeHandler(
   runtime: IAgentRuntime,
   message: Memory,
@@ -437,17 +449,14 @@ export async function enterWorktreeHandler(
   options?: unknown,
   _callback?: HandlerCallback,
 ): Promise<ActionResult> {
-  const conversationId = conversationIdOf(message)
-  if (!conversationId) return failureToActionResult({ reason: "missing_param", message: "no roomId" })
+  const ctx = resolveWorktreeContext(runtime, message)
+  if (!ctx.ok) return ctx.result
+  const { conversationId, sandbox, session } = ctx
   const branch = readStringParam(options, "branch") ?? readStringParam(options, "name")
   const rawPath = readStringParam(options, "path")
   const base = readStringParam(options, "base") ?? "HEAD"
   if (!branch) return failureToActionResult({ reason: "missing_param", message: "branch (or name) is required" })
   if (!rawPath) return failureToActionResult({ reason: "missing_param", message: "path is required" })
-
-  const sandbox = runtime.getService(SANDBOX_SERVICE) as SandboxService | null
-  const session = runtime.getService(SESSION_CWD_SERVICE) as SessionCwdService | null
-  if (!sandbox || !session) return failureToActionResult({ reason: "internal", message: "coding-tools services unavailable" })
 
   const input = resolveInputPath(runtime, conversationId, rawPath)
   if (!input.ok) return failureToActionResult(input.failure)
@@ -475,13 +484,10 @@ export async function exitWorktreeHandler(
   message: Memory,
   _state?: State,
   options?: unknown,
-  _callback?: HandlerCallback,
 ): Promise<ActionResult> {
-  const conversationId = conversationIdOf(message)
-  if (!conversationId) return failureToActionResult({ reason: "missing_param", message: "no roomId" })
-  const sandbox = runtime.getService(SANDBOX_SERVICE) as SandboxService | null
-  const session = runtime.getService(SESSION_CWD_SERVICE) as SessionCwdService | null
-  if (!sandbox || !session) return failureToActionResult({ reason: "internal", message: "coding-tools services unavailable" })
+  const ctx = resolveWorktreeContext(runtime, message)
+  if (!ctx.ok) return ctx.result
+  const { conversationId, sandbox, session } = ctx
 
   const cleanup = readBoolParam(options, "cleanup") ?? false
   const popped = session.popWorktree(conversationId, cleanup)
@@ -528,7 +534,7 @@ export const worktreeAction: Action = {
   handler: async (runtime, message, state, options, callback) => {
     const op = (readStringParam(options, "action") ?? "").trim().toLowerCase()
     if (op === "enter") return enterWorktreeHandler(runtime, message, state, options, callback)
-    if (op === "exit") return exitWorktreeHandler(runtime, message, state, options, callback)
+    if (op === "exit") return exitWorktreeHandler(runtime, message, state, options)
     return failureToActionResult({ reason: "missing_param", message: "WORKTREE requires action=enter|exit" })
   },
 }

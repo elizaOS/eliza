@@ -33,8 +33,6 @@ import {
   fileEffectReceipt,
   fileMutationResult,
   isAbsolutePath,
-  pathDirname,
-  pathJoin,
   pathRelative,
 } from "../lib/security.vibe"
 import {
@@ -351,18 +349,110 @@ async function performSingleRead(params: {
   }
 }
 
-export async function readFileHandler(
-  runtime: IAgentRuntime,
-  message: Memory,
-  _state?: State,
-  options?: unknown,
-  _callback?: HandlerCallback,
-): Promise<ActionResult> {
+type FileCoreContext = {
+  readonly ok: true
+  readonly conversationId: string
+  readonly sandbox: SandboxService
+  readonly fileState: FileStateService
+} | { readonly ok: false; readonly result: ActionResult }
+
+function requireFileCore(runtime: IAgentRuntime, message: Memory): FileCoreContext {
   const conversationId = conversationIdOf(message)
-  if (!conversationId) return failureToActionResult({ reason: "missing_param", message: "no roomId" })
+  if (!conversationId) return { ok: false, result: failureToActionResult({ reason: "missing_param", message: "no roomId" }) }
   const sandbox = runtime.getService(SANDBOX_SERVICE) as SandboxService | null
   const fileState = runtime.getService(FILE_STATE_SERVICE) as FileStateService | null
-  if (!sandbox || !fileState) return failureToActionResult({ reason: "internal", message: "coding-tools services unavailable" })
+  if (!sandbox || !fileState) return { ok: false, result: failureToActionResult({ reason: "internal", message: "coding-tools services unavailable" }) }
+  return { ok: true, conversationId, sandbox, fileState }
+}
+
+async function prepareWritableTarget(
+  runtime: IAgentRuntime,
+  message: Memory,
+  options: unknown,
+): Promise<
+  | { readonly ok: true; readonly conversationId: string; readonly fileState: FileStateService; readonly resolved: string; readonly exists: boolean }
+  | { readonly ok: false; readonly result: ActionResult }
+> {
+  const core = requireFileCore(runtime, message)
+  if (!core.ok) return core
+  const rawPath = readStringParam(options, "file_path") ?? readStringParam(options, "path")
+  if (!rawPath) return { ok: false, result: failureToActionResult({ reason: "missing_param", message: "file_path is required" }) }
+  const input = resolveInputPath(runtime, core.conversationId, rawPath)
+  if (!input.ok) return { ok: false, result: failureToActionResult(input.failure) }
+  const validated = await core.sandbox.validatePath(core.conversationId, input.value)
+  if (!validated.ok) {
+    return { ok: false, result: failureToActionResult({ reason: validated.reason === "blocked" ? "path_blocked" : "invalid_param", message: validated.message }) }
+  }
+  const resolved = validated.resolved
+  const gate = await core.fileState.assertWritable(core.conversationId, resolved)
+  if (!gate.ok) {
+    return {
+      ok: false,
+      result: failureToActionResult({ reason: gate.reason === "stale_read" ? "stale_read" : "invalid_param", message: gate.message }, { path: resolved }),
+    }
+  }
+  return { ok: true, conversationId: core.conversationId, fileState: core.fileState, resolved, exists: gate.exists }
+}
+
+async function commitAtomicFile(
+  resolved: string,
+  content: string,
+  operation: "write" | "edit",
+): Promise<{ readonly ok: true; readonly bytes: number; readonly receipt: Awaited<ReturnType<typeof fileEffectReceipt>> } | { readonly ok: false; readonly result: ActionResult }> {
+  let bytes: number
+  try {
+    bytes = await writeAtomicUtf8Node(resolved, content)
+  } catch (err) {
+    return {
+      ok: false,
+      result: failureToActionResult({ reason: "io_error", message: `write failed: ${err instanceof Error ? err.message : String(err)}` }, { path: resolved }),
+    }
+  }
+  const receipt = await fileEffectReceipt({ path: resolved, content, operation })
+  return { ok: true, bytes, receipt }
+}
+
+async function resolveSearchRoot(
+  runtime: IAgentRuntime,
+  message: Memory,
+  options: unknown,
+): Promise<
+  | { readonly ok: true; readonly conversationId: string; readonly sandbox: SandboxService; readonly resolved: string }
+  | { readonly ok: false; readonly result: ActionResult }
+> {
+  const conversationId = conversationIdOf(message)
+  if (!conversationId) return { ok: false, result: failureToActionResult({ reason: "missing_param", message: "no roomId" }) }
+  const sandbox = runtime.getService(SANDBOX_SERVICE) as SandboxService | null
+  const session = runtime.getService(SESSION_CWD_SERVICE) as SessionCwdService | null
+  if (!sandbox || !session) return { ok: false, result: failureToActionResult({ reason: "internal", message: "coding-tools services unavailable" }) }
+  const requestedPath = readStringParam(options, "path")
+  let targetPath: string
+  if (requestedPath === undefined) {
+    targetPath = (await session.getExistingCwd(conversationId)).cwd
+  } else {
+    const resolvedInput = resolveInputPath(runtime, conversationId, requestedPath)
+    if (!resolvedInput.ok) return { ok: false, result: failureToActionResult(resolvedInput.failure) }
+    targetPath = resolvedInput.value
+  }
+  const validated = await sandbox.validatePath(conversationId, targetPath)
+  if (!validated.ok) {
+    return { ok: false, result: failureToActionResult({ reason: validated.reason === "blocked" ? "path_blocked" : "invalid_param", message: validated.message }) }
+  }
+  return { ok: true, conversationId, sandbox, resolved: validated.resolved }
+}
+
+async function readDirSafely<T>(loader: () => Promise<T>): Promise<{ readonly ok: true; readonly value: T } | { readonly ok: false; readonly result: ActionResult }> {
+  try {
+    return { ok: true, value: await loader() }
+  } catch (err) {
+    return { ok: false, result: failureToActionResult({ reason: "io_error", message: `readdir failed: ${err instanceof Error ? err.message : String(err)}` }) }
+  }
+}
+
+export async function readFileHandler(runtime: IAgentRuntime, message: Memory, _state?: State, options?: unknown): Promise<ActionResult> {
+  const core = requireFileCore(runtime, message)
+  if (!core.ok) return core.result
+  const { conversationId, sandbox, fileState } = core
 
   const lineNumbers = readBoolParam(options, "line_numbers") ?? false
   const unitRaw = readStringParam(options, "unit")
@@ -436,37 +526,13 @@ export async function readFileHandler(
   return successActionResult(val.content, data, data)
 }
 
-export async function writeFileHandler(
-  runtime: IAgentRuntime,
-  message: Memory,
-  _state?: State,
-  options?: unknown,
-  callback?: HandlerCallback,
-): Promise<ActionResult> {
-  const conversationId = conversationIdOf(message)
-  if (!conversationId) return failureToActionResult({ reason: "missing_param", message: "no roomId" })
-  const rawPath = readStringParam(options, "file_path") ?? readStringParam(options, "path")
+export async function writeFileHandler(runtime: IAgentRuntime, message: Memory, _state?: State, options?: unknown, callback?: HandlerCallback): Promise<ActionResult> {
   const content = readStringParam(options, "content")
-  if (!rawPath) return failureToActionResult({ reason: "missing_param", message: "file_path is required" })
   if (content === undefined) return failureToActionResult({ reason: "missing_param", message: "content is required" })
-
-  const sandbox = runtime.getService(SANDBOX_SERVICE) as SandboxService | null
-  const fileState = runtime.getService(FILE_STATE_SERVICE) as FileStateService | null
-  if (!sandbox || !fileState) return failureToActionResult({ reason: "internal", message: "coding-tools services unavailable" })
-
-  const input = resolveInputPath(runtime, conversationId, rawPath)
-  if (!input.ok) return failureToActionResult(input.failure)
-  const validated = await sandbox.validatePath(conversationId, input.value)
-  if (!validated.ok) {
-    return failureToActionResult({ reason: validated.reason === "blocked" ? "path_blocked" : "invalid_param", message: validated.message })
-  }
-  const resolved = validated.resolved
-
-  const gate = await fileState.assertWritable(conversationId, resolved)
-  if (!gate.ok) {
-    return failureToActionResult({ reason: gate.reason === "stale_read" ? "stale_read" : "invalid_param", message: gate.message }, { path: resolved })
-  }
-  if (gate.exists && readBoolParam(options, "overwrite") !== true) {
+  const target = await prepareWritableTarget(runtime, message, options)
+  if (!target.ok) return target.result
+  const { conversationId, fileState, resolved, exists } = target
+  if (exists && readBoolParam(options, "overwrite") !== true) {
     return failureToActionResult(
       { reason: "invalid_param", message: "existing file requires overwrite=true after reading, or use EDIT for localized changes" },
       { path: resolved },
@@ -481,18 +547,12 @@ export async function writeFileHandler(
     )
   }
 
-  let bytes: number
-  try {
-    bytes = await writeAtomicUtf8Node(resolved, content)
-  } catch (err) {
-    return failureToActionResult({ reason: "io_error", message: `write failed: ${err instanceof Error ? err.message : String(err)}` }, { path: resolved })
-  }
-
-  const receipt = await fileEffectReceipt({ path: resolved, content, operation: "write" })
+  const committed = await commitAtomicFile(resolved, content, "write")
+  if (!committed.ok) return committed.result
   const meta = await fileState.recordWrite(conversationId, resolved, "write")
-  const text = `Wrote ${bytes} bytes to ${resolved}`
-  const summary: ProviderDataRecord = { path: resolved, bytes, revision: meta.revision }
-  return fileMutationResult({ receipt, text, content, data: summary, promptData: summary, callback })
+  const text = `Wrote ${committed.bytes} bytes to ${resolved}`
+  const summary: ProviderDataRecord = { path: resolved, bytes: committed.bytes, revision: meta.revision }
+  return fileMutationResult({ receipt: committed.receipt, text, content, data: summary, promptData: summary, callback })
 }
 
 interface HunkEdit {
@@ -518,18 +578,7 @@ function parseHunkEdits(options: unknown): HunkEdit[] | undefined {
   return edits
 }
 
-export async function editFileHandler(
-  runtime: IAgentRuntime,
-  message: Memory,
-  _state?: State,
-  options?: unknown,
-  callback?: HandlerCallback,
-): Promise<ActionResult> {
-  const conversationId = conversationIdOf(message)
-  if (!conversationId) return failureToActionResult({ reason: "missing_param", message: "no roomId" })
-  const rawPath = readStringParam(options, "file_path") ?? readStringParam(options, "path")
-  if (!rawPath) return failureToActionResult({ reason: "missing_param", message: "file_path is required" })
-
+export async function editFileHandler(runtime: IAgentRuntime, message: Memory, _state?: State, options?: unknown, callback?: HandlerCallback): Promise<ActionResult> {
   const multiEdits = parseHunkEdits(options)
   const oldStr = readStringParam(options, "old_string")
   const newStr = readStringParam(options, "new_string")
@@ -545,22 +594,9 @@ export async function editFileHandler(
     return failureToActionResult({ reason: "missing_param", message: "old_string+new_string or edits[] is required" })
   }
 
-  const sandbox = runtime.getService(SANDBOX_SERVICE) as SandboxService | null
-  const fileState = runtime.getService(FILE_STATE_SERVICE) as FileStateService | null
-  if (!sandbox || !fileState) return failureToActionResult({ reason: "internal", message: "coding-tools services unavailable" })
-
-  const input = resolveInputPath(runtime, conversationId, rawPath)
-  if (!input.ok) return failureToActionResult(input.failure)
-  const validated = await sandbox.validatePath(conversationId, input.value)
-  if (!validated.ok) {
-    return failureToActionResult({ reason: validated.reason === "blocked" ? "path_blocked" : "invalid_param", message: validated.message })
-  }
-  const resolved = validated.resolved
-
-  const gate = await fileState.assertWritable(conversationId, resolved)
-  if (!gate.ok) {
-    return failureToActionResult({ reason: gate.reason === "stale_read" ? "stale_read" : "invalid_param", message: gate.message }, { path: resolved })
-  }
+  const target = await prepareWritableTarget(runtime, message, options)
+  if (!target.ok) return target.result
+  const { conversationId, fileState, resolved } = target
 
   let working: string
   try {
@@ -614,13 +650,8 @@ export async function editFileHandler(
     diffs.push(formatCompactEditDiff(resolved, hunkLine, hunk.old_string, hunk.new_string, 16))
   }
 
-  try {
-    await writeAtomicUtf8Node(resolved, working)
-  } catch (err) {
-    return failureToActionResult({ reason: "io_error", message: `write failed: ${err instanceof Error ? err.message : String(err)}` }, { path: resolved })
-  }
-
-  const receipt = await fileEffectReceipt({ path: resolved, content: working, operation: "edit" })
+  const committed = await commitAtomicFile(resolved, working, "edit")
+  if (!committed.ok) return committed.result
   const meta = await fileState.recordWrite(conversationId, resolved, "edit")
   const diffPreview = truncateHead(diffs.join("\n"), 40, 4096).text
   const text = `Edited ${resolved} (${totalReplacements} replacement${totalReplacements === 1 ? "" : "s"}, line ${firstLine}, rev=${meta.revision})\n${diffPreview}`
@@ -631,41 +662,19 @@ export async function editFileHandler(
     firstLine,
     revision: meta.revision,
   }
-  return fileMutationResult({ receipt, text, content: working, data: summary, promptData: summary, callback })
+  return fileMutationResult({ receipt: committed.receipt, text, content: working, data: summary, promptData: summary, callback })
 }
 
-export async function grepHandler(
-  runtime: IAgentRuntime,
-  message: Memory,
-  _state?: State,
-  options?: unknown,
-  _callback?: HandlerCallback,
-): Promise<ActionResult> {
-  const conversationId = conversationIdOf(message)
-  if (!conversationId) return failureToActionResult({ reason: "missing_param", message: "no roomId" })
+export async function grepHandler(runtime: IAgentRuntime, message: Memory, _state?: State, options?: unknown): Promise<ActionResult> {
   const patterns = readStringArrayParam(options, "patterns")
   const singlePattern = readStringParam(options, "pattern")
   const searchPatterns = patterns && patterns.length > 0 ? patterns : (singlePattern ? [singlePattern] : [])
   if (searchPatterns.length === 0) return failureToActionResult({ reason: "missing_param", message: "pattern is required" })
 
-  const sandbox = runtime.getService(SANDBOX_SERVICE) as SandboxService | null
-  const session = runtime.getService(SESSION_CWD_SERVICE) as SessionCwdService | null
   const rg = runtime.getService(RIPGREP_SERVICE) as RipgrepService | null
-  if (!sandbox || !session || !rg) return failureToActionResult({ reason: "internal", message: "coding-tools services unavailable" })
-
-  const requestedPath = readStringParam(options, "path")
-  const targetPath = requestedPath === undefined
-    ? (await session.getExistingCwd(conversationId)).cwd
-    : (() => {
-        const res = resolveInputPath(runtime, conversationId, requestedPath)
-        return res.ok ? res.value : undefined
-      })()
-  if (!targetPath) return failureToActionResult({ reason: "invalid_param", message: `invalid path: ${requestedPath ?? ""}` })
-
-  const validated = await sandbox.validatePath(conversationId, targetPath)
-  if (!validated.ok) {
-    return failureToActionResult({ reason: validated.reason === "blocked" ? "path_blocked" : "invalid_param", message: validated.message })
-  }
+  if (!rg) return failureToActionResult({ reason: "internal", message: "coding-tools services unavailable" })
+  const root = await resolveSearchRoot(runtime, message, options)
+  if (!root.ok) return root.result
 
   const modeRaw = readStringParam(options, "output_mode")
   const mode: RipgrepMode = modeRaw === "content" || modeRaw === "count" ? modeRaw : "files_with_matches"
@@ -677,7 +686,7 @@ export async function grepHandler(
     const res = await rg.search(
       {
         pattern: pat,
-        path: validated.resolved,
+        path: root.resolved,
         glob: readStringParam(options, "glob"),
         type: readStringParam(options, "type"),
         contextBefore: readNumberParam(options, "-B"),
@@ -702,7 +711,7 @@ export async function grepHandler(
     ? `${bounded.text}\n[Truncated: ${bounded.shownLines}/${bounded.totalLines} lines shown. Narrow path/glob or raise head_limit.]`
     : bounded.text
   const data: ProviderDataRecord = {
-    path: validated.resolved,
+    path: root.resolved,
     mode,
     matched: anyMatches,
     truncated: bounded.truncated,
@@ -712,51 +721,23 @@ export async function grepHandler(
   return successActionResult(text, data, data)
 }
 
-export async function globHandler(
-  runtime: IAgentRuntime,
-  message: Memory,
-  _state?: State,
-  options?: unknown,
-  _callback?: HandlerCallback,
-): Promise<ActionResult> {
-  const conversationId = conversationIdOf(message)
-  if (!conversationId) return failureToActionResult({ reason: "missing_param", message: "no roomId" })
+export async function globHandler(runtime: IAgentRuntime, message: Memory, _state?: State, options?: unknown): Promise<ActionResult> {
   const pattern = readStringParam(options, "pattern")
   if (!pattern) return failureToActionResult({ reason: "missing_param", message: "pattern is required" })
   const unsafe = unsafeGlobPattern(pattern)
   if (unsafe) return failureToActionResult({ reason: "invalid_param", message: unsafe })
 
-  const sandbox = runtime.getService(SANDBOX_SERVICE) as SandboxService | null
-  const session = runtime.getService(SESSION_CWD_SERVICE) as SessionCwdService | null
-  if (!sandbox || !session) return failureToActionResult({ reason: "internal", message: "coding-tools services unavailable" })
-
-  const requestedPath = readStringParam(options, "path")
-  let targetPath: string
-  if (requestedPath === undefined) {
-    targetPath = (await session.getExistingCwd(conversationId)).cwd
-  } else {
-    const resolvedInput = resolveInputPath(runtime, conversationId, requestedPath)
-    if (!resolvedInput.ok) return failureToActionResult(resolvedInput.failure)
-    targetPath = resolvedInput.value
-  }
-  const validated = await sandbox.validatePath(conversationId, targetPath)
-  if (!validated.ok) {
-    return failureToActionResult({ reason: validated.reason === "blocked" ? "path_blocked" : "invalid_param", message: validated.message })
-  }
-
-  let candidates: string[]
-  try {
-    candidates = await walkFilesForGlobNode(validated.resolved)
-  } catch (err) {
-    return failureToActionResult({ reason: "io_error", message: `readdir failed: ${err instanceof Error ? err.message : String(err)}` })
-  }
+  const root = await resolveSearchRoot(runtime, message, options)
+  if (!root.ok) return root.result
+  const walked = await readDirSafely(() => walkFilesForGlobNode(root.resolved))
+  if (!walked.ok) return walked.result
 
   const matcher = globToRegExp(pattern)
   const matched: { readonly path: string; readonly mtimeMs: number }[] = []
-  for (const candidate of candidates) {
-    const rel = pathRelative(validated.resolved, candidate).replace(/\\/g, "/")
+  for (const candidate of walked.value) {
+    const rel = pathRelative(root.resolved, candidate).replace(/\\/g, "/")
     if (!matcher.test(rel)) continue
-    const check = await sandbox.validatePath(conversationId, candidate)
+    const check = await root.sandbox.validatePath(root.conversationId, candidate)
     if (!check.ok) continue
     const st = await statPathNode(candidate)
     if (st.isFile) matched.push({ path: candidate, mtimeMs: st.mtimeMs })
@@ -769,50 +750,22 @@ export async function globHandler(
   return successActionResult(text, { files, truncated: bounded.truncated }, { count: files.length, truncated: bounded.truncated })
 }
 
-export async function lsHandler(
-  runtime: IAgentRuntime,
-  message: Memory,
-  _state?: State,
-  options?: unknown,
-  _callback?: HandlerCallback,
-): Promise<ActionResult> {
-  const conversationId = conversationIdOf(message)
-  if (!conversationId) return failureToActionResult({ reason: "missing_param", message: "no roomId" })
-  const sandbox = runtime.getService(SANDBOX_SERVICE) as SandboxService | null
-  const session = runtime.getService(SESSION_CWD_SERVICE) as SessionCwdService | null
-  if (!sandbox || !session) return failureToActionResult({ reason: "internal", message: "coding-tools services unavailable" })
-
-  const requestedPath = readStringParam(options, "path")
-  let targetPath: string
-  if (requestedPath === undefined) {
-    targetPath = (await session.getExistingCwd(conversationId)).cwd
-  } else {
-    const resolvedInput = resolveInputPath(runtime, conversationId, requestedPath)
-    if (!resolvedInput.ok) return failureToActionResult(resolvedInput.failure)
-    targetPath = resolvedInput.value
-  }
-  const validated = await sandbox.validatePath(conversationId, targetPath)
-  if (!validated.ok) {
-    return failureToActionResult({ reason: validated.reason === "blocked" ? "path_blocked" : "invalid_param", message: validated.message })
-  }
-
-  let entries: Awaited<ReturnType<typeof readDirEntriesNode>>
-  try {
-    entries = await readDirEntriesNode(validated.resolved)
-  } catch (err) {
-    return failureToActionResult({ reason: "io_error", message: `readdir failed: ${err instanceof Error ? err.message : String(err)}` })
-  }
+export async function lsHandler(runtime: IAgentRuntime, message: Memory, _state?: State, options?: unknown): Promise<ActionResult> {
+  const root = await resolveSearchRoot(runtime, message, options)
+  if (!root.ok) return root.result
+  const listed = await readDirSafely(() => readDirEntriesNode(root.resolved))
+  if (!listed.ok) return listed.result
   const ignorePatterns = (readStringArrayParam(options, "ignore") ?? []).map((p) => globToRegExp(p))
-  const filtered = entries.filter((e) => !ignorePatterns.some((rx) => rx.test(e.name)))
+  const filtered = listed.value.filter((e) => !ignorePatterns.some((rx) => rx.test(e.name)))
   const dirs = filtered.filter((e) => e.type === "dir").sort((a, b) => a.name.localeCompare(b.name))
   const files = filtered.filter((e) => e.type !== "dir").sort((a, b) => a.name.localeCompare(b.name))
   const sorted = [...dirs, ...files]
-  const lines = [`Directory: ${validated.resolved}`, ...sorted.map((e) => (e.type === "dir" ? `${e.name}/` : e.name))]
+  const lines = [`Directory: ${root.resolved}`, ...sorted.map((e) => (e.type === "dir" ? `${e.name}/` : e.name))]
   const bounded = truncateHead(lines.join("\n"), DEFAULT_OUTPUT_MAX_LINES, DEFAULT_OUTPUT_MAX_BYTES)
   return successActionResult(
     bounded.text,
-    { path: validated.resolved, entries: sorted, truncated: bounded.truncated },
-    { path: validated.resolved, count: sorted.length, truncated: bounded.truncated },
+    { path: root.resolved, entries: sorted, truncated: bounded.truncated },
+    { path: root.resolved, count: sorted.length, truncated: bounded.truncated },
   )
 }
 
@@ -998,5 +951,3 @@ export const fileAction: Action = {
     return FILE_HANDLERS[op](runtime, message, state, options as HandlerOptions | undefined, callback)
   },
 }
-
-export { pathDirname, pathJoin }

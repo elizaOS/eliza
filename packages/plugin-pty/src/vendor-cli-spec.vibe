@@ -16,11 +16,6 @@ export interface CodexCliSpecOptions {
   extraEnv?: Record<string, string | undefined>
 }
 
-interface VendorBinResolveOptions {
-  env?: Record<string, string | undefined>
-  exists?: (p: string) => boolean
-}
-
 module node {
   import { existsSync } from "node:fs"
   import path from "node:path"
@@ -117,4 +112,4 @@ module node {
 }
 
 import { buildClaudeCliSpec, buildCodexCliSpec, resolveClaudeCliBin, resolveCodexCliBin } from node
-export { buildClaudeCliSpec, buildCodexCliSpec, resolveClaudeCliBin, resolveCodexCliBin, type VendorBinResolveOptions }
+export { buildClaudeCliSpec, buildCodexCliSpec, resolveClaudeCliBin, resolveCodexCliBin }

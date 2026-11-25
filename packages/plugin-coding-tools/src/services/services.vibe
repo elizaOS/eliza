@@ -51,8 +51,6 @@ import {
   newUuid,
   osPlatform,
   pathDirname,
-  pathJoin,
-  pathRelative,
   pathResolve,
   redactShellText,
   resolveRealPathNode,
@@ -324,7 +322,7 @@ import {
   type SpawnedBgChild,
 } from node
 
-export { execFileNode, runShellProcessNode, statPathNode, type ExecProcessOutput, type FileStatInfo }
+export { runShellProcessNode, statPathNode, type ExecProcessOutput, type FileStatInfo }
 
 function parseCsvList(raw: string | undefined): string[] {
   if (!raw) return []
@@ -473,6 +471,18 @@ export class FileStateService extends Service {
     return map
   }
 
+  private saveEntry(
+    map: Map<string, TrackedFileEntry>,
+    absPath: string,
+    stat: FileStatInfo,
+    revision: string,
+    session: FileSession,
+  ): FileMeta {
+    const meta: FileMeta = { path: absPath, mtimeMs: stat.mtimeMs, size: stat.size, readAt: Date.now(), revision }
+    map.set(absPath, { meta, session })
+    return meta
+  }
+
   async recordRead(conversationId: string, absPath: string, statOverride?: FileStatInfo): Promise<FileMeta> {
     const stat = statOverride ?? (await statPathNode(absPath))
     const revision = fileRevision(stat)
@@ -488,15 +498,7 @@ export class FileStateService extends Service {
     if (canReadFile(nextSession)) {
       nextSession = stepReadFile(nextSession)
     }
-    const meta: FileMeta = {
-      path: absPath,
-      mtimeMs: stat.mtimeMs,
-      size: stat.size,
-      readAt: Date.now(),
-      revision,
-    }
-    map.set(absPath, { meta, session: nextSession })
-    return meta
+    return this.saveEntry(map, absPath, stat, revision, nextSession)
   }
 
   async recordWrite(conversationId: string, absPath: string, mode: "write" | "edit" = "write"): Promise<FileMeta> {
@@ -515,15 +517,7 @@ export class FileStateService extends Service {
       nextSession = stepReadFile(initialFileSession)
     }
     invalidateFileReadReferences(conversationId, absPath)
-    const meta: FileMeta = {
-      path: absPath,
-      mtimeMs: stat.mtimeMs,
-      size: stat.size,
-      readAt: Date.now(),
-      revision,
-    }
-    map.set(absPath, { meta, session: nextSession })
-    return meta
+    return this.saveEntry(map, absPath, stat, revision, nextSession)
   }
 
   get(conversationId: string, absPath: string): FileMeta | undefined {
@@ -874,16 +868,26 @@ export class BackgroundShellService extends Service {
     return { ok: true, snapshot: this.toSnapshot(session) }
   }
 
+  private lookupSession(
+    conversationId: string,
+    handle: string,
+  ): { readonly ok: true; readonly session: InternalBgSession } | { readonly ok: false; readonly message: string } {
+    const session = this.sessions.get(handle)
+    if (!session || session.conversationId !== conversationId) {
+      return { ok: false, message: `unknown background session handle: ${handle}` }
+    }
+    return { ok: true, session }
+  }
+
   poll(args: {
     readonly conversationId: string
     readonly handle: string
     readonly stdoutOffset?: number
     readonly stderrOffset?: number
   }): { readonly ok: true; readonly result: BackgroundShellPollResult } | { readonly ok: false; readonly message: string } {
-    const session = this.sessions.get(args.handle)
-    if (!session || session.conversationId !== args.conversationId) {
-      return { ok: false, message: `unknown background session handle: ${args.handle}` }
-    }
+    const found = this.lookupSession(args.conversationId, args.handle)
+    if (!found.ok) return found
+    const { session } = found
     const stdoutOffset = Math.max(0, Math.min(Math.floor(args.stdoutOffset ?? 0), session.stdoutBuf.length))
     const stderrOffset = Math.max(0, Math.min(Math.floor(args.stderrOffset ?? 0), session.stderrBuf.length))
     const specOffset = Math.min(stdoutOffset, session.specState.bgStdoutTotal)
@@ -909,10 +913,9 @@ export class BackgroundShellService extends Service {
     readonly handle: string
     readonly stdin: string
   }): { readonly ok: true; readonly bytesWritten: number } | { readonly ok: false; readonly message: string } {
-    const session = this.sessions.get(args.handle)
-    if (!session || session.conversationId !== args.conversationId) {
-      return { ok: false, message: `unknown background session handle: ${args.handle}` }
-    }
+    const found = this.lookupSession(args.conversationId, args.handle)
+    if (!found.ok) return found
+    const { session } = found
     if (session.status !== "running") {
       return { ok: false, message: `background session is not running: ${args.handle}` }
     }
@@ -925,10 +928,9 @@ export class BackgroundShellService extends Service {
     readonly conversationId: string
     readonly handle: string
   }): { readonly ok: true; readonly snapshot: BackgroundShellSessionSnapshot } | { readonly ok: false; readonly message: string } {
-    const session = this.sessions.get(args.handle)
-    if (!session || session.conversationId !== args.conversationId) {
-      return { ok: false, message: `unknown background session handle: ${args.handle}` }
-    }
+    const found = this.lookupSession(args.conversationId, args.handle)
+    if (!found.ok) return found
+    const { session } = found
     if (session.status === "running") {
       session.child.kill("SIGTERM")
       session.status = "killed"
@@ -1092,12 +1094,4 @@ export function detectTerminalSupported(env: Readonly<Record<string, string | un
 
 export function platformShellDialect(): "posix" | "powershell" {
   return osPlatform() === "win32" ? "powershell" : "posix"
-}
-
-export function relativePathFrom(root: string, target: string): string {
-  return pathRelative(root, target)
-}
-
-export function joinPath(...parts: string[]): string {
-  return pathJoin(...parts)
 }

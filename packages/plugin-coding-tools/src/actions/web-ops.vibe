@@ -235,16 +235,20 @@ export async function guardedHttpsFetch(url: string, signal?: AbortSignal): Prom
   )
 }
 
+const WEB_ACTION_BASE = {
+  contexts: [...CODING_TOOLS_CONTEXTS, "web"],
+  contextGate: { anyOf: [...CODING_TOOLS_CONTEXTS, "web"] },
+  roleGate: { minRole: "ADMIN" as const },
+  cacheStable: true,
+  cacheScope: "agent" as const,
+  toolSchemaStrict: true,
+  modelClass: "TEXT_SMALL" as const,
+}
+
 export function createWebFetchAction(reader: WebFetchReader = guardedHttpsFetch): Action {
   return {
     name: "WEB_FETCH",
-    contexts: [...CODING_TOOLS_CONTEXTS, "web"],
-    contextGate: { anyOf: [...CODING_TOOLS_CONTEXTS, "web"] },
-    roleGate: { minRole: "ADMIN" },
-    cacheStable: true,
-    cacheScope: "agent",
-    toolSchemaStrict: true,
-    modelClass: "TEXT_SMALL",
+    ...WEB_ACTION_BASE,
     similes: ["FETCH_URL", "READ_URL", "HTTP_GET"],
     description: "Fetch one public HTTPS URL (HTML -> readable text, or JSON with optional dot-path extract). Blocks private networks and plaintext downgrades.",
     descriptionCompressed: "Fetch public HTTPS URL (optional JSON extract path).",
@@ -446,13 +450,7 @@ export async function runCodingKeylessWebSearch(query: string, signal?: AbortSig
 
 export const webSearchAction: Action = {
   name: "WEB_SEARCH",
-  contexts: [...CODING_TOOLS_CONTEXTS, "web"],
-  contextGate: { anyOf: [...CODING_TOOLS_CONTEXTS, "web"] },
-  roleGate: { minRole: "ADMIN" },
-  cacheStable: true,
-  cacheScope: "agent",
-  toolSchemaStrict: true,
-  modelClass: "TEXT_SMALL",
+  ...WEB_ACTION_BASE,
   similes: ["SEARCH_WEB", "WEB_QUERY", "FIND_ONLINE"],
   description: "Search the public web for external docs or current facts.",
   descriptionCompressed: "Search public web by query.",

@@ -10,7 +10,7 @@ import { ParentLine } from "./messages.schema.vibe"
 import { checkGeneratedSource, type GeneratedCheck } from "./compiler.vibe"
 import { runGenerated, type CheckpointAnswer, type EffectAnswer, type EngineMessage, type GeneratedStart } from "./engine.vibe"
 
-export const WORKFLOW_STEP_MAX_BYTES = 65_536
+const WORKFLOW_STEP_MAX_BYTES = 65_536
 export const TYPED_STEPS_NODE = "typed-steps"
 
 export const WORKFLOW_MODEL_DRAFT_STATIC_PREFIX = `Role: Reviewed Workflow Step Text Drafter.
@@ -92,7 +92,7 @@ effect function deviceOperation(step: PhoneStep, prior: string, anchor: number):
   }
 }
 
-export function modelDraftPrompt(instruction: string, sourceText: string, maxContextChars: number = WORKFLOW_DEFAULT_BUDGET.maxContextChars): string {
+function modelDraftPrompt(instruction: string, sourceText: string, maxContextChars: number = WORKFLOW_DEFAULT_BUDGET.maxContextChars): string {
   const bounded = compactStepOutput(sourceText, maxContextChars)
   return `${WORKFLOW_MODEL_DRAFT_STATIC_PREFIX}\n---INPUT---\n${JSON.stringify({
     instruction,

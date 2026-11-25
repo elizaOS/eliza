@@ -12,7 +12,7 @@ effect function text(value: unknown, maximum: number, empty = false): string!Wor
   return value
 }
 
-export const GENERATED_DRAFT_STATIC_PREFIX = `Write one TypeScript module for a workflow, or return {"unsupported":"brief reason"} when the request needs anything the engine below cannot do. Return exactly one JSON object {"name":"1–200 chars","description":"0–4000 chars","source":"the module"} and nothing else.
+const GENERATED_DRAFT_STATIC_PREFIX = `Write one TypeScript module for a workflow, or return {"unsupported":"brief reason"} when the request needs anything the engine below cannot do. Return exactly one JSON object {"name":"1–200 chars","description":"0–4000 chars","source":"the module"} and nothing else.
 The module may import only types from "eliza-workflow" and must export default an async function taking ctx: WorkflowContext. Its declarations are:
 ${GENERATED_ENGINE_DECLARATION}
 Rules: give every ctx call a unique literal id; do all computation that must not repeat inside ctx.step and keep it synchronous and deterministic; use ctx.generate for single model text (with fast:true for short classification/scoring/summaries), ctx.generateBatch to run independent prompts concurrently in one journaled batch, ctx.compact to bound oversized intermediate text, ctx.approval before anything the owner should confirm, ctx.signal to wait for a named signal and ctx.sleep to wait. Never use host globals, network, files, timers, dynamic imports, eval, reflection or casts to any. The workflow cannot message, notify or remind the owner; its output appears only in its run history.`

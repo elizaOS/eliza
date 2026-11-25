@@ -7,6 +7,9 @@ export error WebSearchFailed { reason: string }
 
 export const webSearchAction: Action = {
   ...webSearchEdgeAction,
+  override: true,
+  contexts: ["general", "research", "web", "code"],
+  contextGate: { anyOf: ["general", "research", "web", "code"] },
   description:
     "Search the current web using the agent's explicitly authorized Chromium profile. Uses public keyless search only when no eligible browser is available before dispatch. Dispatched searches are never replayed through another provider.",
   descriptionCompressed: "Search web via authorized browser or keyless fallback.",

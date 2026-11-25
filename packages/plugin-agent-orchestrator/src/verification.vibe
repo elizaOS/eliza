@@ -1,6 +1,6 @@
 // spec/agentOrchestrator/verification.md, "Story: Verify subagent deliverables against concrete evidence and route fast evaluations cleanly"; spec/agentOrchestrator/index.md, "A task can pass its acceptance gate only with evidence for every required criterion"
 module node {
-  import { appendFile, mkdir, readFile, stat, writeFile } from "node:fs/promises"
+  import { appendFile, mkdir, stat, writeFile } from "node:fs/promises"
   import * as os from "node:os"
   import * as path from "node:path"
 
@@ -35,14 +35,6 @@ module node {
     await appendFile(filePath, `${line}\n`, "utf8")
   }
 
-  export async function readTextIfExists(filePath: string): Promise<string | undefined> {
-    try {
-      return await readFile(filePath, "utf8")
-    } catch {
-      return undefined
-    }
-  }
-
   /** @throws {never} */
   export function defaultAuditPath(): string {
     return path.join(os.homedir(), ".eliza", "orchestrator-audit.ndjson")
@@ -57,7 +49,6 @@ import {
   appendJsonLine,
   defaultAuditPath,
   joinFs,
-  readTextIfExists,
   statPathMtime,
   writeFileIfMissing,
 } from node
@@ -557,11 +548,4 @@ export function listBuiltApps(): readonly BuiltAppRecord[] {
 
 export function deleteBuiltApp(target: "custom" | "eliza-cloud", slug: string): boolean {
   return builtAppsRegistry.delete(`${target}:${slug}`)
-}
-
-export effect function readExistingFileText(filePath: string): (string | undefined)!! {
-  return tryPromise({
-    try: () => readTextIfExists(filePath),
-    catch: () => undefined,
-  }) catch () => undefined
 }
