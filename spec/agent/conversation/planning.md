@@ -865,15 +865,17 @@ pure def lawOnlyTheTurnsAcknowledgmentIsDelivered(draft: Draft, calls: int, earl
 
 The host's notes are for the model only, and the owner never sees them. A
 response whose text holds the host's label, `Note from the agent host`, or
-a whole note this message carried to the model is the host's words, never
-an answer, whether the model echoes a note or writes one of its own under
-the label: it reads as a blank. With no tool call it is asked again once
+the opening line of a note this message carried to the model (the host's
+own lead, such as the line that introduces the screen context, or the
+clock's line) is the host's words, never an answer, whether the model
+echoes a note, quotes part of one or writes one of its own under the
+label: it reads as a blank. With no tool call it is asked again once
 (above), and when the response after that note holds it again, the turn's
 failure fallback is the reply. Beside tool calls it is no cue, so the
 owner hears nothing and the tools still run. A `REPLY` call whose text
 holds it gives no reply, and a second answer that holds it is no second
 answer. The reply stream shows the model's text only up to where the label
-or a whole note could begin; what follows is shown once it can no longer be
+or such a line could begin; what follows is shown once it can no longer be
 one, or with the reply, so no part of a note is ever streamed, spoken or
 stored. The notes stay in the model's request as they are.
 
