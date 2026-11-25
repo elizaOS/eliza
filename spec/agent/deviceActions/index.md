@@ -526,11 +526,15 @@ card only for that message, so a later message that asks again, such as
 "take a picture" said twice, is a request of its own.
 
 The reply follows the choice. A pending request that carries the message
-is answered in its family's words as the handoff it is ("Opening
-example.com.") and tells the model that it has not run yet, so it never
-claims what it found or shows; one kept for review asks the owner to
-review it on the phone, in the family's words and in the turn's time zone;
-an approved or running one only tells the model its state.
+tells the model that it is a handoff that has not run yet, so the model
+never claims what it found or shows; where the family gives the owner a
+sentence for it ("Opening example.com."), the model gets that sentence as
+what the phone shows and words the reply itself, so the owner never hears
+the family's sentence beside the model's. One kept for review asks the
+owner to review it on the phone, in the family's words and in the turn's
+time zone, since the review is the owner's own step. An approved or
+running one only tells the model its state. The emergency keypad's safety
+copy is delivered in the family's words.
 
 ```quint
 type ProposalGrounding = GroundedAsAsked | GroundedForReview | GroundedOnScreen
@@ -563,8 +567,8 @@ request, its stored receipt or the same review, and never creates a new
 one. A request that already settled is reported from its stored receipt
 and is never dispatched again, in its family's words: what the model may
 say of the historical result, which is never a current read, and the
-owner's sentence where the family gives one; otherwise the model answers
-from that result.
+family's sentence for the owner as a fact the model words; otherwise the
+model answers from that result.
 
 ```quint
 type ProposalAnswer = OfferedNew | ReturnedOpen | ReturnedSettled | AnsweredRefused

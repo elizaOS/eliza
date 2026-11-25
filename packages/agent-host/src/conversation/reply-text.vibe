@@ -3,18 +3,72 @@ import { looksLikeActionEnvelopeJson, looksLikeEvaluatorEnvelopeJson, parseInter
 import { actionLabel, compose, readDraft, type ActionLabel, type Composition, type Draft, type DraftShape, type VoiceAction } from "../../gen/agent__conversation__planning.ts"
 
 const maxCueLength = 120
+const bracketCall = /\[[a-z][a-z0-9]*(?:_[a-z0-9]+)+(?:\s+[a-z_]+=(?:"[^"\n]*"|[^\s\]]+))+\s*\]/gu
+const callName = /^[a-z]+(?:_[a-z0-9]+)+$/u
+const emptyWrapper = /```[\w-]*\s*```|<([\w-]+)>\s*<\/\1>/gu
 const dataToken = /\p{N}|\b[ap]\.m\.|\b(?:pm|noon|midnight|o['’]clock|zero|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|(?:hundred|thousand|dozen)s?|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth|\p{L}+(?:teenth|tieth)|few|couple|handful|several|single|only|(?:half|quarter) (?:past|to|after|till?))\b|\b(?:at|by|until|till|before|after|around) one\b|\bone [ap]m\b/iu
 
-export const cueRule = "When you call tools, write with your first tool calls only a brief cue, in the person's own language, that you heard the request; the real reply comes after the work. A cue is a few natural words that you are looking or about to do it, in your own words rather than a stock phrase: it never names the people, items, places, times, numbers or outcome, never asks anything, never says the work is done or under way, and never repeats the request. Never open a cue with assent such as Sure or Yeah after a question; it sounds like the answer. When one message asks for several lookups, or about several named people or items, use the plain \"Let me check.\"; name a source only for one simple lookup. Any question or lookup gets its cue, even one about what is on the screen. A request only to open one app, with nothing to read, find or change there, still calls the tool that opens it, with no cue: write nothing with that call, and the reply after it confirms the destination. Your text after the last tool result is the reply itself, never another cue, and a response with no tool call is always your reply, so never write a cue without calling a tool. If the person asked for silence or no acknowledgment, write nothing and still do the work. Write no text with later tool calls."
+export const cueRule = "When you call tools, write with your first tool calls only a brief cue, in the person's own language, that you heard the request; the real reply comes after the work. A cue is a few natural words that you are looking or about to do it, in your own words rather than a stock phrase: it never names the people, items, places, times, numbers or outcome, never asks anything, never says the work is done or under way, and never repeats the request. Never open a cue with assent such as Sure or Yeah after a question; it sounds like the answer. When one message asks for several lookups, or about several named people or items, use the plain \"Let me check.\"; name a source only for one simple lookup. Write a cue only with a tool call in the same response: when no offered tool can do what was asked, write no cue and tell the person plainly, in your own words, that you can't. Any question or lookup gets its cue, even one about what is on the screen. A request only to open one app, with nothing to read, find or change there, still calls the tool that opens it, with no cue: write nothing with that call, and the reply after it confirms the destination. Your text after the last tool result is the reply itself, never another cue, and a response with no tool call is always your reply, so never write a cue without calling a tool. If the person asked for silence or no acknowledgment, write nothing and still do the work. Write no text with later tool calls."
 
-function shapeOf(reply: string): DraftShape {
-  const text = reply.trim()
-  if (!text) return "Blank"
-  return text.length > maxCueLength || text.includes("?") || dataToken.test(text) ? "OtherText" : "CueShaped"
+function isWrittenCall(body: string): boolean {
+  if (looksLikeActionEnvelopeJson(body)) return true
+  try {
+    const parsed: unknown = JSON.parse(body)
+    return typeof parsed === "object" && parsed !== null
+      && Object.entries(parsed).some(([key, value]) => typeof value === "string" && (key === "action" || key === "tool" || callName.test(value)))
+  } catch {
+    return false
+  }
+}
+
+interface WithoutObjects {
+  readonly text: string
+  readonly calls: boolean
+}
+
+function withoutObjects(said: string): WithoutObjects {
+  const text = said.replace(bracketCall, " ")
+  let calls = text !== said
+  if (!text.includes("{")) return { text: calls ? text.replace(emptyWrapper, " ").trim() : said, calls }
+  const open: number[] = []
+  let rest = ""
+  let kept = 0
+  let quoted = false
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index]
+    if (quoted) {
+      if (char === "\\") index += 1
+      else if (char === "\"") quoted = false
+      continue
+    }
+    if (char === "\"" && open.length > 0) quoted = true
+    if (char === "{") open.push(index)
+    if (char !== "}") continue
+    const start = open.pop()
+    const body = text.slice(start ?? index, index + 1)
+    if (start === undefined || open.length > 0 || !isJsonObject(body)) continue
+    calls ||= isWrittenCall(body)
+    rest += `${text.slice(kept, start)} `
+    kept = index + 1
+  }
+  return { text: kept === 0 && !calls ? said : `${rest}${text.slice(kept)}`.replace(emptyWrapper, " ").trim(), calls }
+}
+
+export function withoutWrittenCalls(said: string): string {
+  return withoutObjects(said).text
+}
+
+function shapeOf(reply: string, toolCalls: number): DraftShape {
+  const said = reply.trim()
+  if (!said) return "Blank"
+  const { text, calls } = withoutObjects(said)
+  if (!text) return calls ? "Blank" : "OtherText"
+  if (text.length > maxCueLength || text.includes("?") || dataToken.test(text)) return "OtherText"
+  return calls && toolCalls === 0 ? "Blank" : "CueShaped"
 }
 
 export function draftOf(text: string, calls: number): Draft {
-  return readDraft(shapeOf(text), calls)
+  return readDraft(shapeOf(text, calls), calls)
 }
 
 const cardBlock = /(?:^|\n)[ \t]*\[(MAPSCARD|CHECKLIST|WORKFLOW)\][ \t]*\r?\n[ \t]*(\{[^\n]*\})[ \t]*\r?\n[ \t]*\[\/\1\][ \t]*(?=\r?\n|$)/g

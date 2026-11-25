@@ -1,6 +1,10 @@
 // spec/agent/deviceActions/index.md, "Story: Propose what I asked for on my phone, in my own words"
 import { assert, it } from "@effect/vitest"
 import { deviceJourney } from "./support/device-agent.vibe"
+import { cutOff, text } from "./support/cloud-fake.ts"
+import { cloudFake, deviceKey, host, startInProcess } from "./support/kernel.vibe"
+import { deviceActionsModuleName } from "../src/device-actions/proposal/module.vibe"
+import { builtinModuleFactories } from "../src/plugins/profile.vibe"
 
 module node {
   import { Effect, Result } from "effect"
@@ -147,6 +151,24 @@ module node {
         ...[...values].flatMap(([key, set]) => [...set].map((value) => ({ ...typed, [key]: value }))),
       ]
     })))
+  }
+
+  /** @throws {never} */
+  export async function enrolledAlphaPhone(runtime: AgentRuntime, socket: string, token: string): Promise<DeviceClient> {
+    const client = deviceClient(socket, token, runtime.agentId, alphaPhone.join(","))
+    await client.call("POST", "/api/client-devices/register", { capabilities: alphaPhone, workflowProtocol: 1 })
+    return client
+  }
+
+  /** @throws {never} */
+  export async function firstTurn(client: DeviceClient, words: string): Promise<number> {
+    const { conversation } = (await client.host("POST", "/api/conversations", {})).json as { conversation: { id: string } }
+    return (await client.call("POST", `/api/conversations/${conversation.id}/messages`, { text: words })).status
+  }
+
+  /** @throws {never} */
+  export function sentModelCalls(cloud: CloudFake): Completion[] {
+    return completions(cloud)
   }
 
   /** @throws {never} */
@@ -326,7 +348,7 @@ module node {
   }
 }
 
-import { alphaTool, proposeFromChat, proposeTool, sharedRules } from node
+import { alphaTool, enrolledAlphaPhone, firstTurn, proposeFromChat, proposeTool, sentModelCalls, sharedRules } from node
 
 it.live(`An owner's chat request becomes one reviewed device proposal in its own words, a refusal offers nothing, and later turns learn what applied and what never ran (spec/agent/conversation/planning.md, "A recognized card is delivered unfenced, other multi-line tool output is fenced, and grounded prose follows unless one already holds the other"; spec/agent/conversation/planning.md, "A reply that leaves a failure unreported is written again once, and the delivered reply still reports open failures and attachment omissions"; spec/agent/deviceActions/index.md, "Story: Propose what I asked for on my phone, in my own words"; spec/agent/deviceActions/index.md, "A proposal is offered only on an owner turn of the enrolled device, as its family grounded it, and re-admitted under the turn's negotiation"; spec/agent/deviceActions/index.md, "Each wire type belongs to at most one proposal family, and a family offers forms only of its own types"; spec/agent/deviceActions/index.md, "A proposal carries the owner's message only for a live turn that asked for it directly, so otherwise the phone shows its card"; spec/agent/deviceActions/index.md, "A proposal's identity is its request message and its operation, so a repeat returns the same request"; spec/agent/deviceActions/index.md, "A grounding refusal offers nothing and is a refusal before dispatch"; spec/agent/deviceActions/index.md, "A later turn of the same conversation learns at most six outcomes of its own requests: what changed, and what ended without running"; spec/agent/deviceActions/index.md, "An unclaimed offer retires at its deadline or at the end of its turn"; spec/agent/deviceActions/index.md, "Only a confirmed review settles an uncertain request"; spec/agent/conversation/planning.md, "An action may narrow its tool to the turn, never beyond its registered form"; spec/agent/conversation/planning.md, "Every call of a turn is one the model chose, and a call this message serves in another place is refused before it runs and is no step of the turn"; spec/agent/conversation/planning.md, "A failure or proposal the turn made stays reported unless a later success of the same operation supersedes it"; spec/agent/conversation/planning.md, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history")`, effect () => {
   const observed = try deviceJourney({ allowed: ["REPLY", "IGNORE", "NONE", proposeTool] }, "propose from chat", proposeFromChat)
@@ -368,4 +390,27 @@ it.live(`The device tool an Alpha phone is sent states each rule once, names no 
     })
     assert.isAtMost(size, 19_500)
   })
+}, 120_000)
+
+it.live(`A warm-up the enrolled phone asks for sends the system prompt, tools and cache key of the phone's first turn, its device tool included (spec/agent/conversation/planning.md, "A warm-up sends the planner's tools and system prompt once with a one-token cap, at most once every four minutes, and stores and shows nothing")`, effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const agent = try startInProcess({
+    launch: { backend: { kind: "cloud", origin: cloud.origin, largeModel: "cerebras/qwen-3.8-27b" }, callerRole: "owner", hostContextRevision: 1, load: [deviceActionsModuleName], allowed: ["REPLY", "IGNORE", "NONE", proposeTool] },
+    frame: { credential: { version: 1, value: deviceKey } }, modules: builtinModuleFactories,
+  })
+  const socket = agent.transport.kind === "socket" ? agent.transport.path : ""
+  const phone = try host("enroll the phone", () => enrolledAlphaPhone(agent.agent.runtime, socket, agent.frame.token))
+  try Effect.sync(() => cloud.script(cutOff("o"), text("Okay.")))
+  const warmed = try host("warm up", () => phone.call("POST", "/api/turns/warm"))
+  for (let waited = 0; waited < 5_000 && sentModelCalls(cloud).length === 0; waited += 20) try Effect.sleep(20)
+  const answered = try host("first turn", () => firstTurn(phone, "Hi"))
+  const [warm, turn] = sentModelCalls(cloud) as unknown as readonly { messages: readonly unknown[]; tools?: readonly { function: { name: string } }[]; prompt_cache_key?: string; max_tokens?: number }[]
+  try Effect.try(() => assert.deepStrictEqual({
+    warmed: warmed.status, answered,
+    sameSystem: JSON.stringify(warm?.messages[0]) === JSON.stringify(turn?.messages[0]),
+    sameTools: JSON.stringify(warm?.tools) === JSON.stringify(turn?.tools),
+    deviceTool: warm?.tools?.some(({ function: { name } }) => name === proposeTool),
+    sameKey: warm?.prompt_cache_key !== undefined && warm.prompt_cache_key === turn?.prompt_cache_key,
+    caps: [warm?.max_tokens, turn?.max_tokens],
+  }, { warmed: 202, answered: 200, sameSystem: true, sameTools: true, deviceTool: true, sameKey: true, caps: [1, undefined] }))
 }, 120_000)

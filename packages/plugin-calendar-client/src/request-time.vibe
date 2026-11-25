@@ -1,5 +1,6 @@
-// spec/calendar/readClock.md, "A clock time the owner stated is one the owner's words hold"; spec/calendar/readClock.md, "A stated window is read only when the owner's words fit it one way on its day"; spec/calendar/readClock.md, "A stated year wins, a wrong extracted year is corrected, and a past start asks first"; spec/calendar/reviewedReads.md, "A new phone event is the timed event the model read, at a clock time the owner said, on the phone's clock"; spec/calendar/reviewedReads.md, "A selected target, a chosen calendar and a named event are the ones the owner gave"; spec/calendar/actions.md, "A resident delete runs at once only for the one event the owner named, and otherwise asks in chat"; spec/calendar/actions.md, "A new event's guests and a change of guests are the ones the owner's words give"; spec/calendar/actions.md, "A change finds its one event from a year back to five years ahead, and never calls an unread calendar empty"
+// spec/calendar/readClock.md, "A clock time the owner stated is one the owner's words hold"; spec/calendar/readClock.md, "The owner's words are read for a free-time window only to note one they seem to give otherwise"; spec/calendar/readClock.md, "A stated year wins, a wrong extracted year is corrected, and a past start asks first"; spec/calendar/reviewedReads.md, "A new phone event is the timed event the model read, at a clock time the owner said, on the phone's clock"; spec/calendar/reviewedReads.md, "A selected target, a chosen calendar and a named event are the ones the owner gave"; spec/calendar/actions.md, "A resident delete runs at once only for the one event the owner named, and otherwise asks in chat"; spec/calendar/actions.md, "A new event's guests and a change of guests are the ones the owner's words give"; spec/calendar/actions.md, "A change finds its one event from a year back to five years ahead, and never calls an unread calendar empty"
 import { nameSaid } from "../gen/calendar__reviewedReads.effect.vibe"
+import { clockHeld } from "../gen/calendar__readClock.effect.vibe"
 import { addDaysToLocalDate, getZonedDateParts, knownTimeZone, type LocalDate } from "./clock.vibe"
 
 export interface StatedClockTime {
@@ -233,14 +234,17 @@ const hourNames = ["twelve", "one", "two", "three", "four", "five", "six", "seve
 const unitNames = ["", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen"]
 const tenNames = ["", "", "twenty", "thirty", "forty", "fifty"]
 
-function minuteNames(minute: number): readonly string[] {
-  if (minute < 10) return [`oh ${unitNames[minute]}`, `o ${unitNames[minute]}`]
-  if (minute < 20) return [unitNames[minute] ?? ""]
-  const tens = tenNames[Math.floor(minute / 10)] ?? ""
-  return [minute % 10 === 0 ? tens : `${tens} ${unitNames[minute % 10]}`]
+function countName(count: number): string {
+  if (count < 20) return unitNames[count] ?? ""
+  const tens = tenNames[Math.floor(count / 10)] ?? ""
+  return count % 10 === 0 ? tens : `${tens} ${unitNames[count % 10]}`
 }
 
-function clockSpellings(clock: StatedClockTime): readonly string[] {
+function minuteNames(minute: number): readonly string[] {
+  return minute < 10 ? [`oh ${unitNames[minute]}`, `o ${unitNames[minute]}`] : [countName(minute)]
+}
+
+function plainSpellings(clock: StatedClockTime): readonly string[] {
   const { hour, minute } = clock
   const twelve = hour % 12 === 0 ? 12 : hour % 12
   const name = hourNames[hour % 12] ?? ""
@@ -256,77 +260,271 @@ function clockSpellings(clock: StatedClockTime): readonly string[] {
       : minute === 45 ? [`quarter to ${next}`, `quarter to ${(hour + 1) % 12 === 0 ? 12 : (hour + 1) % 12}`] : [])]
 }
 
+function plainWords(text: string): string {
+  const words = text.normalize("NFKC").toLowerCase()
+    .replace(/\b([ap])\.?\s?m\b\.?/gu, " $1m ")
+    .replace(/\bo['’]\s?clock\b/gu, "oclock")
+    .replace(/(\d)(?=[a-z])/gu, "$1 ")
+    .replace(/\.(?!\d)|[^\p{L}\p{N}:.]+/gu, " ")
+  return ` ${words.replace(/\s+/gu, " ").trim()} `
+}
+
+const toWords = ["to", "of", "till", "til", "before"]
+
+function clockSpellings(clock: StatedClockTime): readonly string[] {
+  const { hour, minute } = clock
+  const twelve = hour % 12 === 0 ? 12 : hour % 12
+  const name = hourNames[hour % 12] ?? ""
+  const padded = String(hour).padStart(2, "0")
+  const mm = String(minute).padStart(2, "0")
+  const hours = [name, String(twelve)]
+  const digits = [...new Set([`${twelve}:${mm}`, `${hour}:${mm}`, `${padded}:${mm}`, `${twelve}.${mm}`, `${hour}.${mm}`, `${padded}.${mm}`, `${padded}${mm}`, ...(hour >= 13 || hour < 10 ? [`${padded} h${mm}`] : [])])]
+  if (minute === 0) {
+    const twelves = [String(twelve), `${twelve}:00`, `${twelve}.00`, name, `${name} oclock`, `${twelve} oclock`]
+    return [...new Set([String(twelve), String(hour), ...digits, name, `${name} oclock`, `${twelve} oclock`]),
+      ...(hour === 12 ? ["noon", "midday", ...twelves.flatMap((spelled) => [`${spelled} noon`, `${spelled} midday`])] : hour === 0 ? ["midnight", ...twelves.map((spelled) => `${spelled} midnight`)] : [])]
+  }
+  const next = hourNames[(hour + 1) % 12] ?? ""
+  const nextHours = [next, String((hour + 1) % 12 === 0 ? 12 : (hour + 1) % 12)]
+  return [...digits, `${twelve} ${mm}`, ...(hour > 12 ? [`${hour} ${mm}`] : []), ...minuteNames(minute).map((words) => `${name} ${words}`),
+    ...(minute < 30 ? [countName(minute), String(minute)].flatMap((count) => hours.flatMap((named) => [`${count} past ${named}`, `${count} after ${named}`])) : []),
+    ...(minute > 30 ? [countName(60 - minute), String(60 - minute)].flatMap((count) => nextHours.flatMap((named) => toWords.map((to) => `${count} ${to} ${named}`))) : []),
+    ...(minute === 30 ? hours.flatMap((named) => [`half past ${named}`, `half ${named}`]) : []),
+    ...(minute === 15 ? hours.flatMap((named) => [`quarter past ${named}`, `quarter after ${named}`]) : []),
+    ...(minute === 45 ? nextHours.flatMap((named) => toWords.map((to) => `quarter ${to} ${named}`)) : [])]
+}
+
+const spokenNumber = "one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty"
 const meridiemWord = /(?:(\d)|\b)([ap])(\.?)\s?m\b(\.?)/gu
 const iAfter = /^\s+i(?![\p{L}\p{N}'’])/u
 const iBefore = /(?:^|[^\p{L}\p{N}'’])i\s+$/u
-const amVerb = " amverb "
+const clockBefore = compiled(String.raw`(?:\d|\b(?:${spokenNumber}|o['’]\s?clock|oclock|noon|midnight|midday))\s+$`, "u")
+const freeAfterI = /^\s+i\s+(?:free|busy|available|booked|open|clear|around|doing|scheduled|occupied|tied|out|away|off|in|at|on|there|home)(?![\p{L}\p{N}])/u
+const clockIsh = compiled(String.raw`\b(${spokenNumber}|noon|midnight|midday|oclock)ish\b`, "gu")
+
+function amReading(before: string, after: string): string | undefined {
+  if (iBefore.test(before)) return " amverb "
+  if (!iAfter.test(after)) return undefined
+  if (!clockBefore.test(before)) return " amverb "
+  return freeAfterI.test(after) ? " amorverb " : undefined
+}
 
 function clockTokens(text: string): readonly string[] {
   const lowered = text.normalize("NFKC").toLowerCase()
   return lowered
     .replace(meridiemWord, (found: string, attached: string | undefined, half: string, dot: string, after: string, at: number) =>
-      attached === undefined && half === "a" && dot === "" && after === "" && (iAfter.test(lowered.slice(at + found.length)) || iBefore.test(lowered.slice(0, at)))
-        ? amVerb : `${attached ?? ""} ${half}m `)
+      (attached === undefined && half === "a" && dot === "" && after === "" ? amReading(lowered.slice(0, at), lowered.slice(at + found.length)) : undefined) ?? `${attached ?? ""} ${half}m `)
     .replace(/\bo['’]\s?clock\b/gu, "oclock")
+    .replace(/(\d)([ap])\b/gu, "$1 $2m")
+    .replace(clockIsh, "$1 ish")
     .replace(/(\d)(?=[a-z])/gu, "$1 ")
+    .replace(/\b(?:minutes?|mins?)\s+(?=past\b)/gu, "")
     .replace(/[-–—]/gu, " - ")
-    .replace(/\.(?!\d)|[^\p{L}\p{N}:.-]+/gu, " ")
+    .replace(/[,;!?()[\]{}/]+|\.(?!\d)/gu, " | ")
+    .replace(/[^\p{L}\p{N}:.|-]+/gu, " ")
     .trim().split(/\s+/u).filter((word) => word !== "")
 }
 
-function clockWords(text: string): string {
-  return ` ${clockTokens(text).filter((word) => word !== "-").join(" ")} `
+const monthWord = String.raw`(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)`
+const writtenDate = compiled([
+  String.raw`\b\d{4}-\d{1,2}-\d{1,2}\b`, String.raw`\b\d{1,2}/\d{1,2}(?:/\d{2,4})?\b`, String.raw`\b\d{1,2}\.\d{1,2}\.\d{2,4}\b`,
+  String.raw`\b${monthWord}\.?\s+\d{1,2}(?:st|nd|rd|th)?\b(?:,?\s+\d{4}\b)?`, String.raw`\b\d{1,2}(?:st|nd|rd|th)?\s+(?:of\s+)?${monthWord.replace("may|", "")}\b\.?(?:,?\s+\d{4}\b)?`,
+  String.raw`\b\d{1,2}(?:st|nd|rd|th)\b`,
+].join("|"), "giu")
+
+interface ClockWords { readonly words: string; readonly list: readonly string[]; readonly clauseEnds: ReadonlySet<number> }
+
+function clockWords(text: string): ClockWords {
+  const list: string[] = []
+  const clauseEnds = new Set<number>()
+  for (const word of clockTokens(text.normalize("NFKC").toLowerCase().replace(writtenDate, (found: string) => /^\d+[a-z]+$/u.test(found) ? " nth " : " date "))) {
+    if (word === "|") clauseEnds.add(list.length - 1)
+    else if (word !== "-") list.push(word)
+  }
+  return { words: ` ${list.join(" ")} `, list, clauseEnds }
 }
 
-export function clockHeldByWords(clock: StatedClockTime, text: string): boolean {
-  const words = clockWords(text)
+function halfNamed(clock: StatedClockTime, spelled: string): boolean {
+  return /(?:noon|midday|midnight)$/u.test(spelled) || (clock.hour >= 13 && spelled.startsWith(String(clock.hour)))
+}
+
+function heldIn(clock: StatedClockTime, words: string, spellings: readonly string[], counts: (spelled: string, at: number) => boolean): boolean {
   const otherHalf = clock.hour < 12 ? "pm" : "am"
-  return clockSpellings(clock).some((spelled) => {
-    const half = spelled === "noon" || spelled === "midday" || spelled === "midnight" || (clock.hour >= 13 && spelled.startsWith(String(clock.hour))) ? undefined : otherHalf
+  return spellings.some((spelled) => {
+    const half = halfNamed(clock, spelled) ? undefined : otherHalf
     for (let at = words.indexOf(` ${spelled} `); at !== -1; at = words.indexOf(` ${spelled} `, at + 1)) {
-      if (half === undefined || !words.startsWith(` ${half} `, at + spelled.length + 1)) return true
+      if ((half === undefined || !words.startsWith(` ${half} `, at + spelled.length + 1)) && counts(spelled, at)) return true
     }
     return false
   })
 }
 
-const windowClockWord = /^(?:\d{1,2}(?:[:.]\d{2})?|am|pm|oclock|noon|midday|midnight|half|past|quarter|oh|o|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty)$/u
-const windowJoins = new Set(["and", "to", "until", "till", "through", "-"])
-const durationUnit = /^(?:seconds?|minutes?|hours?|days?|weeks?|months?)$/u
-const windowHedges = new Set(["around", "about", "approximately", "roughly", "circa"])
+const countedToTheHour = /^.+ (?:to|of|till|til|before) \S+$/u
+const clockLead = /^(?:at|from|to|till|til|until|by|before|after|between|and|around|about|through|thru)$/u
+const countLead = /^(?:at|to|till|til|until|by|before|after|around|about)$/u
 
-export interface WindowSides {
-  readonly start: string
-  readonly end: string
-  readonly phrase: string
+const dayWord = /^(?:today|tonight|tomorrow|date|(?:mon|tues|wednes|thurs|fri|satur|sun)day)$/u
+const fourDigitsEnd = /^(?:am|pm|to|till|til|until|through|thru|and)$/u
+const dayLead = /^(?:on|this|next)$/u
+const dayPart = /^(?:morning|afternoon|evening|night|week|weekend)$/u
+
+function fourDigitsEndAClock(next: readonly string[], clauseEnd: boolean): boolean {
+  const [first, second] = next
+  if (clauseEnd || first === undefined || fourDigitsEnd.test(first) || dayWord.test(first)) return true
+  return dayLead.test(first) && second !== undefined && (dayWord.test(second) || (first !== "on" && dayPart.test(second)))
 }
 
-const spokenHour = /^(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)$/u
-const spokenMinuteLead = /^(?:oh|o|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty)$/u
-const spokenMinuteTail = /^(?:twenty|thirty|forty|fifty|oh|o)$/u
-const spokenUnit = /^(?:one|two|three|four|five|six|seven|eight|nine)$/u
-
-function clockHyphen(before: string, after: string): boolean {
-  return (spokenHour.test(before) && spokenMinuteLead.test(after)) || (spokenMinuteTail.test(before) && spokenUnit.test(after))
-}
-
-export function windowRangesInWords(text: string): readonly WindowSides[] {
-  const words = clockTokens(text).filter((word, at, all) => !windowHedges.has(word) && !(word === "-" && clockHyphen(all[at - 1] ?? "", all[at + 1] ?? "")))
-  const quarterTo = (at: number) => words[at] === "to" && words[at - 1] === "quarter"
-  const clockWord = (at: number) => windowClockWord.test(words[at] ?? "") || quarterTo(at)
-  const ranges: WindowSides[] = []
-  for (let join = 1; join < words.length - 1; join += 1) {
-    const joined = words[join] ?? ""
-    if (!windowJoins.has(joined) || quarterTo(join)) continue
-    let from = join
-    while (from > 0 && join - from < 5 && clockWord(from - 1)) from -= 1
-    let to = join + 1
-    while (to < words.length && to - join <= 5 && clockWord(to)) to += 1
-    if (from === join || to === join + 1 || durationUnit.test(words[to] ?? "") || (joined === "and" && words[from - 1] !== "between")) continue
-    ranges.push({ start: words.slice(from, join).join(" "), end: words.slice(join + 1, to).join(" "), phrase: words.slice(joined === "and" ? from - 1 : from, to).join(" ") })
-    join = to - 1
+function spelledAsAClock({ words, list, clauseEnds }: ClockWords): (spelled: string, at: number) => boolean {
+  return (spelled, at) => {
+    const nth = words.slice(0, at).split(" ").length - 1
+    const before = list[nth - 1] ?? ""
+    if (countedToTheHour.test(spelled)) return countLead.test(before)
+    return !/^\d{4}$/u.test(spelled) || (clockLead.test(before) && fourDigitsEndAClock(list.slice(nth + 1, nth + 3), clauseEnds.has(nth)))
   }
-  return ranges
+}
+
+export function clockHeldByWords(clock: StatedClockTime, text: string): boolean {
+  const read = clockWords(text)
+  return clockHeld(heldIn(clock, plainWords(text), plainSpellings(clock), () => true), heldIn(clock, read.words, clockSpellings(clock), spelledAsAClock(read)))
+}
+
+const dayClocks: readonly StatedClockTime[] = Array.from({ length: 1440 }, (_, at) => ({ hour: Math.floor(at / 60), minute: at % 60 }))
+
+function sideClocks(side: string): readonly StatedClockTime[] {
+  return dayClocks.filter((clock) => clockSpellings(clock).some((spelled) => side === spelled || (!halfNamed(clock, spelled) && side === `${spelled} ${clock.hour < 12 ? "am" : "pm"}`)))
+}
+
+const windowClockWord = compiled(String.raw`^(?:\d{1,2}(?:[:.]\d{2})?|[01]\d[0-5]\d|2[0-3][0-5]\d|am|pm|amorverb|oclock|noon|midday|midnight|half|past|quarter|oh|o|${spokenNumber})$`, "u")
+const minuteCount = compiled(String.raw`^(?:\d{1,2}|quarter|${spokenNumber})$`, "u")
+const hourWord = /^(?:\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)$/u
+const windowJoins = new Set(["to", "until", "till", "til", "through", "thru", "-"])
+const morningWord = /^(?:mornings?|morn)$/u
+const clauseFiller = new Set(["between", "and", "or", "so", "the", "latest", "at", "date", "now", "then"])
+const durationUnit = /^(?:secs?|seconds?|mins?|minutes?|h|hrs?|hours?|days?|wks?|weeks?|months?)$/u
+const countNoun = /^(?:people|persons?|guests?|attendees?|participants?|folks|members?|kids|children|players|seats?|times|of)$/u
+const windowHedges = new Set(["around", "about", "approximately", "approx", "roughly", "circa", "like", "maybe", "uh", "um", "umm", "er", "say", "just", "ish", "probably", "perhaps", "sometime", "somewhere", "nearly", "almost"])
+const startWords = new Set(["from", "after", "at", "since", "starting", "beginning", "start", "begin", "starts", "begins"])
+const endWords = new Set(["until", "till", "til", "through", "thru", "before"])
+const denseClock = /[点點時时分분시半반〇零一二两兩三四五六七八九十]|\p{N}\s*[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]|[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]\s*\p{N}/u
+const otherScript = /(?![\p{Script=Latin}\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}])\p{L}|(?![0-9])\p{Nd}/u
+const oddNumber = /^h\d{1,2}$|^\d+[:.]\d+(?:[:.]\d+)+$|^(?!\d{1,2}[:.]\d{2}$)\d+[:.]\d+$/u
+const foreignClockWords = new Set([
+  "una", "uno", "dos", "tres", "cuatro", "cinco", "seis", "siete", "ocho", "nueve", "diez", "doce", "mediodía", "mediodia", "medianoche", "hora", "horas",
+  "dois", "duas", "três", "quatro", "sete", "oito", "nove", "dez", "onze", "doze", "meio-dia", "meia-noite",
+  "deux", "trois", "quatre", "cinq", "huit", "neuf", "dix", "douze", "midi", "minuit", "heure", "heures",
+  "zwei", "drei", "vier", "fünf", "sechs", "sieben", "acht", "neun", "zehn", "zwölf", "uhr", "mittag", "mitternacht",
+  "tre", "quattro", "cinque", "sette", "dieci", "undici", "dodici", "mezzogiorno", "mezzanotte",
+  "giờ", "rưỡi", "alas", "dalawa", "tatlo", "apat", "anim", "pito", "walo", "siyam", "sampu", "tanghali", "hatinggabi",
+])
+
+export interface WindowRange {
+  readonly phrase: string
+  readonly starts: readonly StatedClockTime[]
+  readonly ends: readonly StatedClockTime[]
+}
+
+export interface ClockStatement {
+  readonly clocks: readonly StatedClockTime[]
+  readonly range: number | undefined
+  readonly withMorning: boolean
+}
+
+export interface WindowWords {
+  readonly read: boolean
+  readonly ranges: readonly WindowRange[]
+  readonly starts: readonly ClockStatement[]
+  readonly ends: readonly ClockStatement[]
+  readonly uncounted: string
+}
+
+function sideRead(words: readonly string[]): { readonly clocks: readonly StatedClockTime[]; readonly sure: boolean } {
+  const said = words.filter((word) => word !== "-")
+  const sure = said.at(-1) !== "amorverb"
+  return { clocks: sideClocks((sure ? said : said.slice(0, -1)).join(" ")), sure }
+}
+
+export function windowWordsOf(text: string, start?: StatedClockTime): WindowWords {
+  const said = clockTokens(text.normalize("NFKC").toLowerCase().replace(writtenDate, " date "))
+  const words = said.filter((word, at) => !windowHedges.has(word) && !(word === "a" && /^(?:quarter|half)$/u.test(said[at + 1] ?? "")))
+  const sandwiched = (at: number) => (words[at] === "after" || words[at] === "of" || words[at] === "before") && minuteCount.test(words[at - 1] ?? "") && hourWord.test(words[at + 1] ?? "")
+  const clockWord = (at: number) => windowClockWord.test(words[at] ?? "") || sandwiched(at)
+  const runs: { readonly from: number; readonly to: number; readonly joins: readonly number[] }[] = []
+  for (let from = 0; from < words.length;) {
+    if (!clockWord(from)) {
+      from += 1
+      continue
+    }
+    const between = words[from - 1] === "between"
+    const joins: number[] = []
+    let to = from + 1
+    while (to < words.length && (clockWord(to) || ((windowJoins.has(words[to] ?? "") || (between && words[to] === "and")) && clockWord(to + 1)))) {
+      if (!clockWord(to)) joins.push(to)
+      to += 1
+    }
+    runs.push({ from, to, joins })
+    from = to
+  }
+  const ranges: WindowRange[] = []
+  let unread = denseClock.test(text) || otherScript.test(text.normalize("NFKC")) || words.some((word) => oddNumber.test(word) || foreignClockWords.has(word))
+    || words.some((word, at) => word === "h" && /^\d/u.test(words[at - 1] ?? "") && !windowJoins.has(words[at - 2] ?? "") && words[at - 2] !== "or")
+  const starts: ClockStatement[] = []
+  const ends: ClockStatement[] = []
+  const joined = new Set(runs.flatMap((run) => run.joins))
+  const clauseOf: number[] = []
+  words.reduce((clause, word, at) => {
+    const breaks = word === "|" || (word === "-" && !joined.has(at))
+    const next = breaks && clauseOf.at(-1) === clause && at > 0 ? clause + 1 : clause
+    clauseOf.push(breaks ? -1 : next)
+    return next
+  }, 0)
+  const clauseWords = (clause: number) => words.filter((_, at) => clauseOf[at] === clause)
+  const morningClauses = new Set(words.flatMap((word, at) => morningWord.test(word) ? [clauseOf[at] ?? -1] : []))
+  const bare = (clause: number) => clauseWords(clause).every((word, at, all) => clauseFiller.has(word) || windowJoins.has(word) || startWords.has(word) || endWords.has(word)
+    || windowClockWord.test(word) || (/^(?:after|of|before)$/u.test(word) && minuteCount.test(all[at - 1] ?? "") && hourWord.test(all[at + 1] ?? "")))
+  const withMorning = (at: number) => {
+    const clause = clauseOf[at] ?? -1
+    return morningClauses.has(clause) || (bare(clause) && (morningClauses.has(clause - 1) || morningClauses.has(clause + 1)))
+  }
+  const minuteOf = (clock: StatedClockTime) => clock.hour * 60 + clock.minute
+  runs.forEach(({ from, to, joins }, nth) => {
+    const after = words[to] ?? ""
+    const before = words[from - 1] ?? ""
+    const single = (run: { readonly joins: readonly number[] } | undefined) => run !== undefined && run.joins.length === 0
+    const alternative = (after === "or" && runs[nth + 1]?.from === to + 1 && single(runs[nth + 1])) || (before === "or" && runs[nth - 1]?.to === from - 1 && single(runs[nth - 1]))
+    const halved = after === "and" && (words[to + 1] === "half" || (words[to + 1] === "a" && /^(?:half|quarter)$/u.test(words[to + 2] ?? "")))
+    if (durationUnit.test(after) || countNoun.test(after)) return
+    if (halved || (alternative && joins.length > 0) || words.slice(from, to).every((word) => word === "am" || word === "pm")) {
+      unread = true
+      return
+    }
+    const splits = joins.flatMap((join) => {
+      const start = sideRead(words.slice(from, join))
+      const end = sideRead(words.slice(join + 1, to))
+      const forward = start.clocks.some((from) => end.clocks.some((to) => minuteOf(to) > minuteOf(from)))
+      return forward && start.sure ? [{ start, end, dash: words[join] === "-" }] : []
+    })
+    const worded = splits.filter((split) => !split.dash)
+    const [split] = splits.length > 1 && worded.length === 1 ? worded : splits
+    const whole = sideRead(words.slice(from, to)).clocks
+    const spokenStart = start !== undefined && whole.some((clock) => clock.hour === start.hour && clock.minute === start.minute)
+    if (split !== undefined && (splits.length === 1 || worded.length === 1) && !spokenStart) {
+      starts.push({ clocks: split.start.clocks, range: ranges.length, withMorning: withMorning(from) })
+      ends.push({ clocks: split.end.clocks, range: ranges.length, withMorning: withMorning(from) })
+      ranges.push({ phrase: words.slice(words[from - 1] === "between" ? from - 1 : from, to).join(" "), starts: split.start.clocks, ends: split.end.clocks })
+      return
+    }
+    if (!spokenStart && (split !== undefined || (joins.length > 0 && whole.length === 0))) {
+      unread = true
+      return
+    }
+    const opens = startWords.has(before)
+    if (!opens && !endWords.has(before) && !(before === "to" && words[from - 2] === "now")) return
+    if (whole.length === 0) unread = true
+    else (opens ? starts : ends).push({ clocks: whole, range: undefined, withMorning: withMorning(from) })
+  })
+  const counted = (at: number) => windowClockWord.test(words[at] ?? "") && (durationUnit.test(words[at + 1] ?? "")
+    || (/^(?:-|to|or)$/u.test(words[at + 1] ?? "") && windowClockWord.test(words[at + 2] ?? "") && durationUnit.test(words[at + 3] ?? "")))
+  return { read: !unread, ranges, starts, ends, uncounted: words.filter((_, at) => !counted(at)).join(" ") }
 }
 
 const folded = (text: string) => text.normalize("NFKC").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim()

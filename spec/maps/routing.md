@@ -22,6 +22,10 @@ model's choice: nothing routes a request before the model has seen it, and
 no action is refused for the words of a request. The `VIEWS` description
 says that showing a view acts on nothing in it, so showing Maps finds no
 place and plans no route, and a request for one is a Maps action's.
+A Maps result tells the model what Maps found, planned or did, and the
+model words the reply from it: the owner sees the result's card as it is,
+and its sentences only as the model put them. Only the question Maps asks
+before it shares a place is shown in its own words, with its choices.
 
 ### A place named with its locality is taken only from that locality, and otherwise Maps asks which one
 
@@ -241,37 +245,27 @@ pure def lawWithoutAReadyPhoneDirectionsAreALink(phoneOffered: bool): bool = sta
 ### Only a kind of place near a named place is searched around that place
 
 "Pharmacy near Union Square" and "gas station near US 101" name a kind of
-place and the place to search around. The words after "near", "around",
-"close to" or "next to" name no place when they are the owner's own
-position ("me", "us", "by", "me, please", "us right now", "me open now"),
-which is a search around the phone; a time ("around midnight", "near
-5pm", "around Christmas"); a price ("around 500 dollars", "around 150 a
-night", "around 100 euros a night"); or the owner's own places ("near
-home", "near my office"). A place whose name only begins like the owner's
-position, such as "US Bank Tower", "us post office" or "Here East", is
-still a named place, and courtesy after it ("near Union Square, please")
-is not part of its name. The words before "near" name no kind of place
-when they are something the phone keeps ("photos near the Ferry
-Building") or something about the place itself ("the weather near
-Austin", "traffic near the Bay Bridge", "news around Austin"), even when
-the words after "near" do name a place. None of these is searched around
-a named place: each searches just as it would with no place named, around
-the phone for "near me" and around nothing otherwise.
+place and the place to search around: the planner passes the kind as the
+search and the named place as the place to search near, or a place saved
+with the assistant ("coffee near my office") by its saved id. Which words
+name that place is the model's reading of the owner's request, not a
+phrase list. The owner's own position ("near me", "near us right now")
+is no place to search near: the planner asks for a search near the owner,
+around the phone. A time ("around midnight"), a price ("around 500
+dollars") or something about a place ("the weather near Austin") is no
+place to search near either. A search with no place to search near is
+searched just as it would be with none named, around the phone for a
+search near the owner and around nothing otherwise.
 
 ```quint
 import phonePosition as Pos from "./phonePosition"
-type NearWords = NamedPlace | OwnPosition | NotAPlace
-type NearKind = PlaceKind | NotAPlaceKind
 type NearSearch = AroundTheNamedPlace | NoNamedPlaceSearch
-pure def nearSearch(nearKind: NearKind, nearWords: NearWords): NearSearch =
-  if (nearKind == PlaceKind and nearWords == NamedPlace) AroundTheNamedPlace else NoNamedPlaceSearch
-pure def lawTheOwnersPositionIsNeverSearchedAsANamedPlace(nearKind: NearKind, p: Pos::PhonePosition): bool =
-  Pos::searchAround(nearSearch(nearKind, OwnPosition) == AroundTheNamedPlace, true, p) != Pos::AroundNamedPlace
-pure def lawAKindOfPlaceNearANamedPlaceIsSearchedAroundThatPlace(nearMe: bool, p: Pos::PhonePosition): bool =
-  Pos::searchAround(nearSearch(PlaceKind, NamedPlace) == AroundTheNamedPlace, nearMe, p) == Pos::AroundNamedPlace
-pure def lawAnythingElseNeverMovesTheSearch(nearKind: NearKind, nearWords: NearWords, nearMe: bool, p: Pos::PhonePosition): bool =
-  not(nearKind == PlaceKind and nearWords == NamedPlace) implies
-    Pos::searchAround(nearSearch(nearKind, nearWords) == AroundTheNamedPlace, nearMe, p) == Pos::searchAround(false, nearMe, p)
+pure def nearSearch(placeToSearchNear: bool): NearSearch =
+  if (placeToSearchNear) AroundTheNamedPlace else NoNamedPlaceSearch
+pure def lawAPlaceToSearchNearIsSearchedAround(nearMe: bool, p: Pos::PhonePosition): bool =
+  Pos::searchAround(nearSearch(true) == AroundTheNamedPlace, nearMe, p) == Pos::AroundNamedPlace
+pure def lawWithoutAPlaceToSearchNearTheSearchDoesNotMove(nearMe: bool, p: Pos::PhonePosition): bool =
+  Pos::searchAround(nearSearch(false) == AroundTheNamedPlace, nearMe, p) == Pos::searchAround(false, nearMe, p)
 ```
 
 ## Story: Ask for directions to the place on my phone's map

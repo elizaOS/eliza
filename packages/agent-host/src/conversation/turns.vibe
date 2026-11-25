@@ -1,3 +1,4 @@
+// spec/agent/conversation/planning.md, "A warm-up sends the planner's tools and system prompt once with a one-token cap, at most once every four minutes, and stores and shows nothing"
 // spec/agent/conversation/conversations.md, "Story: Create and find my conversations"; spec/agent/conversation/conversations.md, "Messages and model-call log rows arrive only in a published conversation"; spec/core/turnControllers.md, "Story: Cancel room work without cancelling the cancel request"; spec/agent/conversation/planning.md, "A voice turn that ran an action answers with that action's label: its kind and whether the reply is a validated card"; spec/agent/conversation/turns.md, "A failed reply names the owner's fix, and only a live rate limit carries its wait"; spec/agent/conversation/turns.md, "A reply that spent credits on a refusal naming Cloud's own code carries that code, and every other reply carries none"
 // spec/agent/conversation/turns.md, "A message is refused, joined, replayed or admitted by its key, its room and the backend"; spec/agent/conversation/turns.md, "A room runs one turn at a time, and only an admitted or recovered message changes anything"; spec/agent/conversation/turns.md, "A heard report only moves the heard boundary of an agent reply back, and never changes the reply"
 // spec/agent/conversation/turns.md, "A Stop is confirmed only when its turn ends within five seconds, and is otherwise uncertain"
@@ -12,11 +13,13 @@ module node {
   import { randomUUID } from "node:crypto"
   import { Effect, Result, Schema } from "effect"
   import {
-    CHAT_IMAGE_MIME_TYPE_SET, CHAT_UPLOAD_MIME_TYPE_SET, MAX_CHAT_ATTACHMENT_NAME_LENGTH, MAX_CHAT_IMAGE_BASE64_BYTES, MAX_CHAT_MEDIA_BASE64_BYTES, MAX_CHAT_UPLOAD_ATTACHMENTS, ChannelType, ModelType, bindIncomingMessagePersistence, conversationClientUserMemoryId, findViewActionHandoff, hashStableJson, parseViewInteractionClientId, normalizeChatIdempotencyKey, readDurableConversationChatMarker, readSystemNotice, stringToUuid, validateUuid, type ActionResult, type AgentRuntime, type Content, type DurableConversationChatMarker, type JsonObject, type Media, type Memory, type MemoryMetadata, type MessageProcessingResult, type Room, type UUID, type TaskChoiceWidget,
+    attestDeliveryAudienceFromCanonicalRoom, beginTrustedDeliveryAudienceTurn, CHAT_IMAGE_MIME_TYPE_SET, CHAT_UPLOAD_MIME_TYPE_SET, MAX_CHAT_ATTACHMENT_NAME_LENGTH, MAX_CHAT_IMAGE_BASE64_BYTES, MAX_CHAT_MEDIA_BASE64_BYTES, MAX_CHAT_UPLOAD_ATTACHMENTS, ChannelType, ModelType, bindIncomingMessagePersistence, conversationClientUserMemoryId, findViewActionHandoff, hashStableJson, parseViewInteractionClientId, normalizeChatIdempotencyKey, readDurableConversationChatMarker, readSystemNotice, runWithTrajectoryContext, stringToUuid, validateUuid, type ActionResult, type AgentRuntime, type Content, type DurableConversationChatMarker, type JsonObject, type Media, type Memory, type MemoryMetadata, type MessageProcessingResult, type Room, type UUID, type TaskChoiceWidget,
   } from "@elizaos/core"
   import { defaultTitle } from "../../gen/agent__conversation__conversations.ts"
   import { fundsCodeOf } from "../../gen/agent__models__binding.ts"
   import { creationTitle } from "./conversations.vibe"
+  import { warmUpDeadlineMs, warmUpStarts } from "../../gen/agent__conversation__planning.ts"
+  import { plannerWarmUps } from "./message-service.vibe"
   import { abortCauseOf, admitsReplyTarget, cloudCodeOn, decide, planActionOf, providerWaitMs, publishesCutOffEffect, receiptRetentionMs, stopConfirmMs, stopWindowOpen, turnDeadlineMs, type Admission, type KeyView, type ReplyKind, type TurnEnder } from "../../gen/agent__conversation__turns.ts"
   import { type LocalRoute, decodeBrowserPage, decodeObservation, decodeVoiceUiContext } from "@elizaos/agent"
   import type { VoiceAction } from "../../gen/agent__conversation__planning.ts"
@@ -295,7 +298,9 @@ module node {
         }
         return { ...result, responseContent: content, responseMessages: await storeReply(content) }
       }
+      let endAudienceTurn = () => {}
       try {
+        endAudienceTurn = await ownerTurnAudience(runtime, input, signal)
         session = await options.device?.({ ...input, id: userMessageId }, signal)
         const processing: AgentTurnProcessingOptions = {
           roomHandlerLease: lease, abortSignal: signal, ...(options.onStreamChunk === undefined ? {} : { onStreamChunk: options.onStreamChunk }),
@@ -317,9 +322,19 @@ module node {
         if (!signal.aborted) throw cause
         return { ...await interrupted({ didRespond: false, responseMessages: [], outcome: { status: "cancelled", reason: "aborted", effects: [] } }), userMessageId, taskEnding: undefined }
       } finally {
+        endAudienceTurn()
         await session?.end()
       }
     }, { signal })
+  }
+
+  // spec/agent/conversation/turns.md, "Only a turn the conversation's turn runner builds for the owner carries owner-only audience evidence, renewed only while that turn runs"
+  async function ownerTurnAudience(runtime: AgentRuntime, input: Memory, signal: AbortSignal): Promise<() => void> {
+    const attested = await attestDeliveryAudienceFromCanonicalRoom(runtime, input).then(() => true, (cause: unknown) => {
+      runtime.reportError("conversation.deliveryAudience", cause, { roomId: input.roomId, diagnosticOnly: true })
+      return false
+    })
+    return attested ? beginTrustedDeliveryAudienceTurn(runtime, input, { signal }) : () => {}
   }
 
   function turnActions(results: readonly ActionResult[]): TurnReply["actionResults"] {
@@ -349,6 +364,33 @@ module node {
     if ("error" in body || body.cutOffEffect === undefined || publishesCutOffEffect(true, headers.get("x-eliza-device-cut-off-effect") === "applied")) return body
     const { cutOffEffect: _cutOffEffect, ...reply } = body
     return reply
+  }
+
+  function warmUpRoute(runtime: AgentRuntime, owner: ConversationOwner, device?: DeviceTurnPort): LocalRoute {
+    const roomId = stringToUuid(`warm-up:${runtime.agentId}`)
+    let running = false
+    let lastStartedAt = -1
+    async function warm(warmUp: (message: Memory, signal: AbortSignal) => Promise<unknown>, headers: ReadonlyMap<string, string>, signal: AbortSignal) {
+      const message = { id: randomUUID(), entityId: owner.user, agentId: runtime.agentId, roomId, worldId: owner.world, createdAt: Date.now(), content: { text: "", source: "device" } } satisfies Memory
+      const session = await device?.begin({ headers, conversationId: roomId, requestId: message.id, message, signal })
+      try {
+        await runWithTrajectoryContext({ roomId }, () => session === undefined ? warmUp(message, signal) : session.run(() => warmUp(message, signal)))
+      } finally {
+        await session?.end()
+      }
+    }
+    return {
+      method: "POST", path: "/api/turns/warm",
+      handler: async ({ headers }) => {
+        const warmUp = plannerWarmUps.get(runtime)
+        const now = Date.now()
+        if (warmUp === undefined || runtime.getModel(ModelType.TEXT_LARGE) === undefined || !warmUpStarts(running, lastStartedAt, now)) return okay({ started: false })
+        running = true
+        lastStartedAt = now
+        void Promise.resolve().then(() => warm(warmUp, headers, AbortSignal.timeout(warmUpDeadlineMs))).catch(() => undefined).finally(() => { running = false })
+        return { status: 202, body: { started: true } }
+      },
+    }
   }
 
   export function conversationRoutes(runtime: AgentRuntime, owner: ConversationOwner, agentName: string, publish: (payload: unknown) => void, device?: DeviceTurnPort): LocalRoute[] {
@@ -582,6 +624,7 @@ module node {
           }
         } }
       }),
+      warmUpRoute(runtime, owner, device),
       {
         method: "POST", path: "/api/turns/{room}/abort",
         handler: async ({ parameters, body }) => {

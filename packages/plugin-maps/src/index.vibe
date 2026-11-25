@@ -54,4 +54,3 @@ export { agentCloudProvider, agentPlace, mapsService, type MapsCloudLink, type M
 export { conversationNavigation, mapsNavigationPath, mapsNavigationRelay, mapsNavigationRoute, RelayRefused, type MapsDeviceNavigation, type MapsNavigationRelay, type RelayLimits, type RelayReply } from "./relay.vibe"
 export { appendMapsCard, MapsCard, mapsCardMarker, mapsCardMaxPlaces, recognizedMapsCards, serializeMapsCard, withoutMapsCards, type MapsCardPlace, type MapsCardRouteOption, type RecognizedMapsCard } from "@elizaos/plugin-maps-client"
 export { agentSaves, AgentSavedPlace, type AgentSavedPlaceStore, type AgentSaves, type SaveOutcome, type StoredSaves } from "./saves.vibe"
-export { nearbyPlaceKind } from "./routing.vibe"
