@@ -13,7 +13,7 @@ import { deviceKeyHex } from "./support/device.ts"
 
 module node {
   import { Effect } from "effect"
-  import { registerDirectActionRoutingRule, sleepWithAbort, stringToUuid, validateUuid, type Action, type AgentRuntime, type EffectReceipt, type UUID } from "@elizaos/core"
+  import { sleepWithAbort, stringToUuid, validateUuid, type Action, type AgentRuntime, type EffectReceipt, type UUID } from "@elizaos/core"
   import { readReplyStream, type ReplyOutcome } from "@elizaos/agent"
   import type { AgentPlugin } from "../src/host/module.vibe"
   import { registerDeviceProposalFamily, unoffered } from "../src/device-actions/proposal/registry.vibe"
@@ -65,12 +65,6 @@ module node {
       runtime.contexts.tryRegister({ id: "agenda", label: "Agenda", sensitivity: "personal" })
       runtime.contexts.tryRegister({ id: "journal", label: "Journal", sensitivity: "personal" })
       await Effect.runPromise(registerDeviceProposalFamily(runtime, { ...unoffered("calendar"), types: ["calendar_named"], app: "agenda" }))
-      for (const app of ["agenda", "journal"]) {
-        registerDirectActionRoutingRule(runtime, {
-          id: `${app}.show`, actionNames: ["PLANNER_SHOW"], requiredActionTags: [], contexts: [app],
-          matches: (text) => new RegExp(`\\bshow my\\b.*\\b${app}\\b`, "iu").test(text),
-        })
-      }
     },
     actions: [agendaRead, agendaFind, plannerShow],
   }
@@ -353,9 +347,9 @@ it.live(`Hear that the agent heard me once while work is pending, and see which 
     .map((message) => message?.role === "system" && typeof message.content === "string" ? message.content : "")
 
   try Effect.sync(() => cloud.script(toolCalls("", show), text("Shown."), toolCalls("", show), text("Shown."), toolCalls("", show), text("Shown.")))
-  const sharedSelected = try turn("Show my agenda for today")
-  const sharedBothSelected = try turn("Show my agenda and my journal")
-  const sharedUnselected = try turn("Bring up what I wrote")
+  const sharedNamedInWords = try turn("Show my agenda for today")
+  const sharedBothNamedInWords = try turn("Show my agenda and my journal")
+  const sharedUnnamed = try turn("Bring up what I wrote")
   try Effect.sync(() => cloud.script(toolCalls("", { name: "AGENDA_FIND", arguments: {} }), toolCalls("", { name: "AGENDA_FIND", arguments: { name: "dentist" } }), text("Your dentist visit is Thursday.")))
   const coached = try turn("When is my dentist visit")
   try Effect.sync(() => cloud.script(toolCalls("", agenda), text("Nothing booked."), toolCalls("", agenda), text("Nothing booked."), toolCalls("", agenda), text("Nothing booked.")))
@@ -385,7 +379,7 @@ it.live(`Hear that the agent heard me once while work is pending, and see which 
     ruleInEverySystemPrompt: system.length > 0 && system.every((content) => content.includes(cueRule)),
   }, { exemptionInRule: [true, true, true, true], ruleInEverySystemPrompt: true }))
   try Effect.try(() => assert.deepStrictEqual({
-    instruction, question, politeAsk, answer, assentWithoutWork, openAsPart, navigationOnly, calendarOnly, sharedSelected, sharedBothSelected, sharedUnselected, coached, directFast, directSlow, directQuiet, directStopped, modelQuiet,
+    instruction, question, politeAsk, answer, assentWithoutWork, openAsPart, navigationOnly, calendarOnly, sharedNamedInWords, sharedBothNamedInWords, sharedUnnamed, coached, directFast, directSlow, directQuiet, directStopped, modelQuiet,
   }, {
     instruction: {
       done: done("Sent."), asked: 3, acknowledgments: ["acknowledgment:Sure."], tools: ["tool:AGENDA_READ:Using Agenda", "tool:CALCULATE:Working"],
@@ -398,9 +392,9 @@ it.live(`Hear that the agent heard me once while work is pending, and see which 
     },
     answer: { done: done("Hello."), asked: 1, acknowledgments: [], tools: [], acknowledgedBeforeTools: true, cueLeftTheText: true, sameWhenSplit: true },
     assentWithoutWork: { done: done("Sure."), asked: 1, acknowledgments: [], tools: [], acknowledgedBeforeTools: true, cueLeftTheText: true, sameWhenSplit: true },
-    sharedSelected: shared("Using Agenda"),
-    sharedBothSelected: shared("Working"),
-    sharedUnselected: shared("Working"),
+    sharedNamedInWords: shared("Working"),
+    sharedBothNamedInWords: shared("Working"),
+    sharedUnnamed: shared("Working"),
     coached: {
       done: done("Your dentist visit is Thursday."), asked: 3, acknowledgments: [], tools: ["tool:AGENDA_FIND:Using Agenda", "tool:AGENDA_FIND:Using Agenda"],
       acknowledgedBeforeTools: true, cueLeftTheText: true, sameWhenSplit: true,

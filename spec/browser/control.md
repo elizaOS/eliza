@@ -145,9 +145,10 @@ pure def lawACommandAnswersOnlyWithoutTheControl(negotiated: Negotiated, command
 > or reload, and never that the page got there, because the agent cannot see
 > whether it did.
 
-A Browser request my phone opens without review is told as sent: "Opening
-wikipedia.org." for an open. One proposed again after it applied is
-reported from its stored receipt with no sentence of the Browser's own, so
+A Browser request my phone opens without review is told as sent, in the
+model's words, from the Browser's own sentence ("Opening wikipedia.org."
+for an open) given to the model as what the phone shows. One proposed
+again after it applied is reported from its stored receipt with no sentence of the Browser's own, so
 the model words the reply from that historical result and never says how
 the page looks.
 
