@@ -1,4 +1,4 @@
-// spec/os/voice/liveCapture.md, "Only a speech segment and its short pre-roll leave the capture, and nothing is stored"; spec/os/voice/liveCapture.md, "A routed capture sends its segments only to the owner's agent, in order and bounded, and a stop cuts them off"
+// spec/os/voice/liveCapture.md, "Only a speech segment and its short pre-roll leave the capture, and nothing is stored"; spec/os/voice/liveCapture.md, "A routed capture sends its segments only to the owner's agent, in order and bounded, and a stop cuts them off"; spec/os/voice/liveCapture.md, "An availability probe keeps at most one idle detector, which the next capture takes"
 package ai.eliza.voice;
 
 import static org.junit.Assert.assertEquals;
@@ -84,12 +84,23 @@ public final class LiveCaptureTest {
   }
 
   @Test public void aRoutedCaptureListensWhileTheAgentSessionWarmsAndSendsWhatItHeardOnceReady() throws Exception {
-    CountDownLatch warmed = new CountDownLatch(1), started = new CountDownLatch(1), stopped = new CountDownLatch(1);
+    routedCaptureWhileWarming(false);
+  }
+
+  @Test public void aStopThatKeepsTheTailWhileTheAgentSessionWarmsStillSendsWhatItHeard() throws Exception {
+    routedCaptureWhileWarming(true);
+  }
+
+  private static void routedCaptureWhileWarming(boolean stopBeforeReady) throws Exception {
+    CountDownLatch warming = new CountDownLatch(1), warmed = new CountDownLatch(1), started = new CountDownLatch(1), stopped = new CountDownLatch(1);
     List<JSONObject> posted = Collections.synchronizedList(new ArrayList<>());
     LiveSegmentPipe.Transport agent = new LiveSegmentPipe.Transport() {
       @Override public void check() {}
       @Override public JSONObject post(JSONObject body) throws Exception {
-        if (posted.isEmpty() && !warmed.await(5, TimeUnit.SECONDS)) throw new IllegalStateException("never warmed");
+        if (posted.isEmpty()) {
+          warming.countDown();
+          if (!warmed.await(5, TimeUnit.SECONDS)) throw new IllegalStateException("never warmed");
+        }
         posted.add(body);
         JSONObject reply = body.optBoolean("close") ? new JSONObject().put("closed", true) : new JSONObject();
         return new JSONObject().put("status", 200).put("body", reply.toString());
@@ -97,6 +108,7 @@ public final class LiveCaptureTest {
     };
     AtomicReference<LiveCaptureController.Sink> capture = new AtomicReference<>();
     AtomicReference<LiveCaptureController.Pipe> route = new AtomicReference<>();
+    List<String> transcripts = Collections.synchronizedList(new ArrayList<>());
     LiveCaptureController controller = new LiveCaptureController(new LiveCaptureController.Host() {
       @Override public boolean open(long epoch) { return true; }
       @Override public LiveCaptureController.Capture capture(String id, LiveCaptureController.Sink sink, LiveCaptureOptions options) {
@@ -113,10 +125,12 @@ public final class LiveCaptureTest {
       }
       @Override public void frames(String id, JSONArray frames, JSONArray vad, float peak) {}
       @Override public void ended(String id, String error) {}
+      @Override public void transcript(String id, JSONObject value, String error) { if (error != null) transcripts.add(error); }
     });
     try {
       String id = "00000000-0000-4000-8000-000000000003";
       List<String> refusals = new ArrayList<>();
+      AtomicReference<Boolean> serverClosed = new AtomicReference<>();
       controller.start(controller.reserve(id, 1L), true, (sink, captureId, room) -> {
         LiveSegmentPipe pipe = new LiveSegmentPipe(agent, sink, captureId, room);
         route.set(pipe);
@@ -126,15 +140,26 @@ public final class LiveCaptureTest {
         @Override public void refused(String message, String code) { refusals.add(message); }
       });
       assertTrue(started.await(2, TimeUnit.SECONDS));
+      assertTrue(warming.await(2, TimeUnit.SECONDS));
       capture.get().frames(id, frames(2, 1_000), new JSONArray().put(new JSONObject().put("type", "speech-start").put("timestampMs", 1_000)), 0.5f);
-      warmed.countDown();
-      assertTrue(route.get().ready().get(5, TimeUnit.SECONDS));
-      controller.stop(id, false, 2_000, (captureId, durationMs, serverClosed) -> stopped.countDown());
+      LiveCaptureController.Stopped done = (captureId, durationMs, closed) -> { serverClosed.set(closed); stopped.countDown(); };
+      if (stopBeforeReady) {
+        controller.stop(id, false, 2_000, done);
+        assertFalse(route.get().ready().isDone());
+        warmed.countDown();
+      } else {
+        warmed.countDown();
+        assertTrue(route.get().ready().get(5, TimeUnit.SECONDS));
+        controller.stop(id, false, 2_000, done);
+      }
       assertTrue(stopped.await(5, TimeUnit.SECONDS));
       List<Integer> sent = new ArrayList<>();
       for (JSONObject body : posted) if (body.has("frames")) sent.add(body.getJSONArray("frames").length());
       assertEquals(List.of(0, 2), sent);
+      assertTrue(posted.get(posted.size() - 1).optBoolean("close"));
+      assertTrue(serverClosed.get());
       assertEquals(List.of(), refusals);
+      assertEquals(List.of(), transcripts);
     } finally {
       controller.shutdown();
     }
@@ -161,6 +186,8 @@ public final class LiveCaptureTest {
       assertTrue(LiveVoiceCapture.vadAvailable(session));
       session.trimMemory();
       assertEquals(List.of(1, 1), List.of(closed.get(), destroyed.get()));
+      assertTrue(LiveVoiceCapture.vadAvailable(session));
+      assertEquals(List.of(2, 2), List.of(contexts.get(), opened.get()));
     } finally {
       session.close();
       bundle.delete();

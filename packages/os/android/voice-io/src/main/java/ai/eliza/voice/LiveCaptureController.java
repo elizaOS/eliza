@@ -12,6 +12,8 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import org.json.JSONArray;
@@ -115,13 +117,14 @@ public final class LiveCaptureController {
  // being refused as busy. A second waiting task is still refused rather than queued without bound.
  private final ExecutorService stopWorker=new ThreadPoolExecutor(1,1,30,TimeUnit.SECONDS,new ArrayBlockingQueue<>(1));
  private final ExecutorService pipeWorker=new ThreadPoolExecutor(1,1,30,TimeUnit.SECONDS,new ArrayBlockingQueue<>(1));
+ private final ScheduledThreadPoolExecutor readyTimer=new ScheduledThreadPoolExecutor(1);
  private final LiveCaptureAdmission admission=new LiveCaptureAdmission();
  private final Map<String,Pipe> pipes=new ConcurrentHashMap<>();
  private Capture live; // Confined to worker.
  private volatile Capture current; // The running capture, for interruption off worker.
  private volatile String interrupted; // A call or pause since this host's last capture: an automatic reopen is refused.
 
- public LiveCaptureController(Host host){this.host=host;}
+ public LiveCaptureController(Host host){this.host=host;readyTimer.setRemoveOnCancelPolicy(true);}
 
  /** Reserves the admission for {@code id} at the host's {@code epoch}, cancelling any earlier one. */
  public LiveCaptureAdmission.Ticket reserve(String id,long epoch){return admission.begin(id,epoch);}
@@ -164,9 +167,10 @@ public final class LiveCaptureController {
      pipes.put(id,pipe);
      if(!pipe.start(pipeWorker)){pipes.remove(id,pipe);result.refused("Native voice transport busy",null);return;}
      if(!admission.current(ticket))throw new IllegalStateException(CANCELLED);
-     pipe.ready().copy().orTimeout(PIPE_READY_MS,TimeUnit.MILLISECONDS).exceptionally(late->{pipe.close(true,now());pipeSink.failed("TRANSPORT");return false;});
+     ScheduledFuture<?> late=readyTimer.schedule(()->{if(!pipe.ready().isDone()){pipe.close(true,now());pipeSink.failed("TRANSPORT");}},PIPE_READY_MS,TimeUnit.MILLISECONDS);
+     pipe.ready().whenComplete((ready,error)->late.cancel(false));
     }
-   }catch(Exception unavailable){
+   }catch(Exception|Error unavailable){
     closePipe(id,true,now());
     // A Stop, pause or replacement while the agent session warmed is a cancellation, not an enrollment failure.
     if(startup.failure()==null&&host.canStart(epoch)&&admission.current(ticket))result.refused("Native voice enrollment unavailable",null);
@@ -213,7 +217,7 @@ public final class LiveCaptureController {
   // Cancelling transport can immediately wake the startup worker. Publish Stop first so that
   // worker observes cancellation when classifying an interrupted warm-up.
   admission.stop(id,discard);
-  if(pipe!=null&&(discard||!pipe.ready().isDone()))pipe.close(true,cutoff);
+  if(pipe!=null&&discard)pipe.close(true,cutoff);
   submit(worker,()->{
    long duration=0;
    if(live!=null&&live.captureId().equals(id)){
@@ -274,7 +278,7 @@ public final class LiveCaptureController {
  public void onWorker(Runnable work,Runnable refused){submit(worker,work,refused);}
 
  /** Terminal: cancels everything and stops the workers after their queued cleanup. */
- public void shutdown(){end(Collections.emptySet(),false);worker.shutdown();stopWorker.shutdown();pipeWorker.shutdown();}
+ public void shutdown(){end(Collections.emptySet(),false);worker.shutdown();stopWorker.shutdown();pipeWorker.shutdown();readyTimer.shutdownNow();}
 
  /** A refused start: interrupted (its reason), failed in the pipe (its code) or cancelled. */
  private void refuse(LiveCaptureAdmission.Ticket ticket,Startup startup,Started result){

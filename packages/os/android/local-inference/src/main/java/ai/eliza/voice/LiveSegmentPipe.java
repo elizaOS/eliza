@@ -12,9 +12,10 @@ import org.json.*;
  * ({@code POST /api/asr/local-inference/live}). The host supplies the {@link Transport}: it posts
  * one JSON body to the agent of the owner who started the capture and {@link Transport#check}
  * throws once that owner, runtime or enrollment changed, so no audio, cleanup or retry ever reaches
- * a different owner. Nothing is persisted or retried. The session is warmed before the microphone
- * opens ({@link #ready}); {@link #cutoff} drops frames and VAD edges after an explicit Stop;
- * {@link #close} with discard drops queued audio and cancels the request in flight, otherwise the
+ * a different owner. Nothing is persisted or retried. Frames offered before the session is warmed
+ * ({@link #ready}) wait within the bounds and are sent once the warm post succeeds; a close without
+ * discard before then still sends them after it. {@link #cutoff} drops frames and VAD edges after
+ * an explicit Stop; {@link #close} with discard drops queued audio and cancels the request in flight, otherwise the
  * captured tail is sent and the server close is acknowledged through the returned future.
  * Failures are reported once as BUSY, BACKPRESSURE, INVALID_AUDIO, TRANSPORT or ASR_FAILED.
  */

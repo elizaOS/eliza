@@ -106,3 +106,39 @@ pure def lawTheRendererGetsNoRoutedAudio(frames: int): bool = hostFrames(true, f
 pure def lawNothingTakenAfterTheCutoffIsSent(takenAtMs: int, cutoffMs: int, discard: bool, waiting: bool): bool =
   takenAtMs > cutoffMs implies not(sentAfterStop(takenAtMs, cutoffMs, discard, waiting))
 ```
+
+### An availability probe keeps at most one idle detector, which the next capture takes
+
+Asking whether VAD is usable opens its context and at most one idle
+detector the first time, and answers later probes from that without
+opening more. The next capture takes that idle detector instead of opening
+another. Trimming memory or closing the session frees the idle detector,
+and once the context is freed the next probe checks again.
+
+```quint
+type VadProbe = { contextOpen: bool, idle: int, detectors: int, verified: bool }
+pure def probeVad(p: VadProbe): VadProbe =
+  if (p.verified) p
+  else { contextOpen: true, idle: if (p.detectors == 0) 1 else p.idle, detectors: p.detectors, verified: true }
+pure def detectorOpensNatively(p: VadProbe): bool = p.idle == 0
+pure def openDetector(p: VadProbe): VadProbe = { contextOpen: true, idle: 0, detectors: p.detectors + 1, verified: true }
+pure def trimVad(p: VadProbe): VadProbe = {
+  val kept = p.contextOpen and p.detectors > 0
+  { contextOpen: kept, idle: 0, detectors: p.detectors, verified: p.verified and kept }
+}
+pure val vadValues = Set(
+  { contextOpen: false, idle: 0, detectors: 0, verified: false }, { contextOpen: true, idle: 1, detectors: 0, verified: true },
+  { contextOpen: true, idle: 0, detectors: 1, verified: true }, { contextOpen: true, idle: 0, detectors: 2, verified: false })
+pure def lawAProbeKeepsAtMostOneIdleDetector(vad: VadProbe): bool =
+  vad.idle <= 1 implies probeVad(vad).idle <= 1
+pure def lawARepeatedProbeOpensNothingMore(vad: VadProbe): bool =
+  probeVad(probeVad(vad)).idle == probeVad(vad).idle and probeVad(probeVad(vad)).contextOpen == probeVad(vad).contextOpen
+pure def lawTheNextCaptureTakesTheIdleDetector(vad: VadProbe): bool = {
+  val probed = probeVad(vad)
+  probed.idle == 1 implies (not(detectorOpensNatively(probed)) and openDetector(probed).idle == 0)
+}
+pure def lawATrimFreesTheIdleDetectorAndForgetsAFreedContext(vad: VadProbe): bool = {
+  val trimmed = trimVad(vad)
+  trimmed.idle == 0 and (not(trimmed.contextOpen) implies not(trimmed.verified))
+}
+```

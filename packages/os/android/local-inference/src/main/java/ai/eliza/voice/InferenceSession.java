@@ -1,3 +1,4 @@
+// spec/os/voice/liveCapture.md, "An availability probe keeps at most one idle detector, which the next capture takes"
 package ai.eliza.voice;
 
 import java.io.File;
@@ -365,6 +366,7 @@ public final class InferenceSession implements AutoCloseable {
         if (vadContext != 0L && vads.isEmpty()) {
             vadOps.destroyContext(vadContext);
             vadContext = 0L;
+            vadVerified = false;
         }
     }
 
