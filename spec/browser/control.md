@@ -297,6 +297,42 @@ pure def lawOnlyARefusedOpenSpeaksOfAnAddress(refusal: BrowserRefusal, addressIn
   (refusalReply(refusal, addressInWords) == AskForAddress or refusalReply(refusal, addressInWords) == SayAddressNotOpened) implies refusal == DestinationNotRequested
 ```
 
+## Story: Open an address on the screen I asked from
+
+> As the owner, I want to ask for a web address from a screen that has no
+> enrolled phone behind it, such as Alpha in a web browser, and see it open
+> in that screen's Browser, under the same rules as on my phone.
+
+### An open has one home: the Browser proposal where my enrolled phone takes it, else the screen I asked from
+
+Where the owner's enrolled phone admits a Browser open, an address is
+opened only as the `browser_navigate` proposal. On a turn with no such phone,
+whose screen takes the agent's views as completed actions, the BROWSER_OPEN
+action is offered instead, for that screen alone. Otherwise no open is
+offered, and the BROWSER command's history moves are unchanged.
+
+```quint
+type OpenHome = OpenAsProposal | OpenOnScreen | NoOpen
+pure def openHome(phoneAdmitsOpen: bool, screenTakesViews: bool): OpenHome =
+  if (phoneAdmitsOpen) OpenAsProposal else if (screenTakesViews) OpenOnScreen else NoOpen
+pure def lawAnOpenMyPhoneTakesIsAProposal(phoneAdmitsOpen: bool, screenTakesViews: bool): bool =
+  phoneAdmitsOpen implies openHome(phoneAdmitsOpen, screenTakesViews) == OpenAsProposal
+pure def lawAScreenOpenNeedsTheScreenAndNoPhone(phoneAdmitsOpen: bool, screenTakesViews: bool): bool =
+  openHome(phoneAdmitsOpen, screenTakesViews) == OpenOnScreen implies (screenTakesViews and not(phoneAdmitsOpen))
+```
+
+### The screen shows the address for me to open, and nothing opens until I choose Open there
+
+BROWSER_OPEN grounds the address exactly as the `browser_navigate` proposal
+does ([request grounding](./requestGrounding.md)): the same https address,
+the same page links, the same refusals, answered as a refused proposal is,
+with nothing handed back. A grounded open is handed back in the action's
+completed result as the typed `browser_navigate` operation, bound to the
+screen that asked, which shows the address for the owner to open; even an
+address the owner's whole message asked for waits for their Open there. The
+model learns that the screen shows the address for the owner to open, and
+never that it opened, that the page loaded or what it shows.
+
 ## Story: Tell me you cannot read my page, and never reload it unasked
 
 > As the owner, I want the agent to tell me when it cannot read the page I
