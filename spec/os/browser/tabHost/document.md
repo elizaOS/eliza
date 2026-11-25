@@ -200,7 +200,10 @@ scheme is the web's or the browser's own (`http`, `https`, `about`, `blob`,
 4,096 units or with a control character, an `intent:` link with another
 action, a forbidden data scheme or the host's own package or schemes, and an
 app link on a host that does not take them, is unsupported. A tab hands a link off only while selected and with a native
-gesture. A fresh pop-up, not yet committed, carries its opener's tap once:
+gesture. An untapped app link on a tab that has started or committed a page
+without an error stays silent instead of showing a blocked notice; an
+untapped system, intent, or store link, or one on a blank or failed tab,
+still reports that it was blocked. A fresh pop-up, not yet committed, carries its opener's tap once:
 it hands off while it or its opener is selected, and its first handoff,
 refused or not, spends that tap; the host then closes it unless it loads
 the link's fallback address.
