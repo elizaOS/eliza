@@ -3,10 +3,11 @@ import * as NodeServices from "@effect/platform-node/NodeServices"
 import { assert, it } from "@effect/vitest"
 import type { ActionResult, IAgentRuntime, Memory, ProviderResult, State, UUID } from "@elizaos/core"
 import type { WalletDecided, WalletHoldings, WalletOperation, WalletRequestRow, WalletReview, WalletStatus } from "@elizaos/plugin-wallet-client"
-import { openWallet, walletPlugin, type Wallet, type WalletHost, type WalletRoute } from "../src/index.vibe"
+import type { ModuleContext } from "@elizaos/agent-host"
+import { openWallet, walletModule, walletPlugin, type Wallet, type WalletHost, type WalletRoute } from "../src/index.vibe"
 import type { AssetTransfer, WalletNetwork } from "../src/chain.vibe"
 import { openSolanaAccount, openSolanaSigner, solanaAccountOf } from "../src/solana.vibe"
-import { scratch, signedHash, startChain, type Chain, type Gateway, type Scratch } from "./support/evm-chain.ts"
+import { scratch, signedHash, startChain, storageKey, type Chain, type Gateway, type Scratch } from "./support/evm-chain.ts"
 import { startSolanaChain, type SolanaChain, type SolanaGateway, type TokenProgram } from "./support/solana-chain.ts"
 
 const OWNER = "6f1c2a52-8a4e-4b7d-9c1e-2f3a4b5c6d7e"
@@ -34,6 +35,14 @@ function hostOver(files: Scratch, chain: Chain, settings: Record<string, string>
   const storageKey = seals ? new Uint8Array(32).fill(7) : undefined
   const all: Record<string, string> = { WALLET_EVM_RPC_URL: chain.url, WALLET_EVM_CHAIN_ID: "31337", WALLET_EVM_TOKENS: chain.token, ...settings }
   return { agentId: AGENT, ownerId: OWNER, stateDirectory: files.directory, storageKey, setting: (key) => all[key] ?? "", ownerPresent: () => Promise.resolve(true) }
+}
+
+function launched(files: Scratch, chain: Chain): ModuleContext {
+  const settings: Record<string, string> = { WALLET_EVM_RPC_URL: chain.url, WALLET_EVM_CHAIN_ID: "31337" }
+  return {
+    runtime: { agentId: AGENT, getSetting: (key: string) => settings[key] ?? null },
+    stateDirectory: files.directory, storageKey: Redacted.make(storageKey), ownerEntityId: OWNER,
+  } as unknown as ModuleContext
 }
 
 effect function called<A>(routes: readonly WalletRoute[], method: string, path: string, body?: unknown): Answer<A>!! {
@@ -108,16 +117,27 @@ it.live('Make the wallet once on the device, seal its keys, and serve nothing wh
     const evm = first.accounts.find((account) => account.family === "evm")
     const malformed = (try called<WalletStatus>(routes, "POST", "/api/wallet/switch", { on: "yes" })).status
     const offeredOn = [try offered(wallet, OWNER), try offered(wallet, STRANGER)]
+    const hosted = (try walletModule(launched(files, chain))).plugin
+    const viaModule = (try called<WalletStatus>(hosted.routes ?? [], "GET", "/api/wallet")).body
+    try sync(() => files.tearCustody())
+    const torn = (try walletModule(launched(files, chain))).plugin
+    const unopened = {
+      status: (try called<WalletStatus>(torn.routes ?? [], "GET", "/api/wallet")).body,
+      holdings: (try called<WalletHoldings>(torn.routes ?? [], "GET", "/api/wallet/holdings")).status,
+      actions: torn.actions?.length ?? 0,
+    }
     try Effect.try(() => assert.deepStrictEqual({
       noKey: { custody: noKey.before.custody, canHold: noKey.before.canHold, status: noKey.made.status, reason: noKey.made.reason },
       custody: first.custody,
       accounts: first.accounts.map((account) => ({ family: account.family, connected: account.connected, network: account.network, canSend: account.canSend, held: account.address !== "" })),
-      same: [second, reopened, on].map((status) => status.accounts.map((account) => account.address)),
+      same: [second, reopened, on, viaModule].map((status) => status.accounts.map((account) => account.address)),
       sealed: { marked: sealed.startsWith("wallet-keys-v1."), plain: /[{}":,]/.test(sealed) },
       off: { custody: off.custody, canSend: off.accounts.map((account) => account.canSend) },
       whileOff,
       malformed,
       offeredOn,
+      hosted: [hosted.actions?.length ?? 0, hosted.providers?.length ?? 0, hosted.routes?.length ?? 0],
+      unopened,
     }, {
       noKey: { custody: "none", canHold: false, status: 409, reason: "This device gave no storage key to seal a wallet under." },
       custody: "ready",
@@ -125,12 +145,14 @@ it.live('Make the wallet once on the device, seal its keys, and serve nothing wh
         { family: "evm", connected: true, network: "Local chain", canSend: true, held: true },
         { family: "solana", connected: false, network: "", canSend: false, held: true },
       ],
-      same: [0, 1, 2].map(() => [evm?.address, first.accounts.find((account) => account.family === "solana")?.address]),
+      same: [0, 1, 2, 3].map(() => [evm?.address, first.accounts.find((account) => account.family === "solana")?.address]),
       sealed: { marked: true, plain: false },
       off: { custody: "off", canSend: [false, false] },
       whileOff: { holdings: OFF, asked: OFF, offered: false, told: {} },
       malformed: 400,
       offeredOn: [true, false],
+      hosted: [1, 1, 9],
+      unopened: { status: { custody: "unavailable", canHold: false, accounts: [] }, holdings: 404, actions: 0 },
     }))
   }
 })
@@ -210,8 +232,15 @@ it.live('The agent reads the wallet and asks for a token transfer, and only the 
     const context = (try told(wallet, OWNER)).data
     const filled = try Effect.forEach([1, 2, 3, 4, 5, 6, 7, 8, 9], (count) => acted(wallet, OWNER, { subaction: "request", ...transfer, amount: String(count) }))
     const first = (try called<{ readonly requests: readonly WalletRequestRow[] }>(routes, "GET", "/api/wallet/requests")).body.requests[0]?.id ?? 0
-    const declining = (try called<WalletReview>(routes, "POST", `/api/wallet/requests/${first}/review`)).body
-    const declined = (try called<WalletDecided>(routes, "POST", `/api/wallet/requests/${first}/decide`, { decision: "decline", intentId: declining.intentId, commitment: declining.commitment })).body
+    const declined = (try called<WalletDecided>(routes, "POST", `/api/wallet/requests/${first}/decide`, { decision: "decline" })).body
+    const beyond = [
+      (try called<WalletRequestRow>(routes, "POST", "/api/wallet/requests", { family: "evm", token: chain.token, recipient: chain.recipient, amount: "48" })).body.id,
+      (try called<WalletRequestRow>(routes, "POST", "/api/wallet/requests", { family: "evm", recipient: chain.recipient, amount: "10" })).body.id,
+    ]
+    const short = try Effect.forEach(beyond, effect (id) => [
+      (try called<WalletReview>(routes, "POST", `/api/wallet/requests/${id}/review`)).reason,
+      (try called<WalletDecided>(routes, "POST", `/api/wallet/requests/${id}/decide`, { decision: "decline" })).body.status,
+    ])
     const left = (try called<{ readonly requests: readonly WalletRequestRow[] }>(routes, "GET", "/api/wallet/requests")).body.requests.length
     const stranger = [try offered(wallet, STRANGER), try told(wallet, STRANGER)]
     try Effect.try(() => assert.deepStrictEqual({
@@ -232,6 +261,7 @@ it.live('The agent reads the wallet and asks for a token transfer, and only the 
       },
       filled: filled.map((result) => result.success),
       declined: [declined.status, left, chain.sent.length],
+      short,
       stranger,
     }, {
       holdings: {
@@ -258,8 +288,12 @@ it.live('The agent reads the wallet and asks for a token transfer, and only the 
       decided: "submitted",
       moved: { tokens: "2500000", sends: 1 },
       context: { holdings: 2, requests: [], operations: 1 },
-      filled: [true, true, true, true, true, true, true, true, false],
-      declined: ["declined", 7, 1],
+      filled: [true, true, true, true, false, false, false, false, false],
+      declined: ["declined", 3, 1],
+      short: [
+        ["This wallet holds less TKN than the transfer sends.", "declined"],
+        ["This wallet holds too little ETH for the transfer and its network fee.", "declined"],
+      ],
       stranger: [false, {}],
     }))
   }

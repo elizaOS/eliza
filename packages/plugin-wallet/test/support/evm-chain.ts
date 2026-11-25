@@ -1,5 +1,5 @@
 // spec/wallet/index.md, "A submitted operation retains one durable binding through reconciliation"
-import { copyFileSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { copyFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -221,8 +221,12 @@ export interface Scratch {
   /** @throws {never} */
   restoreDesk(): void;
   /** @throws {never} */
+  tearCustody(): void;
+  /** @throws {never} */
   remove(): void;
 }
+
+export const storageKey = Buffer.alloc(32, 7).toString("base64");
 
 /** @throws {never} */
 export function scratch(): Scratch {
@@ -233,6 +237,7 @@ export function scratch(): Scratch {
     sealed: () => readFileSync(join(directory, "wallet", "keys.sealed"), "utf8"),
     keepDesk: () => copyFileSync(desk, `${desk}.kept`),
     restoreDesk: () => copyFileSync(`${desk}.kept`, desk),
+    tearCustody: () => writeFileSync(join(directory, "wallet", "state", "custody"), "{"),
     remove: () => rmSync(directory, { recursive: true, force: true }),
   };
 }

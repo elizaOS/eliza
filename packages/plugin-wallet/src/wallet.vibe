@@ -199,7 +199,7 @@ effect function walletCustody(host: WalletHost) {
   }
 
   effect function signer(net: NetworkPlan): ChainSigner!(WalletRefused | WalletUnreachable) {
-    const keys = try reach(() => keystore.read())
+    const keys = try tryPromise({ try: () => keystore.read(), catch: () => new WalletRefused({ reason: "The wallet's sealed keys cannot be opened on this launch." }) })
     if (keys === undefined) throw new WalletRefused({ reason: "The wallet's keys are not on this device." })
     return try reach(() => net.family === "EvmWallet" ? openEvmSigner(net, keys.evmKey) : openSolanaSigner(net, keys.solanaSeed))
   }
@@ -243,9 +243,26 @@ function walletTerms(host: WalletHost) {
     }
   }
 
+  effect function covered(held: string, needed: readonly string[]) {
+    return try Effect.try({
+      try: () => BigInt(held) >= needed.reduce((sum, part) => sum + BigInt(part), 0n),
+      catch: () => new WalletRefused({ reason: "A balance could not be read exactly." }),
+    })
+  }
+
   effect function priced(net: NetworkPlan, chain: ChainAccount, terms: Terms) {
+    const { asset, atomicUnits } = terms.transfer
+    const token = asset.kind === "token" ? asset.address : undefined
+    if (token !== undefined) {
+      const held = (try reach(() => chain.tokenHoldings([token]))).find((holding) => holding.address === token)?.atomicUnits ?? "0"
+      if (!(try covered(held, [atomicUnits]))) throw new WalletRefused({ reason: `This wallet holds less ${terms.facts.symbol} than the transfer sends.` })
+    }
     const quoted = try reach(() => chain.quote(terms.transfer))
     if (!policyAllows(net, terms.transfer, quoted)) throw new WalletRefused({ reason: "The recipient or the network fee is outside this wallet's limits." })
+    const spent = token === undefined ? [atomicUnits, quoted.maximumFee] : [quoted.maximumFee]
+    if (!(try covered(try reach(() => chain.nativeBalance()), spent))) {
+      throw new WalletRefused({ reason: `This wallet holds too little ${net.nativeSymbol} for the transfer and its network fee.` })
+    }
     return quoted
   }
 
@@ -273,7 +290,7 @@ function walletDesk(base: WalletCustody, { termsOf, policyAllows, quoteOf, price
     const after = try allowed(desk.send({
       type: "ask", family: net.family, assetId: assetId(terms.facts.asset), symbol: terms.facts.symbol,
       recipient: terms.transfer.recipient, amount: terms.amount, asker,
-    }), "Eight requests already wait for the owner's decision.")
+    }), "The desk is full: decide the requests that wait first.")
     return rowOf(after.waiting[after.waiting.length - 1] ?? { id: after.issued, family: net.family, assetId: "", symbol: "", recipient: "", amount: "", asker })
   }
 
@@ -400,14 +417,16 @@ function walletDesk(base: WalletCustody, { termsOf, policyAllows, quoteOf, price
       try present()
       try serving()
       const open = reviews.get(id)
+      if (input.decision === "decline") {
+        try waiting(id)
+        reviews.delete(id)
+        try leave(id)
+        return { status: "declined" } satisfies WalletDecided
+      }
       if (open === undefined || input.intentId !== open.run.intent.intentId || input.commitment !== open.run.intent.commitment) {
         throw new WalletRefused({ reason: closedReview })
       }
       reviews.delete(id)
-      if (input.decision === "decline") {
-        try leave(id)
-        return { status: "declined" } satisfies WalletDecided
-      }
       const chain = try signer(open.net)
       read.holdings = undefined
       const leaveOnceReserved = ignore(effect { if (try reserved(open.run.intent.intentId)) try leave(id) })

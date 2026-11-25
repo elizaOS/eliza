@@ -1,5 +1,6 @@
 // spec/wallet/custody.md, "Story: Hold my own keys on my device"; spec/wallet/requests.md, "Story: Let the agent ask, and decide myself"; spec/wallet/index.md, "Story: Preview an exact wallet operation before executing it"; spec/wallet/index.md, "Story: Recover the real outcome of an on-chain operation"; spec/wallet/index.md, "Story: Inspect wallet holdings and venue quotes before making changes"
-import { ModuleRefused, type AgentModule, type AgentPlugin, type ModuleFactory } from "@elizaos/agent-host"
+import type { AgentModule, AgentPlugin, ModuleFactory } from "@elizaos/agent-host"
+import { walletPaths, type WalletStatus } from "@elizaos/plugin-wallet-client"
 import type { IAgentRuntime } from "@elizaos/core"
 import { walletAction, walletProvider } from "./agent.vibe"
 import { storageKeyBytes } from "./keystore.vibe"
@@ -12,10 +13,21 @@ export { walletActionName } from "./agent.vibe"
 export { walletRoutes, type WalletRoute } from "./routes.vibe"
 export { WalletRefused, WalletUnreachable, openWallet, type Wallet, type WalletContext, type WalletHost, type WalletTransferInput } from "./wallet.vibe"
 
+const description = "The owner's wallet: one EVM and one Solana account with keys sealed on the device, holdings, exact transfer quotes, transfers the owner reviews and approves, and their reconciled outcomes."
+
+const unopenedPlugin: AgentPlugin = {
+  name: walletModuleName,
+  description,
+  routes: [{
+    method: "GET", path: walletPaths.wallet,
+    handler: () => ({ status: 200, body: { custody: "unavailable", canHold: false, accounts: [] } satisfies WalletStatus }),
+  }],
+}
+
 export function walletPlugin(wallet: Wallet, ownerId: string): AgentPlugin {
   return {
     name: walletModuleName,
-    description: "The owner's wallet: one EVM and one Solana account with keys sealed on the device, holdings, exact transfer quotes, transfers the owner reviews and approves, and their reconciled outcomes.",
+    description,
     contexts: ["wallet"],
     actions: [walletAction(wallet, ownerId)],
     providers: [walletProvider(wallet, ownerId)],
@@ -24,22 +36,19 @@ export function walletPlugin(wallet: Wallet, ownerId: string): AgentPlugin {
 }
 
 export const walletModule: ModuleFactory<FileSystem.FileSystem | Path.Path> = effect (context) => {
-  const refusal = (reason: string) => new ModuleRefused({ module: walletModuleName, reason })
   const runtime: IAgentRuntime = context.runtime
   const storageKey = context.storageKey
-  const sealed = storageKey === undefined ? undefined
-    : try Effect.try({ try: () => storageKeyBytes(Redacted.value(storageKey)), catch: () => refusal("The launch storage key could not be read") })
   const host: WalletHost = {
     agentId: runtime.agentId,
     ownerId: context.ownerEntityId,
     stateDirectory: context.stateDirectory,
-    storageKey: sealed,
+    storageKey: storageKey === undefined ? undefined : (Effect.try(() => storageKeyBytes(Redacted.value(storageKey))) catch () => undefined),
     setting: (key) => {
       const value = runtime.getSetting(key)
       return typeof value === "string" ? value.trim() : ""
     },
     ownerPresent: () => Promise.resolve(true),
   }
-  const wallet = openWallet(host) catch effect () => { throw refusal("The wallet's state on this device could not be opened") }
-  return { name: walletModuleName, plugin: walletPlugin(wallet, context.ownerEntityId) } satisfies AgentModule
+  const wallet = openWallet(host) catch () => undefined
+  return { name: walletModuleName, plugin: wallet === undefined ? unopenedPlugin : walletPlugin(wallet, context.ownerEntityId) } satisfies AgentModule
 }

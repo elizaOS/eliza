@@ -91,19 +91,15 @@ export schema WalletReview {
 
 export schema WalletDecision {
   readonly decision: "approve" | "decline"
-  readonly intentId: string
-  readonly commitment: string
+  readonly intentId?: string
+  readonly commitment?: string
 }
 
 export schema WalletSwitch {
   readonly on: boolean
 }
 
-export const WalletDecided = Schema.Union([
-  Schema.Struct({ status: Schema.Literal("declined") }),
-  Schema.Struct({ status: Schema.Literals(["submitted", "unresolved"]), operationRef: Schema.String }),
-])
-export type WalletDecided = typeof WalletDecided.Type
+export schema WalletDecided = { readonly status: "declined" } | { readonly status: "submitted" | "unresolved"; readonly operationRef: string }
 
 export schema WalletOperation {
   readonly intentId: string
