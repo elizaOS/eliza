@@ -714,9 +714,14 @@ asks it to begin such a response with one tag the person never sees:
 says it will do something. A tag after nothing but JSON objects or
 bracketed calls counts too, and what came before it is no part of the reply
 (`{"query": "speed of light"}[answer] Light travels…` is delivered as
-`Light travels…`). The shell strips the tag from what is streamed, spoken
-and stored, streams nothing while the text so far is only an untagged
-object, and reads the tag before the form: with no tool call, text
+`Light travels…`). The tag is for the host alone: the shell strips every `[answer]` or
+`[promise]`, in square or angle brackets and with any closing form, wherever
+it stands in the text (`Sure.\n[answer] Paris`, `Paris. [answer]`,
+`<promise>`), from what is streamed, acknowledged, spoken and stored; while
+streaming it holds back a partial tag at the tail (`[ans`, `<pro`), and
+streams nothing while the text so far is only an untagged object. Only a
+tag that leads the text, after nothing but JSON objects or bracketed calls,
+says what the response is, and the shell reads it before the form: with no tool call, text
 tagged `[answer]` is an `Answer` delivered at once, however short (`[answer]
 Done!`, `[answer] Hello!`), and text tagged `[promise]` is a `Cue`, never
 delivered (`[promise] Sure, one sec.`). Blank text, and a cue beside a call

@@ -139,20 +139,35 @@ export function writtenCallFree(text: string): { readonly prose: string; readonl
   return at < 0 ? { prose: text, markup: false } : { prose: text.slice(0, at).trimEnd(), markup: true }
 }
 
-const declaredTag = /\[(answer|promise)\]\s*/iu
-const declaredHeads = ["[answer]", "[promise]"]
+const declaredTag = /[[<](answer|promise)[\]>]\s*/iu
+const anyTag = /[ \t]*[[<]\/?(?:answer|promise)[\]>][ \t]*/giu
+const tagHeads = ["[answer]", "[promise]", "<answer>", "<promise>", "</answer>", "</promise>", "[/answer]", "[/promise]"]
+
+export function withoutTags(said: string): string {
+  return said.replace(anyTag, (tag, at: number) => at === 0 || said[at - 1] === "\n" || said[at + tag.length] === undefined || said[at + tag.length] === "\n" ? "" : " ")
+}
 
 export function declaredOf(said: string): { readonly declared: Declared; readonly text: string } {
   const tag = declaredTag.exec(said)
-  if (tag === null || withoutWrittenCalls(said.slice(0, tag.index)).trim() !== "") return { declared: "Undeclared", text: said }
-  return { declared: tag[1]?.toLowerCase() === "promise" ? "DeclaredPromise" : "DeclaredAnswer", text: said.slice(tag.index + tag[0].length) }
+  const leading = tag !== null && withoutWrittenCalls(said.slice(0, tag.index)).trim() === ""
+  if (tag === null || !leading) return { declared: "Undeclared", text: withoutTags(said) }
+  return { declared: tag[1]?.toLowerCase() === "promise" ? "DeclaredPromise" : "DeclaredAnswer", text: withoutTags(said.slice(tag.index + tag[0].length)) }
+}
+
+function partialTagAt(text: string): number {
+  const open = Math.max(text.lastIndexOf("["), text.lastIndexOf("<"))
+  if (open < 0) return -1
+  const tail = text.slice(open).toLowerCase()
+  return !tail.includes("]") && !tail.includes(">") && tagHeads.some((head) => head.startsWith(tail)) ? open : -1
 }
 
 export function streamable(said: string): string {
   const lead = said.trimStart().toLowerCase()
-  if (lead !== "" && declaredHeads.some((head) => head.startsWith(lead))) return ""
-  const { declared, text } = declaredOf(said)
+  if (lead !== "" && tagHeads.some((head) => head.startsWith(lead))) return ""
+  const { declared, text: whole } = declaredOf(said)
   if (declared === "Undeclared" && lead.startsWith("{")) return ""
+  const partial = partialTagAt(whole)
+  const text = partial < 0 ? whole : whole.slice(0, partial).trimEnd()
   const at = text.search(writtenCallMarker)
   if (at >= 0) return text.slice(0, at)
   const open = text.lastIndexOf("<")

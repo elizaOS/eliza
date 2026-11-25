@@ -467,11 +467,21 @@ it.live(`Hear a cue by its form, whatever its words or language, and never one t
   try Effect.sync(() => cloud.script(text("[answer] Anytime.")))
   const taggedWhole = try read(try streamed(agent, id, { text: "Thanks again" }), 0)
   const tagged = [taggedWhole.outcome.kind === "Done" ? taggedWhole.outcome.text : taggedWhole.outcome.kind, taggedWhole.seen.some((entry) => entry.includes("[answer]"))]
-  try Effect.try(() => assert.deepStrictEqual({ spoken, unspoken, shortAnswers, tagged }, {
+  const leaksTag = (seen: readonly string[]) => seen.some((entry) => /[[<]\/?(?:answer|promise|ans|prom)/iu.test(entry))
+  try Effect.sync(() => cloud.script(text("Sure.\n[answer] Paris has about 2 million people. [answer]")))
+  const midWhole = try read(try streamed(agent, id, { text: "Capital of France?" }), 3)
+  try Effect.sync(() => cloud.script(toolCalls("Let me check. [promise]", agenda), text("<answer> Nothing booked.</answer>")))
+  const cueWhole = try read(try streamed(agent, id, { text: "Text Sam that I'm late" }), 3)
+  const anywhere = [
+    midWhole.outcome.kind === "Done" ? midWhole.outcome.text : midWhole.outcome.kind, leaksTag(midWhole.seen),
+    cueWhole.seen.filter((entry) => entry.startsWith("acknowledgment:")), cueWhole.outcome.kind === "Done" ? cueWhole.outcome.text : cueWhole.outcome.kind, leaksTag(cueWhole.seen),
+  ]
+  try Effect.try(() => assert.deepStrictEqual({ spoken, unspoken, shortAnswers, tagged, anywhere }, {
     spoken: requests.flatMap((request) => forms.map((cue): Heard => [request, cue, [cue], "Done."])),
     unspoken: refused.map((cue): Heard => ["Text Sam that I'm late", cue, [], "Done."]),
     shortAnswers: [["Sure.", 0], ["Anytime.", 0]],
     tagged: ["Anytime.", false],
+    anywhere: ["Sure.\nParis has about 2 million people.", false, ["acknowledgment:Let me check."], "Nothing booked.", false],
   }))
 }, 120_000)
 
