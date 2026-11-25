@@ -39,11 +39,11 @@ interface Operation {
   readonly providerResult: ProviderResult | null
 }
 
-interface Target {
-  readonly kind: "message" | "draft" | "rfc822"
-  readonly id: string
-  readonly contentDigest?: string
-}
+type Target = { readonly id: string; readonly contentDigest?: string } & (
+  | { readonly kind: "message" }
+  | { readonly kind: "draft" }
+  | { readonly kind: "rfc822" }
+)
 
 interface Outcome {
   readonly reply: ProviderReply
@@ -521,7 +521,7 @@ effect function dispatchRoute(context: RouteContext) {
   if (existing === undefined) throw refused("NotFound")
   if (existing.reviewDigest !== body.reviewDigest) throw refused("StaleRevision")
   if (wireState(at(existing.receipt, context.now)) !== "prepared") return answer(scope, existing, context.now)
-  const reviewed = try reviewProposal(scope.owner, scope.grantId, body.proposal, scope.requestId, true)
+  const reviewed: Reviewed = try reviewProposal(scope.owner, scope.grantId, body.proposal, scope.requestId, true)
   const preparedBytes = targetOf(existing.receipt)?.contentDigest
   if (reviewed.digest !== body.reviewDigest || reviewed.kind !== existing.kind ||
     (preparedBytes !== undefined && preparedBytes !== reviewed.target.contentDigest)) throw refused("StaleRevision")
