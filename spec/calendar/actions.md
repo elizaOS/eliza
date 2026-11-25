@@ -193,16 +193,27 @@ Such a window starts at or after the midnight of the day it starts on,
 and must end no later than that day's noon in the request's zone; a
 window that runs past it is refused before anything is read, pointing to
 a slot search for a shorter opening. Noon itself is inside the morning.
-A request the model does not call morning-only is read as asked.
+An end on that day that the owner's words hold (readClock.md, "A clock
+time the owner stated is one the owner's words hold"), other than as a
+number counting a length ("20 minutes", "1-2 hours"), is the owner's and
+is kept, unless they also hold its other half of the day as a morning
+end, from 5 AM to noon and after the start: "tomorrow morning until
+12:30" runs to 12:30 PM and "tomorrow morning until 1" to 1 PM, while
+"tomorrow morning until 11" ends at 11 AM, never 11 PM. Words the reader
+cannot read (readClock.md, "A window check refuses only a window the
+owner's words contradict") keep the end as sent. A request the model
+does not call morning-only is read as asked.
 
 ```quint
 type MorningAdmission = ReadMorning | RefuseOutsideMorning
-pure def morningAdmission(morningOnly: bool, endsAfterNoon: bool): MorningAdmission =
-  if (morningOnly and endsAfterNoon) RefuseOutsideMorning else ReadMorning
+pure def morningAdmission(morningOnly: bool, endsAfterNoon: bool, endSaid: bool): MorningAdmission =
+  if (morningOnly and endsAfterNoon and not(endSaid)) RefuseOutsideMorning else ReadMorning
 pure def lawMorningReadStaysInMorning(endsAfterNoon: bool): bool =
-  morningAdmission(true, endsAfterNoon) == ReadMorning implies not(endsAfterNoon)
-pure def lawWiderRequestIsRead(endsAfterNoon: bool): bool =
-  morningAdmission(false, endsAfterNoon) == ReadMorning
+  morningAdmission(true, endsAfterNoon, false) == ReadMorning implies not(endsAfterNoon)
+pure def lawAMorningEndTheOwnerSaidIsRead(endsAfterNoon: bool): bool =
+  morningAdmission(true, endsAfterNoon, true) == ReadMorning
+pure def lawWiderRequestIsRead(endsAfterNoon: bool, endSaid: bool): bool =
+  morningAdmission(false, endsAfterNoon, endSaid) == ReadMorning
 ```
 
 ### An afternoon-only question reads only that afternoon, from noon to five
@@ -215,17 +226,28 @@ with the request; code reads no period words. Such a window starts no
 earlier than noon of the day it starts on and ends no later than five PM
 that day in the request's zone; a window that starts before noon or runs
 past five is refused before anything is read, pointing to a slot search
-for a shorter opening. Noon and five are inside the afternoon. A request
-the model does not call afternoon-only is read as asked.
+for a shorter opening. Noon and five are inside the afternoon. A start,
+or an end on that day, that the owner's words hold (readClock.md, "A
+clock time the owner stated is one the owner's words hold"), other than
+as a number counting a length, is the owner's and is kept, unless they also hold its other half of the day
+inside the afternoon and on that side of the window's other end:
+"tomorrow afternoon until 5:30" runs from noon to 5:30 PM, and "tomorrow
+afternoon from 1 to 6" from 1 to 6 PM, while "tomorrow afternoon from 2"
+starts at 2 PM, never 2 AM. Words the reader cannot read (readClock.md,
+"A window check refuses only a window the owner's words contradict")
+keep the start and end as sent. A request the model does not call
+afternoon-only is read as asked.
 
 ```quint
 type AfternoonAdmission = ReadAfternoon | RefuseOutsideAfternoon
-pure def afternoonAdmission(afternoonOnly: bool, startsBeforeNoon: bool, endsAfterFive: bool): AfternoonAdmission =
-  if (afternoonOnly and (startsBeforeNoon or endsAfterFive)) RefuseOutsideAfternoon else ReadAfternoon
+pure def afternoonAdmission(afternoonOnly: bool, startsBeforeNoon: bool, endsAfterFive: bool, startSaid: bool, endSaid: bool): AfternoonAdmission =
+  if (afternoonOnly and ((startsBeforeNoon and not(startSaid)) or (endsAfterFive and not(endSaid)))) RefuseOutsideAfternoon else ReadAfternoon
 pure def lawAfternoonReadStaysInAfternoon(startsBeforeNoon: bool, endsAfterFive: bool): bool =
-  afternoonAdmission(true, startsBeforeNoon, endsAfterFive) == ReadAfternoon implies not(startsBeforeNoon) and not(endsAfterFive)
-pure def lawWiderAfternoonRequestIsRead(startsBeforeNoon: bool, endsAfterFive: bool): bool =
-  afternoonAdmission(false, startsBeforeNoon, endsAfterFive) == ReadAfternoon
+  afternoonAdmission(true, startsBeforeNoon, endsAfterFive, false, false) == ReadAfternoon implies not(startsBeforeNoon) and not(endsAfterFive)
+pure def lawAnAfternoonBoundTheOwnerSaidIsRead(startsBeforeNoon: bool, endsAfterFive: bool): bool =
+  afternoonAdmission(true, startsBeforeNoon, endsAfterFive, true, true) == ReadAfternoon
+pure def lawWiderAfternoonRequestIsRead(startsBeforeNoon: bool, endsAfterFive: bool, startSaid: bool, endSaid: bool): bool =
+  afternoonAdmission(false, startsBeforeNoon, endsAfterFive, startSaid, endSaid) == ReadAfternoon
 ```
 
 ### A free-time window starts no earlier than the current minute
