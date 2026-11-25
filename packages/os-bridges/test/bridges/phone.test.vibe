@@ -569,3 +569,37 @@ it.effect("retired voicemail callbacks stay inert while a replacement waits for 
     switches: [true, false, false, false, true, false], reads: 1, published: 1, observing: false,
   }))
 })
+
+// spec/os/android/voicemail.md, "A delete waits in the deletion window, and its row is hidden only while it is queued"
+it.effect("carries an exact listed voicemail witness and preserves a definitive stale result", () => effect {
+  const phone = device({ voicemailGrant: true, sources: "ready" })
+  const native = androidTelephony(phone)
+  const witness = `v1:${"a".repeat(64)}`
+  const offered: unknown[] = []
+  let publishesWitness = true
+  const client = phoneClient({
+    ...native,
+    listVoicemail: async ({ withDeletionWitness }) => ({
+      state: "ready", voicemails: [{ id: "11", number: "+15555550100", cachedName: null, date: 1700000000000,
+        durationSeconds: 20, isNew: false, hasAudio: true, carrierTranscript: null,
+        ...(withDeletionWitness && publishesWitness ? { deletionWitness: witness } : {}) }],
+    }),
+    deleteVoicemail: async (request) => {
+      offered.push(request)
+      if (request.witness !== undefined) return { status: "stale" }
+      return native.deleteVoicemail(request)
+    },
+  }, androidJournal(phone))
+
+  const listing = try promise(() => client.refreshVoicemail())
+  const row = listing.voicemails[0]
+  if (row === undefined || row.deletionWitness === undefined) return try Effect.try(() => assert.fail("missing listed voicemail witness"))
+  const stale = try promise(() => client.deleteVoicemail(row.id, row.deletionWitness))
+  publishesWitness = false
+  try promise(() => client.refreshVoicemail())
+  const refused = try promise(() => client.deleteVoicemail(row.id, row.deletionWitness))
+  const manual = try promise(() => client.deleteVoicemail(row.id))
+  try Effect.try(() => assert.deepStrictEqual({ offered, stale: stale.status, visible: stale.listing.voicemails.length, refused: refused.status, manual: manual.status }, {
+    offered: [{ id: "11", witness }, { id: "11" }], stale: "stale", visible: 1, refused: "stale", manual: "queued",
+  }))
+})

@@ -1,4 +1,4 @@
-// spec/cloud/billing/subscriptions.md, "Story: Keep my plan as the provider says it is"; spec/cloud/billing/subscriptions.md, "Story: Change my plan one command at a time"; spec/cloud/billing/plans.md, "Story: Apply the plan that funds a call"
+// spec/cloud/billing/subscriptions.md, "Story: Keep my plan as the provider says it is"; spec/cloud/billing/subscriptions.md, "Story: Change my plan one command at a time"; spec/cloud/billing/plans.md, "Story: Apply the plan that funds a call"; spec/cloud/deployment.md, "A route of a capability the environment does not enable is refused as 404 capability_unavailable"
 import { controlOf, dunningEndsAt, type ControlAction, type Subscription } from "../../gen/cloud__billing__subscriptions.effect.vibe"
 import type { FundingLane } from "../../gen/cloud__shared__metering.effect.vibe"
 import { json, owner, type Route } from "../http/routes.vibe"
@@ -162,7 +162,7 @@ export const routes: ReadonlyArray<Route> = [
     method: "GET",
     path: "/api/v1/billing/limits",
     auth: "ServiceAccess",
-    capability: "billing",
+    area: "BillingSnapshotRoutes",
     rateClass: "StandardRequests",
     handler: (context) => effect {
       const signed = owner(context.caller)

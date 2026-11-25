@@ -191,6 +191,14 @@ the phone; another source's row is deleted through the provider, which
 keeps it deleted for that source. Only a row Android no longer lists is
 deleted; a marked row still listed is uncertain.
 
+A listing that asks for a witness may receive an opaque one from Android's
+stable source identity. A request that names a witness stages only that listed
+row. If the native listing offers none, the bridge refuses before staging.
+At expiry the provider mutation uses the same identity in its selection,
+so a replacement that reused the ID stays untouched. A lost mutation
+acknowledgment leaves the staged deletion uncertain. An owner delete that
+names only its row ID keeps the existing contract.
+
 ```quint
 pure def canStageDelete(s: Voicemail, facts: HostFacts, id: int): bool = canWriteRow(s, facts, id, NoReply)
 pure def stageDelete(s: Voicemail, facts: HostFacts, id: int): Voicemail = s

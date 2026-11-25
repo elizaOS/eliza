@@ -88,7 +88,8 @@ export effect function serveOnStore(cloud: TestCloud, routes: ReadonlyArray<Rout
   const profile = try parseProfile(raw)
   const built = try Layer.build(HttpServer.serve(respond(routes)).pipe(
     Layer.provideMerge(listening(0, "127.0.0.1")),
-    Layer.provide(Layer.mergeAll(deploymentLayer(profile, "staging"), Layer.succeed(Store, cloud.store), FetchHttpClient.layer))
+    Layer.provide(Layer.mergeAll(deploymentLayer(profile, "staging"), Layer.succeed(Store, cloud.store), FetchHttpClient.layer)),
+    Layer.provide(ConfigProvider.layer(ConfigProvider.fromEnvRecord({ ...secrets })))
   ))
   const { address } = Context.get(built, HttpServer.HttpServer)
   return "port" in address ? `http://127.0.0.1:${address.port}` : ""
