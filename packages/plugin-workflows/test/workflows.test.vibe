@@ -237,7 +237,7 @@ it.live('Every workflow request reaches the drafting model, which refuses what t
     const drafted = try rig.client.generatePhone("give me a good morning line", catalog, ["supplied_text"])
     try check(() => assert.deepStrictEqual(
       [asked.length, refused._tag, JSON.stringify(refused).includes("cannot place phone calls"), drafted.name, drafted.steps.map((step) => step.operation)],
-      [2, "WorkflowHttpError", true, "Greeting", ["supplied_text"]],
+      [2, "WorkflowResponseInvalid", true, "Greeting", ["supplied_text"]],
     ))
   }
 })
