@@ -328,16 +328,16 @@ effect function confirmDowngrade(authorization: string | undefined, input: PlanC
 }
 
 export const routes: ReadonlyArray<Route> = [
-  { method: "POST", path: "/api/v1/subscriptions/downgrade/review", auth: "FreshSession", capability: "billing", rateClass: "StandardRequests",
+  { method: "POST", path: "/api/v1/subscriptions/downgrade/review", auth: "FreshSession", area: "SubscriptionRoutes", rateClass: "StandardRequests",
     handler: (context) => effect {
       const request = try jsonBody(context, PlanReviewBody)
       return json(try reviewPlanChange(context.request.headers.authorization, { ...request, kind: "DowngradeCommand" }))
     } },
-  { method: "POST", path: "/api/v1/subscriptions/downgrade/confirm", auth: "FreshSession", capability: "billing", rateClass: "StandardRequests",
+  { method: "POST", path: "/api/v1/subscriptions/downgrade/confirm", auth: "FreshSession", area: "SubscriptionRoutes", rateClass: "StandardRequests",
     handler: (context) => effect {
       return json(try confirmDowngrade(context.request.headers.authorization, try jsonBody(context, PlanConfirmation)))
     } },
-  { method: "GET", path: "/api/v1/subscriptions/downgrade/:commandId", auth: "FreshSession", capability: "billing", rateClass: "StandardRequests",
+  { method: "GET", path: "/api/v1/subscriptions/downgrade/:commandId", auth: "FreshSession", area: "SubscriptionRoutes", rateClass: "StandardRequests",
     handler: (context) => effect {
       const own = try freshOwner(context.request.headers.authorization)
       const commandId = context.params.commandId ?? ""

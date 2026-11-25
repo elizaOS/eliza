@@ -1,9 +1,9 @@
-// spec/notes/records.md, "Story: Keep my notes as one collection the agent edits only as I asked"; spec/notes/records.md, "A calendar draft made from a note is admitted only while that exact note is unchanged"; spec/notes/records.md, "Story: Keep the notes I saved before this version"; spec/notes/trash.md, "Story: Recover a deleted note"; spec/notes/trash.md, "Story: Let deleted notes expire after three days when I choose that"; spec/notes/trash.md, "A recording's cleanup is acknowledged only with the device's proof that the audio is gone"; spec/notes/trash.md, "The proof of erase comes from the service's own verifier, else the host's verifier found when the cleanup is acknowledged, and only a literal true is proof"
+// spec/notes/records.md, "Story: Keep my notes as one collection the agent edits only as I asked"; spec/notes/records.md, "A calendar draft made from a note is admitted only while that exact note is unchanged"; spec/notes/records.md, "Story: Keep the notes I saved before this version"; spec/notes/trash.md, "Story: Recover a deleted note"; spec/notes/trash.md, "Story: Let deleted notes expire after three days when I choose that"; spec/notes/trash.md, "A recording's cleanup is acknowledged only with the device's proof that the audio is gone"; spec/notes/trash.md, "The proof of erase comes from the service's own verifier, else the host's verifier found when the cleanup is acknowledged, and only a literal true is proof"; spec/notes/trash.md, "A pending cleanup reserves the note and recording until its exact receipt is acknowledged"
 import { Service, type IAgentRuntime, type ServiceClass } from "@elizaos/core"
 import { sourceStillExact } from "../gen/notes__records.effect.vibe"
 import { cleanupVerifier, mayAcknowledgeCleanup, verifierProvedErase, type VerifierAnswer } from "../gen/notes__trash.effect.vibe"
 import {
-  acknowledgeIn, clearIn, createIn, deleteIn, eraseIn, listIn, moveIn, NotesRefused, restoreIn, sameCleanup, updateIn,
+  acknowledgeIn, clearIn, createIn, deleteIn, eraseIn, listIn, moveIn, NotesRefused, requireUnreferencedCleanup, restoreIn, sameCleanup, updateIn,
   type Instant, type ModelPick, type NoteTarget, type NotesQuery,
 } from "./collection.vibe"
 import { CleanupReceipt, CreateRequest, RestoreRequest, Revision, TrashErase, UpdateRequest } from "@elizaos/plugin-notes-client"
@@ -61,6 +61,22 @@ interface NotesRecordingCleanupVerifier {
 
 export type VerifyRecordingCleanup = (receipt: NotesTrashRecordingCleanup, signal?: AbortSignal) => Promise<unknown>
 
+export interface NotesRecordingCleanupHost {
+  canVerifyRecordingCleanup(receipt: NotesTrashRecordingCleanup, signal?: AbortSignal): Promise<boolean>
+  acknowledgeTrashRecordingCleanup(receipt: NotesTrashRecordingCleanup, signal?: AbortSignal): Promise<boolean>
+}
+
+function isRecordingCleanupHost(value: unknown): value is NotesRecordingCleanupHost {
+  return typeof value === "object" && value !== null
+    && "canVerifyRecordingCleanup" in value && typeof value.canVerifyRecordingCleanup === "function"
+    && "acknowledgeTrashRecordingCleanup" in value && typeof value.acknowledgeTrashRecordingCleanup === "function"
+}
+
+export function notesRecordingCleanupHost(runtime: IAgentRuntime): NotesRecordingCleanupHost | undefined {
+  const found: unknown = runtime.getService(notesServiceType)
+  return isRecordingCleanupHost(found) ? found : undefined
+}
+
 export interface NoteSourceReference {
   readonly agentId: string
   readonly noteId: string
@@ -94,6 +110,7 @@ export interface NotesCollection {
   move(target: NoteTarget, folderId: string | null): Committed<StickyNote>!NotesFailure
   eraseTrash(input: unknown): Committed<{ erased: number; recordingCleanup: NotesTrashRecordingCleanup[] }>!NotesFailure
   readTrashRecordingCleanup(): NotesTrashRecordingCleanup[]!NotesFailure
+  canVerifyRecordingCleanup(receipt: NotesTrashRecordingCleanup, signal?: AbortSignal): boolean!NotesFailure
   acknowledgeTrashRecordingCleanup(input: unknown, signal?: AbortSignal): boolean!NotesFailure
   sourceReference(note: StickyNote): NoteSourceReference
   assertSourceReference(reference: unknown): void!NotesRefused
@@ -167,20 +184,37 @@ export function notesCollection(host: NotesHost): NotesCollection {
     return answer === true ? "AnsweredTrue" : answer === "failed" ? "AnswerFailed" : "AnsweredOther"
   }
 
-  effect function acknowledge(input: unknown, signal?: AbortSignal): boolean!NotesFailure {
+  effect function admittedCleanup(input: unknown): (NotesTrashRecordingCleanup | undefined)!NotesFailure {
     try requireRetention()
     const receipt = try mapError(cleanupReceipt(input), () => invalid("recording cleanup receipt"))
-    const pending = (try store.read()).recordingCleanup.some((entry) => sameCleanup(entry, receipt))
-    if (!pending) return false
+    const document = try store.read()
+    if (!document.recordingCleanup.some((entry) => sameCleanup(entry, receipt))) return undefined
+    try requireUnreferencedCleanup(document, receipt)
+    return receipt
+  }
+
+  effect function canVerify(receipt: NotesTrashRecordingCleanup, signal?: AbortSignal): boolean!NotesFailure {
+    if (signal?.aborted) return false
+    const admitted = try admittedCleanup(receipt)
+    return admitted !== undefined && !signal?.aborted
+  }
+
+  effect function acknowledge(input: unknown, signal?: AbortSignal): boolean!NotesFailure {
+    if (signal?.aborted) return false
+    const receipt = try admittedCleanup(input)
+    if (receipt === undefined || signal?.aborted) return false
     const own = host.verifyRecordingCleanup
     const registered = own === undefined ? host.registeredVerifier() : undefined
     const source = cleanupVerifier(own !== undefined, registered !== undefined)
     const verify = source === "OwnVerifier" ? own : source === "HostVerifier" ? registered : undefined
     const proved = verifierProvedErase(source, try verifierAnswer(verify, receipt, signal))
-    if (!mayAcknowledgeCleanup(try store.ready(), true, true, pending, proved)) {
+    if (signal?.aborted) return false
+    if (!mayAcknowledgeCleanup(try store.ready(), true, true, true, proved)) {
       throw new NotesRefused({ code: "NOTES_TRASH_RECORDING_UNAVAILABLE", message: "The device has not confirmed recording erase." })
     }
-    return (try published(try store.transact((document) => acknowledgeIn(document, receipt)))).value
+    return (try published(try store.transact((document) => signal?.aborted
+      ? succeed({ next: undefined, value: false, mutation: "trash:recording-cleanup" })
+      : acknowledgeIn(document, receipt)))).value
   }
 
   return {
@@ -231,6 +265,7 @@ export function notesCollection(host: NotesHost): NotesCollection {
       try requireRetention()
       return (try store.read()).recordingCleanup
     },
+    canVerifyRecordingCleanup: canVerify,
     acknowledgeTrashRecordingCleanup: acknowledge,
     sourceReference,
     assertSourceReference,
@@ -269,7 +304,7 @@ export function runtimeNotesHost(runtime: IAgentRuntime, options: NotesOptions =
 }
 
 export function notesServiceClass(notes: NotesCollection): ServiceClass {
-  return class NotesService extends Service {
+  return class NotesService extends Service implements NotesRecordingCleanupHost {
     static override serviceType = notesServiceType
     override capabilityDescription = "The owner's durable Notes: saved notes, Trash and recording cleanup"
     readonly notes: NotesCollection = notes
@@ -287,7 +322,11 @@ export function notesServiceClass(notes: NotesCollection): ServiceClass {
       return matches.length === 1 && matches[0]?.id === noteId
     }
 
-    acknowledgeTrashRecordingCleanup(receipt: unknown, signal?: AbortSignal): Promise<boolean> {
+    canVerifyRecordingCleanup(receipt: NotesTrashRecordingCleanup, signal?: AbortSignal): Promise<boolean> {
+      return run(notes.canVerifyRecordingCleanup(receipt, signal))
+    }
+
+    acknowledgeTrashRecordingCleanup(receipt: NotesTrashRecordingCleanup, signal?: AbortSignal): Promise<boolean> {
       return run(notes.acknowledgeTrashRecordingCleanup(receipt, signal))
     }
 

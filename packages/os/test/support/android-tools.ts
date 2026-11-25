@@ -1,7 +1,7 @@
 // spec/os/image/apk.md, "Story: Put only a reviewed release APK into an image"; spec/os/image/staging.md, "Story: Stage my launcher into an image exactly once"; spec/os/build/runtimePayload.md, "Story: Ship the agent with a pinned Node runtime"
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 
@@ -24,7 +24,7 @@ export interface TestSigner {
 export interface FixtureApk {
   readonly directory: string;
   readonly manifest: string;
-  readonly signer: TestSigner;
+  readonly signer: TestSigner | null;
   readonly name: string;
   readonly natives?: Readonly<Partial<Record<NativeAbi, Readonly<Record<string, Uint8Array>>>>>;
   readonly assets?: Readonly<Record<string, string | Uint8Array>>;
@@ -87,7 +87,8 @@ export function buildApk(tools: Extract<AndroidTools, { kind: "present" }>, fixt
     const aligned = path.join(work, "aligned.apk");
     execFileSync(tools.zipalign, ["-f", "-P", "16", "4", linked, aligned], { stdio: "pipe" });
     const apk = path.join(fixture.directory, `${fixture.name}.apk`);
-    execFileSync(tools.apksigner, ["sign", "--ks", fixture.signer.keystore, "--ks-type", "PKCS12", "--ks-pass", `pass:${fixture.signer.password}`, "--ks-key-alias", fixture.signer.alias, "--out", apk, aligned], { stdio: "pipe" });
+    if (fixture.signer === null) copyFileSync(aligned, apk);
+    else execFileSync(tools.apksigner, ["sign", "--ks", fixture.signer.keystore, "--ks-type", "PKCS12", "--ks-pass", `pass:${fixture.signer.password}`, "--ks-key-alias", fixture.signer.alias, "--out", apk, aligned], { stdio: "pipe" });
     rmSync(`${apk}.idsig`, { force: true });
     return { apk, sha256: sha256(readFileSync(apk)) };
   } finally {

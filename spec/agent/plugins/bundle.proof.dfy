@@ -21,7 +21,7 @@ lemma lawExcludedPackageNeverShips_ensures(b: Build, name: string)
   ensures (lawExcludedPackageNeverShips(b, name) == true)
 {
   var f := (rows: seq<PackageRow>, i: BundleInput) => (if (inputDisposition(i).Contributes? && !((rowOf(i) in rows))) then (rows + [rowOf(i)]) else rows);
-  if buildVerdict(b).Built? && name in b.excluded && (exists r :: r in packageRows(b) && r.name == name) {
+  if buildVerdict(b).Built? && name in excludedPackages && (exists r :: r in packageRows(b) && r.name == name) {
     var r :| r in packageRows(b) && r.name == name;
     assert packageRows(b) == Std.Collections.Seq.FoldLeft(f, [], b.inputs);
     RowsComeFromContributingInputs(f, [], b.inputs, r);
