@@ -70,7 +70,6 @@ export function headerMap(payload: MailPart | undefined) {
   return new Map((payload?.headers ?? []).map((header) => [header.name.toLowerCase(), header.value]))
 }
 
-/** A summary can use the outer MIME part, even when the metadata response supplies only headers. */
 export function mailAttachmentHint(payload: MailPart | undefined, headers: ReadonlyMap<string, string>): boolean {
   const mime = (payload?.mimeType || headers.get("content-type") || "").split(";", 1)[0]?.trim().toLowerCase()
   return attachmentHint(mime === "multipart/mixed", (payload?.filename ?? "").trim() !== "")
