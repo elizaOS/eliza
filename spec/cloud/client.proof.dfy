@@ -263,7 +263,7 @@ lemma ServiceGroupPathComponents(i: int, j: int)
 
 lemma ServiceRouteKeyFacts()
   ensures ProofLib.DistinctBy(serviceRoutes, (d: DeviceRoute) => (d.method_, d.path))
-  ensures forall d :: d in serviceRoutes ==> |d.path| > 2 && d.path[2] in {Literal("models"), Literal("chat"), Literal("voice"), Literal("maps")}
+  ensures forall d :: d in serviceRoutes ==> |d.path| > 2 && d.path[2] in {Literal("models"), Literal("decisions"), Literal("chat"), Literal("voice"), Literal("maps")}
 {
   var key := (d: DeviceRoute) => (d.method_, d.path);
   forall i, j | 0 <= i < |serviceRoutes| && 0 <= j < |serviceRoutes| && i != j
@@ -273,7 +273,7 @@ lemma ServiceRouteKeyFacts()
     else { ServiceGroupPathComponents(j, i); }
   }
   forall d | d in serviceRoutes
-    ensures |d.path| > 2 && d.path[2] in {Literal("models"), Literal("chat"), Literal("voice"), Literal("maps")}
+    ensures |d.path| > 2 && d.path[2] in {Literal("models"), Literal("decisions"), Literal("chat"), Literal("voice"), Literal("maps")}
   {
     var i :| 0 <= i < |serviceRoutes| && serviceRoutes[i] == d;
     ServiceRouteAtNamespace(i);
@@ -283,7 +283,7 @@ lemma ServiceRouteKeyFacts()
 lemma ServiceRouteAtNamespace(i: int)
   requires 0 <= i < |serviceRoutes|
   ensures var path := serviceRoutes[i].path;
-    |path| > 2 && path[2] in {Literal("models"), Literal("chat"), Literal("voice"), Literal("maps")}
+    |path| > 2 && path[2] in {Literal("models"), Literal("decisions"), Literal("chat"), Literal("voice"), Literal("maps")}
 {}
 
 lemma GoogleGroupPathComponents(i: int, j: int)
@@ -374,10 +374,10 @@ lemma AccountNamespacesAreDisjoint()
 }
 
 lemma GroupedNamespacesAreDisjoint()
-  ensures ({Literal("service"), Literal("auth"), Literal("user"), Literal("referrals"), Literal("app-auth"), Literal("api-keys")} + {Literal("subscriptions"), Literal("subscription"), Literal("billing")}) * ({Literal("models"), Literal("chat"), Literal("voice"), Literal("maps")} + {Literal("eliza")}) == {}
+  ensures ({Literal("service"), Literal("auth"), Literal("user"), Literal("referrals"), Literal("app-auth"), Literal("api-keys")} + {Literal("subscriptions"), Literal("subscription"), Literal("billing")}) * ({Literal("models"), Literal("decisions"), Literal("chat"), Literal("voice"), Literal("maps")} + {Literal("eliza")}) == {}
 {
   var earlier := ({Literal("service"), Literal("auth"), Literal("user"), Literal("referrals"), Literal("app-auth"), Literal("api-keys")} + {Literal("subscriptions"), Literal("subscription"), Literal("billing")});
-  var later := ({Literal("models"), Literal("chat"), Literal("voice"), Literal("maps")} + {Literal("eliza")});
+  var later := ({Literal("models"), Literal("decisions"), Literal("chat"), Literal("voice"), Literal("maps")} + {Literal("eliza")});
   if earlier * later != {} {
     var prefix :| prefix in earlier * later;
     assert prefix in earlier && prefix in later;
@@ -401,12 +401,12 @@ lemma AccountRouteKeyFacts()
 
 lemma CapabilityRouteKeyFacts()
   ensures ProofLib.DistinctBy(joinRouteGroups(serviceRoutes, googleRoutes), (d: DeviceRoute) => (d.method_, d.path))
-  ensures forall d :: d in joinRouteGroups(serviceRoutes, googleRoutes) ==> |d.path| > 2 && d.path[2] in {Literal("models"), Literal("chat"), Literal("voice"), Literal("maps")} + {Literal("eliza")}
+  ensures forall d :: d in joinRouteGroups(serviceRoutes, googleRoutes) ==> |d.path| > 2 && d.path[2] in {Literal("models"), Literal("decisions"), Literal("chat"), Literal("voice"), Literal("maps")} + {Literal("eliza")}
 {
   ServiceRouteKeyFacts();
   GoogleRouteKeyFacts();
-  assert {Literal("models"), Literal("chat"), Literal("voice"), Literal("maps")} * {Literal("eliza")} == {};
-  AppendDisjointRouteGroups(serviceRoutes, googleRoutes, {Literal("models"), Literal("chat"), Literal("voice"), Literal("maps")}, {Literal("eliza")});
+  assert {Literal("models"), Literal("decisions"), Literal("chat"), Literal("voice"), Literal("maps")} * {Literal("eliza")} == {};
+  AppendDisjointRouteGroups(serviceRoutes, googleRoutes, {Literal("models"), Literal("decisions"), Literal("chat"), Literal("voice"), Literal("maps")}, {Literal("eliza")});
 }
 
 lemma DeviceRouteKeysAreDistinct()
@@ -415,7 +415,7 @@ lemma DeviceRouteKeysAreDistinct()
   var accounts := joinRouteGroups(signInRoutes, billingRoutes);
   var capabilities := joinRouteGroups(serviceRoutes, googleRoutes);
   var accountNames := {Literal("service"), Literal("auth"), Literal("user"), Literal("referrals"), Literal("app-auth"), Literal("api-keys")} + {Literal("subscriptions"), Literal("subscription"), Literal("billing")};
-  var capabilityNames := {Literal("models"), Literal("chat"), Literal("voice"), Literal("maps")} + {Literal("eliza")};
+  var capabilityNames := {Literal("models"), Literal("decisions"), Literal("chat"), Literal("voice"), Literal("maps")} + {Literal("eliza")};
   AccountRouteKeyFacts();
   CapabilityRouteKeyFacts();
   GroupedNamespacesAreDisjoint();
