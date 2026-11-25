@@ -9,13 +9,13 @@ import { asksAgain, attachedDocumentBytes, attachedRead, documentTextFits, follo
 import { carriesCutOffEffect, failureEndsTheRun, limitOriginOn, replyQuoteChars, storedFailureName } from "../../gen/agent__conversation__turns.ts"
 import type { BindingView, LastCloudFailure } from "../models/binding.vibe"
 import { turnClock, ungroundedEventReply, ungroundedTimeReply, type Ungrounded } from "./clock.vibe"
-import { textForTurn } from "./heard.vibe"
+import { textForTurn, unheardMark } from "./heard.vibe"
 import { storedText } from "./history.vibe"
 import { ModelRefusal } from "../models/chat.vibe"
 import { readTurnContext, type BrowserPage } from "@elizaos/agent"
 import { warmUpOutputCap } from "../../gen/agent__conversation__planning.ts"
-import { actionNotes, agentCache, failureNote, offeredActions, plannerTools, planTurn, type PlannedTurn } from "./planning.vibe"
-import { cueRule } from "./reply-text.vibe"
+import { actionNotes, agentCache, failureNote, offeredActions, plannerTools, planTurn, type FailureNotice, type PlannedTurn } from "./planning.vibe"
+import { cueRule, hostNoteMark } from "./reply-text.vibe"
 import { runTurnEvaluators } from "./turn-evaluators.vibe"
 
 type ChatMessage = NonNullable<GenerateTextParams["messages"]>[number]
@@ -31,7 +31,8 @@ export interface AgentTurnProcessingOptions extends MessageProcessingOptions {
 }
 
 const historyReadCount = 200
-const unansweredMark = "[unanswered: its turn ended before any reply; act on it only if the person asks again]"
+const unansweredLead = "[unanswered:"
+const unansweredMark = `${unansweredLead} its turn ended before any reply; act on it only if the person asks again]`
 
 function hasFreshAppliedEffect(receipts: readonly EffectReceipt[], began: number, ended: number): boolean {
   const reverted = revertedEffectReceiptIds(receipts)
@@ -223,10 +224,13 @@ function attachmentParts(reads: readonly ReadAttachment[]) {
   return { parts, omitted }
 }
 
-const hostLabel = "Note from the agent host, not the person:"
+const hostLabel = `${hostNoteMark}, not the person:`
 
-function said(attached: readonly ContentPart[], text: string, notes: readonly (string | undefined)[]): ChatMessage {
-  const sent = notes.filter((note): note is string => note !== undefined && note.trim() !== "")
+function hostNotesOf(notes: readonly (string | undefined)[]): string[] {
+  return notes.filter((note): note is string => note !== undefined && note.trim() !== "")
+}
+
+function said(attached: readonly ContentPart[], text: string, sent: readonly string[]): ChatMessage {
   const told = hostNoteLabels(sent.length) === 0 ? text : `${text}\n\n${[hostLabel, ...sent].join("\n")}`
   return { role: "user", content: attached.length === 0 ? told : [{ type: "text", text: told }, ...attached] }
 }
@@ -288,13 +292,14 @@ async function settledReply(planned: PlannedTurn, omitted: boolean, misgrounded:
   const { revised, stoodBy } = asksAgain(unreported.length > 0, wrong !== undefined, planned.cutOff)
     ? await planned.reask([...unreported, ...(wrong === undefined ? [] : [wrong.note])])
     : { revised: undefined, stoodBy: false }
-  const noticeWords = planned.notices.filter((notice) => reachesTheOwner(notice.ownCopy, notice.safetyCopy)).map(({ words }) => words)
+  const ownersWords = (follows: (notice: FailureNotice) => boolean) =>
+    planned.notices.filter((notice) => reachesTheOwner(notice.owner !== undefined, follows(notice))).flatMap(({ owner }) => owner ?? [])
   const attachmentWords = omitted ? [omittedDocuments] : []
   switch (replySource(unreported.length > 0, wrong !== undefined, planned.cutOff, revised !== undefined, revised !== undefined && misgrounded(revised) === undefined)) {
-    case "ModelReply": return withWords(planned.reply, noticeWords)
-    case "RevisedReply": return withWords(revised ?? "", [...noticeWords, ...attachmentWords])
+    case "ModelReply": return withWords(planned.reply, ownersWords(() => true))
+    case "RevisedReply": return withWords(revised ?? "", [...ownersWords(() => true), ...attachmentWords])
     case "FixedWords": return withWords(wrong?.fixed ?? planned.reply, [
-      ...planned.notices.flatMap((notice) => followsTheReply(notice.answerableLater, asked.includes(notice), stoodBy, wrong === undefined, notice.safetyCopy) ? [notice.words] : []),
+      ...ownersWords((notice) => followsTheReply(notice.answerableLater, asked.includes(notice), stoodBy, wrong === undefined, notice.safetyCopy)),
       ...attachmentWords,
     ])
   }
@@ -351,15 +356,16 @@ async function respond(
         })
         const actions = offeredActions(runtime, message, actionGate)
         const attachments = attachmentParts(await Promise.all((message.content.attachments ?? []).map((media) => readAttachment(runtime, media))))
-        const messages: ChatMessage[] = [...history, said(attachments.parts, asked, [
+        const hostNotes = hostNotesOf([
           options?.replyTarget === undefined ? undefined : await replyQuote(runtime, options.replyTarget),
           contextNote(message), clock.line, options?.deviceContext, ...actionNotes(runtime, message, actions), options?.taskContext,
           window.windowed ? historyWindowNotice(window, offersContextRestore(actions.length) && window.deferred.length > 0 ? { kind: "restoreContext" } : undefined) : undefined,
-        ])]
+        ])
+        const messages: ChatMessage[] = [...history, said(attachments.parts, asked, hostNotes)]
         const system = plannerSystem(runtime.character)
         state = await runtime.composeState(message, [], true, true)
         const planned = await planTurn({
-          runtime, message, state, roles, actionGate, system, messages, signal,
+          runtime, message, state, roles, actionGate, system, messages, hostNotes: [...hostNotes, unansweredLead, unheardMark], signal,
           deferredHistory: { rows: window.deferred, earlier },
           onStepResult: (result) => Effect.runPromise(Effect.try({
             try: () => terminal.recordActionResult(result),
