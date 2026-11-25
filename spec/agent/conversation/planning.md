@@ -599,17 +599,18 @@ counts, names other than one after `check with`, or question mark. The
 grammar has no past-tense verb, negation or completion word, so a cue never
 claims that an effect happened or that the owner's tracked work is empty:
 a destination confirmation (`Maps is open.`, `Opened your calendar.`) is
-never a cue. A JSON object in the text that names an action or a tool (an
-`action` or `tool` field with a text value, or an action envelope as core
-reads one), and a bracketed snake_case name with `key=value` arguments
-(`[send_message contact="Sam"]`), is a tool call written as text, which runs
-nothing: text that holds such calls outside any other object is read without them and
-without a code fence or tag left empty around them, so
-a cue beside one (`Sure, one sec. {"action": "send_message"}`) is still a
-cue, delivered without them, and bare assent beside one promises work as
-`Sure, one sec.` does (below). Text that is only such objects is an
-`Answer`, and so is text whose objects name no action or tool
-(`Sure! {"name": "Bob"}`).
+never a cue. The shell reads the text without its JSON objects (those
+outside any other object) and without a code fence or tag they leave empty,
+since an object beside a cue is a tool call written as text, which runs
+nothing. So a cue beside any object (`Sure, one sec. {"type":
+"send_message"}`) is still a cue, delivered without it. An object that
+names an action or a tool (an `action` or `tool` field with a text value,
+or an action envelope as core reads one) and a bracketed snake_case name
+with `key=value` arguments (`[send_message contact="Sam"]`) are written
+calls: bare assent beside one promises work as `Sure, one sec.` does
+(below), and text that is only written calls is a blank. Bare assent beside
+any other object (`Sure! {"name": "Bob"}`), and text that is only such
+objects, are an `Answer`.
 A wait cue followed by more text that is not progress (`One second is
 1,000 milliseconds.`, `Just a second, your dentist is Thursday.`) is an
 `Answer`. A cue that comes with the turn's first tool calls is the turn's
