@@ -635,6 +635,14 @@ it.effect(`Change my calendar only as I asked and know it happened, at a free ti
   const phoneNumber = try said("slot-4zk", "Call 0800 123 456 tomorrow at 3", { subaction: "create_event", title: "Hotline", startAt: "2030-03-20T08:00", statedClock: "start" })
   assert.deepStrictEqual([span(halfThree), span(lateStandup), at(rangeAsMinutes.data, "code"), at(phoneNumber.data, "code")],
     [["2030-03-20T22:30:00.000Z", "2030-03-20T23:30:00.000Z"], ["2030-03-21T04:15:00.000Z", "2030-03-21T05:15:00.000Z"], "CALENDAR_CLOCK_UNSAID", "CALENDAR_CLOCK_UNSAID"])
+  const errand = (id: string, text: string, startAt: string) => said(id, text, { subaction: "create_event", title: "Errand", startAt, statedClock: "start" })
+  const addressed = [try errand("slot-4zl", "Lunch tomorrow at 1230 Broadway", "2030-03-21T12:30"), try errand("slot-4zm", "Meet Sam tomorrow at 1430 Main St", "2030-03-21T14:30"),
+    try errand("slot-4zn", "Coffee tomorrow at 0930 Elm Ave", "2030-03-21T09:30"), try errand("slot-4zo", "Dinner tomorrow at 1600 Pennsylvania Ave at 7pm", "2030-03-21T16:00"),
+    try errand("slot-4zp", "Pick up the kids tomorrow from 1745 Oak Street at 3", "2030-03-21T17:45"), try errand("slot-4zq", "Meet tomorrow at 1430 on 3rd Ave", "2030-03-21T14:30")]
+  assert.deepStrictEqual(addressed.map((result) => [at(result.data, "code"), result.effectReceipts?.length ?? 0]), addressed.map(() => ["CALENDAR_CLOCK_UNSAID", 0]))
+  const clauseEnd = try said("slot-4zr", "Lunch tomorrow at 1230.", { subaction: "create_event", title: "Lunch out", startAt: "2030-03-21T12:30", statedClock: "start" })
+  const dayAfter = try said("slot-4zs", "Team sync at 0930 on Tuesday", { subaction: "create_event", title: "Team sync", startAt: "2030-03-19T09:30", statedClock: "start" })
+  assert.deepStrictEqual([span(clauseEnd), span(dayAfter)], [["2030-03-21T19:30:00.000Z", "2030-03-21T20:30:00.000Z"], ["2030-03-19T16:30:00.000Z", "2030-03-19T17:30:00.000Z"]])
   const otherScriptName = try said("slot-4za", "Lunch with Дмитрий tomorrow at 1pm", { subaction: "create_event", title: "Lunch", startAt: "2030-03-02T01:00", statedClock: "start" })
   const oddNumber = try said("slot-4zb", "Dentist at 3pm for 1.5 hours tomorrow", { subaction: "create_event", title: "Dentist", startAt: "2030-03-02T03:00", statedClock: "start" })
   const foreignWord = try said("slot-4zc", "Termin morgen um 15 Uhr", { subaction: "create_event", title: "Termin", startAt: "2030-03-02T03:00", statedClock: "start" })

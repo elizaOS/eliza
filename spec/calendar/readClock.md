@@ -158,9 +158,20 @@ only right after a word that leads one ("at", "to", "till", "until",
 "move it to ten till 3"), since after "from" or "between", or alone,
 they may be a range ("coffee tomorrow from 10 to 6" or "coffee tomorrow
 10 to 6" holds no 5:50 PM). Four digits are a clock only right after a
-word that leads one (those, "from", "between" or "and") and not before
-another number, and never in a written date ("call 0800 123 456 tomorrow
-at 3" holds no 8:00, "review the 2030 plan" no 8:30 PM). Words the reader cannot read hold only what these spellings find
+word that leads one (those, "from", "between" or "and") and only where
+the clause ends after them or the next word is am, pm, a join ("to",
+"till", "til", "until", "through", "thru", "and"), or a day ("today",
+"tonight", "tomorrow", a weekday, or a written date other than a bare
+ordinal), alone or after "on", "this" or "next" ("this" or "next" also
+before "morning", "afternoon", "evening", "night", "week" or
+"weekend"): "lunch tomorrow at 1230." holds 12:30 PM, "standup at 0930
+on Tuesday" 9:30 AM and "from 0900 to 1100" both ends. Four digits that a
+name or another number follows in the same clause are never a clock,
+since a street address reads the same way ("lunch tomorrow at 1230 Broadway", "dinner tomorrow
+at 1600 Pennsylvania Ave at 7pm", "pick up the kids tomorrow from 1745
+Oak Street at 3" and "meet tomorrow at 1430 on 3rd Ave" hold no time
+from their four digits), nor in a written date ("call 0800 123 456
+tomorrow at 3" holds no 8:00, "review the 2030 plan" no 8:30 PM). Words the reader cannot read hold only what these spellings find
 in them, as before: "明天下午3点开会" holds no clock time, so a stated
 time sent for it is refused whatever time it is.
 
