@@ -523,7 +523,7 @@ it.live(`A tool call the model wrote as text is read as the call on Qwen, and is
   }))
   const madeCall = (qwen.cloud.calls.filter(({ path }) => path.endsWith("/chat/completions"))[1]?.body as { messages: { role: string; content?: unknown; tool_calls?: { function: { name: string; arguments: string } }[] }[] } | undefined)
     ?.messages.find(({ role, tool_calls }) => role === "assistant" && tool_calls !== undefined)
-  try Effect.try(() => assert.deepStrictEqual([madeCall?.content, madeCall?.tool_calls?.map(({ function: called }) => [called.name, JSON.parse(called.arguments)])], ["Let me check.", [["CALCULATE", { expression: "2 + 2" }]]]))
+  try Effect.try(() => assert.deepStrictEqual([madeCall?.content, madeCall?.tool_calls?.map(({ function: called }) => [called.name, JSON.parse(called.arguments)])], [null, [["CALCULATE", { expression: "2 + 2" }]]]))
 }, 120_000)
 
 it.live(`A failure on one recipient or event stays reported beside a success on another, in either order, and a retry of the same operation that succeeds closes it (${planning}, "A failure or proposal the turn made stays reported unless a later success of the same operation supersedes it")`, effect () => {

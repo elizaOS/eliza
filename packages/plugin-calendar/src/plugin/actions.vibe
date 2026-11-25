@@ -970,8 +970,8 @@ export const calendarProvider: Provider = {
     const zone = createTimeZone(zonesOf(calendarAsk(message, await ownerZone(runtime))))
     const lines = found.events.map((event) => `- ${line(event, zone)}`)
     return {
-      text: lines.length === 0 ? "No calendar events in the next 24 hours." : `Calendar, next 24 hours${found.complete ? "" : " (some calendars unread)"}:\n${lines.join("\n")}`,
-      data: { events: [...found.events], complete: found.complete },
+      text: `${lines.length === 0 ? "No calendar events in the next 24 hours." : `Calendar, next 24 hours${found.complete ? "" : " (some calendars unread)"}:\n${lines.join("\n")}`}${connectionNote(found)}`,
+      data: { events: [...found.events], complete: found.complete, connection: connectionWire[found.connection] },
     }
   },
 }

@@ -154,8 +154,9 @@ The agent's own resident calendar is always listed; a connected account
 (the managed Google calendar, another provider, the phone's own calendar)
 lists calendars beside it. When the active account lists no calendar but
 the resident one and no provider failed to list its calendars, a read,
-lookup, trip question or free-time question answers with
-`connection: "none"` in its data, and its text says that no calendar
+lookup, trip question or free-time question, and the next-24-hours
+calendar context the agent is given, answer with
+`connection: "none"` in their data, and their text says that no calendar
 account is connected and only the agent's own calendar was read, beside
 whatever that calendar holds. So the model tells the owner that Calendar
 isn't connected, in its own words, rather than that nothing is on it or

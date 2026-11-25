@@ -548,7 +548,7 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
         break plan
       case "AskAgain":
         conversation.push({ role: "assistant", content: words })
-        conversation.push({ role: "user", content: nothingRan(steps.flatMap(({ outcomes }) => outcomes)) ? answerNothingRan : answerNow })
+        conversation.push({ role: "user", content: nothingRan(steps.flatMap(({ outcomes }) => outcomes.map(({ outcome }) => outcome))) ? answerNothingRan : answerNow })
         continue plan
       case "GiveUp":
       case "RunTools":

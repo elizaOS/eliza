@@ -317,7 +317,7 @@ it.effect('A Qwen call on a Cerebras route reads a tool call written as text as 
   const cloud = try cloudFake(deviceKey)
   const qwen = try cloudAgent(cloud, { large: "cerebras/qwen-3.8-27b" })
   const plain = try cloudAgent(cloud)
-  const tools = [
+  const tools: NonNullable<GenerateTextParams["tools"]> = [
     { name: "MAPS_SEARCH", description: "Places.", parameters: { type: "object", properties: { query: { type: "string" }, limit: { type: "integer" }, open: { type: "boolean" } }, required: ["query"] } },
     { name: "CALCULATE", description: "Arithmetic.", parameters: { type: "object", properties: { expression: { type: "string" } }, required: ["expression"] } },
   ]

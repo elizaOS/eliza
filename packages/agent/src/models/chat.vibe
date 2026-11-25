@@ -276,9 +276,11 @@ module wireFormat {
   const writtenFunction = /^<function=([^>\s]+)>([\s\S]*?)<\/function>$/
   const writtenParameter = /<parameter=([^>\s]+)>([\s\S]*?)<\/parameter>/g
 
+  type WrittenArguments = Exclude<ToolCall["arguments"], string>
+
   export interface WrittenCall {
     readonly name: string
-    readonly arguments: Record<string, unknown>
+    readonly arguments: WrittenArguments
   }
 
   function writtenAsText(tool: ToolDefinition, key: string): boolean {
@@ -287,7 +289,7 @@ module wireFormat {
     return type === undefined || type === "string" || (Array.isArray(type) && type.includes("string"))
   }
 
-  function writtenValue(tool: ToolDefinition, key: string, raw: string): unknown {
+  function writtenValue(tool: ToolDefinition, key: string, raw: string): WrittenArguments[string] {
     const value = raw.replace(/^\r?\n/, "").replace(/\r?\n$/, "")
     if (writtenAsText(tool, key)) return value
     try {
@@ -297,8 +299,8 @@ module wireFormat {
     }
   }
 
-  function writtenObject(value: unknown): Record<string, unknown> | undefined {
-    return typeof value === "object" && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : undefined
+  function writtenObject(value: unknown): WrittenArguments | undefined {
+    return typeof value === "object" && value !== null && !Array.isArray(value) ? value as WrittenArguments : undefined
   }
 
   function writtenJson(body: string, offered: ReadonlyMap<string, ToolDefinition>): WrittenCall | undefined {
@@ -319,7 +321,7 @@ module wireFormat {
     if (named === null) return writtenJson(inner, offered)
     const tool = offered.get(named[1] ?? "")
     if (tool === undefined) return undefined
-    const args: Record<string, unknown> = {}
+    const args: WrittenArguments = {}
     const rest = (named[2] ?? "").replace(writtenParameter, (_whole: string, key: string, raw: string) => {
       args[key] = writtenValue(tool, key, raw)
       return ""
