@@ -488,8 +488,80 @@ function canRunBatchInParallel(work: readonly ToolCall[], named: ReadonlyMap<str
   return true
 }
 
-export async function planTurn(input: PlanInput, actions: readonly Action[]): Promise<PlannedTurn> {
+type AdmittedCall =
+  | { readonly kind: "done"; readonly call: ToolCall; readonly result: ActionResult }
+  | { readonly kind: "run"; readonly call: ToolCall; readonly params: Record<string, unknown>; readonly identity: string }
+
+interface CallRun {
+  readonly result: ActionResult
+  readonly captured: readonly string[]
+}
+
+function plannedToolRunner(input: PlanInput, named: ReadonlyMap<string, Action>, steps: PlannedStep[], conversation: ChatMessage[]) {
   const { runtime, message, state, roles, signal } = input
+  const seen = new Set<string>()
+  const settlements = new Map<string, ToolSettlement>()
+  const admit = async (call: ToolCall): Promise<AdmittedCall> => {
+    signal.throwIfAborted()
+    const params = paramsOf(call)
+    const name = isDiscoveryActionName(call.name) ? DISCOVER_ACTIONS_NAME : call.name
+    const identity = `${name}\u0000${canonical(params)}`
+    const dispatch = toolDispatch(seen.has(identity), settlements.get(identity) ?? "ToolOpen")
+    if (dispatch !== "FreshCall") {
+      const text = dispatch === "RetryRefused" ? "This exact operation cannot be retried. Use a different valid operation or correct its arguments."
+        : "This turn already has a result for the same operation. Use that result and do not repeat the call."
+      return { kind: "done", call, result: { success: false, text, data: { executionStatus: "not_started", code: dispatch } } }
+    }
+    seen.add(identity)
+    const elsewhere = elsewhereOf(runtime, message, named.get(call.name), params)
+    if (!isTurnStep(callAdmission(elsewhere !== undefined)) && elsewhere !== undefined) return { kind: "done", call, result: elsewhereRefusal(elsewhere) }
+    await input.onActivityStatus?.({ actionName: call.name, label: activityLabel(runtime, named.get(call.name), params) })
+    return { kind: "run", call, params, identity }
+  }
+  const perform = async (item: AdmittedCall, previousResults: ActionResult[]): Promise<CallRun> => {
+    if (item.kind === "done") return { result: item.result, captured: [] }
+    const captured: string[] = []
+    const result = await executePlannedToolCall(runtime, {
+      message, state, activeContexts: ["general"], userRoles: roles, previousResults,
+      callback: async (content) => {
+        if (content.text?.trim()) captured.push(content.text)
+        return []
+      },
+    }, { id: item.call.id, name: item.call.name, params: item.params }, { abortSignal: signal })
+    return { result, captured }
+  }
+  const record = async (item: AdmittedCall, { result, captured }: CallRun, response: number): Promise<boolean> => {
+    if (item.kind === "run") {
+      settlements.set(item.identity, toolSettlement(result, named.get(item.call.name)))
+      if (!plannerOnlyCoaching(result.transcriptVisibility === "internal", result.data?.coachingFailure === true, result.success, (result.effectReceipts?.length ?? 0) > 0)) {
+        await input.onStepResult?.(result)
+        steps.push({ action: item.call.name, params: item.params, result, shown: shownBy(result, captured), outcomes: planStepsOf(item.call.name, item.params, result), response })
+      }
+    }
+    conversation.push({ role: "tool", toolCallId: item.call.id, name: item.call.name, content: toolMessage(result) })
+    return stoppedAtModelMaximum(result)
+  }
+  return async (work: readonly ToolCall[], response: number): Promise<boolean> => {
+    seen.clear()
+    if (!canRunBatchInParallel(work, named)) {
+      for (const call of work) {
+        const item = await admit(call)
+        if (await record(item, await perform(item, steps.map(({ result }) => result)), response)) return true
+      }
+      return false
+    }
+    const admitted: AdmittedCall[] = []
+    for (const call of work) admitted.push(await admit(call))
+    const previousResults = steps.map(({ result }) => result)
+    const ran = await Promise.all(admitted.map(async (item) => ({ item, run: await perform(item, previousResults) })))
+    let cutOff = false
+    for (const { item, run } of ran) cutOff = (await record(item, run, response)) || cutOff
+    return cutOff
+  }
+}
+
+export async function planTurn(input: PlanInput, actions: readonly Action[]): Promise<PlannedTurn> {
+  const { runtime, message, signal } = input
   signal.throwIfAborted()
   const tools = plannerTools(runtime, message, actions)
   const restoreOffered = tools.some(({ name }) => name === restoreContext.name)
@@ -509,106 +581,7 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
   let askedBeforeWork = false
   let askedAfterWork = false
   let askingPromise: string | undefined
-  const seen = new Set<string>()
-  const settlements = new Map<string, ToolSettlement>()
-  const execute = async (call: ToolCall): Promise<ActionResult> => {
-    signal.throwIfAborted()
-    const params = paramsOf(call)
-    const name = isDiscoveryActionName(call.name) ? DISCOVER_ACTIONS_NAME : call.name
-    const identity = `${name}\u0000${canonical(params)}`
-    const dispatch = toolDispatch(seen.has(identity), settlements.get(identity) ?? "ToolOpen")
-    if (dispatch !== "FreshCall") {
-      const text = dispatch === "RetryRefused" ? "This exact operation cannot be retried. Use a different valid operation or correct its arguments."
-        : "This turn already has a result for the same operation. Use that result and do not repeat the call."
-      const result = { success: false, text, data: { executionStatus: "not_started", code: dispatch } }
-      conversation.push({ role: "tool", toolCallId: call.id, name: call.name, content: toolMessage(result) })
-      return result
-    }
-    seen.add(identity)
-    const elsewhere = elsewhereOf(runtime, message, named.get(call.name), params)
-    if (!isTurnStep(callAdmission(elsewhere !== undefined)) && elsewhere !== undefined) {
-      const refusal = elsewhereRefusal(elsewhere)
-      conversation.push({ role: "tool", toolCallId: call.id, name: call.name, content: toolMessage(refusal) })
-      return refusal
-    }
-    await input.onActivityStatus?.({ actionName: call.name, label: activityLabel(runtime, named.get(call.name), params) })
-    const captured: string[] = []
-    const result = await executePlannedToolCall(runtime, {
-      message, state, activeContexts: ["general"], userRoles: roles, previousResults: steps.map(({ result }) => result),
-      callback: async (content) => {
-        if (content.text?.trim()) captured.push(content.text)
-        return []
-      },
-    }, { id: call.id, name: call.name, params }, { abortSignal: signal })
-    settlements.set(identity, toolSettlement(result, named.get(call.name)))
-    if (!plannerOnlyCoaching(result.transcriptVisibility === "internal", result.data?.coachingFailure === true, result.success, (result.effectReceipts?.length ?? 0) > 0)) {
-      await input.onStepResult?.(result)
-      steps.push({ action: call.name, params, result, shown: shownBy(result, captured), outcomes: planStepsOf(call.name, params, result), response: taken })
-    }
-    conversation.push({ role: "tool", toolCallId: call.id, name: call.name, content: toolMessage(result) })
-    return result
-  }
-  const executeBatch = async (work: readonly ToolCall[]): Promise<boolean> => {
-    if (!canRunBatchInParallel(work, named)) {
-      let cutOff = false
-      for (const call of work) {
-        cutOff ||= stoppedAtModelMaximum(await execute(call))
-        if (cutOff) break
-      }
-      return cutOff
-    }
-    type Prepared =
-      | { readonly kind: "done"; readonly call: ToolCall; readonly result: ActionResult }
-      | { readonly kind: "run"; readonly call: ToolCall; readonly params: Record<string, unknown>; readonly identity: string }
-    const prepared: Prepared[] = []
-    for (const call of work) {
-      signal.throwIfAborted()
-      const params = paramsOf(call)
-      const name = isDiscoveryActionName(call.name) ? DISCOVER_ACTIONS_NAME : call.name
-      const identity = `${name}\u0000${canonical(params)}`
-      const dispatch = toolDispatch(seen.has(identity), settlements.get(identity) ?? "ToolOpen")
-      if (dispatch !== "FreshCall") {
-        const text = dispatch === "RetryRefused" ? "This exact operation cannot be retried. Use a different valid operation or correct its arguments."
-          : "This turn already has a result for the same operation. Use that result and do not repeat the call."
-        prepared.push({ kind: "done", call, result: { success: false, text, data: { executionStatus: "not_started", code: dispatch } } })
-        continue
-      }
-      seen.add(identity)
-      const elsewhere = elsewhereOf(runtime, message, named.get(call.name), params)
-      if (!isTurnStep(callAdmission(elsewhere !== undefined)) && elsewhere !== undefined) {
-        prepared.push({ kind: "done", call, result: elsewhereRefusal(elsewhere) })
-        continue
-      }
-      await input.onActivityStatus?.({ actionName: call.name, label: activityLabel(runtime, named.get(call.name), params) })
-      prepared.push({ kind: "run", call, params, identity })
-    }
-    const previousResults = steps.map(({ result }) => result)
-    const ran = await Promise.all(prepared.map(async (item) => {
-      if (item.kind === "done") return { item, result: item.result, captured: [] as string[] }
-      const captured: string[] = []
-      const result = await executePlannedToolCall(runtime, {
-        message, state, activeContexts: ["general"], userRoles: roles, previousResults,
-        callback: async (content) => {
-          if (content.text?.trim()) captured.push(content.text)
-          return []
-        },
-      }, { id: item.call.id, name: item.call.name, params: item.params }, { abortSignal: signal })
-      return { item, result, captured }
-    }))
-    let cutOff = false
-    for (const { item, result, captured } of ran) {
-      if (item.kind === "run") {
-        settlements.set(item.identity, toolSettlement(result, named.get(item.call.name)))
-        if (!plannerOnlyCoaching(result.transcriptVisibility === "internal", result.data?.coachingFailure === true, result.success, (result.effectReceipts?.length ?? 0) > 0)) {
-          await input.onStepResult?.(result)
-          steps.push({ action: item.call.name, params: item.params, result, shown: shownBy(result, captured), outcomes: planStepsOf(item.call.name, item.params, result), response: taken })
-        }
-      }
-      conversation.push({ role: "tool", toolCallId: item.call.id, name: item.call.name, content: toolMessage(result) })
-      cutOff ||= stoppedAtModelMaximum(result)
-    }
-    return cutOff
-  }
+  const runTools = plannedToolRunner(input, named, steps, conversation)
   plan: while (true) {
     signal.throwIfAborted()
     const restartFirst = displayed
@@ -731,8 +704,7 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
         displayed = false
       }
       conversation.push({ role: "assistant", content: delivered ? cue : null, toolCalls: work })
-      seen.clear()
-      cutOff = await executeBatch(work)
+      cutOff = await runTools(work, taken)
       if (delivered && reply === undefined && plansOn(cutOff, taken, work.length, false)) conversation.push({ role: "user", content: deliveredCueNote(cue) })
     }
     const told = reply === undefined ? undefined : replyText(reply)
