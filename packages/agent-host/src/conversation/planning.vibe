@@ -1,5 +1,5 @@
 // spec/agent/conversation/turns.md, "A re-send the binding refuses for the limit its turn met keeps who set that limit"
-// spec/agent/conversation/planning.md, "A planner can restore the turn's deferred history once and runs no sibling action from that response"; spec/agent/conversation/planning.md, "A tool call the model wrote as text never reaches the owner, and its step is asked again once"; spec/agent/conversation/planning.md, "When nothing ran in a turn, the answer it asks for is told so"
+// spec/agent/conversation/planning.md, "A planner can restore the turn's deferred history once and runs no sibling action from that response"; spec/agent/conversation/planning.md, "A tool call the model wrote as text never reaches the owner, and its step is asked again once"; spec/agent/conversation/planning.md, "When nothing ran in a turn, the answer it asks for is told so"; spec/agent/conversation/planning.md, "Every planner call asks the model at temperature zero"
 // spec/agent/conversation/planning.md, "An identical call runs at most once per model response, and a settled effect is never repeated in the turn"
 // spec/agent/conversation/planning.md, "Story: Ask the agent to do something and hear what happened"; spec/agent/conversation/planning.md, "A turn offers the model only registered actions the launch allows, and plans at most eight steps"; spec/agent/conversation/planning.md, "An action may narrow its tool to the turn, never beyond its registered form"; spec/agent/conversation/planning.md, "Every call of a turn is one the model chose, and a call this message serves in another place is refused before it runs and is no step of the turn"; spec/agent/conversation/planning.md, "A failure or proposal the turn made stays reported unless a later success of the same operation supersedes it"; spec/agent/conversation/planning.md, "A reply that leaves a failure unreported is written again once, and the delivered reply still reports open failures and attachment omissions"; spec/agent/conversation/planning.md, "A failure with no receipt that a later step may have answered is the model's to report, and its own words follow the reply unless the model stands by a reply without them"; spec/agent/conversation/planning.md, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"; spec/agent/conversation/planning.md, "A turn acknowledges at most once, with a cue that comes with its first tool calls"; spec/agent/conversation/planning.md, "A tool's progress names its app only when one labelled app applies, and never its arguments or results"; spec/agent/conversation/planning.md, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history"; spec/agent/conversation/planning.md, "A model call is sent again at most once, after a temporary rate limit or a tool call the provider could not parse"; spec/agent/conversation/planning.md, "A call that stopped at the model's own output limit ends planning"; spec/agent/conversation/planning.md, "A coaching response stays in the planner transcript"
 // spec/agent/conversation/planning.md, "A response with competing terminal decisions runs no sibling action and can be repaired once"
@@ -12,7 +12,7 @@ import {
 } from "@elizaos/core"
 import {
   actionNoteSent, askedAgainAt, answerableLater, answeredAgain, callAdmission, cueDelivered, standsBy, cutOffReply, failedOpen, isTurnStep, maxPlanSteps, mayAnswer, nextMove, offered, openOutcomes, plannerOnlyCoaching, plansOn, resendWait, spokenCue, toolActivity,
-  admitsPlannerWork, contextRestoreOf, maxRestoredHistoryBytes, nothingRan, offersContextRestore, terminalAnswerOf, toolDispatch, turnNarrowed, unavailableNotice, writtenMarkupOf, type CallFailure, type PlanStep, type StepOutcome, type ToolSettlement,
+  admitsPlannerWork, contextRestoreOf, maxRestoredHistoryBytes, nothingRan, offersContextRestore, plannerTemperature, terminalAnswerOf, toolDispatch, turnNarrowed, unavailableNotice, writtenMarkupOf, type CallFailure, type PlanStep, type StepOutcome, type ToolSettlement,
 } from "../../gen/agent__conversation__planning.ts"
 import { originAfterResend } from "../../gen/agent__conversation__turns.ts"
 import { ModelRefusal } from "../models/chat.vibe"
@@ -637,7 +637,7 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
     let said: unknown
     try {
       said = await sentAtMostTwice((bind) => runtime.useModel(ModelType.TEXT_LARGE, bind({
-        system: input.system, messages: conversation, reasoning: "off", signal,
+        system: input.system, messages: conversation, reasoning: "off", temperature: plannerTemperature, signal,
         providerOptions: onToolCallStart === undefined ? agentCache(runtime, "planner") : { ...agentCache(runtime, "planner"), eliza: { onToolCallStart } },
         ...(tools.length === 0 ? {} : { tools, toolChoice: taken === maxPlanSteps - 1 ? "none" as const : "auto" as const }),
         ...(onStreamChunk === undefined ? {} : {
@@ -771,7 +771,7 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
   const reask = async (notes: readonly string[]): Promise<Reasked> => {
     try {
       const said = await sentAtMostTwice((bind) => runtime.useModel(ModelType.TEXT_LARGE, bind({
-        system: input.system, reasoning: "off", signal, providerOptions: agentCache(runtime, "planner"),
+        system: input.system, reasoning: "off", temperature: plannerTemperature, signal, providerOptions: agentCache(runtime, "planner"),
         messages: [...conversation, ...(reply.trim() ? [{ role: "assistant" as const, content: reply }] : []), { role: "user" as const, content: [answerAgain, ...notes].join("\n") }],
         ...(tools.length === 0 ? {} : { tools, toolChoice: "none" as const }),
       })), signal)
