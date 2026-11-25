@@ -1,5 +1,5 @@
 // spec/localInference/models.md, "Only a model in the curated catalog is downloaded, and only when it is not already present"; spec/localInference/textAndEmbeddings.md, "Vectors are compared only within one vector space"
-import { BGE_SMALL_VECTOR_SPACE } from "@elizaos/core/protocol"
+import { BGE_SMALL_VECTOR_SPACE } from "@elizaos/core"
 import { catalog, initial, modelOf, type ModelRole } from "../gen/localInference__models.effect.vibe"
 import type { VectorSpace } from "../gen/localInference__textAndEmbeddings.effect.vibe"
 

@@ -1,0 +1,184 @@
+// spec/agent/client/turns.md, "Story: Stop a reply without sending the next message against an uncertain room"; spec/agent/client/turns.md, "Story: Get the reply to my message even when the stream drops"
+import { assert, it } from "@effect/vitest"
+import { cloudFake, deviceKey, host, startInProcess, type InProcess } from "./support/kernel.vibe"
+
+module node {
+  import { createRuntimeJsonClient, TurnController, type RuntimeJsonBridge, type RuntimeStreamFrame, type TurnResult } from "@elizaos/agent"
+  import { held, text, type CloudFake } from "./support/cloud-fake.ts"
+
+  interface Sent { readonly method: string; readonly path: string; readonly clientMessageId?: unknown; readonly clientId?: string }
+
+  export interface Network {
+    readonly bridge: RuntimeJsonBridge
+    readonly sent: Sent[]
+    dropStreams: number
+    loseAnswers: string[]
+  }
+
+  /** @throws {never} */
+  export function network(port: number, token: string): Network {
+    const origin = `http://127.0.0.1:${port}`
+    const init = (method: string, body: unknown, headers: Readonly<Record<string, string>> = {}, signal?: AbortSignal): RequestInit => ({
+      method, headers: { ...headers, authorization: `Bearer ${token}`, "content-type": "application/json" },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }), ...(signal === undefined ? {} : { signal }),
+    })
+    const note = (method: string, path: string, body: unknown, headers: Readonly<Record<string, string>> = {}) => {
+      const key = typeof body === "object" && body !== null && "clientMessageId" in body ? { clientMessageId: body.clientMessageId } : {}
+      const client = headers["x-elizaos-client-id"]
+      net.sent.push({ method, path, ...key, ...(client === undefined ? {} : { clientId: client }) })
+    }
+    const running = () => Promise.resolve({ available: true, state: "running" as const })
+    const net: Network = {
+      sent: [], dropStreams: 0, loseAnswers: [],
+      bridge: {
+        status: running, start: running, restart: running,
+        async request({ path, method, body, headers }) {
+          note(method, path, body, headers)
+          const response = await fetch(origin + path, init(method, body, headers))
+          const answer = await response.text()
+          const lost = net.loseAnswers.findIndex((part) => path.includes(part))
+          if (lost >= 0) {
+            net.loseAnswers.splice(lost, 1)
+            throw new Error("TransportFailed")
+          }
+          return { status: response.status, data: answer === "" ? null : JSON.parse(answer) }
+        },
+        async *requestStream({ path, body, headers }, signal): AsyncIterable<RuntimeStreamFrame> {
+          note("POST", path, body, headers)
+          const native = new AbortController()
+          const dropped = net.dropStreams > 0
+          if (dropped) net.dropStreams -= 1
+          else signal.addEventListener("abort", () => native.abort(signal.reason), { once: true })
+          const response = await fetch(origin + path, init("POST", body, headers, native.signal))
+          yield { kind: "head", status: response.status, headers: Object.fromEntries(response.headers) }
+          const chunks = response.body?.[Symbol.asyncIterator]()
+          if (chunks === undefined) return yield { kind: "end" }
+          if (dropped) {
+            void (async () => { for (let read = await chunks.next(); !read.done; read = await chunks.next()); })().catch(() => undefined)
+            return yield { kind: "error" }
+          }
+          for (let read = await chunks.next(); !read.done; read = await chunks.next()) yield { kind: "chunk", data: read.value }
+          yield { kind: "end" }
+        },
+      },
+    }
+    return net
+  }
+
+  export function controllerOver(net: Network) {
+    const client = createRuntimeJsonClient({ bridge: () => net.bridge, startupTimeoutMs: 5000, pollMs: 5, requestTimeoutMs: 60_000 })
+    return new TurnController(client)
+  }
+
+  const completions = (cloud: CloudFake) => cloud.calls.filter(({ path }) => path.endsWith("/chat/completions")).length
+
+  async function modelCalled(cloud: CloudFake, count: number) {
+    while (completions(cloud) < count) await new Promise((resolve) => setTimeout(resolve, 20))
+  }
+
+  const shown = (result: TurnResult) => {
+    switch (result.kind) {
+      case "Replied": return { kind: result.kind, text: result.reply.text }
+      case "AgentFailed": return { kind: result.kind, code: result.code }
+      case "NotAccepted": return { kind: result.kind, status: result.refusal?.status }
+      case "MaybeAccepted": case "ConversationLost": case "StoppedByOwner": case "RefusedBusy": case "RefusedStopUnconfirmed": return { kind: result.kind }
+    }
+  }
+
+  export async function stopJourney(net: Network, cloud: CloudFake) {
+    const controller = controllerOver(net)
+    const previews: string[] = []
+    cloud.script({ kind: "hang" })
+    const first = controller.send({ text: "Think forever." }, { stream: { onPreview: (said) => { previews.push(said) } } })
+    await modelCalled(cloud, 1)
+    const busy = await controller.send({ text: "Are you there?" })
+    const confirmed = await controller.interrupt()
+    const stoppedFirst = await first
+    const bound = controller.conversation
+    const kept = controller.stopped
+    cloud.script(text("Hello."))
+    const next = await controller.send({ text: "Say hello." }, { stream: {} })
+    const keptBesideNext = controller.stopped
+    if (stoppedFirst.kind === "StoppedByOwner") controller.releaseStopped(stoppedFirst.clientMessageId)
+    const released = controller.stopped
+    cloud.script({ kind: "hang" })
+    const third = controller.send({ text: "Think again." }, { stream: {} })
+    await modelCalled(cloud, 3)
+    net.loseAnswers.push("/abort")
+    const uncertain = await controller.interrupt()
+    const stoppedThird = await third
+    const unbound = controller.conversation
+    const before = net.sent.length
+    const refused = await controller.send({ text: "Still there?" })
+    const leftNothing = net.sent.length === before
+    cloud.script(text("Yes."))
+    const after = await controller.send({ text: "Still there?" }, { stream: {} })
+    return {
+      busy: shown(busy), confirmed, stoppedFirst: shown(stoppedFirst), previews: previews.length,
+      kept: kept?.clientMessageId === (stoppedFirst.kind === "StoppedByOwner" ? stoppedFirst.clientMessageId : undefined) && kept?.conversation.id === bound?.id,
+      next: shown(next), keptBesideNext: keptBesideNext?.clientMessageId === kept?.clientMessageId, released,
+      uncertain, stoppedThird: shown(stoppedThird), unbound, refused: shown(refused), leftNothing,
+      after: shown(after), newConversation: controller.conversation !== null && controller.conversation.id !== bound?.id,
+      stops: net.sent.filter(({ path }) => path.endsWith("/abort")).map(({ path }) => path.split("/")[3] === bound?.roomId),
+      modelCalls: completions(cloud),
+    }
+  }
+
+  export async function dropJourney(net: Network, cloud: CloudFake) {
+    const controller = controllerOver(net)
+    const gate = Promise.withResolvers<void>()
+    cloud.script(held(gate.promise, text("Back again.")))
+    net.dropStreams = 1
+    const sending = controller.send({ text: "Tell me something." }, { stream: {}, headers: { "X-ElizaOS-Client-Id": "screen-1" } })
+    while (net.sent.filter(({ path }) => path.endsWith("/messages")).length === 0) await new Promise((resolve) => setTimeout(resolve, 20))
+    gate.resolve()
+    const resent = await sending
+    const posts = net.sent.filter(({ path }) => path.includes("/messages"))
+    const keys = posts.map(({ path, clientMessageId }) => ({ stream: path.endsWith("/stream"), clientMessageId }))
+    const clientIds = posts.map(({ clientId }) => clientId)
+    const calls = completions(cloud)
+    net.dropStreams = 1
+    net.loseAnswers.push("/messages")
+    const unknown = await controller.send({ text: "And again?" }, { stream: {} })
+    const stillBound = controller.conversation !== null
+    const gone = controller
+    await gone.bind({ id: "00000000-0000-4000-8000-000000000001", roomId: "00000000-0000-4000-8000-000000000002" })
+    const lost = await gone.send({ text: "Hello?" }, { stream: {} })
+    const unboundAfterLoss = gone.conversation
+    const fresh = await gone.send({ text: "Hello?" }, { stream: {} })
+    return {
+      resent: shown(resent),
+      sameKey: keys.length === 2 && keys[0]?.stream === true && keys[1]?.stream === false && keys[0]?.clientMessageId === keys[1]?.clientMessageId, clientIds,
+      actedOnce: calls === 1, unknown: shown(unknown), stillBound, lost: shown(lost), unboundAfterLoss, fresh: shown(fresh),
+    }
+  }
+}
+import { dropJourney, network, stopJourney } from node
+
+effect function connected() {
+  const cloud = try cloudFake(deviceKey)
+  const agent: InProcess = try startInProcess({ http: true, launch: { backend: { kind: "cloud", origin: cloud.origin } }, frame: { credential: { version: 1, value: deviceKey } } })
+  const port = agent.transport.kind === "http" ? agent.transport.port : 0
+  return { cloud, net: network(port, agent.frame.token) }
+}
+
+it.live('Stop a reply, wait for its receipt, refuse once after an uncertain Stop and send the next message to a new conversation (spec/agent/client/turns.md, "Story: Stop a reply without sending the next message against an uncertain room"; spec/agent/client/turns.md, "Stop is posted once for the posted turn, and only a receipt for its room and reason confirms it"; spec/agent/client/turns.md, "An uncertain Stop refuses the next send once and unbinds only the stopped conversation")', effect () => {
+  const { cloud, net } = try connected()
+  const observed = try host("stop journey", () => stopJourney(net, cloud))
+  try Effect.try(() => assert.deepStrictEqual({ ...observed, previews: undefined }, {
+    busy: { kind: "RefusedBusy" }, confirmed: { kind: "Stopped" }, stoppedFirst: { kind: "StoppedByOwner" }, previews: undefined,
+    kept: true, next: { kind: "Replied", text: "Hello." }, keptBesideNext: true, released: null,
+    uncertain: { kind: "Uncertain" }, stoppedThird: { kind: "StoppedByOwner" }, unbound: null,
+    refused: { kind: "RefusedStopUnconfirmed" }, leftNothing: true, after: { kind: "Replied", text: "Yes." }, newConversation: true,
+    stops: [true, true], modelCalls: 4,
+  }))
+}, 120_000)
+
+it.live('A dropped stream is resent once under the same clientMessageId and client id header and the agent acts once; a lost conversation unbinds (spec/agent/client/turns.md, "Story: Get the reply to my message even when the stream drops"; spec/agent/client/runtimeClient.md, "A request carries only device headers and the client id, a bounded few";spec/agent/client/turns.md, "A stream that drops before its terminal frame is resent once without streaming under the same clientMessageId"; spec/agent/client/turns.md, "A conversation the agent no longer has ends the turn as a conversation failure and unbinds it")', effect () => {
+  const { cloud, net } = try connected()
+  const observed = try host("drop journey", () => dropJourney(net, cloud))
+  try Effect.try(() => assert.deepStrictEqual(observed, {
+    resent: { kind: "Replied", text: "Back again." }, sameKey: true, clientIds: ["screen-1", "screen-1"], actedOnce: true, unknown: { kind: "MaybeAccepted" }, stillBound: true,
+    lost: { kind: "ConversationLost" }, unboundAfterLoss: null, fresh: { kind: "Replied", text: "ok" },
+  }))
+}, 120_000)

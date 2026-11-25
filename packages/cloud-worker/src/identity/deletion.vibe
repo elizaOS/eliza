@@ -1,0 +1,430 @@
+// spec/cloud/identity/deletion.md, "Story: Delete an account once the person asked support"; spec/cloud/identity/deletion.md, "Only an active account is fenced, and the fence ends every session and device key in the same transaction"; spec/cloud/identity/deletion.md, "The account's data is erased once, last, and the erased deletion never changes again"
+import { type NotAState, type Rejected, apply, callFailed, callSucceeded, canEraseFailed, canLookUpCall, canPassTime, canReplyToCall, canRequireAction, canResume, currentStep, decodeState, defaultAttemptBudget, initial, kindFor, noCall, passTime, type BillingBoundary, type Deletion, type DeletionEffect, type DeletionStep, type Event, type SagaStep } from "../../gen/cloud__identity__deletion.effect.vibe"
+import { decodeState as decodeReceipt, isUnknown, receiptStatus, staleAt } from "../../gen/cloud__shared__dispatchOnce.effect.vibe"
+import { settleOwnedCheckouts } from "../billing/checkout-readback.vibe"
+import { refused, wireName } from "../http/refusal.vibe"
+import type { CloudContext } from "../http/routes.vibe"
+import { bounded, dispatchOnce, renderProviderKey, replyOf, requestDigest, resolveUnknown, type LookupResult, type ProviderKey, type ProviderReply } from "../shared/dispatch-once.vibe"
+import { keyedDigest, sha256Hex } from "../shared/sealing.vibe"
+import { Store, toInt, toText, type Tx } from "../store/connection.vibe"
+import { loadRow, stepRow, RowCorrupt, type Columns, type MachineRows } from "../store/rows.vibe"
+import { readAccount, stepAccount } from "./accounts.vibe"
+import {
+  ProviderTargetSchema, billingAuthority, billingSourceOf, cancelBilling, checkoutBilling, googleTargetOf, heldGoogle, identifyBilling, lookUpBilling, lookUpGoogle,
+  removeGoogle, revokeGoogle, type BillingSource, type BillingTarget, type ProviderTarget
+} from "./deletion-providers.vibe"
+
+type ProviderStep = Exclude<SagaStep, "EraseData">
+
+interface ProviderCall {
+  readonly providerKey: string
+  readonly deadline: number
+}
+
+export interface Timed {
+  readonly event: Event
+  readonly now: number
+}
+
+type Work =
+  | { readonly kind: "done" }
+  | { readonly kind: "again" }
+  | { readonly kind: "erase" }
+  | { readonly kind: "send" | "lookUp"; readonly organizationId: string; readonly target: ProviderTarget; readonly call: ProviderCall }
+
+type BillingScope =
+  | { readonly kind: "pending" }
+  | { readonly kind: "shared" }
+  | { readonly kind: "owned"; readonly source: BillingSource | undefined; readonly checkout: BillingTarget | undefined }
+
+const table = "deletion_requests"
+const lease = 10 * 60_000
+const staleAfter = 30_000
+const callLife = 24 * 3_600_000
+const sweepBatch = 20
+const done: Work = { kind: "done" }
+const again: Work = { kind: "again" }
+
+function advanced(deletion: Deletion, now: number): Deletion {
+  const elapsed = now - deletion.receipt.session.now
+  return elapsed > 0 && canPassTime(deletion, elapsed) ? passTime(deletion, elapsed) : deletion
+}
+
+effect function applyAt(deletion: Deletion, timed: Timed): DeletionStep!Rejected {
+  const elapsed = timed.now - deletion.receipt.session.now
+  const current = elapsed > 0 && canPassTime(deletion, elapsed) ? (try apply(deletion, { type: "passTime", elapsed })).state : deletion
+  return try apply(current, timed.event)
+}
+
+export const deletionRows: MachineRows<Deletion, Timed, DeletionStep, Rejected, NotAState> = { table, initial, decodeState, apply: applyAt, next: (stepped) => stepped.state }
+
+function columnsAt(now: number) {
+  return (deletion: Deletion): Columns => ({
+    organization_id: deletion.organizationId,
+    phase: wireName(deletion.phase.tag),
+    step: wireName(currentStep(deletion.phase)),
+    attempts: deletion.attempts,
+    updated_at: now
+  })
+}
+
+effect function keepReceipt(tx: Tx, userId: string, deletion: Deletion, target: string | undefined, now: number) {
+  const key = renderProviderKey(deletion.receipt.providerKey)
+  const kept = try tx.query(
+    `INSERT INTO deletion_receipts (provider_key, user_id, step, target, state, updated_at)
+     VALUES ($1, $2, $3, COALESCE($4::text, ''), $5::jsonb, $6)
+     ON CONFLICT (provider_key) DO UPDATE SET state = EXCLUDED.state, updated_at = EXCLUDED.updated_at
+     WHERE deletion_receipts.user_id = EXCLUDED.user_id AND deletion_receipts.step = EXCLUDED.step
+       AND ($4::text IS NULL OR deletion_receipts.target = $4)
+     RETURNING provider_key`,
+    [key, userId, wireName(currentStep(deletion.phase)), target ?? null, JSON.stringify(deletion.receipt), now]
+  )
+  if (kept.length !== 1 || toText(kept[0]?.provider_key) !== key)
+    throw new RowCorrupt({ table: "deletion_receipts", key, cause: "the provider call changed its recorded identity" })
+}
+
+export effect function stepDeletion(tx: Tx, userId: string, event: Event, now: number, target?: string) {
+  const stepped = try stepRow(tx, deletionRows, userId, { event, now }, columnsAt(now))
+  if (!noCall(stepped.state.receipt)) try keepReceipt(tx, userId, stepped.state, target, now)
+  return stepped.out
+}
+
+effect function erasePersonalData(tx: Tx, userId: string, organizationId: string, now: number) {
+  const row = (try tx.query("SELECT email, phone FROM accounts WHERE key = $1 AND organization_id = $2 AND status = 'deleting' FOR UPDATE", [userId, organizationId]))[0]
+  if (row === undefined || (try googleTargetOf(tx, organizationId, userId)) !== undefined)
+    throw new RowCorrupt({ table, key: userId, cause: "erasure needs the fenced account and completed Google custody" })
+  const destinations = [toText(row?.email), toText(row?.phone)].filter((each): each is string => each !== undefined)
+  const digests: string[] = []
+  for (const destination of destinations) digests.push(try keyedDigest(destination))
+  const owned: ReadonlyArray<readonly [string, ReadonlyArray<unknown>]> = [
+    ["DELETE FROM cloud_device_proofs WHERE grant_key IN (SELECT key FROM device_grants WHERE user_id = $1) OR session_key IN (SELECT key FROM sessions WHERE user_id = $1)", [userId]],
+    ["DELETE FROM cloud_password_backup_approvals WHERE account_id = $1", [userId]],
+    ["DELETE FROM cloud_password_backups WHERE account_id = $1", [userId]],
+    ["DELETE FROM cloud_spent_refresh WHERE session_key IN (SELECT key FROM sessions WHERE user_id = $1)", [userId]],
+    ["DELETE FROM sessions WHERE user_id = $1", [userId]],
+    ["DELETE FROM device_grants WHERE user_id = $1", [userId]],
+    ["DELETE FROM oauth_attempts WHERE link_user_id = $1 OR google_subject IN (SELECT provider_subject FROM cloud_sign_in_identities WHERE account_id = $1 AND provider = 'google')", [userId]],
+    ["DELETE FROM cloud_sign_in_identities WHERE account_id = $1", [userId]],
+    ["DELETE FROM second_factors WHERE key = $1", [userId]],
+    ["DELETE FROM method_reviews WHERE key = $1", [userId]],
+    ["DELETE FROM referral_codes WHERE user_id = $1", [userId]],
+    ["DELETE FROM google_connect_states WHERE user_id = $1", [userId]],
+    ["DELETE FROM google_connections WHERE user_id = $1", [userId]],
+    ["DELETE FROM cloud_google_connections WHERE account_id = $1", [userId]],
+    ["DELETE FROM cloud_google_authorizations WHERE account_id = $1", [userId]],
+    ["DELETE FROM cloud_google_operations WHERE account_id = $1", [userId]],
+    ["DELETE FROM mail_operations WHERE user_id = $1", [userId]],
+    ["DELETE FROM calendar_writes WHERE user_id = $1", [userId]],
+    ["DELETE FROM speech_windows WHERE user_id = $1", [userId]],
+    ["DELETE FROM speech_sessions WHERE user_id = $1", [userId]],
+    ["DELETE FROM speech_consents WHERE user_id = $1", [userId]],
+    ["DELETE FROM cloud_speech_sessions WHERE account_id = $1", [userId]],
+    ["DELETE FROM cloud_speech_consents WHERE account_id = $1", [userId]],
+    ["DELETE FROM code_challenges WHERE user_id = $1 OR destination_digest = ANY($2::text[])", [userId, digests]],
+    ["DELETE FROM cloud_code_challenges WHERE destination = ANY($1::text[])", [destinations]],
+    ["DELETE FROM loopback_messages WHERE destination = ANY($1::text[])", [destinations]],
+    ["UPDATE organizations SET name = 'Deleted account' WHERE id = $2 AND NOT EXISTS (SELECT 1 FROM accounts peer WHERE peer.organization_id = $2 AND peer.key <> $1 AND peer.status <> 'erased')", [userId, organizationId]]
+  ]
+  for (const [statement, params] of owned) try tx.query(statement, params)
+  try stepAccount(tx, userId, { type: "erase" }, now, { email: null, phone: null, name: null })
+}
+
+effect function perform(tx: Tx, userId: string, out: ReadonlyArray<DeletionEffect>, now: number) {
+  for (const item of out) {
+    switch (item.tag) {
+      case "Fence":
+        try tx.query(
+          "UPDATE accounts SET sessions_revoked_before = GREATEST(sessions_revoked_before, $2), device_epoch = GREATEST(device_epoch, $3), devices_revoked_before = GREATEST(devices_revoked_before, $4), updated_at = $4 WHERE key = $1",
+          [userId, item.sessions.tag === "RevokePersonSessions" ? item.sessions.toEpoch : 0, item.deviceKeys.toDeviceEpoch, now]
+        )
+        break
+      case "EraseAccount":
+        try erasePersonalData(tx, item.userId, item.organizationId, now)
+        break
+      default: {
+        const _exhaustive: never = item
+        return _exhaustive
+      }
+    }
+  }
+}
+
+effect function lastCall(tx: Tx, userId: string, deletion: Deletion, now: number) {
+  const step = currentStep(deletion.phase)
+  const row = step === "EraseData" ? undefined : (try tx.query(
+    "SELECT provider_key, state, target FROM deletion_receipts WHERE user_id = $1 AND step = $2 ORDER BY updated_at DESC, provider_key DESC LIMIT 1",
+    [userId, wireName(step)]
+  ))[0]
+  if (row === undefined) return "no provider call"
+  const key = toText(row.provider_key) ?? ""
+  const receipt = decodeReceipt(row.state) catch effect (cause) => { throw new RowCorrupt({ table: "deletion_receipts", key, cause }) }
+  const shown = noCall(deletion.receipt) ? receipt : advanced(deletion, now).receipt
+  const legacy = step === "CancelBilling" && row.target === deletion.organizationId && !callSucceeded(step, shown)
+  return `last call ${key} ${wireName(receiptStatus(shown).slice("Status".length))}${legacy ? ", provider target unresolved" : ""}`
+}
+
+effect function deletionLine(tx: Tx, userId: string, deletion: Deletion, now: number, opening: string) {
+  return `user ${userId}: ${opening}; deletion ${wireName(deletion.phase.tag)} at ${wireName(currentStep(deletion.phase))}, ${deletion.attempts} of ${deletion.attemptBudget} attempts, ${try lastCall(tx, userId, deletion, now)}`
+}
+
+export effect function requestDeletion(tx: Tx, userId: string, now: number) {
+  const row = (try tx.query("SELECT organization_id, sessions_revoked_before, device_epoch FROM accounts WHERE key = $1 FOR UPDATE", [userId]))[0]
+  if (row === undefined) throw refused("NotFound")
+  const account = try readAccount(tx, userId)
+  const { state, out } = try stepDeletion(tx, userId, {
+    type: "request",
+    userId,
+    organizationId: toText(row.organization_id) ?? "",
+    accountStatus: account.status,
+    personEpoch: toInt(row.sessions_revoked_before),
+    deviceEpoch: toInt(row.device_epoch),
+    attemptBudget: defaultAttemptBudget
+  }, now)
+  try stepAccount(tx, userId, { type: "beginDeletion" }, now)
+  try perform(tx, userId, out, now)
+  return try deletionLine(tx, userId, state, now, "every session and device key ended")
+}
+
+export effect function existingDeletion(tx: Tx, userId: string, now: number) {
+  const loaded = try loadRow(tx, deletionRows, userId)
+  if (!loaded.found) throw new RowCorrupt({ table, key: userId, cause: "the account is closing without a deletion request" })
+  if (!canResume(loaded.state, defaultAttemptBudget)) return try deletionLine(tx, userId, loaded.state, now, "already requested")
+  const { state } = try stepDeletion(tx, userId, { type: "resume", attemptBudget: defaultAttemptBudget }, now)
+  return try deletionLine(tx, userId, state, now, "resumed")
+}
+
+function targetDigest(deletion: Deletion, step: ProviderStep, target: string) {
+  return requestDigest({ step, userId: deletion.userId, organizationId: deletion.organizationId, target })
+}
+
+effect function receiptTarget(tx: Tx, deletion: Deletion, step: ProviderStep) {
+  const key = renderProviderKey(deletion.receipt.providerKey)
+  const row = (try tx.query(
+    "SELECT target FROM deletion_receipts WHERE provider_key = $1 AND user_id = $2 AND step = $3",
+    [key, deletion.userId, wireName(step)]
+  ))[0]
+  const target = toText(row?.target)
+  const wrong = new RowCorrupt({ table: "deletion_receipts", key, cause: "the provider call has no validated binding" })
+  if (target === undefined || targetDigest(deletion, step, target) !== deletion.receipt.digest) throw wrong
+  if (step === "CancelBilling" && target === deletion.organizationId) return undefined
+  if (step === "RevokeGoogle" && target !== "" && !target.startsWith("{")) return { kind: "google-layered", key: target } satisfies ProviderTarget
+  const offered = Effect.try(() => JSON.parse(target) as unknown) catch () => undefined
+  const parsed = Schema.decodeUnknownOption(ProviderTargetSchema, { onExcessProperty: "error" })(offered)
+  if (Option.isNone(parsed) || (step === "CancelBilling") !== (parsed.value.kind === "stripe")) throw wrong
+  return parsed.value
+}
+
+effect function openCall(tx: Tx, deletion: Deletion, step: ProviderStep, target: ProviderTarget | undefined, billingBoundary: BillingBoundary, now: number) {
+  const { userId, organizationId } = deletion
+  if (target === undefined) {
+    try stepDeletion(tx, userId, { type: "completeStep", workLeft: false, billingBoundary }, now)
+    return done
+  }
+  const encoded = JSON.stringify(target)
+  const providerKey: ProviderKey = { providerKind: kindFor(step), providerId: `del_${sha256Hex([userId, step, encoded, deletion.usedKeys.length].join("\n")).slice(0, 32)}` }
+  const digest = targetDigest(deletion, step, encoded)
+  try stepDeletion(tx, userId, { type: "prepareCall", digest, providerKey, staleAfter, expiresAt: now + callLife, billingBoundary }, now, encoded)
+  const claimed = try stepDeletion(tx, userId, { type: "claimCall" }, now)
+  const sent = try stepDeletion(tx, userId, { type: "sendCall", claimToken: claimed.state.receipt.session.currentClaim }, now)
+  return { kind: "send", organizationId, target, call: { providerKey: renderProviderKey(providerKey), deadline: staleAt(sent.state.receipt) } } satisfies Work
+}
+
+effect function finishStep(tx: Tx, deletion: Deletion, target: ProviderTarget | undefined, billingBoundary: BillingBoundary, now: number) {
+  const { userId, organizationId } = deletion
+  const google = target !== undefined && target.kind !== "stripe"
+  if (google) try removeGoogle(tx, organizationId, userId, target)
+  const workLeft = google && (try googleTargetOf(tx, organizationId, userId)) !== undefined
+  try stepDeletion(tx, userId, { type: "completeStep", workLeft, billingBoundary }, now)
+  return workLeft ? again : done
+}
+
+effect function billingScope(tx: Tx, deletion: Deletion, now: number) {
+  const { userId, organizationId } = deletion
+  if (!(try billingAuthority(tx, userId, organizationId))) return { kind: "shared" } satisfies BillingScope
+  const source = try billingSourceOf(tx, organizationId)
+  const checkout = try settleOwnedCheckouts(tx, { organizationId, customerId: source?.customerId, workerSessionId: source?.workerSessionId }, now)
+  if (checkout.kind === "pending") return { kind: "pending" } satisfies BillingScope
+  return { kind: "owned", source, checkout: try checkoutBilling(source, checkout.subscriptionIds) } satisfies BillingScope
+}
+
+function settledBoundary(scope: BillingScope): BillingBoundary {
+  if (scope.kind === "pending") return "BillingUnsettled"
+  if (scope.kind === "shared") return "BillingShared"
+  return scope.checkout === undefined ? "BillingSettled" : "BillingCheckoutSettled"
+}
+
+effect function nextWork(tx: Tx, userId: string, now: number, firstRound: boolean) {
+  const deletion = advanced((try loadRow(tx, deletionRows, userId)).state, now)
+  if (deletion.phase.tag !== "Running") return done
+  const { organizationId, receipt } = deletion
+  const step = deletion.phase.at
+  if (step === "EraseData") return { kind: "erase" } satisfies Work
+  const scope = try billingScope(tx, deletion, now)
+  if (scope.kind === "pending") return done
+  const boundary = settledBoundary(scope)
+  const checkedAt = try Clock.currentTimeMillis
+  if (step === "RevokeGoogle" && boundary === "BillingCheckoutSettled") {
+    try reportBillingRecovery(userId)
+    return done
+  }
+  if (noCall(receipt)) {
+    if (step === "RevokeGoogle") return try openCall(tx, deletion, step, try googleTargetOf(tx, organizationId, userId), boundary, checkedAt)
+    if (scope.kind === "shared") return try openCall(tx, deletion, step, undefined, "BillingShared", checkedAt)
+    const retained = scope.source === undefined || scope.checkout?.subscriptionId === scope.source.subscriptionId
+      ? undefined : try identifyBilling(scope.source)
+    if (scope.checkout !== undefined && retained !== undefined && scope.checkout.subscriptionId !== retained.subscriptionId)
+      throw new RowCorrupt({ table: "subscriptions", key: organizationId, cause: "the retained subscription and paid checkout identify different live billing" })
+    const target = scope.checkout ?? retained
+    const pinAt = try Clock.currentTimeMillis
+    return try openCall(tx, deletion, step, target, target === undefined ? "BillingSettled" : "BillingCheckoutSettled", pinAt)
+  }
+  const target = try receiptTarget(tx, deletion, step)
+  if (callSucceeded(step, receipt)) {
+    if (boundary === "BillingCheckoutSettled") return done
+    return try finishStep(tx, deletion, target, boundary, checkedAt)
+  }
+  if (target === undefined) return done
+  if (callFailed(step, receipt)) {
+    if (canRequireAction(deletion)) {
+      try stepDeletion(tx, userId, { type: "requireAction" }, now)
+      return done
+    }
+    if (!firstRound || (step === "CancelBilling" && scope.kind === "shared")) return done
+    return try openCall(tx, deletion, step, target, boundary, checkedAt)
+  }
+  if (isUnknown(receipt)) return { kind: "lookUp", organizationId, target, call: { providerKey: renderProviderKey(receipt.providerKey), deadline: checkedAt + receipt.staleAfter } } satisfies Work
+  return done
+}
+
+effect function recordReply(userId: string, providerKey: string, reply: ProviderReply<unknown>, now: number) {
+  try (try Store).transaction(effect (tx: Tx) => {
+    const deletion = advanced((try loadRow(tx, deletionRows, userId)).state, now)
+    const verdict = replyOf(reply)
+    if (renderProviderKey(deletion.receipt.providerKey) === providerKey && canReplyToCall(deletion, verdict))
+      try stepDeletion(tx, userId, { type: "replyToCall", reply: verdict }, now)
+  })
+}
+
+effect function recordLookup(userId: string, providerKey: string, lookup: LookupResult, now: number) {
+  return try (try Store).transaction(effect (tx: Tx) => {
+    const deletion = advanced((try loadRow(tx, deletionRows, userId)).state, now)
+    if (renderProviderKey(deletion.receipt.providerKey) !== providerKey || !canLookUpCall(deletion, lookup)) return false
+    try stepDeletion(tx, userId, { type: "lookUpCall", lookup }, now)
+    return true
+  })
+}
+
+effect function sendCall(userId: string, organizationId: string, target: ProviderTarget, call: ProviderCall): ProviderReply<void>!{ readonly _tag: string }!CloudContext {
+  const store = try Store
+  if (target.kind !== "stripe") {
+    const connection = try store.transaction((tx) => heldGoogle(tx, organizationId, userId, target))
+    return try revokeGoogle(connection)
+  }
+  return try store.transaction(effect (tx: Tx) => {
+    const admitted = try billingAuthority(tx, userId, organizationId)
+    if (!admitted || (try billingSourceOf(tx, organizationId))?.customerId !== target.customerId)
+      return { kind: "refused", code: "AuthorizationLost" } satisfies ProviderReply<void>
+    return try cancelBilling(target, call.deadline)
+  })
+}
+
+effect function lookUpCall(userId: string, organizationId: string, target: ProviderTarget) {
+  if (target.kind === "stripe") return try lookUpBilling(target)
+  const connection = try (try Store).transaction((tx) => heldGoogle(tx, organizationId, userId, target))
+  return try lookUpGoogle(connection)
+}
+
+effect function reportBillingRecovery(userId: string) {
+  return try annotateLogs(logWarning("a retained deletion is waiting for its checkout subscription to settle"), { userId })
+}
+
+effect function erase(userId: string) {
+  const store = try Store
+  const now = try Clock.currentTimeMillis
+  store.transaction(effect (tx: Tx) => {
+    const deletion = (try loadRow(tx, deletionRows, userId)).state
+    const billingBoundary = settledBoundary(try billingScope(tx, deletion, now))
+    if (billingBoundary === "BillingCheckoutSettled") return try reportBillingRecovery(userId)
+    if (billingBoundary === "BillingUnsettled") return
+    const checkedAt = try Clock.currentTimeMillis
+    const { out } = try stepDeletion(tx, userId, { type: "eraseData", billingBoundary }, checkedAt)
+    try perform(tx, userId, out, checkedAt)
+  }) catch effect (failure) => {
+    try annotateLogs(logWarning("an account erasure failed and is tried again on the next sweep"), { userId, failure: failure._tag })
+    try store.transaction(effect (tx: Tx) => {
+      const deletion = (try loadRow(tx, deletionRows, userId)).state
+      if (canEraseFailed(deletion)) try stepDeletion(tx, userId, { type: "eraseFailed" }, now)
+      else if (canRequireAction(deletion)) try stepDeletion(tx, userId, { type: "requireAction" }, now)
+    })
+  }
+}
+
+effect function advance(userId: string) {
+  const store = try Store
+  let firstRound = true
+  while (true) {
+    const now = try Clock.currentTimeMillis
+    const next = try store.transaction((tx) => nextWork(tx, userId, now, firstRound))
+    firstRound = false
+    switch (next.kind) {
+      case "done":
+        return
+      case "again":
+        break
+      case "erase":
+        try erase(userId)
+        return
+      case "send": {
+        const started = try Clock.currentTimeMillis
+        try dispatchOnce({
+          claim: Effect.void,
+          send: bounded<unknown, { readonly _tag: string }, CloudContext>(sendCall(userId, next.organizationId, next.target, next.call), next.call.deadline - started),
+          record: (reply: ProviderReply<unknown>, at: number) => recordReply(userId, next.call.providerKey, reply, at)
+        })
+        break
+      }
+      case "lookUp": {
+        let settled = false
+        try resolveUnknown({
+          lookup: bounded(lookUpCall(userId, next.organizationId, next.target), next.call.deadline - now),
+          record: effect (seen: ProviderReply<LookupResult>, at: number) => {
+            if (seen.kind === "applied") settled = try recordLookup(userId, next.call.providerKey, seen.value, at)
+          }
+        })
+        if (!settled) return
+        break
+      }
+      default: {
+        const _exhaustive: never = next
+        return _exhaustive
+      }
+    }
+  }
+}
+
+export effect function claimDue(now: number) {
+  return try (try Store).transaction(effect (tx: Tx) => {
+    const due = (try tx.query(
+      "SELECT key FROM deletion_requests WHERE phase = 'running' AND claim_expires_at <= $1 ORDER BY updated_at, key LIMIT $2 FOR UPDATE SKIP LOCKED",
+      [now, sweepBatch]
+    )).map((row) => toText(row.key) ?? "")
+    if (due.length > 0) try tx.query("UPDATE deletion_requests SET claim_expires_at = $2 WHERE key = ANY($1::text[])", [due, now + lease])
+    return due
+  })
+}
+
+export effect function sweepDeletions(): number!!CloudContext {
+  const store = try Store
+  const now = try Clock.currentTimeMillis
+  const claimed = claimDue(now) catch effect (failure) => {
+    try annotateLogs(logWarning("the deletion sweep could not claim its rows"), { failure: failure._tag })
+    return []
+  }
+  for (const userId of claimed) {
+    advance(userId) catch effect (failure) => {
+      try annotateLogs(logWarning("a deletion step could not run yet"), { userId, failure: failure._tag })
+    }
+    store.transaction((tx) => tx.query("UPDATE deletion_requests SET claim_expires_at = 0 WHERE key = $1 AND claim_expires_at = $2", [userId, now + lease])) catch () => []
+  }
+  return claimed.length
+}

@@ -1,0 +1,101 @@
+// spec/agent/views.md, "Story: Switch to the view the agent named"; spec/agent/views.md, "A navigation is prepared only for a declared view and a request id not seen before"; spec/agent/views.md, "A claim names its request's exact binding and succeeds once"; spec/agent/views.md, "A result is accepted once, with its claim id, and a navigation result says whether it switched"
+import type { LocalRoute, RouteInput } from "@elizaos/agent"
+import { replyOf, type ViewBinding, type ViewHost } from "./host.vibe"
+
+const ClientId = Schema.String.check(Schema.isPattern(/^[A-Za-z0-9._-]{1,128}$/))
+const RequestId = Schema.String.check(Schema.isPattern(/^[A-Za-z0-9._:-]{1,128}$/))
+const Identity = Schema.String.check(Schema.isMinLength(1))
+
+const PrepareBody = Schema.Struct({
+  clientId: Schema.optionalKey(Schema.String),
+  delivery: Schema.Literal("completed-action"),
+  prepareOnly: Schema.Literal(true),
+  viewType: Schema.Literal("gui"),
+  completedActionHandoffId: RequestId,
+  resolvedAlias: Schema.optionalKey(Schema.String),
+  source: Schema.optionalKey(Schema.Literals(["agent", "user"])),
+})
+const BindingBody = Schema.Struct({
+  clientId: Schema.optionalKey(Schema.String),
+  requestId: Identity,
+  viewId: Identity,
+  viewType: Schema.Literal("gui"),
+  installationId: Identity,
+})
+const ClaimBody = Schema.Struct({ ...BindingBody.fields, targetProtocol: Schema.optionalKey(Schema.Literal("saved-note-v1")) })
+const ResultBody = Schema.Struct({
+  ...BindingBody.fields,
+  claimId: Schema.String,
+  success: Schema.Boolean,
+  result: Schema.optionalKey(Schema.Unknown),
+  error: Schema.optionalKey(Schema.String),
+})
+
+const prepareBody = Schema.decodeUnknownOption(PrepareBody, { onExcessProperty: "error" })
+const claimBody = Schema.decodeUnknownOption(ClaimBody)
+const resultBody = Schema.decodeUnknownOption(ResultBody)
+const clientIdOf = Schema.decodeUnknownOption(ClientId)
+
+const failure = (status: number, error: string) => ({ status, body: { error } })
+
+function clientOf(input: RouteInput, sent: { readonly clientId?: string }): string | undefined {
+  return Option.getOrUndefined(clientIdOf(input.headers.get("x-elizaos-client-id") ?? sent.clientId))
+}
+
+function bindingOf(input: RouteInput, sent: typeof BindingBody.Type): ViewBinding | undefined {
+  const clientId = clientOf(input, sent)
+  return clientId === undefined ? undefined
+    : { requestId: sent.requestId, clientId, viewId: sent.viewId, viewType: "gui", installationId: sent.installationId }
+}
+
+export function viewRoutes(views: ViewHost.Shape): LocalRoute[] {
+  return [
+    {
+      method: "POST", path: "/api/views/{id}/navigate",
+      handler: (input) => {
+        const sent = Option.getOrUndefined(prepareBody(input.body ?? {}))
+        const clientId = sent === undefined ? undefined : clientOf(input, sent)
+        if (sent === undefined || clientId === undefined) return failure(400, "invalid_navigation")
+        const viewId = input.parameters.get("id") ?? ""
+        const requestId = sent.completedActionHandoffId
+        return runPromise(effect {
+          const pending = try views.prepare(requestId, clientId, viewId)
+          if (pending === undefined) return failure(409, "navigation_refused")
+          return {
+            status: 200,
+            body: { ok: true, status: "prepared", viewId, completedActionHandoffId: requestId, navigationBinding: pending.binding },
+          }
+        })
+      },
+    },
+    {
+      method: "POST", path: "/api/views/interact-claim",
+      handler: (input) => {
+        const sent = Option.getOrUndefined(claimBody(input.body ?? {}))
+        const binding = sent === undefined ? undefined : bindingOf(input, sent)
+        if (sent === undefined || binding === undefined) return failure(400, "invalid_binding")
+        return runPromise(effect {
+          const claimed = try views.claim(binding, sent.targetProtocol)
+          return claimed === undefined ? failure(409, "claim_refused") : { status: 200, body: claimed }
+        })
+      },
+    },
+    {
+      method: "POST", path: "/api/views/interact-result",
+      handler: (input) => {
+        const sent = Option.getOrUndefined(resultBody(input.body ?? {}))
+        const binding = sent === undefined ? undefined : bindingOf(input, sent)
+        if (sent === undefined || binding === undefined) return failure(400, "invalid_binding")
+        const answer = {
+          success: sent.success,
+          ...(sent.result === undefined ? {} : { result: sent.result }),
+          ...(sent.error === undefined ? {} : { error: sent.error }),
+        }
+        return runPromise(effect {
+          const accepted = try views.answer(binding, sent.claimId, replyOf(answer), answer)
+          return { status: 200, body: { ok: true, accepted } }
+        })
+      },
+    },
+  ]
+}

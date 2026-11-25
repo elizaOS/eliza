@@ -1,23 +1,21 @@
 // spec/notes/read.md, "Story: Ask about or change a phone note in my own words"; spec/notes/read.md, "A phone Notes operation is offered only where the turn's own screen selects the phone's Notes"; spec/notes/read.md, "A phone note proposal names only words the owner said and only the note the owner has open"; spec/notes/read.md, "A phone note is edited only from the note the owner shared, in a review of its own"; spec/notes/trash.md, "Story: Delete the phone note I asked to delete"; spec/notes/trash.md, "A phone note a lookup found is offered for deletion only when the model read the request as a deletion"; spec/notes/organize.md, "A proposed folder is one the device sent, or a new name the owner said"; spec/notes/organize.md, "Recording is offered with its own capability or with the full organize set"; spec/notes/organize.md, "A proposal is reviewed or run only on the unlocked phone in Home or Notes, and recording only in Notes"; spec/notes/organize.md, "Moving, creating a folder or restoring is reviewed first; filtering and recording may run directly"; spec/agent/deviceActions/index.md, "A durable claim allows at most one inference, even after a lost outcome"; spec/agent/deviceActions/index.md, "The proposal tool states each rule once, names no capability, and shares a branch only between forms that accept the same calls"
 import { ModelType, parseJsonModelRecord, type ActionParameterSchema, type IAgentRuntime, type JSONSchema } from "@elizaos/core"
 import {
-  bindingHash, readResult, untrustedReturnGuidance, type DeviceOperation, type DeviceOperationType, type DeviceProposalFamily, type DeviceTurn, type EarlierRequest, type Grounding, type PendingRequest,
-  type ProposalForm, type ProposalText, type ReadContinuation,
-} from "@elizaos/agent/device-actions"
+  bindingHash, readResult, type DeviceOperation, type DeviceOperationType,
+} from "@elizaos/agent"
+import {
+  untrustedReturnGuidance, type DeviceProposalFamily, type DeviceTurn, type EarlierRequest, type Grounding, type PendingRequest, type ProposalForm, type ProposalText, type ReadContinuation,
+} from "@elizaos/agent-host"
 import {
   editRead, editReply, groundPhoneNotes, phoneNotesOffered, type EditReading, type NotesSelection, type PhoneNotesProposal, type PhoneNotesReach, type PhoneScreen, type SharedRead,
 } from "../gen/notes__read.effect.vibe"
 import { deletionReply, type LookupIntent, type LookupOutcome } from "../gen/notes__trash.effect.vibe"
 import { folderGrounded } from "../gen/notes__organize.effect.vibe"
 import { applyPatch } from "./collection.vibe"
-import { json } from "./format.vibe"
-import { titleAppearsAsNamedPhrase } from "./lookup.vibe"
 import {
-  canonicalNotesListShown, findNoteFolder, isNotesOrganizeType, notesOrganizeContextAllowed, notesOrganizeRunsDirectly, readNoteFolders, type NotesOrganizeType,
-} from "./organize.vibe"
-import { UpdateRequest } from "./records.schema.vibe"
-import { NotesTargetSchema, type NotesTarget } from "./selected-read.vibe"
-import { notesContext, projectNoteForModel, type StickyNote } from "./types.vibe"
+  json, canonicalNotesListShown, findNoteFolder, isNotesOrganizeType, notesOrganizeContextAllowed, notesOrganizeRunsDirectly, readNoteFolders, type NotesOrganizeType, UpdateRequest, NotesTargetSchema, type NotesTarget, notesContext, projectNoteForModel, type StickyNote,
+} from "@elizaos/plugin-notes-client"
+import { titleAppearsAsNamedPhrase } from "./lookup.vibe"
 
 type Operation<T extends DeviceOperationType> = Extract<DeviceOperation, { readonly type: T }>
 type Selected = NonNullable<NonNullable<DeviceTurn["observation"]>["selectedObject"]>

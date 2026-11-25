@@ -1,0 +1,62 @@
+// spec/core/media.md, "Story: Fetch an attachment through its correct trust boundary"; spec/core/media.md, "Fetching requires a screened endpoint and finishing requires complete bounded bytes"
+import { Foreign, thrown } from "@elizaos/core"
+import { getEnv } from "@elizaos/core"
+import { MediaFetchError } from "./fetch.vibe"
+
+export const VISION_IMAGE_MAX_BYTES = 20 * 1024 * 1024
+
+export const VISION_IMAGE_FETCH_TIMEOUT_MS = 15_000
+
+const LOCAL_MEDIA_STORE_PATH = /^\/api\/media\/[a-f0-9]{64}\.[a-z0-9]{1,8}$/
+
+effect function localServerUrl(path: string) {
+  return try Effect.try({ try: () => new URL(getLocalServerUrl(path)), catch: (cause) => new Foreign({ cause }) })
+}
+
+export effect function trustedLocalMediaUrl(rawUrl: string): (URL | null)!(MediaFetchError | Foreign) {
+  const url = rawUrl.trim()
+  if (url.startsWith("/")) {
+    if (!url.startsWith("/api/media/")) {
+      return null
+    }
+    if (!LOCAL_MEDIA_STORE_PATH.test(url)) {
+      throw new MediaFetchError(
+        "fetch_failed",
+        "local media URL is not a canonical media-store handle",
+      )
+    }
+    return try localServerUrl(url)
+  }
+
+  const parsed = Effect.try(() => new URL(url)) catch () => null
+  if (parsed === null) {
+    return null
+  }
+
+  const localOrigin = (try localServerUrl("/")).origin
+  if (parsed.origin !== localOrigin) {
+    return null
+  }
+  if (
+    parsed.username
+    || parsed.password
+    || parsed.search
+    || parsed.hash
+    || !LOCAL_MEDIA_STORE_PATH.test(parsed.pathname)
+  ) {
+    throw new MediaFetchError(
+      "fetch_failed",
+      "own-origin media URL is not a canonical media-store handle",
+    )
+  }
+  return parsed
+}
+export const trustedLocalMediaUrlOrThrow = thrown(trustedLocalMediaUrl)
+
+export function getLocalServerUrl(path: string): string {
+  const port = getEnv("ELIZA_API_PORT")
+    ?? getEnv("ELIZA_PORT")
+    ?? getEnv("SERVER_PORT", "3000")
+  const normalizedPath = path && !path.startsWith("/") ? `/${path}` : path
+  return `http://localhost:${port}${normalizedPath}`
+}

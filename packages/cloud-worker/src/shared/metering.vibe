@@ -1,0 +1,282 @@
+// spec/cloud/shared/metering.md, "Story: Settle every call once"; spec/cloud/billing/allowance.md, "Story: Lose the allowance of a refunded invoice, and get it back if I win the dispute"
+import { type Rejected, apply, decodeState, initial, fundable, allowanceCharge, creditCharge, reservedTimeout, dispatchedTimeout, type Event, type Hold } from "../../gen/cloud__shared__metering.effect.vibe"
+import { NotAState as NotAPeriod, type Rejected as PeriodRejected, apply as applyPeriod, decodeState as decodePeriod, initial as initialPeriod, type ClawbackCause, type Event as PeriodEvent, type Period, type PeriodPhase } from "../../gen/cloud__billing__allowance.effect.vibe"
+import type { HoldKey } from "../../gen/cloud__shared__types.ts"
+import { creditAvailable, readFunds, stepFunds, type FundsFailure } from "../billing/funds.vibe"
+import { laneFor, type FundingLane } from "../billing/policy.vibe"
+import type { WireAllowanceState } from "@elizaos/cloud"
+import { refused, type Refused, wireName } from "../http/refusal.vibe"
+import { recheckAccess, type Signed } from "../http/request-auth.vibe"
+import { loadRow, machineRows, type RowConflict, RowCorrupt, stepRow } from "../store/rows.vibe"
+import { Store, type StoreFailure, toInt, toText, type Tx } from "../store/connection.vibe"
+
+export type { Hold, HoldKey, WireAllowanceState }
+
+export const holdRows = machineRows<Hold, Event, Rejected, unknown>("holds", { initial, decodeState, apply })
+type StoredAllowancePhase =
+  | { readonly phase: Exclude<PeriodPhase, "PeriodDisputed" | "PeriodRefunded">; readonly clawbackCause: "NoClawback" }
+  | { readonly phase: "PeriodClawedBack"; readonly clawbackCause: Exclude<ClawbackCause, "NoClawback"> }
+
+const allowanceStates: Readonly<Record<PeriodPhase, StoredAllowancePhase & { readonly status: WireAllowanceState | null }>> = {
+  PeriodUnopened: { phase: "PeriodUnopened", clawbackCause: "NoClawback", status: null },
+  PeriodOpen: { phase: "PeriodOpen", clawbackCause: "NoClawback", status: "open" },
+  PeriodExpired: { phase: "PeriodExpired", clawbackCause: "NoClawback", status: "expired" },
+  PeriodClosed: { phase: "PeriodClosed", clawbackCause: "NoClawback", status: "closed" },
+  PeriodDisputed: { phase: "PeriodClawedBack", clawbackCause: "DisputeClawback", status: "clawed_back" },
+  PeriodRefunded: { phase: "PeriodClawedBack", clawbackCause: "RefundClawback", status: "clawed_back" },
+}
+
+export function allowanceStatus(phase: PeriodPhase): WireAllowanceState | null {
+  return allowanceStates[phase].status
+}
+
+export function encodeAllowancePeriod(period: Period) {
+  const { phase, clawbackCause } = allowanceStates[period.phase]
+  return { ...period, phase, clawbackCause }
+}
+
+export effect function decodeAllowancePeriod(input: unknown): Period!NotAPeriod {
+  if (typeof input !== "object" || input === null || !("phase" in input) || !("clawbackCause" in input)) return try decodePeriod(input)
+  const { phase, clawbackCause, ...period } = input
+  if (phase === "PeriodClawedBack") {
+    if (clawbackCause === "RefundClawback") return try decodePeriod({ ...period, phase: "PeriodRefunded" })
+    if (clawbackCause === "DisputeClawback") return try decodePeriod({ ...period, phase: "PeriodDisputed" })
+  } else if (clawbackCause === "NoClawback" && phase !== "PeriodRefunded" && phase !== "PeriodDisputed") {
+    return try decodePeriod({ ...period, phase })
+  }
+  throw new NotAPeriod({ input })
+}
+
+export const periodRows = {
+  ...machineRows<Period, PeriodEvent, PeriodRejected, NotAPeriod>("allowance_periods", { initial: initialPeriod, decodeState: decodeAllowancePeriod, apply: applyPeriod }),
+  encodeState: encodeAllowancePeriod,
+}
+
+export error HoldUnknown { key: string }
+
+export type MeteringFailure = FundsFailure | Refused | HoldUnknown | StoreFailure | RowCorrupt | RowConflict | Rejected | PeriodRejected
+
+export interface HoldOwner {
+  readonly organizationId: string
+  readonly userId: string
+}
+
+export type HoldTicket = {
+  readonly key: string
+  readonly hold: Hold
+} & (
+  | { readonly replayed: true }
+  | { readonly replayed: false; readonly lane: FundingLane }
+)
+
+export function renderHoldKey(owner: HoldOwner, key: HoldKey): string {
+  const part = key.part.tag === "WholeRequest" ? "request" : [key.part.direction, key.part.window].join("-")
+  return [owner.organizationId, serviceName(key.service), key.caller, key.requestId, part].map(encodeURIComponent).join("/")
+}
+
+function serviceName(service: HoldKey["service"]) {
+  const names = { MeteredInference: "inference", MeteredSpeech: "speech", MeteredMaps: "maps" } as const
+  return names[service]
+}
+
+interface HoldRow {
+  readonly organizationId: string
+  readonly userId: string
+  readonly service: string
+  readonly period: string | undefined
+  readonly createdAt: number
+}
+
+function columns(row: HoldRow, now: number) {
+  return (hold: Hold) => ({
+    organization_id: row.organizationId,
+    user_id: row.userId,
+    service: row.service,
+    phase: wireName(hold.phase),
+    allowance_period: row.period ?? null,
+    created_at: row.createdAt,
+    ...(hold.phase === "Dispatched" ? { dispatched_at: hold.since } : {}),
+    updated_at: now
+  })
+}
+
+effect function openPeriod(tx: Tx, organizationId: string, now: number): ({ readonly key: string; readonly period: Period } | undefined)!(StoreFailure | RowCorrupt) {
+  const row = (try tx.query(
+    "SELECT key FROM allowance_periods WHERE organization_id = $1 AND status = 'open' AND period_start <= $2 AND $2 < period_end ORDER BY period_end LIMIT 1 FOR UPDATE",
+    [organizationId, now]
+  ))[0]
+  const key = toText(row?.key)
+  if (key === undefined) return undefined
+  return { key, period: (try loadRow(tx, periodRows, key)).state }
+}
+
+export effect function stepPeriod(tx: Tx, key: string, event: PeriodEvent, now: number) {
+  return try stepRow(tx, periodRows, key, event, (period) => ({ status: allowanceStatus(period.phase), updated_at: now }))
+}
+
+effect function priorHold(tx: Tx, owner: HoldOwner, key: HoldKey, rendered: string, now: number): (HoldTicket | undefined)!MeteringFailure {
+  const canonical = try loadRow(tx, holdRows, rendered)
+  if (canonical.found && renderHoldKey(owner, canonical.state.key) !== rendered) {
+    throw new RowCorrupt({ table: holdRows.table, key: rendered, cause: "key" })
+  }
+  if (key.service === "MeteredMaps") return canonical.found ? { key: rendered, hold: canonical.state, replayed: true } : undefined
+
+  const previous = renderHoldKey(owner, { ...key, caller: owner.userId })
+  const retained = try tx.query(
+    `SELECT key FROM holds
+     WHERE organization_id = $1 AND service IN ('inference', 'speech') AND service = $2 AND key <> $5
+       AND (key = $6 OR (state->'key'->>'requestId' = $3 AND state->'key'->'part' = $4::jsonb AND state->'key'->>'caller' = user_id))
+     ORDER BY key LIMIT 2`,
+    [owner.organizationId, serviceName(key.service), key.requestId, JSON.stringify(key.part), rendered, previous]
+  )
+  if (retained.length + Number(canonical.found) > 1) {
+    try annotateLogs(logError("multiple metered holds match one organization request"), { organizationId: owner.organizationId, service: key.service })
+    throw refused("ServiceUnavailable", "NoReason", now + 5000)
+  }
+  if (canonical.found) return { key: rendered, hold: canonical.state, replayed: true }
+  const legacyKey = toText(retained[0]?.key)
+  if (legacyKey === undefined) return undefined
+  const legacy = try loadRow(tx, holdRows, legacyKey)
+  if (!legacy.found || renderHoldKey(owner, legacy.state.key) !== legacyKey) {
+    throw new RowCorrupt({ table: holdRows.table, key: legacyKey, cause: "key" })
+  }
+  return { key: legacyKey, hold: legacy.state, replayed: true }
+}
+
+export effect function reserveIn(tx: Tx, owner: HoldOwner, requested: HoldKey, quote: number, now: number): HoldTicket!MeteringFailure {
+  const key = requested.service === "MeteredMaps" ? requested : { ...requested, caller: owner.organizationId }
+  const rendered = renderHoldKey(owner, key)
+  try tx.query("SELECT id FROM organizations WHERE id = $1 FOR UPDATE", [owner.organizationId])
+  const existing = try priorHold(tx, owner, key, rendered, now)
+  if (existing !== undefined) return existing
+  const lane = try laneFor(tx, owner.organizationId, key.service, now)
+  const funds = try readFunds(tx, owner.organizationId)
+  const open = lane === "AllowanceThenCredits" ? try openPeriod(tx, owner.organizationId, now) : undefined
+  const allowanceAvailable = open?.period.available ?? 0
+  if (!fundable(lane, quote, allowanceAvailable, creditAvailable(funds))) {
+    throw lane === "Refused" ? refused("ServiceUnavailable", "NoReason", now + 5000) : refused("InsufficientCredits")
+  }
+  const row: HoldRow = { organizationId: owner.organizationId, userId: owner.userId, service: serviceName(key.service), period: open?.key, createdAt: now }
+  const { state: hold } = try stepRow(tx, holdRows, rendered, { type: "reserve", key, quote, lane, allowanceAvailable, creditAvailable: creditAvailable(funds), now }, columns(row, now))
+  if (hold.fromAllowance > 0 && open !== undefined) try stepPeriod(tx, open.key, { type: "reserveHold", amount: hold.fromAllowance, now }, now)
+  if (hold.fromCredits > 0) try stepFunds(tx, owner.organizationId, { type: "holdCredits", fromCredits: hold.fromCredits }, now, rendered)
+  return { key: rendered, hold, replayed: false, lane }
+}
+
+export effect function reserve(owner: HoldOwner, key: HoldKey, quote: number): HoldTicket!MeteringFailure!Store {
+  const store = try Store
+  const now = try Clock.currentTimeMillis
+  return try store.transaction((tx) => reserveIn(tx, owner, key, quote, now))
+}
+
+effect function holdRow(tx: Tx, key: string): HoldRow!(StoreFailure | HoldUnknown) {
+  try tx.query("SELECT o.id FROM organizations o JOIN holds h ON o.id = h.organization_id WHERE h.key = $1 FOR UPDATE OF o", [key])
+  const row = (try tx.query("SELECT organization_id, user_id, service, allowance_period, created_at FROM holds WHERE key = $1 FOR UPDATE", [key]))[0]
+  if (row === undefined) throw new HoldUnknown({ key })
+  return {
+    organizationId: toText(row.organization_id) ?? "",
+    userId: toText(row.user_id) ?? "",
+    service: toText(row.service) ?? "",
+    period: toText(row.allowance_period),
+    createdAt: toInt(row.created_at)
+  }
+}
+
+export effect function markDispatched(key: string): Hold!MeteringFailure!Store {
+  const store = try Store
+  const now = try Clock.currentTimeMillis
+  return try store.transaction(effect (tx: Tx) => {
+    const row = try holdRow(tx, key)
+    return (try stepRow(tx, holdRows, key, { type: "markDispatched", now }, columns(row, now))).state
+  })
+}
+
+export type Settlement =
+  | { readonly kind: "known"; readonly actual: number }
+  | { readonly kind: "unknown" }
+  | { readonly kind: "release" }
+
+function settleEvent(settlement: Settlement, creditFree: number): Event {
+  switch (settlement.kind) {
+    case "known": return { type: "settleKnown", actual: settlement.actual, creditFree }
+    case "unknown": return { type: "settleUnknown" }
+    case "release": return { type: "release" }
+    default: {
+      const _exhaustive: never = settlement
+      return _exhaustive
+    }
+  }
+}
+
+effect function settleIn(tx: Tx, key: string, settlement: Settlement, now: number): Hold!MeteringFailure {
+  const row = try holdRow(tx, key)
+  const before = (try loadRow(tx, holdRows, key)).state
+  if (before.phase === "Settled" || before.phase === "Released") return before
+  const funds = try readFunds(tx, row.organizationId)
+  const { state: hold } = try stepRow(tx, holdRows, key, settleEvent(settlement, creditAvailable(funds)), columns(row, now))
+  if (row.period !== undefined && hold.fromAllowance > 0) {
+    try stepPeriod(tx, row.period, { type: "settleHold", held: hold.fromAllowance, used: allowanceCharge(hold), now }, now)
+  }
+  if (hold.fromCredits > 0 || creditCharge(hold) > 0) {
+    try stepFunds(tx, row.organizationId, { type: "settleCredits", fromCredits: hold.fromCredits, charged: creditCharge(hold) }, now, key)
+  }
+  try tx.query(
+    "INSERT INTO usage_records (hold_key, organization_id, user_id, service, quote, charged, from_allowance, from_credits, uncollected, outcome, settled_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) ON CONFLICT (hold_key) DO NOTHING",
+    [key, row.organizationId, row.userId, row.service, hold.quote, hold.charged, allowanceCharge(hold), creditCharge(hold), hold.uncollected, settlement.kind === "release" ? "released" : settlement.kind, now]
+  )
+  if (hold.uncollected > 0) {
+    try annotateLogs(logWarning("a settled call charged more than the account held"), { holdKey: key, uncollected: hold.uncollected })
+  }
+  return hold
+}
+
+export effect function settle(key: string, settlement: Settlement): Hold!MeteringFailure!Store {
+  const store = try Store
+  const now = try Clock.currentTimeMillis
+  return try store.transaction((tx) => settleIn(tx, key, settlement, now))
+}
+
+export effect function keepStanding(authorization: string | undefined, caller: Signed, service: HoldKey["service"], ticket: Extract<HoldTicket, { replayed: false }>) {
+  const standing = effect {
+    try recheckAccess(authorization, caller, "ServiceAccess")
+    const store = try Store
+    const now = try Clock.currentTimeMillis
+    const lane = try store.transaction((tx) => laneFor(tx, caller.organizationId, service, now))
+    if (lane !== ticket.lane) throw refused("BillingStateConflict")
+  }
+  standing catch effect (failure) => {
+    settle(ticket.key, { kind: "release" }) catch effect (unreleased) => {
+      try annotateLogs(logError("a hold could not be released after its caller lost standing"), { holdKey: ticket.key, failure: unreleased._tag })
+    }
+    throw failure
+  }
+}
+
+const sweepBatch = 100
+
+export effect function sweepHolds(): number!!Store {
+  const store = try Store
+  const now = try Clock.currentTimeMillis
+  let swept = 0
+  const stale = store.transaction((tx) => tx.query(
+    "SELECT key, phase FROM holds WHERE (phase = 'reserved' AND created_at <= $1) OR (phase = 'dispatched' AND dispatched_at <= $2) ORDER BY created_at LIMIT $3",
+    [now - reservedTimeout, now - dispatchedTimeout, sweepBatch]
+  )) catch () => []
+  for (const row of stale) {
+    const key = toText(row.key) ?? ""
+    const settlement: Settlement = row.phase === "reserved" ? { kind: "release" } : { kind: "unknown" }
+    const done = store.transaction(effect (tx: Tx) => {
+      const organization = try tx.query("SELECT o.id FROM organizations o JOIN holds h ON o.id = h.organization_id WHERE h.key = $1 FOR UPDATE OF o SKIP LOCKED", [key])
+      if (organization.length === 0) return false
+      const claimed = try tx.query("SELECT key FROM holds WHERE key = $1 AND phase = $2 AND ((phase = 'reserved' AND created_at <= $3) OR (phase = 'dispatched' AND dispatched_at <= $4)) FOR UPDATE SKIP LOCKED", [key, row.phase, now - reservedTimeout, now - dispatchedTimeout])
+      if (claimed.length === 0) return false
+      try settleIn(tx, key, settlement, now)
+      return true
+    }) catch effect (failure) => {
+      try annotateLogs(logError("hold sweep could not settle a hold"), { holdKey: key, failure: failure._tag })
+      return false
+    }
+    if (done) swept += 1
+  }
+  return swept
+}

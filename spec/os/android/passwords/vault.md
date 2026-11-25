@@ -92,6 +92,34 @@ pure def alwaysListingOnlyWhileUnlocked(s: VaultUi): bool = s.listed implies s.v
 pure def sometimesMetadataListed(s: VaultUi): bool = s.listed
 ```
 
+### Outside the vault page, an app learns only whether any password is saved
+
+A consumer may show, outside its vault page, whether any password is saved
+(Grace's Home card says "Kept only on this tablet" or offers to save one),
+and nothing more. `anySaved` answers that one yes or no: no label, username,
+binding, count or time crosses. The native side answers only when it would
+list the entries for the same caller (admitted, and unlocked or in an open
+device-unlocked window); otherwise it refuses, as `list` does, and the
+consumer shows that it does not know. The client decodes the reply exactly,
+so a reply carrying any other field is refused whole.
+
+```quint
+type SavedReply = AnySaved | NoneSaved | SavedRefused
+type SavedAsk = { readable: bool, entries: int, otherFields: bool }
+pure def savedReply(ask: SavedAsk): SavedReply =
+  if (not(ask.readable) or ask.otherFields) SavedRefused
+  else if (ask.entries > 0) AnySaved
+  else NoneSaved
+pure def lawSavedReplyIsOneBit(ask: SavedAsk): bool =
+  savedReply(ask) == savedReply({ ...ask, entries: if (ask.entries > 0) 1 else 0 }) and
+  (not(ask.readable) implies savedReply(ask) == SavedRefused) and
+  (ask.otherFields implies savedReply(ask) == SavedRefused)
+pure val askValues = Set(
+  { readable: true, entries: 0, otherFields: false }, { readable: true, entries: 1, otherFields: false },
+  { readable: true, entries: 3, otherFields: false }, { readable: false, entries: 3, otherFields: false },
+  { readable: true, entries: 3, otherFields: true })
+```
+
 ### A typed password lives only in an open form of an unlocked page
 
 The page holds a password only while the owner types it into the entry form

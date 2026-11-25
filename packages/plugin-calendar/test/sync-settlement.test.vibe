@@ -1,6 +1,6 @@
 // spec/calendar/syncSettlement.md, "Story: Keep the newest sync decision when an old attempt returns late"
 import { assert, it } from "@effect/vitest"
-import { calendarWatchChannel, type CalendarLinkStorage } from "../src/linked-sync/index.vibe"
+import { calendarWatchChannel, type CalendarLinkStorage } from "@elizaos/plugin-calendar-client"
 
 function memoryStorage(): CalendarLinkStorage {
   const slots = new Map<string, unknown>()

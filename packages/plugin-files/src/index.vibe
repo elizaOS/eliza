@@ -1,11 +1,14 @@
 // spec/files/workspace.md, "Story: Keep the agent's working files inside its workspace"; spec/files/shownTargets.md, "A Files operation the owner asks for in chat is proposed within the Files bounds as the peer negotiated it, wherever the owner is"
-import { Service, resolveStateDir, type IAgentRuntime, type Plugin } from "@elizaos/core"
-import { registerDeviceProposalFamily } from "@elizaos/agent/device-actions"
+import { Service, type IAgentRuntime, type Plugin } from "@elizaos/core"
+import { resolveStateDir } from "@elizaos/core-node"
+import { registerDeviceProposalFamily } from "@elizaos/agent-host"
 import { filesContext, filesProposalFamily } from "./device-proposals.vibe"
 import { workspace, workspaceRoot, type DirectoryEntry, type FileEncoding } from "./workspace.vibe"
 
 export { filesProposalFamily } from "./device-proposals.vibe"
 export { normalizeWorkspacePath, workspace, workspaceRoot, WorkspaceRefused, type DirectoryEntry, type FileEncoding } from "./workspace.vibe"
+export * from "./storage/local-volume.vibe"
+export * from "./documents/pdf-interpretation.vibe"
 
 export const DEVICE_FILESYSTEM_SERVICE_TYPE = "device_filesystem"
 

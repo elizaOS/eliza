@@ -1,0 +1,178 @@
+// spec/os/signIn/cloudRequests.md, "A cancel disconnects only the page's own call still in flight, which then settles once as cancelled"; spec/os/signIn/cloudRequests.md, "A mail or calendar route is sent only with the lease, never with the device key"; spec/os/signIn/cloudRequests.md, "A request is sent only to the deployment origin, admitted by the gate, with headers its route admits"; spec/os/signIn/cloudRequests.md, "A reply body up to 8 MiB returns inline, up to 64 MiB through a one-use cache grant, and a larger one is refused"; spec/os/signIn/cloudRequests.md, "Only an HTTPS page on the web host or a listed payment or consent host opens, in the system browser"
+import { replyLimit } from "../../gen/os__signIn__cloudRequests.ts"
+import { type BridgeUnavailable, MalformedReply, NativeRejection, nativeCall, rejectionCode, settled } from "./bridge.vibe"
+import type { BodyGrantId, CloudClient, CloudFailure, CloudReply, CloudRequest, ElizaCloudPlugin, ExternalLinkOptions } from "./definitions/cloud.ts"
+
+export type * from "./definitions/cloud.ts"
+
+module capacitor {
+  import { registerPlugin } from "@capacitor/core"
+  import type { ElizaCloudPlugin } from "./definitions/cloud.ts"
+
+  /** @throws {never} */
+  export function cloudPlugin(name = "ElizaCloud"): ElizaCloudPlugin {
+    return registerPlugin<ElizaCloudPlugin>(name)
+  }
+}
+import { cloudPlugin } from capacitor
+export { cloudPlugin }
+
+module bytes {
+  /** @throws {never} */
+  export function decode(text: string): Uint8Array {
+    const binary = atob(text)
+    const out = new Uint8Array(binary.length)
+    for (let at = 0; at < binary.length; at++) out[at] = binary.charCodeAt(at)
+    return out
+  }
+
+  /** @throws {never} */
+  export function callName(): string {
+    return globalThis.crypto.randomUUID()
+  }
+
+  /** @throws {never} */
+  export function joined(parts: readonly Uint8Array[]): Uint8Array {
+    const out = new Uint8Array(parts.reduce((size, part) => size + part.length, 0))
+    let at = 0
+    for (const part of parts) {
+      out.set(part, at)
+      at += part.length
+    }
+    return out
+  }
+}
+import { callName, decode, joined } from bytes
+
+export error CloudRefused { method: string; failure: CloudFailure }
+
+const PLUGIN = "ElizaCloud"
+const BASE64 = /^[A-Za-z0-9+/]*={0,2}$/
+
+const Failure = Schema.Literals([
+  "no-origin",
+  "not-listed",
+  "body-too-large",
+  "header-refused",
+  "sign-in-required",
+  "mail-lease-upgrade-required",
+  "reauth-required",
+  "reply-too-large",
+  "network",
+  "not-configured",
+  "unknown-environment",
+  "invalid-request",
+  "grant-unknown",
+  "grant-unreadable",
+  "link-refused",
+  "no-browser",
+  "name-in-use",
+  "cancelled",
+])
+
+const Encoded = Schema.String.check(Schema.isPattern(BASE64))
+const Text = Schema.String.check(Schema.isMinLength(1))
+const Size = Schema.Int.check(Schema.isGreaterThan(0)).check(Schema.isLessThanOrEqualTo(replyLimit))
+
+const Digest = Schema.String.check(Schema.isPattern(/^[0-9a-f]{64}$/))
+const GrantId = Text.pipe(Schema.brand("BodyGrantId"))
+
+schema GrantShape { id: GrantId; size: Size; sha256: Digest }
+
+const Head = {
+  status: Schema.Int.check(Schema.isBetween({ minimum: 100, maximum: 599 })),
+  etag: Schema.optionalKey(Schema.String),
+  contentType: Schema.optionalKey(Schema.String),
+  retryAfter: Schema.optionalKey(Schema.String),
+}
+
+const Answered = Schema.Union([
+  Schema.Struct({ ...Head, body: Encoded }),
+  Schema.Struct({ ...Head, grant: GrantShape }),
+])
+
+schema Chunk { data: Encoded; done: Schema.Boolean }
+schema Opened { opened: true }
+
+function refused(method: string) {
+  return (failure: BridgeUnavailable | NativeRejection): BridgeUnavailable | NativeRejection | CloudRefused => {
+    if (!(failure instanceof NativeRejection)) return failure
+    const code = Schema.decodeUnknownOption(Failure)(rejectionCode(failure.cause))
+    return Option.isSome(code) ? new CloudRefused({ method, failure: code.value }) : failure
+  }
+}
+
+effect function answer<A, I>(method: string, shape: Schema.Codec<A, I>, run: () => Promise<unknown>) {
+  const raw = try mapError(nativeCall(PLUGIN, method, run), refused(method))
+  return try mapError(Schema.decodeUnknownEffect(shape)(raw), (issue) => new MalformedReply({ plugin: PLUGIN, method, issue: issue.message }))
+}
+
+function targetOf(request: CloudRequest): string {
+  const pairs = Object.entries(request.query ?? {}).map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`)
+  return pairs.length === 0 ? request.path : `${request.path}?${pairs.join("&")}`
+}
+
+effect function malformed(issue: string): never!MalformedReply {
+  throw new MalformedReply({ plugin: PLUGIN, method: "readGrant", issue })
+}
+
+effect function granted(plugin: ElizaCloudPlugin, grant: BodyGrantId, size: number) {
+  const parts: Uint8Array[] = []
+  let read = 0
+  let done = false
+  while (!done) {
+    const chunk = try answer("readGrant", Chunk, () => plugin.readGrant({ grant }))
+    const part = decode(chunk.data)
+    read += part.length
+    if (read > size) try malformed("The granted body is longer than announced")
+    parts.push(part)
+    done = chunk.done
+  }
+  if (read !== size) try malformed("The granted body is shorter than announced")
+  return joined(parts)
+}
+
+effect function requested(plugin: ElizaCloudPlugin, request: CloudRequest, id: string | undefined) {
+  const { method, environment } = request
+  const native = {
+    method,
+    target: targetOf(request),
+    headers: request.headers ?? {},
+    ...(request.body === undefined ? {} : { body: JSON.stringify(request.body) }),
+    ...(environment === undefined ? {} : { environment }),
+    ...(id === undefined ? {} : { id }),
+  }
+  const reply = try answer("request", Answered, () => plugin.request(native))
+  const body = "grant" in reply ? try granted(plugin, reply.grant.id, reply.grant.size) : decode(reply.body)
+  const answered: CloudReply = {
+    status: reply.status,
+    body,
+    ...(reply.etag === undefined ? {} : { etag: reply.etag }),
+    ...(reply.contentType === undefined ? {} : { contentType: reply.contentType }),
+    ...(reply.retryAfter === undefined ? {} : { retryAfter: reply.retryAfter }),
+  }
+  return answered
+}
+
+effect function opened(plugin: ElizaCloudPlugin, options: ExternalLinkOptions) {
+  try answer("openExternal", Opened, () => plugin.openExternal(options))
+}
+
+async function cancellable(plugin: ElizaCloudPlugin, request: CloudRequest, signal: AbortSignal): Promise<CloudReply> {
+  if (signal.aborted) throw new CloudRefused({ method: "request", failure: "cancelled" })
+  const id = callName()
+  const cancel = () => { void plugin.cancel({ id }).catch(() => undefined) }
+  signal.addEventListener("abort", cancel, { once: true })
+  try {
+    return await settled(requested(plugin, request, id))
+  } finally {
+    signal.removeEventListener("abort", cancel)
+  }
+}
+
+export function cloudClient(plugin: ElizaCloudPlugin = cloudPlugin()): CloudClient {
+  return {
+    request: (request) => request.signal === undefined ? settled(requested(plugin, request, undefined)) : cancellable(plugin, request, request.signal),
+    openExternal: (options) => settled(opened(plugin, options)),
+  }
+}

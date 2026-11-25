@@ -1,8 +1,8 @@
 // spec/maps/navigation.md, "Story: Plan directions and keep me in control of guidance"
 import { Effect } from "effect";
-import type { MapsFailure, Coordinate, Place, ProviderConfig, Route, TravelMode } from "../../src/client/contracts.vibe";
-import { deviceMapsNavigation, type ActiveGuidance, type DeviceMapsNavigation, type MapsNavigationSurface, type RoutePlanReceipt } from "../../src/client/device-navigation.vibe";
-import type { Position } from "../../src/client/location.vibe";
+import type { MapsFailure, Coordinate, Place, ProviderConfig, Route, TravelMode } from "@elizaos/plugin-maps-client";
+import { deviceMapsNavigation, type ActiveGuidance, type DeviceMapsNavigation, type MapsNavigationSurface, type RoutePlanReceipt } from "@elizaos/plugin-maps-client";
+import type { Position } from "@elizaos/plugin-maps-client";
 import { gate, type Gate } from "./gates.ts";
 
 const here = { latitude: 37.7946, longitude: -122.3999 };

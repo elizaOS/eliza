@@ -2,7 +2,7 @@
 import { Effect } from "effect";
 import type { Driver, Options } from "../../gen/inbox__backgroundNotices.conformance.ts";
 import type { NoticeTap } from "../../gen/inbox__backgroundNotices.ts";
-import { noticeTapSession, type NoticeTapSession } from "../../src/mailbox/background-notices.vibe";
+import { noticeTapSession, type NoticeTapSession } from "@elizaos/plugin-inbox-client";
 
 const taps = new Map<string, NoticeTapSession>();
 
