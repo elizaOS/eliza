@@ -100,7 +100,7 @@ public final class TelephonyPluginReviewTest {
   }
   static final class Host extends TelephonyPlugin {
     final AppCompatActivity activity;
-    boolean imageAllowed=true, smsAllowed=true;
+    boolean imageAllowed=true, smsAllowed=true, sendSmsAllowed=true;
     final java.util.List<org.json.JSONObject> staged=new java.util.ArrayList<>();
     Runnable onStage;
     volatile Runnable smsDispatchCheck = () -> {};
@@ -113,7 +113,10 @@ public final class TelephonyPluginReviewTest {
     }
     @Override public Context getContext() { return activity; }
     @Override public AppCompatActivity getActivity() { return activity; }
-    @Override public PermissionState getPermissionState(String alias) { return alias.equals("sms") && !smsAllowed ? PermissionState.DENIED : PermissionState.GRANTED; }
+    @Override public PermissionState getPermissionState(String alias) {
+      return (alias.equals("sms") && !smsAllowed || alias.equals("sendSms") && !sendSmsAllowed)
+        ? PermissionState.DENIED : PermissionState.GRANTED;
+    }
     @Override protected SmsTelephonyConfiguration configuration() { throw new AssertionError("fixture installs its configuration"); }
     @Override protected void checkSmsDispatch() { smsDispatchCheck.run(); }
     void pause() { handleOnPause(); }
@@ -322,6 +325,7 @@ public final class TelephonyPluginReviewTest {
   }
   @Test public void reviewedSmsRechecksTheHostAfterConfirmationAndBeforeTheRecipient() throws Exception {
     Host host = host("host-check-reviewed-sms");
+    Shadows.shadowOf(host.getContext().getSystemService(RoleManager.class)).addAvailableRole(RoleManager.ROLE_SMS);
     Call send = send("sendSms");
     host.sendSms(send);
     SmsTelephony.WORK.submit(() -> {}).get(10, TimeUnit.SECONDS);
@@ -350,6 +354,21 @@ public final class TelephonyPluginReviewTest {
     settleComposer();
     AlertDialog shown = ShadowAlertDialog.getLatestAlertDialog();
     assertTrue(shown == null || !shown.isShowing());
+    assertEquals("denied", send.result.getString("status"));
+    assertEquals(1, send.resolutions);
+    noRadioAndNoRetainedOwner(host);
+  }
+  @Test public void smsAccessRevokedDuringTheHostCheckPreventsDispatch() throws Exception {
+    Host host = host("host-check-sms-access-changed");
+    Shadows.shadowOf(host.getContext().getSystemService(RoleManager.class)).addAvailableRole(RoleManager.ROLE_SMS);
+    AtomicInteger checks = new AtomicInteger();
+    host.smsDispatchCheck = () -> {
+      if (checks.incrementAndGet() == 2) host.sendSmsAllowed = false;
+    };
+    Call send = send("sendSms");
+    host.sendFromComposer(send, () -> {});
+    settleComposer();
+    assertEquals(2, checks.get());
     assertEquals("denied", send.result.getString("status"));
     assertEquals(1, send.resolutions);
     noRadioAndNoRetainedOwner(host);

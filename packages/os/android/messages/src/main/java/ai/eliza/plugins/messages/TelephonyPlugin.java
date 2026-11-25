@@ -865,16 +865,24 @@ public abstract class TelephonyPlugin extends Plugin {
   */
  protected void checkSmsDispatch() {}
 
+ private void checkReviewedDispatch(ReviewCall call, int sub, int slot, int carrier,
+   java.util.function.BooleanSupplier blocked) {
+  SubscriptionInfo current = activeSubscription(sub);
+  if (call.cancelled || !admitted() || !unlockedForeground() || blocked.getAsBoolean()
+    || current == null || current.getSimSlotIndex() != slot || current.getCarrierId() != carrier)
+   throw new IllegalStateException("Reviewed SIM or access changed");
+ }
+
  private SmsTelephony.DispatchGuard sendGuard(ReviewCall call, int sub, SubscriptionInfo reviewed,
    java.util.function.BooleanSupplier blocked, boolean sms) {
   final int slot = reviewed.getSimSlotIndex(), carrier = reviewed.getCarrierId();
   return () -> {
-   SubscriptionInfo current = activeSubscription(sub);
-   if (call.cancelled || !admitted() || !unlockedForeground() || blocked.getAsBoolean()
-     || current == null || current.getSimSlotIndex() != slot || current.getCarrierId() != carrier)
-    throw new IllegalStateException("Reviewed SIM or access changed");
-   if (sms) checkSmsDispatch();
+   checkReviewedDispatch(call, sub, slot, carrier, blocked);
    if (call.ownerGuard != null) call.ownerGuard.check();
+   if (sms) {
+    checkSmsDispatch();
+    checkReviewedDispatch(call, sub, slot, carrier, blocked);
+   }
   };
  }
  private static String[] numbers(JSArray recipients) {
