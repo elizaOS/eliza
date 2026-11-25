@@ -496,6 +496,10 @@ it.effect(`A free-time window check refuses only a window the owner's words cont
     ["Am I free tomorrow afternoon until 5:30?", asWindow("12:00", "17:30", { afternoonOnly: true })], ["Am I free tomorrow morning until 12:30?", asWindow("08:00", "12:30", { morningOnly: true, statedClock: "none" })],
     ["Tomorrow from 9 to 11 am I need a free hour", asWindow("09:00", "11:00")], ["Am I free tomorrow from 2 to 4?", asWindow("14:00", "16:00")],
     ["Am I free tomorrow from 2 to 4 pm, until 6 if needed?", asWindow("14:00", "18:00")], ["Am I free tomorrow at 3 for two hours?", asWindow("15:00", "17:00")],
+    ["Am I free tomorrow at 10 to 6 for an hour?", asWindow("17:50", "18:50", { statedClock: "start" })], ["Am I free tomorrow at 10 to 6 for an hour?", asWindow("17:50", "18:50")],
+    ["Am I free at ten to six tomorrow for an hour?", asWindow("17:50", "18:50")], ["Am I free tomorrow from ten to six for an hour?", asWindow("17:50", "18:50")],
+    ["Am I free tomorrow from ten to six?", asWindow("10:00", "18:00")], ["Am I free tomorrow 9 to 11 am, er pm?", asWindow("21:00", "23:00")],
+    ["Tomorrow 1 to 3 AM I mean pm, am I free?", asWindow("13:00", "15:00")], ["Am I free tomorrow morning from 9 to 1?", asWindow("09:00", "13:00", { morningOnly: true })],
   ] as const
   for (const [text, parameters] of read) {
     const result = try asked(text, parameters)
@@ -508,6 +512,15 @@ it.effect(`A free-time window check refuses only a window the owner's words cont
     ["CALENDAR_CLOCK_UNSAID", [{ startAt: "2030-03-04T22:00:00.000Z", endAt: "2030-03-05T00:00:00.000Z" }], "CALENDAR_CLOCK_UNSAID", "2030-03-05T07:00:00.000Z", "CALENDAR_AVAILABILITY_OUTSIDE_REQUESTED_PERIOD"])
   const resent = try asked("Am I free Mar 4 2-4pm?", { ...asWindow("14:00", "16:00"), timeMin: "2030-03-04T22:00:00.000Z", timeMax: "2030-03-05T00:00:00.000Z" })
   assert.strictEqual(resent.success, true)
+  const pastNoon = [
+    ["Am I free tomorrow morning for my 2 kids?", asWindow("00:00", "14:00", { morningOnly: true, statedClock: "none" })],
+    ["Am I free tomorrow morning? Asking for Дмитрий", asWindow("00:00", "13:00", { morningOnly: true, statedClock: "none" })],
+    ["Am I free tomorrow morning for 1.5 hours?", asWindow("00:00", "13:00", { morningOnly: true, statedClock: "none" })],
+  ] as const
+  for (const [text, parameters] of pastNoon) {
+    const result = try asked(text, parameters)
+    assert.deepStrictEqual([text, result.success, at(result.data, "code")], [text, false, "CALENDAR_AVAILABILITY_OUTSIDE_REQUESTED_PERIOD"])
+  }
 })
 
 it.effect(`Answer an invitation only as its invitee (spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/actions.md, "Only an invitee answers an invitation, and an invitee's delete is a decline")`, effect () => {
@@ -689,6 +702,11 @@ it.effect(`Change my calendar only as I asked and know it happened, at a free ti
   const lengthAfterClock = try said("slot-4y", "Add Dentist tomorrow at 10, two hours", { subaction: "create_event", title: "Dentist visit", startAt: "2030-03-02T10:00", durationMinutes: 120, statedClock: "start" })
   const unreadClock = try said("slot-4z", "牙医 明天早上5点", { subaction: "create_event", title: "Dentist check", startAt: "2030-03-02T05:00", statedClock: "start" })
   assert.deepStrictEqual([span(lengthAfterClock), span(unreadClock)], [["2030-03-02T18:00:00.000Z", "2030-03-02T20:00:00.000Z"], ["2030-03-02T13:00:00.000Z", "2030-03-02T14:00:00.000Z"]])
+  const otherScriptName = try said("slot-4za", "Lunch with Дмитрий tomorrow at 1pm", { subaction: "create_event", title: "Lunch", startAt: "2030-03-02T01:00", statedClock: "start" })
+  const oddNumber = try said("slot-4zb", "Dentist at 3pm for 1.5 hours tomorrow", { subaction: "create_event", title: "Dentist", startAt: "2030-03-02T03:00", statedClock: "start" })
+  const foreignWord = try said("slot-4zc", "Termin morgen um 15 Uhr", { subaction: "create_event", title: "Termin", startAt: "2030-03-02T03:00", statedClock: "start" })
+  assert.deepStrictEqual([otherScriptName, oddNumber, foreignWord].map((result) => [result.success, at(result.data, "code"), at(result.data, "sent"), result.effectReceipts?.length ?? 0]),
+    [[false, "CALENDAR_CLOCK_UNSAID", "2030-03-02T09:00:00.000Z", 0], [false, "CALENDAR_CLOCK_UNSAID", "2030-03-02T11:00:00.000Z", 0], [false, "CALENDAR_CLOCK_UNSAID", "2030-03-02T11:00:00.000Z", 0]])
   assert.deepStrictEqual([dictated.text?.replace(/\s/gu, " ").startsWith("Created Taco Night lab check, Mar 2, 2030, 1:10 – 1:30 PM."), written.text?.replace(/\s/gu, " ").startsWith("Created Lab sync, Mar 2, 2030, 3:00 – 3:45 PM.")], [true, true])
   const open = try said("slot-4n", "Block an hour for the lab tomorrow afternoon", { subaction: "create_event", title: "Lab block", startAt: "2030-03-02T14:00", endAt: "2030-03-02T15:00", statedClock: "none" })
   assert.strictEqual(open.text?.replace(/\s/gu, " ").startsWith("Created Lab block, Mar 2, 2030, 2:00 PM."), true)
@@ -730,6 +748,8 @@ it.effect(`Change my calendar only as I asked and know it happened, at a free ti
   const spokenMove = "Move the call to five thirty PM"
   const morningMisread = try said("slot-7f", spokenMove, { subaction: "update_event", query: "call", startAt: "2030-03-04T05:30", statedClock: "start" })
   const spokenMoved = try said("slot-7g", spokenMove, { subaction: "update_event", query: "call", startAt: "2030-03-04T17:30", statedClock: "start" })
+  const nameMisread = try said("slot-7h", "Move Дмитрий's call to 4pm", { subaction: "update_event", query: "call", startAt: "2030-03-04T04:00", statedClock: "start" })
+  assert.deepStrictEqual([at(nameMisread.data, "code"), at(nameMisread.data, "sent"), nameMisread.effectReceipts?.length ?? 0], ["CALENDAR_CLOCK_UNSAID", "2030-03-04T12:00:00.000Z", 0])
   assert.deepStrictEqual([at(morningMisread.data, "code"), at(morningMisread.data, "sent"), morningMisread.effectReceipts?.length ?? 0, span(spokenMoved)],
     ["CALENDAR_CLOCK_UNSAID", "2030-03-04T13:30:00.000Z", 0, ["2030-03-05T01:30:00.000Z", "2030-03-05T02:30:00.000Z"]])
 

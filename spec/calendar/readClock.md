@@ -139,9 +139,10 @@ digits ("1:10 pm", "13:10", "4", "0900", "1730", "14.30", "2.30 pm"),
 spell it with its minutes ("one ten PM", "one oh five pm", "six PM"),
 say noon or midnight, alone or after twelve ("12:00 noon", "twelve
 o'clock noon", "12 midnight"), count minutes past, after, to or of the
-hour ("ten past nine", "twenty minutes past two", "ten after nine",
-"twenty to three", "quarter of five", half past, a quarter past, a
-quarter to, and "half 5" for 5:30), or say it with "ish" ("noonish");
+hour in words or digits ("ten past nine", "10 past 9", "twenty minutes
+past two", "ten after nine", "twenty to three", "10 to 6", "quarter of
+five", half past, a quarter past, a quarter to, and "half 5" for 5:30),
+or say it with "ish" ("noonish");
 written with am or pm, or with a or p on its number ("10a", "4p"), it is
 that half of the day only. The "am" of "I am", of "am I" after a word
 that is no clock ("between 2 and 4, am I free?"), and of "am I"
@@ -152,10 +153,16 @@ words follow ("from 9 to 11 am I need a free hour", "at 9 am I think"),
 and one written onto its number ("9am I think"), is still the morning.
 Every time the words held before the free-time window checks were added
 is still held, save the other half of the day of a number written with a
-or p. A time the words hold is kept, and so is any time sent
-with words the reader cannot read (an unread clock, as the next sections
-define it: "明天下午3点", "a las tres", "14h30"), since the reader can
-then tell nothing against it. A time the words do not hold is kept
+or p. A time the words hold is kept, and so is a time sent with words
+the reader cannot read (an unread clock, as the next sections define
+it: "明天下午3点", "a las tres", "14h30") when the words hold neither it
+nor its other half of the day, since the reader can then tell nothing
+against it. Words that hold the other half contradict the time sent
+however much else in them the reader cannot read: "Lunch with Дмитрий
+tomorrow at 1pm" sent at 1 AM, "Dentist at 3pm for 1.5 hours" or "Run
+tomorrow 6am 10.5km" sent at the other half, and "Termin morgen um 15
+Uhr" sent at 3 AM change nothing, as they did before the free-time
+window checks were added. A time the words do not hold is kept
 only when the model says the owner stated no clock time ("tomorrow
 afternoon", "push it back an hour"): a time the model chose is no
 misread, and a check of every time would refuse those requests. A time
@@ -179,15 +186,20 @@ pure def statedClockCheck(declared: bool, statedByOwner: bool, heldByOwnerWords:
   else if (not(declared)) ClockUndeclared
   else if (statedByOwner) ClockUnsaid
   else ClockAsSent
-pure def clockHeldOrUnread(wordsRead: bool, heldByOwnerWords: bool): bool = heldByOwnerWords or not(wordsRead)
+pure def clockHeldOrUnread(wordsRead: bool, heldByOwnerWords: bool, otherHalfHeld: bool): bool =
+  heldByOwnerWords or (not(wordsRead) and not(otherHalfHeld))
 pure def lawAStatedClockTheWordsDoNotHoldChangesNothing(heldByOwnerWords: bool): bool =
   (statedClockCheck(true, true, heldByOwnerWords) == ClockUnsaid) iff not(heldByOwnerWords)
 pure def lawAnOpenTimeIsKept(heldByOwnerWords: bool): bool = statedClockCheck(true, false, heldByOwnerWords) == ClockAsSent
 pure def lawAHeldTimeIsKept(declared: bool, statedByOwner: bool): bool = statedClockCheck(declared, statedByOwner, true) == ClockAsSent
 pure def lawAnUndeclaredUnheldTimeChangesNothing(statedByOwner: bool): bool =
   statedClockCheck(false, statedByOwner, false) == ClockUndeclared
-pure def lawWordsTheReaderCannotReadKeepEveryTime(declared: bool, statedByOwner: bool, heldByOwnerWords: bool): bool =
-  statedClockCheck(declared, statedByOwner, clockHeldOrUnread(false, heldByOwnerWords)) == ClockAsSent
+pure def lawWordsTheReaderCannotReadKeepATimeTheyDoNotContradict(declared: bool, statedByOwner: bool, heldByOwnerWords: bool): bool =
+  statedClockCheck(declared, statedByOwner, clockHeldOrUnread(false, heldByOwnerWords, false)) == ClockAsSent
+pure def lawAWrittenOtherHalfRefusesAStatedTimeHoweverTheWordsRead(wordsRead: bool): bool =
+  statedClockCheck(true, true, clockHeldOrUnread(wordsRead, false, true)) == ClockUnsaid
+pure def lawAHeldTimeIsKeptHoweverTheWordsRead(wordsRead: bool, otherHalfHeld: bool): bool =
+  clockHeldOrUnread(wordsRead, true, otherHalfHeld)
 ```
 
 ### A free-time window's clock times the owner stated are ones the owner's words hold
@@ -199,8 +211,9 @@ five", "from 2 to 4", "from one ten PM to two PM") states its start and
 its end. Code checks a window's start only when the owner's words state
 a start, and its end only when they state an end and the model calls the
 window a stated range: a range in the words (next section) states both;
-a clock after "from", "after", "at", "since" or "starting" states a
-start; one after "until", "till", "through", "before" or "now to" states
+a clock after "from", "after", "at", "since", "start", "starts",
+"starting", "begin", "begins" or "beginning" states a start; one after
+"until", "till", "til", "through", "thru", "before" or "now to" states
 an end. A stated clock time is checked against the owner's words as a
 new event's is: one the words hold is read, and one they do not hold
 reads nothing, and the result names the time sent so the model sends the
@@ -255,7 +268,13 @@ ten PM" names 1:10 PM and never 1:00 or 10:00, and a date or a length
 elsewhere adds no reading. When more than one split counts, the one at a
 word join is the range ("from one-ten to one-thirty PM", "from
 twelve-ten to one PM"), while a dash alone between two hour names joins
-them ("nine-ten PM" is 9 to 10 PM). A run followed by a unit of length,
+them ("nine-ten PM" is 9 to 10 PM). A run that splits into a range and
+is also, whole, one clock counted to the hour ("ten to six", "10 to 6",
+"five to seven") is that one clock when the window sent starts at it:
+"free at ten to six for an hour" or "from ten to six for an hour" sent
+from 5:50 PM states that start and no range or end, so its end is read
+as sent, as "free at 3 for two hours" is. Sent from any other start, the
+run is the range ("from ten to six" sent 10 AM to 6 PM). A run followed by a unit of length,
 written whole or short ("30 to 45 minutes", "1-2 hr", "2-3h"), or by a
 count of people ("3 to 6 of us", "2 to 4 people", "4-6 people") is no
 range. A side whose last word is the "am" of "am I free" holds both
@@ -351,8 +370,15 @@ dos a cuatro", "von 15 bis 17 Uhr"), a number written in a shape no
 clock has ("14h30", "1.5"), a run of clock words no split reads as one
 range ("11-25 2-4pm", "room 10 2 to 4"), a range whose end has an
 alternative ("between 2 and 4 or 5") or a half ("from 2 to 3 and a
-half"), and a statement clock no spelling names. Such words hold every
-time and state no start or end, and their windows are not paired. A
+half"), a half of the day said apart from any clock, as an owner
+correcting it does ("9 to 11 am, er pm", "1 to 3 AM I mean pm"), and a
+statement clock no spelling names. For a free-time window such words
+hold every time and state no start or end, and their windows are not
+paired; a create or change still refuses a time whose other half they
+hold (section "A clock time the owner stated is one the owner's words
+hold"), and a morning-only window still ends by noon (actions.md, "A
+morning-only question reads only that morning, from midnight to
+noon"). A
 refusal's result always names a window that reads when sent again: the
 window a range fits one other way is its fit, every window listed is a
 fit, and a time the words do not hold reads with statedClock none. So a

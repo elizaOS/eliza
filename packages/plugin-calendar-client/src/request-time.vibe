@@ -260,7 +260,7 @@ function clockSpellings(clock: StatedClockTime): readonly string[] {
   const nextHours = [next, String((hour + 1) % 12 === 0 ? 12 : (hour + 1) % 12)]
   return [...digits, `${twelve} ${mm}`, ...(hour > 12 ? [`${hour} ${mm}`] : []), ...minuteNames(minute).map((words) => `${name} ${words}`),
     ...(minute < 30 ? [countName(minute), String(minute)].flatMap((count) => hours.flatMap((named) => [`${count} past ${named}`, `${count} after ${named}`])) : []),
-    ...(minute > 30 ? nextHours.flatMap((named) => [`${countName(60 - minute)} to ${named}`, `${countName(60 - minute)} of ${named}`]) : []),
+    ...(minute > 30 ? [countName(60 - minute), String(60 - minute)].flatMap((count) => nextHours.flatMap((named) => [`${count} to ${named}`, `${count} of ${named}`])) : []),
     ...(minute === 30 ? hours.flatMap((named) => [`half past ${named}`, `half ${named}`]) : []),
     ...(minute === 15 ? hours.flatMap((named) => [`quarter past ${named}`, `quarter after ${named}`]) : []),
     ...(minute === 45 ? nextHours.flatMap((named) => [`quarter to ${named}`, `quarter of ${named}`]) : [])]
@@ -375,7 +375,7 @@ function sideRead(words: readonly string[]): { readonly clocks: readonly StatedC
   return { clocks: sideClocks((sure ? said : said.slice(0, -1)).join(" ")), sure }
 }
 
-export function windowWordsOf(text: string): WindowWords {
+export function windowWordsOf(text: string, start?: StatedClockTime): WindowWords {
   const said = clockTokens(text.normalize("NFKC").toLowerCase().replace(writtenDate, " date "))
   const words = said.filter((word, at) => !windowHedges.has(word) && !(word === "a" && /^(?:quarter|half)$/u.test(said[at + 1] ?? "")))
   const sandwiched = (at: number) => (words[at] === "after" || words[at] === "of") && minuteCount.test(words[at - 1] ?? "") && hourWord.test(words[at + 1] ?? "")
@@ -409,7 +409,7 @@ export function windowWordsOf(text: string): WindowWords {
     const alternative = (after === "or" && runs[nth + 1]?.from === to + 1 && single(runs[nth + 1])) || (before === "or" && runs[nth - 1]?.to === from - 1 && single(runs[nth - 1]))
     const halved = after === "and" && (words[to + 1] === "half" || (words[to + 1] === "a" && /^(?:half|quarter)$/u.test(words[to + 2] ?? "")))
     if (durationUnit.test(after) || countNoun.test(after)) return
-    if (halved || (alternative && joins.length > 0)) {
+    if (halved || (alternative && joins.length > 0) || words.slice(from, to).every((word) => word === "am" || word === "pm")) {
       unread = true
       return
     }
@@ -421,14 +421,15 @@ export function windowWordsOf(text: string): WindowWords {
     })
     const worded = splits.filter((split) => !split.dash)
     const [split] = splits.length > 1 && worded.length === 1 ? worded : splits
-    if (split !== undefined && (splits.length === 1 || worded.length === 1)) {
+    const whole = sideRead(words.slice(from, to)).clocks
+    const spokenStart = start !== undefined && whole.some((clock) => clock.hour === start.hour && clock.minute === start.minute)
+    if (split !== undefined && (splits.length === 1 || worded.length === 1) && !spokenStart) {
       starts.push({ clocks: split.start.clocks, range: ranges.length })
       ends.push({ clocks: split.end.clocks, range: ranges.length })
       ranges.push({ phrase: words.slice(words[from - 1] === "between" ? from - 1 : from, to).join(" "), starts: split.start.clocks, ends: split.end.clocks })
       return
     }
-    const whole = sideRead(words.slice(from, to)).clocks
-    if (split !== undefined || (joins.length > 0 && whole.length === 0)) {
+    if (!spokenStart && (split !== undefined || (joins.length > 0 && whole.length === 0))) {
       unread = true
       return
     }

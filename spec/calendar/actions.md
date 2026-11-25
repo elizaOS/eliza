@@ -193,16 +193,24 @@ Such a window starts at or after the midnight of the day it starts on,
 and must end no later than that day's noon in the request's zone; a
 window that runs past it is refused before anything is read, pointing to
 a slot search for a shorter opening. Noon itself is inside the morning.
-An end on that day that the owner's words hold (readClock.md, "A clock
-time the owner stated is one the owner's words hold"), other than as a
-number counting a length ("20 minutes", "1-2 hours"), is the owner's and
-is kept, unless they also hold its other half of the day as a morning
-end, from 5 AM to noon and after the start: "tomorrow morning until
-12:30" runs to 12:30 PM and "tomorrow morning until 1" to 1 PM, while
-"tomorrow morning until 11" ends at 11 AM, never 11 PM. Words the reader
-cannot read (readClock.md, "A window check refuses only a window the
-owner's words contradict") keep the end as sent. A request the model
-does not call morning-only is read as asked.
+An end on that day that the owner's words state (readClock.md, "A
+free-time window's clock times the owner stated are ones the owner's
+words hold": a clock after "until", "till", "through", "before" or the
+like, or the end of a range whose start is the window's start or whose
+window is under way) is the owner's and is kept, unless they also state
+its other half of the day as a morning end, from 5 AM to noon and after
+the start:
+"tomorrow morning until 12:30" runs to 12:30 PM, "tomorrow morning until
+1" to 1 PM and "tomorrow morning from 9 to 1" from 9 AM to 1 PM, while
+"tomorrow morning until 11" ends at 11 AM, never 11 PM. A number the
+words merely hold states no end: a count or a length ("for my 2 kids",
+"1 meeting max", "2 calls", "for 1.5 hours"), a room or a name ("room
+3") leaves the window ending by noon. Words the reader cannot read
+(readClock.md, "A window check refuses only a window the owner's words
+contradict") state no end either ("Asking for Дмитрий", "明天上午到12点半"),
+so their window also ends by noon, as every morning window did before
+the free-time window checks were added. A request the model does not
+call morning-only is read as asked.
 
 ```quint
 type MorningAdmission = ReadMorning | RefuseOutsideMorning
@@ -214,6 +222,16 @@ pure def lawAMorningEndTheOwnerSaidIsRead(endsAfterNoon: bool): bool =
   morningAdmission(true, endsAfterNoon, true) == ReadMorning
 pure def lawWiderRequestIsRead(endsAfterNoon: bool, endSaid: bool): bool =
   morningAdmission(false, endsAfterNoon, endSaid) == ReadMorning
+pure def morningEndStated(wordsRead: bool, endStated: bool, otherHalfStatedInMorning: bool): bool =
+  wordsRead and endStated and not(otherHalfStatedInMorning)
+pure def lawAnEndTheWordsDoNotStateEndsByNoon(wordsRead: bool, otherHalfStatedInMorning: bool): bool =
+  morningAdmission(true, true, morningEndStated(wordsRead, false, otherHalfStatedInMorning)) == RefuseOutsideMorning
+pure def lawUnreadWordsStateNoMorningEnd(endStated: bool, otherHalfStatedInMorning: bool): bool =
+  morningAdmission(true, true, morningEndStated(false, endStated, otherHalfStatedInMorning)) == RefuseOutsideMorning
+pure def lawAMorningEndWhoseOtherHalfIsStatedEndsByNoon(wordsRead: bool, endStated: bool): bool =
+  morningAdmission(true, true, morningEndStated(wordsRead, endStated, true)) == RefuseOutsideMorning
+pure def lawAStatedLaterEndIsRead(endsAfterNoon: bool): bool =
+  morningAdmission(true, endsAfterNoon, morningEndStated(true, true, false)) == ReadMorning
 ```
 
 ### An afternoon-only question reads only that afternoon, from noon to five
