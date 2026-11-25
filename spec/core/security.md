@@ -115,3 +115,39 @@ pure def lawLatchReportsOnce(latch: EnvelopeLatch, soFarHasEnvelope: bool): bool
 pure def lawTripForwardsNothingMore(latch: EnvelopeLatch, soFarHasEnvelope: bool): bool = latch.tripped implies observeChunk(latch, soFarHasEnvelope) == latch
 pure def lawDetectionTrips(latch: EnvelopeLatch): bool = not(latch.tripped) implies (observeChunk(latch, true).tripped and observeChunk(latch, true).forwarded == latch.forwarded)
 ```
+
+## Story: Trust only a request from this machine
+
+> As the owner, I want my agent to accept a request without a token only
+> when it really comes from my own machine, so that a request relayed by a
+> proxy from another machine is never trusted as mine.
+
+### Every element of a proxy client header must name this machine for a request to be trusted as local
+
+A request is trusted as coming from this machine only when its peer is a
+loopback address and no proxy client header names another client. A
+`Forwarded` header is read by its `for=` pairs. Every other client header
+(`X-Forwarded-For`, `X-Real-IP` and the like) is read element by element
+between commas: an element that holds a `for=` pair is read by that pair,
+and any other element is read as an address on its own. A proxy on this
+machine appends the address it saw as a plain element after whatever the
+client sent, so a `for=` element never hides the plain elements next to
+it: "for=127.0.0.1, 203.0.113.5" and "for=\"[::1]:4000\", 2001:db8::7" are
+refused. An element that is neither a `for=` pair nor an address, such
+as "xfor=127.0.0.1", refuses trust; an empty element, "unknown" or an
+obfuscated identifier names no client. "for=127.0.0.1, ::1" names only
+this machine and keeps its trust.
+
+```quint
+type ProxyElement = LoopbackElement | NeutralElement | RemoteElement | UnparseableElement
+pure def headerAllowsLocalTrust(proxyElements: List[ProxyElement]): bool =
+  proxyElements.every(e => e == LoopbackElement or e == NeutralElement)
+pure def trustedAsLocal(loopbackPeer: bool, proxyElements: List[ProxyElement]): bool = loopbackPeer and headerAllowsLocalTrust(proxyElements)
+pure val proxyElementsValues = Set(List(), List(LoopbackElement), List(LoopbackElement, RemoteElement), List(LoopbackElement, LoopbackElement),
+  List(NeutralElement), List(LoopbackElement, UnparseableElement), List(RemoteElement, LoopbackElement))
+pure def lawARemoteOrUnparseableElementRefusesTrust(loopbackPeer: bool, proxyElements: List[ProxyElement]): bool =
+  proxyElements.some(e => e == RemoteElement or e == UnparseableElement) implies not(trustedAsLocal(loopbackPeer, proxyElements))
+pure def lawOnlyThisMachineKeepsTrust(proxyElements: List[ProxyElement]): bool =
+  proxyElements.every(e => e == LoopbackElement) implies trustedAsLocal(true, proxyElements)
+pure def lawARemotePeerIsNeverTrusted(proxyElements: List[ProxyElement]): bool = not(trustedAsLocal(false, proxyElements))
+```

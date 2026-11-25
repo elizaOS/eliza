@@ -2,7 +2,8 @@
 import * as NodeServices from "@effect/platform-node/NodeServices"
 import { assert, it } from "@effect/vitest"
 import type { ActionResult, IAgentRuntime, Memory, ProviderResult, State, UUID } from "@elizaos/core"
-import { openWallet, walletPlugin, type Wallet, type WalletDecided, type WalletHoldings, type WalletHost, type WalletOperation, type WalletRequestRow, type WalletReview, type WalletRoute, type WalletStatus } from "../src/index.vibe"
+import type { WalletDecided, WalletHoldings, WalletOperation, WalletRequestRow, WalletReview, WalletStatus } from "@elizaos/plugin-wallet-client"
+import { openWallet, walletPlugin, type Wallet, type WalletHost, type WalletRoute } from "../src/index.vibe"
 import type { AssetTransfer, WalletNetwork } from "../src/chain.vibe"
 import { openSolanaAccount, openSolanaSigner, solanaAccountOf } from "../src/solana.vibe"
 import { scratch, signedHash, startChain, type Chain, type Gateway, type Scratch } from "./support/evm-chain.ts"
@@ -112,7 +113,7 @@ it.live('Make the wallet once on the device, seal its keys, and serve nothing wh
       custody: first.custody,
       accounts: first.accounts.map((account) => ({ family: account.family, connected: account.connected, network: account.network, canSend: account.canSend, held: account.address !== "" })),
       same: [second, reopened, on].map((status) => status.accounts.map((account) => account.address)),
-      sealed: { marked: sealed.startsWith("wallet-keys-v1."), plain: sealed.includes("0x") || sealed.includes("evm") },
+      sealed: { marked: sealed.startsWith("wallet-keys-v1."), plain: /[{}":,]/.test(sealed) },
       off: { custody: off.custody, canSend: off.accounts.map((account) => account.canSend) },
       whileOff,
       malformed,

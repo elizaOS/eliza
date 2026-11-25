@@ -14,10 +14,16 @@ android {
 repositories { google(); mavenCentral() }
 dependencies {
  implementation "androidx.core:core:${rootProject.ext.has('androidxCoreVersion') ? rootProject.ext.androidxCoreVersion : '1.16.0'}"
+ testImplementation 'junit:junit:4.13.2'
+ testImplementation 'org.robolectric:robolectric:4.16.1'
  if (rootProject.findProject(':capacitor-android') != null) {
   implementation project(':capacitor-android')
   // Plugin.getActivity() exposes AppCompatActivity in Capacitor's Java API.
   implementation "androidx.appcompat:appcompat:${rootProject.ext.has('androidxAppCompatVersion') ? rootProject.ext.androidxAppCompatVersion : '1.7.1'}"
   implementation "androidx.activity:activity:${rootProject.ext.has('androidxActivityVersion') ? rootProject.ext.androidxActivityVersion : '1.8.0'}"
  }
+}
+
+tasks.withType(Test).configureEach {
+    systemProperty "robolectric.dependency.repo.url", rootProject.ext.has("mavenCentralMirrorUrl") ? rootProject.ext.mavenCentralMirrorUrl : "https://repo.maven.apache.org/maven2"
 }

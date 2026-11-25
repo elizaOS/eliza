@@ -234,14 +234,15 @@ pure def lawAMessageThatGivesNoTimeFinishesNothing(keptAt: int, now: int, sameMe
 
 ### A retraction takes back only the reminder this conversation just saved, from a later message within five minutes
 
-A retraction leads the message, after an "oh", "wait" or "actually": a
-negated save ("don't save that one", with a typographic apostrophe too),
-a cancel or undo of that one, "never mind", or "get rid of it". It is
-honored only from a later message than the one that saved the reminder,
-within five minutes of the save, while that reminder is still live, and
-when the message names no other reminder and asks to complete, snooze,
-acknowledge or escalate none. A message that also asks for a new reminder
-saves it after the retraction.
+Whether a message takes back the reminder just saved ("actually, don't
+save that one", "never mind", "get rid of it", in any words or language)
+is the model's to read: it asks for a retraction, and nothing in the
+owner's words asks for one by itself. A retraction is honored only from a
+later message than the one that saved the reminder, within five minutes of
+the save, while that reminder is still live, and when it names no other
+reminder. Otherwise nothing changes, and the model is told that nothing
+was taken back. A message that also asks for a new reminder takes back
+the old one first and then saves the new one.
 
 ```quint
 pure val retractionWindowMs = 300000
@@ -385,26 +386,20 @@ pure def lawTheAssistantsRemindersStayHere(assistantKeepsReminders: bool): bool 
   assistantKeepsReminders implies not(phoneReminderProposed(assistantKeepsReminders, false))
 ```
 
-### A selected or named phone reminder is the one the owner gave, and a change to it needs the owner's own ask
+### A selected or named phone reminder is the one the owner gave, and a change to it is only proposed for the owner's review
 
 A read, edit, completion, snooze or cancel of a selected reminder names
 exactly the reminder selected on the phone, with its source, occurrence,
 revisions and timing version. A named edit or cancel names a reminder
-whose name is in the owner's own words. An edit, completion, snooze or
-cancel, selected or named, is proposed only when the owner's words ask for
-that change (to change, move or rename it; to mark it done; to snooze it;
-to cancel, delete, remove or stop it), and never when they turn it down; a
-read asks for nothing. A decline is a reply that opens by turning the
-request down ("no, keep it", "never mind", "wait"), the whole reply "cancel
-that", or a negation of the change itself ("don't snooze it"); other
-negative words in the request ("cancel it, no need to keep it") are not a
-decline.
+whose name is in the owner's own words. Which change the owner asked for,
+however they put it, and whether they turned it down, is the planner's
+reading of their message, never a list of words: the planner is told to
+propose an edit, completion, snooze or cancel only when the owner asks for
+it and never one they turned down. Whatever it proposes is only a review
+on the phone, which changes nothing until the owner approves it there.
 
 ```quint
 pure def reminderTargetGrounded(selectionKnown: bool, sameAsSelected: bool): bool = selectionKnown and sameAsSelected
-pure def reminderChangeAsked(asksForTheChange: bool, declines: bool): bool = asksForTheChange and not(declines)
-pure def lawADeclinedChangeIsNeverProposed(asksForTheChange: bool): bool = not(reminderChangeAsked(asksForTheChange, true))
-pure def lawAnUnaskedChangeIsNeverProposed(declines: bool): bool = not(reminderChangeAsked(false, declines))
 pure def lawAnUnselectedReminderIsNeverProposed(sameAsSelected: bool): bool = not(reminderTargetGrounded(false, sameAsSelected))
 ```
 

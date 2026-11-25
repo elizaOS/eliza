@@ -1,5 +1,10 @@
 // spec/wallet/custody.md, "Story: Hold my own keys on my device"; spec/wallet/requests.md, "Story: Let the agent ask, and decide myself"; spec/wallet/index.md, "Story: Preview an exact wallet operation before executing it"; spec/wallet/index.md, "Story: Recover the real outcome of an on-chain operation"; spec/wallet/index.md, "Story: Inspect wallet holdings and venue quotes before making changes"
 import * as KeyValueStore from "effect/persistence/KeyValueStore"
+import {
+  atomicOf, shownUnits,
+  type WalletAccount, type WalletDecided, type WalletDecision, type WalletFamilyName, type WalletHolding, type WalletHoldings, type WalletOperation,
+  type WalletQuote, type WalletRequestRow, type WalletReview, type WalletStatus,
+} from "@elizaos/plugin-wallet-client"
 import { Machine as CustodyMachine, stored as storedCustody, walletServes, type Custody } from "../gen/wallet__custody.effect.vibe"
 import { Machine as DeskMachine, stored as storedDesk, type Asker, type TransferRequest } from "../gen/wallet__requests.effect.vibe"
 import { Machine, atMostAtomic, machine, parseState, validAtomicAmount, walletObservationMatches, type WalletFamily, type WalletIntent, type WalletRun } from "../gen/wallet.effect.vibe"
@@ -7,10 +12,9 @@ import { assetId, type AssetTransfer, type ChainAccount, type ChainSigner, type 
 import { evmAccountOf, evmSigns, newEvmKey, openEvmAccount, openEvmSigner } from "./evm.vibe"
 import { OperationOutcome, OperationTerms, claimDispatch, listJournal, openJournal, readJournalRow, reserveWalletSigning, walletDigest, walletJournalDirectory, writeJournalRow, type JournalRows } from "./journal.vibe"
 import { newSolanaSeed, openKeystore } from "./keystore.vibe"
-import { allowedRecipients, familyNames, networkPlan, type NetworkPlan, type Setting, type WalletFamilyName } from "./networks.vibe"
+import { allowedRecipients, familyNames, networkPlan, type NetworkPlan, type Setting } from "./networks.vibe"
 import { openSolanaAccount, openSolanaSigner, solanaAccountOf } from "./solana.vibe"
 
-import { atomicOf, shownUnits } from "./units.vibe"
 
 export error WalletRefused { reason: string }
 export error WalletUnreachable { cause: unknown }
@@ -24,101 +28,11 @@ export interface WalletHost {
   readonly ownerPresent: () => Promise<boolean>
 }
 
-export type CustodyState = "none" | "ready" | "off" | "unavailable"
-
-export interface WalletAccount {
-  readonly family: WalletFamilyName
-  readonly address: string
-  readonly connected: boolean
-  readonly chainId: string
-  readonly network: string
-  readonly nativeSymbol: string
-  readonly nativeDecimals: number
-  readonly canSend: boolean
-}
-
-export interface WalletStatus {
-  readonly custody: CustodyState
-  readonly canHold: boolean
-  readonly accounts: readonly WalletAccount[]
-}
-
-export interface WalletHolding {
-  readonly family: WalletFamilyName
-  readonly chainId: string
-  readonly asset: string
-  readonly symbol: string
-  readonly decimals: number
-  readonly atomicUnits: string
-}
-
-export interface WalletHoldings {
-  readonly holdings: readonly WalletHolding[]
-  readonly unread: readonly WalletFamilyName[]
-}
-
 export interface WalletTransferInput {
   readonly family: WalletFamily
   readonly token: string
   readonly recipient: string
   readonly amount: string
-}
-
-export interface WalletRequestRow {
-  readonly id: number
-  readonly family: WalletFamilyName
-  readonly asset: string
-  readonly symbol: string
-  readonly recipient: string
-  readonly amount: string
-  readonly asker: "owner" | "agent"
-}
-
-export interface WalletQuote {
-  readonly family: WalletFamilyName
-  readonly chainId: string
-  readonly network: string
-  readonly account: string
-  readonly recipient: string
-  readonly asset: string
-  readonly symbol: string
-  readonly decimals: number
-  readonly atomicUnits: string
-  readonly maximumFee: string
-  readonly feeSymbol: string
-  readonly feeDecimals: number
-}
-
-export interface WalletReview extends WalletQuote {
-  readonly requestId: number
-  readonly intentId: string
-  readonly commitment: string
-  readonly expiresAt: number
-}
-
-export interface WalletDecision {
-  readonly decision: "approve" | "decline"
-  readonly intentId: string
-  readonly commitment: string
-}
-
-export type WalletDecided =
-  | { readonly status: "declined" }
-  | { readonly status: "submitted" | "unresolved"; readonly operationRef: string }
-
-export interface WalletOperation {
-  readonly intentId: string
-  readonly family: WalletFamilyName
-  readonly chainId: string
-  readonly asset: string
-  readonly symbol: string
-  readonly decimals: number
-  readonly atomicUnits: string
-  readonly recipient: string
-  readonly maximumFee: string
-  readonly reservedAt: number
-  readonly status: "notSent" | "pending" | "confirmed" | "failed"
-  readonly operationRef: string
 }
 
 export interface WalletContext {
@@ -307,13 +221,13 @@ function walletTerms(host: WalletHost) {
     const facts = try assetOf(net, chain, token)
     const recipient = try checked(() => chain.recipient(to), "That is not an address on this chain.")
     if (!/^[0-9]+(\.[0-9]+)?$/.test(amount)) throw new WalletRefused({ reason: "Write the amount as a plain decimal number." })
-    const atomicUnits = try checked(() => atomicOf(amount, facts.decimals), `${facts.symbol} has at most ${facts.decimals} decimal places.`)
+    const atomicUnits = atomicOf(amount, facts.decimals)
+    if (atomicUnits === undefined) throw new WalletRefused({ reason: `${facts.symbol} has at most ${facts.decimals} decimal places.` })
     const exact = digits(atomicUnits)
     if (!validAtomicAmount(exact) || atomicUnits === "0" || !atMostAtomic(exact, digits(largest[net.family]))) {
       throw new WalletRefused({ reason: "The amount must be more than zero and fit the chain exactly." })
     }
-    const shown = try checked(() => shownUnits(atomicUnits, facts.decimals), "The amount could not be written exactly.")
-    return { facts, transfer: { asset: facts.asset, recipient, atomicUnits }, amount: shown }
+    return { facts, transfer: { asset: facts.asset, recipient, atomicUnits }, amount: shownUnits(atomicUnits, facts.decimals) }
   }
 
   function policyAllows(net: NetworkPlan, transfer: AssetTransfer, quoted: TransferQuote): boolean {

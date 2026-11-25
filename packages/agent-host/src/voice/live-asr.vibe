@@ -1,0 +1,181 @@
+// spec/agent/voice/clientAudio.md, "Story: Have my words recognised on this device while I speak"; spec/agent/voice/clientAudio.md, "A live session recognises each segment once, from its speech start through the speech end or close that ends it, and at most four sessions are open"; spec/agent/conversation/events.md, "Only the voice-transcript stream is open to plugins"
+import { Base64 } from "effect/encoding"
+import { type AgentRuntime, logger, ModelType } from "@elizaos/core"
+import { admitsSession, keptAfter, liveSessionExpired, maxLiveSessions } from "../../gen/agent__voice__clientAudio.ts"
+import type { LocalRoute } from "@elizaos/agent"
+import { publishEventServiceType, type PublishEventService } from "../conversation/events.vibe"
+import { encodeMonoPcm16WavChunks } from "@elizaos/agent"
+import { VOICE_TRANSCRIPT_STREAM } from "@elizaos/agent"
+
+export const liveAsrPath = "/api/asr/local-inference/live"
+export const liveAsrStatusPath = "/api/asr/local-inference/live/status"
+
+const sampleRate = 16_000
+const maxSessionIdCharacters = 128
+const maxRequestBytes = 1_048_576
+
+type Edge = "speech-start" | "speech-end"
+type Frame = { readonly pcm16: string; readonly sampleRate: number; readonly channels: number; readonly samples: number; readonly timestamp: number }
+type Answer = { readonly status: number; readonly body: object }
+
+interface Segment {
+  readonly turnId: string
+  readonly chunks: Float32Array[]
+  kept: number
+}
+
+type SessionSchedule =
+  | { readonly phase: "idle"; readonly since: number }
+  | { readonly phase: "busy" | "closing"; readonly answer: Promise<Answer> }
+
+interface LiveSession {
+  segment: Segment | undefined
+  framesReceived: number
+  schedule: SessionSchedule
+}
+
+interface Final {
+  readonly turnId: string
+  readonly text: string
+  readonly mode: "batch"
+  readonly asrFinalFromSpeechEndMs: number
+}
+
+const FrameSchema = Schema.Struct({ pcm16: Schema.String, sampleRate: Schema.Number, channels: Schema.Number, samples: Schema.Number, timestamp: Schema.Number })
+const EdgeSchema = Schema.Struct({ type: Schema.Literals(["speech-start", "speech-end"]), timestampMs: Schema.optionalKey(Schema.Number) })
+const decodeBody = Schema.decodeUnknownOption(Schema.Struct({
+  sessionId: Schema.String,
+  roomId: Schema.optionalKey(Schema.String),
+  frames: Schema.optionalKey(Schema.Array(FrameSchema)),
+  vad: Schema.optionalKey(Schema.Array(EdgeSchema)),
+  close: Schema.optionalKey(Schema.Boolean),
+}))
+
+const refused = (status: number, error: string, code?: string): Answer => ({ status, body: { error, ...(code === undefined ? {} : { code }) } })
+
+function pcmOf(frame: Frame): Float32Array | string {
+  if (frame.channels !== 1) return `expected mono (channels=1); got channels=${frame.channels}`
+  if (frame.sampleRate !== sampleRate) return `expected ${sampleRate} Hz; got ${frame.sampleRate} Hz`
+  const decoded = Base64.decode(frame.pcm16)
+  if (Result.isFailure(decoded)) return "pcm16 must be base64"
+  const bytes = decoded.success
+  if (bytes.length % 2 !== 0) return `PCM byte length ${bytes.length} is odd`
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+  const samples = new Float32Array(bytes.length / 2)
+  for (let index = 0; index < samples.length; index += 1) samples[index] = view.getInt16(index * 2, true) / 32_768
+  return samples
+}
+
+function localTranscriber(runtime: AgentRuntime): string | undefined {
+  return runtime.getModelRegistrations().find(({ modelType, metadata }) => modelType === ModelType.TRANSCRIPTION && metadata?.local === true)?.provider
+}
+
+export function liveAsrRoutes(runtime: AgentRuntime, now: () => number = Date.now): readonly LocalRoute[] {
+  const sessions = new Map<string, LiveSession>()
+  let turns = 0
+
+  const publish = (sessionId: string, payload: Record<string, unknown>) => {
+    const publisher = runtime.getService<PublishEventService>(publishEventServiceType)
+    if (publisher?.publish(VOICE_TRANSCRIPT_STREAM, { type: VOICE_TRANSCRIPT_STREAM, sessionId, ...payload }) !== true)
+      logger.debug({ src: "agent", sessionId, phase: payload.phase }, "A voice transcript event was not published")
+  }
+
+  const sweep = () => {
+    const time = now()
+    for (const [id, { schedule }] of sessions) {
+      if (schedule.phase === "idle" && liveSessionExpired(time - schedule.since)) sessions.delete(id)
+    }
+  }
+
+  async function recognise(sessionId: string, segment: Segment, endedAt: number, signal: AbortSignal): Promise<Final> {
+    const provider = localTranscriber(runtime)
+    if (provider === undefined) throw new Error("No local transcription model is registered")
+    const audio = encodeMonoPcm16WavChunks(segment.chunks, sampleRate)
+    const wav = await runPromise(audio)
+    const text = await runtime.useModel(ModelType.TRANSCRIPTION, { audioUrl: "", audio: wav, mimeType: "audio/wav", signal, transcriptionPurpose: "final" }, provider)
+    const final: Final = { turnId: segment.turnId, text: String(text).trim(), mode: "batch", asrFinalFromSpeechEndMs: Math.max(0, now() - endedAt) }
+    publish(sessionId, { phase: "final", turnId: final.turnId, text: final.text, mode: final.mode, asrFinalFromSpeechEndMs: final.asrFinalFromSpeechEndMs })
+    return final
+  }
+
+  async function apply(sessionId: string, session: LiveSession, edges: readonly Edge[], pcm: readonly Float32Array[], closing: boolean, signal: AbortSignal): Promise<Answer> {
+    if (edges.includes("speech-start") && session.segment === undefined) {
+      turns += 1
+      session.segment = { turnId: `turn-${turns}-${now()}`, chunks: [], kept: 0 }
+      publish(sessionId, { phase: "speech-start", turnId: session.segment.turnId })
+    }
+    for (const samples of pcm) {
+      session.framesReceived += 1
+      const segment = session.segment
+      if (segment === undefined) continue
+      const kept = keptAfter(segment.kept, samples.length)
+      if (kept > segment.kept) segment.chunks.push(samples.subarray(0, kept - segment.kept))
+      segment.kept = kept
+    }
+    const ended = edges.includes("speech-end")
+    const segment = session.segment
+    let final: Final | undefined
+    if (segment !== undefined && (ended || closing)) {
+      session.segment = undefined
+      publish(sessionId, { phase: "speech-end", turnId: segment.turnId })
+      try {
+        final = await recognise(sessionId, segment, now(), signal)
+      } catch (cause: unknown) {
+        publish(sessionId, { phase: "error", turnId: segment.turnId, code: "ASR_FAILED" })
+        logger.warn({ src: "agent", sessionId, turnId: segment.turnId, error: String(cause) }, "Live recognition failed")
+        return { status: 502, body: { error: "Live recognition failed", code: "ASR_FAILED", ...(closing ? { closed: true } : {}) } }
+      }
+    }
+    return { status: 200, body: { ok: true, sessionId, mode: "batch", framesReceived: session.framesReceived, ...(final === undefined ? {} : { final }), ...(closing ? { closed: true } : {}) } }
+  }
+
+  return [
+    {
+      method: "GET", path: liveAsrStatusPath,
+      handler: () => {
+        sweep()
+        return { status: 200, body: { ready: localTranscriber(runtime) !== undefined, streaming: false, sessions: sessions.size, maxSessions: maxLiveSessions } }
+      },
+    },
+    {
+      method: "POST", path: liveAsrPath, maxBodyBytes: maxRequestBytes,
+      handler: ({ body, signal }) => {
+        sweep()
+        if (localTranscriber(runtime) === undefined) return refused(503, "Live recognition needs a local transcription model", "LIVE_ASR_UNAVAILABLE")
+        const input = Option.getOrUndefined(decodeBody(body))
+        if (input === undefined) return refused(400, "The body must be {sessionId, roomId?, frames?, vad?, close?}")
+        const sessionId = input.sessionId.trim()
+        if (!sessionId || sessionId.length > maxSessionIdCharacters) return refused(400, "sessionId must be a non-empty string of at most 128 characters")
+        const pcm: Float32Array[] = []
+        for (const frame of input.frames ?? []) {
+          const samples = pcmOf(frame)
+          if (typeof samples === "string") return refused(400, samples)
+          pcm.push(samples)
+        }
+        const edges: Edge[] = (input.vad ?? []).map(({ type }) => type)
+        const closing = input.close === true
+        let session = sessions.get(sessionId)
+        if (session === undefined) {
+          if (closing) return { status: 200, body: { ok: true, sessionId, closed: true } }
+          if (!admitsSession(sessions.size, false)) return refused(429, `At most ${maxLiveSessions} live recognition sessions`, "LIVE_ASR_SESSIONS_FULL")
+          session = { segment: undefined, framesReceived: 0, schedule: { phase: "idle", since: now() } }
+          sessions.set(sessionId, session)
+        }
+        const current = session
+        const scheduled = current.schedule
+        if (scheduled.phase === "closing") {
+          return closing ? scheduled.answer : refused(409, "Live recognition is closing", "LIVE_ASR_SESSION_CLOSING")
+        }
+        const previous = scheduled.phase === "idle" ? Promise.resolve() : scheduled.answer.catch(() => undefined)
+        const answer = previous.then(() => apply(sessionId, current, edges, pcm, closing, signal)).finally(() => {
+          const latest = current.schedule
+          if (latest.phase === "idle" || latest.answer !== answer || sessions.get(sessionId) !== current) return
+          if (closing) sessions.delete(sessionId)
+          else current.schedule = { phase: "idle", since: now() }
+        })
+        current.schedule = { phase: closing ? "closing" : "busy", answer }
+        return answer
+      },
+    },
+  ]
+}

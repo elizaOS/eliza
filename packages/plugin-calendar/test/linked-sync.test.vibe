@@ -5,7 +5,7 @@ import {
   googleCalendarSyncPort, linkedCalendarControl,
   readGoogleCalendarSyncDestination, type LinkedControlRefused, type LinkedControlUncertain, type CalendarLinkStorage, type CalendarSyncBinding, type CalendarSyncClient, type CalendarSyncRequest,
   type LinkedCalendarLocalPort, type LinkedCalendarSemanticEvent,
-} from "../src/linked-sync/index.vibe"
+} from "@elizaos/plugin-calendar-client"
 
 const refusalCode = (failure: LinkedControlRefused | LinkedControlUncertain) =>
   failure._tag === "LinkedControlRefused" ? failure.code : failure._tag

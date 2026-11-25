@@ -1,10 +1,5 @@
 // spec/calendar/linkedSync.md, "Story: Link my resident calendar to a verified provider destination"; spec/calendar/linkedSync.md, "A link writes only to a verified owner destination, and a saved destination never switches"; spec/calendar/linkedSync.md, "Report sync only after a current control and mapping readback"; spec/calendar/linkedSync.md, "Story: Pause, resume or recover without replacing a newer sync decision"; spec/calendar/linkedSync.md, "A control transition checks revision and writes its receipt atomically"; spec/calendar/linkedSync.md, "Story: Keep a link local or move it to the selected destination only while sync is drained"; spec/calendar/linkedSync.md, "A mapping edit commits only while paused with no admitted dispatch, against the exact revision"
-import {
-  chooseLinkDestination, destinationWritable, linkedCalendarControl, type CalendarLinkStorage, type LinkedCalendarCandidate, type LinkedCalendarControl,
-  type LinkedCalendarDestination, type LinkedCalendarDestinationCheck, type LinkedCalendarMapping, type LinkedCalendarRecoveryOutcome,
-} from "../linked-sync/index.vibe"
-import { digestText } from "../linked-sync/linked.vibe"
-import type { CalendarSummary } from "../model.vibe"
+import { chooseLinkDestination, destinationWritable, linkedCalendarControl, type CalendarLinkStorage, type LinkedCalendarCandidate, type LinkedCalendarControl, type LinkedCalendarDestination, type LinkedCalendarDestinationCheck, type LinkedCalendarMapping, type LinkedCalendarRecoveryOutcome, digestText, type CalendarSummary } from "@elizaos/plugin-calendar-client"
 import type { CalendarHost } from "./host.vibe"
 import { eventVersion } from "./providers.vibe"
 import type { CalendarRoute, CalendarRouteInput, CalendarRouteReply } from "./routes.vibe"

@@ -320,9 +320,11 @@ pure def lawResolvedLocaleIsNonempty(input: LocaleResolution): bool = resolveLoc
 
 ## Story: Match catalog keywords without changing their authored identity or order
 
-As a caller I match normalized text against catalog vocabulary, retain each
+As a caller I match normalized text against vocabulary I supply, retain each
 authored spelling in match results, and select the longest original spelling
-when I request one match.
+when I request one match. Core ships no vocabulary of its own: deciding what
+a person asked for is the model's, so no core catalog of request keywords
+exists to look up.
 
 The host applies `normalize("NFKC").toLowerCase().replace(/\s+/g, " ").trim()`
 and supplies the resulting UTF-16 code units, including lone surrogates.
@@ -332,10 +334,7 @@ splitting, trimming, and UTF-16 conversion require conformance against the
 [pinned helper](https://github.com/elizaOS/eliza/blob/72fed7e4069ecd35d61d886ab6eec5c02c137517/packages/core/src/i18n/keyword-matching.ts#L34-L261).
 The rules below cover built-in prepared entries. Caller-authored public
 `PreparedKeywordTerm.matches` callbacks retain their own invocation, result,
-and failure contract. Catalog lookup and locale selection remain host
-boundaries: the catalog helper alone selects base terms, the public wrapper
-normalizes an absent or unknown locale to English, and all-locales lookup
-uses base followed by locale-value insertion order before document deduplication.
+and failure contract.
 
 ### Literal keyword spans use both ASCII boundaries only for eligible terms
 

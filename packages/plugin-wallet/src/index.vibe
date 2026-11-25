@@ -1,5 +1,5 @@
 // spec/wallet/custody.md, "Story: Hold my own keys on my device"; spec/wallet/requests.md, "Story: Let the agent ask, and decide myself"; spec/wallet/index.md, "Story: Preview an exact wallet operation before executing it"; spec/wallet/index.md, "Story: Recover the real outcome of an on-chain operation"; spec/wallet/index.md, "Story: Inspect wallet holdings and venue quotes before making changes"
-import { ModuleRefused, type AgentModule, type AgentPlugin, type ModuleFactory } from "@elizaos/agent"
+import { ModuleRefused, type AgentModule, type AgentPlugin, type ModuleFactory } from "@elizaos/agent-host"
 import type { IAgentRuntime } from "@elizaos/core"
 import { walletAction, walletProvider } from "./agent.vibe"
 import { storageKeyBytes } from "./keystore.vibe"
@@ -10,11 +10,7 @@ export const walletModuleName = "@elizaos/plugin-wallet"
 
 export { walletActionName } from "./agent.vibe"
 export { walletRoutes, type WalletRoute } from "./routes.vibe"
-export {
-  WalletRefused, WalletUnreachable, openWallet,
-  type CustodyState, type Wallet, type WalletAccount, type WalletContext, type WalletDecided, type WalletDecision, type WalletHolding, type WalletHoldings,
-  type WalletHost, type WalletOperation, type WalletQuote, type WalletRequestRow, type WalletReview, type WalletStatus, type WalletTransferInput,
-} from "./wallet.vibe"
+export { WalletRefused, WalletUnreachable, openWallet, type Wallet, type WalletContext, type WalletHost, type WalletTransferInput } from "./wallet.vibe"
 
 export function walletPlugin(wallet: Wallet, ownerId: string): AgentPlugin {
   return {

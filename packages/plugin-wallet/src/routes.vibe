@@ -1,15 +1,12 @@
 // spec/wallet/custody.md, "Only the owner makes the wallet, once, with an account for each family"; spec/wallet/requests.md, "Only the owner's decision takes a request off the desk"; spec/wallet/index.md, "A review binds the complete immutable wallet operation"
-import type { AgentPlugin } from "@elizaos/agent"
+import type { AgentPlugin } from "@elizaos/agent-host"
+import { WalletAsk, WalletDecision, WalletSwitch, walletPaths } from "@elizaos/plugin-wallet-client"
 import { familyOf } from "./networks.vibe"
 import { WalletRefused, WalletUnreachable, type Wallet } from "./wallet.vibe"
 
-schema SwitchBody { readonly on: boolean }
-schema AskBody { readonly family: "evm" | "solana"; readonly token?: string; readonly recipient: string; readonly amount: string }
-schema DecideBody { readonly decision: "approve" | "decline"; readonly intentId: string; readonly commitment: string }
-
-const switchBody = Schema.decodeUnknownOption(SwitchBody, { onExcessProperty: "error" })
-const askBody = Schema.decodeUnknownOption(AskBody, { onExcessProperty: "error" })
-const decideBody = Schema.decodeUnknownOption(DecideBody, { onExcessProperty: "error" })
+const switchBody = Schema.decodeUnknownOption(WalletSwitch, { onExcessProperty: "error" })
+const askBody = Schema.decodeUnknownOption(WalletAsk, { onExcessProperty: "error" })
+const decideBody = Schema.decodeUnknownOption(WalletDecision, { onExcessProperty: "error" })
 
 export type WalletRoute = NonNullable<AgentPlugin["routes"]>[number]
 type Answer = { readonly status: number; readonly body: object }
@@ -36,20 +33,20 @@ function requestId(parameters: ReadonlyMap<string, string>): number | undefined 
 
 export function walletRoutes(wallet: Wallet): WalletRoute[] {
   return [
-    { method: "GET", path: "/api/wallet", handler: ({ signal }) => replied(wallet.status(), signal) },
-    { method: "POST", path: "/api/wallet", maxBodyBytes: 64, handler: ({ signal }) => replied(wallet.create(), signal) },
+    { method: "GET", path: walletPaths.wallet, handler: ({ signal }) => replied(wallet.status(), signal) },
+    { method: "POST", path: walletPaths.wallet, maxBodyBytes: 64, handler: ({ signal }) => replied(wallet.create(), signal) },
     {
-      method: "POST", path: "/api/wallet/switch", maxBodyBytes: 64,
+      method: "POST", path: walletPaths.switch, maxBodyBytes: 64,
       handler: ({ body, signal }) => {
         const sent = Option.getOrUndefined(switchBody(body ?? {}))
         return sent === undefined ? malformed : replied(wallet.switchTo(sent.on), signal)
       },
     },
-    { method: "GET", path: "/api/wallet/holdings", handler: ({ signal }) => replied(wallet.holdings(), signal) },
-    { method: "GET", path: "/api/wallet/activity", handler: ({ signal }) => replied(Effect.map(wallet.activity(), (operations) => ({ operations })), signal) },
-    { method: "GET", path: "/api/wallet/requests", handler: ({ signal }) => replied(Effect.map(wallet.requests(), (requests) => ({ requests })), signal) },
+    { method: "GET", path: walletPaths.holdings, handler: ({ signal }) => replied(wallet.holdings(), signal) },
+    { method: "GET", path: walletPaths.activity, handler: ({ signal }) => replied(Effect.map(wallet.activity(), (operations) => ({ operations })), signal) },
+    { method: "GET", path: walletPaths.requests, handler: ({ signal }) => replied(Effect.map(wallet.requests(), (requests) => ({ requests })), signal) },
     {
-      method: "POST", path: "/api/wallet/requests", maxBodyBytes: 1024,
+      method: "POST", path: walletPaths.requests, maxBodyBytes: 1024,
       handler: ({ body, signal }) => {
         const sent = Option.getOrUndefined(askBody(body ?? {}))
         const family = familyOf(sent?.family ?? "")

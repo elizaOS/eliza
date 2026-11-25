@@ -1,0 +1,201 @@
+// spec/calendar/seriesScope.md, "A pending deletion guards the same row until transaction settlement"; spec/calendar/seriesScope.md, "Publish a deletion only with the committed document"; spec/calendar/seriesScope.md, "Story: Delete the exact Calendar event or scope I selected"
+import { afterTerminalTrim, allowsPendingWrite, apply, blocksSiblingOrParent, initial, mayStageDeletion, stageSeriesAllowed, unresolvedDeletion,
+  type DeadlineView, type DeleteTx, type RowMatch } from "../../gen/calendar__seriesScope.effect.vibe"
+import { clockUsable, deletionDeadline, deletionWindow, type DeletionClock, type DeletionDeadline } from "@elizaos/os-bridges"
+import { findRow, removeRow, storedRow, type CalendarRow, type ReviewedRow, type SeriesReview } from "./document.vibe"
+
+export { clockUsable, deleteUndoMs, type DeletionClock, type DeletionDeadline } from "@elizaos/os-bridges"
+
+export interface OwnerFacts {
+  readonly origin: string
+  readonly ownerId: string
+  readonly agentId: string
+  readonly installationId: string
+  readonly enrollmentId: string
+  readonly sessionId: string
+}
+
+export type DeletionOwner =
+  | { readonly kind: "manual"; readonly sourceRevision: string }
+  | { readonly kind: "agent"; readonly facts: OwnerFacts; readonly proposalId: string; readonly operationId: string; readonly operationDigest: string }
+
+export interface CalendarDeletion {
+  readonly id: string
+  readonly owner: DeletionOwner
+  readonly target: { readonly sourceRevision: string; readonly row: CalendarRow; readonly scope: "event" | "series" }
+  readonly deadline: DeletionDeadline
+  readonly tx: DeleteTx
+  readonly acknowledged?: boolean
+}
+
+export interface CalendarDocument {
+  readonly sourceRevision: string
+  readonly events: readonly CalendarRow[]
+  readonly deletions: Readonly<Record<string, CalendarDeletion>>
+  readonly deleteClaims: Readonly<Record<string, string>>
+}
+
+export type DeletionRefusal = "pending" | "duplicate" | "history-full" | "clock-unavailable" | "changed" | "owner-changed" | "window-closed" | "unknown-outcome" | "not-found"
+
+export error DeletionRefused { reason: DeletionRefusal }
+export error PendingDeletionBlocks { id: string }
+
+export interface JournalChange {
+  readonly document: CalendarDocument
+  readonly entry: CalendarDeletion
+}
+
+export function windowView(deadline: DeletionDeadline, later: DeletionClock): DeadlineView {
+  return deletionWindow(deadline, later)
+}
+
+function sameEnrollment(held: OwnerFacts, now: OwnerFacts): boolean {
+  return held.origin === now.origin && held.ownerId === now.ownerId && held.agentId === now.agentId
+    && held.installationId === now.installationId && held.enrollmentId === now.enrollmentId
+}
+
+export function ownerVisible(owner: DeletionOwner, now: OwnerFacts | undefined): boolean {
+  return owner.kind === "manual" || (now !== undefined && sameEnrollment(owner.facts, now))
+}
+
+export function ownerCurrent(owner: DeletionOwner, now: OwnerFacts | undefined): boolean {
+  return owner.kind === "manual" || (now !== undefined && sameEnrollment(owner.facts, now) && owner.facts.sessionId === now.sessionId)
+}
+
+function entryOf(document: CalendarDocument, id: string): CalendarDeletion | undefined {
+  return Object.hasOwn(document.deletions, id) ? document.deletions[id] : undefined
+}
+
+function withEntry(document: CalendarDocument, entry: CalendarDeletion): CalendarDocument {
+  return { ...document, deletions: { ...document.deletions, [entry.id]: entry } }
+}
+
+function own(row: CalendarRow): string {
+  const { revision: _revision, excluded: _excluded, ...rest } = row
+  return JSON.stringify(rest)
+}
+
+export function rowMatch(rows: readonly CalendarRow[], current: CalendarRow | undefined, staged: CalendarRow | undefined): RowMatch {
+  return {
+    existsNow: current !== undefined,
+    existed: staged !== undefined,
+    computedNow: current !== undefined && current.seriesId !== undefined && !storedRow(rows, current),
+    exactBytes: JSON.stringify(current) === JSON.stringify(staged),
+    ownBytes: current !== undefined && staged !== undefined && own(current) === own(staged),
+  }
+}
+
+function interned(): (id: string | undefined) => number {
+  const ids = new Map<string, number>()
+  return (id) => {
+    if (id === undefined) return 0
+    const known = ids.get(id)
+    if (known !== undefined) return known
+    ids.set(id, ids.size + 1)
+    return ids.size
+  }
+}
+
+export function deletionPending(document: CalendarDocument, row: CalendarRow): boolean {
+  const key = interned()
+  return Object.values(document.deletions).some((entry) => blocksSiblingOrParent(entry.tx.phase, key(entry.target.row.id), key(entry.target.row.seriesId),
+    entry.target.scope === "series", key(row.id), key(row.seriesId)))
+}
+
+const definite = (entry: CalendarDeletion) => entry.tx.phase === "DeleteDeleted" || entry.tx.phase === "DeleteUndone" || entry.tx.phase === "DeleteConflict"
+
+export function trimJournal(document: CalendarDocument): CalendarDocument {
+  const terminal = Object.values(document.deletions).filter(definite).sort((left, right) => left.deadline.createdElapsed - right.deadline.createdElapsed)
+  const retired = new Set(terminal.slice(0, terminal.length - afterTerminalTrim(terminal.length)).map((entry) => entry.id))
+  const deletions = Object.fromEntries(Object.entries(document.deletions).filter(([id]) => !retired.has(id)))
+  const deleteClaims = Object.fromEntries(Object.entries(document.deleteClaims).filter(([, id]) => Object.hasOwn(deletions, id)))
+  return { ...document, deletions, deleteClaims }
+}
+
+effect function stage(document: CalendarDocument, row: CalendarRow, scope: "event" | "series", owner: DeletionOwner, id: string, clock: DeletionClock): JournalChange!DeletionRefused {
+  if (owner.kind === "agent" && Object.hasOwn(document.deleteClaims, owner.operationId)) throw new DeletionRefused({ reason: "unknown-outcome" })
+  const trimmed = trimJournal(document)
+  const duplicate = Object.hasOwn(trimmed.deletions, id)
+  const pending = deletionPending(trimmed, row)
+  if (!mayStageDeletion(duplicate, pending, Object.keys(trimmed.deletions).length)) {
+    throw new DeletionRefused({ reason: duplicate ? "duplicate" : pending ? "pending" : "history-full" })
+  }
+  if (!clockUsable(clock)) throw new DeletionRefused({ reason: "clock-unavailable" })
+  const tx = try mapError(apply(initial, { type: "queueDelete" }), () => new DeletionRefused({ reason: "changed" }))
+  const entry: CalendarDeletion = { id, owner: structuredClone(owner), target: { sourceRevision: trimmed.sourceRevision, row: structuredClone(row), scope }, deadline: deletionDeadline(clock), tx }
+  const staged = withEntry(trimmed, entry)
+  const claimed = owner.kind === "agent" ? { ...staged, deleteClaims: { ...staged.deleteClaims, [owner.operationId]: id } } : staged
+  return { document: claimed, entry: structuredClone(entry) }
+}
+
+export effect function stageDeletion(document: CalendarDocument, reviewed: ReviewedRow & { readonly calendarId: string }, owner: DeletionOwner, id: string, clock: DeletionClock): JournalChange!DeletionRefused {
+  const row = findRow(document.events, reviewed.id)
+  if (row === undefined || row.revision !== reviewed.revision || row.calendarId !== reviewed.calendarId) throw new DeletionRefused({ reason: "changed" })
+  return try stage(document, row, "event", owner, id, clock)
+}
+
+export effect function stageSeriesDeletion(document: CalendarDocument, review: SeriesReview, owner: DeletionOwner, id: string, clock: DeletionClock): JournalChange!DeletionRefused {
+  const occurrence = findRow(document.events, review.occurrenceId)
+  const parent = document.events.find((row) => row.id === review.parentId && row.seriesId === undefined)
+  if (parent === undefined || !stageSeriesAllowed(review.occurrenceExact, review.parentFound, review.confirmed,
+    occurrence?.revision === review.occurrenceRevision, parent.revision === review.parentRevision)) throw new DeletionRefused({ reason: "changed" })
+  return try stage(document, parent, "series", owner, id, clock)
+}
+
+export effect function settleDeletions(document: CalendarDocument, clock: DeletionClock, now: OwnerFacts | undefined, mint: () => string): (CalendarDocument | undefined)!! {
+  const expired = (entry: CalendarDeletion) => entry.tx.phase === "DeleteQueued" && windowView(entry.deadline, clock) === "WindowExpired"
+  if (!Object.values(document.deletions).some(expired)) return undefined
+  let settled = document
+  for (const entry of Object.values(document.deletions)) {
+    if (!expired(entry)) continue
+    const current = findRow(settled.events, entry.target.row.id)
+    const tx = try orDie(apply(entry.tx, {
+      type: "commitDelete", windowView: "WindowExpired", ownerCurrent: ownerCurrent(entry.owner, now),
+      sourceCurrent: settled.sourceRevision === entry.target.sourceRevision, rowMatch: rowMatch(settled.events, current, entry.target.row), casSaved: true,
+    }))
+    const events = tx.phase === "DeleteDeleted" && current !== undefined ? try orDie(removeRow(settled.events, current, mint())) : settled.events
+    settled = withEntry({ ...settled, events }, { ...entry, tx })
+  }
+  return settled
+}
+
+export effect function undoDeletion(document: CalendarDocument, id: string, clock: DeletionClock, now: OwnerFacts | undefined): JournalChange!DeletionRefused {
+  const entry = entryOf(document, id)
+  if (entry === undefined) throw new DeletionRefused({ reason: "not-found" })
+  const visible = ownerVisible(entry.owner, now)
+  if (!visible) throw new DeletionRefused({ reason: "owner-changed" })
+  if (entry.tx.phase === "DeleteUndone") return { document, entry: structuredClone(entry) }
+  const tx = try mapError(apply(entry.tx, { type: "cancelDelete", windowView: windowView(entry.deadline, clock), ownerVisible: visible }),
+    () => new DeletionRefused({ reason: "window-closed" }))
+  const undone = { ...entry, tx }
+  return { document: withEntry(document, undone), entry: structuredClone(undone) }
+}
+
+export effect function guardPendingChanges(before: CalendarDocument, after: CalendarDocument): void!PendingDeletionBlocks {
+  for (const entry of Object.values(before.deletions)) {
+    if (!unresolvedDeletion(entry.tx.phase)) continue
+    const phaseUnchanged = entryOf(after, entry.id)?.tx.phase === entry.tx.phase
+    const prior = findRow(before.events, entry.target.row.id)
+    const current = findRow(after.events, entry.target.row.id)
+    if (!allowsPendingWrite(entry.tx.phase, phaseUnchanged, after.sourceRevision === before.sourceRevision, rowMatch(after.events, current, prior))) {
+      throw new PendingDeletionBlocks({ id: entry.target.row.id })
+    }
+  }
+}
+
+export interface PendingDeletionView {
+  readonly entry: CalendarDeletion
+  readonly window: DeadlineView | undefined
+}
+
+export function pendingDeletions(document: CalendarDocument, clock: DeletionClock, now: OwnerFacts | undefined): PendingDeletionView[] {
+  return Object.values(document.deletions)
+    .filter((entry) => entry.acknowledged !== true && ownerVisible(entry.owner, now)
+      && ["DeleteQueued", "DeletePaused", "DeleteUnknown", "DeleteDispatching"].includes(entry.tx.phase))
+    .map((entry) => ({ entry: structuredClone(entry), window: entry.tx.phase === "DeleteQueued" ? windowView(entry.deadline, clock) : undefined }))
+}
+
+export function deletionReceipt(document: CalendarDocument, id: string): CalendarDeletion | undefined {
+  const entry = entryOf(document, id)
+  return entry === undefined ? undefined : structuredClone(entry)
+}

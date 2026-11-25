@@ -1,0 +1,197 @@
+// spec/files/library.md, "Story: Keep my browser files and change each only as I last saw it"; spec/files/library.md, "Story: Let a workflow save and read my browser files without repeating or half-reading anything"; spec/files/localOcr.md, "Completed OCR uses validated text and positions and stays scoped to its review"; spec/files/library.md, "A selection reads its file only while the file still has the revision it selected"; spec/files/reviewedOperations.md, "Trash owns a journal entry before moving the row"; spec/files/library.md, "A workflow attachment and its receipt commit together, and a replay returns the receipt without saving again"; spec/files/library.md, "A workflow reads its Files source whole and unchanged, or not at all"; spec/files/library.md, "An imported folder arrives whole under a name not yet used, or not at all"; spec/files/localOcr.md, "One exact worker reply advances the next local OCR action"; spec/files/localOcr.md, "Image admission is bounded before recognition and every decoded bitmap closes"
+module browser {
+  export function engineUrl(failing: boolean): string {
+    const script = failing ? "onmessage = () => { throw new Error('engine down') }" : `
+      onmessage = ({ data }) => {
+        const reply = (status, body) => postMessage({ workerId: data.workerId, jobId: data.jobId, action: data.action, status, data: body })
+        if (data.action !== "recognize") return reply("resolve", {})
+        reply("progress", { status: "recognizing text", progress: 1.5 })
+        const line = { text: " Total 12 ", bbox: { x0: 0, y0: 0, x1: data.payload.output.blocks ? 20 : 0, y1: 10 } }
+        reply("resolve", { text: " Total 12\\n", confidence: 91, blocks: data.payload.output.blocks ? [{ paragraphs: [{ lines: [line] }] }] : null })
+      }`
+    return URL.createObjectURL(new Blob([script], { type: "text/javascript" }))
+  }
+
+  export function unsupportedImage(): Blob {
+    return new Blob(["GIF89a"], { type: "image/gif" })
+  }
+}
+import { assert, it } from "@effect/vitest"
+import { FilesVolume } from "../src/storage/volume.vibe"
+import { deletePlan, indexedLibrary, LibraryStore, type LibraryRow } from "../src/storage/library.vibe"
+import { importLibraryFile, libraryVolume, librarySelections } from "../src/storage/library-volume.vibe"
+import { importLibraryFolder, saveWorkflowAttachment, workflowFiles } from "../src/storage/library-workflow.vibe"
+import { recognizeLocalText, type OcrProgress } from "../src/documents/local-ocr.vibe"
+import { encoded, rasterOf } from "../src/documents/images.vibe"
+import { engineUrl, unsupportedImage } from browser
+
+const bytes = (text: string) => new TextEncoder().encode(text) as Uint8Array<ArrayBuffer>
+const reason = <A, E extends { readonly reason: string }>(plan: A!E) => map(Effect.flip(plan), (error) => error.reason)
+const status = <A, E extends { readonly status: string }, R>(plan: A!E!R) => map(Effect.flip(plan), (error) => error.status)
+
+it.effect('Keep my browser files and change each only as I last saw it (spec/files/library.md, "Story: Keep my browser files and change each only as I last saw it")', effect () => {
+  const tab = indexedLibrary(`files-library-${Date.now()}`)
+  try Effect.provide(effect {
+    const volume = try FilesVolume
+    assert.equal(try volume.createFolder("", "Download"), "Download")
+    assert.equal(try importLibraryFile("Download", { name: "lease.pdf", mimeType: "application/pdf", bytes: bytes("%PDF-1.7") }), "Download/lease.pdf")
+    assert.equal(try importLibraryFile("Download", { name: "memo.txt", mimeType: "text/plain", bytes: bytes("memo") }), "Download/memo.txt")
+    assert.equal(try status(importLibraryFile("Download", { name: "memo.txt", mimeType: "text/plain", bytes: bytes("again") })), "exists")
+    const listed = try volume.list("Download")
+    assert.deepEqual({ names: listed.entries.map((entry) => entry.name).sort(), complete: listed.complete, empty: listed.empty },
+      { names: ["lease.pdf", "memo.txt"], complete: true, empty: false })
+
+    const selections = try librarySelections()
+    const memo = try selections.select("Download/memo.txt")
+    assert.deepEqual(try selections.readText(memo.selectionId), { kind: "read", text: "memo", mimeType: "text/plain", bytes: 4 })
+    assert.deepEqual(try selections.attachment(memo.selectionId), { name: "memo.txt", mimeType: "text/plain", dataBase64: "bWVtbw==" })
+    const selectedLease = try selections.select("Download/lease.pdf")
+    assert.equal(try status(selections.rename(selectedLease.selectionId, "MEMO.txt")), "exists")
+    assert.deepEqual(try selections.rename(selectedLease.selectionId, "contract.pdf"), { selectionId: selectedLease.selectionId, name: "contract.pdf", mimeType: "application/pdf", size: 8 })
+    assert.equal((try selections.bytes(selectedLease.selectionId)).name, "contract.pdf")
+    assert.equal(try volume.rename("Download/contract.pdf", "lease.pdf"), "Download/lease.pdf")
+    assert.equal(try status(selections.rename(selectedLease.selectionId, "again.pdf")), "changed")
+
+    const reviewed = try volume.reviewedIdentities(["Download/lease.pdf", "Download/memo.txt"])
+    assert.equal(try volume.rename("Download/memo.txt", "notes.txt"), "Download/notes.txt")
+    assert.equal(try status(selections.attachment(memo.selectionId)), "changed")
+    const trashed = try volume.trash({ paths: ["Download/lease.pdf", "Download/notes.txt"], reviewed })
+    assert.equal(trashed[0].status, "trashed")
+    assert.deepEqual(trashed[1], { path: "Download/notes.txt", status: "changed" })
+    assert.deepEqual(try volume.transfer({ paths: ["Download/notes.txt"], dest: "Download", copy: false }), [{ path: "Download/notes.txt", status: "unchanged", to: "Download/notes.txt" }])
+    assert.deepEqual(try volume.transfer({ paths: ["Download"], dest: "Download", copy: true }), [{ path: "Download", status: "invalid" }])
+
+    const inTrash = try volume.trashList()
+    assert.deepEqual(inTrash.flatMap((item) => item.unreadable === true ? [] : [{ name: item.name, origin: item.origin }]), [{ name: "lease.pdf", origin: "Download/lease.pdf" }])
+    assert.deepEqual([try status(volume.query({ folder: ".Trash-files" })), try status(volume.rename(".Trash-files", "Journal"))], ["invalid", "invalid"])
+    assert.deepEqual((try volume.list("")).entries.map((entry) => entry.name), ["Download"])
+    try importLibraryFile("Download", { name: "lease.pdf", mimeType: "application/pdf", bytes: bytes("newer") })
+    assert.deepEqual(try volume.restore([inTrash[0].id]), [{ path: inTrash[0].id, status: "restored", to: "Download/lease (1).pdf" }])
+    assert.deepEqual(try volume.trashList(), [])
+    assert.equal(try status(volume.emptyTrash(["x"], false)), "confirmation-required")
+
+    const store = try LibraryStore
+    const expiring = (try volume.trash({ paths: ["Download/lease (1).pdf"] }))[0]
+    assert.equal(expiring.status, "trashed")
+    try TestClock.adjust("31 days")
+    assert.deepEqual(try volume.trashList(), [])
+    const rows = try store.rows()
+    assert.equal(rows.some((row) => row.name === expiring.to || row.name === `${expiring.to}.json`), false)
+    const notes = rows.find((row) => row.name === "notes.txt")
+    const lease = rows.find((row) => row.name === "lease.pdf")
+    assert.equal(try map(Effect.flip(store.commit(deletePlan([{ id: notes?.id ?? "", expectedRevision: notes?.revision ?? "" }, { id: lease?.id ?? "", expectedRevision: "stale" }], true))), (failure) => failure._tag), "LibraryRefused")
+    assert.equal((try store.rows()).length, rows.length)
+  }, libraryVolume()).pipe(Effect.provide(tab))
+})
+
+it.effect('Torn browser trash record (spec/files/reviewedOperations.md, "A trash record that cannot be read is listed as unreadable, refuses only its own restore, and can be emptied")', effect () => {
+  const tab = indexedLibrary(`files-trash-record-${Date.now()}`)
+  try Effect.provide(effect {
+    const volume = try FilesVolume
+    const store = try LibraryStore
+    const empty = try volume.trashList()
+    assert.equal(try volume.createFolder("", "Download"), "Download")
+    try importLibraryFile("Download", { name: "lease.pdf", mimeType: "application/pdf", bytes: bytes("%PDF-1.7") })
+    try importLibraryFile("Download", { name: "memo.txt", mimeType: "text/plain", bytes: bytes("memo") })
+    try importLibraryFile("Download", { name: "note.txt", mimeType: "text/plain", bytes: bytes("note") })
+    try importLibraryFile("Download", { name: "old.txt", mimeType: "text/plain", bytes: bytes("old") })
+    const [lease, memo, note, old] = try volume.trash({ paths: ["Download/lease.pdf", "Download/memo.txt", "Download/note.txt", "Download/old.txt"] })
+    const torn = lease.to ?? ""
+    const gone = note.to ?? ""
+    const stale = old.to ?? ""
+    const tornBytes = bytes("{not json")
+    const text = (rows: readonly LibraryRow[], name: string) => {
+      const row = rows.find((found) => found.name === name)
+      return row?.bytes === undefined ? undefined : new TextDecoder().decode(row.bytes)
+    }
+    try store.commit((rows) => ({
+      put: rows.filter((row) => row.name === `${torn}.json` || row.name === `${gone}.json`).map((row) => ({ ...row, bytes: tornBytes, size: tornBytes.byteLength })),
+      remove: rows.filter((row) => row.name === gone).map((row) => row.id),
+    }))
+    const listed = try volume.trashList()
+    const restored = try volume.restore([torn, gone, memo.to ?? "", "not-a-trash-id"])
+    const afterRestore = try store.rows()
+    const survived = [text(afterRestore, `${torn}.json`), text(afterRestore, torn), text(afterRestore, `${gone}.json`)]
+    const stillListed = try volume.trashList()
+    try store.commit((rows) => ({ put: [], remove: rows.filter((row) => row.name === stale).map((row) => row.id) }))
+    const erased = try volume.emptyTrash([torn, gone, stale], true)
+    const staleRecordKept = (try store.rows()).some((row) => row.name === `${stale}.json`)
+    const byId = <T extends { readonly id: string }>(items: readonly T[]): T[] => [...items].sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
+    assert.deepEqual({
+      empty,
+      trashed: [lease.status, memo.status, note.status, old.status],
+      readable: listed.flatMap((item) => item.unreadable === true ? [] : [{ name: item.name, origin: item.origin }]).sort((a, b) => a.name < b.name ? -1 : 1),
+      unreadableLast: listed.map((item) => item.unreadable === true),
+      unreadable: byId(listed.filter((item) => item.unreadable === true)),
+      restored,
+      survived,
+      stillListed: byId(stillListed.map(({ id, unreadable }) => ({ id, unreadable }))),
+      erased,
+      staleRecordKept,
+      remaining: try volume.trashList(),
+      leftBehind: (try store.rows()).some((row) => [torn, `${torn}.json`, `${gone}.json`].includes(row.name)),
+    }, {
+      empty: [],
+      trashed: ["trashed", "trashed", "trashed", "trashed"],
+      readable: [{ name: "memo.txt", origin: "Download/memo.txt" }, { name: "old.txt", origin: "Download/old.txt" }],
+      unreadableLast: [false, false, true, true],
+      unreadable: byId([{ id: torn, name: torn, unreadable: true }, { id: gone, name: gone, unreadable: true }]),
+      restored: [
+        { path: torn, status: "failed" },
+        { path: gone, status: "failed" },
+        { path: memo.to ?? "", status: "restored", to: "Download/memo.txt" },
+        { path: "not-a-trash-id", status: "missing" },
+      ],
+      survived: ["{not json", "%PDF-1.7", "{not json"],
+      stillListed: byId([{ id: torn, unreadable: true }, { id: gone, unreadable: true }, { id: stale, unreadable: undefined }]),
+      erased: 2,
+      staleRecordKept: true,
+      remaining: [],
+      leftBehind: false,
+    })
+  }, libraryVolume()).pipe(Effect.provide(tab))
+})
+
+it.effect('Let a workflow save and read my browser files without repeating or half-reading anything (spec/files/library.md, "Story: Let a workflow save and read my browser files without repeating or half-reading anything")', effect () => {
+  const tab = indexedLibrary(`files-workflow-${Date.now()}`)
+  try Effect.provide(effect {
+    const volume = try FilesVolume
+    const store = try LibraryStore
+    const step = { name: "receipt.txt", mimeType: "text/plain", dataBase64: "cGFpZA==", operationId: "op-1" }
+    const saved = try saveWorkflowAttachment(step)
+    assert.equal(saved.name, "receipt.txt")
+    assert.deepEqual(try saveWorkflowAttachment(step), saved)
+    assert.equal(try status(saveWorkflowAttachment({ ...step, dataBase64: "dW5wYWlk" })), "changed")
+    const kept = (try store.rows()).find((row) => row.id === saved.id)
+    try store.commit(deletePlan([{ id: kept?.id ?? "", expectedRevision: kept?.revision ?? "" }], true))
+    assert.deepEqual(try saveWorkflowAttachment(step), saved)
+    assert.deepEqual((try volume.list("Receipts")).entries, [])
+
+    const trip = [{ path: "plan.txt", mimeType: "text/plain", bytes: bytes("day one") }, { path: "photos/beach.jpg", mimeType: "image/jpeg", bytes: bytes("jpeg") }]
+    assert.equal(try importLibraryFolder("Trip", trip), "Trip")
+    assert.deepEqual((try volume.list("Trip")).entries.map((entry) => entry.name).sort(), ["photos", "plan.txt"])
+    assert.equal(try status(importLibraryFolder("Trip", trip)), "exists")
+    assert.equal(try status(importLibraryFolder("Twice", [trip[0], trip[0]])), "invalid")
+    assert.equal(try status(importLibraryFolder("Bad", [{ ...trip[0], path: "../plan.txt" }])), "invalid")
+    assert.equal((try volume.list("")).entries.some((entry) => entry.name === "Twice" || entry.name === "Bad"), false)
+
+    const source = try workflowFiles(true)
+    assert.deepEqual(source.files.map((file) => [file.name, file.contentStatus, file.text]).sort(), [["beach.jpg", "binary", undefined], ["plan.txt", "text", "day one"]])
+    try importLibraryFile("Trip", { name: "long.txt", mimeType: "text/plain", bytes: bytes("x".repeat(16_001)) })
+    assert.equal(try status(workflowFiles(false)), "invalid")
+  }, libraryVolume()).pipe(Effect.provide(tab))
+})
+
+it.effect('Recognize a scan on the device and keep it to its review (spec/files/localOcr.md, "Completed OCR uses validated text and positions and stays scoped to its review")', effect () => {
+  const image = try orDie(encoded(try orDie(rasterOf(undefined, 40, 20)), "image/png"))
+  const config = { workerUrl: try Effect.try(() => engineUrl(false)), assetsUrl: "/ocr/", language: "eng" }
+  const progress: OcrProgress[] = []
+  const recognized = try recognizeLocalText(config, image, (value) => { progress.push(value) }, true)
+  assert.equal(recognized.text, "Total 12")
+  assert.equal(recognized.confidence, 91)
+  assert.equal(recognized.lines?.[0]?.text, "Total 12")
+  assert.deepEqual(progress, [{ status: "recognizing text", progress: 1 }])
+  assert.equal(try reason(recognizeLocalText(config, image, () => {}, false, () => false)), "not-current")
+  assert.equal(try reason(recognizeLocalText({ ...config, workerUrl: try Effect.try(() => engineUrl(true)) }, image)), "engine-start")
+  assert.equal(try reason(recognizeLocalText(config, try Effect.try(unsupportedImage))), "unsupported")
+})

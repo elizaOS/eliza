@@ -12,8 +12,9 @@
   },
   "dependencies": {
     "@elizaos/agent": "workspace:*",
+    "@elizaos/agent-host": "workspace:*",
     "@elizaos/core": "workspace:*",
-    "@elizaos/os": "workspace:*",
+    "@elizaos/plugin-browser-client": "workspace:*",
     "effect": "4.1.1",
     "vibelang-runtime": "0.0.13"
   },
@@ -37,25 +38,6 @@
       "types": "./dist/src/index.d.ts",
       "import": "./dist/src/index.js",
       "default": "./dist/src/index.js"
-    },
-    "./contract": {
-      "eliza-source": "./src/contract.vibe",
-      "types": "./dist/src/contract.d.ts",
-      "import": "./dist/src/contract.js",
-      "default": "./dist/src/contract.js"
-    },
-    "./grounding": {
-      "eliza-source": "./src/grounding.vibe",
-      "types": "./dist/src/grounding.d.ts",
-      "import": "./dist/src/grounding.js",
-      "default": "./dist/src/grounding.js"
-    },
-    "./native-command": {
-      "eliza-source": "./src/native-command.vibe",
-      "types": "./dist/src/native-command.d.ts",
-      "import": "./dist/src/native-command.js",
-      "default": "./dist/src/native-command.js"
-    },
-    "./package.json": "./package.json"
+    }
   }
 }

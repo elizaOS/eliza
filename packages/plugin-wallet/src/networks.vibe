@@ -1,7 +1,6 @@
 // spec/wallet/index.md, "Inventory and venue observations retain their chain and account scope"; spec/wallet/index.md, "An approval and fresh quote belong to the same operation"
+import type { WalletFamilyName } from "@elizaos/plugin-wallet-client"
 import type { WalletFamily } from "../gen/wallet.effect.vibe"
-
-export type WalletFamilyName = "evm" | "solana"
 
 export interface NetworkPlan {
   readonly family: WalletFamily

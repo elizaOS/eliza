@@ -1,9 +1,0 @@
-// spec/cloud/nativeClients/deviceKeys.md, "Story: Sign a device in and keep its key"
-import type { Area } from "../routes.vibe"
-import { routes as assetLinkRoutes } from "../../native-clients/asset-links.vibe"
-import { routes as deviceKeyRoutes, sweeps as deviceKeySweeps } from "../../native-clients/device-keys.vibe"
-import { routes as mobileGoogleRoutes } from "../../native-clients/mobile-google.vibe"
-import { routes as registryRoutes } from "../../native-clients/registry.vibe"
-import { routes as returnRoutes } from "../../native-clients/return-routes.vibe"
-
-export const area: Area = { routes: [...registryRoutes, ...assetLinkRoutes, ...deviceKeyRoutes, ...mobileGoogleRoutes, ...returnRoutes], sweeps: [...deviceKeySweeps] }

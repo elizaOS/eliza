@@ -1,8 +1,8 @@
 // spec/agent/deviceActions/operations.md, "Each operation has one capability need, which a clock-only device meets only for the Clock handoff"; spec/agent/deviceActions/operations.md, "A proposal is valid only when its shape, its need and its binding all hold"; spec/agent/deviceActions/operations.md, "A receipt is admitted only when its evidence agrees with what it reports"; spec/assistant/timezone.md, "At a tick, the owner's clock is the travel zone while travelling, else the first zone known"
-import { readOperation, receiptOutcome, type DeviceOperation } from "@elizaos/agent/device-actions"
+import { readOperation, receiptOutcome, type DeviceOperation } from "@elizaos/agent"
 import { resolveZone } from "./timezone.vibe"
 
-export { ownerCalendarZone, ownerClockAt, ownerFacts, recordTravel, resolveZone, stateOwnerZone, statedName, statedZone, type OwnerFacts, type Travel } from "./timezone.vibe"
+export { ownerCalendarZone, ownerClockAt, ownerFacts, recordTravel, resolveZone, stateOwnerZone, statedName, type OwnerFacts, type Travel } from "./timezone.vibe"
 
 export type ClockHandoffOperation = Extract<DeviceOperation, { readonly type: "clock_handoff" }>
 export type ClockDay = 1 | 2 | 3 | 4 | 5 | 6 | 7
