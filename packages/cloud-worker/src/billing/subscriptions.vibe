@@ -212,12 +212,14 @@ export effect function observeSubscription(tx: Tx, organizationId: string) {
   const customerId = toText((try tx.query("SELECT customer_id FROM subscriptions WHERE key = $1", [organizationId]))[0]?.customer_id)
   if (customerId === undefined) throw wrong("no provider customer is pinned")
   const key = try deployment.secret(billing.secretKeyEnv)
-  const catalog = (plan: PaidPlanKey) => ({
-    STRIPE_PRICE_ID: billing.plans[plan].priceId, STRIPE_PRODUCT_ID: billing.plans[plan].productId,
+  const catalog = (plan: PaidPlanKey, binding: typeof billing.plans.plus_monthly) => ({
+    STRIPE_PRICE_ID: binding.priceId, STRIPE_PRODUCT_ID: binding.productId,
     STRIPE_PLAN: plan, CLOUD_ENVIRONMENT: deployment.environment
   })
+  const plus = catalog("plus_monthly", billing.plans.plus_monthly)
+  const pro = billing.plans.pro_monthly
   const { observation } = try foreign("observe subscription", () =>
-    readStripeSubscriptionFromCatalog(stripeClient(key, billing.apiUrl), [catalog("plus_monthly"), catalog("pro_monthly")], customerId))
+    readStripeSubscriptionFromCatalog(stripeClient(key, billing.apiUrl), pro === undefined ? [plus] : [plus, catalog("pro_monthly", pro)], customerId))
   return observation
 }
 

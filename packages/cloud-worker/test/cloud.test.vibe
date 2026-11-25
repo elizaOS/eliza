@@ -1143,14 +1143,25 @@ describe("WP2 Native clients and pages: native Google (spec/cloud/nativeClients/
 
 describe("WP3 Checkout (spec/cloud/billing/checkout.md, \"Story: Subscribe once, whichever screen or payer finishes it\")", () => {
   schema CheckoutOpened { status: "open"; commandId: string; sessionId: string; checkoutUrl: string }
-  it.live("Pay once through a shared link and confirm only as the account that started it", () => scoped(effect {
-    const stripe = try sync(() => createStripeFake())
-    const cloud = try testCloud({ stripe })
+  it.live("Offer Plus only, then pay once through a shared link and confirm as its owner (spec/cloud/billing/plans.md, \"Story: Offer the paid plans as the provider sells them\")", () => scoped(effect {
+    const stripe = try sync(() => createStripeFake({ prices: [catalogPrices[0]] }))
+    const cloud = try testCloud({ stripe, edit: (profile) => {
+      const staging = profile.environments.staging
+      return { ...profile, environments: { ...profile.environments, staging: {
+        ...staging, billing: { ...staging.billing, plans: { plus_monthly: staging.billing.plans.plus_monthly } }
+      } } }
+    } })
     const owner = try signedCaller(cloud, "checkout-owner")
     const other = try signedCaller(cloud, "checkout-other")
     const checkout = "/api/v1/subscriptions/checkout"
     const idempotencyKey = "shared-checkout-first"
     const body = { planKey: "plus_monthly", idempotencyKey, presentation: "shared" }
+    const listed = try cloud.call("/api/v1/subscriptions/plans")
+    const providerRequests = cloud.fakes.seen.length
+    const unavailable = try cloud.call(checkout, { json: { ...body, planKey: "pro_monthly" }, headers: owner.headers })
+    try check(() => assert.deepStrictEqual([listed.status, listed.body, unavailable.status, unavailable.body, cloud.fakes.seen.length], [200, {
+      plans: [{ key: "plus_monthly", name: "Plus", amountCents: 3000, currency: "usd", interval: "month", allowance: { amountUsd: "25.000000" } }]
+    }, 404, { error: "capability_unavailable", errorDescription: "Capability unavailable.", retryable: false }, providerRequests]))
     const open = try cloud.call(checkout, { json: body, headers: { ...owner.headers, "idempotency-key": idempotencyKey } })
     try check(() => assert.equal(open.status, 200, JSON.stringify(open.body)))
     const started = try Schema.decodeUnknownEffect(CheckoutOpened)(open.body)

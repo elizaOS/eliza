@@ -130,12 +130,13 @@ pure def lawAnInstanceNeverOpensTheOtherEnvironmentsDatabase(p: Profile, environ
 
 ### Each paid plan's provider price must be active, in US dollars, the catalog amount, monthly, licensed, without trial, on its product and in the environment's mode
 
-The check runs at `serve` start and in `elizaos-cloud prices check`. The
-shell reads each paid plan's configured price and product from the provider
+The check runs at `serve` start and in `elizaos-cloud prices check`. A billing
+profile configures a price and product for Plus and may configure a second
+pair for Pro. The shell reads every configured price and product from the provider
 and reports any currency option other than US dollars as `OtherCurrency`;
 recurrence fits only for one month, per unit and no quantity transform.
 Production sells only live prices and staging only test prices. Any mismatch
-refuses the start; nothing is published from a partial catalog.
+refuses the start; every configured pair must be verified.
 
 ```quint
 type PriceCurrency = Usd | OtherCurrency
@@ -144,7 +145,7 @@ type PriceUsage = Licensed | Metered
 type PriceMode = LivePrice | TestPrice
 type ProviderPrice = { active: bool, productActive: bool, currency: PriceCurrency, amountCents: int, interval: PriceInterval, usage: PriceUsage, perUnit: bool, trial: bool, sameProduct: bool, mode: PriceMode }
 type PaidPrices = { plus: ProviderPrice, pro: ProviderPrice }
-type CatalogObservation = NoCatalog | Observed(PaidPrices)
+type CatalogObservation = NoCatalog | ObservedPlus({ plus: ProviderPrice }) | Observed(PaidPrices)
 type PriceMismatch = PriceInactive | WrongCurrency | WrongAmount | WrongRecurrence | HasTrial | OtherProduct | WrongMode
 type PriceCheck = PriceFits | PriceRefused({ mismatch: PriceMismatch })
 pure def modeOf(environment: Environment): PriceMode = if (environment == Production) LivePrice else TestPrice
@@ -165,13 +166,17 @@ pure def pricesProblem(environment: Environment, plusPrice: ProviderPrice, proPr
   if (plus != NoProblem) plus else planProblem(ProMonthly, proPrice, environment)
 }
 pure def catalogProblem(environment: Environment, catalog: CatalogObservation): StartProblem =
-  match catalog { | Observed(c) => pricesProblem(environment, c.plus, c.pro) | NoCatalog => CatalogMissing }
+  match catalog {
+    | Observed(c) => pricesProblem(environment, c.plus, c.pro)
+    | ObservedPlus(c) => planProblem(PlusMonthly, c.plus, environment)
+    | NoCatalog => CatalogMissing
+  }
 pure val basePrice: ProviderPrice = { active: true, productActive: true, currency: Usd, amountCents: 3000, interval: OneMonth, usage: Licensed, perUnit: true, trial: false, sameProduct: true, mode: LivePrice }
 pure val observedValues: Set[ProviderPrice] =
   Set(basePrice).union(Set({ ...basePrice, amountCents: 10000 })).union(Set({ ...basePrice, mode: TestPrice })).union(Set({ ...basePrice, trial: true })).union(Set({ ...basePrice, currency: OtherCurrency }))
 pure val catalogValues: Set[CatalogObservation] = {
   val pro: ProviderPrice = { ...basePrice, amountCents: 10000 }
-  Set(NoCatalog).union(Set(Observed({ plus: basePrice, pro: pro }))).union(Set(Observed({ plus: { ...basePrice, mode: TestPrice }, pro: { ...pro, mode: TestPrice } }))).union(Set(Observed({ plus: pro, pro: pro })))
+  Set(NoCatalog).union(Set(Observed({ plus: basePrice, pro: pro }))).union(Set(Observed({ plus: { ...basePrice, mode: TestPrice }, pro: { ...pro, mode: TestPrice } }))).union(Set(Observed({ plus: pro, pro: pro }))).union(observedValues.map(price => ObservedPlus({ plus: price })))
 }
 ```
 
