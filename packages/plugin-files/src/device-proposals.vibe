@@ -60,7 +60,7 @@ export const filesProposalFamily: DeviceProposalFamily = {
         const operation = readOperation(sentIdentitiesDropped(decoded.success))?.operation
         return operation === undefined
           ? invalid("not a device operation")
-          : { kind: "Grounded", operation, grounding: filesChatBound(directRequests(turn), answer) ? "GroundedAsAsked" : "GroundedForReview" } satisfies Grounding
+          : { kind: "Grounded", operation, grounding: filesChatBound(directRequests(turn, "files"), answer) ? "GroundedAsAsked" : "GroundedForReview" } satisfies Grounding
       }
     }
   },

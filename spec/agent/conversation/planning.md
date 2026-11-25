@@ -948,7 +948,10 @@ A recognized card is a `[MAPSCARD]`, `[CHECKLIST]` or `[WORKFLOW]` open
 marker on its own line, one JSON object on the next and its close marker;
 any other bracketed text is ordinary output. Tool text the action marked
 verified for the owner is kept verbatim; prose that holds it is the whole
-reply, and prose it already holds adds nothing. Prose carrying a tool-call
+reply, and prose it already holds adds nothing. A result that marks no words
+for the owner tells the model, in its tool message, that the owner sees
+none of that tool text, so the reply says what the call did or found. What
+the phone itself shows the owner is a separate fact the result may state. Prose carrying a tool-call
 or reasoning marker is never shown. An open confirmation proposal or an
 interaction block (`[CHOICE]`, `[FORM]`) is the action's own copy. It and
 the emergency keypad's safety copy are delivered without model prose.
