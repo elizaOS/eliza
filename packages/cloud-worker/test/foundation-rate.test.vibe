@@ -55,7 +55,7 @@ describe("WP0 Foundation: rate limits", () => {
           answers: ["admitted", "admitted", {
             status: 429,
             retryAfter: String(Math.ceil((end - refusedAt) / 1000)),
-            body: { error: "rate_limited", errorDescription: "Rate limited.", retryable: true, retryAt: end }
+            body: { error: "rate_limited", errorDescription: "Rate limited (cloud gate rate limited).", retryable: true, retryAt: end, reason: "cloud_gate_rate_limited" }
           }, "admitted"],
           held: [2, end, { tag: "Refused", limit: 2, retryAt: end }],
           opened: [1, end, end + hour, "Admitted"]
@@ -89,7 +89,7 @@ describe("WP0 Foundation: rate limits", () => {
           answers: ["admitted", {
             status: 429,
             retryAfter: String(Math.ceil((windowEndOf(groupAt, 2 * hour) - groupAt) / 1000)),
-            body: { error: "rate_limited", errorDescription: "Rate limited.", retryable: true, retryAt: windowEndOf(groupAt, 2 * hour) }
+            body: { error: "rate_limited", errorDescription: "Rate limited (cloud gate rate limited).", retryable: true, retryAt: windowEndOf(groupAt, 2 * hour), reason: "cloud_gate_rate_limited" }
           }, "admitted"],
           ipAfterRefusal: [1, "Admitted"],
           counts: [2, 1, 1],
