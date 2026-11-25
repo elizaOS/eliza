@@ -669,9 +669,10 @@ snake_case call name (`{"action": "open_app", "app": "Maps"}`), or its
 ignoring case and underscores; otherwise (`{"status": "in_progress"}`,
 `{"theme": "dark_mode"}`, `{"type": "line_chart"}`) it is an `Answer`. An
 answer is delivered without the objects and bracketed calls that name a
-tool offered this turn, and keeps every other object, so a typed
-`{"tool": "search", …}` beside a real answer never reaches the person
-when search is offered, while an example the person asked for
+tool offered this turn or come straight after a cue
+(`Let me check.{"tool": "search", …}The speed of light is …`), and keeps
+every other object, so a typed call beside a real answer never reaches the
+person, while an example the person asked for
 (`{"name": "get_weather", "arguments": {…}}`), a record (`{"name":
 "GitHub", "url": …}`) or a command (`{"action": "turn_on", …}`) stays.
 A wait cue followed by more text that is not progress (`One second is

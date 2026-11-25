@@ -90,12 +90,12 @@ interface Objects {
   readonly found: readonly string[]
 }
 
-function objectsOut(said: string, strip: (body: string) => boolean): Objects {
+function objectsOut(said: string, strip: (body: string, before: string) => boolean): Objects {
   const found: string[] = []
   let changed = false
-  const text = said.replace(bracketCall, (call) => {
+  const text = said.replace(bracketCall, (call: string, at: number) => {
     found.push(call)
-    const gone = strip(call)
+    const gone = strip(call, said.slice(0, at))
     changed ||= gone
     return gone ? " " : call
   })
@@ -117,7 +117,7 @@ function objectsOut(said: string, strip: (body: string) => boolean): Objects {
     const body = text.slice(start ?? index, index + 1)
     if (start === undefined || open.length > 0 || !isJsonObject(body)) continue
     found.push(body)
-    if (!strip(body)) continue
+    if (!strip(body, text.slice(0, start))) continue
     changed = true
     rest += `${text.slice(kept, start)} `
     kept = index + 1
@@ -129,8 +129,14 @@ export function withoutWrittenCalls(said: string): string {
   return objectsOut(said, () => true).text
 }
 
+function afterCue(before: string): boolean {
+  const sentence = before.trimEnd().split(/\n|(?<=[.!?…])\s+/u).at(-1) ?? ""
+  const shape = sentence ? shapeOf(sentence, new Set()) : "Blank"
+  return shape === "GrammarCue" || shape === "AssentCue"
+}
+
 export function withoutOfferedCalls(said: string, offered: ReadonlySet<string>): string {
-  return objectsOut(said, (body) => namesOffered(body, offered)).text
+  return objectsOut(said, (body, before) => namesOffered(body, offered) || afterCue(before)).text
 }
 
 function shapeOf(reply: string, offered: ReadonlySet<string>): DraftShape {
