@@ -661,7 +661,7 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
   try send(agent, id, { text: "Show me home.", metadata: { viewDelivery: "completed-action", viewClientId: "renderer-1" } })
   const rendered = completionsSent().at(-1)
 
-  try Effect.sync(() => cloud.script(toolCalls("", { name: "VIEWS", arguments: { action: "show", view: "home" } }), text("I can't switch screens from this chat."), text("I can't switch screens from this chat, so home isn't showing.")))
+  try Effect.sync(() => cloud.script(toolCalls("", { name: "VIEWS", arguments: { action: "show", view: "home" } }), text("I can't switch screens from this chat."), text("[answer] I can't switch screens from this chat, so home isn't showing.")))
   const { answer: unrendered, calls: unrenderedCalls } = try callsFor({ text: "Show me home here." })
   const declined = completionsSent().at(-1)?.messages.find(({ role }) => role === "tool")?.content
   const unrenderedAsked = reasked()
@@ -677,7 +677,7 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
     const { answer, calls } = try callsFor({ text: "Divide 7 by 0." })
     return [answer.text, calls]
   }
-  const missingFailure = try secondAnswer("Division is a mathematical operation.")
+  const missingFailure = try secondAnswer("[answer] Division is a mathematical operation.")
   const cuedAgain = try secondAnswer("One sec.")
   const sameAgain = try secondAnswer("Done!")
   const blankAgain = try secondAnswer("", "", "", "")
@@ -734,7 +734,7 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
     'Sure. {"action": "SEND_TEXT", "parameters": {"to": "Sam"}}', '{"action": "SEND_TEXT", "parameters": {"to": "Sam"}}',
     'Sure. [send_message contact="Sam" message="I am running late"]', '[send_message contact="Sam" message="I am running late"]',
     '{"action": "open_app", "app": "Maps", "params": {"query": "coffee shops near me"}}', '{"action": "open_app", "app_name": "Maps"}', '{"tool": "open_app", "action": "Maps"}',
-    '{"name": "calculate", "arguments": {"expression": "2 + 2"}}', 'Sure. {"action": "calculate", "input": "2 + 2"}', '{"tool": "calendar", "tool_input": {"event": "dentist"}}', '{"type": "send_message", "to": "Sam", "content": "late"}',
+    '{"name": "calculate", "arguments": {"expression": "2 + 2"}}', 'Sure. {"action": "calculate", "input": "2 + 2"}', '{"tool": "calendar", "tool_input": {"event": "dentist"}}',
     '{"type": "send_message", "args": {"to": "Sam"}}', '{"name": "send_message", "arguments": {"to": "Sam"}}',
   ]) {
     try Effect.sync(() => cloud.script(text(said), text("I can't do that from here.")))
@@ -771,7 +771,7 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
   const { answer: promisedInReask } = try callsFor({ text: "Divide 7 by 0." })
   const jsonOnly: (readonly [string, number])[] = []
   for (const said of [
-    '{"status": "in_progress"}', '{"theme": "dark_mode"}', '{"type": "person", "name": "Bob"}', '[answer] {"type": "line_chart", "data": [1, 2]}', '{"type": "Calculate"}',
+    '{"status": "in_progress"}', '{"theme": "dark_mode"}', '{"type": "person", "name": "Bob"}', '{"type": "line_chart", "data": [1, 2]}', '{"name": "john_doe"}', '{"type": "Calculate"}',
     'A tool call in that format looks like {"name": "get_weather", "arguments": {"city": "Paris"}} and the host runs it and returns the forecast to the model.',
     'GitHub hosts code and its link record is {"name": "GitHub", "url": "https://github.com"} in that list.',
     'Most smart-home hubs take a command such as {"action": "turn_on", "device": "lamp"} and switch the lamp on.',
@@ -835,7 +835,7 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
       `${asksAgain}A step of this turn did not happen as asked. The reply must tell the person so truthfully, never claiming it happened. The step's own report: ${JSON.stringify(unavailableNotice)}`,
     ],
     failed: [true, 3, "Done!", true],
-    notFinal: { missingFailure: ["Division is a mathematical operation.", 3], cuedAgain: ["One sec.", 3], sameAgain: [`Done!\n\n${divided}`, 3], blankAgain: [`Done!\n\n${divided}`, 6], fencedReport: true },
+    notFinal: { missingFailure: ["Division is a mathematical operation.", 3], cuedAgain: [`Done!\n\n${divided}`, 3], sameAgain: [`Done!\n\n${divided}`, 3], blankAgain: [`Done!\n\n${divided}`, 6], fencedReport: true },
     quoted: [`It returned: ${divided}`, 2],
     cutAfterFailure: [`${cutOffReply}\n\n${divided}`, 2],
     separate: ["The second result is 36. The first calculation didn't run.", 3],
@@ -850,14 +850,14 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
     ],
     workedAfter: ["It is 42.", 3, ["CALCULATE"]],
     promisedTwice: ["", "provider_issue", 2],
-    writtenCalls: Array.from({ length: 19 }, () => ["I can't do that from here.", 2]),
+    writtenCalls: Array.from({ length: 18 }, () => ["I can't do that from here.", 2]),
     declared: [["Anytime!", 1], ["Done!", 1], ["Sure, Bob.", 1], ["Light travels about 300,000 km each second.", 1]],
     declaredPromise: ["I can't send texts from here.", 2],
     promisedInReask: `Done!\n\n${divided}`,
     bareAssent: [["It is 4.", 3, actOrAnswer], ["Sure, Bob.", 2, actOrAnswer], ["Sure.", 2, actOrAnswer]],
     maybeAnswers: [["I can't text from here.", 2], ['Sure! {"name": "Bob"}', 2]],
     jsonOnly: [
-      '{"status": "in_progress"}', '{"theme": "dark_mode"}', '{"type": "person", "name": "Bob"}', '{"type": "line_chart", "data": [1, 2]}', '{"type": "Calculate"}',
+      '{"status": "in_progress"}', '{"theme": "dark_mode"}', '{"type": "person", "name": "Bob"}', '{"type": "line_chart", "data": [1, 2]}', '{"name": "john_doe"}', '{"type": "Calculate"}',
       'A tool call in that format looks like {"name": "get_weather", "arguments": {"city": "Paris"}} and the host runs it and returns the forecast to the model.',
       'GitHub hosts code and its link record is {"name": "GitHub", "url": "https://github.com"} in that list.',
       'Most smart-home hubs take a command such as {"action": "turn_on", "device": "lamp"} and switch the lamp on.',
@@ -991,7 +991,7 @@ it.live(`A failure on one recipient or event stays reported beside a success on 
     cloud.script(toolCalls("", { name: "UPDATE_EVENT", arguments: { event: "standup" } }, { name: "UPDATE_EVENT", arguments: { event: "dentist" } }), text("Both events moved."), text("Both events moved."))
   })
   const events = try turn("Move my standup and my dentist to Friday.")
-  try Effect.sync(() => { failNext("Alice"); cloud.script(toolCalls("", textTo("Bob"), textTo("Alice")), text("Both texts are sent."), text("Bob has your text.")) })
+  try Effect.sync(() => { failNext("Alice"); cloud.script(toolCalls("", textTo("Bob"), textTo("Alice")), text("Both texts are sent."), text("[answer] Bob has your text.")) })
   const told = try turn("Text Bob and Alice that I'm running late.")
   const toolSeen = cloud.calls.flatMap(({ body }) => (body as { readonly messages?: ReadonlyArray<{ readonly role: string; readonly content?: unknown }> }).messages ?? [])
     .filter(({ role }) => role === "tool").map(({ content }) => String(content))
@@ -1069,7 +1069,7 @@ it.live(`A current-time question hears the phone's clock, else the owner's launc
   const { answer: observed, calls: observedCalls } = try callsFor({ text: "What time is it now?", metadata: tokyo })
   const phonePrompt = lastTurnPrompt(cloud)
 
-  try Effect.sync(() => cloud.script(text(`It's ${awayTokyo.weekday}, ${awayTokyo.monthDay} at 5 PM GMT+9.`), text(`It's ${awayTokyo.weekday}.`)))
+  try Effect.sync(() => cloud.script(text(`It's ${awayTokyo.weekday}, ${awayTokyo.monthDay} at 5 PM GMT+9.`), text(`[answer] It's ${awayTokyo.weekday}.`)))
   const { answer: invented, calls: inventedCalls } = try callsFor({ text: "What time is it now?", metadata: tokyo })
   const inventedNote = lastTurnPrompt(cloud)
   const dated = [
@@ -1082,7 +1082,7 @@ it.live(`A current-time question hears the phone's clock, else the owner's launc
   const { answer: clause, calls: clauseCalls } = try callsFor({ text: "What time is it now that the meeting has ended?", metadata: tokyo })
   const phoneHistory = lastTurnHistory(cloud)
 
-  try Effect.sync(() => cloud.script(text(`Today is ${awayHome.weekday}.`), text(`Today is ${today.home.weekday}.`)))
+  try Effect.sync(() => cloud.script(text(`Today is ${awayHome.weekday}.`), text(`[answer] Today is ${today.home.weekday}.`)))
   const { answer: launched, calls: launchedCalls } = try callsFor({ text: "What day is it?" })
   const launchPrompt = lastTurnPrompt(cloud, 2)
   const launchHistory = lastTurnHistory(cloud, 2)

@@ -502,11 +502,11 @@ is not final yet. A failure's own words reach that note cut to a tool
 message's length, and as external data unless the action marked them as its
 words for the owner. Its answer takes the place of the model's prose, and
 the action's own copy stays where composition puts it (below). That reply is
-kept when it answers (it is not blank, read as below, and when the first
-reply is a finished one, longer than a cue or carrying data such as `Done,
-your dentist is now 9–10 AM.`, it is not cue-shaped either, so a finished
-reply is never replaced by a cue such as `One sec.`), it is not the first
-reply again, and the clock rules hold of it.
+kept when it answers (it is not blank, and it is not cue-shaped unless the
+model tags it `[answer]`, read as below, so the turn never ends on an
+untagged `One sec.` that drops the failure's report and a finished reply is
+never replaced by a cue), it is not the first reply again, and the clock
+rules hold of it.
 Otherwise, or when the call fails, the first
 reply is kept, or the clock's or the calendar change's own words (below)
 take its place when it stated a time they did not observe. Under the
@@ -663,11 +663,9 @@ beside an `arguments`, `args`, `parameters`, `params`, `input` or
 `name` or `type` field does beside such an arguments field (names compare
 ignoring case and underscores), so a record that only shares a tool's name
 (`{"name": "GitHub", "url": …}` while a GitHub tool is offered) does not. Text that is only objects
-or bracketed calls is blank when one of them looks like a call, or when the
-model gave no tag (below) and one of them names a snake_case call in any
-field (`{"type": "send_message", "to": "Sam"}`); otherwise
-(`{"status": "in_progress"}`, `{"theme": "dark_mode"}`, or a tagged
-`[answer] {"type": "line_chart"}`) it is an `Answer`. An object or bracketed call is beside
+or bracketed calls is blank when one of them looks like a call; otherwise
+(`{"status": "in_progress"}`, `{"theme": "dark_mode"}`, `{"type":
+"line_chart"}`, `{"name": "john_doe"}`) it is an `Answer`. An object or bracketed call is beside
 the text when it opens the text or follows the end of a sentence; one
 inside a sentence (`a command such as {"action": "turn_on"} switches the
 lamp on`) makes the text an `Answer`. Cue-shaped text beside one that
@@ -802,6 +800,8 @@ pure def lawACueComesOnlyWithToolCallsOrBesideAWrittenCall(shape: DraftShape, ca
 pure def lawAShortReplyBesideWaitingToolsIsAskedOnceThenDelivered(stepsLeft: int): bool =
   readDraft(CueShaped, 0, true, Undeclared) == MaybeAnswer and nextMove(MaybeAnswer, 0, stepsLeft, true) == Deliver
   and (stepsLeft > 0 implies nextMove(MaybeAnswer, 0, stepsLeft, false) == AskAgain)
+pure def lawAnUntaggedCueNeverAnswersAFailureReAsk(sameAsFirst: bool): bool =
+  not(answeredAgain(readDraft(CueShaped, 0, true, Undeclared), sameAsFirst)) and answeredAgain(readDraft(CueShaped, 0, true, DeclaredAnswer), false)
 pure def lawAFinishedReplyIsNeverReplacedByACue(sameAsFirst: bool): bool =
   not(answeredAgain(readDraft(CueShaped, 0, true, Undeclared), sameAsFirst)) and not(answeredAgain(readDraft(CueBesideCall, 0, true, Undeclared), sameAsFirst))
 pure def lawWithoutWaitingToolsShortTextIsDelivered(stepsLeft: int, askedAgain: bool): bool =

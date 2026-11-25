@@ -95,11 +95,6 @@ export function withoutWrittenCalls(said: string): string {
   return objectsOut(said, () => true).text
 }
 
-export function finishedReply(reply: string): boolean {
-  const text = withoutWrittenCalls(reply.trim())
-  return text.length > 0 && !cueShaped(text)
-}
-
 function cueShaped(text: string): boolean {
   return text.length > 0 && text.length <= maxCueLength && !text.includes("?") && !dataToken.test(text)
 }
@@ -118,11 +113,7 @@ export function withoutOfferedCalls(said: string, offered: ReadonlySet<string>):
   return objectsOut(said, (body, before) => callsOffered(body, offered) || afterCue(said, body, before)).text
 }
 
-function namesACall(body: string): boolean {
-  return namedIn(body).names.some(([, value]) => callName.test(value))
-}
-
-function shapeOf(reply: string, offered: ReadonlySet<string>, declared: Declared): DraftShape {
+function shapeOf(reply: string, offered: ReadonlySet<string>): DraftShape {
   const said = reply.trim()
   if (!said) return "Blank"
   let beside = true
@@ -130,14 +121,14 @@ function shapeOf(reply: string, offered: ReadonlySet<string>, declared: Declared
     beside &&= afterSentence(before)
     return true
   })
-  if (!text) return found.some((body) => looksLikeCall(body, offered) || (declared === "Undeclared" && namesACall(body))) ? "Blank" : "OtherText"
+  if (!text) return found.some((body) => looksLikeCall(body, offered)) ? "Blank" : "OtherText"
   if (!cueShaped(text) || !beside) return "OtherText"
   if (found.some((body) => looksLikeCall(body, offered))) return "CueBesideCall"
   return found.length === 0 ? "CueShaped" : "CueBesideObject"
 }
 
 export function draftOf(text: string, calls: number, offered: ReadonlySet<string>, toolsWaiting: boolean, declared: Declared): Draft {
-  return readDraft(shapeOf(text, offered, declared), calls, toolsWaiting, declared)
+  return readDraft(shapeOf(text, offered), calls, toolsWaiting, declared)
 }
 
 const writtenCallMarker = /<\s*\/?\s*tool_call\b|<\s*function(?:=|_call\b)/iu

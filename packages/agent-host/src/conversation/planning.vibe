@@ -15,7 +15,7 @@ import {
 } from "../../gen/agent__conversation__planning.ts"
 import { originAfterResend } from "../../gen/agent__conversation__turns.ts"
 import { ModelRefusal } from "../models/chat.vibe"
-import { actionNameKey, composeReply, declaredOf, draftOf, finishedReply, streamable, withoutOfferedCalls, withoutWrittenCalls, writtenCallFree } from "./reply-text.vibe"
+import { actionNameKey, composeReply, declaredOf, draftOf, streamable, withoutOfferedCalls, withoutWrittenCalls, writtenCallFree } from "./reply-text.vibe"
 
 type ChatMessage = NonNullable<GenerateTextParams["messages"]>[number]
 
@@ -645,7 +645,7 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
       })), signal)
       const { declared, text: answer } = declaredOf(writtenCallFree(answerOf(said).text).prose)
       const revised = settled.compose(withoutOfferedCalls(answer, offeredNames))
-      const draft = draftOf(answer, 0, offeredNames, finishedReply(reply), declared)
+      const draft = draftOf(answer, 0, offeredNames, true, declared)
       const sameAsFirst = revised.trim() === reply.trim()
       const spoken = revised !== settled.compose(undefined)
       return { revised: spoken && answeredAgain(draft, sameAsFirst) ? revised : undefined, stoodBy: spoken && standsBy(draft, sameAsFirst) }
