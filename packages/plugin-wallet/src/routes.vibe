@@ -1,5 +1,5 @@
 // spec/wallet/custody.md, "Only the owner makes the wallet, once, with an account for each family"; spec/wallet/requests.md, "Only the owner's decision takes a request off the desk"; spec/wallet/index.md, "A review binds the complete immutable wallet operation"
-import type { LocalRoute } from "@elizaos/agent/routes"
+import type { AgentPlugin } from "@elizaos/agent"
 import { familyOf } from "./networks.vibe"
 import { WalletRefused, WalletUnreachable, type Wallet } from "./wallet.vibe"
 
@@ -11,6 +11,7 @@ const switchBody = Schema.decodeUnknownOption(SwitchBody, { onExcessProperty: "e
 const askBody = Schema.decodeUnknownOption(AskBody, { onExcessProperty: "error" })
 const decideBody = Schema.decodeUnknownOption(DecideBody, { onExcessProperty: "error" })
 
+export type WalletRoute = NonNullable<AgentPlugin["routes"]>[number]
 type Answer = { readonly status: number; readonly body: object }
 
 const malformed: Answer = { status: 400, body: { error: "invalid_request" } }
@@ -33,7 +34,7 @@ function requestId(parameters: ReadonlyMap<string, string>): number | undefined 
   return /^[1-9][0-9]{0,14}$/.test(id) ? Number(id) : undefined
 }
 
-export function walletRoutes(wallet: Wallet): LocalRoute[] {
+export function walletRoutes(wallet: Wallet): WalletRoute[] {
   return [
     { method: "GET", path: "/api/wallet", handler: ({ signal }) => replied(wallet.status(), signal) },
     { method: "POST", path: "/api/wallet", maxBodyBytes: 64, handler: ({ signal }) => replied(wallet.create(), signal) },

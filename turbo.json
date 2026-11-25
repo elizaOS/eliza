@@ -493,6 +493,7 @@
         "@elizaos/plugin-vision#typecheck",
         "@elizaos/plugin-wallet#build",
         "@elizaos/plugin-wallet#typecheck",
+        "@elizaos/plugin-wallet#test",
         "@elizaos/plugin-web-search#build",
         "@elizaos/plugin-web-search#typecheck",
         "@elizaos/plugin-x#build",

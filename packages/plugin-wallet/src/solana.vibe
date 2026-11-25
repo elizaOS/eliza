@@ -1,6 +1,4 @@
 // spec/wallet/index.md, "A submitted operation retains one durable binding through reconciliation"; spec/wallet/index.md, "A review binds the complete immutable wallet operation"; spec/wallet/index.md, "A chain amount compares exactly at every digit"; spec/wallet/index.md, "Inventory and venue observations retain their chain and account scope"
-export interface SolanaSecret { readonly seed: Uint8Array }
-
 module node {
   import { Option, Schema } from "effect"
   import { address, getAddressEncoder, getAddressFromPublicKey, getProgramDerivedAddress, isAddress, type Address } from "@solana/addresses"

@@ -115,11 +115,14 @@ export async function startChain(): Promise<Chain> {
     if (tx.maxFeePerGas < baseFee) return refuse("max fee per gas less than block base fee");
     if (balance(tx.from) < tx.value + tx.gasLimit * tx.maxFeePerGas) return refuse("insufficient funds for gas * price + value");
     const price = baseFee + (tx.maxPriorityFeePerGas < tx.maxFeePerGas - baseFee ? tx.maxPriorityFeePerGas : tx.maxFeePerGas - baseFee);
-    const moved = tx.to.toLowerCase() === token.toLowerCase() ? erc20.decodeFunctionData("transfer", tx.data) : undefined;
-    if (moved !== undefined && tokens(tx.from) < BigInt(moved[1])) return refuse("execution reverted");
+    const decoded: readonly unknown[] = tx.to.toLowerCase() === token.toLowerCase() ? erc20.decodeFunctionData("transfer", tx.data) : [];
+    const payee = decoded[0];
+    const units = decoded[1];
+    const moved = typeof payee === "string" && typeof units === "bigint" ? { payee, units } : undefined;
+    if (moved !== undefined && tokens(tx.from) < moved.units) return refuse("execution reverted");
     pool.set(hash, {
-      hash, from: tx.from.toLowerCase(), to: (moved === undefined ? tx.to : String(moved[0])).toLowerCase(),
-      value: tx.value, price, gas: transferGas, tokens: moved === undefined ? 0n : BigInt(moved[1]),
+      hash, from: tx.from.toLowerCase(), to: (moved?.payee ?? tx.to).toLowerCase(),
+      value: tx.value, price, gas: transferGas, tokens: moved?.units ?? 0n,
     });
     if (state.automine) mine();
     return { result: hash };

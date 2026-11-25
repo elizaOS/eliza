@@ -212,7 +212,7 @@ effect function machinesAt(directory: string) {
   }
 }
 
-export effect function openWallet(host: WalletHost) {
+effect function walletCustody(host: WalletHost) {
   const directory = `${host.stateDirectory}/wallet`
   const journal = try checked(() => walletJournalDirectory(host.stateDirectory, host.agentId), "The wallet journal has no place on this device.")
   const keystore = try checked(() => openKeystore(directory, host.storageKey, host.agentId), "The wallet keystore has no place on this device.")
@@ -290,6 +290,12 @@ export effect function openWallet(host: WalletHost) {
     return try reach(() => net.family === "EvmWallet" ? openEvmSigner(net, keys.evmKey) : openSolanaSigner(net, keys.solanaSeed))
   }
 
+  return { host, journal, keystore, custody, desk, turn, reviews, read, present, serving, statusOf, status, create, switchTo, planOf, reader, signer }
+}
+
+type WalletCustody = Effect.Success<ReturnType<typeof walletCustody>>
+
+function walletTerms(host: WalletHost) {
   effect function assetOf(net: NetworkPlan, chain: ChainAccount, token: string): AssetFacts!(WalletRefused | WalletUnreachable) {
     if (token === "" || token === "native") return { asset: { kind: "native" }, symbol: net.nativeSymbol, decimals: net.nativeDecimals }
     const address = try checked(() => chain.token(token), "That is not a token address on this chain.")
@@ -328,6 +334,12 @@ export effect function openWallet(host: WalletHost) {
     if (!policyAllows(net, terms.transfer, quoted)) throw new WalletRefused({ reason: "The recipient or the network fee is outside this wallet's limits." })
     return quoted
   }
+
+  return { termsOf, policyAllows, quoteOf, priced }
+}
+
+function walletDesk(base: WalletCustody, { termsOf, policyAllows, quoteOf, priced }: ReturnType<typeof walletTerms>) {
+  const { host, journal, desk, turn, reviews, read, present, serving, planOf, reader, signer } = base
 
   effect function quote(input: WalletTransferInput) {
     const state = try serving()
@@ -489,6 +501,12 @@ export effect function openWallet(host: WalletHost) {
     })
   }
 
+  return { quote, ask, requests, review, decide, journalEntry }
+}
+
+function walletJournal(base: WalletCustody, journalEntry: ReturnType<typeof walletDesk>["journalEntry"]) {
+  const { host, journal, custody, desk, serving, statusOf, reader, read } = base
+
   effect function settle(operation: WalletOperation, state: Custody) {
     const family = families.find((candidate) => familyNames[candidate] === operation.family)
     const net = family === undefined ? undefined : networkPlan(host.setting, family)
@@ -570,7 +588,13 @@ export effect function openWallet(host: WalletHost) {
     } satisfies WalletContext
   }
 
-  return { status, create, switchTo, quote, ask, requests, review, decide, activity, reconcile, holdings, context }
+  return { activity, reconcile, holdings, context }
+}
+
+export effect function openWallet(host: WalletHost) {
+  const base = try walletCustody(host)
+  const { journalEntry, ...asking } = walletDesk(base, walletTerms(host))
+  return { status: base.status, create: base.create, switchTo: base.switchTo, ...asking, ...walletJournal(base, journalEntry) }
 }
 
 export type Wallet = Effect.Success<ReturnType<typeof openWallet>>

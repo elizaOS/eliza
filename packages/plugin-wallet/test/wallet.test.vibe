@@ -1,10 +1,12 @@
 // spec/wallet/custody.md, "Story: Hold my own keys on my device"; spec/wallet/requests.md, "Story: Let the agent ask, and decide myself"; spec/wallet/index.md, "Story: Recover the real outcome of an on-chain operation"; spec/wallet/index.md, "Story: Preview an exact wallet operation before executing it"; spec/wallet/index.md, "Story: Inspect wallet holdings and venue quotes before making changes"
 import * as NodeServices from "@effect/platform-node/NodeServices"
 import { assert, it } from "@effect/vitest"
-import type { LocalRoute } from "@elizaos/agent/routes"
 import type { ActionResult, IAgentRuntime, Memory, ProviderResult, State, UUID } from "@elizaos/core"
-import { openWallet, walletPlugin, type Wallet, type WalletDecided, type WalletHoldings, type WalletHost, type WalletOperation, type WalletRequestRow, type WalletReview, type WalletStatus } from "../src/index.vibe"
+import { openWallet, walletPlugin, type Wallet, type WalletDecided, type WalletHoldings, type WalletHost, type WalletOperation, type WalletRequestRow, type WalletReview, type WalletRoute, type WalletStatus } from "../src/index.vibe"
+import type { AssetTransfer, WalletNetwork } from "../src/chain.vibe"
+import { openSolanaAccount, openSolanaSigner, solanaAccountOf } from "../src/solana.vibe"
 import { scratch, signedHash, startChain, type Chain, type Gateway, type Scratch } from "./support/evm-chain.ts"
+import { startSolanaChain, type SolanaChain, type SolanaGateway, type TokenProgram } from "./support/solana-chain.ts"
 
 const OWNER = "6f1c2a52-8a4e-4b7d-9c1e-2f3a4b5c6d7e"
 const STRANGER = "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
@@ -17,7 +19,7 @@ interface World {
   readonly chain: Chain
   readonly files: Scratch
   readonly wallet: Wallet
-  readonly routes: readonly LocalRoute[]
+  readonly routes: readonly WalletRoute[]
   readonly account: string
 }
 
@@ -33,7 +35,7 @@ function hostOver(files: Scratch, chain: Chain, settings: Record<string, string>
   return { agentId: AGENT, ownerId: OWNER, stateDirectory: files.directory, storageKey, setting: (key) => all[key] ?? "", ownerPresent: () => Promise.resolve(true) }
 }
 
-effect function called<A>(routes: readonly LocalRoute[], method: string, path: string, body?: unknown): Answer<A>!! {
+effect function called<A>(routes: readonly WalletRoute[], method: string, path: string, body?: unknown): Answer<A>!! {
   const segments = path.split("/")
   const parameters = new Map<string, string>()
   const route = routes.find((candidate) => {
@@ -167,7 +169,7 @@ const cases: readonly (readonly [Gateway, boolean])[] = [
   ["lost", true], ["gatewayError", true], ["secondCopy", true], ["secondCopy", false], ["refused", true],
 ]
 
-it.live('Recover the real outcome of an EVM transfer whatever the RPC answers to its broadcast, and never sign it again after a restart that forgot the decision (spec/wallet/index.md, "Story: Recover the real outcome of an on-chain operation"; spec/wallet/index.md, "A submitted operation retains one durable binding through reconciliation"; spec/wallet/requests.md, "Only the owner\'s decision takes a request off the desk")', () => effect {
+it.live(`Recover the real outcome of an EVM transfer whatever the RPC answers to its broadcast, and never sign it again after a restart that forgot the decision (spec/wallet/index.md, "Story: Recover the real outcome of an on-chain operation"; spec/wallet/index.md, "A submitted operation retains one durable binding through reconciliation"; spec/wallet/requests.md, "Only the owner's decision takes a request off the desk")`, () => effect {
   provide NodeServices.layer {
     const all = try world()
     const rows = try Effect.forEach(cases, ([gateway, automine]) => broadcastThrough(all, gateway, automine))
@@ -293,3 +295,171 @@ it.effect('A review refuses terms outside the wallet\'s limits and an approval t
     }))
   }
 }, 60_000)
+
+const SOLANA_FEE = "5000"
+const SOLANA_FUNDED = 2_000_000_000n
+
+function solanaNetwork(chain: SolanaChain): WalletNetwork {
+  return { family: "SolanaWallet", chainId: chain.genesisHash, rpc: chain.url }
+}
+
+function mintSymbol(mint: string): string {
+  return `${mint.slice(0, 4)}…${mint.slice(-4)}`
+}
+
+effect function solanaRunning() {
+  return try acquireRelease(promise(() => startSolanaChain()), (chain) => promise(() => chain.close()))
+}
+
+effect function solanaOutcome(run: () => Promise<unknown>) {
+  return tryPromise({
+    try: async () => {
+      await run()
+      return "accepted"
+    },
+    catch: (cause) => cause instanceof Error ? cause.message : String(cause),
+  }) catch (refusal) => refusal
+}
+
+it.live('Send SOL once, see it confirmed only when final, and see a transfer the chain rejected as failed (spec/wallet/index.md, "Story: Recover the real outcome of an on-chain operation")', () => effect {
+  const chain = try solanaRunning()
+  const payer = chain.wallet(SOLANA_FUNDED)
+  const payee = chain.wallet(0n)
+  const signer = try promise(() => openSolanaSigner(solanaNetwork(chain), payer.seed))
+  const send = (atomicUnits: string): AssetTransfer => ({ asset: { kind: "native" }, recipient: payee.address, atomicUnits })
+  const quote = try promise(() => signer.quote(send("1200000000")))
+  const signed = try promise(() => signer.sign(send("1200000000"), quote))
+  const pooled = [try solanaOutcome(() => signed.broadcast()), try solanaOutcome(() => signed.broadcast())]
+  chain.mine()
+  const mined = try promise(() => signer.receipt(signed.operationRef))
+  const repeated = try solanaOutcome(() => signed.broadcast())
+  chain.finalize()
+  const first = { spent: String(SOLANA_FUNDED - chain.balance(payer.address)), received: String(chain.balance(payee.address)), sends: chain.sent.length }
+  const landing = try promise(() => signer.sign(send("500000000"), quote))
+  const overdrawing = try promise(() => signer.sign(send("400000000"), quote))
+  const rivals = [try solanaOutcome(() => landing.broadcast()), try solanaOutcome(() => overdrawing.broadcast())]
+  chain.mine()
+  chain.finalize()
+  const receipts = [try promise(() => signer.receipt(signed.operationRef)), try promise(() => signer.receipt(landing.operationRef)), try promise(() => signer.receipt(overdrawing.operationRef))]
+  const beyondBudget = try solanaOutcome(() => signer.sign(send("1"), { maximumFee: "4999" }))
+  try Effect.try(() => assert.deepStrictEqual(
+    { account: signer.account, signs: signer.supportsSigning, quote, pooled, mined, repeated, first, rivals, receipts, received: String(chain.balance(payee.address)), beyondBudget, sends: chain.sent.length },
+    {
+      account: payer.address, signs: true, quote: { maximumFee: SOLANA_FEE }, pooled: ["accepted", "accepted"], mined: "unresolved",
+      repeated: "The wallet RPC refused sendTransaction",
+      first: { spent: "1200005000", received: "1200000000", sends: 3 }, rivals: ["accepted", "accepted"], receipts: ["confirmed", "confirmed", "failed"],
+      received: "1700000000", beyondBudget: "The transaction exceeds the reviewed fee budget", sends: 5,
+    },
+  ))
+})
+
+effect function solanaTokenTransfer(chain: SolanaChain, program: TokenProgram) {
+  const payer = chain.wallet(SOLANA_FUNDED)
+  const payee = chain.wallet(0n)
+  const stranger = chain.wallet(0n)
+  const mint = chain.mint(program, 6)
+  chain.tokenAccount(payer.address, mint, 5_000_000n)
+  chain.tokenAccount(payee.address, mint, 0n)
+  const before = chain.sent.length
+  const signer = try promise(() => openSolanaSigner(solanaNetwork(chain), payer.seed))
+  const send = (recipient: string, atomicUnits: string): AssetTransfer => ({ asset: { kind: "token", address: mint }, recipient, atomicUnits })
+  const quote = try promise(() => signer.quote(send(payee.address, "1250000")))
+  const signed = try promise(() => signer.sign(send(payee.address, "1250000"), quote))
+  try promise(() => signed.broadcast())
+  chain.mine()
+  chain.finalize()
+  return {
+    program, quote, receipt: try promise(() => signer.receipt(signed.operationRef)),
+    payer: String(chain.tokens(payer.address, mint)), payee: String(chain.tokens(payee.address, mint)), lamports: String(SOLANA_FUNDED - chain.balance(payer.address)),
+    stranger: try solanaOutcome(() => signer.sign(send(stranger.address, "1"), quote)),
+    overdrawn: try solanaOutcome(() => signer.sign(send(payee.address, "3750001"), quote)),
+    withoutTokens: try solanaOutcome(() => openSolanaAccount(solanaNetwork(chain), stranger.address).then((bare) => bare.quote(send(payee.address, "1")))),
+    sends: chain.sent.length - before,
+  }
+}
+
+it.live('Send a token under either token program to a wallet that already holds it, and sign nothing for a wallet that does not (spec/wallet/index.md, "Story: Recover the real outcome of an on-chain operation")', () => effect {
+  const chain = try solanaRunning()
+  const programs: readonly TokenProgram[] = ["token", "token2022"]
+  const rows = try Effect.forEach(programs, (program) => solanaTokenTransfer(chain, program))
+  try Effect.try(() => assert.deepStrictEqual(rows, programs.map((program) => ({
+    program, quote: { maximumFee: SOLANA_FEE }, receipt: "confirmed", payer: "3750000", payee: "1250000", lamports: SOLANA_FEE,
+    stranger: "The recipient has no account for this token yet", overdrawn: "This wallet holds less of this token than the transfer sends",
+    withoutTokens: "This wallet has no account for this token", sends: 1,
+  }))))
+})
+
+it.live('Read a Solana account\'s balance and its tokens under both token programs from the chain it was opened on (spec/wallet/index.md, "Story: Inspect wallet holdings and venue quotes before making changes")', () => effect {
+  const chain = try solanaRunning()
+  const owner = chain.wallet(42_000_000n)
+  const other = chain.wallet(0n)
+  const dollars = chain.mint("token", 6)
+  const points = chain.mint("token2022", 9)
+  const spent = chain.mint("token", 0)
+  chain.tokenAccount(owner.address, dollars, 7_000_000n)
+  chain.tokenAccount(owner.address, dollars, 500_000n, false)
+  chain.tokenAccount(owner.address, points, 3n)
+  chain.tokenAccount(owner.address, spent, 0n)
+  chain.tokenAccount(other.address, dollars, 99n)
+  const account = try promise(() => openSolanaAccount(solanaNetwork(chain), owner.address))
+  const read = {
+    derived: try promise(() => solanaAccountOf(owner.seed)),
+    scope: { family: account.family, chainId: account.chainId, account: account.account, signs: account.supportsSigning },
+    balance: try promise(() => account.nativeBalance()),
+    holdings: try promise(() => account.tokenHoldings([])),
+    facts: try promise(() => account.tokenFacts(points)),
+    recipient: account.recipient(other.address),
+    notAnAddress: try solanaOutcome(async () => account.recipient("0x52908400098527886E0F7030069857D2E4169EE7")),
+    notAMint: try solanaOutcome(() => account.tokenFacts(other.address)),
+    anotherChain: try solanaOutcome(() => openSolanaAccount({ ...solanaNetwork(chain), chainId: dollars }, owner.address)),
+  }
+  try Effect.try(() => assert.deepStrictEqual(read, {
+    derived: owner.address,
+    scope: { family: "SolanaWallet", chainId: chain.genesisHash, account: owner.address, signs: false },
+    balance: "42000000",
+    holdings: [
+      { address: dollars, symbol: mintSymbol(dollars), decimals: 6, atomicUnits: "7500000" },
+      { address: points, symbol: mintSymbol(points), decimals: 9, atomicUnits: "3" },
+    ],
+    facts: { address: points, symbol: mintSymbol(points), decimals: 9 },
+    recipient: other.address,
+    notAnAddress: "A Solana address is 32 bytes written in base58",
+    notAMint: "That address is not a token mint",
+    anotherChain: "Wallet RPC answered from a different Solana chain",
+  }))
+})
+
+effect function solanaBroadcastThrough(chain: SolanaChain, gateway: SolanaGateway) {
+  const payer = chain.wallet(SOLANA_FUNDED)
+  const payee = chain.wallet(0n)
+  const signer = try promise(() => openSolanaSigner(solanaNetwork(chain), payer.seed))
+  const transfer: AssetTransfer = { asset: { kind: "native" }, recipient: payee.address, atomicUnits: "1000000" }
+  const quote = try promise(() => signer.quote(transfer))
+  const signed = try promise(() => signer.sign(transfer, quote))
+  chain.gateway = gateway
+  const answered = try solanaOutcome(() => signed.broadcast())
+  chain.gateway = "pass"
+  chain.mine()
+  chain.finalize()
+  return { gateway, answered, receipt: try promise(() => signer.receipt(signed.operationRef)), paid: String(chain.balance(payee.address)) }
+}
+
+it.live('Find a Solana transfer by its signature after its broadcast answer was lost, and send nothing once the RPC answers from another chain (spec/wallet/index.md, "Story: Recover the real outcome of an on-chain operation")', () => effect {
+  const chain = try solanaRunning()
+  const rows = [try solanaBroadcastThrough(chain, "lost"), try solanaBroadcastThrough(chain, "refused")]
+  const payer = chain.wallet(SOLANA_FUNDED)
+  const signer = try promise(() => openSolanaSigner(solanaNetwork(chain), payer.seed))
+  const transfer: AssetTransfer = { asset: { kind: "native" }, recipient: payer.address, atomicUnits: "1" }
+  const quote = try promise(() => signer.quote(transfer))
+  const signed = try promise(() => signer.sign(transfer, quote))
+  chain.genesisHash = payer.address
+  const moved = [try solanaOutcome(() => signer.sign(transfer, quote)), try solanaOutcome(() => signed.broadcast())]
+  try Effect.try(() => assert.deepStrictEqual({ rows, moved, sends: chain.sent.length }, {
+    rows: [
+      { gateway: "lost", answered: "fetch failed", receipt: "confirmed", paid: "1000000" },
+      { gateway: "refused", answered: "The wallet RPC refused sendTransaction", receipt: "unresolved", paid: "0" },
+    ],
+    moved: ["The Solana chain changed before signing", "The Solana chain changed before broadcast"],
+    sends: 2,
+  }))
+})

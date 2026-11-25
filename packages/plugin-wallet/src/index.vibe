@@ -9,7 +9,7 @@ import { openWallet, type Wallet, type WalletHost } from "./wallet.vibe"
 export const walletModuleName = "@elizaos/plugin-wallet"
 
 export { walletActionName } from "./agent.vibe"
-export { walletRoutes } from "./routes.vibe"
+export { walletRoutes, type WalletRoute } from "./routes.vibe"
 export {
   WalletRefused, WalletUnreachable, openWallet,
   type CustodyState, type Wallet, type WalletAccount, type WalletContext, type WalletDecided, type WalletDecision, type WalletHolding, type WalletHoldings,
