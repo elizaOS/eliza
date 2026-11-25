@@ -8,6 +8,7 @@ import path from "node:path";
 import readline from "node:readline";
 import type { Driver, Outcome } from "../../gen/_conformance.ts";
 import { androidTools } from "../support/android-tools.ts";
+import { compileSystemUpdaterHosts, SYSTEM_UPDATER_HOST_REPLAYS } from "./system-updater-host.ts";
 
 export const ANSWER_WITHIN_MS = 10_000;
 
@@ -207,6 +208,7 @@ function compiledClasses(directory: string): string | undefined {
 }
 
 export function compileAdapter(main: string, found: Sources = sources(), dependencies: readonly string[] = []): string {
+  if (Object.hasOwn(SYSTEM_UPDATER_HOST_REPLAYS, main)) throw new Error(`system-update host replay ${main} compiles through compileSystemUpdaterHosts`);
   const adapter = found.adapters.get(main);
   if (adapter === undefined) throw new Error(`no JVM adapter ${main} under ${ADAPTERS}`);
   const tools = androidTools();
@@ -261,12 +263,16 @@ export async function compileAdapters(): Promise<{ readonly compiled: readonly s
   const compiled: string[] = [];
   const failed: string[] = [];
   for (const main of found.adapters.keys()) {
+    if (Object.hasOwn(SYSTEM_UPDATER_HOST_REPLAYS, main)) continue;
     try {
       compiled.push(compileAdapter(main, found, needsOrgJson(main) ? [await jsonJavaArtifact()] : []));
     } catch (error) {
       failed.push(error instanceof Error ? error.message : String(error));
     }
   }
+  const hosts = compileSystemUpdaterHosts();
+  compiled.push(...hosts.compiled);
+  failed.push(...hosts.failed);
   return { compiled, failed };
 }
 
