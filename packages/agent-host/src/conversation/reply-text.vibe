@@ -12,7 +12,6 @@ function pattern(source: string, flags: string): RegExp {
 
 const maxCueLength = 120
 const bracketCall = /\[[a-z][a-z0-9]*(?:_[a-z0-9]+)+(?:\s+[a-z_]+=(?:"[^"\n]*"|[^\s\]]+))+\s*\]/gu
-const callName = /^[a-z]+(?:_[a-z0-9]+)+$/u
 const emptyWrapper = /```[\w-]*\s*```|<([\w-]+)>\s*<\/\1>/gu
 const waitCue = "(?:on it|(?:one|just a) (?:sec|second|moment))"
 const containerNoun = "(?:calendar|schedule|agenda|notes|inbox|emails?|messages|texts|reminders|tasks|todos|files|photos|contacts|workflows|settings|account)"
@@ -56,17 +55,6 @@ function inGrammar(words: string, assent: string | undefined): boolean {
     && sentences.every((sentence) => waitSentence.test(sentence) || progress.test(sentence))
 }
 
-function isWrittenCall(body: string): boolean {
-  if (looksLikeActionEnvelopeJson(body)) return true
-  try {
-    const parsed: unknown = JSON.parse(body)
-    return typeof parsed === "object" && parsed !== null
-      && Object.entries(parsed).some(([key, value]) => typeof value === "string" && (key === "action" || key === "tool" || callName.test(value)))
-  } catch {
-    return false
-  }
-}
-
 interface WithoutObjects {
   readonly text: string
   readonly calls: boolean
@@ -74,8 +62,8 @@ interface WithoutObjects {
 
 function withoutObjects(said: string): WithoutObjects {
   const text = said.replace(bracketCall, " ")
-  let calls = text !== said
-  if (!text.includes("{")) return { text: calls ? text.replace(emptyWrapper, " ").trim() : said, calls }
+  let calls = false
+  if (!text.includes("{")) return { text: text === said ? said : text.replace(emptyWrapper, " ").trim(), calls }
   const open: number[] = []
   let rest = ""
   let kept = 0
@@ -93,11 +81,11 @@ function withoutObjects(said: string): WithoutObjects {
     const start = open.pop()
     const body = text.slice(start ?? index, index + 1)
     if (start === undefined || open.length > 0 || !isJsonObject(body)) continue
-    calls ||= isWrittenCall(body)
+    calls ||= looksLikeActionEnvelopeJson(body)
     rest += `${text.slice(kept, start)} `
     kept = index + 1
   }
-  return { text: kept === 0 && !calls ? said : `${rest}${text.slice(kept)}`.replace(emptyWrapper, " ").trim(), calls }
+  return { text: kept === 0 && text === said ? said : `${rest}${text.slice(kept)}`.replace(emptyWrapper, " ").trim(), calls }
 }
 
 export function withoutWrittenCalls(said: string): string {
