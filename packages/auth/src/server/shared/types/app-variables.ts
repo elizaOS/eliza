@@ -63,6 +63,7 @@ export type AppVariables = {
     | "dashboard-jwt"
     | "platform";
   requestSignatureVerified?: boolean;
+  serviceSignatureVerified?: true;
   requestId?: string;
   platformKeyHash?: string;
   platformScopes?: string[];

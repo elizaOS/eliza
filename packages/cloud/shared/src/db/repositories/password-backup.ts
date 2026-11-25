@@ -19,9 +19,12 @@ export async function assertPasswordBackupStorageReady() {
   await dbWrite.execute(sql`SELECT revision FROM password_backups LIMIT 0`);
 }
 
-export async function readPasswordBackup(scope: PasswordBackupScope) {
+export async function readPasswordBackup(
+  scope: PasswordBackupScope,
+  db: Pick<typeof dbWrite, "execute"> = dbWrite,
+) {
   const { appId, organizationId, userId } = scope;
-  const result = await dbWrite.execute<BackupRow>(sql`
+  const result = await db.execute<BackupRow>(sql`
     SELECT revision, snapshot FROM password_backups
     WHERE app_id = ${appId} AND organization_id = ${organizationId} AND user_id = ${userId}
   `);
@@ -37,7 +40,11 @@ export async function readPasswordBackupState(scope: PasswordBackupScope) {
   return result.rows[0] ?? null;
 }
 
-export async function changePasswordBackup(scope: PasswordBackupScope, change: BackupChange) {
+export async function changePasswordBackup(
+  scope: PasswordBackupScope,
+  change: BackupChange,
+  db: Pick<typeof dbWrite, "execute"> = dbWrite,
+) {
   const { appId, organizationId, userId } = scope;
   if (
     change.kind === "save" &&
@@ -48,13 +55,13 @@ export async function changePasswordBackup(scope: PasswordBackupScope, change: B
   const snapshot = change.kind === "save" ? Buffer.from(change.snapshot) : null;
   const result =
     change.expectedRevision === null
-      ? await dbWrite.execute<Pick<BackupRow, "revision">>(sql`
+      ? await db.execute<Pick<BackupRow, "revision">>(sql`
         INSERT INTO password_backups (app_id, organization_id, user_id, revision, snapshot)
         VALUES (${appId}, ${organizationId}, ${userId}, 1, ${snapshot})
         ON CONFLICT (app_id, organization_id, user_id) DO NOTHING
         RETURNING revision
       `)
-      : await dbWrite.execute<Pick<BackupRow, "revision">>(sql`
+      : await db.execute<Pick<BackupRow, "revision">>(sql`
         UPDATE password_backups SET revision = revision + 1, snapshot = ${snapshot}
         WHERE app_id = ${appId} AND organization_id = ${organizationId} AND user_id = ${userId}
           AND revision = ${change.expectedRevision}
