@@ -77,13 +77,14 @@ export effect function stateTravel({ signal, until }: TravelReading) {
   return { signal, trip, travelling, until: travelling ? new Date(trip.endAt).toISOString() : undefined }
 }
 
-/** The model's output for the travel evaluator, or null when it is not one: an unknown signal, or a return that is not text. */
+/** The model's output for the travel evaluator, or null when it is not one: an unknown signal, a return that is not text, or a field the schema does not name. */
 function travelReading(output: unknown): TravelReading | null {
-  if (typeof output !== "object" || output === null) return null
+  if (typeof output !== "object" || output === null || Array.isArray(output)) return null
+  if (Object.keys(output).some((key) => key !== "signal" && key !== "until")) return null
   const signal = Reflect.get(output, "signal")
   const until = Reflect.get(output, "until")
-  if (typeof signal !== "string" || !Object.hasOwn(signals, signal) || (until !== undefined && typeof until !== "string")) return null
-  const written = until?.trim() ?? ""
+  if (typeof signal !== "string" || !Object.hasOwn(signals, signal) || typeof until !== "string") return null
+  const written = until.trim()
   return { signal: signals[signal] ?? "SaysNothing", until: written === "" ? undefined : written.slice(0, 40) }
 }
 

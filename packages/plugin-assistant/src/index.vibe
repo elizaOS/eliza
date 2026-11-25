@@ -31,7 +31,7 @@ export {
   type MoveRequest,
 } from "./reminders.vibe"
 export {
-  ownerCalendarZone, ownerClockAt, ownerFacts, recordTravel, resolveZone, stateOwnerZone, statedName, statedZone, clockCapability,
+  ownerCalendarZone, ownerClockAt, ownerFacts, recordTravel, resolveZone, stateOwnerZone, statedName, clockCapability,
   clockRepeatCapability, clockDayNames, clockHandoffCapabilities, isClockHandoffOperation, clockHandoffDispatch, describeClockDays,
   describeClockHandoff, normalizeClockTimeZone, currentClockTimeZone, ClockZoneChanged, checkClockHandoffTimeZone, ClockReceiptRefused,
   clockHandoffReceipt, buildClockHandoffRequest, type OwnerFacts, type Travel, type ClockHandoffOperation, type ClockDay, type ClockHandoffResult,
@@ -125,9 +125,10 @@ const ownerClockProvider: Provider = {
   },
 }
 
-/** The model's output for the time zone evaluator, or null when it is not one. */
+/** The model's output for the time zone evaluator, or null when it is not one: a zone that is not text, or a field the schema does not name. */
 function zoneReading(output: unknown): { readonly zone: string } | null {
-  const zone = typeof output === "object" && output !== null ? Reflect.get(output, "zone") : undefined
+  if (typeof output !== "object" || output === null || Array.isArray(output) || Object.keys(output).some((key) => key !== "zone")) return null
+  const zone = Reflect.get(output, "zone")
   return typeof zone === "string" ? { zone: zone.trim().slice(0, 64) } : null
 }
 
