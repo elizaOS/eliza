@@ -1,312 +1,54 @@
-// spec/wallet/index.md, "Story: Preview an exact wallet operation before executing it"; spec/wallet/index.md, "Story: Recover the real outcome of an on-chain operation"; spec/wallet/index.md, "Story: Inspect wallet holdings and venue quotes before making changes"
-import { ManagedRuntime } from "effect"
-import { resolveCanonicalOwnerId, validateUuid, type Action, type IAgentRuntime, type Memory, type Plugin } from "@elizaos/core"
-import { resolveStateDir } from "@elizaos/core-node"
-import { Machine, atMostAtomic, decodeState, machine, validAtomicAmount, walletObservationMatches, type WalletIntent, type WalletRun } from "../gen/wallet.effect.vibe"
-import { claimDispatch, evmTokenBalance, openWallet, readDispatch, readSigningReservation, reserveWalletSigning, walletDigest, walletJournalDirectory, type NativeTransfer, type WalletConfiguration, type WalletCustodian } from "./custody.vibe"
+// spec/wallet/custody.md, "Story: Hold my own keys on my device"; spec/wallet/requests.md, "Story: Let the agent ask, and decide myself"; spec/wallet/index.md, "Story: Preview an exact wallet operation before executing it"; spec/wallet/index.md, "Story: Recover the real outcome of an on-chain operation"; spec/wallet/index.md, "Story: Inspect wallet holdings and venue quotes before making changes"
+import type { AgentModule, AgentPlugin, ModuleFactory } from "@elizaos/agent-host"
+import { walletPaths, type WalletStatus } from "@elizaos/plugin-wallet-client"
+import type { IAgentRuntime } from "@elizaos/core"
+import { walletAction, walletProvider } from "./agent.vibe"
+import { storageKeyBytes } from "./keystore.vibe"
+import { walletRoutes } from "./routes.vibe"
+import { openWallet, type Wallet, type WalletHost } from "./wallet.vibe"
 
-export error WalletRequestInvalid { reason: string }
-export error WalletTransportFailed { cause: unknown }
+export const walletModuleName = "@elizaos/plugin-wallet"
 
-const walletTtlMs = 60000
+export { walletActionName } from "./agent.vibe"
+export { walletRoutes, type WalletRoute } from "./routes.vibe"
+export { WalletRefused, WalletUnreachable, openWallet, type Wallet, type WalletContext, type WalletHost, type WalletTransferInput } from "./wallet.vibe"
 
-function setting(runtime: IAgentRuntime, key: string): string {
-  const value = runtime.getSetting(key)
-  return typeof value === "string" ? value.trim() : ""
+const description = "The owner's wallet: one EVM and one Solana account with keys sealed on the device, holdings, exact transfer quotes, transfers the owner reviews and approves, and their reconciled outcomes."
+
+const unopenedPlugin: AgentPlugin = {
+  name: walletModuleName,
+  description,
+  routes: [{
+    method: "GET", path: walletPaths.wallet,
+    handler: () => ({ status: 200, body: { custody: "unavailable", canHold: false, accounts: [] } satisfies WalletStatus }),
+  }],
 }
 
-function parameter(options: unknown, name: string): string {
-  if (typeof options !== "object" || options === null) return ""
-  const fields = "parameters" in options ? options.parameters : options
-  if (typeof fields !== "object" || fields === null) return ""
-  const value = Object.getOwnPropertyDescriptor(fields, name)?.value
-  return typeof value === "string" ? value.trim() : ""
-}
-
-function digits(amount: string): number[] {
-  return [...amount].map((digit) => digit.charCodeAt(0) - 48)
-}
-
-effect function journalEntry(directory: string, intentId: string) {
-  const loaded = try tryPromise({ try: () => readDispatch(directory, intentId), catch: (cause) => new WalletTransportFailed({ cause }) })
-  if (loaded === undefined) return undefined
-  if (typeof loaded !== "object" || loaded === null || !("intent" in loaded) || !("operationRef" in loaded) || typeof loaded.operationRef !== "string" || loaded.operationRef === "") {
-    throw new WalletRequestInvalid({ reason: "The recorded operation is invalid." })
-  }
-  const record = try decodeState(loaded)
-  if (record.intent.intentId !== intentId || record.phase !== "WalletInFlight" || !validSubmission(record.operationRef)) {
-    throw new WalletRequestInvalid({ reason: "The recorded operation cannot be matched to this wallet." })
-  }
-  return record
-}
-
-function validSubmission(operationRef: string): boolean {
-  return /^0x[a-fA-F0-9]{64}$/.test(operationRef) || /^[1-9A-HJ-NP-Za-km-z]{63,100}$/.test(operationRef)
-}
-
-effect function walletConfiguration(runtime: IAgentRuntime, familyName: string) {
-  const family = familyName === "evm" ? "EvmWallet" : familyName === "solana" ? "SolanaWallet" : undefined
-  if (family === undefined) throw new WalletRequestInvalid({ reason: "Select an EVM or Solana wallet." })
-  const prefix = family === "EvmWallet" ? "WALLET_EVM" : "WALLET_SOLANA"
-  const rpc = setting(runtime, prefix + "_RPC_URL")
-  const chainId = setting(runtime, prefix + "_CHAIN_ID")
-  const privateKey = setting(runtime, prefix + "_SIGNING_KEY")
-  if (rpc === "" || chainId === "" || privateKey === "") throw new WalletRequestInvalid({ reason: "The selected wallet custodian is not configured." })
-  return { family, rpc, chainId, privateKey } satisfies WalletConfiguration
-}
-
-effect function walletBalance(wallet: WalletCustodian, runtime: IAgentRuntime, token: string, familyName: string) {
-  const scope = { ownerAccount: wallet.account, chains: [wallet.chainId], readKind: "ReadBalances" as const }
-  if (token !== "" && familyName !== "evm") throw new WalletRequestInvalid({ reason: "Select an EVM wallet for an ERC-20 balance." })
-  const assetId = token === "" ? "native" : token
-  const observed = { sourceAccount: wallet.account, onChain: wallet.chainId, observedKind: "ReadBalances" as const, assetId }
-  if (!walletObservationMatches(scope, observed)) throw new WalletRequestInvalid({ reason: "The wallet balance did not match this account." })
-  const atomicUnits = try tryPromise({
-    try: () => token === "" ? wallet.balance() : evmTokenBalance(setting(runtime, "WALLET_EVM_RPC_URL"), wallet.account, token, wallet.chainId),
-    catch: (cause) => new WalletTransportFailed({ cause }),
-  })
-  return { success: true, text: `Balance: ${atomicUnits} atomic units`, data: { ...observed, atomicUnits } }
-}
-
-function walletPolicyAllows(runtime: IAgentRuntime, transfer: NativeTransfer): boolean {
-  const maximum = setting(runtime, "WALLET_TRANSFER_MAX_ATOMIC")
-  const recipients = setting(runtime, "WALLET_TRANSFER_RECIPIENTS").split(",").map((entry) => entry.trim())
-  return atMostAtomic(digits(transfer.atomicUnits), digits(maximum)) && recipients.includes(transfer.recipient)
-}
-
-effect function transferCommitment(wallet: WalletCustodian, transfer: NativeTransfer, maximumFee: string) {
-  return try Effect.try({
-    try: () => walletDigest([wallet.family, wallet.chainId, wallet.account, transfer.recipient, transfer.atomicUnits, maximumFee]),
-    catch: (cause) => new WalletTransportFailed({ cause }),
-  })
-}
-
-effect function nativeTransfer(wallet: WalletCustodian, amount: string, recipient: string) {
-  const checked = digits(amount)
-  const maximum = wallet.family === "SolanaWallet"
-    ? "18446744073709551615"
-    : "115792089237316195423570985008687907853269984665640564039457584007913129639935"
-  if (!validAtomicAmount(checked) || amount === "0" || !atMostAtomic(checked, digits(maximum))) {
-    throw new WalletRequestInvalid({ reason: "Transfer amount must fit positive chain atomic units exactly." })
-  }
-  const canonical = try Effect.try({ try: () => wallet.recipient(recipient), catch: (cause) => new WalletTransportFailed({ cause }) })
-  return { recipient: canonical, atomicUnits: amount }
-}
-
-effect function feeLimit(runtime: IAgentRuntime) {
-  const limit = setting(runtime, "WALLET_TRANSFER_MAX_FEE_ATOMIC")
-  if (!validAtomicAmount(digits(limit)) || limit === "0") throw new WalletRequestInvalid({ reason: "Configure an exact positive wallet fee limit." })
-  return limit
-}
-
-type WalletDecisionOutcome =
-  | { readonly status: "declined"; readonly state: WalletRun }
-  | { readonly status: "submitted" | "unresolved"; readonly state: WalletRun; readonly operationRef: string }
-
-effect function submitWalletTransfer(runtime: IAgentRuntime, wallet: WalletCustodian, transfer: NativeTransfer, maximumFee: string, operation: Machine.Shape, mayAct: () => Promise<boolean>): WalletDecisionOutcome!unknown {
-  const reviewed = try operation.get()
-  if (reviewed.phase !== "ApprovedWallet" || reviewed.intent.commitment !== (try transferCommitment(wallet, transfer, maximumFee))) {
-    throw new WalletRequestInvalid({ reason: "The signing request differs from the approved transfer." })
-  }
-  const intent = reviewed.intent
-  const directory = try Effect.try({ try: () => walletJournalDirectory(resolveStateDir(), runtime.agentId), catch: (cause) => new WalletTransportFailed({ cause }) })
-  const existing = try journalEntry(directory, intent.intentId)
-  if (existing !== undefined) return { status: "unresolved", state: existing, operationRef: existing.operationRef }
-  const now = try Clock.currentTimeMillis
-  if (now < 0 || now > reviewed.quoteUntil) throw new WalletRequestInvalid({ reason: "The wallet approval expired before signing." })
-  if (!walletPolicyAllows(runtime, transfer)) throw new WalletRequestInvalid({ reason: "The amount or recipient is outside the configured wallet policy." })
-  if (setting(runtime, "WALLET_TRANSFER_MAX_FEE_ATOMIC") !== maximumFee) throw new WalletRequestInvalid({ reason: "The configured fee cap changed after review." })
-  const ownerActive = try tryPromise({ try: () => mayAct(), catch: (cause) => new WalletTransportFailed({ cause }) })
-  if (!ownerActive) throw new WalletRequestInvalid({ reason: "The wallet approval is no longer authorized." })
-  const reservation = try operation.send({
-    type: "reserveWalletSigning", intentId: intent.intentId, commitment: intent.commitment, wallTime: try Clock.currentTimeMillis,
-  })
-  const reserved = try tryPromise({ try: () => reserveWalletSigning(directory, reservation), catch: (cause) => new WalletTransportFailed({ cause }) })
-  if (!reserved) {
-    const previous = try journalEntry(directory, intent.intentId)
-    if (previous !== undefined) return { status: "unresolved", state: previous, operationRef: previous.operationRef }
-    throw new WalletRequestInvalid({ reason: "Another attempt already reserved this wallet operation." })
-  }
-  const authorityToSign = try tryPromise({ try: () => mayAct(), catch: (cause) => new WalletTransportFailed({ cause }) })
-  if (!authorityToSign || !walletPolicyAllows(runtime, transfer) || (try Clock.currentTimeMillis) > reviewed.quoteUntil ||
-    setting(runtime, "WALLET_TRANSFER_MAX_FEE_ATOMIC") !== maximumFee) {
-    throw new WalletRequestInvalid({ reason: "The transfer authority changed before signing." })
-  }
-  const signed = try tryPromise({ try: () => wallet.sign(transfer, maximumFee), catch: (cause) => new WalletTransportFailed({ cause }) })
-  const dispatch = try operation.send({
-    type: "dispatchWallet", intentId: intent.intentId, commitment: intent.commitment, operationRef: signed.operationRef,
-    wallTime: try Clock.currentTimeMillis, policyAllows: walletPolicyAllows(runtime, transfer),
-  })
-  const claimed = try tryPromise({ try: () => claimDispatch(directory, dispatch), catch: (cause) => new WalletTransportFailed({ cause }) })
-  if (!claimed) {
-    const durable = try journalEntry(directory, intent.intentId)
-    if (durable === undefined) throw new WalletRequestInvalid({ reason: "The wallet submission claim disappeared." })
-    return { status: "unresolved", state: durable, operationRef: durable.operationRef }
-  }
-  const stillActive = try tryPromise({ try: () => mayAct(), catch: (cause) => new WalletTransportFailed({ cause }) })
-  if (!stillActive || !walletPolicyAllows(runtime, transfer) || (try Clock.currentTimeMillis) > reviewed.quoteUntil ||
-    setting(runtime, "WALLET_TRANSFER_MAX_FEE_ATOMIC") !== maximumFee) {
-    try operation.send({ type: "markWalletUncertain", operationRef: signed.operationRef })
-    throw new WalletRequestInvalid({ reason: "The transfer authority changed before broadcast." })
-  }
-  const broadcast = (tryPromise({ try: () => signed.broadcast(), catch: (cause) => new WalletTransportFailed({ cause }) }).pipe(Effect.as(true))) catch () => false
-  const state = broadcast ? dispatch : try operation.send({ type: "markWalletUncertain", operationRef: signed.operationRef })
-  return { status: broadcast ? "submitted" : "unresolved", state, operationRef: signed.operationRef }
-}
-
-export interface WalletOwnerReviewInput {
-  readonly requestId: string
-  readonly family: "evm" | "solana"
-  readonly recipient: string
-  readonly atomicUnits: string
-}
-
-export interface WalletOwnerReviewDetails {
-  readonly recipient: string
-  readonly atomicUnits: string
-  readonly maximumFee: string
-  readonly intent: WalletIntent
-  readonly expiresAt: number
-}
-
-export interface WalletOwnerDecision {
-  readonly decision: "approve" | "decline"
-  readonly intentId: string
-  readonly commitment: string
-}
-
-export type WalletOwnerReviewResult = WalletDecisionOutcome
-
-export effect function bindWalletOwnerReview(runtime: IAgentRuntime, newReview: WalletOwnerReviewInput, authenticateOwner: () => Promise<string | undefined>) {
-  const ownerId = try Effect.try({
-    try: () => validateUuid(resolveCanonicalOwnerId(runtime)),
-    catch: () => new WalletRequestInvalid({ reason: "The wallet owner could not be verified." }),
-  })
-  if (ownerId === null || newReview.requestId.trim() === "") throw new WalletRequestInvalid({ reason: "The wallet owner or review identity is missing." })
-  const mayAct = async () => (await authenticateOwner()) === ownerId && validateUuid(resolveCanonicalOwnerId(runtime)) === ownerId
-  const ownerIsCurrent = try tryPromise({ try: mayAct, catch: (cause) => new WalletTransportFailed({ cause }) })
-  if (!ownerIsCurrent) throw new WalletRequestInvalid({ reason: "The local wallet review is available only to the authenticated owner." })
-  const configuration = try walletConfiguration(runtime, newReview.family)
-  const wallet = try tryPromise({ try: () => openWallet(configuration), catch: (cause) => new WalletTransportFailed({ cause }) })
-  const details = try ensuring(effect {
-    if (!wallet.supportsNativeSigning) throw new WalletRequestInvalid({ reason: "The selected chain has no supported full-fee signing policy." })
-    const transfer = try nativeTransfer(wallet, newReview.atomicUnits, newReview.recipient)
-    const maximumFee = try feeLimit(runtime)
-    const commitment = try transferCommitment(wallet, transfer, maximumFee)
-    const intentId = try Effect.try({
-      try: () => walletDigest([runtime.agentId, ownerId, newReview.requestId, commitment]),
-      catch: (cause) => new WalletTransportFailed({ cause }),
-    })
-    const intent: WalletIntent = {
-      intentId,
-      commitment, account: wallet.account, chainId: wallet.chainId, family: wallet.family,
-      backend: "LocalSigner", operation: "AssetTransfer", intentMode: "WalletExecution",
-    }
-    if (!walletPolicyAllows(runtime, transfer)) throw new WalletRequestInvalid({ reason: "The wallet policy refuses these transfer terms." })
-    return { ...transfer, maximumFee, intent, expiresAt: (try Clock.currentTimeMillis) + walletTtlMs } satisfies WalletOwnerReviewDetails
-  }, sync(() => wallet.close()))
-  provide machine() {
-    const operated = try Machine
-    const state = try operated.send({ type: "prepareWallet", intent: details.intent, quoteUntil: details.expiresAt })
-    const decide = effect (input: WalletOwnerDecision) => {
-      const live = try tryPromise({ try: mayAct, catch: (cause) => new WalletTransportFailed({ cause }) })
-      const current = try operated.get()
-      if (!live || current.phase !== "AwaitingWalletApproval" || input.intentId !== details.intent.intentId || input.commitment !== details.intent.commitment) {
-        throw new WalletRequestInvalid({ reason: "This decision no longer matches an open review for the authenticated owner." })
-      }
-      if (input.decision === "decline") {
-        const declined = try operated.send({ type: "declineWallet" })
-        return { status: "declined", state: declined } satisfies WalletOwnerReviewResult
-      }
-      if (input.decision !== "approve") throw new WalletRequestInvalid({ reason: "The wallet decision is invalid." })
-      const configured = try walletConfiguration(runtime, newReview.family)
-      const signer = try tryPromise({ try: () => openWallet(configured), catch: (cause) => new WalletTransportFailed({ cause }) })
-      return try ensuring(effect {
-        try operated.send({ type: "approveWallet", intentId: input.intentId, commitment: input.commitment, wallTime: try Clock.currentTimeMillis, ownerConfirmed: true })
-        return try submitWalletTransfer(runtime, signer, details, details.maximumFee, operated, mayAct)
-      }, sync(() => signer.close()))
-    }
-    const modelRuntime = ManagedRuntime.make(Layer.succeed(Machine, operated))
-    return {
-      state, details, modelRuntime,
-      decide: (input: WalletOwnerDecision, signal?: AbortSignal) => runPromise(decide(input), { signal }),
-      close: () => modelRuntime.dispose(),
-    }
+export function walletPlugin(wallet: Wallet, ownerId: string): AgentPlugin {
+  return {
+    name: walletModuleName,
+    description,
+    contexts: ["wallet"],
+    actions: [walletAction(wallet, ownerId)],
+    providers: [walletProvider(wallet, ownerId)],
+    routes: walletRoutes(wallet),
   }
 }
 
-function isWalletOwner(runtime: IAgentRuntime, message: Memory): boolean {
-  const owner = validateUuid(resolveCanonicalOwnerId(runtime))
-  return owner !== null && owner === message.entityId
+export const walletModule: ModuleFactory<FileSystem.FileSystem | Path.Path> = effect (context) => {
+  const runtime: IAgentRuntime = context.runtime
+  const storageKey = context.storageKey
+  const host: WalletHost = {
+    agentId: runtime.agentId,
+    ownerId: context.ownerEntityId,
+    stateDirectory: context.stateDirectory,
+    storageKey: storageKey === undefined ? undefined : (Effect.try(() => storageKeyBytes(Redacted.value(storageKey))) catch () => undefined),
+    setting: (key) => {
+      const value = runtime.getSetting(key)
+      return typeof value === "string" ? value.trim() : ""
+    },
+    ownerPresent: () => Promise.resolve(true),
+  }
+  const wallet = openWallet(host) catch () => undefined
+  return { name: walletModuleName, plugin: wallet === undefined ? unopenedPlugin : walletPlugin(wallet, context.ownerEntityId) } satisfies AgentModule
 }
-
-effect function runWallet(runtime: IAgentRuntime, message: Memory, options: unknown) {
-  if (!isWalletOwner(runtime, message)) throw new WalletRequestInvalid({ reason: "Only the configured wallet owner may use this wallet." })
-  const subaction = parameter(options, "subaction")
-  const family = parameter(options, "chain")
-  const configuration = try walletConfiguration(runtime, family)
-  const directory = try Effect.try({ try: () => walletJournalDirectory(resolveStateDir(), runtime.agentId), catch: (cause) => new WalletTransportFailed({ cause }) })
-  const wallet = try tryPromise({ try: () => openWallet(configuration), catch: (cause) => new WalletTransportFailed({ cause }) })
-  return try ensuring(effect {
-    if (subaction === "balance") return try walletBalance(wallet, runtime, parameter(options, "token"), family)
-    if (subaction === "reconcile") {
-      const id = parameter(options, "intentId")
-      const entry = try journalEntry(directory, id)
-      if (entry === undefined) {
-        const reserved = try tryPromise({ try: () => readSigningReservation(directory, id), catch: (cause) => new WalletTransportFailed({ cause }) })
-        if (reserved !== undefined) {
-          const pending = try decodeState(reserved)
-          if (pending.phase === "WalletSigning" && pending.intent.intentId === id && pending.intent.account === wallet.account &&
-            pending.intent.chainId === wallet.chainId && pending.intent.family === wallet.family) {
-            return { success: true, text: "The wallet has a signing reservation awaiting a transaction record.", data: { intentId: id, status: "reserved" } }
-          }
-        }
-        throw new WalletRequestInvalid({ reason: "There is no matching submission in this wallet’s journal." })
-      }
-      if (entry.intent.account !== wallet.account || entry.intent.chainId !== wallet.chainId || entry.intent.family !== wallet.family) {
-        throw new WalletRequestInvalid({ reason: "There is no matching submission in this wallet’s journal." })
-      }
-      const receipt = try tryPromise({ try: () => wallet.receipt(entry.operationRef), catch: (cause) => new WalletTransportFailed({ cause }) })
-      provide machine(entry) {
-        const operation = try Machine
-        if (receipt === "unresolved") try operation.send({ type: "markWalletUncertain", operationRef: entry.operationRef })
-        else try operation.send({ type: "settleWallet", operationRef: entry.operationRef, chainId: wallet.chainId, commitment: entry.intent.commitment, receiptFinal: true })
-        return { success: true, text: `Wallet outcome: ${receipt}`, data: { intentId: id, receipt, operationRef: entry.operationRef } }
-      }
-    }
-    if (subaction !== "transfer") throw new WalletRequestInvalid({ reason: "Select a wallet balance, transfer, or reconciliation." })
-    const mode = parameter(options, "mode")
-    if (mode !== "" && mode !== "quote" && mode !== "simulate") throw new WalletRequestInvalid({ reason: "Use the authenticated Wallet Review to execute a transfer." })
-    const transfer = try nativeTransfer(wallet, parameter(options, "amount"), parameter(options, "recipient"))
-    const fee = try tryPromise({ try: () => wallet.estimate(transfer), catch: (cause) => new WalletTransportFailed({ cause }) })
-    const amount = transfer.atomicUnits
-    const recipient = transfer.recipient
-    const text = `Send ${amount} atomic units from ${wallet.account} to ${recipient} on ${wallet.chainId}. Estimated ${family === "evm" ? "gas units" : "fee in lamports"}: ${fee}.`
-    return { success: true, text, data: { amount, recipient, fee, mode: mode === "simulate" ? "simulate" : "quote" } }
-  }, sync(() => wallet.close()))
-}
-
-export const walletAction: Action = {
-  name: "WALLET",
-  description: "Read balances, quote or simulate a native transfer, and reconcile an existing transaction.",
-  similes: ["WALLET_TRANSFER", "CHECK_WALLET"],
-  parameters: [
-    { name: "subaction", description: "Wallet operation.", required: true, schema: { type: "string", enum: ["balance", "transfer", "reconcile"] } },
-    { name: "chain", description: "Wallet chain family.", required: true, schema: { type: "string", enum: ["evm", "solana"] } },
-    { name: "mode", description: "Quote or simulate this transfer.", schema: { type: "string", enum: ["quote", "simulate"] } },
-    { name: "token", description: "Optional ERC-20 token contract for EVM balance reads.", schema: { type: "string" } },
-    { name: "amount", description: "Exact amount in atomic units as an integer string.", requiredForSubactions: ["transfer"], schema: { type: "string" } },
-    { name: "recipient", description: "The receiving wallet address.", requiredForSubactions: ["transfer"], schema: { type: "string" } },
-    { name: "intentId", description: "The original transfer identity for reconciliation.", requiredForSubactions: ["reconcile"], schema: { type: "string" } },
-  ],
-  validate: (runtime, message) => Promise.resolve(isWalletOwner(runtime, message)),
-  handler: (runtime, message, _state, options) => runPromise(runWallet(runtime, message, options)),
-}
-
-export const plugin: Plugin = {
-  name: "@elizaos/plugin-wallet",
-  description: "Owner-reviewed EVM and Solana transfers, balances, and durable submission reconciliation.",
-  actions: [walletAction],
-}
-
-export default plugin

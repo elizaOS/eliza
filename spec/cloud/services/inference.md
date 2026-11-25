@@ -298,7 +298,8 @@ timeout, the network, a failure mid-stream) is `ProviderFailed`. A mid-stream
 failure retains any usage report received before it. A provider
 `400` or `422` (a parameter or a strict `json_schema` it cannot serve)
 answers `400 invalid_request`, a `413` answers `413 content_too_large`, a
-`429` answers `429 rate_limited`, and any other failure answers
+`429` answers `429 rate_limited` with the reason `provider_rate_limited`,
+so it is never taken for Cloud's own limit, and any other failure answers
 `503 provider_unavailable`. Only the last two are retryable, and both carry
 a retry time. A stated `Retry-After` is kept for either refusal so neither the
 agent nor other callers send before the provider is ready. Without a wait
@@ -331,7 +332,7 @@ pure def failureWait(status: int, hint: Millis): Millis =
   if (hint >= 0) hint else if (status == 429) rateLimitPause else providerPause
 pure def failureRefusal(end: CompletionEnd, retryAt: Millis): Refusal = match end {
   | ProviderRejected(r) => if (r.status == 400 or r.status == 422) refuse(InvalidRequest) else if (r.status == 413) refuse(ContentTooLarge)
-      else if (r.status == 429) refuseUntil(RateLimited, retryAt) else refuseUntil(ProviderUnavailable, retryAt)
+      else if (r.status == 429) { code: RateLimited, reason: ProviderRateLimited, wait: RetryAt({ retryAtMs: retryAt }) } else refuseUntil(ProviderUnavailable, retryAt)
   | _ => refuseUntil(ProviderUnavailable, retryAt)
 }
 pure def lawFailureRefusalsAreWellFormed(status: int, delivered: bool, retryAt: Millis): bool = {
@@ -340,6 +341,8 @@ pure def lawFailureRefusalsAreWellFormed(status: int, delivered: bool, retryAt: 
 }
 pure def lawOnlyAnUndeliveredProviderRateLimitIsARateLimit(status: int, delivered: bool, retryAt: Millis): bool =
   (failureRefusal(endOfFailure(status, delivered), retryAt).code == RateLimited) iff (status == 429 and not(delivered))
+pure def lawAProviderRateLimitNamesTheProvider(status: int, delivered: bool, retryAt: Millis): bool =
+  (failureRefusal(endOfFailure(status, delivered), retryAt).code == RateLimited) implies (failureRefusal(endOfFailure(status, delivered), retryAt).reason == ProviderRateLimited)
 pure val hintValues = Set(-1, 0, 1000, 4000, 4001, 59000)
 pure def lawProviderRetryTimeIsKept(status: int, hint: Millis): bool =
   if (hint >= 0) failureWait(status, hint) == hint

@@ -158,6 +158,7 @@ export interface VoicemailEntry {
   isNew: boolean;
   hasAudio: boolean;
   carrierTranscript: string | null;
+  deletionWitness?: string;
 }
 
 export interface VoicemailList {
@@ -196,7 +197,7 @@ export type VoicemailWriteStatus = "marked" | "unconfirmed" | "not-found";
 
 export type VoicemailDeletionReport =
   | { status: "queued"; deletion: StagedDeletion; listing: VoicemailListing }
-  | { status: "not-found"; listing: VoicemailListing };
+  | { status: "not-found" | "stale"; listing: VoicemailListing };
 
 export interface VoicemailWriteReport {
   written: WriteOutcome;
@@ -218,12 +219,12 @@ export interface PhoneNativePlugin {
   placeCall(options: { number: string }): Promise<unknown>;
   phoneInfo(): Promise<unknown>;
   voicemailStatus(): Promise<unknown>;
-  listVoicemail(options: { limit: number }): Promise<unknown>;
+  listVoicemail(options: { limit: number; withDeletionWitness?: true }): Promise<unknown>;
   fetchVoicemailAudio(options: { id: string }): Promise<unknown>;
   voicemailAudio(options: { id: string }): Promise<unknown>;
   voicemailPcm(options: { id: string }): Promise<unknown>;
   markVoicemailHeard(options: { id: string }): Promise<unknown>;
-  deleteVoicemail(options: { id: string }): Promise<unknown>;
+  deleteVoicemail(options: { id: string; witness?: string }): Promise<unknown>;
   observeVoicemail(options: { enabled: boolean }): Promise<unknown>;
   addListener(event: "voicemailChanged", listener: (data: unknown) => void): Promise<{ remove(): Promise<void> }>;
 }
@@ -243,7 +244,7 @@ export interface PhoneClient {
   voicemailAudio(id: VoicemailId): Promise<VoicemailAudio>;
   voicemailPcm(id: VoicemailId): Promise<VoicemailPcm>;
   markVoicemailHeard(id: VoicemailId): Promise<VoicemailWriteReport>;
-  deleteVoicemail(id: VoicemailId): Promise<VoicemailDeletionReport>;
+  deleteVoicemail(id: VoicemailId, witness?: string): Promise<VoicemailDeletionReport>;
   observeVoicemail(onChange: (refreshed: Promise<VoicemailListing>) => void): Promise<() => Promise<void>>;
 }
 

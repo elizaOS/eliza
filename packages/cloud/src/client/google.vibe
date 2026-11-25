@@ -36,6 +36,7 @@ const mailCardSchema = Schema.Struct({
   to: Schema.Array(Schema.String),
   cc: Schema.Array(Schema.String),
   snippet: Schema.String,
+  hasAttachments: Schema.optionalKey(Schema.Boolean),
   receivedAt: Schema.String,
   labels: Schema.Array(Schema.String),
   isUnread: Schema.Boolean,

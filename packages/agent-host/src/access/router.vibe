@@ -3,6 +3,7 @@ module node {
   import type { Redacted } from "effect"
   import { entry, publicPath, type Caller, type RouteOrigin } from "../../gen/agent__access__auth.ts"
   import type { Delivery } from "../../gen/agent__access__routes.ts"
+  import { ModuleRefused } from "../host/module.vibe"
   import { authStatusAnswer, authStatusRoute, callerOf } from "./auth.vibe"
   import { modelRoute, routeGate, type LocalCall, type LocalRoute, type LocalRouter, type Route, type RouteInput } from "@elizaos/agent"
 
@@ -83,7 +84,7 @@ module node {
       })),
     ]
     const root = load(bindings.map(({ route }) => route))
-    if (!root.accepted) throw new Error("The route list was refused whole")
+    if (!root.accepted) throw new ModuleRefused({ module: "routes", reason: "The route list was refused whole" })
     const anonymous = load(publicBindings.map(({ route }) => route))
     const gates = { Root: root.gate, Anonymous: anonymous.gate }
     const byRoute = new Map(bindings.toReversed().map((binding) => [JSON.stringify(modelRoute(binding.route)), binding]))

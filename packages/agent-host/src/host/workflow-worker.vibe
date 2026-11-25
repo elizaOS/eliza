@@ -5,7 +5,7 @@ module node {
   import { lstat, open, realpath } from "node:fs/promises"
   import { isAbsolute, relative, resolve, sep } from "node:path"
   import { Redacted } from "effect"
-  import type { ProcessValue } from "../../gen/agent__plugins__profile.ts"
+  import { workflowWorkerService as workflowWorkerServiceType, type ProcessValue } from "../../gen/agent__plugins__profile.ts"
   import type { LaunchDocument, LaunchFrame } from "@elizaos/agent"
   import { Service, type IAgentRuntime, type ServiceClass } from "@elizaos/core"
 
@@ -80,8 +80,6 @@ module node {
     if (secrets.storageKey !== undefined && value.includes(Redacted.value(secrets.storageKey))) return "SealingKey"
     return "PlainSetting"
   }
-
-  const workflowWorkerServiceType = "workflow-worker"
 
   export function workflowWorkerService(installed: () => WorkflowWorkerHost | undefined): ServiceClass {
     return class WorkflowWorker extends Service {

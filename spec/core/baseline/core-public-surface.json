@@ -81827,9 +81827,9 @@
     },
     {
       "path": "packages/core/src/catalog/generated.json",
-      "bytes": 127525,
-      "lines": 4490,
-      "sha256": "09876b2cbc3a20ffa31deb033aac93e3f3284e1b61d40c9422a6013758a48832",
+      "bytes": 127172,
+      "lines": 4482,
+      "sha256": "dc6c33548e7db99a40686ead1a09bf905b3fc9a3b6194f8ca43299eb282d7e09",
       "category": "source"
     },
     {
@@ -222217,9 +222217,9 @@
             },
             {
               "path": "packages/core/src/catalog/generated.json",
-              "sha256": "09876b2cbc3a20ffa31deb033aac93e3f3284e1b61d40c9422a6013758a48832",
-              "bytes": 127525,
-              "lines": 4490
+              "sha256": "dc6c33548e7db99a40686ead1a09bf905b3fc9a3b6194f8ca43299eb282d7e09",
+              "bytes": 127172,
+              "lines": 4482
             },
             {
               "path": "packages/core/src/catalog/provider-plugin-map.json",
