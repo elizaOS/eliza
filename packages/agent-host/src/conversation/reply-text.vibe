@@ -1,4 +1,4 @@
-// spec/agent/conversation/planning.md, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"; spec/agent/conversation/planning.md, "A turn acknowledges at most once, with a cue that comes with its first tool calls, and bare assent is a cue only with work after an instruction"; spec/agent/conversation/planning.md, "A recognized card is delivered unfenced, other multi-line tool output is fenced, and grounded prose follows unless one already holds the other"; spec/agent/conversation/planning.md, "A voice turn that ran an action answers with that action's label: its kind, whether the reply is a validated card, and whether the owner asked for exact wording"
+// spec/agent/conversation/planning.md, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"; spec/agent/conversation/planning.md, "A turn acknowledges at most once, with a cue that comes with its first tool calls, and bare assent is a cue only with work after an instruction"; spec/agent/conversation/planning.md, "A recognized card is delivered unfenced, other multi-line tool output is fenced, and grounded prose follows unless one already holds the other"; spec/agent/conversation/planning.md, "A voice turn that ran an action answers with that action's label: its kind, whether the reply is a validated card, and whether the owner asked for exact wording"; spec/agent/conversation/planning.md, "A tool call the model wrote as text never reaches the owner, and its step is asked again once"
 import { looksLikeActionEnvelopeJson, looksLikeEvaluatorEnvelopeJson, parseInteractionBlocks, sanitizeUserVisibleModelOutput } from "@elizaos/core"
 import { actionLabel, compose, readDraft, type ActionLabel, type Composition, type Draft, type DraftShape, type VoiceAction } from "../../gen/agent__conversation__planning.ts"
 
@@ -44,7 +44,7 @@ const waitSentence = pattern(`^${waitCue}$`, "u")
 const instructionAssent = /^(?:sure|yeah)(?:$|, |[.!…]+ | ?[—–:;] ?| - )/u
 const dataToken = /\p{N}|\b[ap]\.m\.|\b(?:pm|noon|midnight|o['’]clock|zero|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|(?:hundred|thousand|dozen)s?|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth|\p{L}+(?:teenth|tieth)|few|couple|handful|several|single|only|(?:half|quarter) (?:past|to|after|till?))\b|\b(?:at|by|until|till|before|after|around) one\b|\bone [ap]m\b/iu
 
-export const cueRule = "When you call tools, write with your first tool calls only a brief cue that you heard the request; the real reply comes after the work. Write a cue only with a tool call in the same response: when no offered tool can do what was asked, write no cue and tell the person plainly, in your own words, that you can't. A request only to open one app, with nothing to read, find or change there, still calls the tool that opens it, with no cue: write nothing with that call, and the reply after it confirms the destination. Any question or lookup gets its cue, even one about what is on the screen. For a question or a lookup, including a request asked as a question such as \"Can you text Sam?\": \"Let me check.\" or \"Let me check your calendar.\" (or your notes, inbox, messages, reminders, tasks, files, photos, contacts), or \"Let me check the weather.\" When one message asks for several lookups, or about several named people or items, use the plain \"Let me check.\"; name a source only for one simple lookup. When opening an app is part of other planned work: \"Let me open Maps.\" (the app asked for, by its bare name: Calendar, Notes, Inbox, Maps, Files, Photos, Settings, Workflows, Camera, Browser, Contacts, Messages, Phone or Clock; for any other app, \"On it.\"). For a plain command such as \"Text Sam I'm late\" or \"Set an alarm for seven\": \"Sure.\", \"Sure, one sec.\" or \"Yeah, one sec.\" For any other action: \"On it.\" or \"One sec.\" Never start with Sure or Yeah after a question; it sounds like the answer. Never name the people, items, times or outcome, never say the work is done or under way, and never repeat the request. If the person asked for silence or no acknowledgment, write nothing and still do the work. Write no text with later tool calls."
+export const cueRule = "When you call tools, write with your first tool calls only a brief cue that you heard the request; the real reply comes after the work. Write a cue only with a tool call in the same response: when no offered tool can do what was asked, write no cue and tell the person plainly, in your own words, that you can't. A request only to open one app, with nothing to read, find or change there, still calls the tool that opens it, with no cue: write nothing with that call, and the reply after it confirms the destination. Any question or lookup gets its cue, even one about what is on the screen. For a question or a lookup, including a request asked as a question such as \"Can you text Sam?\": \"Let me check.\" or \"Let me check your calendar.\" (or your notes, inbox, messages, reminders, tasks, files, photos, contacts), or \"Let me check the weather.\" When one message asks for several lookups, or about several named people or items, use the plain \"Let me check.\"; name a source only for one simple lookup. When opening an app is part of other planned work: \"Let me open Maps.\" (the app asked for, by its bare name: Calendar, Notes, Inbox, Maps, Files, Photos, Settings, Workflows, Camera, Browser, Contacts, Messages, Phone or Clock; for any other app, \"On it.\"). For a plain command such as \"Text Sam I'm late\" or \"Set an alarm for seven\": \"Sure.\", \"Sure, one sec.\" or \"Yeah, one sec.\" For any other action: \"On it.\" or \"One sec.\" Never start with Sure or Yeah after a question; it sounds like the answer. Never name the people, items, times or outcome, never say the work is done or under way, and never repeat the request. If the person asked for silence or no acknowledgment, write nothing and still do the work. Write no text with later tool calls. Say that something was saved, sent, opened or changed only when a tool result in this turn shows it."
 
 function inGrammar(words: string, assent: string | undefined): boolean {
   const opening = assent ?? (words.startsWith("sure! ") ? "sure! " : "")
@@ -56,26 +56,49 @@ function inGrammar(words: string, assent: string | undefined): boolean {
     && sentences.every((sentence) => waitSentence.test(sentence) || progress.test(sentence))
 }
 
-function isWrittenCall(body: string): boolean {
-  if (looksLikeActionEnvelopeJson(body)) return true
+const callKeys = new Set(["action", "tool", "type", "name"])
+const bracketName = /^\[([a-z][a-z0-9_]*)/u
+
+export function actionNameKey(name: string): string {
+  return name.toUpperCase().replace(/[^A-Z0-9]/gu, "")
+}
+
+function namedIn(body: string): readonly (readonly [string, string])[] {
+  const bracket = bracketName.exec(body)?.[1]
+  if (bracket !== undefined) return [["tool", bracket]]
   try {
     const parsed: unknown = JSON.parse(body)
     return typeof parsed === "object" && parsed !== null
-      && Object.entries(parsed).some(([key, value]) => typeof value === "string" && (key === "action" || key === "tool" || callName.test(value)))
+      ? Object.entries(parsed).flatMap(([key, value]) => callKeys.has(key) && typeof value === "string" ? [[key, value] as const] : [])
+      : []
   } catch {
-    return false
+    return []
   }
 }
 
-interface WithoutObjects {
-  readonly text: string
-  readonly calls: boolean
+function namesOffered(body: string, offered: ReadonlySet<string>): boolean {
+  return namedIn(body).some(([, value]) => offered.has(actionNameKey(value)))
 }
 
-function withoutObjects(said: string): WithoutObjects {
-  const text = said.replace(bracketCall, " ")
-  let calls = text !== said
-  if (!text.includes("{")) return { text: calls ? text.replace(emptyWrapper, " ").trim() : said, calls }
+function looksLikeCall(body: string, offered: ReadonlySet<string>): boolean {
+  return looksLikeActionEnvelopeJson(body)
+    || namedIn(body).some(([key, value]) => offered.has(actionNameKey(value)) || ((key === "action" || key === "tool") && callName.test(value)))
+}
+
+interface Objects {
+  readonly text: string
+  readonly found: readonly string[]
+}
+
+function objectsOut(said: string, strip: (body: string, before: string) => boolean): Objects {
+  const found: string[] = []
+  let changed = false
+  const text = said.replace(bracketCall, (call: string, at: number) => {
+    found.push(call)
+    const gone = strip(call, said.slice(0, at))
+    changed ||= gone
+    return gone ? " " : call
+  })
   const open: number[] = []
   let rest = ""
   let kept = 0
@@ -93,33 +116,47 @@ function withoutObjects(said: string): WithoutObjects {
     const start = open.pop()
     const body = text.slice(start ?? index, index + 1)
     if (start === undefined || open.length > 0 || !isJsonObject(body)) continue
-    calls ||= isWrittenCall(body)
+    found.push(body)
+    if (!strip(body, text.slice(0, start))) continue
+    changed = true
     rest += `${text.slice(kept, start)} `
     kept = index + 1
   }
-  return { text: kept === 0 && !calls ? said : `${rest}${text.slice(kept)}`.replace(emptyWrapper, " ").trim(), calls }
+  return { text: changed ? `${rest}${text.slice(kept)}`.replace(emptyWrapper, " ").trim() : said, found }
 }
 
 export function withoutWrittenCalls(said: string): string {
-  return withoutObjects(said).text
+  return objectsOut(said, () => true).text
 }
 
-function shapeOf(reply: string): DraftShape {
+function afterCue(before: string): boolean {
+  const sentence = before.trimEnd().split(/\n|(?<=[.!?…])\s+/u).at(-1) ?? ""
+  const shape = sentence ? shapeOf(sentence, new Set()) : "Blank"
+  return shape === "GrammarCue" || shape === "AssentCue"
+}
+
+export function withoutOfferedCalls(said: string, offered: ReadonlySet<string>): string {
+  return objectsOut(said, (body, before) => namesOffered(body, offered) || afterCue(before)).text
+}
+
+function shapeOf(reply: string, offered: ReadonlySet<string>): DraftShape {
   const said = reply.trim()
   if (!said) return "Blank"
-  const { text, calls } = withoutObjects(said)
-  if (!text) return calls ? "Blank" : "OtherText"
+  const { text, found } = objectsOut(said, () => true)
+  if (!text) return found.some((body) => looksLikeCall(body, offered)) ? "Blank" : "OtherText"
   if (text.length > maxCueLength || text.includes("?") || text.includes(personMark) || dataToken.test(text)) return "OtherText"
   const words = text.replace(/\s+/gu, " ").replace(person, `check with ${personMark}`).toLowerCase()
     .replace(/[‘’ʼ]/gu, "'").replace(/ ?, ?/gu, ", ").replace(/[.!…]+$/u, "")
   if (inGrammar(words, undefined)) return "GrammarCue"
   const assent = instructionAssent.exec(words)?.[0]
   if (assent === undefined || !inGrammar(words, assent)) return "OtherText"
-  return words === assent && !calls ? "Assent" : "AssentCue"
+  if (words !== assent) return "AssentCue"
+  if (found.length === 0) return "Assent"
+  return found.some((body) => namesOffered(body, offered)) ? "AssentCue" : "AssentObject"
 }
 
-export function draftOf(text: string, instruction: boolean, calls: number): Draft {
-  return readDraft(shapeOf(text), instruction, calls)
+export function draftOf(text: string, instruction: boolean, calls: number, offered: ReadonlySet<string>): Draft {
+  return readDraft(shapeOf(text, offered), instruction, calls)
 }
 
 const requestFiller = new Set(["hey", "hi", "hello", "ok", "okay", "alright", "so", "please", "oh", "um", "uh", "well", "yo", "and", "also", "but", "then", "now", "actually"])
@@ -163,6 +200,22 @@ export function requestIsInstruction(request: string): boolean {
     return words.slice(0, index).some((word) => requestGreeting.has(word)) && commandVerb.has(words[index + 1] ?? "")
   }
   return false
+}
+
+const writtenCallMarker = /<\s*\/?\s*tool_call\b|<\s*function(?:=|_call\b)/iu
+const writtenCallHeads = ["<tool_call", "</tool_call", "<function=", "<function_call"]
+
+export function writtenCallFree(text: string): { readonly prose: string; readonly markup: boolean } {
+  const at = text.search(writtenCallMarker)
+  return at < 0 ? { prose: text, markup: false } : { prose: text.slice(0, at).trimEnd(), markup: true }
+}
+
+export function streamable(text: string): string {
+  const at = text.search(writtenCallMarker)
+  if (at >= 0) return text.slice(0, at)
+  const open = text.lastIndexOf("<")
+  const tail = open < 0 ? "" : text.slice(open).replace(/\s+/gu, "").toLowerCase()
+  return tail !== "" && writtenCallHeads.some((head) => head.startsWith(tail)) ? text.slice(0, open) : text
 }
 
 const cardBlock = /(?:^|\n)[ \t]*\[(MAPSCARD|CHECKLIST|WORKFLOW)\][ \t]*\r?\n[ \t]*(\{[^\n]*\})[ \t]*\r?\n[ \t]*\[\/\1\][ \t]*(?=\r?\n|$)/g

@@ -1,0 +1,136 @@
+// spec/wallet/custody.md, "Story: Hold my own keys on my device"; spec/wallet/requests.md, "A request waits with the exact terms it was asked with"; spec/wallet/index.md, "A review binds the complete immutable wallet operation"; spec/wallet/index.md, "Inventory and venue observations retain their chain and account scope"
+export schema WalletFamilyName = "evm" | "solana"
+
+export schema CustodyState = "none" | "ready" | "off" | "unavailable"
+
+export schema WalletAccount {
+  readonly family: WalletFamilyName
+  readonly address: string
+  readonly connected: boolean
+  readonly chainId: string
+  readonly network: string
+  readonly nativeSymbol: string
+  readonly nativeDecimals: number
+  readonly canSend: boolean
+}
+
+export schema WalletStatus {
+  readonly custody: CustodyState
+  readonly canHold: boolean
+  readonly accounts: readonly WalletAccount[]
+}
+
+export schema WalletHolding {
+  readonly family: WalletFamilyName
+  readonly chainId: string
+  readonly asset: string
+  readonly symbol: string
+  readonly decimals: number
+  readonly atomicUnits: string
+}
+
+export schema WalletHoldings {
+  readonly holdings: readonly WalletHolding[]
+  readonly unread: readonly WalletFamilyName[]
+}
+
+export schema WalletAsk {
+  readonly family: WalletFamilyName
+  readonly token?: string
+  readonly recipient: string
+  readonly amount: string
+}
+
+export schema WalletRequestRow {
+  readonly id: number
+  readonly family: WalletFamilyName
+  readonly asset: string
+  readonly symbol: string
+  readonly recipient: string
+  readonly amount: string
+  readonly asker: "owner" | "agent"
+}
+
+export schema WalletRequests {
+  readonly requests: readonly WalletRequestRow[]
+}
+
+export schema WalletQuote {
+  readonly family: WalletFamilyName
+  readonly chainId: string
+  readonly network: string
+  readonly account: string
+  readonly recipient: string
+  readonly asset: string
+  readonly symbol: string
+  readonly decimals: number
+  readonly atomicUnits: string
+  readonly maximumFee: string
+  readonly feeSymbol: string
+  readonly feeDecimals: number
+}
+
+export schema WalletReview {
+  readonly family: WalletFamilyName
+  readonly chainId: string
+  readonly network: string
+  readonly account: string
+  readonly recipient: string
+  readonly asset: string
+  readonly symbol: string
+  readonly decimals: number
+  readonly atomicUnits: string
+  readonly maximumFee: string
+  readonly feeSymbol: string
+  readonly feeDecimals: number
+  readonly requestId: number
+  readonly intentId: string
+  readonly commitment: string
+  readonly expiresAt: number
+}
+
+export schema WalletDecision {
+  readonly decision: "approve" | "decline"
+  readonly intentId?: string
+  readonly commitment?: string
+}
+
+export schema WalletSwitch {
+  readonly on: boolean
+}
+
+export schema WalletDecided = { readonly status: "declined" } | { readonly status: "submitted" | "unresolved"; readonly operationRef: string }
+
+export schema WalletOperation {
+  readonly intentId: string
+  readonly family: WalletFamilyName
+  readonly chainId: string
+  readonly asset: string
+  readonly symbol: string
+  readonly decimals: number
+  readonly atomicUnits: string
+  readonly recipient: string
+  readonly maximumFee: string
+  readonly reservedAt: number
+  readonly status: "notSent" | "pending" | "confirmed" | "failed"
+  readonly operationRef: string
+}
+
+export schema WalletActivity {
+  readonly operations: readonly WalletOperation[]
+}
+
+export schema WalletRefusal {
+  readonly error: string
+  readonly code: "refused" | "unreachable" | "invalid_request"
+}
+
+export const walletPaths = {
+  wallet: "/api/wallet",
+  switch: "/api/wallet/switch",
+  holdings: "/api/wallet/holdings",
+  activity: "/api/wallet/activity",
+  requests: "/api/wallet/requests",
+  review: (id: number) => `/api/wallet/requests/${id}/review`,
+  decide: (id: number) => `/api/wallet/requests/${id}/decide`,
+} as const

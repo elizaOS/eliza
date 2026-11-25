@@ -1,0 +1,26 @@
+// spec/wallet/index.md, "A chain amount compares exactly at every digit"
+import { Schema } from "effect";
+import { contract } from "vibestack/testing";
+import { atomicOf, shownUnits } from "./units.vibe";
+
+const Amount = Schema.Struct({
+  units: Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER })),
+  more: Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER })),
+  decimals: Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 36 })),
+});
+
+const atomic = (amount: typeof Amount.Type): string => (amount.units === 0 ? String(amount.more) : `${amount.units}${String(amount.more).padStart(16, "0")}`);
+
+export const anAmountIsWrittenAndReadBackExactly = contract({
+  input: Amount,
+  run: (amount) => atomicOf(shownUnits(atomic(amount), amount.decimals), amount.decimals),
+  deterministic: true,
+  invariant: (amount, read) => read === atomic(amount),
+});
+
+export const anAmountFinerThanTheAssetIsRefused = contract({
+  input: Amount,
+  run: (amount) => atomicOf(`${amount.units}.${"0".repeat(amount.decimals)}1`, amount.decimals),
+  deterministic: true,
+  invariant: (_amount, read) => read === undefined,
+});
