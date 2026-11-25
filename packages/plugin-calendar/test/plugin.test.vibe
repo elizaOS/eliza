@@ -638,8 +638,8 @@ it.effect(`Change my calendar only as I asked and know it happened, at a free ti
   const lateStandup = try said("slot-4zi", "Standup tomorrow 9:15a", { subaction: "create_event", title: "Late huddle", startAt: "2030-03-20T21:15", statedClock: "start" })
   const rangeAsMinutes = try said("slot-4zj", "Coffee tomorrow from 10 to 6", { subaction: "create_event", title: "Coffee", startAt: "2030-03-20T17:50", statedClock: "start" })
   const phoneNumber = try said("slot-4zk", "Call 0800 123 456 tomorrow at 3", { subaction: "create_event", title: "Hotline", startAt: "2030-03-20T08:00", statedClock: "start" })
-  assert.deepStrictEqual([span(halfThree), span(lateStandup), at(rangeAsMinutes.data, "code"), at(phoneNumber.data, "code")],
-    [["2030-03-20T22:30:00.000Z", "2030-03-20T23:30:00.000Z"], ["2030-03-21T04:15:00.000Z", "2030-03-21T05:15:00.000Z"], "CALENDAR_CLOCK_UNSAID", "CALENDAR_CLOCK_UNSAID"])
+  assert.deepStrictEqual([at(halfThree.data, "code"), at(halfThree.data, "sent"), halfThree.effectReceipts?.length ?? 0, span(lateStandup), at(rangeAsMinutes.data, "code"), at(phoneNumber.data, "code")],
+    ["CALENDAR_CLOCK_UNSAID", "2030-03-20T22:30:00.000Z", 0, ["2030-03-21T04:15:00.000Z", "2030-03-21T05:15:00.000Z"], "CALENDAR_CLOCK_UNSAID", "CALENDAR_CLOCK_UNSAID"])
   const errand = (id: string, text: string, startAt: string) => said(id, text, { subaction: "create_event", title: "Errand", startAt, statedClock: "start" })
   const addressed = [try errand("slot-4zl", "Lunch tomorrow at 1230 Broadway", "2030-03-21T12:30"), try errand("slot-4zm", "Meet Sam tomorrow at 1430 Main St", "2030-03-21T14:30"),
     try errand("slot-4zn", "Coffee tomorrow at 0930 Elm Ave", "2030-03-21T09:30"), try errand("slot-4zo", "Dinner tomorrow at 1600 Pennsylvania Ave at 7pm", "2030-03-21T16:00"),
@@ -664,9 +664,9 @@ it.effect(`Change my calendar only as I asked and know it happened, at a free ti
   const endBesideStart = try said("slot-4yc", "Call at quarter of five tomorrow", { subaction: "create_event", title: "Ring Pat", startAt: "2030-03-23T16:45", endAt: "2030-03-23T17:00", statedClock: "range" })
   const startAlone = try said("slot-4yd", "Call at quarter of five tomorrow", { subaction: "create_event", title: "Ring Pat", startAt: "2030-03-23T16:45", statedClock: "start" })
   const rangeToNoon = try said("slot-4ye", "Standup from 0930 until noon", { subaction: "create_event", title: "Long huddle", startAt: "2030-03-24T09:30", endAt: "2030-03-24T12:00", statedClock: "range" })
-  assert.deepStrictEqual([span(yearAside), at(endBesideStart.data, "code"), at(endBesideStart.data, "sent"), endBesideStart.effectReceipts?.length ?? 0, span(startAlone), span(rangeToNoon)],
-    [["2030-03-22T16:30:00.000Z", "2030-03-22T17:30:00.000Z"], "CALENDAR_CLOCK_UNSAID", "2030-03-24T00:00:00.000Z", 0, ["2030-03-23T23:45:00.000Z", "2030-03-24T00:45:00.000Z"],
-      ["2030-03-24T16:30:00.000Z", "2030-03-24T19:00:00.000Z"]])
+  assert.deepStrictEqual([yearAside, endBesideStart, startAlone, rangeToNoon].map((result) => [at(result.data, "code"), at(result.data, "sent"), result.effectReceipts?.length ?? 0]),
+    [["CALENDAR_CLOCK_UNSAID", "2030-03-22T16:30:00.000Z", 0], ["CALENDAR_CLOCK_UNSAID", "2030-03-23T23:45:00.000Z", 0], ["CALENDAR_CLOCK_UNSAID", "2030-03-23T23:45:00.000Z", 0],
+      ["CALENDAR_CLOCK_UNSAID", "2030-03-24T16:30:00.000Z", 0]])
   const misreadAlone = [try errand("slot-4q1", "Sell the shares at 14.50 tomorrow", "2030-03-25T14:50"), try errand("slot-4q2", "Upgrade Ubuntu to 22.04 tomorrow", "2030-03-25T22:04"),
     try errand("slot-4q3", "Set the thermostat to 21.30 tonight", "2030-03-25T21:30"), try errand("slot-4q4", "Due by 15.11", "2030-03-25T15:11"),
     try errand("slot-4q5", "Change the door code to 1234 tonight", "2030-03-25T12:34"), try errand("slot-4q6", "Buy gold at 2345 tomorrow", "2030-03-25T23:45"),
@@ -686,9 +686,9 @@ it.effect(`Change my calendar only as I asked and know it happened, at a free ti
     try errandRange("slot-4qo", "Catch up at ten past 4 until 5 tomorrow", "2030-03-25T17:00", "2030-03-26T16:10")]
   assert.deepStrictEqual(misreadRange.map((result) => [at(result.data, "code"), at(result.data, "sent"), result.effectReceipts?.length ?? 0]),
     [["CALENDAR_CLOCK_UNSAID", "2030-03-26T04:12:00.000Z", 0], ["CALENDAR_CLOCK_UNSAID", "2030-03-25T22:00:00.000Z", 0], ["CALENDAR_CLOCK_UNSAID", "2030-03-25T23:10:00.000Z", 0],
-      ["CALENDAR_CLOCK_UNSAID", "2030-03-25T22:30:00.000Z", 0], ["CALENDAR_CLOCK_UNSAID", "2030-03-26T00:00:00.000Z", 0], ["CALENDAR_CLOCK_UNSAID", "2030-03-26T23:10:00.000Z", 0]])
+      ["CALENDAR_CLOCK_UNSAID", "2030-03-25T22:30:00.000Z", 0], ["CALENDAR_CLOCK_UNSAID", "2030-03-25T11:10:00.000Z", 0], ["CALENDAR_CLOCK_UNSAID", "2030-03-26T23:10:00.000Z", 0]])
   const countedRange = try said("slot-4qp", "Catch up at ten past 4 until 5 tomorrow", { subaction: "create_event", title: "Catch-up", startAt: "2030-03-25T16:10", endAt: "2030-03-25T17:00", statedClock: "range" })
-  assert.deepStrictEqual(span(countedRange), ["2030-03-25T23:10:00.000Z", "2030-03-26T00:00:00.000Z"])
+  assert.deepStrictEqual([at(countedRange.data, "code"), at(countedRange.data, "sent"), countedRange.effectReceipts?.length ?? 0], ["CALENDAR_CLOCK_UNSAID", "2030-03-25T23:10:00.000Z", 0])
   const otherScriptName = try said("slot-4za", "Lunch with Дмитрий tomorrow at 1pm", { subaction: "create_event", title: "Lunch", startAt: "2030-03-02T01:00", statedClock: "start" })
   const oddNumber = try said("slot-4zb", "Dentist at 3pm for 1.5 hours tomorrow", { subaction: "create_event", title: "Dentist", startAt: "2030-03-02T03:00", statedClock: "start" })
   const foreignWord = try said("slot-4zc", "Termin morgen um 15 Uhr", { subaction: "create_event", title: "Termin", startAt: "2030-03-02T03:00", statedClock: "start" })
@@ -803,13 +803,13 @@ it.effect(`Change my calendar only as I asked and know it happened, at a free ti
     ["CALENDAR_TARGET_UNREAD", "CALENDAR_WRITE_SLOT_UNREAD", 1, true, true])
 })
 
-it.effect(`A clock is never saved from odds, counts, amounts, lengths, scores, years or page and house numbers, nor in a year a range's other end gives (spec/calendar/readClock.md, "A clock time the owner stated is one the owner's words hold"; spec/calendar/readClock.md, "A stated year wins, a wrong extracted year is corrected, and a past start asks first")`, effect () => {
+it.effect(`A create or change holds no clock in four digits, a dot, an hour and h, counted minutes or "half 5", which read as odds, counts, amounts, lengths, doses, scores, years or page, room and house numbers (spec/calendar/readClock.md, "A clock time the owner stated is one the owner's words hold"; spec/calendar/readClock.md, "A stated year wins, a wrong extracted year is corrected, and a past start asks first")`, effect () => {
   try TestClock.setTime(Date.parse("2030-03-01T12:00:00Z"))
   const host = try calendarHost({ cache: memoryCache(), agentId: "agent", approvals: () => undefined })
   const ask = { by: "owner-entity", conversation: "room:owner", text: "", ownerZone: "America/Los_Angeles" }
   const said = (id: string, text: string, parameters: Record<string, unknown>) => runCalendarAction(host, { ...ask, id, text }, { reviewBeforeCreate: false, ...parameters })
-  const span = (result: { readonly data?: unknown }) => [at(result.data, "event", "startAt"), at(result.data, "event", "endAt")]
   const refusal = (result: { readonly data?: unknown; readonly effectReceipts?: readonly unknown[] }) => [at(result.data, "code"), result.effectReceipts?.length ?? 0]
+  const refusedAt = (result: { readonly data?: unknown; readonly effectReceipts?: readonly unknown[] }) => [...refusal(result), at(result.data, "sent")]
   const errand = (id: string, text: string, startAt: string, statedClock?: string) =>
     said(id, text, { subaction: "create_event", title: "Errand", startAt, ...(statedClock === undefined ? {} : { statedClock }) })
   const misread = [
@@ -824,11 +824,15 @@ it.effect(`A clock is never saved from odds, counts, amounts, lengths, scores, y
     try errand("r3-17", "Charge the car tomorrow for 14h30.", "2030-03-05T14:30", "start"), try errand("r3-18", "The backup takes 02h15, start it tomorrow", "2030-03-05T02:15", "start"),
     try errand("r3-19", "Tomorrow, the final score was tied at 14 14.", "2030-03-05T14:14", "start"), try errand("r3-20", "Replay tomorrow the game that ended at 21 15.", "2030-03-05T21:15", "start"),
     try errand("r3-21", "Tomorrow: Waterloo reenactment at 1815.", "2030-03-05T18:15", "start"), try errand("r3-22", "Lunch tomorrow at 1230.", "2030-03-05T12:30", "start"),
+    try errand("r3-35", "Increase her dose from half 1 to 2 tomorrow.", "2030-03-05T01:30", "start"), try errand("r3-36", "Lunch with Sam tomorrow; his apartment is at 0815.", "2030-03-05T08:15", "start"),
+    try errand("r3-37", "Marathon tomorrow, aiming to finish at 03h45.", "2030-03-05T03:45", "start"), try errand("r3-38", "Retro tomorrow at ０９３０.", "2030-03-05T09:30", "start"),
+    try errand("r3-39", "Dinner tomorrow at 2045.", "2030-03-05T20:45", "start"), try errand("r3-40", "Pay the $14.30 invoice tomorrow at 2", "2030-03-05T14:30", "start"),
+    try errand("r3-41", "Book room 15, 30 people, tomorrow at 3", "2030-03-05T15:30", "start"),
   ]
   assert.deepStrictEqual(misread.map(refusal), misread.map(() => ["CALENDAR_CLOCK_UNSAID", 0]))
   const undeclared = [try errand("r3-23", "Dilute the cleaner at 10 to 1 tomorrow.", "2030-03-05T12:50"), try errand("r3-24", "Meeting tomorrow from 1500 to 1630.", "2030-03-05T15:00")]
   const workshop = try said("r3-25", "Workshop tomorrow from 0900 to 1100.", { subaction: "create_event", title: "Workshop", startAt: "2030-03-05T09:00", endAt: "2030-03-05T11:00", statedClock: "range" })
-  assert.deepStrictEqual([...undeclared.map(refusal), [...refusal(workshop), at(workshop.data, "sent")]],
+  assert.deepStrictEqual([...undeclared.map(refusal), refusedAt(workshop)],
     [["CALENDAR_CLOCK_UNDECLARED", 0], ["CALENDAR_CLOCK_UNDECLARED", 0], ["CALENDAR_CLOCK_UNSAID", 0, "2030-03-05T17:00:00.000Z"]])
 
   try said("r3-26", "", { subaction: "create_event", title: "Bet", startAt: "2030-03-06T08:07", statedClock: "none" })
@@ -841,8 +845,8 @@ it.effect(`A clock is never saved from odds, counts, amounts, lengths, scores, y
   const quarter = try said("r3-32", "Call at quarter of five tomorrow", { subaction: "create_event", title: "Quarter call", startAt: "2030-03-26T16:45", statedClock: "start" })
   const hourAndH = try said("r3-33", "Call tomorrow at 14h30", { subaction: "create_event", title: "Afternoon call", startAt: "2030-03-27T14:30", statedClock: "start" })
   const toDigits = try said("r3-34", "Block tomorrow from 9am to 0930.", { subaction: "create_event", title: "Early block", startAt: "2030-03-28T09:00", endAt: "2030-03-28T09:30", statedClock: "range" })
-  assert.deepStrictEqual([span(quarter), span(hourAndH), span(toDigits)], [["2030-03-26T23:45:00.000Z", "2030-03-27T00:45:00.000Z"], ["2030-03-27T21:30:00.000Z", "2030-03-27T22:30:00.000Z"],
-    ["2030-03-28T16:00:00.000Z", "2030-03-28T16:30:00.000Z"]])
+  assert.deepStrictEqual([quarter, hourAndH, toDigits].map(refusedAt), [["CALENDAR_CLOCK_UNSAID", 0, "2030-03-26T23:45:00.000Z"], ["CALENDAR_CLOCK_UNSAID", 0, "2030-03-27T21:30:00.000Z"],
+    ["CALENDAR_CLOCK_UNSAID", 0, "2030-03-28T16:30:00.000Z"]])
 })
 
 it.effect(`Put an event on my phone's own calendar through the phone's review (spec/calendar/actions.md, "A new event the owner put on the phone's own calendar is proposed on the phone")`, effect () => {
