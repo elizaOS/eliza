@@ -14,8 +14,8 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 /**
- * Native owner admission and narrow managed-service reads for a host's background new-mail check, using
- * the host's existing encrypted Eliza Cloud key. It drives {@link MailHistoryReconciliation} against the
+ * Native owner admission and narrow managed-service reads for a host's background new-mail check. It drives
+ * {@link MailHistoryReconciliation} against the
  * Cloud owner Gmail history route and posts content-free notices through the host's poster.
  *
  * <p>Android-free so its fences are testable on a JVM. The host supplies its storage, credential, reset and
@@ -23,25 +23,32 @@ import org.json.JSONObject;
  * fixed Cloud API authority.
  *
  * <p>Admission is bound to the signed-in Cloud credential and the owner the foreground UI names, never to
- * the agent's inference provider: the check only reads Cloud Gmail routes with the Cloud key, verifies the
+ * the agent's inference provider: the check only reads Cloud Gmail routes, verifies the
  * Cloud owner and the read grant remotely before every page, and pins the exact credential bytes. A host
  * whose agent infers through another provider can therefore still enable it.
  */
 public final class MailBackgroundDelivery {
- /** Host storage, credential and identity ports. All calls happen under {@link #lock()}. */
- public interface Host {
+ public interface LocalState {
   /** One process-wide lock shared with every writer of the credential and state slots. */
   Object lock();
   /** The state slot ({@link MailHistoryReconciliation} format), or null. Name is migration-sensitive. */
   String readState()throws Exception;
   void writeState(String value)throws Exception;
   void removeState()throws Exception;
-  /** Raw JSON of the signed-in Cloud credential (credentialId, token, optional expiresAt ms), or null. */
-  String readCredential()throws Exception;
   /** True while a host data reset is pending: nothing is admitted or written. */
   boolean resetPending()throws Exception;
+ }
+ public interface Host extends LocalState {
+  /** Raw JSON of the signed-in Cloud credential (credentialId, token, optional expiresAt ms), or null. */
+  String readCredential()throws Exception;
   /** userId/organizationId verified from the Cloud user response's data object; throws when unverifiable. */
   JSONObject verifiedIdentity(JSONObject userData)throws Exception;
+ }
+ public record LeaseBinding(String credentialId,String fingerprint,String userId,String organizationId){}
+ public record LeaseReply(int status,byte[] body){}
+ public interface LeaseAccess {
+  LeaseBinding current()throws Exception;
+  LeaseReply read(LeaseBinding expected,String path)throws Exception;
  }
  /** Ordinary constrained background work for the current selection generation. */
  public interface Scheduler {void schedule(String generation);void cancel();}
@@ -64,14 +71,23 @@ public final class MailBackgroundDelivery {
   }
  }
  public static final String USER_ROUTE="/api/v1/user",ACCOUNTS_ROUTE="/api/v1/eliza/google/accounts?side=owner",HISTORY_ROUTE="/api/v1/eliza/google/gmail/history?grantId=";
+ private static final String LEASE_HISTORY_ROUTE="/api/v1/eliza/google/gmail/inbox-v1/history?grantId=";
  private static final String[] SAME_SELECTION={"grantId","credentialDigest","accountRef"};
- private final Host host;private final Scheduler scheduler;private final Notices poster;private final Config config;private final Connections connections;
+ private final LocalState host;private final Host legacy;private final LeaseAccess lease;
+ private final Scheduler scheduler;private final Notices poster;private final Config config;private final Connections connections;
  private final AtomicLong attempts=new AtomicLong();private long admittedAttempt;
  private String pendingGrant;
 
  public MailBackgroundDelivery(Host host,Scheduler scheduler,Notices poster,Config config){this(host,scheduler,poster,config,url->(HttpURLConnection)url.openConnection());}
  public MailBackgroundDelivery(Host host,Scheduler scheduler,Notices poster,Config config,Connections connections){
-  this.host=Objects.requireNonNull(host);this.scheduler=Objects.requireNonNull(scheduler);this.poster=Objects.requireNonNull(poster);this.config=Objects.requireNonNull(config);this.connections=Objects.requireNonNull(connections);
+  this(host,host,null,scheduler,poster,config,Objects.requireNonNull(connections));
+ }
+ public static MailBackgroundDelivery withLease(LocalState host,LeaseAccess lease,Scheduler scheduler,Notices poster,Config config){
+  return new MailBackgroundDelivery(host,null,Objects.requireNonNull(lease),scheduler,poster,config,null);
+ }
+ private MailBackgroundDelivery(LocalState host,Host legacy,LeaseAccess lease,Scheduler scheduler,Notices poster,Config config,Connections connections){
+  this.host=Objects.requireNonNull(host);this.legacy=legacy;this.lease=lease;
+  this.scheduler=Objects.requireNonNull(scheduler);this.poster=Objects.requireNonNull(poster);this.config=Objects.requireNonNull(config);this.connections=connections;
  }
  private JSONObject saved()throws Exception{String raw=host.readState();return raw==null?null:new JSONObject(raw);}
  /** Starts a foreground selection attempt; a later attempt supersedes it. */
@@ -90,18 +106,28 @@ public final class MailBackgroundDelivery {
  private String accountRef(String user,String organization){return new JSONArray().put("cloud").put(config.environment).put(user).put(organization).toString();}
  private String credential(String credentialId)throws Exception{
   if(host.resetPending())throw new SecurityException("Reset pending");
-  String raw=host.readCredential();if(raw==null)throw new SecurityException("Cloud sign-in required");
+  String raw=legacy.readCredential();if(raw==null)throw new SecurityException("Cloud sign-in required");
   if(credentialId==null||!credentialId.equals(new JSONObject(raw).optString("credentialId",null)))throw new SecurityException("Cloud credential changed");
   return raw;
  }
+ private LeaseBinding leaseBinding(String credentialId,String userId,String organizationId)throws Exception{
+  if(host.resetPending())throw new SecurityException("Reset pending");
+  LeaseBinding binding=lease.current();
+  if(binding==null||credentialId==null||!credentialId.equals(binding.credentialId())||!userId.equals(binding.userId())
+   ||!organizationId.equals(binding.organizationId())||binding.fingerprint()==null||!binding.fingerprint().matches("[a-f0-9]{64}"))throw new SecurityException("Mail lease changed");
+  return binding;
+ }
+ private String fingerprint(String credentialId,String userId,String organizationId)throws Exception{
+  return lease==null?MailHistoryReconciliation.hash(credential(credentialId)):leaseBinding(credentialId,userId,organizationId).fingerprint();
+ }
  private JSONObject admission(String credentialId,String grant,String user,String organization)throws Exception{
-  String raw=credential(credentialId),userId=cloudId(user),organizationId=cloudId(organization);
-  return new JSONObject().put("generation",UUID.randomUUID().toString()).put("credentialId",credentialId).put("credentialDigest",MailHistoryReconciliation.hash(raw)).put("accountRef",accountRef(userId,organizationId)).put("userId",userId).put("organizationId",organizationId).put("grantId",MailHistoryReconciliation.id(grant));
+  String userId=cloudId(user),organizationId=cloudId(organization);
+  return new JSONObject().put("generation",UUID.randomUUID().toString()).put("credentialId",credentialId).put("credentialDigest",fingerprint(credentialId,userId,organizationId)).put("accountRef",accountRef(userId,organizationId)).put("userId",userId).put("organizationId",organizationId).put("grantId",MailHistoryReconciliation.id(grant));
  }
  /** The local half of the owner fence: same credential bytes, no pending reset. The remote half is verify(). */
  private void admitted(JSONObject binding)throws Exception{
-  String raw=credential(binding.getString("credentialId"));
-  if(!MailHistoryReconciliation.hash(raw).equals(binding.getString("credentialDigest"))||!accountRef(binding.getString("userId"),binding.getString("organizationId")).equals(binding.getString("accountRef")))throw new SecurityException("Mail owner changed");
+  String user=binding.getString("userId"),organization=binding.getString("organizationId");
+  if(!fingerprint(binding.getString("credentialId"),user,organization).equals(binding.getString("credentialDigest"))||!accountRef(user,organization).equals(binding.getString("accountRef")))throw new SecurityException("Mail owner changed");
  }
  private void current(JSONObject binding)throws Exception{if(admittedAttempt!=attempts.get())throw new SecurityException("Mail selection being revalidated");admitted(binding);JSONObject s=saved();if(s==null||!s.getJSONObject("binding").getString("generation").equals(binding.getString("generation")))throw new SecurityException("Mail selection changed");}
  private MailHistoryReconciliation engine(JSONObject binding){return new MailHistoryReconciliation(new MailHistoryReconciliation.Store(){public String read()throws Exception{return host.readState();}public void write(String value)throws Exception{current(binding);host.writeState(value);}},()->current(binding),poster);}
@@ -150,6 +176,21 @@ public final class MailBackgroundDelivery {
  private String get(JSONObject binding,String path,MailHistoryReconciliation.Guard guard)throws Exception{
   // Constructed paths only, with a fixed service authority. No remote-agent host or redirect.
   if(!(path.equals(USER_ROUTE)||path.equals(ACCOUNTS_ROUTE)||path.startsWith(HISTORY_ROUTE)))throw new SecurityException("Mail route denied");
+  if(lease!=null){
+   boolean history=path.startsWith(HISTORY_ROUTE);
+   if(!history&&!path.equals(ACCOUNTS_ROUTE))throw new SecurityException("Mail lease route denied");
+   LeaseBinding expected;
+   synchronized(host.lock()){
+    guard.check();
+    expected=leaseBinding(binding.getString("credentialId"),binding.getString("userId"),binding.getString("organizationId"));
+    if(!expected.fingerprint().equals(binding.getString("credentialDigest")))throw new SecurityException("Mail lease changed");
+   }
+   LeaseReply reply=lease.read(expected,history?LEASE_HISTORY_ROUTE+path.substring(HISTORY_ROUTE.length()):path);
+   guard.check();
+   if(reply.status()<200||reply.status()>=300)throw new HttpFailure(reply.status(),history);
+   if(reply.body()==null||reply.body().length>1100000)throw new IOException("Mail response exceeds bound");
+   return new String(reply.body(),StandardCharsets.UTF_8);
+  }
   guard.check();String raw;synchronized(host.lock()){raw=credential(binding.getString("credentialId"));}JSONObject credential=new JSONObject(raw);if(credential.has("expiresAt")&&credential.getDouble("expiresAt")<=System.currentTimeMillis())throw new SecurityException("Cloud key expired");
   HttpURLConnection connection=connections.open(java.net.URI.create(config.apiBase+path).toURL());
   try{
@@ -161,9 +202,11 @@ public final class MailBackgroundDelivery {
   }finally{connection.disconnect();}
  }
  private void verify(JSONObject binding,MailHistoryReconciliation.Guard guard)throws Exception{
-  JSONObject me=new JSONObject(get(binding,USER_ROUTE,guard));if(!me.getBoolean("success"))throw new SecurityException("Cloud identity unavailable");
-  JSONObject user=host.verifiedIdentity(me.getJSONObject("data"));
-  if(!binding.getString("userId").equals(user.optString("userId",null))||!binding.getString("organizationId").equals(user.optString("organizationId",null)))throw new SecurityException("Cloud owner changed");
+  if(lease==null){
+   JSONObject me=new JSONObject(get(binding,USER_ROUTE,guard));if(!me.getBoolean("success"))throw new SecurityException("Cloud identity unavailable");
+   JSONObject user=legacy.verifiedIdentity(me.getJSONObject("data"));
+   if(!binding.getString("userId").equals(user.optString("userId",null))||!binding.getString("organizationId").equals(user.optString("organizationId",null)))throw new SecurityException("Cloud owner changed");
+  }
   // The accounts route answers with a bare array, not a success/data wrapper.
   JSONArray accounts=new JSONArray(get(binding,ACCOUNTS_ROUTE,guard));if(accounts.length()>128)throw new IOException("Too many Google accounts");boolean found=false;
   for(int i=0;i<accounts.length();i++){JSONObject account=accounts.getJSONObject(i);if(!binding.getString("grantId").equals(account.optString("connectionId"))||!account.optBoolean("connected"))continue;JSONArray caps=account.getJSONArray("grantedCapabilities");for(int j=0;j<caps.length();j++)if(config.readCapability.equals(caps.getString(j)))found=true;}

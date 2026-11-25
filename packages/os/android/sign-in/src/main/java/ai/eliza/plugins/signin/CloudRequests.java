@@ -33,6 +33,7 @@ public final class CloudRequests {
 
   public record Custody(DeviceCredentialStore credentials, AccountSession session, DeviceLease lease) {
     public MailAuthority mailAuthority() { return authorityOf(credentials.state()); }
+    public Object mailCommitLock() { return credentials.mailCommitLock(); }
   }
 
   private static MailAuthority authorityOf(CredentialPolicy.State state) {
