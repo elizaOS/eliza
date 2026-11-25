@@ -76,6 +76,8 @@ public final class LiveCaptureController {
   interface Sink {void result(JSONObject value);void failed(String code);}
   boolean start(Executor executor);
   CompletableFuture<Boolean> ready();
+  /** The warm-up deadline passed: fail once as {@code TRANSPORT} unless {@link #ready} already succeeded or the pipe was cancelled or finished. */
+  void expire();
   boolean offer(JSONArray frames,JSONArray vad);
   void cutoff(double atMs);
   CompletableFuture<Boolean> close(boolean discard,double atMs);
@@ -118,13 +120,19 @@ public final class LiveCaptureController {
  private final ExecutorService stopWorker=new ThreadPoolExecutor(1,1,30,TimeUnit.SECONDS,new ArrayBlockingQueue<>(1));
  private final ExecutorService pipeWorker=new ThreadPoolExecutor(1,1,30,TimeUnit.SECONDS,new ArrayBlockingQueue<>(1));
  private final ScheduledThreadPoolExecutor readyTimer=new ScheduledThreadPoolExecutor(1);
+ private final long pipeReadyMs;
  private final LiveCaptureAdmission admission=new LiveCaptureAdmission();
  private final Map<String,Pipe> pipes=new ConcurrentHashMap<>();
  private Capture live; // Confined to worker.
  private volatile Capture current; // The running capture, for interruption off worker.
  private volatile String interrupted; // A call or pause since this host's last capture: an automatic reopen is refused.
 
- public LiveCaptureController(Host host){this.host=host;readyTimer.setRemoveOnCancelPolicy(true);}
+ public LiveCaptureController(Host host){this(host,PIPE_READY_MS);}
+ /** As above, with the agent session's warm-up deadline (tests shorten it). */
+ LiveCaptureController(Host host,long pipeReadyMs){
+  if(pipeReadyMs<=0)throw new IllegalArgumentException("Invalid warm-up deadline");
+  this.host=host;this.pipeReadyMs=pipeReadyMs;readyTimer.setRemoveOnCancelPolicy(true);
+ }
 
  /** Reserves the admission for {@code id} at the host's {@code epoch}, cancelling any earlier one. */
  public LiveCaptureAdmission.Ticket reserve(String id,long epoch){return admission.begin(id,epoch);}
@@ -167,7 +175,8 @@ public final class LiveCaptureController {
      pipes.put(id,pipe);
      if(!pipe.start(pipeWorker)){pipes.remove(id,pipe);result.refused("Native voice transport busy",null);return;}
      if(!admission.current(ticket))throw new IllegalStateException(CANCELLED);
-     ScheduledFuture<?> late=readyTimer.schedule(()->{if(!pipe.ready().isDone()){pipe.close(true,now());pipeSink.failed("TRANSPORT");}},PIPE_READY_MS,TimeUnit.MILLISECONDS);
+     // The pipe decides the deadline against its own warm-up and reports a TRANSPORT failure at most once.
+     ScheduledFuture<?> late=readyTimer.schedule(pipe::expire,pipeReadyMs,TimeUnit.MILLISECONDS);
      pipe.ready().whenComplete((ready,error)->late.cancel(false));
     }
    }catch(Exception|Error unavailable){
