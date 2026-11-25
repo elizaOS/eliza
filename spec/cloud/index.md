@@ -327,8 +327,8 @@ The service parses the upload and prepares the provider's multipart body
 before entering the funded-call path. A preparation failure returns a typed
 unavailable answer without reserving funding or contacting a provider. A
 prepared call still needs the current authenticated account, a fresh hold
-and a committed dispatch. The 120-second provider execution budget starts
-after preparation; upload parsing and local preparation precede it.
+and a committed dispatch. Upload parsing and local preparation precede
+that funded-call path.
 
 Discovered during boundary review: building the multipart body after marking
 the hold dispatched would treat a local preparation failure as an unknown
