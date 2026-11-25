@@ -334,9 +334,10 @@ completed result as the typed `browser_navigate` operation, bound to the
 screen that asked, which shows the address for the owner to open; even an
 address the owner's whole message asked for waits for their Open there. The
 model learns that the screen shows the address for the owner to open, and
-never that it opened, that the page loaded, what it shows or that Browser is
-open: Browser comes forward only with the owner's Open, so a later request to
-show Browser itself is still VIEWS's, as the action's description says.
+never that it opened, that the page loaded or what it shows. Which screen
+shows on a later message is that message's screen context, not this result,
+and a later request to show Browser itself is VIEWS's, as the action's
+description says.
 
 ## Story: Tell me you cannot read my page, and never reload it unasked
 
