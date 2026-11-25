@@ -263,8 +263,8 @@ public final class DataReset {
 
     /**
      * The failure record: {@code count:first[:outcome]}, where the outcome is a failed
-     * {@link Outcome} or {@link #OPEN}. Builds before the outcome field wrote two parts; an
-     * interrupted reset from such a build still resumes with its budget.
+     * {@link Outcome} or {@link #OPEN}. A fresh budget, and an open attempt a later start found,
+     * have no outcome.
      */
     private String[] failureRecord(Context context) {
         AtomicFile file = failures(context);
@@ -327,17 +327,8 @@ public final class DataReset {
         }
     }
 
-    /** Explicit recovery can repair legacy budgets or exceed the automatic limit. */
-    public Outcome retry(Context context, long now) { return admittedAttempt(context, now, true); }
-
-    /** Compatibility entry point for callers explicitly retrying a confirmed reset. */
-    public Outcome attempt(Context context, long now) { return retry(context, now); }
-
-    public Outcome automaticAttempt(Context context, long now) { return admittedAttempt(context, now, false); }
-
-    private Outcome admittedAttempt(Context context, long now, boolean explicit) {
-        return admittedAttempt(context, now, explicit, 0);
-    }
+    /** An explicit attempt without {@link BeforeDispatch}; it may exceed the automatic limit. */
+    public Outcome attempt(Context context, long now) { return admittedAttempt(context, now, true, 0); }
 
     private Outcome admittedAttempt(Context context, long now, boolean explicit, long beforeDispatchMs) {
         if (now < 0 || !pending(context)) return Outcome.DEFERRED;
@@ -354,10 +345,10 @@ public final class DataReset {
                 boolean newWindow = state[1] < 0 || state[0] == 0 || now < state[1] || now - state[1] >= AUTOMATIC_WINDOW_MS;
                 long count = newWindow ? 1 : Math.min(state[0] + 1, Integer.MAX_VALUE);
                 long first = newWindow ? now : state[1];
-                // A crash or failed write cannot grant the next process this reservation again.
-                write(failures(context), (count + ":" + first + ":" + OPEN).getBytes(StandardCharsets.US_ASCII));
                 runBoundedBeforeDispatch(context, beforeDispatchMs);
                 if (!pending(context)) return Outcome.DEFERRED;
+                // A crash or failed write cannot grant the next process this reservation again.
+                write(failures(context), (count + ":" + first + ":" + OPEN).getBytes(StandardCharsets.US_ASCII));
                 Outcome outcome;
                 try {
                     boolean acknowledged;
@@ -443,16 +434,6 @@ public final class DataReset {
     /** The user just confirmed the reset, so an unfinished reset always opens recovery. */
     public void dispatchAndExit(Context context) {
         exit(context, true, true, 0);
-    }
-
-    /**
-     * Startup admission, before any provider or initializer. Android also starts the process for
-     * jobs, alarms, broadcasts, pushes, providers and bound services; opening recovery from such a
-     * start would take the screen from the app in front. The process still stops; recovery opens
-     * on the next activity start. When Android cannot say why the process started, recovery opens.
-     */
-    public void admitAndExit(Context context) {
-        exit(context, visibleStart(context), false, 0);
     }
 
     private static boolean visibleStart(Context context) {
