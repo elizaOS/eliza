@@ -1,0 +1,89 @@
+// spec/core/asyncContext.md, "Story: Keep concurrent turn context isolated"; spec/core/asyncContext.md, "Scope restoration and peer isolation are exact for every context value"; spec/core/asyncContext.md, "A scope on a host with no asynchronous storage is refused before its callback runs"
+export interface AsyncContextStorage<T> {
+  getStore(): T | undefined
+  run<R>(store: T, fn: () => R): R
+}
+
+export type AsyncContextStorageFactory = <T>() => AsyncContextStorage<T>
+
+module platform {
+  import type { AsyncContextStorage, AsyncContextStorageFactory } from "./async-context-storage.vibe"
+
+  export class AsyncContextUnavailableError extends Error {
+    constructor() {
+      super("No asynchronous context storage is installed on this host, so a context scope cannot reach its continuations: import @elizaos/core-node or register a storage with registerAsyncContextStorageFactory")
+      this.name = "AsyncContextUnavailableError"
+    }
+  }
+
+  /** @throws {never} */
+  export function refusingStorage<T>(): AsyncContextStorage<T> {
+    return {
+      /** @throws {never} */
+      getStore(): T | undefined {
+        return undefined
+      },
+      /** @throws {AsyncContextUnavailableError} */
+      run<R>(): R {
+        throw new AsyncContextUnavailableError()
+      },
+    }
+  }
+
+  /** @throws {never} */
+  export function asyncContextStorageFactoryFor(host: unknown): AsyncContextStorageFactory {
+    const runtime = (host as { process?: { getBuiltinModule?: (id: string) => unknown } } | null | undefined)?.process
+    let hooks: unknown
+    try {
+      hooks = typeof runtime?.getBuiltinModule === "function" ? runtime.getBuiltinModule("node:async_hooks") : undefined
+    } catch {
+      hooks = undefined
+    }
+    const Storage = (hooks as { AsyncLocalStorage?: new () => AsyncContextStorage<unknown> } | undefined)?.AsyncLocalStorage
+    if (typeof Storage !== "function") return refusingStorage
+    return <T,>() => new Storage() as AsyncContextStorage<T>
+  }
+
+  /** @throws {never} */
+  export function hostAsyncContextStorageFactory(): AsyncContextStorageFactory {
+    return asyncContextStorageFactoryFor(globalThis)
+  }
+}
+import { AsyncContextUnavailableError, asyncContextStorageFactoryFor, hostAsyncContextStorageFactory, refusingStorage } from platform
+export { AsyncContextUnavailableError, asyncContextStorageFactoryFor }
+
+let activeFactory: AsyncContextStorageFactory = hostAsyncContextStorageFactory()
+let generation = 0
+
+function storageClass(factory: AsyncContextStorageFactory): object | null {
+  const prototype: unknown = Object.getPrototypeOf(factory<unknown>())
+  return typeof prototype === "object" && prototype !== null && prototype !== Object.prototype ? prototype : null
+}
+
+export function registerAsyncContextStorageFactory(factory: AsyncContextStorageFactory): void {
+  if (factory === activeFactory) return
+  const active = activeFactory === refusingStorage ? null : storageClass(activeFactory)
+  if (active !== null && storageClass(factory) === active) return
+  activeFactory = factory
+  generation += 1
+}
+
+export function createAsyncContextStorage<T>(): AsyncContextStorage<T> {
+  let made = generation
+  let inner: AsyncContextStorage<T> = activeFactory<T>()
+  const current = (): AsyncContextStorage<T> => {
+    if (made !== generation) {
+      made = generation
+      inner = activeFactory<T>()
+    }
+    return inner
+  }
+  return {
+    getStore(): T | undefined {
+      return current().getStore()
+    },
+    run<R>(store: T, fn: () => R): R {
+      return current().run(store, fn)
+    },
+  }
+}

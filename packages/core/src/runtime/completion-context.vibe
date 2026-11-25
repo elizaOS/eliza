@@ -231,11 +231,6 @@ export function parseCompletionContextSelection(
   }
 }
 
-export function historicalRequestSourceIds(context: ContextObject): Map<string, string> {
-  if (!Array.isArray(context?.events)) return new Map()
-  return new Map(collectCompletionContextSources(context).map(({ id, event }) => [event.id, id]))
-}
-
 export function collectCompletionContextSources(
   context: ContextObject,
 ): Array<{ id: string; event: ContextSegmentEvent }> {
@@ -474,7 +469,7 @@ export function selectHistoricalNavigation(
   }
 }
 
-export effect function completionContextSources(context: ContextObject) {
+effect function completionContextSources(context: ContextObject) {
   const sources = collectCompletionContextSources(context)
   return {
     sourceSetId: try hashStableJson({

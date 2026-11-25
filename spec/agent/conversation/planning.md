@@ -741,17 +741,10 @@ goals, to-dos, routines and briefings, the phone's call, message and
 surface operations, the reminders family's operations, which reach both
 Reminders and Clock, and a helper such as `CALCULATE`.
 
-An action shared by several apps, such as `VIEWS`, is named by the app the
-turn is about when that settles it: the turn's selected contexts are those
-of every [direct route](../../core/registries.md) the message matches (a
-Notes route selects `notes`), taken once per turn by
-normalized id. When several of the contexts the call shows apply and
-exactly one labelled one is selected, the progress is `Using <that label>`;
-with none or more than one selected it stays `Working`. The selection only
-picks among the contexts the call shows, never adds one, never names a
-`system` context or an unlabelled one, and never changes the contexts the
-action runs with; a device call whose family names no app shows none, so
-no selection names it.
+An action shared by several apps, such as `VIEWS`, shows every app it may
+reach, so its progress is `Working`; the owner's words never pick one of
+them. Only the call's own arguments can narrow what it shows, as the device
+tool's do, and only to an app its action declares a way to name.
 
 The app a call shows is its label and nothing else. Naming it never
 changes the action's declared contexts, its role gate or the contexts the
@@ -760,26 +753,21 @@ never part of the tools, the system prompt or the history.
 
 ```quint
 type ToolActivity = UsingApp | Working
-pure def toolActivity(applicable: int, labelled: int, selectedLabelled: int): ToolActivity =
-  if ((applicable == 1 and labelled == 1) or (applicable > 1 and selectedLabelled == 1)) UsingApp else Working
+pure def toolActivity(applicable: int, labelled: int): ToolActivity =
+  if (applicable == 1 and labelled == 1) UsingApp else Working
 pure val applicableValues = Set(0, 1, 2, 3)
 pure val labelledValues = Set(0, 1, 2)
-pure val selectedLabelledValues = Set(0, 1, 2)
-pure def lawAnAppIsNamedOnlyWhenItIsTheOnlyOneThatAppliesOrTheTurnSelected(applicable: int, labelled: int, selectedLabelled: int): bool =
-  toolActivity(applicable, labelled, selectedLabelled) == UsingApp implies ((applicable == 1 and labelled == 1) or selectedLabelled == 1)
-pure def lawWithoutASelectionOnlyASingleAppIsNamed(applicable: int, labelled: int): bool =
-  toolActivity(applicable, labelled, 0) == UsingApp implies (applicable == 1 and labelled == 1)
-pure def lawASingleLabelledAppIsNamedWhateverTheTurnSelected(selectedLabelled: int): bool =
-  toolActivity(1, 1, selectedLabelled) == UsingApp
-pure def lawSelectingSeveralAppsNamesNone(applicable: int, labelled: int, selectedLabelled: int): bool =
-  (applicable > 1 and selectedLabelled != 1) implies toolActivity(applicable, labelled, selectedLabelled) == Working
+pure def lawAnAppIsNamedOnlyWhenItIsTheOnlyOneThatApplies(applicable: int, labelled: int): bool =
+  toolActivity(applicable, labelled) == UsingApp iff (applicable == 1 and labelled == 1)
+pure def lawSeveralAppsNameNone(applicable: int, labelled: int): bool =
+  applicable > 1 implies toolActivity(applicable, labelled) == Working
 type DeviceFamilyApp = FamilyApp({ app: str }) | NoFamilyApp
 pure def deviceCallReach(deviceFamily: DeviceFamilyApp): Set[str] = match deviceFamily { | FamilyApp(f) => Set(f.app) | NoFamilyApp => Set() }
 pure val deviceFamilyValues = Set(FamilyApp({ app: "calendar" }), FamilyApp({ app: "notes" }), NoFamilyApp)
 pure def lawADeviceCallReachesAtMostItsFamilysApp(deviceFamily: DeviceFamilyApp): bool = match deviceFamily {
   | FamilyApp(f) => deviceCallReach(deviceFamily).size() == 1 and deviceCallReach(deviceFamily).contains(f.app) | NoFamilyApp => deviceCallReach(deviceFamily).size() == 0 }
-pure def lawADeviceCallIsNamedOnlyByItsFamilysApp(deviceFamily: DeviceFamilyApp, labelled: int, selectedLabelled: int): bool =
-  toolActivity(deviceCallReach(deviceFamily).size(), labelled, selectedLabelled) == UsingApp implies deviceFamily != NoFamilyApp
+pure def lawADeviceCallIsNamedOnlyByItsFamilysApp(deviceFamily: DeviceFamilyApp, labelled: int): bool =
+  toolActivity(deviceCallReach(deviceFamily).size(), labelled) == UsingApp implies deviceFamily != NoFamilyApp
 ```
 
 ### A recognized card is delivered unfenced, other multi-line tool output is fenced, and grounded prose follows unless one already holds the other

@@ -9,7 +9,7 @@ The same file defines the one web-address test that saving, reading,
 protection and page commands share.
 
 The shell reads the facts below from the trimmed text with the patterns of
-`src/browser/address.ts` and the platform URL parser, in this order;
+`packages/os-bridges/src/browser/address.ts` and the platform URL parser, in this order;
 the spec decides what the facts mean. "Address-shaped" text names a
 scheme, a dotted domain, a host with a numeric port or a bracketed IPv6
 literal, or starts with `//`. No top-level-domain list is consulted.

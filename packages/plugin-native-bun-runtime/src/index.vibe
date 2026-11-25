@@ -1,6 +1,6 @@
 // spec/nativeBunRuntime/index.md, "Story: Send messages and request local speech through the running embedded runtime"
-import { agentClient } from "@elizaos/os/bridges/agent"
-import type { AgentRequest, AgentStatus, ElizaAgentPlugin } from "@elizaos/os/bridges/definitions/agent"
+import { agentClient } from "@elizaos/os-bridges"
+import type { AgentRequest, AgentStatus, ElizaAgentPlugin } from "@elizaos/os-bridges"
 import { acceptRuntimeReply, mayUseRuntime, type LocalSpeechStatus, type RuntimeSnapshot } from "../gen/nativeBunRuntime.effect.vibe"
 
 export error EmbeddedRuntimeUnavailable

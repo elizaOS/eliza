@@ -1,3 +1,3 @@
 // spec/nativeMessages/index.md, "Story: Read my inbox and see the evidence for the message I reviewed"
-export { messagesClient, messagesPlugin } from "@elizaos/os/bridges/messages"
-export type * from "@elizaos/os/bridges/definitions/messages"
+export { messagesClient, messagesPlugin } from "@elizaos/os-bridges"
+export type { OperationId, ThreadId, MessageId, ThreadCursor, MessageCursor, SmsReview, DirectSmsReview, SmsReviewProblem, MmsAttachmentType, MmsAttachmentDraft, MmsReview, MmsReviewProblem, MmsAttachmentBinding, MmsBinding, SmsSendState, SendPartState, SmsSendPart, SmsSendStatus, MmsSendStatus, SmsSendResult, MmsSendResult, SendNotAttemptedReason, SmsCancelOutcome, MessageDirection, MessageStatus, DeliveryReport, MessageKind, SmsThread, SmsMessage, SmsIncompleteReason, IncompleteSmsThread, IncompleteSmsMessage, ThreadRow, MessageRow, ThreadPage, MessagePage, MessageDeleteReference, MessageDeleteStatus, MessageDeleteResult, ThreadDeleteReference, ThreadDeleteStatus, ThreadDeleteResult, StagingAnswer, SmsLatestSender, ThreadReadMark, SmsHandoffReport, MessagesNativePlugin, MessagesClient } from "@elizaos/os-bridges"

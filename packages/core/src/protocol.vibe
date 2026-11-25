@@ -295,7 +295,7 @@ export {
   isExpectedLocalEmbeddingUnavailability,
   modelProviderFailureDetails,
 } from "./utils/expected-local-embedding-unavailability.vibe"
-export type { SymlinkType } from "./utils/filesystem.vibe"
+export type SymlinkType = "file" | "dir" | "junction"
 export { getLogPrefix } from "./utils/log-prefix.vibe"
 export { userRequestFromAugmentedText } from "./utils/message-text.vibe"
 export {
@@ -882,7 +882,6 @@ export {
   VRM_TELEPORT_COMPLETE_EVENT,
 } from "./events.vibe"
 export { DEFAULT_UI_LANGUAGE, normalizeLanguage, UI_LANGUAGES, type UiLanguage } from "./i18n/language.vibe"
-export { selectUserAuthorizedRecurrence, textStatesExplicitRecurrence } from "./i18n/recurrence-markers.vibe"
 export { INFERENCE_TRACE_ID_PATTERN, isInferenceTraceId, mintInferenceTraceId } from "./inference-trace.vibe"
 export {
   assertValidMarkdownChunkLimitOrThrow as assertValidMarkdownChunkLimit,
@@ -1004,11 +1003,6 @@ export {
 } from "./retrieval.vibe"
 export { matchActionWildcardParts } from "./runtime/action-wildcard-glob.vibe"
 export {
-  type CandidateActionBackstopRule,
-  getCandidateActionBackstopRules,
-  registerCandidateActionBackstopRule,
-} from "./runtime/candidate-action-backstop.vibe"
-export {
   deriveCompactionContentManifestsOrThrow as deriveCompactionContentManifests,
   type DeriveCompactionContentManifestsOptions,
 } from "./runtime/content-access-manifest.vibe"
@@ -1028,12 +1022,6 @@ export {
   normalizeContextList,
 } from "./runtime/context-normalization.vibe"
 export { ContextRegistry, ContextRegistryError } from "./runtime/context-registry.vibe"
-export {
-  __resetDirectActionRoutingRulesForTests,
-  type DirectActionRoutingRule,
-  getDirectActionRoutingRules,
-  registerDirectActionRoutingRule,
-} from "./runtime/direct-action-routing.vibe"
 export {
   bindEffectDelivery,
   effectDeliveryBindingIsValid,

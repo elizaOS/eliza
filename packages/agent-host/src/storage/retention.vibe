@@ -1,0 +1,83 @@
+// spec/agent/storage/database.md, "Story: Forget old logs on schedule"; spec/agent/storage/database.md, "A sweep deletes only log rows past the age bound or beyond the newest rows of their room"; spec/agent/storage/database.md, "Queries run only while the store is open, and close waits for every one in flight"
+import type { IDatabaseAdapter, TaskWorker, UUID } from "@elizaos/core"
+import { expired, validRetention, type LogRetention } from "../../gen/agent__storage__database.effect.vibe"
+import type { LaunchDocument } from "@elizaos/agent"
+
+type Prune = Extract<LogRetention, { tag: "Prune" }>
+type Inventory = Awaited<ReturnType<IDatabaseAdapter["getLogInventory"]>>
+
+export type LogSweeps =
+  | { readonly kind: "never" }
+  | { readonly kind: "every"; readonly intervalMs: number; readonly retention: Prune }
+
+export error RetentionRefused { retention: LogRetention; intervalMs: number }
+export error RetentionUnavailable { step: string; cause: unknown }
+
+export const retentionTask = "AGENT_LOG_RETENTION"
+
+const dayMs = 86_400_000
+const minuteMs = 60_000
+
+export effect function logSweeps(launch: LaunchDocument["retention"]): LogSweeps!RetentionRefused {
+  if (launch === undefined) return { kind: "never" }
+  const retention: Prune = { tag: "Prune", ageMs: Math.ceil(launch.days * dayMs), maxRowsPerRoom: launch.maxRowsPerRoom }
+  const intervalMs = launch.intervalMinutes * minuteMs
+  if (![retention.ageMs, retention.maxRowsPerRoom, intervalMs].every(Number.isSafeInteger) || !validRetention(retention)) {
+    throw new RetentionRefused({ retention, intervalMs })
+  }
+  return { kind: "every", intervalMs, retention }
+}
+
+function sweepTargets(inventory: Inventory, retention: Prune, now: number): UUID[] {
+  const held = inventory.flatMap(({ id, roomId, createdAt }) => id === undefined ? [] : [{ key: id, room: roomId ?? "", at: createdAt.getTime() }])
+  return [...Map.groupBy(held, ({ room }) => room)].flatMap(([room, inRoom]) => {
+    const oldestFirst = inRoom.toSorted((a, b) => a.at - b.at || (a.key < b.key ? -1 : 1))
+    const rows = oldestFirst.map(({ at }, id) => ({ id, room, at }))
+    const newest = rows.slice(Math.max(0, rows.length - retention.maxRowsPerRoom))
+    return rows.flatMap((row) => expired(newest, row, retention, now) ? [oldestFirst[row.id].key] : [])
+  })
+}
+
+effect function sweep(adapter: IDatabaseAdapter, retention: Prune) {
+  const now = try Clock.currentTimeMillis
+  return try tryPromise({
+    try: () => adapter.transaction(async (store) => {
+      const inventory = await store.getLogInventory({})
+      const targets = sweepTargets(inventory, retention, now)
+      if (targets.length > 0) await store.deleteLogs(targets)
+      return { scanned: inventory.length, deleted: targets.length }
+    }),
+    catch: (cause) => new RetentionUnavailable({ step: "sweep", cause }),
+  })
+}
+
+effect function stored<A>(step: string, call: () => Promise<A>) {
+  return try tryPromise({ try: () => call(), catch: (cause) => new RetentionUnavailable({ step, cause }) })
+}
+
+export effect function scheduleSweeps(adapter: IDatabaseAdapter, sweeps: LogSweeps): (TaskWorker | undefined)!RetentionUnavailable {
+  const found = (try stored("find the sweep task", () => adapter.getTasksByName(retentionTask)))
+    .flatMap(({ id, metadata }) => id === undefined ? [] : [{ id, lastSweep: metadata?.updatedAt }])
+  const [kept] = sweeps.kind === "every" ? found : []
+  const surplus = found.filter(({ id }) => id !== kept?.id)
+  if (surplus.length > 0) try stored("remove surplus sweep tasks", () => adapter.deleteTasks(surplus.map(({ id }) => id)))
+  if (sweeps.kind === "never") return undefined
+  const { intervalMs, retention } = sweeps
+  const now = try Clock.currentTimeMillis
+  const metadata = { updateInterval: intervalMs, baseInterval: intervalMs, updatedAt: kept?.lastSweep ?? now }
+  if (kept === undefined) {
+    try stored("create the sweep task", () => adapter.createTasks([{
+      name: retentionTask, description: "Delete log rows past the launch's retention bounds", tags: ["queue", "repeat"], metadata,
+    }]))
+  } else {
+    try stored("reschedule the sweep task", () => adapter.updateTasks([{ id: kept.id, task: { metadata } }]))
+  }
+  return {
+    name: retentionTask,
+    execute: (runtime) => Effect.runPromise(effect {
+      const swept = try sweep(adapter, retention)
+      if (swept.deleted > 0) runtime.logger.info({ src: "agent", agentId: runtime.agentId, ...swept }, "Log retention sweep deleted rows")
+      return undefined
+    }),
+  }
+}

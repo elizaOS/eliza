@@ -1,23 +1,13 @@
 // spec/maps/navigation.md, "Story: Plan directions and keep me in control of guidance"; spec/maps/relay.md, "Story: Navigate again when the phone never received my request"; spec/maps/cloudConnection.md, "Story: Keep Cloud Maps on the account that requested it"; spec/maps/phonePosition.md, "Story: Search near me with where my phone is now"
 import { assert, it, layer } from "@effect/vitest"
 import * as KeyValueStore from "effect/persistence/KeyValueStore"
-import { CloudError } from "@elizaos/cloud/client"
-import { activityLabel, turnNotes } from "@elizaos/agent"
+import { CloudError } from "@elizaos/cloud"
+import { activityLabel, turnNotes } from "@elizaos/agent-host"
 import { ContextRegistry, TurnControllerRegistry, type IAgentRuntime, type JsonObject, type Memory } from "@elizaos/core"
 import { mapsChat, mapsToolCall } from "./support/cloud.ts"
-import { appendMapsCard, recognizedMapsCards, withoutMapsCards } from "../src/cards.vibe"
-import { cloudMaps, viewportAttribution, type CloudMapsBasemap, type MapsCloud } from "../src/client/cloud-provider.vibe"
-import { MapsFailure, type MapsProvider, type Place, type ProviderConfig, type Route } from "../src/client/contracts.vibe"
 import {
-  backgroundNavigation, deviceMapsNavigation, RelayUnavailable, withMapsNavigationRelay,
-  type ActiveGuidance, type MapsNavigationSurface, type NavigationSnapshot,
-} from "../src/client/device-navigation.vibe"
-import { advanceStep, GuidanceSpeechStopped, navigationVoice } from "../src/client/guidance.vibe"
-import { nativeMapsLocation, type NativeFix, type Position } from "../src/client/location.vibe"
-import { usableNavigationFix } from "../src/client/navigation-fix.vibe"
-import { mapsObservation } from "../src/client/observation.vibe"
-import { routeProgress } from "../src/client/route-distance.vibe"
-import { savedPlaces } from "../src/client/saved-places.vibe"
+  appendMapsCard, recognizedMapsCards, withoutMapsCards, cloudMaps, viewportAttribution, type CloudMapsBasemap, type MapsCloud, MapsFailure, type MapsProvider, type Place, type ProviderConfig, type Route, backgroundNavigation, deviceMapsNavigation, RelayUnavailable, withMapsNavigationRelay, type ActiveGuidance, type MapsNavigationSurface, type NavigationSnapshot, advanceStep, GuidanceSpeechStopped, navigationVoice, nativeMapsLocation, type NativeFix, type Position, usableNavigationFix, mapsObservation, routeProgress, savedPlaces,
+} from "@elizaos/plugin-maps-client"
 import { mapsPlugin } from "../src/index.vibe"
 import { addressArea, createMapsPlugin, phonePositionProvider } from "../src/plugin.vibe"
 import { mapsNavigationRelay, type MapsDeviceNavigation } from "../src/relay.vibe"
@@ -503,9 +493,12 @@ layer(mapsChatFixture, { excludeTestServices: true, timeout: "3 minutes" })("Map
         route: answer.actionResults[0]?.data.card?.kind ?? recognizedMapsCards(answer.text)[0]?.card.kind,
         named: answer.text.includes("Coit Tower"),
         falseFailure: /did not start|did not complete|MAPS_SELECTION_HANDLE/iu.test(answer.text),
+        cardShown: recognizedMapsCards(answer.text).map(({ card }) => card.kind),
+        modelWords: [withoutMapsCards(answer.text).trim(), answer.text.includes("Open them in your maps app")],
       }, {
         sawSelection: true, priorPlace: true, coached: true, lookupsOfHandle: 0, searches: [{ query: "Coit Tower" }, { query: "Coit Tower", limit: 5 }],
         actions: ["MAPS_NAVIGATION_START"], route: "handoff", named: true, falseFailure: false,
+        cardShown: ["handoff"], modelWords: ["Here are directions to Coit Tower.", false],
       })
     })
   })
@@ -656,7 +649,8 @@ it.live('Search near me with where my phone is now: a recent reported position s
     aroundStart: [aroundStart.success, (aroundStart.data as { readonly destination?: { readonly providerPlaceId: string } }).destination?.providerPlaceId, searchedNear("Union Square")[0]],
     anywhere: [anywhere.success, (anywhere.data as { readonly choice?: string }).choice],
     site: [site.success, (site.data as { readonly place?: { readonly providerPlaceId: string } }).place?.providerPlaceId],
-    ownWordsShown: [route.verifiedUserFacing, route.userFacingText === route.text, chain.verifiedUserFacing, chain.userFacingText === chain.text],
+    onlyCardsShown: [route.verifiedUserFacing, recognizedMapsCards(route.userFacingText ?? "").length, withoutMapsCards(route.userFacingText ?? "").trim(),
+      chain.verifiedUserFacing, recognizedMapsCards(chain.userFacingText ?? "").map(({ card }) => card.kind), withoutMapsCards(chain.userFacingText ?? "").trim()],
     down: [down?.success, down?.data],
     provider: provider.values,
     fenced: recognizedMapsCards(fenced).length,
@@ -666,7 +660,7 @@ it.live('Search near me with where my phone is now: a recent reported position s
     tail: [tail.success, searchedNear("coffee")],
     ownWords: [ownWords.success, (ownWords.text ?? "").startsWith("Near Ferry Building:"), searchedNear("pharmacy")[3]],
     notFound: [notFound.success, notFound.text],
-    points: [pointAt.success, withoutMapsCards(pointAt.userFacingText ?? ""), pointNear.success, searchedNear("pharmacy")[4], outOfRange.success],
+    points: [pointAt.success, withoutMapsCards(pointAt.text ?? ""), pointNear.success, searchedNear("pharmacy")[4], outOfRange.success],
     fromHereCards: [locateCard(nearestFromHere), locateCard(namesakeFromHere)],
     whichAnchor: [whichAnchor.success, (whichAnchor.data as { readonly choice?: string }).choice],
     second: [second.success, (second.text ?? "").startsWith("Near Union Square:"), searchedNear("pharmacy")[5]],
@@ -686,7 +680,7 @@ it.live('Search near me with where my phone is now: a recent reported position s
     aroundStart: [true, "union-sf", ferry],
     anywhere: [false, "place"],
     site: [true, "plaza"],
-    ownWordsShown: [true, true, true, true],
+    onlyCardsShown: [true, 1, "", true, ["places"], ""],
     down: [false, { code: "offline", retryable: true }],
     provider: { phonePositionAvailable: true },
     fenced: 0,
@@ -695,7 +689,7 @@ it.live('Search near me with where my phone is now: a recent reported position s
     tail: [true, [{ latitude: here.latitude, longitude: here.longitude }]],
     ownWords: [true, true, ferry],
     notFound: [false, "I couldn't find “Nowhere Plaza” to search near. Name another place or area to search near."],
-    points: [true, "The Sun Building — 278 W Broadway, New York, NY 10006, USA", true, tower, false],
+    points: [true, "The Sun Building, 278 W Broadway, New York, NY 10006, USA", true, tower, false],
     fromHereCards: [["route-origin", "nearest pharmacy", undefined, "walk"], ["route-origin", "Union Square", undefined, undefined]],
     whichAnchor: [false, "place to search near"],
     second: [true, true, { latitude: 37.788, longitude: -122.4075 }],
@@ -749,17 +743,17 @@ it.live('Ask where I am: a recent precise position names the place there, a roug
   const before = bodies.length
   const old = try ask({ ...nyc, accuracyMeters: 20, capturedAt: now - 31 * 60_000 })
   const missing = try ask(undefined)
-  const shown = (result: { readonly userFacingText?: string; readonly text?: string }) => [result.userFacingText, recognizedMapsCards(result.text ?? "").map((found) => found.card.kind)]
+  const shown = (result: { readonly userFacingText?: string; readonly text?: string }) => [result.userFacingText, result.text, recognizedMapsCards(result.text ?? "").map((found) => found.card.kind)]
   try Effect.try(() => assert.deepStrictEqual({
-    rough: [...shown(rough), rough.data], precise: [precise.success, withoutMapsCards(precise.userFacingText ?? ""), recognizedMapsCards(precise.text ?? "").map((found) => found.card.kind)],
+    rough: [...shown(rough), rough.data], precise: [precise.success, withoutMapsCards(precise.userFacingText ?? "").trim(), withoutMapsCards(precise.text ?? ""), recognizedMapsCards(precise.text ?? "").map((found) => found.card.kind)],
     unknownArea: shown(unknownArea), nothing: shown(nothing), lookups: bodies.length - before,
     old: [old.success, old.text], missing: [missing.success, missing.data],
     areas: [addressArea("278 W Broadway, New York, NY 10006, USA"), addressArea("Unter den Linden 77, 10117 Berlin, Germany"), addressArea("Paris, France"), addressArea("12345")],
   }, {
-    rough: ["Your phone's position is approximate (within about 25 km): somewhere around New York, NY, USA.", [], { status: "approximate", accuracyMeters: 25_000, area: "New York, NY, USA", place: null }],
-    precise: [true, "The Sun Building — 278 W Broadway, New York, NY 10006, USA", ["place"]],
-    unknownArea: ["Your phone's position is approximate (within about 1.5 km), and no area is known there.", []],
-    nothing: ["No named place is known where your phone is.", []], lookups: 0,
+    rough: [undefined, "Your phone's position is approximate (within about 25 km): somewhere around New York, NY, USA. Name only this area; the exact street or building is not known.", [], { status: "approximate", accuracyMeters: 25_000, area: "New York, NY, USA", place: null }],
+    precise: [true, "", "The Sun Building, 278 W Broadway, New York, NY 10006, USA", ["place"]],
+    unknownArea: [undefined, "Your phone's position is approximate (within about 1.5 km), and no area is known there.", []],
+    nothing: [undefined, "No named place is known where your phone is.", []], lookups: 0,
     old: [false, "Your phone didn't report a recent position with this message, so I can't tell where you are."], missing: [false, { state: "no-position" }],
     areas: ["New York, NY, USA", "Berlin, Germany", "Paris, France", undefined],
   }))
@@ -879,6 +873,7 @@ it.live('Save a place with my assistant once, and answer the question Maps asked
   try Effect.try(() => assert.deepStrictEqual({
     saves: [[work.success, receipt(work)], [again.success, receipt(again), again.text], [home.success, receipt(home)], [back.success, receipt(back)], [keyed.success, receipt(keyed)], reused.success],
     reusedCanRetry: (reused.data as { readonly retryable?: boolean }).retryable,
+    savedShown: [work.verifiedUserFacing, work.userFacingText, work.userFacingEffectReceiptIds],
     listed: (listed.data as { readonly savedPlaces: ReadonlyArray<{ readonly label: string }> }).savedPlaces.map((saved) => saved.label),
     phoneListLeftOut: (listed.text ?? "").endsWith("Places saved only on the phone's Maps screen aren't included."),
     destinations: [toSaved, toUnsaved, toPoint].map((result) => {
@@ -899,6 +894,7 @@ it.live('Save a place with my assistant once, and answer the question Maps asked
   }, {
     saves: [[true, "applied"], [true, "noop", "Work was already saved."], [true, "applied"], [true, "applied"], [true, "applied"], false],
     reusedCanRetry: false,
+    savedShown: [undefined, undefined, undefined],
     listed: ["Office"],
     phoneListLeftOut: true,
     destinations: [[true, "eliza-cloud", "tower", "Coit Tower"], [false, undefined, undefined, undefined], [true, "coordinates", "coordinates:37.8,-122.4", "Trailhead"]],
@@ -940,11 +936,17 @@ it.live('Share a place only once I agree, and hear where Maps works: the asking 
     asked: [asked.success, asked.text, (asked.data as { readonly state?: string }).state],
     yes: [yes.success, shared?.kind === "handoff" ? [shared.handoffKind, shared.geoUri, shared.webUri] : shared?.kind],
     again: again.success, no: [no.success, no.text],
+    shown: [
+      [asked.verifiedUserFacing, (asked.userFacingText ?? "").startsWith("Share the location of Ferry Building?"), (asked.userFacingText ?? "").includes("Share location")],
+      [yes.verifiedUserFacing, recognizedMapsCards(yes.userFacingText ?? "").length, withoutMapsCards(yes.userFacingText ?? "").trim()],
+      [no.verifiedUserFacing, no.userFacingText],
+    ],
     coverage: [coverage.success, coverage.text],
   }, {
     asked: [false, "Share the location of Ferry Building?", "confirmation-required"],
     yes: [true, ["share", "geo:37.7955,-122.3937?q=37.7955,-122.3937(Ferry%20Building)", "https://www.openstreetmap.org/?mlat=37.7955&mlon=-122.3937#map=17/37.7955/-122.3937"]],
-    again: false, no: [false, "Not shared."],
+    again: false, no: [false, "The owner declined, so the location of Ferry Building was not shared."],
+    shown: [[true, true, true], [true, 1, ""], [undefined, undefined]],
     coverage: [true, "Maps covers World (dataset 2026-11). Routes: driving and walking, with alternatives. No transit schedules or offline use. Searches, search areas and route points are sent to Eliza Cloud and Google Maps Platform for search, operated by Google. Data: Google Maps Platform via Eliza Cloud"],
   }))
 })

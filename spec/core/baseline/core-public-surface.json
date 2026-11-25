@@ -28,18 +28,6 @@
           ]
         },
         {
-          "name": "__resetDirectActionRoutingRulesForTests",
-          "typeOnly": false,
-          "declarations": [
-            {
-              "path": "packages/core/src/runtime/direct-action-routing.ts",
-              "line": 88,
-              "kind": "FunctionDeclaration",
-              "signature": "(runtime: IAgentRuntime): void"
-            }
-          ]
-        },
-        {
           "name": "_resetActionRolePolicyCacheForTests",
           "typeOnly": false,
           "declarations": [
@@ -5309,30 +5297,6 @@
           ]
         },
         {
-          "name": "beginRequestOperationAttempt",
-          "typeOnly": false,
-          "declarations": [
-            {
-              "path": "packages/core/src/actions/task-extraction-context.ts",
-              "line": 1001,
-              "kind": "FunctionDeclaration",
-              "signature": "(input: { runtime: RequestOperationRuntime; state: State; message: Memory; action?: Action; }): BoundRequestOperationAttempt | undefined"
-            }
-          ]
-        },
-        {
-          "name": "beginRequestOperationIssuer",
-          "typeOnly": false,
-          "declarations": [
-            {
-              "path": "packages/core/src/actions/task-extraction-context.ts",
-              "line": 852,
-              "kind": "FunctionDeclaration",
-              "signature": "(input: { runtime: RequestOperationRuntime; message: Memory; current: () => boolean; }): RequestOperationIssuer | undefined"
-            }
-          ]
-        },
-        {
           "name": "beginTrustedDeliveryAudienceTurn",
           "typeOnly": false,
           "declarations": [
@@ -5389,42 +5353,6 @@
               "line": 19,
               "kind": "FunctionDeclaration",
               "signature": "(message: Memory, persisted: Memory): void"
-            }
-          ]
-        },
-        {
-          "name": "bindRequestOperationProjection",
-          "typeOnly": false,
-          "declarations": [
-            {
-              "path": "packages/core/src/actions/task-extraction-context.ts",
-              "line": 1285,
-              "kind": "FunctionDeclaration",
-              "signature": "(source: object, target: object, consumer: RequestOperationIssuer | undefined): boolean"
-            }
-          ]
-        },
-        {
-          "name": "bindRequestOperationResult",
-          "typeOnly": false,
-          "declarations": [
-            {
-              "path": "packages/core/src/actions/task-extraction-context.ts",
-              "line": 1191,
-              "kind": "FunctionDeclaration",
-              "signature": "(result: object, token: BoundRequestOperationAttempt): boolean"
-            }
-          ]
-        },
-        {
-          "name": "bindTaskExtractionContext",
-          "typeOnly": false,
-          "declarations": [
-            {
-              "path": "packages/core/src/actions/task-extraction-context.ts",
-              "line": 53,
-              "kind": "FunctionDeclaration",
-              "signature": "(state: State, message: Memory, original: ContextObject, projected: ContextObject, runtime?: RequestOperationRuntime, issuer?: RequestOperationIssuer): void"
             }
           ]
         },
@@ -5677,57 +5605,6 @@
               "line": 195,
               "kind": "FunctionDeclaration",
               "signature": "(value: unknown): number | undefined"
-            }
-          ]
-        },
-        {
-          "name": "BoundRequestOperationAttempt",
-          "typeOnly": true,
-          "declarations": [
-            {
-              "path": "packages/core/src/actions/task-extraction-context.ts",
-              "line": 261,
-              "kind": "InterfaceDeclaration",
-              "signature": "export interface BoundRequestOperationAttempt { readonly [attemptBrand]: true; }"
-            }
-          ]
-        },
-        {
-          "name": "BoundRequestOperationError",
-          "typeOnly": false,
-          "declarations": [
-            {
-              "path": "packages/core/src/actions/task-extraction-context.ts",
-              "line": 1170,
-              "kind": "ClassDeclaration",
-              "signature": {
-                "heritage": [
-                  "extends Error"
-                ],
-                "members": [
-                  {
-                    "name": "code",
-                    "path": "packages/core/src/actions/task-extraction-context.ts",
-                    "line": 1171,
-                    "kind": "PropertyDeclaration",
-                    "signature": "readonly code: | \"REQUEST_OPERATION_RESTRICTED\" | \"REQUEST_OPERATION_UNRESOLVED\";"
-                  },
-                  {
-                    "name": "executionStatus",
-                    "path": "packages/core/src/actions/task-extraction-context.ts",
-                    "line": 1174,
-                    "kind": "PropertyDeclaration",
-                    "signature": "readonly executionStatus = \"not_started\" as const;"
-                  },
-                  {
-                    "name": "constructor",
-                    "path": "packages/core/src/actions/task-extraction-context.ts",
-                    "line": 1175,
-                    "kind": "Constructor",
-                    "signature": "(decision: Extract<BoundOperationDecision, { allowed: false; }>): BoundRequestOperationError"
-                  }
-                ]
-              }
             }
           ]
         },
@@ -6472,18 +6349,6 @@
               "line": 267,
               "kind": "FunctionDeclaration",
               "signature": "(action: GateableAction, ctx: ActionGateContext): boolean"
-            }
-          ]
-        },
-        {
-          "name": "CandidateActionBackstopRule",
-          "typeOnly": true,
-          "declarations": [
-            {
-              "path": "packages/core/src/runtime/candidate-action-backstop.ts",
-              "line": 24,
-              "kind": "InterfaceDeclaration",
-              "signature": "export interface CandidateActionBackstopRule { /** * Action names this rule protects. Compared against candidate actions using * the pipeline's canonical action-identifier normalization, so callers may * register either the canonical or a loosely-cased form. */ readonly actionNames: readonly string[]; /** * True when `messageText` is genuinely a request for this rule's actions. * Used to decide whether the candidates are protected from the coding * backstop on a given turn. */ matches(messageText: string): boolean; }"
             }
           ]
         },
@@ -7749,18 +7614,6 @@
           ]
         },
         {
-          "name": "checkBoundNotesOperation",
-          "typeOnly": false,
-          "declarations": [
-            {
-              "path": "packages/core/src/actions/task-extraction-context.ts",
-              "line": 1049,
-              "kind": "FunctionDeclaration",
-              "signature": "(state: State | undefined, message: Memory | undefined, operation: NotesRequestOperation, token?: BoundRequestOperationAttempt, registeredOperation?: NotesRequestOperation): BoundOperationDecision"
-            }
-          ]
-        },
-        {
           "name": "checkPairingAllowed",
           "typeOnly": false,
           "declarations": [
@@ -8312,18 +8165,6 @@
               "line": 330,
               "kind": "InterfaceDeclaration",
               "signature": "export interface CommitIdentityMergeRequest { agentId: UUID; planId: UUID; confirmationId: UUID; expectedGeneration: number; actorPrincipalId: UUID; idempotencyKey: string; requestDigest: string; }"
-            }
-          ]
-        },
-        {
-          "name": "commitNotesRequestRestriction",
-          "typeOnly": false,
-          "declarations": [
-            {
-              "path": "packages/core/src/actions/task-extraction-context.ts",
-              "line": 911,
-              "kind": "FunctionDeclaration",
-              "signature": "(token: RequestOperationIssuer, input: { classification: unknown; source: unknown; currentSource: () => unknown; interpretation?: NotesRequestInterpretation; }): boolean"
             }
           ]
         },
@@ -10680,18 +10521,6 @@
           ]
         },
         {
-          "name": "copyBoundOperationDenial",
-          "typeOnly": false,
-          "declarations": [
-            {
-              "path": "packages/core/src/runtime/operation-restriction-projection.ts",
-              "line": 7,
-              "kind": "FunctionDeclaration",
-              "signature": "<T extends object>(source: object, target: T, expectedAttempt: BoundRequestOperationAttempt | undefined): T"
-            }
-          ]
-        },
-        {
           "name": "copyEmbeddingVectorSpace",
           "typeOnly": false,
           "declarations": [
@@ -10700,18 +10529,6 @@
               "line": 55,
               "kind": "FunctionDeclaration",
               "signature": "(source: unknown, target: unknown): void"
-            }
-          ]
-        },
-        {
-          "name": "copyRequestOperationResult",
-          "typeOnly": false,
-          "declarations": [
-            {
-              "path": "packages/core/src/actions/task-extraction-context.ts",
-              "line": 1324,
-              "kind": "FunctionDeclaration",
-              "signature": "(source: object, target: object): boolean"
             }
           ]
         },
@@ -13155,18 +12972,6 @@
               "line": 828,
               "kind": "InterfaceDeclaration",
               "signature": "export interface DetokenizeTextParams { tokens: number[]; modelType: ModelTypeName; }"
-            }
-          ]
-        },
-        {
-          "name": "DirectActionRoutingRule",
-          "typeOnly": true,
-          "declarations": [
-            {
-              "path": "packages/core/src/runtime/direct-action-routing.ts",
-              "line": 13,
-              "kind": "InterfaceDeclaration",
-              "signature": "export interface DirectActionRoutingRule { /** Stable diagnostic identifier owned by the registering plugin. */ readonly id: string; /** Runtime action names that can satisfy this intent. */ readonly actionNames: readonly string[]; /** * Stage-1 candidates that this rule may replace after its action has passed * the normal execution gates. This is intentionally opt-in: an owner route * must not rewrite an unrelated, already-tool-bearing plan. */ readonly replacesActionNames?: readonly string[]; /** * Every selected action must declare all of these tags. This prevents a * same-named or context-adjacent action from masquerading as the required * read/write capability. */ readonly requiredActionTags: readonly string[]; /** Contexts to add when the route is selected. */ readonly contexts: readonly AgentContext[]; /** * Optional, stricter ownership of the complete original request. Only an * admitted, unambiguous owner may replace model-derived intent scope. The * broad matches() route remains additive for other requests. Named fields are * inferred operation-scope extensions, never core or original source data. */ readonly wholeRequest?: { matches(messageText: string, message?: Memory): boolean; readonly invalidateFields: readonly string[]; /** The closed request has no visible-surface dependency. Never inferred from model output. */ readonly inputScope?: \"domain-only\"; }; /** * Fail-closed reply used when this exact intent is owned by the rule but no * eligible action is available for the current actor/turn. This is opt-in: * rules without an unavailable contract preserve their existing Stage-1 * fallback behavior. */ readonly unavailable?: { /** Stable machine-readable identifier, also included in diagnostics. */ readonly code: string; /** Honest user-facing reply; must not claim that an action ran. */ readonly reply: string; }; /** * True only for a current-turn request owned by this route. The optional * message exposes typed control metadata for routing, never effect authority. */ matches(messageText: string, message?: Memory): boolean; }"
             }
           ]
         },
@@ -16895,42 +16700,6 @@
           ]
         },
         {
-          "name": "getBoundOperationDenialAttempt",
-          "typeOnly": false,
-          "declarations": [
-            {
-              "path": "packages/core/src/actions/task-extraction-context.ts",
-              "line": 1534,
-              "kind": "FunctionDeclaration",
-              "signature": "(result: object): BoundRequestOperationAttempt | undefined"
-            }
-          ]
-        },
-        {
-          "name": "getBoundOperationDenialOperation",
-          "typeOnly": false,
-          "declarations": [
-            {
-              "path": "packages/core/src/actions/task-extraction-context.ts",
-              "line": 1578,
-              "kind": "FunctionDeclaration",
-              "signature": "(result: object): NotesRequestOperation | undefined"
-            }
-          ]
-        },
-        {
-          "name": "getCandidateActionBackstopRules",
-          "typeOnly": false,
-          "declarations": [
-            {
-              "path": "packages/core/src/runtime/candidate-action-backstop.ts",
-              "line": 53,
-              "kind": "FunctionDeclaration",
-              "signature": "(runtime: IAgentRuntime): readonly CandidateActionBackstopRule[]"
-            }
-          ]
-        },
-        {
           "name": "getCapabilityRouter",
           "typeOnly": false,
           "declarations": [
@@ -17179,18 +16948,6 @@
               "line": 82,
               "kind": "FunctionDeclaration",
               "signature": "(count: number, seed: string | number): string[]"
-            }
-          ]
-        },
-        {
-          "name": "getDirectActionRoutingRules",
-          "typeOnly": false,
-          "declarations": [
-            {
-              "path": "packages/core/src/runtime/direct-action-routing.ts",
-              "line": 82,
-              "kind": "FunctionDeclaration",
-              "signature": "(runtime: IAgentRuntime): readonly DirectActionRoutingRule[]"
             }
           ]
         },
@@ -17623,18 +17380,6 @@
               "line": 44,
               "kind": "FunctionDeclaration",
               "signature": "(runtime: IAgentRuntime, entityId: UUID): Promise<UUID[]>"
-            }
-          ]
-        },
-        {
-          "name": "getRequestOperationIssuer",
-          "typeOnly": false,
-          "declarations": [
-            {
-              "path": "packages/core/src/actions/task-extraction-context.ts",
-              "line": 901,
-              "kind": "FunctionDeclaration",
-              "signature": "(runtime: RequestOperationRuntime, message: Memory): RequestOperationIssuer | undefined"
             }
           ]
         },
@@ -21604,18 +21349,6 @@
           ]
         },
         {
-          "name": "isMatchingNotesMutationCompletion",
-          "typeOnly": false,
-          "declarations": [
-            {
-              "path": "packages/core/src/actions/task-extraction-context.ts",
-              "line": 1419,
-              "kind": "FunctionDeclaration",
-              "signature": "(rejected: object, success: object, consumer: RequestOperationIssuer | undefined): boolean"
-            }
-          ]
-        },
-        {
           "name": "isMessageContentSourceDescriptor",
           "typeOnly": false,
           "declarations": [
@@ -22284,18 +22017,6 @@
               "line": 16,
               "kind": "FunctionDeclaration",
               "signature": "(value: unknown): value is string"
-            }
-          ]
-        },
-        {
-          "name": "isVerifiedOutsideRequestDenial",
-          "typeOnly": false,
-          "declarations": [
-            {
-              "path": "packages/core/src/actions/task-extraction-context.ts",
-              "line": 1548,
-              "kind": "FunctionDeclaration",
-              "signature": "(result: object, current: { messageId: string; roomId: string; entityId?: string; agentId?: string; attempt: BoundRequestOperationAttempt; operation: NotesRequestOperation; }): boolean"
             }
           ]
         },
@@ -28141,18 +27862,6 @@
           ]
         },
         {
-          "name": "normalizeNotesRequestInterpretation",
-          "typeOnly": false,
-          "declarations": [
-            {
-              "path": "packages/core/src/actions/task-extraction-context.ts",
-              "line": 380,
-              "kind": "FunctionDeclaration",
-              "signature": "(value: unknown): NotesRequestInterpretation | undefined"
-            }
-          ]
-        },
-        {
           "name": "normalizePairingPageOptions",
           "typeOnly": false,
           "declarations": [
@@ -28341,54 +28050,6 @@
               "line": 111,
               "kind": "FunctionDeclaration",
               "signature": "(value: unknown): WorkspaceDeltaReceipt"
-            }
-          ]
-        },
-        {
-          "name": "NOTES_REQUEST_OPERATIONS",
-          "typeOnly": false,
-          "declarations": [
-            {
-              "path": "packages/core/src/actions/task-extraction-context.ts",
-              "line": 264,
-              "kind": "VariableDeclaration",
-              "signature": "NOTES_REQUEST_OPERATIONS = Object.freeze([ \"create\", \"list\", \"get\", \"update\", \"patch\", \"delete\", ] as const)"
-            }
-          ]
-        },
-        {
-          "name": "NotesMutationCompletion",
-          "typeOnly": true,
-          "declarations": [
-            {
-              "path": "packages/core/src/actions/task-extraction-context.ts",
-              "line": 1357,
-              "kind": "TypeAliasDeclaration",
-              "signature": "export type NotesMutationCompletion = { rejected: boolean; requested?: boolean; outsideRequestRejection: boolean; ambiguousRejection: boolean; status: \"current\" | \"stale\" | \"changed\"; dispatch?: CanonicalDispatch; };"
-            }
-          ]
-        },
-        {
-          "name": "NotesRequestInterpretation",
-          "typeOnly": true,
-          "declarations": [
-            {
-              "path": "packages/core/src/actions/task-extraction-context.ts",
-              "line": 273,
-              "kind": "TypeAliasDeclaration",
-              "signature": "export type NotesRequestInterpretation = { readonly status: \"explicit\" | \"unavailable\" | \"contradictory\"; readonly operations: readonly NotesRequestOperation[]; };"
-            }
-          ]
-        },
-        {
-          "name": "NotesRequestOperation",
-          "typeOnly": true,
-          "declarations": [
-            {
-              "path": "packages/core/src/actions/task-extraction-context.ts",
-              "line": 272,
-              "kind": "TypeAliasDeclaration",
-              "signature": "export type NotesRequestOperation = (typeof NOTES_REQUEST_OPERATIONS)[number];"
             }
           ]
         },
@@ -34074,18 +33735,6 @@
           ]
         },
         {
-          "name": "readNotesMutationCompletion",
-          "typeOnly": false,
-          "declarations": [
-            {
-              "path": "packages/core/src/actions/task-extraction-context.ts",
-              "line": 1368,
-              "kind": "FunctionDeclaration",
-              "signature": "(result: object, consumer: RequestOperationIssuer | undefined): NotesMutationCompletion | undefined"
-            }
-          ]
-        },
-        {
           "name": "readProviderRateLimit",
           "typeOnly": false,
           "declarations": [
@@ -34178,54 +33827,6 @@
               "line": 8,
               "kind": "FunctionDeclaration",
               "signature": "(value: unknown): SystemNotice | undefined"
-            }
-          ]
-        },
-        {
-          "name": "readTaskExtractionContext",
-          "typeOnly": false,
-          "declarations": [
-            {
-              "path": "packages/core/src/actions/task-extraction-context.ts",
-              "line": 167,
-              "kind": "FunctionDeclaration",
-              "signature": "(state: State | undefined, message: Memory | undefined, expectedSystem?: string): { text: string; originalText: string; system?: string; } | undefined"
-            }
-          ]
-        },
-        {
-          "name": "readTaskExtractionNotesRestriction",
-          "typeOnly": false,
-          "declarations": [
-            {
-              "path": "packages/core/src/actions/task-extraction-context.ts",
-              "line": 988,
-              "kind": "FunctionDeclaration",
-              "signature": "(state: State | undefined, message: Memory | undefined, runtime?: RequestOperationRuntime): RequestOperationClassification"
-            }
-          ]
-        },
-        {
-          "name": "readTaskExtractionRequestIntents",
-          "typeOnly": false,
-          "declarations": [
-            {
-              "path": "packages/core/src/actions/task-extraction-context.ts",
-              "line": 138,
-              "kind": "FunctionDeclaration",
-              "signature": "(state: State | undefined, message: Memory | undefined): readonly string[] | undefined"
-            }
-          ]
-        },
-        {
-          "name": "readTaskExtractionUserSources",
-          "typeOnly": false,
-          "declarations": [
-            {
-              "path": "packages/core/src/actions/task-extraction-context.ts",
-              "line": 221,
-              "kind": "FunctionDeclaration",
-              "signature": "(state: State | undefined, message: Memory | undefined): readonly { id: string; text: string; }[] | undefined"
             }
           ]
         },
@@ -34990,18 +34591,6 @@
           ]
         },
         {
-          "name": "registerCandidateActionBackstopRule",
-          "typeOnly": false,
-          "declarations": [
-            {
-              "path": "packages/core/src/runtime/candidate-action-backstop.ts",
-              "line": 41,
-              "kind": "FunctionDeclaration",
-              "signature": "(runtime: IAgentRuntime, rule: CandidateActionBackstopRule): void"
-            }
-          ]
-        },
-        {
           "name": "registerConnectorSourceAliases",
           "typeOnly": false,
           "declarations": [
@@ -35046,18 +34635,6 @@
               "line": 336,
               "kind": "FunctionDeclaration",
               "signature": "(runtime: IAgentRuntime): void"
-            }
-          ]
-        },
-        {
-          "name": "registerDirectActionRoutingRule",
-          "typeOnly": false,
-          "declarations": [
-            {
-              "path": "packages/core/src/runtime/direct-action-routing.ts",
-              "line": 65,
-              "kind": "FunctionDeclaration",
-              "signature": "(runtime: IAgentRuntime, rule: DirectActionRoutingRule): void"
             }
           ]
         },
@@ -36057,30 +35634,6 @@
               "line": 755,
               "kind": "FunctionDeclaration",
               "signature": "(runtime: IAgentRuntime, params: { description: string; roomId: UUID; entityId?: UUID; timeoutMs?: number; onConfirm?: (task: Task, runtime: IAgentRuntime) => Promise<void>; onCancel?: (task: Task, runtime: IAgentRuntime) => Promise<void>; }): Promise<boolean>"
-            }
-          ]
-        },
-        {
-          "name": "RequestOperationClassification",
-          "typeOnly": true,
-          "declarations": [
-            {
-              "path": "packages/core/src/actions/task-extraction-context.ts",
-              "line": 23,
-              "kind": "TypeAliasDeclaration",
-              "signature": "export type RequestOperationClassification = | \"read_only\" | \"mutation_requested\" | \"unresolved\";"
-            }
-          ]
-        },
-        {
-          "name": "RequestOperationIssuer",
-          "typeOnly": true,
-          "declarations": [
-            {
-              "path": "packages/core/src/actions/task-extraction-context.ts",
-              "line": 258,
-              "kind": "InterfaceDeclaration",
-              "signature": "export interface RequestOperationIssuer { readonly [issuerBrand]: true; }"
             }
           ]
         },
@@ -39953,18 +39506,6 @@
               "line": 313,
               "kind": "FunctionDeclaration",
               "signature": "(context: ContextObject, includedEventIds: ReadonlySet<string>, options?: { historicalEffects?: boolean | \"settled\"; }): ContextObject"
-            }
-          ]
-        },
-        {
-          "name": "selectUserAuthorizedRecurrence",
-          "typeOnly": false,
-          "declarations": [
-            {
-              "path": "packages/core/src/i18n/recurrence-markers.ts",
-              "line": 236,
-              "kind": "FunctionDeclaration",
-              "signature": "<T>(authoritativeTexts: ReadonlyArray<string | null | undefined>, sources: ReadonlyArray<T | null | undefined>): T | undefined"
             }
           ]
         },
@@ -44491,18 +44032,6 @@
           ]
         },
         {
-          "name": "textStatesExplicitRecurrence",
-          "typeOnly": false,
-          "declarations": [
-            {
-              "path": "packages/core/src/i18n/recurrence-markers.ts",
-              "line": 221,
-              "kind": "FunctionDeclaration",
-              "signature": "(...texts: ReadonlyArray<string | null | undefined>): boolean"
-            }
-          ]
-        },
-        {
           "name": "TextStreamResult",
           "typeOnly": true,
           "declarations": [
@@ -46189,18 +45718,6 @@
               "line": 21,
               "kind": "InterfaceDeclaration",
               "signature": "export interface TranscriptWord { text: string; startMs: number; endMs: number; /** ASR confidence 0..1, when the backend reports it. */ confidence?: number; }"
-            }
-          ]
-        },
-        {
-          "name": "transferBoundOperationDenial",
-          "typeOnly": false,
-          "declarations": [
-            {
-              "path": "packages/core/src/actions/task-extraction-context.ts",
-              "line": 1515,
-              "kind": "FunctionDeclaration",
-              "signature": "(source: object, target: object, expectedAttempt: BoundRequestOperationAttempt): boolean"
             }
           ]
         },
@@ -49256,18 +48773,6 @@
       "source": "packages/core/src/protocol.ts",
       "exports": [
         {
-          "name": "__resetDirectActionRoutingRulesForTests",
-          "typeOnly": false,
-          "declarations": [
-            {
-              "path": "packages/core/src/runtime/direct-action-routing.ts",
-              "line": 88,
-              "kind": "FunctionDeclaration",
-              "signature": "(runtime: IAgentRuntime): void"
-            }
-          ]
-        },
-        {
           "name": "AccessContext",
           "typeOnly": true,
           "declarations": [
@@ -51643,18 +51148,6 @@
               "line": 63,
               "kind": "TypeAliasDeclaration",
               "signature": "export type CacheScope = | \"global\" | \"agent\" | \"conversation\" | \"room\" | \"entity\" | \"turn\" | \"none\" | (string & {});"
-            }
-          ]
-        },
-        {
-          "name": "CandidateActionBackstopRule",
-          "typeOnly": true,
-          "declarations": [
-            {
-              "path": "packages/core/src/runtime/candidate-action-backstop.ts",
-              "line": 24,
-              "kind": "InterfaceDeclaration",
-              "signature": "export interface CandidateActionBackstopRule { /** * Action names this rule protects. Compared against candidate actions using * the pipeline's canonical action-identifier normalization, so callers may * register either the canonical or a loosely-cased form. */ readonly actionNames: readonly string[]; /** * True when `messageText` is genuinely a request for this rule's actions. * Used to decide whether the candidates are protected from the coding * backstop on a given turn. */ matches(messageText: string): boolean; }"
             }
           ]
         },
@@ -56023,18 +55516,6 @@
           ]
         },
         {
-          "name": "DirectActionRoutingRule",
-          "typeOnly": true,
-          "declarations": [
-            {
-              "path": "packages/core/src/runtime/direct-action-routing.ts",
-              "line": 13,
-              "kind": "InterfaceDeclaration",
-              "signature": "export interface DirectActionRoutingRule { /** Stable diagnostic identifier owned by the registering plugin. */ readonly id: string; /** Runtime action names that can satisfy this intent. */ readonly actionNames: readonly string[]; /** * Stage-1 candidates that this rule may replace after its action has passed * the normal execution gates. This is intentionally opt-in: an owner route * must not rewrite an unrelated, already-tool-bearing plan. */ readonly replacesActionNames?: readonly string[]; /** * Every selected action must declare all of these tags. This prevents a * same-named or context-adjacent action from masquerading as the required * read/write capability. */ readonly requiredActionTags: readonly string[]; /** Contexts to add when the route is selected. */ readonly contexts: readonly AgentContext[]; /** * Optional, stricter ownership of the complete original request. Only an * admitted, unambiguous owner may replace model-derived intent scope. The * broad matches() route remains additive for other requests. Named fields are * inferred operation-scope extensions, never core or original source data. */ readonly wholeRequest?: { matches(messageText: string, message?: Memory): boolean; readonly invalidateFields: readonly string[]; /** The closed request has no visible-surface dependency. Never inferred from model output. */ readonly inputScope?: \"domain-only\"; }; /** * Fail-closed reply used when this exact intent is owned by the rule but no * eligible action is available for the current actor/turn. This is opt-in: * rules without an unavailable contract preserve their existing Stage-1 * fallback behavior. */ readonly unavailable?: { /** Stable machine-readable identifier, also included in diagnostics. */ readonly code: string; /** Honest user-facing reply; must not claim that an action ran. */ readonly reply: string; }; /** * True only for a current-turn request owned by this route. The optional * message exposes typed control metadata for routing, never effect authority. */ matches(messageText: string, message?: Memory): boolean; }"
-            }
-          ]
-        },
-        {
           "name": "DISABLED_TRIGGER_INTERVAL_MS",
           "typeOnly": false,
           "declarations": [
@@ -58469,18 +57950,6 @@
           ]
         },
         {
-          "name": "getCandidateActionBackstopRules",
-          "typeOnly": false,
-          "declarations": [
-            {
-              "path": "packages/core/src/runtime/candidate-action-backstop.ts",
-              "line": 53,
-              "kind": "FunctionDeclaration",
-              "signature": "(runtime: IAgentRuntime): readonly CandidateActionBackstopRule[]"
-            }
-          ]
-        },
-        {
           "name": "getCapabilityRouter",
           "typeOnly": false,
           "declarations": [
@@ -58633,18 +58102,6 @@
               "line": 82,
               "kind": "FunctionDeclaration",
               "signature": "(count: number, seed: string | number): string[]"
-            }
-          ]
-        },
-        {
-          "name": "getDirectActionRoutingRules",
-          "typeOnly": false,
-          "declarations": [
-            {
-              "path": "packages/core/src/runtime/direct-action-routing.ts",
-              "line": 82,
-              "kind": "FunctionDeclaration",
-              "signature": "(runtime: IAgentRuntime): readonly DirectActionRoutingRule[]"
             }
           ]
         },
@@ -70161,18 +69618,6 @@
           ]
         },
         {
-          "name": "registerCandidateActionBackstopRule",
-          "typeOnly": false,
-          "declarations": [
-            {
-              "path": "packages/core/src/runtime/candidate-action-backstop.ts",
-              "line": 41,
-              "kind": "FunctionDeclaration",
-              "signature": "(runtime: IAgentRuntime, rule: CandidateActionBackstopRule): void"
-            }
-          ]
-        },
-        {
           "name": "registerConnectorSourceAliases",
           "typeOnly": false,
           "declarations": [
@@ -70205,18 +69650,6 @@
               "line": 133,
               "kind": "FunctionDeclaration",
               "signature": "(canonical: string, metadata: ConnectorSourceMetadata, owner?: string): void"
-            }
-          ]
-        },
-        {
-          "name": "registerDirectActionRoutingRule",
-          "typeOnly": false,
-          "declarations": [
-            {
-              "path": "packages/core/src/runtime/direct-action-routing.ts",
-              "line": 65,
-              "kind": "FunctionDeclaration",
-              "signature": "(runtime: IAgentRuntime, rule: DirectActionRoutingRule): void"
             }
           ]
         },
@@ -73095,18 +72528,6 @@
               "line": 184,
               "kind": "FunctionDeclaration",
               "signature": "(disclosure: ArtifactDisclosure, urls: ArtifactVariantUrls): DisclosedArtifactUrl | null"
-            }
-          ]
-        },
-        {
-          "name": "selectUserAuthorizedRecurrence",
-          "typeOnly": false,
-          "declarations": [
-            {
-              "path": "packages/core/src/i18n/recurrence-markers.ts",
-              "line": 236,
-              "kind": "FunctionDeclaration",
-              "signature": "<T>(authoritativeTexts: ReadonlyArray<string | null | undefined>, sources: ReadonlyArray<T | null | undefined>): T | undefined"
             }
           ]
         },
@@ -76774,18 +76195,6 @@
               "line": 119,
               "kind": "TypeAliasDeclaration",
               "signature": "export type TextGenerationModelType = | typeof ModelType.TEXT_NANO | typeof ModelType.TEXT_SMALL | typeof ModelType.TEXT_MEDIUM | typeof ModelType.TEXT_LARGE | typeof ModelType.TEXT_MEGA | typeof ModelType.RESPONSE_HANDLER | typeof ModelType.ACTION_PLANNER | typeof ModelType.TEXT_REASONING_SMALL | typeof ModelType.TEXT_REASONING_LARGE | typeof ModelType.TEXT_COMPLETION;"
-            }
-          ]
-        },
-        {
-          "name": "textStatesExplicitRecurrence",
-          "typeOnly": false,
-          "declarations": [
-            {
-              "path": "packages/core/src/i18n/recurrence-markers.ts",
-              "line": 221,
-              "kind": "FunctionDeclaration",
-              "signature": "(...texts: ReadonlyArray<string | null | undefined>): boolean"
             }
           ]
         },
@@ -222959,6 +222368,230 @@
               "line": 462,
               "kind": "FunctionDeclaration",
               "signature": "(text: string | null | undefined): ContextRoutingDecision"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "v4BackstopRetirement": {
+    "specification": "spec/core/registries.md",
+    "decision": "v4-model-chooses-every-call",
+    "reason": "Retired v4 candidate backstop registry: a backstop matched the person's words to add candidate actions before the model; the model now chooses every call, and current source registers none.",
+    "historicalExports": [
+      {
+        "entry": ".",
+        "export": {
+          "name": "CandidateActionBackstopRule",
+          "typeOnly": true,
+          "declarations": [
+            {
+              "path": "packages/core/src/runtime/candidate-action-backstop.ts",
+              "line": 24,
+              "kind": "InterfaceDeclaration",
+              "signature": "export interface CandidateActionBackstopRule { /** * Action names this rule protects. Compared against candidate actions using * the pipeline's canonical action-identifier normalization, so callers may * register either the canonical or a loosely-cased form. */ readonly actionNames: readonly string[]; /** * True when `messageText` is genuinely a request for this rule's actions. * Used to decide whether the candidates are protected from the coding * backstop on a given turn. */ matches(messageText: string): boolean; }"
+            }
+          ]
+        }
+      },
+      {
+        "entry": ".",
+        "export": {
+          "name": "getCandidateActionBackstopRules",
+          "typeOnly": false,
+          "declarations": [
+            {
+              "path": "packages/core/src/runtime/candidate-action-backstop.ts",
+              "line": 53,
+              "kind": "FunctionDeclaration",
+              "signature": "(runtime: IAgentRuntime): readonly CandidateActionBackstopRule[]"
+            }
+          ]
+        }
+      },
+      {
+        "entry": ".",
+        "export": {
+          "name": "registerCandidateActionBackstopRule",
+          "typeOnly": false,
+          "declarations": [
+            {
+              "path": "packages/core/src/runtime/candidate-action-backstop.ts",
+              "line": 41,
+              "kind": "FunctionDeclaration",
+              "signature": "(runtime: IAgentRuntime, rule: CandidateActionBackstopRule): void"
+            }
+          ]
+        }
+      },
+      {
+        "entry": "./protocol",
+        "export": {
+          "name": "CandidateActionBackstopRule",
+          "typeOnly": true,
+          "declarations": [
+            {
+              "path": "packages/core/src/runtime/candidate-action-backstop.ts",
+              "line": 24,
+              "kind": "InterfaceDeclaration",
+              "signature": "export interface CandidateActionBackstopRule { /** * Action names this rule protects. Compared against candidate actions using * the pipeline's canonical action-identifier normalization, so callers may * register either the canonical or a loosely-cased form. */ readonly actionNames: readonly string[]; /** * True when `messageText` is genuinely a request for this rule's actions. * Used to decide whether the candidates are protected from the coding * backstop on a given turn. */ matches(messageText: string): boolean; }"
+            }
+          ]
+        }
+      },
+      {
+        "entry": "./protocol",
+        "export": {
+          "name": "getCandidateActionBackstopRules",
+          "typeOnly": false,
+          "declarations": [
+            {
+              "path": "packages/core/src/runtime/candidate-action-backstop.ts",
+              "line": 53,
+              "kind": "FunctionDeclaration",
+              "signature": "(runtime: IAgentRuntime): readonly CandidateActionBackstopRule[]"
+            }
+          ]
+        }
+      },
+      {
+        "entry": "./protocol",
+        "export": {
+          "name": "registerCandidateActionBackstopRule",
+          "typeOnly": false,
+          "declarations": [
+            {
+              "path": "packages/core/src/runtime/candidate-action-backstop.ts",
+              "line": 41,
+              "kind": "FunctionDeclaration",
+              "signature": "(runtime: IAgentRuntime, rule: CandidateActionBackstopRule): void"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "v4DirectRouteRetirement": {
+    "specification": "spec/core/registries.md",
+    "decision": "v4-model-chooses-every-call",
+    "reason": "Retired v4 direct action route registry: a route matched the person's words to force actions, contexts or a fixed reply before the model; the model now chooses every call, and current source registers none.",
+    "historicalExports": [
+      {
+        "entry": ".",
+        "export": {
+          "name": "__resetDirectActionRoutingRulesForTests",
+          "typeOnly": false,
+          "declarations": [
+            {
+              "path": "packages/core/src/runtime/direct-action-routing.ts",
+              "line": 88,
+              "kind": "FunctionDeclaration",
+              "signature": "(runtime: IAgentRuntime): void"
+            }
+          ]
+        }
+      },
+      {
+        "entry": ".",
+        "export": {
+          "name": "DirectActionRoutingRule",
+          "typeOnly": true,
+          "declarations": [
+            {
+              "path": "packages/core/src/runtime/direct-action-routing.ts",
+              "line": 13,
+              "kind": "InterfaceDeclaration",
+              "signature": "export interface DirectActionRoutingRule { /** Stable diagnostic identifier owned by the registering plugin. */ readonly id: string; /** Runtime action names that can satisfy this intent. */ readonly actionNames: readonly string[]; /** * Stage-1 candidates that this rule may replace after its action has passed * the normal execution gates. This is intentionally opt-in: an owner route * must not rewrite an unrelated, already-tool-bearing plan. */ readonly replacesActionNames?: readonly string[]; /** * Every selected action must declare all of these tags. This prevents a * same-named or context-adjacent action from masquerading as the required * read/write capability. */ readonly requiredActionTags: readonly string[]; /** Contexts to add when the route is selected. */ readonly contexts: readonly AgentContext[]; /** * Optional, stricter ownership of the complete original request. Only an * admitted, unambiguous owner may replace model-derived intent scope. The * broad matches() route remains additive for other requests. Named fields are * inferred operation-scope extensions, never core or original source data. */ readonly wholeRequest?: { matches(messageText: string, message?: Memory): boolean; readonly invalidateFields: readonly string[]; /** The closed request has no visible-surface dependency. Never inferred from model output. */ readonly inputScope?: \"domain-only\"; }; /** * Fail-closed reply used when this exact intent is owned by the rule but no * eligible action is available for the current actor/turn. This is opt-in: * rules without an unavailable contract preserve their existing Stage-1 * fallback behavior. */ readonly unavailable?: { /** Stable machine-readable identifier, also included in diagnostics. */ readonly code: string; /** Honest user-facing reply; must not claim that an action ran. */ readonly reply: string; }; /** * True only for a current-turn request owned by this route. The optional * message exposes typed control metadata for routing, never effect authority. */ matches(messageText: string, message?: Memory): boolean; }"
+            }
+          ]
+        }
+      },
+      {
+        "entry": ".",
+        "export": {
+          "name": "getDirectActionRoutingRules",
+          "typeOnly": false,
+          "declarations": [
+            {
+              "path": "packages/core/src/runtime/direct-action-routing.ts",
+              "line": 82,
+              "kind": "FunctionDeclaration",
+              "signature": "(runtime: IAgentRuntime): readonly DirectActionRoutingRule[]"
+            }
+          ]
+        }
+      },
+      {
+        "entry": ".",
+        "export": {
+          "name": "registerDirectActionRoutingRule",
+          "typeOnly": false,
+          "declarations": [
+            {
+              "path": "packages/core/src/runtime/direct-action-routing.ts",
+              "line": 65,
+              "kind": "FunctionDeclaration",
+              "signature": "(runtime: IAgentRuntime, rule: DirectActionRoutingRule): void"
+            }
+          ]
+        }
+      },
+      {
+        "entry": "./protocol",
+        "export": {
+          "name": "__resetDirectActionRoutingRulesForTests",
+          "typeOnly": false,
+          "declarations": [
+            {
+              "path": "packages/core/src/runtime/direct-action-routing.ts",
+              "line": 88,
+              "kind": "FunctionDeclaration",
+              "signature": "(runtime: IAgentRuntime): void"
+            }
+          ]
+        }
+      },
+      {
+        "entry": "./protocol",
+        "export": {
+          "name": "DirectActionRoutingRule",
+          "typeOnly": true,
+          "declarations": [
+            {
+              "path": "packages/core/src/runtime/direct-action-routing.ts",
+              "line": 13,
+              "kind": "InterfaceDeclaration",
+              "signature": "export interface DirectActionRoutingRule { /** Stable diagnostic identifier owned by the registering plugin. */ readonly id: string; /** Runtime action names that can satisfy this intent. */ readonly actionNames: readonly string[]; /** * Stage-1 candidates that this rule may replace after its action has passed * the normal execution gates. This is intentionally opt-in: an owner route * must not rewrite an unrelated, already-tool-bearing plan. */ readonly replacesActionNames?: readonly string[]; /** * Every selected action must declare all of these tags. This prevents a * same-named or context-adjacent action from masquerading as the required * read/write capability. */ readonly requiredActionTags: readonly string[]; /** Contexts to add when the route is selected. */ readonly contexts: readonly AgentContext[]; /** * Optional, stricter ownership of the complete original request. Only an * admitted, unambiguous owner may replace model-derived intent scope. The * broad matches() route remains additive for other requests. Named fields are * inferred operation-scope extensions, never core or original source data. */ readonly wholeRequest?: { matches(messageText: string, message?: Memory): boolean; readonly invalidateFields: readonly string[]; /** The closed request has no visible-surface dependency. Never inferred from model output. */ readonly inputScope?: \"domain-only\"; }; /** * Fail-closed reply used when this exact intent is owned by the rule but no * eligible action is available for the current actor/turn. This is opt-in: * rules without an unavailable contract preserve their existing Stage-1 * fallback behavior. */ readonly unavailable?: { /** Stable machine-readable identifier, also included in diagnostics. */ readonly code: string; /** Honest user-facing reply; must not claim that an action ran. */ readonly reply: string; }; /** * True only for a current-turn request owned by this route. The optional * message exposes typed control metadata for routing, never effect authority. */ matches(messageText: string, message?: Memory): boolean; }"
+            }
+          ]
+        }
+      },
+      {
+        "entry": "./protocol",
+        "export": {
+          "name": "getDirectActionRoutingRules",
+          "typeOnly": false,
+          "declarations": [
+            {
+              "path": "packages/core/src/runtime/direct-action-routing.ts",
+              "line": 82,
+              "kind": "FunctionDeclaration",
+              "signature": "(runtime: IAgentRuntime): readonly DirectActionRoutingRule[]"
+            }
+          ]
+        }
+      },
+      {
+        "entry": "./protocol",
+        "export": {
+          "name": "registerDirectActionRoutingRule",
+          "typeOnly": false,
+          "declarations": [
+            {
+              "path": "packages/core/src/runtime/direct-action-routing.ts",
+              "line": 65,
+              "kind": "FunctionDeclaration",
+              "signature": "(runtime: IAgentRuntime, rule: DirectActionRoutingRule): void"
             }
           ]
         }

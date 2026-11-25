@@ -16,30 +16,6 @@
       "types": "./dist/src/index.d.ts",
       "import": "./dist/src/index.js",
       "default": "./dist/src/index.js"
-    },
-    "./client": {
-      "eliza-source": "./src/client/index.vibe",
-      "types": "./dist/src/client/index.d.ts",
-      "import": "./dist/src/client/index.js",
-      "default": "./dist/src/client/index.js"
-    },
-    "./digests": {
-      "eliza-source": "./src/digests/index.vibe",
-      "types": "./dist/src/digests/index.d.ts",
-      "import": "./dist/src/digests/index.js",
-      "default": "./dist/src/digests/index.js"
-    },
-    "./scope": {
-      "eliza-source": "./src/scope.vibe",
-      "types": "./dist/src/scope.d.ts",
-      "import": "./dist/src/scope.js",
-      "default": "./dist/src/scope.js"
-    },
-    "./worker": {
-      "eliza-source": "./src/worker/index.vibe",
-      "types": "./dist/src/worker/index.d.ts",
-      "import": "./dist/src/worker/index.js",
-      "default": "./dist/src/worker/index.js"
     }
   },
   "scripts": {
@@ -49,8 +25,10 @@
   },
   "dependencies": {
     "@elizaos/agent": "workspace:*",
+    "@elizaos/agent-host": "workspace:*",
     "@elizaos/cloud": "workspace:*",
     "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-workflow-client": "workspace:*",
     "@jitl/quickjs-singlefile-browser-release-sync": "0.32.0",
     "effect": "4.1.1",
     "quickjs-emscripten-core": "0.32.0",
@@ -61,6 +39,7 @@
     "@effect/platform-node": "4.1.1",
     "@effect/vitest": "4.1.1",
     "@electric-sql/pglite": "catalog:",
+    "@elizaos/plugin-workflow-worker": "workspace:*",
     "@types/node": "catalog:",
     "vibelang": "0.0.13",
     "vibestack": "workspace:*",

@@ -133,6 +133,14 @@ public class PasswordsPlugin extends Plugin {
     } catch (Exception failure) { fail(call, failure); }
   }
 
+  @PluginMethod public void anySaved(PluginCall call) {
+    PasswordVaultAccess access = vault(call); if (access == null) return;
+    try {
+      boolean saved = access.use(store -> store.entries().length() > 0);
+      JSObject result = new JSObject(); result.put("saved", saved); call.resolve(result);
+    } catch (Exception failure) { fail(call, failure); }
+  }
+
   /** Allowlisted metadata only; built field by field so a stored secret can never be copied out. */
   private JSObject summary(JSONObject entry) throws Exception {
     JSObject item = new JSObject();

@@ -1,5 +1,5 @@
 // spec/workflow/generated.md, "Each call is journaled once, replays its recorded result, and diverges when its arguments change"; spec/workflow/generated.md, "An effect is dispatched at most once, and an effect whose receipt is lost is never sent again"; spec/workflow/generated.md, "A wait parks the run until its own approval, signal or timer resolves it"; spec/workflow/sourcePublication.md, "Story: Import only complete reviewed workflow source"
-import { workflowSha } from "../contract/phone.vibe"
+import { workflowSha } from "@elizaos/plugin-workflow-client"
 import { importWorkflowSource, publishWorkflowSource, type SourceRefused } from "./source.vibe"
 
 export interface GeneratedEntry { readonly call: string; readonly digest: string; readonly kind: "StepCall" | "EffectCall" | "ApprovalCall" | "SignalCall" | "TimerCall"; readonly value: unknown }

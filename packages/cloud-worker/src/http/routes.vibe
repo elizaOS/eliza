@@ -1,0 +1,106 @@
+// spec/cloud/deployment.md, "Story: Answer only the deployment's own callers"; spec/cloud/identity/sessions.md, "Story: Admit a request only for a live credential of an active account"
+import type { RouteArea } from "../../gen/cloud__deployment.effect.vibe"
+import type { RateClass } from "../billing/plans.vibe"
+import type { Capability, Deployment } from "@elizaos/cloud"
+import type { Store } from "../store/connection.vibe"
+import { refused, type Refused } from "./refusal.vibe"
+import type { Caller, RouteAuth } from "./request-auth.vibe"
+
+export type { RouteArea }
+
+export type Method = "GET" | "POST" | "PATCH" | "DELETE"
+
+export type CloudContext = Store | Deployment | HttpClient.HttpClient
+
+export interface RouteContext {
+  readonly request: HttpServerRequest.HttpServerRequest
+  readonly params: Readonly<Record<string, string>>
+  readonly query: URLSearchParams
+  readonly caller: Caller
+  readonly requestId: string
+  readonly now: number
+}
+
+export type Handler = (context: RouteContext) => HttpServerResponse.HttpServerResponse!{ readonly _tag: string }!CloudContext
+
+export interface Route {
+  readonly method: Method
+  readonly path: `/${string}`
+  readonly auth: RouteAuth
+  readonly area?: RouteArea
+  readonly capability?: Capability
+  readonly rateClass?: RateClass
+  readonly maxBodyBytes?: number
+  readonly ingressPerMinute?: number
+  readonly handler: Handler
+}
+
+export interface Sweep {
+  readonly name: string
+  readonly everyMs: number
+  readonly run: unknown!!CloudContext
+}
+
+export interface Area {
+  readonly routes: ReadonlyArray<Route>
+  readonly sweeps: ReadonlyArray<Sweep>
+}
+
+export const defaultMaxBodyBytes = 1024 * 1024
+
+export type Matched =
+  | { readonly kind: "route"; readonly route: Route; readonly params: Readonly<Record<string, string>> }
+  | { readonly kind: "methodNotAllowed"; readonly allowed: ReadonlyArray<Method> }
+  | { readonly kind: "none" }
+
+function decodeSegment(text: string): string | undefined {
+  try {
+    return decodeURIComponent(text)
+  } catch {
+    return undefined
+  }
+}
+
+function matchPath(pattern: string, pathname: string): Readonly<Record<string, string>> | undefined {
+  const expected = pattern.split("/")
+  const actual = pathname.split("/")
+  if (expected.length !== actual.length) return undefined
+  const params: Record<string, string> = {}
+  for (const [index, segment] of expected.entries()) {
+    const given = actual[index] ?? ""
+    if (segment.startsWith(":")) {
+      if (given === "") return undefined
+      const decoded = decodeSegment(given)
+      if (decoded === undefined) return undefined
+      params[segment.slice(1)] = decoded
+    } else if (segment !== given) {
+      return undefined
+    }
+  }
+  return params
+}
+
+export function matchRoute(routes: ReadonlyArray<Route>, method: string, pathname: string): Matched {
+  const candidates = routes.flatMap((route) => {
+    const params = matchPath(route.path, pathname)
+    return params === undefined ? [] : [{ route, params }]
+  })
+  const exact = candidates.find((candidate) => candidate.route.method === method || (method === "HEAD" && candidate.route.method === "GET"))
+  if (exact !== undefined) return { kind: "route", route: exact.route, params: exact.params }
+  if (candidates.length > 0) return { kind: "methodNotAllowed", allowed: candidates.map((candidate) => candidate.route.method) }
+  return { kind: "none" }
+}
+
+export function json(body: unknown, options: { readonly status?: number; readonly headers?: Readonly<Record<string, string>> } = {}): HttpServerResponse.HttpServerResponse {
+  return HttpServerResponse.jsonUnsafe(body, { status: options.status ?? 200, headers: { "cache-control": "no-store", ...options.headers } })
+}
+
+export effect function jsonBody<A>(context: RouteContext, schema: Schema.Codec<A>): A!Refused {
+  if (!(context.request.headers["content-type"] ?? "").startsWith("application/json")) throw refused("InvalidRequest")
+  const raw = context.request.json catch effect () => { throw refused("InvalidRequest") }
+  return Schema.decodeUnknownEffect(schema, { onExcessProperty: "error" })(raw) catch effect () => { throw refused("InvalidRequest") }
+}
+
+export function owner(caller: Caller): { readonly userId: string; readonly organizationId: string } | undefined {
+  return caller.kind === "anonymous" ? undefined : { userId: caller.userId, organizationId: caller.organizationId }
+}

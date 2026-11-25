@@ -1,9 +1,9 @@
 // spec/nativeWifi/index.md, "Story: See whether I joined the network I chose"
-export { wifiClient, wifiPlugin } from "@elizaos/os/bridges/wifi"
-export type * from "@elizaos/os/bridges/definitions/wifi"
+export { wifiClient, wifiPlugin } from "@elizaos/os-bridges"
+export type { WiFiSecurity, JoinableWiFiSecurity, WiFiNetwork, ListNetworksOptions, ConnectOptions, WifiStateResult, ConnectedNetworkResult, ListNetworksResult, ConnectResult, ConnectivityResult, WiFiCapabilities, WiFiPermissionStatus, ApprovedJoinResult, WiFiPlugin } from "@elizaos/os-bridges"
 
-import { wifiClient, type WiFiClient } from "@elizaos/os/bridges/wifi"
-import type { ConnectOptions } from "@elizaos/os/bridges/definitions/wifi"
+import { wifiClient, type WiFiClient } from "@elizaos/os-bridges"
+import type { ConnectOptions } from "@elizaos/os-bridges"
 import { wifiJoinReport, type WifiRead } from "../gen/nativeWifi.effect.vibe"
 
 export effect function joinNativeWifi(network: ConnectOptions, device: WiFiClient = wifiClient()) {
