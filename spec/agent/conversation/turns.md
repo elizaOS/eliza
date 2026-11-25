@@ -283,21 +283,23 @@ pure def lawARateLimitedReplyKeepsTheOriginTheRefusalNamed(origin: B::LimitOrigi
 ### A re-send the binding refuses for the limit its turn met keeps who set that limit
 
 When a turn's model call is rate limited and the turn re-sends it once, the
-binding may refuse the re-send itself because the limit is still in force,
-and that refusal names no origin. The turn then keeps the origin of the
-refusal it met, so its rate-limited reply still says whether the model
-provider or Cloud set the limit. A re-send refused by a new refusal that
-names its own origin keeps that one.
+binding may refuse the re-send while the limit is still in force. The turn
+keeps the first refusal's origin only when the binding identifies that same
+call as the source of the hold. A different hold or a new refusal with no
+origin leaves it unset. A re-send that names its own origin keeps it.
 
 ```quint
-pure def originAfterResend(met: B::LimitOrigin, again: B::LimitOrigin): B::LimitOrigin =
-  if (again == B::NoLimitOrigin) met else again
+pure def originAfterResend(met: B::LimitOrigin, again: B::LimitOrigin, sameHold: bool): B::LimitOrigin =
+  if (again == B::NoLimitOrigin and sameHold) met else again
 pure val metValues = Set(B::NoLimitOrigin, B::ProviderSetLimit, B::CloudSetLimit)
 pure val againValues = Set(B::NoLimitOrigin, B::ProviderSetLimit, B::CloudSetLimit)
+pure val sameHoldValues = Set(false, true)
 pure def lawAHeldResendKeepsTheOriginTheTurnMet(met: B::LimitOrigin): bool =
-  originAfterResend(met, B::NoLimitOrigin) == met
-pure def lawANamedResendKeepsItsOwnOrigin(met: B::LimitOrigin, again: B::LimitOrigin): bool =
-  again != B::NoLimitOrigin implies originAfterResend(met, again) == again
+  originAfterResend(met, B::NoLimitOrigin, true) == met
+pure def lawADifferentHoldOrFreshRefusalKeepsItsOwnOrigin(met: B::LimitOrigin, again: B::LimitOrigin): bool =
+  originAfterResend(met, again, false) == again
+pure def lawANamedResendKeepsItsOwnOrigin(met: B::LimitOrigin, again: B::LimitOrigin, sameHold: bool): bool =
+  again != B::NoLimitOrigin implies originAfterResend(met, again, sameHold) == again
 ```
 
 ### A turn that failed before any reply, for no cause the binding named, is stored as a provider issue
@@ -309,16 +311,21 @@ names (a call that threw outside the binding, storage that could not be
 read, a turn whose steps produced no reply) is one a later send may get
 past, so it is stored as `provider_issue`: the owner sees a failed reply
 that offers Retry, not 503 and nothing in the conversation. Once the
-turn's reply is stored, a later unnamed failure stores no second message.
+turn's reply is stored, a later failure that is not a Stop stores no
+second message, even one the binding named (a provider issue a retry got
+past earlier in the turn): the turn answers with the reply it stored and
+ends completed, so what reads how the run ended agrees with that reply.
 
 ```quint
 pure def storedFailureName(named: str, replied: bool): str =
-  if (named != "") named else if (replied) "" else B::failureName(B::ProviderIssue)
+  if (replied) "" else if (named != "") named else B::failureName(B::ProviderIssue)
 pure val namedValues = Set("", "credential_invalid", "insufficient_credits", "limit_reached", "provider_issue")
-pure def lawANamedFailureKeepsItsKind(named: str, replied: bool): bool = named != "" implies storedFailureName(named, replied) == named
+pure def lawANamedFailureBeforeAnyReplyKeepsItsKind(named: str): bool = named != "" implies storedFailureName(named, false) == named
 pure def lawAnUnnamedFailureBeforeAnyReplyIsAProviderIssueThatOffersRetry(named: str): bool =
   named == "" implies (storedFailureName(named, false) == failureKind(AccountFailed({ failure: B::ProviderIssue })) and planActionOf(AccountFailed({ failure: B::ProviderIssue })) == "retry")
-pure def lawAStoredReplyIsNeverFollowedByAnUnnamedFailure(named: str): bool = named == "" implies storedFailureName(named, true) == ""
+pure def lawAStoredReplyIsNeverFollowedByASecondMessage(named: str): bool = storedFailureName(named, true) == ""
+pure def failureEndsTheRun(replied: bool): bool = not(replied)
+pure def lawATurnThatStoredItsReplyEndsCompleted(replied: bool): bool = replied implies not(failureEndsTheRun(replied))
 ```
 
 ### An interrupted reply keeps proof of an applied effect
@@ -492,4 +499,47 @@ pure val rValues = Set({ ...noReply, id: 2, units: List(104, 105, 33), heard: He
   { ...noReply, id: 3, units: List(104), heard: HeardUpTo({ boundary: 0 }) })
 pure def lawHeardAndUnheardMakeTheReply(r: Reply): bool =
   (boundaryOf(r) >= 0 and boundaryOf(r) <= r.units.length()) implies heardPart(r).concat(unheardPart(r)) == r.units
+```
+
+## Story: Read my own private data in my own conversation
+
+> As the owner, I want my agent to read my calendar and inbox when I ask
+> in my own conversation with it, so that a private read works for me,
+> while another person, a connector's message or text that reaches the
+> agent some other way never gets that read.
+
+### Only a turn the conversation's turn runner builds for the owner carries owner-only audience evidence, renewed only while that turn runs
+
+Before the message service sees a turn's message, the turn runner attests
+its delivery audience from the stored room with core's
+[trusted delivery audience](../../core/trustedAudience.md) and holds a
+lease on that evidence for the turn alone: once the turn ends the evidence
+is never renewed and lapses at its lifetime. The runner builds that message
+itself, from the launch's conversation owner in the owner's direct
+conversation with the agent, whether the conversation route or
+[trigger delivery](../schedule/triggers.md) started the turn (a scheduled
+prompt keeps the owner's authority). Core admits an owner-private action or
+provider (disclosure gate `owner_exclusive`) in it only on a `ChatAsOwner`
+launch: a `ChatAsUser` launch's turn carries evidence whose speaker is never
+the owner (core: `owner_mismatch`). A message that reaches the message
+service any other way, such as a connector's message from another person or
+one handed to it directly, carries no evidence, and core refuses the action
+as `missing_attestation`. A tool's result, a Browser page or an attachment
+is data inside the owner's turn, never a turn of its own, and attests
+nothing. A failed attestation leaves the turn without evidence, so every
+owner-private read is refused and the rest of the turn goes on.
+
+```quint
+import launch as L from "../host/launch"
+type TurnIngress = TurnRunner | OtherIngress
+pure def attestsAudience(ingress: TurnIngress, lookupFailed: bool): bool = ingress == TurnRunner and not(lookupFailed)
+pure def ownerOnlyTurn(ingress: TurnIngress, role: L::CallerRole, lookupFailed: bool): bool =
+  attestsAudience(ingress, lookupFailed) and role == L::ChatAsOwner
+pure val ingressValues = Set(TurnRunner, OtherIngress)
+pure val roleValues = Set(L::ChatAsOwner, L::ChatAsUser)
+pure val lookupFailedValues = Set(false, true)
+pure def lawOtherIngressIsNeverOwnerOnly(role: L::CallerRole, lookupFailed: bool): bool = not(ownerOnlyTurn(OtherIngress, role, lookupFailed))
+pure def lawAUserLaunchIsNeverOwnerOnly(ingress: TurnIngress, lookupFailed: bool): bool = not(ownerOnlyTurn(ingress, L::ChatAsUser, lookupFailed))
+pure def lawAFailedLookupIsNeverOwnerOnly(ingress: TurnIngress, role: L::CallerRole): bool = not(ownerOnlyTurn(ingress, role, true))
+pure def lawTheOwnerRunnerTurnIsOwnerOnly(lookupFailed: bool): bool = not(lookupFailed) implies ownerOnlyTurn(TurnRunner, L::ChatAsOwner, lookupFailed)
 ```

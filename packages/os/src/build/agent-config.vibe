@@ -99,6 +99,7 @@ const HostFileCodec = Schema.Struct({
   callerRole: Schema.optionalKey(Schema.Literals(["owner", "user"])),
   views: Schema.optionalKey(Views),
   timeZone: Schema.optionalKey(Schema.String.check(Schema.makeFilter(namedZone))),
+  hostContextRevision: Schema.optionalKey(PositiveInteger),
   privacy: Schema.optionalKey(Switches("secretSwap", "piiSwap")),
   google: Schema.optionalKey(Switches("gmailChanges", "calendarEdits")),
   retention: Schema.optionalKey(Schema.Struct({ days: Schema.Number, maxRowsPerRoom: Schema.Int, intervalMinutes: Schema.Int })),

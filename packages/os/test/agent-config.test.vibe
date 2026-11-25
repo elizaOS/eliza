@@ -128,6 +128,7 @@ const ADMITTED: readonly { readonly name: string; readonly files: Files; readonl
       callerRole: "user",
       views: [{ id: "chat", label: "Chat", path: "/chat", aliases: ["home"] }, { id: "notes", label: "Notes", path: "/notes" }],
       timeZone: "Europe/Paris",
+      hostContextRevision: Number.MAX_SAFE_INTEGER,
       privacy: { secretSwap: true, piiSwap: false },
       google: { gmailChanges: false, calendarEdits: true },
       retention: { days: 0.5, maxRowsPerRoom: 1000, intervalMinutes: 60 },
@@ -182,6 +183,10 @@ const REFUSED: readonly { readonly name: string; readonly files: Files }[] = [
   { name: "an empty renderer route list", files: files({ ...HOST, routes: [], model: { backend: "none" } }) },
   { name: "a model named twice", files: files({ ...HOST, model: { backend: "none" }, cloud: { baseUrl: "https://cloud.example" } }) },
   { name: "a cloud address with a path", files: files({ ...HOST, cloud: { baseUrl: "https://cloud.example/api/v1" } }) },
+  ...[0, -1, 1.5, "1", null, Number.MAX_SAFE_INTEGER + 1].map((hostContextRevision) => ({
+    name: `an invalid host context revision ${JSON.stringify(hostContextRevision)}`,
+    files: files({ ...HOST, model: { backend: "none" }, hostContextRevision }),
+  })),
   { name: "a reserved environment key", files: files({ ...HOST, model: { backend: "none" }, environment: { NODE_OPTIONS: "--inspect" } }) },
   { name: "local embeddings without dimensions", files: files({ ...HOST, model: { backend: "none" }, embeddings: "local" }) },
   { name: "two views sharing a name", files: files({ ...HOST, model: { backend: "none" }, views: [{ id: "chat", label: "Chat", path: "/chat" }, { id: "notes", label: "Notes", path: "/notes", aliases: ["chat"] }] }) },
@@ -244,8 +249,11 @@ it.effect('Start my agent with my character, policy and model: the service and t
         [{ id: "chat", label: "Chat", path: "/chat", aliases: ["home"] }, { id: "notes", label: "Notes", path: "/notes" }],
         { days: 0.5, maxRowsPerRoom: 1000, intervalMinutes: 60 }, { PLUGIN_SETTING: "on" }, "Europe/Paris"],
     )
-    assert.deepStrictEqual((try decodeLaunchDocument((try admittedAnswer(record)).document)).model,
+    assert.strictEqual(fullDocument.hostContextRevision, Number.MAX_SAFE_INTEGER)
+    const recordDocument = try decodeLaunchDocument((try admittedAnswer(record)).document)
+    assert.deepStrictEqual(recordDocument.model,
       { backend: "cloud", cloudBaseUrl: "https://cloud.example", smallModel: "", largeModel: "", imageModel: "" })
+    assert.isUndefined(recordDocument.hostContextRevision)
     // spec/os/agentService/config.md, "A launch carries the Google consent the owner saved, else the host file's"
     const consents: unknown[] = []
     for (const answer of [full, record, replaced, savedOnly]) consents.push((try decodeLaunchDocument((try admittedAnswer(answer)).document)).google)

@@ -47,9 +47,9 @@ type AccountState = Usable | Failing({ failure: AccountFailure })
 type LastCloudFailure = NoCloudFailure | CloudFailedAt({ failure: AccountFailure, at: int })
 type Call = { id: int, credentialVersion: int }
 type ModelBinding = { phase: BindPhase, backend: Backend, account: OwnerAccount, embeddings: Embeddings, google: GoogleConsent,
-  credentialVersion: int, cerebrasRoute: bool, accountState: AccountState, providerRetryAt: int, lastCloudFailure: LastCloudFailure, calls: List[Call], nextCall: int, clock: int }
+  credentialVersion: int, cerebrasRoute: bool, accountState: AccountState, providerRetryAt: int, rateLimitCallId: int, lastCloudFailure: LastCloudFailure, calls: List[Call], nextCall: int, clock: int }
 pure val initial: ModelBinding = { phase: Unbound, backend: NoBackend, account: NoAccount, embeddings: NoEmbeddings,
-  google: { gmailChanges: false, calendarEdits: false }, credentialVersion: 0, cerebrasRoute: false, accountState: Usable, providerRetryAt: 0, lastCloudFailure: NoCloudFailure, calls: List(), nextCall: 0, clock: 0 }
+  google: { gmailChanges: false, calendarEdits: false }, credentialVersion: 0, cerebrasRoute: false, accountState: Usable, providerRetryAt: 0, rateLimitCallId: -1, lastCloudFailure: NoCloudFailure, calls: List(), nextCall: 0, clock: 0 }
 pure val viewValues = Set({ epoch: 1, credentialVersion: 1 }, { epoch: 1, credentialVersion: 0 }, { epoch: 2, credentialVersion: 2 })
 pure def canBind(s: ModelBinding, doc: LaunchDocument, view: FrameView, cerebrasRoute: bool): bool =
   s.phase == Unbound and documentAdmitted(doc) and view.epoch >= 1 and view.credentialVersion >= 0 and (needsCredential(doc.backend) implies view.credentialVersion >= 1)
@@ -260,9 +260,9 @@ pure def lawNoCapUnlessTheCallerNamesOne(omit: bool): bool = capSent(NoCapAsked,
 pure def lawOmittingDropsTheCap(asked: CapAsk): bool = capSent(asked, true) == NoCapAsked
 ```
 
-### A Qwen call on a Cerebras route sends the conversation cache key its caller names, and no call invents one
+### A Qwen call on a Cerebras route sends the prompt cache key its caller names, and no call invents one
 
-A caller names its conversation's prompt cache key in
+A caller names its prompt cache key (the planner's is its agent's) in
 `providerOptions.cerebras.promptCacheKey`. It is sent as
 `prompt_cache_key` only on the routes that take reasoning hints (the cloud,
 and an own-key endpoint whose host is `cerebras.ai` or under it) and only
@@ -313,9 +313,11 @@ pure def refuseCall(s: ModelBinding, id: int, now: int, e: C::CloudError): Model
   val provider = failureOf(e, callVersion(s.calls, id))
   val failure = heldFailure(provider, t, s.cerebrasRoute)
   val ignored = staleRefusal(failure, s.credentialVersion)
+  val limitCallId = match provider { | LimitReached(_) => id | _ => s.rateLimitCallId }
   { ...s, calls: s.calls.select(c => c.id != id), clock: t,
     accountState: if (ignored) s.accountState else afterFailure(s.accountState, failure, t),
     providerRetryAt: if (ignored or retryAtOf(provider) <= s.providerRetryAt) s.providerRetryAt else retryAtOf(provider),
+    rateLimitCallId: limitCallId,
     lastCloudFailure: if (ignored) s.lastCloudFailure else CloudFailedAt({ failure: failure, at: t }) }
 }
 pure def alwaysFailingAccountHasALastFailure(s: ModelBinding): bool = s.accountState != Usable implies s.lastCloudFailure != NoCloudFailure
@@ -356,32 +358,39 @@ pure def lawAnOwnKeyRefusalCarriesNoCode(refusalStatus: int, bodyCode: str): boo
 
 ### A rate limit names whether the model provider or Cloud set it, and no other refusal names one
 
-A refused call that is rate limited names who set the limit, so a reply can
-be traced to its limiter afterwards: `provider` on an own-key endpoint, and
-on the cloud route when Cloud's refusal carries `provider_rate_limited`;
-`cloud` on the cloud route otherwise, for a limit of Cloud's own. Any other
-refusal, and a call the binding refuses itself because a limit is still in
-force, names none.
+A rate limit on an own-key endpoint names the provider. The cloud route
+names `provider` when Cloud sends `provider_rate_limited` and `cloud`
+when it sends `cloud_gate_rate_limited`. If the reason is missing or
+unrecognized, the origin is unknown. Other refusals and refusals from the
+binding itself leave the origin unset.
 
 ```quint
 type LimitOrigin = NoLimitOrigin | ProviderSetLimit | CloudSetLimit
 pure def limitOriginOf(cloudRoute: bool, limited: bool, bodyReason: str): LimitOrigin =
   if (not(limited)) NoLimitOrigin
   else if (not(cloudRoute) or bodyReason == "provider_rate_limited") ProviderSetLimit
-  else CloudSetLimit
+  else if (bodyReason == "cloud_gate_rate_limited") CloudSetLimit
+  else NoLimitOrigin
 pure def limitOriginName(origin: LimitOrigin): str = match origin { | NoLimitOrigin => "" | ProviderSetLimit => "provider" | CloudSetLimit => "cloud" }
 pure val limitedValues = Set(true, false)
-pure val bodyReasonValues = Set("", "provider_rate_limited", "google_not_configured")
+pure val bodyReasonValues = Set("", "provider_rate_limited", "cloud_gate_rate_limited", "google_not_configured")
 pure def lawOnlyARateLimitNamesAnOrigin(cloudRoute: bool, limited: bool, bodyReason: str): bool =
-  (limitOriginOf(cloudRoute, limited, bodyReason) != NoLimitOrigin) iff limited
+  (limitOriginOf(cloudRoute, limited, bodyReason) != NoLimitOrigin) implies limited
 pure def lawAnOwnKeyLimitIsTheProviders(bodyReason: str): bool = limitOriginOf(false, true, bodyReason) == ProviderSetLimit
 pure def lawCloudsOwnLimitNamesCloud(bodyReason: str): bool =
-  (limitOriginOf(true, true, bodyReason) == CloudSetLimit) iff (bodyReason != "provider_rate_limited")
+  (limitOriginOf(true, true, bodyReason) == CloudSetLimit) iff (bodyReason == "cloud_gate_rate_limited")
+pure def lawAnUnmarkedCloudLimitHasNoOrigin(bodyReason: str): bool =
+  (limitOriginOf(true, true, bodyReason) == NoLimitOrigin)
+    iff not(Set("provider_rate_limited", "cloud_gate_rate_limited").contains(bodyReason))
 ```
 
 ### No call starts before a rate limit's retry time, and a provider issue does not lift a limit still in force
 
 A refused credential, spent credits or a newer limit replace a limit.
+The binding keeps the call number of the last rate limit it received.
+When an active hold refuses another call, the refusal carries that
+number internally. A re-send can use it to identify the limit its own
+call met, even if another call received a limit with the same retry time.
 
 ```quint
 pure def limitedBy(f: AccountFailure, t: int): bool = match f { | LimitReached(x) => t < x.retryAt | _ => false }
@@ -389,6 +398,11 @@ pure def limitedAt(st: AccountState, t: int): bool = match st { | Failing(x) => 
 pure def afterFailure(st: AccountState, failure: AccountFailure, t: int): AccountState =
   if (failure == ProviderIssue and limitedAt(st, t)) st else Failing({ failure: failure })
 pure def stepNoCallBeforeRetryAt(before: ModelBinding, via: str, after: ModelBinding): bool = via == "startCall" implies not(limitedAt(before.accountState, after.clock))
+pure def alwaysActiveLimitNamesASettledCall(s: ModelBinding): bool = limitedAt(s.accountState, s.clock) implies
+  (s.rateLimitCallId >= 0 and s.rateLimitCallId < s.nextCall and not(s.calls.some(c => c.id == s.rateLimitCallId)))
+pure def stepChangedLimitNamesTheNewlyRefusedCall(before: ModelBinding, via: str, after: ModelBinding): bool =
+  after.rateLimitCallId != before.rateLimitCallId implies
+    (via == "refuseCall" and lastFailureKind(after.lastCloudFailure) == "limit_reached" and before.calls.some(c => c.id == after.rateLimitCallId) and not(after.calls.some(c => c.id == after.rateLimitCallId)))
 pure def sometimesLimitReached(s: ModelBinding): bool = limitedAt(s.accountState, s.clock)
 pure def sometimesProviderIssueKeepsTheLimit(s: ModelBinding): bool =
   limitedAt(s.accountState, s.clock) and lastFailureKind(s.lastCloudFailure) == "provider_issue"
@@ -507,6 +521,23 @@ pure val stValues = Set(Usable, Failing({ failure: CredentialInvalid({ version: 
 pure val tValues = Set(0, 5, 10)
 pure def lawWarmReadyOnlyWhenATextCallWouldStart(backend: Backend, st: AccountState, t: int): bool =
   warmAnswer(backend, st, t) == WarmReady implies (servedByBackend(backend, TextSmall) and not(limitedAt(st, t)))
+```
+
+### A planner warm-up is sent only while the account is not blocked, and neither its answer nor its refusal changes the account state
+
+A planner warm-up ([planning](../conversation/planning.md)) names
+`providerOptions.eliza.warmUp`. Unlike the advisory warm answer above, it
+does reach the model, but only while the account is not blocked, so it
+never spends a refused key, spent credits or a limit's wait. It is no
+call of the account: its answer, a blank one-token answer the provider cut
+off included, and its refusal leave the account state, the last failure
+and the provider's retry time as they were, so a warm-up the owner never
+asked for never shows them a failure or holds their first turn.
+
+```quint
+pure def warmUpSent(st: AccountState, t: int): bool = not(blocked(st, t))
+pure def lawABlockedAccountSendsNoWarmUp(st: AccountState, t: int): bool = blocked(st, t) implies not(warmUpSent(st, t))
+pure def lawAWarmUpNeverWaitsOutALimit(st: AccountState, t: int): bool = warmUpSent(st, t) implies not(limitedAt(st, t))
 ```
 
 ## Story: Hold only the key the host admitted for this backend

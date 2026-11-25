@@ -1,4 +1,4 @@
-// spec/agent/models/binding.md, "No text handler is ever served by a model on the device"; spec/agent/models/binding.md, "Only a network failure, an outage or a provider issue is retried, and a rate limit ends the call for its turn to re-send once"; spec/agent/models/binding.md, "Each refusal is one account state, and the last failure records its kind and time without text"; spec/agent/models/binding.md, "A tool call, a structured answer and the token use reach the caller as one result"; spec/agent/models/binding.md, "A key is held only in the slot of the backend it was given for, and only as a bearer credential that slot accepts"; spec/agent/models/binding.md, "A rate limit holds the account for the provider's whole retry time, and for at most 4 s on a Cerebras own-key endpoint"; spec/agent/models/binding.md, "A tool call the provider could not parse, or a streamed answer silent for a minute, ends the call without a retry"; spec/agent/models/binding.md, "A call sends an output cap only when its caller names one, and a thinking hint sets the reasoning effort only on a model that documents it"; spec/agent/models/binding.md, "A Qwen call on a Cerebras route sends the conversation cache key its caller names, and no call invents one"; spec/agent/conversation/planning.md, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history"
+// spec/agent/models/binding.md, "No text handler is ever served by a model on the device"; spec/agent/models/binding.md, "Only a network failure, an outage or a provider issue is retried, and a rate limit ends the call for its turn to re-send once"; spec/agent/models/binding.md, "Each refusal is one account state, and the last failure records its kind and time without text"; spec/agent/models/binding.md, "A tool call, a structured answer and the token use reach the caller as one result"; spec/agent/models/binding.md, "A key is held only in the slot of the backend it was given for, and only as a bearer credential that slot accepts"; spec/agent/models/binding.md, "A rate limit holds the account for the provider's whole retry time, and for at most 4 s on a Cerebras own-key endpoint"; spec/agent/models/binding.md, "A tool call the provider could not parse, or a streamed answer silent for a minute, ends the call without a retry"; spec/agent/models/binding.md, "A call sends an output cap only when its caller names one, and a thinking hint sets the reasoning effort only on a model that documents it"; spec/agent/models/binding.md, "A Qwen call on a Cerebras route sends the prompt cache key its caller names, and no call invents one"; spec/agent/conversation/planning.md, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history"
 import { assert, it } from "@effect/vitest"
 import { FetchHttpClient } from "effect/http"
 import { AgentRuntime, ModelType, type GenerateTextParams, type GenerateTextResult } from "@elizaos/core"
@@ -8,7 +8,7 @@ import { bindModels } from "../src/models/binding.vibe"
 import { ModelRefusal } from "../src/models/chat.vibe"
 import { registerCloudModels } from "../src/models/cloud-provider.vibe"
 import { probeOwnKey, registerOwnKeyModels } from "../src/models/own-key-provider.vibe"
-import { conversationCache, sentAtMostTwice } from "../src/conversation/planning.vibe"
+import { agentCache, sentAtMostTwice } from "../src/conversation/planning.vibe"
 import { openDeviceStorage } from "../src/storage/index.vibe"
 import { cloudFake, deviceKey, host, scratch } from "./support/kernel.vibe"
 import { launchDocument, launchFrame, type Backend } from "./support/scratch.ts"
@@ -106,7 +106,7 @@ it.live('A completed provider stream returns while the HTTP connection is still 
   assert.strictEqual(completions(cloud), 1)
 }, 45_000)
 
-it.live('A planner resend does not follow two provider sends in the failed dispatch (spec/agent/conversation/planning.md, "A model call is sent again at most once, after a temporary rate limit or a tool call the provider could not parse")', effect () => {
+it.live('A planner resend uses the remaining send and only keeps the origin of its own rate limit (spec/agent/conversation/planning.md, "A model call is sent again at most once, after a temporary rate limit or a tool call the provider could not parse"; spec/agent/conversation/turns.md, "A re-send the binding refuses for the limit its turn met keeps who set that limit")', effect () => {
   const failedOver = try cloudFake(deviceKey)
   const retried = try cloudFake(deviceKey)
   const first = try cloudAgent(failedOver)
@@ -115,15 +115,39 @@ it.live('A planner resend does not follow two provider sends in the failed dispa
     failedOver.script(unavailable(1), rateLimited(Date.now() + 300), text("Unexpected third request."))
     retried.script(rateLimited(Date.now() + 300), text("The second request answered."))
   })
-  const send = (runtime: AgentRuntime) => {
+  const send = (runtime: AgentRuntime, beforeResend?: () => Promise<void>) => {
     const signal = new AbortController().signal
-    return sentAtMostTwice((bind) => runtime.useModel(ModelType.TEXT_LARGE, bind({ prompt: "Reply once.", signal })), signal)
+    let sendingAgain = false
+    return sentAtMostTwice(async (bind) => {
+      if (sendingAgain) await beforeResend?.()
+      sendingAgain = true
+      return runtime.useModel(ModelType.TEXT_LARGE, bind({ prompt: "Reply once.", signal }))
+    }, signal)
   }
   const refused = try host("a failed dispatch that already sent twice", () => send(first.runtime).then(() => undefined, (failure: unknown) => failure))
   const answered = try host("one admitted resend after a temporary limit", () => send(second.runtime))
   assert.strictEqual(refused instanceof ModelRefusal ? refused.status : undefined, 429)
   assert.strictEqual(answered, "The second request answered.")
   assert.deepStrictEqual([completions(failedOver), completions(retried)], [2, 2])
+
+  const fresh = try refusedCloudAgent(retried)
+  try Effect.sync(() => retried.script(
+    refusal(429, "rate_limited", { retryable: true, retryAt: Date.now() - 1, reason: "provider_rate_limited" }),
+    rateLimited(Date.now() + 60_000),
+  ))
+  const freshRefusal = try host("a fresh rate limit with no reason", () => send(fresh.runtime).then(() => undefined, (failure: unknown) => failure))
+  assert.deepStrictEqual(freshRefusal instanceof ModelRefusal ? [freshRefusal.status, freshRefusal.limitOrigin, completions(retried)] : undefined, [429, undefined, 4])
+
+  const replaced = try refusedCloudAgent(retried)
+  const pending = try replaced.binding.startCall("TextSmall", Date.now())
+  assert.strictEqual(typeof pending, "number")
+  const pendingId = typeof pending === "number" ? pending : -1
+  try Effect.sync(() => retried.script(refusal(429, "rate_limited", { retryable: true, retryAt: Date.now() - 1, reason: "provider_rate_limited" })))
+  const heldRefusal = try host("the hold from a different in-flight call", () => send(replaced.runtime, () => {
+    const now = Date.now()
+    return Effect.runPromise(replaced.binding.refuseCall(pendingId, now, { tag: "CloudRateLimited", retryAt: now + 60_000 }))
+  }).then(() => undefined, (failure: unknown) => failure))
+  assert.deepStrictEqual(heldRefusal instanceof ModelRefusal ? [heldRefusal.status, heldRefusal.limitOrigin, heldRefusal.limitCallId, completions(retried)] : undefined, [429, undefined, pendingId, 5])
 }, 45_000)
 
 it.effect('An outage or a dropped connection is retried on the next registration under the same idempotency key and the answer clears the account state (spec/agent/models/binding.md, "Only a network failure, an outage or a provider issue is retried, and a rate limit ends the call for its turn to re-send once")', effect () => {
@@ -147,7 +171,7 @@ it.effect('A rate limit ends the call, blocks the next one without reaching the 
   const cloud = try cloudFake(deviceKey)
   const limited = try refusedCloudAgent(cloud)
   const retryAt = Date.now() + 60_000
-  try Effect.sync(() => cloud.script(rateLimited(retryAt)))
+  try Effect.sync(() => cloud.script(refusal(429, "rate_limited", { retryable: true, retryAt, reason: "cloud_gate_rate_limited" })))
   const ended = try refusalOf(limited.runtime, { prompt: "Limited." })
   const blocked = try refusalOf(limited.runtime, { prompt: "Still limited." })
   assert.deepStrictEqual([ended?.code, ended?.cloudCode, ended?.limitOrigin], ["MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED", undefined, "CloudSetLimit"])
@@ -159,17 +183,21 @@ it.effect('A rate limit ends the call, blocks the next one without reaching the 
   try Effect.sync(() => cloud.script(refusal(429, "rate_limited", { retryable: true, retryAt, reason: "provider_rate_limited" })))
   const passedOn = try refusalOf(upstream.runtime, { prompt: "Provider limited." })
   assert.deepStrictEqual([passedOn?.code, passedOn?.limitOrigin], ["MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED", "ProviderSetLimit"])
+  const unmarked = try refusedCloudAgent(cloud)
+  try Effect.sync(() => cloud.script(rateLimited(retryAt)))
+  const unknown = try refusalOf(unmarked.runtime, { prompt: "Rate limit with no reason." })
+  assert.deepStrictEqual([unknown?.code, unknown?.limitOrigin], ["MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED", undefined])
   const unfunded = try refusedCloudAgent(cloud)
   try Effect.sync(() => cloud.script(insufficientCredits()))
   const denied = try refusalOf(unfunded.runtime, { prompt: "Unfunded." })
   assert.deepStrictEqual([denied?.code, denied?.status, denied?.cloudCode, denied?.limitOrigin], ["MODEL_FUNDING_AUTHORITY_FAILED", 402, "insufficient_credits", undefined])
-  assert.strictEqual(completions(cloud), 3)
+  assert.strictEqual(completions(cloud), 4)
   assert.strictEqual((try unfunded.binding.read()).accountState, "insufficient_credits")
   const spent = try refusedCloudAgent(cloud)
   try Effect.sync(() => cloud.script(allowanceExhausted(Date.now() + 86_400_000)))
   const exhausted = try refusalOf(spent.runtime, { prompt: "Allowance spent." })
   assert.deepStrictEqual([exhausted?.code, exhausted?.status, exhausted?.cloudCode], ["MODEL_FUNDING_AUTHORITY_FAILED", 402, "allowance_exhausted"])
-  assert.strictEqual(completions(cloud), 4)
+  assert.strictEqual(completions(cloud), 5)
   assert.strictEqual((try spent.binding.read()).accountState, "insufficient_credits")
   const uncoded = try refusedCloudAgent(cloud)
   try Effect.sync(() => cloud.script(refusal(402, "payment_required")))
@@ -180,7 +208,7 @@ it.effect('A rate limit ends the call, blocks the next one without reaching the 
   try Effect.sync(() => cloud.acceptKey("rotated-device-key"))
   const invalid = try refusalOf(replaced.runtime, { prompt: "Old key." })
   assert.strictEqual(invalid?.status, 401)
-  assert.strictEqual(completions(cloud), 6)
+  assert.strictEqual(completions(cloud), 7)
   assert.strictEqual((try replaced.binding.read()).accountState, "credential_invalid")
 })
 
@@ -403,7 +431,7 @@ it.effect('An own-key overload or timeout is a provider issue and is retried, an
   assert.deepStrictEqual([bodies[0]?.temperature, bodies[0]?.stop, "max_tokens" in (bodies[0] ?? {}), "max_completion_tokens" in (bodies[0] ?? {}), bodies[2]?.max_completion_tokens], [0.2, ["\n\n"], false, false, 256])
 })
 
-it.effect('A rate limit holds a cloud account for the provider\'s whole retry time and a Cerebras own-key account for at most 4 s, a refusal carries the provider\'s time left, a parse failure is not retried, as the provider or as the cloud names it, a thinking hint reaches only a model that documents it, and only a Qwen call on a Cerebras route sends the conversation cache key (spec/agent/models/binding.md, "A Qwen call on a Cerebras route sends the conversation cache key its caller names, and no call invents one"; spec/agent/models/binding.md, "A rate limit holds the account for the provider\'s whole retry time, and for at most 4 s on a Cerebras own-key endpoint"; spec/agent/models/binding.md, "A tool call the provider could not parse, or a streamed answer silent for a minute, ends the call without a retry"; spec/agent/models/binding.md, "A call sends an output cap only when its caller names one, and a thinking hint sets the reasoning effort only on a model that documents it")', effect () => {
+it.effect('A rate limit holds a cloud account for the provider\'s whole retry time and a Cerebras own-key account for at most 4 s, a refusal carries the provider\'s time left, a parse failure is not retried, as the provider or as the cloud names it, a thinking hint reaches only a model that documents it, and only a Qwen call on a Cerebras route sends the conversation cache key (spec/agent/models/binding.md, "A Qwen call on a Cerebras route sends the prompt cache key its caller names, and no call invents one"; spec/agent/models/binding.md, "A rate limit holds the account for the provider\'s whole retry time, and for at most 4 s on a Cerebras own-key endpoint"; spec/agent/models/binding.md, "A tool call the provider could not parse, or a streamed answer silent for a minute, ends the call without a retry"; spec/agent/models/binding.md, "A call sends an output cap only when its caller names one, and a thinking hint sets the reasoning effort only on a model that documents it")', effect () => {
   const cloud = try cloudFake(deviceKey)
   const held = try bound({ kind: "cloud", origin: cloud.origin, imageModel: "vision" }, deviceKey)
   registerCloudModels(held.runtime, held.binding, { baseUrl: cloud.origin, small: "small", large: "cerebras/qwen-3.8-27b", image: "vision" })
@@ -413,7 +441,7 @@ it.effect('A rate limit holds a cloud account for the provider\'s whole retry ti
   const blocked = try refusalOf(held.runtime, { prompt: "Still limited." })
   const view = try held.binding.read()
   const cloudPastFour = try held.binding.startCall("TextSmall", before + 4_001)
-  assert.deepStrictEqual([limited?.code, blocked?.code, completions(cloud), view.lastCloudFailure?.retryAt, cloudPastFour], ["MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED", "MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED", 1, before + 60_000, { limitedUntil: before + 60_000 }])
+  assert.deepStrictEqual([limited?.code, blocked?.code, completions(cloud), view.lastCloudFailure?.retryAt, cloudPastFour], ["MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED", "MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED", 1, before + 60_000, { limitedUntil: before + 60_000, limitedByCallId: 0 }])
   const left = limited?.retryAfterMs
   const still = blocked?.retryAfterMs
   assert.ok(typeof left === "number" && left > 4_000 && left <= 60_000 && typeof still === "number" && still <= left)
@@ -425,12 +453,11 @@ it.effect('A rate limit holds a cloud account for the provider\'s whole retry ti
   const cerebrasView = try cerebras.binding.read()
   const duringHold = try cerebras.binding.startCall("TextSmall", at + 3_999)
   const afterHold = try cerebras.binding.startCall("TextSmall", at + 4_000)
-  assert.deepStrictEqual([cerebrasView.lastCloudFailure?.retryAt, duringHold, typeof afterHold], [at + 4_000, { limitedUntil: at + 60_000 }, "number"])
+  assert.deepStrictEqual([cerebrasView.lastCloudFailure?.retryAt, duringHold, typeof afterHold], [at + 4_000, { limitedUntil: at + 60_000, limitedByCallId: first }, "number"])
 
   const hinted = try bound({ kind: "cloud", origin: cloud.origin, imageModel: "vision" }, deviceKey)
   registerCloudModels(hinted.runtime, hinted.binding, { baseUrl: cloud.origin, small: "small", large: "cerebras/qwen-3.8-27b", image: "vision" })
-  const room = "00000000-0000-4000-8000-0000000000aa"
-  const planner = conversationCache(hinted.runtime, room, "planner")
+  const planner = agentCache(hinted.runtime, "planner")
   try Effect.sync(() => cloud.script(text("off"), text("low"), text("other"), text("keyed"), text("unkeyed")))
   try host("thinking off on qwen", () => hinted.runtime.useModel(ModelType.TEXT_LARGE, { prompt: "Draft.", providerOptions: { eliza: { thinking: "off" } } }))
   try host("thinking low on qwen", () => hinted.runtime.useModel(ModelType.TEXT_LARGE, { prompt: "Plan.", providerOptions: { eliza: { thinking: "low" } } }))
@@ -438,7 +465,7 @@ it.effect('A rate limit holds a cloud account for the provider\'s whole retry ti
   try host("planner key on qwen", () => hinted.runtime.useModel(ModelType.TEXT_LARGE, { prompt: "Plan.", providerOptions: planner }))
   try host("planner key elsewhere", () => hinted.runtime.useModel(ModelType.TEXT_SMALL, { prompt: "Plan.", providerOptions: planner }))
   const sent = cloud.calls.slice(-5).map((call) => call.body as Record<string, unknown>)
-  const plannerKey = try Effect.try(() => `eliza-workflow-v1:${digest(`${JSON.stringify([hinted.runtime.agentId, room])}:planner`)}`)
+  const plannerKey = try Effect.try(() => `eliza-workflow-v1:${digest(`${JSON.stringify([hinted.runtime.agentId])}:planner`)}`)
   assert.deepStrictEqual(sent.map((body) => [body.reasoning_effort, "max_tokens" in body, JSON.stringify(body).includes("thinking"), body.prompt_cache_key]),
     [["none", false, false, undefined], ["low", false, false, undefined], [undefined, false, false, undefined],
       [undefined, false, false, plannerKey], [undefined, false, false, undefined]])

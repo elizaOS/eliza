@@ -2,6 +2,7 @@
 import type { Action } from "@elizaos/core";
 import { Context, Effect } from "effect";
 import type { ModuleFactory } from "../../../src/host/module.vibe";
+import "../../../src/index.vibe";
 
 export const hostedFixtureName = "hosted-fixture";
 

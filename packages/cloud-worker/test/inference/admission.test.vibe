@@ -136,7 +136,7 @@ describe("WP5 Inference: chat admission", () => {
     const overBody = over.body as { readonly error: string; readonly retryAt?: number; readonly reason?: string }
     try check(() => assert.deepStrictEqual(
       [statuses.every((status) => status === 401), over.status, overBody.error, overBody.retryAt, over.headers["retry-after"] !== undefined, reached.length, overBody.reason],
-      [true, 429, "rate_limited", Math.floor(startedAt / minuteMs) * minuteMs + minuteMs, true, 0, undefined]
+      [true, 429, "rate_limited", Math.floor(startedAt / minuteMs) * minuteMs + minuteMs, true, 0, "cloud_gate_rate_limited"]
     ))
   }), 180_000)
 })

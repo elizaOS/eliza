@@ -22,6 +22,17 @@ function fullReading(instant: number, zone: string): string {
   return new Intl.DateTimeFormat("en-US", { timeZone: zone, dateStyle: "full", timeStyle: "long" }).format(new Date(instant))
 }
 
+const civilWeekday = new Intl.DateTimeFormat("en-US", { timeZone: "UTC", weekday: "long" })
+
+function comingDays(localDate: string, zone: string): string {
+  const [year, month, day] = localDate.split("-").map(Number)
+  const named = (ahead: number) => {
+    const civil = new Date(Date.UTC(year, month - 1, day + ahead, 12))
+    return `${civilWeekday.format(civil)} ${civil.toISOString().slice(0, 10)}`
+  }
+  return `Today in ${zone} is ${named(0)}. Next 7 days: ${[1, 2, 3, 4, 5, 6, 7].map(named).join(", ")}.`
+}
+
 export function turnClock(message: Memory, launchZone: string | undefined, owner: boolean, instant: number): TurnClock {
   const context = readTurnContext(message)
   const said = context.voiceUi?.uiTimeZone
@@ -31,10 +42,11 @@ export function turnClock(message: Memory, launchZone: string | undefined, owner
   const minute = Math.floor(instant / 60_000) * 60_000
   const minuteInstant = `${new Date(minute).toISOString().slice(0, 16)}Z`
   const minuteReading = fullReading(minute, zone).replace(/(\d{1,2}:\d{2}):00/, "$1")
-  const line = source.ownersLocal
-    ? `Local date: ${new Date(minute).toLocaleDateString("en-CA", { timeZone: zone })} (${zone}). ${minuteReading}. Resolve today/tomorrow from this local date, not the UTC date. UTC instant: ${minuteInstant}`
+  const localDate = new Date(minute).toLocaleDateString("en-CA", { timeZone: zone })
+  const reading = source.ownersLocal
+    ? `Local date: ${localDate} (${zone}). ${minuteReading}. Resolve today/tomorrow from this local date, not the UTC date. UTC instant: ${minuteInstant}.`
     : `${source.origin === "LaunchZone" ? "Agent" : "Server"} time: ${minuteReading} (${zone}), ISO (UTC): ${minuteInstant}; user timezone unknown.`
-  return { instant, zone, reading: fullReading(instant, zone), line }
+  return { instant, zone, reading: fullReading(instant, zone), line: `${reading} ${comingDays(localDate, zone)}` }
 }
 
 function localClockOf(clock: TurnClock): LocalClock {
