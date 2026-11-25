@@ -6,7 +6,7 @@
 import {
   type Action, type ActionParameterSchema, type ActionResult, type AgentRuntime, type EffectReceipt, type IAgentRuntime, type GenerateTextParams, type GenerateTextResult,
   type AgentContext, type HistorySource, type Memory, type RoleGateRole, type State, type StreamChunkCallback, type ToolCall, type ToolDefinition,
-  buildPlannerToolsFromActions, DISCOVER_ACTIONS_NAME, executePlannedToolCall, getDirectActionRoutingRules, isDiscoveryActionName, isModelOutputLimitFinishReason, ModelType, modelAttemptCapture, modelOutputIncompleteEvidence, normalizeContextId, resolveActionContexts, sha256Hex, sleepWithAbort, stableStringify, tagsMayProduceEffects, wrapExternalContent,
+  buildPlannerToolsFromActions, DISCOVER_ACTIONS_NAME, executePlannedToolCall, isDiscoveryActionName, isModelOutputLimitFinishReason, ModelType, modelAttemptCapture, modelOutputIncompleteEvidence, resolveActionContexts, sha256Hex, sleepWithAbort, stableStringify, tagsMayProduceEffects, wrapExternalContent,
 } from "@elizaos/core"
 import {
   acknowledges, actionNoteSent, answerableLater, answeredAgain, callAdmission, cueDelivered, standsBy, cutOffReply, failedOpen, isTurnStep, maxPlanSteps, nextMove, offered, openOutcomes, plannerOnlyCoaching, plansOn, resendWait, toolActivity,
@@ -167,16 +167,6 @@ export function offeredActions(runtime: AgentRuntime, message: Memory, actionGat
     registered.flatMap((action) => formless(runtime, message, action) ? [action.name] : []),
   ))
   return registered.filter(({ name }) => names.has(name))
-}
-
-function selectedContexts(runtime: AgentRuntime, message: Memory, text: string): ReadonlySet<string> {
-  return new Set(getDirectActionRoutingRules(runtime).flatMap((rule) => {
-    try {
-      return rule.matches(text, message) ? rule.contexts.map(normalizeContextId) : []
-    } catch {
-      return []
-    }
-  }))
 }
 
 function elsewhereRefusal({ code, text }: ServedElsewhere): ActionResult {
@@ -359,10 +349,9 @@ function failureNotice(step: PlannedStep): { readonly words: string; readonly ve
   return words ? { words, verified: false } : { words: `The ${step.action} action did not complete.`, verified: true }
 }
 
-export function activityLabel(runtime: IAgentRuntime, action: Action | undefined, params: Record<string, unknown> = {}, selected: ReadonlySet<string> = new Set()): string {
+export function activityLabel(runtime: IAgentRuntime, action: Action | undefined, params: Record<string, unknown> = {}): string {
   const applicable = new Set<string>()
   const labels = new Set<string>()
-  const selectedLabels = new Set<string>()
   const reached = action === undefined ? [] : progressContexts.get(action)?.(runtime, params) ?? resolveActionContexts(action)
   for (const context of reached) {
     if (context === "general" || context === "simple") continue
@@ -372,10 +361,9 @@ export function activityLabel(runtime: IAgentRuntime, action: Action | undefined
     applicable.add(label || context)
     if (!label) continue
     labels.add(label)
-    if (selected.has(normalizeContextId(context))) selectedLabels.add(label)
   }
-  const [named] = selectedLabels.size === 1 && applicable.size > 1 ? selectedLabels : labels
-  return toolActivity(applicable.size, labels.size, selectedLabels.size) === "UsingApp" && named !== undefined ? `Using ${named}` : "Working"
+  const [named] = labels
+  return toolActivity(applicable.size, labels.size) === "UsingApp" && named !== undefined ? `Using ${named}` : "Working"
 }
 
 function entryKey({ outcome, identity }: PlanStep): string {
@@ -435,7 +423,6 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
   const steps: PlannedStep[] = []
   const named = new Map(actions.map((action) => [action.name, action]))
   const request = typeof message.content.text === "string" ? message.content.text : ""
-  const selected = selectedContexts(runtime, message, request)
   const instruction = requestIsInstruction(request)
   const quiet = requestedNoCue(request)
   let taken = 0
@@ -469,7 +456,7 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
       conversation.push({ role: "tool", toolCallId: call.id, name: call.name, content: toolMessage(refusal) })
       return refusal
     }
-    await input.onActivityStatus?.({ actionName: call.name, label: activityLabel(runtime, named.get(call.name), params, selected) })
+    await input.onActivityStatus?.({ actionName: call.name, label: activityLabel(runtime, named.get(call.name), params) })
     const captured: string[] = []
     const result = await executePlannedToolCall(runtime, {
       message, state, activeContexts: ["general"], userRoles: roles, previousResults: steps.map(({ result }) => result),
