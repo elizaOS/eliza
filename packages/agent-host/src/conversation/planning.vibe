@@ -405,15 +405,20 @@ function settleReply(steps: readonly PlannedStep[]): SettledReply {
   }
 }
 
-export async function planTurn(input: PlanInput, actions: readonly Action[]): Promise<PlannedTurn> {
-  const { runtime, message, state, roles, signal } = input
-  signal.throwIfAborted()
+export function plannerTools(runtime: AgentRuntime, message: Memory, actions: readonly Action[]): ToolDefinition[] {
   const tools: ToolDefinition[] = actions.length === 0 ? [] : buildPlannerToolsFromActions(actions.toSorted(byName).map((action) => forTurn(runtime, message, action)))
-  const restoreOffered = offersContextRestore(tools.length)
-  if (restoreOffered) {
+  if (offersContextRestore(tools.length)) {
     const afterDiscovery = tools.findLastIndex(({ name }) => isDiscoveryActionName(name)) + 1
     tools.splice(afterDiscovery, 0, restoreContext)
   }
+  return tools
+}
+
+export async function planTurn(input: PlanInput, actions: readonly Action[]): Promise<PlannedTurn> {
+  const { runtime, message, state, roles, signal } = input
+  signal.throwIfAborted()
+  const tools = plannerTools(runtime, message, actions)
+  const restoreOffered = tools.some(({ name }) => name === restoreContext.name)
   const conversation: ChatMessage[] = [...input.messages]
   const steps: PlannedStep[] = []
   const named = new Map(actions.map((action) => [action.name, action]))

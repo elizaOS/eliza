@@ -134,6 +134,39 @@ pure def carriedByMessage(f: ToolFact): bool = f == MessageWords or f == ScreenS
 pure def lawNothingAMessageCarriesShapesTheTools(f: ToolFact): bool = carriedByMessage(f) implies not(shapesTools(f))
 ```
 
+### A warm-up sends the planner's tools and system prompt once with a one-token cap, at most once every four minutes, and stores and shows nothing
+
+A page that expects the owner to talk soon (the app opened, returned to
+the foreground, Ask Alpha raised) asks the agent to warm up, so the first
+turn finds the provider's prompt cache, the cloud and their connections
+warm instead of paying for all three. A warm-up builds the tools and the
+system prompt exactly as a turn of the owner with no device context and
+no history does, and sends one planning call with them, one placeholder
+message, an output cap of one token and the planner's own choice of tools
+(Cerebras leaves the tools out of the prompt of a call that may call none,
+which would warm only the system prompt), under
+the planning cache key of a room kept for warm-ups. Its answer is dropped:
+it starts no run, stores and publishes no message, and a failure or a call
+that does not end within twenty seconds is dropped too. One warm-up runs
+at a time, and one asked within four minutes of the last that was sent is
+skipped, so a page may ask on every trigger and the account pays for at
+most one warm-up in four minutes. The request is answered at once, saying
+only whether a warm-up was started; it never waits for the model.
+
+```quint
+pure val warmUpOutputCap = 1
+pure val warmUpSpacingMs = 240000
+pure val warmUpDeadlineMs = 20000
+pure def warmUpStarts(running: bool, lastSentAt: int, now: int): bool =
+  not(running) and (lastSentAt < 0 or now - lastSentAt >= warmUpSpacingMs)
+pure val lastSentAtValues = Set(-1, 0, 100000)
+pure val nowValues = Set(0, 100000, 239999, 340000, 600000)
+pure def lawAWarmUpWaitsFourMinutesAfterTheLast(running: bool, lastSentAt: int, now: int): bool =
+  (lastSentAt >= 0 and now - lastSentAt < warmUpSpacingMs) implies not(warmUpStarts(running, lastSentAt, now))
+pure def lawOneWarmUpRunsAtATime(lastSentAt: int, now: int): bool = not(warmUpStarts(true, lastSentAt, now))
+pure def lawTheFirstWarmUpStarts(now: int): bool = warmUpStarts(false, -1, now)
+```
+
 ### An action may narrow its tool to the turn, never beyond its registered form
 
 An action may give the turn its own description and, for parameters it

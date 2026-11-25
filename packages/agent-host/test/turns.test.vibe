@@ -291,6 +291,11 @@ effect function send(agent: InProcess, id: string, body: object, headers?: Reado
 }
 
 const replyOf = (answer: { readonly body: unknown }) => answer.body as Reply
+
+effect function settled(done: () => boolean) {
+  for (let waited = 0; waited < 5_000 && !done(); waited += 20) try Effect.sleep(20)
+  return done()
+}
 const stamp = /^\[message_at=[^\]]+\] /
 
 it.live('A reply quotes only the selected message in its own conversation and replays without a model call (spec/agent/conversation/turns.md, "A quoted reply uses only the selected message from this conversation")', effect () => {
@@ -967,6 +972,45 @@ it.live(`Each call keeps the system prompt and puts the turn's notes after the h
     cut: cutOffReply, cutCalls: 1,
     parsed: "Read on the second try.", parseCalls: 2,
     cloudParsed: "Read through the cloud.", cloudParseCalls: 2,
+  }))
+}, 120_000)
+
+it.live(`A warm-up sends the planner's own system prompt and tools once with a one-token cap, answers at once, skips a second within four minutes, drops a failure and stores nothing (${planning}, "A warm-up sends the planner's tools and system prompt once with a one-token cap, at most once every four minutes, and stores and shows nothing")`, effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const agent = try startInProcess({ launch: { backend: { kind: "cloud", origin: cloud.origin }, load: [basicActionsModuleName], allowed: ["REPLY", "IGNORE", "NONE", "CALCULATE"] }, frame: { credential: { version: 1, value: deviceKey } }, modules: builtinModuleFactories })
+  const sent = () => cloud.calls.filter(({ path }) => path.endsWith("/chat/completions")).map(({ body }) => body as { messages: { role: string; content?: unknown }[]; tools?: unknown; tool_choice?: unknown; max_tokens?: unknown })
+  const warmUp = { method: "POST", path: "/api/turns/warm" } as const
+
+  try Effect.sync(() => cloud.script(cutOff("o"), text("First answer.")))
+  const first = answerOf(try call(agent, warmUp))
+  const again = answerOf(try call(agent, warmUp))
+  const warmed = try settled(() => completions(cloud) === 1)
+  const conversationsAfterWarm = (answerOf(try call(agent, { method: "GET", path: "/api/conversations" })).body as { conversations: unknown[] }).conversations.length
+  const { id } = try conversation(agent)
+  const reply = replyOf(try send(agent, id, { text: "Hi" }))
+  const [warmCall, turn] = sent()
+  const history = answerOf(try call(agent, { method: "GET", path: `/api/conversations/${id}/messages` })).body as { messages: unknown[] }
+
+  try Effect.sync(() => cloud.script(refusal(400, "invalid_request"), text("Still here.")))
+  const fresh = try startInProcess({ launch: { backend: { kind: "cloud", origin: cloud.origin }, load: [basicActionsModuleName], allowed: ["REPLY", "IGNORE", "NONE", "CALCULATE"] }, frame: { credential: { version: 1, value: deviceKey } }, modules: builtinModuleFactories })
+  const before = completions(cloud)
+  const failing = answerOf(try call(fresh, warmUp))
+  const failed = try settled(() => completions(cloud) === before + 1)
+  const freshConversation = try conversation(fresh)
+  const afterFailure = replyOf(try send(fresh, freshConversation.id, { text: "Hi" }))
+
+  try Effect.try(() => assert.deepStrictEqual({
+    first: first.status, firstBody: first.body, again: again.body, warmed, conversationsAfterWarm,
+    sameSystem: JSON.stringify(warmCall?.messages[0]) === JSON.stringify(turn?.messages[0]),
+    sameTools: JSON.stringify(warmCall?.tools) === JSON.stringify(turn?.tools) && Array.isArray(warmCall?.tools),
+    warmShape: [warmCall?.messages.length, warmCall?.messages[1], warmCall?.max_tokens, warmCall?.tool_choice],
+    reply: reply.text, history: history.messages.length,
+    failing: failing.status, failed, afterFailure: afterFailure.text,
+  }, {
+    first: 202, firstBody: { started: true }, again: { started: false }, warmed: true, conversationsAfterWarm: 0,
+    sameSystem: true, sameTools: true, warmShape: [2, { role: "user", content: "." }, 1, "auto"],
+    reply: "First answer.", history: 2,
+    failing: 202, failed: true, afterFailure: "Still here.",
   }))
 }, 120_000)
 
