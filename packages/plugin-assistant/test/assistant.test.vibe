@@ -50,13 +50,14 @@ it.effect('Create each reminder I asked for, once, at the planned time with the 
   }
 })
 
-it.effect('Show Reminders while a reminder I asked for in chat is saved, without changing which calls of it run (spec/agent/conversation/planning.md, "A tool\'s progress names its app only when one labelled app applies, and never its arguments or results")', effect () => {
+it.effect('Show Reminders while a reminder I asked for in chat is saved, and save it from any owner chat but never for another role (spec/agent/conversation/planning.md, "A tool\'s progress names its app only when one labelled app applies, and never its arguments or results"; spec/assistant/reminders.md, "A reminder intent is proposed with a plan and what the original message asked")', effect () => {
   const runtime = { contexts: try Effect.try(() => new ContextRegistry()) } as unknown as IAgentRuntime
   try Effect.try(() => runtime.contexts.tryRegister(remindersContext))
   const registered = { ...ownerRemindersAction, contexts: try Effect.try(() => resolveActionContexts(ownerRemindersAction)) }
   const runsOnTurn = try Effect.try(() => canActionRun(registered, { userRoles: ["OWNER"], activeContexts: ["general"] }))
-  try equal({ label: activityLabel(runtime, ownerRemindersAction), declared: ownerRemindersAction.contexts, registered: registered.contexts, runsOnTurn, familyApp: reminderProposalFamily.app },
-    { label: "Using Reminders", declared: undefined, registered: ["tasks", "automation"], runsOnTurn: false, familyApp: undefined })
+  const runsForUser = try Effect.try(() => canActionRun(registered, { userRoles: ["USER"], activeContexts: ["general"] }))
+  try equal({ label: activityLabel(runtime, ownerRemindersAction), declared: ownerRemindersAction.contexts, registered: registered.contexts, runsOnTurn, runsForUser, familyApp: reminderProposalFamily.app },
+    { label: "Using Reminders", declared: undefined, registered: ["tasks", "automation", "general"], runsOnTurn: true, runsForUser: false, familyApp: undefined })
 })
 
 it.effect('A plan alone never saves a reminder: a message that did not ask, or a check that cannot run, writes nothing (spec/assistant/reminders.md, "The original message is checked before a reminder is written"; spec/assistant/reminders.md, "A reminder is written at most once, and a refusal writes nothing")', effect () => {

@@ -252,14 +252,9 @@ function relabelRequestNote(
   return label ? { ...segment, content: JSON.stringify({ ...note, requestSourceEventId: `history:${label}` }) } : undefined
 }
 
-export type HistoricalReceiptWireOptions = {
-  sourceIds?: ReadonlyMap<string, string>
-  layout?: "positioned" | "table"
-}
-
-export effect function compactHistoricalReceiptSegments(
+effect function compactHistoricalReceiptSegments(
   segments: ContextObjectPromptSegment[],
-  options: HistoricalReceiptWireOptions = {},
+  options: { sourceIds?: ReadonlyMap<string, string>; layout?: "positioned" | "table" } = {},
 ): ContextObjectPromptSegment[]!! {
   const entries: (Entry | undefined)[] = []
   for (const segment of segments) entries.push(try recordEntry(segment))
