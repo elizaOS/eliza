@@ -1,7 +1,7 @@
 // spec/agent/conversation/turns.md, "A re-send the binding refuses for the limit its turn met keeps who set that limit"
 // spec/agent/conversation/planning.md, "A planner can restore the turn's deferred history once and runs no sibling action from that response"; spec/agent/conversation/planning.md, "A tool call the model wrote as text never reaches the owner, and its step is asked again once"; spec/agent/conversation/planning.md, "When nothing ran in a turn, the answer it asks for is told so"
 // spec/agent/conversation/planning.md, "An identical call runs at most once per model response, and a settled effect is never repeated in the turn"
-// spec/agent/conversation/planning.md, "Story: Ask the agent to do something and hear what happened"; spec/agent/conversation/planning.md, "A turn offers the model only registered actions the launch allows, and plans at most eight steps"; spec/agent/conversation/planning.md, "An action may narrow its tool to the turn, never beyond its registered form"; spec/agent/conversation/planning.md, "Every call of a turn is one the model chose, and a call this message serves in another place is refused before it runs and is no step of the turn"; spec/agent/conversation/planning.md, "A failure or proposal the turn made stays reported unless a later success of the same operation supersedes it"; spec/agent/conversation/planning.md, "A reply that leaves a failure unreported is written again once, and the delivered reply still reports open failures and attachment omissions"; spec/agent/conversation/planning.md, "A failure with no receipt that a later run of its action may have answered is the model's to report, and its own words follow the reply unless the model stands by a reply without them"; spec/agent/conversation/planning.md, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"; spec/agent/conversation/planning.md, "A turn acknowledges at most once, with a cue that comes with its first tool calls, and bare assent is a cue only with work after an instruction"; spec/agent/conversation/planning.md, "A tool's progress names its app only when one labelled app applies, and never its arguments or results"; spec/agent/conversation/planning.md, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history"; spec/agent/conversation/planning.md, "A model call is sent again at most once, after a temporary rate limit or a tool call the provider could not parse"; spec/agent/conversation/planning.md, "A call that stopped at the model's own output limit ends planning"; spec/agent/conversation/planning.md, "A coaching response stays in the planner transcript"
+// spec/agent/conversation/planning.md, "Story: Ask the agent to do something and hear what happened"; spec/agent/conversation/planning.md, "A turn offers the model only registered actions the launch allows, and plans at most eight steps"; spec/agent/conversation/planning.md, "An action may narrow its tool to the turn, never beyond its registered form"; spec/agent/conversation/planning.md, "Every call of a turn is one the model chose, and a call this message serves in another place is refused before it runs and is no step of the turn"; spec/agent/conversation/planning.md, "A failure or proposal the turn made stays reported unless a later success of the same operation supersedes it"; spec/agent/conversation/planning.md, "A reply that leaves a failure unreported is written again once, and the delivered reply still reports open failures and attachment omissions"; spec/agent/conversation/planning.md, "A failure with no receipt that a later run of its action may have answered is the model's to report, and its own words follow the reply unless the model stands by a reply without them"; spec/agent/conversation/planning.md, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"; spec/agent/conversation/planning.md, "A turn acknowledges at most once, with a cue that comes with its first tool calls"; spec/agent/conversation/planning.md, "A tool's progress names its app only when one labelled app applies, and never its arguments or results"; spec/agent/conversation/planning.md, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history"; spec/agent/conversation/planning.md, "A model call is sent again at most once, after a temporary rate limit or a tool call the provider could not parse"; spec/agent/conversation/planning.md, "A call that stopped at the model's own output limit ends planning"; spec/agent/conversation/planning.md, "A coaching response stays in the planner transcript"
 // spec/agent/conversation/planning.md, "A response with competing terminal decisions runs no sibling action and can be repaired once"
 // spec/agent/conversation/planning.md, "A delivered cue is told to the model as already said, so the reply never repeats it or takes it as evidence"
 import {
@@ -15,7 +15,7 @@ import {
 } from "../../gen/agent__conversation__planning.ts"
 import { originAfterResend } from "../../gen/agent__conversation__turns.ts"
 import { ModelRefusal } from "../models/chat.vibe"
-import { actionNameKey, composeReply, draftOf, requestIsInstruction, requestedNoCue, streamable, withoutOfferedCalls, withoutWrittenCalls, writtenCallFree } from "./reply-text.vibe"
+import { actionNameKey, composeReply, declaredOf, draftOf, finishedReply, streamable, withoutOfferedCalls, withoutWrittenCalls, writtenCallFree } from "./reply-text.vibe"
 
 type ChatMessage = NonNullable<GenerateTextParams["messages"]>[number]
 
@@ -252,6 +252,8 @@ function errorText(error: ActionResult["error"]): string | undefined {
   return typeof error === "string" ? error : error.message
 }
 
+const unshownResult = "The owner sees none of this tool text. Your reply is the only thing you tell them, so say in it what this did or found."
+
 function toolMessage(result: ActionResult): string {
   const summary = {
     success: result.success,
@@ -260,6 +262,7 @@ function toolMessage(result: ActionResult): string {
     error: errorText(result.error),
     effects: (result.effectReceipts ?? []).map(({ operation, outcome, resource }) => ({ operation, outcome, resource: resource.kind })),
     data: result.data,
+    ...(result.verifiedUserFacing === true ? {} : { owner: unshownResult }),
   }
   let text: string
   try {
@@ -447,10 +450,7 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
   const conversation: ChatMessage[] = [...input.messages]
   const steps: PlannedStep[] = []
   const named = new Map(actions.map((action) => [action.name, action]))
-  const request = typeof message.content.text === "string" ? message.content.text : ""
-  const instruction = requestIsInstruction(request)
   const offeredNames = new Set(tools.map(({ name }) => actionNameKey(name)))
-  const quiet = requestedNoCue(request)
   let taken = 0
   let displayed = false
   let streamed = ""
@@ -587,14 +587,14 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
       conversation.push({ role: "user", content: tools.length === 0 ? answerInWords : callWithATool })
       continue plan
     }
-    const words = unwritten.prose
+    const { declared, text: words } = declaredOf(unwritten.prose)
     const toolsNext = taken < maxPlanSteps - 1 && tools.some(({ name }) => name !== restoreContext.name)
-    const draft = draftOf(words, instruction, work.length, offeredNames, toolsNext)
+    const draft = draftOf(words, work.length, offeredNames, toolsNext && steps.length === 0 && !markupAsked, declared)
     let cutOff = false
     if (work.length > 0) {
       const cue = withoutWrittenCalls(words.trim())
-      const spoken = !quiet && acknowledges(draft, work.length, steps.length)
-      const delivered = cueDelivered(draft, work.length, steps.length, quiet, spoken && (await input.onPlanningAcknowledgment?.(cue)) === true)
+      const spoken = acknowledges(draft, work.length, steps.length)
+      const delivered = cueDelivered(draft, work.length, steps.length, spoken && (await input.onPlanningAcknowledgment?.(cue)) === true)
       if (displayed) {
         input.onReplyRestart?.("")
         displayed = false
@@ -608,7 +608,8 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
       if (delivered && reply === undefined && plansOn(cutOff, taken, work.length, false)) conversation.push({ role: "user", content: deliveredCueNote(cue) })
     }
     if (reply !== undefined) {
-      const replied = replyText(reply) ?? (draft === "Answer" ? words : undefined)
+      const told = replyText(reply)
+      const replied = told === undefined ? (draft === "Answer" ? words : undefined) : declaredOf(told).text
       prose = replied === undefined ? undefined : withoutOfferedCalls(replied, offeredNames)
       break plan
     }
@@ -642,9 +643,9 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
         messages: [...conversation, ...(reply.trim() ? [{ role: "assistant" as const, content: reply }] : []), { role: "user" as const, content: [answerAgain, ...notes].join("\n") }],
         ...(tools.length === 0 ? {} : { tools, toolChoice: "none" as const }),
       })), signal)
-      const answer = writtenCallFree(answerOf(said).text).prose
+      const { declared, text: answer } = declaredOf(writtenCallFree(answerOf(said).text).prose)
       const revised = settled.compose(withoutOfferedCalls(answer, offeredNames))
-      const draft = draftOf(answer, instruction, 0, offeredNames, false)
+      const draft = draftOf(answer, 0, offeredNames, finishedReply(reply), declared)
       const sameAsFirst = revised.trim() === reply.trim()
       const spoken = revised !== settled.compose(undefined)
       return { revised: spoken && answeredAgain(draft, sameAsFirst) ? revised : undefined, stoodBy: spoken && standsBy(draft, sameAsFirst) }

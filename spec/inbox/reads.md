@@ -60,6 +60,19 @@ pure def sometimesShifted(s: MailboxFeed): bool = s.shifted
 pure def sometimesListHasNextPage(s: MailboxFeed): bool = s.cursor != ""
 ```
 
+### An attachment hint is kept only as Cloud sent it
+
+The inbox keeps an explicit `hasAttachments` hint on a live or saved
+message row, including an explicit false. When an older Cloud reply or
+saved entry omitted the hint, the inbox leaves it absent.
+
+```quint
+type AttachmentMark = MarkUnknown | MarkAttached | MarkPlain
+pure def attachmentMark(sent: bool, hint: bool): AttachmentMark =
+  if (not(sent)) MarkUnknown else if (hint) MarkAttached else MarkPlain
+pure def lawAReplyWithoutAHintStaysUnknown(hint: bool): bool = attachmentMark(false, hint) == MarkUnknown
+```
+
 ## Story: Resume my own mailbox from what was saved, and recheck its access
 
 > As the owner, I want a reopened inbox to show what my last read saved,

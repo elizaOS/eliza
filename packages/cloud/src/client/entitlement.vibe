@@ -41,7 +41,7 @@ const entitlementVersion = 3
 const maxEntitlementLength = 8192
 const maxEntitlementKeys = 16
 const maxEntitlementLifetimeSeconds = 60 * 60
-export const clockSkewSeconds = 60
+const clockSkewSeconds = 60
 
 export type EntitlementKey = typeof entitlementKeySchema.Type
 

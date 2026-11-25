@@ -1,8 +1,8 @@
 // spec/cloud/index.md, "Story: Connect Google mail and calendar"
-// spec/cloud/services/google/mailRead.md, "Story: Read my mail through the grant I chose"
+// spec/cloud/services/google/mailRead.md, "Story: Read my mail through the grant I chose"; spec/cloud/services/google/mailRead.md, "A message row hints at attachments from the outer MIME part"
 import { Result } from "effect"
 import { Base64Url } from "effect/encoding"
-import { htmlMaxBytes, htmlViewOf, listCount, mailMaxBytes, needsReply, searchOutcome, triageImportant, triageReasons, triageScore, type Continuation, type MailList, type TriageReason } from "../gen/cloud__services__google__mailRead.effect.vibe"
+import { attachmentHint, htmlMaxBytes, htmlViewOf, listCount, mailMaxBytes, needsReply, searchOutcome, triageImportant, triageReasons, triageScore, type Continuation, type MailList, type TriageReason } from "../gen/cloud__services__google__mailRead.effect.vibe"
 
 export type GoogleReadApi<E, R> = (url: string, maxBytes?: number) => unknown!E!R
 export error GoogleReadInput
@@ -55,7 +55,7 @@ const fullMessageBound = encodedAttachmentBound + 65536
 const isoDateTime = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/
 const isoDate = /^\d{4}-\d{2}-\d{2}$/
 const safeContent = "Content-Type"
-const headerNames = ["From", "To", "Cc", "Subject", "Reply-To", "Message-ID", safeContent, "Precedence", "List-Id", "Auto-Submitted"]
+export const mailMetadataHeaders = ["From", "To", "Cc", "Subject", "Reply-To", "Message-ID", safeContent, "Precedence", "List-Id", "Auto-Submitted"]
 const automatedSender = /(?:^|\b)(?:no-?reply|donotreply|notifications?|mailer-daemon)(?:\b|@)/i
 const triageReasonText = {
   TriageUnread: "unread",
@@ -68,6 +68,11 @@ const triageReasonText = {
 
 export function headerMap(payload: MailPart | undefined) {
   return new Map((payload?.headers ?? []).map((header) => [header.name.toLowerCase(), header.value]))
+}
+
+export function mailAttachmentHint(payload: MailPart | undefined, headers: ReadonlyMap<string, string>): boolean {
+  const mime = (payload?.mimeType || headers.get("content-type") || "").split(";", 1)[0]?.trim().toLowerCase()
+  return attachmentHint(mime === "multipart/mixed", (payload?.filename ?? "").trim() !== "")
 }
 
 function addressOf(value: string) {
@@ -136,7 +141,7 @@ effect function mailCard(message: MailMessage, selfEmail: string) {
   return {
     ...mailTriageFields(labels, headers, selfEmail),
     id: message.id, externalId: message.id, threadId: message.threadId, subject: headers.get("subject") ?? "", from, fromEmail: sender(from),
-    replyTo: sender(headers.get("reply-to") ?? ""), to: split("to"), cc: split("cc"), snippet: message.snippet ?? "",
+    replyTo: sender(headers.get("reply-to") ?? ""), hasAttachments: mailAttachmentHint(message.payload, headers), to: split("to"), cc: split("cc"), snippet: message.snippet ?? "",
     receivedAt, labels,
     htmlLink: `https://mail.google.com/mail/u/0/#all/${message.id}`, metadata: { historyId: message.historyId ?? null }
   }
@@ -145,7 +150,7 @@ effect function mailCard(message: MailMessage, selfEmail: string) {
 effect function readMessage<E, R>(api: GoogleReadApi<E, R>, id: string, format: "metadata" | "full") {
   if (!attachments.test(id)) throw new GoogleReadInput()
   const query = new URLSearchParams({ format })
-  if (format === "metadata") for (const header of headerNames) query.append("metadataHeaders", header)
+  if (format === "metadata") for (const header of mailMetadataHeaders) query.append("metadataHeaders", header)
   const raw = try api(`${gmail}/messages/${id}?${query}`, format === "full" ? fullMessageBound : undefined)
   const result = Schema.decodeUnknownOption(MailMessage)(raw)
   if (Option.isNone(result) || result.value.id !== id) throw new GoogleReadResponse()

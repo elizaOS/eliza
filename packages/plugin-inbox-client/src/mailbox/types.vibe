@@ -78,6 +78,7 @@ export interface GmailInboxReceipt {
 }
 
 export interface GmailMessage {
+  readonly hasAttachments?: boolean
   readonly id: string
   readonly threadId: string
   readonly subject: string

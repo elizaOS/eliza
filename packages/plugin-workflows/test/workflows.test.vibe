@@ -434,6 +434,20 @@ it.live('Change the workflow I named in my own words (spec/workflow/lifecycle.md
     ],
     names: ["Backup workflow", "Fresh one", "Garden digest", "Mom’s birthday", "Morning brief", "Parents' Day", "Reading list", "Twin", "Twin"],
   }))
+  const shown = (result: ActionResult) => [result.userFacingText, result.verifiedUserFacing]
+  const askedToBeReminded = try say("create a workflow called Plant check that reminds me to water the plants", { action: "create", name: "Plant check" })
+  const noteOf = (result: ActionResult) => [result.text?.slice(result.text.indexOf(" It cannot notify")), result.userFacingText]
+  try check(() => assert.deepStrictEqual({
+    sameNoteEitherWay: noteOf(askedToBeReminded),
+    ran: [/^\[WORKFLOW\]\n\{.*\}\n\[\/WORKFLOW\]$/u.test(ran.userFacingText ?? ""), ran.verifiedUserFacing, ran.userFacingEffectReceiptIds?.length, ran.text?.startsWith("Started Garden digest.")],
+    told: [renamed, created, listed, found].map(shown),
+    created: created.text?.includes("It cannot notify, message or remind the owner"),
+  }, {
+    ran: [true, true, 1, true],
+    told: [[undefined, undefined], [undefined, undefined], [undefined, undefined], [undefined, undefined]],
+    created: true,
+    sameNoteEitherWay: noteOf(created),
+  }))
 })
 
 it.live('Change only the workflow the planner\'s name and ID agree on (spec/workflow/lifecycle.md, "A workflow change runs as the planner proposed it, which is the model\'s reading of the owner\'s request"; spec/workflow/lifecycle.md, "A workflow reference resolves to the one workflow the owner named, and a remove or rename never acts on part of a name")', effect () => {

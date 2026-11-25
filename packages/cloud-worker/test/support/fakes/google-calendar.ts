@@ -5,6 +5,7 @@ import { bearerGrant, switched, unauthenticated, type FakeCalendar, type FakeEve
 const base = "/api/calendar/v3";
 const calendarScopes = ["https://www.googleapis.com/auth/calendar.events", "https://www.googleapis.com/auth/calendar"];
 const writable: ReadonlyArray<FakeCalendar["accessRole"]> = ["writer", "owner"];
+const writes = (calendar: FakeCalendar): boolean => writable.includes(calendar.accessRole ?? "reader");
 
 const failure = (status: number, reason: string): FakeAnswer => ({ status, body: { error: { code: status, status: reason, errors: [{ reason }] } } });
 const notFound = failure(404, "notFound");
@@ -68,14 +69,12 @@ export function touchEvent(state: GoogleFakeState, calendarId: string, id: strin
   return event.etag;
 }
 
+function listEntry(calendar: FakeCalendar) {
+  return { kind: "calendar#calendarListEntry", id: calendar.id, summary: calendar.summary, timeZone: calendar.timeZone, ...(calendar.accessRole === undefined ? {} : { accessRole: calendar.accessRole }), ...(calendar.primary === true ? { primary: true } : {}) };
+}
+
 function calendarList(state: GoogleFakeState): FakeAnswer {
-  return {
-    status: 200,
-    body: {
-      kind: "calendar#calendarList",
-      items: [...state.calendars.values()].map((calendar) => ({ id: calendar.id, summary: calendar.summary, accessRole: calendar.accessRole, timeZone: calendar.timeZone, ...(calendar.primary === true ? { primary: true } : {}) })),
-    },
-  };
+  return { status: 200, body: { kind: "calendar#calendarList", items: [...state.calendars.values()].map(listEntry) } };
 }
 
 function listEvents(state: GoogleFakeState, calendar: FakeCalendar, query: URLSearchParams): FakeAnswer {
@@ -89,7 +88,7 @@ function listEvents(state: GoogleFakeState, calendar: FakeCalendar, query: URLSe
 }
 
 function insertEvent(state: GoogleFakeState, calendar: FakeCalendar, request: FakeRequest): FakeAnswer {
-  if (!writable.includes(calendar.accessRole)) return forbidden;
+  if (!writes(calendar)) return forbidden;
   const body = bodyOf(request);
   if (body === undefined || ("recurrence" in body && (!Array.isArray(body.recurrence) || !body.recurrence.every((line) => typeof line === "string")))) return failure(400, "invalid");
   const id = typeof body.id === "string" ? body.id : `generated${revisions + 1}`;
@@ -99,7 +98,7 @@ function insertEvent(state: GoogleFakeState, calendar: FakeCalendar, request: Fa
 }
 
 function changeEvent(state: GoogleFakeState, calendar: FakeCalendar, event: FakeEvent, request: FakeRequest): FakeAnswer {
-  if (!writable.includes(calendar.accessRole)) return forbidden;
+  if (!writes(calendar)) return forbidden;
   const ifMatch = request.headers["if-match"];
   if (ifMatch !== undefined && ifMatch !== event.etag) return conditionNotMet;
   const body = bodyOf(request);
@@ -109,7 +108,7 @@ function changeEvent(state: GoogleFakeState, calendar: FakeCalendar, event: Fake
 }
 
 function deleteEvent(state: GoogleFakeState, calendar: FakeCalendar, event: FakeEvent, request: FakeRequest): FakeAnswer {
-  if (!writable.includes(calendar.accessRole)) return forbidden;
+  if (!writes(calendar)) return forbidden;
   const ifMatch = request.headers["if-match"];
   if (ifMatch !== undefined && ifMatch !== event.etag) return conditionNotMet;
   for (const [key, held] of state.events) {
@@ -121,6 +120,11 @@ function deleteEvent(state: GoogleFakeState, calendar: FakeCalendar, event: Fake
 function route(state: GoogleFakeState, request: FakeRequest): FakeAnswer | undefined {
   const path = request.path.slice(base.length);
   if (path === "/users/me/calendarList" && request.method === "GET") return calendarList(state);
+  const listed = /^\/users\/me\/calendarList\/([^/]+)$/.exec(path);
+  if (listed !== null && request.method === "GET") {
+    const calendar = calendarOf(state, decodeURIComponent(listed[1] ?? ""));
+    return calendar === undefined ? notFound : { status: 200, body: listEntry(calendar) };
+  }
   const match = /^\/calendars\/([^/]+)\/events(?:\/([^/]+))?$/.exec(path);
   if (match === null) return undefined;
   const calendar = calendarOf(state, decodeURIComponent(match[1] ?? ""));
