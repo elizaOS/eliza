@@ -1,4 +1,5 @@
-// spec/inbox/reads.md, "Pages keep their first read's identity and expose mailbox shifts"; spec/inbox/drafts.md, "Recovery reads the recorded request and cannot resend it"; spec/inbox/outgoing.md, "A saved attachment of any type is a checked byte copy, never opened"; spec/inbox/display.md, "Only an absolute web link without credentials is kept, and its shown text is plain"
+// spec/inbox/reads.md, "Pages keep their first read's identity and expose mailbox shifts"; spec/inbox/reads.md, "An attachment hint is kept only as Cloud sent it"; spec/inbox/drafts.md, "Recovery reads the recorded request and cannot resend it"; spec/inbox/outgoing.md, "A saved attachment of any type is a checked byte copy, never opened"; spec/inbox/display.md, "Only an absolute web link without credentials is kept, and its shown text is plain"
+import { attachmentMark } from "../../gen/inbox__reads.effect.vibe"
 import { reviewOpaqueAttachment, type MailAttachmentReviewer, type OpaqueMailAttachment, type ReviewedMailAttachment } from "../mailbox/attachments.vibe"
 import { utf8Length } from "../mailbox/digest.vibe"
 import { MailProtocolFailed, type MailFailure, type MailUnreachable } from "../mailbox/failures.vibe"
@@ -27,6 +28,7 @@ const maxHtmlBytes = 512 * 1024
 const sha = /^[a-f0-9]{64}$/
 const revision = /^\d{1,20}$/
 const labelKinds: readonly GmailInboxOperationKind[] = ["archive", "unarchive", "trash", "untrash"]
+const attachmentFields = { MarkUnknown: {}, MarkAttached: { hasAttachments: true }, MarkPlain: { hasAttachments: false } } as const
 
 const invalid = () => new MailProtocolFailed({ code: "invalid-response", status: 0, reason: "" })
 
@@ -57,6 +59,7 @@ effect function messageOf(card: typeof MailCardWire.Type): GmailMessage!MailProt
     fromEmail: senderEmail(card.from),
     to: card.to,
     cc: card.cc,
+    ...attachmentFields[attachmentMark(card.hasAttachments !== undefined, card.hasAttachments === true)],
     snippet: card.snippet,
     receivedAt: try present(card.receivedAt),
     unread: card.isUnread,
