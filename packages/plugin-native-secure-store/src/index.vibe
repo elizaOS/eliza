@@ -1,10 +1,10 @@
 // spec/nativeSecureStore/index.md, "Story: Read or change an app credential only on my device"
-import { nativeReply } from "@elizaos/os/bridges/bridge"
-import { secureStorePlugin } from "@elizaos/os/bridges/secure-store"
+import { nativeReply } from "@elizaos/os-bridges"
+import { secureStorePlugin } from "@elizaos/os-bridges"
 import { availableStore, type SecureAccount } from "../gen/nativeSecureStore.effect.vibe"
 
-export { secureStoreClient, secureStorePlugin } from "@elizaos/os/bridges/secure-store"
-export type * from "@elizaos/os/bridges/definitions/secure-store"
+export { secureStoreClient, secureStorePlugin } from "@elizaos/os-bridges"
+export type { ElizaSecureStoreKey, ElizaSecureStoreReadError, ElizaSecureStoreError, ElizaSecureStoreRead, ElizaSecureStoreResult, ElizaSecureStoreStatus, ElizaSecureStoreExchange, ElizaSecureStorePlugin } from "@elizaos/os-bridges"
 
 const NATIVE_STORE = "ElizaSecureStore"
 const Status = Schema.Struct({

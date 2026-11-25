@@ -1,10 +1,10 @@
 // spec/notes/records.md, "Every commit advances the revision once, and a replacement needs the revision it was read at"; spec/notes/records.md, "A creation the client names is made once, and every record is one bounded note"; spec/notes/records.md, "A checklist the owner asks for is a new note holding the owner's items"; spec/notes/records.md, "A read by a title no saved note has cites no other note and asks which one"; spec/notes/records.md, "A note's title and body are saved as well-formed text"; spec/notes/records.md, "The agent reads and changes Notes only for the owner, and changes the note the model picked"; spec/notes/records.md, "A move by name takes the identical copies of the note along"; spec/notes/records.md, "A delete or an edit by name leaves no identical copy behind"; spec/notes/trash.md, "Canonical Trash restores the exact deleted ID against the current revision"; spec/notes/trash.md, "Erase and expiry need the owner's three-day choice, a current review, and no shared recording"; spec/notes/trash.md, "Fresh Notes references and the exact audio operation receipt govern cleanup"
 import { canonicalEraseAllowed, canonicalRestore, canonicalRestoreOpen, canonicalSweepAllowed, type CanonicalTrashEntry } from "../gen/notes__trash.effect.vibe"
 import { checklistCreationAdmitted, copyFate, creationForcesNew, creationReturnsExisting, deleteByContentAllowed, literalEditAdmitted, moveTakesCopy, noteRecordAdmitted, pickedNoteChanged, revisionAdmits } from "../gen/notes__records.effect.vibe"
-import { authoredNoteText, editAuthoredNoteFormat, parseNoteFormat, type AuthoredNoteEdit } from "./format.vibe"
+import {
+  authoredNoteText, editAuthoredNoteFormat, parseNoteFormat, type AuthoredNoteEdit, noteLimits, recordingIdPattern, type CreateRequest, type ImportReceipt, type UpdateRequest, type NoteFormat, type NotesSnapshot, type NotesTrashErase, type NotesTrashRecordingCleanup, type StickyColor, type StickyNote, type TrashedNote,
+} from "@elizaos/plugin-notes-client"
 import { lookupMatches, noteContentKey, sameTitle, type NoteSelector } from "./lookup.vibe"
-import { noteLimits, recordingIdPattern, type CreateRequest, type ImportReceipt, type UpdateRequest } from "./records.schema.vibe"
-import type { NoteFormat, NotesSnapshot, NotesTrashErase, NotesTrashRecordingCleanup, StickyColor, StickyNote, TrashedNote } from "./types.vibe"
 
 export interface NotesDocument {
   schemaVersion: 1

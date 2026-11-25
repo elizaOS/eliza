@@ -1,0 +1,94 @@
+// spec/cloud/deployment.md, "Story: Serve the deployment from a Worker"; spec/cloud/nativeClients/registry.md, "Story: Apply my app's registration from its reviewed file"
+import { assert, describe, it } from "@effect/vitest"
+import { operate, type OperatorDocument, type OperatorOutcome } from "../../src/operator/admin.vibe"
+import { deploymentLayer, parseProfile } from "@elizaos/cloud"
+import { migrate, storeLayer } from "../../src/store/store.vibe"
+import { cloudWorker, type CloudBindings } from "../../src/worker.vibe"
+import { check, fakeServer } from "../support/cloud.vibe"
+import { serveDatabase } from "../support/database.ts"
+import { stripeCatalog } from "../support/fakes.ts"
+import { webRequest } from "../support/password-backup.ts"
+import { catalogPrices, secrets, testDatabaseIdentity, testProfile } from "../support/profile.ts"
+
+const api = "https://api.staging.example.com"
+const web = "https://www.staging.example.com"
+const phone = {
+  clientId: "com.example.phone",
+  displayName: "Example Phone",
+  androidPackage: "com.example.phone",
+  certFingerprints: [Array.from({ length: 32 }, () => "AB").join(":")],
+  signInReturn: `${web}/phone/auth/callback`,
+  billingReturn: `${web}/phone/billing/return`,
+  credentialTtlDays: 30
+}
+
+function workerProfile(fakesUrl: string) {
+  const base = testProfile(fakesUrl)
+  const { production, staging } = base.environments
+  return { ...base, environments: { production, staging: { ...staging, mail: production.mail, sms: { kind: "none" } } } }
+}
+
+effect function receiptOf(outcome: OperatorOutcome) {
+  if (outcome.kind === "refused") return outcome.refusal.code
+  return try Effect.try(() => JSON.parse(outcome.lines[0] ?? "") as { readonly environment: string; readonly file: string; readonly clients: ReadonlyArray<{ readonly clientId: string; readonly action: string; readonly registration: string }> })
+}
+
+effect function body(response: Response) {
+  return { status: response.status, body: try tryPromise(() => response.json() as Promise<unknown>) }
+}
+
+describe('Serve the deployment from a Worker (spec/cloud/deployment.md, "Story: Serve the deployment from a Worker")', () => {
+  it.live("serves native sign-in, plans and the service document from the applied registration, keeps the Worker-only routes and refuses bindings that disagree", () => scoped(effect {
+    const fakes = try fakeServer()
+    const profile = try sync(() => {
+      fakes.mount("/stripe/", stripeCatalog(catalogPrices))
+      return workerProfile(fakes.url)
+    })
+    const database = try acquireRelease(promise(() => serveDatabase()), (served) => promise(() => served.close()))
+    try Effect.provide(migrate({ digest: testDatabaseIdentity, environment: "staging", now: 1 }), storeLayer({ kind: "pg", url: database.url }))
+    const parsed = try parseProfile(profile)
+    const platform = Layer.mergeAll(
+      storeLayer({ kind: "pg", url: database.url }),
+      deploymentLayer(parsed, "staging").pipe(Layer.provide(ConfigProvider.layer(ConfigProvider.fromEnvRecord({ ...secrets })))),
+      FetchHttpClient.layer
+    )
+    const apply = (document: OperatorDocument) => Effect.provide(operate(["client", "apply"], undefined, document), platform)
+    const file: OperatorDocument = { value: { environment: "staging", clients: [phone] }, digest: "sha256:reviewed-file" }
+
+    const first = try receiptOf(try apply(file))
+    const again = try receiptOf(try apply(file))
+    const otherEnvironment = apply({ ...file, value: { environment: "production", clients: [phone] } }) catch (failure) => failure._tag
+    const repeated = apply({ ...file, value: { environment: "staging", clients: [phone, phone] } }) catch (failure) => failure._tag
+    try check(() => {
+      assert.ok(typeof first === "object" && typeof again === "object")
+      if (typeof first !== "object" || typeof again !== "object") return
+      assert.deepEqual([first.environment, first.file, first.clients.map((each) => [each.clientId, each.action])], ["staging", "sha256:reviewed-file", [[phone.clientId, "registered"]]])
+      assert.deepEqual(again.clients.map((each) => [each.clientId, each.action]), [[phone.clientId, "unchanged"]])
+      assert.equal(again.clients[0]?.registration, first.clients[0]?.registration)
+      assert.deepEqual([otherEnvironment, repeated], ["ClientFlagsInvalid", "ClientFlagsInvalid"])
+    })
+
+    const env = {
+      CLOUD_PROFILE: JSON.stringify(profile), CLOUD_ENVIRONMENT: "staging", DATABASE_URL: database.url,
+      CLOUD_IDENTITY_DIGEST: testDatabaseIdentity, PUBLIC_API_ORIGIN: api, WEB_ORIGIN: web, ...secrets
+    } satisfies CloudBindings
+    const worker = cloudWorker<CloudBindings>()
+    const call = (path: string, bindings: CloudBindings = env, init?: RequestInit) => tryPromise(() => worker.fetch(webRequest(api + path, init), bindings))
+
+    const config = try body(try call("/api/v1/app-auth/mobile/config?" + new URLSearchParams({ clientId: phone.clientId, environment: "staging", redirectUri: phone.signInReturn }).toString()))
+    const links = try body(try call("/.well-known/assetlinks.json"))
+    const plans = try call("/api/v1/subscriptions/plans")
+    const service = try body(try call("/api/public/service"))
+    const decision = try call("/api/v1/decisions", env, { method: "POST", headers: { origin: web, "content-type": "application/json" }, body: "{}" })
+    const unserved = try call("/api/v1/agents")
+    const disagreeing = try call("/api/public/service", { ...env, WEB_ORIGIN: "https://www.other.example.com" })
+    try tryPromise(() => worker.scheduled({ scheduledTime: Date.UTC(2026, 10, 22, 12, 0) }, env))
+    try check(() => {
+      assert.deepEqual([config.status, (config.body as { clientId?: string; redirectUri?: string }).clientId, (config.body as { redirectUri?: string }).redirectUri], [200, phone.clientId, phone.signInReturn])
+      assert.deepEqual([links.status, (links.body as ReadonlyArray<{ target: { package_name: string } }>).map((each) => each.target.package_name)], [200, [phone.androidPackage]])
+      assert.equal(plans.status, 200)
+      assert.deepEqual([service.status, (service.body as { service?: { name?: string } }).service?.name], [200, "Test Cloud"])
+      assert.deepEqual([decision.status, unserved.status, disagreeing.status], [401, 404, 503])
+    })
+  }), 60_000)
+})

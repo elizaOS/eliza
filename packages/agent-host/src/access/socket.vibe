@@ -1,0 +1,414 @@
+// spec/agent/access/transport.md, "Story: Answer each local request exactly once"; spec/agent/access/transport.md, "Story: Stream a response and end it once"; spec/agent/access/transport.md, "Story: Close the listeners once"; spec/agent/conversation/events.md, "Story: Hear about my conversations while my screen is open"
+module node {
+  import { processOwnerUid } from "../host/process-owner.vibe"
+  import { Schema, type Redacted } from "effect"
+  import { once, type EventEmitter } from "node:events"
+  import { chmod, lstat } from "node:fs/promises"
+  import { createServer, type Socket } from "node:net"
+  import { dirname } from "node:path"
+  import {
+    admit, enabled, feedCount, frameLimitBytes, initial, isLive, isTerminal, step,
+    type Address, type Event, type Frame, type Inbound, type RouteClass, type Transport,
+  } from "../../gen/agent__access__transport.ts"
+  import { callerOf } from "./auth.vibe"
+  import { isRefused, type AgentEvent, type EventSubscriptions } from "./events-port.vibe"
+  import type { LocalCall, LocalRouter } from "@elizaos/agent"
+
+  const Id = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(128))
+  const Headers = Schema.Record(Schema.String, Schema.String)
+  const HttpFrame = Schema.Struct({
+    id: Id,
+    method: Schema.Literals(["http_request", "http_request_stream"]),
+    payload: Schema.Struct({
+      path: Schema.String.check(Schema.isPattern(/^\/(?!\/)/)),
+      method: Schema.String,
+      headers: Headers,
+      body: Schema.optionalKey(Schema.String),
+      bodyBase64: Schema.optionalKey(Schema.String),
+    }).check(Schema.makeFilter((payload) => payload.body === undefined || payload.bodyBase64 === undefined)),
+    stream: Schema.optionalKey(Schema.Boolean),
+  }).check(Schema.makeFilter((frame) => frame.stream === undefined || frame.stream === (frame.method === "http_request_stream")))
+  const SubscribeFrame = Schema.Struct({
+    id: Id,
+    method: Schema.Literal("events_subscribe"),
+    payload: Schema.Struct({
+      streams: Schema.Array(Schema.String.check(Schema.isPattern(/^[a-z0-9][a-z0-9_.:-]{0,63}$/)))
+        .check(Schema.isMinLength(1), Schema.isMaxLength(16)),
+      clientId: Schema.optionalKey(Schema.String.check(Schema.isPattern(/^[A-Za-z0-9._-]{1,128}$/))),
+      headers: Schema.optionalKey(Headers),
+    }),
+    stream: Schema.optionalKey(Schema.Literal(false)),
+  })
+  const decode = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Union([HttpFrame, SubscribeFrame])), { onExcessProperty: "error" })
+  const decodeId = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Struct({ id: Id })))
+
+  export type Parsed =
+    | { readonly kind: "request"; readonly id: string; readonly call: LocalCall }
+    | { readonly kind: "subscribe"; readonly id: string; readonly streams: readonly string[]; readonly clientId: string | undefined; readonly authorization: string | undefined }
+    | { readonly kind: "unreadable"; readonly id: string | undefined }
+
+  function authorizationOf(headers: Readonly<Record<string, string>>): { readonly value: string | undefined } | undefined {
+    const found = Object.entries(headers).filter(([key]) => key.toLowerCase() === "authorization")
+    return found.length > 1 ? undefined : { value: found[0]?.[1] }
+  }
+
+  export function parseFrame(frame: Uint8Array): Parsed {
+    let text: string
+    try { text = new TextDecoder("utf-8", { fatal: true }).decode(frame) }
+    catch { return { kind: "unreadable", id: undefined } }
+    const readable = decodeId(text)
+    const unreadable: Parsed = { kind: "unreadable", id: readable._tag === "Some" ? readable.value.id : undefined }
+    const decoded = decode(text)
+    if (decoded._tag !== "Some") return unreadable
+    const { value } = decoded
+    if (value.method === "events_subscribe") {
+      const authorization = authorizationOf(value.payload.headers ?? {})
+      if (authorization === undefined) return unreadable
+      return { kind: "subscribe", id: value.id, streams: value.payload.streams, clientId: value.payload.clientId, authorization: authorization.value }
+    }
+    const { payload } = value
+    const authorization = authorizationOf(payload.headers)
+    if (authorization === undefined) return unreadable
+    const body = payload.body !== undefined ? Buffer.from(payload.body)
+      : payload.bodyBase64 !== undefined ? Buffer.from(payload.bodyBase64, "base64") : undefined
+    if (payload.bodyBase64 !== undefined && body?.toString("base64") !== payload.bodyBase64) return unreadable
+    return {
+      kind: "request", id: value.id,
+      call: { target: payload.path, method: payload.method, streamed: value.method === "http_request_stream", authorization: authorization.value, body,
+        headers: new Map(Object.entries(payload.headers).map(([key, header]) => [key.toLowerCase(), header])) },
+    }
+  }
+
+  export function localRouteClass(target: string): RouteClass {
+    const path = target.split("?", 1)[0]
+    if (/^\/api\/conversations\/[^/]+\/messages(?:\/stream)?$/.test(path)) return "MessageRoute"
+    if (/^\/api\/asr\/local-inference(?:\/|$)/.test(path)) return "SpeechRoute"
+    if (/^\/api\/triggers\/[^/]+\/execute$/.test(path)) return "RunRoute"
+    return "PlainRoute"
+  }
+
+  export function inboundOf(call: LocalCall): Inbound {
+    return { tag: call.streamed ? "HttpRequestStream" : "HttpRequest", route: localRouteClass(call.target), bodyBytes: call.body?.byteLength ?? 0 }
+  }
+
+  export async function runUntilAbort<Result>(signal: AbortSignal, action: () => Promise<Result>): Promise<Result> {
+    signal.throwIfAborted()
+    let cancel: () => void = () => undefined
+    const aborted = new Promise<never>((_resolve, reject) => {
+      cancel = () => reject(signal.reason)
+      signal.addEventListener("abort", cancel, { once: true })
+    })
+    try { return await Promise.race([action(), aborted]) }
+    finally { signal.removeEventListener("abort", cancel) }
+  }
+
+  export interface Head {
+    readonly status: number
+    readonly statusText: string
+    readonly headers: Readonly<Record<string, string>>
+  }
+
+  export interface Answer extends Head {
+    readonly body: string
+  }
+
+  export interface Wiring {
+    readonly write: (line: string) => void
+    readonly abort: () => void
+    readonly finish: () => void
+    readonly cut: () => void
+  }
+
+  export interface Detail {
+    readonly answer?: Answer
+    readonly head?: Head
+    readonly chunk?: Uint8Array
+    readonly event?: AgentEvent
+    readonly refusal?: string
+    readonly failure?: string
+    readonly dispatch?: (deadlineMs: number) => void
+  }
+
+  const errorCodes: Readonly<Record<number, string>> = { 413: "too_large", 500: "request_failed", 504: "deadline" }
+  const errorHead = (status: number): Head => ({ status, statusText: "", headers: { "content-type": "application/json" } })
+  const errorAnswer = (status: number): Answer => ({ ...errorHead(status), body: JSON.stringify({ error: errorCodes[status] ?? "request_failed" }) })
+
+  function render(id: string | undefined, frame: Frame, detail: Detail): object {
+    switch (frame.tag) {
+      case "Result": {
+        const answer = detail.answer ?? errorAnswer(frame.status)
+        return { id, ok: true, result: { ...answer, bodyBase64: null, bodyEncoding: "utf8" } }
+      }
+      case "Refusal": return { ...(id === undefined ? {} : { id }), ok: false, error: detail.refusal ?? "unreadable" }
+      case "Head": return { id, stream: "response", ...(detail.head ?? errorHead(frame.code)) }
+      case "Chunk": return { id, stream: "chunk", dataBase64: Buffer.from(detail.chunk ?? new Uint8Array()).toString("base64") }
+      case "Complete": return { id, stream: "complete" }
+      case "CompleteFailed": return { id, stream: "complete", error: detail.failure ?? "stream_failed" }
+      case "Subscribed": return { type: "subscribed" }
+      case "AgentEvent": {
+        const { stream, runId, seq, payload } = detail.event ?? { stream: "", runId: "", seq: 0, payload: null }
+        return { type: "event", event: { type: "agent_event", stream, runId, seq, payload } }
+      }
+    }
+  }
+
+  export class Exchanges {
+    #state: Transport = initial
+    #highest = 0
+    readonly #unused = new Set<number>()
+    readonly #open = new Map<number, { wiring: Wiring; id: string | undefined }>()
+
+    get state(): Transport { return this.#state }
+
+    #known(conn: number): boolean {
+      return conn <= this.#highest && !this.#unused.has(conn)
+    }
+
+    #send(event: Event, detail: Detail = {}): boolean {
+      if ("conn" in event && event.type !== "accept" && !this.#open.has(event.conn)) return false
+      if (!enabled(this.#state, event)) return false
+      const { state, out } = step(this.#state, event)
+      this.#state = { ...state, exchanges: state.exchanges.filter((exchange) => isLive(exchange.stage)) }
+      const touched = new Set<number>()
+      for (const effect of out) {
+        const open = this.#open.get(effect.conn)
+        if (open === undefined) continue
+        touched.add(effect.conn)
+        switch (effect.tag) {
+          case "Write": {
+            open.wiring.write(JSON.stringify(render(open.id, effect.frame, detail)) + "\n")
+            if (isTerminal(effect.frame)) open.wiring.finish()
+            break
+          }
+          case "Dispatch": detail.dispatch?.(effect.deadlineMs); break
+          case "Abort": open.wiring.abort(); break
+        }
+      }
+      if ("conn" in event) touched.add(event.conn)
+      for (const conn of touched) {
+        const open = this.#open.get(conn)
+        if (open === undefined || this.#state.exchanges.some((exchange) => exchange.conn === conn)) continue
+        this.#open.delete(conn)
+        open.wiring.cut()
+      }
+      return true
+    }
+
+    listen(address: Address): boolean { return this.#send({ type: "listen", address }) }
+
+    accept(conn: number, wiring: Wiring): boolean {
+      if (this.#known(conn) || !enabled(this.#state, { type: "accept", conn })) return false
+      for (let gap = this.#highest + 1; gap < conn; gap += 1) this.#unused.add(gap)
+      this.#unused.delete(conn)
+      this.#highest = Math.max(this.#highest, conn)
+      this.#open.set(conn, { wiring, id: undefined })
+      return this.#send({ type: "accept", conn })
+    }
+
+    opensFeed(conn: number): boolean {
+      return admit(conn, { tag: "EventsSubscribe" }, feedCount(this.#state)).stage.tag === "Feeding"
+    }
+
+    receive(conn: number, id: string | undefined, inbound: Inbound, detail: Detail = {}): boolean {
+      const open = this.#open.get(conn)
+      if (open === undefined || !enabled(this.#state, { type: "receive", conn, inbound })) return false
+      this.#open.set(conn, { ...open, id })
+      return this.#send({ type: "receive", conn, inbound }, detail)
+    }
+
+    respond(conn: number, answer: Answer): boolean { return this.#send({ type: "respond", conn, status: answer.status }, { answer }) }
+    head(conn: number, head: Head): boolean { return this.#send({ type: "sendHead", conn, status: head.status }, { head }) }
+    chunk(conn: number, chunk: Uint8Array): boolean { return this.#send({ type: "sendChunk", conn }, { chunk }) }
+    complete(conn: number): boolean { return this.#send({ type: "complete", conn }) }
+    fail(conn: number): boolean { return this.#send({ type: "handlerFails", conn }, { failure: "stream_failed" }) }
+    expire(conn: number): boolean { return this.#send({ type: "expire", conn }, { failure: "deadline" }) }
+    peerClose(conn: number): boolean { return this.#send({ type: "peerClose", conn }) }
+    publish(conn: number, event: AgentEvent): boolean { return this.#send({ type: "publish", conn }, { event }) }
+    drop(conn: number): boolean { return this.#send({ type: "drop", conn }) }
+    releaseNext(ok: boolean): boolean { return this.#send({ type: "releaseNext", ok }) }
+
+    close(): boolean { return this.#send({ type: "close" }) }
+
+    stop(): void {
+      this.close()
+      for (const { conn } of this.#state.exchanges) this.drop(conn)
+    }
+  }
+
+  export interface FeedAccess {
+    readonly token: Redacted.Redacted<string>
+    readonly events: EventSubscriptions
+  }
+
+  export interface Peer extends EventEmitter {
+    readonly writableNeedDrain: boolean
+    destroy(): void
+  }
+
+  export interface Connection {
+    readonly conn: number
+    readonly socket: Peer
+    readonly handler: AbortController
+  }
+
+  async function drained(socket: Peer, signal: AbortSignal): Promise<void> {
+    if (socket.writableNeedDrain) await once(socket, "drain", { signal })
+  }
+
+  async function serveRequest(exchanges: Exchanges, { conn, socket, handler }: Connection, call: LocalCall, route: LocalRouter): Promise<void> {
+    const { signal } = handler
+    try {
+      const response = await runUntilAbort(signal, () => route(call, signal))
+      const head = { status: response.status, statusText: response.statusText, headers: Object.fromEntries(response.headers) }
+      if (!call.streamed) {
+        const body = await runUntilAbort(signal, () => response.text())
+        exchanges.respond(conn, { ...head, body })
+        return
+      }
+      if (!exchanges.head(conn, head)) return
+      if (response.body !== null) {
+        const reader = response.body.getReader()
+        const cancel = () => { void reader.cancel().catch(() => undefined) }
+        signal.addEventListener("abort", cancel, { once: true })
+        try {
+          for (;;) {
+            const { done, value } = await reader.read()
+            if (done) break
+            if (!exchanges.chunk(conn, value)) return
+            await drained(socket, signal)
+          }
+        } finally {
+          signal.removeEventListener("abort", cancel)
+          await reader.cancel().catch(() => undefined)
+          reader.releaseLock()
+        }
+      }
+      exchanges.complete(conn)
+    } catch {
+      exchanges.fail(conn)
+    }
+  }
+
+  async function serveFeed(exchanges: Exchanges, { conn, socket, handler }: Connection, feed: AsyncIterable<AgentEvent>): Promise<void> {
+    try {
+      for await (const event of feed) {
+        if (!exchanges.publish(conn, event)) return
+        await drained(socket, handler.signal)
+      }
+    } catch {}
+    socket.destroy()
+  }
+
+  export function receive(exchanges: Exchanges, connection: Connection, frame: Parsed, route: LocalRouter, feeds: FeedAccess): void {
+    const { conn, handler } = connection
+    switch (frame.kind) {
+      case "unreadable": {
+        exchanges.receive(conn, frame.id, { tag: "Unreadable" }, { refusal: "unreadable" })
+        return
+      }
+      case "request": {
+        const { call } = frame
+        let dispatched = false
+        exchanges.receive(conn, frame.id, inboundOf(call), { dispatch: (deadlineMs) => {
+          dispatched = true
+          const timer = setTimeout(() => exchanges.expire(conn), deadlineMs)
+          handler.signal.addEventListener("abort", () => clearTimeout(timer), { once: true })
+          connection.socket.once("close", () => clearTimeout(timer))
+        } })
+        if (dispatched) void serveRequest(exchanges, connection, call, route)
+        return
+      }
+      case "subscribe": {
+        if (callerOf(feeds.token, frame.authorization) !== "Root") {
+          exchanges.receive(conn, frame.id, { tag: "Unreadable" }, { refusal: "unauthorized" })
+          return
+        }
+        if (!exchanges.opensFeed(conn)) {
+          exchanges.receive(conn, frame.id, { tag: "EventsSubscribe" }, { refusal: "busy" })
+          return
+        }
+        const feed = feeds.events.subscribe({ streams: frame.streams, clientId: frame.clientId }, handler.signal, () => connection.socket.destroy())
+        if (isRefused(feed)) {
+          exchanges.receive(conn, frame.id, { tag: "Unreadable" }, { refusal: feed.reason })
+          return
+        }
+        if (exchanges.receive(conn, frame.id, { tag: "EventsSubscribe" })) void serveFeed(exchanges, connection, feed)
+        else handler.abort()
+        return
+      }
+    }
+  }
+
+  function accept(exchanges: Exchanges, conn: number, socket: Socket, route: LocalRouter, feeds: FeedAccess): void {
+    const handler = new AbortController()
+    const wiring: Wiring = {
+      write: (line) => { if (socket.writable) socket.write(line) },
+      abort: () => handler.abort(),
+      finish: () => { socket.end() },
+      cut: () => { handler.abort(); if (!socket.writableEnded) socket.destroy() },
+    }
+    if (!exchanges.accept(conn, wiring)) { socket.destroy(); return }
+    const connection: Connection = { conn, socket, handler }
+    socket.on("error", () => undefined)
+    socket.once("close", () => { exchanges.peerClose(conn); handler.abort() })
+    socket.setTimeout(10_000, () => socket.destroy())
+    const chunks: Buffer[] = []
+    let size = 0
+    let received = false
+    socket.on("data", (bytes: Buffer) => {
+      if (received) { if (!socket.writableEnded) socket.destroy(); return }
+      const end = bytes.indexOf(10)
+      const data = end < 0 ? bytes : bytes.subarray(0, end)
+      size += data.length
+      if (size > frameLimitBytes) {
+        received = true
+        exchanges.receive(conn, undefined, { tag: "Unreadable" }, { refusal: "unreadable" })
+        return
+      }
+      chunks.push(data)
+      if (end < 0) return
+      received = true
+      if (end + 1 !== bytes.length) { socket.destroy(); return }
+      socket.setTimeout(0)
+      receive(exchanges, connection, parseFrame(Buffer.concat(chunks, size)), route, feeds)
+    })
+  }
+
+  export async function listenOnSocket(path: string, route: LocalRouter, feeds: FeedAccess): Promise<() => Promise<void>> {
+    const directory = await lstat(dirname(path))
+    if (!directory.isDirectory() || directory.uid !== processOwnerUid() || (directory.mode & 0o077) !== 0) {
+      throw new Error("The agent socket directory must be owner-only")
+    }
+    const exchanges = new Exchanges()
+    exchanges.listen("PrivateSocket")
+    const sockets = new Set<Socket>()
+    let connections = 0
+    const server = createServer((socket) => {
+      connections += 1
+      sockets.add(socket)
+      socket.once("close", () => sockets.delete(socket))
+      accept(exchanges, connections, socket, route, feeds)
+    })
+    server.listen(path)
+    await once(server, "listening")
+    let closing: Promise<void> | undefined
+    const close = () => closing ??= new Promise<void>((resolve, reject) => {
+      exchanges.stop()
+      for (const socket of sockets) socket.destroy()
+      server.close((failure) => {
+        exchanges.releaseNext(failure === undefined)
+        if (failure) reject(failure)
+        else resolve()
+      })
+    })
+    try {
+      await chmod(path, 0o600)
+      return close
+    } catch (failure) {
+      await close()
+      throw failure
+    }
+  }
+}
+
+export { Exchanges, inboundOf, listenOnSocket, localRouteClass, parseFrame, receive, type Answer, type Connection, type Peer, type Detail, type FeedAccess, type Head, type Parsed, type Wiring } from node

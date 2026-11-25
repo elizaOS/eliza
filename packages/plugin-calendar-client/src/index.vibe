@@ -1,0 +1,23 @@
+// spec/calendar/reviewedReads.md, "Story: Share only the exact current Calendar information I reviewed"; spec/calendar/linkedSync.md, "Story: Link my resident calendar to a verified provider destination"; spec/calendar/availability.md, "Story: Share only the occupied time in my reviewed calendars"; spec/calendar/managedFeed.md, "Story: Read the connected Calendar and keep its source information intact"; spec/calendar/seriesScope.md, "Story: Delete the exact Calendar event or scope I selected"; spec/calendar/aggregateMerge.md, "Story: See one occurrence with its precise source evidence"
+export type * from "./model.vibe"
+export { sameSourceKey, sourceKeyId, utcInstant } from "./model.vibe"
+export {
+  CalendarLedgerUnavailable, CalendarPreflightRefused, CalendarWriteNotAccepted, CalendarWriteUnconfirmed, calendarMutationLedger, receiptMatches,
+  type CalendarAnswerScope, type CalendarInvitationResponse, type CalendarMutationFailure, type CalendarMutationInspection, type CalendarMutationLedger, type CalendarMutationOperation, type CalendarMutationOutcome,
+  type CalendarMutationPayload, type CalendarMutationPort, type CalendarMutationReceipt, type CalendarMutationRequest, type CalendarMutationTarget,
+  type CalendarPreflight, type CalendarReconciliation,
+} from "./mutations/ledger.vibe"
+export type { DeviceCalendarPort } from "./series/index.vibe"
+export type { DeviceCalendarPort as AvailabilityDeviceCalendarPort } from "./availability/index.vibe"
+export * from "./client/index.vibe"
+export * from "./linked-sync/index.vibe"
+export * from "./availability/index.vibe"
+export * from "./feed/index.vibe"
+export * from "./series/index.vibe"
+export * from "./request-time.vibe"
+export { type AvailabilityProvider, type AvailabilityReview, executeCalendarAvailability } from "./client/availability-review.vibe"
+export { CALENDAR_CAPABILITY, CALENDAR_NAMED_READ_CAPABILITY, namedCalendarReadTarget } from "./client/named-read.vibe"
+export { type LocalDate, addDaysToLocalDate, buildUtcDateFromLocalParts, createNeedsConfirmation, createTimeZone, createYear, createdUtcInstant, deviceTimeZone, displayDay, displayWallTime, getZonedDateParts, knownTimeZone, requestTimeZone, startOfCivilDay, statedYearCreate } from "./clock.vibe"
+export { providerTimestamps } from "./feed/cache.vibe"
+export { digestText } from "./linked-sync/linked.vibe"
+export { EventRecord, FieldsRecord, PayloadRecord } from "./mutations/records.schema.vibe"
