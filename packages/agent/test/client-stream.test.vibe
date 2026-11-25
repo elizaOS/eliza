@@ -343,6 +343,14 @@ it.live(`Hear that the agent heard me once while work is pending, and see which 
   const answer = try turn("Hi")
   try Effect.sync(() => cloud.script(text("Sure.")))
   const assentWithoutWork = try turn("Remember that I like tea")
+  try Effect.sync(() => cloud.script(text("Sure, one sec."), text("I can't send texts from here.")))
+  const promiseWithoutWork = try turn("Text Sam that I'm late")
+  try Effect.sync(() => cloud.script(text("Sure, one sec."), toolCalls("Sure, one sec.", agenda), text("Nothing booked.")))
+  const workAfterPromise = try turn("Check my agenda")
+  try Effect.sync(() => cloud.script(text("Sure, one sec."), text("Sure, one sec.")))
+  const promisedTwice = try turn("Text Sam that I'm late")
+  try Effect.sync(() => cloud.script(toolCalls('Let me check. {"action": "agenda_read"}', agenda), text("Nothing booked.")))
+  const cueBesideWrittenCall = try turn("What is on my agenda?")
   try Effect.sync(() => cloud.script(toolCalls("Let me open Maps.", agenda), text("The nearest coffee is on Main Street.")))
   const openAsPart = try turn("Open Maps and find coffee nearby")
   try Effect.sync(() => cloud.script(toolCalls("Maps is open.", agenda), text("Maps is open.")))
@@ -386,7 +394,7 @@ it.live(`Hear that the agent heard me once while work is pending, and see which 
     ruleInEverySystemPrompt: system.length > 0 && system.every((content) => content.includes(cueRule)),
   }, { exemptionInRule: [true, true, true, true], ruleInEverySystemPrompt: true }))
   try Effect.try(() => assert.deepStrictEqual({
-    instruction, question, politeAsk, answer, assentWithoutWork, openAsPart, navigationOnly, calendarOnly, sharedSelected, sharedBothSelected, sharedUnselected, coached, directFast, directSlow, directQuiet, directStopped, modelQuiet,
+    instruction, question, politeAsk, answer, assentWithoutWork, promiseWithoutWork, workAfterPromise, promisedTwice, cueBesideWrittenCall, openAsPart, navigationOnly, calendarOnly, sharedSelected, sharedBothSelected, sharedUnselected, coached, directFast, directSlow, directQuiet, directStopped, modelQuiet,
   }, {
     instruction: {
       done: done("Sent."), asked: 3, acknowledgments: ["acknowledgment:Sure."], tools: ["tool:AGENDA_READ:Using Agenda", "tool:CALCULATE:Working"],
@@ -399,6 +407,16 @@ it.live(`Hear that the agent heard me once while work is pending, and see which 
     },
     answer: { done: done("Hello."), asked: 1, acknowledgments: [], tools: [], acknowledgedBeforeTools: true, cueLeftTheText: true, sameWhenSplit: true },
     assentWithoutWork: { done: done("Sure."), asked: 1, acknowledgments: [], tools: [], acknowledgedBeforeTools: true, cueLeftTheText: true, sameWhenSplit: true },
+    promiseWithoutWork: { done: done("I can't send texts from here."), asked: 2, acknowledgments: [], tools: [], acknowledgedBeforeTools: true, cueLeftTheText: true, sameWhenSplit: true },
+    workAfterPromise: {
+      done: done("Nothing booked."), asked: 3, acknowledgments: ["acknowledgment:Sure, one sec."], tools: ["tool:AGENDA_READ:Using Agenda"],
+      acknowledgedBeforeTools: true, cueLeftTheText: true, sameWhenSplit: true,
+    },
+    cueBesideWrittenCall: {
+      done: done("Nothing booked."), asked: 2, acknowledgments: ["acknowledgment:Let me check."], tools: ["tool:AGENDA_READ:Using Agenda"],
+      acknowledgedBeforeTools: true, cueLeftTheText: true, sameWhenSplit: true,
+    },
+    promisedTwice: { done: { kind: "Done", text: "", failureKind: "provider_issue", keyed: true }, asked: 2, acknowledgments: [], tools: [], acknowledgedBeforeTools: true, cueLeftTheText: true, sameWhenSplit: true },
     sharedSelected: shared("Using Agenda"),
     sharedBothSelected: shared("Working"),
     sharedUnselected: shared("Working"),

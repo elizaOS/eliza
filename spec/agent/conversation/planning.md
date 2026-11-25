@@ -586,7 +586,9 @@ call, and the reply after it confirms the destination (`Maps is open.`).
 Any question or lookup gets its cue, even one about what is on the screen. The cue never names the people, items, times or outcome, never
 says the work is done or under way, never repeats the request, and is left
 empty, with the work still done, when the person asked for silence; later
-tool calls come with no text.
+tool calls come with no text. A cue comes only with a tool call: when no
+offered tool can do what was asked, the model writes no cue and says
+plainly, in its own words, that it can't.
 
 The shell reads the model's text as a `Cue` only when the whole of it is
 one to three sentences of the closed acknowledgment grammar (`On it`,
@@ -597,29 +599,47 @@ counts, names other than one after `check with`, or question mark. The
 grammar has no past-tense verb, negation or completion word, so a cue never
 claims that an effect happened or that the owner's tracked work is empty:
 a destination confirmation (`Maps is open.`, `Opened your calendar.`) is
-never a cue.
+never a cue. A JSON object in the text is a tool call written as text, which
+runs nothing: text that holds one or more objects is read without them, so
+a cue beside one (`Sure, one sec. {"action": "send_message"}`) is still a
+cue, delivered without them, and bare assent beside one promises work as
+`Sure, one sec.` does (below). Text that is only objects is an `Answer`.
 A wait cue followed by more text that is not progress (`One second is
 1,000 milliseconds.`, `Just a second, your dentist is Thursday.`) is an
 `Answer`. A cue that comes with the turn's first tool calls is the turn's
 acknowledgment (below); whatever text streamed with tool calls is
 restarted to empty before they run, so a cue is never part of the reply's
-text. A cue with no
-tool call is not an answer: the model is asked once more to answer with
-what the turn holds, and if steps run out the turn's failure fallback is
-the reply.
+text. A cue or a blank with no
+tool call is not an answer, and neither is assent that goes on to a cue
+(`Sure, one sec.`, below): it promised work that no call does. The model is
+asked once more, with the turn's tools still offered, and one host note
+saying that its response gave the person no answer and was not sent. Before
+any tool ran in the turn, the note also says the response called no tool,
+and that the model either does the work now with an offered tool or, if no
+offered tool can do it, tells the person plainly, in its own words, that it
+can't; when the turn offers no tool, it says instead that nothing the
+model writes can do the work, so it tells the person plainly, in its own
+words, that it can't. After a tool ran, it says the tool results are what
+the turn did and that the model answers from them, in its own words. A turn asks this at
+most once. When the response after that note
+is again a cue or a blank with no tool call, or steps run out, whatever text
+streamed with it is restarted to empty and the turn's failure fallback is
+the reply, so a cue alone is never the turn's last word.
 
 ```quint
 type Draft = Cue | Answer | Silent
 type PlanMove = RunTools | Deliver | AskAgain | GiveUp
 pure def acknowledges(draft: Draft, calls: int, earlierCalls: int): bool = draft == Cue and calls > 0 and earlierCalls == 0
-pure def nextMove(draft: Draft, calls: int, stepsLeft: int): PlanMove =
+pure def nextMove(draft: Draft, calls: int, stepsLeft: int, askedAgain: bool): PlanMove =
   if (calls > 0) RunTools
   else if (draft == Answer) Deliver
-  else if (stepsLeft > 0) AskAgain
+  else if (stepsLeft > 0 and not(askedAgain)) AskAgain
   else GiveUp
 pure val stepsLeftValues = Set(0, 1, 3)
-pure def lawAnAnswerIsDeliveredWhole(stepsLeft: int): bool = nextMove(Answer, 0, stepsLeft) == Deliver
-pure def lawACueIsNeverTheReply(calls: int, stepsLeft: int): bool = nextMove(Cue, calls, stepsLeft) != Deliver
+pure def lawAnAnswerIsDeliveredWhole(stepsLeft: int, askedAgain: bool): bool = nextMove(Answer, 0, stepsLeft, askedAgain) == Deliver
+pure def lawACueIsNeverTheReply(calls: int, stepsLeft: int, askedAgain: bool): bool = nextMove(Cue, calls, stepsLeft, askedAgain) != Deliver
+pure def lawAPromiseWithoutWorkIsAskedAgainOnce(draft: Draft, stepsLeft: int): bool =
+  (draft != Answer and stepsLeft > 0) implies (nextMove(draft, 0, stepsLeft, false) == AskAgain and nextMove(draft, 0, stepsLeft, true) == GiveUp)
 pure val earlierCallsValues = Set(0, 1, 2)
 pure def lawACueIsSpokenOnlyBeforeWork(draft: Draft, calls: int, earlierCalls: int): bool =
   acknowledges(draft, calls, earlierCalls) implies (calls > 0 and draft == Cue and earlierCalls == 0)
@@ -627,9 +647,7 @@ pure def lawACueIsSpokenOnlyBeforeWork(draft: Draft, calls: int, earlierCalls: i
 
 ### A turn acknowledges at most once, with a cue that comes with its first tool calls, and bare assent is a cue only with work after an instruction
 
-`Sure` or `Yeah`, alone or followed by a comma, dash, colon, semicolon or
-sentence break and one or two sentences of the grammar (`Sure, one sec.`,
-`Yeah. Let me check your calendar.`), says yes, so it is a cue only when it
+`Sure` or `Yeah` alone says yes, so it is a cue only when it
 comes with tool calls and the owner's message is an instruction: after
 fillers (`hey`, `ok`, `so`, `please`, …), a name and comma, or a greeting
 and a wake name, it opens with a command verb (`text`, `set`, `call`, `remind`, …), it has no
@@ -638,7 +656,12 @@ or an auxiliary (`am`, `is`, `can`, `what`, …). `Can you text Sam`, `Am I
 free Friday` and `Any meetings today` are not instructions, so a bare
 `Sure.` after them is an answer. With no tool call, assent is the answer
 after any message: `Sure.` to `Call me Bob` or `Remember that I like tea`
-is delivered, never asked again. `Sure!` before a lead form (`Sure! Let me
+is delivered, never asked again. Assent followed by a comma, dash, colon,
+semicolon or sentence break and one or two sentences of the grammar
+(`Sure, one sec.`, `Yeah. Let me check your calendar.`) also promises work:
+with tool calls it is a cue only after an instruction, as bare assent is,
+and with no tool call it is a cue after any message, so it is asked again
+(above) and never delivered. `Sure!` before a lead form (`Sure! Let me
 check your calendar.`) is a cue after any message. The acknowledgment is
 delivered at most once per turn, as the [reply stream](./replyStream.md)'s
 `acknowledgment` frame. A model cue is delivered only before work starts
@@ -649,14 +672,19 @@ model confirms the destination alongside its tool call still gives the owner
 only the reply.
 
 ```quint
-type DraftShape = Blank | GrammarCue | AssentCue | OtherText
+type DraftShape = Blank | GrammarCue | Assent | AssentCue | OtherText
 pure def readDraft(shape: DraftShape, instruction: bool, calls: int): Draft = match shape {
-  | Blank => Silent | GrammarCue => Cue | AssentCue => if (instruction and calls > 0) Cue else Answer | OtherText => Answer
+  | Blank => Silent | GrammarCue => Cue | Assent => if (instruction and calls > 0) Cue else Answer
+  | AssentCue => if (instruction or calls == 0) Cue else Answer | OtherText => Answer
 }
 pure def lawBareAssentIsACueOnlyWithWorkAfterAnInstruction(instruction: bool, calls: int): bool =
-  (readDraft(AssentCue, instruction, calls) == Cue) iff (instruction and calls > 0)
-pure def lawBareAssentWithoutWorkIsDelivered(instruction: bool, stepsLeft: int): bool =
-  nextMove(readDraft(AssentCue, instruction, 0), 0, stepsLeft) == Deliver
+  (readDraft(Assent, instruction, calls) == Cue) iff (instruction and calls > 0)
+pure def lawBareAssentWithoutWorkIsDelivered(instruction: bool, stepsLeft: int, askedAgain: bool): bool =
+  nextMove(readDraft(Assent, instruction, 0), 0, stepsLeft, askedAgain) == Deliver
+pure def lawAssentBeforeACueIsACueWithWorkOnlyAfterAnInstruction(instruction: bool, calls: int): bool =
+  calls > 0 implies ((readDraft(AssentCue, instruction, calls) == Cue) iff instruction)
+pure def lawAssentBeforeACueWithoutWorkIsNeverDelivered(instruction: bool, stepsLeft: int, askedAgain: bool): bool =
+  nextMove(readDraft(AssentCue, instruction, 0), 0, stepsLeft, askedAgain) != Deliver
 pure def lawTheGrammarIsACueAfterAnyMessage(instruction: bool, calls: int): bool = readDraft(GrammarCue, instruction, calls) == Cue
 pure def lawNoCueOrADestinationConfirmationNeverAcknowledges(instruction: bool, calls: int, earlierCalls: int): bool =
   not(acknowledges(readDraft(Blank, instruction, calls), calls, earlierCalls)) and not(acknowledges(readDraft(OtherText, instruction, calls), calls, earlierCalls))
