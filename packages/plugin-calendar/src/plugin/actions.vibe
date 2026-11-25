@@ -9,7 +9,7 @@ import {
 import { positiveOverlap } from "../../gen/calendar__availability.effect.vibe"
 import { clockReal, instantRead, statedClockCheck, wallZone, windowFits, windowSideOff, windowStartChecked } from "../../gen/calendar__readClock.effect.vibe"
 import { scopeChoice } from "../../gen/calendar__seriesScope.effect.vibe"
-import { addDaysToLocalDate, buildUtcDateFromLocalParts, createNeedsConfirmation, createTimeZone, deviceTimeZone, getZonedDateParts, knownTimeZone, requestTimeZone, startOfCivilDay, statedYearCreate, type LocalDate, type CalendarEvent, type CalendarEventFields, type CalendarMutationOutcome, type CalendarMutationReceipt, type CalendarMutationRequest, FieldsRecord, addressWrittenInWords, clockHeldByWords, eventDayInWords, eventNamedInWords, guestIs, guestNamedInWords, windowWordsOf, zoneNamedIn, type StatedClockTime, type WindowWords, RecurrenceRecord, WriteScopeRecord, type CalendarWriteScope } from "@elizaos/plugin-calendar-client"
+import { addDaysToLocalDate, buildUtcDateFromLocalParts, createNeedsConfirmation, createTimeZone, deviceTimeZone, getZonedDateParts, knownTimeZone, requestTimeZone, startOfCivilDay, statedYearCreate, type LocalDate, type CalendarEvent, type CalendarEventFields, type CalendarMutationOutcome, type CalendarMutationReceipt, type CalendarMutationRequest, FieldsRecord, addressWrittenInWords, clockHeldByWords, clockSpelledInWords, eventDayInWords, eventNamedInWords, guestIs, guestNamedInWords, windowWordsOf, yearWordsBeside, zoneNamedIn, type StatedClockTime, type WindowWords, RecurrenceRecord, WriteScopeRecord, type CalendarWriteScope } from "@elizaos/plugin-calendar-client"
 import { fieldsSpanValid } from "../mutations/provider-port.vibe"
 import { tripEvents } from "./lookup.vibe"
 import { phoneCalendarOffered } from "./phone-turn.vibe"
@@ -256,14 +256,28 @@ type KeptTimes = { readonly start?: string; readonly end?: string }
 function unsaidClock(sent: Parameters, zone: string, text: string, kept: KeptTimes = {}): UnsaidClock | undefined {
   const endChecked = sent.statedClock === "range"
   const sentTimes = [["start", sent.startAt, kept.start], ...(endChecked ? [["end", sent.endAt, kept.end]] as const : [])] as const
-  for (const [which, time, keptTime] of sentTimes) {
+  const walls = sentTimes.map(([which, time, keptTime]) => {
     const at = time === undefined ? Number.NaN : Date.parse(time)
     const wall = Number.isFinite(at) && (keptTime === undefined || at !== Date.parse(keptTime)) ? getZonedDateParts(new Date(at), zone) : undefined
-    if (wall === undefined) continue
-    const check = statedClockCheck(sent.statedClock !== undefined, sent.statedClock === "start" || sent.statedClock === "range", clockHeldByWords({ hour: wall.hour, minute: wall.minute }, text))
+    return { which, at, clock: wall === undefined ? undefined : { hour: wall.hour, minute: wall.minute } }
+  })
+  const start = walls[0]?.clock
+  for (const { which, at, clock } of walls) {
+    if (clock === undefined) continue
+    const check = statedClockCheck(sent.statedClock !== undefined, sent.statedClock === "start" || sent.statedClock === "range", clockHeldByWords(clock, text, which === "end" ? start : undefined))
     if (check !== "ClockAsSent") return { check, which, at, zone }
   }
   return undefined
+}
+
+function yearWords(sent: Parameters, zone: string, text: string): string {
+  const times = [sent.startAt, ...(sent.statedClock === "range" ? [sent.endAt] : [])]
+  const clocks = times.flatMap((time) => {
+    const at = time === undefined ? Number.NaN : Date.parse(time)
+    const wall = Number.isFinite(at) ? getZonedDateParts(new Date(at), zone) : undefined
+    return wall === undefined ? [] : [{ hour: wall.hour, minute: wall.minute }]
+  })
+  return yearWordsBeside(clocks, text, sent.statedClock === "none" || sent.isAllDay === true)
 }
 
 function clockRefused(subaction: Subaction, unsaid: UnsaidClock, verb: string): ActionResult {
@@ -614,7 +628,7 @@ function freeTimeNote(parameters: Parameters, begin: number, finish: number, zon
   const same = (wall: WallClock) => (clock: StatedClockTime) => clock.hour === wall.hour && clock.minute === wall.minute
   const otherHalf = (wall: WallClock) => (clock: StatedClockTime) => clock.minute === wall.minute && clock.hour % 12 === wall.hour % 12
   const either = (wall: WallClock) => (clock: StatedClockTime) => clock.hour % 12 === wall.hour % 12
-  const held = (wall: WallClock) => clockHeldByWords({ hour: wall.hour, minute: wall.minute }, text) || clockHeldByWords({ hour: wall.hour, minute: wall.minute }, words.uncounted)
+  const held = (wall: WallClock) => clockSpelledInWords({ hour: wall.hour, minute: wall.minute }, text) || clockSpelledInWords({ hour: wall.hour, minute: wall.minute }, words.uncounted)
   const inPeriod = (fit: WindowSpan) => noon === undefined || (parameters.morningOnly === true ? fit.finish <= noon : parameters.afternoonOnly === true ? fit.begin >= noon : true)
   const ranges = (sameDay ? words.ranges : []).flatMap((range, index) => {
     if (!range.starts.some(either(start)) && !range.ends.some(either(end))) return []
@@ -775,7 +789,7 @@ effect function handle(host: CalendarHost, ask: CalendarAsk, sent: Parameters): 
         isAllDay: sentEvent.isAllDay ?? false, timeZone: createZone, ...(guests.attendees === undefined ? {} : { attendees: guests.attendees }),
       })
       if (Option.isNone(fields) || !fieldsSpanValid(fields.value)) return failed(subaction, "A new event needs a title and a start before its end.")
-      const stated = statedYearCreate(fields.value, text, new Date(now))
+      const stated = statedYearCreate(fields.value, yearWords(sentEvent, wall, text), new Date(now))
       if (stated === undefined) return failed(subaction, "That start time doesn't exist in the requested year and time zone.")
       const { fields: asked, move } = stated
       const recurrence = sentEvent.repeat === undefined ? Option.some(null) : decodeRecurrence({ rule: sentEvent.repeat,
