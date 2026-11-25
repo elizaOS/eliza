@@ -110,3 +110,46 @@ pure def stepSaveDoesNotReplaceLaterDraft(before: NoteView, via: str, after: Not
 pure def sometimesAdoptsReceiptTarget(s: NoteView): bool = s.committedTarget != ""
 pure def sometimesEditedDuringSave(s: NoteView): bool = s.status == Saving and s.draftToken == s.capturedToken and s.draftVersion > s.capturedVersion
 ```
+
+## Story: Recover a browser recording under its original connection
+
+> As the owner, I want to keep a stopped voice recording after I reload,
+> and to resume saving it only when my original Notes connection is current.
+
+### Browser recordings can only be recovered or bound by their recording owner
+
+The browser uses its installed audio store. A pending recording keeps the
+digest of its original connection, its folder and a stopped or claimed
+phase. A different owner cannot recover, claim, commit or discard it. A
+claimed recording waits for the canonical Notes result. A committed audio
+row belongs to the exact note named by that result, even if saving is retried.
+
+```quint
+type AudioPhase = AudioStopped | AudioClaimed | AudioCommitted
+type BrowserAudio = { owner: str, phase: AudioPhase, target: str }
+pure def browserAudioVisible(audio: BrowserAudio, connection: str): bool =
+  audio.owner != "" and connection == audio.owner and audio.phase != AudioCommitted
+pure def canClaimBrowserAudio(audio: BrowserAudio, connection: str): bool =
+  browserAudioVisible(audio, connection) and audio.phase == AudioStopped
+pure def claimBrowserAudio(audio: BrowserAudio, connection: str): BrowserAudio =
+  if (canClaimBrowserAudio(audio, connection)) { ...audio, phase: AudioClaimed } else audio
+pure def canCommitBrowserAudio(audio: BrowserAudio, connection: str, receipt: str): bool =
+  connection != "" and connection == audio.owner and receipt != "" and
+    (audio.phase == AudioClaimed or (audio.phase == AudioCommitted and receipt == audio.target))
+pure def commitBrowserAudio(audio: BrowserAudio, connection: str, receipt: str): BrowserAudio =
+  if (canCommitBrowserAudio(audio, connection, receipt)) { ...audio, phase: AudioCommitted, target: receipt } else audio
+pure def canDiscardBrowserAudio(audio: BrowserAudio, connection: str): bool =
+  browserAudioVisible(audio, connection) and audio.phase == AudioStopped
+pure val audioValues = Set(
+  { owner: "owner-1", phase: AudioStopped, target: "recording-1" },
+  { owner: "owner-1", phase: AudioClaimed, target: "recording-1" },
+  { owner: "owner-1", phase: AudioCommitted, target: "note-1" })
+pure val connectionValues = Set("", "owner-1", "owner-2")
+pure val receiptValues = Set("", "note-1", "note-2")
+pure def lawBrowserAudioStaysWithItsOwner(audio: BrowserAudio, connection: str, receipt: str): bool =
+  connection != audio.owner implies
+    (not(browserAudioVisible(audio, connection)) and not(canDiscardBrowserAudio(audio, connection)) and
+      claimBrowserAudio(audio, connection) == audio and commitBrowserAudio(audio, connection, receipt) == audio)
+pure def lawBrowserCommittedTargetStays(audio: BrowserAudio, connection: str, receipt: str): bool =
+  audio.phase == AudioCommitted implies commitBrowserAudio(audio, connection, receipt) == audio
+```

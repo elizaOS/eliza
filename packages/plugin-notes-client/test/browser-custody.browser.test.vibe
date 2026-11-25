@@ -1,0 +1,68 @@
+import { describe, expect, it } from "@effect/vitest"
+import { createNotesAudioStore } from "../src/browser-audio.vibe"
+import { createBrowserRecordingJournal } from "../src/browser-recording-journal.vibe"
+
+module browser {
+  /** @throws {never} */
+  export const unique = (): string => crypto.randomUUID()
+  /** @throws {never} */
+  export const fragment = (units: number[]): Blob => new Blob([Uint8Array.from(units)], { type: "audio/webm" })
+  /** @throws {never} */
+  export function seedInstalledAudio(database: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const opened = indexedDB.open(database, 1)
+      opened.onupgradeneeded = () => opened.result.createObjectStore("audio", { keyPath: "audioId" })
+      opened.onerror = () => reject(opened.error)
+      opened.onsuccess = () => {
+        const tx = opened.result.transaction("audio", "readwrite")
+        tx.oncomplete = () => { opened.result.close(); resolve() }
+        tx.onabort = () => { opened.result.close(); reject(tx.error) }
+        tx.objectStore("audio").add({ audioId: "earlier-capture", noteId: "earlier-note", durationMs: 1400,
+          bytes: Uint8Array.from([7, 9, 11]).buffer, mimeType: "audio/webm", transcript: "", createdAt: 1 })
+      }
+    })
+  }
+  /** @throws {never} */
+  export async function bytes(clip: Blob): Promise<number[]> {
+    return Array.from(new Uint8Array(await clip.arrayBuffer()))
+  }
+}
+import { bytes, fragment, seedInstalledAudio, unique } from browser
+
+describe('Browser Notes custody (spec/notes/client.md, "Story: Recover a browser recording under its original connection")', () => {
+  it("Recovers durable parts and gives their exact note the same bytes once", async () => {
+    const owner = "a".repeat(64)
+    const former = "b".repeat(64)
+    const id = unique()
+    const capture = "capture-" + id
+    const audio = { databaseName: "audio-" + id }
+    const writer = createBrowserRecordingJournal(capture)
+    await writer.start({ ownerDigest: owner, recordingId: id, folderId: "f-interview", startedAt: 1, mimeType: "audio/webm" })
+    await writer.append(id, owner, 0, 1200, fragment([4, 8]))
+    const renewed = createBrowserRecordingJournal(capture)
+    expect(await renewed.latest(former)).toBeUndefined()
+    await expect(renewed.append(id, former, 1, 2400, fragment([6]))).rejects.toThrow("Recording owner changed")
+    await expect(renewed.append(id, owner, 0, 2400, fragment([6]))).rejects.toThrow("Recording history changed")
+    const clip = await renewed.clip(id, owner)
+    await seedInstalledAudio(audio.databaseName)
+    const store = createNotesAudioStore(audio)
+    const earlier = await store.audioRecord("earlier-capture")
+    expect({ note: earlier.noteId, duration: earlier.durationMs, data: await bytes(earlier.blob) })
+      .toEqual({ note: "earlier-note", duration: 1400, data: [7, 9, 11] })
+    await store.retainPendingAudio(id, { ownerDigest: owner, folderId: "f-interview" }, clip, "A short recording")
+    const recovered = createNotesAudioStore(audio)
+    expect(await recovered.pendingAudio(former)).toEqual([])
+    expect((await recovered.pendingAudio(owner)).map((row) => [row.audioId, row.durationMs, row.recordingSave?.folderId]))
+      .toEqual([[id, 1200, "f-interview"]])
+    expect(await recovered.claimPendingAudio(id, owner)).toBe(true)
+    await expect(recovered.commitPendingAudio(id, former, "note-1", "")).rejects.toThrow("Recording save owner changed")
+    await expect(recovered.discardPendingAudio(id, owner)).rejects.toThrow("Check Notes before discarding")
+    const receipt = await recovered.commitPendingAudio(id, owner, "note-1", "A short recording")
+    expect(await recovered.commitPendingAudio(id, owner, "note-1", "A short recording")).toEqual(receipt)
+    await expect(recovered.commitPendingAudio(id, owner, "note-2", "")).rejects.toThrow("Recording save owner changed")
+    await renewed.discard(id, owner)
+    const saved = await recovered.audioRecord(id)
+    expect({ parts: await renewed.latest(owner), pending: await recovered.pendingAudio(owner), note: saved.noteId, audio: await bytes(saved.blob) })
+      .toEqual({ parts: undefined, pending: [], note: "note-1", audio: [4, 8] })
+  })
+})
