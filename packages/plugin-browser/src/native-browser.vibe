@@ -189,7 +189,7 @@ export function historyAsCommand(runtime: IAgentRuntime, message: Memory): boole
 
 export const browserAction: Action = {
   name: "BROWSER",
-  description: `Control the page that is showing in the requesting device's own browser. Only these commands are available: ${NATIVE_HISTORY_SUBACTIONS.join(", ")}. Do not offer any other browser command through this tool. It never opens or shows Browser: showing Browser is VIEWS. Accepted dispatch does not prove website completion.`,
+  description: `Device browser history only (${NATIVE_HISTORY_SUBACTIONS.join(", ")}; no other commands). Never opens/shows Browser (use VIEWS). Dispatch does not prove completion.`,
   similes: [],
   examples: [],
   roleGate: { minRole: "OWNER" },
@@ -197,12 +197,13 @@ export const browserAction: Action = {
   parameters: [{
     name: "action",
     required: true,
-    description: "Native browser command",
+    description: "History command.",
     schema: { type: "string", enum: [...NATIVE_HISTORY_SUBACTIONS] },
   }, {
     name: "ownerAskedReload",
     required: false,
-    description: "For reload only: true when the owner's current message itself asks to reload, refresh or reopen this page now. Leave it out for a mention, a question about reloading, a reload the owner says they will do themselves, a request they took back, or a bare yes.",
+    subactions: ["reload"],
+    description: "Reload only: true if message asks to reload/refresh/reopen now. Omit for mentions, questions, self-reloads, retractions, bare yes.",
     schema: { type: "boolean" },
   }],
   handler: (runtime, message, _state, options) => runHistory(runtime, message, options),

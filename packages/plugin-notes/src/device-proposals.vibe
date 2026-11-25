@@ -88,63 +88,63 @@ const shaped = (type: string, properties: Record<string, ActionParameterSchema>,
 })
 const target: ActionParameterSchema = {
   type: "object", additionalProperties: false, required: ["sourceId", "sourceRevision", "noteId", "revision"],
-  description: "The exact target of the note open in Notes on the phone, from its selection.",
+  description: "Exact target of the open phone note.",
   properties: { sourceId: text, sourceRevision: text, noteId: text, revision: text },
 }
-const spoken = (what: string): ActionParameterSchema => ({ type: "string", description: `${what} exactly as the owner said it in this message. Never an ID or revision.` })
-const folder: ActionParameterSchema = { type: "string", description: "A folder name exactly as the phone listed it, at most 40 characters" }
+const spoken = (what: string): ActionParameterSchema => ({ type: "string", description: `${what} verbatim from owner's message (never ID/revision).` })
+const folder: ActionParameterSchema = { type: "string", description: "Exact listed folder name (<=40 chars)." }
 const kind: ActionParameterSchema = { type: "string", enum: ["text", "list", "voice", "link"] }
-const filterText: ActionParameterSchema = { type: "string", description: "At most 200 characters" }
+const filterText: ActionParameterSchema = { type: "string", description: "<=200 chars." }
 const noFields: ActionParameterSchema = {
   type: "object", additionalProperties: false, required: ["title", "body"],
-  description: "Always empty: the change is prepared from the note the owner shares.",
+  description: "Always empty; change is prepared after note is shared.",
   properties: { title: { type: "string", enum: [""] }, body: { type: "string", enum: [""] } },
 }
 
-const editGuidance = "To change the note open in Notes, propose notes_update with its exact target and an empty title and body; to change a phone note by the name the owner said, propose notes_named with action update, that name, and an empty title and body. The phone shares the note first; once the owner shares it, the requested change is prepared from its current text for a separate review. notes_read_selected only answers what the open note says. Never write replacement fields, never ask the owner to repeat the edit, and never report a change before its review."
-const organizeGuidance = ["notes_filter filters the phone Notes list and returns no note content; it runs directly only when the owner's current message asked for it. notes_move, notes_folder_create and notes_restore are reviewed by the owner; notes_move takes null as its folder for no folder, and notes_restore takes the noteId of a note a deletion in this conversation moved to Recently deleted. Never guess note IDs, revisions or folder names."]
+const editGuidance = "Edit open note: notes_update(target, empty title/body); by name: notes_named(action=update, name, empty title/body). Phone shares first, then prepares edit review. notes_read_selected only reads. Never supply replacement fields, ask to repeat the edit, or report changes before review."
+const organizeGuidance = ["notes_filter filters phone Notes (no content returned; runs directly only if asked now). notes_move (folder=null removes), notes_folder_create, and notes_restore require owner review; notes_restore uses noteId deleted earlier in this conversation. Never guess IDs/revisions/folders."]
 
 const forms: readonly ProposalForm[] = [
   form(["notes_query"], shaped("notes_query", {
     query: { anyOf: [
-      { type: "object", additionalProperties: false, required: ["kind", "text"], properties: { kind: { type: "string", enum: ["title"] }, text: spoken("The note's title") } },
+      { type: "object", additionalProperties: false, required: ["kind", "text"], properties: { kind: { type: "string", enum: ["title"] }, text: spoken("Title") } },
       { type: "object", additionalProperties: false, required: ["kind", "by"], properties: { kind: { type: "string", enum: ["latest"] }, by: { type: "string", enum: ["created", "updated"] } } },
     ] },
-    intent: { type: "string", enum: lookupIntents, description: "What the owner's message asks to do with the note, whatever words it uses: read to answer from it, edit to change it, delete to delete it." },
-  }, ["query"]), ["notes_query finds one phone note from Home or Notes by its title as the owner said it, or the latest created or updated note. Candidates stay on the phone; the owner confirms exactly one note to share. Unknown dates or ties leave the choice to the owner, and an owner-choice-uncertain basis does not prove latest. Always set intent. Once the owner shares the note, a delete intent offers that exact note's deletion for its own review, and an edit intent of a title lookup prepares the requested change for its own review; a lookup is never deleted or changed otherwise. Never substitute backend Notes.", editGuidance],
+    intent: { type: "string", enum: lookupIntents, description: "Owner's intent for the note: read, edit, or delete." },
+  }, ["query"]), ["notes_query finds one phone note from Home/Notes by owner-spoken title or latest created/updated; owner confirms one note to share (unknown dates/ties stay owner-choice-uncertain, not proven latest). Always set intent: delete/edit (title lookup) queue a separate review once shared; never change otherwise or substitute backend Notes.", editGuidance],
   "ResolvedByPhone", () => [{ type: "notes_query", query: { kind: "latest", by: "created" } }]),
   form(["notes_search"], shaped("notes_search", {
     query: { anyOf: [
-      { type: "object", additionalProperties: false, required: ["kind", "text"], properties: { kind: { type: "string", enum: ["content"] }, text: spoken("The words to find") } },
+      { type: "object", additionalProperties: false, required: ["kind", "text"], properties: { kind: { type: "string", enum: ["content"] }, text: spoken("Search words") } },
       { type: "object", additionalProperties: false, required: ["kind", "limit"], properties: { kind: { type: "string", enum: ["titles"] }, limit: { type: "integer", minimum: 1, maximum: 50 } } },
     ] },
-  }), ["Content search such as find my note about X uses notes_search with query kind content and the owner's own words; a list of note titles uses kind titles. The owner chooses the shared note or reviews the exact titles first."],
+  }), ["notes_search: kind=content (owner's words) finds notes about a topic; kind=titles lists titles. Owner chooses/reviews before sharing."],
   "ResolvedByPhone", () => [{ type: "notes_search", query: { kind: "titles", limit: 1 } }]),
-  form(["notes_named"], shaped("notes_named", { action: { type: "string", enum: ["delete"] }, name: spoken("The note's name") }),
-    ["To delete a phone note the owner named from Home or Notes, use notes_named with action delete and the name; the phone finds the matching note, and the owner chooses and approves the exact one."],
+  form(["notes_named"], shaped("notes_named", { action: { type: "string", enum: ["delete"] }, name: spoken("Note name") }),
+    ["Delete a named phone note from Home/Notes via notes_named(action=delete, name); owner selects & approves."],
     "ResolvedByPhone", () => [{ type: "notes_named", action: "delete", name: "note" }]),
-  form(["notes_named"], shaped("notes_named", { action: { type: "string", enum: ["update"] }, name: spoken("The note's name"), fields: noFields }), [editGuidance],
+  form(["notes_named"], shaped("notes_named", { action: { type: "string", enum: ["update"] }, name: spoken("Note name"), fields: noFields }), [editGuidance],
     "ResolvedByPhone", () => [{ type: "notes_named", action: "delete", name: "note" }]),
-  form(["notes_read_selected"], shaped("notes_read_selected", { target }), ["notes_read_selected shares the note open in Notes on the phone after the owner approves sharing it.", editGuidance],
+  form(["notes_read_selected"], shaped("notes_read_selected", { target }), ["notes_read_selected shares the open phone note after approval.", editGuidance],
     "ExactPhoneNote", (open) => [{ type: "notes_read_selected", target: open }]),
   form(["notes_update"], shaped("notes_update", { target, fields: noFields }), [editGuidance],
     "ExactPhoneNote", (open) => [{ type: "notes_read_selected", target: open }, { type: "notes_update", target: open, fields: { title: "", body: "" } }]),
-  form(["notes_delete"], shaped("notes_delete", { target }), ["notes_delete moves the note open in Notes on the phone to Recently deleted after the owner confirms on the unlocked phone."],
+  form(["notes_delete"], shaped("notes_delete", { target }), ["notes_delete trashes the open phone note after unlocked-phone confirmation."],
     "ExactPhoneNote", (open) => [{ type: "notes_delete", target: open }]),
   form(["notes_move"], shaped("notes_move", { target, folder: { anyOf: [folder, { type: "null" }] } }), organizeGuidance,
     "ExactPhoneNote", (open) => [{ type: "notes_move", target: open, folder: null }]),
   form(["notes_filter"], shaped("notes_filter", { text: filterText, folder, kind }, []), organizeGuidance, "ByCapability", () => [{ type: "notes_filter", kind: "text" }]),
-  form(["notes_folder_create"], shaped("notes_folder_create", { name: spoken("The new folder's name, at most 40 characters,") }), organizeGuidance, "ByCapability", () => [{ type: "notes_folder_create", name: "Notes" }]),
+  form(["notes_folder_create"], shaped("notes_folder_create", { name: spoken("New folder name (<=40 chars)") }), organizeGuidance, "ByCapability", () => [{ type: "notes_folder_create", name: "Notes" }]),
   form(["notes_restore"], shaped("notes_restore", { noteId: text }), organizeGuidance, "ByCapability", () => [{ type: "notes_restore", noteId: "note" }]),
   form(["notes_record"], shaped("notes_record", { action: { type: "string", enum: ["start", "stop"] } }),
-    ["notes_record starts or stops a voice note in the open Notes view. It runs directly only when the owner's current message asked for it."],
+    ["notes_record starts/stops voice recording in open Notes (runs directly if asked now)."],
     "ByCapability", () => [{ type: "notes_record", action: "start" }]),
   form(["notes_list_filter"], shaped("notes_list_filter", { text: filterText, kind }, []),
-    ["notes_list_filter filters the open canonical Notes list by text and/or kind. It returns no note content and cannot change a record or filter by folder."],
+    ["notes_list_filter filters open canonical Notes list by text/kind (no content, edits, or folder)."],
     "CanonicalListOnly", () => [{ type: "notes_list_filter", kind: "text" }]),
 ]
 
-const familyGuidance = "Phone-native Notes use these device reviews. A lookup or named note the phone resolves itself works from Home or the Notes view; an operation on one exact note needs that note open in Notes on the phone, so ask the owner to open it when none is. Other Notes requests, and any turn with a canonical Notes selection, use the NOTES actions; a phone capability never redirects a canonical note."
+const familyGuidance = "Phone-native Notes use device reviews: lookups/named ops work from Home or Notes; exact-note ops need the note open in Notes (ask owner to open it if not). Canonical Notes/selections use NOTES_* actions—never redirect."
 
 const refused = (code: string, forModel: string, forOwner: string): Grounding => ({ kind: "Refused", code, forModel, forOwner })
 const grounded = (operation: DeviceOperation): Grounding => ({ kind: "Grounded", operation })

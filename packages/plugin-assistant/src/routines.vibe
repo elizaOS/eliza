@@ -368,15 +368,15 @@ export effect function changeRoutine(input: unknown, messageId: string) {
 
 export const ownerRoutinesAction: Action = {
   name: routineActionName,
-  description: "The owner's recurring habits and routines, such as stretching every afternoon or brushing teeth at 08:00 and 21:00: create one with its daily windows or exact times, every day or on named weekdays, pause, resume, archive or delete one, list them, or complete, skip, snooze, mute or unmute the one showing now. A change names the routine by its title or id and applies only when exactly one routine matches. A one-time reminder is OWNER_REMINDERS.",
+  description: "Owner's recurring habits/routines (use OWNER_REMINDERS for one-time reminders). Create with windows or HH:MM times; changes match 1 routine by title or id.",
   similes: ["ROUTINES", "HABITS", "CREATE_ROUTINE", "ADD_HABIT", "PAUSE_ROUTINE", "DELETE_ROUTINE", "COMPLETE_ROUTINE"],
   parameters: [
-    { name: "op", required: true, description: "create, pause, resume, archive, delete, list, complete, skip, snooze, mute or unmute.", schema: { type: "string", enum: ["create", "pause", "resume", "archive", "delete", "list", "complete", "skip", "snooze", "mute", "unmute"] } },
-    { name: "title", required: false, description: "For create: the routine's title.", schema: { type: "string" } },
-    { name: "windows", required: false, description: "For create: the windows it shows in, from morning (9:00), afternoon (15:00), evening (18:00) and night (21:00).", schema: { type: "array" } },
-    { name: "times", required: false, description: "For create: exact HH:MM times on the owner's clock it shows at, when the owner named times.", schema: { type: "array" } },
-    { name: "days", required: false, description: "For create: the weekdays it comes on, from mon, tue, wed, thu, fri, sat and sun, only when the owner named days; every day when left out.", schema: { type: "array" } },
-    { name: "target", required: false, description: "For any other op but list: the routine's title or id.", schema: { type: "string" } },
+    { name: "op", required: true, description: "Op.", schema: { type: "string", enum: ["create", "pause", "resume", "archive", "delete", "list", "complete", "skip", "snooze", "mute", "unmute"] } },
+    { name: "title", required: false, description: "create: title.", schema: { type: "string" } },
+    { name: "windows", required: false, description: "create: morning(09:00), afternoon(15:00), evening(18:00), night(21:00).", schema: { type: "array" } },
+    { name: "times", required: false, description: "create: HH:MM (owner clock) if named.", schema: { type: "array" } },
+    { name: "days", required: false, description: "create: mon..sun if named (default daily).", schema: { type: "array" } },
+    { name: "target", required: false, description: "Non-create/list: title or id.", schema: { type: "string" } },
   ],
   tags: ["domain:routines", "capability:write", "effect:receipt-required"],
   roleGate: { minRole: "OWNER" },

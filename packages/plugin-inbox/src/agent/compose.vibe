@@ -61,12 +61,12 @@ export function emailDraftAnswer(message: Memory, options: unknown): ActionResul
 
 export const inboxComposeAction: Action = {
   name: inboxComposeActionName,
-  description: "Draft a new email for the owner to review and send from their phone's Inbox composer: explicit recipient addresses, a subject and the text. It sends nothing; replies, copies, attachments and scheduled sends are made in Inbox.",
+  description: "Open a new email draft in phone's Inbox composer for owner review; never sends. Replies, CC/BCC, attachments & scheduled sends happen in Inbox.",
   similes: ["DRAFT_EMAIL", "WRITE_EMAIL", "COMPOSE_EMAIL"],
   parameters: [
-    { name: "to", required: true, schema: { type: "array", items: { type: "string" } }, description: "Recipient email addresses." },
-    { name: "subject", required: false, schema: { type: "string" }, description: "The subject line." },
-    { name: "body", required: true, schema: { type: "string" }, description: "The email text, written as the owner." },
+    { name: "to", required: true, schema: { type: "array", items: { type: "string" } }, description: "Explicit recipient emails." },
+    { name: "subject", required: false, schema: { type: "string" }, description: "" },
+    { name: "body", required: true, schema: { type: "string" }, description: "Body written as owner." },
   ],
   roleGate: { minRole: "OWNER" },
   disclosureGate: OWNER_EXCLUSIVE_DISCLOSURE_GATE,

@@ -145,8 +145,10 @@ pure val fundingValues: Set[Funding] = Set({ allowanceAvailable: 0, creditAvaila
 
 The output cap is the output the request allows: `max_completion_tokens`,
 else `max_tokens`, else the selected upstream model’s configured maximum
-generation length. The provider receives that cap for both whole replies and
-streams. The quote counts a token per four input characters, rounded up, none
+generation length. The provider receives an output cap only when the caller
+explicitly asked for `max_completion_tokens` or `max_tokens`; an uncapped
+request omits both fields so the model's full native output length applies
+without a cloud-imposed cap. The quote counts a token per four input characters, rounded up, none
 of them as read from a prompt cache, and the output it holds: the whole cap
 when the caller set one, and for a call that set none the smaller of the cap
 and `uncappedHoldTokens` (500, develop's `DEFAULT_OUTPUT_TOKENS`). An uncapped
@@ -172,13 +174,15 @@ pure def quoteCounts(chars: CharCount, outputTokens: int): Mo::TokenCounts =
 pure val uncappedHoldTokens: int = 500
 pure def callerCapped(b: ChatBody): bool = b.maxCompletionTokens != NoAsk or b.maxTokens != NoAsk
 pure def heldOutput(capped: bool, outputCap: int): int = if (capped) outputCap else M::minOf(outputCap, uncappedHoldTokens)
-pure def lawAnUncappedCallHoldsAtMostItsEstimateAndSendsTheModelCap(ingress: R::Window, auth: RA::Admission, policy: E::PolicyAnswer, planWindow: R::Window, body: ChatBody, catalog: Catalog, funding: Funding): bool = {
+pure def wireOutputCap(capped: bool, outputCap: int): TokenAsk = if (capped) AskFor({ tokens: outputCap }) else NoAsk
+pure def lawAnUncappedCallHoldsAtMostItsEstimateAndOmitsUpstreamCap(ingress: R::Window, auth: RA::Admission, policy: E::PolicyAnswer, planWindow: R::Window, body: ChatBody, catalog: Catalog, funding: Funding): bool = {
   val a = arrivalOf(ingress, auth, policy, planWindow, body)
   val result = admitCompletion(a, catalog, funding)
   match result {
     | Admit(x) => x.call.counts.outputTokens <= x.call.outputCap
-        and (callerCapped(body) implies x.call.counts.outputTokens == x.call.outputCap)
+        and (callerCapped(body) implies (x.call.counts.outputTokens == x.call.outputCap and wireOutputCap(true, x.call.outputCap) == AskFor({ tokens: x.call.outputCap })))
         and (not(callerCapped(body)) implies (x.call.counts.outputTokens <= uncappedHoldTokens
+          and wireOutputCap(false, x.call.outputCap) == NoAsk
           and outputLimit(NoAsk, NoAsk, x.call.model.defaultMaxTokens) == AskFor({ tokens: x.call.outputCap })))
     | RefusedAt(r) => true
   }

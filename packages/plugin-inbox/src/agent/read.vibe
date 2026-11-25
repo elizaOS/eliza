@@ -153,11 +153,11 @@ async function handle(runtime: IAgentRuntime, _message: Memory, options: unknown
 
 export const inboxReadAction: Action = {
   name: inboxReadActionName,
-  description: "Read or search the owner's connected Gmail mailbox: a fresh, bounded list of messages (sender, subject, time, unread) for the connected account only. Never sends or changes mail.",
+  description: "Fresh bounded read/search of owner's connected Gmail (sender, subject, time, unread); connected account only. Read-only.",
   similes: ["READ_EMAIL", "CHECK_EMAIL", "SEARCH_EMAIL", "LIST_INBOX"],
   parameters: [
-    { name: "limit", required: true, schema: { type: "number" }, description: "How many messages to read, from 1 to 50." },
-    { name: "query", required: false, schema: { type: "string" }, description: 'A Gmail search such as "in:inbox", "in:sent", "is:unread" or "from:ana@example.com". Defaults to the Inbox.' },
+    { name: "limit", required: true, schema: { type: "number" }, description: "Max messages (1-50)." },
+    { name: "query", required: false, schema: { type: "string" }, description: "Gmail search (e.g. in:sent, is:unread, from:a@b.com); default in:inbox." },
   ],
   roleGate: { minRole: "OWNER" },
   disclosureGate: OWNER_EXCLUSIVE_DISCLOSURE_GATE,

@@ -16,24 +16,24 @@ type CameraCapture = Extract<DeviceOperation, { readonly type: "camera_capture_p
 
 const text = (description: string): ActionParameterSchema => ({ type: "string", description })
 const libraryIds = (maximum: number): ActionParameterSchema => ({
-  type: "array", items: { type: "string" }, description: `1 to ${maximum} distinct library ids the phone returned; never guessed`,
+  type: "array", items: { type: "string" }, description: `1-${maximum} distinct phone-returned library ids`,
 })
-const openItem: ActionParameterSchema = { type: "boolean", enum: [true], description: "true: the item the owner has open in the Photos viewer" }
+const openItem: ActionParameterSchema = { type: "boolean", enum: [true], description: "true = open item in Photos viewer" }
 const epoch = (description: string): ActionParameterSchema => ({ type: "integer", description })
 
 function branch(type: DeviceOperationType, required: readonly string[], properties: Readonly<Record<string, ActionParameterSchema>>): ActionParameterSchema {
   return { type: "object", additionalProperties: false, required: ["type", ...required], properties: { type: { type: "string", enum: [type] }, ...properties } }
 }
 
-const cameraGuidance = "camera_capture_photo takes one still image and saves it in Photos; it is how a request to take a picture, photo or selfie is done. Opening the Camera view with VIEWS never takes a photo, and the owner is never asked to press the shutter instead. The photo is taken on the visible Camera viewfinder: when another view is showing, the requesting phone opens Camera itself before it takes a photo the owner asked for, so no VIEWS step is needed; if you do show Camera with VIEWS in the same turn, propose camera_capture_photo as the last step. It sends no pixels to the model. A saved-photo receipt proves the capture."
-const libraryIdGuidance = "The saved-photo receipt also has libraryId, the photo's library id. When Photos operations are offered, use that id with them for the photo just taken."
+const cameraGuidance = "camera_capture_photo takes one still image and saves it to Photos (how picture/photo/selfie requests are done; VIEWS Camera never shoots, never ask owner to press shutter). Phone opens Camera itself if needed—no VIEWS step needed (if using VIEWS Camera too, propose capture last). No pixels sent; saved-photo receipt proves capture."
+const libraryIdGuidance = "saved-photo receipt includes libraryId; use it with offered Photos ops for that photo."
 const libraryGuidance = [
-  "photo_library_search lists items Android lets the phone read and returns their id, revision, kind, dates, size in pixels and video length only: no file or album names, no place, no pixels; it takes no words, so find items by date, kind or favorite. photo_library_inspect returns the same details for one item. photo_library_select selects items in Photos and runs directly only when the owner's current message asked for it. photo_library_review opens a review the owner confirms in the phone and then in Android; review_opened proves no change and no share.",
+  "photo_library_search lists readable items (id, revision, kind, dates, pixels, video length only—no names/places/pixels/text search; filter by date/kind/favorite). photo_library_inspect returns one item. photo_library_select selects in Photos (direct only if asked). photo_library_review opens phone+Android review (review_opened proves no change/share).",
   returnedIdsGuidance,
 ]
-const mapsGuidance = "maps_read_selected requires the exact current observation selectedObject kind, id and revision of the place or route selected in Maps; never infer coordinates from the opaque identifier."
-const noteGuidance = "create_note creates a text note in the phone's own Notes. It can be proposed only on a message whose Notes screen selects the phone's own Notes; on any other message a request to make or save a note uses the canonical NOTES service."
-const canonicalNoteGuidance = "This phone offers no note of its own to chat: a request to make or save a note uses the canonical NOTES service."
+const mapsGuidance = "maps_read_selected requires exact current observation selectedObject {kind, id, revision}; never infer coords from id."
+const noteGuidance = "create_note writes to phone Notes only when Notes screen selects phone Notes; on any other message a request to make or save a note uses the canonical NOTES service."
+const canonicalNoteGuidance = "Phone offers no local notes: use canonical NOTES service to make/save notes."
 const viewsLead = "Open app views with VIEWS (mode show) on this message."
 const viewsUnavailable = "VIEWS cannot show a view on this message."
 
@@ -80,7 +80,7 @@ function namedCapture(choice: "FrontCamera" | "BackCamera"): ProposalForm {
   return {
     types: ["camera_capture_photo"],
     schema: branch("camera_capture_photo", ["lens"], { lens: { type: "string", enum: [lens] } }),
-    guidance: ["Name lens front for a selfie or a request for the front camera, and lens back for the back, rear or main camera. Name no lens when the owner named no camera: the photo uses the camera already showing. When the owner asked for both cameras at once, ask which one they want."],
+    guidance: ["Set lens=front for selfie/front camera, lens=back for back/rear/main; omit lens if unspecified (uses current). If both requested, ask which one."],
     offered: offersLens,
     now: {
       unavailable: "a named camera is captured only in the owner's own chat",
@@ -121,18 +121,18 @@ const forms: readonly ProposalForm[] = [
   {
     types: ["photo_library_search"], guidance: libraryGuidance, offered: needed("PhotoLibrarySearch"),
     schema: branch("photo_library_search", [], {
-      kind: { type: "string", enum: ["image", "video", "all"] }, from: epoch("Taken from, epoch milliseconds"), to: epoch("Taken until, epoch milliseconds"),
+      kind: { type: "string", enum: ["image", "video", "all"] }, from: epoch("Taken from (epoch ms)"), to: epoch("Taken until (epoch ms)"),
       favorites: { type: "boolean" }, limit: { type: "integer", minimum: 1, maximum: 50 },
     }),
   },
-  { types: ["photo_library_inspect"], guidance: libraryGuidance, offered: needed("PhotoLibraryInspect"), schema: branch("photo_library_inspect", ["id"], { id: text("One library id the phone returned") }) },
+  { types: ["photo_library_inspect"], guidance: libraryGuidance, offered: needed("PhotoLibraryInspect"), schema: branch("photo_library_inspect", ["id"], { id: text("Phone-returned library id") }) },
   { types: ["photo_library_select"], guidance: libraryGuidance, offered: needed("PhotoLibrarySelect"), schema: branch("photo_library_select", ["ids"], { ids: libraryIds(20) }) },
   {
     types: ["photo_library_review"], guidance: libraryGuidance, offered: needed("PhotoLibraryReview"),
     schema: branch("photo_library_review", ["action", "items"], {
       action: { type: "string", enum: ["trash", "share", "favorite", "unfavorite"] },
       items: {
-        type: "array", description: "1 to 20 items, each an id and revision the phone returned",
+        type: "array", description: "1-20 phone-returned {id, revision} items",
         items: { type: "object", additionalProperties: false, required: ["id", "revision"], properties: { id: { type: "string" }, revision: { type: "string" } } },
       },
     }),
@@ -140,24 +140,24 @@ const forms: readonly ProposalForm[] = [
   {
     types: ["photos_filter"], offered: needed("PhotosFilter"),
     schema: branch("photos_filter", [], {
-      from: epoch("Start, epoch milliseconds"), to: epoch("End, epoch milliseconds"), kind: { type: "string", enum: ["image", "video"] },
-      favorite: { type: "boolean" }, album: text("One of favorites, videos, camera, screenshots, or custom:<album id>"), text: text("At most 80 characters"),
+      from: epoch("Start (epoch ms)"), to: epoch("End (epoch ms)"), kind: { type: "string", enum: ["image", "video"] },
+      favorite: { type: "boolean" }, album: text("favorites|videos|camera|screenshots|custom:<id>"), text: text("<=80 chars"),
     }),
   },
-  { types: ["photos_open"], offered: needed("PhotosOpen"), schema: branch("photos_open", ["id"], { id: text("One library id") }) },
+  { types: ["photos_open"], offered: needed("PhotosOpen"), schema: branch("photos_open", ["id"], { id: text("Library id") }) },
   {
     types: ["photos_album_create"], offered: needed("PhotosAlbumCreate"),
-    schema: branch("photos_album_create", ["name", "ids"], { name: text("Album name, 1 to 80 characters"), ids: libraryIds(200) }),
+    schema: branch("photos_album_create", ["name", "ids"], { name: text("Album name (1-80 chars)"), ids: libraryIds(200) }),
   },
   {
     types: ["photos_album_create"], offered: needed("PhotosAlbumCreate", true),
-    schema: branch("photos_album_create", ["name", "selected"], { name: text("Album name, 1 to 80 characters"), selected: openItem }),
+    schema: branch("photos_album_create", ["name", "selected"], { name: text("Album name (1-80 chars)"), selected: openItem }),
   },
   { types: ["photos_share"], offered: needed("PhotosShare"), schema: branch("photos_share", ["ids"], { ids: libraryIds(100) }) },
   { types: ["photos_share"], offered: needed("PhotosShare", true), schema: branch("photos_share", ["selected"], { selected: openItem }) },
   {
     types: ["create_note"], guidance: [noteGuidance], offered: needed("CreateNote"), now: noteNow,
-    schema: branch("create_note", ["title", "body"], { title: text("The note's title, 1 to 256 characters"), body: text("The note's text, at most 32000 characters") }),
+    schema: branch("create_note", ["title", "body"], { title: text("Title (1-256 chars)"), body: text("Body (<=32000 chars)") }),
   },
   { types: ["open_view"], offered: needed("OpenView"), now: openViewNow, schema: branch("open_view", ["view"], { view: { type: "string", enum: [...supportedViews] } }) },
   {
@@ -217,7 +217,7 @@ effect function openViewGrounding(view: string, operation: DeviceOperation, turn
 function profileGuidance(device: NegotiatedDevice): readonly string[] {
   const wire = device.viewProfile === undefined ? null : viewProfileWire(device.viewProfile)
   if (wire === null || !needed("OpenView")(device)) return []
-  return [`The authenticated installation enabled-view profile allows open_view only for [${wire.views.map((view) => `"${view}"`).join(",")}]. Do not offer or propose another view. This subset is not approval to execute.`]
+  return [`Enabled views allows open_view only for [${wire.views.map((view) => `"${view}"`).join(",")}]; propose no other view (not execution approval).`]
 }
 
 const types: readonly DeviceOperationType[] = [...new Set(forms.flatMap((form) => form.types))]
