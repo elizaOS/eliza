@@ -10,7 +10,7 @@ import {
   createNotesClient, noteScheduleText, recordNoteOriginFor, authoredNoteText, noteShareText, parseNoteFormat, decodeNotesOrganizeOperation, findNoteFolder, isNotesOrganizeType, notesOrganizeContextAllowed, notesOrganizeOffered, notesOrganizeRunsDirectly, readNoteFolders, noteLimits, type NotesOrganizeType, NotesReadRefused, selectedNotes, StoredDocument, type NotesAuthority, type NotesClaim, type NotesOwner, type NotesReadOperation, type NotesReadPorts, type NotesTarget, type StickyNote,
 } from "@elizaos/plugin-notes-client"
 import { ownerRequestText } from "../src/lookup.vibe"
-import { notesCollection, type NotesFailure, type NotesHost, type VerifyRecordingCleanup } from "../src/service.vibe"
+import { notesCollection, notesServiceClass, type NotesFailure, type NotesHost, type VerifyRecordingCleanup } from "../src/service.vibe"
 import type { NotesStorage } from "../src/store.vibe"
 
 const day = 86_400_000
@@ -108,7 +108,7 @@ function action(plugin: ReturnType<typeof notesPlugin>, name: string, runtime?: 
 
 const voice = (id: string, audioId: string) => ({ kind: "voice", data: { recordingId: audioId, audio: { audioId }, lines: [{ s: "speaker-1", t: `Said in ${id}` }] } })
 
-it.effect('Keep notes as one collection edited only on the owner\'s words (spec/notes/records.md, "Story: Keep my notes as one collection the agent edits only as I asked"; spec/notes/records.md, "A checklist the owner asks for is a new note holding the owner\'s items"; spec/notes/records.md, "A read by a title no saved note has cites no other note and asks which one"; spec/notes/records.md, "A Notes write runs when the model calls a write action, and a read action never writes"; spec/notes/records.md, "A calendar draft made from a note is admitted only while that exact note is unchanged"; spec/notes/records.md, "A move by name takes the identical copies of the note along"; spec/notes/records.md, "A delete or an edit by name leaves no identical copy behind"; spec/notes/records.md, "A Notes change answers with a receipt of the note and the revision it committed, and a refusal says what it waits on"; spec/notes/records.md, "A read tells a note\'s times in the owner\'s zone when the turn knows it"; spec/notes/records.md, "The agent reads and changes Notes only for the owner, and changes the note the model picked"; spec/notes/records.md, "A note\'s title and body are saved as well-formed text")', effect () => {
+it.effect('Keep notes as one collection edited only on the owner\'s words (spec/notes/records.md, "Story: Keep my notes as one collection the agent edits only as I asked"; spec/notes/records.md, "A checklist the owner asks for is a new note holding the owner\'s items"; spec/notes/records.md, "A read by a title no saved note has reads nothing and offers the one note whose title holds it"; spec/notes/records.md, "A Notes write runs when the model calls a write action, and a read action never writes"; spec/notes/records.md, "A calendar draft made from a note is admitted only while that exact note is unchanged"; spec/notes/records.md, "A move by name takes the identical copies of the note along"; spec/notes/records.md, "A delete or an edit by name leaves no identical copy behind"; spec/notes/records.md, "A Notes change answers with a receipt of the note and the revision it committed, and a refusal says what it waits on"; spec/notes/records.md, "A read tells a note\'s times in the owner\'s zone when the turn knows it"; spec/notes/records.md, "The agent reads and changes Notes only for the owner, and changes the note the model picked"; spec/notes/records.md, "A note\'s title and body are saved as well-formed text")', effect () => {
   const f = fixture()
   const notes = notesOver(f)
   const first = try notes.create({ content: "Groceries\n- milk", creationId: "step-1" })
@@ -222,7 +222,7 @@ it.effect('Keep notes as one collection edited only on the owner\'s words (spec/
   assert.equal(availability.data?.namedNoteMatchAvailable, true)
   const saved = (plugin.providers ?? []).find((provider) => provider.name === "SAVED_NOTES")
   const savedText = (try promise(() => saved!.get(undefined as never, message("what is in my trip note"), undefined as never))).text ?? ""
-  assert.include(savedText, "If no row has the note title the owner asked for, ask which note to use before citing another note.")
+  assert.include(savedText, "If no row has the note title the owner asked for, read by that title with NOTES_GET instead of citing another note.")
   const groceries = (try notes.snapshot()).notes.find((note) => note.id === "note-1")!
   const reference = notes.sourceReference(groceries)
   try notes.assertSourceReference(reference)
@@ -276,7 +276,7 @@ it.effect('Keep notes as one collection edited only on the owner\'s words (spec/
     described("NOTES_CREATE")?.description.includes(`at most ${noteLimits.checklistItems} items of at most ${noteLimits.checklistItem} characters each. When the owner gave the checklist no title, ask what to call it instead of creating it.`),
     described("NOTES_CREATE")?.parameters?.some((parameter) => parameter.name === "checklist" && parameter.schema.items?.maxLength === noteLimits.checklistItem),
     described("NOTES_UPDATE")?.description.includes("adds one list item in the note's own form, to a note the owner named, never as a new checklist the owner asked for (that is NOTES_CREATE with checklist)"),
-    described("NOTES_GET")?.description.includes("A title no saved note has reads nothing and asks the owner which note they mean, so never cite another note in its place."),
+    described("NOTES_GET")?.description.includes("A title no saved note has reads nothing and never cites another note in its place: when one saved note's title holds those words, it names that note's noteId, which you read to answer about, show or open the note when it is plainly the note meant; before changing or deleting it, or when it may not be the one, ask the owner which note they mean."),
   ], [true, true, true, true, true])
   const getting = action(plugin, "NOTES_GET")
   const weekend = try notes.create({ content: "Weekend\nbring the gear bag" })
@@ -284,6 +284,14 @@ it.effect('Keep notes as one collection edited only on the owner\'s words (spec/
   const weekendRead = try getting(message("what's in my weekend note"), { title: "weekend" })
   const sharedTitle = try getting(message("what's on my trek checklist"), { title: "trek" })
   const both = try getting(message("what's in my gear note"), { title: "gear", content: "gear" })
+  const plan = try notes.create({ content: "Taco Night Plan\nTortillas, carnitas, salsa verde" })
+  const nearTitle = try getting(message("open the note about taco night"), { title: "taco  night" })
+  const byNearId = try getting(message("open the note about taco night"), { noteId: plan.value.note.id })
+  const shopping = try notes.create({ content: "Taco Night Shopping\nCilantro, onions" })
+  const twoNear = try getting(message("open the note about taco night"), { title: "Taco Night" })
+  const editor = (try promise(() => notesServiceClass(notes).start(undefined as never))) as unknown as { matchesSavedEditor(noteId: string, query: string): Promise<boolean> }
+  const opensBy = (query: string) => promise(() => editor.matchesSavedEditor(plan.value.note.id, query))
+  const editorMatches = [try opensBy(plan.value.note.id), try opensBy("Taco Night Plan"), try opensBy("Taco Night"), try opensBy(shopping.value.note.id)]
   const trekIds = [trek.data?.noteId, trekAgain.data?.noteId]
   const offered: unknown = sharedTitle.data?.candidateIds
   const shown: unknown = sharedTitle.data?.candidates
@@ -293,12 +301,20 @@ it.effect('Keep notes as one collection edited only on the owner\'s words (spec/
     [sharedTitle.success, sharedTitle.data?.code, sharedTitle.data?.awaitingUserInput, sharedTitle.data?.requiresInput, sharedTitle.data?.note, sharedTitle.data?.noteId],
     [Array.isArray(offered) && offered.length === 2 && trekIds.every((id) => offered.includes(id)), Array.isArray(shown) ? shown.length : 0],
     [both.success, both.text?.includes("noteId, title or content")],
+    [nearTitle.success, nearTitle.data?.code, nearTitle.data?.readOnlyOperation, nearTitle.data?.noteId, nearTitle.data?.awaitingUserInput, nearTitle.data?.candidateIds, nearTitle.text?.includes(`(noteId ${plan.value.note.id})`), nearTitle.text?.includes("Before changing, adding to, moving or deleting it"), nearTitle.text?.includes("carnitas")],
+    [byNearId.success, byNearId.data?.noteId],
+    [twoNear.success, twoNear.data?.code, twoNear.data?.awaitingUserInput, Array.isArray(twoNear.data?.candidateIds) ? [...twoNear.data.candidateIds].sort() : undefined],
+    editorMatches,
   ], [
     [false, "NOTES_TITLE_NOT_FOUND", true, true, [weekend.value.note.id], [{ id: weekend.value.note.id, title: "Weekend" }], false],
     [true, weekend.value.note.id],
     [false, "NOTES_AMBIGUOUS_NOTE", true, true, undefined, undefined],
     [true, 2],
     [false, true],
+    [true, "NOTES_NEAR_TITLE", true, undefined, undefined, [plan.value.note.id], true, true, false],
+    [true, plan.value.note.id],
+    [false, "NOTES_TITLE_NOT_FOUND", true, [plan.value.note.id, shopping.value.note.id].sort()],
+    [true, true, false, false],
   ])
 
   const camp = try notes.create({ content: "Camp", format: { kind: "list", data: { items: [{ t: "tent", done: false }] } } })
