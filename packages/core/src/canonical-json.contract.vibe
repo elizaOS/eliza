@@ -1,6 +1,6 @@
 // spec/core/canonicalJson.md, "Story: Hash the same snapshot safely and deterministically"
 import { Schema } from "effect";
-import { contract } from "vibestack/testing";
+import { contract } from "@vibestack/testing";
 import { AGENT_BACKUP_CANONICAL_JSON, canonicalJsonString } from "./canonical-json.vibe";
 import { reversedKeys } from "./utils/deterministic.contract.vibe";
 
@@ -37,15 +37,11 @@ export const sparseArrayHolesOmittedInOmitMode = contract({
   deterministic: true,
   invariant: (value, text) => {
     if (text === undefined) return false;
-    try {
-      const parsed: unknown = JSON.parse(text);
-      return (
-        Array.isArray(parsed) &&
-        parsed.length === 2 &&
-        canonical([value, value]) === text
-      );
-    } catch {
-      return false;
-    }
+    const element = canonical(value);
+    if (element === undefined) return false;
+    // "omit" reproduces array.map(fn).join(","): the hole leaves an empty
+    // slot between the two separators, so the sparse array keeps different
+    // digest bytes from the dense array with the same elements.
+    return text === `[${element},,${element}]` && text !== canonical([value, value]);
   },
 });
