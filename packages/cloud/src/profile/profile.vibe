@@ -12,6 +12,10 @@ export interface MailBinding {
   send(message: { from: string; to: string; subject: string; text: string }): Promise<unknown>
 }
 
+export interface WorkersAiBinding {
+  run(model: string, input: Readonly<Record<string, unknown>>, options: { returnRawResponse: true; signal: AbortSignal }): Promise<unknown>
+}
+
 export const capabilityOf: Readonly<Record<Capability, SpecCapability>> = {
   inference: "InferenceCapability",
   speech: "SpeechCapability",
@@ -87,10 +91,15 @@ export service Deployment {
   readonly settings: EnvironmentProfile
   secret(name: string): string!SecretMissing
   mailBinding(name: string): MailBinding!SecretMissing
+  workersAiBinding(name: string): WorkersAiBinding!SecretMissing
 }
 
 function isMailBinding(value: unknown): value is MailBinding {
   return typeof value === "object" && value !== null && "send" in value && typeof value.send === "function"
+}
+
+function isWorkersAiBinding(value: unknown): value is WorkersAiBinding {
+  return typeof value === "object" && value !== null && "run" in value && typeof value.run === "function"
 }
 
 export function deploymentLayer(profile: CloudProfile, environment: CloudEnvironment, bindings: object = {}): Layer.Layer<Deployment> {
@@ -108,6 +117,11 @@ export function deploymentLayer(profile: CloudProfile, environment: CloudEnviron
         const bound: unknown = Reflect.get(bindings, name)
         if (!isMailBinding(bound)) throw new SecretMissing({ name })
         return bound
+      },
+      workersAiBinding: effect (name: string) => {
+        const bound: unknown = Reflect.get(bindings, name)
+        if (!isWorkersAiBinding(bound)) throw new SecretMissing({ name })
+        return bound
       }
     }
   })
@@ -124,12 +138,15 @@ export effect function requireSecrets(): void!SecretMissing!Deployment {
     ...(settings.sms.kind === "https" ? [settings.sms.accountEnv, settings.sms.tokenEnv] : []),
     ...(settings.google === undefined ? [] : [settings.google.clientSecretEnv]),
     ...(settings.billing === undefined ? [] : [settings.billing.secretKeyEnv, settings.billing.webhookSecretEnv]),
-    ...(settings.inference?.providers.map((provider) => provider.apiKeyEnv) ?? []),
     ...(settings.speech === undefined ? [] : [settings.speech.apiKeyEnv]),
     ...(settings.maps?.provider === "google" ? [settings.maps.apiKeyEnv] : [])
   ]
   for (const name of names) try deployment.secret(name)
   if (settings.mail.kind === "binding") try deployment.mailBinding(settings.mail.binding)
+  for (const provider of settings.inference?.providers ?? []) {
+    if (provider.kind === "workers-ai") try deployment.workersAiBinding(provider.binding)
+    else try deployment.secret(provider.apiKeyEnv)
+  }
 }
 
 export function corsForOrigin(settings: EnvironmentProfile, origin: string): boolean {
