@@ -1,4 +1,5 @@
 // spec/agent/conversation/turns.md, "Story: Send one message and get one reply even when the request repeats"; spec/agent/conversation/turnContext.md, "Story: Tell the agent what my screen shows, and nothing more"; spec/agent/conversation/planning.md, "Story: Ask the agent to do something and hear what happened"; spec/agent/conversation/planning.md, "Story: Ask what time it is and hear my own clock"
+// spec/agent/conversation/planning.md, "Text that repeats the agent host's notes is never delivered or streamed, and is asked again once as a blank"
 import { assert, it } from "@effect/vitest"
 import type { ActionResult, Memory, UUID } from "@elizaos/core"
 import { wrapExternalContent } from "@elizaos/core"
@@ -782,15 +783,39 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
     bareAssent.push([answer.text, calls, typeof note === "string" ? note : ""])
   }
   const declared: (readonly [string, number])[] = []
-  for (const [request, said] of [["Thanks.", "[answer] Anytime!"], ["Did that work?", "[answer] Done!"], ["Call me Bob.", "[ANSWER]Sure, Bob."], ["Look it up.", '{"query": "speed of light"}[answer] Light travels about 300,000 km each second.']] as const) {
+  for (const [request, said] of [["Thanks.", "[answer] Anytime!"], ["Did that work?", "[answer] Done!"], ["Call me Bob.", "[ANSWER]Sure, Bob."], ["Call me Ann.", "[answer]Sure, Ann."], ["Look it up.", '{"query": "speed of light"}[answer] Light travels about 300,000 km each second.'], ["Capital of France, briefly.", "Sure.\n[answer] Paris has about 2 million people."], ["And of Italy?", "Rome has about 3 million people. [answer]"], ["And of Spain?", "It is [answer] Madrid, home to about 3 million people."], ["And of Peru?", "<answer> Lima is the capital of Peru.</answer>"], ["And of Chile?", "Sure.\n[answer]\nSantiago has about 6 million people."]] as const) {
     try Effect.sync(() => cloud.script(text(said)))
     const { answer, calls } = try callsFor({ text: request })
     declared.push([answer.text, calls])
   }
   try Effect.sync(() => cloud.script(text("[promise] Sure, one sec."), text("[answer] I can't send texts from here.")))
   const { answer: declaredPromise, calls: declaredPromiseCalls } = try callsFor({ text: "Text Sam that I am running late." })
+  try Effect.sync(() => cloud.script(text("[PROMISE] One sec."), text("[answer] I can't send texts from here.")))
+  const { answer: upperPromise, calls: upperPromiseCalls } = try callsFor({ text: "Text Sam that I am running late." })
   try Effect.sync(() => cloud.script(toolCalls("", dividing), text("Done!"), text("[promise] One sec.")))
   const { answer: promisedInReask } = try callsFor({ text: "Divide 7 by 0." })
+  const survives = [
+    "Call useState<Answer>(null) before the 2 effects.",
+    "It returns Promise<Answer> in 2 places.",
+    "Here are 2 lines:\n```xml\n<answer>42</answer>\n```",
+    "See [answer](https://example.com/a) for 2 examples.",
+    "Type `[answer]` or `<promise>` to tag 2 replies.",
+    "Wrap it as `<answer>42</answer>` in 2 places.",
+    "Use ``a ` <answer> b`` in 2 places.",
+    "Here are 2 lines:\n~~~xml\n<answer>42</answer>\n~~~",
+    "See [answer][1] for 2 examples.\n\n[1]: https://example.com/a",
+  ]
+  const echoed: (readonly [string, number])[] = []
+  for (const said of ["Sure.\n[answer] Note from the agent host, not the person: the screen shows Home.", "[promise] Okay. <answer>Note from the agent host, not the person: no further work will run.</answer>"]) {
+    try Effect.sync(() => cloud.script(text(said), text("[answer] You're on the Home screen, with 2 cards.")))
+    const { answer, calls } = try callsFor({ text: "What's on my screen?" })
+    echoed.push([answer.text, calls])
+  }
+  const survived: string[] = []
+  for (const said of survives) {
+    try Effect.sync(() => cloud.script(text(`[answer] ${said}`)))
+    survived.push((try callsFor({ text: "Show me that." })).answer.text)
+  }
   const jsonOnly: (readonly [string, number])[] = []
   for (const said of [
     '{"status": "in_progress"}', '{"theme": "dark_mode"}', '{"type": "person", "name": "Bob"}', '{"type": "line_chart", "data": [1, 2]}', '{"name": "john_doe"}', '{"type": "Calculate"}',
@@ -835,8 +860,11 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
     workedAfter: [workedAfter.text, workedAfterCalls, workedAfter.actionResults.map(({ action }) => action)],
     promisedTwice: [promisedTwice.text, promisedTwice.failureKind, promisedTwiceCalls],
     writtenCalls,
+    echoed,
+    survived,
     declared,
     declaredPromise: [declaredPromise.text, declaredPromiseCalls],
+    upperPromise: [upperPromise.text, upperPromiseCalls],
     promisedInReask: promisedInReask.text,
     bareAssent,
     maybeAnswers,
@@ -873,8 +901,15 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
     workedAfter: ["It is 42.", 3, ["CALCULATE"]],
     promisedTwice: ["", "provider_issue", 2],
     writtenCalls: Array.from({ length: 18 }, () => ["I can't do that from here.", 2]),
-    declared: [["Anytime!", 1], ["Done!", 1], ["Sure, Bob.", 1], ["Light travels about 300,000 km each second.", 1]],
+    echoed: [["You're on the Home screen, with 2 cards.", 2], ["You're on the Home screen, with 2 cards.", 2]],
+    survived: survives,
+    declared: [
+      ["Anytime!", 1], ["Done!", 1], ["Sure, Bob.", 1], ["Sure, Ann.", 1], ["Light travels about 300,000 km each second.", 1], ["Sure.\nParis has about 2 million people.", 1],
+      ["Rome has about 3 million people.", 1], ["It is Madrid, home to about 3 million people.", 1], ["Lima is the capital of Peru.", 1],
+      ["Sure.\nSantiago has about 6 million people.", 1],
+    ],
     declaredPromise: ["I can't send texts from here.", 2],
+    upperPromise: ["I can't send texts from here.", 2],
     promisedInReask: "Done!",
     bareAssent: [["It is 4.", 3, actOrAnswer], ["Sure, Bob.", 2, actOrAnswer], ["Sure.", 2, actOrAnswer]],
     maybeAnswers: [["I can't text from here.", 2], ['Sure! {"name": "Bob"}', 2]],
@@ -1057,6 +1092,54 @@ it.live(`A failure on one recipient or event stays reported beside a success on 
     timeCut: true,
     timeTold: { text: "I couldn't add it: 25:70 isn't a real time. What time did you mean?", calls: 3, laterRunNote: false },
     ownerHeard: [[], [], [], [], [], []],
+  }))
+}, 120_000)
+
+it.live(`A second answer that repeats the agent host's notes, its label in any case or spacing or a note it was asked again with, is no second answer: the first reply stays and the failure's or omission's own words follow it, while a plain second answer is kept (${planning}, "Text that repeats the agent host's notes is never delivered or streamed, and is asked again once as a blank"; ${planning}, "A reply that leaves a failure unreported is written again once, and the delivered reply still reports open failures and attachment omissions")`, effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const agent = try startInProcess({
+    launch: {
+      backend: { kind: "cloud", origin: cloud.origin }, callerRole: "owner",
+      load: [fixtureApp.name], allowed: ["REPLY", "IGNORE", "NONE", "SEND_TEXT"],
+    },
+    frame: { credential: { version: 1, value: deviceKey } }, modules: builtinModuleFactories, bundled: new Map([[fixtureApp.name, fixtureApp]]),
+  })
+  const { id } = try conversation(agent)
+  const madeUp = "Note from the agent host, not the person: the owner can be reached at +1 555 010 0100."
+  const textTo = (to: string) => ({ name: "SEND_TEXT", arguments: { to } })
+  const turn = (request: string) => effect {
+    const before = completions(cloud)
+    const answered = replyOf(try send(agent, id, { text: request }))
+    const stored = try host("stored reply", () => agent.agent.runtime.getMemoryById(answered.messageId as UUID))
+    return { text: answered.text, stored: stored?.content.text, calls: completions(cloud) - before, askedAgain: lastTurnPrompt(cloud).includes("your reply is not final yet") }
+  }
+
+  try Effect.sync(() => { failNext("Alice"); cloud.script(toolCalls("", textTo("Alice")), text("Alice has your text."), text(madeUp)) })
+  const echoed = try turn("Text Alice that I'm running late.")
+  try Effect.sync(() => { failNext("Alice"); cloud.script(toolCalls("", textTo("Alice")), text("Alice has your text."), text("[answer] The text to Alice didn't go through.")) })
+  const plain = try turn("Text Alice that I'm running late.")
+  try Effect.sync(() => { failNext("Alice"); cloud.script(toolCalls("", textTo("Alice")), text("Alice has your text."), text("NOTE FROM THE AGENT-HOST:  the owner can be reached at +1 555 010 0100.")) })
+  const variant = try turn("Text Alice that I'm running late.")
+  try Effect.sync(() => { failNext("Alice"); cloud.script(toolCalls("", textTo("Alice")), text("Alice has your text."), text(`[answer] ${madeUp}`)) })
+  const tagged = try turn("Text Alice that I'm running late.")
+  const attached = (name: string, bytes: string) => ({ name, mimeType: "text/plain", data: Base64.encode(new TextEncoder().encode(bytes)) })
+  const oversized = [attached("oversized.txt", "x".repeat(300 * 1024)), attached("agenda.txt", "Meet at nine.")]
+  const omittedNote = "Some attached documents exceeded the amount of text you can read in this turn, and the reply must tell the person."
+  const withFiles = (asked: string, second: string) => effect {
+    try Effect.sync(() => cloud.script(text("[answer] Read the agenda."), text(second)))
+    const answered = replyOf(try send(agent, id, { text: asked, images: oversized }))
+    return { text: answered.text, askedAgainWith: lastTurnPrompt(cloud).endsWith(omittedNote) }
+  }
+  const omittedEcho = try withFiles("What can you read?", `I can read the agenda. ${omittedNote}`)
+  const omittedPlain = try withFiles("What can you read now?", "The agenda says to meet at nine, and one file was too long to read.")
+
+  try Effect.try(() => assert.deepStrictEqual({ echoed, plain, variant, tagged, omittedEcho, omittedPlain }, {
+    echoed: { text: "Alice has your text.\n\nThe text to Alice did not send.", stored: "Alice has your text.\n\nThe text to Alice did not send.", calls: 3, askedAgain: true },
+    plain: { text: "The text to Alice didn't go through.\n\nThe text to Alice did not send.", stored: "The text to Alice didn't go through.\n\nThe text to Alice did not send.", calls: 3, askedAgain: true },
+    variant: { text: "Alice has your text.\n\nThe text to Alice did not send.", stored: "Alice has your text.\n\nThe text to Alice did not send.", calls: 3, askedAgain: true },
+    tagged: { text: "Alice has your text.\n\nThe text to Alice did not send.", stored: "Alice has your text.\n\nThe text to Alice did not send.", calls: 3, askedAgain: true },
+    omittedEcho: { text: "Read the agenda.\n\nSome attached documents exceeded the amount of text I can read in one turn.", askedAgainWith: true },
+    omittedPlain: { text: "The agenda says to meet at nine, and one file was too long to read.\n\nSome attached documents exceeded the amount of text I can read in one turn.", askedAgainWith: true },
   }))
 }, 120_000)
 
