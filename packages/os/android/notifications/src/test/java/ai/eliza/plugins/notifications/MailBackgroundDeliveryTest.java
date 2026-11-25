@@ -71,6 +71,10 @@ public final class MailBackgroundDeliveryTest {
     Fixture f = new Fixture();
     var config = new MailBackgroundDelivery.Config("https://cloud.example", "test", "google.gmail.triage", 1);
     var delivery = MailBackgroundDelivery.withLease(f, f, f, f, config);
+    f.active.add("retired");
+    f.scheduled = "retired";
+    delivery.resume();
+    require(f.active.isEmpty() && f.scheduled == null, "a notice without an admitted watch is retired");
     f.loseForeground = true;
     try {
       delivery.configure(delivery.begin("grant"), "cred", "grant", "owner", "org", () -> {

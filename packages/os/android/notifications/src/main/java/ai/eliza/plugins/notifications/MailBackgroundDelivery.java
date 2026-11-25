@@ -174,7 +174,7 @@ public final class MailBackgroundDelivery {
   host.removeState();poster.cancelAll();scheduler.cancel();
  }}
  /** Host resume: reschedules a still-current selection, retires a stale one. */
- public void resume(){try{synchronized(host.lock()){if(admittedAttempt!=attempts.get())return;JSONObject s=saved();if(s==null)return;JSONObject binding=s.getJSONObject("binding");current(binding);scheduler.schedule(binding.getString("generation"));}}catch(Exception stale){try{withdraw(null);}catch(Exception ignored){/* Existing callback guards still fail closed. */}}}
+ public void resume(){try{synchronized(host.lock()){if(admittedAttempt!=attempts.get())return;JSONObject s=saved();if(s==null){poster.cancelAll();scheduler.cancel();return;}JSONObject binding=s.getJSONObject("binding");current(binding);scheduler.schedule(binding.getString("generation"));}}catch(Exception stale){try{withdraw(null);}catch(Exception ignored){/* Existing callback guards still fail closed. */}}}
  public JSONObject status()throws Exception{synchronized(host.lock()){JSONObject s=saved();if(s==null)return new JSONObject().put("status","disabled");return engine(s.getJSONObject("binding")).status().put("notificationsAllowed",poster.allowed());}}
  private static final class HttpFailure extends IOException {final int status;final boolean history;HttpFailure(int status,boolean history){super("Mail service unavailable");this.status=status;this.history=history;}}
  private String get(JSONObject binding,String path,MailHistoryReconciliation.Guard guard)throws Exception{
