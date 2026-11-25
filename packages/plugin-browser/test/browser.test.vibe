@@ -1,10 +1,10 @@
-// spec/browser/requestGrounding.md, "Story: Open a destination stated in this message"; spec/browser/control.md, "Story: Offer only the Browser controls my phone negotiated"; spec/browser/remoteControl.md, "Story: Go back, forward or reload only on the tab the turn observed"; spec/browser/control.md, "Story: Tell me a Browser command was sent, never that the page finished"; spec/browser/control.md, "Story: Propose a Browser control in my own words"; spec/browser/control.md, "Story: Tell me you cannot read my page, and never reload it unasked"
+// spec/browser/requestGrounding.md, "Story: Open a destination stated in this message"; spec/browser/control.md, "Story: Open an address on the screen I asked from"; spec/browser/control.md, "Story: Offer only the Browser controls my phone negotiated"; spec/browser/remoteControl.md, "Story: Go back, forward or reload only on the tab the turn observed"; spec/browser/control.md, "Story: Tell me a Browser command was sent, never that the page finished"; spec/browser/control.md, "Story: Propose a Browser control in my own words"; spec/browser/control.md, "Story: Tell me you cannot read my page, and never reload it unasked"
 import { assert, it } from "@effect/vitest"
-import { canActionRun, ContextRegistry, resolveActionContexts, type Action, type ActionResult, type AgentRuntime, type IAgentRuntime, type Memory } from "@elizaos/core"
-import { activityLabel, offeredActions, registerDeviceProposalFamily } from "@elizaos/agent-host"
-import type { DeviceOperation } from "@elizaos/agent"
+import { canActionRun, ContextRegistry, resolveActionContexts, type Action, type ActionResult, type AgentRuntime, type IAgentRuntime, type Memory, type UUID } from "@elizaos/core"
+import { activityLabel, deviceTurnPort, offeredActions, registerDeviceProposalFamily } from "@elizaos/agent-host"
+import { capabilitiesHeader, type DeviceOperation } from "@elizaos/agent"
 import { BROWSER_CONTROL_DIRECT_TYPES, BROWSER_FIND_CAPABILITY, BROWSER_RELOAD_WITHHELD_REFUSAL, BROWSER_NO_TABS_TO_CLOSE_NOTICE, BROWSER_OPEN_NEW_TAB_CAPABILITY, BROWSER_TABS_CAPABILITY, BROWSER_TABS_CLOSE_ALL_CAPABILITY, BROWSER_TABS_UNLISTED_NOTICE, browserCloseAllApprovable, browserCloseAllNotice, browserControlCapabilityAvailable, BROWSER_TABS_SHOW_CAPABILITY, browserControlFormAvailable, browserControlRefusal, browserControlReviewNotice, browserControlRunsUnreviewed, browserNavigationAvailable, describeBrowserControl, parseBrowserControl, parseBrowserNavigate, browserDestinationMatches, browserSearchQueryMatches, directBrowserDestination, directBrowserSearchQuery, groundBrowserDestination, groundBrowserSearchQuery, spokenBrowserDestination, typedBrowserWords, observedTabCurrent, parseNativeHistoryCommand } from "@elizaos/plugin-browser-client"
-import { browserAction, browserPlugin } from "../src/index.vibe"
+import { browserAction, browserOpenAction, browserPlugin, opensOnScreen } from "../src/index.vibe"
 import { browserProposalFamily } from "../src/proposal.vibe"
 import type { BrowserViewAsked, BrowserViewAsker, BrowserViewWait } from "../src/native-browser.vibe"
 
@@ -359,6 +359,7 @@ it.effect(`Ground a Browser proposal in the owner's own words or an exact page l
   const wikipedia = (try Effect.try(() => checked(navigate("https://wikipedia.org/", true)))).operation
   const told = [
     browserProposalFamily.proposedText(wikipedia, { direct: true, timeZone: undefined, ownerText: "open wikipedia.org in a new tab" })?.forOwner,
+    browserProposalFamily.proposedText(wikipedia, { direct: true, timeZone: undefined, ownerText: "open wikipedia.org in a new tab" })?.forModel,
     browserProposalFamily.proposedText(wikipedia, { direct: false, timeZone: undefined, ownerText: "open wikipedia.org in a new tab" }),
     browserProposalFamily.settledText(wikipedia, { outcome: "applied" }, undefined),
   ]
@@ -394,7 +395,10 @@ it.effect(`Ground a Browser proposal in the owner's own words or an exact page l
       "DEVICE_BROWSER_CLOSE_ALL_UNAVAILABLE", direct({ type: "browser_tab_close", all: true }), direct({ type: "browser_tab_close", target: "bbc" }),
       direct({ type: "browser_history", action: "back" }), direct(tabList), direct(tabList), direct(tabList), direct(tabList),
     ])
-    assert.deepStrictEqual(told, ["Opening wikipedia.org.", undefined, undefined])
+    assert.strictEqual(told[0], "wikipedia.org is ready to open.")
+    assert.match(String(told[1] ?? ""), /shows this exact requested address in its Browser for the owner to open\. It has not opened/)
+    assert.notMatch(`${told[0]} ${told[1]}`, /Opening|no review/)
+    assert.deepStrictEqual(told.slice(2), [undefined, undefined])
     assert.strictEqual(toldShown?.forOwner, "Doing that in Browser.")
     assert.match(toldShown?.forModel ?? "", /has not run yet/)
     assert.isUndefined(browserProposalFamily.settledText(shown, { outcome: "applied" }, undefined))
@@ -530,5 +534,51 @@ it.effect(`Review a reload of a page the phone withheld on the phone, and run it
     assert.deepStrictEqual(askedRuns, [])
     assert.deepStrictEqual([readable.success, readable.data?.executionStatus], [true, "dispatched"])
     assert.strictEqual(device.asks.length, asks.length + 1)
+  })
+})
+
+it.effect('Show an address on the screen the owner asked from for the owner to open, even one their whole message asked for, and nowhere an enrolled phone takes it (spec/browser/control.md, "Story: Open an address on the screen I asked from"; spec/browser/control.md, "An open has one home: the Browser proposal where my enrolled phone takes it, else the screen I asked from"; spec/browser/control.md, "The screen shows the address for me to open, and nothing opens until I choose Open there"; spec/browser/control.md, "A refused Browser proposal tells me how to ask, and never says anything opened")', effect () => {
+  const runtime = { character: { name: "Eliza" } } as unknown as IAgentRuntime
+  const asked = (text: string, delivery: unknown = "completed-action") => ({
+    id: "00000000-0000-4000-8000-000000000011", entityId: "00000000-0000-4000-8000-000000000001", roomId: "00000000-0000-4000-8000-000000000002",
+    content: { text, metadata: { viewClientId: "client-1", viewDelivery: delivery } },
+  }) as unknown as Memory
+  const open = (text: string, url: string) => promise(() => browserOpenAction.handler(runtime, asked(text), undefined, { parameters: { url } }) as Promise<ActionResult>)
+  const results = [
+    try open("open example.com", "https://example.com"),
+    try open("Open the Wikipedia article about the Eiffel Tower", "https://en.wikipedia.org/wiki/Eiffel_Tower"),
+    try open("don't open example.com", "https://example.com"),
+    try open("open http://example.com:8080", "http://example.com:8080"),
+  ]
+  const opened = (url: string) => ({ actionName: "BROWSER_OPEN", mode: "open", operation: { type: "browser_navigate", url }, clientId: "client-1" })
+  const owner = { agentId: "00000000-0000-4000-8000-000000000003", actorId: "00000000-0000-4000-8000-000000000001", connector: "device" }
+  const phone = try Effect.try(() => deviceTurnPort(runtime as AgentRuntime, () => Effect.succeed(owner), { completesReads: true }))
+  const fromPhone = (capabilities: readonly string[]) => promise(async () => {
+    const message = asked("open example.com")
+    const session = await phone.begin({
+      headers: new Map([[capabilitiesHeader, capabilities.join(",")]]), conversationId: "conversation-1", requestId: "request-1",
+      message: message as Memory & { readonly id: UUID }, signal: new AbortController().signal,
+    })
+    if (session === undefined) return "no phone turn"
+    const during = await session.run(async () => [opensOnScreen(runtime, message), await browserOpenAction.validate(runtime, message)])
+    await session.end()
+    return [...during, opensOnScreen(runtime, message)]
+  })
+  const takesOpens = try fromPhone(everyBrowserCapability)
+  const takesNoBrowser = try fromPhone([])
+  try Effect.try(() => {
+    assert.deepStrictEqual([opensOnScreen(runtime, asked("open example.com")), opensOnScreen(runtime, asked("open example.com", "stream"))], [true, false])
+    assert.deepStrictEqual(takesOpens, [false, false, true])
+    assert.deepStrictEqual(takesNoBrowser, [true, true, true])
+    assert.deepStrictEqual(results.map((result) => result.success ? result.data : { code: result.data?.code, userFacingText: result.userFacingText }), [
+      opened("https://example.com/"),
+      opened("https://en.wikipedia.org/wiki/Eiffel_Tower"),
+      { code: "DEVICE_BROWSER_NOT_REQUESTED", userFacingText: "I didn't open that address." },
+      { code: "DEVICE_BROWSER_NOT_REQUESTED", userFacingText: "Tell me the address, like example.com." },
+    ])
+    assert.match(results[0]?.text ?? "", /^Showing example\.com for the owner to open\. .*opens only if they choose Open there\. It has not opened/)
+    assert.match(results[1]?.text ?? "", /^Showing en\.wikipedia\.org for the owner to open\./)
+    assert.notMatch(results.map((result) => result.text ?? "").join(" "), /Opening|with no review/)
+    assert.isTrue(browserPlugin.actions?.includes(browserOpenAction))
   })
 })

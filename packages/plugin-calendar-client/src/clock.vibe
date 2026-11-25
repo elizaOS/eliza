@@ -162,10 +162,11 @@ function notLaterThanToday(month: number, day: number | undefined, today: LocalD
   return day === undefined ? month <= today.month : month < today.month || (month === today.month && day <= today.day)
 }
 
-export function yearCueOf(text: string, today: LocalDate): { readonly cue: YearCue; readonly statedYear: number; readonly trailingYear: number; readonly namesDate: boolean } {
+export function yearCueOf(text: string, today: LocalDate, sentClocks: readonly string[] = []): { readonly cue: YearCue; readonly statedYear: number; readonly trailingYear: number; readonly namesDate: boolean } {
   const folded = text.normalize("NFKC").toLowerCase()
-  const trailing = /\b(\d{4})\s*[.!?]?\s*$/.exec(folded)
-  const stated = /\b(19|20|21)\d{2}\b/.exec(folded)
+  const lastDigits = /\b(\d{4})\s*[.!?]?\s*$/.exec(folded)
+  const trailing = lastDigits !== null && sentClocks.includes(lastDigits[1] ?? "") ? null : lastDigits
+  const stated = [...folded.matchAll(/\b(?:19|20|21)\d{2}\b/g)].find((found) => !sentClocks.includes(found[0])) ?? null
   const next = nextDate.exec(folded)
   const named = next?.[1]
   const month = next === null ? 0 : named !== undefined ? monthNames.indexOf(named.slice(0, 3)) + 1 : Number(next[3])
@@ -179,8 +180,8 @@ export function yearCueOf(text: string, today: LocalDate): { readonly cue: YearC
   }
 }
 
-export function createYear(text: string, today: LocalDate, extractedYear: number): number {
-  const { cue, statedYear, trailingYear, namesDate } = yearCueOf(text, today)
+export function createYear(text: string, today: LocalDate, extractedYear: number, sentClocks: readonly string[] = []): number {
+  const { cue, statedYear, trailingYear, namesDate } = yearCueOf(text, today, sentClocks)
   return createStartYear(cue, statedYear, trailingYear, today.year, namesDate, extractedYear)
 }
 
@@ -188,7 +189,11 @@ export function statedYearCreate(fields: CalendarEventFields, text: string, now:
   const zone = fields.isAllDay ? "UTC" : fields.timeZone
   const start = getZonedDateParts(new Date(fields.startAt), zone)
   const today = getZonedDateParts(now, fields.timeZone)
-  const years = start === undefined || today === undefined ? 0 : createYear(text, today, start.year) - start.year
+  const sentClocks = [fields.startAt, fields.endAt].flatMap((instant) => {
+    const wall = getZonedDateParts(new Date(instant), zone)
+    return wall === undefined ? [] : [`${String(wall.hour).padStart(2, "0")}${String(wall.minute).padStart(2, "0")}`]
+  })
+  const years = start === undefined || today === undefined ? 0 : createYear(text, today, start.year, sentClocks) - start.year
   const move = (instant: string) => {
     const parts = years === 0 ? undefined : getZonedDateParts(new Date(instant), zone)
     return parts === undefined ? instant : buildUtcDateFromLocalParts(zone, { ...parts, year: parts.year + years })?.toISOString() ?? instant

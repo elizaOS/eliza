@@ -6,7 +6,7 @@ Everything is built on [the stack](AGENTS.md#the-stack): Node 26, pnpm, VibeLang
 
 ## Pull requests
 
-The default branch is `main`. Open contribution pull requests against `develop`.
+The default branch is `develop`. Open contribution pull requests against `develop`.
 
 - Verify through the application's normal entry points that the top-level
   stories, rules, and Quint models are fully implemented and integrated.

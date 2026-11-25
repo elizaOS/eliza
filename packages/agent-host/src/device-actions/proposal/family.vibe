@@ -100,7 +100,12 @@ export interface DeviceProposalFamily {
 /** Whether the owner's message asks for direct requests of `family`; a Files-only direct request binds no other family. */
 export function directRequests(turn: Pick<DeviceTurn, "message">, family: FamilyName): boolean {
   const mode = readTurnContext(turn.message).voiceUi?.agentActionMode
-  return directRequestFor(mode === "direct-request-v1" ? "DirectForEveryFamily" : mode === "direct-files-v1" ? "DirectForFiles" : "NoDirectRequest", family === "files")
+  return directRequestFor(mode === "direct-request-v1" ? "DirectForEveryFamily" : mode === "direct-files-v1" || mode === "direct-files-only-v1" ? "DirectForFiles" : "NoDirectRequest", family === "files")
+}
+
+/** Whether the client that sent the owner's message shows review cards on this turn; one that asks for direct Files requests only does not. */
+export function showsReviewCards(turn: Pick<DeviceTurn, "message">): boolean {
+  return readTurnContext(turn.message).voiceUi?.agentActionMode !== "direct-files-only-v1"
 }
 
 export function unoffered(name: FamilyName): DeviceProposalFamily {

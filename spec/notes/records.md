@@ -94,9 +94,12 @@ edit of that note. A checklist creation is never answered by a saved note,
 not even a checklist of the same title, unless it repeats the client's own
 creation ID. A checklist holds 1 to 100 items, each at most 240 units, the
 bound of a title, since an item is one line of the list. A checklist with a
-blank title, with no item, with a blank item, with more items or a longer
-item than that, or with a body or other authored content beside its label
-and items is refused with nothing written. Text the owner supplied without
+blank title writes nothing, and its answer, that nothing was saved and the
+owner is to be asked what to call it, is a question for the model to put to
+the owner (below), never a failed step. A checklist with a title and no
+item, with a blank item, with more items or a longer item than that, or with
+a body or other authored content beside its label and items is refused with
+nothing written. Text the owner supplied without
 asking for a checklist is saved as written, never turned into one.
 
 ```quint
@@ -168,24 +171,47 @@ pure def lawTheOwnersChoiceIsChanged(titleShared: bool): bool = pickedNoteChange
 pure def lawAnUnsharedTitleNeedsNoChoice(ownerChoseEarlier: bool): bool = pickedNoteChanged(true, false, ownerChoseEarlier)
 ```
 
-### A read by a title no saved note has cites no other note and asks which one
+### A read by a title no saved note has reads nothing and offers the one note whose title holds it
 
 When the owner names the note to read by its title, the agent reads by that
 title: the saved notes whose title it is, case and spacing aside. One such
 note is read. Several are offered for the owner to choose, and none is read.
 When no saved note has the title, no note is read and no other note is
-cited in its place: the agent answers that no note has that title, with
-the titles of the notes whose text mentions it, and waits on the owner to
-say which note to use. A read by text the note contains, rather than by its
+cited in its place. When exactly one saved note's title holds the words
+asked for as a phrase, case and spacing aside, as "Taco Night Plan" holds
+"Taco Night", the answer names that note with its ID and leaves the choice
+to the model. The answer tells the model that when the owner asked only to
+read, show or open a note and it is plainly the note meant, it reads that
+note by its ID and goes on, opening it if that was asked, without asking
+the owner to confirm it; and that before a change, a move or a deletion of
+that note, or when it may not be the one meant, it asks the owner whether
+they mean that note. A near title is offered only for a read: it changes
+nothing by itself. Otherwise, with no such note or several, the
+agent answers that no note has that title, with the titles of the notes
+whose text mentions it, and waits on the owner to say which note to use.
+Offering a choice among notes is the read's answer, not a failed step: the
+model's question is the whole reply, and the read's own words to the model
+never reach the owner. A read by text the note contains, rather than by its
 title, searches every note's text.
 
 ```quint
-type TitledRead = ReadsTitledNote | AsksAmongTitledNotes | AsksWhichNote
-pure def titledRead(titledNotes: int): TitledRead =
-  if (titledNotes == 1) ReadsTitledNote else if (titledNotes > 1) AsksAmongTitledNotes else AsksWhichNote
+type TitledRead = ReadsTitledNote | AsksAmongTitledNotes | OffersNearTitle | AsksWhichNote
+pure def titledRead(titledNotes: int, nearTitles: int): TitledRead =
+  if (titledNotes == 1) ReadsTitledNote
+  else if (titledNotes > 1) AsksAmongTitledNotes
+  else if (nearTitles == 1) OffersNearTitle
+  else AsksWhichNote
 pure val titledNotesValues = Set(0, 1, 2, 3)
-pure def lawOnlyTheOneTitledNoteIsRead(titledNotes: int): bool = (titledRead(titledNotes) == ReadsTitledNote) iff (titledNotes == 1)
-pure def lawAnAbsentTitleAsksWhichNote(titledNotes: int): bool = titledNotes <= 0 implies titledRead(titledNotes) == AsksWhichNote
+pure val nearTitlesValues = Set(0, 1, 2)
+pure def lawOnlyTheOneTitledNoteIsRead(titledNotes: int, nearTitles: int): bool = (titledRead(titledNotes, nearTitles) == ReadsTitledNote) iff (titledNotes == 1)
+pure def lawOnlyOneNearTitleIsOffered(titledNotes: int, nearTitles: int): bool =
+  (titledRead(titledNotes, nearTitles) == OffersNearTitle) iff (titledNotes <= 0 and nearTitles == 1)
+pure def lawAnAbsentTitleWithoutOneNearTitleAsksWhichNote(titledNotes: int, nearTitles: int): bool =
+  (titledNotes <= 0 and nearTitles != 1) implies titledRead(titledNotes, nearTitles) == AsksWhichNote
+pure def titledReadAnswered(read: TitledRead): bool = match read {
+  | ReadsTitledNote => true | AsksAmongTitledNotes => true | OffersNearTitle => true | AsksWhichNote => true }
+pure def lawATitledReadThatAsksIsAnswered(titledNotes: int, nearTitles: int): bool =
+  titledReadAnswered(titledRead(titledNotes, nearTitles))
 ```
 
 ### A move by name takes the identical copies of the note along
@@ -241,7 +267,10 @@ revision. A creation that returned the note already saved is a replayed
 no-op, never a second commit, and a read carries no receipt. A refusal
 that needs the owner's choice between notes, or the owner's word that the
 closest note is the one meant, says it waits on the owner and carries the
-candidates. A refused edit the planner can correct from a fresh read (a
+candidates. A checklist the owner gave no title is answered, not refused:
+the answer tells the model that nothing was saved and to ask the owner what
+to call it, and like a read it changes nothing, so the owner hears the
+model's question alone. A refused edit the planner can correct from a fresh read (a
 stale or missing revision, old text that is absent or matches twice, a
 rich note edited as plain text) is coaching for the planner, not an
 outcome the owner is told. Every other refusal is an outcome. A list of
@@ -258,10 +287,11 @@ pure def receiptOperation(write: NotesWrite): str =
   else "notes.note.update"
 pure def receiptOutcome(write: NotesWrite, replayed: bool): ReceiptOutcome =
   if (write == WriteCreate and replayed) ReplayedReceipt else AppliedReceipt
-type NotesRefusal = AmbiguousNote | NameMismatch | EditConflict | RevisionRequired | TextNotFound | TextAmbiguous | RichEditRequired | OtherRefusal
-type RefusalKind = RefusalWaitsOnOwner | RefusalCoachesPlanner | RefusalIsOutcome
+type NotesRefusal = AmbiguousNote | NameMismatch | EditConflict | RevisionRequired | TextNotFound | TextAmbiguous | RichEditRequired | UntitledChecklist | OtherRefusal
+type RefusalKind = RefusalWaitsOnOwner | RefusalAsksTheOwner | RefusalCoachesPlanner | RefusalIsOutcome
 pure def refusalKind(refusal: NotesRefusal): RefusalKind =
   if (refusal == AmbiguousNote or refusal == NameMismatch) RefusalWaitsOnOwner
+  else if (refusal == UntitledChecklist) RefusalAsksTheOwner
   else if (refusal == OtherRefusal) RefusalIsOutcome
   else RefusalCoachesPlanner
 pure def emptyCollectionObserved(filtered: bool, found: int): bool = not(filtered) and found == 0
@@ -272,6 +302,8 @@ pure def lawAMoveIsAnUpdate(replayed: bool): bool =
   receiptOperation(WriteMove) == receiptOperation(WriteEdit) and receiptOutcome(WriteMove, replayed) == AppliedReceipt
 pure def lawAChoiceBetweenNotesIsNeverCoaching(refusal: NotesRefusal): bool =
   refusalKind(refusal) == RefusalWaitsOnOwner iff (refusal == AmbiguousNote or refusal == NameMismatch)
+pure def lawOnlyAnUntitledChecklistIsAQuestionForTheOwner(refusal: NotesRefusal): bool =
+  refusalKind(refusal) == RefusalAsksTheOwner iff refusal == UntitledChecklist
 pure def lawAFilteredReadNeverSaysTheCollectionIsEmpty(found: int): bool = not(emptyCollectionObserved(true, found))
 ```
 

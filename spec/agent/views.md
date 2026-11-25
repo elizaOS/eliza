@@ -193,15 +193,38 @@ pure def showView(h: ViewHost, requestId: str, clientId: str, target: str): View
 pure val targetValues = Set("Notes", "home", "nowhere")
 ```
 
+### The model is told every declared view by its names, and on a bound turn the view the owner's screen showed
+
+The show action's description names every declared view by its label,
+with its aliases, and says that a view is a screen of the app on the
+owner's device: going to a view by its name, such as going home, is
+showing that view, and only directions, a route or travel to a place
+belong to Maps. On a turn bound to a renderer, its
+turn note names the declared view the turn's observation says the screen
+showed as the message was sent, as the only view showing now; a turn whose
+observation names no declared view gets no such line. So the model picks a
+view among those that exist, by what is on screen now, not by a name it
+guessed, a screen an earlier turn showed, or a place the view shares a
+name with.
+
+```quint
+pure def screenTold(h: ViewHost, observed: str): bool = targets(h, observed).length() == 1
+```
+
 ### A specific saved Notes editor is prepared only after a matching current lookup on a supported renderer
 
 The model opens one saved note, in whatever words the owner asked for it,
 by calling VIEWS with `view: "notes-editor"` and `note` set to the note's
-title or text, only after a unique successful `NOTES_GET` in the same turn.
+title or text, or to the ID the lookup read it by, only after a unique
+successful `NOTES_GET` in the same turn.
 The canonical resident collection must still match that `note` uniquely to
-the note the lookup found. A call without `note`, an uncertain or changed
-record, a private surface, a phone-native Notes source, or a renderer
-without the saved-editor protocol has no prepared saved-editor switch. The
+the note the lookup found. A note the same turn created with `NOTES_CREATE`
+is found exactly by that creation instead: `note` names its title, the
+turn created that one note, and the collection still holds it by its id,
+even when other notes share the title. A call without `note`, an uncertain
+or changed record, a private surface, a phone-native Notes source, or a
+renderer without the saved-editor protocol has no prepared saved-editor
+switch. The
 prepared action has `subview: "saved-note-v1"` and carries no note id or
 note text. Any other view name opens that view, including the Notes list,
 whatever note the call names. A renderer with the saved-editor protocol

@@ -1,4 +1,4 @@
-// spec/cloud/services/google/connection.md, "Story: See my Google connection as the cloud holds it"; spec/cloud/services/google/connection.md, "Story: Disconnect it"; spec/cloud/services/google/mailRead.md, "Story: Read my mail through the grant I chose"; spec/cloud/services/google/calendar.md, "Story: Read my calendar for a window"
+// spec/cloud/services/google/mailOperations.md, "Story: Change or send from my mailbox once, as I reviewed it"; spec/cloud/services/google/connection.md, "Story: See my Google connection as the cloud holds it"; spec/cloud/services/google/connection.md, "Story: Disconnect it"; spec/cloud/services/google/mailRead.md, "Story: Read my mail through the grant I chose"; spec/cloud/services/google/calendar.md, "Story: Read my calendar for a window"
 import { answerOf, queryOf, type CallOptions } from "./answer.vibe"
 import type { CloudTransport } from "./client.vibe"
 import { routesByName } from "./routes.vibe"
@@ -87,6 +87,66 @@ const mailCapabilitiesSchema = Schema.Struct({
 })
 export type MailCapabilities = typeof mailCapabilitiesSchema.Type
 
+type MailKind = typeof mailKindSchema.Type
+type LabelKind = Exclude<MailKind, "send" | "draft-create" | "draft-replace" | "draft-delete">
+
+type MailProposal =
+  | {
+    readonly kind: "send" | "draft-create" | "draft-replace"
+    readonly mode: "compose" | "reply" | "reply-all" | "forward"
+    readonly to?: ReadonlyArray<string>
+    readonly cc?: ReadonlyArray<string>
+    readonly bcc?: ReadonlyArray<string>
+    readonly subject: string
+    readonly bodyText: string
+    readonly replyMessageId?: string
+    readonly draftId?: string
+    readonly expectedDigest?: string
+    readonly attachments?: ReadonlyArray<{ readonly name: string; readonly mimeType: string; readonly dataBase64: string }>
+    readonly forwardAttachments?: { readonly messageId: string; readonly historyId: string; readonly partIds: ReadonlyArray<string> }
+  }
+  | { readonly kind: LabelKind; readonly messageId: string; readonly expectedHistoryId: string }
+  | { readonly kind: "draft-delete"; readonly draftId: string; readonly expectedDigest: string; readonly confirmPermanentDelete: true }
+
+const AttachmentReview = Schema.Struct({ name: Schema.String, mimeType: Schema.String, size: Schema.Number, sha256: Schema.String })
+
+const mailReviewSchema = Schema.Union([
+  Schema.Struct({
+    from: Schema.String,
+    to: Schema.Array(Schema.String),
+    cc: Schema.Array(Schema.String),
+    bcc: Schema.Array(Schema.String),
+    subject: Schema.String,
+    bodyText: Schema.String,
+    attachments: Schema.Array(AttachmentReview),
+    forwardedAttachments: Schema.Array(Schema.Struct({ ...AttachmentReview.fields, partId: Schema.String }))
+  }),
+  Schema.Struct({ kind: mailKindSchema, messageId: Schema.String, expectedHistoryId: Schema.String, from: Schema.String }),
+  Schema.Struct({ kind: Schema.Literal("draft-delete"), draftId: Schema.String, expectedDigest: Schema.String, from: Schema.String, permanent: Schema.Literal(true) })
+])
+export type MailReview = typeof mailReviewSchema.Type
+
+const mailReceiptSchema = Schema.Struct({
+  requestId: Schema.String,
+  kind: mailKindSchema,
+  reviewDigest: Schema.String,
+  state: Schema.Literals(["prepared", "dispatched", "outcome-unknown", "succeeded", "rejected"]),
+  providerResult: Schema.NullOr(Schema.Record(Schema.String, Schema.Unknown)),
+  rejectionCode: optionalText,
+  createdAt: Schema.String,
+  dispatchedAt: optionalText,
+  finishedAt: optionalText
+})
+export type MailReceipt = typeof mailReceiptSchema.Type
+
+const mailOperationSchema = Schema.Struct({
+  version: Schema.Literal(1),
+  receipt: mailReceiptSchema,
+  review: Schema.optionalKey(mailReviewSchema),
+  providerExactlyOnce: Schema.Literal(false)
+})
+export type MailOperation = typeof mailOperationSchema.Type
+
 const calendarRowSchema = Schema.Struct({
   calendarId: Schema.String,
   accountId: Schema.String,
@@ -153,6 +213,18 @@ export function googleCalls(transport: CloudTransport) {
     },
     async gmailCapabilities(choice: GrantChoice = {}, options: CallOptions = {}): Promise<MailCapabilities> {
       return answerOf(await transport.call(routesByName.inboxCapabilities, { query: queryOf({ grantId: choice.grantId }), signal: options.signal }), mailCapabilitiesSchema)
+    },
+    async gmailPrepare(request: { readonly grantId: string; readonly requestId: string; readonly proposal: MailProposal }, options: CallOptions = {}): Promise<MailOperation> {
+      return answerOf(await transport.call(routesByName.inboxOperationPrepare, { json: request, signal: options.signal }), mailOperationSchema)
+    },
+    async gmailDispatch(request: { readonly grantId: string; readonly requestId: string; readonly reviewDigest: string; readonly proposal: MailProposal }, options: CallOptions = {}): Promise<MailOperation> {
+      const { requestId, ...json } = request
+      return answerOf(await transport.call(routesByName.inboxOperationDispatch, { params: { requestId }, json, signal: options.signal }), mailOperationSchema)
+    },
+    async gmailReceipt(request: { readonly grantId: string; readonly requestId: string }, options: CallOptions = {}): Promise<MailOperation> {
+      return answerOf(await transport.call(routesByName.inboxOperation, {
+        params: { requestId: request.requestId }, query: queryOf({ grantId: request.grantId }), signal: options.signal
+      }), mailOperationSchema)
     },
     async calendarCalendars(choice: GrantChoice = {}, options: CallOptions = {}): Promise<ReadonlyArray<CalendarRow>> {
       return answerOf(await transport.call(routesByName.calendars, { query: queryOf({ grantId: choice.grantId }), signal: options.signal }), Schema.Array(calendarRowSchema))

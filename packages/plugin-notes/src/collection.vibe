@@ -1,4 +1,4 @@
-// spec/notes/records.md, "Every commit advances the revision once, and a replacement needs the revision it was read at"; spec/notes/records.md, "A creation the client names is made once, and every record is one bounded note"; spec/notes/records.md, "A checklist the owner asks for is a new note holding the owner's items"; spec/notes/records.md, "A read by a title no saved note has cites no other note and asks which one"; spec/notes/records.md, "A note's title and body are saved as well-formed text"; spec/notes/records.md, "The agent reads and changes Notes only for the owner, and changes the note the model picked"; spec/notes/records.md, "A move by name takes the identical copies of the note along"; spec/notes/records.md, "A delete or an edit by name leaves no identical copy behind"; spec/notes/trash.md, "Canonical Trash restores the exact deleted ID against the current revision"; spec/notes/trash.md, "Erase and expiry need the owner's three-day choice, a current review, and no shared recording"; spec/notes/trash.md, "Fresh Notes references and the exact audio operation receipt govern cleanup"; spec/notes/trash.md, "A pending cleanup reserves the note and recording until its exact receipt is acknowledged"
+// spec/notes/records.md, "Every commit advances the revision once, and a replacement needs the revision it was read at"; spec/notes/records.md, "A creation the client names is made once, and every record is one bounded note"; spec/notes/records.md, "A checklist the owner asks for is a new note holding the owner's items"; spec/notes/records.md, "A read by a title no saved note has reads nothing and offers the one note whose title holds it"; spec/notes/records.md, "A note's title and body are saved as well-formed text"; spec/notes/records.md, "The agent reads and changes Notes only for the owner, and changes the note the model picked"; spec/notes/records.md, "A move by name takes the identical copies of the note along"; spec/notes/records.md, "A delete or an edit by name leaves no identical copy behind"; spec/notes/trash.md, "Canonical Trash restores the exact deleted ID against the current revision"; spec/notes/trash.md, "Erase and expiry need the owner's three-day choice, a current review, and no shared recording"; spec/notes/trash.md, "Fresh Notes references and the exact audio operation receipt govern cleanup"; spec/notes/trash.md, "A pending cleanup reserves the note and recording until its exact receipt is acknowledged"
 import { canonicalEraseAllowed, canonicalRestore, canonicalRestoreOpen, canonicalSweepAllowed, recordingReservationAllows, type CanonicalTrashEntry } from "../gen/notes__trash.effect.vibe"
 import { checklistCreationAdmitted, copyFate, creationForcesNew, creationReturnsExisting, deleteByContentAllowed, literalEditAdmitted, moveTakesCopy, noteRecordAdmitted, pickedNoteChanged, revisionAdmits } from "../gen/notes__records.effect.vibe"
 import {
@@ -22,7 +22,7 @@ export type NotesRefusalCode =
   | "NOTES_VALIDATION_FAILED" | "NOTES_NOT_FOUND" | "NOTES_AMBIGUOUS_NOTE" | "NOTES_DELETE_NAME_MISMATCH"
   | "NOTES_EDIT_CONFLICT" | "NOTES_EDIT_REVISION_REQUIRED" | "NOTES_EDIT_TEXT_NOT_FOUND" | "NOTES_EDIT_TEXT_AMBIGUOUS"
   | "NOTES_RICH_EDIT_REQUIRED" | "NOTES_TRASH_EXPIRED" | "NOTES_TRASH_RETENTION_DISABLED" | "NOTES_TRASH_RECORDING_UNAVAILABLE"
-  | "NOTES_FOLDER_UNKNOWN" | "NOTES_DUPLICATE_ID" | "CALENDAR_NOTE_SOURCE_CONFLICT"
+  | "NOTES_FOLDER_UNKNOWN" | "NOTES_DUPLICATE_ID" | "NOTES_CHECKLIST_UNTITLED" | "CALENDAR_NOTE_SOURCE_CONFLICT"
 
 export error NotesRefused { code: NotesRefusalCode; message: string; candidateIds?: readonly string[] }
 
@@ -96,16 +96,15 @@ export effect function createIn(document: NotesDocument, request: CreateRequest,
   const authored = authoredNoteText(format).trim() !== ""
   const written = request.content !== undefined ? try contentParts(request.content, authored)
     : request.title !== undefined ? { title: request.title.toWellFormed(), body: request.body === undefined || request.body === "" ? "" : `\n${request.body.toWellFormed()}` }
-    : authored ? { title: "", body: "" }
+    : authored || items !== undefined ? { title: "", body: "" }
     : try Effect.fail(refused("NOTES_VALIDATION_FAILED", "content is required."))
   if (items !== undefined) {
     const titled = written.title.trim() !== ""
     const blank = items.filter((item) => item.trim() === "").length
     const longest = items.reduce((units, item) => Math.max(units, item.length), 0)
+    if (!titled) throw refused("NOTES_CHECKLIST_UNTITLED", "Nothing was saved: the owner gave this checklist no title. Ask the owner what to call it.")
     if (listed === undefined || !checklistCreationAdmitted(titled, items.length, blank, longest, request.format !== undefined || written.body.trim() !== "")) {
-      throw refused("NOTES_VALIDATION_FAILED", !titled
-        ? "A checklist needs the title the owner gave it. Ask the owner what to call the checklist; nothing was saved."
-        : `A checklist needs 1 to ${noteLimits.checklistItems} nonblank items of at most ${noteLimits.checklistItem} characters each, its title alone in content, and no body or other format.`)
+      throw refused("NOTES_VALIDATION_FAILED", `A checklist needs 1 to ${noteLimits.checklistItems} nonblank items of at most ${noteLimits.checklistItem} characters each, its title alone in content, and no body or other format.`)
     }
   }
   const parts = items === undefined ? written : { title: written.title, body: "" }
