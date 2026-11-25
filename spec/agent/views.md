@@ -199,9 +199,13 @@ The model opens one saved note, in whatever words the owner asked for it,
 by calling VIEWS with `view: "notes-editor"` and `note` set to the note's
 title or text, only after a unique successful `NOTES_GET` in the same turn.
 The canonical resident collection must still match that `note` uniquely to
-the note the lookup found. A call without `note`, an uncertain or changed
-record, a private surface, a phone-native Notes source, or a renderer
-without the saved-editor protocol has no prepared saved-editor switch. The
+the note the lookup found. A note the same turn created with `NOTES_CREATE`
+is found exactly by that creation instead: `note` names its title, the
+turn created that one note, and the collection still holds it by its id,
+even when other notes share the title. A call without `note`, an uncertain
+or changed record, a private surface, a phone-native Notes source, or a
+renderer without the saved-editor protocol has no prepared saved-editor
+switch. The
 prepared action has `subview: "saved-note-v1"` and carries no note id or
 note text. Any other view name opens that view, including the Notes list,
 whatever note the call names. A renderer with the saved-editor protocol
