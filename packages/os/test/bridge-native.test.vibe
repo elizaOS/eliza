@@ -1,4 +1,4 @@
-// spec/os/android/camera.md, "A preview binds its photo stream only at an aspect ratio the device lists"; spec/os/android/noticeRoutes.md, "An approval notice's title is part of its receipt, and a call that names no title means the configured one"; spec/os/android/notificationProjection.md, "A new-mail count counts the notices still unread, a notice the shade cap withdrew included"; spec/os/android/files/storage.md, "A listing or folder walk shows dot entries only when asked, and never the Trash under any spelling"; spec/os/android/files/storage.md, "A move into another volume takes the copy path, and its copy is written and cleaned up on that volume"
+// spec/os/android/camera.md, "A preview binds its photo stream only at an aspect ratio the device lists"; spec/os/android/noticeRoutes.md, "An approval notice's title is part of its receipt, and a call that names no title means the configured one"; spec/os/android/notificationProjection.md, "A new-mail count counts the notices still unread, a notice the shade cap withdrew included"; spec/cloud/services/google/mailRead.md, "Story: Hear about new mail while my phone is idle"; spec/os/signIn/cloudRequests.md, "A mail or calendar route is sent only with the lease, never with the device key"; spec/os/android/files/storage.md, "A listing or folder walk shows dot entries only when asked, and never the Trash under any spelling"; spec/os/android/files/storage.md, "A move into another volume takes the copy path, and its copy is written and cleaned up on that volume"
 import { assert, it } from "@effect/vitest"
 
 module node {
@@ -13,7 +13,7 @@ module node {
     return execFileSync(java, ["-cp", compileAdapter(main), main], { encoding: "utf8", timeout: 120_000 }).trim()
   }
 
-  export async function hostChecks(check: "NoticeTitlesTest" | "MailCountTest"): Promise<string> {
+  export async function hostChecks(check: "NoticeTitlesTest" | "MailCountTest" | "MailBackgroundDeliveryTest"): Promise<string> {
     const main = `ai.eliza.plugins.notifications.${check}`
     return execFileSync(java, ["-cp", await orgJsonAdapterClasspath(main), main], { encoding: "utf8", timeout: 120_000 }).trim()
   }
@@ -38,6 +38,11 @@ it.effect('An approval notice\'s title is part of its receipt, and a call that n
 it.effect('A new-mail count counts the notices still unread, a notice the shade cap withdrew included (spec/os/android/notificationProjection.md, "A new-mail count counts the notices still unread, a notice the shade cap withdrew included")', () => effect {
   const answer = try tryPromise(() => hostChecks("MailCountTest"))
   try Effect.try(() => assert.strictEqual(answer, "MailCountTest checks: 6"))
+}, 180_000)
+
+it.effect('A leased background mail check is admitted only in the foreground for the lease\'s owner, reads only the account list and inbox-v1 history, and retires its notices once the lease rotates (spec/cloud/services/google/mailRead.md, "Story: Hear about new mail while my phone is idle"; spec/os/signIn/cloudRequests.md, "A mail or calendar route is sent only with the lease, never with the device key")', () => effect {
+  const answer = try tryPromise(() => hostChecks("MailBackgroundDeliveryTest"))
+  try Effect.try(() => assert.strictEqual(answer, "MailBackgroundDeliveryTest checks: 32"))
 }, 180_000)
 
 it.effect('Browse hidden entries only when asked, never the Trash, and move or copy into another volume (spec/os/android/files/storage.md, "A listing or folder walk shows dot entries only when asked, and never the Trash under any spelling"; spec/os/android/files/storage.md, "A move into another volume takes the copy path, and its copy is written and cleaned up on that volume")', () => effect {

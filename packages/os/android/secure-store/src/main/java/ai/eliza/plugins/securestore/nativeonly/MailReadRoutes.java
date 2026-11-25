@@ -1,3 +1,4 @@
+// spec/os/signIn/cloudRequests.md, "A mail or calendar route is sent only with the lease, never with the device key"
 package ai.eliza.plugins.securestore.nativeonly;
 
 import java.util.List;
