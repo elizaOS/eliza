@@ -1,4 +1,4 @@
-// spec/core/registries.md, "Each routing registry follows its source identity and ordering policy"
+// spec/core/registries.md, "A runtime's localized examples provider is its last registration"
 import type { ActionExample } from "../types/components.vibe"
 import type { IAgentRuntime } from "../types/runtime.vibe"
 

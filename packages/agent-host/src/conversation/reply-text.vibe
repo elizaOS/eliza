@@ -11,6 +11,9 @@ function pattern(source: string, flags: string): RegExp {
 }
 
 const maxCueLength = 120
+const bracketCall = /\[[a-z][a-z0-9]*(?:_[a-z0-9]+)+(?:\s+[a-z_]+=(?:"[^"\n]*"|[^\s\]]+))+\s*\]/gu
+const callName = /^[a-z]+(?:_[a-z0-9]+)+$/u
+const emptyWrapper = /```[\w-]*\s*```|<([\w-]+)>\s*<\/\1>/gu
 const waitCue = "(?:on it|(?:one|just a) (?:sec|second|moment))"
 const containerNoun = "(?:calendar|schedule|agenda|notes|inbox|emails?|messages|texts|reminders|tasks|todos|files|photos|contacts|workflows|settings|account)"
 const relativeDay = "(?:today|tomorrow|yesterday|tonight)'s"
@@ -41,7 +44,7 @@ const waitSentence = pattern(`^${waitCue}$`, "u")
 const instructionAssent = /^(?:sure|yeah)(?:$|, |[.!…]+ | ?[—–:;] ?| - )/u
 const dataToken = /\p{N}|\b[ap]\.m\.|\b(?:pm|noon|midnight|o['’]clock|zero|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|(?:hundred|thousand|dozen)s?|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth|\p{L}+(?:teenth|tieth)|few|couple|handful|several|single|only|(?:half|quarter) (?:past|to|after|till?))\b|\b(?:at|by|until|till|before|after|around) one\b|\bone [ap]m\b/iu
 
-export const cueRule = "When you call tools, write with your first tool calls only a brief cue that you heard the request; the real reply comes after the work. A request only to open one app, with nothing to read, find or change there, still calls the tool that opens it, with no cue: write nothing with that call, and the reply after it confirms the destination. Any question or lookup gets its cue, even one about what is on the screen. For a question or a lookup, including a request asked as a question such as \"Can you text Sam?\": \"Let me check.\" or \"Let me check your calendar.\" (or your notes, inbox, messages, reminders, tasks, files, photos, contacts), or \"Let me check the weather.\" When one message asks for several lookups, or about several named people or items, use the plain \"Let me check.\"; name a source only for one simple lookup. When opening an app is part of other planned work: \"Let me open Maps.\" (the app asked for, by its bare name: Calendar, Notes, Inbox, Maps, Files, Photos, Settings, Workflows, Camera, Browser, Contacts, Messages, Phone or Clock; for any other app, \"On it.\"). For a plain command such as \"Text Sam I'm late\" or \"Set an alarm for seven\": \"Sure.\", \"Sure, one sec.\" or \"Yeah, one sec.\" For any other action: \"On it.\" or \"One sec.\" Never start with Sure or Yeah after a question; it sounds like the answer. Never name the people, items, times or outcome, never say the work is done or under way, and never repeat the request. If the person asked for silence or no acknowledgment, write nothing and still do the work. Write no text with later tool calls."
+export const cueRule = "When you call tools, write with your first tool calls only a brief cue that you heard the request; the real reply comes after the work. Write a cue only with a tool call in the same response: when no offered tool can do what was asked, write no cue and tell the person plainly, in your own words, that you can't. A request only to open one app, with nothing to read, find or change there, still calls the tool that opens it, with no cue: write nothing with that call, and the reply after it confirms the destination. Any question or lookup gets its cue, even one about what is on the screen. For a question or a lookup, including a request asked as a question such as \"Can you text Sam?\": \"Let me check.\" or \"Let me check your calendar.\" (or your notes, inbox, messages, reminders, tasks, files, photos, contacts), or \"Let me check the weather.\" When one message asks for several lookups, or about several named people or items, use the plain \"Let me check.\"; name a source only for one simple lookup. When opening an app is part of other planned work: \"Let me open Maps.\" (the app asked for, by its bare name: Calendar, Notes, Inbox, Maps, Files, Photos, Settings, Workflows, Camera, Browser, Contacts, Messages, Phone or Clock; for any other app, \"On it.\"). For a plain command such as \"Text Sam I'm late\" or \"Set an alarm for seven\": \"Sure.\", \"Sure, one sec.\" or \"Yeah, one sec.\" For any other action: \"On it.\" or \"One sec.\" Never start with Sure or Yeah after a question; it sounds like the answer. Never name the people, items, times or outcome, never say the work is done or under way, and never repeat the request. If the person asked for silence or no acknowledgment, write nothing and still do the work. Write no text with later tool calls."
 
 function inGrammar(words: string, assent: string | undefined): boolean {
   const opening = assent ?? (words.startsWith("sure! ") ? "sure! " : "")
@@ -53,15 +56,66 @@ function inGrammar(words: string, assent: string | undefined): boolean {
     && sentences.every((sentence) => waitSentence.test(sentence) || progress.test(sentence))
 }
 
+function isWrittenCall(body: string): boolean {
+  if (looksLikeActionEnvelopeJson(body)) return true
+  try {
+    const parsed: unknown = JSON.parse(body)
+    return typeof parsed === "object" && parsed !== null
+      && Object.entries(parsed).some(([key, value]) => typeof value === "string" && (key === "action" || key === "tool" || callName.test(value)))
+  } catch {
+    return false
+  }
+}
+
+interface WithoutObjects {
+  readonly text: string
+  readonly calls: boolean
+}
+
+function withoutObjects(said: string): WithoutObjects {
+  const text = said.replace(bracketCall, " ")
+  let calls = text !== said
+  if (!text.includes("{")) return { text: calls ? text.replace(emptyWrapper, " ").trim() : said, calls }
+  const open: number[] = []
+  let rest = ""
+  let kept = 0
+  let quoted = false
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index]
+    if (quoted) {
+      if (char === "\\") index += 1
+      else if (char === "\"") quoted = false
+      continue
+    }
+    if (char === "\"" && open.length > 0) quoted = true
+    if (char === "{") open.push(index)
+    if (char !== "}") continue
+    const start = open.pop()
+    const body = text.slice(start ?? index, index + 1)
+    if (start === undefined || open.length > 0 || !isJsonObject(body)) continue
+    calls ||= isWrittenCall(body)
+    rest += `${text.slice(kept, start)} `
+    kept = index + 1
+  }
+  return { text: kept === 0 && !calls ? said : `${rest}${text.slice(kept)}`.replace(emptyWrapper, " ").trim(), calls }
+}
+
+export function withoutWrittenCalls(said: string): string {
+  return withoutObjects(said).text
+}
+
 function shapeOf(reply: string): DraftShape {
-  const text = reply.trim()
-  if (!text) return "Blank"
+  const said = reply.trim()
+  if (!said) return "Blank"
+  const { text, calls } = withoutObjects(said)
+  if (!text) return calls ? "Blank" : "OtherText"
   if (text.length > maxCueLength || text.includes("?") || text.includes(personMark) || dataToken.test(text)) return "OtherText"
   const words = text.replace(/\s+/gu, " ").replace(person, `check with ${personMark}`).toLowerCase()
     .replace(/[‘’ʼ]/gu, "'").replace(/ ?, ?/gu, ", ").replace(/[.!…]+$/u, "")
   if (inGrammar(words, undefined)) return "GrammarCue"
   const assent = instructionAssent.exec(words)?.[0]
-  return assent !== undefined && inGrammar(words, assent) ? "AssentCue" : "OtherText"
+  if (assent === undefined || !inGrammar(words, assent)) return "OtherText"
+  return words === assent && !calls ? "Assent" : "AssentCue"
 }
 
 export function draftOf(text: string, instruction: boolean, calls: number): Draft {

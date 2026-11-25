@@ -1,15 +1,15 @@
-// spec/calendar/actions.md, "Story: Ask the agent about my calendar and get my active account's events"; spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/actions.md, "A change's result names its target as read before the change and the version it produced"; spec/calendar/readClock.md, "A stated year wins, a wrong extracted year is corrected, and a past start asks first"; spec/calendar/readClock.md, "A request's zone is the stated zone, else the client's zone, else the owner's"; spec/calendar/seriesScope.md, "A write names its scope: this event, this and following, or all"; spec/calendar/actions.md, "A repeating create carries its reviewed recurrence and reads back with it"; spec/calendar/actions.md, "Story: Ask when I am free and get openings from my real calendar"; spec/calendar/actions.md, "A resident delete runs at once only for the one event the owner named, and otherwise asks in chat"; spec/calendar/actions.md, "Attendees hear of a change only when the owner asked and the calendar can tell them"; spec/calendar/actions.md, "A lookup finds the events that hold the most asked words, preferring their titles"; spec/calendar/actions.md, "A trip question shows everything from the first event at the place to the end of the last"; spec/calendar/actions.md, "A new event's guests and a change of guests are the ones the owner's words give"; spec/calendar/actions.md, "The managed Google calendar is read and changed as one of the active account's calendars"; spec/calendar/actions.md, "The calendar reaches the agent only in a turn whose audience is the owner alone"; spec/calendar/actions.md, "A whole-day read names its first and last day, and code finds the midnights"; spec/calendar/actions.md, "A change finds its one event from a year back to five years ahead, and never calls an unread calendar empty"; spec/calendar/actions.md, "A new event with a start and no end lasts the asked minutes, else one hour"; spec/calendar/actions.md, "A chat create or move that overlaps a commitment is refused, naming it"; spec/calendar/actions.md, "A change waiting for approval expires a day after it was asked"; spec/calendar/seriesScope.md, "A chat change to a repeating event asks which occurrences unless the request says"; spec/calendar/readClock.md, "A clock time the owner stated is one the owner's words hold"; spec/calendar/actions.md, "A morning-only question reads only that morning, from midnight to noon"; spec/calendar/actions.md, "An afternoon-only question reads only that afternoon, from noon to five"; spec/calendar/readClock.md, "A free-time window's clock times the owner stated are ones the owner's words hold"; spec/calendar/readClock.md, "A stated window is read only when the owner's words fit it one way on its day"; spec/calendar/actions.md, "A free-time window starts no earlier than the current minute"; spec/calendar/actions.md, "A create the owner gave a start and an end for reports the saved range"; spec/calendar/readClock.md, "A time sent without an offset is wall time in the request's zone"; spec/calendar/actions.md, "A new event the owner put on the phone's own calendar is proposed on the phone"; spec/calendar/actions.md, "A change that moves only the start keeps the event's length"
+// spec/calendar/actions.md, "Story: Ask the agent about my calendar and get my active account's events"; spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/actions.md, "A change's result names its target as read before the change and the version it produced"; spec/calendar/readClock.md, "A stated year wins, a wrong extracted year is corrected, and a past start asks first"; spec/calendar/readClock.md, "A request's zone is the stated zone, else the client's zone, else the owner's"; spec/calendar/seriesScope.md, "A write names its scope: this event, this and following, or all"; spec/calendar/actions.md, "A repeating create carries its reviewed recurrence and reads back with it"; spec/calendar/actions.md, "Story: Ask when I am free and get openings from my real calendar"; spec/calendar/actions.md, "A resident delete runs at once only for the one event the owner named, and otherwise asks in chat"; spec/calendar/actions.md, "Attendees hear of a change only when the owner asked and the calendar can tell them"; spec/calendar/actions.md, "A lookup finds the events that hold the most asked words, preferring their titles"; spec/calendar/actions.md, "A trip question shows everything from the first event at the place to the end of the last"; spec/calendar/actions.md, "A new event's guests and a change of guests are the ones the owner's words give"; spec/calendar/actions.md, "The managed Google calendar is read and changed as one of the active account's calendars"; spec/calendar/actions.md, "The calendar reaches the agent only in a turn whose audience is the owner alone"; spec/calendar/actions.md, "A whole-day read names its first and last day, and code finds the midnights"; spec/calendar/actions.md, "A change finds its one event from a year back to five years ahead, and never calls an unread calendar empty"; spec/calendar/actions.md, "A new event with a start and no end lasts the asked minutes, else one hour"; spec/calendar/actions.md, "A chat create or move that overlaps a commitment is refused, naming it"; spec/calendar/actions.md, "A change waiting for approval expires a day after it was asked"; spec/calendar/seriesScope.md, "A chat change to a repeating event asks which occurrences unless the request says"; spec/calendar/readClock.md, "A clock time the owner stated is one the owner's words hold"; spec/calendar/actions.md, "A morning-only question reads only that morning, from midnight to noon"; spec/calendar/readClock.md, "The owner's words are read for a free-time window only to note one they seem to give otherwise"; spec/calendar/actions.md, "A free-time question refuses only as before the window notes, and a note never changes the window read"; spec/calendar/readClock.md, "A time sent without an offset is wall time in the request's zone"; spec/calendar/actions.md, "A new event the owner put on the phone's own calendar is proposed on the phone"; spec/calendar/actions.md, "A change that moves only the start keeps the event's length"
 import { readTurnContext } from "@elizaos/agent"
 import { showsApp } from "@elizaos/agent-host"
 import { extractUserText, incomingMessagePersistenceSnapshot, OWNER_EXCLUSIVE_DISCLOSURE_GATE, sha256Hex, unwrapUserMessageText, type Action, type ActionResult, type AppliedEffectReceipt, type ContextDefinition, type IAgentRuntime, type Memory, type Provider } from "@elizaos/core"
 import {
-  afternoonAdmission, changedEndMs, changeTarget, chatCreateReviewed, createReplyTime, chatDeleteStep, contextLookahead, createEndMs, createLength, dayRead, deleteAnswer, freeTimeRead, guestChange, intervalFree, lookupDaysAhead, lookupDaysBack, lookupNearAhead,
-  lookupNearBack, lookupReadLimit, lookupSpanDays, lookupStep, morningAdmission, occurrenceChoice, offDay, ownerPointedAt, pastWindowNext, residentDeleteStep, slotMinutesAllowed, createStore, windowStartAdmission, type GuestChange, type OwnerAnswer,
+  changedEndMs, changeTarget, chatCreateReviewed, chatDeleteStep, contextLookahead, createEndMs, createLength, dayRead, deleteAnswer, freeTimeRead, guestChange, intervalFree, lookupDaysAhead, lookupDaysBack, lookupNearAhead,
+  lookupNearBack, lookupReadLimit, lookupSpanDays, lookupStep, morningAdmission, occurrenceChoice, offDay, ownerPointedAt, residentDeleteStep, slotMinutesAllowed, createStore, windowNote, type GuestChange, type OwnerAnswer,
 } from "../../gen/calendar__actions.effect.vibe"
 import { positiveOverlap } from "../../gen/calendar__availability.effect.vibe"
-import { clockReal, instantRead, statedClockCheck, wallZone, windowClockCheck, startReading, windowFits, windowPairing, windowStartChecked } from "../../gen/calendar__readClock.effect.vibe"
+import { clockReal, instantRead, statedClockCheck, wallZone, windowFits, windowSideOff, windowStartChecked } from "../../gen/calendar__readClock.effect.vibe"
 import { scopeChoice } from "../../gen/calendar__seriesScope.effect.vibe"
-import { addDaysToLocalDate, buildUtcDateFromLocalParts, createNeedsConfirmation, createTimeZone, deviceTimeZone, getZonedDateParts, knownTimeZone, requestTimeZone, startOfCivilDay, statedYearCreate, type LocalDate, type CalendarEvent, type CalendarEventFields, type CalendarMutationOutcome, type CalendarMutationReceipt, type CalendarMutationRequest, FieldsRecord, addressWrittenInWords, clockHeldByWords, eventDayInWords, eventNamedInWords, guestIs, guestNamedInWords, windowRangesInWords, zoneNamedIn, RecurrenceRecord, WriteScopeRecord, type CalendarWriteScope } from "@elizaos/plugin-calendar-client"
+import { addDaysToLocalDate, buildUtcDateFromLocalParts, createNeedsConfirmation, createTimeZone, deviceTimeZone, getZonedDateParts, knownTimeZone, requestTimeZone, startOfCivilDay, statedYearCreate, type LocalDate, type CalendarEvent, type CalendarEventFields, type CalendarMutationOutcome, type CalendarMutationReceipt, type CalendarMutationRequest, FieldsRecord, addressWrittenInWords, clockHeldByWords, eventDayInWords, eventNamedInWords, guestIs, guestNamedInWords, windowWordsOf, zoneNamedIn, type StatedClockTime, type WindowWords, RecurrenceRecord, WriteScopeRecord, type CalendarWriteScope } from "@elizaos/plugin-calendar-client"
 import { fieldsSpanValid } from "../mutations/provider-port.vibe"
 import { tripEvents } from "./lookup.vibe"
 import { phoneCalendarOffered } from "./phone-turn.vibe"
@@ -216,15 +216,6 @@ function line(event: CalendarEvent, zone: string): string {
   return `${event.title || "(untitled)"}, ${wallTime(event, zone)}${event.location === "" ? "" : ` at ${event.location}`}`
 }
 
-function rangeLine(event: CalendarEvent, zone: string): string {
-  try {
-    const range = new Intl.DateTimeFormat("en-US", { timeZone: zone, dateStyle: "medium", timeStyle: "short" }).formatRange(new Date(Date.parse(event.startAt)), new Date(Date.parse(event.endAt)))
-    return `${event.title || "(untitled)"}, ${range}${event.location === "" ? "" : ` at ${event.location}`}`
-  } catch {
-    return line(event, zone)
-  }
-}
-
 function parametersOf(options: unknown): Parameters | undefined {
   const raw = typeof options === "object" && options !== null && "parameters" in options ? options.parameters : undefined
   const decoded = decodeParameters(raw)
@@ -262,30 +253,27 @@ function timesRefused(subaction: Subaction, kind: "unreal" | "unresolved"): Acti
 type UnsaidClock = { readonly check: "ClockUnsaid" | "ClockUndeclared"; readonly which: "start" | "end"; readonly at: number; readonly zone: string }
 type KeptTimes = { readonly start?: string; readonly end?: string }
 
-function unsaidClock(sent: Parameters, zone: string, text: string, kept: KeptTimes = {}, clockCheck = statedClockCheck): UnsaidClock | undefined {
+function unsaidClock(sent: Parameters, zone: string, text: string, kept: KeptTimes = {}): UnsaidClock | undefined {
   const endChecked = sent.statedClock === "range"
   const sentTimes = [["start", sent.startAt, kept.start], ...(endChecked ? [["end", sent.endAt, kept.end]] as const : [])] as const
   for (const [which, time, keptTime] of sentTimes) {
     const at = time === undefined ? Number.NaN : Date.parse(time)
     const wall = Number.isFinite(at) && (keptTime === undefined || at !== Date.parse(keptTime)) ? getZonedDateParts(new Date(at), zone) : undefined
     if (wall === undefined) continue
-    const check = clockCheck(sent.statedClock !== undefined, sent.statedClock === "start" || sent.statedClock === "range", clockHeldByWords({ hour: wall.hour, minute: wall.minute }, text))
+    const check = statedClockCheck(sent.statedClock !== undefined, sent.statedClock === "start" || sent.statedClock === "range", clockHeldByWords({ hour: wall.hour, minute: wall.minute }, text))
     if (check !== "ClockAsSent") return { check, which, at, zone }
   }
   return undefined
 }
 
-const unsaidEventNext = "Read the owner's request again and call again at once: with the clock time it states and statedClock start when it states only the start (leave endAt out to keep the event's length), range when it states the start and the end, or none when it gives no clock time."
-const unsaidWindowNext = "Read the owner's request again and call again at once with the window it states: statedClock range when it gives the window's start and end (\"between noon and five\", \"from one ten PM to two PM\"), start when it gives only the start, or none when you chose the window. A window already under way starts exactly at now (the current time), which is not checked."
-
-function clockRefused(subaction: Subaction, unsaid: UnsaidClock, verb: string, unsaidNext = unsaidEventNext): ActionResult {
+function clockRefused(subaction: Subaction, unsaid: UnsaidClock, verb: string): ActionResult {
   const clock = new Intl.DateTimeFormat("en-US", { timeZone: unsaid.zone, hour: "numeric", minute: "2-digit" }).format(new Date(unsaid.at))
   const sent = new Date(unsaid.at).toISOString()
   return unsaid.check === "ClockUndeclared"
     ? failed(subaction, `Nothing was ${verb} yet: the ${unsaid.which} time ${clock} is not in the request, and the call did not say whether the request gives a clock time.`,
       { code: "CALENDAR_CLOCK_UNDECLARED", sent, next: "The time can stand. If the owner gave no clock time and you chose this one (\"tomorrow afternoon\", \"push it back an hour\"), call again at once with the same times and statedClock none. If the owner said a clock time, call again with that time and statedClock start, or range with its end." })
     : failed(subaction, `Nothing was ${verb}: the ${unsaid.which} time ${clock} is not a time the request gives.`,
-      { code: "CALENDAR_CLOCK_UNSAID", sent, next: unsaidNext })
+      { code: "CALENDAR_CLOCK_UNSAID", sent, next: "Read the owner's request again and call again at once: with the clock time it states and statedClock start when it states only the start (leave endAt out to keep the event's length), range when it states the start and the end, or none when it gives no clock time." })
 }
 
 function ownerAnswerOf(parameters: Parameters): OwnerAnswer {
@@ -320,7 +308,7 @@ function changeText(outcome: CalendarMutationOutcome, done: string): string {
 const nobodyNotified = " The built-in calendar can't email attendees, so nobody was notified."
 const overlapsUnchecked = " Another calendar could not be read, so overlaps there were not checked."
 
-function changeResult(subaction: Subaction, result: CalendarChangeResult, zone: string, replyTime: "SavedStart" | "SavedRange" = "SavedStart"): ActionResult {
+function changeResult(subaction: Subaction, result: CalendarChangeResult, zone: string): ActionResult {
   if (result.kind === "refused") {
     const text = {
       no_account: "No calendar account is active right now.",
@@ -357,7 +345,7 @@ function changeResult(subaction: Subaction, result: CalendarChangeResult, zone: 
   const effectReceipts = [calendarEffectReceipt(request, receipt, outcome.replayed)]
   const note = `${result.notice === "CannotNotify" ? nobodyNotified : ""}${unchecked}`
   if (receipt.operation === "schedule_event" && receipt.event !== null) {
-    return { success: true, text: `Created ${replyTime === "SavedRange" ? rangeLine(receipt.event, zone) : line(receipt.event, zone)}.${unchecked}`, effectReceipts, data: { subaction, event: receipt.event, requestId: request.id } }
+    return { success: true, text: `Created ${line(receipt.event, zone)}.${unchecked}`, effectReceipts, data: { subaction, event: receipt.event, requestId: request.id } }
   }
   if (request.payload.action === "respond_invitation" && receipt.event !== null) {
     return { success: true, text: `${answered[request.payload.response]} ${line(receipt.event, zone)}.${note}`, effectReceipts,
@@ -606,47 +594,68 @@ effect function residentDelete(host: CalendarHost, ask: CalendarAsk, found: Cale
   }
 }
 
-type WindowFit = { readonly begin: number; readonly finish: number }
-type WindowPairings = { readonly ranges: readonly string[]; readonly fits: readonly WindowFit[]; readonly startSaid: boolean }
+type WindowSpan = { readonly begin: number; readonly finish: number }
+type FreeTimeNote = { readonly kind: "WordsGiveAnotherWindow" | "StartsBeforeNow" | "AfternoonAsked"; readonly says: string; readonly windows?: readonly { readonly startAt: string; readonly endAt: string }[] }
+type WallClock = { readonly hour: number; readonly minute: number }
 
-function windowPairings(begin: number, finish: number, zone: string, text: string, now: number, startChecked: boolean): WindowPairings | undefined {
+function freeTimeNote(parameters: Parameters, begin: number, finish: number, zone: string, text: string, now: number): FreeTimeNote | undefined {
   const start = getZonedDateParts(new Date(begin), zone)
   const end = getZonedDateParts(new Date(finish), zone)
-  if (start === undefined || end === undefined || start.year !== end.year || start.month !== end.month || start.day !== end.day) return undefined
-  const onDay = (hour: number, minute: number) => buildUtcDateFromLocalParts(zone, { year: start.year, month: start.month, day: start.day, hour, minute, second: 0 })?.getTime()
-  const readings = (wall: { readonly hour: number; readonly minute: number }, side: string) => [wall.hour % 12, (wall.hour % 12) + 12]
-    .filter((hour) => clockHeldByWords({ hour, minute: wall.minute }, side))
-    .map((hour) => onDay(hour, wall.minute))
-    .filter((at): at is number => at !== undefined)
+  if (start === undefined || end === undefined) return undefined
+  const words = windowWordsOf(text, { hour: start.hour, minute: start.minute })
+  const named = zoneNamedIn(text)
   const thisMinute = now - now % 60000
-  const nextMinute = thisMinute + 60000
-  const reading = (from: number, ends: readonly number[]) => {
-    const later = ends.filter((to) => to > from)
-    return startReading(from < nextMinute, later.length > 0 && Math.min(...later) > now)
-  }
-  const readingsByNow = (side: string) => Array.from({ length: start.hour * 60 + start.minute + 1 }, (_, minute) => minute)
-    .filter((minute) => clockHeldByWords({ hour: Math.floor(minute / 60), minute: minute % 60 }, side))
-    .map((minute) => onDay(Math.floor(minute / 60), minute % 60))
-    .filter((at): at is number => at !== undefined && at < nextMinute)
-  const ranges = windowRangesInWords(text).map((sides) => {
-    const said = readings(start, sides.start)
-    const ends = readings(end, sides.end)
-    const underWay = !startChecked && readingsByNow(sides.start).some((from) => reading(from, ends) === "StartUnderWay")
-    return { sides, said, ends, underWay }
-  }).filter((range) => range.said.length > 0 || range.ends.length > 0 || range.underWay)
-  const paired = ranges.map(({ said, ends, underWay }) => {
-    const opened = said.flatMap((from) => {
-      const read = reading(from, ends)
-      return read === "StartAsSaid" ? [from] : read === "StartUnderWay" ? [thisMinute] : []
-    })
-    const starts = startChecked ? [...new Set(opened)] : underWay ? [begin] : []
-    const pairs = starts.flatMap((from) => ends.filter((to) => to > from).map((to) => ({ begin: from, finish: to })))
-    const kept = windowFits(starts.length, ends.length, pairs.length)
-    return { startSaid: startChecked ? said.includes(begin) : underWay, fits: kept === pairs.length ? pairs : starts.length > 1 ? pairs.slice(-kept) : pairs.slice(0, kept) }
+  const startChecked = windowStartChecked(begin >= thisMinute && begin < thisMinute + 60000)
+  const sameDay = start.year === end.year && start.month === end.month && start.day === end.day
+  const noon = hourOfDay(begin, zone, 12)
+  const five = hourOfDay(begin, zone, 17)
+  const onDay = (clock: StatedClockTime) => buildUtcDateFromLocalParts(zone, { year: start.year, month: start.month, day: start.day, hour: clock.hour, minute: clock.minute, second: 0 })?.getTime()
+  const instants = (clocks: readonly StatedClockTime[]) => clocks.map(onDay).filter((at): at is number => at !== undefined)
+  const same = (wall: WallClock) => (clock: StatedClockTime) => clock.hour === wall.hour && clock.minute === wall.minute
+  const otherHalf = (wall: WallClock) => (clock: StatedClockTime) => clock.minute === wall.minute && clock.hour % 12 === wall.hour % 12
+  const either = (wall: WallClock) => (clock: StatedClockTime) => clock.hour % 12 === wall.hour % 12
+  const held = (wall: WallClock) => clockHeldByWords({ hour: wall.hour, minute: wall.minute }, text) || clockHeldByWords({ hour: wall.hour, minute: wall.minute }, words.uncounted)
+  const inPeriod = (fit: WindowSpan) => noon === undefined || (parameters.morningOnly === true ? fit.finish <= noon : parameters.afternoonOnly === true ? fit.begin >= noon : true)
+  const ranges = (sameDay ? words.ranges : []).flatMap((range, index) => {
+    if (!range.starts.some(either(start)) && !range.ends.some(either(end))) return []
+    const readings = instants(range.starts)
+    const ends = instants(range.ends)
+    const all = readings.flatMap((from) => ends.filter((to) => to > from).map((to) => ({ begin: from, finish: to })))
+    const kept = windowFits(readings.length, ends.length, all.length)
+    const nearest = kept === all.length ? all : readings.length > 1 ? all.slice(-kept) : all.slice(0, kept)
+    return [{ range, index, fits: nearest.some(inPeriod) ? nearest.filter(inPeriod) : nearest }]
   })
-  const settles = paired.find((range) => range.fits.length === 1 && range.fits[0]?.begin === begin && range.fits[0]?.finish === finish)
-  const fits = settles?.fits ?? paired.flatMap((range) => range.fits).filter((fit, at, all) => all.findIndex((known) => known.begin === fit.begin && known.finish === fit.finish) === at)
-  return { ranges: ranges.map((range) => range.sides.phrase), fits, startSaid: paired.some((range) => range.startSaid) }
+  const fitted = ranges.some(({ fits }) => fits.some((fit) => fit.finish === finish && (fit.begin === begin || (!startChecked && fit.begin <= begin))))
+  const statedElsewhere = (statements: WindowWords["starts"], wall: WallClock, index: number | undefined) => statements.some((stated) => stated.range !== index && stated.clocks.some(same(wall)))
+  const rangeOff = ranges.some(({ range, index, fits }) => fits.length > 0 && (
+    windowSideOff(!startChecked || fits.some((fit) => fit.begin === begin) || statedElsewhere(words.starts, start, index), range.starts.some(otherHalf(start)), held(start))
+    || windowSideOff(fits.some((fit) => fit.finish === finish) || statedElsewhere(words.ends, end, index), range.ends.some(otherHalf(end)), held(end))))
+  const alone = (statements: WindowWords["starts"]) => statements.filter((stated) => stated.range === undefined)
+  const statementOff = (statements: WindowWords["starts"], wall: WallClock, checked: boolean) => checked
+    && windowSideOff(statements.some((stated) => stated.clocks.some(same(wall))), alone(statements).some((stated) => stated.clocks.some(otherHalf(wall))), true)
+  const startOff = statementOff(words.starts, start, startChecked)
+  const endOff = statementOff(words.ends, end, true)
+  const sidesOff = !fitted && (rangeOff || startOff || endOff)
+  const afternoonLeft = parameters.afternoonOnly === true && noon !== undefined && five !== undefined && ((begin < noon && !held(start)) || (finish > five && !held(end)))
+  const clocks = new Intl.DateTimeFormat("en-US", { timeZone: zone, hour: "numeric", minute: "2-digit" })
+  const list = (items: readonly string[]) => new Intl.ListFormat("en-US", { type: "disjunction" }).format(items)
+  const asRead = "The window was read as sent."
+  const zoneSaid = named.kind !== "none" || /\b[A-Z]{1,4}T\b/u.test(text)
+  switch (windowNote(words.read, zoneSaid && !(named.kind === "zone" && named.zone === zone), sidesOff, begin < thisMinute, afternoonLeft)) {
+    case "NoNote": return undefined
+    case "WordsGiveAnotherWindow": {
+      const fits = rangeOff ? ranges.flatMap(({ fits }) => fits).filter((fit, at, all) => all.findIndex((known) => known.begin === fit.begin && known.finish === fit.finish) === at) : []
+      const stated = (statements: WindowWords["starts"]) => [...new Set(instants(alone(statements).flatMap((statement) => statement.clocks)))].map((at) => clocks.format(new Date(at)))
+      const said = fits.length > 0 ? `the window ${list(fits.map((fit) => clocks.formatRange(new Date(fit.begin), new Date(fit.finish))))}`
+        : [...(startOff ? [`a start at ${list(stated(words.starts))}`] : []), ...(endOff ? [`an end at ${list(stated(words.ends))}`] : [])].join(" and ")
+      return { kind: "WordsGiveAnotherWindow", says: `Note: the owner's words seem to give ${said} that day, not the window sent. ${asRead}`,
+        ...(fits.length > 0 ? { windows: fits.map((fit) => ({ startAt: new Date(fit.begin).toISOString(), endAt: new Date(fit.finish).toISOString() })) } : {}) }
+    }
+    case "StartsBeforeNow":
+      return { kind: "StartsBeforeNow", says: `Note: the window starts before now (${clocks.format(new Date(now))}). ${asRead} For the rest of a period under way, start it at now; for what was on earlier, search_events lists the events.` }
+    case "AfternoonAsked":
+      return { kind: "AfternoonAsked", says: `Note: the owner asked about an afternoon, which runs from noon to 5 PM, and the window sent runs outside it. ${asRead}` }
+  }
 }
 
 effect function freeTime(host: CalendarHost, parameters: Parameters, zone: string, text: string, now: number): ActionResult!! {
@@ -660,52 +669,10 @@ effect function freeTime(host: CalendarHost, parameters: Parameters, zone: strin
   if (freeTimeRead(windowValid, durationValid, true) === "RefuseWindow") {
     return failed(subaction, "I need the exact window (timeMin and timeMax, at most seven days apart) and, for openings, the asked length in minutes from 5 to 480.", { code: "CALENDAR_AVAILABILITY_INVALID_WINDOW" })
   }
-  if (windowStartAdmission(begin, now) === "RefusePastStart") {
-    return pastWindowNext(finish <= now) === "SearchThePast"
-      ? failed(subaction, "Nothing was read: that window ended before now, and free time is only found ahead.",
-        { code: "CALENDAR_AVAILABILITY_PAST_WINDOW", now: new Date(now).toISOString(), next: "For a question about a period already past (\"was I free yesterday afternoon?\"), call search_events over that period at once and answer from the events it lists." })
-      : failed(subaction, "Nothing was read: that window starts before now.",
-        { code: "CALENDAR_AVAILABILITY_PAST_WINDOW", now: new Date(now).toISOString(), next: "Call again at once with the window starting at the current time (now): for the rest of a period already under way (\"is today free?\", \"am I free this afternoon?\", \"between noon and five today\" at 1 PM), start it at now and keep its end and statedClock; a start at now is not checked against the owner's words. For what was on earlier in that period, use search_events." })
-  }
   const noon = hourOfDay(begin, zone, 12)
   if (morningAdmission(parameters.morningOnly === true, noon === undefined || finish > noon) === "RefuseOutsideMorning") {
     return failed(subaction, "The owner asked only about a morning. Keep the window on that morning's date and end it by noon in the request's zone; for a shorter opening inside the morning, use propose_times.",
       { code: "CALENDAR_AVAILABILITY_OUTSIDE_REQUESTED_PERIOD" })
-  }
-  const five = hourOfDay(begin, zone, 17)
-  if (afternoonAdmission(parameters.afternoonOnly === true, noon === undefined || begin < noon, five === undefined || finish > five) === "RefuseOutsideAfternoon") {
-    return failed(subaction, "The owner asked only about an afternoon. Keep the window on that afternoon, from noon to 5 PM in the request's zone; for a shorter opening inside the afternoon, use propose_times.",
-      { code: "CALENDAR_AVAILABILITY_OUTSIDE_REQUESTED_PERIOD" })
-  }
-  const thisMinute = now - now % 60000
-  const startChecked = windowStartChecked(begin >= thisMinute && begin < thisMinute + 60000)
-  const keptStart = startChecked ? {} : { start: new Date(begin).toISOString() }
-  const unsaid = unsaidClock({ ...parameters, startAt: new Date(begin).toISOString(), endAt: new Date(finish).toISOString() }, zone, text, keptStart, windowClockCheck)
-  if (unsaid !== undefined) return clockRefused(subaction, unsaid, "read", unsaidWindowNext)
-  const pairing = windowPairings(begin, finish, zone, text, now, startChecked)
-  const fits = pairing?.fits ?? []
-  const clocks = new Intl.DateTimeFormat("en-US", { timeZone: zone, hour: "numeric", minute: "2-digit" })
-  const fitsWindow = (fit: WindowFit) => clocks.formatRange(new Date(fit.begin), new Date(fit.finish))
-  const windows = fits.map((fit) => ({ startAt: new Date(fit.begin).toISOString(), endAt: new Date(fit.finish).toISOString() }))
-  const paired = windowPairing(parameters.statedClock === "range", pairing !== undefined, (pairing?.ranges.length ?? 0) > 0, fits.length, fits.some((fit) => fit.begin === begin && fit.finish === finish))
-  if (paired === "PairingOpen") {
-    return failed(subaction, `Nothing was read: the request's clock times fit more than one window that day: ${new Intl.ListFormat("en-US", { type: "disjunction" }).format(fits.map(fitsWindow))}.`, {
-      code: "CALENDAR_CLOCK_AMBIGUOUS", windows,
-      next: "Ask the owner which of these windows they mean, in your own words. When the owner's words or the conversation already settle it, call again at once with that window and statedClock none.",
-    })
-  }
-  if (paired === "PairingOther" || paired === "PairingNone") {
-    const endDiffers = paired === "PairingOther" ? fits.every((fit) => fit.begin === begin) : pairing?.startSaid === true
-    const sent = new Date(endDiffers ? finish : begin).toISOString()
-    return paired === "PairingOther"
-      ? failed(subaction, `Nothing was read: the request's clock times give the window ${fits.map(fitsWindow).join(", ")} that day, not the one sent.`, {
-        code: "CALENDAR_CLOCK_UNSAID", sent, windows,
-        next: "Call again at once with the window the request gives and statedClock range.",
-      })
-      : failed(subaction, `Nothing was read: the window sent is not the range the request states (${(pairing?.ranges ?? []).map((phrase) => `"${phrase}"`).join(" or ")}).`, {
-        code: "CALENDAR_CLOCK_UNSAID", sent, windows,
-        next: "Read the owner's request again and call again at once with the window its range states and statedClock range, or with statedClock none when you chose the window.",
-      })
   }
   const found = try host.search({ timeMin: Math.max(0, begin - day), timeMax: finish + day, ...(parameters.calendarId === undefined ? {} : { calendarId: parameters.calendarId }) })
   if (found === undefined) return failed(subaction, "No calendar account is active right now.")
@@ -715,19 +682,22 @@ effect function freeTime(host: CalendarHost, parameters: Parameters, zone: strin
     return failed(subaction, "Some calendars could not be read completely, so I can't tell whether that time is free.", { code: "CALENDAR_AVAILABILITY_INCOMPLETE", availability: "unknown" })
   }
   const range = { windowStart: new Date(begin).toISOString(), windowEnd: new Date(finish).toISOString(), timeZone: zone, accountId: found.account.accountId }
+  const note = freeTimeNote(parameters, begin, finish, zone, text, now)
+  const noted = note === undefined ? {} : { windowNote: note }
+  const withNote = (said: string) => note === undefined ? said : `${said} ${note.says}`
   if (!propose) {
     const free = intervalFree(asked, busy)
     return {
-      success: true, text: free ? `You're free ${spanText(asked, zone)}.` : `That time isn't free: ${busy.map((span) => spanText(span, zone)).join("; ")}.`,
-      data: { subaction, ...range, isFree: free, conflicts: busy.map((span) => ({ startAt: new Date(span.begin).toISOString(), endAt: new Date(span.finish).toISOString() })) },
+      success: true, text: withNote(free ? `You're free ${spanText(asked, zone)}.` : `That time isn't free: ${busy.map((span) => spanText(span, zone)).join("; ")}.`),
+      data: { subaction, ...range, isFree: free, conflicts: busy.map((span) => ({ startAt: new Date(span.begin).toISOString(), endAt: new Date(span.finish).toISOString() })), ...noted },
     }
   }
   const slots = openings(asked, minutes * 60_000, busy)
   return {
     success: true,
-    text: slots.length === 0 ? `I found no ${minutes}-minute opening on the quarter hour in that time.` : `I found these ${minutes}-minute openings: ${new Intl.ListFormat("en-US", { type: "disjunction" }).format(slots.map((slot) => openingText(slot, zone)))}.`,
+    text: withNote(slots.length === 0 ? `I found no ${minutes}-minute opening on the quarter hour in that time.` : `I found these ${minutes}-minute openings: ${new Intl.ListFormat("en-US", { type: "disjunction" }).format(slots.map((slot) => openingText(slot, zone)))}.`),
     data: {
-      subaction, ...range, durationMinutes: minutes,
+      subaction, ...range, durationMinutes: minutes, ...noted,
       slots: slots.map((slot) => ({ startAt: new Date(slot.begin).toISOString(), endAt: new Date(slot.finish).toISOString(), durationMinutes: minutes, timeZone: zone })),
       availabilityEvidence: "Openings start on the quarter hour and come from this exact read. An empty list does not rule out an opening off the quarter hour.",
     },
@@ -818,7 +788,7 @@ effect function handle(host: CalendarHost, ask: CalendarAsk, sent: Parameters): 
       const source = try host.writeTarget(sentEvent.calendarId)
       if (source === undefined) return failed(subaction, "There's no calendar this account can write to.")
       const result = host.change({ kind: "create", source, fields: asked, recurrence: recurrence.value, reviewFirst: chatCreateReviewed(sentEvent.reviewBeforeCreate === false && sentEvent.reviewBeforeSaving !== true), slotZone: createZone, askedBy, askId }) catch () => undefined
-      return result === undefined ? failed(subaction, ledgerDown) : changeResult(subaction, result, createZone, createReplyTime(sentEvent.statedClock === "range", sentEvent.endAt !== undefined, sentEvent.isAllDay === true))
+      return result === undefined ? failed(subaction, ledgerDown) : changeResult(subaction, result, createZone)
     }
     case "update_event":
     case "delete_event": {
@@ -923,7 +893,7 @@ export const calendarAction: Action = {
     { name: "statedClock", required: false, description: "With a new startAt or endAt, or a free-time window's timeMin and timeMax: start when the owner's words give the start's clock time (\"at 3pm\", \"one ten PM\", \"noon\", \"to 4\"), range when they give a start and an end (\"from 3pm to 3:45pm\", \"between noon and five\", \"from one ten PM to two PM\"), none when they give no clock time and you chose the time (\"tomorrow afternoon\", \"push it back an hour\", \"move it to Friday\"). A stated start or end must be the clock time the owner said; a time that is not in the owner's words is kept only with none.", schema: { type: "string", enum: ["start", "range", "none"] } },
     { name: "phoneCalendar", required: false, description: "For create_event: true only when the owner asked to put the event on the phone's own native calendar (\"on my phone calendar\", \"in my Samsung calendar\"), in any language. Left out for the agent's own built-in Eliza calendar and for a connected account.", schema: { type: "boolean" } },
     { name: "morningOnly", required: false, description: "For check_availability and propose_times: true when the owner asked only about a morning (\"tomorrow morning\"); the window then ends by that day's noon.", schema: { type: "boolean" } },
-    { name: "afternoonOnly", required: false, description: "For check_availability and propose_times: true when the owner asked only about an afternoon (\"tomorrow afternoon\", \"30 minutes tomorrow afternoon\"), also when an errand explains the time, before or after the afternoon (\"tomorrow when I can pick up groceries in the afternoon\", \"tomorrow afternoon where I can pick up these groceries\"); the window then runs from that day's noon to no later than 5 PM.", schema: { type: "boolean" } },
+    { name: "afternoonOnly", required: false, description: "For check_availability and propose_times: true when the owner asked only about an afternoon (\"tomorrow afternoon\", \"30 minutes tomorrow afternoon\"), also when an errand explains the time, before or after the afternoon (\"tomorrow when I can pick up groceries in the afternoon\", \"tomorrow afternoon where I can pick up these groceries\"); the window then runs from that day's noon to no later than 5 PM, or from or to a clock time the owner said outside it (\"tomorrow afternoon until 5:30\", \"tomorrow afternoon from 1 to 6\").", schema: { type: "boolean" } },
     { name: "ownerAnswer", required: false, description: "For delete_event on the agent's own calendar, in the owner's request or their answer to your question: yes when the owner asks to delete the event or agrees to it (\"delete Dentist\", \"yes, delete it\", \"sí, bórralo\"), no when the owner turns the delete down (\"don't delete Dentist\", \"keep Dentist\", \"no, keep it\"), which keeps the event. Leave it out when the owner did neither.", schema: { type: "string", enum: ["yes", "no"] } },
   ],
   roleGate: { minRole: "OWNER" },

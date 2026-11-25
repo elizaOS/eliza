@@ -54,6 +54,8 @@ module node {
   const vectorExtension = "vector.tar.gz"
   const entryId = "\0eliza-agent-bundle-entry"
   const excludedPrefix = "\0eliza-excluded:"
+  const builderToolPrefix = "\0eliza-builder-tool:"
+  const builderTools: Readonly<Record<string, readonly string[]>> = { vite: ["build", "parseAst"] }
   const rolldownRuntime = "\0rolldown/runtime.js"
   const compiledModule = /^(.+\.vibex?)\.[^./\\]+\.jsx?$/
   const noWorker: WorkerDigest = { tag: "NoWorker" }
@@ -119,6 +121,15 @@ module node {
       if (existsSync(join(directory, "package.json"))) return relative(directory, file)
     }
     return basename(file)
+  }
+
+  function builderToolModule(name: string): string {
+    return [
+      `const refuse = () => { throw new Error(${JSON.stringify(`${name} builds the device bundle and is not part of it`)}) }`,
+      ...(builderTools[name] ?? []).map((imported) => `export const ${imported} = refuse`),
+      "export default refuse",
+      "",
+    ].join("\n")
   }
 
   function excludedModule(name: string): string {
@@ -241,11 +252,13 @@ module node {
       enforce: "pre",
       resolveId(id) {
         if (id === entryId) return consumerEntry ?? entryId
+        if (Object.hasOwn(builderTools, id)) return `${builderToolPrefix}${id}`
         const excluded = excludedPackages.find((name) => id === name || id.startsWith(`${name}/`))
         return excluded === undefined ? null : `${excludedPrefix}${excluded}`
       },
       load(id) {
         if (id === entryId) return entry
+        if (id.startsWith(builderToolPrefix)) return builderToolModule(id.slice(builderToolPrefix.length))
         return id.startsWith(excludedPrefix) ? excludedModule(id.slice(excludedPrefix.length)) : null
       },
       generateBundle(_options, bundle) {
@@ -253,7 +266,7 @@ module node {
         if (chunks.length !== 1 || chunks[0]?.fileName !== "agent.mjs") throw new Error("The device runtime did not emit one ESM entry")
         const chunk = chunks[0]
         for (const [id, module] of Object.entries(chunk.modules)) {
-          if (module.renderedLength > 0 && id !== entryId && !id.startsWith(excludedPrefix)) emitted.set(id, module.renderedLength)
+          if (module.renderedLength > 0 && id !== entryId && !id.startsWith(excludedPrefix) && !id.startsWith(builderToolPrefix)) emitted.set(id, module.renderedLength)
         }
         const hasAmbiguousDynamicEdge = chunk.dynamicImports.includes(chunk.fileName)
         const dynamicImports = chunk.dynamicImports.filter((id) => id !== chunk.fileName)

@@ -163,7 +163,6 @@ lemma registerComponent_ensures(s: RuntimeRegistries, kind: ComponentKind, name:
   ensures (inv(s) ==> canRegisterComponent(s, kind, name, reference, owner, allowsOverride) ==> alwaysModelSelectionPriority(registerComponent(s, kind, name, reference, owner, allowsOverride)))
   ensures (inv(s) ==> canRegisterComponent(s, kind, name, reference, owner, allowsOverride) ==> alwaysRegistryCountersNonnegative(registerComponent(s, kind, name, reference, owner, allowsOverride)))
   ensures (inv(s) ==> canRegisterComponent(s, kind, name, reference, owner, allowsOverride) ==> alwaysLocalizedSlotUnique(registerComponent(s, kind, name, reference, owner, allowsOverride)))
-  ensures (inv(s) ==> canRegisterComponent(s, kind, name, reference, owner, allowsOverride) ==> alwaysDirectIdsUniquePerRuntime(registerComponent(s, kind, name, reference, owner, allowsOverride)))
   ensures (inv(s) ==> canRegisterComponent(s, kind, name, reference, owner, allowsOverride) ==> alwaysUniqueKeys(registerComponent(s, kind, name, reference, owner, allowsOverride)))
   ensures (inv(s) ==> canRegisterComponent(s, kind, name, reference, owner, allowsOverride) ==> stepRegisterWorkerWakesScheduler(s, "registerComponent", registerComponent(s, kind, name, reference, owner, allowsOverride)))
   ensures (inv(s) ==> canRegisterComponent(s, kind, name, reference, owner, allowsOverride) ==> stepCategoryIsolation(s, "registerComponent", registerComponent(s, kind, name, reference, owner, allowsOverride)))
@@ -197,7 +196,6 @@ lemma unregisterComponent_ensures(s: RuntimeRegistries, kind: ComponentKind, nam
   ensures (inv(s) ==> canUnregisterComponent(s, kind, name) ==> alwaysModelSelectionPriority(unregisterComponent(s, kind, name)))
   ensures (inv(s) ==> canUnregisterComponent(s, kind, name) ==> alwaysRegistryCountersNonnegative(unregisterComponent(s, kind, name)))
   ensures (inv(s) ==> canUnregisterComponent(s, kind, name) ==> alwaysLocalizedSlotUnique(unregisterComponent(s, kind, name)))
-  ensures (inv(s) ==> canUnregisterComponent(s, kind, name) ==> alwaysDirectIdsUniquePerRuntime(unregisterComponent(s, kind, name)))
   ensures (inv(s) ==> canUnregisterComponent(s, kind, name) ==> alwaysUniqueKeys(unregisterComponent(s, kind, name)))
   ensures (inv(s) ==> canUnregisterComponent(s, kind, name) ==> stepRegisterWorkerWakesScheduler(s, "unregisterComponent", unregisterComponent(s, kind, name)))
   ensures (inv(s) ==> canUnregisterComponent(s, kind, name) ==> stepCategoryIsolation(s, "unregisterComponent", unregisterComponent(s, kind, name)))
@@ -215,7 +213,6 @@ lemma registerModel_ensures(s: RuntimeRegistries, modelType: string, provider: s
   ensures (inv(s) ==> canRegisterModel(s, modelType, provider, reference, priority, owner, capabilityEnabled) ==> alwaysModelSelectionPriority(registerModel(s, modelType, provider, reference, priority, owner, capabilityEnabled)))
   ensures (inv(s) ==> canRegisterModel(s, modelType, provider, reference, priority, owner, capabilityEnabled) ==> alwaysRegistryCountersNonnegative(registerModel(s, modelType, provider, reference, priority, owner, capabilityEnabled)))
   ensures (inv(s) ==> canRegisterModel(s, modelType, provider, reference, priority, owner, capabilityEnabled) ==> alwaysLocalizedSlotUnique(registerModel(s, modelType, provider, reference, priority, owner, capabilityEnabled)))
-  ensures (inv(s) ==> canRegisterModel(s, modelType, provider, reference, priority, owner, capabilityEnabled) ==> alwaysDirectIdsUniquePerRuntime(registerModel(s, modelType, provider, reference, priority, owner, capabilityEnabled)))
   ensures (inv(s) ==> canRegisterModel(s, modelType, provider, reference, priority, owner, capabilityEnabled) ==> alwaysUniqueKeys(registerModel(s, modelType, provider, reference, priority, owner, capabilityEnabled)))
   ensures (inv(s) ==> canRegisterModel(s, modelType, provider, reference, priority, owner, capabilityEnabled) ==> stepRegisterWorkerWakesScheduler(s, "registerModel", registerModel(s, modelType, provider, reference, priority, owner, capabilityEnabled)))
   ensures (inv(s) ==> canRegisterModel(s, modelType, provider, reference, priority, owner, capabilityEnabled) ==> stepCategoryIsolation(s, "registerModel", registerModel(s, modelType, provider, reference, priority, owner, capabilityEnabled)))
@@ -234,7 +231,6 @@ lemma unloadOwner_ensures(s: RuntimeRegistries, owner: int)
   ensures (inv(s) ==> canUnloadOwner(s, owner) ==> alwaysModelSelectionPriority(unloadOwner(s, owner)))
   ensures (inv(s) ==> canUnloadOwner(s, owner) ==> alwaysRegistryCountersNonnegative(unloadOwner(s, owner)))
   ensures (inv(s) ==> canUnloadOwner(s, owner) ==> alwaysLocalizedSlotUnique(unloadOwner(s, owner)))
-  ensures (inv(s) ==> canUnloadOwner(s, owner) ==> alwaysDirectIdsUniquePerRuntime(unloadOwner(s, owner)))
   ensures (inv(s) ==> canUnloadOwner(s, owner) ==> alwaysUniqueKeys(unloadOwner(s, owner)))
   ensures (inv(s) ==> canUnloadOwner(s, owner) ==> stepRegisterWorkerWakesScheduler(s, "unloadOwner", unloadOwner(s, owner)))
   ensures (inv(s) ==> canUnloadOwner(s, owner) ==> stepCategoryIsolation(s, "unloadOwner", unloadOwner(s, owner)))
@@ -252,11 +248,6 @@ lemma LocalizedProviderRoutingCounts(s: RuntimeRegistries)
     (forall entry :: entry in s.localized ==> |ProofLib.Filter((other: LocalizedProvider) => other.runtime == entry.runtime, s.localized)| == 1)
 {}
 
-lemma DirectRouteRoutingCounts(s: RuntimeRegistries)
-  ensures alwaysDirectIdsUniquePerRuntime(s) ==
-    (forall entry :: entry in s.direct ==> |ProofLib.Filter((other: DirectRoute) => other.runtime == entry.runtime && other.id == entry.id, s.direct)| == 1)
-{}
-
 lemma registerLocalized_ensures(s: RuntimeRegistries, runtimeId: int, reference: int)
   ensures (inv(s) ==> canRegisterLocalized(s, runtimeId, reference) ==> alwaysComponentNamesUnique(registerLocalized(s, runtimeId, reference)))
   ensures (inv(s) ==> canRegisterLocalized(s, runtimeId, reference) ==> alwaysComponentOwnershipValid(registerLocalized(s, runtimeId, reference)))
@@ -264,7 +255,6 @@ lemma registerLocalized_ensures(s: RuntimeRegistries, runtimeId: int, reference:
   ensures (inv(s) ==> canRegisterLocalized(s, runtimeId, reference) ==> alwaysModelSelectionPriority(registerLocalized(s, runtimeId, reference)))
   ensures (inv(s) ==> canRegisterLocalized(s, runtimeId, reference) ==> alwaysRegistryCountersNonnegative(registerLocalized(s, runtimeId, reference)))
   ensures (inv(s) ==> canRegisterLocalized(s, runtimeId, reference) ==> alwaysLocalizedSlotUnique(registerLocalized(s, runtimeId, reference)))
-  ensures (inv(s) ==> canRegisterLocalized(s, runtimeId, reference) ==> alwaysDirectIdsUniquePerRuntime(registerLocalized(s, runtimeId, reference)))
   ensures (inv(s) ==> canRegisterLocalized(s, runtimeId, reference) ==> alwaysUniqueKeys(registerLocalized(s, runtimeId, reference)))
   ensures (inv(s) ==> canRegisterLocalized(s, runtimeId, reference) ==> stepRegisterWorkerWakesScheduler(s, "registerLocalized", registerLocalized(s, runtimeId, reference)))
   ensures (inv(s) ==> canRegisterLocalized(s, runtimeId, reference) ==> stepCategoryIsolation(s, "registerLocalized", registerLocalized(s, runtimeId, reference)))
@@ -306,88 +296,6 @@ lemma registerLocalized_ensures(s: RuntimeRegistries, runtimeId: int, reference:
           assert !matching(entry);
         }
       }
-    }
-  }
-}
-
-lemma registerDirectRoute_ensures(s: RuntimeRegistries, route: DirectRoute)
-  ensures (inv(s) ==> canRegisterDirectRoute(s, route) ==> alwaysComponentNamesUnique(registerDirectRoute(s, route)))
-  ensures (inv(s) ==> canRegisterDirectRoute(s, route) ==> alwaysComponentOwnershipValid(registerDirectRoute(s, route)))
-  ensures (inv(s) ==> canRegisterDirectRoute(s, route) ==> alwaysModelRegistrationOrderUnique(registerDirectRoute(s, route)))
-  ensures (inv(s) ==> canRegisterDirectRoute(s, route) ==> alwaysModelSelectionPriority(registerDirectRoute(s, route)))
-  ensures (inv(s) ==> canRegisterDirectRoute(s, route) ==> alwaysRegistryCountersNonnegative(registerDirectRoute(s, route)))
-  ensures (inv(s) ==> canRegisterDirectRoute(s, route) ==> alwaysLocalizedSlotUnique(registerDirectRoute(s, route)))
-  ensures (inv(s) ==> canRegisterDirectRoute(s, route) ==> alwaysDirectIdsUniquePerRuntime(registerDirectRoute(s, route)))
-  ensures (inv(s) ==> canRegisterDirectRoute(s, route) ==> alwaysUniqueKeys(registerDirectRoute(s, route)))
-  ensures (inv(s) ==> canRegisterDirectRoute(s, route) ==> stepRegisterWorkerWakesScheduler(s, "registerDirectRoute", registerDirectRoute(s, route)))
-  ensures (inv(s) ==> canRegisterDirectRoute(s, route) ==> stepCategoryIsolation(s, "registerDirectRoute", registerDirectRoute(s, route)))
-{
-  if inv(s) && canRegisterDirectRoute(s, route) {
-    var added := route;
-    var after := registerDirectRoute(s, route);
-    var matching := (row: DirectRoute) => row.runtime == added.runtime && row.id == added.id;
-    DirectRouteRoutingCounts(s);
-    DirectRouteRoutingCounts(after);
-    if exists row :: row in s.direct && matching(row) {
-      assert |after.direct| == |s.direct|;
-      forall index | 0 <= index < |s.direct|
-        ensures after.direct[index].runtime == s.direct[index].runtime
-        ensures after.direct[index].id == s.direct[index].id
-      {
-        assert after.direct[index] == (if s.direct[index].runtime == added.runtime && s.direct[index].id == added.id then added else s.direct[index]);
-      }
-      forall entry | entry in after.direct
-        ensures |ProofLib.Filter((other: DirectRoute) => other.runtime == entry.runtime && other.id == entry.id, after.direct)| == 1
-      {
-        var index :| 0 <= index < |after.direct| && after.direct[index] == entry;
-        assert s.direct[index] in s.direct;
-        var key := (other: DirectRoute) => other.runtime == entry.runtime && other.id == entry.id;
-        assert |ProofLib.Filter((other: DirectRoute) => other.runtime == s.direct[index].runtime && other.id == s.direct[index].id, s.direct)| == 1;
-        ProofLib.FilterLengthPointwise(key, key, s.direct, after.direct);
-      }
-    } else {
-      assert after.direct == s.direct + [added];
-      forall entry | entry in after.direct
-        ensures |ProofLib.Filter((other: DirectRoute) => other.runtime == entry.runtime && other.id == entry.id, after.direct)| == 1
-      {
-        var key := (other: DirectRoute) => other.runtime == entry.runtime && other.id == entry.id;
-        ProofLib.FilterAppend(key, s.direct, added);
-        if entry == added {
-          ProofLib.FilterNone(matching, s.direct);
-        } else {
-          assert entry in s.direct;
-          assert !matching(entry);
-        }
-      }
-    }
-  }
-}
-
-lemma resetDirectRoutes_ensures(s: RuntimeRegistries, runtimeId: int)
-  ensures (inv(s) ==> canResetDirectRoutes(s, runtimeId) ==> alwaysComponentNamesUnique(resetDirectRoutes(s, runtimeId)))
-  ensures (inv(s) ==> canResetDirectRoutes(s, runtimeId) ==> alwaysComponentOwnershipValid(resetDirectRoutes(s, runtimeId)))
-  ensures (inv(s) ==> canResetDirectRoutes(s, runtimeId) ==> alwaysModelRegistrationOrderUnique(resetDirectRoutes(s, runtimeId)))
-  ensures (inv(s) ==> canResetDirectRoutes(s, runtimeId) ==> alwaysModelSelectionPriority(resetDirectRoutes(s, runtimeId)))
-  ensures (inv(s) ==> canResetDirectRoutes(s, runtimeId) ==> alwaysRegistryCountersNonnegative(resetDirectRoutes(s, runtimeId)))
-  ensures (inv(s) ==> canResetDirectRoutes(s, runtimeId) ==> alwaysLocalizedSlotUnique(resetDirectRoutes(s, runtimeId)))
-  ensures (inv(s) ==> canResetDirectRoutes(s, runtimeId) ==> alwaysDirectIdsUniquePerRuntime(resetDirectRoutes(s, runtimeId)))
-  ensures (inv(s) ==> canResetDirectRoutes(s, runtimeId) ==> alwaysUniqueKeys(resetDirectRoutes(s, runtimeId)))
-  ensures (inv(s) ==> canResetDirectRoutes(s, runtimeId) ==> stepRegisterWorkerWakesScheduler(s, "resetDirectRoutes", resetDirectRoutes(s, runtimeId)))
-  ensures (inv(s) ==> canResetDirectRoutes(s, runtimeId) ==> stepCategoryIsolation(s, "resetDirectRoutes", resetDirectRoutes(s, runtimeId)))
-{
-  if inv(s) && canResetDirectRoutes(s, runtimeId) {
-    var kept := (row: DirectRoute) => row.runtime != runtimeId;
-    var after := resetDirectRoutes(s, runtimeId);
-    assert after.direct == ProofLib.Filter(kept, s.direct);
-    DirectRouteRoutingCounts(s);
-    DirectRouteRoutingCounts(after);
-    forall entry | entry in after.direct
-      ensures |ProofLib.Filter((other: DirectRoute) => other.runtime == entry.runtime && other.id == entry.id, after.direct)| == 1
-    {
-      var key := (other: DirectRoute) => other.runtime == entry.runtime && other.id == entry.id;
-      ProofLib.FilterMember(kept, s.direct, entry);
-      ProofLib.FilterOfFilterShorter(kept, key, s.direct);
-      ProofLib.FilterMember(key, after.direct, entry);
     }
   }
 }
@@ -457,7 +365,6 @@ lemma registerWorker_ensures(s: RuntimeRegistries, workerName: string, reference
   ensures (inv(s) ==> canRegisterWorker(s, workerName, reference) ==> alwaysModelSelectionPriority(registerWorker(s, workerName, reference)))
   ensures (inv(s) ==> canRegisterWorker(s, workerName, reference) ==> alwaysRegistryCountersNonnegative(registerWorker(s, workerName, reference)))
   ensures (inv(s) ==> canRegisterWorker(s, workerName, reference) ==> alwaysLocalizedSlotUnique(registerWorker(s, workerName, reference)))
-  ensures (inv(s) ==> canRegisterWorker(s, workerName, reference) ==> alwaysDirectIdsUniquePerRuntime(registerWorker(s, workerName, reference)))
   ensures (inv(s) ==> canRegisterWorker(s, workerName, reference) ==> alwaysUniqueKeys(registerWorker(s, workerName, reference)))
   ensures (inv(s) ==> canRegisterWorker(s, workerName, reference) ==> stepRegisterWorkerWakesScheduler(s, "registerWorker", registerWorker(s, workerName, reference)))
   ensures (inv(s) ==> canRegisterWorker(s, workerName, reference) ==> stepCategoryIsolation(s, "registerWorker", registerWorker(s, workerName, reference)))
@@ -477,7 +384,6 @@ lemma unregisterWorker_ensures(s: RuntimeRegistries, workerName: string)
   ensures (inv(s) ==> alwaysModelSelectionPriority(unregisterWorker(s, workerName)))
   ensures (inv(s) ==> alwaysRegistryCountersNonnegative(unregisterWorker(s, workerName)))
   ensures (inv(s) ==> alwaysLocalizedSlotUnique(unregisterWorker(s, workerName)))
-  ensures (inv(s) ==> alwaysDirectIdsUniquePerRuntime(unregisterWorker(s, workerName)))
   ensures (inv(s) ==> alwaysUniqueKeys(unregisterWorker(s, workerName)))
   ensures (inv(s) ==> stepRegisterWorkerWakesScheduler(s, "unregisterWorker", unregisterWorker(s, workerName)))
   ensures (inv(s) ==> stepCategoryIsolation(s, "unregisterWorker", unregisterWorker(s, workerName)))
@@ -497,7 +403,6 @@ lemma registerCategory_ensures(s: RuntimeRegistries, category: SearchCategory)
   ensures (inv(s) ==> canRegisterCategory(s, category) ==> alwaysModelSelectionPriority(registerCategory(s, category)))
   ensures (inv(s) ==> canRegisterCategory(s, category) ==> alwaysRegistryCountersNonnegative(registerCategory(s, category)))
   ensures (inv(s) ==> canRegisterCategory(s, category) ==> alwaysLocalizedSlotUnique(registerCategory(s, category)))
-  ensures (inv(s) ==> canRegisterCategory(s, category) ==> alwaysDirectIdsUniquePerRuntime(registerCategory(s, category)))
   ensures (inv(s) ==> canRegisterCategory(s, category) ==> alwaysUniqueKeys(registerCategory(s, category)))
   ensures (inv(s) ==> canRegisterCategory(s, category) ==> stepRegisterWorkerWakesScheduler(s, "registerCategory", registerCategory(s, category)))
   ensures (inv(s) ==> canRegisterCategory(s, category) ==> stepCategoryIsolation(s, "registerCategory", registerCategory(s, category)))
@@ -517,7 +422,6 @@ lemma noteResolvedProvider_ensures(s: RuntimeRegistries, modelType: string, prov
   ensures (inv(s) ==> canNoteResolvedProvider(s, modelType, providerName, nonblank) ==> alwaysModelSelectionPriority(noteResolvedProvider(s, modelType, providerName, nonblank)))
   ensures (inv(s) ==> canNoteResolvedProvider(s, modelType, providerName, nonblank) ==> alwaysRegistryCountersNonnegative(noteResolvedProvider(s, modelType, providerName, nonblank)))
   ensures (inv(s) ==> canNoteResolvedProvider(s, modelType, providerName, nonblank) ==> alwaysLocalizedSlotUnique(noteResolvedProvider(s, modelType, providerName, nonblank)))
-  ensures (inv(s) ==> canNoteResolvedProvider(s, modelType, providerName, nonblank) ==> alwaysDirectIdsUniquePerRuntime(noteResolvedProvider(s, modelType, providerName, nonblank)))
   ensures (inv(s) ==> canNoteResolvedProvider(s, modelType, providerName, nonblank) ==> alwaysUniqueKeys(noteResolvedProvider(s, modelType, providerName, nonblank)))
   ensures (inv(s) ==> canNoteResolvedProvider(s, modelType, providerName, nonblank) ==> stepRegisterWorkerWakesScheduler(s, "noteResolvedProvider", noteResolvedProvider(s, modelType, providerName, nonblank)))
   ensures (inv(s) ==> canNoteResolvedProvider(s, modelType, providerName, nonblank) ==> stepCategoryIsolation(s, "noteResolvedProvider", noteResolvedProvider(s, modelType, providerName, nonblank)))

@@ -109,12 +109,14 @@ that turn's request and reply, until the window over it steps. A provider
 reuses a request's prompt cache up to its first changed byte, and the cached prefix
 is the tools, then the system prompt, then the messages, so a part that
 changes with the turn placed before the history costs every message after
-it. Each planning call also names its conversation's prompt cache key,
-`eliza-workflow-v1:` and the hex SHA-256 of the JSON `[agentId, roomId]`
+it. Each planning call also names its agent's prompt cache key,
+`eliza-workflow-v1:` and the hex SHA-256 of the JSON `[agentId]`
 followed by `:planner`, and each evaluator call the same key with
 `:evaluator`, so a provider that keeps one cache per key keeps one for
-each conversation and stage rather than one for every phone that sends
-the same prompt ([binding](../models/binding.md) decides where it is sent).
+each phone and stage rather than one for every phone that sends the same
+prompt, and a new conversation starts on the tools and system prompt that
+the phone's earlier calls and its warm-up (below) already cached
+([binding](../models/binding.md) decides where it is sent).
 
 ```quint
 type PromptPart = CharacterPrompt | OfferedTools | PriorHistory | LatestMessage | ScreenNote | DeviceNote | TaskNote | WindowNotice | RecalledExchanges
@@ -132,6 +134,44 @@ type ToolFact = LaunchAllowed | DeviceNegotiation | InstallationViews | BrowserC
 pure def shapesTools(f: ToolFact): bool = f == LaunchAllowed or f == DeviceNegotiation or f == InstallationViews or f == BrowserCommanded
 pure def carriedByMessage(f: ToolFact): bool = f == MessageWords or f == ScreenShown or f == ViewDelivery
 pure def lawNothingAMessageCarriesShapesTheTools(f: ToolFact): bool = carriedByMessage(f) implies not(shapesTools(f))
+```
+
+### A warm-up sends the planner's tools and system prompt once with a one-token cap, at most once every four minutes, and stores and shows nothing
+
+A page that expects the owner to talk soon (the app opened, returned to
+the foreground, Ask Alpha raised) asks the agent to warm up, so the first
+turn finds the provider's prompt cache, the cloud and their connections
+warm instead of paying for all three. The request carries the headers a
+turn of that page carries, so a warm-up of the enrolled device runs under
+that device's turn, as a first turn of a new conversation would: it builds
+the tools and the system prompt exactly as that turn does, the
+device-dependent tools included, and sends one planning call with them,
+one placeholder message, an output cap of one token and the planner's own
+choice of tools (Cerebras leaves the tools out of the prompt of a call
+that may call none, which would warm only the system prompt), under the
+agent's planning cache key, the one that turn names. Its answer is
+dropped: it starts no run, stores and publishes no message, writes its
+model-call log row under a room of its own and never a conversation's,
+changes no account state ([binding](../models/binding.md)), and a failure
+or a call that does not end within twenty seconds is dropped too. One
+warm-up runs at a time, and one asked within four minutes of the last that
+started is skipped, so a page may ask on every trigger and the account
+pays for at most one warm-up in four minutes; one refused for a blocked account still counts, so signing in again waits out the four minutes or the next trigger after them. The request is answered at
+once, saying only whether a warm-up was started; it never waits for the
+model.
+
+```quint
+pure val warmUpOutputCap = 1
+pure val warmUpSpacingMs = 240000
+pure val warmUpDeadlineMs = 20000
+pure def warmUpStarts(running: bool, lastStartedAt: int, now: int): bool =
+  not(running) and (lastStartedAt < 0 or now - lastStartedAt >= warmUpSpacingMs)
+pure val lastStartedAtValues = Set(-1, 0, 100000)
+pure val nowValues = Set(0, 100000, 239999, 340000, 600000)
+pure def lawAWarmUpWaitsFourMinutesAfterTheLast(running: bool, lastStartedAt: int, now: int): bool =
+  (lastStartedAt >= 0 and now - lastStartedAt < warmUpSpacingMs) implies not(warmUpStarts(running, lastStartedAt, now))
+pure def lawOneWarmUpRunsAtATime(lastStartedAt: int, now: int): bool = not(warmUpStarts(true, lastStartedAt, now))
+pure def lawTheFirstWarmUpStarts(now: int): bool = warmUpStarts(false, -1, now)
 ```
 
 ### An action may narrow its tool to the turn, never beyond its registered form
@@ -466,9 +506,16 @@ kept when it answers (it is neither blank nor a pending-work cue, read as
 below), it is not the first reply again, and the clock rules hold of it.
 Otherwise, or when the call fails, the first
 reply is kept, or the clock's or the calendar change's own words (below)
-take its place when it stated a time they did not observe. On either path,
-each remaining open failure and attachment omission is reported in its
-own words if the chosen reply does not already contain those words.
+take its place when it stated a time they did not observe. Under the
+model's reply, first or kept second, each remaining open failure whose words
+its action wrote for the owner, and each attachment omission, is reported in
+those words if the reply does not already contain them; a failure's error,
+its result text that no action marked for the owner, and the host's own
+sentence that a call did not start or did not complete reached the model
+only, and the owner hears that failure in the model's words alone. Only as
+the last resort, under fixed words, does each remaining open failure follow
+in its own words if the reply does not already contain them, so that a
+reply never stands as if the step had happened.
 A reply with nothing unreported and no
 unobserved time makes no further call, a turn cut off at the model's output
 limit is never asked again, and no turn is asked more than once.
@@ -486,6 +533,7 @@ pure def replySource(unreported: bool, ungrounded: bool, cutOff: bool, answered:
   else if (asksAgain(unreported, ungrounded, cutOff) and answered and grounded) RevisedReply
   else FixedWords
 pure def putToTheModel(held: bool, safetyCopy: bool): bool = not(held) and not(safetyCopy)
+pure def reachesTheOwner(ownCopy: bool, safetyCopy: bool): bool = ownCopy or safetyCopy
 pure def answeredAgain(draft: Draft, sameAsFirst: bool): bool = gaveAnAnswer(draft) and not(sameAsFirst)
 pure def lawAGroundedReplyMakesNoFurtherCall(cutOff: bool): bool = not(asksAgain(false, false, cutOff))
 pure def lawAGroundedReplyIsTheModels(cutOff: bool, answered: bool, grounded: bool): bool = replySource(false, false, cutOff, answered, grounded) == ModelReply
@@ -495,6 +543,8 @@ pure def lawFixedWordsAreTheLastResort(unreported: bool, ungrounded: bool, cutOf
   replySource(unreported, ungrounded, cutOff, answered, grounded) == FixedWords implies ((unreported or ungrounded) and (cutOff or not(answered) or not(grounded)))
 pure def lawACutOffTurnIsNeverAskedAgain(unreported: bool, ungrounded: bool): bool = not(asksAgain(unreported, ungrounded, true))
 pure def lawSafetyCopyIsNeverRewritten(held: bool): bool = not(putToTheModel(held, true))
+pure def lawOnlySafetyCopyFollowsAReplyWithoutTheActionsOwnWords(safetyCopy: bool): bool = reachesTheOwner(false, safetyCopy) == safetyCopy
+pure def lawAnActionsOwnWordsForTheOwnerMayFollowAReply(safetyCopy: bool): bool = reachesTheOwner(true, safetyCopy)
 pure def lawWordsTheReplyHoldsAreNotAskedFor(safetyCopy: bool): bool = not(putToTheModel(true, safetyCopy))
 pure def lawACueIsNoSecondAnswer(sameAsFirst: bool): bool = not(answeredAgain(Cue, sameAsFirst)) and not(answeredAgain(Silent, sameAsFirst))
 pure def lawTheFirstReplyAgainIsNoSecondAnswer(draft: Draft): bool = not(answeredAgain(draft, true))
@@ -517,11 +567,13 @@ step was for the model gives its reply exactly as it was, word for word, and
 that otherwise the reply must say the failed step did not happen. When the model
 answers that note with its first reply again, word for word, it stands by
 that reply, and when that reply is delivered, the failure's own words do not
-follow it. Otherwise the failure's own words follow the reply as for any
-failure: when the rules keep a second answer, when the call fails, when the model answers
-with a blank or a pending-work cue (read as below), when it gives another
-answer that is not kept, when the failure was never put to the model, or
-when the clock's or the change's words take the reply's place. A failure
+follow it. Otherwise the failure is reported as any failure is (above): a
+kept second answer reports it in the model's words, followed only by words
+its action wrote for the owner, and its own words follow the reply when the
+call fails, when the model answers with a blank or a pending-work cue (read
+as below), when it gives another answer that is not kept, when the failure
+was never put to the model, or when the clock's or the change's words take
+the reply's place. A failure
 with a receipt, a failure in the same planner response as the later call,
 and safety copy are reported as above.
 
@@ -586,7 +638,9 @@ call, and the reply after it confirms the destination (`Maps is open.`).
 Any question or lookup gets its cue, even one about what is on the screen. The cue never names the people, items, times or outcome, never
 says the work is done or under way, never repeats the request, and is left
 empty, with the work still done, when the person asked for silence; later
-tool calls come with no text.
+tool calls come with no text. A cue comes only with a tool call: when no
+offered tool can do what was asked, the model writes no cue and says
+plainly, in its own words, that it can't.
 
 The shell reads the model's text as a `Cue` only when the whole of it is
 one to three sentences of the closed acknowledgment grammar (`On it`,
@@ -597,29 +651,56 @@ counts, names other than one after `check with`, or question mark. The
 grammar has no past-tense verb, negation or completion word, so a cue never
 claims that an effect happened or that the owner's tracked work is empty:
 a destination confirmation (`Maps is open.`, `Opened your calendar.`) is
-never a cue.
+never a cue. The shell reads the text without its JSON objects (those
+outside any other object) and without a code fence or tag they leave empty,
+since an object beside a cue is a tool call written as text, which runs
+nothing. So a cue beside any object (`Sure, one sec. {"type":
+"send_message"}`) is still a cue, delivered without it. An object that
+names an action or a tool (an `action` or `tool` field with a text value,
+a text value that is a snake_case name such as `send_message`, or an action
+envelope as core reads one) and a bracketed snake_case name
+with `key=value` arguments (`[send_message contact="Sam"]`) are written
+calls: bare assent beside one promises work as `Sure, one sec.` does
+(below), and text that is only written calls is a blank. Bare assent beside
+any other object (`Sure! {"name": "Bob"}`), and text that is only such
+objects, are an `Answer`.
 A wait cue followed by more text that is not progress (`One second is
 1,000 milliseconds.`, `Just a second, your dentist is Thursday.`) is an
 `Answer`. A cue that comes with the turn's first tool calls is the turn's
 acknowledgment (below); whatever text streamed with tool calls is
 restarted to empty before they run, so a cue is never part of the reply's
-text. A cue with no
-tool call is not an answer: the model is asked once more to answer with
-what the turn holds, and if steps run out the turn's failure fallback is
-the reply.
+text. A cue or a blank with no
+tool call is not an answer, and neither is assent that goes on to a cue
+(`Sure, one sec.`, below): it promised work that no call does. The model is
+asked once more, with the turn's tools still offered unless that call is
+the last step, and one host note
+saying that its response gave the person no answer and was not sent. Before
+any tool ran in the turn, the note also says the response called no tool,
+and that the model either does the work now with an offered tool or, if no
+offered tool can do it, tells the person plainly, in its own words, that it
+can't; when no tool can be called on the next step, it says instead that nothing the
+model writes can do the work, so it tells the person plainly, in its own
+words, that it can't. After a tool ran, it says the tool results are what
+the turn did and that the model answers from them, in its own words. A turn asks this at
+most once. When the response after that note
+is again a cue or a blank with no tool call, or steps run out, whatever text
+streamed with it is restarted to empty and the turn's failure fallback is
+the reply, so a cue alone is never the turn's last word.
 
 ```quint
 type Draft = Cue | Answer | Silent
 type PlanMove = RunTools | Deliver | AskAgain | GiveUp
 pure def acknowledges(draft: Draft, calls: int, earlierCalls: int): bool = draft == Cue and calls > 0 and earlierCalls == 0
-pure def nextMove(draft: Draft, calls: int, stepsLeft: int): PlanMove =
+pure def nextMove(draft: Draft, calls: int, stepsLeft: int, askedAgain: bool): PlanMove =
   if (calls > 0) RunTools
   else if (draft == Answer) Deliver
-  else if (stepsLeft > 0) AskAgain
+  else if (stepsLeft > 0 and not(askedAgain)) AskAgain
   else GiveUp
 pure val stepsLeftValues = Set(0, 1, 3)
-pure def lawAnAnswerIsDeliveredWhole(stepsLeft: int): bool = nextMove(Answer, 0, stepsLeft) == Deliver
-pure def lawACueIsNeverTheReply(calls: int, stepsLeft: int): bool = nextMove(Cue, calls, stepsLeft) != Deliver
+pure def lawAnAnswerIsDeliveredWhole(stepsLeft: int, askedAgain: bool): bool = nextMove(Answer, 0, stepsLeft, askedAgain) == Deliver
+pure def lawACueIsNeverTheReply(calls: int, stepsLeft: int, askedAgain: bool): bool = nextMove(Cue, calls, stepsLeft, askedAgain) != Deliver
+pure def lawAPromiseWithoutWorkIsAskedAgainOnce(draft: Draft, stepsLeft: int): bool =
+  (draft != Answer and stepsLeft > 0) implies (nextMove(draft, 0, stepsLeft, false) == AskAgain and nextMove(draft, 0, stepsLeft, true) == GiveUp)
 pure val earlierCallsValues = Set(0, 1, 2)
 pure def lawACueIsSpokenOnlyBeforeWork(draft: Draft, calls: int, earlierCalls: int): bool =
   acknowledges(draft, calls, earlierCalls) implies (calls > 0 and draft == Cue and earlierCalls == 0)
@@ -627,9 +708,7 @@ pure def lawACueIsSpokenOnlyBeforeWork(draft: Draft, calls: int, earlierCalls: i
 
 ### A turn acknowledges at most once, with a cue that comes with its first tool calls, and bare assent is a cue only with work after an instruction
 
-`Sure` or `Yeah`, alone or followed by a comma, dash, colon, semicolon or
-sentence break and one or two sentences of the grammar (`Sure, one sec.`,
-`Yeah. Let me check your calendar.`), says yes, so it is a cue only when it
+`Sure` or `Yeah` alone says yes, so it is a cue only when it
 comes with tool calls and the owner's message is an instruction: after
 fillers (`hey`, `ok`, `so`, `please`, …), a name and comma, or a greeting
 and a wake name, it opens with a command verb (`text`, `set`, `call`, `remind`, …), it has no
@@ -638,7 +717,12 @@ or an auxiliary (`am`, `is`, `can`, `what`, …). `Can you text Sam`, `Am I
 free Friday` and `Any meetings today` are not instructions, so a bare
 `Sure.` after them is an answer. With no tool call, assent is the answer
 after any message: `Sure.` to `Call me Bob` or `Remember that I like tea`
-is delivered, never asked again. `Sure!` before a lead form (`Sure! Let me
+is delivered, never asked again. Assent followed by a comma, dash, colon,
+semicolon or sentence break and one or two sentences of the grammar
+(`Sure, one sec.`, `Yeah. Let me check your calendar.`) also promises work:
+with tool calls it is a cue only after an instruction, as bare assent is,
+and with no tool call it is a cue after any message, so it is asked again
+(above) and never delivered. `Sure!` before a lead form (`Sure! Let me
 check your calendar.`) is a cue after any message. The acknowledgment is
 delivered at most once per turn, as the [reply stream](./replyStream.md)'s
 `acknowledgment` frame. A model cue is delivered only before work starts
@@ -649,14 +733,19 @@ model confirms the destination alongside its tool call still gives the owner
 only the reply.
 
 ```quint
-type DraftShape = Blank | GrammarCue | AssentCue | OtherText
+type DraftShape = Blank | GrammarCue | Assent | AssentCue | OtherText
 pure def readDraft(shape: DraftShape, instruction: bool, calls: int): Draft = match shape {
-  | Blank => Silent | GrammarCue => Cue | AssentCue => if (instruction and calls > 0) Cue else Answer | OtherText => Answer
+  | Blank => Silent | GrammarCue => Cue | Assent => if (instruction and calls > 0) Cue else Answer
+  | AssentCue => if (instruction or calls == 0) Cue else Answer | OtherText => Answer
 }
 pure def lawBareAssentIsACueOnlyWithWorkAfterAnInstruction(instruction: bool, calls: int): bool =
-  (readDraft(AssentCue, instruction, calls) == Cue) iff (instruction and calls > 0)
-pure def lawBareAssentWithoutWorkIsDelivered(instruction: bool, stepsLeft: int): bool =
-  nextMove(readDraft(AssentCue, instruction, 0), 0, stepsLeft) == Deliver
+  (readDraft(Assent, instruction, calls) == Cue) iff (instruction and calls > 0)
+pure def lawBareAssentWithoutWorkIsDelivered(instruction: bool, stepsLeft: int, askedAgain: bool): bool =
+  nextMove(readDraft(Assent, instruction, 0), 0, stepsLeft, askedAgain) == Deliver
+pure def lawAssentBeforeACueIsACueWithWorkOnlyAfterAnInstruction(instruction: bool, calls: int): bool =
+  calls > 0 implies ((readDraft(AssentCue, instruction, calls) == Cue) iff instruction)
+pure def lawAssentBeforeACueWithoutWorkIsNeverDelivered(instruction: bool, stepsLeft: int, askedAgain: bool): bool =
+  nextMove(readDraft(AssentCue, instruction, 0), 0, stepsLeft, askedAgain) != Deliver
 pure def lawTheGrammarIsACueAfterAnyMessage(instruction: bool, calls: int): bool = readDraft(GrammarCue, instruction, calls) == Cue
 pure def lawNoCueOrADestinationConfirmationNeverAcknowledges(instruction: bool, calls: int, earlierCalls: int): bool =
   not(acknowledges(readDraft(Blank, instruction, calls), calls, earlierCalls)) and not(acknowledges(readDraft(OtherText, instruction, calls), calls, earlierCalls))
@@ -713,17 +802,10 @@ goals, to-dos, routines and briefings, the phone's call, message and
 surface operations, the reminders family's operations, which reach both
 Reminders and Clock, and a helper such as `CALCULATE`.
 
-An action shared by several apps, such as `VIEWS`, is named by the app the
-turn is about when that settles it: the turn's selected contexts are those
-of every [direct route](../../core/registries.md) the message matches (a
-Notes route selects `notes`), taken once per turn by
-normalized id. When several of the contexts the call shows apply and
-exactly one labelled one is selected, the progress is `Using <that label>`;
-with none or more than one selected it stays `Working`. The selection only
-picks among the contexts the call shows, never adds one, never names a
-`system` context or an unlabelled one, and never changes the contexts the
-action runs with; a device call whose family names no app shows none, so
-no selection names it.
+An action shared by several apps, such as `VIEWS`, shows every app it may
+reach, so its progress is `Working`; the owner's words never pick one of
+them. Only the call's own arguments can narrow what it shows, as the device
+tool's do, and only to an app its action declares a way to name.
 
 The app a call shows is its label and nothing else. Naming it never
 changes the action's declared contexts, its role gate or the contexts the
@@ -732,26 +814,21 @@ never part of the tools, the system prompt or the history.
 
 ```quint
 type ToolActivity = UsingApp | Working
-pure def toolActivity(applicable: int, labelled: int, selectedLabelled: int): ToolActivity =
-  if ((applicable == 1 and labelled == 1) or (applicable > 1 and selectedLabelled == 1)) UsingApp else Working
+pure def toolActivity(applicable: int, labelled: int): ToolActivity =
+  if (applicable == 1 and labelled == 1) UsingApp else Working
 pure val applicableValues = Set(0, 1, 2, 3)
 pure val labelledValues = Set(0, 1, 2)
-pure val selectedLabelledValues = Set(0, 1, 2)
-pure def lawAnAppIsNamedOnlyWhenItIsTheOnlyOneThatAppliesOrTheTurnSelected(applicable: int, labelled: int, selectedLabelled: int): bool =
-  toolActivity(applicable, labelled, selectedLabelled) == UsingApp implies ((applicable == 1 and labelled == 1) or selectedLabelled == 1)
-pure def lawWithoutASelectionOnlyASingleAppIsNamed(applicable: int, labelled: int): bool =
-  toolActivity(applicable, labelled, 0) == UsingApp implies (applicable == 1 and labelled == 1)
-pure def lawASingleLabelledAppIsNamedWhateverTheTurnSelected(selectedLabelled: int): bool =
-  toolActivity(1, 1, selectedLabelled) == UsingApp
-pure def lawSelectingSeveralAppsNamesNone(applicable: int, labelled: int, selectedLabelled: int): bool =
-  (applicable > 1 and selectedLabelled != 1) implies toolActivity(applicable, labelled, selectedLabelled) == Working
+pure def lawAnAppIsNamedOnlyWhenItIsTheOnlyOneThatApplies(applicable: int, labelled: int): bool =
+  toolActivity(applicable, labelled) == UsingApp iff (applicable == 1 and labelled == 1)
+pure def lawSeveralAppsNameNone(applicable: int, labelled: int): bool =
+  applicable > 1 implies toolActivity(applicable, labelled) == Working
 type DeviceFamilyApp = FamilyApp({ app: str }) | NoFamilyApp
 pure def deviceCallReach(deviceFamily: DeviceFamilyApp): Set[str] = match deviceFamily { | FamilyApp(f) => Set(f.app) | NoFamilyApp => Set() }
 pure val deviceFamilyValues = Set(FamilyApp({ app: "calendar" }), FamilyApp({ app: "notes" }), NoFamilyApp)
 pure def lawADeviceCallReachesAtMostItsFamilysApp(deviceFamily: DeviceFamilyApp): bool = match deviceFamily {
   | FamilyApp(f) => deviceCallReach(deviceFamily).size() == 1 and deviceCallReach(deviceFamily).contains(f.app) | NoFamilyApp => deviceCallReach(deviceFamily).size() == 0 }
-pure def lawADeviceCallIsNamedOnlyByItsFamilysApp(deviceFamily: DeviceFamilyApp, labelled: int, selectedLabelled: int): bool =
-  toolActivity(deviceCallReach(deviceFamily).size(), labelled, selectedLabelled) == UsingApp implies deviceFamily != NoFamilyApp
+pure def lawADeviceCallIsNamedOnlyByItsFamilysApp(deviceFamily: DeviceFamilyApp, labelled: int): bool =
+  toolActivity(deviceCallReach(deviceFamily).size(), labelled) == UsingApp implies deviceFamily != NoFamilyApp
 ```
 
 ### A recognized card is delivered unfenced, other multi-line tool output is fenced, and grounded prose follows unless one already holds the other
@@ -838,9 +915,16 @@ carry one line, to the minute, so every turn inside one minute sees the same
 text and the system prompt stays the same for the whole conversation. The owner's
 local clock reads `Local date: <YYYY-MM-DD> (<zone>). <full date and
 time>. Resolve today/tomorrow from this local date, not the UTC date. UTC
-instant: <YYYY-MM-DDTHH:MM>Z`. Any other clock reads `Agent time` for the
+instant: <YYYY-MM-DDTHH:MM>Z.` Any other clock reads `Agent time` for the
 launch zone or `Server time` for the host's, then the full date and time,
 the zone and the UTC instant, and says the user's timezone is unknown.
+Every clock line ends with the days in its zone: `Today in <zone> is
+<weekday> <YYYY-MM-DD>. Next 7 days: <weekday> <YYYY-MM-DD>, …`, the seven
+dates after today, each with its weekday, so a weekday the person names in
+the coming week is a date the model reads rather than one it counts out. The
+zone is named because a clock other than the owner's local one may not be
+the person's day. The days are context for the model; the shell does not
+read the person's words for a day.
 
 ```quint
 type ZoneOrigin = PhoneZone | LaunchZone | HostZone
