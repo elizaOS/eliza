@@ -1,7 +1,7 @@
 // spec/notes/client.md, "Browser recordings can only be recovered or bound by their recording owner"
 module indexed {
   import { Schema } from "effect"
-  import { type BrowserAudio, browserAudioVisible, canClaimBrowserAudio, canCommitBrowserAudio, canDiscardBrowserAudio } from "../gen/notes__client.ts"
+  import { type BrowserAudio, browserAudioVisible, browserAudioMayBeClaimed, browserAudioMayBeCommitted, browserAudioMayBeDiscarded } from "../gen/notes__client.ts"
 
   type Stored = { -readonly [Key in keyof typeof StoredAudio.Type]: (typeof StoredAudio.Type)[Key] }
   type NotesAudioRow = Omit<Stored, "blob" | "createdAt" | "transcript" | "mimeType"> & {
@@ -260,7 +260,7 @@ module indexed {
           )
             throw Error("Recording save owner changed.");
           const state = custody(row)
-          if (state === undefined || !canClaimBrowserAudio(state, ownerDigest)) return false
+          if (state === undefined || !browserAudioMayBeClaimed(state, ownerDigest)) return false
           row.recordingSave = { ...row.recordingSave, phase: "claimed" };
           store.put(stored(row));
           return true;
@@ -275,7 +275,7 @@ module indexed {
           throw Error("Transcript is too long.");
         return withRow(audioId, "readwrite", (row, store) => {
           const state = row === undefined ? undefined : custody(row)
-          if (!row?.recordingSave || state === undefined || row.deletedAt || !canCommitBrowserAudio(state, ownerDigest, noteId))
+          if (!row?.recordingSave || state === undefined || row.deletedAt || !browserAudioMayBeCommitted(state, ownerDigest, noteId))
             throw Error("Recording save owner changed.");
           row.noteId = noteId;
           row.transcript = transcript;
@@ -291,7 +291,7 @@ module indexed {
             throw Error("Recording save owner changed.");
           if (row.recordingSave.phase === "committed") return;
           const state = custody(row)
-          if (state === undefined || !canDiscardBrowserAudio(state, ownerDigest))
+          if (state === undefined || !browserAudioMayBeDiscarded(state, ownerDigest))
             throw Error("Check Notes before discarding this recording.");
           store.delete(audioId);
         });

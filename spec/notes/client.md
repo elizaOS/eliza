@@ -129,16 +129,16 @@ type AudioPhase = AudioStopped | AudioClaimed | AudioCommitted
 type BrowserAudio = { owner: str, phase: AudioPhase, target: str }
 pure def browserAudioVisible(audio: BrowserAudio, connection: str): bool =
   audio.owner != "" and connection == audio.owner and audio.phase != AudioCommitted
-pure def canClaimBrowserAudio(audio: BrowserAudio, connection: str): bool =
+pure def browserAudioMayBeClaimed(audio: BrowserAudio, connection: str): bool =
   browserAudioVisible(audio, connection) and audio.phase == AudioStopped
 pure def claimBrowserAudio(audio: BrowserAudio, connection: str): BrowserAudio =
-  if (canClaimBrowserAudio(audio, connection)) { ...audio, phase: AudioClaimed } else audio
-pure def canCommitBrowserAudio(audio: BrowserAudio, connection: str, receipt: str): bool =
+  if (browserAudioMayBeClaimed(audio, connection)) { ...audio, phase: AudioClaimed } else audio
+pure def browserAudioMayBeCommitted(audio: BrowserAudio, connection: str, receipt: str): bool =
   connection != "" and connection == audio.owner and receipt != "" and
     (audio.phase == AudioClaimed or (audio.phase == AudioCommitted and receipt == audio.target))
 pure def commitBrowserAudio(audio: BrowserAudio, connection: str, receipt: str): BrowserAudio =
-  if (canCommitBrowserAudio(audio, connection, receipt)) { ...audio, phase: AudioCommitted, target: receipt } else audio
-pure def canDiscardBrowserAudio(audio: BrowserAudio, connection: str): bool =
+  if (browserAudioMayBeCommitted(audio, connection, receipt)) { ...audio, phase: AudioCommitted, target: receipt } else audio
+pure def browserAudioMayBeDiscarded(audio: BrowserAudio, connection: str): bool =
   browserAudioVisible(audio, connection) and audio.phase == AudioStopped
 pure val audioValues = Set(
   { owner: "owner-1", phase: AudioStopped, target: "recording-1" },
@@ -148,7 +148,7 @@ pure val connectionValues = Set("", "owner-1", "owner-2")
 pure val receiptValues = Set("", "note-1", "note-2")
 pure def lawBrowserAudioStaysWithItsOwner(audio: BrowserAudio, connection: str, receipt: str): bool =
   connection != audio.owner implies
-    (not(browserAudioVisible(audio, connection)) and not(canDiscardBrowserAudio(audio, connection)) and
+    (not(browserAudioVisible(audio, connection)) and not(browserAudioMayBeDiscarded(audio, connection)) and
       claimBrowserAudio(audio, connection) == audio and commitBrowserAudio(audio, connection, receipt) == audio)
 pure def lawBrowserCommittedTargetStays(audio: BrowserAudio, connection: str, receipt: str): bool =
   audio.phase == AudioCommitted implies commitBrowserAudio(audio, connection, receipt) == audio
