@@ -18,3 +18,18 @@ export const snapshotsHashTheSameInAnyKeyOrder = contract({
   deterministic: true,
   invariant: (value, text) => text !== undefined && canonical(reversedKeys(value)) === text,
 });
+
+export const canonicalTextParsesBackToTheSameSnapshot = contract({
+  input: Schema.Json,
+  run: canonical,
+  deterministic: true,
+  invariant: (value, text) => {
+    try {
+      if (text === undefined) return false;
+      const parsed: unknown = JSON.parse(text);
+      return canonical(value) === text && canonical(parsed as Schema.Json) === text;
+    } catch {
+      return false;
+    }
+  },
+});
