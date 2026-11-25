@@ -103,6 +103,9 @@ pure val bValues = {
 
 The build stubs packages that need a native addon or a desktop host. When
 one of them still emitted bytes, the build fails, so no package row names it.
+The builder's own bundler, Vite, is stubbed the same way: agent-host's root
+exports this builder, so every plugin that imports that root reaches it, and
+the device bundle carries a Vite that refuses to run, never Vite itself.
 
 ```quint
 pure val excludedPackages = Set("canvas", "sharp", "node-llama-cpp", "@node-llama-cpp/linux-arm64", "@node-llama-cpp/linux-x64", "llama-cpp-capacitor", "pty-manager", "@node-rs/argon2", "fsevents", "zlib-sync", "@napi-rs/keyring", "@snazzah/davey", "puppeteer-core")
