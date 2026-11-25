@@ -184,20 +184,27 @@ it.effect('A rate limit ends the call, blocks the next one without reaching the 
   const passedOn = try refusalOf(upstream.runtime, { prompt: "Provider limited." })
   assert.deepStrictEqual([passedOn?.code, passedOn?.limitOrigin], ["MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED", "ProviderSetLimit"])
   const unmarked = try refusedCloudAgent(cloud)
-  try Effect.sync(() => cloud.script(rateLimited(retryAt)))
+  const mismatched = try refusedCloudAgent(cloud)
+  try Effect.sync(() => cloud.script(
+    rateLimited(retryAt),
+    refusal(429, "service_unavailable", { retryAt, reason: "provider_rate_limited" }),
+  ))
   const unknown = try refusalOf(unmarked.runtime, { prompt: "Rate limit with no reason." })
-  assert.deepStrictEqual([unknown?.code, unknown?.limitOrigin], ["MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED", undefined])
+  const unrelatedReason = try refusalOf(mismatched.runtime, { prompt: "Rate limit with a mismatched reason." })
+  assert.deepStrictEqual([unknown, unrelatedReason].map((answer) => [answer?.code, answer?.limitOrigin]), [
+    ["MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED", undefined], ["MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED", undefined],
+  ])
   const unfunded = try refusedCloudAgent(cloud)
   try Effect.sync(() => cloud.script(insufficientCredits()))
   const denied = try refusalOf(unfunded.runtime, { prompt: "Unfunded." })
   assert.deepStrictEqual([denied?.code, denied?.status, denied?.cloudCode, denied?.limitOrigin], ["MODEL_FUNDING_AUTHORITY_FAILED", 402, "insufficient_credits", undefined])
-  assert.strictEqual(completions(cloud), 4)
+  assert.strictEqual(completions(cloud), 5)
   assert.strictEqual((try unfunded.binding.read()).accountState, "insufficient_credits")
   const spent = try refusedCloudAgent(cloud)
   try Effect.sync(() => cloud.script(allowanceExhausted(Date.now() + 86_400_000)))
   const exhausted = try refusalOf(spent.runtime, { prompt: "Allowance spent." })
   assert.deepStrictEqual([exhausted?.code, exhausted?.status, exhausted?.cloudCode], ["MODEL_FUNDING_AUTHORITY_FAILED", 402, "allowance_exhausted"])
-  assert.strictEqual(completions(cloud), 5)
+  assert.strictEqual(completions(cloud), 6)
   assert.strictEqual((try spent.binding.read()).accountState, "insufficient_credits")
   const uncoded = try refusedCloudAgent(cloud)
   try Effect.sync(() => cloud.script(refusal(402, "payment_required")))
@@ -208,7 +215,7 @@ it.effect('A rate limit ends the call, blocks the next one without reaching the 
   try Effect.sync(() => cloud.acceptKey("rotated-device-key"))
   const invalid = try refusalOf(replaced.runtime, { prompt: "Old key." })
   assert.strictEqual(invalid?.status, 401)
-  assert.strictEqual(completions(cloud), 7)
+  assert.strictEqual(completions(cloud), 8)
   assert.strictEqual((try replaced.binding.read()).accountState, "credential_invalid")
 })
 

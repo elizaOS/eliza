@@ -372,7 +372,7 @@ effect function refusalFrom(result: HttpClientResponse.HttpClientResponse, cloud
   const read = try Effect.promise(() => readCloudError(response, now))
   const body = Option.getOrUndefined(decodeRefusalCode(raw))
   const funds = fundsCodeOf(cloudRoute, result.status, body?.error ?? "")
-  const reason = typeof body?.reason === "string" ? body.reason : ""
+  const reason = body?.error === "rate_limited" && typeof body.reason === "string" ? body.reason : ""
   const origin = limitOriginOf(cloudRoute, read.failure.tag === "CloudRateLimited", reason)
   return new Refused({ cloud: read.failure, ...(funds === "NoFundsCode" ? {} : { funds }), ...(origin === "NoLimitOrigin" ? {} : { origin }) })
 }
