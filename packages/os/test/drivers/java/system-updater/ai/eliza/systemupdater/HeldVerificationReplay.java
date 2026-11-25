@@ -66,6 +66,16 @@ public final class HeldVerificationReplay {
             return attempt == 1 ? initial : next;
         }
         File download(Candidate candidate, File directory) { throw new AssertionError("Held candidate downloaded"); }
+        static void keepOnly(File directory, String digest) throws IOException {
+            File[] files = directory.listFiles();
+            if (files == null) throw new IOException("Update storage is unavailable");
+            for (File file : files) {
+                String name = file.getName();
+                if (name.matches("[0-9a-f]{64}\\.(zip|payload|partial)") && !name.startsWith(digest + ".")) {
+                    Files.deleteIfExists(file.toPath());
+                }
+            }
+        }
         static final class DownloadDeferred extends IOException { }
         static final class Candidate {
             final String fingerprint = TARGET;
