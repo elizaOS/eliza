@@ -64,11 +64,11 @@ type PatchTrace = { name: str, changed: List[PatchChange], debug: List[NamedValu
 type EvaluationError = { name: str, message: str }
 type ResponsePlan = { process: str, requiresTool: bool, replyStatus: str, contexts: List[str], candidates: List[NamedValue], candidateField: bool, parentHints: List[NamedValue], parentField: bool, slices: List[NamedValue], reply: str, replyField: bool, intents: List[str], extensions: List[NamedValue], toolName: str, toolParams: str, evidencePresent: bool, requiredEvidence: str, budgetPresent: bool, missBudget: str, sourceContext: str, priorReceipts: List[str] }
 type ScopeField = { name: str, key: str, validSyntax: bool }
-type ResponsePatch = { provided: bool, replaceScope: bool, intents: List[str], intentShapeValid: bool, invalidations: List[ScopeField], owner: int, process: str, changeRequiresTool: bool, requiresTool: bool, nonAppliedReply: bool, setContexts: bool, contexts: List[str], addContexts: bool, contextAdditions: List[str], clearCandidates: bool, addCandidates: bool, candidates: List[NamedValue], clearParents: bool, addParents: bool, parents: List[NamedValue], addSlices: bool, slices: List[NamedValue], toolName: str, toolKey: str, toolParams: str, clearReply: bool, setReply: bool, reply: str, contextSources: List[str], debug: List[NamedValue] }
+type ResponsePatch = { provided: bool, replaceScope: bool, intents: List[str], intentShapeValid: bool, invalidations: List[ScopeField], process: str, changeRequiresTool: bool, requiresTool: bool, nonAppliedReply: bool, setContexts: bool, contexts: List[str], addContexts: bool, contextAdditions: List[str], clearCandidates: bool, addCandidates: bool, candidates: List[NamedValue], clearParents: bool, addParents: bool, parents: List[NamedValue], addSlices: bool, slices: List[NamedValue], toolName: str, toolKey: str, toolParams: str, clearReply: bool, setReply: bool, reply: str, contextSources: List[str], debug: List[NamedValue] }
 type PatchReceipt = { outcome: EvaluatorOutcome, patch: ResponsePatch, errorText: str }
-type ResponseEvaluation = { phase: EvaluationPhase, remaining: List[EvaluatorCandidate], plan: ResponsePlan, available: Set[str], active: List[str], traces: List[PatchTrace], candidateAdditions: List[NamedValue], candidatesCleared: bool, contextualSources: List[str], invalidatedFields: List[str], scopeOwner: int, errors: List[EvaluationError], cancellation: str, registered: List[RegisteredEvaluator] }
+type ResponseEvaluation = { phase: EvaluationPhase, remaining: List[EvaluatorCandidate], plan: ResponsePlan, available: Set[str], active: List[str], traces: List[PatchTrace], candidateAdditions: List[NamedValue], candidatesCleared: bool, contextualSources: List[str], invalidatedFields: List[str], errors: List[EvaluationError], cancellation: str, registered: List[RegisteredEvaluator] }
 pure val emptyPlan: ResponsePlan = {process: "", requiresTool: false, replyStatus: "", contexts: List(), candidates: List(), candidateField: false, parentHints: List(), parentField: false, slices: List(), reply: "", replyField: false, intents: List(), extensions: List(), toolName: "", toolParams: "", evidencePresent: false, requiredEvidence: "", budgetPresent: false, missBudget: "", sourceContext: "", priorReceipts: List()}
-pure val initial: ResponseEvaluation = {phase: RunIdle, remaining: List(), plan: emptyPlan, available: Set(), active: List(), traces: List(), candidateAdditions: List(), candidatesCleared: false, contextualSources: List(), invalidatedFields: List(), scopeOwner: 0, errors: List(), cancellation: "", registered: List()}
+pure val initial: ResponseEvaluation = {phase: RunIdle, remaining: List(), plan: emptyPlan, available: Set(), active: List(), traces: List(), candidateAdditions: List(), candidatesCleared: false, contextualSources: List(), invalidatedFields: List(), errors: List(), cancellation: "", registered: List()}
 pure val noEvaluator: EvaluatorCandidate = {slot: 0, name: "", reference: 0, priority: 0, localeOrder: 0, declaredTools: List()}
 pure val availableValues = Set(Set(), Set("world"), Set("world", "private"))
 pure val explicitValues = Set(List(), List(firstEvaluator), List(secondEvaluator, firstEvaluator), List(firstEvaluator, firstEvaluator))
@@ -111,14 +111,14 @@ canonical name. A replacement must contain at least one valid intent. Each
 invalidation must be a valid extension field and may not name a protected
 routing, source, receipt, or prototype field. The runner validates this
 before mutating the plan, adding context sources, or recording a patch trace.
-A successful replacement retains the supplied routing owner for later
-callbacks, records every exact invalidation and clears the previous
-deterministic choice, required evidence and miss budget.
+A successful replacement records every exact invalidation for later
+callbacks and clears the previous deterministic choice, required evidence
+and miss budget.
 
 ```quint
 pure val scopeProtectedKeys = Set("contexts", "reply", "replyeffectstatus", "requirestool", "contextslices", "completioncontext", "candidateactions", "intents", "parentactionhints", "requiredtoolmissbudget", "requiredtoolevidence", "deterministictoolcall", "simple", "metadata", "data", "state", "messages", "originalmessages", "originalrequest", "history", "receipts", "effectreceipts", "source", "sources", "sourcecontext", "sourcesetid", "sourceselection", "currentsourcerevisions", "invalidatedscopefields", "constructor", "prototype", "__proto__")
-pure val noPatch: ResponsePatch = {provided: false, replaceScope: false, intents: List(), intentShapeValid: true, invalidations: List(), owner: 0, process: "", changeRequiresTool: false, requiresTool: false, nonAppliedReply: false, setContexts: false, contexts: List(), addContexts: false, contextAdditions: List(), clearCandidates: false, addCandidates: false, candidates: List(), clearParents: false, addParents: false, parents: List(), addSlices: false, slices: List(), toolName: "", toolKey: "", toolParams: "", clearReply: false, setReply: false, reply: "", contextSources: List(), debug: List()}
-pure val scopedPatch: ResponsePatch = { ...noPatch, provided: true, replaceScope: true, intents: List("observe"), invalidations: List({name: "scopeHint", key: "scopehint", validSyntax: true}), owner: 2, contextSources: List("new-complete-source"), clearCandidates: true }
+pure val noPatch: ResponsePatch = {provided: false, replaceScope: false, intents: List(), intentShapeValid: true, invalidations: List(), process: "", changeRequiresTool: false, requiresTool: false, nonAppliedReply: false, setContexts: false, contexts: List(), addContexts: false, contextAdditions: List(), clearCandidates: false, addCandidates: false, candidates: List(), clearParents: false, addParents: false, parents: List(), addSlices: false, slices: List(), toolName: "", toolKey: "", toolParams: "", clearReply: false, setReply: false, reply: "", contextSources: List(), debug: List()}
+pure val scopedPatch: ResponsePatch = { ...noPatch, provided: true, replaceScope: true, intents: List("observe"), invalidations: List({name: "scopeHint", key: "scopehint", validSyntax: true}), contextSources: List("new-complete-source"), clearCandidates: true }
 pure val callPatch: ResponsePatch = { ...noPatch, provided: true, toolName: "READ", toolKey: "read", toolParams: "complete-params", setContexts: true, contexts: List("world", "private", "world"), addCandidates: true, candidates: List({key: "read", value: "READ"}), setReply: true, reply: "" }
 pure val receiptValues: Set[PatchReceipt] = Set({outcome: CallbackReturned, patch: noPatch, errorText: ""}, {outcome: CallbackReturned, patch: scopedPatch, errorText: ""}, {outcome: CallbackReturned, patch: callPatch, errorText: ""}, {outcome: CallbackReturned, patch: { ...scopedPatch, invalidations: List({name: "sourceContext", key: "sourcecontext", validSyntax: true}) }, errorText: ""}, {outcome: CallbackFailed, patch: noPatch, errorText: "evaluate-error"}, {outcome: CallbackCancelled, patch: noPatch, errorText: "cancelled"})
 pure def validIntentReplacement(patch: ResponsePatch): bool = not(patch.replaceScope) or (patch.intentShapeValid and patch.intents.length() > 0 and patch.invalidations.every(fieldName => fieldName.validSyntax and not(scopeProtectedKeys.contains(fieldName.key))))
@@ -196,8 +196,7 @@ pure def applyValidPatch(patch: ResponsePatch, s: ResponseEvaluation): ResponseE
     candidateAdditions: if (patch.addCandidates) mergeNamed(s.candidateAdditions, patch.candidates) else s.candidateAdditions,
     candidatesCleared: s.candidatesCleared or patch.clearCandidates,
     contextualSources: s.contextualSources.concat(patch.contextSources),
-    invalidatedFields: if (patch.replaceScope) dedupExact(s.invalidatedFields.concat(patch.invalidations.listMap(fieldName => fieldName.name))) else s.invalidatedFields,
-    scopeOwner: if (patch.replaceScope) patch.owner else s.scopeOwner }
+    invalidatedFields: if (patch.replaceScope) dedupExact(s.invalidatedFields.concat(patch.invalidations.listMap(fieldName => fieldName.name))) else s.invalidatedFields }
 }
 pure def canSettleEvaluation(s: ResponseEvaluation): bool = s.phase == AwaitEvaluation
 pure def settleEvaluation(s: ResponseEvaluation, receipt: PatchReceipt): ResponseEvaluation =
@@ -208,6 +207,6 @@ pure def settleEvaluation(s: ResponseEvaluation, receipt: PatchReceipt): Respons
   else if (not(validIntentReplacement(receipt.patch))) recordEvaluationError("RESPONSE_HANDLER_INTENT_SCOPE_INVALID", s)
   else nextCandidate(currentCandidate(s).slot, applyValidPatch(receipt.patch, s))
 pure def stepOriginalSourceContextSurvives(before: ResponseEvaluation, via: str, after: ResponseEvaluation): bool = via != "start" implies after.plan.sourceContext == before.plan.sourceContext and after.plan.priorReceipts == before.plan.priorReceipts
-pure def sometimesScopeReplacementApplied(s: ResponseEvaluation): bool = s.scopeOwner > 0 and s.invalidatedFields.includes("scopeHint") and s.contextualSources.includes("new-complete-source")
+pure def sometimesScopeReplacementApplied(s: ResponseEvaluation): bool = s.invalidatedFields.includes("scopeHint") and s.contextualSources.includes("new-complete-source")
 pure def sometimesUnauthorizedToolRejected(s: ResponseEvaluation): bool = s.errors.some(error => error.message == "RESPONSE_HANDLER_DETERMINISTIC_ACTION_DENIED")
 ```
