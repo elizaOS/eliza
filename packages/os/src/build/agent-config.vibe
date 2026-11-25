@@ -218,7 +218,7 @@ const decodeCharacter = Schema.decodeUnknownEffect(Schema.fromJsonString(Charact
 const decodePolicy = Schema.decodeUnknownEffect(Schema.fromJsonString(PolicyFileCodec), { onExcessProperty: "error" })
 
 effect function text(name: AgentFile, bytes: Uint8Array) {
-  return try Effect.try({ try: () => new TextDecoder("utf-8", { fatal: true }).decode(bytes), catch: () => new AgentConfigRefused({ detail: `The agent ${name} file is not UTF-8` }) })
+  return try Effect.try({ try: () => new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes), catch: () => new AgentConfigRefused({ detail: `The agent ${name} file is not UTF-8` }) })
 }
 
 export effect function admitAgentBytes(files: Readonly<Record<AgentFile, Uint8Array>>) {
