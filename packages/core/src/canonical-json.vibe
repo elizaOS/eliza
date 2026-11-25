@@ -185,13 +185,14 @@ module walk {
 
     enterContainer(value, ctx)
     try {
+
       if (isCanonicalArray(value, ctx)) {
         const length = knownArrayLength ?? ownArrayLengthWith(value, ctx)
         reserveVisits(ctx, length)
 
         let body = ""
+      let emitted = false
         for (let index = 0; index < length; index += 1) {
-          if (index > 0) body += emit(ctx, ",")
           const descriptor = inspect(
             ctx,
             "getOwnPropertyDescriptor",
@@ -199,7 +200,9 @@ module walk {
           )
           if (!descriptor) {
             if (ctx.options.sparseArrayHoles === "null") {
-              body += emit(ctx, "null")
+            if (emitted) body += emit(ctx, ",")
+                  body += emit(ctx, "null")
+            emitted = true
             }
             continue
           }
@@ -210,7 +213,9 @@ module walk {
               index,
             })
           }
-          body += canonicalWalk(descriptor.value, depth + 1, ctx, true)
+        if (emitted) body += emit(ctx, ",")
+        body += canonicalWalk(descriptor.value, depth + 1, ctx, true)
+        emitted = true
         }
         return `${emit(ctx, "[")}${body}${emit(ctx, "]")}`
       }
