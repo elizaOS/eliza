@@ -95,6 +95,26 @@ pure def sometimesRevokedRetiredAnOffer(d: DeviceRequest): bool = d.enrollment =
 pure def sometimesRevokedAfterDispatch(d: DeviceRequest): bool = d.enrollment == Revoked and d.phase == Dispatched
 ```
 
+### Before it enrolls, a device reads the agent's identity and whole vocabulary, which changes nothing
+
+`GET` and `POST /api/client-devices/capabilities` answer, to any caller the
+host admits and without an enrollment, the protocol, the agent id, the
+owner's identity id and the whole capability vocabulary
+(`{ protocol: 1, agentId, identityId, deviceActions: { protocol: 1,
+capabilities } }`). A device reads them to know which agent and owner it is
+about to enroll with and which capabilities it may declare; the answer is the
+same before and after enrollment and changes no enrollment.
+
+```quint
+type CapabilityOffer = { agentId: str, identityId: str, vocabulary: Set[str] }
+pure def capabilityOffer(owner: S::SessionOwner, vocabulary: Set[str]): CapabilityOffer =
+  { agentId: owner.agentId, identityId: owner.actorId, vocabulary: vocabulary }
+pure val ownerValues: Set[S::SessionOwner] = Set({ agentId: "agent-1", actorId: "owner-1", connector: "agent-1" }, { agentId: "agent-2", actorId: "owner-2", connector: "agent-2" })
+pure val vocabularyValues: Set[Set[str]] = Set(Set(), Set("files.browser.v1", "sms.send.v1"))
+pure def lawTheOfferNamesTheAgentAndItsOwner(owner: S::SessionOwner, vocabulary: Set[str]): bool =
+  capabilityOffer(owner, vocabulary).agentId == owner.agentId and capabilityOffer(owner, vocabulary).identityId == owner.actorId
+```
+
 ### The device context is served only for a live enrollment
 
 `GET /api/client-devices/context` reads the enrollment and changes nothing.
