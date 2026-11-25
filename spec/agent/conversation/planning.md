@@ -599,11 +599,16 @@ counts, names other than one after `check with`, or question mark. The
 grammar has no past-tense verb, negation or completion word, so a cue never
 claims that an effect happened or that the owner's tracked work is empty:
 a destination confirmation (`Maps is open.`, `Opened your calendar.`) is
-never a cue. A JSON object in the text is a tool call written as text, which
-runs nothing: text that holds one or more objects is read without them, so
+never a cue. A JSON object in the text that names an action or a tool (an
+`action` or `tool` field with a text value, or an action envelope as core
+reads one) is a tool call written as text, which runs nothing: text that
+holds such objects outside any other object is read without them and
+without a code fence or tag left empty around them, so
 a cue beside one (`Sure, one sec. {"action": "send_message"}`) is still a
 cue, delivered without them, and bare assent beside one promises work as
-`Sure, one sec.` does (below). Text that is only objects is an `Answer`.
+`Sure, one sec.` does (below). Text that is only such objects is an
+`Answer`, and so is text whose objects name no action or tool
+(`Sure! {"name": "Bob"}`).
 A wait cue followed by more text that is not progress (`One second is
 1,000 milliseconds.`, `Just a second, your dentist is Thursday.`) is an
 `Answer`. A cue that comes with the turn's first tool calls is the turn's
@@ -612,12 +617,13 @@ restarted to empty before they run, so a cue is never part of the reply's
 text. A cue or a blank with no
 tool call is not an answer, and neither is assent that goes on to a cue
 (`Sure, one sec.`, below): it promised work that no call does. The model is
-asked once more, with the turn's tools still offered, and one host note
+asked once more, with the turn's tools still offered unless that call is
+the last step, and one host note
 saying that its response gave the person no answer and was not sent. Before
 any tool ran in the turn, the note also says the response called no tool,
 and that the model either does the work now with an offered tool or, if no
 offered tool can do it, tells the person plainly, in its own words, that it
-can't; when the turn offers no tool, it says instead that nothing the
+can't; when no tool can be called on the next step, it says instead that nothing the
 model writes can do the work, so it tells the person plainly, in its own
 words, that it can't. After a tool ran, it says the tool results are what
 the turn did and that the model answers from them, in its own words. A turn asks this at

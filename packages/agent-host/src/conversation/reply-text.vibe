@@ -11,7 +11,7 @@ function pattern(source: string, flags: string): RegExp {
 }
 
 const maxCueLength = 120
-const maxWrittenCallsLength = 4_000
+const emptyWrapper = /```[\w-]*\s*```|<([\w-]+)>\s*<\/\1>/gu
 const waitCue = "(?:on it|(?:one|just a) (?:sec|second|moment))"
 const containerNoun = "(?:calendar|schedule|agenda|notes|inbox|emails?|messages|texts|reminders|tasks|todos|files|photos|contacts|workflows|settings|account)"
 const relativeDay = "(?:today|tomorrow|yesterday|tonight)'s"
@@ -54,23 +54,31 @@ function inGrammar(words: string, assent: string | undefined): boolean {
     && sentences.every((sentence) => waitSentence.test(sentence) || progress.test(sentence))
 }
 
-function objectEnd(text: string, start: number): number {
-  for (let close = text.indexOf("}", start); close >= 0; close = text.indexOf("}", close + 1)) {
-    if (isJsonObject(text.slice(start, close + 1))) return close + 1
+function isWrittenCall(body: string): boolean {
+  if (looksLikeActionEnvelopeJson(body)) return true
+  try {
+    const parsed: unknown = JSON.parse(body)
+    return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)
+      && Object.entries(parsed).some(([key, value]) => (key === "action" || key === "tool") && typeof value === "string")
+  } catch {
+    return false
   }
-  return -1
 }
 
 export function withoutWrittenCalls(text: string): string {
-  if (!text.includes("{") || text.length > maxWrittenCallsLength) return text
+  if (!text.includes("{")) return text
+  const open: number[] = []
   let rest = ""
-  let index = 0
-  while (index < text.length) {
-    const end = text[index] === "{" ? objectEnd(text, index) : -1
-    rest += end < 0 ? text[index] : " "
-    index = end < 0 ? index + 1 : end
+  let kept = 0
+  for (let index = 0; index < text.length; index += 1) {
+    if (text[index] === "{") open.push(index)
+    if (text[index] !== "}") continue
+    const start = open.pop()
+    if (start === undefined || open.length > 0 || !isWrittenCall(text.slice(start, index + 1))) continue
+    rest += `${text.slice(kept, start)} `
+    kept = index + 1
   }
-  return rest.trim()
+  return kept === 0 ? text : `${rest}${text.slice(kept)}`.replace(emptyWrapper, " ").trim()
 }
 
 function shapeOf(reply: string): DraftShape {

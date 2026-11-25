@@ -20,7 +20,7 @@ type ChatMessage = NonNullable<GenerateTextParams["messages"]>[number]
 const toolNamePattern = /^[A-Za-z0-9_-]{1,64}$/
 const toolMessageLimit = 4_000
 const workOrSayNot = "Note from the agent host, not the person: your last response called no tool and gave the person no answer, so none of it was sent. Do the work now by calling an offered tool, or, if no offered tool can do it, tell the person plainly, in your own words, that you can't."
-const sayNot = "Note from the agent host, not the person: your last response gave the person no answer, so none of it was sent. No tool is offered in this turn, so nothing you write can do the work. Tell the person plainly, in your own words, that you can't do it."
+const sayNot = "Note from the agent host, not the person: your last response gave the person no answer, so none of it was sent. No tool can be called now, so nothing you write can do the work. Tell the person plainly, in your own words, that you can't do it."
 const answerFromWork = "Note from the agent host, not the person: your last response gave the person no answer, so none of it was sent. The tool results above are what this turn did. Answer the person's latest message now from them, in your own words."
 const answerAgain = "Note from the agent host, not the person: your reply is not final yet. Write your whole reply to the person's latest message again, in your own words, so that it is true to what follows. Call no tools."
 const deliveredCueNote = (cue: string) =>
@@ -575,7 +575,8 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
       case "AskAgain":
         askedAgain = true
         conversation.push({ role: "assistant", content: answered.text })
-        conversation.push({ role: "user", content: steps.length > 0 ? answerFromWork : tools.some(({ name }) => name !== restoreContext.name) ? workOrSayNot : sayNot })
+        const toolsNext = taken < maxPlanSteps - 1 && tools.some(({ name }) => name !== restoreContext.name)
+        conversation.push({ role: "user", content: steps.length > 0 ? answerFromWork : toolsNext ? workOrSayNot : sayNot })
         continue plan
       case "GiveUp":
       case "RunTools":
