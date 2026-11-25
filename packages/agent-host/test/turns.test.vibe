@@ -832,6 +832,9 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
   const { answer: callInAnswer, calls: callInAnswerCalls } = try callsFor({ text: "How long is a second?" })
   try Effect.sync(() => cloud.script(text('Let me check.{"tool": "search", "input": "speed of light"}The speed of light in a vacuum is exactly 299,792,458 metres per second.')))
   const { answer: cueCallInAnswer, calls: cueCallInAnswerCalls } = try callsFor({ text: "What is the speed of light?" })
+  const repeatedRecordText = 'Here is {"name":"Ada"}. Let me check.{"name":"Ada"}'
+  try Effect.sync(() => cloud.script(text(repeatedRecordText)))
+  const { answer: repeatedRecord, calls: repeatedRecordCalls } = try callsFor({ text: "Show me Ada's record." })
   try Effect.sync(() => cloud.script(toolCalls("", { name: "CALCULATE", arguments: { expression: "5 * 5" } }), text('Sure, one sec.{"action": "send_message", "recipient": "Sam"}'), text("It is 25.")))
   const { answer: cuedAfterWork, calls: cuedAfterWorkCalls } = try callsFor({ text: "Work out 5 times 5." })
   const afterWorkAsked = reasked()
@@ -872,6 +875,7 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
     jsonOnly,
     callInAnswer: [callInAnswer.text, callInAnswerCalls],
     cueCallInAnswer: [cueCallInAnswer.text, cueCallInAnswerCalls],
+    repeatedRecord: [repeatedRecord.text, repeatedRecordCalls],
     cuedAfterWork: [cuedAfterWork.text, cuedAfterWorkCalls, afterWorkAsked.toolChoice, afterWorkAsked.note],
     labels: { text: solved.action, voice: spoken.action },
   }, {
@@ -925,6 +929,7 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
     ].map((said) => [said, 1]),
     callInAnswer: ["Let me check. A second is the time caesium-133 radiation takes for 9,192,631,770 periods.", 1],
     cueCallInAnswer: ["Let me check. The speed of light in a vacuum is exactly 299,792,458 metres per second.", 1],
+    repeatedRecord: ['Here is {"name":"Ada"}. Let me check.{"name":"Ada"}', 1],
     cuedAfterWork: [
       "It is 25.", 3, "auto",
       "Note from the agent host, not the person: your last response gave the person no answer, so none of it was sent. The tool results above are what this turn did. Answer the person's latest message now from them, in your own words.",

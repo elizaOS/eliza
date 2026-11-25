@@ -55,12 +55,12 @@ interface Objects {
   readonly found: readonly string[]
 }
 
-function objectsOut(said: string, strip: (body: string, before: string) => boolean): Objects {
+function objectsOut(said: string, strip: (body: string, before: string, after: string) => boolean): Objects {
   const found: string[] = []
   let changed = false
   const text = said.replace(bracketCall, (call: string, at: number) => {
     found.push(call)
-    const gone = strip(call, said.slice(0, at))
+    const gone = strip(call, said.slice(0, at), said.slice(at + call.length))
     changed ||= gone
     return gone ? " " : call
   })
@@ -82,7 +82,7 @@ function objectsOut(said: string, strip: (body: string, before: string) => boole
     const body = text.slice(start ?? index, index + 1)
     if (start === undefined || open.length > 0 || !isJsonObject(body)) continue
     found.push(body)
-    if (!strip(body, text.slice(0, start))) continue
+    if (!strip(body, text.slice(0, start), text.slice(index + 1))) continue
     changed = true
     rest += `${text.slice(kept, start).replace(/[ \t]+$/u, "")} `
     kept = index + 1
@@ -104,13 +104,13 @@ function afterSentence(before: string): boolean {
   return !lead || /[.!…]$/u.test(lead)
 }
 
-function afterCue(said: string, body: string, before: string): boolean {
+function afterCue(before: string, after: string): boolean {
   const sentence = before.split(/\n|(?<=[.!?…])\s+/u).at(-1) ?? ""
-  return /[.!…]$/u.test(before) && cueShaped(withoutWrittenCalls(sentence)) && said.slice(said.indexOf(body) + body.length).trim().length > 0
+  return /[.!…]$/u.test(before) && cueShaped(withoutWrittenCalls(sentence)) && after.trim().length > 0
 }
 
 export function withoutOfferedCalls(said: string, offered: ReadonlySet<string>): string {
-  return objectsOut(said, (body, before) => callsOffered(body, offered) || afterCue(said, body, before)).text
+  return objectsOut(said, (body, before, after) => callsOffered(body, offered) || afterCue(before, after)).text
 }
 
 export const hostNoteMark = "Note from the agent host"
