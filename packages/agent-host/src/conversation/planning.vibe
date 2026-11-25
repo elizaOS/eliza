@@ -252,7 +252,7 @@ function errorText(error: ActionResult["error"]): string | undefined {
   return typeof error === "string" ? error : error.message
 }
 
-const unshownResult = "The owner sees none of this result. Your reply is all they hear, so say in it what this did or found."
+const unshownResult = "The owner sees none of this tool text. Your reply is the only thing you tell them, so say in it what this did or found."
 
 function toolMessage(result: ActionResult): string {
   const summary = {
