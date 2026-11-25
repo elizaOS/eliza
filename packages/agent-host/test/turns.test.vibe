@@ -177,6 +177,16 @@ module node {
     },
   }
 
+  const quietTool = (name: string): Action => ({
+    name, description: `Fixture ${name.toLowerCase()} tool that is offered and never called.`, similes: [], parameters: [],
+    validate: async () => true, handler: async () => ({ success: true, text: "" }),
+  })
+
+  export const namedTools: AgentPlugin = {
+    name: "named-tools", description: "Fixture tools named like the GitHub, Browser, Wallet, Workflow, Vision and web search plugins",
+    actions: ["GITHUB", "BROWSER", "WALLET", "WORKFLOW", "VISION", "WEB_SEARCH"].map(quietTool),
+  }
+
   export const fixtureApp: AgentPlugin = {
     name: "fixture-app", description: "Fixture writes with receipts on texts and calendar events, and verified results to show",
     actions: [
@@ -312,7 +322,7 @@ module node {
     return text
   }
 }
-import { calendarProbe, completions, cutTurn, modelLogRooms, failParticipantLookupOnce, handedDirectly, privateAgenda, privateReadCount, privateReader, failNext, fixtureApp, lastTurnHistory, lastTurnPrompt, localDay, loseRoomOwnershipOnceAfterReply, movedDentist, nearestCafes, overlapping, plainLog, refuseMoves, roomMessages, seedHistory, storeNotice, unsaidMove, watchRunEnds } from node
+import { namedTools, calendarProbe, completions, cutTurn, modelLogRooms, failParticipantLookupOnce, handedDirectly, privateAgenda, privateReadCount, privateReader, failNext, fixtureApp, lastTurnHistory, lastTurnPrompt, localDay, loseRoomOwnershipOnceAfterReply, movedDentist, nearestCafes, overlapping, plainLog, refuseMoves, roomMessages, seedHistory, storeNotice, unsaidMove, watchRunEnds } from node
 
 effect function runEndsOf(ends: readonly { messageId?: string, status: string }[], messageId: string | undefined) {
   for (let wait = 0; wait < 100 && !ends.some((end) => end.messageId === messageId); wait += 1) try Effect.sleep("20 millis")
@@ -603,16 +613,16 @@ it.live(`Competing terminal decisions run no sibling tool and get one repair rou
     { name: "CALCULATE", arguments: { expression: "23 * 19" } },
   ))
   const original = completions(cloud)
-  try Effect.sync(() => cloud.script(ambiguous, text("One clear answer.")))
+  try Effect.sync(() => cloud.script(ambiguous, text("One clear answer."), text("One clear answer.")))
   const repaired = try send(agent, id, { text: "Give me one clear answer." })
   const repairCalls = completions(cloud) - original
-  const repairPrompt = lastTurnPrompt(cloud)
+  const repairPrompt = lastTurnPrompt(cloud, 2)
   const beforeRepeat = completions(cloud)
   try Effect.sync(() => cloud.script(ambiguous, ambiguous))
   const refused = try send(agent, id, { text: "Give me a single response." })
   try Effect.try(() => {
     assert.deepStrictEqual([repaired.status, replyOf(repaired).text, replyOf(repaired).actionResults, repairCalls],
-      [200, "One clear answer.", [], 2])
+      [200, "One clear answer.", [], 3])
     assert.include(repairPrompt, "None of its tools ran")
     assert.notInclude(repairPrompt, "First terminal copy.")
     assert.deepStrictEqual([refused.status, replyOf(refused).failureKind, replyOf(refused).planAction, completions(cloud) - beforeRepeat], [200, "provider_issue", "retry", 2])
@@ -651,7 +661,7 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
   try send(agent, id, { text: "Show me home.", metadata: { viewDelivery: "completed-action", viewClientId: "renderer-1" } })
   const rendered = completionsSent().at(-1)
 
-  try Effect.sync(() => cloud.script(toolCalls("", { name: "VIEWS", arguments: { action: "show", view: "home" } }), text("I can't switch screens from this chat."), text("I can't switch screens from this chat, so home isn't showing.")))
+  try Effect.sync(() => cloud.script(toolCalls("", { name: "VIEWS", arguments: { action: "show", view: "home" } }), text("I can't switch screens from this chat."), text("[answer] I can't switch screens from this chat, so home isn't showing.")))
   const { answer: unrendered, calls: unrenderedCalls } = try callsFor({ text: "Show me home here." })
   const declined = completionsSent().at(-1)?.messages.find(({ role }) => role === "tool")?.content
   const unrenderedAsked = reasked()
@@ -667,7 +677,7 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
     const { answer, calls } = try callsFor({ text: "Divide 7 by 0." })
     return [answer.text, calls]
   }
-  const missingFailure = try secondAnswer("Division is a mathematical operation.")
+  const missingFailure = try secondAnswer("[answer] Division is a mathematical operation.")
   const cuedAgain = try secondAnswer("One sec.")
   const sameAgain = try secondAnswer("Done!")
   const blankAgain = try secondAnswer("", "", "", "")
@@ -707,6 +717,7 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
   const { answer: otherLater, calls: otherLaterCalls } = try callsFor({ text: "Calculate 8 plus 9 and 12 times 3." })
   const otherLaterNote = lastTurnPrompt(cloud)
 
+  const actOrAnswer = "Note from the agent host, not the person: your last response called no tool and none of it was sent yet. If you meant to act on the person's latest message, call the tool now. Otherwise give your answer to it, in your own words."
   try Effect.sync(() => cloud.script(toolCalls("One sec.", { name: "CALCULATE", arguments: { expression: "1 * 1000" } }), text("One second is 1,000 milliseconds.")))
   const duration = replyOf(try send(agent, id, { text: "How long is a second?" }))
   try Effect.sync(() => cloud.script(text('Sure, one sec.{"action": "send_message", "recipient": "Sam"}'), text("I can't send texts from here.")))
@@ -723,7 +734,8 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
     'Sure. {"action": "SEND_TEXT", "parameters": {"to": "Sam"}}', '{"action": "SEND_TEXT", "parameters": {"to": "Sam"}}',
     'Sure. [send_message contact="Sam" message="I am running late"]', '[send_message contact="Sam" message="I am running late"]',
     '{"action": "open_app", "app": "Maps", "params": {"query": "coffee shops near me"}}', '{"action": "open_app", "app_name": "Maps"}', '{"tool": "open_app", "action": "Maps"}',
-    '{"name": "calculate", "arguments": {"expression": "2 + 2"}}', '{"type": "Calculate"}', 'Sure. {"action": "calculate", "input": "2 + 2"}',
+    '{"name": "calculate", "arguments": {"expression": "2 + 2"}}', 'Sure. {"action": "calculate", "input": "2 + 2"}', '{"tool": "calendar", "tool_input": {"event": "dentist"}}',
+    '{"type": "send_message", "args": {"to": "Sam"}}', '{"name": "send_message", "arguments": {"to": "Sam"}}',
   ]) {
     try Effect.sync(() => cloud.script(text(said), text("I can't do that from here.")))
     const { answer, calls } = try callsFor({ text: "Text Sam that I am running late." })
@@ -735,9 +747,31 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
     const { answer, calls } = try callsFor({ text: "Text Sam that I am running late." })
     maybeAnswers.push([answer.text, calls])
   }
+  const bareAssent: (readonly [string, number, string])[] = []
+  for (const [request, script] of [
+    ["Work out 2 plus 2.", () => cloud.script(text("Sure."), toolCalls("", { name: "CALCULATE", arguments: { expression: "2 + 2" } }), text("It is 4."))],
+    ["Call me Bob.", () => cloud.script(text("Sure."), text("Sure, Bob."))],
+    ["Remember that I like tea.", () => cloud.script(text("Sure."), text("Sure."))],
+  ] as const) {
+    try Effect.sync(script)
+    const before = completionsSent().length
+    const { answer, calls } = try callsFor({ text: request })
+    const note = completionsSent()[before + 1]?.messages.at(-1)?.content
+    bareAssent.push([answer.text, calls, typeof note === "string" ? note : ""])
+  }
+  const declared: (readonly [string, number])[] = []
+  for (const [request, said] of [["Thanks.", "[answer] Anytime!"], ["Did that work?", "[answer] Done!"], ["Call me Bob.", "[ANSWER]Sure, Bob."], ["Look it up.", '{"query": "speed of light"}[answer] Light travels about 300,000 km each second.']] as const) {
+    try Effect.sync(() => cloud.script(text(said)))
+    const { answer, calls } = try callsFor({ text: request })
+    declared.push([answer.text, calls])
+  }
+  try Effect.sync(() => cloud.script(text("[promise] Sure, one sec."), text("[answer] I can't send texts from here.")))
+  const { answer: declaredPromise, calls: declaredPromiseCalls } = try callsFor({ text: "Text Sam that I am running late." })
+  try Effect.sync(() => cloud.script(toolCalls("", dividing), text("Done!"), text("[promise] One sec.")))
+  const { answer: promisedInReask } = try callsFor({ text: "Divide 7 by 0." })
   const jsonOnly: (readonly [string, number])[] = []
   for (const said of [
-    '{"status": "in_progress"}', '{"theme": "dark_mode"}', '{"type": "person", "name": "Bob"}', '{"type": "line_chart", "data": [1, 2]}',
+    '{"status": "in_progress"}', '{"theme": "dark_mode"}', '{"type": "person", "name": "Bob"}', '{"type": "line_chart", "data": [1, 2]}', '{"name": "john_doe"}', '{"type": "Calculate"}',
     'A tool call in that format looks like {"name": "get_weather", "arguments": {"city": "Paris"}} and the host runs it and returns the forecast to the model.',
     'GitHub hosts code and its link record is {"name": "GitHub", "url": "https://github.com"} in that list.',
     'Most smart-home hubs take a command such as {"action": "turn_on", "device": "lamp"} and switch the lamp on.',
@@ -779,6 +813,10 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
     workedAfter: [workedAfter.text, workedAfterCalls, workedAfter.actionResults.map(({ action }) => action)],
     promisedTwice: [promisedTwice.text, promisedTwice.failureKind, promisedTwiceCalls],
     writtenCalls,
+    declared,
+    declaredPromise: [declaredPromise.text, declaredPromiseCalls],
+    promisedInReask: promisedInReask.text,
+    bareAssent,
     maybeAnswers,
     jsonOnly,
     callInAnswer: [callInAnswer.text, callInAnswerCalls],
@@ -797,7 +835,7 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
       `${asksAgain}A step of this turn did not happen as asked. The reply must tell the person so truthfully, never claiming it happened. The step's own report: ${JSON.stringify(unavailableNotice)}`,
     ],
     failed: [true, 3, "Done!", true],
-    notFinal: { missingFailure: ["Division is a mathematical operation.", 3], cuedAgain: ["One sec.", 3], sameAgain: [`Done!\n\n${divided}`, 3], blankAgain: [`Done!\n\n${divided}`, 6], fencedReport: true },
+    notFinal: { missingFailure: ["Division is a mathematical operation.", 3], cuedAgain: [`Done!\n\n${divided}`, 3], sameAgain: [`Done!\n\n${divided}`, 3], blankAgain: [`Done!\n\n${divided}`, 6], fencedReport: true },
     quoted: [`It returned: ${divided}`, 2],
     cutAfterFailure: [`${cutOffReply}\n\n${divided}`, 2],
     separate: ["The second result is 36. The first calculation didn't run.", 3],
@@ -812,10 +850,14 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
     ],
     workedAfter: ["It is 42.", 3, ["CALCULATE"]],
     promisedTwice: ["", "provider_issue", 2],
-    writtenCalls: Array.from({ length: 16 }, () => ["I can't do that from here.", 2]),
+    writtenCalls: Array.from({ length: 18 }, () => ["I can't do that from here.", 2]),
+    declared: [["Anytime!", 1], ["Done!", 1], ["Sure, Bob.", 1], ["Light travels about 300,000 km each second.", 1]],
+    declaredPromise: ["I can't send texts from here.", 2],
+    promisedInReask: `Done!\n\n${divided}`,
+    bareAssent: [["It is 4.", 3, actOrAnswer], ["Sure, Bob.", 2, actOrAnswer], ["Sure.", 2, actOrAnswer]],
     maybeAnswers: [["I can't text from here.", 2], ['Sure! {"name": "Bob"}', 2]],
     jsonOnly: [
-      '{"status": "in_progress"}', '{"theme": "dark_mode"}', '{"type": "person", "name": "Bob"}', '{"type": "line_chart", "data": [1, 2]}',
+      '{"status": "in_progress"}', '{"theme": "dark_mode"}', '{"type": "person", "name": "Bob"}', '{"type": "line_chart", "data": [1, 2]}', '{"name": "john_doe"}', '{"type": "Calculate"}',
       'A tool call in that format looks like {"name": "get_weather", "arguments": {"city": "Paris"}} and the host runs it and returns the forecast to the model.',
       'GitHub hosts code and its link record is {"name": "GitHub", "url": "https://github.com"} in that list.',
       'Most smart-home hubs take a command such as {"action": "turn_on", "device": "lamp"} and switch the lamp on.',
@@ -887,6 +929,39 @@ it.live(`A tool call the model wrote as text is read as the call on Qwen, and is
   try Effect.try(() => assert.deepStrictEqual([madeCall?.content, madeCall?.tool_calls?.map(({ function: called }) => [called.name, JSON.parse(called.arguments)])], [null, [["CALCULATE", { expression: "2 + 2" }]]]))
 }, 120_000)
 
+it.live(`An answer keeps JSON that only shares a name with an offered tool and loses a typed call to one (${planning}, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole")`, effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const agent = try startInProcess({
+    launch: {
+      backend: { kind: "cloud", origin: cloud.origin }, callerRole: "owner",
+      load: [namedTools.name], allowed: ["REPLY", "IGNORE", "NONE", "GITHUB", "BROWSER", "WALLET", "WORKFLOW", "VISION", "WEB_SEARCH"],
+    },
+    frame: { credential: { version: 1, value: deviceKey } }, modules: builtinModuleFactories, bundled: new Map([[namedTools.name, namedTools]]),
+  })
+  const { id } = try conversation(agent)
+  const kept = [
+    'GitHub hosts code, and its entry in your list is {"name": "GitHub", "url": "https://github.com"} for reference.',
+    'Your bookmark reads {"name": "Browser", "homepage": "https://example.com"} in the export you shared.',
+    'The wallet summary is {"type": "wallet", "balance": 12} as of this morning.',
+    'That automation is saved as {"name": "Workflow", "steps": ["fetch", "post"]} in the file.',
+    'The image settings are {"type": "vision", "model": "small"} in your config.',
+    'The search history entry is {"name": "web_search", "results": 3} from yesterday.',
+    '{"name": "GitHub", "url": "https://github.com"}',
+  ]
+  const delivered: (readonly [string, number])[] = []
+  for (const said of [...kept, 'Here is what I found. {"tool": "web_search", "input": "tide times"} High tide is at 6:40 this evening.']) {
+    try Effect.sync(() => cloud.script(text(said)))
+    const before = completions(cloud)
+    const answered = replyOf(try send(agent, id, { text: "Tell me about that." }))
+    delivered.push([answered.text, completions(cloud) - before])
+  }
+  const offered = (cloud.calls.filter(({ path }) => path.endsWith("/chat/completions")).at(-1)?.body as { tools?: { function?: { name?: string } }[] } | undefined)?.tools?.map((tool) => tool.function?.name) ?? []
+  try Effect.try(() => assert.deepStrictEqual({ offered: ["GITHUB", "BROWSER", "WALLET", "WORKFLOW", "VISION", "WEB_SEARCH"].every((name) => offered.includes(name)), delivered }, {
+    offered: true,
+    delivered: [...kept.map((said) => [said, 1] as const), ["Here is what I found. High tide is at 6:40 this evening.", 1]],
+  }))
+}, 120_000)
+
 it.live(`A failure on one recipient or event stays reported beside a success on another, in either order, the model is asked once to report it, its own words follow only a reply the model did not answer again, and a retry of the same operation that succeeds closes it (${planning}, "A failure or proposal the turn made stays reported unless a later success of the same operation supersedes it"; ${planning}, "A reply that leaves a failure unreported is written again once, and the delivered reply still reports open failures and attachment omissions"; ${planning}, "A failure with no receipt that a later run of its action may have answered is the model's to report, and its own words follow the reply unless the model stands by a reply without them"; ${planning}, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole")`, effect () => {
   const cloud = try cloudFake(deviceKey)
   const agent = try startInProcess({
@@ -916,7 +991,7 @@ it.live(`A failure on one recipient or event stays reported beside a success on 
     cloud.script(toolCalls("", { name: "UPDATE_EVENT", arguments: { event: "standup" } }, { name: "UPDATE_EVENT", arguments: { event: "dentist" } }), text("Both events moved."), text("Both events moved."))
   })
   const events = try turn("Move my standup and my dentist to Friday.")
-  try Effect.sync(() => { failNext("Alice"); cloud.script(toolCalls("", textTo("Bob"), textTo("Alice")), text("Both texts are sent."), text("Bob has your text.")) })
+  try Effect.sync(() => { failNext("Alice"); cloud.script(toolCalls("", textTo("Bob"), textTo("Alice")), text("Both texts are sent."), text("[answer] Bob has your text.")) })
   const told = try turn("Text Bob and Alice that I'm running late.")
   const toolSeen = cloud.calls.flatMap(({ body }) => (body as { readonly messages?: ReadonlyArray<{ readonly role: string; readonly content?: unknown }> }).messages ?? [])
     .filter(({ role }) => role === "tool").map(({ content }) => String(content))
@@ -994,7 +1069,7 @@ it.live(`A current-time question hears the phone's clock, else the owner's launc
   const { answer: observed, calls: observedCalls } = try callsFor({ text: "What time is it now?", metadata: tokyo })
   const phonePrompt = lastTurnPrompt(cloud)
 
-  try Effect.sync(() => cloud.script(text(`It's ${awayTokyo.weekday}, ${awayTokyo.monthDay} at 5 PM GMT+9.`), text(`It's ${awayTokyo.weekday}.`)))
+  try Effect.sync(() => cloud.script(text(`It's ${awayTokyo.weekday}, ${awayTokyo.monthDay} at 5 PM GMT+9.`), text(`[answer] It's ${awayTokyo.weekday}.`)))
   const { answer: invented, calls: inventedCalls } = try callsFor({ text: "What time is it now?", metadata: tokyo })
   const inventedNote = lastTurnPrompt(cloud)
   const dated = [
@@ -1007,7 +1082,7 @@ it.live(`A current-time question hears the phone's clock, else the owner's launc
   const { answer: clause, calls: clauseCalls } = try callsFor({ text: "What time is it now that the meeting has ended?", metadata: tokyo })
   const phoneHistory = lastTurnHistory(cloud)
 
-  try Effect.sync(() => cloud.script(text(`Today is ${awayHome.weekday}.`), text(`Today is ${today.home.weekday}.`)))
+  try Effect.sync(() => cloud.script(text(`Today is ${awayHome.weekday}.`), text(`[answer] Today is ${today.home.weekday}.`)))
   const { answer: launched, calls: launchedCalls } = try callsFor({ text: "What day is it?" })
   const launchPrompt = lastTurnPrompt(cloud, 2)
   const launchHistory = lastTurnHistory(cloud, 2)
@@ -1127,10 +1202,10 @@ it.live(`Each call keeps the system prompt and puts the turn's notes after the h
   const sent = () => cloud.calls.filter(({ path }) => path.endsWith("/chat/completions")).map(({ body }) => body as { messages: { role: string; content?: unknown }[] } & Record<string, unknown>)
   const textOf = (content: unknown) => typeof content === "string" ? content : JSON.stringify(content)
 
-  try Effect.sync(() => cloud.script(text("First answer.")))
+  try Effect.sync(() => cloud.script(text("First answer."), text("First answer.")))
   const first = replyOf(try send(agent, id, { text: "Hi", metadata: { observation: { view: "home", revision: 1, sensitive: false } } }))
   const notice = try host("host notice", () => storeNotice(agent.agent.runtime, roomId))
-  try Effect.sync(() => cloud.script(rateLimited(Date.now() + 1_000), text("After the wait.")))
+  try Effect.sync(() => cloud.script(rateLimited(Date.now() + 1_000), text("After the wait."), text("After the wait.")))
   const beforeWait = completions(cloud)
   const waited = replyOf(try send(agent, id, { text: "Still there?" }))
   const waitedCalls = completions(cloud) - beforeWait
@@ -1138,15 +1213,15 @@ it.live(`Each call keeps the system prompt and puts the turn's notes after the h
   const [opening, latest] = [bodies[0], bodies.at(-1)]
 
   try Effect.sync(() => agent.agent.runtime.setSetting("ELIZA_SECRET_SWAP_ENABLED", true))
-  try Effect.sync(() => cloud.script(text("I'll write to them."), text("You're welcome.")))
+  try Effect.sync(() => cloud.script(text("I'll write to them."), text("I'll write to them."), text("You're welcome."), text("You're welcome.")))
   try send(agent, id, { text: "Email ada.lovelace@gmail.com about the meeting" })
   try send(agent, id, { text: "Thanks" })
   try Effect.sync(() => agent.agent.runtime.setSetting("ELIZA_SECRET_SWAP_ENABLED", false))
-  const [mentioned, after] = sent().slice(-2)
+  const [mentioned, , after] = sent().slice(-4)
   const asked = textOf(mentioned?.messages.at(-1)?.content).split("\n\n")[0] ?? ""
   const replayed = after?.messages.map(({ content }) => textOf(content)).find((content) => content.includes("] Email ")) ?? ""
 
-  try Effect.sync(() => cloud.script(requestFault("parser_error"), text("Read through the cloud.")))
+  try Effect.sync(() => cloud.script(requestFault("parser_error"), text("Read through the cloud."), text("Read through the cloud.")))
   const beforeCloudParse = completions(cloud)
   const cloudParsed = replyOf(try send(agent, id, { text: "Work that out." }))
   const cloudParseCalls = completions(cloud) - beforeCloudParse
@@ -1161,7 +1236,7 @@ it.live(`Each call keeps the system prompt and puts the turn's notes after the h
     frame: { credential: { version: 1, value: cloud.ownKey } }, modules: builtinModuleFactories,
   })
   const ownConversation = try conversation(own)
-  try Effect.sync(() => cloud.script(refusal(400, "generation_error", { reason: "parser_error" }), text("Read on the second try.")))
+  try Effect.sync(() => cloud.script(refusal(400, "generation_error", { reason: "parser_error" }), text("Read on the second try."), text("Read on the second try.")))
   const beforeParse = completions(cloud)
   const parsed = replyOf(try send(own, ownConversation.id, { text: "Work it out." }))
   const parseCalls = completions(cloud) - beforeParse
@@ -1181,10 +1256,10 @@ it.live(`Each call keeps the system prompt and puts the turn's notes after the h
     cloudParsed: cloudParsed.text, cloudParseCalls,
   }, {
     first: "First answer.", sameSystem: true, screenNoteLast: true, hostLabels: 1, screenNoteOutOfSystem: true, uncapped: true,
-    waited: "After the wait.", waitedCalls: 2, noticeUnread: true, stableReference: [false, true, true],
+    waited: "After the wait.", waitedCalls: 3, noticeUnread: true, stableReference: [false, true, true],
     cut: cutOffReply, cutCalls: 1,
-    parsed: "Read on the second try.", parseCalls: 2,
-    cloudParsed: "Read through the cloud.", cloudParseCalls: 2,
+    parsed: "Read on the second try.", parseCalls: 3,
+    cloudParsed: "Read through the cloud.", cloudParseCalls: 3,
   }))
 }, 120_000)
 
@@ -1194,7 +1269,7 @@ it.live(`A warm-up sends the planner's own system prompt and tools once with a o
   const sent = () => cloud.calls.filter(({ path }) => path.endsWith("/chat/completions")).map(({ body }) => body as { messages: { role: string; content?: unknown }[]; tools?: unknown; tool_choice?: unknown; max_tokens?: unknown; prompt_cache_key?: unknown })
   const warmUp = { method: "POST", path: "/api/turns/warm" } as const
 
-  try Effect.sync(() => cloud.script(cutOff("o"), text("First answer.")))
+  try Effect.sync(() => cloud.script(cutOff("o"), text("First answer."), text("First answer.")))
   const first = answerOf(try call(agent, warmUp))
   const again = answerOf(try call(agent, warmUp))
   const warmed = try settled(() => completions(cloud) === 1)
@@ -1216,7 +1291,7 @@ it.live(`A warm-up sends the planner's own system prompt and tools once with a o
     try settled(() => completions(failing) >= 1)
     try Effect.sleep(200)
     const status = answerOf(try call(fresh, { method: "GET", path: "/api/status" })).body as { canRespond: boolean; blocked: boolean; lastCloudFailure?: unknown }
-    try Effect.sync(() => failing.script(text("Still here.")))
+    try Effect.sync(() => failing.script(text("Still here."), text("Still here.")))
     const { id: freshId } = try conversation(fresh)
     const answered = replyOf(try send(fresh, freshId, { text: "Hi" }))
     afterFailures.push({ asked, canRespond: status.canRespond, blocked: status.blocked, lastCloudFailure: status.lastCloudFailure ?? "none", reply: answered.text, failureKind: answered.failureKind ?? "none" })
@@ -1332,14 +1407,14 @@ it.live(`A restore with a blank or missing reason or a scope other than history,
   const answered: { readonly status: string | undefined; readonly reply: string; readonly calls: number }[] = []
   for (const args of asks) {
     const before = completions(cloud)
-    try Effect.sync(() => cloud.script(toolCalls("", { name: "RESTORE_CONTEXT", arguments: args }), text("Nothing earlier to read.")))
+    try Effect.sync(() => cloud.script(toolCalls("", { name: "RESTORE_CONTEXT", arguments: args }), text("Nothing earlier to read."), text("Nothing earlier to read.")))
     const reply = replyOf(try send(agent, id, { text: "What did I say before?" }))
     const [, corrected] = cloud.calls.filter(({ path }) => path.endsWith("/chat/completions")).slice(before)
       .map(({ body }) => (body as { messages: { content?: unknown }[] }).messages.at(-1)?.content)
     answered.push({ status: /"status":"(\w+)"/.exec(typeof corrected === "string" ? corrected : "")?.[1], reply: reply.text, calls: completions(cloud) - before })
   }
-  const invalid = { status: "invalid", reply: "Nothing earlier to read.", calls: 2 }
-  try Effect.try(() => assert.deepStrictEqual(answered, [invalid, invalid, invalid, invalid, { status: "unavailable", reply: "Nothing earlier to read.", calls: 2 }]))
+  const invalid = { status: "invalid", reply: "Nothing earlier to read.", calls: 3 }
+  try Effect.try(() => assert.deepStrictEqual(answered, [invalid, invalid, invalid, invalid, { status: "unavailable", reply: "Nothing earlier to read.", calls: 3 }]))
 }, 120_000)
 
 const browserTurn = 'spec/agent/conversation/turnContext.md, "A Browser page is kept only when every field is valid, it is the Browser tab the kept observation selects at that revision on a screen not sensitive, and it fits 16,384 bytes"'
@@ -1499,7 +1574,7 @@ it.live(`A calendar move refused without a receipt and then made by the model's 
   try Effect.try(() => assert.deepStrictEqual({ sameAgain, failedAgain, cuedAgain, toldAgain, rangeWrongAgain, heldButMistimed, mistimedTwice, quoted, sameResponse, neverMoved }, {
     sameAgain: { reply: right, calls: 4, laterRunNote: true },
     failedAgain: { reply: `${right}\n\n${unsaidMove}`, calls: 4, laterRunNote: true },
-    cuedAgain: { reply: "One sec.", calls: 4, laterRunNote: true },
+    cuedAgain: { reply: `${right}\n\n${unsaidMove}`, calls: 4, laterRunNote: true },
     toldAgain: { reply: "Your dentist is now 9–10 AM.", calls: 4, laterRunNote: true },
     rangeWrongAgain: { reply: `${right}\n\n${unsaidMove}`, calls: 4, laterRunNote: true },
     heldButMistimed: { reply: `${movedDentist}\n\n${unsaidMove}`, calls: 4, laterRunNote: false },

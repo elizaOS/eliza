@@ -177,10 +177,10 @@ module node {
     await client.call("POST", "/api/client-devices/register", { capabilities: alphaPhone, workflowProtocol: 1 })
     const { conversation } = (await client.host("POST", "/api/conversations", {})).json as { conversation: { id: string } }
     for (const words of ["call mom", "what's on my calendar?"]) {
-      cloud.script(text("Okay."))
+      cloud.script(text("Okay."), text("Okay."))
       await client.call("POST", `/api/conversations/${conversation.id}/messages`, { text: words })
     }
-    const offered = completions(cloud).slice(-2).map(({ tools }) => (tools as readonly SentTool[] | undefined)?.find(({ function: tool }) => tool?.name === proposeTool))
+    const offered = completions(cloud).slice(-4).filter((_, index) => index % 2 === 0).map(({ tools }) => (tools as readonly SentTool[] | undefined)?.find(({ function: tool }) => tool?.name === proposeTool))
     const sent = offered.at(-1)
     const description = sent?.function?.description ?? ""
     const branches = sent?.function?.parameters?.properties?.operation?.anyOf ?? []
@@ -234,15 +234,15 @@ module node {
     const askedAgain = await say("Did that go out?")
     const afterAskedAgain = (await proposals(client)).length
 
-    cloud.script(text("Sure."))
+    cloud.script(text("Sure."), text("Sure."))
     await client.host("POST", path, { text: "Remind me to call mom" })
     const hostOnlyTools = (lastCompletion(cloud).tools ?? []).map(({ function: tool }) => tool?.name)
-    const hostOnly = completions(cloud).length - 1
+    const hostOnly = completions(cloud).length - 2
 
     const applied = milk === undefined ? undefined : await review(client, milk, { outcome: "applied", operationId: "reminder-1" })
-    cloud.script(text("You saved a reminder about milk."))
+    cloud.script(text("You saved a reminder about milk."), text("You saved a reminder about milk."))
     await say("What did I just save?")
-    const remembered = lastCompletion(cloud).messages ?? []
+    const remembered = lastCompletion(cloud, 2).messages ?? []
 
     cloud.script(text("I can't tell from here."))
     await client.call("POST", path, { text: "Did my milk reminder get saved?" }, "")
@@ -269,9 +269,9 @@ module node {
     const plants = (await proposals(client)).find(titled("Plants"))
     const declined = plants === undefined ? undefined
       : await client.call("POST", `/api/client-devices/proposals/${plants.id}/decision`, { digest: plants.digest, decision: "reject" })
-    cloud.script(text("No, you declined it."))
+    cloud.script(text("No, you declined it."), text("No, you declined it."))
     await say("Did the plants reminder go out?")
-    const afterDecline = (lastCompletion(cloud).messages ?? []).at(-1)
+    const afterDecline = (lastCompletion(cloud, 2).messages ?? []).at(-1)
 
     cloud.script(toolCalls("", reminder("Stretch")), text("Okay."))
     await say("Maybe remind me to stretch", direct)
@@ -281,7 +281,7 @@ module node {
     await say("Remind me to buy bread")
     const bread = (await proposals(client)).find(titled("Bread"))
     const toldFirst = (lastCompletion(cloud).messages ?? []).at(-1)
-    const deviceTools = new Set(completions(cloud).flatMap((body, index) => index === hostOnly || index === untooledAt ? [] : [JSON.stringify(body.tools)]))
+    const deviceTools = new Set(completions(cloud).flatMap((body, index) => index === hostOnly || index === hostOnly + 1 || index === untooledAt ? [] : [JSON.stringify(body.tools)]))
 
     cloud.script(toolCalls("", reminder("Nap")), text("Done."))
     await say("Remind me to take a nap")
@@ -289,9 +289,9 @@ module node {
     const beforeListing = nap === undefined ? undefined : await storedPhase(runtime, nap.id, true)
     const lapsedListed = (await proposals(client)).find(titled("Nap"))?.state
     const afterListing = nap === undefined ? undefined : await storedPhase(runtime, nap.id, false)
-    cloud.script(text("No, it expired before you approved it."))
+    cloud.script(text("No, it expired before you approved it."), text("No, it expired before you approved it."))
     await say("Did the nap reminder go out?")
-    const afterLapse = (lastCompletion(cloud).messages ?? []).at(-1)
+    const afterLapse = (lastCompletion(cloud, 2).messages ?? []).at(-1)
 
     return {
       registration,
