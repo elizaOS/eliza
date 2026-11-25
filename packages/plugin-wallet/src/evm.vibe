@@ -1,0 +1,163 @@
+// spec/wallet/index.md, "A chain amount compares exactly at every digit"; spec/wallet/index.md, "A submitted operation retains one durable binding through reconciliation"
+module node {
+  import { Interface } from "ethers/abi"
+  import { getAddress } from "ethers/address"
+  import { SigningKey, keccak256 } from "ethers/crypto"
+  import { Transaction, computeAddress } from "ethers/transaction"
+  import { toQuantity } from "ethers/utils"
+  import { randomBytes } from "node:crypto"
+  import type { AssetTransfer, ChainAccount, ChainReceipt, ChainSigner, SignedSubmission, TokenFacts, TokenHolding, TransferQuote, WalletNetwork } from "./chain.vibe"
+  import { field, jsonRpc, type Rpc } from "./rpc.vibe"
+
+  const erc20 = new Interface([
+    "function balanceOf(address) view returns (uint256)",
+    "function decimals() view returns (uint8)",
+    "function symbol() view returns (string)",
+    "function transfer(address,uint256) returns (bool)",
+  ])
+
+  function quantity(value: unknown, what: string): bigint {
+    if (typeof value !== "string" || !/^0x[0-9a-fA-F]+$/.test(value)) throw new Error(`The wallet RPC gave no exact ${what}`)
+    return BigInt(value)
+  }
+
+  export function evmSigns(chainId: string, address: string): boolean {
+    if (chainId === "1" || chainId === "11155111") return true
+    if (chainId !== "31337" && chainId !== "1337") return false
+    const rpc = new URL(address)
+    return ["http:", "https:"].includes(rpc.protocol) && ["localhost", "127.0.0.1", "[::1]"].includes(rpc.hostname)
+  }
+
+  async function onChain(rpc: Rpc, chainId: string): Promise<boolean> {
+    return quantity(await rpc("eth_chainId", []), "chain id").toString() === chainId
+  }
+
+  async function read(rpc: Rpc, token: string, method: "balanceOf" | "decimals" | "symbol", inputs: readonly string[]): Promise<unknown> {
+    const answered = await rpc("eth_call", [{ to: token, data: erc20.encodeFunctionData(method, inputs) }, "latest"])
+    if (typeof answered !== "string" || !/^0x([0-9a-fA-F]{2})+$/.test(answered)) throw new Error("The token contract answered malformed data")
+    const [value]: unknown[] = [...erc20.decodeFunctionResult(method, answered)]
+    return value
+  }
+
+  async function tokenFacts(rpc: Rpc, address: string): Promise<TokenFacts> {
+    const token = getAddress(address)
+    const [symbol, places] = await Promise.all([read(rpc, token, "symbol", []), read(rpc, token, "decimals", [])])
+    const decimals = typeof places === "bigint" ? Number(places) : -1
+    if (!Number.isInteger(decimals) || decimals < 0 || decimals > 36) throw new Error("The token contract gave no usable decimals")
+    const named = typeof symbol === "string" && /^[A-Za-z0-9.$_+-]{1,12}$/.test(symbol)
+    return { address: token, symbol: named ? symbol : `${token.slice(0, 6)}…${token.slice(-4)}`, decimals }
+  }
+
+  function call(account: string, transfer: AssetTransfer): { readonly to: string; readonly value: bigint; readonly data: string } {
+    const amount = BigInt(transfer.atomicUnits)
+    return transfer.asset.kind === "native"
+      ? { to: transfer.recipient, value: amount, data: "0x" }
+      : { to: getAddress(transfer.asset.address), value: 0n, data: erc20.encodeFunctionData("transfer", [transfer.recipient, amount]) }
+  }
+
+  async function quote(rpc: Rpc, account: string, transfer: AssetTransfer): Promise<TransferQuote> {
+    const sent = call(account, transfer)
+    const [estimate, block, tip] = await Promise.all([
+      rpc("eth_estimateGas", [{ from: account, to: sent.to, value: toQuantity(sent.value), data: sent.data }]),
+      rpc("eth_getBlockByNumber", ["latest", false]),
+      rpc("eth_maxPriorityFeePerGas", []),
+    ])
+    const units = quantity(estimate, "gas estimate")
+    const priority = quantity(tip, "priority fee")
+    const gasLimit = sent.data === "0x" ? units : (units * 12n) / 10n
+    const maxFeePerGas = quantity(field(block, "baseFeePerGas"), "base fee") * 2n + priority
+    return {
+      maximumFee: (gasLimit * maxFeePerGas).toString(),
+      evm: { gasLimit: gasLimit.toString(), maxFeePerGas: maxFeePerGas.toString(), maxPriorityFeePerGas: priority.toString() },
+    }
+  }
+
+  async function receipt(rpc: Rpc, operationRef: string): Promise<ChainReceipt> {
+    const found = await rpc("eth_getTransactionReceipt", [operationRef])
+    const hash = field(found, "transactionHash")
+    if (typeof hash !== "string" || hash.toLowerCase() !== operationRef.toLowerCase()) return "unresolved"
+    const mined = quantity(field(found, "blockNumber"), "receipt block")
+    const finalized = await rpc("eth_getBlockByNumber", ["finalized", false])
+    if (finalized === null || finalized === undefined || quantity(field(finalized, "number"), "finalized block") < mined) return "unresolved"
+    const included = await rpc("eth_getBlockByNumber", [toQuantity(mined), false])
+    if (typeof field(included, "hash") !== "string" || field(included, "hash") !== field(found, "blockHash")) return "unresolved"
+    const status = field(found, "status")
+    return status === "0x1" ? "confirmed" : status === "0x0" ? "failed" : "unresolved"
+  }
+
+  function account(network: WalletNetwork, rpc: Rpc, address: string, supportsSigning: boolean): ChainAccount {
+    return {
+      family: "EvmWallet",
+      chainId: network.chainId,
+      account: address,
+      supportsSigning,
+      recipient: getAddress,
+      token: getAddress,
+      nativeBalance: async () => quantity(await rpc("eth_getBalance", [address, "latest"]), "balance").toString(),
+      tokenFacts: (token) => tokenFacts(rpc, token),
+      tokenHoldings: async (listed) => {
+        const rows = await Promise.all(listed.map(async (token): Promise<TokenHolding> => {
+          const facts = await tokenFacts(rpc, token)
+          const held = await read(rpc, facts.address, "balanceOf", [address])
+          if (typeof held !== "bigint") throw new Error("The token contract gave no exact balance")
+          return { ...facts, atomicUnits: held.toString() }
+        }))
+        return rows.filter((row) => row.atomicUnits !== "0")
+      },
+      quote: (transfer) => quote(rpc, address, transfer),
+      receipt: (operationRef) => receipt(rpc, operationRef),
+      close: () => {},
+    }
+  }
+
+  async function connect(network: WalletNetwork): Promise<Rpc> {
+    const rpc = jsonRpc(network.rpc)
+    if (!(await onChain(rpc, network.chainId))) throw new Error("Wallet RPC answered from a different EVM chain")
+    return rpc
+  }
+
+  export function newEvmKey(): string {
+    return new SigningKey(randomBytes(32)).privateKey
+  }
+
+  export function evmAccountOf(privateKey: string): string {
+    return computeAddress(new SigningKey(privateKey).publicKey)
+  }
+
+  export async function openEvmAccount(network: WalletNetwork, address: string): Promise<ChainAccount> {
+    return account(network, await connect(network), getAddress(address), false)
+  }
+
+  export async function openEvmSigner(network: WalletNetwork, privateKey: string): Promise<ChainSigner> {
+    const key = new SigningKey(privateKey)
+    const address = computeAddress(key.publicKey)
+    const rpc = await connect(network)
+    const signs = evmSigns(network.chainId, network.rpc)
+    return {
+      ...account(network, rpc, address, signs),
+      sign: async (transfer, quoted): Promise<SignedSubmission> => {
+        const plan = quoted.evm
+        if (!signs || plan === undefined) throw new Error("The EVM chain has no supported total-fee policy")
+        const gasLimit = BigInt(plan.gasLimit)
+        const maxFeePerGas = BigInt(plan.maxFeePerGas)
+        const maxPriorityFeePerGas = BigInt(plan.maxPriorityFeePerGas)
+        if (gasLimit <= 0n || maxFeePerGas <= 0n || maxPriorityFeePerGas < 0n || maxPriorityFeePerGas > maxFeePerGas || gasLimit * maxFeePerGas > BigInt(quoted.maximumFee)) {
+          throw new Error("The transaction exceeds the reviewed fee budget")
+        }
+        if (!(await onChain(rpc, network.chainId))) throw new Error("The EVM chain changed before signing")
+        const nonce = quantity(await rpc("eth_getTransactionCount", [address, "pending"]), "nonce")
+        const transaction = Transaction.from({ type: 2, chainId: BigInt(network.chainId), nonce: Number(nonce), ...call(address, transfer), gasLimit, maxFeePerGas, maxPriorityFeePerGas })
+        transaction.signature = key.sign(transaction.unsignedHash)
+        const raw = transaction.serialized
+        const operationRef = keccak256(raw)
+        return {
+          operationRef,
+          broadcast: async () => {
+            if ((await rpc("eth_sendRawTransaction", [raw])) !== operationRef) throw new Error("The wallet RPC did not acknowledge the signed transaction")
+          },
+        }
+      },
+    }
+  }
+}
+export { evmAccountOf, evmSigns, newEvmKey, openEvmAccount, openEvmSigner } from node

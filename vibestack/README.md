@@ -319,7 +319,7 @@ current one. Installed as a package, use `pnpm exec spec <command> [<dir>]`.
 | `pnpm new [<path>]` | Fills an empty root index or creates a child [starter spec](../SPEC.md#writing-a-spec) |
 | `node vibestack/spec.ts init [<dir>]` | Sets up an existing project ([above](#using-it-from-another-package)) |
 | `pnpm demo` | Runs the order example's scripted checkout session |
-| `pnpm selftest` | Breaks the pipeline one way at a time and checks each break is caught, checks what the documents name, and installs and checks every example, as three cached tasks |
+| `pnpm selftest` | Breaks the pipeline one way at a time and checks each break is caught, checks what the documents name, and installs and checks every example, as five cached tasks |
 | `pnpm build` | Compiles the tools into `dist/`, the packaged `spec` command |
 
 | Exit code | Means |

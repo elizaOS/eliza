@@ -1,0 +1,14 @@
+// spec/wallet/index.md, "A chain amount compares exactly at every digit"
+export function shownUnits(atomicUnits: string, decimals: number): string {
+  const digits = atomicUnits.padStart(decimals + 1, "0")
+  const whole = digits.slice(0, digits.length - decimals)
+  const fraction = digits.slice(digits.length - decimals).replace(/0+$/, "")
+  return fraction === "" ? whole : `${whole}.${fraction}`
+}
+
+export function atomicOf(amount: string, decimals: number): string | undefined {
+  const written = /^([0-9]+)(?:\.([0-9]+))?$/.exec(amount)
+  const fraction = written?.[2] ?? ""
+  if (written === null || fraction.length > decimals) return undefined
+  return `${written[1] ?? ""}${fraction.padEnd(decimals, "0")}`.replace(/^0+(?=[0-9])/, "")
+}

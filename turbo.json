@@ -535,6 +535,10 @@
         "@elizaos/plugin-vision#typecheck",
         "@elizaos/plugin-wallet#build",
         "@elizaos/plugin-wallet#typecheck",
+        "@elizaos/plugin-wallet#test",
+        "@elizaos/plugin-wallet-client#build",
+        "@elizaos/plugin-wallet-client#typecheck",
+        "@elizaos/plugin-wallet-client#test",
         "@elizaos/plugin-web-search#build",
         "@elizaos/plugin-web-search#typecheck",
         "@elizaos/plugin-x#build",
@@ -638,6 +642,7 @@
         "@elizaos/plugin-video#typecheck",
         "@elizaos/plugin-vision#typecheck",
         "@elizaos/plugin-wallet#typecheck",
+        "@elizaos/plugin-wallet-client#typecheck",
         "@elizaos/plugin-web-search#typecheck",
         "@elizaos/plugin-x#typecheck"
       ],

@@ -10,26 +10,49 @@ const dataToken = /\p{N}|\b[ap]\.m\.|\b(?:pm|noon|midnight|o['’]clock|zero|two
 
 export const cueRule = "When you call tools, write with your first tool calls only a brief cue, in the person's own language, that you heard the request; the real reply comes after the work. A cue is a few natural words that you are looking or about to do it, in your own words rather than a stock phrase: it never names the people, items, places, times, numbers or outcome, never asks anything, never says the work is done or under way, and never repeats the request. Never open a cue with assent such as Sure or Yeah after a question; it sounds like the answer. When one message asks for several lookups, or about several named people or items, use the plain \"Let me check.\"; name a source only for one simple lookup. Write a cue only with a tool call in the same response: when no offered tool can do what was asked, write no cue and tell the person plainly, in your own words, that you can't. Any question or lookup gets its cue, even one about what is on the screen. A request only to open one app, with nothing to read, find or change there, still calls the tool that opens it, with no cue: write nothing with that call, and the reply after it confirms the destination. Your text after the last tool result is the reply itself, never another cue, and a response with no tool call is always your reply, so never write a cue without calling a tool. If the person asked for silence or no acknowledgment, write nothing and still do the work. Write no text with later tool calls."
 
-function isWrittenCall(body: string): boolean {
-  if (looksLikeActionEnvelopeJson(body)) return true
+const callKeys = new Set(["action", "tool", "type", "name"])
+const bracketName = /^\[([a-z][a-z0-9_]*)/u
+
+export function actionNameKey(name: string): string {
+  return name.toUpperCase().replace(/[^A-Z0-9]/gu, "")
+}
+
+function namedIn(body: string): readonly (readonly [string, string])[] {
+  const bracket = bracketName.exec(body)?.[1]
+  if (bracket !== undefined) return [["tool", bracket]]
   try {
     const parsed: unknown = JSON.parse(body)
     return typeof parsed === "object" && parsed !== null
-      && Object.entries(parsed).some(([key, value]) => typeof value === "string" && (key === "action" || key === "tool" || callName.test(value)))
+      ? Object.entries(parsed).flatMap(([key, value]) => callKeys.has(key) && typeof value === "string" ? [[key, value] as const] : [])
+      : []
   } catch {
-    return false
+    return []
   }
 }
 
-interface WithoutObjects {
-  readonly text: string
-  readonly calls: boolean
+function namesOffered(body: string, offered: ReadonlySet<string>): boolean {
+  return namedIn(body).some(([, value]) => offered.has(actionNameKey(value)))
 }
 
-function withoutObjects(said: string): WithoutObjects {
-  const text = said.replace(bracketCall, " ")
-  let calls = text !== said
-  if (!text.includes("{")) return { text: calls ? text.replace(emptyWrapper, " ").trim() : said, calls }
+function looksLikeCall(body: string, offered: ReadonlySet<string>): boolean {
+  return looksLikeActionEnvelopeJson(body)
+    || namedIn(body).some(([key, value]) => offered.has(actionNameKey(value)) || ((key === "action" || key === "tool") && callName.test(value)))
+}
+
+interface Objects {
+  readonly text: string
+  readonly found: readonly string[]
+}
+
+function objectsOut(said: string, strip: (body: string, before: string) => boolean): Objects {
+  const found: string[] = []
+  let changed = false
+  const text = said.replace(bracketCall, (call: string, at: number) => {
+    found.push(call)
+    const gone = strip(call, said.slice(0, at))
+    changed ||= gone
+    return gone ? " " : call
+  })
   const open: number[] = []
   let rest = ""
   let kept = 0
@@ -47,28 +70,53 @@ function withoutObjects(said: string): WithoutObjects {
     const start = open.pop()
     const body = text.slice(start ?? index, index + 1)
     if (start === undefined || open.length > 0 || !isJsonObject(body)) continue
-    calls ||= isWrittenCall(body)
+    found.push(body)
+    if (!strip(body, text.slice(0, start))) continue
+    changed = true
     rest += `${text.slice(kept, start)} `
     kept = index + 1
   }
-  return { text: kept === 0 && !calls ? said : `${rest}${text.slice(kept)}`.replace(emptyWrapper, " ").trim(), calls }
+  return { text: changed ? `${rest}${text.slice(kept)}`.replace(emptyWrapper, " ").trim() : said, found }
 }
 
 export function withoutWrittenCalls(said: string): string {
-  return withoutObjects(said).text
+  return objectsOut(said, () => true).text
 }
 
-function shapeOf(reply: string, toolCalls: number): DraftShape {
+function cueShaped(text: string): boolean {
+  return text.length > 0 && text.length <= maxCueLength && !text.includes("?") && !dataToken.test(text)
+}
+
+function afterSentence(before: string): boolean {
+  const lead = before.replace(/```[\w-]*\s*$/u, "").trimEnd()
+  return !lead || /[.!…]$/u.test(lead)
+}
+
+function afterCue(said: string, body: string, before: string): boolean {
+  const sentence = before.split(/\n|(?<=[.!?…])\s+/u).at(-1) ?? ""
+  return /[.!…]$/u.test(before) && cueShaped(withoutWrittenCalls(sentence)) && said.slice(said.indexOf(body) + body.length).trim().length > 0
+}
+
+export function withoutOfferedCalls(said: string, offered: ReadonlySet<string>): string {
+  return objectsOut(said, (body, before) => namesOffered(body, offered) || afterCue(said, body, before)).text
+}
+
+function shapeOf(reply: string, offered: ReadonlySet<string>): DraftShape {
   const said = reply.trim()
   if (!said) return "Blank"
-  const { text, calls } = withoutObjects(said)
-  if (!text) return calls ? "Blank" : "OtherText"
-  if (text.length > maxCueLength || text.includes("?") || dataToken.test(text)) return "OtherText"
-  return calls && toolCalls === 0 ? "Blank" : "CueShaped"
+  let beside = true
+  const { text, found } = objectsOut(said, (_body, before) => {
+    beside &&= afterSentence(before)
+    return true
+  })
+  if (!text) return found.some((body) => looksLikeCall(body, offered)) ? "Blank" : "OtherText"
+  if (!cueShaped(text) || !beside) return "OtherText"
+  if (found.some((body) => looksLikeCall(body, offered))) return "CueBesideCall"
+  return found.length === 0 ? "CueShaped" : "CueBesideObject"
 }
 
-export function draftOf(text: string, calls: number): Draft {
-  return readDraft(shapeOf(text, calls), calls)
+export function draftOf(text: string, calls: number, offered: ReadonlySet<string>): Draft {
+  return readDraft(shapeOf(text, offered), calls)
 }
 
 const cardBlock = /(?:^|\n)[ \t]*\[(MAPSCARD|CHECKLIST|WORKFLOW)\][ \t]*\r?\n[ \t]*(\{[^\n]*\})[ \t]*\r?\n[ \t]*\[\/\1\][ \t]*(?=\r?\n|$)/g
