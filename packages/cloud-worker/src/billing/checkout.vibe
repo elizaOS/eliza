@@ -421,7 +421,7 @@ effect function signedCaller(context: RouteContext) {
 
 export const routes: ReadonlyArray<Route> = [
   {
-    method: "POST", path: "/api/v1/subscriptions/checkout", auth: "ServiceAccess", capability: "billing", rateClass: "StandardRequests",
+    method: "POST", path: "/api/v1/subscriptions/checkout", auth: "ServiceAccess", area: "SubscriptionRoutes", rateClass: "StandardRequests",
     handler: (context) => effect {
       const caller = try signedCaller(context)
       const body = try jsonBody(context, StartBody)
@@ -432,7 +432,7 @@ export const routes: ReadonlyArray<Route> = [
     }
   },
   {
-    method: "POST", path: "/api/v1/subscriptions/checkout/confirm", auth: "ServiceAccess", capability: "billing", rateClass: "StandardRequests",
+    method: "POST", path: "/api/v1/subscriptions/checkout/confirm", auth: "ServiceAccess", area: "SubscriptionRoutes", rateClass: "StandardRequests",
     handler: (context) => effect {
       const caller = try signedCaller(context)
       const body = try jsonBody(context, ConfirmBody)

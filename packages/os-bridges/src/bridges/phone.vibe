@@ -91,6 +91,7 @@ export error VoicemailPcmRefused { id: VoicemailId; reason: PcmRefusal }
 const strict = { onExcessProperty: "error" } as const
 const CALL_ID = /^[1-9]\d{0,15}$/
 const VOICEMAIL_ID = /^[1-9]\d{0,15}$/
+const VOICEMAIL_WITNESS = /^v1:[a-f0-9]{64}$/
 const DIALED = /^(|\+?[0-9]{2,20})$/
 const AUDIO_TYPE = /^audio\/[A-Za-z0-9][A-Za-z0-9.+-]{0,63}$/
 const BASE64 = /^[A-Za-z0-9+/]*={0,2}$/
@@ -161,6 +162,7 @@ const Listing = Schema.Struct({
     isNew: Schema.Boolean,
     hasAudio: Schema.Boolean,
     carrierTranscript: Schema.NullOr(text(TRANSCRIPT_MAX)),
+    deletionWitness: Schema.optionalKey(shaped(VOICEMAIL_WITNESS)),
   })).check(Schema.isMaxLength(maxVoicemails)),
 })
 schema Fetch { status: "ready" | "fetching" | "failed" }
@@ -169,7 +171,7 @@ const Pcm = Schema.Struct({ mimeType: Schema.Literal("audio/wav"), sampleRateHz:
 schema Written { status: "marked" | "unconfirmed" | "not-found" }
 const Staged = Schema.Union([
   Schema.Struct({ status: Schema.Literal("queued"), deletion: Schema.Unknown }),
-  Schema.Struct({ status: Schema.Literal("not-found") }),
+  Schema.Struct({ status: Schema.Literals(["not-found", "stale"]) }),
 ])
 
 effect function parsed<A>(method: string, shape: Schema.Decoder<A>, raw: unknown): A!MalformedReply {
@@ -418,7 +420,7 @@ effect function stored(store: Voicemails, plugin: PhoneNativePlugin, id: Voicema
 
 effect function refresh(store: Voicemails, plugin: PhoneNativePlugin, kind: ReadKind) {
   const facts = try admitted(store, plugin, null)
-  const list = try parseVoicemails(try nativeCall(PLUGIN, "listVoicemail", () => plugin.listVoicemail({ limit: maxVoicemails })))
+  const list = try parseVoicemails(try nativeCall(PLUGIN, "listVoicemail", () => plugin.listVoicemail({ limit: maxVoicemails, withDeletionWitness: true })))
   const listed = list.voicemails.map((row) => ({ id: Number(row.id), heard: !row.isNew, hasAudio: row.hasAudio }))
   const read = { kind, startedAfterSettle: true, succeeded: true }
   store.book.send({ type: "refresh", facts, read, sources: sourcesOf(list.state), listed }) catch effect () => {
@@ -472,35 +474,87 @@ effect function markHeard(store: Voicemails, plugin: PhoneNativePlugin, id: Voic
   return { written, receipt: receiptOfWrite(written), listing: try listing(store) }
 }
 
-effect function stageDeletion(store: Voicemails, plugin: PhoneNativePlugin, id: VoicemailId): VoicemailDeletionReport!(PhoneRequestRefused | VoicemailRefused | BridgeUnavailable | NativeRejection | MalformedReply) {
+effect function stageDeletion(store: Voicemails, plugin: PhoneNativePlugin, id: VoicemailId, witness?: string): VoicemailDeletionReport!(PhoneRequestRefused | VoicemailRefused | BridgeUnavailable | NativeRejection | MalformedReply) {
+  if (witness !== undefined && !VOICEMAIL_WITNESS.test(witness)) throw new PhoneRequestRefused({ problem: "invalid-voicemail" })
   const { row, facts } = try stored(store, plugin, id)
+  if (witness !== undefined && (try Ref.get(store.entries)).get(row)?.deletionWitness !== witness) {
+    return { status: "stale", listing: try listing(store) }
+  }
   store.book.send({ type: "stageDelete", facts, id: row }) catch effect () => {
     try refusal(store, id, "write-blocked")
   }
-  const answer = try reply("deleteVoicemail", Staged, () => plugin.deleteVoicemail({ id }))
-  if (answer.status === "not-found") return { status: "not-found", listing: try listing(store) }
+  const answer = try reply("deleteVoicemail", Staged, () => plugin.deleteVoicemail({ id, ...(witness === undefined ? {} : { witness }) }))
+  if (answer.status !== "queued") return { status: answer.status, listing: try listing(store) }
   const deletion = try parseStagedDeletion(PLUGIN, "deleteVoicemail", "voicemail", answer.deletion)
   try Ref.update(store.queued, (ids) => [...ids, row])
   return { status: "queued", deletion, listing: try listing(store) }
 }
 
-effect function observe(store: Voicemails, plugin: PhoneNativePlugin, onChange: (refreshed: Promise<VoicemailListing>) => void) {
-  const serial = store.lock.withPermits(1)
-  const handle = try nativeCall(PLUGIN, "addListener", () => plugin.addListener("voicemailChanged", () => onChange(settled(serial(refresh(store, plugin, "AutomaticRead"))))))
-  const listener = handle as { remove(): Promise<void> }
-  nativeCall(PLUGIN, "observeVoicemail", () => plugin.observeVoicemail({ enabled: true })) catch effect (failure) => {
-    try promise(() => listener.remove())
-    throw failure
-  }
-  return async () => {
-    await listener.remove()
-    await settled(nativeCall(PLUGIN, "observeVoicemail", () => plugin.observeVoicemail({ enabled: false })))
-  }
+type VoicemailListener = Awaited<ReturnType<PhoneNativePlugin["addListener"]>>
+
+interface VoicemailLease {
+  active: boolean
+  disablePending: boolean
+  listener: VoicemailListener | undefined
+}
+
+interface VoicemailObservation {
+  readonly lock: Semaphore.Semaphore
+  lease: VoicemailLease | undefined
+}
+
+error VoicemailObservationActive { method: string }
+
+// spec/os/android/voicemail.md, "A retired observer admits no refresh and a replacement waits for acknowledged cleanup"
+effect function retireObservation(observer: VoicemailObservation, plugin: PhoneNativePlugin, lease: VoicemailLease) {
+  if (observer.lease !== lease) return
+  lease.active = false
+  const disabled = lease.disablePending ? try Effect.result(nativeCall(PLUGIN, "observeVoicemail", () => plugin.observeVoicemail({ enabled: false }))) : undefined
+  if (disabled !== undefined && Result.isSuccess(disabled)) lease.disablePending = false
+  const listener = lease.listener
+  const removed = listener === undefined ? undefined : try Effect.result(nativeCall(PLUGIN, "removeListener", () => listener.remove()))
+  if (removed !== undefined && Result.isSuccess(removed)) lease.listener = undefined
+  if (disabled !== undefined && Result.isFailure(disabled)) throw disabled.failure
+  if (removed !== undefined && Result.isFailure(removed)) throw removed.failure
+  observer.lease = undefined
+}
+
+effect function observe(store: Voicemails, observer: VoicemailObservation, plugin: PhoneNativePlugin, onChange: (refreshed: Promise<VoicemailListing>) => void) {
+  return try observer.lock.withPermits(1)(effect {
+    const previous = observer.lease
+    if (previous?.active) throw new VoicemailObservationActive({ method: "observeVoicemail" })
+    if (previous !== undefined) try retireObservation(observer, plugin, previous)
+    const lease: VoicemailLease = { active: false, disablePending: false, listener: undefined }
+    observer.lease = lease
+    const changed = () => {
+      if (!lease.active) return
+      onChange(settled(store.lock.withPermits(1)(effect {
+        if (!lease.active) return try listing(store)
+        return try refresh(store, plugin, "AutomaticRead")
+      })))
+    }
+    const handle = nativeCall(PLUGIN, "addListener", () => plugin.addListener("voicemailChanged", changed)) catch effect (failure) => {
+      observer.lease = undefined
+      throw failure
+    }
+    lease.listener = handle as VoicemailListener
+    lease.disablePending = true
+    nativeCall(PLUGIN, "observeVoicemail", () => plugin.observeVoicemail({ enabled: true })) catch effect (failure) => {
+      try ignore(retireObservation(observer, plugin, lease))
+      throw failure
+    }
+    lease.active = true
+    return () => {
+      lease.active = false
+      return settled(observer.lock.withPermits(1)(retireObservation(observer, plugin, lease)))
+    }
+  })
 }
 
 export function phoneClient(plugin: PhoneNativePlugin = telephonyPlugin(), journal: ActionJournalPlugin = actionJournalPlugin()): PhoneClient {
   const store = Effect.runSync(held(journal))
   const serial = store.lock.withPermits(1)
+  const observer: VoicemailObservation = { lock: Semaphore.makeUnsafe(1), lease: undefined }
   return {
     imageCapability: () => settled(checked("imageCapability", parseImageCapability, () => plugin.imageCapability())),
     status: () => settled(readStatus(plugin)),
@@ -516,8 +570,8 @@ export function phoneClient(plugin: PhoneNativePlugin = telephonyPlugin(), journ
     voicemailAudio: (id) => settled(serial(audio(store, plugin, id))),
     voicemailPcm: (id) => settled(serial(pcm(store, plugin, id))),
     markVoicemailHeard: (id) => settled(serial(markHeard(store, plugin, id))),
-    deleteVoicemail: (id) => settled(serial(stageDeletion(store, plugin, id))),
-    observeVoicemail: (onChange) => settled(observe(store, plugin, onChange)),
+    deleteVoicemail: (id, witness) => settled(serial(stageDeletion(store, plugin, id, witness))),
+    observeVoicemail: (onChange) => settled(observe(store, observer, plugin, onChange)),
   }
 }
 

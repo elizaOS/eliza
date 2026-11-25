@@ -24,7 +24,7 @@ const story = {
 const readOnly = ["google.basic_identity", "google.gmail.triage"]
 const modify = [...readOnly, "google.gmail.send", "google.gmail.drafts", "google.gmail.mailbox"]
 
-type Card = { readonly id: string; readonly threadId: string; readonly subject: string; readonly from: string; readonly snippet: string; readonly unread: boolean }
+type Card = { readonly id: string; readonly threadId: string; readonly subject: string; readonly from: string; readonly snippet: string; readonly unread: boolean; readonly hasAttachments?: boolean }
 type Operation = { kind: string; digest: string; state: string; proposal: Readonly<Record<string, unknown>>; review: Readonly<Record<string, unknown>>; result: Readonly<Record<string, unknown>> | null }
 
 const card = (id: string, subject = `Subject ${id}`): Card => ({ id, threadId: `t-${id}`, subject, from: "Bo <bo@example.com>", snippet: `About ${id}`, unread: true })
@@ -32,6 +32,7 @@ const card = (id: string, subject = `Subject ${id}`): Card => ({ id, threadId: `
 function wireCard(message: Card) {
   return {
     id: message.id, threadId: message.threadId, subject: message.subject, from: message.from, to: ["ana@example.com"], cc: [], snippet: message.snippet,
+    ...(message.hasAttachments === undefined ? {} : { hasAttachments: message.hasAttachments }),
     receivedAt: "2026-11-20T10:00:00.000Z", labels: message.unread ? ["INBOX", "UNREAD"] : ["INBOX"], isUnread: message.unread,
     isImportant: false, likelyReplyNeeded: false, triageScore: 0, triageReason: "recent inbox message", metadata: { historyId: "41" },
   }
@@ -44,7 +45,7 @@ function fakeCloud() {
       { id: "grant-b", email: "ana@work.example", connected: true, capabilities: [...readOnly] },
     ],
     pages: new Map<string, { readonly messages: readonly Card[]; readonly next: string | null; readonly history: string }>([
-      ["", { messages: [card("m1"), card("m2")], next: "p1", history: "41" }],
+      ["", { messages: [{ ...card("m1"), hasAttachments: true }, { ...card("m2"), hasAttachments: false }], next: "p1", history: "41" }],
       ["p1", { messages: [card("m2"), card("m3")], next: "p2", history: "42" }],
       ["p2", { messages: [card("m4")], next: "p1", history: "42" }],
     ]),
@@ -235,6 +236,7 @@ it.effect(`Page a folder once per message, notice a changed mailbox, and keep ca
   assert.isTrue(try feed.accept(receipt, "p1", try cloud.client.gmailSearch("grant-a", "in:inbox", 25, "p1")))
   const second = try feed.view()
   assert.deepEqual([second.messages.map((message) => message.id), second.nextPageToken, second.shifted], [["m1", "m2", "m3"], "p2", true])
+  assert.deepEqual(second.messages.map((message) => message.hasAttachments), [true, false, undefined])
   assert.isTrue(try feed.accept(receipt, "p2", try cloud.client.gmailSearch("grant-a", "in:inbox", 25, "p2")))
   assert.isNull((try feed.view()).nextPageToken)
   const newer = try feed.begin({ ...request, folder: "sent", search: "in:sent" })
@@ -271,7 +273,7 @@ it.effect(`Page a folder once per message, notice a changed mailbox, and keep ca
   assert.isTrue(try saveMailbox(store, "mailbox", document, 1, () => 1))
   assert.isFalse(try saveMailbox(store, "mailbox", document, 1, () => 2))
   const raw = saved.get("mailbox") ?? ""
-  assert.deepEqual(readSavedMailbox(raw, "ana", null, () => true)?.lists.map((list) => list.key), [listKey])
+  assert.deepEqual(readSavedMailbox(raw, "ana", null, () => true)?.lists.map((list) => [list.key, list.messages.map((message) => message.hasAttachments)]), [[listKey, [true, false, undefined]]])
   assert.isNull(readSavedMailbox(raw, "bo", null, () => true))
   assert.deepEqual(readSavedMailbox(raw, "ana", null, (entry) => entry.key !== listKey)?.lists, [])
   assert.isTrue(try clearMailbox(store, "mailbox", 3, () => 3))
@@ -472,6 +474,8 @@ it.effect(`Read the managed inbox fresh for the current account, and hand a new 
   } as Memory
   const handed = emailDraftAnswer(request, { parameters: { to: ["bo@example.com"], subject: "Lunch", body: "Noon?" } })
   assert.deepEqual(handed?.values?.emailDraft, { version: 1, requestMessageId: request.id, to: ["bo@example.com"], subject: "Lunch", body: "Noon?" })
+  assert.deepEqual([handed?.success, handed?.userFacingText, handed?.verifiedUserFacing], [true, undefined, undefined])
+  assert.match(handed?.text ?? "", /Inbox composer for the owner to review, change and send\. Nothing was sent/u)
   assert.equal(emailDraftAnswer(request, { parameters: { to: ["bo@example.com"], body: "Noon?", cc: ["cy@example.com"] } })?.data?.handoff, "inbox")
   assert.isUndefined(emailDraftAnswer({ ...request, content: { text: "Email Bo", source: "discord" } }, { parameters: { to: ["bo@example.com"], body: "Noon?" } }))
   assert.equal(cloud.state.dispatches, 0)

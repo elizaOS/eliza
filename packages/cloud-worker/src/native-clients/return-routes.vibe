@@ -26,7 +26,7 @@ type Shown = { readonly template: PageTemplate; readonly slots: Readonly<Partial
 function shown(page: Page): Shown {
   switch (page.tag) {
     case "CheckoutOutcome":
-      return { template: { kind: "checkoutOutcome", outcome: page.shown === "PaidOutcome" ? "paid" : "canceled" }, slots: {} }
+      return { template: { kind: "checkoutOutcome", outcome: page.shown === "PaidOutcome" ? "paid" : "canceled" }, slots: { deploymentName: page.serviceName } }
     case "ReturnToApp": {
       const names = { deploymentName: page.serviceName, displayName: page.appName }
       if (page.offer.tag === "NoAction" || page.purpose === "ConnectedPage") return { template: { kind: "returnToAppConnected" }, slots: names }
@@ -96,5 +96,5 @@ export effect function connectedBrowserPage() {
 export const returnPageRoute: Route = { method: "GET", path: "/*", auth: "Public", handler: servePage }
 
 export const routes: ReadonlyArray<Route> = [
-  { method: "GET", path: payerPath as `/${string}`, auth: "Public", capability: "billing", handler: servePage }
+  { method: "GET", path: payerPath as `/${string}`, auth: "Public", area: "SubscriptionRoutes", handler: servePage }
 ]

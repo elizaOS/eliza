@@ -717,7 +717,8 @@ public abstract class TelephonyPlugin extends Plugin {
   final int limit = VoicemailStore.limit(call.getInt("limit", 25));
   if (limit < 0) { call.reject("Voicemail limit must be 1 to 50", "invalid"); return; }
   final String[] account = voiceAccount(); final boolean names = callLogReadable();
-  fenced(call, this::voicemailReadable, "Voicemail", cancel -> VoicemailStore.list(getContext(), limit, account[0], account[1], names, cancel), true);
+  final boolean withWitness = Boolean.TRUE.equals(call.getBoolean("withDeletionWitness", false));
+  fenced(call, this::voicemailReadable, "Voicemail", cancel -> VoicemailStore.list(getContext(), limit, account[0], account[1], names, withWitness, cancel), true);
  }
  /** Asks the voicemail's source to download its audio when it is not on the phone; see {@link VoicemailStore#fetch}. */
  @PluginMethod public void fetchVoicemailAudio(PluginCall call) {
@@ -753,20 +754,27 @@ public abstract class TelephonyPlugin extends Plugin {
  }
  /**
   * Stages one voicemail the owner chose in the host's Undo window: {@code {status: "queued" |
-  * "not-found", deletion?}}. The window deletes it through its source at expiry. Reported even if
+  * "not-found" | "stale", deletion?}}. An optional listed witness binds the staged provider identity.
+  * The window deletes it through its source at expiry. Reported even if
   * access changed meanwhile.
   */
  @PluginMethod public void deleteVoicemail(PluginCall call) {
   if (refused(call)) return;
   final long id = voicemail(call);
-  if (id < 0) { call.reject("Invalid voicemail", "invalid"); return; }
+  final boolean reviewed = call.getData().has("witness");
+  final String witness = reviewed && call.getData().opt("witness") instanceof String ? call.getString("witness") : null;
+  if (id < 0 || (reviewed && !VoicemailStore.validDeletionWitness(witness))) { call.reject("Invalid voicemail", "invalid"); return; }
   final DeletionWindow window = requireWindow(call);
   if (window == null) return;
+  final long selectedGeneration = generation.get();
   fenced(call, this::voicemailWritable, "Voicemail", cancel -> {
    JSObject value = new JSObject();
-   String refusal = VoicemailStore.inspectDeletion(getContext(), id);
+   String refusal = reviewed ? VoicemailStore.inspectDeletion(getContext(), id, witness, cancel) : VoicemailStore.inspectDeletion(getContext(), id);
    if (refusal != null) { value.put("status", refusal); return value; }
-   value.put("status", "queued"); value.put("deletion", window.stage("voicemail", new JSONObject().put("id", Long.toString(id)))); return value;
+   if (reviewed && !current(selectedGeneration, cancel, this::voicemailWritable)) throw new SecurityException();
+   JSONObject target = new JSONObject().put("id", Long.toString(id));
+   if (reviewed) target.put("witness", witness);
+   value.put("status", "queued"); value.put("deletion", window.stage("voicemail", target)); return value;
   }, false);
  }
  /** Whether a staged voicemail deletion may reach the provider at expiry, with or without the screen: the dialer role or the voicemail write grant. */
@@ -775,45 +783,71 @@ public abstract class TelephonyPlugin extends Plugin {
   return (roles != null && roles.isRoleHeld(android.app.role.RoleManager.ROLE_DIALER)) || context.checkSelfPermission(WRITE_VOICEMAIL) == PackageManager.PERMISSION_GRANTED;
  }
 
- private boolean voicemailWanted, voicemailObserving;
+ private boolean voicemailWanted;
+ private volatile VoicemailObserver voicemailObserver;
+ private VoicemailObserver voicemailRetiring;
  private long voicemailSequence;
- private final Runnable emitVoicemailChange = () -> {
-  if (!voicemailObserving || !unlockedForeground() || !admitted() || !voicemailReadable()) return;
-  JSObject value = new JSObject(); value.put("sequence", ++voicemailSequence);
-  // No content leaves here: the renderer re-reads a bounded list.
-  notifyListeners("voicemailChanged", value);
- };
- private final android.database.ContentObserver voicemailObserver = new android.database.ContentObserver(main) {
-  @Override public void onChange(boolean self) { main.removeCallbacks(emitVoicemailChange); main.postDelayed(emitVoicemailChange, 750); }
- };
- private void startObservingVoicemail() {
-  if (voicemailObserving) return;
+
+ private final class VoicemailObserver extends android.database.ContentObserver {
+  final Runnable emit = () -> {
+   if (voicemailObserver != this || !unlockedForeground() || !admitted() || !voicemailReadable()) return;
+   JSObject value = new JSObject(); value.put("sequence", ++voicemailSequence);
+   notifyListeners("voicemailChanged", value);
+  };
+  VoicemailObserver() { super(main); }
+  @Override public void onChange(boolean self) {
+   if (voicemailObserver != this) return;
+   main.removeCallbacks(emit); main.postDelayed(emit, 750);
+  }
+ }
+
+ private synchronized void startObservingVoicemail() {
+  if (voicemailObserver != null || !stopObservingVoicemail()) return;
   android.content.ContentResolver resolver = getContext().getContentResolver();
+  VoicemailObserver next = new VoicemailObserver();
+  voicemailRetiring = next;
   try {
-   resolver.registerContentObserver(android.provider.VoicemailContract.Voicemails.CONTENT_URI, true, voicemailObserver);
-   resolver.registerContentObserver(android.provider.VoicemailContract.Status.CONTENT_URI, true, voicemailObserver);
-   voicemailObserving = true;
-  } catch (RuntimeException refusedObserver) { resolver.unregisterContentObserver(voicemailObserver); voicemailObserving = false; }
+   resolver.registerContentObserver(android.provider.VoicemailContract.Voicemails.CONTENT_URI, true, next);
+   resolver.registerContentObserver(android.provider.VoicemailContract.Status.CONTENT_URI, true, next);
+   voicemailObserver = next;
+   voicemailRetiring = null;
+  } catch (RuntimeException refusedObserver) { stopObservingVoicemail(); }
  }
- private void stopObservingVoicemail() {
-  main.removeCallbacks(emitVoicemailChange);
-  if (!voicemailObserving) return;
-  voicemailObserving = false;
-  getContext().getContentResolver().unregisterContentObserver(voicemailObserver);
+
+ private synchronized boolean stopObservingVoicemail() {
+  if (voicemailObserver != null) {
+   voicemailRetiring = voicemailObserver;
+   voicemailObserver = null;
+  }
+  VoicemailObserver previous = voicemailRetiring;
+  if (previous == null) return true;
+  main.removeCallbacks(previous.emit);
+  try { getContext().getContentResolver().unregisterContentObserver(previous); }
+  catch (RuntimeException unconfirmed) { return false; }
+  voicemailRetiring = null;
+  return true;
  }
- private void resumeObservingVoicemail() {
+
+ private synchronized void resumeObservingVoicemail() {
   if (!voicemailWanted || !admitted() || !voicemailReadable() || !unlockedForeground()) return;
   startObservingVoicemail();
-  main.removeCallbacks(emitVoicemailChange); main.post(emitVoicemailChange);
+  VoicemailObserver observer = voicemailObserver;
+  if (observer != null) { main.removeCallbacks(observer.emit); main.post(observer.emit); }
  }
+
  /** Starts or stops content-free change notices ("voicemailChanged") while the host is unlocked in the foreground. */
- @PluginMethod public void observeVoicemail(PluginCall call) {
+ @PluginMethod public synchronized void observeVoicemail(PluginCall call) {
   if (refused(call)) return;
   Boolean enabled = call.getBoolean("enabled", false);
-  if (enabled == null || !enabled) { voicemailWanted = false; stopObservingVoicemail(); call.resolve(); return; }
+  if (enabled == null || !enabled) {
+   voicemailWanted = false;
+   if (stopObservingVoicemail()) call.resolve();
+   else call.reject("Voicemail observation could not be retired", "unavailable");
+   return;
+  }
   if (!voicemailReadable()) { call.reject("Voicemail access is not granted", "permission-required"); return; }
   voicemailWanted = true; startObservingVoicemail();
-  if (!voicemailObserving) { voicemailWanted = false; call.reject("Voicemail could not be observed", "unavailable"); return; }
+  if (voicemailObserver == null) { voicemailWanted = false; call.reject("Voicemail could not be observed", "unavailable"); return; }
   call.resolve();
  }
 
@@ -859,15 +893,30 @@ public abstract class TelephonyPlugin extends Plugin {
   if (active != null) for (SubscriptionInfo info : active) if (info != null && info.getSubscriptionId() == id && info.getSimSlotIndex() >= 0) return info;
   return null;
  }
- private SmsTelephony.DispatchGuard sendGuard(ReviewCall call, int sub, SubscriptionInfo reviewed,
+ /**
+  * Checks host-specific conditions for an SMS send on the send worker. Throwing refuses dispatch.
+  * Runs before journaling and immediately before each recipient, including for host-approved SMS.
+  */
+ protected void checkSmsDispatch() {}
+
+ private void checkReviewedDispatch(ReviewCall call, int sub, int slot, int carrier,
    java.util.function.BooleanSupplier blocked) {
+  SubscriptionInfo current = activeSubscription(sub);
+  if (call.cancelled || !admitted() || !unlockedForeground() || blocked.getAsBoolean()
+    || current == null || current.getSimSlotIndex() != slot || current.getCarrierId() != carrier)
+   throw new IllegalStateException("Reviewed SIM or access changed");
+ }
+
+ private SmsTelephony.DispatchGuard sendGuard(ReviewCall call, int sub, SubscriptionInfo reviewed,
+   java.util.function.BooleanSupplier blocked, boolean sms) {
   final int slot = reviewed.getSimSlotIndex(), carrier = reviewed.getCarrierId();
   return () -> {
-   SubscriptionInfo current = activeSubscription(sub);
-   if (call.cancelled || !admitted() || !unlockedForeground() || blocked.getAsBoolean()
-     || current == null || current.getSimSlotIndex() != slot || current.getCarrierId() != carrier)
-    throw new IllegalStateException("Reviewed SIM or access changed");
+   checkReviewedDispatch(call, sub, slot, carrier, blocked);
    if (call.ownerGuard != null) call.ownerGuard.check();
+   if (sms) {
+    checkSmsDispatch();
+    checkReviewedDispatch(call, sub, slot, carrier, blocked);
+   }
   };
  }
  private static String[] numbers(JSArray recipients) {
@@ -936,7 +985,7 @@ public abstract class TelephonyPlugin extends Plugin {
   if (sim == null) { decide(call, journal, operationId, recipients, body, subscriptionId, "denied", now, boot); return; }
   final int sub = subscriptionId;
   final java.util.function.BooleanSupplier blockedNow = () -> sendBlocker(sub) != null;
-  final SmsTelephony.DispatchGuard guard = sendGuard(call, sub, sim, blockedNow);
+  final SmsTelephony.DispatchGuard guard = sendGuard(call, sub, sim, blockedNow, true);
   final Runnable dispatch = () -> {
    if (!admitted() || !unlockedForeground() || blockedNow.getAsBoolean()) {
     decide(call, journal, operationId, recipients, body, sub, "denied", now, boot);
@@ -1138,7 +1187,7 @@ public abstract class TelephonyPlugin extends Plugin {
   SubscriptionInfo sim = activeSubscription(sub);
   if (sim == null) { decideMms(call, journal, operationId, to, body, attachments, sub, "denied", now, boot); return; }
   final java.util.function.BooleanSupplier blockedNow = () -> mmsBlocker(sub) != null;
-  final SmsTelephony.DispatchGuard guard = sendGuard(call, sub, sim, blockedNow);
+  final SmsTelephony.DispatchGuard guard = sendGuard(call, sub, sim, blockedNow, false);
   final Runnable dispatch = () -> {
    if (!admitted() || !unlockedForeground() || blockedNow.getAsBoolean()) {
     decideMms(call, journal, operationId, to, body, attachments, sub, "denied", now, boot);

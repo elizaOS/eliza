@@ -107,7 +107,7 @@ export const modelRoutes: ReadonlyArray<Route> = [
     method: "GET",
     path: "/api/v1/models",
     auth: "ServiceAccess",
-    capability: "inference",
+    area: "ModelListRoutes",
     handler: () => effect {
       const settings = (try Deployment).settings.inference
       if (settings === undefined) throw refused("CapabilityUnavailable")

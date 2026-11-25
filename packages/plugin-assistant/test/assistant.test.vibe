@@ -36,9 +36,9 @@ it.effect('Create each reminder I asked for, once, at the planned time with the 
     const first = try createReminder(asked("m1"))
     const again = try createReminder(asked("m1"))
     const second = reminderReply(try createReminder({ ...asked("m1"), plan: { ...plan, title: "Take out the trash", due: { kind: "in", minutes: 40 } } }))
-    try equal([second.success, second.userFacingText?.startsWith('I\'ll remind you: "Take out the trash" in 40 minutes')], [true, true])
+    try equal([second.success, second.text?.startsWith('I\'ll remind you: "Take out the trash" in 40 minutes'), second.userFacingText, second.verifiedUserFacing], [true, true, undefined, undefined])
     const reply = reminderReply(first)
-    try equal({ success: reply.success, heardInFull: reply.userFacingText?.startsWith('I\'ll remind you: "Call the dentist" in 20 minutes, at Sun, Nov 22, 10:20'), phase: first.kind === "settled" ? first.intent.reminderPhase : first.kind }, {
+    try equal({ success: reply.success, heardInFull: reply.text?.startsWith('I\'ll remind you: "Call the dentist" in 20 minutes, at Sun, Nov 22, 10:20'), phase: first.kind === "settled" ? first.intent.reminderPhase : first.kind }, {
       success: true, heardInFull: true, phase: "ReminderSaved",
     })
     try equal(reminderReply(again).success, true)
@@ -93,7 +93,7 @@ it.effect('An answer to "when should I remind you?" finishes the reminder that d
     seen.now += 6 * 60_000
     replies.push(reminderReply(try createReminder(said("q6", "in ten minutes", { kind: "in", minutes: 10 }))))
     try equal({
-      replies: replies.map((reply) => reply.success ? reply.userFacingText?.startsWith('I\'ll remind you: "Call the dentist" in 30 minutes') : reply.data?.outcome),
+      replies: replies.map((reply) => reply.success ? reply.text?.startsWith('I\'ll remind you: "Call the dentist" in 30 minutes') : reply.data?.outcome),
       unasked: seen.answers.length,
       rows: rowsOf(seen, reminderKind).map((row) => [row.promptInstructions, row.metadata.alert, row.metadata.priority, row.metadata.requestMessageId]),
     }, {
@@ -121,7 +121,7 @@ it.effect('A save that failed and then succeeded is reported saved, and one that
     seen.schedulerFailures = 2
     const lost = reminderReply(try createReminder(asked("m6")))
     try equal([recovered.success, lost.success, lost.text], [true, false, "I couldn't confirm the reminder was saved. Check your reminders before relying on it."])
-    try equal(recovered.userFacingEffectReceiptIds?.length, 1)
+    try equal([recovered.userFacingText, recovered.text?.startsWith("I'll remind you:"), recovered.effectReceipts?.filter((receipt) => receipt.outcome === "applied").length], [undefined, true, 1])
   }
 })
 
@@ -741,6 +741,7 @@ it.effect('Check-ins come at the times I chose: the morning one at eight until I
     seen.refusals = 1
     const refused = try setCheckinTimes({ night: "23:00" }, "s9")
     const cron = (expression: string, tz = "America/New_York") => ({ kind: "cron" as const, expression, tz })
+    try equal(replies.filter((reply) => reply.success).map((reply) => [reply.userFacingText, reply.verifiedUserFacing, (reply.effectReceipts ?? []).length]), [[undefined, undefined, 1], [undefined, undefined, 1], [undefined, undefined, 1], [undefined, undefined, 1]])
     try equal({
       first, replies: replies.map(outcomeOf).map(({ success, text, outcome }) => [success, success ? text : outcome]),
       afterDismissal, refused: [refused.success, refused.text, try checkinSchedules()],

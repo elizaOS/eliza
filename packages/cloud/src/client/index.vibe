@@ -1,26 +1,21 @@
 // spec/cloud/client.md, "Story: Use the cloud from the device as configured"; spec/cloud/client.md, "Story: Tell an account that needs attention from a failing service"; spec/cloud/services/speechRelay.md, "The wire is version 1 with 16 kHz mono PCM16 and bounded frames"
 export {
-  createCloudClient, type Account, type ChatChunk, type ChatCompletion, type ChatOptions, type CloudClient, type CloudClientOptions,
-  type CloudModel, type InvoiceDetail, type InvoicePage, type ModelList, type PageRequest, type PlanOffer, type RedeemRequest,
-  type Referral, type SpeechAudio, type SpeechConsent, type SpeechSession, type SpeechUpload, type TimedSpan,
-  type Transcription, type UndoRequest, type UndoReview
+  createCloudClient, type Account, type ChatChunk, type ChatOptions, type CloudClient, type CloudClientOptions,
+  type CloudModel, type ModelList, type PageRequest, type PlanOffer, type Referral, type SpeechConsent
 } from "./client.vibe"
 export { CloudError, isCredentialInvalid, networkError, readCloudError, type CloudFailure, type CloudResponse } from "./errors.vibe"
-export type {
-  CalendarEvent, CalendarFeed, CalendarRow, ConnectStart, GoogleStatus, MailCapabilities, MailCard, MailMessage, MailOperation,
-  MailReceipt, MailReview, MailSearch, MailTriage
-} from "./google.vibe"
+export type { CalendarEvent, CalendarFeed, CalendarRow, GoogleStatus, MailCapabilities, MailCard, MailMessage, MailSearch, MailTriage } from "./google.vibe"
 export { normalizeSubscriptionCode } from "../billing/grant-code.vibe"
 export { checkEntitlement, EntitlementInvalid, nextRefreshDelay, parseEntitlementKeys, verifyEntitlement, type Entitlement, type EntitlementCheck, type EntitlementClaims, type EntitlementExpectation, type EntitlementKey, type PlanAllowance } from "./entitlement.vibe"
 export {
   accountUsable, checkoutFromResponse, commandFromResponse, commandsFromResponse, creditFromSnapshot, grantFromSnapshot, paymentFromResponse, planAdmission,
   planChecking, planFromSnapshot, planKeyOf, planUnavailable, redeemFailureForStatus, redeemResultFromResponse, reviewFromResponse, snapshotFromResponse, snapshotView, subscriptionView,
-  type ActiveGrant, type BillingSnapshot, type CheckoutPresentation, type CheckoutStart, type CheckoutStartRequest, type CommandKind, type CommandsPage,
-  type CommandStatus, type CreditView, type GrantView, type LifecycleAction, type LifecycleRequest, type PaymentContinuation, type PlanAdmission,
-  type PlanChangeConfirmRequest, type PlanChangeKind, type PlanChangeReview, type PlanChangeReviewRequest, type PlanView, type RedeemFailure, type RedeemResult,
+  type ActiveGrant, type BillingSnapshot, type CheckoutStart, type CommandsPage,
+  type CommandStatus, type CreditView, type GrantView, type PaymentContinuation, type PlanAdmission,
+  type PlanChangeReview, type PlanView, type RedeemFailure, type RedeemResult,
   type SnapshotAllowance, type SnapshotGrant, type SnapshotPlan, type SnapshotSubscription, type SubscriptionCommand, type SubscriptionView, type WirePlanKey
 } from "./views.vibe"
 export { admitsHeader, baseHeaders, deviceRoutes, httpVerb, idempotencyKey, ifMatch, lookupPath, renewedCredential, pathOf, routesByName, type AuthClass, type DeviceRoute, type DeviceRouteName, type HttpMethod, type NamedRoute, type ParamsOf, type RouteLookup, type Segment } from "./routes.vibe"
 export { decodeRelayFrame, decodeServerFrame, encodeClientFrame, encodeRelayAudio, relayCloseCodes, type ClientFrame, type RelayAudio, type WireData, type WireServerFrame } from "./relay-codec.vibe"
-export { isConnectState, type GoogleCalls } from "./google.vibe"
+export type { GoogleCalls } from "./google.vibe"
 export { mapsRefusalOf, type MapsCalls } from "./maps.vibe"

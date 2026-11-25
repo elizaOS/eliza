@@ -149,8 +149,21 @@ run again, an MMS needs the default SMS role, and the default SMS app must
 first prepare its own outbox rows; any failure is denied with no platform
 call.
 
+For SMS, the host can refuse a send after the owner approves it in the
+native dialog or in the host's composer. `TelephonyPlugin.checkSmsDispatch`
+allows the send by default. `SmsTelephony.dispatch` checks it before
+`SmsSendJournal.beginDispatch` and again before each recipient. One SMS
+operation has at most five recipients. If the host refuses before the first
+platform call, `SmsTelephony.finishDispatch` or the pre-reservation refusal
+path records `denied`. If an earlier call reached Android, the worker makes
+no more platform calls for this operation and records an incomplete
+dispatch. Its outcome is `unknown` unless a recorded receipt establishes
+failure. The operation ID cannot send again. MMS follows the existing
+Android and outbox checks.
+
 ```quint
 pure val maxPartsPerRecipient = 10
+pure val maxSmsRecipients = 5
 pure def sendable(kind: MessageKind, blocked: bool, parts: int): bool =
   not(blocked) and (kind == MultimediaMessage or (parts >= 1 and parts <= maxPartsPerRecipient))
 pure def canPresentReview(s: SmsReview): bool = s.phase == MainQueued and not(s.retired)
@@ -163,6 +176,32 @@ pure def dispatchApproved(s: SmsReview, blocked: bool, smsRoleHeld: bool, rowsPr
   if (blocked or (s.kind == MultimediaMessage and not(smsRoleHeld)) or (smsRoleHeld and not(rowsPrepared)))
     { ...s, phase: ReviewSettled, result: SendDenied }
   else { ...s, phase: NativeDispatched, dispatched: true, outgoingRow: smsRoleHeld }
+type SmsDispatchBoundary = BeforeSmsReservation | BeforeSmsRecipient({ earlierAttempts: int })
+pure def canVetoSmsDispatch(s: SmsReview, smsBoundary: SmsDispatchBoundary): bool =
+  s.kind == TextMessage and not(s.retired) and (match smsBoundary {
+    | BeforeSmsReservation => canDispatchApproved(s)
+    | BeforeSmsRecipient(point) =>
+        if (point.earlierAttempts == 0) canDispatchApproved(s)
+        else s.phase == NativeDispatched and s.dispatched and point.earlierAttempts > 0 and point.earlierAttempts < maxSmsRecipients
+  })
+pure def vetoSmsDispatch(s: SmsReview, smsBoundary: SmsDispatchBoundary): SmsReview =
+  { ...s, phase: ReviewSettled, result: if (s.dispatched) SendUnknown else SendDenied }
+pure val smsBoundaryValues = Set(BeforeSmsReservation, BeforeSmsRecipient({ earlierAttempts: 0 }),
+  BeforeSmsRecipient({ earlierAttempts: 1 }), BeforeSmsRecipient({ earlierAttempts: 4 }), BeforeSmsRecipient({ earlierAttempts: 5 }))
+pure def lawASmsVetoKeepsEarlierDispatchUncertain(s: SmsReview, smsBoundary: SmsDispatchBoundary): bool =
+  canVetoSmsDispatch(s, smsBoundary) implies (match smsBoundary {
+    | BeforeSmsReservation => vetoSmsDispatch(s, smsBoundary).result == SendDenied
+    | BeforeSmsRecipient(point) =>
+        vetoSmsDispatch(s, smsBoundary).result == (if (point.earlierAttempts == 0) SendDenied else SendUnknown)
+  })
+pure val eval_witness_canVetoSmsDispatch = (
+  ("beginReview", "op1", OwnerComposer, TextMessage, PluginRegistered,
+    { foreground: true, unlocked: true, focused: true, granted: true, featurePresent: true }),
+  ("finishLookup", NoRecord, NoAnswer),
+  ("presentReview", false, 1),
+  ("dispatchApproved", false, true, true),
+  ("vetoSmsDispatch", BeforeSmsRecipient({ earlierAttempts: 1 }))
+)
 pure val partsValues = Set(0, 1, 10, 11)
 pure def alwaysRefusedSendNeverDispatched(s: SmsReview): bool =
   (s.result == SendCancelled or s.result == SendDenied) implies not(s.dispatched)

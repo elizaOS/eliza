@@ -65,6 +65,24 @@ describe("WP1 Identity: code challenges", () => {
     ))
   }))
 
+  it.live("A code refused for a closed account stays spent (spec/cloud/identity/codeChallenges.md, \"A sign-in code yields a session, or a second-factor challenge for a person who has a factor, never both\")", () => scoped(effect {
+    const cloud = try testCloud()
+    const email = { email: "hopper@example.com" }
+    const opening = pkce()
+    try send(cloud, "email", email, opening.challenge)
+    const opened = try verify(cloud, "email", email, try latestCode(cloud, email.email), opening.verifier)
+    const closing = pkce()
+    try send(cloud, "email", email, closing.challenge)
+    const code = try latestCode(cloud, email.email)
+    try cloud.store.transaction((tx) => tx.query("UPDATE accounts SET status = 'deleting' WHERE email = $1", [email.email]))
+    const closed = try verify(cloud, "email", email, code, closing.verifier)
+    const again = try verify(cloud, "email", email, code, closing.verifier)
+    try check(() => assert.deepStrictEqual(
+      [opened.status, refusal(closed), refusal(again)],
+      [200, "403 access_denied account_inactive", "401 authentication_required credential_unknown"]
+    ))
+  }))
+
   it.live("Five wrong SMS codes lock the challenge and the right code is still refused (spec/cloud/identity/codeChallenges.md, \"Story: Stop guessing at my code\"; spec/cloud/identity/codeChallenges.md, \"Story: Sign in with a code sent to my email or phone\")", () => scoped(effect {
     const cloud = try testCloud()
     const phone = { phone: "+15555550123" }

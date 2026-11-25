@@ -35,7 +35,6 @@
     "nativeActionJournal": "packages/plugin-native-action-journal",
     "nativeActivityTracker": "packages/plugin-native-activity-tracker",
     "nativeAppblocker": "packages/plugin-native-appblocker",
-    "nativeBunRuntime": "packages/plugin-native-bun-runtime",
     "nativeCanvas": "packages/plugin-native-canvas",
     "nativeContacts": "packages/plugin-native-contacts",
     "nativeElizaTasks": "packages/plugin-native-eliza-tasks",
@@ -87,6 +86,7 @@
     "maps": ["packages/plugin-maps-client"],
     "notes": ["packages/plugin-notes-client"],
     "os": ["packages/os-bridges"],
+    "wallet": ["packages/plugin-wallet-client"],
     "workflow": ["packages/plugin-workflow-client", "packages/plugin-workflow-worker"]
   },
   "scripts": {

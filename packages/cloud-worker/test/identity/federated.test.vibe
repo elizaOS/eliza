@@ -145,7 +145,7 @@ describe("WP1 Identity: Google sign-in", () => {
           opened: [200, true, "google-server-client", true],
           refused: ["400 invalid_request", "400 redirect_mismatch"],
           withinLimit: true,
-          overLimit: ["429 rate_limited", true]
+          overLimit: ["429 rate_limited cloud_gate_rate_limited", true]
         }
       ))
     }

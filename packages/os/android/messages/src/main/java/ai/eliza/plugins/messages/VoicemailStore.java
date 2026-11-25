@@ -20,6 +20,7 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 /**
@@ -42,6 +43,13 @@ public final class VoicemailStore {
  public static final int MAX_VOICEMAILS = 50, MAX_AUDIO_BYTES = 8 * 1024 * 1024, MAX_TRANSCRIPT = 4000, MAX_STATUS_ROWS = 32, MAX_NAME = 256;
  public static final String READY = "ready", UNCONFIGURED = "unconfigured", UNSUPPORTED = "unsupported";
  private static final Pattern ID = Pattern.compile("^[1-9][0-9]{0,17}$");
+ private static final Pattern DELETION_WITNESS = Pattern.compile("^v1:[a-f0-9]{64}$");
+ private static final String[] DELETION_IDENTITY = {
+  VoicemailContract.Voicemails._ID, VoicemailContract.Voicemails.DATE, VoicemailContract.Voicemails.SOURCE_PACKAGE,
+  VoicemailContract.Voicemails.SOURCE_DATA, VoicemailContract.Voicemails.PHONE_ACCOUNT_COMPONENT_NAME, VoicemailContract.Voicemails.PHONE_ACCOUNT_ID,
+  VoicemailContract.Voicemails.NUMBER, VoicemailContract.Voicemails.DURATION,
+ };
+ private static final String LISTED = VoicemailContract.Voicemails.DELETED + " = 0";
  private static final Pattern AUDIO_TYPE = Pattern.compile("^audio/[A-Za-z0-9][A-Za-z0-9.+-]{0,63}$");
  /** Call-log rows read to find the names Android cached for voicemail callers. */
  private static final int MAX_NAME_ROWS = 200;
@@ -108,16 +116,22 @@ public final class VoicemailStore {
   * every name is null.
   */
  public static JSObject list(Context context, int limit, String component, String account, boolean names, CancellationSignal cancel) {
+  return list(context, limit, component, account, names, false, cancel);
+ }
+
+ public static JSObject list(Context context, int limit, String component, String account, boolean names, boolean withWitness, CancellationSignal cancel) {
   if (limit < 1 || limit > MAX_VOICEMAILS) throw new IllegalArgumentException("Invalid voicemail page");
   ContentResolver resolver = context.getContentResolver();
   JSObject value = new JSObject(); JSArray rows = new JSArray();
   String state = carrierState(context, component, account, cancel);
   value.put("state", state); value.put("voicemails", rows);
   if (UNSUPPORTED.equals(state)) return value;
-  String[] projection = { VoicemailContract.Voicemails._ID, VoicemailContract.Voicemails.NUMBER, VoicemailContract.Voicemails.DATE, VoicemailContract.Voicemails.DURATION,
-   VoicemailContract.Voicemails.IS_READ, VoicemailContract.Voicemails.HAS_CONTENT, VoicemailContract.Voicemails.TRANSCRIPTION };
+  java.util.List<String> projection = new java.util.ArrayList<>(java.util.Arrays.asList(
+   VoicemailContract.Voicemails._ID, VoicemailContract.Voicemails.NUMBER, VoicemailContract.Voicemails.DATE, VoicemailContract.Voicemails.DURATION,
+   VoicemailContract.Voicemails.IS_READ, VoicemailContract.Voicemails.HAS_CONTENT, VoicemailContract.Voicemails.TRANSCRIPTION));
+  if (withWitness) for (String column : DELETION_IDENTITY) if (!projection.contains(column)) projection.add(column);
   Map<Long, String> cached = null;
-  try (Cursor cursor = resolver.query(VoicemailContract.Voicemails.CONTENT_URI, projection, VoicemailContract.Voicemails.DELETED + " = 0", null,
+  try (Cursor cursor = resolver.query(VoicemailContract.Voicemails.CONTENT_URI, projection.toArray(new String[0]), LISTED, null,
     VoicemailContract.Voicemails.DATE + " DESC, " + VoicemailContract.Voicemails._ID + " DESC", cancel)) {
    if (cursor == null) throw new IllegalStateException("Voicemail unavailable");
    long previous = Long.MAX_VALUE; Set<String> seen = new HashSet<>();
@@ -138,6 +152,10 @@ public final class VoicemailStore {
     row.put("isNew", cursor.isNull(4) || cursor.getInt(4) == 0);
     row.put("hasAudio", !cursor.isNull(5) && cursor.getInt(5) != 0);
     row.put("carrierTranscript", transcript == null || transcript.trim().isEmpty() || transcript.length() > MAX_TRANSCRIPT ? JSONObject.NULL : transcript);
+    if (withWitness) {
+     DeletionIdentity identity = deletionIdentity(cursor);
+     if (identity != null) row.put("deletionWitness", identity.witness());
+    }
     rows.put(row);
    }
   }
@@ -251,23 +269,98 @@ public final class VoicemailStore {
   * {@code "unconfirmed"} when the provider took the change but the readback does not show it, {@code "not-found"}
   * when no such voicemail exists.
   */
+ private record DeletionIdentity(String[] values) {
+  String witness() {
+   JSONArray canonical = new JSONArray().put("eliza.voicemail-deletion.v1");
+   for (String value : values) canonical.put(value);
+   return "v1:" + SmsSendJournal.sha256(canonical.toString());
+  }
+  boolean belongsTo(Context context) { return context.getPackageName().equals(values[2]); }
+  int change(Context context) {
+   StringBuilder selection = new StringBuilder(LISTED);
+   java.util.List<String> args = new java.util.ArrayList<>();
+   for (int at = 0; at < DELETION_IDENTITY.length; at++) {
+    selection.append(" AND ").append(DELETION_IDENTITY[at]);
+    if (values[at] == null) selection.append(" IS NULL");
+    else { selection.append(" = ?"); args.add(values[at]); }
+   }
+   ContentResolver resolver = context.getContentResolver();
+   String[] bindings = args.toArray(new String[0]);
+   Uri item = uri(row(values[0]));
+   if (!belongsTo(context)) return resolver.delete(item, selection.toString(), bindings);
+   ContentValues changes = new ContentValues();
+   changes.put(VoicemailContract.Voicemails.DELETED, 1); changes.put(VoicemailContract.Voicemails.DIRTY, 1);
+   return resolver.update(item, changes, selection.toString(), bindings);
+  }
+ }
+
+ private static DeletionIdentity deletionIdentity(Cursor cursor) {
+  String[] values = new String[DELETION_IDENTITY.length];
+  for (int at = 0; at < values.length; at++) values[at] = cursor.getString(cursor.getColumnIndexOrThrow(DELETION_IDENTITY[at]));
+  if (row(values[0]) < 0 || values[1] == null || values[2] == null || values[2].isEmpty() || values[3] == null || values[3].isEmpty()) return null;
+  for (String value : values) if (value != null && value.length() > 1024) return null;
+  return new DeletionIdentity(values);
+ }
+
+ private record DeletionRow(boolean present, DeletionIdentity identity) {}
+ private static DeletionRow deletionRow(Context context, long id, CancellationSignal cancel) {
+  try (Cursor cursor = context.getContentResolver().query(uri(id), DELETION_IDENTITY, LISTED, null, null, cancel)) {
+   if (cursor == null) throw new IllegalStateException("Voicemail identity unavailable");
+   if (!cursor.moveToFirst()) return new DeletionRow(false, null);
+   DeletionIdentity identity = deletionIdentity(cursor);
+   if ((identity != null && row(identity.values()[0]) != id) || cursor.moveToNext()) throw new IllegalStateException("Unreadable voicemail identity");
+   return new DeletionRow(true, identity);
+  }
+ }
+
+ public static boolean validDeletionWitness(String witness) {
+  return witness != null && DELETION_WITNESS.matcher(witness).matches();
+ }
+
  /** Whether a voicemail is there to stage for deletion: null when it is, otherwise {@code not-found}. Nothing is written. */
  public static String inspectDeletion(Context context, long id) { return own(context, id) == null ? "not-found" : null; }
+
+ /** A staged reviewed deletion is eligible only for the exact identity returned by the provider listing. */
+ public static String inspectDeletion(Context context, long id, String witness, CancellationSignal cancel) {
+  DeletionRow current = deletionRow(context, id, cancel);
+  if (!current.present()) return "not-found";
+  return current.identity() != null && current.identity().witness().equals(witness) ? null : "stale";
+ }
+
+ private static String deleteReviewed(Context context, long id, String witness, java.util.function.BooleanSupplier writable) {
+  DeletionRow before = deletionRow(context, id, null);
+  DeletionIdentity identity = before.identity();
+  if (identity == null || !identity.witness().equals(witness)) return "conflict";
+  if (!writable.getAsBoolean()) return "permission-required";
+  int changed = identity.change(context);
+  if (changed == 0) return "conflict";
+  if (changed != 1) return "unknown";
+  if (identity.belongsTo(context)) requestSync(context);
+  DeletionRow after = deletionRow(context, id, null);
+  if (!after.present()) return "deleted";
+  return after.identity() != null && !after.identity().witness().equals(witness) ? "deleted" : "unknown";
+ }
  /**
-  * The Undo window's provider call for a staged {@code {id}}: one {@link #delete}, answered as
+  * The Undo window's provider call for a staged {@code {id}} or {@code {id, witness}}. The latter binds the
+  * provider mutation to the listed identity. Both return
   * {@code deleted}, {@code conflict} (gone meanwhile), {@code unknown} (marked but still listed, or
   * no answer) or, without the voicemail grant or dialer role, {@code permission-required}.
   */
  public static JSObject dispatchDeletion(Context context, JSONObject staged, java.util.function.BooleanSupplier writable) {
   JSObject value = new JSObject();
-  long id = staged == null || staged.length() != 1 ? -1 : row(staged.optString("id", null));
+  long id = staged == null ? -1 : row(staged.optString("id", null));
+  boolean reviewed = staged != null && staged.has("witness");
+  String witness = reviewed && staged.opt("witness") instanceof String ? staged.optString("witness") : null;
   String status;
-  if (id < 0) status = "conflict";
+  if (id < 0 || staged.length() != (reviewed ? 2 : 1) || (reviewed && !validDeletionWitness(witness))) status = "conflict";
   else if (!writable.getAsBoolean()) status = "permission-required";
   else {
    try {
-    String deleted = delete(context, id);
-    status = "deleted".equals(deleted) ? "deleted" : "not-found".equals(deleted) ? "conflict" : "unknown";
+    if (reviewed) status = deleteReviewed(context, id, witness, writable);
+    else {
+     String deleted = delete(context, id);
+     status = "deleted".equals(deleted) ? "deleted" : "not-found".equals(deleted) ? "conflict" : "unknown";
+    }
    } catch (RuntimeException lostReply) { status = "unknown"; }
   }
   value.put("status", status);

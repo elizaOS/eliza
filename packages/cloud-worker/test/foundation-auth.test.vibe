@@ -403,7 +403,7 @@ schema PlanReviewBody { targetPlanKey: "plus_monthly" | "pro_monthly" }
 
 function reviewRoute(path: `/${string}`, kind: Exclude<ReviewPlanChange["kind"], "UndoCommand">): Route {
   return {
-    method: "POST", path, auth: "FreshSession", capability: "billing",
+    method: "POST", path, auth: "FreshSession", area: "SubscriptionRoutes",
     handler: (context) => effect {
       const body = try jsonBody(context, PlanReviewBody)
       return json(try reviewPlanChange(context.request.headers.authorization, { kind, targetPlanKey: body.targetPlanKey }))
@@ -1007,6 +1007,25 @@ describe("Node subscriptions", () => {
     const revoked = try cloud.call("/api/v1/billing/limits", token)
     const revokedSnapshot = (revoked.body as { data: BillingSnapshot }).data
     const dispatches = try sync(() => cloud.fakes.seen.filter((request) => request.method === "POST" && request.path.endsWith(`/subscriptions/${subscriptionId}`)).length)
+    const lapsedOrganization = "org-lapsed-worker"
+    const lapsedToken = sessionToken("w")
+    try account(cloud, "lapsed-worker", "active", { sessions: 0, devices: 0 }, now)
+    try session(cloud, "lapsed-worker", lapsedToken, currentSession, now)
+    const lapsedPaid = try paidCheckout(cloud, fake, lapsedOrganization, "plus_monthly")
+    const lapsedEnded = try promise(() => stripe.subscriptions.cancel(lapsedPaid.subscriptionId))
+    const lapsedLegacy = { customerId: lapsedPaid.customerId, subscriptionId: lapsedEnded.id, planKey: "plus_monthly", status: "canceled",
+      periodEnd: (lapsedEnded.items.data[0]?.current_period_end ?? 0) * 1000 }
+    try sql(cloud, "INSERT INTO subscriptions (key,state,revision,status,plan_key,customer_id,provider_subscription_id,period_end,updated_at) VALUES ($1,$2,3,$3,$4,$5,$6,$7,$8)",
+      [lapsedOrganization, JSON.stringify(lapsedLegacy), lapsedLegacy.status, lapsedLegacy.planKey, lapsedLegacy.customerId, lapsedLegacy.subscriptionId, lapsedLegacy.periodEnd, now])
+    const unconverted = try cloud.call("/api/v1/billing/limits", lapsedToken)
+    try cloud.inside(sweepSubscriptions())
+    const converted = try cloud.call("/api/v1/billing/limits", lapsedToken)
+    const convertedSnapshot = (converted.body as { data?: BillingSnapshot }).data
+    const convertedState = try cloud.store.transaction((tx) => readSubscription(tx, lapsedOrganization))
+    try check(() => assert.deepStrictEqual(
+      [lapsedEnded.status, unconverted.status, converted.status, convertedSnapshot?.plan.key, convertedSnapshot?.funding.inference, convertedState.status, convertedState.subscriptionId],
+      ["canceled", 503, 200, "free", "creditsOnly", "Canceled", lapsedEnded.id]
+    ))
     try check(() => assert.deepStrictEqual({
       before: [before.status, beforeSnapshot.plan.key, beforeSnapshot.subscription?.control.action, beforeSnapshot.allowance?.granted],
       staleProof: staleProof.status, mutations: [canceled.status, again.status, receipt.status, again.body, cancelDispatches, dispatches],
