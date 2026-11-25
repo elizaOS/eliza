@@ -368,18 +368,18 @@ module calls {
 
   export interface CallKey {
     readonly value: string
-    answered: boolean
+    closedByCloud: boolean
   }
 
   const keys = new WeakMap<object, CallKey>()
 
   /** @throws {never} */
-  export function callKeyOf(params: object, fresh: (kept: CallKey) => boolean): CallKey {
-    const minted = (): CallKey => ({ value: randomUUID(), answered: false })
+  export function callKeyOf(params: object): CallKey {
+    const minted = (): CallKey => ({ value: randomUUID(), closedByCloud: false })
     const attempts: unknown = (params as { [MODEL_PROVIDER_ATTEMPTS]?: unknown })[MODEL_PROVIDER_ATTEMPTS]
     if (typeof attempts !== "object" || attempts === null) return minted()
     const kept = keys.get(attempts)
-    const key = kept === undefined || fresh(kept) ? minted() : kept
+    const key = kept === undefined || kept.closedByCloud ? minted() : kept
     keys.set(attempts, key)
     return key
   }
@@ -390,8 +390,6 @@ module calls {
   }
 }
 import { callKeyOf, freshCallId, type CallKey } from calls
-
-const keyFor = (params: object): CallKey => callKeyOf(params, (kept) => retryKey(kept.answered) === "FreshKey")
 
 function refusalOf(cloud: CloudFailure, hold: Hold = unheld, funds: FundsCode = "NoFundsCode", origin: LimitOrigin = "NoLimitOrigin", limitCallId?: number): ModelRefusal {
   const failureKind = failureKindName(failureOf(cloud, 0))
@@ -448,16 +446,17 @@ function providerRefusal(status: number, words: string): CloudFailure | undefine
   return undefined
 }
 
-effect function refusalFrom(result: HttpClientResponse.HttpClientResponse, cloudRoute: boolean) {
+effect function refusalFrom(result: HttpClientResponse.HttpClientResponse, cloudRoute: boolean, callKey?: CallKey) {
   const now = try Clock.currentTimeMillis
   const raw = timeout(result.text, "20 seconds") catch effect () => { throw new Refused({ cloud: { tag: "CloudNetwork" } }) }
+  const body = Option.getOrUndefined(decodeRefusalCode(raw))
+  if (callKey !== undefined) callKey.closedByCloud = retryKey(cloudRoute, result.status, body?.error ?? "") === "FreshKey"
   if (toolCallUnparsed(result.status, raw)) return new ShellRefused({ refusal: "ToolCallUnparsed" })
   const words = providerWords(raw)
   const classified = words === undefined ? undefined : providerRefusal(result.status, words)
   if (classified !== undefined) return new Refused({ cloud: classified })
   const response = { status: result.status, headers: { get: (name: string) => result.headers[name] ?? null }, text: async () => raw }
   const read = try Effect.promise(() => readCloudError(response, now))
-  const body = Option.getOrUndefined(decodeRefusalCode(raw))
   const funds = fundsCodeOf(cloudRoute, result.status, body?.error ?? "")
   const reason = body?.error === "rate_limited" && typeof body.reason === "string" ? body.reason : ""
   const origin = limitOriginOf(cloudRoute, read.failure.tag === "CloudRateLimited", reason)
@@ -543,10 +542,7 @@ effect function send(endpoint: Endpoint, credential: Redacted.Redacted<string>, 
     if (streamed && Cause.isTimeoutError(failure)) throw new ShellRefused({ refusal: "SilentStream" })
     throw new Refused({ cloud: { tag: "CloudNetwork" } })
   }
-  if (result.status < 200 || result.status >= 300) {
-    callKey.answered = true
-    throw try refusalFrom(result, endpoint.cloudRoute)
-  }
+  if (result.status < 200 || result.status >= 300) throw try refusalFrom(result, endpoint.cloudRoute, callKey)
   if (sink.stream && result.headers["content-type"]?.startsWith("text/event-stream")) return try collectStream(result, sink, ask)
   const raw = timeout(result.json, "20 seconds") catch effect () => { throw new Refused({ cloud: { tag: "CloudNetwork" } }) }
   const decoded = decode(raw) catch effect () => { throw providerIssue() }
@@ -697,7 +693,7 @@ function readingWritten(endpoint: Endpoint, handler: ChatHandler, params: Genera
 
 export function generateText(binding: Binding, endpoint: Endpoint, handler: ChatHandler) {
   return (_runtime: IAgentRuntime, params: GenerateTextParams): Promise<string | GenerateTextResult> => run(
-    Effect.provide(Effect.map(Effect.map(serve(binding, handler, endpoint, keyFor(params), requestOf(endpoint, handler, params), params, askOf(params), warmsUp(params)), readingWritten(endpoint, handler, params)), returned), FetchHttpClient.layer),
+    Effect.provide(Effect.map(Effect.map(serve(binding, handler, endpoint, callKeyOf(params), requestOf(endpoint, handler, params), params, askOf(params), warmsUp(params)), readingWritten(endpoint, handler, params)), returned), FetchHttpClient.layer),
     params.signal,
   )
 }
@@ -707,7 +703,7 @@ export function describeImage(binding: Binding, endpoint: Endpoint) {
     const input = typeof params === "string" ? { imageUrl: params } : params
     const messages = description(input.prompt ?? "Please analyze this image and provide a title and detailed description.", input.imageUrl)
     return run(
-      Effect.provide(Effect.map(serve(binding, "ImageDescription", endpoint, keyFor(input), { messages }, typeof params === "string" ? {} : params, textAsk),
+      Effect.provide(Effect.map(serve(binding, "ImageDescription", endpoint, callKeyOf(input), { messages }, typeof params === "string" ? {} : params, textAsk),
         ({ reply }) => ({ title: titleOf(reply.text), description: reply.text })), FetchHttpClient.layer),
       typeof params === "string" ? undefined : params.signal,
     )
