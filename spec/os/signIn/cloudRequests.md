@@ -314,11 +314,12 @@ host equal to the deployment's web host or one of the fixed provider hosts.
 
 ```quint
 type ExternalLink = { https: bool, host: str, defaultPort: bool, userInfo: bool }
-pure val providerHosts: Set[str] = Set("checkout.stripe.com", "billing.stripe.com", "accounts.google.com")
+pure val providerHosts: Set[str] = Set("checkout.stripe.com", "billing.stripe.com", "invoice.stripe.com", "accounts.google.com")
 pure def opensExternally(webHost: str, link: ExternalLink): bool =
   link.https and link.defaultPort and not(link.userInfo) and (link.host == webHost or providerHosts.contains(link.host))
 pure val webHostValues = Set("web.cloud.test")
 pure val linkValues = Set({ https: true, host: "billing.stripe.com", defaultPort: true, userInfo: false },
+  { https: true, host: "invoice.stripe.com", defaultPort: true, userInfo: false },
   { https: true, host: "billing.stripe.com.evil.test", defaultPort: true, userInfo: false }, { https: false, host: "web.cloud.test", defaultPort: true, userInfo: false })
 pure def lawALinkOpensOnlyOnAListedHost(webHost: str, link: ExternalLink): bool =
   opensExternally(webHost, link) implies (link.host == webHost or providerHosts.contains(link.host))
