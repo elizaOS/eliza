@@ -48,7 +48,7 @@ ANDROID_SERIAL=emulator-5554 gradle -p packages/os/android/passwords/test/fixtur
 Run the focused journey from the Eliza root after `pnpm gen --owner cloud`:
 
 ```sh
-PASSWORD_ANDROID_FIXTURE=emulator-5554 pnpm --filter @elizaos/cloud exec \
+PASSWORD_ANDROID_FIXTURE=emulator-5554 pnpm --filter @elizaos/cloud-worker exec \
   vitest run test/password-backup.test.vibe -t 'Android cold start'
 ```
 
