@@ -1,0 +1,552 @@
+// spec/browser/requestGrounding.md, "Story: Open a destination stated in this message"; spec/browser/requestGrounding.md, "A closing mark that could belong to the address leaves the open for my review"; spec/browser/requestGrounding.md, "A negated destination cannot be authorized by a proposal"; spec/browser/requestGrounding.md, "A page link opens only as an exact link of the page my message carried, and only after my review"; spec/browser/control.md, "A search runs on my words as I typed them, and a search the model words differently runs only after my review"; spec/browser/control.md, "A reload of a page my phone withheld runs only after my review on the phone, or as the BROWSER command only when the model says I asked for it"
+import { parseBrowserAddressInput } from "@elizaos/os-bridges"
+import { groundedSearch } from "../gen/browser__control.effect.vibe"
+import { closingMarkIsProse, directDestination, pageLinkDestination, proposedDestination, type GroundedAddress } from "../gen/browser__requestGrounding.effect.vibe"
+import { IANA_TLDS } from "./iana-tlds.vibe"
+
+export const DEFAULT_ASSISTANT_NAME = "Eliza"
+
+export const BROWSER_SEARCH_QUERY_MAX = 512
+
+export interface BrowserOpen {
+  readonly href: string
+  readonly newTab: boolean
+}
+
+function compiled(source: string, flags: string): RegExp {
+  try {
+    return new RegExp(source, flags)
+  } catch {
+    return /(?!)/
+  }
+}
+
+function matchesOf(text: string, pattern: RegExp): RegExpExecArray[] {
+  const found: RegExpExecArray[] = []
+  pattern.lastIndex = 0
+  for (let match = pattern.exec(text); match !== null; match = pattern.exec(text)) {
+    found.push(match)
+    if (match[0] === "") pattern.lastIndex += 1
+  }
+  pattern.lastIndex = 0
+  return found
+}
+
+function stripTrailingPunctuation(text: string, punctuation: string): string {
+  let end = text.length
+  while (end > 0 && punctuation.includes(text.slice(end - 1, end))) end--
+  return text.slice(0, end)
+}
+
+const LABEL = /^[a-z\d](?:[a-z\d-]{0,61}[a-z\d])?$/
+const FILE_TYPE_TLDS: ReadonlySet<string> = new Set(
+  "ac am app as bz cab cc cr data dot download fish fit gd gs in inc java la man map md mk ml mm mo mobi mov nc ninja one pl pm ps pt pub py rs run save sc sh so st sv tf zip".split(" "),
+)
+const ADDRESS = /^(?:https?:\/\/)?[\p{L}\p{N}_-]+(?:\.[\p{L}\p{N}_-]+)+(?::\d+)?(?:[/?#]\S*)?$/iu
+const QUOTE_PAIRS: Readonly<Record<string, string>> = { '"': '"', "'": "'", "“": "”", "‘": "’" }
+const OPEN_COMMAND = String.raw`(?:open|visit|go\s+to|navigate\s+to)`
+const SPOKEN_DOT_SOURCE = String.raw`\p{Zs}+dot\p{Zs}+`
+const SPOKEN_ADDRESS_TOKEN = String.raw`\S+(?:${SPOKEN_DOT_SOURCE}\S+)+`
+const ADDRESS_TOKEN = String.raw`(?:${SPOKEN_ADDRESS_TOKEN}|\S+)`
+const SPOKEN_DOT = compiled(SPOKEN_DOT_SOURCE, "giu")
+const HOST_LABEL_GROUP = String.raw`[\p{L}\p{N}-]+(?:\.[\p{L}\p{N}-]+)*`
+const SPOKEN_HOSTNAME = compiled(`^${HOST_LABEL_GROUP}(?:${SPOKEN_DOT_SOURCE}${HOST_LABEL_GROUP})+$`, "iu")
+const SPOKEN_PROSE_LABELS: ReadonlySet<string> = new Set("the a an my your our their his her its this that these those some any".split(" "))
+const EVERYDAY_COMMAND = String.raw`(?:open\s+up|take\s+me\s+to|pull\s+up|bring\s+up|show\s+me|head\s+to|browse\s+to)`
+const SEARCH_COMMAND = String.raw`(?:search(?:\s+(?:the\s+)?(?:web|internet)|\s+online|\s+google)?\s+for|web\s+search(?:\s+for)?|google|look\s+up)`
+const SEARCH_SUFFIX = /[\s,]+(?:please|for\s+me|thanks|thank\s+you)[.,!?]*$|[.,!?]+$/i
+const SUFFIX = /^\s+(?:please|for\s+me|thanks|thank\s+you|(?:would|will|could|can)\s+you)[.,!?]*$/i
+const IN_BROWSER = /^\s+in\s+(?:(?:the|my|your|this)\s+)?(?:web\s+)?browser(?:\s+app)?(?=[\s,.!?]|$)/i
+const IN_NEW_TAB = /^\s+in\s+(?:a\s+)?(?:new|another|separate|different)\s+(?:browser\s+)?tab(?=[\s,.!?]|$)/i
+const SITE_BEFORE = /\b(?:web\s?)?site[:,]?\s+(?:(?:at|called|named)\s+)?$/i
+const SITE_AFTER = /^\s+(?:web\s?)?site\b/i
+const OPEN_VERB_SOURCE = String.raw`\b(?:open(?:s|ed|ing)?|visit(?:s|ed|ing)?|go(?:es|ing)?|went|head(?:s|ed|ing)?|navigat(?:e|es|ed|ing)|tak(?:e|es|en|ing)|took|pull(?:s|ed|ing)?|bring(?:s|ing)?|brought|show(?:s|n|ed|ing)?|load(?:s|ed|ing)?|launch(?:es|ed|ing)?|brows(?:e|es|ed|ing)|access(?:es|ed|ing)?|check(?:s|ed|ing)?)\b`
+const OPEN_VERBS = compiled(OPEN_VERB_SOURCE, "gi")
+const OPEN_VERB = compiled(OPEN_VERB_SOURCE, "i")
+const ADDRESS_INTRO = String.raw`(?:${EVERYDAY_COMMAND}|${OPEN_COMMAND}|${OPEN_VERB_SOURCE}|\b(?:not|nor)(?=\p{Zs}+dot\b))[,.:!?]?\p{Zs}+`
+const SITE_QUALIFIERS = String.raw`(?:(?:the|(?:web\s?)?site|at|called|named)\p{Zs}+)*`
+const ADDRESS_WORD = compiled(`(?:${ADDRESS_INTRO}${SITE_QUALIFIERS}(${SPOKEN_ADDRESS_TOKEN})|(${ADDRESS_TOKEN}))`, "giu")
+const PARTICLES = String.raw`(?:\s+(?:to|up|on|over|into|onto|out|me|us|back|at|in))*`
+const LINKED = String.raw`(?:(?:even|also|ever)\s+)?$`
+const VERB_JOIN = compiled(String.raw`^${PARTICLES}\s*(?:[/&]|,?\s+(?:or|and|nor|and/or))\s*${LINKED}`, "i")
+const LIST_JOIN = compiled(String.raw`^${PARTICLES}\s*,\s*$`, "i")
+const OBJECT_JOIN = compiled(String.raw`^${PARTICLES}\s+\S+?,?\s+(?:or|nor)\s+${LINKED}`, "i")
+const NEGATION_SOURCE = String.raw`\b(do(?:n['’]?t|['’]nt|not|[.!]?\s+not)|never(?!\s+mind\s+(?:just\s+)?(?:open|visit|go|pull|show|take|bring|load|launch|navigate|head|check|browse|access)\b))\b|\b(stop|quit|avoid|refrain\s+from|no(?=\s+[a-z]+ing\b))\b|\b(?:not|nor|cannot|no\s+need|under\s+no|at\s+no\s+(?:point|time)|by\s+no\s+means|in\s+no\s+(?:case|way|event)|on\s+no\s+account)\b|n['’]t\b|\b(?:does|did|wo|ca|should|would|could|must|is|are|was|were|have|has|had|need)nt\b`
+const NEGATIONS = compiled(NEGATION_SOURCE, "gi")
+const NEGATION_HERE = compiled(`^(?:${NEGATION_SOURCE})`, "i")
+const FILLER = "ever|even|really|just|actually|you|u|dare|yet|again|please|try|trying|to|want|wanna|need|have|gotta|go|going|gonna|bother|let|me|us"
+const FILLERS: ReadonlySet<string> = new Set(FILLER.split("|"))
+const SPAN_HEAD = compiled(String.raw`^(?:[\s,]+(?:${FILLER})\b)*(?:\s*[,(\u2014\u2013]\s*[^,.!?;:()\u2014\u2013]{1,60}?\s*[,)\u2014\u2013])?(?:[\s,]+(?:${FILLER})\b)*`, "i")
+const SPAN_WORDS = /^((?:\s+[\p{L}\p{N}'’]+)+)(\s+|\s*,\s*)$/u
+const PREPOSITION = /^(?:under|for|at|in|on|by|with|without|from|after|before|until|during|regardless)$/i
+const TAIL_LEAD = /^[\s,:;.!?()"'”’\u2014\u2013-]*(?:(?:no|nope|nah|please|but|and|so|just|actually|wait|oh|hmm)[\s,.!]+)*/i
+const TAIL_END = /^(?:\s+(?:to|up|on|over|into|it|that|this|them|one|there|yet|now|again|please|ever|today|anymore|either|the\s+(?:link|site|website|page|url|address)))*[\s)"'”’]*(?:[.!?;,]|$)/i
+const BARE_END = /(?:^|[\s.!?,;:(])(?:don['’]?t|do\s+not|never)[\s.!?)]*$/i
+const DOTS = /[\uff0e\u3002\uff61\u2024]/g
+const HOST_RUN = /[\p{L}\p{N}\p{M}][\p{L}\p{N}\p{M}-]*(?:\.[\p{L}\p{N}\p{M}-]+)*/gu
+const LABEL_BEFORE = /[a-z\d](?:-*|\.)$/
+const LABEL_AFTER = /^(?:-*|\.)[a-z\d]/
+const WORDS = /\S+/g
+// eslint-disable-next-line no-control-regex -- Grounding rejects C0 controls and DEL without advancing a global regex cursor.
+const CONTROL = /[\u0000-\u001f\u007f]/
+// eslint-disable-next-line no-control-regex -- Grounded excerpts normalize every C0 control and DEL.
+const CONTROLS = /[\u0000-\u001f\u007f]/g
+
+interface NamePatterns {
+  readonly command: RegExp
+  readonly directRequest: RegExp
+  readonly spokenCommand: RegExp
+  readonly spokenRequest: RegExp
+  readonly search: RegExp
+  readonly sentenceStart: RegExp
+  readonly questionStart: RegExp
+  readonly questionStartWhy: RegExp
+}
+
+const namePatterns = new Map<string, NamePatterns>()
+
+function patterns(assistantName: string): NamePatterns {
+  const key = assistantName.trim().toLowerCase() || "eliza"
+  const known = namePatterns.get(key)
+  if (known !== undefined) return known
+  const name = key.split(/\s+/).map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join(String.raw`\s+`)
+  const lead = String.raw`^(?:(?:hey|hi|ok|okay)[,.!]?\s+)?(?:${name}[,.!]?\s+)?`
+  const questionOpener = String.raw`(?:^|[.!?:,])\s*(?:(?:hey|hi|ok|okay|${name}|please|so|well|then|but|and|oh|hmm)[\s,.!]*)*`
+  const request = String.raw`(?:(?:can|could|would|will)\s+you\s+(?:please,?\s+)?(?:${EVERYDAY_COMMAND}|${OPEN_COMMAND})|(?:please,?\s+)?${EVERYDAY_COMMAND})`
+  const built: NamePatterns = {
+    command: compiled(String.raw`${lead}(?:please,?\s+)?${OPEN_COMMAND}\s+(\S+)(\s.*)?$`, "i"),
+    directRequest: compiled(String.raw`${lead}${request}\s+(?:the\s+)?(\S+)(\s+(?:web\s?)?site\b)?(\s.*)?$`, "i"),
+    spokenCommand: compiled(String.raw`(${lead}(?:please,?\s+)?${OPEN_COMMAND}\s+)(${SPOKEN_ADDRESS_TOKEN})(\s.*)?$`, "iu"),
+    spokenRequest: compiled(String.raw`(${lead}${request}\s+)(${SPOKEN_ADDRESS_TOKEN})(\s.*)?$`, "iu"),
+    search: compiled(String.raw`${lead}(?:please,?\s+)?${SEARCH_COMMAND}\s+(\S.*)$`, "i"),
+    sentenceStart: compiled(String.raw`(?:^|[.!?:])\s*(?:(?:hey|hi|ok|okay|${name}|please)[\s,.!]*)*$`, "i"),
+    questionStart: compiled(`${questionOpener}$`, "i"),
+    questionStartWhy: compiled(String.raw`${questionOpener}why\s+(?:do|does|did)?$`, "i"),
+  }
+  namePatterns.set(key, built)
+  return built
+}
+
+function unreadable(text: unknown): boolean {
+  return typeof text !== "string" || text.length > 8192 || CONTROL.test(text)
+}
+
+function topLevel(url: URL): string {
+  return url.hostname.slice(url.hostname.lastIndexOf(".") + 1)
+}
+
+function webAddress(token: string): URL | undefined {
+  if (!ADDRESS.test(token) || /["`]/.test(token)) return undefined
+  const parsed = parseBrowserAddressInput(token, { defaultProtocol: "https:" })
+  if (parsed.kind !== "url") return undefined
+  const url = URL.parse(parsed.href)
+  if (url === null) return undefined
+  if (url.protocol === "http:" && url.port === "") url.protocol = "https:"
+  const labels = url.hostname.split(".")
+  if (url.protocol !== "https:" || url.hostname.length > 253 || !labels.every((label) => LABEL.test(label))
+    || !IANA_TLDS.has(labels[labels.length - 1] ?? "")) return undefined
+  if (url.search === "") url.search = ""
+  if (url.hash === "") url.hash = ""
+  return url
+}
+
+function unquoted(query: string): string {
+  const quoted = /^(["'“‘])(.+)(["'”’])$/u.exec(query)
+  return quoted !== null && QUOTE_PAIRS[quoted[1] ?? ""] === quoted[3] ? (quoted[2] ?? "").trim() : query
+}
+
+function plain(text: string): string {
+  return text
+    .replace(/[\u00ad\u200b-\u200f\u2060\ufeff]/g, "")
+    .replace(/[‘ʼ´`]/g, "'")
+    .normalize("NFKC")
+    .replace(/[*_~[\]{}<>|^]|\p{Extended_Pictographic}|\p{Emoji_Modifier}|\ufe0f|\u20e3/gu, " ")
+}
+
+function closingMarkProse(address: string, addressAlone: boolean): boolean {
+  const bare = stripTrailingPunctuation(address, ".,!?")
+  return closingMarkIsProse(addressAlone, /[/?#]/.test(bare.replace(/^https?:\/\//i, "")), webAddress(bare)?.href !== webAddress(address)?.href)
+}
+
+export function authoredBrowserOpen(text: string, assistantName: string = DEFAULT_ASSISTANT_NAME): BrowserOpen | undefined {
+  if (unreadable(text)) return undefined
+  const command = patterns(assistantName).command.exec(text.trim())
+  if (command === null) return undefined
+  let target = command[1] ?? ""
+  let newTab = false
+  const tail = command[2]
+  if (tail !== undefined) {
+    let rest = tail
+    const placement = IN_NEW_TAB.exec(rest) ?? IN_BROWSER.exec(rest)
+    if (placement !== null) {
+      newTab = IN_NEW_TAB.test(rest)
+      rest = rest.slice(placement[0].length)
+    }
+    if (!(placement !== null && /^[.,!?]*$/.test(rest)) && !SUFFIX.test(placement !== null ? rest.replace(/^,/, "") : rest)) return undefined
+    target = target.replace(/,$/, "")
+  }
+  const quoted = /^(["'“‘])(.+)(["'”’])[.,!?]*$/u.exec(target)
+  if (quoted !== null) {
+    if (QUOTE_PAIRS[quoted[1] ?? ""] !== quoted[3]) return undefined
+    target = quoted[2] ?? ""
+  } else {
+    if (!closingMarkProse(target, false)) return undefined
+    target = stripTrailingPunctuation(target, ".,!?")
+  }
+  const href = webAddress(target)?.href
+  return href === undefined ? undefined : { href, newTab }
+}
+
+export function authoredBrowserDestination(text: string, assistantName: string = DEFAULT_ASSISTANT_NAME): string | undefined {
+  return authoredBrowserOpen(text, assistantName)?.href
+}
+
+function typedBrowserOpen(text: string, assistantName: string): BrowserOpen | undefined {
+  const strict = authoredBrowserOpen(text, assistantName)
+  if (strict !== undefined) return strict
+  const question = patterns(assistantName).directRequest.exec(text.trim())
+  if (question !== null) {
+    const typed = question[1] ?? ""
+    const destination = authoredBrowserOpen(`Open ${typed}${question[3] ?? ""}`)
+    const url = destination === undefined ? null : URL.parse(destination.href)
+    if (destination === undefined || url === null) return undefined
+    if (FILE_TYPE_TLDS.has(topLevel(url)) && !/^(?:https?:\/\/|www\.)/i.test(typed) && question[2] === undefined) return undefined
+    return destination
+  }
+  const bare = text.trim()
+  const url = webAddress(bare)
+  if (url === undefined || !closingMarkProse(bare, true)) return undefined
+  if (FILE_TYPE_TLDS.has(topLevel(url)) && !/^(?:https?:\/\/|www\.)/i.test(bare)) return undefined
+  return { href: url.href, newTab: false }
+}
+
+interface SplitTldAddress extends Word {
+  readonly token: string
+  readonly hostname: string
+}
+
+const SPLIT_TLD = /(?<!\S)((?:https?:\/\/)?[\p{L}\p{N}-]+(?:\.[\p{L}\p{N}-]+)*)\.\p{Zs}+([A-Z]{2})(?=\p{Zs})/gu
+
+function splitTldAddresses(text: string): SplitTldAddress[] {
+  return matchesOf(text, SPLIT_TLD).flatMap(({ index, 0: value, 1: host, 2: suffix }) => {
+    if (host === undefined || suffix === undefined || !IN_BROWSER.test(text.slice(index + value.length))) return []
+    const token = `${host}.${suffix.toLowerCase()}`
+    const address = webAddress(token)
+    return address === undefined ? [] : [{ value, index, token, hostname: address.hostname }]
+  })
+}
+
+function splitTldBrowserOpen(text: string, assistantName: string, split: SplitTldAddress | undefined): BrowserOpen | undefined {
+  if (split === undefined) return undefined
+  return typedBrowserOpen(`${text.slice(0, split.index)}${split.token}${text.slice(split.index + split.value.length)}`, assistantName)
+}
+
+function directBrowserOpen(text: string, assistantName: string = DEFAULT_ASSISTANT_NAME): BrowserOpen | undefined {
+  if (unreadable(text)) return undefined
+  return typedBrowserOpen(text, assistantName) ?? splitTldBrowserOpen(text, assistantName, splitTldAddresses(text)[0])
+}
+
+export function directBrowserDestination(text: string, assistantName: string = DEFAULT_ASSISTANT_NAME): string | undefined {
+  const open = directBrowserOpen(text, assistantName)
+  const href = directDestination(!unreadable(text), open !== undefined, open?.href ?? "")
+  return href === "" ? undefined : href
+}
+
+export function spokenBrowserOpen(text: string, assistantName: string = DEFAULT_ASSISTANT_NAME): BrowserOpen | undefined {
+  if (unreadable(text)) return undefined
+  const names = patterns(assistantName)
+  const request = text.trim()
+  const spoken = names.spokenCommand.exec(request) ?? names.spokenRequest.exec(request)
+  if (spoken === null) return undefined
+  const before = spoken[1] ?? ""
+  const address = spoken[2] ?? ""
+  const after = spoken[3] ?? ""
+  const words = stripTrailingPunctuation(address, ".,!?")
+  if (!SPOKEN_HOSTNAME.test(words)) return undefined
+  const open = directBrowserOpen(`${before}${words.replace(SPOKEN_DOT, ".")}${address.slice(words.length)}${after}`, assistantName)
+  const url = open === undefined ? null : URL.parse(open.href)
+  if (open === undefined || url === null) return undefined
+  const labels = url.hostname.replace(/^www\./, "").split(".")
+  if (SPOKEN_PROSE_LABELS.has(labels[0] ?? "")) return undefined
+  if (FILE_TYPE_TLDS.has(labels[labels.length - 1] ?? "") && !IN_BROWSER.test(after) && !IN_NEW_TAB.test(after) && !SITE_AFTER.test(after)) return undefined
+  return open
+}
+
+export function spokenBrowserDestination(text: string, assistantName: string = DEFAULT_ASSISTANT_NAME): string | undefined {
+  return spokenBrowserOpen(text, assistantName)?.href
+}
+
+interface Word {
+  readonly value: string
+  readonly index: number
+}
+
+interface TypedAddress {
+  readonly url: URL
+  readonly webSignal: boolean
+  readonly negated: boolean
+  readonly piece: boolean
+}
+
+function wordsOf(text: string): Word[] {
+  return matchesOf(text, WORDS).map((match) => ({ value: match[0], index: match.index }))
+}
+
+function addressWords(text: string): Word[] {
+  return matchesOf(text, ADDRESS_WORD).map((match) => {
+    const value = match[1] ?? match[2] ?? ""
+    return { value, index: match.index + match[0].length - value.length }
+  })
+}
+
+function typedAddresses(text: string, assistantName: string): TypedAddress[] {
+  const spoken = addressWords(text).filter(({ value }) => {
+    const words = stripTrailingPunctuation(value.replace(/^[("'“‘«<[]+/u, ""), ")]>\"'”’».,!?;:")
+    return SPOKEN_HOSTNAME.test(words) && webAddress(words.replace(SPOKEN_DOT, ".")) !== undefined
+  })
+  const found: TypedAddress[] = []
+  for (const word of wordsOf(text)) {
+    const lead = word.value.replace(/^[("'“‘«<[]+/u, "")
+    const tokens = new Set([lead, stripTrailingPunctuation(lead, ")]>\"'”’».,!?;:").replace(/['’]s$/u, "")])
+    for (const token of tokens) {
+      const url = webAddress(token)
+      if (url === undefined) continue
+      const before = text.slice(Math.max(0, word.index - 500), word.index)
+      const after = text.slice(word.index + word.value.length)
+      found.push({
+        url,
+        webSignal: /^(?:https?:\/\/|www\.)/i.test(token) || SITE_BEFORE.test(before.slice(-40)) || SITE_AFTER.test(after),
+        negated: refused(text, word, assistantName),
+        piece: spoken.some(({ value, index }) => word.index >= index && word.index < index + value.length),
+      })
+    }
+  }
+  return found
+}
+
+function asciiHost(run: string): string {
+  return URL.parse(`https://${run}`)?.hostname ?? run
+}
+
+function hostWords(text: string, host: string): Word[] {
+  if (host === "") return []
+  const names = (form: string) => {
+    for (let at = form.indexOf(host); at >= 0; at = form.indexOf(host, at + 1)) {
+      const before = form.slice(Math.max(0, at - 64), at)
+      if ((!LABEL_BEFORE.test(before) || (before.endsWith("www.") && !LABEL_BEFORE.test(before.slice(0, -4))))
+        && !LABEL_AFTER.test(form.slice(at + host.length, at + host.length + 64))) return true
+    }
+    return false
+  }
+  return [...wordsOf(text), ...addressWords(text)].filter((word) => {
+    const read = plain(word.value.replace(DOTS, ".").replace(SPOKEN_DOT, "."))
+    return names(read.toLowerCase()) || (/[^\p{ASCII}]/u.test(read) && names(read.replace(HOST_RUN, asciiHost).toLowerCase()))
+  })
+}
+
+function refused(text: string, word: Word, assistantName: string): boolean {
+  const end = word.index + word.value.length
+  return BARE_END.test(plain(text.slice(-200))) || negatesOpen(text, word.index, assistantName) || negatedAfter(plain(text.slice(end, end + 200)))
+}
+
+function negatesOpen(text: string, at: number, assistantName: string): boolean {
+  const names = patterns(assistantName)
+  const before = plain(text.slice(Math.max(0, at - 500), at))
+  const targets = [before.length]
+  const verbs = matchesOf(before, OPEN_VERBS)
+  let first = verbs.length - 1
+  let listed = false
+  while (first > 0) {
+    const previous = verbs[first - 1]
+    const current = verbs[first]
+    if (previous === undefined || current === undefined) break
+    const between = before.slice(previous.index + previous[0].length, current.index)
+    if (VERB_JOIN.test(between) || OBJECT_JOIN.test(between)) listed = true
+    else if (!listed || !LIST_JOIN.test(between)) break
+    first--
+  }
+  const earliest = verbs[0]
+  if (first === 0 && verbs.length > 1 && at > 500 && earliest !== undefined && earliest.index < 160) return true
+  const governing = verbs[first]
+  if (first >= 0 && governing !== undefined) targets.push(governing.index)
+  for (const negation of matchesOf(before, NEGATIONS)) {
+    const end = negation.index + negation[0].length
+    if (politeQuestion(before, negation.index, end, names)) continue
+    for (const target of targets) {
+      if (target < end || target - end > 160) continue
+      const standalone = negation[1] !== undefined && names.sentenceStart.test(before.slice(Math.max(0, negation.index - 40), negation.index))
+      if (governs(before.slice(end, target), standalone) && (negation[2] === undefined || /ing\b/i.test(before.slice(end, target + 12)))) return true
+    }
+  }
+  return false
+}
+
+function negatedAfter(after: string): boolean {
+  const tail = after.slice(TAIL_LEAD.exec(after)?.[0].length ?? 0)
+  const negation = NEGATION_HERE.exec(tail)
+  if (negation === null) return false
+  const rest = tail.slice(negation[0].length)
+  if (negation[1] !== undefined && /^[\s)]*(?:[.!?;]|$)/.test(rest)) return true
+  const verb = OPEN_VERB.exec(rest)
+  return verb !== null && governs(rest.slice(0, verb.index), false)
+    && (negation[2] === undefined || /ing\b/i.test(rest.slice(0, verb.index + verb[0].length)))
+    && TAIL_END.test(rest.slice(verb.index + verb[0].length))
+}
+
+function politeQuestion(text: string, start: number, end: number, names: NamePatterns): boolean {
+  if (names.questionStartWhy.test(text.slice(Math.max(0, start - 60), start))) return true
+  const word = /[\p{L}'’]+$/u.exec(text.slice(0, end))
+  return word !== null && /^(?:ca|could|wo|would|should)n['’]?t$/i.test(word[0]) && /^\s+(?:you|u)\b/i.test(text.slice(end))
+    && names.questionStart.test(text.slice(Math.max(0, word.index - 60), word.index))
+}
+
+function governs(text: string, standalone: boolean): boolean {
+  const span = standalone ? text.replace(/[.!]+/g, ",") : text
+  const rest = span.slice(SPAN_HEAD.exec(span)?.[0].length ?? 0)
+  if (/^(?:[\s,\u2014\u2013"'“”’-]|\.{2,})*$/.test(rest)) return true
+  const phrase = SPAN_WORDS.exec(rest)
+  if (phrase === null) return false
+  const words = (phrase[1] ?? "").trim().split(/\s+/)
+  const prepositional = PREPOSITION.test(words[0] ?? "")
+  return (!(phrase[2] ?? "").includes(",") || prepositional)
+    && !words.some((word) => /^(?:and|but|then|so)$/i.test(word))
+    && words.filter((word) => !FILLERS.has(word.toLowerCase())).length <= (prepositional ? 8 : 4)
+    && !/^(?:forget|forgot|hesitate|fail|neglect)\s+to\b/i.test(words.join(" "))
+}
+
+function proposedAddress(proposedUrl: string): URL | undefined {
+  const parsed = parseBrowserAddressInput(proposedUrl, { defaultProtocol: "https:" })
+  const proposed = parsed.kind === "url" ? URL.parse(parsed.href) : null
+  if (proposed === null) return undefined
+  if (proposed.protocol === "http:" && proposed.port === "") proposed.protocol = "https:"
+  return proposed.protocol === "https:" ? proposed : undefined
+}
+
+function typedPath(url: URL): boolean {
+  return url.pathname !== "/" || url.search !== "" || url.hash !== ""
+}
+
+function authoredPath(url: URL): string {
+  return url.pathname.replace(/\/$/, "") + url.search
+}
+
+function rankOf(url: URL, proposed: URL): number {
+  if (url.href === proposed.href) return 1
+  if (typedPath(url)) return authoredPath(url) === authoredPath(proposed) ? 2 : 0
+  return url.hostname === proposed.hostname ? 3 : 4
+}
+
+interface Evidence {
+  readonly vetoed: boolean
+  readonly candidates: GroundedAddress[]
+}
+
+function groundingEvidence(userText: string, proposed: URL, assistantName: string): Evidence {
+  const host = proposed.hostname.replace(/^www\./, "")
+  const typed = typedAddresses(userText, assistantName).filter(({ url }) => url.hostname.replace(/^www\./, "") === host)
+  const splitAddresses = splitTldAddresses(userText)
+  const hostReferences = [...hostWords(userText, host), ...splitAddresses.filter(({ hostname }) => hostname.replace(/^www\./, "") === host)]
+  const vetoed = typed.some(({ negated }) => negated) || hostReferences.some((word) => refused(userText, word, assistantName))
+  const split = splitTldBrowserOpen(userText, assistantName, splitAddresses[0])
+  const literal = typed.filter(({ piece }) => !piece)
+  if (split !== undefined || literal.length === 0) {
+    const authoredHref = split?.href ?? spokenBrowserDestination(userText, assistantName)
+    return { vetoed, candidates: authoredHref === undefined ? [] : [{ authoredHref, qualifies: authoredHref === proposed.href, rank: 1 }] }
+  }
+  const strict = authoredBrowserDestination(userText, assistantName)
+  const strictHost = strict === undefined ? undefined : URL.parse(strict)?.host
+  return {
+    vetoed,
+    candidates: literal.map(({ url, webSignal }) => ({
+      authoredHref: url.href,
+      qualifies: url.port === proposed.port && (webSignal || url.host === strictHost || !FILE_TYPE_TLDS.has(topLevel(url))),
+      rank: rankOf(url, proposed),
+    })),
+  }
+}
+
+function namesHost(userText: string, proposed: URL, assistantName: string): boolean {
+  const host = proposed.hostname.replace(/^www\./, "")
+  const spoken = spokenBrowserDestination(userText, assistantName)
+  return typedAddresses(userText, assistantName).some(({ url }) => url.hostname.replace(/^www\./, "") === host)
+    || hostWords(userText, host).length > 0
+    || splitTldAddresses(userText).some(({ hostname }) => hostname.replace(/^www\./, "") === host)
+    || (spoken !== undefined && URL.parse(spoken)?.hostname.replace(/^www\./, "") === host)
+}
+
+function pageLinkOf(proposedUrl: string): string {
+  const parsed = parseBrowserAddressInput(proposedUrl, { defaultProtocol: "https:" })
+  return parsed.kind === "url" ? parsed.href.split("#", 1)[0] ?? "" : ""
+}
+
+export function groundBrowserDestination(userText: string, proposedUrl: string, assistantName: string = DEFAULT_ASSISTANT_NAME, pageLinks: readonly string[] = []): string | undefined {
+  const readable = !unreadable(userText) && typeof proposedUrl === "string"
+  const proposed = readable ? proposedAddress(proposedUrl) : undefined
+  const evidence: Evidence = proposed === undefined ? { vetoed: false, candidates: [] } : groundingEvidence(userText, proposed, assistantName)
+  const href = pageLinkDestination(readable, proposed !== undefined, evidence.vetoed, evidence.candidates, [...pageLinks], proposed === undefined ? "" : pageLinkOf(proposedUrl))
+  return href === "" ? undefined : href
+}
+
+export function reviewableBrowserDestination(userText: string, proposedUrl: string, assistantName: string = DEFAULT_ASSISTANT_NAME): string | undefined {
+  const readable = !unreadable(userText) && typeof proposedUrl === "string"
+  const proposed = readable ? webAddress(proposedUrl.trim()) : undefined
+  const valid = proposed !== undefined && proposed.port === ""
+  const href = proposedDestination("", readable, valid, proposed !== undefined && namesHost(userText, proposed, assistantName), proposed?.href ?? "")
+  return href === "" ? undefined : href
+}
+
+export function containsWebAddress(text: string): boolean {
+  return typeof text === "string" && typedAddresses(text.slice(0, 8192).replace(CONTROLS, " "), DEFAULT_ASSISTANT_NAME).length > 0
+}
+
+export function directBrowserSearchQuery(text: string, assistantName: string = DEFAULT_ASSISTANT_NAME): string | undefined {
+  if (unreadable(text)) return undefined
+  const command = patterns(assistantName).search.exec(text.trim())
+  if (command === null) return undefined
+  let query = command[1] ?? ""
+  for (let rest = ""; rest !== query; query = query.replace(SEARCH_SUFFIX, "")) rest = query
+  query = unquoted(query.replace(/\s+/g, " "))
+  return query !== "" && query.length <= BROWSER_SEARCH_QUERY_MAX ? query : undefined
+}
+
+export function browserSearchQueryMatches(query: string, direct: string | undefined): boolean {
+  return direct !== undefined && unquoted(query.trim()).toLowerCase() === direct.toLowerCase()
+}
+
+function typedSpelling(userText: string, proposedQuery: string): string | undefined {
+  const text = userText.trim().replace(/\s+/g, " ")
+  const query = proposedQuery.trim().replace(/\s+/g, " ")
+  if (query === "" || query.length > BROWSER_SEARCH_QUERY_MAX) return undefined
+  const lower = text.toLowerCase()
+  const sameLength = lower.length === text.length && query.toLowerCase().length === query.length
+  const hay = sameLength ? lower : text
+  const needle = sameLength ? query.toLowerCase() : query
+  const edge = /[\p{L}\p{N}]/u
+  for (let at = hay.indexOf(needle); at >= 0; at = hay.indexOf(needle, at + 1)) {
+    const before = text.slice(0, at).slice(-1)
+    const after = text.slice(at + query.length, at + query.length + 1)
+    if (!(edge.test(before) && edge.test(query[0] ?? "")) && !(edge.test(after) && edge.test(query[query.length - 1] ?? ""))) {
+      return text.slice(at, at + query.length)
+    }
+  }
+  return undefined
+}
+
+export function typedBrowserWords(userText: string, proposedWords: string): string | undefined {
+  return unreadable(userText) || typeof proposedWords !== "string" ? undefined : typedSpelling(userText, proposedWords)
+}
+
+export function groundBrowserSearchQuery(userText: string, proposedQuery: string): string | undefined {
+  const readable = !unreadable(userText) && typeof proposedQuery === "string"
+  const proposed = readable ? proposedQuery.trim().replace(/\s+/g, " ") : ""
+  const typed = readable ? typedSpelling(userText, proposedQuery) : undefined
+  const grounded = groundedSearch({ readable, fits: proposed !== "" && proposed.length <= BROWSER_SEARCH_QUERY_MAX, typedAsWholeWords: typed !== undefined, typedSpelling: typed ?? "", proposed })
+  return grounded === "" ? undefined : grounded
+}
+
+export function browserDestinationMatches(operation: unknown, destination: string | undefined): boolean {
+  if (destination === undefined || destination === "" || typeof operation !== "object" || operation === null || Array.isArray(operation)) return false
+  if (!("type" in operation) || operation.type !== "browser_navigate" || !("url" in operation) || typeof operation.url !== "string") return false
+  const parsed = parseBrowserAddressInput(operation.url, { defaultProtocol: "https:" })
+  return parsed.kind === "url" && parsed.href === destination
+}

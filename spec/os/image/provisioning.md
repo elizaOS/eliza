@@ -6,7 +6,7 @@ keep the launcher eligible for the phone and messages roles, the image
 features that image-only surfaces check, power-button voice on a listener
 image, and the system apps that keep the lock screen, alarms and secure
 capture. The writer is `src/image/provisioning.vibe`, exported from
-`@elizaos/os/image`; the sources are develop's `launcher-provisioning.mjs`,
+`@elizaos/os`; the sources are develop's `launcher-provisioning.mjs`,
 `image-capability.mjs`, `aosp-clock-handlers.mjs` and `secure-camera.mjs`.
 
 The shell reads the admitted APK's manifest ([APK admission](./apk.md)) with

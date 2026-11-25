@@ -1,10 +1,9 @@
 // spec/workflow/admission.md, "Activation commits against the exact reviewed version and names the version it produced"; spec/workflow/lifecycle.md, "A retained mutation has the same receipt after later definition changes"; spec/workflow/index.md, "A saved request and an admitted execution preserve their separate identities"; spec/workflow/lifecycle.md, "Story: Change the workflow I named in my own words"; spec/workflow/lifecycle.md, "A workflow change runs as the planner proposed it, which is the model's reading of the owner's request"; spec/workflow/lifecycle.md, "A workflow reference resolves to the one workflow the owner named, and a remove or rename never acts on part of a name"; spec/workflow/lifecycle.md, "A workflow the owner names never shares its name"; spec/workflow/lifecycle.md, "Story: Hear from chat what my workflows are and what happened to them"; spec/workflow/lifecycle.md, "A search ranks workflows by how many of its words their name or description holds"; spec/workflow/lifecycle.md, "Only a change refused before it wrote says nothing changed, and an unread list is never an empty one"; spec/workflow/hostedDigest.md, "Story: Get my on-demand dossier in chat from the phone source I chose"; spec/workflow/hostedDigest.md, "A chat dossier reads only the one current reviewed phone source the owner chose"; spec/workflow/hostedDigest.md, "A chat dossier is one run for each owner message and answers with its finished briefing"
-import { showsApp } from "@elizaos/agent"
+import { showsApp } from "@elizaos/agent-host"
 import type { Action, ActionResult, ContextDefinition, EffectReceipt, IAgentRuntime, Memory, Provider } from "@elizaos/core"
 import { createdName, failureReport, retryAllowed, workflowListing, type ReferenceOp } from "../gen/workflow__lifecycle.effect.vibe"
 import { dossierReply, dossierSource, dossierStarts } from "../gen/workflow__hostedDigest.effect.vibe"
-import { typedStepsText } from "./client/workflow-client.vibe"
-import { workflowSha, workflowUuid } from "./contract/phone.vibe"
+import { typedStepsText, workflowSha, workflowUuid } from "@elizaos/plugin-workflow-client"
 import {
   normalizeWorkflowName, ownerWords, ownerZone, resolveWorkflowReference, searchWorkflows,
   type ReferenceOptions, type WorkflowReferenceRefused, type WorkflowView,

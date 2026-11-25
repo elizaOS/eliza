@@ -1,14 +1,6 @@
 // spec/core/execution.md, "Story: Settle an action before publishing its callback"; spec/core/execution.md, "Callbacks wait for a valid admitted result"; spec/core/secretSession.md, "Egress restores pseudonyms before placeholders, and recognition never reads a placeholder"
 import { errorText } from "../utils/errors.vibe"
 import { randomUuid } from "../utils/uuid.vibe"
-import {
-  beginRequestOperationAttempt,
-  type BoundRequestOperationAttempt,
-  bindRequestOperationResult,
-  getBoundOperationDenialAttempt,
-  getBoundOperationDenialOperation,
-} from "../actions/task-extraction-context.vibe"
-import { copyBoundOperationDenial } from "./operation-restriction-projection.vibe"
 
 import { type ValidateToolArgsResult, validateToolArgs } from "../actions/validate-tool-args.vibe"
 import { evaluateConnectorAccountPolicies } from "../connectors/account-manager.vibe"
@@ -320,13 +312,6 @@ effect function projectActionResultForClipboard(
     : undefined
   const safeActionName = actionName ?? resultActionName
   const safeControlData = {
-    ...(getBoundOperationDenialAttempt(result)
-      ? {
-        code: result.data?.code,
-        executionStatus: "not_started",
-        executed: false,
-      }
-      : {}),
     ...(safeActionName ? { actionName: safeActionName } : {}),
     ...resultControlFlags(result),
   }
@@ -372,11 +357,6 @@ effect function projectActionResultForClipboard(
       ? { continueChain: result.continueChain }
       : {}),
   }
-  const projectionAttempt = getBoundOperationDenialAttempt(result)
-  if (projectionAttempt) {
-    try bindRequestOperationResult(projected, projectionAttempt)
-  }
-  copyBoundOperationDenial(result, projected, projectionAttempt)
   return projected
 }
 
@@ -557,7 +537,6 @@ interface EarlyResult {
 
 interface AdmittedArguments {
   readonly kind: "admitted"
-  readonly requestOperationAttempt: BoundRequestOperationAttempt | undefined
   readonly validation: ValidateToolArgsResult
 }
 
@@ -628,77 +607,8 @@ effect function admitCaller(run: PlannedRun, ctx: ExecutePlannedToolCallContext)
   return { kind: "admitted" as const, executorCtx }
 }
 
-effect function admitRequestRestriction(
-  run: PlannedRun,
-  executorCtx: ExecutePlannedToolCallContext,
-  requestOperationAttempt: BoundRequestOperationAttempt | undefined,
-) {
-  const { runtime, action, toolCall } = run
-  if (!action.restrictRequestOperation) return undefined
-  const restriction: unknown = try foreignSync(() =>
-    runWithActionRoutingContext(
-      {
-        actionName: action.name,
-        modelClass: action.modelClass,
-        messageId: executorCtx.message.id,
-        requestMessage: executorCtx.message,
-        requestState: executorCtx.state,
-        requestRuntime: runtime,
-        hostAttemptId: run.ownerExecutionId,
-        requestOperationAttempt,
-      },
-      () =>
-        action.restrictRequestOperation?.({
-          runtime,
-          message: executorCtx.message,
-          state: executorCtx.state,
-          action,
-          params: toolCall.params,
-        }),
-    )
-  )
-  if (restriction === undefined) return undefined
-  if (
-    !isObjectRecord(restriction)
-    || restriction.success !== false
-    || !getBoundOperationDenialOperation(restriction)
-    || !requestOperationAttempt
-    || getBoundOperationDenialAttempt(restriction) !== requestOperationAttempt
-  ) {
-    return early(failureResult(
-      action.name,
-      "Invalid request-operation restriction result",
-      {
-        code: "ACTION_REQUEST_RESTRICTION_INVALID",
-        acceptance: "rejected",
-        executionStatus: "not_started",
-        executed: false,
-        retryable: false,
-      },
-      {
-        kind: "handler_error",
-        boundary: "handler",
-        code: "ACTION_REQUEST_RESTRICTION_INVALID",
-        retryable: false,
-      },
-    ))
-  }
-  return early(try normalizeActionResult(action.name, restriction, requestOperationAttempt))
-}
-
 effect function admitArguments(run: PlannedRun, executorCtx: ExecutePlannedToolCallContext) {
   const { runtime, action, toolCall } = run
-  const requestOperationAttempt = executorCtx.state
-    ? beginRequestOperationAttempt({
-      runtime,
-      state: executorCtx.state,
-      message: executorCtx.message,
-      action,
-    })
-    : undefined
-  const restricted = try admitRequestRestriction(run, executorCtx, requestOperationAttempt)
-  if (restricted) return restricted
-
   if (
     "args" in toolCall
     || "arguments" in toolCall
@@ -718,7 +628,6 @@ effect function admitArguments(run: PlannedRun, executorCtx: ExecutePlannedToolC
             retryable: true,
           },
         ),
-        requestOperationAttempt,
       ),
       gateCapture(run, "schema", "denied"),
     )
@@ -778,12 +687,11 @@ effect function admitArguments(run: PlannedRun, executorCtx: ExecutePlannedToolC
             retryable: true,
           },
         ),
-        requestOperationAttempt,
       ),
       gateCapture(run, "schema", "denied"),
     )
   }
-  return { kind: "admitted", requestOperationAttempt, validation } satisfies AdmittedArguments
+  return { kind: "admitted", validation } satisfies AdmittedArguments
 }
 
 effect function admitHandler(
@@ -923,7 +831,6 @@ effect function invokePlannedAction(
   run: PlannedRun,
   executorCtx: ExecutePlannedToolCallContext,
   handlerOptions: HandlerOptions,
-  requestOperationAttempt: BoundRequestOperationAttempt | undefined,
   actionCallback: HandlerCallback | undefined,
 ) {
   const { runtime, action } = run
@@ -970,7 +877,6 @@ effect function invokePlannedAction(
     requestState: executorCtx.state,
     requestRuntime: runtime,
     hostAttemptId: run.ownerExecutionId,
-    requestOperationAttempt,
   }
   return try ensuring(
     foreign(() =>
@@ -997,7 +903,7 @@ effect function runPlannedAction(
   admittedHandler: AdmittedHandler,
 ) {
   const { runtime, action } = run
-  const { requestOperationAttempt, validation } = admittedArguments
+  const { validation } = admittedArguments
   const messageId = executorCtx.message.id
   const roomId = executorCtx.message.roomId
   const worldId = try cached(resolveActionEventWorldId(
@@ -1035,7 +941,6 @@ effect function runPlannedAction(
     runDetached(settleActionHandler({
       runtime,
       action,
-      operationAttempt: requestOperationAttempt,
       callback,
       beforeCallbacks: thrown((result: ActionResult) =>
         publishSettledResult(runtime, action, result, admittedHandler.onBeforeCallbacks)
@@ -1045,7 +950,6 @@ effect function runPlannedAction(
           run,
           executorCtx,
           admittedHandler.handlerOptions,
-          requestOperationAttempt,
           actionCallback,
         )),
     }))

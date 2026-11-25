@@ -5,7 +5,7 @@ import type * as TS from "typescript";
 import { InstallationChanged } from "../installed.ts";
 import { isStd, type Spec } from "../parse.ts";
 import { exec } from "../run.ts";
-import { fileCitations, HAS_CITATION, indent, isTestFile, manifest, missingCitations, owner, packageCode, packageManager, packageScripts, testInputs, testReceipt, tokenize, tsApi, type Citation, type Remember, type Reported } from "../util.ts";
+import { citations, companions, fileCitations, HAS_CITATION, indent, isTestFile, manifest, missingCitations, owner, packageCode, packageManager, packageScripts, testInputs, testReceipt, tokenize, tsApi, type Citation, type Remember, type Reported } from "../util.ts";
 import type { TestProfile } from "./profile.ts";
 
 /** The configuration every package shares (vibestack/testing/vitest.ts): `spec init` writes it, and `check` where test/ has nothing to run it. */
@@ -239,7 +239,6 @@ function testRules(checking: string, dir: string, specs: Spec[], testEntries: re
   }
   for (const group of groups.values()) if (group.length > 1) said.push([true, "tests", `note: ${group.join(", ")} run in one runner, in one language; one test file each is the norm, so consolidate them`]);
   if (fs.existsSync(path.join(root, "src"))) {
-    const scripts = packageScripts(root);
     const checked = new Set(dirCitations.filter((c) => c.at.startsWith(`${dir}test/`)).map((c) => c.spec));
     const owned = new Map<string, boolean>();
     const belongs = (file: string) => {
@@ -247,8 +246,20 @@ function testRules(checking: string, dir: string, specs: Spec[], testEntries: re
       if (!owned.has(area)) owned.set(area, (owner(checking, file) ?? "") === dir.slice(0, -1));
       return owned.get(area);
     };
-    const unchecked = specs.filter((s) => s.stories.length && !isStd(s.file) && belongs(s.file) && !checked.has(s.file)
-      && !fs.existsSync(path.join(root, "test/drivers", `${s.name}.ts`)) && !fs.existsSync(path.join(root, "test/traces", `${s.name}.jsonl`)) && !(`driver:${s.name}` in scripts));
+    // A companion's tests and drivers check its owner's specs as the owner's own do (util.ts, `specCompanionPaths`).
+    const byCompanions = new Map<string, Set<string>>();
+    const checkedBesides = (file: string) => {
+      const area = file.match(/^spec\/[^/]*\//)?.[0] ?? "";
+      if (!byCompanions.has(area)) {
+        const others = companions(checking, file).map((other) => `${other}/`);
+        byCompanions.set(area, new Set(citations(checking, others).filter((c) => others.some((other) => c.at.startsWith(`${other}test/`))).map((c) => c.spec)));
+      }
+      return byCompanions.get(area)!;
+    };
+    const driven = (s: Spec) => [dir, ...companions(checking, s.file).map((other) => `${other}/`)].some((at) => fs.existsSync(path.join(checking, at, "test/drivers", `${s.name}.ts`))
+      || fs.existsSync(path.join(checking, at, "test/traces", `${s.name}.jsonl`)) || `driver:${s.name}` in packageScripts(path.join(checking, at)));
+    const unchecked = specs.filter((s) => s.stories.length && !isStd(s.file) && belongs(s.file) && !checked.has(s.file) && !checkedBesides(s.file).has(s.file)
+      && !driven(s));
     if (unchecked.length) said.push([true, "tests", `note: no test or driver checks ${unchecked.map((s) => s.file).join(", ")}; a story that leaves the verified core needs a journey that cites it`]);
   }
   return said;

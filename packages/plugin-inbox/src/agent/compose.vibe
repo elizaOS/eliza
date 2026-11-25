@@ -1,7 +1,7 @@
 // spec/inbox/handoff.md, "An agent's new email reaches only the requesting phone's composer"; spec/inbox/outgoing.md, "A send keeps the request identity of the owner turn that asked for it"
 import { OWNER_EXCLUSIVE_DISCLOSURE_GATE, type Action, type ActionResult, type Memory } from "@elizaos/core"
 import { composeAnswer } from "../../gen/inbox__handoff.effect.vibe"
-import { canonicalUuid } from "../mailbox/digest.vibe"
+import { canonicalUuid } from "@elizaos/plugin-inbox-client"
 
 export const inboxComposeActionName = "INBOX_COMPOSE_EMAIL"
 
