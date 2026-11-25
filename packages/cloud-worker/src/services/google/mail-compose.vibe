@@ -1,6 +1,7 @@
 // spec/cloud/services/google/mailOperations.md, "Story: Change or send from my mailbox once, as I reviewed it"
 import { refused } from "../../http/refusal.vibe"
 import { googleJson } from "../../providers/google.vibe"
+import { composeAddress, composeMailboxAddress } from "../../google-read.vibe"
 import { rfc822Id } from "./mail-operations.vibe"
 
 module node {
@@ -109,11 +110,9 @@ const maxMessageBytes = 8 * 1024 * 1024
 const maxAttachments = 10
 const maxRecipients = 50
 const gmail = "/gmail/v1/users/me"
-const mailAddress = /^[A-Za-z0-9.!#$%&'*+\-/=?^_`{|}~]+@[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?\.[A-Za-z]{2,63}$/
 const providerId = /^[A-Za-z0-9_-]{1,256}$/
 const rfcMessageId = /^<[^<>\s]+@[^<>\s]+>$/
 const referenceChain = /^(?:<[^<>\s]+@[^<>\s]+>\s*)+$/
-const mailbox = /^(?:"(?:[^"\\]|\\.)*"|[^<>,@"]*)\s*<([^<>]+)>$/
 const headerUnsafe = /[\r\n\0]/
 const mimeToken = /^[a-z0-9][a-z0-9!#$&^_.+-]{0,63}\/[a-z0-9][a-z0-9!#$&^_.+-]{0,63}$/i
 const fileName = /^[\x20-\x2e\x30-\x5b\x5d-\x7e\x80-\uffff]{1,120}$/
@@ -126,7 +125,7 @@ const sendable: Readonly<Record<string, RegExp>> = {
   "image/webp": /\.webp$/i
 }
 
-const Address = Schema.String.check(Schema.isMaxLength(254), Schema.isPattern(mailAddress))
+const Address = Schema.String.check(Schema.isMaxLength(254), Schema.isPattern(composeAddress))
 const Proposal = Schema.Struct({
   kind: Schema.Literals(["send", "draft-create", "draft-replace"]),
   mode: Schema.Literals(["compose", "reply", "reply-all", "forward"]),
@@ -180,11 +179,6 @@ function splitList(value: string): ReadonlyArray<string> {
   return entries.filter((entry) => entry !== "")
 }
 
-function addressOf(entry: string): string | undefined {
-  const address = (mailbox.exec(entry)?.[1] ?? entry).trim()
-  return address.length <= 254 && mailAddress.test(address) ? address : undefined
-}
-
 function sameAddress(left: string, right: string): boolean {
   return left.toLowerCase() === right.toLowerCase()
 }
@@ -216,14 +210,14 @@ effect function replyBinding(context: ComposeContext, messageId: string, subject
   const ids = headerValues(message, "Message-ID")
   const subjects = headerValues(message, "Subject")
   const chains = headerValues(message, "References")
-  const target = destination.length === 1 ? addressOf(destination[0] ?? "") : undefined
+  const target = destination.length === 1 ? composeMailboxAddress(destination[0] ?? "") : undefined
   const parentId = ids[0] ?? ""
   if (target === undefined || ids.length !== 1 || parentId.length > 254 || !rfcMessageId.test(parentId) || subjects.length > 1 || chains.length > 1) throw refused("PreconditionFailed")
   const chain = chains[0]
   if (chain !== undefined && (!referenceChain.test(chain) || chain.split(/\s+/).some((identity) => identity.length > 254))) throw refused("PreconditionFailed")
   const allowed = replySubject(subjects[0])
   if (!allowed.includes(allowed.length > 1 ? subject.trim() : subject)) throw refused("InvalidRequest")
-  const listed = [...headerValues(message, "To"), ...headerValues(message, "Cc")].flatMap(splitList).map(addressOf)
+  const listed = [...headerValues(message, "To"), ...headerValues(message, "Cc")].flatMap(splitList).map(composeMailboxAddress)
   if (listed.some((address) => address === undefined)) throw refused("PreconditionFailed")
   return {
     threadId: message.threadId,

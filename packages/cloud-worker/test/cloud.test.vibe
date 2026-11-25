@@ -2351,7 +2351,7 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
           { name: "Received-SPF", value: "pass (google.com: domain of ada@example.org designates 192.0.2.10 as permitted sender)" },
           { name: "Authentication-Results", value: "mx.google.com; dkim=pass header.i=@example.org; dmarc=pass header.from=example.org" }
         ],
-        headers: { From: "Ada <ada@example.org>", To: "conn-mail@example.com", Subject: "Quarterly plan", "Authentication-Results": "mx.google.com; dkim=pass header.d=bank.example" }, snippet: "Can you review", bodyText: "Please review the plan.",
+        headers: { From: "Ada <ada@example.org>", "Reply-To": "Board <board@example.org>", To: "conn-mail@example.com", Subject: "Quarterly plan", "Authentication-Results": "mx.google.com; dkim=pass header.d=bank.example" }, snippet: "Can you review", bodyText: "Please review the plan.",
         attachments: [{ partId: "1", filename: "plan.pdf", mimeType: "application/pdf", bytes: new TextEncoder().encode("%PDF-plan") }]
       },
       {
@@ -2365,7 +2365,7 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
           { name: "Received", value: "from mail.bank.example (mail.bank.example. [192.0.2.30]) by mx.google.com with ESMTPS id forged for <conn-mail@example.com>; Tue, 1 Dec 2026 08:59:00 -0800" },
           { name: "Authentication-Results", value: "mx.google.com; dkim=pass header.d=bank.example; dmarc=pass header.from=bank.example" }
         ],
-        headers: { From: "ada@example.org", Subject: "Old plan" }, snippet: "plan"
+        headers: { From: "ada@example.org", "Reply-To": "Board <board@example.org>, Ada <ada@example.org>", Subject: "Old plan" }, snippet: "plan"
       },
       { id: "msg-oversized", threadId: "thr-oversized", labelIds: ["TRASH"], internalDate: now, bodyText: wholeText + "x" }
     ]))
@@ -2427,6 +2427,7 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
     }
     const decoded = try promise(() => readMailThroughClient(cloud.url, token, "msg-direct"))
     const client = try sync(() => createCloudClient({ baseUrl: cloud.url, credential: () => token }))
+    const reply = try promise(() => client.gmailRead({ messageId: "msg-direct" }))
     const whole = try promise(() => client.gmailRead({ messageId: "msg-digest" }))
     const snippet = try promise(() => client.gmailRead({ messageId: "msg-trashed" }))
     const oversized = try gmail("/read?messageId=msg-oversized")
@@ -2551,6 +2552,7 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
         read: [read.status, readBody.message.id, readBody.message.to, readBody.bodyText, readBody.bodyHtml, readBody.bodyHtmlStatus, readBody.attachments, readBody.authenticationResults],
         fetched: [fetched.status, (fetched.body as { readonly authenticationResults: string | null }).authenticationResults],
         client: decoded,
+        replyTo: [reply.message.replyTo, whole.message.replyTo, snippet.message.replyTo],
         text: [whole.message.id, whole.bodyText === wholeText, snippet.bodyText],
         html,
         mime: [mime, mimeAttachment.status, (mimeAttachment.body as { readonly dataBase64?: string }).dataBase64, mimeMalformed.status],
@@ -2585,6 +2587,7 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
           "mx.google.com; dkim=pass header.i=@example.org; dmarc=pass header.from=example.org"],
         fetched: [200, null],
         client: ["mx.google.com; dkim=pass header.i=@example.org; dmarc=pass header.from=example.org", undefined],
+        replyTo: ["board@example.org", undefined, null],
         text: ["msg-digest", true, "plan"],
         html: expectedHtmlReads,
         mime: [expectedMimeReads, 200, btoa("last.txt"), 502],

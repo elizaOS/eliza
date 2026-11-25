@@ -195,6 +195,24 @@ pure def lawAServedMessageIsWhole(got: MessageFetch): bool = { val result = read
 } }
 ```
 
+### Reading a message reports the Reply-To mailbox when one was set
+
+The reply address is separate from the sender displayed on the message.
+The full message and its thread page omit the address when there is no
+Reply-To header, return the single address when the composer accepts it,
+and return null when the header cannot be used to reply.
+
+```quint
+type ReplyAddress = NoReplyOverride | ReplyOverrideUnavailable | ReplyOverride
+pure def replyAddressOf(headerCount: int, usableMailbox: bool): ReplyAddress =
+  if (headerCount <= 0) NoReplyOverride
+  else if (headerCount == 1 and usableMailbox) ReplyOverride
+  else ReplyOverrideUnavailable
+pure val headerCountValues = Set(0, 1, 2)
+pure def lawAnOverrideIsOneUsableMailbox(headerCount: int, usableMailbox: bool): bool =
+  (replyAddressOf(headerCount, usableMailbox) == ReplyOverride) iff (headerCount == 1 and usableMailbox)
+```
+
 ### A thread page is served only at the revision of its first page and covers the thread without a gap
 
 A page starts at the offset asked for and holds at most 25 messages, oldest
