@@ -5309,30 +5309,6 @@
           ]
         },
         {
-          "name": "beginRequestOperationAttempt",
-          "typeOnly": false,
-          "declarations": [
-            {
-              "path": "packages/core/src/actions/task-extraction-context.ts",
-              "line": 1001,
-              "kind": "FunctionDeclaration",
-              "signature": "(input: { runtime: RequestOperationRuntime; state: State; message: Memory; action?: Action; }): BoundRequestOperationAttempt | undefined"
-            }
-          ]
-        },
-        {
-          "name": "beginRequestOperationIssuer",
-          "typeOnly": false,
-          "declarations": [
-            {
-              "path": "packages/core/src/actions/task-extraction-context.ts",
-              "line": 852,
-              "kind": "FunctionDeclaration",
-              "signature": "(input: { runtime: RequestOperationRuntime; message: Memory; current: () => boolean; }): RequestOperationIssuer | undefined"
-            }
-          ]
-        },
-        {
           "name": "beginTrustedDeliveryAudienceTurn",
           "typeOnly": false,
           "declarations": [
@@ -5389,42 +5365,6 @@
               "line": 19,
               "kind": "FunctionDeclaration",
               "signature": "(message: Memory, persisted: Memory): void"
-            }
-          ]
-        },
-        {
-          "name": "bindRequestOperationProjection",
-          "typeOnly": false,
-          "declarations": [
-            {
-              "path": "packages/core/src/actions/task-extraction-context.ts",
-              "line": 1285,
-              "kind": "FunctionDeclaration",
-              "signature": "(source: object, target: object, consumer: RequestOperationIssuer | undefined): boolean"
-            }
-          ]
-        },
-        {
-          "name": "bindRequestOperationResult",
-          "typeOnly": false,
-          "declarations": [
-            {
-              "path": "packages/core/src/actions/task-extraction-context.ts",
-              "line": 1191,
-              "kind": "FunctionDeclaration",
-              "signature": "(result: object, token: BoundRequestOperationAttempt): boolean"
-            }
-          ]
-        },
-        {
-          "name": "bindTaskExtractionContext",
-          "typeOnly": false,
-          "declarations": [
-            {
-              "path": "packages/core/src/actions/task-extraction-context.ts",
-              "line": 53,
-              "kind": "FunctionDeclaration",
-              "signature": "(state: State, message: Memory, original: ContextObject, projected: ContextObject, runtime?: RequestOperationRuntime, issuer?: RequestOperationIssuer): void"
             }
           ]
         },
@@ -5677,57 +5617,6 @@
               "line": 195,
               "kind": "FunctionDeclaration",
               "signature": "(value: unknown): number | undefined"
-            }
-          ]
-        },
-        {
-          "name": "BoundRequestOperationAttempt",
-          "typeOnly": true,
-          "declarations": [
-            {
-              "path": "packages/core/src/actions/task-extraction-context.ts",
-              "line": 261,
-              "kind": "InterfaceDeclaration",
-              "signature": "export interface BoundRequestOperationAttempt { readonly [attemptBrand]: true; }"
-            }
-          ]
-        },
-        {
-          "name": "BoundRequestOperationError",
-          "typeOnly": false,
-          "declarations": [
-            {
-              "path": "packages/core/src/actions/task-extraction-context.ts",
-              "line": 1170,
-              "kind": "ClassDeclaration",
-              "signature": {
-                "heritage": [
-                  "extends Error"
-                ],
-                "members": [
-                  {
-                    "name": "code",
-                    "path": "packages/core/src/actions/task-extraction-context.ts",
-                    "line": 1171,
-                    "kind": "PropertyDeclaration",
-                    "signature": "readonly code: | \"REQUEST_OPERATION_RESTRICTED\" | \"REQUEST_OPERATION_UNRESOLVED\";"
-                  },
-                  {
-                    "name": "executionStatus",
-                    "path": "packages/core/src/actions/task-extraction-context.ts",
-                    "line": 1174,
-                    "kind": "PropertyDeclaration",
-                    "signature": "readonly executionStatus = \"not_started\" as const;"
-                  },
-                  {
-                    "name": "constructor",
-                    "path": "packages/core/src/actions/task-extraction-context.ts",
-                    "line": 1175,
-                    "kind": "Constructor",
-                    "signature": "(decision: Extract<BoundOperationDecision, { allowed: false; }>): BoundRequestOperationError"
-                  }
-                ]
-              }
             }
           ]
         },
@@ -7737,18 +7626,6 @@
           ]
         },
         {
-          "name": "checkBoundNotesOperation",
-          "typeOnly": false,
-          "declarations": [
-            {
-              "path": "packages/core/src/actions/task-extraction-context.ts",
-              "line": 1049,
-              "kind": "FunctionDeclaration",
-              "signature": "(state: State | undefined, message: Memory | undefined, operation: NotesRequestOperation, token?: BoundRequestOperationAttempt, registeredOperation?: NotesRequestOperation): BoundOperationDecision"
-            }
-          ]
-        },
-        {
           "name": "checkPairingAllowed",
           "typeOnly": false,
           "declarations": [
@@ -8300,18 +8177,6 @@
               "line": 330,
               "kind": "InterfaceDeclaration",
               "signature": "export interface CommitIdentityMergeRequest { agentId: UUID; planId: UUID; confirmationId: UUID; expectedGeneration: number; actorPrincipalId: UUID; idempotencyKey: string; requestDigest: string; }"
-            }
-          ]
-        },
-        {
-          "name": "commitNotesRequestRestriction",
-          "typeOnly": false,
-          "declarations": [
-            {
-              "path": "packages/core/src/actions/task-extraction-context.ts",
-              "line": 911,
-              "kind": "FunctionDeclaration",
-              "signature": "(token: RequestOperationIssuer, input: { classification: unknown; source: unknown; currentSource: () => unknown; interpretation?: NotesRequestInterpretation; }): boolean"
             }
           ]
         },
@@ -10668,18 +10533,6 @@
           ]
         },
         {
-          "name": "copyBoundOperationDenial",
-          "typeOnly": false,
-          "declarations": [
-            {
-              "path": "packages/core/src/runtime/operation-restriction-projection.ts",
-              "line": 7,
-              "kind": "FunctionDeclaration",
-              "signature": "<T extends object>(source: object, target: T, expectedAttempt: BoundRequestOperationAttempt | undefined): T"
-            }
-          ]
-        },
-        {
           "name": "copyEmbeddingVectorSpace",
           "typeOnly": false,
           "declarations": [
@@ -10688,18 +10541,6 @@
               "line": 55,
               "kind": "FunctionDeclaration",
               "signature": "(source: unknown, target: unknown): void"
-            }
-          ]
-        },
-        {
-          "name": "copyRequestOperationResult",
-          "typeOnly": false,
-          "declarations": [
-            {
-              "path": "packages/core/src/actions/task-extraction-context.ts",
-              "line": 1324,
-              "kind": "FunctionDeclaration",
-              "signature": "(source: object, target: object): boolean"
             }
           ]
         },
@@ -16883,30 +16724,6 @@
           ]
         },
         {
-          "name": "getBoundOperationDenialAttempt",
-          "typeOnly": false,
-          "declarations": [
-            {
-              "path": "packages/core/src/actions/task-extraction-context.ts",
-              "line": 1534,
-              "kind": "FunctionDeclaration",
-              "signature": "(result: object): BoundRequestOperationAttempt | undefined"
-            }
-          ]
-        },
-        {
-          "name": "getBoundOperationDenialOperation",
-          "typeOnly": false,
-          "declarations": [
-            {
-              "path": "packages/core/src/actions/task-extraction-context.ts",
-              "line": 1578,
-              "kind": "FunctionDeclaration",
-              "signature": "(result: object): NotesRequestOperation | undefined"
-            }
-          ]
-        },
-        {
           "name": "getCapabilityRouter",
           "typeOnly": false,
           "declarations": [
@@ -17599,18 +17416,6 @@
               "line": 44,
               "kind": "FunctionDeclaration",
               "signature": "(runtime: IAgentRuntime, entityId: UUID): Promise<UUID[]>"
-            }
-          ]
-        },
-        {
-          "name": "getRequestOperationIssuer",
-          "typeOnly": false,
-          "declarations": [
-            {
-              "path": "packages/core/src/actions/task-extraction-context.ts",
-              "line": 901,
-              "kind": "FunctionDeclaration",
-              "signature": "(runtime: RequestOperationRuntime, message: Memory): RequestOperationIssuer | undefined"
             }
           ]
         },
@@ -21580,18 +21385,6 @@
           ]
         },
         {
-          "name": "isMatchingNotesMutationCompletion",
-          "typeOnly": false,
-          "declarations": [
-            {
-              "path": "packages/core/src/actions/task-extraction-context.ts",
-              "line": 1419,
-              "kind": "FunctionDeclaration",
-              "signature": "(rejected: object, success: object, consumer: RequestOperationIssuer | undefined): boolean"
-            }
-          ]
-        },
-        {
           "name": "isMessageContentSourceDescriptor",
           "typeOnly": false,
           "declarations": [
@@ -22260,18 +22053,6 @@
               "line": 16,
               "kind": "FunctionDeclaration",
               "signature": "(value: unknown): value is string"
-            }
-          ]
-        },
-        {
-          "name": "isVerifiedOutsideRequestDenial",
-          "typeOnly": false,
-          "declarations": [
-            {
-              "path": "packages/core/src/actions/task-extraction-context.ts",
-              "line": 1548,
-              "kind": "FunctionDeclaration",
-              "signature": "(result: object, current: { messageId: string; roomId: string; entityId?: string; agentId?: string; attempt: BoundRequestOperationAttempt; operation: NotesRequestOperation; }): boolean"
             }
           ]
         },
@@ -28117,18 +27898,6 @@
           ]
         },
         {
-          "name": "normalizeNotesRequestInterpretation",
-          "typeOnly": false,
-          "declarations": [
-            {
-              "path": "packages/core/src/actions/task-extraction-context.ts",
-              "line": 380,
-              "kind": "FunctionDeclaration",
-              "signature": "(value: unknown): NotesRequestInterpretation | undefined"
-            }
-          ]
-        },
-        {
           "name": "normalizePairingPageOptions",
           "typeOnly": false,
           "declarations": [
@@ -28317,54 +28086,6 @@
               "line": 111,
               "kind": "FunctionDeclaration",
               "signature": "(value: unknown): WorkspaceDeltaReceipt"
-            }
-          ]
-        },
-        {
-          "name": "NOTES_REQUEST_OPERATIONS",
-          "typeOnly": false,
-          "declarations": [
-            {
-              "path": "packages/core/src/actions/task-extraction-context.ts",
-              "line": 264,
-              "kind": "VariableDeclaration",
-              "signature": "NOTES_REQUEST_OPERATIONS = Object.freeze([ \"create\", \"list\", \"get\", \"update\", \"patch\", \"delete\", ] as const)"
-            }
-          ]
-        },
-        {
-          "name": "NotesMutationCompletion",
-          "typeOnly": true,
-          "declarations": [
-            {
-              "path": "packages/core/src/actions/task-extraction-context.ts",
-              "line": 1357,
-              "kind": "TypeAliasDeclaration",
-              "signature": "export type NotesMutationCompletion = { rejected: boolean; requested?: boolean; outsideRequestRejection: boolean; ambiguousRejection: boolean; status: \"current\" | \"stale\" | \"changed\"; dispatch?: CanonicalDispatch; };"
-            }
-          ]
-        },
-        {
-          "name": "NotesRequestInterpretation",
-          "typeOnly": true,
-          "declarations": [
-            {
-              "path": "packages/core/src/actions/task-extraction-context.ts",
-              "line": 273,
-              "kind": "TypeAliasDeclaration",
-              "signature": "export type NotesRequestInterpretation = { readonly status: \"explicit\" | \"unavailable\" | \"contradictory\"; readonly operations: readonly NotesRequestOperation[]; };"
-            }
-          ]
-        },
-        {
-          "name": "NotesRequestOperation",
-          "typeOnly": true,
-          "declarations": [
-            {
-              "path": "packages/core/src/actions/task-extraction-context.ts",
-              "line": 272,
-              "kind": "TypeAliasDeclaration",
-              "signature": "export type NotesRequestOperation = (typeof NOTES_REQUEST_OPERATIONS)[number];"
             }
           ]
         },
@@ -34050,18 +33771,6 @@
           ]
         },
         {
-          "name": "readNotesMutationCompletion",
-          "typeOnly": false,
-          "declarations": [
-            {
-              "path": "packages/core/src/actions/task-extraction-context.ts",
-              "line": 1368,
-              "kind": "FunctionDeclaration",
-              "signature": "(result: object, consumer: RequestOperationIssuer | undefined): NotesMutationCompletion | undefined"
-            }
-          ]
-        },
-        {
           "name": "readProviderRateLimit",
           "typeOnly": false,
           "declarations": [
@@ -34154,54 +33863,6 @@
               "line": 8,
               "kind": "FunctionDeclaration",
               "signature": "(value: unknown): SystemNotice | undefined"
-            }
-          ]
-        },
-        {
-          "name": "readTaskExtractionContext",
-          "typeOnly": false,
-          "declarations": [
-            {
-              "path": "packages/core/src/actions/task-extraction-context.ts",
-              "line": 167,
-              "kind": "FunctionDeclaration",
-              "signature": "(state: State | undefined, message: Memory | undefined, expectedSystem?: string): { text: string; originalText: string; system?: string; } | undefined"
-            }
-          ]
-        },
-        {
-          "name": "readTaskExtractionNotesRestriction",
-          "typeOnly": false,
-          "declarations": [
-            {
-              "path": "packages/core/src/actions/task-extraction-context.ts",
-              "line": 988,
-              "kind": "FunctionDeclaration",
-              "signature": "(state: State | undefined, message: Memory | undefined, runtime?: RequestOperationRuntime): RequestOperationClassification"
-            }
-          ]
-        },
-        {
-          "name": "readTaskExtractionRequestIntents",
-          "typeOnly": false,
-          "declarations": [
-            {
-              "path": "packages/core/src/actions/task-extraction-context.ts",
-              "line": 138,
-              "kind": "FunctionDeclaration",
-              "signature": "(state: State | undefined, message: Memory | undefined): readonly string[] | undefined"
-            }
-          ]
-        },
-        {
-          "name": "readTaskExtractionUserSources",
-          "typeOnly": false,
-          "declarations": [
-            {
-              "path": "packages/core/src/actions/task-extraction-context.ts",
-              "line": 221,
-              "kind": "FunctionDeclaration",
-              "signature": "(state: State | undefined, message: Memory | undefined): readonly { id: string; text: string; }[] | undefined"
             }
           ]
         },
@@ -36021,30 +35682,6 @@
               "line": 755,
               "kind": "FunctionDeclaration",
               "signature": "(runtime: IAgentRuntime, params: { description: string; roomId: UUID; entityId?: UUID; timeoutMs?: number; onConfirm?: (task: Task, runtime: IAgentRuntime) => Promise<void>; onCancel?: (task: Task, runtime: IAgentRuntime) => Promise<void>; }): Promise<boolean>"
-            }
-          ]
-        },
-        {
-          "name": "RequestOperationClassification",
-          "typeOnly": true,
-          "declarations": [
-            {
-              "path": "packages/core/src/actions/task-extraction-context.ts",
-              "line": 23,
-              "kind": "TypeAliasDeclaration",
-              "signature": "export type RequestOperationClassification = | \"read_only\" | \"mutation_requested\" | \"unresolved\";"
-            }
-          ]
-        },
-        {
-          "name": "RequestOperationIssuer",
-          "typeOnly": true,
-          "declarations": [
-            {
-              "path": "packages/core/src/actions/task-extraction-context.ts",
-              "line": 258,
-              "kind": "InterfaceDeclaration",
-              "signature": "export interface RequestOperationIssuer { readonly [issuerBrand]: true; }"
             }
           ]
         },
@@ -46153,18 +45790,6 @@
               "line": 21,
               "kind": "InterfaceDeclaration",
               "signature": "export interface TranscriptWord { text: string; startMs: number; endMs: number; /** ASR confidence 0..1, when the backend reports it. */ confidence?: number; }"
-            }
-          ]
-        },
-        {
-          "name": "transferBoundOperationDenial",
-          "typeOnly": false,
-          "declarations": [
-            {
-              "path": "packages/core/src/actions/task-extraction-context.ts",
-              "line": 1515,
-              "kind": "FunctionDeclaration",
-              "signature": "(source: object, target: object, expectedAttempt: BoundRequestOperationAttempt): boolean"
             }
           ]
         },

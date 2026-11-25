@@ -1,36 +1,6 @@
 // spec/core/release.md, "Story: Install the replacement through existing npm entry points"
 export * from "./protocol.vibe"
 export {
-  beginRequestOperationAttempt,
-  beginRequestOperationIssuer,
-  bindRequestOperationProjectionOrThrow as bindRequestOperationProjection,
-  bindRequestOperationResultOrThrow as bindRequestOperationResult,
-  bindTaskExtractionContext,
-  type BoundRequestOperationAttempt,
-  BoundRequestOperationError,
-  checkBoundNotesOperation,
-  commitNotesRequestRestriction,
-  copyRequestOperationResultOrThrow as copyRequestOperationResult,
-  getBoundOperationDenialAttempt,
-  getBoundOperationDenialOperation,
-  getRequestOperationIssuer,
-  isMatchingNotesMutationCompletion,
-  isVerifiedOutsideRequestDenial,
-  normalizeNotesRequestInterpretation,
-  NOTES_REQUEST_OPERATIONS,
-  type NotesMutationCompletion,
-  type NotesRequestInterpretation,
-  type NotesRequestOperation,
-  readNotesMutationCompletion,
-  readTaskExtractionContext,
-  readTaskExtractionNotesRestriction,
-  readTaskExtractionRequestIntents,
-  readTaskExtractionUserSourcesOrThrow as readTaskExtractionUserSources,
-  type RequestOperationClassification,
-  type RequestOperationIssuer,
-  transferBoundOperationDenial,
-} from "./actions/task-extraction-context.vibe"
-export {
   actionToToolOrThrow as actionToTool,
   buildPlannerToolsFromActionsOrThrow as buildPlannerToolsFromActions,
   buildPlannerToolsFromTieredActionsOrThrow as buildPlannerToolsFromTieredActions,
@@ -179,7 +149,6 @@ export {
   hashStringOrThrow as hashString,
   stableJsonStringifyOrThrow as stableJsonStringify,
 } from "./runtime/context-hash.vibe"
-export { copyBoundOperationDenial } from "./runtime/operation-restriction-projection.vibe"
 export { createPreparedModelRequestGuardOrThrow as createPreparedModelRequestGuard } from "./runtime/prepared-model-request.vibe"
 export {
   projectDeferredProvidersOrThrow as projectDeferredProviders,
