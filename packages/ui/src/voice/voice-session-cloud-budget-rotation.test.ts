@@ -457,6 +457,75 @@ test("a last window that begins mid-turn rotates only once that turn has played"
   expect(h.maxCaptures).toBe(1);
   expect(h.errors).toEqual([]);
 });
+test("a sentence still at its partials when the last window begins is heard and answered on its own session before any rotation", async () => {
+  const h = harness(false, undefined, false, "missing", false, true);
+  await h.client.start();
+  await h.settle();
+  const old = h.sockets[0];
+  h.pumpAudio();
+  old.frame({ t: "stt_partial", text: "Hey, what", traceId: "turn-9" });
+  expect(h.client.state.phase).toBe("transcribing");
+  old.frame({
+    t: "lease_extended",
+    sessionId: "session-1",
+    expiresAt: 1800000000000 + 110000,
+    final: true,
+  });
+  const uplinkBefore = old.sent.filter((f) => typeof f !== "string").length;
+  await h.advance(3_000);
+  // The owner is still speaking: no bye, no new mint, and the uplink stays on
+  // the session that is transcribing the sentence.
+  h.pumpAudio();
+  old.frame({ t: "stt_partial", text: "Hey, what's", traceId: "turn-9" });
+  old.frame({ t: "stt_eager_eot", traceId: "turn-9" });
+  await h.advance(2_000);
+  expect(h.mints).toBe(1);
+  expect(h.marks).toContain("token_rotation_deferred");
+  expect(h.marks).not.toContain("token_rotation");
+  expect(old.sent.some((f) => (f as { t?: string }).t === "bye")).toBe(false);
+  expect(old.sent.filter((f) => typeof f !== "string").length).toBeGreaterThan(
+    uplinkBefore,
+  );
+  old.frame({ t: "stt_final", text: "Hey, what's up?", traceId: "turn-9" });
+  old.frame({ t: "speaking_start", traceId: "turn-9" });
+  await h.advance(3_000);
+  expect(h.mints).toBe(1);
+  old.frame({ t: "speaking_end", traceId: "turn-9" });
+  old.frame({ t: "usage", sttMs: 1000, ttsChars: 12, traceId: "turn-9" });
+  await h.advance(1_000);
+  expect(h.mints).toBe(2);
+  expect(h.marks).toContain("token_rotation");
+  expect(
+    h.events
+      .filter((event) => event.t === "stt_final")
+      .map((event) => (event as { text: string }).text),
+  ).toEqual(["Hey, what's up?"]);
+  expect(h.marks).not.toContain("not_reached(turn_terminal_unknown:token_rotation)");
+  expect(h.maxCaptures).toBe(1);
+  expect(h.errors).toEqual([]);
+});
+test("a last window whose partials end in an empty final still rotates once the client is listening again", async () => {
+  const h = harness(false, undefined, false, "missing", false, true);
+  await h.client.start();
+  await h.settle();
+  const old = h.sockets[0];
+  old.frame({ t: "stt_partial", text: "", traceId: "noise-1" });
+  old.frame({
+    t: "lease_extended",
+    sessionId: "session-1",
+    expiresAt: 1800000000000 + 110000,
+    final: true,
+  });
+  await h.advance(2_000);
+  expect(h.mints).toBe(1);
+  old.frame({ t: "stt_final", text: " ", traceId: "noise-1" });
+  await h.advance(2_000);
+  expect(h.mints).toBe(2);
+  expect(h.marks).toContain("token_rotation");
+  expect(h.client.state.phase).toBe("listening");
+  expect(h.maxCaptures).toBe(1);
+  expect(h.errors).toEqual([]);
+});
 test("only a literal final flag ends renewal ownership, and an ordinary renewal never rotates", async () => {
   const h = harness(false, undefined, false, "missing", false, true);
   await h.client.start();
