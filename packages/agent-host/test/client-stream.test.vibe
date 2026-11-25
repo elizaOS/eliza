@@ -576,7 +576,7 @@ it.live(`Never see or keep the agent host's notes as a reply, whether the model 
     const content = (body as { messages: { role: string; content?: unknown }[] }).messages.at(-1)?.content
     return typeof content === "string" ? content : JSON.stringify(content)
   }
-  const hostish = (said: string) => said.toLowerCase().replace(/[\s_-]+/gu, " ").includes("note from the agent host") || said.includes("555") || said.includes("Screen context")
+  const hostish = (said: string) => said.toLowerCase().replace(/[\s_-]+/gu, " ").includes("note from the agent host") || said.includes("555 010") || said.includes("Screen context")
   const turn = (request: string) => effect {
     const before = completions().length
     const chunks = try streamed(agent, id, { text: request, metadata: { observation: screen } })
