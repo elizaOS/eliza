@@ -33,3 +33,27 @@ export const canonicalTextParsesBackToTheSameSnapshot = contract({
     }
   },
 });
+
+const omitSparseHole = (value: Schema.Json): string | undefined => {
+  const sparse: unknown[] = [value, , value];
+  try {
+    return canonicalJsonString(sparse, {
+      ...AGENT_BACKUP_CANONICAL_JSON,
+      sparseArrayHoles: "omit",
+    });
+  } catch {
+    return undefined;
+  }
+};
+
+export const sparseArrayHolesOmittedInOmitMode = contract({
+  input: Schema.Json,
+  run: omitSparseHole,
+  deterministic: true,
+  invariant: (value, text) => {
+    if (text === undefined) return false;
+    const element = canonical(value);
+    if (element === undefined) return false;
+    return text === `[${element},,${element}]` && text !== canonical([value, value]);
+  },
+});
