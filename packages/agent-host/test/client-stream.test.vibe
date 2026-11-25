@@ -764,12 +764,10 @@ it.live(`In one long chat, an earlier reply reaches the model with what its tool
     frame: { credential: { version: 1, value: deviceKey } }, modules: builtinModuleFactories, bundled: new Map([[browserApp.name, browserApp]]),
   })
   const { id } = try conversation(agent)
-  const lead = "[Host record of the tools the reply above ran:"
   const headers = { "x-elizaos-client-id": "c1" }
   const on = (view: string) => ({ viewDelivery: "completed-action", viewClientId: "c1", observation: { view, revision: 1, sensitive: false } })
   const completions = () => cloud.calls.filter(({ path }) => path === "/api/v1/chat/completions")
-  const asked = (index: number) => (completions()[index]?.body as { messages: { role: string; content?: unknown }[] }).messages
-    .map(({ role, content }) => ({ role, text: typeof content === "string" ? content : JSON.stringify(content ?? null) }))
+  const asked = (index: number) => (completions()[index]?.body as { messages: { role: string; content?: unknown; tool_calls?: { id: string; function: { name: string; arguments: string } }[] }[] }).messages
   const turn = (body: object) => effect {
     const before = completions().length
     const answer = try stream(agent, { method: "POST", path: `/api/conversations/${id}/messages/stream`, headers, body })
@@ -777,7 +775,7 @@ it.live(`In one long chat, an earlier reply reaches the model with what its tool
     const split = try read(answer.chunks, 7)
     return {
       done: summary(whole.outcome), tools: whole.seen.filter((entry) => entry.startsWith("tool:")).map((entry) => entry.split(":")[1]),
-      leaked: answer.chunks.join("").includes("Host record") || [...whole.seen, ...split.seen].some((entry) => entry.includes("Host record")),
+      leaked: answer.chunks.join("").includes("history_") || [...whole.seen, ...split.seen].some((entry) => entry.includes("history_") || entry.includes("did not run")),
       firstCall: before,
     }
   }
@@ -790,7 +788,7 @@ it.live(`In one long chat, an earlier reply reaches the model with what its tool
   try Effect.sync(() => cloud.script(toolCalls("", show("Home")), text("Home.")))
   const home = try turn({ text: "Go home.", metadata: on("notes") })
   const homeAsked = asked(home.firstCall)
-  try Effect.sync(() => cloud.script(text(`${lead} VIEWS(show, Browser): done]\nBrowser is open.`), text("[answer] I haven't changed the screen.")))
+  try Effect.sync(() => cloud.script(text("[answer] I haven't changed the screen.")))
   const talk = try turn({ text: "Is the browser open?", channelType: "VOICE_DM", metadata: { voiceUi: { surface: "voice" } } })
   const messages = () => effect {
     const listed = answerOf(try call(agent, { method: "GET", path: `/api/conversations/${id}/messages` }))
@@ -802,31 +800,36 @@ it.live(`In one long chat, an earlier reply reaches the model with what its tool
   try Effect.sync(() => cloud.script(text("[answer] You're welcome.")))
   const thanks = try turn({ text: "Thanks.", metadata: on("home") })
   const afterRedaction = asked(thanks.firstCall)
-  const recordsIn = (sent: readonly { role: string; text: string }[]) => sent.filter(({ role }) => role === "user").flatMap(({ text: said }) => said.split("\n").filter((line) => line.startsWith(lead)))
+  const recordsIn = (sent: ReturnType<typeof asked>) => sent.flatMap(({ role, content, tool_calls: calls }) =>
+    role === "tool" ? [`-> ${String(content)}`] : (calls ?? []).map(({ id: callId, function: { name, arguments: args } }) => `${callId.startsWith("history_") ? "" : "fresh "}${name}(${args})`))
+  const repliesOf = (sent: ReturnType<typeof asked>) => sent.filter(({ role, tool_calls: calls }) => role === "assistant" && calls === undefined).map(({ content }) => content)
   const stored = try messages()
   const storedJson = JSON.stringify(stored)
 
   try Effect.try(() => assert.deepStrictEqual({
     turns: [opened, refused, home].map(({ done, tools, leaked }) => ({ done, tools, leaked })),
-    talk: { done: talk.done, tools: talk.tools, leaked: talk.leaked, askedAgain: completions().length - talk.firstCall >= 2 },
+    talk: { done: talk.done, tools: talk.tools, leaked: talk.leaked },
     homeRecords: recordsIn(homeAsked),
-    repliesUnmarked: [...homeAsked, ...afterRedaction].filter(({ role }) => role === "assistant").every(({ text: said }) => !said.includes(lead)),
+    replies: repliesOf(afterRedaction),
     redacted: redacted.status,
     afterRedaction: recordsIn(afterRedaction),
-    addressGone: afterRedaction.every(({ text: said }) => !said.includes("example.com")),
+    addressGone: !JSON.stringify(afterRedaction).includes("example.com"),
     storedReplies: stored.filter(({ role }) => role === "assistant").map(({ text: said }) => said),
-    storeHoldsNoRecord: !storedJson.includes("Host record") && !storedJson.includes("toolRecord"),
+    storeHoldsNoRecord: !storedJson.includes("history_") && !storedJson.includes("toolRecord") && !storedJson.includes("did not run"),
   }, {
     turns: [
       { done: { kind: "Done", text: "Browser is open.", failureKind: undefined, keyed: true }, tools: ["VIEWS"], leaked: false },
       { done: { kind: "Done", text: "I can't open that page from here.", failureKind: undefined, keyed: true }, tools: ["BROWSER_OPEN"], leaked: false },
       { done: { kind: "Done", text: "Home.", failureKind: undefined, keyed: true }, tools: ["VIEWS"], leaked: false },
     ],
-    talk: { done: { kind: "Done", text: "I haven't changed the screen.", failureKind: undefined, keyed: true }, tools: [], leaked: false, askedAgain: true },
-    homeRecords: [`${lead} VIEWS(show, Browser): done]`, `${lead} BROWSER_OPEN(example.com): refused]`],
-    repliesUnmarked: true,
+    talk: { done: { kind: "Done", text: "I haven't changed the screen.", failureKind: undefined, keyed: true }, tools: [], leaked: false },
+    homeRecords: ['VIEWS({"action":"show","view":"Browser"})', "-> done", 'BROWSER_OPEN({"url":"example.com"})', "-> refused, did not run"],
+    replies: ["Browser is open.", "I can't open that page from here.", "Home.", "I haven't changed the screen."],
     redacted: 200,
-    afterRedaction: [`${lead} VIEWS(show, Browser): done]`, `${lead} BROWSER_OPEN([Private information removed]): refused]`, `${lead} VIEWS(show, Home): done]`],
+    afterRedaction: [
+      'VIEWS({"action":"show","view":"Browser"})', "-> done", 'BROWSER_OPEN({"url":"[Private information removed]"})', "-> refused, did not run",
+      'VIEWS({"action":"show","view":"Home"})', "-> done",
+    ],
     addressGone: true,
     storedReplies: ["Browser is open.", "I can't open that page from here.", "Home.", "I haven't changed the screen.", "You're welcome."],
     storeHoldsNoRecord: true,

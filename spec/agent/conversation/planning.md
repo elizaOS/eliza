@@ -303,31 +303,31 @@ screen opened or a note was saved reads the same whether a tool did it or
 not. Copying such an earlier reply, the model said a screen had changed
 without calling the tool, and nothing changed. So when a reply is stored,
 the steps of its turn (above) are stored with it, for the model only: each
-step's action, the values of its arguments and how it ended. In the
-history the model reads, the person's next message, the latest one
-included, starts with a line that holds the record of each reply before it
-that ran at least one step, then its own words:
-`[Host record of the tools the reply above ran: VIEWS(show, Browser): done]`.
-The record sits in the person's message rather than in the reply, because a
-model copies the shape of its own earlier replies: a record leading a reply
-was written again, with no tool called, as if it were part of the answer.
-Each step reads `ACTION(values): outcome`, or `ACTION: outcome` when it
-had no values, separated by `; `. Its outcome
-is `done` when it applied a change, or succeeded with no receipt; `no
-change` when each of its receipts changed nothing; `proposed` when it left
-a change for the person to confirm; `failed` when it failed; `partly
-failed` when part of it applied or was proposed and part failed; and
-`refused` when it was refused before it ran. A step that failed or never
-ran is never recorded as done. The record names at most six steps, in the
-order they ran, then how many more there were (`and 2 more`); an argument
-value is cut to 40 characters and a step's values to 80, so a record stays
-a few hundred bytes at most. A reply whose turn ran no step, a reply
-stored before replies kept a record, and a redacted reply carry none. The
-record is read only from what was stored
-with the reply, so the history stays the same bytes from turn to turn. It
-is the host's words, not the reply's: it reaches the model only, and its
-lead is a mark the host puts on the history, so a response that repeats it
-is host text (below) and is never delivered, streamed, spoken or stored.
+step's action, its arguments and how it ended. In the history the model
+reads, a reply whose turn ran at least one step comes after that record,
+written as the model writes a turn's work: one assistant message calling
+each recorded step's tool with its arguments, under ids that are the
+reply's own (`history_<reply id>_<index>`), then one tool message for each
+call that says how it ended, then the reply's words. The model reads its
+earlier work as it reads the work of the turn it is in, so an earlier
+reply is never the only evidence of what was done, and it never takes the
+record for words of a reply: a text mark before or after a reply was
+written again by the model, with no tool called, as if it were part of its
+answer. A tool message says `done` when the step applied a change, or
+succeeded with no receipt; `no change` when each of its receipts changed
+nothing; `proposed, waiting for the person` when it left a change for the
+person to confirm; `failed` when it failed; `partly failed` when part of it
+applied or was proposed and part failed; and `refused, did not run` when it
+was refused before it ran. A step that failed or never ran is never
+recorded as done. The record names at most six steps, in the order they
+ran, and the last tool message says how many more calls followed; it keeps
+at most six arguments of a step, each text value cut to 40 characters, so a
+record stays a few hundred bytes at most. A reply whose turn ran no step, a
+reply stored before replies kept a record, and a redacted reply carry none.
+The record is read only from what was stored with the reply, so the
+history stays the same bytes from turn to turn. It reaches the model only:
+it is never part of the reply's text, so it is never delivered, streamed,
+spoken or stored as words, and no conversation route shows it.
 Nothing in the person's words is matched: the model reads the record and
 decides.
 
@@ -335,7 +335,7 @@ decides.
 type RecordedOutcome = RecordedDone | RecordedUnchanged | RecordedProposed | RecordedFailed | RecordedPartly | RecordedRefused
 pure val maxRecordedSteps = 6
 pure val maxRecordedValueChars = 40
-pure val maxRecordedValuesChars = 80
+pure val maxRecordedArguments = 6
 pure def recordedOutcome(stepOutcomes: List[StepOutcome], receipted: bool): RecordedOutcome =
   if (nothingRan(stepOutcomes)) RecordedRefused
   else if (stepOutcomes.some(o => o == Failed)) { if (stepOutcomes.some(o => o == Applied or o == Proposed)) RecordedPartly else RecordedFailed }
@@ -1044,8 +1044,7 @@ to the model (the host's own lead, such as the line that introduces the
 screen context, or the clock's line, with or without its closing colon or
 period), or a mark the host puts on the history it shows the model
 (`[unanswered:` before a message whose turn got no reply, `[Unheard
-remainder:` before the part of a reply the person did not hear, `[Host
-record of the tools` before the record of the tools an earlier reply ran), in any
+remainder:` before the part of a reply the person did not hear), in any
 letter case, with any spacing, or with a hyphen or underscore between its
 words, is the host's words, never an answer, whether the model echoes a
 note, quotes its lead or writes one of its own under the label: it reads as

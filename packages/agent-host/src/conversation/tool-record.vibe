@@ -1,10 +1,14 @@
 // spec/agent/conversation/planning.md, "An earlier reply reaches the model with the host's record of the tools its turn ran and how each ended"
-import { carriesARecord, maxRecordedValueChars, maxRecordedValuesChars, recordedOutcome, recordedSteps, type RecordedOutcome } from "../../gen/agent__conversation__planning.ts"
+import type { GenerateTextParams } from "@elizaos/core"
+import { carriesARecord, maxRecordedArguments, maxRecordedValueChars, recordedOutcome, recordedSteps, type RecordedOutcome } from "../../gen/agent__conversation__planning.ts"
 import type { PlannedStep } from "./planning.vibe"
+
+type ChatMessage = NonNullable<GenerateTextParams["messages"]>[number]
+type RecordedValue = string | number | boolean
 
 export type RecordedStep = {
   action: string
-  values: string
+  args: { [name: string]: RecordedValue }
   outcome: RecordedOutcome
 }
 
@@ -13,28 +17,29 @@ export type ToolRecord = {
   more: number
 }
 
-export const toolRecordLead = "[Host record of the tools the reply above ran:"
-
 const outcomeWords: Readonly<Record<RecordedOutcome, string>> = {
   RecordedDone: "done",
   RecordedUnchanged: "no change",
-  RecordedProposed: "proposed",
+  RecordedProposed: "proposed, waiting for the person",
   RecordedFailed: "failed",
   RecordedPartly: "partly failed",
-  RecordedRefused: "refused",
+  RecordedRefused: "refused, did not run",
 }
 
-const cut = (text: string, limit: number) => text.length > limit ? `${text.slice(0, limit - 1)}…` : text
+const cut = (text: string) => text.length > maxRecordedValueChars ? `${text.slice(0, maxRecordedValueChars - 1)}…` : text
 
-function valueOf(value: unknown): string | undefined {
-  if (value === undefined || value === null) return undefined
-  const written = typeof value === "string" ? value : typeof value === "number" || typeof value === "boolean" ? String(value) : JSON.stringify(value)
-  const plain = (written ?? "").replace(/\s+/gu, " ").trim()
-  return plain === "" ? undefined : cut(plain, maxRecordedValueChars)
+function valueOf(value: unknown): RecordedValue | undefined {
+  if (typeof value === "number" || typeof value === "boolean") return value
+  const written = typeof value === "string" ? value : value === undefined || value === null ? "" : JSON.stringify(value) ?? ""
+  const plain = written.replace(/\s+/gu, " ").trim()
+  return plain === "" ? undefined : cut(plain)
 }
 
-function valuesOf(params: Readonly<Record<string, unknown>>): string {
-  return cut(Object.values(params).flatMap((value) => valueOf(value) ?? []).join(", "), maxRecordedValuesChars)
+function argsOf(params: Readonly<Record<string, unknown>>): RecordedStep["args"] {
+  return Object.fromEntries(Object.entries(params).flatMap(([name, value]) => {
+    const kept = valueOf(value)
+    return kept === undefined ? [] : [[name, kept] as const]
+  }).slice(0, maxRecordedArguments))
 }
 
 export function toolRecordOf(steps: readonly PlannedStep[]): ToolRecord | undefined {
@@ -42,13 +47,14 @@ export function toolRecordOf(steps: readonly PlannedStep[]): ToolRecord | undefi
   const kept = steps.slice(0, recordedSteps(steps.length))
   return {
     steps: kept.map(({ action, params, outcomes, result }) => ({
-      action, values: valuesOf(params), outcome: recordedOutcome(outcomes.map(({ outcome }) => outcome), (result.effectReceipts ?? []).length > 0),
+      action, args: argsOf(params), outcome: recordedOutcome(outcomes.map(({ outcome }) => outcome), (result.effectReceipts ?? []).length > 0),
     })),
     more: steps.length - kept.length,
   }
 }
 
 const isOutcome = (value: unknown): value is RecordedOutcome => typeof value === "string" && Object.hasOwn(outcomeWords, value)
+const isValue = (value: unknown): value is RecordedValue => typeof value === "string" || typeof value === "number" || typeof value === "boolean"
 
 function storedRecord(value: unknown): ToolRecord | undefined {
   if (typeof value !== "object" || value === null) return undefined
@@ -56,16 +62,25 @@ function storedRecord(value: unknown): ToolRecord | undefined {
   if (!Array.isArray(steps) || typeof more !== "number" || !Number.isSafeInteger(more) || more < 0) return undefined
   const read = steps.flatMap((step: unknown) => {
     if (typeof step !== "object" || step === null) return []
-    const { action, values, outcome } = step as { action?: unknown; values?: unknown; outcome?: unknown }
-    return typeof action === "string" && action !== "" && typeof values === "string" && isOutcome(outcome)
-      ? [{ action: cut(action, maxRecordedValueChars), values: cut(values, maxRecordedValuesChars), outcome }] : []
+    const { action, args, outcome } = step as { action?: unknown; args?: unknown; outcome?: unknown }
+    if (typeof action !== "string" || !/^[A-Za-z0-9_-]{1,64}$/u.test(action) || typeof args !== "object" || args === null || Array.isArray(args) || !isOutcome(outcome)) return []
+    const kept = Object.entries(args).filter((entry): entry is [string, RecordedValue] => isValue(entry[1])).slice(0, maxRecordedArguments)
+    return [{ action, args: Object.fromEntries(kept.map(([name, kept]) => [name, typeof kept === "string" ? cut(kept) : kept])), outcome }]
   })
   return read.length === steps.length ? { steps: read.slice(0, recordedSteps(read.length)), more } : undefined
 }
 
-export function recordLine(stored: unknown, redacted: boolean): string | undefined {
+export function recordedTurn(stored: unknown, redacted: boolean, replyId: string): ChatMessage[] {
   const record = storedRecord(stored)
-  if (record === undefined || !carriesARecord(true, redacted, record.steps.length)) return undefined
-  const steps = record.steps.map(({ action, values, outcome }) => `${action}${values === "" ? "" : `(${values})`}: ${outcomeWords[outcome]}`)
-  return `${toolRecordLead} ${steps.join("; ")}${record.more > 0 ? `; and ${record.more} more` : ""}]`
+  if (record === undefined || !carriesARecord(true, redacted, record.steps.length)) return []
+  const key = replyId.replace(/[^A-Za-z0-9]/gu, "").slice(0, 24)
+  const calls = record.steps.map(({ action, args }, index) => ({ id: `history_${key}_${index}`, name: action, arguments: args }))
+  const last = record.steps.length - 1
+  return [
+    { role: "assistant", content: null, toolCalls: calls },
+    ...record.steps.map(({ outcome }, index): ChatMessage => ({
+      role: "tool", toolCallId: calls[index]?.id ?? "", name: calls[index]?.name ?? "",
+      content: index === last && record.more > 0 ? `${outcomeWords[outcome]}; ${record.more} more calls followed` : outcomeWords[outcome],
+    })),
+  ]
 }
