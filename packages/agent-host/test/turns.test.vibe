@@ -375,7 +375,7 @@ it.live('A reply quotes only the selected message in its own conversation and re
   })
 })
 
-it.live('A repeat joins, replays or conflicts by its key, a busy room is 429, a failed turn keeps its kind and names its fix, live wait and Cloud\'s own code, a turn that failed for no named cause is a provider issue I can retry, a failure after the reply is stored adds no second message, and a restart replays or answers a cut turn once (spec/agent/conversation/turns.md, "A message is refused, joined, replayed or admitted by its key, its room and the backend"; spec/agent/conversation/turns.md, "A turn that failed before any reply, for no cause the binding named, is stored as a provider issue"; spec/agent/conversation/turns.md, "A room runs one turn at a time, and only an admitted or recovered message changes anything"; spec/agent/conversation/turns.md, "Every turn ends once, storing its reply with its kind, or answering that no reply exists"; spec/agent/conversation/turns.md, "A failed reply names the owner\'s fix, and only a live rate limit carries its wait"; spec/agent/conversation/turns.md, "After a restart a repeat replays the stored reply, and a turn the restart cut is never run again"; spec/agent/conversation/conversations.md, "A history row carries its send key only on the owner\'s message, and a failure kind, what ended its turn and Cloud\'s funds code only on the agent\'s reply"; spec/agent/conversation/turns.md, "A reply that spent credits on a refusal naming Cloud\'s own code carries that code, and every other reply carries none"; spec/agent/conversation/turns.md, "An aborted reply records what ended its turn, and never in its text"; spec/agent/conversation/planning.md, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole")', effect () => {
+it.live('A repeat joins, replays or conflicts by its key, a busy room is 429, a failed turn keeps its kind and names its fix, live wait and Cloud\'s own code, a turn that failed for no named cause is a provider issue I can retry, a failure after the reply is stored adds no second message, and a restart replays or answers a cut turn once (spec/agent/conversation/turns.md, "A message is refused, joined, replayed or admitted by its key, its room and the backend"; spec/agent/conversation/turns.md, "A turn that failed before any reply, for no cause the binding named, is stored as a provider issue"; spec/agent/conversation/turns.md, "A room runs one turn at a time, and only an admitted or recovered message changes anything"; spec/agent/conversation/turns.md, "Every turn ends once, storing its reply with its kind, or answering that no reply exists"; spec/agent/conversation/turns.md, "A failed reply names the owner\'s fix, and only a live rate limit carries its wait"; spec/agent/conversation/turns.md, "After a restart a repeat replays the stored reply, and a turn the restart cut is never run again"; spec/agent/conversation/conversations.md, "A history row carries its send key only on the owner\'s message, and a failure kind, what ended its turn and Cloud\'s funds code only on the agent\'s reply"; spec/agent/conversation/turns.md, "A reply that spent credits on a refusal naming Cloud\'s own code carries that code, and every other reply carries none"; spec/agent/conversation/turns.md, "An aborted reply records what ended its turn, and never in its text"; spec/agent/conversation/planning.md, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"; spec/agent/conversation/turns.md, "A rate-limited reply stores who set the limit, and every other reply stores none"; spec/agent/conversation/turns.md, "A re-send the binding refuses for the limit its turn met keeps who set that limit")', effect () => {
   const cloud = try cloudFake(deviceKey)
   const state = try scratch("turns")
   const first = try cloudAgent(cloud, state)
@@ -417,7 +417,7 @@ it.live('A repeat joins, replays or conflicts by its key, a busy room is 429, a 
   const unfundedAgain = try send(first, id, { text: "Answer me.", clientMessageId: "m-3" })
   const storedFailure = try host("stored failure", () => first.agent.runtime.getMemoryById(replyOf(unfunded).messageId as UUID))
   const limitedUntil = Date.now() + 60_000
-  try Effect.sync(() => cloud.script(rateLimited(limitedUntil)))
+  try Effect.sync(() => cloud.script(refusal(429, "rate_limited", { retryable: true, retryAt: limitedUntil, reason: "cloud_gate_rate_limited" })))
   const limited = try send(first, id, { text: "Answer me now.", clientMessageId: "m-4" })
   const limitedAgain = try send(first, id, { text: "Answer me now.", clientMessageId: "m-4" })
   const storedLimit = try host("stored limit", () => first.agent.runtime.getMemoryById(replyOf(limited).messageId as UUID))
@@ -468,14 +468,14 @@ it.live('A repeat joins, replays or conflicts by its key, a busy room is 429, a 
     assert.deepStrictEqual({
       status: unfunded.status, failureKind: replyOf(unfunded).failureKind, cloudCode: replyOf(unfunded).cloudCode, planAction: replyOf(unfunded).planAction,
       replayed: [replyOf(unfundedAgain).messageId === replyOf(unfunded).messageId, replyOf(unfundedAgain).cloudCode],
-      stored: [storedFailure?.content.failureKind, storedFailure?.content.cloudCode],
-    }, { status: 200, failureKind: "insufficient_credits", cloudCode: "insufficient_credits", planAction: "funding", replayed: [true, "insufficient_credits"], stored: ["insufficient_credits", "insufficient_credits"] })
+      stored: [storedFailure?.content.failureKind, storedFailure?.content.cloudCode, storedFailure?.content.limitOrigin],
+    }, { status: 200, failureKind: "insufficient_credits", cloudCode: "insufficient_credits", planAction: "funding", replayed: [true, "insufficient_credits"], stored: ["insufficient_credits", "insufficient_credits", undefined] })
     const wait = replyOf(limited).retryAfterMs ?? -1
     assert.deepStrictEqual({
       status: limited.status, failureKind: replyOf(limited).failureKind, cloudCode: replyOf(limited).cloudCode, planAction: replyOf(limited).planAction, waits: wait > 0 && wait <= 60_000,
       replayed: [replyOf(limitedAgain).messageId === replyOf(limited).messageId, replyOf(limitedAgain).failureKind, replyOf(limitedAgain).retryAfterMs],
-      stored: [storedLimit?.content.failureKind, storedLimit?.content.retryAt],
-    }, { status: 200, failureKind: "limit_reached", cloudCode: undefined, planAction: undefined, waits: true, replayed: [true, "limit_reached", undefined], stored: ["limit_reached", undefined] })
+      stored: [storedLimit?.content.failureKind, storedLimit?.content.retryAt, storedLimit?.content.limitOrigin],
+    }, { status: 200, failureKind: "limit_reached", cloudCode: undefined, planAction: undefined, waits: true, replayed: [true, "limit_reached", undefined], stored: ["limit_reached", undefined, "cloud"] })
     assert.deepStrictEqual({ status: afterRestart.status, same: replyOf(afterRestart).messageId === replyOf(keyed).messageId, text: replyOf(afterRestart).text, calls: completions(cloud) - before },
       { status: 200, same: true, text: "Keyed answer.", calls: 0 })
     assert.deepStrictEqual({ status: cut.status, text: replyOf(cut).text, failureKind: replyOf(cut).failureKind, again: replyOf(cutAgain).messageId === replyOf(cut).messageId, calls: completions(cloud) - before },
@@ -822,6 +822,63 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
     ],
     labels: { text: undefined, voice: { kind: "CALCULATE", validatedCard: false } },
   }))
+}, 120_000)
+
+it.live(`A tool call the model wrote as text is read as the call on Qwen, and is otherwise asked again once and never shown, and a turn where nothing ran is told so (${planning}, "A tool call the model wrote as text never reaches the owner, and its step is asked again once"; ${planning}, "When nothing ran in a turn, the answer it asks for is told so"; spec/agent/models/binding.md, "A Qwen call on a Cerebras route reads a tool call the model wrote as text as that call, when it names an offered tool")`, effect () => {
+  const written = (name: string, expression: string) => `<tool_call>\n<function=${name}>\n<parameter=expression>\n${expression}\n</parameter>\n</function>\n</tool_call>`
+  const start = (largeModel?: string) => effect {
+    const cloud = try cloudFake(deviceKey)
+    const agent = try startInProcess({
+      launch: {
+        backend: { kind: "cloud", origin: cloud.origin, ...(largeModel === undefined ? {} : { largeModel }) }, callerRole: "owner",
+        load: [basicActionsModuleName], allowed: ["REPLY", "IGNORE", "NONE", "CALCULATE"],
+      },
+      frame: { credential: { version: 1, value: deviceKey } }, modules: builtinModuleFactories,
+    })
+    const { id } = try conversation(agent)
+    const turn = (request: string) => effect {
+      const before = completions(cloud)
+      const answered = replyOf(try send(agent, id, { text: request }))
+      return { text: answered.text, actions: answered.actionResults.map(({ action }) => action), calls: completions(cloud) - before, asked: lastTurnPrompt(cloud) }
+    }
+    return { cloud, turn }
+  }
+
+  const qwen = try start("cerebras/qwen-3.8-27b")
+  try Effect.sync(() => qwen.cloud.script(text(`Let me check.\n${written("CALCULATE", "2 + 2")}`), text("It is 4.")))
+  const read = try qwen.turn("What is 2 plus 2?")
+  try Effect.sync(() => qwen.cloud.script(text(`Let me check.\n${written("PHONE_USE", "maps")}`), text("I can't open Maps from here.")))
+  const unoffered = try qwen.turn("Show me coffee shops near me on the map.")
+
+  const other = try start()
+  try Effect.sync(() => other.cloud.script(text(`Let me check.\n${written("CALCULATE", "2 + 2")}`), toolCalls("", { name: "CALCULATE", arguments: { expression: "2 + 2" } }), text("It is 4.")))
+  const reasked = try other.turn("What is 2 plus 2?")
+  try Effect.sync(() => other.cloud.script(text(written("CALCULATE", "3 + 3")), text(`That is 6.\n<tool_call>\n<function=CALCULATE>`)))
+  const twice = try other.turn("What is 3 plus 3?")
+  try Effect.sync(() => other.cloud.script(text('On it. {"action": "add_note"}'), text("I couldn't save that note.")))
+  const nothing = try other.turn("Add a note: call the plumber Tuesday.")
+  try Effect.sync(() => other.cloud.script(toolCalls("", { name: "CALCULATE", arguments: { expression: "5 * 5" } }), text('One sec. {"action": "add_note"}'), text("It is 25.")))
+  const ranFirst = try other.turn("What is 5 times 5?")
+  try Effect.sync(() => other.cloud.script(toolCalls("", { name: "CALCULATE", arguments: { expression: "2 + 2", stray: true } }), text('On it. {"action": "add_note"}'), text("I couldn't work that out."), text("I couldn't work that out.")))
+  const refused = try other.turn("What is 2 plus 2?")
+  const refusedAsked = lastTurnPrompt(other.cloud, refused.calls - 2)
+
+  const callNote = "Note from the agent host, not the person: your last response wrote a tool call as text. Text never runs as a tool, so nothing ran, and the person did not see it. Make the call with one of the offered tools, or answer the person in words."
+  const noTool = "Note from the agent host, not the person: your last response called no tool and gave the person no answer, so none of it was sent. If the person's latest message is a question you can answer from what you already know, answer it now, in your own words. Otherwise do the work now by calling an offered tool, or, if no offered tool can do it, tell the person plainly, in your own words, that you can't."
+  const fromWork = "Note from the agent host, not the person: your last response gave the person no answer, so none of it was sent. The tool results above are what this turn did. Answer the person's latest message now from them, in your own words."
+  const nothingRan = "Note from the agent host, not the person: your last response gave the person no answer, so none of it was sent. No action ran in this turn: nothing was saved, sent or changed, so do not say that anything was. Answer the person's latest message now with what this turn holds, in your own words."
+  try Effect.try(() => assert.deepStrictEqual({ read, unoffered, reasked, twice, nothing, ranFirst, refused: [refused.text.startsWith("I couldn't work that out."), refusedAsked] }, {
+    read: { text: "It is 4.", actions: ["CALCULATE"], calls: 2, asked: read.asked },
+    unoffered: { text: "I can't open Maps from here.", actions: [], calls: 2, asked: callNote },
+    reasked: { text: "It is 4.", actions: ["CALCULATE"], calls: 3, asked: reasked.asked },
+    twice: { text: "That is 6.", actions: [], calls: 2, asked: callNote },
+    nothing: { text: "I couldn't save that note.", actions: [], calls: 2, asked: noTool },
+    ranFirst: { text: "It is 25.", actions: ["CALCULATE"], calls: 3, asked: fromWork },
+    refused: [true, nothingRan],
+  }))
+  const madeCall = (qwen.cloud.calls.filter(({ path }) => path.endsWith("/chat/completions"))[1]?.body as { messages: { role: string; content?: unknown; tool_calls?: { function: { name: string; arguments: string } }[] }[] } | undefined)
+    ?.messages.find(({ role, tool_calls }) => role === "assistant" && tool_calls !== undefined)
+  try Effect.try(() => assert.deepStrictEqual([madeCall?.content, madeCall?.tool_calls?.map(({ function: called }) => [called.name, JSON.parse(called.arguments)])], [null, [["CALCULATE", { expression: "2 + 2" }]]]))
 }, 120_000)
 
 it.live(`A failure on one recipient or event stays reported beside a success on another, in either order, the model is asked once to report it, its own words follow only a reply the model did not answer again, and a retry of the same operation that succeeds closes it (${planning}, "A failure or proposal the turn made stays reported unless a later success of the same operation supersedes it"; ${planning}, "A reply that leaves a failure unreported is written again once, and the delivered reply still reports open failures and attachment omissions"; ${planning}, "A failure with no receipt that a later run of its action may have answered is the model's to report, and its own words follow the reply unless the model stands by a reply without them"; ${planning}, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole")`, effect () => {
