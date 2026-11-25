@@ -1415,10 +1415,10 @@ it.live(`Each call keeps the system prompt and puts the turn's notes after the h
   }))
 }, 120_000)
 
-it.live(`A warm-up sends the planner's own system prompt and tools once with a one-token cap, answers at once, skips a second within four minutes, drops a failure and stores nothing (${planning}, "A warm-up sends the planner's tools and system prompt once with a one-token cap, at most once every four minutes, and stores and shows nothing")`, effect () => {
+it.live(`A warm-up sends the planner's own system prompt and tools once with a one-token cap, answers at once, skips a second within four minutes, drops a failure and stores nothing (${planning}, "A warm-up sends the planner's tools and system prompt once with a one-token cap, at most once every four minutes, and stores and shows nothing"; ${planning}, "Every planner call asks the model at temperature zero")`, effect () => {
   const cloud = try cloudFake(deviceKey)
   const agent = try startInProcess({ launch: { backend: { kind: "cloud", origin: cloud.origin, largeModel: "cerebras/qwen-3.8-27b" }, load: [basicActionsModuleName], allowed: ["REPLY", "IGNORE", "NONE", "CALCULATE"] }, frame: { credential: { version: 1, value: deviceKey } }, modules: builtinModuleFactories })
-  const sent = () => cloud.calls.filter(({ path }) => path.endsWith("/chat/completions")).map(({ body }) => body as { messages: { role: string; content?: unknown }[]; tools?: unknown; tool_choice?: unknown; max_tokens?: unknown; prompt_cache_key?: unknown })
+  const sent = () => cloud.calls.filter(({ path }) => path.endsWith("/chat/completions")).map(({ body }) => body as { messages: { role: string; content?: unknown }[]; tools?: unknown; tool_choice?: unknown; max_tokens?: unknown; prompt_cache_key?: unknown; temperature?: unknown })
   const warmUp = { method: "POST", path: "/api/turns/warm" } as const
 
   try Effect.sync(() => cloud.script(cutOff("o"), text("First answer."), text("First answer.")))
@@ -1455,12 +1455,14 @@ it.live(`A warm-up sends the planner's own system prompt and tools once with a o
     sameTools: JSON.stringify(warmCall?.tools) === JSON.stringify(turn?.tools) && Array.isArray(warmCall?.tools),
     sameKey: typeof warmCall?.prompt_cache_key === "string" && warmCall.prompt_cache_key === turn?.prompt_cache_key,
     warmShape: [warmCall?.messages.length, warmCall?.messages[1], warmCall?.max_tokens, warmCall?.tool_choice],
+    temperatures: [warmCall?.temperature, turn?.temperature],
     reply: reply.text, history: history.messages.length,
     logged: [logged.warmUp <= 1, logged.other.length > 0 && logged.other.every((room) => room === conversationRoom)],
     afterFailures,
   }, {
     first: 202, firstBody: { started: true }, again: { started: false }, warmed: true, conversationsAfterWarm: 0,
     sameSystem: true, sameTools: true, sameKey: true, warmShape: [2, { role: "user", content: "." }, 1, "auto"],
+    temperatures: [0, 0],
     reply: "First answer.", history: 2,
     logged: [true, true],
     afterFailures: failures.map(() => ({ asked: 202, canRespond: true, blocked: false, lastCloudFailure: "none", reply: "Still here.", failureKind: "none" })),
