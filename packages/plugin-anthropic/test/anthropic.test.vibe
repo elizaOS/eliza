@@ -1,0 +1,127 @@
+// spec/anthropic/index.md, "Story: Ask an Anthropic model for a complete response"
+import { ModelType, type IAgentRuntime, type TextStreamResult } from "@elizaos/core"
+import { assert, describe, it } from "@effect/vitest"
+import { plugin } from "../src/index.vibe"
+
+module node {
+  import { once } from "node:events"
+  import { createServer, type IncomingMessage, type ServerResponse } from "node:http"
+
+  export interface CapturedAnthropicServer {
+    readonly baseUrl: string
+    readonly payloads: Record<string, unknown>[]
+    close(): Promise<void>
+  }
+
+  export async function startAnthropicServer(
+    respond: (payload: Record<string, unknown>, req: IncomingMessage, res: ServerResponse) => void,
+  ): Promise<CapturedAnthropicServer> {
+    const payloads: Record<string, unknown>[] = []
+    const server = createServer((req, res) => {
+      let raw = ""
+      req.on("data", (chunk) => { raw += String(chunk) })
+      req.on("end", () => {
+        const parsed = JSON.parse(raw) as Record<string, unknown>
+        payloads.push(parsed)
+        respond(parsed, req, res)
+      })
+    })
+    server.listen(0, "127.0.0.1")
+    await once(server, "listening")
+    const addr = server.address()
+    const port = typeof addr === "object" && addr !== null ? addr.port : 0
+    return {
+      baseUrl: `http://127.0.0.1:${port}/v1`,
+      payloads,
+      close: () => new Promise<void>((resolve) => { server.close(() => resolve()) }),
+    }
+  }
+}
+import { startAnthropicServer } from node
+
+function makeRuntime(baseUrl: string): IAgentRuntime {
+  const settings: Record<string, string> = {
+    ANTHROPIC_API_KEY: "test-anthropic-key",
+    ANTHROPIC_BASE_URL: baseUrl,
+  }
+  return { getSetting: (key: string) => settings[key] } as unknown as IAgentRuntime
+}
+
+describe('Anthropic prompt-cache breakpoints and telemetry (spec/anthropic/index.md, "Story: Ask an Anthropic model for a complete response")', () => {
+  it('emits ephemeral cache_control on system block and final tool entry and returns cache token usage (spec/anthropic/index.md, "Story: Ask an Anthropic model for a complete response")', async () => {
+    const server = await startAnthropicServer((_payload, _req, res) => {
+      res.writeHead(200, { "content-type": "application/json" })
+      res.end(JSON.stringify({
+        content: [{ type: "tool_use", id: "toolu_1", name: "SHELL", input: { command: "ls" } }],
+        stop_reason: "tool_use",
+        usage: { input_tokens: 120, output_tokens: 30, cache_read_input_tokens: 1800, cache_creation_input_tokens: 200 },
+      }))
+    })
+    try {
+      const handler = plugin.models?.[ModelType.TEXT_LARGE] as (runtime: IAgentRuntime, params: unknown) => Promise<TextStreamResult>
+      const result = await handler(makeRuntime(server.baseUrl), {
+        system: "You are a deterministic coding assistant.",
+        prompt: "List workspace files.",
+        tools: [
+          { name: "READ", description: "Read file.", parameters: { type: "object", properties: { path: { type: "string" } } } },
+          { name: "SHELL", description: "Run shell.", parameters: { type: "object", properties: { command: { type: "string" } } } },
+        ],
+      })
+      const usage = await result.usage
+      const sent = server.payloads[0]
+      assert.deepStrictEqual(sent?.system, [
+        { type: "text", text: "You are a deterministic coding assistant.", cache_control: { type: "ephemeral" } },
+      ])
+      assert.deepStrictEqual(sent?.tools, [
+        { name: "READ", description: "Read file.", input_schema: { type: "object", properties: { path: { type: "string" } } } },
+        { name: "SHELL", description: "Run shell.", input_schema: { type: "object", properties: { command: { type: "string" } } }, cache_control: { type: "ephemeral" } },
+      ])
+      assert.deepStrictEqual(usage, {
+        promptTokens: 120,
+        completionTokens: 30,
+        totalTokens: 150,
+        cacheReadInputTokens: 1800,
+        cacheCreationInputTokens: 200,
+      })
+    } finally {
+      await server.close()
+    }
+  })
+
+  it('omits empty system and tools while caching streamed system prompts (spec/anthropic/index.md, "Story: Ask an Anthropic model for a complete response")', async () => {
+    const server = await startAnthropicServer((payload, _req, res) => {
+      if (payload.stream === true) {
+        res.writeHead(200, { "content-type": "text/event-stream" })
+        res.write('event: message_start\ndata: {"type":"message_start","message":{"usage":{"input_tokens":50,"cache_read_input_tokens":600,"cache_creation_input_tokens":0}}}\n\n')
+        res.write('event: content_block_delta\ndata: {"type":"content_block_delta","delta":{"type":"text_delta","text":"cached"}}\n\n')
+        res.write('event: message_delta\ndata: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":12}}\n\n')
+        res.end('event: message_stop\ndata: {"type":"message_stop"}\n\n')
+        return
+      }
+      res.writeHead(200, { "content-type": "application/json" })
+      res.end(JSON.stringify({ content: [{ type: "text", text: "plain" }], stop_reason: "end_turn" }))
+    })
+    try {
+      const handler = plugin.models?.[ModelType.TEXT_SMALL] as (runtime: IAgentRuntime, params: unknown) => Promise<string | TextStreamResult>
+      const streamed = await handler(makeRuntime(server.baseUrl), { system: "Stable prefix.", prompt: "Hi", stream: true, tools: [] }) as TextStreamResult
+      const text = await streamed.text
+      const usage = await streamed.usage
+      const plain = await handler(makeRuntime(server.baseUrl), { prompt: "No system" })
+      assert.strictEqual(text, "cached")
+      assert.strictEqual(plain, "plain")
+      assert.deepStrictEqual(server.payloads[0]?.system, [{ type: "text", text: "Stable prefix.", cache_control: { type: "ephemeral" } }])
+      assert.strictEqual("tools" in (server.payloads[0] ?? {}), false)
+      assert.strictEqual("system" in (server.payloads[1] ?? {}), false)
+      assert.strictEqual("tools" in (server.payloads[1] ?? {}), false)
+      assert.deepStrictEqual(usage, {
+        promptTokens: 50,
+        completionTokens: 12,
+        totalTokens: 62,
+        cacheReadInputTokens: 600,
+        cacheCreationInputTokens: 0,
+      })
+    } finally {
+      await server.close()
+    }
+  })
+})

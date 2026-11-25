@@ -71,7 +71,24 @@ effect function jsonPost(runtime: IAgentRuntime, path: string, body: object, sel
   })
 }
 
-const usageSchema = Schema.Struct({ prompt_tokens: Schema.Int, completion_tokens: Schema.Int, total_tokens: Schema.Int })
+const usageSchema = Schema.Struct({
+  prompt_tokens: Schema.Int,
+  completion_tokens: Schema.Int,
+  total_tokens: Schema.Int,
+  prompt_tokens_details: Schema.optionalKey(Schema.NullOr(Schema.Struct({
+    cached_tokens: Schema.optionalKey(Schema.NullOr(Schema.Int)),
+  }))),
+})
+
+function toTokenUsage(reported: typeof usageSchema.Type): TokenUsage {
+  const cachedTokens = reported.prompt_tokens_details?.cached_tokens
+  return {
+    promptTokens: reported.prompt_tokens,
+    completionTokens: reported.completion_tokens,
+    totalTokens: reported.total_tokens,
+    ...(typeof cachedTokens === "number" ? { cacheReadInputTokens: cachedTokens } : {}),
+  }
+}
 const streamFrameSchema = Schema.Struct({
   choices: Schema.Array(Schema.Struct({
     delta: Schema.Struct({ content: Schema.optionalKey(Schema.NullOr(Schema.String)) }),
@@ -107,7 +124,7 @@ effect function streamAnswer(response: Response, model: Machine.Shape, attempt: 
       }
       const next = try streamFrame(event.data)
       const reported = next.usage
-      if (reported != null) usage = { promptTokens: reported.prompt_tokens, completionTokens: reported.completion_tokens, totalTokens: reported.total_tokens }
+      if (reported != null) usage = toTokenUsage(reported)
       for (const choice of next.choices) {
         if (choice.finish_reason != null) reason = choice.finish_reason
         const delta = choice.delta.content
@@ -186,7 +203,7 @@ effect function textRequest(runtime: IAgentRuntime, params: GenerateTextParams, 
         return {
           kind: "full",
           text,
-          usage: reported && { promptTokens: reported.prompt_tokens, completionTokens: reported.completion_tokens, totalTokens: reported.total_tokens },
+          usage: reported && toTokenUsage(reported),
           finishReason: choice.finish_reason,
           toolCalls: choice.message.tool_calls,
         } as const

@@ -80,6 +80,8 @@ import { anthropicPost, claudeEvents, claudeText } from node
 
 export error AnthropicFailed { reason: string }
 
+const EPHEMERAL_CACHE_CONTROL = { type: "ephemeral" } as const
+
 const answerSchema = Schema.Struct({
   content: Schema.Array(Schema.Struct({
     type: Schema.String, text: Schema.optionalKey(Schema.String), id: Schema.optionalKey(Schema.String),
@@ -260,12 +262,23 @@ effect function inference(runtime: IAgentRuntime, params: GenerateTextParams, ti
       .filter((part) => part !== undefined).join("\n\n")
     const messages = params.messages?.filter((message) => message.role !== "system" && message.role !== "developer").map(messageWire)
       ?? [{ role: "user", content: params.prompt ?? "" }]
+    const systemBlocks = system === ""
+      ? undefined
+      : [{ type: "text", text: system, cache_control: EPHEMERAL_CACHE_CONTROL }]
+    const tools = params.tools && params.tools.length > 0
+      ? params.tools.map((tool, index, all) => ({
+          name: tool.name,
+          description: tool.description,
+          input_schema: tool.parameters ?? { type: "object" },
+          ...(index === all.length - 1 ? { cache_control: EPHEMERAL_CACHE_CONTROL } : {}),
+        }))
+      : undefined
     const wire = {
-      model, system: system === "" ? undefined : system, messages, max_tokens: maxTokens,
+      model, system: systemBlocks, messages, max_tokens: maxTokens,
       temperature: sampling === "TemperatureOne" ? 1 : sampling === "RequestedTemperature" ? params.temperature : sampling === "DefaultSampling" ? 0.7 : undefined,
       top_p: sampling === "RequestedTopP" ? params.topP : undefined,
       stream: transport === "SdkStream", stop_sequences: params.stopSequences,
-      tools: params.tools?.map((tool) => ({ name: tool.name, description: tool.description, input_schema: tool.parameters ?? { type: "object" } })),
+      tools,
       tool_choice: toolChoice,
       output_config: params.responseSchema === undefined ? undefined : { format: { type: "json_schema", schema: params.responseSchema } },
     }

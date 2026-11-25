@@ -1,6 +1,6 @@
 // spec/core/index.md, "Story: Compose a kernel through explicit services"
 import { assert, it } from "@effect/vitest"
-import { type Action, addLogListener, asyncContextStorageFactoryFor, AsyncContextUnavailableError, type AgentEventPayload, AgentEventService, type AgentNotification, AgentRuntime, annotateActiveTrajectoryStep, type ApprovalRequest, type ApprovalResult, ApprovalService, BatchProcessor, bindIncomingMessagePersistence, bridgeActionCompletedToStreams, bridgeActionStartedToStreams, bridgeRunEndedToStreams, bridgeRunStartedToStreams, buildPairingReplyMessage, buildPlannerActionGrammarStrict, callModelWithValidation, canModifyRole, ChannelTopicsService, ChannelType, checkPairingAllowed, clearSaltCache, collectMessageContentSegmentIds, compactHistoricalReceiptSegments, completionContextSources, type ConnectorAccount, type ConnectorAccountProvider, type Content, type ContextObject, createCharacter, createLogger, createMessageMemory, createModelAttemptAllowance, createPreparedModelRequestGuard, createService, createUniqueUuid, decryptStringValue, effectDeliveryBindingIsValid, effectDeliveryBindingProvesApplication, ElizaError, EmbeddingGenerationService, EncryptedCachePseudonymMapStore, ensureAgentVoice, ensureTaskTrajectory, EventType, executePlannedToolCall, getConnectorAccountManager, getEmbeddingVectorSpace, getTrajectoryContext, getWorldSettings, type HandlerCallback, handoffTaskSchedulerAdapter, type IAgentRuntime, identifyEmbeddingVector, incomingMessagePersistenceSnapshot, inheritIncomingMessagePersistence, isElizaError, isInAllowlist, isScrubDone, logActiveTrajectoryLlmCall, type LogEntry, type Memory, MESSAGE_CONTENT_SEGMENT_MAX_BYTES, MESSAGE_CONTENT_SEGMENT_TABLE, type MessageHandlerResult, MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED, ModelType, NoModelProviderConfiguredError, nodeSecretCipher, normalizeEffectReceipt, type NotificationInboxSnapshot, NotificationNativeError, NotificationService, PairingService, persistIncomingMessageMemory, PiiScrubService, PseudonymSession, type PipelineHookContext, type Plugin, recentLogs, recordLlmCall, registerProxyInspector, registerScheduledProcessTask, registerSecretCipher, removeLogListener, requireConfirmation, resolveCanonicalOwnerId, resolveEntityRole, resolveOwnerEntityIdOrDefault, type ResponseHandlerFieldEvaluator, ResponseHandlerFieldRegistry, Role, ROLE_WRITE_AUDIT_LOG_TYPE, type RoleName, RoomHandlerQueueAbortedError, RoomHandlerQueueClosedError, runExtractorPipeline, runResponseHandlerEvaluators, RunTerminalOwner, runWithStreamingContext, runWithTrajectoryContext, selectCompletionContext, Service, type ServiceClass, ServiceType, setEntityRoleCas, SecretCipherUnavailableError, SecretSwapSession, STANDARD_OPTIONS, startTaskScheduler, stopTaskScheduler, type StreamingContext, stringToUuid, TaskDrain, TaskService, type TaskWorker, type TrajectoryContext, TurnAbortedError, updateWorldSettings, type UUID, VoiceCancellationRegistry, withEvaluatorStep, withRoomDeliverySettlement, withStandaloneTrajectory, withVisibleComponents, type World } from "../src/index.vibe"
+import { type Action, addLogListener, asyncContextStorageFactoryFor, AsyncContextUnavailableError, type AgentEventPayload, AgentEventService, type AgentNotification, AgentRuntime, annotateActiveTrajectoryStep, type ApprovalRequest, type ApprovalResult, ApprovalService, BatchProcessor, bindIncomingMessagePersistence, bridgeActionCompletedToStreams, bridgeActionStartedToStreams, bridgeRunEndedToStreams, bridgeRunStartedToStreams, buildPairingReplyMessage, buildPlannerActionGrammarStrict, callModelWithValidation, canModifyRole, ChannelTopicsService, ChannelType, checkPairingAllowed, clearSaltCache, collectMessageContentSegmentIds, compactHistoricalReceiptSegments, completionContextSources, type ConnectorAccount, type ConnectorAccountProvider, type Content, type ContextObject, createCharacter, createLogger, createMessageMemory, createModelAttemptAllowance, createPreparedModelRequestGuard, createService, createUniqueUuid, decryptStringValue, effectDeliveryBindingIsValid, effectDeliveryBindingProvesApplication, ElizaError, EmbeddingGenerationService, EncryptedCachePseudonymMapStore, ensureAgentVoice, ensureTaskTrajectory, EventType, executePlannedToolCall, getConnectorAccountManager, getEmbeddingVectorSpace, getTrajectoryContext, getWorldSettings, type HandlerCallback, handoffTaskSchedulerAdapter, type IAgentRuntime, identifyEmbeddingVector, incomingMessagePersistenceSnapshot, inheritIncomingMessagePersistence, isElizaError, isInAllowlist, isScrubDone, logActiveTrajectoryLlmCall, type LogEntry, type Memory, MESSAGE_CONTENT_SEGMENT_MAX_BYTES, MESSAGE_CONTENT_SEGMENT_TABLE, type MessageHandlerResult, MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED, ModelType, NoModelProviderConfiguredError, nodeSecretCipher, normalizeEffectReceipt, type NotificationInboxSnapshot, NotificationNativeError, NotificationService, PairingService, persistIncomingMessageMemory, PiiScrubService, promoteSubactionsToActions, PseudonymSession, type PipelineHookContext, type Plugin, recentLogs, recordLlmCall, registerProxyInspector, registerScheduledProcessTask, registerSecretCipher, removeLogListener, requireConfirmation, resolveCanonicalOwnerId, resolveEntityRole, resolveOwnerEntityIdOrDefault, type ResponseHandlerFieldEvaluator, ResponseHandlerFieldRegistry, Role, ROLE_WRITE_AUDIT_LOG_TYPE, type RoleName, RoomHandlerQueueAbortedError, RoomHandlerQueueClosedError, runExtractorPipeline, runResponseHandlerEvaluators, RunTerminalOwner, runWithStreamingContext, runWithTrajectoryContext, selectCompletionContext, Service, type ServiceClass, ServiceType, setEntityRoleCas, SecretCipherUnavailableError, SecretSwapSession, STANDARD_OPTIONS, startTaskScheduler, stopTaskScheduler, type StreamingContext, stringToUuid, TaskDrain, TaskService, type TaskWorker, type TrajectoryContext, TurnAbortedError, updateWorldSettings, type UUID, VoiceCancellationRegistry, withEvaluatorStep, withRoomDeliverySettlement, withStandaloneTrajectory, withVisibleComponents, type World } from "../src/index.vibe"
 import { coreDir, installPacked, packCandidate, runNode, sha256File } from "./support/child.ts"
 import { host, kernel, scratch, withEnv } from "./support/kernel.vibe"
 import { providerError, scriptedModels, type ScriptedReply, type SeenCall } from "./support/models.ts"
@@ -5085,3 +5085,60 @@ it.live('Two scrub items drained together keep both people\'s pseudonyms, and a 
     distinct: true,
   }))
 }), 60_000)
+
+// spec/core/actionPlanning.md, "A promoted subaction is checked by its own name and its umbrella's, so allowing an umbrella allows none of its subactions and refusing it refuses them all"
+it.effect('Promoted subactions preserve summarize and modelClass with override precedence and pin their discriminator (spec/core/actionPlanning.md, "A promoted subaction is checked by its own name and its umbrella\'s, so allowing an umbrella allows none of its subactions and refusing it refuses them all")', () => effect {
+  const seen: Record<string, unknown>[] = []
+  const parentSummarize = (result: { text?: string } | undefined) => `parent:${result?.text ?? ""}`
+  const listSummarize = (result: { text?: string } | undefined) => `list:${result?.text ?? ""}`
+  const parent: Action = {
+    name: "TASKS",
+    description: "Manage tasks.",
+    modelClass: "TEXT_LARGE",
+    summarize: parentSummarize,
+    parameters: [
+      { name: "action", description: "Op.", required: false, schema: { type: "string", enum: ["create", "list"] } },
+      { name: "task", description: "Task.", required: false, subactions: ["create"], requiredForSubactions: ["create"], schema: { type: "string" } },
+      { name: "limit", description: "Limit.", required: false, subactions: ["list"], schema: { type: "integer" } },
+    ],
+    validate: async () => true,
+    handler: async (_runtime, _message, _state, options) => {
+      seen.push(((options as { parameters?: Record<string, unknown> } | undefined)?.parameters) ?? {})
+      return { success: true, text: "ok" }
+    },
+  }
+  const promoted = promoteSubactionsToActions(parent, {
+    overrides: {
+      list: { modelClass: "TEXT_SMALL", summarize: listSummarize },
+    },
+  })
+  const createAction = promoted.find((action) => action.name === "TASKS_CREATE")
+  const listAction = promoted.find((action) => action.name === "TASKS_LIST")
+  assert.isDefined(createAction)
+  assert.isDefined(listAction)
+  const runtime = try Effect.try(() => new AgentRuntime({ character: createCharacter({ name: "Eliza", bio: [] }) }))
+  const message = createMessageMemory({ id: createUniqueUuid(runtime, "promote-msg"), entityId: createUniqueUuid(runtime, "promote-user"), roomId: createUniqueUuid(runtime, "promote-room"), content: { text: "list tasks" } })
+  const listResult = try Effect.promise(() => listAction!.handler(runtime, message, undefined, { parameters: { limit: 5 } }))
+  const contradiction = try Effect.promise(() => listAction!.handler(runtime, message, undefined, { parameters: { action: "create" } }))
+  assert.deepStrictEqual({
+    createModelClass: createAction!.modelClass,
+    listModelClass: listAction!.modelClass,
+    createSummary: createAction!.summarize?.({ success: true, text: "x" }, {}),
+    listSummary: listAction!.summarize?.({ success: true, text: "x" }, {}),
+    createParams: createAction!.parameters?.map((param) => [param.name, param.required, param.schema.enum]),
+    listParams: listAction!.parameters?.map((param) => [param.name, param.required, param.schema.enum]),
+    listOk: listResult.success,
+    contradictionOk: contradiction.success,
+    seen,
+  }, {
+    createModelClass: "TEXT_LARGE",
+    listModelClass: "TEXT_SMALL",
+    createSummary: "parent:x",
+    listSummary: "list:x",
+    createParams: [["action", false, ["create"]], ["task", true, undefined]],
+    listParams: [["action", false, ["list"]], ["limit", false, undefined]],
+    listOk: true,
+    contradictionOk: false,
+    seen: [{ limit: 5, action: "list", subaction: "list" }],
+  })
+})
