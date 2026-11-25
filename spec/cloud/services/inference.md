@@ -208,8 +208,14 @@ pure def lawAnAdmittedCallIsHeldAtItsQuote(ingress: R::Window, auth: RA::Admissi
 Just before `M::markDispatched` the shell runs `requestAuth` again and reads
 the lane. A caller who has gone gets no answer (the log records 499), a lost
 credential answers what `requestAuth` answers now, a changed lane answers
-`409 billing_state_conflict`, and each releases the hold. The provider call
-is cancelled after 800 seconds.
+`409 billing_state_conflict`, and each releases the hold.
+
+The chosen provider receives the chat payload with the model's upstream ID.
+For HTTPS, the shell posts to the provider's `/chat/completions` endpoint
+with its configured API key. For Workers AI, the shell invokes `run` on the
+profile's named binding with the upstream model ID and requests the raw
+response. Both transports use the same response checks, framing and
+settlement. The provider call is cancelled after 800 seconds.
 
 ```quint
 type DispatchVerdict = Dispatch | Withdraw({ refusal: Refusal }) | CallerGone

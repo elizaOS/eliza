@@ -62,6 +62,10 @@ pure def lawAllowanceBelowPrice(key: PlanKey): bool = allowanceOf(key) >= 0 and 
 
 ### The plan list shows the paid plans only, cheapest first
 
+The public plan list includes Plus and includes Pro when its provider price
+and product are configured in this deployment. Checkout and plan changes
+require a configured provider binding for their paid plans.
+
 The public plan list answers `{plans: [{key, name, amountCents, currency:
 "usd", interval: "month", allowance: {amountUsd}}]}`. `allowance.amountUsd`
 is `allowanceMicros` / 1,000,000 written as a decimal string with exactly six
@@ -72,6 +76,8 @@ type PlanOffer = { key: PlanKey, name: str, amountCents: int, allowanceMicros: M
 pure val paidPlanKeys: List[PlanKey] = List(PlusMonthly, ProMonthly)
 pure def offerOf(key: PlanKey): PlanOffer = { key: key, name: termsOf(key).name, amountCents: amountCentsOf(key), allowanceMicros: allowanceOf(key) }
 pure val planOffers: List[PlanOffer] = paidPlanKeys.listMap(k => offerOf(k))
+pure def availablePlanOffers(proConfigured: bool): List[PlanOffer] =
+  if (proConfigured) planOffers else List(offerOf(PlusMonthly))
 pure def lawOnlyPaidPlansAreOffered(key: PlanKey): bool = paidPlanKeys.includes(key) iff isPaid(key)
 pure def lawOffersAreCheapestFirst(offerIndex: int): bool = (offerIndex >= 0 and offerIndex + 1 < planOffers.length()) implies planOffers.nthOr(offerIndex, offerOf(Free)).amountCents < planOffers.nthOr(offerIndex + 1, offerOf(Free)).amountCents
 pure val offerIndexValues = Set(0, 1)

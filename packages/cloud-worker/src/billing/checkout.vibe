@@ -125,11 +125,12 @@ export effect function pinnedCustomer(tx: Tx, organizationId: string) {
 effect function observeCheckout(customerId: string, plan: PaidPlanKey) {
   const deployment = try Deployment
   const billing = deployment.settings.billing
-  if (billing === undefined) throw refused("CapabilityUnavailable")
+  const binding = billing?.plans[plan]
+  if (billing === undefined || binding === undefined) throw refused("CapabilityUnavailable")
   const key = try deployment.secret(billing.secretKeyEnv)
   return (try foreign("observe checkout subscription", () => readStripeSubscription(stripeClient(key, billing.apiUrl), {
-    STRIPE_PRICE_ID: billing.plans[plan].priceId,
-    STRIPE_PRODUCT_ID: billing.plans[plan].productId,
+    STRIPE_PRICE_ID: binding.priceId,
+    STRIPE_PRODUCT_ID: binding.productId,
     STRIPE_PLAN: plan,
     CLOUD_ENVIRONMENT: deployment.environment
   }, customerId))).observation
@@ -359,10 +360,12 @@ effect function startCheckout(caller: Signed, request: StartRequest) {
   const plan = paidWire(request.planKey)
   if (billing === undefined) throw refused("CapabilityUnavailable")
   if (plan === undefined || !idempotencyKeyPattern.test(request.idempotencyKey)) throw refused("InvalidRequest")
+  const binding = billing.plans[plan]
+  if (binding === undefined) throw refused("CapabilityUnavailable")
   const { organizationId, userId } = caller
   const commandId = checkoutIdOf(organizationId, request.idempotencyKey)
   const by = receiptOwner(organizationId, userId, "CheckoutSession")
-  const priceId = billing.plans[plan].priceId
+  const priceId = binding.priceId
   const billingReturn = try store.transaction((tx) => billingReturnOf(tx, caller, request.presentation))
   const returns = returnFor(request.presentation, billingReturn)
   const digest = requestDigest({ organizationId, userId, plan, priceId, presentation: wirePresentation[request.presentation], returns })

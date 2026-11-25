@@ -37,6 +37,7 @@ module node {
   export const movedDentist = "Updated Dentist, Mar 4, 2030, 9:00 AM."
   export const unsaidMove = "Nothing was changed: that start time is not a time the request gives."
   export const notMoved = "The calendar did not take the change."
+  export const phoneWords: Readonly<Record<string, string>> = { send_sms: "I can't reach your phone from this chat.", open_dialer: "Your phone can't do that from chat right now." }
   const refusing: { moves: ("Misread" | "Refused")[] } = { moves: [] }
 
   /** @throws {never} */
@@ -71,6 +72,17 @@ module node {
           name: "MOVE_EVENT", description: "Moves the owner's dentist appointment to the time they asked for.", similes: [],
           parameters: [{ name: "at", required: false, description: "The new start time.", schema: { type: "string" } }],
           validate: async () => true, handler: async (runtime) => move(runtime.agentId),
+        }, {
+          name: "PHONE_ACTION", description: "Asks the owner's phone to send a text or open its keypad.", similes: [],
+          parameters: [{ name: "operation", required: true, description: "send_sms or open_dialer.", schema: { type: "string" } }],
+          validate: async () => true,
+          handler: async (_runtime, _message, _state, options) => {
+            const operation = String((options as { readonly parameters?: { readonly operation?: unknown } } | undefined)?.parameters?.operation ?? "")
+            return {
+              success: false, text: "The phone did not take this operation. No device proposal was created.", userFacingText: phoneWords[operation] ?? phoneWords.open_dialer, verifiedUserFacing: true,
+              data: { code: "DEVICE_CAPABILITY_UNAVAILABLE", proposalCreated: false, executed: false, retryable: false, executionStatus: "not_started" },
+            }
+          },
         }],
       },
     }))
@@ -345,7 +357,7 @@ module node {
     return text
   }
 }
-import { namedTools, calendarProbe, completions, notMoved, unsaidMove, untitledChecklist, unrealTime, cutTurn, modelLogRooms, failParticipantLookupOnce, handedDirectly, privateAgenda, privateReadCount, privateReader, failNext, fixtureApp, lastTurnHistory, lastTurnPrompt, localDay, loseRoomOwnershipOnceAfterReply, movedDentist, nearestCafes, overlapping, plainLog, refuseMoves, roomMessages, seedHistory, storeNotice, watchRunEnds } from node
+import { namedTools, calendarProbe, completions, notMoved, phoneWords, unsaidMove, untitledChecklist, unrealTime, cutTurn, modelLogRooms, failParticipantLookupOnce, handedDirectly, privateAgenda, privateReadCount, privateReader, failNext, fixtureApp, lastTurnHistory, lastTurnPrompt, localDay, loseRoomOwnershipOnceAfterReply, movedDentist, nearestCafes, overlapping, plainLog, refuseMoves, roomMessages, seedHistory, storeNotice, watchRunEnds } from node
 
 effect function runEndsOf(ends: readonly { messageId?: string, status: string }[], messageId: string | undefined) {
   for (let wait = 0; wait < 100 && !ends.some((end) => end.messageId === messageId); wait += 1) try Effect.sleep("20 millis")
@@ -652,7 +664,7 @@ it.live(`Competing terminal decisions run no sibling tool and get one repair rou
   })
 })
 
-it.live(`An allowed action runs as a tool whatever the message, its result grounds the reply, a call its own check declines never runs, a failure the turn proved is reported, the model is asked once more for a failure its reply left out, words the action wrote to the model never follow the reply, and a calculation with no answer is told in its own words for the owner whatever the model wrote, a refusal the model put right with a later call adds no refusal words once the model stands by its reply, and a cue is never the reply: a blank or a cue beside a call written as text, with no tool call, is asked again once, to do the work with an offered tool or say plainly it can't (${planning}, "A turn offers the model only registered actions the launch allows, and plans at most eight steps"; ${planning}, "A reply that leaves a failure unreported is written again once, and the delivered reply still reports open failures and attachment omissions"; ${planning}, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history"; ${planning}, "A failure or proposal the turn made stays reported unless a later success of the same operation supersedes it"; ${planning}, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"; ${planning}, "A voice turn that ran an action answers with that action's label: its kind and whether the reply is a validated card"; ${planning}, "A failure with no receipt that a later run of its action may have answered is the model's to report, and its own words follow the reply unless the model stands by a reply without them")`, effect () => {
+it.live(`An allowed action runs as a tool whatever the message, its result grounds the reply, a call its own check declines never runs, a failure the turn proved is reported, the model is asked once more for a failure its reply left out, words the action wrote to the model never follow the reply, and a calculation with no answer is told in its own words for the owner whatever the model wrote, a refusal the model put right with a later call adds no refusal words once the model stands by its reply, and a cue is never the reply: a blank or a cue beside a call written as text, with no tool call, is asked again once, to do the work with an offered tool or say plainly it can't (${planning}, "A turn offers the model only registered actions the launch allows, and plans at most eight steps"; ${planning}, "A reply that leaves a failure unreported is written again once, and the delivered reply still reports open failures and attachment omissions"; ${planning}, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history"; ${planning}, "A failure or proposal the turn made stays reported unless a later success of the same operation supersedes it"; ${planning}, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"; ${planning}, "A voice turn that ran an action answers with that action's label: its kind and whether the reply is a validated card"; ${planning}, "A failure with no receipt that a later step may have answered is the model's to report, and its own words follow the reply unless the model stands by a reply without them")`, effect () => {
   const cloud = try cloudFake(deviceKey)
   const agent = try startInProcess({
     launch: {
@@ -856,7 +868,7 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
     cutAfterFailure: [cutAfterFailure.text, cutAfterFailureCalls],
     separate: [separate.text, separateCalls],
     corrected: [corrected.text, correctedCalls],
-    correctedAgain: [correctedAgain.text, correctedAgainCalls, correctedNote.includes("a later call of the same action did run") && correctedNote.includes("A CALCULATE call did not start.")],
+    correctedAgain: [correctedAgain.text, correctedAgainCalls, correctedNote.includes("a later call of this turn did run") && correctedNote.includes("A CALCULATE call did not start.")],
     otherLater: [otherLater.text, otherLaterCalls, otherLaterNote.includes("If it did not, the reply must tell the person truthfully that this step did not happen.")],
     refusalStatuses: [separate, corrected].map(({ actionResults }) => actionResults.map(({ data }) => data.executionStatus)),
     duration: duration.text,
@@ -1028,7 +1040,7 @@ it.live(`An answer keeps JSON that only shares a name with an offered tool and l
   }))
 }, 120_000)
 
-it.live(`A failure on one recipient or event stays reported beside a success on another, in either order, the model is asked once to report it, the words its action wrote for the owner follow a reply that lacks them, a retry of the same operation that succeeds closes it, words an action wrote to the model never reach the owner under any reply, and a checklist with no title is a question the model asks, not a failure (${planning}, "A failure or proposal the turn made stays reported unless a later success of the same operation supersedes it"; ${planning}, "A reply that leaves a failure unreported is written again once, and the delivered reply still reports open failures and attachment omissions"; ${planning}, "A failure with no receipt that a later run of its action may have answered is the model's to report, and its own words follow the reply unless the model stands by a reply without them"; ${planning}, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"; spec/notes/records.md, "A Notes change answers with a receipt of the note and the revision it committed, and a refusal says what it waits on")`, effect () => {
+it.live(`A failure on one recipient or event stays reported beside a success on another, in either order, the model is asked once to report it, the words its action wrote for the owner follow a reply that lacks them, a retry of the same operation that succeeds closes it, words an action wrote to the model never reach the owner under any reply, and a checklist with no title is a question the model asks, not a failure (${planning}, "A failure or proposal the turn made stays reported unless a later success of the same operation supersedes it"; ${planning}, "A reply that leaves a failure unreported is written again once, and the delivered reply still reports open failures and attachment omissions"; ${planning}, "A failure with no receipt that a later step may have answered is the model's to report, and its own words follow the reply unless the model stands by a reply without them"; ${planning}, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"; spec/notes/records.md, "A Notes change answers with a receipt of the note and the revision it committed, and a refusal says what it waits on")`, effect () => {
   const cloud = try cloudFake(deviceKey)
   const agent = try startInProcess({
     launch: {
@@ -1043,7 +1055,7 @@ it.live(`A failure on one recipient or event stays reported beside a success on 
     const before = completions(cloud)
     const answered = replyOf(try send(agent, id, { text: request }))
     const note = completions(cloud) - before > 2 ? lastTurnPrompt(cloud) : ""
-    return { text: answered.text, calls: completions(cloud) - before, laterRunNote: note.includes("a later call of the same action did run") }
+    return { text: answered.text, calls: completions(cloud) - before, laterRunNote: note.includes("a later call of this turn did run") }
   }
 
   try Effect.sync(() => { failNext("Alice"); cloud.script(toolCalls("", textTo("Bob"), textTo("Alice")), text("Both texts are sent."), text("Both texts are sent.")) })
@@ -1693,22 +1705,23 @@ it.live(`A reply that misstates the time a calendar change got is asked for once
   }))
 }, 120_000)
 
-it.live(`A calendar move refused without a receipt and then made by the model's own corrected call adds no refusal words once the model stands by a reply without them, a kept second answer reports it in the model's words alone, a misread refusal's words, written to the model, never follow the reply, and a move the calendar would not take follows any reply in its own words for the owner, so it never reads as done (${planning}, "A failure with no receipt that a later run of its action may have answered is the model's to report, and its own words follow the reply unless the model stands by a reply without them"; ${planning}, "A reply that leaves a failure unreported is written again once, and the delivered reply still reports open failures and attachment omissions")`, effect () => {
+it.live(`A calendar move refused without a receipt and then made by the model's own corrected call adds no refusal words once the model stands by a reply without them, as does a call of another action that did not start before the move, while one with no later call is put to the model as a step the reply must report, and a phone's refusal of a text or its keypad in words for the owner still follows a reply that claims it though a later move ran, a kept second answer reports it in the model's words alone, a misread refusal's words, written to the model, never follow the reply, and a move the calendar would not take follows any reply in its own words for the owner, so it never reads as done (${planning}, "A failure with no receipt that a later step may have answered is the model's to report, and its own words follow the reply unless the model stands by a reply without them"; ${planning}, "A reply that leaves a failure unreported is written again once, and the delivered reply still reports open failures and attachment omissions")`, effect () => {
   const cloud = try cloudFake(deviceKey)
   const agent = try startInProcess({
-    launch: { backend: { kind: "cloud", origin: cloud.origin }, callerRole: "owner", load: [basicActionsModuleName], allowed: ["REPLY", "IGNORE", "NONE", "MOVE_EVENT"] },
+    launch: { backend: { kind: "cloud", origin: cloud.origin }, callerRole: "owner", load: [basicActionsModuleName, viewsModuleName], allowed: ["REPLY", "IGNORE", "NONE", "MOVE_EVENT", "VIEWS", "PHONE_ACTION"] },
     frame: { credential: { version: 1, value: deviceKey } }, modules: calendarProbe(basicActionsModuleName),
   })
   const { id } = try conversation(agent)
+  const showCalendar = { name: "VIEWS", arguments: { action: "show", view: "calendar" } }
   const misread = { name: "MOVE_EVENT", arguments: { at: "8am" } }
   const move = { name: "MOVE_EVENT", arguments: { at: "9am" } }
-  const turn = effect (refused: readonly ("Misread" | "Refused")[], said: () => readonly CloudReply[]) => {
+  const turn = effect (refused: readonly ("Misread" | "Refused")[], said: () => readonly CloudReply[], reports: readonly string[] = [wrapExternalContent(unsaidMove, { source: "unknown" })]) => {
     try Effect.sync(() => { refuseMoves(...refused); cloud.script(...said()) })
     const before = completions(cloud)
     const answer = replyOf(try send(agent, id, { text: "Move my dentist to 9am" }))
     const calls = completions(cloud) - before
     const note = calls > 2 ? lastTurnPrompt(cloud) : ""
-    return { reply: answer.text, calls, laterRunNote: note.includes("a later call of the same action did run") && note.includes(wrapExternalContent(unsaidMove, { source: "unknown" })) }
+    return { reply: answer.text, calls, laterRunNote: note.includes("a later call of this turn did run (MOVE_EVENT).") && reports.every((report) => note.includes(report)) }
   }
   const right = "Done, your dentist is now 9–10 AM."
   const sameAgain = try turn(["Misread"], () => [toolCalls("", misread), toolCalls("", move), text(right), text(right)])
@@ -1723,7 +1736,14 @@ it.live(`A calendar move refused without a receipt and then made by the model's 
   const sameResponse = try turn(["Misread"], () => [toolCalls("", misread, move), text(right), text(right)])
   const neverMoved = try turn(["Misread", "Refused"], () => [toolCalls("", misread), toolCalls("", move), text("Done!"), text("Done!")])
   const providerRefused = try turn(["Refused"], () => [toolCalls("", move), text("Done!"), requestFault("invalid_request")])
-  try Effect.try(() => assert.deepStrictEqual({ sameAgain, failedAgain, cuedAgain, toldAgain, moveWrongAgain, heldButMistimed, mistimedTwice, quoted, sameResponse, neverMoved, providerRefused }, {
+  const unavailable = JSON.stringify(unavailableNotice)
+  const otherActionFirst = try turn([], () => [toolCalls("", showCalendar), toolCalls("", move), text(right), text(right)], [unavailable, "(a VIEWS call)"])
+  const otherActionAlone = try turn([], () => [toolCalls("", showCalendar), text("Done!"), text("[answer] I couldn't show your calendar, so nothing changed.")], [unavailable])
+  const doneBoth = "Done, I sent it and your dentist is now 9–10 AM."
+  const phone = (operation: string) => turn([], () => [toolCalls("", { name: "PHONE_ACTION", arguments: { operation } }), toolCalls("", move), text(doneBoth), text(doneBoth)], [JSON.stringify(phoneWords[operation])])
+  const textRefusedThenMoved = try phone("send_sms")
+  const keypadRefusedThenMoved = try phone("open_dialer")
+  try Effect.try(() => assert.deepStrictEqual({ sameAgain, failedAgain, cuedAgain, toldAgain, moveWrongAgain, heldButMistimed, mistimedTwice, quoted, sameResponse, neverMoved, providerRefused, otherActionFirst, otherActionAlone, textRefusedThenMoved, keypadRefusedThenMoved }, {
     sameAgain: { reply: right, calls: 4, laterRunNote: true },
     failedAgain: { reply: right, calls: 4, laterRunNote: true },
     cuedAgain: { reply: right, calls: 4, laterRunNote: true },
@@ -1735,6 +1755,10 @@ it.live(`A calendar move refused without a receipt and then made by the model's 
     sameResponse: { reply: right, calls: 3, laterRunNote: false },
     neverMoved: { reply: `Done!\n\n${notMoved}`, calls: 4, laterRunNote: false },
     providerRefused: { reply: `Done!\n\n${notMoved}`, calls: 3, laterRunNote: false },
+    otherActionFirst: { reply: right, calls: 4, laterRunNote: true },
+    otherActionAlone: { reply: "I couldn't show your calendar, so nothing changed.", calls: 3, laterRunNote: false },
+    textRefusedThenMoved: { reply: `${doneBoth}\n\n${phoneWords.send_sms}`, calls: 4, laterRunNote: false },
+    keypadRefusedThenMoved: { reply: `${doneBoth}\n\n${phoneWords.open_dialer}`, calls: 4, laterRunNote: false },
   }))
 }, 120_000)
 

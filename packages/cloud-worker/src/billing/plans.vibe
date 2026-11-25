@@ -1,8 +1,8 @@
 // spec/cloud/billing/plans.md, "Story: Offer the paid plans as the provider sells them"; spec/cloud/deployment.md, "Story: Configure a deployment from one reviewed profile"
-import { planOffers, requestsPerMinute, isPaid, type PlanKey, type RateClass } from "../../gen/cloud__billing__plans.effect.vibe"
+import { availablePlanOffers, requestsPerMinute, isPaid, type PlanKey, type RateClass } from "../../gen/cloud__billing__plans.effect.vibe"
 import { catalogProblem, type CatalogObservation, type ProviderPrice as ObservedPrice } from "../../gen/cloud__deployment.effect.vibe"
-import { Deployment, type SecretMissing } from "@elizaos/cloud"
-import { wireName } from "../http/refusal.vibe"
+import { Deployment, type EnvironmentProfile, type SecretMissing } from "@elizaos/cloud"
+import { refused, wireName, type Refused } from "../http/refusal.vibe"
 
 export type { PlanKey, RateClass }
 
@@ -10,6 +10,7 @@ export error CatalogMismatch { plan: string; problem: string }
 
 export type WirePlanKey = "free" | "plus_monthly" | "pro_monthly"
 export type PaidPlanKey = Exclude<WirePlanKey, "free">
+type PlanBinding = NonNullable<EnvironmentProfile["billing"]>["plans"]["plus_monthly"]
 
 export function wirePlanKey(key: PlanKey): WirePlanKey {
   return wireName(key) as WirePlanKey
@@ -42,9 +43,11 @@ export interface PlansAnswer {
   }>
 }
 
-export function plansAnswer(): PlansAnswer {
+export effect function plansAnswer(): PlansAnswer!Refused!Deployment {
+  const billing = (try Deployment).settings.billing
+  if (billing === undefined) throw refused("CapabilityUnavailable")
   return {
-    plans: planOffers.map((plan) => ({
+    plans: availablePlanOffers(billing.plans.pro_monthly !== undefined).map((plan) => ({
       key: wirePlanKey(plan.key),
       name: plan.name,
       amountCents: plan.amountCents,
@@ -91,11 +94,7 @@ effect function providerRead<A>(path: string, schema: Schema.Codec<A>, plan: str
   }
 }
 
-effect function observePrice(key: PlanKey): ObservedPrice!(CatalogMismatch | SecretMissing)!(Deployment | HttpClient.HttpClient) {
-  const deployment = try Deployment
-  const wire: PaidPlanKey = key === "ProMonthly" ? "pro_monthly" : "plus_monthly"
-  const binding = deployment.settings.billing?.plans[wire]
-  if (binding === undefined) throw new CatalogMismatch({ plan: wire, problem: "billing is not configured" })
+effect function observePrice(wire: PaidPlanKey, binding: PlanBinding): ObservedPrice!(CatalogMismatch | SecretMissing)!(Deployment | HttpClient.HttpClient) {
   const price = try providerRead(`/v1/prices/${encodeURIComponent(binding.priceId)}`, ProviderPrice, wire)
   const product = try providerRead(`/v1/products/${encodeURIComponent(binding.productId)}`, ProviderProduct, wire)
   return {
@@ -113,8 +112,12 @@ effect function observePrice(key: PlanKey): ObservedPrice!(CatalogMismatch | Sec
 }
 
 export effect function observeCatalog(): CatalogObservation!(CatalogMismatch | SecretMissing)!(Deployment | HttpClient.HttpClient) {
-  if ((try Deployment).settings.billing === undefined) return { tag: "NoCatalog" }
-  return { tag: "Observed", plus: try observePrice("PlusMonthly"), pro: try observePrice("ProMonthly") }
+  const billing = (try Deployment).settings.billing
+  if (billing === undefined) return { tag: "NoCatalog" }
+  const plus = try observePrice("plus_monthly", billing.plans.plus_monthly)
+  const pro = billing.plans.pro_monthly
+  if (pro === undefined) return { tag: "ObservedPlus", plus }
+  return { tag: "Observed", plus, pro: try observePrice("pro_monthly", pro) }
 }
 
 export effect function checkCatalog(): void!(CatalogMismatch | SecretMissing)!(Deployment | HttpClient.HttpClient) {

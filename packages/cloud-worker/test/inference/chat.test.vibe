@@ -6,7 +6,7 @@ import { parseProfile } from "@elizaos/cloud"
 import { setModelPrice } from "../../src/services/models.vibe"
 import { Store, storeLayer } from "../../src/store/store.vibe"
 import { check, sql, testCloud, type TestCloud } from "../support/cloud.vibe"
-import { llmFake, replyText, upstreamModel, type LlmFake } from "../support/llm-fake.ts"
+import { llmFake, replyText, upstreamModel, wholeAnswer, type LlmFake } from "../support/llm-fake.ts"
 import { signedCaller } from "../support/caller.vibe"
 import { testProfile } from "../support/profile.ts"
 
@@ -243,12 +243,13 @@ effect function fundWorkerChat(rawProfile: unknown, organizationId: string) {
 }
 
 module node {
+  import { parseProfile } from "@elizaos/cloud"
   import { signInWithProof } from "../../src/identity-store.vibe"
   import { cloudWorker, type CloudBindings } from "../../src/worker.vibe"
   import { Effect, Schema } from "effect"
   import { SecureRandom } from "effect/crypto"
   import { startFakeServer } from "../support/fakes.ts"
-  import { llmFake, replyText } from "../support/llm-fake.ts"
+  import { llmFake, replyText, streamText, wholeAnswer } from "../support/llm-fake.ts"
   import { openBackupDatabase } from "../support/password-backup.ts"
   import { workerBindings } from "../support/worker.ts"
 
@@ -309,7 +310,7 @@ module node {
         await fund(rawProfile, organizationId, fixture.databaseUrl)
         const worker = cloudWorker()
         const retained = new Map<number, Promise<unknown>[]>()
-        const call = (n: number, includeUsage = false, signal?: AbortSignal, stream = true) => {
+        const callUsing = (bindings: CloudBindings) => (n: number, includeUsage = false, signal?: AbortSignal, stream = true) => {
           const work: Promise<unknown>[] = []
           retained.set(n, work)
           return worker.fetch(new Request(api + "/api/v1/chat/completions", {
@@ -317,8 +318,9 @@ module node {
             headers: { origin: web, authorization: "Bearer " + owner.access, "content-type": "application/json", "idempotency-key": keyOf(n) },
             body: JSON.stringify({ model: "test-chat", messages: [{ role: "user", content: "Please say hello" }],
               max_tokens: 16, stream, ...(stream ? { stream_options: { include_usage: includeUsage } } : {}) }),
-          }), env, { waitUntil: (pending) => { work.push(pending) } })
+          }), bindings, { waitUntil: (pending) => { work.push(pending) } })
         }
+        const call = callUsing(env)
         const ledger = async () => (await fixture.db.query<{
           request: string; key: string; phase: string; usageKey: string | null; quote: string | null; charged: string | null; outcome: string | null
         }>(`SELECT h.state->'key'->>'requestId' AS request, h.key, h.phase,
@@ -380,6 +382,27 @@ module node {
         const duplicate = await call(6)
         await duplicate.text()
         const replayed = await ledger()
+        const profile = await Effect.runPromise(parseProfile(rawProfile))
+        const staging = profile.environments.staging
+        if (staging.inference === undefined) throw new Error("The Worker test profile offers no inference")
+        const inference = { ...staging.inference, providers: [{ id: "llm", kind: "workers-ai", binding: "AI" }] }
+        const boundProfile = { ...profile, environments: { ...profile.environments, staging: { ...staging, inference } } }
+        const bindingEnv = { ...env, CLOUD_PROFILE: JSON.stringify(boundProfile) }
+        const missingBinding = await worker.fetch(new Request(api + "/api/health"), bindingEnv)
+        await missingBinding.text()
+        const calls: Array<{ model: string; sentModel: boolean; stream: unknown; maxTokens: unknown; streamOptions: unknown }> = []
+        const bound = callUsing({ ...bindingEnv, AI: {
+          async run(model: string, input: Readonly<Record<string, unknown>>, options?: { returnRawResponse: true; signal: AbortSignal }) {
+            if (options?.returnRawResponse !== true) throw new Error("Chat requires the raw Workers AI response")
+            calls.push({ model, sentModel: "model" in input, stream: input.stream, maxTokens: input.max_tokens, streamOptions: input.stream_options })
+            return input.stream === true ? new Response(streamText, { headers: { "content-type": "text/event-stream" } }) : Response.json(wholeAnswer)
+          },
+        } })
+        const whole = await bound(10, false, undefined, false)
+        const boundAnswer: unknown = await whole.json()
+        const boundStream = await streamSummary(await bound(11, true))
+        await Promise.all([...(retained.get(10) ?? []), ...(retained.get(11) ?? [])])
+        const boundHolds = (await ledger()).slice(settled.length)
         return {
           asked, notAsked, truncated, usedBeforeFailure, preHeader, hangingStatus: hanging.status,
           liveCompleteFrame: !first.done && partial.startsWith("data: ") && partial.endsWith("\n\n")
@@ -398,6 +421,8 @@ module node {
           retainedWholeBeforeHeaders: earlyWhole.retainedCount,
           cancelledUpstream: llm.aborted, providerCalls: llm.bodies.length, duplicate: duplicate.status,
           replayUnchanged: JSON.stringify(settled) === JSON.stringify(replayed),
+          workersAi: { missing: missingBinding.status, whole: [whole.status, boundAnswer], stream: boundStream, calls,
+            holds: boundHolds.map((row) => [row.request, row.phase, row.usageKey === row.key, row.outcome, Number(row.charged)]) },
         }
       } finally {
         await fixture.close()
@@ -431,5 +456,12 @@ it.live('Worker streams complete frames and settles the original hold (spec/clou
     cancelSameKey: true, earlyCancelSameKey: true, idleCancelSameKey: true, wholeCancelSameKey: true,
     retainedStream: 1, retainedBeforeHeaders: 1, retainedIdle: 1, retainedWholeBeforeHeaders: 1,
     cancelledUpstream: 2, providerCalls: 7, duplicate: 409, replayUnchanged: true,
+    workersAi: { missing: 503, whole: [200, { ...wholeAnswer, model: "test-chat" }], stream: { ...answer, usage: 1 }, calls: [
+      { model: upstreamModel, sentModel: false, stream: false, maxTokens: 16, streamOptions: undefined },
+      { model: upstreamModel, sentModel: false, stream: true, maxTokens: 16, streamOptions: { include_usage: true } },
+    ], holds: [
+      ["00000000-0000-4000-8000-000000000010", "settled", true, "known", 31],
+      ["00000000-0000-4000-8000-000000000011", "settled", true, "known", 31],
+    ] },
   }))
 }, 60_000)

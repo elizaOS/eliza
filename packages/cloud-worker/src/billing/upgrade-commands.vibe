@@ -35,7 +35,7 @@ effect function recheckPrices(quote: ReviewedPlanQuote) {
   const target = wirePlanKey(terms.targetPlanKey)
   const billing = (try Deployment).settings.billing
   if (billing === undefined || source === "free" || target === "free") throw refused("CapabilityUnavailable")
-  if (billing.plans[source].priceId !== quote.binding.sourcePriceId || billing.plans[target].priceId !== quote.binding.targetPriceId)
+  if (billing.plans[source]?.priceId !== quote.binding.sourcePriceId || billing.plans[target]?.priceId !== quote.binding.targetPriceId)
     throw refused("BillingStateConflict")
   const current = try bindPlanChange({ ...quote.binding, subscriptionId: quote.command.subscriptionId,
     periodStart: terms.periodStart, periodEnd: terms.periodEnd }, providerRead)

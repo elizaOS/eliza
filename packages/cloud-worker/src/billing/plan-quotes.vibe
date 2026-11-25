@@ -120,13 +120,17 @@ export effect function reviewPlanChange(authorization: string | undefined, reque
   if (request.subscriptionId !== undefined && request.subscriptionId !== subscription.subscriptionId) throw refused("BillingStateConflict")
   if (request.expectedSubscriptionRevision !== undefined && request.expectedSubscriptionRevision !== subscription.revision) throw refused("StaleRevision")
   if (source === "free" || subscription.customer.tag !== "PinnedCustomer") throw refused("BillingStateConflict")
+  const sourceBinding = billing.plans[source]
+  const targetBinding = billing.plans[targetKey]
+  if (targetBinding === undefined) throw refused("CapabilityUnavailable")
+  if (sourceBinding === undefined) throw refused("BillingStateConflict")
   const reviewedAt = Math.floor((try Clock.currentTimeMillis) / 1000) * 1000
   const clocked = elapse(initial, reviewedAt)
   const quoteId = newId()
   if (!canReview(clocked, subscription, request.kind, target, quoteId, 0, true)) throw refused("BillingStateConflict")
   const binding = bindPlanChange({
     subscriptionId: subscription.subscriptionId, customerId: subscription.customer.customerId,
-    sourcePriceId: billing.plans[source].priceId, targetPriceId: billing.plans[targetKey].priceId,
+    sourcePriceId: sourceBinding.priceId, targetPriceId: targetBinding.priceId,
     periodStart: subscription.periodStart, periodEnd: subscription.periodEnd, cancelAtPeriodEnd: request.kind === "UndoCommand"
   }, stripeTimeout) catch effect () => {
     throw refused("ProviderUnavailable", "NoReason", (try Clock.currentTimeMillis) + 5_000)
@@ -206,8 +210,9 @@ export effect function recheckUndoPlanQuote(quote: ReviewedPlanQuote) {
   const key = wirePlanKey(terms.sourcePlanKey)
   const billing = (try Deployment).settings.billing
   if (billing === undefined || key === "free") throw refused("CapabilityUnavailable")
-  if (quote.command.kind !== "UndoCommand" || quote.binding.sourcePriceId !== billing.plans[key].priceId ||
-      quote.binding.targetPriceId !== billing.plans[key].priceId) throw refused("BillingStateConflict")
+  const priceId = billing.plans[key]?.priceId
+  if (quote.command.kind !== "UndoCommand" || quote.binding.sourcePriceId !== priceId ||
+      quote.binding.targetPriceId !== priceId) throw refused("BillingStateConflict")
   const current = try bindPlanChange({ ...quote.binding, subscriptionId: quote.command.subscriptionId,
     periodStart: terms.periodStart, periodEnd: terms.periodEnd, cancelAtPeriodEnd: true }, stripeTimeout)
   if (requestDigest(current) !== requestDigest(quote.binding)) throw refused("BillingStateConflict")
