@@ -13,7 +13,7 @@ export type ToolRecord = {
   more: number
 }
 
-export const toolRecordLead = "[Host record of the tools run for this reply:"
+export const toolRecordLead = "[Host record of the tools the reply above ran:"
 
 const outcomeWords: Readonly<Record<RecordedOutcome, string>> = {
   RecordedDone: "done",

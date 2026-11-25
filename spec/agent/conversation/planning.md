@@ -304,9 +304,13 @@ not. Copying such an earlier reply, the model said a screen had changed
 without calling the tool, and nothing changed. So when a reply is stored,
 the steps of its turn (above) are stored with it, for the model only: each
 step's action, the values of its arguments and how it ended. In the
-history the model reads, a reply whose turn ran at least one step starts
-with a line that holds this record, then its words:
-`[Host record of the tools run for this reply: VIEWS(show, Browser): done]`.
+history the model reads, the person's next message, the latest one
+included, starts with a line that holds the record of each reply before it
+that ran at least one step, then its own words:
+`[Host record of the tools the reply above ran: VIEWS(show, Browser): done]`.
+The record sits in the person's message rather than in the reply, because a
+model copies the shape of its own earlier replies: a record leading a reply
+was written again, with no tool called, as if it were part of the answer.
 Each step reads `ACTION(values): outcome`, or `ACTION: outcome` when it
 had no values, separated by `; `. Its outcome
 is `done` when it applied a change, or succeeded with no receipt; `no
@@ -318,8 +322,8 @@ ran is never recorded as done. The record names at most six steps, in the
 order they ran, then how many more there were (`and 2 more`); an argument
 value is cut to 40 characters and a step's values to 80, so a record stays
 a few hundred bytes at most. A reply whose turn ran no step, a reply
-stored before replies kept a record, and a redacted reply carry none, nor
-does a message of the person. The record is read only from what was stored
+stored before replies kept a record, and a redacted reply carry none. The
+record is read only from what was stored
 with the reply, so the history stays the same bytes from turn to turn. It
 is the host's words, not the reply's: it reaches the model only, and its
 lead is a mark the host puts on the history, so a response that repeats it
@@ -1041,7 +1045,7 @@ screen context, or the clock's line, with or without its closing colon or
 period), or a mark the host puts on the history it shows the model
 (`[unanswered:` before a message whose turn got no reply, `[Unheard
 remainder:` before the part of a reply the person did not hear, `[Host
-record of the tools` before an earlier reply's record of its tools), in any
+record of the tools` before the record of the tools an earlier reply ran), in any
 letter case, with any spacing, or with a hyphen or underscore between its
 words, is the host's words, never an answer, whether the model echoes a
 note, quotes its lead or writes one of its own under the label: it reads as
