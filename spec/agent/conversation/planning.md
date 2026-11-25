@@ -601,8 +601,9 @@ claims that an effect happened or that the owner's tracked work is empty:
 a destination confirmation (`Maps is open.`, `Opened your calendar.`) is
 never a cue. A JSON object in the text that names an action or a tool (an
 `action` or `tool` field with a text value, or an action envelope as core
-reads one) is a tool call written as text, which runs nothing: text that
-holds such objects outside any other object is read without them and
+reads one), and a bracketed snake_case name with `key=value` arguments
+(`[send_message contact="Sam"]`), is a tool call written as text, which runs
+nothing: text that holds such calls outside any other object is read without them and
 without a code fence or tag left empty around them, so
 a cue beside one (`Sure, one sec. {"action": "send_message"}`) is still a
 cue, delivered without them, and bare assent beside one promises work as

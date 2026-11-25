@@ -11,6 +11,7 @@ function pattern(source: string, flags: string): RegExp {
 }
 
 const maxCueLength = 120
+const bracketCall = /\[[a-z][a-z0-9]*(?:_[a-z0-9]+)+(?:\s+[a-z_]+=(?:"[^"\n]*"|[^\s\]]+))+\s*\]/gu
 const emptyWrapper = /```[\w-]*\s*```|<([\w-]+)>\s*<\/\1>/gu
 const waitCue = "(?:on it|(?:one|just a) (?:sec|second|moment))"
 const containerNoun = "(?:calendar|schedule|agenda|notes|inbox|emails?|messages|texts|reminders|tasks|todos|files|photos|contacts|workflows|settings|account)"
@@ -65,8 +66,9 @@ function isWrittenCall(body: string): boolean {
   }
 }
 
-export function withoutWrittenCalls(text: string): string {
-  if (!text.includes("{")) return text
+export function withoutWrittenCalls(said: string): string {
+  const text = said.replace(bracketCall, " ")
+  if (!text.includes("{")) return text === said ? said : text.replace(emptyWrapper, " ").trim()
   const open: number[] = []
   let rest = ""
   let kept = 0
@@ -78,7 +80,7 @@ export function withoutWrittenCalls(text: string): string {
     rest += `${text.slice(kept, start)} `
     kept = index + 1
   }
-  return kept === 0 ? text : `${rest}${text.slice(kept)}`.replace(emptyWrapper, " ").trim()
+  return kept === 0 && text === said ? said : `${rest}${text.slice(kept)}`.replace(emptyWrapper, " ").trim()
 }
 
 function shapeOf(reply: string): DraftShape {

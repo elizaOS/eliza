@@ -645,7 +645,7 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
   try Effect.sync(() => cloud.script(text("Sure, one sec."), text("One sec.")))
   const { answer: promisedTwice, calls: promisedTwiceCalls } = try callsFor({ text: "Text Sam that I am running late." })
   const writtenCalls: (readonly [string, number])[] = []
-  for (const said of ['Sure, one sec.{"action": "send_message", "recipient": "Sam"}', 'Sure. {"action": "send_message"}', '{"tool": "open_app", "action": "Maps"}On it.', 'Sure, one sec.\n```json\n{"action": "send_message"}\n```']) {
+  for (const said of ['Sure, one sec.{"action": "send_message", "recipient": "Sam"}', 'Sure. {"action": "send_message"}', '{"tool": "open_app", "action": "Maps"}On it.', 'Sure, one sec.\n```json\n{"action": "send_message"}\n```', 'Sure, one sec. \n\n[send_message contact="Sam" message="I am running late"]']) {
     try Effect.sync(() => cloud.script(text(said), text("I can't do that from here.")))
     const { answer, calls } = try callsFor({ text: "Text Sam that I am running late." })
     writtenCalls.push([answer.text, calls])
@@ -711,7 +711,7 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
     ],
     workedAfter: ["It is 42.", 3, ["CALCULATE"]],
     promisedTwice: ["", "provider_issue", 2],
-    writtenCalls: [["I can't do that from here.", 2], ["I can't do that from here.", 2], ["I can't do that from here.", 2], ["I can't do that from here.", 2]],
+    writtenCalls: Array.from({ length: 5 }, () => ["I can't do that from here.", 2]),
     jsonAnswer: ['Sure! {"name": "Bob"}', 1],
     cuedAfterWork: [
       "It is 25.", 3, "auto",
