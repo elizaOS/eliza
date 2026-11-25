@@ -8,6 +8,9 @@ value, while the generated `Session` machine owns the persisted lifecycle.
 The device side is `spec/os/voice/cloudSpeech.md`. JSON, bytes, digests,
 lengths, the id pattern and provider calls stay at the codec and shell
 boundaries (`src/client/relay-frames.ts`, `packages/cloud-worker/src/services/speech-session.vibe`).
+The speech profile's `realtimeUrl` is the provider's WebSocket base, such as
+`wss://api.cartesia.ai`; the relay appends `/stt/turns/websocket` and
+`/tts/websocket` to it.
 
 ## Story: Speak the relay protocol on one socket
 
