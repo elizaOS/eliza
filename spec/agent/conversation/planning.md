@@ -155,8 +155,8 @@ model-call log row under a room of its own and never a conversation's,
 changes no account state ([binding](../models/binding.md)), and a failure
 or a call that does not end within twenty seconds is dropped too. One
 warm-up runs at a time, and one asked within four minutes of the last that
-was sent is skipped, so a page may ask on every trigger and the account
-pays for at most one warm-up in four minutes. The request is answered at
+started is skipped, so a page may ask on every trigger and the account
+pays for at most one warm-up in four minutes; one refused for a blocked account still counts, so signing in again waits out the four minutes or the next trigger after them. The request is answered at
 once, saying only whether a warm-up was started; it never waits for the
 model.
 
@@ -164,13 +164,13 @@ model.
 pure val warmUpOutputCap = 1
 pure val warmUpSpacingMs = 240000
 pure val warmUpDeadlineMs = 20000
-pure def warmUpStarts(running: bool, lastSentAt: int, now: int): bool =
-  not(running) and (lastSentAt < 0 or now - lastSentAt >= warmUpSpacingMs)
-pure val lastSentAtValues = Set(-1, 0, 100000)
+pure def warmUpStarts(running: bool, lastStartedAt: int, now: int): bool =
+  not(running) and (lastStartedAt < 0 or now - lastStartedAt >= warmUpSpacingMs)
+pure val lastStartedAtValues = Set(-1, 0, 100000)
 pure val nowValues = Set(0, 100000, 239999, 340000, 600000)
-pure def lawAWarmUpWaitsFourMinutesAfterTheLast(running: bool, lastSentAt: int, now: int): bool =
-  (lastSentAt >= 0 and now - lastSentAt < warmUpSpacingMs) implies not(warmUpStarts(running, lastSentAt, now))
-pure def lawOneWarmUpRunsAtATime(lastSentAt: int, now: int): bool = not(warmUpStarts(true, lastSentAt, now))
+pure def lawAWarmUpWaitsFourMinutesAfterTheLast(running: bool, lastStartedAt: int, now: int): bool =
+  (lastStartedAt >= 0 and now - lastStartedAt < warmUpSpacingMs) implies not(warmUpStarts(running, lastStartedAt, now))
+pure def lawOneWarmUpRunsAtATime(lastStartedAt: int, now: int): bool = not(warmUpStarts(true, lastStartedAt, now))
 pure def lawTheFirstWarmUpStarts(now: int): bool = warmUpStarts(false, -1, now)
 ```
 

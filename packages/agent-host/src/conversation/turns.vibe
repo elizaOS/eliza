@@ -369,7 +369,7 @@ module node {
   function warmUpRoute(runtime: AgentRuntime, owner: ConversationOwner, device?: DeviceTurnPort): LocalRoute {
     const roomId = stringToUuid(`warm-up:${runtime.agentId}`)
     let running = false
-    let lastSentAt = -1
+    let lastStartedAt = -1
     async function warm(warmUp: (message: Memory, signal: AbortSignal) => Promise<unknown>, headers: ReadonlyMap<string, string>, signal: AbortSignal) {
       const message = { id: randomUUID(), entityId: owner.user, agentId: runtime.agentId, roomId, worldId: owner.world, createdAt: Date.now(), content: { text: "", source: "device" } } satisfies Memory
       const session = await device?.begin({ headers, conversationId: roomId, requestId: message.id, message, signal })
@@ -384,9 +384,9 @@ module node {
       handler: async ({ headers }) => {
         const warmUp = plannerWarmUps.get(runtime)
         const now = Date.now()
-        if (warmUp === undefined || runtime.getModel(ModelType.TEXT_LARGE) === undefined || !warmUpStarts(running, lastSentAt, now)) return okay({ started: false })
+        if (warmUp === undefined || runtime.getModel(ModelType.TEXT_LARGE) === undefined || !warmUpStarts(running, lastStartedAt, now)) return okay({ started: false })
         running = true
-        lastSentAt = now
+        lastStartedAt = now
         void Promise.resolve().then(() => warm(warmUp, headers, AbortSignal.timeout(warmUpDeadlineMs))).catch(() => undefined).finally(() => { running = false })
         return { status: 202, body: { started: true } }
       },

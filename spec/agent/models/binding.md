@@ -260,9 +260,9 @@ pure def lawNoCapUnlessTheCallerNamesOne(omit: bool): bool = capSent(NoCapAsked,
 pure def lawOmittingDropsTheCap(asked: CapAsk): bool = capSent(asked, true) == NoCapAsked
 ```
 
-### A Qwen call on a Cerebras route sends the conversation cache key its caller names, and no call invents one
+### A Qwen call on a Cerebras route sends the prompt cache key its caller names, and no call invents one
 
-A caller names its conversation's prompt cache key in
+A caller names its prompt cache key (the planner's is its agent's) in
 `providerOptions.cerebras.promptCacheKey`. It is sent as
 `prompt_cache_key` only on the routes that take reasoning hints (the cloud,
 and an own-key endpoint whose host is `cerebras.ai` or under it) and only
