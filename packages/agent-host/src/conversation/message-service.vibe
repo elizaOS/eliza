@@ -15,7 +15,7 @@ import { ModelRefusal } from "../models/chat.vibe"
 import { readTurnContext, type BrowserPage } from "@elizaos/agent"
 import { warmUpOutputCap } from "../../gen/agent__conversation__planning.ts"
 import { actionNotes, agentCache, failureNote, offeredActions, plannerTools, planTurn, type PlannedTurn } from "./planning.vibe"
-import { cueRule } from "./reply-text.vibe"
+import { cueRule, hostNoteMark } from "./reply-text.vibe"
 import { runTurnEvaluators } from "./turn-evaluators.vibe"
 
 type ChatMessage = NonNullable<GenerateTextParams["messages"]>[number]
@@ -222,10 +222,13 @@ function attachmentParts(reads: readonly ReadAttachment[]) {
   return { parts, omitted }
 }
 
-const hostLabel = "Note from the agent host, not the person:"
+const hostLabel = `${hostNoteMark}, not the person:`
 
-function said(attached: readonly ContentPart[], text: string, notes: readonly (string | undefined)[]): ChatMessage {
-  const sent = notes.filter((note): note is string => note !== undefined && note.trim() !== "")
+function hostNotesOf(notes: readonly (string | undefined)[]): string[] {
+  return notes.filter((note): note is string => note !== undefined && note.trim() !== "")
+}
+
+function said(attached: readonly ContentPart[], text: string, sent: readonly string[]): ChatMessage {
   const told = hostNoteLabels(sent.length) === 0 ? text : `${text}\n\n${[hostLabel, ...sent].join("\n")}`
   return { role: "user", content: attached.length === 0 ? told : [{ type: "text", text: told }, ...attached] }
 }
@@ -348,15 +351,16 @@ async function respond(
         }))
         const actions = offeredActions(runtime, message, actionGate)
         const attachments = attachmentParts(await Promise.all((message.content.attachments ?? []).map((media) => readAttachment(runtime, media))))
-        const messages: ChatMessage[] = [...history, said(attachments.parts, asked, [
+        const hostNotes = hostNotesOf([
           options?.replyTarget === undefined ? undefined : await replyQuote(runtime, options.replyTarget),
           contextNote(message), clock.line, options?.deviceContext, ...actionNotes(runtime, message, actions), options?.taskContext,
           window.windowed ? historyWindowNotice(window, offersContextRestore(actions.length) && window.deferred.length > 0 ? { kind: "restoreContext" } : undefined) : undefined,
-        ])]
+        ])
+        const messages: ChatMessage[] = [...history, said(attachments.parts, asked, hostNotes)]
         const system = plannerSystem(runtime.character)
         state = await runtime.composeState(message, [], true, true)
         const planned = await planTurn({
-          runtime, message, state, roles, actionGate, system, messages, signal,
+          runtime, message, state, roles, actionGate, system, messages, hostNotes, signal,
           deferredHistory: { rows: window.deferred, earlier },
           onStepResult: (result) => Effect.runPromise(Effect.try({
             try: () => terminal.recordActionResult(result),

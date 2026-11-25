@@ -733,10 +733,10 @@ model confirms the destination alongside its tool call still gives the owner
 only the reply.
 
 ```quint
-type DraftShape = Blank | GrammarCue | Assent | AssentCue | OtherText
+type DraftShape = Blank | GrammarCue | Assent | AssentCue | OtherText | HostText
 pure def readDraft(shape: DraftShape, instruction: bool, calls: int): Draft = match shape {
   | Blank => Silent | GrammarCue => Cue | Assent => if (instruction and calls > 0) Cue else Answer
-  | AssentCue => if (instruction or calls == 0) Cue else Answer | OtherText => Answer
+  | AssentCue => if (instruction or calls == 0) Cue else Answer | OtherText => Answer | HostText => Silent
 }
 pure def lawBareAssentIsACueOnlyWithWorkAfterAnInstruction(instruction: bool, calls: int): bool =
   (readDraft(Assent, instruction, calls) == Cue) iff (instruction and calls > 0)
@@ -776,6 +776,31 @@ pure def lawAQuietTurnDeliversNoCue(draft: Draft, calls: int, earlierCalls: int,
   not(cueDelivered(draft, calls, earlierCalls, true, streamTook))
 pure def lawOnlyTheTurnsAcknowledgmentIsDelivered(draft: Draft, calls: int, earlierCalls: int, quiet: bool, streamTook: bool): bool =
   cueDelivered(draft, calls, earlierCalls, quiet, streamTook) implies acknowledges(draft, calls, earlierCalls)
+```
+
+### Text that repeats the agent host's notes is never delivered or streamed, and is asked again once as a blank
+
+The host's notes are for the model only, and the owner never sees them. A
+response whose text holds the host's label, `Note from the agent host`, or
+a whole note this message carried to the model is the host's words, never
+an answer, whether the model echoes a note or writes one of its own under
+the label: it reads as a blank. With no tool call it is asked again once
+(above), and when the response after that note holds it again, the turn's
+failure fallback is the reply. Beside tool calls it is no cue, so the
+owner hears nothing and the tools still run. A `REPLY` call whose text
+holds it gives no reply, and a second answer that holds it is no second
+answer. The reply stream shows the model's text only up to where the label
+or a whole note could begin; what follows is shown once it can no longer be
+one, or with the reply, so no part of a note is ever streamed, spoken or
+stored. The notes stay in the model's request as they are.
+
+```quint
+pure def lawHostTextIsNeverAnAnswer(instruction: bool, calls: int): bool = readDraft(HostText, instruction, calls) == Silent
+pure def lawHostTextIsAskedAgainOnceAndNeverDelivered(instruction: bool, stepsLeft: int, askedAgain: bool): bool =
+  nextMove(readDraft(HostText, instruction, 0), 0, stepsLeft, askedAgain) != Deliver
+pure def lawHostTextNeverAcknowledges(instruction: bool, calls: int, earlierCalls: int): bool =
+  not(acknowledges(readDraft(HostText, instruction, calls), calls, earlierCalls))
+pure def lawHostTextIsNoSecondAnswer(sameAsFirst: bool): bool = not(answeredAgain(readDraft(HostText, false, 0), sameAsFirst))
 ```
 
 ### A tool's progress names its app only when one labelled app applies, and never its arguments or results
