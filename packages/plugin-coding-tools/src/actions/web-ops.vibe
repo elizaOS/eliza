@@ -1,0 +1,491 @@
+// spec/codingTools/webGuard.md, "Story: Fetch and search the public web without leaking secrets or touching private networks"
+import {
+  isBlockedHostname,
+  isPrivateIpAddress,
+  stripHtmlRawTextElements,
+  toWellFormedUnicode,
+  type Action,
+  type ActionResult,
+  type ProviderDataRecord,
+} from "@elizaos/core"
+import { mayFetchPublicWeb } from "../../gen/codingTools__webGuard.effect.vibe"
+import {
+  DEFAULT_OUTPUT_MAX_BYTES,
+  DEFAULT_OUTPUT_MAX_LINES,
+  failureToActionResult,
+  readStringParam,
+  successActionResult,
+  truncateHead,
+} from "../lib/format.vibe"
+import { envVar } from "../lib/security.vibe"
+import { CODING_TOOLS_CONTEXTS } from "../types.vibe"
+
+const WEB_MAX_BYTES = 262_144
+const WEB_TIMEOUT_MS = 15_000
+const MAX_REDIRECTS = 3
+
+const SENSITIVE_QUERY_KEYS = new Set([
+  "api_key", "apikey", "access_token", "auth", "authorization", "key", "password", "secret", "token",
+])
+
+const NAMED_ENTITIES: Readonly<Record<string, string>> = {
+  amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " ", mdash: "\u2014", ndash: "\u2013", copy: "\u00a9",
+}
+
+const UNASSIGNED_C1_CODES = new Set([0x81, 0x8d, 0x8f, 0x90, 0x9d])
+
+function decodeHtmlEntity(entity: string): string {
+  if (entity.startsWith("#")) {
+    const code = entity[1] === "x" || entity[1] === "X"
+      ? Number.parseInt(entity.slice(2), 16)
+      : Number.parseInt(entity.slice(1), 10)
+    const validScalar = Number.isInteger(code) && code > 0 && code <= 0x10ffff && (code < 0xd800 || code > 0xdfff)
+    if (!validScalar || UNASSIGNED_C1_CODES.has(code)) return `&${entity};`
+    return code === 0xa0 ? " " : String.fromCodePoint(code)
+  }
+  return NAMED_ENTITIES[entity.toLowerCase()] ?? `&${entity};`
+}
+
+function normalizeWhitespace(text: string): string {
+  return text
+    .replace(/\r/g, "")
+    .replace(/[ \t\f\v]+/g, " ")
+    .replace(/ +([.,;:!?])/g, "$1")
+    .replace(/ *\n */g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim()
+}
+
+export function htmlToReadableText(html: string): string {
+  const titleMatch = /<title\b[^>]*>([\s\S]*?)<\/title>/i.exec(html)
+  const withoutNoise = stripHtmlRawTextElements(html)
+    .replace(/<head\b[^>]*>[\s\S]*?<\/head>/gi, " ")
+    .replace(/<noscript\b[^>]*>[\s\S]*?<\/noscript>/gi, " ")
+    .replace(/<svg\b[^>]*>[\s\S]*?<\/svg>/gi, " ")
+  const decoded = withoutNoise
+    .replace(/<\/?(?:h[1-6]|p|div|section|article|main|header|footer|li|ul|ol|tr|br)\b[^>]*>/gi, "\n")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&([a-zA-Z][a-zA-Z0-9]+|#[0-9]+|#[xX][0-9a-fA-F]+);/g, (_m, ent: string) => decodeHtmlEntity(ent))
+  const body = normalizeWhitespace(toWellFormedUnicode(decoded))
+  const title = titleMatch
+    ? normalizeWhitespace(titleMatch[1].replace(/&([a-zA-Z][a-zA-Z0-9]+|#[0-9]+|#[xX][0-9a-fA-F]+);/g, (_m, ent: string) => decodeHtmlEntity(ent)))
+    : ""
+  if (title && !body.startsWith(title)) return normalizeWhitespace(`${title}\n\n${body}`)
+  return body
+}
+
+function resolveJsonPath(root: unknown, expr: string): unknown {
+  if (!expr || expr.length > 512) return undefined
+  let current: unknown = root
+  const parts = expr.split(".")
+  if (parts.length > 16) return undefined
+  for (const part of parts) {
+    const match = /^([^.[\]]*)((?:\[(?:0|[1-9]\d*)\])*)$/.exec(part)
+    if (!match) return undefined
+    if (match[1]) {
+      if (typeof current !== "object" || current === null || !Object.hasOwn(current, match[1])) return undefined
+      current = (current as Record<string, unknown>)[match[1]]
+    }
+    for (const idxMatch of match[2].matchAll(/\[(\d+)\]/g)) {
+      const idx = Number(idxMatch[1])
+      if (!Array.isArray(current) || idx >= current.length) return undefined
+      current = current[idx]
+    }
+  }
+  return current
+}
+
+export function isCodingWebFetchEnabled(): boolean {
+  const raw = (envVar("ELIZA_WEB_FETCH") ?? "").trim().toLowerCase()
+  return !(raw === "0" || raw === "false" || raw === "off")
+}
+
+export function isCodingWebSearchEnabled(): boolean {
+  const master = (envVar("ELIZA_WEB_SEARCH") ?? "").trim().toLowerCase()
+  if (master === "0" || master === "false" || master === "off") return false
+  const inline = (envVar("ELIZA_INLINE_WEB_SEARCH") ?? "").trim().toLowerCase()
+  if (inline === "0" || inline === "false" || inline === "off") return false
+  return true
+}
+
+function validatePublicUrl(rawUrl: string, killSwitchOff: boolean, isRedirectDowngrade = false): { readonly ok: true; readonly url: URL } | { readonly ok: false; readonly message: string } {
+  let parsed: URL
+  try {
+    parsed = new URL(rawUrl)
+  } catch {
+    return { ok: false, message: "invalid URL" }
+  }
+  const hasSensitiveQuery = [...parsed.searchParams.keys()].some((k) => SENSITIVE_QUERY_KEYS.has(k.toLowerCase()))
+  const privateOrBlocked = isBlockedHostname(parsed.hostname) || isPrivateIpAddress(parsed.hostname)
+  const admitted = mayFetchPublicWeb({
+    killSwitchOff,
+    isHttps: parsed.protocol === "https:",
+    hasCredentials: parsed.username !== "" || parsed.password !== "",
+    hasCustomPort: parsed.port !== "" && parsed.port !== "443",
+    isPrivateOrBlockedHost: privateOrBlocked,
+    hasSensitiveQuery,
+    isRedirectDowngrade,
+    bodyBytes: 0,
+    maxBytes: WEB_MAX_BYTES,
+  })
+  if (!admitted) {
+    return { ok: false, message: "URL blocked by public HTTPS web policy" }
+  }
+  return { ok: true, url: parsed }
+}
+
+module node {
+  export interface HttpFetchOutcome {
+    readonly ok: boolean
+    readonly status: number
+    readonly url: string
+    readonly contentType: string
+    readonly text: string
+  }
+
+  export async function readBoundedTextResponse(response: Response, maxBytes: number): Promise<string> {
+    if (!response.body) return ""
+    const reader = response.body.getReader()
+    const chunks: Uint8Array[] = []
+    let total = 0
+    try {
+      for (;;) {
+        const { done, value } = await reader.read()
+        if (done) break
+        total += value.byteLength
+        if (total > maxBytes) {
+          await reader.cancel().catch(() => undefined)
+          throw new Error(`response exceeds ${maxBytes}-byte safety ceiling`)
+        }
+        chunks.push(value)
+      }
+    } finally {
+      reader.releaseLock()
+    }
+    const merged = new Uint8Array(total)
+    let offset = 0
+    for (const chunk of chunks) {
+      merged.set(chunk, offset)
+      offset += chunk.byteLength
+    }
+    return new TextDecoder("utf-8", { fatal: false }).decode(merged)
+  }
+
+  export async function fetchHttpsRawNode(
+    url: string,
+    init: { readonly method?: "GET" | "POST"; readonly headers?: Record<string, string>; readonly body?: string; readonly signal?: AbortSignal },
+    validateHop: (nextUrl: string, downgrade: boolean) => string | undefined,
+    maxBytes: number,
+    timeoutMs: number,
+    maxRedirects: number,
+  ): Promise<HttpFetchOutcome> {
+    let current = url
+    const signal = init.signal
+      ? AbortSignal.any([init.signal, AbortSignal.timeout(timeoutMs)])
+      : AbortSignal.timeout(timeoutMs)
+    for (let hop = 0; hop <= maxRedirects; hop += 1) {
+      const response = await globalThis.fetch(current, {
+        method: init.method ?? "GET",
+        headers: init.headers,
+        body: init.body,
+        redirect: "manual",
+        cache: "no-store",
+        signal,
+      })
+      if (response.status >= 300 && response.status < 400) {
+        const location = response.headers.get("location")
+        await response.body?.cancel().catch(() => undefined)
+        if (!location) throw new Error("redirect missing location header")
+        const nextUrl = new URL(location, current)
+        const downgrade = nextUrl.protocol !== "https:"
+        const violation = validateHop(nextUrl.href, downgrade)
+        if (violation) throw new Error(violation)
+        current = nextUrl.href
+        continue
+      }
+      const contentType = response.headers.get("content-type") ?? ""
+      const text = await readBoundedTextResponse(response, maxBytes)
+      return { ok: response.ok, status: response.status, url: current, contentType, text }
+    }
+    throw new Error("too many redirects")
+  }
+}
+
+import { fetchHttpsRawNode, type HttpFetchOutcome } from node
+
+export type WebFetchReader = (url: string, signal?: AbortSignal) => Promise<HttpFetchOutcome>
+
+export async function guardedHttpsFetch(url: string, signal?: AbortSignal): Promise<HttpFetchOutcome> {
+  const checked = validatePublicUrl(url, !isCodingWebFetchEnabled())
+  if (!checked.ok) throw new Error(checked.message)
+  return fetchHttpsRawNode(
+    checked.url.href,
+    {
+      method: "GET",
+      headers: { Accept: "application/json,text/html,text/plain;q=0.9", "User-Agent": "ElizaCodingTools/4.0" },
+      signal,
+    },
+    (nextUrl, downgrade) => {
+      const hopCheck = validatePublicUrl(nextUrl, !isCodingWebFetchEnabled(), downgrade)
+      return hopCheck.ok ? undefined : hopCheck.message
+    },
+    WEB_MAX_BYTES,
+    WEB_TIMEOUT_MS,
+    MAX_REDIRECTS,
+  )
+}
+
+export function createWebFetchAction(reader: WebFetchReader = guardedHttpsFetch): Action {
+  return {
+    name: "WEB_FETCH",
+    contexts: [...CODING_TOOLS_CONTEXTS, "web"],
+    contextGate: { anyOf: [...CODING_TOOLS_CONTEXTS, "web"] },
+    roleGate: { minRole: "ADMIN" },
+    cacheStable: true,
+    cacheScope: "agent",
+    toolSchemaStrict: true,
+    modelClass: "TEXT_SMALL",
+    similes: ["FETCH_URL", "READ_URL", "HTTP_GET"],
+    description: "Fetch one public HTTPS URL (HTML -> readable text, or JSON with optional dot-path extract). Blocks private networks and plaintext downgrades.",
+    descriptionCompressed: "Fetch public HTTPS URL (optional JSON extract path).",
+    parameters: [
+      { name: "extract", description: "Optional JSON dot/index path to extract.", descriptionCompressed: "JSON path", required: false, schema: { type: "string" } },
+      { name: "url", description: "Public HTTPS URL.", descriptionCompressed: "HTTPS URL", required: true, schema: { type: "string" } },
+    ],
+    validate: async () => isCodingWebFetchEnabled(),
+    summarize: (result, params) => result?.success && typeof params.url === "string" ? `WEB_FETCH ${params.url}` : undefined,
+    handler: async (_runtime, _message, _state, options): Promise<ActionResult> => {
+      if (!isCodingWebFetchEnabled()) {
+        return failureToActionResult({ reason: "disabled", message: "WEB_FETCH disabled via ELIZA_WEB_FETCH" })
+      }
+      const rawUrl = readStringParam(options, "url")
+      if (!rawUrl) return failureToActionResult({ reason: "missing_param", message: "url is required" })
+      const checked = validatePublicUrl(rawUrl, false)
+      if (!checked.ok) return failureToActionResult({ reason: "path_blocked", message: checked.message })
+
+      let fetched: HttpFetchOutcome
+      try {
+        fetched = await reader(checked.url.href)
+      } catch (err) {
+        return failureToActionResult({ reason: "io_error", message: err instanceof Error ? err.message : String(err) })
+      }
+      const sizeCheck = mayFetchPublicWeb({
+        killSwitchOff: false,
+        isHttps: true,
+        hasCredentials: false,
+        hasCustomPort: false,
+        isPrivateOrBlockedHost: false,
+        hasSensitiveQuery: false,
+        isRedirectDowngrade: false,
+        bodyBytes: new TextEncoder().encode(fetched.text).byteLength,
+        maxBytes: WEB_MAX_BYTES,
+      })
+      if (!sizeCheck) {
+        return failureToActionResult({ reason: "invalid_param", message: "response exceeds safety byte ceiling" })
+      }
+      const mime = fetched.contentType.split(";")[0]?.trim().toLowerCase() ?? ""
+      const extractPath = readStringParam(options, "extract")
+      let rendered = fetched.text
+      if (mime === "application/json" || mime.endsWith("+json")) {
+        if (extractPath) {
+          try {
+            const parsed = JSON.parse(fetched.text)
+            const extracted = resolveJsonPath(parsed, extractPath)
+            if (extracted === undefined) {
+              return failureToActionResult({ reason: "no_match", message: `extract path not found: ${extractPath}` })
+            }
+            rendered = typeof extracted === "string" ? extracted : JSON.stringify(extracted, null, 2)
+          } catch {
+            return failureToActionResult({ reason: "invalid_param", message: "response body is not valid JSON" })
+          }
+        }
+      } else if (mime.includes("html")) {
+        rendered = htmlToReadableText(fetched.text)
+      }
+      const bounded = truncateHead(rendered, DEFAULT_OUTPUT_MAX_LINES, DEFAULT_OUTPUT_MAX_BYTES)
+      const data: ProviderDataRecord = {
+        url: fetched.url,
+        status: fetched.status,
+        contentType: mime,
+        truncated: bounded.truncated,
+      }
+      return successActionResult(bounded.text, data, data)
+    },
+  }
+}
+
+export const webFetchAction: Action = createWebFetchAction()
+
+export function createWebFetchEdgeAction(reader?: WebFetchReader): Action {
+  const base = createWebFetchAction(reader)
+  return {
+    ...base,
+    roleGate: { minRole: "GUEST" },
+    contexts: ["web", "general"],
+    contextGate: { anyOf: ["web", "general"] },
+  }
+}
+
+export type KeylessSearchParseResult =
+  | { readonly kind: "ok"; readonly text: string }
+  | { readonly kind: "empty" }
+  | { readonly kind: "error"; readonly message: string }
+
+function parseJsonSafe(raw: string): { readonly ok: true; readonly value: unknown } | { readonly ok: false } {
+  try {
+    return { ok: true, value: JSON.parse(raw) as unknown }
+  } catch {
+    return { ok: false }
+  }
+}
+
+function isEmptySearchPayload(text: string): boolean {
+  const trimmed = text.trim()
+  if (trimmed.length === 0) return true
+  const parsed = parseJsonSafe(trimmed)
+  if (!parsed.ok) return false
+  if (Array.isArray(parsed.value)) return parsed.value.length === 0
+  if (typeof parsed.value === "object" && parsed.value !== null && "results" in parsed.value) {
+    const results = (parsed.value as { results?: unknown }).results
+    if (Array.isArray(results)) return results.length === 0
+  }
+  return false
+}
+
+export function parseKeylessSearchResponse(rawText: string, contentType: string): KeylessSearchParseResult {
+  const mime = contentType.split(";")[0]?.trim().toLowerCase() ?? ""
+  const frames: unknown[] = []
+  if (mime.includes("text/event-stream")) {
+    for (const block of rawText.split(/\r?\n\r?\n/)) {
+      const data = block
+        .split(/\r?\n/)
+        .flatMap((line) => (line.startsWith("data:") ? [line.slice(5).trimStart()] : []))
+        .join("\n")
+      if (data === "" || data === "[DONE]") continue
+      const parsed = parseJsonSafe(data)
+      if (!parsed.ok) return { kind: "error", message: "Public search SSE frame contained invalid JSON" }
+      frames.push(parsed.value)
+    }
+  } else if (mime === "" || mime.includes("json")) {
+    if (rawText.trim().length > 0) {
+      const parsed = parseJsonSafe(rawText)
+      if (!parsed.ok) return { kind: "error", message: "Public search response contained invalid JSON" }
+      frames.push(parsed.value)
+    }
+  } else {
+    return { kind: "error", message: `Public search returned unsupported content-type: ${mime}` }
+  }
+
+  const collected: string[] = []
+  for (const frame of frames) {
+    if (typeof frame !== "object" || frame === null) continue
+    const envelope = frame as {
+      error?: { message?: unknown }
+      result?: { isError?: unknown; content?: unknown }
+    }
+    if (envelope.error) {
+      return {
+        kind: "error",
+        message: typeof envelope.error.message === "string" ? envelope.error.message : "Public web search returned JSON-RPC error",
+      }
+    }
+    const result = envelope.result
+    if (!result || typeof result !== "object") continue
+    if (result.isError === true) {
+      const errText = Array.isArray(result.content)
+        ? result.content
+            .flatMap((item) => (typeof item === "object" && item !== null && typeof (item as { text?: unknown }).text === "string" ? [(item as { text: string }).text] : []))
+            .join("\n")
+        : ""
+      return { kind: "error", message: errText || "Public web search returned an error result" }
+    }
+    if (Array.isArray(result.content)) {
+      for (const item of result.content) {
+        if (typeof item === "object" && item !== null && typeof (item as { text?: unknown }).text === "string") {
+          const piece = (item as { text: string }).text.trim()
+          if (piece.length > 0 && !isEmptySearchPayload(piece)) collected.push(piece)
+        }
+      }
+    }
+  }
+  if (collected.length === 0) return { kind: "empty" }
+  return { kind: "ok", text: collected.join("\n\n") }
+}
+
+export async function runCodingKeylessWebSearch(query: string, signal?: AbortSignal): Promise<{ readonly text: string; readonly provider: string } | undefined> {
+  const endpoint = "https://mcp.parallel.ai/mcp"
+  const check = validatePublicUrl(endpoint, !isCodingWebSearchEnabled())
+  if (!check.ok) throw new Error(check.message)
+  const res = await fetchHttpsRawNode(
+    endpoint,
+    {
+      method: "POST",
+      headers: { Accept: "application/json, text/event-stream", "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: { name: "web_search", arguments: { objective: query, search_queries: [query] } },
+      }),
+      signal,
+    },
+    (nextUrl, downgrade) => {
+      const hopCheck = validatePublicUrl(nextUrl, !isCodingWebSearchEnabled(), downgrade)
+      return hopCheck.ok ? undefined : hopCheck.message
+    },
+    WEB_MAX_BYTES,
+    WEB_TIMEOUT_MS,
+    0,
+  )
+  if (!res.ok) throw new Error(`Public web search returned HTTP ${res.status}`)
+  const parsed = parseKeylessSearchResponse(res.text, res.contentType)
+  if (parsed.kind === "error") throw new Error(parsed.message)
+  if (parsed.kind === "empty") return undefined
+  return { text: parsed.text, provider: "parallel" }
+}
+
+export const webSearchAction: Action = {
+  name: "WEB_SEARCH",
+  contexts: [...CODING_TOOLS_CONTEXTS, "web"],
+  contextGate: { anyOf: [...CODING_TOOLS_CONTEXTS, "web"] },
+  roleGate: { minRole: "ADMIN" },
+  cacheStable: true,
+  cacheScope: "agent",
+  toolSchemaStrict: true,
+  modelClass: "TEXT_SMALL",
+  similes: ["SEARCH_WEB", "WEB_QUERY", "FIND_ONLINE"],
+  description: "Search the public web for external docs or current facts.",
+  descriptionCompressed: "Search public web by query.",
+  parameters: [
+    { name: "query", description: "Search query.", descriptionCompressed: "Query", required: true, schema: { type: "string" } },
+  ],
+  validate: async () => isCodingWebSearchEnabled(),
+  summarize: (result, params) => result?.success && typeof params.query === "string" ? `WEB_SEARCH ${params.query}` : undefined,
+  handler: async (_runtime, _message, _state, options): Promise<ActionResult> => {
+    if (!isCodingWebSearchEnabled()) {
+      return failureToActionResult({ reason: "disabled", message: "WEB_SEARCH disabled via ELIZA_WEB_SEARCH" })
+    }
+    const query = readStringParam(options, "query") ?? readStringParam(options, "q") ?? readStringParam(options, "objective")
+    if (!query || query.trim().length === 0) {
+      return failureToActionResult({ reason: "missing_param", message: "query is required" })
+    }
+    try {
+      const result = await runCodingKeylessWebSearch(query.trim())
+      if (!result) {
+        return failureToActionResult(
+          { reason: "no_match", message: "search returned no usable results" },
+          { action: "WEB_SEARCH", provider: null },
+        )
+      }
+      const bounded = truncateHead(result.text, DEFAULT_OUTPUT_MAX_LINES, DEFAULT_OUTPUT_MAX_BYTES)
+      const data: ProviderDataRecord = {
+        action: "WEB_SEARCH",
+        provider: result.provider,
+        truncated: bounded.truncated,
+      }
+      return successActionResult(bounded.text, data, data)
+    } catch (err) {
+      return failureToActionResult({ reason: "io_error", message: err instanceof Error ? err.message : String(err) })
+    }
+  },
+}

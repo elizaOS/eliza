@@ -1,0 +1,719 @@
+// spec/codingTools/index.md, "Sandbox path policy blocks sensitive locations, pseudo-descriptors, and escapes outside configured roots"; spec/codingTools/shellSession.md, "Destructive commands require a bound, unexpired, single-use confirmation challenge"
+import type { ActionResult, AppliedEffectReceipt, HandlerCallback, IAgentRuntime, Memory, ProviderDataRecord } from "@elizaos/core"
+import { ElizaError } from "@elizaos/core"
+import { canConsumeChallenge, canIssueChallenge, consumeChallenge, initial as initialShellSession, issueChallenge, type ShellSession } from "../../gen/codingTools__shellSession.effect.vibe"
+import { finalLineEnding, successActionResult } from "./format.vibe"
+
+module node {
+  import { createHash, randomBytes, randomUUID } from "node:crypto"
+  import * as fs from "node:fs/promises"
+  import { homedir } from "node:os"
+  import * as path from "node:path"
+
+  export function osHomeDir(): string {
+    return homedir()
+  }
+
+  export function osPlatform(): string {
+    return process.platform
+  }
+
+  export function envVar(name: string): string | undefined {
+    return process.env[name]
+  }
+
+  export function currentProcessCwd(): string {
+    return process.cwd()
+  }
+
+  export function pathResolve(...parts: string[]): string {
+    return path.resolve(...parts)
+  }
+
+  export function pathJoin(...parts: string[]): string {
+    return path.join(...parts)
+  }
+
+  export function pathDirname(p: string): string {
+    return path.dirname(p)
+  }
+
+  export function pathRelative(from: string, to: string): string {
+    return path.relative(from, to)
+  }
+
+  export function pathIsAbsolute(p: string): boolean {
+    return path.isAbsolute(p)
+  }
+
+  export function pathSep(): string {
+    return path.sep
+  }
+
+  export function sha256Hex(value: string | Uint8Array): string {
+    return createHash("sha256").update(value).digest("hex")
+  }
+
+  export function randomTokenBase64Url(bytes = 18): string {
+    return randomBytes(bytes).toString("base64url")
+  }
+
+  export function newUuid(): string {
+    return randomUUID()
+  }
+
+  export async function resolveRealPathNode(target: string): Promise<string> {
+    const resolved = path.resolve(target)
+    try {
+      return await fs.realpath(resolved)
+    } catch {
+      const parent = path.dirname(resolved)
+      if (parent === resolved) return resolved
+      const realParent = await resolveRealPathNode(parent)
+      return path.join(realParent, path.basename(resolved))
+    }
+  }
+
+  export async function readFileBytesNode(target: string): Promise<Uint8Array> {
+    return fs.readFile(target)
+  }
+
+  export async function readLinkSafeNode(target: string): Promise<string | undefined> {
+    try {
+      return await fs.readlink(target)
+    } catch {
+      return undefined
+    }
+  }
+}
+
+import {
+  currentProcessCwd,
+  envVar,
+  newUuid,
+  osHomeDir,
+  osPlatform,
+  pathDirname,
+  pathIsAbsolute,
+  pathJoin,
+  pathRelative,
+  pathResolve,
+  pathSep,
+  randomTokenBase64Url,
+  readFileBytesNode,
+  readLinkSafeNode,
+  resolveRealPathNode,
+  sha256Hex,
+} from node
+
+export {
+  currentProcessCwd,
+  envVar,
+  newUuid,
+  osHomeDir,
+  osPlatform,
+  pathDirname,
+  pathIsAbsolute,
+  pathJoin,
+  pathRelative,
+  pathResolve,
+  pathSep,
+  randomTokenBase64Url,
+  resolveRealPathNode,
+  sha256Hex,
+}
+
+const BLOCKED_PSEUDO_PATHS = new Set([
+  "/dev/random",
+  "/dev/urandom",
+  "/dev/stdin",
+  "/dev/stdout",
+  "/dev/stderr",
+])
+
+const BLOCKED_DEVICE_FD = /^\/dev\/fd(?:\/|$)/
+const BLOCKED_PROC_DESCRIPTOR =
+  /^\/proc\/(?:(?:\d+|self)(?:\/task\/\d+)?|thread-self)\/(?:fd|root|cwd|exe|map_files)(?:\/|$)/
+
+export function expandHome(input: string): string {
+  const home = osHomeDir()
+  if (input === "~" || input === "$HOME") return home
+  if (input.startsWith("~/") || input.startsWith("~\\")) return pathJoin(home, input.slice(2))
+  if (input.startsWith("$HOME/") || input.startsWith("$HOME\\")) return pathJoin(home, input.slice(6))
+  return input
+}
+
+export function isUncPath(p: string): boolean {
+  return p.startsWith("\\\\") || p.startsWith("//")
+}
+
+export function isAbsolutePath(p: string): boolean {
+  if (!p || isUncPath(p)) return false
+  return pathIsAbsolute(p)
+}
+
+export function isBlockedPseudoPath(p: string): boolean {
+  const normalized = p.replace(/\\/g, "/")
+  return BLOCKED_PSEUDO_PATHS.has(normalized) || BLOCKED_DEVICE_FD.test(normalized) || BLOCKED_PROC_DESCRIPTOR.test(normalized)
+}
+
+export function isWithin(root: string, candidate: string): boolean {
+  const rel = pathRelative(root, candidate)
+  if (rel === "") return true
+  return !rel.startsWith("..") && !pathIsAbsolute(rel)
+}
+
+export function defaultBlockedPaths(): string[] {
+  const home = osHomeDir()
+  const base = [
+    pathJoin(home, ".ssh"),
+    pathJoin(home, ".aws"),
+    pathJoin(home, ".gnupg"),
+    pathJoin(home, ".kube"),
+    pathJoin(home, ".docker"),
+    pathJoin(home, ".netrc"),
+    pathJoin(home, ".npmrc"),
+    pathJoin(home, ".pypirc"),
+    pathJoin(home, ".git-credentials"),
+    pathJoin(home, ".config", "gh"),
+    pathJoin(home, ".config", "gcloud"),
+  ]
+  if (osPlatform() === "win32") {
+    const appData = envVar("APPDATA") ?? pathJoin(home, "AppData", "Roaming")
+    return [
+      ...base,
+      pathJoin(appData, "Microsoft", "Protect"),
+      pathJoin(appData, "Microsoft", "Crypto"),
+      "C:\\Windows\\System32\\config",
+    ]
+  }
+  return [
+    ...base,
+    "/etc/shadow",
+    "/etc/sudoers",
+    "/etc/sudoers.d",
+    "/etc/ssh",
+    "/boot",
+    "/sbin",
+    "/usr/sbin",
+  ]
+}
+
+export async function traversesBlockedPath(inputPath: string): Promise<boolean> {
+  let candidate = pathResolve(inputPath)
+  const seen = new Set<string>()
+  for (let hop = 0; hop < 32; hop += 1) {
+    if (isBlockedPseudoPath(candidate)) return true
+    if (seen.has(candidate)) break
+    seen.add(candidate)
+    const parts = candidate.split(pathSep())
+    let prefix = candidate.startsWith(pathSep()) ? pathSep() : ""
+    let redirected: string | undefined
+    for (const part of parts) {
+      if (!part) continue
+      prefix = prefix === "" ? part : pathJoin(prefix, part)
+      if (isBlockedPseudoPath(prefix)) return true
+      const linkTarget = await readLinkSafeNode(prefix)
+      if (linkTarget !== undefined) {
+        const nextPrefix = isAbsolutePath(linkTarget)
+          ? pathResolve(linkTarget)
+          : pathResolve(pathDirname(prefix), linkTarget)
+        if (isBlockedPseudoPath(nextPrefix)) return true
+        const remainder = pathRelative(prefix, candidate)
+        redirected = remainder ? pathResolve(nextPrefix, remainder) : nextPrefix
+        break
+      }
+    }
+    if (redirected === undefined) break
+    candidate = redirected
+  }
+  return false
+}
+
+export interface SecretMatch {
+  readonly name: string
+  readonly preview: string
+}
+
+const SECRET_PATTERNS: readonly { readonly name: string; readonly regex: RegExp }[] = [
+  { name: "aws_access_key", regex: /\bAKIA[0-9A-Z]{16}\b/ },
+  { name: "github_token", regex: /\bghp_[A-Za-z0-9]{36}\b/ },
+  { name: "github_oauth", regex: /\bgho_[A-Za-z0-9]{36}\b/ },
+  { name: "github_app", regex: /\b(?:ghu|ghs)_[A-Za-z0-9]{36}\b/ },
+  { name: "openai_key", regex: /\bsk-(?:(?:proj|svcacct|admin)-[A-Za-z0-9_-]{20,}|[A-Za-z0-9]{20,})\b/ },
+  { name: "anthropic_key", regex: /\bsk-ant-[A-Za-z0-9_-]{40,}\b/ },
+  { name: "google_api_key", regex: /\bAIza[0-9A-Za-z_-]{35}\b/ },
+  { name: "slack_token", regex: /\bxox[abprs]-[A-Za-z0-9-]{10,}\b/ },
+  { name: "stripe_secret", regex: /\bsk_live_[A-Za-z0-9]{24,}\b/ },
+  { name: "private_key_pem", regex: /-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----/ },
+  { name: "jwt_like", regex: /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/ },
+]
+
+export function detectSecrets(content: string): SecretMatch[] {
+  const matches: SecretMatch[] = []
+  for (const entry of SECRET_PATTERNS) {
+    const found = entry.regex.exec(content)
+    if (found) {
+      const value = found[0]
+      const preview = value.length > 16 ? `${value.slice(0, 6)}...${value.slice(-4)}` : value
+      matches.push({ name: entry.name, preview })
+    }
+  }
+  return matches
+}
+
+export function redactShellText(runtime: IAgentRuntime | undefined, text: string): string {
+  if (!text) return text
+  let output = text
+  for (const entry of SECRET_PATTERNS) {
+    const globalRegex = new RegExp(entry.regex.source, "g")
+    output = output.replace(globalRegex, `[REDACTED:${entry.name}]`)
+  }
+  if (runtime) {
+    for (const key of ["OPENAI_API_KEY", "ANTHROPIC_API_KEY", "CEREBRAS_API_KEY", "GITHUB_TOKEN", "GITHUB_USER_PAT", "GITHUB_AGENT_PAT"]) {
+      const secret = runtime.getSetting(key)
+      if (typeof secret === "string" && secret.trim().length >= 8) {
+        output = output.split(secret.trim()).join(`[REDACTED:${key}]`)
+      }
+    }
+  }
+  return output
+}
+
+export function splitShellArgs(raw: string): string[] | null {
+  const tokens: string[] = []
+  let buf = ""
+  let inSingle = false
+  let inDouble = false
+  let escaped = false
+  const pushToken = () => {
+    if (buf.length > 0) {
+      tokens.push(buf)
+      buf = ""
+    }
+  }
+  for (let i = 0; i < raw.length; i += 1) {
+    const ch = raw[i]
+    if (escaped) {
+      buf += ch
+      escaped = false
+      continue
+    }
+    if (!inSingle && !inDouble && ch === "\\") {
+      escaped = true
+      continue
+    }
+    if (inSingle) {
+      if (ch === "'") inSingle = false
+      else buf += ch
+      continue
+    }
+    if (inDouble) {
+      if (ch === '"') inDouble = false
+      else buf += ch
+      continue
+    }
+    if (ch === "'") {
+      inSingle = true
+      continue
+    }
+    if (ch === '"') {
+      inDouble = true
+      continue
+    }
+    if (/\s/.test(ch)) {
+      pushToken()
+      continue
+    }
+    buf += ch
+  }
+  if (inSingle || inDouble || escaped) return null
+  pushToken()
+  return tokens
+}
+
+export const DEFAULT_FORBIDDEN_COMMANDS: readonly string[] = [
+  "rm -rf /",
+  "rm -fr /",
+  "mkfs",
+  "dd if=/dev/zero of=/dev/",
+  ":(){ :|:& };:",
+  "chmod -R 777 /",
+  "shutdown",
+  "reboot",
+  "halt",
+  "poweroff",
+]
+
+export function isForbiddenCommand(command: string, extraDenied: readonly string[] = []): string | undefined {
+  const normalized = command.trim().replace(/\s+/g, " ")
+  const lower = normalized.toLowerCase()
+  const all = [...DEFAULT_FORBIDDEN_COMMANDS, ...extraDenied]
+  for (const pattern of all) {
+    const cleaned = pattern.trim().toLowerCase()
+    if (!cleaned) continue
+    if (lower === cleaned || lower.startsWith(`${cleaned} `) || lower.includes(`&& ${cleaned}`) || lower.includes(`; ${cleaned}`)) {
+      return pattern
+    }
+  }
+  return undefined
+}
+
+export interface DestructiveVerdict {
+  readonly destructive: boolean
+  readonly reason?: string
+  readonly targets: readonly string[]
+}
+
+export type ShellDialect = "posix" | "powershell"
+
+const DESTRUCTIVE_BINS = new Set(["mkfs", "shred", "wipefs", "fdisk", "parted", "diskutil"])
+
+function splitShellSegments(command: string): string[] | null {
+  const segments: string[] = []
+  let buf = ""
+  let inSingle = false
+  let inDouble = false
+  let escaped = false
+  for (let i = 0; i < command.length; i += 1) {
+    const ch = command[i]
+    if (escaped) {
+      buf += ch
+      escaped = false
+      continue
+    }
+    if (!inSingle && !inDouble && ch === "\\") {
+      buf += ch
+      escaped = true
+      continue
+    }
+    if (inSingle) {
+      buf += ch
+      if (ch === "'") inSingle = false
+      continue
+    }
+    if (inDouble) {
+      buf += ch
+      if (ch === '"') inDouble = false
+      continue
+    }
+    if (ch === "'") {
+      inSingle = true
+      buf += ch
+      continue
+    }
+    if (ch === '"') {
+      inDouble = true
+      buf += ch
+      continue
+    }
+    if (ch === ";" || ch === "\n") {
+      if (buf.trim().length > 0) segments.push(buf.trim())
+      buf = ""
+      continue
+    }
+    if ((ch === "&" && command[i + 1] === "&") || (ch === "|" && command[i + 1] === "|")) {
+      if (buf.trim().length > 0) segments.push(buf.trim())
+      buf = ""
+      i += 1
+      continue
+    }
+    if (ch === "|") {
+      if (buf.trim().length > 0) segments.push(buf.trim())
+      buf = ""
+      continue
+    }
+    buf += ch
+  }
+  if (inSingle || inDouble || escaped) return null
+  if (buf.trim().length > 0) segments.push(buf.trim())
+  return segments
+}
+
+export function classifyDestructiveCommand(command: string, dialect: ShellDialect = "posix"): DestructiveVerdict {
+  const trimmed = command.trim()
+  if (trimmed.length === 0) return { destructive: false, targets: [] }
+  if (trimmed.length > 65_536) {
+    return { destructive: true, reason: "command exceeds bounded inspection limit", targets: [] }
+  }
+  const segments = splitShellSegments(trimmed)
+  if (segments === null) {
+    return { destructive: true, reason: "unclosed quotes or escapes require confirmation", targets: [] }
+  }
+  for (const segment of segments) {
+    const tokens = splitShellArgs(segment)
+    if (tokens === null) {
+      return { destructive: true, reason: "unclosed quotes or escapes require confirmation", targets: [] }
+    }
+    if (tokens.length === 0) continue
+    let idx = 0
+    while (idx < tokens.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(tokens[idx])) idx += 1
+    if (idx < tokens.length && (tokens[idx] === "sudo" || tokens[idx] === "env" || tokens[idx] === "command")) idx += 1
+    const head = (tokens[idx] ?? "").split("/").pop()?.toLowerCase() ?? ""
+    const args = tokens.slice(idx + 1)
+    if (DESTRUCTIVE_BINS.has(head) || head.startsWith("mkfs.")) {
+      return { destructive: true, reason: `destructive binary '${head}'`, targets: args }
+    }
+    if (head === "rm") {
+      const hasRecursive = args.some((a) => a === "--recursive" || /^-[a-z]*[rR][a-z]*$/.test(a))
+      const hasForce = args.some((a) => a === "--force" || /^-[a-z]*f[a-z]*$/.test(a))
+      const targets = args.filter((a) => !a.startsWith("-"))
+      if (hasRecursive || (hasForce && targets.length > 0)) {
+        return { destructive: true, reason: "recursive or forced file deletion (rm)", targets }
+      }
+    }
+    if (dialect === "powershell" && (head === "remove-item" || head === "del" || head === "ri" || head === "rd")) {
+      const hasRecurse = args.some((a) => /^-(?:r|rec|recurse)/i.test(a))
+      const hasForce = args.some((a) => /^-(?:f|fo|force)/i.test(a))
+      if (hasRecurse || hasForce) {
+        return { destructive: true, reason: "PowerShell recursive/forced Remove-Item", targets: args.filter((a) => !a.startsWith("-")) }
+      }
+    }
+    if (head === "git") {
+      const sub = (args[0] ?? "").toLowerCase()
+      if (sub === "reset" && args.includes("--hard")) {
+        return { destructive: true, reason: "git reset --hard discards uncommitted work", targets: args.slice(1) }
+      }
+      if (sub === "clean" && args.some((a) => a.includes("f"))) {
+        return { destructive: true, reason: "git clean removes untracked files", targets: args.slice(1) }
+      }
+      if (sub === "push" && args.some((a) => a === "-f" || a === "--force" || a === "--force-with-lease")) {
+        return { destructive: true, reason: "git force push rewrites remote history", targets: args.slice(1) }
+      }
+    }
+    if ((head === "sh" || head === "bash" || head === "zsh" || head === "dash") && (args.includes("-c") || args.includes("-lc"))) {
+      const cIdx = args.findIndex((a) => a === "-c" || a === "-lc")
+      const nested = args[cIdx + 1]
+      if (typeof nested === "string") {
+        const inner = classifyDestructiveCommand(nested, "posix")
+        if (inner.destructive) return inner
+      }
+    }
+    if (head === "eval" || head === "dd") {
+      if (head === "eval" || args.some((a) => a.startsWith("of=/dev/"))) {
+        return { destructive: true, reason: `high-risk command '${head}'`, targets: args }
+      }
+    }
+    if ((head === "psql" || head === "mysql" || head === "sqlite3") && /\b(?:drop\s+(?:table|database)|truncate\s+table|delete\s+from\s+\S+\s*;?\s*$)/i.test(segment)) {
+      return { destructive: true, reason: "destructive SQL statement", targets: [head] }
+    }
+  }
+  return { destructive: false, targets: [] }
+}
+
+const CHALLENGE_TTL_MS = 5 * 60 * 1000
+const MAX_CHALLENGES_PER_RUNTIME = 64
+
+interface ChallengeRecord {
+  readonly token: string
+  readonly commandDigest: string
+  readonly executionDirectory: string
+  readonly entityId: string
+  readonly roomId: string
+  readonly issuingMessageId: string
+  readonly expiresAt: number
+  readonly session: ShellSession
+}
+
+const runtimeChallengeMaps = new WeakMap<object, Map<string, ChallengeRecord>>()
+
+function challengeMapFor(runtime: object): Map<string, ChallengeRecord> {
+  let map = runtimeChallengeMaps.get(runtime)
+  if (!map) {
+    map = new Map()
+    runtimeChallengeMaps.set(runtime, map)
+  }
+  return map
+}
+
+export function destructiveCommandDigest(command: string): string {
+  return sha256Hex(command)
+}
+
+export function issueDestructiveChallenge(args: {
+  readonly runtime: object
+  readonly command: string
+  readonly executionDirectory: string
+  readonly message: Memory
+  readonly now?: number
+}): string | undefined {
+  if (!args.message.id || !args.message.roomId || !args.message.entityId) return undefined
+  const now = args.now ?? Date.now()
+  const entries = challengeMapFor(args.runtime)
+  for (const [token, entry] of entries) {
+    if (entry.expiresAt <= now) entries.delete(token)
+  }
+  while (entries.size >= MAX_CHALLENGES_PER_RUNTIME) {
+    const oldest = entries.keys().next().value
+    if (typeof oldest !== "string") break
+    entries.delete(oldest)
+  }
+  const digest = destructiveCommandDigest(args.command)
+  const roomId = String(args.message.roomId)
+  const entityId = String(args.message.entityId)
+  const issuer = `${roomId}:${entityId}`
+  if (!canIssueChallenge(initialShellSession, digest, args.executionDirectory, issuer)) return undefined
+  const session = issueChallenge(initialShellSession, digest, args.executionDirectory, issuer)
+  const token = randomTokenBase64Url(18)
+  entries.set(token, {
+    token,
+    commandDigest: digest,
+    executionDirectory: args.executionDirectory,
+    entityId,
+    roomId,
+    issuingMessageId: String(args.message.id),
+    expiresAt: now + CHALLENGE_TTL_MS,
+    session,
+  })
+  return token
+}
+
+export function verifyAndConsumeDestructiveChallenge(args: {
+  readonly runtime: object
+  readonly token: string
+  readonly command: string
+  readonly executionDirectory: string
+  readonly message: Memory
+  readonly now?: number
+}): { readonly ok: true } | { readonly ok: false; readonly message: string } {
+  const now = args.now ?? Date.now()
+  const entries = challengeMapFor(args.runtime)
+  const entry = entries.get(args.token)
+  if (!entry) return { ok: false, message: "invalid or already consumed confirmation challenge" }
+  if (entry.expiresAt <= now) {
+    entries.delete(args.token)
+    return { ok: false, message: "confirmation challenge expired" }
+  }
+  const digest = destructiveCommandDigest(args.command)
+  const roomId = String(args.message.roomId ?? "")
+  const entityId = String(args.message.entityId ?? "")
+  const issuer = `${roomId}:${entityId}`
+  if (!canConsumeChallenge(entry.session, digest, args.executionDirectory, issuer)) {
+    return { ok: false, message: "confirmation challenge does not match command, directory, or requester" }
+  }
+  consumeChallenge(entry.session, digest, args.executionDirectory, issuer)
+  entries.delete(args.token)
+  return { ok: true }
+}
+
+export async function fileEffectReceipt(params: {
+  readonly path: string
+  readonly content: string
+  readonly operation: "write" | "edit"
+  readonly acceptedBytes?: number
+}): Promise<AppliedEffectReceipt> {
+  const expected = new TextEncoder().encode(params.content)
+  const providerAccepted = params.acceptedBytes !== undefined
+  if (providerAccepted) {
+    if (params.acceptedBytes !== expected.byteLength) {
+      throw new ElizaError("Filesystem provider reported an unexpected written byte count.", {
+        code: "FILE_WRITE_UNVERIFIED",
+      })
+    }
+  } else {
+    const actual = await readFileBytesNode(params.path)
+    if (actual.byteLength !== expected.byteLength || sha256Hex(actual) !== sha256Hex(expected)) {
+      throw new ElizaError("File changed before the completed write could be verified.", {
+        code: "FILE_WRITE_UNVERIFIED",
+      })
+    }
+  }
+  const version = `sha256:${sha256Hex(expected)}`
+  const observedAt = new Date().toISOString()
+  return {
+    receiptId: `file:${newUuid()}`,
+    operation: `filesystem.${params.operation}`,
+    resource: { kind: "filesystem.file", id: params.path, version },
+    artifacts: [],
+    idempotency: { key: null, replayed: false },
+    observedAt,
+    outcome: "applied",
+    commit: {
+      kind: providerAccepted ? "provider_accepted" : "durable",
+      id: `${params.path}#${version}`,
+      committedAt: observedAt,
+    },
+  }
+}
+
+export async function fileMutationResult(params: {
+  readonly receipt: AppliedEffectReceipt
+  readonly text: string
+  readonly content: string
+  readonly data: ProviderDataRecord
+  readonly promptData?: ProviderDataRecord
+  readonly callback?: HandlerCallback
+}): Promise<ActionResult> {
+  const data: ProviderDataRecord = {
+    ...params.data,
+    finalLineEnding: finalLineEnding(params.content),
+  }
+  if (params.callback) {
+    try {
+      await params.callback({ text: params.text, source: "coding-tools" })
+    } catch {
+      return {
+        ...successActionResult(params.text, data, params.promptData),
+        effectReceipts: [params.receipt],
+      }
+    }
+  }
+  return {
+    ...successActionResult(params.text, data, params.promptData),
+    effectReceipts: [params.receipt],
+    userFacingEffectReceiptIds: [params.receipt.receiptId],
+  }
+}
+
+export interface ShellVerificationReceipt {
+  readonly kind: string
+  readonly status: "passed" | "failed" | "no_tests"
+  readonly family: string
+  readonly exitCode: number
+}
+
+export function shellVerificationReceipt(args: {
+  readonly command: string
+  readonly exitCode: number
+  readonly output: string
+}): ShellVerificationReceipt | undefined {
+  const lower = args.command.toLowerCase()
+  let kind: string | undefined
+  let family = "shell"
+  if (/\b(?:vitest|jest|pytest|cargo\s+test|go\s+test|pnpm\s+test|npm\s+test)\b/.test(lower)) {
+    kind = "test"
+    family = "test"
+  } else if (/\b(?:tsc|vibelang|typecheck|mypy|pyright)\b/.test(lower)) {
+    kind = "typecheck"
+    family = "typecheck"
+  } else if (/\b(?:eslint|biome|ruff|clippy|lint)\b/.test(lower)) {
+    kind = "lint"
+    family = "lint"
+  } else if (/\b(?:build|vite\s+build|cargo\s+build|go\s+build)\b/.test(lower)) {
+    kind = "build"
+    family = "build"
+  }
+  if (!kind) return undefined
+  const noTests = kind === "test" && /no test files found|0 tests/i.test(args.output)
+  return {
+    kind,
+    family,
+    status: noTests ? "no_tests" : args.exitCode === 0 ? "passed" : "failed",
+    exitCode: args.exitCode,
+  }
+}
+
+export function extractCompactFailureDiagnostics(output: string, maxLines = 12): string[] {
+  const lines = output.split("\n")
+  const picked: string[] = []
+  const errorLine = /(?:error\s+TS\d+|EK\d+|FAIL\s+|AssertionError|Error:|TypeError:|SyntaxError:|ReferenceError:|✕|✗)/i
+  for (const line of lines) {
+    const trimmed = line.trim()
+    if (!trimmed) continue
+    if (errorLine.test(trimmed)) {
+      picked.push(trimmed.length > 180 ? `${trimmed.slice(0, 177)}...` : trimmed)
+      if (picked.length >= maxLines) break
+    }
+  }
+  return picked
+}

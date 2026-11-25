@@ -1,0 +1,640 @@
+// spec/codingTools/index.md, "Story: Read and edit my authorized project files"; spec/codingTools/index.md, "Story: Enforce sandbox confinement and bounded tool outputs"; spec/codingTools/fileSession.md, "Story: Protect workspace files against stale edits, accidental overwrites, and secret leaks"; spec/codingTools/shellSession.md, "Story: Gate destructive shell commands, manage background jobs, and page spilled output artifacts"; spec/codingTools/worktree.md, "Story: Enter and exit git worktrees without losing the previous working directory"; spec/codingTools/webGuard.md, "Story: Fetch and search the public web without leaking secrets or touching private networks"
+import { assert, it } from "@effect/vitest"
+import * as NodeServices from "@effect/platform-node/NodeServices"
+import type { IAgentRuntime, Memory, Service, State, UUID } from "@elizaos/core"
+import {
+  BACKGROUND_SHELL_SERVICE,
+  BackgroundShellService,
+  CodingAgentContextSchema,
+  EXEC_APPROVAL_SERVICE,
+  ExecApprovalService,
+  FILE_STATE_SERVICE,
+  FileStateService,
+  RIPGREP_SERVICE,
+  RipgrepService,
+  SANDBOX_SERVICE,
+  SESSION_CWD_SERVICE,
+  SHELL_SERVICE,
+  SandboxService,
+  SessionCwdService,
+  ShellService,
+  StaleWorkspaceFile,
+  WorkspaceDenied,
+  appendCodingFeedback,
+  appendCodingIteration,
+  availableToolsProvider,
+  classifyDestructiveCommand,
+  codingToolsPlugin,
+  createCodingAgentContext,
+  createWebFetchAction,
+  createWebFetchEdgeAction,
+  detectSecrets,
+  detectTerminalSupported,
+  editAction,
+  editWorkspaceFile,
+  extractCompactFailureDiagnostics,
+  fileAction,
+  htmlToReadableText,
+  isForbiddenCommand,
+  parseKeylessSearchResponse,
+  readAction,
+  readWorkspaceFile,
+  runWorkspaceCommand,
+  shellAction,
+  shellHistoryProvider,
+  shellVerificationReceipt,
+  truncateHead,
+  truncateTail,
+  webFetchAction,
+  webSearchAction,
+  worktreeAction,
+  writeAction,
+} from "../src/index.vibe"
+
+module node {
+  import { execFileSync } from "node:child_process"
+  import * as fs from "node:fs/promises"
+  import { tmpdir } from "node:os"
+  import * as path from "node:path"
+
+  export async function makeTempWorkspace(prefix: string): Promise<string> {
+    const dir = await fs.mkdtemp(path.join(tmpdir(), prefix))
+    return fs.realpath(dir)
+  }
+
+  export async function removeDir(dir: string): Promise<void> {
+    await fs.rm(dir, { recursive: true, force: true })
+  }
+
+  export async function writeDiskFile(filePath: string, content: string): Promise<void> {
+    await fs.mkdir(path.dirname(filePath), { recursive: true })
+    await fs.writeFile(filePath, content, "utf8")
+  }
+
+  export async function readDiskFile(filePath: string): Promise<string> {
+    return fs.readFile(filePath, "utf8")
+  }
+
+  export async function createSymlink(target: string, linkPath: string): Promise<void> {
+    await fs.symlink(target, linkPath)
+  }
+
+  export function initGitRepoSync(dir: string): void {
+    execFileSync("git", ["init", "-q"], { cwd: dir })
+    execFileSync("git", ["config", "user.email", "test@eliza.local"], { cwd: dir })
+    execFileSync("git", ["config", "user.name", "Eliza Test"], { cwd: dir })
+    execFileSync("git", ["add", "."], { cwd: dir })
+    execFileSync("git", ["commit", "-q", "-m", "init"], { cwd: dir })
+  }
+
+  /** @throws {never} */
+  export function joinFs(...parts: string[]): string {
+    return path.join(...parts)
+  }
+
+  export async function waitBriefly(ms: number): Promise<void> {
+    await new Promise<void>((resolve) => {
+      const controller = new AbortController()
+      const signal = AbortSignal.timeout(ms)
+      signal.addEventListener("abort", () => {
+        controller.abort()
+        resolve()
+      }, { once: true })
+    })
+  }
+}
+
+import { createSymlink, initGitRepoSync, joinFs, makeTempWorkspace, readDiskFile, removeDir, waitBriefly, writeDiskFile } from node
+
+const check = (fn: () => void) => Effect.try(fn)
+
+async function createTestRuntime(settings: Record<string, string>): Promise<{
+  readonly runtime: IAgentRuntime
+  readonly services: Map<string, Service>
+  readonly stopAll: () => Promise<void>
+}> {
+  const services = new Map<string, Service>()
+  const runtime = {
+    agentId: "00000000-0000-0000-0000-000000000001" as UUID,
+    getSetting: (key: string) => settings[key],
+    getService: (type: string) => services.get(type) ?? null,
+  } as unknown as IAgentRuntime
+
+  services.set(SANDBOX_SERVICE, await SandboxService.start(runtime))
+  services.set(FILE_STATE_SERVICE, await FileStateService.start(runtime))
+  services.set(SESSION_CWD_SERVICE, await SessionCwdService.start(runtime))
+  services.set(RIPGREP_SERVICE, await RipgrepService.start(runtime))
+  services.set(BACKGROUND_SHELL_SERVICE, await BackgroundShellService.start(runtime))
+  services.set(SHELL_SERVICE, await ShellService.start(runtime))
+  services.set(EXEC_APPROVAL_SERVICE, await ExecApprovalService.start(runtime))
+
+  return {
+    runtime,
+    services,
+    stopAll: async () => {
+      for (const svc of services.values()) await svc.stop()
+    },
+  }
+}
+
+function makeMessage(roomId = "room-1", entityId = "owner-1", id = "msg-1"): Memory {
+  return {
+    id: id as UUID,
+    roomId: roomId as UUID,
+    entityId: entityId as UUID,
+    content: { text: "run coding tools" },
+  }
+}
+
+const emptyState: State = { values: {}, data: {}, text: "" }
+
+it.effect('Workspace primitives read, edit with optimistic concurrency, block protected paths, and run approved commands (spec/codingTools/index.md, "Story: Read and edit my authorized project files")', effect () => {
+  provide NodeServices.layer {
+    const root = try tryPromise(() => makeTempWorkspace("ct-prim-"))
+    try Effect.ensuring(
+      effect {
+        try tryPromise(() => writeDiskFile(joinFs(root, "app.ts"), "export const x = 1\n"))
+        try tryPromise(() => writeDiskFile(joinFs(root, ".env"), "SECRET=1\n"))
+        const workspace = {
+          root,
+          access: { authorizedRoot: root, ownerConfirmed: true, canWrite: true, canRunCommands: true },
+        }
+        const read = try readWorkspaceFile(workspace, "app.ts")
+        const edited = try editWorkspaceFile(workspace, "app.ts", read.revision, "export const x = 2\n")
+        const stale = try Effect.flip(editWorkspaceFile(workspace, "app.ts", read.revision, "export const x = 3\n"))
+        const blockedEnv = try Effect.flip(readWorkspaceFile(workspace, ".env"))
+        const cmdKey = JSON.stringify([root, "node", "-e", "process.stdout.write('ok')"])
+        const out = try runWorkspaceCommand(workspace, {
+          argv: ["node", "-e", "process.stdout.write('ok')"],
+          needsApproval: true,
+          approvedKey: cmdKey,
+        })
+        const deniedCmd = try Effect.flip(runWorkspaceCommand(workspace, {
+          argv: ["node", "-e", "process.stdout.write('no')"],
+          needsApproval: true,
+          approvedKey: "wrong-key",
+        }))
+        try check(() => {
+          assert.equal(read.contents, "export const x = 1\n")
+          assert.notEqual(edited.revision, read.revision)
+          assert.equal(stale instanceof StaleWorkspaceFile, true)
+          assert.equal(blockedEnv instanceof WorkspaceDenied, true)
+          assert.equal(out, "ok")
+          assert.equal(deniedCmd instanceof WorkspaceDenied, true)
+        })
+      },
+      Effect.ignore(tryPromise(() => removeDir(root))),
+    )
+  }
+})
+
+it.effect('READ, WRITE, EDIT, FILE grep/glob/ls, batch reads, multi-hunk edits, stale-read refusal, secret blocking, and sandbox confinement (spec/codingTools/fileSession.md, "Story: Protect workspace files against stale edits, accidental overwrites, and secret leaks"; spec/codingTools/index.md, "Story: Enforce sandbox confinement and bounded tool outputs")', effect () => {
+  const root = try tryPromise(() => makeTempWorkspace("ct-files-"))
+  const outside = try tryPromise(() => makeTempWorkspace("ct-outside-"))
+  const env = try tryPromise(() => createTestRuntime({ CODING_TOOLS_WORKSPACE_ROOTS: root }))
+  const msg = makeMessage("room-file-journey")
+  try Effect.ensuring(
+    effect {
+      const aPath = joinFs(root, "src", "alpha.ts")
+      const bPath = joinFs(root, "src", "beta.ts")
+      const outsideFile = joinFs(outside, "secret.txt")
+      const escapeLink = joinFs(root, "escape.txt")
+      try tryPromise(() => writeDiskFile(aPath, "const a = 1\nconst b = 2\nconst c = 3\n"))
+      try tryPromise(() => writeDiskFile(bPath, "export const beta = 'hello'\n"))
+      try tryPromise(() => writeDiskFile(outsideFile, "outside-data"))
+      try tryPromise(() => createSymlink(outsideFile, escapeLink))
+
+      const blockedOutside = try tryPromise(() => readAction.handler(env.runtime, msg, emptyState, { file_path: outsideFile }))
+      const blockedSymlink = try tryPromise(() => readAction.handler(env.runtime, msg, emptyState, { file_path: escapeLink }))
+      const editBeforeRead = try tryPromise(() => editAction.handler(env.runtime, msg, emptyState, { file_path: aPath, old_string: "const a = 1", new_string: "const a = 10" }))
+
+      const firstRead = try tryPromise(() => readAction.handler(env.runtime, msg, emptyState, { file_path: aPath, line_numbers: true }))
+      const firstData = firstRead.data as Record<string, unknown>
+      const refContinue = try tryPromise(() => readAction.handler(env.runtime, msg, emptyState, {
+        reference: String(firstData.reference),
+        expectedRevision: String(firstData.revision),
+        offset: 1,
+        limit: 1,
+      }))
+
+      const batchRead = try tryPromise(() => readAction.handler(env.runtime, msg, emptyState, { paths: [aPath, bPath], line_numbers: true }))
+
+      const secretEdit = try tryPromise(() => editAction.handler(env.runtime, msg, emptyState, {
+        file_path: aPath,
+        old_string: "const a = 1",
+        new_string: "const key = 'AKIA1234567890ABCDEF'",
+      }))
+
+      const multiEdit = try tryPromise(() => editAction.handler(env.runtime, msg, emptyState, {
+        file_path: aPath,
+        edits: [
+          { old_string: "const a = 1", new_string: "const a = 10" },
+          { old_string: "const c = 3", new_string: "const c = 30" },
+        ],
+      }))
+
+      try tryPromise(() => writeDiskFile(aPath, "const a = 99\n"))
+      const staleEdit = try tryPromise(() => editAction.handler(env.runtime, msg, emptyState, {
+        file_path: aPath,
+        old_string: "const a = 99",
+        new_string: "const a = 100",
+      }))
+
+      const newFile = joinFs(root, "src", "gamma.ts")
+      const created = try tryPromise(() => writeAction.handler(env.runtime, msg, emptyState, {
+        file_path: newFile,
+        content: "export const gamma = 42\n",
+      }))
+      const overwriteRefused = try tryPromise(() => writeAction.handler(env.runtime, msg, emptyState, {
+        file_path: newFile,
+        content: "export const gamma = 43\n",
+      }))
+      const overwriteAllowed = try tryPromise(() => writeAction.handler(env.runtime, msg, emptyState, {
+        file_path: newFile,
+        content: "export const gamma = 43\n",
+        overwrite: true,
+      }))
+
+      const grepRes = try tryPromise(() => fileAction.handler(env.runtime, msg, emptyState, {
+        action: "grep",
+        patterns: ["gamma", "beta"],
+        path: root,
+        output_mode: "content",
+      }))
+      const globRes = try tryPromise(() => fileAction.handler(env.runtime, msg, emptyState, {
+        action: "glob",
+        pattern: "**/*.ts",
+        path: root,
+      }))
+      const lsRes = try tryPromise(() => fileAction.handler(env.runtime, msg, emptyState, {
+        action: "ls",
+        path: joinFs(root, "src"),
+      }))
+
+      const gammaDisk = try tryPromise(() => readDiskFile(newFile))
+
+      try check(() => {
+        assert.equal(blockedOutside.success, false)
+        assert.equal(blockedSymlink.success, false)
+        assert.equal(editBeforeRead.success, false)
+        assert.equal(firstRead.success, true)
+        assert.match(firstRead.text ?? "", /1\|const a = 1/)
+        assert.equal(refContinue.success, true)
+        assert.match(refContinue.text ?? "", /^const b = 2\n\[Showing lines 2-2 of 4\./)
+        assert.equal(batchRead.success, true)
+        assert.match(batchRead.text ?? "", /alpha\.ts/)
+        assert.match(batchRead.text ?? "", /beta\.ts/)
+        assert.equal(secretEdit.success, false)
+        assert.match(secretEdit.text ?? "", /aws_access_key/)
+        assert.equal(multiEdit.success, true)
+        assert.equal(multiEdit.effectReceipts?.length, 1)
+        assert.equal(staleEdit.success, false)
+        assert.match(staleEdit.text ?? "", /stale_read/)
+        assert.equal(created.success, true)
+        assert.equal(overwriteRefused.success, false)
+        assert.equal(overwriteAllowed.success, true)
+        assert.equal(gammaDisk, "export const gamma = 43\n")
+        assert.equal(grepRes.success, true)
+        assert.match(grepRes.text ?? "", /gamma/)
+        assert.match(grepRes.text ?? "", /beta/)
+        assert.equal(globRes.success, true)
+        assert.match(globRes.text ?? "", /gamma\.ts/)
+        assert.equal(lsRes.success, true)
+        assert.match(lsRes.text ?? "", /alpha\.ts/)
+      })
+    },
+    Effect.ignore(effect {
+      try tryPromise(() => env.stopAll())
+      try tryPromise(() => removeDir(root))
+      try tryPromise(() => removeDir(outside))
+    }),
+  )
+})
+
+it.effect('SHELL destructive confirmation challenge, redaction, artifact spill & paging, background jobs, history, and verification diagnostics (spec/codingTools/shellSession.md, "Story: Gate destructive shell commands, manage background jobs, and page spilled output artifacts")', effect () => {
+  const root = try tryPromise(() => makeTempWorkspace("ct-shell-"))
+  const env = try tryPromise(() => createTestRuntime({
+    CODING_TOOLS_WORKSPACE_ROOTS: root,
+    OPENAI_API_KEY: "sk-proj-supersecretvalue1234567890",
+  }))
+  const msg = makeMessage("room-shell-journey", "owner-1", "msg-shell-1")
+  try Effect.ensuring(
+    effect {
+      const forbidden = try tryPromise(() => shellAction.handler(env.runtime, msg, emptyState, { command: "rm -rf /" }))
+      const targetDir = joinFs(root, "disposable")
+      try tryPromise(() => writeDiskFile(joinFs(targetDir, "tmp.txt"), "bye"))
+
+      const needsConfirm = try tryPromise(() => shellAction.handler(env.runtime, msg, emptyState, { command: `rm -rf "${targetDir}"` }))
+      const challenge = String((needsConfirm.data as Record<string, unknown>).confirmation_challenge)
+      const confirmed = try tryPromise(() => shellAction.handler(env.runtime, msg, emptyState, {
+        command: `rm -rf "${targetDir}"`,
+        confirm: true,
+        confirmation_challenge: challenge,
+      }))
+      const replayBlocked = try tryPromise(() => shellAction.handler(env.runtime, msg, emptyState, {
+        command: `rm -rf "${targetDir}"`,
+        confirm: true,
+        confirmation_challenge: challenge,
+      }))
+
+      const redacted = try tryPromise(() => shellAction.handler(env.runtime, msg, emptyState, {
+        command: "node -e \"process.stdout.write('token=sk-proj-supersecretvalue1234567890')\"",
+      }))
+
+      const huge = try tryPromise(() => shellAction.handler(env.runtime, msg, emptyState, {
+        command: "node -e \"for (let i = 1; i <= 450; i++) console.log('line-' + i + '-' + 'x'.repeat(50))\"",
+      }))
+      const artifactHandle = String((huge.data as Record<string, unknown>).output_artifact_handle)
+      const page1 = try tryPromise(() => shellAction.handler(env.runtime, msg, emptyState, {
+        action: "read_output_artifact",
+        handle: artifactHandle,
+        artifact_stream: "stdout",
+        artifact_offset: 0,
+        artifact_limit: 500,
+      }))
+
+      const bgStart = try tryPromise(() => shellAction.handler(env.runtime, msg, emptyState, {
+        action: "start_background",
+        command: "node -e \"console.log('bg-ready'); process.stdin.on('data', d => { console.log('echo:' + d.toString().trim()); process.exit(0); })\"",
+      }))
+      const bgHandle = String((bgStart.data as Record<string, unknown>).handle)
+      try tryPromise(() => waitBriefly(150))
+      const bgWrite = try tryPromise(() => shellAction.handler(env.runtime, msg, emptyState, {
+        action: "write_background",
+        handle: bgHandle,
+        stdin: "ping\n",
+      }))
+      try tryPromise(() => waitBriefly(150))
+      const bgPoll = try tryPromise(() => shellAction.handler(env.runtime, msg, emptyState, {
+        action: "poll_background",
+        handle: bgHandle,
+        stdout_offset: 0,
+      }))
+      const bgList = try tryPromise(() => shellAction.handler(env.runtime, msg, emptyState, { action: "list_background" }))
+      const bgKill = try tryPromise(() => shellAction.handler(env.runtime, msg, emptyState, { action: "kill_background", handle: bgHandle }))
+
+      const historyView = try tryPromise(() => shellAction.handler(env.runtime, msg, emptyState, { action: "view_history" }))
+      const historyProviderRes = try tryPromise(() => shellHistoryProvider.get(env.runtime, msg, emptyState))
+      const historyClear = try tryPromise(() => shellAction.handler(env.runtime, msg, emptyState, { action: "clear_history" }))
+
+      const diag = extractCompactFailureDiagnostics("src/a.ts(4,1): error TS2322: Type 'string' is not assignable to type 'number'")
+      const verif = shellVerificationReceipt({ command: "pnpm test", exitCode: 0, output: "5 passed" })
+
+      try check(() => {
+        assert.equal(forbidden.success, false)
+        assert.equal(needsConfirm.success, false)
+        assert.ok(challenge.length > 10)
+        assert.equal(confirmed.success, true)
+        assert.equal(replayBlocked.success, false)
+        assert.equal(redacted.success, true)
+        assert.equal((redacted.text ?? "").includes("sk-proj-supersecretvalue1234567890"), false)
+        assert.match(redacted.text ?? "", /REDACTED/)
+        assert.equal(huge.success, true)
+        assert.ok(artifactHandle.startsWith("shell_"))
+        assert.equal(page1.success, true)
+        assert.match(page1.text ?? "", /line-1-/)
+        assert.equal(bgStart.success, true)
+        assert.equal(bgWrite.success, true)
+        assert.equal(bgPoll.success, true)
+        assert.match(bgPoll.text ?? "", /bg-ready/)
+        assert.equal(bgList.success, true)
+        assert.equal(bgKill.success, true)
+        assert.equal(historyView.success, true)
+        assert.equal(historyProviderRes.referenceBodyDeferred, true)
+        assert.match(historyProviderRes.discoveryText ?? "", /Shell history:/)
+        assert.equal(historyClear.success, true)
+        assert.equal(diag.length, 1)
+        assert.equal(verif?.status, "passed")
+      })
+    },
+    Effect.ignore(effect {
+      try tryPromise(() => env.stopAll())
+      try tryPromise(() => removeDir(root))
+    }),
+  )
+})
+
+it.effect('WORKTREE enter and exit with real git repo, dynamic sandbox roots, and LIFO cwd restoration (spec/codingTools/worktree.md, "Story: Enter and exit git worktrees without losing the previous working directory")', effect () => {
+  const parent = try tryPromise(() => makeTempWorkspace("ct-wt-"))
+  const repo = joinFs(parent, "repo")
+  const wtDir = joinFs(parent, "wt-feature")
+  const env = try tryPromise(() => createTestRuntime({ CODING_TOOLS_WORKSPACE_ROOTS: parent }))
+  const msg = makeMessage("room-wt-journey")
+  try Effect.ensuring(
+    effect {
+      try tryPromise(() => writeDiskFile(joinFs(repo, "README.txt"), "hello\n"))
+      try check(() => initGitRepoSync(repo))
+      const cwdSvc = env.runtime.getService(SESSION_CWD_SERVICE) as SessionCwdService
+      cwdSvc.setCwd("room-wt-journey", repo)
+
+      const entered = try tryPromise(() => worktreeAction.handler(env.runtime, msg, emptyState, {
+        action: "enter",
+        branch: "feature/test-wt",
+        path: wtDir,
+      }))
+      const activeCwd = cwdSvc.getCwd("room-wt-journey")
+      const exited = try tryPromise(() => worktreeAction.handler(env.runtime, msg, emptyState, {
+        action: "exit",
+        cleanup: true,
+      }))
+      const restoredCwd = cwdSvc.getCwd("room-wt-journey")
+
+      try check(() => {
+        assert.equal(entered.success, true)
+        assert.equal(activeCwd, wtDir)
+        assert.equal(exited.success, true)
+        assert.equal(restoredCwd, repo)
+      })
+    },
+    Effect.ignore(effect {
+      try tryPromise(() => env.stopAll())
+      try tryPromise(() => removeDir(parent))
+    }),
+  )
+})
+
+it.effect('WEB_FETCH / WEB_SEARCH enforce HTTPS-only SSRF rules, HTML readability, JSON extraction, prompt cache stability, and schema optimization targets (spec/codingTools/webGuard.md, "Story: Fetch and search the public web without leaking secrets or touching private networks"; spec/codingTools/index.md, "Story: Enforce sandbox confinement and bounded tool outputs")', effect () => {
+  const env = try tryPromise(() => createTestRuntime({}))
+  const msg = makeMessage("room-web")
+  try Effect.ensuring(
+    effect {
+      const mockFetchAction = createWebFetchAction(async (url) => {
+        if (url.includes("json")) {
+          return {
+            ok: true,
+            status: 200,
+            url,
+            contentType: "application/json",
+            text: JSON.stringify({ market: { btc: { usd: 95000 } } }),
+          }
+        }
+        return {
+          ok: true,
+          status: 200,
+          url,
+          contentType: "text/html; charset=utf-8",
+          text: "<html><head><title>Doc &amp; Guide</title><script>evil()</script></head><body><h1>Title</h1><p>Hello&nbsp;world&#33;</p></body></html>",
+        }
+      })
+
+      const blockedHttp = try tryPromise(() => mockFetchAction.handler(env.runtime, msg, emptyState, { url: "http://example.com" }))
+      const blockedPrivate = try tryPromise(() => mockFetchAction.handler(env.runtime, msg, emptyState, { url: "https://127.0.0.1/admin" }))
+      const blockedQuerySecret = try tryPromise(() => mockFetchAction.handler(env.runtime, msg, emptyState, { url: "https://example.com/?api_key=123" }))
+      const jsonExtract = try tryPromise(() => mockFetchAction.handler(env.runtime, msg, emptyState, {
+        url: "https://api.example.com/json",
+        extract: "market.btc.usd",
+      }))
+      const htmlRead = try tryPromise(() => mockFetchAction.handler(env.runtime, msg, emptyState, {
+        url: "https://docs.example.com/guide",
+      }))
+      const edgeAction = createWebFetchEdgeAction()
+      const missingQuery = try tryPromise(() => webSearchAction.handler(env.runtime, msg, emptyState, {}))
+
+      const p1 = try tryPromise(() => availableToolsProvider.get(env.runtime, msg, emptyState))
+      const p2 = try tryPromise(() => availableToolsProvider.get(env.runtime, msg, emptyState))
+
+      const ctx = appendCodingFeedback(
+        appendCodingIteration(
+          createCodingAgentContext({ sessionId: "s1", taskDescription: "fix", workingDirectory: "/work", now: 100 }),
+          { index: 0, startedAt: 100, fileOperations: [], commandResults: [], errors: [], feedback: [], selfCorrected: true },
+          110,
+        ),
+        { id: "f1", timestamp: 120, text: "looks good", type: "approval" },
+        120,
+      )
+      const schemaOk = Schema.is(CodingAgentContextSchema)(ctx)
+
+      const compressedSchemaChars = (codingToolsPlugin.actions ?? []).reduce((acc, action) => {
+        return acc + JSON.stringify({
+          name: action.name,
+          description: action.descriptionCompressed ?? action.description,
+          parameters: (action.parameters ?? []).map((p) => ({
+            name: p.name,
+            description: p.descriptionCompressed ?? p.description,
+            required: p.required,
+            schema: p.schema,
+          })),
+        }).length
+      }, 0)
+      const piCoreChars = (codingToolsPlugin.actions ?? [])
+        .filter((a) => a.name === "READ" || a.name === "WRITE" || a.name === "EDIT" || a.name === "SHELL")
+        .reduce((acc, action) => {
+          return acc + JSON.stringify({
+            name: action.name,
+            description: action.descriptionCompressed ?? action.description,
+            parameters: (action.parameters ?? []).map((p) => ({
+              name: p.name,
+              description: p.descriptionCompressed ?? p.description,
+              required: p.required,
+              schema: p.schema,
+            })),
+          }).length
+        }, 0)
+
+      const execSvc = env.runtime.getService(EXEC_APPROVAL_SERVICE) as ExecApprovalService
+      execSvc.addAllowlistEntry("pnpm test")
+      const analysis = execSvc.analyzeCommand("pnpm test")
+
+      const summaryRedacted = shellAction.summarize?.({ success: true, text: "ok" }, { command: "curl -H 'Bearer sk-proj-supersecretvalue1234567890' https://example.com" }) ?? ""
+      const sseParsed = parseKeylessSearchResponse(
+        "data: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"alpha result\"}]}}\n\ndata: [DONE]\n\n",
+        "text/event-stream",
+      )
+      const emptyParsed = parseKeylessSearchResponse(
+        JSON.stringify({ jsonrpc: "2.0", id: 1, result: { content: [{ type: "text", text: "{\"results\":[]}" }] } }),
+        "application/json",
+      )
+      const rpcErrParsed = parseKeylessSearchResponse(
+        JSON.stringify({ jsonrpc: "2.0", id: 1, result: { isError: true, content: [{ type: "text", text: "upstream fail" }] } }),
+        "application/json",
+      )
+
+      const byteRoot = try tryPromise(() => makeTempWorkspace("ct-byte-"))
+      const bigPath = joinFs(byteRoot, "big.txt")
+      try tryPromise(() => writeDiskFile(bigPath, "a".repeat(60_000)))
+      const byteEnv = try tryPromise(() => createTestRuntime({ CODING_TOOLS_WORKSPACE_ROOTS: byteRoot }))
+      const byteRead = try tryPromise(() => readAction.handler(byteEnv.runtime, msg, emptyState, {
+        file_path: bigPath,
+        unit: "byte",
+        offset: 0,
+        limit: 999_999,
+      }))
+      const deviceRuntime = {
+        ...byteEnv.runtime,
+        getService: (type: string) => type === "device_filesystem"
+          ? {
+              read: async () => "ok",
+              write: async () => undefined,
+              list: async () => Array.from({ length: 400 }, (_, i) => ({ name: `f-${i}.txt`, type: "file" as const })),
+            }
+          : byteEnv.runtime.getService(type),
+      } as unknown as IAgentRuntime
+      const deviceSecretRefused = try tryPromise(() => fileAction.handler(deviceRuntime, msg, emptyState, {
+        action: "write",
+        target: "device",
+        file_path: "leak.txt",
+        content: "AKIA1234567890ABCDEF",
+      }))
+      const deviceLsBounded = try tryPromise(() => fileAction.handler(deviceRuntime, msg, emptyState, {
+        action: "ls",
+        target: "device",
+        path: ".",
+      }))
+      try tryPromise(() => codingToolsPlugin.dispose?.(byteEnv.runtime) ?? Promise.resolve())
+      try tryPromise(() => removeDir(byteRoot))
+
+      const allParamsSorted = (codingToolsPlugin.actions ?? []).every((action) => {
+        const names = (action.parameters ?? []).map((p) => p.name)
+        const sorted = [...names].sort()
+        return names.every((n, i) => n === sorted[i])
+      })
+      const autoEnableOn = try tryPromise(async () => codingToolsPlugin.autoEnable?.shouldEnable?.({}, { features: { codingTools: true } }))
+      const autoEnableOff = try tryPromise(async () => codingToolsPlugin.autoEnable?.shouldEnable?.({ ELIZA_BUILD_VARIANT: "store" }, { features: { codingTools: true } }))
+
+      try check(() => {
+        assert.equal(summaryRedacted.includes("sk-proj-supersecretvalue1234567890"), false)
+        assert.match(summaryRedacted, /REDACTED/)
+        assert.deepEqual(sseParsed, { kind: "ok", text: "alpha result" })
+        assert.deepEqual(emptyParsed, { kind: "empty" })
+        assert.equal(rpcErrParsed.kind, "error")
+        assert.equal(byteRead.success, true)
+        assert.equal((byteRead.data as Record<string, unknown>).end, 50_000)
+        assert.match(byteRead.text ?? "", /\[Showing bytes 0-50000 of 60000\./)
+        assert.equal(deviceSecretRefused.success, false)
+        assert.equal(deviceLsBounded.success, true)
+        assert.equal((deviceLsBounded.data as Record<string, unknown>).truncated, true)
+        assert.equal(allParamsSorted, true)
+        assert.equal(autoEnableOn, true)
+        assert.equal(autoEnableOff, false)
+        assert.equal(blockedHttp.success, false)
+        assert.equal(blockedPrivate.success, false)
+        assert.equal(blockedQuerySecret.success, false)
+        assert.equal(jsonExtract.success, true)
+        assert.equal(jsonExtract.text, "95000")
+        assert.equal(htmlRead.success, true)
+        assert.match(htmlRead.text ?? "", /Doc & Guide/)
+        assert.equal((htmlRead.text ?? "").includes("evil()"), false)
+        assert.equal(edgeAction.roleGate?.minRole, "GUEST")
+        assert.equal(missingQuery.success, false)
+        assert.equal(availableToolsProvider.cacheStable, true)
+        assert.equal(p1.text, p2.text)
+        assert.equal(schemaOk, true)
+        assert.equal(analysis.allowlisted, true)
+        assert.equal(codingToolsPlugin.actions?.length, 8)
+        assert.equal(codingToolsPlugin.providers?.length, 2)
+        assert.equal(codingToolsPlugin.services?.length, 7)
+        assert.equal(compressedSchemaChars < 8_500, true)
+        assert.equal(piCoreChars < 4_000, true)
+        assert.equal(detectSecrets("ghp_123456789012345678901234567890123456").length, 1)
+        assert.equal(classifyDestructiveCommand("git reset --hard HEAD").destructive, true)
+        assert.equal(isForbiddenCommand("rm -rf /") !== undefined, true)
+        assert.equal(detectTerminalSupported({ ELIZA_BUILD_VARIANT: "store" }), false)
+        assert.equal(truncateHead("a\nb\nc\nd\ne", 2, 100).truncated, true)
+        assert.equal(truncateTail("a\nb\nc\nd\ne", 2, 100).text, "d\ne")
+        assert.equal(htmlToReadableText("<p>Hi &amp; bye</p>"), "Hi & bye")
+        assert.equal(webFetchAction.toolSchemaStrict, true)
+      })
+    },
+    Effect.ignore(tryPromise(() => env.stopAll())),
+  )
+})

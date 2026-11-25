@@ -1,0 +1,1002 @@
+// spec/codingTools/fileSession.md, "Story: Protect workspace files against stale edits, accidental overwrites, and secret leaks"; spec/codingTools/index.md, "Bounded output projection never exceeds line or byte ceilings and spills to an artifact when truncated"
+import type {
+  Action,
+  ActionResult,
+  HandlerCallback,
+  HandlerOptions,
+  IAgentRuntime,
+  Memory,
+  ProviderDataRecord,
+  State,
+} from "@elizaos/core"
+import { publishFileReadReference, resolveFileReadReference } from "../lib/artifacts.vibe"
+import {
+  DEFAULT_OUTPUT_MAX_BYTES,
+  DEFAULT_OUTPUT_MAX_LINES,
+  HARD_OUTPUT_MAX_BYTES,
+  basename,
+  failureToActionResult,
+  formatCompactEditDiff,
+  formatNumberedLines,
+  readArrayParam,
+  readBoolParam,
+  readNumberParam,
+  readPositiveIntSetting,
+  readStringArrayParam,
+  readStringParam,
+  successActionResult,
+  summarizeFileOperation,
+  truncateHead,
+} from "../lib/format.vibe"
+import {
+  detectSecrets,
+  fileEffectReceipt,
+  fileMutationResult,
+  isAbsolutePath,
+  pathDirname,
+  pathJoin,
+  pathRelative,
+} from "../lib/security.vibe"
+import {
+  resolveInputPath,
+  statPathNode,
+  type FileStateService,
+  type RipgrepMode,
+  type RipgrepService,
+  type SandboxService,
+  type SessionCwdService,
+} from "../services/services.vibe"
+import {
+  CODING_TOOLS_CONTEXTS,
+  FILE_STATE_SERVICE,
+  RIPGREP_SERVICE,
+  SANDBOX_SERVICE,
+  SESSION_CWD_SERVICE,
+} from "../types.vibe"
+
+module node {
+  import * as fs from "node:fs/promises"
+  import * as path from "node:path"
+
+  export async function readUtf8CheckedNode(filePath: string): Promise<{ readonly text: string; readonly bytes: number }> {
+    const raw = await fs.readFile(filePath)
+    if (raw.includes(0)) throw new Error("binary file detected")
+    const text = new TextDecoder("utf-8", { fatal: true }).decode(raw)
+    return { text, bytes: raw.byteLength }
+  }
+
+  export async function writeAtomicUtf8Node(filePath: string, content: string): Promise<number> {
+    const dir = path.dirname(filePath)
+    await fs.mkdir(dir, { recursive: true })
+    const tmp = path.join(dir, `.tmp-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`)
+    const bytes = Buffer.from(content, "utf8")
+    await fs.writeFile(tmp, bytes)
+    await fs.rename(tmp, filePath)
+    return bytes.byteLength
+  }
+
+  export interface DirEntryNode {
+    readonly name: string
+    readonly type: "file" | "dir" | "symlink"
+    readonly size?: number
+  }
+
+  export async function readDirEntriesNode(dir: string): Promise<DirEntryNode[]> {
+    const entries = await fs.readdir(dir, { withFileTypes: true })
+    const result: DirEntryNode[] = []
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        result.push({ name: entry.name, type: "dir" })
+      } else if (entry.isSymbolicLink()) {
+        result.push({ name: entry.name, type: "symlink" })
+      } else {
+        const st = await fs.stat(path.join(dir, entry.name)).catch(() => undefined)
+        result.push({ name: entry.name, type: "file", ...(st ? { size: st.size } : {}) })
+      }
+    }
+    return result
+  }
+
+  export async function walkFilesForGlobNode(root: string, maxFiles = 5000): Promise<string[]> {
+    const excluded = new Set(["node_modules", ".git", "dist", ".turbo", ".next", ".spec-cache"])
+    const files: string[] = []
+    async function walk(current: string): Promise<void> {
+      if (files.length >= maxFiles) return
+      const entries = await fs.readdir(current, { withFileTypes: true })
+      for (const entry of entries) {
+        if (files.length >= maxFiles) return
+        if (excluded.has(entry.name)) continue
+        const full = path.join(current, entry.name)
+        if (entry.isDirectory()) {
+          await walk(full).catch(() => undefined)
+        } else if (entry.isFile() || entry.isSymbolicLink()) {
+          files.push(full)
+        }
+      }
+    }
+    await walk(root)
+    return files
+  }
+}
+
+import { readDirEntriesNode, readUtf8CheckedNode, walkFilesForGlobNode, writeAtomicUtf8Node } from node
+
+function conversationIdOf(message: Memory): string | undefined {
+  return message.roomId !== undefined && message.roomId !== null ? String(message.roomId) : undefined
+}
+
+function globToRegExp(pattern: string): RegExp {
+  let regex = "^"
+  let i = 0
+  while (i < pattern.length) {
+    const ch = pattern[i]
+    if (ch === "*") {
+      if (pattern[i + 1] === "*") {
+        if (pattern[i + 2] === "/") {
+          regex += "(?:.*/)?"
+          i += 3
+        } else {
+          regex += ".*"
+          i += 2
+        }
+      } else {
+        regex += "[^/]*"
+        i += 1
+      }
+    } else if (ch === "?") {
+      regex += "[^/]"
+      i += 1
+    } else if (ch === "{") {
+      const close = pattern.indexOf("}", i)
+      if (close > i) {
+        const alts = pattern.slice(i + 1, close).split(",").map((s) => s.replace(/[.+^$()|[\]\\]/g, "\\$&"))
+        regex += `(?:${alts.join("|")})`
+        i = close + 1
+      } else {
+        regex += "\\{"
+        i += 1
+      }
+    } else if (/[.+^$()|[\]\\]/.test(ch)) {
+      regex += `\\${ch}`
+      i += 1
+    } else {
+      regex += ch
+      i += 1
+    }
+  }
+  regex += "$"
+  return new RegExp(regex)
+}
+
+function unsafeGlobPattern(pattern: string): string | undefined {
+  if (pattern.includes("\0")) return "glob pattern contains NUL byte"
+  if (isAbsolutePath(pattern)) return "glob pattern must be relative"
+  if (pattern.split(/[\\/]/).includes("..")) return "glob pattern cannot traverse parent directories"
+  return undefined
+}
+
+function countOccurrences(haystack: string, needle: string): number {
+  if (needle.length === 0) return 0
+  let count = 0
+  let pos = 0
+  for (;;) {
+    const idx = haystack.indexOf(needle, pos)
+    if (idx === -1) break
+    count += 1
+    pos = idx + needle.length
+  }
+  return count
+}
+
+function lineNumberOf(content: string, charIndex: number): number {
+  let line = 1
+  for (let i = 0; i < charIndex && i < content.length; i += 1) {
+    if (content[i] === "\n") line += 1
+  }
+  return line
+}
+
+function hasUnexpectedLiteralEscapes(oldStr: string, newStr: string): boolean {
+  const hasRealNewlines = oldStr.includes("\n") || newStr.includes("\n")
+  if (hasRealNewlines) return false
+  return /\\[nr]/.test(newStr) && !/\\[nr]/.test(oldStr)
+}
+
+interface SingleReadResult {
+  readonly path: string
+  readonly content: string
+  readonly revision: string
+  readonly reference: string
+  readonly start: number
+  readonly end: number
+  readonly total: number
+  readonly unit: "line" | "byte"
+  readonly hasMore: boolean
+  readonly truncated: boolean
+}
+
+async function performSingleRead(params: {
+  readonly runtime: IAgentRuntime
+  readonly conversationId: string
+  readonly sandbox: SandboxService
+  readonly fileState: FileStateService
+  readonly filePath?: string
+  readonly reference?: string
+  readonly expectedRevision?: string
+  readonly offset?: number
+  readonly limit?: number
+  readonly unit: "line" | "byte"
+  readonly lineNumbers: boolean
+}): Promise<{ readonly ok: true; readonly value: SingleReadResult } | { readonly ok: false; readonly result: ActionResult }> {
+  let targetPath: string
+  if (params.reference) {
+    if (!params.expectedRevision) {
+      return { ok: false, result: failureToActionResult({ reason: "missing_param", message: "reference requires expectedRevision" }) }
+    }
+    const resolvedRef = resolveFileReadReference({ conversationId: params.conversationId, token: params.reference })
+    if (!resolvedRef) {
+      return { ok: false, result: failureToActionResult({ reason: "invalid_param", message: "unknown or expired file reference" }) }
+    }
+    if (resolvedRef.revision !== params.expectedRevision) {
+      return { ok: false, result: failureToActionResult({ reason: "stale_read", message: "expectedRevision does not match file reference" }) }
+    }
+    targetPath = resolvedRef.filePath
+  } else {
+    if (!params.filePath) {
+      return { ok: false, result: failureToActionResult({ reason: "missing_param", message: "file_path or reference is required" }) }
+    }
+    const input = resolveInputPath(params.runtime, params.conversationId, params.filePath)
+    if (!input.ok) return { ok: false, result: failureToActionResult(input.failure) }
+    targetPath = input.value
+  }
+
+  const validated = await params.sandbox.validatePath(params.conversationId, targetPath)
+  if (!validated.ok) {
+    return {
+      ok: false,
+      result: failureToActionResult({ reason: validated.reason === "blocked" ? "path_blocked" : "invalid_param", message: validated.message }),
+    }
+  }
+  const resolved = validated.resolved
+  const stat = await statPathNode(resolved)
+  if (!stat.exists || !stat.isFile) {
+    return { ok: false, result: failureToActionResult({ reason: "io_error", message: `file not found or not a regular file: ${resolved}` }, { path: resolved }) }
+  }
+
+  const meta = await params.fileState.recordRead(params.conversationId, resolved, stat)
+  if (params.expectedRevision && params.expectedRevision !== meta.revision) {
+    return {
+      ok: false,
+      result: failureToActionResult({ reason: "stale_read", message: `file revision changed (${params.expectedRevision} != ${meta.revision})` }, { path: resolved }),
+    }
+  }
+
+  const maxSizeSetting = readPositiveIntSetting(params.runtime, "CODING_TOOLS_MAX_FILE_SIZE_BYTES")
+  let decoded: { readonly text: string; readonly bytes: number }
+  try {
+    decoded = await readUtf8CheckedNode(resolved)
+  } catch (err) {
+    return { ok: false, result: failureToActionResult({ reason: "io_error", message: err instanceof Error ? err.message : String(err) }, { path: resolved }) }
+  }
+
+  const reference = publishFileReadReference({ conversationId: params.conversationId, filePath: resolved, revision: meta.revision })
+
+  if (params.unit === "byte") {
+    const rawBytes = new TextEncoder().encode(decoded.text)
+    const offset = Math.max(0, Math.floor(params.offset ?? 0))
+    const requestedLimit = params.limit !== undefined
+      ? Math.max(1, Math.floor(params.limit))
+      : Math.min(Math.max(1, rawBytes.byteLength - offset), DEFAULT_OUTPUT_MAX_BYTES)
+    if (maxSizeSetting !== undefined && requestedLimit > maxSizeSetting) {
+      return { ok: false, result: failureToActionResult({ reason: "invalid_param", message: `requested bytes exceed CODING_TOOLS_MAX_FILE_SIZE_BYTES (${maxSizeSetting})` }) }
+    }
+    const clampedLimit = Math.min(requestedLimit, HARD_OUTPUT_MAX_BYTES)
+    const slice = rawBytes.subarray(offset, Math.min(rawBytes.byteLength, offset + clampedLimit))
+    const decodedSlice = new TextDecoder("utf-8", { fatal: false }).decode(slice)
+    const end = offset + slice.byteLength
+    const hasMore = end < rawBytes.byteLength
+    const notice = hasMore
+      ? `\n[Showing bytes ${offset}-${end} of ${rawBytes.byteLength}. Ref: ${reference} rev=${meta.revision} offset=${end}]`
+      : ""
+    return {
+      ok: true,
+      value: {
+        path: resolved,
+        content: decodedSlice + notice,
+        revision: meta.revision,
+        reference,
+        start: offset,
+        end,
+        total: rawBytes.byteLength,
+        unit: "byte",
+        hasMore,
+        truncated: hasMore,
+      },
+    }
+  }
+
+  const allLines = decoded.text.length === 0 ? [] : decoded.text.split("\n")
+  const offset = Math.max(0, Math.floor(params.offset ?? 0))
+  const requestedLimit = params.limit !== undefined ? Math.max(1, Math.floor(params.limit)) : allLines.length
+  const selected = allLines.slice(offset, offset + requestedLimit).join("\n")
+  if (maxSizeSetting !== undefined && new TextEncoder().encode(selected).byteLength > maxSizeSetting) {
+    return {
+      ok: false,
+      result: failureToActionResult({ reason: "invalid_param", message: `selected file content exceeds CODING_TOOLS_MAX_FILE_SIZE_BYTES (${maxSizeSetting})` }, { path: resolved }),
+    }
+  }
+
+  const bounded = truncateHead(selected, params.limit ?? DEFAULT_OUTPUT_MAX_LINES, DEFAULT_OUTPUT_MAX_BYTES)
+  const endLine = offset + bounded.shownLines
+  const hasMore = endLine < allLines.length
+  const body = params.lineNumbers ? formatNumberedLines(bounded.text, offset + 1) : bounded.text
+  const notice = hasMore
+    ? `\n[Showing lines ${offset + 1}-${endLine} of ${allLines.length}. Ref: ${reference} rev=${meta.revision} offset=${endLine}]`
+    : ""
+
+  return {
+    ok: true,
+    value: {
+      path: resolved,
+      content: body + notice,
+      revision: meta.revision,
+      reference,
+      start: offset,
+      end: endLine,
+      total: allLines.length,
+      unit: "line",
+      hasMore,
+      truncated: bounded.truncated || hasMore,
+    },
+  }
+}
+
+export async function readFileHandler(
+  runtime: IAgentRuntime,
+  message: Memory,
+  _state?: State,
+  options?: unknown,
+  _callback?: HandlerCallback,
+): Promise<ActionResult> {
+  const conversationId = conversationIdOf(message)
+  if (!conversationId) return failureToActionResult({ reason: "missing_param", message: "no roomId" })
+  const sandbox = runtime.getService(SANDBOX_SERVICE) as SandboxService | null
+  const fileState = runtime.getService(FILE_STATE_SERVICE) as FileStateService | null
+  if (!sandbox || !fileState) return failureToActionResult({ reason: "internal", message: "coding-tools services unavailable" })
+
+  const lineNumbers = readBoolParam(options, "line_numbers") ?? false
+  const unitRaw = readStringParam(options, "unit")
+  const unit: "line" | "byte" = unitRaw === "byte" ? "byte" : "line"
+  const batchPaths = readStringArrayParam(options, "paths")
+
+  if (batchPaths && batchPaths.length > 0) {
+    const limitPerFile = readNumberParam(options, "limit") ?? Math.max(40, Math.floor(DEFAULT_OUTPUT_MAX_LINES / batchPaths.length))
+    const offset = readNumberParam(options, "offset")
+    const entries: ProviderDataRecord[] = []
+    const chunks: string[] = []
+    for (const itemPath of batchPaths) {
+      const single = await performSingleRead({
+        runtime,
+        conversationId,
+        sandbox,
+        fileState,
+        filePath: itemPath,
+        offset,
+        limit: limitPerFile,
+        unit,
+        lineNumbers,
+      })
+      if (!single.ok) {
+        chunks.push(`=== ${itemPath} [ERROR] ===\n${single.result.text ?? "read failed"}`)
+        entries.push({ path: itemPath, ok: false, error: single.result.text ?? "read failed" })
+      } else {
+        chunks.push(`=== ${single.value.path} [${single.value.start + 1}..${single.value.end}/${single.value.total} rev=${single.value.revision}] ===\n${single.value.content}`)
+        entries.push({
+          path: single.value.path,
+          ok: true,
+          revision: single.value.revision,
+          reference: single.value.reference,
+          start: single.value.start,
+          end: single.value.end,
+          total: single.value.total,
+          hasMore: single.value.hasMore,
+        })
+      }
+    }
+    const text = truncateHead(chunks.join("\n\n"), DEFAULT_OUTPUT_MAX_LINES, DEFAULT_OUTPUT_MAX_BYTES).text
+    return successActionResult(text, { files: entries }, { count: entries.length, files: entries })
+  }
+
+  const single = await performSingleRead({
+    runtime,
+    conversationId,
+    sandbox,
+    fileState,
+    filePath: readStringParam(options, "file_path") ?? readStringParam(options, "path"),
+    reference: readStringParam(options, "reference"),
+    expectedRevision: readStringParam(options, "expectedRevision"),
+    offset: readNumberParam(options, "offset"),
+    limit: readNumberParam(options, "limit"),
+    unit,
+    lineNumbers,
+  })
+  if (!single.ok) return single.result
+  const val = single.value
+  const data: ProviderDataRecord = {
+    path: val.path,
+    revision: val.revision,
+    reference: val.reference,
+    start: val.start,
+    end: val.end,
+    total: val.total,
+    unit: val.unit,
+    hasMore: val.hasMore,
+    truncated: val.truncated,
+  }
+  return successActionResult(val.content, data, data)
+}
+
+export async function writeFileHandler(
+  runtime: IAgentRuntime,
+  message: Memory,
+  _state?: State,
+  options?: unknown,
+  callback?: HandlerCallback,
+): Promise<ActionResult> {
+  const conversationId = conversationIdOf(message)
+  if (!conversationId) return failureToActionResult({ reason: "missing_param", message: "no roomId" })
+  const rawPath = readStringParam(options, "file_path") ?? readStringParam(options, "path")
+  const content = readStringParam(options, "content")
+  if (!rawPath) return failureToActionResult({ reason: "missing_param", message: "file_path is required" })
+  if (content === undefined) return failureToActionResult({ reason: "missing_param", message: "content is required" })
+
+  const sandbox = runtime.getService(SANDBOX_SERVICE) as SandboxService | null
+  const fileState = runtime.getService(FILE_STATE_SERVICE) as FileStateService | null
+  if (!sandbox || !fileState) return failureToActionResult({ reason: "internal", message: "coding-tools services unavailable" })
+
+  const input = resolveInputPath(runtime, conversationId, rawPath)
+  if (!input.ok) return failureToActionResult(input.failure)
+  const validated = await sandbox.validatePath(conversationId, input.value)
+  if (!validated.ok) {
+    return failureToActionResult({ reason: validated.reason === "blocked" ? "path_blocked" : "invalid_param", message: validated.message })
+  }
+  const resolved = validated.resolved
+
+  const gate = await fileState.assertWritable(conversationId, resolved)
+  if (!gate.ok) {
+    return failureToActionResult({ reason: gate.reason === "stale_read" ? "stale_read" : "invalid_param", message: gate.message }, { path: resolved })
+  }
+  if (gate.exists && readBoolParam(options, "overwrite") !== true) {
+    return failureToActionResult(
+      { reason: "invalid_param", message: "existing file requires overwrite=true after reading, or use EDIT for localized changes" },
+      { path: resolved },
+    )
+  }
+
+  const secrets = detectSecrets(content)
+  if (secrets.length > 0) {
+    return failureToActionResult(
+      { reason: "invalid_param", message: `refusing to write detected secrets: ${secrets.map((s) => s.name).join(", ")}` },
+      { path: resolved },
+    )
+  }
+
+  let bytes: number
+  try {
+    bytes = await writeAtomicUtf8Node(resolved, content)
+  } catch (err) {
+    return failureToActionResult({ reason: "io_error", message: `write failed: ${err instanceof Error ? err.message : String(err)}` }, { path: resolved })
+  }
+
+  const receipt = await fileEffectReceipt({ path: resolved, content, operation: "write" })
+  const meta = await fileState.recordWrite(conversationId, resolved, "write")
+  const text = `Wrote ${bytes} bytes to ${resolved}`
+  const summary: ProviderDataRecord = { path: resolved, bytes, revision: meta.revision }
+  return fileMutationResult({ receipt, text, content, data: summary, promptData: summary, callback })
+}
+
+interface HunkEdit {
+  readonly old_string: string
+  readonly new_string: string
+  readonly replace_all?: boolean
+}
+
+function parseHunkEdits(options: unknown): HunkEdit[] | undefined {
+  const raw = readArrayParam(options, "edits")
+  if (!raw || raw.length === 0) return undefined
+  const edits: HunkEdit[] = []
+  for (const item of raw) {
+    if (typeof item !== "object" || item === null) return undefined
+    const rec = item as Record<string, unknown>
+    if (typeof rec.old_string !== "string" || typeof rec.new_string !== "string") return undefined
+    edits.push({
+      old_string: rec.old_string,
+      new_string: rec.new_string,
+      replace_all: rec.replace_all === true,
+    })
+  }
+  return edits
+}
+
+export async function editFileHandler(
+  runtime: IAgentRuntime,
+  message: Memory,
+  _state?: State,
+  options?: unknown,
+  callback?: HandlerCallback,
+): Promise<ActionResult> {
+  const conversationId = conversationIdOf(message)
+  if (!conversationId) return failureToActionResult({ reason: "missing_param", message: "no roomId" })
+  const rawPath = readStringParam(options, "file_path") ?? readStringParam(options, "path")
+  if (!rawPath) return failureToActionResult({ reason: "missing_param", message: "file_path is required" })
+
+  const multiEdits = parseHunkEdits(options)
+  const oldStr = readStringParam(options, "old_string")
+  const newStr = readStringParam(options, "new_string")
+  const replaceAll = readBoolParam(options, "replace_all") ?? false
+  const allowLiteralEscapes = readBoolParam(options, "allow_literal_escapes") ?? false
+
+  const hunks: HunkEdit[] = multiEdits ?? (
+    oldStr !== undefined && newStr !== undefined
+      ? [{ old_string: oldStr, new_string: newStr, replace_all: replaceAll }]
+      : []
+  )
+  if (hunks.length === 0) {
+    return failureToActionResult({ reason: "missing_param", message: "old_string+new_string or edits[] is required" })
+  }
+
+  const sandbox = runtime.getService(SANDBOX_SERVICE) as SandboxService | null
+  const fileState = runtime.getService(FILE_STATE_SERVICE) as FileStateService | null
+  if (!sandbox || !fileState) return failureToActionResult({ reason: "internal", message: "coding-tools services unavailable" })
+
+  const input = resolveInputPath(runtime, conversationId, rawPath)
+  if (!input.ok) return failureToActionResult(input.failure)
+  const validated = await sandbox.validatePath(conversationId, input.value)
+  if (!validated.ok) {
+    return failureToActionResult({ reason: validated.reason === "blocked" ? "path_blocked" : "invalid_param", message: validated.message })
+  }
+  const resolved = validated.resolved
+
+  const gate = await fileState.assertWritable(conversationId, resolved)
+  if (!gate.ok) {
+    return failureToActionResult({ reason: gate.reason === "stale_read" ? "stale_read" : "invalid_param", message: gate.message }, { path: resolved })
+  }
+
+  let working: string
+  try {
+    working = (await readUtf8CheckedNode(resolved)).text
+  } catch (err) {
+    return failureToActionResult({ reason: "io_error", message: `read failed: ${err instanceof Error ? err.message : String(err)}` }, { path: resolved })
+  }
+
+  let totalReplacements = 0
+  let firstLine = 1
+  const diffs: string[] = []
+
+  for (let i = 0; i < hunks.length; i += 1) {
+    const hunk = hunks[i]
+    if (hunk.old_string.length === 0) {
+      return failureToActionResult({ reason: "invalid_param", message: `edit[${i}].old_string cannot be empty` }, { path: resolved })
+    }
+    if (hunk.old_string === hunk.new_string) {
+      return failureToActionResult({ reason: "unchanged", message: `edit[${i}] old_string and new_string are identical` }, { path: resolved })
+    }
+    if (!allowLiteralEscapes && hasUnexpectedLiteralEscapes(hunk.old_string, hunk.new_string)) {
+      return failureToActionResult(
+        { reason: "invalid_param", message: "literal \\n or \\r detected; use real newlines or set allow_literal_escapes=true" },
+        { path: resolved },
+      )
+    }
+    const secrets = detectSecrets(hunk.new_string)
+    if (secrets.length > 0) {
+      return failureToActionResult(
+        { reason: "invalid_param", message: `refusing to introduce secrets: ${secrets.map((s) => s.name).join(", ")}` },
+        { path: resolved },
+      )
+    }
+    const count = countOccurrences(working, hunk.old_string)
+    if (count === 0) {
+      return failureToActionResult({ reason: "no_match", message: `old_string not found in ${resolved} (hunk ${i})` }, { path: resolved })
+    }
+    if (!hunk.replace_all && count > 1) {
+      return failureToActionResult(
+        { reason: "invalid_param", message: `ambiguous: ${count} matches for hunk ${i}; pass replace_all=true or add context` },
+        { path: resolved },
+      )
+    }
+    const idx = working.indexOf(hunk.old_string)
+    const hunkLine = lineNumberOf(working, idx)
+    if (i === 0) firstLine = hunkLine
+    working = hunk.replace_all
+      ? working.split(hunk.old_string).join(hunk.new_string)
+      : `${working.slice(0, idx)}${hunk.new_string}${working.slice(idx + hunk.old_string.length)}`
+    totalReplacements += hunk.replace_all ? count : 1
+    diffs.push(formatCompactEditDiff(resolved, hunkLine, hunk.old_string, hunk.new_string, 16))
+  }
+
+  try {
+    await writeAtomicUtf8Node(resolved, working)
+  } catch (err) {
+    return failureToActionResult({ reason: "io_error", message: `write failed: ${err instanceof Error ? err.message : String(err)}` }, { path: resolved })
+  }
+
+  const receipt = await fileEffectReceipt({ path: resolved, content: working, operation: "edit" })
+  const meta = await fileState.recordWrite(conversationId, resolved, "edit")
+  const diffPreview = truncateHead(diffs.join("\n"), 40, 4096).text
+  const text = `Edited ${resolved} (${totalReplacements} replacement${totalReplacements === 1 ? "" : "s"}, line ${firstLine}, rev=${meta.revision})\n${diffPreview}`
+  const summary: ProviderDataRecord = {
+    path: resolved,
+    replacements: totalReplacements,
+    hunks: hunks.length,
+    firstLine,
+    revision: meta.revision,
+  }
+  return fileMutationResult({ receipt, text, content: working, data: summary, promptData: summary, callback })
+}
+
+export async function grepHandler(
+  runtime: IAgentRuntime,
+  message: Memory,
+  _state?: State,
+  options?: unknown,
+  _callback?: HandlerCallback,
+): Promise<ActionResult> {
+  const conversationId = conversationIdOf(message)
+  if (!conversationId) return failureToActionResult({ reason: "missing_param", message: "no roomId" })
+  const patterns = readStringArrayParam(options, "patterns")
+  const singlePattern = readStringParam(options, "pattern")
+  const searchPatterns = patterns && patterns.length > 0 ? patterns : (singlePattern ? [singlePattern] : [])
+  if (searchPatterns.length === 0) return failureToActionResult({ reason: "missing_param", message: "pattern is required" })
+
+  const sandbox = runtime.getService(SANDBOX_SERVICE) as SandboxService | null
+  const session = runtime.getService(SESSION_CWD_SERVICE) as SessionCwdService | null
+  const rg = runtime.getService(RIPGREP_SERVICE) as RipgrepService | null
+  if (!sandbox || !session || !rg) return failureToActionResult({ reason: "internal", message: "coding-tools services unavailable" })
+
+  const requestedPath = readStringParam(options, "path")
+  const targetPath = requestedPath === undefined
+    ? (await session.getExistingCwd(conversationId)).cwd
+    : (() => {
+        const res = resolveInputPath(runtime, conversationId, requestedPath)
+        return res.ok ? res.value : undefined
+      })()
+  if (!targetPath) return failureToActionResult({ reason: "invalid_param", message: `invalid path: ${requestedPath ?? ""}` })
+
+  const validated = await sandbox.validatePath(conversationId, targetPath)
+  if (!validated.ok) {
+    return failureToActionResult({ reason: validated.reason === "blocked" ? "path_blocked" : "invalid_param", message: validated.message })
+  }
+
+  const modeRaw = readStringParam(options, "output_mode")
+  const mode: RipgrepMode = modeRaw === "content" || modeRaw === "count" ? modeRaw : "files_with_matches"
+  const headLimit = readNumberParam(options, "head_limit") ?? DEFAULT_OUTPUT_MAX_LINES
+
+  const blocks: string[] = []
+  let anyMatches = false
+  for (const pat of searchPatterns) {
+    const res = await rg.search(
+      {
+        pattern: pat,
+        path: validated.resolved,
+        glob: readStringParam(options, "glob"),
+        type: readStringParam(options, "type"),
+        contextBefore: readNumberParam(options, "-B"),
+        contextAfter: readNumberParam(options, "-A"),
+        contextAround: readNumberParam(options, "-C"),
+        caseInsensitive: readBoolParam(options, "case_insensitive") ?? false,
+        multiline: readBoolParam(options, "multiline") ?? false,
+        showLineNumbers: readBoolParam(options, "show_line_numbers") ?? (mode === "content"),
+        headLimit,
+      },
+      mode,
+    )
+    if (res.exitCode === 0 && res.stdout.trim().length > 0) {
+      anyMatches = true
+      blocks.push(searchPatterns.length > 1 ? `=== /${pat}/ ===\n${res.stdout.trimEnd()}` : res.stdout.trimEnd())
+    }
+  }
+
+  const combined = anyMatches ? blocks.join("\n") : "No matches found."
+  const bounded = truncateHead(combined, headLimit, DEFAULT_OUTPUT_MAX_BYTES)
+  const text = bounded.truncated
+    ? `${bounded.text}\n[Truncated: ${bounded.shownLines}/${bounded.totalLines} lines shown. Narrow path/glob or raise head_limit.]`
+    : bounded.text
+  const data: ProviderDataRecord = {
+    path: validated.resolved,
+    mode,
+    matched: anyMatches,
+    truncated: bounded.truncated,
+    shownLines: bounded.shownLines,
+    totalLines: bounded.totalLines,
+  }
+  return successActionResult(text, data, data)
+}
+
+export async function globHandler(
+  runtime: IAgentRuntime,
+  message: Memory,
+  _state?: State,
+  options?: unknown,
+  _callback?: HandlerCallback,
+): Promise<ActionResult> {
+  const conversationId = conversationIdOf(message)
+  if (!conversationId) return failureToActionResult({ reason: "missing_param", message: "no roomId" })
+  const pattern = readStringParam(options, "pattern")
+  if (!pattern) return failureToActionResult({ reason: "missing_param", message: "pattern is required" })
+  const unsafe = unsafeGlobPattern(pattern)
+  if (unsafe) return failureToActionResult({ reason: "invalid_param", message: unsafe })
+
+  const sandbox = runtime.getService(SANDBOX_SERVICE) as SandboxService | null
+  const session = runtime.getService(SESSION_CWD_SERVICE) as SessionCwdService | null
+  if (!sandbox || !session) return failureToActionResult({ reason: "internal", message: "coding-tools services unavailable" })
+
+  const requestedPath = readStringParam(options, "path")
+  let targetPath: string
+  if (requestedPath === undefined) {
+    targetPath = (await session.getExistingCwd(conversationId)).cwd
+  } else {
+    const resolvedInput = resolveInputPath(runtime, conversationId, requestedPath)
+    if (!resolvedInput.ok) return failureToActionResult(resolvedInput.failure)
+    targetPath = resolvedInput.value
+  }
+  const validated = await sandbox.validatePath(conversationId, targetPath)
+  if (!validated.ok) {
+    return failureToActionResult({ reason: validated.reason === "blocked" ? "path_blocked" : "invalid_param", message: validated.message })
+  }
+
+  let candidates: string[]
+  try {
+    candidates = await walkFilesForGlobNode(validated.resolved)
+  } catch (err) {
+    return failureToActionResult({ reason: "io_error", message: `readdir failed: ${err instanceof Error ? err.message : String(err)}` })
+  }
+
+  const matcher = globToRegExp(pattern)
+  const matched: { readonly path: string; readonly mtimeMs: number }[] = []
+  for (const candidate of candidates) {
+    const rel = pathRelative(validated.resolved, candidate).replace(/\\/g, "/")
+    if (!matcher.test(rel)) continue
+    const check = await sandbox.validatePath(conversationId, candidate)
+    if (!check.ok) continue
+    const st = await statPathNode(candidate)
+    if (st.isFile) matched.push({ path: candidate, mtimeMs: st.mtimeMs })
+  }
+  matched.sort((a, b) => b.mtimeMs - a.mtimeMs || a.path.localeCompare(b.path))
+  const files = matched.map((m) => m.path)
+  const raw = files.length === 0 ? "0 files" : `${files.length} files\n${files.join("\n")}`
+  const bounded = truncateHead(raw, DEFAULT_OUTPUT_MAX_LINES, DEFAULT_OUTPUT_MAX_BYTES)
+  const text = bounded.truncated ? `${bounded.text}\n[Showing ${bounded.shownLines}/${bounded.totalLines} lines]` : bounded.text
+  return successActionResult(text, { files, truncated: bounded.truncated }, { count: files.length, truncated: bounded.truncated })
+}
+
+export async function lsHandler(
+  runtime: IAgentRuntime,
+  message: Memory,
+  _state?: State,
+  options?: unknown,
+  _callback?: HandlerCallback,
+): Promise<ActionResult> {
+  const conversationId = conversationIdOf(message)
+  if (!conversationId) return failureToActionResult({ reason: "missing_param", message: "no roomId" })
+  const sandbox = runtime.getService(SANDBOX_SERVICE) as SandboxService | null
+  const session = runtime.getService(SESSION_CWD_SERVICE) as SessionCwdService | null
+  if (!sandbox || !session) return failureToActionResult({ reason: "internal", message: "coding-tools services unavailable" })
+
+  const requestedPath = readStringParam(options, "path")
+  let targetPath: string
+  if (requestedPath === undefined) {
+    targetPath = (await session.getExistingCwd(conversationId)).cwd
+  } else {
+    const resolvedInput = resolveInputPath(runtime, conversationId, requestedPath)
+    if (!resolvedInput.ok) return failureToActionResult(resolvedInput.failure)
+    targetPath = resolvedInput.value
+  }
+  const validated = await sandbox.validatePath(conversationId, targetPath)
+  if (!validated.ok) {
+    return failureToActionResult({ reason: validated.reason === "blocked" ? "path_blocked" : "invalid_param", message: validated.message })
+  }
+
+  let entries: Awaited<ReturnType<typeof readDirEntriesNode>>
+  try {
+    entries = await readDirEntriesNode(validated.resolved)
+  } catch (err) {
+    return failureToActionResult({ reason: "io_error", message: `readdir failed: ${err instanceof Error ? err.message : String(err)}` })
+  }
+  const ignorePatterns = (readStringArrayParam(options, "ignore") ?? []).map((p) => globToRegExp(p))
+  const filtered = entries.filter((e) => !ignorePatterns.some((rx) => rx.test(e.name)))
+  const dirs = filtered.filter((e) => e.type === "dir").sort((a, b) => a.name.localeCompare(b.name))
+  const files = filtered.filter((e) => e.type !== "dir").sort((a, b) => a.name.localeCompare(b.name))
+  const sorted = [...dirs, ...files]
+  const lines = [`Directory: ${validated.resolved}`, ...sorted.map((e) => (e.type === "dir" ? `${e.name}/` : e.name))]
+  const bounded = truncateHead(lines.join("\n"), DEFAULT_OUTPUT_MAX_LINES, DEFAULT_OUTPUT_MAX_BYTES)
+  return successActionResult(
+    bounded.text,
+    { path: validated.resolved, entries: sorted, truncated: bounded.truncated },
+    { path: validated.resolved, count: sorted.length, truncated: bounded.truncated },
+  )
+}
+
+interface DeviceFilesystemBridgeLike {
+  read(path: string, encoding?: "utf8" | "base64"): Promise<string>
+  write(path: string, content: string, encoding?: "utf8" | "base64"): Promise<void>
+  list(path: string): Promise<readonly { readonly name: string; readonly type: "file" | "directory" }[]>
+}
+
+async function deviceFileHandler(operation: string, runtime: IAgentRuntime, options: unknown): Promise<ActionResult> {
+  const bridge = runtime.getService("device_filesystem") as unknown as DeviceFilesystemBridgeLike | null
+  if (!bridge) return failureToActionResult({ reason: "disabled", message: "device_filesystem service unavailable" })
+  const targetPath = readStringParam(options, "file_path") ?? readStringParam(options, "path") ?? ""
+  const encoding = readStringParam(options, "encoding") === "base64" ? "base64" : "utf8"
+  if (operation === "read") {
+    const content = await bridge.read(targetPath, encoding)
+    return successActionResult(truncateHead(content).text, { path: targetPath, target: "device" })
+  }
+  if (operation === "write") {
+    const content = readStringParam(options, "content")
+    if (content === undefined) return failureToActionResult({ reason: "missing_param", message: "content is required" })
+    const secrets = detectSecrets(content)
+    if (secrets.length > 0) {
+      return failureToActionResult({ reason: "invalid_param", message: `refusing to write detected secrets: ${secrets.map((s) => s.name).join(", ")}` })
+    }
+    await bridge.write(targetPath, content, encoding)
+    return successActionResult(`Wrote device file ${targetPath}`, { path: targetPath, target: "device" })
+  }
+  if (operation === "ls") {
+    const entries = await bridge.list(targetPath)
+    const raw = entries.map((e) => (e.type === "directory" ? `${e.name}/` : e.name)).sort().join("\n")
+    const bounded = truncateHead(raw || "(empty)", DEFAULT_OUTPUT_MAX_LINES, DEFAULT_OUTPUT_MAX_BYTES)
+    return successActionResult(
+      bounded.text,
+      { path: targetPath, entries, target: "device", truncated: bounded.truncated },
+      { path: targetPath, count: entries.length, target: "device", truncated: bounded.truncated },
+    )
+  }
+  return failureToActionResult({ reason: "invalid_param", message: `unsupported device operation: ${operation}` })
+}
+
+const DIRECT_FILE_GATE = {
+  contexts: [...CODING_TOOLS_CONTEXTS],
+  contextGate: { anyOf: [...CODING_TOOLS_CONTEXTS] },
+  roleGate: { minRole: "ADMIN" as const },
+  cacheStable: true,
+  cacheScope: "agent" as const,
+  toolSchemaStrict: true,
+}
+
+export const readAction: Action = {
+  name: "READ",
+  ...DIRECT_FILE_GATE,
+  description: "Read UTF-8 file(s) with bounded range/line-numbers and resumable revision handles. Supports batch paths[].",
+  descriptionCompressed: "Read file(s) (range, line_numbers, batch paths[], or ref+expectedRevision).",
+  parameters: [
+    { name: "expectedRevision", description: "Revision for continuation read.", descriptionCompressed: "Continuation rev", required: false, schema: { type: "string" } },
+    { name: "file_path", description: "Path to read.", descriptionCompressed: "File path", required: false, schema: { type: "string" } },
+    { name: "limit", description: "Max lines or bytes.", descriptionCompressed: "Max units", required: false, schema: { type: "number" } },
+    { name: "line_numbers", description: "Prefix 1-based line numbers.", descriptionCompressed: "Show line numbers", required: false, schema: { type: "boolean" } },
+    { name: "offset", description: "Zero-based start offset.", descriptionCompressed: "Start offset", required: false, schema: { type: "number" } },
+    { name: "paths", description: "Batch file paths to read in one call.", descriptionCompressed: "Batch paths", required: false, schema: { type: "array", items: { type: "string" } } },
+    { name: "reference", description: "Opaque reference from prior READ.", descriptionCompressed: "Prior read ref", required: false, schema: { type: "string" } },
+    { name: "unit", description: "line or byte.", descriptionCompressed: "line|byte", required: false, schema: { type: "string", enum: ["byte", "line"] } },
+  ],
+  validate: async () => true,
+  summarize: (result, params) => {
+    if (!result?.success) return undefined
+    const target = typeof params.file_path === "string" ? basename(params.file_path) : "files"
+    const data = result.data as Record<string, unknown> | undefined
+    const rev = typeof data?.revision === "string" ? ` rev=${data.revision}` : ""
+    return `READ ${target}${rev}`
+  },
+  handler: readFileHandler,
+}
+
+export const writeAction: Action = {
+  name: "WRITE",
+  ...DIRECT_FILE_GATE,
+  description: "Create a UTF-8 file atomically (or replace an existing read file with overwrite=true). Prefer EDIT for existing files.",
+  descriptionCompressed: "Create/overwrite UTF-8 file (overwrite=true for existing).",
+  parameters: [
+    { name: "content", description: "Complete file text.", descriptionCompressed: "File content", required: true, schema: { type: "string" } },
+    { name: "file_path", description: "Target file path.", descriptionCompressed: "File path", required: true, schema: { type: "string" } },
+    { name: "overwrite", description: "Allow replacing an existing read file.", descriptionCompressed: "Replace existing", required: false, schema: { type: "boolean" } },
+  ],
+  validate: async () => true,
+  summarize: (result, params) => result?.success && typeof params.file_path === "string" ? `WRITE ${basename(params.file_path)}` : undefined,
+  handler: writeFileHandler,
+}
+
+export const editAction: Action = {
+  name: "EDIT",
+  ...DIRECT_FILE_GATE,
+  description: "Apply exact single or multi-hunk surgical replacements to a previously read file; rejects stale or ambiguous edits.",
+  descriptionCompressed: "Surgical single or multi-hunk edits[] on read file.",
+  parameters: [
+    { name: "allow_literal_escapes", description: "Allow literal \\n or \\r text.", descriptionCompressed: "Allow literal \\n", required: false, schema: { type: "boolean" } },
+    { name: "edits", description: "Ordered [{old_string,new_string,replace_all?}] hunks.", descriptionCompressed: "Batch hunks", required: false, schema: { type: "array", items: { type: "object" } } },
+    { name: "file_path", description: "Target file path.", descriptionCompressed: "File path", required: true, schema: { type: "string" } },
+    { name: "new_string", description: "Replacement text.", descriptionCompressed: "New text", required: false, schema: { type: "string" } },
+    { name: "old_string", description: "Exact existing text.", descriptionCompressed: "Old text", required: false, schema: { type: "string" } },
+    { name: "replace_all", description: "Replace all occurrences.", descriptionCompressed: "Replace all", required: false, schema: { type: "boolean" } },
+  ],
+  validate: async () => true,
+  summarize: (result, params) => result?.success && typeof params.file_path === "string" ? `EDIT ${basename(params.file_path)}` : undefined,
+  handler: editFileHandler,
+}
+
+type FileOperation = "read" | "write" | "edit" | "grep" | "glob" | "ls"
+
+const FILE_HANDLERS: Record<FileOperation, (runtime: IAgentRuntime, message: Memory, state?: State, options?: HandlerOptions, callback?: HandlerCallback) => Promise<ActionResult>> = {
+  read: readFileHandler,
+  write: writeFileHandler,
+  edit: editFileHandler,
+  grep: grepHandler,
+  glob: globHandler,
+  ls: lsHandler,
+}
+
+export const fileAction: Action = {
+  name: "FILE",
+  ...DIRECT_FILE_GATE,
+  similes: ["READ_FILE", "WRITE_FILE", "EDIT_FILE", "GREP", "GLOB", "LIST_DIR"],
+  description: "Workspace file ops: grep, glob, ls, plus read/write/edit (or target=device). Prefer READ/WRITE/EDIT for direct edits.",
+  descriptionCompressed: "FILE op: grep|glob|ls|read|write|edit (workspace or target=device).",
+  parameters: [
+    { name: "-A", description: "Grep lines after match.", descriptionCompressed: "After lines", required: false, schema: { type: "number" } },
+    { name: "-B", description: "Grep lines before match.", descriptionCompressed: "Before lines", required: false, schema: { type: "number" } },
+    { name: "-C", description: "Grep context lines.", descriptionCompressed: "Context lines", required: false, schema: { type: "number" } },
+    { name: "action", description: "Operation: read|write|edit|grep|glob|ls.", descriptionCompressed: "Op", required: true, schema: { type: "string", enum: ["edit", "glob", "grep", "ls", "read", "write"] } },
+    { name: "case_insensitive", description: "Grep case-insensitive.", descriptionCompressed: "Ignore case", required: false, schema: { type: "boolean" } },
+    { name: "content", description: "Write content.", descriptionCompressed: "Content", required: false, schema: { type: "string" } },
+    { name: "edits", description: "Multi-hunk edits[].", descriptionCompressed: "Edits[]", required: false, schema: { type: "array", items: { type: "object" } } },
+    { name: "encoding", description: "Device encoding: utf8|base64.", descriptionCompressed: "Encoding", required: false, schema: { type: "string", enum: ["base64", "utf8"] } },
+    { name: "expectedRevision", description: "Continuation read revision.", descriptionCompressed: "Expected rev", required: false, schema: { type: "string" } },
+    { name: "file_path", description: "File path.", descriptionCompressed: "File path", required: false, schema: { type: "string" } },
+    { name: "glob", description: "Grep file filter glob.", descriptionCompressed: "Grep glob", required: false, schema: { type: "string" } },
+    { name: "head_limit", description: "Max output lines.", descriptionCompressed: "Max lines", required: false, schema: { type: "number" } },
+    { name: "ignore", description: "Glob patterns to ignore in ls.", descriptionCompressed: "Ignore globs", required: false, schema: { type: "array", items: { type: "string" } } },
+    { name: "limit", description: "Read unit limit.", descriptionCompressed: "Limit", required: false, schema: { type: "number" } },
+    { name: "line_numbers", description: "Prefix read lines with numbers.", descriptionCompressed: "Line numbers", required: false, schema: { type: "boolean" } },
+    { name: "multiline", description: "Grep multiline mode.", descriptionCompressed: "Multiline", required: false, schema: { type: "boolean" } },
+    { name: "new_string", description: "Edit replacement.", descriptionCompressed: "New text", required: false, schema: { type: "string" } },
+    { name: "offset", description: "Read start offset.", descriptionCompressed: "Offset", required: false, schema: { type: "number" } },
+    { name: "old_string", description: "Edit search string.", descriptionCompressed: "Old text", required: false, schema: { type: "string" } },
+    { name: "output_mode", description: "Grep mode: content|files_with_matches|count.", descriptionCompressed: "Grep mode", required: false, schema: { type: "string", enum: ["content", "count", "files_with_matches"] } },
+    { name: "overwrite", description: "Overwrite existing file.", descriptionCompressed: "Overwrite", required: false, schema: { type: "boolean" } },
+    { name: "path", description: "Directory or search path.", descriptionCompressed: "Path", required: false, schema: { type: "string" } },
+    { name: "paths", description: "Batch read paths[].", descriptionCompressed: "Paths[]", required: false, schema: { type: "array", items: { type: "string" } } },
+    { name: "pattern", description: "Grep regex or glob pattern.", descriptionCompressed: "Pattern", required: false, schema: { type: "string" } },
+    { name: "patterns", description: "Batch grep patterns[].", descriptionCompressed: "Patterns[]", required: false, schema: { type: "array", items: { type: "string" } } },
+    { name: "reference", description: "Opaque read reference.", descriptionCompressed: "Read ref", required: false, schema: { type: "string" } },
+    { name: "replace_all", description: "Replace all edit matches.", descriptionCompressed: "Replace all", required: false, schema: { type: "boolean" } },
+    { name: "show_line_numbers", description: "Grep line numbers.", descriptionCompressed: "Line numbers", required: false, schema: { type: "boolean" } },
+    { name: "target", description: "workspace (default) or device.", descriptionCompressed: "Target", required: false, schema: { type: "string", enum: ["device", "workspace"] } },
+    { name: "type", description: "Grep ripgrep file type.", descriptionCompressed: "File type", required: false, schema: { type: "string" } },
+    { name: "unit", description: "Read unit: line|byte.", descriptionCompressed: "Unit", required: false, schema: { type: "string", enum: ["byte", "line"] } },
+  ],
+  validate: async () => true,
+  summarize: (result, params) => result?.success === true ? summarizeFileOperation(params) : undefined,
+  handler: async (runtime, message, state, options, callback) => {
+    const rawOp = (readStringParam(options, "action") ?? readStringParam(options, "operation") ?? "").trim().toLowerCase()
+    const target = (readStringParam(options, "target") ?? "workspace").trim().toLowerCase()
+    if (target === "device" || target === "device_filesystem" || target === "mobile") {
+      return deviceFileHandler(rawOp, runtime, options)
+    }
+    const op: FileOperation | undefined =
+      rawOp === "read" || rawOp === "write" || rawOp === "edit" || rawOp === "grep" || rawOp === "glob" || rawOp === "ls"
+        ? rawOp
+        : rawOp === "list"
+          ? "ls"
+          : rawOp === "search"
+            ? "grep"
+            : rawOp === "find"
+              ? "glob"
+              : rawOp === "create"
+                ? "write"
+                : undefined
+    if (!op) {
+      return failureToActionResult({ reason: "missing_param", message: "FILE requires action=read|write|edit|grep|glob|ls" })
+    }
+    return FILE_HANDLERS[op](runtime, message, state, options as HandlerOptions | undefined, callback)
+  },
+}
+
+export { pathDirname, pathJoin }
