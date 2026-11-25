@@ -359,6 +359,7 @@ it.effect(`Ground a Browser proposal in the owner's own words or an exact page l
   const wikipedia = (try Effect.try(() => checked(navigate("https://wikipedia.org/", true)))).operation
   const told = [
     browserProposalFamily.proposedText(wikipedia, { direct: true, timeZone: undefined, ownerText: "open wikipedia.org in a new tab" })?.forOwner,
+    browserProposalFamily.proposedText(wikipedia, { direct: true, timeZone: undefined, ownerText: "open wikipedia.org in a new tab" })?.forModel,
     browserProposalFamily.proposedText(wikipedia, { direct: false, timeZone: undefined, ownerText: "open wikipedia.org in a new tab" }),
     browserProposalFamily.settledText(wikipedia, { outcome: "applied" }, undefined),
   ]
@@ -394,7 +395,10 @@ it.effect(`Ground a Browser proposal in the owner's own words or an exact page l
       "DEVICE_BROWSER_CLOSE_ALL_UNAVAILABLE", direct({ type: "browser_tab_close", all: true }), direct({ type: "browser_tab_close", target: "bbc" }),
       direct({ type: "browser_history", action: "back" }), direct(tabList), direct(tabList), direct(tabList), direct(tabList),
     ])
-    assert.deepStrictEqual(told, ["Opening wikipedia.org.", undefined, undefined])
+    assert.strictEqual(told[0], "wikipedia.org is ready to open.")
+    assert.match(String(told[1] ?? ""), /shows this exact requested address in its Browser for the owner to open\. It has not opened/)
+    assert.notMatch(`${told[0]} ${told[1]}`, /Opening|no review/)
+    assert.deepStrictEqual(told.slice(2), [undefined, undefined])
     assert.strictEqual(toldShown?.forOwner, "Doing that in Browser.")
     assert.match(toldShown?.forModel ?? "", /has not run yet/)
     assert.isUndefined(browserProposalFamily.settledText(shown, { outcome: "applied" }, undefined))

@@ -105,7 +105,7 @@ effect function carriedPage(turn: OpenAsked): (BrowserPage | undefined)!! {
   return decodeBrowserPage(carried, turn.observation) catch () => undefined
 }
 
-// spec/browser/requestGrounding.md, "Story: Open a destination stated in this message"; spec/browser/control.md, "The screen opens at once only an address my whole message asked for, and shows any other for my review first"
+// spec/browser/requestGrounding.md, "Story: Open a destination stated in this message"; spec/browser/control.md, "The screen shows the address for me to open, and nothing opens until I choose Open there"
 export effect function groundOpen(asked: OpenAsked, url: string): OpenGrounding!! {
   const page = try carriedPage(asked)
   const links = page !== undefined && "text" in page ? (page.links ?? []).map(({ url }) => url) : []
@@ -169,12 +169,12 @@ effect function ground(proposed: CheckedOperation, turn: DeviceTurn): Grounding!
   }
 }
 
-const OPENING = "The requesting phone opens this exact requested address in its Browser right after this reply, with no review. The page has not loaded yet; do not claim its content or that it loaded."
+const OPENING = "The requesting phone shows this exact requested address in its Browser for the owner to open. It has not opened; do not claim that it opened, that it loaded or what it shows."
 const CONTROLLING = "The requesting phone runs this requested Browser control right after this reply, with no review. It has not run yet; do not claim that it finished, what a search found or what a page shows."
 
 function directText(operation: DeviceOperation): ProposalText | undefined {
   switch (operation.type) {
-    case "browser_navigate": return { forOwner: `Opening ${URL.parse(operation.url)?.host ?? operation.url}.`, forModel: OPENING }
+    case "browser_navigate": return { forOwner: `${URL.parse(operation.url)?.host ?? operation.url} is ready to open.`, forModel: OPENING }
     case "browser_search": return { forOwner: `Searching the web for “${operation.query}”.`, forModel: CONTROLLING }
     case "browser_tab_new":
     case "browser_tab_switch":
