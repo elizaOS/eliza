@@ -223,6 +223,7 @@ export type ElizaVoiceViewHandoff = Pick<
   | "viewId"
   | "viewPath"
   | "subview"
+  | "noteId"
   | "completedActionHandoffId"
   | "navigationPrepared"
   | "navigationBinding"
@@ -395,6 +396,7 @@ export async function streamElizaConversation(
     throw new ElizaSseBridgeError("Eliza SSE response has no body", "no_body");
   }
 
+  let preparedNavigationOnFailure: ElizaVoiceViewHandoff | undefined;
   const readCanonicalOutcome = (payload: string): Record<string, unknown> => {
     let terminal: unknown;
     try {
@@ -454,10 +456,38 @@ export async function streamElizaConversation(
       );
     }
     if (failureKind || failure) {
-      // A completed HTTP stream can carry an unsuccessful turn. Keep it out
-      // of final speech, navigation and reply_complete. The client recognizes
-      // canonical failure kinds as settled causes, not transport recovery.
-      // The specific code and transient flag remain on the internal receipt.
+      // Failed prose cannot authorize speech. A durable prepared view for this
+      // renderer may still be claimed through the normal navigation protocol.
+      if (
+        failure?.kind === "handler_error" &&
+        failure.code === "REPLY_GROUNDING_FAILED" &&
+        terminal.noResponseReason === undefined &&
+        (terminal.assistantEphemeral === undefined ||
+          terminal.assistantEphemeral === false) &&
+        (terminal.interrupted === undefined ||
+          terminal.interrupted === false) &&
+        validateUuid(terminal.messageId) &&
+        validateUuid(terminal.userMessageId) &&
+        request.uiContext?.viewDelivery === "completed-action" &&
+        request.uiContext.uiClientId &&
+        Array.isArray(terminal.actionResults) &&
+        terminal.actionResults.every(
+          (action) =>
+            isRecord(action) &&
+            (action.effectReceipts === undefined ||
+              (Array.isArray(action.effectReceipts) &&
+                action.effectReceipts.length === 0)),
+        )
+      ) {
+        const handoff = extractViewHandoff(payload);
+        if (
+          handoff?.navigationPrepared &&
+          handoff.navigationBinding?.clientId === request.uiContext.uiClientId
+        ) {
+          preparedNavigationOnFailure = handoff;
+        }
+      }
+      // Preserve the failed turn independently of navigation and transport recovery.
       throw new ElizaSseBridgeError(
         "Canonical conversation did not produce a successful reply",
         "upstream_error",
@@ -778,6 +808,9 @@ export async function streamElizaConversation(
         ...(error.terminalFailure
           ? { terminalFailure: error.terminalFailure }
           : {}),
+        ...(preparedNavigationOnFailure
+          ? { viewHandoff: preparedNavigationOnFailure }
+          : {}),
       };
     }
     throw error;
@@ -1065,7 +1098,8 @@ function extractViewHandoff(payload: string): ElizaVoiceViewHandoff | null {
       continue;
     const prepared =
       candidate.values.navigationPrepared !== undefined ||
-      candidate.values.navigationBinding !== undefined;
+      candidate.values.navigationBinding !== undefined ||
+      Object.hasOwn(candidate.values, "noteId");
     const canonical = prepared ? findViewActionHandoff([candidate]) : undefined;
     if (
       prepared &&
@@ -1091,6 +1125,7 @@ function extractViewHandoff(payload: string): ElizaVoiceViewHandoff | null {
             navigationPrepared: true,
             completedActionHandoffId: canonical.completedActionHandoffId,
             navigationBinding: canonical.navigationBinding,
+            ...(canonical.noteId ? { noteId: canonical.noteId } : {}),
           }
         : {}),
     };

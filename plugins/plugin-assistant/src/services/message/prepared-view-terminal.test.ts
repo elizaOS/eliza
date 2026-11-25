@@ -37,10 +37,12 @@ const js = ts.transpileModule(code, {
 const preparedViewReply = new Function(
   "findViewActionHandoff",
   "isObjectRecord",
+  "isDiscoveryActionName",
   js + "\nreturn preparedViewReply;",
 )(
   findViewActionHandoff,
   (v: unknown) => v !== null && typeof v === "object" && !Array.isArray(v),
+  (name: string) => name === "DISCOVER_ACTIONS" || name === "DISCOVER_TOOLS",
 );
 function fixture() {
   const id = "11111111-1111-4111-8111-111111111111";

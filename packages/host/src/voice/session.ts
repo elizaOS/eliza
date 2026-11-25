@@ -2618,6 +2618,11 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
           "upstream_error",
         );
 
+      // Offer an already-prepared view while the renderer still owns this
+      // turn. The following failure terminal settles the rejected narration.
+      if (result.turnOutcome?.outcome === "failed" && result.viewHandoff) {
+        this.send({ t: "navigate_view", ...result.viewHandoff, traceId });
+      }
       // Canonical conversation completion is independent of TTS playback.
       // Let the renderer reconcile the saved reply even when an earlier
       // acknowledgement already consumed the first speaking_start event.

@@ -6,6 +6,7 @@ export interface ViewActionHandoff {
 	viewId: string;
 	viewPath?: string;
 	subview?: string;
+	noteId?: string;
 	completedActionDelivered?: true;
 	completedActionHandoffId?: string;
 	navigationPrepared?: true;
@@ -77,6 +78,7 @@ export function findViewActionHandoff(
 					? `/browser?browse=${encodeURIComponent(actionUrl)}`
 					: declaredViewPath;
 			const subview = readString(readOwnValue(values, "subview"));
+			const noteId = readOwnValue(values, "noteId");
 			const completedActionHandoffId = normalizeCompletedActionHandoffId(
 				readOwnValue(values, "completedActionHandoffId"),
 			);
@@ -110,10 +112,19 @@ export function findViewActionHandoff(
 					viewType: "gui",
 				};
 			}
+			if (
+				noteId !== undefined &&
+				(!navigationBinding ||
+					viewId !== "notes" ||
+					typeof noteId !== "string" ||
+					!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/.test(noteId))
+			)
+				continue;
 			return {
 				viewId,
 				...(viewPath ? { viewPath } : {}),
 				...(subview ? { subview } : {}),
+				...(typeof noteId === "string" ? { noteId } : {}),
 				...(readOwnValue(values, "completedActionDelivered") === true
 					? { completedActionDelivered: true }
 					: {}),

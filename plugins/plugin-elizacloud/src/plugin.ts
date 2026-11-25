@@ -20,6 +20,7 @@ import { handleCloudBillingRoute } from "./routes/cloud-billing-routes";
 import { handleCloudRoute } from "./routes/cloud-routes";
 import { handleCloudStatusRoutes } from "./routes/cloud-status-routes";
 import { handleCloudWarmRoute } from "./routes/cloud-warm-route";
+import { handleBrowserSourceRoute } from "./routes/browser-source-route";
 import { ELIZA_CLOUD_STT_MAX_JSON_BODY_BYTES } from "./lib/server-cloud-tts";
 import { handleCloudSttRoute } from "./lib/server-cloud-tts";
 import { handleCloudTtsPreviewRoute } from "./lib/server-cloud-tts";
@@ -147,12 +148,19 @@ const cloudRoutes: Route[] = [
         rawPath: true,
         handler: cloudStatusHandler,
     },
-    // Pre-warm: one no-credential OPTIONS to the Cloud chat/completions URL.
     {
         type: "POST",
         path: "/api/cloud/warm",
         rawPath: true,
+        maxBodyBytes: 1024,
         handler: handleCloudWarmRoute,
+    },
+    {
+        type: "POST",
+        path: "/api/cloud/browser-source",
+        rawPath: true,
+        maxBodyBytes: 4096,
+        handler: handleBrowserSourceRoute,
     },
     {
         type: "GET",

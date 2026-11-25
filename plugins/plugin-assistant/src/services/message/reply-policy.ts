@@ -26,6 +26,7 @@ import {
   bindEffectDelivery,
   getTrajectoryContext,
   getTrustedDeliveryAudience,
+  isDiscoveryActionName,
   isObjectRecord,
   stampAppConversationProvenance,
   trustedDeliveryAudienceIsBoundToRuntime,
@@ -488,15 +489,33 @@ export function preparedViewReply(args: {
   steps: readonly unknown[];
   allow: (text: string) => boolean;
 }): string | undefined {
-  // Terminal synthesis records carry no action/effect. Keep every malformed
-  // or action-bearing step so multiple real outcomes still fail closed.
-  const actionSteps = args.steps.filter(
-    (step) =>
-      !isObjectRecord(step) ||
-      step.terminalOnly !== true ||
-      step.toolCall != null ||
-      step.result != null,
-  );
+  // Terminal prose and verified registry discovery do not perform domain work.
+  // Keep malformed and action-bearing records in the count.
+  const actionSteps = args.steps.filter((step) => {
+    if (!isObjectRecord(step)) return true;
+    if (step.terminalOnly === true && step.toolCall == null && step.result == null)
+      return false;
+    const { toolCall, result } = step;
+    return !(
+      isObjectRecord(toolCall) &&
+      typeof toolCall.name === "string" &&
+      isDiscoveryActionName(toolCall.name) &&
+      isObjectRecord(result) &&
+      result.success === true &&
+      result.transcriptVisibility === "internal" &&
+      result.error == null &&
+      !result.replyFailure &&
+      (result.effectReceipts == null ||
+        (Array.isArray(result.effectReceipts) && result.effectReceipts.length === 0)) &&
+      (result.userFacingEffectReceiptIds == null ||
+        (Array.isArray(result.userFacingEffectReceiptIds) &&
+          result.userFacingEffectReceiptIds.length === 0)) &&
+      isObjectRecord(result.data) &&
+      result.data.readOnlyOperation === true &&
+      result.data.awaitingDeviceExecution !== true &&
+      result.data.awaitingUserInput !== true
+    );
+  });
   if (
     args.effectStatus !== "pending" ||
     typeof args.reply !== "string" ||
@@ -507,9 +526,14 @@ export function preparedViewReply(args: {
     return;
   const visual = args.stageOne.visualContinuation,
     intents = args.stageOne.intents;
+  const plannedNoteEditor =
+    isObjectRecord(visual) &&
+    visual.disposition === "planning" &&
+    visual.viewId === "notes" &&
+    visual.noteEditor === true;
   if (
     !isObjectRecord(visual) ||
-    visual.disposition !== "direct" ||
+    (visual.disposition !== "direct" && !plannedNoteEditor) ||
     typeof visual.viewId !== "string" ||
     !Array.isArray(intents) ||
     intents.length !== 1 ||
@@ -552,6 +576,13 @@ export function preparedViewReply(args: {
     navigation.handoffId !== handoff.completedActionHandoffId ||
     handoff.navigationBinding?.requestId !== navigation.handoffId ||
     effect.resolvedAlias !== navigation.resolvedAlias ||
+    (plannedNoteEditor &&
+      (!handoff.noteId ||
+        handoff.completedActionDelivered === true ||
+        step.result.data.awaitingDeviceExecution !== true ||
+        navigation.noteId !== handoff.noteId ||
+        !isObjectRecord(step.toolCall.params) ||
+        step.toolCall.params.noteId !== handoff.noteId)) ||
     (effect.resolvedAlias !== undefined &&
       (!isObjectRecord(step.toolCall.params) ||
         typeof step.toolCall.params.view !== "string" ||
@@ -560,8 +591,10 @@ export function preparedViewReply(args: {
   )
     return;
   const reply = args.reply.trim();
+  // The exact note ID already binds this editor handoff. The held response
+  // can refer to that note naturally without naming the Notes app.
   if (
-    !replyNamesStructuredEffectDestination(reply, effect) ||
+    (!plannedNoteEditor && !replyNamesStructuredEffectDestination(reply, effect)) ||
     !args.allow(reply)
   )
     return;

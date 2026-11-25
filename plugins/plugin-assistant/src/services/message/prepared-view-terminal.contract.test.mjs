@@ -50,12 +50,14 @@ const functions = [
 const helper = new Function(
   "findViewActionHandoff",
   "isObjectRecord",
+  "isDiscoveryActionName",
   ts.transpileModule(functions, {
     compilerOptions: { target: ts.ScriptTarget.ES2022 },
   }).outputText + ";return preparedViewReply;",
 )(
   findViewActionHandoff,
   (v) => v !== null && typeof v === "object" && !Array.isArray(v),
+  (name) => name === "DISCOVER_ACTIONS" || name === "DISCOVER_TOOLS",
 );
 const pipeline = readFileSync(
   new URL("./pipeline.ts", import.meta.url),
@@ -192,6 +194,40 @@ for (const [name, mutate] of [
       assert.equal(select(a).finalMessage, a.result.finalMessage);
     },
   );
+test("a prepared named note keeps its prospective reply after reply grounding fails", () => {
+  const a = fixture();
+  const step = a.result.trajectory.steps[0];
+  a.stageOne.visualContinuation = {
+    disposition: "planning",
+    viewId: "notes",
+    noteEditor: true,
+  };
+  a.held = "Let me find that note.";
+  step.toolCall.params = { view: "notes", noteId: "note-fixture" };
+  step.result.data.values.noteId = "note-fixture";
+  step.result.data.navigation.noteId = "note-fixture";
+  step.result.data.awaitingDeviceExecution = true;
+  a.result.terminalFailure = {
+    kind: "reply_generation_error",
+    code: "REPLY_GROUNDING_FAILED",
+  };
+  a.result.replyRecoveryRequired = true;
+  const discovery = {
+    toolCall: { name: "DISCOVER_ACTIONS" },
+    result: { success: true, transcriptVisibility: "internal", data: { readOnlyOperation: true } },
+  };
+  a.result.trajectory.steps.unshift(discovery);
+  const selected = select(a);
+  assert.equal(selected.finalMessage, a.held);
+  assert.equal(selected.terminalFailure, undefined);
+  assert.equal(selected.replyRecoveryRequired, undefined);
+  assert.equal(step.result.data.values.completedActionDelivered, undefined);
+  discovery.result.data.readOnlyOperation = false;
+  assert.equal(select(a).terminalFailure, a.result.terminalFailure);
+  discovery.result.data.readOnlyOperation = true;
+  step.result.data.navigation.noteId = "other-note";
+  assert.equal(select(a).terminalFailure, a.result.terminalFailure);
+});
 test("effect-free terminal synthesis does not count as another action", () => {
   const a = fixture();
   a.result.trajectory.steps.push({

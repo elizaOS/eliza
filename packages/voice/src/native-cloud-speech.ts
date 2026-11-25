@@ -85,12 +85,15 @@ export function createCloudStreamingSpeech(
   let handle: CloudSpeechListenerHandle | undefined,
     opening: Promise<void> | undefined,
     stopping: Promise<void> | undefined,
-    closingTransport: Promise<unknown> | undefined;
+    closingTransport: Promise<unknown> | undefined,
+    recoveringExpiry: Promise<void> | undefined;
   let opened = false,
     retired = false,
     outputMuted = false,
     echoCancelled = false,
-    speechActive = false;
+    speechActive = false,
+    closingCapture = false,
+    expiryRecovered = false;
   let captureGeneration = 0,
     speechGeneration: number | undefined;
   // `listening` gets the open capture's speech; `lifecycle`, the last listen's handlers, keeps hearing
@@ -105,6 +108,9 @@ export function createCloudStreamingSpeech(
   const utterances = new Map<
     string,
     {
+      text: string;
+      signal: AbortSignal;
+      transportId: string;
       started: boolean;
       onStarted(): void;
       resolve(): void;
@@ -148,6 +154,41 @@ export function createCloudStreamingSpeech(
     try {
       check();
       if (event.type === "error") {
+        if (
+          event.code === "expired" &&
+          !expiryRecovered &&
+          utterances.size > 0 &&
+          [...utterances.values()].every((pending) => !pending.started)
+        ) {
+          expiryRecovered = true;
+          const capture = listening;
+          const recovery = (async () => {
+            await replaceMutedTransport();
+            check();
+            // The agent turn already ran. Resubmit only synthesis that never reached the speaker.
+            for (const [utteranceId, pending] of utterances) {
+              if (pending.signal.aborted) continue;
+              pending.transportId = sessionId;
+              await port.speakCloudSpeech({
+                sessionId,
+                utteranceId,
+                text: pending.text,
+              });
+              check();
+            }
+            if (capture && capture === listening && !closingCapture && !capture.signal.aborted)
+              await port.setCloudSpeechMuted({ sessionId, muted: false });
+          })();
+          recoveringExpiry = recovery;
+          void recovery.then(
+            () => { if (recoveringExpiry === recovery) recoveringExpiry = undefined; },
+            (error) => {
+              if (recoveringExpiry === recovery) recoveringExpiry = undefined;
+              if (!retired) fail(error);
+            },
+          );
+          return;
+        }
         fail(
           Object.assign(
             Error("Cloud streaming speech is unavailable."),
@@ -341,6 +382,7 @@ export function createCloudStreamingSpeech(
       outputMuted = muted;
     },
     async listen(handlers: AssistantListenHandlers): Promise<AssistantCapture> {
+      if (recoveringExpiry) await recoveringExpiry;
       check();
       handlers.signal.throwIfAborted();
       if (ownerSignal && ownerSignal !== handlers.signal)
@@ -370,13 +412,16 @@ export function createCloudStreamingSpeech(
       return {
         fullDuplex: echoCancelled,
         async close() {
+          closingCapture = true;
           try {
+            if (recoveringExpiry) await recoveringExpiry;
             await muteAndDrain();
           } finally {
             if (listening === handlers) {
               listening = undefined;
               speechActive = false;
             }
+            closingCapture = false;
           }
         },
         async cancel() {
@@ -394,6 +439,7 @@ export function createCloudStreamingSpeech(
       signal: AbortSignal,
       onStarted: () => void,
     ): Promise<void> {
+      if (recoveringExpiry) await recoveringExpiry;
       check();
       signal.throwIfAborted();
       if (!opened) throw Error("Cloud speech is not connected.");
@@ -406,6 +452,9 @@ export function createCloudStreamingSpeech(
       const done = new Promise<void>((resolve, failed) => {
         reject = failed;
         utterances.set(utteranceId, {
+          text: value,
+          signal,
+          transportId: utteranceSessionId,
           started: false,
           onStarted,
           resolve,
@@ -419,7 +468,7 @@ export function createCloudStreamingSpeech(
         retiring = Promise.resolve()
           .then(() =>
             port.cancelCloudSpeech({
-              sessionId: utteranceSessionId,
+              sessionId: utterances.get(utteranceId)?.transportId ?? utteranceSessionId,
               utteranceId,
             }),
           )

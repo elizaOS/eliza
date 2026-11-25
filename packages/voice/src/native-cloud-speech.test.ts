@@ -64,6 +64,45 @@ async function openSession() {
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 describe("native speech capture recovery", () => {
+  it("reopens a missing lease and retries only the sentence that never became audible", async () => {
+    const fake = fakePort();
+    const start = vi.fn(fake.port.startCloudSpeech);
+    const stop = vi.fn(fake.port.stopCloudSpeech);
+    const speak = vi.fn(fake.port.speakCloudSpeech);
+    const onEnd = vi.fn();
+    const onStarted = vi.fn();
+    const speech = createCloudStreamingSpeech(
+      { environment: "test", credentialId: "c", assertCurrent() {} },
+      { ...fake.port, startCloudSpeech: start, stopCloudSpeech: stop, speakCloudSpeech: speak },
+    );
+    const capture = await speech.listen({
+      signal: new AbortController().signal,
+      onSpeechStart() {},
+      onSpeechEnd() {},
+      onSegment() {},
+      onEnd,
+    });
+    await capture.close();
+    const pending = speech.speak("The named note is open.", new AbortController().signal, onStarted);
+    await flush();
+    const original = speak.mock.calls[0][0];
+    fake.emit({ sessionId: original.sessionId, type: "error", code: "expired" });
+    await flush();
+    const next = start.mock.calls[1][0];
+    expect(stop).toHaveBeenCalledWith({ sessionId: original.sessionId });
+    expect(next).toMatchObject({ muted: true, credentialId: "c" });
+    expect(next.sessionId).not.toBe(original.sessionId);
+    expect(speak.mock.calls[1][0]).toEqual({ ...original, sessionId: next.sessionId });
+    fake.emit({ ...original, type: "audio-start" });
+    expect(onStarted).not.toHaveBeenCalled();
+    fake.emit({ ...original, sessionId: next.sessionId, type: "audio-start" });
+    fake.emit({ ...original, sessionId: next.sessionId, type: "audio-end" });
+    await pending;
+    expect(onStarted).toHaveBeenCalledTimes(1);
+    expect(onEnd).not.toHaveBeenCalled();
+    await speech.stop();
+  });
+
   it("joins a pending transport stop and does not reopen after the owner stops", async () => {
     vi.useFakeTimers();
     const fake = fakePort();
