@@ -448,7 +448,9 @@ it.live('Read a Solana account\'s balance and its tokens under both token progra
     notAMint: try solanaOutcome(() => account.tokenFacts(other.address)),
     anotherChain: try solanaOutcome(() => openSolanaAccount({ ...solanaNetwork(chain), chainId: dollars }, owner.address)),
   }
-  try Effect.try(() => assert.deepStrictEqual(read, {
+  chain.servesToken2022 = false
+  const onAnOlderNode = try promise(() => account.tokenHoldings([]))
+  try Effect.try(() => assert.deepStrictEqual({ ...read, onAnOlderNode }, {
     derived: owner.address,
     scope: { family: "SolanaWallet", chainId: chain.genesisHash, account: owner.address, signs: false },
     balance: "42000000",
@@ -461,6 +463,7 @@ it.live('Read a Solana account\'s balance and its tokens under both token progra
     notAnAddress: "A Solana address is 32 bytes written in base58",
     notAMint: "That address is not a token mint",
     anotherChain: "Wallet RPC answered from a different Solana chain",
+    onAnOlderNode: [{ address: dollars, symbol: mintSymbol(dollars), decimals: 6, atomicUnits: "7500000" }],
   }))
 })
 

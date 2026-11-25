@@ -19,7 +19,7 @@ module node {
       const answer: unknown = await response.json()
       if (typeof answer !== "object" || answer === null || Array.isArray(answer)) throw new Error(`The wallet RPC gave no JSON-RPC answer to ${method}`)
       const refusal = field(answer, "error")
-      if (refusal !== undefined && refusal !== null) throw new Error(`The wallet RPC refused ${method}`)
+      if (refusal !== undefined && refusal !== null) throw new Error(`The wallet RPC refused ${method}`, { cause: field(refusal, "code") })
       return field(answer, "result")
     }
   }

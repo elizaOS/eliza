@@ -13,6 +13,7 @@ export interface SolanaChain {
   readonly url: string
   genesisHash: string
   gateway: SolanaGateway
+  servesToken2022: boolean
   readonly sent: string[]
   /** @throws {never} */
   wallet(lamports: bigint): SolanaWallet
@@ -156,6 +157,8 @@ export async function startSolanaChain(): Promise<SolanaChain> {
   const owned = (owner: unknown, filter: unknown) => [...tokenAccounts]
     .filter(([, account]) => account.owner === owner && typeof filter === "object" && filter !== null && "programId" in filter && filter.programId === account.program.toBase58())
     .map(([pubkey, account]) => ({ pubkey, account: parsedTokenAccount(account) }))
+  const unserved = (filter: unknown) =>
+    !state.servesToken2022 && typeof filter === "object" && filter !== null && "programId" in filter && filter.programId === programs.token2022.toBase58()
   const status = (signature: unknown) => {
     const found = typeof signature === "string" ? landed.get(signature) : undefined
     if (found === undefined) return null
@@ -172,7 +175,7 @@ export async function startSolanaChain(): Promise<SolanaChain> {
       case "getLatestBlockhash": return { result: { context, value: { blockhash, lastValidBlockHeight: 150 } } }
       case "getFeeForMessage": return { result: { context, value: fee(first) } }
       case "getAccountInfo": return { result: { context, value: accountInfo(String(first)) } }
-      case "getTokenAccountsByOwner": return { result: { context, value: owned(first, second) } }
+      case "getTokenAccountsByOwner": return unserved(second) ? { error: { code: -32602, message: "Invalid param: unrecognized Token program id" } } : { result: { context, value: owned(first, second) } }
       case "getSignatureStatuses": return { result: { context, value: (Array.isArray(first) ? first : []).map(status) } }
       case "sendTransaction": return accept(first)
       default: return { error: { code: -32601, message: "Method not found" } }
@@ -206,6 +209,7 @@ export async function startSolanaChain(): Promise<SolanaChain> {
     url: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
     genesisHash: fresh(),
     gateway: "pass",
+    servesToken2022: true,
     sent: [],
     wallet: (lamports) => {
       const keys = Keypair.generate()

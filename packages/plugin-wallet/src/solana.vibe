@@ -19,6 +19,7 @@ module node {
   const transferChecked = getStructEncoder([["instruction", getU8Encoder()], ["amount", getU64Encoder()], ["decimals", getU8Encoder()]])
   const canonicalUnits = /^(?:0|[1-9]\d*)$/
   const largestUnits = 2n ** 64n - 1n
+  const invalidParams = -32602
   const confirmed = { commitment: "confirmed" }
   const jsonParsed = { encoding: "jsonParsed", ...confirmed }
 
@@ -130,9 +131,14 @@ module node {
         return factsOf(mint, (await mintOf(mint)).decimals)
       },
       tokenHoldings: async () => {
-        const answers = await Promise.all(tokenPrograms.map((programId) => rpc("getTokenAccountsByOwner", [owner, { programId }, jsonParsed], OwnedTokens)))
+        const [legacy, extended] = tokenPrograms.map((programId) => rpc("getTokenAccountsByOwner", [owner, { programId }, jsonParsed], OwnedTokens))
+        const unserved = (refusal: unknown) => {
+          if (refusal instanceof Error && refusal.cause === invalidParams) return { value: [] }
+          throw refusal
+        }
+        const answers = await Promise.all([legacy, extended?.catch(unserved)])
         const held = new Map<Address, { readonly decimals: number; readonly units: bigint }>()
-        for (const { account: { data: { parsed: { info } } } } of answers.flatMap((answer) => answer.value)) {
+        for (const { account: { data: { parsed: { info } } } } of answers.flatMap((answer) => answer?.value ?? [])) {
           if (info.owner !== owner) throw new Error("The wallet RPC listed another account's tokens")
           held.set(info.mint, { decimals: info.tokenAmount.decimals, units: (held.get(info.mint)?.units ?? 0n) + BigInt(info.tokenAmount.amount) })
         }
