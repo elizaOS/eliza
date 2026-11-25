@@ -401,6 +401,7 @@ module node {
         const whole = await bound(10, false, undefined, false)
         const boundAnswer: unknown = await whole.json()
         const boundStream = await streamSummary(await bound(11, true))
+        await Promise.all([...(retained.get(10) ?? []), ...(retained.get(11) ?? [])])
         const boundHolds = (await ledger()).slice(settled.length)
         return {
           asked, notAsked, truncated, usedBeforeFailure, preHeader, hangingStatus: hanging.status,
