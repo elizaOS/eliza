@@ -96,8 +96,19 @@ export const SpeechSettings = Schema.Struct({
   stt: Schema.Struct({ languageCodes: Schema.Array(pattern(/^[a-z]{2,3}(?:-[A-Z]{2})?$/)), microsPerSecond: bounded(0, 1_000_000) }),
 });
 
+const legacyGoogleMapsOrigin = "https://maps.googleapis.com";
+const publicGoogleMapsTemplate = "https://{host}.googleapis.com";
+const GoogleMapsTemplate = pattern(/^https?:\/\/(?:[^\s/?#{}]*\{host\}[^\s/?#{}]*(?:\/[^\s?#{}]*)?|[^\s/?#{}]+\/[^\s?#{}]*\{host\}[^\s?#{}]*)$/);
+const GoogleMapsWireUrl = Schema.Union([GoogleMapsTemplate, Schema.Literal(legacyGoogleMapsOrigin)]);
+const GoogleMapsBaseUrl = GoogleMapsWireUrl.pipe(
+  Schema.decodeTo<typeof GoogleMapsTemplate, typeof GoogleMapsWireUrl>(GoogleMapsTemplate, {
+    decode: SchemaGetter.transform((baseUrl) => baseUrl === legacyGoogleMapsOrigin ? publicGoogleMapsTemplate : baseUrl),
+    encode: SchemaGetter.transform((baseUrl) => baseUrl),
+  }),
+);
+
 export const MapsSettings = Schema.Union([
-  Schema.Struct({ provider: Schema.Literal("google"), baseUrl: ProviderUrl, apiKeyEnv: SecretName, coverage: text(64), datasetRevision: text(64) }),
+  Schema.Struct({ provider: Schema.Literal("google"), baseUrl: GoogleMapsBaseUrl, apiKeyEnv: SecretName, coverage: text(64), datasetRevision: text(64) }),
   Schema.Struct({ provider: Schema.Literal("osm"), baseUrl: ProviderUrl, coverage: text(64), datasetRevision: text(64) }),
   Schema.Struct({ provider: Schema.Literal("none") }),
 ]);
