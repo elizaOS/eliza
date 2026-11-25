@@ -162,24 +162,38 @@ pure def lawTheOwnersChoiceIsChanged(titleShared: bool): bool = pickedNoteChange
 pure def lawAnUnsharedTitleNeedsNoChoice(ownerChoseEarlier: bool): bool = pickedNoteChanged(true, false, ownerChoseEarlier)
 ```
 
-### A read by a title no saved note has cites no other note and asks which one
+### A read by a title no saved note has reads nothing and offers the one note whose title holds it
 
 When the owner names the note to read by its title, the agent reads by that
 title: the saved notes whose title it is, case and spacing aside. One such
 note is read. Several are offered for the owner to choose, and none is read.
 When no saved note has the title, no note is read and no other note is
-cited in its place: the agent answers that no note has that title, with
-the titles of the notes whose text mentions it, and waits on the owner to
-say which note to use. A read by text the note contains, rather than by its
-title, searches every note's text.
+cited in its place. When exactly one saved note's title holds the words
+asked for as a phrase, case and spacing aside, as "Taco Night Plan" holds
+"Taco Night", the answer names that note with its ID and leaves the choice
+to the model: it reads that note by its ID and goes on with the request,
+opening it if that was asked, when it is plainly the note the owner meant,
+and asks which note only when it may not be. The owner is not asked to
+confirm one clear near title. Otherwise, with no such note or several, the
+agent answers that no note has that title, with the titles of the notes
+whose text mentions it, and waits on the owner to say which note to use. A
+read by text the note contains, rather than by its title, searches every
+note's text.
 
 ```quint
-type TitledRead = ReadsTitledNote | AsksAmongTitledNotes | AsksWhichNote
-pure def titledRead(titledNotes: int): TitledRead =
-  if (titledNotes == 1) ReadsTitledNote else if (titledNotes > 1) AsksAmongTitledNotes else AsksWhichNote
+type TitledRead = ReadsTitledNote | AsksAmongTitledNotes | OffersNearTitle | AsksWhichNote
+pure def titledRead(titledNotes: int, nearTitles: int): TitledRead =
+  if (titledNotes == 1) ReadsTitledNote
+  else if (titledNotes > 1) AsksAmongTitledNotes
+  else if (nearTitles == 1) OffersNearTitle
+  else AsksWhichNote
 pure val titledNotesValues = Set(0, 1, 2, 3)
-pure def lawOnlyTheOneTitledNoteIsRead(titledNotes: int): bool = (titledRead(titledNotes) == ReadsTitledNote) iff (titledNotes == 1)
-pure def lawAnAbsentTitleAsksWhichNote(titledNotes: int): bool = titledNotes <= 0 implies titledRead(titledNotes) == AsksWhichNote
+pure val nearTitlesValues = Set(0, 1, 2)
+pure def lawOnlyTheOneTitledNoteIsRead(titledNotes: int, nearTitles: int): bool = (titledRead(titledNotes, nearTitles) == ReadsTitledNote) iff (titledNotes == 1)
+pure def lawOnlyOneNearTitleIsOffered(titledNotes: int, nearTitles: int): bool =
+  (titledRead(titledNotes, nearTitles) == OffersNearTitle) iff (titledNotes <= 0 and nearTitles == 1)
+pure def lawAnAbsentTitleWithoutOneNearTitleAsksWhichNote(titledNotes: int, nearTitles: int): bool =
+  (titledNotes <= 0 and nearTitles != 1) implies titledRead(titledNotes, nearTitles) == AsksWhichNote
 ```
 
 ### A move by name takes the identical copies of the note along

@@ -283,7 +283,7 @@ export function notesServiceClass(notes: NotesCollection): ServiceClass {
     }
 
     async matchesSavedEditor(noteId: string, query: string): Promise<boolean> {
-      const { notes: matches } = await run(notes.list({ content: query }))
+      const { notes: matches } = await run(notes.list(query.trim() === noteId ? { noteId } : { content: query }))
       return matches.length === 1 && matches[0]?.id === noteId
     }
 

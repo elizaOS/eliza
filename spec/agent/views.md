@@ -197,7 +197,8 @@ pure val targetValues = Set("Notes", "home", "nowhere")
 
 The model opens one saved note, in whatever words the owner asked for it,
 by calling VIEWS with `view: "notes-editor"` and `note` set to the note's
-title or text, only after a unique successful `NOTES_GET` in the same turn.
+title or text, or to the ID the lookup read it by, only after a unique
+successful `NOTES_GET` in the same turn.
 The canonical resident collection must still match that `note` uniquely to
 the note the lookup found. A call without `note`, an uncertain or changed
 record, a private surface, a phone-native Notes source, or a renderer

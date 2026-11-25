@@ -114,7 +114,7 @@ export function viewsShowAction(views: ViewHost.Shape, labels: ReadonlyMap<strin
     parameters: [
       { name: "action", description: "show", required: false, schema: { type: "string", enum: ["show"] } },
       { name: "view", description: "The view's id, label or alias", required: true, schema: { type: "string" } },
-      { name: "note", description: "Only with view notes-editor: the content argument this turn gave NOTES_GET for the saved note, word for word", required: false, schema: { type: "string", minLength: 1, maxLength: 20_000 } },
+      { name: "note", description: "Only with view notes-editor: the content argument this turn gave NOTES_GET for the saved note, word for word, or the noteId it read the note by", required: false, schema: { type: "string", minLength: 1, maxLength: 20_000 } },
     ],
     validate: async (runtime, message) => {
       const turn = deviceTurnFor(runtime, message)
@@ -125,7 +125,7 @@ export function viewsShowAction(views: ViewHost.Shape, labels: ReadonlyMap<strin
   turnNotes.set(action, (_runtime, message) => {
     const clientId = rendererOf(message)
     return clientId !== undefined && offersEditor(message, clientId, true, true)
-      ? "To open one saved note the owner asks for, in any words, first resolve it with NOTES_GET. When it found one current note, call VIEWS with view=notes-editor and note set to the content argument given to NOTES_GET, word for word, never its result. If there are several matches, ask which one. For the Notes list or any other view, use its name."
+      ? "To open one saved note the owner asks for, in any words, first resolve it with NOTES_GET. When it found one current note, call VIEWS with view=notes-editor and note set to the content argument given to NOTES_GET, word for word, or to the noteId it read the note by, never its result. If there are several matches, ask which one. For the Notes list or any other view, use its name."
       : undefined
   })
   turnElsewhere.set(action, (runtime, message) => {
