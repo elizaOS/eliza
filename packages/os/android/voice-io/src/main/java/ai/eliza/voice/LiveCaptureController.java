@@ -1,4 +1,4 @@
-// spec/os/voice/microphone.md, "Story: Share the microphone between live capture and dictation"; spec/os/voice/microphone.md, "Story: Dictate a draft while live capture was running"
+// spec/os/voice/microphone.md, "Story: Share the microphone between live capture and dictation"; spec/os/voice/microphone.md, "Story: Dictate a draft while live capture was running"; spec/os/voice/liveCapture.md, "A routed capture sends its segments only to the owner's agent, in order and bounded, and a stop cuts them off"
 // Copied from eliza-develop plugins/plugin-local-inference/native/android/src/main/java/ai/eliza/voice/LiveCaptureController.java
 package ai.eliza.voice;
 
@@ -26,9 +26,10 @@ import org.json.JSONObject;
  * <ul>
  *   <li>{@link #reserve} takes the per-capture admission before the permission prompt, so a Stop,
  *       pause or replacement during the prompt or native startup cancels it without waiting.
- *   <li>{@link #start} (on the capture worker) replaces any running capture, warms the agent's ASR
- *       session before the microphone opens, publishes cancellation before native startup and
- *       re-checks the host's gate after it.
+ *   <li>{@link #start} (on the capture worker) replaces any running capture, opens the microphone
+ *       while the agent's ASR session warms (the pipe holds what is heard until then, and a session
+ *       not ready within {@code PIPE_READY_MS} fails as {@code TRANSPORT}), publishes cancellation
+ *       before native startup and re-checks the host's gate after it.
  *   <li>Frames, transcripts and end events reach the host only while the capture's admission and
  *       the host's {@link Host#open} gate for its epoch both hold. Piped frames are never handed to
  *       the host (the host receives an empty frame list with the VAD edges and level).
@@ -148,22 +149,22 @@ public final class LiveCaptureController {
    try{if(live!=null){String old=live.captureId();live.stopAndWait();live=null;current=null;closePipe(old,true,now());}}
    catch(RuntimeException unconfirmed){result.refused("Microphone release is unconfirmed",CAPTURE);return;}
    final Pipe pipe;
+   final Pipe.Sink pipeSink=new Pipe.Sink(){
+    public void result(JSONObject value){if(host.open(epoch)&&admission.events(ticket))host.transcript(id,value,null);}
+    public void failed(String code){
+     if(!admission.events(ticket))return;
+     boolean asr="ASR_FAILED".equals(code);
+     if(!asr&&startup.hold(code))return;
+     if(!asr)admission.stop(id);host.transcript(id,null,code);
+    }
+   };
    try{
-    pipe=route==null?null:route.open(new Pipe.Sink(){
-     public void result(JSONObject value){if(host.open(epoch)&&admission.events(ticket))host.transcript(id,value,null);}
-     public void failed(String code){
-      if(!admission.events(ticket))return;
-      boolean asr="ASR_FAILED".equals(code);
-      if(!asr&&startup.hold(code))return;
-      if(!asr)admission.stop(id);host.transcript(id,null,code);
-     }
-    },id,roomId);
+    pipe=route==null?null:route.open(pipeSink,id,roomId);
     if(pipe!=null){
      pipes.put(id,pipe);
      if(!pipe.start(pipeWorker)){pipes.remove(id,pipe);result.refused("Native voice transport busy",null);return;}
-     // An interrupt before the pipe was published could not close it: stop waiting for the agent.
      if(!admission.current(ticket))throw new IllegalStateException(CANCELLED);
-     if(!pipe.ready().get(PIPE_READY_MS,TimeUnit.MILLISECONDS))throw new IllegalStateException("Agent voice session unavailable");
+     pipe.ready().copy().orTimeout(PIPE_READY_MS,TimeUnit.MILLISECONDS).exceptionally(late->{pipe.close(true,now());pipeSink.failed("TRANSPORT");return false;});
     }
    }catch(Exception unavailable){
     closePipe(id,true,now());

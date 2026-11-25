@@ -71,7 +71,10 @@ pure def lawASegmentClosesOnlyAfterItsHangover(g: VadGate, milli: int, startWind
 With the owner's agent as its route, a capture's frames go only to that
 agent's voice session (a 36-character session id and a room of at most
 128 characters) and the host receives the VAD edges and level with no
-frames. Batches go out in the order they were taken. A batch is at most
+frames. The microphone opens while that session warms: what the capture
+takes meanwhile waits within the bounds below and is sent once the session
+is ready, and a session not ready within 10 s ends the route as
+`TRANSPORT`. Batches go out in the order they were taken. A batch is at most
 32 frames and 128 KiB, and at most about 4 s of frames (125) and 1 MiB
 wait; a batch over either bound ends the route as `BACKPRESSURE`, never
 dropping frames silently. Nothing taken after the stop's cutoff is sent,

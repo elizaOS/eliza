@@ -298,11 +298,12 @@ effect function openProviders(shell: Shell, ports: RelayPorts, sessionId: string
   const window = openWindow(1, admission.expiresAt)
   shell.windows.push(window)
   shell.current = 1
-  try ports.session.dispatchWindow(sessionId, 1)
-  window.dispatched = true
-  const stt = try ports.links.openStt()
+  const dispatched = effect {
+    try ports.session.dispatchWindow(sessionId, 1)
+    window.dispatched = true
+  }
+  const [, stt, tts] = try Effect.all([dispatched, ports.links.openStt(), ports.links.openTts()], { concurrency: "unbounded" })
   shell.stt = stt
-  const tts = try ports.links.openTts()
   shell.tts = tts
   fork.scoped pump(stt.edges, arrivals, (edge) => ({ kind: "stt", edge }))
   fork.scoped pump(tts.edges, arrivals, (edge) => ({ kind: "tts", edge }))

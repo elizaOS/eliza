@@ -49,8 +49,31 @@ public final class InferenceSession implements AutoCloseable {
     private long context;
     private final List<TextStream> textStreams = new ArrayList<>();
     private final Object vadLock = new Object();
+    private final VadOps vadOps;
     private long vadContext; // Guarded by vadLock.
+    private long standbyVad; // Guarded by vadLock: the probed VAD handle the next openVad takes.
+    private boolean vadVerified; // Guarded by vadLock: cached VAD availability for this session.
     private final List<Vad> vads = new ArrayList<>(); // Guarded by vadLock.
+
+    interface VadOps {
+        boolean supported();
+        long createContext(String bundlePath);
+        void destroyContext(long context);
+        long open(long context);
+        float[] processBatch(long handle, float[] pcm16kMono);
+        void reset(long handle);
+        void close(long handle);
+    }
+
+    private static final VadOps NATIVE_VAD_OPS = new VadOps() {
+        @Override public boolean supported() { return VoiceNative.nativeVadSupported() == 1; }
+        @Override public long createContext(String bundlePath) { return VoiceNative.nativeContextCreate(bundlePath); }
+        @Override public void destroyContext(long context) { VoiceNative.nativeContextDestroy(context); }
+        @Override public long open(long context) { return VoiceNative.nativeVadOpen(context); }
+        @Override public float[] processBatch(long handle, float[] pcm16kMono) { return VoiceNative.nativeVadProcessBatch(handle, pcm16kMono); }
+        @Override public void reset(long handle) { VoiceNative.nativeVadReset(handle); }
+        @Override public void close(long handle) { VoiceNative.nativeVadClose(handle); }
+    };
     private final Object runningLock = new Object();
     private Client running; // Guarded by runningLock: the client whose call holds this session.
     private final Object clientsLock = new Object();
@@ -77,6 +100,11 @@ public final class InferenceSession implements AutoCloseable {
 
     InferenceSession(File bundleDir, File voiceModel, File lexicon, File espeakDir,
             java.util.Map<String, File> otherVoices) throws IOException {
+        this(bundleDir, voiceModel, lexicon, espeakDir, otherVoices, NATIVE_VAD_OPS);
+    }
+
+    InferenceSession(File bundleDir, File voiceModel, File lexicon, File espeakDir,
+            java.util.Map<String, File> otherVoices, VadOps vadOps) throws IOException {
         this.bundleDir = bundleDir.getCanonicalFile();
         if (!this.bundleDir.isDirectory()) throw new IOException("Missing inference bundle");
         this.voiceModel = voiceModel;
@@ -84,6 +112,7 @@ public final class InferenceSession implements AutoCloseable {
         this.espeakDir = espeakDir;
         this.otherVoices = new java.util.TreeMap<>(otherVoices);
         this.otherVoices.remove("en");
+        this.vadOps = vadOps;
     }
 
     /** The languages speech output can speak: "en" first, then the bundle's other voices. */
@@ -230,7 +259,31 @@ public final class InferenceSession implements AutoCloseable {
     /** Native Silero VAD is compiled in. Loads the library; opens no context or model. */
     public boolean vadSupported() {
         if (closed) throw new IllegalStateException("Inference session closed");
-        return VoiceNative.nativeVadSupported() == 1;
+        return vadOps.supported();
+    }
+
+    /**
+     * Reports whether Silero VAD is usable in this session without constructing and tearing down a
+     * native detector on repeated status probes. The first successful probe warms and retains one
+     * standby handle so the next {@link #openVad} reuses it directly.
+     */
+    public boolean vadAvailable() {
+        synchronized (vadLock) {
+            if (closed) return false;
+            if (vadVerified) return true;
+            if (!vadOps.supported()) return false;
+            if (vadContext == 0L) {
+                vadContext = vadOps.createContext(bundleDir.getAbsolutePath());
+                if (vadContext == 0L) return false;
+            }
+            if (standbyVad == 0L && vads.isEmpty()) {
+                long handle = vadOps.open(vadContext);
+                if (handle == 0L) return false;
+                standbyVad = handle;
+            }
+            vadVerified = true;
+            return true;
+        }
     }
 
     /**
@@ -242,13 +295,19 @@ public final class InferenceSession implements AutoCloseable {
     public Vad openVad() {
         synchronized (vadLock) {
             if (closed) throw new IllegalStateException("Inference session closed");
-            if (VoiceNative.nativeVadSupported() != 1) throw new IllegalStateException("VAD unavailable");
-            if (vadContext == 0L) {
-                vadContext = VoiceNative.nativeContextCreate(bundleDir.getAbsolutePath());
-                if (vadContext == 0L) throw new IllegalStateException("VAD context creation failed");
+            long handle = standbyVad;
+            if (handle != 0L) {
+                standbyVad = 0L;
+            } else {
+                if (!vadOps.supported()) throw new IllegalStateException("VAD unavailable");
+                if (vadContext == 0L) {
+                    vadContext = vadOps.createContext(bundleDir.getAbsolutePath());
+                    if (vadContext == 0L) throw new IllegalStateException("VAD context creation failed");
+                }
+                handle = vadOps.open(vadContext);
+                if (handle == 0L) throw new IllegalStateException("VAD unavailable");
             }
-            long handle = VoiceNative.nativeVadOpen(vadContext);
-            if (handle == 0L) throw new IllegalStateException("VAD unavailable");
+            vadVerified = true;
             Vad vad = new Vad(handle);
             vads.add(vad);
             return vad;
@@ -269,13 +328,13 @@ public final class InferenceSession implements AutoCloseable {
             if (pcm16kMono == null || pcm16kMono.length == 0 || pcm16kMono.length % VAD_WINDOW != 0) {
                 throw new IllegalArgumentException("Expected complete 512-sample windows");
             }
-            return VoiceNative.nativeVadProcessBatch(handle, pcm16kMono);
+            return vadOps.processBatch(handle, pcm16kMono);
         }
 
         /** Clears the recurrent state at an utterance boundary. */
         public synchronized void reset() {
             if (handle == 0L) throw new IllegalStateException("VAD closed");
-            VoiceNative.nativeVadReset(handle);
+            vadOps.reset(handle);
         }
 
         /** Idempotent. Waits for a window in progress. */
@@ -283,7 +342,7 @@ public final class InferenceSession implements AutoCloseable {
         public void close() {
             synchronized (this) {
                 if (handle == 0L) return;
-                VoiceNative.nativeVadClose(handle);
+                vadOps.close(handle);
                 handle = 0L;
             }
             retire(this);
@@ -297,10 +356,14 @@ public final class InferenceSession implements AutoCloseable {
         }
     }
 
-    /** Caller holds vadLock; only when no detector remains open. */
+    /** Caller holds vadLock; closes any idle standby detector and frees the context when no detector remains open. */
     private void releaseVadContext() {
+        if (standbyVad != 0L) {
+            vadOps.close(standbyVad);
+            standbyVad = 0L;
+        }
         if (vadContext != 0L && vads.isEmpty()) {
-            VoiceNative.nativeContextDestroy(vadContext);
+            vadOps.destroyContext(vadContext);
             vadContext = 0L;
         }
     }
