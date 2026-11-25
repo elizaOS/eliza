@@ -16,6 +16,7 @@ import ai.eliza.voice.StreamingSpeechPlayback;
 import com.getcapacitor.*;
 import com.getcapacitor.annotation.*;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Arrays;
@@ -58,6 +59,14 @@ public abstract class SpeechStreamBridgePlugin extends Plugin {
  private volatile boolean foreground=true,destroyed;
  private SpeechAudioFocus focus;
  private volatile PluginCall pendingStart;
+ private static final long WARM_INTERVAL_MS=60_000,WARM_REQUEST_MS=5_000;
+ private static final class WarmConsent {
+  final String environment,credential;final long epoch,requestedAt=SystemClock.elapsedRealtime();
+  String nonce;long expiresAt;
+  WarmConsent(String environment,String credential,long epoch){this.environment=environment;this.credential=credential;this.epoch=epoch;}
+  boolean matches(String environment,String credential,long epoch){return this.epoch==epoch&&this.environment.equals(environment)&&this.credential.equals(credential);}
+ }
+ private WarmConsent warmConsent;
  private final java.util.ArrayDeque<JSObject> timings=new java.util.ArrayDeque<>();
  private long timingSequence;
  private void mark(Session own,String stage){markAt(own,stage,System.nanoTime(),null,0);}
@@ -69,6 +78,54 @@ public abstract class SpeechStreamBridgePlugin extends Plugin {
   row.put("sentFrames",own.sentFrames);row.put("sentBytes",own.sentBytes);row.put("receivedFrames",own.receivedFrames);row.put("receivedBytes",own.receivedBytes);if(own.httpStatus!=0)row.put("httpStatus",own.httpStatus);timings.addLast(row);while(timings.size()>100)timings.removeFirst();
  }
  @PluginMethod public synchronized void cloudStreamTiming(PluginCall call){JSArray rows=new JSArray();for(JSObject row:timings)rows.put(row);call.resolve(new JSObject().put("format",diagnosticFormat()).put("records",rows));}
+
+ /** Warm the HTTPS pool and obtain one owner-bound consent nonce without minting a speech session. */
+ @PluginMethod public void prewarmCloudSpeech(PluginCall call){
+  String environment=call.getString("environment"),credential=call.getString("credentialId");call.resolve();
+  if(environment==null||credential==null||credential.length()>128||destroyed||!foreground||sensitiveSurfaceActive())return;
+  final long epoch;try{epoch=authorityEpoch();}catch(RuntimeException unavailable){return;}
+  final WarmConsent warm;
+  synchronized(this){
+   if(session!=null||pendingStart!=null||warmConsent!=null&&warmConsent.matches(environment,credential,epoch)&&SystemClock.elapsedRealtime()-warmConsent.requestedAt<WARM_INTERVAL_MS)return;
+   warm=warmConsent=new WarmConsent(environment,credential,epoch);
+  }
+  // The background fetch cannot occupy the microphone/interactive startup or cleanup queues.
+  submit(http.dispatcher().executorService(),()->prepareWarmConsent(warm),()->{});
+ }
+ private boolean warmCurrent(WarmConsent warm){
+  if(destroyed||!foreground||sensitiveSurfaceActive()||authorityEpoch()!=warm.epoch)return false;
+  synchronized(this){return warmConsent==warm&&session==null&&pendingStart==null;}
+ }
+ private void prepareWarmConsent(WarmConsent warm){
+  try{
+   if(!warmCurrent(warm))return;
+   String origin=cloudOrigin(warm.environment);java.net.URI url=new java.net.URI(origin);
+   if(!"https".equals(url.getScheme())||url.getHost()==null||url.getRawUserInfo()!=null||url.getRawQuery()!=null||url.getRawFragment()!=null||url.getRawPath()!=null&&!url.getRawPath().isEmpty()||url.getPort()!=-1&&url.getPort()!=443)return;
+   // #40447: warm the same connection pool on the public health route, without a credential.
+   Call health=http.newCall(new Request.Builder().url(origin+"/api/health").build());
+   health.timeout().timeout(WARM_REQUEST_MS,TimeUnit.MILLISECONDS);
+   try(Response response=health.execute()){readStartupBody(response);}
+   if(!warmCurrent(warm))return;
+   Credential binding=readCredential(warm.environment,warm.credential,warm.epoch);
+   if(binding.expiresAt<=System.currentTimeMillis()||binding.token==null||binding.token.isEmpty()||binding.token.length()>16384||binding.token.contains("\r")||binding.token.contains("\n")||!warmCurrent(warm))return;
+   Call consent=http.newCall(new Request.Builder().url(origin+BASE+"consent").header("Authorization","Bearer "+binding.token).post(RequestBody.create("{}",JSON)).build());
+   consent.timeout().timeout(WARM_REQUEST_MS,TimeUnit.MILLISECONDS);
+   try(Response response=consent.execute()){
+    if(!response.isSuccessful())return;
+    JSONObject row=readStartupBody(response);String nonce=row.getString("consentNonce");UUID.fromString(nonce);
+    long expires=Math.min(binding.expiresAt,Instant.parse(row.getString("expiresAt")).toEpochMilli());
+    if(expires<=System.currentTimeMillis()||!warmCurrent(warm))return;
+    synchronized(this){if(warmConsent==warm&&session==null&&pendingStart==null){warm.nonce=nonce;warm.expiresAt=expires;}}
+   }
+  }catch(Exception unavailable){/* Advisory warming must never gate Talk. */}
+ }
+ private synchronized String takeWarmConsent(Session own){
+  WarmConsent warm=warmConsent;
+  if(warm==null||!warm.matches(own.environment,own.credential,own.epoch))return null;
+  String nonce=warm.expiresAt>System.currentTimeMillis()+1000?warm.nonce:null;
+  warm.nonce=null;
+  return nonce;
+ }
 
  @Override public void load(){
   // A transient loss pauses listening and stops the utterance; only a permanent loss or a call ends the session.
@@ -115,8 +172,21 @@ public abstract class SpeechStreamBridgePlugin extends Plugin {
    if(!"https".equals(origin.getScheme())||origin.getHost()==null||origin.getRawUserInfo()!=null||origin.getRawQuery()!=null||origin.getRawFragment()!=null||origin.getRawPath()!=null&&!origin.getRawPath().isEmpty()||origin.getPort()!=-1&&origin.getPort()!=443)throw new SecurityException("Invalid Cloud origin");
    Credential binding=readCredential(environment,credential,own.epoch);own.token=binding.token;
    if(binding.expiresAt<=System.currentTimeMillis()||own.token==null||own.token.isEmpty()||own.token.length()>16384||own.token.contains("\r")||own.token.contains("\n"))throw new SecurityException("Cloud account unavailable");
-   JSONObject consent=post(own,"consent",new JSONObject());mark(own,"consent");String nonce=consent.getString("consentNonce");UUID.fromString(nonce);
-   if(Instant.parse(consent.getString("expiresAt")).toEpochMilli()<=System.currentTimeMillis())throw new IOException("Expired consent");
+   String nonce=takeWarmConsent(own);
+   if(nonce!=null)mark(own,"consent-prewarmed");
+   else{
+    JSONObject consent;
+    try{consent=post(own,"consent",new JSONObject());}
+    catch(CloudHttpFailure refusal){
+     long delay=CloudSpeechWire.consentRetryMs(refusal.status,refusal.retryAfter,System.currentTimeMillis(),own.startupEndsMs-SystemClock.elapsedRealtime());
+     if(delay<0)throw refusal;
+     mark(own,"consent-retry");if(delay>0)Thread.sleep(delay);own.check();
+     consent=post(own,"consent",new JSONObject());
+    }
+    nonce=consent.getString("consentNonce");UUID.fromString(nonce);
+    if(Instant.parse(consent.getString("expiresAt")).toEpochMilli()<=System.currentTimeMillis())throw new IOException("Expired consent");
+   }
+   mark(own,"consent");
    JSONObject minted=post(own,"session",new JSONObject().put("consentNonce",nonce));mark(own,"mint");
    own.serverId=minted.getString("sessionId");UUID.fromString(own.serverId);
    own.expiresAt=Instant.parse(minted.getString("expiresAt")).toEpochMilli();
@@ -130,12 +200,16 @@ public abstract class SpeechStreamBridgePlugin extends Plugin {
   }catch(Exception failure){if(failure instanceof CloudHttpFailure){CloudHttpFailure refused=(CloudHttpFailure)failure;fail(own,refused.code(),refused.data);}else fail(own,failure instanceof java.net.UnknownHostException?"dns":failure instanceof java.net.SocketTimeoutException?"timeout":failure instanceof javax.net.ssl.SSLException?"tls":"connect");}},()->fail(own,"closed"));
  }
  /** The batch route's voice-http-<status>, except 404: cloud-http-404 is the renderer's one batch fallback signal. */
- private static final class CloudHttpFailure extends IOException {final int status;final JSObject data;CloudHttpFailure(int status,JSObject data){super("Cloud speech HTTP refused");this.status=status;this.data=data;}String code(){return (status==404?"cloud-http-":"voice-http-")+status;}}
+ private static final class CloudHttpFailure extends IOException {final int status;final JSObject data;final String retryAfter;CloudHttpFailure(int status,JSObject data,String retryAfter){super("Cloud speech HTTP refused");this.status=status;this.data=data;this.retryAfter=retryAfter;}String code(){return (status==404?"cloud-http-":"voice-http-")+status;}}
  private CloudHttpFailure refused(Response response){
-  int status=response.code();if(status!=429)return new CloudHttpFailure(status,null);String body=null;
+  int status=response.code();String retryAfter=response.header("Retry-After");if(status!=429)return new CloudHttpFailure(status,null,retryAfter);String body=null;
   try{ResponseBody bytes=response.body();if(bytes!=null)try(java.io.InputStream in=bytes.byteStream()){java.io.ByteArrayOutputStream out=new java.io.ByteArrayOutputStream();byte[] chunk=new byte[4096];int n;while((n=in.read(chunk))!=-1){if(out.size()+n>16384)throw new IOException("Oversized refusal");out.write(chunk,0,n);}body=out.toString(StandardCharsets.UTF_8.name());}}catch(Exception ignored){/* An absent, oversized or unreadable body leaves only Retry-After. */}
   JSObject data;try{data=limitData(status,response.header("Retry-After"),body);}catch(RuntimeException ignored){data=null;}
-  return new CloudHttpFailure(status,data);
+  return new CloudHttpFailure(status,data,retryAfter);
+ }
+ private static JSONObject readStartupBody(Response response)throws Exception{
+  ResponseBody bytes=response.body();if(bytes==null||bytes.contentLength()>32768)throw new IOException("Invalid speech response");
+  try(InputStream in=bytes.byteStream()){java.io.ByteArrayOutputStream out=new java.io.ByteArrayOutputStream();byte[] chunk=new byte[4096];int n;while((n=in.read(chunk))!=-1){if(out.size()+n>32768)throw new IOException("Oversized speech response");out.write(chunk,0,n);}return new JSONObject(out.toString(StandardCharsets.UTF_8.name()));}
  }
  private JSONObject post(Session own,String path,JSONObject body)throws Exception{
   own.check();mark(own,path+"-start");Request request=new Request.Builder().url(own.origin+BASE+path).header("Authorization","Bearer "+own.token).post(RequestBody.create(body.toString(),JSON)).build();
@@ -143,8 +217,8 @@ public abstract class SpeechStreamBridgePlugin extends Plugin {
   try{
    own.check();
    try(Response response=pending.execute()){
-    own.check();own.httpStatus=response.code();mark(own,path+"-headers");if(!response.isSuccessful())throw refused(response);if("session".equals(path))own.extendOffered=CloudSpeechWire.EXTEND_OFFER.equals(response.header(CloudSpeechWire.EXTEND_HEADER));ResponseBody bytes=response.body();if(bytes==null||bytes.contentLength()>32768)throw new IOException("Invalid speech response");
-    try(java.io.InputStream in=bytes.byteStream()){java.io.ByteArrayOutputStream out=new java.io.ByteArrayOutputStream();byte[] chunk=new byte[4096];int n;while((n=in.read(chunk))!=-1){if(out.size()+n>32768)throw new IOException("Oversized speech response");out.write(chunk,0,n);}mark(own,path+"-body");return new JSONObject(out.toString(StandardCharsets.UTF_8.name()));}
+    own.check();own.httpStatus=response.code();mark(own,path+"-headers");if(!response.isSuccessful())throw refused(response);if("session".equals(path))own.extendOffered=CloudSpeechWire.EXTEND_OFFER.equals(response.header(CloudSpeechWire.EXTEND_HEADER));
+    JSONObject decoded=readStartupBody(response);mark(own,path+"-body");return decoded;
    }
   }finally{own.pending=null;}
  }
@@ -319,7 +393,7 @@ public abstract class SpeechStreamBridgePlugin extends Plugin {
    if(SystemClock.elapsedRealtime()<startupEndsMs)scheduleStartupDeadline();
    else fail(this,"startup-timeout");
   }
-  final Runnable expiry=()->retire(this,"expired");
+  final Runnable expiry=()->expire(this);
   final ExecutorService feeder=new ThreadPoolExecutor(1,1,0L,TimeUnit.MILLISECONDS,new ArrayBlockingQueue<>(FEED_TASKS),work->{Thread thread=new Thread(work,"eliza-cloud-speech-feeder");thread.setDaemon(true);return thread;},new ThreadPoolExecutor.AbortPolicy());final AtomicLong feeding=new AtomicLong();
   Session(String id,String environment,String credential,long epoch,PluginCall call){this.id=id;this.environment=environment;this.credential=credential;this.epoch=epoch;this.startCall=call;}
   void check()throws IOException{if(closed.get()||session!=this||destroyed||!foreground||epoch!=authorityEpoch()||sensitiveSurfaceActive())throw new IOException("Speech session changed");if(!startSettled.get()&&SystemClock.elapsedRealtime()>=startupEndsMs)throw new java.net.SocketTimeoutException("Speech startup window expired");}
@@ -346,6 +420,15 @@ public abstract class SpeechStreamBridgePlugin extends Plugin {
  private void fail(Session own,String code){fail(own,code,null);}
  private void fail(Session own,String code,JSObject data){if(own.closed.get())return;mark(own,"error");JSObject event=new JSObject().put("code",code).put("status",own.httpStatus);if(data!=null)event.put("data",data);emit(own,"error",event);if(own.startSettled.compareAndSet(false,true))own.startCall.reject("Cloud streaming speech is unavailable",code,data);retire(own,null);}
  private void retire(Session own,String reason){if(reason!=null)emit(own,"error",new JSObject().put("code",reason));detach(own);queueCleanup(own,()->{});}
+ /** Tell the renderer about expiry only after the old microphone and speaker have retired. */
+ private void expire(Session own){
+  if(own.closed.get()||session!=own)return;
+  if(own.expiresAt>System.currentTimeMillis()){arm(own);return;}
+  mark(own,"expired");detach(own);
+  queueCleanup(own,()->main.post(()->{
+   if(!destroyed)notifyListeners("cloudSpeechEvent",new JSObject().put("sessionId",own.id).put("type","error").put("code","expired"));
+  }));
+ }
  private void detach(Session own){if(!own.closed.compareAndSet(false,true))return;mark(own,"stop");synchronized(this){if(session==own)session=null;}main.removeCallbacks(own.deadline);main.removeCallbacks(own.expiry);Call call=own.pending;if(call!=null)call.cancel();WebSocket socket=own.socket;if(socket!=null)socket.cancel();if(own.startSettled.compareAndSet(false,true))own.startCall.reject("Cloud streaming speech stopped","cancelled");Utterance u=own.spoken;if(u!=null){synchronized(u){u.cancelled=true;}if(u.playback!=null)u.playback.stop();}own.feeder.shutdown();main.post(SpeechStreamBridgePlugin.this::settleFocus);}
  /** Each mute (or focus pause) after the microphone first opened sends a bounded silence tail that closes Ink's current turn; a session that never captured sends none. */
  private void silence(Session own,long generation,int remaining){

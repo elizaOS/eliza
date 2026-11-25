@@ -1,15 +1,14 @@
 /**
  * Warm the existing Cloud connection and authenticated admission path before
- * an interactive turn. No prompt or model call is sent. Public CORS preflight
- * stays credential-free; this explicit host request warms only its own account.
- * Runs on foreground/chat/Talk events, once per URL and credential per minute.
- * It never schedules periodic traffic or delays the owner's actual request.
+ * an interactive turn. The owner app may also request one fixed, one-token
+ * model probe per resident runtime. No conversation content is included.
+ * Connection warming is debounced per URL and credential.
  */
 
 import { createHash } from "node:crypto";
 import type http from "node:http";
 import { type IAgentRuntime, logger, ModelType } from "@elizaos/core";
-import { sendJson } from "../lib/http";
+import { readJsonBody, sendJson } from "../lib/http";
 import { resolveCloudSdkAuthorityTuple } from "../utils/config";
 
 export const CLOUD_WARM_INTERVAL_MS = 60_000;
@@ -28,6 +27,7 @@ export type CloudWarmResult =
   | { warmed: false; reason: "not-cloud-text" | "debounced" | "unreachable" };
 
 const recentWarms = new Map<string, number>();
+const primedRuntimes = new WeakSet<IAgentRuntime>();
 const MAX_WARM_IDENTITIES = 256;
 
 export async function warmCloudInference(runtime: IAgentRuntime | null): Promise<CloudWarmResult> {
@@ -80,12 +80,35 @@ export async function warmCloudInference(runtime: IAgentRuntime | null): Promise
 }
 
 export async function handleCloudWarmRoute(
-  _req: unknown,
+  req: unknown,
   res: unknown,
   runtime: unknown
 ): Promise<void> {
-  sendJson(
-    res as http.ServerResponse,
-    await warmCloudInference((runtime as IAgentRuntime | null) ?? null)
-  );
+  const response = res as http.ServerResponse;
+  const body = await readJsonBody<{ primeModel?: boolean }>(req as http.IncomingMessage, response);
+  if (!body) return;
+
+  const agent = (runtime as IAgentRuntime | null) ?? null;
+  const result = await warmCloudInference(agent);
+  if (
+    body.primeModel === true &&
+    agent &&
+    result.warmed &&
+    !primedRuntimes.has(agent) &&
+    agent.getModelRegistrations().some(
+      (r) => r.provider === CLOUD_PROVIDER && r.modelType === ModelType.TEXT_SMALL
+    )
+  ) {
+    primedRuntimes.add(agent);
+    void agent.useModel(ModelType.TEXT_SMALL, {
+      prompt: "Reply OK.",
+      maxTokens: 1,
+      temperature: 0,
+      voiceOutput: "internal",
+      signal: AbortSignal.timeout(CLOUD_WARM_TIMEOUT_MS),
+    }, CLOUD_PROVIDER).catch(() => {
+      logger.debug("[ELIZAOS_CLOUD] model pre-warm did not complete");
+    });
+  }
+  sendJson(response, result);
 }

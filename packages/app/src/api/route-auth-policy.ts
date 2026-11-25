@@ -150,6 +150,7 @@ export const COMPAT_ROUTE_AUTH_POLICIES: readonly CompatRouteAuthPolicy[] = [
   sessionExact("cloud.status", "GET", "/api/cloud/status"),
   sessionExact("cloud.credits", "GET", "/api/cloud/credits"),
   sessionExact("cloud.warm", "POST", "/api/cloud/warm"),
+  sessionExact("cloud.browser-source", "POST", "/api/cloud/browser-source"),
   sessionExact("cloud.login", "POST", "/api/cloud/login"),
   sessionExact("cloud.login.status", "GET", "/api/cloud/login/status"),
   sessionExact("cloud.login.persist", "POST", "/api/cloud/login/persist"),

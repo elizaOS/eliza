@@ -39,6 +39,16 @@ final class CloudSpeechWire {
   if(next<=current||next>now+MAX_WINDOW_MS)throw new IllegalArgumentException("Invalid renewal");
   return next;
  }
+ /** A consent retry may use the cold-limiter's bounded Retry-After, never another refusal. */
+ static long consentRetryMs(int status,String retryAfter,long now,long budget){
+  if(status!=503||retryAfter==null)return -1;
+  long delay;
+  try{
+   String value=retryAfter.trim();
+   delay=value.matches("[0-9]{1,2}")?Long.parseLong(value)*1000:Math.max(0,java.time.ZonedDateTime.parse(value,java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME).toInstant().toEpochMilli()-now);
+  }catch(RuntimeException invalid){return -1;}
+  return delay<=2000&&budget>=delay+2000?delay:-1;
+ }
  static long millis(long pcmBytes){return pcmBytes/2*1000/RATE;}
  static double peak(byte[] pcm,int size){double peak=0;for(int i=0;i+1<size;i+=2){int sample=(short)((pcm[i]&255)|(pcm[i+1]<<8));peak=Math.max(peak,Math.abs(sample)/32768.0);}return Math.min(1,peak);}
 }
