@@ -4,7 +4,7 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import type * as TS from "typescript";
 import { writeWhole } from "./run.ts";
-import { evaluatorIdentity } from "./installed.ts";
+import { androidToolchainIdentity, evaluatorIdentity } from "./installed.ts";
 import { badSpecName, heading, type Spec } from "./parse.ts";
 import type { Result } from "./pipeline.ts";
 import { profile, type TestProfile } from "./testing/profile.ts";
@@ -239,7 +239,7 @@ const SPECIFIER = /(?:\bfrom\s+|\bimport\s*\(\s*|^\s*import\s+)["'](\.\.?\/[^"']
 export function testInputs(root: string, mode: TestProfile = "normal", read: Inputs = "tests"): string | undefined {
   const evaluator = read === "tests" ? evaluatorIdentity(root) : undefined;
   if (read === "tests" && !evaluator) return undefined;
-  const hash = createHash("sha256").update(JSON.stringify(["tests-v6", read, process.versions.node, process.platform, process.arch, profile(mode), ...evaluator ? [evaluator] : []]));
+  const hash = createHash("sha256").update(JSON.stringify(["tests-v7", read, process.versions.node, process.platform, process.arch, profile(mode), ...evaluator ? [evaluator] : []]));
   const served = (file: string) => !isTestFile(file) && ![DRIVERS, TRACES, COUNTEREXAMPLES].some((dir) => file.startsWith(`${dir}/`));
   const reads: Record<Inputs, (file: string) => boolean> = {
     tests: (file) => !PROSE.test(file) && !file.startsWith(`${SIMULATIONS}/`),
@@ -266,6 +266,11 @@ export function testInputs(root: string, mode: TestProfile = "normal", read: Inp
     const top = gen && fs.existsSync(path.join(from, "gen")) ? fs.readdirSync(path.join(from, "gen"), { withFileTypes: true }).filter((e) => e.isFile()).map((e) => `gen/${e.name}`).sort() : [];
     for (const file of top.filter(reads[read])) update(from, file);
   }
+  // Turbo runs OS tests directly. Their Vibestack receipt covers the installed Android toolchain.
+  const isOs = read === "tests" && manifest(root).name === "@elizaos/os";
+  const android = isOs ? androidToolchainIdentity() : undefined;
+  if (android) hash.update(android);
+  if (isOs && !android) return undefined;
   const { lock } = packageManager(root);
   if (lock) hash.update(fs.readFileSync(lock));
   return hash.digest("hex");
