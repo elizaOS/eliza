@@ -949,7 +949,7 @@ effect function groundedReminder(operation: unknown, turn: DeviceTurn) {
   return result.kind === "Grounded" ? result.operation : result.code
 }
 
-it.effect('Propose a reminder or alarm on my phone only as I asked (spec/assistant/reminders.md, "Story: Propose a reminder or alarm on my phone only as I asked"; spec/assistant/reminders.md, "A phone reminder is proposed only when the assistant keeps no reminders here or the phone\'s reminder is selected"; spec/assistant/reminders.md, "A selected or named phone reminder is the one the owner gave, and a change to it needs the owner\'s own ask"; spec/assistant/reminders.md, "A new phone reminder is due when the owner\'s words say, counted from the turn\'s start for a relative time"; spec/assistant/timezone.md, "A phone reminder or Clock alarm uses the zone the phone reported for this turn")', effect () => {
+it.effect('Propose a reminder or alarm on my phone only as I asked (spec/assistant/reminders.md, "Story: Propose a reminder or alarm on my phone only as I asked"; spec/assistant/reminders.md, "A phone reminder is proposed only when the assistant keeps no reminders here or the phone\'s reminder is selected"; spec/assistant/reminders.md, "A selected or named phone reminder is the one the owner gave, and a change to it is only proposed for the owner\'s review"; spec/assistant/reminders.md, "A new phone reminder is due when the owner\'s words say, counted from the turn\'s start for a relative time"; spec/assistant/timezone.md, "A phone reminder or Clock alarm uses the zone the phone reported for this turn")', effect () => {
   const offered = (turn: DeviceTurn) => reminderProposalFamily.forms.filter((form) => form.offered(turn) && (form.now?.available(turn) ?? true)).map(({ schema }) => `${schema.properties?.type?.enum?.[0]}:${schema.properties?.action?.enum?.[0] ?? ""}`)
   const create = (schedule: object, title = "Call mom", body = "") => ({ type: "reminder_create", fields: { title, body, schedule } })
   const guessed = { at: 2_000_000_000_000, recurrence: null, dueAt: 2_000_000_000_000, alertMinutes: 0 }
@@ -980,8 +980,12 @@ it.effect('Propose a reminder or alarm on my phone only as I asked (spec/assista
   const on = (operation: object, words: string) => groundedReminder(operation, reminderTurn(words, phoneReminder))
   try equal<unknown>([try on(cancel, "Cancel this reminder"), try on(cancel, "Cancel it, no need to keep it"), try on(snooze, "Snooze this"), try on(named, "Move my dentist reminder to Friday")],
     [cancel, cancel, snooze, named])
-  try equal<unknown>([try on(cancel, "No, keep it"), try on(snooze, "No, don't snooze it"), try on(snooze, "What is this reminder?"), try on(named, "What's my dentist reminder?")],
-    ["REMINDER_CHANGE_NOT_REQUESTED", "REMINDER_CHANGE_NOT_REQUESTED", "REMINDER_CHANGE_NOT_REQUESTED", "REMINDER_CHANGE_NOT_REQUESTED"])
+  const complete = { type: "reminder_complete", target: reminderTarget }
+  try equal<unknown>([try on(cancel, "Get it off my list"), try on(complete, "That one's taken care of"), try on(snooze, "Push it back a bit"), try on(named, "Can we do the dentist one on Friday instead")],
+    [cancel, complete, snooze, named])
+  const cancelling = readOperation(cancel)
+  try equal<unknown>(cancelling === undefined ? undefined : reminderProposalFamily.proposedText(cancelling.operation, { direct: false, timeZone: "Europe/Berlin", ownerText: "No, keep it" })?.forOwner,
+    "Review cancelling the selected reminder on your phone. Cancelling stops all its repeats.")
   try equal<unknown>(try on({ ...cancel, target: { ...reminderTarget, reminderId: "rem-2" } }, "Cancel this reminder"), "DEVICE_REMINDER_TARGET_NOT_SELECTED")
   try equal<unknown>(try on({ type: "reminder_named", action: "cancel", name: "pills" }, "Cancel my passport reminder"), "REMINDER_NAMED_NOT_REQUESTED")
 
