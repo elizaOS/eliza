@@ -752,7 +752,9 @@ ends in `?`, `？` or `؟`, perhaps followed by an emoji, an emoticon, `!` or
 a list of options, outside quotes, code and addresses) is a draft that may
 be an answer, asked again once and then delivered (`[promise] Hi! What can
 I do for you today? 😊`, `[promise] Which Sam do you mean?`), and when the
-turn gives up after it, that question is the reply rather than nothing; a
+turn gives up after it with no step run, that question is the reply rather
+than nothing (once a tool has run, the question asked before the work is
+never delivered); a
 promise that asks still gets its one re-ask, so `[promise] I'll check your
 email now. Want me to check your calendar too?` is not delivered at once.
 `[promise] Let me open https://example.com/search?q=limes` and `[promise]

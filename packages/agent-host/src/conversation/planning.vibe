@@ -634,11 +634,8 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
         continue plan
       }
       case "GiveUp":
-        if (askingPromise !== undefined) {
-          prose = withoutOfferedCalls(askingPromise, offeredNames)
-          break plan
-        }
         if (displayed) input.onReplyRestart?.("")
+        if (askingPromise !== undefined && steps.length === 0) prose = withoutOfferedCalls(askingPromise, offeredNames)
         break plan
       case "RunTools":
         if (displayed) input.onReplyRestart?.("")
