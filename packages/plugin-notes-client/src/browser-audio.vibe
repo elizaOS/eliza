@@ -48,7 +48,7 @@ module indexed {
       transcript: string,
     ): Promise<NotesAudioMetadata>;
     discardPendingAudio(audioId: string, ownerDigest: string): Promise<void>;
-    audioRecord(audioId: string): Promise<NotesAudioRow>;
+    audioRecord(audioId: string, connection: string): Promise<NotesAudioRow>;
   }
 
   const StoredAudio = Schema.Struct({
@@ -297,11 +297,12 @@ module indexed {
           store.delete(audioId);
         });
       },
-      audioRecord(audioId) {
+      audioRecord(audioId, connection) {
         return withRow(audioId, "readonly", (row) => {
-          if (row === undefined || row.expired || row.deletedAt ||
-            (row.recordingSave !== undefined && row.recordingSave.phase !== "committed"))
-            throw refused("unavailable")
+          if (row === undefined || row.expired || row.deletedAt) throw refused("unavailable")
+          if (row.recordingSave === undefined) return row
+          if (!recordingOwner(row.recordingSave.ownerDigest, connection)) throw refused("anotherConnection")
+          if (row.recordingSave.phase !== "committed") throw refused("unavailable")
           return row
         })
       },

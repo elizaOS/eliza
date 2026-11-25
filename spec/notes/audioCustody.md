@@ -282,7 +282,9 @@ recorded them, with the folder it was recorded in. Only that connection
 is the recording's owner: another connection, or none, cannot append to,
 read, recover, claim, commit or discard it, and its attempt is refused
 and changes nothing. A stopped or claimed recording is recovered after a
-reload; a committed one belongs to its note and is no longer pending.
+reload; a committed one belongs to its note and is no longer pending,
+and only its owner can read it there. Audio a note kept before its
+recordings were bound to a connection has no owner and stays readable.
 Committing again to the note it was committed to answers with the
 committed recording unchanged; committing it to any other note, or
 committing a recording that is not claimed, is refused.
