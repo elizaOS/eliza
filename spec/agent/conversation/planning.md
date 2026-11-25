@@ -520,7 +520,14 @@ error or its result text; a call its action's own check declined is
 `unavailableNotice`, and a failure with no words is a sentence that the
 call did not start or did not complete. Of these, only the text its action
 marked as its words for the owner is ever the owner's: the rest is written
-to the model. A left-out document's are that some
+to the model. An action whose failure means the owner's request did not
+happen (a calculation with no answer, an event the calendar would not take,
+mail that could not be read, a workflow its store did not change) marks one
+plain sentence that says so as its words for the owner, naming no action and
+guiding no call; a check that refuses a call the model can correct or ask
+the owner about (a time in the wrong form, a clock the owner's words
+contradict, an event the call's words found none of, a checklist with no
+title) marks none. A left-out document's are that some
 attached documents exceeded what can be read in one turn. When anything is
 unreported, or the reply states a time the turn did not observe (the clock
 rules below), the model is asked once more: the turn's system prompt, its
