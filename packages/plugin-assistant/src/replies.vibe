@@ -51,13 +51,17 @@ export interface Telling {
   readonly unproven: string
 }
 
+export function forTheOwner(text: string): Pick<ActionResult, "userFacingText" | "verifiedUserFacing"> {
+  return text.trim() === "" ? {} : { userFacingText: text, verifiedUserFacing: true }
+}
+
 export function attributed(attempts: readonly Attempt[], target: string, telling: Telling, data: ProviderDataRecord = {}): ActionResult {
   const effectReceipts = attempts.flatMap((attempt) => attempt.receipts)
   const proof = proven(attempts, target)
   switch (proof.kind) {
     case "done": return { success: true, text: telling.done, effectReceipts, data }
-    case "notDone": return { success: false, text: telling.notDone, effectReceipts, data: { ...data, failedResult: proof.cited + 1 } }
-    case "unproven": return { success: false, text: telling.unproven, effectReceipts, data }
+    case "notDone": return { success: false, text: telling.notDone, ...forTheOwner(telling.notDone), effectReceipts, data: { ...data, failedResult: proof.cited + 1 } }
+    case "unproven": return { success: false, text: telling.unproven, ...forTheOwner(telling.unproven), effectReceipts, data }
   }
 }
 

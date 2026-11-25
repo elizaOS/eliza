@@ -373,12 +373,6 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.6
-      '@types/react':
-        specifier: 'catalog:'
-        version: 19.3.0
-      react:
-        specifier: 'catalog:'
-        version: 19.3.1
       typescript:
         specifier: 'catalog:'
         version: 6.0.3
@@ -567,9 +561,6 @@ importers:
       vibelang-runtime:
         specifier: 0.0.13
         version: 0.0.13(@effect/platform-node@4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0))(effect@4.1.1)
-      zod:
-        specifier: ^4.6.5
-        version: 4.6.7
     devDependencies:
       '@effect/vitest':
         specifier: 4.1.1

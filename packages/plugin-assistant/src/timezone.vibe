@@ -33,7 +33,6 @@ export function resolveZone(named: string): string | undefined {
 
 opaque.knownZone = (named: string) => named !== "" && resolveZone(named) === named
 
-/** The name the owner gave, as the resolver maps it, or as written when it knows no such zone; undefined when they named none. */
 export function statedName(named: string): string | undefined {
   const plain = named.trim()
   return plain === "" ? undefined : resolveZone(plain) ?? plain.slice(0, 64)

@@ -1,6 +1,0 @@
-// spec/core/protocols.md, "Story: Share canonical values across hosts and plugins"
-export type { JsonObject, JsonPrimitive } from "./types/json.vibe"
-export type { ActionParameterSchema, JSONSchema } from "./types/schema.vibe"
-export type { SurfaceManifest } from "./types/surface-manifest.vibe"
-export type { ViewCapability, ViewCapabilityParameter } from "./types/view-capability.vibe"
-export type { ViewKind } from "./types/view-kind.vibe"

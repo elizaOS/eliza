@@ -1,4 +1,0 @@
-// spec/core/packageExports.md, "Story: Speak only the prose of a reply"
-export { ElizaError, type ElizaErrorOptions, type ElizaErrorSeverity } from "./errors.vibe"
-export { sanitizeSpeechText } from "./spoken-text.vibe"
-export { trimEndCharacters } from "./utils/string-boundaries.vibe"
