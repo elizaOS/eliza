@@ -54,8 +54,9 @@ public abstract class NotificationMirrorListenerService extends NotificationList
     if (notice == null)
       return;
     NotificationMirror mirror = mirror();
-    final long generation = mirror.eventGeneration();
-    mirror.invalidateKey(notice.getKey());
+    final long generation = mirror.queueNotification(this, notice.getKey());
+    if (generation < 0)
+      return;
     try {
       events.execute(() -> mirror.changed(this, notice, removed, generation));
     } catch (RejectedExecutionException unavailable) {

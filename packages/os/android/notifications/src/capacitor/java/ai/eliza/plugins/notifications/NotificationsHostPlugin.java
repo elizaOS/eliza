@@ -222,11 +222,7 @@ public abstract class NotificationsHostPlugin extends Plugin {
  @PluginMethod public void notificationApps(PluginCall call){try{foreground();JSObject out=new JSObject();out.put("apps",new JSArray(requireMirror().apps(getContext()).toString()));call.resolve(out);}catch(NotificationMirrorPolicy.Rejected rejected){call.reject(rejected.getMessage());}catch(Exception failure){call.reject("Notification app choices are unavailable");}}
  @PluginMethod public void setNotificationPolicy(PluginCall call){try{foreground();call.resolve(new JSObject(requireMirror().update(getContext(),call.getData()).toString()));}catch(NotificationMirrorPolicy.Rejected rejected){call.reject(rejected.getMessage());}catch(Exception failure){call.reject("Notification settings changed or could not be saved. Refresh Settings.");}}
  @PluginMethod public void resumeCrossApp(PluginCall call){try{
-  foreground();NotificationMirror mirror=requireMirror();
-  synchronized(mirror.lock){
-   if(!mirror.status(getContext()).getString("revision").equals(call.getString("expectedRevision")))throw new IllegalStateException();
-   mirror.pause(getContext(),false);call.resolve(new JSObject(mirror.status(getContext()).toString()));
-  }
+  foreground();call.resolve(new JSObject(requireMirror().resumeAt(getContext(),call.getString("expectedRevision")).toString()));
  }catch(Exception failure){call.reject("Notification collection could not be resumed");}}
  @PluginMethod public void openNotificationAccess(PluginCall call){try{
   foreground();NotificationMirror mirror=requireMirror();
@@ -235,7 +231,7 @@ public abstract class NotificationsHostPlugin extends Plugin {
   JSObject out=new JSObject();out.put("status","opened");call.resolve(out);
  }catch(Exception failure){call.reject("Android notification access settings are unavailable");}}
  @PluginMethod public void notificationHistory(PluginCall call){try{foreground();JSObject out=new JSObject();out.put("items",new JSArray(requireMirror().history(getContext()).toString()));call.resolve(out);}catch(Exception failure){call.reject("Local notification history is unavailable");}}
- @PluginMethod public void clearNotificationHistory(PluginCall call){try{foreground();requireMirror().clearHistoryBoundary(getContext());call.resolve();}catch(Exception failure){call.reject("Local notification history could not be cleared");}}
+ @PluginMethod public void clearNotificationHistory(PluginCall call){try{foreground();requireMirror().clearHistoryBoundary(getContext(),call.getString("expectedRevision"));call.resolve();}catch(Exception failure){call.reject("Local notification history could not be cleared");}}
 
  /** Own rows (newest first), then the newest allowed cross-app rows. A mirror failure leaves only own rows. */
  @PluginMethod public void list(PluginCall call){try{
