@@ -392,6 +392,7 @@ it.live(`Take a photo, open a view, read a Maps place, find and share photos and
       { operation: { type: "camera_capture_photo" }, bound: false, state: "pending" },
       { operation: { type: "camera_capture_photo" }, bound: true, state: "done" },
       { operation: { type: "camera_capture_photo" }, bound: true, state: "done" },
+      { operation: { type: "create_note", title: "Bread", body: "Buy bread" }, bound: false, state: "pending" },
       { operation: { type: "create_note", title: "Summary", body: "The page lists three deadlines in March." }, bound: false, state: "pending" },
       { operation: { type: "create_note", title: "Milk", body: "Buy milk" }, bound: true, state: "done" },
       { operation: { type: "maps_read_selected", target: { kind: "map-place", id: "maps_0f8fad5b-d9cb-469f-a165-70867728950e", revision: "7" } }, bound: false, state: "pending" },
