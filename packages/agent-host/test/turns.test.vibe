@@ -28,7 +28,7 @@ interface Reply {
 module node {
   import { randomUUID } from "node:crypto"
   import { Effect } from "effect"
-  import { ChannelType, conversationClientUserMemoryId, EventType, hashStableJson, systemNoticeText, type Action, type ActionResult, type AgentRuntime, type EffectReceipt, type Memory, type RunEventPayload, type UUID } from "@elizaos/core"
+  import { ChannelType, conversationClientUserMemoryId, EventType, hashStableJson, OWNER_EXCLUSIVE_DISCLOSURE_GATE, stringToUuid, systemNoticeText, type Action, type ActionResult, type AgentRuntime, type EffectReceipt, type Memory, type RunEventPayload, type UUID } from "@elizaos/core"
   import type { CloudFake } from "./support/cloud-fake.ts"
   import type { AgentPlugin, ModuleFactory } from "../src/host/module.vibe"
   import { builtinModuleFactories } from "../src/plugins/profile.vibe"
@@ -76,6 +76,60 @@ module node {
     return new Map([...builtinModuleFactories, [name, factory]])
   }
   import { request, type LocalAnswer, type Refusal } from "./support/socket-client.ts"
+
+  export const privateAgenda = "Dentist tomorrow at 9 AM."
+  const privateReads = { count: 0 }
+
+  /** @throws {never} */
+  export function privateReadCount(): number {
+    return privateReads.count
+  }
+
+  /** @throws {never} */
+  export function privateReader(name: string): ReadonlyMap<string, ModuleFactory<never>> {
+    const factory: ModuleFactory<never> = () => Effect.sync(() => ({
+      name,
+      plugin: {
+        name, description: "Reads the owner's private agenda for the owner-audience journey",
+        actions: [{
+          name: "READ_AGENDA", description: "Reads the owner's private agenda for tomorrow.", similes: [],
+          disclosureGate: OWNER_EXCLUSIVE_DISCLOSURE_GATE,
+          validate: async () => true,
+          handler: async () => {
+            privateReads.count += 1
+            return { success: true, text: privateAgenda }
+          },
+        }],
+      },
+    }))
+    return new Map([...builtinModuleFactories, [name, factory]])
+  }
+
+  /** @throws {never} */
+  export function failParticipantLookupOnce(runtime: AgentRuntime): void {
+    const lookup = runtime.getParticipantsForRoom.bind(runtime)
+    let failing = true
+    runtime.getParticipantsForRoom = async (roomId) => {
+      if (!failing) return lookup(roomId)
+      failing = false
+      throw new Error("The participant lookup failed")
+    }
+  }
+
+  export async function handedDirectly(runtime: AgentRuntime, speaker: "owner" | "stranger", ownerRoom: UUID): Promise<void> {
+    const service = runtime.messageService
+    if (service === null || service === undefined) throw new Error("The agent has no message service")
+    const [asked] = (await roomMessages(runtime, ownerRoom)).filter(({ entityId }) => entityId !== runtime.agentId)
+    if (asked === undefined) throw new Error("The owner's conversation has no owner message")
+    const stranger = { entityId: stringToUuid(`stranger:${runtime.agentId}`), roomId: stringToUuid(`stranger-room:${runtime.agentId}`), worldId: stringToUuid(`stranger-world:${runtime.agentId}`) }
+    if (speaker === "stranger") {
+      await runtime.ensureConnection({ ...stranger, userName: "stranger", name: "Stranger", source: "discord", type: ChannelType.DM, channelId: stranger.roomId })
+    }
+    const from = speaker === "owner" ? { entityId: asked.entityId, roomId: ownerRoom, ...(asked.worldId === undefined ? {} : { worldId: asked.worldId }) } : stranger
+    const memory: Memory = { id: randomUUID(), ...from, agentId: runtime.agentId, createdAt: Date.now(), content: { text: "What's on my calendar tomorrow?", source: speaker === "owner" ? "device" : "discord" } }
+    await runtime.createMessageMemory(memory)
+    await service.handleMessage(runtime, memory, async () => [])
+  }
 
   const failingOnce = new Set<string>()
   const issued = { receipts: 0 }
@@ -251,7 +305,7 @@ module node {
     return text
   }
 }
-import { calendarProbe, completions, cutTurn, failNext, fixtureApp, lastTurnHistory, lastTurnPrompt, localDay, loseRoomOwnershipOnceAfterReply, movedDentist, nearestCafes, overlapping, plainLog, refuseMoves, roomMessages, seedHistory, storeNotice, unsaidMove, watchRunEnds } from node
+import { calendarProbe, completions, cutTurn, failParticipantLookupOnce, handedDirectly, privateAgenda, privateReadCount, privateReader, failNext, fixtureApp, lastTurnHistory, lastTurnPrompt, localDay, loseRoomOwnershipOnceAfterReply, movedDentist, nearestCafes, overlapping, plainLog, refuseMoves, roomMessages, seedHistory, storeNotice, unsaidMove, watchRunEnds } from node
 
 effect function runEndsOf(ends: readonly { messageId?: string, status: string }[], messageId: string | undefined) {
   for (let wait = 0; wait < 100 && !ends.some((end) => end.messageId === messageId); wait += 1) try Effect.sleep("20 millis")
@@ -445,6 +499,51 @@ it.live('The boundary refuses a malformed body, client id or voice view context,
 }, 120_000)
 
 const planning = 'spec/agent/conversation/planning.md'
+
+it.live(`An owner turn of the conversation route reads owner-private data, while a user launch's turn, a turn whose audience lookup failed and a message handed to the message service some other way are refused before the read runs (spec/agent/conversation/turns.md, "Only a turn the conversation's turn runner builds for the owner carries owner-only audience evidence, renewed only while that turn runs")`, effect () => {
+  const ask = effect (agent: InProcess, cloud: CloudFake, run: (said: string) => Effect.Effect<unknown, unknown>) => {
+    try Effect.sync(() => cloud.script(toolCalls("", { name: "READ_AGENDA", arguments: {} }), text("Here is what I found.")))
+    const reads = privateReadCount()
+    try run("What's on my calendar tomorrow?")
+    return { ran: privateReadCount() - reads, toolResult: lastTurnPrompt(cloud) }
+  }
+  const started = effect (callerRole: "owner" | "user") => {
+    const cloud = try cloudFake(deviceKey)
+    const agent = try startInProcess({
+      launch: { backend: { kind: "cloud", origin: cloud.origin }, callerRole, load: [basicActionsModuleName], allowed: ["REPLY", "IGNORE", "NONE", "READ_AGENDA"] },
+      frame: { credential: { version: 1, value: deviceKey } }, modules: privateReader(basicActionsModuleName),
+    })
+    return { cloud, agent, opened: try conversation(agent) }
+  }
+  const owner = try started("owner")
+  const routed = try ask(owner.agent, owner.cloud, (said) => send(owner.agent, owner.opened.id, { text: said }))
+  const runtime = owner.agent.agent.runtime
+  const ownerDirect = try ask(owner.agent, owner.cloud, () => host("owner message handed directly", () => handedDirectly(runtime, "owner", owner.opened.roomId)))
+  const stranger = try ask(owner.agent, owner.cloud, () => host("stranger message handed directly", () => handedDirectly(runtime, "stranger", owner.opened.roomId)))
+  const routedAgain = try ask(owner.agent, owner.cloud, (said) => send(owner.agent, owner.opened.id, { text: said }))
+  try Effect.sync(() => failParticipantLookupOnce(runtime))
+  let failedReply = ""
+  const lookupFailed = try ask(owner.agent, owner.cloud, effect (said) => {
+    failedReply = replyOf(try send(owner.agent, owner.opened.id, { text: said })).text
+  })
+  const user = try started("user")
+  const userRouted = try ask(user.agent, user.cloud, (said) => send(user.agent, user.opened.id, { text: said }))
+  const seen = (asked: { readonly ran: number; readonly toolResult: string }) => ({
+    ran: asked.ran, read: asked.toolResult.includes(privateAgenda),
+    denied: /Owner-private disclosure denied: (\w+)/.exec(asked.toolResult)?.[1] ?? "",
+  })
+  try Effect.try(() => assert.deepStrictEqual(
+    { routed: seen(routed), ownerDirect: seen(ownerDirect), stranger: seen(stranger), routedAgain: seen(routedAgain), lookupFailed: { ...seen(lookupFailed), replied: failedReply.trim() !== "" }, userRouted: seen(userRouted) },
+    {
+      routed: { ran: 1, read: true, denied: "" },
+      ownerDirect: { ran: 0, read: false, denied: "missing_attestation" },
+      stranger: { ran: 0, read: false, denied: "missing_attestation" },
+      routedAgain: { ran: 1, read: true, denied: "" },
+      lookupFailed: { ran: 0, read: false, denied: "missing_attestation", replied: true },
+      userRouted: { ran: 0, read: false, denied: "owner_mismatch" },
+    },
+  ))
+}, 120_000)
 
 it.live(`An explicit calculator command is planned by the model, and nothing runs before the model has seen it (${planning}, "Every call of a turn is one the model chose, and a call this message serves in another place is refused before it runs and is no step of the turn")`, effect () => {
   const cloud = try cloudFake(deviceKey)
@@ -756,9 +855,11 @@ it.live(`A current-time question hears the phone's clock, else the owner's launc
     inventedCalls,
     inventedNote: inventedNote.includes("the reply stated one this turn's clock did not observe. The clock reads ") && inventedNote.includes(today.tokyo.monthDay),
     phoneClock: phonePrompt.includes(`Local date: ${today.tokyo.date} (Asia/Tokyo). `),
+    phoneDays: phonePrompt.includes(`Today in Asia/Tokyo is ${today.tokyo.weekday} ${today.tokyo.date}. Next 7 days: ${[1, 2, 3, 4, 5, 6, 7].map((ahead) => localDay("Asia/Tokyo", ahead)).map(({ weekday, date }) => `${weekday} ${date}`).join(", ")}.`),
     clause: [clause.text, clauseCalls],
     launched: [launched.text, launchedCalls],
     launchClock: launchPrompt.includes(`Local date: ${today.home.date} (America/New_York). `),
+    launchToday: launchPrompt.includes(`Today in America/New_York is ${today.home.weekday} ${today.home.date}. Next 7 days: `),
     saidOnThePhoneClock: saidIn(phoneHistory).slice(0, dated.length),
     saidOnTheLaunchClock: saidIn(launchHistory).slice(0, dated.length),
     saidThisYear: /^\[message_at=\d{2}-\d{2} \d{2}:\d{2}\] What time is it now\?$/.test(saidIn(phoneHistory)[dated.length] ?? ""),
@@ -769,9 +870,11 @@ it.live(`A current-time question hears the phone's clock, else the owner's launc
     inventedCalls: 2,
     inventedNote: true,
     phoneClock: true,
+    phoneDays: true,
     clause: [`It's ${awayTokyo.weekday}.`, 1],
     launched: [`Today is ${today.home.weekday}.`, 2],
     launchClock: true,
+    launchToday: true,
     saidOnThePhoneClock: [
       "[message_at=2025-01-01 13:30] New Year's Eve.", "[message_at=2025-03-09 16:30] Spring.", "[message_at=2025-11-02 14:30] First 1:30.",
       "[message_at=2025-11-02 15:30] Second 1:30.", "[message_at=2025-11-02 16:30] After.", "[message_at=2025-11-20 13:59] Before midnight.",

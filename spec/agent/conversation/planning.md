@@ -823,9 +823,16 @@ carry one line, to the minute, so every turn inside one minute sees the same
 text and the system prompt stays the same for the whole conversation. The owner's
 local clock reads `Local date: <YYYY-MM-DD> (<zone>). <full date and
 time>. Resolve today/tomorrow from this local date, not the UTC date. UTC
-instant: <YYYY-MM-DDTHH:MM>Z`. Any other clock reads `Agent time` for the
+instant: <YYYY-MM-DDTHH:MM>Z.` Any other clock reads `Agent time` for the
 launch zone or `Server time` for the host's, then the full date and time,
 the zone and the UTC instant, and says the user's timezone is unknown.
+Every clock line ends with the days in its zone: `Today in <zone> is
+<weekday> <YYYY-MM-DD>. Next 7 days: <weekday> <YYYY-MM-DD>, …`, the seven
+dates after today, each with its weekday, so a weekday the person names in
+the coming week is a date the model reads rather than one it counts out. The
+zone is named because a clock other than the owner's local one may not be
+the person's day. The days are context for the model; the shell does not
+read the person's words for a day.
 
 ```quint
 type ZoneOrigin = PhoneZone | LaunchZone | HostZone
