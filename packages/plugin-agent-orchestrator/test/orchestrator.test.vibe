@@ -1,9 +1,134 @@
-// spec/agentOrchestrator/index.md, "Story: Direct an authorized task to the intended subagent and evaluate its result"
-import { assert, it } from "@effect/vitest"
-import { ChildAgentSessions, ChildSessionFailure, sendChildDirective, type ChildSession } from "../src/index.vibe"
-import type { PeerDirective } from "../gen/agentOrchestrator.effect.vibe"
+// spec/agentOrchestrator/index.md, "Story: Direct an authorized task to the intended subagent and evaluate its result"; spec/agentOrchestrator/taskLifecycle.md, "Story: Track an orchestrated coding task from creation through verified completion"; spec/agentOrchestrator/sessionAdmission.md, "Story: Admit coding agent sessions within concurrency, disk, and spend limits"; spec/agentOrchestrator/routerGuard.md, "Story: Bound subagent round-trips, deduplicate completion relays, and dispatch streaming parent directives once"; spec/agentOrchestrator/verification.md, "Story: Verify subagent deliverables against concrete evidence and route fast evaluations cleanly"; spec/agentOrchestrator/lanesAndRouting.md, "Story: Route coding tasks to authorized adapters, coordinate parallel lanes safely, and compact context within budget"
+module node {
+  import { execFileSync } from "node:child_process"
+  import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
+  import * as os from "node:os"
+  import * as path from "node:path"
 
-const child = (label: string, running: boolean): ChildSession => ({ childId: label.toLowerCase(), sessionId: `${label.toLowerCase()}-session`, label, running })
+  /** @throws {never} */
+  export function makeTempDir(prefix: string): string {
+    return mkdtempSync(path.join(os.tmpdir(), prefix))
+  }
+
+  /** @throws {never} */
+  export function writeTempFile(dir: string, rel: string, content: string): string {
+    const target = path.join(dir, rel)
+    writeFileSync(target, content, "utf8")
+    return target
+  }
+
+  /** @throws {never} */
+  export function removeTempDir(dir: string): void {
+    rmSync(dir, { recursive: true, force: true })
+  }
+
+  /** @throws {never} */
+  export function initTempGitRepo(dir: string): string {
+    execFileSync("git", ["init", "-b", "main"], { cwd: dir, stdio: "ignore" })
+    execFileSync("git", ["config", "user.name", "Test Agent"], { cwd: dir, stdio: "ignore" })
+    execFileSync("git", ["config", "user.email", "test@example.com"], { cwd: dir, stdio: "ignore" })
+    writeFileSync(path.join(dir, "README.md"), "# demo\n", "utf8")
+    execFileSync("git", ["add", "-A"], { cwd: dir, stdio: "ignore" })
+    execFileSync("git", ["commit", "-m", "initial"], { cwd: dir, stdio: "ignore" })
+    return dir
+  }
+}
+import { initTempGitRepo, makeTempDir, removeTempDir, writeTempFile } from node
+import { assert, it } from "@effect/vitest"
+import { MESSAGE_SOURCE_SUB_AGENT, type IAgentRuntime, type Memory, type State, type UUID } from "@elizaos/core"
+import type { PeerDirective } from "../gen/agentOrchestrator.effect.vibe"
+import {
+  ACP_SUBPROCESS_SERVICE_TYPE,
+  CODING_WORKSPACE_SERVICE_TYPE,
+  ORCHESTRATOR_TASK_SERVICE_TYPE,
+  SUB_AGENT_ROUTER_SERVICE_TYPE,
+  SUBSCRIPTION_EXECUTION_AUTHORIZATION_METADATA_KEY,
+  TASK_WATCHDOG_SERVICE_TYPE,
+  WAVE_SUPERVISOR_SERVICE_TYPE,
+  AcpService,
+  ChildAgentSessions,
+  ChildSessionFailure,
+  CodingWorkspaceService,
+  CuratedCodingMemoryStore,
+  InProcessAcpTransport,
+  OrchestratorTaskService,
+  SubAgentInbox,
+  SubAgentRouter,
+  SwarmCoordinatorService,
+  TASK_AUDIT_EVENT,
+  TaskWatchdogService,
+  WaveSupervisor,
+  activeSubAgentsProvider,
+  activeWorkspaceContextProvider,
+  agentOrchestratorPlugin,
+  assertSafeGitRef,
+  assertSafeGitRemote,
+  assertSubscriptionCodingAdapterReady,
+  assertUrlAllowed,
+  availableAgentsProvider,
+  buildCacheStableOrchestratorPrefix,
+  buildPromotedTaskActions,
+  captureGitBaseline,
+  captureWorkspaceChangeSet,
+  classifyIpLiteral,
+  codingAgentExamplesProvider,
+  codingSessionChangesProvider,
+  collectCompletionResiduals,
+  collectFsObservedFiles,
+  compactContextWindow,
+  createAgentOrchestratorPlugin,
+  createCredentialBridgeToken,
+  createDeterministicLanePlan,
+  createSubscriptionExecutionAuthorization,
+  decideInterruption,
+  decideSpendAuthorization,
+  deleteBuiltApp,
+  dispatchParallelBatch,
+  enforcePiProviderCredentialIsolation,
+  ensureTaskWorkdir,
+  estimateTextTokens,
+  forwardableSubAgentEnv,
+  generateDefaultAcceptanceCriteria,
+  handleCodingAgentRoutes,
+  laneReadiness,
+  listBuiltApps,
+  looksLikePersonalLifeOpsTask,
+  mineCandidatePaths,
+  orderAdmissionQueue,
+  parseCompletionEnvelope,
+  preparePiProviderRoute,
+  readOutputArtifactSlice,
+  registerBuiltApp,
+  requireTaskAgentAccess,
+  resolveCodingBackend,
+  resolveFastEvalTarget,
+  reviewDiff,
+  runFastCodeEval,
+  sanitizeCompletionRelay,
+  sendChildDirective,
+  stepParentDirectiveBuffer,
+  stripAnsi,
+  stripSubscriptionApiEnvironment,
+  subAgentCompletionResponseEvaluator,
+  subAgentFailureResponseEvaluator,
+  tasksAction,
+  truncateHead,
+  truncateTail,
+  validateLaneDependencyGraph,
+  verifyChildTask,
+  verifyClaimedFiles,
+  verifySessionBridgeToken,
+  type ChildSession,
+  type SessionInfo,
+} from "../src/index.vibe"
+
+const child = (label: string, running: boolean): ChildSession => ({
+  childId: label.toLowerCase(),
+  sessionId: `${label.toLowerCase()}-session`,
+  label,
+  running,
+})
+
 const rooms: Readonly<Record<string, readonly ChildSession[]>> = {
   crowded: [child("Ada", true), child("Bob", true)],
   korean: [child("민수", false), child("Bob", true)],
@@ -17,6 +142,28 @@ function childSessions(heard: string[]) {
     effect cancel(sessionId: string) { heard.push(`cancel ${sessionId}`) },
     effect evidence(taskKey: string) { throw new ChildSessionFailure({ childId: taskKey, reason: "no evidence in this journey" }) },
   })
+}
+
+function makeMockRuntime(services: Readonly<Record<string, unknown>>, settings: Readonly<Record<string, unknown>> = {}): IAgentRuntime {
+  const registeredContexts: unknown[] = []
+  return {
+    agentId: "00000000-0000-0000-0000-000000000001" as UUID,
+    character: { name: "Eliza", settings: settings as Record<string, unknown> },
+    getService: (type: string) => services[type] ?? null,
+    getSetting: (key: string) => (typeof settings[key] === "string" ? settings[key] : null),
+    contexts: { tryRegister: (ctx: unknown) => { registeredContexts.push(ctx) } },
+  } as unknown as IAgentRuntime
+}
+
+function makeMessage(text: string, extra?: Partial<Memory>): Memory {
+  return {
+    id: "00000000-0000-0000-0000-000000000002" as UUID,
+    entityId: "00000000-0000-0000-0000-000000000003" as UUID,
+    agentId: "00000000-0000-0000-0000-000000000001" as UUID,
+    roomId: "00000000-0000-0000-0000-000000000004" as UUID,
+    content: { text, ...(extra?.content ?? {}) },
+    ...(extra ?? {}),
+  } as Memory
 }
 
 it.effect('Stop or direct only the subagents a message names or @-mentions, and every subagent for a mention none of them answers to (spec/agentOrchestrator/index.md, "Story: Direct an authorized task to the intended subagent and evaluate its result"; spec/agentOrchestrator/index.md, "A named target receives the directive without affecting other subagents"; spec/agentOrchestrator/index.md, "An @-mention of a subagent addresses only the subagents it mentions")', effect () => {
@@ -63,4 +210,440 @@ it.effect('Stop or direct only the subagents a message names or @-mentions, and 
     { touched: ["bob"], heard: ["cancel bob-session"] },
     { touched: ["bob"], heard: ["send bob-session: Ada, rename the button"] },
   ]))
+})
+
+it.effect('Durable 9-status task lifecycle enforces coordinator authority, bounded retries, Reflexion reflections, human override evidence, and generation monotonicity (spec/agentOrchestrator/taskLifecycle.md, "Story: Track an orchestrated coding task from creation through verified completion"; spec/agentOrchestrator/taskLifecycle.md, "A task transitions only along valid lifecycle edges and respects coordinator authority"; spec/agentOrchestrator/taskLifecycle.md, "Verification and crash retries are strictly bounded and archive or reopen preserve generation monotonicity"; spec/agentOrchestrator/index.md, "A task can pass its acceptance gate only with evidence for every required criterion")', effect () => {
+  const tasks = new OrchestratorTaskService()
+  const created = tasks.createTask({ title: "Migrate auth", goal: "Migrate auth service and pass unit tests" })
+  const taskId = created.task.id
+  tasks.attachSession(taskId, { id: "coord-1", agentType: "pi-agent", label: "Ada", status: "ready", workdir: "/tmp/w" })
+  tasks.attachSession(taskId, { id: "contrib-1", agentType: "claude", label: "Bob", status: "ready", workdir: "/tmp/w" })
+  const contribAttempt = tasks.reportSessionCompletion(taskId, "contrib-1", "done by contributor") catch () => undefined
+  const coordEntered = try tasks.reportSessionCompletion(taskId, "coord-1", "all auth tests pass")
+  const overrideNoEvidence = tasks.validateTaskEffect(taskId, { passed: true, humanOverride: true }) catch () => undefined
+  const firstFail = try tasks.validateTaskEffect(taskId, { passed: false, summary: "missing migration test", missing: ["migration_test"] })
+  try tasks.reportSessionCompletion(taskId, "coord-1", "added migration test")
+  const auto = try tasks.autoValidateTaskEffect(taskId, {
+    changedFiles: ["src/auth.ts"],
+    diffExcerpt: "+export const ok = true",
+    testSummary: "12 passed",
+  })
+  const reopened = try tasks.reopenTaskEffect(taskId)
+  const archived = try tasks.archiveTaskEffect(taskId)
+  const handoff = tasks.buildShiftHandoff(taskId, "verify deployment")
+  let evidenceCheck: string = ""
+  provide Layer.succeed(ChildAgentSessions, {
+    effect list() { return [] },
+    effect send() { return },
+    effect cancel() { return },
+    effect evidence(taskKey: string, generation: number) {
+      return { taskId: taskKey, evaluatedGeneration: generation, provedCriteria: ["tests"], executionSucceeded: true }
+    },
+  }) {
+    evidenceCheck = try verifyChildTask({ taskKey: taskId, taskGeneration: reopened.task.lifecycle.generation, requiredCriteria: ["tests"] })
+  }
+  try Effect.try(() => {
+    assert.strictEqual(contribAttempt, undefined)
+    assert.strictEqual(coordEntered.task.status, "validating")
+    assert.strictEqual(overrideNoEvidence, undefined)
+    assert.strictEqual(firstFail.task.status, "active")
+    assert.strictEqual(firstFail.task.lifecycle.autoVerifyAttempts, 1)
+    assert.strictEqual(auto.task.task.status, "done")
+    assert.strictEqual(reopened.task.status, "open")
+    assert.strictEqual(reopened.task.lifecycle.generation, 2)
+    assert.strictEqual(archived.task.status, "archived")
+    assert.strictEqual(archived.task.archived, true)
+    assert.ok(handoff && handoff.estimatedTokens > 0)
+    assert.strictEqual(evidenceCheck, "ReadyForReview")
+  })
+})
+
+it.effect('ACP session admission enforces concurrency caps, priority-FIFO aging queue, spend allowance, disk backpressure, and subscription attendance TTL (spec/agentOrchestrator/sessionAdmission.md, "Story: Admit coding agent sessions within concurrency, disk, and spend limits"; spec/agentOrchestrator/sessionAdmission.md, "Active workers and queued admissions stay within configured bounds"; spec/agentOrchestrator/sessionAdmission.md, "Disk budget, spend allowance, and subscription attendance fail closed")', effect () => {
+  const capturedEnvs: Record<string, string>[] = []
+  const spyTransport = {
+    id: "spy",
+    spawn(_session: SessionInfo, env: Record<string, string>) {
+      capturedEnvs.push({ ...env })
+      return { ok: true }
+    },
+    async prompt(session: SessionInfo, input: string) {
+      return { output: `once:${session.label}:${input}`, stopReason: "end_turn" }
+    },
+    async cancel() { return },
+    async close() { return },
+  }
+  const acp = new AcpService(undefined, { transport: spyTransport })
+  const s1 = try acp.spawnSessionEffect({
+    agentType: "pi-agent",
+    providerRoute: "cerebras-fast",
+    workdir: "/tmp/p1",
+    label: "Ada",
+    task: "lint",
+    env: { CEREBRAS_API_KEY: "cb-live", ANTHROPIC_API_KEY: "ant-leaked-secret" },
+  })
+  const s2 = try acp.spawnSessionEffect({ agentType: "claude", workdir: "/tmp/p2", label: "Bob", task: "test" })
+  const s3 = try acp.spawnSessionEffect({ agentType: "codex", workdir: "/tmp/p3", label: "Cora", priority: "urgent" })
+  const capBeforeStop = acp.getCapacity()
+  const outputLinesS1 = acp.getSessionOutput(s1.sessionId).split("\n").filter(Boolean)
+  try tryPromise(() => acp.stopSession(s1.sessionId))
+  const capAfterStop = acp.getCapacity()
+  const activeSessionsAfterStop = acp.listSessions().filter((s) => s.status !== "stopped" && s.status !== "cancelled" && s.status !== "completed" && s.status !== "errored")
+  const ordered = orderAdmissionQueue([
+    { id: "q-low-old", priority: "low", enqueuedAtMs: 0, spawnOptions: { workdir: "/tmp" } },
+    { id: "q-normal-new", priority: "normal", enqueuedAtMs: 120_000, spawnOptions: { workdir: "/tmp" } },
+    { id: "q-urgent-new", priority: "urgent", enqueuedAtMs: 120_000, spawnOptions: { workdir: "/tmp" } },
+  ], 150_000, 30_000)
+  const overCapSpend = decideSpendAuthorization({ spentUsd: 9, estimatedUsd: 2, capUsd: 10, highRisk: false, userApproved: false })
+  const highRiskSpend = decideSpendAuthorization({ spentUsd: 1, estimatedUsd: 1, capUsd: 10, highRisk: true, userApproved: false })
+  const now = 1_700_000_000_000
+  const validAuth = createSubscriptionExecutionAuthorization("req-1", "user-1", now)
+  const kimiOk = assertSubscriptionCodingAdapterReady("kimi", "user-attended", { [SUBSCRIPTION_EXECUTION_AUTHORIZATION_METADATA_KEY]: validAuth }, now + 5_000) catch () => "failed"
+  const kimiExpired = assertSubscriptionCodingAdapterReady("kimi", "user-attended", { [SUBSCRIPTION_EXECUTION_AUTHORIZATION_METADATA_KEY]: validAuth }, now + 200_000) catch () => "failed"
+  const strippedKimiEnv = stripSubscriptionApiEnvironment("kimi", { KIMI_CODE_HOME: "/home/k", MOONSHOT_API_KEY: "secret", PATH: "/bin" })
+  const bridge = createCredentialBridgeToken()
+  const tokenOk = verifySessionBridgeToken(bridge.token, { credentialBridgeTokenHash: bridge.hash })
+  const tokenBad = verifySessionBridgeToken("wrong", { credentialBridgeTokenHash: bridge.hash })
+  const ssrfBlocked = assertUrlAllowed("http://169.254.169.254/latest/meta-data") catch () => "blocked"
+  const ssrfIpv6MappedBlocked = assertUrlAllowed("http://[::ffff:169.254.169.254]/latest/meta-data") catch () => "blocked"
+  const ssrfIpv6LinkLocalBlocked = assertUrlAllowed("http://[fe90::1]/secret") catch () => "blocked"
+  const ssrfNat64Blocked = assertUrlAllowed("http://[64:ff9b::169.254.169.254]/") catch () => "blocked"
+  const ssrfBenchmarkBlocked = assertUrlAllowed("http://198.18.0.1/") catch () => "blocked"
+  const unsafeRemote = assertSafeGitRemote("--upload-pack=sh") catch () => "blocked"
+  const unsafeRef = assertSafeGitRef("../bad") catch () => "blocked"
+  const unknownRoleAccess = requireTaskAgentAccess("STRANGER", "create")
+  const envForwarded = forwardableSubAgentEnv({ PATH: "/bin", GITHUB_TOKEN: "ghp_secret", OPENCODE_CONFIG_CONTENT: "x", CEREBRAS_API_KEY: "cb-1" })
+  try Effect.try(() => {
+    assert.strictEqual(s1.queued, undefined)
+    assert.strictEqual(s2.queued, undefined)
+    assert.strictEqual(s3.queued, true)
+    assert.strictEqual(capturedEnvs[0]?.CEREBRAS_API_KEY, "cb-live")
+    assert.strictEqual(capturedEnvs[0]?.ANTHROPIC_API_KEY, undefined)
+    assert.strictEqual(outputLinesS1.length, 1)
+    assert.strictEqual(capBeforeStop.activeWorkers, 2)
+    assert.strictEqual(capBeforeStop.queuedCount, 1)
+    assert.strictEqual(capAfterStop.activeWorkers, 2)
+    assert.strictEqual(capAfterStop.queuedCount, 0)
+    assert.strictEqual(acp.admissionQueue.length, 0)
+    assert.strictEqual(activeSessionsAfterStop.length, 2)
+    assert.strictEqual(ordered[0]?.id, "q-low-old")
+    assert.strictEqual(overCapSpend.verdict, "SpendDenyCap")
+    assert.strictEqual(highRiskSpend.verdict, "SpendRequireApproval")
+    assert.notStrictEqual(kimiOk, "failed")
+    assert.strictEqual(kimiExpired, "failed")
+    assert.strictEqual(strippedKimiEnv.MOONSHOT_API_KEY, undefined)
+    assert.strictEqual(tokenOk, true)
+    assert.strictEqual(tokenBad, false)
+    assert.strictEqual(ssrfBlocked, "blocked")
+    assert.strictEqual(ssrfIpv6MappedBlocked, "blocked")
+    assert.strictEqual(ssrfIpv6LinkLocalBlocked, "blocked")
+    assert.strictEqual(ssrfNat64Blocked, "blocked")
+    assert.strictEqual(ssrfBenchmarkBlocked, "blocked")
+    assert.strictEqual(classifyIpLiteral("::ffff:a9fe:a9fe"), "metadata")
+    assert.strictEqual(classifyIpLiteral("fe90::1"), "link-local")
+    assert.strictEqual(unsafeRemote, "blocked")
+    assert.strictEqual(unsafeRef, "blocked")
+    assert.strictEqual(unknownRoleAccess.allowed, false)
+    assert.strictEqual(envForwarded.GITHUB_TOKEN, undefined)
+    assert.strictEqual(envForwarded.OPENCODE_CONFIG_CONTENT, undefined)
+    assert.strictEqual(envForwarded.CEREBRAS_API_KEY, "cb-1")
+  })
+})
+
+it.effect('Router loop guard bounds round-trips and deduplicates completion relays while streaming parent directives and interruptions classify cleanly (spec/agentOrchestrator/routerGuard.md, "Story: Bound subagent round-trips, deduplicate completion relays, and dispatch streaming parent directives once"; spec/agentOrchestrator/routerGuard.md, "Router round-trips, state-lost respawns, and completion relays obey strict caps"; spec/agentOrchestrator/routerGuard.md, "Streaming parent directives are buffered across chunks and malformed markers never block later directives"; spec/agentOrchestrator/routerGuard.md, "Mid-turn room messages classify cleanly into ignore, queue, interrupt, or new task")', effect () => {
+  const router = new SubAgentRouter()
+  for (let i = 0; i < 4; i += 1) router.advanceRoundTrip("sess-1")
+  const exceeded = router.advanceRoundTrip("sess-1")
+  const firstClaim = router.claimCompletionPost("sess-1")
+  const dupClaim = router.claimCompletionPost("sess-1")
+  const step1 = stepParentDirectiveBuffer(false, "", 'Mention USE_SKILL parent-agent in prose. USE_SKILL parent-agent {"command":"cloud.health",')
+  const step2 = stepParentDirectiveBuffer(step1.pendingAfter, step1.buffer, '"params":{"ok":true}} trailing')
+  const busyStop = decideInterruption({ addressed: true, sessionBusy: true, text: "stop right now" })
+  const busyFollowUp = decideInterruption({ addressed: true, sessionBusy: true, text: "also update the readme" })
+  const ambient = decideInterruption({ addressed: true, sessionBusy: true, text: "nice" })
+  const inbox = new SubAgentInbox(2)
+  inbox.enqueue("sess-1", "m1")
+  inbox.enqueue("sess-1", "m2")
+  inbox.enqueue("sess-1", "m3")
+  const drained = inbox.drain("sess-1")
+  try Effect.try(() => {
+    assert.strictEqual(exceeded.lastDecision, "LoopCapExceeded")
+    assert.strictEqual(firstClaim.claimed, true)
+    assert.strictEqual(dupClaim.claimed, false)
+    assert.strictEqual(step1.pendingAfter, true)
+    assert.strictEqual(step1.dispatched.length, 0)
+    assert.strictEqual(step2.pendingAfter, false)
+    assert.strictEqual(step2.dispatched[0]?.command, "cloud.health")
+    assert.strictEqual(busyStop, "InterruptionInterrupt")
+    assert.strictEqual(busyFollowUp, "InterruptionNewTask")
+    assert.strictEqual(ambient, "InterruptionIgnore")
+    assert.deepStrictEqual(drained, ["m2", "m3"])
+    assert.strictEqual(inbox.droppedCount(), 1)
+  })
+})
+
+it.effect('Verification pipeline enforces sentence-end path mining, claimed-file ledger, residuals, diff secrets, Cerebras fast-eval routing, and memory redaction (spec/agentOrchestrator/verification.md, "Story: Verify subagent deliverables against concrete evidence and route fast evaluations cleanly"; spec/agentOrchestrator/verification.md, "Sentence-end punctuation keeps named files while longer names are never truncated"; spec/agentOrchestrator/verification.md, "Claimed edits, completion residuals, and diff secrets enforce fail-closed verification"; spec/agentOrchestrator/verification.md, "Bounded verification and classification tasks route to fast low-latency evaluators")', effect () => {
+  const dir = makeTempDir("orch-verify-")
+  const started = Date.now() - 2_000
+  writeTempFile(dir, "index.html", "<h1>ok</h1>")
+  const mined = mineCandidatePaths("Wrote data/apps/echo/index.html. Also checked (src/app.ts).")
+  const fsObserved = try collectFsObservedFiles(dir, ["Created ./index.html!"], started)
+  const fsLongerNotMatched = try collectFsObservedFiles(dir, ["Created ./index.htmlbak"], started)
+  removeTempDir(dir)
+  const claimedPass = verifyClaimedFiles(["src/a.ts"], ["src/a.ts", "src/b.ts"])
+  const claimedBlock = verifyClaimedFiles(["src/a.ts", "src/ghost.ts"], ["src/a.ts"])
+  const residualsClean = collectCompletionResiduals({ uncommittedFiles: ["AGENTS.md"], ownedArtifacts: ["AGENTS.md"], failedChecks: [] })
+  const residualsBlocked = collectCompletionResiduals({ uncommittedFiles: ["src/dirty.ts"], failedChecks: ["vitest"] })
+  const diffSecretBlocked = reviewDiff({ changedFiles: ["src/a.ts"], diff: "+const k = 'sk-123456789012345678901234567890';" })
+  const diffClean = reviewDiff({ changedFiles: ["src/a.ts"], diff: "+export const ok = 1;" })
+  const criteria = generateDefaultAcceptanceCriteria("Fix login", ["Unnamed file check", "Keep auth green", "Keep auth green"])
+  const envelope = parseCompletionEnvelope('```completion-envelope\n{"status":"completed","summary":"Fixed","changedFiles":["src/a.ts"],"tests":[{"command":"vitest","passed":true,"exitCode":0}],"criteria":[{"criterion":"tests","satisfied":true}]}\n```')
+  const cerebrasRoute = resolveFastEvalTarget("EvalDiffCheck", { CEREBRAS_API_KEY: "cb-test" })
+  const archRoute = resolveFastEvalTarget("EvalArchitecturePlan", { CEREBRAS_API_KEY: "cb-test" })
+  const evalFallback = try runFastCodeEval({ kind: "EvalDigestSummary", systemPrefix: "sys", userPayload: "diff", env: {} })
+  const mem = new CuratedCodingMemoryStore()
+  const note = mem.harvestVerifiedTask("elizaos/eliza", "task-1", "Never leak sk-abcdefghijklmnopqrstuv in logs")
+  try Effect.try(() => {
+    assert.ok(mined.includes("data/apps/echo/index.html"))
+    assert.ok(mined.includes("src/app.ts"))
+    assert.deepStrictEqual(fsObserved, ["./index.html"])
+    assert.deepStrictEqual(fsLongerNotMatched, [])
+    assert.strictEqual(claimedPass.passed, true)
+    assert.strictEqual(claimedBlock.passed, false)
+    assert.strictEqual(residualsClean.passed, true)
+    assert.strictEqual(residualsBlocked.passed, false)
+    assert.strictEqual(diffSecretBlocked.passed, false)
+    assert.strictEqual(diffClean.passed, true)
+    assert.ok(criteria.length >= 3)
+    assert.ok(!criteria.some((c) => c.toLowerCase().includes("unnamed file")))
+    assert.strictEqual(envelope?.status, "completed")
+    assert.strictEqual(cerebrasRoute.lane, "LaneCerebrasFast")
+    assert.strictEqual(archRoute.lane, "LaneTextLarge")
+    assert.strictEqual(evalFallback.lane, "LaneTextSmall")
+    assert.ok(note.lesson.includes("[REDACTED]"))
+  })
+})
+
+it.effect('Backend routing, Pi credential isolation, multi-lane waves, real git worktrees, TASKS actions, providers, evaluators, routes, and optimization metrics work end to end (spec/agentOrchestrator/lanesAndRouting.md, "Story: Route coding tasks to authorized adapters, coordinate parallel lanes safely, and compact context within budget"; spec/agentOrchestrator/lanesAndRouting.md, "Backend routing follows strict precedence while honoring operator allow-lists"; spec/agentOrchestrator/lanesAndRouting.md, "Multi-lane wave execution prevents scope collisions and enforces concurrency and budget caps"; spec/agentOrchestrator/lanesAndRouting.md, "Output truncation and shift-handoff compaction keep context within token budgets")', effect () => {
+  const routed = resolveCodingBackend({
+    explicit: "claude",
+    plannerGuess: "pi-agent",
+    env: { ELIZA_BACKEND_ROUTING: JSON.stringify({ allow: ["pi-agent", "elizaos"], default: "pi-agent" }) },
+  })
+  const piPrep = preparePiProviderRoute("cerebras-fast", {
+    CEREBRAS_API_KEY: "cb-live",
+    ANTHROPIC_API_KEY: "ant-foreign",
+    OPENAI_API_KEY: "oa-foreign",
+  })
+  const isolated = enforcePiProviderCredentialIsolation("cerebras-fast", { CEREBRAS_API_KEY: "cb-live", ANTHROPIC_API_KEY: "ant-foreign" })
+  const plan = createDeterministicLanePlan({
+    parts: ["Refactor packages/a/src/x.ts", "Update packages/a/src/x.ts", "Add packages/b/src/y.ts"],
+    dependencies: { "lane-3": ["lane-1"] },
+    maxParallel: 2,
+  })
+  const dagValid = validateLaneDependencyGraph(plan.lanes)
+  const lane2Collision = laneReadiness(plan.lanes[1]!, new Set(), [plan.lanes[0]!])
+  const lane3Waiting = laneReadiness(plan.lanes[2]!, new Set(), [plan.lanes[0]!])
+  const waves = new WaveSupervisor()
+  const w1 = try waves.stepWave("wave-1", { type: "launchLane", laneCost: 2 })
+  const w2 = try waves.stepWave("wave-1", { type: "launchLane", laneCost: 2 })
+  const repoDir = initTempGitRepo(makeTempDir("orch-repo-"))
+  const wsRoot = makeTempDir("orch-ws-")
+  const wsService = new CodingWorkspaceService(undefined, { rootDir: wsRoot })
+  const ws = try wsService.provisionWorkspaceEffect({ repo: "local/demo", baseBranch: "main", branchName: "feat/demo", localSourcePath: repoDir })
+  const baseline = try captureGitBaseline(ws.path)
+  writeTempFile(ws.path, "feature.ts", "export const answer = 42\n")
+  const changeSet = try captureWorkspaceChangeSet(ws.path, baseline)
+  const committed = try wsService.commitEffect(ws.id, "feat: add answer")
+  const wt = try wsService.provisionWorkspaceEffect({ repo: "local/demo", baseBranch: "main", branchName: "feat/wt", useWorktree: true, parentWorkspaceId: ws.id })
+  try wsService.removeWorkspaceEffect(wt.id)
+  try wsService.removeWorkspaceEffect(ws.id)
+  removeTempDir(repoDir)
+  removeTempDir(wsRoot)
+
+  const acp = new AcpService()
+  const tasks = new OrchestratorTaskService()
+  const router = new SubAgentRouter()
+  const watchdog = new TaskWatchdogService()
+  const swarm = new SwarmCoordinatorService()
+  const runtime = makeMockRuntime({
+    [ACP_SUBPROCESS_SERVICE_TYPE]: acp,
+    [ORCHESTRATOR_TASK_SERVICE_TYPE]: tasks,
+    [CODING_WORKSPACE_SERVICE_TYPE]: wsService,
+    [SUB_AGENT_ROUTER_SERVICE_TYPE]: router,
+    [TASK_WATCHDOG_SERVICE_TYPE]: watchdog,
+    [WAVE_SUPERVISOR_SERVICE_TYPE]: waves,
+  })
+
+  const safeActionDir = try ensureTaskWorkdir("orch-test-safe")
+  const createRes = try tryPromise(() => tasksAction.handler(runtime, makeMessage("build auth"), undefined, {
+    parameters: { action: "create", task: "Implement OAuth callback", requestedBackend: "pi-agent", providerRoute: "cerebras-fast", workdir: safeActionDir },
+  }))
+  const forbiddenWorkdirRes = try tryPromise(() => tasksAction.handler(runtime, makeMessage("escape"), undefined, {
+    parameters: { action: "spawn_agent", task: "escape", workdir: "/etc" },
+  }))
+  const dagCreateRes = try tryPromise(() => tasksAction.handler(runtime, makeMessage("dag"), undefined, {
+    parameters: {
+      action: "create",
+      agents: "Build packages/a/src/one.ts | Build packages/b/src/two.ts",
+      dependencies: { "lane-2": ["lane-1"] },
+      maxParallel: 2,
+      workdir: safeActionDir,
+    },
+  }))
+  const listRes = try tryPromise(() => tasksAction.handler(runtime, makeMessage("list"), undefined, { parameters: { action: "list_agents" } }))
+  const historyRes = try tryPromise(() => tasksAction.handler(runtime, makeMessage("history"), undefined, { parameters: { action: "history", window: "today", metric: "detail" } }))
+  const historyYesterday = try tryPromise(() => tasksAction.handler(runtime, makeMessage("history"), undefined, { parameters: { action: "history", window: "yesterday" } }))
+  const manageIssuesInvalidCreate = try tryPromise(() => tasksAction.handler(runtime, makeMessage("issue"), undefined, { parameters: { action: "manage_issues", repo: "elizaos/eliza", issueAction: "create" } }))
+  const shareRes = try tryPromise(() => tasksAction.handler(runtime, makeMessage("share"), undefined, { parameters: { action: "share" } }))
+  const spawnedId = (listRes.data as { sessions: { id: string }[] }).sessions[0]!.id
+  const sendRes = try tryPromise(() => tasksAction.handler(runtime, makeMessage("send"), undefined, { parameters: { action: "send", sessionId: spawnedId, input: "run checks" } }))
+  const taskId = (createRes.promptData as { taskId: string }).taskId
+  const pauseRes = try tryPromise(() => tasksAction.handler(runtime, makeMessage("pause"), undefined, { parameters: { action: "control", controlAction: "pause", taskId } }))
+  const archiveRes = try tryPromise(() => tasksAction.handler(runtime, makeMessage("archive"), undefined, { parameters: { action: "archive", taskId } }))
+  const reopenRes = try tryPromise(() => tasksAction.handler(runtime, makeMessage("reopen"), undefined, { parameters: { action: "reopen", taskId } }))
+  const cancelByTaskRes = try tryPromise(() => tasksAction.handler(runtime, makeMessage("cancel"), undefined, { parameters: { action: "cancel", taskId } }))
+  const acpBlocked = new AcpService(undefined, { transport: new InProcessAcpTransport() })
+  acpBlocked.setDiskBackpressure(true)
+  const blockedRuntime = makeMockRuntime({ [ACP_SUBPROCESS_SERVICE_TYPE]: acpBlocked, [ORCHESTRATOR_TASK_SERVICE_TYPE]: tasks })
+  const allLanesFailedRes = try tryPromise(() => tasksAction.handler(blockedRuntime, makeMessage("fail"), undefined, {
+    parameters: { action: "create", task: "blocked work", workdir: safeActionDir },
+  }))
+  const stopRes = cancelByTaskRes
+
+  const pAvail1 = try tryPromise(() => availableAgentsProvider.get(runtime, makeMessage("code"), {} as State))
+  const pAvail2 = try tryPromise(() => availableAgentsProvider.get(runtime, makeMessage("code"), {} as State))
+  const pActive = try tryPromise(() => activeSubAgentsProvider.get(runtime, makeMessage("code"), {} as State))
+  const pWs = try tryPromise(() => activeWorkspaceContextProvider.get(runtime, makeMessage("code"), {} as State))
+  const pEx = try tryPromise(() => codingAgentExamplesProvider.get(runtime, makeMessage("code"), {} as State))
+  acp.updateSessionMetadata(spawnedId, { lastChangeSet: { ...changeSet, capturedAt: Date.now() } })
+  const pChanges = try tryPromise(() => codingSessionChangesProvider.get(runtime, makeMessage("what changed"), {} as State))
+
+  const completionMsg = makeMessage("[tool output: bash]ok[/tool output] Done!", {
+    content: { text: "Done!", source: MESSAGE_SOURCE_SUB_AGENT, metadata: { subAgent: true, subAgentEvent: "task_complete", subAgentDeliverable: "Built auth cleanly" } },
+  })
+  const evalPatch = try tryPromise(() => Promise.resolve(subAgentCompletionResponseEvaluator.evaluate({ runtime, message: completionMsg, state: {} as State, messageHandler: { processMessage: "RESPOND", plan: { contexts: [] }, thought: "" }, availableContexts: [] })))
+  const failMsg = makeMessage("Permission denied on /root", {
+    content: { text: "Permission denied on /root", source: MESSAGE_SOURCE_SUB_AGENT, metadata: { subAgent: true, subAgentEvent: "error", subAgentLabel: "Ada" } },
+  })
+  const failPatch = try tryPromise(() => Promise.resolve(subAgentFailureResponseEvaluator.evaluate({ runtime, message: failMsg, state: {} as State, messageHandler: { processMessage: "RESPOND", plan: { contexts: [] }, thought: "" }, availableContexts: [] })))
+
+  registerBuiltApp({ target: "custom", slug: "demo", title: "Demo", url: "https://demo.example.com", createdAt: new Date().toISOString() })
+  const builtAppsCount = listBuiltApps().length
+  const routeStatus = try tryPromise(() => handleCodingAgentRoutes(runtime, { method: "GET", path: "/api/orchestrator/status" }))
+  const routeReadiness = try tryPromise(() => handleCodingAgentRoutes(runtime, { method: "GET", path: "/api/orchestrator/accounts/readiness" }))
+  const routeRooms = try tryPromise(() => handleCodingAgentRoutes(runtime, { method: "GET", path: "/api/orchestrator/rooms" }))
+  const routeApprovalCfg = try tryPromise(() => handleCodingAgentRoutes(runtime, { method: "GET", path: "/api/coding-agents/approval-config", query: { agentType: "pi-agent", preset: "verifier" } }))
+  const routePatchTask = try tryPromise(() => handleCodingAgentRoutes(runtime, { method: "PATCH", path: `/api/orchestrator/tasks/${taskId}`, body: { title: "Updated OAuth" } }))
+  const routeUsage = try tryPromise(() => handleCodingAgentRoutes(runtime, { method: "GET", path: `/api/orchestrator/tasks/${taskId}/usage` }))
+  const routeTimeline = try tryPromise(() => handleCodingAgentRoutes(runtime, { method: "GET", path: `/api/orchestrator/tasks/${taskId}/timeline` }))
+  const routeSpawnEscape = try tryPromise(() => handleCodingAgentRoutes(runtime, { method: "POST", path: "/api/coding-agents/spawn", body: { workdir: "/etc", allowedRoots: ["/"] } }))
+  const routeAlias = try tryPromise(() => handleCodingAgentRoutes(runtime, { method: "GET", path: "/api/task-agents/approval-presets" }))
+  const routeBridgeForbidden = try tryPromise(() => handleCodingAgentRoutes(runtime, { method: "GET", path: `/api/coding-agents/${spawnedId}/parent-context`, remoteAddress: "10.0.0.5" }))
+  deleteBuiltApp("custom", "demo")
+
+  const registeredEvents: string[] = []
+  const lifecycleRuntime = {
+    ...runtime,
+    registerEvent: (name: string) => { registeredEvents.push(name) },
+  } as unknown as IAgentRuntime
+  try tryPromise(() => Promise.resolve(agentOrchestratorPlugin.init?.({}, lifecycleRuntime)))
+  try tryPromise(() => Promise.resolve(agentOrchestratorPlugin.dispose?.(lifecycleRuntime)))
+
+  const bigLog = Array.from({ length: 400 }, (_, i) => `line-${i + 1}: payload-${"x".repeat(40)}`).join("\n")
+  const headTrunc = truncateHead(bigLog, 50, 2_048)
+  const tailTrunc = truncateTail(bigLog, 50, 2_048)
+  const recovered = headTrunc.artifactRef ? readOutputArtifactSlice(headTrunc.artifactRef, 50, 10) : undefined
+  const compacted = compactContextWindow({
+    turns: Array.from({ length: 20 }, (_, i) => `Turn ${i + 1}: ${"detail ".repeat(120)}`),
+    windowTokens: 1_000,
+    retainTailTurns: 2,
+    taskGoal: "Optimize orchestrator",
+  })
+  const batchNums = try dispatchParallelBatch([1, 2, 3, 4], 2, (n) => effect { return n * 10 })
+  const schemaChars = JSON.stringify({
+    name: tasksAction.name,
+    description: tasksAction.description,
+    descriptionCompressed: tasksAction.descriptionCompressed,
+    parameters: tasksAction.parameters,
+  }).length
+  const promoted = buildPromotedTaskActions()
+  const promotedList = promoted.find((a) => a.name === "TASKS_LIST_AGENTS")
+  const promotedCreate = promoted.find((a) => a.name === "TASKS_CREATE")
+  const sandboxPlugin = createAgentOrchestratorPlugin({ localCodeExecutionAllowed: false })
+  const mobilePlugin = createAgentOrchestratorPlugin({ env: { ELIZA_MOBILE_RUNTIME: "1" } })
+  const stablePrefix1 = buildCacheStableOrchestratorPrefix({ fastEvalEnabled: true })
+  const stablePrefix2 = buildCacheStableOrchestratorPrefix({ fastEvalEnabled: true })
+
+  try Effect.try(() => {
+    assert.strictEqual(routed?.agentType, "pi-agent")
+    assert.strictEqual(piPrep.toolProfile.length, 4)
+    assert.strictEqual(isolated.ANTHROPIC_API_KEY, undefined)
+    assert.strictEqual(isolated.OPENAI_BASE_URL, "https://api.cerebras.ai/v1")
+    assert.strictEqual(dagValid.valid, true)
+    assert.strictEqual(lane2Collision, "LaneScopeCollision")
+    assert.strictEqual(lane3Waiting, "LaneWaitingDeps")
+    assert.strictEqual(w1.activeLanes, 1)
+    assert.strictEqual(w2.activeLanes, 2)
+    assert.deepStrictEqual(changeSet.changedFiles, ["feature.ts"])
+    assert.strictEqual(committed.committed, true)
+    assert.strictEqual(createRes.success, true)
+    assert.strictEqual(forbiddenWorkdirRes.success, false)
+    assert.strictEqual(forbiddenWorkdirRes.error, "WORKDIR_FORBIDDEN")
+    assert.strictEqual(dagCreateRes.success, true)
+    assert.strictEqual((dagCreateRes.promptData as { wavesExecuted: number }).wavesExecuted, 2)
+    assert.strictEqual(allLanesFailedRes.success, false)
+    assert.strictEqual(allLanesFailedRes.error, "ALL_LANES_FAILED")
+    assert.strictEqual(manageIssuesInvalidCreate.success, false)
+    assert.strictEqual(manageIssuesInvalidCreate.error, "ISSUE_TITLE_REQUIRED")
+    assert.strictEqual(listRes.success, true)
+    assert.strictEqual(historyRes.success, true)
+    assert.ok((historyRes.text ?? "").includes("criteria ("))
+    assert.strictEqual((historyYesterday.promptData as { count: number }).count, 0)
+    assert.strictEqual(shareRes.success, true)
+    assert.strictEqual(sendRes.success, true)
+    assert.strictEqual(pauseRes.success, true)
+    assert.strictEqual(archiveRes.success, true)
+    assert.strictEqual(reopenRes.success, true)
+    assert.strictEqual(stopRes.success, true)
+    assert.strictEqual(looksLikePersonalLifeOpsTask("create a task to buy groceries"), true)
+    assert.strictEqual(pAvail1.text, pAvail2.text)
+    assert.ok(pAvail1.referenceBodyDeferred === true)
+    assert.ok(typeof pActive.text === "string")
+    assert.ok((pWs.text ?? "").includes("active_workspace_context"))
+    assert.ok((pEx.text ?? "").includes("task_agent_action_examples"))
+    assert.ok((pChanges.text ?? "").includes("feature.ts"))
+    assert.strictEqual(evalPatch?.reply, "Built auth cleanly")
+    assert.ok(failPatch?.reply?.includes("Ada"))
+    assert.strictEqual(builtAppsCount, 1)
+    assert.strictEqual(routeStatus.status, 200)
+    assert.ok(routeReadiness.status === 200 || routeReadiness.status === 503)
+    assert.strictEqual(routeRooms.status, 200)
+    assert.strictEqual(routeApprovalCfg.status, 200)
+    assert.strictEqual(routePatchTask.status, 200)
+    assert.strictEqual(routeUsage.status, 200)
+    assert.strictEqual(routeTimeline.status, 200)
+    assert.strictEqual(routeSpawnEscape.status, 403)
+    assert.strictEqual(routeAlias.status, 200)
+    assert.strictEqual(routeBridgeForbidden.status, 403)
+    assert.ok(registeredEvents.includes(TASK_AUDIT_EVENT))
+    assert.strictEqual(headTrunc.truncated, true)
+    assert.strictEqual(tailTrunc.truncated, true)
+    assert.strictEqual(recovered?.found, true)
+    assert.strictEqual(compacted.compacted, true)
+    assert.ok(compacted.estimatedTokens <= 850)
+    assert.deepStrictEqual(batchNums, [10, 20, 30, 40])
+    assert.ok(schemaChars < 9_500)
+    assert.ok(estimateTextTokens(tasksAction.descriptionCompressed ?? "") < 60)
+    assert.ok(promoted.length >= 14)
+    assert.strictEqual(promotedList?.modelClass, "TEXT_SMALL")
+    assert.strictEqual(promotedList?.asyncHandoff, false)
+    assert.strictEqual(promotedCreate?.modelClass, "TEXT_LARGE")
+    assert.strictEqual(agentOrchestratorPlugin.services?.length, 8)
+    assert.strictEqual(sandboxPlugin.services?.length, 0)
+    assert.strictEqual(mobilePlugin.services?.length, 0)
+    assert.strictEqual(stablePrefix1, stablePrefix2)
+    assert.strictEqual(stripAnsi(`${String.fromCharCode(27)}[32mgreen${String.fromCharCode(27)}[0m`), "green")
+    assert.strictEqual(sanitizeCompletionRelay("[tool output: sh]raw[/tool output] Clean answer"), "Clean answer")
+    assert.strictEqual(swarm.acpBindState.status, "bound")
+  })
 })

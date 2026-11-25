@@ -1,0 +1,1000 @@
+// spec/agentOrchestrator/index.md, "Story: Direct an authorized task to the intended subagent and evaluate its result"; spec/agentOrchestrator/taskLifecycle.md, "Story: Track an orchestrated coding task from creation through verified completion"; spec/agentOrchestrator/lanesAndRouting.md, "Multi-lane wave execution prevents scope collisions and enforces concurrency and budget caps"
+import {
+  promoteSubactionsToActions,
+  type Action,
+  type ActionParameter,
+  type ActionResult,
+  type EffectReceipt,
+  type IAgentRuntime,
+  type Memory,
+  type State,
+} from "@elizaos/core"
+import {
+  ACP_SUBPROCESS_SERVICE_TYPE,
+  AcpService,
+  isSessionTerminal,
+} from "./acp.vibe"
+import {
+  ORCHESTRATOR_TASK_SERVICE_TYPE,
+  OrchestratorTaskService,
+  toTaskThread,
+} from "./tasks-service.vibe"
+import {
+  CODING_WORKSPACE_SERVICE_TYPE,
+  CodingWorkspaceService,
+} from "./workspace.vibe"
+import {
+  createDeterministicLanePlan,
+  laneReadiness,
+  pickSubAgentName,
+  validateLaneDependencyGraph,
+  type LaneSpec,
+} from "./routing.vibe"
+import {
+  buildCompactSessionDigest,
+  buildCompactTaskDigest,
+  dispatchParallelBatch,
+  truncateHead,
+} from "./optimization.vibe"
+import {
+  detectTaskType,
+  generateDefaultAcceptanceCriteria,
+} from "./verification.vibe"
+import {
+  normalizeTaskAgentAdapter,
+  resolveCodingBackendLogged,
+  type OrchestratorTerminalSupport,
+} from "./adapters.vibe"
+import {
+  ensureTaskWorkdir,
+  extractRepositoryUrlFromText,
+  requireTaskAgentAccess,
+  resolveAllowedWorkdir,
+  resolveServerAllowedWorkdirRoots,
+} from "./security.vibe"
+import {
+  IN_FLIGHT_TASK_STATUSES,
+  type ApprovalPreset,
+  type OrchestratorTaskStatus,
+  type SessionInfo,
+} from "./types.vibe"
+
+export const SUPPORTED_OPS = [
+  "create",
+  "spawn_agent",
+  "send",
+  "stop_agent",
+  "list_agents",
+  "cancel",
+  "history",
+  "control",
+  "share",
+  "provision_workspace",
+  "submit_workspace",
+  "manage_issues",
+  "archive",
+  "reopen",
+] as const
+
+export type TaskOp = (typeof SUPPORTED_OPS)[number]
+
+const READ_ONLY_OPS: ReadonlySet<TaskOp> = new Set(["list_agents", "history", "share"])
+
+const FAST_SMALL_OPS: ReadonlySet<TaskOp> = new Set([
+  "list_agents",
+  "history",
+  "share",
+  "stop_agent",
+  "cancel",
+  "control",
+  "archive",
+  "reopen",
+])
+
+const TASK_STATUS_ALIASES: Readonly<Record<string, OrchestratorTaskStatus>> = {
+  open: "open",
+  active: "active",
+  waiting_on_user: "waiting_on_user",
+  blocked: "blocked",
+  validating: "validating",
+  done: "done",
+  complete: "done",
+  completed: "done",
+  failed: "failed",
+  error: "failed",
+  errored: "failed",
+  failure: "failed",
+  archived: "archived",
+  interrupted: "interrupted",
+  paused: "interrupted",
+}
+
+const ABSENT_SENTINELS: ReadonlySet<string> = new Set([
+  "none",
+  "null",
+  "nil",
+  "undefined",
+  "n/a",
+  "na",
+  "any",
+  "all",
+])
+
+type Bag = Readonly<Record<string, unknown>>
+
+function paramsOf(options: unknown): Bag {
+  if (typeof options !== "object" || options === null || !("parameters" in options)) return {}
+  const raw = (options as { parameters?: unknown }).parameters
+  return typeof raw === "object" && raw !== null && !Array.isArray(raw) ? raw as Bag : {}
+}
+
+function strParam(bag: Bag, key: string): string | undefined {
+  const val = bag[key]
+  if (typeof val !== "string") return undefined
+  const trimmed = val.trim()
+  return trimmed.length > 0 && !ABSENT_SENTINELS.has(trimmed.toLowerCase()) ? trimmed : undefined
+}
+
+function boolParam(bag: Bag, key: string): boolean | undefined {
+  return typeof bag[key] === "boolean" ? bag[key] : undefined
+}
+
+function numParam(bag: Bag, key: string): number | undefined {
+  const val = bag[key]
+  return typeof val === "number" && Number.isFinite(val) ? val : undefined
+}
+
+export function normalizeTaskOp(bag: Bag): TaskOp {
+  const raw = strParam(bag, "action") ?? strParam(bag, "op") ?? strParam(bag, "subaction") ?? strParam(bag, "operation")
+  if (!raw) return "create"
+  const normalized = raw.toLowerCase().replace(/-/gu, "_")
+  const matched = SUPPORTED_OPS.find((op) => op === normalized)
+  return matched ?? "create"
+}
+
+export function getAcpService(runtime: IAgentRuntime): AcpService | undefined {
+  const svc: unknown = runtime.getService(ACP_SUBPROCESS_SERVICE_TYPE)
+  return svc instanceof AcpService ? svc : undefined
+}
+
+function getTaskService(runtime: IAgentRuntime): OrchestratorTaskService | undefined {
+  const svc: unknown = runtime.getService(ORCHESTRATOR_TASK_SERVICE_TYPE)
+  return svc instanceof OrchestratorTaskService ? svc : undefined
+}
+
+function getWorkspaceService(runtime: IAgentRuntime): CodingWorkspaceService | undefined {
+  const svc: unknown = runtime.getService(CODING_WORKSPACE_SERVICE_TYPE)
+  return svc instanceof CodingWorkspaceService ? svc : undefined
+}
+
+function buildReceipt(op: TaskOp, resourceId: string, outcome: "applied" | "noop" | "failed"): EffectReceipt {
+  const nowIso = new Date().toISOString()
+  const base = {
+    receiptId: `tasks.${op}:${resourceId}:${nowIso}`,
+    operation: `agent-orchestrator.tasks.${op}`,
+    resource: { kind: "agent-orchestrator.task", id: resourceId },
+    artifacts: [],
+    idempotency: { key: null, replayed: false },
+    observedAt: nowIso,
+  }
+  if (outcome === "applied") {
+    return { ...base, outcome: "applied", commit: { kind: "durable", id: `tasks:${resourceId}`, committedAt: nowIso } }
+  }
+  if (outcome === "noop") {
+    return { ...base, outcome: "noop", reason: "read_only_or_clean" }
+  }
+  return { ...base, outcome: "failed", failure: { code: resourceId, retryable: false, acceptance: "rejected" } }
+}
+
+function failResult(op: TaskOp, code: string, message: string): ActionResult {
+  return {
+    success: false,
+    text: message,
+    error: code,
+    effectReceipts: [buildReceipt(op, code, "failed")],
+    promptData: { ok: false, op, code, message },
+    promptDataMode: "replace-data",
+    data: { op, code, message },
+  }
+}
+
+function resolveSessionTarget(acp: AcpService, bag: Bag): SessionInfo | undefined {
+  const sessionId = strParam(bag, "sessionId")
+  const sessions = acp.listSessions()
+  if (sessionId) return sessions.find((s) => s.id === sessionId)
+  const live = sessions.filter((s) => !isSessionTerminal(s.status))
+  return live.sort((a, b) => b.lastActivityAt - a.lastActivityAt)[0]
+}
+
+function parseApprovalPreset(raw: string | undefined): ApprovalPreset {
+  if (raw === "readonly" || raw === "standard" || raw === "permissive" || raw === "autonomous" || raw === "verifier") {
+    return raw
+  }
+  return "standard"
+}
+
+export function looksLikePersonalLifeOpsTask(text: string): boolean {
+  const lower = text.trim().toLowerCase()
+  if (!lower) return false
+  const taskType = detectTaskType(lower)
+  if (taskType === "app-build" || taskType === "view-create" || taskType === "deploy") return false
+  return /\b(?:add|create|make|open|save|set)\s+(?:an?\s+)?(?:to-?do|task|reminder|note|alarm|grocery)\b/u.test(lower)
+}
+
+async function resolveActionWorkdir(bag: Bag, fallbackSlug: string): Promise<string | undefined> {
+  const requested = strParam(bag, "workdir")
+  const roots = resolveServerAllowedWorkdirRoots()
+  if (requested) {
+    return runPromise(effect { return resolveAllowedWorkdir(requested, roots, true) catch () => undefined })
+  }
+  return runPromise(effect { return ensureTaskWorkdir(fallbackSlug, roots[0]) catch () => undefined })
+}
+
+async function handleCreate(
+  runtime: IAgentRuntime,
+  acp: AcpService,
+  tasks: OrchestratorTaskService | undefined,
+  bag: Bag,
+  requestText: string,
+): Promise<ActionResult> {
+  if (strParam(bag, "repo")) {
+    return failResult("create", "REPO_NOT_SUPPORTED", "Use provision_workspace before creating a task for a remote repository.")
+  }
+  const rawTask = strParam(bag, "task") ?? strParam(bag, "title") ?? requestText.trim()
+  if (!rawTask) return failResult("create", "EMPTY_TASK_PROMPT", "Task description is required.")
+  const agentsRaw = strParam(bag, "agents")
+  const parts = agentsRaw
+    ? agentsRaw.split("|").map((p) => p.trim()).filter(Boolean).slice(0, 8)
+    : [rawTask]
+  const deps = typeof bag.dependencies === "object" && bag.dependencies !== null && !Array.isArray(bag.dependencies)
+    ? bag.dependencies as Record<string, string[]>
+    : undefined
+  const maxParallel = Math.max(1, Math.min(numParam(bag, "maxParallel") ?? 3, 8))
+  const plan = createDeterministicLanePlan({ parts, dependencies: deps, maxParallel })
+  const dagCheck = validateLaneDependencyGraph(plan.lanes)
+  if (!dagCheck.valid) {
+    return failResult("create", "LANE_DEPENDENCY_INVALID", dagCheck.error ?? "Invalid lane dependency graph.")
+  }
+  const title = strParam(bag, "title") ?? rawTask.slice(0, 80)
+  const workdir = await resolveActionWorkdir(bag, title)
+  if (!workdir) return failResult("create", "WORKDIR_FORBIDDEN", "Requested workdir is outside allowed workspace roots.")
+  const doc = tasks?.createTask({
+    title,
+    goal: rawTask,
+    originalRequest: requestText,
+    projectId: strParam(bag, "projectId"),
+    workdir,
+    acceptanceCriteria: generateDefaultAcceptanceCriteria(rawTask),
+  })
+  const explicitBackend = strParam(bag, "requestedBackend") ?? strParam(bag, "agentType")
+  const tag = strParam(bag, "taskComplexity")
+  const resolved = resolveCodingBackendLogged({ runtime, explicit: explicitBackend, tag })
+  const agentType = resolved?.agentType ?? "elizaos"
+  const completedLaneIds = new Set<string>()
+  const remaining = [...plan.lanes]
+  const spawned: Array<{
+    readonly laneId: string
+    readonly sessionId: string
+    readonly agentType: string
+    readonly workdir: string
+    readonly status: string
+    readonly label: string
+    readonly ok: boolean
+  }> = []
+  let waveIndex = 0
+  while (remaining.length > 0 && waveIndex < plan.lanes.length + 1) {
+    waveIndex += 1
+    const waveLanes: LaneSpec[] = []
+    for (const candidate of remaining) {
+      if (waveLanes.length >= plan.maxParallel) break
+      if (laneReadiness(candidate, completedLaneIds, waveLanes) === "LaneReady") {
+        waveLanes.push(candidate)
+      }
+    }
+    if (waveLanes.length === 0) break
+    const existingLabels = acp.listSessions().map((s) => s.label)
+    const waveResults = await runPromise(dispatchParallelBatch(waveLanes, plan.maxParallel, (lane, idx) => effect {
+      const label = strParam(bag, "label") ?? pickSubAgentName([...existingLabels, ...Array.from({ length: idx }, (_, n) => `Lane-${waveIndex}-${n + 1}`)])
+      const res = acp.spawnSessionEffect({
+        agentType,
+        workdir,
+        task: lane.task,
+        label,
+        approvalPreset: parseApprovalPreset(strParam(bag, "approvalPreset")),
+        model: strParam(bag, "model"),
+        providerRoute: strParam(bag, "providerRoute"),
+        taskId: doc?.task.id,
+      }) catch () => undefined
+      if (!res) {
+        return { laneId: lane.id, sessionId: `err-${lane.id}`, agentType, workdir, status: "errored", label, ok: false }
+      }
+      if (doc && tasks) {
+        tasks.attachSession(doc.task.id, {
+          id: res.sessionId,
+          agentType: res.agentType,
+          label: res.label,
+          status: res.status,
+          workdir: res.workdir,
+        })
+      }
+      return { laneId: lane.id, sessionId: res.sessionId, agentType: res.agentType, workdir: res.workdir, status: res.status, label: res.label, ok: true }
+    }))
+    for (const item of waveResults) {
+      spawned.push(item)
+      if (item.ok) completedLaneIds.add(item.laneId)
+    }
+    const dispatchedIds = new Set(waveLanes.map((l) => l.id))
+    for (let i = remaining.length - 1; i >= 0; i -= 1) {
+      if (dispatchedIds.has(remaining[i]!.id)) remaining.splice(i, 1)
+    }
+  }
+  const succeeded = spawned.filter((s) => s.ok)
+  if (succeeded.length === 0) {
+    return failResult("create", "ALL_LANES_FAILED", "No coding sessions could be spawned within capacity limits.")
+  }
+  const widgetLine = doc ? `[TASK:${doc.task.id}]${doc.task.title}[/TASK]` : ""
+  const summaryLines = spawned.map((s) => `- ${s.label} (${s.sessionId}) [${s.agentType}] ${s.status}`)
+  const text = [widgetLine, `Launched ${succeeded.length}/${plan.lanes.length} session(s):`, ...summaryLines].filter(Boolean).join("\n")
+  const resourceId = doc?.task.id ?? succeeded[0]!.sessionId
+  return {
+    success: true,
+    text,
+    effectReceipts: [buildReceipt("create", resourceId, "applied")],
+    promptData: {
+      op: "create",
+      taskId: doc?.task.id,
+      wavesExecuted: waveIndex,
+      sessions: spawned.map((s) => ({ laneId: s.laneId, id: s.sessionId, label: s.label, agentType: s.agentType, status: s.status })),
+    },
+    promptDataMode: "replace-data",
+    data: { task: doc ? toTaskThread(doc) : undefined, sessions: spawned, laneCount: plan.lanes.length, wavesExecuted: waveIndex },
+  }
+}
+
+async function handleSpawnAgent(
+  runtime: IAgentRuntime,
+  acp: AcpService,
+  tasks: OrchestratorTaskService | undefined,
+  bag: Bag,
+): Promise<ActionResult> {
+  const taskText = strParam(bag, "task")
+  if (!taskText) return failResult("spawn_agent", "CHILD_TASK_REQUIRED", "Parameter 'task' is required for spawn_agent.")
+  const explicit = strParam(bag, "requestedBackend") ?? strParam(bag, "agentType")
+  const agentType = normalizeTaskAgentAdapter(explicit) ?? resolveCodingBackendLogged({ runtime, explicit, tag: strParam(bag, "taskComplexity") })?.agentType ?? "elizaos"
+  const workdir = await resolveActionWorkdir(bag, taskText.slice(0, 40))
+  if (!workdir) return failResult("spawn_agent", "WORKDIR_FORBIDDEN", "Requested workdir is outside allowed workspace roots.")
+  const label = strParam(bag, "label") ?? pickSubAgentName(acp.listSessions().map((s) => s.label))
+  const existingTaskId = strParam(bag, "taskId") ?? strParam(bag, "threadId")
+  const doc = existingTaskId ? tasks?.getTask(existingTaskId) : tasks?.createTask({ title: taskText.slice(0, 80), goal: taskText, workdir })
+  const spawned = await runPromise(effect {
+    return acp.spawnSessionEffect({
+      agentType,
+      workdir,
+      task: taskText,
+      label,
+      approvalPreset: parseApprovalPreset(strParam(bag, "approvalPreset")),
+      model: strParam(bag, "model"),
+      providerRoute: strParam(bag, "providerRoute"),
+      taskId: doc?.task.id,
+    }) catch () => undefined
+  })
+  if (!spawned) return failResult("spawn_agent", "SPAWN_FAILED", "Unable to spawn coding session within capacity limits.")
+  if (doc && tasks) {
+    tasks.attachSession(doc.task.id, {
+      id: spawned.sessionId,
+      agentType: spawned.agentType,
+      label: spawned.label,
+      status: spawned.status,
+      workdir: spawned.workdir,
+    })
+  }
+  return {
+    success: true,
+    continueChain: false,
+    text: `Spawned ${spawned.label} (${spawned.sessionId}) using ${spawned.agentType} in ${spawned.workdir}.`,
+    effectReceipts: [buildReceipt("spawn_agent", spawned.sessionId, "applied")],
+    promptData: { op: "spawn_agent", sessionId: spawned.sessionId, label: spawned.label, agentType: spawned.agentType, status: spawned.status, taskId: doc?.task.id },
+    promptDataMode: "replace-data",
+    data: { session: spawned, taskId: doc?.task.id },
+  }
+}
+
+async function handleSend(acp: AcpService, bag: Bag): Promise<ActionResult> {
+  if ((strParam(bag, "taskId") || strParam(bag, "threadId")) && !strParam(bag, "sessionId")) {
+    return failResult("send", "SESSION_ID_REQUIRED", "Provide sessionId explicitly when targeting a session.")
+  }
+  const target = resolveSessionTarget(acp, bag)
+  if (!target) return failResult("send", "SESSION_NOT_FOUND", "No active coding session found.")
+  const keys = strParam(bag, "keys")
+  const input = strParam(bag, "input") ?? strParam(bag, "task")
+  if (!keys && !input) return failResult("send", "INPUT_REQUIRED", "Provide input or keys to send.")
+  const res = keys ? await acp.sendKeysToSession(target.id, keys) : await acp.sendToSession(target.id, input!)
+  const bounded = truncateHead(res.output, 60, 4_096)
+  return {
+    success: true,
+    text: bounded.text,
+    effectReceipts: [buildReceipt("send", target.id, "applied")],
+    promptData: { op: "send", sessionId: target.id, status: res.status, output: bounded.text, truncated: bounded.truncated, artifactRef: bounded.artifactRef },
+    promptDataMode: "replace-data",
+    data: { result: res },
+  }
+}
+
+async function handleStopOrCancel(
+  acp: AcpService,
+  tasks: OrchestratorTaskService | undefined,
+  op: "stop_agent" | "cancel",
+  bag: Bag,
+): Promise<ActionResult> {
+  if (op === "stop_agent" && (strParam(bag, "taskId") || strParam(bag, "threadId")) && !strParam(bag, "sessionId")) {
+    return failResult(op, "SESSION_ID_REQUIRED", "Provide sessionId when using stop_agent.")
+  }
+  const allFlag = boolParam(bag, "all") === true
+  const liveSessions = acp.listSessions().filter((s) => !isSessionTerminal(s.status))
+  const taskId = strParam(bag, "taskId") ?? strParam(bag, "threadId")
+  const search = strParam(bag, "search")?.toLowerCase()
+  const targets = allFlag
+    ? liveSessions
+    : op === "cancel" && taskId && tasks
+      ? (() => {
+          const doc = tasks.getTask(taskId)
+          const ids = new Set((doc?.sessions ?? []).map((s) => s.sessionId))
+          return liveSessions.filter((s) => ids.has(s.id) || s.taskId === taskId)
+        })()
+      : op === "cancel" && search
+        ? liveSessions.filter((s) => `${s.id} ${s.label} ${s.workdir}`.toLowerCase().includes(search))
+        : (() => {
+            const single = resolveSessionTarget(acp, bag)
+            return single ? [single] : []
+          })()
+  if (targets.length === 0) return failResult(op, "SESSION_NOT_FOUND", "No active session to stop.")
+  const stoppedIds: string[] = []
+  for (const s of targets) {
+    const ok = op === "cancel" ? await acp.cancelSession(s.id) : await acp.stopSession(s.id)
+    if (ok) stoppedIds.push(s.id)
+  }
+  return {
+    success: true,
+    text: `Stopped ${stoppedIds.length} session(s): ${stoppedIds.join(", ")}`,
+    effectReceipts: [buildReceipt(op, stoppedIds[0] ?? op, "applied")],
+    promptData: { op, stoppedSessionIds: stoppedIds },
+    promptDataMode: "replace-data",
+    data: { stoppedSessionIds: stoppedIds },
+  }
+}
+
+function matchesHistoryWindow(lastActivityAt: number, window: string | undefined, nowMs: number): boolean {
+  if (!window || window === "active") return true
+  const dayMs = 24 * 60 * 60 * 1_000
+  const startOfToday = new Date(nowMs)
+  startOfToday.setUTCHours(0, 0, 0, 0)
+  const todayStartMs = startOfToday.getTime()
+  if (window === "today") return lastActivityAt >= todayStartMs
+  if (window === "yesterday") return lastActivityAt >= todayStartMs - dayMs && lastActivityAt < todayStartMs
+  if (window === "last_7_days") return lastActivityAt >= nowMs - 7 * dayMs
+  if (window === "last_30_days") return lastActivityAt >= nowMs - 30 * dayMs
+  return true
+}
+
+function handleHistory(acp: AcpService, tasks: OrchestratorTaskService | undefined, bag: Bag): ActionResult {
+  const rawStatuses = Array.isArray(bag.statuses) ? bag.statuses.filter((s): s is string => typeof s === "string") : []
+  const parsedStatuses: OrchestratorTaskStatus[] = []
+  for (const raw of rawStatuses) {
+    const mapped = TASK_STATUS_ALIASES[raw.trim().toLowerCase()]
+    if (!mapped) return failResult("history", "INVALID_STATUS", `Unknown task status: ${raw}`)
+    parsedStatuses.push(mapped)
+  }
+  const window = strParam(bag, "window")
+  const statuses = parsedStatuses.length > 0 ? parsedStatuses : (window === "active" ? [...IN_FLIGHT_TASK_STATUSES] : undefined)
+  const metric = strParam(bag, "metric") ?? "list"
+  const limit = Math.max(1, Math.min(Math.trunc(numParam(bag, "limit") ?? (metric === "detail" ? 1 : 10)), 100))
+  if (!tasks) {
+    const sessions = acp.listSessions().slice(0, limit)
+    return {
+      success: true,
+      text: sessions.map(buildCompactSessionDigest).join("\n") || "No sessions recorded.",
+      effectReceipts: [buildReceipt("history", "sessions", "noop")],
+      promptData: { op: "history", metric, count: sessions.length },
+      promptDataMode: "replace-data",
+      data: { sessions },
+    }
+  }
+  const nowMs = Date.now()
+  const docs = tasks.listTasks({
+    statuses,
+    search: strParam(bag, "search"),
+    includeArchived: boolParam(bag, "includeArchived") === true,
+    projectId: strParam(bag, "projectId"),
+    sessionId: strParam(bag, "sessionId"),
+    taskId: strParam(bag, "taskId") ?? strParam(bag, "threadId"),
+    limit: 100,
+  }).filter((d) => matchesHistoryWindow(d.task.lastActivityAt, window, nowMs)).slice(0, limit)
+  const text = metric === "count"
+    ? `Matching tasks: ${docs.length}`
+    : metric === "detail" && docs[0]
+      ? [
+          buildCompactTaskDigest(docs[0].task, docs[0].sessions.length),
+          `goal: ${docs[0].task.goal}`,
+          `criteria (${docs[0].task.acceptanceCriteria.length}): ${docs[0].task.acceptanceCriteria.join(" | ")}`,
+          `sessions: ${docs[0].sessions.map((s) => `${s.label}:${s.status}`).join(", ") || "none"}`,
+        ].join("\n")
+      : docs.map((d) => buildCompactTaskDigest(d.task, d.sessions.length)).join("\n") || "No matching tasks."
+  return {
+    success: true,
+    text,
+    effectReceipts: [buildReceipt("history", "tasks", "noop")],
+    promptData: { op: "history", metric, count: docs.length, tasks: docs.map((d) => ({ id: d.task.id, status: d.task.status, title: d.task.title })) },
+    promptDataMode: "replace-data",
+    data: { tasks: docs.map(toTaskThread), count: docs.length },
+  }
+}
+
+function handleListAgents(acp: AcpService): ActionResult {
+  const sessions = acp.listSessions()
+  const lines = sessions.map((s) => buildCompactSessionDigest(s))
+  const bounded = truncateHead(lines.length > 0 ? lines.join("\n") : "No coding sessions.", 50, 4_096)
+  return {
+    success: true,
+    text: bounded.text,
+    effectReceipts: [buildReceipt("list_agents", "sessions", "noop")],
+    promptData: { op: "list_agents", count: sessions.length, sessions: sessions.map((s) => ({ id: s.id, label: s.label, agentType: s.agentType, status: s.status })) },
+    promptDataMode: "replace-data",
+    data: { sessions, capacity: acp.getCapacity() },
+  }
+}
+
+async function handleControl(
+  acp: AcpService,
+  tasks: OrchestratorTaskService | undefined,
+  op: "control" | "archive" | "reopen",
+  bag: Bag,
+): Promise<ActionResult> {
+  const controlAction = op === "archive" ? "archive" : op === "reopen" ? "reopen" : (strParam(bag, "controlAction")?.toLowerCase() ?? "")
+  const taskId = strParam(bag, "taskId") ?? strParam(bag, "threadId")
+  if (!controlAction) return failResult(op, "CONTROL_ACTION_REQUIRED", "Specify controlAction: pause|resume|continue|stop|archive|reopen.")
+  if (controlAction === "stop") return handleStopOrCancel(acp, tasks, "stop_agent", bag)
+  if (!tasks || !taskId) return failResult(op, "TASK_ID_REQUIRED", "Provide taskId or threadId for lifecycle control.")
+  const updated = await runPromise(effect {
+    return (controlAction === "pause"
+      ? tasks.pauseTaskEffect(taskId)
+      : controlAction === "archive"
+        ? tasks.archiveTaskEffect(taskId)
+        : controlAction === "reopen"
+          ? tasks.reopenTaskEffect(taskId)
+          : tasks.resumeTaskEffect(taskId)) catch () => undefined
+  })
+  if (!updated) return failResult(op, "CONTROL_REJECTED", `Unable to apply ${controlAction} to task ${taskId}.`)
+  const instruction = strParam(bag, "instruction")
+  if ((controlAction === "resume" || controlAction === "continue") && instruction) {
+    const live = updated.sessions.find((s) => !isSessionTerminal(s.status))
+    if (live) await acp.sendToSession(live.sessionId, instruction)
+  }
+  return {
+    success: true,
+    text: `Task ${updated.task.id} is now ${updated.task.status}.`,
+    effectReceipts: [buildReceipt(op, updated.task.id, "applied")],
+    promptData: { op, controlAction, taskId: updated.task.id, status: updated.task.status },
+    promptDataMode: "replace-data",
+    data: { task: toTaskThread(updated) },
+  }
+}
+
+function handleShare(acp: AcpService, tasks: OrchestratorTaskService | undefined, bag: Bag): ActionResult {
+  const taskId = strParam(bag, "taskId") ?? strParam(bag, "threadId")
+  const session = taskId && tasks
+    ? (() => {
+        const doc = tasks.getTask(taskId)
+        const sid = doc?.sessions[doc.sessions.length - 1]?.sessionId
+        return sid ? acp.getSession(sid) : undefined
+      })()
+    : resolveSessionTarget(acp, bag)
+  if (!session) return failResult("share", "SESSION_NOT_FOUND", "No session available to share.")
+  const digest = buildCompactSessionDigest(session)
+  return {
+    success: true,
+    text: digest,
+    effectReceipts: [buildReceipt("share", session.id, "noop")],
+    promptData: { op: "share", sessionId: session.id, agentType: session.agentType, status: session.status, workdir: session.workdir },
+    promptDataMode: "replace-data",
+    data: { session },
+  }
+}
+
+function labelsParam(bag: Bag): readonly string[] {
+  const raw = bag.labels
+  if (Array.isArray(raw)) return raw.filter((v): v is string => typeof v === "string").map((s) => s.trim()).filter(Boolean)
+  if (typeof raw === "string") return raw.split(",").map((s) => s.trim()).filter(Boolean)
+  return []
+}
+
+async function handleManageIssuesOp(
+  wsService: CodingWorkspaceService,
+  bag: Bag,
+  requestText: string,
+): Promise<ActionResult> {
+  const repo = strParam(bag, "repo") ?? extractRepositoryUrlFromText(requestText)
+  if (!repo) return failResult("manage_issues", "REPO_REQUIRED", "Specify repo for manage_issues.")
+  const issueAction = (strParam(bag, "issueAction") ?? "list").toLowerCase()
+  const issueNumber = numParam(bag, "issueNumber")
+  const labels = labelsParam(bag)
+  if (issueAction === "list") {
+    const stateVal = strParam(bag, "state")
+    const issueState = stateVal === "closed" || stateVal === "all" ? stateVal : "open"
+    const issues = await runPromise(effect { return wsService.listIssuesEffect(repo, issueState, labels) catch () => undefined })
+    if (!issues) return failResult("manage_issues", "ISSUES_FETCH_FAILED", `Unable to list issues for ${repo}.`)
+    const lines = issues.slice(0, 15).map((i) => `#${i.number} [${i.state}] ${i.title}`)
+    return {
+      success: true,
+      text: lines.join("\n") || `No ${issueState} issues in ${repo}.`,
+      effectReceipts: [buildReceipt("manage_issues", repo, "noop")],
+      promptData: { op: "manage_issues", issueAction, repo, count: issues.length },
+      promptDataMode: "replace-data",
+      data: { issues },
+    }
+  }
+  if (issueAction === "get") {
+    if (!issueNumber) return failResult("manage_issues", "ISSUE_NUMBER_REQUIRED", "issueNumber is required for get.")
+    const issue = await runPromise(effect { return wsService.getIssueEffect(repo, issueNumber) catch () => undefined })
+    if (!issue) return failResult("manage_issues", "ISSUE_GET_FAILED", `Unable to fetch issue #${issueNumber}.`)
+    return {
+      success: true,
+      text: `#${issue.number} [${issue.state}] ${issue.title}`,
+      effectReceipts: [buildReceipt("manage_issues", `${repo}#${issue.number}`, "noop")],
+      promptData: { op: "manage_issues", issueAction, repo, number: issue.number, state: issue.state, title: issue.title },
+      promptDataMode: "replace-data",
+      data: { issue },
+    }
+  }
+  if (issueAction === "create") {
+    const title = strParam(bag, "title")
+    if (!title) return failResult("manage_issues", "ISSUE_TITLE_REQUIRED", "title is required to create an issue.")
+    const created = await runPromise(effect { return wsService.createIssueEffect(repo, { title, body: strParam(bag, "body"), labels }) catch () => undefined })
+    if (!created) return failResult("manage_issues", "ISSUE_CREATE_FAILED", `Unable to create issue in ${repo}.`)
+    return {
+      success: true,
+      text: `Created issue #${created.number}: ${created.title} (${created.url})`,
+      effectReceipts: [buildReceipt("manage_issues", `${repo}#${created.number}`, "applied")],
+      promptData: { op: "manage_issues", issueAction, repo, number: created.number, url: created.url },
+      promptDataMode: "replace-data",
+      data: { issue: created },
+    }
+  }
+  if (!issueNumber) return failResult("manage_issues", "ISSUE_NUMBER_REQUIRED", `issueNumber is required for ${issueAction}.`)
+  if (issueAction === "comment") {
+    const body = strParam(bag, "body")
+    if (!body) return failResult("manage_issues", "COMMENT_BODY_REQUIRED", "body is required to comment on an issue.")
+    const comment = await runPromise(effect { return wsService.addIssueCommentEffect(repo, issueNumber, body) catch () => undefined })
+    if (!comment) return failResult("manage_issues", "ISSUE_COMMENT_FAILED", `Unable to comment on #${issueNumber}.`)
+    return {
+      success: true,
+      text: `Commented on #${issueNumber} (${comment.url}).`,
+      effectReceipts: [buildReceipt("manage_issues", `${repo}#${issueNumber}`, "applied")],
+      promptData: { op: "manage_issues", issueAction, repo, number: issueNumber, commentId: comment.id },
+      promptDataMode: "replace-data",
+      data: { comment },
+    }
+  }
+  if (issueAction === "add_labels") {
+    if (labels.length === 0) return failResult("manage_issues", "LABELS_REQUIRED", "labels is required for add_labels.")
+    const applied = await runPromise(effect { return wsService.addIssueLabelsEffect(repo, issueNumber, labels) catch () => undefined })
+    if (!applied) return failResult("manage_issues", "ISSUE_LABELS_FAILED", `Unable to label #${issueNumber}.`)
+    return {
+      success: true,
+      text: `Applied labels [${applied.join(", ")}] to #${issueNumber}.`,
+      effectReceipts: [buildReceipt("manage_issues", `${repo}#${issueNumber}`, "applied")],
+      promptData: { op: "manage_issues", issueAction, repo, number: issueNumber, labels: applied },
+      promptDataMode: "replace-data",
+      data: { labels: applied },
+    }
+  }
+  const nextState = issueAction === "close" ? "closed" : issueAction === "reopen" ? "open" : undefined
+  const updated = await runPromise(effect {
+    return wsService.updateIssueEffect(repo, issueNumber, {
+      title: strParam(bag, "title"),
+      body: strParam(bag, "body"),
+      state: nextState,
+      ...(labels.length > 0 ? { labels } : {}),
+    }) catch () => undefined
+  })
+  if (!updated) return failResult("manage_issues", "ISSUE_UPDATE_FAILED", `Unable to ${issueAction} issue #${issueNumber}.`)
+  return {
+    success: true,
+    text: `Updated issue #${updated.number} [${updated.state}]: ${updated.title}`,
+    effectReceipts: [buildReceipt("manage_issues", `${repo}#${updated.number}`, "applied")],
+    promptData: { op: "manage_issues", issueAction, repo, number: updated.number, state: updated.state },
+    promptDataMode: "replace-data",
+    data: { issue: updated },
+  }
+}
+
+async function handleWorkspaceOps(
+  wsService: CodingWorkspaceService | undefined,
+  op: "provision_workspace" | "submit_workspace" | "manage_issues",
+  bag: Bag,
+  requestText: string,
+): Promise<ActionResult> {
+  if (!wsService) return failResult(op, "WORKSPACE_SERVICE_UNAVAILABLE", "Coding workspace service is unavailable.")
+  if (op === "provision_workspace") {
+    const repo = strParam(bag, "repo") ?? extractRepositoryUrlFromText(requestText)
+    if (!repo) return failResult(op, "REPO_REQUIRED", "Specify repo (owner/repo or https URL).")
+    const provisioned = await runPromise(effect {
+      return wsService.provisionWorkspaceEffect({
+        repo,
+        baseBranch: strParam(bag, "baseBranch"),
+        useWorktree: boolParam(bag, "useWorktree"),
+        parentWorkspaceId: strParam(bag, "parentWorkspaceId"),
+      }) catch () => undefined
+    })
+    if (!provisioned) return failResult(op, "PROVISION_FAILED", `Failed to provision workspace for ${repo}.`)
+    return {
+      success: true,
+      text: `Provisioned workspace ${provisioned.id} (${provisioned.branch}) at ${provisioned.path}.`,
+      effectReceipts: [buildReceipt(op, provisioned.id, "applied")],
+      promptData: { op, workspaceId: provisioned.id, branch: provisioned.branch, path: provisioned.path },
+      promptDataMode: "replace-data",
+      data: { workspace: provisioned },
+    }
+  }
+  if (op === "submit_workspace") {
+    const workspaceId = strParam(bag, "workspaceId") ?? wsService.listWorkspaces().at(-1)?.id
+    if (!workspaceId) return failResult(op, "WORKSPACE_NOT_FOUND", "Specify workspaceId to submit.")
+    const status = await runPromise(effect { return wsService.getStatusEffect(workspaceId) catch () => undefined })
+    if (!status) return failResult(op, "STATUS_FAILED", `Unable to inspect workspace ${workspaceId}.`)
+    if (status.clean) {
+      return {
+        success: true,
+        text: "Workspace clean; nothing to commit.",
+        effectReceipts: [buildReceipt(op, workspaceId, "noop")],
+        promptData: { op, workspaceId, committed: false, pushed: false, fileCount: 0 },
+        promptDataMode: "replace-data",
+        data: { status, committed: false },
+      }
+    }
+    const committed = await runPromise(effect { return wsService.commitEffect(workspaceId, strParam(bag, "commitMessage") ?? "chore: submit coding task changes") catch () => undefined })
+    if (!committed) return failResult(op, "SUBMIT_FAILED", `Commit or diff gate refused workspace ${workspaceId}.`)
+    const pushed = await runPromise(effect { return wsService.pushEffect(workspaceId, { setUpstream: true }) catch () => undefined })
+    const skipPR = boolParam(bag, "skipPR") === true
+    const pr = pushed && !skipPR
+      ? await runPromise(effect {
+          return wsService.createPrEffect(workspaceId, {
+            title: strParam(bag, "prTitle") ?? strParam(bag, "commitMessage") ?? `Coding task changes (${status.branch})`,
+            body: strParam(bag, "prBody") ?? `Committed ${committed.changedFiles.length} file(s).`,
+            baseBranch: strParam(bag, "baseBranch"),
+            draft: boolParam(bag, "draft") === true,
+          }) catch () => undefined
+        })
+      : undefined
+    return {
+      success: true,
+      text: pr
+        ? `Committed ${committed.changedFiles.length} file(s), pushed ${status.branch}, opened PR #${pr.number} (${pr.url}).`
+        : pushed
+          ? `Committed ${committed.changedFiles.length} file(s) and pushed ${status.branch}.`
+          : `Committed ${committed.changedFiles.length} file(s) (${committed.sha ?? "head"}).`,
+      effectReceipts: [buildReceipt(op, workspaceId, "applied")],
+      promptData: { op, workspaceId, committed: committed.committed, pushed: Boolean(pushed), prUrl: pr?.url, sha: committed.sha, fileCount: committed.changedFiles.length },
+      promptDataMode: "replace-data",
+      data: { commit: committed, pushed: Boolean(pushed), pr },
+    }
+  }
+  return handleManageIssuesOp(wsService, bag, requestText)
+}
+
+const COMPACT_PARAMETERS: ActionParameter[] = [
+  { name: "action", description: "Operation to perform.", descriptionCompressed: "Op.", required: false, schema: { type: "string", enum: [...SUPPORTED_OPS] } },
+  { name: "agents", description: "Pipe-delimited parallel lane tasks.", descriptionCompressed: "Lanes (|).", required: false, subactions: ["create"], schema: { type: "string" } },
+  { name: "all", description: "Apply to all active sessions.", descriptionCompressed: "All.", required: false, subactions: ["stop_agent", "cancel"], schema: { type: "boolean" } },
+  { name: "approvalPreset", description: "Permission profile.", descriptionCompressed: "Preset.", required: false, subactions: ["create", "spawn_agent"], schema: { type: "string", enum: ["autonomous", "permissive", "readonly", "standard", "verifier"] } },
+  { name: "baseBranch", description: "Base git branch.", descriptionCompressed: "Base branch.", required: false, subactions: ["provision_workspace", "submit_workspace"], schema: { type: "string" } },
+  { name: "body", description: "Issue or comment body.", descriptionCompressed: "Body.", required: false, subactions: ["manage_issues"], schema: { type: "string" } },
+  { name: "commitMessage", description: "Commit message.", descriptionCompressed: "Commit msg.", required: false, subactions: ["submit_workspace"], schema: { type: "string" } },
+  { name: "controlAction", description: "Lifecycle transition.", descriptionCompressed: "Control op.", required: false, subactions: ["control"], schema: { type: "string", enum: ["archive", "continue", "pause", "reopen", "resume", "stop"] } },
+  { name: "dependencies", description: "Lane DAG dependency map.", descriptionCompressed: "Lane deps.", required: false, subactions: ["create"], schema: { type: "object" } },
+  { name: "draft", description: "Open pull request as draft.", descriptionCompressed: "Draft PR.", required: false, subactions: ["submit_workspace"], schema: { type: "boolean" } },
+  { name: "includeArchived", description: "Include archived tasks.", descriptionCompressed: "Archived.", required: false, subactions: ["history"], schema: { type: "boolean" } },
+  { name: "input", description: "Message text for active session.", descriptionCompressed: "Message.", required: false, subactions: ["send"], schema: { type: "string" } },
+  { name: "instruction", description: "Resume instruction.", descriptionCompressed: "Instruction.", required: false, subactions: ["control"], schema: { type: "string" } },
+  { name: "issueAction", description: "GitHub issue operation.", descriptionCompressed: "Issue op.", required: false, subactions: ["manage_issues"], schema: { type: "string", enum: ["add_labels", "close", "comment", "create", "get", "list", "reopen", "update"] } },
+  { name: "issueNumber", description: "Target GitHub issue number.", descriptionCompressed: "Issue #.", required: false, subactions: ["manage_issues"], schema: { type: "integer", minimum: 1 } },
+  { name: "keys", description: "Raw terminal keys for session.", descriptionCompressed: "Keys.", required: false, subactions: ["send"], schema: { type: "string" } },
+  { name: "label", description: "Subagent display label.", descriptionCompressed: "Label.", required: false, subactions: ["create", "spawn_agent"], schema: { type: "string" } },
+  { name: "labels", description: "Issue labels.", descriptionCompressed: "Labels.", required: false, subactions: ["manage_issues"], schema: { type: "array", items: { type: "string" } } },
+  { name: "limit", description: "Max items returned (<=100).", descriptionCompressed: "Limit.", required: false, subactions: ["history"], schema: { type: "integer", minimum: 1, maximum: 100 } },
+  { name: "maxParallel", description: "Max concurrent lanes.", descriptionCompressed: "Parallel cap.", required: false, subactions: ["create"], schema: { type: "integer", minimum: 1 } },
+  { name: "metric", description: "History query mode.", descriptionCompressed: "Metric.", required: false, subactions: ["history"], schema: { type: "string", enum: ["count", "detail", "list"] } },
+  { name: "parentWorkspaceId", description: "Parent workspace for worktree.", descriptionCompressed: "Parent ws.", required: false, subactions: ["provision_workspace"], schema: { type: "string" } },
+  { name: "prBody", description: "Pull request description.", descriptionCompressed: "PR body.", required: false, subactions: ["submit_workspace"], schema: { type: "string" } },
+  { name: "prTitle", description: "Pull request title.", descriptionCompressed: "PR title.", required: false, subactions: ["submit_workspace"], schema: { type: "string" } },
+  { name: "projectId", description: "Bound project ID.", descriptionCompressed: "Project ID.", required: false, subactions: ["create", "history"], schema: { type: "string" } },
+  { name: "providerRoute", description: "Pi provider route (e.g. cerebras-fast).", descriptionCompressed: "Pi route.", required: false, subactions: ["create", "spawn_agent"], schema: { type: "string" } },
+  { name: "repo", description: "Git repository owner/repo or URL.", descriptionCompressed: "Repo.", required: false, subactions: ["provision_workspace", "manage_issues"], schema: { type: "string" } },
+  { name: "requestedBackend", description: "Coding adapter override.", descriptionCompressed: "Adapter.", required: false, subactions: ["create", "spawn_agent"], schema: { type: "string", enum: ["claude", "codex", "elizaos", "grok", "kimi", "pi-agent"] } },
+  { name: "search", description: "Search query.", descriptionCompressed: "Search.", required: false, subactions: ["cancel", "history"], schema: { type: "string" } },
+  { name: "sessionId", description: "Target session ID.", descriptionCompressed: "Session ID.", required: false, subactions: ["send", "stop_agent", "cancel", "history", "control", "share"], schema: { type: "string" } },
+  { name: "skipPR", description: "Commit and push without PR.", descriptionCompressed: "Skip PR.", required: false, subactions: ["submit_workspace"], schema: { type: "boolean" } },
+  { name: "state", description: "Issue state filter.", descriptionCompressed: "State.", required: false, subactions: ["manage_issues"], schema: { type: "string", enum: ["all", "closed", "open"] } },
+  { name: "statuses", description: "Filter task statuses.", descriptionCompressed: "Statuses.", required: false, subactions: ["history"], schema: { type: "array", items: { type: "string" } } },
+  { name: "task", description: "Coding task objective.", descriptionCompressed: "Task prompt.", required: false, subactions: ["create", "spawn_agent", "send"], requiredForSubactions: ["spawn_agent"], schema: { type: "string" } },
+  { name: "taskComplexity", description: "Difficulty routing tag.", descriptionCompressed: "Complexity.", required: false, subactions: ["create", "spawn_agent"], schema: { type: "string", enum: ["hard", "moderate", "simple"] } },
+  { name: "taskId", description: "Durable task ID.", descriptionCompressed: "Task ID.", required: false, subactions: ["create", "spawn_agent", "cancel", "history", "control", "share", "archive", "reopen"], schema: { type: "string" } },
+  { name: "threadId", description: "Task thread ID alias.", descriptionCompressed: "Thread ID.", required: false, subactions: ["create", "spawn_agent", "cancel", "history", "control", "share", "archive", "reopen"], schema: { type: "string" } },
+  { name: "title", description: "Short task or issue title.", descriptionCompressed: "Title.", required: false, subactions: ["create", "manage_issues"], schema: { type: "string" } },
+  { name: "useWorktree", description: "Provision git worktree.", descriptionCompressed: "Worktree.", required: false, subactions: ["provision_workspace"], schema: { type: "boolean" } },
+  { name: "window", description: "History time window.", descriptionCompressed: "Window.", required: false, subactions: ["history"], schema: { type: "string", enum: ["active", "last_30_days", "last_7_days", "today", "yesterday"] } },
+  { name: "workdir", description: "Target workspace directory.", descriptionCompressed: "Workdir.", required: false, subactions: ["create", "spawn_agent"], schema: { type: "string" } },
+  { name: "workspaceId", description: "Provisioned workspace ID.", descriptionCompressed: "Workspace ID.", required: false, subactions: ["submit_workspace"], schema: { type: "string" } },
+]
+
+export const TASKS_SIMILES: readonly string[] = [
+  "ARCHIVE_CODING_TASK",
+  "CANCEL_TASK",
+  "CREATE_AGENT_TASK",
+  "CREATE_TASK",
+  "FINALIZE_WORKSPACE",
+  "LIST_AGENTS",
+  "LIST_CODING_AGENTS",
+  "MANAGE_ISSUES",
+  "PAUSE_TASK",
+  "PROVISION_WORKSPACE",
+  "REOPEN_CODING_TASK",
+  "RESUME_TASK",
+  "SEND_TO_AGENT",
+  "SEND_TO_CODING_AGENT",
+  "SPAWN_AGENT",
+  "SPAWN_CODING_AGENT",
+  "START_CODING_TASK",
+  "STOP_AGENT",
+  "STOP_CODING_AGENT",
+  "SUBMIT_WORKSPACE",
+  "TASK_CONTROL",
+  "TASK_HISTORY",
+  "TASK_SHARE",
+]
+
+export const tasksAction: Action = {
+  name: "TASKS",
+  description: "Orchestrate ACP coding subagents (elizaos, pi-agent, claude, codex, kimi, grok), parallel lanes, workspaces, and GitHub issues. Prefer send when a live session already owns the workdir.",
+  descriptionCompressed: "ACP coding subagents (elizaos|pi-agent|claude|codex|kimi|grok): create|spawn_agent|send|stop_agent|list_agents|cancel|history|control|share|workspace|issues.",
+  routingHint: "Delegate multi-step coding work, parallel lanes, workspaces, or GitHub issues to TASKS; exclude personal reminders/notes.",
+  similes: [...TASKS_SIMILES],
+  tags: ["domain:coding", "domain:agent-orchestration", "capability:delegate", "effect:receipt-required"],
+  contexts: ["code", "automation", "agent_internal", "connectors"],
+  contextGate: { anyOf: ["code", "automation", "agent_internal", "connectors"] },
+  roleGate: { minRole: "USER" },
+  toolSchemaStrict: true,
+  cacheStable: true,
+  cacheScope: "agent",
+  suppressPostActionContinuation: true,
+  suppressEarlyReply: true,
+  asyncHandoff: true,
+  subActions: [...SUPPORTED_OPS],
+  parameters: COMPACT_PARAMETERS,
+  inferSubaction: (params) => normalizeTaskOp(params),
+  summarize: (result, params) => {
+    const op = normalizeTaskOp(params)
+    const status = result?.success ? "ok" : "err"
+    const id = strParam(params, "taskId") ?? strParam(params, "sessionId") ?? strParam(params, "workspaceId") ?? "-"
+    return `TASKS.${op} [${status}] target=${id}`
+  },
+  validate: async (runtime: IAgentRuntime, message: Memory, _state?: State, options?: unknown) => {
+    const acp = getAcpService(runtime)
+    const bag = paramsOf(options)
+    const op = normalizeTaskOp(bag)
+    if (!acp) {
+      return op === "history" && getTaskService(runtime) !== undefined
+    }
+    const text = typeof message.content?.text === "string" ? message.content.text : ""
+    if (op === "create" && Object.keys(bag).length === 0 && looksLikePersonalLifeOpsTask(text)) {
+      return false
+    }
+    return true
+  },
+  handler: async (runtime: IAgentRuntime, message: Memory, _state?: State, options?: unknown) => {
+    const bag = paramsOf(options)
+    const op = normalizeTaskOp(bag)
+    const metaBag = (message.metadata ?? {}) as Record<string, unknown>
+    const access = requireTaskAgentAccess(
+      typeof metaBag.role === "string" ? metaBag.role : "USER",
+      op === "create" || op === "spawn_agent" || op === "provision_workspace" ? "create" : "interact",
+    )
+    if (!access.allowed) return failResult(op, "ACCESS_DENIED", access.reason ?? "Access denied.")
+    const acp = getAcpService(runtime)
+    const tasks = getTaskService(runtime)
+    const ws = getWorkspaceService(runtime)
+    if (!acp && op !== "history") {
+      return failResult(op, "ACP_SERVICE_UNAVAILABLE", "ACP coding service is not available.")
+    }
+    const requestText = typeof message.content?.text === "string" ? message.content.text : ""
+    switch (op) {
+      case "create": return handleCreate(runtime, acp!, tasks, bag, requestText)
+      case "spawn_agent": return handleSpawnAgent(runtime, acp!, tasks, bag)
+      case "send": return handleSend(acp!, bag)
+      case "stop_agent":
+      case "cancel": return handleStopOrCancel(acp!, tasks, op, bag)
+      case "list_agents": return handleListAgents(acp!)
+      case "history": return handleHistory(acp!, tasks, bag)
+      case "control":
+      case "archive":
+      case "reopen": return handleControl(acp!, tasks, op, bag)
+      case "share": return handleShare(acp!, tasks, bag)
+      case "provision_workspace":
+      case "submit_workspace":
+      case "manage_issues": return handleWorkspaceOps(ws, op, bag, requestText)
+    }
+  },
+}
+
+export function buildPromotedTaskActions(): Action[] {
+  const overrides: Record<string, Partial<Action>> = {
+    spawn_agent: {
+      description: "Delegate coding task to ACP subagent (elizaos, pi-agent, claude, codex, kimi, grok). Prefer send if an active session owns the workdir.",
+      descriptionCompressed: "Spawn ACP coding subagent; prefer send if live session exists on workdir.",
+    },
+  }
+  const promoted = promoteSubactionsToActions(tasksAction, { overrides })
+  return promoted.map((action) => {
+    const suffix = action.name.startsWith("TASKS_") ? action.name.slice("TASKS_".length).toLowerCase() : ""
+    const matchedOp = SUPPORTED_OPS.find((op) => op === suffix)
+    if (!matchedOp) return { ...action, modelClass: "TEXT_LARGE" as const }
+    const modelClass = FAST_SMALL_OPS.has(matchedOp) ? "TEXT_SMALL" as const : "TEXT_LARGE" as const
+    const asyncHandoff = READ_ONLY_OPS.has(matchedOp) ? false : action.asyncHandoff
+    return { ...action, modelClass, asyncHandoff }
+  })
+}
+
+export const createTaskAction = tasksAction
+export const startCodingTaskAction = tasksAction
+export const spawnAgentAction = tasksAction
+export const spawnTaskAgentAction = tasksAction
+export const sendToAgentAction = tasksAction
+export const sendToTaskAgentAction = tasksAction
+export const stopAgentAction = tasksAction
+export const stopTaskAgentAction = tasksAction
+export const listAgentsAction = tasksAction
+export const listTaskAgentsAction = tasksAction
+export const cancelTaskAction = tasksAction
+export const taskHistoryAction = tasksAction
+export const taskControlAction = tasksAction
+export const taskShareAction = tasksAction
+export const provisionWorkspaceAction = tasksAction
+export const finalizeWorkspaceAction = tasksAction
+export const manageIssuesAction = tasksAction
+export const archiveCodingTaskAction = tasksAction
+export const reopenCodingTaskAction = tasksAction
+
+export const tasksSandboxStubAction: Action = {
+  name: "TASKS",
+  description: "Coding agent orchestration is unavailable in sandboxed store builds.",
+  descriptionCompressed: "Coding agents disabled in sandbox build.",
+  similes: [...TASKS_SIMILES],
+  suppressPostActionContinuation: true,
+  validate: async () => true,
+  handler: async () => ({
+    success: false,
+    text: "Coding agents are unavailable in this sandboxed build.",
+    data: { actionName: "TASKS", reason: "STORE_BUILD_BLOCKED" },
+  }),
+}
+
+export function createTerminalUnsupportedTasksAction(support: OrchestratorTerminalSupport): Action {
+  const reason = support.reason === "vanilla_mobile"
+    ? "MOBILE_TERMINAL_UNSUPPORTED"
+    : support.reason === "not_local_yolo"
+      ? "AOSP_TERMINAL_REQUIRES_LOCAL_YOLO"
+      : support.reason === "missing_shell"
+        ? "AOSP_TERMINAL_MISSING_SHELL"
+        : "TERMINAL_UNSUPPORTED"
+  return {
+    name: "TASKS",
+    description: `Coding agent orchestration is unavailable on this platform (${reason}).`,
+    descriptionCompressed: `Coding agents unavailable (${reason}).`,
+    similes: [...TASKS_SIMILES],
+    suppressPostActionContinuation: true,
+    validate: async () => true,
+    handler: async () => ({
+      success: false,
+      text: `Coding agent terminal execution is unsupported here (${reason}).`,
+      data: { actionName: "TASKS", reason },
+    }),
+  }
+}

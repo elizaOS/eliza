@@ -1,0 +1,581 @@
+// spec/agentOrchestrator/sessionAdmission.md, "Disk budget, spend allowance, and subscription attendance fail closed"; spec/agentOrchestrator/verification.md, "Claimed edits, completion residuals, and diff secrets enforce fail-closed verification"
+module node {
+  import { execFile } from "node:child_process"
+  import { randomUUID } from "node:crypto"
+  import { mkdir, readdir, rm, stat, statfs } from "node:fs/promises"
+  import * as os from "node:os"
+  import * as path from "node:path"
+  import { promisify } from "node:util"
+
+  const execFileAsync = promisify(execFile)
+
+  /** @throws {never} */
+  export function makeWorkspaceId(): string {
+    return `ws-${randomUUID().slice(0, 10)}`
+  }
+
+  /** @throws {never} */
+  export function defaultWorkspacesDir(): string {
+    return path.join(os.homedir(), ".eliza", "workspaces")
+  }
+
+  /** @throws {never} */
+  export function joinWs(base: string, ...parts: string[]): string {
+    return path.join(base, ...parts)
+  }
+
+  export async function execGit(args: readonly string[], cwd: string): Promise<{ readonly stdout: string; readonly stderr: string }> {
+    const out = await execFileAsync("git", [...args], { cwd, maxBuffer: 4 * 1024 * 1024 })
+    return { stdout: out.stdout, stderr: out.stderr }
+  }
+
+  export async function measureDirBytesNode(dir: string): Promise<number> {
+    let total = 0
+    const walk = async (current: string): Promise<void> => {
+      const entries = await readdir(current, { withFileTypes: true }).catch(() => [])
+      for (const entry of entries) {
+        const full = path.join(current, entry.name)
+        if (entry.isDirectory()) await walk(full)
+        else if (entry.isFile()) {
+          const info = await stat(full).catch(() => undefined)
+          if (info) total += info.size
+        }
+      }
+    }
+    await walk(dir)
+    return total
+  }
+
+  export async function freeDiskBytesNode(dir: string): Promise<number> {
+    await mkdir(dir, { recursive: true })
+    const info = await statfs(dir)
+    return Number(info.bavail) * Number(info.bsize)
+  }
+
+  export async function ensureDirNode(dir: string): Promise<void> {
+    await mkdir(dir, { recursive: true })
+  }
+
+  export async function removeDirNode(dir: string): Promise<void> {
+    await rm(dir, { recursive: true, force: true })
+  }
+}
+import {
+  defaultWorkspacesDir,
+  ensureDirNode,
+  execGit,
+  freeDiskBytesNode,
+  joinWs,
+  makeWorkspaceId,
+  measureDirBytesNode,
+  removeDirNode,
+} from node
+import { Service, type IAgentRuntime } from "@elizaos/core"
+import { evaluateDiskBudget } from "../gen/agentOrchestrator__sessionAdmission.effect.vibe"
+import {
+  DiffGateBlockedError,
+  WorkspaceOperationError,
+  type WorkspaceChangeSet,
+  type WorkspaceResult,
+} from "./types.vibe"
+import {
+  assertSafeGitRef,
+  assertSafeGitRemote,
+  normalizeRepositoryInput,
+  safeFetch,
+} from "./security.vibe"
+import { reviewDiff } from "./verification.vibe"
+import { truncateTail } from "./optimization.vibe"
+
+export const CODING_WORKSPACE_SERVICE_TYPE = "CODING_WORKSPACE_SERVICE"
+export const DEFAULT_WORKSPACE_DISK_CAP_BYTES = 10 * 1024 * 1024 * 1024
+export const DEFAULT_WORKSPACE_MIN_FREE_BYTES = 1 * 1024 * 1024 * 1024
+
+export interface DiskBudgetConfig {
+  readonly capBytes: number
+  readonly minFreeBytes: number
+}
+
+export interface WorkspaceRecord {
+  readonly id: string
+  readonly path: string
+  readonly kind: "repo" | "worktree" | "scratch"
+  readonly createdAt: string
+  readonly terminal: boolean
+  readonly label?: string
+}
+
+export class WorkspaceRegistry {
+  readonly records = new Map<string, WorkspaceRecord>()
+  readonly config: DiskBudgetConfig
+
+  constructor(config?: Partial<DiskBudgetConfig>) {
+    this.config = {
+      capBytes: config?.capBytes ?? DEFAULT_WORKSPACE_DISK_CAP_BYTES,
+      minFreeBytes: config?.minFreeBytes ?? DEFAULT_WORKSPACE_MIN_FREE_BYTES,
+    }
+  }
+
+  register(record: WorkspaceRecord): void {
+    this.records.set(record.id, record)
+  }
+
+  markTerminal(id: string): boolean {
+    const existing = this.records.get(id)
+    if (!existing) return false
+    this.records.set(id, { ...existing, terminal: true })
+    return true
+  }
+
+  unregister(id: string): boolean {
+    return this.records.delete(id)
+  }
+
+  list(): readonly WorkspaceRecord[] {
+    return [...this.records.values()].sort((a, b) => a.id.localeCompare(b.id))
+  }
+
+  effect checkDiskBudget(rootDir?: string): { readonly allowed: boolean; readonly usedBytes: number; readonly freeBytes: number }!! {
+    const root = rootDir ?? defaultWorkspacesDir()
+    const usedBytes = tryPromise({ try: () => measureDirBytesNode(root), catch: () => 0 }) catch () => 0
+    const freeBytes = tryPromise({ try: () => freeDiskBytesNode(root), catch: () => 0 }) catch () => 0
+    const verdict = evaluateDiskBudget(
+      Math.trunc(usedBytes / 1_048_576),
+      Math.trunc(this.config.capBytes / 1_048_576),
+      Math.trunc(freeBytes / 1_048_576),
+      Math.trunc(this.config.minFreeBytes / 1_048_576),
+    )
+    return { allowed: verdict === "BudgetAllowed", usedBytes, freeBytes }
+  }
+}
+
+export interface GitBaselineSnapshot {
+  readonly sha: string | null
+  readonly dirtyFiles: readonly string[]
+  readonly untrackedFiles: readonly string[]
+}
+
+export effect function captureGitBaseline(workdir: string): GitBaselineSnapshot!! {
+  const sha = tryPromise({
+    try: () => execGit(["rev-parse", "HEAD"], workdir).then((r) => r.stdout.trim() || null),
+    catch: () => null,
+  }) catch () => null
+  const dirty = tryPromise({
+    try: () => execGit(["diff", "--name-only"], workdir).then((r) => r.stdout.split("\n").map((s) => s.trim()).filter(Boolean)),
+    catch: () => [] as string[],
+  }) catch () => [] as string[]
+  const untracked = tryPromise({
+    try: () => execGit(["ls-files", "--others", "--exclude-standard"], workdir).then((r) => r.stdout.split("\n").map((s) => s.trim()).filter(Boolean)),
+    catch: () => [] as string[],
+  }) catch () => [] as string[]
+  return { sha, dirtyFiles: dirty.sort(), untrackedFiles: untracked.sort() }
+}
+
+export function subtractChangeSetBaseline(
+  currentFiles: readonly string[],
+  baseline: GitBaselineSnapshot,
+): readonly string[] {
+  const baselineSet = new Set([...baseline.dirtyFiles, ...baseline.untrackedFiles])
+  return [...new Set(currentFiles)].filter((file) => !baselineSet.has(file)).sort()
+}
+
+export effect function captureWorkspaceChangeSet(
+  workdir: string,
+  baseline?: GitBaselineSnapshot,
+): WorkspaceChangeSet!WorkspaceOperationError {
+  const branch = tryPromise({
+    try: () => execGit(["rev-parse", "--abbrev-ref", "HEAD"], workdir).then((r) => r.stdout.trim() || "HEAD"),
+    catch: () => "HEAD",
+  }) catch () => "HEAD"
+  const tracked = try tryPromise({
+    try: () => execGit(["diff", "--name-only"], workdir).then((r) => r.stdout.split("\n").map((s) => s.trim()).filter(Boolean)),
+    catch: (cause) => new WorkspaceOperationError({ workspaceId: workdir, code: "GIT_DIFF_FAILED", reason: cause instanceof Error ? cause.message : "git diff failed" }),
+  })
+  const untracked = tryPromise({
+    try: () => execGit(["ls-files", "--others", "--exclude-standard"], workdir).then((r) => r.stdout.split("\n").map((s) => s.trim()).filter(Boolean)),
+    catch: () => [] as string[],
+  }) catch () => [] as string[]
+  const allChanged = [...new Set([...tracked, ...untracked])].sort()
+  const changedFiles = baseline ? subtractChangeSetBaseline(allChanged, baseline) : allChanged
+  const diffStat = tryPromise({
+    try: () => execGit(["diff", "--stat"], workdir).then((r) => r.stdout.trim()),
+    catch: () => "",
+  }) catch () => ""
+  const rawDiff = tryPromise({
+    try: () => execGit(["diff"], workdir).then((r) => r.stdout),
+    catch: () => "",
+  }) catch () => ""
+  const bounded = truncateTail(rawDiff, 200, 16_384)
+  return {
+    workdir,
+    branch,
+    baselineSha: baseline?.sha ?? null,
+    changedFiles,
+    diffStat,
+    diff: bounded.text,
+    truncated: bounded.truncated,
+    artifactRef: bounded.artifactRef,
+    capturedAt: Date.now(),
+  }
+}
+
+export interface GitHubIssueSummary {
+  readonly number: number
+  readonly title: string
+  readonly state: string
+  readonly url: string
+  readonly body?: string
+  readonly labels: readonly string[]
+}
+
+export interface WorkspaceStatusResult {
+  readonly workspaceId: string
+  readonly branch: string
+  readonly clean: boolean
+  readonly changedFiles: readonly string[]
+}
+
+export interface PullRequestResult {
+  readonly number: number
+  readonly url: string
+  readonly title: string
+  readonly state: string
+  readonly draft: boolean
+}
+
+export interface GitHubIssueComment {
+  readonly id: number
+  readonly url: string
+  readonly body: string
+}
+
+export class CodingWorkspaceService extends Service {
+  static override serviceType = CODING_WORKSPACE_SERVICE_TYPE
+  override capabilityDescription = "Manages git workspaces, worktrees, diff review gates, scratch cleanup, and GitHub issue/PR operations."
+
+  readonly registry: WorkspaceRegistry
+  readonly workspaces = new Map<string, WorkspaceResult>()
+  readonly rootDir: string
+  readonly githubToken?: string
+
+  constructor(runtime?: IAgentRuntime, opts?: { readonly rootDir?: string; readonly diskConfig?: Partial<DiskBudgetConfig>; readonly githubToken?: string }) {
+    super(runtime)
+    this.rootDir = opts?.rootDir ?? defaultWorkspacesDir()
+    this.registry = new WorkspaceRegistry(opts?.diskConfig)
+    this.githubToken = opts?.githubToken
+  }
+
+  static override start(runtime: IAgentRuntime): Promise<Service> {
+    return Promise.resolve(new CodingWorkspaceService(runtime))
+  }
+
+  getWorkspaceRegistry(): WorkspaceRegistry {
+    return this.registry
+  }
+
+  listWorkspaces(): readonly WorkspaceResult[] {
+    return [...this.workspaces.values()].sort((a, b) => a.id.localeCompare(b.id))
+  }
+
+  getWorkspace(workspaceId: string): WorkspaceResult | undefined {
+    return this.workspaces.get(workspaceId)
+  }
+
+  effect provisionWorkspaceEffect(opts: {
+    readonly repo: string
+    readonly baseBranch?: string
+    readonly branchName?: string
+    readonly useWorktree?: boolean
+    readonly parentWorkspaceId?: string
+    readonly localSourcePath?: string
+  }): WorkspaceResult!WorkspaceOperationError {
+    const budget = try this.registry.checkDiskBudget(this.rootDir)
+    if (!budget.allowed) {
+      throw new WorkspaceOperationError({
+        workspaceId: opts.repo,
+        code: "DISK_BUDGET_EXCEEDED",
+        reason: `Disk budget exceeded (used=${budget.usedBytes}, free=${budget.freeBytes}).`,
+      })
+    }
+    const baseBranch = assertSafeGitRef(opts.baseBranch ?? "main") catch effect (err) => {
+      throw new WorkspaceOperationError({ workspaceId: opts.repo, code: "UNSAFE_GIT_REF", reason: err.reason })
+    }
+    const branchName = assertSafeGitRef(opts.branchName ?? `agent-${makeWorkspaceId()}`) catch effect (err) => {
+      throw new WorkspaceOperationError({ workspaceId: opts.repo, code: "UNSAFE_GIT_REF", reason: err.reason })
+    }
+    const id = makeWorkspaceId()
+    const targetPath = joinWs(this.rootDir, id)
+    try tryPromise({
+      try: () => ensureDirNode(this.rootDir),
+      catch: () => new WorkspaceOperationError({ workspaceId: id, code: "MKDIR_FAILED", reason: "Unable to create workspace root." }),
+    })
+    if (opts.useWorktree && opts.parentWorkspaceId) {
+      const parent = this.workspaces.get(opts.parentWorkspaceId)
+      if (!parent) {
+        throw new WorkspaceOperationError({ workspaceId: opts.parentWorkspaceId, code: "PARENT_NOT_FOUND", reason: "Parent workspace not found." })
+      }
+      try tryPromise({
+        try: () => execGit(["worktree", "add", "-b", branchName, targetPath, baseBranch], parent.path),
+        catch: (cause) => new WorkspaceOperationError({ workspaceId: id, code: "WORKTREE_ADD_FAILED", reason: cause instanceof Error ? cause.message : "git worktree add failed" }),
+      })
+      const created: WorkspaceResult = {
+        id,
+        repo: parent.repo,
+        path: targetPath,
+        branch: branchName,
+        baseBranch,
+        isWorktree: true,
+        parentWorkspaceId: parent.id,
+        createdAt: new Date().toISOString(),
+      }
+      this.workspaces.set(id, created)
+      this.registry.register({ id, path: targetPath, kind: "worktree", createdAt: created.createdAt, terminal: false })
+      return created
+    }
+    const cloneSource = opts.localSourcePath
+      ? opts.localSourcePath
+      : assertSafeGitRemote(opts.repo) catch effect (err) => {
+          throw new WorkspaceOperationError({ workspaceId: opts.repo, code: "UNSAFE_GIT_REMOTE", reason: err.reason })
+        }
+    try tryPromise({
+      try: () => execGit(["clone", "--branch", baseBranch, cloneSource, targetPath], this.rootDir),
+      catch: (cause) => new WorkspaceOperationError({ workspaceId: id, code: "GIT_CLONE_FAILED", reason: cause instanceof Error ? cause.message : "git clone failed" }),
+    })
+    try tryPromise({
+      try: () => execGit(["checkout", "-b", branchName], targetPath),
+      catch: (cause) => new WorkspaceOperationError({ workspaceId: id, code: "GIT_BRANCH_FAILED", reason: cause instanceof Error ? cause.message : "git checkout -b failed" }),
+    })
+    const created: WorkspaceResult = {
+      id,
+      repo: opts.repo,
+      path: targetPath,
+      branch: branchName,
+      baseBranch,
+      isWorktree: false,
+      createdAt: new Date().toISOString(),
+    }
+    this.workspaces.set(id, created)
+    this.registry.register({ id, path: targetPath, kind: "repo", createdAt: created.createdAt, terminal: false })
+    return created
+  }
+
+  async provisionWorkspace(opts: Parameters<CodingWorkspaceService["provisionWorkspaceEffect"]>[0]): Promise<WorkspaceResult> {
+    return runPromise(this.provisionWorkspaceEffect(opts))
+  }
+
+  effect commitEffect(workspaceId: string, message: string): { readonly committed: boolean; readonly sha?: string; readonly changedFiles: readonly string[] }!(WorkspaceOperationError | DiffGateBlockedError) {
+    const ws = this.workspaces.get(workspaceId)
+    if (!ws) throw new WorkspaceOperationError({ workspaceId, code: "WORKSPACE_NOT_FOUND", reason: "Workspace not found." })
+    const changeSet = try captureWorkspaceChangeSet(ws.path)
+    if (changeSet.changedFiles.length === 0) {
+      return { committed: false, changedFiles: [] }
+    }
+    const gate = reviewDiff(changeSet)
+    if (!gate.passed) {
+      throw new DiffGateBlockedError({ workdir: ws.path, reasons: gate.findings.map((f) => f.message) })
+    }
+    try tryPromise({
+      try: () => execGit(["add", "-A"], ws.path),
+      catch: (cause) => new WorkspaceOperationError({ workspaceId, code: "GIT_ADD_FAILED", reason: cause instanceof Error ? cause.message : "git add failed" }),
+    })
+    try tryPromise({
+      try: () => execGit(["commit", "-m", message], ws.path),
+      catch: (cause) => new WorkspaceOperationError({ workspaceId, code: "GIT_COMMIT_FAILED", reason: cause instanceof Error ? cause.message : "git commit failed" }),
+    })
+    const sha = tryPromise({
+      try: () => execGit(["rev-parse", "HEAD"], ws.path).then((r) => r.stdout.trim()),
+      catch: () => undefined,
+    }) catch () => undefined
+    return { committed: true, sha, changedFiles: changeSet.changedFiles }
+  }
+
+  async commit(workspaceId: string, message: string) {
+    return runPromise(this.commitEffect(workspaceId, message))
+  }
+
+  effect removeWorkspaceEffect(workspaceId: string): boolean!WorkspaceOperationError {
+    const ws = this.workspaces.get(workspaceId)
+    if (!ws) return false
+    if (ws.isWorktree && ws.parentWorkspaceId) {
+      const parent = this.workspaces.get(ws.parentWorkspaceId)
+      if (parent) {
+        tryPromise({
+          try: () => execGit(["worktree", "remove", "--force", ws.path], parent.path),
+          catch: () => undefined,
+        }) catch () => undefined
+      }
+    }
+    try tryPromise({
+      try: () => removeDirNode(ws.path),
+      catch: (cause) => new WorkspaceOperationError({ workspaceId, code: "REMOVE_FAILED", reason: cause instanceof Error ? cause.message : "rm failed" }),
+    })
+    this.workspaces.delete(workspaceId)
+    this.registry.unregister(workspaceId)
+    return true
+  }
+
+  async removeWorkspace(workspaceId: string): Promise<boolean> {
+    return runPromise(this.removeWorkspaceEffect(workspaceId))
+  }
+
+  effect getStatusEffect(workspaceId: string): WorkspaceStatusResult!WorkspaceOperationError {
+    const ws = this.workspaces.get(workspaceId)
+    if (!ws) throw new WorkspaceOperationError({ workspaceId, code: "WORKSPACE_NOT_FOUND", reason: "Workspace not found." })
+    const branch = tryPromise({
+      try: () => execGit(["rev-parse", "--abbrev-ref", "HEAD"], ws.path).then((r) => r.stdout.trim() || ws.branch),
+      catch: () => ws.branch,
+    }) catch () => ws.branch
+    const porcelain = try tryPromise({
+      try: () => execGit(["status", "--porcelain"], ws.path).then((r) => r.stdout),
+      catch: (cause) => new WorkspaceOperationError({ workspaceId, code: "GIT_STATUS_FAILED", reason: cause instanceof Error ? cause.message : "git status failed" }),
+    })
+    const changedFiles = porcelain
+      .split("\n")
+      .map((line) => line.slice(3).trim())
+      .filter(Boolean)
+      .sort()
+    return { workspaceId, branch, clean: changedFiles.length === 0, changedFiles }
+  }
+
+  effect pushEffect(
+    workspaceId: string,
+    opts?: { readonly force?: boolean; readonly setUpstream?: boolean },
+  ): { readonly pushed: boolean; readonly branch: string }!WorkspaceOperationError {
+    const ws = this.workspaces.get(workspaceId)
+    if (!ws) throw new WorkspaceOperationError({ workspaceId, code: "WORKSPACE_NOT_FOUND", reason: "Workspace not found." })
+    const args = ["push"]
+    if (opts?.setUpstream !== false) args.push("-u", "origin", ws.branch)
+    if (opts?.force === true) args.push("--force-with-lease")
+    try tryPromise({
+      try: () => execGit(args, ws.path),
+      catch: (cause) => new WorkspaceOperationError({ workspaceId, code: "GIT_PUSH_FAILED", reason: cause instanceof Error ? cause.message : "git push failed" }),
+    })
+    return { pushed: true, branch: ws.branch }
+  }
+
+  effect githubRequest(
+    repoInput: string,
+    method: "GET" | "POST" | "PATCH",
+    suffix: string,
+    payload?: Readonly<Record<string, unknown>>,
+  ): unknown!WorkspaceOperationError {
+    const parsed = normalizeRepositoryInput(repoInput)
+    if (!parsed) {
+      throw new WorkspaceOperationError({ workspaceId: repoInput, code: "INVALID_REPO", reason: "Repository must be owner/repo or https://github.com/owner/repo." })
+    }
+    const headers: Record<string, string> = {
+      Accept: "application/vnd.github+json",
+      "User-Agent": "elizaos-agent-orchestrator",
+      ...(payload ? { "Content-Type": "application/json" } : {}),
+    }
+    if (this.githubToken) headers.Authorization = `Bearer ${this.githubToken}`
+    const url = `https://api.github.com/repos/${parsed.owner}/${parsed.repo}${suffix}`
+    const response = safeFetch(url, {
+      method,
+      headers,
+      ...(payload ? { body: JSON.stringify(payload) } : {}),
+    }) catch effect (err) => {
+      throw new WorkspaceOperationError({ workspaceId: repoInput, code: "GITHUB_FETCH_BLOCKED", reason: err.reason })
+    }
+    if (!response.ok) {
+      throw new WorkspaceOperationError({ workspaceId: repoInput, code: "GITHUB_API_ERROR", reason: `GitHub API returned ${response.status}.` })
+    }
+    return try tryPromise({
+      try: () => response.json(),
+      catch: () => new WorkspaceOperationError({ workspaceId: repoInput, code: "GITHUB_JSON_INVALID", reason: "Invalid GitHub JSON response." }),
+    })
+  }
+
+  effect createPrEffect(
+    workspaceId: string,
+    opts: { readonly title: string; readonly body: string; readonly baseBranch?: string; readonly draft?: boolean },
+  ): PullRequestResult!WorkspaceOperationError {
+    const ws = this.workspaces.get(workspaceId)
+    if (!ws) throw new WorkspaceOperationError({ workspaceId, code: "WORKSPACE_NOT_FOUND", reason: "Workspace not found." })
+    const raw = (try this.githubRequest(ws.repo, "POST", "/pulls", {
+      title: opts.title,
+      body: opts.body,
+      head: ws.branch,
+      base: opts.baseBranch ?? ws.baseBranch,
+      draft: opts.draft === true,
+    })) as Record<string, unknown>
+    return {
+      number: typeof raw.number === "number" ? raw.number : 0,
+      url: typeof raw.html_url === "string" ? raw.html_url : "",
+      title: typeof raw.title === "string" ? raw.title : opts.title,
+      state: typeof raw.state === "string" ? raw.state : "open",
+      draft: raw.draft === true,
+    }
+  }
+
+  toIssueSummary(raw: unknown, fallbackState = "open"): GitHubIssueSummary {
+    const row = typeof raw === "object" && raw !== null ? raw as Record<string, unknown> : {}
+    return {
+      number: typeof row.number === "number" ? row.number : 0,
+      title: typeof row.title === "string" ? row.title : "",
+      state: typeof row.state === "string" ? row.state : fallbackState,
+      url: typeof row.html_url === "string" ? row.html_url : "",
+      body: typeof row.body === "string" ? row.body : undefined,
+      labels: Array.isArray(row.labels)
+        ? (row.labels as Record<string, unknown>[]).map((l) => String(l.name ?? "")).filter(Boolean)
+        : [],
+    }
+  }
+
+  effect listIssuesEffect(repoInput: string, state: "open" | "closed" | "all" = "open", labels?: readonly string[]): readonly GitHubIssueSummary[]!WorkspaceOperationError {
+    const labelParam = labels && labels.length > 0 ? `&labels=${encodeURIComponent(labels.join(","))}` : ""
+    const rows = try this.githubRequest(repoInput, "GET", `/issues?state=${state}&per_page=25${labelParam}`)
+    return Array.isArray(rows) ? rows.map((row) => this.toIssueSummary(row, state)) : []
+  }
+
+  effect getIssueEffect(repoInput: string, issueNumber: number): GitHubIssueSummary!WorkspaceOperationError {
+    const raw = try this.githubRequest(repoInput, "GET", `/issues/${Math.trunc(issueNumber)}`)
+    return this.toIssueSummary(raw)
+  }
+
+  effect createIssueEffect(
+    repoInput: string,
+    input: { readonly title: string; readonly body?: string; readonly labels?: readonly string[] },
+  ): GitHubIssueSummary!WorkspaceOperationError {
+    const raw = try this.githubRequest(repoInput, "POST", "/issues", {
+      title: input.title,
+      ...(input.body ? { body: input.body } : {}),
+      ...(input.labels && input.labels.length > 0 ? { labels: [...input.labels] } : {}),
+    })
+    return this.toIssueSummary(raw)
+  }
+
+  effect updateIssueEffect(
+    repoInput: string,
+    issueNumber: number,
+    patch: { readonly title?: string; readonly body?: string; readonly state?: "open" | "closed"; readonly labels?: readonly string[] },
+  ): GitHubIssueSummary!WorkspaceOperationError {
+    const raw = try this.githubRequest(repoInput, "PATCH", `/issues/${Math.trunc(issueNumber)}`, {
+      ...(patch.title !== undefined ? { title: patch.title } : {}),
+      ...(patch.body !== undefined ? { body: patch.body } : {}),
+      ...(patch.state !== undefined ? { state: patch.state } : {}),
+      ...(patch.labels !== undefined ? { labels: [...patch.labels] } : {}),
+    })
+    return this.toIssueSummary(raw, patch.state ?? "open")
+  }
+
+  effect addIssueCommentEffect(repoInput: string, issueNumber: number, body: string): GitHubIssueComment!WorkspaceOperationError {
+    const raw = (try this.githubRequest(repoInput, "POST", `/issues/${Math.trunc(issueNumber)}/comments`, { body })) as Record<string, unknown>
+    return {
+      id: typeof raw.id === "number" ? raw.id : 0,
+      url: typeof raw.html_url === "string" ? raw.html_url : "",
+      body: typeof raw.body === "string" ? raw.body : body,
+    }
+  }
+
+  effect addIssueLabelsEffect(repoInput: string, issueNumber: number, labels: readonly string[]): readonly string[]!WorkspaceOperationError {
+    const raw = try this.githubRequest(repoInput, "POST", `/issues/${Math.trunc(issueNumber)}/labels`, { labels: [...labels] })
+    return Array.isArray(raw)
+      ? (raw as Record<string, unknown>[]).map((l) => String(l.name ?? "")).filter(Boolean)
+      : [...labels]
+  }
+
+  override async stop(): Promise<void> {
+    return
+  }
+}

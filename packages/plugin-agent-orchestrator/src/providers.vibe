@@ -1,0 +1,422 @@
+// spec/agentOrchestrator/lanesAndRouting.md, "Output truncation and shift-handoff compaction keep context within token budgets"; spec/agentOrchestrator/verification.md, "Story: Verify subagent deliverables against concrete evidence and route fast evaluations cleanly"
+import {
+  MESSAGE_SOURCE_SUB_AGENT,
+  isLoopbackHost,
+  type IAgentRuntime,
+  type Memory,
+  type Provider,
+  type ResponseHandlerEvaluator,
+  type State,
+} from "@elizaos/core"
+import {
+  ACP_SUBPROCESS_SERVICE_TYPE,
+  AcpService,
+  isSessionTerminal,
+} from "./acp.vibe"
+import {
+  ORCHESTRATOR_TASK_SERVICE_TYPE,
+  OrchestratorTaskService,
+} from "./tasks-service.vibe"
+import {
+  CODING_WORKSPACE_SERVICE_TYPE,
+  CodingWorkspaceService,
+} from "./workspace.vibe"
+import {
+  TASK_WATCHDOG_SERVICE_TYPE,
+  TaskWatchdogService,
+  WAVE_SUPERVISOR_SERVICE_TYPE,
+  WaveSupervisor,
+} from "./routing.vibe"
+import {
+  ORDERED_ADAPTER_IDS,
+  PI_PROVIDER_ROUTES,
+  resolveCodingBackend,
+} from "./adapters.vibe"
+import {
+  buildCacheStableOrchestratorPrefix,
+  buildCompactSessionDigest,
+  buildCompactTaskDigest,
+  sanitizeCompletionRelay,
+  truncateTail,
+} from "./optimization.vibe"
+import {
+  IN_FLIGHT_TASK_STATUSES,
+  type SessionInfo,
+  type WorkspaceChangeSet,
+} from "./types.vibe"
+
+const RECENCY_WINDOW_MS = 30 * 60 * 1_000
+const EMPTY_COMPLETION_PLACEHOLDER = "sub-agent reports task complete (no captured output)."
+const TOOL_FAILURE_MARKER_RE = /\b(?:command not found|permission denied|no such file or directory|timed? out|timeout|exit code [1-9]\d*|non[-\s]?zero exit|unable to find)\b/iu
+const POSITIVE_QUANTITATIVE_RE = /\b(?:found|located|matched|passed|created|updated|verified)\s+(?:[1-9]\d*|all)\b/iu
+const URL_IN_TEXT_RE = /https?:\/\/[^\s<>"'`)\]*]+/gu
+
+function getAcp(runtime: IAgentRuntime): AcpService | undefined {
+  const s: unknown = runtime.getService(ACP_SUBPROCESS_SERVICE_TYPE)
+  return s instanceof AcpService ? s : undefined
+}
+
+function getTasks(runtime: IAgentRuntime): OrchestratorTaskService | undefined {
+  const s: unknown = runtime.getService(ORCHESTRATOR_TASK_SERVICE_TYPE)
+  return s instanceof OrchestratorTaskService ? s : undefined
+}
+
+function getWorkspaces(runtime: IAgentRuntime): CodingWorkspaceService | undefined {
+  const s: unknown = runtime.getService(CODING_WORKSPACE_SERVICE_TYPE)
+  return s instanceof CodingWorkspaceService ? s : undefined
+}
+
+function getWatchdog(runtime: IAgentRuntime): TaskWatchdogService | undefined {
+  const s: unknown = runtime.getService(TASK_WATCHDOG_SERVICE_TYPE)
+  return s instanceof TaskWatchdogService ? s : undefined
+}
+
+function getWaveSupervisor(runtime: IAgentRuntime): WaveSupervisor | undefined {
+  const s: unknown = runtime.getService(WAVE_SUPERVISOR_SERVICE_TYPE)
+  return s instanceof WaveSupervisor ? s : undefined
+}
+
+function bucketSessionStatus(session: SessionInfo, stalledIds: ReadonlySet<string>): "active" | "blocked" | "stalled" {
+  if (stalledIds.has(session.id)) return "stalled"
+  if (session.status === "blocked") return "blocked"
+  return "active"
+}
+
+export const availableAgentsProvider: Provider = {
+  name: "AVAILABLE_AGENTS",
+  description: "Static catalog of supported ACP coding adapters and Pi-agent provider routes.",
+  descriptionCompressed: "ACP coding adapters + Pi routes (cache-stable).",
+  position: 1,
+  dynamic: false,
+  cacheStable: true,
+  cacheScope: "agent",
+  contexts: ["code", "automation"],
+  contextGate: { anyOf: ["code", "automation"] },
+  relevanceKeywords: ["agent", "task", "coding", "session", "acp", "pi-agent", "cerebras"],
+  get: async (runtime: IAgentRuntime) => {
+    const preferred = resolveCodingBackend({ runtime })?.agentType ?? "elizaos"
+    const routes = Object.keys(PI_PROVIDER_ROUTES).sort()
+    const prefix = buildCacheStableOrchestratorPrefix({
+      enabledAdapters: ORDERED_ADAPTER_IDS,
+      fastEvalEnabled: true,
+    })
+    const discoveryText = `coding_adapters: ${ORDERED_ADAPTER_IDS.join(", ")} (default=${preferred}); pi_routes: ${routes.join(", ")}`
+    return {
+      text: `${prefix}\n${discoveryText}`,
+      discoveryText,
+      referenceBodyDeferred: true,
+      values: { availableAgents: discoveryText },
+      data: {
+        adapters: [...ORDERED_ADAPTER_IDS],
+        piRoutes: routes,
+        preferredAdapter: preferred,
+      },
+    }
+  },
+}
+
+export const acpAvailableAgentsProvider = availableAgentsProvider
+
+export const activeSubAgentsProvider: Provider = {
+  name: "ACTIVE_SUB_AGENTS",
+  description: "Compact live digest of active subagent sessions, admission capacity, waves, and in-flight tasks.",
+  descriptionCompressed: "Active subagents, capacity, waves, in-flight tasks.",
+  position: 0,
+  dynamic: true,
+  cacheStable: false,
+  cacheScope: "turn",
+  contexts: ["general", "tasks", "code", "automation"],
+  contextGate: { anyOf: ["general", "tasks", "code", "automation"] },
+  get: async (runtime: IAgentRuntime) => {
+    const acp = getAcp(runtime)
+    if (!acp) return { text: "", values: {}, data: {} }
+    const sessions = acp.listSessions().filter((s) => !isSessionTerminal(s.status)).sort((a, b) => a.id.localeCompare(b.id))
+    const watchdog = getWatchdog(runtime)
+    const stalledSet = new Set(watchdog?.getStalledSessionIds() ?? [])
+    const capSet = new Set(watchdog?.getApproachingCapSessionIds() ?? [])
+    const cap = acp.getCapacity()
+    const waves = getWaveSupervisor(runtime)?.getWaveStatuses() ?? []
+    const inFlight = getTasks(runtime)?.listTasks({ statuses: IN_FLIGHT_TASK_STATUSES, limit: 20 }) ?? []
+    if (sessions.length === 0 && inFlight.length === 0 && cap.queuedCount === 0) {
+      return { text: "", values: { activeSubAgents: "" }, data: { sessions: [], capacity: cap, waves } }
+    }
+    const lines: string[] = [
+      `capacity: workers=${cap.activeWorkers}/${cap.maxSessions} queued=${cap.queuedCount}/${cap.maxQueue} diskBlocked=${cap.diskBlocked}`,
+    ]
+    for (const w of waves) {
+      lines.push(`wave ${w.waveId}: active=${w.state.activeLanes}/${w.state.maxParallel} done=${w.state.completedLanes}/${w.state.totalLanes} spent=${w.state.spentCents}/${w.state.budgetCapCents}`)
+    }
+    for (const s of sessions) {
+      const bucket = bucketSessionStatus(s, stalledSet)
+      const capTag = capSet.has(s.id) ? " approachingCap=round-trip" : ""
+      lines.push(`- [${s.label}] sessionId=${s.id} agentType=${s.agentType} status=${bucket}${capTag} workdir=${s.workdir}`)
+    }
+    if (inFlight.length > 0) {
+      lines.push("## In-flight tasks")
+      for (const doc of inFlight) {
+        lines.push(`- ${buildCompactTaskDigest(doc.task, doc.sessions.length)}`)
+      }
+    }
+    const text = lines.join("\n")
+    return {
+      text,
+      discoveryText: `active_subagents=${sessions.length} in_flight_tasks=${inFlight.length} queued=${cap.queuedCount}`,
+      values: { activeSubAgents: text },
+      data: {
+        sessions: sessions.map((s) => ({ id: s.id, label: s.label, agentType: s.agentType, status: bucketSessionStatus(s, stalledSet) })),
+        capacity: cap,
+        waves,
+      },
+    }
+  },
+}
+
+export const activeWorkspaceContextProvider: Provider = {
+  name: "ACTIVE_WORKSPACE_CONTEXT",
+  description: "Active provisioned workspaces, reusable ready sessions, and preferred coding backend.",
+  descriptionCompressed: "Active workspaces + reusable coding sessions.",
+  position: 1,
+  dynamic: true,
+  cacheStable: false,
+  cacheScope: "turn",
+  contexts: ["code", "tasks", "agent_internal"],
+  contextGate: { anyOf: ["code", "tasks", "agent_internal"] },
+  roleGate: { minRole: "ADMIN" },
+  get: async (runtime: IAgentRuntime) => {
+    const ws = getWorkspaces(runtime)
+    const acp = getAcp(runtime)
+    const workspaces = ws?.listWorkspaces() ?? []
+    const sessions = acp?.listSessions().filter((s) => !isSessionTerminal(s.status)) ?? []
+    const preferred = resolveCodingBackend({ runtime })?.agentType ?? "elizaos"
+    const lines = [
+      "active_workspace_context:",
+      `  preferredFramework: ${preferred}`,
+      `  workspaceCount: ${workspaces.length}`,
+      `  sessionCount: ${sessions.length}`,
+    ]
+    for (const item of workspaces) {
+      lines.push(`  - ws=${item.id} repo=${item.repo} branch=${item.branch} path=${item.path}`)
+    }
+    for (const s of sessions) {
+      lines.push(`  - ${buildCompactSessionDigest(s)}`)
+    }
+    const text = lines.join("\n")
+    return {
+      text,
+      values: { activeWorkspaceContext: text },
+      data: {
+        activeWorkspaces: workspaces,
+        activeSessions: sessions,
+        preferredTaskAgent: preferred,
+      },
+    }
+  },
+}
+
+export const codingAgentExamplesProvider: Provider = {
+  name: "CODING_AGENT_EXAMPLES",
+  description: "Canonical compact examples for delegating coding tasks, parallel lanes, and workspace submissions.",
+  descriptionCompressed: "Canonical TASKS delegation examples (cache-stable).",
+  position: -1,
+  dynamic: false,
+  cacheStable: true,
+  cacheScope: "agent",
+  contexts: ["code", "agent_internal"],
+  contextGate: { anyOf: ["code", "agent_internal"] },
+  roleGate: { minRole: "ADMIN" },
+  get: async () => {
+    const text = [
+      "task_agent_action_examples:",
+      "  canonicalActions: [TASKS_CREATE, TASKS_SPAWN_AGENT, TASKS_SEND, TASKS_LIST_AGENTS, TASKS_CONTROL, TASKS_HISTORY]",
+      "  examples:",
+      '    - user: "Fix auth tests using Pi agent on Cerebras" -> TASKS { action: "spawn_agent", requestedBackend: "pi-agent", providerRoute: "cerebras-fast", task: "Fix auth tests" }',
+      '    - user: "Run backend and frontend refactors in parallel" -> TASKS { action: "create", agents: "Refactor src/api | Refactor src/ui", maxParallel: 2 }',
+      '    - user: "Tell Ada to also add unit tests" -> TASKS { action: "send", sessionId: "<id>", input: "Also add unit tests" }',
+      '    - user: "Show running coding agents" -> TASKS { action: "list_agents" }',
+    ].join("\n")
+    return {
+      text,
+      values: { taskAgentExamples: text },
+      data: { adapters: [...ORDERED_ADAPTER_IDS] },
+    }
+  },
+}
+
+export const taskAgentExamplesProvider = codingAgentExamplesProvider
+
+function readChangeSet(session: SessionInfo): WorkspaceChangeSet | undefined {
+  const raw = session.metadata.lastChangeSet
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return undefined
+  const candidate = raw as Partial<WorkspaceChangeSet>
+  if (!Array.isArray(candidate.changedFiles) || typeof candidate.capturedAt !== "number") return undefined
+  return candidate as WorkspaceChangeSet
+}
+
+export const codingSessionChangesProvider: Provider = {
+  name: "CODING_SESSION_CHANGES",
+  description: "Recent git change set from the latest completed coding subagent with staleness guard and bounded diff.",
+  descriptionCompressed: "Recent coding subagent file changes + bounded diff.",
+  position: 1,
+  alwaysInResponseState: true,
+  cacheStable: false,
+  cacheScope: "turn",
+  get: async (runtime: IAgentRuntime, message: Memory, _state: State) => {
+    const acp = getAcp(runtime)
+    if (!acp) return { text: "", values: {}, data: {} }
+    const roomId = message.roomId
+    const scoped = acp.listSessions().filter((s) => !roomId || !s.roomId || s.roomId === roomId)
+    const now = Date.now()
+    const top = scoped
+      .map((session) => ({ session, changeSet: readChangeSet(session) }))
+      .filter((entry): entry is { session: SessionInfo; changeSet: WorkspaceChangeSet } =>
+        entry.changeSet !== undefined
+        && entry.changeSet.changedFiles.length > 0
+        && now - entry.changeSet.capturedAt <= RECENCY_WINDOW_MS,
+      )
+      .sort((a, b) => b.changeSet.capturedAt - a.changeSet.capturedAt)[0]
+    if (!top) return { text: "", values: {}, data: {} }
+    const newerTaskSince = scoped.some((s) =>
+      s.id !== top.session.id && Date.parse(s.createdAt) > top.changeSet.capturedAt,
+    )
+    if (newerTaskSince) {
+      const note = "recent_coding_changes:\n  note: Your latest coding task produced no captured diff. Do not describe an older diff."
+      return { text: note, values: { recentCodingChanges: note }, data: {} }
+    }
+    const boundedDiff = truncateTail(top.changeSet.diff, 80, 6_144)
+    const text = [
+      "recent_coding_changes:",
+      `  task: ${top.session.label}`,
+      `  changedFiles: ${top.changeSet.changedFiles.join(", ")}`,
+      `  diffStat: ${top.changeSet.diffStat || "(summary unavailable)"}`,
+      `  diff:\n${boundedDiff.text}`,
+    ].join("\n")
+    return {
+      text,
+      values: { recentCodingChanges: text },
+      data: {
+        recentCodingChanges: {
+          task: top.session.label,
+          changedFiles: top.changeSet.changedFiles,
+          diffStat: top.changeSet.diffStat,
+          truncated: boundedDiff.truncated,
+          artifactRef: boundedDiff.artifactRef,
+        },
+      },
+    }
+  },
+}
+
+function readSubAgentMeta(message: Memory): Readonly<Record<string, unknown>> {
+  const content = message.content as Record<string, unknown> | undefined
+  const meta = content?.metadata
+  return typeof meta === "object" && meta !== null && !Array.isArray(meta) ? meta as Record<string, unknown> : {}
+}
+
+export function completionHasFailureMarkerWithoutPositiveEvidence(text: string): boolean {
+  return TOOL_FAILURE_MARKER_RE.test(text) && !POSITIVE_QUANTITATIVE_RE.test(text)
+}
+
+export function verifiedUrlsExcludingDead(text: string, deadUrls: readonly string[] = []): readonly string[] {
+  const dead = new Set(deadUrls)
+  const urls: string[] = []
+  for (const match of text.matchAll(URL_IN_TEXT_RE)) {
+    const raw = match[0]
+    if (dead.has(raw)) continue
+    try {
+      const parsed = new URL(raw)
+      if (!isLoopbackHost(parsed.hostname)) urls.push(raw)
+    } catch {
+      continue
+    }
+  }
+  return [...new Set(urls)]
+}
+
+export function extractFailureReason(text: string): string {
+  const cleaned = sanitizeCompletionRelay(text)
+  const firstLine = cleaned.split("\n").map((l) => l.trim()).find(Boolean) ?? "the subagent encountered an error"
+  return firstLine.length <= 140 ? firstLine : `${firstLine.slice(0, 137)}...`
+}
+
+export const subAgentCompletionResponseEvaluator: ResponseHandlerEvaluator = {
+  name: "agent-orchestrator.sub-agent-completion",
+  priority: 10,
+  shouldRun: ({ message, messageHandler }) => {
+    const meta = readSubAgentMeta(message)
+    const isSubAgent = message.content?.source === MESSAGE_SOURCE_SUB_AGENT || meta.subAgent === true
+    return isSubAgent && meta.subAgentEvent === "task_complete" && meta.subAgentCapExceeded !== true && messageHandler.processMessage !== "STOP"
+  },
+  evaluate: async ({ runtime, message }) => {
+    const meta = readSubAgentMeta(message)
+    const rawText = typeof message.content?.text === "string" ? message.content.text : ""
+    const deliverable = typeof meta.subAgentDeliverable === "string" ? meta.subAgentDeliverable.trim() : ""
+    const finishReason = typeof meta.subAgentFinishReason === "string" ? meta.subAgentFinishReason : ""
+    const sessionId = typeof meta.subAgentSessionId === "string" ? meta.subAgentSessionId : ""
+    const taskDoc = sessionId ? getTasks(runtime)?.getTaskForSession(sessionId) : undefined
+    const pendingNote = taskDoc?.task.status === "validating"
+      ? "\n\n(Note: verification is still in progress; this result is provisional.)"
+      : ""
+    if (deliverable) {
+      return {
+        processMessage: "RESPOND",
+        reply: `${sanitizeCompletionRelay(deliverable)}${pendingNote}`,
+        requiresTool: false,
+        setContexts: ["simple"],
+        clearCandidateActions: true,
+      }
+    }
+    if (finishReason === "length" || finishReason === "content_filter") {
+      return {
+        processMessage: "RESPOND",
+        reply: `The coding subagent stopped early (${finishReason}) before completing the deliverable. Tell me if you want me to continue in smaller steps.`,
+        requiresTool: false,
+        setContexts: ["simple"],
+        clearCandidateActions: true,
+      }
+    }
+    if (completionHasFailureMarkerWithoutPositiveEvidence(rawText)) {
+      return {
+        processMessage: "RESPOND",
+        clearReply: true,
+        requiresTool: true,
+        setContexts: ["automation"],
+        addCandidateActions: ["TASKS_SEND"],
+      }
+    }
+    if (rawText.trim().toLowerCase() === EMPTY_COMPLETION_PLACEHOLDER && verifiedUrlsExcludingDead(rawText).length === 0) {
+      return { processMessage: "IGNORE" }
+    }
+    const clean = sanitizeCompletionRelay(rawText)
+    return {
+      processMessage: "RESPOND",
+      reply: `${clean || "Subagent completed its turn."}${pendingNote}`,
+      requiresTool: false,
+      setContexts: ["simple"],
+      clearCandidateActions: true,
+    }
+  },
+}
+
+export const subAgentFailureResponseEvaluator: ResponseHandlerEvaluator = {
+  name: "agent-orchestrator.sub-agent-failure",
+  priority: 10,
+  shouldRun: ({ message, messageHandler }) => {
+    const meta = readSubAgentMeta(message)
+    const isSubAgent = message.content?.source === MESSAGE_SOURCE_SUB_AGENT || meta.subAgent === true
+    const evt = typeof meta.subAgentEvent === "string" ? meta.subAgentEvent : ""
+    const isFailureEvt = evt === "error" || evt === "state_lost_exhausted" || evt === "round_trip_cap_exceeded"
+    return isSubAgent && isFailureEvt && messageHandler.processMessage !== "STOP"
+  },
+  evaluate: async ({ message }) => {
+    const meta = readSubAgentMeta(message)
+    const taskLabel = typeof meta.subAgentLabel === "string" ? meta.subAgentLabel : "that coding task"
+    const reason = extractFailureReason(typeof message.content?.text === "string" ? message.content.text : "")
+    return {
+      processMessage: "RESPOND",
+      reply: `Couldn't finish ${taskLabel} — ${reason}. Want me to retry?`,
+      requiresTool: false,
+      setContexts: ["simple"],
+      clearCandidateActions: true,
+    }
+  },
+}
