@@ -1,7 +1,7 @@
-// spec/agent/views.md, "A navigation is prepared only for a declared view and a request id not seen before"; spec/agent/views.md, "Preparing again supersedes the client's unclaimed navigation and is refused while one is claimed"; spec/agent/views.md, "A claim names its request's exact binding and succeeds once"; spec/agent/views.md, "A result is accepted once, with its claim id, and a navigation result says whether it switched"; spec/agent/views.md, "Only a confirmed switch sets the shown view, and a navigation lost after its claim makes it unknown"; spec/agent/views.md, "The agent asks only a declared view, for a capability the view grants the agent, on a live feed"; spec/agent/views.md, "A request whose renderer left, whose delivery failed or whose wait ran out ends unknown and never changes again"; spec/agent/views.md, "Closing ends every pending request with the outcome Stopped, and nothing changes after"
+// spec/agent/views.md, "A navigation is prepared only for a declared view and a request id not seen before"; spec/agent/views.md, "Preparing again supersedes the client's unclaimed navigation and is refused while one is claimed"; spec/agent/views.md, "A claim names its request's exact binding and succeeds once"; spec/agent/views.md, "A result is accepted once, with its claim id, and a navigation result says whether it switched"; spec/agent/views.md, "The agent asks only a declared view, for a capability the view grants the agent, on a live feed"; spec/agent/views.md, "A request whose renderer left, whose delivery failed or whose wait ran out ends unknown and never changes again"; spec/agent/views.md, "Closing ends every pending request with the outcome Stopped, and nothing changes after"
 import { logger } from "@elizaos/core"
 import {
-  Machine, busy, interactionWaitMs, machine, navigationBusyWaitMs, navigationClaimLeaseMs, navigationWaitMs, openNavigationOf, savedNoteClaimAllowed, savedNoteResultAllowed, shownViewOf, waiterAt,
+  Machine, busy, interactionWaitMs, machine, navigationBusyWaitMs, navigationClaimLeaseMs, navigationWaitMs, openNavigationOf, savedNoteClaimAllowed, savedNoteResultAllowed, waiterAt,
   type Binding, type CapabilityGrant, type DeclaredView, type Event, type Reply, type ViewHost as ViewHostState, type WaitOutcome,
 } from "../../gen/agent__views.effect.vibe"
 
@@ -77,7 +77,6 @@ export service ViewHost {
   answer(binding: Binding, claimId: string, reply: Reply, answer: ViewAnswer): boolean!!
   ask(request: ViewAsk): Asked!!
   abandon(requestId: string): boolean!!
-  shownViewOf(clientId: string): (string | undefined)!!
   current(): ViewHostState!!
   close(): void!!
 }
@@ -237,10 +236,6 @@ export effect function makeViewHost(port: ViewFeedPort, newId: () => string = ne
       return { kind: "asked", ...pending } as const
     },
     abandon: abandonOne,
-    shownViewOf: effect (clientId: string) => {
-      const shown = shownViewOf(try views.get(), clientId)
-      return shown === "" ? undefined : shown
-    },
     current: () => views.get(),
     close: effect () => {
       try send({ type: "closeHost" })
