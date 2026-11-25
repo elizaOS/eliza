@@ -14,7 +14,7 @@ import { storedText } from "./history.vibe"
 import { ModelRefusal } from "../models/chat.vibe"
 import { readTurnContext, type BrowserPage } from "@elizaos/agent"
 import { warmUpOutputCap } from "../../gen/agent__conversation__planning.ts"
-import { actionNotes, agentCache, failureNote, offeredActions, plannerTools, planTurn, type PlannedTurn } from "./planning.vibe"
+import { actionNotes, agentCache, failureNote, offeredActions, plannerTools, planTurn, type FailureNotice, type PlannedTurn } from "./planning.vibe"
 import { cueRule, hostNoteMark } from "./reply-text.vibe"
 import { runTurnEvaluators } from "./turn-evaluators.vibe"
 
@@ -292,13 +292,14 @@ async function settledReply(planned: PlannedTurn, omitted: boolean, misgrounded:
   const { revised, stoodBy } = asksAgain(unreported.length > 0, wrong !== undefined, planned.cutOff)
     ? await planned.reask([...unreported, ...(wrong === undefined ? [] : [wrong.note])])
     : { revised: undefined, stoodBy: false }
-  const noticeWords = planned.notices.filter((notice) => reachesTheOwner(notice.ownCopy, notice.safetyCopy)).map(({ words }) => words)
+  const ownersWords = (follows: (notice: FailureNotice) => boolean) =>
+    planned.notices.filter((notice) => reachesTheOwner(notice.owner !== undefined, follows(notice))).flatMap(({ owner }) => owner ?? [])
   const attachmentWords = omitted ? [omittedDocuments] : []
   switch (replySource(unreported.length > 0, wrong !== undefined, planned.cutOff, revised !== undefined, revised !== undefined && misgrounded(revised) === undefined)) {
-    case "ModelReply": return withWords(planned.reply, noticeWords)
-    case "RevisedReply": return withWords(revised ?? "", [...noticeWords, ...attachmentWords])
+    case "ModelReply": return withWords(planned.reply, ownersWords(() => true))
+    case "RevisedReply": return withWords(revised ?? "", [...ownersWords(() => true), ...attachmentWords])
     case "FixedWords": return withWords(wrong?.fixed ?? planned.reply, [
-      ...planned.notices.flatMap((notice) => followsTheReply(notice.answerableLater, asked.includes(notice), stoodBy, wrong === undefined, notice.safetyCopy) ? [notice.words] : []),
+      ...ownersWords((notice) => followsTheReply(notice.answerableLater, asked.includes(notice), stoodBy, wrong === undefined, notice.safetyCopy)),
       ...attachmentWords,
     ])
   }

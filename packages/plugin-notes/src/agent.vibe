@@ -61,12 +61,14 @@ function noteRow(note: StickyNote): string {
 const refusals: Readonly<Partial<Record<string, NotesRefusal>>> = {
   NOTES_AMBIGUOUS_NOTE: "AmbiguousNote", NOTES_DELETE_NAME_MISMATCH: "NameMismatch", NOTES_EDIT_CONFLICT: "EditConflict", NOTES_EDIT_REVISION_REQUIRED: "RevisionRequired",
   NOTES_EDIT_TEXT_NOT_FOUND: "TextNotFound", NOTES_EDIT_TEXT_AMBIGUOUS: "TextAmbiguous", NOTES_RICH_EDIT_REQUIRED: "RichEditRequired",
+  NOTES_CHECKLIST_UNTITLED: "UntitledChecklist",
 }
 
 export effect function notesRefusalResult(notes: NotesCollection, error: NotesFailure): ActionResult!! {
   const message = error._tag === "NotesRefused" ? error.message : error.reason
   const candidateIds = error._tag === "NotesRefused" ? error.candidateIds : undefined
   const kind = refusalKind(refusals[error.code] ?? "OtherRefusal")
+  if (kind === "RefusalAsksTheOwner") return { success: true, text: message, data: { code: error.code, readOnlyOperation: true, awaitingUserInput: true, requiresInput: true } }
   const waits = kind === "RefusalWaitsOnOwner"
   const pool: readonly StickyNote[] = waits && candidateIds !== undefined ? (map(notes.snapshot(), (snapshot) => snapshot.notes) catch () => []) : []
   return {

@@ -61,9 +61,9 @@ function committed(operation: string, kind: string, id: string, version: string,
   }
 }
 
-function notApplied(code: string, textForPlanner: string, userFacingText = textForPlanner, data: Bag = {}): ActionResult {
+function notApplied(code: string, textForPlanner: string, userFacingText?: string, data: Bag = {}): ActionResult {
   return {
-    success: false, text: textForPlanner, userFacingText, verifiedUserFacing: true, error: code,
+    success: false, text: textForPlanner, ...(userFacingText === undefined ? {} : { userFacingText, verifiedUserFacing: true }), error: code,
     failureProvenance: { kind: "handler_error", boundary: "handler", code, retryable: data.retryable !== false }, data: { ...data, code },
   }
 }
@@ -164,7 +164,10 @@ effect function perform(
       const clash = ((try service.list(false)) as WorkflowView[]).find((workflow) => workflow.id !== current.id && normalizeWorkflowName(workflow.name) === normalizeWorkflowName(name))
       if (clash !== undefined) return notApplied("WORKFLOW_NAME_TAKEN", `Another workflow is already named “${clash.name}”. Nothing was changed. Ask the owner for another name.`, `You already have a workflow called “${clash.name}”, so I left ${current.name} as it is. What else should I call it?`)
       const row = (try service.definitionOf(current.id)).row
-      if (row.origin === "digest") return notApplied("WORKFLOW_RENAME_IN_SETTINGS", `${current.name} is a digest. Rename it in the digest settings.`)
+      if (row.origin === "digest") {
+        const settings = `${current.name} is a digest. Rename it in the digest settings.`
+        return notApplied("WORKFLOW_RENAME_IN_SETTINGS", settings, settings)
+      }
       const changedVersion = row.origin === "generated"
         ? String((try writing(service.metadata(current.id, { mutationId: try workflowUuid(), expectedVersionId: current.versionId, name, description: row.description }))).receipt.versionId)
         : String((try writing(service.save({ spec: { ...row.spec, name }, catalogRevision: service.catalog().catalogRevision, compilerRevision: service.catalog().compilerRevision, mutationId: try workflowUuid(), expectedVersionId: current.versionId }, current.id))).receipt.versionId)
@@ -198,7 +201,7 @@ effect function perform(
       const current = try resolve(service, params, op, reading)
       const operation = op === "remove" ? "remove" : "restore"
       const { receipt } = try writing(service.lifecycle(current.id, { mutationId: try workflowUuid(), expectedVersionId: current.versionId, operation }))
-      if (receipt === null || typeof receipt !== "object") return notApplied("WORKFLOW_LIFECYCLE_UNKNOWN", "The change could not be confirmed.")
+      if (receipt === null || typeof receipt !== "object") return notApplied("WORKFLOW_LIFECYCLE_UNKNOWN", "The change could not be confirmed.", "The change could not be confirmed.")
       const versionId = String((receipt as Bag).versionId)
       return {
         success: true, text: op === "remove" ? `Removed ${current.name}. Its schedule is off. You can restore it later.` : `Restored ${current.name}. It is off until you turn it on.`,
@@ -311,7 +314,7 @@ export const workflowAction: Action = {
     const instance = workflowInstances.get(runtime)
     const params = parametersOf(options)
     const op = WORKFLOW_OPS.find((candidate) => candidate === params.action)
-    if (instance === undefined) return respond(notApplied("WORKFLOW_UNAVAILABLE", "Workflows are unavailable on this agent."))
+    if (instance === undefined) return respond(notApplied("WORKFLOW_UNAVAILABLE", "Workflows are unavailable on this agent.", "Workflows are unavailable on this agent."))
     if (op === undefined) return respond(notApplied("WORKFLOW_ACTION_INVALID", `Provide action=${WORKFLOW_OPS.join("|")}.`))
     const request = typeof message.content.text === "string" ? message.content.text : ""
     const outcome = await runPromise(Effect.result(perform(instance, op, params, request, { timeZone: ownerZone(runtime, message) }, text(message.id))))
@@ -325,9 +328,9 @@ export const workflowAction: Action = {
     const retryable = retryAllowed(report)
     switch (report) {
       case "ReadFailed":
-        return respond(notApplied(refused.code ?? "WORKFLOW_READ_FAILED", refused.message, refused.message, { status: refused.status, retryable }))
+        return respond(notApplied(refused.code ?? "WORKFLOW_READ_FAILED", refused.message, undefined, { status: refused.status, retryable }))
       case "NothingChanged":
-        return respond(notApplied(refused.code ?? "WORKFLOW_NOT_APPLIED", `${refused.message} Nothing was changed.`, refused.message, { status: refused.status, retryable }))
+        return respond(notApplied(refused.code ?? "WORKFLOW_NOT_APPLIED", `${refused.message} Nothing was changed.`, undefined, { status: refused.status, retryable }))
       case "ReconcileFirst":
         return respond(notApplied("WORKFLOW_OPERATION_FAILED_RECONCILE_BEFORE_RETRY",
           `${refused.message} The change may have gone through. Check the workflow's current state before trying again, and never retry it automatically.`,
