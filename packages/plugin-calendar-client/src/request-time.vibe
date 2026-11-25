@@ -1,6 +1,6 @@
-// spec/calendar/readClock.md, "A clock time the owner stated is one the owner's words hold"; spec/calendar/readClock.md, "The owner's words are read for a free-time window only to note one they seem to give otherwise"; spec/calendar/readClock.md, "A stated year wins, a wrong extracted year is corrected, and a past start asks first"; spec/calendar/reviewedReads.md, "A new phone event is the timed event the model read, at a clock time the owner said, on the phone's clock"; spec/calendar/reviewedReads.md, "A selected target, a chosen calendar and a named event are the ones the owner gave"; spec/calendar/actions.md, "A resident delete runs at once only for the one event the owner named, and otherwise asks in chat"; spec/calendar/actions.md, "A new event's guests and a change of guests are the ones the owner's words give"; spec/calendar/actions.md, "A change finds its one event from a year back to five years ahead, and never calls an unread calendar empty"
+// spec/calendar/readClock.md, "A stated clock time is refused only where the owner's words give another"; spec/calendar/readClock.md, "The owner's words are read for a free-time window only to note one they seem to give otherwise"; spec/calendar/readClock.md, "A stated year wins, a wrong extracted year is corrected, and a past start asks first"; spec/calendar/reviewedReads.md, "A new phone event is the timed event the model read, at a clock time the owner's words do not contradict, on the phone's clock"; spec/calendar/reviewedReads.md, "A selected target, a chosen calendar and a named event are the ones the owner gave"; spec/calendar/actions.md, "A resident delete runs at once only for the one event the owner named, and otherwise asks in chat"; spec/calendar/actions.md, "A new event's guests and a change of guests are the ones the owner's words give"; spec/calendar/actions.md, "A change finds its one event from a year back to five years ahead, and never calls an unread calendar empty"
 import { nameSaid } from "../gen/calendar__reviewedReads.effect.vibe"
-import { clockHeld } from "../gen/calendar__readClock.effect.vibe"
+import { noteClockHeld } from "../gen/calendar__readClock.effect.vibe"
 import { addDaysToLocalDate, getZonedDateParts, knownTimeZone, type LocalDate } from "./clock.vibe"
 
 export interface StatedClockTime {
@@ -383,12 +383,22 @@ function spelledAsAClock({ words, list, clauseEnds }: ClockWords): (spelled: str
   }
 }
 
-export function clockHeldByWords(clock: StatedClockTime, text: string): boolean {
+function spelledIn(text: string): (clock: StatedClockTime) => boolean {
+  const plain = plainWords(text)
   const read = clockWords(text)
-  return clockHeld(heldIn(clock, plainWords(text), plainSpellings(clock), () => true), heldIn(clock, read.words, clockSpellings(clock), spelledAsAClock(read)))
+  const further = spelledAsAClock(read)
+  return (clock) => noteClockHeld(heldIn(clock, plain, plainSpellings(clock), () => true), heldIn(clock, read.words, clockSpellings(clock), further))
+}
+
+export function clockSpelledInWords(clock: StatedClockTime, text: string): boolean {
+  return spelledIn(text)(clock)
 }
 
 const dayClocks: readonly StatedClockTime[] = Array.from({ length: 1440 }, (_, at) => ({ hour: Math.floor(at / 60), minute: at % 60 }))
+
+export function wordsGiveAClock(text: string): boolean {
+  return dayClocks.some(spelledIn(text))
+}
 
 function sideClocks(side: string): readonly StatedClockTime[] {
   return dayClocks.filter((clock) => clockSpellings(clock).some((spelled) => side === spelled || (!halfNamed(clock, spelled) && side === `${spelled} ${clock.hour < 12 ? "am" : "pm"}`)))

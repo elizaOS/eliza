@@ -128,89 +128,74 @@ pure val viewerOffsetValues = Set(-480, 0, 840)
 pure val utcMinuteValues = Set(0, 1439)
 ```
 
-### A clock time the owner stated is one the owner's words hold
+### A stated clock time is refused only where the owner's words give another
 
 A create or change through the Calendar action carries the times the
 model read from the owner's request, and says which clock times the
 owner stated: the start, the start and the end, or none. Code reads no
-day or time from the words; it checks each new clock time against them
-instead. A time is held by the owner's words when they write it in
-digits ("1:10 pm", "13:10", "4"), spell it with its minutes ("one ten
-PM", "one oh five pm", "six PM"), or say noon, midnight, or half past, a
-quarter past or a quarter to the hour; written with am or pm, it is that
-half of the day only. These are the spellings the check has always
-read, and the words hold every time they held with them, so no create
-or change is refused that was saved before.
+day or time from the words and never picks a time from them; it reads
+them only to find a clock time that contradicts one the model calls
+stated. The words give a clock time when they write it in digits with a
+colon ("1:10 pm", "13:10", "01:10"), as an hour alone ("4", "16"), or as
+a twelve-hour hour and its minutes after a dot or a space ("1.10", "1 10
+pm"); when they spell it with its minutes ("one ten PM", "one oh five
+pm") or as an hour ("six PM", "six o'clock", "6 o'clock"); when they say
+noon, midday, midnight, or half past, a quarter past or a quarter to the
+hour ("half past one", "quarter to 2"); or in a further spelling the
+free-time reader knows (next section), such as "1230", "14.30", "14h30",
+"ten past 4", "at twenty to five" or "at quarter of five". Written with
+am or pm, it is that half of the day only, except a time from 13:00 on
+written with its own hour ("13:10 am") and noon, midday or midnight.
 
-The words also hold a time in a spelling the free-time reader knows
-(next section): four digits or a dot ("0900", "1730", "14.30"), an hour
-and "h" ("14h30", "09h15"), noon or midnight after twelve ("12:00 noon",
-"twelve o'clock noon", "12 midnight"), minutes counted past, after, to,
-of, till, til or before the hour in words or digits ("ten past nine",
-"10 past 9", "twenty minutes past two", "ten after nine", "twenty to
-three", "quarter of five", "ten till six", "5 til 4", "ten before six"),
-"quarter after", "half 5" for 5:30, or "ish" ("noonish"). These only add
-times the words hold, so they turn a refusal into a save only where the
-owner's words spell the time sent. A further spelling holds nothing
-where it could be a misread. Minutes counted to the hour are a clock
-only right after a word that leads one ("at", "to", "till", "until",
-"by", "before", "after", "around", "about": "call at twenty to five",
-"move it to ten till 3"), since after "from" or "between", or alone,
-they may be a range ("coffee tomorrow from 10 to 6" or "coffee tomorrow
-10 to 6" holds no 5:50 PM). Four digits are a clock only right after a
-word that leads one (those, "from", "between" or "and") and only where
-the clause ends after them or the next word is am, pm, a join ("to",
-"till", "til", "until", "through", "thru", "and"), or a day ("today",
-"tonight", "tomorrow", a weekday, or a written date other than a bare
-ordinal), alone or after "on", "this" or "next" ("this" or "next" also
-before "morning", "afternoon", "evening", "night", "week" or
-"weekend"): "lunch tomorrow at 1230." holds 12:30 PM, "standup at 0930
-on Tuesday" 9:30 AM and "from 0900 to 1100" both ends. Four digits that a
-name or another number follows in the same clause are never a clock,
-since a street address reads the same way ("lunch tomorrow at 1230 Broadway", "dinner tomorrow
-at 1600 Pennsylvania Ave at 7pm", "pick up the kids tomorrow from 1745
-Oak Street at 3" and "meet tomorrow at 1430 on 3rd Ave" hold no time
-from their four digits), nor in a written date ("call 0800 123 456
-tomorrow at 3" holds no 8:00, "review the 2030 plan" no 8:30 PM). Words the reader cannot read hold only what these spellings find
-in them, as before: "明天下午3点开会" holds no clock time, so a stated
-time sent for it is refused whatever time it is.
+A stated time the words give is kept, whatever else they give ("move my
+3pm to 4"). A stated time the words do not give is kept too when they
+give no clock time at all: a reader that misses a spelling ("Kaffee um
+halb fünf", "明天下午3点开会") must not refuse a time the owner did say, so
+the model's reading stands. A start or end the model calls stated
+changes nothing only when the words give a clock time and not the one
+sent ("at 3" sent as 4 PM, "at 9am" sent as 9 PM): the owner said another
+time. Each reading of the words can also be something that is no clock
+(a price, a room number, a year, a score), so a time the words give in
+any of these spellings is never refused, and the model, not the reader,
+decides which number is the clock. A refused time names the time sent
+and tells the model to ask the owner which time they meant, and not to
+call again with a time of its own, so a refusal ends in a question to
+the owner and never in the same call again.
 
-A time the words hold is kept. A time the words do not hold is kept
-only when the model says the owner stated no clock time ("tomorrow
-afternoon", "push it back an hour"): a time the model chose is no
-misread, and a check of every time would refuse those requests. A time
-the words do not hold that the model calls stated, or sent without
-saying which, changes nothing, and the result tells the model which time
-it sent, so it sends the time the owner said or says that the owner gave
-none; so a misread is never saved only because the model left the
-choice out. An end is checked only when the model says the owner stated
-the range: an end the model worked out from a length ("move my 3pm to
-4", an hour later) is no clock time the owner said. A start or end a
-change keeps, and an all-day event's day, are not checked. A new phone
-event's start is always one the owner stated, so it is always checked;
-a change after a shared phone read is a review on the phone that shows
-the new time before anything changes, and is not checked against the
-words. A free-time window's clock times are never checked: the words
-only add a note to its answer (next section).
+A time the model says the owner did not state ("tomorrow afternoon",
+"push it back an hour") is kept: a time the model chose is no misread. A
+time sent without saying which, where the words give another clock time,
+changes nothing, and the result asks the model to say whether the owner
+gave one, so a contradiction is never saved only because the model left
+the choice out. An end is checked only when the model says the owner
+stated the range: an end the model worked out from a length ("move my
+3pm to 4", an hour later) is no clock time the owner said. A start or
+end a change keeps, and an all-day event's day, are not checked. A new
+phone event's start is always one the owner stated, so it is always
+checked; a change after a shared phone read is a review on the phone
+that shows the new time before anything changes, and is not checked
+against the words. A free-time window's clock times are never checked:
+the words only add a note to its answer (next section). A create's year
+is read from its words, as "A stated year wins, a wrong extracted year
+is corrected, and a past start asks first" says.
 
 ```quint
 type StatedClockCheck = ClockAsSent | ClockUnsaid | ClockUndeclared
-pure def statedClockCheck(declared: bool, statedByOwner: bool, heldByOwnerWords: bool): StatedClockCheck =
-  if (heldByOwnerWords) ClockAsSent
+pure def statedClockCheck(declared: bool, statedByOwner: bool, heldByOwnerWords: bool, wordsGiveAClock: bool): StatedClockCheck =
+  if (heldByOwnerWords or not(wordsGiveAClock)) ClockAsSent
   else if (not(declared)) ClockUndeclared
   else if (statedByOwner) ClockUnsaid
   else ClockAsSent
-pure def clockHeld(heldAsBefore: bool, heldInFurtherSpelling: bool): bool = heldAsBefore or heldInFurtherSpelling
-pure def lawAStatedClockTheWordsDoNotHoldChangesNothing(heldByOwnerWords: bool): bool =
-  (statedClockCheck(true, true, heldByOwnerWords) == ClockUnsaid) iff not(heldByOwnerWords)
-pure def lawAnOpenTimeIsKept(heldByOwnerWords: bool): bool = statedClockCheck(true, false, heldByOwnerWords) == ClockAsSent
-pure def lawAHeldTimeIsKept(declared: bool, statedByOwner: bool): bool = statedClockCheck(declared, statedByOwner, true) == ClockAsSent
-pure def lawAnUndeclaredUnheldTimeChangesNothing(statedByOwner: bool): bool =
-  statedClockCheck(false, statedByOwner, false) == ClockUndeclared
-pure def lawEveryTimeHeldBeforeIsStillHeld(heldInFurtherSpelling: bool): bool = clockHeld(true, heldInFurtherSpelling)
-pure def lawACreateIsRefusedOnlyWhereItWasBefore(declared: bool, statedByOwner: bool, heldAsBefore: bool, heldInFurtherSpelling: bool): bool =
-  statedClockCheck(declared, statedByOwner, clockHeld(heldAsBefore, heldInFurtherSpelling)) != ClockAsSent
-    implies statedClockCheck(declared, statedByOwner, heldAsBefore) == statedClockCheck(declared, statedByOwner, clockHeld(heldAsBefore, heldInFurtherSpelling))
+pure def lawAStatedClockIsRefusedOnlyWhenTheWordsGiveAnother(heldByOwnerWords: bool, wordsGiveAClock: bool): bool =
+  (statedClockCheck(true, true, heldByOwnerWords, wordsGiveAClock) == ClockUnsaid) iff (wordsGiveAClock and not(heldByOwnerWords))
+pure def lawWordsWithNoClockKeepTheModelsTime(declared: bool, statedByOwner: bool): bool =
+  statedClockCheck(declared, statedByOwner, false, false) == ClockAsSent
+pure def lawAnOpenTimeIsKept(heldByOwnerWords: bool, wordsGiveAClock: bool): bool =
+  statedClockCheck(true, false, heldByOwnerWords, wordsGiveAClock) == ClockAsSent
+pure def lawAHeldTimeIsKept(declared: bool, statedByOwner: bool, wordsGiveAClock: bool): bool =
+  statedClockCheck(declared, statedByOwner, true, wordsGiveAClock) == ClockAsSent
+pure def lawAnUndeclaredContradictedTimeChangesNothing(statedByOwner: bool): bool =
+  statedClockCheck(false, statedByOwner, false, true) == ClockUndeclared
 ```
 
 ### The owner's words are read for a free-time window only to note one they seem to give otherwise
@@ -250,6 +235,28 @@ after "until", "till", "til", "through", "thru", "before" or "now to"
 states an end. A bare side holds both halves of the day; a side with am
 or pm, or the other side's half, holds one.
 
+For a note, and for the contradiction a create or change is checked
+for (previous section), the words hold a clock time in the spellings
+that section lists first and also in the reader's further spellings:
+four digits or a dot ("0900", "1730", "14.30"), an hour and "h"
+("14h30", "09h15"), noon or midnight after twelve ("12:00 noon",
+"twelve o'clock noon", "12 midnight"), minutes counted past, after, to,
+of, till, til or before the hour in words or digits ("ten past nine",
+"10 past 9", "twenty minutes past two", "ten after nine", "twenty to
+three", "quarter of five", "ten till six", "5 til 4", "ten before six"),
+"quarter after", "half 5" for 5:30, or "ish" ("noonish"). Minutes
+counted to the hour hold only right after a word that leads a clock
+("at", "to", "till", "until", "by", "before", "after", "around",
+"about"), and four digits only right after one of those, "from",
+"between" or "and", where the clause ends after them or the next word is
+am, pm, a join ("to", "till", "til", "until", "through", "thru", "and")
+or a day ("today", "tonight", "tomorrow", a weekday, or a written date
+other than a bare ordinal), alone or after "on", "this" or "next"
+("this" or "next" also before "morning", "afternoon", "evening",
+"night", "week" or "weekend"). A misread here can at most add a note
+the model may ignore, or keep a create's or change's time the model
+read, and every clock a create or change holds the note holds too.
+
 The reader is unsure, and nothing is noted, for words in another script
 or language ("明天下午2点到4点", "de dos a cuatro", "von 15 bis 17 Uhr"),
 a number in a shape no clock has ("1.5", "9h15"), a run of clock words no
@@ -287,6 +294,8 @@ may be about something else ("free tomorrow morning? I have a call
 until 1").
 
 ```quint
+pure def noteClockHeld(heldForAChange: bool, heldInAFurtherSpelling: bool): bool = heldForAChange or heldInAFurtherSpelling
+pure def lawANoteHoldsEveryClockAChangeHolds(heldInAFurtherSpelling: bool): bool = noteClockHeld(true, heldInAFurtherSpelling)
 pure def windowFits(startReadings: int, endReadings: int, pairings: int): int =
   if ((startReadings == 1 or endReadings == 1) and pairings > 1) 1 else pairings
 pure def lawASideWithOneReadingFitsOneWay(readings: int, pairings: int): bool =
@@ -308,7 +317,10 @@ pure def lawAnUnexplainedSideTheWordsNeverHoldIsOff(otherHalfOfAStatedClock: boo
 
 When a create's request names a date or a year, the year comes from the
 owner's words, never from the year the extractor guessed: a trailing
-year wins. Otherwise "next year" chooses the coming year, and so does
+year wins. Four digits that spell the start's or the end's clock time
+as the model sent it ("dinner tomorrow at 2045." sent at 8:45 PM, "block
+tomorrow from 9am to 0930." ending at 9:30 AM) are that clock and never
+a year. Otherwise "next year" chooses the coming year, and so does
 "next" before a month or a date that is not later than today, as in
 "next March 3" said in June or "next November" said in November. A
 stated numeric year comes next, and a date with no year or "this year"

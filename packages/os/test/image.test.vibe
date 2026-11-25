@@ -3,9 +3,8 @@ import { assert, it } from "@effect/vitest"
 import * as NodeServices from "@effect/platform-node/NodeServices"
 import { NATIVE_INSTALLS, NATIVE_TARGETS, createDevelopmentLauncherDescriptor, finalizeNative, readNativeLibraries, renderOverlay, stageLauncher, validateDescriptor, type LauncherDescriptor } from "../src/image/stage-launcher.vibe"
 import { androidTools, buildApk, testSigner, type NativeAbi } from "./support/android-tools.ts"
-import { commitTree, git, readTree, scratch, writeTree } from "./support/scratch.vibe"
+import { commitTree, git, pinnedCheckout, readTree, scratch, writeTree } from "./support/scratch.vibe"
 import { composeProduct } from "../src/image/compose-product.vibe"
-import { admitProduct } from "../gen/os__image__sourceLock.effect.vibe"
 import { reviewedPrivilegedPermissions } from "../gen/os__image__staging.effect.vibe"
 import { loadProfile, verifySource, verifyDeviceSource, admitPatchEnvelope } from "../src/image/source-lock.vibe"
 import { main as qualify, qualifyDevice } from "../src/image/device-qualification.vibe"
@@ -98,22 +97,6 @@ module node {
     const lockFile = join(root, "aosp.lock.json")
     await writeFile(lockFile, JSON.stringify({ schemaVersion: 1, profiles: { fixture: profile, partial: { kind: "virtual", targets: ["fixture"], manifest: manifestIdentity, projects: [{ path: "project-a", commit: projectCommit }] } } }))
     return { lockFile, factory: join(root, "factory.img"), manifest, projectList, ignored, vendor }
-  }
-  export async function virtualCompositionLock(root: string, manifestCommit: string, projectCommit: string) {
-    const manifest = "<manifest/>\n"
-    const projects = "project-a\n"
-    await writeFile(join(root, ".repo/manifest.xml"), manifest)
-    await writeFile(join(root, ".repo/project.list"), projects)
-    const inputs = (path: string, text: string) => ({ path, sha256: sourceDigest(sourceText(text)), sizeBytes: sourceText(text).byteLength })
-    const profile = {
-      kind: "virtual", targets: ["cf_x86_64_phone"],
-      manifest: { commit: manifestCommit, tagObject: manifestCommit, tag: "fixture" },
-      projects: [{ path: "project-a", commit: projectCommit }],
-      manifestConfiguration: [inputs(".repo/manifest.xml", manifest), inputs(".repo/project.list", projects)],
-    }
-    const lock = join(root, "aosp.lock.json")
-    await writeFile(lock, JSON.stringify({ schemaVersion: 1, profiles: { cuttlefish: profile } }))
-    return lock
   }
 
   export async function patchFixture(root: string, baseline: string, revision: string) {
@@ -290,7 +273,7 @@ process.stdout.write(args[0] === "verify" ? answers.signatures : args[1] === "ba
 }
 import { ARM_ELF, X86_ELF, companionManifest, digestOf, launcherManifest, overlayDeclarations, parsed, runByPath, runtimeNatives, soongModules, standInApk, standInTool, type PathStager, type StandInApk, type StandInCall } from node
 
-import { changeMode, copySystemui, directoryMode, linkTo, swapVariable, fixedSourceStat, patchFixture, platformProjectTree, qualificationBinary, rewriteWithSameStat, sourceLockFixture, verificationBinary, virtualCompositionLock } from node
+import { changeMode, copySystemui, directoryMode, linkTo, swapVariable, fixedSourceStat, patchFixture, platformProjectTree, qualificationBinary, rewriteWithSameStat, sourceLockFixture, verificationBinary } from node
 
 const tools = androidTools()
 const skipped = tools.kind === "missing" ? tools.reason : null
@@ -348,18 +331,10 @@ effect function finalized(output: string) {
 }
 
 effect function compositionSource(root: string) {
-  const files = try FileSystem.FileSystem
-  const manifest = `${root}/.repo/manifests`
-  const project = `${root}/project-a`
-  for (const directory of [manifest, project]) {
-    try files.makeDirectory(directory, { recursive: true })
-    try git(directory, ["init", "--quiet", "--initial-branch=main"])
-  }
-  const manifestPin = try commitTree(manifest, { "default.xml": "<manifest/>\n" }, "Pin the fixture manifest")
-  const projectPin = try commitTree(project, { "device.mk": "PRODUCT_NAME := fixture\n" }, "Pin the fixture product")
-  const lockFile = try tryPromise(() => virtualCompositionLock(root, manifestPin, projectPin))
-  const profile = try loadProfile({ name: "cuttlefish", lockFile })
-  return (try verifySource({ profile, sourceRoot: root })).state
+  const profile = try pinnedCheckout(root)
+  const lockFile = `${root}/aosp.lock.json`
+  try writeTree(root, { "aosp.lock.json": JSON.stringify({ schemaVersion: 1, profiles: { cuttlefish: profile(["cf_x86_64_phone"], true) } }) })
+  return { profile: try loadProfile({ name: "cuttlefish", lockFile }), sourceRoot: root }
 }
 
 effect function compositionFailure(request: Parameters<typeof composeProduct>[0]) {
@@ -498,8 +473,9 @@ it.effect.skipIf(skipped !== null)(`Defer the Soong conversion of a privileged r
     const options = { aapt: k.aapt, apksigner: k.apksigner, descriptor, apk: launcher.apk, development: false, nativeAbi: "x86_64" as const, nativeInstall: "soong" as const, deferSoong: true, soongOnly: true }
 
     const output = path.join(k.checkout, "launcher")
-    const source = try compositionSource(path.join(k.work, "pinned-source"))
-    assert.deepStrictEqual([source.verdict, source.lock.developmentOnly], ["Match", true])
+    const source = try compositionSource(path.join(k.work, "aosp"))
+    const verified = (try verifySource(source)).state
+    assert.deepStrictEqual([verified.verdict, verified.lock.developmentOnly], ["Match", true])
     const product = {
       schemaVersion: 1, target: "cuttlefish_x86_64", sourceProfile: "cuttlefish", vendorDirectory: "example",
       productName: "example_cf_x86_64_phone", model: "Example Phone", brand: "example", manufacturer: "Example",
@@ -517,10 +493,9 @@ it.effect.skipIf(skipped !== null)(`Defer the Soong conversion of a privileged r
     const deferredReport = parsed(before["native-libraries.json"])
     assert.deepStrictEqual([deferredReport.installRule, deferredReport.deferred, deferredReport.soongPatch?.name], ["soong-app-native", true, "soong-app-native"])
 
-    const admitted = admitProduct(source, "example", { brand: "example", target: "cf_x86_64_phone" }, "Development")
     for (const name of ["different_cf_x86_64_phone", "example_stallion"]) {
       const bad = try writeDescriptor(path.join(k.work, `${name}.json`), { ...product, productName: name })
-      assert.strictEqual(try compositionFailure({ ...compose, source: admitted, descriptor: bad, output }), "SourceNotAdmitted")
+      assert.strictEqual(try compositionFailure({ ...compose, descriptor: bad, output }), "SourceNotAdmitted")
     }
     assert.strictEqual(try compositionFailure({ ...compose, purpose: "Production", output }), "SourceNotAdmitted,CuttlefishHostUnpinned")
     assert.deepStrictEqual(try readTree(output), before)

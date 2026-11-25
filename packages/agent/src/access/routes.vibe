@@ -37,7 +37,7 @@ const RouteGroup = Schema.Struct({
   id: Schema.optionalKey(Pattern),
   routes: Schema.Array(Route),
 })
-const RouteList = Schema.Union([Schema.Array(Route), Schema.Array(RouteGroup)])
+export const RouteList = Schema.Union([Schema.Array(Route), Schema.Array(RouteGroup)])
 
 export type Route = typeof Route.Type
 export type RouteGroup = typeof RouteGroup.Type
@@ -117,7 +117,7 @@ function modelGroup(group: RouteGroup): Group {
   }
 }
 
-function grouped(routes: RouteList): Group[] {
+export function modelList(routes: RouteList): Group[] {
   if (routes.length === 0) return []
   const first = routes[0]
   if ("method" in first) {
@@ -183,7 +183,7 @@ export function routeGate(): RouteGate {
     state: () => state,
     load: (input) => {
       const parsed = parseList(input)
-      state = step(state, { type: "load", routes: parsed._tag === "Some" ? grouped(parsed.value) : [] }).state
+      state = step(state, { type: "load", routes: parsed._tag === "Some" ? modelList(parsed.value) : [] }).state
       const groups = served(state.table)
       ids = matchPatterns(groups.map((group) => group.id))
       values = matchPatterns(groups.flatMap((group) => group.routes.flatMap((route) =>

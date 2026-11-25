@@ -66,14 +66,14 @@ function encodePolyline(points: ReadonlyArray<readonly [number, number]>): strin
 
 function operationOf(request: FakeRequest): GoogleOperation | undefined {
   const route = `${request.method} ${request.path}`;
-  if (route === "POST /places/v1/places:searchText") return "searchText";
-  if (route === "POST /places/v1/places:searchNearby") return "searchNearby";
-  if (request.method === "GET" && request.path.startsWith("/places/v1/places/")) return "details";
-  if (route === "GET /maps/maps/api/geocode/json") return "geocode";
-  if (route === "POST /routes/directions/v2:computeRoutes") return "computeRoutes";
-  if (route === "POST /tile/v1/createSession") return "createSession";
-  if (request.method === "GET" && /^\/tile\/v1\/2dtiles\/\d+\/\d+\/\d+$/.test(request.path)) return "tile";
-  if (route === "GET /tile/tile/v1/viewport") return "viewport";
+  if (route === "POST /places.googleapis.com/v1/places:searchText") return "searchText";
+  if (route === "POST /places.googleapis.com/v1/places:searchNearby") return "searchNearby";
+  if (request.method === "GET" && request.path.startsWith("/places.googleapis.com/v1/places/")) return "details";
+  if (route === "GET /maps.googleapis.com/maps/api/geocode/json") return "geocode";
+  if (route === "POST /routes.googleapis.com/directions/v2:computeRoutes") return "computeRoutes";
+  if (route === "POST /tile.googleapis.com/v1/createSession") return "createSession";
+  if (request.method === "GET" && /^\/tile\.googleapis\.com\/v1\/2dtiles\/\d+\/\d+\/\d+$/.test(request.path)) return "tile";
+  if (route === "GET /tile.googleapis.com/tile/v1/viewport") return "viewport";
   return undefined;
 }
 
@@ -108,7 +108,7 @@ function answerOf(operation: GoogleOperation, request: FakeRequest): FakeAnswer 
     case "searchNearby":
       return { status: 200, body: { places: [googlePlace] } };
     case "details":
-      return request.path === `/places/v1/places/${googlePlace.id}` ? { status: 200, body: googlePlace } : { status: 404, body: { error: { code: 404, status: "NOT_FOUND" } } };
+      return request.path === `/places.googleapis.com/v1/places/${googlePlace.id}` ? { status: 200, body: googlePlace } : { status: 404, body: { error: { code: 404, status: "NOT_FOUND" } } };
     case "geocode":
       return { status: 200, body: { status: "OK", results: [googleAddress] } };
     case "computeRoutes":

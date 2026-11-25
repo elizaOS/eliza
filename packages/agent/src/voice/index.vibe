@@ -21,15 +21,15 @@ export {
   type AgentEventSubscribe, type LiveTranscriptEvent, type LiveVoiceSession, type LiveVoiceSessionOptions,
 } from "./live-session.vibe"
 export {
-  audioBlobBase64, captureBlockSamples, decodeRecordedClip, encodeMonoPcm16WavChunks, startCumulativeMicrophoneCapture,
+  encodeMonoPcm16WavChunks, startCumulativeMicrophoneCapture,
 } from "./capture.vibe"
-export { browserCaptureAudio, browserClipAudio } from "./capture-browser.ts"
+export { browserCaptureAudio } from "./capture-browser.ts"
 export {
-  attachProgressiveSpeech, SegmentedSpeechPlayback, speakerPortOf,
+  attachProgressiveSpeech, SegmentedSpeechPlayback,
   type ProgressiveSpeechAttachment, type ProgressiveSpeechOptions, type ProgressiveSpeechSource, type SegmentAttach, type SegmentedSpeechOptions,
   type SegmentedSpeechState, type SpeakOptions, type SpeechAttachment, type SpeechAudioFrame, type SpeechPlayer,
 } from "./playback.vibe"
 export {
-  jsonRequestOf, voiceNetworkPorts, VoiceRouteRefused, type JsonAnswer, type JsonRequest, type RuntimeJsonRequester, type VoiceNetworkPorts,
+  voiceNetworkPorts, VoiceRouteRefused, type JsonAnswer, type JsonRequest, type VoiceNetworkPorts,
 } from "./agent-ports.vibe"
 export { defaultVoiceProfile, type StopReport, type VoiceProfile } from "../../gen/agent__voice__session.effect.vibe"

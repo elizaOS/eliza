@@ -189,5 +189,5 @@ effect function historyRoute(context: RouteContext) {
 }
 
 export const mailHistoryRoutes: ReadonlyArray<Route> = [
-  { method: "GET", path: historyPath, auth: "ServiceAccess", capability: "managedGoogle", handler: historyRoute }
+  { method: "GET", path: historyPath, auth: "ServiceAccess", area: "GoogleRoutes", handler: historyRoute }
 ]

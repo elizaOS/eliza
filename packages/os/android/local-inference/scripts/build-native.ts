@@ -21,43 +21,28 @@
  *
  *   node scripts/build-native.ts --workspace <dir> \
  *     [--out <native dir>] [--abi arm64-v8a] [--abi x86_64] \
- *     [--model-cache <dir>] [--python <python with torch>] [--ffi-exports-only] [--languages en|en,es]
- *
- *   node scripts/build-native.ts --models-only \
- *     --workspace <dir> --out <bundle dir> [--model-cache <dir>] [--python ...]
- *
- * --models-only builds just the pinned model files into <bundle dir> (no NDK,
- * no native library, no eSpeak NG data): asr/phonon-2-fv5.gguf,
- * tts/paradee/paradee-8m-v1_2.gguf, tts/paradee/misaki-en-us.lex,
- * vad/silero-vad-v5.gguf and the Phonon-2 notices. Desktop hosts and the voice
- * CI matrix stage the product voice stack this way. Files already in place
- * and matching their pins are kept. Desktop speaks English only, so this mode
- * never builds the Spanish voice.
+ *     [--model-cache <dir>] [--python <python with torch>] [--ffi-exports-only]
  *
  * --ffi-exports-only builds libelizainference with only the eliza_inference_*
  * FFI exported and unreached code dropped (stage-elizavoice-lib.ts); the JNI
  * bridge this library ships calls nothing else.
  *
- * --workspace holds downloads and build trees. --out defaults to
- * plugins/plugin-local-inference/native/android/native. --model-cache is
+ * --workspace holds downloads and build trees. --out defaults to native/ in
+ * this module. --model-cache is
  * searched (recursively, by file name) for an already converted GGUF or
  * lexicon before converting. --python runs the converters (default python3;
  * the converters need torch, numpy, gguf-py, zstandard, librosa and, for the
  * Delibes ONNX graphs, the onnx package).
  *
  * The Castilian Spanish voice (Delibes-8M-esES, inputs.json `spanish`) ships
- * by owner decision (Grace docs/decisions.md, 2026-10-28), which overrides the
+ * by owner decision (2026-10-28), which overrides the
  * release's own human_approval PENDING and commercial_distribution BLOCKED
  * (inputs.json `spanish.release_override`). inputs.json `spanish.enabled` is
  * the one switch: false leaves the voice out entirely (no conversion, no GGUF
  * or notices in the bundle, no `voices` in the manifest).
  *
- * --languages en selects the English-only product bundle; en,es selects both.
- * The default remains the pinned language set. The consumer must declare the
- * same explicit selection, and build-record.json records productLanguages.
- *
- * The manifest is eliza-paradee-voice-v2: the v1 keys plus, when the Spanish
- * voice is enabled, `voices`, the other speech languages
+ * The manifest is eliza-paradee-voice-v2: model, lexicon, espeakDir, files
+ * and, when the Spanish voice is enabled, `voices`, the other speech languages
  * ({"es": "tts/paradee/delibes-8m-eses.gguf"}). Without it the bundle speaks
  * English only.
  */
@@ -77,9 +62,8 @@ import {
   writeFileSync,
 } from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 
-import { voiceProductInputs } from "../voice-product-inputs.mjs";
+import { voiceProduct } from "./voice-bundle.ts";
 import { engineDir, moduleDir } from "./engine.ts";
 
 const forkSrc = engineDir();
@@ -106,16 +90,10 @@ export function parseArgs(argv) {
     abis: [],
     modelCache: "",
     python: "python3",
-    modelsOnly: false,
     ffiExportsOnly: false,
-    languages: undefined as string[] | undefined,
   };
   for (let i = 0; i < argv.length; i++) {
     const value = argv[i + 1];
-    if (argv[i] === "--models-only") {
-      args.modelsOnly = true;
-      continue;
-    }
     if (argv[i] === "--ffi-exports-only") {
       args.ffiExportsOnly = true;
       continue;
@@ -125,7 +103,6 @@ export function parseArgs(argv) {
     else if (argv[i] === "--abi") args.abis.push(value);
     else if (argv[i] === "--model-cache") args.modelCache = path.resolve(value);
     else if (argv[i] === "--python") args.python = value;
-    else if (argv[i] === "--languages") args.languages = value.split(",");
     else fail(`unknown argument ${argv[i]}`);
     i++;
   }
@@ -134,11 +111,6 @@ export function parseArgs(argv) {
   for (const abi of args.abis)
     if (!ABIS.includes(abi)) fail(`unsupported --abi ${abi}`);
   return args;
-}
-
-/** inputs.json `spanish.enabled`, the one switch for the Spanish voice. */
-export function spanishEnabled(pins = inputs) {
-  return pins.spanish?.enabled === true;
 }
 
 function run(command, args, options = {}) {
@@ -463,19 +435,7 @@ function listFiles(dir) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  const product = voiceProductInputs(
-    inputs,
-    args.modelsOnly ? (args.languages ?? ["en"]) : args.languages,
-  );
-  if (args.modelsOnly && product.spanish)
-    fail("--models-only prepares English models only");
-  if (args.modelsOnly) {
-    mkdirSync(args.workspace, { recursive: true });
-    mkdirSync(args.out, { recursive: true });
-    await buildModels(args, forkPins(), args.out);
-    log(`staged the pinned voice models under ${args.out}`);
-    return;
-  }
+  const product = voiceProduct(inputs);
   const sdk = process.env.ANDROID_HOME || process.env.ANDROID_SDK_ROOT;
   if (!sdk) fail("set ANDROID_HOME");
   if (!existsSync(path.join(sdk, "ndk", NDK_VERSION)))
@@ -560,7 +520,7 @@ async function main() {
   }
   writeFileSync(
     path.join(args.out, "build-record.json"),
-    `${JSON.stringify({ sourceCommit, nativeCommit, inputs, productLanguages: product.languages, spanish: withSpanish, abis: args.abis, files: record }, null, 2)}\n`,
+    `${JSON.stringify({ sourceCommit, nativeCommit, inputs, spanish: withSpanish, abis: args.abis, files: record }, null, 2)}\n`,
   );
   log(`wrote ${record.length} files under ${args.out}`);
 }

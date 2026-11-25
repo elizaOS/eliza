@@ -1,6 +1,5 @@
-// spec/cloud/shared/metering.md, "Story: Settle every call once"; spec/cloud/index.md, "Story: Transcribe a recording"; spec/cloud/services/speech.md, "Each batch request holds once under its organization and its request id, and spends one request of the plan's standard limit"
-import { billedSeconds, providerRetryMs, synthesisCourseOf, withMarkup } from "../../gen/cloud__services__speech.effect.vibe"
-import type { HoldKey } from "../../gen/cloud__shared__types.ts"
+// spec/cloud/shared/metering.md, "Story: Settle every call once"; spec/cloud/services/speech.md, "Story: Speak a reply as audio"; spec/cloud/services/speech.md, "Story: Transcribe a recording"; spec/cloud/services/speech.md, "Each batch request holds once under its organization and its request id, and spends one request of the plan's standard limit"
+import { addFrame, mayEnd, providerRetryMs, replyOf, settlementOf, speechHoldKey, sttCheck, sttCost, sttMeasured, synthesisCourseOf, ttsCheck, ttsHeaders, ttsQuote, type Pick, type ProviderReply, type SpeechProfile, type SpeechSettlement, type TimedStream, type TtsRequest } from "../../gen/cloud__services__speech.effect.vibe"
 import { refused, Refused } from "../http/refusal.vibe"
 import { signed } from "../http/request-auth.vibe"
 import { jsonBody, type CloudContext, type Route, type RouteContext } from "../http/routes.vibe"
@@ -8,14 +7,11 @@ import { Deployment, type EnvironmentProfile, IdempotencyKey, SynthesisBody } fr
 import { synthesize, synthesizeTimed, prepareTranscription, ProviderInvalidResponse, type SpeechFailure, type Synthesis, type TimedFrame, type Transcription } from "../providers/speech.vibe"
 import { requestDigest } from "../shared/dispatch-once.vibe"
 import { keepStanding, markDispatched, reserve, settle, type Settlement } from "../shared/metering.vibe"
+import { newId } from "../shared/sealing.vibe"
 
 type SpeechSettings = NonNullable<EnvironmentProfile["speech"]>
 
 const uploadLimit = 25 * 1024 * 1024
-const timedBytesLimit = 8 * 1024 * 1024
-const timedFrameLimit = 2048
-const audioTypes: ReadonlyArray<string> = ["audio/mp3", "audio/mpeg", "audio/mp4", "audio/m4a", "audio/x-m4a", "audio/wav", "audio/x-wav", "audio/webm", "audio/ogg"]
-
 const uploadFields: ReadonlyArray<string> = ["audio", "languageCode", "provider"]
 const kilobitsPerSecond: Readonly<Record<string, number>> = { "audio/wav": 1411, "audio/x-wav": 1411, "audio/webm": 96, "audio/ogg": 96 }
 const encoder = new TextEncoder()
@@ -28,12 +24,52 @@ interface Upload {
   readonly durationMs: number
 }
 
-function ttsQuote(text: string, settings: SpeechSettings): number {
-  return withMarkup(text.length * settings.tts.microsPerCharacter)
+function profileOf(settings: SpeechSettings): SpeechProfile {
+  return {
+    ttsProvider: settings.provider,
+    voices: [...settings.tts.voiceIds],
+    defaultVoice: settings.tts.defaultVoiceId,
+    models: settings.tts.modelIds.map((modelId) => ({ modelId, perCharacter: settings.tts.microsPerCharacter })),
+    defaultModel: settings.tts.defaultModelId,
+    rendersOptions: true,
+    sttProvider: settings.provider,
+    languages: [...settings.stt.languageCodes],
+    sttPerSecond: settings.stt.microsPerSecond
+  }
 }
 
-function sttCharge(durationMs: number, settings: SpeechSettings): number {
-  return withMarkup(billedSeconds(durationMs) * settings.stt.microsPerSecond)
+function pickOf(id: string | undefined): Pick {
+  return id === undefined ? { tag: "ProfileDefault" } : { tag: "Named", id }
+}
+
+function ttsRequestOf(body: SynthesisBody): TtsRequest {
+  return {
+    textChars: body.text.length,
+    previousChars: body.previousText?.length ?? 0,
+    nextChars: body.nextText?.length ?? 0,
+    voice: pickOf(body.voiceId),
+    model: pickOf(body.modelId),
+    format: body.format === "wav" ? "Wav" : "Mp3",
+    pace: body.speed === undefined ? { tag: "DefaultPace" } : { tag: "PaceHundredths", hundredths: Math.round(body.speed * 100) },
+    normalization: body.applyTextNormalization === undefined ? "DefaultNormalization" : body.applyTextNormalization === "auto" ? "AutoNormalization" : "NoNormalization",
+    timestamps: body.withTimestamps === true
+  }
+}
+
+function meteredOf(settlement: SpeechSettlement): Settlement {
+  switch (settlement.tag) {
+    case "ChargeMeasured": return { kind: "known", actual: settlement.actual }
+    case "ChargeQuote": return { kind: "unknown" }
+    case "ReleaseUncharged": return { kind: "release" }
+    default: {
+      const _exhaustive: never = settlement
+      return _exhaustive
+    }
+  }
+}
+
+function replyOfFailure(failure: SpeechFailure): ProviderReply {
+  return failure._tag === "ProviderRefused" ? replyOf(failure.status) : "ProviderUnclear"
 }
 
 function readUint32(bytes: Uint8Array, at: number): number {
@@ -44,18 +80,35 @@ function ascii(bytes: Uint8Array, at: number, length: number): string {
   return String.fromCharCode(...bytes.subarray(at, at + length))
 }
 
+function isWav(bytes: Uint8Array): boolean {
+  return ascii(bytes, 0, 4) === "RIFF" && ascii(bytes, 8, 4) === "WAVE"
+}
+
+function isMpeg(bytes: Uint8Array): boolean {
+  return ascii(bytes, 0, 3) === "ID3" || ((bytes[0] ?? 0) === 0xff && ((bytes[1] ?? 0) & 0xe0) === 0xe0)
+}
+
+const leadingBytes: Readonly<Record<string, (bytes: Uint8Array) => boolean>> = {
+  "audio/mpeg": isMpeg,
+  "audio/mp3": isMpeg,
+  "audio/mp4": (bytes) => ascii(bytes, 4, 4) === "ftyp",
+  "audio/m4a": (bytes) => ascii(bytes, 4, 4) === "ftyp",
+  "audio/x-m4a": (bytes) => ascii(bytes, 4, 4) === "ftyp",
+  "audio/wav": isWav,
+  "audio/x-wav": isWav,
+  "audio/webm": (bytes) => bytes[0] === 0x1a && bytes[1] === 0x45 && bytes[2] === 0xdf && bytes[3] === 0xa3,
+  "audio/ogg": (bytes) => ascii(bytes, 0, 4) === "OggS"
+}
+
 function wavDurationMs(bytes: Uint8Array): number | undefined {
-  if (ascii(bytes, 0, 4) !== "RIFF" || ascii(bytes, 8, 4) !== "WAVE") return undefined
+  if (!isWav(bytes)) return undefined
   let at = 12
   let byteRate = 0
   while (at + 8 <= bytes.length) {
     const id = ascii(bytes, at, 4)
     const size = readUint32(bytes, at + 4)
     if (id === "fmt " && size >= 16) byteRate = readUint32(bytes, at + 16)
-    if (id === "data") {
-      if (byteRate <= 0) return undefined
-      return Math.ceil(Math.min(size, bytes.length - at - 8) * 1000 / byteRate)
-    }
+    if (id === "data") return byteRate <= 0 ? undefined : Math.ceil(Math.min(size, bytes.length - at - 8) * 1000 / byteRate)
     at += 8 + size + (size % 2)
   }
   return undefined
@@ -70,11 +123,6 @@ effect function speechSettings(): SpeechSettings!Refused!Deployment {
   const settings = (try Deployment).settings.speech
   if (settings === undefined) throw refused("CapabilityUnavailable")
   return settings
-}
-
-function failedSettlement(failure: SpeechFailure): Settlement {
-  if (failure._tag === "ProviderRefused" && failure.status >= 400 && failure.status < 500) return { kind: "known", actual: 0 }
-  return { kind: "unknown" }
 }
 
 function providerRefusal(failure: SpeechFailure, now: number): Refused {
@@ -93,11 +141,10 @@ function providerRefusal(failure: SpeechFailure, now: number): Refused {
   }
 }
 
-effect function heldCall<A, R>(context: RouteContext, requestId: string, quote: number, call: A!SpeechFailure!R, charge: (answer: A) => number, repeatable: boolean) {
+effect function heldCall<A, R>(context: RouteContext, requestId: string, quote: number, call: A!SpeechFailure!R, measure: (answer: A) => number, repeatable: boolean) {
   const caller = signed(context.caller)
   if (caller === undefined) throw refused("AuthenticationRequired")
-  const key: HoldKey = { service: "MeteredSpeech", caller: caller.userId, requestId, part: { tag: "WholeRequest" } }
-  const ticket = try reserve(caller, key, quote)
+  const ticket = try reserve(caller, speechHoldKey(caller.organizationId, requestId), quote)
   if (ticket.replayed) {
     if (!repeatable || synthesisCourseOf(true, ticket.hold) !== "SpeakAgain") throw refused("IdempotencyConflict")
     const again = call catch effect (failure) => { throw providerRefusal(failure, try Clock.currentTimeMillis) }
@@ -106,59 +153,67 @@ effect function heldCall<A, R>(context: RouteContext, requestId: string, quote: 
   try keepStanding(context.request.headers.authorization, caller, "MeteredSpeech", ticket)
   try markDispatched(ticket.key)
   const answer = call catch effect (failure) => {
-    try settle(ticket.key, failedSettlement(failure))
+    try settle(ticket.key, meteredOf(settlementOf(true, replyOfFailure(failure), 0)))
     throw providerRefusal(failure, try Clock.currentTimeMillis)
   }
-  try settle(ticket.key, { kind: "known", actual: charge(answer) })
+  try settle(ticket.key, meteredOf(settlementOf(true, "ProviderAnswered", measure(answer))))
   return answer
-}
-
-effect function synthesisOf(body: SynthesisBody, settings: SpeechSettings): Synthesis!Refused {
-  const voiceId = body.voiceId ?? settings.tts.defaultVoiceId
-  const modelId = body.modelId ?? settings.tts.defaultModelId
-  if (!settings.tts.voiceIds.includes(voiceId) || !settings.tts.modelIds.includes(modelId)) throw refused("InvalidRequest")
-  if (body.withTimestamps === true && body.format === "wav") throw refused("InvalidRequest")
-  return {
-    text: body.text,
-    ...(body.previousText === undefined ? {} : { previousText: body.previousText }),
-    ...(body.nextText === undefined ? {} : { nextText: body.nextText }),
-    voiceId,
-    modelId,
-    format: body.format ?? "mp3",
-    speed: body.speed ?? 1,
-    applyTextNormalization: body.applyTextNormalization ?? "auto"
-  }
 }
 
 effect function synthesisRequestId(context: RouteContext, synthesis: Synthesis, timed: boolean): string!Refused {
   const given = context.request.headers["idempotency-key"]
-  if (given === undefined) return context.requestId
+  if (given === undefined) return newId()
   const key = Option.getOrUndefined(decodeKey(given))
   if (key === undefined) throw refused("InvalidRequest")
   return `${key}:${requestDigest({ synthesis, timed })}`
 }
 
-effect function boundedFrames<R>(frames: ReadonlyArray<TimedFrame>!SpeechFailure!R): Uint8Array!SpeechFailure!R {
+function audioBytesOf(audioBase64: string): number {
+  return audioBase64.length / 4 * 3 - (audioBase64.endsWith("==") ? 2 : audioBase64.endsWith("=") ? 1 : 0)
+}
+
+effect function timedLines<R>(frames: ReadonlyArray<TimedFrame>!SpeechFailure!R): Uint8Array!SpeechFailure!R {
   const read = try frames
-  const lines = [
-    ...read.map((frame, sequence) => JSON.stringify({ type: "audio", sequence, audioBase64: frame.audioBase64, alignment: frame.alignment })),
-    JSON.stringify({ type: "done" })
-  ]
-  const bytes = encoder.encode(lines.map((line) => `${line}\n`).join(""))
-  if (read.length === 0 || read.length > timedFrameLimit || bytes.length > timedBytesLimit) throw new ProviderInvalidResponse()
-  return bytes
+  let sent: TimedStream = { frames: 0, audioBytes: 0 }
+  const lines: Array<string> = []
+  for (const frame of read) {
+    const step = addFrame(sent, audioBytesOf(frame.audioBase64))
+    if (step.tag === "StreamBroken") throw new ProviderInvalidResponse()
+    lines.push(JSON.stringify({ type: "audio", sequence: step.sequence, audioBase64: frame.audioBase64, alignment: frame.alignment }))
+    sent = step.stream
+  }
+  if (!mayEnd(sent)) throw new ProviderInvalidResponse()
+  return encoder.encode([...lines, JSON.stringify({ type: "done" })].map((line) => `${line}\n`).join(""))
 }
 
 effect function speak(context: RouteContext): HttpServerResponse.HttpServerResponse!{ readonly _tag: string }!CloudContext {
   const settings = try speechSettings()
   const body = try jsonBody(context, SynthesisBody)
-  const synthesis = try synthesisOf(body, settings)
-  const quote = ttsQuote(body.text, settings)
-  const requestId = try synthesisRequestId(context, synthesis, body.withTimestamps === true)
-  const headers = { "cache-control": "no-store", "x-eliza-tts-provider": settings.provider, "x-eliza-tts-speed": String(synthesis.speed) }
-  if (body.withTimestamps === true) {
-    const timed = try heldCall(context, requestId, quote, boundedFrames(synthesizeTimed(settings, synthesis)), () => quote, true)
-    return HttpServerResponse.uint8Array(timed, { status: 200, contentType: "application/x-ndjson", headers: { ...headers, "x-eliza-tts-timing": "character-v1" } })
+  const profile = profileOf(settings)
+  const checked = ttsCheck(profile, ttsRequestOf(body))
+  if (checked.tag === "SynthesisRefused") throw new Refused({ refusal: checked.refusal })
+  const quote = ttsQuote(checked.synthesis)
+  const synthesis: Synthesis = {
+    text: body.text,
+    ...(body.previousText === undefined ? {} : { previousText: body.previousText }),
+    ...(body.nextText === undefined ? {} : { nextText: body.nextText }),
+    voiceId: checked.synthesis.voiceId,
+    modelId: checked.synthesis.modelId,
+    format: body.format ?? "mp3",
+    speed: body.speed ?? 1,
+    applyTextNormalization: body.applyTextNormalization ?? "auto"
+  }
+  const requestId = try synthesisRequestId(context, synthesis, checked.synthesis.timed)
+  const served = ttsHeaders(profile, checked.synthesis)
+  const headers = {
+    "cache-control": "no-store",
+    "x-eliza-tts-provider": served.providerId,
+    ...(served.paceHeader.tag === "PaceHundredths" ? { "x-eliza-tts-speed": String(served.paceHeader.hundredths / 100) } : {}),
+    ...(served.timingHeader ? { "x-eliza-tts-timing": "character-v1" } : {})
+  }
+  if (served.timingHeader) {
+    const timed = try heldCall(context, requestId, quote, timedLines(synthesizeTimed(settings, synthesis)), () => quote, true)
+    return HttpServerResponse.uint8Array(timed, { status: 200, contentType: "application/x-ndjson", headers })
   }
   const audio = try heldCall(context, requestId, quote, synthesize(settings, synthesis), () => quote, true)
   return HttpServerResponse.uint8Array(audio.audio, { status: 200, contentType: audio.contentType, headers })
@@ -168,7 +223,7 @@ function baseType(contentType: string): string {
   return (contentType.split(";")[0] ?? "").trim().toLowerCase()
 }
 
-effect function readUpload(context: RouteContext, settings: SpeechSettings): Upload!Refused {
+effect function readUpload(context: RouteContext, profile: SpeechProfile): Upload!Refused {
   if (baseType(context.request.headers["content-type"] ?? "") !== "multipart/form-data") throw refused("InvalidRequest")
   const seen = new Set<string>()
   let audio: { readonly bytes: Uint8Array; readonly mimeType: string } | undefined
@@ -195,21 +250,28 @@ effect function readUpload(context: RouteContext, settings: SpeechSettings): Upl
     when Refused: throw failure;
     default: throw failure.reason._tag === "BodyTooLarge" || failure.reason._tag === "FileTooLarge" ? refused("ContentTooLarge") : refused("InvalidRequest");
   }
-  if (audio === undefined || audio.bytes.length === 0 || !audioTypes.includes(audio.mimeType)) throw refused("InvalidRequest")
-  if (audio.bytes.length > uploadLimit) throw refused("ContentTooLarge")
-  if (provider !== undefined && provider !== settings.provider) throw refused("InvalidRequest")
-  if (languageCode !== undefined && !settings.stt.languageCodes.includes(languageCode)) throw refused("InvalidRequest")
+  if (audio !== undefined && audio.bytes.length > uploadLimit) throw refused("ContentTooLarge")
+  if (audio === undefined) throw refused("InvalidRequest")
   const durationMs = uploadDurationMs(audio.bytes, audio.mimeType)
   if (durationMs === undefined || durationMs <= 0) throw refused("InvalidRequest")
-  return { audio: audio.bytes, mimeType: audio.mimeType, durationMs, ...(languageCode === undefined ? {} : { languageCode }) }
+  const checked = sttCheck(profile, {
+    audio: audio.bytes.length === 0 ? { tag: "NoAudio" } : { tag: "AudioFile", mime: audio.mimeType, bytesMatch: Object.hasOwn(leadingBytes, audio.mimeType) && leadingBytes[audio.mimeType]?.(audio.bytes) === true },
+    language: pickOf(languageCode),
+    provider: pickOf(provider),
+    durationMs
+  })
+  if (checked.tag === "TranscriptionRefused") throw refused("InvalidRequest")
+  return { audio: audio.bytes, mimeType: audio.mimeType, durationMs: checked.durationMs, ...(languageCode === undefined ? {} : { languageCode }) }
 }
 
 effect function hear(context: RouteContext): HttpServerResponse.HttpServerResponse!{ readonly _tag: string }!CloudContext {
   const settings = try speechSettings()
-  const upload = try readUpload(context, settings)
+  const profile = profileOf(settings)
+  const upload = try readUpload(context, profile)
   const request = { audio: upload.audio, mimeType: upload.mimeType, ...(upload.languageCode === undefined ? {} : { languageCode: upload.languageCode }) }
   const call = prepareTranscription(settings, request) catch effect (failure) => { throw providerRefusal(failure, context.now) }
-  const heard: Transcription = try heldCall(context, context.requestId, sttCharge(upload.durationMs, settings), call, (answer: Transcription) => sttCharge(answer.durationMs, settings), false)
+  const quote = sttCost(profile, upload.durationMs)
+  const heard: Transcription = try heldCall(context, newId(), quote, call, (answer: Transcription) => sttMeasured(profile, { tag: "DurationReported", ms: answer.durationMs }, quote), false)
   return HttpServerResponse.jsonUnsafe({
     transcript: heard.transcript,
     duration_ms: heard.durationMs,
@@ -219,6 +281,6 @@ effect function hear(context: RouteContext): HttpServerResponse.HttpServerRespon
 }
 
 export const batchSpeechRoutes: ReadonlyArray<Route> = [
-  { method: "POST", path: "/api/v1/voice/tts", auth: "ServiceAccess", capability: "speech", rateClass: "StandardRequests", handler: speak },
-  { method: "POST", path: "/api/v1/voice/stt", auth: "ServiceAccess", capability: "speech", rateClass: "StandardRequests", maxBodyBytes: uploadLimit, handler: hear }
+  { method: "POST", path: "/api/v1/voice/tts", auth: "ServiceAccess", area: "BatchSpeechRoutes", rateClass: "StandardRequests", handler: speak },
+  { method: "POST", path: "/api/v1/voice/stt", auth: "ServiceAccess", area: "BatchSpeechRoutes", rateClass: "StandardRequests", maxBodyBytes: uploadLimit, handler: hear }
 ]

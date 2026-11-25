@@ -112,6 +112,20 @@ pure def lawAScoreIsWithinItsRange(signals: TriageSignals): bool =
   triageScore(signals) >= 0 and triageScore(signals) <= 110 and (triageReasons(signals) == List() implies triageScore(signals) == 0)
 ```
 
+### A message row hints at attachments from the outer MIME part
+
+A message row carries `hasAttachments` when the outer Gmail part is
+`multipart/mixed` or names a file. The MIME type comes from the part
+or, if absent, its already requested `Content-Type` metadata header.
+Listing continues to read metadata only. The row hint is approximate.
+Opening the message reads its exact attachment descriptors.
+
+```quint
+pure def attachmentHint(mixedOuter: bool, namedFile: bool): bool = mixedOuter or namedFile
+pure def lawNoOuterHintHasNoPaperclip(mixedOuter: bool, namedFile: bool): bool =
+  (not(mixedOuter) and not(namedFile)) implies not(attachmentHint(mixedOuter, namedFile))
+```
+
 ### A search page names the mailbox revision read before it was listed and never continues at the token it was asked with
 
 The query is non-blank and a page token is 1 to 4,096 characters. The shell

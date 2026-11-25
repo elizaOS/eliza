@@ -9,7 +9,9 @@ import { deviceJourney } from "./support/device-agent.vibe"
 module node {
   import { setTimeout as wait } from "node:timers/promises"
   import type { AgentRuntime } from "@elizaos/core"
-  import { held, text as reply, toolCalls, type CloudFake } from "./support/cloud-fake.ts"
+  import { held, text as modelText, toolCalls, type CloudFake } from "./support/cloud-fake.ts"
+
+  const reply = (words: string) => modelText(`[answer] ${words}`)
   import { deviceClient, type DeviceClient } from "./support/device.ts"
   import { bindingHash } from "@elizaos/agent"
 

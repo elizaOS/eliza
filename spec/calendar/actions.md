@@ -148,6 +148,34 @@ pure def lawWholeDaysAreBounded(dateSent: bool, endDateSent: bool, datesReal: bo
 pure val dayCountValues = Set(0, 1, 370, 371)
 ```
 
+### A read with no connected calendar account says that none is connected, never only that the calendar is empty
+
+The agent's own resident calendar is always listed; a connected account
+(the managed Google calendar, another provider, the phone's own calendar)
+lists calendars beside it. When the active account lists no calendar but
+the resident one and no provider failed to list its calendars, a read,
+lookup, trip question or free-time question, and the next-24-hours
+calendar context the agent is given, answer with
+`connection: "none"` in their data, and their text says that no calendar
+account is connected and only the agent's own calendar was read, beside
+whatever that calendar holds. So the model tells the owner that Calendar
+isn't connected, in its own words, rather than that nothing is on it or
+that they are free. Any other read answers with `connection: "connected"`.
+
+```quint
+type CalendarConnection = AccountConnected | NoAccountConnected
+pure def calendarConnection(otherListed: int, unlisted: int): CalendarConnection =
+  if (otherListed == 0 and unlisted == 0) NoAccountConnected else AccountConnected
+pure val otherListedValues = Set(0, 1, 2)
+pure val unlistedValues = Set(0, 1)
+pure def lawAListedAccountIsConnected(otherListed: int, unlisted: int): bool =
+  otherListed > 0 implies calendarConnection(otherListed, unlisted) == AccountConnected
+pure def lawAnUnlistedProviderIsNeverCalledDisconnected(otherListed: int, unlisted: int): bool =
+  unlisted > 0 implies calendarConnection(otherListed, unlisted) == AccountConnected
+pure def lawOnlyTheResidentCalendarIsNotConnected(otherListed: int, unlisted: int): bool =
+  calendarConnection(otherListed, unlisted) == NoAccountConnected iff (otherListed == 0 and unlisted == 0)
+```
+
 ## Story: Ask when I am free and get openings from my real calendar
 
 > As the owner, I want the agent to tell me whether a whole period is
@@ -333,7 +361,11 @@ pure val atValues = Set(-1, 0, 1, 900000, 1350000)
 The upcoming-events context and the Calendar action are disclosed only
 when the owner asks and the turn's attested audience is the owner alone.
 In a room anyone else can read, or with no attested audience, the owner's
-events stay out of the prompt and the action does not run.
+events stay out of the prompt and the action does not run. Within that,
+core's catalog gives the Calendar action the general context every owner
+turn is planned in, beside its calendar and automation contexts, so the owner can ask about
+or change their calendar from any chat, as on the phone before VibeStack;
+its owner role gate and this audience gate are unchanged.
 
 ```quint
 pure def calendarDisclosed(isOwner: bool, ownerAlone: bool): bool = isOwner and ownerAlone

@@ -1,5 +1,5 @@
-// spec/notes/records.md, "Every commit advances the revision once, and a replacement needs the revision it was read at"; spec/notes/records.md, "A creation the client names is made once, and every record is one bounded note"; spec/notes/records.md, "A checklist the owner asks for is a new note holding the owner's items"; spec/notes/records.md, "A read by a title no saved note has cites no other note and asks which one"; spec/notes/records.md, "A note's title and body are saved as well-formed text"; spec/notes/records.md, "The agent reads and changes Notes only for the owner, and changes the note the model picked"; spec/notes/records.md, "A move by name takes the identical copies of the note along"; spec/notes/records.md, "A delete or an edit by name leaves no identical copy behind"; spec/notes/trash.md, "Canonical Trash restores the exact deleted ID against the current revision"; spec/notes/trash.md, "Erase and expiry need the owner's three-day choice, a current review, and no shared recording"; spec/notes/trash.md, "Fresh Notes references and the exact audio operation receipt govern cleanup"
-import { canonicalEraseAllowed, canonicalRestore, canonicalRestoreOpen, canonicalSweepAllowed, type CanonicalTrashEntry } from "../gen/notes__trash.effect.vibe"
+// spec/notes/records.md, "Every commit advances the revision once, and a replacement needs the revision it was read at"; spec/notes/records.md, "A creation the client names is made once, and every record is one bounded note"; spec/notes/records.md, "A checklist the owner asks for is a new note holding the owner's items"; spec/notes/records.md, "A read by a title no saved note has reads nothing and offers the one note whose title holds it"; spec/notes/records.md, "A note's title and body are saved as well-formed text"; spec/notes/records.md, "The agent reads and changes Notes only for the owner, and changes the note the model picked"; spec/notes/records.md, "A move by name takes the identical copies of the note along"; spec/notes/records.md, "A delete or an edit by name leaves no identical copy behind"; spec/notes/trash.md, "Canonical Trash restores the exact deleted ID against the current revision"; spec/notes/trash.md, "Erase and expiry need the owner's three-day choice, a current review, and no shared recording"; spec/notes/trash.md, "Fresh Notes references and the exact audio operation receipt govern cleanup"; spec/notes/trash.md, "A pending cleanup reserves the note and recording until its exact receipt is acknowledged"
+import { canonicalEraseAllowed, canonicalRestore, canonicalRestoreOpen, canonicalSweepAllowed, recordingReservationAllows, type CanonicalTrashEntry } from "../gen/notes__trash.effect.vibe"
 import { checklistCreationAdmitted, copyFate, creationForcesNew, creationReturnsExisting, deleteByContentAllowed, literalEditAdmitted, moveTakesCopy, noteRecordAdmitted, pickedNoteChanged, revisionAdmits } from "../gen/notes__records.effect.vibe"
 import {
   authoredNoteText, editAuthoredNoteFormat, parseNoteFormat, type AuthoredNoteEdit, noteLimits, recordingIdPattern, type CreateRequest, type ImportReceipt, type UpdateRequest, type NoteFormat, type NotesSnapshot, type NotesTrashErase, type NotesTrashRecordingCleanup, type StickyColor, type StickyNote, type TrashedNote,
@@ -22,7 +22,7 @@ export type NotesRefusalCode =
   | "NOTES_VALIDATION_FAILED" | "NOTES_NOT_FOUND" | "NOTES_AMBIGUOUS_NOTE" | "NOTES_DELETE_NAME_MISMATCH"
   | "NOTES_EDIT_CONFLICT" | "NOTES_EDIT_REVISION_REQUIRED" | "NOTES_EDIT_TEXT_NOT_FOUND" | "NOTES_EDIT_TEXT_AMBIGUOUS"
   | "NOTES_RICH_EDIT_REQUIRED" | "NOTES_TRASH_EXPIRED" | "NOTES_TRASH_RETENTION_DISABLED" | "NOTES_TRASH_RECORDING_UNAVAILABLE"
-  | "NOTES_FOLDER_UNKNOWN" | "NOTES_DUPLICATE_ID" | "CALENDAR_NOTE_SOURCE_CONFLICT"
+  | "NOTES_FOLDER_UNKNOWN" | "NOTES_DUPLICATE_ID" | "NOTES_CHECKLIST_UNTITLED" | "CALENDAR_NOTE_SOURCE_CONFLICT"
 
 export error NotesRefused { code: NotesRefusalCode; message: string; candidateIds?: readonly string[] }
 
@@ -33,6 +33,9 @@ export interface Change<A> {
 }
 
 export type NoteTarget = { readonly id: string } | { readonly selector: NoteSelector; readonly value: string }
+export type DeleteTarget<Revision> =
+  | { readonly id: string; readonly expectedRevision?: Revision }
+  | (Exclude<NoteTarget, { readonly id: string }> & { readonly expectedRevision?: never })
 
 export interface Instant {
   readonly ms: number
@@ -93,16 +96,15 @@ export effect function createIn(document: NotesDocument, request: CreateRequest,
   const authored = authoredNoteText(format).trim() !== ""
   const written = request.content !== undefined ? try contentParts(request.content, authored)
     : request.title !== undefined ? { title: request.title.toWellFormed(), body: request.body === undefined || request.body === "" ? "" : `\n${request.body.toWellFormed()}` }
-    : authored ? { title: "", body: "" }
+    : authored || items !== undefined ? { title: "", body: "" }
     : try Effect.fail(refused("NOTES_VALIDATION_FAILED", "content is required."))
   if (items !== undefined) {
     const titled = written.title.trim() !== ""
     const blank = items.filter((item) => item.trim() === "").length
     const longest = items.reduce((units, item) => Math.max(units, item.length), 0)
+    if (!titled) throw refused("NOTES_CHECKLIST_UNTITLED", "Nothing was saved: the owner gave this checklist no title. Ask the owner what to call it.")
     if (listed === undefined || !checklistCreationAdmitted(titled, items.length, blank, longest, request.format !== undefined || written.body.trim() !== "")) {
-      throw refused("NOTES_VALIDATION_FAILED", !titled
-        ? "A checklist needs the title the owner gave it. Ask the owner what to call the checklist; nothing was saved."
-        : `A checklist needs 1 to ${noteLimits.checklistItems} nonblank items of at most ${noteLimits.checklistItem} characters each, its title alone in content, and no body or other format.`)
+      throw refused("NOTES_VALIDATION_FAILED", `A checklist needs 1 to ${noteLimits.checklistItems} nonblank items of at most ${noteLimits.checklistItem} characters each, its title alone in content, and no body or other format.`)
     }
   }
   const parts = items === undefined ? written : { title: written.title, body: "" }
@@ -286,7 +288,8 @@ export effect function updateIn(document: NotesDocument, target: NoteTarget, pat
   return { next: { ...document, notes }, value: updated, mutation: "note:updated" }
 }
 
-export effect function deleteIn(document: NotesDocument, target: NoteTarget, at: Instant, pick?: ModelPick): Change<StickyNote>!NotesRefused {
+export effect function deleteIn(document: NotesDocument, target: DeleteTarget<number>, at: Instant, pick?: ModelPick): Change<StickyNote>!NotesRefused {
+  if ("id" in target) try requireRevision(document, false, target.expectedRevision)
   const index = try pickedIndex(document.notes, target, pick)
   const existing = document.notes[index]
   if (existing === undefined) throw refused("NOTES_NOT_FOUND", "The resolved note is missing.")
@@ -357,20 +360,49 @@ export effect function moveIn(document: NotesDocument, target: NoteTarget, folde
   }
 }
 
-function noteRecordingId(note: StickyNote): string | null | undefined {
-  if (note.format?.kind !== "voice") return undefined
-  const { audio, recordingId } = note.format.data
-  if (audio === undefined) return undefined
-  if (audio === null || typeof audio !== "object" || Array.isArray(audio) || typeof audio.audioId !== "string"
-    || !recordingIdPattern.test(audio.audioId) || !recordingIdPattern.test(note.id) || audio.audioId !== recordingId) return null
-  return audio.audioId
+function recordingReference(note: StickyNote): { exactId: string | null | undefined; candidates: string[] } {
+  if (note.format?.kind !== "voice") return { exactId: undefined, candidates: [] }
+  const { audio, audioId, recordingId } = note.format.data
+  const nested = typeof audio === "object" && audio !== null && !Array.isArray(audio) ? audio.audioId : undefined
+  const candidates = [...new Set([audioId, nested, recordingId].filter((id): id is string => typeof id === "string" && recordingIdPattern.test(id)))]
+  if (audio === undefined && audioId === undefined) return { exactId: undefined, candidates }
+  const selected = audio === undefined ? audioId : nested
+  const exact = audio === undefined ? recordingId === undefined || recordingId === selected
+    : recordingId === selected && (audioId === undefined || audioId === selected)
+  return {
+    exactId: exact && typeof selected === "string" && recordingIdPattern.test(selected) && recordingIdPattern.test(note.id) ? selected : null,
+    candidates,
+  }
 }
 
-function recordingReferences(note: StickyNote): string[] {
-  if (note.format?.kind !== "voice" || note.format.data.audio === undefined) return []
-  const { audio, recordingId } = note.format.data
-  const audioId = typeof audio === "object" && audio !== null && !Array.isArray(audio) ? audio.audioId : undefined
-  return [...new Set([audioId, recordingId].filter((id): id is string => typeof id === "string" && recordingIdPattern.test(id)))]
+export const recordingReferences = (note: StickyNote): string[] => recordingReference(note).candidates
+
+export function recordingReservationsAdmit(before: NotesDocument, after: NotesDocument): boolean {
+  if (before.recordingCleanup.length === 0 && after.recordingCleanup.length === 0) return true
+  const ids = (cleanup: readonly NotesTrashRecordingCleanup[]) => ({
+    notes: new Set(cleanup.map((entry) => entry.noteId)),
+    audio: new Set(cleanup.map((entry) => entry.audioId)),
+  })
+  const prior = ids(before.recordingCleanup)
+  const reserved = ids([...before.recordingCleanup, ...after.recordingCleanup])
+  const byId = (notes: readonly StickyNote[]) => new Map(notes.map((note) => [note.id, note] as const))
+  const active = byId(before.notes)
+  const all = byId([...before.notes, ...before.trash.map((entry) => entry.note)])
+  function permits(note: StickyNote, was: StickyNote | undefined): boolean {
+    if (!recordingReservationAllows(reserved.notes.has(note.id), was !== undefined && prior.notes.has(note.id))) return false
+    const previous = was === undefined ? [] : recordingReferences(was)
+    return recordingReferences(note).every((id): boolean =>
+      recordingReservationAllows(reserved.audio.has(id), prior.audio.has(id) && previous.includes(id)))
+  }
+  return after.notes.every((note): boolean => permits(note, active.get(note.id)))
+    && after.trash.every(({ note }): boolean => permits(note, all.get(note.id)))
+}
+
+export effect function requireUnreferencedCleanup(document: NotesDocument, receipt: NotesTrashRecordingCleanup): void!NotesRefused {
+  const stillUses = (note: StickyNote) => note.id === receipt.noteId || recordingReferences(note).includes(receipt.audioId)
+  if (document.notes.some(stillUses) || document.trash.some(({ note }) => stillUses(note))) {
+    throw refused("NOTES_TRASH_RECORDING_UNAVAILABLE", "A saved note still uses this pending recording; its cleanup needs review.")
+  }
 }
 
 function recordingReferenceCounts(document: NotesDocument): ReadonlyMap<string, number> {
@@ -391,6 +423,8 @@ export effect function eraseIn(document: NotesDocument, review: NotesTrashErase 
   }
   const references = recordingReferenceCounts(document)
   const pending = [...document.recordingCleanup]
+  const reservedNotes = new Set(pending.map((entry) => entry.noteId))
+  const reservedAudio = new Set(pending.map((entry) => entry.audioId))
   const added: NotesTrashRecordingCleanup[] = []
   const kept: TrashedNote[] = []
   const erasedIds = new Set<string>()
@@ -400,8 +434,9 @@ export effect function eraseIn(document: NotesDocument, review: NotesTrashErase 
       kept.push(entry)
       continue
     }
-    const audioId = noteRecordingId(entry.note)
-    const shared = audioId === null || (audioId !== undefined && (references.get(audioId) !== 1 || pending.length >= noteLimits.cleanup))
+    const { exactId: audioId } = recordingReference(entry.note)
+    const shared = reservedNotes.has(entry.note.id) || audioId === null
+      || (audioId !== undefined && (reservedAudio.has(audioId) || references.get(audioId) !== 1 || pending.length >= noteLimits.cleanup))
     const deletion = review?.scope === "entry" ? Date.parse(review.deletedAt) : Date.parse(entry.deletedAt)
     const facts = trashFacts(entry, retentionOn, shared, at, document.revision, review?.expectedRevision ?? document.revision, deletion)
     if (review === undefined ? !canonicalSweepAllowed(facts) : !canonicalEraseAllowed(facts, true)) {
@@ -433,8 +468,9 @@ export function sameCleanup(a: NotesTrashRecordingCleanup, b: NotesTrashRecordin
   return a.operationId === b.operationId && a.noteId === b.noteId && a.audioId === b.audioId && a.deletedAt === b.deletedAt
 }
 
-export effect function acknowledgeIn(document: NotesDocument, receipt: NotesTrashRecordingCleanup): Change<boolean>!! {
+export effect function acknowledgeIn(document: NotesDocument, receipt: NotesTrashRecordingCleanup): Change<boolean>!NotesRefused {
   if (!document.recordingCleanup.some((entry) => sameCleanup(entry, receipt))) return { next: undefined, value: false, mutation: "trash:recording-cleanup" }
+  try requireUnreferencedCleanup(document, receipt)
   return {
     next: { ...document, recordingCleanup: document.recordingCleanup.filter((entry) => !sameCleanup(entry, receipt)) },
     value: true,

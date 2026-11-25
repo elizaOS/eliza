@@ -1,9 +1,9 @@
 // spec/cloud/index.md, "Story: Use inference on my subscription or funded pilot account"; spec/cloud/services/models.md, "A side has at most 2,000,000 tokens, so every side's price arithmetic stays a safe integer"
-import { heldOutput, outputLimit, quoteCounts, type TokenAsk } from "../../gen/cloud__services__inference.effect.vibe"
+import { acceptedFields, heldOutput, ingressLimit, outputLimit, quoteCounts, type TokenAsk } from "../../gen/cloud__services__inference.effect.vibe"
 import { callCost, countsInBound, type Model, type TokenCounts } from "../../gen/cloud__services__models.effect.vibe"
 import { refused, type Refused } from "../http/refusal.vibe"
 import type { RouteContext } from "../http/routes.vibe"
-import { acceptedFields, ChatRequest, type ChatMessage, type ContentPart, type ResponseFormat } from "@elizaos/cloud"
+import { ChatRequest, type ChatMessage, type ContentPart, type ResponseFormat } from "@elizaos/cloud"
 
 export type { ChatRequest }
 
@@ -13,7 +13,7 @@ export interface Quote {
   readonly micros: number
 }
 
-export const chatIngressPerMinute = 600
+export const chatIngressPerMinute = ingressLimit.limit
 
 function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
