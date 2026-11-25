@@ -91,13 +91,15 @@ pure def lawOnlyAPointSearchOnACloudThatRanksAsksForTheClosest(aroundPoint: bool
 
 The reported position carries no precision, so it is never the precise fix
 a route from here is planned from: the phone plans that route from its own
-fresh fix, and the agent only names the destination. A route asked for
-from where the owner is, which the planner asks for by leaving the start
-out or by naming the owner's own position as the start, answers with a
-card that asks the phone for its location and carries the destination
-found; a destination the planner names as the nearest or a nearby kind of
-place, or one with several matches, goes to the phone as the words asked,
-for the phone to search around itself.
+fresh fix, and the agent only names the destination. The planner says a
+route starts where the owner is ("from here", "from my location") by
+marking it so or by leaving the start out, never by passing the owner's
+position as a start. Such a route answers with a card that asks the phone
+for its location and carries the destination found, even when a start was
+also passed. A start passed without that mark is a place the planner
+named, and is looked up as one. A destination the planner names as the
+nearest or a nearby kind of place, or one with several matches, goes to
+the phone as the words asked, for the phone to search around itself.
 
 ```quint
 pure def asRouteFix(p: PhonePosition): N::Fix = { present: p.present, precise: false, age: p.age, accuracy: p.accuracy }

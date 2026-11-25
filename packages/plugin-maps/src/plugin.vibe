@@ -694,7 +694,7 @@ function mapsActions(ports: MapsPluginPorts): Action[] {
       tags: ["domain:maps", "capability:read"],
       roleGate: ownerOnly,
       parameters: [
-        { name: "origin", required: false, description: "The starting place the owner named; left out, with useCurrentLocation, for a route from where the owner is, such as from here or from my location.", schema: { type: "string" } },
+        { name: "origin", required: false, description: "The starting place the owner named. Never the owner's own position: for a route from where the owner is, such as from here or from my location, set useCurrentLocation and leave origin out.", schema: { type: "string" } },
         { name: "destination", required: true, description: "The destination the owner named; for the nearest or a nearby kind of place, the kind of place alone.", schema: { type: "string" } },
         { name: "destinationNearby", required: false, description: "True when the destination is the nearest or a nearby kind of place (the nearest pharmacy), not one named place.", schema: { type: "boolean" } },
         modeParameter,

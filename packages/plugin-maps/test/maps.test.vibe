@@ -595,6 +595,7 @@ it.live('Search near me with where my phone is now: a recent reported position s
   const nearBy = try act("MAPS_PLACE", messageWith({ latitude: here.latitude, longitude: here.longitude, capturedAt: now - 31 * 60_000 }, "pharmacy near by"), { query: "pharmacy", useCurrentLocation: true })
   const route = try act("MAPS_ROUTE", recent, { origin: "Ferry Building", destination: "Coit Tower", travelMode: "walk" })
   const fromHere = try act("MAPS_ROUTE", recent, { destination: "Coit Tower", useCurrentLocation: true })
+  const fromHereWithStart = try act("MAPS_ROUTE", recent, { origin: "my current location", destination: "Coit Tower", useCurrentLocation: true })
   const park = try act("MAPS_ROUTE", recent, { origin: "Ferry Building", destination: "Golden Gate Park", travelMode: "walk" })
   const chain = try act("MAPS_ROUTE", recent, { origin: "Ferry Building", destination: "Starbucks", travelMode: "walk" })
   const handoff = try act("MAPS_NAVIGATION_START", recent, { destination: "Coit Tower", travelMode: "walk" })
@@ -627,6 +628,7 @@ it.live('Search near me with where my phone is now: a recent reported position s
   const searched = bodies.find((made) => made.path === "/api/v1/maps/places/search")
   const searchedNear = (query: string) => bodies.filter((made) => made.path === "/api/v1/maps/places/search" && (made.body as { readonly query: string }).query === query)
     .map((made) => (made.body as { readonly near?: unknown }).near)
+  const searchedFor = (query: string) => bodies.filter((made) => made.path === "/api/v1/maps/places/search" && (made.body as { readonly query: string }).query === query).length
   try Effect.try(() => assert.deepStrictEqual({
     nearby: [nearby.success, (nearby.data as { readonly places: ReadonlyArray<{ readonly providerPlaceId: string }> }).places.map((item) => item.providerPlaceId)],
     searchedNear: (searched?.body as { readonly near?: unknown } | undefined)?.near, keyed: searched?.key,
@@ -635,6 +637,7 @@ it.live('Search near me with where my phone is now: a recent reported position s
     route: [route.success, routeText.includes("Alternatives: 1. 20 min"), routeText.includes("Google Maps Platform via Eliza Cloud"), recognizedMapsCards(routeText).map((found) => found.card.kind === "route" ? found.card.warnings : found.card.kind)],
     plain: withoutMapsCards(routeText).includes("MAPSCARD"),
     fromHere: [fromHere.success, locateCard(fromHere)],
+    fromHereWithStart: [fromHereWithStart.success, locateCard(fromHereWithStart), searchedFor("my current location")],
     landmark: [park.success, chain.success, (chain.data as { readonly choice?: string }).choice],
     handoff: recognizedMapsCards(handoff.text ?? "")[0]?.card.kind,
     localities: [
@@ -666,6 +669,7 @@ it.live('Search near me with where my phone is now: a recent reported position s
     route: [true, true, true, [["No live traffic."]]],
     plain: false,
     fromHere: [false, ["route-origin", undefined, "Coit Tower", undefined]],
+    fromHereWithStart: [false, ["route-origin", undefined, "Coit Tower", undefined], 0],
     landmark: [true, false, "destination"],
     handoff: "handoff",
     localities: [[true, "union-dc"], [false, "destination"]],
