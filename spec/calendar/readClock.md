@@ -135,135 +135,41 @@ model read from the owner's request, and says which clock times the
 owner stated: the start, the start and the end, or none. Code reads no
 day or time from the words; it checks each new clock time against them
 instead. A time is held by the owner's words when they write it in
-digits ("1:10 pm", "13:10", "4"), spell it with its minutes ("one ten
-PM", "one oh five pm", "six PM"), or say noon, midnight, or half past, a
-quarter past or a quarter to the hour; written with am or pm, it is that
-half of the day only. These are the spellings the check has always
-read, and the words hold every time they held with them, so no create
-or change is refused that was saved before.
+digits with a colon ("1:10 pm", "13:10", "01:10"), as an hour alone
+("4", "16"), or as a twelve-hour hour and its minutes after a dot or a
+space ("1.10", "1 10 pm"); when they spell it with its minutes ("one ten
+PM", "one oh five pm") or as an hour ("six PM", "six o'clock", "6
+o'clock"); or when they say noon, midday, midnight, or half past, a
+quarter past or a quarter to the hour ("half past one", "quarter to
+2"). Written with am or pm, it is that half of the day only, except a
+time from 13:00 on written with its own hour ("13:10 am") and noon,
+midday or midnight. These are the only spellings a create or change
+holds a clock time in.
 
-The words also hold a time in a spelling the free-time reader knows
-(next section): four digits ("0900", "1730"), an hour and its minutes as
-two numbers ("14 30"), an hour and "h" ("14h30", "09h15"), noon or
-midnight after twelve ("12:00 noon", "twelve o'clock noon", "12
-midnight"), minutes counted past, after, to, of, till, til or before the
-hour in words or digits ("ten past nine", "10 past 9", "twenty minutes
-past two", "ten after nine", "quarter of five", "quarter till six"),
-"quarter after", "half 5" for 5:30, or "ish" ("noonish"). These only add
-times the words hold, so they turn a refusal into a save only where the
-owner's words spell the time sent. An hour and its minutes with a dot
-past 12:59 or with a leading zero ("14.30", "09.30") hold nothing more
-than before, since a price, a version, a setting or a day and month
-reads the same way ("sell at 14.50", "upgrade to 22.04", "set the
-thermostat to 21.30", "move the review to 14.11"); "2.30" holds 2:30 as
-always. A further spelling holds nothing where it could be a misread:
-
-- Beside another number. Words that hold any other number, in digits
-  or as a number word ("2", "7pm", "10:30", "4521", "AA 2245", "three",
-  "half", "quarter", "dozen", noon, midnight, o'clock, or a number with
-  a sign or a unit mark), other than the other end of the same range
-  right after or before a join where that end is itself a clock
-  ("standup from 0930 until noon", "coffee at half 3 till 4"), hold no
-  time in a further spelling, since the owner's clock time may be that
-  one and the further spelling a price, a code, a version, a room, a
-  page, a score, a year or an address: "pay the $14.30 invoice tomorrow
-  at 2", "upgrade to node 22.11 tomorrow at 4pm", "book room 15, 30
-  people, tomorrow at 3", "rematch tomorrow at 6pm after the 21-15
-  loss", "meet tomorrow at 2240 and 5th at noon", "pick up from 1745 to
-  1747 Oak Street tomorrow at 3", "bake 5 past 6 batches tomorrow at
-  2pm", "call tomorrow at 0930, pin 4521", "flight tomorrow at 0715, AA
-  2245", "raise the limit at 1500 tomorrow, 4 o'clock" and "talk about
-  2030 goals tomorrow at 0930" hold no time from their further
-  spellings. A written date ("3/5/2030", "March 5") and an ordinal
-  ("5th") are no number here. A number with a sign or a unit mark
-  attached on either side, a currency sign or any other ("$14.30",
-  "18.30€", "₩1450", "₿0145", "1230¢", "#0930", "+0930", "@0930",
-  "0932°", "0930%", "1430'"), and a day and month that a dot closes ("on
-  14.11."), are an amount and no clock.
-- Without a word that leads a clock, or where a count goes on. Minutes
-  counted to the hour are a clock only as a quarter ("quarter of five",
-  "quarter till 5", "quarter before five"), since any other count to an
-  hour reads the same as odds, a ratio or a score: "bet on the Lakers
-  tomorrow at 5 to 1", "dilute the cleaner at 10 to 1", "mix the epoxy
-  at two to one", "we lost at 10 to 6" and "call at twenty to five"
-  hold no 12:55, 12:50, 12:58, 5:50 or 4:40. A quarter to the hour is a
-  clock only right after "at", "by", "before", "after", "around" or
-  "about" ("call at quarter of five"), since after "from" or "between",
-  or alone, it may be a range, and after "to", "till" or "until" a
-  count. Minutes counted past or after the hour, and "half 5", are a
-  clock only right after those words, "from" or "between" ("dinner at
-  half 7", "call tomorrow at ten past four pm"); "buy half 3 dozen
-  eggs", "we need 10 after 2 people leave", "run until 10 after 6 laps"
-  and "reduce to half 2 cups" hold none. An hour and "h" is a clock only
-  right after "at", "by", "before", "from" or "between" ("call tomorrow
-  at 14h30"), since without one it is a length:
-  "charge the car tomorrow for 14h30", "the backup takes 02h15" and "the
-  battery lasts 09h30" hold none. A counted spelling and an hour and "h"
-  also hold only where the clause, a comma or the words end after them,
-  or the next word is am, pm, o'clock, a day ("tomorrow", a weekday, a
-  written date, or "on", "this" or "next" before one), "in the" before a
-  part of the day, or a join before a clock: noon, midnight, a time with
-  a colon, or an hour that itself ends where a counted spelling ends
-  ("half 3 till 4"). So "bake at 5 past 6 batches" holds none, and
-  "scale the recipe from half 2 to 3 cups", "cut back from 10 past 6 to
-  7 laps" and "increase the dose from half 1 to 2 tablets" hold no 2:30,
-  6:10 or 1:30, since the hour after the join goes on into a count.
-- Digits alone. Two numbers ("14 30", "21 15") are never a clock, since
-  a score reads the same way ("the final score was tied at 14 14", "the
-  game that ended at 21 15"); nor are two numbers that a comma or a dash
-  splits ("Unit 14, 30 Main Street"). Four digits are a clock only with
-  a leading zero ("0930"), since without one they read the same as a
-  year, a price, a limit, a code, a bid, or a house, page or invoice
-  number: "Tomorrow: Waterloo reenactment at 1815.", "lunch tomorrow at
-  1230.", "buy gold at 2345 on Friday", "cap the ad spend at 1200 next
-  week", "move the call from 2014 to 2016", "file taxes at 2025
-  tomorrow", "read pages from 1215 to 1230" and "canvass houses from
-  1745 to 1747" hold no time from their digits, and no four digits a
-  further spelling holds are ever read as a year. Four digits with a
-  leading zero are a clock only right after "at", or as the start of a
-  range right after "from" or "between" whose other end, after the
-  join, is a clock in another spelling (noon, midnight, a time with a
-  colon, or a number with am or pm), or as the end of a range right
-  after the join from such a clock. After "at" or as a range's end they
-  hold only where the sentence ends after them (a full stop, "!", "?",
-  or the end of the words; a comma, a semicolon or a bracket is no end)
-  or the next word is am or pm: "standup tomorrow at 0930." holds 9:30
-  AM, "standup from 0930 until noon" 9:30 AM and "block tomorrow from
-  9am to 0930." both ends. A day or a part of the day after the digits
-  is no clock end, since a code, a limit, a bid or an amount reads the
-  same way ("change the door code to 0412 tonight", "set the bid at
-  0945 this morning", "lower the bid at 0230 next week", "team sync at
-  0930 on Tuesday" hold none), nor is a name or another number ("lunch
-  tomorrow at 0930 Broadway", "call 0800 123 456 tomorrow at 3" hold no
-  time from their digits). Four digits at the other end of a range are
-  no clock for either end, since page, invoice and house numbers run
-  that way ("workshop tomorrow from 0900 to 1100.", "read pages from
-  0915 to 0930" and "between 0915 and 0930" hold none). "To", "until",
-  "about" or "after" alone lead no digits ("raise the limit to 0150",
-  "bowling tomorrow, target up to 0230").
-- As one end beside the other. When a further spelling alone holds a
-  range's start, the end the model calls stated holds only in the words
-  apart from that spelling and after it: "call at quarter of five
-  tomorrow" states no end at 5:00, and "dinner at half 7 tomorrow" none
-  at 7:00 PM. When the words hold the start as before and only a
-  further spelling holds the end, that spelling holds the end only
-  after other words that spell the start: "call at ten past 4 until 5
-  tomorrow" states no end at 4:10 PM beside a 4:00 PM start, nor at
-  4:10 PM beside a 5:00 PM start, and "coffee at half 3 till 4" none at
-  3:30 beside a 3:00 start. A range that a further spelling holds at
-  either end also ends less than twelve hours after it starts, since
-  the words then give no half of the day for both ends: "call at ten
-  past 4 until 5 tomorrow" holds 4:10 to 5:00, AM or PM, and not 4:10
-  AM to 5:00 PM. A range whose ends the words hold as before is checked
-  as before.
-
-So every time held before is still held, except a range's end beside a
-start that only a further spelling holds, where the start was refused
-before; no create or change is refused that was saved before, and a
-further spelling that saves a create saves it at the time it spells.
-Words the reader cannot read hold only what these spellings find in
-them, as before: "明天下午3点开会" holds no clock time, so a stated time
-sent for it is refused whatever time it is.
+The free-time reader (next section) knows more spellings: four digits,
+an hour past twelve or with a leading zero and its minutes after a dot
+or a space ("1230", "14.30", "14 30"), an hour and "h" ("14h30"), minutes
+counted past, after, to, of, till or before the hour ("ten past nine",
+"twenty to five"), "quarter of" and "quarter after", and "half 5" for
+5:30. Those spellings only add
+a note to a free-time answer; a create or change never holds a clock in
+them. Each reads the same as something that is no clock: a year, a
+price, a version, a code, a room, house or page number, an address, a
+length, a dose, odds or a score, and a reader that tells them apart has
+always left more misreads to save. So "lunch tomorrow at 1230.",
+"dinner tomorrow at 2045.", "standup tomorrow at 0930.", "call tomorrow
+at 14h30", "dinner at half 7", "call at quarter of five tomorrow", "pay
+the $14.30 invoice tomorrow at 2", "book room 15, 30 people, tomorrow at
+3", "increase her dose from half 1 to 2 tomorrow", "lunch with Sam
+tomorrow; his apartment is at 0815.", "marathon tomorrow, aiming to
+finish at 03h45" and "retro tomorrow at ０９３０" hold none of the clock
+times those spellings would give, and a start or end the model calls
+stated at one of them is refused, naming the time sent, so the model
+asks the owner or sends the time in a spelling the words hold. Words in another script hold only what these
+spellings find in them: "明天下午3点开会" holds no clock time, so a
+stated time sent for it is refused whatever time it is. A create's
+year is read from all of its words, as "A stated year wins, a wrong
+extracted year is corrected, and a past start asks first" says.
 
 A time the words hold is kept. A time the words do not hold is kept
 only when the model says the owner stated no clock time ("tomorrow
@@ -281,11 +187,7 @@ event's start is always one the owner stated, so it is always checked;
 a change after a shared phone read is a review on the phone that shows
 the new time before anything changes, and is not checked against the
 words. A free-time window's clock times are never checked: the words
-only add a note to its answer (next section). The note asks only
-whether the words spell a clock anywhere: it keeps the lead word for
-minutes counted to the hour and the lead word and clause end for four
-digits, and none of the other guards above, so a guard that keeps a
-misread from being saved never adds a note.
+only add a note to its answer (next section).
 
 ```quint
 type StatedClockCheck = ClockAsSent | ClockUnsaid | ClockUndeclared
@@ -294,52 +196,12 @@ pure def statedClockCheck(declared: bool, statedByOwner: bool, heldByOwnerWords:
   else if (not(declared)) ClockUndeclared
   else if (statedByOwner) ClockUnsaid
   else ClockAsSent
-pure def clockHeld(heldAsBefore: bool, heldInFurtherSpelling: bool): bool = heldAsBefore or heldInFurtherSpelling
-pure def furtherSpellingHolds(spelled: bool, anotherNumberStated: bool, standsAsAClock: bool): bool =
-  spelled and not(anotherNumberStated) and standsAsAClock
-pure def countedStandsAsAClock(toTheHour: bool, aQuarter: bool, afterALead: bool, endWhereAClockEnds: bool): bool =
-  (not(toTheHour) or aQuarter) and afterALead and endWhereAClockEnds
-pure def digitsStandAsAClock(afterAt: bool, opensARangeToAClock: bool, closesARangeFromAClock: bool, endWhereAClockEnds: bool, leadingZero: bool, dottedOrTwoNumbers: bool): bool =
-  leadingZero and not(dottedOrTwoNumbers) and (opensARangeToAClock or ((afterAt or closesARangeFromAClock) and endWhereAClockEnds))
-pure def rangeEndHeld(startHeldOnlyInAFurtherSpelling: bool, endHeldAsBefore: bool, endHeldInAFurtherSpellingAfterTheStart: bool, endHeldAfterTheStartApartFromIt: bool, underHalfADay: bool): bool =
-  if (startHeldOnlyInAFurtherSpelling) endHeldAfterTheStartApartFromIt and underHalfADay
-  else endHeldAsBefore or (endHeldInAFurtherSpellingAfterTheStart and underHalfADay)
-pure def lawAFurtherSpellingBesideAnotherNumberHoldsNothing(spelled: bool, standsAsAClock: bool): bool =
-  not(furtherSpellingHolds(spelled, true, standsAsAClock))
-pure def lawAFurtherSpellingHoldsOnlyWhereItStandsAsAClock(spelled: bool, anotherNumberStated: bool): bool =
-  not(furtherSpellingHolds(spelled, anotherNumberStated, false))
-pure def lawCountedMinutesNeedALeadAndAClockEnd(toTheHour: bool, aQuarter: bool, afterALead: bool, endWhereAClockEnds: bool): bool =
-  countedStandsAsAClock(toTheHour, aQuarter, afterALead, endWhereAClockEnds) implies (afterALead and endWhereAClockEnds)
-pure def lawMinutesToTheHourHoldOnlyAsAQuarter(afterALead: bool, endWhereAClockEnds: bool): bool =
-  not(countedStandsAsAClock(true, false, afterALead, endWhereAClockEnds))
-pure def lawAQuarterOrMinutesPastHoldAfterALeadWhereAClockEnds(toTheHour: bool): bool =
-  countedStandsAsAClock(toTheHour, true, true, true)
-pure def lawDigitsWithoutALeadingZeroAreNoClock(afterAt: bool, opensARangeToAClock: bool, closesARangeFromAClock: bool, endWhereAClockEnds: bool, dottedOrTwoNumbers: bool): bool =
-  not(digitsStandAsAClock(afterAt, opensARangeToAClock, closesARangeFromAClock, endWhereAClockEnds, false, dottedOrTwoNumbers))
-pure def lawDottedDigitsAndTwoNumbersAreNoClock(afterAt: bool, opensARangeToAClock: bool, closesARangeFromAClock: bool, endWhereAClockEnds: bool, leadingZero: bool): bool =
-  not(digitsStandAsAClock(afterAt, opensARangeToAClock, closesARangeFromAClock, endWhereAClockEnds, leadingZero, true))
-pure def lawDigitsNeedAtOrARangeToAClock(afterAt: bool, opensARangeToAClock: bool, closesARangeFromAClock: bool, endWhereAClockEnds: bool, leadingZero: bool, dottedOrTwoNumbers: bool): bool =
-  digitsStandAsAClock(afterAt, opensARangeToAClock, closesARangeFromAClock, endWhereAClockEnds, leadingZero, dottedOrTwoNumbers)
-    implies (opensARangeToAClock or ((afterAt or closesARangeFromAClock) and endWhereAClockEnds))
-pure def lawAnEndHeldBeforeIsHeldBesideAStartHeldBefore(endHeldInAFurtherSpellingAfterTheStart: bool, endHeldAfterTheStartApartFromIt: bool, underHalfADay: bool): bool =
-  rangeEndHeld(false, true, endHeldInAFurtherSpellingAfterTheStart, endHeldAfterTheStartApartFromIt, underHalfADay)
-pure def lawAnEndIsCheckedAsBeforeBesideAStartHeldBefore(endHeldAsBefore: bool, endHeldAfterTheStartApartFromIt: bool, underHalfADay: bool): bool =
-  rangeEndHeld(false, endHeldAsBefore, false, endHeldAfterTheStartApartFromIt, underHalfADay) == endHeldAsBefore
-pure def lawAnEndBesideAFurtherStartIsHeldApartFromIt(endHeldAsBefore: bool, endHeldInAFurtherSpellingAfterTheStart: bool, endHeldAfterTheStartApartFromIt: bool, underHalfADay: bool): bool =
-  rangeEndHeld(true, endHeldAsBefore, endHeldInAFurtherSpellingAfterTheStart, endHeldAfterTheStartApartFromIt, underHalfADay) implies endHeldAfterTheStartApartFromIt
-pure def lawARangeAFurtherSpellingHoldsLastsUnderHalfADay(startHeldOnlyInAFurtherSpelling: bool, endHeldAsBefore: bool, endHeldInAFurtherSpellingAfterTheStart: bool, endHeldAfterTheStartApartFromIt: bool): bool =
-  rangeEndHeld(startHeldOnlyInAFurtherSpelling, endHeldAsBefore, endHeldInAFurtherSpellingAfterTheStart, endHeldAfterTheStartApartFromIt, false)
-    implies (not(startHeldOnlyInAFurtherSpelling) and endHeldAsBefore)
 pure def lawAStatedClockTheWordsDoNotHoldChangesNothing(heldByOwnerWords: bool): bool =
   (statedClockCheck(true, true, heldByOwnerWords) == ClockUnsaid) iff not(heldByOwnerWords)
 pure def lawAnOpenTimeIsKept(heldByOwnerWords: bool): bool = statedClockCheck(true, false, heldByOwnerWords) == ClockAsSent
 pure def lawAHeldTimeIsKept(declared: bool, statedByOwner: bool): bool = statedClockCheck(declared, statedByOwner, true) == ClockAsSent
 pure def lawAnUndeclaredUnheldTimeChangesNothing(statedByOwner: bool): bool =
   statedClockCheck(false, statedByOwner, false) == ClockUndeclared
-pure def lawEveryTimeHeldBeforeIsStillHeld(heldInFurtherSpelling: bool): bool = clockHeld(true, heldInFurtherSpelling)
-pure def lawACreateIsRefusedOnlyWhereItWasBefore(declared: bool, statedByOwner: bool, heldAsBefore: bool, heldInFurtherSpelling: bool): bool =
-  statedClockCheck(declared, statedByOwner, clockHeld(heldAsBefore, heldInFurtherSpelling)) != ClockAsSent
-    implies statedClockCheck(declared, statedByOwner, heldAsBefore) == statedClockCheck(declared, statedByOwner, clockHeld(heldAsBefore, heldInFurtherSpelling))
 ```
 
 ### The owner's words are read for a free-time window only to note one they seem to give otherwise
@@ -379,6 +241,28 @@ after "until", "till", "til", "through", "thru", "before" or "now to"
 states an end. A bare side holds both halves of the day; a side with am
 or pm, or the other side's half, holds one.
 
+For a note, the words hold a clock time in the spellings a create or
+change holds (previous section) and also in the reader's further
+spellings: four digits or a dot ("0900", "1730", "14.30"), an hour and
+"h" ("14h30", "09h15"), noon or midnight after twelve ("12:00 noon",
+"twelve o'clock noon", "12 midnight"), minutes counted past, after, to,
+of, till, til or before the hour in words or digits ("ten past nine",
+"10 past 9", "twenty minutes past two", "ten after nine", "twenty to
+three", "quarter of five", "ten till six", "5 til 4", "ten before six"),
+"quarter after", "half 5" for 5:30, or "ish" ("noonish"). Minutes
+counted to the hour hold only right after a word that leads a clock
+("at", "to", "till", "until", "by", "before", "after", "around",
+"about"), and four digits only right after one of those, "from",
+"between" or "and", where the clause ends after them or the next word is
+am, pm, a join ("to", "till", "til", "until", "through", "thru", "and")
+or a day ("today", "tonight", "tomorrow", a weekday, or a written date
+other than a bare ordinal), alone or after "on", "this" or "next"
+("this" or "next" also before "morning", "afternoon", "evening",
+"night", "week" or "weekend"). These spellings only ever note: a
+further spelling the note reads never holds a create's or a change's
+clock, so a misread here can at most add a note the model may ignore,
+and every clock a create or change holds the note holds too.
+
 The reader is unsure, and nothing is noted, for words in another script
 or language ("明天下午2点到4点", "de dos a cuatro", "von 15 bis 17 Uhr"),
 a number in a shape no clock has ("1.5", "9h15"), a run of clock words no
@@ -416,6 +300,8 @@ may be about something else ("free tomorrow morning? I have a call
 until 1").
 
 ```quint
+pure def noteClockHeld(heldForAChange: bool, heldInAFurtherSpelling: bool): bool = heldForAChange or heldInAFurtherSpelling
+pure def lawANoteHoldsEveryClockAChangeHolds(heldInAFurtherSpelling: bool): bool = noteClockHeld(true, heldInAFurtherSpelling)
 pure def windowFits(startReadings: int, endReadings: int, pairings: int): int =
   if ((startReadings == 1 or endReadings == 1) and pairings > 1) 1 else pairings
 pure def lawASideWithOneReadingFitsOneWay(readings: int, pairings: int): bool =
@@ -448,20 +334,7 @@ before the month or a numeric date counts the same way: "2027년" and
 "今年" say this year. A marker inside a longer word or number, as in
 "국내년" or "12027년", is no cue. A create that names neither a date
 nor a year, as "tomorrow" or "next Friday", keeps the date the extractor
-resolved from those words. Four digits that hold the create's stated
-start or end only in a further spelling (previous section) are that
-clock, never the event's year: the year reader sets them aside, so
-"Standup tomorrow at 0930." with 9:30 AM sent is saved tomorrow at 9:30
-AM. Since a further spelling holds nothing beside another number, holds
-four digits only with a leading zero, and never holds four digits at
-the other end of a range, no other digits are left there for the year
-reader to take: "call tomorrow at 0930, pin 4521", "talk about 2030
-goals tomorrow at 0930", "archive the emails from 1999 tomorrow at
-1415", "meeting tomorrow from 1500 to 1630." and "workshop tomorrow
-from 0900 to 1100." are refused, as before, and never saved in another
-year. Where the model says the owner gave no clock time, or the words
-hold the time as before, the words are read for a year as always, so a
-create saved before keeps its year. The wall clock and duration stay as
+resolved from those words. The wall clock and duration stay as
 extracted, and only the year moves. A start that is already past in the
 create's zone must be confirmed by the owner before anything is stored;
 a future start is ready.
@@ -481,11 +354,6 @@ pure def yearCorrectionApplies(cue: YearCue, trailingYear: int, namesDate: bool)
   cue != NoYearCue or trailingYear > 0 or namesDate
 pure def createStartYear(cue: YearCue, statedYear: int, trailingYear: int, currentYear: int, namesDate: bool, extractedYear: int): int =
   if (yearCorrectionApplies(cue, trailingYear, namesDate)) correctedYear(cue, statedYear, trailingYear, currentYear) else extractedYear
-pure def clockDigitsReadAsYear(clockOpen: bool, digitsHoldTheClockOnlyInAFurtherSpelling: bool): bool =
-  clockOpen or not(digitsHoldTheClockOnlyInAFurtherSpelling)
-pure def lawDigitsThatHoldAStatedClockAreNoYear(clockOpen: bool): bool =
-  clockDigitsReadAsYear(clockOpen, true) == clockOpen
-pure def lawOtherDigitsAreReadForAYearAsBefore(clockOpen: bool): bool = clockDigitsReadAsYear(clockOpen, false)
 pure def mustAskBeforeCreate(startYear: int, currentYear: int, dayPassed: bool): bool =
   startYear < currentYear or (startYear == currentYear and dayPassed)
 pure def lawTrailingYearWins(cue: YearCue, statedYear: int, trailingYear: int, currentYear: int): bool =
