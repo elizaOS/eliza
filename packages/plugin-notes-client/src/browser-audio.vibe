@@ -1,7 +1,12 @@
-// spec/notes/client.md, "Browser recordings can only be recovered or bound by their recording owner"
+// spec/notes/audioCustody.md, "A stopped recording is claimed once and committed only to its canonical note"; spec/notes/audioCustody.md, "A browser recording answers only to the connection that recorded it"
 module indexed {
-  import { Schema } from "effect"
-  import { type BrowserAudio, browserAudioVisible, browserAudioMayBeClaimed, browserAudioMayBeCommitted, browserAudioMayBeDiscarded } from "../gen/notes__client.ts"
+  import { Data, Schema } from "effect"
+  import { type PendingRecording, claimPending, commitAnswer, discardPending, pendingRecoverable, recordingOwner } from "../gen/notes__audioCustody.ts"
+
+  export type NotesAudioRefusal = "storeName" | "identity" | "binding" | "transcriptTooLong" | "needsRecovery" | "anotherConnection"
+    | "notClaimed" | "claimed" | "anotherNote" | "unavailable" | "interrupted"
+  export class NotesAudioRefused extends Data.TaggedError("NotesAudioRefused")<{ readonly reason: NotesAudioRefusal; readonly cause?: unknown }> {}
+  const refused = (reason: NotesAudioRefusal, cause?: unknown) => new NotesAudioRefused(cause === undefined ? { reason } : { reason, cause })
 
   type Stored = { -readonly [Key in keyof typeof StoredAudio.Type]: (typeof StoredAudio.Type)[Key] }
   type NotesAudioRow = Omit<Stored, "blob" | "createdAt" | "transcript" | "mimeType"> & {
@@ -10,17 +15,20 @@ module indexed {
     transcript: string
     mimeType: string
   }
-  const phases = { stopped: "AudioStopped", claimed: "AudioClaimed", committed: "AudioCommitted" } as const
-  function custody(row: NotesAudioRow): BrowserAudio | undefined {
-    const saved = row.recordingSave
-    return saved === undefined ? undefined : { owner: saved.ownerDigest, target: row.noteId, phase: phases[saved.phase] }
+  type SavePhase = NonNullable<NotesAudioRow["recordingSave"]>["phase"]
+  const pendingPhases = { stopped: "PendingStopped", claimed: "PendingClaimed", committed: "PendingCommitted" } as const
+  const savePhases = { PendingStopped: "stopped", PendingClaimed: "claimed", PendingCommitted: "committed" } as const
+  function pendingOf(phase: SavePhase): PendingRecording {
+    return { phase: pendingPhases[phase], bytes: true, claims: phase === "stopped" ? 0 : 1, canonicalNote: phase === "committed" }
+  }
+  function savePhaseOf(pending: PendingRecording): SavePhase {
+    if (pending.phase === "PendingEmpty" || pending.phase === "PendingDiscarded") throw refused("needsRecovery")
+    return savePhases[pending.phase]
   }
 
   type NotesAudioMetadata = Omit<NotesAudioRow, "blob" | "bytes">;
   interface NotesAudioStoreOptions {
-    /** IndexedDB database name owned by the host (kept stable for installed data). */
     databaseName: string;
-    /** IndexedDB factory; defaults to the global one. */
     indexedDB?: IDBFactory;
     now?: () => number;
   }
@@ -67,7 +75,11 @@ module indexed {
 
   const identity = (value: unknown) => {
     if (typeof value !== "string" || !value || value.length > 128)
-      throw Error("Invalid recording identity.");
+      throw refused("identity");
+  };
+  const transcriptFits = (transcript: unknown) => {
+    if (typeof transcript !== "string" || transcript.length > NOTES_AUDIO_TRANSCRIPT_LIMIT)
+      throw refused("transcriptTooLong");
   };
   const sameBytes = (a: ArrayBuffer, b: ArrayBuffer) => {
     if (a.byteLength !== b.byteLength) return false;
@@ -76,7 +88,6 @@ module indexed {
     for (let i = 0; i < x.length; i++) if (x[i] !== y[i]) return false;
     return true;
   };
-  /** The clip a saved row already holds (rows without stored bytes compare by shape). */
   const sameClip = (
     row: NotesAudioRow,
     clip: { blob: Blob; durationMs: number },
@@ -88,8 +99,13 @@ module indexed {
     (row.bytes instanceof ArrayBuffer
       ? sameBytes(row.bytes, bytes)
       : row.blob.size === clip.blob.size);
+  const ownSave = (row: NotesAudioRow | undefined, ownerDigest: string) => {
+    const save = row?.recordingSave;
+    if (row === undefined || save === undefined) throw refused("unavailable");
+    if (!recordingOwner(save.ownerDigest, ownerDigest)) throw refused("anotherConnection");
+    return { row, save };
+  };
 
-  /** Recording metadata without its bytes, safe to keep in note records. */
   export function notesAudioMetadata({
     blob: _blob,
     bytes: _bytes,
@@ -102,7 +118,7 @@ module indexed {
     options: NotesAudioStoreOptions,
   ): NotesAudioStore {
     if (typeof options?.databaseName !== "string" || !options.databaseName)
-      throw Error("Notes audio store needs a database name.");
+      throw refused("storeName");
     const now = options.now ?? Date.now;
     let database: Promise<IDBDatabase> | undefined;
 
@@ -115,23 +131,25 @@ module indexed {
         request.onsuccess = () => resolve(request.result);
         request.onerror = () => {
           database = undefined;
-          reject(request.error);
+          reject(refused("unavailable", request.error));
         };
       });
       return database;
     };
 
     const normalize = (input: unknown): NotesAudioRow => {
-      const row = Schema.decodeUnknownSync(StoredAudio)(input)
+      const decoded = Schema.decodeUnknownExit(StoredAudio)(input)
+      if (decoded._tag === "Failure") throw refused("needsRecovery", decoded.cause)
+      const row = decoded.value
       identity(row.audioId)
       identity(row.noteId)
       const blob = row.bytes === undefined
         ? row.blob
         : new Blob([row.bytes], { type: row.mimeType || "application/octet-stream" })
       if (blob === undefined || (blob.size === 0 && !row.expired))
-        throw Error("Recording metadata needs recovery.")
+        throw refused("needsRecovery")
       if (row.recordingSave && row.recordingSave.phase !== "committed" && (row.noteId !== row.audioId || row.deletedAt))
-        throw Error("Recording save journal needs recovery.")
+        throw refused("needsRecovery")
       return {
         ...row,
         blob,
@@ -161,9 +179,7 @@ module indexed {
         let error: unknown;
         tx.oncomplete = () => resolve(result);
         tx.onabort = tx.onerror = () =>
-          reject(
-            error || tx.error || Error("Recording change could not be saved."),
-          );
+          reject(error ?? refused("interrupted", tx.error));
         const request = store.get(audioId);
         request.onsuccess = () => {
           try {
@@ -184,22 +200,14 @@ module indexed {
           (binding.folderId !== null &&
             !/^f-[A-Za-z0-9_-]{1,64}$/.test(binding.folderId))
         )
-          throw Error("Invalid recording ownership.");
-        if (
-          typeof transcript !== "string" ||
-          transcript.length > NOTES_AUDIO_TRANSCRIPT_LIMIT
-        )
-          throw Error("Transcript is too long.");
+          throw refused("binding");
+        transcriptFits(transcript);
         const bytes = await clip.blob.arrayBuffer();
         await withRow(audioId, "readwrite", (prior, store) => {
           if (prior) {
-            if (
-              !prior.recordingSave ||
-              prior.recordingSave.ownerDigest !== binding.ownerDigest ||
-              prior.recordingSave.folderId !== binding.folderId ||
-              !sameClip(prior, clip, bytes)
-            )
-              throw Error("Recording save owner changed.");
+            const { save } = ownSave(prior, binding.ownerDigest);
+            if (save.folderId !== binding.folderId || !sameClip(prior, clip, bytes))
+              throw refused("binding");
             return;
           }
           store.add(
@@ -226,9 +234,7 @@ module indexed {
           let error: unknown;
           tx.oncomplete = () => resolve(rows);
           tx.onabort = tx.onerror = () =>
-            reject(
-              error || tx.error || Error("Recording recovery is unavailable."),
-            );
+            reject(error ?? refused("interrupted", tx.error));
           const request = tx.objectStore(STORE).openCursor();
           request.onsuccess = () => {
             const cursor = request.result;
@@ -236,11 +242,12 @@ module indexed {
             try {
               const value: unknown = cursor.value
               if (typeof value === "object" && value !== null && "recordingSave" in value) {
-                const owner = value.recordingSave
-                if (typeof owner === "object" && owner !== null && "ownerDigest" in owner && owner.ownerDigest === ownerDigest) {
+                const save = value.recordingSave
+                if (typeof save === "object" && save !== null && "ownerDigest" in save && save.ownerDigest === ownerDigest) {
                   const row = normalize(value)
-                  const state = custody(row)
-                  if (state !== undefined && browserAudioVisible(state, ownerDigest)) rows.push(row)
+                  if (row.recordingSave !== undefined &&
+                    pendingRecoverable(pendingOf(row.recordingSave.phase), row.recordingSave.ownerDigest, ownerDigest))
+                    rows.push(row)
                 }
               }
             } catch (cause) {
@@ -254,45 +261,39 @@ module indexed {
       },
       async claimPendingAudio(audioId, ownerDigest) {
         return withRow(audioId, "readwrite", (row, store) => {
-          if (
-            !row?.recordingSave ||
-            row.recordingSave.ownerDigest !== ownerDigest
-          )
-            throw Error("Recording save owner changed.");
-          const state = custody(row)
-          if (state === undefined || !browserAudioMayBeClaimed(state, ownerDigest)) return false
-          row.recordingSave = { ...row.recordingSave, phase: "claimed" };
-          store.put(stored(row));
+          const { row: saved, save } = ownSave(row, ownerDigest);
+          const before = pendingOf(save.phase);
+          const after = claimPending(before, true);
+          if (after.phase === before.phase) return false;
+          store.put(stored({ ...saved, recordingSave: { ...save, phase: savePhaseOf(after) } }));
           return true;
         });
       },
       async commitPendingAudio(audioId, ownerDigest, noteId, transcript) {
         identity(noteId);
-        if (
-          typeof transcript !== "string" ||
-          transcript.length > NOTES_AUDIO_TRANSCRIPT_LIMIT
-        )
-          throw Error("Transcript is too long.");
+        transcriptFits(transcript);
         return withRow(audioId, "readwrite", (row, store) => {
-          const state = row === undefined ? undefined : custody(row)
-          if (!row?.recordingSave || state === undefined || row.deletedAt || !browserAudioMayBeCommitted(state, ownerDigest, noteId))
-            throw Error("Recording save owner changed.");
-          row.noteId = noteId;
-          row.transcript = transcript;
-          row.recordingSave = { ...row.recordingSave, phase: "committed" };
-          store.put(stored(row));
-          return notesAudioMetadata(row);
+          const { row: saved, save } = ownSave(row, ownerDigest);
+          if (saved.deletedAt) throw refused("unavailable");
+          switch (commitAnswer(pendingOf(save.phase), true, true, saved.noteId === noteId)) {
+            case "CommitAlreadyApplied":
+              return notesAudioMetadata(saved);
+            case "CommitRefused":
+              throw refused(save.phase === "committed" ? "anotherNote" : "notClaimed");
+            case "CommitApplied": {
+              const committed: NotesAudioRow = { ...saved, noteId, transcript, recordingSave: { ...save, phase: "committed" } };
+              store.put(stored(committed));
+              return notesAudioMetadata(committed);
+            }
+          }
         });
       },
       async discardPendingAudio(audioId, ownerDigest) {
         await withRow(audioId, "readwrite", (row, store) => {
           if (!row) return;
-          if (!row.recordingSave || row.recordingSave.ownerDigest !== ownerDigest)
-            throw Error("Recording save owner changed.");
-          if (row.recordingSave.phase === "committed") return;
-          const state = custody(row)
-          if (state === undefined || !browserAudioMayBeDiscarded(state, ownerDigest))
-            throw Error("Check Notes before discarding this recording.");
+          const { save } = ownSave(row, ownerDigest);
+          if (discardPending(pendingOf(save.phase), true).phase !== "PendingDiscarded")
+            throw refused("claimed");
           store.delete(audioId);
         });
       },
@@ -300,7 +301,7 @@ module indexed {
         return withRow(audioId, "readonly", (row) => {
           if (row === undefined || row.expired || row.deletedAt ||
             (row.recordingSave !== undefined && row.recordingSave.phase !== "committed"))
-            throw Error("Recording is unavailable.")
+            throw refused("unavailable")
           return row
         })
       },
@@ -308,5 +309,5 @@ module indexed {
   }
 }
 
-import { type NotesAudioStore, createNotesAudioStore, notesAudioMetadata } from indexed
-export { type NotesAudioStore, createNotesAudioStore, notesAudioMetadata }
+import { type NotesAudioRefusal, type NotesAudioStore, NotesAudioRefused, createNotesAudioStore, notesAudioMetadata } from indexed
+export { type NotesAudioRefusal, type NotesAudioStore, NotesAudioRefused, createNotesAudioStore, notesAudioMetadata }

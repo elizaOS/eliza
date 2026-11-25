@@ -1,6 +1,7 @@
+// spec/notes/audioCustody.md, "Story: Keep a stopped recording until it is claimed for its note"; spec/notes/audioCustody.md, "A stopped recording is claimed once and committed only to its canonical note"; spec/notes/audioCustody.md, "A browser recording answers only to the connection that recorded it"
 import { describe, expect, it } from "@effect/vitest"
-import { createNotesAudioStore } from "../src/browser-audio.vibe"
-import { createBrowserRecordingJournal } from "../src/browser-recording-journal.vibe"
+import { NotesAudioRefused, createNotesAudioStore } from "../src/browser-audio.vibe"
+import { RecordingJournalRefused, createBrowserRecordingJournal } from "../src/browser-recording-journal.vibe"
 
 module browser {
   /** @throws {never} */
@@ -29,7 +30,7 @@ module browser {
 }
 import { bytes, fragment, seedInstalledAudio, unique } from browser
 
-describe('Browser Notes custody (spec/notes/client.md, "Story: Recover a browser recording under its original connection")', () => {
+describe("Browser Notes custody", () => {
   it("Recovers durable parts and gives their exact note the same bytes once", async () => {
     const owner = "a".repeat(64)
     const former = "b".repeat(64)
@@ -41,8 +42,9 @@ describe('Browser Notes custody (spec/notes/client.md, "Story: Recover a browser
     await writer.append(id, owner, 0, 1200, fragment([4, 8]))
     const renewed = createBrowserRecordingJournal(capture)
     expect(await renewed.latest(former)).toBeUndefined()
-    await expect(renewed.append(id, former, 1, 2400, fragment([6]))).rejects.toThrow("Recording owner changed")
-    await expect(renewed.append(id, owner, 0, 2400, fragment([6]))).rejects.toThrow("Recording history changed")
+    await expect(renewed.append(id, former, 1, 2400, fragment([6]))).rejects.toEqual(new RecordingJournalRefused({ reason: "anotherConnection" }))
+    await expect(renewed.append(id, owner, 0, 2400, fragment([6]))).rejects.toEqual(new RecordingJournalRefused({ reason: "historyChanged" }))
+    await expect(renewed.clip(id, former)).rejects.toEqual(new RecordingJournalRefused({ reason: "anotherConnection" }))
     const clip = await renewed.clip(id, owner)
     await seedInstalledAudio(audio.databaseName)
     const store = createNotesAudioStore(audio)
@@ -54,15 +56,23 @@ describe('Browser Notes custody (spec/notes/client.md, "Story: Recover a browser
     expect(await recovered.pendingAudio(former)).toEqual([])
     expect((await recovered.pendingAudio(owner)).map((row) => [row.audioId, row.durationMs, row.recordingSave?.folderId]))
       .toEqual([[id, 1200, "f-interview"]])
+    await expect(recovered.claimPendingAudio(id, former)).rejects.toEqual(new NotesAudioRefused({ reason: "anotherConnection" }))
+    await expect(recovered.discardPendingAudio(id, former)).rejects.toEqual(new NotesAudioRefused({ reason: "anotherConnection" }))
+    await expect(recovered.commitPendingAudio(id, owner, "note-1", "")).rejects.toEqual(new NotesAudioRefused({ reason: "notClaimed" }))
     expect(await recovered.claimPendingAudio(id, owner)).toBe(true)
-    await expect(recovered.commitPendingAudio(id, former, "note-1", "")).rejects.toThrow("Recording save owner changed")
-    await expect(recovered.discardPendingAudio(id, owner)).rejects.toThrow("Check Notes before discarding")
+    expect(await recovered.claimPendingAudio(id, owner)).toBe(false)
+    expect((await recovered.pendingAudio(owner)).map((row) => row.recordingSave?.phase)).toEqual(["claimed"])
+    await expect(recovered.commitPendingAudio(id, former, "note-1", "")).rejects.toEqual(new NotesAudioRefused({ reason: "anotherConnection" }))
+    await expect(recovered.discardPendingAudio(id, owner)).rejects.toEqual(new NotesAudioRefused({ reason: "claimed" }))
     const receipt = await recovered.commitPendingAudio(id, owner, "note-1", "A short recording")
-    expect(await recovered.commitPendingAudio(id, owner, "note-1", "A short recording")).toEqual(receipt)
-    await expect(recovered.commitPendingAudio(id, owner, "note-2", "")).rejects.toThrow("Recording save owner changed")
+    expect(await recovered.commitPendingAudio(id, owner, "note-1", "A rewritten recording")).toEqual(receipt)
+    await expect(recovered.commitPendingAudio(id, owner, "note-2", "")).rejects.toEqual(new NotesAudioRefused({ reason: "anotherNote" }))
+    await expect(recovered.commitPendingAudio(id, former, "note-1", "")).rejects.toEqual(new NotesAudioRefused({ reason: "anotherConnection" }))
+    await expect(recovered.discardPendingAudio(id, owner)).rejects.toEqual(new NotesAudioRefused({ reason: "claimed" }))
     await renewed.discard(id, owner)
     const saved = await recovered.audioRecord(id)
-    expect({ parts: await renewed.latest(owner), pending: await recovered.pendingAudio(owner), note: saved.noteId, audio: await bytes(saved.blob) })
-      .toEqual({ parts: undefined, pending: [], note: "note-1", audio: [4, 8] })
+    expect({ parts: await renewed.latest(owner), pending: await recovered.pendingAudio(owner), note: saved.noteId,
+      transcript: saved.transcript, audio: await bytes(saved.blob) })
+      .toEqual({ parts: undefined, pending: [], note: "note-1", transcript: "A short recording", audio: [4, 8] })
   })
 })

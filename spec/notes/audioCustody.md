@@ -228,11 +228,14 @@ pure def lawCloseWithoutDeleteCannotConfirmAbsence(held: WindowFile): bool =
 
 A stopped recording is staged with its bytes. Its owner can claim it
 once, and a claimed recording is committed only to its canonical note.
-The owner can discard a recording only while it is still unclaimed. A
-lost reply, a retry, a reload, a refused rebind or an aborted
-transaction keeps the bytes and the claim, so a claimed create is never
-replayed. A stopped recording has its bytes and no claim yet, and a
-claimed or committed recording always has its bytes.
+The owner can discard a recording only while it is still unclaimed:
+discarding a claimed or committed recording is refused and changes
+nothing. Committing a committed recording again changes nothing either;
+its transcript and note stay as first committed. A lost reply, a retry,
+a reload, a refused rebind or an aborted transaction keeps the bytes and
+the claim, so a claimed create is never replayed. A stopped recording
+has its bytes and no claim yet, and a claimed or committed recording
+always has its bytes.
 
 ```quint
 type PendingPhase = PendingEmpty | PendingStopped | PendingClaimed | PendingCommitted | PendingDiscarded
@@ -257,6 +260,9 @@ pure def lawCommitNeedsCanonicalNote(pending: PendingRecording, isOwner: bool): 
   commitPending(pending, isOwner, false) == pending
 pure def lawClaimedRecordingCannotBeDiscarded(pending: PendingRecording, isOwner: bool): bool =
   pending.phase == PendingClaimed implies discardPending(pending, isOwner) == pending
+pure def lawCommittedRecordingStays(pending: PendingRecording, isOwner: bool, canonical: bool): bool =
+  pending.phase == PendingCommitted implies commitPending(pending, isOwner, canonical) == pending and
+    discardPending(pending, isOwner) == pending
 pure def lawStepsKeepRecordingSafe(pending: PendingRecording, isOwner: bool, canonical: bool): bool =
   pendingSafe(pending) implies pendingSafe(stagePending(pending)) and pendingSafe(claimPending(pending, isOwner)) and
   pendingSafe(commitPending(pending, isOwner, canonical)) and pendingSafe(discardPending(pending, isOwner))
@@ -266,4 +272,41 @@ pure val pendingValues = Set(
   { phase: PendingClaimed, bytes: true, claims: 1, canonicalNote: false },
   { phase: PendingCommitted, bytes: true, claims: 1, canonicalNote: true },
   { phase: PendingDiscarded, bytes: false, claims: 0, canonicalNote: false })
+```
+
+### A browser recording answers only to the connection that recorded it
+
+In the browser, the captured parts of a recording and the stopped
+recording are kept under the digest of the Notes connection that
+recorded them, with the folder it was recorded in. Only that connection
+is the recording's owner: another connection, or none, cannot append to,
+read, recover, claim, commit or discard it, and its attempt is refused
+and changes nothing. A stopped or claimed recording is recovered after a
+reload; a committed one belongs to its note and is no longer pending.
+Committing again to the note it was committed to answers with the
+committed recording unchanged; committing it to any other note, or
+committing a recording that is not claimed, is refused.
+
+```quint
+type CommitAnswer = CommitApplied | CommitAlreadyApplied | CommitRefused
+pure def recordingOwner(ownerDigest: str, connection: str): bool = ownerDigest != "" and connection == ownerDigest
+pure def pendingRecoverable(pending: PendingRecording, ownerDigest: str, connection: str): bool =
+  recordingOwner(ownerDigest, connection) and (pending.phase == PendingStopped or pending.phase == PendingClaimed)
+pure def commitAnswer(pending: PendingRecording, isOwner: bool, canonical: bool, committedNote: bool): CommitAnswer =
+  if (pending.phase == PendingCommitted and isOwner and committedNote) CommitAlreadyApplied
+  else if (commitPending(pending, isOwner, canonical) != pending) CommitApplied else CommitRefused
+pure val ownerDigestValues = Set("", "owner-1")
+pure val connectionValues = Set("", "owner-1", "owner-2")
+pure def lawAnotherConnectionChangesNothing(pending: PendingRecording, ownerDigest: str, connection: str, canonical: bool,
+  committedNote: bool): bool =
+  not(recordingOwner(ownerDigest, connection)) implies not(pendingRecoverable(pending, ownerDigest, connection)) and
+    claimPending(pending, recordingOwner(ownerDigest, connection)) == pending and
+    commitAnswer(pending, recordingOwner(ownerDigest, connection), canonical, committedNote) == CommitRefused and
+    discardPending(pending, recordingOwner(ownerDigest, connection)) == pending
+pure def lawAppliedCommitNamesItsCanonicalNote(pending: PendingRecording, isOwner: bool, canonical: bool, committedNote: bool): bool =
+  commitAnswer(pending, isOwner, canonical, committedNote) == CommitApplied implies
+    isOwner and canonical and pending.phase == PendingClaimed
+pure def lawRepeatedCommitAnswersUnchanged(pending: PendingRecording, isOwner: bool, canonical: bool, committedNote: bool): bool =
+  commitAnswer(pending, isOwner, canonical, committedNote) == CommitAlreadyApplied implies
+    commitPending(pending, isOwner, canonical) == pending
 ```

@@ -1,6 +1,11 @@
-// spec/notes/client.md, "Browser recordings can only be recovered or bound by their recording owner"
+// spec/notes/audioCustody.md, "A browser recording answers only to the connection that recorded it"
 module browser {
-  import { Schema } from "effect"
+  import { Data, Schema } from "effect"
+  import { recordingOwner } from "../gen/notes__audioCustody.ts"
+
+  export type RecordingJournalRefusal = "invalid" | "anotherConnection" | "historyChanged" | "incomplete" | "unsettled" | "interrupted"
+  export class RecordingJournalRefused extends Data.TaggedError("RecordingJournalRefused")<{ readonly reason: RecordingJournalRefusal; readonly cause?: unknown }> {}
+  const refused = (reason: RecordingJournalRefusal, cause?: unknown) => new RecordingJournalRefused(cause === undefined ? { reason } : { reason, cause })
 
   const Metadata = Schema.Struct({
     ownerDigest: Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/)),
@@ -15,7 +20,6 @@ module browser {
   export type BrowserRecording = typeof Metadata.Type
   type Start = Omit<BrowserRecording, "durationMs" | "count">
 
-  /** Append browser media chunks and their exact elapsed time in the same transaction. */
   export function createBrowserRecordingJournal(databaseName: string) {
     let opening: Promise<IDBDatabase> | undefined
 
@@ -32,7 +36,7 @@ module browser {
           result.onversionchange = () => { result.close(); opening = undefined }
           resolve(result)
         }
-        request.onerror = () => { opening = undefined; reject(request.error) }
+        request.onerror = () => { opening = undefined; reject(refused("interrupted", request.error)) }
       })
     }
 
@@ -44,10 +48,10 @@ module browser {
         let result: { readonly value: T } | undefined
         let problem: unknown
         active.oncomplete = () => {
-          if (result === undefined) reject(Error("Recording journal did not settle"))
+          if (result === undefined) reject(refused("unsettled"))
           else resolve(result.value)
         }
-        active.onabort = () => reject(problem ?? active.error ?? Error("Recording journal was interrupted"))
+        active.onabort = () => reject(problem ?? refused("interrupted", active.error))
         const fail = (cause: unknown) => { problem = cause; active.abort() }
         try { work(active, (value) => { result = { value } }, fail) } catch (cause) { fail(cause) }
       })
@@ -59,9 +63,15 @@ module browser {
       }
     }
 
+    function decoded<A>(schema: Schema.Decoder<A>, raw: unknown): A {
+      const exit = Schema.decodeUnknownExit(schema)(raw)
+      if (exit._tag === "Failure") throw refused("invalid", exit.cause)
+      return exit.value
+    }
+
     function exact(raw: unknown, ownerDigest: string): BrowserRecording {
-      const row = Schema.decodeUnknownSync(Metadata)(raw)
-      if (row.ownerDigest !== ownerDigest) throw Error("Recording owner changed")
+      const row = decoded(Metadata, raw)
+      if (!recordingOwner(row.ownerDigest, ownerDigest)) throw refused("anotherConnection")
       return row
     }
 
@@ -71,7 +81,7 @@ module browser {
 
     return {
       start(input: Start): Promise<BrowserRecording> {
-        const row = Schema.decodeUnknownSync(Metadata)({ ...input, count: 0, durationMs: 0 })
+        const row = decoded(Metadata, { ...input, count: 0, durationMs: 0 })
         return transaction(["recording"], "readwrite", (tx, done) => {
           tx.objectStore("recording").add(row)
           done(row)
@@ -82,7 +92,7 @@ module browser {
           const rows = tx.objectStore("recording")
           read(rows.get(recordingId), (raw) => exact(raw, ownerDigest), (row) => {
             if (index !== row.count || blob.size < 1 || !Number.isSafeInteger(durationMs) || durationMs < row.durationMs)
-              throw Error("Recording history changed")
+              throw refused("historyChanged")
             const next = { ...row, count: row.count + 1, durationMs }
             tx.objectStore("part").add({ recordingId, index, blob })
             rows.put(next)
@@ -98,7 +108,7 @@ module browser {
       latest(ownerDigest: string): Promise<BrowserRecording | undefined> {
         return transaction(["recording"], "readonly", (tx, done, fail) => {
           read(tx.objectStore("recording").index("ownerDigest").getAll(IDBKeyRange.only(ownerDigest)), (raw) =>
-            Schema.decodeUnknownSync(Schema.Array(Metadata))(raw)
+            decoded(Schema.Array(Metadata), raw)
               .filter((row) => row.count > 0 && row.durationMs > 0)
               .sort((first, next) => next.startedAt - first.startedAt || first.recordingId.localeCompare(next.recordingId))[0], done, fail)
         })
@@ -107,9 +117,9 @@ module browser {
         return transaction(["recording", "part"], "readonly", (tx, done, fail) => {
           read(tx.objectStore("recording").get(recordingId), (raw) => exact(raw, ownerDigest), (row) => {
             read(tx.objectStore("part").getAll(idRange(recordingId)), (raw) => {
-              const parts = Schema.decodeUnknownSync(Schema.Array(Part))(raw)
+              const parts = decoded(Schema.Array(Part), raw)
               if (row.count < 1 || row.durationMs < 1 || parts.length !== row.count || parts.some((part, index) => part.recordingId !== recordingId || part.index !== index))
-                throw Error("Recording is incomplete")
+                throw refused("incomplete")
               return { blob: new Blob(parts.map((part) => part.blob), { type: row.mimeType }), durationMs: row.durationMs }
             }, done, fail)
           }, fail)
@@ -130,5 +140,5 @@ module browser {
     }
   }
 }
-import { createBrowserRecordingJournal, type BrowserRecording } from browser
-export { createBrowserRecordingJournal, type BrowserRecording }
+import { createBrowserRecordingJournal, type BrowserRecording, type RecordingJournalRefusal, RecordingJournalRefused } from browser
+export { createBrowserRecordingJournal, type BrowserRecording, type RecordingJournalRefusal, RecordingJournalRefused }
