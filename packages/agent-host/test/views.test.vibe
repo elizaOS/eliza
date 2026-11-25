@@ -389,7 +389,7 @@ it.effect('The VIEWS show action prepares a navigation for the turn\'s renderer 
   try Effect.try(() => {
     assert.isTrue(shown.success)
     assert.include(action?.description ?? "", "The owner's views are Notes (jottings), Chat.")
-    assert.include(action?.description ?? "", "never a place")
+    assert.include(action?.description ?? "", "Going to a view by its name, such as go home, go to Calendar or back to Notes, is showing that view with VIEWS")
     assert.include(onChat ?? "", "The owner's screen showed Chat as they sent this message")
     assert.notInclude(onChat ?? "", "Notes")
     assert.isUndefined(unbound)

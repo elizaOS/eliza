@@ -153,7 +153,7 @@ export function viewsShowAction(views: ViewHost.Shape, labels: ReadonlyMap<strin
   const action: Action = {
     name: "VIEWS",
     similes: ["VIEWS_SHOW", "OPEN_VIEW", "NAVIGATE_VIEW"],
-    description: `Show one of the owner's views, named by its id, label or alias, on the renderer of this turn.${namedViews(declared, labels)} Each view is a screen of the app on the owner's device, never a place: showing one moves only the screen, and directions or travel to a place, the owner's home included, are the Maps action's. Navigation only: it does not read or change the view's records, and showing a view acts on nothing in it. Showing Camera takes no photo, and showing Maps finds no place, gives no directions and plans no route: when the owner asks for those, use the action that does it.`,
+    description: `Show one of the owner's views, named by its id, label or alias, on the renderer of this turn.${namedViews(declared, labels)} Each view is a screen of the app on the owner's device. Going to a view by its name, such as go home, go to Calendar or back to Notes, is showing that view with VIEWS; only directions, a route or travel to a place is the Maps action's. Navigation only: it does not read or change the view's records, and showing a view acts on nothing in it. Showing Camera takes no photo, and showing Maps finds no place, gives no directions and plans no route: when the owner asks for those, use the action that does it.`,
     roleGate: { minRole: "OWNER" },
     parameters: [
       { name: "action", description: "show", required: false, schema: { type: "string", enum: ["show"] } },

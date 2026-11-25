@@ -197,13 +197,15 @@ pure val targetValues = Set("Notes", "home", "nowhere")
 
 The show action's description names every declared view by its label,
 with its aliases, and says that a view is a screen of the app on the
-owner's device, never a place: directions or travel to a place, the
-owner's home included, belong to Maps. On a turn bound to a renderer, its
+owner's device: going to a view by its name, such as going home, is
+showing that view, and only directions, a route or travel to a place
+belong to Maps. On a turn bound to a renderer, its
 turn note names the declared view the turn's observation says the screen
 showed as the message was sent, as the only view showing now; a turn whose
 observation names no declared view gets no such line. So the model picks a
 view among those that exist, by what is on screen now, not by a name it
-guessed or a screen an earlier turn showed.
+guessed, a screen an earlier turn showed, or a place the view shares a
+name with.
 
 ```quint
 pure def screenTold(h: ViewHost, observed: str): bool = targets(h, observed).length() == 1
