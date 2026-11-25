@@ -1,0 +1,660 @@
+// spec/computerUse/sessions.md, "Story: Manage leased computer-use sessions with fresh observations"; spec/computerUse/index.md, "A command is scoped to one session generation, surface and authorized operation"
+import {
+  acceptsComputerObservation,
+  computerCommandAllowed,
+  type ComputerOperation,
+  type ComputerSession,
+  type ComputerSurface,
+} from "../gen/computerUse.effect.vibe"
+import {
+  apply as applySession,
+  initial as initialSessionMachine,
+  type Event as SessionEvent,
+  type SessionMachine,
+  type SessionStatus as SpecSessionStatus,
+  type SessionTargetKind as SpecSessionTargetKind,
+} from "../gen/computerUse__sessions.effect.vibe"
+import { nextUniqueId, sha256Hex } from "./platform-native.ts"
+
+export const COMPUTER_USE_INTERACTION_CONTRACT_VERSION = "2.0.0"
+
+export type ComputerUseSessionTargetKind = "host" | "browser" | "sandbox" | "remote_guest"
+export type ComputerUseSessionStatus = "idle" | "running" | "paused" | "stopping" | "closed"
+export type InteractionOutcomeStatus = "completed" | "failed" | "blocked" | "cancelled"
+
+export interface ComputerUseSessionTarget {
+  readonly kind: ComputerUseSessionTargetKind
+  readonly targetId?: string
+  readonly viewerUrl?: string
+}
+
+export interface ComputerUseObservationProvenance {
+  readonly observationId: string
+  readonly sequence: number
+  readonly observedAt: string
+  readonly sha256: string
+  readonly mimeType: "image/png" | "image/jpeg"
+  readonly width?: number
+  readonly height?: number
+  readonly source: ComputerUseSessionTargetKind
+}
+
+export interface ComputerUseSessionOutcome {
+  readonly actionId: string
+  readonly status: InteractionOutcomeStatus
+  readonly completedAt: string
+  readonly observationId?: string
+  readonly errorCode?: string
+}
+
+export interface ComputerUseVirtualCursor {
+  readonly x: number
+  readonly y: number
+  readonly displayId?: number
+  readonly updatedAt: string
+}
+
+export interface ComputerUseTargetOverlay {
+  readonly x: number
+  readonly y: number
+  readonly width: number
+  readonly height: number
+  readonly elementIndex?: number
+  readonly appId?: string
+  readonly updatedAt: string
+  readonly physicalPointerMoved: boolean
+}
+
+export interface ComputerUseActionReceipt {
+  readonly receiptId: string
+  readonly appId: string
+  readonly kind: string
+  readonly beforeStateId: string
+  readonly afterStateId: string
+  readonly executionMode: string
+  readonly completedAt: string
+  readonly changed: boolean
+  readonly physicalPointerMoved: boolean
+  readonly clipboardRestored?: boolean
+  readonly element_index?: number
+}
+
+export interface ComputerUseSessionSnapshot {
+  readonly contractVersion: string
+  readonly id: string
+  readonly ownerId: string
+  readonly adapterId: string
+  readonly generation: number
+  readonly label: string
+  readonly target: ComputerUseSessionTarget
+  readonly status: ComputerUseSessionStatus
+  readonly sequence: number
+  readonly createdAt: string
+  readonly updatedAt: string
+  readonly closedAt?: string
+  readonly leaseExpiresAt?: string
+  readonly cursor?: ComputerUseVirtualCursor
+  readonly targetOverlay?: ComputerUseTargetOverlay
+  readonly activeActionId?: string
+  readonly lastActionId?: string
+  readonly lastCommand?: string
+  readonly lastError?: string
+  readonly lastObservation?: ComputerUseObservationProvenance
+  readonly lastOutcome?: ComputerUseSessionOutcome
+  readonly lastReceipt?: ComputerUseActionReceipt
+}
+
+export interface CreateComputerUseSessionInput {
+  readonly ownerId?: string
+  readonly label?: string
+  readonly target: ComputerUseSessionTarget
+  readonly leaseTtlMs?: number
+}
+
+export interface ComputerUseSessionAction {
+  readonly actionId: string
+  readonly expectedSequence: number
+  readonly command: string
+  readonly parameters?: Record<string, unknown>
+  readonly observationId?: string
+  readonly observationSequence?: number
+}
+
+export interface ComputerUseSessionActionResult {
+  readonly success: boolean
+  readonly error?: string
+  readonly errorCode?: string
+  readonly outcomeStatus?: InteractionOutcomeStatus
+  readonly permissionDenied?: boolean
+  readonly permissionType?: string
+  readonly cursorPosition?: { readonly x: number; readonly y: number }
+  readonly displayId?: number
+  readonly data?: unknown
+  readonly verificationObservation?: ComputerUseObservationProvenance
+}
+
+export interface ComputerUseSessionFrame {
+  readonly mimeType: "image/png" | "image/jpeg"
+  readonly data: string
+  readonly capturedAt: string
+  readonly width?: number
+  readonly height?: number
+  readonly provenance: ComputerUseObservationProvenance
+}
+
+export type ComputerUseSessionEventType =
+  | "session.created"
+  | "session.lease_renewed"
+  | "session.paused"
+  | "session.resumed"
+  | "session.stopping"
+  | "session.closed"
+  | "observation.captured"
+  | "action.started"
+  | "action.completed"
+  | "action.failed"
+  | "action.blocked"
+
+export interface ComputerUseSessionEvent {
+  readonly eventId: number
+  readonly type: ComputerUseSessionEventType
+  readonly sessionId: string
+  readonly sessionSequence: number
+  readonly occurredAt: string
+  readonly actionId?: string
+  readonly command?: string
+  readonly error?: string
+  readonly observationId?: string
+  readonly outcomeStatus?: InteractionOutcomeStatus
+  readonly snapshot: ComputerUseSessionSnapshot
+}
+
+export type ComputerUseSessionExecutor = (
+  target: ComputerUseSessionTarget,
+  action: ComputerUseSessionAction,
+  signal?: AbortSignal,
+) => Promise<ComputerUseSessionActionResult>
+
+export type ComputerUseSessionFrameProvider = (
+  target: ComputerUseSessionTarget,
+  signal?: AbortSignal,
+) => Promise<Omit<ComputerUseSessionFrame, "capturedAt" | "provenance">>
+
+export type ComputerUseSessionErrorCode =
+  | "session_not_found"
+  | "invalid_transition"
+  | "sequence_conflict"
+  | "observation_required"
+  | "lease_expired"
+  | "unauthorized_command"
+  | "invalid_input"
+
+export error ComputerUseSessionError {
+  code: ComputerUseSessionErrorCode
+  message: string
+}
+
+const NON_CONSEQUENTIAL_COMMANDS = new Set<string>([
+  "screenshot",
+  "get_cursor_position",
+  "list_windows",
+  "list_apps",
+  "get_app_state",
+  "browser_screenshot",
+  "browser_state",
+  "browser_info",
+  "browser_list_tabs",
+  "ocr",
+  "detect_elements",
+])
+
+function toSpecTargetKind(kind: ComputerUseSessionTargetKind): SpecSessionTargetKind {
+  if (kind === "browser") return "BrowserTarget"
+  if (kind === "sandbox") return "SandboxTarget"
+  if (kind === "remote_guest") return "RemoteGuestTarget"
+  return "HostTarget"
+}
+
+function toSurface(kind: ComputerUseSessionTargetKind): ComputerSurface {
+  if (kind === "browser") return "BrowserSurface"
+  if (kind === "remote_guest") return "RemoteDesktop"
+  return "LocalDesktop"
+}
+
+function fromSpecStatus(status: SpecSessionStatus): ComputerUseSessionStatus {
+  if (status === "Idle") return "idle"
+  if (status === "Running") return "running"
+  if (status === "Paused") return "paused"
+  if (status === "Stopping") return "stopping"
+  return "closed"
+}
+
+function commandToOperation(command: string): ComputerOperation {
+  if (NON_CONSEQUENTIAL_COMMANDS.has(command)) return "ReadScreen"
+  if (command === "clipboard_read") return "ClipboardRead"
+  if (command === "clipboard_write") return "ClipboardWrite"
+  if (command.includes("window") || command === "focus" || command === "minimize" || command === "maximize") {
+    return "WindowControl"
+  }
+  if (command.includes("type") || command.includes("key") || command === "set_value") {
+    return "TypeText"
+  }
+  return "ClickTarget"
+}
+
+const ALL_OPERATIONS: readonly ComputerOperation[] = [
+  "ReadScreen",
+  "ClickTarget",
+  "TypeText",
+  "WindowControl",
+  "ClipboardRead",
+  "ClipboardWrite",
+]
+
+interface ManagedSessionRecord {
+  machine: SessionMachine
+  readonly id: string
+  readonly ownerId: string
+  readonly adapterId: string
+  readonly label: string
+  readonly target: ComputerUseSessionTarget
+  readonly createdAt: string
+  updatedAt: string
+  closedAt?: string
+  leaseExpiresAtMs?: number
+  cursor?: ComputerUseVirtualCursor
+  targetOverlay?: ComputerUseTargetOverlay
+  activeActionId?: string
+  lastActionId?: string
+  lastCommand?: string
+  lastError?: string
+  lastObservation?: ComputerUseObservationProvenance
+  lastOutcome?: ComputerUseSessionOutcome
+  lastReceipt?: ComputerUseActionReceipt
+}
+
+export interface CanonicalInteractionSession {
+  readonly contractVersion: string
+  readonly sessionId: string
+  readonly ownerId: string
+  readonly adapterId: string
+  readonly epoch: number
+  readonly surfaces: readonly ComputerSurface[]
+  readonly open: boolean
+}
+
+export function toCanonicalInteractionSession(snapshot: ComputerUseSessionSnapshot): CanonicalInteractionSession {
+  return {
+    contractVersion: snapshot.contractVersion,
+    sessionId: snapshot.id,
+    ownerId: snapshot.ownerId,
+    adapterId: snapshot.adapterId,
+    epoch: snapshot.generation,
+    surfaces: [toSurface(snapshot.target.kind)],
+    open: snapshot.status !== "closed",
+  }
+}
+
+export function authorizeCompatibilitySessionAction(
+  snapshot: ComputerUseSessionSnapshot,
+  action: ComputerUseSessionAction,
+): boolean {
+  const session: ComputerSession = {
+    sessionId: snapshot.id,
+    ownerId: snapshot.ownerId,
+    sessionEpoch: snapshot.generation,
+    surface: toSurface(snapshot.target.kind),
+    operations: [...ALL_OPERATIONS],
+    open: snapshot.status !== "closed",
+  }
+  return computerCommandAllowed(session, {
+    callerId: snapshot.ownerId,
+    forSession: snapshot.id,
+    expectedEpoch: snapshot.generation,
+    forSurface: toSurface(snapshot.target.kind),
+    operation: commandToOperation(action.command),
+  })
+}
+
+export class ComputerUseSessionManager {
+  private readonly sessions = new Map<string, ManagedSessionRecord>()
+  private readonly events: ComputerUseSessionEvent[] = []
+  private readonly listeners = new Set<(event: ComputerUseSessionEvent) => void>()
+  private nextEventId = 1
+  private readonly defaultLeaseTtlMs: number
+  private readonly maxEvents: number
+  private readonly now: () => number
+
+  constructor(options: { readonly defaultLeaseTtlMs?: number; readonly maxEvents?: number; readonly now?: () => number } = {}) {
+    this.defaultLeaseTtlMs = options.defaultLeaseTtlMs ?? 300_000
+    this.maxEvents = options.maxEvents ?? 200
+    this.now = options.now ?? (() => Date.now())
+  }
+
+  getMachineState(sessionId: string): SessionMachine | undefined {
+    return this.sessions.get(sessionId)?.machine
+  }
+
+  stepMachine(sessionId: string, event: SessionEvent): { readonly accepted: boolean; readonly state: SessionMachine } {
+    let record = this.sessions.get(sessionId)
+    if (!record) {
+      const ts = new Date(this.now()).toISOString()
+      record = {
+        machine: initialSessionMachine,
+        id: sessionId,
+        ownerId: "owner",
+        adapterId: "computeruse-host",
+        label: sessionId,
+        target: { kind: "host" },
+        createdAt: ts,
+        updatedAt: ts,
+      }
+      this.sessions.set(sessionId, record)
+    }
+    const result = Effect.runSync(Effect.result(applySession(record.machine, event)))
+    if (Result.isFailure(result)) {
+      return { accepted: false, state: record.machine }
+    }
+    record.machine = result.success
+    record.updatedAt = new Date(this.now()).toISOString()
+    return { accepted: true, state: record.machine }
+  }
+
+  create(input: CreateComputerUseSessionInput): ComputerUseSessionSnapshot {
+    const id = nextUniqueId("cus")
+    const ownerId = (input.ownerId ?? "owner").trim() || "owner"
+    const nowMs = this.now()
+    const ts = new Date(nowMs).toISOString()
+    const clampedTtl = Math.max(5_000, Math.min(3_600_000, input.leaseTtlMs ?? this.defaultLeaseTtlMs))
+    const openedRes = Effect.runSync(
+      Effect.result(applySession(initialSessionMachine, { type: "openSession", target: toSpecTargetKind(input.target.kind) })),
+    )
+    const opened = Result.isSuccess(openedRes) ? openedRes.success : initialSessionMachine
+    const record: ManagedSessionRecord = {
+      machine: opened,
+      id,
+      ownerId,
+      adapterId: `computeruse-${input.target.kind}`,
+      label: input.label?.trim() || `${input.target.kind} session`,
+      target: input.target,
+      createdAt: ts,
+      updatedAt: ts,
+      leaseExpiresAtMs: nowMs + clampedTtl,
+    }
+    this.sessions.set(id, record)
+    const snapshot = this.toSnapshot(record)
+    this.pushEvent("session.created", record, snapshot)
+    return snapshot
+  }
+
+  list(): ComputerUseSessionSnapshot[] {
+    return [...this.sessions.values()]
+      .sort((a, b) => a.id.localeCompare(b.id))
+      .map((rec) => {
+        this.syncLeaseExpiry(rec)
+        return this.toSnapshot(rec)
+      })
+  }
+
+  get(sessionId: string): ComputerUseSessionSnapshot | undefined {
+    const rec = this.sessions.get(sessionId)
+    if (!rec) return undefined
+    this.syncLeaseExpiry(rec)
+    return this.toSnapshot(rec)
+  }
+
+  renewHostLease(sessionId: string, ttlMs?: number): ComputerUseSessionSnapshot | undefined {
+    const rec = this.sessions.get(sessionId)
+    if (!rec) return undefined
+    this.syncLeaseExpiry(rec)
+    if (rec.machine.status === "Closed" || rec.machine.status === "Stopping") return undefined
+    const clampedTtl = Math.max(5_000, Math.min(3_600_000, ttlMs ?? this.defaultLeaseTtlMs))
+    rec.leaseExpiresAtMs = this.now() + clampedTtl
+    if (!rec.machine.leaseActive) {
+      this.stepMachine(sessionId, { type: "renewLease" })
+    }
+    rec.updatedAt = new Date(this.now()).toISOString()
+    const snapshot = this.toSnapshot(rec)
+    this.pushEvent("session.lease_renewed", rec, snapshot)
+    return snapshot
+  }
+
+  private transitionLifecycle(
+    sessionId: string,
+    event: SessionEvent,
+    eventType: ComputerUseSessionEventType,
+    options: { readonly syncLease?: boolean; readonly clearActive?: boolean; readonly markClosed?: boolean } = {},
+  ): ComputerUseSessionSnapshot | undefined {
+    const rec = this.sessions.get(sessionId)
+    if (!rec) return undefined
+    if (options.syncLease) this.syncLeaseExpiry(rec)
+    const res = this.stepMachine(sessionId, event)
+    if (!res.accepted) return undefined
+    if (options.clearActive) rec.activeActionId = undefined
+    if (options.markClosed) rec.closedAt = new Date(this.now()).toISOString()
+    const snapshot = this.toSnapshot(rec)
+    this.pushEvent(eventType, rec, snapshot)
+    return snapshot
+  }
+
+  pause(sessionId: string): ComputerUseSessionSnapshot | undefined {
+    return this.transitionLifecycle(sessionId, { type: "pauseSession" }, "session.paused", { clearActive: true })
+  }
+
+  resume(sessionId: string): ComputerUseSessionSnapshot | undefined {
+    return this.transitionLifecycle(sessionId, { type: "resumeSession" }, "session.resumed", { syncLease: true })
+  }
+
+  stop(sessionId: string): ComputerUseSessionSnapshot | undefined {
+    return this.transitionLifecycle(sessionId, { type: "beginStop" }, "session.stopping", { clearActive: true })
+  }
+
+  close(sessionId: string): ComputerUseSessionSnapshot | undefined {
+    return this.transitionLifecycle(sessionId, { type: "closeSession" }, "session.closed", { clearActive: true, markClosed: true })
+  }
+
+  async captureFrame(
+    sessionId: string,
+    provider: ComputerUseSessionFrameProvider,
+    signal?: AbortSignal,
+  ): Promise<ComputerUseSessionFrame> {
+    const rec = this.sessions.get(sessionId)
+    if (!rec) {
+      throw new ComputerUseSessionError({ code: "session_not_found", message: `Session ${sessionId} not found` })
+    }
+    this.syncLeaseExpiry(rec)
+    const raw = await provider(rec.target, signal)
+    const stepped = this.stepMachine(sessionId, { type: "recordObservation" })
+    if (!stepped.accepted) {
+      throw new ComputerUseSessionError({ code: "invalid_transition", message: `Cannot capture frame in status ${rec.machine.status}` })
+    }
+    const capturedAt = new Date(this.now()).toISOString()
+    const observationId = nextUniqueId("obs")
+    const provenance: ComputerUseObservationProvenance = {
+      observationId,
+      sequence: stepped.state.observationSeq,
+      observedAt: capturedAt,
+      sha256: sha256Hex(raw.data),
+      mimeType: raw.mimeType,
+      ...(raw.width !== undefined ? { width: raw.width } : {}),
+      ...(raw.height !== undefined ? { height: raw.height } : {}),
+      source: rec.target.kind,
+    }
+    const coreSession: ComputerSession = {
+      sessionId: rec.id,
+      ownerId: rec.ownerId,
+      sessionEpoch: rec.machine.epoch,
+      surface: toSurface(rec.target.kind),
+      operations: [...ALL_OPERATIONS],
+      open: rec.machine.status !== "Closed",
+    }
+    if (!acceptsComputerObservation(coreSession, observationId, {
+      observedSession: rec.id,
+      observedEpoch: rec.machine.epoch,
+      operationId: observationId,
+    })) {
+      throw new ComputerUseSessionError({ code: "invalid_transition", message: "Observation rejected by session epoch" })
+    }
+    rec.lastObservation = provenance
+    const snapshot = this.toSnapshot(rec)
+    this.pushEvent("observation.captured", rec, snapshot, { observationId })
+    return { ...raw, capturedAt, provenance }
+  }
+
+  async execute(
+    sessionId: string,
+    action: ComputerUseSessionAction,
+    executor: ComputerUseSessionExecutor,
+    signal?: AbortSignal,
+  ): Promise<{ readonly snapshot: ComputerUseSessionSnapshot; readonly result: ComputerUseSessionActionResult }> {
+    const rec = this.sessions.get(sessionId)
+    if (!rec) {
+      throw new ComputerUseSessionError({ code: "session_not_found", message: `Session ${sessionId} not found` })
+    }
+    this.syncLeaseExpiry(rec)
+    const preSnapshot = this.toSnapshot(rec)
+    if (!authorizeCompatibilitySessionAction(preSnapshot, action)) {
+      throw new ComputerUseSessionError({ code: "unauthorized_command", message: `Command ${action.command} not authorized for session ${sessionId}` })
+    }
+    const requiresObservation = !NON_CONSEQUENTIAL_COMMANDS.has(action.command)
+    if (requiresObservation && (!action.observationId || rec.lastObservation?.observationId !== action.observationId)) {
+      throw new ComputerUseSessionError({ code: "observation_required", message: `Action ${action.command} requires current observationId` })
+    }
+    const epochAtStart = rec.machine.epoch
+    const begun = this.stepMachine(sessionId, {
+      type: "beginAction",
+      expectedEpoch: epochAtStart,
+      expectedSeq: action.expectedSequence,
+      requiresObservation,
+    })
+    if (!begun.accepted) {
+      throw new ComputerUseSessionError({
+        code: rec.machine.leaseActive ? "sequence_conflict" : "lease_expired",
+        message: `Session ${sessionId} refused action ${action.command} at sequence ${action.expectedSequence} (current ${rec.machine.sequence}, status ${rec.machine.status})`,
+      })
+    }
+    const activeSeq = begun.state.activeActionSeq
+    rec.activeActionId = action.actionId
+    rec.lastCommand = action.command
+    this.pushEvent("action.started", rec, this.toSnapshot(rec), { actionId: action.actionId, command: action.command })
+
+    let result: ComputerUseSessionActionResult
+    try {
+      result = await executor(rec.target, action, signal)
+    } catch (err) {
+      result = {
+        success: false,
+        error: err instanceof Error ? err.message : String(err),
+        errorCode: "executor_error",
+        outcomeStatus: "failed",
+      }
+    }
+
+    this.stepMachine(sessionId, { type: "completeAction", forEpoch: epochAtStart, forActionSeq: activeSeq })
+    const completedAt = new Date(this.now()).toISOString()
+    rec.activeActionId = undefined
+    rec.lastActionId = action.actionId
+    rec.lastError = result.success ? undefined : result.error
+    if (result.cursorPosition) {
+      rec.cursor = {
+        x: result.cursorPosition.x,
+        y: result.cursorPosition.y,
+        ...(result.displayId !== undefined ? { displayId: result.displayId } : {}),
+        updatedAt: completedAt,
+      }
+    }
+    if (result.verificationObservation) {
+      rec.lastObservation = result.verificationObservation
+    }
+    const outcomeStatus: InteractionOutcomeStatus = result.outcomeStatus ?? (result.success ? "completed" : "failed")
+    rec.lastOutcome = {
+      actionId: action.actionId,
+      status: outcomeStatus,
+      completedAt,
+      ...(result.verificationObservation ? { observationId: result.verificationObservation.observationId } : {}),
+      ...(result.errorCode ? { errorCode: result.errorCode } : {}),
+    }
+    const finalSnapshot = this.toSnapshot(rec)
+    this.pushEvent(
+      result.success ? "action.completed" : outcomeStatus === "blocked" ? "action.blocked" : "action.failed",
+      rec,
+      finalSnapshot,
+      { actionId: action.actionId, command: action.command, error: result.error, outcomeStatus },
+    )
+    return { snapshot: finalSnapshot, result }
+  }
+
+  getEvents(sessionId?: string, limit = 100): ComputerUseSessionEvent[] {
+    const filtered = sessionId ? this.events.filter((e) => e.sessionId === sessionId) : this.events
+    return filtered.slice(-Math.max(1, limit))
+  }
+
+  subscribe(listener: (event: ComputerUseSessionEvent) => void): () => void {
+    this.listeners.add(listener)
+    return () => {
+      this.listeners.delete(listener)
+    }
+  }
+
+  private syncLeaseExpiry(rec: ManagedSessionRecord): void {
+    if (rec.machine.leaseActive && rec.leaseExpiresAtMs !== undefined && this.now() >= rec.leaseExpiresAtMs) {
+      this.stepMachine(rec.id, { type: "expireLease" })
+    }
+  }
+
+  private toSnapshot(rec: ManagedSessionRecord): ComputerUseSessionSnapshot {
+    return {
+      contractVersion: COMPUTER_USE_INTERACTION_CONTRACT_VERSION,
+      id: rec.id,
+      ownerId: rec.ownerId,
+      adapterId: rec.adapterId,
+      generation: rec.machine.epoch,
+      label: rec.label,
+      target: rec.target,
+      status: fromSpecStatus(rec.machine.status),
+      sequence: rec.machine.sequence,
+      createdAt: rec.createdAt,
+      updatedAt: rec.updatedAt,
+      ...(rec.closedAt ? { closedAt: rec.closedAt } : {}),
+      ...(rec.leaseExpiresAtMs !== undefined ? { leaseExpiresAt: new Date(rec.leaseExpiresAtMs).toISOString() } : {}),
+      ...(rec.cursor ? { cursor: rec.cursor } : {}),
+      ...(rec.targetOverlay ? { targetOverlay: rec.targetOverlay } : {}),
+      ...(rec.activeActionId ? { activeActionId: rec.activeActionId } : {}),
+      ...(rec.lastActionId ? { lastActionId: rec.lastActionId } : {}),
+      ...(rec.lastCommand ? { lastCommand: rec.lastCommand } : {}),
+      ...(rec.lastError ? { lastError: rec.lastError } : {}),
+      ...(rec.lastObservation ? { lastObservation: rec.lastObservation } : {}),
+      ...(rec.lastOutcome ? { lastOutcome: rec.lastOutcome } : {}),
+      ...(rec.lastReceipt ? { lastReceipt: rec.lastReceipt } : {}),
+    }
+  }
+
+  private pushEvent(
+    type: ComputerUseSessionEventType,
+    rec: ManagedSessionRecord,
+    snapshot: ComputerUseSessionSnapshot,
+    extra: { readonly actionId?: string; readonly command?: string; readonly error?: string; readonly observationId?: string; readonly outcomeStatus?: InteractionOutcomeStatus } = {},
+  ): void {
+    const event: ComputerUseSessionEvent = {
+      eventId: this.nextEventId,
+      type,
+      sessionId: rec.id,
+      sessionSequence: rec.machine.sequence,
+      occurredAt: new Date(this.now()).toISOString(),
+      ...(extra.actionId ? { actionId: extra.actionId } : {}),
+      ...(extra.command ? { command: extra.command } : {}),
+      ...(extra.error ? { error: extra.error } : {}),
+      ...(extra.observationId ? { observationId: extra.observationId } : {}),
+      ...(extra.outcomeStatus ? { outcomeStatus: extra.outcomeStatus } : {}),
+      snapshot,
+    }
+    this.nextEventId += 1
+    this.events.push(event)
+    if (this.events.length > this.maxEvents) {
+      this.events.splice(0, this.events.length - this.maxEvents)
+    }
+    for (const listener of this.listeners) {
+      listener(event)
+    }
+  }
+}

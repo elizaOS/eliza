@@ -1,0 +1,126 @@
+// spec/computerUse/observation.md, "Story: Minimize vision tokens while keeping coordinates and history strictly bounded"
+import type { IAgentRuntime, Memory, Provider, ProviderResult, State } from "@elizaos/core"
+import { currentPlatform } from "./platform.vibe"
+import { serializeSceneForPrompt } from "./scene.vibe"
+import { COMPUTERUSE_SERVICE_TYPE, ComputerUseService } from "./service.vibe"
+
+function getComputerUseService(runtime: IAgentRuntime): ComputerUseService | undefined {
+  const found: unknown = runtime.getService(COMPUTERUSE_SERVICE_TYPE)
+  return found instanceof ComputerUseService ? found : undefined
+}
+
+export const computerCapabilitiesProvider: Provider = {
+  name: "computerCapabilities",
+  description: "Static computer-use platform capability catalog and batching guidance.",
+  descriptionCompressed: "Static computer-use capabilities.",
+  contexts: ["admin", "automation", "browser", "files", "terminal"],
+  contextGate: { anyOf: ["admin", "automation", "browser", "files", "terminal"] },
+  roleGate: { minRole: "OWNER" },
+  cacheStable: true,
+  cacheScope: "agent",
+  get: async (runtime: IAgentRuntime): Promise<ProviderResult> => {
+    const service = getComputerUseService(runtime)
+    if (!service) return { text: "" }
+    const caps = service.getCapabilities()
+    const payload = {
+      platform: currentPlatform(),
+      capabilities: {
+        browser: caps.browser.available ? caps.browser.tool : "unavailable",
+        clipboard: caps.clipboard.available ? caps.clipboard.tool : "unavailable",
+        fileSystem: caps.fileSystem.available ? caps.fileSystem.tool : "unavailable",
+        mouseKeyboard: caps.computerUse.available ? caps.computerUse.tool : "unavailable",
+        screenshot: caps.screenshot.available ? caps.screenshot.tool : "unavailable",
+        terminal: caps.terminal.available ? caps.terminal.tool : "unavailable",
+        windowList: caps.windowList.available ? caps.windowList.tool : "unavailable",
+      },
+      optimization: {
+        batchSupported: true,
+        maxBatchSteps: service.getConfig().maxBatchSteps,
+        imagePolicy: service.getConfig().brainImagePolicy,
+      },
+    }
+    return {
+      text: `\`\`\`json\n${JSON.stringify(payload)}\n\`\`\``,
+      discoveryText: `ComputerUse(${payload.platform}): screenshot=${payload.capabilities.screenshot}, input=${payload.capabilities.mouseKeyboard}, batch<=16`,
+      referenceBodyDeferred: true,
+      data: payload,
+    }
+  },
+}
+
+export const computerStateProvider: Provider = {
+  name: "computerState",
+  description: "Live computer state: screen dimensions, displays, active sessions, approval queue, and recent actions.",
+  descriptionCompressed: "Live screen, displays, sessions, approvals, recent actions.",
+  contexts: ["admin", "automation", "browser", "files", "terminal"],
+  contextGate: { anyOf: ["admin", "automation", "browser", "files", "terminal"] },
+  roleGate: { minRole: "OWNER" },
+  cacheStable: false,
+  cacheScope: "turn",
+  dynamic: true,
+  get: async (runtime: IAgentRuntime, _message: Memory, _state: State): Promise<ProviderResult> => {
+    const service = getComputerUseService(runtime)
+    if (!service) return { text: "" }
+    const screen = service.getScreenDimensions()
+    const displays = service.getDisplays()
+    const approvals = service.getApprovalSnapshot()
+    const recent = service.getRecentActions(6)
+    const sessions = service.listSessions().map((s) => ({ id: s.id, target: s.target.kind, status: s.status, seq: s.sequence }))
+    const stats = service.getScreenStateStats()
+    const compact = {
+      screen,
+      displays: displays.map((d) => ({ id: d.id, name: d.name, bounds: d.bounds, primary: d.primary })),
+      approvals: {
+        mode: approvals.mode,
+        pendingCount: approvals.pendingCount,
+        pending: approvals.pendingApprovals.map((a) => ({ id: a.id, command: a.command })),
+      },
+      sessions,
+      observation: { captures: stats.captures, deduplicated: stats.deduplicated, tokensSaved: stats.tokensSaved },
+      recentActions: recent.map((entry) => ({ action: entry.action, ok: entry.success })),
+    }
+    return {
+      text: `\`\`\`json\n${JSON.stringify(compact)}\n\`\`\``,
+      discoveryText: `Screen ${screen.width}x${screen.height} (${displays.length} display), mode=${approvals.mode}, pending=${approvals.pendingCount}, sessions=${sessions.length}`,
+      referenceBodyDeferred: true,
+      values: {
+        platform: currentPlatform(),
+        screenWidth: screen.width,
+        screenHeight: screen.height,
+        displayCount: displays.length,
+        primaryDisplayId: displays.find((d) => d.primary)?.id ?? 0,
+      },
+      data: compact,
+    }
+  },
+}
+
+export const sceneProvider: Provider = {
+  name: "scene",
+  description: "Current desktop scene graph with focused window, open apps, OCR/AX targets, and secure-field redaction.",
+  descriptionCompressed: "Redacted desktop scene (focused window, apps, OCR/AX).",
+  contexts: ["admin", "automation", "screen_time"],
+  contextGate: { anyOf: ["admin", "automation", "screen_time"] },
+  roleGate: { minRole: "OWNER" },
+  cacheStable: false,
+  cacheScope: "turn",
+  dynamic: true,
+  get: async (runtime: IAgentRuntime): Promise<ProviderResult> => {
+    const service = getComputerUseService(runtime)
+    if (!service) return { text: "" }
+    const scene = await service.refreshScene("agent-turn")
+    const serialized = serializeSceneForPrompt(scene, {
+      compact: true,
+      maxOcrBoxes: 40,
+      maxAxNodes: 40,
+      maxApps: 12,
+    })
+    const focused = scene.focused_window ? `${scene.focused_window.app}: ${scene.focused_window.title}` : "none"
+    return {
+      text: serialized,
+      discoveryText: `Scene(focused=${focused}, apps=${scene.apps.length}, ax=${scene.ax.length}, ocr=${scene.ocr.length})`,
+      referenceBodyDeferred: true,
+      data: { scene },
+    }
+  },
+}

@@ -1,0 +1,717 @@
+// spec/computerUse/index.md, "Story: Control an authorized computer session"; spec/computerUse/sessions.md, "Story: Manage leased computer-use sessions with fresh observations"; spec/computerUse/approvals.md, "Story: Gate computer-use commands by approval mode and operator decisions"; spec/computerUse/observation.md, "Story: Minimize vision tokens while keeping coordinates and history strictly bounded"; spec/computerUse/batching.md, "Story: Execute a bounded sequence of desktop actions in a single LLM turn"
+import { assert, describe, it } from "@effect/vitest"
+import type { IAgentRuntime, Memory, State } from "@elizaos/core"
+import { base64ToBytes, makeTempFilePath, makeTestPngBase64 } from "./support/png.ts"
+import {
+  AppControlCoordinator,
+  BoundComputerHost,
+  Brain,
+  ComputerOperationRefused,
+  ComputerUseService,
+  OcrCoordinateGroundingActor,
+  SandboxDriver,
+  SceneBuilder,
+  ScreenStateStore,
+  VisionContextProvider,
+  _resetOcrProvidersForTests,
+  androidFeatureCheck,
+  blockGrid,
+  buildDarwinKeyScript,
+  checkDangerousCommand,
+  clipboardAction,
+  coalesceDirtyBlocks,
+  computerCapabilitiesProvider,
+  computerStateProvider,
+  computerUseAgentAction,
+  computerUsePlugin,
+  computerUseRoutes,
+  createComputerUseDirectRoutingRule,
+  createComputerUseMcpServer,
+  createIosVisionOcrProvider,
+  decodePng,
+  diffBlocks,
+  dispatchComputerUseMcpTool,
+  findIosAppIntent,
+  frameDhash,
+  getAppControlRouteMatrix,
+  handleSandboxRoute,
+  hamming,
+  iosFeatureCheck,
+  looksLikeExplicitComputerUseRequest,
+  normalizeAndroidAxNode,
+  parityCoverageByOs,
+  parityMatrixSummary,
+  parseDarwinDisplays,
+  parseDarwinWindowOutput,
+  parseHyprlandClients,
+  parsePsOutput,
+  parseSwayTree,
+  parseXrandrMonitors,
+  registerOcrProvider,
+  renderPlainData,
+  runComputerUseAgentLoop,
+  sandboxOpToRpc,
+  sanitizeChildEnv,
+  sceneProvider,
+  selectOcrProvider,
+  serializeSceneForPrompt,
+  setAndroidBridge,
+  setIosBridge,
+  toCanonicalInteractionSession,
+  useComputer,
+  useComputerAction,
+  validateFilePath,
+  validateParityMatrix,
+  windowAction,
+  type BrowserCdpTransport,
+  type ComputerUseHostDriver,
+  type SandboxBackend,
+} from "../src/index.vibe"
+
+function makeFakeDriver(pngBase64: string, log: string[]): ComputerUseHostDriver {
+  let clip = "initial-clipboard"
+  return {
+    captureScreenshot: async () => {
+      log.push("screenshot")
+      return pngBase64
+    },
+    click: async (x, y, button) => {
+      log.push(`click:${button}:${x},${y}`)
+    },
+    clickWithModifiers: async (x, y, modifiers) => {
+      log.push(`click_mod:${modifiers.join("+")}:${x},${y}`)
+    },
+    doubleClick: async (x, y) => {
+      log.push(`double_click:${x},${y}`)
+    },
+    mouseMove: async (x, y) => {
+      log.push(`move:${x},${y}`)
+    },
+    mouseDown: async (x, y, button) => {
+      log.push(`mouse_down:${button}:${x},${y}`)
+    },
+    mouseUp: async (x, y, button) => {
+      log.push(`mouse_up:${button}:${x},${y}`)
+    },
+    dragPath: async (waypoints, button) => {
+      log.push(`drag:${button}:${waypoints.map((p) => `${p[0]},${p[1]}`).join("->")}`)
+    },
+    scroll: async (x, y, direction, amount) => {
+      log.push(`scroll:${direction}:${amount}@${x},${y}`)
+    },
+    typeText: async (text) => {
+      log.push(`type:${text}`)
+    },
+    keyPress: async (key) => {
+      log.push(`key:${key}`)
+    },
+    keyCombo: async (keys) => {
+      log.push(`key_combo:${keys.join("+")}`)
+    },
+    keyDown: async (key) => {
+      log.push(`key_down:${key}`)
+    },
+    keyUp: async (key) => {
+      log.push(`key_up:${key}`)
+    },
+    listWindows: async () => [
+      { id: "win-1", app: "Code", title: "eliza — VS Code", pid: 4242, displayId: 0, focused: true, bounds: { x: 0, y: 0, width: 1440, height: 900 } },
+      { id: "win-2", app: "Safari", title: "Docs", pid: 4243, displayId: 0, focused: false, bounds: { x: 100, y: 100, width: 1000, height: 700 } },
+    ],
+    controlWindow: async (action, target) => {
+      log.push(`window:${action}:${target?.id ?? "all"}`)
+      return true
+    },
+    readClipboard: async () => {
+      log.push("clipboard_read")
+      return clip
+    },
+    writeClipboard: async (text) => {
+      log.push(`clipboard_write:${text}`)
+      clip = text
+    },
+    openTarget: async (target) => {
+      log.push(`open:${target}`)
+      return true
+    },
+    launchApp: async (app) => {
+      log.push(`launch:${app}`)
+      return { pid: 9999, launched: true }
+    },
+    killApp: async (app) => {
+      log.push(`kill:${app}`)
+      return true
+    },
+  }
+}
+
+function makeFakeRuntime(service: ComputerUseService): IAgentRuntime {
+  const services = new Map<string, unknown>([["computeruse", service]])
+  return {
+    getService: (name: string) => (services.get(name) ?? null) as never,
+    getCache: async () => "Save edited file",
+  } as unknown as IAgentRuntime
+}
+
+function makeMessage(text: string, extraMeta: Record<string, unknown> = {}): Memory {
+  return {
+    content: { text },
+    metadata: extraMeta,
+  } as unknown as Memory
+}
+
+describe("plugin-computeruse journeys", () => {
+  it.effect("Story: Control an authorized computer session and leased session lifecycle", () =>
+    effect {
+      let currentSession = {
+        sessionId: "desk-1",
+        ownerId: "owner-1",
+        sessionEpoch: 2,
+        surface: "LocalDesktop" as const,
+        operations: ["ReadScreen", "ClickTarget"] as ("ReadScreen" | "ClickTarget")[],
+        open: true,
+      }
+      const hostLayer = Layer.succeed(BoundComputerHost, {
+        session: (id) => succeed(id === "desk-1" ? currentSession : undefined),
+        execute: (session, operationId, input) =>
+          succeed({
+            correlation: { observedSession: session.sessionId, observedEpoch: session.sessionEpoch, operationId },
+            value: { ran: input.operation },
+          }),
+      })
+      provide hostLayer {
+        const ok = try useComputer(
+          { callerId: "owner-1", forSession: "desk-1", expectedEpoch: 2, forSurface: "LocalDesktop" },
+          "op-1",
+          { operation: "ClickTarget", x: 10, y: 20 },
+        )
+        try Effect.try(() => assert.deepStrictEqual(ok, { ran: "ClickTarget" }))
+
+        const badCoords = try exit(
+          useComputer(
+            { callerId: "owner-1", forSession: "desk-1", expectedEpoch: 2, forSurface: "LocalDesktop" },
+            "op-2",
+            { operation: "ClickTarget", x: -5, y: 10 },
+          ),
+        )
+        try Effect.try(() => assert.strictEqual(Exit.isFailure(badCoords), true))
+
+        currentSession = { ...currentSession, open: false }
+        const closedRefused = try exit(
+          useComputer(
+            { callerId: "owner-1", forSession: "desk-1", expectedEpoch: 2, forSurface: "LocalDesktop" },
+            "op-3",
+            { operation: "ReadScreen" },
+          ),
+        )
+        try Effect.try(() => assert.strictEqual(Exit.isFailure(closedRefused), true))
+      }
+
+      const log: string[] = []
+      const png = try Effect.orDie(Effect.try({ try: () => makeTestPngBase64(32, 32, "gradient"), catch: (e) => e }))
+      let nowMs = 1_000_000
+      const service = new ComputerUseService(undefined, {
+        config: { approvalMode: "full_control" },
+        driver: makeFakeDriver(png, log),
+        now: () => nowMs,
+      })
+
+      const created = service.createSession({ ownerId: "owner-1", label: "Primary Desk", target: { kind: "host" }, leaseTtlMs: 30_000 })
+      try Effect.try(() => {
+        assert.strictEqual(created.status, "idle")
+        assert.strictEqual(created.generation, 1)
+        assert.strictEqual(toCanonicalInteractionSession(created).open, true)
+      })
+
+      const frame = try promise(() => service.captureSessionFrame(created.id))
+      try Effect.try(() => {
+        assert.strictEqual(frame.mimeType, "image/png")
+        assert.ok(frame.provenance.sha256.length === 64)
+      })
+
+      const afterObs = service.getSession(created.id)
+      const execRes = try promise(() =>
+        service.executeSessionAction(created.id, {
+          actionId: "act-1",
+          expectedSequence: afterObs?.sequence ?? 0,
+          command: "click",
+          parameters: { coordinate: [100, 120] },
+          observationId: frame.provenance.observationId,
+        }),
+      )
+      try Effect.try(() => {
+        assert.strictEqual(execRes.result.success, true)
+        assert.strictEqual(execRes.snapshot.lastActionId, "act-1")
+      })
+
+      const paused = service.pauseSession(created.id)
+      const resumed = service.resumeSession(created.id)
+      nowMs += 40_000
+      const renewed = service.renewSessionLease(created.id, 60_000)
+      const stopping = service.stopSession(created.id)
+      const closed = service.closeSession(created.id)
+      try Effect.try(() => {
+        assert.strictEqual(paused?.status, "paused")
+        assert.strictEqual(resumed?.status, "idle")
+        assert.strictEqual(renewed?.status, "idle")
+        assert.strictEqual(stopping?.status, "stopping")
+        assert.strictEqual(closed?.status, "closed")
+        assert.ok(service.getSessionEvents(created.id).length >= 6)
+      })
+    },
+  )
+
+  it.effect("Story: Gate computer-use commands by approval mode and operator decisions", () =>
+    effect {
+      const log: string[] = []
+      const png = try Effect.orDie(Effect.try({ try: () => makeTestPngBase64(32, 32, "gradient"), catch: (e) => e }))
+      const service = new ComputerUseService(undefined, {
+        config: { approvalMode: "smart_approve" },
+        driver: makeFakeDriver(png, log),
+      })
+      const runtime = makeFakeRuntime(service)
+
+      const readRes = try promise(() => service.executeDesktopAction({ action: "screenshot" }))
+      try Effect.try(() => assert.strictEqual(readRes.success, true))
+
+      const pendingClick = fork promise(() => service.executeDesktopAction({ action: "click", coordinate: [20, 30] }))
+      try yieldNow
+      const snap = service.getApprovalSnapshot()
+      try Effect.try(() => {
+        assert.strictEqual(snap.mode, "smart_approve")
+        assert.strictEqual(snap.pendingCount, 1)
+      })
+      const pendingId = snap.pendingApprovals[0]?.id ?? ""
+
+      const missingOwner = try promise(() =>
+        useComputerAction.handler(runtime, makeMessage(`cua:${pendingId}:approve:uowner-A`, {}), {} as State),
+      )
+      const mismatch = try promise(() =>
+        useComputerAction.handler(runtime, makeMessage(`cua:${pendingId}:approve:uowner-A`, { telegramUserId: "owner-B" }), {} as State),
+      )
+      try Effect.try(() => {
+        assert.strictEqual(missingOwner.success, false)
+        assert.strictEqual(mismatch.success, false)
+        assert.strictEqual(service.getApprovalSnapshot().pendingCount, 1)
+      })
+
+      const approved = try promise(() =>
+        useComputerAction.handler(runtime, makeMessage(`cua:${pendingId}:approve:uowner-A`, { telegramUserId: "owner-A" }), {} as State),
+      )
+      const clickDone = join pendingClick
+      try Effect.try(() => {
+        assert.strictEqual(approved.success, true)
+        assert.strictEqual(clickDone.success, true)
+      })
+
+      const secondPending = fork promise(() => service.executeDesktopAction({ action: "type", text: "hello" }))
+      try yieldNow
+      const offSnap = service.setApprovalMode("off")
+      const secondResult = join secondPending
+      try Effect.try(() => {
+        assert.strictEqual(offSnap.mode, "off")
+        assert.strictEqual(offSnap.pendingCount, 0)
+        assert.strictEqual(secondResult.success, false)
+      })
+    },
+  )
+
+  it.effect("Story: Execute a bounded sequence of desktop actions in a single LLM turn", () =>
+    effect {
+      const log: string[] = []
+      const png = try Effect.orDie(Effect.try({ try: () => makeTestPngBase64(32, 32, "gradient"), catch: (e) => e }))
+      const service = new ComputerUseService(undefined, {
+        config: { approvalMode: "full_control", screenshotAfterAction: true },
+        driver: makeFakeDriver(png, log),
+      })
+      const runtime = makeFakeRuntime(service)
+
+      const batchActionRes = try promise(() =>
+        useComputerAction.handler(runtime, makeMessage("run batch"), {} as State, {
+          parameters: {
+            action: "batch",
+            stopOnError: true,
+            steps: [
+              { action: "click", coordinate: [50, 60] },
+              { action: "type", text: "vibestack" },
+              { action: "key", key: "Enter" },
+            ],
+          },
+        }),
+      )
+      try Effect.try(() => {
+        assert.strictEqual(batchActionRes.success, true)
+        assert.strictEqual(batchActionRes.promptDataMode, "replace-data")
+        assert.strictEqual(batchActionRes.promptData?.stepsExecuted, 3)
+        assert.strictEqual(batchActionRes.promptData?.stepsRequested, 3)
+        assert.strictEqual(useComputerAction.summarize?.(batchActionRes, { action: "batch" }), "COMPUTER_USE batch ok")
+        assert.deepStrictEqual(log, ["click:left:50,60", "type:vibestack", "key:Enter", "screenshot"])
+      })
+
+      const abortBatchRes = try promise(() =>
+        service.executeDesktopAction({
+          action: "batch",
+          stopOnError: true,
+          screenshotAfter: false,
+          steps: [
+            { action: "click", coordinate: [10, 10] },
+            { action: "type", text: "" },
+            { action: "key", key: "Enter" },
+          ],
+        }),
+      )
+      try Effect.try(() => {
+        assert.strictEqual(abortBatchRes.success, false)
+        assert.strictEqual(abortBatchRes.abortedAtStep, 1)
+        assert.strictEqual(abortBatchRes.stepsExecuted, 2)
+      })
+
+      const winRes = try promise(() => windowAction.handler(runtime, makeMessage("list windows"), {} as State, { parameters: { action: "list" } }))
+      const winFocus = try promise(() => windowAction.handler(runtime, makeMessage("focus"), {} as State, { parameters: { action: "focus", windowId: "win-2" } }))
+      const winMove = try promise(() => windowAction.handler(runtime, makeMessage("move"), {} as State, { parameters: { action: "move", windowId: "win-2", x: 10, y: 20 } }))
+      const modClick = try promise(() => service.executeDesktopAction({ action: "click_with_modifiers", coordinate: [30, 40], modifiers: ["cmd", "shift"] }))
+      const mDown = try promise(() => service.executeDesktopAction({ action: "mouse_down", coordinate: [30, 40], button: "left" }))
+      const mUp = try promise(() => service.executeDesktopAction({ action: "mouse_up", coordinate: [60, 70], button: "left" }))
+      const dragged = try promise(() => service.executeDesktopAction({ action: "drag", path: [[10, 10], [20, 25], [40, 50]] }))
+      const combo = try promise(() => service.executeDesktopAction({ action: "key_combo", key: "cmd+c" }))
+      const kDown = try promise(() => service.executeDesktopAction({ action: "key_down", key: "shift" }))
+      const kUp = try promise(() => service.executeDesktopAction({ action: "key_up", key: "shift" }))
+      const clipWrite = try promise(() => clipboardAction.handler(runtime, makeMessage("copy"), {} as State, { parameters: { action: "write", text: "copied-secret-free" } }))
+      const clipRead = try promise(() => clipboardAction.handler(runtime, makeMessage("paste"), {} as State, { parameters: { action: "read" } }))
+      try Effect.try(() => {
+        assert.strictEqual(winRes.success, true)
+        assert.strictEqual(winFocus.success, true)
+        assert.strictEqual(winMove.success, true)
+        assert.strictEqual(modClick.success, true)
+        assert.strictEqual(mDown.success, true)
+        assert.strictEqual(mUp.success, true)
+        assert.strictEqual(dragged.success, true)
+        assert.strictEqual(combo.success, true)
+        assert.strictEqual(kDown.success, true)
+        assert.strictEqual(kUp.success, true)
+        assert.strictEqual(log.includes("window:focus:win-2"), true)
+        assert.strictEqual(log.includes("window:move:win-2"), true)
+        assert.strictEqual(log.includes("click_mod:cmd+shift:30,40"), true)
+        assert.strictEqual(log.includes("mouse_down:left:30,40"), true)
+        assert.strictEqual(log.includes("mouse_up:left:60,70"), true)
+        assert.strictEqual(log.includes("drag:left:10,10->20,25->40,50"), true)
+        assert.strictEqual(log.includes("key_combo:cmd+c"), true)
+        assert.strictEqual(log.includes("key_down:shift"), true)
+        assert.strictEqual(log.includes("key_up:shift"), true)
+        assert.strictEqual(buildDarwinKeyScript("Enter"), "tell application \"System Events\" to key code 36")
+        assert.strictEqual(buildDarwinKeyScript("cmd+shift+p"), "tell application \"System Events\" to keystroke \"p\" using {command down, shift down}")
+        assert.strictEqual(clipWrite.success, true)
+        assert.strictEqual(clipRead.success, true)
+        assert.strictEqual(clipRead.text, "copied-secret-free")
+        assert.strictEqual(looksLikeExplicitComputerUseRequest("use computer use to click Save"), true)
+        assert.strictEqual(looksLikeExplicitComputerUseRequest("use computer use to click Save, actually don't do that"), false)
+        assert.strictEqual(createComputerUseDirectRoutingRule().id, "computer-use.explicit-host-control")
+      })
+    },
+  )
+
+  it.effect("Story: Minimize vision tokens while keeping coordinates and history strictly bounded", () =>
+    effect {
+      const pngA = try Effect.orDie(Effect.try({ try: () => makeTestPngBase64(32, 32, "gradient"), catch: (e) => e }))
+      const pngB = try Effect.orDie(Effect.try({ try: () => makeTestPngBase64(32, 32, "checker"), catch: (e) => e }))
+      const bytesA = try Effect.orDie(Effect.try({ try: () => base64ToBytes(pngA), catch: (e) => e }))
+      const bytesB = try Effect.orDie(Effect.try({ try: () => base64ToBytes(pngB), catch: (e) => e }))
+      const decoded = decodePng(bytesA)
+      const hashA = frameDhash(bytesA)
+      const hashB = frameDhash(bytesB)
+      const gridA = blockGrid(bytesA, 2, 2)
+      const gridB = blockGrid(bytesB, 2, 2)
+      const dirty = diffBlocks(gridA, gridB, 1)
+      const coalesced = coalesceDirtyBlocks(dirty)
+
+      const store = new ScreenStateStore({ maxEntries: 4, maxImages: 2 })
+      const first = store.ingestCapture({ displayId: 0, width: 1280, height: 720, scaleFactor: 1, pngBase64: pngA, capturedAt: 1000 })
+      const dup = store.ingestCapture({ displayId: 0, width: 1280, height: 720, scaleFactor: 1, pngBase64: pngA, capturedAt: 1500 })
+      const changed = store.ingestCapture({ displayId: 0, width: 1280, height: 720, scaleFactor: 1, pngBase64: pngB, capturedAt: 2000 })
+
+      try Effect.try(() => {
+        assert.strictEqual(decoded?.width, 32)
+        assert.strictEqual(hamming(hashA, hashA), 0)
+        assert.ok(hamming(hashA, hashB) > 0)
+        assert.ok(dirty.length > 0 && coalesced !== null)
+        assert.strictEqual(first.changed, true)
+        assert.strictEqual(dup.changed, false)
+        assert.ok(dup.tokensAvoided > 0)
+        assert.strictEqual(changed.changed, true)
+        assert.strictEqual(store.getStats().deduplicated, 1)
+      })
+
+      const sceneBuilder = new SceneBuilder({
+        listDisplays: () => [{ id: 0, name: "Main", bounds: { x: 0, y: 0, width: 1440, height: 900 }, scaleFactor: 2, primary: true }],
+        listWindows: () => [{ id: "w1", app: "LoginApp", title: "Sign In", pid: 77, displayId: 0, focused: true }],
+        listProcesses: () => [{ pid: 77, name: "LoginApp" }],
+        accessibilityProvider: {
+          name: "test-ax",
+          scan: async () => [
+            { id: "a0-1", role: "AXButton", label: "Save", bbox: [200, 300, 80, 32], actions: ["click"], displayId: 0 },
+            { id: "a0-2", role: "AXSecureTextField", label: "top-secret-pass", bbox: [200, 100, 200, 30], actions: ["set_value"], displayId: 0 },
+          ],
+        },
+        runOcr: async () => [
+          { id: "t0-1", text: "Save", bbox: [210, 306, 60, 20], conf: 0.99, displayId: 0 },
+          { id: "t0-2", text: "top-secret-pass", bbox: [205, 105, 150, 20], conf: 0.95, displayId: 0 },
+        ],
+      })
+      const scene = try promise(() => sceneBuilder.refresh("agent-turn"))
+      const serialized = serializeSceneForPrompt(scene, { compact: true })
+      try Effect.try(() => {
+        assert.strictEqual(serialized.includes("top-secret-pass"), false)
+        assert.strictEqual(serialized.includes("[REDACTED_SECURE_FIELD]"), true)
+      })
+
+      let textCalls = 0
+      let visionCalls = 0
+      const brain = new Brain({
+        imagePolicy: "on-escalation",
+        invokeTextModel: async () => {
+          textCalls += 1
+          if (textCalls === 1) {
+            return JSON.stringify({
+              scene_summary: "Dialog with Save button",
+              target_display_id: 0,
+              roi: [],
+              proposed_action: { kind: "click", ref: "a0-1", rationale: "Click Save" },
+            })
+          }
+          return JSON.stringify({
+            scene_summary: "Saved",
+            target_display_id: 0,
+            roi: [],
+            proposed_action: { kind: "finish", rationale: "Goal achieved" },
+          })
+        },
+        invokeVisionModel: async () => {
+          visionCalls += 1
+          return "{}"
+        },
+      })
+
+      const log: string[] = []
+      const service = new ComputerUseService(undefined, {
+        config: { approvalMode: "full_control" },
+        driver: makeFakeDriver(pngA, log),
+        sceneBuilder,
+      })
+      const runtime = makeFakeRuntime(service)
+      const report = try promise(() =>
+        runComputerUseAgentLoop(runtime, { goal: "Click Save", maxSteps: 5, imagePolicy: "on-escalation" }, service, {
+          brain,
+          captureAll: async () => [{ displayId: 0, width: 1280, height: 720, scaleFactor: 1, pngBase64: textCalls === 0 ? pngA : pngB, capturedAt: Date.now() }],
+        }),
+      )
+      try Effect.try(() => {
+        assert.strictEqual(report.finished, true)
+        assert.strictEqual(report.reason, "finish")
+        assert.strictEqual(visionCalls, 0)
+        assert.ok(brain.getStats().estimatedTokensSaved > 0)
+        assert.strictEqual(log.includes("click:left:240,316"), true)
+      })
+
+      const grounder = new OcrCoordinateGroundingActor()
+      const grounded = try promise(() => grounder.ground({ scene, ref: "a0-1", instruction: "Save" }))
+      try Effect.try(() => assert.deepStrictEqual({ x: grounded?.x, y: grounded?.y }, { x: 240, y: 316 }))
+    },
+  )
+
+  it.effect("Security guards, real file/terminal ops, AppControl, MCP, routes, sandbox, mobile, providers, and parity matrix", () =>
+    effect {
+      const log: string[] = []
+      const png = try Effect.orDie(Effect.try({ try: () => makeTestPngBase64(32, 32, "gradient"), catch: (e) => e }))
+      const cdpLog: string[] = []
+      const fakeCdp: BrowserCdpTransport = {
+        fetchJson: async (url) => {
+          cdpLog.push(`http:${url}`)
+          if (url.endsWith("/json/list")) {
+            return {
+              status: 200,
+              body: [{ id: "tab-1", type: "page", title: "Example", url: "https://example.com", webSocketDebuggerUrl: "ws://127.0.0.1:9222/devtools/page/tab-1" }],
+            }
+          }
+          return { status: 200, body: { id: "tab-2", webSocketDebuggerUrl: "ws://127.0.0.1:9222/devtools/page/tab-2" } }
+        },
+        sendCommand: async (_wsUrl, method, params) => {
+          cdpLog.push(`cdp:${method}:${JSON.stringify(params ?? {})}`)
+          if (method === "DOM.getDocument") return { root: { nodeId: 1 } }
+          if (method === "DOM.getOuterHTML") return { outerHTML: "<html><body><button>Go</button></body></html>" }
+          if (method === "DOM.querySelectorAll") return { nodeIds: [42] }
+          if (method === "DOM.getBoxModel") return { model: { content: [10, 20, 90, 20, 90, 50, 10, 50] } }
+          if (method === "Page.captureScreenshot") return { data: png }
+          return {}
+        },
+      }
+      const service = new ComputerUseService(undefined, {
+        config: { approvalMode: "full_control" },
+        driver: makeFakeDriver(png, log),
+        cdpTransport: fakeCdp,
+      })
+      const runtime = makeFakeRuntime(service)
+
+      const execBlocked = try promise(() => service.executeBrowserAction({ action: "execute", code: "alert(1)" }))
+      const urlBlocked = try promise(() => service.executeBrowserAction({ action: "navigate", url: "javascript:alert(1)" }))
+      const tabBlocked = try promise(() => service.executeBrowserAction({ action: "switch_tab", tabId: "../bad tab" }))
+      const navOk = try promise(() => service.executeBrowserAction({ action: "open", url: "https://example.com" }))
+      const domRes = try promise(() => service.executeBrowserAction({ action: "dom" }))
+      const clickablesRes = try promise(() => service.executeBrowserAction({ action: "clickables" }))
+      const browserClick = try promise(() => service.executeBrowserAction({ action: "click", coordinate: [25, 35] }))
+      const browserShot = try promise(() => service.executeBrowserAction({ action: "screenshot" }))
+
+      const delegatedCalls: string[] = []
+      const delegatedRuntime = {
+        getService: (name: string) =>
+          name === "browser"
+            ? {
+                executeBrowserAction: async (p: { readonly action: string }) => {
+                  delegatedCalls.push(p.action)
+                  return { success: true, message: `delegated:${p.action}` }
+                },
+              }
+            : null,
+      } as unknown as IAgentRuntime
+      const delegatedSvc = new ComputerUseService(delegatedRuntime, { config: { approvalMode: "full_control" }, driver: makeFakeDriver(png, log) })
+      const delegatedRes = try promise(() => delegatedSvc.executeBrowserAction({ action: "navigate", url: "https://example.org" }))
+
+      const lifecycleRuntime = { getService: () => null } as unknown as IAgentRuntime
+      try promise(async () => computerUsePlugin.init?.({}, lifecycleRuntime))
+      const startedSvc = try promise(() => ComputerUseService.start(lifecycleRuntime))
+      const pluginSessionsGet = (computerUsePlugin.routes ?? []).find((r) => r.method === "GET" && r.path === "/api/computer-use/sessions")
+      const afterStartReply = try promise(async () => pluginSessionsGet?.handler({ parameters: new Map(), query: new Map(), headers: new Map(), body: undefined, signal: new AbortController().signal }))
+      try promise(() => startedSvc.stop())
+      const afterStopReply = try promise(async () => pluginSessionsGet?.handler({ parameters: new Map(), query: new Map(), headers: new Map(), body: undefined, signal: new AbortController().signal }))
+      const autoEnableEnv = try promise(async () => computerUsePlugin.autoEnable?.shouldEnable?.({ COMPUTER_USE_ENABLED: "1" }, {}))
+      const autoEnableOff = try promise(async () => computerUsePlugin.autoEnable?.shouldEnable?.({}, {}))
+      const tmpFile = try Effect.orDie(Effect.try({ try: () => makeTempFilePath("cua-test", ".txt"), catch: (e) => e }))
+      const wrote = try promise(() => service.executeFileAction({ action: "write", path: tmpFile, content: "hello world" }))
+      const edited = try promise(() => service.executeFileAction({ action: "edit", path: tmpFile, oldText: "world", newText: "vibestack" }))
+      const readBack = try promise(() => service.executeFileAction({ action: "read", path: tmpFile }))
+      const deleted = try promise(() => service.executeFileAction({ action: "delete", path: tmpFile }))
+      const sshBlocked = validateFilePath("/Users/test/.ssh/id_rsa")
+      const rmBlocked = checkDangerousCommand("rm -rf /")
+      const termOk = try promise(() => service.executeTerminalAction({ action: "execute", command: "printf ok" }))
+      const cleanEnv = sanitizeChildEnv({ PATH: "/usr/bin", OPENAI_API_KEY: "sk-secret", SAFE_VAR: "1" })
+      const plainRendered = try renderPlainData({ ok: true, count: 2 })
+
+      try Effect.try(() => {
+        assert.strictEqual(execBlocked.success, false)
+        assert.strictEqual(execBlocked.errorCode, "browser_execute_disabled")
+        assert.strictEqual(urlBlocked.errorCode, "blocked_browser_url")
+        assert.strictEqual(tabBlocked.errorCode, "invalid_browser_tab_id")
+        assert.strictEqual(navOk.success, true)
+        assert.strictEqual(domRes.success, true)
+        assert.ok((domRes.dom ?? "").includes("<button>Go</button>"))
+        assert.strictEqual(clickablesRes.clickables?.length, 1)
+        assert.strictEqual(browserClick.success, true)
+        assert.strictEqual(browserShot.screenshot, png)
+        assert.strictEqual(cdpLog.some((e) => e.startsWith("cdp:Page.navigate:")), true)
+        assert.strictEqual(cdpLog.some((e) => e.startsWith("cdp:Input.dispatchMouseEvent:")), true)
+        assert.strictEqual(delegatedRes.success, true)
+        assert.deepStrictEqual(delegatedCalls, ["navigate"])
+        assert.strictEqual((afterStartReply as { readonly status: number }).status, 200)
+        assert.strictEqual((afterStopReply as { readonly status: number }).status, 503)
+        assert.strictEqual(autoEnableEnv, true)
+        assert.strictEqual(autoEnableOff, false)
+        assert.strictEqual(wrote.success, true)
+        assert.strictEqual(edited.success, true)
+        assert.strictEqual(readBack.content, "hello vibestack")
+        assert.strictEqual(deleted.success, true)
+        assert.strictEqual(sshBlocked.allowed, false)
+        assert.strictEqual(rmBlocked.blocked, true)
+        assert.strictEqual(termOk.success, true)
+        assert.strictEqual(termOk.stdout, "ok")
+        assert.strictEqual(cleanEnv.OPENAI_API_KEY, undefined)
+        assert.strictEqual(cleanEnv.SAFE_VAR, "1")
+        assert.ok(plainRendered.includes("ok: true"))
+      })
+
+      let elemValue = "draft"
+      const coordinator = new AppControlCoordinator({
+        listApps: async () => [{ appId: "app-notes", name: "Notes", pid: 55, windowCount: 1 }],
+        captureElements: async () => ({
+          elements: [{ element_index: 0, locator: [0, 1], role: "AXTextField", label: "Body", value: elemValue, bounds: { x: 10, y: 10, width: 200, height: 40 }, actions: ["set_value"], enabled: true, secure: false }],
+          axText: elemValue,
+        }),
+        performAction: async (_app, req) => {
+          elemValue = req.text ?? "updated"
+          return { executionMode: "semantic_ax", physicalPointerMoved: false }
+        },
+      })
+      const st1 = try promise(() => coordinator.getAppState("Notes"))
+      const actOutcome = try promise(() => coordinator.executeAppAction({ app: "Notes", stateId: st1.stateId, kind: "set_value", element_index: 0, text: "final" }))
+      try Effect.try(() => {
+        assert.strictEqual(actOutcome.success, true)
+        assert.strictEqual(actOutcome.changed, true)
+        assert.strictEqual(actOutcome.physicalPointerMoved, false)
+        assert.ok(getAppControlRouteMatrix().some((r) => r.id === "semantic_ax" && r.status === "supported"))
+      })
+
+      const mcpServer = createComputerUseMcpServer(service)
+      const listResp = try promise(() => mcpServer.handleJsonRpc({ jsonrpc: "2.0", id: 1, method: "tools/list" }))
+      const mcpBatch = try promise(() => dispatchComputerUseMcpTool(service, "computer_get_cursor_position", {}))
+      try Effect.try(() => {
+        const tools = (listResp.result as { readonly tools: unknown[] }).tools
+        assert.ok(tools.length >= 25)
+        assert.strictEqual(mcpBatch.success, true)
+      })
+
+      const routes = computerUseRoutes(() => service)
+      const sessionsGet = routes.find((r) => r.method === "GET" && r.path === "/api/computer-use/sessions")
+      const routeReply = try promise(async () => sessionsGet?.handler({ parameters: new Map(), query: new Map(), headers: new Map(), body: undefined, signal: new AbortController().signal }))
+      const sandboxPlatform = try promise(() => handleSandboxRoute({ method: "GET", pathname: "/api/sandbox/platform" }, null))
+      const fakeBackend: SandboxBackend = {
+        name: "fake",
+        start: async () => undefined,
+        stop: async () => undefined,
+        invoke: async <T,>() => ("ok" as unknown as T),
+      }
+      const sandboxDriver = new SandboxDriver(fakeBackend)
+      try promise(() => sandboxDriver.mouseClick(10, 20))
+      const rpcReq = sandboxOpToRpc({ kind: "mouse_click", x: 10, y: 20 })
+
+      const capsProv = try promise(() => computerCapabilitiesProvider.get(runtime, makeMessage(""), {} as State))
+      const stateProv = try promise(() => computerStateProvider.get(runtime, makeMessage(""), {} as State))
+      const sceneProv = try promise(() => sceneProvider.get(runtime, makeMessage(""), {} as State))
+      const visionSvc = new VisionContextProvider(runtime)
+      const visionCtx = try promise(() => visionSvc.getContext())
+
+      _resetOcrProvidersForTests()
+      setAndroidBridge(null)
+      setIosBridge(null)
+      registerOcrProvider(createIosVisionOcrProvider(null))
+      const axNode = normalizeAndroidAxNode({ id: "1", className: "EditText", text: "secret", bounds: [0, 0, 100, 40], clickable: true, editable: true, password: true })
+
+      const parity = validateParityMatrix((computerUsePlugin.actions ?? []).map((a) => a.name))
+      try Effect.try(() => {
+        assert.strictEqual((routeReply as { readonly status: number }).status, 200)
+        assert.strictEqual(sandboxPlatform.handled, true)
+        assert.strictEqual(sandboxPlatform.status, 200)
+        assert.strictEqual(rpcReq.method, "mouse_click")
+        assert.strictEqual(computerCapabilitiesProvider.cacheStable, true)
+        assert.strictEqual(computerStateProvider.cacheStable, false)
+        assert.ok((capsProv.discoveryText ?? "").includes("batch<=16"))
+        assert.ok((stateProv.discoveryText ?? "").includes("Screen"))
+        assert.ok((sceneProv.discoveryText ?? "").includes("Scene"))
+        assert.strictEqual(visionCtx.currentTaskGoal, "Save edited file")
+        assert.strictEqual(androidFeatureCheck().available, false)
+        assert.strictEqual(iosFeatureCheck().intentCount >= 4, true)
+        assert.strictEqual(findIosAppIntent("com.apple.shortcuts.run")?.bundleId, "com.apple.shortcuts")
+        assert.strictEqual(selectOcrProvider(), undefined)
+        assert.strictEqual(axNode.label, "[REDACTED_SECURE_FIELD]")
+        assert.strictEqual(parity.valid, true)
+        assert.ok(parityMatrixSummary().have >= 20)
+        assert.ok(parityCoverageByOs().macos.covered >= 20)
+        assert.ok(parseXrandrMonitors(" 0: +*DP-1 1920/500x1080/300+0+0 DP-1").length === 1)
+        assert.ok(parseDarwinDisplays(JSON.stringify({ SPDisplaysDataType: [{ spdisplays_ndrvs: [{ _name: "Built-in", _spdisplays_resolution: "2880 x 1800 Retina", spdisplays_main: "spdisplays_yes" }] }] })).length === 1)
+        assert.ok(parseDarwinWindowOutput("Code\tindex.vibe\twin-1\t42").length === 1)
+        assert.ok(parsePsOutput("PID COMM\n42 node").length === 1)
+        assert.ok(parseHyprlandClients(JSON.stringify([{ title: "Term", at: [0, 0], size: [800, 600] }])).length === 1)
+        assert.ok(parseSwayTree(JSON.stringify({ name: "root", type: "root", rect: { x: 0, y: 0, width: 100, height: 100 }, nodes: [] })).length === 1)
+        assert.strictEqual(computerUseAgentAction.name, "COMPUTER_USE_AGENT")
+        assert.strictEqual(new ComputerOperationRefused({ operationId: "x" })._tag, "ComputerOperationRefused")
+      })
+    },
+  )
+})

@@ -1,5 +1,12 @@
 # Computer use sessions
 
+This area defines the formal rules for desktop, browser, sandbox, and mobile computer-use automation:
+
+- [Sessions](./sessions.md) — session lifecycle, leases, epoch isolation, and observation freshness
+- [Approvals](./approvals.md) — approval modes (`full_control`, `smart_approve`, `approve_all`, `off`) and pending approval queue
+- [Observation](./observation.md) — dHash change detection, image attachment policy, pixel budgets, coordinate bounds, and bounded history
+- [Batching](./batching.md) — multi-step action sequences that reduce LLM round-trips while preserving stop-on-error semantics
+
 ## Story: Control an authorized computer session
 
 > As the owner, I can inspect and control a session I selected. A request for a previously closed session cannot affect the current computer or browser tab.
