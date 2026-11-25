@@ -153,15 +153,16 @@ The free-time reader (next section) knows more spellings: four digits
 minutes after a dot ("2.00", "14.30", "09.30", "0.30"), an hour past
 twelve and its minutes after a space ("14 30"), an hour past twelve or
 with a leading zero, then "h" and its minutes ("14h30", "09h15"),
-minutes counted past, after, to, of, till or before the hour ("ten past
-nine", "twenty to five"), "quarter of" and "quarter after", and "half 5"
+minutes counted past, after, to, of, till, til or before the hour
+("ten past nine", "twenty to five", "5 til 4"), "quarter of" and "quarter after", and "half 5"
 for 5:30. Those spellings only add a note to a free-time answer; a
 create or change holds a clock in words written that way only where they
 also write one of the spellings above, which is the hour alone when the
 minutes follow it after a space or an "h": "call tomorrow at 14h00",
 "call at 14 00 tomorrow" and "call tomorrow at 9h00" hold 14:00, 14:00
 and 9:00 as the hour alone, and "call tomorrow at 14h30" holds 14:00,
-never 14:30. Each further spelling reads the same as something that is
+never 14:30. An hour alone has no leading zero, so "call tomorrow at
+09h00" and "call at 09 00 tomorrow" hold no clock time. Each further spelling reads the same as something that is
 no clock: a year, a price, a version, a code, a room, house or page
 number, an address, a length, a dose, odds or a score, and a reader that
 tells them apart has always left more misreads to save. So "lunch
