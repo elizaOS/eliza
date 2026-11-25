@@ -162,9 +162,15 @@ public final class GoogleBrokerJourney {
       GoogleBroker.Endpoint cloudLaunch = opened(service);
       seen.add(take("handedToOwnKeyLaunch", service.open(false, OWNER, failed -> { throw new IllegalStateException(failed); })));
       seen.add(take("cloudBearerAfterOwnKeyLaunch", read(cloudLaunch, ACCOUNTS)));
-      GoogleBroker.Endpoint unspawned = opened(service);
-      service.revoke();
-      seen.add(take("spawnFailedBearer", read(unspawned, ACCOUNTS)));
+      AtomicReference<GoogleBroker.Endpoint> unspawned = new AtomicReference<>();
+      try {
+        service.spawn(true, OWNER, failed -> { throw new IllegalStateException(failed); }, handed -> {
+          unspawned.set(handed);
+          throw new IOException("The agent could not be spawned");
+        });
+      } catch (IOException spawnFailed) {
+        seen.add(take("spawnFailedBearer", read(unspawned.get(), ACCOUNTS)));
+      }
       GoogleBroker.Endpoint exited = opened(service);
       service.revoke();
       seen.add(take("exitedLaunchBearer", read(exited, ACCOUNTS)));

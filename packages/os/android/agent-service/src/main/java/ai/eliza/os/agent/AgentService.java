@@ -643,21 +643,21 @@ public class AgentService extends Service {
       byte[] frame = readyFrame.encode();
       synchronized (EPOCH_LOCK) {
         if (live != this) return;
-        GoogleBroker.Endpoint handed = brokerLaunch.open(config.needsAccount(), active.account(), unavailable ->
-          Log.w(TAG, "The mail broker could not open, so the agent starts without it", unavailable));
-        AgentSupervisor.Command command = new AgentSupervisor.Command(prepared.node(), prepared.bundleDir(), launch, stateDir, agentSocket,
-          directories.runtime().resolve("agent.log"), handed == null ? Map.of() : handed.environment());
-        spawned = AgentSupervisor.spawn(epoch, command, frame, (spawnedEpoch, pid) -> journal.record(Math.toIntExact(pid), spawnedEpoch),
-          readyEpoch -> HealthPolicy.classify(probe(agentSocket, launchToken, () -> true), readyEpoch) == HealthPolicy.Probe.OK,
-          new AgentSupervisor.Listener() {
-            @Override public void ready(long readyEpoch) { later(() -> settled(() -> ready(readyEpoch))); }
-            @Override public void readinessTimedOut(long timedOut) { later(() -> settled(() -> { if (owns(timedOut)) step(new AgentPolicy.ReadyTimeout()); })); }
-            @Override public void exited(long exitedEpoch, int code) { later(() -> settled(() -> exited(exitedEpoch, code))); }
-          });
+        spawned = brokerLaunch.spawn(config.needsAccount(), active.account(), unavailable ->
+          Log.w(TAG, "The mail broker could not open, so the agent starts without it", unavailable), handed -> {
+          AgentSupervisor.Command command = new AgentSupervisor.Command(prepared.node(), prepared.bundleDir(), launch, stateDir, agentSocket,
+            directories.runtime().resolve("agent.log"), handed == null ? Map.of() : handed.environment());
+          return AgentSupervisor.spawn(epoch, command, frame, (spawnedEpoch, pid) -> journal.record(Math.toIntExact(pid), spawnedEpoch),
+            readyEpoch -> HealthPolicy.classify(probe(agentSocket, launchToken, () -> true), readyEpoch) == HealthPolicy.Probe.OK,
+            new AgentSupervisor.Listener() {
+              @Override public void ready(long readyEpoch) { later(() -> settled(() -> ready(readyEpoch))); }
+              @Override public void readinessTimedOut(long timedOut) { later(() -> settled(() -> { if (owns(timedOut)) step(new AgentPolicy.ReadyTimeout()); })); }
+              @Override public void exited(long exitedEpoch, int code) { later(() -> settled(() -> exited(exitedEpoch, code))); }
+            });
+        });
       }
       socket = agentSocket;
     } catch (IOException | RuntimeException failed) {
-      brokerLaunch.revoke();
       step(new AgentPolicy.SpawnFailed("The agent could not be started: " + failed.getMessage()));
       return;
     }
@@ -670,9 +670,7 @@ public class AgentService extends Service {
 
   private void brokerReplaced() {
     later(() -> settled(() -> {
-      if (!brokerLaunch.replaced()) return;
-      step(new AgentPolicy.Stop());
-      step(new AgentPolicy.Start());
+      if (brokerLaunch.replaced()) step(new AgentPolicy.BrokerReplaced());
     }));
   }
 

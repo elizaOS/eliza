@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
 
 public final class BrokerLaunches {
   private final Consumer<Exception> closeFailed;
@@ -14,6 +15,9 @@ public final class BrokerLaunches {
   private GoogleBroker installed;
 
   public BrokerLaunches(Consumer<Exception> closeFailed) { this.closeFailed = closeFailed; }
+
+  @FunctionalInterface
+  public interface Spawn<T> { T spawn(GoogleBroker.Endpoint handed) throws IOException; }
 
   public final class Launch {
     private final Runnable relaunch;
@@ -37,6 +41,15 @@ public final class BrokerLaunches {
       }
       close(retired);
       return opened;
+    }
+
+    public <T> T spawn(boolean needsAccount, AgentCredentials.Account owner, Consumer<Exception> unavailable, Spawn<T> spawn) throws IOException {
+      GoogleBroker.Endpoint handed = open(needsAccount, owner, unavailable);
+      try { return spawn.spawn(handed); }
+      catch (IOException | RuntimeException failed) {
+        revoke();
+        throw failed;
+      }
     }
 
     public void revoke() {
@@ -79,7 +92,7 @@ public final class BrokerLaunches {
       replaced = installed;
       if (replaced == broker) return;
       installed = broker;
-      held = holding.stream().filter(launch -> launch.broker == replaced).toList();
+      held = holding.stream().filter(launch -> launch.broker == replaced).collect(Collectors.toList());
     }
     if (held.isEmpty()) close(replaced);
     for (Launch launch : held) launch.relaunch.run();

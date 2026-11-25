@@ -271,7 +271,7 @@ public final class GoogleBrokerHost implements GoogleBroker {
       read.write(next);
       matched = next == (matched % 2 == 0 ? '\r' : '\n') ? matched + 1 : next == '\r' ? 1 : 0;
       if (matched == 4) {
-        String text = read.toString(StandardCharsets.ISO_8859_1);
+        String text = new String(read.toByteArray(), StandardCharsets.ISO_8859_1);
         return text.substring(0, text.length() - 4);
       }
     }

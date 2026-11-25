@@ -52,7 +52,7 @@ module node {
 
   export interface LifecycleStep {
     readonly outcome: "accepted" | "refused"
-    readonly state: { readonly phase: Readonly<Record<string, string>>; readonly notice: string; readonly epoch: number; readonly attempt: number }
+    readonly state: { readonly phase: Readonly<Record<string, string>>; readonly notice: string; readonly epoch: number; readonly attempt: number; readonly afterExit: Readonly<Record<string, string>> }
     readonly out: readonly Readonly<Record<string, string | number>>[]
   }
 
@@ -426,6 +426,28 @@ it.effect('A launch that never answers ready, or exits before it does, is restar
     ["accepted", { tag: "Starting", stage: "Checking" }, 2, 1, [{ tag: "Check", epoch: 2, account: "account-a", delayMs: 1000 }]],
     ["accepted", { tag: "Starting", stage: "Checking" }, 3, 2, [{ tag: "Check", epoch: 3, account: "account-a", delayMs: 2000 }]],
     ["accepted", { tag: "Failed", cause: "Config" }, 3, 2, []],
+  ])
+}, 120_000)
+
+it.effect('A replaced mail broker restarts a starting or running agent without counting a crash, and never changes what a stopping agent\'s exit decides (spec/os/agentService/lifecycle.md, "A replaced mail broker restarts a starting or running agent, and leaves a stopping agent\'s exit to decide what follows")', effect () => {
+  const spawn = [{ type: "reapStale" }, { type: "launchHook", refused: false }, { type: "spawn" }]
+  const steps = try Effect.try(() => lifecycle([
+    { type: "credentialArrived", version: 1 }, { type: "start" }, ...spawn,
+    { type: "brokerReplaced" }, { type: "observeExit", code: 137 }, ...spawn, { type: "observeReady", epoch: 2 },
+    { type: "brokerReplaced" }, { type: "stop" }, { type: "brokerReplaced" }, { type: "observeExit", code: 0 }, { type: "brokerReplaced" },
+    { type: "start" }, ...spawn, { type: "observeReady", epoch: 3 }, { type: "signedOut" }, { type: "brokerReplaced" }, { type: "observeExit", code: 0 },
+  ]))
+  assert.deepStrictEqual([5, 6, 11, 12, 13, 14, 15, 21, 22, 23].map((at) => [steps[at]?.outcome, steps[at]?.state.phase, steps[at]?.state.afterExit, steps[at]?.state.epoch, steps[at]?.state.attempt, steps[at]?.out]), [
+    ["accepted", { tag: "Stopping" }, { tag: "Start" }, 1, 0, [{ tag: "Kill", epoch: 1 }]],
+    ["accepted", { tag: "Starting", stage: "Checking" }, { tag: "Stop" }, 2, 0, [{ tag: "Check", epoch: 2, account: "account-a", delayMs: 0 }]],
+    ["accepted", { tag: "Stopping" }, { tag: "Start" }, 2, 0, [{ tag: "Kill", epoch: 2 }]],
+    ["accepted", { tag: "Stopping" }, { tag: "Stop" }, 2, 0, []],
+    ["refused", { tag: "Stopping" }, { tag: "Stop" }, 2, 0, []],
+    ["accepted", { tag: "Stopped" }, { tag: "Stop" }, 2, 0, []],
+    ["refused", { tag: "Stopped" }, { tag: "Stop" }, 2, 0, []],
+    ["accepted", { tag: "Stopping" }, { tag: "Fail", cause: "Credential" }, 3, 0, [{ tag: "Kill", epoch: 3 }]],
+    ["refused", { tag: "Stopping" }, { tag: "Fail", cause: "Credential" }, 3, 0, []],
+    ["accepted", { tag: "Failed", cause: "Credential" }, { tag: "Stop" }, 3, 0, []],
   ])
 }, 120_000)
 
