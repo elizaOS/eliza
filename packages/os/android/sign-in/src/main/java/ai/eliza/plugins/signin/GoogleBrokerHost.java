@@ -3,7 +3,12 @@ package ai.eliza.plugins.signin;
 
 import ai.eliza.os.agent.AgentCredentials;
 import ai.eliza.os.agent.GoogleBroker;
-import ai.eliza.plugins.signin.CloudRequestPolicy.Refusal;
+import ai.eliza.plugins.signin.CloudRequestPolicy.CallPlan;
+import ai.eliza.plugins.signin.CloudRequestPolicy.Holding;
+import ai.eliza.plugins.signin.CloudRequestPolicy.RefreshLeaseFirst;
+import ai.eliza.plugins.signin.CloudRequestPolicy.Refuse;
+import ai.eliza.plugins.signin.CloudRequestPolicy.Send;
+import ai.eliza.plugins.signin.CloudRequestPolicy.WithLease;
 import ai.eliza.plugins.signin.CredentialPolicy.Account;
 import ai.eliza.plugins.signin.GoogleBrokerPolicy.Answer;
 import ai.eliza.plugins.signin.GoogleBrokerPolicy.Ask;
@@ -19,6 +24,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.io.UncheckedIOException;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -41,9 +47,10 @@ import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 public final class GoogleBrokerHost implements GoogleBroker {
+  public record Standing(Account signedIn, int key, CloudRequests.MailAuthority authority) {}
+
   public interface MailReads {
-    Account signedIn();
-    CloudRequests.MailAuthority authority();
+    Standing standing();
     CloudRequests.Outcome read(CloudRequests.MailAuthority expected, String target);
   }
 
@@ -53,7 +60,7 @@ public final class GoogleBrokerHost implements GoogleBroker {
 
   private record Listening(ServerSocket server, ExecutorService workers, Semaphore admitted) {}
 
-  private static final int WORKERS = 4, WAITING = 4, BACKLOG = 8, DEADLINE_MS = 5_000, HEAD_LIMIT = 8192, DRAIN_LIMIT = 65_536;
+  private static final int WORKERS = 4, WAITING = 4, BACKLOG = 8, DEADLINE_MS = 5_000, ACCEPT_RETRY_MS = 250, HEAD_LIMIT = 8192, DRAIN_LIMIT = 65_536;
   private static final byte[] LOOPBACK = {127, 0, 0, 1};
   private static final SecureRandom RANDOM = new SecureRandom();
 
@@ -70,11 +77,11 @@ public final class GoogleBrokerHost implements GoogleBroker {
   public static GoogleBrokerHost overDevice(String apiOrigin, Supplier<CloudRequests.Custody> custody, File cacheDirectory, Consumer<RuntimeException> failed) {
     CloudRequests requests = new CloudRequests(CloudRequestPolicy.forMailReads(GoogleBrokerPolicy::queriesFor), new LargeBodyGrant(cacheDirectory));
     return new GoogleBrokerHost(new MailReads() {
-      @Override public Account signedIn() {
+      @Override public Standing standing() {
         CredentialPolicy.State state = custody.get().credentials().state();
-        return CredentialPolicy.isSignedIn(state) ? CredentialPolicy.accountOf(state) : null;
+        return new Standing(CredentialPolicy.isSignedIn(state) ? CredentialPolicy.accountOf(state) : null, CredentialPolicy.activeVersion(state),
+          CloudRequests.authorityOf(state));
       }
-      @Override public CloudRequests.MailAuthority authority() { return custody.get().mailAuthority(); }
       @Override public CloudRequests.Outcome read(CloudRequests.MailAuthority expected, String target) {
         return requests.readMail(apiOrigin, custody.get(), expected, target, Map.of(CloudRequestPolicy.ACCEPT, "application/json"));
       }
@@ -117,10 +124,22 @@ public final class GoogleBrokerHost implements GoogleBroker {
   }
 
   private void accept(Listening serving) {
+    boolean failing = false;
     while (!serving.server().isClosed()) {
       Socket socket;
       try { socket = serving.server().accept(); }
-      catch (IOException closed) { return; }
+      catch (IOException refused) {
+        if (serving.server().isClosed()) return;
+        if (!failing) failed.accept(new UncheckedIOException("The mail broker could not accept a connection", refused));
+        failing = true;
+        try { Thread.sleep(ACCEPT_RETRY_MS); }
+        catch (InterruptedException stopped) {
+          Thread.currentThread().interrupt();
+          return;
+        }
+        continue;
+      }
+      failing = false;
       if (!serving.admitted().tryAcquire()) {
         quietly(socket);
         continue;
@@ -185,11 +204,16 @@ public final class GoogleBrokerHost implements GoogleBroker {
   }
 
   private Exchange forwarded(Account owner, Read read, List<String> fields, String target) {
-    Refusal refused = GoogleBrokerPolicy.refusalOf(new Call(read, fields, owner.equals(reads.signedIn())));
-    if (refused != null) return replied(new CallRefused(refused), null);
-    CloudRequests.MailAuthority authority = reads.authority();
-    if (authority == null) return replied(new CallRefused(Refusal.MAIL_LEASE_UPGRADE_REQUIRED), null);
-    if (!authority.account().equals(owner)) return replied(new CallRefused(Refusal.SIGN_IN_REQUIRED), null);
+    Standing now = reads.standing();
+    CloudRequests.MailAuthority authority = now.authority();
+    boolean ownerHolds = owner.equals(now.signedIn()) && (authority == null || owner.equals(authority.account()));
+    CallPlan plan = GoogleBrokerPolicy.brokerPlan(new Holding(now.key(), false, false, authority != null, false), new Call(read, fields, ownerHolds));
+    switch (plan) {
+      case Refuse refuse -> { return replied(new CallRefused(refuse.why()), null); }
+      case RefreshLeaseFirst lease -> { }
+      case Send send when send.attach() instanceof WithLease -> { }
+      default -> throw new IllegalStateException("The mail broker planned a read without the lease");
+    }
     CloudRequests.Outcome sent = reads.read(authority, target);
     return replied(GoogleBrokerPolicy.outcomeOf(sent), sent instanceof CloudRequests.Answered answered ? answered.body() : null);
   }

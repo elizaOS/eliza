@@ -124,6 +124,7 @@ describe("Let my agent read my mail without holding a mail credential", () => {
       anotherOwnerSignedIn: signIn,
       signedOut: signIn,
       ownerWithoutLease: '403 {"reason":"mail-lease-upgrade-required"}',
+      leaseOfAnotherAccount: signIn,
       custodyFailed: '503 {"reason":"cloud-unreachable"}',
       reported: "the secure store could not be read",
       withoutLease: '403 {"reason":"mail-lease-upgrade-required"}',

@@ -35,7 +35,7 @@ public final class CloudRequests {
     public MailAuthority mailAuthority() { return authorityOf(credentials.state()); }
   }
 
-  private static MailAuthority authorityOf(CredentialPolicy.State state) {
+  static MailAuthority authorityOf(CredentialPolicy.State state) {
     int version = CredentialPolicy.leaseVersionOf(state.lease());
     return version > 0 && version == CredentialPolicy.activeVersion(state)
       ? new MailAuthority(CredentialPolicy.accountOf(state), version) : null;

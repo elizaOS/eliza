@@ -58,10 +58,6 @@ public final class GoogleBrokerPolicy {
     return AskVerdict.ASK_ADMITTED;
   }
 
-  public static List<String> brokerParts(Read read) { return PARTS.get(read); }
-
-  public static List<String> brokerFields(Read read) { return FIELDS.get(read); }
-
   public static Read readOf(String path) {
     for (Read read : List.of(Read.ACCOUNT_LIST, Read.MAIL_SEARCH))
       if (path.equals("/" + String.join("/", PARTS.get(read)))) return read;

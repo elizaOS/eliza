@@ -331,9 +331,15 @@ previous launch's bearer is refused from then on; so is every bearer once a
 launch is handed none, and a launch's own once its agent exits or the agent
 service stops. A request is checked against the launch that is current
 once its head has arrived. The broker serves four requests at once and holds four more
-waiting, and closes any connection beyond those, or whose request head has
-not arrived within five seconds of being served, unanswered, so no other
-process on the device can hold it from the agent.
+waiting, closes any connection beyond those, or whose request head has not
+arrived within five seconds of being served, unanswered, and after a reply
+reads what is left of the request for at most five seconds more before it
+closes. These bound only what any connection costs the device: the places
+are taken before a bearer is seen, so another process on the device that
+holds them leaves the agent's reads unanswered, and the agent reports its
+mail unreachable. A failure to accept a connection, other than the broker
+closing, is reported in the app's log once until a connection is accepted
+again, and the broker keeps accepting on the same port.
 
 ```quint
 type BrokerAsk = { get: bool, bodiless: bool, loopbackHost: bool, origin: bool, bearer: bool }
@@ -362,10 +368,11 @@ nothing. A read is bound to the account the launch was started for: the
 owner holds it while the device's active key belongs to that account, and
 it is sent only while the device's mail authority, the lease of that key,
 belongs to it too, and its reply is dropped if that authority changes
-before the reply arrives. It is then planned as the route's own call, so it
-carries the lease and never the device key or a session; a device signed
-in to that owner without a lease of its active key reads nothing, for want
-of the lease.
+before the reply arrives. The broker plans each read with `brokerPlan`,
+from one reading of the device's credentials, before it takes the lease:
+the route's own call, so it carries the lease and never the device key or
+a session; a device signed in to that owner without a lease of its active
+key reads nothing, for want of the lease.
 
 ```quint
 type BrokerRead = AccountList | MailSearch | NotBrokered

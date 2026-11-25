@@ -38,12 +38,22 @@ public final class GoogleBrokerJourney {
       in.transferTo(reply);
       String text = reply.toString(StandardCharsets.UTF_8);
       int split = text.indexOf("\r\n\r\n");
+      if (text.length() < 12) return "closed unanswered";
       return text.substring(9, 12) + " " + (split < 0 ? "" : text.substring(split + 4));
     }
   }
 
   public static String read(GoogleBroker.Endpoint endpoint, String target) throws IOException {
     return ask(endpoint, "GET", target, endpoint.bearer(), "", null);
+  }
+
+  private static String readOnceAdmitted(GoogleBroker.Endpoint endpoint, String target) throws IOException, InterruptedException {
+    for (long until = System.nanoTime() + 10_000_000_000L; ; Thread.sleep(100)) {
+      String reply;
+      try { reply = read(endpoint, target); }
+      catch (java.net.SocketException reset) { reply = "closed unanswered"; }
+      if (!reply.equals("closed unanswered") || System.nanoTime() > until) return reply;
+    }
   }
 
   private static String take(String what, Object value) { return CredentialJson.quote(what) + ":" + CredentialJson.quote(String.valueOf(value)); }
@@ -64,8 +74,10 @@ public final class GoogleBrokerJourney {
     List<String> reported = new CopyOnWriteArrayList<>();
     List<String> seen = new ArrayList<>();
     try (GoogleBrokerHost broker = new GoogleBrokerHost(new GoogleBrokerHost.MailReads() {
-      @Override public Account signedIn() { return signedIn.get(); }
-      @Override public CloudRequests.MailAuthority authority() { return authority.get(); }
+      @Override public GoogleBrokerHost.Standing standing() {
+        Account account = signedIn.get();
+        return new GoogleBrokerHost.Standing(account, account == null ? 0 : OWNER_LEASE.version(), authority.get());
+      }
       @Override public CloudRequests.Outcome read(CloudRequests.MailAuthority expected, String target) {
         RuntimeException failure = custodyFailure.get();
         if (failure != null) throw failure;
@@ -98,6 +110,8 @@ public final class GoogleBrokerJourney {
       seen.add(take("signedOut", read(second, ACCOUNTS)));
       signedIn.set(OWNER_LEASE.account());
       seen.add(take("ownerWithoutLease", read(second, ACCOUNTS)));
+      authority.set(new CloudRequests.MailAuthority(new Account("user-2", "org-1"), 3));
+      seen.add(take("leaseOfAnotherAccount", read(second, ACCOUNTS)));
       authority.set(OWNER_LEASE);
       custodyFailure.set(new IllegalStateException("the secure store could not be read"));
       seen.add(take("custodyFailed", read(second, ACCOUNTS)));
@@ -132,7 +146,8 @@ public final class GoogleBrokerJourney {
       long idleClosed = closedAfterMs(idle.get(0));
       seen.add(take("idleClosedAtDeadline", idleClosed > 3_000 && idleClosed < 9_000));
       for (Socket held : idle) held.close();
-      seen.add(take("readAfterIdle", read(relaunched, ACCOUNTS)));
+      String afterIdle = readOnceAdmitted(relaunched, ACCOUNTS);
+      seen.add(take("readAfterIdle", afterIdle));
       seen.add(take("forwarded", String.join(",", forwarded)));
     }
     System.out.println("{" + String.join(",", seen) + "}");
