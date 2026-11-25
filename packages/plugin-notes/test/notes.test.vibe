@@ -10,7 +10,7 @@ import {
   createNotesClient, noteScheduleText, recordNoteOriginFor, authoredNoteText, noteShareText, parseNoteFormat, decodeNotesOrganizeOperation, findNoteFolder, isNotesOrganizeType, notesOrganizeContextAllowed, notesOrganizeOffered, notesOrganizeRunsDirectly, readNoteFolders, noteLimits, type NotesOrganizeType, NotesReadRefused, selectedNotes, type NotesAuthority, type NotesClaim, type NotesOwner, type NotesReadOperation, type NotesReadPorts, type NotesTarget, type StickyNote,
 } from "@elizaos/plugin-notes-client"
 import { ownerRequestText } from "../src/lookup.vibe"
-import { notesCollection, type NotesFailure, type NotesHost, type VerifyRecordingCleanup } from "../src/service.vibe"
+import { notesCollection, notesServiceClass, type NotesFailure, type NotesHost, type VerifyRecordingCleanup } from "../src/service.vibe"
 import type { NotesStorage } from "../src/store.vibe"
 
 const day = 86_400_000
@@ -289,6 +289,9 @@ it.effect('Keep notes as one collection edited only on the owner\'s words (spec/
   const byNearId = try getting(message("open the note about taco night"), { noteId: plan.value.note.id })
   const shopping = try notes.create({ content: "Taco Night Shopping\nCilantro, onions" })
   const twoNear = try getting(message("open the note about taco night"), { title: "Taco Night" })
+  const editor = (try promise(() => notesServiceClass(notes).start(undefined as never))) as unknown as { matchesSavedEditor(noteId: string, query: string): Promise<boolean> }
+  const opensBy = (query: string) => promise(() => editor.matchesSavedEditor(plan.value.note.id, query))
+  const editorMatches = [try opensBy(plan.value.note.id), try opensBy("Taco Night Plan"), try opensBy("Taco Night"), try opensBy(shopping.value.note.id)]
   const trekIds = [trek.data?.noteId, trekAgain.data?.noteId]
   const offered: unknown = sharedTitle.data?.candidateIds
   const shown: unknown = sharedTitle.data?.candidates
@@ -301,6 +304,7 @@ it.effect('Keep notes as one collection edited only on the owner\'s words (spec/
     [nearTitle.success, nearTitle.data?.code, nearTitle.data?.readOnlyOperation, nearTitle.data?.noteId, nearTitle.data?.awaitingUserInput, nearTitle.data?.candidateIds, nearTitle.text?.includes(`(noteId ${plan.value.note.id})`), nearTitle.text?.includes("carnitas")],
     [byNearId.success, byNearId.data?.noteId],
     [twoNear.success, twoNear.data?.code, twoNear.data?.awaitingUserInput, Array.isArray(twoNear.data?.candidateIds) ? [...twoNear.data.candidateIds].sort() : undefined],
+    editorMatches,
   ], [
     [false, "NOTES_TITLE_NOT_FOUND", true, true, [weekend.value.note.id], [{ id: weekend.value.note.id, title: "Weekend" }], false],
     [true, weekend.value.note.id],
@@ -310,6 +314,7 @@ it.effect('Keep notes as one collection edited only on the owner\'s words (spec/
     [true, "NOTES_NEAR_TITLE", true, undefined, undefined, [plan.value.note.id], true, false],
     [true, plan.value.note.id],
     [false, "NOTES_TITLE_NOT_FOUND", true, [plan.value.note.id, shopping.value.note.id].sort()],
+    [true, true, false, false],
   ])
 
   const camp = try notes.create({ content: "Camp", format: { kind: "list", data: { items: [{ t: "tent", done: false }] } } })
