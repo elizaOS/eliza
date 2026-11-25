@@ -490,23 +490,71 @@ effect function stageDeletion(store: Voicemails, plugin: PhoneNativePlugin, id: 
   return { status: "queued", deletion, listing: try listing(store) }
 }
 
-effect function observe(store: Voicemails, plugin: PhoneNativePlugin, onChange: (refreshed: Promise<VoicemailListing>) => void) {
-  const serial = store.lock.withPermits(1)
-  const handle = try nativeCall(PLUGIN, "addListener", () => plugin.addListener("voicemailChanged", () => onChange(settled(serial(refresh(store, plugin, "AutomaticRead"))))))
-  const listener = handle as { remove(): Promise<void> }
-  nativeCall(PLUGIN, "observeVoicemail", () => plugin.observeVoicemail({ enabled: true })) catch effect (failure) => {
-    try promise(() => listener.remove())
-    throw failure
-  }
-  return async () => {
-    await listener.remove()
-    await settled(nativeCall(PLUGIN, "observeVoicemail", () => plugin.observeVoicemail({ enabled: false })))
-  }
+type VoicemailListener = Awaited<ReturnType<PhoneNativePlugin["addListener"]>>
+
+interface VoicemailLease {
+  active: boolean
+  disablePending: boolean
+  listener: VoicemailListener | undefined
+}
+
+interface VoicemailObservation {
+  readonly lock: Semaphore.Semaphore
+  lease: VoicemailLease | undefined
+}
+
+error VoicemailObservationActive { method: string }
+
+// spec/os/android/voicemail.md, "A retired observer admits no refresh and a replacement waits for acknowledged cleanup"
+effect function retireObservation(observer: VoicemailObservation, plugin: PhoneNativePlugin, lease: VoicemailLease) {
+  if (observer.lease !== lease) return
+  lease.active = false
+  const disabled = lease.disablePending ? try Effect.result(nativeCall(PLUGIN, "observeVoicemail", () => plugin.observeVoicemail({ enabled: false }))) : undefined
+  if (disabled !== undefined && Result.isSuccess(disabled)) lease.disablePending = false
+  const listener = lease.listener
+  const removed = listener === undefined ? undefined : try Effect.result(nativeCall(PLUGIN, "removeListener", () => listener.remove()))
+  if (removed !== undefined && Result.isSuccess(removed)) lease.listener = undefined
+  if (disabled !== undefined && Result.isFailure(disabled)) throw disabled.failure
+  if (removed !== undefined && Result.isFailure(removed)) throw removed.failure
+  observer.lease = undefined
+}
+
+effect function observe(store: Voicemails, observer: VoicemailObservation, plugin: PhoneNativePlugin, onChange: (refreshed: Promise<VoicemailListing>) => void) {
+  return try observer.lock.withPermits(1)(effect {
+    const previous = observer.lease
+    if (previous?.active) throw new VoicemailObservationActive({ method: "observeVoicemail" })
+    if (previous !== undefined) try retireObservation(observer, plugin, previous)
+    const lease: VoicemailLease = { active: false, disablePending: false, listener: undefined }
+    observer.lease = lease
+    const changed = () => {
+      if (!lease.active) return
+      onChange(settled(store.lock.withPermits(1)(effect {
+        if (!lease.active) return try listing(store)
+        return try refresh(store, plugin, "AutomaticRead")
+      })))
+    }
+    const handle = nativeCall(PLUGIN, "addListener", () => plugin.addListener("voicemailChanged", changed)) catch effect (failure) => {
+      observer.lease = undefined
+      throw failure
+    }
+    lease.listener = handle as VoicemailListener
+    lease.disablePending = true
+    nativeCall(PLUGIN, "observeVoicemail", () => plugin.observeVoicemail({ enabled: true })) catch effect (failure) => {
+      try ignore(retireObservation(observer, plugin, lease))
+      throw failure
+    }
+    lease.active = true
+    return () => {
+      lease.active = false
+      return settled(observer.lock.withPermits(1)(retireObservation(observer, plugin, lease)))
+    }
+  })
 }
 
 export function phoneClient(plugin: PhoneNativePlugin = telephonyPlugin(), journal: ActionJournalPlugin = actionJournalPlugin()): PhoneClient {
   const store = Effect.runSync(held(journal))
   const serial = store.lock.withPermits(1)
+  const observer: VoicemailObservation = { lock: Semaphore.makeUnsafe(1), lease: undefined }
   return {
     imageCapability: () => settled(checked("imageCapability", parseImageCapability, () => plugin.imageCapability())),
     status: () => settled(readStatus(plugin)),
@@ -523,7 +571,7 @@ export function phoneClient(plugin: PhoneNativePlugin = telephonyPlugin(), journ
     voicemailPcm: (id) => settled(serial(pcm(store, plugin, id))),
     markVoicemailHeard: (id) => settled(serial(markHeard(store, plugin, id))),
     deleteVoicemail: (id, witness) => settled(serial(stageDeletion(store, plugin, id, witness))),
-    observeVoicemail: (onChange) => settled(observe(store, plugin, onChange)),
+    observeVoicemail: (onChange) => settled(observe(store, observer, plugin, onChange)),
   }
 }
 

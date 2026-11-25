@@ -35,7 +35,6 @@ export interface VoiceTurn {
 export interface VoiceReplyAction {
   readonly kind: string
   readonly validatedCard: boolean
-  readonly verbatimAsked: boolean
 }
 
 export interface VoiceReply {

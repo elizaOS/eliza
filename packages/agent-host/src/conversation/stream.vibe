@@ -17,7 +17,7 @@ module node {
     readonly actionResults: readonly ActionResultFrame[]; readonly taskChoices?: readonly unknown[]; readonly failureKind?: string
     readonly cloudCode?: string; readonly planAction?: "sign-in" | "funding" | "retry"; readonly retryAfterMs?: number
     readonly cutOffEffect?: "applied"
-    readonly action?: { readonly kind: string; readonly validatedCard: boolean; readonly verbatimAsked: boolean }
+    readonly action?: { readonly kind: string; readonly validatedCard: boolean }
   }
 
   export interface ErrorFrame { readonly type: "error"; readonly code: string; readonly message: string }

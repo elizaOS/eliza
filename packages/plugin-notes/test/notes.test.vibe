@@ -7,7 +7,7 @@ import { bindIncomingMessagePersistence, satisfiesContextGate, stringToUuid, typ
 import { noteChangeResult, notesPlugin, notesRefusalResult, notesRoutes } from "../src/agent.vibe"
 import { notesDeviceFamily } from "../src/device-proposals.vibe"
 import {
-  createNotesClient, noteScheduleText, recordNoteOriginFor, authoredNoteText, noteShareText, parseNoteFormat, decodeNotesOrganizeOperation, findNoteFolder, isNotesOrganizeType, notesOrganizeContextAllowed, notesOrganizeOffered, notesOrganizeRunsDirectly, readNoteFolders, noteLimits, type NotesOrganizeType, NotesReadRefused, selectedNotes, type NotesAuthority, type NotesClaim, type NotesOwner, type NotesReadOperation, type NotesReadPorts, type NotesTarget, type StickyNote,
+  createNotesClient, noteScheduleText, recordNoteOriginFor, authoredNoteText, noteShareText, parseNoteFormat, decodeNotesOrganizeOperation, findNoteFolder, isNotesOrganizeType, notesOrganizeContextAllowed, notesOrganizeOffered, notesOrganizeRunsDirectly, readNoteFolders, noteLimits, type NotesOrganizeType, NotesReadRefused, selectedNotes, StoredDocument, type NotesAuthority, type NotesClaim, type NotesOwner, type NotesReadOperation, type NotesReadPorts, type NotesTarget, type StickyNote,
 } from "@elizaos/plugin-notes-client"
 import { ownerRequestText } from "../src/lookup.vibe"
 import { notesCollection, notesServiceClass, type NotesFailure, type NotesHost, type VerifyRecordingCleanup } from "../src/service.vibe"
@@ -382,6 +382,12 @@ it.effect('Import the earlier notes once, exactly, and never over the collection
   const broken = fixture()
   broken.prior.raw = JSON.stringify({ ...earlier, notes: [saved, saved] })
   assert.equal(try code(notesOver(broken, { prior: true }).snapshot()), "NOTES_STORE_UNAVAILABLE")
+  broken.prior.raw = JSON.stringify({
+    ...earlier,
+    notes: [{ ...saved, format: { kind: "voice", data: { audioId: "audio-retained", durationMs: 1000 } } }],
+    trashRecordingCleanup: [{ operationId: turnId(1), noteId: "erased-voice", audioId: "audio-retained", deletedAt: earlier.persistedAt }],
+  })
+  assert.equal(try code(notesOver(broken, { prior: true }).snapshot()), "NOTES_STORE_UNAVAILABLE")
   broken.prior.raw = "{"
   assert.equal(try code(notesOver(broken, { prior: true }).snapshot()), "NOTES_STORE_UNAVAILABLE")
   assert.isUndefined(broken.kept.value)
@@ -389,21 +395,27 @@ it.effect('Import the earlier notes once, exactly, and never over the collection
   assert.deepEqual(try notesOver(absent, { prior: true }).snapshot(), { notes: [], revision: 0, trash: [] })
 })
 
-it.effect('Erase only a reviewed, unshared deletion, sweep after three days and retire a recording only on the device\'s literal proof (spec/notes/trash.md, "Story: Let deleted notes expire after three days when I choose that"; spec/notes/trash.md, "Story: Erase or recover only the recording of my reviewed note"; spec/notes/trash.md, "The proof of erase comes from the service\'s own verifier, else the host\'s verifier found when the cleanup is acknowledged, and only a literal true is proof")', effect () => {
+it.effect('Erase only a reviewed, unshared deletion, sweep after three days and retire a recording only on the device\'s literal proof (spec/notes/trash.md, "Story: Let deleted notes expire after three days when I choose that"; spec/notes/trash.md, "Story: Erase or recover only the recording of my reviewed note"; spec/notes/trash.md, "The proof of erase comes from the service\'s own verifier, else the host\'s verifier found when the cleanup is acknowledged, and only a literal true is proof"; spec/notes/trash.md, "A pending cleanup reserves the note and recording until its exact receipt is acknowledged")', effect () => {
   const f = fixture()
   const notes = notesOver(f, { threeDayTrash: true })
-  const memo = try notes.create({ content: "", format: voice("memo", "audio-memo") })
+  const flatMemo = { kind: "voice", data: { audioId: "audio-memo", durationMs: 1000 } } satisfies NonNullable<StickyNote["format"]>
+  const memo = try notes.create({ content: "Stopped recording", format: flatMemo })
   const shared = try notes.create({ content: "", format: voice("copy", "audio-shared") })
-  try notes.create({ content: "", format: voice("live", "audio-shared") })
+  const live = try notes.create({ content: "Saved copy", format: { kind: "voice", data: { audioId: "audio-shared", durationMs: 1000 } } })
+  const unclearFormat = voice("unclear", "audio-nested")
+  const unclear = try notes.create({ content: "", format: { ...unclearFormat, data: { ...unclearFormat.data, audioId: "audio-flat" } } })
   const plain = try notes.create({ content: "Old list" })
   try notes.delete({ id: memo.value.note.id })
   try notes.delete({ id: shared.value.note.id })
+  try notes.delete({ id: unclear.value.note.id })
   const trashed = try notes.delete({ id: plain.value.note.id })
   const rows = trashed.snapshot.trash ?? []
   const memoRow = rows.find((row) => row.note.id === memo.value.note.id)!
   const sharedRow = rows.find((row) => row.note.id === shared.value.note.id)!
+  const unclearRow = rows.find((row) => row.note.id === unclear.value.note.id)!
   assert.equal(try code(notes.eraseTrash({ scope: "entry", expectedRevision: trashed.snapshot.revision - 1, id: memoRow.note.id, deletedAt: memoRow.deletedAt })), "NOTES_EDIT_CONFLICT")
   assert.equal(try code(notes.eraseTrash({ scope: "entry", expectedRevision: trashed.snapshot.revision, id: sharedRow.note.id, deletedAt: sharedRow.deletedAt })), "NOTES_TRASH_RECORDING_UNAVAILABLE")
+  assert.equal(try code(notes.eraseTrash({ scope: "entry", expectedRevision: trashed.snapshot.revision, id: unclearRow.note.id, deletedAt: unclearRow.deletedAt })), "NOTES_TRASH_RECORDING_UNAVAILABLE")
 
   f.kept.loseNext = true
   assert.equal(try code(notes.eraseTrash({ scope: "entry", expectedRevision: trashed.snapshot.revision, id: memoRow.note.id, deletedAt: memoRow.deletedAt })), "NOTES_COMMIT_UNCONFIRMED")
@@ -412,7 +424,43 @@ it.effect('Erase only a reviewed, unshared deletion, sweep after three days and 
   const pending = try notes.readTrashRecordingCleanup()
   assert.deepEqual(pending.map((row) => [row.noteId, row.audioId]), [[memo.value.note.id, "audio-memo"]])
   const receipt = pending[0]!
+  const beforeReuse = try notes.snapshot()
+  const alias = { ...unclearFormat, data: { ...unclearFormat.data, audioId: receipt.audioId } }
+  assert.deepEqual([
+    try code(notes.create({ content: "Reuse recording", format: flatMemo })),
+    try code(notes.update({ id: live.value.note.id }, { format: alias }, beforeReuse.revision)),
+  ], ["NOTES_TRASH_RECORDING_UNAVAILABLE", "NOTES_TRASH_RECORDING_UNAVAILABLE"])
+  assert.deepEqual(try notes.snapshot(), beforeReuse)
 
+  const kept = try Schema.decodeUnknownEffect(StoredDocument)(try promise(() => f.storage.get()))
+  const earlier = fixture()
+  const copy = { ...live.value.note, id: "retained-copy", format: flatMemo }
+  earlier.kept.value = { ...kept, trash: [...kept.trash, { note: copy, deletedAt: receipt.deletedAt }] }
+  const recovery = notesOver(earlier, { threeDayTrash: true, verify: async () => true })
+  const retained = try recovery.snapshot()
+  assert.equal(retained.trash?.at(-1)?.note.id, copy.id)
+  assert.deepEqual([
+    try code(recovery.restore({ id: copy.id, expectedRevision: retained.revision, deletedAt: receipt.deletedAt })),
+    try code(recovery.canVerifyRecordingCleanup(receipt)),
+    try code(recovery.acknowledgeTrashRecordingCleanup(receipt)),
+  ], ["NOTES_TRASH_RECORDING_UNAVAILABLE", "NOTES_TRASH_RECORDING_UNAVAILABLE", "NOTES_TRASH_RECORDING_UNAVAILABLE"])
+  assert.deepEqual(try recovery.readTrashRecordingCleanup(), [receipt])
+
+  const cancelled = new AbortController()
+  const another = { ...receipt, operationId: turnId(9) }
+  assert.deepEqual([
+    try notes.canVerifyRecordingCleanup(receipt),
+    try notes.canVerifyRecordingCleanup(another),
+  ], [true, false])
+  f.hostVerifier.verify = async () => {
+    cancelled.abort()
+    return true
+  }
+  assert.isFalse(try notes.acknowledgeTrashRecordingCleanup(receipt, cancelled.signal))
+  assert.isFalse(try notes.canVerifyRecordingCleanup(receipt, cancelled.signal))
+  assert.deepEqual(try notes.readTrashRecordingCleanup(), [receipt])
+
+  f.hostVerifier.verify = undefined
   assert.equal(try code(notes.acknowledgeTrashRecordingCleanup(receipt)), "NOTES_TRASH_RECORDING_UNAVAILABLE")
   f.hostVerifier.verify = async () => "true"
   assert.equal(try code(notes.acknowledgeTrashRecordingCleanup(receipt)), "NOTES_TRASH_RECORDING_UNAVAILABLE")
@@ -431,10 +479,10 @@ it.effect('Erase only a reviewed, unshared deletion, sweep after three days and 
   assert.deepEqual(try notes.readTrashRecordingCleanup(), [])
 
   f.clock.ms = start + 3 * day - 1
-  assert.deepEqual((try notes.snapshot()).trash?.map((row) => row.note.id), [shared.value.note.id, plain.value.note.id])
+  assert.deepEqual((try notes.snapshot()).trash?.map((row) => row.note.id), [shared.value.note.id, unclear.value.note.id, plain.value.note.id])
   f.clock.ms = start + 3 * day
   assert.equal(try code(notes.restore({ id: plain.value.note.id, expectedRevision: (try notes.snapshot()).revision })), "NOTES_NOT_FOUND")
-  assert.deepEqual((try notes.snapshot()).trash?.map((row) => row.note.id), [shared.value.note.id])
+  assert.deepEqual((try notes.snapshot()).trash?.map((row) => row.note.id), [shared.value.note.id, unclear.value.note.id])
   assert.isTrue(f.published.includes("trash:expired"))
 })
 

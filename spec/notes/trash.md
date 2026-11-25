@@ -171,6 +171,31 @@ pure def lawRecordingCleanupFollowsErase(commit: EraseCommit, hasAudio: bool): b
   eraseOutcome(commit, hasAudio).cleanupPending iff (eraseOutcome(commit, hasAudio).erased and hasAudio)
 ```
 
+### A pending cleanup reserves the note and recording until its exact receipt is acknowledged
+
+Notes recognizes both the saved voice format with a matching nested
+audio ID and recording ID, and the earlier phone's flat audio ID. When the
+identifiers disagree or the attachment cannot be read as exact, the
+note stays in Trash. All plausible IDs in a saved voice note count when
+checking whether another note still holds its recording.
+
+From the commit that erases the note until the exact acknowledgment,
+no write can add a reference to the pending audio, reuse the erased note
+ID, or restore a note with a conflicting reference. A conflict left by
+an earlier version remains readable so it can be repaired. The store
+refuses to acknowledge that cleanup while any saved note or Trash entry
+still holds the ID or the recording. The device host can ask whether an
+exact receipt is ready for verification. Notes answers from one store
+read, checking both the pending receipt and references in that copy. A
+cancelled lookup never admits verification.
+
+```quint
+pure def recordingReservationAllows(reserved: bool, existingConflict: bool): bool =
+  not(reserved) or existingConflict
+pure def lawCleanupReservationRefusesNewReferences(reserved: bool): bool =
+  recordingReservationAllows(reserved, false) iff not(reserved)
+```
+
 ### A recording's cleanup is acknowledged only with the device's proof that the audio is gone
 
 After an erase leaves a recording cleanup pending, the owner's store
