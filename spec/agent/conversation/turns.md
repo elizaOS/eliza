@@ -270,12 +270,12 @@ answer, another kind, and a limit the binding enforced from an earlier
 refusal. The origin is never part of the reply's text.
 
 ```quint
-pure def limitOriginOn(stored: str, origin: B::LimitOrigin): str =
-  if (stored == B::failureName(B::LimitReached({ retryAt: 0 }))) B::limitOriginName(origin) else ""
-pure val storedValues = Set("", "limit_reached", "provider_issue", "aborted")
+pure def limitOriginOn(storedKind: str, origin: B::LimitOrigin): str =
+  if (storedKind == B::failureName(B::LimitReached({ retryAt: 0 }))) B::limitOriginName(origin) else ""
+pure val storedKindValues = Set("", "limit_reached", "provider_issue", "aborted")
 pure val originValues = Set(B::NoLimitOrigin, B::ProviderSetLimit, B::CloudSetLimit)
-pure def lawOnlyARateLimitedReplyStoresAnOrigin(stored: str, origin: B::LimitOrigin): bool =
-  limitOriginOn(stored, origin) != "" implies stored == "limit_reached"
+pure def lawOnlyARateLimitedReplyStoresAnOrigin(storedKind: str, origin: B::LimitOrigin): bool =
+  limitOriginOn(storedKind, origin) != "" implies storedKind == "limit_reached"
 pure def lawARateLimitedReplyKeepsTheOriginTheRefusalNamed(origin: B::LimitOrigin): bool =
   limitOriginOn("limit_reached", origin) == B::limitOriginName(origin)
 ```
