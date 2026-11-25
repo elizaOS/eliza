@@ -22,8 +22,8 @@ export const ReminderPlan = Schema.Struct({
   title: Text(200),
   body: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(2_000))),
   due: ReminderDue,
-  destination: Destination,
-  alert: Alert,
+  destination: Schema.optionalKey(Destination),
+  alert: Schema.optionalKey(Alert),
 })
 export type ReminderPlan = typeof ReminderPlan.Type
 
