@@ -44,6 +44,7 @@ export interface BootOptions {
   readonly http?: boolean
   readonly env?: Readonly<Record<string, string>>
   readonly state?: Scratch
+  readonly entry?: string
 }
 
 export const deviceKey = "device-key-1"
@@ -69,6 +70,7 @@ export effect function boot(options: BootOptions = {}) {
     frame,
     transport,
     env: { ...options.env, ...(cloud === undefined ? {} : { NODE_EXTRA_CA_CERTS: cloud.caFile }) },
+    ...(options.entry === undefined ? {} : { entry: options.entry }),
   })
   return { child, state, frame, transport, cloud } satisfies Booted
 }
