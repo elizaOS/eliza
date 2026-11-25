@@ -3,10 +3,10 @@ import { identityOf, profileAccepted, type IdentityRead, type StoreIdentity } fr
 import type { AccountStatus } from "../../gen/cloud__identity__accounts.effect.vibe"
 import { decide, type OperatorCommand, type OperatorVerdict } from "../../gen/cloud__operator.effect.vibe"
 import { refusalBody, type Refusal } from "../http/refusal.vibe"
-import { deploymentLayer, Deployment, parseEnvironment, readProfile, specProfile } from "@elizaos/cloud"
+import { deploymentLayer, Deployment, parseEnvironment, readProfile, specProfile, type CloudEnvironment } from "@elizaos/cloud"
 import { sha256Hex } from "../shared/credential-crypto.vibe"
 import { RowCorrupt } from "../store/rows.vibe"
-import { parseStoreLocation, readIdentity, Store, storeLayer, type StoreFailure, toText, type Tx } from "../store/store.vibe"
+import { migrate, observeIdentity, parseStoreLocation, readIdentity, Store, storeLayer, type DatabaseIdentity, type StoreFailure, type StoreLocation, toText, type Tx } from "../store/store.vibe"
 import { commands as accounts } from "./accounts.vibe"
 import { commands as clients, seedClients } from "./clients.vibe"
 import { commands as deletion } from "./deletion.vibe"
@@ -183,6 +183,14 @@ effect function readDocument(handler: OperatorCommandHandler, flags: OperatorFla
   return document
 }
 
+effect function acceptedProfile(file: string, command: OperatorCommand) {
+  return readProfile(file) catch effect (invalid) => {
+    try annotateLogs(logError("the profile is refused"), { problem: invalid.problem })
+    try report(outcomeOf(decide(false, "UnreadableDatabase", command, "Unopened", false, 0), []))
+    throw invalid
+  }
+}
+
 export effect function runOperator(command: string, rest: ReadonlyArray<string>) {
   const args = [command, ...rest]
   const handler = try commandOf(args, commandTable())
@@ -190,22 +198,28 @@ export effect function runOperator(command: string, rest: ReadonlyArray<string>)
   const file = try flags.required("profile")
   const environment = try parseEnvironment(try flags.required("environment"))
   const location = try parseStoreLocation(try flags.required("store"))
-  const profile = readProfile(file) catch effect (invalid) => {
-    try annotateLogs(logError("the profile is refused"), { problem: invalid.problem })
-    return undefined
-  }
-  if (profile === undefined) return try report(outcomeOf(decide(false, "UnreadableDatabase", handler.operatorCommand, "Unopened", false, 0), []))
+  const profile = try acceptedProfile(file, handler.operatorCommand)
   const document = try readDocument(handler, flags)
   provide storeLayer(location), deploymentLayer(profile, environment), FetchHttpClient.layer {
     try report(try carryOut(handler, flags, document))
   }
 }
 
-export effect function guardMigration() {
-  const deployment = try Deployment
-  const read = try (try Store).transaction(readDatabaseIdentity)
-  if (read.tag === "ReadDigest") {
+export function identityRead(identity: DatabaseIdentity, expected: string): IdentityRead {
+  switch (identity.kind) {
+    case "unreadable": return { tag: "UnreadableIdentity" }
+    case "fresh": return { tag: "ReadDigest", digest: expected }
+    case "identified": return { tag: "ReadDigest", digest: identity.digest }
+  }
+}
+
+export effect function migrateDeployment(file: string, environment: CloudEnvironment, location: StoreLocation) {
+  const profile = try acceptedProfile(file, "Migrate")
+  provide storeLayer(location), deploymentLayer(profile, environment) {
+    const deployment = try Deployment
+    const read = identityRead(try observeIdentity(), deployment.settings.databaseIdentity)
     try report(outcomeOf(decide(profileAccepted(specProfile(deployment.profile)), identityIn(deployment, read), "Migrate", "Unopened", false, 0), []))
+    return try migrate({ digest: deployment.settings.databaseIdentity, environment, now: try Clock.currentTimeMillis })
   }
 }
 

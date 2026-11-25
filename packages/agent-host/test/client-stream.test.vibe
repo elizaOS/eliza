@@ -18,6 +18,7 @@ module node {
   import type { AgentPlugin } from "../src/host/module.vibe"
   import { registerDeviceProposalFamily, unoffered } from "../src/device-actions/proposal/registry.vibe"
   import { processTurn } from "../src/conversation/turns.vibe"
+  import { conversationStore } from "../src/conversation/conversations.vibe"
   import { account } from "./support/scratch.ts"
 
   export interface Read {
@@ -134,11 +135,11 @@ module node {
   }
 
   export async function unheardCueTurn(runtime: AgentRuntime, roomId: string, request: string, reports: false | undefined): Promise<readonly string[]> {
-    const room = await runtime.getRoom(roomId as UUID)
-    if (!room) throw new Error("The conversation has no room")
     const owner = { user: validateUuid(account.userId) ?? stringToUuid(`account:${account.userId}`), world: stringToUuid(`device:${runtime.agentId}`) }
+    const conversation = await conversationStore(runtime, owner).findByRoom(roomId as UUID)
+    if (conversation === undefined) throw new Error("The conversation has no room")
     const offered: string[] = []
-    await processTurn(runtime, owner, room, request, AbortSignal.timeout(60_000), {
+    await processTurn(runtime, owner, conversation, request, AbortSignal.timeout(60_000), {
       display: { restart: () => undefined, acknowledge: (cue) => { offered.push(cue); return reports }, tool: () => undefined, ready: () => undefined },
     })
     return offered

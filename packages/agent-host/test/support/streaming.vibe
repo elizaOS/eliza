@@ -3,7 +3,7 @@ import type { UUID } from "@elizaos/core"
 import type { CloudFake, ScriptedReply } from "./cloud-fake.ts"
 import { call, cloudFake, deviceKey, startInProcess, type InProcess } from "./kernel.vibe"
 
-export interface Conversation { readonly id: string; readonly roomId: UUID; readonly title: string }
+export interface Conversation { readonly id: string; readonly roomId: UUID; readonly title: string; readonly createdAt: unknown; readonly updatedAt: unknown }
 export interface Message { readonly id: string; readonly role: string; readonly text: string; readonly timestamp: number }
 
 schema Created { conversation: { id: string; roomId: string } }

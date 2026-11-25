@@ -33,6 +33,9 @@ export interface Change<A> {
 }
 
 export type NoteTarget = { readonly id: string } | { readonly selector: NoteSelector; readonly value: string }
+export type DeleteTarget<Revision> =
+  | { readonly id: string; readonly expectedRevision?: Revision }
+  | (Exclude<NoteTarget, { readonly id: string }> & { readonly expectedRevision?: never })
 
 export interface Instant {
   readonly ms: number
@@ -286,7 +289,8 @@ export effect function updateIn(document: NotesDocument, target: NoteTarget, pat
   return { next: { ...document, notes }, value: updated, mutation: "note:updated" }
 }
 
-export effect function deleteIn(document: NotesDocument, target: NoteTarget, at: Instant, pick?: ModelPick): Change<StickyNote>!NotesRefused {
+export effect function deleteIn(document: NotesDocument, target: DeleteTarget<number>, at: Instant, pick?: ModelPick): Change<StickyNote>!NotesRefused {
+  if ("id" in target) try requireRevision(document, false, target.expectedRevision)
   const index = try pickedIndex(document.notes, target, pick)
   const existing = document.notes[index]
   if (existing === undefined) throw refused("NOTES_NOT_FOUND", "The resolved note is missing.")

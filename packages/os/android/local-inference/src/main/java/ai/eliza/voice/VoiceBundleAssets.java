@@ -31,8 +31,8 @@ import org.json.JSONObject;
  * languages, each a Paradee-family GGUF in the bundle (for example
  * {@code "es": "tts/paradee/delibes-8m-eses.gguf"}, Castilian Spanish, which uses
  * the bundle's eSpeak NG data and no lexicon). A v2 manifest without
- * {@code voices} (a build with inputs.json {@code spanish.enabled} false) and an
- * {@code eliza-paradee-voice-v1} manifest install with no extra voices.
+ * {@code voices} (a build with inputs.json {@code spanish.enabled} false)
+ * installs with no extra voices.
  *
  * <p>With the {@link #MODELS_IN_PLACE_METADATA} meta-data set to true, a
  * {@code .gguf} or {@code .lex} file under {@code asr/} or {@code tts/} that the
@@ -45,8 +45,7 @@ import org.json.JSONObject;
  */
 public final class VoiceBundleAssets {
     public static final String ASSET_ROOT = "paradee-voice/v1";
-    private static final String FORMAT = "eliza-paradee-voice-v1";
-    private static final String FORMAT_V2 = "eliza-paradee-voice-v2";
+    private static final String FORMAT = "eliza-paradee-voice-v2";
     public static final String DIRECTORY_METADATA = "ai.eliza.voice.BUNDLE_DIRECTORY";
     /** Boolean meta-data: point the native loaders at the APK's model assets instead of copying them. */
     public static final String MODELS_IN_PLACE_METADATA = "ai.eliza.voice.MODELS_IN_PLACE";
@@ -62,7 +61,7 @@ public final class VoiceBundleAssets {
         public final File lexicon;
         /** Directory that contains {@code espeak-ng-data}, or null. */
         public final File espeakDir;
-        /** More speech languages (v2 manifests): language code to its GGUF. Never null. */
+        /** More speech languages: language code to its GGUF. Never null. */
         public final java.util.Map<String, File> voices;
 
         Installation(File root, File model, File lexicon, File espeakDir) {
@@ -127,18 +126,18 @@ public final class VoiceBundleAssets {
         try {
             JSONObject manifest = new JSONObject(new String(manifestBytes, StandardCharsets.UTF_8));
             String format = manifest.getString("format");
-            if (!FORMAT.equals(format) && !FORMAT_V2.equals(format)) throw new IOException("Unsupported voice bundle");
+            if (!FORMAT.equals(format)) throw new IOException("Unsupported voice bundle");
             return manifest;
         } catch (org.json.JSONException error) {
             throw new IOException("Invalid voice bundle manifest", error);
         }
     }
 
-    /** Extra speech languages (v2 manifests only) to their bundle paths; English is the default voice. */
+    /** Extra speech languages to their bundle paths; English is the default voice. */
     private static java.util.Map<String, String> voices(JSONObject manifest) throws IOException {
         java.util.Map<String, String> voices = new java.util.TreeMap<>();
         try {
-            JSONObject extra = FORMAT_V2.equals(manifest.getString("format")) ? manifest.optJSONObject("voices") : null;
+            JSONObject extra = manifest.optJSONObject("voices");
             if (extra != null) {
                 for (java.util.Iterator<String> it = extra.keys(); it.hasNext(); ) {
                     String language = it.next();

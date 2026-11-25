@@ -567,7 +567,10 @@ export const NOTES_CAPABILITIES: ViewCapability[] = [
     color: { type: "string", enum: ["yellow", "green", "rose", "slate"], description: "Replacement color." },
     expectedRevision: { type: "integer", required: true, minimum: 0, description: "Revision of the snapshot this edit was prepared from." },
   } },
-  { id: "delete-note", description: "Move one note to Trash by ID, exact first-line label or unique text.", params: noteTargetParameters() },
+  { id: "delete-note", description: "Move a note to Trash by ID, exact first-line label or unique text. A reviewed deletion supplies the exact ID and expected revision.", params: {
+    ...noteTargetParameters(),
+    expectedRevision: { type: "integer", minimum: 0, description: "Revision of the complete read that showed the exact note to delete." },
+  } },
   { id: "clear-notes", description: "Move every note to Trash after the owner confirmed it, at the current revision.", params: {
     confirm: { type: "boolean", required: true, enum: [true], description: "True only after the owner confirmed deleting every note." },
     expectedRevision: { type: "integer", required: true, minimum: 0, description: "Current notes revision from the latest snapshot." },
@@ -625,7 +628,11 @@ effect function interactWith(notes: NotesCollection, capability: string, params:
     case "delete-note": {
       const target = interactTarget(params)
       if (target === undefined) return noTarget
-      const deleted = try notes.delete(target)
+      const revision = params.expectedRevision
+      if (revision !== undefined && (!("id" in target) || params.title !== undefined || params.query !== undefined)) {
+        return { success: false, text: "Identify the reviewed note by exact ID when supplying expectedRevision.", code: "NOTES_VALIDATION_FAILED" }
+      }
+      const deleted = try notes.delete("id" in target ? { ...target, expectedRevision: revision } : target)
       return done("Moved to Trash", deleted.value, deleted.snapshot)
     }
     case "restore-note": {
@@ -673,7 +680,10 @@ function bodyOf(input: RouteInput): Params {
 
 export function notesRoutes(notes: NotesCollection): LocalRoute[] {
   return [
-    { method: "GET", path: "/api/notes/state", handler: ({ signal }) => answered(notes.snapshot(), signal) },
+    { method: "GET", path: "/api/notes/state", handler: ({ signal }) => answered(effect {
+      const snapshot = try notes.snapshot()
+      return { ...snapshot, deleteAtRevision: true }
+    }, signal) },
     {
       method: "POST", path: "/api/notes/interact", maxBodyBytes: 600_000,
       handler: async (input) => {
