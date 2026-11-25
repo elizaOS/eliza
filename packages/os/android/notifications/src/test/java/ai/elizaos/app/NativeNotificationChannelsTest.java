@@ -1,8 +1,10 @@
-// spec/os/android/notificationProjection.md, "An occurrence alert leaves the updates channel only while the owner left that channel as the host made it"
+// spec/os/android/notificationProjection.md, "An occurrence alert leaves the updates channel only while the owner left that channel as the host made it"; spec/os/android/notificationMirror.md, "A host with account custody activates collection only for the native owner bound to its policy"
 package ai.elizaos.app;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotEquals;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.robolectric.Shadows.shadowOf;
@@ -14,8 +16,12 @@ import android.app.NotificationChannelGroup;
 import android.app.NotificationManager;
 import android.content.Context;
 import android.os.Build;
+import ai.eliza.plugins.notifications.NotificationMirror;
+import ai.eliza.plugins.notifications.NotificationMirrorConfig;
+import ai.eliza.plugins.notifications.NotificationMirrorListenerService;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 import org.json.JSONObject;
 import org.junit.After;
 import org.junit.Before;
@@ -61,6 +67,50 @@ public final class NativeNotificationChannelsTest {
 
   private String occurrenceChannel() {
     return NativeNotificationChannels.resolveReminderChannel(manager, "high", "occurrence").getId();
+  }
+
+  @Test public void notificationConsentSurvivesOnlyTheSameOwnerAndClearConsumesItsRevision() throws Exception {
+    AtomicReference<String> owner = new AtomicReference<>("one");
+    NotificationMirrorConfig config = new NotificationMirrorConfig("owner-scoped-mirror", "owner-scoped-history",
+        "owner-scoped-history.enc", NotificationMirrorListenerService.class);
+    NotificationMirror mirror = new NotificationMirror(config, ignored -> owner.get());
+    assertTrue(mirror.reconcileOwner(context));
+    String blank = mirror.status(context).getString("revision");
+    String consent = mirror.update(context, new JSONObject().put("expectedRevision", blank)
+        .put("enabled", true).put("history", true)).getString("revision");
+    mirror.pause(context, true);
+
+    NotificationMirror restarted = new NotificationMirror(config, ignored -> owner.get());
+    owner.set(null);
+    assertFalse(restarted.reconcileOwner(context));
+    assertThrows(IllegalStateException.class, () -> restarted.status(context));
+    assertThrows(IllegalStateException.class, () -> restarted.history(context));
+    owner.set("one");
+    assertTrue(restarted.reconcileOwner(context));
+    JSONObject restored = restarted.status(context);
+    assertEquals(consent, restored.getString("revision"));
+    assertTrue(restored.getBoolean("enabled"));
+    assertTrue(restored.getBoolean("history"));
+    assertTrue(restored.getBoolean("paused"));
+
+    String resumed = restarted.resumeAt(context, consent).getString("revision");
+    assertNotEquals(consent, resumed);
+    assertThrows(IllegalStateException.class, () -> restarted.clearHistoryBoundary(context, consent));
+    restarted.clearHistoryBoundary(context, resumed);
+    String cleared = restarted.status(context).getString("revision");
+    assertNotEquals(resumed, cleared);
+    assertThrows(IllegalStateException.class, () -> restarted.clearHistoryBoundary(context, resumed));
+
+    owner.set("two");
+    assertThrows(IllegalStateException.class, () -> restarted.status(context));
+    assertThrows(IllegalStateException.class, () -> restarted.clearHistoryBoundary(context, cleared));
+    assertTrue(restarted.reconcileOwner(context));
+    JSONObject different = restarted.status(context);
+    assertNotEquals(cleared, different.getString("revision"));
+    assertFalse(different.getBoolean("enabled"));
+    assertFalse(different.getBoolean("history"));
+    assertEquals(0, different.getJSONArray("apps").length());
+    assertThrows(IllegalStateException.class, () -> restarted.resumeAt(context, cleared));
   }
 
   @Test public void hostAssignedGroupIsNotAnOccurrenceCustomisation() throws Exception {

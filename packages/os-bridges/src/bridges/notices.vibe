@@ -235,7 +235,7 @@ export function noticesClient(options: NoticesClientOptions = {}): NoticesClient
     resumeMirror: (expectedRevision) => settled(call("resumeCrossApp", Mirror, () => plugin.resumeCrossApp({ expectedRevision }))),
     openNotificationAccess: () => done("openNotificationAccess", () => plugin.openNotificationAccess()),
     mirrorHistory: () => settled(call("notificationHistory", History, () => plugin.notificationHistory())).then((reply) => reply.items),
-    clearMirrorHistory: () => done("clearNotificationHistory", () => plugin.clearNotificationHistory()),
+    clearMirrorHistory: (expectedRevision) => done("clearNotificationHistory", () => plugin.clearNotificationHistory({ expectedRevision })),
     list: () => settled(call("list", Rows, () => plugin.list())),
     open: (row) => done("open", () => plugin.open(row)),
     dismiss: (row) => done("dismiss", () => plugin.dismiss(row)),

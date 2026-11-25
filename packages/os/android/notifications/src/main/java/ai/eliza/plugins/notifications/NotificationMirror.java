@@ -28,6 +28,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import javax.crypto.Cipher;
@@ -47,9 +48,16 @@ import org.json.JSONObject;
  */
 public final class NotificationMirror {
   private static final String HISTORY_CLEANUP = "historyCleanupPending";
+  private static final String OWNER = "policyOwner";
+
+  @FunctionalInterface
+  public interface OwnerAdmission {
+    String currentOwner(Context context);
+  }
 
   public final Object lock = new Object();
   private final NotificationMirrorConfig config;
+  private final OwnerAdmission ownerAdmission;
   private final Map<String, Entry> entries = new LinkedHashMap<>();
   private final Set<String> historyFailures = new HashSet<>();
   private final Set<String> unconfirmedHistoryCleanup = new HashSet<>();
@@ -64,9 +72,13 @@ public final class NotificationMirror {
     }
   }
   public NotificationMirror(NotificationMirrorConfig config) {
+    this(config, null);
+  }
+  public NotificationMirror(NotificationMirrorConfig config, OwnerAdmission ownerAdmission) {
     if (config == null)
       throw new IllegalArgumentException("Notification mirror configuration is required");
     this.config = config;
+    this.ownerAdmission = ownerAdmission;
   }
   public NotificationMirrorConfig config() {
     return config;
@@ -90,6 +102,75 @@ public final class NotificationMirror {
   public long eventGeneration() {
     return generation;
   }
+  private String currentOwner(Context c) {
+    try {
+      String owner = ownerAdmission.currentOwner(c);
+      return owner == null || owner.isEmpty() ? null : owner;
+    } catch (RuntimeException unavailable) {
+      return null;
+    }
+  }
+  private boolean ownerBound(Context c) {
+    if (ownerAdmission == null)
+      return true;
+    String owner = currentOwner(c);
+    return owner != null && owner.equals(prefs(c).getString(OWNER, null));
+  }
+  private void requireOwner(Context c) {
+    if (!ownerBound(c))
+      throw new IllegalStateException("Notification collection owner is unavailable");
+  }
+  public boolean reconcileOwner(Context c) throws Exception {
+    synchronized (lock) {
+      if (ownerAdmission == null)
+        return true;
+      String owner = currentOwner(c);
+      if (owner == null) {
+        invalidate();
+        detach();
+        return false;
+      }
+      SharedPreferences preferences = prefs(c);
+      if (!owner.equals(preferences.getString(OWNER, null))) {
+        retireOwner(c);
+        if (!Objects.equals(owner, currentOwner(c)))
+          return false;
+        if (!preferences.edit().putString(OWNER, owner).putBoolean("paused", false).commit())
+          throw new IOException("Notification collection owner could not be recorded");
+      } else {
+        invalidate();
+      }
+      if (listener == null && active(c, policy(c)))
+        NotificationListenerService.requestRebind(component(c));
+      return ownerBound(c);
+    }
+  }
+  public void retireOwner(Context c) throws Exception {
+    synchronized (lock) {
+      if (ownerAdmission == null)
+        throw new IllegalStateException("Notification collection has no account binding");
+      invalidate();
+      SharedPreferences preferences = prefs(c);
+      try {
+        if (!preferences.edit().remove(OWNER).putBoolean("paused", true)
+            .putString(HISTORY_CLEANUP, UUID.randomUUID().toString()).commit())
+          throw new IOException("Notification collection retirement could not be recorded");
+        clearHistory(c);
+        JSONObject initial = new JSONObject(NotificationMirrorPolicy.INITIAL_POLICY);
+        initial.put("revision", UUID.randomUUID().toString());
+        if (!preferences.edit().putString("policy", initial.toString()).commit())
+          throw new IOException("Notification collection policy could not be retired");
+      } finally {
+        detach();
+      }
+    }
+  }
+  private void detach() {
+    NotificationMirrorListenerService old = listener;
+    listener = null;
+    if (old != null)
+      old.requestUnbind();
+  }
   private JSONObject policy(Context c) throws Exception {
     return new JSONObject(prefs(c).getString("policy", NotificationMirrorPolicy.INITIAL_POLICY));
   }
@@ -97,7 +178,7 @@ public final class NotificationMirror {
     return prefs(c).getBoolean("paused", false);
   }
   private boolean active(Context c, JSONObject p) {
-    return NotificationMirrorPolicy.active(p.optBoolean("enabled"), paused(c), granted(c));
+    return ownerBound(c) && NotificationMirrorPolicy.active(p.optBoolean("enabled"), paused(c), granted(c));
   }
   private void invalidate() {
     generation++;
@@ -127,6 +208,14 @@ public final class NotificationMirror {
   }
   /** Launcher apps the owner may choose from, excluding the host itself. */
   public JSONArray apps(Context c) throws Exception {
+    synchronized (lock) {
+      requireOwner(c);
+      JSONArray choices = launcherApps(c);
+      requireOwner(c);
+      return choices;
+    }
+  }
+  private JSONArray launcherApps(Context c) throws Exception {
     JSONArray out = new JSONArray();
     Set<String> seen = new HashSet<>();
     PackageManager pm = c.getPackageManager();
@@ -168,6 +257,7 @@ public final class NotificationMirror {
   }
   public JSONObject status(Context c) throws Exception {
     synchronized (lock) {
+      requireOwner(c);
       if (historyCleanupPending(c)) {
         try {
           clearHistory(c);
@@ -202,15 +292,14 @@ public final class NotificationMirror {
                 .put("available", validSignature(c, a)));
       }
       out.put("apps", selected);
+      requireOwner(c);
       return out;
     }
   }
   /** Applies an owner policy change guarded by the revision the owner reviewed. */
   public JSONObject update(Context c, JSONObject input) throws Exception {
     synchronized (lock) {
-      JSONObject p = policy(c);
-      if (!p.getString("revision").equals(input.getString("expectedRevision")))
-        throw new IllegalStateException("Notification settings changed. Refresh Settings.");
+      JSONObject p = reviewedPolicy(c, input.getString("expectedRevision"));
       if (input.has("apps")) {
         JSONArray next = input.getJSONArray("apps"), previous = p.getJSONArray("apps"),
                   valid = new JSONArray();
@@ -220,7 +309,7 @@ public final class NotificationMirror {
         if (next.length() > NotificationMirrorPolicy.MAX_SELECTED_APPS)
           throw new NotificationMirrorPolicy.Rejected(
               "Choose at most " + NotificationMirrorPolicy.MAX_SELECTED_APPS + " apps");
-        JSONArray choices = apps(c);
+        JSONArray choices = launcherApps(c);
         for (int i = 0; i < choices.length(); i++)
           visible.add(choices.getJSONObject(i).getString("packageName"));
         for (int i = 0; i < previous.length(); i++) {
@@ -253,6 +342,7 @@ public final class NotificationMirror {
       // Purge before acknowledging a new policy, including queued callback revisions.
       invalidate();
       clearHistory(c);
+      requireOwner(c);
       if (!prefs(c).edit().putString("policy", p.toString()).commit())
         throw new IOException();
       if (!p.optBoolean("enabled") && listener != null)
@@ -262,8 +352,33 @@ public final class NotificationMirror {
       return status(c);
     }
   }
+  private JSONObject reviewedPolicy(Context c, String revision) throws Exception {
+    requireOwner(c);
+    JSONObject p = policy(c);
+    if (!p.getString("revision").equals(revision))
+      throw new IllegalStateException("Notification settings changed. Refresh Settings.");
+    return p;
+  }
+  public JSONObject resumeAt(Context c, String revision) throws Exception {
+    synchronized (lock) {
+      JSONObject policy = reviewedPolicy(c, revision);
+      if (!paused(c))
+        throw new IllegalStateException("Notification collection is already running");
+      invalidate();
+      clearHistory(c);
+      requireOwner(c);
+      policy.put("revision", UUID.randomUUID().toString());
+      if (!prefs(c).edit().putString("policy", policy.toString()).putBoolean("paused", false).commit())
+        throw new IOException("Notification collection could not be resumed");
+      if (active(c, policy))
+        NotificationListenerService.requestRebind(component(c));
+      return status(c);
+    }
+  }
   public void pause(Context c, boolean paused) throws Exception {
     synchronized (lock) {
+      if (!paused && ownerAdmission != null)
+        throw new IllegalStateException("Notification collection requires a reviewed resume");
       invalidate();
       if (!prefs(c).edit().putBoolean("paused", paused).commit())
         throw new IOException();
@@ -277,6 +392,10 @@ public final class NotificationMirror {
   }
   void connected(NotificationMirrorListenerService service) {
     synchronized (lock) {
+      if (!ownerBound(service)) {
+        service.requestUnbind();
+        return;
+      }
       listener = service;
       generation++;
       entries.clear();
@@ -302,13 +421,16 @@ public final class NotificationMirror {
         return;
       listener = null;
       invalidate();
-      if (!granted(service))
+      if (ownerBound(service) && !granted(service))
         clearHistory(service);
     }
   }
-  void invalidateKey(String key) {
+  long queueNotification(NotificationMirrorListenerService service, String key) {
     synchronized (lock) {
+      if (listener != service || !ownerBound(service))
+        return -1;
       entries.remove(key);
+      return generation;
     }
   }
   /**
@@ -322,7 +444,7 @@ public final class NotificationMirror {
   void changed(NotificationMirrorListenerService service, StatusBarNotification n, boolean removed,
       long observed) {
     synchronized (lock) {
-      if (observed != generation || listener != service)
+      if (observed != generation || listener != service || !ownerBound(service))
         return;
       entries.remove(n.getKey());
       try {
@@ -362,6 +484,7 @@ public final class NotificationMirror {
    */
   public JSONArray list(Context c) throws Exception {
     synchronized (lock) {
+      requireOwner(c);
       JSONArray out = new JSONArray();
       JSONObject p = policy(c);
       if (!active(c, p) || listener == null || locked(c)) {
@@ -416,6 +539,7 @@ public final class NotificationMirror {
       }
       entries.keySet().retainAll(live);
       trim();
+      requireOwner(c);
       return out;
     }
   }
@@ -440,6 +564,7 @@ public final class NotificationMirror {
       if (found == null)
         throw new IllegalStateException();
       Notification n = found.getNotification();
+      requireOwner(c);
       if (open) {
         if (!NotificationMirrorPolicy.canOpen(n.visibility == Notification.VISIBILITY_SECRET,
                 n.contentIntent != null,
@@ -565,6 +690,7 @@ public final class NotificationMirror {
   /** Retained post/remove events for still-selected apps: label, time and state only. */
   public JSONArray history(Context c) throws Exception {
     synchronized (lock) {
+      requireOwner(c);
       if (historyCleanupPending(c))
         return new JSONArray();
       JSONObject p = policy(c);
@@ -582,6 +708,7 @@ public final class NotificationMirror {
                 .put("at", row.getLong("at"))
                 .put("state", row.getString("state")));
       }
+      requireOwner(c);
       return out;
     }
   }
@@ -589,10 +716,15 @@ public final class NotificationMirror {
    * Owner Clear is an event boundary: queued observations from before it cannot repopulate
    * history.
    */
-  public void clearHistoryBoundary(Context c) {
+  public void clearHistoryBoundary(Context c, String revision) throws Exception {
     synchronized (lock) {
+      JSONObject policy = reviewedPolicy(c, revision);
       invalidate();
       clearHistory(c);
+      requireOwner(c);
+      policy.put("revision", UUID.randomUUID().toString());
+      if (!prefs(c).edit().putString("policy", policy.toString()).commit())
+        throw new IOException("Notification history revision could not be recorded");
     }
   }
   private boolean historyCleanupPending(Context c) {

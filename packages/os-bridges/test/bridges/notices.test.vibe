@@ -15,7 +15,7 @@ import {
 } from "../../src/bridges/notices.vibe"
 
 module android {
-  import type { NoticeOwnerIdentity, NotificationsNativePlugin, PendingNoticeTap, SuspendedApprovalNotice, WorkflowNoticeRoute } from "../../src/bridges/definitions/notices.ts"
+  import type { MirrorHistoryRow, NoticeOwnerIdentity, NotificationsNativePlugin, PendingNoticeTap, SuspendedApprovalNotice, WorkflowNoticeRoute } from "../../src/bridges/definitions/notices.ts"
 
   export interface Phone {
     owner: NoticeOwnerIdentity | null
@@ -25,11 +25,12 @@ module android {
     fenceFails: number
     calls: string[]
     presentation: unknown
+    mirror: { revision: string; history: MirrorHistoryRow[] }
   }
 
   /** @throws {never} */
   export function phone(): Phone {
-    return { owner: null, approvals: new Map(), tap: {}, taps: [], fenceFails: 0, calls: [], presentation: { protocol: 2 } }
+    return { owner: null, approvals: new Map(), tap: {}, taps: [], fenceFails: 0, calls: [], presentation: { protocol: 2 }, mirror: { revision: "first", history: [] } }
   }
 
   /** @throws {never} */
@@ -73,7 +74,12 @@ module android {
         return {}
       },
       status: unused, openChannelSettings: unused, crossAppStatus: unused, notificationApps: unused, setNotificationPolicy: unused,
-      resumeCrossApp: unused, openNotificationAccess: unused, notificationHistory: unused, clearNotificationHistory: unused,
+      resumeCrossApp: unused, openNotificationAccess: unused,
+      notificationHistory: async () => ({ items: device.mirror.history }),
+      clearNotificationHistory: async ({ expectedRevision }) => {
+        if (expectedRevision !== device.mirror.revision) throw new Error("Settings changed")
+        device.mirror = { revision: "after-clear", history: [] }
+      },
       list: unused, open: unused, dismiss: unused, clear: unused,
       addListener: async () => ({ remove: async () => {} }),
     }
@@ -185,4 +191,16 @@ it.effect('Tell my app which workflow notices this phone can present (spec/os/an
   device.presentation = { protocol: 1 }
   const older = try promise(() => client.presentsWorkflow())
   try Effect.try(() => assert.deepStrictEqual([current, older], [true, false]))
+})
+
+it.effect('Clear only my reviewed notification history (spec/os/android/notificationMirror.md, "A failed deletion is never reported as cleared and blocks history until a deletion succeeds")', () => effect {
+  const device = phone()
+  const row = { id: "one", appLabel: "Test app", at: 100, state: "Posted" }
+  device.mirror = { revision: "second", history: [row] }
+  const client = noticesClient({ plugin: plugin(device) })
+  const stale = try promise(() => client.clearMirrorHistory("first").then(() => false, () => true))
+  const kept = try promise(() => client.mirrorHistory())
+  try promise(() => client.clearMirrorHistory("second"))
+  const empty = try promise(() => client.mirrorHistory())
+  try Effect.try(() => assert.deepStrictEqual([stale, kept, empty], [true, [row], []]))
 })
