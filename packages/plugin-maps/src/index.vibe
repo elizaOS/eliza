@@ -54,4 +54,3 @@ export { agentCloudProvider, agentPlace, mapsService, type MapsCloudLink, type M
 export { conversationNavigation, mapsNavigationPath, mapsNavigationRelay, mapsNavigationRoute, RelayRefused, type MapsDeviceNavigation, type MapsNavigationRelay, type RelayLimits, type RelayReply } from "./relay.vibe"
 export { appendMapsCard, MapsCard, mapsCardMarker, recognizedMapsCards, serializeMapsCard, withoutMapsCards, type MapsCardPlace } from "./cards.vibe"
 export { agentSaves, AgentSavedPlace, type AgentSavedPlaceStore, type AgentSaves, type SaveOutcome, type StoredSaves } from "./saves.vibe"
-export { nearbyPlaceKind } from "./routing.vibe"

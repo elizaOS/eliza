@@ -41,26 +41,23 @@ pure def lawAnyAccuracyOfARecentPositionSearches(p: PhonePosition, accuracy: int
 
 ### A kind of place near a named place is searched around that place, never around the phone
 
-"Pharmacy near the Ferry Building" names where to search: the named place
-is looked up first, and the kind of place is searched around it, nearest
+"Pharmacy near the Ferry Building" names where to search: the planner
+passes the kind of place and the place to search near, the named place is
+looked up first, and the kind of place is searched around it, nearest
 first, whether or not the phone reported a position and even when the
-request also asked for places near the owner. The owner's own words
-decide: when the planner passes only the kind of place for a request near
-the owner, a place the owner's message names after "near" is still the
-one searched around. Courtesy and timing after the place ("please",
-"thanks", "right now", "that's open now") are not part of its name, and
-the owner's own position after "near" ("me right now", "where I am",
-"my phone", "myself", "this spot") names no place, so "coffee near me
-right now" is a search around the phone. "The nearest pharmacy to the
-Ferry Building" names its own point and is no request near the owner;
-only "the nearest pharmacy to me" is. A named place that is not found is
-said, with a request to name another place or area to search near; one
-with several matches is asked about as a numbered question that a reply
-such as "the first one" answers. The results begin "Near" the place, and
-their card shows the place they are near. Without a recent position, a
-request for places near the owner asks the phone for its location and
-says that a place to search near can be named instead, such as
-"pharmacy near the Ferry Building".
+request also asked for places near the owner. Which words name that place
+is the model's reading, not a phrase list: the owner's own position
+("coffee near me right now") names no place, and is a search near the
+owner, around the phone. "The nearest pharmacy to the Ferry Building"
+names its own point and is no request near the owner; only "the nearest
+pharmacy to me" is. A named place that is not found is said, with a
+request to name another place or area to search near; one with several
+matches is asked about as a numbered question that the owner's next turn
+answers. The results begin "Near" the place, and their card shows the
+place they are near. Without a recent position, a request for places
+near the owner asks the phone for its location and says that a place to
+search near can be named instead, such as "pharmacy near the Ferry
+Building".
 
 ```quint
 type SearchAround = AroundNamedPlace | AroundPhone | AskForPosition | AroundNothing
@@ -95,11 +92,12 @@ pure def lawOnlyAPointSearchOnACloudThatRanksAsksForTheClosest(aroundPoint: bool
 The reported position carries no precision, so it is never the precise fix
 a route from here is planned from: the phone plans that route from its own
 fresh fix, and the agent only names the destination. A route asked for
-from where the owner is, with no starting place or with "here", "my
-location" or "where I am" as its start, answers with a card that asks the
-phone for its location and carries the destination found; a nearby kind
-of place, or a destination with several matches, goes to the phone as the
-words asked, for the phone to search around itself.
+from where the owner is, which the planner asks for by leaving the start
+out or by naming the owner's own position as the start, answers with a
+card that asks the phone for its location and carries the destination
+found; a destination the planner names as the nearest or a nearby kind of
+place, or one with several matches, goes to the phone as the words asked,
+for the phone to search around itself.
 
 ```quint
 pure def asRouteFix(p: PhonePosition): N::Fix = { present: p.present, precise: false, age: p.age, accuracy: p.accuracy }

@@ -1,24 +1,7 @@
-// spec/maps/phonePosition.md, "A kind of place near a named place is searched around that place, never around the phone"; spec/maps/phonePosition.md, "A reported position never becomes a route origin"; spec/maps/routing.md, "Only the owner's next turn answers an open question, with a listed place's id the model passes, within ten minutes"; spec/maps/routing.md, "Only a kind of place near a named place is searched around that place"
+// spec/maps/routing.md, "Only the owner's next turn answers an open question, with a listed place's id the model passes, within ten minutes"
 import type { IAgentRuntime, Memory } from "@elizaos/core"
-import { choiceCourse, choiceOpenAt, nearSearch, type ChoiceTurn } from "../gen/maps__routing.effect.vibe"
+import { choiceCourse, choiceOpenAt, type ChoiceTurn } from "../gen/maps__routing.effect.vibe"
 import type { AgentPlaceRef } from "./client/device-navigation.vibe"
-
-const courtesy = String.raw`(?:(?:please|hey|ok(?:ay)?|so)[,\s]+)*(?:(?:can|could|would|will)\s+you\s+)?(?:please\s+)?`
-const end = String.raw`(?:,?\s+(?:please|for\s+me))*\s*[.!?]*\s*$`
-const notAPlaceKind = String.raw`(?!(?:neighbou?rs?|integers?|whole|numbers?|dollars?|cents?|penn(?:y|ies)|hundreds?|thousands?|millions?|tens?|tenths?|decimals?|minutes?|hours?|seconds?|days?|weeks?|months?|years?|multiples?|powers?|points?|values?|match(?:es)?|percent|degrees?|units?|digits?|fractions?|primes?|pairs?|stars?|planets?|relatives?|synonyms?|words?|colou?rs?|versions?|results?)\b)`
-const findVerb = String.raw`(?:(?:find|show|locate|get|search\s+for|look\s+(?:for|up))\s+(?:me\s+)?|where(?:'s|’s|\s+is|\s+are)\s+|what(?:'s|’s|\s+is)\s+)`
-const notAThere = String.raw`(?!(?:anyone|anybody|someone|somebody|no\s?one|nobody|one|(?:a|any)\s+(?:way|chance|reason|problem|issue|bug|error|difference|need|point))\b)`
-const ownPosition = /^(?:me|here|us|by|myself|this\s+(?:place|spot|location)|(?:my|the)\s+phone)$|^(?:me|here|us|myself)\b(?=[,\s]+(?:that|which|who|where|for|to|with|and|so|if|in|at|on|by|open|right|now|tonight|today|please|thanks|thank)\b)|^(?:my\s+(?:location|position|place|current\s+location)|where\s+(?:i|we)\s+(?:am|are)|current\s+location)\b|\b(?:near|around|close\s+to|next\s+to)\s+(?:me|here|us)$/iu
-const ownPositionQuery = /^(?:(?:from|at)\s+)?(?:me|here|right\s+here|us|myself|(?:my|our)\s+(?:current\s+|present\s+|gps\s+)?(?:location|position)|(?:my\s+)?current\s+(?:location|position)|where\s+(?:i|we)\s+(?:am|are)(?:\s+(?:right\s+)?now)?|(?:my|the)\s+phone(?:(?:'s|’s)\s+location)?)$/iu
-const anchorTail = /(?:,?\s+(?:please|thanks|thank\s+you|for\s+me|right\s+now|now|today|tonight|(?:(?:that|which)(?:'s|’s|\s+(?:is|are))\s+)?open(?:\s+(?:now|late|today|tonight))?))+$/iu
-const placeKindWords = new RegExp(String.raw`^${notAPlaceKind}`, "iu")
-const leadingKindWords = /^(?:(?:the|a|an|some|any)\s+)?(?:(?:nearest|closest)\s+)?/iu
-const nearestKind = /^(?:(?:the|a|an|any)\s+)?(?:nearest|closest)\s+(?!to\b)(\S.{0,79})$/iu
-const nearestToPoint = /^(.+?)\s+(?:to|near|around|close\s+to|next\s+to|in|at|by|on)\s+(\S.*)$/iu
-const nearbyKind = /^(\S.{0,79}?)\s+(?:nearby|around\s+here|close\s+by)$/iu
-const anchoredQuery = new RegExp(String.raw`^\s*${courtesy}(?:${findVerb})?(?:(?:is|are)\s+there\s+${notAThere})?(?:(?:the|a|an|some|any)\s+)?(?:(?:nearest|closest)\s+)?(\S.{0,79}?)\s+(?:near|around|close\s+to|next\s+to)\s+(\S.{0,119}?)${end}`, "iu")
-const nearNotAPlace = /^(?:home|work|the\s+office|(?:my|our)\s+.+|(?:the\s+)?(?:top|bottom|end|beginning|start|middle|deadline|weekend|holidays?)|midnight|noon|midday|dawn|dusk|sunrise|sunset|lunch(?:time)?|dinner(?:time)?|breakfast|christmas(?:\s+eve)?|thanksgiving|easter|halloween|new\s+year(?:'s|’s)?(?:\s+(?:eve|day))?|(?:mon|tues|wednes|thurs|fri|satur|sun)day|january|february|march|april|june|july|august|september|october|november|december|line\s+\d+|page\s+\d+|\d{1,2}(?::\d{2})?\s*(?:am|pm|a\.m\.?|p\.m\.?|o'?clock)?|\d[\d,.]*\s*(?:dollars?|bucks|euros?|pounds?)(?:\s+(?:a|per)\s+(?:night|day|week|month))?|\d[\d,.]*\s+(?:a|per)\s+(?:night|day|week|month))$/iu
-const nearNotAPlaceKind = /\b(?:photos?|pictures?|pics?|images?|videos?|clips?|selfies?|screenshots?|e-?mails?|mail|messages?|texts?|chats?|notes?|files?|documents?|docs?|songs?|music|tracks?|albums?|playlists?|podcasts?|events?|meetings?|appointments?|reminders?|alarms?|contacts?|tasks?|to-?dos?|bugs?|issues?|errors?|lines?|comments?|posts?|tweets?|results?|calls?|voicemails?|weather|forecasts?|traffic|news)$/iu
 
 export const choiceActions = { place: "MAPS_PLACE", route: "MAPS_ROUTE", select: "MAPS_SELECT", save: "MAPS_SAVE", share: "MAPS_SHARE", "navigation-start": "MAPS_NAVIGATION_START" } as const
 export type ChoiceOperation = keyof typeof choiceActions
@@ -117,40 +100,3 @@ export function keptRequest(runtime: IAgentRuntime, message: Memory, now: number
 export function closeChoice(runtime: IAgentRuntime, message: Memory): void {
   openQuestions(runtime).delete(conversationOf(message))
 }
-
-function withoutTail(words: string): string {
-  return words.trim().replace(/[\s?.!]+$/u, "").replace(anchorTail, "").trim()
-}
-
-function kindOf(words: string | undefined): string | undefined {
-  const kind = words?.replace(leadingKindWords, "").trim()
-  return kind === undefined || kind === "" || !placeKindWords.test(kind) ? undefined : kind
-}
-
-export function namesOwnPosition(words: string): boolean {
-  return ownPositionQuery.test(withoutTail(words))
-}
-
-export function nearbyPlaceKind(query: string): string | undefined {
-  const trimmed = withoutTail(query)
-  const nearest = nearestKind.exec(trimmed)?.[1]
-  if (nearest !== undefined) {
-    const split = nearestToPoint.exec(nearest)
-    return split === null ? kindOf(nearest) : ownPosition.test(withoutTail(split[2] ?? "")) ? kindOf(split[1]) : undefined
-  }
-  const nearby = nearbyKind.exec(trimmed)?.[1]
-  if (nearby !== undefined) return kindOf(nearby)
-  const match = anchoredQuery.exec(trimmed)
-  return match?.[2] !== undefined && ownPosition.test(withoutTail(match[2])) ? kindOf(match[1]) : undefined
-}
-
-export function anchoredPlace(query: string): { readonly kind: string; readonly anchor: string } | undefined {
-  const match = anchoredQuery.exec(query)
-  const kind = match?.[1]?.trim()
-  const anchor = match?.[2] === undefined ? undefined : withoutTail(match[2])
-  if (kind === undefined || kind === "" || anchor === undefined || anchor === "") return undefined
-  const words = ownPosition.test(anchor) ? "OwnPosition" : nearNotAPlace.test(anchor) ? "NotAPlace" : "NamedPlace"
-  if (nearSearch(nearNotAPlaceKind.test(kind) ? "NotAPlaceKind" : "PlaceKind", words) !== "AroundTheNamedPlace") return undefined
-  return { kind, anchor: anchor.replace(/^the\s+/iu, "") }
-}
-
