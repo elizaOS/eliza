@@ -1,6 +1,6 @@
 // spec/agent/conversation/planning.md, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"; spec/agent/conversation/planning.md, "A turn acknowledges at most once, with a cue that comes with its first tool calls"; spec/agent/conversation/planning.md, "A recognized card is delivered unfenced, other multi-line tool output is fenced, and grounded prose follows unless one already holds the other"; spec/agent/conversation/planning.md, "A voice turn that ran an action answers with that action's label: its kind and whether the reply is a validated card"; spec/agent/conversation/planning.md, "A tool call the model wrote as text never reaches the owner, and its step is asked again once"; spec/agent/conversation/planning.md, "Text that repeats the agent host's notes is never delivered or streamed, and is asked again once as a blank"
 import { looksLikeActionEnvelopeJson, looksLikeEvaluatorEnvelopeJson, parseInteractionBlocks, sanitizeUserVisibleModelOutput } from "@elizaos/core"
-import { actionLabel, compose, readDraft, type ActionLabel, type Composition, type Declared, type Draft, type DraftShape, type VoiceAction } from "../../gen/agent__conversation__planning.ts"
+import { actionLabel, compose, heardAs, readDraft, type ActionLabel, type Composition, type Declared, type Draft, type DraftShape, type VoiceAction } from "../../gen/agent__conversation__planning.ts"
 
 const maxCueLength = 120
 const bracketCall = /\[[a-z][a-z0-9]*(?:_[a-z0-9]+)+(?:\s+[a-z_]+=(?:"[^"\n]*"|[^\s\]]+))+\s*\]/gu
@@ -8,7 +8,7 @@ const callName = /^[a-z]+(?:_[a-z0-9]+)+$/u
 const emptyWrapper = /```[\w-]*\s*```|<([\w-]+)>\s*<\/\1>/gu
 const dataToken = /\p{N}|\b[ap]\.m\.|\b(?:pm|noon|midnight|o['’]clock|zero|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|(?:hundred|thousand|dozen)s?|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth|\p{L}+(?:teenth|tieth)|few|couple|handful|several|single|only|(?:half|quarter) (?:past|to|after|till?))\b|\b(?:at|by|until|till|before|after|around) one\b|\bone [ap]m\b/iu
 
-export const cueRule = "When you call tools, write with your first tool calls only a brief cue, in the person's own language, that you heard the request; the real reply comes after the work. A cue is a few natural words that you are looking or about to do it, in your own words rather than a stock phrase: it never names the people, items, places, times, numbers or outcome, never asks anything, never says the work is done or under way, and never repeats the request. Never open a cue with assent such as Sure or Yeah after a question; it sounds like the answer. When one message asks for several lookups, or about several named people or items, keep the cue general and name no source; name a source only for one simple lookup. Write a cue only with a tool call in the same response: when no offered tool can do what was asked, write no cue and tell the person plainly, in your own words, that you can't. Any question or lookup gets its cue, even one about what is on the screen. A request only to open one app, with nothing to read, find or change there, still calls the tool that opens it, with no cue: write nothing with that call, and the reply after it confirms the destination. Your text after the last tool result is the reply itself, never another cue, and a response with no tool call is always your reply, so never write a cue without calling a tool. If the person asked for silence or no acknowledgment, write nothing and still do the work. Write no text with later tool calls. Say that something was saved, sent, opened or changed only when a tool result in this turn shows it. Begin every response that calls no tool with one tag the person never sees: [answer] when your text is your complete reply, or [promise] when it only says you will do something."
+export const cueRule = "When you call tools, write with your first tool calls only a brief cue, in the person's own language, that you heard the request; the real reply comes after the work. A cue is a few natural words that you are looking or about to do it, in your own words rather than a stock phrase: it never names the people, items, places, times, numbers or outcome, never asks anything, never says the work is done or under way, and never repeats the request. Never open a cue with assent such as Sure or Yeah after a question; it sounds like the answer. When one message asks for several lookups, or about several named people or items, keep the cue general and name no source; name a source only for one simple lookup. Write a cue only with a tool call in the same response: when no offered tool can do what was asked, write no cue and tell the person plainly, in your own words, that you can't. Any question or lookup gets its cue, even one about what is on the screen. A request only to open one app, with nothing to read, find or change there, still calls the tool that opens it, with no cue: write nothing with that call, and the reply after it confirms the destination. Your text after the last tool result is the reply itself, never another cue, and a response with no tool call is always your reply, so never write a cue without calling a tool. If the person asked for silence or no acknowledgment, write nothing and still do the work. Write no text with later tool calls. Say that something was saved, sent, opened or changed only when a tool result in this turn shows it. Begin every response that calls no tool with one tag the person never sees: [answer] when your text is your complete reply, or [promise] when it only says you will do something. Use only these two tags, spelled exactly so."
 
 const callKeys = new Set(["action", "tool", "type", "name"])
 const argumentKeys = new Set(["arguments", "args", "parameters", "params", "input", "tool_input"])
@@ -146,12 +146,56 @@ function hostTexts(notes: readonly string[]): string[] {
     .map((host) => folded(host).text.trim()).filter((host) => host !== "")
 }
 
-export function holdsHostText(text: string, notes: readonly string[]): boolean {
-  const said = folded(text).text
-  return hostTexts(notes).some((host) => said.includes(host))
+const compact = (text: string) => text.replace(/\s+/gu, "").toLowerCase()
+
+const openingsOf = new WeakMap<readonly string[], readonly string[]>()
+
+function dataOpenings(notes: readonly string[]): readonly string[] {
+  const known = openingsOf.get(notes)
+  if (known !== undefined) return known
+  const openings = notes.flatMap((note) => {
+    const lines = note.split("\n").slice(1)
+    const outside = lines.findIndex((line) => /external_untrusted_content|security notice/iu.test(line))
+    return (outside < 0 ? lines : lines.slice(0, outside)).map((line) => line.trim())
+      .filter((line) => line.length >= 32 && line.startsWith("{") && isJsonObject(line)).map((line) => compact(line).slice(0, 32))
+  })
+  openingsOf.set(notes, openings)
+  return openings
 }
 
-export function shownUpTo(text: string, notes: readonly string[]): number {
+function compactHead(text: string, from: number, size: number): string {
+  let head = ""
+  for (let at = from; at < text.length && head.length < size; at += 1) {
+    const unit = text[at] ?? ""
+    if (!/\s/u.test(unit)) head += unit.toLowerCase()
+  }
+  return head
+}
+
+export function holdsHostText(text: string, notes: readonly string[]): boolean {
+  const said = folded(text).text
+  const packed = compact(text)
+  return hostTexts(notes).some((host) => said.includes(host)) || dataOpenings(notes).some((opening) => packed.includes(opening))
+}
+
+function echoAt(text: string, notes: readonly string[], from: number): number {
+  const openings = dataOpenings(notes)
+  if (openings.length === 0) return text.length
+  for (let at = text.indexOf("{", from); at >= 0; at = text.indexOf("{", at + 1)) {
+    const head = compactHead(text, at, 32)
+    if (openings.some((opening) => opening.startsWith(head) || head.startsWith(opening))) return at
+  }
+  return text.length
+}
+
+export function shownUpTo(text: string, notes: readonly string[], shown = 0): number {
+  const from = Math.max(0, shown - hostLookBack)
+  return Math.min(from + hostTextAt(text.slice(from), notes), echoAt(text, notes, shown))
+}
+
+const hostLookBack = 256
+
+function hostTextAt(text: string, notes: readonly string[]): number {
   const { text: said, at } = folded(text)
   const upTo = hostTexts(notes).reduce((upTo, host) => {
     const whole = said.indexOf(host)
@@ -179,39 +223,49 @@ function shapeOf(reply: string, offered: ReadonlySet<string>, notes: readonly st
 }
 
 export function draftOf(text: string, calls: number, offered: ReadonlySet<string>, toolsWaiting: boolean, declared: Declared, notes: readonly string[]): Draft {
-  return readDraft(shapeOf(text, offered, notes), calls, toolsWaiting, declared)
+  return heardAs(readDraft(shapeOf(text, offered, notes), calls, toolsWaiting, declared), declared, asksSomething(text), calls)
 }
 
 const writtenCallMarker = /<\s*\/?\s*tool_call\b|<\s*function(?:=|_call\b)/iu
 const writtenCallHeads = ["<tool_call", "</tool_call", "<function=", "<function_call"]
+
+export function asksSomething(said: string): boolean {
+  const plain = said.replace(/```[\s\S]*?(?:```|$)|`[^`\n]*`|"[^"\n]*"|“[^”\n]*”/gu, "").replace(/\S+:\/\/\S+?([?？؟]?)(?=\s|$)/gu, "$1").trim()
+  const lines = plain.split("\n").map((line) => line.trim()).filter((line) => line !== "")
+  while (lines.length > 1 && /^(?:[-*•]|\d+[.)])\s/u.test(lines.at(-1) ?? "")) lines.pop()
+  const sentences = lines.join(" ").split(/(?<=[.!?？؟…])\s+/u).filter((sentence) => /[\p{L}\p{N}]/u.test(sentence))
+  return /[?？؟][^\p{L}\p{N}]*$/u.test((sentences.at(-1) ?? "").trim())
+}
 
 export function writtenCallFree(text: string): { readonly prose: string; readonly markup: boolean } {
   const at = text.search(writtenCallMarker)
   return at < 0 ? { prose: text, markup: false } : { prose: text.slice(0, at).trimEnd(), markup: true }
 }
 
-const declaredTag = /(?:\[(answer|promise)\](?![([])|<(answer|promise)>)\s*/iu
+const declaredTag = /(?:\[(answer|promise|question)\](?!\(|\s*[[<]\/?(?:answer|promise|question)[\]>])|<(answer|promise)>)\s*/iu
 const modelTag = /[ \t]*(?:\[(?:answer|promise)\](?![([])|<\/?(?:answer|promise)>)[ \t]*(\n?)/gu
 const codeSpan = /(`{3,}|~{3,})[\s\S]*?(?:\1|$)|(?<!`)(`+)(?!`)[^\n]*?(?<!`)\2(?!`)/gu
 const trailingTag = /\[(?:answer|promise)\]$/u
-const tagHeads = ["[answer]", "[promise]", "<answer>", "<promise>", "</answer>", "</promise>"]
+const tagHeads = ["[answer]", "[promise]", "[question]", "<answer>", "<promise>", "</answer>", "</promise>"]
 
-function tagsOut(said: string, from: number, to: number): string {
-  return said.slice(from, to).replace(modelTag, (tag, newline: string, at: number) => {
+const anyCaseClosing = /[ \t]*<\/(?:answer|promise)>[ \t]*(\n?)/giu
+
+function tagsOut(said: string, from: number, to: number, tags: RegExp): string {
+  return said.slice(from, to).replace(tags, (tag, newline: string, at: number) => {
     const lineStart = from + at === 0 || said[from + at - 1] === "\n"
     if (newline !== "") return lineStart ? "" : "\n"
     return lineStart || from + at + tag.length === said.length ? "" : " "
   })
 }
 
-function withoutTags(said: string): string {
+function withoutTags(said: string, tags: RegExp = modelTag): string {
   let out = ""
   let kept = 0
   for (const code of said.matchAll(codeSpan)) {
-    out += tagsOut(said, kept, code.index) + code[0]
+    out += tagsOut(said, kept, code.index, tags) + code[0]
     kept = code.index + code[0].length
   }
-  return out + tagsOut(said, kept, said.length)
+  return out + tagsOut(said, kept, said.length, tags)
 }
 
 function openCodeAt(said: string): number {
@@ -226,17 +280,23 @@ function openCodeAt(said: string): number {
   return said.indexOf("`", Math.max(kept, line))
 }
 
+const leadingTags = /^\s*(?:(?:\[(?:answer|promise|question)\]|<\/?(?:answer|promise)>)\s*){2,}/iu
+
 export function declaredOf(said: string): { readonly declared: Declared; readonly text: string } {
+  const run = leadingTags.exec(said)
+  if (run !== null) return { declared: "Undeclared", text: withoutTags(said.slice(run[0].length)) }
   const tag = declaredTag.exec(said)
   const leading = tag !== null && withoutWrittenCalls(said.slice(0, tag.index)).trim() === ""
   if (tag === null || !leading) return { declared: "Undeclared", text: withoutTags(said) }
-  return { declared: (tag[1] ?? tag[2]).toLowerCase() === "promise" ? "DeclaredPromise" : "DeclaredAnswer", text: withoutTags(said.slice(tag.index + tag[0].length)) }
+  const rest = withoutTags(said.slice(tag.index + tag[0].length))
+  const word = (tag[1] ?? tag[2]).toLowerCase()
+  return { declared: word === "question" ? "Undeclared" : word === "promise" ? "DeclaredPromise" : "DeclaredAnswer", text: tag[2] === undefined ? rest : withoutTags(rest, anyCaseClosing) }
 }
 
 function partialTagAt(text: string): number {
   const open = Math.max(text.lastIndexOf("["), text.lastIndexOf("<"))
   if (open < 0) return -1
-  const tail = text.slice(open)
+  const tail = text.slice(open).toLowerCase()
   return !tail.includes("]") && !tail.includes(">") && tagHeads.some((head) => head.startsWith(tail)) ? open : -1
 }
 
