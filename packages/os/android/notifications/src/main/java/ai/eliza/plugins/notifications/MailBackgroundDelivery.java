@@ -137,13 +137,17 @@ public final class MailBackgroundDelivery {
   * saving anything. Re-selecting the same owner, credential and grant keeps the durable cursor.
   */
  public JSONObject configure(long attempt,String credentialId,String grant,String userId,String organizationId)throws Exception{
+  return configure(attempt,credentialId,grant,userId,organizationId,()->{});
+ }
+ public JSONObject configure(long attempt,String credentialId,String grant,String userId,String organizationId,MailHistoryReconciliation.Guard foreground)throws Exception{
   try{
    JSONObject binding;synchronized(host.lock()){
+    foreground.check();
     if(attempts.get()!=attempt||pendingGrant!=null&&!pendingGrant.equals(grant))throw new SecurityException("Mail selection superseded");
     binding=admission(credentialId,grant,userId,organizationId);
     pendingGrant=binding.getString("grantId");
    }
-   MailHistoryReconciliation.Guard guard=()->{if(attempts.get()!=attempt)throw new SecurityException("Mail selection superseded");synchronized(host.lock()){admitted(binding);}};
+   MailHistoryReconciliation.Guard guard=()->{foreground.check();if(attempts.get()!=attempt)throw new SecurityException("Mail selection superseded");synchronized(host.lock()){admitted(binding);}};
    verify(binding,guard);
    synchronized(host.lock()){
     guard.check();JSONObject previous=saved();

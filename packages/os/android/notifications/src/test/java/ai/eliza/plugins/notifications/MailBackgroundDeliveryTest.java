@@ -28,19 +28,22 @@ public final class MailBackgroundDeliveryTest {
       String state;
       String scheduled;
       boolean rotate;
+      boolean inForeground = true;
+      boolean loseForeground;
       @Override public Object lock() { return fence; }
       @Override public String readState() { return state; }
       @Override public void writeState(String value) { require(Thread.holdsLock(fence), "atomic state write"); state = value; }
       @Override public void removeState() { require(Thread.holdsLock(fence), "atomic withdrawal"); state = null; }
       @Override public boolean resetPending() { return false; }
       @Override public MailBackgroundDelivery.LeaseBinding current() { require(Thread.holdsLock(fence), "read under credential fence"); return binding; }
-      @Override public MailBackgroundDelivery.LeaseReply read(MailBackgroundDelivery.LeaseBinding expected, String path) {
+      @Override public MailBackgroundDelivery.LeaseReply read(MailBackgroundDelivery.LeaseBinding expected, String path) throws Exception {
         require(!Thread.holdsLock(fence) && expected.equals(binding), "leased network read outside fence");
         routes.add(path);
         final String encoded;
         if (path.equals("/api/v1/eliza/google/accounts?side=owner")) {
           encoded = new JSONArray().put(new JSONObject().put("connectionId", "grant").put("connected", true)
             .put("grantedCapabilities", new JSONArray().put("google.gmail.triage"))).toString();
+          if (loseForeground) inForeground = false;
         } else {
           require(path.startsWith("/api/v1/eliza/google/gmail/inbox-v1/history?grantId=grant&maxResults=50"), "leased history route");
           boolean baseline = !path.contains("startHistoryId=");
@@ -68,6 +71,16 @@ public final class MailBackgroundDeliveryTest {
     Fixture f = new Fixture();
     var config = new MailBackgroundDelivery.Config("https://cloud.example", "test", "google.gmail.triage", 1);
     var delivery = MailBackgroundDelivery.withLease(f, f, f, f, config);
+    f.loseForeground = true;
+    try {
+      delivery.configure(delivery.begin("grant"), "cred", "grant", "owner", "org", () -> {
+        if (!f.inForeground) throw new SecurityException("Visit changed");
+      });
+      throw new AssertionError("Background selection accepted");
+    } catch (SecurityException expected) {
+      require(f.state == null && f.scheduled == null, "a late foreground check created no watch");
+    }
+    f.loseForeground = false;
     delivery.configure(delivery.begin("grant"), "cred", "grant", "owner", "org");
     require(delivery.sync(f.scheduled, () -> {}), "baseline sync completed");
     require(f.active.isEmpty(), "quiet baseline");
