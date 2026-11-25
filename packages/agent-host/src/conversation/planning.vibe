@@ -13,7 +13,7 @@ import {
   admitsPlannerWork, contextRestoreOf, maxRestoredHistoryBytes, offersContextRestore, terminalAnswerOf, toolDispatch, turnNarrowed, unavailableNotice, type CallFailure, type PlanStep, type StepOutcome, type ToolSettlement,
 } from "../../gen/agent__conversation__planning.ts"
 import { ModelRefusal } from "../models/chat.vibe"
-import { composeReply, draftOf, requestIsInstruction, requestedNoCue, withoutWrittenCalls } from "./reply-text.vibe"
+import { actionNameKey, composeReply, draftOf, requestIsInstruction, requestedNoCue, withoutWrittenCalls } from "./reply-text.vibe"
 
 type ChatMessage = NonNullable<GenerateTextParams["messages"]>[number]
 
@@ -421,6 +421,7 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
   const named = new Map(actions.map((action) => [action.name, action]))
   const request = typeof message.content.text === "string" ? message.content.text : ""
   const instruction = requestIsInstruction(request)
+  const registeredNames = new Set(runtime.actions.flatMap(({ name }) => messageServiceActions.has(name) ? [] : [actionNameKey(name)]))
   const quiet = requestedNoCue(request)
   let taken = 0
   let displayed = false
@@ -545,7 +546,7 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
     }
     const reply = dispositions.find(({ name }) => name === "REPLY")
     const work = answered.toolCalls.filter(({ name }) => !messageServiceActions.has(name))
-    const draft = draftOf(answered.text, instruction, work.length)
+    const draft = draftOf(answered.text, instruction, work.length, registeredNames)
     let cutOff = false
     if (work.length > 0) {
       const cue = withoutWrittenCalls(answered.text.trim())
@@ -598,7 +599,7 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
       })), signal)
       const answer = answerOf(said).text
       const revised = settled.compose(answer)
-      const draft = draftOf(answer, instruction, 0)
+      const draft = draftOf(answer, instruction, 0, registeredNames)
       const sameAsFirst = revised.trim() === reply.trim()
       const spoken = revised !== settled.compose(undefined)
       return { revised: spoken && answeredAgain(draft, sameAsFirst) ? revised : undefined, stoodBy: spoken && standsBy(draft, sameAsFirst) }

@@ -650,13 +650,16 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
     'Sure, one sec.{"action": "send_message", "recipient": "Sam"}', '{"tool": "open_app", "action": "Maps"}On it.', 'Sure, one sec.\n```json\n{"action": "send_message"}\n```',
     'Sure, one sec. \n\n[send_message contact="Sam" message="I am running late"]', 'Sure, one sec.{"type": "send_message", "recipient": "Sam"}', 'Sure, one sec. {"action": "send_message", "text": "late :}"}',
     'Sure. {"action": "SEND_TEXT", "parameters": {"to": "Sam"}}', '{"action": "SEND_TEXT", "parameters": {"to": "Sam"}}',
+    'Sure. [send_message contact="Sam" message="I am running late"]', '[send_message contact="Sam" message="I am running late"]',
+    '{"action": "open_app", "app": "Maps", "params": {"query": "coffee shops near me"}}', '{"action": "open_app", "app_name": "Maps"}', '{"tool": "open_app", "action": "Maps"}',
+    'Sure. {"type": "send_message", "recipient": "Sam"}', '{"name": "calculate", "arguments": {"expression": "2 + 2"}}', '{"type": "Calculate"}',
   ]) {
     try Effect.sync(() => cloud.script(text(said), text("I can't do that from here.")))
     const { answer, calls } = try callsFor({ text: "Text Sam that I am running late." })
     writtenCalls.push([answer.text, calls])
   }
   const jsonOnly: (readonly [string, number])[] = []
-  for (const said of ['{"status": "in_progress"}', '{"theme": "dark_mode"}', '{"tool": "open_app", "action": "Maps"}', 'Sure. {"type": "send_message", "recipient": "Sam"}']) {
+  for (const said of ['{"status": "in_progress"}', '{"theme": "dark_mode"}', '{"type": "person", "name": "Bob"}', 'Sure. {"status": "in_progress"}']) {
     try Effect.sync(() => cloud.script(text(said)))
     const { answer, calls } = try callsFor({ text: "Give me that as JSON." })
     jsonOnly.push([answer.text, calls])
@@ -723,8 +726,8 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
     ],
     workedAfter: ["It is 42.", 3, ["CALCULATE"]],
     promisedTwice: ["", "provider_issue", 2],
-    writtenCalls: Array.from({ length: 8 }, () => ["I can't do that from here.", 2]),
-    jsonOnly: ['{"status": "in_progress"}', '{"theme": "dark_mode"}', '{"tool": "open_app", "action": "Maps"}', 'Sure. {"type": "send_message", "recipient": "Sam"}'].map((said) => [said, 1]),
+    writtenCalls: Array.from({ length: 16 }, () => ["I can't do that from here.", 2]),
+    jsonOnly: ['{"status": "in_progress"}', '{"theme": "dark_mode"}', '{"type": "person", "name": "Bob"}', 'Sure. {"status": "in_progress"}'].map((said) => [said, 1]),
     jsonAnswer: ['Sure! {"name": "Bob"}', 1],
     cuedAfterWork: [
       "It is 25.", 3, "auto",

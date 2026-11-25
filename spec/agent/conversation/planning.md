@@ -605,14 +605,20 @@ since an object beside a cue is a tool call written as text, which runs
 nothing. So a cue beside any object (`Sure, one sec. {"type":
 "send_message"}`) is still a cue, delivered without it, and so is a cue
 beside a bracketed snake_case name with `key=value` arguments
-(`[send_message contact="Sam"]`). Only an object that core reads as an
-action envelope (an `action` naming a registered-style action in capitals,
-such as `{"action": "SEND_TEXT", "parameters": {…}}`) is a written call
-on its own: bare assent beside one promises work as `Sure, one sec.` does
-(below), and text that is only such envelopes is a blank. Bare assent
-beside any other object (`Sure! {"name": "Bob"}`), and text that is only
-other objects (`{"status": "in_progress"}`, `{"theme": "dark_mode"}`),
-are an `Answer`.
+(`[send_message contact="Sam"]`). Only such a bracketed call and a call
+envelope are written calls on their own. A call envelope is an object core
+reads as an action envelope; an object whose `action`, `tool`, `type` or
+`name` field names an action registered in the runtime, offered this turn
+or not, ignoring case and underscores (`{"type": "Calculate"}`), other than
+`REPLY`, `IGNORE` and `NONE`; an object whose `action`, `tool` or `type`
+field is a snake_case call name (`{"action": "open_app", "app": "Maps"}`);
+or an object with one of those four fields beside an `arguments`, `args`,
+`parameters`, `params` or `input` object (`{"name": "calculate",
+"arguments": {…}}`). Bare assent beside a written call promises work as
+`Sure, one sec.` does (below), and text that is only written calls is a
+blank. Bare assent beside any other object (`Sure! {"name": "Bob"}`), and
+text that is only other objects (`{"status": "in_progress"}`, `{"theme":
+"dark_mode"}`), are an `Answer`.
 A wait cue followed by more text that is not progress (`One second is
 1,000 milliseconds.`, `Just a second, your dentist is Thursday.`) is an
 `Answer`. A cue that comes with the turn's first tool calls is the turn's
@@ -624,18 +630,18 @@ tool call is not an answer, and neither is assent that goes on to a cue
 asked once more, with the turn's tools still offered unless that call is
 the last step, and one host note
 saying that its response gave the person no answer and was not sent. Before
-any tool ran in the turn, the note also says the response called no tool,
+the turn recorded a step, the note also says the response called no tool,
 and that the model answers now, in its own words, a question it can answer
 from what it already knows, and otherwise does the work now with an offered
 tool or, if no offered tool can do it, tells the person plainly, in its own
 words, that it can't; when no tool can be called on the next step, it says
 that nothing can be done, opened, sent or looked up in the turn, that the
 model answers such a question now in its own words, and that otherwise it
-tells the person plainly that it can't and writes no tool call as text. After a tool ran, it says
+tells the person plainly that it can't and writes no tool call as text. After a step was recorded, it says
 the tool results are what the turn did and that the model answers from
-them, in its own words. A turn asks this at most once before any tool ran
-and at most once after, so a turn that recovered from a promise by running
-a tool can still be asked to report what that tool did. When the response
+them, in its own words. A turn asks this at most once before it records a
+step and at most once after, so a turn that recovered from a promise by
+running a tool can still be asked to report what that tool did. When the response
 after a note is again a cue or a blank with no tool call, or steps run out,
 whatever text streamed with it is restarted to empty and the turn's failure
 fallback is the reply, so a cue alone is never the turn's last word.
@@ -654,7 +660,7 @@ pure def lawAnAnswerIsDeliveredWhole(stepsLeft: int, askedAgain: bool): bool = n
 pure def lawACueIsNeverTheReply(calls: int, stepsLeft: int, askedAgain: bool): bool = nextMove(Cue, calls, stepsLeft, askedAgain) != Deliver
 pure def askedAgainAt(worked: bool, askedBeforeWork: bool, askedAfterWork: bool): bool = if (worked) askedAfterWork else askedBeforeWork
 pure def lawWorkGetsItsOwnReAsk(askedBeforeWork: bool): bool = not(askedAgainAt(true, askedBeforeWork, false))
-pure def lawEachReAskIsSpentOnce(worked: bool): bool = askedAgainAt(worked, true, true)
+pure def lawEachReAskIsSpentOnce(worked: bool): bool = askedAgainAt(worked, not(worked), worked)
 pure def lawAPromiseWithoutWorkIsAskedAgainOnce(draft: Draft, stepsLeft: int): bool =
   (draft != Answer and stepsLeft > 0) implies (nextMove(draft, 0, stepsLeft, false) == AskAgain and nextMove(draft, 0, stepsLeft, true) == GiveUp)
 pure val earlierCallsValues = Set(0, 1, 2)
