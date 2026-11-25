@@ -10,7 +10,7 @@ import {
   buildPlannerToolsFromActions, DISCOVER_ACTIONS_NAME, executePlannedToolCall, isDiscoveryActionName, isModelOutputLimitFinishReason, ModelType, modelAttemptCapture, modelOutputIncompleteEvidence, resolveActionContexts, sha256Hex, sleepWithAbort, stableStringify, tagsMayProduceEffects, wrapExternalContent,
 } from "@elizaos/core"
 import {
-  acknowledges, actionNoteSent, askedAgainAt, answerableLater, answeredAgain, callAdmission, cueDelivered, standsBy, cutOffReply, failedOpen, isTurnStep, maxPlanSteps, nextMove, offered, openOutcomes, plannerOnlyCoaching, plansOn, resendWait, toolActivity,
+  actionNoteSent, askedAgainAt, answerableLater, answeredAgain, callAdmission, cueDelivered, standsBy, cutOffReply, failedOpen, isTurnStep, maxPlanSteps, nextMove, offered, openOutcomes, plannerOnlyCoaching, plansOn, resendWait, spokenCue, toolActivity,
   admitsPlannerWork, contextRestoreOf, maxRestoredHistoryBytes, nothingRan, offersContextRestore, terminalAnswerOf, toolDispatch, turnNarrowed, unavailableNotice, writtenMarkupOf, type CallFailure, type PlanStep, type StepOutcome, type ToolSettlement,
 } from "../../gen/agent__conversation__planning.ts"
 import { originAfterResend } from "../../gen/agent__conversation__turns.ts"
@@ -593,7 +593,7 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
     let cutOff = false
     if (work.length > 0) {
       const cue = withoutWrittenCalls(words.trim())
-      const spoken = acknowledges(draft, work.length, steps.length)
+      const spoken = spokenCue(draft, work.length, steps.length, declared)
       const delivered = cueDelivered(draft, work.length, steps.length, spoken && (await input.onPlanningAcknowledgment?.(cue)) === true)
       if (displayed) {
         input.onReplyRestart?.("")

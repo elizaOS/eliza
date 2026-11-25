@@ -648,7 +648,7 @@ pure def lawOrdinaryRefusalsRemainOutcomes(internal: bool): bool =
 ### A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole
 
 The system prompt's cue rule asks the model to write, with its first tool
-calls, only a brief cue that it heard the request, in the person's own
+calls, only a brief cue tagged `[promise]` that it heard the request, in the person's own
 language and its own words rather than a stock phrase. The rule describes
 what a cue is and lists none: a few natural words that the agent is looking
 or about to act, which never name the people, items, places, times, numbers
@@ -708,10 +708,10 @@ called: that may be an answer or an action the model meant to take (`Sure.`
 to `Text Sam I'm late`), so it is a draft that may be an answer (below).
 Blank text is `Silent`.
 
-The model says itself what a response with no tool call is. The cue rule
-asks it to begin such a response with one tag the person never sees:
-`[answer]` when the text is its complete reply, or `[promise]` when it only
-says it will do something. A tag after nothing but JSON objects or
+The model says itself what its text is. The cue rule asks it to begin
+all text it writes with one tag the person never sees: `[promise]` when the
+text only says it heard the request or will do something, as every cue
+does, or `[answer]` when the text is its complete reply. A tag after nothing but JSON objects or
 bracketed calls counts too, and what came before it is no part of the reply
 (`{"query": "speed of light"}[answer] Light travels…` is delivered as
 `Light travels…`). The shell strips the tag from what is streamed, spoken
@@ -721,7 +721,7 @@ tagged `[answer]` is an `Answer` delivered at once, however short (`[answer]
 Done!`, `[answer] Hello!`), and text tagged `[promise]` is a `Cue`, never
 delivered (`[promise] Sure, one sec.`). Blank text, and a cue beside a call
 written as text, are read by their form whatever the tag, and so is text
-written with tool calls. Text with no tag is read by its form as above, so
+written with tool calls (whether that text is spoken is the tag's, below). Text with no tag is read by its form as above, so
 a model that skips the tag still never ends a turn on a cue-shaped promise
 while tools are offered. In the second answer asked for an unreported
 failure (above), a `[promise]` is never an answer and an `[answer]` is one,
@@ -801,7 +801,14 @@ starts. When the owner asks for silence the model writes no cue, so none is
 spoken; the shell never reads the owner's message to decide. A cue at a
 later step is dropped with the rest of that step's text. A blank draft, or
 text with tool calls that is not cue-shaped (it is long, asks a question or
-carries data), is never spoken as acknowledgment.
+carries data), is never spoken as acknowledgment. The model says itself
+which text is its cue: text written with the first tool calls is the
+acknowledgment only when the model tagged it `[promise]`, saying it only
+heard the request or will do something. Text with tool calls that has no
+tag or is tagged `[answer]`, such as a claim that the work is done before
+it ran (`Sent.`, `Maps is open.`), is dropped with the step's text and
+never spoken, whatever its form; the tag never makes text that is not
+cue-shaped, or a later step's text, an acknowledgment.
 
 ```quint
 type DraftShape = Blank | CueShaped | CueBesideCall | CueBesideObject | OtherText
@@ -826,6 +833,14 @@ pure def lawACueComesOnlyWithToolCallsOrBesideAWrittenCall(shape: DraftShape, ca
 pure def lawAShortReplyBesideWaitingToolsIsAskedOnceThenDelivered(stepsLeft: int): bool =
   readDraft(CueShaped, 0, true, Undeclared) == MaybeAnswer and nextMove(MaybeAnswer, 0, stepsLeft, true) == Deliver
   and (stepsLeft > 0 implies nextMove(MaybeAnswer, 0, stepsLeft, false) == AskAgain)
+pure def spokenCue(draft: Draft, calls: int, earlierCalls: int, declared: Declared): bool =
+  acknowledges(draft, calls, earlierCalls) and declared == DeclaredPromise
+pure def lawOnlyAPromiseWithTheFirstCallsIsSpoken(shape: DraftShape, calls: int, earlierCalls: int, toolsWaiting: bool, declared: Declared): bool =
+  spokenCue(readDraft(shape, calls, toolsWaiting, declared), calls, earlierCalls, declared)
+  iff (declared == DeclaredPromise and calls > 0 and earlierCalls == 0 and (shape == CueShaped or shape == CueBesideCall or shape == CueBesideObject))
+pure def lawAnAnswerOrUntaggedTextWithWorkIsNeverSpoken(shape: DraftShape, calls: int, earlierCalls: int, toolsWaiting: bool): bool =
+  not(spokenCue(readDraft(shape, calls, toolsWaiting, Undeclared), calls, earlierCalls, Undeclared))
+  and not(spokenCue(readDraft(shape, calls, toolsWaiting, DeclaredAnswer), calls, earlierCalls, DeclaredAnswer))
 pure def lawAnUntaggedCueNeverAnswersAFailureReAsk(sameAsFirst: bool): bool =
   not(answeredAgain(readDraft(CueShaped, 0, true, Undeclared), sameAsFirst)) and answeredAgain(readDraft(CueShaped, 0, true, DeclaredAnswer), false)
 pure def lawAFinishedReplyIsNeverReplacedByACue(sameAsFirst: bool): bool =
