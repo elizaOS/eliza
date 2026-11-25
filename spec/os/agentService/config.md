@@ -15,8 +15,10 @@ The host file holds os's own fields, `service` (the subclass's class name),
 `routes` (the renderer's route list, `spec/agent/access/routes.md`), and the launch objects `Launch` types: `model`
 (backend, `cloudBaseUrl`, `smallModel`, `largeModel`, `imageModel`, own-key
 fields), `embeddings` and `embeddingDimensions`, `persistMemory`,
-`callerRole`, `views`, `timeZone`, `privacy`, `google`, `retention` and
-`environment`. There is no separate `cloud {…}` record. The character file is
+`callerRole`, `views`, `timeZone`, `hostContextRevision`, `privacy`,
+`google`, `retention` and `environment`. The service forwards
+`hostContextRevision` as a positive safe integer when the host file
+provides it. There is no separate `cloud {…}` record. The character file is
 `Launch`'s character and the policy file its `policy` (`actions.allowed`,
 `plugins.load`, optional `plugins.product`); a deny list or a refused-action
 list is not part of it. Reading the assets, JSON decoding, the class-name and
