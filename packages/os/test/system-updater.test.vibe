@@ -2,12 +2,16 @@
 import { assert, it } from "@effect/vitest"
 import { downloadAttempt, type PartialFile } from "../gen/os__update__updater.effect.vibe"
 
+
 module node {
-  import { execFileSync } from "node:child_process"
-  import { mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs"
+  import { execFileSync, spawnSync } from "node:child_process"
+  import { createHash } from "node:crypto"
+  import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs"
   import { tmpdir } from "node:os"
   import path from "node:path"
   import { jsonJavaArtifact } from "./drivers/jvm-adapter.ts"
+  import { compileHostReplay } from "./drivers/system-updater-host.ts"
+
 
   export interface Observation {
     readonly case: string
@@ -21,12 +25,14 @@ module node {
     readonly success: boolean | null
   }
 
+
   export interface DownloadTrace {
     readonly expectedBytes: number
     readonly expectedSha256: string
     readonly prefixSha256: string
     readonly observations: readonly Observation[]
   }
+
 
   const SOURCES = [
     "test/fixtures/system-updater/android/os/Build.java",
@@ -35,6 +41,7 @@ module node {
     "test/fixtures/system-updater/ai/eliza/systemupdater/DownloadReplay.java",
   ]
   const tool = (name: string) => process.env.JAVA_HOME ? path.join(process.env.JAVA_HOME, "bin", name) : name
+
 
   export async function replayDownloads(testDirectory: string): Promise<DownloadTrace> {
     const packageDirectory = path.resolve(testDirectory, "..")
@@ -56,8 +63,236 @@ module node {
       rmSync(work, { recursive: true, force: true })
     }
   }
+
+
+  export interface StorageRow {
+    readonly case: string
+    readonly action: string
+    readonly phase: string
+    readonly active: boolean
+    readonly stopped: boolean
+    readonly verified: boolean
+    readonly checked: boolean
+    readonly storageReady: boolean
+    readonly journalWrites: number
+    readonly finishPosts: number
+    readonly finishes: number
+    readonly scheduleCalls: number
+    readonly usableBytes: number
+    readonly requiredBytes: number
+    readonly journalSha256: string
+    readonly archiveSha256: string
+  }
+
+
+  export interface ScratchRow {
+    readonly initialPhase: string
+    readonly phase: string
+    readonly journalWrites: number
+    readonly retryPublished: boolean
+    readonly payloadSyncs: number
+  }
+
+
+  export interface ScratchTrace {
+    readonly faults: readonly ScratchRow[]
+    readonly interrupts: readonly ScratchRow[]
+    readonly cutExits: readonly number[]
+    readonly cutSlots: readonly (readonly string[])[]
+    readonly cutPartialBytes: readonly number[]
+    readonly cutPayloadPresent: readonly boolean[]
+    readonly legacyCutExits: readonly number[]
+    readonly legacyPartialCount: number
+    readonly legacyPartialsMatch: boolean
+    readonly publishOutput: string
+    readonly publishSlot: readonly string[]
+    readonly payload: Uint8Array
+    readonly protectedContents: readonly string[]
+    readonly refusals: readonly string[]
+    readonly refusalPartialContents: readonly string[]
+    readonly refusalSlot: readonly string[]
+    readonly refusalUnrelatedContent: string
+    readonly refuseFinalOutput: string
+    readonly refuseFinalLink: string
+  }
+
+
+  export interface HeldObservation {
+    readonly case: string
+    readonly phase: string
+    readonly binds: number
+    readonly reboots: number
+    readonly status: string
+  }
+
+
+  export const retainedArchiveSha256 = createHash("sha256").update("Retained fixture archive").digest("hex")
+
+
+  export function replayStorage(): readonly StorageRow[] {
+    const classes = compileHostReplay("storage")
+    const work = mkdtempSync(path.join(realpathSync(tmpdir()), "system-update-storage-"))
+    try {
+      const output = execFileSync(tool("java"), ["-cp", classes, "ai.eliza.systemupdater.StorageReplay", work, "after"],
+        { encoding: "utf8", timeout: 120_000 })
+      return output.trim().split("\n").map((line) => JSON.parse(line) as StorageRow)
+    } finally {
+      rmSync(work, { recursive: true, force: true })
+    }
+  }
+
+
+  function runScratch(classes: string, root: string, mode: string): { readonly status: number | null; readonly stdout: string } {
+    const result = spawnSync(tool("java"), ["-cp", classes, "ai.eliza.systemupdater.ScratchReplay", root, mode],
+      { encoding: "utf8", timeout: 120_000 })
+    if (result.error) throw result.error
+    return { status: result.status, stdout: result.stdout.trim() }
+  }
+
+
+  export function replayScratch(): ScratchTrace {
+    const classes = compileHostReplay("scratch")
+    const slotName = "pre-apply-payload-scratch-v1"
+    const protectedBytes = "keep these bytes"
+    const digest64 = "b".repeat(64)
+    const protectedPayload = `${digest64}.payload`
+    const protectedNames = ["payload-legacy.partial", protectedPayload, `${digest64}.zip`]
+    const faults: ScratchRow[] = []
+    const interrupts: ScratchRow[] = []
+    const cutExits: number[] = []
+    const cutSlots: string[][] = []
+    const cutPartialBytes: number[] = []
+    const cutPayloadPresent: boolean[] = []
+    const legacyCutExits: number[] = []
+    const owned = mkdtempSync(path.join(realpathSync(tmpdir()), "system-update-scratch-owned-"))
+    const legacy = mkdtempSync(path.join(realpathSync(tmpdir()), "system-update-scratch-legacy-"))
+    const unknown = mkdtempSync(path.join(realpathSync(tmpdir()), "system-update-scratch-unknown-"))
+    const dangling = mkdtempSync(path.join(realpathSync(tmpdir()), "system-update-scratch-dangling-"))
+    try {
+      const faultCases: readonly (readonly [string, number])[] = [
+        [`mkdir:${slotName}`, 28],
+        ["open:owner", 28],
+        ["open:payload.partial", 122],
+        [`fsync:${slotName}`, 28],
+        ["write:payload.partial", 28],
+        ["write:payload.partial", 5],
+        ["fsync:payload.partial", 122],
+      ]
+      for (const [operation, errno] of faultCases) {
+        const dir = mkdtempSync(path.join(realpathSync(tmpdir()), "system-update-scratch-fault-"))
+        try {
+          faults.push(JSON.parse(runScratch(classes, dir, `fault:${operation}:${errno}`).stdout) as ScratchRow)
+        } finally {
+          rmSync(dir, { recursive: true, force: true })
+        }
+      }
+      for (const operation of ["write", "fsync"]) {
+        const dir = mkdtempSync(path.join(realpathSync(tmpdir()), "system-update-scratch-interrupt-"))
+        try {
+          interrupts.push(JSON.parse(runScratch(classes, dir, `interrupt:${operation}`).stdout) as ScratchRow)
+        } finally {
+          rmSync(dir, { recursive: true, force: true })
+        }
+      }
+      for (const name of protectedNames) writeFileSync(path.join(owned, name), protectedBytes)
+      const slot = path.join(owned, slotName)
+      mkdirSync(slot)
+      for (let cut = 0; cut < 2; cut++) {
+        const cutRun = runScratch(classes, owned, "cut")
+        cutExits.push(cutRun.status ?? -1)
+        cutSlots.push(readdirSync(slot).sort())
+        cutPartialBytes.push(statSync(path.join(slot, "payload.partial")).size)
+        cutPayloadPresent.push(existsSync(path.join(owned, "candidate.payload")))
+        const legacyRun = runScratch(classes, legacy, "legacy-cut")
+        legacyCutExits.push(legacyRun.status ?? -1)
+      }
+      const legacyFiles = readdirSync(legacy)
+      const legacyPartialCount = legacyFiles.length
+      const legacyPartialsMatch = legacyFiles.every((name) => /^payload-.*\.partial$/.test(name))
+      const publish = runScratch(classes, owned, "publish")
+      const publishSlot = readdirSync(slot).sort()
+      const payload = new Uint8Array(readFileSync(path.join(owned, "candidate.payload")))
+      const protectedContents = protectedNames.map((name) => readFileSync(path.join(owned, name), "utf8"))
+      const unknownSlot = path.join(unknown, slotName)
+      const unknownPartial = path.join(unknownSlot, "payload.partial")
+      const refusals: string[] = []
+      const refusalPartialContents: string[] = []
+      mkdirSync(unknownSlot, { recursive: true })
+      writeFileSync(unknownPartial, protectedBytes)
+      refusals.push(runScratch(classes, unknown, "refuse").stdout)
+      refusalPartialContents.push(readFileSync(unknownPartial, "utf8"))
+      rmSync(unknownPartial)
+      writeFileSync(path.join(unknownSlot, "owner"), "")
+      symlinkSync(path.join(owned, protectedPayload), unknownPartial)
+      refusals.push(runScratch(classes, unknown, "refuse").stdout)
+      refusalPartialContents.push(readFileSync(unknownPartial, "utf8"))
+      const refusalSlot = readdirSync(unknownSlot).sort()
+      rmSync(unknownPartial)
+      writeFileSync(unknownPartial, protectedBytes)
+      const unrelated = path.join(unknownSlot, "unrelated")
+      writeFileSync(unrelated, protectedBytes)
+      refusals.push(runScratch(classes, unknown, "refuse").stdout)
+      refusalPartialContents.push(readFileSync(unknownPartial, "utf8"))
+      const refusalUnrelatedContent = readFileSync(unrelated, "utf8")
+      symlinkSync("absent", path.join(dangling, "candidate.payload"))
+      const refuseFinal = runScratch(classes, dangling, "refuse-final")
+      const refuseFinalLink = readlinkSync(path.join(dangling, "candidate.payload"))
+      return {
+        faults, interrupts, cutExits, cutSlots, cutPartialBytes, cutPayloadPresent, legacyCutExits,
+        legacyPartialCount, legacyPartialsMatch, publishOutput: publish.stdout, publishSlot, payload,
+        protectedContents, refusals, refusalPartialContents, refusalSlot, refusalUnrelatedContent,
+        refuseFinalOutput: refuseFinal.stdout, refuseFinalLink,
+      }
+    } finally {
+      rmSync(owned, { recursive: true, force: true })
+      rmSync(legacy, { recursive: true, force: true })
+      rmSync(unknown, { recursive: true, force: true })
+      rmSync(dangling, { recursive: true, force: true })
+    }
+  }
+
+
+  export function replayHeld(): readonly HeldObservation[] {
+    const classes = compileHostReplay("held")
+    const work = mkdtempSync(path.join(realpathSync(tmpdir()), "system-update-held-"))
+    try {
+      const data = path.join(work, "data")
+      mkdirSync(data)
+      const cert = path.join(work, "fixture.x509")
+      const rotation = path.join(work, "rotation.x509")
+      const keyStore = path.join(work, "fixture.p12")
+      execFileSync(tool("keytool"), ["-genkeypair", "-alias", "fixture", "-keyalg", "RSA", "-storetype", "PKCS12", "-keystore", keyStore,
+        "-storepass", "fixture-pass", "-dname", "CN=Fixture", "-validity", "2", "-noprompt"], { stdio: ["ignore", "ignore", "pipe"] })
+      execFileSync(tool("keytool"), ["-exportcert", "-alias", "fixture", "-keystore", keyStore, "-storepass", "fixture-pass",
+        "-file", cert], { stdio: ["ignore", "ignore", "pipe"] })
+      rmSync(keyStore)
+      const rotationStore = path.join(work, "rotation.p12")
+      execFileSync(tool("keytool"), ["-genkeypair", "-alias", "rotation", "-keyalg", "RSA", "-storetype", "PKCS12", "-keystore", rotationStore,
+        "-storepass", "fixture-pass", "-dname", "CN=Rotation Fixture", "-validity", "2", "-noprompt"], { stdio: ["ignore", "ignore", "pipe"] })
+      execFileSync(tool("keytool"), ["-exportcert", "-alias", "rotation", "-keystore", rotationStore, "-storepass", "fixture-pass",
+        "-file", rotation], { stdio: ["ignore", "ignore", "pipe"] })
+      rmSync(rotationStore)
+      const output = execFileSync(tool("java"), ["-cp", classes, "ai.eliza.systemupdater.HeldVerificationReplay", data, cert, "after", rotation],
+        { encoding: "utf8", timeout: 120_000 })
+      return output.trim().split("\n").map((line) => {
+        const parts = line.split("\t")
+        const state = parts[0]
+        const status = parts[1]
+        const fields = state === undefined ? [] : state.split(" ")
+        const name = fields[0]
+        const phase = fields[1]
+        const binds = fields[2]
+        const reboots = fields[3]
+        if (name === undefined || phase === undefined || binds === undefined || reboots === undefined || status === undefined) throw new Error("Malformed held observation")
+        return { case: name, phase, binds: Number(binds), reboots: Number(reboots), status }
+      })
+    } finally {
+      rmSync(work, { recursive: true, force: true })
+    }
+  }
 }
-import { replayDownloads, type DownloadTrace, type Observation } from node
+import { replayDownloads, replayHeld, replayScratch, replayStorage, retainedArchiveSha256, type DownloadTrace, type HeldObservation, type Observation, type ScratchRow, type ScratchTrace, type StorageRow } from node
+
 
 function partialFile(trace: DownloadTrace, row: Observation): PartialFile {
   if (row.partialBytes === 0) return "NoBytes"
@@ -66,11 +301,13 @@ function partialFile(trace: DownloadTrace, row: Observation): PartialFile {
   return row.partialSha256 === trace.prefixSha256 ? "GoodPrefix" : "WrongPrefix"
 }
 
+
 function receipt(trace: DownloadTrace, row: Observation): string {
   if (row.success === true && row.zipBytes === trace.expectedBytes && row.zipSha256 === trace.expectedSha256) return "SuccessReceipt"
   if (row.success === false && row.zipBytes === 0) return "FailureReceipt"
   return `published ${row.zipBytes} bytes with success ${String(row.success)}`
 }
+
 
 it.effect('The production downloader resets a wrong or oversized file, resumes a good prefix with one ranged request and publishes only the candidate\'s bytes (spec/os/update/updater.md, "A download publishes only bytes that hash to the candidate, and resets a wrong file")', effect () => {
   const trace = try tryPromise(() => replayDownloads(import.meta.dirname))
@@ -84,4 +321,156 @@ it.effect('The production downloader resets a wrong or oversized file, resumes a
     { cases: [...new Set(attempts.map(({ attempt }) => attempt.split(" ")[0]))], attempts: attempts.map(({ attempt, observed }) => ({ attempt, ...observed })) },
     { cases: ["corrupt-full", "oversized", "bad-prefix", "valid-prefix", "verified-full"], attempts: attempts.map(({ attempt, spec }) => ({ attempt, ...spec })) },
   ))
+}, 180_000)
+
+
+it.effect('The storage deferral keeps the journal and the run when space is short, and resumes verification once space is available (spec/os/update/updater.md, "Story: Install a verified update once")', effect () => {
+  const rows = try Effect.try(() => replayStorage())
+  try Effect.try(() => assert.deepStrictEqual(
+    rows.map(({ case: name, action, phase, active, stopped, verified, checked, storageReady, journalWrites, finishPosts, finishes, scheduleCalls }) => ({ case: name, action, phase, active, stopped, verified, checked, storageReady, journalWrites, finishPosts, finishes, scheduleCalls })),
+    [
+      { case: "downloading-deferral", action: "init", phase: "IDLE", active: false, stopped: false, verified: false, checked: false, storageReady: true, journalWrites: 0, finishPosts: 0, finishes: 0, scheduleCalls: 0 },
+      { case: "downloading-deferral", action: "start", phase: "IDLE", active: true, stopped: false, verified: false, checked: false, storageReady: true, journalWrites: 0, finishPosts: 0, finishes: 0, scheduleCalls: 0 },
+      { case: "downloading-deferral", action: "download", phase: "DOWNLOADING", active: true, stopped: false, verified: false, checked: false, storageReady: true, journalWrites: 0, finishPosts: 0, finishes: 0, scheduleCalls: 0 },
+      { case: "downloading-deferral", action: "storage", phase: "DOWNLOADING", active: true, stopped: false, verified: false, checked: false, storageReady: false, journalWrites: 0, finishPosts: 0, finishes: 0, scheduleCalls: 0 },
+      { case: "downloading-deferral", action: "deferStorage", phase: "DOWNLOADING", active: false, stopped: false, verified: false, checked: false, storageReady: false, journalWrites: 0, finishPosts: 1, finishes: 1, scheduleCalls: 0 },
+      { case: "downloading-deferral", action: "start", phase: "DOWNLOADING", active: true, stopped: false, verified: false, checked: false, storageReady: false, journalWrites: 0, finishPosts: 1, finishes: 1, scheduleCalls: 0 },
+      { case: "downloading-deferral", action: "storage", phase: "DOWNLOADING", active: true, stopped: false, verified: false, checked: false, storageReady: true, journalWrites: 0, finishPosts: 1, finishes: 1, scheduleCalls: 0 },
+      { case: "downloading-deferral", action: "verify", phase: "VERIFIED", active: true, stopped: false, verified: true, checked: true, storageReady: true, journalWrites: 0, finishPosts: 1, finishes: 1, scheduleCalls: 0 },
+      { case: "verified-deferral", action: "init", phase: "IDLE", active: false, stopped: false, verified: false, checked: false, storageReady: true, journalWrites: 0, finishPosts: 0, finishes: 0, scheduleCalls: 0 },
+      { case: "verified-deferral", action: "start", phase: "IDLE", active: true, stopped: false, verified: false, checked: false, storageReady: true, journalWrites: 0, finishPosts: 0, finishes: 0, scheduleCalls: 0 },
+      { case: "verified-deferral", action: "download", phase: "DOWNLOADING", active: true, stopped: false, verified: false, checked: false, storageReady: true, journalWrites: 0, finishPosts: 0, finishes: 0, scheduleCalls: 0 },
+      { case: "verified-deferral", action: "verify", phase: "VERIFIED", active: true, stopped: false, verified: true, checked: true, storageReady: true, journalWrites: 0, finishPosts: 0, finishes: 0, scheduleCalls: 0 },
+      { case: "verified-deferral", action: "stop", phase: "VERIFIED", active: false, stopped: true, verified: true, checked: false, storageReady: true, journalWrites: 0, finishPosts: 0, finishes: 0, scheduleCalls: 0 },
+      { case: "verified-deferral", action: "start", phase: "VERIFIED", active: true, stopped: false, verified: true, checked: false, storageReady: true, journalWrites: 0, finishPosts: 0, finishes: 0, scheduleCalls: 0 },
+      { case: "verified-deferral", action: "storage", phase: "VERIFIED", active: true, stopped: false, verified: true, checked: false, storageReady: false, journalWrites: 0, finishPosts: 0, finishes: 0, scheduleCalls: 0 },
+      { case: "verified-deferral", action: "deferStorage", phase: "VERIFIED", active: false, stopped: false, verified: true, checked: false, storageReady: false, journalWrites: 0, finishPosts: 1, finishes: 1, scheduleCalls: 0 },
+      { case: "verified-deferral", action: "start", phase: "VERIFIED", active: true, stopped: false, verified: true, checked: false, storageReady: false, journalWrites: 0, finishPosts: 1, finishes: 1, scheduleCalls: 0 },
+      { case: "verified-deferral", action: "storage", phase: "VERIFIED", active: true, stopped: false, verified: true, checked: false, storageReady: true, journalWrites: 0, finishPosts: 1, finishes: 1, scheduleCalls: 0 },
+      { case: "verified-deferral", action: "verify", phase: "VERIFIED", active: true, stopped: false, verified: true, checked: true, storageReady: true, journalWrites: 0, finishPosts: 1, finishes: 1, scheduleCalls: 0 },
+      { case: "stopped-deferral", action: "init", phase: "IDLE", active: false, stopped: false, verified: false, checked: false, storageReady: true, journalWrites: 0, finishPosts: 0, finishes: 0, scheduleCalls: 0 },
+      { case: "stopped-deferral", action: "start", phase: "IDLE", active: true, stopped: false, verified: false, checked: false, storageReady: true, journalWrites: 0, finishPosts: 0, finishes: 0, scheduleCalls: 0 },
+      { case: "stopped-deferral", action: "download", phase: "DOWNLOADING", active: true, stopped: false, verified: false, checked: false, storageReady: true, journalWrites: 0, finishPosts: 0, finishes: 0, scheduleCalls: 0 },
+      { case: "stopped-deferral", action: "stop", phase: "DOWNLOADING", active: false, stopped: true, verified: false, checked: false, storageReady: true, journalWrites: 0, finishPosts: 0, finishes: 0, scheduleCalls: 0 },
+      { case: "stopped-deferral", action: "storage", phase: "DOWNLOADING", active: false, stopped: true, verified: false, checked: false, storageReady: false, journalWrites: 0, finishPosts: 0, finishes: 0, scheduleCalls: 0 },
+      { case: "stopped-deferral", action: "observe", phase: "DOWNLOADING", active: false, stopped: true, verified: false, checked: false, storageReady: false, journalWrites: 0, finishPosts: 0, finishes: 0, scheduleCalls: 0 },
+      { case: "trust-rejection", action: "init", phase: "IDLE", active: false, stopped: false, verified: false, checked: false, storageReady: true, journalWrites: 0, finishPosts: 0, finishes: 0, scheduleCalls: 0 },
+      { case: "trust-rejection", action: "start", phase: "IDLE", active: true, stopped: false, verified: false, checked: false, storageReady: true, journalWrites: 0, finishPosts: 0, finishes: 0, scheduleCalls: 0 },
+      { case: "trust-rejection", action: "download", phase: "DOWNLOADING", active: true, stopped: false, verified: false, checked: false, storageReady: true, journalWrites: 0, finishPosts: 0, finishes: 0, scheduleCalls: 0 },
+      { case: "trust-rejection", action: "storage", phase: "DOWNLOADING", active: true, stopped: false, verified: false, checked: false, storageReady: false, journalWrites: 0, finishPosts: 0, finishes: 0, scheduleCalls: 0 },
+      { case: "trust-rejection", action: "deferStorage", phase: "DOWNLOADING", active: false, stopped: false, verified: false, checked: false, storageReady: false, journalWrites: 0, finishPosts: 1, finishes: 1, scheduleCalls: 0 },
+      { case: "trust-rejection", action: "start", phase: "DOWNLOADING", active: true, stopped: false, verified: false, checked: false, storageReady: false, journalWrites: 0, finishPosts: 1, finishes: 1, scheduleCalls: 0 },
+      { case: "trust-rejection", action: "storage", phase: "DOWNLOADING", active: true, stopped: false, verified: false, checked: false, storageReady: true, journalWrites: 0, finishPosts: 1, finishes: 1, scheduleCalls: 0 },
+      { case: "trust-rejection", action: "reject", phase: "FAILED", active: false, stopped: false, verified: false, checked: false, storageReady: true, journalWrites: 1, finishPosts: 2, finishes: 2, scheduleCalls: 0 },
+      { case: "already-applied-guard", action: "init", phase: "IDLE", active: false, stopped: false, verified: false, checked: false, storageReady: true, journalWrites: 0, finishPosts: 0, finishes: 0, scheduleCalls: 0 },
+      { case: "already-applied-guard", action: "start", phase: "IDLE", active: true, stopped: false, verified: false, checked: false, storageReady: true, journalWrites: 0, finishPosts: 0, finishes: 0, scheduleCalls: 0 },
+      { case: "already-applied-guard", action: "download", phase: "DOWNLOADING", active: true, stopped: false, verified: false, checked: false, storageReady: true, journalWrites: 0, finishPosts: 0, finishes: 0, scheduleCalls: 0 },
+      { case: "already-applied-guard", action: "verify", phase: "VERIFIED", active: true, stopped: false, verified: true, checked: true, storageReady: true, journalWrites: 0, finishPosts: 0, finishes: 0, scheduleCalls: 0 },
+      { case: "already-applied-guard", action: "defensiveObserve", phase: "APPLYING", active: true, stopped: false, verified: true, checked: true, storageReady: true, journalWrites: 0, finishPosts: 0, finishes: 0, scheduleCalls: 0 },
+      { case: "already-applied-guard", action: "defensiveObserve", phase: "UNKNOWN", active: true, stopped: false, verified: true, checked: true, storageReady: true, journalWrites: 0, finishPosts: 0, finishes: 0, scheduleCalls: 0 },
+    ],
+  ))
+  try Effect.try(() => {
+    const deferredBytes = 2 * 1024 * 1024 * 1024 + 4096
+    const downloading = rows.filter((row) => row.case === "downloading-deferral")
+    const verified = rows.filter((row) => row.case === "verified-deferral")
+    const stopped = rows.filter((row) => row.case === "stopped-deferral")
+    const trust = rows.filter((row) => row.case === "trust-rejection")
+    const guard = rows.filter((row) => row.case === "already-applied-guard")
+    assert.deepStrictEqual([downloading.length, verified.length, stopped.length, trust.length, guard.length], [8, 11, 6, 8, 6])
+    const journal = (group: readonly StorageRow[], index: number) => {
+      const row = group[index]
+      if (row === undefined) throw new Error("Missing storage row")
+      return row.journalSha256
+    }
+    for (const group of [downloading, verified, stopped, trust, guard]) {
+      for (const [index, row] of group.entries()) {
+        assert.equal(row.archiveSha256, retainedArchiveSha256)
+        assert.match(row.journalSha256, /^[0-9a-f]{64}$/)
+        if (row.action === "init" || row.action === "download") {
+          assert.equal(row.usableBytes, -1)
+          assert.equal(row.requiredBytes, -1)
+        } else if (row.action === "storage" && row.storageReady === false) {
+          assert.equal(row.requiredBytes - row.usableBytes, deferredBytes)
+        } else if (row.action === "verify" || (row.action === "storage" && row.storageReady === true)) {
+          assert.equal(row.requiredBytes, deferredBytes)
+          assert.ok(row.usableBytes > 0)
+        } else if (row.action === "defensiveObserve") {
+          assert.equal(row.requiredBytes - row.usableBytes, deferredBytes)
+        } else {
+          const before = group[index - 1]
+          if (before !== undefined) {
+            assert.equal(row.usableBytes, before.usableBytes)
+            assert.equal(row.requiredBytes, before.requiredBytes)
+          }
+        }
+      }
+    }
+    assert.equal(journal(downloading, 3), journal(downloading, 4))
+    assert.notEqual(journal(downloading, 7), journal(downloading, 6))
+    assert.equal(journal(verified, 6), journal(verified, 7))
+    assert.equal(journal(verified, 9), journal(verified, 10))
+    assert.equal(journal(stopped, 4), journal(stopped, 5))
+    assert.equal(journal(trust, 3), journal(trust, 4))
+    assert.notEqual(journal(guard, 4), journal(guard, 5))
+  })
+}, 120_000)
+
+
+it.effect('The scratch recovery refuses an unowned or foreign slot, retries a failed extraction and publishes the payload after a crash (spec/os/update/updater.md, "Story: Install a verified update once")', effect () => {
+  const trace = try Effect.try(() => replayScratch())
+  const expectedPayload = new Uint8Array(65536)
+  for (let i = 0; i < expectedPayload.length; i++) expectedPayload[i] = i % 256
+  try Effect.try(() => assert.deepStrictEqual(trace, {
+    faults: [
+      { initialPhase: "DOWNLOADING", phase: "DOWNLOADING", journalWrites: 0, retryPublished: true, payloadSyncs: 0 },
+      { initialPhase: "DOWNLOADING", phase: "DOWNLOADING", journalWrites: 0, retryPublished: true, payloadSyncs: 0 },
+      { initialPhase: "DOWNLOADING", phase: "DOWNLOADING", journalWrites: 0, retryPublished: true, payloadSyncs: 0 },
+      { initialPhase: "DOWNLOADING", phase: "DOWNLOADING", journalWrites: 0, retryPublished: true, payloadSyncs: 0 },
+      { initialPhase: "DOWNLOADING", phase: "DOWNLOADING", journalWrites: 0, retryPublished: true, payloadSyncs: 0 },
+      { initialPhase: "DOWNLOADING", phase: "FAILED", journalWrites: 1, retryPublished: false, payloadSyncs: 0 },
+      { initialPhase: "VERIFIED", phase: "VERIFIED", journalWrites: 0, retryPublished: true, payloadSyncs: 0 },
+    ],
+    interrupts: [
+      { initialPhase: "DOWNLOADING", phase: "DOWNLOADING", journalWrites: 0, retryPublished: true, payloadSyncs: 0 },
+      { initialPhase: "VERIFIED", phase: "VERIFIED", journalWrites: 0, retryPublished: true, payloadSyncs: 1 },
+    ],
+    cutExits: [73, 73],
+    cutSlots: [["owner", "payload.partial"], ["owner", "payload.partial"]],
+    cutPartialBytes: [4096, 4096],
+    cutPayloadPresent: [false, false],
+    legacyCutExits: [73, 73],
+    legacyPartialCount: 2,
+    legacyPartialsMatch: true,
+    publishOutput: "published",
+    publishSlot: ["owner"],
+    payload: expectedPayload,
+    protectedContents: ["keep these bytes", "keep these bytes", "keep these bytes"],
+    refusals: ["refused", "refused", "refused"],
+    refusalPartialContents: ["keep these bytes", "keep these bytes", "keep these bytes"],
+    refusalSlot: ["owner", "payload.partial"],
+    refusalUnrelatedContent: "keep these bytes",
+    refuseFinalOutput: "refused final",
+    refuseFinalLink: "absent",
+  }))
+}, 180_000)
+
+
+it.effect('The held verification replays the applied update, refuses a changed or unavailable offer and reboots only a verified engine-ready candidate (spec/os/update/updater.md, "Story: Install a verified update once")', effect () => {
+  const observations = try Effect.try(() => replayHeld())
+  try Effect.try(() => assert.deepStrictEqual(observations, [
+    { case: "missing", phase: "REBOOT_READY", binds: 0, reboots: 0, status: "System update could not be completed; its state is retained" },
+    { case: "invalid", phase: "REBOOT_READY", binds: 0, reboots: 0, status: "System update could not be completed; its state is retained" },
+    { case: "symlink", phase: "REBOOT_READY", binds: 0, reboots: 0, status: "System update could not be completed; its state is retained" },
+    { case: "missing-archive", phase: "REBOOT_READY", binds: 0, reboots: 0, status: "The verified update package is unavailable" },
+    { case: "changed", phase: "REBOOT_READY", binds: 0, reboots: 0, status: "The current offer differs from the applied system update. Automatic restart is on hold." },
+    { case: "ineligible", phase: "REBOOT_READY", binds: 0, reboots: 0, status: "System update is ready; waiting for idle restart conditions" },
+    { case: "engine-idle", phase: "REBOOT_READY", binds: 1, reboots: 0, status: "System update engine state needs review" },
+    { case: "ready", phase: "REBOOT_INTENT", binds: 1, reboots: 1, status: "System restart requested" },
+    { case: "initial-absent", phase: "REBOOT_READY", binds: 0, reboots: 0, status: "No matching offer for the applied system update. Automatic restart is on hold." },
+    { case: "initial-different", phase: "REBOOT_READY", binds: 0, reboots: 0, status: "The current offer differs from the applied system update. Automatic restart is on hold." },
+    { case: "initial-unavailable", phase: "REBOOT_READY", binds: 0, reboots: 0, status: "Could not check the offer for the applied system update. Automatic restart is on hold." },
+    { case: "recheck-absent", phase: "REBOOT_READY", binds: 0, reboots: 0, status: "No matching offer for the applied system update. Automatic restart is on hold." },
+    { case: "recheck-unavailable", phase: "REBOOT_READY", binds: 0, reboots: 0, status: "Could not check the offer for the applied system update. Automatic restart is on hold." },
+  ]))
 }, 180_000)
