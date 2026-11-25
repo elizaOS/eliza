@@ -70,7 +70,7 @@ function completions(cloud: CloudFake): number {
 }
 
 function refusalOf(runtime: AgentRuntime, params: GenerateTextParams) {
-  return host("refused model call", () => runtime.useModel(ModelType.TEXT_SMALL, params).then(() => undefined, (failure: unknown) => failure as { code?: unknown; status?: unknown; name?: unknown; retryAfterMs?: unknown; cloudCode?: unknown }))
+  return host("refused model call", () => runtime.useModel(ModelType.TEXT_SMALL, params).then(() => undefined, (failure: unknown) => failure as { code?: unknown; status?: unknown; name?: unknown; retryAfterMs?: unknown; cloudCode?: unknown; limitOrigin?: unknown }))
 }
 
 it.effect('A cloud text call keeps its image parts and streams, and an image description uses the image model (spec/agent/models/binding.md, "No text handler is ever served by a model on the device")', effect () => {

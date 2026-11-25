@@ -266,8 +266,8 @@ A turn ended `limit_reached` by a model refusal that names who set the limit
 (the [binding](../models/binding.md)'s `provider` or `cloud`) stores it with
 the reply as `limitOrigin`, so the stored conversation tells a limit of
 Cloud's own from the model provider's. Every other reply stores none: an
-answer, another kind, and a limit the binding enforced from an earlier
-refusal. The origin is never part of the reply's text.
+answer, another kind, and a limit the binding enforced from a refusal in
+an earlier turn. The origin is never part of the reply's text.
 
 ```quint
 pure def limitOriginOn(storedKind: str, origin: B::LimitOrigin): str =
@@ -278,6 +278,26 @@ pure def lawOnlyARateLimitedReplyStoresAnOrigin(storedKind: str, origin: B::Limi
   limitOriginOn(storedKind, origin) != "" implies storedKind == "limit_reached"
 pure def lawARateLimitedReplyKeepsTheOriginTheRefusalNamed(origin: B::LimitOrigin): bool =
   limitOriginOn("limit_reached", origin) == B::limitOriginName(origin)
+```
+
+### A re-send the binding refuses for the limit its turn met keeps who set that limit
+
+When a turn's model call is rate limited and the turn re-sends it once, the
+binding may refuse the re-send itself because the limit is still in force,
+and that refusal names no origin. The turn then keeps the origin of the
+refusal it met, so its rate-limited reply still says whether the model
+provider or Cloud set the limit. A re-send refused by a new refusal that
+names its own origin keeps that one.
+
+```quint
+pure def originAfterResend(met: B::LimitOrigin, again: B::LimitOrigin): B::LimitOrigin =
+  if (again == B::NoLimitOrigin) met else again
+pure val metValues = Set(B::NoLimitOrigin, B::ProviderSetLimit, B::CloudSetLimit)
+pure val againValues = Set(B::NoLimitOrigin, B::ProviderSetLimit, B::CloudSetLimit)
+pure def lawAHeldResendKeepsTheOriginTheTurnMet(met: B::LimitOrigin): bool =
+  originAfterResend(met, B::NoLimitOrigin) == met
+pure def lawANamedResendKeepsItsOwnOrigin(met: B::LimitOrigin, again: B::LimitOrigin): bool =
+  again != B::NoLimitOrigin implies originAfterResend(met, again) == again
 ```
 
 ### A turn that failed before any reply, for no cause the binding named, is stored as a provider issue
