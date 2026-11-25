@@ -2,7 +2,7 @@
 
 A consumer builds its generated [Android host](./androidHost.md) with
 `buildAndroid` (`src/build/android-build.vibe`, exported from
-`@elizaos/os/build`). The call runs the consumer's prepare steps, one Gradle
+`@elizaos/os`). The call runs the consumer's prepare steps, one Gradle
 run for the selected variants, and the consumer's verify command, then
 publishes the APK set, and on request an archive of it, by
 [atomic publication](../../core/atomicPublication.md). The source is

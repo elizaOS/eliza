@@ -1,6 +1,6 @@
 // spec/workflow/index.md, "Story: Recover one reviewed run across an interrupted reply"; spec/agent/plugins/profile.md, "A load list names only plugins the bundle carries or the agent's own modules"; spec/agent/plugins/profile.md, "Story: Run my workflows only in the pinned worker"
 import type { IAgentRuntime } from "@elizaos/core"
-import type { AgentPlugin } from "@elizaos/agent"
+import type { AgentPlugin } from "@elizaos/agent-host"
 import { activeWorkflowsProvider, workflowAction, workflowInstances, workflowsContext, workflowStatusProvider } from "./agent.vibe"
 import { workflowRoutes } from "./routes.vibe"
 import { runtimeWorkflowHost, WORKFLOW_SCHEDULE_TASK } from "./runtime.vibe"

@@ -1,0 +1,188 @@
+// spec/os/android/noticeRoutes.md, "Story: Keep my notices to the account I am signed in to"
+import { assert, it } from "@effect/vitest"
+import type { DeviceCredential } from "../../gen/os__signIn__credential.ts"
+import { initial as signedOut } from "../../gen/os__signIn__credential.effect.vibe"
+import {
+  noticeOwnerFence,
+  noticeOwnerOf,
+  noticesClient,
+  resolveNoticeTap,
+  restoreSuspendedApprovals,
+  workflowApprovalNoticeIdentity,
+  type NoticeOwnerIdentity,
+  type PendingNoticeTap,
+  type WorkflowNoticeRoute,
+} from "../../src/bridges/notices.vibe"
+
+module android {
+  import type { NoticeOwnerIdentity, NotificationsNativePlugin, PendingNoticeTap, SuspendedApprovalNotice, WorkflowNoticeRoute } from "../../src/bridges/definitions/notices.ts"
+
+  export interface Phone {
+    owner: NoticeOwnerIdentity | null
+    approvals: Map<string, { notice: SuspendedApprovalNotice; status: "succeeded" | "suspended" | "withdrawn" }>
+    tap: Partial<PendingNoticeTap>
+    taps: Array<Partial<PendingNoticeTap>>
+    fenceFails: number
+    calls: string[]
+    presentation: unknown
+  }
+
+  /** @throws {never} */
+  export function phone(): Phone {
+    return { owner: null, approvals: new Map(), tap: {}, taps: [], fenceFails: 0, calls: [], presentation: { protocol: 2 } }
+  }
+
+  /** @throws {never} */
+  function sameOwner(owner: NoticeOwnerIdentity | null, route: WorkflowNoticeRoute): boolean {
+    return owner !== null && owner.origin === route.origin && owner.ownerId === route.ownerId && owner.agentId === route.agentId
+  }
+
+  /** @throws {never} */
+  export function plugin(device: Phone): NotificationsNativePlugin {
+    const unused = async (): Promise<unknown> => { throw new Error("not used by this journey") }
+    return {
+      workflowPresentationCapabilities: async () => device.presentation,
+      pendingWorkflowTap: async () => device.taps.shift() ?? device.tap,
+      consumeWorkflowTap: unused,
+      postWorkflow: unused,
+      workflowReceipt: unused,
+      noticeOwner: async ({ owner }) => {
+        device.calls.push(`fence:${owner?.ownerId ?? "signed-out"}`)
+        if (device.fenceFails > 0) { device.fenceFails--; throw new Error("storage busy") }
+        device.owner = owner
+        let withdrawn = 0
+        for (const row of device.approvals.values()) if (!sameOwner(owner, row.notice.route) && row.status === "succeeded") { row.status = "suspended"; withdrawn++ }
+        const suspended = [...device.approvals.values()].filter((row) => row.status === "suspended" && sameOwner(owner, row.notice.route)).map((row) => row.notice)
+        return { withdrawn, suspended }
+      },
+      postWorkflowApproval: async (input) => {
+        device.calls.push(`post:${input.route.versionId}`)
+        device.approvals.set(input.id, { notice: input, status: "succeeded" })
+        return { status: "succeeded" }
+      },
+      resumeWorkflowApproval: async (input) => {
+        device.calls.push(`resume:${input.id.slice(0, 15)}`)
+        const row = device.approvals.get(input.id)
+        if (row !== undefined) row.status = "succeeded"
+        return { status: "succeeded" }
+      },
+      withdrawWorkflowApproval: async ({ id }) => {
+        device.calls.push(`withdraw:${id.slice(0, 15)}`)
+        const row = device.approvals.get(id)
+        if (row !== undefined) row.status = "withdrawn"
+        return {}
+      },
+      status: unused, openChannelSettings: unused, crossAppStatus: unused, notificationApps: unused, setNotificationPolicy: unused,
+      resumeCrossApp: unused, openNotificationAccess: unused, notificationHistory: unused, clearNotificationHistory: unused,
+      list: unused, open: unused, dismiss: unused, clear: unused,
+      addListener: async () => ({ remove: async () => {} }),
+    }
+  }
+}
+import { phone, plugin } from android
+
+const SCOPE = "a".repeat(64)
+
+function signedIn(userId: string, version: number): DeviceCredential {
+  return { ...signedOut, generation: version, lastVersion: version, custody: { tag: "Active", version, credentialId: `c${version}`, account: { userId, organizationId: "org-1" }, keyExpiresAt: 100 } }
+}
+
+function routeFor(owner: NoticeOwnerIdentity | null, versionId: string): WorkflowNoticeRoute {
+  return { scope: SCOPE, origin: owner?.origin ?? "", ownerId: owner?.ownerId ?? "", agentId: owner?.agentId ?? "", workflowId: "w1", runId: "r1", versionId }
+}
+
+it.effect('An approval notice has one identity per approval, bound to its exact run route (spec/os/android/noticeRoutes.md, "An approval notice has one identity per approval, bound to its exact run route")', () => effect {
+  const route = routeFor(noticeOwnerOf({ userId: "u1", organizationId: "org-1" }, "agent-1"), "v1")
+  const first = try promise(() => workflowApprovalNoticeIdentity(route, "p1"))
+  const nextVersion = try promise(() => workflowApprovalNoticeIdentity({ ...route, versionId: "v2" }, "p1"))
+  const otherRun = try promise(() => workflowApprovalNoticeIdentity({ ...route, runId: "r2" }, "p1"))
+  const refused = try promise(() => workflowApprovalNoticeIdentity(route, "").then(() => "accepted", (error: { _tag?: string }) => error._tag))
+  try Effect.try(() => {
+    assert.match(first.id, /^approval-[a-f0-9]{64}$/)
+    assert.strictEqual(nextVersion.id, first.id)
+    assert.notStrictEqual(nextVersion.bindingHash, first.bindingHash)
+    assert.notStrictEqual(otherRun.id, first.id)
+    assert.strictEqual(refused, "InvalidApprovalNotice")
+  })
+})
+
+it.effect('Keep my notices to the account I am signed in to (spec/os/android/noticeRoutes.md, "Story: Keep my notices to the account I am signed in to")', () => effect {
+  const device = phone()
+  const client = noticesClient({ plugin: plugin(device) })
+  const owner = noticeOwnerOf({ userId: "u1", organizationId: "org-1" }, "agent-1")
+  const route = routeFor(owner, "v1")
+  const offered = try promise(() => client.postApproval({ route, proposalId: "p1", expiresAt: 50, phase: "Claimed" }))
+  const posted = try promise(() => client.postApproval({ route, proposalId: "p1", expiresAt: 50, phase: "Pending" }))
+  const other = try promise(() => client.postApproval({ route: { ...route, runId: "r2" }, proposalId: "p2", expiresAt: 50, phase: "Pending" }))
+  const pending = new Map([["r1", "Pending" as const], ["r2", "Terminal" as const]])
+  const work: Array<Promise<void>> = []
+  const fence = noticeOwnerFence({
+    transition: (account) => client.publishOwner(noticeOwnerOf(account, "agent-1")),
+    enqueue: (task) => { work.push(task()) },
+    available: () => true,
+    restore: (reply, _account, valid) => restoreSuspendedApprovals(client, reply.suspended, {
+      detail: async () => ({ versionId: "v1" }),
+      receipt: async (runId) => ({ runId, versionId: "v1", finished: false }),
+      phoneReview: async (run) => ({ runId: run.runId, finished: false, cancellationRequestedAt: null }),
+      approvals: async (review) => [{ id: review.runId === "r1" ? "p1" : "p2", expiresAt: 50, phase: pending.get(review.runId) ?? "Terminal" }],
+    }, valid, new AbortController().signal, () => 10),
+  })
+  const settle = () => promise(() => Promise.all(work.splice(0)))
+  fence.update(signedOut, false)
+  fence.update(signedIn("u1", 1), true)
+  try settle()
+  fence.update({ ...signedIn("u1", 1), custody: { tag: "Expired", account: { userId: "u1", organizationId: "org-1" } } }, true)
+  device.fenceFails = 1
+  fence.update(signedIn("u2", 2), true)
+  try settle()
+  fence.update(signedIn("u2", 2), true)
+  try settle()
+  fence.update(signedIn("u1", 3), true)
+  try settle()
+  const statuses = [...device.approvals.values()].map((row) => `${row.notice.route.runId}:${row.status}`)
+  try Effect.try(() => assert.deepStrictEqual({ offered, posted, other, calls: device.calls.filter((call) => call.startsWith("fence")), statuses }, {
+    offered: "not-pending",
+    posted: "succeeded",
+    other: "succeeded",
+    calls: ["fence:org-1:u1", "fence:org-1:u2", "fence:org-1:u2", "fence:org-1:u1"],
+    statuses: ["r1:succeeded", "r2:withdrawn"],
+  }))
+})
+
+it.effect('A tap opens only its exact route, in the account it belongs to, and only with the current tap token (spec/os/android/noticeRoutes.md, "A tap opens only its exact route, in the account it belongs to, and only with the current tap token")', () => effect {
+  const device = phone()
+  const client = noticesClient({ plugin: plugin(device) })
+  const owner = noticeOwnerOf({ userId: "u1", organizationId: "org-1" }, "agent-1")
+  const route = routeFor(owner, "v1")
+  const tap: Partial<PendingNoticeTap> = { ...route, token: "t1", operationId: "op-1", bindingHash: "b".repeat(64), retained: true }
+  let live = true
+  const binding = { scope: SCOPE, origin: route.origin, ownerId: route.ownerId, agentId: route.agentId, current: () => live }
+  const resolve = (bound: typeof binding | null) => promise(() => resolveNoticeTap({
+    pending: () => client.pendingTap(), binding: bound, identifiers: ["workflowId", "runId", "versionId"],
+    load: async (found, _signal, checkpoint) => { checkpoint(); return `run ${found.runId}` }, signal: new AbortController().signal,
+  }))
+  device.tap = tap
+  const ready = try resolve(binding)
+  const otherAccount = try resolve({ ...binding, ownerId: "org-1:u2" })
+  device.taps = [tap, { ...tap, token: "t2" }]
+  const replaced = try resolve(binding)
+  device.tap = { ...tap, retained: false }
+  const unposted = try resolve(binding)
+  device.tap = {}
+  const none = try resolve(binding)
+  device.tap = tap
+  live = false
+  const signedOutTap = try resolve(binding)
+  try Effect.try(() => assert.deepStrictEqual([ready, otherAccount.kind, replaced.kind, unposted.kind, none.kind, signedOutTap.kind], [
+    { kind: "ready", token: "t1", target: "run r1", question: false }, "other-account", "unavailable", "unavailable", "none", "other-account",
+  ]))
+})
+
+it.effect('Tell my app which workflow notices this phone can present (spec/os/android/noticeRoutes.md, "Story: Tell my app which workflow notices this phone can present"; spec/os/android/noticeRoutes.md, "The host answers presentation protocol 2, and a renderer presents only through a host that answers it")', () => effect {
+  const device = phone()
+  const client = noticesClient({ plugin: plugin(device) })
+  const current = try promise(() => client.presentsWorkflow())
+  device.presentation = { protocol: 1 }
+  const older = try promise(() => client.presentsWorkflow())
+  try Effect.try(() => assert.deepStrictEqual([current, older], [true, false]))
+})

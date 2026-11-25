@@ -1,6 +1,6 @@
 // spec/assistant/checkin.md, "Story: Summarize my day only from a real answer"; spec/assistant/checkin.md, "Story: Mention only calendar events that changed recently"; spec/assistant/checkin.md, "A recent check-in keeps an event that is today or whose provider change is recent"; spec/assistant/checkin.md, "A summary is stored only after the model returns text for the reported day"; spec/assistant/checkin.md, "A failed check-in leaves storage unchanged, and a summary is stored at most once"; spec/assistant/checkin.md, "Story: Check in on me at the times I chose"; spec/assistant/checkin.md, "A check-in comes at the time the owner chose, the morning one at eight until they choose, and the night one only once chosen"
 import { createReminderPresentation, type ActionResult, type IAgentRuntime, type UUID } from "@elizaos/core"
-import type { AgentPlugin } from "@elizaos/agent"
+import type { AgentPlugin } from "@elizaos/agent-host"
 import { Machine, checkinAfterDismissal, checkinMinuteValid, checkinSchedule, machine, projectChange, type CheckinSetting, type CheckinSlot, type EventClocks, type RenderResult } from "../gen/assistant__checkin.effect.vibe"
 import type { ChangeClock } from "../gen/calendar__managedFeed.effect.vibe"
 import { Calendar, Facts, Model, Scheduler, SchedulerUnavailable, onAgent, presentOnce, readRecord, writeRecord, type CalendarEventFacts, type DeliveryAnswer, type TaskRow, type VerbAnswer } from "./host.vibe"

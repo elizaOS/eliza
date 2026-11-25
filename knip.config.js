@@ -17,7 +17,6 @@
 //   browser surface read-page.js           bundled and loaded by the native iOS host
 //   plugin root duplicate exports          named and default entry points for the same factory
 //   network @mockoon/cli                   spawned in the VibeLang relay test
-//   trajectory logger react, @types/react  automatic JSX runtime and types of the exported ./ui
 import vibelang from "vibelang/knip"
 
 export default {
@@ -32,7 +31,7 @@ export default {
     "packages/cloud/src/services/sse.ts": ["exports"],
     "packages/cloud/src/client/relay-frames.ts": ["exports"],
     "packages/plugin-assistant/src/host.vibe": ["exports"],
-    "packages/agent/test/support/product-plugin/entry.ts": ["unlisted"],
+    "packages/agent-host/test/support/product-plugin/entry.ts": ["unlisted"],
     "packages/plugin-native-browser-surface/resources/read-page.js": ["files"],
     "packages/plugin-anthropic/src/index.vibe": ["duplicates"],
     "packages/plugin-discord/src/index.vibe": ["duplicates"],
@@ -112,8 +111,23 @@ export default {
     },
     "packages/core": {
       "entry": [
-        "src/{index,protocol,logging,view-interaction,speech,read-memo,schema-types}.vibe",
-        "src/entry/{task-events,task-widgets}.vibe",
+        "src/index.vibe",
+        "test/**/*.test.{ts,vibe}",
+        "test/drivers/*.ts",
+        "src/**/*.{schema,contract}.{ts,vibe}"
+      ],
+      "project": [
+        "src/**/*.{ts,vibe,vibex}",
+        "test/**/*.{ts,vibe,vibex}"
+      ],
+      "ignoreDependencies": [
+        "@biomejs/biome"
+      ]
+    },
+    "packages/core-node": {
+      "entry": [
+        "src/index.vibe",
+        "src/catalog/generate.vibe",
         "test/**/*.test.{ts,vibe}",
         "test/drivers/*.ts",
         "src/**/*.{schema,contract}.{ts,vibe}"
@@ -128,6 +142,18 @@ export default {
       ]
     },
     "packages/cloud": {
+      "entry": [
+        "src/index.vibe",
+        "test/**/*.test.{ts,vibe}",
+        "test/drivers/*.ts",
+        "src/**/*.{schema,contract}.{ts,vibe}"
+      ],
+      "project": [
+        "src/**/*.{ts,tsx,vibe,vibex}",
+        "test/**/*.{ts,vibe,vibex}"
+      ]
+    },
+    "packages/cloud-worker": {
       "entry": [
         "src/{index,main}.vibe",
         "src/pages/render.tsx",
@@ -149,8 +175,21 @@ export default {
       "vitest": { "config": [] },
       "entry": [
         "vitest.config.ts",
+        "src/index.vibe",
+        "test/**/*.test.{ts,vibe}",
+        "test/drivers/*.ts",
+        "src/**/*.{schema,contract}.{ts,vibe}"
+      ],
+      "project": [
+        "src/**/*.{ts,vibe,vibex}",
+        "test/**/*.{ts,vibe,vibex}"
+      ]
+    },
+    "packages/agent-host": {
+      "vitest": { "config": [] },
+      "entry": [
+        "vitest.config.ts",
         "src/{index,bin}.vibe",
-        "src/{client,voice,tasks}/index.vibe",
         "test/**/*.test.{ts,vibe}",
         "test/drivers/*.ts",
         "src/**/*.{schema,contract}.{ts,vibe}"
@@ -166,13 +205,16 @@ export default {
     "packages/plugin-assistant": {
       "entry": ["src/**/*.{schema,contract}.{ts,vibe}"]
     },
-    "packages/plugin-calendar": {
+    "packages/plugin-calendar-client": {
       "entry": ["src/**/*.{schema,contract}.{ts,vibe}"]
     },
     "packages/plugin-inbox": {
       "entry": ["src/**/*.{schema,contract}.{ts,vibe}"]
     },
-    "packages/plugin-maps": {
+    "packages/plugin-inbox-client": {
+      "entry": ["src/**/*.{schema,contract}.{ts,vibe}"]
+    },
+    "packages/plugin-maps-client": {
       "entry": ["src/**/*.{schema,contract}.{ts,vibe}"]
     },
     "packages/plugin-network": {
@@ -181,8 +223,8 @@ export default {
     "packages/plugin-notes": {
       "entry": ["src/**/*.{schema,contract}.{ts,vibe}"]
     },
-    "packages/plugin-trajectory-logger": {
-      "ignoreDependencies": ["react", "@types/react"]
+    "packages/plugin-notes-client": {
+      "entry": ["src/**/*.{schema,contract}.{ts,vibe}"]
     },
     "packages/plugin-workflows": {
       "entry": ["src/worker/main.vibe", "src/**/*.{schema,contract}.{ts,vibe}"]
@@ -190,9 +232,6 @@ export default {
     "packages/os": {
       "entry": [
         "src/{index,cli}.vibe",
-        "src/{image,build,browser,app-update}/index.vibe",
-        "src/bridges/*.vibe",
-        "src/bridges/definitions/*.ts",
         "test/**/*.test.{ts,vibe}",
         "test/drivers/*.ts",
         "src/**/*.{schema,contract}.{ts,vibe}"
@@ -210,6 +249,18 @@ export default {
       ],
       "ignoreUnresolved": [
         "./runtime-config.mjs"
+      ]
+    },
+    "packages/os-bridges": {
+      "entry": [
+        "src/index.vibe",
+        "test/**/*.test.{ts,vibe}",
+        "test/drivers/*.ts",
+        "src/**/*.{schema,contract}.{ts,vibe}"
+      ],
+      "project": [
+        "src/**/*.{ts,vibe,vibex}",
+        "test/**/*.{ts,vibe,vibex}"
       ]
     }
   }

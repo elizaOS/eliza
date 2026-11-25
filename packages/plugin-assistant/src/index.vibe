@@ -1,7 +1,6 @@
 // spec/assistant/reminders.md, "Story: Create the reminder I asked for, and only that"; spec/assistant/goals.md, "Story: Keep my goals and check in on them when I asked"; spec/assistant/todos.md, "Story: Keep my to-do list as I asked, once"; spec/assistant/routines.md, "Story: Keep my habits on their cadence"; spec/assistant/routines.md, "Story: Keep my habits from the conversation"; spec/assistant/checkin.md, "Story: Summarize my day only from a real answer"; spec/assistant/timezone.md, "Story: Run my day on my own clock"; spec/assistant/travel.md, "Story: Keep my trip to the day I said I am back"; spec/assistant/reminderEscalation.md, "Story: Nudge me again about a reminder I did not answer, never in my quiet hours"; spec/assistant/reminders.md, "Story: Propose a reminder or alarm on my phone only as I asked"; spec/assistant/checkin.md, "Story: Check in on me at the times I chose"; spec/assistant/checkin.md, "Story: Brief me on my morning, evening or week when I ask"
 import { Service, type EvaluatorRunResult, type IAgentRuntime, type Provider, type RegisteredEvaluator } from "@elizaos/core"
-import type { AgentPlugin } from "@elizaos/agent"
-import { registerDeviceProposalFamily } from "@elizaos/agent/device-actions"
+import { type AgentPlugin, registerDeviceProposalFamily } from "@elizaos/agent-host"
 import { briefAction } from "./brief.vibe"
 import { checkinKind, checkinRoutes, deliverCheckin, followOwnerClock } from "./checkin.vibe"
 import { reminderProposalFamily } from "./device-proposals.vibe"
@@ -13,7 +12,7 @@ import { deliverGoalCheckin, goalCheckinKind, ownerGoalsAction, ownerGoalsProvid
 import { Facts, Scheduler, onAgent, isAgentScheduledTasks, scheduledTasksServiceType, type AssistantPorts, type DeliveryAnswer, type TaskRow } from "./host.vibe"
 import { deliverReminder, ownerRemindersAction, ownerRemindersProvider, reminderKind, remindersContext } from "./reminders.vibe"
 import { deliverRoutine, deliverRoutineNudge, ownerRoutinesAction, ownerRoutinesProvider, routineKind, routineNudgeKind, routineRoutes } from "./routines.vibe"
-import { ownerCalendarZone, ownerClockAt, stateOwnerZone, statedZone } from "./timezone.vibe"
+import { ownerCalendarZone, ownerClockAt, stateOwnerZone } from "./timezone.vibe"
 import { currentTodosProvider, todosAction } from "./todos.vibe"
 import { ownerTravelEvaluator } from "./travel.vibe"
 
@@ -25,7 +24,26 @@ export { followupTick, type TickReport } from "./followups.vibe"
 export { ownerActivity, setDossier, dossierControl, presentDossier } from "./dossier.vibe"
 export { BriefSources, PriorityModel, ownerBrief, rankOwnerEntries } from "./owner-brief.vibe"
 export { BillEvidencePort, keepObservedBill, findBillReceipt } from "./bill-evidence.vibe"
-export { reminderProposalFamily } from "./device-proposals.vibe"
+export {
+  reminderKind, reminderWhen, reminderDueWithin, remindersDoneSince, checkOriginalMessage, remindersContext, createReminder, reminderReply,
+  deliverReminder, liveReminders, namedAmong, namedReminders, answerReminder, escalateReminder, retractRecentSave, moveReminder, renameReminder,
+  listReminders, followReminderClock, setReminderIntensity, ownerRemindersAction, ownerRemindersProvider, type ReminderRequest, type ReminderOutcome,
+  type MoveRequest,
+} from "./reminders.vibe"
+export {
+  ownerCalendarZone, ownerClockAt, ownerFacts, recordTravel, resolveZone, stateOwnerZone, statedName, clockCapability,
+  clockRepeatCapability, clockDayNames, clockHandoffCapabilities, isClockHandoffOperation, clockHandoffDispatch, describeClockDays,
+  describeClockHandoff, normalizeClockTimeZone, currentClockTimeZone, ClockZoneChanged, checkClockHandoffTimeZone, ClockReceiptRefused,
+  clockHandoffReceipt, buildClockHandoffRequest, type OwnerFacts, type Travel, type ClockHandoffOperation, type ClockDay, type ClockHandoffResult,
+  type ClockHandoffHostSupport, type ClockHandoffRequest, type ClockHandoffForm, type FormRefusal,
+} from "./clock.vibe"
+export * from "@elizaos/plugin-assistant-client"
+export {
+  goalCheckinKind, listGoals, goalStanding, followGoalClock, changeGoal, deliverGoalCheckin, ownerGoalsAction, ownerGoalsProvider, type GoalRecord,
+} from "./goals.vibe"
+export {
+  currentTodos, renderTodos, plain, changeTodos, todosAction, currentTodosProvider,
+} from "./todos.vibe"
 
 export const personalAssistantPluginName = "@elizaos/plugin-personal-assistant"
 
@@ -107,19 +125,35 @@ const ownerClockProvider: Provider = {
   },
 }
 
+/** The model's output for the time zone evaluator, or null when it is not one: a zone that is not text, or a field the schema does not name. */
+function zoneReading(output: unknown): { readonly zone: string } | null {
+  if (typeof output !== "object" || output === null || Array.isArray(output) || Object.keys(output).some((key) => key !== "zone")) return null
+  const zone = Reflect.get(output, "zone")
+  return typeof zone === "string" ? { zone: zone.trim().slice(0, 64) } : null
+}
+
+function zonePrompt(text: string): string {
+  return [
+    "Read the owner's latest message and say whether it states which time zone is their own now.",
+    "zone: when the owner says what their own time zone is or asks you to use one as theirs, that zone as an IANA name such as America/New_York or Europe/Berlin, or as they wrote it when you cannot tell which IANA zone they mean. An empty string for anything else, including a zone named only for an event, a place or another person, a trip, and a question about a zone.",
+    `The owner's message: ${JSON.stringify(text)}`,
+  ].join("\n")
+}
+
 const ownerTimezoneEvaluator: RegisteredEvaluator = {
   name: "PERSONAL_ASSISTANT_OWNER_TIMEZONE",
   description: "Keeps the time zone the owner states, such as \"my timezone is America/New_York\", for reminders, check-ins, routines and the calendar, and reschedules them on it.",
-  schema: { type: "object", properties: { zone: { type: "string" } }, required: ["zone"] },
+  schema: { type: "object", additionalProperties: false, properties: { zone: { type: "string" } }, required: ["zone"] },
   inputScope: "current_message",
-  shouldRun: async ({ runtime, message }) => message.entityId !== runtime.agentId && typeof message.content.text === "string" && statedZone(message.content.text) !== undefined,
-  resolveOutputWhen: () => true,
-  resolveOutput: ({ message }) => ({ zone: statedZone(message.content.text ?? "") ?? "" }),
-  prompt: () => "",
+  shouldRun: async ({ runtime, message }) => message.entityId !== runtime.agentId && typeof message.content.text === "string" && message.content.text.trim() !== "",
+  prompt: ({ message }) => zonePrompt(message.content.text ?? ""),
+  parse: (output) => zoneReading(output),
   processors: [{
     name: "keep-owner-zone",
-    process: async ({ runtime, message }) => {
-      const kept = await onAgent(runtime, stateOwnerZone(message.content.text ?? ""))
+    process: async ({ runtime, message, output }) => {
+      const named = zoneReading(output)?.zone ?? ""
+      if (named === "") return undefined
+      const kept = await onAgent(runtime, stateOwnerZone(named))
       const followed = kept.changed ? await onAgent(runtime, Effect.orElseSucceed(Effect.as(followOwnerClock(`zone:${message.id ?? kept.zone}`), true), () => false)) : false
       return { success: true, text: `Owner time zone is ${kept.zone}${kept.changed && !followed ? "; what fires on it moves over when the assistant next starts" : ""}.`, data: { zone: kept.zone, changed: kept.changed, rescheduled: followed } }
     },

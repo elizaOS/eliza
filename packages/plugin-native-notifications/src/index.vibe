@@ -1,3 +1,3 @@
 // spec/nativeNotifications/index.md, "Story: View and act on permitted notifications while the screen is current"
-export { noticesClient, notificationsPlugin, resolveNoticeTap, workflowApprovalNoticeIdentity } from "@elizaos/os/bridges/notices"
-export type * from "@elizaos/os/bridges/definitions/notices"
+export { noticesClient, notificationsPlugin, resolveNoticeTap, workflowApprovalNoticeIdentity } from "@elizaos/os-bridges"
+export type { NoticeOwnerIdentity, WorkflowNoticeRoute, NoticeTapNotice, PendingNoticeTap, NoticeTapBinding, NoticeTapResolution, SuspendedApprovalNotice, ApprovalNoticeIdentity, WorkflowApprovalNoticeReads, ApprovalNoticeDecision, NoticeFenceOperations, NoticeFenceUpdater, WorkflowNoticeStatus, NoticeOwnerFenceReply, DeliveryChannel, DeliveryStatus, MirrorApp, MirrorStatus, MirrorChoice, MirrorPolicyChange, MirrorHistoryRow, NoticeSourceKind, NoticeRow, NoticeRowRef, NotificationsNativePlugin, NoticesClientOptions, NoticesClient } from "@elizaos/os-bridges"

@@ -2,7 +2,7 @@
 import { Effect, Exit, Fiber } from "effect";
 import type { Driver, Options } from "../../gen/maps__navigationService.conformance.ts";
 import type { Navigation } from "../../gen/maps__navigationService.ts";
-import { backgroundNavigation, NavigationBridgeFailed, type BackgroundNavigation } from "../../src/client/device-navigation.vibe";
+import { backgroundNavigation, NavigationBridgeFailed, type BackgroundNavigation } from "@elizaos/plugin-maps-client";
 import { gate, until, type Gate } from "../support/gates.ts";
 
 type View = Omit<Navigation, "route"> & { readonly routed: boolean };

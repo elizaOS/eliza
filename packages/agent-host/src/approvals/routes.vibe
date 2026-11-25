@@ -1,0 +1,87 @@
+// spec/agent/approvals.md, "Story: Resolve what I reviewed, only on the screen"; spec/agent/approvals.md, "Story: See the requests waiting for me"; spec/agent/approvals.md, "The list shows at most 500 requests of the asked phase, newest first, and changes nothing"; spec/agent/approvals.md, "A decision applies only to an open calendar request whose revision is the one reviewed"; spec/agent/approvals.md, "Without the calendar executor an approval changes nothing"
+import type { PageQuery, Phase, PhaseFilter, Refusal } from "../../gen/agent__approvals.effect.vibe"
+import type { LocalRoute } from "@elizaos/agent"
+import { approvalStates, type ApprovalRecord, type OwnerApprovals } from "./queue.vibe"
+
+export type ApprovalsPort = Pick<OwnerApprovals, "list" | "resolve">
+
+error ApprovalsFailed { cause: unknown }
+
+const refusalAnswer = {
+  NotFound: { status: 404, error: "not_found" },
+  Stale: { status: 409, error: "stale_revision" },
+  Unavailable: { status: 503, error: "calendar_approvals_unavailable" },
+} as const satisfies Record<Refusal, { status: number; error: string }>
+const phaseOf: ReadonlyMap<string, Phase> = new Map(Object.entries(approvalStates).map(([phase, wire]) => [wire, phase as Phase]))
+const defaultLimit = 50
+const pageCap = 500
+
+type Phases = PhaseFilter | { readonly tag: "InFlight" }
+
+function phasesOf(state: string | undefined): Phases | undefined {
+  if (state === undefined) return { tag: "OnlyPhase", phase: "Pending" }
+  if (state === "all") return { tag: "AllPhases" }
+  if (state === "executing") return { tag: "InFlight" }
+  const phase = phaseOf.get(state)
+  return phase === undefined ? undefined : { tag: "OnlyPhase", phase }
+}
+
+function limitOf(limit: string | undefined): number | undefined {
+  if (limit === undefined) return defaultLimit
+  if (!/^[1-9][0-9]*$/.test(limit)) return undefined
+  return Math.min(Number(limit), pageCap)
+}
+
+schema ResolveBody { readonly decision: "approve" | "reject"; readonly revision: Schema.NonEmptyString }
+const resolveBody = Schema.decodeUnknownOption(ResolveBody, { onExcessProperty: "error" })
+const failure = (status: number, error: string) => ({ status, body: { error } })
+
+function wireApproval(record: ApprovalRecord) {
+  return {
+    id: record.id, state: record.state, subjectUserId: record.subjectUserId, action: record.action, payload: record.payload,
+    reason: record.reason, expiresAt: record.expiresAt, createdAt: record.createdAt, updatedAt: record.updatedAt, revision: record.revision,
+  }
+}
+
+effect function called<A>(call: () => Promise<A>): A!ApprovalsFailed {
+  return try tryPromise({ try: () => call(), catch: (cause) => new ApprovalsFailed({ cause }) })
+}
+
+effect function listed(port: ApprovalsPort, phases: Phases, limit: number) {
+  if (phases.tag === "InFlight") return []
+  const query: PageQuery = { phases, limit }
+  return (try called(() => port.list(query))).map(wireApproval)
+}
+
+export function approvalRoutes(port: ApprovalsPort, ownerEntityId: string): LocalRoute[] {
+  return [
+    {
+      method: "GET", path: "/api/approvals",
+      query: [{ key: "state", accepts: { kind: "any" } }, { key: "limit", accepts: { kind: "any" } }],
+      handler: ({ query }) => {
+        const phases = phasesOf(query.get("state"))
+        if (phases === undefined) return failure(400, "invalid_state")
+        const limit = limitOf(query.get("limit"))
+        if (limit === undefined) return failure(400, "invalid_limit")
+        return runPromise(effect {
+          return { status: 200, body: { ownerEntityId, approvals: try listed(port, phases, limit) } }
+        })
+      },
+    },
+    {
+      method: "POST", path: "/api/approvals/{id}/resolve",
+      handler: ({ parameters, body }) => {
+        const sent = Option.getOrUndefined(resolveBody(body ?? {}))
+        if (sent === undefined) return failure(400, "invalid_resolution")
+        const id = parameters.get("id") ?? ""
+        return runPromise(effect {
+          const resolution = try called(() => port.resolve(id, sent.decision, sent.revision))
+          switch (resolution.kind) {
+            case "refused": return failure(refusalAnswer[resolution.refusal].status, refusalAnswer[resolution.refusal].error)
+            case "resolved": return { status: 200, body: resolution.reply }
+          }
+        })
+      },
+    },
+  ]
+}

@@ -1,5 +1,4 @@
 // spec/core/ambientManagers.md, "A symbol slot is the single source of manager identity"; spec/core/ambientManagers.md, "An active operation retains the manager captured at entry"
-import type { BoundRequestOperationAttempt } from "../actions/task-extraction-context.vibe"
 import { getAmbientSingleton } from "../ambient-context.vibe"
 import type { ActionModelClass } from "../types/components.vibe"
 import type { Memory } from "../types/memory.vibe"
@@ -19,8 +18,6 @@ export interface ActionRoutingContext {
   readonly requestState?: State
   readonly requestRuntime?: IAgentRuntime
   readonly hostAttemptId?: string
-
-  readonly requestOperationAttempt?: BoundRequestOperationAttempt
 }
 
 const MANAGER_KEY = Symbol.for("elizaos.actionRoutingContextManager")

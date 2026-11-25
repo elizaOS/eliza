@@ -1,122 +1,14 @@
-// spec/cloud/deployment.md, "Story: Configure a deployment from one reviewed profile"
-import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem"
-import { formatInet } from "effect/net/NetAddress"
-import { startProblem, type IdentityRead, type StartProblem } from "../gen/cloud__deployment.effect.vibe"
-import { checkCatalog, CatalogMismatch } from "./billing/plans.vibe"
-import { cloudServer, listening, sweepsLayer } from "./http/server.vibe"
-import { applySeed } from "./operator/admin.vibe"
-import { nodePageTemplates } from "./pages/node-templates.vibe"
-import { deploymentLayer, Deployment, parseEnvironment, parseProfile, ProfileInvalid, requireSecrets, specProfile, type SecretMissing, type CloudEnvironment, type CloudProfile } from "./profile/profile.vibe"
-import { DatabaseIdentityMismatch, DatabaseUnreadable, migrate, observeIdentity, parseStoreLocation, storeLayer, type DatabaseIdentity, type StoreFailure, type StoreLocationInvalid, type StoreLocation } from "./store/store.vibe"
-
-export { parseProfile }
-export type { CloudEnvironment, CloudProfile }
-
-export error SeedOutsideStaging { environment: CloudEnvironment }
-export error LoopbackOutsidePglite { store: StoreLocation["kind"] }
-
-export type StartFailure = ProfileInvalid | SecretMissing | CatalogMismatch | StoreFailure | StoreLocationInvalid | DatabaseUnreadable | DatabaseIdentityMismatch | SeedOutsideStaging | LoopbackOutsidePglite | HttpServerError.ServeError
-
-export interface CloudLayerOptions {
-  readonly profile: CloudProfile
-  readonly environment: CloudEnvironment
-  readonly store: StoreLocation
-  readonly seed: string | undefined
-  readonly port: number
-  readonly host: string
-}
-
-function identityRead(identity: DatabaseIdentity, expected: string): IdentityRead {
-  switch (identity.kind) {
-    case "unreadable": return { tag: "UnreadableIdentity" }
-    case "fresh": return { tag: "ReadDigest", digest: expected }
-    case "identified": return { tag: "ReadDigest", digest: identity.digest }
-  }
-}
-
-effect function refuseStart(problem: StartProblem, options: CloudLayerOptions, identity: DatabaseIdentity): void!(ProfileInvalid | DatabaseUnreadable | DatabaseIdentityMismatch | SeedOutsideStaging | LoopbackOutsidePglite | CatalogMismatch) {
-  const expected = options.profile.environments[options.environment].databaseIdentity
-  switch (problem.tag) {
-    case "NoProblem": return
-    case "CatalogMissing": return
-    case "ProfileRefused": throw new ProfileInvalid({ problem: "the profile breaks a deployment rule" })
-    case "DatabaseUnreadable": throw new DatabaseUnreadable({ problem: identity.kind === "unreadable" ? identity.problem : "the database identity could not be read" })
-    case "DatabaseMismatch": throw new DatabaseIdentityMismatch({ expected, found: identity.kind === "identified" ? identity.digest : "none" })
-    case "SeedOutsideStaging": throw new SeedOutsideStaging({ environment: options.environment })
-    case "LoopbackOutsidePglite": throw new LoopbackOutsidePglite({ store: options.store.kind })
-    case "CatalogMismatch": throw new CatalogMismatch({ plan: problem.plan, problem: problem.mismatch })
-    default: {
-      const _exhaustive: never = problem
-      return _exhaustive
-    }
-  }
-}
-
-function startupChecks(options: CloudLayerOptions) {
-  return Layer.effectDiscard(effect {
-    const deployment = try Deployment
-    const identity = try observeIdentity()
-    const problem = startProblem(
-      specProfile(options.profile),
-      options.environment === "production" ? "Production" : "Staging",
-      options.store.kind === "pg" ? "PostgresStore" : "PgliteStore",
-      identityRead(identity, deployment.settings.databaseIdentity),
-      options.seed !== undefined,
-      { tag: "NoCatalog" }
-    )
-    try refuseStart(problem, options, identity)
-    try requireSecrets()
-    if (problem.tag === "CatalogMissing") try checkCatalog()
-    const now = try Clock.currentTimeMillis
-    const report = try migrate({ digest: deployment.settings.databaseIdentity, environment: deployment.environment, now })
-    if (report.applied.length > 0) try annotateLogs(logInfo("migrations applied"), { applied: report.applied.join(", ") })
-    if (options.seed !== undefined) try applySeed(options.seed)
-  })
-}
-
-export function cloudLayer(options: CloudLayerOptions) {
-  const platform = Layer.mergeAll(
-    deploymentLayer(options.profile, options.environment),
-    storeLayer(options.store),
-    FetchHttpClient.layer,
-    NodeFileSystem.layer,
-    nodePageTemplates
-  )
-  const serving = Layer.mergeAll(cloudServer(), sweepsLayer()).pipe(Layer.provideMerge(startupChecks(options)))
-  return serving.pipe(Layer.provideMerge(listening(options.port, options.host)), Layer.provideMerge(platform))
-}
-
-export interface StartOptions {
-  readonly profile: unknown
-  readonly environment: string
-  readonly store: string
-  readonly seed?: string
-  readonly port?: number
-  readonly host?: string
-}
-
-export interface RunningCloud {
-  readonly url: string
-  close(): Promise<void>
-}
-
-export effect function prepare(options: StartOptions): CloudLayerOptions!(ProfileInvalid | StoreLocationInvalid) {
-  const profile = try parseProfile(options.profile)
-  const environment = try parseEnvironment(options.environment)
-  const store = try parseStoreLocation(options.store)
-  return { profile, environment, store, seed: options.seed, port: options.port ?? 0, host: options.host ?? "127.0.0.1" }
-}
-
-export error NotTcp { address: string }
-
-export async function startCloud(options: StartOptions): Promise<RunningCloud> {
-  const runtime = ManagedRuntime.make(cloudLayer(await runPromise(prepare(options))))
-  try {
-    const address = await runtime.runPromise(effect { return (try HttpServer.HttpServer).address })
-    if (!("port" in address)) throw new NotTcp({ address: JSON.stringify(address) })
-    return { url: `http://${formatInet(address)}`, close: () => runtime.dispose() }
-  } catch (error) {
-    await runtime.dispose()
-    throw error
-  }
-}
+// spec/cloud/client.md, "Story: Use the cloud from the device as configured"; spec/cloud/deployment.md, "Story: Configure a deployment from one reviewed profile"; spec/cloud/index.md, "Story: Use inference on my subscription or funded pilot account"
+export * from "./client/index.vibe"
+export { unlistedRoutes } from "./client/routes.vibe"
+export { decodeDeviceFrame, encodeWireFrame } from "./client/relay-codec.vibe"
+export { readDevice, validUplink, writeRelay, type RelayWire } from "./client/relay-frames.ts"
+export type { RedeemAnswer, WireAllowanceState } from "./client/views.vibe"
+export * from "./profile/profile.vibe"
+export { GoogleSettings, InferenceSettings, MapsSettings, SpeechSettings } from "./profile/profile.schema.ts"
+export * from "./clef-decisions.vibe"
+export { writeGrantCodeUnits } from "./billing/grant-code.vibe"
+export { acceptedFields, ChatRequest, type ChatMessage, type ContentPart, type ResponseFormat } from "./services/chat-request.schema.ts"
+export * from "./services/maps.schema.ts"
+export { SynthesisBody } from "./services/speech-batch.schema.ts"
+export { abort, chunkFrame, doneFrame, errorFrame, feed, finish, isDone, pushByte, segmenter, usageFrame, utf8Text, type Fed, type Segmenter } from "./services/sse.ts"

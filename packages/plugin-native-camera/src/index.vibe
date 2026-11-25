@@ -1,5 +1,5 @@
 // spec/nativeCamera/index.md, "Story: Take a picture or record a clip through the current camera view"
-import { cameraPlugin } from "@elizaos/os/bridges/camera"
-export { cameraAccessDenied, cameraClient, cameraRegistered, captureOperationId, createCameraSession, keepCapture, SCAN_LIMITS } from "@elizaos/os/bridges/camera"
-export type * from "@elizaos/os/bridges/definitions/camera"
+import { cameraPlugin } from "@elizaos/os-bridges"
+export { cameraAccessDenied, cameraClient, cameraRegistered, captureOperationId, createCameraSession, keepCapture, SCAN_LIMITS } from "@elizaos/os-bridges"
+export type { CameraDirection, CameraFlashMode, CameraFocusMode, CameraExposureMode, CameraWhiteBalance, MediaType, CameraGrant, CameraAccessKind, CameraCaptureAspectRatio, CameraRecordingControl, CameraResolution, CameraDevice, CameraPreviewOptions, CameraPreviewResult, PhotoCaptureOptions, PhotoResult, VideoCaptureOptions, CaptureModeOptions, VideoRecordingState, VideoResult, CameraSettings, CameraPermissionStatus, CameraAccessPermissionStatus, CameraErrorEvent, CameraFrameEvent, CameraPlugin, CameraClient, CameraSessionPhase, CameraRecordingReceipt, CameraSessionBridge, CameraSessionHooks, CameraSessionOptions, CameraStartOutcome, CameraControlOutcome, CameraRecordingStart, CameraRecordingOutcome, CameraExclusive, CameraSessionSnapshot, CameraKeepOutcome, CameraCaptureAction, CameraKeepPort, CameraVideoPort, CameraHostPorts, ScanSource, ScanImageType, ScanImage, ScanPage, ScanDraftPort, ScanExportResult, ScanRefusal } from "@elizaos/os-bridges"
 export const Camera = cameraPlugin()

@@ -4,7 +4,7 @@ What a product ships to run the agent on a device: `agent.mjs`, one ESM
 bundle for Node 26 (pure JavaScript and WASM), the PGlite assets beside it, a
 PGlite snapshot already migrated to the bundle's schema, and `manifest.json`.
 `buildAgentBundle({plugins, productPlugin, profiles, outDir, sourceCommit, sourceRoot, entry?})`
-of `@elizaos/agent/bundle` makes them; `readBundleManifest(dir)` reads the
+of `@elizaos/agent-host` makes them; `readBundleManifest(dir)` reads the
 manifest back, and `residentLoadList(manifest, variant, chosen)` derives a
 device variant's load list from its profile groups. The build itself (bundler, digests, snapshot, load smoke) is
 the shell; this spec states which builds may succeed and which manifests may
@@ -311,7 +311,7 @@ pure def lawOptionalPluginLoadsOnlyWhenChosen(groups: ProfileGroups, carried: Li
 ### A consumer entry ships only as a named package's code inside the source root, and passes the same load smoke as the generated entry
 
 `entry` names a module inside the source root that calls `runAgentCli`
-from `@elizaos/agent/cli` with the bundled plugins, the product plugin and
+from `@elizaos/agent-host` with the bundled plugins, the product plugin and
 any host modules. Its bytes are an input like any other, so the input rule
 above refuses an entry outside the source root or outside a named package;
 the bundle is still built only when its load smoke loaded every listed
@@ -333,7 +333,7 @@ pure def lawEveryEntryNeedsTheLoadSmoke(e: BundleEntry): bool = not(entryAdmitte
 `hostModules` maps a bundled package name to a module factory;
 `hostServices(host)` builds, once per factory call, the layer of device
 services those factories need (for example `androidInferenceLayer(socket)`
-from `@elizaos/os/inference`), itself given the resident's platform layer
+from `@elizaos/os`), itself given the resident's platform layer
 (file system, path, child processes). A factory needs nothing beyond those
 services and the platform layer, so no host module starts with a missing
 service.

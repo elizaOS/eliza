@@ -1,0 +1,136 @@
+// spec/cloud/identity/federatedSignIn.md, "A callback returns a one-minute code only after Google's verified identity and the code are stored, and otherwise one error of the closed list"; spec/cloud/identity/federatedSignIn.md, "An ID token spends a live challenge once, only with the client, verifier, signature, issuer, audience and nonce all right, and a refused one spends nothing"
+import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/http"
+import type { GoogleAnswer } from "../../gen/cloud__identity__federatedSignIn.ts"
+import type { GoogleSettings } from "@elizaos/cloud"
+import { Deployment } from "@elizaos/cloud"
+import { providerTimeout } from "./google.vibe"
+
+module node {
+  import { compactVerify, createRemoteJWKSet, type JWTVerifyGetKey } from "jose"
+
+  const keySets = new Map<string, JWTVerifyGetKey>()
+
+  /** @throws {unknown} */
+  export async function verifiedClaims(token: string, jwksUrl: string): Promise<unknown> {
+    const keys = keySets.get(jwksUrl) ?? createRemoteJWKSet(new URL(jwksUrl), { timeoutDuration: 4000 })
+    keySets.set(jwksUrl, keys)
+    const { payload } = await compactVerify(token, keys, { algorithms: ["RS256"] })
+    return JSON.parse(new TextDecoder().decode(payload))
+  }
+}
+import { verifiedClaims } from node
+
+export type GoogleProfile = typeof GoogleSettings.Type
+
+export interface IdTokenReading {
+  readonly expiresAt: number | undefined
+  readonly signatureOk: boolean
+  readonly issuerOk: boolean
+  readonly audienceOk: boolean
+  readonly nonce: string | undefined
+  readonly subject: string | undefined
+  readonly verifiedEmail: string | undefined
+  readonly givenName: string | undefined
+}
+
+export interface GoogleIdentity {
+  readonly subject: string
+  readonly verifiedEmail: string | undefined
+  readonly givenName: string | undefined
+}
+
+export type CodeExchange =
+  | { readonly kind: "IdentityVerified"; readonly identity: GoogleIdentity }
+  | { readonly kind: Exclude<GoogleAnswer, "IdentityVerified"> }
+
+const unread: IdTokenReading = { expiresAt: undefined, signatureOk: false, issuerOk: false, audienceOk: false, nonce: undefined, subject: undefined, verifiedEmail: undefined, givenName: undefined }
+const failed: CodeExchange = { kind: "TokenExchangeFailed" }
+export const googleSubjectPattern = /^[A-Za-z0-9_-]{1,255}$/
+
+const Claims = Schema.Struct({
+  iss: Schema.optionalKey(Schema.String),
+  aud: Schema.optionalKey(Schema.Union([Schema.String, Schema.Array(Schema.String)])),
+  exp: Schema.optionalKey(Schema.Number),
+  sub: Schema.optionalKey(Schema.String),
+  nonce: Schema.optionalKey(Schema.String),
+  email: Schema.optionalKey(Schema.String),
+  email_verified: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.String])),
+  given_name: Schema.optionalKey(Schema.String),
+  name: Schema.optionalKey(Schema.String)
+})
+schema TokenReply { id_token: string }
+
+function parsedJson(text: string): unknown {
+  try {
+    return JSON.parse(text) as unknown
+  } catch {
+    return undefined
+  }
+}
+
+function named(text: string | undefined): string | undefined {
+  const trimmed = text?.trim()
+  return trimmed === undefined || trimmed === "" ? undefined : trimmed
+}
+
+function reading(google: GoogleProfile, raw: unknown, now: number, audience: "browser" | "native"): IdTokenReading {
+  const claims = Option.getOrUndefined(Schema.decodeUnknownOption(Claims)(raw))
+  if (claims === undefined) return unread
+  const audiences = typeof claims.aud === "string" ? [claims.aud] : claims.aud ?? []
+  const email = named(claims.email)?.toLowerCase()
+  const expiresAt = claims.exp === undefined || !Number.isSafeInteger(claims.exp * 1000) ? undefined : claims.exp * 1000
+  return {
+    expiresAt,
+    signatureOk: expiresAt !== undefined && expiresAt > now,
+    issuerOk: claims.iss !== undefined && google.issuers.includes(claims.iss),
+    audienceOk: audiences.length === 1 && audiences[0] === (audience === "native" ? google.serverClientId : google.clientId),
+    nonce: claims.nonce,
+    subject: claims.sub !== undefined && googleSubjectPattern.test(claims.sub) ? claims.sub : undefined,
+    verifiedEmail: claims.email_verified === true || claims.email_verified === "true" ? email : undefined,
+    givenName: named(claims.given_name) ?? named(claims.name)
+  }
+}
+
+export effect function readIdToken(google: GoogleProfile, request: { readonly idToken: string; readonly audience: "browser" | "native" }): IdTokenReading!! {
+  const claims = tryPromise(() => verifiedClaims(request.idToken, google.jwksUrl)) catch () => undefined
+  const now = try Clock.currentTimeMillis
+  return claims === undefined ? unread : reading(google, claims, now, request.audience)
+}
+
+export function authorizeUrl(google: GoogleProfile, request: { readonly state: string; readonly challenge: string; readonly callback: string }): string {
+  return `${google.accountsUrl}?${new URLSearchParams({
+    client_id: google.clientId,
+    redirect_uri: request.callback,
+    response_type: "code",
+    scope: "openid email profile",
+    state: request.state,
+    code_challenge: request.challenge,
+    code_challenge_method: "S256",
+    prompt: "select_account"
+  })}`
+}
+
+export effect function exchangeGoogleCode(google: GoogleProfile, request: { readonly code: string; readonly verifier: string; readonly callback: string; readonly now: number }): CodeExchange!!(Deployment | HttpClient.HttpClient) {
+  const secret = try orDie((try Deployment).secret(google.clientSecretEnv))
+  const form = new URLSearchParams({
+    grant_type: "authorization_code",
+    code: request.code,
+    client_id: google.clientId,
+    client_secret: secret,
+    redirect_uri: request.callback,
+    code_verifier: request.verifier
+  })
+  const posted = HttpClientRequest.bodyText(HttpClientRequest.post(google.tokenUrl), form.toString(), "application/x-www-form-urlencoded").pipe(HttpClientRequest.acceptJson)
+  const answered = effect {
+    const response = Effect.provideService(HttpClient.execute(posted), FetchHttpClient.RequestInit, { redirect: "manual" }) catch () => undefined
+    if (response === undefined || response.status < 200 || response.status >= 300) return failed
+    const text = response.text catch () => ""
+    const reply = Option.getOrUndefined(Schema.decodeUnknownOption(TokenReply)(parsedJson(text)))
+    if (reply === undefined) return failed
+    const token = try readIdToken(google, { idToken: reply.id_token, audience: "browser" })
+    if (!token.signatureOk || !token.issuerOk || !token.audienceOk) return failed
+    if (token.subject === undefined) return { kind: "IdentityIncomplete" } satisfies CodeExchange
+    return { kind: "IdentityVerified", identity: { subject: token.subject, verifiedEmail: token.verifiedEmail, givenName: token.givenName } } satisfies CodeExchange
+  }
+  return try timeoutOrElse(answered, { duration: providerTimeout, orElse: () => succeed(failed) })
+}

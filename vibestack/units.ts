@@ -12,7 +12,7 @@ import { defines } from "./review.ts";
 import { act } from "./action.ts";
 import type { Memory } from "./cache.ts";
 import { plainText } from "./scan.ts";
-import { codeDirOf, codeDirs, filesUnder, manifest, owner, readSrc, SIMULATIONS, tsApi, writeWhole, type SrcFile } from "./util.ts";
+import { areaDirs, codeDirOf, codeDirs, filesUnder, manifest, readSrc, SIMULATIONS, tsApi, writeWhole, type SrcFile } from "./util.ts";
 import { effectAdapter } from "./gen/vibe.ts";
 import { reactHook } from "./gen/react.ts";
 
@@ -144,15 +144,16 @@ function namespace(dir: string, name: unknown): string {
 }
 
 /**
- * Each owner's gen/, from the root's: the modules of its specs and of every spec they import, under the root's module
- * names, with the types their drivers are written to, so that a package imports only from its own gen/. The Effect
- * adapter and the React hook are written for the owner (`writeFaces`): that is the package the service runs in.
+ * Each owner's gen/, and each of its companions' (util.ts, `specCompanionPaths`), from the root's: the modules of its
+ * specs and of every spec they import, under the root's module names, with the types their drivers are written to, so
+ * that a package imports only from its own gen/. The Effect adapter and the React hook are written for each such
+ * package (`writeFaces`), under its own name: a companion's `Machine` services are never the owner's.
  * A module not generated, because its spec is not valid, is not there. This ends a generation: what it did not write,
  * in the root's gen/ or an owner's, is removed, so that nothing stale survives a rename; but for gen/traces, where this
  * check's simulations write what they run (simulate.ts), still running as this does, and which the next generation
  * begins by removing.
  */
-export function mirrorGen(root: string, specs: Spec[], scope?: { scratch: string; ownerDir: string }) {
+export function mirrorGen(root: string, specs: Spec[], scope?: { scratch: string; ownerDirs: string[] }) {
   const output = scope?.scratch ?? root;
   const written = generations.get(output) ?? new Set<string>();
   generations.set(output, written);
@@ -165,8 +166,8 @@ export function mirrorGen(root: string, specs: Spec[], scope?: { scratch: string
   const from = path.join(output, "gen");
   sweep(from);
   const rootsByOwner = new Map<string, string[]>();
-  for (const dir of scope ? [scope.ownerDir] : codeDirs(root).filter(Boolean)) rootsByOwner.set(dir, []);
-  if (rootsByOwner.size) for (const spec of specs) rootsByOwner.get(`${owner(root, spec.file)}/`)?.push(spec.name);
+  for (const dir of scope ? scope.ownerDirs : codeDirs(root).filter(Boolean)) rootsByOwner.set(dir, []);
+  if (rootsByOwner.size) for (const spec of specs) for (const dir of areaDirs(root, spec.file)) rootsByOwner.get(`${dir}/`)?.push(spec.name);
   for (const [dir, roots] of rootsByOwner) {
     const needed = new Set<string>();
     const need = (name: string) => { if (!needed.has(name)) { needed.add(name); specs.find((s) => s.name === name)?.imports.forEach(need); } };
