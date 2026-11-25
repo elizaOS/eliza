@@ -195,7 +195,7 @@ function cameraGrounding(turn: DeviceTurn, operation: CameraCapture): Grounding 
   return decided(turn, cameraVerdict(turn, choice), operation, {
     kind: "Refused", code: "DEVICE_CAMERA_LENS_UNAVAILABLE",
     forOwner: "I can't use that camera lens for this request.",
-    forModel: "The requested camera lens is unavailable, conflicting or different from the proposed lens. No photo proposal was created.",
+    forModel: "Naming a camera lens is not available here: the owner's phone does not offer a lens choice, or this is not the owner's own chat. No photo proposal was created.",
   })
 }
 
