@@ -164,7 +164,7 @@ it.effect.skipIf(skipped !== null)(`Generate the fixture host, refuse a partial 
       assert.include(entries, "lib/x86_64/libeliza_node.so")
       assert.deepStrictEqual(entries.filter((entry) => INFERENCE.test(entry)), [])
       for (const name of ["host.json", "character.json", "policy.json"]) {
-        assert.strictEqual(try archiveDigest(apk, `assets/agent/${name}`), sha256(try files.readFile(path.join(consumer, "agent", name))))
+        assert.strictEqual((try archiveDigest(apk, `assets/agent/${name}`)).sha256, sha256(try files.readFile(path.join(consumer, "agent", name))))
       }
 
       const tree = try aaptManifestTree(apk, { aapt: tools.aapt })
