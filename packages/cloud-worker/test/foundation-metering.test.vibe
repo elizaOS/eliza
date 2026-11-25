@@ -6,6 +6,7 @@ import { addCredits, stepFunds } from "../src/billing/funds.vibe"
 import { refusalBody } from "../src/http/refusal.vibe"
 import { holdRows, markDispatched, periodRows, renderHoldKey, reserve, settle, sweepHolds, type HoldOwner, type HoldKey } from "../src/shared/metering.vibe"
 import { stepRow } from "../src/store/rows.vibe"
+import { dunningGrace, initial as noSubscription } from "../gen/cloud__billing__subscriptions.ts"
 import { Store } from "../src/store/store.vibe"
 import { signedCaller } from "./support/caller.vibe"
 import { createStripeFake, type SignedEvent } from "./support/fakes/stripe.ts"
@@ -26,9 +27,14 @@ effect function numbers(cloud: TestCloud, text: string, params: ReadonlyArray<un
   return (try sql(cloud, text, params)).map((row) => Object.values(row).map((value) => typeof value === "string" ? value : Number(value)))
 }
 
+const subscriptionStatuses: Readonly<Record<string, string>> = { active: "Active", past_due: "PastDue", unpaid: "Unpaid", canceled: "Canceled" }
+const planKeys: Readonly<Record<string, string>> = { plus_monthly: "PlusMonthly", pro_monthly: "ProMonthly" }
+
 effect function subscribe(cloud: TestCloud, organizationId: string, status: string, planKey: string) {
   const now = try Clock.currentTimeMillis
-  try sql(cloud, "INSERT INTO subscriptions (key, state, revision, status, plan_key, period_end, updated_at) VALUES ($1, '{}'::jsonb, 1, $2, $3, $4, $5)", [organizationId, status, planKey, now + month, now])
+  const dunning = status === "past_due" || status === "unpaid" ? { tag: "DunningSince", startedAt: now - minute, endsAt: now - minute + dunningGrace } : { tag: "NotDunning" }
+  const state = { ...noSubscription, status: subscriptionStatuses[status], subscriptionId: `sub_${organizationId}`, customer: { tag: "PinnedCustomer", customerId: `cus_${organizationId}` }, planKey: planKeys[planKey] ?? planKey, periodStart: now - minute, periodEnd: now + month, dunning, revision: 1 }
+  try sql(cloud, "INSERT INTO subscriptions (key, state, revision, status, plan_key, period_end, updated_at) VALUES ($1, $2::jsonb, 1, $3, $4, $5, $6) ON CONFLICT (key) DO UPDATE SET state = EXCLUDED.state, status = EXCLUDED.status", [organizationId, JSON.stringify(state), status, planKey, now + month, now])
 }
 
 effect function grant(cloud: TestCloud, organizationId: string, planKey: string) {
@@ -89,10 +95,14 @@ describe("WP0 Foundation: metering and funds", () => {
       const clock = try sync(() => manualClock())
       try sync(() => clock.set(failedAt))
       const broken = try Effect.provideService(failureOf(reserve({ organizationId: "org-broken", userId: "user-3" }, holdKey("user-3", "request-3"), 1)), Clock.Clock, clock.clock)
+      const negativeQuote = try Effect.provideService(failureOf(reserve(owner, holdKey("user-1", "negative-quote"), -1)), Clock.Clock, clock.clock)
+      const digested = try reserve(owner, holdKey("user-1", "digested"), 1_000, "digest-a")
+      const sameBody = try reserve(owner, holdKey("user-1", "digested"), 1_000, "digest-a")
+      const otherBody = try failureOf(reserve(owner, holdKey("user-1", "digested"), 1_000, "digest-b"))
       try addCredits({ organizationId: "org-lapsed", amount: 10_000_000, requestKey: "lapsed-credits" })
       const lapsedOwner = { organizationId: "org-lapsed", userId: "lapsed-owner" }
       const pastDue = try reserve(lapsedOwner, holdKey(lapsedOwner.userId, "past-due-request"), 1_000_000)
-      try sql(cloud, "UPDATE subscriptions SET status='unpaid' WHERE key=$1", [lapsedOwner.organizationId])
+      try subscribe(cloud, lapsedOwner.organizationId, "unpaid", "plus_monthly")
       const unpaid = try reserve(lapsedOwner, holdKey(lapsedOwner.userId, "unpaid-request"), 1_000_000)
       const lapsedBalance = try numbers(cloud, "SELECT state->'available' AS available_balance, state->'reserved' AS reserved_balance FROM allowance_periods WHERE key=$1", [lapsedPeriod])
       const observed = {
@@ -105,19 +115,23 @@ describe("WP0 Foundation: metering and funds", () => {
           pastDue: [pastDue.hold.fromAllowance, pastDue.hold.fromCredits],
           unpaid: [unpaid.hold.fromAllowance, unpaid.hold.fromCredits],
           lapsedBalance,
-          broken
+          broken,
+          negativeQuote,
+          replay: [digested.replayed, sameBody.replayed, sameBody.key === digested.key, otherBody]
         }
       try check(() => assert.deepStrictEqual(observed, {
           reserved: { hold: [30_000_000, 25_000_000, 5_000_000], period: [[0, 25_000_000]], funds: [[5_000_000, 5_000_000]] },
           settled: [26_000_000, 0],
           period: [[0, 0, 25_000_000, "open"]],
-          funds: [[9_000_000, 0, 9_000_000]],
+          funds: [[9_000_000, 1_500, 8_998_500]],
           usage: [[26_000_000, 25_000_000, 1_000_000, 0, "known"]],
           granted: [1_500_000, 0],
           pastDue: [0, 1_500_000],
           unpaid: [0, 1_500_000],
           lapsedBalance: [[25_000_000, 0]],
-          broken: { error: "service_unavailable", errorDescription: "Service unavailable.", retryable: true, retryAt: failedAt + 5000 }
+          broken: { error: "service_unavailable", errorDescription: "Service unavailable.", retryable: true, retryAt: failedAt + 5000 },
+          negativeQuote: { error: "service_unavailable", errorDescription: "Service unavailable.", retryable: true, retryAt: failedAt + 5000 },
+          replay: [false, true, true, { error: "idempotency_conflict", errorDescription: "Idempotency conflict.", retryable: false }]
         }))
     }
   }))

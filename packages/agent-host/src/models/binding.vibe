@@ -10,7 +10,7 @@ import type { LocalRoute, LaunchDocument, LaunchFrame } from "@elizaos/agent"
 
 export type FailureKind = "credential_invalid" | "insufficient_credits" | "limit_reached" | "provider_issue"
 export type BackendName = "cloud" | "own-key" | "none"
-export type CallStart = number | { readonly limitedUntil: number }
+export type CallStart = number | { readonly limitedUntil: number; readonly limitedByCallId: number }
 
 export interface LastCloudFailure {
   readonly kind: FailureKind
@@ -144,8 +144,10 @@ export effect function bindModels(launch: LaunchDocument, frame: LaunchFrame) {
     credential: () => key.value,
     startCall: effect (handler: ModelHandler, now: number) => {
       const next = models.send({ type: "startCall", handler, now }) catch effect (rejected) => {
-        const account = rejected.state.accountState
-        if (account.tag === "Failing" && limitedAt(account, clockAt(rejected.state, now))) return { limitedUntil: reportedRetryAt(rejected.state) }
+        const state = rejected.state
+        if (limitedAt(state.accountState, clockAt(state, now))) {
+          return { limitedUntil: reportedRetryAt(state), limitedByCallId: state.rateLimitCallId }
+        }
         return try Effect.die(rejected)
       }
       return "limitedUntil" in next ? next : next.nextCall - 1

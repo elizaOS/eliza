@@ -136,10 +136,10 @@ export function browserViewAsker(runtime: IAgentRuntime): BrowserViewAsker | und
   return isViewAsker(views) ? views : undefined
 }
 
-const dispatchedSentence: Readonly<Record<NativeHistorySubaction, string>> = {
-  back: "I asked the browser to go back. The previous page may still be loading.",
-  forward: "I asked the browser to go forward. The next page may still be loading.",
-  reload: "I asked the browser to reload the page. It may still be loading.",
+const dispatchedFact: Readonly<Record<NativeHistorySubaction, string>> = {
+  back: "The phone's browser was asked to go back, and the previous page may still be loading. Say only that you asked it to go back: never that it went back, arrived or what it shows.",
+  forward: "The phone's browser was asked to go forward, and the next page may still be loading. Say only that you asked it to go forward: never that it went forward, arrived or what it shows.",
+  reload: "The phone's browser was asked to reload the page, and it may still be loading. Say only that you asked it to reload: never that it reloaded or what it shows.",
 }
 
 function parametersOf(options: unknown): object | undefined {
@@ -160,9 +160,7 @@ export function historyActionResult(outcome: HistoryOutcome): ActionResult {
   const result = { targetId: "native-client", mode: "web", subaction: outcome.subaction, value: { dispatched: true, completed: false, requiresReadback: false } }
   return {
     success: true,
-    text: JSON.stringify(result),
-    userFacingText: dispatchedSentence[outcome.subaction],
-    verifiedUserFacing: true,
+    text: `${dispatchedFact[outcome.subaction]} ${JSON.stringify(result)}`,
     turnComplete: true,
     data: { actionName: "BROWSER", executionStatus: "dispatched", result },
   }

@@ -1,6 +1,6 @@
-// spec/notes/records.md, "The earlier document is imported once, exactly, and never over the collection"
+// spec/notes/records.md, "The earlier document is imported once, exactly, and never over the collection"; spec/notes/trash.md, "A pending cleanup reserves the note and recording until its exact receipt is acknowledged"
 import { importedRevision } from "../gen/notes__records.effect.vibe"
-import type { NotesDocument } from "./collection.vibe"
+import { recordingReferences, type NotesDocument } from "./collection.vibe"
 import { CleanupReceipt, Instant, Revision, StoredDocument } from "@elizaos/plugin-notes-client"
 
 export interface PriorDocumentText {
@@ -55,12 +55,7 @@ export effect function importPriorDocument(prior: PriorDocumentText, importedAt:
     },
   }
   const stored = try mapError(decodeStored(candidate), () => new PriorRefused({ reason: "The earlier Notes document has a note, Trash row or creation that does not validate." }))
-  const retained = new Set([...stored.notes, ...stored.trash.map((entry) => entry.note)].flatMap((note) => {
-    const data = note.format?.kind === "voice" ? note.format.data : undefined
-    const audio = data?.audio
-    return [typeof audio === "object" && audio !== null && !Array.isArray(audio) ? audio.audioId : undefined, data?.recordingId]
-      .filter((id): id is string => typeof id === "string")
-  }))
+  const retained = new Set([...stored.notes, ...stored.trash.map((entry) => entry.note)].flatMap(recordingReferences))
   if (stored.recordingCleanup.some((row) => retained.has(row.audioId))) {
     throw new PriorRefused({ reason: "The earlier Notes recording cleanup names a recording a note still keeps." })
   }

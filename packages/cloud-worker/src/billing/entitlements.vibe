@@ -1,14 +1,13 @@
-// spec/cloud/billing/entitlements.md, "Story: Read my plan without substituting another account or source"
+// spec/cloud/billing/entitlements.md, "Story: Read my plan without substituting another account or source"; spec/cloud/deployment.md, "A route of a capability the environment does not enable is refused as 404 capability_unavailable"
 import { termsOf } from "../../gen/cloud__billing__plans.effect.vibe"
-import { spendableAt } from "../../gen/cloud__billing__allowance.effect.vibe"
+import { issueEntitlement, type ClaimedStatus } from "../../gen/cloud__billing__entitlements.effect.vibe"
 import { json, owner, type Route } from "../http/routes.vibe"
 import { refused } from "../http/refusal.vibe"
-import { Deployment, type SecretMissing, type Capability } from "@elizaos/cloud"
+import { capabilityOf, Deployment, type SecretMissing, type Capability } from "@elizaos/cloud"
 import { newId } from "../shared/sealing.vibe"
-import { periodRows } from "../shared/metering.vibe"
-import { loadRow, type RowCorrupt } from "../store/rows.vibe"
-import { Store, type StoreFailure, toText, type Tx } from "../store/connection.vibe"
-import { fundingOf, readPolicy, type PolicyUnreadable, type Policy } from "./policy.vibe"
+import type { RowCorrupt } from "../store/rows.vibe"
+import { Store, type StoreFailure, type Tx } from "../store/connection.vibe"
+import { readLatestPeriod, readPolicy, type PolicyUnreadable } from "./policy.vibe"
 import { wirePlanKey } from "./plans.vibe"
 
 module node {
@@ -37,8 +36,6 @@ import { base64url, publicPoint, signEs256 } from node
 error EntitlementUnavailable { problem: string }
 
 const entitlementType = "eliza-entitlement+jwt"
-const entitlementVersion = 3
-const entitlementLifetimeSeconds = 30 * 60
 const entitlementKeysMaxAgeSeconds = 60
 
 type PlanStatus = "active" | "past_due" | "canceled" | "none"
@@ -60,7 +57,7 @@ interface EntitlementClaims {
   readonly jti: string
   readonly iat: number
   readonly exp: number
-  readonly ver: 3
+  readonly ver: number
   readonly plan: { readonly id: string; readonly name: string; readonly status: PlanStatus }
   readonly plan_ends_at: number | null
   readonly services: ReadonlyArray<EntitledService>
@@ -79,33 +76,7 @@ interface EntitlementPublicKey {
 
 const entitledServices: ReadonlyArray<EntitledService> = ["inference", "speech", "maps"]
 
-function seconds(millis: number): number {
-  return Math.floor(millis / 1000)
-}
-
-function planStatus(policy: Policy): PlanStatus {
-  switch (policy.source) {
-    case "subscription": return policy.status === "Active" ? "active" : policy.status === "Unpaid" ? "canceled" : "past_due"
-    case "grant": return "active"
-    case "free": return "none"
-    default: {
-      const _exhaustive: never = policy.source
-      return _exhaustive
-    }
-  }
-}
-
-effect function allowanceClaim(tx: Tx, organizationId: string, policy: Policy, now: number): (PlanAllowanceClaim | null)!(StoreFailure | RowCorrupt) {
-  if (fundingOf(policy).inference !== "AllowanceThenCredits") return null
-  const row = (try tx.query(
-    "SELECT key FROM allowance_periods WHERE organization_id = $1 AND status = 'open' AND period_start <= $2 AND $2 < period_end ORDER BY period_end LIMIT 1",
-    [organizationId, now]
-  ))[0]
-  const key = toText(row?.key)
-  if (key === undefined) return null
-  const period = (try loadRow(tx, periodRows, key, false)).state
-  return { unit: "usd_micros", granted: period.granted + period.adjustment, remaining: spendableAt(period, now), periodStart: seconds(period.startsAt), resetsAt: seconds(period.endsAt) }
-}
+const planStatuses: Readonly<Record<ClaimedStatus, PlanStatus>> = { ClaimActive: "active", ClaimPastDue: "past_due", ClaimCanceled: "canceled", ClaimNone: "none" }
 
 function publishedKeys(keys: ReadonlyArray<{ readonly kid: string; readonly x: string; readonly y: string }>): ReadonlyArray<EntitlementPublicKey> {
   return keys.map((key) => ({ kid: key.kid, kty: "EC", crv: "P-256", x: key.x, y: key.y, alg: "ES256", use: "sig" }))
@@ -120,22 +91,24 @@ effect function signEntitlement(tx: Tx, caller: { readonly userId: string; reado
     throw new EntitlementUnavailable({ problem: `the signing key is not the published key ${entitlement.keyId}` })
   }
   const policy = try readPolicy(tx, caller.organizationId, now)
-  const allowance = try allowanceClaim(tx, caller.organizationId, policy, now)
-  const iat = seconds(now)
-  const ends = [iat + entitlementLifetimeSeconds, ...(policy.effectiveUntil === null ? [] : [seconds(policy.effectiveUntil)]), ...(allowance === null ? [] : [allowance.resetsAt])]
+  const period = try readLatestPeriod(tx, caller.organizationId, now)
+  const issued = issueEntitlement(policy, period, capabilities.map((capability) => capabilityOf[capability]), now)
+  const allowance = issued.allowance
   const claims: EntitlementClaims = {
     iss: deployment.settings.api,
     aud: deployment.settings.entitlementAudience,
     sub: caller.userId,
     org: caller.organizationId,
     jti: newId(),
-    iat,
-    exp: Math.max(iat + 1, Math.min(...ends)),
-    ver: entitlementVersion,
-    plan: { id: wirePlanKey(policy.planKey), name: termsOf(policy.planKey).name, status: planStatus(policy) },
-    plan_ends_at: policy.effectiveUntil === null ? null : seconds(policy.effectiveUntil),
-    services: entitledServices.filter((service) => capabilities.includes(service)),
-    plan_allowance: allowance
+    iat: issued.issuedAt,
+    exp: issued.expiresAt,
+    ver: issued.ver,
+    plan: { id: wirePlanKey(issued.planKey), name: termsOf(issued.planKey).name, status: planStatuses[issued.status] },
+    plan_ends_at: issued.planEndsAt.tag === "AtSecond" ? issued.planEndsAt.second : null,
+    services: entitledServices.filter((service) => issued.services.includes(capabilityOf[service])),
+    plan_allowance: allowance.tag === "ClaimsAllowance"
+      ? { unit: "usd_micros", granted: allowance.granted, remaining: allowance.remaining, periodStart: allowance.periodStartSec, resetsAt: allowance.resetsAtSec }
+      : null
   }
   const input = `${base64url({ alg: "ES256", typ: entitlementType, kid: entitlement.keyId })}.${base64url(claims)}`
   const signature = try Effect.try({ try: () => signEs256(pkcs8, input), catch: () => new EntitlementUnavailable({ problem: "signing failed" }) })
@@ -147,7 +120,7 @@ export const routes: ReadonlyArray<Route> = [
     method: "GET",
     path: "/api/v1/subscription/entitlement",
     auth: "ServiceAccess",
-    capability: "billing",
+    area: "EntitlementRoutes",
     rateClass: "StandardRequests",
     handler: (context) => effect {
       const signed = owner(context.caller)
@@ -161,7 +134,7 @@ export const routes: ReadonlyArray<Route> = [
     method: "GET",
     path: "/api/v1/subscription/entitlement-keys",
     auth: "Public",
-    capability: "billing",
+    area: "EntitlementRoutes",
     handler: () => effect {
       const deployment = try Deployment
       return json({ keys: publishedKeys(deployment.settings.entitlement.publicKeys) }, { headers: { "cache-control": `public, max-age=${entitlementKeysMaxAgeSeconds}` } })
