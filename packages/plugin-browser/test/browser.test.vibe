@@ -533,7 +533,7 @@ it.effect(`Review a reload of a page the phone withheld on the phone, and run it
   })
 })
 
-it.effect('Open an address on the screen the owner asked from: at once only for a whole-message open, else for review, and nowhere an enrolled phone takes it (spec/browser/control.md, "Story: Open an address on the screen I asked from"; spec/browser/control.md, "An open has one home: the Browser proposal where my enrolled phone takes it, else the screen I asked from"; spec/browser/control.md, "The screen opens at once only an address my whole message asked for, and shows any other for my review first"; spec/browser/control.md, "A refused Browser proposal tells me how to ask, and never says anything opened")', effect () => {
+it.effect('Show an address on the screen the owner asked from for the owner to open, even one their whole message asked for, and nowhere an enrolled phone takes it (spec/browser/control.md, "Story: Open an address on the screen I asked from"; spec/browser/control.md, "An open has one home: the Browser proposal where my enrolled phone takes it, else the screen I asked from"; spec/browser/control.md, "The screen shows the address for me to open, and nothing opens until I choose Open there"; spec/browser/control.md, "A refused Browser proposal tells me how to ask, and never says anything opened")', effect () => {
   const runtime = { character: { name: "Eliza" } } as unknown as IAgentRuntime
   const asked = (text: string, delivery: unknown = "completed-action") => ({
     id: "00000000-0000-4000-8000-000000000011", entityId: "00000000-0000-4000-8000-000000000001", roomId: "00000000-0000-4000-8000-000000000002",
@@ -546,7 +546,7 @@ it.effect('Open an address on the screen the owner asked from: at once only for 
     try open("don't open example.com", "https://example.com"),
     try open("open http://example.com:8080", "http://example.com:8080"),
   ]
-  const opened = (url: string, review: boolean) => ({ actionName: "BROWSER_OPEN", mode: "open", operation: { type: "browser_navigate", url }, clientId: "client-1", review })
+  const opened = (url: string) => ({ actionName: "BROWSER_OPEN", mode: "open", operation: { type: "browser_navigate", url }, clientId: "client-1" })
   const owner = { agentId: "00000000-0000-4000-8000-000000000003", actorId: "00000000-0000-4000-8000-000000000001", connector: "device" }
   const phone = try Effect.try(() => deviceTurnPort(runtime as AgentRuntime, () => Effect.succeed(owner), { completesReads: true }))
   const fromPhone = (capabilities: readonly string[]) => promise(async () => {
@@ -567,13 +567,14 @@ it.effect('Open an address on the screen the owner asked from: at once only for 
     assert.deepStrictEqual(takesOpens, [false, false, true])
     assert.deepStrictEqual(takesNoBrowser, [true, true, true])
     assert.deepStrictEqual(results.map((result) => result.success ? result.data : { code: result.data?.code, userFacingText: result.userFacingText }), [
-      opened("https://example.com/", false),
-      opened("https://en.wikipedia.org/wiki/Eiffel_Tower", true),
+      opened("https://example.com/"),
+      opened("https://en.wikipedia.org/wiki/Eiffel_Tower"),
       { code: "DEVICE_BROWSER_NOT_REQUESTED", userFacingText: "I didn't open that address." },
       { code: "DEVICE_BROWSER_NOT_REQUESTED", userFacingText: "Tell me the address, like example.com." },
     ])
-    assert.match(results[0]?.text ?? "", /^Opening example\.com\. .*has not loaded yet/)
-    assert.match(results[1]?.text ?? "", /for the owner to review/)
+    assert.match(results[0]?.text ?? "", /^Showing example\.com for the owner to open\. .*opens only if they choose Open there\. It has not opened/)
+    assert.match(results[1]?.text ?? "", /^Showing en\.wikipedia\.org for the owner to open\./)
+    assert.notMatch(results.map((result) => result.text ?? "").join(" "), /Opening|with no review/)
     assert.isTrue(browserPlugin.actions?.includes(browserOpenAction))
   })
 })

@@ -321,24 +321,17 @@ pure def lawAScreenOpenNeedsTheScreenAndNoPhone(phoneAdmitsOpen: bool, screenTak
   openHome(phoneAdmitsOpen, screenTakesViews) == OpenOnScreen implies (screenTakesViews and not(phoneAdmitsOpen))
 ```
 
-### The screen opens at once only an address my whole message asked for, and shows any other for my review first
+### The screen shows the address for me to open, and nothing opens until I choose Open there
 
 BROWSER_OPEN grounds the address exactly as the `browser_navigate` proposal
 does ([request grounding](./requestGrounding.md)): the same https address,
 the same page links, the same refusals, answered as a refused proposal is,
 with nothing handed back. A grounded open is handed back in the action's
 completed result as the typed `browser_navigate` operation, bound to the
-screen that asked, and marked to open at once only when it would be bound to
-the owner's message as a proposal; every other open waits for the owner's
-review on that screen. The model learns that the screen opens the address or
-shows it for review, and never that the page loaded or what it shows.
-
-```quint
-type ScreenOpen = OpenAtOnce | OpenAfterReview
-pure def screenOpen(bound: bool): ScreenOpen = if (bound) OpenAtOnce else OpenAfterReview
-pure def lawOnlyABoundOpenSkipsReview(bound: bool): bool = screenOpen(bound) == OpenAtOnce implies bound
-pure def lawAnUnboundOpenIsReviewed(bound: bool): bool = not(bound) implies screenOpen(bound) == OpenAfterReview
-```
+screen that asked, which shows the address for the owner to open; even an
+address the owner's whole message asked for waits for their Open there. The
+model learns that the screen shows the address for the owner to open, and
+never that it opened, that the page loaded or what it shows.
 
 ## Story: Tell me you cannot read my page, and never reload it unasked
 
