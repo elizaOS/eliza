@@ -20,9 +20,9 @@ installation and enrollment, and the installed protocol the operation
 catalog names for it: two for foreground presentation, three for selected
 reminders, and the [run scope](./runScope.md)'s relative-range protocol for
 a calendar range relative to the run. The advertised catalog admits the
-trigger and every step. Recognized unsupported phrases are refused before
-generation, and wording that passes that filter still must pass the same
-typed catalog.
+trigger and every step. Every request goes to the drafting model, which
+answers with an unsupported reason for what the typed steps cannot do, and
+whatever it drafts must still pass the same typed catalog.
 
 ```quint
 import runScope as R from "./runScope"
