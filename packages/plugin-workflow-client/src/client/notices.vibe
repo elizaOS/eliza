@@ -2,7 +2,7 @@
 import { openNotice, resumesApprovalNotice } from "../../gen/workflow__notices.effect.vibe"
 import { workflowSha } from "../contract/phone.vibe"
 import type { WorkflowPhoneReview } from "../contract/device.vibe"
-import type { WorkflowApproval, WorkflowApprovalReceipt, WorkflowClient, WorkflowClientError, WorkflowRun } from "./workflow-client.vibe"
+import { type WorkflowApproval, type WorkflowApprovalReceipt, type WorkflowClient, type WorkflowClientError, type WorkflowRequest, type WorkflowRun, workflowHttpError } from "./workflow-client.vibe"
 
 export interface WorkflowNoticeRoute {
   readonly scope: string
@@ -13,6 +13,34 @@ export interface WorkflowNoticeRoute {
   readonly runId: string
   readonly versionId: string
 }
+const NoticeRouteId = Schema.NonEmptyString.check(Schema.isMaxLength(128))
+const NoticeProposalId = Schema.NonEmptyString.check(Schema.isMaxLength(256))
+const NoticeDeadline = Schema.Int.check(Schema.isGreaterThan(0), Schema.isLessThanOrEqualTo(Number.MAX_SAFE_INTEGER))
+
+export schema WorkflowApprovalOffer {
+  readonly kind: "approval"
+  readonly workflowId: NoticeRouteId
+  readonly runId: NoticeRouteId
+  readonly versionId: NoticeRouteId
+  readonly proposalId: NoticeProposalId
+  readonly expiresAt: NoticeDeadline
+}
+
+const NoticePage = Schema.Struct({ serviceStatus: Schema.Literal("ready"), notifications: Schema.Array(Schema.Unknown).check(Schema.isMaxLength(50)) })
+const NoticeRow = Schema.Struct({ category: Schema.Literal("workflow"), data: WorkflowApprovalOffer })
+const readOffer = Schema.decodeUnknownOption(NoticeRow)
+
+// spec/workflow/notices.md, "A pending approval is offered again only while its run is unchanged and unsettled"
+export effect function workflowApprovalOffers(request: WorkflowRequest): readonly WorkflowApprovalOffer[]!WorkflowClientError {
+  const raw = try request("/api/notifications?category=workflow&limit=50", undefined)
+  const page = Option.getOrUndefined(Schema.decodeUnknownOption(NoticePage)(raw))
+  if (page === undefined) throw workflowHttpError(502, { code: "WORKFLOW_NOTICE_INBOX_INVALID", error: "Workflow notices could not be read" })
+  return page.notifications.flatMap((entry) => {
+    const offer = Option.getOrUndefined(readOffer(entry))
+    return offer === undefined ? [] : [offer.data]
+  })
+}
+
 export interface WorkflowApprovalNoticeIdentity { readonly id: string; readonly bindingHash: string }
 export type WorkflowNoticeTarget =
   | { readonly kind: "run"; readonly route: WorkflowNoticeRoute; readonly run: WorkflowRun; readonly pending: readonly WorkflowApproval[]; readonly review?: WorkflowPhoneReview }
@@ -78,17 +106,20 @@ export effect function revalidateWorkflowApprovalNotice(notice: SuspendedWorkflo
   if (current.removed || current.versionId !== route.versionId || notice.expiresAt <= at) return "withdraw"
   const run = try reads.receipt(route.runId, route.workflowId)
   if (!valid()) return "stale"
-  const receipt = run.versionId === route.versionId && !run.finished ? try reads.approvals(run) : null
+  if (run.versionId !== route.versionId || run.finished) return "withdraw"
+  const receipt = try reads.approvals(run)
   if (!valid()) return "stale"
+  if (receipt === null) throw workflowHttpError(503, { code: "WORKFLOW_APPROVAL_RECEIPT_UNAVAILABLE", error: "Workflow approval receipt was unavailable" })
   let same = false
-  for (const approval of receipt?.approvals ?? []) {
+  for (const approval of receipt.approvals) {
     if (approval.status !== "pending" || approval.expiresAt !== notice.expiresAt) continue
     const bound = try workflowApprovalNoticeIdentity(route, workflowApprovalProposalId(approval))
     if (bound.id === notice.id && bound.bindingHash === notice.bindingHash) same = true
   }
   if (!valid()) return "stale"
+  const settledAt = try Clock.currentTimeMillis
   return resumesApprovalNotice({
-    runFinished: run.finished || receipt === null || receipt.finished, cancellationRequested: receipt?.cancellationRequested ?? false,
-    versionMatches: run.versionId === route.versionId, approvalPending: same, sameExpiry: same, expired: notice.expiresAt <= at,
+    runFinished: receipt.finished, cancellationRequested: receipt.cancellationRequested,
+    versionMatches: true, approvalPending: same, sameExpiry: same, expired: notice.expiresAt <= settledAt,
   }) ? "resume" : "withdraw"
 }
