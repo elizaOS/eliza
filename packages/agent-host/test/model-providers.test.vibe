@@ -150,7 +150,7 @@ it.live('A planner resend uses the remaining send and only keeps the origin of i
   assert.deepStrictEqual(heldRefusal instanceof ModelRefusal ? [heldRefusal.status, heldRefusal.limitOrigin, heldRefusal.limitCallId, completions(retried)] : undefined, [429, undefined, pendingId, 5])
 }, 45_000)
 
-it.effect('An outage or a dropped connection is retried on the next registration under the same idempotency key and the answer clears the account state (spec/agent/models/binding.md, "Only a network failure, an outage or a provider issue is retried, and a rate limit ends the call for its turn to re-send once")', effect () => {
+it.effect('An outage the cloud answered is retried on the next registration under a fresh idempotency key, a dropped connection under the same key, and the answer clears the account state (spec/agent/models/binding.md, "Only a network failure, an outage or a provider issue is retried, and a rate limit ends the call for its turn to re-send once")', effect () => {
   const cloud = try cloudFake(deviceKey)
   const { runtime, binding } = try cloudAgent(cloud)
   try Effect.sync(() => cloud.script(unavailable(1), text("after outage"), dropped(), text("after drop"), unavailable(1), unavailable(1), unavailable(1), unavailable(1)))
@@ -161,7 +161,7 @@ it.effect('An outage or a dropped connection is retried on the next registration
   assert.strictEqual(third?.status, 503)
   assert.strictEqual(completions(cloud), 8)
   const keys = cloud.calls.map((call) => call.idempotencyKey ?? "")
-  assert.deepStrictEqual([keys.every((key) => /^[\da-f-]{36}$/.test(key)), keys.map((key) => [...new Set(keys)].indexOf(key))], [true, [0, 0, 1, 1, 2, 2, 2, 2]])
+  assert.deepStrictEqual([keys.every((key) => /^[\da-f-]{36}$/.test(key)), keys.map((key) => [...new Set(keys)].indexOf(key))], [true, [0, 1, 2, 2, 3, 4, 5, 6]])
   const view = try binding.read()
   assert.strictEqual(view.accountState, "provider_issue")
   assert.strictEqual(view.lastCloudFailure?.kind, "provider_issue")

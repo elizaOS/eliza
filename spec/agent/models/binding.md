@@ -125,10 +125,16 @@ handler classifies its HTTP failures into the same variants. Core retries
 `RefusedConnection` and `RetryEnvelope` on the second registration. A rate
 limit is core's exhausted budget, which removes the provider's remaining
 registration; a refused request is a bad request; every other refusal ends
-the call. Both attempts of one call carry the same `Idempotency-Key`, fresh
-for each call, so a connection lost after the cloud dispatched the first
-attempt is answered `409 already_dispatched` instead of running and charging
-the generation again; for a rate limit, the transport never re-sends it;
+the call. Each call starts with a fresh `Idempotency-Key`. Its second
+attempt carries the first attempt's key when the first ended without an
+answer from the cloud, so a connection lost after the cloud dispatched it is
+answered `409 already_dispatched` instead of running and charging the
+generation again. When the cloud answered the first attempt with a refusal,
+the cloud settled that attempt and generated nothing for it, so the second
+attempt takes a fresh key and runs: under the same key the cloud could only
+refuse it `409 already_dispatched`, and an outage the retry is there for
+would end the turn as a provider issue. For a rate limit, the transport
+never re-sends it;
 the refusal carries the time left until the provider's retry time, and the turn
 that made the call waits for that, at most five seconds, and sends it once more
 ([planning](../conversation/planning.md)).
@@ -150,6 +156,10 @@ pure def transient(e: C::CloudError): bool = match e { | CloudNetwork => true | 
 pure def rateLimited(e: C::CloudError): bool = match e { | CloudRateLimited(_) => true | _ => false }
 pure def lawOnlyTransientRefusalsAreRetried(e: C::CloudError): bool = (M::retryable(outcomeOf(e)) and outcomeOf(e) != M::ExhaustedBudget) iff transient(e)
 pure def lawRateLimitExhaustsTheProvider(e: C::CloudError): bool = rateLimited(e) iff outcomeOf(e) == M::ExhaustedBudget
+type RetryKey = SameKey | FreshKey
+pure def retryKey(firstAnswered: bool): RetryKey = if (firstAnswered) FreshKey else SameKey
+pure def lawAnUnansweredAttemptKeepsItsKey(firstAnswered: bool): bool = (retryKey(firstAnswered) == SameKey) iff not(firstAnswered)
+pure def lawAnAnsweredRefusalIsRetriedUnderAFreshKey(firstAnswered: bool): bool = (retryKey(firstAnswered) == FreshKey) iff firstAnswered
 ```
 
 ### A tool call the provider could not parse, or a streamed answer silent for a minute, ends the call without a retry
