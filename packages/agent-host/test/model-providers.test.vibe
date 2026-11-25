@@ -150,11 +150,12 @@ it.live('A planner resend uses the remaining send and only keeps the origin of i
   assert.deepStrictEqual(heldRefusal instanceof ModelRefusal ? [heldRefusal.status, heldRefusal.limitOrigin, heldRefusal.limitCallId, completions(retried)] : undefined, [429, undefined, pendingId, 5])
 }, 45_000)
 
-it.effect('The cloud\'s own provider_unavailable refusal is retried on the next registration under a fresh idempotency key; a dropped connection, a bare gateway 502 or 504 and any other 503 keep the key; and the answer clears the account state (spec/agent/models/binding.md, "Only a network failure, an outage or a provider issue is retried, and a rate limit ends the call for its turn to re-send once")', effect () => {
+it.effect('The cloud\'s own provider_unavailable refusal is retried on the next registration under a fresh idempotency key; a call takes at most one fresh key; a dropped connection, a bare gateway 502 or 504 and any other 503 keep the key; and the answer clears the account state (spec/agent/models/binding.md, "Only a network failure, an outage or a provider issue is retried, and a rate limit ends the call for its turn to re-send once")', effect () => {
   const cloud = try cloudFake(deviceKey)
   const { runtime, binding } = try cloudAgent(cloud)
   try Effect.sync(() => cloud.script(
     providerUnavailable(1), text("after outage"), dropped(), text("after drop"), gateway(502), text("after 502"), gateway(504), text("after 504"),
+    providerUnavailable(1), providerUnavailable(1), providerUnavailable(1), providerUnavailable(1),
     unavailable(1), unavailable(1), unavailable(1), unavailable(1),
   ))
   const first = try host("outage then answer", () => runtime.useModel(ModelType.TEXT_LARGE, { prompt: "One." }))
@@ -162,11 +163,12 @@ it.effect('The cloud\'s own provider_unavailable refusal is retried on the next 
   const third = try host("502 then answer", () => runtime.useModel(ModelType.TEXT_LARGE, { prompt: "Three." }))
   const fourth = try host("504 then answer", () => runtime.useModel(ModelType.TEXT_LARGE, { prompt: "Four." }))
   const fifth = try refusalOf(runtime, { prompt: "Five." })
+  const sixth = try refusalOf(runtime, { prompt: "Six." })
   assert.deepStrictEqual([first, second, third, fourth], ["after outage", "after drop", "after 502", "after 504"])
-  assert.strictEqual(fifth?.status, 503)
-  assert.strictEqual(completions(cloud), 12)
+  assert.deepStrictEqual([fifth?.status, sixth?.status], [503, 503])
+  assert.strictEqual(completions(cloud), 16)
   const keys = cloud.calls.map((call) => call.idempotencyKey ?? "")
-  assert.deepStrictEqual([keys.every((key) => /^[\da-f-]{36}$/.test(key)), keys.map((key) => [...new Set(keys)].indexOf(key))], [true, [0, 1, 2, 2, 3, 3, 4, 4, 5, 5, 5, 5]])
+  assert.deepStrictEqual([keys.every((key) => /^[\da-f-]{36}$/.test(key)), keys.map((key) => [...new Set(keys)].indexOf(key))], [true, [0, 1, 2, 2, 3, 3, 4, 4, 5, 6, 6, 6, 7, 7, 7, 7]])
   const view = try binding.read()
   assert.strictEqual(view.accountState, "provider_issue")
   assert.strictEqual(view.lastCloudFailure?.kind, "provider_issue")

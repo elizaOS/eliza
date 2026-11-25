@@ -368,6 +368,7 @@ module calls {
 
   export interface CallKey {
     readonly value: string
+    readonly freshKeyTaken: boolean
     closedByCloud: boolean
   }
 
@@ -375,11 +376,11 @@ module calls {
 
   /** @throws {never} */
   export function callKeyOf(params: object): CallKey {
-    const minted = (): CallKey => ({ value: randomUUID(), closedByCloud: false })
+    const minted = (freshKeyTaken: boolean): CallKey => ({ value: randomUUID(), freshKeyTaken, closedByCloud: false })
     const attempts: unknown = (params as { [MODEL_PROVIDER_ATTEMPTS]?: unknown })[MODEL_PROVIDER_ATTEMPTS]
-    if (typeof attempts !== "object" || attempts === null) return minted()
+    if (typeof attempts !== "object" || attempts === null) return minted(false)
     const kept = keys.get(attempts)
-    const key = kept === undefined || kept.closedByCloud ? minted() : kept
+    const key = kept === undefined ? minted(false) : kept.closedByCloud ? minted(true) : kept
     keys.set(attempts, key)
     return key
   }
@@ -450,7 +451,7 @@ effect function refusalFrom(result: HttpClientResponse.HttpClientResponse, cloud
   const now = try Clock.currentTimeMillis
   const raw = timeout(result.text, "20 seconds") catch effect () => { throw new Refused({ cloud: { tag: "CloudNetwork" } }) }
   const body = Option.getOrUndefined(decodeRefusalCode(raw))
-  if (callKey !== undefined) callKey.closedByCloud = retryKey(cloudRoute, result.status, body?.error ?? "") === "FreshKey"
+  if (callKey !== undefined) callKey.closedByCloud = retryKey(cloudRoute, result.status, body?.error ?? "", callKey.freshKeyTaken) === "FreshKey"
   if (toolCallUnparsed(result.status, raw)) return new ShellRefused({ refusal: "ToolCallUnparsed" })
   const words = providerWords(raw)
   const classified = words === undefined ? undefined : providerRefusal(result.status, words)
