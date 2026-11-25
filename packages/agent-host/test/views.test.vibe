@@ -152,10 +152,11 @@ it.live('A completed chat reply gives its renderer the exact prepared switch it 
   })
 }, 120_000)
 
-it.live('A completed turn prepares the saved editor for the note the model named, only after its current Notes lookup (spec/agent/views.md, "A specific saved Notes editor is prepared only after a matching current lookup on a supported renderer")', effect () => {
+it.live('A completed turn prepares the saved editor for the note the model named, only after its current Notes lookup or its own creation (spec/agent/views.md, "A specific saved Notes editor is prepared only after a matching current lookup on a supported renderer")', effect () => {
   const cloud = try cloudFake(deviceKey)
   let current = true
-  const saved: Readonly<Record<string, string>> = { "Ferry checklist": "note-ferry", Calendar: "note-calendar", "Q3 offsite": "note-offsite", "shopping list": "note-shopping" }
+  const saved: Readonly<Record<string, string>> = { "Ferry checklist": "note-ferry", Calendar: "note-calendar", "Q3 offsite": "note-offsite", "shopping list": "note-shopping", groceries: "note-groceries" }
+  const held = new Set(Object.values(saved))
   class NotesFixture extends Service {
     static override serviceType = "notes"
     override capabilityDescription = "Current note fixture"
@@ -164,6 +165,21 @@ it.live('A completed turn prepares the saved editor for the note the model named
     matchesSavedEditor(id: string, query: string): Promise<boolean> {
       return Promise.resolve(current && saved[query] === id)
     }
+    snapshot(): Promise<{ notes: { id: string }[] }> {
+      return Promise.resolve({ notes: current ? [...held].map((noteId) => ({ id: noteId })) : [] })
+    }
+  }
+  const creation: Action = {
+    name: "NOTES_CREATE", similes: [], description: "Create a test note.",
+    validate: async () => true,
+    parameters: [{ name: "content", required: true, description: "Note title", schema: { type: "string" } }],
+    handler: async (_runtime, _message, _state, options) => {
+      const params = options?.parameters
+      const content = typeof params === "object" && params !== null && "content" in params && typeof params.content === "string" ? params.content : ""
+      const noteId = `note-created-${held.size}`
+      held.add(noteId)
+      return { success: true, data: { actionName: "NOTES_CREATE", op: "create", noteId, note: { id: noteId, title: content } } }
+    },
   }
   const lookup: Action = {
     name: "NOTES_GET", similes: [], description: "Read the current test note.",
@@ -179,9 +195,9 @@ it.live('A completed turn prepares the saved editor for the note the model named
   const agent = try startInProcess({
     launch: { ...loaded.launch, load: [...loaded.launch.load, name], callerRole: "owner",
       views: [...loaded.launch.views, { id: "agenda", label: "Calendar", path: "/calendar", aliases: ["appointments"] }],
-      backend: { kind: "cloud", origin: cloud.origin }, allowed: ["REPLY", "IGNORE", "NONE", "VIEWS", "NOTES_GET"] },
+      backend: { kind: "cloud", origin: cloud.origin }, allowed: ["REPLY", "IGNORE", "NONE", "VIEWS", "NOTES_GET", "NOTES_CREATE"] },
     frame: { credential: { version: 1, value: deviceKey } },
-    bundled: new Map([[name, { name, description: "Saved Notes fixture", actions: [lookup], services: [NotesFixture] }]]),
+    bundled: new Map([[name, { name, description: "Saved Notes fixture", actions: [lookup, creation], services: [NotesFixture] }]]),
   })
   const opened = try ask(agent, { method: "POST", path: "/api/conversations", body: {} })
   const { id } = (opened.body as { conversation: { id: string } }).conversation
@@ -190,6 +206,7 @@ it.live('A completed turn prepares the saved editor for the note the model named
   const metadata = { viewDelivery: "completed-action", viewClientId: clientId,
     voiceUi: { viewDelivery: "completed-action", uiClientId: clientId, uiNotesEditor: "saved-note-v1" } }
   const get = (content: string) => ({ name: "NOTES_GET", arguments: { content } })
+  const create = (content: string) => ({ name: "NOTES_CREATE", arguments: { content } })
   const editor = (note: string) => ({ name: "VIEWS", arguments: { action: "show", view: "notes-editor", note } })
   const view = (named: string) => ({ name: "VIEWS", arguments: { action: "show", view: named } })
   const send = (request: string, data: object) => ask(agent, { method: "POST", path: "/api/conversations/" + id + "/messages",
@@ -242,6 +259,11 @@ it.live('A completed turn prepares the saved editor for the note the model named
     try opensNote("open the note titled shopping list", "shopping list"),
     try opensNote("pull up my shopping list", "shopping list"),
   ]
+  try Effect.sync(() => cloud.script(toolCalls("", create("Groceries")), toolCalls("", editor("groceries")), text("Created and opened.")))
+  const created = handoff(try send("create a checklist called groceries with milk and eggs and open it", metadata))
+  const createdClaim = (try claimed(created)).body as { target?: { noteId: string } }
+  try Effect.sync(() => cloud.script(toolCalls("", create("Packing")), toolCalls("", editor("Ferry checklist")), text("Which note?")))
+  const notCreated = handoff(try send("make a packing note and open my ferry checklist", metadata))
   const savedNoteCoaching = "To open one saved note the owner asks for, in any words, first resolve it with NOTES_GET."
   try Effect.try(() => {
     assert.strictEqual(found?.subview, "saved-note-v1")
@@ -262,6 +284,8 @@ it.live('A completed turn prepares the saved editor for the note the model named
     assert.isUndefined(alias?.subview)
     assert.include(JSON.stringify(calendarCompletions), savedNoteCoaching)
     assert.deepStrictEqual(noted, ["note-calendar", "note-offsite", "note-shopping", "note-shopping"].map((noteId) => ({ subview: "saved-note-v1", noteId: undefined, target: { kind: "saved-note", noteId } })))
+    assert.deepStrictEqual([created?.subview, createdClaim.target?.noteId], ["saved-note-v1", "note-created-5"])
+    assert.isUndefined(notCreated?.navigationBinding)
   })
 }, 120_000)
 

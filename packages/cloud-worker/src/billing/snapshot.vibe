@@ -1,15 +1,17 @@
-// spec/cloud/billing/subscriptions.md, "Story: Keep my plan as the provider says it is"; spec/cloud/billing/subscriptions.md, "Story: Change my plan one command at a time"; spec/cloud/billing/plans.md, "Story: Apply the plan that funds a call"; spec/cloud/deployment.md, "A route of a capability the environment does not enable is refused as 404 capability_unavailable"
-import { controlOf, dunningEndsAt, type ControlAction, type Subscription } from "../../gen/cloud__billing__subscriptions.effect.vibe"
+// spec/cloud/billing/entitlements.md, "Story: Read my billing state in one snapshot"; spec/cloud/billing/subscriptions.md, "Story: Keep my plan as the provider says it is"; spec/cloud/billing/subscriptions.md, "Story: Change my plan one command at a time"; spec/cloud/deployment.md, "A route of a capability the environment does not enable is refused as 404 capability_unavailable"
+import { billingSnapshot, type AllowanceView, type BillingRead } from "../../gen/cloud__billing__entitlements.effect.vibe"
+import { dunningEndsAt, type CancelControl, type ControlAction, type Subscription } from "../../gen/cloud__billing__subscriptions.effect.vibe"
+import type { AccountStatus as SpecAccountStatus } from "../../gen/cloud__identity__accounts.effect.vibe"
+import type { Period } from "../../gen/cloud__billing__allowance.effect.vibe"
 import type { FundingLane } from "../../gen/cloud__shared__metering.effect.vibe"
 import { json, owner, type Route } from "../http/routes.vibe"
 import { refused, wireName } from "../http/refusal.vibe"
-import { allowanceStatus, periodRows, type WireAllowanceState } from "../shared/metering.vibe"
+import { allowanceStatus, type WireAllowanceState } from "../shared/metering.vibe"
 import { loadRow, type RowCorrupt } from "../store/rows.vibe"
 import { Store, type StoreFailure, toInt, toText, type Tx } from "../store/connection.vibe"
 import { fundsRows } from "./funds.vibe"
-import { readSubscription } from "./subscriptions.vibe"
 import { parsePlanKey, wirePlanKey, type PaidPlanKey, type WirePlanKey } from "./plans.vibe"
-import { fundingOf, planSummary, readPolicy, type PolicyUnreadable, type FundingClass, type PlanSource } from "./policy.vibe"
+import { planSummary, readLatestPeriod, readPolicyRead, type PlanSource } from "./policy.vibe"
 
 export type AccountStatus = "active" | "deleting" | "erased"
 export type WireSubscriptionStatus = "pending" | "incomplete" | "active" | "dunning" | "past_due" | "unpaid" | "canceled" | "incomplete_expired"
@@ -61,20 +63,21 @@ export interface BillingSnapshot {
   readonly subscription: SnapshotSubscription | null
   readonly grant: SnapshotGrant | null
   readonly allowance: SnapshotAllowance | null
-  readonly funding: Readonly<Record<FundingClass, WireFundingLane>>
+  readonly funding: Readonly<Record<"inference" | "speech" | "maps", WireFundingLane>>
 }
 
 error SnapshotUnreadable { organizationId: string; problem: string }
 
-const accountStatuses: ReadonlyArray<AccountStatus> = ["active", "deleting", "erased"]
+const accountStatuses: Readonly<Record<AccountStatus, SpecAccountStatus>> = { active: "Active", deleting: "Deleting", erased: "Erased" }
+
+const wireAccountStatuses: Readonly<Record<SpecAccountStatus, AccountStatus | null>> = { Unopened: null, Active: "active", Deleting: "deleting", Erased: "erased" }
 
 const controlActions: Readonly<Record<ControlAction, WireControlAction>> = { CancelAction: "cancel", UndoAction: "undo", NoAction: "none" }
 
 const fundingLanes: Readonly<Record<FundingLane, WireFundingLane>> = { AllowanceThenCredits: "allowanceThenCredits", CreditsOnly: "creditsOnly", Refused: "refused" }
 
-function subscriptionView(subscription: Subscription): SnapshotSubscription | null {
+function subscriptionView(subscription: Subscription, control: CancelControl): SnapshotSubscription | null {
   if (subscription.status === "NoSubscription") return null
-  const control = controlOf(subscription)
   const planned = subscription.planned
   const dunningEnd = dunningEndsAt(subscription.dunning)
   return {
@@ -112,48 +115,55 @@ effect function grantView(tx: Tx, organizationId: string, now: number): (Snapsho
   }
 }
 
-effect function allowanceView(tx: Tx, organizationId: string, now: number): (SnapshotAllowance | null)!(StoreFailure | RowCorrupt | SnapshotUnreadable) {
-  const row = (try tx.query(
-    "SELECT key FROM allowance_periods WHERE organization_id = $1 ORDER BY (status = 'open' AND period_start <= $2 AND $2 < period_end) DESC, period_end DESC, key LIMIT 1",
-    [organizationId, now]
-  ))[0]
-  const key = toText(row?.key)
-  if (key === undefined) return null
-  const period = (try loadRow(tx, periodRows, key, false)).state
-  const state = allowanceStatus(period.phase)
-  if (state === null) throw new SnapshotUnreadable({ organizationId, problem: "allowance period" })
+function allowanceView(period: Period, shown: AllowanceView): SnapshotAllowance | null {
+  if (shown.tag === "NoAllowanceView") return null
+  const state = allowanceStatus(shown.phase)
+  if (state === null) return null
   return {
     state,
     granted: period.granted,
     adjustment: period.adjustment,
-    available: period.available,
+    available: shown.available,
     reserved: period.reserved,
     settled: period.settled,
     expired: period.expired,
     clawedBack: period.clawedBack,
-    periodStart: period.startsAt,
-    resetsAt: period.endsAt
+    periodStart: shown.startsAt,
+    resetsAt: shown.resetsAt
   }
 }
 
-effect function readSnapshot(tx: Tx, caller: { readonly userId: string; readonly organizationId: string }, now: number): BillingSnapshot!(StoreFailure | RowCorrupt | PolicyUnreadable | SnapshotUnreadable) {
+effect function readBilling(tx: Tx, caller: { readonly userId: string; readonly organizationId: string }, now: number) {
   const organizationId = caller.organizationId
   const status = toText((try tx.query("SELECT status FROM accounts WHERE key = $1 AND organization_id = $2", [caller.userId, organizationId]))[0]?.status)
-  const account = accountStatuses.find((candidate) => candidate === status)
-  if (account === undefined) throw new SnapshotUnreadable({ organizationId, problem: "account row" })
+  const account = status === "active" || status === "deleting" || status === "erased" ? accountStatuses[status] : undefined
   const funds = try loadRow(tx, fundsRows, organizationId, false)
-  const policy = try readPolicy(tx, organizationId, now)
-  const funding = fundingOf(policy)
+  const policy = try readPolicyRead(tx, organizationId)
+  const period = try readLatestPeriod(tx, organizationId, now)
+  const read: BillingRead = account === undefined || policy.tag === "PolicyUnreadable"
+    ? { tag: "BillingUnreadable" }
+    : { tag: "BillingReadable", account, funds: funds.state, subscription: policy.subscription, grants: policy.grants, period }
+  return { read, revision: funds.revision, period }
+}
+
+effect function readSnapshot(tx: Tx, caller: { readonly userId: string; readonly organizationId: string }, now: number): BillingSnapshot!(StoreFailure | RowCorrupt | SnapshotUnreadable) {
+  const { read, revision, period } = try readBilling(tx, caller, now)
+  const answer = billingSnapshot(read, now)
+  if (read.tag === "BillingUnreadable" || answer.tag === "SnapshotRefused") throw new SnapshotUnreadable({ organizationId: caller.organizationId, problem: "billing rows" })
+  const snapshot = answer.snapshot
+  const account = wireAccountStatuses[snapshot.account]
+  if (account === null) throw new SnapshotUnreadable({ organizationId: caller.organizationId, problem: "account row" })
+  const lane = fundingLanes[snapshot.lane]
   return {
     schemaVersion: 3,
-    observedAt: now,
+    observedAt: snapshot.observedAt,
     account: { status: account },
-    balance: { usdMicros: funds.state.creditBalance, revision: funds.revision },
-    plan: planSummary(policy),
-    subscription: subscriptionView(try readSubscription(tx, organizationId)),
-    grant: try grantView(tx, organizationId, now),
-    allowance: try allowanceView(tx, organizationId, now),
-    funding: { inference: fundingLanes[funding.inference], speech: fundingLanes[funding.speech], maps: fundingLanes[funding.maps] }
+    balance: { usdMicros: snapshot.balance, revision },
+    plan: planSummary(snapshot.policy),
+    subscription: subscriptionView(read.subscription, snapshot.control),
+    grant: try grantView(tx, caller.organizationId, now),
+    allowance: allowanceView(period, snapshot.allowance),
+    funding: { inference: lane, speech: lane, maps: lane }
   }
 }
 
