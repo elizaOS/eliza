@@ -45,9 +45,9 @@ is offered: it runs when the model calls the action, and a call it
 declines, or that fails to check, is refused before the action runs. The
 model reads in that call's result that the action did not run, so it may
 answer without it or call another offered action, and the refusal stays
-reported as any other refusal before dispatch. The owner hears a call the
-action's own check declined as `unavailableNotice`, which names no action,
-never as the action's internal name.
+reported as any other refusal before dispatch. The model is told of a call
+the action's own check declined as `unavailableNotice`, which names no
+action, so its reply never takes up the action's internal name.
 
 ```quint
 type StepOutcome = Applied | Proposed | Failed | Rejected | NoEffect
@@ -518,7 +518,9 @@ hold is unreported, and so is an attached document left out for the turn's
 allowance. A failure's own words are its action's text for the owner, its
 error or its result text; a call its action's own check declined is
 `unavailableNotice`, and a failure with no words is a sentence that the
-call did not start or did not complete. A left-out document's are that some
+call did not start or did not complete. Of these, only the text its action
+marked as its words for the owner is ever the owner's: the rest is written
+to the model. A left-out document's are that some
 attached documents exceeded what can be read in one turn. When anything is
 unreported, or the reply states a time the turn did not observe (the clock
 rules below), the model is asked once more: the turn's system prompt, its
@@ -538,13 +540,14 @@ reply is kept, or the clock's or the calendar change's own words (below)
 take its place when it stated a time they did not observe. Under the
 model's reply, first or kept second, each remaining open failure whose words
 its action wrote for the owner, and each attachment omission, is reported in
-those words if the reply does not already contain them; a failure's error,
-its result text that no action marked for the owner, and the host's own
-sentence that a call did not start or did not complete reached the model
-only, and the owner hears that failure in the model's words alone. Only as
-the last resort, under fixed words, does each remaining open failure follow
-in its own words if the reply does not already contain them, so that a
-reply never stands as if the step had happened.
+those words if the reply does not already contain them. Under fixed words,
+the last resort, each remaining open failure whose action wrote words for
+the owner follows in those words, as the rule below allows, if the reply
+does not already contain them. Under any reply, a failure's error, its
+result text that no action marked for the owner, `unavailableNotice` and the
+host's own sentence that a call did not start or did not complete reach the
+model only, and the owner hears such a failure in the model's words alone:
+nothing written to the model is ever added to the owner's reply.
 A reply with nothing unreported and no
 unobserved time makes no further call, a turn cut off at the model's output
 limit is never asked again, and no turn is asked more than once.
@@ -552,7 +555,8 @@ limit is never asked again, and no turn is asked more than once.
 Safety copy is never rewritten. A failure whose action marks its words as
 safety copy (the emergency refusal of a phone that cannot open its keypad),
 and every failure of a turn whose tool copy stands alone (below), is not put
-to the model: its own words follow the reply whatever the model wrote.
+to the model: the words its action wrote for the owner follow the reply
+whatever the model wrote, and a failure whose action wrote none adds nothing.
 
 ```quint
 type ReplySource = ModelReply | RevisedReply | FixedWords
@@ -562,7 +566,7 @@ pure def replySource(unreported: bool, ungrounded: bool, cutOff: bool, answered:
   else if (asksAgain(unreported, ungrounded, cutOff) and answered and grounded) RevisedReply
   else FixedWords
 pure def putToTheModel(held: bool, safetyCopy: bool): bool = not(held) and not(safetyCopy)
-pure def reachesTheOwner(ownCopy: bool, safetyCopy: bool): bool = ownCopy or safetyCopy
+pure def reachesTheOwner(ownCopy: bool, follows: bool): bool = ownCopy and follows
 pure def answeredAgain(draft: Draft, sameAsFirst: bool): bool = gaveAnAnswer(draft) and not(sameAsFirst)
 pure def lawAGroundedReplyMakesNoFurtherCall(cutOff: bool): bool = not(asksAgain(false, false, cutOff))
 pure def lawAGroundedReplyIsTheModels(cutOff: bool, answered: bool, grounded: bool): bool = replySource(false, false, cutOff, answered, grounded) == ModelReply
@@ -572,8 +576,8 @@ pure def lawFixedWordsAreTheLastResort(unreported: bool, ungrounded: bool, cutOf
   replySource(unreported, ungrounded, cutOff, answered, grounded) == FixedWords implies ((unreported or ungrounded) and (cutOff or not(answered) or not(grounded)))
 pure def lawACutOffTurnIsNeverAskedAgain(unreported: bool, ungrounded: bool): bool = not(asksAgain(unreported, ungrounded, true))
 pure def lawSafetyCopyIsNeverRewritten(held: bool): bool = not(putToTheModel(held, true))
-pure def lawOnlySafetyCopyFollowsAReplyWithoutTheActionsOwnWords(safetyCopy: bool): bool = reachesTheOwner(false, safetyCopy) == safetyCopy
-pure def lawAnActionsOwnWordsForTheOwnerMayFollowAReply(safetyCopy: bool): bool = reachesTheOwner(true, safetyCopy)
+pure def lawWordsWrittenToTheModelNeverReachTheOwner(follows: bool): bool = not(reachesTheOwner(false, follows))
+pure def lawAnActionsOwnWordsForTheOwnerFollowWhereTheyMay(follows: bool): bool = reachesTheOwner(true, follows) == follows
 pure def lawWordsTheReplyHoldsAreNotAskedFor(safetyCopy: bool): bool = not(putToTheModel(true, safetyCopy))
 pure def lawACueIsNoSecondAnswer(sameAsFirst: bool): bool = not(answeredAgain(Cue, sameAsFirst)) and not(answeredAgain(Silent, sameAsFirst))
 pure def lawTheFirstReplyAgainIsNoSecondAnswer(draft: Draft): bool = not(answeredAgain(draft, true))
@@ -598,8 +602,8 @@ answers that note with its first reply again, word for word, it stands by
 that reply, and when that reply is delivered, the failure's own words do not
 follow it. Otherwise the failure is reported as any failure is (above): a
 kept second answer reports it in the model's words, followed only by words
-its action wrote for the owner, and its own words follow the reply when the
-call fails, when the model answers with a blank (read as below), when it gives another answer that is not kept, when the failure
+its action wrote for the owner, and those words for the owner, when its
+action wrote any, follow the reply when the call fails, when the model answers with a blank (read as below), when it gives another answer that is not kept, when the failure
 was never put to the model, or when the clock's or the change's words take
 the reply's place. A failure
 with a receipt, a failure in the same planner response as the later call,

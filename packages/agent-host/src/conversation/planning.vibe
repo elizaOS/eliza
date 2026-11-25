@@ -58,9 +58,9 @@ export interface PlannedStep {
 
 export interface FailureNotice {
   readonly words: string
+  readonly owner: string | undefined
   readonly safetyCopy: boolean
   readonly verified: boolean
-  readonly ownCopy: boolean
   readonly answerableLater: boolean
 }
 
@@ -359,16 +359,15 @@ function shownBy(result: ActionResult, captured: readonly string[]): string[] {
   return captured.map((text) => text.trim()).filter(Boolean)
 }
 
-function failureNotice(step: PlannedStep): { readonly words: string; readonly verified: boolean; readonly ownCopy: boolean } {
+function failureNotice(step: PlannedStep): { readonly words: string; readonly verified: boolean; readonly owner: string | undefined } {
+  const owner = step.result.verifiedUserFacing === true ? step.result.userFacingText?.trim() || undefined : undefined
   if (step.outcomes.some(({ outcome }) => outcome === "Rejected")) {
-    if (step.result.failureProvenance?.code === "ACTION_UNAVAILABLE") return { words: unavailableNotice, verified: true, ownCopy: false }
-    const words = step.result.verifiedUserFacing === true ? step.result.userFacingText?.trim() : undefined
-    return words ? { words, verified: true, ownCopy: true } : { words: `A ${step.action} call did not start.`, verified: true, ownCopy: false }
+    if (step.result.failureProvenance?.code === "ACTION_UNAVAILABLE") return { words: unavailableNotice, verified: true, owner: undefined }
+    return { words: owner ?? `A ${step.action} call did not start.`, verified: true, owner }
   }
-  const own = step.result.verifiedUserFacing === true ? step.result.userFacingText?.trim() : undefined
-  if (own) return { words: own, verified: true, ownCopy: true }
+  if (owner !== undefined) return { words: owner, verified: true, owner }
   const words = (step.result.userFacingText ?? errorText(step.result.error) ?? step.result.text)?.trim()
-  return words ? { words, verified: false, ownCopy: false } : { words: `The ${step.action} action did not complete.`, verified: true, ownCopy: false }
+  return words ? { words, verified: false, owner: undefined } : { words: `The ${step.action} action did not complete.`, verified: true, owner: undefined }
 }
 
 export function activityLabel(runtime: IAgentRuntime, action: Action | undefined, params: Record<string, unknown> = {}): string {
@@ -418,12 +417,12 @@ function settleReply(steps: readonly PlannedStep[]): SettledReply {
   const failedKeys = new Set(failed.map(entryKey))
   const notices = new Map<string, FailureNotice>()
   for (const step of steps.filter(({ outcomes }) => outcomes.some((entry) => failedKeys.has(entryKey(entry))))) {
-    const { words, verified, ownCopy: actionsOwn } = failureNotice(step)
+    const { words, verified, owner } = failureNotice(step)
     const earlier = notices.get(words)
     const laterRan = laterRunOf(steps, step)
     notices.set(words, {
       words, safetyCopy: earlier?.safetyCopy === true || alone || safetyCopyOf(step.result), verified: (earlier?.verified ?? true) && verified,
-      ownCopy: (earlier?.ownCopy ?? true) && actionsOwn,
+      owner: earlier === undefined || earlier.owner !== undefined ? owner : undefined,
       answerableLater: (earlier?.answerableLater ?? true) && laterRan,
     })
   }

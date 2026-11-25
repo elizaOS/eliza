@@ -94,9 +94,12 @@ edit of that note. A checklist creation is never answered by a saved note,
 not even a checklist of the same title, unless it repeats the client's own
 creation ID. A checklist holds 1 to 100 items, each at most 240 units, the
 bound of a title, since an item is one line of the list. A checklist with a
-blank title, with no item, with a blank item, with more items or a longer
-item than that, or with a body or other authored content beside its label
-and items is refused with nothing written. Text the owner supplied without
+blank title writes nothing, and its answer, that nothing was saved and the
+owner is to be asked what to call it, is a question for the model to put to
+the owner (below), never a failed step. A checklist with a title and no
+item, with a blank item, with more items or a longer item than that, or with
+a body or other authored content beside its label and items is refused with
+nothing written. Text the owner supplied without
 asking for a checklist is saved as written, never turned into one.
 
 ```quint
@@ -264,7 +267,10 @@ revision. A creation that returned the note already saved is a replayed
 no-op, never a second commit, and a read carries no receipt. A refusal
 that needs the owner's choice between notes, or the owner's word that the
 closest note is the one meant, says it waits on the owner and carries the
-candidates. A refused edit the planner can correct from a fresh read (a
+candidates. A checklist the owner gave no title is answered, not refused:
+the answer tells the model that nothing was saved and to ask the owner what
+to call it, and like a read it changes nothing, so the owner hears the
+model's question alone. A refused edit the planner can correct from a fresh read (a
 stale or missing revision, old text that is absent or matches twice, a
 rich note edited as plain text) is coaching for the planner, not an
 outcome the owner is told. Every other refusal is an outcome. A list of
@@ -281,10 +287,11 @@ pure def receiptOperation(write: NotesWrite): str =
   else "notes.note.update"
 pure def receiptOutcome(write: NotesWrite, replayed: bool): ReceiptOutcome =
   if (write == WriteCreate and replayed) ReplayedReceipt else AppliedReceipt
-type NotesRefusal = AmbiguousNote | NameMismatch | EditConflict | RevisionRequired | TextNotFound | TextAmbiguous | RichEditRequired | OtherRefusal
-type RefusalKind = RefusalWaitsOnOwner | RefusalCoachesPlanner | RefusalIsOutcome
+type NotesRefusal = AmbiguousNote | NameMismatch | EditConflict | RevisionRequired | TextNotFound | TextAmbiguous | RichEditRequired | UntitledChecklist | OtherRefusal
+type RefusalKind = RefusalWaitsOnOwner | RefusalAsksTheOwner | RefusalCoachesPlanner | RefusalIsOutcome
 pure def refusalKind(refusal: NotesRefusal): RefusalKind =
   if (refusal == AmbiguousNote or refusal == NameMismatch) RefusalWaitsOnOwner
+  else if (refusal == UntitledChecklist) RefusalAsksTheOwner
   else if (refusal == OtherRefusal) RefusalIsOutcome
   else RefusalCoachesPlanner
 pure def emptyCollectionObserved(filtered: bool, found: int): bool = not(filtered) and found == 0
@@ -295,6 +302,8 @@ pure def lawAMoveIsAnUpdate(replayed: bool): bool =
   receiptOperation(WriteMove) == receiptOperation(WriteEdit) and receiptOutcome(WriteMove, replayed) == AppliedReceipt
 pure def lawAChoiceBetweenNotesIsNeverCoaching(refusal: NotesRefusal): bool =
   refusalKind(refusal) == RefusalWaitsOnOwner iff (refusal == AmbiguousNote or refusal == NameMismatch)
+pure def lawOnlyAnUntitledChecklistIsAQuestionForTheOwner(refusal: NotesRefusal): bool =
+  refusalKind(refusal) == RefusalAsksTheOwner iff refusal == UntitledChecklist
 pure def lawAFilteredReadNeverSaysTheCollectionIsEmpty(found: int): bool = not(emptyCollectionObserved(true, found))
 ```
 
