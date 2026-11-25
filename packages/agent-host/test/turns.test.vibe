@@ -375,7 +375,7 @@ it.live('A reply quotes only the selected message in its own conversation and re
   })
 })
 
-it.live('A repeat joins, replays or conflicts by its key, a busy room is 429, a failed turn keeps its kind and names its fix, live wait and Cloud\'s own code, a turn that failed for no named cause is a provider issue I can retry, a failure after the reply is stored adds no second message, and a restart replays or answers a cut turn once (spec/agent/conversation/turns.md, "A message is refused, joined, replayed or admitted by its key, its room and the backend"; spec/agent/conversation/turns.md, "A turn that failed before any reply, for no cause the binding named, is stored as a provider issue"; spec/agent/conversation/turns.md, "A room runs one turn at a time, and only an admitted or recovered message changes anything"; spec/agent/conversation/turns.md, "Every turn ends once, storing its reply with its kind, or answering that no reply exists"; spec/agent/conversation/turns.md, "A failed reply names the owner\'s fix, and only a live rate limit carries its wait"; spec/agent/conversation/turns.md, "After a restart a repeat replays the stored reply, and a turn the restart cut is never run again"; spec/agent/conversation/conversations.md, "A history row carries its send key only on the owner\'s message, and a failure kind, what ended its turn and Cloud\'s funds code only on the agent\'s reply"; spec/agent/conversation/turns.md, "A reply that spent credits on a refusal naming Cloud\'s own code carries that code, and every other reply carries none"; spec/agent/conversation/turns.md, "An aborted reply records what ended its turn, and never in its text"; spec/agent/conversation/planning.md, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole")', effect () => {
+it.live('A repeat joins, replays or conflicts by its key, a busy room is 429, a failed turn keeps its kind and names its fix, live wait and Cloud\'s own code, a turn that failed for no named cause is a provider issue I can retry, a failure after the reply is stored adds no second message, and a restart replays or answers a cut turn once (spec/agent/conversation/turns.md, "A message is refused, joined, replayed or admitted by its key, its room and the backend"; spec/agent/conversation/turns.md, "A turn that failed before any reply, for no cause the binding named, is stored as a provider issue"; spec/agent/conversation/turns.md, "A room runs one turn at a time, and only an admitted or recovered message changes anything"; spec/agent/conversation/turns.md, "Every turn ends once, storing its reply with its kind, or answering that no reply exists"; spec/agent/conversation/turns.md, "A failed reply names the owner\'s fix, and only a live rate limit carries its wait"; spec/agent/conversation/turns.md, "After a restart a repeat replays the stored reply, and a turn the restart cut is never run again"; spec/agent/conversation/conversations.md, "A history row carries its send key only on the owner\'s message, and a failure kind, what ended its turn and Cloud\'s funds code only on the agent\'s reply"; spec/agent/conversation/turns.md, "A reply that spent credits on a refusal naming Cloud\'s own code carries that code, and every other reply carries none"; spec/agent/conversation/turns.md, "An aborted reply records what ended its turn, and never in its text"; spec/agent/conversation/planning.md, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"; spec/agent/conversation/turns.md, "A rate-limited reply stores who set the limit, and every other reply stores none"; spec/agent/conversation/turns.md, "A re-send the binding refuses for the limit its turn met keeps who set that limit")', effect () => {
   const cloud = try cloudFake(deviceKey)
   const state = try scratch("turns")
   const first = try cloudAgent(cloud, state)
@@ -417,7 +417,7 @@ it.live('A repeat joins, replays or conflicts by its key, a busy room is 429, a 
   const unfundedAgain = try send(first, id, { text: "Answer me.", clientMessageId: "m-3" })
   const storedFailure = try host("stored failure", () => first.agent.runtime.getMemoryById(replyOf(unfunded).messageId as UUID))
   const limitedUntil = Date.now() + 60_000
-  try Effect.sync(() => cloud.script(rateLimited(limitedUntil)))
+  try Effect.sync(() => cloud.script(refusal(429, "rate_limited", { retryable: true, retryAt: limitedUntil, reason: "cloud_gate_rate_limited" })))
   const limited = try send(first, id, { text: "Answer me now.", clientMessageId: "m-4" })
   const limitedAgain = try send(first, id, { text: "Answer me now.", clientMessageId: "m-4" })
   const storedLimit = try host("stored limit", () => first.agent.runtime.getMemoryById(replyOf(limited).messageId as UUID))
@@ -468,14 +468,14 @@ it.live('A repeat joins, replays or conflicts by its key, a busy room is 429, a 
     assert.deepStrictEqual({
       status: unfunded.status, failureKind: replyOf(unfunded).failureKind, cloudCode: replyOf(unfunded).cloudCode, planAction: replyOf(unfunded).planAction,
       replayed: [replyOf(unfundedAgain).messageId === replyOf(unfunded).messageId, replyOf(unfundedAgain).cloudCode],
-      stored: [storedFailure?.content.failureKind, storedFailure?.content.cloudCode],
-    }, { status: 200, failureKind: "insufficient_credits", cloudCode: "insufficient_credits", planAction: "funding", replayed: [true, "insufficient_credits"], stored: ["insufficient_credits", "insufficient_credits"] })
+      stored: [storedFailure?.content.failureKind, storedFailure?.content.cloudCode, storedFailure?.content.limitOrigin],
+    }, { status: 200, failureKind: "insufficient_credits", cloudCode: "insufficient_credits", planAction: "funding", replayed: [true, "insufficient_credits"], stored: ["insufficient_credits", "insufficient_credits", undefined] })
     const wait = replyOf(limited).retryAfterMs ?? -1
     assert.deepStrictEqual({
       status: limited.status, failureKind: replyOf(limited).failureKind, cloudCode: replyOf(limited).cloudCode, planAction: replyOf(limited).planAction, waits: wait > 0 && wait <= 60_000,
       replayed: [replyOf(limitedAgain).messageId === replyOf(limited).messageId, replyOf(limitedAgain).failureKind, replyOf(limitedAgain).retryAfterMs],
-      stored: [storedLimit?.content.failureKind, storedLimit?.content.retryAt],
-    }, { status: 200, failureKind: "limit_reached", cloudCode: undefined, planAction: undefined, waits: true, replayed: [true, "limit_reached", undefined], stored: ["limit_reached", undefined] })
+      stored: [storedLimit?.content.failureKind, storedLimit?.content.retryAt, storedLimit?.content.limitOrigin],
+    }, { status: 200, failureKind: "limit_reached", cloudCode: undefined, planAction: undefined, waits: true, replayed: [true, "limit_reached", undefined], stored: ["limit_reached", undefined, "cloud"] })
     assert.deepStrictEqual({ status: afterRestart.status, same: replyOf(afterRestart).messageId === replyOf(keyed).messageId, text: replyOf(afterRestart).text, calls: completions(cloud) - before },
       { status: 200, same: true, text: "Keyed answer.", calls: 0 })
     assert.deepStrictEqual({ status: cut.status, text: replyOf(cut).text, failureKind: replyOf(cut).failureKind, again: replyOf(cutAgain).messageId === replyOf(cut).messageId, calls: completions(cloud) - before },
@@ -856,22 +856,22 @@ it.live(`A failure on one recipient or event stays reported beside a success on 
   const events = try turn("Move my standup and my dentist to Friday.")
   try Effect.sync(() => { failNext("Alice"); cloud.script(toolCalls("", textTo("Bob"), textTo("Alice")), text("Both texts are sent."), text("Bob has your text.")) })
   const told = try turn("Text Bob and Alice that I'm running late.")
-  try Effect.sync(() => cloud.script(text("Sure, one sec."), toolCalls("", textTo("Sam")), text("Sure, one sec."), text("Sam has your text.")))
-  const sentThenCue = try turn("Text Sam that I'm running late.")
-  const sentThenCueNote = lastTurnPrompt(cloud)
   const toolSeen = cloud.calls.flatMap(({ body }) => (body as { readonly messages?: ReadonlyArray<{ readonly role: string; readonly content?: unknown }> }).messages ?? [])
     .filter(({ role }) => role === "tool").map(({ content }) => String(content))
   const unshownNoted = toolSeen.some((content) => content.includes("Done for Bob.") && content.includes("The owner sees none of this tool text"))
+  try Effect.sync(() => cloud.script(text("Sure, one sec."), toolCalls("", textTo("Sam")), text("Sure, one sec."), text("Sam has your text.")))
+  const sentThenCue = try turn("Text Sam that I'm running late.")
+  const sentThenCueNote = lastTurnPrompt(cloud)
 
-  try Effect.try(() => assert.deepStrictEqual({ bobFirst, aliceFirst, retried, events, told, sentThenCue, afterWorkNote: sentThenCueNote.includes("The tool results above are what this turn did."), unshownNoted }, {
+  try Effect.try(() => assert.deepStrictEqual({ bobFirst, aliceFirst, retried, events, told, sentThenCue, unshownNoted, afterWorkNote: sentThenCueNote.includes("The tool results above are what this turn did.") }, {
     bobFirst: { text: "Both texts are sent.\n\nThe text to Alice did not send.", calls: 3, laterRunNote: false },
     aliceFirst: { text: "Both texts are sent.\n\nThe text to Alice did not send.", calls: 4, laterRunNote: false },
     retried: { text: "Alice has your text.", calls: 3, laterRunNote: false },
     events: { text: "Both events moved.\n\nThe standup event did not change.", calls: 3, laterRunNote: false },
     told: { text: "Bob has your text.", calls: 3, laterRunNote: false },
+    unshownNoted: true,
     sentThenCue: { text: "Sam has your text.", calls: 4, laterRunNote: false },
     afterWorkNote: true,
-    unshownNoted: true,
   }))
 }, 120_000)
 

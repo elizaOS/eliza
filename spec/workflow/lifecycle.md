@@ -163,11 +163,11 @@ A list or search shows at most its limit of workflows, 20 unless the
 request asks for up to 50, names each with its on state, and says when it
 shows only the first of them. A run started from chat answers with the
 workflow's run card: its run, title and steps, each pending. A created
-workflow carries its workflow card. Every other word of a successful
-result is the model's to say: the result tells it what changed, that a
-removed workflow can be restored later, and that a chat-created workflow
-cannot notify the owner, and the owner hears the model's reply, not the
-result's own sentence beside it.
+workflow's result names the workflow it created in its data. Every other
+word of a successful result is the model's to say: the result tells it
+what changed, that a removed workflow can be restored later, and that a
+chat-created workflow cannot notify the owner, and the owner hears the
+model's reply, not the result's own sentence beside it.
 
 ### A search ranks workflows by how many of its words their name or description holds
 
