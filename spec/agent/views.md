@@ -175,9 +175,7 @@ The show action reads the turn's renderer from message metadata
 (`viewClientId`, with `viewDelivery: "completed-action"`) and refuses a
 turn without one. It resolves the name to the one view with that id, label
 or alias; boot makes a name ambiguous never, so an unknown name is refused.
-Its description names every declared view by its label, so the model
-chooses among the views that exist rather than guessing a name. It
-prepares with a fresh UUID, refuses unless the returned binding is
+It prepares with a fresh UUID, refuses unless the returned binding is
 exactly its own, and returns `values {mode: "show", viewId, viewPath,
 viewType: "gui", label, completedActionDelivered: false,
 completedActionHandoffId, navigationPrepared: true, navigationBinding}`
@@ -193,6 +191,24 @@ pure def canShowView(h: ViewHost, requestId: str, clientId: str, target: str): b
 pure def showView(h: ViewHost, requestId: str, clientId: str, target: str): ViewHost =
   prepareNavigation(h, requestId, clientId, targets(h, target).nthOr(0, noView).viewId)
 pure val targetValues = Set("Notes", "home", "nowhere")
+```
+
+### The model is told every declared view by its names, and on a bound turn the view the owner's screen showed
+
+The show action's description names every declared view by its label,
+with its aliases, and says that a view is a screen of the app on the
+owner's device: going to a view by its name, such as going home, is
+showing that view, and only directions, a route or travel to a place
+belong to Maps. On a turn bound to a renderer, its
+turn note names the declared view the turn's observation says the screen
+showed as the message was sent, as the only view showing now; a turn whose
+observation names no declared view gets no such line. So the model picks a
+view among those that exist, by what is on screen now, not by a name it
+guessed, a screen an earlier turn showed, or a place the view shares a
+name with.
+
+```quint
+pure def screenTold(h: ViewHost, observed: str): bool = targets(h, observed).length() == 1
 ```
 
 ### A specific saved Notes editor is prepared only after a matching current lookup on a supported renderer
