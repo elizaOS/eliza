@@ -1020,7 +1020,7 @@ describe("WP2 Native clients and pages: native Google (spec/cloud/nativeClients/
     provide Clock.Clock = clock.clock {
       const registration = { ...native, connectReturn: `${web}/apps/native/google` }
       const { cloud, google } = try nativeCloud(undefined, registration)
-      const owner = try signedCaller(cloud, "google-browser")
+      const owner = try signedCaller(cloud, "native")
       const session = try cloud.store.transaction((tx) => issueSession(tx, { ...owner, assurance: "SingleFactor", accountCreated: false, now: start }))
       const caller = { ...owner, headers: { authorization: "Bearer " + session.accessToken } }
       const callback = "/api/v1/oauth/google/callback"
@@ -1037,13 +1037,14 @@ describe("WP2 Native clients and pages: native Google (spec/cloud/nativeClients/
         return `${cloud.url}${page.pathname}${page.search}`
       }
       const fragment = (location: string) => Object.fromEntries(new URLSearchParams(location.split("#")[1] ?? ""))
-      const [anonymous, side, empty, stale, duplicate] = try all([
+      const [anonymous, side, empty, stale, duplicate, wrongAddress] = try all([
         initialize(requested, {}), initialize({ ...requested, side: "agent" }), initialize({ ...requested, capabilities: [] }),
-        initialize({ ...requested, redirectUrl: `${web}/apps/missing?state=${appState}` }), initialize({ ...requested, redirectUrl: `${redirectUrl}&state=${appState}` })
+        initialize({ ...requested, redirectUrl: `${web}/apps/missing?state=${appState}` }), initialize({ ...requested, redirectUrl: `${redirectUrl}&state=${appState}` }),
+        initialize({ ...requested, emailBinding: { address: "other@example.com" } })
       ], { concurrency: "unbounded" })
       const none = try sql(cloud, "SELECT state_digest FROM google_connect_states", [])
       try sync(() => { google.signInAs(person); google.managedScopes(granted) })
-      const begun = try initialize(requested)
+      const begun = try initialize({ ...requested, emailBinding: {} })
       const auth = try sync(() => new URL(issued(begun).authUrl))
       const signed = auth.searchParams.get("state") ?? ""
       const pending = (try sql(cloud, "SELECT c.key, c.status, c.state #>> '{flow,phase}' AS phase, s.organization_id, s.user_id, s.state_digest, s.verifier, s.consumed_at FROM google_connections c CROSS JOIN google_connect_states s", []))[0]
@@ -1062,6 +1063,11 @@ describe("WP2 Native clients and pages: native Google (spec/cloud/nativeClients/
       const live = try cloud.call(`/api/v1/eliza/google/status?grantId=${grantId}`, { headers: caller.headers })
       const status = live.body as { readonly connected: boolean; readonly grantedCapabilities: ReadonlyArray<string>; readonly grantedScopes: ReadonlyArray<string> }
 
+      try sync(() => google.signInAs({ ...person, subject: "wrong-mailbox", email: "other@example.com" }))
+      const wrongMailbox = try initialize({ ...requested, emailBinding: {} })
+      const wrongReturn = try visitLocal(issued(wrongMailbox).authUrl)
+      const refusedMailbox = try visitLocal(try sync(() => returnToCloud(wrongReturn.location)))
+      try sync(() => google.signInAs(person))
       const noReturn = try initialize({ capabilities: requested.capabilities })
       const returned = try visitLocal(issued(noReturn).authUrl)
       const webPage = try visitLocal(try sync(() => returnToCloud(returned.location)))
@@ -1086,25 +1092,38 @@ describe("WP2 Native clients and pages: native Google (spec/cloud/nativeClients/
       const states = (try sql(cloud, "SELECT COUNT(*) AS total, COUNT(*) FILTER (WHERE consumed_at IS NOT NULL AND verifier = '') AS retired FROM google_connect_states", []))[0]
       const forms = google.tokenRequests.map((form) => [form.get("client_id"), form.get("redirect_uri"), form.has("code_verifier")])
       try check(() => assert.deepStrictEqual({
-        rejected: [refusal(anonymous), refusal(side), refusal(empty), refusal(stale), refusal(duplicate)], none,
+        rejected: [refusal(anonymous), refusal(side), refusal(empty), refusal(stale), refusal(duplicate), refusal(wrongAddress)], none,
         opened: [begun.status, issued(begun).appReturn, auth.searchParams.get("scope")?.split(" "), auth.searchParams.get("code_challenge_method"), auth.searchParams.get("include_granted_scopes")],
         pending: [pending?.status, pending?.phase, pending?.organization_id, pending?.user_id, pending?.state_digest !== signed, String(pending?.verifier).startsWith("v1."), pending?.consumed_at],
         tampered: [tampered.status, tampered.location], accepted: [accepted.status, accepted.location.split("#")[0], fragment(accepted.location), grantId === pending?.key],
         replay: [replay.status, replay.location], live: [live.status, status.connected, status.grantedCapabilities, status.grantedScopes],
+        wrongMailbox: [refusedMailbox.status, fragment(refusedMailbox.location)],
         web: [issued(noReturn).appReturn, webPage.status, webPage.location], denied: [denied.status, fragment(denied.location)],
         failed: [failed.status, fragment(failed.location), refusedReplay.status], expired: [expired.status, expired.location], withdrawn: [withdrawn.status, withdrawn.location],
         rows: rows.map((row) => [row.key, row.status, row.user_id, row.organization_id, row.subject, row.granted_scopes, row.sealed]),
         closed: [Number(states?.total), Number(states?.retired)], forms, pkce: s256(google.tokenRequests[0]?.get("code_verifier") ?? "") === auth.searchParams.get("code_challenge")
       }, {
-        rejected: ["401 authentication_required credential_unknown", "400 invalid_request", "400 invalid_request", "400 redirect_mismatch", "400 invalid_request"], none: [],
+        rejected: ["401 authentication_required credential_unknown", "400 invalid_request", "400 invalid_request", "400 redirect_mismatch", "400 invalid_request", "400 invalid_request"], none: [],
         opened: [200, 2, offered, "S256", "false"], pending: ["Pending", "AwaitingCallback", caller.organizationId, caller.userId, true, true, null],
         tampered: [400, ""], accepted: [302, registration.connectReturn, { state: appState, result: "connected", connectionId: grantId }, true],
         replay: [400, ""], live: [200, true, ["google.basic_identity", "google.gmail.triage"], granted],
+        wrongMailbox: [302, { state: appState, result: "failed" }],
         web: [undefined, 200, ""], denied: [302, { state: appState, result: "denied" }],
         failed: [302, { state: appState, result: "failed" }, 400], expired: [400, ""], withdrawn: [400, ""],
         rows: [[grantId, "Active", caller.userId, caller.organizationId, person.subject, granted, true]],
-        closed: [6, 6], forms: Array.from({ length: 3 }, () => ["google-web-client", `https://api.staging.example.com${callback}`, true]), pkce: true
+        closed: [7, 7], forms: Array.from({ length: 4 }, () => ["google-web-client", `https://api.staging.example.com${callback}`, true]), pkce: true
       }))
+      const phoneOwner = try signedCaller(cloud, "managed-google-phone")
+      try sql(cloud, "UPDATE accounts SET email = NULL, phone = '+15555550117' WHERE key = $1", [phoneOwner.userId])
+      const phoneSession = try cloud.store.transaction((tx) => issueSession(tx, { ...phoneOwner, assurance: "SingleFactor", accountCreated: false, now: start + 600_000 }))
+      const phoneHeaders = { authorization: `Bearer ${phoneSession.accessToken}` }
+      const phoneConnect = { capabilities: requested.capabilities, emailBinding: {} }
+      const missingMailbox = try initialize(phoneConnect, phoneHeaders)
+      const namedMailbox = try initialize({ ...phoneConnect, emailBinding: { address: "NATIVE@example.com" } }, phoneHeaders)
+      const namedReturn = try visitLocal(issued(namedMailbox).authUrl)
+      const namedPage = try visitLocal(try sync(() => returnToCloud(namedReturn.location)))
+      const held = try cloud.call("/api/v1/eliza/google/status", { headers: phoneHeaders })
+      try check(() => assert.deepStrictEqual([refusal(missingMailbox), namedPage.status, (held.body as { readonly identity: { readonly email: string } }).identity.email], ["400 invalid_request", 200, person.email]))
     }
   }), 120_000)
 
