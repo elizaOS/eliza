@@ -1,12 +1,12 @@
 // spec/agent/models/binding.md, "A planner warm-up is sent only while the account is not blocked, and neither its answer nor its refusal changes the account state"
-// spec/agent/models/binding.md, "No text handler is ever served by a model on the device"; spec/agent/models/binding.md, "Only a network failure, an outage or a provider issue is retried, and a rate limit ends the call for its turn to re-send once"; spec/agent/models/binding.md, "A tool call the provider could not parse, or a streamed answer silent for a minute, ends the call without a retry"; spec/agent/models/binding.md, "Each refusal is one account state, and the last failure records its kind and time without text"; spec/agent/models/binding.md, "A tool call, a structured answer and the token use reach the caller as one result"; spec/agent/models/binding.md, "A call sends an output cap only when its caller names one, and a thinking hint sets the reasoning effort only on a model that documents it"; spec/agent/models/binding.md, "A Qwen call on a Cerebras route sends the prompt cache key its caller names, and no call invents one"; spec/agent/models/binding.md, "A rate limit holds the account for the provider's whole retry time, and for at most 4 s on a Cerebras own-key endpoint"; spec/agent/conversation/turns.md, "A failed reply names the owner's fix, and only a live rate limit carries its wait"; spec/agent/models/binding.md, "A cloud refusal that names spent credits or a spent allowance carries Cloud's own code, and no other refusal carries one"; spec/agent/models/binding.md, "A Qwen call on a Cerebras route reads a tool call the model wrote as text as that call, when it names an offered tool"
+// spec/agent/models/binding.md, "No text handler is ever served by a model on the device"; spec/agent/models/binding.md, "Only a network failure, an outage or a provider issue is retried, and a rate limit ends the call for its turn to re-send once"; spec/agent/models/binding.md, "A tool call the provider could not parse, or a streamed answer silent for a minute, ends the call without a retry"; spec/agent/models/binding.md, "Each refusal is one account state, and the last failure records its kind and time without text"; spec/agent/models/binding.md, "A tool call, a structured answer and the token use reach the caller as one result"; spec/agent/models/binding.md, "A call sends an output cap only when its caller names one, and a thinking hint sets the reasoning effort only on a model that documents it"; spec/agent/models/binding.md, "A Qwen call on a Cerebras route sends the prompt cache key its caller names, and no call invents one"; spec/agent/models/binding.md, "A rate limit holds the account for the provider's whole retry time, and for at most 4 s on a Cerebras own-key endpoint"; spec/agent/conversation/turns.md, "A failed reply names the owner's fix, and only a live rate limit carries its wait"; spec/agent/models/binding.md, "A cloud refusal that names spent credits or a spent allowance carries Cloud's own code, and no other refusal carries one"; spec/agent/models/binding.md, "A rate limit names whether the model provider or Cloud set it, and no other refusal names one"; spec/agent/models/binding.md, "A Qwen call on a Cerebras route reads a tool call the model wrote as text as that call, when it names an offered tool"
 import { readCloudError, type CloudFailure } from "@elizaos/cloud"
 import type { GenerateTextParams, GenerateTextResult, IAgentRuntime, ModelRegistrationMetadata, StreamChunkCallback, TokenUsage, ToolCall } from "@elizaos/core"
 import { runSquashed } from "./run-squashed.vibe"
 import { FetchHttpClient, HttpClient, HttpClientRequest, type HttpClientResponse } from "effect/http"
 import {
-  cacheKeySent, capSent, chatReturn, clockAt, effortFor, writtenCallsRead, failureOf, fundsCodeName, fundsCodeOf, outcomeOf, reportedRetryAt, shellOutcome, streamIdleSeconds, usageAsked, warmUpSent,
-  type CapAsk, type ChatAsk, type ChatReturn, type FundsCode, type ModelBinding, type ModelHandler, type ReasoningEffort, type ReasoningFamily, type ShellRefusal, type ThinkingHint,
+  cacheKeySent, capSent, chatReturn, clockAt, effortFor, writtenCallsRead, failureOf, fundsCodeName, fundsCodeOf, limitOriginOf, outcomeOf, reportedRetryAt, shellOutcome, streamIdleSeconds, usageAsked, warmUpSent,
+  type CapAsk, type ChatAsk, type ChatReturn, type FundsCode, type LimitOrigin, type ModelBinding, type ModelHandler, type ReasoningEffort, type ReasoningFamily, type ShellRefusal, type ThinkingHint,
 } from "../../gen/agent__models__binding.effect.vibe"
 import { failureKindName, type BoundModels, type FailureKind } from "./binding.vibe"
 
@@ -36,9 +36,9 @@ interface Reply {
   readonly reasoning: string
 }
 
-export error ModelRefusal { message: string; code: string | undefined; status: number | undefined; failureKind: FailureKind; retryAt: number | undefined; retryAfterMs: number | undefined; cloudCode?: string }
+export error ModelRefusal { message: string; code: string | undefined; status: number | undefined; failureKind: FailureKind; retryAt: number | undefined; retryAfterMs: number | undefined; cloudCode?: string; limitOrigin?: LimitOrigin; limitCallId?: number }
 
-export error Refused { cloud: CloudFailure; funds?: FundsCode }
+export error Refused { cloud: CloudFailure; funds?: FundsCode; origin?: LimitOrigin }
 
 interface Hold {
   readonly retryAt: number | undefined
@@ -99,7 +99,7 @@ const ProviderFields = Schema.Struct({
 const decodeNestedError = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Struct({ error: ProviderFields })))
 const decodeFlatError = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Struct({ message: Schema.String, type: Schema.optionalKey(Schema.Unknown), code: Schema.optionalKey(Schema.Unknown) })))
 const decodeFlatFields = Schema.decodeUnknownOption(Schema.fromJsonString(ProviderFields))
-const decodeRefusalCode = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Struct({ error: Schema.String })))
+const decodeRefusalCode = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Struct({ error: Schema.String, reason: Schema.optionalKey(Schema.Unknown) })))
 schema Listing { data: { id: string }[] }
 const decodeListing = Schema.decodeUnknownOption(Listing)
 
@@ -384,10 +384,13 @@ module calls {
 }
 import { callKeyOf, freshCallId } from calls
 
-function refusalOf(cloud: CloudFailure, hold: Hold = unheld, funds: FundsCode = "NoFundsCode"): ModelRefusal {
+function refusalOf(cloud: CloudFailure, hold: Hold = unheld, funds: FundsCode = "NoFundsCode", origin: LimitOrigin = "NoLimitOrigin", limitCallId?: number): ModelRefusal {
   const failureKind = failureKindName(failureOf(cloud, 0))
   const cloudCode = fundsCodeName(funds)
-  const refused = (message: string, status?: number, code?: string) => new ModelRefusal({ message, code, status, failureKind, ...hold, ...(cloudCode === "" ? {} : { cloudCode }) })
+  const refused = (message: string, status?: number, code?: string) => new ModelRefusal({
+    message, code, status, failureKind, ...hold, ...(cloudCode === "" ? {} : { cloudCode }),
+    ...(origin === "NoLimitOrigin" ? {} : { limitOrigin: origin }), ...(limitCallId === undefined ? {} : { limitCallId }),
+  })
   const outcome = outcomeOf(cloud)
   switch (outcome) {
     case "RefusedConnection": return refused("The model connection failed", undefined, "ECONNRESET")
@@ -445,8 +448,11 @@ effect function refusalFrom(result: HttpClientResponse.HttpClientResponse, cloud
   if (classified !== undefined) return new Refused({ cloud: classified })
   const response = { status: result.status, headers: { get: (name: string) => result.headers[name] ?? null }, text: async () => raw }
   const read = try Effect.promise(() => readCloudError(response, now))
-  const funds = fundsCodeOf(cloudRoute, result.status, Option.getOrUndefined(decodeRefusalCode(raw))?.error ?? "")
-  return new Refused({ cloud: read.failure, ...(funds === "NoFundsCode" ? {} : { funds }) })
+  const body = Option.getOrUndefined(decodeRefusalCode(raw))
+  const funds = fundsCodeOf(cloudRoute, result.status, body?.error ?? "")
+  const reason = body?.error === "rate_limited" && typeof body.reason === "string" ? body.reason : ""
+  const origin = limitOriginOf(cloudRoute, read.failure.tag === "CloudRateLimited", reason)
+  return new Refused({ cloud: read.failure, ...(funds === "NoFundsCode" ? {} : { funds }), ...(origin === "NoLimitOrigin" ? {} : { origin }) })
 }
 
 function usageOf(usage: WireUsage | null | undefined): TokenUsage | undefined {
@@ -568,7 +574,9 @@ effect function serve(binding: Binding, handler: ChatHandler, endpoint: Endpoint
     return try send(endpoint, binding.credential(), callKey, body, sink, ask)
   }
   const started = try binding.startCall(handler, began)
-  if (typeof started !== "number") throw refusalOf({ tag: "CloudRateLimited", retryAt: started.limitedUntil }, holdAt(started.limitedUntil, began))
+  if (typeof started !== "number") {
+    throw refusalOf({ tag: "CloudRateLimited", retryAt: started.limitedUntil }, holdAt(started.limitedUntil, began), undefined, undefined, started.limitedByCallId)
+  }
   const answer = send(endpoint, binding.credential(), callKey, body, sink, ask) catch effect (failure) => {
     const refused = try Clock.currentTimeMillis
     if (failure instanceof ShellRefused) {
@@ -577,7 +585,8 @@ effect function serve(binding: Binding, handler: ChatHandler, endpoint: Endpoint
     }
     if (!(failure instanceof Refused)) throw failure
     try binding.refuseCall(started, refused, failure.cloud)
-    throw refusalOf(failure.cloud, failure.cloud.tag === "CloudRateLimited" ? reportedFor(try binding.state(), refused) : unheld, failure.funds)
+    const limited = failure.cloud.tag === "CloudRateLimited"
+    throw refusalOf(failure.cloud, limited ? reportedFor(try binding.state(), refused) : unheld, failure.funds, failure.origin, limited ? started : undefined)
   }
   const at = try Clock.currentTimeMillis
   try binding.answerCall(started, at)

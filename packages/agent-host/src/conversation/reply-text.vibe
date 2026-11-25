@@ -56,26 +56,49 @@ function inGrammar(words: string, assent: string | undefined): boolean {
     && sentences.every((sentence) => waitSentence.test(sentence) || progress.test(sentence))
 }
 
-function isWrittenCall(body: string): boolean {
-  if (looksLikeActionEnvelopeJson(body)) return true
+const callKeys = new Set(["action", "tool", "type", "name"])
+const bracketName = /^\[([a-z][a-z0-9_]*)/u
+
+export function actionNameKey(name: string): string {
+  return name.toUpperCase().replace(/[^A-Z0-9]/gu, "")
+}
+
+function namedIn(body: string): readonly (readonly [string, string])[] {
+  const bracket = bracketName.exec(body)?.[1]
+  if (bracket !== undefined) return [["tool", bracket]]
   try {
     const parsed: unknown = JSON.parse(body)
     return typeof parsed === "object" && parsed !== null
-      && Object.entries(parsed).some(([key, value]) => typeof value === "string" && (key === "action" || key === "tool" || callName.test(value)))
+      ? Object.entries(parsed).flatMap(([key, value]) => callKeys.has(key) && typeof value === "string" ? [[key, value] as const] : [])
+      : []
   } catch {
-    return false
+    return []
   }
 }
 
-interface WithoutObjects {
-  readonly text: string
-  readonly calls: boolean
+function namesOffered(body: string, offered: ReadonlySet<string>): boolean {
+  return namedIn(body).some(([, value]) => offered.has(actionNameKey(value)))
 }
 
-function withoutObjects(said: string): WithoutObjects {
-  const text = said.replace(bracketCall, " ")
-  let calls = text !== said
-  if (!text.includes("{")) return { text: calls ? text.replace(emptyWrapper, " ").trim() : said, calls }
+function looksLikeCall(body: string, offered: ReadonlySet<string>): boolean {
+  return looksLikeActionEnvelopeJson(body)
+    || namedIn(body).some(([key, value]) => offered.has(actionNameKey(value)) || ((key === "action" || key === "tool") && callName.test(value)))
+}
+
+interface Objects {
+  readonly text: string
+  readonly found: readonly string[]
+}
+
+function objectsOut(said: string, strip: (body: string, before: string) => boolean): Objects {
+  const found: string[] = []
+  let changed = false
+  const text = said.replace(bracketCall, (call: string, at: number) => {
+    found.push(call)
+    const gone = strip(call, said.slice(0, at))
+    changed ||= gone
+    return gone ? " " : call
+  })
   const open: number[] = []
   let rest = ""
   let kept = 0
@@ -93,33 +116,47 @@ function withoutObjects(said: string): WithoutObjects {
     const start = open.pop()
     const body = text.slice(start ?? index, index + 1)
     if (start === undefined || open.length > 0 || !isJsonObject(body)) continue
-    calls ||= isWrittenCall(body)
+    found.push(body)
+    if (!strip(body, text.slice(0, start))) continue
+    changed = true
     rest += `${text.slice(kept, start)} `
     kept = index + 1
   }
-  return { text: kept === 0 && !calls ? said : `${rest}${text.slice(kept)}`.replace(emptyWrapper, " ").trim(), calls }
+  return { text: changed ? `${rest}${text.slice(kept)}`.replace(emptyWrapper, " ").trim() : said, found }
 }
 
 export function withoutWrittenCalls(said: string): string {
-  return withoutObjects(said).text
+  return objectsOut(said, () => true).text
 }
 
-function shapeOf(reply: string): DraftShape {
+function afterCue(before: string): boolean {
+  const sentence = before.trimEnd().split(/\n|(?<=[.!?…])\s+/u).at(-1) ?? ""
+  const shape = sentence ? shapeOf(sentence, new Set()) : "Blank"
+  return shape === "GrammarCue" || shape === "AssentCue"
+}
+
+export function withoutOfferedCalls(said: string, offered: ReadonlySet<string>): string {
+  return objectsOut(said, (body, before) => namesOffered(body, offered) || afterCue(before)).text
+}
+
+function shapeOf(reply: string, offered: ReadonlySet<string>): DraftShape {
   const said = reply.trim()
   if (!said) return "Blank"
-  const { text, calls } = withoutObjects(said)
-  if (!text) return calls ? "Blank" : "OtherText"
+  const { text, found } = objectsOut(said, () => true)
+  if (!text) return found.some((body) => looksLikeCall(body, offered)) ? "Blank" : "OtherText"
   if (text.length > maxCueLength || text.includes("?") || text.includes(personMark) || dataToken.test(text)) return "OtherText"
   const words = text.replace(/\s+/gu, " ").replace(person, `check with ${personMark}`).toLowerCase()
     .replace(/[‘’ʼ]/gu, "'").replace(/ ?, ?/gu, ", ").replace(/[.!…]+$/u, "")
   if (inGrammar(words, undefined)) return "GrammarCue"
   const assent = instructionAssent.exec(words)?.[0]
   if (assent === undefined || !inGrammar(words, assent)) return "OtherText"
-  return words === assent && !calls ? "Assent" : "AssentCue"
+  if (words !== assent) return "AssentCue"
+  if (found.length === 0) return "Assent"
+  return found.some((body) => namesOffered(body, offered)) ? "AssentCue" : "AssentObject"
 }
 
-export function draftOf(text: string, instruction: boolean, calls: number): Draft {
-  return readDraft(shapeOf(text), instruction, calls)
+export function draftOf(text: string, instruction: boolean, calls: number, offered: ReadonlySet<string>): Draft {
+  return readDraft(shapeOf(text, offered), instruction, calls)
 }
 
 const requestFiller = new Set(["hey", "hi", "hello", "ok", "okay", "alright", "so", "please", "oh", "um", "uh", "well", "yo", "and", "also", "but", "then", "now", "actually"])
