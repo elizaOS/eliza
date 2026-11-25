@@ -243,6 +243,8 @@ const ledgerDown = "The calendar's change records couldn't be read, so I can't c
 const rangeUnreadable = "That time range isn't one I can read: it must run forward and span at most 370 days."
 const failed = (subaction: Subaction, text: string, extra: Record<string, unknown> = {}): ActionResult =>
   ({ success: false, text, data: { subaction, ...extra } })
+const notDone = (subaction: Subaction, text: string, extra: Record<string, unknown> = {}, owner = text): ActionResult =>
+  ({ ...failed(subaction, text, extra), userFacingText: owner, verifiedUserFacing: true })
 
 function timesRefused(subaction: Subaction, kind: "unreal" | "unresolved"): ActionResult {
   return kind === "unreal"
@@ -312,6 +314,15 @@ function changeText(outcome: CalendarMutationOutcome, done: string): string {
   }
 }
 
+function changeOwnerText(outcome: Exclude<CalendarMutationOutcome, { readonly kind: "succeeded" }>): string {
+  switch (outcome.kind) {
+    case "retryable": return "The calendar did not take the change."
+    case "invalidated": return "That calendar change can't be made."
+    case "confirmed":
+    case "blocked": return changeText(outcome, "")
+  }
+}
+
 const nobodyNotified = " The built-in calendar can't email attendees, so nobody was notified."
 const overlapsUnchecked = " Another calendar could not be read, so overlaps there were not checked."
 
@@ -330,15 +341,15 @@ function changeResult(subaction: Subaction, result: CalendarChangeResult, zone: 
       answer_scope: "An invitation is answered for this event or the whole series, not this and following.",
       deletes_unsupported: "That calendar can't delete events from here. Delete it in the Calendar app.",
     }[result.reason]
-    return failed(subaction, text, { refusal: result.reason })
+    return notDone(subaction, text, { refusal: result.reason })
   }
   if (result.kind === "conflict") {
     const made = subaction === "create_event" ? "created" : "changed"
     if (result.reason === "unread") {
-      return failed(subaction, `Nothing was ${made}: the calendar it goes on could not be read, so I can't tell whether that time is free.`, { code: "CALENDAR_WRITE_SLOT_UNREAD" })
+      return notDone(subaction, `Nothing was ${made}: the calendar it goes on could not be read, so I can't tell whether that time is free.`, { code: "CALENDAR_WRITE_SLOT_UNREAD" })
     }
     const held = result.conflicts.slice(0, 5)
-    return failed(subaction, `Nothing was ${made}: that time overlaps ${held.map((event) => line(event, zone)).join("; ")}. Tell me another time, or move that first.`,
+    return notDone(subaction, `Nothing was ${made}: that time overlaps ${held.map((event) => line(event, zone)).join("; ")}. Tell me another time, or move that first.`,
       { code: "CALENDAR_WRITE_CONFLICT", requiresInput: true, missing: ["available time"], conflicts: held.map((event) => ({ id: event.id, title: event.title, startAt: event.startAt, endAt: event.endAt })) })
   }
   const unchecked = result.overlapsUnchecked ? overlapsUnchecked : ""
@@ -347,7 +358,7 @@ function changeResult(subaction: Subaction, result: CalendarChangeResult, zone: 
     return { success: true, text: `I've asked for your approval before changing that calendar.${silent}${unchecked}`, data: { subaction, approvalRequestId: result.approvalId, change: result.request.payload } }
   }
   const { outcome, request } = result
-  if (outcome.kind !== "succeeded") return failed(subaction, changeText(outcome, ""), { outcome: outcome.kind, requestId: request.id })
+  if (outcome.kind !== "succeeded") return notDone(subaction, changeText(outcome, ""), { outcome: outcome.kind, requestId: request.id }, changeOwnerText(outcome))
   const receipt = outcome.receipt
   const effectReceipts = [calendarEffectReceipt(request, receipt, outcome.replayed)]
   const note = `${result.notice === "CannotNotify" ? nobodyNotified : ""}${unchecked}`
@@ -592,11 +603,11 @@ effect function residentDelete(host: CalendarHost, ask: CalendarAsk, found: Cale
         { requiresInput: true, missing: ["delete confirmation"], eventId: event.id, recurrenceScope: scope, targetEvent: event })
     }
     case "PickInCalendar":
-      return failed(subaction, `Nothing was deleted. From chat I can delete only one occurrence of “${event.title}”. To delete more of the series, choose it in Calendar.`, { eventId: event.id, recurrenceScope: scope })
+      return notDone(subaction, `Nothing was deleted. From chat I can delete only one occurrence of “${event.title}”. To delete more of the series, choose it in Calendar.`, { eventId: event.id, recurrenceScope: scope })
     case "DeleteNow": {
       const result = host.change({ kind: "delete", target: found, scope, notifyAttendees, askedBy: ask.by, askId: `${ask.id}:${subaction}` }) catch () => undefined
       if (question !== undefined && result?.kind === "ran") try host.settleDeleteQuestion(conversation)
-      return result === undefined ? failed(subaction, ledgerDown) : changeResult(subaction, result, zone)
+      return result === undefined ? notDone(subaction, ledgerDown) : changeResult(subaction, result, zone)
     }
   }
 }
@@ -682,11 +693,11 @@ effect function freeTime(host: CalendarHost, parameters: Parameters, zone: strin
       { code: "CALENDAR_AVAILABILITY_OUTSIDE_REQUESTED_PERIOD" })
   }
   const found = try host.search({ timeMin: Math.max(0, begin - day), timeMax: finish + day, ...(parameters.calendarId === undefined ? {} : { calendarId: parameters.calendarId }) })
-  if (found === undefined) return failed(subaction, "No calendar account is active right now.")
+  if (found === undefined) return notDone(subaction, "No calendar account is active right now.")
   const asked = { begin, finish }
   const busy = blockingSpans(found.events, zone)?.filter((span) => positiveOverlap(asked, span))
   if (busy === undefined || freeTimeRead(windowValid, durationValid, found.complete) !== "AvailabilityKnown") {
-    return failed(subaction, "Some calendars could not be read completely, so I can't tell whether that time is free.", { code: "CALENDAR_AVAILABILITY_INCOMPLETE", availability: "unknown" })
+    return notDone(subaction, "Some calendars could not be read completely, so I can't tell whether that time is free.", { code: "CALENDAR_AVAILABILITY_INCOMPLETE", availability: "unknown" })
   }
   const range = { windowStart: new Date(begin).toISOString(), windowEnd: new Date(finish).toISOString(), timeZone: zone, accountId: found.account.accountId, connection: connectionWire[found.connection] }
   const note = freeTimeNote(parameters, begin, finish, zone, text, now)
@@ -734,7 +745,7 @@ effect function handle(host: CalendarHost, ask: CalendarAsk, sent: Parameters): 
       const span = days.kind === "days" ? { timeMin: days.timeMin, timeMax: days.timeMax } : window(parameters, now, subaction === "next_event" ? 30 * day : 7 * day)
       if (span === undefined) return failed(subaction, rangeUnreadable)
       const found = try host.search({ ...span, ...(parameters.query === undefined ? {} : { query: parameters.query }), ...(parameters.calendarId === undefined ? {} : { calendarId: parameters.calendarId }) })
-      if (found === undefined) return failed(subaction, "No calendar account is active right now.")
+      if (found === undefined) return notDone(subaction, "No calendar account is active right now.")
       const events = subaction === "next_event" ? found.events.filter((event) => Date.parse(event.endAt) > now).slice(0, 1) : found.events
       return readResult(subaction, found, events, zone, subaction === "next_event" ? "Nothing is on your calendar in the next 30 days." : "No events match in that range.")
     }
@@ -744,7 +755,7 @@ effect function handle(host: CalendarHost, ask: CalendarAsk, sent: Parameters): 
       const span = window(parameters, now, 60 * day)
       if (span === undefined) return failed(subaction, rangeUnreadable)
       const found = try host.search({ ...span, ...(parameters.calendarId === undefined ? {} : { calendarId: parameters.calendarId }) })
-      if (found === undefined) return failed(subaction, "No calendar account is active right now.")
+      if (found === undefined) return notDone(subaction, "No calendar account is active right now.")
       const trip = tripEvents(found.events, place)
       const result = readResult(subaction, found, trip, zone, `I couldn't find a trip to ${place} in your calendar in that range.`)
       return { ...result, data: { ...result.data, location: place } }
@@ -794,9 +805,9 @@ effect function handle(host: CalendarHost, ask: CalendarAsk, sent: Parameters): 
         return failed(subaction, "That start time has already passed. Should I still create it?", { needsConfirmation: "past_start", fields: asked })
       }
       const source = try host.writeTarget(sentEvent.calendarId)
-      if (source === undefined) return failed(subaction, "There's no calendar this account can write to.")
+      if (source === undefined) return notDone(subaction, "There's no calendar this account can write to.")
       const result = host.change({ kind: "create", source, fields: asked, recurrence: recurrence.value, reviewFirst: chatCreateReviewed(sentEvent.reviewBeforeCreate === false && sentEvent.reviewBeforeSaving !== true), slotZone: createZone, askedBy, askId }) catch () => undefined
-      return result === undefined ? failed(subaction, ledgerDown) : changeResult(subaction, result, createZone)
+      return result === undefined ? notDone(subaction, ledgerDown) : changeResult(subaction, result, createZone)
     }
     case "update_event":
     case "delete_event": {
@@ -808,9 +819,9 @@ effect function handle(host: CalendarHost, ask: CalendarAsk, sent: Parameters): 
           { requiresInput: true, missing: ["eventId"], candidates: shown.map((event) => ({ id: event.id, title: event.title, startAt: event.startAt })) })
       }
       if (lookup.kind === "unread") {
-        return failed(subaction, "Some calendars could not be read, so I can't tell whether that event is there. Nothing was changed.", { code: "CALENDAR_TARGET_UNREAD" })
+        return notDone(subaction, "Some calendars could not be read, so I can't tell whether that event is there. Nothing was changed.", { code: "CALENDAR_TARGET_UNREAD" })
       }
-      if (lookup.kind === "missing") return failed(subaction, "I couldn't find that event in this account's calendars.", { code: "CALENDAR_TARGET_NOT_FOUND" })
+      if (lookup.kind === "missing") return notDone(subaction, "I couldn't find that event in this account's calendars.", { code: "CALENDAR_TARGET_NOT_FOUND" })
       const found = lookup.found
       const notifyAttendees = parameters.notifyAttendees === true
       const deletingResident = subaction === "delete_event" && found.source.provider === "eliza"
@@ -826,7 +837,7 @@ effect function handle(host: CalendarHost, ask: CalendarAsk, sent: Parameters): 
       if (deletingResident) return try residentDelete(host, ask, found, scope, ownerAnswerOf(parameters), notifyAttendees, now, zone)
       if (subaction === "delete_event") {
         const result = host.change({ kind: "delete", target: found, scope, notifyAttendees, askedBy, askId }) catch () => undefined
-        return result === undefined ? failed(subaction, ledgerDown) : changeResult(subaction, result, zone)
+        return result === undefined ? notDone(subaction, ledgerDown) : changeResult(subaction, result, zone)
       }
       const guests = changedGuests(found.event, parameters, text)
       if (guests.kind === "refused") return failed(subaction, guests.text, { code: "CALENDAR_GUEST_NOT_GROUNDED" })
@@ -839,7 +850,7 @@ effect function handle(host: CalendarHost, ask: CalendarAsk, sent: Parameters): 
       const fields = updatedFields(found, timed.parameters, zone, guests.attendees)
       if (Option.isNone(decodeFields(fields)) || !fieldsSpanValid(fields)) return failed(subaction, "The changed event needs a title and a start before its end.")
       const result = host.change({ kind: "update", target: found, scope, fields, notifyAttendees, slotZone: zone, askedBy, askId }) catch () => undefined
-      return result === undefined ? failed(subaction, ledgerDown) : changeResult(subaction, result, zone)
+      return result === undefined ? notDone(subaction, ledgerDown) : changeResult(subaction, result, zone)
     }
   }
 }
@@ -909,7 +920,7 @@ export const calendarAction: Action = {
   validate: async (runtime) => serviceOf(runtime) !== undefined,
   handler: async (runtime, message, _state, options) => {
     const host = serviceOf(runtime)
-    if (host === undefined) return { success: false, text: "The calendar isn't running." }
+    if (host === undefined) return { success: false, text: "The calendar isn't running.", userFacingText: "The calendar isn't running.", verifiedUserFacing: true }
     const input = typeof options === "object" && options !== null && "parameters" in options ? options.parameters : undefined
     const phoneCalendar = phoneCalendarOffered(runtime, message)
     return runPromise(runCalendarAction(host, { ...calendarAsk(message, await ownerZone(runtime)), ...(phoneCalendar ? { phoneCalendar } : {}) }, input, message))

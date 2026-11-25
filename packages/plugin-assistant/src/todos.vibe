@@ -2,7 +2,7 @@
 import { isAffirmativeConfirmationReply, type Action, type ActionResult, type Memory, type Provider } from "@elizaos/core"
 import { Machine, Rejected, matching, nearMiss, stored, type Event, type Todo, type TodoStatus, type Todos } from "../gen/assistant__todos.effect.vibe"
 import { Facts, onAgent, parametersOf, readRecord, requestOf, writeRecord } from "./host.vibe"
-import { appliedReceipt, attributed, failedReceipt, previewReceipt, unchangedReceipt } from "./replies.vibe"
+import { appliedReceipt, attributed, failedReceipt, forTheOwner, previewReceipt, unchangedReceipt } from "./replies.vibe"
 import { TodoRequest } from "./requests.schema.vibe"
 
 const listKey = "todos"
@@ -150,7 +150,7 @@ export const todosAction: Action = {
   roleGate: { minRole: "OWNER" },
   validate: async () => true,
   handler: async (runtime, message, _state, options) => {
-    return onAgent(runtime, Effect.catch(changeTodos(parametersOf(options), message), (failed) => Effect.succeed({ success: false, text: "The to-do list could not be changed.", data: { outcome: failed._tag } } satisfies ActionResult)))
+    return onAgent(runtime, Effect.catch(changeTodos(parametersOf(options), message), (failed) => Effect.succeed({ success: false, text: "The to-do list could not be changed.", ...forTheOwner("The to-do list could not be changed."), data: { outcome: failed._tag } } satisfies ActionResult)))
   },
 }
 

@@ -2,7 +2,7 @@
 import { createReminderPresentation, stringToUuid, type Action, type ActionResult, type Provider, type UUID } from "@elizaos/core"
 import { Machine, answerFresh, answeredRecently, canFireCheckin, cadenceSlots, checkinLogLimit, duplicatesGoal, goalListed, renameGoalAdmitted, reviewGroup, stored, type Cadence, type Goal, type GoalStatus, type ReviewGroup, type ReviewState } from "../gen/assistant__goals.effect.vibe"
 import { Facts, Scheduler, SchedulerUnavailable, onAgent, presentOnce, readRecord, requestOf, writeRecord, type DeliveryAnswer, type TaskRow } from "./host.vibe"
-import { appliedReceipt, attributed, failedReceipt, unchangedReceipt, type Attempt } from "./replies.vibe"
+import { appliedReceipt, attributed, failedReceipt, forTheOwner, unchangedReceipt, type Attempt } from "./replies.vibe"
 import { noteOwnerAnswer } from "./escalation.vibe"
 import { liveReminders, namedAmong, reminderWhen } from "./reminders.vibe"
 import { GoalRequest } from "./requests.schema.vibe"
@@ -297,7 +297,7 @@ export const ownerGoalsAction: Action = {
   handler: async (runtime, message, _state, options) => {
     const given = typeof options === "object" && options !== null && "parameters" in options && typeof options.parameters === "object" && options.parameters !== null ? options.parameters : {}
     const input = Object.fromEntries(Object.entries(given).filter(([, value]) => value !== undefined && value !== null))
-    return onAgent(runtime, Effect.catch(changeGoal(input, requestOf(message).messageId), (failed) => Effect.succeed({ success: false, text: "The goal could not be changed.", data: { outcome: failed._tag } } satisfies ActionResult)))
+    return onAgent(runtime, Effect.catch(changeGoal(input, requestOf(message).messageId), (failed) => Effect.succeed({ success: false, text: "The goal could not be changed.", ...forTheOwner("The goal could not be changed."), data: { outcome: failed._tag } } satisfies ActionResult)))
   },
 }
 

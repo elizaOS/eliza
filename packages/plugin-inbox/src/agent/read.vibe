@@ -120,10 +120,18 @@ function line(message: GmailMessage): string {
   return `${message.unread ? "[unread] " : ""}${message.from} — ${message.subject || "(no subject)"} (${message.receivedAt}) [id ${message.id}]`
 }
 
+const unread = (text: string): Pick<ActionResult, "userFacingText" | "verifiedUserFacing"> => ({ userFacingText: text, verifiedUserFacing: true })
+const refusalUnread: Readonly<Record<keyof typeof refusalText, boolean>> = {
+  "missing-limit": false, "account-override": false, "missed-only": false, "not-connected": true, "several-accounts": true, "owner-changed": true,
+}
+
 function resultOf(answer: ManagedReadAnswer): ActionResult {
   switch (answer.kind) {
-    case "refused": return { success: false, text: refusalText[answer.reason], data: { refusal: answer.reason } }
-    case "failed": return { success: false, text: failureText[answer.failure], data: { failure: answer.failure } }
+    case "refused": {
+      const text = refusalText[answer.reason]
+      return { success: false, text, ...(refusalUnread[answer.reason] ? unread(text) : {}), data: { refusal: answer.reason } }
+    }
+    case "failed": return { success: false, text: failureText[answer.failure], ...unread(failureText[answer.failure]), data: { failure: answer.failure } }
     case "mail": return {
       success: true,
       text: answer.messages.length === 0 ? "No messages match." : answer.messages.map(line).join("\n"),
@@ -139,7 +147,7 @@ function resultOf(answer: ManagedReadAnswer): ActionResult {
 
 async function handle(runtime: IAgentRuntime, _message: Memory, options: unknown): Promise<ActionResult> {
   const client = agentGmailClient(runtime)
-  if (client === undefined) return { success: false, text: "Gmail is available only when this agent uses the cloud.", data: { refusal: "no-cloud" } }
+  if (client === undefined) return { success: false, text: "Gmail is available only when this agent uses the cloud.", ...unread("Gmail is available only when this agent uses the cloud."), data: { refusal: "no-cloud" } }
   return resultOf(await runPromise(managedInboxRead(client, parameters(options))))
 }
 

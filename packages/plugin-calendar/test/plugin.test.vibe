@@ -793,6 +793,8 @@ it.effect(`Change my calendar only as I asked and know it happened, at a free ti
   const taken = try run("slot-26", { subaction: "create_event", calendarId: "work", title: "Clash", startAt: "2030-03-05T10:15" })
   assert.deepStrictEqual([near.success, at(filed.at(-1)?.payload.change, "target", "eventId"), at(nowhere.data, "code"), at(taken.data, "code"), at(taken.data, "conflicts", "0", "title"), filed.length],
     [true, "review", "CALENDAR_TARGET_NOT_FOUND", "CALENDAR_WRITE_CONFLICT", "Review", 1])
+  assert.deepStrictEqual([nowhere, taken, unreal, shifted].map((result) => [result.verifiedUserFacing === true, result.userFacingText === result.text]),
+    [[true, true], [true, true], [false, false], [false, false]])
 
   google.health.complete = false
   const unread = try run("slot-13", { subaction: "update_event", query: "plumber", title: "Plumber, moved" })

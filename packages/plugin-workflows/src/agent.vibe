@@ -61,6 +61,15 @@ function committed(operation: string, kind: string, id: string, version: string,
   }
 }
 
+const unchanged: Readonly<Record<WorkflowOp, string>> = {
+  list: "Workflows couldn't be read just now.", search: "Workflows couldn't be read just now.", get: "Workflows couldn't be read just now.",
+  executions: "Workflows couldn't be read just now.", revisions: "Workflows couldn't be read just now.", eval_samples: "Workflows couldn't be read just now.",
+  create: "The workflow was not created.", modify: "The workflow was not changed.", rename: "The workflow was not renamed.",
+  activate: "The workflow was not switched on.", deactivate: "The workflow was not switched off.", remove: "The workflow was not removed.",
+  restore_removed: "The workflow was not restored.", restore: "The workflow was not restored.", run: "The workflow did not run.",
+  dossier: "The dossier was not started.", cancel_run: "The run was not cancelled.",
+}
+
 function notApplied(code: string, textForPlanner: string, userFacingText?: string, data: Bag = {}): ActionResult {
   return {
     success: false, text: textForPlanner, ...(userFacingText === undefined ? {} : { userFacingText, verifiedUserFacing: true }), error: code,
@@ -328,9 +337,9 @@ export const workflowAction: Action = {
     const retryable = retryAllowed(report)
     switch (report) {
       case "ReadFailed":
-        return respond(notApplied(refused.code ?? "WORKFLOW_READ_FAILED", refused.message, undefined, { status: refused.status, retryable }))
+        return respond(notApplied(refused.code ?? "WORKFLOW_READ_FAILED", refused.message, "Workflows couldn't be read just now.", { status: refused.status, retryable }))
       case "NothingChanged":
-        return respond(notApplied(refused.code ?? "WORKFLOW_NOT_APPLIED", `${refused.message} Nothing was changed.`, undefined, { status: refused.status, retryable }))
+        return respond(notApplied(refused.code ?? "WORKFLOW_NOT_APPLIED", `${refused.message} Nothing was changed.`, unchanged[op], { status: refused.status, retryable }))
       case "ReconcileFirst":
         return respond(notApplied("WORKFLOW_OPERATION_FAILED_RECONCILE_BEFORE_RETRY",
           `${refused.message} The change may have gone through. Check the workflow's current state before trying again, and never retry it automatically.`,
