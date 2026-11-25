@@ -459,7 +459,7 @@ it.live('A repeat joins, replays or conflicts by its key, a busy room is 429, a 
       replayed: replyOf(unnamedAgain).messageId === replyOf(unnamed).messageId, stored: storedUnnamed?.content.failureKind, note: unnamedNote,
     }, {
       status: 200, text: "", failureKind: "provider_issue", planAction: "retry", replayed: true, stored: "provider_issue",
-      note: "Note from the agent host, not the person: your last response gave the person no answer, so none of it was sent. No tool can be called now, so nothing you write can do the work. Tell the person plainly, in your own words, that you can't do it.",
+      note: "Note from the agent host, not the person: your last response gave the person no answer, so none of it was sent. No tool can be called now, so nothing can be done, opened, sent or looked up in this turn. If the person's latest message is a question you can answer from what you already know, answer it now, in your own words. Otherwise tell the person plainly, in your own words, that you can't do it, and write no tool call as text.",
     })
     assert.deepStrictEqual({
       status: lateFailure.status, text: replyOf(lateFailure).text, failureKind: replyOf(lateFailure).failureKind,
@@ -703,6 +703,7 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
 
   try Effect.sync(() => cloud.script(text("One sec."), text("One second is 1,000 milliseconds.")))
   const duration = replyOf(try send(agent, id, { text: "How long is a second?" }))
+  const durationNote = reasked().note
   try Effect.sync(() => cloud.script(text("Sure, one sec."), text("I can't send texts from here.")))
   const { answer: promised, calls: promisedCalls } = try callsFor({ text: "Text Sam that I am running late." })
   const promisedAsked = reasked()
@@ -711,13 +712,39 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
   try Effect.sync(() => cloud.script(text("Sure, one sec."), text("One sec.")))
   const { answer: promisedTwice, calls: promisedTwiceCalls } = try callsFor({ text: "Text Sam that I am running late." })
   const writtenCalls: (readonly [string, number])[] = []
-  for (const said of ['Sure, one sec.{"action": "send_message", "recipient": "Sam"}', 'Sure. {"action": "send_message"}', '{"tool": "open_app", "action": "Maps"}On it.', 'Sure, one sec.\n```json\n{"action": "send_message"}\n```', 'Sure, one sec. \n\n[send_message contact="Sam" message="I am running late"]', 'Sure, one sec.{"type": "send_message", "recipient": "Sam"}', '{"tool": "open_app", "action": "Maps"}', 'Sure. {"type": "send_message", "recipient": "Sam"}', 'Sure, one sec. {"action": "send_message", "text": "late :}"}']) {
+  for (const said of [
+    'Sure, one sec.{"action": "send_message", "recipient": "Sam"}', '{"tool": "open_app", "action": "Maps"}On it.', 'Sure, one sec.\n```json\n{"action": "send_message"}\n```',
+    'Sure, one sec. \n\n[send_message contact="Sam" message="I am running late"]', 'Sure, one sec.{"type": "send_message", "recipient": "Sam"}', 'Sure, one sec. {"action": "send_message", "text": "late :}"}',
+    'Sure. {"action": "SEND_TEXT", "parameters": {"to": "Sam"}}', '{"action": "SEND_TEXT", "parameters": {"to": "Sam"}}',
+    'Sure. [send_message contact="Sam" message="I am running late"]', '[send_message contact="Sam" message="I am running late"]',
+    '{"action": "open_app", "app": "Maps", "params": {"query": "coffee shops near me"}}', '{"action": "open_app", "app_name": "Maps"}', '{"tool": "open_app", "action": "Maps"}',
+    '{"name": "calculate", "arguments": {"expression": "2 + 2"}}', '{"type": "Calculate"}', 'Sure. {"action": "calculate", "input": "2 + 2"}',
+  ]) {
     try Effect.sync(() => cloud.script(text(said), text("I can't do that from here.")))
     const { answer, calls } = try callsFor({ text: "Text Sam that I am running late." })
     writtenCalls.push([answer.text, calls])
   }
-  try Effect.sync(() => cloud.script(text('Sure! {"name": "Bob"}')))
-  const { answer: jsonAnswer, calls: jsonAnswerCalls } = try callsFor({ text: "Make a JSON object for Bob." })
+  const maybeAnswers: (readonly [string, number])[] = []
+  for (const [said, again] of [['Sure. {"type": "send_message", "recipient": "Sam"}', "I can't text from here."], ['Sure! {"name": "Bob"}', 'Sure! {"name": "Bob"}']] as const) {
+    try Effect.sync(() => cloud.script(text(said), text(again)))
+    const { answer, calls } = try callsFor({ text: "Text Sam that I am running late." })
+    maybeAnswers.push([answer.text, calls])
+  }
+  const jsonOnly: (readonly [string, number])[] = []
+  for (const said of [
+    '{"status": "in_progress"}', '{"theme": "dark_mode"}', '{"type": "person", "name": "Bob"}', '{"type": "line_chart", "data": [1, 2]}',
+    'A tool call in that format looks like {"name": "get_weather", "arguments": {"city": "Paris"}} and the host runs it and returns the forecast to the model.',
+    'GitHub hosts code and its link record is {"name": "GitHub", "url": "https://github.com"} in that list.',
+    'Most smart-home hubs take a command such as {"action": "turn_on", "device": "lamp"} and switch the lamp on.',
+  ]) {
+    try Effect.sync(() => cloud.script(text(said)))
+    const { answer, calls } = try callsFor({ text: "Give me that as JSON." })
+    jsonOnly.push([answer.text, calls])
+  }
+  try Effect.sync(() => cloud.script(text('Let me check.{"tool": "calculate", "input": "1 second"}A second is the time caesium-133 radiation takes for 9,192,631,770 periods.')))
+  const { answer: callInAnswer, calls: callInAnswerCalls } = try callsFor({ text: "How long is a second?" })
+  try Effect.sync(() => cloud.script(text('Let me check.{"tool": "search", "input": "speed of light"}The speed of light in a vacuum is exactly 299,792,458 metres per second.')))
+  const { answer: cueCallInAnswer, calls: cueCallInAnswerCalls } = try callsFor({ text: "What is the speed of light?" })
   try Effect.sync(() => cloud.script(toolCalls("", { name: "CALCULATE", arguments: { expression: "5 * 5" } }), text("Sure, one sec."), text("It is 25.")))
   const { answer: cuedAfterWork, calls: cuedAfterWorkCalls } = try callsFor({ text: "Work out 5 times 5." })
   const afterWorkAsked = reasked()
@@ -742,12 +769,15 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
     correctedAgain: [correctedAgain.text, correctedAgainCalls, correctedNote.includes("a later call of the same action did run") && correctedNote.includes("A CALCULATE call did not start.")],
     otherLater: [otherLater.text, otherLaterCalls, otherLaterNote.includes("If it did not, the reply must tell the person truthfully that this step did not happen.")],
     refusalStatuses: [separate, corrected].map(({ actionResults }) => actionResults.map(({ data }) => data.executionStatus)),
-    duration: duration.text,
+    duration: [duration.text, durationNote.includes("If the person's latest message is a question you can answer from what you already know, answer it now, in your own words.")],
     promised: [promised.text, promisedCalls, promisedAsked.toolChoice, promisedAsked.said, promisedAsked.note],
     workedAfter: [workedAfter.text, workedAfterCalls, workedAfter.actionResults.map(({ action }) => action)],
     promisedTwice: [promisedTwice.text, promisedTwice.failureKind, promisedTwiceCalls],
     writtenCalls,
-    jsonAnswer: [jsonAnswer.text, jsonAnswerCalls],
+    maybeAnswers,
+    jsonOnly,
+    callInAnswer: [callInAnswer.text, callInAnswerCalls],
+    cueCallInAnswer: [cueCallInAnswer.text, cueCallInAnswerCalls],
     cuedAfterWork: [cuedAfterWork.text, cuedAfterWorkCalls, afterWorkAsked.toolChoice, afterWorkAsked.note],
     labels: { text: solved.action, voice: spoken.action },
   }, {
@@ -770,15 +800,23 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
     correctedAgain: ["The result is 17.", 4, true],
     otherLater: ["12 times 3 is 36. I couldn't work out 8 plus 9.", 4, true],
     refusalStatuses: [["not_started", undefined], ["not_started", undefined]],
-    duration: "One second is 1,000 milliseconds.",
+    duration: ["One second is 1,000 milliseconds.", true],
     promised: [
       "I can't send texts from here.", 2, "auto", "Sure, one sec.",
-      "Note from the agent host, not the person: your last response called no tool and gave the person no answer, so none of it was sent. Do the work now by calling an offered tool, or, if no offered tool can do it, tell the person plainly, in your own words, that you can't.",
+      "Note from the agent host, not the person: your last response called no tool and gave the person no answer, so none of it was sent. If the person's latest message is a question you can answer from what you already know, answer it now, in your own words. Otherwise do the work now by calling an offered tool, or, if no offered tool can do it, tell the person plainly, in your own words, that you can't.",
     ],
     workedAfter: ["It is 42.", 3, ["CALCULATE"]],
     promisedTwice: ["", "provider_issue", 2],
-    writtenCalls: Array.from({ length: 9 }, () => ["I can't do that from here.", 2]),
-    jsonAnswer: ['Sure! {"name": "Bob"}', 1],
+    writtenCalls: Array.from({ length: 16 }, () => ["I can't do that from here.", 2]),
+    maybeAnswers: [["I can't text from here.", 2], ['Sure! {"name": "Bob"}', 2]],
+    jsonOnly: [
+      '{"status": "in_progress"}', '{"theme": "dark_mode"}', '{"type": "person", "name": "Bob"}', '{"type": "line_chart", "data": [1, 2]}',
+      'A tool call in that format looks like {"name": "get_weather", "arguments": {"city": "Paris"}} and the host runs it and returns the forecast to the model.',
+      'GitHub hosts code and its link record is {"name": "GitHub", "url": "https://github.com"} in that list.',
+      'Most smart-home hubs take a command such as {"action": "turn_on", "device": "lamp"} and switch the lamp on.',
+    ].map((said) => [said, 1]),
+    callInAnswer: ["Let me check. A second is the time caesium-133 radiation takes for 9,192,631,770 periods.", 1],
+    cueCallInAnswer: ["Let me check. The speed of light in a vacuum is exactly 299,792,458 metres per second.", 1],
     cuedAfterWork: [
       "It is 25.", 3, "auto",
       "Note from the agent host, not the person: your last response gave the person no answer, so none of it was sent. The tool results above are what this turn did. Answer the person's latest message now from them, in your own words.",
@@ -787,7 +825,7 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
   }))
 }, 120_000)
 
-it.live(`A failure on one recipient or event stays reported beside a success on another, in either order, the model is asked once to report it, its own words follow only a reply the model did not answer again, and a retry of the same operation that succeeds closes it (${planning}, "A failure or proposal the turn made stays reported unless a later success of the same operation supersedes it"; ${planning}, "A reply that leaves a failure unreported is written again once, and the delivered reply still reports open failures and attachment omissions"; ${planning}, "A failure with no receipt that a later run of its action may have answered is the model's to report, and its own words follow the reply unless the model stands by a reply without them")`, effect () => {
+it.live(`A failure on one recipient or event stays reported beside a success on another, in either order, the model is asked once to report it, its own words follow only a reply the model did not answer again, and a retry of the same operation that succeeds closes it (${planning}, "A failure or proposal the turn made stays reported unless a later success of the same operation supersedes it"; ${planning}, "A reply that leaves a failure unreported is written again once, and the delivered reply still reports open failures and attachment omissions"; ${planning}, "A failure with no receipt that a later run of its action may have answered is the model's to report, and its own words follow the reply unless the model stands by a reply without them"; ${planning}, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole")`, effect () => {
   const cloud = try cloudFake(deviceKey)
   const agent = try startInProcess({
     launch: {
@@ -818,13 +856,18 @@ it.live(`A failure on one recipient or event stays reported beside a success on 
   const events = try turn("Move my standup and my dentist to Friday.")
   try Effect.sync(() => { failNext("Alice"); cloud.script(toolCalls("", textTo("Bob"), textTo("Alice")), text("Both texts are sent."), text("Bob has your text.")) })
   const told = try turn("Text Bob and Alice that I'm running late.")
+  try Effect.sync(() => cloud.script(text("Sure, one sec."), toolCalls("", textTo("Sam")), text("Sure, one sec."), text("Sam has your text.")))
+  const sentThenCue = try turn("Text Sam that I'm running late.")
+  const sentThenCueNote = lastTurnPrompt(cloud)
 
-  try Effect.try(() => assert.deepStrictEqual({ bobFirst, aliceFirst, retried, events, told }, {
+  try Effect.try(() => assert.deepStrictEqual({ bobFirst, aliceFirst, retried, events, told, sentThenCue, afterWorkNote: sentThenCueNote.includes("The tool results above are what this turn did.") }, {
     bobFirst: { text: "Both texts are sent.\n\nThe text to Alice did not send.", calls: 3, laterRunNote: false },
     aliceFirst: { text: "Both texts are sent.\n\nThe text to Alice did not send.", calls: 4, laterRunNote: false },
     retried: { text: "Alice has your text.", calls: 3, laterRunNote: false },
     events: { text: "Both events moved.\n\nThe standup event did not change.", calls: 3, laterRunNote: false },
     told: { text: "Bob has your text.", calls: 3, laterRunNote: false },
+    sentThenCue: { text: "Sam has your text.", calls: 4, laterRunNote: false },
+    afterWorkNote: true,
   }))
 }, 120_000)
 
