@@ -1,4 +1,4 @@
-// spec/agent/deviceActions/index.md, "A device enrolls under its own key as the agent's installation"; spec/agent/deviceActions/index.md, "A revoked enrollment retires every open offer, and nothing offered under it is served again"; spec/agent/deviceActions/index.md, "The device context is served only for a live enrollment"; spec/agent/deviceActions/capabilities.md, "The capability vocabulary is closed and versioned, with one wire name per capability"; spec/agent/deviceActions/capabilities.md, "The enabled-view profile changes only against the revision the device read"; spec/agent/deviceActions/capabilities.md, "Phone, Messages and Contacts are offered and enabled only on a request that negotiated the telephony views"
+// spec/agent/deviceActions/index.md, "Before it enrolls, a device reads the agent's identity and whole vocabulary, which changes nothing"; spec/agent/deviceActions/index.md, "A device enrolls under its own key as the agent's installation"; spec/agent/deviceActions/index.md, "A revoked enrollment retires every open offer, and nothing offered under it is served again"; spec/agent/deviceActions/index.md, "The device context is served only for a live enrollment"; spec/agent/deviceActions/capabilities.md, "The capability vocabulary is closed and versioned, with one wire name per capability"; spec/agent/deviceActions/capabilities.md, "The enabled-view profile changes only against the revision the device read"; spec/agent/deviceActions/capabilities.md, "Phone, Messages and Contacts are offered and enabled only on a request that negotiated the telephony views"
 module node {
   import { createHash, timingSafeEqual } from "node:crypto"
 
@@ -160,11 +160,11 @@ export function deviceEnrollment(context: Pick<ModuleContext, "runtime" | "launc
   return {
     deviceSender,
     routes: [
+      { method: "GET", path: "/api/client-devices/capabilities", handler: () => offer },
+      { method: "POST", path: "/api/client-devices/capabilities", handler: () => offer },
       { method: "POST", path: "/api/client-devices/register", handler: (input) => answered(register(input)) },
       { method: "POST", path: "/api/client-devices/revoke", handler: (input) => answered(revoke(input)) },
       { method: "GET", path: "/api/client-devices/context", handler: (input) => answered(served(input)) },
-      { method: "GET", path: "/api/client-devices/capabilities", handler: () => offer },
-      { method: "POST", path: "/api/client-devices/capabilities", handler: () => offer },
       { method: "GET", path: "/api/client-devices/view-profile", handler: (input) => answered(profile(input)) },
       { method: "POST", path: "/api/client-devices/view-profile", handler: (input) => answered(setProfile(input)) },
     ],

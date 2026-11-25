@@ -16,6 +16,7 @@ export type CloudReply =
   | { readonly kind: "requestFault"; readonly code: string }
   | { readonly kind: "images" }
   | { readonly kind: "drop" }
+  | { readonly kind: "gateway"; readonly status: number }
   | { readonly kind: "hang" }
   | { readonly kind: "partial"; readonly chunks: readonly string[] }
   | { readonly kind: "held"; readonly gate: Promise<void>; readonly reply: CloudReply }
@@ -75,7 +76,9 @@ export const allowanceExhausted = (resetsAt: number): CloudReply => refusal(402,
 export const rateLimited = (retryAt: number): CloudReply => refusal(429, "rate_limited", { retryable: true, retryAt });
 export const unavailable = (retryAfterSeconds: number): CloudReply => refusal(503, "service_unavailable", { retryable: true, retryAfterSeconds });
 export const requestFault = (code: string): CloudReply => ({ kind: "requestFault", code });
+export const providerUnavailable = (retryAfterSeconds: number): CloudReply => refusal(503, "provider_unavailable", { retryable: true, retryAfterSeconds });
 export const dropped = (): CloudReply => ({ kind: "drop" });
+export const gateway = (status: number): CloudReply => ({ kind: "gateway", status });
 export const partial = (...chunks: string[]): CloudReply => ({ kind: "partial", chunks });
 export const echoImages = (): CloudReply => ({ kind: "images" });
 export const toolCalls = (content: string, ...calls: { name: string; arguments: unknown }[]): CloudReply => ({ kind: "tools", content, calls });
@@ -168,6 +171,10 @@ function answerCompletion(response: ServerResponse, reply: CloudReply, body: unk
       return;
     case "drop":
       response.destroy();
+      return;
+    case "gateway":
+      response.writeHead(reply.status, { "content-type": "text/html" });
+      response.end(`<html><body><h1>${reply.status} Gateway</h1></body></html>`);
       return;
     case "images":
       return answerCompletion(response, text(`images:${imageUrls(body).join(",")}`), body, dialect);

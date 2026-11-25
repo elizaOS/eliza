@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 /** Build the pinned Phonon-2 GGUF and attribution for ELIZA_VOICE_BUNDLE_FROM. */
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";

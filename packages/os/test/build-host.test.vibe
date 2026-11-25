@@ -11,10 +11,17 @@ const upstream = (path: string) => ({ root: "upstream", path })
 const MAIN = "android/AndroidManifest.xml"
 const manifest = (permissions: readonly string[], application = "") =>
   `<manifest xmlns:android="http://schemas.android.com/apk/res/android">${permissions.map((name) => `<uses-permission android:name="android.permission.${name}"/>`).join("")}<application>${application}</application></manifest>\n`
+const AGENT_HOST_FILE = {
+  schema: 1,
+  service: "example.fixture.host.FixtureAgentService",
+  notification: { channel: "Agent", title: "Fixture", text: "Your agent is running", failure: { channel: "Agent alerts", title: "Fixture stopped", text: "Open the app to check your agent" } },
+  routes: [{ method: "GET", path: "/api/status" }],
+  model: { backend: "none" },
+}
 const AGENT_FILES: Tree = {
-  "agent/host.json": JSON.stringify({ schema: 1, service: "example.fixture.host.FixtureAgentService" }),
-  "agent/character.json": JSON.stringify({ name: "Fixture" }),
-  "agent/policy.json": JSON.stringify({ schema: 1 }),
+  "agent/host.json": JSON.stringify(AGENT_HOST_FILE),
+  "agent/character.json": JSON.stringify({ name: "Fixture", system: "Answer briefly." }),
+  "agent/policy.json": JSON.stringify({ schema: 1, actions: { allowed: ["REPLY"] }, plugins: { load: ["inbox"] } }),
 }
 
 const AGENT_HOST = {
@@ -136,17 +143,24 @@ it.effect('Generate my app\'s Android host from data: an agent host gets the age
     try writeTree(root, { "runtime/android/app/src/main/assets/agent/inventory.json": "{}" })
     const output = path.join(root, "android/host")
     const generated = try generateAndroidHost({ consumerRoot: root, output, identity: IDENTITY, profile: AGENT_HOST.profile, runtime: path.join(root, "runtime") })
-    assert.deepStrictEqual([...generated.files].sort(), [...BASE_FILES, "app/eliza-host-manifest.xml"].sort())
     assert.strictEqual(generated.toolchain, "8.13")
 
     const { document, marker, overlay, gradle, text } = try readHost(output)
+    const agentNames = ["host.json", "character.json", "policy.json"]
+    assert.deepStrictEqual(document.agentFiles.map(({ name }) => name), agentNames)
+    for (const asset of document.agentFiles) {
+      const source = path.join(root, "agent", asset.name)
+      const admitted = try files.readFile(source)
+      try files.writeFileString(source, "The consumer replaced this input after host generation.")
+      assert.deepStrictEqual(try files.readFile(asset.source), admitted, `${asset.name} is staged from the admitted bytes`)
+    }
+    assert.deepStrictEqual([...generated.files].sort(), [...BASE_FILES, "app/eliza-host-manifest.xml", ...agentNames.map((name) => `eliza-consumer-host/agent/${name}`)].sort())
     assert.deepStrictEqual(marker, { schema: 2, output: "android/host", appId: IDENTITY.appId, files: generated.files })
     const os = path.dirname(path.dirname(document.modules[0]?.directory ?? ""))
     assert.deepStrictEqual(document.modules, [
       { name: "eliza-agent-service", directory: path.join(os, "android/agent-service"), appDependency: true, relocateBuild: true },
       { name: "eliza-runtime-files", directory: path.join(os, "android/runtime-files"), appDependency: true, relocateBuild: true },
     ])
-    assert.deepStrictEqual(document.agentFiles, ["host", "character", "policy"].map((name) => ({ source: path.join(root, `agent/${name}.json`), name: `${name}.json` })))
     assert.deepStrictEqual(document.dependencies, [{ configuration: "implementation", coordinate: "androidx.appcompat:appcompat:1.7.1" }])
     assert.strictEqual(document.nativeLibraries, "extract-16k")
     assert.strictEqual(document.runtimeMain, path.join(root, "runtime/android/app/src/main"))
@@ -167,6 +181,13 @@ it.effect('Generate my app\'s Android host from data: an agent host gets the age
     }
     assert.strictEqual(((try files.stat(path.join(output, "gradlew"))).mode & 0o777), 0o755)
     assert.include(try text("gradle/wrapper/gradle-wrapper.properties"), "distributionSha256Sum=20f1b1176237254a6fc204d8434196fa11a4cfb387567519c61556e8710aed78\n")
+
+    const unadmitted = try consumerWith("agent-host-unadmitted", { ...AGENT_HOST.tree, "agent/host.json": JSON.stringify({ ...AGENT_HOST_FILE, embeddings: "local" }) })
+    const refused = (effect {
+      try generateAndroidHost({ consumerRoot: unadmitted, output: path.join(unadmitted, "android/host"), identity: IDENTITY, profile: AGENT_HOST.profile })
+      return "generated"
+    } catch (error) => `${tagOf(error)}: ${(error as { readonly reason?: string }).reason ?? ""}`)
+    assert.strictEqual(refused, "HostInputRefused: The agent model, embeddings, retention or environment are not ones the agent admits")
   }
 })
 

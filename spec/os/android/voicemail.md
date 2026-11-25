@@ -87,6 +87,14 @@ pure def sometimesUnsupportedCarrierRead(s: Voicemail): bool = s.carrier == Carr
 pure def sometimesUnconfiguredCarrierListsRows(s: Voicemail): bool = s.carrier == CarrierUnconfigured and s.rows.length() > 0
 ```
 
+### A retired observer admits no refresh and a replacement waits for acknowledged cleanup
+
+One phone client holds one observation. Closing it stops accepting its
+callbacks before awaiting the listener's removal and Android's disable.
+A replacement waits until both steps are acknowledged. A rejected cleanup
+leaves that step outstanding for the next visit. A late close of the
+retired observation cannot disable its replacement.
+
 ## Story: Hear a voicemail
 
 > As an owner, I want to play a voicemail and have it ready for speech

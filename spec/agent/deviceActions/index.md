@@ -35,8 +35,9 @@ A refused event answers 409 and changes nothing; a store failure answers 503.
 The installation id is the agent's own store id (`storage/database.md`),
 never a second identity. A first registration records the owner, the key
 hash and the workflow protocol, and connects the device to the bridge with
-the capabilities it declares. Registering again with the same key changes
-only the workflow protocol. The agent keeps one enrollment. When its owner
+the capabilities it declares; a registration that names none declares the
+whole vocabulary. Registering again with the same key changes only the
+workflow protocol. The agent keeps one enrollment. When its owner
 registers under another key, as a reinstalled or replaced phone does, the
 shell computes the revocation and new enrollment together and commits them
 with the retirement of earlier requests in one transaction. A failed
@@ -92,6 +93,26 @@ pure def revokeEnrollment(d: DeviceRequest, by: S::SessionOwner): DeviceRequest 
 pure def stepARevokedRequestStaysRevoked(before: DeviceRequest, via: str, after: DeviceRequest): bool = ((before.enrollment == Revoked and after.enrollment != Revoked) implies (via == "registerDevice" and before.phase == Unoffered)) and (via == "revokeEnrollment" implies (if (openOffer(before.phase)) after.phase == Retired else after.phase == before.phase))
 pure def sometimesRevokedRetiredAnOffer(d: DeviceRequest): bool = d.enrollment == Revoked and d.phase == Retired
 pure def sometimesRevokedAfterDispatch(d: DeviceRequest): bool = d.enrollment == Revoked and d.phase == Dispatched
+```
+
+### Before it enrolls, a device reads the agent's identity and whole vocabulary, which changes nothing
+
+`GET` and `POST /api/client-devices/capabilities` answer, to any caller the
+host admits and without an enrollment, the protocol, the agent id, the
+owner's identity id and the whole capability vocabulary
+(`{ protocol: 1, agentId, identityId, deviceActions: { protocol: 1,
+capabilities } }`). A device reads them to know which agent and owner it is
+about to enroll with and which capabilities it may declare; the answer is the
+same before and after enrollment and changes no enrollment.
+
+```quint
+type CapabilityOffer = { agentId: str, identityId: str, vocabulary: Set[str] }
+pure def capabilityOffer(owner: S::SessionOwner, vocabulary: Set[str]): CapabilityOffer =
+  { agentId: owner.agentId, identityId: owner.actorId, vocabulary: vocabulary }
+pure val ownerValues: Set[S::SessionOwner] = Set({ agentId: "agent-1", actorId: "owner-1", connector: "agent-1" }, { agentId: "agent-2", actorId: "owner-2", connector: "agent-2" })
+pure val vocabularyValues: Set[Set[str]] = Set(Set(), Set("files.browser.v1", "sms.send.v1"))
+pure def lawTheOfferNamesTheAgentAndItsOwner(owner: S::SessionOwner, vocabulary: Set[str]): bool =
+  capabilityOffer(owner, vocabulary).agentId == owner.agentId and capabilityOffer(owner, vocabulary).identityId == owner.actorId
 ```
 
 ### The device context is served only for a live enrollment
@@ -513,8 +534,10 @@ a step on what the owner has open: the thread or voicemail on the screen,
 or the Calendar day a standalone agenda read shows. The proposal carries the
 owner's message as `requestMessageId` only while its turn is live, and then
 only for a step on the open selection, or for an operation grounded as
-asked on a turn whose message is a direct request (`voiceUi.agentActionMode`
-is `direct-request-v1`). Any other proposal carries none, so the phone
+asked on a turn whose message is a direct request for its family
+(`voiceUi.agentActionMode` is `direct-request-v1` for every family, or
+`direct-files-v1` or `direct-files-only-v1` for the Files family alone, so a phone that runs only
+Files directly keeps every other family's card). Any other proposal carries none, so the phone
 never runs it without its card, whatever the operation and the owner's
 [direct-request preference](./execution.md); its origin is still the
 owner's message, so its identity, its read completion and the outcomes a
@@ -528,7 +551,7 @@ card only for that message, so a later message that asks again, such as
 The reply follows the choice. A pending request that carries the message
 tells the model that it is a handoff that has not run yet, so the model
 never claims what it found or shows; where the family gives the owner a
-sentence for it ("Opening example.com."), the model gets that sentence as
+sentence for it ("example.com is ready to open."), the model gets that sentence as
 what the phone shows and words the reply itself, so the owner never hears
 the family's sentence beside the model's. One kept for review asks the
 owner to review it on the phone, in the family's words and in the turn's
@@ -538,8 +561,15 @@ copy is delivered in the family's words.
 
 ```quint
 type ProposalGrounding = GroundedAsAsked | GroundedForReview | GroundedOnScreen
+type DirectScope = NoDirectRequest | DirectForEveryFamily | DirectForFiles
+pure def directRequestFor(scope: DirectScope, filesFamily: bool): bool =
+  scope == DirectForEveryFamily or (scope == DirectForFiles and filesFamily)
 pure def carriesRequestMessage(grounding: ProposalGrounding, directRequest: bool, turnLive: bool): bool =
   turnLive and (grounding == GroundedOnScreen or (directRequest and grounding == GroundedAsAsked))
+pure def lawAFilesOnlyDirectRequestBindsNoOtherFamily(turnLive: bool): bool =
+  not(carriesRequestMessage(GroundedAsAsked, directRequestFor(DirectForFiles, false), turnLive))
+pure def lawAFilesOnlyDirectRequestBindsFilesAsAsked(turnLive: bool): bool =
+  carriesRequestMessage(GroundedAsAsked, directRequestFor(DirectForFiles, true), turnLive) == turnLive
 pure def returnsOpenRequest(keptCarries: bool, proposedCarries: bool, sameOperation: bool): bool =
   sameOperation and not(keptCarries) and not(proposedCarries)
 pure def lawAProposalForReviewCarriesNoMessage(directRequest: bool, turnLive: bool): bool =

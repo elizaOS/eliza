@@ -228,7 +228,7 @@ const Account = Schema.Struct({
 })
 const Message = Schema.Struct({
   id: Text.check(Schema.isMinLength(1)), threadId: Text, subject: Text, from: Text, fromEmail: Schema.NullOr(Text), to: Schema.Array(Text),
-  cc: Schema.Array(Text), snippet: Text, receivedAt: Text, unread: Schema.Boolean, starred: Schema.Boolean, historyId: Schema.NullOr(Text),
+  cc: Schema.Array(Text), hasAttachments: Schema.optionalKey(Schema.Boolean), snippet: Text, receivedAt: Text, unread: Schema.Boolean, starred: Schema.Boolean, historyId: Schema.NullOr(Text),
 })
 const Link = Schema.Struct({ href: Text, text: Text })
 const Attachment = Schema.Struct({ partId: Text, name: Text, mimeType: Text, size: Schema.Number, supported: Schema.Boolean })

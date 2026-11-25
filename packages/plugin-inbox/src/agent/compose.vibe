@@ -29,6 +29,8 @@ function recipients(value: unknown): string[] {
   return listed.flatMap((entry) => typeof entry === "string" && address.test(entry.trim()) ? [entry.trim()] : [])
 }
 
+const draftOpened = "The draft opens in the requesting phone's Inbox composer for the owner to review, change and send. Nothing was sent, and no provider draft was made."
+
 export function emailDraftAnswer(message: Memory, options: unknown): ActionResult | undefined {
   const parameters = given(options)
   const to = recipients(parameters.to)
@@ -48,9 +50,8 @@ export function emailDraftAnswer(message: Memory, options: unknown): ActionResul
       const emailDraft = {
         version: 1, requestMessageId: (message.id ?? "").toLowerCase(), to, subject: typeof parameters.subject === "string" ? parameters.subject : "", body,
       } satisfies EmailDraftHandoff
-      const text = "Here’s the draft."
       return {
-        success: true, text, userFacingText: text, verifiedUserFacing: true,
+        success: true, text: draftOpened,
         values: { mode: "local-compose", targetId: "inbox", emailDraft: { ...emailDraft, to: [...emailDraft.to] } },
         data: { actionName: inboxComposeActionName },
       }
