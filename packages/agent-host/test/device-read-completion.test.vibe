@@ -423,7 +423,7 @@ module node {
       if (!("status" in answer)) throw new Error(answer.refused)
       return answer
     }
-    const enrolled = await send("/api/client-devices/register", { capabilities: [capability], workflowProtocol: 1 })
+    const enrolled = await send("/api/client-devices/register", { workflowProtocol: 1 })
     if (enrolled.status !== 200) throw new Error(`Device enrollment was refused: ${enrolled.text}`)
     const bridge = workflowDeviceOffer(running.runtime, { deadlineMs: 600_000, pollMs: 20 })
     const device = await bridge.enrollment()
@@ -543,7 +543,7 @@ it.effect('A shared device read answers the original request once, in its conver
   })
 }, 180_000)
 
-it.effect('A workflow step is offered to the enrolled device, settles only by its receipt or confirmed review, and a declined step is refused (spec/agent/deviceActions/index.md, "An offer goes only to the enrolled device, for a capability it declared"; spec/agent/deviceActions/index.md, "A receipt from the claimed attempt settles a dispatched request once"; spec/agent/deviceActions/index.md, "Only a confirmed review settles an uncertain request"; spec/workflow/approvals.md, "Device steps require the exact reviewed scope and enrolled device")', effect () => {
+it.effect('A workflow step is offered to the enrolled device, settles only by its receipt or confirmed review, and a declined step is refused (spec/agent/deviceActions/index.md, "An offer goes only to the enrolled device, for a capability it declared"; spec/agent/deviceActions/index.md, "A receipt from the claimed attempt settles a dispatched request once"; spec/agent/deviceActions/index.md, "Only a confirmed review settles an uncertain request"; spec/workflow/approvals.md, "Device steps require the exact reviewed scope and enrolled device"; spec/agent/deviceActions/capabilities.md, "A workflow step negotiates what its device declared at registration")', effect () => {
   const state = try scratch("workflow-offer")
   const cloud = try cloudFake(deviceKey)
   const { socket, frame, running } = try launchOnSocket(state, { callerRole: "owner", backend: { kind: "cloud", origin: cloud.origin }, persistMemory: true }, { credential: { version: 1, value: deviceKey } })
