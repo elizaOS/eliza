@@ -422,12 +422,20 @@ public final class DeviceKeyJourney {
 
       if (!"SIGNED_IN".equals(signIn())) throw new IllegalStateException("Could not restore the original test account");
       var previous = requireMailAuthority(custody);
+      String reviewedCredential = store.current().credentialId();
       cloud.beforeMailReply.set(() -> {
         store.signOut();
         if (!"SIGNED_IN".equals(signIn())) throw new IllegalStateException("Could not re-enroll the original test account");
       });
       seen.add(take("replyFromPreviousEnrollment", outcome(managed.readMail(origin, custody, previous, feed, Map.of()))));
       var reEnrolled = requireMailAuthority(custody);
+      int sentModels = cloud.modelBearers.size();
+      int sentMail = cloud.mailBearers.size();
+      String currentCredential = store.current().credentialId();
+      seen.add(take("boundPreviousCredential", outcome(requests.send("old", origin, custody, "GET", models, Map.of(), null, reviewedCredential))));
+      seen.add(take("boundCurrentCredential", outcome(requests.send("current", origin, custody, "GET", models, Map.of(), null, currentCredential))));
+      seen.add(take("boundCannotUseLease", outcome(requests.send("lease", origin, custody, "GET", feed, Map.of(), null, currentCredential))));
+      seen.add(take("boundReachedOnlyReviewedKey", cloud.modelBearers.size() == sentModels + 1 && cloud.mailBearers.size() == sentMail));
       seen.add(take("sameOwnerReEnrolledAtNewVersion", previous.account().equals(reEnrolled.account()) && previous.version() < reEnrolled.version()));
 
       var beforeRenewal = store.current();

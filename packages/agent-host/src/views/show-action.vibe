@@ -149,12 +149,12 @@ export function viewsShowAction(views: ViewHost.Shape, labels: ReadonlyMap<strin
   const action: Action = {
     name: viewsActionName,
     similes: ["VIEWS_SHOW", "OPEN_VIEW", "NAVIGATE_VIEW"],
-    description: `Show one of the owner's views, named by its id, label or alias, on the renderer of this turn.${namedViews(declared, labels)} Each view is a screen of the app on the owner's device. Going to a view by its name, such as go home, go to Calendar or back to Notes, is showing that view with VIEWS; only directions, a route or travel to a place is the Maps action's. Navigation only: it does not read or change the view's records, and showing a view acts on nothing in it. Showing Camera takes no photo, and showing Maps finds no place, gives no directions and plans no route: when the owner asks for those, use the action that does it.`,
+    description: `Show one of the owner's views (id, label, or alias).${namedViews(declared, labels)} Going to a view by its name, such as go home, go to Calendar or back to Notes, is showing that view with VIEWS; only directions/routes use Maps. Navigation only: does not read, change, or act on records. Showing Camera takes no photo; showing Maps searches/routes nothing—use the action that does it.`,
     roleGate: { minRole: "OWNER" },
     parameters: [
-      { name: "action", description: "show", required: false, schema: { type: "string", enum: ["show"] } },
-      { name: "view", description: "The view's id, label or alias", required: true, schema: { type: "string" } },
-      { name: "note", description: "Only with view notes-editor: the content argument this turn gave NOTES_GET for the saved note, word for word, the noteId it read the note by, or the title of the note this turn created with NOTES_CREATE", required: false, schema: { type: "string", minLength: 1, maxLength: 20_000 } },
+      { name: "action", description: "", required: false, schema: { type: "string", enum: ["show"] } },
+      { name: "view", description: "View id, label, or alias.", required: true, schema: { type: "string" } },
+      { name: "note", description: "For view=notes-editor only: exact content arg or noteId given to NOTES_GET this turn, or title created by NOTES_CREATE this turn.", required: false, schema: { type: "string", minLength: 1, maxLength: 20_000 } },
     ],
     validate: async (runtime, message) => {
       const turn = deviceTurnFor(runtime, message)

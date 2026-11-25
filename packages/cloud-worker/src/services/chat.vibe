@@ -15,7 +15,8 @@ import { completionSettlement, faultBody, meteredChatStream, ProviderFaulted, pr
 const requestIdPattern = /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i
 const headers = { "cache-control": "no-store" }
 
-function providerBody({ max_tokens: _maxTokens, max_completion_tokens, ...body }: ChatRequest, model: string, max: number) {
+function providerBody({ max_tokens: _maxTokens, max_completion_tokens, ...body }: ChatRequest, model: string, max: number | undefined) {
+  if (max === undefined) return { ...body, model }
   return { ...body, model, ...(max_completion_tokens === undefined ? { max_tokens: max } : { max_completion_tokens: max }) }
 }
 
@@ -48,7 +49,7 @@ effect function chat(context: RouteContext): HttpServerResponse.HttpServerRespon
   const store = try Store
   const { model, provider } = try store.transaction((tx) => chooseFor(tx, settings, body.model, hasImage(body)))
   const priced = try quote(body, model)
-  const payload = providerBody(body, model.upstreamModel, priced.outputCap)
+  const payload = providerBody(body, model.upstreamModel, priced.wireCap)
   const ticket = try reserve(caller, { service: "MeteredInference", caller: caller.organizationId, requestId: id ?? context.requestId, part: { tag: "WholeRequest" } }, priced.micros)
   if (ticket.replayed) throw refused("AlreadyDispatched")
 

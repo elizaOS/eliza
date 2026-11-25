@@ -11,6 +11,8 @@ for Node: there is no loader, no C++ runtime library, no seccomp shim and
 no gateway. The agent bundle build (its manifest gives the bundle's
 profile and the worker's digest) and the launch document belong to the
 agent; reading files, hashing, fetching and copying stay in the shell.
+For a fetched runtime, the stager checks the ZIP's locked SHA-256 and
+inventories its Node `LICENSE` once at `assets/agent/notices/node/LICENSE`.
 
 ## Story: Ship the agent with a pinned Node runtime
 
