@@ -722,7 +722,7 @@ Blank text is `Silent`.
 The model says itself what a response with no tool call is. The cue rule
 asks it to begin such a response with one tag the person never sees:
 `[answer]` when the text is its complete reply, or `[promise]` when it only
-says it will do something. A tag after nothing but JSON objects or
+says it will do something, and to use only those two. A tag after nothing but JSON objects or
 bracketed calls counts too, and what came before it is no part of the reply
 (`{"query": "speed of light"}[answer] Light travels…` is delivered as
 `Light travels…`). The tag is for the host alone: the shell strips the exact lowercase tags
@@ -740,10 +740,21 @@ no link, and an inline code span until it closes, so what it streams is
 always the start of what it delivers, and
 streams nothing while the text so far is only an untagged object. Only a
 tag that leads the text, in any letter case (`[ANSWER]Sure, Bob.`), after nothing but JSON objects or bracketed calls,
-says what the response is, and the shell reads it before the form: with no tool call, text
+says what the response is; it may be followed at once by a link or another
+bracket (`[answer][Docs](https://…)` is delivered as `[Docs](https://…)`),
+and a leading angle tag takes its closing tag off in any letter case
+(`<ANSWER>Hi!</ANSWER>` is delivered as `Hi!`). The shell reads it before the form: with no tool call, text
 tagged `[answer]` is an `Answer` delivered at once, however short (`[answer]
 Done!`, `[answer] Hello!`), and text tagged `[promise]` is a `Cue`, never
-delivered (`[promise] Sure, one sec.`). Blank text, a cue beside a call
+delivered (`[promise] Sure, one sec.`), unless it asks the person
+something: text tagged `[promise]` that asks something (a question mark
+that ends a sentence, outside quotes, code and addresses) is an `Answer`,
+since the turn waits on the person (`[promise] Which Sam do you mean?`,
+`[promise] Hi! What can I do for you today?`), while `[promise] Let me open
+https://example.com/search?q=limes` stays a promise. A leading
+`[question]`, a tag the model sometimes writes though the rule names only
+two, is read as `[answer]` and taken off; anywhere else it is the model's
+text. Blank text, a cue beside a call
 written as text, and text that holds the agent host's words (below), are
 read by their form whatever the tag, and so is text written with tool
 calls: `[answer]` before an echoed host note is still no answer. Text with no tag is read by its form as above, so
@@ -840,6 +851,11 @@ pure def readDraft(shape: DraftShape, calls: int, toolsWaiting: bool, declared: 
   else match declared {
     | DeclaredAnswer => Answer | DeclaredPromise => Cue | Undeclared => readByForm(shape, calls, toolsWaiting)
   }
+pure def heardAs(declared: Declared, asks: bool): Declared = if (asks and declared == DeclaredPromise) DeclaredAnswer else declared
+pure def lawAQuestionIsNeverHeldAsAPromise(shape: DraftShape, toolsWaiting: bool, stepsLeft: int, askedAgain: bool): bool =
+  (shape != Blank and shape != CueBesideCall and shape != HostText) implies nextMove(readDraft(shape, 0, toolsWaiting, heardAs(DeclaredPromise, true)), 0, stepsLeft, askedAgain) == Deliver
+pure def lawATagIsKeptUnlessAPromiseAsks(declared: Declared, asks: bool): bool =
+  heardAs(declared, asks) == declared or (asks and declared == DeclaredPromise)
 pure def lawADeclaredAnswerIsDeliveredAtOnce(shape: DraftShape, toolsWaiting: bool, stepsLeft: int, askedAgain: bool): bool =
   (shape != Blank and shape != CueBesideCall and shape != HostText) implies nextMove(readDraft(shape, 0, toolsWaiting, DeclaredAnswer), 0, stepsLeft, askedAgain) == Deliver
 pure def lawADeclaredPromiseWithoutWorkIsNeverDelivered(shape: DraftShape, toolsWaiting: bool, stepsLeft: int, askedAgain: bool): bool =
@@ -971,7 +987,12 @@ line could begin; what follows is shown once it can no longer be one, or
 with the reply, so neither the label, a note's lead line nor a history mark
 is ever streamed, spoken or stored. A note's later lines are not held: they
 carry the owner's own data, such as the page they are reading, which a true
-answer may quote. The notes stay in the model's request as they are.
+answer may quote. A later line of at least 32 characters that is a whole
+JSON object, before any external content a note quotes, such as the screen
+context's data, is the exception: a response that holds its first 32
+characters, with any spacing and in any letter case, is the host's words
+(`{"observation":{"view":"launchers",…`), since no answer quotes the host's
+raw data. The notes stay in the model's request as they are.
 
 ```quint
 pure def lawHostTextIsNeverAnAnswer(calls: int, toolsWaiting: bool, declared: Declared): bool =
