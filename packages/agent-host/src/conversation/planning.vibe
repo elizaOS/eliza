@@ -63,13 +63,15 @@ export interface FailureNotice {
   readonly safetyCopy: boolean
   readonly verified: boolean
   readonly answerableLater: boolean
+  readonly failedActions: readonly string[]
+  readonly laterActions: readonly string[]
 }
 
-export function failureNote({ words, verified, answerableLater }: FailureNotice): string {
+export function failureNote({ words, verified, answerableLater, failedActions, laterActions }: FailureNotice): string {
   const cut = words.length > toolMessageLimit ? `${words.slice(0, toolMessageLimit)}…` : words
   const report = `The step's own report: ${verified ? JSON.stringify(cut) : wrapExternalContent(cut, { source: "unknown" })}`
   return answerableLater
-    ? `A step of this turn did not happen as asked, and a later call of this turn did run. If that later call did what this step was for, leave this step out and give your reply exactly as it was, word for word: the person needs only what happened. If it did not, the reply must tell the person truthfully that this step did not happen. ${report}`
+    ? `A step of this turn did not happen as asked (a ${failedActions.join(" or ")} call), and a later call of this turn did run (${laterActions.join(", ")}). If that later call did what this step was for, leave this step out and give your reply exactly as it was, word for word: the person needs only what happened. If it did not, the reply must tell the person truthfully that this step did not happen. ${report}`
     : `A step of this turn did not happen as asked. The reply must tell the person so truthfully, never claiming it happened. ${report}`
 }
 
@@ -397,9 +399,10 @@ function safetyCopyOf(result: ActionResult): boolean {
   return result.verifiedUserFacing === true && result.data?.safetyCopy === true
 }
 
-function laterRunOf(steps: readonly PlannedStep[], failed: PlannedStep): boolean {
-  const later = steps.slice(steps.indexOf(failed) + 1).filter(({ action, outcomes }) => outcomes.some(({ outcome }) => mayAnswer(action === failed.action, outcome)))
-  return answerableLater((failed.result.effectReceipts ?? []).length === 0, later.some(({ response }) => response > failed.response), later.length > 0)
+function laterRunsOf(steps: readonly PlannedStep[], failed: PlannedStep, ownerWords: boolean): readonly string[] {
+  const later = steps.slice(steps.indexOf(failed) + 1).filter(({ action, outcomes }) => outcomes.some(({ outcome }) => mayAnswer(action === failed.action, ownerWords, outcome)))
+  const seen = later.filter(({ response }) => response > failed.response)
+  return answerableLater((failed.result.effectReceipts ?? []).length === 0, seen.length > 0, later.length > 0) ? [...new Set(seen.map(({ action }) => action))] : []
 }
 
 interface SettledReply {
@@ -420,11 +423,13 @@ function settleReply(steps: readonly PlannedStep[]): SettledReply {
   for (const step of steps.filter(({ outcomes }) => outcomes.some((entry) => failedKeys.has(entryKey(entry))))) {
     const { words, verified, owner } = failureNotice(step)
     const earlier = notices.get(words)
-    const laterRan = laterRunOf(steps, step)
+    const laterRuns = laterRunsOf(steps, step, owner !== undefined)
     notices.set(words, {
       words, safetyCopy: earlier?.safetyCopy === true || alone || safetyCopyOf(step.result), verified: (earlier?.verified ?? true) && verified,
       owner: earlier === undefined || earlier.owner !== undefined ? owner : undefined,
-      answerableLater: (earlier?.answerableLater ?? true) && laterRan,
+      answerableLater: (earlier?.answerableLater ?? true) && laterRuns.length > 0,
+      failedActions: [...new Set([...earlier?.failedActions ?? [], step.action])],
+      laterActions: [...new Set([...earlier?.laterActions ?? [], ...laterRuns])],
     })
   }
   return {

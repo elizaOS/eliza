@@ -596,17 +596,22 @@ A call that failed or was refused without an effect receipt names nothing
 the host can match, so a later call that ran may have put it right: a later
 call of the same action that applied, proposed or had no effect, when the
 model corrects its own call after a refusal, such as `8 + 9` after a stray
-argument or 4 PM after a misread 8 AM; or a later call of another action
-that applied or proposed, when the model reaches the same request through
-another action, such as a reminder one reminders action saved after
-another's call did not start, or a Files filter proposed to the phone after
-a call that did not start. A later call of another action that had no
-effect answers nothing. A later call may also have been for another
-request, such as a second recipient. A later call can answer a failure only
+argument or 4 PM after a misread 8 AM; or, for a failure whose action
+wrote no words for the owner, a later call of another action that applied
+or proposed, when the model reaches the same request through another
+action, such as a reminder one reminders action saved after another's call
+did not start, or a Files filter proposed to the phone after a call that did
+not start. A later call of another action that had no effect answers
+nothing, and nor does any later call of another action answer a failure
+whose action wrote words for the owner, such as a phone that cannot send a
+text or open its keypad from chat: those words reach the owner beside a
+reminder the turn set, whatever the reply claims. A later call may also
+have been for another request, such as a second recipient. A later call can answer a failure only
 when the model saw that failure first, in an earlier planner response. Such
 a failure stays open (above), and only the model can tell whether the later
 call did what the failed one was for. When the reply leaves it out, its host
-note says a later call of the turn ran, that when that later call did what
+note names the failed call's action and says a later call of the turn ran,
+naming the actions of the later calls that may have answered it, that when that later call did what
 the failed step was for the model gives its reply exactly as it was, word
 for word, and that otherwise the reply must say the failed step did not
 happen. When the model answers that note with its first reply again, word for word, it stands by
@@ -622,7 +627,9 @@ and safety copy are reported as above.
 
 ```quint
 pure def answerableLater(receiptless: bool, seenFirst: bool, ranLater: bool): bool = receiptless and seenFirst and ranLater
-pure def mayAnswer(sameAction: bool, laterOutcome: StepOutcome): bool = laterOutcome == Applied or laterOutcome == Proposed or (sameAction and laterOutcome == NoEffect)
+pure def mayAnswer(sameAction: bool, ownerWords: bool, laterOutcome: StepOutcome): bool =
+  if (sameAction) laterOutcome == Applied or laterOutcome == Proposed or laterOutcome == NoEffect
+  else not(ownerWords) and (laterOutcome == Applied or laterOutcome == Proposed)
 pure def gaveAnAnswer(draft: Draft): bool = draft == Answer
 pure def standsBy(draft: Draft, sameAsFirst: bool): bool = gaveAnAnswer(draft) and sameAsFirst
 pure def followsTheReply(answerable: bool, asked: bool, stoodBy: bool, modelsReply: bool, safetyCopy: bool): bool =
@@ -642,9 +649,13 @@ pure def lawAFailureWithAReceiptStillFollows(seenFirst: bool, ranLater: bool, as
   followsTheReply(answerableLater(false, seenFirst, ranLater), asked, stoodBy, modelsReply, false)
 pure def lawAFailureInTheSameResponseStillFollows(receiptless: bool, ranLater: bool, asked: bool, stoodBy: bool, modelsReply: bool): bool =
   followsTheReply(answerableLater(receiptless, false, ranLater), asked, stoodBy, modelsReply, false)
-pure def lawAnAppliedOrProposedCallMayAnswer(sameAction: bool): bool = mayAnswer(sameAction, Applied) and mayAnswer(sameAction, Proposed)
-pure def lawAnotherActionsCallWithNoEffectAnswersNothing(laterOutcome: StepOutcome): bool = mayAnswer(false, laterOutcome) == (laterOutcome == Applied or laterOutcome == Proposed)
-pure def lawAFailedOrRefusedCallAnswersNothing(sameAction: bool): bool = not(mayAnswer(sameAction, Failed)) and not(mayAnswer(sameAction, Rejected))
+pure def lawALaterRunOfTheSameActionMayAnswer(ownerWords: bool): bool =
+  mayAnswer(true, ownerWords, Applied) and mayAnswer(true, ownerWords, Proposed) and mayAnswer(true, ownerWords, NoEffect)
+pure def lawAnotherActionsAppliedOrProposedCallMayAnswerAFailureWithoutWordsForTheOwner(laterOutcome: StepOutcome): bool =
+  mayAnswer(false, false, laterOutcome) == (laterOutcome == Applied or laterOutcome == Proposed)
+pure def lawAnotherActionsCallNeverAnswersAFailureWithWordsForTheOwner(laterOutcome: StepOutcome): bool = not(mayAnswer(false, true, laterOutcome))
+pure def lawAFailedOrRefusedCallAnswersNothing(sameAction: bool, ownerWords: bool): bool =
+  not(mayAnswer(sameAction, ownerWords, Failed)) and not(mayAnswer(sameAction, ownerWords, Rejected))
 pure def lawWithNoLaterCallThatMayAnswerTheFailureStillFollows(receiptless: bool, seenFirst: bool, asked: bool, stoodBy: bool, modelsReply: bool): bool =
   followsTheReply(answerableLater(receiptless, seenFirst, false), asked, stoodBy, modelsReply, false)
 ```
