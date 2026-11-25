@@ -693,7 +693,7 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
   const { answer: failed, calls: failedCalls } = try callsFor({ text: "Add two plus two." })
   const failedAsked = reasked()
 
-  const noAnswer = "7 / 0 has no answer: it divides by zero."
+  const noAnswer = "That calculation has no answer: it divides by zero."
   const unparsed = `CALCULATE could not evaluate "two plus two": a number was expected at position 1. Supported: numbers with + - * / % ^ and parentheses.`
   const dividing = { name: "CALCULATE", arguments: { expression: "7 / 0" } }
   const secondAnswer = effect (...second: readonly string[]) => {

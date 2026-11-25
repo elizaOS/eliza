@@ -258,7 +258,7 @@ function tagsOut(said: string, from: number, to: number, tags: RegExp): string {
   })
 }
 
-export function withoutTags(said: string, tags: RegExp = modelTag): string {
+function withoutTags(said: string, tags: RegExp = modelTag): string {
   let out = ""
   let kept = 0
   for (const code of said.matchAll(codeSpan)) {

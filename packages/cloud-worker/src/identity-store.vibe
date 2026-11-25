@@ -157,7 +157,7 @@ function browserSession(account: AccountRow, access: string, refresh: string, se
   }
 }
 
-export effect function openSignInFamily(db: Client, identity: Identity) {
+effect function openSignInFamily(db: Client, identity: Identity) {
   const now = try Clock.currentTimeMillis
   const account = try accountForIdentity(db, identity, now)
   const factors = accountFactors(identityTx(db), account.id, now) catch effect () => { throw new StorageUnavailable() }
@@ -185,7 +185,7 @@ export effect function signInWithProof(db: Client, identity: Identity) {
   })
 }
 
-export function browserAccessBearer(request: Request): string | undefined {
+function browserAccessBearer(request: Request): string | undefined {
   const token = bearerToken(request.headers.get("authorization") ?? undefined)
   return token !== undefined && accessPattern.test(token) ? token : undefined
 }

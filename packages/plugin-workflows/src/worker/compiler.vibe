@@ -2,9 +2,9 @@
 import { GENERATED_ENGINE_DECLARATION } from "@elizaos/plugin-workflow-client"
 
 export { GENERATED_ENGINE_DECLARATION }
-export const GENERATED_SOURCE_MAX_BYTES = 65_536
-export const GENERATED_ENGINE_REVISION = "generated-workflow-engine-2"
-export const GENERATED_CONTEXT_METHODS: readonly string[] = ["step", "generate", "approval", "signal", "sleep"]
+const GENERATED_SOURCE_MAX_BYTES = 65_536
+const GENERATED_ENGINE_REVISION = "generated-workflow-engine-2"
+const GENERATED_CONTEXT_METHODS: readonly string[] = ["step", "generate", "approval", "signal", "sleep"]
 
 
 export error CompilerUnavailable { reason: string }

@@ -65,7 +65,6 @@ import { admittedTextLayer, copyScanTextLayers, type TextLayerRefused, type Scan
 import { field } from "./record-field.vibe"
 import { freshRevision, mutateRow, readRow, type TxOutcome } from browser
 
-export { copyScanTextLayers }
 
 export interface ScanDraft {
   readonly id: "document"

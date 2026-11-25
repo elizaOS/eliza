@@ -67,7 +67,7 @@ export error NoticeTapAborted { reason: unknown }
 export error NoticeTapReadFailed { cause: unknown }
 export error ApprovalNoticeReadFailed { cause: unknown }
 
-export effect function approvalNoticeIdentity(route: WorkflowNoticeRoute, proposalId: string): ApprovalNoticeIdentity!InvalidApprovalNotice {
+effect function approvalNoticeIdentity(route: WorkflowNoticeRoute, proposalId: string): ApprovalNoticeIdentity!InvalidApprovalNotice {
   if (!validProposalId(proposalId)) throw new InvalidApprovalNotice({ proposalId })
   return try promise(() => approvalIdentityOf(route, proposalId))
 }
@@ -155,7 +155,7 @@ effect function agentRead<A>(read: () => Promise<A>): A!ApprovalNoticeReadFailed
   return try mapError(tryPromise(() => read()), (cause) => new ApprovalNoticeReadFailed({ cause }))
 }
 
-export effect function revalidateApprovalNotice<Run, Review>(notice: SuspendedApprovalNotice, reads: WorkflowApprovalNoticeReads<Run, Review>, valid: () => boolean, signal: AbortSignal, now: () => number = () => Date.now()): ApprovalNoticeDecision!(ApprovalNoticeReadFailed | InvalidApprovalNotice) {
+effect function revalidateApprovalNotice<Run, Review>(notice: SuspendedApprovalNotice, reads: WorkflowApprovalNoticeReads<Run, Review>, valid: () => boolean, signal: AbortSignal, now: () => number = () => Date.now()): ApprovalNoticeDecision!(ApprovalNoticeReadFailed | InvalidApprovalNotice) {
   const route = notice.route
   const suspended: SuspendedNotice = { suspendedVersion: route.versionId, expiresAt: notice.expiresAt }
   const assumed = pendingApproval("Pending")
@@ -244,7 +244,7 @@ export function noticesClient(options: NoticesClientOptions = {}): NoticesClient
   }
 }
 
-export effect function restoreApprovals<Run, Review>(client: NoticesClient, notices: readonly SuspendedApprovalNotice[], reads: WorkflowApprovalNoticeReads<Run, Review>, valid: () => boolean, signal: AbortSignal, now?: () => number) {
+effect function restoreApprovals<Run, Review>(client: NoticesClient, notices: readonly SuspendedApprovalNotice[], reads: WorkflowApprovalNoticeReads<Run, Review>, valid: () => boolean, signal: AbortSignal, now?: () => number) {
   for (const notice of notices) {
     const decision = try revalidateApprovalNotice(notice, reads, valid, signal, now)
     if (decision === "stale") return
