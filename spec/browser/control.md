@@ -127,7 +127,10 @@ forward, reload and stop are offered only as the Browser history control,
 and the BROWSER command is not offered on that turn. The BROWSER command,
 bound to the tab the turn observed, answers a history move only on a turn
 whose device negotiated no history control and whose mounted browser takes
-agent commands. Otherwise no history move is offered.
+agent commands. Otherwise no history move is offered. Core's catalog gives the BROWSER
+command the general context every owner turn is planned in, beside its
+browser context, so it runs from any owner chat, as on the phone before
+VibeStack; its owner role gate and these offer rules are unchanged.
 
 ```quint
 type HistoryHome = HistoryAsControl | HistoryAsCommand | NoHistoryMove

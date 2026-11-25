@@ -6,7 +6,7 @@ import {
   type Action, type ActionResult, type AgentRuntime, type GenerateTextParams, type HandlerCallback, type IMessageService, type Media, type Memory, type MessageProcessingOptions, type MessageProcessingResult, type RoleGateRole, type RoomHandlerLease, type State, executePlannedToolCall, ModelType, getTrajectoryContext, historyWindowNotice, readSystemNotice, runWithTrajectoryContext, RunTerminalOwner, ServiceType, stampedMessage, stampYear, toElizaError, trackPostDeliveryTask, windowHistory, withActionGatePolicy, withRoomDeliverySettlement, wrapExternalContent, revertedEffectReceiptIds, utf8ByteLength, type EffectReceipt,
 } from "@elizaos/core"
 import { asksAgain, attachedDocumentBytes, attachedRead, documentTextFits, followsTheReply, hostNoteLabels, offersContextRestore, putToTheModel, reachesTheOwner, replySource, stampedForTheModel, type AttachedKind } from "../../gen/agent__conversation__planning.ts"
-import { carriesCutOffEffect, replyQuoteChars, storedFailureName } from "../../gen/agent__conversation__turns.ts"
+import { carriesCutOffEffect, failureEndsTheRun, replyQuoteChars, storedFailureName } from "../../gen/agent__conversation__turns.ts"
 import type { BindingView, LastCloudFailure } from "../models/binding.vibe"
 import { turnClock, ungroundedEventReply, ungroundedTimeReply, type Ungrounded } from "./clock.vibe"
 import { textForTurn } from "./heard.vibe"
@@ -331,6 +331,7 @@ async function respond(
       const terminal = new RunTerminalOwner(runtime, runtime.startRun(message.roomId), message, began, lease)
       const responseMessages: Memory[] = []
       let written = ""
+      let state: State | undefined
       const onStreamChunk = options?.onStreamChunk
       try {
         signal.throwIfAborted()
@@ -353,7 +354,7 @@ async function respond(
           window.windowed ? historyWindowNotice(window, offersContextRestore(actions.length) && window.deferred.length > 0 ? { kind: "restoreContext" } : undefined) : undefined,
         ])]
         const system = plannerSystem(runtime.character)
-        const state = await runtime.composeState(message, [], true, true)
+        state = await runtime.composeState(message, [], true, true)
         const planned = await planTurn({
           runtime, message, state, roles, actionGate, system, messages, signal,
           deferredHistory: { rows: window.deferred, earlier },
@@ -411,6 +412,12 @@ async function respond(
         const outcome = signal.aborted
           ? { status: "cancelled" as const, reason: "aborted", effects: terminal.effects }
           : { status: "failed" as const, error: { kind: named?.kind ?? "generation", transient: named === undefined, message: "The reply could not be generated" }, effects: terminal.effects }
+        if (!signal.aborted && !failureEndsTheRun(responseMessages.length > 0)) {
+          const answered = { status: "completed" as const, effects: terminal.effects }
+          await terminal.request(answered).catch((cause: unknown) => runtime.reportError("MessageService.respond", cause, { roomId: message.roomId, messageId: message.id }))
+          if (state !== undefined) evaluateLater(runtime, message, state, responseMessages, lease)
+          return { didRespond: true, responseContent: { text: written }, responseMessages, outcome: answered }
+        }
         const applied = carriesCutOffEffect(signal.aborted || kind !== undefined, hasFreshAppliedEffect(outcome.effects, began, Date.now()))
         const cloudCode = !signal.aborted && error instanceof ModelRefusal ? error.cloudCode : undefined
         const content = { text: written, ...(kind === undefined ? {} : { failureKind: kind }), ...(cloudCode === undefined ? {} : { cloudCode }), ...(applied ? { cutOffEffect: "applied" } : {}) }
