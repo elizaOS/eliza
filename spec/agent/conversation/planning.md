@@ -109,12 +109,14 @@ that turn's request and reply, until the window over it steps. A provider
 reuses a request's prompt cache up to its first changed byte, and the cached prefix
 is the tools, then the system prompt, then the messages, so a part that
 changes with the turn placed before the history costs every message after
-it. Each planning call also names its conversation's prompt cache key,
-`eliza-workflow-v1:` and the hex SHA-256 of the JSON `[agentId, roomId]`
+it. Each planning call also names its agent's prompt cache key,
+`eliza-workflow-v1:` and the hex SHA-256 of the JSON `[agentId]`
 followed by `:planner`, and each evaluator call the same key with
 `:evaluator`, so a provider that keeps one cache per key keeps one for
-each conversation and stage rather than one for every phone that sends
-the same prompt ([binding](../models/binding.md) decides where it is sent).
+each phone and stage rather than one for every phone that sends the same
+prompt, and a new conversation starts on the tools and system prompt that
+the phone's earlier calls and its warm-up (below) already cached
+([binding](../models/binding.md) decides where it is sent).
 
 ```quint
 type PromptPart = CharacterPrompt | OfferedTools | PriorHistory | LatestMessage | ScreenNote | DeviceNote | TaskNote | WindowNotice | RecalledExchanges
@@ -132,6 +134,44 @@ type ToolFact = LaunchAllowed | DeviceNegotiation | InstallationViews | BrowserC
 pure def shapesTools(f: ToolFact): bool = f == LaunchAllowed or f == DeviceNegotiation or f == InstallationViews or f == BrowserCommanded
 pure def carriedByMessage(f: ToolFact): bool = f == MessageWords or f == ScreenShown or f == ViewDelivery
 pure def lawNothingAMessageCarriesShapesTheTools(f: ToolFact): bool = carriedByMessage(f) implies not(shapesTools(f))
+```
+
+### A warm-up sends the planner's tools and system prompt once with a one-token cap, at most once every four minutes, and stores and shows nothing
+
+A page that expects the owner to talk soon (the app opened, returned to
+the foreground, Ask Alpha raised) asks the agent to warm up, so the first
+turn finds the provider's prompt cache, the cloud and their connections
+warm instead of paying for all three. The request carries the headers a
+turn of that page carries, so a warm-up of the enrolled device runs under
+that device's turn, as a first turn of a new conversation would: it builds
+the tools and the system prompt exactly as that turn does, the
+device-dependent tools included, and sends one planning call with them,
+one placeholder message, an output cap of one token and the planner's own
+choice of tools (Cerebras leaves the tools out of the prompt of a call
+that may call none, which would warm only the system prompt), under the
+agent's planning cache key, the one that turn names. Its answer is
+dropped: it starts no run, stores and publishes no message, writes its
+model-call log row under a room of its own and never a conversation's,
+changes no account state ([binding](../models/binding.md)), and a failure
+or a call that does not end within twenty seconds is dropped too. One
+warm-up runs at a time, and one asked within four minutes of the last that
+started is skipped, so a page may ask on every trigger and the account
+pays for at most one warm-up in four minutes; one refused for a blocked account still counts, so signing in again waits out the four minutes or the next trigger after them. The request is answered at
+once, saying only whether a warm-up was started; it never waits for the
+model.
+
+```quint
+pure val warmUpOutputCap = 1
+pure val warmUpSpacingMs = 240000
+pure val warmUpDeadlineMs = 20000
+pure def warmUpStarts(running: bool, lastStartedAt: int, now: int): bool =
+  not(running) and (lastStartedAt < 0 or now - lastStartedAt >= warmUpSpacingMs)
+pure val lastStartedAtValues = Set(-1, 0, 100000)
+pure val nowValues = Set(0, 100000, 239999, 340000, 600000)
+pure def lawAWarmUpWaitsFourMinutesAfterTheLast(running: bool, lastStartedAt: int, now: int): bool =
+  (lastStartedAt >= 0 and now - lastStartedAt < warmUpSpacingMs) implies not(warmUpStarts(running, lastStartedAt, now))
+pure def lawOneWarmUpRunsAtATime(lastStartedAt: int, now: int): bool = not(warmUpStarts(true, lastStartedAt, now))
+pure def lawTheFirstWarmUpStarts(now: int): bool = warmUpStarts(false, -1, now)
 ```
 
 ### An action may narrow its tool to the turn, never beyond its registered form
@@ -466,9 +506,16 @@ kept when it answers (it is neither blank nor a pending-work cue, read as
 below), it is not the first reply again, and the clock rules hold of it.
 Otherwise, or when the call fails, the first
 reply is kept, or the clock's or the calendar change's own words (below)
-take its place when it stated a time they did not observe. On either path,
-each remaining open failure and attachment omission is reported in its
-own words if the chosen reply does not already contain those words.
+take its place when it stated a time they did not observe. Under the
+model's reply, first or kept second, each remaining open failure whose words
+its action wrote for the owner, and each attachment omission, is reported in
+those words if the reply does not already contain them; a failure's error,
+its result text that no action marked for the owner, and the host's own
+sentence that a call did not start or did not complete reached the model
+only, and the owner hears that failure in the model's words alone. Only as
+the last resort, under fixed words, does each remaining open failure follow
+in its own words if the reply does not already contain them, so that a
+reply never stands as if the step had happened.
 A reply with nothing unreported and no
 unobserved time makes no further call, a turn cut off at the model's output
 limit is never asked again, and no turn is asked more than once.
@@ -486,6 +533,7 @@ pure def replySource(unreported: bool, ungrounded: bool, cutOff: bool, answered:
   else if (asksAgain(unreported, ungrounded, cutOff) and answered and grounded) RevisedReply
   else FixedWords
 pure def putToTheModel(held: bool, safetyCopy: bool): bool = not(held) and not(safetyCopy)
+pure def reachesTheOwner(ownCopy: bool, safetyCopy: bool): bool = ownCopy or safetyCopy
 pure def answeredAgain(draft: Draft, sameAsFirst: bool): bool = gaveAnAnswer(draft) and not(sameAsFirst)
 pure def lawAGroundedReplyMakesNoFurtherCall(cutOff: bool): bool = not(asksAgain(false, false, cutOff))
 pure def lawAGroundedReplyIsTheModels(cutOff: bool, answered: bool, grounded: bool): bool = replySource(false, false, cutOff, answered, grounded) == ModelReply
@@ -495,6 +543,8 @@ pure def lawFixedWordsAreTheLastResort(unreported: bool, ungrounded: bool, cutOf
   replySource(unreported, ungrounded, cutOff, answered, grounded) == FixedWords implies ((unreported or ungrounded) and (cutOff or not(answered) or not(grounded)))
 pure def lawACutOffTurnIsNeverAskedAgain(unreported: bool, ungrounded: bool): bool = not(asksAgain(unreported, ungrounded, true))
 pure def lawSafetyCopyIsNeverRewritten(held: bool): bool = not(putToTheModel(held, true))
+pure def lawOnlySafetyCopyFollowsAReplyWithoutTheActionsOwnWords(safetyCopy: bool): bool = reachesTheOwner(false, safetyCopy) == safetyCopy
+pure def lawAnActionsOwnWordsForTheOwnerMayFollowAReply(safetyCopy: bool): bool = reachesTheOwner(true, safetyCopy)
 pure def lawWordsTheReplyHoldsAreNotAskedFor(safetyCopy: bool): bool = not(putToTheModel(true, safetyCopy))
 pure def lawACueIsNoSecondAnswer(sameAsFirst: bool): bool = not(answeredAgain(Cue, sameAsFirst)) and not(answeredAgain(Silent, sameAsFirst))
 pure def lawTheFirstReplyAgainIsNoSecondAnswer(draft: Draft): bool = not(answeredAgain(draft, true))
@@ -517,11 +567,13 @@ step was for the model gives its reply exactly as it was, word for word, and
 that otherwise the reply must say the failed step did not happen. When the model
 answers that note with its first reply again, word for word, it stands by
 that reply, and when that reply is delivered, the failure's own words do not
-follow it. Otherwise the failure's own words follow the reply as for any
-failure: when the rules keep a second answer, when the call fails, when the model answers
-with a blank or a pending-work cue (read as below), when it gives another
-answer that is not kept, when the failure was never put to the model, or
-when the clock's or the change's words take the reply's place. A failure
+follow it. Otherwise the failure is reported as any failure is (above): a
+kept second answer reports it in the model's words, followed only by words
+its action wrote for the owner, and its own words follow the reply when the
+call fails, when the model answers with a blank or a pending-work cue (read
+as below), when it gives another answer that is not kept, when the failure
+was never put to the model, or when the clock's or the change's words take
+the reply's place. A failure
 with a receipt, a failure in the same planner response as the later call,
 and safety copy are reported as above.
 

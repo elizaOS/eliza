@@ -191,6 +191,13 @@ module node {
     return cloud.calls.filter(({ path }) => path.endsWith("/chat/completions")).length
   }
 
+  /** @throws {never} */
+  export async function modelLogRooms(runtime: AgentRuntime): Promise<{ warmUp: number; other: readonly string[] }> {
+    const rooms = (await runtime.adapter.getLogs({ entityId: runtime.agentId, limit: 100 })).filter(({ type }) => type.startsWith("useModel:")).map(({ roomId }) => String(roomId))
+    const warmUp = stringToUuid(`warm-up:${runtime.agentId}`)
+    return { warmUp: rooms.filter((room) => room === warmUp).length, other: rooms.filter((room) => room !== warmUp) }
+  }
+
   export async function overlapping(socket: string, token: string, cloud: CloudFake, id: string, release: () => void) {
     const ask = (body: object): Promise<LocalAnswer | Refusal> =>
       request(socket, { method: "POST", path: `/api/conversations/${id}/messages`, token, body })
@@ -272,7 +279,7 @@ module node {
     return text
   }
 }
-import { calendarProbe, completions, cutTurn, failParticipantLookupOnce, handedDirectly, privateAgenda, privateReadCount, privateReader, failNext, fixtureApp, lastTurnHistory, lastTurnPrompt, localDay, movedDentist, nearestCafes, overlapping, plainLog, refuseMoves, roomMessages, seedHistory, storeNotice, unsaidMove } from node
+import { calendarProbe, completions, cutTurn, modelLogRooms, failParticipantLookupOnce, handedDirectly, privateAgenda, privateReadCount, privateReader, failNext, fixtureApp, lastTurnHistory, lastTurnPrompt, localDay, movedDentist, nearestCafes, overlapping, plainLog, refuseMoves, roomMessages, seedHistory, storeNotice, unsaidMove } from node
 
 effect function cloudAgent(cloud: CloudFake, state?: Scratch) {
   return try startInProcess({
@@ -291,6 +298,11 @@ effect function send(agent: InProcess, id: string, body: object, headers?: Reado
 }
 
 const replyOf = (answer: { readonly body: unknown }) => answer.body as Reply
+
+effect function settled(done: () => boolean) {
+  for (let waited = 0; waited < 5_000 && !done(); waited += 20) try Effect.sleep(20)
+  return done()
+}
 const stamp = /^\[message_at=[^\]]+\] /
 
 it.live('A reply quotes only the selected message in its own conversation and replays without a model call (spec/agent/conversation/turns.md, "A quoted reply uses only the selected message from this conversation")', effect () => {
@@ -667,7 +679,7 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
     solved: [solved.text, solvedCalls],
     actions: solved.actionResults.map(({ action }) => action),
     unrendered: [unrendered.text, unrenderedCalls, unrenderedAsked.toolChoice, unrenderedAsked.said, unrenderedAsked.note],
-    failed: [failed.text.startsWith("I couldn't add two plus two: the calculator didn't take it.\n\n") && failed.text.includes('CALCULATE could not evaluate "two plus two"'), failedCalls, failedAsked.said, failedAsked.note.startsWith(asksAgain) && failedAsked.note.includes("A step of this turn did not happen as asked.")],
+    failed: [failed.text === "I couldn't add two plus two: the calculator didn't take it.", failedCalls, failedAsked.said, failedAsked.note.startsWith(asksAgain) && failedAsked.note.includes("A step of this turn did not happen as asked.")],
     notFinal: { missingFailure, cuedAgain, sameAgain, blankAgain, fencedReport: quotedNote.includes(wrapExternalContent(divided, { source: "unknown" })) },
     quoted: [quoted.text, quotedCalls],
     cutAfterFailure: [cutAfterFailure.text, cutAfterFailureCalls],
@@ -687,22 +699,22 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
   }, {
     offered: ["RESTORE_CONTEXT", "CALCULATE", "VIEWS"],
     sameTools: true,
-    declined: [true, `I can't switch screens from this chat, so home isn't showing.\n\n${unavailableNotice}`],
+    declined: [true, "I can't switch screens from this chat, so home isn't showing."],
     toolResult: true,
     solved: ["That is 1,123,324.", 2],
     actions: ["CALCULATE"],
     unrendered: [
-      `I can't switch screens from this chat, so home isn't showing.\n\n${unavailableNotice}`, 3, "none", "I can't switch screens from this chat.",
+      "I can't switch screens from this chat, so home isn't showing.", 3, "none", "I can't switch screens from this chat.",
       `${asksAgain}A step of this turn did not happen as asked. The reply must tell the person so truthfully, never claiming it happened. The step's own report: ${JSON.stringify(unavailableNotice)}`,
     ],
     failed: [true, 3, "Done!", true],
-    notFinal: { missingFailure: [`Division is a mathematical operation.\n\n${divided}`, 3], cuedAgain: [`Done!\n\n${divided}`, 3], sameAgain: [`Done!\n\n${divided}`, 3], blankAgain: [`Done!\n\n${divided}`, 6], fencedReport: true },
+    notFinal: { missingFailure: ["Division is a mathematical operation.", 3], cuedAgain: [`Done!\n\n${divided}`, 3], sameAgain: [`Done!\n\n${divided}`, 3], blankAgain: [`Done!\n\n${divided}`, 6], fencedReport: true },
     quoted: [`It returned: ${divided}`, 2],
     cutAfterFailure: [`${cutOffReply}\n\n${divided}`, 2],
-    separate: ["The second result is 36. The first calculation didn't run.\n\nA CALCULATE call did not start.", 3],
+    separate: ["The second result is 36. The first calculation didn't run.", 3],
     corrected: ["The result is 17.\n\nA CALCULATE call did not start.", 4],
     correctedAgain: ["The result is 17.", 4, true],
-    otherLater: ["12 times 3 is 36. I couldn't work out 8 plus 9.\n\nA CALCULATE call did not start.", 4, true],
+    otherLater: ["12 times 3 is 36. I couldn't work out 8 plus 9.", 4, true],
     refusalStatuses: [["not_started", undefined], ["not_started", undefined]],
     duration: "One second is 1,000 milliseconds.",
     promised: [
@@ -778,7 +790,7 @@ it.live(`A tool call the model wrote as text is read as the call on Qwen, and is
   try Effect.try(() => assert.deepStrictEqual([madeCall?.content, madeCall?.tool_calls?.map(({ function: called }) => [called.name, JSON.parse(called.arguments)])], [null, [["CALCULATE", { expression: "2 + 2" }]]]))
 }, 120_000)
 
-it.live(`A failure on one recipient or event stays reported beside a success on another, in either order, the model is asked once to report it and its own words follow a reply that still leaves it out, and a retry of the same operation that succeeds closes it (${planning}, "A failure or proposal the turn made stays reported unless a later success of the same operation supersedes it"; ${planning}, "A reply that leaves a failure unreported is written again once, and the delivered reply still reports open failures and attachment omissions"; ${planning}, "A failure with no receipt that a later run of its action may have answered is the model's to report, and its own words follow the reply unless the model stands by a reply without them")`, effect () => {
+it.live(`A failure on one recipient or event stays reported beside a success on another, in either order, the model is asked once to report it, its own words follow only a reply the model did not answer again, and a retry of the same operation that succeeds closes it (${planning}, "A failure or proposal the turn made stays reported unless a later success of the same operation supersedes it"; ${planning}, "A reply that leaves a failure unreported is written again once, and the delivered reply still reports open failures and attachment omissions"; ${planning}, "A failure with no receipt that a later run of its action may have answered is the model's to report, and its own words follow the reply unless the model stands by a reply without them")`, effect () => {
   const cloud = try cloudFake(deviceKey)
   const agent = try startInProcess({
     launch: {
@@ -815,7 +827,7 @@ it.live(`A failure on one recipient or event stays reported beside a success on 
     aliceFirst: { text: "Both texts are sent.\n\nThe text to Alice did not send.", calls: 4, laterRunNote: false },
     retried: { text: "Alice has your text.", calls: 3, laterRunNote: false },
     events: { text: "Both events moved.\n\nThe standup event did not change.", calls: 3, laterRunNote: false },
-    told: { text: "Bob has your text.\n\nThe text to Alice did not send.", calls: 3, laterRunNote: false },
+    told: { text: "Bob has your text.", calls: 3, laterRunNote: false },
   }))
 }, 120_000)
 
@@ -1067,6 +1079,58 @@ it.live(`Each call keeps the system prompt and puts the turn's notes after the h
   }))
 }, 120_000)
 
+it.live(`A warm-up sends the planner's own system prompt and tools once with a one-token cap, answers at once, skips a second within four minutes, drops a failure and stores nothing (${planning}, "A warm-up sends the planner's tools and system prompt once with a one-token cap, at most once every four minutes, and stores and shows nothing")`, effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const agent = try startInProcess({ launch: { backend: { kind: "cloud", origin: cloud.origin, largeModel: "cerebras/qwen-3.8-27b" }, load: [basicActionsModuleName], allowed: ["REPLY", "IGNORE", "NONE", "CALCULATE"] }, frame: { credential: { version: 1, value: deviceKey } }, modules: builtinModuleFactories })
+  const sent = () => cloud.calls.filter(({ path }) => path.endsWith("/chat/completions")).map(({ body }) => body as { messages: { role: string; content?: unknown }[]; tools?: unknown; tool_choice?: unknown; max_tokens?: unknown; prompt_cache_key?: unknown })
+  const warmUp = { method: "POST", path: "/api/turns/warm" } as const
+
+  try Effect.sync(() => cloud.script(cutOff("o"), text("First answer.")))
+  const first = answerOf(try call(agent, warmUp))
+  const again = answerOf(try call(agent, warmUp))
+  const warmed = try settled(() => completions(cloud) === 1)
+  const conversationsAfterWarm = (answerOf(try call(agent, { method: "GET", path: "/api/conversations" })).body as { conversations: unknown[] }).conversations.length
+  const { id } = try conversation(agent)
+  const reply = replyOf(try send(agent, id, { text: "Hi" }))
+  const [warmCall, turn] = sent()
+  const history = answerOf(try call(agent, { method: "GET", path: `/api/conversations/${id}/messages` })).body as { messages: unknown[] }
+  const logged = try host("model-call log rooms", () => modelLogRooms(agent.agent.runtime))
+  const { roomId: conversationRoom } = (answerOf(try call(agent, { method: "GET", path: "/api/conversations" })).body as { conversations: { roomId: string }[] }).conversations[0] ?? { roomId: "" }
+
+  const failures: CloudReply[] = try Effect.sync(() => [rateLimited(Date.now() + 60_000), text(""), requestFault("parser_error"), refusal(400, "invalid_request")])
+  const afterFailures: unknown[] = []
+  for (const failed of failures) {
+    const failing = try cloudFake(deviceKey)
+    const fresh = try startInProcess({ launch: { backend: { kind: "cloud", origin: failing.origin, largeModel: "cerebras/qwen-3.8-27b" }, load: [basicActionsModuleName], allowed: ["REPLY", "IGNORE", "NONE", "CALCULATE"] }, frame: { credential: { version: 1, value: deviceKey } }, modules: builtinModuleFactories })
+    try Effect.sync(() => failing.script(failed))
+    const asked = answerOf(try call(fresh, warmUp)).status
+    try settled(() => completions(failing) >= 1)
+    try Effect.sleep(200)
+    const status = answerOf(try call(fresh, { method: "GET", path: "/api/status" })).body as { canRespond: boolean; blocked: boolean; lastCloudFailure?: unknown }
+    try Effect.sync(() => failing.script(text("Still here.")))
+    const { id: freshId } = try conversation(fresh)
+    const answered = replyOf(try send(fresh, freshId, { text: "Hi" }))
+    afterFailures.push({ asked, canRespond: status.canRespond, blocked: status.blocked, lastCloudFailure: status.lastCloudFailure ?? "none", reply: answered.text, failureKind: answered.failureKind ?? "none" })
+  }
+
+  try Effect.try(() => assert.deepStrictEqual({
+    first: first.status, firstBody: first.body, again: again.body, warmed, conversationsAfterWarm,
+    sameSystem: JSON.stringify(warmCall?.messages[0]) === JSON.stringify(turn?.messages[0]),
+    sameTools: JSON.stringify(warmCall?.tools) === JSON.stringify(turn?.tools) && Array.isArray(warmCall?.tools),
+    sameKey: typeof warmCall?.prompt_cache_key === "string" && warmCall.prompt_cache_key === turn?.prompt_cache_key,
+    warmShape: [warmCall?.messages.length, warmCall?.messages[1], warmCall?.max_tokens, warmCall?.tool_choice],
+    reply: reply.text, history: history.messages.length,
+    logged: [logged.warmUp <= 1, logged.other.length > 0 && logged.other.every((room) => room === conversationRoom)],
+    afterFailures,
+  }, {
+    first: 202, firstBody: { started: true }, again: { started: false }, warmed: true, conversationsAfterWarm: 0,
+    sameSystem: true, sameTools: true, sameKey: true, warmShape: [2, { role: "user", content: "." }, 1, "auto"],
+    reply: "First answer.", history: 2,
+    logged: [true, true],
+    afterFailures: failures.map(() => ({ asked: 202, canRespond: true, blocked: false, lastCloudFailure: "none", reply: "Still here.", failureKind: "none" })),
+  }))
+}, 120_000)
+
 it.live(`A long conversation keeps its prefix, recalls earlier dialogue at the tail and restores it once without running sibling tools (${planning}, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history"; ${planning}, "A planner can restore the turn's deferred history once and runs no sibling action from that response"; spec/core/context.md, "A host with no reviewer defers old history by position, in fixed steps from a user message")`, effect () => {
   const cloud = try cloudFake(deviceKey)
   const agent = try startInProcess({
@@ -1294,7 +1358,7 @@ it.live(`A reply that misstates the time a calendar change got is asked for once
   }))
 }, 120_000)
 
-it.live(`A calendar move refused without a receipt and then made by the model's own corrected call adds no refusal words once the model stands by a reply without them, its words follow a kept second answer and when the model gives no answer or another answer that is not kept, and a refusal with no later move or in the same response is still reported (${planning}, "A failure with no receipt that a later run of its action may have answered is the model's to report, and its own words follow the reply unless the model stands by a reply without them"; ${planning}, "A reply that leaves a failure unreported is written again once, and the delivered reply still reports open failures and attachment omissions")`, effect () => {
+it.live(`A calendar move refused without a receipt and then made by the model's own corrected call adds no refusal words once the model stands by a reply without them, a kept second answer reports it in the model's words alone, its words follow when the model gives no answer or another answer that is not kept, and a refusal with no later move or in the same response is still reported (${planning}, "A failure with no receipt that a later run of its action may have answered is the model's to report, and its own words follow the reply unless the model stands by a reply without them"; ${planning}, "A reply that leaves a failure unreported is written again once, and the delivered reply still reports open failures and attachment omissions")`, effect () => {
   const cloud = try cloudFake(deviceKey)
   const agent = try startInProcess({
     launch: { backend: { kind: "cloud", origin: cloud.origin }, callerRole: "owner", load: [basicActionsModuleName], allowed: ["REPLY", "IGNORE", "NONE", "MOVE_EVENT"] },
@@ -1327,7 +1391,7 @@ it.live(`A calendar move refused without a receipt and then made by the model's 
     sameAgain: { reply: right, calls: 4, laterRunNote: true },
     failedAgain: { reply: `${right}\n\n${unsaidMove}`, calls: 4, laterRunNote: true },
     cuedAgain: { reply: `${right}\n\n${unsaidMove}`, calls: 4, laterRunNote: true },
-    toldAgain: { reply: `Your dentist is now 9–10 AM.\n\n${unsaidMove}`, calls: 4, laterRunNote: true },
+    toldAgain: { reply: "Your dentist is now 9–10 AM.", calls: 4, laterRunNote: true },
     rangeWrongAgain: { reply: `${right}\n\n${unsaidMove}`, calls: 4, laterRunNote: true },
     heldButMistimed: { reply: `${movedDentist}\n\n${unsaidMove}`, calls: 4, laterRunNote: false },
     mistimedTwice: { reply: `${movedDentist}\n\n${unsaidMove}`, calls: 4, laterRunNote: true },
