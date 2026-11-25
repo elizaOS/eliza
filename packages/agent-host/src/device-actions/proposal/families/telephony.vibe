@@ -129,11 +129,11 @@ const forms: readonly ProposalForm[] = [
   {
     types: ["sms_compose"], offered: offeredWithAll(["SmsComposeV1", "SmsComposeV2"]),
     schema: form("sms_compose", { target: anyTarget, body }, {
-      draft: { type: "boolean", description: "true when the owner asks only to draft or write it: it waits in the text field, unsent." },
+      draft: { type: "boolean", description: "true: the text opens unsent in Messages for the owner to edit and send. Left out: the owner approves sending it on the phone." },
       recipientKind, reviewRequested,
     }),
     guidance: [
-      "sms_compose is a reviewed SMS to one recipient; it works from any view and the phone chooses the SIM, so prefer it over sms_send.",
+      "sms_compose is a reviewed SMS to one recipient; it works from any view and the phone chooses the SIM, so prefer it over sms_send. Set draft: true when the owner asks to draft, write or prepare a text rather than send it.",
       composeGuidance, targetGuidance, referenceGuidance,
     ],
   },
