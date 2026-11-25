@@ -149,7 +149,7 @@ effect function enrollmentOf(request: EnrollmentRequest) {
   return (enrollUpdater(request) |> map(%, (record): readonly string[] => [record.outcome])) catch (error): readonly string[] => (error._tag === "EnrollmentRefused" ? ["EnrollmentRefused", ...error.problems] : [error._tag])
 }
 
-it.effect.skipIf(skipped !== null)(`Compose a Pixel 10a production product with first run, the system updater and a pinned boot animation, refuse every unreviewed variant, and never overwrite it${suffix} (spec/os/image/product.md, "Story: Compose my product from a pinned device profile"; spec/os/image/product.md, "A product targets the Pixel 10a or the Cuttlefish x86_64 phone, from the source profile pinned for it and a source verdict that admitted it"; spec/os/image/product.md, "Composition never overwrites the product list, the product makefile, the device templates, the brand assets, the record, the updater or first-run sources"; spec/os/image/product.md, "The boot animation is the stock one, or exactly the pinned archive of stored entries with a root desc.txt and a frame in every part"; spec/os/image/product.md, "A production composition has no unset or placeholder field, and a production Cuttlefish product pins its host packages and platform certificate"; spec/os/image/product.md, "The composition record binds every staged artifact to the descriptor digest and claims staging only")`, effect () => {
+it.effect.skipIf(skipped !== null)(`Compose a Pixel 10a production product with first run, the system updater and a pinned boot animation, refuse every unreviewed variant, and never overwrite it${suffix} (spec/os/image/product.md, "Story: Compose my product from a pinned device profile"; spec/os/image/product.md, "A product targets the Pixel 10a or the Cuttlefish x86_64 phone, from the source profile pinned for it and a source verdict that admitted it"; spec/os/image/product.md, "Composition never overwrites the product list, the product makefile, the device templates, the brand assets, the record, the updater or first-run sources"; spec/os/image/product.md, "The boot animation is the stock one, or exactly the pinned archive of stored entries with a root desc.txt and a frame in every part"; spec/os/image/product.md, "A production composition has no unset or placeholder field, and a production Cuttlefish product pins its host packages and platform certificate"; spec/os/image/product.md, "The composed product keeps the stock kernel, Virtual A/B with lz4 snapshots, enforcing SELinux with neverallows checked, and DeskClock required once"; spec/os/image/product.md, "The composition record binds every staged artifact to the descriptor digest and claims staging only")`, effect () => {
   provide NodeServices.layer {
     const staged = try stagedOverlay("image-product-pixel")
     if (staged === undefined) return
@@ -183,6 +183,7 @@ it.effect.skipIf(skipped !== null)(`Compose a Pixel 10a production product with 
     assert.deepStrictEqual(try problemsOf({ ...base, descriptor: try at("extra-field", { ...pixel, hostPackages: [] }) }), ["DescriptorInvalid"])
     assert.deepStrictEqual(Object.keys(try readTree(staged.output)).sort(), before)
 
+    try writeTree(staged.output, { "clock.mk": "PRODUCT_PACKAGES += \\\n    Camera2 # DeskClock is added by composition\n" })
     const descriptorFile = try at("pixel", pixel)
     const record = try composeProduct({ ...base, descriptor: descriptorFile })
     const descriptorSha256 = sha256(new Uint8Array(try files.readFile(descriptorFile)))
@@ -238,7 +239,7 @@ it.effect.skipIf(skipped !== null)(`Compose a Cuttlefish development product on 
     assert.deepStrictEqual(try problemsOf({ ...base, purpose: "Development", descriptor: try at("development", CUTTLEFISH) }), ["ClockNamedTwice"])
     try writeTree(staged.output, { "clock.mk": "PRODUCT_PACKAGES += \\\n    DeskClock \\\n    Camera2\nPRODUCT_PACKAGES += DeskClock\n" })
     assert.deepStrictEqual(try problemsOf({ ...base, purpose: "Development", descriptor: try at("development", CUTTLEFISH) }), ["ClockNamedTwice"])
-    try writeTree(staged.output, { "clock.mk": "PRODUCT_PACKAGES += \\\n    DeskClock \\\n    Camera2\n" })
+    try writeTree(staged.output, { "clock.mk": "PRODUCT_PACKAGES += \\\n    DeskClock \\\n    Camera2 # DeskClock is already listed above\n" })
 
     const record = try composeProduct({ ...base, purpose: "Development", descriptor: try at("development", CUTTLEFISH) })
     const tree = try readTree(staged.output)

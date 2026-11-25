@@ -23,7 +23,7 @@ import {
 } from "../../gen/os__build__androidBuild.effect.vibe"
 import { hostPayloadAdmitted, signingNameCount, type NamedSet, type PayloadEntry, type PublishedApk } from "../../gen/os__build__androidHost.effect.vibe"
 import { modelSuffixes } from "../../gen/os__build__runtimePayload.effect.vibe"
-import { listAndroidArtifactEntries, parseDigest, readApkSignerDigest } from "../image/apk.vibe"
+import { assertAndroidArtifactSnapshotUnchanged, isUnsignedBuildApk, listAndroidArtifactEntries, parseDigest, readApkSignerDigest, snapshotAndroidArtifact } from "../image/apk.vibe"
 import { PROFILE_DOCUMENT } from "./android-host.vibe"
 import { INFERENCE_LIBRARY, INVENTORY_ASSET } from "./runtime-payload.vibe"
 import { BundleFacts } from "./runtime-payload.schema.vibe"
@@ -495,21 +495,31 @@ effect function manifestRows(file: string) {
   const rows: ManifestRow[] = []
   if (!Array.isArray(raw)) return rows
   for (const row of raw) {
-    if (typeof row !== "object" || row === null) continue
+    if (typeof row !== "object" || row === null) return []
     const [flavor, name, sha256, signer] = ["flavor", "name", "sha256", "signer"].map((key) => Reflect.get(row, key))
-    if (typeof flavor === "string" && typeof name === "string" && typeof sha256 === "string" && (typeof signer === "string" || signer === null)) rows.push({ flavor, name, sha256, signer })
+    if (typeof flavor !== "string" || typeof name !== "string" || typeof sha256 !== "string" || (typeof signer !== "string" && signer !== null)) return []
+    rows.push({ flavor, name, sha256, signer })
   }
   return rows
 }
 
 effect function publishedRow(run: AndroidBuildRun, row: ManifestRow, apks: readonly string[]) {
-  const files = try FileSystem.FileSystem
   const path = try Path.Path
   const file = path.join(run.work, NEXT, row.name)
   const listed = apks.includes(row.name)
   const [, fileFlavor = "", build] = APK_NAME.exec(row.name) ?? []
-  const signer = listed ? (readApkSignerDigest(file, { env: run.environment }) catch () => undefined) : undefined
-  const fresh = listed && sha256Hex((files.readFile(file) catch () => new Uint8Array())) === row.sha256 && (signer ?? null) === row.signer
+  const snapshot = listed ? (snapshotAndroidArtifact(file) catch () => undefined) : undefined
+  const matchesDigest = snapshot?.sha256 === row.sha256
+  const signer = matchesDigest && row.signer !== null && build !== "release-unsigned"
+    ? (readApkSignerDigest(file, { env: run.environment }) catch () => undefined) : undefined
+  const declaredSigning = row.signer === null
+    ? build === "release-unsigned" && matchesDigest && snapshot !== undefined && (try isUnsignedBuildApk(file, snapshot.bytes, run.environment))
+    : signer === row.signer
+  const fresh = matchesDigest && declaredSigning && snapshot !== undefined && (effect {
+    const after = try snapshotAndroidArtifact(file)
+    try assertAndroidArtifactSnapshotUnchanged(file, snapshot, after)
+    return true
+  } catch () => false)
   const published: PublishedApk = {
     flavor: row.flavor,
     fileFlavor,

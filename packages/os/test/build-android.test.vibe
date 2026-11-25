@@ -68,7 +68,8 @@ const rows = variants.map((flavor) => {
   const signer = signed.endsWith("-unsigned.apk") ? null : /certificate SHA-256 digest: ([a-f0-9]{64})/.exec(execFileSync(process.env.FIXTURE_APKSIGNER, ["verify", "--print-certs", path.join(directory, signed)], { encoding: "utf8" }))[1]
   return { flavor, name, sha256: createHash("sha256").update(readFileSync(file)).digest("hex"), signer }
 })
-writeFileSync(path.join(directory, "apk-manifest.json"), JSON.stringify(rows, null, 2))
+const manifest = process.env.FIXTURE_MODE === "malformed-manifest" ? [...rows, {}] : rows
+writeFileSync(path.join(directory, "apk-manifest.json"), JSON.stringify(manifest, null, 2))
 `
 
   export interface PathBuild {
@@ -256,6 +257,7 @@ it.effect.skipIf(skipped !== null)(`Refuse bad requests before Gradle and replac
       ["model", "all", "VerificationFailed"],
       ["stale", "all", "VerificationFailed"],
       ["crossed", "all", "VerificationFailed"],
+      ["malformed-manifest", "all", "VerificationFailed"],
       ["debug-rows", "all", "VerificationFailed"],
       ["unsigned-claimed", "none", "VerificationFailed"],
       ["dirty", "all", "SourceMoved"],
@@ -266,7 +268,8 @@ it.effect.skipIf(skipped !== null)(`Refuse bad requests before Gradle and replac
       try writeTree(fixture.root, { "extra.txt": EXTRA })
     }
 
-    const unsignedBuild = try buildAndroid(fixture.options("unsigned", "none"))
+    const unsignedOptions = fixture.options("unsigned", "none")
+    const unsignedBuild = try buildAndroid({ ...unsignedOptions, environment: { ...unsignedOptions.environment, JAVA_TOOL_OPTIONS: "-Dfile.encoding=UTF-8" } })
     const unsigned = try published(output)
     assert.deepStrictEqual(unsignedBuild.manifest.map((row) => row.name), VARIANTS.map((flavor) => `${flavor}-release-unsigned.apk`))
     assert.deepStrictEqual(Object.keys(unsigned), ["apk-manifest.json", "launcher-debug.apk", "launcher-release-unsigned.apk", "sideload-debug.apk", "sideload-release-unsigned.apk"])

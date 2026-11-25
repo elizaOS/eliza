@@ -112,7 +112,11 @@ pure def sometimesFailedCopyIsCleanedUp(b: AndroidBuild): bool = b.phase == Fail
 ### The private set is verified against the pin, the payload and a fresh APK manifest before it can be published
 
 The consumer's verify command runs on the private copy and writes the APK
-manifest there, so no earlier run's manifest can pass. The shell then reads
+manifest there, so no earlier run's manifest can pass. A malformed row
+invalidates the manifest. The shell reads the APK bytes to verify the
+digest and checks the declared signing state. An unreadable APK or a
+signer check that cannot establish its signing state fails verification.
+The shell then reads
 the pinned commit and the payload inventory again: a build that moved the
 source off its pin or changed the staged payload fails, whatever the
 manifest says. A failed set is never renamed (`P::rename` refused), so the
