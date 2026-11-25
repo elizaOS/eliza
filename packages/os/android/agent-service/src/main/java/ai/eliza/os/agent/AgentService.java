@@ -643,9 +643,9 @@ public class AgentService extends Service {
         spawned = AgentSupervisor.spawn(epoch, command, frame, (spawnedEpoch, pid) -> journal.record(Math.toIntExact(pid), spawnedEpoch),
           readyEpoch -> HealthPolicy.classify(probe(agentSocket, launchToken, () -> true), readyEpoch) == HealthPolicy.Probe.OK,
           new AgentSupervisor.Listener() {
-            @Override public void ready(long readyEpoch) { later(() -> settled(() -> ready(readyEpoch))); }
+            @Override public void ready(long readyEpoch) { later(() -> settled(() -> AgentService.this.ready(readyEpoch))); }
             @Override public void readinessTimedOut(long timedOut) { later(() -> settled(() -> { if (owns(timedOut)) step(new AgentPolicy.ReadyTimeout()); })); }
-            @Override public void exited(long exitedEpoch, int code) { later(() -> settled(() -> exited(exitedEpoch, code))); }
+            @Override public void exited(long exitedEpoch, int code) { later(() -> settled(() -> AgentService.this.exited(exitedEpoch, code))); }
           });
       }
       socket = agentSocket;

@@ -364,6 +364,7 @@
         "@elizaos/plugin-notes-client#build",
         "@elizaos/plugin-notes-client#typecheck",
         "@elizaos/plugin-notes-client#test",
+        "@elizaos/plugin-notes-client#test:browser",
         "@elizaos/plugin-personal-assistant#build",
         "@elizaos/plugin-personal-assistant#typecheck",
         "@elizaos/plugin-personal-assistant#test",

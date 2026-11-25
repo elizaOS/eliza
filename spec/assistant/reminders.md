@@ -35,6 +35,11 @@ on the weekdays the owner named, or a repeat on an interval ("every two
 hours"). A repeat keeps the owner's clock and follows it when they state a
 new zone.
 
+The reminders action tells the model every field of the plan and of each
+kind of due time, with its type, so a plan in that shape is accepted as
+the action's arguments and reaches the check below. A plan that leaves out
+a delivery choice leaves it unknown, as one that gives it as null does.
+
 ```quint
 type ReminderPhase = NoReminderIntent | IntentPending | IntentReady | IntentRejected | IntentCancelled | ReminderSaved
 type ReminderClock = UtcClock | OwnerLocalClock

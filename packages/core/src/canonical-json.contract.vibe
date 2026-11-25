@@ -35,7 +35,8 @@ export const canonicalTextParsesBackToTheSameSnapshot = contract({
 });
 
 const omitSparseHole = (value: Schema.Json): string | undefined => {
-  const sparse: unknown[] = [value, , value];
+  const sparse: unknown[] = [value];
+  sparse[2] = value;
   try {
     return canonicalJsonString(sparse, {
       ...AGENT_BACKUP_CANONICAL_JSON,

@@ -98,7 +98,6 @@ export async function runTurnEvaluators(runtime: AgentRuntime, message: Memory, 
       logger.warn({ src: "agent", evaluator: evaluator.name, error: String(error) }, "A turn evaluator failed")
     }
   }
-  // Batch inline model-backed evaluators sharing the same modelType into one merged structured-output call.
   const batches = new Map<string, PreparedEvaluator[]>()
   for (const entry of ready) {
     if (!entry.resolved && entry.modelType !== undefined) {
