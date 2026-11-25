@@ -9,10 +9,11 @@ contracts for the VibeLang and Effect implementation.
 Start with [the package specifications](spec/index.md),
 [the agent procedure](AGENTS.md) and [the spec reference](SPEC.md).
 The source baseline is Eliza commit
-`72fed7e4069ecd35d61d886ab6eec5c02c137517`. The orphan `vibestack` branch
-starts from elizaOS/eliza-vibestack commit
-`71d7b30f404b91d7ec48741ac288d6c8d911f3e2`; its toolchain is merged from
-lalalune/vibestack commit `45cc5c35d58b8dc18b0a57b116fde2386eef5528`.
+`72fed7e4069ecd35d61d886ab6eec5c02c137517`. This line starts from root commit
+`721686ceb43ba15c13a6d99069812ab9100df008`, seeded from commit
+`71d7b30f404b91d7ec48741ac288d6c8d911f3e2` of the private elizaOS/eliza-vibestack
+repository; its toolchain is merged from lalalune/vibestack commit
+`45cc5c35d58b8dc18b0a57b116fde2386eef5528`.
 
 The vendored Vibestack toolchain incorporates upstream changes through
 [Vibestack `b7f1827`](https://github.com/lalalune/vibestack/commit/b7f1827be748d4a97aee094d9961371d553012a7). Eliza retains its [repository lint and verification policies](CONTRIBUTING.md).
@@ -68,7 +69,7 @@ commands, examples and generated files. The MIT license is in [LICENSE](LICENSE)
 
 ## Contributing
 
-The default branch is `main`. Open contribution pull requests against `develop`.
+The default branch is `develop`. Open contribution pull requests against `develop`.
 Verify through the application's normal entry points that the top-level
 stories, rules, and Quint models are fully implemented and integrated.
 Every change must follow them exactly. Run the full `pnpm verify` suite

@@ -3,7 +3,8 @@ import { assert, it } from "@effect/vitest"
 import { baseFiles } from "../gen/agent__plugins__bundle.ts"
 import { admitPayload, buildAgentBundle, BundleManifestUnreadable, BundleRefused, readBundleManifest, residentLoadList } from "../src/bundle/build.vibe"
 import { migrations } from "../src/storage/schema.vibe"
-import { host, scratch } from "./support/kernel.vibe"
+import { AGENT_EXIT_CODES } from "../src/host/launch.vibe"
+import { boot, host, scratch } from "./support/kernel.vibe"
 import { productActionName, productPlugin } from "./support/product-plugin/index.ts"
 import { hostedFixtureName } from "./support/hosted-fixture/index.ts"
 
@@ -16,7 +17,8 @@ module node {
   export const sourceRoot = path.resolve(agentDir, "../..")
   export const sourceCommit = execFileSync("git", ["rev-parse", "HEAD"], { cwd: agentDir, encoding: "utf8" }).trim()
   const fixtureLinks = [["product-fixture", "test/support/product-plugin"], ["hosted-fixture", "test/support/hosted-fixture"]] as const
-  export const consumerEntry = path.relative(sourceRoot, path.join(agentDir, "test/support/product-plugin/entry.ts"))
+  export const consumerEntryFile = path.join(agentDir, "test/support/product-plugin/entry.ts")
+  export const consumerEntry = path.relative(sourceRoot, consumerEntryFile)
 
   export async function linkFixture(): Promise<void> {
     for (const [name, directory] of fixtureLinks) {
@@ -50,7 +52,7 @@ module node {
     await writeFile(file, `${await readFile(file, "utf8")}\n`)
   }
 }
-import { consumerEntry, linkFixture, listing, plant, sourceCommit, sourceRoot, tamper, unlinkFixture, writeManifest } from node
+import { consumerEntry, consumerEntryFile, linkFixture, listing, plant, sourceCommit, sourceRoot, tamper, unlinkFixture, writeManifest } from node
 
 effect function fixturePackage() {
   return try acquireRelease(host("product package link", () => linkFixture()), () => orDie(host("product package unlink", () => unlinkFixture())))
@@ -126,3 +128,26 @@ it.effect('A consumer entry inside a named source package starts the agent with 
     assert.includeDeepMembers([...manifest.actions], [{ name: "HOSTED_SOCKET" }, { name: productActionName }])
   })
 }, 1_500_000)
+
+it.effect(`A consumer entry's host services are built over the launch environment and its host module registers over them (spec/agent/plugins/profile.md, "Host runtime services register with storage before every listed plugin, never under an agent service's name, and a pinned worker is the workflow-worker service"; spec/agent/plugins/bundle.md, "Story: Start the agent from my own entry with my device's services")`, effect () => {
+  try fixturePackage()
+  const booted = try boot({ entry: consumerEntryFile, launch: { load: [hostedFixtureName], environment: { FIXTURE_SOCKET: "DEVICE" } } })
+  const actions = try host("published actions", () => booted.child.actions())
+  try Effect.try(() => assert.include(actions, "HOSTED_DEVICE"))
+}, 300_000)
+
+it.effect('A SIGTERM while a listed plugin is still loading stops the boot, releases the store and exits 0 (spec/agent/host/process.md, "The first signal stops the runtime at once, and a repeated signal joins that stop"; spec/agent/host/process.md, "The exit code is the boot failure\'s code, else 0 after a clean release and 1 after a failed one")', effect () => {
+  try fixturePackage()
+  const booted = try boot({ entry: consumerEntryFile, launch: { load: [hostedFixtureName], persistMemory: true, environment: { FIXTURE_SOCKET: "HOLD" } } })
+  try host("hosted module held", () => booted.child.held())
+  try Effect.try(() => booted.child.signal("SIGTERM"))
+  const exited = try host("exit", () => booted.child.exited)
+  try Effect.try(() => assert.deepStrictEqual({ code: exited.code, signal: exited.signal }, { code: 0, signal: null }, exited.stderr))
+}, 300_000)
+
+it.effect('A listed plugin that fails while loading is logged, releases the store and exits with the agent failure code (spec/agent/host/process.md, "The exit code is the boot failure\'s code, else 0 after a clean release and 1 after a failed one")', effect () => {
+  try fixturePackage()
+  const booted = try boot({ entry: consumerEntryFile, launch: { load: [hostedFixtureName], persistMemory: true, environment: { FIXTURE_SOCKET: "DEFECT" } } })
+  const exited = try host("exit", () => booted.child.exited)
+  try Effect.try(() => assert.deepStrictEqual({ code: exited.code, logged: exited.stderr.includes("the hosted fixture module failed") }, { code: AGENT_EXIT_CODES.agent, logged: true }, exited.stderr))
+}, 300_000)

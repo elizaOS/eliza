@@ -176,7 +176,7 @@ type OpenRequest =
 
 effect function openRequest(tx: Tx, entered: Entered, id: string, call: Call, quote: number, digest: string, now: number): OpenRequest!MeteringFailure {
   const caller = entered.caller
-  const ticket = try reserveIn(tx, caller, mapsHoldKey(entered.credential, id), quote, now)
+  const ticket = try reserveIn(tx, caller, mapsHoldKey(entered.credential, id), quote, now, digest)
   if (!ticket.replayed) {
     try tx.query(
       "INSERT INTO maps_requests (hold_key, operation, request_digest, status, created_at) VALUES ($1, $2, $3, 'running', $4)",

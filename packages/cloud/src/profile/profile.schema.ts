@@ -25,6 +25,7 @@ export const Digest = pattern(/^[0-9a-f]{64}$/);
 export const MailAddress = pattern(/^[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$/);
 export const Audience = pattern(/^[A-Za-z0-9._-]{1,128}$/);
 export const Identifier = pattern(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/);
+export const UpstreamModel = pattern(/^[A-Za-z0-9@][A-Za-z0-9._:@/-]{0,255}$/);
 export const CountryCallingCode = pattern(/^\+[1-9]\d{0,2}$/);
 
 export const Capability = Schema.Literals(["inference", "speech", "maps", "managedGoogle", "billing"]);
@@ -39,6 +40,7 @@ export type LegalDocument = typeof LegalDocument.Type;
 
 export const MailDelivery = Schema.Union([
   Schema.Struct({ kind: Schema.Literal("https"), url: ProviderUrl, apiKeyEnv: SecretName }),
+  Schema.Struct({ kind: Schema.Literal("binding"), binding: SecretName }),
   Schema.Struct({ kind: Schema.Literal("loopback") }),
 ]);
 
@@ -74,7 +76,7 @@ export const BillingSettings = Schema.Struct({
 export const InferenceSettings = Schema.Struct({
   providers: Schema.NonEmptyArray(Schema.Struct({ id: Identifier, baseUrl: ProviderUrl, apiKeyEnv: SecretName })),
   models: Schema.NonEmptyArray(Schema.Struct({
-    id: Identifier, provider: Identifier, upstreamModel: Identifier, vision: Schema.Boolean,
+    id: Identifier, provider: Identifier, upstreamModel: UpstreamModel, vision: Schema.Boolean,
     defaultMaxTokens: Schema.optionalKey(bounded(1, maxTokensPerSide)),
   })),
 });
@@ -94,8 +96,19 @@ export const SpeechSettings = Schema.Struct({
   stt: Schema.Struct({ languageCodes: Schema.Array(pattern(/^[a-z]{2,3}(?:-[A-Z]{2})?$/)), microsPerSecond: bounded(0, 1_000_000) }),
 });
 
+const legacyGoogleMapsOrigin = "https://maps.googleapis.com";
+const publicGoogleMapsTemplate = "https://{host}.googleapis.com";
+const GoogleMapsTemplate = pattern(/^https?:\/\/(?:[^\s/?#{}]*\{host\}[^\s/?#{}]*(?:\/[^\s?#{}]*)?|[^\s/?#{}]+\/[^\s?#{}]*\{host\}[^\s?#{}]*)$/);
+const GoogleMapsWireUrl = Schema.Union([GoogleMapsTemplate, Schema.Literal(legacyGoogleMapsOrigin)]);
+const GoogleMapsBaseUrl = GoogleMapsWireUrl.pipe(
+  Schema.decodeTo<typeof GoogleMapsTemplate, typeof GoogleMapsWireUrl>(GoogleMapsTemplate, {
+    decode: SchemaGetter.transform((baseUrl) => baseUrl === legacyGoogleMapsOrigin ? publicGoogleMapsTemplate : baseUrl),
+    encode: SchemaGetter.transform((baseUrl) => baseUrl),
+  }),
+);
+
 export const MapsSettings = Schema.Union([
-  Schema.Struct({ provider: Schema.Literal("google"), baseUrl: ProviderUrl, apiKeyEnv: SecretName, coverage: text(64), datasetRevision: text(64) }),
+  Schema.Struct({ provider: Schema.Literal("google"), baseUrl: GoogleMapsBaseUrl, apiKeyEnv: SecretName, coverage: text(64), datasetRevision: text(64) }),
   Schema.Struct({ provider: Schema.Literal("osm"), baseUrl: ProviderUrl, coverage: text(64), datasetRevision: text(64) }),
   Schema.Struct({ provider: Schema.Literal("none") }),
 ]);

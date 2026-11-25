@@ -1,4 +1,4 @@
-// spec/agent/conversation/conversations.md, "Story: Create and find my conversations"; spec/agent/conversation/conversations.md, "The list shows only published conversations, most recently updated first"; spec/agent/conversation/conversations.md, "Messages and model-call log rows arrive only in a published conversation"
+// spec/agent/conversation/conversations.md, "Story: Create and find my conversations"; spec/agent/conversation/conversations.md, "Creating a conversation gives it a fresh id and room, and a default title when blank"; spec/agent/conversation/conversations.md, "The list shows only published conversations, most recently updated first"; spec/agent/conversation/conversations.md, "Messages and model-call log rows arrive only in a published conversation"
 module node {
   import { randomUUID } from "node:crypto"
   import { Schema } from "effect"
@@ -51,7 +51,8 @@ module node {
     return { id, roomId: room.id, title: room.name ?? defaultTitle, createdAt, updatedAt, seq: seq ?? 0, publication: publication ?? "Published" }
   }
 
-  export const conversationView = ({ id, roomId, title, createdAt, updatedAt }: ConversationRecord) => ({ id, roomId, title, createdAt, updatedAt })
+  export const conversationView = ({ id, roomId, title, createdAt, updatedAt }: ConversationRecord) =>
+    ({ id, roomId, title, createdAt: new Date(createdAt).toISOString(), updatedAt: new Date(updatedAt).toISOString() })
 
   const modelOf = (record: ConversationRecord): Conversation => ({
     id: record.seq, title: { text: record.title, edits: 0 }, createdAt: record.createdAt, updatedAt: record.updatedAt, publication: record.publication,
@@ -129,20 +130,16 @@ module node {
 
   const failure = (status: number, error: string) => ({ status, body: { error } })
 
-  export function creationTitle(body: unknown): { readonly title: string } | { readonly status: number; readonly body: { readonly error: string } } {
-    const payload = createBody(body ?? {})
-    if (payload._tag !== "Some") return failure(400, "invalid_conversation")
-    const title = payload.value.title?.trim() ?? ""
-    return canCreate(initial, title, title.length) ? { title } : failure(400, "invalid_title")
-  }
-
   export function conversationRecordRoutes(store: ConversationStore): LocalRoute[] {
     return [
       {
         method: "POST", path: "/api/conversations",
         handler: async ({ body }) => {
-          const asked = creationTitle(body)
-          return "title" in asked ? { status: 201, body: { conversation: conversationView(await store.create(asked.title)) } } : asked
+          const payload = createBody(body ?? {})
+          if (payload._tag !== "Some") return failure(400, "invalid_conversation")
+          const title = payload.value.title?.trim() ?? ""
+          if (!canCreate(initial, title, title.length)) return failure(400, "invalid_title")
+          return { status: 201, body: { conversation: conversationView(await store.create(title)) } }
         },
       },
       {
@@ -152,4 +149,4 @@ module node {
     ]
   }
 }
-export { conversationRecordRoutes, conversationStore, creationTitle, conversationView, recordOf, type ConversationOwner, type ConversationRecord, type ConversationStore } from node
+export { conversationRecordRoutes, conversationStore, conversationView, recordOf, type ConversationOwner, type ConversationRecord, type ConversationStore } from node

@@ -46,6 +46,8 @@ pure def inventoryOf(payload: StagedPayload): A::Digest = match payload { | Agen
 pure def samePayload(payload: StagedPayload, observed: StagedPayload): bool =
   carriesAgent(payload) == carriesAgent(observed) and (carriesAgent(payload) implies A::digestsMatch(inventoryOf(payload), inventoryOf(observed)))
 pure def partialSigning(r: BuildRequest): bool = r.signingVariablesSet > 0 and r.signingVariablesSet < H::signingNameCount
+pure def publishedSet(r: BuildRequest): H::PublishedSet =
+  if (not(r.release)) H::DebugSet else if (r.signingVariablesSet == 0) H::UnsignedReleaseSet else H::SignedReleaseSet
 pure def requestFinding(r: BuildRequest): RequestFinding =
   if (r.variants.length() == 0) RequestRefused({ refusal: NoVariants })
   else if (not(r.variants.every(v => r.variants.select(w => w == v).length() == 1))) RequestRefused({ refusal: DuplicateVariant })
@@ -110,7 +112,11 @@ pure def sometimesFailedCopyIsCleanedUp(b: AndroidBuild): bool = b.phase == Fail
 ### The private set is verified against the pin, the payload and a fresh APK manifest before it can be published
 
 The consumer's verify command runs on the private copy and writes the APK
-manifest there, so no earlier run's manifest can pass. The shell then reads
+manifest there, so no earlier run's manifest can pass. A malformed row
+invalidates the manifest. The shell reads the APK bytes to verify the
+digest and checks the declared signing state. An unreadable APK or a
+signer check that cannot establish its signing state fails verification.
+The shell then reads
 the pinned commit and the payload inventory again: a build that moved the
 source off its pin or changed the staged payload fails, whatever the
 manifest says. A failed set is never renamed (`P::rename` refused), so the
@@ -119,15 +125,17 @@ APKs a consumer already has stay in place.
 ```quint
 type VerifyReport = { verifierSucceeded: bool, rows: List[H::PublishedApk], sourceAtPin: bool, payload: StagedPayload }
 pure val reportValues = {
-  val row = { flavor: "launcher", apk: A::Sha256({ hex: "a1" }), signer: A::Sha256({ hex: "c1" }), fresh: true }
+  val row = { flavor: "launcher", fileFlavor: "launcher", build: H::ReleaseApk, apk: A::Sha256({ hex: "a1" }), signer: A::Sha256({ hex: "c1" }), fresh: true }
   val good = { verifierSucceeded: true, rows: List(row), sourceAtPin: true, payload: AgentPayload({ inventory: A::Sha256({ hex: "a1" }) }) }
   List(good, { ...good, payload: NoAgentPayload }, { ...good, verifierSucceeded: false }, { ...good, rows: List({ ...row, fresh: false }) }, { ...good, rows: List() },
+    { ...good, rows: List({ ...row, build: H::DebugApk }) }, { ...good, rows: List({ ...row, signer: A::NotADigest }) },
+    { ...good, payload: NoAgentPayload, rows: List({ ...row, signer: A::NotADigest }) }, { ...good, rows: List({ ...row, fileFlavor: "sideload" }) },
     { ...good, sourceAtPin: false }, { ...good, payload: AgentPayload({ inventory: A::Sha256({ hex: "c1" }) }) }).foldl(Set(), (acc, r) => acc.union(Set(r)))
 }
 pure def verifyOutcome(b: AndroidBuild, report: VerifyReport): BuildPhase =
   if (not(report.sourceAtPin)) Failed({ failure: SourceMoved })
   else if (not(samePayload(b.request.payload, report.payload))) Failed({ failure: PayloadChanged })
-  else if (not(report.verifierSucceeded and H::publishedManifestAdmitted(b.request.variants, report.rows))) Failed({ failure: VerificationFailed })
+  else if (not(report.verifierSucceeded and H::publishedManifestAdmitted(b.request.variants, publishedSet(b.request), report.rows))) Failed({ failure: VerificationFailed })
   else Verified
 pure def canVerify(b: AndroidBuild): bool = b.phase == Staged and P::canRename(b.apks)
 pure def verify(b: AndroidBuild, report: VerifyReport): AndroidBuild = {
@@ -139,7 +147,7 @@ pure def alwaysStagedSetIsACompletePrivateCopy(b: AndroidBuild): bool =
 pure def setWasVerified(phase: BuildPhase): bool = phase == Verified or phase == Published or phase == Archived
   or phase == Failed({ failure: SetNotPublished }) or phase == Failed({ failure: ArchiveFilesChanged }) or phase == Failed({ failure: ArchiveNotPublished })
 pure def alwaysVerifiedSetHasThisRunsManifest(b: AndroidBuild): bool =
-  if (setWasVerified(b.phase)) H::publishedManifestAdmitted(b.request.variants, b.manifest) else b.manifest == List()
+  if (setWasVerified(b.phase)) H::publishedManifestAdmitted(b.request.variants, publishedSet(b.request), b.manifest) else b.manifest == List()
 pure def sometimesMovedSourceFails(b: AndroidBuild): bool = b.phase == Failed({ failure: SourceMoved })
 pure def sometimesChangedPayloadFails(b: AndroidBuild): bool = b.phase == Failed({ failure: PayloadChanged })
 pure def sometimesUnverifiedSetDiscarded(b: AndroidBuild): bool = b.phase == Failed({ failure: VerificationFailed }) and b.apks.receipt == P::FailureReceipt
@@ -170,6 +178,7 @@ pure def stepFinishedBuildStays(before: AndroidBuild, after: AndroidBuild): bool
   (before.phase == Archived or isFailed(before.phase)) implies (after.phase == before.phase and after.manifest == before.manifest)
 pure def sometimesVerifiedSetPublished(b: AndroidBuild): bool = b.phase == Published and b.apks.receipt == P::SuccessReceipt and carriesAgent(b.request.payload)
 pure def sometimesDebugOnlySetPublished(b: AndroidBuild): bool = b.phase == Published and not(b.request.release)
+pure def sometimesUnsignedReleaseSetPublished(b: AndroidBuild): bool = b.phase == Published and publishedSet(b.request) == H::UnsignedReleaseSet
 pure def sometimesFailedRenameKeepsPreviousSet(b: AndroidBuild): bool = b.phase == Failed({ failure: SetNotPublished }) and b.apks.receipt == P::FailureReceipt
 ```
 

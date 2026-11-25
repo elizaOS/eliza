@@ -3,7 +3,7 @@ import { allowedMethods, allowedRequestHeaders, exposedResponseHeaders, gateOf, 
 import { lookupRetryMs } from "../../gen/cloud__identity__requestAuth.effect.vibe"
 import { planRpm } from "../billing/plans.vibe"
 import { readPolicy } from "../billing/policy.vibe"
-import { capabilityEnabled, capabilityOf, corsForOrigin, Deployment, type EnvironmentProfile } from "@elizaos/cloud"
+import { capabilityOf, corsForOrigin, Deployment, type EnvironmentProfile } from "@elizaos/cloud"
 import { admit, minute } from "../shared/rate-limit.vibe"
 import { newId } from "../shared/sealing.vibe"
 import { Store } from "../store/connection.vibe"
@@ -32,8 +32,7 @@ function preflightHeaders(origin: string | undefined, settings: EnvironmentProfi
 }
 
 function routeOffered(settings: EnvironmentProfile, route: Route): boolean {
-  if (route.area !== undefined) return routeOpen(settings.capabilities.map((offered) => capabilityOf[offered]), gateOf(route.area))
-  return route.capability === undefined || capabilityEnabled(settings, route.capability)
+  return route.area === undefined || routeOpen(settings.capabilities.map((offered) => capabilityOf[offered]), gateOf(route.area))
 }
 
 function isRefused(failure: { readonly _tag: string }): failure is Refused {

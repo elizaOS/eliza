@@ -1,6 +1,6 @@
 // spec/agent/deviceActions/index.md, "Story: Propose what I asked for on my phone, in my own words"; spec/agent/deviceActions/index.md, "A proposal is offered only on an owner turn of the enrolled device, as its family grounded it, and re-admitted under the turn's negotiation"; spec/agent/deviceActions/index.md, "A proposal carries the owner's message only for a live turn that asked for it directly, so otherwise the phone shows its card"; spec/agent/deviceActions/index.md, "A proposal's identity is its request message and its operation, so a repeat returns the same request"; spec/agent/deviceActions/index.md, "A read's follow-up is offered only after its reply was delivered, as its own family continued it"; spec/agent/deviceActions/index.md, "The proposal tool states each rule once, names no capability, and shares a branch only between forms that accept the same calls"
 import type { ActionParameterSchema, AgentContext, IAgentRuntime, Memory, ProviderValue, UUID } from "@elizaos/core"
-import type { ProposalGrounding } from "../../../gen/agent__deviceActions.effect.vibe"
+import { directRequestFor, type ProposalGrounding } from "../../../gen/agent__deviceActions.effect.vibe"
 import type { Negotiation, ViewProfile } from "../../../gen/agent__deviceActions__capabilities.effect.vibe"
 import type { SessionOwner } from "../../../gen/core__sessions.effect.vibe"
 import { readTurnContext, type Observation, type CheckedOperation, type DeviceOperation, type DeviceOperationType } from "@elizaos/agent"
@@ -97,8 +97,15 @@ export interface DeviceProposalFamily {
   continueAfterRead?(read: EarlierRequest, original: Pick<DeviceTurn, "ownerText" | "message" | "negotiation" | "startedAt" | "timeZone">): (ReadContinuation | undefined)!DeviceStoreUnavailable
 }
 
-export function directRequests(turn: Pick<DeviceTurn, "message">): boolean {
-  return readTurnContext(turn.message).voiceUi?.agentActionMode === "direct-request-v1"
+/** Whether the owner's message asks for direct requests of `family`; a Files-only direct request binds no other family. */
+export function directRequests(turn: Pick<DeviceTurn, "message">, family: FamilyName): boolean {
+  const mode = readTurnContext(turn.message).voiceUi?.agentActionMode
+  return directRequestFor(mode === "direct-request-v1" ? "DirectForEveryFamily" : mode === "direct-files-v1" || mode === "direct-files-only-v1" ? "DirectForFiles" : "NoDirectRequest", family === "files")
+}
+
+/** Whether the client that sent the owner's message shows review cards on this turn; one that asks for direct Files requests only does not. */
+export function showsReviewCards(turn: Pick<DeviceTurn, "message">): boolean {
+  return readTurnContext(turn.message).voiceUi?.agentActionMode !== "direct-files-only-v1"
 }
 
 export function unoffered(name: FamilyName): DeviceProposalFamily {

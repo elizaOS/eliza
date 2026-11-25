@@ -1,15 +1,16 @@
-// spec/calendar/reviewedReads.md, "Story: Propose on my phone only the Calendar request I made"; spec/calendar/reviewedReads.md, "A phone Calendar proposal is offered only where its record may be proposed"; spec/calendar/reviewedReads.md, "A selected target, a chosen calendar and a named event are the ones the owner gave"; spec/calendar/reviewedReads.md, "A new phone event is the timed event the model read, at a clock time the owner said, on the phone's clock"; spec/calendar/reviewedReads.md, "A change after a shared read is the edit the model read from the owner's request, keeping every other field"; spec/calendar/availability.md, "An availability window is the one the model read from the owner's request, on the phone's clock"; spec/calendar/readClock.md, "A clock time the owner stated is one the owner's words hold"
+// spec/calendar/reviewedReads.md, "Story: Propose on my phone only the Calendar request I made"; spec/calendar/reviewedReads.md, "A phone Calendar proposal is offered only where its record may be proposed"; spec/calendar/reviewedReads.md, "A selected target, a chosen calendar and a named event are the ones the owner gave"; spec/calendar/reviewedReads.md, "A new phone event is the timed event the model read, at a clock time the owner's words do not contradict, on the phone's clock"; spec/calendar/reviewedReads.md, "A change after a shared read is the edit the model read from the owner's request, keeping every other field"; spec/calendar/availability.md, "An availability window is the one the model read from the owner's request, on the phone's clock"; spec/calendar/readClock.md, "A stated clock time is refused only where the owner's words give another"
 import { ModelType, parseJsonModelRecord, type ActionParameterSchema, type IAgentRuntime, type JSONSchema } from "@elizaos/core"
 import {
   readResult, type DeviceOperation,
 } from "@elizaos/agent"
 import type { DeviceProposalFamily, DeviceTurn, EarlierRequest, Grounding, NegotiatedDevice, ProposalForm, ProposalText, ReadContinuation } from "@elizaos/agent-host"
 import { availabilityWindowed } from "../../gen/calendar__availability.effect.vibe"
+import { statedClockCheck } from "../../gen/calendar__readClock.effect.vibe"
 import {
   calendarProposalAdmitted, changeReadAdmitted, namedGrounded, newEventStated, ownerWordsKept, preparedEdit, recordSource, targetGrounded,
   type CalendarView, type EditPrepared, type EditRead, type ProposalReach,
 } from "../../gen/calendar__reviewedReads.effect.vibe"
-import { CALENDAR_AVAILABILITY_CAPABILITY, CALENDAR_CAPABILITY, CALENDAR_NAMED_READ_CAPABILITY, namedCalendarReadTarget, getZonedDateParts, knownTimeZone, clockHeldByWords, eventNamedInWords, wordsInWords } from "@elizaos/plugin-calendar-client"
+import { CALENDAR_AVAILABILITY_CAPABILITY, CALENDAR_CAPABILITY, CALENDAR_NAMED_READ_CAPABILITY, namedCalendarReadTarget, getZonedDateParts, knownTimeZone, clockSpelledInWords, eventNamedInWords, wordsGiveAClock, wordsInWords } from "@elizaos/plugin-calendar-client"
 import { calendarContext } from "./actions.vibe"
 
 type Op<T extends DeviceOperation["type"]> = Extract<DeviceOperation, { readonly type: T }>
@@ -155,7 +156,7 @@ const otherZone = refused("CALENDAR_OTHER_ZONE_NAMED", "The times are not on the
   "I can only use your phone's time zone here. Say the time as your phone's clock shows it.")
 const untitled = refused("CALENDAR_TITLE_NOT_STATED", "The event title is not in the owner's words. Use the title as the owner said it. No event was created.",
   "What should I call that event?")
-const unsaidStart = refused("CALENDAR_CLOCK_UNSAID", "The event's start is not a clock time the owner's words give on the phone's clock. Use the day and time the owner said. No event was created.",
+const unsaidStart = refused("CALENDAR_CLOCK_UNSAID", "The owner's words give another clock time than the event's start on the phone's clock. Ask the owner which time they meant. No event was created.",
   "What time should it start? No event was created.")
 const pastStart = refused("CALENDAR_CREATE_PAST_START", "That start has already passed on the phone's clock. No event was created.",
   "That time has already passed. Which day should I put it on? No event was created.")
@@ -169,9 +170,9 @@ function phoneZone(turn: Pick<DeviceTurn, "timeZone">): string | undefined {
   return knownTimeZone(turn.timeZone) ? turn.timeZone : undefined
 }
 
-function heldStart(start: number, zone: string, text: string): boolean {
+function startUncontradicted(start: number, zone: string, text: string): boolean {
   const wall = Number.isFinite(start) ? getZonedDateParts(new Date(start), zone) : undefined
-  return wall !== undefined && clockHeldByWords({ hour: wall.hour, minute: wall.minute }, text)
+  return wall !== undefined && statedClockCheck(true, true, clockSpelledInWords({ hour: wall.hour, minute: wall.minute }, text), wordsGiveAClock(text)) === "ClockAsSent"
 }
 
 function groundedFields(fields: CalendarFields, turn: DeviceTurn): CalendarFields | Refusal {
@@ -179,10 +180,10 @@ function groundedFields(fields: CalendarFields, turn: DeviceTurn): CalendarField
   const text = turn.ownerText
   const start = Date.parse(fields.start)
   const onPhoneZone = zone !== undefined && fields.timeZone === zone
-  const startHeld = zone !== undefined && heldStart(start, zone, text)
+  const startStands = zone !== undefined && startUncontradicted(start, zone, text)
   const titled = wordsInWords(fields.title, text)
-  if (!newEventStated(zone !== undefined, onPhoneZone, startHeld, start > turn.startedAt, titled)) {
-    return zone === undefined ? noZone : !onPhoneZone ? otherZone : !startHeld ? unsaidStart : start <= turn.startedAt ? pastStart : untitled
+  if (!newEventStated(zone !== undefined, onPhoneZone, startStands, start > turn.startedAt, titled)) {
+    return zone === undefined ? noZone : !onPhoneZone ? otherZone : !startStands ? unsaidStart : start <= turn.startedAt ? pastStart : untitled
   }
   return {
     ...fields,

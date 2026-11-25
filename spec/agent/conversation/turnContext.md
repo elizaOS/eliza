@@ -228,7 +228,7 @@ Notes editor also requires completed-action delivery and a routing identity.
 | `uiBrowserSurface` | `native` |
 | `viewDelivery` | `completed-action` |
 | `uiClientId` | a view interaction client id (core's pattern), equal to the turn's `X-ElizaOS-Client-Id` when it sends one; it names the client that receives completed-action views |
-| `agentActionMode` | `direct-request-v1` |
+| `agentActionMode` | `direct-request-v1`; `direct-files-v1`, which asks for direct requests of the Files family only; or `direct-files-only-v1`, the same from a client that shows no review card on that turn |
 | `uiNotesEditor` | `saved-note-v1`, with completed-action delivery and a routing identity |
 
 A key not named here is not carried.
@@ -238,7 +238,7 @@ import streamUnits.* from "../../core/streamUnits"
 type TextField = NoText | Text({ units: List[int] }) | NotText
 type Delivery = NoDelivery | CompletedAction | OtherDelivery
 type BrowserSurface = NoSurface | NativeSurface | OtherSurface
-type ActionMode = NoActionMode | DirectRequest | OtherActionMode
+type ActionMode = NoActionMode | DirectRequest | DirectFilesRequest | DirectFilesOnlyRequest | OtherActionMode
 type NoteEditorMode = NoNoteEditor | SavedNoteEditor | OtherNoteEditor
 type RoutingFact = NoRouting | Routing | MalformedRouting
 type VoiceUiFacts = { viewPath: TextField, subview: TextField, timeZone: TextField, surface: BrowserSurface, delivery: Delivery, routingId: RoutingFact, actionMode: ActionMode, noteEditor: NoteEditorMode }
@@ -249,10 +249,11 @@ pure val slashUnit = 47
 pure def textUnits(text: TextField): List[int] = match text { | Text(t) => t.units | _ => List() }
 pure def textWithin(text: TextField, limit: int): bool = text != NotText and textUnits(text).length() <= limit
 pure def pathRooted(units: List[int]): bool = units.length() == 0 or (unitPrefix(units, List(slashUnit)) and not(unitPrefix(units, List(slashUnit, slashUnit))))
+pure def asksDirect(mode: ActionMode): bool = mode == DirectRequest or mode == DirectFilesRequest or mode == DirectFilesOnlyRequest
 pure def voiceUiAccepted(u: VoiceUiFacts): bool =
   textWithin(u.viewPath, viewPathMaxUnits) and pathRooted(textUnits(u.viewPath)) and textWithin(u.subview, shortTextMaxUnits) and textWithin(u.timeZone, shortTextMaxUnits) and
   u.surface != OtherSurface and u.delivery != OtherDelivery and u.routingId != MalformedRouting and u.actionMode != OtherActionMode and u.noteEditor != OtherNoteEditor and
-  ((u.actionMode == DirectRequest or u.noteEditor == SavedNoteEditor) implies (u.delivery == CompletedAction and u.routingId == Routing))
+  ((asksDirect(u.actionMode) or u.noteEditor == SavedNoteEditor) implies (u.delivery == CompletedAction and u.routingId == Routing))
 pure def observationOutcome(o: ObservationFacts): ContextOutcome = if (observationAccepted(o)) ContextCarried else ContextDropped
 pure def voiceUiOutcome(u: VoiceUiFacts): ContextOutcome = if (voiceUiAccepted(u)) ContextCarried else TurnRefused
 pure val silentRenderer: VoiceUiFacts = { viewPath: NoText, subview: NoText, timeZone: NoText, surface: NoSurface, delivery: NoDelivery, routingId: NoRouting, actionMode: NoActionMode, noteEditor: NoNoteEditor }
@@ -260,6 +261,9 @@ pure val uValues: Set[VoiceUiFacts] = {
   val bound = { ...silentRenderer, viewPath: Text({ units: List(47, 99) }), subview: Text({ units: List(100) }), surface: NativeSurface, delivery: CompletedAction, routingId: Routing, actionMode: DirectRequest }
   List(
     bound,
+    { ...bound, actionMode: DirectFilesRequest },
+    { ...bound, actionMode: DirectFilesRequest, routingId: NoRouting },
+    { ...bound, actionMode: DirectFilesOnlyRequest },
     silentRenderer,
     { ...bound, delivery: NoDelivery },
     { ...bound, routingId: NoRouting },
@@ -274,11 +278,13 @@ pure val uValues: Set[VoiceUiFacts] = {
   ).foldl(Set(), (acc, u) => acc.union(Set(u)))
 }
 pure def lawDirectRequestNeedsTheBoundRenderer(u: VoiceUiFacts): bool =
-  u.actionMode == DirectRequest implies (not(voiceUiAccepted({ ...u, delivery: NoDelivery })) and not(voiceUiAccepted({ ...u, routingId: NoRouting })))
+  asksDirect(u.actionMode) implies (not(voiceUiAccepted({ ...u, delivery: NoDelivery })) and not(voiceUiAccepted({ ...u, routingId: NoRouting })))
 pure def lawSavedNoteEditorNeedsTheBoundRenderer(u: VoiceUiFacts): bool =
   u.noteEditor == SavedNoteEditor implies (not(voiceUiAccepted({ ...u, delivery: NoDelivery })) and not(voiceUiAccepted({ ...u, routingId: NoRouting })))
 pure def lawABoundRendererMayAskForDirectRequests(u: VoiceUiFacts): bool =
-  (voiceUiAccepted(u) and u.delivery == CompletedAction and u.routingId == Routing) implies voiceUiAccepted({ ...u, actionMode: DirectRequest })
+  (voiceUiAccepted(u) and u.delivery == CompletedAction and u.routingId == Routing) implies
+    (voiceUiAccepted({ ...u, actionMode: DirectRequest }) and voiceUiAccepted({ ...u, actionMode: DirectFilesRequest })
+      and voiceUiAccepted({ ...u, actionMode: DirectFilesOnlyRequest }))
 pure def lawARootedPathIsAccepted(rest: List[int]): bool =
   (rest.length() < viewPathMaxUnits and rest.nthOr(0, 0) != slashUnit) implies voiceUiAccepted({ ...silentRenderer, viewPath: Text({ units: List(slashUnit).concat(rest) }) })
 pure def lawAPathFromAnotherHostIsRefused(rest: List[int]): bool =

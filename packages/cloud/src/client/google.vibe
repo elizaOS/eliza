@@ -1,14 +1,12 @@
-// spec/cloud/services/google/connection.md, "Story: Connect my Google account with the access I chose"; spec/cloud/services/google/mailOperations.md, "Story: Change or send from my mailbox once, as I reviewed it"; spec/cloud/services/google/calendar.md, "Story: Change an event only at the revision I read"
-import type { IdempotencyKey } from "../services/maps.schema.ts"
+// spec/cloud/services/google/mailOperations.md, "Story: Change or send from my mailbox once, as I reviewed it"; spec/cloud/services/google/connection.md, "Story: See my Google connection as the cloud holds it"; spec/cloud/services/google/connection.md, "Story: Disconnect it"; spec/cloud/services/google/mailRead.md, "Story: Read my mail through the grant I chose"; spec/cloud/services/google/calendar.md, "Story: Read my calendar for a window"
 import { answerOf, queryOf, type CallOptions } from "./answer.vibe"
 import type { CloudTransport } from "./client.vibe"
-import { idempotencyKey, ifMatch, routesByName } from "./routes.vibe"
+import { routesByName } from "./routes.vibe"
 
 const googleCapabilitySchema = Schema.Literals([
   "google.basic_identity", "google.gmail.triage", "google.gmail.send", "google.gmail.manage", "google.gmail.drafts",
   "google.gmail.mailbox", "google.calendar.read", "google.calendar.write"
 ])
-type GoogleCapability = typeof googleCapabilitySchema.Type
 
 const optionalText = Schema.NullOr(Schema.String)
 
@@ -30,20 +28,6 @@ const googleStatusSchema = Schema.Struct({
 })
 export type GoogleStatus = typeof googleStatusSchema.Type
 
-const connectStartSchema = Schema.Struct({ authUrl: Schema.String, appReturn: Schema.optionalKey(Schema.Literal(2)) })
-export type ConnectStart = typeof connectStartSchema.Type
-
-export type ConnectState = string & { readonly __brand: "ConnectState" }
-
-export function isConnectState(value: string): value is ConnectState {
-  return /^[A-Za-z0-9_-]{43}$/.test(value)
-}
-
-interface ConnectRequest {
-  readonly capabilities: ReadonlyArray<GoogleCapability>
-  readonly redirect?: { readonly connectReturn: string; readonly state: ConnectState }
-}
-
 const mailCardSchema = Schema.Struct({
   id: Schema.String,
   threadId: Schema.String,
@@ -52,6 +36,7 @@ const mailCardSchema = Schema.Struct({
   to: Schema.Array(Schema.String),
   cc: Schema.Array(Schema.String),
   snippet: Schema.String,
+  hasAttachments: Schema.optionalKey(Schema.Boolean),
   receivedAt: Schema.String,
   labels: Schema.Array(Schema.String),
   isUnread: Schema.Boolean,
@@ -90,7 +75,6 @@ export type MailMessage = typeof mailMessageSchema.Type
 const mailKindSchema = Schema.Literals([
   "send", "draft-create", "draft-replace", "draft-delete", "archive", "unarchive", "trash", "untrash", "mark-read", "mark-unread", "star", "unstar"
 ])
-type MailKind = typeof mailKindSchema.Type
 
 // spec/cloud/services/google/mailRead.md, "Capabilities offer exactly the reads and changes the grant allows, and each change comes with the read its review needs"
 const mailCapabilitiesSchema = Schema.Struct({
@@ -103,6 +87,7 @@ const mailCapabilitiesSchema = Schema.Struct({
 })
 export type MailCapabilities = typeof mailCapabilitiesSchema.Type
 
+type MailKind = typeof mailKindSchema.Type
 type LabelKind = Exclude<MailKind, "send" | "draft-create" | "draft-replace" | "draft-delete">
 
 type MailProposal =
@@ -206,34 +191,13 @@ export type CalendarFeed = typeof calendarFeedSchema.Type
 
 const EventAnswer = Schema.Struct({ event: calendarEventSchema })
 
-interface EventFields {
-  readonly title: string
-  readonly description?: string
-  readonly location?: string
-  readonly startAt: string
-  readonly endAt: string
-  readonly timeZone?: string
-  readonly allDay?: boolean
-  readonly attendees?: ReadonlyArray<{ readonly email: string; readonly displayName?: string; readonly optional?: boolean }>
-}
-
 type GrantChoice = { readonly grantId?: string }
 type CalendarTarget = GrantChoice & { readonly calendarId?: string }
-type CalendarWrite = CalendarTarget & { readonly expectedAccountId?: string }
-type EventRevision = CalendarWrite & { readonly eventId: string; readonly ifMatch: string }
 
 export function googleCalls(transport: CloudTransport) {
   return {
     async googleStatus(choice: GrantChoice = {}, options: CallOptions = {}): Promise<GoogleStatus> {
       return answerOf(await transport.call(routesByName.googleStatus, { query: queryOf({ grantId: choice.grantId }), signal: options.signal }), googleStatusSchema)
-    },
-    async googleConnect(request: ConnectRequest, options: CallOptions = {}): Promise<ConnectStart> {
-      const redirect = request.redirect
-      const json = {
-        capabilities: request.capabilities,
-        ...(redirect === undefined ? {} : { redirectUrl: `${redirect.connectReturn}?${new URLSearchParams({ state: redirect.state })}` })
-      }
-      return answerOf(await transport.call(routesByName.googleConnect, { json, signal: options.signal }), connectStartSchema)
     },
     async googleDisconnect(choice: GrantChoice = {}, options: CallOptions = {}): Promise<void> {
       await transport.call(routesByName.googleDisconnect, { json: choice, signal: options.signal })
@@ -271,25 +235,6 @@ export function googleCalls(transport: CloudTransport) {
     async calendarEvent(request: CalendarTarget & { readonly eventId: string }, options: CallOptions = {}): Promise<CalendarEvent> {
       const { eventId, ...target } = request
       return (await answerOf(await transport.call(routesByName.calendarEvent, { params: { eventId }, query: queryOf(target), signal: options.signal }), EventAnswer)).event
-    },
-    async calendarCreate(request: CalendarWrite & {
-      readonly idempotencyKey: IdempotencyKey
-      readonly event: EventFields & { readonly recurrence?: readonly string[]; readonly privateCreate?: true }
-    }, options: CallOptions = {}): Promise<CalendarEvent> {
-      const { idempotencyKey: key, event, ...target } = request
-      return (await answerOf(await transport.call(routesByName.calendarEventCreate, {
-        json: { ...target, ...event }, headers: { [idempotencyKey]: key }, signal: options.signal
-      }), EventAnswer)).event
-    },
-    async calendarUpdate(request: EventRevision & { readonly changes: Partial<EventFields> }, options: CallOptions = {}): Promise<CalendarEvent> {
-      const { eventId, ifMatch: revision, changes, ...target } = request
-      return (await answerOf(await transport.call(routesByName.calendarEventChange, {
-        params: { eventId }, json: { ...target, ...changes }, headers: { [ifMatch]: revision }, signal: options.signal
-      }), EventAnswer)).event
-    },
-    async calendarDelete(request: EventRevision, options: CallOptions = {}): Promise<void> {
-      const { eventId, ifMatch: revision, ...target } = request
-      await transport.call(routesByName.calendarEventDelete, { params: { eventId }, query: queryOf(target), headers: { [ifMatch]: revision }, signal: options.signal })
     }
   }
 }
