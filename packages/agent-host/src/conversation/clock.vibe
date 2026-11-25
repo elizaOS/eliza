@@ -92,6 +92,7 @@ export function ungroundedTimeReply(reply: string, request: string, clock: TurnC
 
 const clockRange = /\b(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)?\s*(?:-|–|—|to|until|till)\s*(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)(?![a-z])|\b([01]?\d|2[0-3]):([0-5]\d)\s*(?:-|–|—|to|until|till)\s*([01]?\d|2[0-3]):([0-5]\d)\b/gi
 const clockMention = /\b\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?)(?![a-z])|\b(?:[01]?\d|2[0-3]):[0-5]\d\b/i
+const moveStatement = /\bmoved\b[^.!?\n]{0,80}\bfrom\s+\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?)?\s*(?:to|until|till)\s+\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?)/i
 const changeOperations: ReadonlySet<string> = new Set(["calendar.event.create", "calendar.event.update"])
 
 interface StatedRange {
@@ -109,7 +110,7 @@ function minuteOf(hour: string | undefined, minute: string | undefined, half: st
 function oneRange(reply: string): StatedRange | undefined {
   const found = [...reply.matchAll(clockRange)]
   const [only] = found
-  if (only === undefined || found.length !== 1 || clockMention.test(reply.replace(only[0], " "))) return undefined
+  if (only === undefined || found.length !== 1 || moveStatement.test(reply) || clockMention.test(reply.replace(only[0], " "))) return undefined
   const start = only[1] !== undefined ? minuteOf(only[1], only[2], only[3] ?? only[6]) : minuteOf(only[7], only[8], undefined)
   const end = only[1] !== undefined ? minuteOf(only[4], only[5], only[6]) : minuteOf(only[9], only[10], undefined)
   return start === undefined || end === undefined ? undefined : { start, end }

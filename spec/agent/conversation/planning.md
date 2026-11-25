@@ -1128,6 +1128,10 @@ holds of it. Otherwise, or when that call fails, the reply is `It's <full
 date and time to the second, with its zone>.`. Any other reply is kept as
 it is, with no further model call.
 
+An explicit move from one clock to another, such as "moved from 3 PM to 4
+PM", names the old and new starts. It is not a range to compare with the
+event's resulting range.
+
 ```quint
 type StatedTime = StatedDay({ month: int, day: int, year: int }) | StatedWeekday({ weekday: int }) | StatedClock({ minuteOfDay: int })
 type LocalClock = { month: int, day: int, year: int, weekday: int, minuteOfDay: int }

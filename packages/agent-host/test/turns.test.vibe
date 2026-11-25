@@ -1487,9 +1487,9 @@ it.live(`The open Browser page reaches the model once, fenced as web content fro
 
 it.effect(`A calendar change is reported at the time it got, and the model is asked again with the change's own words before they replace its reply (spec/agent/conversation/planning.md, "A reply that gives a just-changed calendar event a time range other than the one it got is asked for again, and the change's own words are the last resort")`, effect () => {
   const own = "Updated Dentist, Mar 4, 2030, 9:00 AM."
-  const changed = (id: string, version = "v2", receipt = true): ActionResult => ({
+  const changed = (id: string, version = "v2", receipt = true, startAt = "2030-03-04T17:00:00.000Z", endAt = "2030-03-04T18:00:00.000Z"): ActionResult => ({
     success: true, text: own,
-    data: { event: { id, agentId: "agent-1", isAllDay: false, startAt: "2030-03-04T17:00:00.000Z", endAt: "2030-03-04T18:00:00.000Z", timezone: "America/Los_Angeles", title: "Dentist", metadata: { etag: version } } },
+    data: { event: { id, agentId: "agent-1", isAllDay: false, startAt, endAt, timezone: "America/Los_Angeles", title: "Dentist", metadata: { etag: version } } },
     effectReceipts: receipt ? [{
       receiptId: `receipt-${id}`, operation: "calendar.event.update", resource: { kind: "calendar.event", id, version }, artifacts: [], idempotency: { key: id, replayed: false },
       observedAt: "2030-03-01T00:00:00.000Z", outcome: "applied", commit: { kind: "durable", id, committedAt: "2030-03-01T00:00:00.000Z" },
@@ -1497,6 +1497,7 @@ it.effect(`A calendar change is reported at the time it got, and the model is as
   })
   const reply = (said: string, results: readonly ActionResult[], request = "Move my dentist to 9am") => ungroundedEventReply(said, request, results, "agent-1")?.fixed ?? said
   const note = ungroundedEventReply("Done, your dentist is now 3–4 PM.", "Move my dentist to 9am", [changed("e1")], "agent-1")?.note ?? ""
+  const movedToFour = changed("e3", "v3", true, "2030-03-05T00:00:00.000Z", "2030-03-05T01:00:00.000Z")
   try Effect.try(() => assert.deepStrictEqual([
     reply("Done, your dentist is now 3–4 PM.", [changed("e1")]),
     reply("Done, your dentist is now 9–10 AM.", [changed("e1")]),
@@ -1508,9 +1509,11 @@ it.effect(`A calendar change is reported at the time it got, and the model is as
     reply("Done, your dentist is now 3–4 PM.", [changed("e1"), changed("e2")]),
     reply("Done, your dentist is now 3–4 PM.", [changed("e1", "v2", false)]),
     reply("Done, your dentist is now 3–4 PM.", [{ ...changed("e1"), data: { event: { ...(changed("e1").data?.event as object), agentId: "agent-2" } } }]),
+    reply("Moved your dentist from 3 PM to 4 PM.", [movedToFour]),
   ], [
     own, "Done, your dentist is now 9–10 AM.", "Done, your dentist is now 09:00-10:00.", own, "Done, your dentist is now 3–4 PM UTC.", "Done, your dentist is now at 3 PM.",
     "Done, your dentist is now 3–4 PM.", "Done, your dentist is now 3–4 PM.", "Done, your dentist is now 3–4 PM.", "Done, your dentist is now 3–4 PM.",
+    "Moved your dentist from 3 PM to 4 PM.",
   ]))
   try Effect.try(() => assert.include(note, JSON.stringify(own)))
 })
