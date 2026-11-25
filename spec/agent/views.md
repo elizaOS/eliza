@@ -175,7 +175,9 @@ The show action reads the turn's renderer from message metadata
 (`viewClientId`, with `viewDelivery: "completed-action"`) and refuses a
 turn without one. It resolves the name to the one view with that id, label
 or alias; boot makes a name ambiguous never, so an unknown name is refused.
-It prepares with a fresh UUID, refuses unless the returned binding is
+Its description names every declared view by its label, so the model
+chooses among the views that exist rather than guessing a name. It
+prepares with a fresh UUID, refuses unless the returned binding is
 exactly its own, and returns `values {mode: "show", viewId, viewPath,
 viewType: "gui", label, completedActionDelivered: false,
 completedActionHandoffId, navigationPrepared: true, navigationBinding}`
