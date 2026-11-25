@@ -662,15 +662,18 @@ envelope are written calls on their own. A call envelope is an object core
 reads as an action envelope; an object whose `action`, `tool`, `type` or
 `name` field names an action registered in the runtime, offered this turn
 or not, ignoring case and underscores (`{"type": "Calculate"}`), other than
-`REPLY`, `IGNORE` and `NONE`; an object whose `action`, `tool` or `type`
-field is a snake_case call name (`{"action": "open_app", "app": "Maps"}`);
+`REPLY`, `IGNORE` and `NONE`; an object whose `action` or `tool` field is a
+snake_case call name (`{"action": "open_app", "app": "Maps"}`, while
+`{"type": "line_chart"}` is not);
 or an object with one of those four fields beside an `arguments`, `args`,
-`parameters`, `params` or `input` object (`{"name": "calculate",
+`parameters`, `params` or `input` field holding an object or text (`{"name": "calculate",
 "arguments": {…}}`). Bare assent beside a written call promises work as
 `Sure, one sec.` does (below), and text that is only written calls is a
 blank. Bare assent beside any other object (`Sure! {"name": "Bob"}`), and
 text that is only other objects (`{"status": "in_progress"}`, `{"theme":
-"dark_mode"}`), are an `Answer`.
+"dark_mode"}`), are an `Answer`. An answer is delivered without its call
+envelopes and bracketed calls, and the rest of it is kept, so a typed
+`{"tool": "search", …}` before a real answer never reaches the person.
 A wait cue followed by more text that is not progress (`One second is
 1,000 milliseconds.`, `Just a second, your dentist is Thursday.`) is an
 `Answer`. A cue that comes with the turn's first tool calls is the turn's

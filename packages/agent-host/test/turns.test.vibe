@@ -664,18 +664,20 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
     'Sure. {"action": "SEND_TEXT", "parameters": {"to": "Sam"}}', '{"action": "SEND_TEXT", "parameters": {"to": "Sam"}}',
     'Sure. [send_message contact="Sam" message="I am running late"]', '[send_message contact="Sam" message="I am running late"]',
     '{"action": "open_app", "app": "Maps", "params": {"query": "coffee shops near me"}}', '{"action": "open_app", "app_name": "Maps"}', '{"tool": "open_app", "action": "Maps"}',
-    'Sure. {"type": "send_message", "recipient": "Sam"}', '{"name": "calculate", "arguments": {"expression": "2 + 2"}}', '{"type": "Calculate"}',
+    '{"name": "calculate", "arguments": {"expression": "2 + 2"}}', '{"type": "Calculate"}', '{"type": "send_message", "args": {"to": "Sam"}}',
   ]) {
     try Effect.sync(() => cloud.script(text(said), text("I can't do that from here.")))
     const { answer, calls } = try callsFor({ text: "Text Sam that I am running late." })
     writtenCalls.push([answer.text, calls])
   }
   const jsonOnly: (readonly [string, number])[] = []
-  for (const said of ['{"status": "in_progress"}', '{"theme": "dark_mode"}', '{"type": "person", "name": "Bob"}', 'Sure. {"status": "in_progress"}']) {
+  for (const said of ['{"status": "in_progress"}', '{"theme": "dark_mode"}', '{"type": "person", "name": "Bob"}', 'Sure. {"status": "in_progress"}', '{"type": "line_chart", "data": [1, 2]}']) {
     try Effect.sync(() => cloud.script(text(said)))
     const { answer, calls } = try callsFor({ text: "Give me that as JSON." })
     jsonOnly.push([answer.text, calls])
   }
+  try Effect.sync(() => cloud.script(text('Let me check.{"tool": "search", "input": "definition of a second"}A second is the time caesium-133 radiation takes for 9,192,631,770 periods.')))
+  const { answer: callInAnswer, calls: callInAnswerCalls } = try callsFor({ text: "How long is a second?" })
   try Effect.sync(() => cloud.script(text('Sure! {"name": "Bob"}')))
   const { answer: jsonAnswer, calls: jsonAnswerCalls } = try callsFor({ text: "Make a JSON object for Bob." })
   try Effect.sync(() => cloud.script(toolCalls("", { name: "CALCULATE", arguments: { expression: "5 * 5" } }), text("Sure, one sec."), text("It is 25.")))
@@ -708,6 +710,7 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
     promisedTwice: [promisedTwice.text, promisedTwice.failureKind, promisedTwiceCalls],
     writtenCalls,
     jsonOnly,
+    callInAnswer: [callInAnswer.text, callInAnswerCalls],
     jsonAnswer: [jsonAnswer.text, jsonAnswerCalls],
     cuedAfterWork: [cuedAfterWork.text, cuedAfterWorkCalls, afterWorkAsked.toolChoice, afterWorkAsked.note],
     labels: { text: solved.action, voice: spoken.action },
@@ -739,7 +742,8 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
     workedAfter: ["It is 42.", 3, ["CALCULATE"]],
     promisedTwice: ["", "provider_issue", 2],
     writtenCalls: Array.from({ length: 16 }, () => ["I can't do that from here.", 2]),
-    jsonOnly: ['{"status": "in_progress"}', '{"theme": "dark_mode"}', '{"type": "person", "name": "Bob"}', 'Sure. {"status": "in_progress"}'].map((said) => [said, 1]),
+    jsonOnly: ['{"status": "in_progress"}', '{"theme": "dark_mode"}', '{"type": "person", "name": "Bob"}', 'Sure. {"status": "in_progress"}', '{"type": "line_chart", "data": [1, 2]}'].map((said) => [said, 1]),
+    callInAnswer: ["Let me check. A second is the time caesium-133 radiation takes for 9,192,631,770 periods.", 1],
     jsonAnswer: ['Sure! {"name": "Bob"}', 1],
     cuedAfterWork: [
       "It is 25.", 3, "auto",

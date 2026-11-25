@@ -75,14 +75,14 @@ function isCallEnvelope(body: string, registered: ReadonlySet<string>): boolean 
     if (typeof parsed !== "object" || parsed === null) return false
     const fields = Object.entries(parsed)
     const names = fields.flatMap(([key, value]) => callKeys.has(key) && typeof value === "string" ? [[key, value] as const] : [])
-    return names.some(([key, value]) => registered.has(actionNameKey(value)) || (key !== "name" && callName.test(value)))
-      || (names.length > 0 && fields.some(([key, value]) => argumentKeys.has(key) && typeof value === "object" && value !== null))
+    return names.some(([key, value]) => registered.has(actionNameKey(value)) || ((key === "action" || key === "tool") && callName.test(value)))
+      || (names.length > 0 && fields.some(([key, value]) => argumentKeys.has(key) && (typeof value === "string" || (typeof value === "object" && value !== null))))
   } catch {
     return false
   }
 }
 
-function withoutObjects(said: string, registered: ReadonlySet<string>): WithoutObjects {
+function withoutObjects(said: string, registered: ReadonlySet<string>, onlyCalls: boolean): WithoutObjects {
   const text = said.replace(bracketCall, " ")
   let calls = text !== said
   if (!text.includes("{")) return { text: calls ? text.replace(emptyWrapper, " ").trim() : said, calls }
@@ -103,7 +103,9 @@ function withoutObjects(said: string, registered: ReadonlySet<string>): WithoutO
     const start = open.pop()
     const body = text.slice(start ?? index, index + 1)
     if (start === undefined || open.length > 0 || !isJsonObject(body)) continue
-    calls ||= isCallEnvelope(body, registered)
+    const call = isCallEnvelope(body, registered)
+    calls ||= call
+    if (onlyCalls && !call) continue
     rest += `${text.slice(kept, start)} `
     kept = index + 1
   }
@@ -111,13 +113,17 @@ function withoutObjects(said: string, registered: ReadonlySet<string>): WithoutO
 }
 
 export function withoutWrittenCalls(said: string): string {
-  return withoutObjects(said, new Set()).text
+  return withoutObjects(said, new Set(), false).text
+}
+
+export function withoutCallEnvelopes(said: string, registered: ReadonlySet<string>): string {
+  return withoutObjects(said, registered, true).text
 }
 
 function shapeOf(reply: string, registered: ReadonlySet<string>): DraftShape {
   const said = reply.trim()
   if (!said) return "Blank"
-  const { text, calls } = withoutObjects(said, registered)
+  const { text, calls } = withoutObjects(said, registered, false)
   if (!text) return calls ? "Blank" : "OtherText"
   if (text.length > maxCueLength || text.includes("?") || text.includes(personMark) || dataToken.test(text)) return "OtherText"
   const words = text.replace(/\s+/gu, " ").replace(person, `check with ${personMark}`).toLowerCase()
