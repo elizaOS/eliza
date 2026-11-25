@@ -396,7 +396,7 @@ it.effect(`Ground a Browser proposal in the owner's own words or an exact page l
       direct({ type: "browser_history", action: "back" }), direct(tabList), direct(tabList), direct(tabList), direct(tabList),
     ])
     assert.strictEqual(told[0], "wikipedia.org is ready to open.")
-    assert.match(String(told[1] ?? ""), /shows this exact requested address in its Browser for the owner to open\. It has not opened/)
+    assert.match(String(told[1] ?? ""), /shows this exact requested address for the owner to open, with an Open choice; it opens in Browser only if they choose Open\. Browser has not opened and is not showing/)
     assert.notMatch(`${told[0]} ${told[1]}`, /Opening|no review/)
     assert.deepStrictEqual(told.slice(2), [undefined, undefined])
     assert.strictEqual(toldShown?.forOwner, "Doing that in Browser.")
@@ -576,9 +576,10 @@ it.effect('Show an address on the screen the owner asked from for the owner to o
       { code: "DEVICE_BROWSER_NOT_REQUESTED", userFacingText: "I didn't open that address." },
       { code: "DEVICE_BROWSER_NOT_REQUESTED", userFacingText: "Tell me the address, like example.com." },
     ])
-    assert.match(results[0]?.text ?? "", /^Showing example\.com for the owner to open\. .*opens only if they choose Open there\. It has not opened/)
+    assert.match(results[0]?.text ?? "", /^Showing example\.com for the owner to open\. .*opens in Browser only if they choose Open there\. Browser has not opened and is not showing/)
     assert.match(results[1]?.text ?? "", /^Showing en\.wikipedia\.org for the owner to open\./)
     assert.notMatch(results.map((result) => result.text ?? "").join(" "), /Opening|with no review/)
     assert.isTrue(browserPlugin.actions?.includes(browserOpenAction))
+    assert.match(browserOpenAction.description ?? "", /To show Browser itself, with no address to open, use VIEWS\./)
   })
 })

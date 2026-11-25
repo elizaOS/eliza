@@ -182,7 +182,7 @@ export function historyAsCommand(runtime: IAgentRuntime, message: Memory): boole
 
 export const browserAction: Action = {
   name: "BROWSER",
-  description: `Control the page that is showing in the requesting device's own browser. Only these commands are available: ${NATIVE_HISTORY_SUBACTIONS.join(", ")}. Do not offer any other browser command through this tool. Accepted dispatch does not prove website completion.`,
+  description: `Control the page that is showing in the requesting device's own browser. Only these commands are available: ${NATIVE_HISTORY_SUBACTIONS.join(", ")}. Do not offer any other browser command through this tool. It never opens or shows Browser: showing Browser is VIEWS. Accepted dispatch does not prove website completion.`,
   similes: [],
   examples: [],
   roleGate: { minRole: "OWNER" },

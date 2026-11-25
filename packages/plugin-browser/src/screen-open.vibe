@@ -32,7 +32,7 @@ function urlOf(options: unknown): string | undefined {
   return typeof url === "string" && url.trim() !== "" ? url.trim() : undefined
 }
 
-const SHOWN = "The screen the owner asked from shows this address in its Browser for the owner to open; it opens only if they choose Open there. It has not opened; do not claim it opened, that it loaded or what it shows."
+const SHOWN = "The screen the owner asked from shows this address for the owner to open, with an Open choice; it opens in Browser only if they choose Open there. Browser has not opened and is not showing: do not claim it opened, that it loaded, what it shows, or that Browser is open."
 
 effect function opened(runtime: IAgentRuntime, message: Memory, options: HandlerOptions | undefined): ActionResult!! {
   const clientId = screenOf(message)
@@ -55,7 +55,7 @@ effect function opened(runtime: IAgentRuntime, message: Memory, options: Handler
 
 export const browserOpenAction: Action = {
   name: BROWSER_OPEN,
-  description: 'Open a web address in the Browser of the screen the owner is asking from. This is the one way an address opens: the BROWSER command only goes back, forward or reloads the page already showing. Use it whenever the owner asks now to open, visit or go to a website: an address they typed in this message ("example dot com" is example.com), a link of the page this message carried that they point to, or a site they name without its address, with the site\'s https address you know. Any public https site may be asked for. The screen shows the address for the owner to open, and nothing opens until they choose Open there. Never for a deferred, hypothetical, past or reported mention, or an address the owner says not to open. Navigation only: never claim page content or that the page loaded.',
+  description: 'Open a web address in the Browser of the screen the owner is asking from. This is the one way an address opens: the BROWSER command only goes back, forward or reloads the page already showing. Use it whenever the owner asks now to open, visit or go to a website: an address they typed in this message ("example dot com" is example.com), a link of the page this message carried that they point to, or a site they name without its address, with the site\'s https address you know. Any public https site may be asked for. The screen shows the address for the owner to open, and nothing opens until they choose Open there. Never for a deferred, hypothetical, past or reported mention, or an address the owner says not to open. Navigation only: never claim page content or that the page loaded. To show Browser itself, with no address to open, use VIEWS.',
   similes: [],
   examples: [],
   contexts: ["browser", "general"],
