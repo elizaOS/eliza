@@ -26,6 +26,7 @@ import {
   bindEffectDelivery,
   getTrajectoryContext,
   getTrustedDeliveryAudience,
+  isDiscoveryActionName,
   isObjectRecord,
   stampAppConversationProvenance,
   trustedDeliveryAudienceIsBoundToRuntime,
@@ -488,15 +489,33 @@ export function preparedViewReply(args: {
   steps: readonly unknown[];
   allow: (text: string) => boolean;
 }): string | undefined {
-  // Terminal synthesis records carry no action/effect. Keep every malformed
-  // or action-bearing step so multiple real outcomes still fail closed.
-  const actionSteps = args.steps.filter(
-    (step) =>
-      !isObjectRecord(step) ||
-      step.terminalOnly !== true ||
-      step.toolCall != null ||
-      step.result != null,
-  );
+  // Terminal prose and verified registry discovery do not perform domain work.
+  // Keep malformed and action-bearing records in the count.
+  const actionSteps = args.steps.filter((step) => {
+    if (!isObjectRecord(step)) return true;
+    if (step.terminalOnly === true && step.toolCall == null && step.result == null)
+      return false;
+    const { toolCall, result } = step;
+    return !(
+      isObjectRecord(toolCall) &&
+      typeof toolCall.name === "string" &&
+      isDiscoveryActionName(toolCall.name) &&
+      isObjectRecord(result) &&
+      result.success === true &&
+      result.transcriptVisibility === "internal" &&
+      result.error == null &&
+      !result.replyFailure &&
+      (result.effectReceipts == null ||
+        (Array.isArray(result.effectReceipts) && result.effectReceipts.length === 0)) &&
+      (result.userFacingEffectReceiptIds == null ||
+        (Array.isArray(result.userFacingEffectReceiptIds) &&
+          result.userFacingEffectReceiptIds.length === 0)) &&
+      isObjectRecord(result.data) &&
+      result.data.readOnlyOperation === true &&
+      result.data.awaitingDeviceExecution !== true &&
+      result.data.awaitingUserInput !== true
+    );
+  });
   if (
     args.effectStatus !== "pending" ||
     typeof args.reply !== "string" ||

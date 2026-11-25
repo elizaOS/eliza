@@ -50,12 +50,14 @@ const functions = [
 const helper = new Function(
   "findViewActionHandoff",
   "isObjectRecord",
+  "isDiscoveryActionName",
   ts.transpileModule(functions, {
     compilerOptions: { target: ts.ScriptTarget.ES2022 },
   }).outputText + ";return preparedViewReply;",
 )(
   findViewActionHandoff,
   (v) => v !== null && typeof v === "object" && !Array.isArray(v),
+  (name) => name === "DISCOVER_ACTIONS" || name === "DISCOVER_TOOLS",
 );
 const pipeline = readFileSync(
   new URL("./pipeline.ts", import.meta.url),
@@ -210,11 +212,19 @@ test("a prepared named note keeps its prospective reply after reply grounding fa
     code: "REPLY_GROUNDING_FAILED",
   };
   a.result.replyRecoveryRequired = true;
+  const discovery = {
+    toolCall: { name: "DISCOVER_ACTIONS" },
+    result: { success: true, transcriptVisibility: "internal", data: { readOnlyOperation: true } },
+  };
+  a.result.trajectory.steps.unshift(discovery);
   const selected = select(a);
   assert.equal(selected.finalMessage, a.held);
   assert.equal(selected.terminalFailure, undefined);
   assert.equal(selected.replyRecoveryRequired, undefined);
   assert.equal(step.result.data.values.completedActionDelivered, undefined);
+  discovery.result.data.readOnlyOperation = false;
+  assert.equal(select(a).terminalFailure, a.result.terminalFailure);
+  discovery.result.data.readOnlyOperation = true;
   step.result.data.navigation.noteId = "other-note";
   assert.equal(select(a).terminalFailure, a.result.terminalFailure);
 });
