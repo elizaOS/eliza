@@ -767,7 +767,7 @@ it.each([
           verifiedUserFacing: true,
           userFacingText: typed
             ? "I didn't open that address."
-            : 'Tell me the address, like "open nytimes.com".',
+            : "Tell me the address, like example.com.",
           data: {
             code: "DEVICE_BROWSER_NOT_REQUESTED",
             proposalCreated: false,

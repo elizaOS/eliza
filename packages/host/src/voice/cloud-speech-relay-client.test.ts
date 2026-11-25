@@ -98,7 +98,16 @@ async function fixture() {
           ...(mode === "extra" ? { apiKey: "must-reject" } : {}),
         },
         {
-          headers: mode === "renewable" ? { "X-Eliza-Speech-Extend": "1" } : {},
+          headers: mode.startsWith("renewable")
+            ? {
+                "X-Eliza-Speech-Extend": "1",
+                ...(mode.endsWith("-windows")
+                  ? { "X-Eliza-Speech-Windows": mode.split("-")[1] }
+                  : mode === "renewable-bad-bound"
+                    ? { "X-Eliza-Speech-Windows": "3.0" }
+                    : {}),
+              }
+            : {},
         },
       );
     },
@@ -241,6 +250,53 @@ test("negotiated paid extensions retain the Cloud socket and notify the owning h
   const deadline = Date.parse(f.expiry) + 50_000;
   f.send({ t: "extended", expiresAt: new Date(deadline).toISOString() });
   await until(() => extensions.length === 1);
+  expect(client.expiresAt).toBe(deadline);
+  expect(f.connections).toBe(1);
+  await client.close();
+});
+test("the window a relay names as its last is reported final, and an unnamed or malformed bound never is", async () => {
+  for (const [mode, finals] of [
+    ["renewable-3-windows", [false, true]],
+    ["renewable", [false, false]],
+    ["renewable-bad-bound", [false, false]],
+  ] as const) {
+    const f = await fixture();
+    f.mode(mode);
+    const extensions: { deadline: number; final: boolean }[] = [];
+    const client = await createCloudSpeechRelayPorts({
+      ...f.options,
+      onLeaseExtended: (deadline, final) =>
+        extensions.push({ deadline, final }),
+    });
+    let deadline = Date.parse(f.expiry);
+    for (let window = 2; window <= 3; window++) {
+      deadline += 50_000;
+      f.send({ t: "extended", expiresAt: new Date(deadline).toISOString() });
+      await until(() => extensions.length === window - 1);
+    }
+    expect(extensions.map((extension) => extension.final)).toEqual(finals);
+    expect(client.expiresAt).toBe(deadline);
+    expect(f.connections).toBe(1);
+    await client.close();
+  }
+});
+test("at production's bound of ten windows only the ninth extension, which grants the tenth window, is final", async () => {
+  const f = await fixture();
+  f.mode("renewable-10-windows");
+  const finals: boolean[] = [];
+  const client = await createCloudSpeechRelayPorts({
+    ...f.options,
+    onLeaseExtended: (_deadline, final) => finals.push(final),
+  });
+  let deadline = Date.parse(f.expiry);
+  // The coordinator counts the included window as the first and increments
+  // once per granted extension, so a bound of 10 grants nine extensions.
+  for (let window = 2; window <= 10; window++) {
+    deadline += 50_000;
+    f.send({ t: "extended", expiresAt: new Date(deadline).toISOString() });
+    await until(() => finals.length === window - 1);
+  }
+  expect(finals).toEqual([...Array(8).fill(false), true]);
   expect(client.expiresAt).toBe(deadline);
   expect(f.connections).toBe(1);
   await client.close();

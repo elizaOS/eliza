@@ -400,7 +400,8 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     );
   }
 
-  renewLease(expiresAt: number): void {
+  /** `final` marks the last window the relay grants, so the client can rotate at an idle moment before it ends. */
+  renewLease(expiresAt: number, final = false): void {
     if (
       this.closed ||
       !this.config.renewableLease ||
@@ -412,7 +413,12 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       throw new Error("Voice lease renewal is invalid");
     this.leaseExpiresAt = expiresAt;
     this.armLeaseExpiry();
-    this.send({ t: "lease_extended", sessionId: this.sessionId, expiresAt });
+    this.send({
+      t: "lease_extended",
+      sessionId: this.sessionId,
+      expiresAt,
+      ...(final ? { final: true as const } : {}),
+    });
   }
 
   setTurnTerminalSupport(supported: true): void {

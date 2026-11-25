@@ -76,7 +76,7 @@ interface Ticket extends Binding {
   /** Absent only on pre-upgrade in-process tickets, which cannot be admitted. */
   turnTerminal?: true;
   renewalSupported?: boolean;
-  extendLease?: (expiresAt: number) => void;
+  extendLease?: (expiresAt: number, final: boolean) => void;
   claims: VoiceSessionTokenClaims;
   token: string;
   expiresAt: number;
@@ -383,14 +383,14 @@ export function createSelfHostedVoice(
       beforeProviderAdmission,
       ...(ticket.renewalSupported
         ? {
-            onLeaseExtended: (expiresAt: number) => {
+            onLeaseExtended: (expiresAt: number, final: boolean) => {
               if (
                 tickets.get(ticket.claims.sessionId) !== ticket ||
                 ticket.admissionClosed ||
                 !ticket.extendLease
               )
                 throw new VoiceAdmissionError(401, "voice_session_revoked");
-              ticket.extendLease(expiresAt);
+              ticket.extendLease(expiresAt, final);
               ticket.expiresAt = expiresAt;
             },
           }
@@ -994,10 +994,10 @@ export function createSelfHostedVoice(
               | Awaited<ReturnType<typeof createCloudSpeechRelayPorts>>
               | undefined;
             let session: VoiceSessionLike | undefined;
-            ticket.extendLease = (expiresAt) => {
+            ticket.extendLease = (expiresAt, final) => {
               if (!session?.renewLease)
                 throw new VoiceAdmissionError(503, "voice_renewal_unavailable");
-              session.renewLease(expiresAt);
+              session.renewLease(expiresAt, final);
             };
             let cleanup: CloudSpeechRelayRetirement | undefined =
               ticket.preparation?.cleanup;

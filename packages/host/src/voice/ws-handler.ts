@@ -53,7 +53,7 @@ export interface VoiceSessionDownlink {
  * while the orchestrator lives next to the merged provider adapters in api.
  */
 export interface VoiceSessionLike {
-  renewLease?(expiresAt: number): void;
+  renewLease?(expiresAt: number, final?: boolean): void;
   setTurnTerminalSupport?(supported: true): void;
   setUiContext?(context: VoiceUiContext): void;
   start(): void;

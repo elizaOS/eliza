@@ -1954,7 +1954,7 @@ export const proposeDeviceAction: Action = {
           ? 'Tell me the words to search for, like "search for weather in Paris".'
           : containsWebAddress(extractUserText(unwrapUserMessageText(_message)))
             ? "I didn't open that address."
-            : 'Tell me the address, like "open nytimes.com".';
+            : "Tell me the address, like example.com.";
       return {
         success: false,
         text: error.message,
