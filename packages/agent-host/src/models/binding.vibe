@@ -1,12 +1,12 @@
 // spec/agent/models/binding.md, "The binding is set once from an admitted launch and never changes while the process runs"; spec/agent/models/binding.md, "A model call starts only for a handler the backend serves, with the credential the binding holds"; spec/agent/models/binding.md, "Each refusal is one account state, and the last failure records its kind and time without text"; spec/agent/models/binding.md, "No call starts before a rate limit's retry time, and a provider issue does not lift a limit still in force"; spec/agent/models/binding.md, "A rate limit holds the account for the provider's whole retry time, and for at most 4 s on a Cerebras own-key endpoint"; spec/agent/models/binding.md, "An answer clears the account state, except a limit not yet over"; spec/agent/models/binding.md, "A pushed credential replaces the key only at a higher version of the launch account, and needs no restart"; spec/agent/models/binding.md, "A refusal of a replaced credential never marks the new one invalid"; spec/agent/models/binding.md, "Warm answers from the binding state and never reaches the cloud"; spec/agent/models/binding.md, "A key is held only in the slot of the backend it was given for, and only as a bearer credential that slot accepts"
-import type { Backend, GoogleConsent, LaunchDocument as LaunchModel, UrlShape } from "../../gen/agent__host__launch.ts"
+import type { Backend, GoogleConsent } from "../../gen/agent__host__launch.ts"
 import {
   Machine, accountStateName, blocked, clockAt, failureName, keyAdmitted, keySlot, limitedAt, machine, pushVerdict, reportedRetryAt, retryAtOf, warmAnswer,
   type AccountFailure, type KeyShape, type ModelBinding, type ModelHandler, type PushVerdict, type WarmAnswer,
 } from "../../gen/agent__models__binding.effect.vibe"
 import type { CloudError } from "../../gen/cloud__client.ts"
+import { launchModel } from "../host/launch.vibe"
 import type { LocalRoute, LaunchDocument, LaunchFrame } from "@elizaos/agent"
-import { launchChoices } from "../host/launch-choices.vibe"
 
 export type FailureKind = "credential_invalid" | "insufficient_credits" | "limit_reached" | "provider_issue"
 export type BackendName = "cloud" | "own-key" | "none"
@@ -59,38 +59,6 @@ const refusals: Record<Exclude<PushVerdict, "PushAccepted">, string> = {
 }
 const warmNames: Record<WarmAnswer, string> = { WarmReady: "ready", WarmBlocked: "blocked", WarmNoCloud: "no_cloud" }
 const backendNames: Record<Backend["tag"], BackendName> = { CloudBackend: "cloud", OwnKeyBackend: "own-key", NoBackend: "none" }
-
-function urlShape(url: string): UrlShape {
-  const parsed = URL.parse(url)
-  if (parsed === null || parsed.protocol !== "https:") return "NotHttps"
-  return parsed.origin === url ? "HttpsOrigin" : "HttpsWithPath"
-}
-
-function backendOf(model: LaunchDocument["model"]): Backend {
-  return match (model) {
-    when { backend: "cloud" }: { tag: "CloudBackend", baseUrl: model.cloudBaseUrl, baseUrlShape: urlShape(model.cloudBaseUrl), smallModel: model.smallModel, largeModel: model.largeModel, imageModel: model.imageModel };
-    when { backend: "own-key" }: { tag: "OwnKeyBackend", baseUrl: model.ownKeyBaseUrl, baseUrlShape: urlShape(model.ownKeyBaseUrl), smallModel: model.ownKeySmall, largeModel: model.ownKeyLarge };
-    when { backend: "none" }: { tag: "NoBackend" };
-  }
-}
-
-function launchModel(launch: LaunchDocument): LaunchModel {
-  const { character, policy, account, retention } = launch
-  return {
-    schema: launch.schema,
-    character: { name: character.name, nameUnits: character.name.length, systemBlank: !/\S/.test(character.system) },
-    policy: {
-      actionsAllowed: [...policy.actions.allowed], pluginsLoad: [...policy.plugins.load],
-      productPlugin: policy.plugins.product === undefined ? { tag: "NoProductPlugin" } : { tag: "NamedProductPlugin", name: policy.plugins.product },
-    },
-    backend: backendOf(launch.model),
-    account: account === undefined ? { tag: "NoAccount" } : { tag: "SignedIn", userId: account.userId, organizationId: account.organizationId },
-    ...launchChoices(launch),
-    retention: retention === undefined ? { tag: "KeepLogs" }
-      : { tag: "PruneLogs", dayThousandths: Math.ceil(retention.days * 1000), maxRowsPerRoom: retention.maxRowsPerRoom, intervalMinutes: retention.intervalMinutes },
-    environment: Object.keys(launch.environment ?? {}).map((key) => ({ key, keyKind: "PluginSetting", singleLine: true })),
-  }
-}
 
 function lastFailureOf(state: ModelBinding): LastCloudFailure | undefined {
   const last = state.lastCloudFailure

@@ -2,7 +2,7 @@
 import { HttpClientRequest } from "effect/http"
 import { refused, type Refused } from "../http/refusal.vibe"
 import { Deployment } from "@elizaos/cloud"
-import { keepLoopback, posted, type DeliveryContext } from "./delivery.vibe"
+import { handed, keepLoopback, posted, type DeliveryContext } from "./delivery.vibe"
 
 export interface Mail {
   readonly to: string
@@ -16,6 +16,12 @@ export effect function deliverMail(mail: Mail): void!Refused!DeliveryContext {
   switch (adapter.kind) {
     case "loopback":
       return try keepLoopback(mail.to, `${mail.subject}\n\n${mail.text}`)
+    case "binding": {
+      const binding = deployment.mailBinding(adapter.binding) catch effect () => { throw refused("ProviderUnavailable") }
+      const message = { from: deployment.settings.mailSender, to: mail.to, subject: mail.subject, text: mail.text }
+      try handed(tryPromise(() => binding.send(message)))
+      return
+    }
     case "https": {
       const key = deployment.secret(adapter.apiKeyEnv) catch effect () => { throw refused("ProviderUnavailable") }
       const body = { from: deployment.settings.mailSender, to: [mail.to], subject: mail.subject, text: mail.text }

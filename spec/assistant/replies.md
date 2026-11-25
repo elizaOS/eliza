@@ -3,7 +3,10 @@
 What a reply says the assistant did is held to what this turn's results
 prove. Each result names the action that produced it, the record it
 targeted, and how it ended: applied, refused by the store or provider,
-ended with the provider's acceptance unknown, or only previewed.
+ended with the provider's acceptance unknown, or only previewed. A result
+tells the model what happened in its own sentence, and the model words the
+reply from it: the owner never hears that sentence beside the model's
+words, so a saved routine or a changed to-do is told once.
 
 ## Story: Hear what this turn proves about my request
 
