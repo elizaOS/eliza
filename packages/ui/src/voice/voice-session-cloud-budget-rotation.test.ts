@@ -500,7 +500,9 @@ test("a sentence still at its partials when the last window begins is heard and 
       .filter((event) => event.t === "stt_final")
       .map((event) => (event as { text: string }).text),
   ).toEqual(["Hey, what's up?"]);
-  expect(h.marks).not.toContain("not_reached(turn_terminal_unknown:token_rotation)");
+  expect(h.marks).not.toContain(
+    "not_reached(turn_terminal_unknown:token_rotation)",
+  );
   expect(h.maxCaptures).toBe(1);
   expect(h.errors).toEqual([]);
 });
