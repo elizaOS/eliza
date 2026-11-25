@@ -222,7 +222,7 @@ it.effect('Keep notes as one collection edited only on the owner\'s words (spec/
   assert.equal(availability.data?.namedNoteMatchAvailable, true)
   const saved = (plugin.providers ?? []).find((provider) => provider.name === "SAVED_NOTES")
   const savedText = (try promise(() => saved!.get(undefined as never, message("what is in my trip note"), undefined as never))).text ?? ""
-  assert.include(savedText, "If no row has the note title the owner asked for, ask which note to use before citing another note.")
+  assert.include(savedText, "If no row has the note title the owner asked for, read by that title with NOTES_GET instead of citing another note.")
   const groceries = (try notes.snapshot()).notes.find((note) => note.id === "note-1")!
   const reference = notes.sourceReference(groceries)
   try notes.assertSourceReference(reference)
@@ -276,7 +276,7 @@ it.effect('Keep notes as one collection edited only on the owner\'s words (spec/
     described("NOTES_CREATE")?.description.includes(`at most ${noteLimits.checklistItems} items of at most ${noteLimits.checklistItem} characters each. When the owner gave the checklist no title, ask what to call it instead of creating it.`),
     described("NOTES_CREATE")?.parameters?.some((parameter) => parameter.name === "checklist" && parameter.schema.items?.maxLength === noteLimits.checklistItem),
     described("NOTES_UPDATE")?.description.includes("adds one list item in the note's own form, to a note the owner named, never as a new checklist the owner asked for (that is NOTES_CREATE with checklist)"),
-    described("NOTES_GET")?.description.includes("A title no saved note has reads nothing and never cites another note in its place: when one saved note's title holds those words, it names that note's noteId for you to read and go on with when it is plainly the note meant; otherwise it asks the owner which note they mean."),
+    described("NOTES_GET")?.description.includes("A title no saved note has reads nothing and never cites another note in its place: when one saved note's title holds those words, it names that note's noteId, which you read to answer about, show or open the note when it is plainly the note meant; before changing or deleting it, or when it may not be the one, ask the owner which note they mean."),
   ], [true, true, true, true, true])
   const getting = action(plugin, "NOTES_GET")
   const weekend = try notes.create({ content: "Weekend\nbring the gear bag" })
@@ -301,7 +301,7 @@ it.effect('Keep notes as one collection edited only on the owner\'s words (spec/
     [sharedTitle.success, sharedTitle.data?.code, sharedTitle.data?.awaitingUserInput, sharedTitle.data?.requiresInput, sharedTitle.data?.note, sharedTitle.data?.noteId],
     [Array.isArray(offered) && offered.length === 2 && trekIds.every((id) => offered.includes(id)), Array.isArray(shown) ? shown.length : 0],
     [both.success, both.text?.includes("noteId, title or content")],
-    [nearTitle.success, nearTitle.data?.code, nearTitle.data?.readOnlyOperation, nearTitle.data?.noteId, nearTitle.data?.awaitingUserInput, nearTitle.data?.candidateIds, nearTitle.text?.includes(`(noteId ${plan.value.note.id})`), nearTitle.text?.includes("carnitas")],
+    [nearTitle.success, nearTitle.data?.code, nearTitle.data?.readOnlyOperation, nearTitle.data?.noteId, nearTitle.data?.awaitingUserInput, nearTitle.data?.candidateIds, nearTitle.text?.includes(`(noteId ${plan.value.note.id})`), nearTitle.text?.includes("Before changing, adding to, moving or deleting it"), nearTitle.text?.includes("carnitas")],
     [byNearId.success, byNearId.data?.noteId],
     [twoNear.success, twoNear.data?.code, twoNear.data?.awaitingUserInput, Array.isArray(twoNear.data?.candidateIds) ? [...twoNear.data.candidateIds].sort() : undefined],
     editorMatches,
@@ -311,7 +311,7 @@ it.effect('Keep notes as one collection edited only on the owner\'s words (spec/
     [false, "NOTES_AMBIGUOUS_NOTE", true, true, undefined, undefined],
     [true, 2],
     [false, true],
-    [true, "NOTES_NEAR_TITLE", true, undefined, undefined, [plan.value.note.id], true, false],
+    [true, "NOTES_NEAR_TITLE", true, undefined, undefined, [plan.value.note.id], true, true, false],
     [true, plan.value.note.id],
     [false, "NOTES_TITLE_NOT_FOUND", true, [plan.value.note.id, shopping.value.note.id].sort()],
     [true, true, false, false],

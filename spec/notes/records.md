@@ -177,10 +177,12 @@ When no saved note has the title, no note is read and no other note is
 cited in its place. When exactly one saved note's title holds the words
 asked for as a phrase, case and spacing aside, as "Taco Night Plan" holds
 "Taco Night", the answer names that note with its ID and leaves the choice
-to the model: it reads that note by its ID and goes on with the request,
-opening it if that was asked, when it is plainly the note the owner meant,
-and asks which note only when it may not be. The owner is not asked to
-confirm one clear near title. Otherwise, with no such note or several, the
+to the model. When the owner asked only to read, show or open a note and
+it is plainly the note meant, the model reads it by its ID and goes on,
+opening it if that was asked, without asking the owner to confirm it.
+Before a change, a move or a deletion of that note, or when it may not be
+the one meant, the model asks the owner whether they mean that note.
+Otherwise, with no such note or several, the
 agent answers that no note has that title, with the titles of the notes
 whose text mentions it, and waits on the owner to say which note to use. A
 read by text the note contains, rather than by its title, searches every
