@@ -36,7 +36,10 @@ export const NOTES_CAPABILITY_IDS: ReadonlySet<string> = new Set(["get-notes-tra
 
 const mutations: ReadonlySet<string> = new Set(["create-note", "update-note", "delete-note", "restore-note"])
 
-const Snapshot = Schema.Struct({ notes: Schema.Array(NoteRow), revision: Revision, trash: Schema.optionalKey(Schema.Array(TrashRow)) })
+const Snapshot = Schema.Struct({
+  notes: Schema.Array(NoteRow), revision: Revision, trash: Schema.optionalKey(Schema.Array(TrashRow)),
+  deleteAtRevision: Schema.optionalKey(Schema.Literal(true)),
+})
   .check(Schema.makeFilter((state) => {
     const ids = [...state.notes.map((note) => note.id), ...(state.trash ?? []).map((entry) => entry.note.id)]
     return new Set(ids).size === ids.length
@@ -71,6 +74,7 @@ function snapshot(state: typeof Snapshot.Type): NotesSnapshot {
   return {
     notes: state.notes.map((note) => ({ ...note })),
     revision: state.revision,
+    ...(state.deleteAtRevision === true ? { deleteAtRevision: true as const } : {}),
     ...(state.trash === undefined ? {} : { trash: state.trash.map((entry) => ({ note: { ...entry.note }, deletedAt: entry.deletedAt })) }),
   }
 }
