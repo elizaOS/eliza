@@ -19,6 +19,23 @@ Java shell; sources are develop's `CloudConnectionPolicy.java` and
 > shown to my page, so that a compromised page cannot take the key or reach
 > any route my product did not list.
 
+### A call tied to a device credential cannot use a different credential
+
+The page can name the device credential identifier it obtained from the
+current sign-in. The identifier is public to the page. A bound call uses
+the credential the native shell actually captured, and only while its
+identifier and version still match the active credential immediately
+before dispatch. It cannot attach an account session, a mail lease or no
+credential. A mismatch is refused before a request leaves the device.
+
+```quint
+pure def namedCredentialAllows(expected: str, captured: str, active: str, versionMatches: bool, keyAttached: bool): bool =
+  expected == "" or (expected == captured and expected == active and versionMatches and keyAttached)
+pure def lawNamedCredentialCannotCrossOwners(expected: str, captured: str, active: str, versionMatches: bool, keyAttached: bool): bool =
+  expected != "" and namedCredentialAllows(expected, captured, active, versionMatches, keyAttached) implies
+    expected == captured and expected == active and versionMatches and keyAttached
+```
+
 ### A cloud table is loaded only when every route is a device route the page may use
 
 A consumer table is refused whole when any of its routes is not, by method
