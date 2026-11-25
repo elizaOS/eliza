@@ -17,13 +17,23 @@ the launch.
 
 ### A load list names only plugins the bundle carries or the agent's own modules
 
-The agent's own optional modules are named plugins like any other.
-`@elizaos/agent/basic-actions` registers one action, `CALCULATE`: arithmetic
-only, no I/O, for a User caller. `@elizaos/agent/device-actions` registers
-one action, `PROPOSE_DEVICE_ACTION`, for an Owner caller: it proposes one
-operation to the enrolled device for review
-([device requests](../deviceActions/index.md)) and runs nothing itself. Any
-other name refuses boot. A bundled
+The agent's own optional modules are named plugins like any other, and a
+module's actions and routes exist only when the load list names it:
+
+| Module `@elizaos/agent/…` | Registers |
+|---|---|
+| `basic-actions` | `CALCULATE`: arithmetic only, no I/O, for a User caller |
+| `device-actions` | `PROPOSE_DEVICE_ACTION`, for an Owner caller: one operation proposed to the enrolled device for review ([device requests](../deviceActions/index.md)); it runs nothing itself |
+| `approvals` | `/api/approvals` ([approvals](../approvals.md)) |
+| `notifications` | `/api/notifications` ([notifications](../notifications.md)) |
+| `views` | `VIEWS` and `/api/views` ([views](../views.md)) |
+| `reply-draft` | `/api/messages/reply-draft` ([reply draft](../deviceActions/replyDraft.md)) |
+| `triggers` | `/api/triggers` ([triggers](../schedule/triggers.md)) |
+| `scheduled-tasks` | `/api/scheduled-tasks` ([scheduled tasks](../schedule/scheduledTasks.md)) |
+| `tasks` | `/api/tasks`, the owner's interactive task ([tasks](../tasks/index.md)) |
+| `surface` | `/api/surface` ([surface channel](../surfaceChannel.md)) |
+
+A name that is neither one of these nor a bundled package refuses boot. A bundled
 package whose plugin needs a device service only the host supplies (local
 inference's engine) is a hosted module: the bundle carries its package, the
 host hands the agent its module factory, and it loads like the agent's own
@@ -242,10 +252,12 @@ initializes, so the agent registers them with its storage plugin, ahead
 of every listed plugin. When the launch pins a worker the agent registers
 `workflow-worker`, whose `spawnWorker` runs the verified worker under the
 rules above and refuses until the agent is ready. Every other bridge comes
-from the consumer: `runAgentCli({ runtimeServices })` returns service
-classes for the resident's state directory, as Alpha's entry does for
-`workflow-device` (the enrolled phone's device steps) and
-`workflow-native-digests` (reviewed native digest sources). A host service
+from the consumer: `runAgentCli({ runtimeServices, hostServices })` hands
+each the resident host, its state directory and the launch's `environment`
+(empty in the load smoke), and `runtimeServices` returns service classes
+over it, as a consumer entry does for `workflow-device` (the enrolled
+phone's device steps) and `workflow-native-digests` (reviewed native digest
+sources). A host service
 with an empty name, or one an agent service or another host service
 already uses (`task`, `agent_event`, `publishEvent`, `cloud`,
 `notification`, `workflow-worker` with a pinned worker), refuses boot with

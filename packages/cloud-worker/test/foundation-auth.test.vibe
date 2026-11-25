@@ -403,7 +403,7 @@ schema PlanReviewBody { targetPlanKey: "plus_monthly" | "pro_monthly" }
 
 function reviewRoute(path: `/${string}`, kind: Exclude<ReviewPlanChange["kind"], "UndoCommand">): Route {
   return {
-    method: "POST", path, auth: "FreshSession", capability: "billing",
+    method: "POST", path, auth: "FreshSession", area: "SubscriptionRoutes",
     handler: (context) => effect {
       const body = try jsonBody(context, PlanReviewBody)
       return json(try reviewPlanChange(context.request.headers.authorization, { kind, targetPlanKey: body.targetPlanKey }))

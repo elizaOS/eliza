@@ -248,14 +248,14 @@ effect function upgradePayment(authorization: string | undefined, commandId: str
 }
 
 export const routes: ReadonlyArray<Route> = [
-  { method: "POST", path: "/api/v1/subscriptions/upgrade/review", auth: "FreshSession", capability: "billing", rateClass: "StandardRequests",
+  { method: "POST", path: "/api/v1/subscriptions/upgrade/review", auth: "FreshSession", area: "SubscriptionRoutes", rateClass: "StandardRequests",
     handler: (context) => effect {
       const request = try jsonBody(context, PlanReviewBody)
       return json(try reviewPlanChange(context.request.headers.authorization, { ...request, kind: "UpgradeCommand" }))
     } },
-  { method: "POST", path: "/api/v1/subscriptions/upgrade/confirm", auth: "FreshSession", capability: "billing", rateClass: "StandardRequests",
+  { method: "POST", path: "/api/v1/subscriptions/upgrade/confirm", auth: "FreshSession", area: "SubscriptionRoutes", rateClass: "StandardRequests",
     handler: (context) => effect { return json(try confirmUpgrade(context.request.headers.authorization, try jsonBody(context, PlanConfirmation))) } },
-  { method: "GET", path: "/api/v1/subscriptions/upgrade/:commandId", auth: "FreshSession", capability: "billing", rateClass: "StandardRequests",
+  { method: "GET", path: "/api/v1/subscriptions/upgrade/:commandId", auth: "FreshSession", area: "SubscriptionRoutes", rateClass: "StandardRequests",
     handler: (context) => effect {
       const own = try freshOwner(context.request.headers.authorization)
       const commandId = context.params.commandId ?? ""
@@ -266,7 +266,7 @@ export const routes: ReadonlyArray<Route> = [
       const row = try store.transaction((tx) => commandFor(tx, own.organizationId, commandId, false))
       return json(planCommandView((try refreshUpgrade(row)).row, try Clock.currentTimeMillis))
     } },
-  { method: "POST", path: "/api/v1/subscriptions/upgrade/:commandId/payment", auth: "FreshSession", capability: "billing", rateClass: "StandardRequests",
+  { method: "POST", path: "/api/v1/subscriptions/upgrade/:commandId/payment", auth: "FreshSession", area: "SubscriptionRoutes", rateClass: "StandardRequests",
     handler: (context) => effect { return json(try upgradePayment(context.request.headers.authorization, context.params.commandId ?? "")) } }
 ]
 
