@@ -768,6 +768,8 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
   }
   try Effect.sync(() => cloud.script(text("[promise] Sure, one sec."), text("[answer] I can't send texts from here.")))
   const { answer: declaredPromise, calls: declaredPromiseCalls } = try callsFor({ text: "Text Sam that I am running late." })
+  try Effect.sync(() => cloud.script(text("[PROMISE] One sec."), text("[answer] I can't send texts from here.")))
+  const { answer: upperPromise, calls: upperPromiseCalls } = try callsFor({ text: "Text Sam that I am running late." })
   try Effect.sync(() => cloud.script(toolCalls("", dividing), text("Done!"), text("[promise] One sec.")))
   const { answer: promisedInReask } = try callsFor({ text: "Divide 7 by 0." })
   const survives = [
@@ -840,6 +842,7 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
     survived,
     declared,
     declaredPromise: [declaredPromise.text, declaredPromiseCalls],
+    upperPromise: [upperPromise.text, upperPromiseCalls],
     promisedInReask: promisedInReask.text,
     bareAssent,
     maybeAnswers,
@@ -884,6 +887,7 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
       ["Sure.\nSantiago has about 6 million people.", 1],
     ],
     declaredPromise: ["I can't send texts from here.", 2],
+    upperPromise: ["I can't send texts from here.", 2],
     promisedInReask: `Done!\n\n${divided}`,
     bareAssent: [["It is 4.", 3, actOrAnswer], ["Sure, Bob.", 2, actOrAnswer], ["Sure.", 2, actOrAnswer]],
     maybeAnswers: [["I can't text from here.", 2], ['Sure! {"name": "Bob"}', 2]],

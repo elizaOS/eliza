@@ -249,7 +249,7 @@ export function streamable(written: string): string {
   const { declared, text: whole } = declaredOf(said)
   if (declared === "Undeclared" && lead.startsWith("{")) return ""
   const partial = partialTagAt(whole)
-  const text = partial < 0 ? whole : whole.slice(0, partial).trimEnd()
+  const text = (partial < 0 ? whole : whole.slice(0, partial)).trimEnd()
   const at = text.search(writtenCallMarker)
   if (at >= 0) return text.slice(0, at)
   const open = text.lastIndexOf("<")

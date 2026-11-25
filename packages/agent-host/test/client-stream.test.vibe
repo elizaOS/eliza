@@ -495,15 +495,24 @@ it.live(`Hear a cue by its form, whatever its words or language, and never one t
     const previews = whole.seen.filter((entry) => entry.startsWith("text:")).map((entry) => entry.slice("text:".length))
     streamedSurvivors.push([final, previews.every((shown) => final.startsWith(shown))])
   }
+  try Effect.sync(() => cloud.script(thirds("[PROMISE] One sec."), thirds("[ANSWER] Anytime, 2 of them.")))
+  const upperWhole = try read(try streamed(agent, id, { text: "Text Sam that I'm late" }), 3)
+  const upper = [upperWhole.outcome.kind === "Done" ? upperWhole.outcome.text : upperWhole.outcome.kind, leaksTag(upperWhole.seen)]
+  try Effect.sync(() => cloud.script(thirds("[answer] Rome.  [answer] More.")))
+  const spacedWhole = try read(try streamed(agent, id, { text: "Capital of Italy?" }), 3)
+  const spacedFinal = spacedWhole.outcome.kind === "Done" ? spacedWhole.outcome.text : spacedWhole.outcome.kind
+  const spaced = [spacedFinal, spacedWhole.seen.filter((entry) => entry.startsWith("text:")).every((entry) => spacedFinal.startsWith(entry.slice("text:".length)))]
   const anywhere = [
     midWhole.outcome.kind === "Done" ? midWhole.outcome.text : midWhole.outcome.kind, leaksTag(midWhole.seen),
     cueWhole.seen.filter((entry) => entry.startsWith("acknowledgment:")), cueWhole.outcome.kind === "Done" ? cueWhole.outcome.text : cueWhole.outcome.kind, leaksTag(cueWhole.seen),
   ]
-  try Effect.try(() => assert.deepStrictEqual({ spoken, unspoken, shortAnswers, tagged, anywhere, streamedSurvivors }, {
+  try Effect.try(() => assert.deepStrictEqual({ spoken, unspoken, shortAnswers, tagged, anywhere, streamedSurvivors, upper, spaced }, {
     spoken: requests.flatMap((request) => forms.map((cue): Heard => [request, cue, [cue], "Done."])),
     unspoken: refused.map((cue): Heard => ["Text Sam that I'm late", cue, [], "Done."]),
     shortAnswers: [["Sure.", 0], ["Anytime.", 0]],
     tagged: ["Anytime.", false],
+    upper: ["Anytime, 2 of them.", false],
+    spaced: ["Rome. More.", true],
     streamedSurvivors: [...survives.slice(0, 9).map((said) => [said, true] as const), ["Sure.\nParis has about 2 million people.", true], ["Sure.\nSantiago has about 6 million people.", true]],
     anywhere: ["Sure.\nParis has about 2 million people.", false, ["acknowledgment:Let me check."], "Nothing booked.", false],
   }))
