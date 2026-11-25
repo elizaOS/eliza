@@ -702,7 +702,9 @@ ignoring case and underscores), so a record that only shares a tool's name
 (`{"name": "GitHub", "url": …}` while a GitHub tool is offered) does not. Text that is only objects
 or bracketed calls is blank when one of them looks like a call; otherwise
 (`{"status": "in_progress"}`, `{"theme": "dark_mode"}`, `{"type":
-"line_chart"}`, `{"name": "john_doe"}`) it is an `Answer`. An object or bracketed call is beside
+"line_chart"}`, `{"name": "john_doe"}`) it is an `Answer`; a response that
+is one object or call line calling an offered tool, or an object copying
+the host's data, is read first (below). An object or bracketed call is beside
 the text when it opens the text or follows the end of a sentence; one
 inside a sentence (`a command such as {"action": "turn_on"} switches the
 lamp on`) makes the text an `Answer`. Cue-shaped text beside one that
@@ -738,7 +740,8 @@ person whole; while streaming it holds back a partial tag at the tail
 (`[ans`, `<pro`), a closing `[answer]` until the next text shows it is
 no link, and an inline code span until it closes, so what it streams is
 always the start of what it delivers, and
-streams nothing while the text so far is only an untagged object. Only a
+streams nothing while the text so far, after a leading tag, begins with an
+object (below). Only a
 tag that leads the text, in any letter case (`[ANSWER]Sure, Bob.`), after nothing but JSON objects or bracketed calls,
 says what the response is, and the shell reads it before the form: with no tool call, text
 tagged `[answer]` is an `Answer` delivered at once, however short (`[answer]
@@ -898,6 +901,93 @@ pure def lawMarkupAtTheLastStepIsDropped(calls: int, markupAskedBefore: bool): b
   writtenMarkupOf(true, calls, markupAskedBefore, 0) == DropTheMarkup
 pure def lawTextWithoutMarkupIsReadAsItIs(calls: int, markupAskedBefore: bool, stepsLeft: int): bool =
   writtenMarkupOf(false, calls, markupAskedBefore, stepsLeft) == NoMarkup
+```
+
+### A response that is only a written call of an offered tool runs as that call, and one copying the host's own data is asked again once
+
+A model may write its whole response as one JSON object in place of the
+tool call it meant (`{"action": "VIEWS", "view": "home"}`), or as one call
+line (`VIEWS call: view "home", action "show".`), or copy back data the
+agent host gave it, such as the screen context (`{"observation": {…}}`) or
+a tool result of this turn. The shell reads a response with no tool call
+whose text, with a leading tag (above) taken off, is one JSON object and
+nothing else, or one call line and nothing else:
+
+- A call line names an offered tool by its call field: the tool's name
+  exactly as it was offered, in capitals, then `call:`, then only
+  arguments, each a key and a value (a quoted string, a number, `true` or
+  `false`), with an optional `:` or `=` between them, separated by commas,
+  and an optional closing period. Its arguments are those keys and values.
+  Any other text after `call:`, such as a sentence about the tool, makes
+  it no call line, so prose that mentions a tool is read as written.
+- An object names an offered tool by its call field when its `action` or
+  `tool` field names a tool offered in this turn's request, or its `name` or
+  `type` field does beside an arguments field (`arguments`, `args`,
+  `parameters`, `params`, `input` or `tool_input`), names compared as for
+  a cue above. Its arguments are that arguments field, an object or a
+  string holding one, or else its other fields.
+- An object names an offered tool by its only key when it has one field,
+  named as an offered tool, holding an object, its arguments
+  (`{"VIEWS": {"view": "home"}}`).
+- Its arguments fit when they pass the parameter schema that tool was
+  offered with in this turn's request.
+- An object copies the host's data when every field it has is a field of
+  one object the agent host wrote into this turn's model-only text (a note's
+  object, such as the screen context, or a tool result of this turn), and
+  it has at least two of them unless that object has only one, so a lone
+  field another object shares (`{"text": "milk"}`) is no copy.
+- The person wrote structure when the person's latest message holds a
+  JSON object, or a code block or span: what the model writes may then be
+  the object the person gave or asked for, so it is read as written.
+
+When the person wrote no structure, a response whose object or call line
+names an offered tool, either way, with arguments that fit, while the
+step's call left the model free to call a tool, runs as that one tool call, exactly as
+a call the model made: the same admission, argument checks, guards, review
+cards, step and step bound, with no text beside it, so nothing of it is
+streamed or delivered. A response whose object or call line names an
+offered tool by its call field with arguments that do not fit, or whose
+object copies the host's data, spends the turn's re-ask (above), within the
+step bound: none of it is sent, the model reads its own response and one
+host note, and is asked once more. For a call, the note says which tool it named, that the
+arguments do not fit it and why in the schema's words, that nothing ran
+and the person saw none of it, and to call the tool with arguments that fit
+or answer the person in words. For a copy, it says that the response only
+repeated data the agent host gave it, so none of it was sent, to answer the
+person's latest message in its own words or call an offered tool, and, if
+the person asked for that data as it is, to give it again as it was. A
+response after the re-ask, or when the re-ask is spent or no step is left,
+and every other response, including an object naming an offered tool by
+its only key whose arguments do not fit, is read as written (the cue rule
+above): a JSON object that calls no offered tool and copies nothing, or
+one the person asked for, is still delivered whole, whatever it holds. The
+shell reads only the structure of the object, the offered tools and the
+host's own text, never the person's words. While streaming, a response
+whose text after a leading tag begins with `{`, or with a word in capitals
+that is or may still become the head of a call line (`VIEWS`, `VIEWS
+call:`), streams nothing until it is read or the next text shows it is no
+call line, and ordinary text streams as it comes.
+
+```quint
+type ObjectNaming = NamesNoTool | NamesByCallField | NamesByOnlyKey
+type LoneObjectMove = ReadAsWritten | RunAsCall | AskAboutObject
+pure def loneObjectMove(lone: bool, naming: ObjectNaming, fits: bool, copiesHost: bool, personWroteStructure: bool, freeChoice: bool, askedAgain: bool, stepsLeft: int): LoneObjectMove =
+  if (not(lone) or personWroteStructure) ReadAsWritten
+  else if (naming != NamesNoTool and fits and freeChoice) RunAsCall
+  else if ((naming == NamesByCallField or copiesHost) and not(askedAgain) and stepsLeft > 0) AskAboutObject
+  else ReadAsWritten
+pure def lawOnlyAnOfferedCallThatFitsRuns(lone: bool, naming: ObjectNaming, fits: bool, copiesHost: bool, personWroteStructure: bool, freeChoice: bool, askedAgain: bool, stepsLeft: int): bool =
+  loneObjectMove(lone, naming, fits, copiesHost, personWroteStructure, freeChoice, askedAgain, stepsLeft) == RunAsCall
+    iff (lone and not(personWroteStructure) and naming != NamesNoTool and fits and freeChoice)
+pure def lawThePersonsStructureIsReadAsWritten(lone: bool, naming: ObjectNaming, fits: bool, copiesHost: bool, freeChoice: bool, askedAgain: bool, stepsLeft: int): bool =
+  loneObjectMove(lone, naming, fits, copiesHost, true, freeChoice, askedAgain, stepsLeft) == ReadAsWritten
+pure def lawAnObjectThatCallsAndCopiesNothingIsReadAsWritten(lone: bool, fits: bool, personWroteStructure: bool, freeChoice: bool, askedAgain: bool, stepsLeft: int): bool =
+  loneObjectMove(lone, NamesNoTool, fits, false, personWroteStructure, freeChoice, askedAgain, stepsLeft) == ReadAsWritten
+pure def lawAnObjectIsAskedAboutOnlyWithinTheReAsk(lone: bool, naming: ObjectNaming, fits: bool, copiesHost: bool, personWroteStructure: bool, freeChoice: bool, stepsLeft: int): bool =
+  loneObjectMove(lone, naming, fits, copiesHost, personWroteStructure, freeChoice, true, stepsLeft) != AskAboutObject
+  and loneObjectMove(lone, naming, fits, copiesHost, personWroteStructure, freeChoice, false, 0) != AskAboutObject
+pure def lawAnUnfitOnlyKeyIsReadAsWritten(lone: bool, personWroteStructure: bool, freeChoice: bool, askedAgain: bool, stepsLeft: int): bool =
+  loneObjectMove(lone, NamesByOnlyKey, false, false, personWroteStructure, freeChoice, askedAgain, stepsLeft) == ReadAsWritten
 ```
 
 ### When nothing ran in a turn, the answer it asks for is told so
