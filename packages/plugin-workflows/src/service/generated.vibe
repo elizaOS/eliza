@@ -2,7 +2,7 @@
 import * as A from "../../gen/workflow__admission.effect.vibe"
 import * as L from "../../gen/workflow__lifecycle.effect.vibe"
 import { draftStep } from "../../gen/workflow__generated.effect.vibe"
-import { phoneTimeTriggerCron, validatePhoneWorkflowTrigger, workflowSha, workflowUuid, type PhoneWorkflowSpec, type PhoneWorkflowTrigger } from "../contract/phone.vibe"
+import { phoneTimeTriggerCron, validatePhoneWorkflowTrigger, workflowSha, workflowUuid, type PhoneWorkflowSpec, type PhoneWorkflowTrigger } from "@elizaos/plugin-workflow-client"
 import { GENERATED_ENGINE_DECLARATION } from "../worker/compiler.vibe"
 import type { DefinitionRow, GeneratedDefinition } from "./store.vibe"
 import { body, uuidV4, versionId, versionOf, WorkflowRefused, type Bag, type WorkflowService } from "./workflows.vibe"

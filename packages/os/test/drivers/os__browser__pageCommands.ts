@@ -1,8 +1,8 @@
 // spec/os/browser/pageCommands.md, "Story: Run a website task step only on the page it was planned for"
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { createSurfaceTaskHandler, type SurfaceControlReply, type SurfacePage, type SurfaceTaskHandler } from "@elizaos/os/browser/runtime/surface-task-handler.mjs";
-import { COMMIT_GRANT_MAX_MS } from "@elizaos/os/browser/runtime/task-bindings.mjs";
+import { createSurfaceTaskHandler, type SurfaceControlReply, type SurfacePage, type SurfaceTaskHandler } from "../../browser/src/surface-task-handler.mjs";
+import { COMMIT_GRANT_MAX_MS } from "../../browser/src/task-bindings.mjs";
 import { Effect } from "effect";
 import type { Driver, Options } from "../../gen/os__browser__pageCommands.conformance.ts";
 import type { BindingOffer, CommandScope, Event, PageRequest, ReceiverPhase, Reply, RequestedAction, SurfaceReceiver } from "../../gen/os__browser__pageCommands.ts";

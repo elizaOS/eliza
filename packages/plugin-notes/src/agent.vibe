@@ -1,20 +1,18 @@
 // spec/notes/records.md, "Story: Keep my notes as one collection the agent edits only as I asked"; spec/notes/records.md, "A Notes write runs when the model calls a write action, and a read action never writes"; spec/notes/records.md, "A Notes change answers with a receipt of the note and the revision it committed, and a refusal says what it waits on"; spec/notes/records.md, "A read tells a note's times in the owner's zone when the turn knows it"; spec/notes/records.md, "Story: Keep the notes I saved before this version"; spec/notes/records.md, "The agent reads and changes Notes only for the owner, and changes the note the model picked"; spec/notes/records.md, "A checklist the owner asks for is a new note holding the owner's items"; spec/notes/records.md, "A read by a title no saved note has cites no other note and asks which one"; spec/notes/trash.md, "Story: Recover a deleted note"; spec/notes/trash.md, "Story: Let deleted notes expire after three days when I choose that"; spec/notes/trash.md, "The proof of erase comes from the service's own verifier, else the host's verifier found when the cleanup is acknowledged, and only a literal true is proof"; spec/notes/organize.md, "A folder is named by a bounded name that is unique in the device's list"; spec/notes/read.md, "Story: Ask about or change a phone note in my own words"
-import { readTurnContext, type AgentModule, type AgentPlugin, type ModuleFactory } from "@elizaos/agent"
-import { registerDeviceProposalFamily } from "@elizaos/agent/device-actions"
-import type { LocalRoute, RouteInput } from "@elizaos/agent/routes"
+import { readTurnContext, type LocalRoute, type RouteInput } from "@elizaos/agent"
+import { type AgentModule, type AgentPlugin, type ModuleFactory, registerDeviceProposalFamily } from "@elizaos/agent-host"
 import type { Action, ActionResult, EffectReceipt, IAgentRuntime, Memory, Provider, ProviderResult, ViewCapability, ViewDeclaration } from "@elizaos/core"
 import { displayZoneSource, emptyCollectionObserved, localTimesShown, notesCapability, receiptOperation, receiptOutcome, refusalKind, titledRead, type NotesCapability, type NotesRefusal, type NotesWrite } from "../gen/notes__records.effect.vibe"
 import { sharedTitleIds, type ModelPick, type NoteTarget, type NotesQuery } from "./collection.vibe"
 import { notesDeviceFamily } from "./device-proposals.vibe"
-import { json } from "./format.vibe"
+import {
+  json, findNoteFolder, noteFolderId, readNoteFolders, noteIdPattern, noteLimits, notesContext, projectNoteForModel, reconstructNoteContent, type NotesSnapshot, type StickyNote,
+} from "@elizaos/plugin-notes-client"
 import { notesNamedIn, ownerRequestText } from "./lookup.vibe"
-import { findNoteFolder, noteFolderId, readNoteFolders } from "./organize.vibe"
-import { noteIdPattern, noteLimits } from "./records.schema.vibe"
 import {
   notesCollection, notesServiceClass, notesStateUpdatedEvent, runtimeNotesHost,
   type NotesCollection, type NotesFailure, type NotesOptions,
 } from "./service.vibe"
-import { notesContext, projectNoteForModel, reconstructNoteContent, type NotesSnapshot, type StickyNote } from "./types.vibe"
 
 module edge {
   import { randomUUID } from "node:crypto"

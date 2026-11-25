@@ -1,5 +1,5 @@
 // spec/cloud/billing/grantCodes.md, "A code is 16 Crockford base32 characters, read without case, spaces or hyphens, with I and L read as 1 and O as 0"
-import { declassifyGrantCodeValid, normalizeGrantCodeUnits } from "../../gen/cloud__billing__grantCodes.effect.vibe"
+import { declassifyGrantCodeValid, normalizeGrantCodeUnits } from "../../gen/cloud__billing__grantCodes.ts"
 
 module node {
   /** @throws {never} */

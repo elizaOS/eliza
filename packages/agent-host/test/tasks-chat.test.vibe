@@ -1,0 +1,179 @@
+// spec/agent/tasks/wire.md, "Story: Show a task's choice in the chat"; spec/agent/tasks/index.md, "A chat turn is shown a task only while it is active at the epoch it named"
+import { assert, it } from "@effect/vitest"
+import { validateUuid, type UUID } from "@elizaos/core"
+import { TaskView } from "@elizaos/agent"
+import { builtinModuleFactories } from "../src/plugins/profile.vibe"
+import { tasksModuleName } from "../src/tasks/module.vibe"
+import { held, text } from "./support/cloud-fake.ts"
+import { call, cloudFake, deviceKey, host, startInProcess, stream, SupportFailed, type InProcess } from "./support/kernel.vibe"
+import type { LocalRequest } from "./support/socket-client.ts"
+
+module node {
+  import { randomBytes } from "node:crypto"
+  import type { TaskChoiceWidget } from "@elizaos/core"
+  import { tasksModule } from "../src/tasks/module.vibe"
+  import { readReplyStream } from "@elizaos/agent"
+  import type { CloudFake } from "./support/cloud-fake.ts"
+
+  export const contextMarker = "Host task preference review"
+  export const testCallback = "is1:11111111111111111111111111111111"
+  export const storageKey = randomBytes(32).toString("base64")
+
+  export function taskProduct() {
+    let showForeignChoice = false
+    const expiresAt = new Date(Date.now() + 5 * 60_000).toISOString()
+    const choice: TaskChoiceWidget = {
+      schemaVersion: 1, taskId: "task-preference", epoch: 0, contextKey: "a".repeat(64),
+      callbackData: testCallback, expiresAt, state: "pending",
+      block: { kind: "choice", id: "news", scope: "task", prompt: "Which view?", options: [{ value: "daily", label: "Daily" }] },
+    }
+    return {
+      choice,
+      foreignChoice: () => { showForeignChoice = true },
+      factory: tasksModule({
+        authorizer: {
+          authorize: (goalRef) => Promise.resolve({
+            id: choice.taskId, goalRef,
+            authorization: { decisionId: "choice-1", policyRevision: "1", decidedAt: new Date(0).toISOString(), state: "active", revokedAt: null },
+            allowedCapabilities: ["read"], allowedOrigins: ["https://example.test"],
+          }),
+        },
+        actuator: {
+          capabilities: ["read"],
+          observe: () => Promise.reject(new Error("This journey performs no page action")),
+          execute: () => Promise.reject(new Error("This journey performs no page action")),
+          quiesce: () => Promise.resolve(),
+        },
+        presentation: {
+          format: ({ taskId, epoch }) => `${contextMarker} ${taskId} at ${epoch}`,
+          choice: () => Promise.resolve(showForeignChoice ? { ...choice, taskId: "task-elsewhere" } : choice),
+        },
+      }),
+    }
+  }
+
+  /** @throws {never} */
+  export function modelCalls(cloud: CloudFake) {
+    return cloud.calls.filter(({ path }) => path.endsWith("/chat/completions"))
+  }
+
+  export async function readFrames(chunks: readonly string[]) {
+    async function* bytes() {
+      for (const chunk of chunks) yield new TextEncoder().encode(chunk)
+    }
+    return readReplyStream(bytes())
+  }
+}
+import { contextMarker, modelCalls, readFrames, storageKey, taskProduct, testCallback } from node
+
+const roomOf = Schema.decodeUnknownSync(Schema.Struct({ conversation: Schema.Struct({ id: Schema.String, roomId: Schema.String }) }))
+const taskOf = Schema.decodeUnknownSync(Schema.Struct({ task: TaskView }))
+const replyOf = Schema.decodeUnknownSync(Schema.Struct({
+  text: Schema.String, userMessageId: Schema.String, messageId: Schema.String, taskChoices: Schema.Array(Schema.Unknown),
+}))
+
+effect function ask(agent: InProcess, request: LocalRequest) {
+  const reply = try call(agent, request)
+  if (!("status" in reply)) throw new SupportFailed({ step: request.path, cause: reply })
+  return { status: reply.status, body: reply.json }
+}
+
+function post(path: string, body: object): LocalRequest { return { method: "POST", path, body } }
+
+effect function idOf(raw: string) {
+  const id = validateUuid(raw)
+  if (id === null) throw new SupportFailed({ step: "task chat UUID", cause: raw })
+  return id
+}
+
+effect function messages(agent: InProcess, roomId: UUID) {
+  return try host("task chat records", () => agent.agent.runtime.getMemories({ roomId, tableName: "messages", count: 100 }))
+}
+
+it.live('A live owner task contributes only model context and offers a current choice on the same keyed reply (spec/agent/tasks/wire.md, "A chat turn names a task only while the host presents it at that epoch"; spec/agent/tasks/wire.md, "A choice batch is shown only when every choice is valid for the task and epoch")', effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const product = try Effect.try(() => taskProduct())
+  const modules = new Map(builtinModuleFactories)
+  modules.set(tasksModuleName, product.factory)
+  const agent = try startInProcess({
+    launch: { backend: { kind: "cloud", origin: cloud.origin }, load: [tasksModuleName], callerRole: "owner", persistMemory: true },
+    frame: { credential: { version: 1, value: deviceKey }, storageKey }, modules,
+  })
+  const created = try ask(agent, post("/api/tasks", { goalRef: "preference" }))
+  const { task } = try Effect.try(() => taskOf(created.body))
+  const room = try ask(agent, post("/api/conversations", {}))
+  const { conversation } = try Effect.try(() => roomOf(room.body))
+  const roomId = try idOf(conversation.roomId)
+  const path = `/api/conversations/${conversation.id}/messages`
+  const asked = { text: "Which view?", task: { taskId: task.id, expectedEpoch: task.epoch }, clientMessageId: "task-review-01" }
+  try Effect.sync(() => cloud.script(text("You can choose Daily.")))
+  const first = try ask(agent, post(path, asked))
+  const reply = try Effect.try(() => replyOf(first.body))
+  const state = try messages(agent, roomId)
+  const keyed = try stream(agent, post(`${path}/stream`, asked))
+  const replay = try host("read task replay stream", () => readFrames(keyed.chunks))
+  const knownCalls = modelCalls(cloud)
+  const malformed = try ask(agent, post(path, { text: "Again?", task: { taskId: task.id, expectedEpoch: -1 } }))
+  const stale = try ask(agent, post(path, { text: "Again?", task: { taskId: task.id, expectedEpoch: task.epoch + 1 } }))
+  const forged = try ask(agent, post(path, { text: "Again?", task: { taskId: "task-elsewhere", expectedEpoch: task.epoch } }))
+  const after = try messages(agent, roomId)
+  const afterRefusals = modelCalls(cloud).length
+  try Effect.try(() => {
+    assert.deepStrictEqual([created.status, first.status, reply.text, reply.taskChoices], [201, 200, "You can choose Daily.", [product.choice]])
+    assert.strictEqual(state.find(({ id }) => id === reply.userMessageId)?.content.text, asked.text)
+    assert.notInclude(JSON.stringify(state), contextMarker)
+    assert.notInclude(JSON.stringify(state), testCallback)
+    assert.include(JSON.stringify(knownCalls[0]?.body), contextMarker)
+    assert.notInclude(JSON.stringify(knownCalls[0]?.body), testCallback)
+    assert.deepStrictEqual([replay.kind, replay.kind === "Done" && replay.messageId, replay.kind === "Done" && replay.taskChoices],
+      ["Done", reply.messageId, [product.choice]])
+    assert.deepStrictEqual([malformed, stale, forged], [
+      { status: 400, body: { error: "TASK_INVALID" } },
+      { status: 409, body: { error: "TASK_CONFLICT" } },
+      { status: 409, body: { error: "TASK_CONFLICT" } },
+    ])
+    assert.deepStrictEqual([after.length, afterRefusals], [state.length, 1])
+  })
+
+  try Effect.sync(() => product.foreignChoice())
+  const revised = try ask(agent, post(path, asked))
+  try Effect.try(() => {
+    const same = replyOf(revised.body)
+    assert.deepStrictEqual([revised.status, same.messageId, same.text, same.taskChoices, modelCalls(cloud).length],
+      [200, reply.messageId, reply.text, [], afterRefusals])
+  })
+
+  const gate = Promise.withResolvers<void>()
+  try Effect.sync(() => cloud.script(held(gate.promise, text("Still thinking."))))
+  const pending = fork ask(agent, post(path, { ...asked, clientMessageId: "task-review-02" }))
+  while (modelCalls(cloud).length === afterRefusals) try Effect.sleep("20 millis")
+  const paused = try ask(agent, post(`/api/tasks/${task.id}/pause`, { expectedRevision: task.revision }))
+  try Effect.sync(() => gate.resolve())
+  const retired = join pending
+  const late = try ask(agent, post(path, asked))
+  const messagesAfterRetirement = try messages(agent, roomId)
+  try Effect.try(() => {
+    assert.strictEqual(paused.status, 200)
+    const changed = { status: 409, body: { error: "TASK_CONFLICT" } }
+    assert.deepStrictEqual([retired, late], [changed, changed])
+    assert.deepStrictEqual(messagesAfterRetirement.map(({ content }) => content.text).sort(), [asked.text, asked.text, reply.text].sort())
+  })
+}, 120_000)
+
+it.live('A launch without a task presenter refuses a task chat before storing or calling the model (spec/agent/tasks/wire.md, "A chat turn names a task only while the host presents it at that epoch")', effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const agent = try startInProcess({
+    launch: { backend: { kind: "cloud", origin: cloud.origin }, callerRole: "owner" },
+    frame: { credential: { version: 1, value: deviceKey }, storageKey },
+  })
+  const room = try ask(agent, post("/api/conversations", {}))
+  const { conversation } = try Effect.try(() => roomOf(room.body))
+  const refused = try ask(agent, post(`/api/conversations/${conversation.id}/messages`, {
+    text: "Which view?", task: { taskId: "task-preference", expectedEpoch: 0 },
+  }))
+  const stored = try messages(agent, try idOf(conversation.roomId))
+  try Effect.try(() => {
+    assert.deepStrictEqual(refused, { status: 503, body: { error: "TASK_UNAVAILABLE" } })
+    assert.deepStrictEqual([stored.length, modelCalls(cloud).length], [0, 0])
+  })
+}, 120_000)

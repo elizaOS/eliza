@@ -4,9 +4,9 @@ import type { Workflow as Admission } from "../../gen/workflow__admission.effect
 import type { WakeupRun } from "../../gen/workflow__execution.effect.vibe"
 import type { ApprovalRun } from "../../gen/workflow__approvals.effect.vibe"
 import type { GeneratedRun } from "../../gen/workflow__generated.effect.vibe"
-import type { PhoneScheduledOccurrence, PhoneWorkflowSpec } from "../contract/phone.vibe"
-import type { DigestSourceRecord, DigestSpec } from "../contract/digest.vibe"
-import type { WorkflowDeviceOperation } from "../contract/device.vibe"
+import type { PhoneScheduledOccurrence, PhoneWorkflowSpec } from "@elizaos/plugin-workflow-client"
+import type { DigestSourceRecord, DigestSpec } from "@elizaos/plugin-workflow-client"
+import type { WorkflowDeviceOperation } from "@elizaos/plugin-workflow-client"
 
 export error WorkflowStoreUnavailable { step: string; cause: unknown }
 

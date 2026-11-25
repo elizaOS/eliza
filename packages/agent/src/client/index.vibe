@@ -518,7 +518,7 @@ export { DeviceExecution, NOT_DISPATCHED, type ApproveResult, type DeviceAgent, 
 export { readReplyStream, REPLY_STREAM_PROTOCOL, type ReplyOutcome, type ReplyStreamHooks, type StreamedReply } from "./stream-reader.vibe"
 export { TaskLifecycle, TaskView, TASK_PAUSE_TIMEOUT_MS, type TaskLifecycleCommand, type TaskLifecycleMessages, type TaskLifecycleRequest, type TaskLifecycleState } from "./task-lifecycle.vibe"
 export { createSurfaceClient, SurfaceProtocol, SurfaceTransport, type SurfaceClient, type SurfaceClientOptions, type SurfaceCommandContext, type SurfaceFailure, type SurfaceRequest } from "./surface-client.vibe"
-export { TASK_ID_PATTERN } from "@elizaos/core/task-events"
+export { TASK_ID_PATTERN } from "@elizaos/core"
 
 export { TurnController, ConversationRecord, InvalidConversation, findStoppedUserTurn, type ClientMessageId, type HistoryMessage, type StopResult, type StoppedConversationTurn, type TurnMessage, type TurnOptions, type TurnRefusal, type TurnReply, type TurnResult, type TurnTransport } from "./turn-controller.vibe"
 export { BrowserPage, BrowserPageDropped, comparePeer, decodeBrowserPage, decodeLocationObservation, decodeObservation, decodeVoiceUiContext, encodeTurnContext, learnPeer, notLearned, Observation, ObservationDropped, parseVoiceUiContext, sendsOptionalFields, statusRead, statusReadFailed, VoiceUiContext, VoiceUiContextInvalid, type LocationObservation, type PeerSupport, type StatusRead, type TurnContext } from "../conversation/turn-context.schema.vibe"

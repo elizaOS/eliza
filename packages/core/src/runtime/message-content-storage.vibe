@@ -13,11 +13,56 @@ import {
 } from "./message-content-segments.vibe"
 
 module node {
-  import { isDeepStrictEqual } from "node:util"
+  function equalValues(left: unknown, right: unknown, seen: WeakMap<object, WeakSet<object>>): boolean {
+    if (Object.is(left, right)) return true
+    if (typeof left !== "object" || typeof right !== "object" || left === null || right === null) return false
+    if (Object.getPrototypeOf(left) !== Object.getPrototypeOf(right)) return false
+    const paired = seen.get(left)
+    if (paired?.has(right)) return true
+    if (paired) paired.add(right)
+    else seen.set(left, new WeakSet([right]))
+    if (left instanceof Date && right instanceof Date) return Object.is(left.getTime(), right.getTime())
+    if (left instanceof RegExp && right instanceof RegExp) return left.source === right.source && left.flags === right.flags
+    if (ArrayBuffer.isView(left) && ArrayBuffer.isView(right)) {
+      if (left.byteLength !== right.byteLength) return false
+      const a = new Uint8Array(left.buffer, left.byteOffset, left.byteLength)
+      const b = new Uint8Array(right.buffer, right.byteOffset, right.byteLength)
+      for (let i = 0; i < a.length; i += 1) if (a[i] !== b[i]) return false
+      return true
+    }
+    if (Array.isArray(left) && Array.isArray(right)) {
+      if (left.length !== right.length) return false
+      for (let i = 0; i < left.length; i += 1) {
+        if (Object.hasOwn(left, i) !== Object.hasOwn(right, i)) return false
+        if (!equalValues(left[i], right[i], seen)) return false
+      }
+      return true
+    }
+    if (left instanceof Map && right instanceof Map) {
+      if (left.size !== right.size) return false
+      for (const [k, v] of left) if (!right.has(k) || !equalValues(v, right.get(k), seen)) return false
+      return true
+    }
+    if (left instanceof Set && right instanceof Set) {
+      if (left.size !== right.size) return false
+      for (const v of left) if (!right.has(v)) return false
+      return true
+    }
+    const leftKeys = Reflect.ownKeys(left)
+    const rightKeys = Reflect.ownKeys(right)
+    if (leftKeys.length !== rightKeys.length) return false
+    const lObj = left as Record<PropertyKey, unknown>
+    const rObj = right as Record<PropertyKey, unknown>
+    for (const key of leftKeys) {
+      if (!Object.hasOwn(right, key)) return false
+      if (!equalValues(lObj[key], rObj[key], seen)) return false
+    }
+    return true
+  }
 
   /** @throws {never} */
   export function deepEqual(left: unknown, right: unknown): boolean {
-    return isDeepStrictEqual(left, right)
+    return equalValues(left, right, new WeakMap())
   }
 }
 import { deepEqual } from node

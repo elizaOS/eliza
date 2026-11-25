@@ -3,12 +3,8 @@
   "version": "4.0.0-alpha.0",
   "private": true,
   "type": "module",
-  "sideEffects": true,
-  "description": "Core runtime, plugin abstractions, and AgentRuntime for elizaOS, written in VibeLang on Effect.",
+  "description": "Browser-safe core runtime, protocol, types, and AgentRuntime for elizaOS, written in VibeLang on Effect.",
   "license": "MIT",
-  "engines": {
-    "node": ">=26"
-  },
   "main": "./dist/src/index.js",
   "types": "./dist/src/index.d.ts",
   "files": [
@@ -40,78 +36,15 @@
     "./restart-exit-code.json": {
       "eliza-source": "./src/restart-exit-code.json",
       "default": "./dist/src/restart-exit-code.json"
-    },
-    "./logging": {
-      "eliza-source": "./src/logging.vibe",
-      "types": "./dist/src/logging.d.ts",
-      "import": "./dist/src/logging.js",
-      "default": "./dist/src/logging.js"
-    },
-    "./view-interaction": {
-      "eliza-source": "./src/view-interaction.vibe",
-      "types": "./dist/src/view-interaction.d.ts",
-      "import": "./dist/src/view-interaction.js",
-      "default": "./dist/src/view-interaction.js"
-    },
-    "./protocol": {
-      "eliza-source": "./src/protocol.vibe",
-      "types": "./dist/src/protocol.d.ts",
-      "import": "./dist/src/protocol.js",
-      "default": "./dist/src/protocol.js"
-    },
-    "./permissions": {
-      "eliza-source": "./src/types/permissions.vibe",
-      "types": "./dist/src/types/permissions.d.ts",
-      "import": "./dist/src/types/permissions.js",
-      "default": "./dist/src/types/permissions.js"
-    },
-    "./security/redact": {
-      "eliza-source": "./src/security/redact.vibe",
-      "types": "./dist/src/security/redact.d.ts",
-      "import": "./dist/src/security/redact.js",
-      "default": "./dist/src/security/redact.js"
-    },
-    "./speech": {
-      "eliza-source": "./src/speech.vibe",
-      "types": "./dist/src/speech.d.ts",
-      "import": "./dist/src/speech.js",
-      "default": "./dist/src/speech.js"
-    },
-    "./task-events": {
-      "eliza-source": "./src/entry/task-events.vibe",
-      "types": "./dist/src/entry/task-events.d.ts",
-      "import": "./dist/src/entry/task-events.js",
-      "default": "./dist/src/entry/task-events.js"
-    },
-    "./task-widgets": {
-      "eliza-source": "./src/entry/task-widgets.vibe",
-      "types": "./dist/src/entry/task-widgets.d.ts",
-      "import": "./dist/src/entry/task-widgets.js",
-      "default": "./dist/src/entry/task-widgets.js"
-    },
-    "./read-memo": {
-      "eliza-source": "./src/read-memo.vibe",
-      "types": "./dist/src/read-memo.d.ts",
-      "import": "./dist/src/read-memo.js",
-      "default": "./dist/src/read-memo.js"
-    },
-    "./schema-types": {
-      "eliza-source": "./src/schema-types.vibe",
-      "types": "./dist/src/schema-types.d.ts",
-      "import": "./dist/src/schema-types.js",
-      "default": "./dist/src/schema-types.js"
     }
   },
   "scripts": {
-    "build": "pnpm run generate:first-party:check && node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && vibelang -p tsconfig.build.json && node -e \"const fs=require('node:fs');const path=require('node:path');const source=JSON.parse(fs.readFileSync('package.json','utf8'));const target=value=>value.startsWith('./dist/')?'./'+value.slice(7):value;for(const conditions of Object.values(source.exports)){const output=conditions.default;if(typeof output==='string'&&output.endsWith('.json')){fs.mkdirSync(path.dirname(output),{recursive:true});fs.copyFileSync(target(output),output);}}const publishedExports=Object.fromEntries(Object.entries(source.exports).map(([name,conditions])=>[name,Object.fromEntries(Object.entries(conditions).map(([condition,value])=>[condition,target(condition==='eliza-source'?(conditions.import??conditions.default):value)]))]));const publication={...source,main:target(source.main),types:target(source.types),files:['src','gen'],exports:publishedExports};delete publication.scripts;delete publication.publishConfig;fs.writeFileSync('dist/package.json',JSON.stringify(publication,null,2)+'\\n');\"",
-    "generate:first-party": "node --import vibelang/register src/catalog/generate.vibe",
-    "generate:first-party:check": "node --import vibelang/register src/catalog/generate.vibe --check",
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && vibelang -p tsconfig.build.json && node -e \"const fs=require('node:fs');const path=require('node:path');const source=JSON.parse(fs.readFileSync('package.json','utf8'));const target=value=>value.startsWith('./dist/')?'./'+value.slice(7):value;for(const conditions of Object.values(source.exports)){const output=conditions.default;if(typeof output==='string'&&output.endsWith('.json')){fs.mkdirSync(path.dirname(output),{recursive:true});fs.copyFileSync(target(output),output);}}const publishedExports=Object.fromEntries(Object.entries(source.exports).map(([name,conditions])=>[name,Object.fromEntries(Object.entries(conditions).map(([condition,value])=>[condition,target(condition==='eliza-source'?(conditions.import??conditions.default):value)]))]));const publication={...source,main:target(source.main),types:target(source.types),files:['src','gen'],exports:publishedExports};delete publication.scripts;delete publication.publishConfig;fs.writeFileSync('dist/package.json',JSON.stringify(publication,null,2)+'\\n');\"",
     "typecheck": "vibelang --noEmit -p .",
     "test": "vitest run"
   },
   "dependencies": {
-    "@effect/platform-node": "4.1.1",
-    "@effect/platform-node-shared": "4.1.1",
+    "@noble/hashes": "^1.8.0",
     "adze": "^2.2.5",
     "effect": "4.1.1",
     "file-type": "^22.0.0",
@@ -123,6 +56,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.6.6",
+    "@effect/platform-node": "4.1.1",
     "@effect/vitest": "4.1.1",
     "@types/node": "catalog:",
     "typescript": "catalog:",
