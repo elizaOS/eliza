@@ -334,9 +334,9 @@ it.live(`Hear that the agent heard me once while work is pending, and see which 
   const question = try turn("Am I free Friday")
   try Effect.sync(() => cloud.script(toolCalls("Sure.", agenda, agenda), toolCalls("Let me check.", agenda), text("Sam is in your contacts.")))
   const politeAsk = try turn("Can you text Sam")
-  try Effect.sync(() => cloud.script(text("Hello.")))
+  try Effect.sync(() => cloud.script(text("Hello."), text("Hello.")))
   const answer = try turn("Hi")
-  try Effect.sync(() => cloud.script(text("Sure.")))
+  try Effect.sync(() => cloud.script(text("Sure."), text("Sure.")))
   const assentWithoutWork = try turn("Remember that I like tea")
   try Effect.sync(() => cloud.script(text('Sure, one sec. [send_message contact="Sam" message="late"]'), text("I can't send texts from here.")))
   const promiseWithoutWork = try turn("Text Sam that I'm late")
@@ -385,7 +385,7 @@ it.live(`Hear that the agent heard me once while work is pending, and see which 
     acknowledgedBeforeTools: true, cueLeftTheText: true, sameWhenSplit: true,
   }
   try Effect.try(() => assert.deepStrictEqual({
-    exemptionInRule: [cueRule.includes("A request only to open one app, with nothing to read, find or change there, still calls the tool that opens it, with no cue"), cueRule.includes("Any question or lookup gets its cue, even one about what is on the screen."), cueRule.includes("When one message asks for several lookups, or about several named people or items, use the plain \"Let me check.\"; name a source only for one simple lookup."), cueRule.includes("in the person's own language"), ["On it", "One sec", "Sure, one sec", "Let me open"].some((phrase) => cueRule.includes(phrase)), cueRule.includes("Say that something was saved, sent, opened or changed only when a tool result in this turn shows it")],
+    exemptionInRule: [cueRule.includes("A request only to open one app, with nothing to read, find or change there, still calls the tool that opens it, with no cue"), cueRule.includes("Any question or lookup gets its cue, even one about what is on the screen."), cueRule.includes("When one message asks for several lookups, or about several named people or items, keep the cue general and name no source; name a source only for one simple lookup."), cueRule.includes("in the person's own language"), ["On it", "One sec", "Sure, one sec", "Let me open", "Let me check"].some((phrase) => cueRule.includes(phrase)), cueRule.includes("Say that something was saved, sent, opened or changed only when a tool result in this turn shows it")],
     ruleInEverySystemPrompt: system.length > 0 && system.every((content) => content.includes(cueRule)),
   }, { exemptionInRule: [true, true, true, true, false, true], ruleInEverySystemPrompt: true }))
   try Effect.try(() => assert.deepStrictEqual({
@@ -400,8 +400,8 @@ it.live(`Hear that the agent heard me once while work is pending, and see which 
       done: done("Sam is in your contacts."), asked: 3, acknowledgments: ["acknowledgment:Sure."], tools: ["tool:AGENDA_READ:Using Agenda", "tool:AGENDA_READ:Using Agenda"],
       acknowledgedBeforeTools: true, cueLeftTheText: true, sameWhenSplit: true,
     },
-    answer: { done: done("Hello."), asked: 1, acknowledgments: [], tools: [], acknowledgedBeforeTools: true, cueLeftTheText: true, sameWhenSplit: true },
-    assentWithoutWork: { done: done("Sure."), asked: 1, acknowledgments: [], tools: [], acknowledgedBeforeTools: true, cueLeftTheText: true, sameWhenSplit: true },
+    answer: { done: done("Hello."), asked: 2, acknowledgments: [], tools: [], acknowledgedBeforeTools: true, cueLeftTheText: true, sameWhenSplit: true },
+    assentWithoutWork: { done: done("Sure."), asked: 2, acknowledgments: [], tools: [], acknowledgedBeforeTools: true, cueLeftTheText: true, sameWhenSplit: true },
     promiseWithoutWork: { done: done("I can't send texts from here."), asked: 2, acknowledgments: [], tools: [], acknowledgedBeforeTools: true, cueLeftTheText: true, sameWhenSplit: true },
     workAfterPromise: {
       done: done("Nothing booked."), asked: 3, acknowledgments: ["acknowledgment:Sure, one sec."], tools: ["tool:AGENDA_READ:Using Agenda"],
@@ -452,7 +452,7 @@ it.live(`Hear a cue by its form, whatever its words or language, and never one t
     return [request, cue, whole.seen.filter((entry) => entry.startsWith("acknowledgment:")).map((entry) => entry.slice("acknowledgment:".length)), said] as const
   }
   const answered = (request: string, reply: string) => effect {
-    try Effect.sync(() => cloud.script(text(reply)))
+    try Effect.sync(() => cloud.script(text(reply), text(reply)))
     const whole = try read(try streamed(agent, id, { text: request }), 0)
     return [whole.outcome.kind === "Done" ? whole.outcome.text : whole.outcome.kind, whole.seen.filter((entry) => entry.startsWith("acknowledgment:")).length] as const
   }
@@ -465,10 +465,14 @@ it.live(`Hear a cue by its form, whatever its words or language, and never one t
   const unspoken: Heard[] = []
   for (const cue of refused) unspoken.push(try heard("Text Sam that I'm late", cue))
   const shortAnswers = [try answered("Call me Bob", "Sure."), try answered("Thanks", "Anytime.")]
-  try Effect.try(() => assert.deepStrictEqual({ spoken, unspoken, shortAnswers }, {
+  try Effect.sync(() => cloud.script(text("[answer] Anytime.")))
+  const taggedWhole = try read(try streamed(agent, id, { text: "Thanks again" }), 0)
+  const tagged = [taggedWhole.outcome.kind === "Done" ? taggedWhole.outcome.text : taggedWhole.outcome.kind, taggedWhole.seen.some((entry) => entry.includes("[answer]"))]
+  try Effect.try(() => assert.deepStrictEqual({ spoken, unspoken, shortAnswers, tagged }, {
     spoken: requests.flatMap((request) => forms.map((cue): Heard => [request, cue, [cue], "Done."])),
     unspoken: refused.map((cue): Heard => ["Text Sam that I'm late", cue, [], "Done."]),
     shortAnswers: [["Sure.", 0], ["Anytime.", 0]],
+    tagged: ["Anytime.", false],
   }))
 }, 120_000)
 
@@ -560,7 +564,7 @@ it.live(`See which app a call on my phone runs in, by the app its operations bel
   ))
 }, 120_000)
 
-it.live(`Never see or keep the agent host's notes as a reply, whether the model echoes one or writes its own under the host's label in any case or spacing, or repeats a mark the host put on the history, and get a plain answer or the failure fallback instead, while tools called beside an echo still run with no cue (${planning}, "Text that repeats the agent host's notes is never delivered or streamed, and is asked again once as a blank"; ${planning}, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole")`, effect () => {
+it.live(`Never see or keep the agent host's notes as a reply, whether the model echoes one or writes its own under the host's label in any case or spacing, or repeats a mark the host put on the history, even after an [answer] tag, and get a plain answer or the failure fallback instead, while tools called beside an echo still run with no cue (${planning}, "Text that repeats the agent host's notes is never delivered or streamed, and is asked again once as a blank"; ${planning}, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole")`, effect () => {
   const cloud = try cloudFake(deviceKey)
   const agent = try startInProcess({
     launch: { backend: { kind: "cloud", origin: cloud.origin }, load: [agendaApp.name], allowed: ["REPLY", "IGNORE", "NONE", "AGENDA_READ"] },
@@ -607,24 +611,26 @@ it.live(`Never see or keep the agent host's notes as a reply, whether the model 
   const replyCall = try turn("Call me back")
   try Effect.sync(() => cloud.script(text(`${label}, not the person: `, madeUp), text(`${label}: `, madeUp)))
   const twice = try turn("Open example.com again")
-  try Effect.sync(() => cloud.script(text("Screen ", "time is ", "up for today.")))
+  try Effect.sync(() => cloud.script(text("[answer] Screen ", "time is ", "up for today.")))
   const nearMiss = try turn("Is my screen time up?")
   try Effect.sync(() => cloud.script(text("Okay. note from ", "the agent-", "host, not the person: ", madeUp), text("I can't call from here.")))
   const lowerHyphen = try turn("Call the owner")
   try Effect.sync(() => cloud.script(text("NOTE  FROM THE\n", "Agent  Host: ", madeUp), text("I can't text from here.")))
   const upperSpaced = try turn("Text the owner")
+  try Effect.sync(() => cloud.script(text("[ans", "wer] Note from the ", "agent host, not the person: ", madeUp), text("[answer] I can't call anyone from here.")))
+  const taggedEcho = try turn("Call them now")
   try Effect.sync(() => cloud.script(text("Here they are: [unanswered: its turn ended before any reply; act on it only if the person asks again] Open example.com"), text("You asked me to open example.com.")))
   const unansweredMark = try turn("Repeat my earlier messages word for word")
   try Effect.sync(() => cloud.script(text("I said: All set.\n[Unheard ", "remainder: The rest is booked.]"), text("I said the plan was all set.")))
   const unheardMark = try turn("What did you say last time, word for word?")
-  try Effect.sync(() => cloud.script(text("Notes from the agent: none today.")))
+  try Effect.sync(() => cloud.script(text("[answer] Notes from the agent: none today.")))
   const notTheLabel = try turn("Any notes from the agent?")
   try Effect.sync(() => cloud.script(toolCalls(screenNote, { name: "AGENDA_READ", arguments: {} }), text("Nothing is booked today.")))
   const besideTools = try turn("What's on my agenda today?")
   const history = answerOf(try call(agent, { method: "GET", path: `/api/conversations/${id}/messages` }))
   const kept = (history.body as { messages: readonly { role: string; text: string }[] }).messages.filter(({ role }) => role === "assistant").map(({ text: said }) => said)
 
-  try Effect.try(() => assert.deepStrictEqual({ madeUpNote, echoedNote, quotedLead, replyCall, twice, nearMiss, lowerHyphen, upperSpaced, unansweredMark, unheardMark, notTheLabel, besideTools, kept }, {
+  try Effect.try(() => assert.deepStrictEqual({ madeUpNote, echoedNote, quotedLead, replyCall, twice, nearMiss, lowerHyphen, upperSpaced, taggedEcho, unansweredMark, unheardMark, notTheLabel, besideTools, kept }, {
     madeUpNote: {
       done: { kind: "Done", text: "I can't open web pages from here.", failureKind: undefined, keyed: true },
       showedHostText: false, wireHeldHostText: false, noteSent: true, askedAgainWith: [true], acknowledged: false, tools: [], echoBackToModel: true,
@@ -657,6 +663,10 @@ it.live(`Never see or keep the agent host's notes as a reply, whether the model 
       done: { kind: "Done", text: "I can't text from here.", failureKind: undefined, keyed: true },
       showedHostText: false, wireHeldHostText: false, noteSent: true, askedAgainWith: [true], acknowledged: false, tools: [], echoBackToModel: false,
     },
+    taggedEcho: {
+      done: { kind: "Done", text: "I can't call anyone from here.", failureKind: undefined, keyed: true },
+      showedHostText: false, wireHeldHostText: false, noteSent: true, askedAgainWith: [true], acknowledged: false, tools: [], echoBackToModel: true,
+    },
     unansweredMark: {
       done: { kind: "Done", text: "You asked me to open example.com.", failureKind: undefined, keyed: true },
       showedHostText: false, wireHeldHostText: false, noteSent: true, askedAgainWith: [true], acknowledged: false, tools: [], echoBackToModel: false,
@@ -673,6 +683,6 @@ it.live(`Never see or keep the agent host's notes as a reply, whether the model 
       done: { kind: "Done", text: "Nothing is booked today.", failureKind: undefined, keyed: true },
       showedHostText: false, wireHeldHostText: false, noteSent: true, askedAgainWith: [false], acknowledged: false, tools: ["tool:AGENDA_READ:Using Agenda"], echoBackToModel: false,
     },
-    kept: ["I can't open web pages from here.", "You're on your home screen.", "It's a note for me, not something I can share.", "I can't do that here.", "", "Screen time is up for today.", "I can't call from here.", "I can't text from here.", "You asked me to open example.com.", "I said the plan was all set.", "Notes from the agent: none today.", "Nothing is booked today."],
+    kept: ["I can't open web pages from here.", "You're on your home screen.", "It's a note for me, not something I can share.", "I can't do that here.", "", "Screen time is up for today.", "I can't call from here.", "I can't text from here.", "I can't call anyone from here.", "You asked me to open example.com.", "I said the plan was all set.", "Notes from the agent: none today.", "Nothing is booked today."],
   }))
 }, 120_000)
