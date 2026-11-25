@@ -8,7 +8,7 @@ import { bindModels } from "../src/models/binding.vibe"
 import { ModelRefusal } from "../src/models/chat.vibe"
 import { registerCloudModels } from "../src/models/cloud-provider.vibe"
 import { probeOwnKey, registerOwnKeyModels } from "../src/models/own-key-provider.vibe"
-import { conversationCache, sentAtMostTwice } from "../src/conversation/planning.vibe"
+import { agentCache, sentAtMostTwice } from "../src/conversation/planning.vibe"
 import { openDeviceStorage } from "../src/storage/index.vibe"
 import { cloudFake, deviceKey, host, scratch } from "./support/kernel.vibe"
 import { launchDocument, launchFrame, type Backend } from "./support/scratch.ts"
@@ -420,8 +420,7 @@ it.effect('A rate limit holds a cloud account for the provider\'s whole retry ti
 
   const hinted = try bound({ kind: "cloud", origin: cloud.origin, imageModel: "vision" }, deviceKey)
   registerCloudModels(hinted.runtime, hinted.binding, { baseUrl: cloud.origin, small: "small", large: "cerebras/qwen-3.8-27b", image: "vision" })
-  const room = "00000000-0000-4000-8000-0000000000aa"
-  const planner = conversationCache(hinted.runtime, room, "planner")
+  const planner = agentCache(hinted.runtime, "planner")
   try Effect.sync(() => cloud.script(text("off"), text("low"), text("other"), text("keyed"), text("unkeyed")))
   try host("thinking off on qwen", () => hinted.runtime.useModel(ModelType.TEXT_LARGE, { prompt: "Draft.", providerOptions: { eliza: { thinking: "off" } } }))
   try host("thinking low on qwen", () => hinted.runtime.useModel(ModelType.TEXT_LARGE, { prompt: "Plan.", providerOptions: { eliza: { thinking: "low" } } }))
@@ -429,7 +428,7 @@ it.effect('A rate limit holds a cloud account for the provider\'s whole retry ti
   try host("planner key on qwen", () => hinted.runtime.useModel(ModelType.TEXT_LARGE, { prompt: "Plan.", providerOptions: planner }))
   try host("planner key elsewhere", () => hinted.runtime.useModel(ModelType.TEXT_SMALL, { prompt: "Plan.", providerOptions: planner }))
   const sent = cloud.calls.slice(-5).map((call) => call.body as Record<string, unknown>)
-  const plannerKey = try Effect.try(() => `eliza-workflow-v1:${digest(`${JSON.stringify([hinted.runtime.agentId, room])}:planner`)}`)
+  const plannerKey = try Effect.try(() => `eliza-workflow-v1:${digest(`${JSON.stringify([hinted.runtime.agentId])}:planner`)}`)
   assert.deepStrictEqual(sent.map((body) => [body.reasoning_effort, "max_tokens" in body, JSON.stringify(body).includes("thinking"), body.prompt_cache_key]),
     [["none", false, false, undefined], ["low", false, false, undefined], [undefined, false, false, undefined],
       [undefined, false, false, plannerKey], [undefined, false, false, undefined]])

@@ -484,6 +484,23 @@ pure def lawWarmReadyOnlyWhenATextCallWouldStart(backend: Backend, st: AccountSt
   warmAnswer(backend, st, t) == WarmReady implies (servedByBackend(backend, TextSmall) and not(limitedAt(st, t)))
 ```
 
+### A planner warm-up is sent only while the account is not blocked, and neither its answer nor its refusal changes the account state
+
+A planner warm-up ([planning](../conversation/planning.md)) names
+`providerOptions.eliza.warmUp`. Unlike the advisory warm answer above, it
+does reach the model, but only while the account is not blocked, so it
+never spends a refused key, spent credits or a limit's wait. It is no
+call of the account: its answer, a blank one-token answer the provider cut
+off included, and its refusal leave the account state, the last failure
+and the provider's retry time as they were, so a warm-up the owner never
+asked for never shows them a failure or holds their first turn.
+
+```quint
+pure def warmUpSent(st: AccountState, t: int): bool = not(blocked(st, t))
+pure def lawABlockedAccountSendsNoWarmUp(st: AccountState, t: int): bool = blocked(st, t) implies not(warmUpSent(st, t))
+pure def lawAWarmUpNeverWaitsOutALimit(st: AccountState, t: int): bool = warmUpSent(st, t) implies not(limitedAt(st, t))
+```
+
 ## Story: Hold only the key the host admitted for this backend
 
 > As the owner, I want the key I gave for one provider used only for that

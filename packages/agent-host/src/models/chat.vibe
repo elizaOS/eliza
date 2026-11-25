@@ -1,10 +1,11 @@
+// spec/agent/models/binding.md, "A planner warm-up is sent only while the account is not blocked, and neither its answer nor its refusal changes the account state"
 // spec/agent/models/binding.md, "No text handler is ever served by a model on the device"; spec/agent/models/binding.md, "Only a network failure, an outage or a provider issue is retried, and a rate limit ends the call for its turn to re-send once"; spec/agent/models/binding.md, "A tool call the provider could not parse, or a streamed answer silent for a minute, ends the call without a retry"; spec/agent/models/binding.md, "Each refusal is one account state, and the last failure records its kind and time without text"; spec/agent/models/binding.md, "A tool call, a structured answer and the token use reach the caller as one result"; spec/agent/models/binding.md, "A call sends an output cap only when its caller names one, and a thinking hint sets the reasoning effort only on a model that documents it"; spec/agent/models/binding.md, "A Qwen call on a Cerebras route sends the conversation cache key its caller names, and no call invents one"; spec/agent/models/binding.md, "A rate limit holds the account for the provider's whole retry time, and for at most 4 s on a Cerebras own-key endpoint"; spec/agent/conversation/turns.md, "A failed reply names the owner's fix, and only a live rate limit carries its wait"; spec/agent/models/binding.md, "A cloud refusal that names spent credits or a spent allowance carries Cloud's own code, and no other refusal carries one"
 import { readCloudError, type CloudFailure } from "@elizaos/cloud"
 import type { GenerateTextParams, GenerateTextResult, IAgentRuntime, ModelRegistrationMetadata, StreamChunkCallback, TokenUsage, ToolCall } from "@elizaos/core"
 import { runSquashed } from "./run-squashed.vibe"
 import { FetchHttpClient, HttpClient, HttpClientRequest, type HttpClientResponse } from "effect/http"
 import {
-  cacheKeySent, capSent, chatReturn, effortFor, failureOf, fundsCodeName, fundsCodeOf, outcomeOf, reportedRetryAt, shellOutcome, streamIdleSeconds, usageAsked,
+  cacheKeySent, capSent, chatReturn, clockAt, effortFor, failureOf, fundsCodeName, fundsCodeOf, outcomeOf, reportedRetryAt, shellOutcome, streamIdleSeconds, usageAsked, warmUpSent,
   type CapAsk, type ChatAsk, type ChatReturn, type FundsCode, type ModelBinding, type ModelHandler, type ReasoningEffort, type ReasoningFamily, type ShellRefusal, type ThinkingHint,
 } from "../../gen/agent__models__binding.effect.vibe"
 import { failureKindName, type BoundModels, type FailureKind } from "./binding.vibe"
@@ -474,12 +475,22 @@ function reportedFor(state: ModelBinding, now: number): Hold {
   return holdAt(reportedRetryAt(state), now)
 }
 
-effect function serve(binding: Binding, handler: ChatHandler, endpoint: Endpoint, callKey: string, fields: object | undefined, sink: Sink, ask: ChatAsk) {
+function warmsUp(params: GenerateTextParams): boolean {
+  const eliza = params.providerOptions?.eliza
+  return typeof eliza === "object" && eliza !== null && (eliza as { warmUp?: unknown }).warmUp === true
+}
+
+effect function serve(binding: Binding, handler: ChatHandler, endpoint: Endpoint, callKey: string, fields: object | undefined, sink: Sink, ask: ChatAsk, warmUp = false) {
   const began = try Clock.currentTimeMillis
-  const started = try binding.startCall(handler, began)
-  if (typeof started !== "number") throw refusalOf({ tag: "CloudRateLimited", retryAt: started.limitedUntil }, holdAt(started.limitedUntil, began))
   const streamed = sink.stream === true
   const body = fields === undefined ? undefined : { model: endpoint.models[handler], stream: streamed, ...(usageAsked(streamed) ? { stream_options: { include_usage: true } } : {}), ...fields }
+  if (warmUp) {
+    const state = try binding.state()
+    if (!warmUpSent(state.accountState, clockAt(state, began))) throw refusalOf({ tag: "CloudProviderIssue" })
+    return try send(endpoint, binding.credential(), callKey, body, sink, ask)
+  }
+  const started = try binding.startCall(handler, began)
+  if (typeof started !== "number") throw refusalOf({ tag: "CloudRateLimited", retryAt: started.limitedUntil }, holdAt(started.limitedUntil, began))
   const answer = send(endpoint, binding.credential(), callKey, body, sink, ask) catch effect (failure) => {
     const refused = try Clock.currentTimeMillis
     if (failure instanceof ShellRefused) {
@@ -576,7 +587,7 @@ function returned(answer: { reply: Reply; form: Exclude<ChatReturn, "AnswerProvi
 
 export function generateText(binding: Binding, endpoint: Endpoint, handler: ChatHandler) {
   return (_runtime: IAgentRuntime, params: GenerateTextParams): Promise<string | GenerateTextResult> => run(
-    Effect.provide(Effect.map(serve(binding, handler, endpoint, callKeyOf(params), requestOf(endpoint, handler, params), params, askOf(params)), returned), FetchHttpClient.layer),
+    Effect.provide(Effect.map(serve(binding, handler, endpoint, callKeyOf(params), requestOf(endpoint, handler, params), params, askOf(params), warmsUp(params)), returned), FetchHttpClient.layer),
     params.signal,
   )
 }

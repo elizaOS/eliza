@@ -191,6 +191,13 @@ module node {
     return cloud.calls.filter(({ path }) => path.endsWith("/chat/completions")).length
   }
 
+  /** @throws {never} */
+  export async function modelLogRooms(runtime: AgentRuntime): Promise<{ warmUp: number; other: readonly string[] }> {
+    const rooms = (await runtime.adapter.getLogs({ entityId: runtime.agentId, limit: 100 })).filter(({ type }) => type.startsWith("useModel:")).map(({ roomId }) => String(roomId))
+    const warmUp = stringToUuid(`warm-up:${runtime.agentId}`)
+    return { warmUp: rooms.filter((room) => room === warmUp).length, other: rooms.filter((room) => room !== warmUp) }
+  }
+
   export async function overlapping(socket: string, token: string, cloud: CloudFake, id: string, release: () => void) {
     const ask = (body: object): Promise<LocalAnswer | Refusal> =>
       request(socket, { method: "POST", path: `/api/conversations/${id}/messages`, token, body })
@@ -272,7 +279,7 @@ module node {
     return text
   }
 }
-import { calendarProbe, completions, cutTurn, failParticipantLookupOnce, handedDirectly, privateAgenda, privateReadCount, privateReader, failNext, fixtureApp, lastTurnHistory, lastTurnPrompt, localDay, movedDentist, nearestCafes, overlapping, plainLog, refuseMoves, roomMessages, seedHistory, storeNotice, unsaidMove } from node
+import { calendarProbe, completions, cutTurn, modelLogRooms, failParticipantLookupOnce, handedDirectly, privateAgenda, privateReadCount, privateReader, failNext, fixtureApp, lastTurnHistory, lastTurnPrompt, localDay, movedDentist, nearestCafes, overlapping, plainLog, refuseMoves, roomMessages, seedHistory, storeNotice, unsaidMove } from node
 
 effect function cloudAgent(cloud: CloudFake, state?: Scratch) {
   return try startInProcess({
@@ -977,8 +984,8 @@ it.live(`Each call keeps the system prompt and puts the turn's notes after the h
 
 it.live(`A warm-up sends the planner's own system prompt and tools once with a one-token cap, answers at once, skips a second within four minutes, drops a failure and stores nothing (${planning}, "A warm-up sends the planner's tools and system prompt once with a one-token cap, at most once every four minutes, and stores and shows nothing")`, effect () => {
   const cloud = try cloudFake(deviceKey)
-  const agent = try startInProcess({ launch: { backend: { kind: "cloud", origin: cloud.origin }, load: [basicActionsModuleName], allowed: ["REPLY", "IGNORE", "NONE", "CALCULATE"] }, frame: { credential: { version: 1, value: deviceKey } }, modules: builtinModuleFactories })
-  const sent = () => cloud.calls.filter(({ path }) => path.endsWith("/chat/completions")).map(({ body }) => body as { messages: { role: string; content?: unknown }[]; tools?: unknown; tool_choice?: unknown; max_tokens?: unknown })
+  const agent = try startInProcess({ launch: { backend: { kind: "cloud", origin: cloud.origin, largeModel: "cerebras/qwen-3.8-27b" }, load: [basicActionsModuleName], allowed: ["REPLY", "IGNORE", "NONE", "CALCULATE"] }, frame: { credential: { version: 1, value: deviceKey } }, modules: builtinModuleFactories })
+  const sent = () => cloud.calls.filter(({ path }) => path.endsWith("/chat/completions")).map(({ body }) => body as { messages: { role: string; content?: unknown }[]; tools?: unknown; tool_choice?: unknown; max_tokens?: unknown; prompt_cache_key?: unknown })
   const warmUp = { method: "POST", path: "/api/turns/warm" } as const
 
   try Effect.sync(() => cloud.script(cutOff("o"), text("First answer.")))
@@ -990,27 +997,40 @@ it.live(`A warm-up sends the planner's own system prompt and tools once with a o
   const reply = replyOf(try send(agent, id, { text: "Hi" }))
   const [warmCall, turn] = sent()
   const history = answerOf(try call(agent, { method: "GET", path: `/api/conversations/${id}/messages` })).body as { messages: unknown[] }
+  const logged = try host("model-call log rooms", () => modelLogRooms(agent.agent.runtime))
+  const { roomId: conversationRoom } = (answerOf(try call(agent, { method: "GET", path: "/api/conversations" })).body as { conversations: { roomId: string }[] }).conversations[0] ?? { roomId: "" }
 
-  try Effect.sync(() => cloud.script(refusal(400, "invalid_request"), text("Still here.")))
-  const fresh = try startInProcess({ launch: { backend: { kind: "cloud", origin: cloud.origin }, load: [basicActionsModuleName], allowed: ["REPLY", "IGNORE", "NONE", "CALCULATE"] }, frame: { credential: { version: 1, value: deviceKey } }, modules: builtinModuleFactories })
-  const before = completions(cloud)
-  const failing = answerOf(try call(fresh, warmUp))
-  const failed = try settled(() => completions(cloud) === before + 1)
-  const freshConversation = try conversation(fresh)
-  const afterFailure = replyOf(try send(fresh, freshConversation.id, { text: "Hi" }))
+  const failures: CloudReply[] = try Effect.sync(() => [rateLimited(Date.now() + 60_000), text(""), requestFault("parser_error"), refusal(400, "invalid_request")])
+  const afterFailures: unknown[] = []
+  for (const failed of failures) {
+    const failing = try cloudFake(deviceKey)
+    const fresh = try startInProcess({ launch: { backend: { kind: "cloud", origin: failing.origin, largeModel: "cerebras/qwen-3.8-27b" }, load: [basicActionsModuleName], allowed: ["REPLY", "IGNORE", "NONE", "CALCULATE"] }, frame: { credential: { version: 1, value: deviceKey } }, modules: builtinModuleFactories })
+    try Effect.sync(() => failing.script(failed))
+    const asked = answerOf(try call(fresh, warmUp)).status
+    try settled(() => completions(failing) >= 1)
+    try Effect.sleep(200)
+    const status = answerOf(try call(fresh, { method: "GET", path: "/api/status" })).body as { canRespond: boolean; blocked: boolean; lastCloudFailure?: unknown }
+    try Effect.sync(() => failing.script(text("Still here.")))
+    const { id: freshId } = try conversation(fresh)
+    const answered = replyOf(try send(fresh, freshId, { text: "Hi" }))
+    afterFailures.push({ asked, canRespond: status.canRespond, blocked: status.blocked, lastCloudFailure: status.lastCloudFailure ?? "none", reply: answered.text, failureKind: answered.failureKind ?? "none" })
+  }
 
   try Effect.try(() => assert.deepStrictEqual({
     first: first.status, firstBody: first.body, again: again.body, warmed, conversationsAfterWarm,
     sameSystem: JSON.stringify(warmCall?.messages[0]) === JSON.stringify(turn?.messages[0]),
     sameTools: JSON.stringify(warmCall?.tools) === JSON.stringify(turn?.tools) && Array.isArray(warmCall?.tools),
+    sameKey: typeof warmCall?.prompt_cache_key === "string" && warmCall.prompt_cache_key === turn?.prompt_cache_key,
     warmShape: [warmCall?.messages.length, warmCall?.messages[1], warmCall?.max_tokens, warmCall?.tool_choice],
     reply: reply.text, history: history.messages.length,
-    failing: failing.status, failed, afterFailure: afterFailure.text,
+    logged: [logged.warmUp <= 1, logged.other.length > 0 && logged.other.every((room) => room === conversationRoom)],
+    afterFailures,
   }, {
     first: 202, firstBody: { started: true }, again: { started: false }, warmed: true, conversationsAfterWarm: 0,
-    sameSystem: true, sameTools: true, warmShape: [2, { role: "user", content: "." }, 1, "auto"],
+    sameSystem: true, sameTools: true, sameKey: true, warmShape: [2, { role: "user", content: "." }, 1, "auto"],
     reply: "First answer.", history: 2,
-    failing: 202, failed: true, afterFailure: "Still here.",
+    logged: [true, true],
+    afterFailures: failures.map(() => ({ asked: 202, canRespond: true, blocked: false, lastCloudFailure: "none", reply: "Still here.", failureKind: "none" })),
   }))
 }, 120_000)
 

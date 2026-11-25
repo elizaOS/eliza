@@ -109,12 +109,14 @@ that turn's request and reply, until the window over it steps. A provider
 reuses a request's prompt cache up to its first changed byte, and the cached prefix
 is the tools, then the system prompt, then the messages, so a part that
 changes with the turn placed before the history costs every message after
-it. Each planning call also names its conversation's prompt cache key,
-`eliza-workflow-v1:` and the hex SHA-256 of the JSON `[agentId, roomId]`
+it. Each planning call also names its agent's prompt cache key,
+`eliza-workflow-v1:` and the hex SHA-256 of the JSON `[agentId]`
 followed by `:planner`, and each evaluator call the same key with
 `:evaluator`, so a provider that keeps one cache per key keeps one for
-each conversation and stage rather than one for every phone that sends
-the same prompt ([binding](../models/binding.md) decides where it is sent).
+each phone and stage rather than one for every phone that sends the same
+prompt, and a new conversation starts on the tools and system prompt that
+the phone's earlier calls and its warm-up (below) already cached
+([binding](../models/binding.md) decides where it is sent).
 
 ```quint
 type PromptPart = CharacterPrompt | OfferedTools | PriorHistory | LatestMessage | ScreenNote | DeviceNote | TaskNote | WindowNotice | RecalledExchanges
@@ -139,19 +141,24 @@ pure def lawNothingAMessageCarriesShapesTheTools(f: ToolFact): bool = carriedByM
 A page that expects the owner to talk soon (the app opened, returned to
 the foreground, Ask Alpha raised) asks the agent to warm up, so the first
 turn finds the provider's prompt cache, the cloud and their connections
-warm instead of paying for all three. A warm-up builds the tools and the
-system prompt exactly as a turn of the owner with no device context and
-no history does, and sends one planning call with them, one placeholder
-message, an output cap of one token and the planner's own choice of tools
-(Cerebras leaves the tools out of the prompt of a call that may call none,
-which would warm only the system prompt), under
-the planning cache key of a room kept for warm-ups. Its answer is dropped:
-it starts no run, stores and publishes no message, and a failure or a call
-that does not end within twenty seconds is dropped too. One warm-up runs
-at a time, and one asked within four minutes of the last that was sent is
-skipped, so a page may ask on every trigger and the account pays for at
-most one warm-up in four minutes. The request is answered at once, saying
-only whether a warm-up was started; it never waits for the model.
+warm instead of paying for all three. The request carries the headers a
+turn of that page carries, so a warm-up of the enrolled device runs under
+that device's turn, as a first turn of a new conversation would: it builds
+the tools and the system prompt exactly as that turn does, the
+device-dependent tools included, and sends one planning call with them,
+one placeholder message, an output cap of one token and the planner's own
+choice of tools (Cerebras leaves the tools out of the prompt of a call
+that may call none, which would warm only the system prompt), under the
+agent's planning cache key, the one that turn names. Its answer is
+dropped: it starts no run, stores and publishes no message, writes its
+model-call log row under a room of its own and never a conversation's,
+changes no account state ([binding](../models/binding.md)), and a failure
+or a call that does not end within twenty seconds is dropped too. One
+warm-up runs at a time, and one asked within four minutes of the last that
+was sent is skipped, so a page may ask on every trigger and the account
+pays for at most one warm-up in four minutes. The request is answered at
+once, saying only whether a warm-up was started; it never waits for the
+model.
 
 ```quint
 pure val warmUpOutputCap = 1

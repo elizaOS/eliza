@@ -14,7 +14,7 @@ import { storedText } from "./history.vibe"
 import { ModelRefusal } from "../models/chat.vibe"
 import { readTurnContext, type BrowserPage } from "@elizaos/agent"
 import { warmUpOutputCap } from "../../gen/agent__conversation__planning.ts"
-import { actionNotes, conversationCache, failureNote, offeredActions, plannerTools, planTurn, type PlannedTurn } from "./planning.vibe"
+import { actionNotes, agentCache, failureNote, offeredActions, plannerTools, planTurn, type PlannedTurn } from "./planning.vibe"
 import { cueRule } from "./reply-text.vibe"
 import { runTurnEvaluators } from "./turn-evaluators.vibe"
 
@@ -100,7 +100,7 @@ export function ownerMessageService(
     const tools = plannerTools(runtime, message, offeredActions(runtime, message, actionGate))
     return runtime.useModel(ModelType.TEXT_LARGE, {
       system: plannerSystem(runtime.character), messages: [{ role: "user", content: "." }], reasoning: "off", maxTokens: warmUpOutputCap, signal,
-      providerOptions: conversationCache(runtime, message.roomId, "planner"), ...(tools.length === 0 ? {} : { tools, toolChoice: "auto" as const }),
+      providerOptions: { ...agentCache(runtime, "planner"), eliza: { warmUp: true } }, ...(tools.length === 0 ? {} : { tools, toolChoice: "auto" as const }),
     })
   })
   return {
