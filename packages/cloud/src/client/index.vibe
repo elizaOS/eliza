@@ -4,7 +4,7 @@ export {
   type CloudModel, type ModelList, type PageRequest, type PlanOffer, type Referral, type SpeechConsent
 } from "./client.vibe"
 export { CloudError, isCredentialInvalid, networkError, readCloudError, type CloudFailure, type CloudResponse } from "./errors.vibe"
-export type { CalendarEvent, CalendarFeed, CalendarRow, GoogleStatus, MailCapabilities, MailCard, MailMessage, MailSearch, MailTriage } from "./google.vibe"
+export type { CalendarEvent, CalendarFeed, CalendarRow, GoogleStatus, MailCapabilities, MailCard, MailMessage, MailOperation, MailReceipt, MailReview, MailSearch, MailTriage } from "./google.vibe"
 export { normalizeSubscriptionCode } from "../billing/grant-code.vibe"
 export { checkEntitlement, EntitlementInvalid, nextRefreshDelay, parseEntitlementKeys, verifyEntitlement, type Entitlement, type EntitlementCheck, type EntitlementClaims, type EntitlementExpectation, type EntitlementKey, type PlanAllowance } from "./entitlement.vibe"
 export {
