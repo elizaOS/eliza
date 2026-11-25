@@ -9,7 +9,7 @@ module node {
   import { tmpdir } from "node:os"
   import { join } from "node:path"
   import { promisify } from "node:util"
-  import { fetchRemoteMedia } from "@elizaos/core"
+  import { fetchRemoteMedia } from "@elizaos/core-node"
 
   const run = promisify(execFile)
 

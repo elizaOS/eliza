@@ -6,7 +6,7 @@ the isolated test user. Sources: develop's `packages/app/scripts/lib/`
 `device-lease.ts`, `instrumentation-result.mjs`, `isolated-android-test.mjs`
 and `isolated-android-user.mjs`, with `artifact-inspection/android-tools.ts`
 for the runner evidence. The shell is `src/image/device.vibe`, exported from
-`@elizaos/os/image`: `acquireDeviceLease`, `readDeviceLease`, `leaseStateDirectory`,
+`@elizaos/os`: `acquireDeviceLease`, `readDeviceLease`, `leaseStateDirectory`,
 `requireInstrumentationSuccess`, `requireInstrumentationInterruption`,
 `runIsolatedAndroidTest` and `withIsolatedAndroidUser`. A consumer keeps
 its own fixtures around them (hosted emulator display, WebView

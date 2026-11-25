@@ -1,0 +1,279 @@
+// spec/agent/schedule/scheduledTasks.md, "Story: Answer a scheduled task from my list"; spec/agent/schedule/scheduledTasks.md, "A verb's reply says whether it was applied, refused, or reached no task"; spec/agent/schedule/scheduledTasks.md, "Fire now reports fired, skipped, deferred, failed or raced"; spec/agent/schedule/scheduledTasks.md, "A keyed verb applies once per key"; spec/agent/access/routes.md, "A request matches a route by method, delivery, every segment and every query key"
+import {
+  fireReplyCarriesTheRow, wellFormedVerb,
+  type FireOutcome, type RefusalReason, type RequestKey, type TaskStatus, type Verb,
+} from "../../gen/agent__schedule__scheduledTasks.effect.vibe"
+import { Service, type IAgentRuntime, type ServiceClass } from "@elizaos/core"
+import type { LocalRoute } from "@elizaos/agent"
+import type { AgentModule, AgentPlugin, ModuleContext, ModuleFactory, ModuleRefused } from "../host/module.vibe"
+import {
+  runtimeTaskHost, scheduledTaskPort, scheduledTaskService, startScheduledTaskTicks,
+  type Created, type DeliveryPort, type NewTask, type ScheduledTaskView, type ScheduledTasks,
+} from "./scheduled-tasks.vibe"
+
+export const scheduledTasksModuleName = "@elizaos/agent/scheduled-tasks"
+
+export type TaskTrigger =
+  | { readonly kind: "once"; readonly atIso: string }
+  | { readonly kind: "cron"; readonly expression: string; readonly tz: string }
+  | { readonly kind: "manual" }
+
+export interface ScheduledTaskRow {
+  readonly taskId: string
+  readonly kind: string
+  readonly ownerVisible: boolean
+  readonly promptInstructions: string
+  readonly trigger: TaskTrigger
+  readonly metadata: Readonly<Record<string, unknown>>
+  readonly status: TaskStatus
+  readonly firedAt: number | undefined
+  readonly lastDecisionLog: string | undefined
+}
+
+export interface TaskEdit {
+  readonly promptInstructions?: string
+  readonly trigger?: TaskTrigger
+}
+
+export type VerbRequest =
+  | { readonly kind: "verb"; readonly verb: Exclude<Verb, { tag: "EditInstructions" | "EditTrigger" }> }
+  | { readonly kind: "edit"; readonly edit: TaskEdit }
+
+export type VerbResult =
+  | { readonly kind: "applied"; readonly task: ScheduledTaskRow }
+  | { readonly kind: "refused"; readonly reason: RefusalReason }
+  | { readonly kind: "notFound" }
+
+export type FireResult =
+  | { readonly kind: "notFound" }
+  | {
+    readonly kind: "answered"
+    readonly outcome: FireOutcome
+    readonly task: ScheduledTaskRow
+    readonly reason?: string
+    readonly nextAttemptAt?: number
+    readonly error?: string
+  }
+
+export interface ScheduledTaskPort {
+  list(filter: { readonly ownerVisibleOnly: boolean }): (readonly ScheduledTaskRow[])!!
+  get(taskId: string): (ScheduledTaskRow | undefined)!!
+  applyVerb(taskId: string, request: VerbRequest, key: RequestKey): VerbResult!!
+  fire(taskId: string): FireResult!!
+}
+
+interface ScheduledTaskService {
+  readonly port: ScheduledTaskPort
+  readonly plugin: Omit<AgentPlugin, "name" | "description" | "routes">
+}
+
+const verbNames = ["snooze", "skip", "complete", "dismiss", "escalate", "acknowledge", "edit", "reopen"] as const
+type VerbName = (typeof verbNames)[number]
+
+const wireStatus = {
+  Scheduled: "scheduled", Fired: "fired", Acknowledged: "acknowledged", Completed: "completed",
+  Skipped: "skipped", Failed: "failed", Dismissed: "dismissed",
+} as const satisfies Record<TaskStatus, string>
+const fireKind = {
+  FireDelivered: "fired", FireDeferred: "dispatch_deferred", FireFailed: "dispatch_failed",
+  FireSkipped: "skipped", FireRaced: "raced",
+} as const satisfies Record<FireOutcome, string>
+const refusal = {
+  Malformed: { status: 400, error: "malformed" },
+  KeyReused: { status: 409, error: "key_reused" },
+  Stale: { status: 409, error: "stale" },
+  NotApplicable: { status: 409, error: "not_applicable" },
+} as const satisfies Record<RefusalReason, { status: number; error: string }>
+
+const Text = Schema.String.check(Schema.isMinLength(1))
+const Instant = Schema.String.check(Schema.makeFilter((iso) => Number.isFinite(Date.parse(iso))))
+const Trigger = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("once"), atIso: Instant }),
+  Schema.Struct({ kind: Schema.Literal("cron"), expression: Text, tz: Text }),
+  Schema.Struct({ kind: Schema.Literal("manual") }),
+])
+const keyed = { idempotencyKey: Schema.optionalKey(Text.check(Schema.isMaxLength(200))) }
+const strict = { onExcessProperty: "error" } as const
+const plainBody = Schema.decodeUnknownOption(Schema.Struct(keyed), strict)
+const snoozeBody = Schema.decodeUnknownOption(Schema.Struct({
+  ...keyed, minutes: Schema.optionalKey(Schema.Int), untilIso: Schema.optionalKey(Instant),
+}), strict)
+const editBody = Schema.decodeUnknownOption(Schema.Struct({
+  ...keyed, promptInstructions: Schema.optionalKey(Text), trigger: Schema.optionalKey(Trigger),
+}), strict)
+const fireBody = Schema.decodeUnknownOption(Schema.Record(Schema.String, Schema.Never))
+
+const failure = (status: number, error: string) => ({ status, body: { error } })
+const notFound = failure(404, "not_found")
+const iso = (instant: number) => new Date(instant).toISOString()
+const keyOf = (key: string | undefined): RequestKey => key === undefined ? { tag: "Unkeyed" } : { tag: "Keyed", key }
+
+function wireTask(row: ScheduledTaskRow) {
+  return {
+    taskId: row.taskId, kind: row.kind, ownerVisible: row.ownerVisible, promptInstructions: row.promptInstructions,
+    trigger: row.trigger, metadata: row.metadata,
+    state: {
+      status: wireStatus[row.status],
+      ...(row.firedAt === undefined ? {} : { firedAt: iso(row.firedAt) }),
+      ...(row.lastDecisionLog === undefined ? {} : { lastDecisionLog: row.lastDecisionLog }),
+    },
+  }
+}
+
+function requested(name: VerbName, body: unknown): { readonly request: VerbRequest; readonly key: RequestKey } | undefined {
+  const sent = body ?? {}
+  if (name === "snooze") {
+    const snooze = Option.getOrUndefined(snoozeBody(sent))
+    const verb: Verb | undefined = snooze?.untilIso !== undefined ? { tag: "SnoozeUntil", until: Date.parse(snooze.untilIso) }
+      : snooze?.minutes !== undefined ? { tag: "SnoozeFor", minutes: snooze.minutes }
+      : undefined
+    return snooze === undefined || verb === undefined || !wellFormedVerb(verb) ? undefined
+      : { request: { kind: "verb", verb }, key: keyOf(snooze.idempotencyKey) }
+  }
+  if (name === "edit") {
+    const sentEdit = Option.getOrUndefined(editBody(sent))
+    if (sentEdit === undefined) return undefined
+    const { idempotencyKey, ...edit } = sentEdit
+    return edit.promptInstructions === undefined && edit.trigger === undefined ? undefined
+      : { request: { kind: "edit", edit }, key: keyOf(idempotencyKey) }
+  }
+  const plain = Option.getOrUndefined(plainBody(sent))
+  if (plain === undefined) return undefined
+  const key = keyOf(plain.idempotencyKey)
+  switch (name) {
+    case "skip": return { request: { kind: "verb", verb: { tag: "Skip" } }, key }
+    case "complete": return { request: { kind: "verb", verb: { tag: "Complete" } }, key }
+    case "dismiss": return { request: { kind: "verb", verb: { tag: "Dismiss" } }, key }
+    case "escalate": return { request: { kind: "verb", verb: { tag: "Escalate" } }, key }
+    case "acknowledge": return { request: { kind: "verb", verb: { tag: "Acknowledge" } }, key }
+    case "reopen": return { request: { kind: "verb", verb: { tag: "Reopen" } }, key }
+  }
+}
+
+effect function verbAnswer(tasks: ScheduledTaskPort, taskId: string, request: VerbRequest, key: RequestKey) {
+  const result = try tasks.applyVerb(taskId, request, key)
+  switch (result.kind) {
+    case "applied": return { status: 200, body: { task: wireTask(result.task) } }
+    case "refused": return failure(refusal[result.reason].status, refusal[result.reason].error)
+    case "notFound": return notFound
+  }
+}
+
+effect function fireAnswer(tasks: ScheduledTaskPort, taskId: string) {
+  const result = try tasks.fire(taskId)
+  if (result.kind === "notFound") return notFound
+  return { status: 200, body: { fire: {
+    kind: fireKind[result.outcome],
+    ...(fireReplyCarriesTheRow(result.outcome) ? { task: wireTask(result.task) } : {}),
+    ...(result.reason === undefined ? {} : { reason: result.reason }),
+    ...(result.nextAttemptAt === undefined ? {} : { nextAttemptAtIso: iso(result.nextAttemptAt) }),
+    ...(result.error === undefined ? {} : { error: result.error }),
+  } } }
+}
+
+function scheduledTaskRoutes(tasks: ScheduledTaskPort): LocalRoute[] {
+  return [
+    {
+      method: "GET", path: "/api/scheduled-tasks",
+      query: [{ key: "ownerVisibleOnly", accepts: { kind: "pinned", value: "1" } }],
+      handler: () => runPromise(effect {
+        return { status: 200, body: { tasks: (try tasks.list({ ownerVisibleOnly: true })).map(wireTask) } }
+      }),
+    },
+    {
+      method: "GET", path: "/api/scheduled-tasks/{id}",
+      handler: ({ parameters }) => runPromise(effect {
+        const row = try tasks.get(parameters.get("id") ?? "")
+        return row === undefined ? notFound : { status: 200, body: { task: wireTask(row) } }
+      }),
+    },
+    ...verbNames.map((name): LocalRoute => ({
+      method: "POST", path: `/api/scheduled-tasks/{id}/${name}`,
+      handler: ({ parameters, body }) => {
+        const sent = requested(name, body)
+        return sent === undefined ? failure(400, refusal.Malformed.error)
+          : runPromise(verbAnswer(tasks, parameters.get("id") ?? "", sent.request, sent.key))
+      },
+    })),
+    {
+      method: "POST", path: "/api/scheduled-tasks/{id}/fire",
+      handler: ({ parameters, body }) => Option.isNone(fireBody(body ?? {})) ? failure(400, refusal.Malformed.error)
+        : runPromise(fireAnswer(tasks, parameters.get("id") ?? "")),
+    },
+  ]
+}
+
+export const scheduledTasksServiceType = "scheduled-tasks"
+
+export interface ScheduledTasksApi extends Service {
+  create(task: NewTask): Promise<Created>
+  deliverKind(kind: string, port: DeliveryPort): void
+  get(taskId: string): Promise<ScheduledTaskView | undefined>
+  list(filter: { readonly ownerVisibleOnly: boolean }): Promise<readonly ScheduledTaskView[]>
+  applyVerb(taskId: string, request: VerbRequest, key: RequestKey, seenRevision?: number): Promise<VerbResult>
+  fire(taskId: string, seenRevision?: number): Promise<FireResult>
+}
+
+function scheduledTasksApi(tasks: ScheduledTasks): ServiceClass {
+  return class ScheduledTasksModule extends Service implements ScheduledTasksApi {
+    static override serviceType = scheduledTasksServiceType
+    override capabilityDescription = "Create, answer and fire the owner's scheduled tasks against the revision a plugin read"
+    ticks: { readonly stop: () => void!never!never } | undefined
+
+    static override async start(runtime: IAgentRuntime): Promise<Service> {
+      const service = new ScheduledTasksModule(runtime)
+      service.ticks = await runPromise(startScheduledTaskTicks(runtime, tasks))
+      return service
+    }
+
+    create(task: NewTask): Promise<Created> {
+      return runPromise(tasks.create(task))
+    }
+
+    deliverKind(kind: string, port: DeliveryPort): void {
+      tasks.deliverKind(kind, port)
+    }
+
+    get(taskId: string): Promise<ScheduledTaskView | undefined> {
+      return runPromise(tasks.get(taskId))
+    }
+
+    list(filter: { readonly ownerVisibleOnly: boolean }): Promise<readonly ScheduledTaskView[]> {
+      return runPromise(tasks.list(filter))
+    }
+
+    applyVerb(taskId: string, request: VerbRequest, key: RequestKey, seenRevision?: number): Promise<VerbResult> {
+      return runPromise(tasks.applyVerb(taskId, request, key, seenRevision))
+    }
+
+    fire(taskId: string, seenRevision?: number): Promise<FireResult> {
+      return runPromise(tasks.fire(taskId, seenRevision))
+    }
+
+    override stop(): Promise<void> {
+      return this.ticks === undefined ? Promise.resolve() : runPromise(this.ticks.stop())
+    }
+  }
+}
+
+effect function openScheduledTasks(context: ModuleContext) {
+  const tasks = scheduledTaskService(try runtimeTaskHost(context.runtime))
+  return { port: scheduledTaskPort(tasks), plugin: { services: [scheduledTasksApi(tasks)] } } satisfies ScheduledTaskService
+}
+
+function scheduledTasksModule<R>(open: (context: ModuleContext) => ScheduledTaskService!ModuleRefused!R): ModuleFactory<R> {
+  return effect (context) => {
+    const service = try open(context)
+    return {
+      name: scheduledTasksModuleName,
+      plugin: {
+        ...service.plugin,
+        name: scheduledTasksModuleName,
+        description: "Scheduled tasks the owner answers from a list: reminders, check-ins and follow-ups",
+        routes: scheduledTaskRoutes(service.port),
+      },
+    } satisfies AgentModule
+  }
+}
+
+export const scheduledTasksModuleFactory: ModuleFactory<never> = scheduledTasksModule(openScheduledTasks)

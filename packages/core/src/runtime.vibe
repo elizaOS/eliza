@@ -2,7 +2,7 @@
 
 module edge {
   import type { ReportedError } from "./errors.vibe"
-  import type { FetchLike } from "./media/fetch.vibe"
+  import type { FetchLike } from "./types/fetch.vibe"
   import type { ExecutionTrace, PromptOptimizationRuntimeHooks } from "./prompt-optimization.vibe"
   import type { ActivePromptTraces } from "./runtime/active-prompt-traces.vibe"
   import type { RuntimeConnectorRegistry } from "./runtime/connector-registry.vibe"

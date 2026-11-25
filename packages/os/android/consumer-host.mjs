@@ -41,7 +41,7 @@ const EMBEDDED_AGENT_JAVA = "packages/os/android/embedded-agent/src/main/java";
 const SECURE_STORE_JAVA = "packages/os/android/secure-store/src/main/java";
 const RUNTIME_DIRECTORIES = "ai/eliza/plugins/agent/runtime/AndroidRuntimeDirectories.java";
 const SECURE_ACCOUNT_SOURCES = [
-  ...["JsonCredentialSlots", "CloudDeviceAccount", "PasswordBackupApproval", "CloudPasswordBackup"].map(
+  ...["JsonCredentialSlots", "CloudDeviceAccount", "MailReadRoutes", "PasswordBackupApproval", "CloudPasswordBackup"].map(
     (name) => `ai/eliza/plugins/securestore/nativeonly/${name}.java`,
   ),
   "ai/eliza/plugins/securestore/google/NativeGoogleAuthorization.java",

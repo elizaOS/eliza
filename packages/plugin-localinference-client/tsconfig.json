@@ -1,0 +1,26 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "allowArbitraryExtensions": true,
+    "resolveJsonModule": true,
+    "lib": [
+      "es2024",
+      "dom",
+      "dom.iterable"
+    ],
+    "rootDir": ".",
+    "rootDirs": [
+      ".",
+      ".vibe/declarations"
+    ]
+  },
+  "include": [
+    "src",
+    "gen/*.ts",
+    "gen/*.vibe",
+    "*.config.ts"
+  ],
+  "vibe": {
+    "sidecarDir": ".vibe/declarations"
+  }
+}

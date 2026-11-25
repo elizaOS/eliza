@@ -1,7 +1,7 @@
 # Android host profile
 
 A consumer generates its Android host project from an identity and a
-schema-2 profile (`generateAndroidHost`, from `@elizaos/os/build`) that
+schema-2 profile (`generateAndroidHost`, from `@elizaos/os`) that
 names everything the Gradle project is made of. The
 [runtime payload](./runtimePayload.md) is what an agent host ships; the
 [Android build](./androidBuild.md) builds and publishes the project.

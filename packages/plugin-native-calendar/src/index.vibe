@@ -1,9 +1,9 @@
 // spec/nativeCalendar/index.md, "Story: View and write the device calendar within the access I granted"
-import { nativeReply } from "@elizaos/os/bridges/bridge"
+import { nativeReply } from "@elizaos/os-bridges"
 import { mayUseNativeCalendar, validCalendarRange, type CalendarGrant, type CalendarOperation } from "../gen/nativeCalendar.effect.vibe"
 
-export { calendarClient, calendarPlugin, calendarFieldsProblem } from "@elizaos/os/bridges/calendar"
-export type * from "@elizaos/os/bridges/definitions/calendar"
+export { calendarClient, calendarPlugin, calendarFieldsProblem } from "@elizaos/os-bridges"
+export type { AndroidCalendarExpected, AndroidCalendarRow, AndroidCalendarEvent, AndroidCalendarSelection, AndroidCalendarEditorFields, AndroidCalendarSave, AndroidCalendarHandoffEvent, AndroidCalendarDeletionScope, AndroidCalendarRecurrence, AndroidCalendarScopeEvidence, AndroidCalendarDeletionTarget, AndroidCalendarReadback, AndroidCalendarAccess, AndroidCalendarPermissionState, AndroidCalendarList, AndroidCalendarInspection, AndroidCalendarSaveReply, AndroidCalendarDeletionInspection, AndroidCalendarDeletionReply, AndroidCalendarInsertHandoff, AndroidCalendarPlugin, CalendarTicket, CalendarRange, CalendarPick, CalendarInspectionResult, CalendarFieldsProblem, CalendarHandoffReport, CalendarReview, CalendarClient, CalendarClientOptions } from "@elizaos/os-bridges"
 
 const ApplePermission = Schema.Struct({ calendar: Schema.Literals(["granted", "write_only", "denied", "prompt", "restricted"]), canRequest: Schema.Boolean })
 const APPLE_CALENDAR = "AppleCalendar"

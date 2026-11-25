@@ -1,0 +1,194 @@
+// spec/agent/models/binding.md, "The binding is set once from an admitted launch and never changes while the process runs"; spec/agent/models/binding.md, "A model call starts only for a handler the backend serves, with the credential the binding holds"; spec/agent/models/binding.md, "Each refusal is one account state, and the last failure records its kind and time without text"; spec/agent/models/binding.md, "No call starts before a rate limit's retry time, and a provider issue does not lift a limit still in force"; spec/agent/models/binding.md, "A rate limit holds the account for the provider's whole retry time, and for at most 4 s on a Cerebras own-key endpoint"; spec/agent/models/binding.md, "An answer clears the account state, except a limit not yet over"; spec/agent/models/binding.md, "A pushed credential replaces the key only at a higher version of the launch account, and needs no restart"; spec/agent/models/binding.md, "A refusal of a replaced credential never marks the new one invalid"; spec/agent/models/binding.md, "Warm answers from the binding state and never reaches the cloud"; spec/agent/models/binding.md, "A key is held only in the slot of the backend it was given for, and only as a bearer credential that slot accepts"
+import type { Backend, GoogleConsent, LaunchDocument as LaunchModel, UrlShape } from "../../gen/agent__host__launch.ts"
+import {
+  Machine, accountStateName, blocked, clockAt, failureName, keyAdmitted, keySlot, limitedAt, machine, pushVerdict, reportedRetryAt, retryAtOf, warmAnswer,
+  type AccountFailure, type KeyShape, type ModelBinding, type ModelHandler, type PushVerdict, type WarmAnswer,
+} from "../../gen/agent__models__binding.effect.vibe"
+import type { CloudError } from "../../gen/cloud__client.ts"
+import type { LocalRoute, LaunchDocument, LaunchFrame } from "@elizaos/agent"
+import { launchChoices } from "../host/launch-choices.vibe"
+
+export type FailureKind = "credential_invalid" | "insufficient_credits" | "limit_reached" | "provider_issue"
+export type BackendName = "cloud" | "own-key" | "none"
+export type CallStart = number | { readonly limitedUntil: number }
+
+export interface LastCloudFailure {
+  readonly kind: FailureKind
+  readonly at: number
+  readonly retryAt?: number
+}
+
+export interface BindingView {
+  readonly backend: BackendName
+  readonly accountState: "usable" | FailureKind
+  readonly blocked: boolean
+  readonly lastCloudFailure?: LastCloudFailure
+}
+
+interface HeldCredential {
+  readonly version: number
+  readonly value: Redacted.Redacted<string>
+  readonly expiresAt?: number
+}
+
+export interface BoundModels {
+  readonly backend: Backend
+  readonly google: GoogleConsent
+  readonly routes: readonly LocalRoute[]
+  credential(): Redacted.Redacted<string>
+  startCall(handler: ModelHandler, now: number): CallStart!!
+  answerCall(id: number, now: number): void!!
+  refuseCall(id: number, now: number, error: CloudError): void!!
+  read(): BindingView!!
+  state(): ModelBinding!!
+}
+
+error BindRefused
+
+const Nonblank = Schema.String.check(Schema.isPattern(/\S/))
+const Push = Schema.Struct({
+  version: Schema.Int.check(Schema.isGreaterThan(0)),
+  credential: Schema.RedactedFromValue(Nonblank),
+  expiresAt: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+  account: Schema.Struct({ userId: Nonblank, organizationId: Nonblank }),
+})
+const decodePush = Schema.decodeUnknownOption(Push, { onExcessProperty: "error" })
+
+const refusals: Record<Exclude<PushVerdict, "PushAccepted">, string> = {
+  PushNotCloud: "not_cloud", PushStaleVersion: "stale_version", PushOtherAccount: "other_account",
+}
+const warmNames: Record<WarmAnswer, string> = { WarmReady: "ready", WarmBlocked: "blocked", WarmNoCloud: "no_cloud" }
+const backendNames: Record<Backend["tag"], BackendName> = { CloudBackend: "cloud", OwnKeyBackend: "own-key", NoBackend: "none" }
+
+function urlShape(url: string): UrlShape {
+  const parsed = URL.parse(url)
+  if (parsed === null || parsed.protocol !== "https:") return "NotHttps"
+  return parsed.origin === url ? "HttpsOrigin" : "HttpsWithPath"
+}
+
+function backendOf(model: LaunchDocument["model"]): Backend {
+  return match (model) {
+    when { backend: "cloud" }: { tag: "CloudBackend", baseUrl: model.cloudBaseUrl, baseUrlShape: urlShape(model.cloudBaseUrl), smallModel: model.smallModel, largeModel: model.largeModel, imageModel: model.imageModel };
+    when { backend: "own-key" }: { tag: "OwnKeyBackend", baseUrl: model.ownKeyBaseUrl, baseUrlShape: urlShape(model.ownKeyBaseUrl), smallModel: model.ownKeySmall, largeModel: model.ownKeyLarge };
+    when { backend: "none" }: { tag: "NoBackend" };
+  }
+}
+
+function launchModel(launch: LaunchDocument): LaunchModel {
+  const { character, policy, account, retention } = launch
+  return {
+    schema: launch.schema,
+    character: { name: character.name, nameUnits: character.name.length, systemBlank: !/\S/.test(character.system) },
+    policy: {
+      actionsAllowed: [...policy.actions.allowed], pluginsLoad: [...policy.plugins.load],
+      productPlugin: policy.plugins.product === undefined ? { tag: "NoProductPlugin" } : { tag: "NamedProductPlugin", name: policy.plugins.product },
+    },
+    backend: backendOf(launch.model),
+    account: account === undefined ? { tag: "NoAccount" } : { tag: "SignedIn", userId: account.userId, organizationId: account.organizationId },
+    ...launchChoices(launch),
+    retention: retention === undefined ? { tag: "KeepLogs" }
+      : { tag: "PruneLogs", dayThousandths: Math.ceil(retention.days * 1000), maxRowsPerRoom: retention.maxRowsPerRoom, intervalMinutes: retention.intervalMinutes },
+    environment: Object.keys(launch.environment ?? {}).map((key) => ({ key, keyKind: "PluginSetting", singleLine: true })),
+  }
+}
+
+function lastFailureOf(state: ModelBinding): LastCloudFailure | undefined {
+  const last = state.lastCloudFailure
+  if (last.tag === "NoCloudFailure") return undefined
+  const retryAt = retryAtOf(last.failure)
+  return { kind: failureKindName(last.failure), at: last.at, ...(retryAt < 0 ? {} : { retryAt }) }
+}
+
+export function failureKindName(failure: AccountFailure): FailureKind {
+  return failureName(failure) as FailureKind
+}
+
+function shapeOf(key: Redacted.Redacted<string>): KeyShape {
+  const value = Redacted.value(key)
+  return { units: value.length, visibleAscii: /^[\x21-\x7e]*$/.test(value) }
+}
+
+const noKey: HeldCredential = { version: 0, value: Redacted.make("") }
+
+export function onCerebras(baseUrl: string): boolean {
+  return /(?:^|\.)cerebras\.ai$/i.test(URL.parse(baseUrl)?.hostname ?? "")
+}
+
+effect function held() {
+  provide machine() {
+    return try Machine
+  }
+}
+
+export effect function bindModels(launch: LaunchDocument, frame: LaunchFrame) {
+  const models = try held()
+  const doc = launchModel(launch)
+  const slot = keySlot(doc.backend)
+  const cerebrasRoute = launch.model.backend === "own-key" && onCerebras(launch.model.ownKeyBaseUrl)
+  const bound = models.send({ type: "bind", doc, view: { epoch: frame.epoch, credentialVersion: frame.credential?.version ?? 0 }, cerebrasRoute })
+    catch effect () => { throw new BindRefused() }
+  let key: HeldCredential = slot === "NoKeySlot" ? noKey : frame.credential ?? noKey
+
+  effect function read() {
+    const state = try models.get()
+    const now = clockAt(state, try Clock.currentTimeMillis)
+    const last = lastFailureOf(state)
+    return {
+      backend: backendNames[state.backend.tag],
+      accountState: accountStateName(state.accountState) as BindingView["accountState"],
+      blocked: blocked(state.accountState, now),
+      ...(last === undefined ? {} : { lastCloudFailure: last }),
+    } satisfies BindingView
+  }
+
+  effect function push(body: unknown) {
+    const parsed = decodePush(body)
+    if (parsed._tag !== "Some") return { status: 400, body: { error: "malformed" } }
+    const { version, credential, expiresAt, account } = parsed.value
+    const owner = { tag: "SignedIn", userId: account.userId, organizationId: account.organizationId } as const
+    const verdict = pushVerdict(try models.get(), version, owner)
+    if (verdict !== "PushAccepted") return { status: 409, body: { error: "credential_refused", reason: refusals[verdict] } }
+    if (!keyAdmitted("CloudDeviceKey", shapeOf(credential))) return { status: 400, body: { error: "malformed" } }
+    const previous = key
+    key = { version, value: credential, expiresAt }
+    const refused = models.send({ type: "pushCredential", version, account: owner }) catch effect (rejected) => {
+      key = previous
+      const late = pushVerdict(rejected.state, version, owner)
+      return late === "PushAccepted" ? "PushStaleVersion" : late
+    }
+    if (typeof refused === "string") return { status: 409, body: { error: "credential_refused", reason: refusals[refused] } }
+    return { status: 200, body: { version, accountState: accountStateName(refused.accountState) } }
+  }
+
+  effect function warm() {
+    const state = try models.get()
+    const now = clockAt(state, try Clock.currentTimeMillis)
+    return { status: 200, body: { warm: warmNames[warmAnswer(state.backend, state.accountState, now)] } }
+  }
+
+  return {
+    backend: bound.backend,
+    google: bound.google,
+    routes: [
+      { method: "PUT", path: "/api/host/cloud-credential", maxBodyBytes: 16384, handler: ({ body }) => runPromise(push(body)) },
+      { method: "POST", path: "/api/cloud/warm", handler: () => runPromise(warm()) },
+    ],
+    credential: () => key.value,
+    startCall: effect (handler: ModelHandler, now: number) => {
+      const next = models.send({ type: "startCall", handler, now }) catch effect (rejected) => {
+        const account = rejected.state.accountState
+        if (account.tag === "Failing" && limitedAt(account, clockAt(rejected.state, now))) return { limitedUntil: reportedRetryAt(rejected.state) }
+        return try Effect.die(rejected)
+      }
+      return "limitedUntil" in next ? next : next.nextCall - 1
+    },
+    answerCall: effect (id: number, now: number) => {
+      try orDie(models.send({ type: "answerCall", id, now }))
+    },
+    refuseCall: effect (id: number, now: number, error: CloudError) => {
+      try orDie(models.send({ type: "refuseCall", id, now, e: error }))
+    },
+    read,
+    state: () => models.get(),
+  } satisfies BoundModels
+}

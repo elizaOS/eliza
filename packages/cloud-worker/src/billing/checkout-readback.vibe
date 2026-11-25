@@ -1,0 +1,213 @@
+// spec/cloud/billing/checkout.md, "Story: Subscribe once, whichever screen or payer finishes it"; spec/cloud/shared/dispatchOnce.md, "Story: Send a change once and recover its outcome without sending it again"; spec/cloud/identity/deletion.md, "Story: Delete an account once the person asked support"
+import { canReadBackOpen, canResolve, type Checkout } from "../../gen/cloud__billing__checkout.effect.vibe"
+import { isUnknown } from "../../gen/cloud__shared__dispatchOnce.effect.vibe"
+import type { CloudContext, Sweep } from "../http/routes.vibe"
+import { Deployment } from "@elizaos/cloud"
+import { expireCheckoutSession, findCheckoutSession, providerReply, retrieveCheckoutSession, type StripeCheckoutSession } from "../providers/stripe.vibe"
+import { Store, toText, type Tx } from "../store/connection.vibe"
+import { RowCorrupt } from "../store/rows.vibe"
+import { applyCheckoutEvent, checkoutAt, loadCheckout, pinnedCustomer, providerTimeout, stepCheckout, type StoredCheckout } from "./checkout.vibe"
+
+const readBackEveryMs = 60_000
+const readBackBatch = 100
+
+interface CheckoutScope {
+  readonly organizationId: string
+  readonly customerId: string
+}
+
+type CheckoutReference =
+  | { readonly kind: "node"; readonly commandId: string; readonly sessionId: string }
+  | { readonly kind: "worker"; readonly sessionId: string }
+
+type CheckoutSettlement =
+  | { readonly kind: "pending" }
+  | { readonly kind: "closed"; readonly subscriptionId?: string }
+
+const pending = { kind: "pending" } satisfies CheckoutSettlement
+const closed = { kind: "closed" } satisfies CheckoutSettlement
+
+function matchesSession(scope: CheckoutScope, target: CheckoutReference, session: StripeCheckoutSession, live: boolean): boolean {
+  if (session.id !== target.sessionId || session.mode !== "subscription" || session.customer !== scope.customerId || session.livemode !== live) return false
+  return target.kind === "worker"
+    ? session.client_reference_id === scope.organizationId
+    : session.client_reference_id === target.commandId && session.metadata?.commandId === target.commandId &&
+      session.metadata.organizationId === scope.organizationId
+}
+
+effect function expireAndSee(scope: CheckoutScope, target: CheckoutReference, known?: StripeCheckoutSession) {
+  const live = (try Deployment).environment === "production"
+  const input = known === undefined ? try providerReply(retrieveCheckoutSession(target.sessionId, { timeout: providerTimeout })) : { kind: "applied", value: known } as const
+  if (input.kind !== "applied" || !matchesSession(scope, target, input.value, live)) return undefined
+  if (input.value.status !== "open") return input.value
+  try providerReply(expireCheckoutSession(target.sessionId, { idempotencyKey: `expire_${target.sessionId}`, timeout: providerTimeout }))
+  const after = try providerReply(retrieveCheckoutSession(target.sessionId, { timeout: providerTimeout }))
+  return after.kind === "applied" && matchesSession(scope, target, after.value, live) ? after.value : undefined
+}
+
+function terminalSession(session: StripeCheckoutSession | undefined): CheckoutSettlement {
+  if (session?.status === "expired") return closed
+  if (session?.status === "complete" && session.payment_status === "paid" && session.subscription !== null)
+    return { kind: "closed", subscriptionId: session.subscription }
+  return pending
+}
+
+effect function settleNodeCheckout(tx: Tx, scope: CheckoutScope, stored: StoredCheckout, now: number) {
+  const state = checkoutAt(stored.state, now)
+  const commandId = stored.commandId
+  if (state.phase === "Completed") return { kind: "closed", subscriptionId: state.subscriptionId } satisfies CheckoutSettlement
+  if (state.phase === "Expired") return closed
+  let known: StripeCheckoutSession | undefined
+  let sessionId = state.sessionId
+  if (state.phase === "Opening") {
+    if (!isUnknown(state.receipt)) return pending
+    if (state.receipt.session.effects > 0) {
+      const lookup = try providerReply(findCheckoutSession(scope.customerId, commandId, { timeout: providerTimeout }))
+      if (lookup.kind !== "applied") return pending
+      known = lookup.value
+    }
+    if (known === undefined) {
+      const expired = try settleLookup(tx, scope.organizationId, commandId, now)
+      return expired?.phase === "Expired" ? closed : pending
+    }
+    sessionId = known.id
+  }
+  if (sessionId === "") return pending
+  const seen = try expireAndSee(scope, { kind: "node", commandId, sessionId }, known)
+  if (seen === undefined) return pending
+  const after = try applyCheckoutEvent(tx, seen, now)
+  if (after?.phase === "Expired") return closed
+  return after?.phase === "Completed" ? { kind: "closed", subscriptionId: after.subscriptionId } satisfies CheckoutSettlement : pending
+}
+
+interface OwnedCheckoutScope {
+  readonly organizationId: string
+  readonly customerId: string | undefined
+  readonly workerSessionId: string | undefined
+}
+
+type OwnedCheckoutSettlement =
+  | { readonly kind: "pending" }
+  | { readonly kind: "closed"; readonly subscriptionIds: ReadonlyArray<string> }
+
+export effect function settleOwnedCheckouts(tx: Tx, owner: OwnedCheckoutScope, now: number) {
+  const rows = try tx.query(`SELECT key,user_id FROM checkouts WHERE organization_id=$1 AND
+    (status IN ('opening','open') OR key=(SELECT key FROM checkouts WHERE organization_id=$1 AND status='completed'
+      ORDER BY updated_at DESC, key LIMIT 1)) ORDER BY key FOR UPDATE`, [owner.organizationId])
+  if (rows.length === 0 && owner.workerSessionId === undefined) return { kind: "closed", subscriptionIds: [] } satisfies OwnedCheckoutSettlement
+  if (owner.customerId === undefined) throw new RowCorrupt({ table: "checkouts", key: owner.organizationId, cause: "checkout settlement has no pinned provider customer" })
+  const scope = { organizationId: owner.organizationId, customerId: owner.customerId }
+  const subscriptions = new Set<string>()
+  for (const row of rows) {
+    const commandId = toText(row.key)
+    const stored = commandId === undefined ? undefined : try loadCheckout(tx, commandId)
+    const actor = toText(row.user_id)
+    if (stored === undefined || actor === undefined || stored.organizationId !== owner.organizationId ||
+        stored.state.receipt.session.owner.agentId !== owner.organizationId || stored.state.receipt.session.owner.actorId !== actor)
+      throw new RowCorrupt({ table: "checkouts", key: commandId ?? owner.organizationId, cause: "checkout settlement needs the recorded owner" })
+    const settled = try settleNodeCheckout(tx, scope, stored, now)
+    if (settled.kind === "pending") return pending
+    if ("subscriptionId" in settled && settled.subscriptionId !== undefined) subscriptions.add(settled.subscriptionId)
+  }
+  if (owner.workerSessionId !== undefined) {
+    const settled = terminalSession(try expireAndSee(scope, { kind: "worker", sessionId: owner.workerSessionId }))
+    if (settled.kind === "pending") return pending
+    if (settled.subscriptionId !== undefined) subscriptions.add(settled.subscriptionId)
+  }
+  return { kind: "closed", subscriptionIds: [...subscriptions] } satisfies OwnedCheckoutSettlement
+}
+
+effect function settleLookup(tx: Tx, organizationId: string, commandId: string, now: number) {
+  try tx.query("SELECT id FROM organizations WHERE id=$1 FOR UPDATE", [organizationId])
+  const stored = try loadCheckout(tx, commandId)
+  if (stored === undefined) return undefined
+  if (canResolve(checkoutAt(stored.state, now), { tag: "NothingSeen" }, "")) {
+    return try stepCheckout(tx, organizationId, commandId, { event: { type: "resolve", lookup: { tag: "NothingSeen" }, sessionId: "" }, by: stored.state.receipt.session.owner, now })
+  }
+}
+
+effect function resolveOpening(organizationId: string, commandId: string, state: Checkout, now: number) {
+  const store = try Store
+  if (!isUnknown(state.receipt)) return
+  if (state.receipt.session.effects === 0) return try store.transaction((tx) => settleLookup(tx, organizationId, commandId, now))
+  const customerId = try store.transaction((tx) => pinnedCustomer(tx, organizationId))
+  if (customerId === undefined) return
+  const lookup = try providerReply(findCheckoutSession(customerId, commandId, { timeout: providerTimeout }))
+  if (lookup.kind !== "applied") return
+  const found = lookup.value
+  try store.transaction(effect (tx: Tx) => {
+    if (found === undefined) try settleLookup(tx, organizationId, commandId, now)
+    else try applyCheckoutEvent(tx, found, now)
+  })
+}
+
+effect function readBackOpen(organizationId: string, commandId: string, state: Checkout, now: number) {
+  const store = try Store
+  try store.transaction(effect (tx: Tx) => {
+    try tx.query("SELECT id FROM organizations WHERE id=$1 FOR UPDATE", [organizationId])
+    const live = (try tx.query(`SELECT EXISTS (SELECT 1 FROM accounts WHERE organization_id=$1
+      AND (status='active' OR (key<>$2 AND status<>'erased'))) AS holds_billing`, [organizationId, state.receipt.session.owner.actorId]))[0]?.holds_billing
+    const customerId = try pinnedCustomer(tx, organizationId)
+    const read = effect {
+      const report = try providerReply(retrieveCheckoutSession(state.sessionId, { timeout: providerTimeout }))
+      return report.kind === "applied" ? report.value : undefined
+    }
+    const seen = live === false && customerId !== undefined
+      ? try expireAndSee({ organizationId, customerId }, { kind: "node", commandId, sessionId: state.sessionId })
+      : try read
+    if (seen === undefined) return
+    const after = try applyCheckoutEvent(tx, seen, now)
+    if (after !== undefined && canReadBackOpen(checkoutAt(after, now))) {
+      try stepCheckout(tx, organizationId, commandId, { event: { type: "readBackOpen" }, by: after.receipt.session.owner, now })
+    }
+  })
+}
+
+effect function readBackOne(organizationId: string, commandId: string, now: number) {
+  const store = try Store
+  const stored = try store.transaction((tx) => loadCheckout(tx, commandId, false))
+  if (stored === undefined) return
+  const state = checkoutAt(stored.state, now)
+  switch (state.phase) {
+    case "Opening": return try resolveOpening(organizationId, commandId, state, now)
+    case "Open": return try readBackOpen(organizationId, commandId, state, now)
+    case "NotStarted":
+    case "Completed":
+    case "Expired":
+      return
+    default: {
+      const _exhaustive: never = state.phase
+      return _exhaustive
+    }
+  }
+}
+
+export effect function readBackCheckouts(now: number): number!!CloudContext {
+  const store = try Store
+  const due = store.transaction((tx) => tx.query(
+    "SELECT key, organization_id FROM checkouts WHERE status IN ('opening', 'open') AND next_readback_at <= $1 ORDER BY next_readback_at, key LIMIT $2",
+    [now, readBackBatch]
+  )) catch effect (failure) => {
+    try annotateLogs(logWarning("the checkouts due for read-back could not be listed"), { failure: failure._tag })
+    return []
+  }
+  let visited = 0
+  for (const row of due) {
+    const commandId = toText(row.key) ?? ""
+    const done = readBackOne(toText(row.organization_id) ?? "", commandId, now) catch effect (failure) => {
+      try annotateLogs(logWarning("a checkout could not be read back yet"), { commandId, failure: failure._tag })
+      return false
+    }
+    if (done !== false) visited += 1
+  }
+  return visited
+}
+
+export const sweeps: ReadonlyArray<Sweep> = [{
+  name: "checkout read-back",
+  everyMs: readBackEveryMs,
+  run: effect {
+    const now = try Clock.currentTimeMillis
+    return try readBackCheckouts(now)
+  }
+}]

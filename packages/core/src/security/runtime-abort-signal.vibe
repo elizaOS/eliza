@@ -1,23 +1,22 @@
 // spec/core/privacy.md, "Story: Publish scrub completion only after durable privacy work"
-module node {
-  import { types } from "node:util"
+export type ProxyInspector = (value: object) => boolean
 
-  const inspect = (() => {
-    const candidate = types?.isProxy
-    if (typeof candidate !== "function") return undefined
-    try {
-      return candidate({}) === false && candidate(new Proxy({}, {})) === true ? candidate : undefined
-    } catch {
-      return undefined
-    }
-  })()
+let activeInspector: ProxyInspector | undefined
 
-  /** @throws {never} */
-  export function mayBeProxy(value: object): boolean {
-    return !inspect || inspect(value)
-  }
+export function registerProxyInspector(inspector: ProxyInspector): void {
+  activeInspector = inspector
 }
-import { mayBeProxy } from node
+
+function mayBeProxy(value: object): boolean {
+  if (activeInspector) {
+    try {
+      return activeInspector(value)
+    } catch {
+      return true
+    }
+  }
+  return false
+}
 
 const signalPrototype = typeof AbortSignal === "undefined" ? undefined : AbortSignal.prototype
 const abortedGetter = signalPrototype

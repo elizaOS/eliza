@@ -5,7 +5,7 @@ image checkout: the presigned APK and its same-signer companions, the
 first-boot grants, the privileged allow-list and the agent socket policy
 when the launcher is privileged, and the APK's native libraries for the
 image ABI. The writer is `src/image/stage-launcher.vibe` (`stageLauncher`,
-`finalizeNative`), exported from `@elizaos/os/image`, which runs one
+`finalizeNative`), exported from `@elizaos/os`, which runs one
 machine per call. The sources are develop's `stage-launcher-overlay.ts`,
 `android-native-admission.mjs`, `stage-android-native.py` (`stage`,
 `finalize_soong`) and the `LauncherNativeInstall` Quint model.

@@ -1,0 +1,429 @@
+// spec/cloud/services/inference.md, "Story: Answer a chat completion once and charge it once"; spec/cloud/services/inference.md, "Story: Stream a reply in the shape clients read"
+import { assert, describe, it } from "@effect/vitest"
+import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/http"
+import { addCredits } from "../../src/billing/funds.vibe"
+import { parseProfile } from "@elizaos/cloud"
+import { setModelPrice } from "../../src/services/models.vibe"
+import { Store, storeLayer } from "../../src/store/store.vibe"
+import { check, sql, testCloud, type TestCloud } from "../support/cloud.vibe"
+import { llmFake, replyText, upstreamModel, type LlmFake } from "../support/llm-fake.ts"
+import { signedCaller } from "../support/caller.vibe"
+import { testProfile } from "../support/profile.ts"
+
+const prompt = "Please say hello to me now, thank you ok"
+const request = { model: "test-chat", messages: [{ role: "user", content: prompt }], max_tokens: 16 }
+
+effect function chatCloud(additionalOffers = false) {
+  const secondUpstream = "upstream-wide"
+  const llm: LlmFake = try sync(() => llmFake([upstreamModel, secondUpstream]))
+  const edit = (profile: ReturnType<typeof testProfile>) => {
+    if (!additionalOffers) return profile
+    const staging = profile.environments.staging
+    const inference = {
+      ...staging.inference,
+      models: [...staging.inference.models,
+        { id: "wide-chat", provider: "llm", upstreamModel: secondUpstream, vision: true, defaultMaxTokens: 8192 },
+        { id: "legacy-chat", provider: "llm", upstreamModel: upstreamModel, vision: true }],
+    }
+    return { ...profile, environments: { ...profile.environments, staging: { ...staging, inference } } }
+  }
+  const cloud = try testCloud({ edit, mount: (fakes) => fakes.mount("/llm/", llm.handler) })
+  const profile = try parseProfile(try sync(() => edit(testProfile(cloud.fakes.url))))
+  const settings = profile.environments.staging.inference
+  if (settings === undefined) return try Effect.die("the test profile offers no inference")
+  for (const offer of settings.models) {
+    try cloud.store.transaction((tx) => setModelPrice(tx, settings, { modelId: offer.id, inputPer1K: 1000, outputPer1K: 2000, ...(offer.id === "wide-chat" ? { cachedInputPer1K: 0 } : {}) }))
+  }
+  const { bearer: key } = try signedCaller(cloud, "owner")
+  provide Store = cloud.store {
+    try addCredits({ organizationId: "org-owner", amount: 1_000_000, requestKey: "operator-1" })
+  }
+  const chat = (body: unknown, headers: Readonly<Record<string, string>> = {}, token = key) => cloud.call("/api/v1/chat/completions", { headers: { authorization: `Bearer ${token}`, ...headers }, json: body })
+  return { cloud, llm, key, chat }
+}
+
+effect function usageRows(cloud: TestCloud, organizationId: string) {
+  const rows = try sql(cloud, "SELECT outcome, quote, charged FROM usage_records WHERE organization_id = $1 ORDER BY settled_at, hold_key", [organizationId])
+  return rows.map((row) => [row.outcome, Number(row.quote), Number(row.charged)])
+}
+
+effect function settledCount(cloud: TestCloud, organizationId: string, count: number) {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const rows = try usageRows(cloud, organizationId)
+    if (rows.length >= count) return rows
+    try sleep(Duration.millis(50))
+  }
+  return try usageRows(cloud, organizationId)
+}
+
+function status(answer: { readonly status: number; readonly body: unknown; readonly headers: Readonly<Record<string, string>> }): unknown {
+  const body = answer.body as { readonly error?: string }
+  return [answer.status, body.error, answer.headers["retry-after"]]
+}
+
+function fault(answer: { readonly body: unknown }): unknown {
+  const body = answer.body as { readonly code?: unknown; readonly param?: unknown; readonly message?: unknown }
+  return [body.code, body.param, body.message]
+}
+
+function frames(text: string): ReadonlyArray<string> {
+  return text.split("\n\n").filter((frame) => frame !== "").map((frame) => frame.replace(/^data: /, ""))
+}
+
+interface Chunk {
+  readonly model: string
+  readonly usage?: unknown
+  readonly choices: ReadonlyArray<{ readonly delta: { readonly content?: string } }>
+}
+
+effect function chunks(text: string) {
+  return try Effect.try(() => frames(text).filter((frame) => frame !== "[DONE]").map((frame): Chunk => JSON.parse(frame)))
+}
+
+effect function hangUpAfterFirstBytes(url: string, key: string) {
+  const sent = HttpClientRequest.post(`${url}/api/v1/chat/completions`).pipe(
+    HttpClientRequest.bearerToken(key),
+    HttpClientRequest.bodyText(JSON.stringify({ ...request, stream: true }), "application/json")
+  )
+  return try scoped(effect {
+    const response = try HttpClient.execute(sent)
+    const first = try Stream.runHead(response.stream)
+    return [response.status, response.headers["content-type"], Option.isSome(first)]
+  }).pipe(Effect.provide(FetchHttpClient.layer))
+}
+
+describe("WP5 Inference: chat completions", () => {
+  it.live("Answer a chat completion once and charge it once, including provider errors, rate limits and cached prompt reads (spec/cloud/services/inference.md, \"Story: Answer a chat completion once and charge it once\"; spec/cloud/services/models.md, \"Each side costs its tokens at its price plus 20 percent, rounded half up to a whole micro-dollar\"; spec/cloud/services/inference.md, \"A dispatched call is charged its reported usage, what it delivered when the caller hung up, and its quote when nothing was reported\"; spec/cloud/services/inference.md, \"A call never dispatched releases its hold, and a provider rejection before any output is charged nothing and answered with a well-formed refusal\"; spec/cloud/services/inference.md, \"A provider's refusal of the request passes on its listed code and parameter and nothing else\"; spec/cloud/services/inference.md, \"A request passes the ingress limit, authentication, the plan limit, the body, the model, the quote and the hold in that order, and the first that fails answers\")", () => scoped(effect {
+    const { cloud, llm, chat } = try chatCloud(true)
+    const { model, messages } = request
+    const unbounded = { model, messages }
+    const missingDefault = try chat({ ...unbounded, model: "legacy-chat" })
+    const holdsBeforeAdmission = try sql(cloud, "SELECT phase FROM holds", [])
+    const unknownModel = try chat({ ...request, model: "missing-chat" })
+    const { bearer: broke } = try signedCaller(cloud, "broke")
+    const unfunded = try chat(request, {}, broke)
+    const callsBeforeAdmission = llm.bodies.length
+    const whole = try chat(unbounded, { "idempotency-key": "00000000-0000-0000-0000-000000000001" })
+    const again = try chat(unbounded, { "idempotency-key": "00000000-0000-0000-0000-000000000001" })
+    try sync(() => llm.script({ kind: "refuse", retryAfterSeconds: 59 }, { kind: "notJson" }, { kind: "reject", status: 400 }, { kind: "reject", status: 401 },
+      { kind: "reject", status: 400, body: { code: "parser_error", param: "prompt", type: "generation_error", message: "Failed to parse tool call" } },
+      { kind: "reject", status: 400, body: { error: { code: "insufficient_quota", param: "tools", message: "You exceeded your current quota" } } },
+      { kind: "reject", status: 422, body: { code: "parser_error", param: "tool_calls" } },
+      { kind: "reject", status: 418 }))
+    const refusedByProvider = try chat(request)
+    const unreadable = try chat(request)
+    const rejectedByProvider = try chat(request)
+    const providerAuthFailed = try chat(request)
+    const unparsedByProvider = try chat(request)
+    const unlistedByProvider = try chat(request)
+    const unprocessableByProvider = try chat(request)
+    const unlistedProviderFailure = try chat(request)
+    const planning = {
+      tools: [{ type: "function", function: { name: "SEARCH", parameters: { type: "object", properties: {} } } }],
+      tool_choice: { type: "function", function: { name: "SEARCH" } },
+      top_p: 0.5, stop: "END", seed: 3, frequency_penalty: 0.2, presence_penalty: 0.3, prompt_cache_key: "agent-1"
+    }
+    const legacy = try chat({ ...request, ...planning, model: "legacy-chat", max_completion_tokens: 64 })
+    const wide = try chat({ ...unbounded, model: "wide-chat", stream: true })
+    const answer = whole.body as { readonly model: string; readonly choices: ReadonlyArray<{ readonly message: { readonly content: string } }> }
+    const usage = try settledCount(cloud, "org-owner", 11)
+    const holds = try sql(cloud, "SELECT phase FROM holds WHERE organization_id = 'org-owner' ORDER BY phase", [])
+    const funds = try sql(cloud, "SELECT credit_balance FROM organizations WHERE id = 'org-owner'", [])
+    const brokeUsage = try usageRows(cloud, "org-broke")
+    try check(() => assert.deepStrictEqual(
+      {
+        missingDefault: [status(missingDefault), holdsBeforeAdmission.length],
+        unknownModel: status(unknownModel),
+        legacy: legacy.status,
+        wide: [wide.status, frames(String(wide.body)).at(-1)],
+        unfunded: status(unfunded),
+        callsBeforeAdmission,
+        whole: [whole.status, answer.model, answer.choices[0]?.message.content, whole.headers["cache-control"], status(again)],
+        upstream: llm.bodies.map((body) => [body.model, body.stream ?? false, body.max_tokens, body.max_completion_tokens]),
+        idempotencyForwarded: llm.headers.some((headers) => headers["idempotency-key"] !== undefined),
+        planningForwarded: Object.fromEntries(Object.keys(planning).map((field) => [field, llm.bodies[9]?.[field]])),
+        refusedByProvider: status(refusedByProvider),
+        unreadable: status(unreadable),
+        rejectedByProvider: [status(rejectedByProvider), fault(rejectedByProvider)],
+        providerAuthFailed: [status(providerAuthFailed), fault(providerAuthFailed)],
+        unparsedByProvider: [status(unparsedByProvider), fault(unparsedByProvider)],
+        unlistedByProvider: [status(unlistedByProvider), fault(unlistedByProvider)],
+        unprocessableByProvider: [status(unprocessableByProvider), fault(unprocessableByProvider)],
+        unlistedProviderFailure: status(unlistedProviderFailure),
+        usage,
+        brokeUsage,
+        holds: holds.map((row) => row.phase),
+        balance: Number(funds[0]?.credit_balance)
+      },
+      {
+        missingDefault: [[400, "model_unavailable", undefined], 0],
+        unknownModel: [400, "model_unavailable", undefined],
+        legacy: 200,
+        wide: [200, "[DONE]"],
+        unfunded: [402, "insufficient_credits", undefined],
+        callsBeforeAdmission: 0,
+        whole: [200, "test-chat", replyText, "no-store", [409, "already_dispatched", undefined]],
+        upstream: [[upstreamModel, false, 4096, undefined], [upstreamModel, false, 16, undefined],
+          [upstreamModel, false, 16, undefined], [upstreamModel, false, 16, undefined], [upstreamModel, false, 16, undefined],
+          [upstreamModel, false, 16, undefined], [upstreamModel, false, 16, undefined], [upstreamModel, false, 16, undefined],
+          [upstreamModel, false, 16, undefined], [upstreamModel, false, undefined, 64], ["upstream-wide", true, 8192, undefined]],
+        idempotencyForwarded: false,
+        planningForwarded: planning,
+        refusedByProvider: [429, "rate_limited", "59"],
+        unreadable: [502, "provider_invalid_response", undefined],
+        rejectedByProvider: [[400, "invalid_request", undefined], ["context_length_exceeded", "messages", undefined]],
+        providerAuthFailed: [[503, "provider_unavailable", "5"], [undefined, undefined, undefined]],
+        unparsedByProvider: [[400, "invalid_request", undefined], ["parser_error", undefined, undefined]],
+        unlistedByProvider: [[400, "invalid_request", undefined], [undefined, "tools", undefined]],
+        unprocessableByProvider: [[400, "invalid_request", undefined], [undefined, undefined, undefined]],
+        unlistedProviderFailure: [503, "provider_unavailable", "5"],
+        usage: [["known", 1212, 31], ["known", 50, 0], ["unknown", 50, 50], ["known", 50, 0], ["known", 50, 0], ["known", 50, 0], ["known", 50, 0], ["known", 50, 0],
+          ["unknown", 50, 50], ["known", 166, 31], ["known", 1212, 27]],
+        brokeUsage: [],
+        holds: ["settled", "settled", "settled", "settled", "settled", "settled", "settled", "settled", "settled", "settled", "settled"],
+        balance: 1_000_000 - 31 * 2 - 27 - 50 * 2
+      }
+    ))
+  }), 90_000)
+
+  it.live("Stream a reply in the shape clients read (spec/cloud/services/inference.md, \"Story: Stream a reply in the shape clients read\")", () => scoped(effect {
+    const { cloud, llm, key, chat } = try chatCloud()
+    const streamed = try chat({ ...request, stream: true, stream_options: { include_usage: true } })
+    try sync(() => llm.script({ kind: "streamWithoutUsage" }, { kind: "hang", after: 2 }))
+    const withoutUsage = try chat({ ...request, stream: true })
+    const hungUp = try hangUpAfterFirstBytes(cloud.url, key)
+    try promise(() => llm.untilAborted(1)).pipe(Effect.timeout(Duration.seconds(10)))
+    const usage = try settledCount(cloud, "org-owner", 3)
+    const text = String(streamed.body)
+    const parsed = try chunks(text)
+    try check(() => assert.deepStrictEqual(
+      {
+        streamed: [streamed.status, streamed.headers["content-type"], streamed.headers["cache-control"]],
+        ending: frames(text).at(-1),
+        doneFrames: frames(text).filter((frame) => frame === "[DONE]").length,
+        content: parsed.flatMap((chunk) => chunk.choices.map((choice) => choice.delta.content ?? "")).join(""),
+        usageChunks: parsed.filter((chunk) => chunk.usage !== undefined && chunk.usage !== null).length,
+        models: [...new Set(parsed.map((chunk) => chunk.model))],
+        withoutUsage: [withoutUsage.status, frames(String(withoutUsage.body)).at(-1)],
+        upstream: llm.bodies.map((body) => [body.model, body.stream, body.stream_options]),
+        hungUp,
+        aborted: llm.aborted,
+        usage
+      },
+      {
+        streamed: [200, "text/event-stream", "no-store"],
+        ending: "[DONE]",
+        doneFrames: 1,
+        content: replyText,
+        usageChunks: 1,
+        models: ["test-chat"],
+        withoutUsage: [200, "[DONE]"],
+        upstream: [[upstreamModel, true, { include_usage: true }], [upstreamModel, true, { include_usage: true }], [upstreamModel, true, { include_usage: true }]],
+        hungUp: [200, "text/event-stream", true],
+        aborted: 1,
+        usage: [["known", 50, 31], ["unknown", 50, 50], ["known", 50, 14]]
+      }
+    ))
+  }), 90_000)
+})
+
+effect function fundWorkerChat(rawProfile: unknown, organizationId: string) {
+  const profile = try parseProfile(rawProfile)
+  const settings = profile.environments.staging.inference
+  if (settings === undefined) return try Effect.die("the Worker test profile offers no inference")
+  const store = try Store
+  try store.transaction((tx) => setModelPrice(tx, settings, { modelId: "test-chat", inputPer1K: 1000, outputPer1K: 2000 }))
+  try addCredits({ organizationId, amount: 1_000_000, requestKey: "worker-chat-fixture" })
+}
+
+module node {
+  import { signInWithProof } from "../../src/identity-store.vibe"
+  import { cloudWorker, type CloudBindings } from "../../src/worker.vibe"
+  import { Effect, Schema } from "effect"
+  import { SecureRandom } from "effect/crypto"
+  import { startFakeServer } from "../support/fakes.ts"
+  import { llmFake, replyText } from "../support/llm-fake.ts"
+  import { openBackupDatabase } from "../support/password-backup.ts"
+  import { workerBindings } from "../support/worker.ts"
+
+  const frameValue = Schema.decodeUnknownSync(Schema.Struct({
+    model: Schema.optionalKey(Schema.String),
+    choices: Schema.optionalKey(Schema.Array(Schema.Struct({
+      delta: Schema.Struct({ content: Schema.optionalKey(Schema.NullOr(Schema.String)) }),
+    }))),
+    usage: Schema.optionalKey(Schema.Unknown),
+    error: Schema.optionalKey(Schema.Unknown),
+  }))
+
+  async function streamSummary(answer: Response) {
+    const text = await answer.text()
+    const parts = text.split("\n\n").filter(Boolean)
+    const payloads = parts.map((part) => part.startsWith("data: ") ? part.slice(6) : part)
+    const decoded = payloads.filter((payload) => payload !== "[DONE]").map((payload) => frameValue(JSON.parse(payload)))
+    return {
+      status: answer.status,
+      content: decoded.flatMap((frame) => frame.choices?.map((choice) => choice.delta.content ?? "") ?? []).join(""),
+      models: [...new Set(decoded.flatMap((frame) => frame.model === undefined ? [] : [frame.model]))],
+      usage: decoded.filter((frame) => frame.usage != null).length,
+      errors: decoded.filter((frame) => frame.error !== undefined).length,
+      done: payloads.filter((payload) => payload === "[DONE]").length,
+      terminal: payloads.at(-1) === "[DONE]",
+      complete: parts.every((part) => part.startsWith("data: ")) && text.endsWith("\n\n"),
+    }
+  }
+
+  export async function workerChatJourney(fund: (rawProfile: unknown, organizationId: string, databaseUrl: string) => Promise<void>) {
+    const llm = llmFake()
+    const fakes = await startFakeServer()
+    const keyOf = (n: number) => "00000000-0000-4000-8000-" + String(n).padStart(12, "0")
+    let pauseHeaders: { readonly reached: () => void; readonly released: Promise<void> } | undefined
+    try {
+      fakes.mount("/llm/", async (request) => {
+        const pause = pauseHeaders
+        if (pause === undefined) return llm.handler(request)
+        pauseHeaders = undefined
+        pause.reached()
+        await pause.released
+        return { status: 503 }
+      })
+      const fixture = await openBackupDatabase()
+      try {
+        const digest = "c".repeat(64)
+        await fixture.db.query("INSERT INTO cloud_identity (digest, environment, created_at) VALUES ($1, 'staging', 1)", [digest])
+        const owner = await Effect.runPromise(Effect.provide(signInWithProof(fixture.db, {
+          provider: "email", subject: "worker-chat@example.test", email: "worker-chat@example.test",
+        }), SecureRandom.layerWebCrypto))
+        const { rows } = await fixture.db.query<{ organization_id: string }>("SELECT organization_id FROM accounts WHERE key=$1", [owner.account.id])
+        const organizationId = rows[0]?.organization_id
+        if (organizationId === undefined) throw new Error("The test owner has no organization")
+        const web = "https://app.example.test"
+        const api = "https://api.example.test"
+        const env = { ...workerBindings({ api, web, digest, fakeUrl: fakes.url }), DATABASE_URL: fixture.databaseUrl } satisfies CloudBindings
+        const rawProfile: unknown = JSON.parse(env.CLOUD_PROFILE)
+        await fund(rawProfile, organizationId, fixture.databaseUrl)
+        const worker = cloudWorker()
+        const retained = new Map<number, Promise<unknown>[]>()
+        const call = (n: number, includeUsage = false, signal?: AbortSignal, stream = true) => {
+          const work: Promise<unknown>[] = []
+          retained.set(n, work)
+          return worker.fetch(new Request(api + "/api/v1/chat/completions", {
+            method: "POST", signal,
+            headers: { origin: web, authorization: "Bearer " + owner.access, "content-type": "application/json", "idempotency-key": keyOf(n) },
+            body: JSON.stringify({ model: "test-chat", messages: [{ role: "user", content: "Please say hello" }],
+              max_tokens: 16, stream, ...(stream ? { stream_options: { include_usage: includeUsage } } : {}) }),
+          }), env, { waitUntil: (pending) => { work.push(pending) } })
+        }
+        const ledger = async () => (await fixture.db.query<{
+          request: string; key: string; phase: string; usageKey: string | null; quote: string | null; charged: string | null; outcome: string | null
+        }>(`SELECT h.state->'key'->>'requestId' AS request, h.key, h.phase,
+                   u.hold_key AS "usageKey", u.quote, u.charged, u.outcome
+              FROM holds h LEFT JOIN usage_records u ON u.hold_key=h.key WHERE h.organization_id=$1 ORDER BY request`, [organizationId])).rows
+        async function abortBeforeHeaders(n: number, stream: boolean) {
+          const reached = Promise.withResolvers<void>()
+          const release = Promise.withResolvers<void>()
+          pauseHeaders = { reached: reached.resolve, released: release.promise }
+          const abort = new AbortController()
+          try {
+            const response = call(n, false, abort.signal, stream)
+            await Promise.race([reached.promise, response.then((answer) => { throw new Error("The provider was never reached: " + answer.status) })])
+            const before = (await ledger()).find((row) => row.request === keyOf(n))
+            const work = retained.get(n) ?? []
+            const retainedCount = work.length
+            abort.abort()
+            await Promise.all(work)
+            await (await response).text()
+            return { before, retainedCount }
+          } finally {
+            pauseHeaders = undefined
+            release.resolve()
+          }
+        }
+        llm.script({ kind: "stream", duplicateUsage: true }, { kind: "stream", duplicateUsage: true },
+          { kind: "truncated" }, { kind: "truncated", reportUsage: true }, { kind: "refuse" }, { kind: "hang", after: 2 },
+          { kind: "hang", after: 0 })
+        const asked = await streamSummary(await call(1, true))
+        const notAsked = await streamSummary(await call(2))
+        const truncated = await streamSummary(await call(3))
+        const usedBeforeFailure = await streamSummary(await call(4, true))
+        const refused = await call(5)
+        const preHeader = !refused.ok && refused.headers.get("content-type")?.includes("application/json") === true
+        await refused.text()
+        const hanging = await call(6)
+        const reader = hanging.body?.getReader()
+        if (reader === undefined) throw new Error("The admitted Worker chat did not open a response stream")
+        const first = await reader.read()
+        const second = await reader.read()
+        const partial = new TextDecoder().decode(first.value)
+        const beforeCancel = (await ledger()).find((row) => row.request === keyOf(6))
+        await reader.cancel()
+        await llm.untilAborted(1)
+        const retainedStream = retained.get(6) ?? []
+        await Promise.all(retainedStream)
+        const earlyStream = await abortBeforeHeaders(7, true)
+        const beforeEarlyCancel = earlyStream.before
+        const idleAbort = new AbortController()
+        const idle = await call(8, false, idleAbort.signal)
+        const beforeIdleCancel = (await ledger()).find((row) => row.request === keyOf(8))
+        idleAbort.abort()
+        const retainedIdle = retained.get(8) ?? []
+        await Promise.all(retainedIdle)
+        await llm.untilAborted(2)
+        const earlyWhole = await abortBeforeHeaders(9, false)
+        const beforeWholeCancel = earlyWhole.before
+        const settled = await ledger()
+        const duplicate = await call(6)
+        await duplicate.text()
+        const replayed = await ledger()
+        return {
+          asked, notAsked, truncated, usedBeforeFailure, preHeader, hangingStatus: hanging.status,
+          liveCompleteFrame: !first.done && partial.startsWith("data: ") && partial.endsWith("\n\n")
+            && !second.done && new TextDecoder().decode(second.value).includes(replyText.slice(0, 2)),
+          beforeCancel: beforeCancel !== undefined && beforeCancel.phase === "dispatched" && beforeCancel.usageKey === null,
+          beforeEarlyCancel: beforeEarlyCancel !== undefined && beforeEarlyCancel.phase === "dispatched" && beforeEarlyCancel.usageKey === null,
+          beforeWholeCancel: beforeWholeCancel !== undefined && beforeWholeCancel.phase === "dispatched" && beforeWholeCancel.usageKey === null,
+          idleDispatched: idle.status === 200 && beforeIdleCancel !== undefined && beforeIdleCancel.phase === "dispatched" && beforeIdleCancel.usageKey === null,
+          holds: settled.map((row, index) => [row.request === keyOf(index + 1), row.phase, row.usageKey === row.key, row.outcome,
+            row.outcome === "unknown" ? row.charged === row.quote : index >= 5 ? Number(row.quote) - Number(row.charged) : Number(row.charged)]),
+          cancelSameKey: beforeCancel !== undefined && settled.find((row) => row.request === keyOf(6))?.key === beforeCancel.key,
+          earlyCancelSameKey: beforeEarlyCancel !== undefined && settled.find((row) => row.request === keyOf(7))?.key === beforeEarlyCancel.key,
+          idleCancelSameKey: beforeIdleCancel !== undefined && settled.find((row) => row.request === keyOf(8))?.key === beforeIdleCancel.key,
+          wholeCancelSameKey: beforeWholeCancel !== undefined && settled.find((row) => row.request === keyOf(9))?.key === beforeWholeCancel.key,
+          retainedStream: retainedStream.length, retainedBeforeHeaders: earlyStream.retainedCount, retainedIdle: retainedIdle.length,
+          retainedWholeBeforeHeaders: earlyWhole.retainedCount,
+          cancelledUpstream: llm.aborted, providerCalls: llm.bodies.length, duplicate: duplicate.status,
+          replayUnchanged: JSON.stringify(settled) === JSON.stringify(replayed),
+        }
+      } finally {
+        await fixture.close()
+      }
+    } finally {
+      await fakes.close()
+    }
+  }
+}
+
+import { workerChatJourney } from node
+
+it.live('Worker streams complete frames and settles the original hold (spec/cloud/index.md, "A streamed answer sends complete OpenAI frames and settles the same hold"; spec/cloud/services/inference.md, "A dispatched call is charged its reported usage, what it delivered when the caller hung up, and its quote when nothing was reported")', () => effect {
+  const got = try tryPromise(() => workerChatJourney((profile, organization, databaseUrl) =>
+    runPromise(Effect.provide(fundWorkerChat(profile, organization), storeLayer({ kind: "pg", url: databaseUrl })))))
+  const answer = { status: 200, content: replyText, models: ["test-chat"], usage: 0, errors: 0, done: 1, terminal: true, complete: true }
+  try check(() => assert.deepStrictEqual(got, {
+    asked: { ...answer, usage: 1 }, notAsked: answer, truncated: { ...answer, errors: 1 },
+    usedBeforeFailure: { ...answer, errors: 1 }, preHeader: true, hangingStatus: 200, liveCompleteFrame: true, beforeCancel: true, beforeEarlyCancel: true, beforeWholeCancel: true, idleDispatched: true,
+    holds: [
+      [true, "settled", true, "known", 31],
+      [true, "settled", true, "known", 31],
+      [true, "settled", true, "unknown", true],
+      [true, "settled", true, "known", 31],
+      [true, "settled", true, "known", 0],
+      [true, "settled", true, "known", 36],
+      [true, "settled", true, "known", 38],
+      [true, "settled", true, "known", 38],
+      [true, "settled", true, "known", 38],
+    ],
+    cancelSameKey: true, earlyCancelSameKey: true, idleCancelSameKey: true, wholeCancelSameKey: true,
+    retainedStream: 1, retainedBeforeHeaders: 1, retainedIdle: 1, retainedWholeBeforeHeaders: 1,
+    cancelledUpstream: 2, providerCalls: 7, duplicate: 409, replayUnchanged: true,
+  }))
+}, 60_000)

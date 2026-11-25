@@ -1,5 +1,4 @@
 // spec/core/index.md, "Compatibility translates asynchronous results without losing failures"; spec/core/packageExports.md, "An admitted pack serves exactly the declared leaves, each free of host-only code"
-import type { NotesRequestInterpretation } from "../actions/task-extraction-context.vibe"
 
 import type { ActionFailureProvenance } from "./action-failure.vibe"
 import type { ActionReplyFailure } from "./action-reply.vibe"
@@ -86,21 +85,6 @@ export type CompletionContextSelection = {
 }
 
 export interface MessageHandlerPlan {
-  notesRequestEffect?: "read_only" | "mutation_requested" | "unresolved"
-
-  notesRequestInterpretation?: {
-    readonly status: NotesRequestInterpretation["status"]
-    readonly operations: Array<
-      NotesRequestInterpretation["operations"][number]
-    >
-  }
-
-  notesRequestHostRestriction?: {
-    classification: "unresolved"
-    reason: "registered-current-mutation-route" | "registered-route-ambiguous"
-    routeIds: string[]
-    operations: string[]
-  }
   contexts: AgentContext[]
   reply?: string
   replyEffectStatus?: ReplyEffectStatus
@@ -224,14 +208,6 @@ export interface Action {
   compressedDescription?: string
 
   handler: Handler
-
-  restrictRequestOperation?: (args: {
-    runtime: IAgentRuntime
-    message: Memory
-    state?: State
-    action: Action
-    params: unknown
-  }) => ActionResult | undefined
 
   validate: Validator
 

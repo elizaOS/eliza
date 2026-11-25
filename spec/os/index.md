@@ -147,7 +147,7 @@ pure def sometimesPersonFillsPassword(s: SignInVisit): bool = s.filled
 
 The os package promises a consumer the files and directories below, by
 path from the package root, the named exports of the modules it loads by
-path, and the named exports of `@elizaos/os/build` and `@elizaos/os/image`.
+path, and the named exports of `@elizaos/os`.
 Each stays published. Taking one away starts by removing it from this
 list, which is reviewed as any rule is.
 

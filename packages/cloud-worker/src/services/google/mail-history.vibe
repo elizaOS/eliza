@@ -1,0 +1,193 @@
+// spec/cloud/services/google/mailRead.md, "Story: Hear about new mail while my phone is idle"
+import { historyAnswer, historyAskAccepted, historyCount, type HistoryAsk, type RequestedCount } from "../../../gen/cloud__services__google__mailRead.effect.vibe"
+import { refused, Refused } from "../../http/refusal.vibe"
+import { recheckAccess, signed } from "../../http/request-auth.vibe"
+import { json, type Route, type RouteContext } from "../../http/routes.vibe"
+import { googleJson, type GoogleFailure } from "../../providers/google.vibe"
+import { readGrantStatus, useOwnedMailReadGrant } from "./grant-access.vibe"
+import { historyBefore, historyId as revisionPattern } from "./inbox-arrival.vibe"
+import { googleRefused } from "./mail-read.vibe"
+
+schema ChangedMessage { id: string; threadId: string; labelIds?: string[] }
+schema Change { message: ChangedMessage; labelIds?: string[] }
+schema HistoryRecord { id: string; messages?: Schema.Unknown[]; messagesAdded?: Change[]; messagesDeleted?: Change[]; labelsAdded?: Change[]; labelsRemoved?: Change[] }
+schema HistoryList { historyId: string; history?: HistoryRecord[]; nextPageToken?: string }
+schema MessageLabels { id: string; threadId: string; labelIds?: string[] }
+schema MailboxRevision { historyId: string }
+
+type ChangeType = "message-added" | "message-deleted" | "labels-added" | "labels-removed"
+
+interface HistoryEvent {
+  readonly id: string
+  readonly historyId: string
+  readonly type: ChangeType
+  readonly messageId: string
+  readonly threadId: string
+  readonly labelIds: ReadonlyArray<string>
+  readonly messageAvailable?: boolean
+}
+
+const gmail = "/gmail/v1/users/me"
+const historyPath = "/api/v1/eliza/google/gmail/history"
+const parameters: ReadonlySet<string> = new Set(["grantId", "startHistoryId", "pageToken", "maxResults", "side"])
+const grantPattern = /^[A-Za-z0-9_-]{1,128}$/
+const providerId = /^[A-Za-z0-9_-]{1,256}$/
+const historyMaxBytes = 1024 * 1024
+const labelsMaxBytes = 16384
+const labelsMax = 100
+const changeFields: ReadonlyArray<readonly ["messagesAdded" | "messagesDeleted" | "labelsAdded" | "labelsRemoved", ChangeType]> = [
+  ["messagesAdded", "message-added"], ["messagesDeleted", "message-deleted"], ["labelsAdded", "labels-added"], ["labelsRemoved", "labels-removed"]
+]
+
+function requestedOf(raw: string | null): RequestedCount {
+  if (raw === null) return { tag: "CountOmitted" }
+  return { tag: "CountGiven", count: /^[1-9]\d{0,2}$/.test(raw) ? Number(raw) : 0 }
+}
+
+effect function askOf(query: URLSearchParams) {
+  const start = query.get("startHistoryId") ?? undefined
+  const token = query.get("pageToken") ?? undefined
+  const historyAsk: HistoryAsk = {
+    grantNamed: grantPattern.test(query.get("grantId") ?? ""),
+    started: start !== undefined,
+    startDigits: start !== undefined && revisionPattern.test(start),
+    continued: token !== undefined,
+    tokenWithinBound: token !== undefined && token.length >= 1 && token.length <= 4096,
+    eachKnownOnce: [...query.keys()].every((key) => parameters.has(key) && query.getAll(key).length === 1) && (query.get("side") ?? "owner") === "owner"
+  }
+  const requested = requestedOf(query.get("maxResults"))
+  const count = historyCount(requested)
+  if (!historyAskAccepted(historyAsk, requested) || count.tag !== "CountAccepted") throw refused("InvalidRequest")
+  return { grantId: query.get("grantId") ?? "", start, token, maxResults: count.accepted }
+}
+
+function providerRefusal(failure: GoogleFailure): Refused {
+  if (failure._tag === "Rejected" && failure.status === 403) return refused("GoogleReauthRequired")
+  if (failure._tag === "NotFound") return refused("ProviderInvalidResponse")
+  return googleRefused(failure)
+}
+
+effect function gmailGet(accessToken: string, path: string, maxBytes: number) {
+  const body = try googleJson(accessToken, "GET", gmail + path, { maxBytes })
+  return { body }
+}
+
+function decoded<A>(schema: Schema.Codec<A>, raw: unknown): A | undefined {
+  return Option.getOrUndefined(Schema.decodeUnknownOption(schema)(raw))
+}
+
+function labelsOf(labels: ReadonlyArray<string> | undefined): ReadonlyArray<string> | undefined {
+  const held = labels ?? []
+  return held.length <= labelsMax && held.every((label) => providerId.test(label)) ? [...new Set(held)] : undefined
+}
+
+function changesOf(list: HistoryList, start: string, maxResults: number, asked: string | undefined) {
+  const current = list.historyId
+  const rows = list.history ?? []
+  const next = list.nextPageToken ?? null
+  const events: HistoryEvent[] = []
+  let consistent = revisionPattern.test(current) && !historyBefore(current, start) && rows.length <= maxResults
+  let previous = start
+  for (const row of rows) {
+    if (!consistent) break
+    consistent = revisionPattern.test(row.id) && historyBefore(previous, row.id) && !historyBefore(current, row.id)
+    previous = row.id
+    const seen = new Set<string>()
+    for (const [field, type] of changeFields) {
+      for (const change of row[field] ?? []) {
+        const labelIds = labelsOf(change.labelIds ?? change.message.labelIds)
+        const id = `${row.id}:${type}:${change.message.id}`
+        consistent = consistent && providerId.test(change.message.id) && providerId.test(change.message.threadId) && labelIds !== undefined && !seen.has(id)
+        seen.add(id)
+        events.push({ id, historyId: row.id, type, messageId: change.message.id, threadId: change.message.threadId, labelIds: labelIds ?? [] })
+      }
+    }
+    consistent = consistent && (seen.size > 0 || (row.messages ?? []).length === 0)
+  }
+  const added = new Map<string, string>()
+  for (const event of events) {
+    if (event.type !== "message-added") continue
+    consistent = consistent && (added.get(event.messageId) ?? event.threadId) === event.threadId
+    added.set(event.messageId, event.threadId)
+  }
+  const continues = next !== null
+  return {
+    read: { started: true, expired: false, consistent, continues, freshContinuation: next !== null && next !== "" && next.length <= 4096 && next !== asked, events: events.length, additions: added.size },
+    current, next, events, added
+  }
+}
+
+effect function currentLabels(accessToken: string, messageId: string, threadId: string) {
+  const answered = gmailGet(accessToken, `/messages/${messageId}?format=minimal&fields=id,threadId,labelIds`, labelsMaxBytes) catch effect (failure) => {
+    if (failure._tag === "NotFound") return undefined
+    throw providerRefusal(failure)
+  }
+  if (answered === undefined) return { messageAvailable: false, labelIds: [] as ReadonlyArray<string>, matches: true }
+  const message = decoded(MessageLabels, answered.body)
+  const labelIds = labelsOf(message?.labelIds)
+  return { messageAvailable: true, labelIds: labelIds ?? [], matches: message?.id === messageId && message.threadId === threadId && labelIds !== undefined }
+}
+
+effect function observe(accessToken: string, start: string | undefined, token: string | undefined, maxResults: number) {
+  if (start === undefined) {
+    const answered = gmailGet(accessToken, "/profile?fields=historyId", labelsMaxBytes) catch effect (failure) => { throw providerRefusal(failure) }
+    const profile = decoded(MailboxRevision, answered.body)
+    if (profile === undefined || !revisionPattern.test(profile.historyId)) throw refused("ProviderInvalidResponse")
+    return { read: { started: false, expired: false, consistent: true, continues: false, freshContinuation: false, events: 0, additions: 0 }, current: profile.historyId, next: null, events: [] }
+  }
+  const query = new URLSearchParams({ startHistoryId: start, maxResults: String(maxResults) })
+  if (token !== undefined) query.set("pageToken", token)
+  const listed = gmailGet(accessToken, `/history?${query}`, historyMaxBytes) catch effect (failure) => {
+    if (failure._tag === "NotFound") return undefined
+    throw providerRefusal(failure)
+  }
+  if (listed === undefined) return { read: { started: true, expired: true, consistent: true, continues: false, freshContinuation: false, events: 0, additions: 0 }, current: null, next: null, events: [] }
+  const list = decoded(HistoryList, listed.body)
+  if (list === undefined) throw refused("ProviderInvalidResponse")
+  const page = changesOf(list, start, maxResults, token)
+  if (historyAnswer({ ...page.read, grantCurrent: true }).tag !== "HistoryPage") return page
+  const labels = try Effect.forEach([...page.added], effect (entry: readonly [string, string]) => {
+    return [entry[0], try currentLabels(accessToken, entry[0], entry[1])] as const
+  }, { concurrency: 8 })
+  const current = new Map(labels)
+  const events = page.events.map((event) => {
+    const found = current.get(event.messageId)
+    return event.type !== "message-added" || found === undefined ? event : { ...event, labelIds: found.labelIds, messageAvailable: found.messageAvailable }
+  })
+  return { ...page, read: { ...page.read, consistent: labels.every(([, found]) => found.matches) }, events }
+}
+
+effect function historyRoute(context: RouteContext) {
+  const ask = try askOf(context.query)
+  const owner = signed(context.caller)
+  if (owner === undefined) throw refused("AuthenticationRequired", "CredentialUnknown")
+  const side = context.query.get("side")
+  const grant = try useOwnedMailReadGrant(owner, ask.grantId, side, "TriageSurface")
+  const observed = try observe(grant.accessToken, ask.start, ask.token, ask.maxResults)
+  const status = readGrantStatus(owner, grant.connectionId, side, try Clock.currentTimeMillis) catch effect (failure) => {
+    if (failure._tag === "Refused" && failure.refusal.code === "NotFound") return undefined
+    throw failure
+  }
+  try recheckAccess(context.request.headers.authorization, owner, "ServiceAccess")
+  const grantCurrent = status !== undefined && status.connected && status.connectionId === grant.connectionId &&
+    status.identity?.id === grant.subject && status.grantedCapabilities.includes("google.gmail.triage")
+  const answer = historyAnswer({ ...observed.read, grantCurrent })
+  const base = { version: 1, grantId: ask.grantId, startHistoryId: ask.start ?? null, historyId: null, checkpoint: null, nextPageToken: null, events: [], backfillRequired: true }
+  switch (answer.tag) {
+    case "HistoryRefused": throw new Refused({ refusal: answer.refusal })
+    case "HistoryBaseline": return json({ ...base, status: "baseline-required", historyId: observed.current })
+    case "HistoryReset": return json({ ...base, status: "reset-required" })
+    case "HistoryPage": return json({
+      ...base, status: "page", historyId: observed.current, checkpoint: answer.checkpointed ? observed.current : null,
+      nextPageToken: observed.next, events: observed.events, backfillRequired: false
+    })
+    default: {
+      const _exhaustive: never = answer
+      return _exhaustive
+    }
+  }
+}
+
+export const mailHistoryRoutes: ReadonlyArray<Route> = [
+  { method: "GET", path: historyPath, auth: "ServiceAccess", capability: "managedGoogle", handler: historyRoute }
+]
