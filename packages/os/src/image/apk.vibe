@@ -1,4 +1,4 @@
-// spec/os/image/apk.md, "Story: Put only a reviewed release APK into an image"; spec/os/image/apk.md, "Story: Update my installed app without losing its data"
+// spec/os/image/apk.md, "Story: Put only a reviewed release APK into an image"; spec/os/image/apk.md, "Story: Update my installed app without losing its data"; spec/os/build/androidHost.md, "The APK manifest lists each flavor's own published APK of this build once, fresh, with its digest and one shared signer unless the release is unsigned"
 import { ChildProcess } from "effect/process"
 import { ChildProcessSpawner } from "effect/process/ChildProcessSpawner"
 import {
@@ -65,6 +65,18 @@ module node {
   const CENTRAL = 0x02014b50
   const LOCAL = 0x04034b50
   const ZIP64_EXTRA = 0x0001
+  const DATA_DESCRIPTOR = 0x08074b50
+  const APK_SIGNING_MAGIC = Buffer.from("APK Sig Block 42")
+  const JAR_SIGNATURE_ENTRY = /^META-INF\/(?:MANIFEST\.MF|[^/]+\.(?:SF|RSA|DSA|EC)|SIG-[^/]+)$/i
+
+  interface LocalRecord {
+    readonly offset: number
+    readonly dataEnd: number
+    readonly described: boolean
+    readonly checksum: number
+    readonly compressedSize: number
+    readonly size: number
+  }
   const UNSET16 = 0xffff
   const UNSET32 = 0xffffffff
 
@@ -109,12 +121,13 @@ module node {
     throw new InvalidArchive("no end of central directory record")
   }
 
-  function centralDirectory(view: DataView): { readonly count: number; readonly offset: number } {
+  function centralDirectory(view: DataView, strict: boolean) {
     const end = endOfDirectory(view)
     const narrow = { disk: view.getUint16(end + 4, true), directoryDisk: view.getUint16(end + 6, true), count: view.getUint16(end + 10, true), size: view.getUint32(end + 12, true), offset: view.getUint32(end + 16, true) }
     if (narrow.count !== UNSET16 && narrow.size !== UNSET32 && narrow.offset !== UNSET32) {
       if (narrow.disk !== 0 || narrow.directoryDisk !== 0) throw new InvalidArchive("multi-disk archives are not supported")
-      return narrow
+      if (strict && view.getUint16(end + 8, true) !== narrow.count) throw new InvalidArchive("the directory entry counts disagree")
+      return { ...narrow, end }
     }
     const locator = end - 20
     if (locator < 0 || view.getUint32(locator, true) !== ZIP64_LOCATOR || view.getUint32(locator + 4, true) !== 0 || view.getUint32(locator + 16, true) !== 1)
@@ -122,7 +135,10 @@ module node {
     const record = wide(view, locator + 8)
     if (view.getUint32(record, true) !== ZIP64_END || view.getUint32(record + 16, true) !== 0 || view.getUint32(record + 20, true) !== 0)
       throw new InvalidArchive("the ZIP64 end of central directory record is missing or names another disk")
-    return { count: wide(view, record + 32), offset: wide(view, record + 48) }
+    const count = wide(view, record + 32)
+    if (strict && (wide(view, record + 24) !== count || wide(view, record + 4) !== locator - record - 12))
+      throw new InvalidArchive("the ZIP64 directory bounds disagree")
+    return { count, offset: wide(view, record + 48), size: strict ? wide(view, record + 40) : 0, end: record }
   }
 
   function wideFields(view: DataView, start: number, length: number, narrow: { size: number; compressedSize: number; localOffset: number; disk: number }): typeof narrow {
@@ -140,14 +156,28 @@ module node {
     return fields
   }
 
-  function readDirectory(bytes: Uint8Array, maxEntries: number): ArchiveEntry[] {
+  function localRecordEndsAt(view: DataView, record: LocalRecord, end: number): boolean {
+    if (!record.described) return record.dataEnd === end
+    const extent = end - record.dataEnd
+    const prefix = extent === 16 || extent === 24 ? 4 : 0
+    const body = extent - prefix
+    if ((body !== 12 && body !== 20) || (prefix !== 0 && view.getUint32(record.dataEnd, true) !== DATA_DESCRIPTOR)) return false
+    const at = record.dataEnd + prefix
+    if (view.getUint32(at, true) !== record.checksum) return false
+    return body === 12
+      ? view.getUint32(at + 4, true) === record.compressedSize && view.getUint32(at + 8, true) === record.size
+      : wide(view, at + 4) === record.compressedSize && wide(view, at + 12) === record.size
+  }
+
+  function readDirectory(bytes: Uint8Array, maxEntries: number, unsigned = false): ArchiveEntry[] {
     const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
     const names = new TextDecoder("utf-8", { fatal: true })
-    const directory = centralDirectory(view)
+    const directory = centralDirectory(view, unsigned)
     if (directory.count === 0) throw new InvalidArchive("the archive has no entries")
     if (directory.count > maxEntries) throw new InvalidArchive(`the archive has ${directory.count} entries, more than the limit of ${maxEntries}`)
     const seen = new Set<string>()
     const entries: ArchiveEntry[] = []
+    const localRecords: LocalRecord[] | undefined = unsigned ? [] : undefined
     let at = directory.offset
     for (let index = 0; index < directory.count; index++) {
       if (view.getUint32(at, true) !== CENTRAL) throw new InvalidArchive("a central directory entry is missing")
@@ -183,11 +213,35 @@ module node {
       if (!described && (view.getUint32(localOffset + 14, true) !== checksum || (localSize !== size && localSize !== UNSET32) || (localCompressedSize !== compressedSize && localCompressedSize !== UNSET32)))
         throw new InvalidArchive(`entry ${entry} has inconsistent local integrity fields`, entry)
       const dataOffset = localOffset + 30 + localNameLength + view.getUint16(localOffset + 28, true)
-      if (dataOffset + compressedSize > directory.offset) throw new InvalidArchive(`entry ${entry} runs into the central directory`, entry)
+      const dataEnd = dataOffset + compressedSize
+      if (dataEnd > directory.offset) throw new InvalidArchive(`entry ${entry} runs into the central directory`, entry)
+      localRecords?.push({ offset: localOffset, dataEnd, described, checksum, compressedSize, size })
       entries.push({ entry, method, crc32: checksum, compressedSize, size, dataOffset })
       at += 46 + nameLength + extraLength + view.getUint16(at + 32, true)
     }
+    if (localRecords !== undefined) {
+      const hasSigningBlock = directory.offset >= APK_SIGNING_MAGIC.length &&
+        APK_SIGNING_MAGIC.every((byte, index) => bytes[directory.offset - APK_SIGNING_MAGIC.length + index] === byte)
+      if (hasSigningBlock || entries.some(({ entry }) => JAR_SIGNATURE_ENTRY.test(entry)))
+        throw new InvalidArchive("the APK contains signing metadata")
+      if (!seen.has("AndroidManifest.xml") || at !== directory.end || at - directory.offset !== directory.size)
+        throw new InvalidArchive("the APK has no manifest or an incomplete central directory")
+      localRecords.sort((a, b) => a.offset - b.offset)
+      if (localRecords[0]?.offset !== 0 ||
+        localRecords.some((record, index) => !localRecordEndsAt(view, record, localRecords[index + 1]?.offset ?? directory.offset)))
+        throw new InvalidArchive("the APK has unexplained data between ZIP records")
+    }
     return entries
+  }
+
+  /** @throws {never} */
+  export function hasUnsignedArchiveLayout(bytes: Uint8Array, maxEntries: number): boolean {
+    try {
+      readDirectory(bytes, maxEntries, true)
+      return true
+    } catch {
+      return false
+    }
   }
 
   /** @throws {never} */
@@ -226,7 +280,7 @@ module node {
     }
   }
 }
-import { expandArchiveEntry, homeDirectory, parseJson, processEnvironment, readArchiveDirectory, safeArchiveEntry, sha256Hex, type ArchiveEntry } from node
+import { expandArchiveEntry, hasUnsignedArchiveLayout, homeDirectory, parseJson, processEnvironment, readArchiveDirectory, safeArchiveEntry, sha256Hex, type ArchiveEntry } from node
 
 export function listenerZipAligned(bytes: Uint8Array): boolean {
   const archive = readArchiveDirectory(bytes, MAX_ANDROID_ARCHIVE_ENTRIES)
@@ -692,6 +746,18 @@ export effect function readApkSignerDigest(apk: string, options: SignerOptions =
     })
   }
   return hexOf(certificate)
+}
+
+export effect function isUnsignedBuildApk(apk: string, bytes: Uint8Array, env?: Environment) {
+  if (bytes.byteLength > MAX_ANDROID_ARTIFACT_BYTES || !hasUnsignedArchiveLayout(bytes, MAX_ANDROID_ARCHIVE_ENTRIES)) return false
+  return effect {
+    const { apksigner } = try resolveAndroidBuildTools(env)
+    const result = try runTool(apksigner, ["verify", "--print-certs", apk], env)
+    const diagnostics = result.stderr.trim().split(/\r?\n/)
+      .filter((line) => !/^(?:NOTE: )?Picked up (?:JAVA_TOOL_OPTIONS|_JAVA_OPTIONS|JDK_JAVA_OPTIONS): /u.test(line))
+      .join("\n")
+    return result.code === 1 && result.stdout.trim() === "" && diagnostics === "DOES NOT VERIFY\nERROR: Missing META-INF/MANIFEST.MF"
+  } catch () => false
 }
 
 export effect function readApkBuildFlags(apk: string, options: ArtifactReadOptions = {}) {

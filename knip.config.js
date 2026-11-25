@@ -10,7 +10,7 @@
 //   root @repo/design-system                read as files by vibestack/design/test/design.test.ts
 //   tailwindcss (ui, design-system, studio, cloud)  resolved by @tailwindcss/vite and the lint plugin from CSS
 //   core @biomejs/biome                     resolved by path in src/catalog/generate.vibe
-//   os ruby, otool                           system binaries used by the Android toolchain
+//   os otool                               system binary used by the Android toolchain
 //   entry *.meta.tsx, *.css (ui, cloud)     read by the design tool and the page's index.html
 //   entry *.schema, *.contract              imported by the tests vibestack/testing/generate.ts writes under .cache/
 //   design-system eslint, eslint-plugin-better-tailwindcss, typescript-eslint  loaded by name in vibestack/design/test/design.test.ts
@@ -45,7 +45,6 @@ export default {
     "packages/plugin-telegram/src/index.vibe": ["duplicates"],
     "packages/plugin-video/src/index.vibe": ["duplicates"],
     "packages/plugin-vision/src/index.vibe": ["duplicates"],
-    "packages/plugin-wallet/src/index.vibe": ["duplicates"],
     "packages/plugin-web-search/src/index.vibe": ["duplicates"],
     "packages/plugin-x/src/index.vibe": ["duplicates"],
     "packages/plugin-assistant/src/index.vibe": ["duplicates"],
@@ -226,6 +225,9 @@ export default {
     "packages/plugin-notes-client": {
       "entry": ["src/**/*.{schema,contract}.{ts,vibe}"]
     },
+    "packages/plugin-wallet-client": {
+      "entry": ["src/**/*.{schema,contract}.{ts,vibe}"]
+    },
     "packages/plugin-workflows": {
       "entry": ["src/worker/main.vibe", "src/**/*.{schema,contract}.{ts,vibe}"]
     },
@@ -244,7 +246,6 @@ export default {
         "@effect/platform-node-shared"
       ],
       "ignoreBinaries": [
-        "ruby",
         "otool"
       ],
       "ignoreUnresolved": [

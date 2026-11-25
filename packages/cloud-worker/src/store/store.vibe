@@ -63,7 +63,7 @@ import { migrationFiles, openPg, openPglite, type Migration } from node
 import { Store, type StoreFailure, foreign, storeOver, toText, type StoreLocation, type Tx } from "./connection.vibe"
 import { DatabaseIdentityMismatch, DatabaseUnreadable, readIdentity } from "./identity.vibe"
 export { Store, StoreFailure, toInt, toText, type Row, type StoreLocation, type Tx } from "./connection.vibe"
-export { assertDatabaseIdentity, DatabaseIdentityMismatch, DatabaseUnreadable, identityDigest, observeIdentity, readIdentity, type DatabaseIdentity } from "./identity.vibe"
+export { DatabaseIdentityMismatch, DatabaseUnreadable, observeIdentity, readIdentity, type DatabaseIdentity } from "./identity.vibe"
 export error StoreLocationInvalid { input: string }
 
 export effect function parseStoreLocation(input: string): StoreLocation!StoreLocationInvalid {

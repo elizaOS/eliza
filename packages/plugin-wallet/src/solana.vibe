@@ -1,0 +1,191 @@
+// spec/wallet/index.md, "A submitted operation retains one durable binding through reconciliation"; spec/wallet/index.md, "A review binds the complete immutable wallet operation"; spec/wallet/index.md, "A chain amount compares exactly at every digit"; spec/wallet/index.md, "Inventory and venue observations retain their chain and account scope"
+module node {
+  import { Option, Schema } from "effect"
+  import { address, getAddressEncoder, getAddressFromPublicKey, getProgramDerivedAddress, isAddress, type Address } from "@solana/addresses"
+  import { getBase64Decoder, getStructEncoder, getU32Encoder, getU64Encoder, getU8Encoder } from "@solana/codecs"
+  import { AccountRole, type AccountMeta, type Instruction } from "@solana/instructions"
+  import { createKeyPairFromPrivateKeyBytes } from "@solana/keys"
+  import { appendTransactionMessageInstruction, createTransactionMessage, setTransactionMessageFeePayer, setTransactionMessageLifetimeUsingBlockhash, type BlockhashLifetimeConstraint } from "@solana/transaction-messages"
+  import { compileTransaction, getBase64EncodedWireTransaction, getSignatureFromTransaction, signTransaction, type Transaction } from "@solana/transactions"
+  import type { AssetTransfer, ChainAccount, ChainSigner, TokenFacts, WalletNetwork } from "./chain.vibe"
+  import { jsonRpc } from "./rpc.vibe"
+
+  type Blockhash = BlockhashLifetimeConstraint["blockhash"]
+
+  const systemProgram = address("11111111111111111111111111111111")
+  const tokenPrograms: readonly Address[] = [address("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"), address("TokenzQdBNbLqP5VYfdjZXMUrcZ3fMRjFh8uDxWXVkd")]
+  const associatedTokenProgram = address("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL")
+  const systemTransfer = getStructEncoder([["instruction", getU32Encoder()], ["lamports", getU64Encoder()]])
+  const transferChecked = getStructEncoder([["instruction", getU8Encoder()], ["amount", getU64Encoder()], ["decimals", getU8Encoder()]])
+  const canonicalUnits = /^(?:0|[1-9]\d*)$/
+  const largestUnits = 2n ** 64n - 1n
+  const invalidParams = -32602
+  const confirmed = { commitment: "confirmed" }
+  const jsonParsed = { encoding: "jsonParsed", ...confirmed }
+
+  function isBlockhash(value: string): value is Blockhash {
+    return isAddress(value)
+  }
+
+  const SolanaAddress = Schema.String.pipe(Schema.refine(isAddress))
+  const Count = Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0))
+  const Decimals = Schema.Number.check(Schema.isInt(), Schema.isBetween({ minimum: 0, maximum: 255 }))
+  const Balance = Schema.Struct({ value: Count })
+  const Fee = Schema.Struct({ value: Schema.NullOr(Schema.Number) })
+  const LatestBlockhash = Schema.Struct({ value: Schema.Struct({ blockhash: Schema.String.pipe(Schema.refine(isBlockhash)), lastValidBlockHeight: Count }) })
+  const Account = Schema.Struct({ value: Schema.NullOr(Schema.Struct({ owner: SolanaAddress, data: Schema.Unknown })) })
+  const MintData = Schema.Struct({ parsed: Schema.Struct({ type: Schema.Literal("mint"), info: Schema.Struct({ decimals: Decimals }) }) })
+  const TokenAccountData = Schema.Struct({ parsed: Schema.Struct({ type: Schema.Literal("account"), info: Schema.Struct({
+    mint: SolanaAddress, owner: SolanaAddress, tokenAmount: Schema.Struct({ amount: Schema.String.check(Schema.isPattern(canonicalUnits)), decimals: Decimals }),
+  }) }) })
+  const OwnedTokens = Schema.Struct({ value: Schema.Array(Schema.Struct({ account: Schema.Struct({ data: TokenAccountData }) })) })
+  const Statuses = Schema.Struct({ value: Schema.Array(Schema.NullOr(Schema.Struct({ confirmationStatus: Schema.NullOr(Schema.String), err: Schema.Unknown }))) })
+
+  function addressOf(input: string): Address {
+    if (!isAddress(input)) throw new Error("A Solana address is 32 bytes written in base58")
+    return input
+  }
+
+  function atomic(units: string): bigint {
+    if (!canonicalUnits.test(units) || BigInt(units) > largestUnits) throw new Error("A Solana amount is a canonical decimal count of at most 64 bits")
+    return BigInt(units)
+  }
+
+  function factsOf(mint: Address, decimals: number): TokenFacts {
+    return { address: mint, symbol: `${mint.slice(0, 4)}…${mint.slice(-4)}`, decimals }
+  }
+
+  function typedRpc(url: string) {
+    const ask = jsonRpc(url)
+    return async <A>(method: string, params: readonly unknown[], result: Schema.Decoder<A>): Promise<A> =>
+      Option.getOrThrowWith(Schema.decodeUnknownOption(result)(await ask(method, params)), () => new Error(`The wallet RPC gave a malformed answer to ${method}`))
+  }
+
+  async function connect(network: WalletNetwork, owner: Address) {
+    const rpc = typedRpc(network.rpc)
+    const genesis = () => rpc("getGenesisHash", [], Schema.String)
+    const chainId = await genesis()
+    if (chainId !== network.chainId) throw new Error("Wallet RPC answered from a different Solana chain")
+
+    const mintOf = async (mint: Address) => {
+      const found = (await rpc("getAccountInfo", [mint, jsonParsed], Account)).value
+      const data = Schema.decodeUnknownOption(MintData)(found?.data)
+      if (found === null || Option.isNone(data) || !tokenPrograms.includes(found.owner)) throw new Error("That address is not a token mint")
+      return { program: found.owner, decimals: data.value.parsed.info.decimals }
+    }
+    const associatedAccount = async (holder: Address, mint: Address, program: Address) => {
+      const [account] = await getProgramDerivedAddress({ programAddress: associatedTokenProgram, seeds: [holder, program, mint].map((seed) => getAddressEncoder().encode(seed)) })
+      const found = (await rpc("getAccountInfo", [account, jsonParsed], Account)).value
+      const info = Option.getOrUndefined(Schema.decodeUnknownOption(TokenAccountData)(found?.data))?.parsed.info
+      return { account, units: found?.owner === program && info?.mint === mint && info.owner === holder ? BigInt(info.tokenAmount.amount) : undefined }
+    }
+    const instructionFor = async (transfer: AssetTransfer): Promise<Instruction<string, readonly AccountMeta[]>> => {
+      const recipient = addressOf(transfer.recipient)
+      const units = atomic(transfer.atomicUnits)
+      if (transfer.asset.kind === "native") {
+        return {
+          programAddress: systemProgram,
+          accounts: [{ address: owner, role: AccountRole.WRITABLE_SIGNER }, { address: recipient, role: AccountRole.WRITABLE }],
+          data: systemTransfer.encode({ instruction: 2, lamports: units }),
+        }
+      }
+      const mint = addressOf(transfer.asset.address)
+      const { program, decimals } = await mintOf(mint)
+      const source = await associatedAccount(owner, mint, program)
+      const destination = await associatedAccount(recipient, mint, program)
+      if (source.units === undefined) throw new Error("This wallet has no account for this token")
+      if (source.units < units) throw new Error("This wallet holds less of this token than the transfer sends")
+      if (destination.units === undefined) throw new Error("The recipient has no account for this token yet")
+      return {
+        programAddress: program,
+        accounts: [
+          { address: source.account, role: AccountRole.WRITABLE }, { address: mint, role: AccountRole.READONLY },
+          { address: destination.account, role: AccountRole.WRITABLE }, { address: owner, role: AccountRole.READONLY_SIGNER },
+        ],
+        data: transferChecked.encode({ instruction: 12, amount: units, decimals }),
+      }
+    }
+    const unsigned = async (transfer: AssetTransfer) => {
+      const instruction = await instructionFor(transfer)
+      const { blockhash, lastValidBlockHeight } = (await rpc("getLatestBlockhash", [confirmed], LatestBlockhash)).value
+      return compileTransaction(appendTransactionMessageInstruction(instruction, setTransactionMessageLifetimeUsingBlockhash(
+        { blockhash, lastValidBlockHeight: BigInt(lastValidBlockHeight) },
+        setTransactionMessageFeePayer(owner, createTransactionMessage({ version: "legacy" })),
+      )))
+    }
+    const feeOf = async (transaction: Transaction) => {
+      const fee = (await rpc("getFeeForMessage", [getBase64Decoder().decode(transaction.messageBytes), confirmed], Fee)).value
+      if (fee === null || !Number.isSafeInteger(fee) || fee < 0) throw new Error("Solana RPC did not supply an exact fee")
+      return BigInt(fee)
+    }
+    const account: ChainAccount = {
+      family: "SolanaWallet",
+      chainId,
+      account: owner,
+      supportsSigning: false,
+      recipient: addressOf,
+      token: addressOf,
+      nativeBalance: async () => String((await rpc("getBalance", [owner, confirmed], Balance)).value),
+      tokenFacts: async (input) => {
+        const mint = addressOf(input)
+        return factsOf(mint, (await mintOf(mint)).decimals)
+      },
+      tokenHoldings: async () => {
+        const [legacy, extended] = tokenPrograms.map((programId) => rpc("getTokenAccountsByOwner", [owner, { programId }, jsonParsed], OwnedTokens))
+        const unserved = (refusal: unknown) => {
+          if (refusal instanceof Error && refusal.cause === invalidParams) return { value: [] }
+          throw refusal
+        }
+        const answers = await Promise.all([legacy, extended?.catch(unserved)])
+        const held = new Map<Address, { readonly decimals: number; readonly units: bigint }>()
+        for (const { account: { data: { parsed: { info } } } } of answers.flatMap((answer) => answer?.value ?? [])) {
+          if (info.owner !== owner) throw new Error("The wallet RPC listed another account's tokens")
+          held.set(info.mint, { decimals: info.tokenAmount.decimals, units: (held.get(info.mint)?.units ?? 0n) + BigInt(info.tokenAmount.amount) })
+        }
+        return [...held].filter(([, { units }]) => units > 0n).map(([mint, { decimals, units }]) => ({ ...factsOf(mint, decimals), atomicUnits: String(units) }))
+      },
+      quote: async (transfer) => ({ maximumFee: String(await feeOf(await unsigned(transfer))) }),
+      receipt: async (signature) => {
+        const [status] = (await rpc("getSignatureStatuses", [[signature], { searchTransactionHistory: true }], Statuses)).value
+        if (status?.confirmationStatus !== "finalized") return "unresolved"
+        return status.err === null ? "confirmed" : "failed"
+      },
+      close: () => {},
+    }
+    return { account, rpc, genesis, unsigned, feeOf }
+  }
+
+  export async function solanaAccountOf(seed: Uint8Array): Promise<string> {
+    return getAddressFromPublicKey((await createKeyPairFromPrivateKeyBytes(seed)).publicKey)
+  }
+
+  export async function openSolanaAccount(network: WalletNetwork, account: string): Promise<ChainAccount> {
+    return (await connect(network, addressOf(account))).account
+  }
+
+  export async function openSolanaSigner(network: WalletNetwork, seed: Uint8Array): Promise<ChainSigner> {
+    const keys = await createKeyPairFromPrivateKeyBytes(seed)
+    const { account, rpc, genesis, unsigned, feeOf } = await connect(network, await getAddressFromPublicKey(keys.publicKey))
+    return {
+      ...account,
+      supportsSigning: true,
+      sign: async (transfer, quote) => {
+        if (await genesis() !== account.chainId) throw new Error("The Solana chain changed before signing")
+        const transaction = await unsigned(transfer)
+        if (await feeOf(transaction) > atomic(quote.maximumFee)) throw new Error("The transaction exceeds the reviewed fee budget")
+        const signed = await signTransaction([keys], transaction)
+        const operationRef = getSignatureFromTransaction(signed)
+        const wire = getBase64EncodedWireTransaction(signed)
+        return {
+          operationRef,
+          broadcast: async () => {
+            if (await genesis() !== account.chainId) throw new Error("The Solana chain changed before broadcast")
+            const acknowledged = await rpc("sendTransaction", [wire, { encoding: "base64", maxRetries: 0, preflightCommitment: "confirmed" }], Schema.String)
+            if (acknowledged !== operationRef) throw new Error("The wallet RPC did not acknowledge the signed transaction")
+          },
+        }
+      },
+    }
+  }
+}
+export { openSolanaAccount, openSolanaSigner, solanaAccountOf } from node

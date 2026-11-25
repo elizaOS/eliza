@@ -32,7 +32,10 @@ no tenant, no third origin and no credential namespace. The four API and web
 origins are all different, and neither environment lists an origin of the
 other as first party. Each display name is not empty, and each terms and
 privacy document has a title, a revision and at least one section, each
-section a title and at least one paragraph, none of them empty.
+section a title and at least one paragraph, none of them empty. Mail goes
+out through an HTTPS provider, through a Worker's named send-email binding,
+or to the loopback inbox; a binding is not loopback, and `serve`, which has
+no bindings, refuses to start with one, as for a missing secret.
 
 The profile's schema composes the parts other specs own and read from it:
 the models and their prices (`services/models`), the maps provider
@@ -47,7 +50,7 @@ import types.* from "./shared/types"
 import plans.* from "./billing/plans"
 type Environment = Production | Staging
 type Capability = InferenceCapability | SpeechCapability | MapsCapability | ManagedGoogleCapability | BillingCapability
-type DeliveryAdapter = HttpsDelivery | LoopbackDelivery | NoDelivery
+type DeliveryAdapter = HttpsDelivery | BindingDelivery | LoopbackDelivery | NoDelivery
 type GoogleSetup = GoogleOff | GoogleOn
 type SignInSetup = { mail: DeliveryAdapter, sms: DeliveryAdapter, google: GoogleSetup }
 type DocumentSection = { title: str, paragraphs: List[str] }
@@ -82,6 +85,7 @@ pure val pValues: Set[Profile] = {
     .union(Set({ production: prod, staging: { ...stag, firstPartyOrigins: List("https://www.one") } }))
     .union(Set({ production: prod, staging: { ...stag, firstPartyOrigins: List("https://api.one") } }))
     .union(Set({ production: { ...prod, signIn: { mail: HttpsDelivery, sms: LoopbackDelivery, google: GoogleOn } }, staging: stag }))
+    .union(Set({ production: { ...prod, signIn: { mail: BindingDelivery, sms: NoDelivery, google: GoogleOff } }, staging: stag }))
     .union(Set({ production: prod, staging: { ...stag, signIn: { mail: NoDelivery, sms: NoDelivery, google: GoogleOff } } }))
     .union(Set({ production: { ...prod, terms: { ...doc, sections: List() } }, staging: stag }))
     .union(Set({ production: { ...prod, name: "" }, staging: stag }))
@@ -319,7 +323,7 @@ pure def lawAnAcceptedProfileServesCompleteDocuments(p: Profile, environment: En
 
 The Worker (`@elizaos/cloud-worker`) reads its profile from the
 `CLOUD_PROFILE` binding (the profile's JSON) and its environment from
-`CLOUD_ENVIRONMENT`, its secrets from the Worker's other bindings, and its
+`CLOUD_ENVIRONMENT`, its secrets and mail binding from the Worker's other bindings, and its
 database from Hyperdrive. Each request gets one connection to the database,
 held until the answer's body ends. It never migrates and never seeds:
 `elizaos-cloud migrate` and `elizaos-cloud client apply` (`operator`) prepare
@@ -335,7 +339,7 @@ assets `ASSETS`, with the Worker run first so no template is served bare;
 
 The first request of an isolate runs the start checks of `serve` for a
 Postgres store without a seed: the profile, the database identity, loopback
-delivery, the secrets and, with billing on, the payment catalog. Until they
+delivery, the secrets and mail binding and, with billing on, the payment catalog. Until they
 pass, and while a binding disagrees with the profile, every request is
 answered `503 service_unavailable`, retryable.
 
