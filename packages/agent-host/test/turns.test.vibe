@@ -613,13 +613,17 @@ it.live(`A failure on one recipient or event stays reported beside a success on 
   const events = try turn("Move my standup and my dentist to Friday.")
   try Effect.sync(() => { failNext("Alice"); cloud.script(toolCalls("", textTo("Bob"), textTo("Alice")), text("Both texts are sent."), text("Bob has your text.")) })
   const told = try turn("Text Bob and Alice that I'm running late.")
+  const toolSeen = cloud.calls.flatMap(({ body }) => (body as { readonly messages?: ReadonlyArray<{ readonly role: string; readonly content?: unknown }> }).messages ?? [])
+    .filter(({ role }) => role === "tool").map(({ content }) => String(content))
+  const unshownNoted = toolSeen.some((content) => content.includes("Done for Bob.") && content.includes("The owner sees none of this result"))
 
-  try Effect.try(() => assert.deepStrictEqual({ bobFirst, aliceFirst, retried, events, told }, {
+  try Effect.try(() => assert.deepStrictEqual({ bobFirst, aliceFirst, retried, events, told, unshownNoted }, {
     bobFirst: { text: "Both texts are sent.\n\nThe text to Alice did not send.", calls: 3, laterRunNote: false },
     aliceFirst: { text: "Both texts are sent.\n\nThe text to Alice did not send.", calls: 4, laterRunNote: false },
     retried: { text: "Alice has your text.", calls: 3, laterRunNote: false },
     events: { text: "Both events moved.\n\nThe standup event did not change.", calls: 3, laterRunNote: false },
     told: { text: "Bob has your text.\n\nThe text to Alice did not send.", calls: 3, laterRunNote: false },
+    unshownNoted: true,
   }))
 }, 120_000)
 
@@ -637,7 +641,10 @@ it.live(`A recognized card a tool verified reaches the owner unfenced with the g
   const card = replyOf(try send(agent, id, { text: "Find coffee near me." }))
   try Effect.sync(() => cloud.script(toolCalls("", { name: "SHOW_RESULT", arguments: { which: "log" } }), text("Both steps finished.")))
   const log = replyOf(try send(agent, id, { text: "Show me the run log." }))
-  try Effect.try(() => assert.deepStrictEqual({ card: card.text, log: log.text }, {
+  const toolSeen = cloud.calls.flatMap(({ body }) => (body as { readonly messages?: ReadonlyArray<{ readonly role: string; readonly content?: unknown }> }).messages ?? [])
+    .filter(({ role }) => role === "tool").map(({ content }) => String(content))
+  try Effect.try(() => assert.deepStrictEqual({ card: card.text, log: log.text, shownNoted: toolSeen.some((content) => content.includes("The owner sees none of this result")) }, {
+    shownNoted: false,
     card: `${nearestCafes}\n\nBlue Bottle is the closest.`,
     log: `\`\`\`\n${plainLog}\n\`\`\`\n\nBoth steps finished.`,
   }))

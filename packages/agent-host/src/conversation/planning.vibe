@@ -252,6 +252,8 @@ function errorText(error: ActionResult["error"]): string | undefined {
   return typeof error === "string" ? error : error.message
 }
 
+const unshownResult = "The owner sees none of this result. Your reply is all they hear, so say in it what this did or found."
+
 function toolMessage(result: ActionResult): string {
   const summary = {
     success: result.success,
@@ -260,6 +262,7 @@ function toolMessage(result: ActionResult): string {
     error: errorText(result.error),
     effects: (result.effectReceipts ?? []).map(({ operation, outcome, resource }) => ({ operation, outcome, resource: resource.kind })),
     data: result.data,
+    ...(result.verifiedUserFacing === true ? {} : { owner: unshownResult }),
   }
   let text: string
   try {
