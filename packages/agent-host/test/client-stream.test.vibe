@@ -472,15 +472,33 @@ it.live(`Hear a cue by its form, whatever its words or language, and never one t
   const midWhole = try read(try streamed(agent, id, { text: "Capital of France?" }), 3)
   try Effect.sync(() => cloud.script(toolCalls("Let me check. [promise]", agenda), text("<answer> Nothing booked.</answer>")))
   const cueWhole = try read(try streamed(agent, id, { text: "Text Sam that I'm late" }), 3)
+  const thirds = (words: string) => text(...(words.match(/[\s\S]{1,3}/gu) ?? []))
+  const survives = [
+    "Call useState<Answer>(null) before the 2 effects.",
+    "It returns Promise<Answer> in 2 places.",
+    "Here are 2 lines:\n```xml\n<answer>42</answer>\n```",
+    "See [answer](https://example.com/a) for 2 examples.",
+    "Type `[answer]` or `<promise>` to tag 2 replies.",
+    "Sure.\n[answer] Paris has about 2 million people. [answer]",
+  ]
+  const streamedSurvivors: (readonly [string, boolean])[] = []
+  for (const said of survives) {
+    try Effect.sync(() => cloud.script(thirds(`[answer] ${said}`)))
+    const whole = try read(try streamed(agent, id, { text: "Show me that." }), 3)
+    const final = whole.outcome.kind === "Done" ? whole.outcome.text : whole.outcome.kind
+    const previews = whole.seen.filter((entry) => entry.startsWith("text:")).map((entry) => entry.slice("text:".length))
+    streamedSurvivors.push([final, previews.every((shown) => final.startsWith(shown))])
+  }
   const anywhere = [
     midWhole.outcome.kind === "Done" ? midWhole.outcome.text : midWhole.outcome.kind, leaksTag(midWhole.seen),
     cueWhole.seen.filter((entry) => entry.startsWith("acknowledgment:")), cueWhole.outcome.kind === "Done" ? cueWhole.outcome.text : cueWhole.outcome.kind, leaksTag(cueWhole.seen),
   ]
-  try Effect.try(() => assert.deepStrictEqual({ spoken, unspoken, shortAnswers, tagged, anywhere }, {
+  try Effect.try(() => assert.deepStrictEqual({ spoken, unspoken, shortAnswers, tagged, anywhere, streamedSurvivors }, {
     spoken: requests.flatMap((request) => forms.map((cue): Heard => [request, cue, [cue], "Done."])),
     unspoken: refused.map((cue): Heard => ["Text Sam that I'm late", cue, [], "Done."]),
     shortAnswers: [["Sure.", 0], ["Anytime.", 0]],
     tagged: ["Anytime.", false],
+    streamedSurvivors: [...survives.slice(0, 5).map((said) => [said, true] as const), ["Sure.\nParis has about 2 million people.", true]],
     anywhere: ["Sure.\nParis has about 2 million people.", false, ["acknowledgment:Let me check."], "Nothing booked.", false],
   }))
 }, 120_000)

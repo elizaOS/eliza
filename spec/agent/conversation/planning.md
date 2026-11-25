@@ -714,11 +714,16 @@ asks it to begin such a response with one tag the person never sees:
 says it will do something. A tag after nothing but JSON objects or
 bracketed calls counts too, and what came before it is no part of the reply
 (`{"query": "speed of light"}[answer] Light travels…` is delivered as
-`Light travels…`). The tag is for the host alone: the shell strips every `[answer]` or
-`[promise]`, in square or angle brackets and with any closing form, wherever
-it stands in the text (`Sure.\n[answer] Paris`, `Paris. [answer]`,
-`<promise>`), from what is streamed, acknowledged, spoken and stored; while
-streaming it holds back a partial tag at the tail (`[ans`, `<pro`), and
+`Light travels…`). The tag is for the host alone: the shell strips the exact lowercase tags
+`[answer]`, `[promise]`, `<answer>`, `</answer>`, `<promise>` and
+`</promise>` wherever they stand in the text (`Sure.\n[answer] Paris`,
+`Paris. [answer]`, `<promise>`), from what is streamed, acknowledged, spoken
+and stored, but never inside a fenced or inline code span and never a
+link's label (`[answer](https://…)`), so `useState<Answer>(null)`,
+`Promise<Answer>` and an xml fence holding `<answer>42</answer>` reach the
+person whole; while streaming it holds back a partial tag at the tail
+(`[ans`, `<pro`) and a closing `[answer]` until the next text shows it is
+no link, and
 streams nothing while the text so far is only an untagged object. Only a
 tag that leads the text, after nothing but JSON objects or bracketed calls,
 says what the response is, and the shell reads it before the form: with no tool call, text
