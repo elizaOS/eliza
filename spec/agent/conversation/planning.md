@@ -861,7 +861,9 @@ label or a note's lead line. A response whose text holds the label, `Note
 from the agent host`, or the opening line of a note this turn carried to
 the model (the host's own lead, such as the line that introduces the screen
 context, or the clock's line, with or without its closing colon or period),
-in any letter case, with any spacing, or with a hyphen or underscore
+or a mark the host puts on the history it shows the model (`[unanswered:`
+before a message whose turn got no reply, `[Unheard remainder:` before the
+part of a reply the person did not hear), in any letter case, with any spacing, or with a hyphen or underscore
 between its words, is the host's words, never an answer, whether the model
 echoes a note, quotes its lead or writes one of its own under the label: it
 reads as a blank. The notes a reply is written again with (a failure the
@@ -874,8 +876,8 @@ still run. A `REPLY` call whose text holds it gives no reply, and a second
 answer that holds it is no second answer. The reply stream shows the
 model's text only up to where the label or such a line could begin; what
 follows is shown once it can no longer be one, or with the reply, so
-neither the label nor a note's lead line is ever streamed, spoken or
-stored. A note's later lines are not held: they carry the owner's own
+neither the label, a note's lead line nor a history mark is ever streamed,
+spoken or stored. A note's later lines are not held: they carry the owner's own
 data, such as the page they are reading, which a true answer may quote.
 The notes stay in the model's request as they are.
 

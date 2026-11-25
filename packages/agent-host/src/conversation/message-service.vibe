@@ -9,7 +9,7 @@ import { asksAgain, attachedDocumentBytes, attachedRead, documentTextFits, follo
 import { carriesCutOffEffect, failureEndsTheRun, limitOriginOn, replyQuoteChars, storedFailureName } from "../../gen/agent__conversation__turns.ts"
 import type { BindingView, LastCloudFailure } from "../models/binding.vibe"
 import { turnClock, ungroundedEventReply, ungroundedTimeReply, type Ungrounded } from "./clock.vibe"
-import { textForTurn } from "./heard.vibe"
+import { textForTurn, unheardMark } from "./heard.vibe"
 import { storedText } from "./history.vibe"
 import { ModelRefusal } from "../models/chat.vibe"
 import { readTurnContext, type BrowserPage } from "@elizaos/agent"
@@ -31,7 +31,8 @@ export interface AgentTurnProcessingOptions extends MessageProcessingOptions {
 }
 
 const historyReadCount = 200
-const unansweredMark = "[unanswered: its turn ended before any reply; act on it only if the person asks again]"
+const unansweredLead = "[unanswered:"
+const unansweredMark = `${unansweredLead} its turn ended before any reply; act on it only if the person asks again]`
 
 function hasFreshAppliedEffect(receipts: readonly EffectReceipt[], began: number, ended: number): boolean {
   const reverted = revertedEffectReceiptIds(receipts)
@@ -363,7 +364,7 @@ async function respond(
         const system = plannerSystem(runtime.character)
         state = await runtime.composeState(message, [], true, true)
         const planned = await planTurn({
-          runtime, message, state, roles, actionGate, system, messages, hostNotes, signal,
+          runtime, message, state, roles, actionGate, system, messages, hostNotes: [...hostNotes, unansweredLead, unheardMark], signal,
           deferredHistory: { rows: window.deferred, earlier },
           onStepResult: (result) => Effect.runPromise(Effect.try({
             try: () => terminal.recordActionResult(result),
