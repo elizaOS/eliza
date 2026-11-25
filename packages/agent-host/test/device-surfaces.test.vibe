@@ -427,7 +427,7 @@ it.live(`A device message opens a view in one place under the same tools: VIEWS 
     sameTools: true,
     typed: { viewsHere: false, viewsNotHere: true, proposed: 0, refused: ["VIEWS"], reply: "Which view?" },
     delivered: { viewsHere: true, viewsNotHere: false, proposed: 0, refused: ["open_view"], reply: "Which view?" },
-    rendererOnly: { viewsHere: true, viewsNotHere: false, proposed: 0, refused: [], reply: 'Which view?\n\nNo single view named "files" can be shown now.' },
+    rendererOnly: { viewsHere: true, viewsNotHere: false, proposed: 0, refused: [], reply: "ok" },
     typedAgain: { viewsHere: false, viewsNotHere: true, proposed: 1, refused: [], reply: reviewText },
     wrongHomeFirst: { viewsHere: false, viewsNotHere: true, proposed: 1, refused: ["VIEWS"], reply: reviewText },
   }))

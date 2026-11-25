@@ -376,13 +376,9 @@ export function promptTriggers(deps: TriggerDeps): PromptTriggers {
   effect function reconcile() {
     const rows = try saved()
     for (const row of rows) {
-      let state = row.state
-      if (state.enabled && !eventSupported(state)) {
-        const expected = { tag: "AtRevision" as const, revision: state.revision }
-        const moved = try transition(row.id, { type: "setEnabled", on: false, at: 0, activeOthers: 0, expected })
-        state = moved.after ?? moved.before
-      }
-      try armTrigger(host, row.id, state)
+      const unsupported = row.state.enabled && !eventSupported(row.state)
+      const moved = unsupported ? try transition(row.id, { type: "setEnabled", on: false, at: 0, activeOthers: 0, expected: { tag: "AtRevision" as const, revision: row.state.revision } }) : undefined
+      try armTrigger(host, row.id, moved === undefined ? row.state : moved.after ?? moved.before)
     }
     const known = new Set(rows.map((row) => row.id))
     const orphans = (try promise(() => host.getTasks({ tags: [triggerTag] })))
