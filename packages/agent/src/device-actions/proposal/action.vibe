@@ -12,7 +12,7 @@ module node {
   import { bindingHash } from "../operation-schemas/telephony.vibe"
   import { deviceOperationTypes, readOperation, type DeviceOperation } from "../operations.schema.vibe"
   import { conversationRequests, openRequest, type DeviceRequestRecord, type DeviceStoreUnavailable } from "../store.vibe"
-  import type { DeviceProposalFamily, DeviceTurn, NegotiatedDevice, ProposalForm } from "./family.vibe"
+  import type { DeviceProposalFamily, DeviceTurn, NegotiatedDevice, ProposalForm, ProposalText } from "./family.vibe"
   import { carriesMessage, offerProposal, proposalId } from "./offer.vibe"
   import { outcomesGuidance, proposalEffectReceipts } from "./receipts.vibe"
   import { availableNow, familyOf, messageNote, negotiatedPart, offeredForms, registeredFamilies } from "./registry.vibe"
@@ -138,6 +138,14 @@ module node {
     }
   }
 
+  function withPhoneWords(forModel: string, told: ProposalText | undefined): string {
+    return told?.forOwner === undefined || told.data?.safetyCopy === true ? forModel : `${forModel} What the phone shows the owner, in its words (the reply is yours to write): ${told.forOwner}`
+  }
+
+  function ownerCopy(told: ProposalText | undefined): Pick<ActionResult, "userFacingText" | "verifiedUserFacing"> {
+    return told?.forOwner !== undefined && told.data?.safetyCopy === true ? { userFacingText: told.forOwner, verifiedUserFacing: true } : {}
+  }
+
   function turnReceipts(fresh: EffectReceipt[], earlier: readonly ActionResult[]): EffectReceipt[] {
     const held = earlier.flatMap(({ effectReceipts }) => effectReceipts ?? [])
     return fresh.map((receipt) => held.find(({ receiptId }) => receiptId === receipt.receiptId) ?? receipt)
@@ -153,8 +161,8 @@ module node {
     if (settledApplied(state.phase)) {
       const told = family?.settledText(operation, record.result, timeZone)
       return {
-        success: true, effectReceipts, text: told?.forModel ?? settledText,
-        ...(told?.forOwner === undefined ? {} : { userFacingText: told.forOwner, verifiedUserFacing: true }),
+        success: true, effectReceipts, text: withPhoneWords(told?.forModel ?? settledText, told),
+        ...ownerCopy(told),
         data: { proposalId, state: "done", executed: false, result: (record.result ?? null) as ProviderValue, ...told?.data },
       }
     }
@@ -180,7 +188,6 @@ module node {
         return {
           success: true, effectReceipts,
           text: "The phone is running this approved request now. It has not reported an outcome; never report it as done, and never retry it.",
-          userFacingText: "Your phone is doing that now.", verifiedUserFacing: true,
           data: { proposalId, state: "executing", executed: false, awaitingDeviceExecution: true },
         }
       case "Offered":
@@ -201,10 +208,13 @@ module node {
         const told = family?.proposedText(operation, { direct, timeZone, ownerText })
         return {
           success: true, effectReceipts,
-          text: told?.forModel ?? (handoff
-            ? "Durable device proposal state: pending. The requesting phone may run this request right after this reply, without its review card. It has not run yet: never claim that it finished, what it found or what it shows."
-            : "Durable device proposal state: pending. This tool performed no device operation; the owner reviews it on the phone. Do not report it as done."),
-          userFacingText: told?.forOwner ?? reviewText, verifiedUserFacing: true,
+          ...(handoff ? {
+            text: withPhoneWords(told?.forModel ?? "Durable device proposal state: pending. The requesting phone may run this request right after this reply, without its review card. It has not run yet: never claim that it finished, what it found or what it shows.", told),
+            ...ownerCopy(told),
+          } : {
+            text: told?.forModel ?? "Durable device proposal state: pending. This tool performed no device operation; the owner reviews it on the phone. Do not report it as done.",
+            userFacingText: told?.forOwner ?? reviewText, verifiedUserFacing: true,
+          }),
           data: {
             proposalId, state: "pending", executed: false,
             ...(handoff ? { awaitingDeviceExecution: true, directRequest: true } : { awaitingUserInput: true }), approvalRequired: !handoff,
