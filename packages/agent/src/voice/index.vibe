@@ -32,5 +32,4 @@ export {
 export {
   jsonRequestOf, voiceNetworkPorts, VoiceRouteRefused, type JsonAnswer, type JsonRequest, type RuntimeJsonRequester, type VoiceNetworkPorts,
 } from "./agent-ports.vibe"
-export { parseVoiceUiContext, type VoiceUiContext } from "../conversation/turn-context.schema.vibe"
 export { defaultVoiceProfile, type StopReport, type VoiceProfile } from "../../gen/agent__voice__session.effect.vibe"

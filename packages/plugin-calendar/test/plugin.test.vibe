@@ -630,7 +630,7 @@ it.effect(`Change my calendar only as I asked and know it happened, at a free ti
   const unreadClock = try said("slot-4z", "牙医 明天早上5点", { subaction: "create_event", title: "Dentist check", startAt: "2030-03-02T05:00", statedClock: "start" })
   assert.deepStrictEqual([span(lengthAfterClock), unreadClock.success, at(unreadClock.data, "code")], [["2030-03-02T18:00:00.000Z", "2030-03-02T20:00:00.000Z"], false, "CALENDAR_CLOCK_UNSAID"])
   const halfThree = try said("slot-4zh", "Dentist tomorrow at half 3", { subaction: "create_event", title: "Half three", startAt: "2030-03-20T15:30", statedClock: "start" })
-  const lateStandup = try said("slot-4zi", "Standup tomorrow 9:15a", { subaction: "create_event", title: "Late standup", startAt: "2030-03-20T21:15", statedClock: "start" })
+  const lateStandup = try said("slot-4zi", "Scrum tomorrow 9:15a", { subaction: "create_event", title: "Late scrum", startAt: "2030-03-20T21:15", statedClock: "start" })
   const rangeAsMinutes = try said("slot-4zj", "Coffee tomorrow from 10 to 6", { subaction: "create_event", title: "Coffee", startAt: "2030-03-20T17:50", statedClock: "start" })
   const phoneNumber = try said("slot-4zk", "Call 0800 123 456 tomorrow at 3", { subaction: "create_event", title: "Hotline", startAt: "2030-03-20T08:00", statedClock: "start" })
   assert.deepStrictEqual([span(halfThree), span(lateStandup), at(rangeAsMinutes.data, "code"), at(phoneNumber.data, "code")],

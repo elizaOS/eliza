@@ -164,7 +164,7 @@ function notLaterThanToday(month: number, day: number | undefined, today: LocalD
 
 export function yearCueOf(text: string, today: LocalDate): { readonly cue: YearCue; readonly statedYear: number; readonly trailingYear: number; readonly namesDate: boolean } {
   const folded = text.normalize("NFKC").toLowerCase()
-  const trailing = /\b(\d{4})\s*[.!?]?\s*$/.exec(folded)
+  const trailing = /(?<!\bat\s+)\b((?:19|20|21)\d{2})\s*[.!?]?\s*$/.exec(folded)
   const stated = /\b(19|20|21)\d{2}\b/.exec(folded)
   const next = nextDate.exec(folded)
   const named = next?.[1]

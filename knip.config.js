@@ -11,6 +11,7 @@
 //   tailwindcss (ui, design-system, studio, cloud)  resolved by @tailwindcss/vite and the lint plugin from CSS
 //   core @biomejs/biome                     resolved by path in src/catalog/generate.vibe
 //   os ruby, otool                           system binaries used by the Android toolchain
+//   os @elizaos/agent-host                   resolved by import.meta.resolve in packages/os/test/agent-config.test.vibe
 //   entry *.meta.tsx, *.css (ui, cloud)     read by the design tool and the page's index.html
 //   entry *.schema, *.contract              imported by the tests vibestack/testing/generate.ts writes under .cache/
 //   design-system eslint, eslint-plugin-better-tailwindcss, typescript-eslint  loaded by name in vibestack/design/test/design.test.ts
@@ -111,7 +112,6 @@ export default {
     },
     "packages/core": {
       "entry": [
-        "src/index.vibe",
         "test/**/*.test.{ts,vibe}",
         "test/drivers/*.ts",
         "src/**/*.{schema,contract}.{ts,vibe}"
@@ -126,26 +126,19 @@ export default {
     },
     "packages/core-node": {
       "entry": [
-        "src/index.vibe",
-        "src/catalog/generate.vibe",
-        "test/**/*.test.{ts,vibe}",
-        "test/drivers/*.ts",
-        "src/**/*.{schema,contract}.{ts,vibe}"
+        "test/**/*.test.{ts,vibe}"
       ],
       "project": [
         "src/**/*.{ts,vibe,vibex}",
         "test/**/*.{ts,vibe,vibex}"
       ],
       "ignoreDependencies": [
-        "@effect/platform-node-shared",
-        "@biomejs/biome"
+        "@effect/platform-node-shared"
       ]
     },
     "packages/cloud": {
       "entry": [
-        "src/index.vibe",
         "test/**/*.test.{ts,vibe}",
-        "test/drivers/*.ts",
         "src/**/*.{schema,contract}.{ts,vibe}"
       ],
       "project": [
@@ -159,8 +152,7 @@ export default {
         "src/pages/render.tsx",
         "src/pages/*.{meta.tsx,css}",
         "test/**/*.test.{ts,vibe}",
-        "test/drivers/*.ts",
-        "src/**/*.{schema,contract}.{ts,vibe}"
+        "test/drivers/*.ts"
       ],
       "project": [
         "src/**/*.{ts,tsx,vibe,vibex,css}",
@@ -175,7 +167,6 @@ export default {
       "vitest": { "config": [] },
       "entry": [
         "vitest.config.ts",
-        "src/index.vibe",
         "test/**/*.test.{ts,vibe}",
         "test/drivers/*.ts",
         "src/**/*.{schema,contract}.{ts,vibe}"
@@ -208,9 +199,6 @@ export default {
     "packages/plugin-calendar-client": {
       "entry": ["src/**/*.{schema,contract}.{ts,vibe}"]
     },
-    "packages/plugin-inbox": {
-      "entry": ["src/**/*.{schema,contract}.{ts,vibe}"]
-    },
     "packages/plugin-inbox-client": {
       "entry": ["src/**/*.{schema,contract}.{ts,vibe}"]
     },
@@ -219,9 +207,6 @@ export default {
     },
     "packages/plugin-network": {
       "ignoreDependencies": ["@mockoon/cli"]
-    },
-    "packages/plugin-notes": {
-      "entry": ["src/**/*.{schema,contract}.{ts,vibe}"]
     },
     "packages/plugin-notes-client": {
       "entry": ["src/**/*.{schema,contract}.{ts,vibe}"]
@@ -241,7 +226,8 @@ export default {
         "test/**/*.{ts,vibe,vibex}"
       ],
       "ignoreDependencies": [
-        "@effect/platform-node-shared"
+        "@effect/platform-node-shared",
+        "@elizaos/agent-host"
       ],
       "ignoreBinaries": [
         "ruby",
@@ -253,9 +239,7 @@ export default {
     },
     "packages/os-bridges": {
       "entry": [
-        "src/index.vibe",
         "test/**/*.test.{ts,vibe}",
-        "test/drivers/*.ts",
         "src/**/*.{schema,contract}.{ts,vibe}"
       ],
       "project": [

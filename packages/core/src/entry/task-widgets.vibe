@@ -1,6 +1,0 @@
-// spec/core/packageExports.md, "Story: Declare and pack every browser-safe leaf a consumer imports"; spec/core/protocols.md, "Story: Share canonical values across hosts and plugins"
-export {
-  admitTaskChoiceResponseOrThrow as admitTaskChoiceResponse,
-  type TaskChoiceWidget,
-  validateTaskChoiceWidgetOrThrow as validateTaskChoiceWidget,
-} from "../messaging/task-widgets.vibe"

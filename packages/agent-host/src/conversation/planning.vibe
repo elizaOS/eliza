@@ -579,12 +579,13 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
       case "Deliver":
         prose = answered.text
         break plan
-      case "AskAgain":
+      case "AskAgain": {
         askedAgain = true
         conversation.push({ role: "assistant", content: answered.text })
         const toolsNext = taken < maxPlanSteps - 1 && tools.some(({ name }) => name !== restoreContext.name)
         conversation.push({ role: "user", content: steps.length > 0 ? answerFromWork : toolsNext ? workOrSayNot : sayNot })
         continue plan
+      }
       case "GiveUp":
       case "RunTools":
         if (displayed) input.onReplyRestart?.("")
