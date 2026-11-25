@@ -53,6 +53,7 @@ export interface FailureNotice {
   readonly words: string
   readonly safetyCopy: boolean
   readonly verified: boolean
+  readonly ownCopy: boolean
   readonly answerableLater: boolean
 }
 
@@ -275,8 +276,8 @@ function callFailureOf(error: unknown): CallFailure {
   return stoppedAtOutputLimit(error) ? { tag: "OutputLimitReached" } : { tag: "OtherFailure" }
 }
 
-export function conversationCache(runtime: IAgentRuntime, roomId: string, stage: "planner" | "evaluator"): GenerateTextParams["providerOptions"] {
-  return { cerebras: { promptCacheKey: `eliza-workflow-v1:${sha256Hex(`${JSON.stringify([runtime.agentId, roomId])}:${stage}`)}` } }
+export function agentCache(runtime: IAgentRuntime, stage: "planner" | "evaluator"): GenerateTextParams["providerOptions"] {
+  return { cerebras: { promptCacheKey: `eliza-workflow-v1:${sha256Hex(`${JSON.stringify([runtime.agentId])}:${stage}`)}` } }
 }
 
 export async function sentAtMostTwice<T>(send: (bind: (params: GenerateTextParams) => GenerateTextParams) => Promise<T>, signal: AbortSignal): Promise<T> {
@@ -334,16 +335,16 @@ function shownBy(result: ActionResult, captured: readonly string[]): string[] {
   return captured.map((text) => text.trim()).filter(Boolean)
 }
 
-function failureNotice(step: PlannedStep): { readonly words: string; readonly verified: boolean } {
+function failureNotice(step: PlannedStep): { readonly words: string; readonly verified: boolean; readonly ownCopy: boolean } {
   if (step.outcomes.some(({ outcome }) => outcome === "Rejected")) {
-    if (step.result.failureProvenance?.code === "ACTION_UNAVAILABLE") return { words: unavailableNotice, verified: true }
+    if (step.result.failureProvenance?.code === "ACTION_UNAVAILABLE") return { words: unavailableNotice, verified: true, ownCopy: false }
     const words = step.result.verifiedUserFacing === true ? step.result.userFacingText?.trim() : undefined
-    return { words: words || `A ${step.action} call did not start.`, verified: true }
+    return words ? { words, verified: true, ownCopy: true } : { words: `A ${step.action} call did not start.`, verified: true, ownCopy: false }
   }
   const own = step.result.verifiedUserFacing === true ? step.result.userFacingText?.trim() : undefined
-  if (own) return { words: own, verified: true }
+  if (own) return { words: own, verified: true, ownCopy: true }
   const words = (step.result.userFacingText ?? errorText(step.result.error) ?? step.result.text)?.trim()
-  return words ? { words, verified: false } : { words: `The ${step.action} action did not complete.`, verified: true }
+  return words ? { words, verified: false, ownCopy: false } : { words: `The ${step.action} action did not complete.`, verified: true, ownCopy: false }
 }
 
 export function activityLabel(runtime: IAgentRuntime, action: Action | undefined, params: Record<string, unknown> = {}): string {
@@ -393,11 +394,12 @@ function settleReply(steps: readonly PlannedStep[]): SettledReply {
   const failedKeys = new Set(failed.map(entryKey))
   const notices = new Map<string, FailureNotice>()
   for (const step of steps.filter(({ outcomes }) => outcomes.some((entry) => failedKeys.has(entryKey(entry))))) {
-    const { words, verified } = failureNotice(step)
+    const { words, verified, ownCopy: actionsOwn } = failureNotice(step)
     const earlier = notices.get(words)
     const laterRan = laterRunOf(steps, step)
     notices.set(words, {
       words, safetyCopy: earlier?.safetyCopy === true || alone || safetyCopyOf(step.result), verified: (earlier?.verified ?? true) && verified,
+      ownCopy: (earlier?.ownCopy ?? true) && actionsOwn,
       answerableLater: (earlier?.answerableLater ?? true) && laterRan,
     })
   }
@@ -407,15 +409,20 @@ function settleReply(steps: readonly PlannedStep[]): SettledReply {
   }
 }
 
-export async function planTurn(input: PlanInput, actions: readonly Action[]): Promise<PlannedTurn> {
-  const { runtime, message, state, roles, signal } = input
-  signal.throwIfAborted()
+export function plannerTools(runtime: AgentRuntime, message: Memory, actions: readonly Action[]): ToolDefinition[] {
   const tools: ToolDefinition[] = actions.length === 0 ? [] : buildPlannerToolsFromActions(actions.toSorted(byName).map((action) => forTurn(runtime, message, action)))
-  const restoreOffered = offersContextRestore(tools.length)
-  if (restoreOffered) {
+  if (offersContextRestore(tools.length)) {
     const afterDiscovery = tools.findLastIndex(({ name }) => isDiscoveryActionName(name)) + 1
     tools.splice(afterDiscovery, 0, restoreContext)
   }
+  return tools
+}
+
+export async function planTurn(input: PlanInput, actions: readonly Action[]): Promise<PlannedTurn> {
+  const { runtime, message, state, roles, signal } = input
+  signal.throwIfAborted()
+  const tools = plannerTools(runtime, message, actions)
+  const restoreOffered = tools.some(({ name }) => name === restoreContext.name)
   const conversation: ChatMessage[] = [...input.messages]
   const steps: PlannedStep[] = []
   const named = new Map(actions.map((action) => [action.name, action]))
@@ -481,7 +488,7 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
     let said: unknown
     try {
       said = await sentAtMostTwice((bind) => runtime.useModel(ModelType.TEXT_LARGE, bind({
-        system: input.system, messages: conversation, reasoning: "off", signal, providerOptions: conversationCache(runtime, message.roomId, "planner"),
+        system: input.system, messages: conversation, reasoning: "off", signal, providerOptions: agentCache(runtime, "planner"),
         ...(tools.length === 0 ? {} : { tools, toolChoice: taken === maxPlanSteps - 1 ? "none" as const : "auto" as const }),
         ...(onStreamChunk === undefined ? {} : {
           stream: true,
@@ -593,7 +600,7 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
   const reask = async (notes: readonly string[]): Promise<Reasked> => {
     try {
       const said = await sentAtMostTwice((bind) => runtime.useModel(ModelType.TEXT_LARGE, bind({
-        system: input.system, reasoning: "off", signal, providerOptions: conversationCache(runtime, message.roomId, "planner"),
+        system: input.system, reasoning: "off", signal, providerOptions: agentCache(runtime, "planner"),
         messages: [...conversation, ...(reply.trim() ? [{ role: "assistant" as const, content: reply }] : []), { role: "user" as const, content: [answerAgain, ...notes].join("\n") }],
         ...(tools.length === 0 ? {} : { tools, toolChoice: "none" as const }),
       })), signal)

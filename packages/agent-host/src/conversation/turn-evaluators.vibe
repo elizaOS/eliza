@@ -1,7 +1,7 @@
 // spec/agent/conversation/planning.md, "Story: Let my plugins learn from a finished turn"; spec/agent/conversation/planning.md, "After the reply is stored, each evaluator that opts in runs in priority order, and one evaluator's failure stops neither its peers nor the turn"; spec/agent/conversation/planning.md, "A model call is sent again at most once, after a temporary rate limit or a tool call the provider could not parse"; spec/agent/conversation/planning.md, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history"
 import { type AgentRuntime, type Memory, type RegisteredEvaluator, type State, isTextGenerationModelType, logger, ModelType } from "@elizaos/core"
 import { runsNext } from "../../gen/agent__conversation__planning.ts"
-import { conversationCache, sentAtMostTwice } from "./planning.vibe"
+import { agentCache, sentAtMostTwice } from "./planning.vibe"
 
 const defaultPriority = 100
 
@@ -44,7 +44,7 @@ async function runOne(runtime: AgentRuntime, evaluator: RegisteredEvaluator, mes
   } else {
     const modelType = evaluator.modelType?.trim().toUpperCase() ?? ModelType.TEXT_SMALL
     if (!isTextGenerationModelType(modelType)) throw new Error(`Unsupported evaluator model type: ${evaluator.modelType}`)
-    raw = outputOf(await sentAtMostTwice((bind) => runtime.useModel(modelType, bind({ prompt: evaluator.prompt(prompted), responseSchema: evaluator.schema, reasoning: "off", signal, providerOptions: conversationCache(runtime, message.roomId, "evaluator") })), signal))
+    raw = outputOf(await sentAtMostTwice((bind) => runtime.useModel(modelType, bind({ prompt: evaluator.prompt(prompted), responseSchema: evaluator.schema, reasoning: "off", signal, providerOptions: agentCache(runtime, "evaluator") })), signal))
   }
   const output = evaluator.parse === undefined ? raw : evaluator.parse(raw, { ...prompted, outputSource: resolved ? "resolved" : "model" })
   if (output === null || output === undefined) return
