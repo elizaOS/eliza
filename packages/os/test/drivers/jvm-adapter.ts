@@ -119,7 +119,7 @@ function sources(trees: readonly string[] = SOURCE_TREES, adapterTrees: readonly
     roots.add(root);
     if (placed !== undefined) arranged.set(placed, bytes);
     if (adapterTrees.some((tree) => file.startsWith(path.join(PACKAGE, tree) + path.sep)) && /\bpublic\s+static\s+void\s+main\s*\(/.test(text))
-      adapters.set(path.relative(root, file).slice(0, -".java".length).split(path.sep).join("."), file);
+      adapters.set(path.relative(root, placed ?? file).slice(0, -".java".length).split(path.sep).join("."), file);
   }
   return { digest: digest.digest("hex").slice(0, 24), roots: [...roots], arranged, adapters };
 }
