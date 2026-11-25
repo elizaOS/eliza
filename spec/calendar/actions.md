@@ -333,7 +333,11 @@ pure val atValues = Set(-1, 0, 1, 900000, 1350000)
 The upcoming-events context and the Calendar action are disclosed only
 when the owner asks and the turn's attested audience is the owner alone.
 In a room anyone else can read, or with no attested audience, the owner's
-events stay out of the prompt and the action does not run.
+events stay out of the prompt and the action does not run. Within that,
+core's catalog gives the Calendar action the general context every owner
+turn is planned in, beside its calendar and automation contexts, so the owner can ask about
+or change their calendar from any chat, as on the phone before VibeStack;
+its owner role gate and this audience gate are unchanged.
 
 ```quint
 pure def calendarDisclosed(isOwner: bool, ownerAlone: bool): bool = isOwner and ownerAlone

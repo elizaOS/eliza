@@ -251,7 +251,12 @@ it.effect(`Ask the agent about my calendar and get my active account's events, s
   const registered = { ...calendarAction, contexts: try Effect.try(() => resolveActionContexts(calendarAction)) }
   const ownerOnly = try ownerTurn([ownerEntity, agentEntity])
   const runsOnTurn = try Effect.try(() => canActionRun(registered, { message: ownerOnly, userRoles: ["OWNER"], activeContexts: ["general"] }))
-  assert.deepStrictEqual([calendarAction.contexts, registered.contexts, runsOnTurn], [undefined, ["calendar", "automation"], false])
+  const sharedTurn = try ownerTurn([ownerEntity, agentEntity, guestEntity])
+  const refusedOnTurn = try Effect.try(() => [
+    canActionRun(registered, { message: sharedTurn, userRoles: ["OWNER"], activeContexts: ["general"] }),
+    canActionRun(registered, { message: ownerOnly, userRoles: ["USER"], activeContexts: ["general"] }),
+  ])
+  assert.deepStrictEqual([calendarAction.contexts, registered.contexts, runsOnTurn, refusedOnTurn], [undefined, ["calendar", "automation", "general"], true, [false, false]])
   const lunch = try runCalendarAction(host, ask, { subaction: "create_event", title: "Private lunch", startAt: "2030-03-04T12:00:00Z", endAt: "2030-03-04T13:00:00Z", reviewBeforeCreate: false, statedClock: "none" })
   assert.deepStrictEqual([lunch.success, at(lunch.effectReceipts?.[0], "operation"), filed.length], [true, "calendar.event.create", 0])
   try runCalendarAction(host, { ...ask, id: "message-2" }, { subaction: "create_event", calendarId: "work", title: "Board review", startAt: "2030-03-05T12:00:00Z", endAt: "2030-03-05T13:00:00Z", statedClock: "none" })

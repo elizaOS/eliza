@@ -23,6 +23,11 @@ The verification of the original message reports whether it asked for a
 reminder, the clock it names, any delivery choices it states, and whether
 it says the reminder is important or urgent.
 
+Core's catalog gives the reminders action the general context every owner turn is
+planned in, beside its tasks and automation contexts, so the owner can set
+a reminder from any chat, as on the phone before VibeStack; its owner role
+gate and the checks below are unchanged.
+
 A plan's due time is a duration, an instant with its offset, a wall time
 on a day of the owner's clock, a day alone, which comes at 09:00 that day
 as a deadline "by the 20th" does, a repeat at a wall time every day or
