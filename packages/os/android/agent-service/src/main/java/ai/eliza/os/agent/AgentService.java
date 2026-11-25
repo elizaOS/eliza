@@ -110,6 +110,8 @@ public class AgentService extends Service {
   private ChildJournal journal;
   private UpdateHoldFile hold;
   private AgentSupervisor.Child child;
+  private GoogleBroker launchBroker;
+  private GoogleBroker.Endpoint launchEndpoint;
   private AgentPolicy.Check checkAfterReap;
   private String token;
   private Path socket;
@@ -120,7 +122,13 @@ public class AgentService extends Service {
 
   public static void useCredentials(AgentCredentials source) { registered = Objects.requireNonNull(source); }
 
-  public static void useGoogleBroker(GoogleBroker broker) { googleBroker = Objects.requireNonNull(broker); }
+  public static synchronized void useGoogleBroker(GoogleBroker broker) {
+    GoogleBroker replaced = googleBroker;
+    googleBroker = Objects.requireNonNull(broker);
+    if (replaced == null || replaced == broker) return;
+    try { replaced.close(); }
+    catch (IOException failed) { Log.w(TAG, "The replaced mail broker could not be closed", failed); }
+  }
 
   protected AgentCredentials credentials() { return registered; }
 
@@ -382,6 +390,7 @@ public class AgentService extends Service {
         child.kill();
         child = null;
       }
+      revokeBroker();
     });
     effects.shutdown();
     work.shutdown();
@@ -639,12 +648,13 @@ public class AgentService extends Service {
       Path launch = writeLaunch(document);
       Path agentSocket = directories.prepareSocket();
       byte[] frame = readyFrame.encode();
-      Map<String, String> broker = GoogleBroker.launchEnvironment(config.needsAccount(), active.account(), googleBroker, unavailable ->
-        Log.w(TAG, "The mail broker could not open, so the agent starts without it", unavailable));
-      AgentSupervisor.Command command = new AgentSupervisor.Command(prepared.node(), prepared.bundleDir(), launch, stateDir, agentSocket,
-        directories.runtime().resolve("agent.log"), broker);
       synchronized (EPOCH_LOCK) {
         if (live != this) return;
+        launchBroker = googleBroker;
+        launchEndpoint = GoogleBroker.forLaunch(config.needsAccount(), active.account(), launchBroker, unavailable ->
+          Log.w(TAG, "The mail broker could not open, so the agent starts without it", unavailable));
+        AgentSupervisor.Command command = new AgentSupervisor.Command(prepared.node(), prepared.bundleDir(), launch, stateDir, agentSocket,
+          directories.runtime().resolve("agent.log"), launchEndpoint == null ? Map.of() : launchEndpoint.environment());
         spawned = AgentSupervisor.spawn(epoch, command, frame, (spawnedEpoch, pid) -> journal.record(Math.toIntExact(pid), spawnedEpoch),
           readyEpoch -> HealthPolicy.classify(probe(agentSocket, launchToken, () -> true), readyEpoch) == HealthPolicy.Probe.OK,
           new AgentSupervisor.Listener() {
@@ -655,6 +665,7 @@ public class AgentService extends Service {
       }
       socket = agentSocket;
     } catch (IOException | RuntimeException failed) {
+      revokeBroker();
       step(new AgentPolicy.SpawnFailed("The agent could not be started: " + failed.getMessage()));
       return;
     }
@@ -664,6 +675,12 @@ public class AgentService extends Service {
   }
 
   private boolean owns(long launchEpoch) { return child != null && child.epoch == launchEpoch; }
+
+  private void revokeBroker() {
+    if (launchBroker != null && launchEndpoint != null) launchBroker.revoke(launchEndpoint);
+    launchBroker = null;
+    launchEndpoint = null;
+  }
 
   private void ready(long launchEpoch) {
     if (!owns(launchEpoch) || policy.state().phase() != Phase.SPAWNED) return;
@@ -683,6 +700,7 @@ public class AgentService extends Service {
     if (!owns(launchEpoch)) return;
     child = null;
     token = null;
+    revokeBroker();
     cancelTimers();
     CHANNEL.retire(launchEpoch);
     boolean stale = policy.state().staleEpoch() == launchEpoch;

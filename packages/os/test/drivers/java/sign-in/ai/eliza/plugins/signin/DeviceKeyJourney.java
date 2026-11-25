@@ -385,6 +385,11 @@ public final class DeviceKeyJourney {
       start();
       custody = new CloudRequests.Custody(store, new AccountSession(store, client), lease);
       seen.add(take("mailWithoutLease", outcome(requests.send("upgrade", origin, custody, "GET", feed, Map.of(), null))));
+      CloudRequests.Custody keyOnly = custody;
+      try (GoogleBrokerHost broker = GoogleBrokerHost.overDevice(origin, () -> keyOnly, cache.toFile(), failure -> { throw failure; })) {
+        seen.add(take("brokerReadWithoutLease", GoogleBrokerJourney.read(broker.open(new AgentCredentials.Account(ACCOUNT.userId(), ACCOUNT.organizationId())),
+          "/api/v1/eliza/google/accounts?side=owner")));
+      }
       seen.add(take("settledRequestCancelled", requests.cancel("upgrade")));
       var expected = CredentialPolicy.mailLeaseUpgrade(store.state());
       int cancelled = store.beginMailLeaseUpgrade(expected);
@@ -423,7 +428,7 @@ public final class DeviceKeyJourney {
       seen.add(take("mailWithLease", outcome(managed.readMail(origin, custody, mailAuthority, feed + "?grantId=synthetic&timeMin=2026-11-23", Map.of()))));
       seen.add(take("inferenceWithKey", outcome(requests.send(origin, custody, "GET", models, Map.of(), null))));
       CloudRequests.Custody leased = custody;
-      try (GoogleBrokerHost broker = GoogleBrokerHost.overDevice(origin, () -> leased, cache.toFile())) {
+      try (GoogleBrokerHost broker = GoogleBrokerHost.overDevice(origin, () -> leased, cache.toFile(), failure -> { throw failure; })) {
         String accounts = "/api/v1/eliza/google/accounts?side=owner";
         seen.add(take("brokerReadForOwner", GoogleBrokerJourney.read(broker.open(new AgentCredentials.Account(ACCOUNT.userId(), ACCOUNT.organizationId())), accounts)));
         seen.add(take("brokerReadForAnotherOwner", GoogleBrokerJourney.read(broker.open(new AgentCredentials.Account("user-2", ACCOUNT.organizationId())), accounts)));

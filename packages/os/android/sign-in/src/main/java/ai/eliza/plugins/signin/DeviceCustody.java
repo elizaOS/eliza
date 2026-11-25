@@ -13,6 +13,7 @@ import ai.eliza.plugins.signin.SignInPolicy.Failure;
 import ai.eliza.plugins.signin.SignInPolicy.CloudReply;
 import ai.eliza.plugins.signin.SignInRegistration.Environment;
 import android.content.Context;
+import android.util.Log;
 import java.io.File;
 import java.net.URI;
 import java.util.HashMap;
@@ -24,6 +25,7 @@ import java.util.concurrent.TimeUnit;
 public final class DeviceCustody implements SignInCustody {
   private record Authority(DeviceCredentialStore store, DeviceKeyClient client, AccountSession session, DeviceLease lease) {}
 
+  private static final String TAG = "ElizaSignIn";
   private static final Map<String, Authority> AUTHORITIES = new HashMap<>();
   private static final ExecutorService DUTIES = Executors.newSingleThreadExecutor();
 
@@ -97,7 +99,8 @@ public final class DeviceCustody implements SignInCustody {
 
   public static GoogleBrokerHost googleBroker(Context context, String apiOrigin) {
     Context application = context.getApplicationContext();
-    return GoogleBrokerHost.overDevice(apiOrigin, () -> cloud(application, apiOrigin), new File(application.getCacheDir(), "owner-gmail-broker"));
+    return GoogleBrokerHost.overDevice(apiOrigin, () -> cloud(application, apiOrigin), new File(application.getCacheDir(), "owner-gmail-broker"),
+      failure -> Log.e(TAG, "A mail broker read failed on the device", failure));
   }
 
   public static void reset(Context context, SignInRegistration registration) {

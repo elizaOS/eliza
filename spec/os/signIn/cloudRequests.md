@@ -327,7 +327,13 @@ the broker's port, or any `Origin` header is not private; one without the
 bearer handed to the current launch, compared in constant time, is not
 authorized. Each is refused, as `403 not-private` or `401 not-authorized`,
 before anything is forwarded. Every launch gets a new bearer, and the
-previous launch's bearer is refused from then on.
+previous launch's bearer is refused from then on; so is every bearer once a
+launch is handed none, and a launch's own once its agent exits or the agent
+service stops. A request is checked against the launch that is current
+once its head has arrived. The broker serves four requests at once and holds four more
+waiting, and closes any connection beyond those, or whose request head has
+not arrived within five seconds of being served, unanswered, so no other
+process on the device can hold it from the agent.
 
 ```quint
 type BrokerAsk = { get: bool, bodiless: bool, loopbackHost: bool, origin: bool, bearer: bool }
@@ -352,12 +358,14 @@ pure def lawAForeignAskIsNeverTreatedAsTheAgent(ask: BrokerAsk): bool =
 The broker forwards `GET /api/v1/eliza/google/accounts` with at most `side`,
 and `GET /api/v1/eliza/google/gmail/search` with at most `side`, `grantId`,
 `query`, `maxResults` and `pageToken`; any other path or query field reads
-nothing. A read is bound to the account the launch was started for: it is
-planned only while the device's mail authority, the lease of its active
-key, belongs to that account, and its reply is dropped if that authority
-changes before the reply arrives. It is then planned as the route's own
-call, so it carries the lease and never the device key or a session; a
-device without a live lease for that owner reads nothing.
+nothing. A read is bound to the account the launch was started for: the
+owner holds it while the device's active key belongs to that account, and
+it is sent only while the device's mail authority, the lease of that key,
+belongs to it too, and its reply is dropped if that authority changes
+before the reply arrives. It is then planned as the route's own call, so it
+carries the lease and never the device key or a session; a device signed
+in to that owner without a lease of its active key reads nothing, for want
+of the lease.
 
 ```quint
 type BrokerRead = AccountList | MailSearch | NotBrokered
@@ -399,9 +407,11 @@ the status, within the inline limit above; a larger one is refused whole as
 `502 reply-too-large`. A read the broker does not forward is `404
 not-brokered`; one refused for want of a sign-in for the launch's owner is
 `403 sign-in-required`, and for want of the lease `403
-mail-lease-upgrade-required`; one the device could not send or that got no
-answer is `503 cloud-unreachable`. A refusal carries only that reason. No
-key, lease or session reaches the agent.
+mail-lease-upgrade-required`; one the device could not send, including one
+its credential store failed to plan, or that got no answer is `503
+cloud-unreachable`, and a failure on the device is also reported in the
+app's log. A refusal carries only that reason. No key, lease or session
+reaches the agent.
 
 ```quint
 type BrokerOutcome = CloudAnswered({ status: int }) | CallRefused({ why: CallRefusal }) | CloudUnreachable | ReplyOversize

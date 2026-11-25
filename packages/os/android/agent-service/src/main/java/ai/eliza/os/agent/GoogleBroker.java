@@ -6,7 +6,7 @@ import java.util.Map;
 import java.util.function.Consumer;
 import java.util.regex.Pattern;
 
-public interface GoogleBroker {
+public interface GoogleBroker extends AutoCloseable {
   String PATH = "/__owner-gmail";
   String ENDPOINT_VARIABLE = "ELIZA_MANAGED_GMAIL_READ_BROKER";
   String BEARER_VARIABLE = "ELIZA_MANAGED_GMAIL_READ_BROKER_TOKEN";
@@ -27,13 +27,22 @@ public interface GoogleBroker {
 
   Endpoint open(AgentCredentials.Account owner) throws IOException;
 
-  static Map<String, String> launchEnvironment(boolean needsAccount, AgentCredentials.Account owner, GoogleBroker broker, Consumer<Exception> unavailable) {
-    if (!needsAccount || owner == null || broker == null) return Map.of();
-    try {
-      return broker.open(owner).environment();
-    } catch (IOException | RuntimeException failed) {
-      unavailable.accept(failed);
-      return Map.of();
+  void revoke(Endpoint launched);
+
+  void revoke();
+
+  @Override void close() throws IOException;
+
+  static Endpoint forLaunch(boolean needsAccount, AgentCredentials.Account owner, GoogleBroker broker, Consumer<Exception> unavailable) {
+    if (broker == null) return null;
+    if (needsAccount && owner != null) {
+      try {
+        return broker.open(owner);
+      } catch (IOException | RuntimeException failed) {
+        unavailable.accept(failed);
+      }
     }
+    broker.revoke();
+    return null;
   }
 }

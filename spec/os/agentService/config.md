@@ -243,10 +243,13 @@ endpoint as `ELIZA_MANAGED_GMAIL_READ_BROKER` and a bearer made for this
 launch as `ELIZA_MANAGED_GMAIL_READ_BROKER_TOKEN`. The launch document never
 names either. An own-key or keyless launch, or a broker that is not
 registered or could not open, is handed none, and the agent then reads mail
-as it would without a device. The bearer admits only the broker's reads for
-that account; the device key, the account session and the lease stay in the
-app. Source: the old line's `native-managed-google-host.ts`, which published
-the broker the same way.
+as it would without a device; no earlier launch's bearer is admitted from
+then on. The broker opens for a launch only once the live service goes on
+to spawn it, and that launch's bearer is refused if the spawn fails, once
+its agent exits, and when the service stops. The bearer admits only the
+broker's reads for that account; the device key, the account session and
+the lease stay in the app. Source: the old line's
+`native-managed-google-host.ts`, which published the broker the same way.
 
 ```quint
 type BrokerHandoff = BrokerNamed | NoBroker

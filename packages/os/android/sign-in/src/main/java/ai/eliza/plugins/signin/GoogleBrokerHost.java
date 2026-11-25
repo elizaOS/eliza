@@ -10,7 +10,9 @@ import ai.eliza.plugins.signin.GoogleBrokerPolicy.Ask;
 import ai.eliza.plugins.signin.GoogleBrokerPolicy.AskVerdict;
 import ai.eliza.plugins.signin.GoogleBrokerPolicy.Call;
 import ai.eliza.plugins.signin.GoogleBrokerPolicy.CallRefused;
+import ai.eliza.plugins.signin.GoogleBrokerPolicy.CloudUnreachable;
 import ai.eliza.plugins.signin.GoogleBrokerPolicy.Outcome;
+import ai.eliza.plugins.signin.GoogleBrokerPolicy.Read;
 import ai.eliza.plugins.signin.GoogleBrokerPolicy.Refused;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -20,6 +22,7 @@ import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.net.SocketTimeoutException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
@@ -32,10 +35,14 @@ import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 
-public final class GoogleBrokerHost implements GoogleBroker, AutoCloseable {
+public final class GoogleBrokerHost implements GoogleBroker {
   public interface MailReads {
+    Account signedIn();
     CloudRequests.MailAuthority authority();
     CloudRequests.Outcome read(CloudRequests.MailAuthority expected, String target);
   }
@@ -44,89 +51,121 @@ public final class GoogleBrokerHost implements GoogleBroker, AutoCloseable {
 
   private record Exchange(int status, byte[] body) {}
 
-  private static final int WORKERS = 4, BACKLOG = 8, SOCKET_TIMEOUT_MS = 35_000, HEAD_LIMIT = 8192, DRAIN_LIMIT = 65_536;
+  private record Listening(ServerSocket server, ExecutorService workers, Semaphore admitted) {}
+
+  private static final int WORKERS = 4, WAITING = 4, BACKLOG = 8, DEADLINE_MS = 5_000, HEAD_LIMIT = 8192, DRAIN_LIMIT = 65_536;
   private static final byte[] LOOPBACK = {127, 0, 0, 1};
   private static final SecureRandom RANDOM = new SecureRandom();
 
   private final MailReads reads;
-  private final ExecutorService workers = Executors.newFixedThreadPool(WORKERS, task -> {
-    Thread thread = new Thread(task, "ElizaOwnerGmailBroker");
-    thread.setDaemon(true);
-    return thread;
-  });
-  private ServerSocket server;
+  private final Consumer<RuntimeException> failed;
+  private Listening listening;
   private volatile Launch launch;
 
-  public GoogleBrokerHost(MailReads reads) { this.reads = reads; }
+  public GoogleBrokerHost(MailReads reads, Consumer<RuntimeException> failed) {
+    this.reads = reads;
+    this.failed = failed;
+  }
 
-  public static GoogleBrokerHost overDevice(String apiOrigin, Supplier<CloudRequests.Custody> custody, File cacheDirectory) {
+  public static GoogleBrokerHost overDevice(String apiOrigin, Supplier<CloudRequests.Custody> custody, File cacheDirectory, Consumer<RuntimeException> failed) {
     CloudRequests requests = new CloudRequests(CloudRequestPolicy.forMailReads(GoogleBrokerPolicy::queriesFor), new LargeBodyGrant(cacheDirectory));
     return new GoogleBrokerHost(new MailReads() {
+      @Override public Account signedIn() {
+        CredentialPolicy.State state = custody.get().credentials().state();
+        return CredentialPolicy.isSignedIn(state) ? CredentialPolicy.accountOf(state) : null;
+      }
       @Override public CloudRequests.MailAuthority authority() { return custody.get().mailAuthority(); }
       @Override public CloudRequests.Outcome read(CloudRequests.MailAuthority expected, String target) {
         return requests.readMail(apiOrigin, custody.get(), expected, target, Map.of(CloudRequestPolicy.ACCEPT, "application/json"));
       }
-    });
+    }, failed);
   }
 
   @Override public synchronized Endpoint open(AgentCredentials.Account owner) throws IOException {
-    if (server == null || server.isClosed()) {
+    if (listening == null) {
       ServerSocket bound = new ServerSocket(0, BACKLOG, InetAddress.getByAddress(LOOPBACK));
-      server = bound;
-      Thread accepting = new Thread(() -> accept(bound), "ElizaOwnerGmailBrokerAccept");
+      listening = new Listening(bound, Executors.newFixedThreadPool(WORKERS, task -> {
+        Thread thread = new Thread(task, "ElizaOwnerGmailBroker");
+        thread.setDaemon(true);
+        return thread;
+      }), new Semaphore(WORKERS + WAITING));
+      Listening serving = listening;
+      Thread accepting = new Thread(() -> accept(serving), "ElizaOwnerGmailBrokerAccept");
       accepting.setDaemon(true);
       accepting.start();
     }
     byte[] secret = new byte[48];
     RANDOM.nextBytes(secret);
-    Endpoint opened = new Endpoint(server.getLocalPort(), Base64.getUrlEncoder().withoutPadding().encodeToString(secret));
+    Endpoint opened = new Endpoint(listening.server().getLocalPort(), Base64.getUrlEncoder().withoutPadding().encodeToString(secret));
     launch = new Launch(opened, new Account(owner.userId(), owner.organizationId()));
     return opened;
   }
 
-  @Override public synchronized void close() throws IOException {
-    launch = null;
-    if (server != null) server.close();
-    server = null;
+  @Override public synchronized void revoke(Endpoint launched) {
+    if (launch != null && launch.endpoint().equals(launched)) launch = null;
   }
 
-  private void accept(ServerSocket bound) {
-    while (!bound.isClosed()) {
+  @Override public synchronized void revoke() { launch = null; }
+
+  @Override public synchronized void close() throws IOException {
+    launch = null;
+    if (listening == null) return;
+    Listening closing = listening;
+    listening = null;
+    closing.workers().shutdownNow();
+    closing.server().close();
+  }
+
+  private void accept(Listening serving) {
+    while (!serving.server().isClosed()) {
       Socket socket;
-      try { socket = bound.accept(); }
+      try { socket = serving.server().accept(); }
       catch (IOException closed) { return; }
-      try { workers.execute(() -> answer(socket)); }
-      catch (RejectedExecutionException busy) { quietly(socket); }
+      if (!serving.admitted().tryAcquire()) {
+        quietly(socket);
+        continue;
+      }
+      try {
+        serving.workers().execute(() -> {
+          try { answer(socket); }
+          finally { serving.admitted().release(); }
+        });
+      } catch (RejectedExecutionException closed) {
+        serving.admitted().release();
+        quietly(socket);
+      }
     }
   }
 
   private void answer(Socket socket) {
     try (socket) {
-      socket.setSoTimeout(SOCKET_TIMEOUT_MS);
       InputStream in = socket.getInputStream();
-      Exchange reply = exchange(in, launch);
+      Exchange reply = exchange(head(socket, in, deadline()), socket.getLocalPort());
       OutputStream out = socket.getOutputStream();
       out.write(("HTTP/1.1 " + reply.status() + " " + (reply.status() < 300 ? "OK" : "Refused") + "\r\nContent-Type: application/json\r\n"
         + "Cache-Control: no-store\r\nContent-Length: " + reply.body().length + "\r\nConnection: close\r\n\r\n").getBytes(StandardCharsets.US_ASCII));
       out.write(reply.body());
       out.flush();
       socket.shutdownOutput();
-      drain(in);
-    } catch (IOException | RuntimeException dropped) {
+      drain(socket, in, deadline());
+    } catch (IOException dropped) {
       quietly(socket);
+    } catch (RuntimeException unexpected) {
+      quietly(socket);
+      failed.accept(unexpected);
     }
   }
 
-  private Exchange exchange(InputStream in, Launch current) throws IOException {
-    String head = head(in);
+  private Exchange exchange(String head, int port) {
+    Launch current = launch;
     String[] start = head == null ? new String[0] : head.split("\r\n", -1)[0].split(" ", -1);
     Map<String, String> headers = head == null || start.length != 3 || !start[2].startsWith("HTTP/1.") ? null : headers(head);
-    boolean parsed = headers != null && current != null;
+    boolean parsed = headers != null;
     Ask ask = new Ask(parsed && "GET".equals(start[0]),
       parsed && !headers.containsKey("transfer-encoding") && "0".equals(headers.getOrDefault("content-length", "0")),
-      parsed && ("127.0.0.1:" + current.endpoint().port()).equals(headers.get("host")),
+      parsed && ("127.0.0.1:" + port).equals(headers.get("host")),
       !parsed || headers.containsKey("origin"),
-      parsed && MessageDigest.isEqual(("Bearer " + current.endpoint().bearer()).getBytes(StandardCharsets.UTF_8),
+      parsed && current != null && MessageDigest.isEqual(("Bearer " + current.endpoint().bearer()).getBytes(StandardCharsets.UTF_8),
         headers.getOrDefault("authorization", "").getBytes(StandardCharsets.UTF_8)));
     AskVerdict verdict = GoogleBrokerPolicy.askVerdict(ask);
     if (verdict == AskVerdict.NOT_PRIVATE) return refusal(403, "not-private");
@@ -137,10 +176,20 @@ public final class GoogleBrokerHost implements GoogleBroker, AutoCloseable {
     List<String> fields = new ArrayList<>();
     if (query >= 0)
       for (String pair : target.substring(query + 1).split("&", -1)) fields.add(pair.contains("=") ? pair.substring(0, pair.indexOf('=')) : pair);
-    CloudRequests.MailAuthority authority = reads.authority();
-    Call call = new Call(GoogleBrokerPolicy.readOf(path), fields, authority != null && authority.account().equals(current.owner()));
-    Refusal refused = GoogleBrokerPolicy.refusalOf(call);
+    try {
+      return forwarded(current.owner(), GoogleBrokerPolicy.readOf(path), fields, target);
+    } catch (RuntimeException unplanned) {
+      failed.accept(unplanned);
+      return replied(new CloudUnreachable(), null);
+    }
+  }
+
+  private Exchange forwarded(Account owner, Read read, List<String> fields, String target) {
+    Refusal refused = GoogleBrokerPolicy.refusalOf(new Call(read, fields, owner.equals(reads.signedIn())));
     if (refused != null) return replied(new CallRefused(refused), null);
+    CloudRequests.MailAuthority authority = reads.authority();
+    if (authority == null) return replied(new CallRefused(Refusal.MAIL_LEASE_UPGRADE_REQUIRED), null);
+    if (!authority.account().equals(owner)) return replied(new CallRefused(Refusal.SIGN_IN_REQUIRED), null);
     CloudRequests.Outcome sent = reads.read(authority, target);
     return replied(GoogleBrokerPolicy.outcomeOf(sent), sent instanceof CloudRequests.Answered answered ? answered.body() : null);
   }
@@ -167,10 +216,19 @@ public final class GoogleBrokerHost implements GoogleBroker, AutoCloseable {
     return new Exchange(status, ("{\"reason\":" + CredentialJson.quote(reason) + "}").getBytes(StandardCharsets.UTF_8));
   }
 
-  private static String head(InputStream in) throws IOException {
+  private static long deadline() { return System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(DEADLINE_MS); }
+
+  private static void waitUntil(Socket socket, long deadline) throws IOException {
+    long left = TimeUnit.NANOSECONDS.toMillis(deadline - System.nanoTime());
+    if (left < 1) throw new SocketTimeoutException("The broker's request deadline passed");
+    socket.setSoTimeout(Math.toIntExact(left));
+  }
+
+  private static String head(Socket socket, InputStream in, long deadline) throws IOException {
     ByteArrayOutputStream read = new ByteArrayOutputStream();
     int matched = 0;
     while (read.size() < HEAD_LIMIT) {
+      waitUntil(socket, deadline);
       int next = in.read();
       if (next < 0) return null;
       read.write(next);
@@ -183,9 +241,10 @@ public final class GoogleBrokerHost implements GoogleBroker, AutoCloseable {
     return null;
   }
 
-  private static void drain(InputStream in) throws IOException {
+  private static void drain(Socket socket, InputStream in, long deadline) throws IOException {
     byte[] unread = new byte[HEAD_LIMIT];
     for (long drained = 0; drained < DRAIN_LIMIT; ) {
+      waitUntil(socket, deadline);
       int count = in.read(unread);
       if (count < 0) return;
       drained += count;
