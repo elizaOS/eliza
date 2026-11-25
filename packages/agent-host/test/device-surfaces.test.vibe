@@ -109,6 +109,7 @@ module node {
     cloud.script(toolCalls("", capture), text("Okay."))
     const asked = await turn("Take a picture", direct)
     const photo = asked.text
+    const photoTold = lastToolText(cloud)
     const photoTurn = offered(cloud, 2)
     cloud.script(toolCalls("", capture), text("Okay."))
     const selfie = await turn("Hey Eliza, could you please take a selfie?", direct)
@@ -185,7 +186,7 @@ module node {
     const profiled = offered(cloud, 2)
 
     return {
-      unasked: unasked.includes(reviewText), photo: photo.includes("Opening Camera to take the photo."),
+      unasked: unasked.includes(reviewText), photo: [photo, photoTold.includes("What the phone shows the owner, in its words (the reply is yours to write): Opening Camera to take the photo.")],
       selfie: { reviewed: selfie.text.includes(reviewText), refused: selfieRefusal.includes("DEVICE_OPERATION_NOT_AVAILABLE_NOW") },
       whiteboard: whiteboard.includes(reviewText), captures,
       taken, justTaken: justTaken.includes(reviewText), retaken,
@@ -330,7 +331,7 @@ module node {
         captured: photo.fresh.map(({ payload }) => ({ operation: payload.operation, bound: payload.requestMessageId === photo.userMessageId })),
         viewsRefused: photo.toolText.includes("ROUTE_REFUSED"), switched: photo.toolText.includes("Prepared the switch"),
         otherRefused: photo.toolText.includes("DEVICE_OPERATION_ROUTED"),
-        reply: photo.reply,
+        reply: photo.reply, toldThePhoneWords: photo.toolText.includes("Opening Camera to take the photo."),
       },
       lenses: {
         offered: selfie.tools.includes('"lens":'),
@@ -362,7 +363,7 @@ import { navigationHomes, oneConversation, proposeSurfaces, proposeTool, reviewT
 it.live(`Take a photo, open a view, read a Maps place, find and share photos and write a phone note only as the owner's words and screen name them (spec/agent/conversation/planning.md, "A recognized card is delivered unfenced, other multi-line tool output is fenced, and grounded prose follows unless one already holds the other"; spec/agent/conversation/planning.md, "A reply that leaves a failure unreported is written again once, and the delivered reply still reports open failures and attachment omissions"; spec/agent/deviceActions/surfaces.md, "Story: Propose a photo, a view, a Maps read or a Photos change only as my words and my screen name them"; spec/agent/deviceActions/surfaces.md, "A surface operation is bound to the owner's message only on a direct-request turn and as the owner asked"; spec/agent/deviceActions/surfaces.md, "A photo runs without its card only when the owner's own message asks for one now"; spec/agent/deviceActions/surfaces.md, "An app view opens with VIEWS where views arrive as completed actions, else with open_view as the installation's profile enables it"; spec/agent/conversation/planning.md, "Every call of a turn is one the model chose, and a call this message serves in another place is refused before it runs and is no step of the turn"; spec/agent/deviceActions/surfaces.md, "A new note is proposed only while the owner's Notes screen selects the phone's own Notes"; spec/agent/deviceActions/surfaces.md, "A new note runs without its card only when its title and body are the owner's own words"; spec/agent/deviceActions/surfaces.md, "A Maps read names exactly the place or route selected on the owner's Maps screen"; spec/agent/deviceActions/surfaces.md, "A Photos proposal names only the item open in the viewer or library IDs the phone returned"; spec/agent/deviceActions/operations.md, "A turn targets the photo open on the owner's screen only from the Photos view, never on a sensitive screen, and names its library ID only under the library capability"; spec/agent/deviceActions/index.md, "A proposal's identity is its request message and its operation, so a repeat returns the same request"; spec/agent/deviceActions/index.md, "A proposal carries the owner's message only for a live turn that asked for it directly, so otherwise the phone shows its card"; spec/agent/deviceActions/index.md, "A later turn of the same conversation learns at most six outcomes of its own requests: what changed, and what ended without running"; spec/agent/deviceActions/operations.md, "A captured photo's library ID reaches the agent only when the request negotiated it")`, effect () => {
   const observed = try deviceJourney({ load: [deviceActionsModuleName, viewsModuleName], allowed: ["REPLY", "IGNORE", "NONE", proposeTool, "VIEWS"] }, "propose device surfaces", proposeSurfaces)
   try Effect.try(() => assert.deepStrictEqual(observed, {
-    unasked: true, photo: true, selfie: { reviewed: true, refused: false }, whiteboard: true, captures: 2, taken: "done", justTaken: true,
+    unasked: true, photo: ["Okay.", true], selfie: { reviewed: true, refused: false }, whiteboard: true, captures: 2, taken: "done", justTaken: true,
     retaken: { state: "done", told: true },
     photoTurn: { sameTools: true, lead: false, inTool: false, views: true, ranFirst: false },
     whiteboardTurn: { allForms: true, views: true },
@@ -421,7 +422,7 @@ it.live(`One device conversation sends the same tools on every message, whatever
     sensitive: { noteNotHere: true, viewsNotHere: true },
     photo: {
       lead: false, ranFirst: false, captured: [{ operation: { type: "camera_capture_photo" }, bound: true }], viewsRefused: false, switched: false, otherRefused: false,
-      reply: "Opening Camera to take the photo.",
+      reply: "Okay.", toldThePhoneWords: true,
     },
     lenses: {
       offered: true,
