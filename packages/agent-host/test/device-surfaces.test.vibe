@@ -17,6 +17,7 @@ module node {
   const openPhoto = { kind: "photo", id: "lib:i:12:345" }
   const found = { id: "lib:i:7:1", revision: "rev-a1-1", kind: "image", takenAt: 0, width: 10, height: 10 }
   const direct = { viewDelivery: "completed-action", viewClientId: "renderer-1", voiceUi: { viewDelivery: "completed-action", uiClientId: "renderer-1", agentActionMode: "direct-request-v1" } }
+  const filesOnly = { ...direct, voiceUi: { ...direct.voiceUi, agentActionMode: "direct-files-v1" } }
   const settledText = "Retrieved this request's stored applied receipt."
   const onPhotos = { observation: { view: "photos", revision: 2, sensitive: false, selectedObject: openPhoto } }
   const onNotes = { observation: { view: "notes", revision: 5, sensitive: false, selectedObject: { kind: "note-source", id: "phone-notes", revision: "a".repeat(64) } } }
@@ -178,6 +179,9 @@ module node {
     await say("What did I just save?")
     const recalled = cloud.calls.filter(({ path: called }) => called.endsWith("/chat/completions")).at(-1)?.body as Completion | undefined
     const remembered = JSON.stringify(recalled?.messages?.at(-1) ?? "")
+    cloud.script(toolCalls("", propose({ type: "create_note", title: "Bread", body: "Buy bread" })), text("Okay."))
+    const filesOnlyNote = await turn("Make a note to buy bread", { ...filesOnly, ...onNotes })
+    const filesOnlyBound = (await proposals()).some(({ payload }) => payload.requestMessageId === filesOnlyNote.userMessageId)
 
     await client.call("POST", "/api/client-devices/view-profile", { version: 1, expectedRevision: null, views: ["home", "photos"] })
     cloud.script(toolCalls("", propose({ type: "open_view", view: "settings" })), text("Okay."), text(retold))
@@ -189,6 +193,7 @@ module node {
       unasked: unasked.includes(reviewText), photo: [photo, photoTold.includes("What the phone shows the owner, in its words (the reply is yours to write): Opening Camera to take the photo.")],
       selfie: { reviewed: selfie.text.includes(reviewText), refused: selfieRefusal.includes("DEVICE_OPERATION_NOT_AVAILABLE_NOW") },
       whiteboard: whiteboard.includes(reviewText), captures,
+      filesOnlyNote: { reviewed: filesOnlyNote.text.includes(reviewText), bound: filesOnlyBound },
       taken, justTaken: justTaken.includes(reviewText), retaken,
       photoTurn: {
         sameTools: photoTurn.tools === firstOffer.tools, lead: photoTurn.note.includes("The owner's whole message asks for a photo now"),
@@ -363,7 +368,7 @@ import { navigationHomes, oneConversation, proposeSurfaces, proposeTool, reviewT
 it.live(`Take a photo, open a view, read a Maps place, find and share photos and write a phone note only as the owner's words and screen name them (spec/agent/conversation/planning.md, "A recognized card is delivered unfenced, other multi-line tool output is fenced, and grounded prose follows unless one already holds the other"; spec/agent/conversation/planning.md, "A reply that leaves a failure unreported is written again once, and the delivered reply still reports open failures and attachment omissions"; spec/agent/deviceActions/surfaces.md, "Story: Propose a photo, a view, a Maps read or a Photos change only as my words and my screen name them"; spec/agent/deviceActions/surfaces.md, "A surface operation is bound to the owner's message only on a direct-request turn and as the owner asked"; spec/agent/deviceActions/surfaces.md, "A photo runs without its card only when the owner's own message asks for one now"; spec/agent/deviceActions/surfaces.md, "An app view opens with VIEWS where views arrive as completed actions, else with open_view as the installation's profile enables it"; spec/agent/conversation/planning.md, "Every call of a turn is one the model chose, and a call this message serves in another place is refused before it runs and is no step of the turn"; spec/agent/deviceActions/surfaces.md, "A new note is proposed only while the owner's Notes screen selects the phone's own Notes"; spec/agent/deviceActions/surfaces.md, "A new note runs without its card only when its title and body are the owner's own words"; spec/agent/deviceActions/surfaces.md, "A Maps read names exactly the place or route selected on the owner's Maps screen"; spec/agent/deviceActions/surfaces.md, "A Photos proposal names only the item open in the viewer or library IDs the phone returned"; spec/agent/deviceActions/operations.md, "A turn targets the photo open on the owner's screen only from the Photos view, never on a sensitive screen, and names its library ID only under the library capability"; spec/agent/deviceActions/index.md, "A proposal's identity is its request message and its operation, so a repeat returns the same request"; spec/agent/deviceActions/index.md, "A proposal carries the owner's message only for a live turn that asked for it directly, so otherwise the phone shows its card"; spec/agent/deviceActions/index.md, "A later turn of the same conversation learns at most six outcomes of its own requests: what changed, and what ended without running"; spec/agent/deviceActions/operations.md, "A captured photo's library ID reaches the agent only when the request negotiated it")`, effect () => {
   const observed = try deviceJourney({ load: [deviceActionsModuleName, viewsModuleName], allowed: ["REPLY", "IGNORE", "NONE", proposeTool, "VIEWS"] }, "propose device surfaces", proposeSurfaces)
   try Effect.try(() => assert.deepStrictEqual(observed, {
-    unasked: true, photo: ["Okay.", true], selfie: { reviewed: true, refused: false }, whiteboard: true, captures: 2, taken: "done", justTaken: true,
+    unasked: true, photo: ["Okay.", true], selfie: { reviewed: true, refused: false }, whiteboard: true, captures: 2, filesOnlyNote: { reviewed: true, bound: false }, taken: "done", justTaken: true,
     retaken: { state: "done", told: true },
     photoTurn: { sameTools: true, lead: false, inTool: false, views: true, ranFirst: false },
     whiteboardTurn: { allForms: true, views: true },
@@ -387,6 +392,7 @@ it.live(`Take a photo, open a view, read a Maps place, find and share photos and
       { operation: { type: "camera_capture_photo" }, bound: false, state: "pending" },
       { operation: { type: "camera_capture_photo" }, bound: true, state: "done" },
       { operation: { type: "camera_capture_photo" }, bound: true, state: "done" },
+      { operation: { type: "create_note", title: "Bread", body: "Buy bread" }, bound: false, state: "pending" },
       { operation: { type: "create_note", title: "Summary", body: "The page lists three deadlines in March." }, bound: false, state: "pending" },
       { operation: { type: "create_note", title: "Milk", body: "Buy milk" }, bound: true, state: "done" },
       { operation: { type: "maps_read_selected", target: { kind: "map-place", id: "maps_0f8fad5b-d9cb-469f-a165-70867728950e", revision: "7" } }, bound: false, state: "pending" },

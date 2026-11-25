@@ -204,8 +204,9 @@ it.effect('Go back on the tab the turn observed and say only that the browser wa
     assert.strictEqual(device.asks.length, 8)
     assert.deepStrictEqual([commandOffered, commandWithoutBrowser], [true, false])
     assert.deepStrictEqual([offeredWithBrowser, offeredWithoutBrowser], [["BROWSER", "BROWSER_BACK", "BROWSER_FORWARD", "BROWSER_RELOAD"], []])
-    assert.deepStrictEqual([observed.success, observed.turnComplete, observed.verifiedUserFacing, observed.data?.executionStatus], [true, true, true, "dispatched"])
-    assert.deepStrictEqual(JSON.parse(observed.text ?? "").value, { dispatched: true, completed: false, requiresReadback: false })
+    assert.deepStrictEqual([observed.success, observed.turnComplete, observed.verifiedUserFacing, observed.userFacingText, observed.data?.executionStatus], [true, true, undefined, undefined, "dispatched"])
+    assert.deepStrictEqual((observed.data?.result as { value?: unknown } | undefined)?.value, { dispatched: true, completed: false, requiresReadback: false })
+    assert.match(observed.text ?? "", /^The phone's browser was asked to go back, and the previous page may still be loading\. Say only that you asked it to go back: never that it went back, arrived or what it shows\. \{/u)
     assert.isTrue(sensitive.success)
     assert.deepStrictEqual(
       [completed, refusedFirst, unknownCode, lost, notOffered, noFeed, noClient].map((result) => [result.success, failureKind(result)]),

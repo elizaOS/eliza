@@ -18,6 +18,7 @@ module node {
   import type { AgentPlugin } from "../src/host/module.vibe"
   import { registerDeviceProposalFamily, unoffered } from "../src/device-actions/proposal/registry.vibe"
   import { processTurn } from "../src/conversation/turns.vibe"
+  import { conversationStore } from "../src/conversation/conversations.vibe"
   import { account } from "./support/scratch.ts"
 
   export interface Read {
@@ -134,11 +135,11 @@ module node {
   }
 
   export async function unheardCueTurn(runtime: AgentRuntime, roomId: string, request: string, reports: false | undefined): Promise<readonly string[]> {
-    const room = await runtime.getRoom(roomId as UUID)
-    if (!room) throw new Error("The conversation has no room")
     const owner = { user: validateUuid(account.userId) ?? stringToUuid(`account:${account.userId}`), world: stringToUuid(`device:${runtime.agentId}`) }
+    const conversation = await conversationStore(runtime, owner).findByRoom(roomId as UUID)
+    if (conversation === undefined) throw new Error("The conversation has no room")
     const offered: string[] = []
-    await processTurn(runtime, owner, room, request, AbortSignal.timeout(60_000), {
+    await processTurn(runtime, owner, conversation, request, AbortSignal.timeout(60_000), {
       display: { restart: () => undefined, acknowledge: (cue) => { offered.push(cue); return reports }, tool: () => undefined, ready: () => undefined },
     })
     return offered
@@ -296,7 +297,7 @@ describe('Frames the agent never writes (spec/agent/conversation/replyStream.md,
 
 const planning = "spec/agent/conversation/planning.md"
 
-it.live(`Hear that the agent heard me once while work is pending, and see which app it uses (spec/agent/conversation/replyStream.md, "The acknowledgment is written at most once, before the text and progress waiting with it, and only its own frame clears it"; ${planning}, "A turn acknowledges at most once, with a cue that comes with its first tool calls, and bare assent is a cue only with work after an instruction"; ${planning}, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"; ${planning}, "A tool's progress names its app only when one labelled app applies, and never its arguments or results"; ${planning}, "Every call of a turn is one the model chose, and a call this message serves in another place is refused before it runs and is no step of the turn"; ${planning}, "A coaching response stays in the planner transcript")`, effect () => {
+it.live(`Hear that the agent heard me once while work is pending, and see which app it uses (spec/agent/conversation/replyStream.md, "The acknowledgment is written at most once, before the text and progress waiting with it, and only its own frame clears it"; ${planning}, "A turn acknowledges at most once, with a cue that comes with its first tool calls"; ${planning}, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"; ${planning}, "A tool's progress names its app only when one labelled app applies, and never its arguments or results"; ${planning}, "Every call of a turn is one the model chose, and a call this message serves in another place is refused before it runs and is no step of the turn"; ${planning}, "A coaching response stays in the planner transcript")`, effect () => {
   const cloud = try cloudFake(deviceKey)
   const agent = try startInProcess({
     launch: {
@@ -336,19 +337,19 @@ it.live(`Hear that the agent heard me once while work is pending, and see which 
   const answer = try turn("Hi")
   try Effect.sync(() => cloud.script(text("Sure.")))
   const assentWithoutWork = try turn("Remember that I like tea")
-  try Effect.sync(() => cloud.script(text("Sure, one sec."), text("I can't send texts from here.")))
+  try Effect.sync(() => cloud.script(text('Sure, one sec. [send_message contact="Sam" message="late"]'), text("I can't send texts from here.")))
   const promiseWithoutWork = try turn("Text Sam that I'm late")
-  try Effect.sync(() => cloud.script(text("Sure, one sec."), toolCalls("Sure, one sec.", agenda), text("Nothing booked.")))
+  try Effect.sync(() => cloud.script(text('Sure, one sec. [send_message contact="Sam" message="late"]'), toolCalls("Sure, one sec.", agenda), text("Nothing booked.")))
   const workAfterPromise = try turn("Check my agenda")
-  try Effect.sync(() => cloud.script(text("Sure, one sec."), text("Sure, one sec.")))
+  try Effect.sync(() => cloud.script(text('Sure, one sec. [send_message contact="Sam" message="late"]'), text('Sure, one sec. [send_message contact="Sam" message="late"]')))
   const promisedTwice = try turn("Text Sam that I'm late")
   try Effect.sync(() => cloud.script(toolCalls('Let me check. {"action": "agenda_read"}', agenda), text("Nothing booked.")))
   const cueBesideWrittenCall = try turn("What is on my agenda?")
   try Effect.sync(() => cloud.script(toolCalls("Let me open Maps.", agenda), text("The nearest coffee is on Main Street.")))
   const openAsPart = try turn("Open Maps and find coffee nearby")
-  try Effect.sync(() => cloud.script(toolCalls("Maps is open.", agenda), text("Maps is open.")))
+  try Effect.sync(() => cloud.script(toolCalls("", agenda), text("Maps is open.")))
   const navigationOnly = try turn("Open Maps.")
-  try Effect.sync(() => cloud.script(toolCalls("Opened your calendar.", agenda), text("Opened your calendar.")))
+  try Effect.sync(() => cloud.script(toolCalls("", agenda), text("Opened your calendar.")))
   const calendarOnly = try turn("Open my calendar")
   const system = cloud.calls.filter(({ path }) => path === "/api/v1/chat/completions")
     .map(({ body }) => (body as { messages: { role: string; content?: unknown }[] }).messages[0])
@@ -364,7 +365,7 @@ it.live(`Hear that the agent heard me once while work is pending, and see which 
   const directFast = try turn("Open my agenda for this morning")
   const directSlow = try turn("Open my agenda for next month")
   const directQuiet = try turn("Open my agenda for next month without an acknowledgment")
-  try Effect.sync(() => cloud.script(toolCalls("Let me check.", agenda), text("Friday is open.")))
+  try Effect.sync(() => cloud.script(toolCalls("", agenda), text("Friday is open.")))
   const modelQuiet = try turn("Check my availability without a cue")
 
   try Effect.sync(() => cloud.script(toolCalls("", agenda), text("Nothing booked.")))
@@ -383,9 +384,9 @@ it.live(`Hear that the agent heard me once while work is pending, and see which 
     acknowledgedBeforeTools: true, cueLeftTheText: true, sameWhenSplit: true,
   }
   try Effect.try(() => assert.deepStrictEqual({
-    exemptionInRule: [cueRule.includes("A request only to open one app, with nothing to read, find or change there, still calls the tool that opens it, with no cue"), cueRule.includes("Any question or lookup gets its cue, even one about what is on the screen."), cueRule.includes("\"Let me open Maps.\""), cueRule.includes("When one message asks for several lookups, or about several named people or items, use the plain \"Let me check.\"; name a source only for one simple lookup.")],
+    exemptionInRule: [cueRule.includes("A request only to open one app, with nothing to read, find or change there, still calls the tool that opens it, with no cue"), cueRule.includes("Any question or lookup gets its cue, even one about what is on the screen."), cueRule.includes("When one message asks for several lookups, or about several named people or items, use the plain \"Let me check.\"; name a source only for one simple lookup."), cueRule.includes("in the person's own language"), ["On it", "One sec", "Sure, one sec", "Let me open"].some((phrase) => cueRule.includes(phrase)), cueRule.includes("Say that something was saved, sent, opened or changed only when a tool result in this turn shows it")],
     ruleInEverySystemPrompt: system.length > 0 && system.every((content) => content.includes(cueRule)),
-  }, { exemptionInRule: [true, true, true, true], ruleInEverySystemPrompt: true }))
+  }, { exemptionInRule: [true, true, true, true, false, true], ruleInEverySystemPrompt: true }))
   try Effect.try(() => assert.deepStrictEqual({
     instruction, question, politeAsk, answer, assentWithoutWork, promiseWithoutWork, workAfterPromise, promisedTwice, cueBesideWrittenCall, openAsPart, navigationOnly, calendarOnly, sharedNamedInWords, sharedBothNamedInWords, sharedUnnamed, coached, directFast, directSlow, directQuiet, directStopped, modelQuiet,
   }, {
@@ -393,9 +394,9 @@ it.live(`Hear that the agent heard me once while work is pending, and see which 
       done: done("Sent."), asked: 3, acknowledgments: ["acknowledgment:Sure."], tools: ["tool:AGENDA_READ:Using Agenda", "tool:CALCULATE:Working"],
       acknowledgedBeforeTools: true, cueLeftTheText: true, sameWhenSplit: true,
     },
-    question: { done: done("You're free Friday."), asked: 2, acknowledgments: [], tools: ["tool:AGENDA_READ:Using Agenda"], acknowledgedBeforeTools: true, cueLeftTheText: true, sameWhenSplit: true },
+    question: { done: done("You're free Friday."), asked: 2, acknowledgments: ["acknowledgment:Sure."], tools: ["tool:AGENDA_READ:Using Agenda"], acknowledgedBeforeTools: true, cueLeftTheText: true, sameWhenSplit: true },
     politeAsk: {
-      done: done("Sam is in your contacts."), asked: 3, acknowledgments: [], tools: ["tool:AGENDA_READ:Using Agenda", "tool:AGENDA_READ:Using Agenda"],
+      done: done("Sam is in your contacts."), asked: 3, acknowledgments: ["acknowledgment:Sure."], tools: ["tool:AGENDA_READ:Using Agenda", "tool:AGENDA_READ:Using Agenda"],
       acknowledgedBeforeTools: true, cueLeftTheText: true, sameWhenSplit: true,
     },
     answer: { done: done("Hello."), asked: 1, acknowledgments: [], tools: [], acknowledgedBeforeTools: true, cueLeftTheText: true, sameWhenSplit: true },
@@ -434,7 +435,7 @@ it.live(`Hear that the agent heard me once while work is pending, and see which 
   }))
 }, 120_000)
 
-it.live(`Hear bare assent as a cue only in its own short forms, only with work after an instruction, and a lead form after Sure! after any message (${planning}, "A turn acknowledges at most once, with a cue that comes with its first tool calls, and bare assent is a cue only with work after an instruction")`, effect () => {
+it.live(`Hear a cue by its form, whatever its words or language, and never one that asks, carries data or runs long (${planning}, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"; ${planning}, "A turn acknowledges at most once, with a cue that comes with its first tool calls")`, effect () => {
   const cloud = try cloudFake(deviceKey)
   const agent = try startInProcess({
     launch: { backend: { kind: "cloud", origin: cloud.origin }, load: [agendaApp.name], allowed: ["REPLY", "IGNORE", "NONE", "AGENDA_READ"] },
@@ -449,26 +450,28 @@ it.live(`Hear bare assent as a cue only in its own short forms, only with work a
     const said = whole.outcome.kind === "Done" ? whole.outcome.text : whole.outcome.kind
     return [request, cue, whole.seen.filter((entry) => entry.startsWith("acknowledgment:")).map((entry) => entry.slice("acknowledgment:".length)), said] as const
   }
-  const instruction = "Text Sam that I'm late"
-  const rejectedForms: (readonly [string, string, readonly string[], string])[] = []
-  for (const cue of ["Okay.", "Got it.", "Sure thing.", "Sure, sure.", "Sure one sec."]) rejectedForms.push(try heard(instruction, cue))
-  const beforeAnswers: (readonly [string, string, readonly string[], string])[] = []
-  for (const cue of ["Sure, your dentist is Thursday.", "Sure, I've texted Sam.", "Sure, done."]) beforeAnswers.push(try heard(instruction, cue))
-  const leadForms: (readonly [string, string, readonly string[], string])[] = []
-  for (const request of ["Am I free Friday", "Any meetings today", instruction]) leadForms.push(try heard(request, "Sure! Let me check your calendar."))
-  const twoSentences = try heard(instruction, "Sure, one sec. Let me check your calendar.")
-  const afterFillers: (readonly [string, string, readonly string[], string])[] = []
-  for (const request of ["Hey, text Sam I'm late", "Okay, Eliza, set an alarm for 7:30", "hey alpha text Sam I'm late"]) afterFillers.push(try heard(request, "Sure."))
-  try Effect.try(() => assert.deepStrictEqual({ rejectedForms, beforeAnswers, leadForms, twoSentences, afterFillers }, {
-    rejectedForms: ["Okay.", "Got it.", "Sure thing.", "Sure, sure.", "Sure one sec."].map((cue) => [instruction, cue, [], "Done."]),
-    beforeAnswers: ["Sure, your dentist is Thursday.", "Sure, I've texted Sam.", "Sure, done."].map((cue) => [instruction, cue, [], "Done."]),
-    leadForms: ["Am I free Friday", "Any meetings today", instruction].map((request) => [request, "Sure! Let me check your calendar.", ["Sure! Let me check your calendar."], "Done."]),
-    twoSentences: [instruction, "Sure, one sec. Let me check your calendar.", ["Sure, one sec. Let me check your calendar."], "Done."],
-    afterFillers: ["Hey, text Sam I'm late", "Okay, Eliza, set an alarm for 7:30", "hey alpha text Sam I'm late"].map((request) => [request, "Sure.", ["Sure."], "Done."]),
+  const answered = (request: string, reply: string) => effect {
+    try Effect.sync(() => cloud.script(text(reply)))
+    const whole = try read(try streamed(agent, id, { text: request }), 0)
+    return [whole.outcome.kind === "Done" ? whole.outcome.text : whole.outcome.kind, whole.seen.filter((entry) => entry.startsWith("acknowledgment:")).length] as const
+  }
+  type Heard = readonly [string, string, readonly string[], string]
+  const forms = ["Okay.", "Got it.", "Sure thing.", "Looking now.", "Un momento.", "Déjame revisar tu calendario.", "Let me check your calendar."]
+  const requests = ["Text Sam that I'm late", "Am I free Friday", "¿Tengo algo mañana?"]
+  const spoken: Heard[] = []
+  for (const request of requests) for (const cue of forms) spoken.push(try heard(request, cue))
+  const refused = ["Sure, your meeting is at 3.", "At seven, then.", "Do you mean Sam?", `Let me ${"look through everything you have ".repeat(4)}now.`]
+  const unspoken: Heard[] = []
+  for (const cue of refused) unspoken.push(try heard("Text Sam that I'm late", cue))
+  const shortAnswers = [try answered("Call me Bob", "Sure."), try answered("Thanks", "Anytime.")]
+  try Effect.try(() => assert.deepStrictEqual({ spoken, unspoken, shortAnswers }, {
+    spoken: requests.flatMap((request) => forms.map((cue): Heard => [request, cue, [cue], "Done."])),
+    unspoken: refused.map((cue): Heard => ["Text Sam that I'm late", cue, [], "Done."]),
+    shortAnswers: [["Sure.", 0], ["Anytime.", 0]],
   }))
 }, 120_000)
 
-it.live(`Hear the result after the cue, never the cue again, and only a cue I heard counts (${planning}, "A delivered cue is told to the model as already said, so the reply never repeats it or takes it as evidence"; ${planning}, "A turn acknowledges at most once, with a cue that comes with its first tool calls, and bare assent is a cue only with work after an instruction")`, effect () => {
+it.live(`Hear the result after the cue, never the cue again, and only a cue I heard counts (${planning}, "A delivered cue is told to the model as already said, so the reply never repeats it or takes it as evidence"; ${planning}, "A turn acknowledges at most once, with a cue that comes with its first tool calls")`, effect () => {
   const cloud = try cloudFake(deviceKey)
   const agent = try startInProcess({
     launch: { backend: { kind: "cloud", origin: cloud.origin }, load: [agendaApp.name], allowed: ["REPLY", "IGNORE", "NONE", "AGENDA_READ"] },
@@ -498,9 +501,9 @@ it.live(`Hear the result after the cue, never the cue again, and only a cue I he
   const delivered = try turn("What do I have tomorrow?", true)
   try Effect.sync(() => cloud.script(toolCalls("Let me check your calendar.", agenda), text("Nothing is booked tomorrow.")))
   const unstreamed = try turn("What do I have on Friday?", false)
-  try Effect.sync(() => cloud.script(toolCalls("Let me check.", agenda), text("Friday is open.")))
+  try Effect.sync(() => cloud.script(toolCalls("", agenda), text("Friday is open.")))
   const quiet = try turn("Check my availability without a cue", true)
-  try Effect.sync(() => cloud.script(toolCalls("Your agenda is open.", agenda), text("Your agenda is open.")))
+  try Effect.sync(() => cloud.script(toolCalls("Your agenda has 3 events.", agenda), text("Your agenda has 3 events.")))
   const notACue = try turn("Open my agenda", true)
   try Effect.sync(() => cloud.script(toolCalls("", agenda), toolCalls("Let me check.", agenda), text("Nothing booked.")))
   const laterStep = try turn("What is on my agenda this week?", true)

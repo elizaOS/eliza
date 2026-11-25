@@ -37,6 +37,7 @@ export interface NotesSnapshot {
   notes: StickyNote[]
   revision: number
   trash?: TrashedNote[]
+  readonly deleteAtRevision?: true
 }
 
 export type NotesTrashErase =

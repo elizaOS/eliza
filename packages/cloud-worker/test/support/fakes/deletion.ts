@@ -42,7 +42,7 @@ export function deletionProviders(now?: () => number): DeletionProviders {
       fakes.mount("/google/", (request) => {
         if (request.path === "/revoke") {
           const token = new URLSearchParams(request.body).get("token") ?? "";
-          if (droppedGoogle.delete(token)) google.switches.dropNextReply = true;
+          if (droppedGoogle.delete(token)) google.switches.dropNextChangeReply = true;
         }
         return handle(request);
       });

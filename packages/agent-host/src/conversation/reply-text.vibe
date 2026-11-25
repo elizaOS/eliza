@@ -1,60 +1,14 @@
-// spec/agent/conversation/planning.md, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"; spec/agent/conversation/planning.md, "A turn acknowledges at most once, with a cue that comes with its first tool calls, and bare assent is a cue only with work after an instruction"; spec/agent/conversation/planning.md, "A recognized card is delivered unfenced, other multi-line tool output is fenced, and grounded prose follows unless one already holds the other"; spec/agent/conversation/planning.md, "A voice turn that ran an action answers with that action's label: its kind, whether the reply is a validated card, and whether the owner asked for exact wording"
+// spec/agent/conversation/planning.md, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"; spec/agent/conversation/planning.md, "A turn acknowledges at most once, with a cue that comes with its first tool calls"; spec/agent/conversation/planning.md, "A recognized card is delivered unfenced, other multi-line tool output is fenced, and grounded prose follows unless one already holds the other"; spec/agent/conversation/planning.md, "A voice turn that ran an action answers with that action's label: its kind and whether the reply is a validated card"; spec/agent/conversation/planning.md, "A tool call the model wrote as text never reaches the owner, and its step is asked again once"
 import { looksLikeActionEnvelopeJson, looksLikeEvaluatorEnvelopeJson, parseInteractionBlocks, sanitizeUserVisibleModelOutput } from "@elizaos/core"
 import { actionLabel, compose, readDraft, type ActionLabel, type Composition, type Draft, type DraftShape, type VoiceAction } from "../../gen/agent__conversation__planning.ts"
-
-function pattern(source: string, flags: string): RegExp {
-  try {
-    return new RegExp(source, flags)
-  } catch {
-    return /(?!)/u
-  }
-}
 
 const maxCueLength = 120
 const bracketCall = /\[[a-z][a-z0-9]*(?:_[a-z0-9]+)+(?:\s+[a-z_]+=(?:"[^"\n]*"|[^\s\]]+))+\s*\]/gu
 const callName = /^[a-z]+(?:_[a-z0-9]+)+$/u
 const emptyWrapper = /```[\w-]*\s*```|<([\w-]+)>\s*<\/\1>/gu
-const waitCue = "(?:on it|(?:one|just a) (?:sec|second|moment))"
-const containerNoun = "(?:calendar|schedule|agenda|notes|inbox|emails?|messages|texts|reminders|tasks|todos|files|photos|contacts|workflows|settings|account)"
-const relativeDay = "(?:today|tomorrow|yesterday|tonight)'s"
-const publicNews = `(?:(?:the(?: latest)?|latest|${relativeDay}) )?(?:news|headlines)`
-const containers = `(?:(?:your(?: ${relativeDay})?|${relativeDay}) ${containerNoun}|the weather|${publicNews})(?:(?:,|,? and) (?:(?:your )?(?:${relativeDay} )?${containerNoun}|the weather|${publicNews}))*`
-const referent = `(?:${containers}|it|that|this|both)`
-const verbs: readonly (readonly [string, string])[] = [
-  [`check(?: ${referent})?`, `checking ${referent}`],
-  [`(?:look|dig) into ${referent}`, `(?:looking|digging) into ${referent}`],
-  [`look (?:at|through) ${containers}`, `looking (?:at|through) ${containers}`],
-  [`(?:take|have) a look(?: at ${containers})?`, `(?:taking|having) a look(?: at ${containers})?`],
-  [`pull up ${containers}`, `pulling up ${containers}`],
-  [`search(?: ${containers})?`, `searching ${containers}`],
-]
-const app = "(?:calendar|notes|inbox|maps|files|photos|settings|workflows|camera|browser|contacts|messages|phone|clock)"
-const item = "(?:your|the|that) (?:note|reminder|event|appointment|meeting|draft|task|email|message)"
-const queryNoun = "(?:meetings|events|appointments|reminders|tasks|todos|notes|emails|messages|calls)"
-const query = `(?:(?:whether|if) (?:there are|you have) any ${queryNoun}(?:(?:,|,? (?:and|or)) ${queryNoun})*|what(?:'s| is) on (?:your|the) calendar)(?: (?:today|tomorrow|this week|next week))?`
-const personMark = "\u{E000}"
-const person = /\bcheck with \p{Lu}\p{Ll}+(?![\p{L}\p{M}\p{N}'‘’ʼ-])/gu
-const intents = [`check (?:with ${personMark}|${query})`, `open (?:${app}|${item})`, `read (?:${containers}|${item})`, `(?:save|create|update) ${item}`]
-const lead = "(?:let me|i'll|i will|i(?:'m| am) going to|give me (?:a|one) (?:sec|second|moment) to|(?:one|just a) (?:sec|second|moment) while i)"
-const leadForm = `${lead} (?:${[...verbs.map(([base]) => base), ...intents].join("|")})`
-const tail = "(?:,? (?:now|for you|real quick|quickly)){0,2}"
-const progress = pattern(`^(?:${waitCue}(?:, | ?[—–:;] ?| - ))?(?:${leadForm}|(?:i(?:'m| am) )?(?:${verbs.map(([, gerund]) => gerund).join("|")}))${tail}$`, "u")
-const afterAssent = pattern(`^${leadForm}${tail}$`, "u")
-const waitSentence = pattern(`^${waitCue}$`, "u")
-const instructionAssent = /^(?:sure|yeah)(?:$|, |[.!…]+ | ?[—–:;] ?| - )/u
 const dataToken = /\p{N}|\b[ap]\.m\.|\b(?:pm|noon|midnight|o['’]clock|zero|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|(?:hundred|thousand|dozen)s?|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth|\p{L}+(?:teenth|tieth)|few|couple|handful|several|single|only|(?:half|quarter) (?:past|to|after|till?))\b|\b(?:at|by|until|till|before|after|around) one\b|\bone [ap]m\b/iu
 
-export const cueRule = "When you call tools, write with your first tool calls only a brief cue that you heard the request; the real reply comes after the work. Write a cue only with a tool call in the same response: when no offered tool can do what was asked, write no cue and tell the person plainly, in your own words, that you can't. A request only to open one app, with nothing to read, find or change there, still calls the tool that opens it, with no cue: write nothing with that call, and the reply after it confirms the destination. Any question or lookup gets its cue, even one about what is on the screen. For a question or a lookup, including a request asked as a question such as \"Can you text Sam?\": \"Let me check.\" or \"Let me check your calendar.\" (or your notes, inbox, messages, reminders, tasks, files, photos, contacts), or \"Let me check the weather.\" When one message asks for several lookups, or about several named people or items, use the plain \"Let me check.\"; name a source only for one simple lookup. When opening an app is part of other planned work: \"Let me open Maps.\" (the app asked for, by its bare name: Calendar, Notes, Inbox, Maps, Files, Photos, Settings, Workflows, Camera, Browser, Contacts, Messages, Phone or Clock; for any other app, \"On it.\"). For a plain command such as \"Text Sam I'm late\" or \"Set an alarm for seven\": \"Sure.\", \"Sure, one sec.\" or \"Yeah, one sec.\" For any other action: \"On it.\" or \"One sec.\" Never start with Sure or Yeah after a question; it sounds like the answer. Never name the people, items, times or outcome, never say the work is done or under way, and never repeat the request. If the person asked for silence or no acknowledgment, write nothing and still do the work. Write no text with later tool calls."
-
-function inGrammar(words: string, assent: string | undefined): boolean {
-  const opening = assent ?? (words.startsWith("sure! ") ? "sure! " : "")
-  const rest = words.slice(opening.length)
-  const sentences = rest ? rest.split(/[.!…]+ /u) : []
-  return (sentences.length > 0 || assent !== undefined)
-    && sentences.length <= (opening ? 2 : 3)
-    && (!opening || assent !== undefined || afterAssent.test(sentences[0] ?? ""))
-    && sentences.every((sentence) => waitSentence.test(sentence) || progress.test(sentence))
-}
+export const cueRule = "When you call tools, write with your first tool calls only a brief cue, in the person's own language, that you heard the request; the real reply comes after the work. A cue is a few natural words that you are looking or about to do it, in your own words rather than a stock phrase: it never names the people, items, places, times, numbers or outcome, never asks anything, never says the work is done or under way, and never repeats the request. Never open a cue with assent such as Sure or Yeah after a question; it sounds like the answer. When one message asks for several lookups, or about several named people or items, use the plain \"Let me check.\"; name a source only for one simple lookup. Write a cue only with a tool call in the same response: when no offered tool can do what was asked, write no cue and tell the person plainly, in your own words, that you can't. Any question or lookup gets its cue, even one about what is on the screen. A request only to open one app, with nothing to read, find or change there, still calls the tool that opens it, with no cue: write nothing with that call, and the reply after it confirms the destination. Your text after the last tool result is the reply itself, never another cue, and a response with no tool call is always your reply, so never write a cue without calling a tool. If the person asked for silence or no acknowledgment, write nothing and still do the work. Write no text with later tool calls. Say that something was saved, sent, opened or changed only when a tool result in this turn shows it."
 
 const callKeys = new Set(["action", "tool", "type", "name"])
 const bracketName = /^\[([a-z][a-z0-9_]*)/u
@@ -129,77 +83,56 @@ export function withoutWrittenCalls(said: string): string {
   return objectsOut(said, () => true).text
 }
 
-function afterCue(before: string): boolean {
-  const sentence = before.trimEnd().split(/\n|(?<=[.!?…])\s+/u).at(-1) ?? ""
-  const shape = sentence ? shapeOf(sentence, new Set()) : "Blank"
-  return shape === "GrammarCue" || shape === "AssentCue"
+function cueShaped(text: string): boolean {
+  return text.length > 0 && text.length <= maxCueLength && !text.includes("?") && !dataToken.test(text)
+}
+
+function afterSentence(before: string): boolean {
+  const lead = before.replace(/```[\w-]*\s*$/u, "").trimEnd()
+  return !lead || /[.!…]$/u.test(lead)
+}
+
+function afterCue(said: string, body: string, before: string): boolean {
+  const sentence = before.split(/\n|(?<=[.!?…])\s+/u).at(-1) ?? ""
+  return /[.!…]$/u.test(before) && cueShaped(withoutWrittenCalls(sentence)) && said.slice(said.indexOf(body) + body.length).trim().length > 0
 }
 
 export function withoutOfferedCalls(said: string, offered: ReadonlySet<string>): string {
-  return objectsOut(said, (body, before) => namesOffered(body, offered) || afterCue(before)).text
+  return objectsOut(said, (body, before) => namesOffered(body, offered) || afterCue(said, body, before)).text
 }
 
 function shapeOf(reply: string, offered: ReadonlySet<string>): DraftShape {
   const said = reply.trim()
   if (!said) return "Blank"
-  const { text, found } = objectsOut(said, () => true)
+  let beside = true
+  const { text, found } = objectsOut(said, (_body, before) => {
+    beside &&= afterSentence(before)
+    return true
+  })
   if (!text) return found.some((body) => looksLikeCall(body, offered)) ? "Blank" : "OtherText"
-  if (text.length > maxCueLength || text.includes("?") || text.includes(personMark) || dataToken.test(text)) return "OtherText"
-  const words = text.replace(/\s+/gu, " ").replace(person, `check with ${personMark}`).toLowerCase()
-    .replace(/[‘’ʼ]/gu, "'").replace(/ ?, ?/gu, ", ").replace(/[.!…]+$/u, "")
-  if (inGrammar(words, undefined)) return "GrammarCue"
-  const assent = instructionAssent.exec(words)?.[0]
-  if (assent === undefined || !inGrammar(words, assent)) return "OtherText"
-  if (words !== assent) return "AssentCue"
-  if (found.length === 0) return "Assent"
-  return found.some((body) => namesOffered(body, offered)) ? "AssentCue" : "AssentObject"
+  if (!cueShaped(text) || !beside) return "OtherText"
+  if (found.some((body) => looksLikeCall(body, offered))) return "CueBesideCall"
+  return found.length === 0 ? "CueShaped" : "CueBesideObject"
 }
 
-export function draftOf(text: string, instruction: boolean, calls: number, offered: ReadonlySet<string>): Draft {
-  return readDraft(shapeOf(text, offered), instruction, calls)
+export function draftOf(text: string, calls: number, offered: ReadonlySet<string>): Draft {
+  return readDraft(shapeOf(text, offered), calls)
 }
 
-const requestFiller = new Set(["hey", "hi", "hello", "ok", "okay", "alright", "so", "please", "oh", "um", "uh", "well", "yo", "and", "also", "but", "then", "now", "actually"])
-const requestGreeting = new Set(["hey", "hi", "hello", "ok", "okay", "yo"])
-const questionOpener = /^(?:(?:what|when|where|who|whom|whose|why|how|which)(?:s|re|d|ll|ve)?|am|is|are|was|were|do|does|did|can|could|will|would|should|shall|may|might|have|has|had|must|isnt|arent|wasnt|werent|dont|doesnt|didnt|cant|cannot|couldnt|wont|wouldnt|shouldnt|shant|havent|hasnt|hadnt|mustnt|aint)$/u
-const commandVerb = new Set([
-  "accept", "add", "answer", "archive", "ask", "block", "book", "bring", "call", "cancel", "capture", "change", "check", "clear", "close",
-  "compose", "copy", "create", "decline", "delete", "dial", "disable", "dismiss", "draft", "edit", "email", "enable", "end", "erase", "find",
-  "flag", "forward", "get", "give", "go", "hang", "invite", "launch", "let", "lets", "list", "locate", "lock", "look", "make", "mark",
-  "message", "move", "mute", "navigate", "note", "open", "order", "pause", "phone", "pin", "play", "post", "pull", "put", "read", "record",
-  "remember", "remind", "remove", "rename", "reply", "reschedule", "respond", "restart", "resume", "ring", "run", "save", "schedule",
-  "search", "send", "set", "share", "show", "silence", "skip", "snap", "snooze", "start", "stop", "switch", "take", "tell", "text",
-  "toggle", "translate", "turn", "unlock", "unmute", "update", "wake", "write",
-])
+const writtenCallMarker = /<\s*\/?\s*tool_call\b|<\s*function(?:=|_call\b)/iu
+const writtenCallHeads = ["<tool_call", "</tool_call", "<function=", "<function_call"]
 
-// spec/agent/conversation/planning.md, "A turn acknowledges at most once, with a cue that comes with its first tool calls, and bare assent is a cue only with work after an instruction"
-export function requestedNoCue(request: string): boolean {
-  return /\b(?:(?:no|without|skip)(?:\s+(?:an?|any|the))?\s+(?:acknowledg(?:e?ment)s?|cues?|preamble)|(?:don['’]t|do not|no need to|never)\s+(?:acknowledge|speak|say anything)|(?:stay|keep|be)\s+(?:quiet|silent)|silently|quietly)\b/iu.test(request)
+export function writtenCallFree(text: string): { readonly prose: string; readonly markup: boolean } {
+  const at = text.search(writtenCallMarker)
+  return at < 0 ? { prose: text, markup: false } : { prose: text.slice(0, at).trimEnd(), markup: true }
 }
 
-function clauseWords(clause: string): string[] {
-  return [...clause.matchAll(/[\p{L}'‘’ʼ]+/gu)].map((match) => match[0].toLowerCase().replace(/['‘’ʼ]/gu, ""))
-}
-
-function afterFillers(words: readonly string[]): number {
-  const index = words.findIndex((word) => !requestFiller.has(word))
-  return index < 0 ? words.length : index
-}
-
-export function requestIsInstruction(request: string): boolean {
-  const text = request.trim()
-  if (!text || text.includes("?")) return false
-  const clauses = text.split(/[.!…;:,\n]+|\s[—–-]+\s/u).map(clauseWords).filter((words) => words.length > 0)
-  if (clauses.some((words) => questionOpener.test(words[afterFillers(words)] ?? ""))) return false
-  for (const words of clauses) {
-    const index = afterFillers(words)
-    const first = words[index]
-    if (first === undefined) continue
-    if (commandVerb.has(first)) return true
-    if (index === words.length - 1) continue
-    return words.slice(0, index).some((word) => requestGreeting.has(word)) && commandVerb.has(words[index + 1] ?? "")
-  }
-  return false
+export function streamable(text: string): string {
+  const at = text.search(writtenCallMarker)
+  if (at >= 0) return text.slice(0, at)
+  const open = text.lastIndexOf("<")
+  const tail = open < 0 ? "" : text.slice(open).replace(/\s+/gu, "").toLowerCase()
+  return tail !== "" && writtenCallHeads.some((head) => head.startsWith(tail)) ? text.slice(0, open) : text
 }
 
 const cardBlock = /(?:^|\n)[ \t]*\[(MAPSCARD|CHECKLIST|WORKFLOW)\][ \t]*\r?\n[ \t]*(\{[^\n]*\})[ \t]*\r?\n[ \t]*\[\/\1\][ \t]*(?=\r?\n|$)/g
@@ -246,14 +179,7 @@ export function composeReply(toolText: string | undefined, prose: string | undef
   }
 }
 
-const literalSpeech = /\b(?:verbatim|word for word|as written|read it (?:back|aloud)|spell it out|repeat (?:it|that) exactly)\b/i
-const asksForField = /\b(?:read(?: back)?|spell(?: out)?|quote|repeat|recite|give me|tell me|what(?:[’']s| is| are))\s+(?:(?:me|out|aloud|the|this|that|my|its|full|exact|whole|entire|last|four)\s+){0,7}(?:(?:event|request|operation|workflow|run|order|thread|record|confirmation|reference)\s+(?:ID|identifier|number)|receipt|identifier|ID|address|number|digits|code|subject|headers?|body|draft|e-?mail|message|text)\b/i
-
-function asksForVerbatim(request: string): boolean {
-  return literalSpeech.test(request) || asksForField.test(request)
-}
-
-export function voiceActionLabel(voice: boolean, request: string, reply: string, ran: readonly string[]): VoiceAction | undefined {
-  const label: ActionLabel = actionLabel(voice, [...ran], containsRenderedCard(reply), asksForVerbatim(request))
+export function voiceActionLabel(voice: boolean, reply: string, ran: readonly string[]): VoiceAction | undefined {
+  const label: ActionLabel = actionLabel(voice, [...ran], containsRenderedCard(reply))
   return label.tag === "Labelled" ? label.label : undefined
 }

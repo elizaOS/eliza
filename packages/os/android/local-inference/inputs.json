@@ -35,7 +35,7 @@
     "release_status": "The release says human_approval PENDING and commercial_distribution BLOCKED (provenance.json, release-manifest.json); its NOTICE.md says voice consent and provenance for em_alex are not independently established.",
     "release_override": {
       "model": "Delibes-8M-esES",
-      "decision": "Grace docs/decisions.md, owner decision 2026-10-28",
+      "decision": "owner decision 2026-10-28",
       "overrides": ["human_approval PENDING", "commercial_distribution BLOCKED"]
     }
   },

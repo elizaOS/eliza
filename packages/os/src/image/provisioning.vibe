@@ -427,8 +427,11 @@ export effect function writeListenerActivation(output: string, packageName: stri
   }
 }
 
-function clockLines(makefile: string): number {
-  return [...makefile.matchAll(/^\s*PRODUCT_PACKAGES\s*[:+]?=\s*(.*)$/gm)].flatMap((line) => (line[1] ?? "").split(/\s+/)).filter((token) => token === CLOCK_MODULE).length
+export function clockLines(makefile: string): number {
+  const assignments = makefile.replace(/\\\r?\n/g, " ").matchAll(/^[ \t]*PRODUCT_PACKAGES[ \t]*[:+]?=(.*)$/gm)
+  return [...assignments]
+    .flatMap(([, packages = ""]) => packages.replace(/(^|[^\\])((?:\\\\)*)#.*$/, "$1$2").split(/\s+/))
+    .filter((token) => token === CLOCK_MODULE).length
 }
 
 export effect function requireClockProduct(output: string) {

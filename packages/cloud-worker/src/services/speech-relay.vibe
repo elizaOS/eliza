@@ -533,7 +533,7 @@ effect function relay(ports: RelayPorts, context: RouteContext): HttpServerRespo
 }
 
 function relayRoutes(ports: RelayPorts): ReadonlyArray<Route> {
-  return [{ method: "GET", path: "/api/v1/voice/speech/ws", auth: "Public", capability: "speech", handler: (context) => relay(ports, context) }]
+  return [{ method: "GET", path: "/api/v1/voice/speech/ws", auth: "Public", area: "SpeechRelayRoutes", handler: (context) => relay(ports, context) }]
 }
 
 export const relaySpeechRoutes: ReadonlyArray<Route> = relayRoutes({ session: relaySession, links: { openStt, openTts } })

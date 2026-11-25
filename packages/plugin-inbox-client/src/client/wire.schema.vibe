@@ -16,6 +16,7 @@ export const AccountsWire = Schema.Array(ConnectionWire)
 
 export const MailCardWire = Schema.Struct({
   id: Text, threadId: Text, subject: Text, from: Text, to: Texts, cc: Texts, snippet: Text, receivedAt: Text,
+  hasAttachments: Schema.optionalKey(Schema.Boolean),
   labels: Texts, isUnread: Schema.Boolean, metadata: Schema.Struct({ historyId: Schema.NullOr(Text) }),
 })
 

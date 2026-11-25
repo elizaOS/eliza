@@ -35,8 +35,9 @@ A refused event answers 409 and changes nothing; a store failure answers 503.
 The installation id is the agent's own store id (`storage/database.md`),
 never a second identity. A first registration records the owner, the key
 hash and the workflow protocol, and connects the device to the bridge with
-the capabilities it declares. Registering again with the same key changes
-only the workflow protocol. The agent keeps one enrollment. When its owner
+the capabilities it declares; a registration that names none declares the
+whole vocabulary. Registering again with the same key changes only the
+workflow protocol. The agent keeps one enrollment. When its owner
 registers under another key, as a reinstalled or replaced phone does, the
 shell computes the revocation and new enrollment together and commits them
 with the retirement of earlier requests in one transaction. A failed
@@ -513,8 +514,10 @@ a step on what the owner has open: the thread or voicemail on the screen,
 or the Calendar day a standalone agenda read shows. The proposal carries the
 owner's message as `requestMessageId` only while its turn is live, and then
 only for a step on the open selection, or for an operation grounded as
-asked on a turn whose message is a direct request (`voiceUi.agentActionMode`
-is `direct-request-v1`). Any other proposal carries none, so the phone
+asked on a turn whose message is a direct request for its family
+(`voiceUi.agentActionMode` is `direct-request-v1` for every family, or
+`direct-files-v1` for the Files family alone, so a phone that runs only
+Files directly keeps every other family's card). Any other proposal carries none, so the phone
 never runs it without its card, whatever the operation and the owner's
 [direct-request preference](./execution.md); its origin is still the
 owner's message, so its identity, its read completion and the outcomes a
@@ -538,8 +541,15 @@ copy is delivered in the family's words.
 
 ```quint
 type ProposalGrounding = GroundedAsAsked | GroundedForReview | GroundedOnScreen
+type DirectScope = NoDirectRequest | DirectForEveryFamily | DirectForFiles
+pure def directRequestFor(scope: DirectScope, filesFamily: bool): bool =
+  scope == DirectForEveryFamily or (scope == DirectForFiles and filesFamily)
 pure def carriesRequestMessage(grounding: ProposalGrounding, directRequest: bool, turnLive: bool): bool =
   turnLive and (grounding == GroundedOnScreen or (directRequest and grounding == GroundedAsAsked))
+pure def lawAFilesOnlyDirectRequestBindsNoOtherFamily(turnLive: bool): bool =
+  not(carriesRequestMessage(GroundedAsAsked, directRequestFor(DirectForFiles, false), turnLive))
+pure def lawAFilesOnlyDirectRequestBindsFilesAsAsked(turnLive: bool): bool =
+  carriesRequestMessage(GroundedAsAsked, directRequestFor(DirectForFiles, true), turnLive) == turnLive
 pure def returnsOpenRequest(keptCarries: bool, proposedCarries: bool, sameOperation: bool): bool =
   sameOperation and not(keptCarries) and not(proposedCarries)
 pure def lawAProposalForReviewCarriesNoMessage(directRequest: bool, turnLive: bool): bool =
