@@ -27,5 +27,3 @@ export interface LoggerBindings extends Record<string, unknown> {
 
   maxMemoryLogs?: number
 }
-
-export { redactTrailingArgs } from "./security/log-redaction.vibe"

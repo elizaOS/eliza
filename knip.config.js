@@ -10,6 +10,7 @@
 //   root @repo/design-system                read as files by vibestack/design/test/design.test.ts
 //   tailwindcss (ui, design-system, studio, cloud)  resolved by @tailwindcss/vite and the lint plugin from CSS
 //   core @biomejs/biome                     resolved by path in src/catalog/generate.vibe
+//   os @elizaos/agent-host                resolved by import.meta.resolve in the CLI launch test
 //   os otool                               system binary used by the Android toolchain
 //   entry *.meta.tsx, *.css (ui, cloud)     read by the design tool and the page's index.html
 //   entry *.schema, *.contract              imported by the tests vibestack/testing/generate.ts writes under .cache/
@@ -241,7 +242,8 @@ export default {
         "test/**/*.{ts,vibe,vibex}"
       ],
       "ignoreDependencies": [
-        "@effect/platform-node-shared"
+        "@effect/platform-node-shared",
+        "@elizaos/agent-host"
       ],
       "ignoreBinaries": [
         "otool"

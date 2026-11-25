@@ -39,8 +39,7 @@
     "@effect/platform-node-shared": "4.1.1",
     "@elizaos/core": "workspace:*",
     "effect": "4.1.1",
-    "vibelang-runtime": "0.0.13",
-    "zod": "^4.6.5"
+    "vibelang-runtime": "0.0.13"
   },
   "devDependencies": {
     "@effect/vitest": "4.1.1",

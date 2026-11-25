@@ -204,7 +204,7 @@ function tagsOut(said: string, from: number, to: number): string {
   })
 }
 
-export function withoutTags(said: string): string {
+function withoutTags(said: string): string {
   let out = ""
   let kept = 0
   for (const code of said.matchAll(codeSpan)) {
