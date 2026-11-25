@@ -12,6 +12,7 @@ function pattern(source: string, flags: string): RegExp {
 
 const maxCueLength = 120
 const bracketCall = /\[[a-z][a-z0-9]*(?:_[a-z0-9]+)+(?:\s+[a-z_]+=(?:"[^"\n]*"|[^\s\]]+))+\s*\]/gu
+const callName = /^[a-z]+(?:_[a-z0-9]+)+$/u
 const emptyWrapper = /```[\w-]*\s*```|<([\w-]+)>\s*<\/\1>/gu
 const waitCue = "(?:on it|(?:one|just a) (?:sec|second|moment))"
 const containerNoun = "(?:calendar|schedule|agenda|notes|inbox|emails?|messages|texts|reminders|tasks|todos|files|photos|contacts|workflows|settings|account)"
@@ -60,7 +61,7 @@ function isWrittenCall(body: string): boolean {
   try {
     const parsed: unknown = JSON.parse(body)
     return typeof parsed === "object" && parsed !== null
-      && Object.entries(parsed).some(([key, value]) => (key === "action" || key === "tool") && typeof value === "string")
+      && Object.entries(parsed).some(([key, value]) => typeof value === "string" && (key === "action" || key === "tool" || callName.test(value)))
   } catch {
     return false
   }
@@ -78,9 +79,17 @@ function withoutObjects(said: string): WithoutObjects {
   const open: number[] = []
   let rest = ""
   let kept = 0
+  let quoted = false
   for (let index = 0; index < text.length; index += 1) {
-    if (text[index] === "{") open.push(index)
-    if (text[index] !== "}") continue
+    const char = text[index]
+    if (quoted) {
+      if (char === "\\") index += 1
+      else if (char === "\"") quoted = false
+      continue
+    }
+    if (char === "\"" && open.length > 0) quoted = true
+    if (char === "{") open.push(index)
+    if (char !== "}") continue
     const start = open.pop()
     const body = text.slice(start ?? index, index + 1)
     if (start === undefined || open.length > 0 || !isJsonObject(body)) continue

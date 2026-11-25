@@ -605,7 +605,8 @@ since an object beside a cue is a tool call written as text, which runs
 nothing. So a cue beside any object (`Sure, one sec. {"type":
 "send_message"}`) is still a cue, delivered without it. An object that
 names an action or a tool (an `action` or `tool` field with a text value,
-or an action envelope as core reads one) and a bracketed snake_case name
+a text value that is a snake_case name such as `send_message`, or an action
+envelope as core reads one) and a bracketed snake_case name
 with `key=value` arguments (`[send_message contact="Sam"]`) are written
 calls: bare assent beside one promises work as `Sure, one sec.` does
 (below), and text that is only written calls is a blank. Bare assent beside
