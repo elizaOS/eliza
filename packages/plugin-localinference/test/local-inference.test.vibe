@@ -1,10 +1,9 @@
 // spec/localInference/models.md, "Story: Run a model of my choice on my device"; spec/localInference/textAndEmbeddings.md, "Story: Answer from the model I chose"; spec/localInference/speechOutput.md, "Story: Speak a reply without cutting off what is playing"; spec/localInference/speechOutput.md, "Story: Start streamed speech without needless connections"; spec/localInference/speechRoute.md, "Story: Hear a reply on the admitted speech route"
 import { assert, it } from "@effect/vitest"
 import * as NodeServices from "@effect/platform-node/NodeServices"
-import { LaunchDocument } from "@elizaos/agent/launch"
-import type { LocalRoute } from "@elizaos/agent/routes"
-import { AgentRuntime, ModelType } from "@elizaos/core"
-import { BGE_SMALL_VECTOR_SPACE, getEmbeddingVectorSpace } from "@elizaos/core/protocol"
+import { LaunchDocument } from "@elizaos/agent"
+import type { LocalRoute } from "@elizaos/agent-host"
+import { AgentRuntime, BGE_SMALL_VECTOR_SPACE, getEmbeddingVectorSpace, ModelType } from "@elizaos/core"
 import { HttpClient } from "effect/http"
 import { modelOf } from "../gen/localInference__models.effect.vibe"
 import { curatedModels, type Catalog, type CatalogId } from "../src/catalog.vibe"
@@ -13,11 +12,12 @@ import { EngineFailed, InferenceEngine, type InstalledModel } from "../src/engin
 import { openLocalModels, type LocalModelsApi } from "../src/models.vibe"
 import { localInferencePlugin, localInferenceProvider } from "../src/plugin.vibe"
 import { localInferenceRoutes } from "../src/routes.vibe"
-import { bootstrapStreamedSpeech, cancelReply, publishReply, speechOutput, type BootstrapRequest, type Connection, type Playback, type PlaybackSlot } from "../src/speech-output.vibe"
 import {
-  type MisroutedSpeech, SpeechAttemptFailed, SpeechRoutingMachine, SpeechUnavailable, nextSpeechRoute, serviceLimitOf, speakOnRoute, speechFailureOf, speechKeyChanged,
+  bootstrapStreamedSpeech, cancelReply, publishReply, speechOutput,
+  type BootstrapRequest, type Connection, type MisroutedSpeech, type Playback, type PlaybackSlot,
+  SpeechAttemptFailed, SpeechRoutingMachine, SpeechUnavailable, nextSpeechRoute, serviceLimitOf, speakOnRoute, speechFailureOf, speechKeyChanged,
   speechLimitChanged, speechRouting, type SpeechFailure, type SpeechRoute,
-} from "../src/speech-route.vibe"
+} from "@elizaos/plugin-local-inference-client"
 import { decodeWav, encodeWav } from "../src/wav.ts"
 import { digestOf, hub } from "./support/hub.ts"
 

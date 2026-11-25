@@ -749,7 +749,10 @@
         }
       ],
       "text": "import { type Action, type ActionResult, type AwarenessRegistry, getValidationKeywordTerms, type HandlerOptions, type IAgentRuntime, logger, type Memory, textIncludesKeywordTerm, toWellFormedUnicode, type UUID, } from \"@elizaos/core\";",
-      "v4Package": "agent"
+      "v4Package": "agent",
+      "v4RetiredNames": [
+        "getValidationKeywordTerms"
+      ]
     },
     {
       "file": "packages/agent/src/actions/self-api-no-listener.test.ts",
@@ -7634,7 +7637,10 @@
         }
       ],
       "text": "import { actionGateRejection, buildCrossWorldConversationAccessContext, getValidationKeywordTerms, type IAgentRuntime, type Media, type Memory, markOwnerExclusiveDisclosureUsed, OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS, type Provider, type ProviderResult, type Room, recordOwnerExclusiveSuppression, revalidateOwnerExclusiveDisclosure, type State, toWellFormedUnicode, type UUID, } from \"@elizaos/core\";",
-      "v4Package": "agent"
+      "v4Package": "agent",
+      "v4RetiredNames": [
+        "getValidationKeywordTerms"
+      ]
     },
     {
       "file": "packages/agent/src/providers/relevant-conversations.ts",
@@ -7748,7 +7754,10 @@
         }
       ],
       "text": "import { type AccessContext, buildAccessContext, type CanonicalRecallResult, ChannelType, filterByAccessContext, getUserMessageText, getValidationKeywordTerms, type IAgentRuntime, type Memory, markOwnerExclusiveDisclosureUsed, OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS, type Provider, type ProviderResult, type Room, recordOwnerExclusiveSuppression, revalidateOwnerExclusiveDisclosure, type State, searchCanonicalConversationMemories, stringToUuid, type UUID, } from \"@elizaos/core\";",
-      "v4Package": "agent"
+      "v4Package": "agent",
+      "v4RetiredNames": [
+        "getValidationKeywordTerms"
+      ]
     },
     {
       "file": "packages/agent/src/providers/role-backfill.ts",
@@ -7960,7 +7969,10 @@
         }
       ],
       "text": "import { getValidationKeywordTerms, type IAgentRuntime, type Memory, type Provider, type ProviderResult, type Service, type State, } from \"@elizaos/core\";",
-      "v4Package": "agent"
+      "v4Package": "agent",
+      "v4RetiredNames": [
+        "getValidationKeywordTerms"
+      ]
     },
     {
       "file": "packages/agent/src/providers/session-bridge.ts",
@@ -8126,7 +8138,10 @@
         }
       ],
       "text": "import { ChannelType, getValidationKeywordTerms, type IAgentRuntime, logger, type Memory, type Provider, type State, } from \"@elizaos/core\";",
-      "v4Package": "agent"
+      "v4Package": "agent",
+      "v4RetiredNames": [
+        "getValidationKeywordTerms"
+      ]
     },
     {
       "file": "packages/agent/src/providers/user-name.ts",
@@ -40509,7 +40524,10 @@
         }
       ],
       "text": "import type { Action, CandidateActionBackstopRule, IAgentRuntime, Memory, ResponseHandlerEvaluator, State, } from \"@elizaos/core/protocol\";",
-      "v4Package": "agent"
+      "v4Package": "agent",
+      "v4RetiredNames": [
+        "CandidateActionBackstopRule"
+      ]
     },
     {
       "file": "plugins/plugin-assistant/src/__tests__/stage1/fixtures.ts",
@@ -40939,7 +40957,10 @@
         }
       ],
       "text": "import { type CharacterLanguage, getValidationKeywordTerms, normalizeCharacterLanguage, } from \"@elizaos/core\";",
-      "v4Package": "agent"
+      "v4Package": "agent",
+      "v4RetiredNames": [
+        "getValidationKeywordTerms"
+      ]
     },
     {
       "file": "plugins/plugin-assistant/src/actions/context-signal.ts",
@@ -42632,7 +42653,10 @@
         }
       ],
       "text": "import { asRecord, ChannelType, canModifyRole, findKeywordTermMatch, getLiveEntityMetadataFromMessage, getCatalogValidationKeywordTerms as getValidationKeywordTerms, logger, normalizeRole, type RoleName, resolveCanonicalOwnerId, resolveEntityRole, resolveWorldForMessage, setEntityRoleCas, toWellFormedUnicode, validateUuid, } from \"@elizaos/core\";",
-      "v4Package": "agent"
+      "v4Package": "agent",
+      "v4RetiredNames": [
+        "getCatalogValidationKeywordTerms"
+      ]
     },
     {
       "file": "plugins/plugin-assistant/src/features/advanced-capabilities/actions/room.mute.test.ts",
@@ -42770,7 +42794,10 @@
         }
       ],
       "text": "import { type Action, type ActionExample, type ActionResult, findKeywordTermMatch, getCatalogValidationKeywordTerms as getValidationKeywordTerms, type HandlerCallback, type HandlerOptions, type IAgentRuntime, logger, type Memory, ModelType, parseBooleanFromText, type State, type UUID, } from \"@elizaos/core\";",
-      "v4Package": "agent"
+      "v4Package": "agent",
+      "v4RetiredNames": [
+        "getCatalogValidationKeywordTerms"
+      ]
     },
     {
       "file": "plugins/plugin-assistant/src/features/advanced-capabilities/evaluators/_factCandidates.ts",
@@ -59606,7 +59633,10 @@
         }
       ],
       "text": "import { collectKeywordTermMatches, splitKeywordDoc, VALIDATION_KEYWORD_DOCS, } from \"@elizaos/core\";",
-      "v4Package": "agent"
+      "v4Package": "agent",
+      "v4RetiredNames": [
+        "VALIDATION_KEYWORD_DOCS"
+      ]
     },
     {
       "file": "plugins/plugin-assistant/src/runtime/addressed-to.handles.test.ts",
@@ -60920,7 +60950,18 @@
         }
       ],
       "text": "import { bindRequestOperationProjection, bindRequestOperationResult, copyBoundOperationDenial, copyRequestOperationResult, getBoundOperationDenialAttempt, getBoundOperationDenialOperation, isMatchingNotesMutationCompletion, isVerifiedOutsideRequestDenial, readNotesMutationCompletion, } from \"@elizaos/core\";",
-      "v4Package": "agent"
+      "v4Package": "agent",
+      "v4RetiredNames": [
+        "bindRequestOperationProjection",
+        "bindRequestOperationResult",
+        "copyRequestOperationResult",
+        "getBoundOperationDenialAttempt",
+        "getBoundOperationDenialOperation",
+        "isMatchingNotesMutationCompletion",
+        "isVerifiedOutsideRequestDenial",
+        "readNotesMutationCompletion",
+        "copyBoundOperationDenial"
+      ]
     },
     {
       "file": "plugins/plugin-assistant/src/runtime/planner-loop.ts",
@@ -62143,7 +62184,12 @@
         }
       ],
       "text": "import { bindRequestOperationProjection, copyRequestOperationResult, getRequestOperationIssuer, } from \"@elizaos/core\";",
-      "v4Package": "agent"
+      "v4Package": "agent",
+      "v4RetiredNames": [
+        "bindRequestOperationProjection",
+        "copyRequestOperationResult",
+        "getRequestOperationIssuer"
+      ]
     },
     {
       "file": "plugins/plugin-assistant/src/runtime/sub-planner.ts",
@@ -65403,7 +65449,10 @@
         }
       ],
       "text": "import { __resetDirectActionRoutingRulesForTests, getDirectActionRoutingRules, promoteSubactionsToActions, registerCandidateActionBackstopRule, registerDirectActionRoutingRule, runResponseHandlerEvaluators, stringToUuid, } from \"@elizaos/core\";",
-      "v4Package": "agent"
+      "v4Package": "agent",
+      "v4RetiredNames": [
+        "registerCandidateActionBackstopRule"
+      ]
     },
     {
       "file": "plugins/plugin-assistant/src/services/message.source-repeat-delivery.test.ts",
@@ -69130,7 +69179,13 @@
         }
       ],
       "text": "import { beginRequestOperationAttempt, bindTaskExtractionContext, checkBoundNotesOperation, commitNotesRequestRestriction, createModelAttemptAllowance, getStreamingContext, type IAgentRuntime, type Memory, runWithStreamingContext, runWithSuppressedModelStream, type State, } from \"@elizaos/core\";",
-      "v4Package": "agent"
+      "v4Package": "agent",
+      "v4RetiredNames": [
+        "beginRequestOperationAttempt",
+        "bindTaskExtractionContext",
+        "checkBoundNotesOperation",
+        "commitNotesRequestRestriction"
+      ]
     },
     {
       "file": "plugins/plugin-assistant/src/services/message/notes-request-issuer.ts",
@@ -69189,7 +69244,12 @@
         }
       ],
       "text": "import { beginRequestOperationIssuer, getDirectActionRoutingRules, getStreamingContext, type IAgentRuntime, type Memory, type MessageHandlerResult, type NotesRequestInterpretation, promotedSubactionDescription, type RequestOperationClassification, } from \"@elizaos/core\";",
-      "v4Package": "agent"
+      "v4Package": "agent",
+      "v4RetiredNames": [
+        "beginRequestOperationIssuer",
+        "NotesRequestInterpretation",
+        "RequestOperationClassification"
+      ]
     },
     {
       "file": "plugins/plugin-assistant/src/services/message/owner-reminder-read-route.test.ts",
@@ -69569,7 +69629,10 @@
         }
       ],
       "text": "import { appendContextEvent, attachAvailableContexts, ChannelTopicsService, ChannelType, CONTEXT_ROUTING_STATE_KEY, canActionRun, captureToolStageIO, createUnavailableGroundedActionReply, DISCOVER_ACTIONS_NAME, ElizaError, extractReplyTextFromTranscript, finalizeTrajectoryRecording, getContextRoutingFromState, getDirectActionRoutingRules, getLocalizedExamplesProvider, getRequestOperationIssuer, getStreamingContext, getTrajectoryContext, getUserMessageText, isDiscoveryActionName, isProviderContextOverflowFailure, isRateLimitError, isObjectRecord as isRecord, isTrajectoryRecordingEnabled, looksLikeRawFieldTranscript, ModelType, promotedSubactionParent, type RecordedStage, readEnv, readProviderRateLimit, runResponseHandlerEvaluators, sanitizeUserVisibleModelOutput, type TrajectoryRecorder, TurnAbortedError, timeInferenceSpan, withSemanticStageFanOut, } from \"@elizaos/core\";",
-      "v4Package": "agent"
+      "v4Package": "agent",
+      "v4RetiredNames": [
+        "getRequestOperationIssuer"
+      ]
     },
     {
       "file": "plugins/plugin-assistant/src/services/message/pipeline.ts",
@@ -69651,7 +69714,15 @@
         }
       ],
       "text": "import { bindRequestOperationProjection, bindRequestOperationResult, copyBoundOperationDenial, copyRequestOperationResult, getBoundOperationDenialAttempt, getRequestOperationIssuer, } from \"@elizaos/core\";",
-      "v4Package": "agent"
+      "v4Package": "agent",
+      "v4RetiredNames": [
+        "bindRequestOperationProjection",
+        "bindRequestOperationResult",
+        "copyRequestOperationResult",
+        "getBoundOperationDenialAttempt",
+        "getRequestOperationIssuer",
+        "copyBoundOperationDenial"
+      ]
     },
     {
       "file": "plugins/plugin-assistant/src/services/message/planned-tool.ts",
@@ -69879,7 +69950,10 @@
         }
       ],
       "text": "import { actionGateFailure, bindTaskExtractionContext, buildPlannerToolsFromTieredActions, CORE_PLANNER_TERMINALS, completionContextSources, composedPromotedSubactionDescription, composeToolDiagnosticRedactor, ElizaError, type ExecutePlannedToolCallContext, type ExecutePlannedToolCallOptions, emitStreamingHook, executePlannedToolCall, getStreamingContext, mergeEffectReceipts, normalizeActionJsonSchema, pinnedDiscriminatorDescription, pinnedDiscriminatorForPromotedChild, projectActionResultForClipboard, projectToolDiagnosticArgs, promotedSubactionParent, readActionFailureProvenance, resolveUserFacingEffectReceipts, selectCompletionContext, shouldSuppressActionResultClipboard, toWellFormedUnicode, } from \"@elizaos/core\";",
-      "v4Package": "agent"
+      "v4Package": "agent",
+      "v4RetiredNames": [
+        "bindTaskExtractionContext"
+      ]
     },
     {
       "file": "plugins/plugin-assistant/src/services/message/planner-continuation.test.ts",
@@ -70964,7 +71038,10 @@
         }
       ],
       "text": "import { AVAILABLE_CONTEXTS_STATE_KEY, CONTEXT_ROUTING_STATE_KEY, type ContextRoutingDecision, collectActionResultSizeWarnings, getActiveRoutingContexts, inferContextRoutingFromMessage, trimActionResultForPromptState, } from \"@elizaos/core\";",
-      "v4Package": "agent"
+      "v4Package": "agent",
+      "v4RetiredNames": [
+        "inferContextRoutingFromMessage"
+      ]
     },
     {
       "file": "plugins/plugin-assistant/src/services/message/source-reply-references.test.ts",
@@ -71222,7 +71299,10 @@
         }
       ],
       "text": "import { commitNotesRequestRestriction } from \"@elizaos/core\";",
-      "v4Package": "agent"
+      "v4Package": "agent",
+      "v4RetiredNames": [
+        "commitNotesRequestRestriction"
+      ]
     },
     {
       "file": "plugins/plugin-assistant/src/services/message/stage1-decision.ts",
@@ -71410,7 +71490,10 @@
         }
       ],
       "text": "import { buildModelInputBudget, buildResponseGrammar, buildSpanSamplerPlan, completionContextSources, computePrefixHashes, createHandleResponseTool, ElizaError, getCandidateActionBackstopRules, getStreamingContext, getUserMessageText, guardOutboundEnvelopeText, HANDLE_RESPONSE_TOOL_NAME, hashString, isObjectRecord, ModelType, providerReviewSources, recordInferenceSpan, sanitizeUserVisibleModelOutput, TurnAbortedError, timeInferenceSpan, withGuidedDecodeProviderOptions, withModelInputBudgetProviderOptions, withProviderReviewSchema, withRequiredCompletionSourceIdentity, } from \"@elizaos/core\";",
-      "v4Package": "agent"
+      "v4Package": "agent",
+      "v4RetiredNames": [
+        "getCandidateActionBackstopRules"
+      ]
     },
     {
       "file": "plugins/plugin-assistant/src/services/message/stage1-evaluators.recent-effect-reroute.test.ts",
@@ -71572,7 +71655,10 @@
         }
       ],
       "text": "import { activeCommittedEffectReceipts, canActionRun, type DirectActionRoutingRule, evaluateConnectorAccountPolicies, getCandidateActionBackstopRules, getDirectActionRoutingRules, getUserMessageText, normalizeContextId, } from \"@elizaos/core\";",
-      "v4Package": "agent"
+      "v4Package": "agent",
+      "v4RetiredNames": [
+        "getCandidateActionBackstopRules"
+      ]
     },
     {
       "file": "plugins/plugin-assistant/src/services/message/stage1-generation.ts",
@@ -71835,7 +71921,10 @@
         }
       ],
       "text": "import { normalizeNotesRequestInterpretation } from \"@elizaos/core\";",
-      "v4Package": "agent"
+      "v4Package": "agent",
+      "v4RetiredNames": [
+        "normalizeNotesRequestInterpretation"
+      ]
     },
     {
       "file": "plugins/plugin-assistant/src/services/message/stage1-output.ts",
@@ -71889,7 +71978,10 @@
         }
       ],
       "text": "import type { Action, CandidateActionBackstopRule, GenerateTextResult, IAgentRuntime, MessageHandlerResult, ResponseHandlerFieldRunResult, ResponseHandlerResult, UserVisibleModelOutput, } from \"@elizaos/core\";",
-      "v4Package": "agent"
+      "v4Package": "agent",
+      "v4RetiredNames": [
+        "CandidateActionBackstopRule"
+      ]
     },
     {
       "file": "plugins/plugin-assistant/src/services/message/stage1-output.ts",
@@ -74259,7 +74351,12 @@
         }
       ],
       "text": "import { type ActionResult, actionGateFailure, activeCommittedEffectReceipts, beginRequestOperationIssuer, bindTaskExtractionContext, ChannelType, type ContextObject, commitNotesRequestRestriction, conversationClientUserMemoryId, executePlannedToolCall, type IAgentRuntime, type Memory, ModelType, projectDeferredProviders, ResponseHandlerFieldRegistry, resolveActionGateFailure, resolveOwnerEntityIdOrDefault, type State, type UUID, validateToolArgs, } from \"@elizaos/core\";",
-      "v4Package": "agent"
+      "v4Package": "agent",
+      "v4RetiredNames": [
+        "beginRequestOperationIssuer",
+        "bindTaskExtractionContext",
+        "commitNotesRequestRestriction"
+      ]
     },
     {
       "file": "plugins/plugin-assistant/test/device-actions.e2e.test.ts",
@@ -76288,7 +76385,10 @@
         }
       ],
       "text": "import { ElizaError, type JSONSchema, type Memory, readTaskExtractionUserSources, type State, unwrapUserMessageText, } from \"@elizaos/core\";",
-      "v4Package": "calendar"
+      "v4Package": "calendar",
+      "v4RetiredNames": [
+        "readTaskExtractionUserSources"
+      ]
     },
     {
       "file": "plugins/plugin-calendar/src/actions/create-event-source-note.test.ts",
@@ -78536,7 +78636,10 @@
         }
       ],
       "text": "import { bindTaskExtractionContext, type ContextObject, type IAgentRuntime, type Memory, type State, } from \"@elizaos/core\";",
-      "v4Package": "calendar"
+      "v4Package": "calendar",
+      "v4RetiredNames": [
+        "bindTaskExtractionContext"
+      ]
     },
     {
       "file": "plugins/plugin-calendar/test/calendar-feed-all-day-window.pglite.test.ts",
@@ -78858,7 +78961,10 @@
         }
       ],
       "text": "import { bindTaskExtractionContext, type ContextObject, type IAgentRuntime, type Memory, type State, } from \"@elizaos/core\";",
-      "v4Package": "calendar"
+      "v4Package": "calendar",
+      "v4RetiredNames": [
+        "bindTaskExtractionContext"
+      ]
     },
     {
       "file": "plugins/plugin-calendar/test/google-calendar-watch.pglite.test.ts",
@@ -91071,7 +91177,14 @@
         }
       ],
       "text": "import { type Action, type ActionResult, beginRequestOperationAttempt, beginRequestOperationIssuer, bindTaskExtractionContext, type ContextObject, commitNotesRequestRestriction, executePlannedToolCall, type GenerateTextParams, type HandlerCallback, type IAgentRuntime, type Memory, type NotesRequestOperation, type PlannerRuntime, ResponseHandlerFieldRegistry, runWithActionRoutingContext, type State, stringToUuid, } from \"@elizaos/core\";",
-      "v4Package": "notes"
+      "v4Package": "notes",
+      "v4RetiredNames": [
+        "beginRequestOperationAttempt",
+        "beginRequestOperationIssuer",
+        "bindTaskExtractionContext",
+        "commitNotesRequestRestriction",
+        "NotesRequestOperation"
+      ]
     },
     {
       "file": "plugins/plugin-notes/src/__tests__/read-grounding.test.ts",
@@ -91110,7 +91223,10 @@
         }
       ],
       "text": "import { AgentRuntime, createCharacter, type IAgentRuntime, type NotesRequestOperation, stringToUuid, } from \"@elizaos/core\";",
-      "v4Package": "notes"
+      "v4Package": "notes",
+      "v4RetiredNames": [
+        "NotesRequestOperation"
+      ]
     },
     {
       "file": "plugins/plugin-notes/src/__tests__/request-effect.test.ts",
@@ -91239,7 +91355,19 @@
         }
       ],
       "text": "import { type Action, beginRequestOperationAttempt, beginRequestOperationIssuer, bindRequestOperationProjection, bindTaskExtractionContext, type ContextObject, ContextRegistry, commitNotesRequestRestriction, copyRequestOperationResult, executePlannedToolCall, getRequestOperationIssuer, type IAgentRuntime, isMatchingNotesMutationCompletion, isObjectRecord, type Memory, normalizeEffectReceipt, type RequestOperationIssuer, ResponseHandlerFieldRegistry, readNotesMutationCompletion, runWithActionRoutingContext, type State, stringToUuid, type TypedReadReplyBinding, } from \"@elizaos/core\";",
-      "v4Package": "notes"
+      "v4Package": "notes",
+      "v4RetiredNames": [
+        "beginRequestOperationAttempt",
+        "beginRequestOperationIssuer",
+        "bindRequestOperationProjection",
+        "bindTaskExtractionContext",
+        "commitNotesRequestRestriction",
+        "copyRequestOperationResult",
+        "getRequestOperationIssuer",
+        "isMatchingNotesMutationCompletion",
+        "RequestOperationIssuer",
+        "readNotesMutationCompletion"
+      ]
     },
     {
       "file": "plugins/plugin-notes/src/__tests__/revision-conflict.test.ts",
@@ -91307,7 +91435,10 @@
         }
       ],
       "text": "import { AgentRuntime, createCharacter, type IAgentRuntime, type NotesRequestOperation, stringToUuid, } from \"@elizaos/core\";",
-      "v4Package": "notes"
+      "v4Package": "notes",
+      "v4RetiredNames": [
+        "NotesRequestOperation"
+      ]
     },
     {
       "file": "plugins/plugin-notes/src/__tests__/trash-retention.test.ts",
@@ -91405,7 +91536,10 @@
         }
       ],
       "text": "import { type ActionResult, actionToJsonSchema, buildPlannerToolsFromActions, executePlannedToolCall, type IAgentRuntime, type JsonSchema, type Memory, type NotesRequestOperation, promoteSubactionsToActions, type State, satisfiesRoleGate, type UUID, validateSchema, } from \"@elizaos/core\";",
-      "v4Package": "notes"
+      "v4Package": "notes",
+      "v4RetiredNames": [
+        "NotesRequestOperation"
+      ]
     },
     {
       "file": "plugins/plugin-notes/src/action.ts",
@@ -91424,7 +91558,10 @@
         }
       ],
       "text": "import { NOTES_REQUEST_OPERATIONS } from \"@elizaos/core\";",
-      "v4Package": "notes"
+      "v4Package": "notes",
+      "v4RetiredNames": [
+        "NOTES_REQUEST_OPERATIONS"
+      ]
     },
     {
       "file": "plugins/plugin-notes/src/action.ts",
@@ -91996,7 +92133,15 @@
         }
       ],
       "text": "import { type ActionResult, BoundRequestOperationError, bindRequestOperationResult, checkBoundNotesOperation, copyBoundOperationDenial, getActionRoutingContext, type IAgentRuntime, type Memory, type NotesRequestOperation, READ_ONLY_VIEW_CAPABILITY_IDS, readTaskExtractionNotesRestriction, type State, } from \"@elizaos/core\";",
-      "v4Package": "notes"
+      "v4Package": "notes",
+      "v4RetiredNames": [
+        "BoundRequestOperationError",
+        "bindRequestOperationResult",
+        "checkBoundNotesOperation",
+        "NotesRequestOperation",
+        "readTaskExtractionNotesRestriction",
+        "copyBoundOperationDenial"
+      ]
     },
     {
       "file": "plugins/plugin-notes/src/request-effect.ts",
@@ -92035,7 +92180,13 @@
         }
       ],
       "text": "import { NOTES_REQUEST_OPERATIONS, type NotesRequestInterpretation, normalizeNotesRequestInterpretation, type RequestOperationClassification, type ResponseHandlerFieldEvaluator, } from \"@elizaos/core\";",
-      "v4Package": "notes"
+      "v4Package": "notes",
+      "v4RetiredNames": [
+        "NOTES_REQUEST_OPERATIONS",
+        "NotesRequestInterpretation",
+        "normalizeNotesRequestInterpretation",
+        "RequestOperationClassification"
+      ]
     },
     {
       "file": "plugins/plugin-notes/src/routes.ts",
@@ -95682,7 +95833,10 @@
         }
       ],
       "text": "import { buildCanonicalSystemPrompt, ElizaError, getTrajectoryContext, ModelType, normalizeKeywordMatchText, parseJsonModelRecord, readTaskExtractionContext, recentConversationTexts, runExtractorPipeline, runWithTrajectoryPurpose, } from \"@elizaos/core\";",
-      "v4Package": "assistant"
+      "v4Package": "assistant",
+      "v4RetiredNames": [
+        "readTaskExtractionContext"
+      ]
     },
     {
       "file": "plugins/plugin-personal-assistant/src/actions/lib/extract-task-plan.ts",
@@ -96357,7 +96511,10 @@
         }
       ],
       "text": "import { applyGroundedActionReply, ElizaError, extractUserText, logger, NoModelProviderConfiguredError, normalizeEffectReceipt, readTaskExtractionRequestIntents, resolveActionArgs, type SubactionsMap, validateUuid, } from \"@elizaos/core\";",
-      "v4Package": "assistant"
+      "v4Package": "assistant",
+      "v4RetiredNames": [
+        "readTaskExtractionRequestIntents"
+      ]
     },
     {
       "file": "plugins/plugin-personal-assistant/src/actions/life.ts",
@@ -100634,7 +100791,11 @@
         }
       ],
       "text": "import { attestDeliveryAudienceFromCanonicalRoom, bindTaskExtractionContext, ChannelType, CONTEXT_ROUTING_STATE_KEY, type ContextObject, completionContextSources, conversationClientUserMemoryId, getContextRoutingFromState, hardenIncomingUserMessage, type Memory, normalizeEffectReceipt, readTaskExtractionRequestIntents, runWithTrajectoryContext, type State, selectCompletionContext, TaskService, type UUID, } from \"@elizaos/core\";",
-      "v4Package": "assistant"
+      "v4Package": "assistant",
+      "v4RetiredNames": [
+        "bindTaskExtractionContext",
+        "readTaskExtractionRequestIntents"
+      ]
     },
     {
       "file": "plugins/plugin-personal-assistant/src/lifeops/domains/reminders-service.ts",
@@ -105634,7 +105795,10 @@
         }
       ],
       "text": "import type { CandidateActionBackstopRule } from \"@elizaos/core\";",
-      "v4Package": "assistant"
+      "v4Package": "assistant",
+      "v4RetiredNames": [
+        "CandidateActionBackstopRule"
+      ]
     },
     {
       "file": "plugins/plugin-personal-assistant/src/lifeops/scheduled-task/deferred-inbound-scans.integration.test.ts",
@@ -107070,7 +107234,10 @@
         }
       ],
       "text": "import { findKeywordTermMatch, getValidationKeywordTerms } from \"@elizaos/core\";",
-      "v4Package": "assistant"
+      "v4Package": "assistant",
+      "v4RetiredNames": [
+        "getValidationKeywordTerms"
+      ]
     },
     {
       "file": "plugins/plugin-personal-assistant/src/lifeops/voice/grounded-reply.ts",
@@ -107334,7 +107501,10 @@
         }
       ],
       "text": "import { type EventPayload, EventType, type IAgentRuntime, type MessagePayload, promoteSubactionsToActions, registerCandidateActionBackstopRule, registerDirectActionRoutingRule, registerLocalizedExamplesProvider, ServiceType, } from \"@elizaos/core\";",
-      "v4Package": "assistant"
+      "v4Package": "assistant",
+      "v4RetiredNames": [
+        "registerCandidateActionBackstopRule"
+      ]
     },
     {
       "file": "plugins/plugin-personal-assistant/src/plugin.ts",
@@ -123541,7 +123711,6 @@
         "CONTEXT_ROUTING_STATE_KEY",
         "CONVERSATION_MESSAGES_HEADER_PREFIX",
         "CORE_PLANNER_TERMINALS",
-        "CandidateActionBackstopRule",
         "CanonicalJsonOptions",
         "CanonicalRecallResult",
         "CapabilityAvailability",
@@ -124341,7 +124510,6 @@
         "UpdateTriggerRequest",
         "UpsertConnectorAccountParams",
         "UserVisibleModelOutput",
-        "VALIDATION_KEYWORD_DOCS",
         "VECTOR_DIMS",
         "VISION_IMAGE_FETCH_TIMEOUT_MS",
         "VISION_IMAGE_MAX_BYTES",
@@ -124590,9 +124758,7 @@
         "getAnthropicAccountPoolBridge",
         "getBoundOperationDenialAttempt",
         "getBoundOperationDenialOperation",
-        "getCandidateActionBackstopRules",
         "getCapabilityRouter",
-        "getCatalogValidationKeywordTerms",
         "getClientChatRooms",
         "getConfiguredOwnerEntityIds",
         "getConnectorAccountManager",
@@ -124637,7 +124803,6 @@
         "getTurnActionConstraint",
         "getUnresolvedSenderRoleFloor",
         "getUserMessageText",
-        "getValidationKeywordTerms",
         "getVerifiedRelatedEntityIds",
         "getViewModalities",
         "getWorldMetadataRevision",
@@ -124662,7 +124827,6 @@
         "identityDeliveryClaimsAuthoritative",
         "incomingMessagePersistenceSnapshot",
         "incomingPipelineHookContext",
-        "inferContextRoutingFromMessage",
         "inferenceRamClassFromEnv",
         "inferenceTimingRegistry",
         "inflectionTermKeys",
@@ -124884,7 +125048,6 @@
         "redactSensitiveRequestMetadata",
         "redactSensitiveText",
         "referencePlannerQueryTokens",
-        "registerCandidateActionBackstopRule",
         "registerDirectActionRoutingRule",
         "registerLocalizedExamplesProvider",
         "registerProviderModels",
@@ -125079,7 +125242,6 @@
         "AgentCapabilityNextAction",
         "AgentCapabilityTransport",
         "CANONICAL_JSON_UNBOUNDED",
-        "CandidateActionBackstopRule",
         "CapabilityHandoffRequest",
         "ChannelType",
         "ChatImageAttachment",
@@ -125373,6 +125535,186 @@
         }
       ],
       "activeProjection": "Only each row's explicit v4RetiredNames are excluded from active consumer requirements. Original names/text/file/line/package remain factual historical evidence. byModule reflects this active projection and preserves file counts."
+    },
+    "keywordCatalogRetirement": {
+      "specification": "spec/core/protocols.md",
+      "decision": "v4-model-reads-requests",
+      "imports": [
+        {
+          "file": "packages/agent/src/actions/runtime.ts",
+          "line": 3,
+          "module": "@elizaos/core",
+          "names": [
+            "getValidationKeywordTerms"
+          ],
+          "reason": "Retired v4 request keyword catalog: deciding what a person asked for is the model's, and current source has no caller of the catalog or its lookups. Original import facts remain in this row; every other name remains required."
+        },
+        {
+          "file": "packages/agent/src/providers/recent-conversations.ts",
+          "line": 11,
+          "module": "@elizaos/core",
+          "names": [
+            "getValidationKeywordTerms"
+          ],
+          "reason": "Retired v4 request keyword catalog: deciding what a person asked for is the model's, and current source has no caller of the catalog or its lookups. Original import facts remain in this row; every other name remains required."
+        },
+        {
+          "file": "packages/agent/src/providers/relevant-conversations.ts",
+          "line": 13,
+          "module": "@elizaos/core",
+          "names": [
+            "getValidationKeywordTerms"
+          ],
+          "reason": "Retired v4 request keyword catalog: deciding what a person asked for is the model's, and current source has no caller of the catalog or its lookups. Original import facts remain in this row; every other name remains required."
+        },
+        {
+          "file": "packages/agent/src/providers/rolodex.ts",
+          "line": 9,
+          "module": "@elizaos/core",
+          "names": [
+            "getValidationKeywordTerms"
+          ],
+          "reason": "Retired v4 request keyword catalog: deciding what a person asked for is the model's, and current source has no caller of the catalog or its lookups. Original import facts remain in this row; every other name remains required."
+        },
+        {
+          "file": "packages/agent/src/providers/ui-catalog.ts",
+          "line": 5,
+          "module": "@elizaos/core",
+          "names": [
+            "getValidationKeywordTerms"
+          ],
+          "reason": "Retired v4 request keyword catalog: deciding what a person asked for is the model's, and current source has no caller of the catalog or its lookups. Original import facts remain in this row; every other name remains required."
+        },
+        {
+          "file": "plugins/plugin-assistant/src/actions/context-signal-lexicon.ts",
+          "line": 12,
+          "module": "@elizaos/core",
+          "names": [
+            "getValidationKeywordTerms"
+          ],
+          "reason": "Retired v4 request keyword catalog: deciding what a person asked for is the model's, and current source has no caller of the catalog or its lookups. Original import facts remain in this row; every other name remains required."
+        },
+        {
+          "file": "plugins/plugin-assistant/src/features/advanced-capabilities/actions/role.ts",
+          "line": 21,
+          "module": "@elizaos/core",
+          "names": [
+            "getCatalogValidationKeywordTerms"
+          ],
+          "reason": "Retired v4 request keyword catalog: deciding what a person asked for is the model's, and current source has no caller of the catalog or its lookups. Original import facts remain in this row; every other name remains required."
+        },
+        {
+          "file": "plugins/plugin-assistant/src/features/advanced-capabilities/actions/room.ts",
+          "line": 13,
+          "module": "@elizaos/core",
+          "names": [
+            "getCatalogValidationKeywordTerms"
+          ],
+          "reason": "Retired v4 request keyword catalog: deciding what a person asked for is the model's, and current source has no caller of the catalog or its lookups. Original import facts remain in this row; every other name remains required."
+        },
+        {
+          "file": "plugins/plugin-assistant/src/runtime/action-search-keywords.ts",
+          "line": 8,
+          "module": "@elizaos/core",
+          "names": [
+            "VALIDATION_KEYWORD_DOCS"
+          ],
+          "reason": "Retired v4 request keyword catalog: deciding what a person asked for is the model's, and current source has no caller of the catalog or its lookups. Original import facts remain in this row; every other name remains required."
+        },
+        {
+          "file": "plugins/plugin-personal-assistant/src/lifeops/validate/coding-task-request.ts",
+          "line": 10,
+          "module": "@elizaos/core",
+          "names": [
+            "getValidationKeywordTerms"
+          ],
+          "reason": "Retired v4 request keyword catalog: deciding what a person asked for is the model's, and current source has no caller of the catalog or its lookups. Original import facts remain in this row; every other name remains required."
+        }
+      ]
+    },
+    "contextSignalsRetirement": {
+      "specification": "spec/core/protocols.md",
+      "decision": "v4-model-reads-requests",
+      "imports": [
+        {
+          "file": "plugins/plugin-assistant/src/services/message/response-state.ts",
+          "line": 4,
+          "module": "@elizaos/core",
+          "names": [
+            "inferContextRoutingFromMessage"
+          ],
+          "reason": "Retired v4 word-list context router: which contexts a request needs is the model's, and current source has no caller of inferContextRoutingFromText or inferContextRoutingFromMessage. Original import facts remain in this row; every other name remains required."
+        }
+      ]
+    },
+    "backstopRetirement": {
+      "specification": "spec/core/registries.md",
+      "decision": "v4-model-chooses-every-call",
+      "imports": [
+        {
+          "file": "plugins/plugin-assistant/src/__tests__/stage1/fixtures.ts",
+          "line": 4,
+          "module": "@elizaos/core/protocol",
+          "names": [
+            "CandidateActionBackstopRule"
+          ],
+          "reason": "Retired v4 candidate backstop registry: a backstop matched the person's words to add candidate actions before the model; the model now chooses every call, and current source registers none. Original import facts remain in this row; every other name remains required."
+        },
+        {
+          "file": "plugins/plugin-assistant/src/services/message.side-effect-claim.test.ts",
+          "line": 20,
+          "module": "@elizaos/core",
+          "names": [
+            "registerCandidateActionBackstopRule"
+          ],
+          "reason": "Retired v4 candidate backstop registry: a backstop matched the person's words to add candidate actions before the model; the model now chooses every call, and current source registers none. Original import facts remain in this row; every other name remains required."
+        },
+        {
+          "file": "plugins/plugin-assistant/src/services/message/stage1-decision.ts",
+          "line": 19,
+          "module": "@elizaos/core",
+          "names": [
+            "getCandidateActionBackstopRules"
+          ],
+          "reason": "Retired v4 candidate backstop registry: a backstop matched the person's words to add candidate actions before the model; the model now chooses every call, and current source registers none. Original import facts remain in this row; every other name remains required."
+        },
+        {
+          "file": "plugins/plugin-assistant/src/services/message/stage1-evaluators.ts",
+          "line": 13,
+          "module": "@elizaos/core",
+          "names": [
+            "getCandidateActionBackstopRules"
+          ],
+          "reason": "Retired v4 candidate backstop registry: a backstop matched the person's words to add candidate actions before the model; the model now chooses every call, and current source registers none. Original import facts remain in this row; every other name remains required."
+        },
+        {
+          "file": "plugins/plugin-assistant/src/services/message/stage1-output.ts",
+          "line": 4,
+          "module": "@elizaos/core",
+          "names": [
+            "CandidateActionBackstopRule"
+          ],
+          "reason": "Retired v4 candidate backstop registry: a backstop matched the person's words to add candidate actions before the model; the model now chooses every call, and current source registers none. Original import facts remain in this row; every other name remains required."
+        },
+        {
+          "file": "plugins/plugin-personal-assistant/src/lifeops/scheduled-task/candidate-backstop.ts",
+          "line": 19,
+          "module": "@elizaos/core",
+          "names": [
+            "CandidateActionBackstopRule"
+          ],
+          "reason": "Retired v4 candidate backstop registry: a backstop matched the person's words to add candidate actions before the model; the model now chooses every call, and current source registers none. Original import facts remain in this row; every other name remains required."
+        },
+        {
+          "file": "plugins/plugin-personal-assistant/src/plugin.ts",
+          "line": 13,
+          "module": "@elizaos/core",
+          "names": [
+            "registerCandidateActionBackstopRule"
+          ],
+          "reason": "Retired v4 candidate backstop registry: a backstop matched the person's words to add candidate actions before the model; the model now chooses every call, and current source registers none. Original import facts remain in this row; every other name remains required."
+        }
+      ]
     }
   }
 }

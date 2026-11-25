@@ -9,7 +9,7 @@ verified boot. Sources: develop's
 `verify-launcher-image.mjs` and the device halves of
 `aosp-clock-handlers.mjs`, `sense-listener.mjs` (`verifyAospListener`) and
 `secure-camera.mjs` (`verifySecureCameraImage`). The shell is `verifyImage`
-in `src/image/verify-device.vibe`, exported from `@elizaos/os/image`; the
+in `src/image/verify-device.vibe`, exported from `@elizaos/os`; the
 cable update operator ([operator](../update/operator.md)) uses it after an
 update.
 

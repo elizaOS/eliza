@@ -1,0 +1,294 @@
+// spec/os/browser/address.md, "Story: Classify what I typed"; spec/os/browser/address.md, "Story: Share only plain web addresses"; spec/os/browser/tabHost/storage.md, "Story: Keep my normal tabs and history across restarts"; spec/os/browser/tabHost/storage.md, "Story: Restore my tabs only when nothing is open"; spec/os/browser/tabHost/reading.md, "Story: Know before I ask whether this device can read a page privately"; spec/os/browser/tabHost/reading.md, "Story: Ask about a page even when it cannot be read privately"
+import { assert, it } from "@effect/vitest"
+import * as NodeServices from "@effect/platform-node/NodeServices"
+import { isSecureWebAddress, isWebAddress, parseBrowserAddressInput } from "../src/browser/address.ts"
+import { bookmarkBrowserUrl, browsingSnapshot, normalizeBrowsing, restoreBrowsing, savedBrowserUrl } from "../src/bridges/browsing-session.vibe"
+import { createReadingSupport, pageQuestionReading, SENSITIVE_PAGE, sensitiveReadingText, sensitiveReadingUrl } from "../src/bridges/page-reading.vibe"
+import { readPublicPageSource } from "../src/bridges/page-source.vibe"
+
+effect function scratch(name: string) {
+  const files = try FileSystem.FileSystem
+  return try files.makeTempDirectoryScoped({ prefix: `${name}-` })
+}
+
+module node {
+  import { createServer, type Server } from "node:http"
+  import type { AddressInfo } from "node:net"
+  import { Window } from "happy-dom"
+
+  export interface Site {
+    readonly server: Server
+    readonly base: string
+  }
+
+  export interface Page {
+    readonly status?: number
+    readonly type: string
+    readonly body: string
+    readonly length?: number
+    readonly location?: string
+    readonly open?: boolean
+  }
+
+  export async function serve(pages: Readonly<Record<string, Page>>): Promise<Site> {
+    const server = createServer((request, response) => {
+      const page = pages[request.url ?? ""]
+      if (page === undefined) {
+        response.writeHead(404, { "content-type": "text/plain" })
+        response.end()
+        return
+      }
+      response.writeHead(page.status ?? 200, {
+        "content-type": page.type,
+        ...(page.length === undefined ? {} : { "content-length": String(page.length) }),
+        ...(page.location === undefined ? {} : { location: page.location }),
+      })
+      if (page.open === true) response.write(page.body)
+      else response.end(page.length === undefined ? page.body : page.body.slice(0, page.length))
+    })
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve))
+    return { server, base: `http://127.0.0.1:${(server.address() as AddressInfo).port}` }
+  }
+
+  export async function close(site: Site): Promise<void> {
+    await new Promise<void>((resolve) => site.server.close(() => resolve()))
+  }
+
+  const window = new Window()
+
+  /** @throws {never} */
+  export function parseHtml(html: string): DocumentFragment {
+    const template = window.document.createElement("template")
+    template.innerHTML = html
+    return template.content as unknown as DocumentFragment
+  }
+
+  /** @throws {never} */
+  export function nativeRefusal(code: string): Error {
+    return Object.assign(new Error(code), { code })
+  }
+
+  export async function outcome<A>(run: () => Promise<A>): Promise<{ readonly ok: A } | { readonly failed: unknown }> {
+    return run().then((ok) => ({ ok }), (failed: unknown) => ({ failed }))
+  }
+}
+import { close, nativeRefusal, outcome, parseHtml, serve, type Page } from node
+
+const typed = (input: string, defaultProtocol: "http:" | "https:" = "https:") => parseBrowserAddressInput(input, { defaultProtocol })
+
+it("Classify what I typed: words search, addresses open with my default protocol, and nothing else opens (spec/os/browser/address.md, \"Story: Classify what I typed\"; spec/os/browser/address.md, \"Typed text is an address to open, words to search for, or a refusal with its reason\"; spec/os/browser/address.md, \"A search never carries an at sign to the search provider\")", () => {
+  const inputs = ["dinner at eight", "   ", "exa\u0007mple.com", "a\\b.com", "site:example.com", "site:me@example.com", "example.com", "localhost:3000", "nas:8080/files", "[::1]:8080", "[::1]", "[1]", "[1:30]", "javascript:alert(1)", "file:///etc/hosts", "http://user:pw@example.com", "user@example.com", "me@home", "re: dinner", "time: 1:30 pm", "//example.com/x", "HTTP://Example.com/a b", "http://[::1"]
+  assert.deepStrictEqual(inputs.map((input) => typed(input)), [
+    { kind: "search", query: "dinner at eight" },
+    { kind: "rejected", reason: "empty" },
+    { kind: "rejected", reason: "invalid-input" },
+    { kind: "rejected", reason: "invalid-input" },
+    { kind: "search", query: "site:example.com" },
+    { kind: "rejected", reason: "credentials" },
+    { kind: "url", href: "https://example.com/" },
+    { kind: "url", href: "https://localhost:3000/" },
+    { kind: "url", href: "https://nas:8080/files" },
+    { kind: "url", href: "https://[::1]:8080/" },
+    { kind: "url", href: "https://[::1]/" },
+    { kind: "search", query: "[1]" },
+    { kind: "search", query: "[1:30]" },
+    { kind: "rejected", reason: "unsupported-protocol" },
+    { kind: "rejected", reason: "unsupported-protocol" },
+    { kind: "rejected", reason: "credentials" },
+    { kind: "rejected", reason: "credentials" },
+    { kind: "rejected", reason: "credentials" },
+    { kind: "search", query: "re: dinner" },
+    { kind: "search", query: "time: 1:30 pm" },
+    { kind: "url", href: "https://example.com/x" },
+    { kind: "url", href: "http://example.com/a%20b" },
+    { kind: "rejected", reason: "invalid-url" },
+  ])
+  assert.deepStrictEqual([typed("example.com", "http:"), typed("localhost:3000", "http:"), typed("https://example.com", "http:")], [
+    { kind: "url", href: "http://example.com/" },
+    { kind: "url", href: "http://localhost:3000/" },
+    { kind: "url", href: "https://example.com/" },
+  ])
+})
+
+it("Share only plain web addresses: one test for every feature that saves, reads or drives a page (spec/os/browser/address.md, \"Story: Share only plain web addresses\"; spec/os/browser/address.md, \"A web address is HTTP or HTTPS with a valid host, no credentials, clean text and at most 8,192 units\")", () => {
+  const addresses: readonly unknown[] = ["https://example.test/", "http://example.test/", "https://user@example.test/", "https://example.test/a b", "https://example.test:70000/", "file:///local", "https:///path", "https:/path", "https://[::1]:8080/", `https://example.test/${"a".repeat(8172)}`, `https://example.test/${"a".repeat(8171)}`, "", 42]
+  assert.deepStrictEqual(addresses.map((address) => [isWebAddress(address), isSecureWebAddress(address)]), [
+    [true, true],
+    [true, false],
+    [false, false],
+    [false, false],
+    [false, false],
+    [false, false],
+    [false, false],
+    [false, false],
+    [true, true],
+    [false, false],
+    [true, true],
+    [false, false],
+    [false, false],
+  ])
+})
+
+it.effect("Keep my normal tabs and history across restarts, and restore them only into an untouched new tab (spec/os/browser/tabHost/storage.md, \"Story: Keep my normal tabs and history across restarts\"; spec/os/browser/tabHost/storage.md, \"An address is saved only when it is a web address of at most 4,096 units, and bookmarked only over HTTPS\"; spec/os/browser/tabHost/storage.md, \"A saved session keeps the first valid row of each tab and address\"; spec/os/browser/tabHost/storage.md, \"A visit time is kept only for a kept history address, as a positive whole number of milliseconds\"; spec/os/browser/tabHost/storage.md, \"A snapshot offers the codec at most eight normal tabs whose address is known\"; spec/os/browser/tabHost/storage.md, \"Story: Restore my tabs only when nothing is open\"; spec/os/browser/tabHost/storage.md, \"Saved tabs replace only an untouched single new tab, and otherwise only history is merged\")", () => effect {
+  const asked: string[] = []
+  const pages: Readonly<Record<string, { url?: string; title?: string }>> = {
+    mail: { url: "https://user:pw@mail.example.test/", title: "Mail" },
+    news: { url: "https://news.example.test/today", title: `Today\u0007${"n".repeat(250)}` },
+    secret: { url: "https://secret.example.test/" },
+    blank: {},
+    docs: { url: "http://docs.example.test/guide", title: "  Guide  " },
+  }
+  const saved = browsingSnapshot(
+    {
+      tabs: [{ id: "mail" }, { id: "secret", priv: true }, { id: "news" }, { id: "blank" }, { id: "news" }, { id: "docs" }],
+      visits: ["https://news.example.test/today", "javascript:alert(1)", "https://news.example.test/today", "http://docs.example.test/guide"],
+      cur: "secret",
+    },
+    (id) => {
+      asked.push(id)
+      return pages[id]
+    },
+  )
+  assert.deepStrictEqual(asked, ["mail", "news", "blank", "news", "docs"])
+  assert.deepStrictEqual(saved, {
+    history: ["https://news.example.test/today", "http://docs.example.test/guide"],
+    tabs: [
+      { id: "news", url: "https://news.example.test/today", title: `Today ${"n".repeat(194)}` },
+      { id: "docs", url: "http://docs.example.test/guide", title: "Guide" },
+    ],
+    cur: "",
+  })
+  const files = try FileSystem.FileSystem
+  const reread = try scoped(effect {
+    const record = `${try scratch("browsing")}/session.json`
+    try files.writeFileString(record, JSON.stringify({ ...saved, cur: "docs" }))
+    const text = try files.readFileString(record)
+    return try Effect.try((): unknown => JSON.parse(text))
+  })
+  assert.deepStrictEqual(restoreBrowsing(reread, { visits: ["https://start.example.test/"] }, true), {
+    visits: ["https://start.example.test/", "https://news.example.test/today", "http://docs.example.test/guide"],
+    restored: saved.tabs,
+    cur: "docs",
+  })
+  assert.deepStrictEqual(restoreBrowsing({ ...saved, cur: "gone" }, { visits: [] }, true).cur, "news")
+  assert.deepStrictEqual(restoreBrowsing(reread, { visits: ["https://news.example.test/today"] }, false), {
+    visits: ["https://news.example.test/today", "http://docs.example.test/guide"],
+    restored: [],
+  })
+  const many = Array.from({ length: 12 }, (_, at) => ({ id: `t${at}`, url: `https://example.test/${at}`, title: `Tab ${at}` }))
+  const damaged = normalizeBrowsing({
+    history: [7, "https://example.test/a", "file:///etc/passwd", ...Array.from({ length: 120 }, (_, at) => `https://example.test/h${at}`)],
+    tabs: [null, { id: "bad id", url: "https://example.test/" }, { id: "t0", url: "https://u@example.test/" }, ...many],
+    cur: "t11",
+  })
+  assert.deepStrictEqual([damaged.history.length, damaged.history[0], damaged.tabs.map((tab) => tab.id), damaged.cur], [100, "https://example.test/a", many.slice(0, 8).map((tab) => tab.id), ""])
+  assert.deepStrictEqual(normalizeBrowsing("garbled"), { history: [], tabs: [], cur: "" })
+  const visited = { "https://news.example.test/today": 1_700_000_000_000 }
+  const timed = browsingSnapshot(
+    { tabs: [], visits: saved.history, cur: "", visitTimes: { ...visited, "http://docs.example.test/guide": 1.5, "https://elsewhere.example.test/": 9, "javascript:alert(1)": 7 } },
+    () => undefined,
+  )
+  assert.deepStrictEqual(timed, { history: saved.history, tabs: [], cur: "", visitTimes: visited })
+  assert.deepStrictEqual(normalizeBrowsing({ ...timed, visitTimes: { "http://docs.example.test/guide": 0 } }), { history: saved.history, tabs: [], cur: "" })
+  assert.deepStrictEqual(restoreBrowsing(timed, { visits: ["https://start.example.test/"] }, false), {
+    visits: ["https://start.example.test/", ...saved.history],
+    restored: [],
+    visitTimes: visited,
+  })
+  assert.deepStrictEqual(
+    [savedBrowserUrl(`https://example.test/${"a".repeat(4075)}`), savedBrowserUrl(`https://example.test/${"a".repeat(4076)}`), bookmarkBrowserUrl("https://example.test/"), bookmarkBrowserUrl("http://example.test/")],
+    [true, false, true, false],
+  )
+}.pipe(Effect.provide(NodeServices.layer)), 180_000)
+
+it.live("Know before I ask whether this device can read a page privately: one shared query, and only a definite answer is kept (spec/os/browser/tabHost/reading.md, \"Story: Know before I ask whether this device can read a page privately\"; spec/os/browser/tabHost/reading.md, \"One native support query is shared and only a definite answer is remembered\")", () => effect {
+  const answers: unknown[] = ["fail", { available: "yes" }, { available: false }]
+  let queries = 0
+  let changes = 0
+  const support = createReadingSupport(async () => {
+    const answer = answers[queries]
+    queries += 1
+    if (answer === "fail") throw nativeRefusal("bridge-closed")
+    return answer
+  }, () => {
+    changes += 1
+  })
+  const first = try promise(() => Promise.all([support.check(), support.check()]))
+  const second = try promise(() => support.check())
+  const third = try promise(() => support.check())
+  const fourth = try promise(() => support.check())
+  assert.deepStrictEqual([first, second, third, fourth, support.state, queries, changes], [["unknown", "unknown"], "unknown", "unavailable", "unavailable", "unavailable", 3, 1])
+})
+
+it.live("Ask about a page even when it cannot be read privately: an empty review when the isolated world is missing, none for credentials (spec/os/browser/tabHost/reading.md, \"Story: Ask about a page even when it cannot be read privately\"; spec/os/browser/tabHost/reading.md, \"A sensitive page refuses Ask and an unavailable isolated world opens an empty review\")", () => effect {
+  const sensitive = nativeRefusal(SENSITIVE_PAGE)
+  const broken = nativeRefusal("reading-not-ready")
+  const replies: readonly (() => Promise<unknown>)[] = [
+    async () => ({ text: "Garden journal", truncated: true }),
+    async () => ({ text: "Garden journal", truncated: "yes" }),
+    async () => ({ text: "   " }),
+    async () => ({ text: "a".repeat(5001) }),
+    async () => ({}),
+    () => Promise.reject(nativeRefusal("isolated-world-unavailable")),
+    () => Promise.reject(sensitive),
+    () => Promise.reject(broken),
+  ]
+  const results = try promise(() => Promise.all(replies.map((reply) => outcome(() => pageQuestionReading(reply)))))
+  assert.deepStrictEqual(results.slice(0, 6), [
+    { ok: { text: "Garden journal", truncated: true } },
+    { ok: { text: "Garden journal", truncated: false } },
+    { ok: { text: "", truncated: false } },
+    { ok: { text: "", truncated: false } },
+    { ok: { text: "", truncated: false } },
+    { ok: { text: "", truncated: false } },
+  ])
+  assert.deepStrictEqual(results.slice(6), [{ failed: sensitive }, { failed: broken }])
+  const leaked = try promise(() => outcome(() => pageQuestionReading(async () => ({ text: "Your verification code is 482913" }))))
+  assert.strictEqual("failed" in leaked && typeof leaked.failed === "object" && leaked.failed !== null && "code" in leaked.failed ? leaked.failed.code : undefined, SENSITIVE_PAGE)
+  assert.deepStrictEqual(
+    ["https://example.test/article", "https://accounts.google.com/x", "https://vault.bitwarden.com/", "https://example.test/login?next=1", "https://example.test/%E0%A4%A", "file:///notes", "https://example.test/designing-blogs"].map(sensitiveReadingUrl),
+    [false, true, true, true, true, true, false],
+  )
+  assert.deepStrictEqual(["Designing a blog in a dialog-inner layout", "Enter your signInCode", "Use 123456 to continue", "Order 12345 shipped"].map(sensitiveReadingText), [false, true, true, false])
+})
+
+it.live("Ask about a page even when it cannot be read privately: the public page source is read without credentials and never offered for a sign-in page (spec/os/browser/tabHost/reading.md, \"Story: Ask about a page even when it cannot be read privately\"; spec/os/browser/tabHost/reading.md, \"A sensitive page refuses Ask and an unavailable isolated world opens an empty review\")", () => effect {
+  const article = "<html><head><title>x</title></head><body><nav>Sign in</nav><main><h1>Garden journal</h1><p>Plant   beans<br>in May.</p><p hidden>secret</p><div style=\"display:none\">hidden</div><script>steal()</script></main><footer>Log in</footer></body></html>"
+  const site: Record<string, Page> = {
+    "/article": { type: "text/html; charset=utf-8", body: article },
+    "/notes": { type: "text/plain", body: "Water daily.\n\n\n\nHarvest in fall." },
+    "/form": { type: "text/html", body: "<main><p>Welcome back</p><input type=\"password\" name=\"pw\"></main>" },
+    "/huge": { type: "text/html", body: "<p>x</p>", length: 300_000 },
+    "/stream-huge": { type: "text/html", body: "x".repeat(270_000) },
+    "/unfinished": { type: "text/plain", body: "Partial article", open: true },
+    "/data": { type: "application/json", body: "{}" },
+    "/moved": { status: 302, type: "text/html", body: "", location: "/article" },
+    "/code": { type: "text/plain", body: "Your code is 4829131" },
+  }
+  const served = try promise(() => serve(site))
+  const read = (path: string, timeoutMs?: number) => outcome(() => readPublicPageSource(`${served.base}${path}`, new AbortController().signal, { parseHtml, timeoutMs }))
+  const results = try ensuring(
+    promise(() => Promise.all([
+      ...["/article", "/notes", "/form", "/huge", "/stream-huge", "/data", "/moved", "/code", "/missing"].map((path) => read(path)),
+      read("/unfinished", 250),
+    ])),
+    promise(() => close(served)),
+  )
+  assert.deepStrictEqual(results, [
+    { ok: { text: "Garden journal\n\nPlant beans\nin May.", truncated: false } },
+    { ok: { text: "Water daily.\n\nHarvest in fall.", truncated: false } },
+    { ok: { blocked: true } },
+    { ok: { blocked: true } },
+    { ok: { blocked: true } },
+    { ok: undefined },
+    { ok: undefined },
+    { ok: { blocked: true } },
+    { ok: undefined },
+    { ok: undefined },
+  ])
+  const aborted = new AbortController()
+  aborted.abort()
+  const stopped = try promise(() => outcome(() => readPublicPageSource("https://example.test/article", aborted.signal, { fetch: () => Promise.reject(new Error("offline")) })))
+  const refused = try promise(() => outcome(() => readPublicPageSource("https://example.test/sign-in", new AbortController().signal)))
+  assert.deepStrictEqual(["failed" in stopped, refused], [true, { ok: { blocked: true } }])
+})

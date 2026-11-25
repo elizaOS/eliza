@@ -20,10 +20,9 @@ module node {
 import { identityOf, linked, trashId } from node
 import { apply, canPrune, classifyRow, emptyErases, machineOver, initial as fresh, type TrashRow } from "../../gen/files__reviewedOperations.effect.vibe"
 import { renameOutcome, type FilesOp, type FilesRowCheck } from "../../gen/os__android__files__storage.effect.vibe"
-import { baseName, downloadsListing, filterMatches, freeName, inCategory, joinPath, listing, mimeFromName, parentOf, validName, validPath, within, DOWNLOAD_FOLDER,
-  type StorageEntry, type TrashEntry } from "./model.vibe"
-import { checkSelection, FilesVolume, succeeded, type RowOutcome, type VolumeRefused } from "./volume.vibe"
-import { ANSWERS, checkErase, decodeRecord, listShown, listUnreadable, newestFirst, recordRead, refused, TRASH, trashEach, unrestorable, type TrashRecord } from "./trash-journal.vibe"
+import {
+  baseName, downloadsListing, filterMatches, freeName, inCategory, joinPath, listing, mimeFromName, parentOf, validName, validPath, within, DOWNLOAD_FOLDER, type StorageEntry, type TrashEntry, checkSelection, FilesVolume, succeeded, type RowOutcome, type VolumeRefused, ANSWERS, checkErase, decodeRecord, listShown, listUnreadable, newestFirst, recordRead, refused, TRASH, trashEach, unrestorable, type TrashRecord,
+} from "@elizaos/plugin-files-client"
 
 const WALK_LIMIT = 10_000
 const localTrashId = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/

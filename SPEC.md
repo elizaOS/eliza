@@ -256,6 +256,17 @@ that area to its workspace directory, for example
 `"specOwners": { "workflow": "packages/plugin-workflows" }`. Each directory
 can own one area. The `--owner` argument is the spec area name.
 
+An area's code may span more than one package, for example a browser-safe
+client beside the Node host it was split from. The owner's *companions*
+are listed in the root `package.json`, for example
+`"specCompanions": { "workflow": ["packages/plugin-workflow-client"] }`.
+A companion is checked as its owner is: it gets the same `gen/`, with its
+Effect adapters under its own package name, so a companion's `Machine`
+services are never its owner's; its stages run in its own directory, and
+its tests and drivers count for its owner's specs. A directory is the
+companion of one area and owns none. `pnpm gen --owner <name>` writes the
+companions' `gen/` too.
+
 For an independent owner build, `pnpm gen --owner <name>` reads every spec
 in `spec/<name>/` and follows its imports and links to check references.
 It compiles the owner's Quint and the Quint it imports, and writes the same

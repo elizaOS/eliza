@@ -1,0 +1,113 @@
+// spec/cloud/nativeClients/deviceKeys.md, "Story: Keep a tablet's key without signing in again"; spec/cloud/nativeClients/deviceKeys.md, "A renewal answered again leaves its waiting successor as it was and mints no key"
+import { assert, describe, it } from "@effect/vitest"
+import { check, testCloud, type TestCloud } from "../support/cloud.vibe"
+import { seeded } from "../support/seeding.vibe"
+import { manualClock } from "../support/clock.ts"
+import { s256, signedIn } from "../support/identity-fixture.ts"
+
+const binding = { clientId: "com.example.fixture", environment: "staging", redirectUri: "https://www.staging.example.com/apps/fixture/sign-in" }
+const day = 86_400_000
+const start = 1_000_000
+
+function bearer(token: string) {
+  return { authorization: `Bearer ${token}` }
+}
+
+function failure(body: unknown): unknown {
+  const refusal = body as { readonly error?: string; readonly reason?: string }
+  return [refusal.error, refusal.reason]
+}
+
+interface Key {
+  readonly credentialId: string
+  readonly secret: string
+}
+
+effect function signedInTablet(cloud: TestCloud, accessToken: string) {
+  const state = "s".repeat(43)
+  const verifier = "v".repeat(43)
+  const connected = try cloud.call("/api/v1/app-auth/connect", { headers: bearer(accessToken), json: { ...binding, state, codeChallenge: s256(verifier), codeChallengeMethod: "S256", deviceName: "Ada's tablet" } })
+  const minted = try cloud.call("/api/v1/app-auth/mobile/token", { json: { ...binding, grantType: "authorization_code", code: (connected.body as { readonly code: string }).code, state, codeVerifier: verifier } })
+  const key = minted.body as Key & { readonly lease: { readonly refresh: string } }
+  try cloud.call("/api/v1/app-auth/mobile/ack", { json: { credentialId: key.credentialId, secret: key.secret } })
+  return { key: { credentialId: key.credentialId, secret: key.secret }, refresh: key.lease.refresh }
+}
+
+effect function renew(cloud: TestCloud, bearerToken: string) {
+  return try cloud.call("/api/v1/app-auth/mobile/renew", { method: "POST", headers: bearer(bearerToken) })
+}
+
+effect function acknowledge(cloud: TestCloud, key: Key) {
+  return (try cloud.call("/api/v1/app-auth/mobile/ack", { json: { credentialId: key.credentialId, secret: key.secret } })).status
+}
+
+effect function rotated(cloud: TestCloud, refresh: string) {
+  return ((try cloud.call("/api/v1/app-auth/mobile/lease", { method: "POST", headers: bearer(refresh) })).body as { readonly refresh: string }).refresh
+}
+
+effect function usable(cloud: TestCloud, secret: string) {
+  return (try cloud.call("/api/v1/user", { headers: bearer(secret) })).status
+}
+
+describe("Device key renewal through the lease (spec/cloud/nativeClients/deviceKeys.md, \"Story: Keep a tablet's key without signing in again\")", () => {
+  it.live("Only the lease renews a key, a renewed key replaces the old one at its acknowledgement, and renewal has no cap while the lease is used (spec/cloud/nativeClients/deviceKeys.md, \"Only a live lease renews a key, and only while the key it replaces is live or merely expired and of the person's current device epoch\")", () => scoped(effect {
+    const clock = try sync(() => manualClock())
+    try sync(() => clock.set(start))
+    provide Clock.Clock = clock.clock {
+    const cloud = try testCloud()
+    try seeded(cloud)
+    const signed = try signedIn(cloud, "renewal@example.com")
+    const tablet = try signedInTablet(cloud, signed.accessToken)
+    const bySession = try renew(cloud, signed.accessToken)
+    const byKey = try renew(cloud, tablet.key.secret)
+    let refresh = tablet.refresh
+    let held: Key = tablet.key
+    const rounds: Array<unknown> = []
+    for (const after of [70, 140, 210]) {
+      try sync(() => clock.set(start + after * day))
+      refresh = try rotated(cloud, refresh)
+      const answer = try renew(cloud, refresh)
+      const successor = answer.body as Key
+      const acked = try acknowledge(cloud, successor)
+      rounds.push([answer.status, acked, try usable(cloud, held.secret), try usable(cloud, successor.secret)])
+      held = successor
+    }
+    try check(() => assert.deepStrictEqual({
+      bySession: [bySession.status, failure(bySession.body)],
+      byKey: [byKey.status, failure(byKey.body)],
+      rounds
+    }, {
+      bySession: [401, ["authentication_required", "credential_unknown"]],
+      byKey: [401, ["authentication_required", "credential_unknown"]],
+      rounds: [[200, 200, 401, 200], [200, 200, 401, 200], [200, 200, 401, 200]]
+    }))
+    }
+  }))
+
+  it.live("Renewing again before the acknowledgement answers the same successor, two renewals at once answer one key, and its second acknowledgement is a repeat (spec/cloud/nativeClients/deviceKeys.md, \"A renewal answered again leaves its waiting successor as it was and mints no key\")", () => scoped(effect {
+    const clock = try sync(() => manualClock())
+    try sync(() => clock.set(start))
+    provide Clock.Clock = clock.clock {
+    const cloud = try testCloud()
+    try seeded(cloud)
+    const signed = try signedIn(cloud, "twice@example.com")
+    const tablet = try signedInTablet(cloud, signed.accessToken)
+    const [first, lost] = (try Effect.all([renew(cloud, tablet.refresh), renew(cloud, tablet.refresh)], { concurrency: "unbounded" })).map((answer) => answer.body as Key)
+    const together = try Effect.all([renew(cloud, tablet.refresh), renew(cloud, tablet.refresh)], { concurrency: "unbounded" })
+    const beforeAck = [try usable(cloud, tablet.key.secret), try usable(cloud, first.secret)]
+    const acks = try Effect.all([acknowledge(cloud, first), acknowledge(cloud, lost)], { concurrency: "unbounded" })
+    const afterAck = [try usable(cloud, tablet.key.secret), try usable(cloud, first.secret)]
+    const next = (try renew(cloud, tablet.refresh)).body as Key
+    try sync(() => clock.set(start + 10 * 60_000))
+    const late = (try renew(cloud, tablet.refresh)).body as Key
+    const successors = try cloud.store.transaction((tx) => tx.query("SELECT count(*)::int AS n FROM device_grants WHERE renewed_from IS NOT NULL"))
+    try check(() => assert.deepStrictEqual({
+      same: [lost, ...together.map((answer) => answer.body)].map((answer) => [(answer as Key).credentialId === first.credentialId, (answer as Key).secret === first.secret]),
+      beforeAck, acks, afterAck, afterDeadline: [next.credentialId !== first.credentialId, late.credentialId !== next.credentialId], successors: successors[0]?.n
+    }, {
+      same: [[true, true], [true, true], [true, true]],
+      beforeAck: [200, 401], acks: [200, 200], afterAck: [401, 200], afterDeadline: [true, true], successors: 3
+    }))
+    }
+  }))
+})

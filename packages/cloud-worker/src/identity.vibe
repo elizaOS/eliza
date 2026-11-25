@@ -1,0 +1,790 @@
+// spec/cloud/index.md, "Story: Sign in to the Cloud"; spec/cloud/index.md, "Google sign-in for backup returns to the protected approval page"; spec/cloud/identity/sessions.md, "Story: Keep a tablet signed in to mail and calendar"; spec/cloud/nativeClients/deviceKeys.md, "Story: Keep a tablet's key without signing in again"
+import type { Client } from "pg"
+import type { JWTVerifyGetKey } from "jose"
+import { browserGoogleReturn, mayIssueAccountBoundDeviceGrant, type BrowserGooglePurpose } from "../gen/cloud.effect.vibe"
+import { Digest, Mac, SecureRandom } from "effect/crypto"
+import { FetchHttpClient, HttpClient, HttpClientRequest, HttpIncomingMessage, HttpServerRequest, HttpServerResponse } from "effect/http"
+
+import {
+  accessCookie, refreshCookie, accessDigest, deviceDigest, digestCredential, readCookie, newSecret,
+  authQuery as query, accountTransaction, browserAccount, signInWithProof, renewBrowserSession, logoutBrowserSession,
+  rateLimit, RateLimited, StorageUnavailable, IdentityConflict, type BrowserSession, type Identity
+} from "./identity-store.vibe"
+
+import { endKey, inspectKey, supersedeGrant } from "./native-clients/grants.vibe"
+import { activateLease, admitLeaseRefresh, bearerToken, endLease, leaseAccessPattern, leaseRefreshExpiresIn, leaseRefreshPattern, moveLease, offerLease, presentedLease, leaseRefusedOr, rotateLease } from "./identity/sessions.vibe"
+import { refusalBody, refused, Refused } from "./http/refusal.vibe"
+import { authenticate } from "./http/request-auth.vibe"
+import { Store, toText, type Tx } from "./store/connection.vibe"
+import { clientStore } from "./worker-store.vibe"
+import { sealWith, unsealWith } from "./shared/sealing.vibe"
+import { statusOf } from "../gen/cloud__shared__types.effect.vibe"
+
+import { browserNativeRegistration, type NativeRegistryEnv } from "./native-registry.vibe"
+import type { GoogleEnv } from "./google.vibe"
+import { ownsPasswordBackupPath, passwordBackupApprovalPath, passwordBackupRequest } from "./password-backup.vibe"
+
+export type IdentityEnv = NativeRegistryEnv & GoogleEnv & {
+  DEVICE_LEASE_SEAL_KEY?: string
+  SIGN_IN_EMAIL?: { send(message: { from: string; to: string; subject: string; text: string }): Promise<unknown> }
+  RESEND_API_KEY?: string
+  EMAIL_FROM?: string
+  EMAIL_CODE_SECRET?: string
+  BLOOIO_API_KEY?: string
+  BLOOIO_SMS_CHANNEL_ID?: string
+  TWILIO_ACCOUNT_SID?: string
+  TWILIO_AUTH_TOKEN?: string
+  TWILIO_VERIFY_SERVICE_SID?: string
+  SMS_ALLOWED_COUNTRY_CODES?: string
+  SMS_HOURLY_BUDGET?: string
+}
+
+type BrowserGoogleFlow = { state: string; verifier: string; purpose: BrowserGooglePurpose }
+
+type Destination = "email" | "sms"
+
+error InvalidRequest
+error Unauthorized
+error ProviderUnavailable
+
+schema EmailInput { email: string; code?: string }
+schema SmsInput { phone: string; code?: string }
+schema GoogleToken { access_token: string }
+schema GoogleProfile { sub: string; email?: string; email_verified?: boolean }
+schema DeviceAuthorization { challenge: string; state: string; expectedAccountId?: string }
+schema DeviceExchange { code: string; verifier: string }
+schema SmsReceipt { status: string; to?: string; channel?: string; service_sid?: string }
+schema BlooioReceipt { id: string; channel_id: string; status: string; channel_type?: string; to?: string; direction?: string; dry_run?: boolean }
+
+const flowCookie = "__Host-eliza-google"
+const backupFlowMarker = "password_backup"
+const browserGoogleFlow = /^([a-f0-9]{64})\.([a-f0-9]{64})(?:\.(password_backup))?$/
+const codeSeconds = 10 * 60
+const smsCodeSeconds = 5 * 60
+const deviceGrantSeconds = 2 * 60
+const s256 = /^[A-Za-z0-9_-]{43}$/
+const callbackPath = "/api/auth/google/callback"
+const encoder = new TextEncoder()
+const opaqueToken = /^[a-f0-9]{64}$/
+const pkceText = /^[A-Za-z0-9._~-]{43,128}$/
+
+const hex = (bytes: Uint8Array) => Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("")
+
+const secureRandom = SecureRandom.layerWebCrypto
+const cryptoServices = Layer.mergeAll(secureRandom, Digest.layerWebCrypto, Layer.provide(Mac.layerWebCrypto, secureRandom))
+const services = Layer.merge(cryptoServices, FetchHttpClient.layer)
+
+effect function sha256(value: string) {
+  const digest = try Digest.Digest
+  return try digest.digest(Digest.sha256, encoder.encode(value))
+}
+
+effect function pkceChallenge(verifier: string) {
+  const challenge = try sha256(verifier)
+  return try sync(() => btoa(String.fromCharCode(...challenge)).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", ""))
+}
+
+effect function makeCodeHash(secret: string, address: string, code: string) {
+  const key = Mac.key(Mac.hmacSha256, encoder.encode(secret)) catch effect () => { throw new ProviderUnavailable() }
+  const mac = try Mac.Mac
+  const signature = mac.sign(key, encoder.encode(JSON.stringify([address, code]))) catch effect () => { throw new ProviderUnavailable() }
+  return hex(signature)
+}
+
+effect function token() {
+  return hex(try (try SecureRandom.SecureRandom).randomBytes(32))
+}
+
+effect function signInCode() {
+  return (try (try SecureRandom.SecureRandom).intBetween(0, 999_999)).toString().padStart(6, "0")
+}
+
+function cookieValue(name: string, value: string, age: number) {
+  return [name, value, { path: "/", httpOnly: true, secure: true, sameSite: "lax", maxAge: Duration.seconds(age) }] as const
+}
+
+function sessionCookies(session: BrowserSession) {
+  return [cookieValue(accessCookie, session.access, session.accessSeconds), cookieValue(refreshCookie, session.refresh, session.refreshSeconds)]
+}
+
+export function sessionAccount(request: Request, db: Client, source: "cookie" | "bearer" = "cookie"): Promise<string | null> {
+  return runPromise(Effect.provide(effect { return (try browserAccount(request, db, source))?.id ?? null }, cryptoServices))
+}
+
+function leaseSealKey(env: IdentityEnv) {
+  const key = env.DEVICE_LEASE_SEAL_KEY
+  return key !== undefined && /^[A-Za-z0-9+/]{43}=$/.test(key) ? key : undefined
+}
+
+effect function sealDeviceReply(key: string, secret: string) {
+  const value = try Effect.try({
+    try: () => sealWith(key, "standalone-device-reply-v1", secret),
+    catch: () => new ProviderUnavailable()
+  })
+  return [value.iv, value.tag, value.data].join(".")
+}
+
+effect function openDeviceReply(key: string, value: string | undefined) {
+  const [iv, tag, data] = value?.split(".") ?? []
+  if (!iv || !tag || !data) throw new StorageUnavailable()
+  return try Effect.try({
+    try: () => unsealWith(key, "standalone-device-reply-v1", iv, tag, data),
+    catch: () => new StorageUnavailable()
+  })
+}
+
+function leaseBearer(request: Request) {
+  const token = request.headers.get("authorization")?.match(/^Bearer (\S+)$/)?.[1]
+  return token !== undefined && leaseRefreshPattern.test(token) ? token : null
+}
+
+effect function transact<A, E, R>(db: Client, body: (tx: Tx) => A!E!R) {
+  const program = effect {
+    const store = try Store
+    return try store.transaction(body)
+  }
+  return Effect.provide(program, Layer.effect(Store, clientStore(db))) catch effect (failure) => {
+    if (failure instanceof Refused || failure instanceof Unauthorized) throw failure
+    throw new StorageUnavailable()
+  }
+}
+
+effect function requestCredential(request: Request) {
+  if (request.headers.has("authorization")) {
+    const hash = try deviceDigest(request)
+    return hash ? { kind: "device", hash } as const : null
+  }
+  const hash = try accessDigest(request)
+  return hash ? { kind: "browser", hash } as const : null
+}
+
+export function cloudCredential(request: Request) {
+  return runPromise(Effect.provide(requestCredential(request), cryptoServices))
+}
+
+export function leaseAccount(request: Request, db: Client): Promise<string | null> {
+  const token = bearerToken(request.headers.get("authorization") ?? undefined)
+  if (token === undefined || !leaseAccessPattern.test(token)) return Promise.resolve(null)
+  return runPromise(Effect.provide(effect {
+    const caller = authenticate(request.headers.get("authorization") ?? undefined, "MailAccess", false) catch () => ({ kind: "anonymous" } as const)
+    return caller.kind === "lease" ? caller.userId : null
+  }, Layer.merge(cryptoServices, Layer.effect(Store, clientStore(db)))))
+}
+
+type DeviceAuthority = "any" | "recorded"
+
+effect function accountForInference(request: Request, db: Client, env: NativeRegistryEnv | undefined, authority: DeviceAuthority) {
+  if (!request.headers.has("authorization")) return authority === "recorded" ? null : (try browserAccount(request, db))?.id ?? null
+  const registration = env ? browserNativeRegistration(env) : null
+  const hash = try deviceDigest(request)
+  if (hash === null || !registration) return null
+  const now = try Clock.currentTimeMillis
+  const { rows } = try query(db, `
+    SELECT d.user_id, d.state, d.phase, d.key_expires_at, d.device_epoch AS grant_epoch, a.device_epoch AS account_epoch
+    FROM device_grants d JOIN accounts a ON a.key = d.user_id
+    WHERE d.secret_digest = $1 AND a.status = 'active' AND d.client_id = $2
+  `, [hash, registration.clientId])
+  const row = rows[0]
+  if (row === undefined) return null
+  const key = inspectKey(row, now) catch effect () => { throw new StorageUnavailable() }
+  return key.reason === "NoReason" && (authority === "any" || key.authority.tag === "RecordedAuthority") && typeof row.user_id === "string" ? row.user_id : null
+}
+
+export function inferenceAccount(request: Request, db: Client, env?: NativeRegistryEnv, authority: DeviceAuthority = "any"): Promise<string | null> {
+  return runPromise(Effect.provide(accountForInference(request, db, env, authority), cryptoServices))
+}
+
+function json(status: number, body: object) {
+  return HttpServerResponse.jsonUnsafe(body, { status, headers: { "cache-control": "no-store" } })
+}
+
+function redirect(location: string, cookies: ReturnType<typeof cookieValue>[]) {
+  const response = HttpServerResponse.redirect(location, { status: 303, headers: { "cache-control": "no-store", "referrer-policy": "no-referrer" } })
+  return HttpServerResponse.setCookiesUnsafe(response, cookies)
+}
+
+effect function readJson(request: Request) {
+  if (request.headers.get("content-type")?.split(";")[0] !== "application/json") throw new InvalidRequest()
+  const message = HttpServerRequest.fromWeb(request)
+  const limited = Effect.provideService(message.json, HttpIncomingMessage.MaxBodySize, ByteSize.kibibytes(8))
+  return limited catch effect () => { throw new InvalidRequest() }
+}
+
+effect function external(url: string, input: { authorization?: string; form?: URLSearchParams; body?: string; idempotencyKey?: string }) {
+  let request = HttpClientRequest.make(input.form || input.body ? "POST" : "GET")(url)
+  if (input.authorization) request = HttpClientRequest.setHeader(request, "authorization", input.authorization)
+  if (input.idempotencyKey) request = HttpClientRequest.setHeader(request, "Idempotency-Key", input.idempotencyKey)
+  if (input.body) request = HttpClientRequest.bodyText(request, input.body, "application/json")
+  if (input.form) request = HttpClientRequest.bodyText(request, input.form.toString(), "application/x-www-form-urlencoded")
+  const result = Effect.provideService(HttpClient.execute(request), FetchHttpClient.RequestInit, { redirect: "manual" })
+  return timeout(result, "10 seconds") catch effect () => { throw new ProviderUnavailable() }
+}
+
+function readBrowserGoogleFlow(request: Request): BrowserGoogleFlow | null {
+  const cookie = readCookie(request, flowCookie)
+  const matched = cookie === null ? null : browserGoogleFlow.exec(cookie)
+  const state = matched?.[1]
+  const verifier = matched?.[2]
+  if (!state || !verifier) return null
+  return { state, verifier, purpose: matched?.[3] === backupFlowMarker ? "GooglePasswordBackup" : "GoogleAccount" }
+}
+
+effect function googleStart(env: IdentityEnv, purpose: BrowserGooglePurpose) {
+  if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET) throw new ProviderUnavailable()
+  const state = try token()
+  const verifier = try token()
+  const challenge = try pkceChallenge(verifier)
+  const params = new URLSearchParams({
+    client_id: env.GOOGLE_CLIENT_ID,
+    redirect_uri: env.PUBLIC_API_ORIGIN + callbackPath,
+    response_type: "code",
+    scope: "openid email",
+    include_granted_scopes: "false",
+    state,
+    code_challenge: challenge,
+    code_challenge_method: "S256"
+  })
+  const backup = purpose === "GooglePasswordBackup"
+  if (backup) params.set("prompt", "select_account")
+  const flow = state + "." + verifier + (backup ? "." + backupFlowMarker : "")
+  return redirect("https://accounts.google.com/o/oauth2/v2/auth?" + params, [cookieValue(flowCookie, flow, codeSeconds)])
+}
+
+effect function googleIdentity(flow: BrowserGoogleFlow | null, url: URL, env: IdentityEnv) {
+  if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET) throw new ProviderUnavailable()
+  if (flow === null) throw new Unauthorized()
+  const { state, verifier } = flow
+  const code = url.searchParams.get("code")
+  if (!code || code.length > 2048 || url.searchParams.get("state") !== state || url.searchParams.has("error")) throw new Unauthorized()
+  const response = try external("https://oauth2.googleapis.com/token", {
+    form: new URLSearchParams({
+      client_id: env.GOOGLE_CLIENT_ID,
+      client_secret: env.GOOGLE_CLIENT_SECRET,
+      redirect_uri: env.PUBLIC_API_ORIGIN + callbackPath,
+      grant_type: "authorization_code",
+      code,
+      code_verifier: verifier
+    })
+  })
+  if (response.status < 200 || response.status >= 300) throw new Unauthorized()
+  const token = Schema.decodeUnknownOption(GoogleToken)((response.json catch effect () => { throw new ProviderUnavailable() }))
+  if (Option.isNone(token)) throw new ProviderUnavailable()
+  const user = try external("https://openidconnect.googleapis.com/v1/userinfo", {
+    authorization: "Bearer " + token.value.access_token
+  })
+  if (user.status < 200 || user.status >= 300) throw new ProviderUnavailable()
+  const profile = Schema.decodeUnknownOption(GoogleProfile)((user.json catch effect () => { throw new ProviderUnavailable() }))
+  if (Option.isNone(profile) || !/^[a-zA-Z0-9_-]{1,255}$/.test(profile.value.sub)) throw new ProviderUnavailable()
+  return {
+    provider: "google",
+    subject: profile.value.sub,
+    email: profile.value.email_verified === true ? profile.value.email ?? null : null
+  } satisfies Identity
+}
+
+effect function otpInput(request: Request, kind: Destination, verify: boolean) {
+  const raw = try readJson(request)
+  if (kind === "email") {
+    const value = Schema.decodeUnknownOption(EmailInput)(raw)
+    if (Option.isNone(value)) throw new InvalidRequest()
+    const address = value.value.email.trim().toLowerCase()
+    if (address.length > 254 || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(address)) throw new InvalidRequest()
+    const code = value.value.code ?? ""
+    if (verify && !/^\d{6}$/.test(code)) throw new InvalidRequest()
+    return { address, code }
+  }
+  const value = Schema.decodeUnknownOption(SmsInput)(raw)
+  if (Option.isNone(value)) throw new InvalidRequest()
+  if (!/^\+[1-9]\d{6,14}$/.test(value.value.phone)) throw new InvalidRequest()
+  const code = value.value.code ?? ""
+  if (verify && !/^\d{6}$/.test(code)) throw new InvalidRequest()
+  return { address: value.value.phone, code }
+}
+
+function smsBudget(env: IdentityEnv) {
+  const allowed = (env.SMS_ALLOWED_COUNTRY_CODES ?? "").split(",").map((code) => code.trim()).filter(Boolean)
+  const hourly = Number(env.SMS_HOURLY_BUDGET)
+  if (!allowed.length || allowed.some((code) => !/^\+[1-9]\d{0,2}$/.test(code)) || !Number.isSafeInteger(hourly) || hourly <= 0) return null
+  return { allowed, hourly }
+}
+
+function emailReady(env: IdentityEnv) {
+  return Boolean((env.SIGN_IN_EMAIL || env.RESEND_API_KEY) && env.EMAIL_FROM && env.EMAIL_CODE_SECRET && env.EMAIL_CODE_SECRET.length >= 32)
+}
+
+function smsTransport(env: IdentityEnv) {
+  if (env.BLOOIO_API_KEY || env.BLOOIO_SMS_CHANNEL_ID) {
+    return env.BLOOIO_API_KEY && /^ch_[A-Za-z0-9_-]+$/.test(env.BLOOIO_SMS_CHANNEL_ID ?? "") && (env.EMAIL_CODE_SECRET?.length ?? 0) >= 32 ? "blooio" : null
+  }
+  return env.TWILIO_ACCOUNT_SID && env.TWILIO_AUTH_TOKEN && env.TWILIO_VERIFY_SERVICE_SID ? "twilio" : null
+}
+
+function smsReady(env: IdentityEnv) {
+  return Boolean(smsTransport(env) && smsBudget(env))
+}
+
+effect function sendEmail(env: IdentityEnv, address: string, code: string) {
+  if (!env.EMAIL_FROM) throw new ProviderUnavailable()
+  const message = {
+    from: env.EMAIL_FROM, to: address, subject: "Your sign-in code",
+    text: `Your sign-in code is ${code}. It expires in ten minutes. If you did not request this code, you can ignore this email.`
+  }
+  const binding = env.SIGN_IN_EMAIL
+  if (binding) {
+    try Effect.tryPromise({ try: () => binding.send(message), catch: () => new ProviderUnavailable() })
+    return
+  }
+  if (!env.RESEND_API_KEY) throw new ProviderUnavailable()
+  const sent = try external("https://api.resend.com/emails", {
+    authorization: "Bearer " + env.RESEND_API_KEY,
+    body: JSON.stringify({ ...message, to: [address] })
+  })
+  if (sent.status < 200 || sent.status >= 300) throw new ProviderUnavailable()
+}
+
+effect function twilio(env: IdentityEnv, address: string, code: string | null) {
+  if (!env.TWILIO_ACCOUNT_SID || !env.TWILIO_AUTH_TOKEN || !env.TWILIO_VERIFY_SERVICE_SID) throw new ProviderUnavailable()
+  if (!/^AC[a-fA-F0-9]{32}$/.test(env.TWILIO_ACCOUNT_SID) || !/^VA[a-fA-F0-9]{32}$/.test(env.TWILIO_VERIFY_SERVICE_SID)) throw new ProviderUnavailable()
+  const basic = try sync(() => btoa(env.TWILIO_ACCOUNT_SID + ":" + env.TWILIO_AUTH_TOKEN))
+  const path = code === null ? "Verifications" : "VerificationCheck"
+  const response = try external(`https://verify.twilio.com/v2/Services/${env.TWILIO_VERIFY_SERVICE_SID}/${path}`, {
+    authorization: "Basic " + basic,
+    form: new URLSearchParams(code === null ? { To: address, Channel: "sms" } : { To: address, Code: code })
+  })
+  if (response.status === 429) throw new RateLimited()
+  if (code !== null && (response.status === 400 || response.status === 404)) throw new Unauthorized()
+  if (response.status < 200 || response.status >= 300) throw new ProviderUnavailable()
+  const receipt = Schema.decodeUnknownOption(SmsReceipt)((response.json catch effect () => { throw new ProviderUnavailable() }))
+  if (Option.isNone(receipt)) throw new ProviderUnavailable()
+  const result = receipt.value
+  if ((result.to !== undefined && result.to !== address) ||
+      (result.channel !== undefined && result.channel !== "sms") ||
+      (result.service_sid !== undefined && result.service_sid !== env.TWILIO_VERIFY_SERVICE_SID)) throw new ProviderUnavailable()
+  if (code !== null && result.status !== "approved") throw new Unauthorized()
+  if (code === null && result.status !== "pending") throw new ProviderUnavailable()
+}
+
+const codeCookie = (provider: Destination) => "__Host-eliza-code-" + provider
+
+effect function sendBlooio(env: IdentityEnv, address: string, code: string, challenge: string) {
+  if (!env.BLOOIO_API_KEY || !env.BLOOIO_SMS_CHANNEL_ID) throw new ProviderUnavailable()
+  const response = try external("https://api.blooio.com/v4/messages", {
+    authorization: "Bearer " + env.BLOOIO_API_KEY, idempotencyKey: challenge,
+    body: JSON.stringify({ from: env.BLOOIO_SMS_CHANNEL_ID, to: address, text: `Your sign-in code is ${code}. It expires in five minutes.` })
+  })
+  if (response.status === 429) throw new RateLimited()
+  if (response.status < 200 || response.status >= 300) throw new ProviderUnavailable()
+  const receipt = Schema.decodeUnknownOption(BlooioReceipt)((response.json catch effect () => { throw new ProviderUnavailable() }))
+  if (Option.isNone(receipt)) throw new ProviderUnavailable()
+  const result = receipt.value
+  if (!result.id || result.channel_id !== env.BLOOIO_SMS_CHANNEL_ID || result.dry_run === true ||
+      (result.channel_type !== undefined && result.channel_type !== "sms") ||
+      (result.to !== undefined && result.to !== address) || (result.direction !== undefined && result.direction !== "outbound") ||
+      !["queued", "pending", "sending", "sent", "delivered", "read"].includes(result.status)) throw new ProviderUnavailable()
+}
+
+effect function requestCode(env: IdentityEnv, db: Client, provider: Destination, address: string) {
+  const code = provider === "email" || smsTransport(env) === "blooio" ? try signInCode() : null
+  const secret = env.EMAIL_CODE_SECRET
+  if (code !== null && (!secret || secret.length < 32)) throw new ProviderUnavailable()
+  const hash = code !== null && secret ? try makeCodeHash(secret, provider === "sms" ? "sms:" + address : address, code) : null
+  const verifier = try token()
+  const challenge = try pkceChallenge(verifier)
+  const age = provider === "email" ? codeSeconds : smsCodeSeconds
+  const { rows } = try query<{ expires_at: Date }>(db, `
+    INSERT INTO cloud_code_challenges (provider, destination, challenge, code_hash, expires_at, tries, consumed)
+    VALUES ($1, $2, $3, $4, now() + $5 * interval '1 second', 0, false)
+    ON CONFLICT (provider, destination) DO UPDATE
+    SET challenge = EXCLUDED.challenge, code_hash = EXCLUDED.code_hash, expires_at = EXCLUDED.expires_at, tries = 0, consumed = false
+    RETURNING expires_at
+  `, [provider, address, challenge, hash, age])
+  const pending = rows[0]
+  if (!pending) throw new StorageUnavailable()
+  effect {
+    if (code === null) try twilio(env, address, null)
+    else if (provider === "email") try sendEmail(env, address, code)
+    else try sendBlooio(env, address, code, challenge)
+  } catch effect (failure) => {
+    try query(db, "DELETE FROM cloud_code_challenges WHERE provider = $1 AND destination = $2 AND challenge = $3", [provider, address, challenge])
+    throw failure
+  }
+  return HttpServerResponse.setCookiesUnsafe(json(200, { ok: true, expiresAt: pending.expires_at, codeLength: 6 }),
+    [cookieValue(codeCookie(provider), verifier, age)])
+}
+
+effect function verifyCode(request: Request, env: IdentityEnv, db: Client, provider: Destination, address: string, code: string) {
+  const verifier = readCookie(request, codeCookie(provider))
+  if (!verifier || !opaqueToken.test(verifier)) throw new Unauthorized()
+  const challenge = try pkceChallenge(verifier)
+  const secret = env.EMAIL_CODE_SECRET
+  const hash = secret ? try makeCodeHash(secret, provider === "sms" ? "sms:" + address : address, code) : null
+  const attempt = try query<{ consumed: boolean; requires_twilio: boolean }>(db, `
+    UPDATE cloud_code_challenges
+    SET tries = tries + 1, consumed = COALESCE(code_hash = $4, false)
+    WHERE provider = $1 AND destination = $2 AND challenge = $3 AND expires_at > now() AND tries < 5 AND NOT consumed
+    RETURNING consumed, (provider = 'sms' AND code_hash IS NULL) AS requires_twilio
+  `, [provider, address, challenge, hash])
+  const admitted = attempt.rows[0]
+  if (!admitted || (!admitted.requires_twilio && !admitted.consumed)) throw new Unauthorized()
+  if (admitted.requires_twilio) {
+    try twilio(env, address, code)
+    const finished = try query(db, `
+      UPDATE cloud_code_challenges SET consumed = true
+      WHERE provider = $1 AND destination = $2 AND challenge = $3 AND expires_at > now() AND NOT consumed
+      RETURNING consumed
+    `, [provider, address, challenge])
+    if (!finished.rowCount) throw new Unauthorized()
+  }
+  const session = try signInWithProof(db, { provider, subject: address, email: provider === "email" ? address : null })
+  return HttpServerResponse.setCookiesUnsafe(json(200, { account: session.account }),
+    [...sessionCookies(session), cookieValue(codeCookie(provider), "", 0)])
+}
+
+effect function otp(request: Request, env: IdentityEnv, db: Client, provider: Destination, verify: boolean) {
+  const input = try otpInput(request, provider, verify)
+  const budget = provider === "sms" ? smsBudget(env) : null
+  if (provider === "sms") {
+    if (!smsReady(env) || !budget) throw new ProviderUnavailable()
+    if (!budget.allowed.some((code) => input.address.startsWith(code))) throw new InvalidRequest()
+  } else if (!emailReady(env)) {
+    throw new ProviderUnavailable()
+  }
+  const ip = request.headers.get("cf-connecting-ip") ?? "local"
+  const action = verify ? "verify" : "send"
+  try accountTransaction(db, effect {
+    try rateLimit(db, provider + ":" + action + ":ip", ip, verify ? 10 : provider === "sms" ? 5 : 30, 60)
+    try rateLimit(db, provider + ":" + action + ":destination", input.address, 5, 600)
+    if (!verify && budget) try rateLimit(db, "sms:send:deployment", "all", budget.hourly, 3600)
+  })
+  if (verify) return try verifyCode(request, env, db, provider, input.address, input.code)
+  return try requestCode(env, db, provider, input.address)
+}
+
+effect function issueDeviceCode(db: Client, proof: { accountId: string; sessionKey: string; clientId: string; challenge: string }) {
+  const now = try Clock.currentTimeMillis
+  const code = try token()
+  const codeHash = try digestCredential(code)
+  const key = try (try SecureRandom.SecureRandom).uuidV4()
+  const { rowCount } = try query(db, `
+    WITH owner AS MATERIALIZED (
+      SELECT key, device_epoch FROM accounts WHERE key = $2 AND status = 'active' FOR UPDATE
+    ), created AS (
+      INSERT INTO device_grants (key,state,revision,user_id,client_id,phase,code_digest,code_expires_at,device_epoch,issued_at,updated_at)
+      SELECT $1,jsonb_build_object('flatDeviceGrant','FlatTokenStarted','phase','CodeIssued'),1,key,$3,'code_issued',$4,$5,device_epoch,$6,$6 FROM owner RETURNING key
+    )
+    INSERT INTO cloud_device_proofs (grant_key, session_key, challenge)
+    SELECT key,$7,$8 FROM created
+  `, [key, proof.accountId, proof.clientId, codeHash, now + deviceGrantSeconds * 1000, now, proof.sessionKey, proof.challenge])
+  if (!rowCount) throw new Unauthorized()
+  return code
+}
+
+effect function authorizeDevice(request: Request, env: IdentityEnv, db: Client) {
+  const registration = browserNativeRegistration(env)
+  if (!registration) throw new ProviderUnavailable()
+  const callback = try Effect.try({ try: () => new URL(registration.signInReturn.origin + registration.signInReturn.path), catch: () => new ProviderUnavailable() })
+  const browser = try browserAccount(request, db)
+  if (!browser) throw new Unauthorized()
+  const raw = try readJson(request)
+  const parsed = Schema.decodeUnknownOption(DeviceAuthorization, { onExcessProperty: "error" })(raw)
+  if (Option.isNone(parsed) || !s256.test(parsed.value.challenge) || !pkceText.test(parsed.value.state)) throw new InvalidRequest()
+  const shown = parsed.value.expectedAccountId
+  if (shown !== undefined && !mayIssueAccountBoundDeviceGrant(shown, browser.id)) return json(409, { error: "sign_in_changed" })
+  try rateLimit(db, "device:authorize", browser.sessionKey, 6, 600)
+  const code = try issueDeviceCode(db, {
+    accountId: browser.id, sessionKey: browser.sessionKey, clientId: registration.clientId, challenge: parsed.value.challenge
+  })
+  callback.searchParams.set("code", code)
+  callback.searchParams.set("state", parsed.value.state)
+  return json(200, { redirectUrl: callback.href })
+}
+
+effect function exchangeDevice(request: Request, env: IdentityEnv, db: Client) {
+  const registration = browserNativeRegistration(env)
+  if (!registration) throw new ProviderUnavailable()
+  const raw = try readJson(request)
+  const parsed = Schema.decodeUnknownOption(DeviceExchange, { onExcessProperty: "error" })(raw)
+  if (Option.isNone(parsed) || !opaqueToken.test(parsed.value.code) || !pkceText.test(parsed.value.verifier)) throw new InvalidRequest()
+  const codeHash = try digestCredential(parsed.value.code)
+  const challenge = try pkceChallenge(parsed.value.verifier)
+  const bearer = try newSecret("device")
+  const bearerHash = try digestCredential(bearer)
+  const credential = try (try SecureRandom.SecureRandom).uuidV4()
+  const now = try Clock.currentTimeMillis
+  const sealKey = leaseSealKey(env)
+  const issued = try transact(db, effect (tx: Tx) => {
+    const locked = (try tx.query(
+      "SELECT a.key FROM accounts a JOIN device_grants d ON d.user_id = a.key WHERE d.code_digest = $1 FOR UPDATE OF a", [codeHash]
+    ))[0]
+    if (locked === undefined) throw new Unauthorized()
+    if (sealKey !== undefined) {
+      const previous = (try tx.query(`
+        SELECT d.key, d.sealed_copy, d.sealed_lease, d.key_expires_at, a.key AS id, a.organization_id
+        FROM device_grants d JOIN accounts a ON a.key = d.user_id
+        JOIN cloud_device_proofs p ON p.grant_key = d.key JOIN sessions s ON s.key = p.session_key
+        WHERE d.code_digest = $1 AND p.challenge = $2 AND d.client_id = $4 AND d.phase = 'exchanged'
+          AND d.code_expires_at > $3 AND d.key_expires_at > $3 AND d.device_epoch = a.device_epoch
+          AND a.status = 'active' AND s.live AND s.refresh_expires_at > $3
+          AND (s.state->>'epoch')::bigint = a.sessions_revoked_before
+        FOR UPDATE OF a, d
+      `, [codeHash, challenge, now, registration.clientId]))[0]
+      const grantKey = toText(previous?.key)
+      if (grantKey !== undefined) return {
+        token: try openDeviceReply(sealKey, toText(previous?.sealed_copy)),
+        expiresIn: Math.floor((Number(previous?.key_expires_at) - now) / 1000),
+        accountId: toText(previous?.id), organizationId: toText(previous?.organization_id),
+        lease: { refresh: try openDeviceReply(sealKey, toText(previous?.sealed_lease)),
+          refreshExpiresIn: try leaseRefreshExpiresIn(tx, grantKey, now) }
+      }
+    }
+    const device = (try tx.query(`
+    WITH owner AS MATERIALIZED (
+      SELECT a.* FROM accounts a JOIN device_grants d ON d.user_id = a.key WHERE d.code_digest = $1 FOR UPDATE OF a
+    )
+    UPDATE device_grants d SET phase = 'exchanged', state = jsonb_build_object('flatDeviceGrant','FlatTokenStarted','phase','Exchanged'),
+      credential_id = $4, secret_digest = $5, key_expires_at = $6, revision = d.revision + 1, updated_at = $3, code_digest = CASE WHEN $8::boolean THEN d.code_digest ELSE NULL END
+    FROM cloud_device_proofs p JOIN sessions s ON s.key = p.session_key JOIN owner a ON a.key = s.user_id
+    WHERE d.key = p.grant_key AND d.user_id = a.key AND d.phase = 'code_issued' AND d.code_digest = $1 AND p.challenge = $2
+      AND d.state->>'flatDeviceGrant' = 'FlatTokenStarted'
+      AND d.code_expires_at > $3 AND s.refresh_expires_at > $3 AND s.live AND a.status = 'active'
+      AND (s.state->>'epoch')::bigint = a.sessions_revoked_before
+      AND d.device_epoch = a.device_epoch AND d.client_id = $7
+    RETURNING a.key AS id, a.organization_id, d.key AS grant_key
+  `, [codeHash, challenge, now, credential, bearerHash, now + registration.credentialTtl, registration.clientId, sealKey !== undefined]))[0]
+    const accountId = toText(device?.id)
+    const grantKey = toText(device?.grant_key)
+    if (accountId === undefined || grantKey === undefined) throw new Unauthorized()
+    const response = { token: bearer, expiresIn: Math.floor(registration.credentialTtl / 1000), accountId, organizationId: toText(device?.organization_id) }
+    if (sealKey === undefined) return response
+    const lease = try offerLease(tx, { userId: accountId, grantKey, now })
+    const saved = try sealDeviceReply(sealKey, bearer), refresh = try sealDeviceReply(sealKey, lease.refresh)
+    try tx.query("UPDATE device_grants SET sealed_copy = $2, sealed_lease = $3 WHERE key = $1", [grantKey, saved, refresh])
+    return { ...response, lease: { refresh: lease.refresh, refreshExpiresIn: lease.refreshExpiresIn } }
+  })
+  return json(200, issued)
+}
+
+const empty = () => HttpServerResponse.empty({ status: 204, headers: { "cache-control": "no-store" } })
+
+effect function acknowledgeDevice(request: Request, env: IdentityEnv, db: Client) {
+  const registration = browserNativeRegistration(env)
+  if (!registration) throw new ProviderUnavailable()
+  const hash = try deviceDigest(request)
+  if (hash === null) throw new Unauthorized()
+  const now = try Clock.currentTimeMillis
+  try transact(db, effect (tx: Tx) => {
+    const before = (try tx.query(`
+      SELECT d.key, d.phase, d.renewed_from FROM device_grants d JOIN accounts a ON a.key = d.user_id
+      WHERE d.secret_digest = $1 FOR UPDATE OF a, d
+    `, [hash]))[0]
+    const acknowledged = try tx.query(`
+    WITH owner AS MATERIALIZED (
+      SELECT a.* FROM accounts a JOIN device_grants d ON d.user_id = a.key WHERE d.secret_digest = $1
+    )
+    UPDATE device_grants d SET phase = 'active',
+      state = CASE WHEN d.phase = 'active' THEN d.state ELSE jsonb_build_object('flatDeviceGrant','FlatTokenStarted','phase','Active','ackedAt',$2::bigint) END,
+      revision = d.revision + CASE WHEN d.phase = 'exchanged' THEN 1 ELSE 0 END,
+      updated_at = CASE WHEN d.phase = 'exchanged' THEN $2 ELSE d.updated_at END,
+      code_digest = NULL, sealed_copy = NULL, sealed_lease = NULL
+    FROM cloud_device_proofs p JOIN sessions s ON s.key = p.session_key JOIN owner a ON a.key = s.user_id
+    WHERE d.key = p.grant_key AND d.user_id = a.key AND d.secret_digest = $1
+      AND d.key_expires_at > $2 AND d.device_epoch = a.device_epoch AND a.status = 'active' AND d.client_id = $3
+      AND (d.phase = 'active' OR (d.phase = 'exchanged' AND d.state->>'flatDeviceGrant' = 'FlatTokenStarted' AND d.code_expires_at > $2 AND s.live
+        AND s.refresh_expires_at > $2 AND (s.state->>'epoch')::bigint = a.sessions_revoked_before
+        AND (d.renewed_from IS NULL OR (s.kind = 'device_lease' AND s.grant_key = d.renewed_from))))
+    RETURNING d.key
+  `, [hash, now, registration.clientId])
+    const grantKey = toText(before?.key)
+    if (acknowledged.length === 0 || grantKey === undefined) throw new Unauthorized()
+    if (before?.phase !== "exchanged") return
+    const predecessor = toText(before.renewed_from)
+    if (predecessor === undefined) return try activateLease(tx, grantKey, now)
+    try supersedeGrant(tx, predecessor)
+    try moveLease(tx, predecessor, grantKey, now)
+  })
+  return empty()
+}
+
+effect function revokeDevice(request: Request, db: Client) {
+  const hash = try deviceDigest(request)
+  const refresh = leaseBearer(request)
+  if (hash === null && refresh === null) throw new Unauthorized()
+  const now = try Clock.currentTimeMillis
+  try transact(db, effect (tx: Tx) => {
+    const lease = refresh === null ? undefined : try presentedLease(tx, refresh, now)
+    if (refresh !== null && lease !== undefined && lease.presented < lease.family.generation) try rotateLease(tx, refresh, now)
+    const row = (try tx.query(`
+      SELECT d.key, d.state, d.phase, d.key_expires_at, d.device_epoch AS grant_epoch, a.device_epoch AS account_epoch, a.status
+      FROM device_grants d JOIN accounts a ON a.key = d.user_id WHERE d.secret_digest = $1 OR d.key = $2 FOR UPDATE OF a, d
+    `, [hash, lease?.grantKey ?? null]))[0]
+    const grantKey = toText(row?.key)
+    if (row === undefined || grantKey === undefined) return
+    if (row.phase === "exchanged") {
+      try tx.query("UPDATE device_grants SET phase = 'ended', state = state || jsonb_build_object('endedBy','SelfRevoked'), code_digest = NULL, sealed_copy = NULL, sealed_lease = NULL, revision = revision + 1, updated_at = $2 WHERE key = $1 AND state->>'flatDeviceGrant' = 'FlatTokenStarted'", [grantKey, now])
+    } else if (row.phase === "active") {
+      if (row.status !== "active") throw new Unauthorized()
+      const reason = endKey(tx, row, now) catch effect () => { throw new StorageUnavailable() }
+      if (reason !== "NoReason" && reason !== "CredentialExpired") throw new Unauthorized()
+    }
+    try endLease(tx, grantKey, now)
+  })
+  return empty()
+}
+
+effect function refreshLease(request: Request, db: Client) {
+  const refresh = leaseBearer(request)
+  if (refresh === null) throw refused("AuthenticationRequired", "CredentialUnknown")
+  try rateLimit(db, "lease:refresh:ip", request.headers.get("cf-connecting-ip") ?? "local", 60, 60)
+  const now = try Clock.currentTimeMillis
+  return json(200, try leaseRefusedOr(try transact(db, (tx: Tx) => rotateLease(tx, refresh, now))))
+}
+
+effect function renewDevice(request: Request, env: IdentityEnv, db: Client) {
+  const sealKey = leaseSealKey(env)
+  if (sealKey === undefined) throw new ProviderUnavailable()
+  const registration = browserNativeRegistration(env)
+  if (!registration) throw new ProviderUnavailable()
+  const refresh = leaseBearer(request)
+  if (refresh === null) throw refused("AuthenticationRequired", "CredentialUnknown")
+  try rateLimit(db, "lease:renew:ip", request.headers.get("cf-connecting-ip") ?? "local", 10, 60)
+  const bearer = try newSecret("device")
+  const bearerHash = try digestCredential(bearer)
+  const random = try SecureRandom.SecureRandom
+  const credential = try random.uuidV4()
+  const key = try random.uuidV4()
+  const now = try Clock.currentTimeMillis
+  const renewed = try transact(db, effect (tx: Tx) => {
+    const admitted = try admitLeaseRefresh(tx, refresh, now)
+    if (admitted.kind === "refused") return admitted
+    const lease = admitted.value
+    const previous = (try tx.query(`
+      SELECT d.credential_id, d.sealed_copy, d.key_expires_at
+      FROM device_grants d JOIN cloud_device_proofs p ON p.grant_key = d.key
+      WHERE d.renewed_from = $1 AND d.user_id = $2 AND p.session_key = $3 AND d.phase = 'exchanged'
+        AND d.code_expires_at > $4 AND d.key_expires_at > $4
+      ORDER BY d.issued_at DESC LIMIT 1 FOR UPDATE OF d
+    `, [lease.grantKey, lease.userId, lease.key, now]))[0]
+    if (previous !== undefined) return { kind: "done", value: {
+      token: try openDeviceReply(sealKey, toText(previous.sealed_copy)),
+      credentialId: toText(previous.credential_id), accountId: lease.userId,
+      expiresIn: Math.floor((Number(previous.key_expires_at) - now) / 1000)
+    } } as const
+    const sealed = try sealDeviceReply(sealKey, bearer)
+    const created = try tx.query(`
+      WITH predecessor AS MATERIALIZED (
+        SELECT d.key, d.user_id, d.client_id, d.device_epoch FROM device_grants d JOIN accounts a ON a.key = d.user_id
+        WHERE d.key = $1 AND d.user_id = $2 AND d.client_id = $3 AND d.phase IN ('active', 'expired')
+          AND d.device_epoch = a.device_epoch AND a.status = 'active'
+        FOR UPDATE OF a, d
+      ), created AS (
+        INSERT INTO device_grants (key,state,revision,user_id,client_id,phase,credential_id,secret_digest,code_expires_at,key_expires_at,device_epoch,renewed_from,issued_at,updated_at,sealed_copy)
+        SELECT $4, jsonb_build_object('flatDeviceGrant','FlatTokenStarted','phase','Exchanged','renewedFrom',key), 1, user_id, client_id, 'exchanged',
+          $5, $6, $7, $8, device_epoch, key, $9, $9, $11 FROM predecessor
+        RETURNING key
+      )
+      INSERT INTO cloud_device_proofs (grant_key, session_key, challenge) SELECT key, $10, 'renewal' FROM created RETURNING grant_key
+    `, [lease.grantKey, lease.userId, registration.clientId, key, credential, bearerHash, now + deviceGrantSeconds * 1000,
+      now + registration.credentialTtl, now, lease.key, sealed])
+    return created.length === 1 ? { kind: "done", value: {
+      token: bearer, credentialId: credential, expiresIn: Math.floor(registration.credentialTtl / 1000), accountId: lease.userId
+    } } as const : { kind: "refused", reason: "CredentialRevoked" } as const
+  })
+  return json(200, try leaseRefusedOr(renewed))
+}
+
+export function sweepDeviceOffers(db: Client): Promise<void> {
+  return runPromise(effect {
+    const now = try Clock.currentTimeMillis
+    const { rows } = try query<{ key: string; user_id: string }>(db, `
+      SELECT key, user_id FROM device_grants
+      WHERE phase = 'exchanged' AND state ? 'flatDeviceGrant' AND code_expires_at <= $1
+      ORDER BY code_expires_at LIMIT 100
+    `, [now])
+    for (const row of rows) {
+      try transact(db, effect (tx: Tx) => {
+        try tx.query("SELECT key FROM accounts WHERE key = $1 FOR UPDATE", [row.user_id])
+        const ended = try tx.query(`
+          UPDATE device_grants SET phase = 'ended', code_digest = NULL, sealed_copy = NULL, sealed_lease = NULL,
+            state = state || '{"endedBy":"NeverAcknowledged"}'::jsonb, revision = revision + 1, updated_at = $2
+          WHERE key = $1 AND phase = 'exchanged' AND code_expires_at <= $2 RETURNING key
+        `, [row.key, now])
+        if (ended.length === 1) try endLease(tx, row.key, now)
+      })
+    }
+  })
+}
+
+effect function handleIdentity(request: Request, env: IdentityEnv, db: Client) {
+  const url = try Effect.try({ try: () => new URL(request.url), catch: () => new InvalidRequest() })
+  if (request.method === "GET") {
+    switch (url.pathname) {
+      case "/api/auth/providers":
+        return json(200, { google: Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET), email: emailReady(env), sms: smsReady(env) })
+      case "/api/auth/session": {
+        const account = try browserAccount(request, db)
+        return json(200, { account: account ? { id: account.id, email: account.email } : null })
+      }
+      case "/api/auth/google/start":
+        return try googleStart(env, url.searchParams.get(backupFlowMarker) === "1" ? "GooglePasswordBackup" : "GoogleAccount")
+      case callbackPath: {
+        const flow = readBrowserGoogleFlow(request)
+        const backup = browserGoogleReturn(flow?.purpose ?? "GoogleAccount") === "GoogleBackupApprovalPage"
+        const resume = passwordBackupApprovalPath + "?resume=google"
+        const clear = cookieValue(flowCookie, "", 0)
+        return effect {
+          const identity = try googleIdentity(flow, url, env)
+          const session = try signInWithProof(db, identity)
+          return redirect(env.WEB_ORIGIN + (backup ? resume : "/#account"), [clear, ...sessionCookies(session)])
+        } catch () => redirect(env.WEB_ORIGIN + (backup ? resume + "&authError=google_failed" : "/?authError=google_failed#account"), [clear])
+      }
+    }
+  }
+  if (request.method === "POST") {
+    if (url.pathname === "/api/auth/device/exchange") return try exchangeDevice(request, env, db)
+    if (url.pathname === "/api/auth/device/ack") return try acknowledgeDevice(request, env, db)
+    if (url.pathname === "/api/auth/device/revoke") return try revokeDevice(request, db)
+    if (url.pathname === "/api/auth/device/lease") return try refreshLease(request, db)
+    if (url.pathname === "/api/auth/device/renew") return try renewDevice(request, env, db)
+    const origin = request.headers.get("origin")
+    if (origin !== env.WEB_ORIGIN && origin !== env.PUBLIC_API_ORIGIN) return json(403, { error: "forbidden_origin" })
+    switch (url.pathname) {
+      case "/api/auth/device/authorize":
+        return try authorizeDevice(request, env, db)
+      case "/api/auth/email/send":
+        return try otp(request, env, db, "email", false)
+      case "/api/auth/email/verify":
+        return try otp(request, env, db, "email", true)
+      case "/api/auth/sms/send":
+        return try otp(request, env, db, "sms", false)
+      case "/api/auth/sms/verify":
+        return try otp(request, env, db, "sms", true)
+      case "/api/auth/refresh": {
+        const session = try renewBrowserSession(request, db)
+        if (!session) return HttpServerResponse.setCookiesUnsafe(json(401, { error: "authentication_required" }),
+          [cookieValue(accessCookie, "", 0), cookieValue(refreshCookie, "", 0)])
+        return HttpServerResponse.setCookiesUnsafe(json(200, { account: session.account }), sessionCookies(session))
+      }
+      case "/api/auth/logout": {
+        try logoutBrowserSession(request, db)
+        return HttpServerResponse.setCookiesUnsafe(empty(), [cookieValue(accessCookie, "", 0), cookieValue(refreshCookie, "", 0)])
+      }
+    }
+  }
+  return json(404, { error: "not_found" })
+}
+
+export function identityRequest(request: Request, env: IdentityEnv, db: Client, keys?: JWTVerifyGetKey): Promise<Response> {
+  if (ownsPasswordBackupPath(new URL(request.url).pathname)) return passwordBackupRequest(request, env, db, keys)
+  return runPromise(Effect.provide(effect {
+    const response = handleIdentity(request, env, db) catch (error) => match (error) {
+      when InvalidRequest: json(400, { error: "invalid_request" });
+      when Unauthorized: json(401, { error: "verification_failed" });
+      when RateLimited: json(429, { error: "rate_limited" });
+      when ProviderUnavailable: json(503, { error: "provider_unavailable" });
+      when StorageUnavailable: json(503, { error: "storage_unavailable" });
+      when IdentityConflict: json(409, { error: "identity_conflict" });
+      when Refused: json(statusOf(error.refusal.code), refusalBody(error.refusal));
+    }
+    return HttpServerResponse.toWeb(response)
+  }, services))
+}

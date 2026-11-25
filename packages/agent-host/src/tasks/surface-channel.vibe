@@ -1,0 +1,354 @@
+// spec/agent/surfaceChannel.md, "Story: Retire delivered page commands without repeating a possible effect"; spec/agent/surfaceChannel.md, "A connection opens only with an epoch higher than any seen before"; spec/agent/surfaceChannel.md, "Opening, closing, lapsing or stopping retires every pending command with one settlement each"; spec/agent/surfaceChannel.md, "The agent queues a command only on the current connection while fewer than sixteen are pending"; spec/agent/surfaceChannel.md, "A pull hands over only the oldest command not yet handed over, and only one pull waits at a time"; spec/agent/surfaceChannel.md, "A reply settles only a handed-over command of the same connection before its deadline"; spec/agent/surfaceChannel.md, "A command given up on is uncertain only if it was handed over and can have an effect"
+module node {
+  import { randomBytes } from "node:crypto"
+  /** @throws {never} */
+  export function opaqueId(): string { return randomBytes(18).toString("base64url") }
+}
+import { opaqueId } from node
+
+import { Service, type IAgentRuntime } from "@elizaos/core"
+import {
+  Machine, canAnswerHeldPull, canCancel, canCloseConnection, canConnect, canLapse, canReply, canSend, currentConnection, handedOver, hasWork, isCurrent, machine,
+  type Channel, type ChannelStep, type Event, type Outcome,
+} from "../../gen/agent__surfaceChannel.effect.vibe"
+import type { LocalRoute, RouteInput } from "@elizaos/agent"
+import type { AgentModule, ModuleFactory } from "../host/module.vibe"
+
+export const surfaceModuleName = "@elizaos/agent/surface"
+export const surfaceChannelServiceType = "agent_surface_channel"
+export const pullHoldMs = 9_000
+const replyLimitBytes = 2 * 1024 * 1024
+const requestLimitBytes = 4 * 1024
+
+export type SurfaceAnswer =
+  | { readonly kind: "answered"; readonly result: unknown }
+  | { readonly kind: "refused"; readonly code: string; readonly message: string }
+
+export interface SurfaceCommand {
+  readonly connectionId: string
+  readonly effect: boolean
+  readonly input: unknown
+}
+
+export type SurfaceRefusal =
+  | { readonly code: "STALE_REF" | "BUSY"; readonly status: 409 }
+  | { readonly code: "INVALID_REQUEST"; readonly status: 400 | 413 }
+  | { readonly code: "UNAVAILABLE"; readonly status: 503 }
+
+export error SurfaceRefused { refusal: SurfaceRefusal; message: string }
+
+type Run = <A, E>(work: A!E, options?: { readonly signal?: AbortSignal }) => Promise<A>
+
+export interface SurfaceChannel {
+  currentConnection(): (string | null)!!
+  send(command: SurfaceCommand): SurfaceAnswer!SurfaceRefused
+  shutdown(): void!!
+  readonly routes: readonly LocalRoute[]
+  readonly run: Run
+}
+
+export interface SurfaceChannelService extends Service {
+  currentConnection(): Promise<string | null>
+  send(command: SurfaceCommand, signal?: AbortSignal): Promise<SurfaceAnswer>
+}
+
+interface Queued {
+  readonly wireId: string
+  readonly input: unknown
+  readonly answer: Deferred.Deferred<SurfaceAnswer>
+}
+
+const wirePattern = /^[A-Za-z0-9_.:-]{1,128}$/
+const codePattern = /^[A-Z_]{1,64}$/
+const WireId = Schema.String.check(Schema.makeFilter((text: string) => wirePattern.test(text)))
+const decodeConnect = Schema.decodeUnknownOption(Schema.Struct({
+  clientId: WireId,
+  epoch: Schema.Number.check(Schema.makeFilter((epoch: number) => Number.isSafeInteger(epoch) && epoch >= 0)),
+}), { onExcessProperty: "error" })
+const decodeConnection = Schema.decodeUnknownOption(Schema.Struct({ connectionId: WireId }), { onExcessProperty: "error" })
+const decodeResultReply = Schema.decodeUnknownOption(Schema.Struct({ connectionId: WireId, id: WireId, result: Schema.Unknown }), { onExcessProperty: "error" })
+const decodeErrorReply = Schema.decodeUnknownOption(Schema.Struct({
+  connectionId: WireId,
+  id: WireId,
+  error: Schema.Struct({
+    code: Schema.String.check(Schema.makeFilter((code: string) => codePattern.test(code))),
+    message: Schema.String.check(Schema.makeFilter((message: string) => message.length <= 1024)),
+  }),
+}), { onExcessProperty: "error" })
+
+const stale = (message: string) => new SurfaceRefused({ refusal: { code: "STALE_REF", status: 409 }, message })
+const busy = (message: string) => new SurfaceRefused({ refusal: { code: "BUSY", status: 409 }, message })
+const invalid = (message: string, status: 400 | 413 = 400) => new SurfaceRefused({ refusal: { code: "INVALID_REQUEST", status }, message })
+const unavailable = () => new SurfaceRefused({ refusal: { code: "UNAVAILABLE", status: 503 }, message: "The surface channel has stopped" })
+
+function retiredAnswer(result: Outcome): SurfaceAnswer {
+  return result === "Uncertain"
+    ? { kind: "refused", code: "UNCERTAIN_OUTCOME", message: "The page may have run this command; observe before continuing" }
+    : { kind: "refused", code: "STALE_REF", message: "The surface command ended before the page answered" }
+}
+
+const hasKey = (body: unknown, key: string) => typeof body === "object" && body !== null && Object.hasOwn(body, key)
+
+effect function copied(value: unknown, limit: number, what: string): unknown!SurfaceRefused {
+  const encoded: string | undefined = try Effect.try({ try: () => JSON.stringify(value), catch: () => invalid(`${what} is not JSON`) })
+  if (encoded === undefined) throw invalid(`${what} is not JSON`)
+  if (new TextEncoder().encode(encoded).byteLength > limit) throw invalid(`${what} exceeds its size limit`, 413)
+  return try Effect.try({ try: () => JSON.parse(encoded) as unknown, catch: () => invalid(`${what} is not JSON`) })
+}
+
+effect function parsed<A>(decode: (input: unknown) => Option.Option<A>, body: unknown, limit: number, message: string): A!SurfaceRefused {
+  try copied(body, limit, "The surface request")
+  const value = decode(body)
+  if (Option.isNone(value)) throw invalid(message)
+  return value.value
+}
+
+effect function replyOf(body: unknown) {
+  if (hasKey(body, "error")) {
+    const sent = try parsed(decodeErrorReply, body, replyLimitBytes, "Invalid surface reply")
+    const answer: SurfaceAnswer = { kind: "refused", code: sent.error.code, message: sent.error.message }
+    return { connectionId: sent.connectionId, id: sent.id, answer }
+  }
+  if (!hasKey(body, "result")) throw invalid("A surface reply carries a result or an error")
+  const sent = try parsed(decodeResultReply, body, replyLimitBytes, "Invalid surface reply")
+  const answer: SurfaceAnswer = { kind: "answered", result: try copied(sent.result, replyLimitBytes, "The surface reply result") }
+  return { connectionId: sent.connectionId, id: sent.id, answer }
+}
+
+effect function held() {
+  provide machine() {
+    return try Machine
+  }
+}
+
+export effect function openSurfaceChannel() {
+  const services = try Effect.context<never>()
+  const run: Run = (work, options) => Effect.runPromiseWith(services)(work, options)
+  const model = try held()
+  const lock = try Semaphore.make(1)
+  const queued = new Map<number, Queued>()
+  const wireIds = new Map<number, string>()
+  const byWire = new Map<string, number>()
+  let connection = { model: 0, id: "" }
+
+  const serial = <A, E>(work: A!E): A!E => lock.withPermits(1)(work)
+  const modelConnection = (id: string) => id === connection.id ? connection.model : 0
+
+  effect function stepped(event: Event, answerOf: (result: Outcome) => SurfaceAnswer = retiredAnswer): ChannelStep!! {
+    const next = try orDie(model.send(event))
+    for (const { id, result } of next.out) {
+      const waiting = queued.get(id)
+      queued.delete(id)
+      if (waiting !== undefined) try Deferred.succeed(waiting.answer, answerOf(result))
+    }
+    const kept = new Set([...next.state.pending.map((command) => command.id), ...next.state.cancellations])
+    for (const [id, wire] of [...wireIds]) {
+      if (kept.has(id)) continue
+      wireIds.delete(id)
+      byWire.delete(wire)
+    }
+    return next
+  }
+
+  effect function tick(): Channel!! {
+    const now = try Clock.currentTimeMillis
+    const before = try model.get()
+    const current = now > before.now ? (try stepped({ type: "advance", elapse: now - before.now })).state : before
+    return canLapse(current) ? (try stepped({ type: "lapse" })).state : current
+  }
+
+  effect function serving(): Channel!SurfaceRefused {
+    const state = try tick()
+    if (state.closed) throw unavailable()
+    return state
+  }
+
+  effect function handOver(before: Channel, event: Event) {
+    const cancellations = before.cancellations.flatMap((id) => wireIds.get(id) ?? [])
+    const next = try stepped(event)
+    const sequence = next.state.lastSequence
+    const handed = sequence > before.lastSequence ? next.state.pending.find((command) => command.id === sequence) : undefined
+    const waiting = handed === undefined ? undefined : queued.get(handed.id)
+    const command = handed === undefined || waiting === undefined ? null
+      : { id: waiting.wireId, sequence: handed.id, effect: handed.effect, expiresAt: handed.deadline, input: waiting.input }
+    return { command, cancellations }
+  }
+
+  effect function answerHeld(conn: number) {
+    const state = try tick()
+    if (!canAnswerHeldPull(state, conn)) throw stale("The surface connection ended while the pull was held")
+    return try handOver(state, { type: "answerHeldPull", connection: conn })
+  }
+
+  effect function giveUp(id: number, late: (state: Channel) => boolean) {
+    const state = try tick()
+    if (canCancel(state, id) && late(state)) try stepped({ type: "cancel", id })
+  }
+
+  effect function connect(body: unknown) {
+    const sent = try parsed(decodeConnect, body, requestLimitBytes, "Invalid surface connection")
+    return try serial(effect {
+      const state = try serving()
+      if (!canConnect(state, sent.epoch)) throw stale("The surface connection epoch was retired")
+      const next = try stepped({ type: "connect", epoch: sent.epoch })
+      connection = { model: next.state.connection, id: opaqueId() }
+      return { connectionId: connection.id }
+    })
+  }
+
+  effect function pull(body: unknown) {
+    const sent = try parsed(decodeConnection, body, requestLimitBytes, "Invalid surface pull")
+    return try uninterruptibleMask((restore) => effect {
+      const opened = try serial(effect {
+        const state = try serving()
+        const conn = modelConnection(sent.connectionId)
+        if (!isCurrent(state, conn)) throw stale("The surface connection is no longer current")
+        if (state.holding) throw busy("Only one surface pull may wait at a time")
+        if (hasWork(state)) return { conn, answer: try handOver(state, { type: "pull", connection: conn }) }
+        try stepped({ type: "pull", connection: conn })
+        return { conn, answer: undefined }
+      })
+      if (opened.answer !== undefined) return opened.answer
+      const { conn } = opened
+      const woken = Stream.runHead(Stream.filter(model.changes, (state) => !canAnswerHeldPull(state, conn) || hasWork(state)))
+      return try onInterrupt(restore(effect {
+        try timeoutOption(woken, Duration.millis(pullHoldMs))
+        return try serial(answerHeld(conn))
+      }), () => serial(effect {
+        const state = try tick()
+        if (canAnswerHeldPull(state, conn)) try stepped({ type: "closeConnection", connection: conn })
+      }))
+    })
+  }
+
+  effect function reply(body: unknown) {
+    const sent = try replyOf(body)
+    return try serial(effect {
+      const state = try serving()
+      const conn = modelConnection(sent.connectionId)
+      const id = byWire.get(sent.id) ?? 0
+      const succeeded = sent.answer.kind === "answered"
+      if (canReply(state, conn, id, succeeded)) {
+        try stepped({ type: "reply", connection: conn, id, succeeded }, () => sent.answer)
+        return { accepted: true }
+      }
+      if (isCurrent(state, conn)) {
+        try giveUp(id, (now) => now.pending.some((command) => command.id === id && handedOver(command, now.lastSequence) && command.deadline <= now.now))
+      }
+      throw stale("The surface command is no longer pending")
+    })
+  }
+
+  effect function close(body: unknown) {
+    const sent = try parsed(decodeConnection, body, requestLimitBytes, "Invalid surface close")
+    return try serial(effect {
+      const state = try serving()
+      const conn = modelConnection(sent.connectionId)
+      if (!canCloseConnection(state, conn)) throw stale("The surface connection is no longer current")
+      try stepped({ type: "closeConnection", connection: conn })
+      return { closed: true }
+    })
+  }
+
+  effect function settled(id: number, answer: Deferred.Deferred<SurfaceAnswer>): SurfaceAnswer!! {
+    while (true) {
+      const state = try model.get()
+      const deadline = state.pending.find((command) => command.id === id)?.deadline ?? state.now
+      const wait = Math.max(Math.min(deadline, state.expiresAt) - (try Clock.currentTimeMillis), 0)
+      const got = try timeoutOption(Deferred.await(answer), Duration.millis(wait))
+      if (Option.isSome(got)) return got.value
+      try serial(giveUp(id, (now) => now.pending.some((command) => command.id === id && command.deadline <= now.now)))
+    }
+  }
+
+  effect function send(command: SurfaceCommand): SurfaceAnswer!SurfaceRefused {
+    const input = try copied(command.input, replyLimitBytes, "The surface command input")
+    const answer = try Deferred.make<SurfaceAnswer>()
+    return try uninterruptibleMask((restore) => effect {
+      const id = try serial(effect {
+        const state = try serving()
+        const conn = modelConnection(command.connectionId)
+        if (!isCurrent(state, conn)) throw stale("The surface connection was replaced")
+        if (!canSend(state, conn)) throw busy("The surface command limit is reached")
+        const next = try stepped({ type: "send", connection: conn, effect: command.effect })
+        const queuedId = next.state.nextId - 1
+        const wireId = opaqueId()
+        queued.set(queuedId, { wireId, input, answer })
+        wireIds.set(queuedId, wireId)
+        byWire.set(wireId, queuedId)
+        return queuedId
+      })
+      return try onInterrupt(restore(settled(id, answer)), () => serial(giveUp(id, () => true)))
+    })
+  }
+
+  effect function answered(handle: (body: unknown) => object!SurfaceRefused, input: RouteInput, limit: number) {
+    if ((input.rawBodyBytes ?? 0) > limit) throw invalid("The surface request exceeds its size limit", 413)
+    return { status: 200, body: try handle(input.body) }
+  }
+
+  const route = (path: string, handle: (body: unknown) => object!SurfaceRefused, limit = requestLimitBytes): LocalRoute => ({
+    method: "POST", path,
+    handler: (input: RouteInput) => run(effect {
+      return answered(handle, input, limit) catch (refused) => ({ status: refused.refusal.status, body: { code: refused.refusal.code, message: refused.message } })
+    }, { signal: input.signal }),
+  })
+
+  const channel: SurfaceChannel = {
+    currentConnection: effect () => {
+      const state = try serial(tick())
+      return connection.model > 0 && currentConnection(state) === connection.model ? connection.id : null
+    },
+    send,
+    shutdown: effect () => {
+      try serial(effect {
+        const state = try tick()
+        if (!state.closed) try stepped({ type: "shutdown" })
+      })
+    },
+    routes: [
+      route("/api/surface/connect", connect),
+      route("/api/surface/pull", pull),
+      route("/api/surface/reply", reply, replyLimitBytes),
+      route("/api/surface/close", close),
+    ],
+    run,
+  }
+  return channel
+}
+
+function surfaceService(channel: SurfaceChannel) {
+  return class SurfaceChannelHost extends Service implements SurfaceChannelService {
+    static override serviceType = surfaceChannelServiceType
+    override capabilityDescription = "Sends page commands to the one browser surface the device shows and returns each settlement once"
+
+    static override start(runtime: IAgentRuntime): Promise<Service> {
+      return Promise.resolve(new SurfaceChannelHost(runtime))
+    }
+
+    currentConnection(): Promise<string | null> {
+      return channel.run(channel.currentConnection())
+    }
+
+    send(command: SurfaceCommand, signal?: AbortSignal): Promise<SurfaceAnswer> {
+      return channel.run(channel.send(command), signal === undefined ? {} : { signal })
+    }
+
+    override stop(): Promise<void> {
+      return channel.run(channel.shutdown())
+    }
+  }
+}
+
+export const surfaceModule: ModuleFactory<never> = effect () => {
+  const channel = try openSurfaceChannel()
+  return {
+    name: surfaceModuleName,
+    plugin: {
+      name: surfaceModuleName,
+      description: "The page-command channel between the agent's browser tasks and the browser surface the device shows",
+      services: [surfaceService(channel)],
+      routes: [...channel.routes],
+    },
+  } satisfies AgentModule
+}

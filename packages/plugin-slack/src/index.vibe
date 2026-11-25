@@ -1,6 +1,7 @@
 // spec/slack/index.md, "Slack events need the installed team and compatible enterprise identity"; spec/slack/index.md, "A public or private mention takes the app-mention lane and replies to the captured thread"; spec/slack/index.md, "Complete, partial and unconfirmed Slack sends follow distinct part receipts"; spec/slack/index.md, "The agent reads the &, < and > a Slack member typed"; spec/slack/index.md, "A Slack post is sent again only after a rate limit, never after a lost answer"
 import { App, webApi } from "@slack/bolt"
-import { ChannelType, Service, checkPairingAllowed, createUniqueUuid, fetchRemoteMedia, type Content, type IAgentRuntime, type Memory, type Plugin, type SendHandlerOutcome, type TargetInfo, requireConfirmedSendHandlerDelivery } from "@elizaos/core"
+import { ChannelType, Service, checkPairingAllowed, createUniqueUuid, type Content, type IAgentRuntime, type Memory, type Plugin, type SendHandlerOutcome, type TargetInfo, requireConfirmedSendHandlerDelivery } from "@elizaos/core"
+import { fetchRemoteMedia } from "@elizaos/core-node"
 import { enabled, initial, machineOver, slackEntityText, slackReplyTarget, slackRetries, slackSendOutcome, type SlackAdmission, type SlackCallFailure, type SlackConversation, type SlackInbound, type SlackPartReceipt } from "../gen/slack.effect.vibe"
 
 const envelope = Schema.Struct({ team_id: Schema.optionalKey(Schema.String), enterprise_id: Schema.optionalKey(Schema.String) })

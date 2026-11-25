@@ -7,6 +7,11 @@ inheritance and restoration for logical continuations. The future Effect
 adapter must preserve the public `run` and `active` behavior through real
 asynchronous and exceptional continuations.
 
+Core is browser-safe, so it names no Node module: it finds the host's own
+`AsyncLocalStorage` (Node's `process.getBuiltinModule`), and a host may
+register another storage. A host with none refuses every scope (the last
+rule below).
+
 ## Story: Keep concurrent turn context isolated
 
 > As a runtime caller, I want the context I enter to reach only my own
@@ -53,4 +58,21 @@ pure def lawEnterThenLeaveRestores(s: ContextScopes, id: str, identity: str): bo
 pure def lawPeerContextUnchanged(s: ContextScopes, id: str, peerId: str, identity: str): bool =
   id != peerId implies observedContext(enterScope(s, id, identity), peerId) == observedContext(s, peerId)
 pure val sValues = Set(initial, { continuations: List({ id: "parent", activeContext: emptyContext, stack: List() }) })
+```
+
+### A scope on a host with no asynchronous storage is refused before its callback runs
+
+A host with no storage that carries a context across `await` cannot keep a
+scope: a synchronous stack would drop the context at the scope's first
+continuation, and a check that reads it there, such as the action gate's
+request policy, would pass open. Entering a scope there throws
+`AsyncContextUnavailableError` before the callback runs, so no continuation
+observes a changed context, and reading the context finds none.
+
+```quint
+pure def scopeOutcome(storage: bool, s: ContextScopes, id: str, identity: str): ContextScopes =
+  if (storage and canEnterScope(s, id, identity)) enterScope(s, id, identity) else s
+pure def lawScopeWithoutStorageChangesNoContext(storage: bool, s: ContextScopes, id: str, identity: str): bool =
+  not(storage) implies scopeOutcome(storage, s, id, identity) == s
+pure val storageValues = Set(true, false)
 ```

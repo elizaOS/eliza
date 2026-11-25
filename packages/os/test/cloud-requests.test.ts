@@ -42,6 +42,43 @@ describe("Reach my account's cloud services without holding my key", () => {
     for (const c of sent) expect(c.args[4]).not.toContain("Authorization");
   });
 
+  it("asks a device with an old key to sign in once and sends mail only with the lease after a lost rotation reply", () => {
+    const main = "ai.eliza.plugins.signin.DeviceKeyJourney";
+    const seen = JSON.parse(execFileSync(javaTool("java"), ["-cp", compileAdapter(main), main, "cloud"], { encoding: "utf8", timeout: 120_000 })) as unknown;
+    expect(seen).toEqual({
+      mailSignedOut: "SIGN_IN_REQUIRED",
+      keyOnlySignIn: "SIGNED_IN",
+      mailWithoutLease: "MAIL_LEASE_UPGRADE_REQUIRED",
+      settledRequestCancelled: false,
+      oldKeyAfterCancel: true,
+      mailAfterCancel: "MAIL_LEASE_UPGRADE_REQUIRED",
+      inferenceBeforeUpgrade: "200",
+      upgradeWithoutLease: "SUPERSEDED",
+      upgradeToOtherOrganization: "SUPERSEDED",
+      refusalsKeptOldKey: true,
+      restartRetiredPendingUpgrade: true,
+      failedUpgradeAcknowledgements: 0,
+      leasedSignIn: "SIGNED_IN",
+      upgradeStayedWithOwner: true,
+      mailAfterLostRotation: "NETWORK",
+      mailWithStaleAuthority: "SIGN_IN_REQUIRED",
+      mailWithUnknownQuery: "NOT_LISTED",
+      mailWithLease: "200",
+      inferenceWithKey: "200",
+      mailAfterRevokedLease: "SIGN_IN_REQUIRED",
+      bearers: "lease/key,key",
+      leaseReuses: 0,
+      replyFromPreviousEnrollment: "SIGN_IN_REQUIRED",
+      sameOwnerReEnrolledAtNewVersion: true,
+      legacyVaultBindingMatches: true,
+      replyFromBeforeRenewal: "SIGN_IN_REQUIRED",
+      sameOwnerRenewedAtNewVersion: true,
+      readAfterRenewal: "200",
+      vaultBindingAfterRenewalRestart: true,
+      refreshFromPreviousEnrollment: true,
+    });
+  });
+
   it("sends only to an https origin, or http on loopback, with no path, user, query or fragment", () => {
     expect(origins.accepted).toEqual({
       "https://api.cloud.test": true,

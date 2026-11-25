@@ -1,0 +1,116 @@
+// spec/cloud/deployment.md, "Story: Answer only the deployment's own callers"; spec/cloud/shared/types.md, "Story: Speak one refusal language"
+import { assert, describe, it } from "@effect/vitest"
+import { allowedMethods, allowedRequestHeaders, exposedResponseHeaders } from "../gen/cloud__deployment.effect.vibe"
+import { json, type Method, type Route, type RouteArea, type RouteContext } from "../src/http/routes.vibe"
+import type { Capability } from "@elizaos/cloud"
+import { signedCaller } from "./support/caller.vibe"
+import { check, serveOnStore, testCloud, type TestCloud } from "./support/cloud.vibe"
+import { callCloud, type Answer, type CallInit } from "./support/http.ts"
+
+const ownOrigin = "https://www.staging.example.com"
+const mintedRequestId = /^[A-Za-z0-9._:-]{8,128}$/
+
+interface Gate {
+  readonly area?: RouteArea
+  readonly capability?: Capability
+}
+
+function probes(reached: Array<string>): ReadonlyArray<Route> {
+  const probe = (method: Method, path: `/${string}`, gate: Gate): Route => ({
+    method,
+    path,
+    auth: "ServiceAccess",
+    ...gate,
+    maxBodyBytes: 64,
+    handler: (context: RouteContext) => effect {
+      reached.push(path)
+      return json({ caller: context.caller.kind })
+    }
+  })
+  return [
+    probe("POST", "/probe/subscription", { area: "SubscriptionRoutes" }),
+    probe("GET", "/probe/entitlement", { area: "EntitlementRoutes" }),
+    probe("GET", "/probe/billing", { capability: "billing" }),
+    probe("POST", "/probe/inference", { area: "ChatCompletionRoutes" })
+  ]
+}
+
+effect function probeServer(cloud: TestCloud, routes: ReadonlyArray<Route>) {
+  return try serveOnStore(cloud, routes, (base) => ({ ...base, environments: { ...base.environments, staging: { ...base.environments.staging, capabilities: ["inference", "speech", "maps", "managedGoogle"] } } }))
+}
+
+function refusal(answer: Answer): string {
+  const body = answer.body as { readonly error?: string; readonly caller?: string }
+  return answer.status === 200 ? `200 ${body.caller}` : `${answer.status} ${body.error}`
+}
+
+describe("WP0 Foundation: HTTP shell", () => {
+  it.live("Answer only the deployment's own callers, in the order the shell checks a request (spec/cloud/deployment.md, \"Story: Answer only the deployment's own callers\"; spec/cloud/shared/types.md, \"Story: Speak one refusal language\")", () => scoped(effect {
+    const cloud = try testCloud()
+    const reached: Array<string> = []
+    const url = try probeServer(cloud, probes(reached))
+    const caller = try signedCaller(cloud, "foundation-http")
+    const call = (path: string, init: CallInit = {}) => promise(() => callCloud(url, path, init))
+    const signed = (requestId: string) => ({ ...caller.headers, "x-request-id": requestId })
+
+    const anonymousGated = try call("/probe/subscription", { json: {}, headers: { "x-request-id": "bad id" } })
+    const signedGated = try call("/probe/subscription", { json: {}, headers: signed("journey-http-0002") })
+    const ungatedArea = try call("/probe/entitlement", { headers: signed("journey-http-0003") })
+    const legacyGate = try call("/probe/billing", { headers: signed("journey-http-0004") })
+    const gatedOversized = try call("/probe/subscription", { json: { text: "x".repeat(1_000) }, headers: signed("journey-http-0005") })
+    const oversized = try call("/probe/inference", { json: { text: "x".repeat(1_000) }, headers: signed("journey-http-0006") })
+    const fits = try call("/probe/inference", { json: {}, headers: signed("journey-http-0007") })
+    const unknownGet = try call("/probe/nothing-here")
+    const unknownPost = try call("/probe/nothing-here", { json: {} })
+    try check(() => assert.deepStrictEqual(
+      {
+        anonymousGated: [refusal(anonymousGated), mintedRequestId.test(anonymousGated.headers["x-request-id"] ?? ""), anonymousGated.headers["x-request-id"] !== "bad id"],
+        signedGated: [refusal(signedGated), signedGated.headers["x-request-id"]],
+        ungatedArea: [refusal(ungatedArea), ungatedArea.headers["x-request-id"]],
+        legacyGate: refusal(legacyGate),
+        gatedOversized: [refusal(gatedOversized), gatedOversized.headers["x-request-id"]],
+        oversized: [refusal(oversized), oversized.headers["x-request-id"]],
+        fits: refusal(fits),
+        unknown: [refusal(unknownGet), refusal(unknownPost), mintedRequestId.test(unknownGet.headers["x-request-id"] ?? ""), unknownGet.headers["x-request-id"] !== unknownPost.headers["x-request-id"]],
+        reached
+      },
+      {
+        anonymousGated: ["401 authentication_required", true, true],
+        signedGated: ["404 capability_unavailable", "journey-http-0002"],
+        ungatedArea: ["200 deviceKey", "journey-http-0003"],
+        legacyGate: "404 capability_unavailable",
+        gatedOversized: ["404 capability_unavailable", "journey-http-0005"],
+        oversized: ["413 content_too_large", "journey-http-0006"],
+        fits: "200 deviceKey",
+        unknown: ["404 not_found", "404 not_found", true, true],
+        reached: ["/probe/entitlement", "/probe/inference"]
+      }
+    ))
+
+    const own = try call("/probe/entitlement", { headers: { ...signed("journey-http-0008"), origin: ownOrigin } })
+    const foreign = try call("/probe/entitlement", { headers: { ...signed("journey-http-0009"), origin: "https://www.example.com" } })
+    const native = try call("/probe/entitlement", { headers: signed("journey-http-0010") })
+    const ownRefusal = try call("/probe/subscription", { json: {}, headers: { origin: ownOrigin } })
+    const preflight = try call("/probe/subscription", { method: "OPTIONS", headers: { origin: ownOrigin, "access-control-request-method": "POST", "access-control-request-headers": "authorization, content-type", "x-request-id": "journey-http-0011" } })
+    const foreignPreflight = try call("/probe/subscription", { method: "OPTIONS", headers: { origin: "https://evil.example", "access-control-request-method": "POST" } })
+    try check(() => assert.deepStrictEqual(
+      {
+        own: [own.headers["access-control-allow-origin"], own.headers["access-control-allow-credentials"], own.headers["access-control-expose-headers"], own.headers.vary],
+        foreign: [foreign.headers["access-control-allow-origin"], foreign.headers["access-control-allow-credentials"], foreign.headers.vary],
+        native: [native.headers["access-control-allow-origin"], native.headers.vary],
+        ownRefusal: [refusal(ownRefusal), ownRefusal.headers["access-control-allow-origin"], mintedRequestId.test(ownRefusal.headers["x-request-id"] ?? "")],
+        preflight: [preflight.status, preflight.headers["access-control-allow-origin"], preflight.headers["access-control-allow-credentials"], preflight.headers["access-control-allow-methods"], preflight.headers["access-control-allow-headers"], preflight.headers["x-request-id"]],
+        foreignPreflight: [foreignPreflight.status, foreignPreflight.headers["access-control-allow-origin"], foreignPreflight.headers["access-control-allow-methods"], mintedRequestId.test(foreignPreflight.headers["x-request-id"] ?? "")]
+      },
+      {
+        own: [ownOrigin, "true", exposedResponseHeaders.join(", "), "Origin"],
+        foreign: [undefined, undefined, "Origin"],
+        native: [undefined, undefined],
+        ownRefusal: ["401 authentication_required", ownOrigin, true],
+        preflight: [204, ownOrigin, "true", "GET, POST, PATCH, DELETE", allowedRequestHeaders.join(", "), "journey-http-0011"],
+        foreignPreflight: [204, undefined, undefined, true]
+      }
+    ))
+    try check(() => assert.isFalse(allowedMethods.includes("OPTIONS")))
+  }))
+})

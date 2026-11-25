@@ -11,7 +11,7 @@ The routes are `POST /api/v1/voice/speech/consent`, `POST
 /api/v1/voice/speech/session`, `GET /api/v1/voice/speech/ws?sessionId=`
 and `POST /api/v1/voice/speech/session/:id/revoke`. JSON, the token, its
 digest, the socket, the provider calls and the database stay in
-`src/services/speech-session.vibe`. One session is one row of
+`packages/cloud-worker/src/services/speech-session.vibe`. One session is one row of
 `speech_sessions`; the shell loads it, steps it with the generated adapter
 and writes it back by compare-and-set, in the same transaction as the
 window's holds and the day's usage.
