@@ -144,7 +144,6 @@ const barrelExports = {
   "packages/plugin-native-wifi/package.json": ["./bridge", "./ui"],
   "packages/plugin-notes/package.json": ["./client", "./format", "./organize", "./selected-read", "./types"],
   "packages/plugin-trajectory-logger/package.json": ["./ui"],
-  "packages/plugin-wallet/package.json": ["./review"],
   "packages/plugin-workflows/package.json": ["./client", "./digests", "./scope", "./worker"],
 }
 const barrelImports = {

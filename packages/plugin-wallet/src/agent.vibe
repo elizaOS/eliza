@@ -1,0 +1,169 @@
+// spec/wallet/custody.md, "The owner switches the wallet off and on, and off means nothing is read or signed"; spec/wallet/requests.md, "Only the owner's decision takes a request off the desk"; spec/wallet/index.md, "An approval and fresh quote belong to the same operation"; spec/wallet/index.md, "Inventory and venue observations retain their chain and account scope"
+import { OWNER_EXCLUSIVE_DISCLOSURE_GATE, type Action, type ActionResult, type Provider, type ProviderResult } from "@elizaos/core"
+import { familyOf } from "./networks.vibe"
+import { shownUnits } from "./units.vibe"
+import { WalletRefused, WalletUnreachable, type Wallet, type WalletHoldings, type WalletOperation, type WalletRequestRow, type WalletStatus } from "./wallet.vibe"
+
+export const walletActionName = "WALLET"
+
+const subactions = ["accounts", "holdings", "quote", "request", "requests", "activity", "reconcile"] as const
+
+schema WalletAsk {
+  readonly subaction: "accounts" | "holdings" | "quote" | "request" | "requests" | "activity" | "reconcile"
+  readonly chain?: string
+  readonly token?: string
+  readonly amount?: string
+  readonly recipient?: string
+  readonly intentId?: string
+}
+const walletAsk = Schema.decodeUnknownOption(WalletAsk)
+
+const unreachable = "The wallet could not reach its network. Nothing was sent."
+const outcomes: Record<WalletOperation["status"], string> = {
+  notSent: "not sent", pending: "sent, awaiting a final receipt", confirmed: "confirmed", failed: "failed on chain",
+}
+
+effect function shown(atomicUnits: string, decimals: number, symbol: string) {
+  const units = try Effect.try({ try: () => shownUnits(atomicUnits, decimals), catch: () => new WalletRefused({ reason: "An amount could not be written exactly." }) })
+  return `${units} ${symbol}`
+}
+
+function accountLines(status: WalletStatus): string[] {
+  return status.accounts.map((account) =>
+    `- ${account.family === "evm" ? "EVM" : "Solana"}${account.connected ? ` on ${account.network}` : " (no network configured)"}: ${account.address}`)
+}
+
+effect function holdingLines(held: WalletHoldings, status: WalletStatus) {
+  const network = (family: string) => status.accounts.find((account) => account.family === family)?.network ?? family
+  const lines = try Effect.forEach(held.holdings, effect (holding) => `- ${try shown(holding.atomicUnits, holding.decimals, holding.symbol)} on ${network(holding.family)}`)
+  return [...lines, ...held.unread.map((family) => `- ${network(family)} could not be read`)]
+}
+
+function requestLine(request: WalletRequestRow): string {
+  return `- #${request.id}: send ${request.amount} ${request.symbol} to ${request.recipient} (${request.family}), asked by ${request.asker === "agent" ? "the agent" : "the owner"}`
+}
+
+effect function operationLine(operation: WalletOperation) {
+  const amount = try shown(operation.atomicUnits, operation.decimals, operation.symbol)
+  return `- ${amount} to ${operation.recipient}: ${outcomes[operation.status]}${operation.operationRef === "" ? "" : ` (${operation.operationRef})`}`
+}
+
+effect function transferOf(asked: WalletAsk) {
+  const family = familyOf(asked.chain ?? "")
+  if (family === undefined) throw new WalletRefused({ reason: "Name the chain: evm or solana." })
+  if (asked.recipient === undefined || asked.amount === undefined) throw new WalletRefused({ reason: "A transfer needs a recipient and an amount." })
+  return { family, token: asked.token ?? "", recipient: asked.recipient.trim(), amount: asked.amount.trim() }
+}
+
+effect function act(wallet: Wallet, input: unknown): ActionResult!(WalletRefused | WalletUnreachable) {
+  const asked = Option.getOrUndefined(walletAsk(input))
+  if (asked === undefined) throw new WalletRefused({ reason: `Name a wallet subaction: ${subactions.join(", ")}.` })
+  switch (asked.subaction) {
+    case "accounts": {
+      const status = try wallet.status()
+      return { success: true, text: ["Wallet accounts:", ...accountLines(status)].join("\n"), data: { accounts: [...status.accounts] } }
+    }
+    case "holdings": {
+      const held = try wallet.holdings()
+      const lines = try holdingLines(held, try wallet.status())
+      return { success: true, text: ["Wallet holdings:", ...lines].join("\n"), data: { holdings: [...held.holdings], unread: [...held.unread] } }
+    }
+    case "quote": {
+      const quoted = try wallet.quote(try transferOf(asked))
+      const amount = try shown(quoted.atomicUnits, quoted.decimals, quoted.symbol)
+      const fee = try shown(quoted.maximumFee, quoted.feeDecimals, quoted.feeSymbol)
+      return { success: true, text: `Sending ${amount} to ${quoted.recipient} on ${quoted.network} would cost at most ${fee} in network fees. Nothing was sent.`, data: { ...quoted } }
+    }
+    case "request": {
+      const request = try wallet.ask(try transferOf(asked), "AgentAsks")
+      return {
+        success: true,
+        text: `Request #${request.id} to send ${request.amount} ${request.symbol} to ${request.recipient} now waits for the owner's decision in the wallet. Nothing is sent unless the owner approves it there.`,
+        data: { ...request },
+      }
+    }
+    case "requests": {
+      const waiting = try wallet.requests()
+      return { success: true, text: waiting.length === 0 ? "No transfer waits for the owner's decision." : ["Waiting for the owner's decision:", ...waiting.map(requestLine)].join("\n"), data: { requests: [...waiting] } }
+    }
+    case "activity": {
+      const operations = try wallet.activity()
+      const lines = try Effect.forEach(operations.slice(0, 10), operationLine)
+      return { success: true, text: lines.length === 0 ? "This wallet has sent nothing yet." : ["Recent transfers:", ...lines].join("\n"), data: { operations: [...operations] } }
+    }
+    case "reconcile": {
+      const operation = try wallet.reconcile((asked.intentId ?? "").trim())
+      return { success: true, text: `Wallet outcome: ${outcomes[operation.status]}`, data: { ...operation } }
+    }
+  }
+}
+
+effect function answered(wallet: Wallet, options: unknown): ActionResult!! {
+  const input = typeof options === "object" && options !== null && "parameters" in options ? options.parameters : options
+  return act(wallet, input) catch (error) => match (error) {
+    when WalletRefused: { success: false, text: error.reason };
+    when WalletUnreachable: { success: false, text: unreachable };
+  }
+}
+
+effect function serves(wallet: Wallet) {
+  return (try wallet.status()).custody === "ready"
+}
+
+export function walletAction(wallet: Wallet, ownerId: string): Action {
+  return {
+    name: walletActionName,
+    description: "The owner's own wallet, with one EVM and one Solana account. accounts gives the addresses; holdings the balances of the native coin and known tokens; quote previews a transfer and its largest network fee without sending; request puts a transfer up for the owner's decision on the wallet screen, which is the only way anything is sent; requests lists what waits there; activity lists past transfers and their outcomes; reconcile checks one transfer's receipt by its intentId. Amounts are written in the asset's own units (0.5 for half an ETH), never in wei or lamports. You cannot approve, decline or send: say that the owner decides in the wallet.",
+    similes: ["WALLET_BALANCE", "WALLET_TRANSFER", "SEND_TOKENS", "CHECK_WALLET"],
+    tags: ["domain:wallet", "capability:read", "capability:write", "effect:receipt-required"],
+    contexts: ["wallet", "finance", "crypto"],
+    parameters: [
+      { name: "subaction", required: true, description: "What to do.", schema: { type: "string", enum: [...subactions] } },
+      { name: "chain", required: false, description: "The account's chain family, for quote and request: evm or solana.", schema: { type: "string", enum: ["evm", "solana"] } },
+      { name: "token", required: false, description: "The token's contract or mint address, for quote and request. Leave it out for the native coin.", schema: { type: "string" } },
+      { name: "amount", required: false, description: "For quote and request: the amount in the asset's own units as a plain decimal, exactly as the owner said it.", schema: { type: "string" } },
+      { name: "recipient", required: false, description: "For quote and request: the receiving address, exactly as the owner gave it. Never guess or complete an address.", schema: { type: "string" } },
+      { name: "intentId", required: false, description: "For reconcile: the transfer's intentId from activity.", schema: { type: "string" } },
+    ],
+    roleGate: { minRole: "OWNER" },
+    disclosureGate: OWNER_EXCLUSIVE_DISCLOSURE_GATE,
+    validate: (_runtime, message) => message.entityId === ownerId ? runPromise(serves(wallet)) : Promise.resolve(false),
+    handler: (_runtime, message, _state, options) =>
+      message.entityId === ownerId ? runPromise(answered(wallet, options)) : Promise.resolve({ success: false, text: "Only the wallet's owner may use it." }),
+  }
+}
+
+effect function described(wallet: Wallet): ProviderResult!! {
+  return effect {
+    const context = try wallet.context()
+    if (context === undefined) return {}
+    const held = context.holdings === undefined ? ["- holdings could not be read"] : try holdingLines(context.holdings, context.status)
+    const operations = try Effect.forEach(context.operations, operationLine)
+    return {
+      text: [
+        "The owner's wallet is on.",
+        ...accountLines(context.status),
+        "Holdings:", ...held,
+        ...(context.requests.length === 0 ? [] : ["Waiting for the owner's decision in the wallet:", ...context.requests.map(requestLine)]),
+        ...(operations.length === 0 ? [] : ["Recent transfers:", ...operations]),
+      ].join("\n"),
+      values: { walletOn: true, evmAddress: context.status.accounts.find((account) => account.family === "evm")?.address ?? "", solanaAddress: context.status.accounts.find((account) => account.family === "solana")?.address ?? "" },
+      data: { accounts: [...context.status.accounts], holdings: [...(context.holdings?.holdings ?? [])], requests: [...context.requests], operations: [...context.operations] },
+    } satisfies ProviderResult
+  } catch (): ProviderResult => ({})
+}
+
+export function walletProvider(wallet: Wallet, ownerId: string): Provider {
+  return {
+    name: "WALLET_CONTEXT",
+    description: "The owner's wallet accounts, holdings, waiting transfer requests and recent transfers, while the owner has the wallet on",
+    dynamic: true,
+    position: -5,
+    contexts: ["wallet", "finance", "crypto"],
+    cacheStable: false,
+    cacheScope: "turn",
+    roleGate: { minRole: "OWNER" },
+    disclosureGate: OWNER_EXCLUSIVE_DISCLOSURE_GATE,
+    get: (_runtime, message) => message.entityId === ownerId ? runPromise(described(wallet)) : Promise.resolve({}),
+  }
+}

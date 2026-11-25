@@ -1,0 +1,68 @@
+// spec/wallet/index.md, "Inventory and venue observations retain their chain and account scope"; spec/wallet/index.md, "An approval and fresh quote belong to the same operation"
+import type { WalletFamily } from "../gen/wallet.effect.vibe"
+
+export type WalletFamilyName = "evm" | "solana"
+
+export interface NetworkPlan {
+  readonly family: WalletFamily
+  readonly name: WalletFamilyName
+  readonly chainId: string
+  readonly rpc: string
+  readonly label: string
+  readonly nativeSymbol: string
+  readonly nativeDecimals: number
+  readonly tokens: readonly string[]
+  readonly feeCap: string
+}
+
+export type Setting = (key: string) => string
+
+const evmLabels: Record<string, string> = { "1": "Ethereum", "11155111": "Sepolia", "1337": "Local chain", "31337": "Local chain" }
+const solanaLabels: Record<string, string> = {
+  "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d": "Solana",
+  "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG": "Solana Devnet",
+  "4uhcVJyU9pJkvQyS88uRDiswHXSCkY3zQawwpjk2NsNY": "Solana Testnet",
+}
+const listedTokens: Record<string, readonly string[]> = {
+  "1": [
+    "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+    "0xdAC17F958D2ee523a2206206994597C13D831ec7",
+    "0x6B175474E89094C44Da98b954EedeAC495271d0F",
+    "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+    "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599",
+  ],
+}
+
+export const familyNames: Record<WalletFamily, WalletFamilyName> = { EvmWallet: "evm", SolanaWallet: "solana" }
+
+export function familyOf(name: string): WalletFamily | undefined {
+  return name === "evm" ? "EvmWallet" : name === "solana" ? "SolanaWallet" : undefined
+}
+
+function listed(text: string): string[] {
+  return text.split(",").map((entry) => entry.trim()).filter((entry) => entry !== "")
+}
+
+export function allowedRecipients(setting: Setting): readonly string[] {
+  return listed(setting("WALLET_TRANSFER_RECIPIENTS"))
+}
+
+export function networkPlan(setting: Setting, family: WalletFamily): NetworkPlan | undefined {
+  const evm = family === "EvmWallet"
+  const prefix = evm ? "WALLET_EVM" : "WALLET_SOLANA"
+  const rpc = setting(`${prefix}_RPC_URL`)
+  const chainId = setting(`${prefix}_CHAIN_ID`)
+  if (rpc === "" || chainId === "") return undefined
+  const feeCap = setting(`${prefix}_MAX_FEE_ATOMIC`)
+  return {
+    family,
+    name: familyNames[family],
+    chainId,
+    rpc,
+    label: (evm ? evmLabels[chainId] : solanaLabels[chainId]) ?? (evm ? `Chain ${chainId}` : "Solana cluster"),
+    nativeSymbol: evm ? "ETH" : "SOL",
+    nativeDecimals: evm ? 18 : 9,
+    tokens: evm ? [...(listedTokens[chainId] ?? []), ...listed(setting("WALLET_EVM_TOKENS"))] : [],
+    feeCap: feeCap === "" ? (evm ? "20000000000000000" : "1000000") : feeCap,
+  }
+}

@@ -1,0 +1,75 @@
+// spec/wallet/custody.md, "Only the owner makes the wallet, once, with an account for each family"; spec/wallet/requests.md, "Only the owner's decision takes a request off the desk"; spec/wallet/index.md, "A review binds the complete immutable wallet operation"
+import type { LocalRoute } from "@elizaos/agent/routes"
+import { familyOf } from "./networks.vibe"
+import { WalletRefused, WalletUnreachable, type Wallet } from "./wallet.vibe"
+
+schema SwitchBody { readonly on: boolean }
+schema AskBody { readonly family: "evm" | "solana"; readonly token?: string; readonly recipient: string; readonly amount: string }
+schema DecideBody { readonly decision: "approve" | "decline"; readonly intentId: string; readonly commitment: string }
+
+const switchBody = Schema.decodeUnknownOption(SwitchBody, { onExcessProperty: "error" })
+const askBody = Schema.decodeUnknownOption(AskBody, { onExcessProperty: "error" })
+const decideBody = Schema.decodeUnknownOption(DecideBody, { onExcessProperty: "error" })
+
+type Answer = { readonly status: number; readonly body: object }
+
+const malformed: Answer = { status: 400, body: { error: "invalid_request" } }
+
+effect function settled(run: object!(WalletRefused | WalletUnreachable)): Answer!! {
+  return effect {
+    return { status: 200, body: try run } satisfies Answer
+  } catch (error): Answer => match (error) {
+    when WalletRefused: { status: 409, body: { error: "refused", reason: error.reason } };
+    when WalletUnreachable: { status: 502, body: { error: "unreachable", reason: "The wallet could not reach its network." } };
+  }
+}
+
+function replied(run: object!(WalletRefused | WalletUnreachable), signal: AbortSignal): Promise<Answer> {
+  return runPromise(settled(run), { signal })
+}
+
+function requestId(parameters: ReadonlyMap<string, string>): number | undefined {
+  const id = parameters.get("id") ?? ""
+  return /^[1-9][0-9]{0,14}$/.test(id) ? Number(id) : undefined
+}
+
+export function walletRoutes(wallet: Wallet): LocalRoute[] {
+  return [
+    { method: "GET", path: "/api/wallet", handler: ({ signal }) => replied(wallet.status(), signal) },
+    { method: "POST", path: "/api/wallet", maxBodyBytes: 64, handler: ({ signal }) => replied(wallet.create(), signal) },
+    {
+      method: "POST", path: "/api/wallet/switch", maxBodyBytes: 64,
+      handler: ({ body, signal }) => {
+        const sent = Option.getOrUndefined(switchBody(body ?? {}))
+        return sent === undefined ? malformed : replied(wallet.switchTo(sent.on), signal)
+      },
+    },
+    { method: "GET", path: "/api/wallet/holdings", handler: ({ signal }) => replied(wallet.holdings(), signal) },
+    { method: "GET", path: "/api/wallet/activity", handler: ({ signal }) => replied(Effect.map(wallet.activity(), (operations) => ({ operations })), signal) },
+    { method: "GET", path: "/api/wallet/requests", handler: ({ signal }) => replied(Effect.map(wallet.requests(), (requests) => ({ requests })), signal) },
+    {
+      method: "POST", path: "/api/wallet/requests", maxBodyBytes: 1024,
+      handler: ({ body, signal }) => {
+        const sent = Option.getOrUndefined(askBody(body ?? {}))
+        const family = familyOf(sent?.family ?? "")
+        if (sent === undefined || family === undefined) return malformed
+        return replied(wallet.ask({ family, token: sent.token ?? "", recipient: sent.recipient.trim(), amount: sent.amount.trim() }, "OwnerAsks"), signal)
+      },
+    },
+    {
+      method: "POST", path: "/api/wallet/requests/{id}/review", maxBodyBytes: 64,
+      handler: ({ parameters, signal }) => {
+        const id = requestId(parameters)
+        return id === undefined ? malformed : replied(wallet.review(id), signal)
+      },
+    },
+    {
+      method: "POST", path: "/api/wallet/requests/{id}/decide", maxBodyBytes: 1024,
+      handler: ({ parameters, body, signal }) => {
+        const id = requestId(parameters)
+        const sent = Option.getOrUndefined(decideBody(body ?? {}))
+        return id === undefined || sent === undefined ? malformed : replied(wallet.decide(id, sent), signal)
+      },
+    },
+  ]
+}

@@ -1,0 +1,13 @@
+// spec/wallet/index.md, "A chain amount compares exactly at every digit"
+module node {
+  import { formatUnits, parseUnits } from "ethers/utils"
+
+  export function atomicOf(amount: string, decimals: number): string {
+    return parseUnits(amount, decimals).toString()
+  }
+
+  export function shownUnits(atomicUnits: string, decimals: number): string {
+    return formatUnits(BigInt(atomicUnits), decimals)
+  }
+}
+export { atomicOf, shownUnits } from node
