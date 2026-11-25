@@ -1,0 +1,69 @@
+// spec/wallet/index.md, "A review binds the complete immutable wallet operation"; spec/wallet/index.md, "Inventory and venue observations retain their chain and account scope"
+import type { WalletFamily } from "../gen/wallet.effect.vibe"
+
+export type WalletAsset =
+  | { readonly kind: "native" }
+  | { readonly kind: "token"; readonly address: string }
+
+export interface AssetTransfer {
+  readonly asset: WalletAsset
+  readonly recipient: string
+  readonly atomicUnits: string
+}
+
+export interface WalletNetwork {
+  readonly family: WalletFamily
+  readonly chainId: string
+  readonly rpc: string
+}
+
+export interface TokenFacts {
+  readonly address: string
+  readonly symbol: string
+  readonly decimals: number
+}
+
+export interface TokenHolding extends TokenFacts {
+  readonly atomicUnits: string
+}
+
+export interface EvmFeePlan {
+  readonly gasLimit: string
+  readonly maxFeePerGas: string
+  readonly maxPriorityFeePerGas: string
+}
+
+export interface TransferQuote {
+  readonly maximumFee: string
+  readonly evm?: EvmFeePlan
+}
+
+export interface SignedSubmission {
+  readonly operationRef: string
+  broadcast(): Promise<void>
+}
+
+export type ChainReceipt = "confirmed" | "failed" | "unresolved"
+
+export interface ChainAccount {
+  readonly family: WalletFamily
+  readonly chainId: string
+  readonly account: string
+  readonly supportsSigning: boolean
+  recipient(input: string): string
+  token(address: string): string
+  nativeBalance(): Promise<string>
+  tokenFacts(address: string): Promise<TokenFacts>
+  tokenHoldings(listed: readonly string[]): Promise<readonly TokenHolding[]>
+  quote(transfer: AssetTransfer): Promise<TransferQuote>
+  receipt(operationRef: string): Promise<ChainReceipt>
+  close(): void
+}
+
+export interface ChainSigner extends ChainAccount {
+  sign(transfer: AssetTransfer, quote: TransferQuote): Promise<SignedSubmission>
+}
+
+export function assetId(asset: WalletAsset): string {
+  return asset.kind === "native" ? "native" : asset.address
+}
