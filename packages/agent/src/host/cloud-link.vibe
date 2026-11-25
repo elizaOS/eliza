@@ -1,0 +1,27 @@
+// spec/agent/models/binding.md, "Plugins reach the cloud only through the cloud service of a cloud backend, and a managed Google change needs the owner's consent"
+import type { Service } from "@elizaos/core"
+
+export type GoogleChange = "gmail_change" | "calendar_edit" | "read"
+
+export type GoogleAdmission =
+  | { readonly kind: "admitted" }
+  | { readonly kind: "refused"; readonly reason: "changes-off" }
+
+export interface CloudLinkRequest {
+  readonly method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE"
+  readonly path: string
+  readonly body?: unknown
+  readonly idempotencyKey?: string
+  readonly ifMatch?: string
+  readonly signal?: AbortSignal
+}
+
+export type CloudLinkReply =
+  | { readonly kind: "answered"; readonly status: number; readonly body: unknown }
+  | { readonly kind: "refused"; readonly status: number; readonly body: unknown }
+  | { readonly kind: "changes-off"; readonly operation: GoogleChange }
+
+export interface CloudLinkService extends Service {
+  admitGoogle(operation: GoogleChange): GoogleAdmission
+  request(request: CloudLinkRequest): Promise<CloudLinkReply>
+}

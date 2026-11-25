@@ -43,12 +43,12 @@ interface ActionGateRejection {
 }
 
 module node {
-  import { AsyncLocalStorage } from "node:async_hooks"
+  import { createAsyncContextStorage } from "../utils/async-context-storage.vibe"
   import type { ActionGateContext, GateableAction } from "./action-gate.vibe"
 
   type ActionGatePolicy = (action: GateableAction, context: ActionGateContext) => string | undefined
 
-  const requestPolicy = new AsyncLocalStorage<ActionGatePolicy>()
+  const requestPolicy = createAsyncContextStorage<ActionGatePolicy>()
 
   /** @throws {never} */
   export function currentRequestPolicy(): ActionGatePolicy | undefined {

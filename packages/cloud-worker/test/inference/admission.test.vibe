@@ -1,0 +1,142 @@
+// spec/cloud/index.md, "Story: Use inference on my subscription or funded pilot account"; spec/cloud/shared/rateLimit.md, "Story: Refuse excess requests with a usable retry time"
+import { assert, describe, it } from "@effect/vitest"
+import type { Model } from "../../gen/cloud__services__models.ts"
+import { json, type Route } from "../../src/http/routes.vibe"
+import { listening, respond } from "../../src/http/server.vibe"
+import { deploymentLayer, parseProfile } from "@elizaos/cloud"
+import { chatBody, chatIngressPerMinute, hasImage, quote } from "../../src/services/chat-request.vibe"
+import { Store } from "../../src/store/store.vibe"
+import { signedCaller } from "../support/caller.vibe"
+import { manualClock } from "../support/clock.ts"
+import { check, testCloud, type TestCloud } from "../support/cloud.vibe"
+import { callCloud, type CallInit } from "../support/http.ts"
+import { testProfile } from "../support/profile.ts"
+
+const minuteMs = 60_000
+const model: Model = { id: "test-chat", provider: "llm", upstreamModel: "upstream-chat", vision: true, defaultMaxTokens: { tag: "OutputDefaultOf", tokens: 4096 }, inputPer1K: 1000, cachedInputPer1K: 1000, outputPer1K: 2000 }
+const shortModel: Model = { ...model, id: "test-chat-short", defaultMaxTokens: { tag: "OutputDefaultOf", tokens: 500 } }
+
+function chatProbe(reached: Array<string>): Route {
+  return {
+    method: "POST",
+    path: "/probe/chat",
+    auth: "ServiceAccess",
+    ingressPerMinute: chatIngressPerMinute,
+    handler: (context) => effect {
+      reached.push(context.caller.kind)
+      const body = try chatBody(context)
+      const selected = body.model === shortModel.id ? shortModel : model
+      return json({ ...(try quote(body, selected)), image: hasImage(body) })
+    }
+  }
+}
+
+effect function probeServer(cloud: TestCloud, routes: ReadonlyArray<Route>) {
+  const clock = try sync(() => manualClock())
+  const startedAt = try Clock.currentTimeMillis
+  try sync(() => clock.set(startedAt))
+  const profile = try parseProfile(try sync(() => testProfile(cloud.fakes.url)))
+  const built = try Layer.build(HttpServer.serve(respond(routes)).pipe(
+    Layer.provideMerge(listening(0, "127.0.0.1")),
+    Layer.provide(Layer.mergeAll(deploymentLayer(profile, "staging"), Layer.succeed(Store, cloud.store), Layer.succeed(Clock.Clock, clock.clock), FetchHttpClient.layer))
+  ))
+  const { address } = Context.get(built, HttpServer.HttpServer)
+  const url = "port" in address ? `http://127.0.0.1:${address.port}` : ""
+  return { startedAt, call: (init: CallInit) => promise(() => callCloud(url, "/probe/chat", { method: "POST", ...init })) }
+}
+
+function outcome(answer: { readonly status: number; readonly body: unknown }): unknown {
+  const body = answer.body as { readonly error?: string; readonly reason?: string }
+  return answer.status === 200 ? answer.body : `${answer.status} ${body.error}${body.reason === undefined ? "" : ` ${body.reason}`}`
+}
+
+const closedSchema = {
+  type: "object",
+  properties: { title: { type: "string" }, tags: { type: "array", items: { type: "object", properties: { name: { type: "string" } }, required: ["name"], additionalProperties: false } } },
+  required: ["title", "tags"],
+  additionalProperties: false
+}
+
+describe("WP5 Inference: chat admission", () => {
+  it.live("Refuse a chat body the cloud does not accept and quote the one it does, a planning turn included (spec/cloud/index.md, \"Story: Use inference on my subscription or funded pilot account\"; spec/cloud/services/inference.md, \"A request passes the ingress limit, authentication, the plan limit, the body, the model, the quote and the hold in that order, and the first that fails answers\")", () => scoped(effect {
+    const cloud = try testCloud()
+    const reached: Array<string> = []
+    const caller = try signedCaller(cloud, "chat-admission")
+    const { call } = try probeServer(cloud, [chatProbe(reached)])
+    const send = (body: unknown) => call({ headers: { ...caller.headers, "content-type": "application/json" }, json: body })
+    const user = { role: "user", content: "Name this picture in one short title ok." }
+    const answers = {
+      unsupportedField: outcome(try send({ model: "test-chat", messages: [user], functions: [] })),
+      planningTurn: outcome(try send({
+        model: "test-chat",
+        messages: [
+          { role: "system", content: "Plan." },
+          { role: "user", content: user.content, name: "owner" },
+          { role: "assistant", content: null, reasoning: "Look it up.", tool_calls: [{ id: "call-1", type: "function", function: { name: "SEARCH", arguments: "{\"q\":\"x\"}" } }] },
+          { role: "tool", tool_call_id: "call-1", content: "found" }
+        ],
+        tools: [{ type: "function", function: { name: "SEARCH", description: "Search", parameters: { type: "object", properties: { q: { type: "string" } } } } }],
+        tool_choice: "auto",
+        top_p: 0.9,
+        stop: ["\n\n"],
+        seed: 7,
+        frequency_penalty: 0.1,
+        presence_penalty: -0.1,
+        prompt_cache_key: "agent-1",
+        max_tokens: 8
+      })),
+      emptyCacheKey: outcome(try send({ model: "test-chat", messages: [user], prompt_cache_key: "" })),
+      emptyMessages: outcome(try send({ model: "test-chat", messages: [] })),
+      tooManyTokens: outcome(try send({ model: "test-chat", messages: [user], max_tokens: 2_000_001 })),
+      nestedExtra: outcome(try send({ model: "test-chat", messages: [{ ...user, cache: true }] })),
+      sourcelessImage: outcome(try send({ model: "test-chat", messages: [{ role: "user", content: [{ type: "image_url", image_url: {} }] }] })),
+      openStrictSchema: outcome(try send({ model: "test-chat", messages: [user], response_format: { type: "json_schema", json_schema: { name: "title", strict: true, schema: { type: "object", properties: { title: { type: "string" } } } } } })),
+      notJson: outcome(try call({ headers: { ...caller.headers, "content-type": "text/plain" } })),
+      accepted: outcome(try send({
+        model: "test-chat",
+        messages: [{ role: "user", content: [{ type: "text", text: user.content }, { type: "image_url", image_url: { url: "data:image/png;base64,iVBORw0KGgo=" } }] }],
+        stream: true,
+        temperature: 0.2,
+        max_tokens: 900,
+        max_completion_tokens: 64,
+        reasoning_effort: "low",
+        response_format: { type: "json_schema", json_schema: { name: "title", strict: true, schema: closedSchema } }
+      })),
+      defaultOutput: outcome(try send({ model: "test-chat", messages: [user] })),
+      shortDefaultOutput: outcome(try send({ model: shortModel.id, messages: [user] }))
+    }
+    try check(() => assert.deepStrictEqual(answers, {
+      unsupportedField: "400 invalid_request unsupported_field",
+      planningTurn: { counts: { inputTokens: 17, cachedTokens: 0, outputTokens: 8 }, outputCap: 8, micros: 39, image: false },
+      emptyCacheKey: "400 invalid_request",
+      emptyMessages: "400 invalid_request",
+      tooManyTokens: "400 invalid_request",
+      nestedExtra: "400 invalid_request",
+      sourcelessImage: "400 invalid_request",
+      openStrictSchema: "400 invalid_request",
+      notJson: "400 invalid_request",
+      accepted: { counts: { inputTokens: 10, cachedTokens: 0, outputTokens: 64 }, outputCap: 64, micros: 166, image: true },
+      defaultOutput: { counts: { inputTokens: 10, cachedTokens: 0, outputTokens: 500 }, outputCap: 4096, micros: 1212, image: false },
+      shortDefaultOutput: { counts: { inputTokens: 10, cachedTokens: 0, outputTokens: 500 }, outputCap: 500, micros: 1212, image: false }
+    }))
+    try check(() => assert.deepStrictEqual(reached.length, 12))
+  }))
+
+  it.live("Limit chat ingress to 600 requests a minute from one address before authentication (spec/cloud/shared/rateLimit.md, \"Story: Refuse excess requests with a usable retry time\")", () => scoped(effect {
+    const cloud = try testCloud()
+    const reached: Array<string> = []
+    const caller = try signedCaller(cloud, "chat-ingress-limit")
+    const { startedAt, call } = try probeServer(cloud, [chatProbe(reached)])
+    const statuses = try Effect.forEach(
+      Array.from({ length: chatIngressPerMinute }),
+      () => Effect.map(call({ json: { model: "test-chat", messages: [] } }), (answer) => answer.status),
+      { concurrency: 8 }
+    )
+    const over = try call({ headers: { ...caller.headers }, json: { model: "test-chat", messages: [{ role: "user", content: "hello" }] } })
+    const overBody = over.body as { readonly error: string; readonly retryAt?: number; readonly reason?: string }
+    try check(() => assert.deepStrictEqual(
+      [statuses.every((status) => status === 401), over.status, overBody.error, overBody.retryAt, over.headers["retry-after"] !== undefined, reached.length, overBody.reason],
+      [true, 429, "rate_limited", Math.floor(startedAt / minuteMs) * minuteMs + minuteMs, true, 0, undefined]
+    ))
+  }), 180_000)
+})

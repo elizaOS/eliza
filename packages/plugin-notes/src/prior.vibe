@@ -1,7 +1,7 @@
 // spec/notes/records.md, "The earlier document is imported once, exactly, and never over the collection"
 import { importedRevision } from "../gen/notes__records.effect.vibe"
 import type { NotesDocument } from "./collection.vibe"
-import { CleanupReceipt, Instant, Revision, StoredDocument } from "./records.schema.vibe"
+import { CleanupReceipt, Instant, Revision, StoredDocument } from "@elizaos/plugin-notes-client"
 
 export interface PriorDocumentText {
   readonly raw: string

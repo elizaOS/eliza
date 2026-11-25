@@ -1,7 +1,7 @@
 // spec/core/runtime.md, "Story: Initialize an explicit host composition"
 import type { Kernel } from "../edge.vibe"
 import type { AgentRuntime } from "../runtime.vibe"
-import type { FetchLike } from "../media/fetch.vibe"
+import type { FetchLike } from "../types/fetch.vibe"
 import type { ConfidentialInferenceAuthority } from "../security/confidential-inference.vibe"
 import type { ProcessingPolicy } from "../security/processing-policy.vibe"
 import type { Character } from "../types/agent.vibe"

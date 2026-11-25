@@ -1,0 +1,57 @@
+// spec/agent/host/launch.md, "Story: Start the agent from one launch document"; spec/agent/host/launch.md, "The launch frame is one stdin line with the token, the epoch, and the optional credential and storage key"; spec/agent/host/launch.md, "A refused document is a configuration error, and a cloud or own-key launch without a credential is a credential error"
+export { type LaunchDocument, type LaunchFrame } from "@elizaos/agent"
+import { exitCode } from "../../gen/agent__host__launch.effect.vibe"
+import { ownKeyMaxUnits } from "../../gen/agent__host__launch.ts"
+export { exitClass, exitCode, type BootFailure, type ExitClass } from "../../gen/agent__host__launch.effect.vibe"
+import { Stdio } from "effect/Stdio"
+import { decodeLaunchDocument, decodeLaunchFrame, LaunchDocumentRejected, LaunchFrameRejected } from "@elizaos/agent"
+
+export error LaunchCredentialMissing { oversized: boolean }
+
+export const AGENT_EXIT_CODES = {
+  clean: 0, release: 1, config: exitCode("Config"), credential: exitCode("Credential"),
+  storage: exitCode("Storage"), agent: exitCode("Agent"),
+}
+
+const frameLimit = 16 * 1024
+const documentLimit = 256 * 1024
+const ipv4Loopback = /^127\.0\.0\.1:(\d{1,5})$/
+export type Endpoint = { kind: "http"; port: number } | { kind: "socket"; path: string }
+
+function endpoint(mode: string, address: string): Endpoint | undefined {
+  if (mode === "--socket" && address.startsWith("/") && !address.includes("\u0000")) return { kind: "socket", path: address }
+  const port = mode === "--http" ? Number(ipv4Loopback.exec(address)?.[1]) : 0
+  return port >= 1 && port <= 65535 ? { kind: "http", port } : undefined
+}
+
+export effect function readLaunch() {
+  const io = try Stdio
+  const fs = try FileSystem.FileSystem
+  const arguments_ = try io.args
+  const [command, launchFlag, launchFile, stateFlag, stateDirectory, endpointFlag, address] = arguments_
+  const binding = endpoint(endpointFlag ?? "", address ?? "")
+  if (arguments_.length !== 7 || command !== "serve" || launchFlag !== "--launch" || !launchFile ||
+      stateFlag !== "--state" || !stateDirectory || binding === undefined) throw new LaunchDocumentRejected()
+
+  const documentBytes = try fs.stat(launchFile).pipe(Effect.mapError(() => new LaunchDocumentRejected()))
+  if (documentBytes.type !== "File" || documentBytes.size > 262144n) throw new LaunchDocumentRejected()
+  const document = try fs.readFileString(launchFile).pipe(Effect.mapError(() => new LaunchDocumentRejected()))
+  if (document.length > documentLimit) throw new LaunchDocumentRejected()
+
+  const frame = try io.stdin.pipe(Stream.decodeText(), Stream.runFoldEffect(() => "", (previous, next) => effect {
+    const combined = previous + next
+    if (combined.length > frameLimit) throw new LaunchFrameRejected()
+    return combined
+  }), Effect.mapError(() => new LaunchFrameRejected()))
+  if (!frame.endsWith("\n") || frame.indexOf("\n") !== frame.length - 1) throw new LaunchFrameRejected()
+  return { ...(try parseLaunch(document, frame.slice(0, -1))), binding, stateDirectory }
+}
+
+export effect function parseLaunch(document: string, frame: string) {
+  const launch = try decodeLaunchDocument(document)
+  const authority = try decodeLaunchFrame(frame)
+  if (launch.model.backend !== "none" && authority.credential === undefined) throw new LaunchCredentialMissing({ oversized: false })
+  if (launch.model.backend === "own-key" && authority.credential !== undefined && Redacted.value(authority.credential.value).length > ownKeyMaxUnits)
+    throw new LaunchCredentialMissing({ oversized: true })
+  return { launch, authority }
+}

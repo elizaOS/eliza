@@ -2,8 +2,8 @@
 import { Effect } from "effect";
 import type { Driver, Options } from "../../gen/inbox__reads.conformance.ts";
 import type { MailboxFeed as FeedState, MailboxQuery } from "../../gen/inbox__reads.ts";
-import { mailboxFeed, type MailboxFeed, type MailboxFolder, type MailboxListRequest } from "../../src/mailbox/mailbox-list.vibe";
-import type { GmailMessage } from "../../src/mailbox/types.vibe";
+import { mailboxFeed, type MailboxFeed, type MailboxFolder, type MailboxListRequest } from "@elizaos/plugin-inbox-client";
+import type { GmailMessage } from "@elizaos/plugin-inbox-client";
 
 const feeds = new Map<string, MailboxFeed>();
 

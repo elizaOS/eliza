@@ -1,8 +1,9 @@
-// spec/assistant/reminders.md, "Story: Propose a reminder or alarm on my phone only as I asked"; spec/assistant/reminders.md, "A phone reminder is proposed only when the assistant keeps no reminders here or the phone's reminder is selected"; spec/assistant/reminders.md, "A selected or named phone reminder is the one the owner gave, and a change to it needs the owner's own ask"; spec/assistant/reminders.md, "A new phone reminder is due when the owner's words say, counted from the turn's start for a relative time"; spec/assistant/timezone.md, "A phone reminder or Clock alarm uses the zone the phone reported for this turn"
+// spec/assistant/reminders.md, "Story: Propose a reminder or alarm on my phone only as I asked"; spec/assistant/reminders.md, "A phone reminder is proposed only when the assistant keeps no reminders here or the phone's reminder is selected"; spec/assistant/reminders.md, "A selected or named phone reminder is the one the owner gave, and a change to it is only proposed for the owner's review"; spec/assistant/reminders.md, "A new phone reminder is due when the owner's words say, counted from the turn's start for a relative time"; spec/assistant/timezone.md, "A phone reminder or Clock alarm uses the zone the phone reported for this turn"
 import type { ActionParameterSchema } from "@elizaos/core"
-import { readResult, type DeviceOperation, type DeviceProposalFamily, type DeviceTurn, type Grounding, type NegotiatedDevice, type PendingRequest, type ProposalForm, type ProposalText } from "@elizaos/agent/device-actions"
-import { declinesInWords, namedInWords, parseExplicitLocalDate, parseStatedClockTimes, wordsInWords } from "@elizaos/plugin-calendar/request-time"
-import { alertAt, newReminderStated, phoneReminderProposed, relativeDueAt, reminderChangeAsked, reminderLead, reminderTargetGrounded, reminderTimeAdmitted, reminderWordsKept } from "../gen/assistant__reminders.effect.vibe"
+import { readResult, type DeviceOperation } from "@elizaos/agent"
+import type { DeviceProposalFamily, DeviceTurn, Grounding, NegotiatedDevice, PendingRequest, ProposalForm, ProposalText } from "@elizaos/agent-host"
+import { namedInWords, parseExplicitLocalDate, parseStatedClockTimes, wordsInWords } from "@elizaos/plugin-calendar"
+import { alertAt, newReminderStated, phoneReminderProposed, relativeDueAt, reminderLead, reminderTargetGrounded, reminderTimeAdmitted, reminderWordsKept } from "../gen/assistant__reminders.effect.vibe"
 import { localDueGrounded, phoneZoneGrounded, reminderShownZone } from "../gen/assistant__timezone.effect.vibe"
 import { clockCapability, clockHandoffDispatch, clockRepeatCapability, describeClockHandoff, normalizeClockTimeZone } from "./clock.vibe"
 import { ownerRemindersAction } from "./reminders.vibe"
@@ -22,13 +23,6 @@ const selectedTypes: readonly SelectedType[] = ["reminder_read_selected", "remin
 const identifier = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/
 const reminderId = /^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$/
 const revision = /^[a-f0-9]{64}$/
-const cancelWords = /\b(?:cancel|delete|remove|stop|clear|drop|get\s+rid\s+of|turn\s+off)\b/i
-const updateWords = /\b(?:change|edit|update|move|reschedule|push|shift|postpone|delay|rename|retitle|set|make)\b/i
-const completeWords = /\b(?:complete|completed|done|finish(?:ed)?|check(?:ed)?\s+(?:it\s+)?off|mark(?:ed)?)\b/i
-const snoozeWords = /\b(?:snooze|remind\s+me\s+(?:again\s+)?later)\b/i
-const askedBy: Readonly<Partial<Record<DeviceOperation["type"], RegExp>>> = {
-  reminder_update: updateWords, reminder_complete: completeWords, reminder_snooze: snoozeWords, reminder_cancel: cancelWords,
-}
 const counts: Readonly<Record<string, number>> = {
   a: 1, an: 1, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, fifteen: 15, twenty: 20, thirty: 30, forty: 40, "forty-five": 45, fifty: 50, ninety: 90,
 }
@@ -106,13 +100,13 @@ const reminderForms: readonly ProposalForm[] = [
   ...selectedTypes.map((type): ProposalForm => ({
     types: [type],
     schema: object({ type: typed(type), target: targetSchema, ...(type === "reminder_update" ? { fields: updateFields } : {}) }),
-    guidance: ["Selected reminder read, update, complete, snooze and cancel need the exact selected target. Supply dueAt and alertMinutes together; alertMinutes null means no notification, at equals dueAt, and any recurrence leadMinutes is zero. Numeric alerts need at = dueAt - alertMinutes * 60000 and the same recurrence leadMinutes. A no-alert reminder cannot be snoozed; only a reviewed schedule edit gives it an alert. Cancel stops all future repeats; snooze is ten minutes."],
+    guidance: ["Selected reminder read, update, complete, snooze and cancel need the exact selected target. Propose an update, completion, snooze or cancel only for the change the owner asks for in this message, however they word it, and never one they turn down; a question about a reminder is a read. Supply dueAt and alertMinutes together; alertMinutes null means no notification, at equals dueAt, and any recurrence leadMinutes is zero. Numeric alerts need at = dueAt - alertMinutes * 60000 and the same recurrence leadMinutes. A no-alert reminder cannot be snoozed; only a reviewed schedule edit gives it an alert. Cancel stops all future repeats; snooze is ten minutes."],
     offered: keepsRecords, now: selectedNow,
   })),
   {
     types: ["reminder_named"],
     schema: object({ type: typed("reminder_named"), action: typed("update"), name: recordName, fields: updateFields }),
-    guidance: ["To change or cancel a phone reminder by its name, use reminder_named with action, the spoken name and, for an update, its declared fields."],
+    guidance: ["To change or cancel a phone reminder by its name, use reminder_named with action, the spoken name and, for an update, its declared fields. Propose an update or cancel only for the change the owner asks for in this message, however they word it, and never one they turn down."],
     offered: (device) => has(device, namedTarget) && keepsRecords(device), now: recordsNow,
   },
   {
@@ -162,8 +156,6 @@ const notSelected = refused("DEVICE_REMINDER_TARGET_NOT_SELECTED", "The proposed
   "Select that reminder on your phone, then ask again.")
 const unnamed = refused("REMINDER_NAMED_NOT_REQUESTED", "The reminder name is not in the owner's words. Use the name exactly as the owner said it. No device proposal was created.",
   "Which reminder do you mean?")
-const notAsked = refused("REMINDER_CHANGE_NOT_REQUESTED", "The owner did not ask for this change to the reminder, or turned it down. Nothing was proposed; do not propose it again unless the owner asks.",
-  "I left that reminder as it is.")
 const untitled = refused("REMINDER_TITLE_NOT_STATED", "The reminder title is not in the owner's words. Use the title as the owner said it. No device proposal was created.",
   "What should I call that reminder?")
 const passed = refused("REMINDER_TIME_PASSED", "The reminder's due time or its alert has passed; ask for a new time. No device proposal was created.", "That time has already passed. When should I remind you?")
@@ -234,11 +226,6 @@ function groundedSchedule(schedule: CreateSchedule, turn: DeviceTurn, now: numbe
 
 const isSchedule = (value: CreateSchedule | Grounding): value is CreateSchedule => !("kind" in value)
 
-function changeGrounded(type: DeviceOperation["type"], text: string): boolean {
-  const verbs = askedBy[type]
-  return verbs === undefined || reminderChangeAsked(verbs.test(text), declinesInWords(text, verbs))
-}
-
 function groundReminder(operation: DeviceOperation, turn: DeviceTurn, now: number): Grounding {
   if (operation.type === "clock_handoff") {
     const handoff = clockHandoffDispatch(operation)
@@ -257,11 +244,10 @@ function groundReminder(operation: DeviceOperation, turn: DeviceTurn, now: numbe
     case "reminder_cancel": {
       const selected = screenSelection(turn).reminder
       if (!reminderTargetGrounded(selected !== undefined, selected !== undefined && sameTarget(selected, operation.target))) return notSelected
-      return changeGrounded(operation.type, text) ? { kind: "Grounded", operation } : notAsked
+      return { kind: "Grounded", operation }
     }
     case "reminder_named":
-      if (!namedInWords(operation.name, text)) return unnamed
-      return changeGrounded(operation.action === "cancel" ? "reminder_cancel" : "reminder_update", text) ? { kind: "Grounded", operation } : notAsked
+      return namedInWords(operation.name, text) ? { kind: "Grounded", operation } : unnamed
     case "reminder_create": {
       const { title, body } = operation.fields
       const schedule = groundedSchedule(operation.fields.schedule, turn, now)

@@ -7,9 +7,13 @@ calendar and the scheduler read. When a scheduler tick runs, its
 preflight and its runner resolve the owner's clock with the one definition
 below, from the facts as they stand at that tick, so they never disagree.
 
-A statement is modeled as the zone the shared zone resolver maps it to:
-an IANA zone, the zone an alias such as "pacific" names, or the words
-themselves when they name no zone the resolver knows. Whether a name is a
+After each owner message a model reads whether it states the owner's own
+zone, and writes the zone it names, or an empty name when it states none:
+a zone named for an event, a place, another person or a trip is not the
+owner's. The words are never matched against a pattern. A statement is
+modeled as the zone the shared zone resolver maps the model's name to: an
+IANA zone, the zone an alias such as "pacific" names, or the name itself
+when it is no zone the resolver knows. Whether a name is a
 zone the resolver knows is the host's IANA database, which the spec does
 not model: any IANA zone the host knows can be stored, not only the zones
 the simulator tries.

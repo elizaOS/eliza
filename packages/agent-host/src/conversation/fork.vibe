@@ -1,0 +1,208 @@
+// spec/agent/conversation/conversations.md, "Story: Fork a conversation at a message without changing the original"; spec/agent/conversation/conversations.md, "A fork starts only at my own message whose stored text is what I saw"; spec/agent/conversation/conversations.md, "A fork copies every message before the chosen one, and only those, before it is listed"
+module node {
+  import { createHash } from "node:crypto"
+  import { Schema } from "effect"
+  import { collectMessageContentSegmentIds, MESSAGE_CONTENT_SEGMENT_TABLE, messageContentSegmentId, stringToUuid, type AgentRuntime, type IDatabaseAdapter, type Memory, type MemoryMetadata, type MessageContentSegmentMetadata, type UUID } from "@elizaos/core"
+  import { fork, forkAnswer, type Conversations, type Fork, type Message } from "../../gen/agent__conversation__conversations.ts"
+  import type { LocalRoute } from "@elizaos/agent"
+  import { conversationView, type ConversationRecord, type ConversationStore } from "./conversations.vibe"
+  import { bodyOf, storedText } from "./history.vibe"
+
+  export type StoredMessage = Memory & { readonly id: UUID }
+
+  export interface Placed {
+    readonly memory: StoredMessage
+    readonly message: Message
+  }
+
+  export interface ForkRecord {
+    readonly forkId: string
+    readonly requestId: string
+    readonly boundary: string
+    readonly boundaryAt: number
+    readonly textDigest: string
+    readonly copies: number
+  }
+
+  export interface ForkRequest {
+    readonly messageId: string
+    readonly requestId: string
+    readonly expectedText: string
+  }
+
+  export type ForkResult =
+    | { readonly kind: "unknown" }
+    | { readonly kind: "textChanged" }
+    | { readonly kind: "requestChanged" }
+    | { readonly kind: "forked"; readonly fork: ConversationRecord }
+
+  const Count = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
+  const StoredFork = Schema.Struct({
+    forkId: Schema.String, requestId: Schema.String, boundary: Schema.String,
+    boundaryAt: Count, textDigest: Schema.String, copies: Count,
+  })
+  const Kept = Schema.Struct({ forks: Schema.Array(StoredFork) })
+  const Request = Schema.Struct({
+    messageId: Schema.String.check(Schema.isMinLength(1)),
+    requestId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(200)),
+    expectedText: Schema.String,
+  })
+  const kept = Schema.decodeUnknownOption(Kept)
+  const requestBody = Schema.decodeUnknownOption(Request, { onExcessProperty: "error" })
+
+  const sourceId = 1
+  const forkKey = (record: ConversationRecord) => `conversation-forks:${record.id}`
+  export const forkTitle = (title: string) => `${title} · edit`
+  export const textDigest = (text: string) => createHash("sha256").update(text).digest("hex")
+  const failure = (status: number, error: string) => ({ status, body: { error } })
+
+  export async function placedMessages(adapter: IDatabaseAdapter, ownerId: UUID, record: ConversationRecord): Promise<Placed[]> {
+    const stored = (await adapter.getMemories({ roomId: record.roomId, tableName: "messages" }))
+      .flatMap((memory) => memory.id === undefined ? [] : [memory as StoredMessage])
+      .sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+    return Promise.all(stored.map(async (memory, index): Promise<Placed> => ({
+      memory,
+      message: {
+        id: index + 1, conversationId: sourceId, at: memory.createdAt ?? 0,
+        author: memory.entityId === ownerId ? "User" : "Agent", body: bodyOf(await storedText(adapter, memory)), origin: { tag: "Original" },
+      },
+    })))
+  }
+
+  export function conversationModel(record: ConversationRecord, placed: readonly Placed[], forks: readonly Fork[] = []): Conversations {
+    return {
+      conversations: [{ id: sourceId, title: { text: record.title, edits: 0 }, createdAt: record.createdAt, updatedAt: record.updatedAt, publication: "Published" }],
+      messages: placed.map(({ message }) => message), log: [], forks: [...forks],
+      nextConversation: sourceId + 1 + forks.length, nextMessage: placed.length + 1,
+      now: Math.max(record.updatedAt, ...placed.map(({ message }) => message.at)),
+    }
+  }
+
+  export const modelIdOf = (placed: readonly Placed[], messageId: string) =>
+    placed.find(({ memory }) => memory.id === messageId)?.message.id ?? 0
+
+  export async function forkRecords(runtime: AgentRuntime, record: ConversationRecord): Promise<readonly ForkRecord[]> {
+    const found = kept((await runtime.adapter.getCaches<unknown>([forkKey(record)])).get(forkKey(record)))
+    return found._tag === "Some" ? found.value.forks : []
+  }
+
+  function prefixOf(source: ConversationRecord, placed: readonly Placed[], boundary: number): StoredMessage[] {
+    const byModel = new Map(placed.map((entry) => [entry.message.id, entry.memory]))
+    return fork(conversationModel(source, placed), sourceId, boundary, "", "", 0).messages.flatMap((message) =>
+      message.conversationId === sourceId || message.origin.tag !== "Copied" ? [] : byModel.get(message.origin.fromId) ?? [])
+  }
+
+  async function copiedSegments(runtime: AgentRuntime, memory: StoredMessage, copyId: UUID, roomId: UUID): Promise<Memory[]> {
+    const wanted = collectMessageContentSegmentIds(memory.id, memory.content)
+    if (wanted.length === 0) return []
+    const found = new Map((await runtime.adapter.getMemoriesByIds(wanted, MESSAGE_CONTENT_SEGMENT_TABLE)).map((segment) => [segment.id, segment]))
+    return wanted.map((id) => {
+      const segment = found.get(id)
+      const meta = segment?.metadata as unknown as MessageContentSegmentMetadata | undefined
+      if (segment === undefined || meta === undefined || segment.roomId !== memory.roomId || meta.messageId !== memory.id) {
+        throw new Error("The conversation's stored content is incomplete")
+      }
+      const { embedding: _embedding, similarity: _similarity, ...kept } = segment
+      return {
+        ...kept, roomId,
+        id: messageContentSegmentId({ messageId: copyId, kind: meta.sourceKind, revision: meta.sourceRevision, ordinal: meta.ordinal, attachmentHash: meta.attachmentIdHash }),
+        metadata: { ...meta, messageId: copyId } as unknown as MemoryMetadata,
+      }
+    })
+  }
+
+  async function copyPrefix(runtime: AgentRuntime, source: ConversationRecord, prefix: readonly StoredMessage[], target: ConversationRecord) {
+    const copyOf = (id: UUID) => stringToUuid(`conversation-fork:${target.roomId}:${id}`)
+    const ids = new Map(prefix.map((memory) => [memory.id, copyOf(memory.id)]))
+    const copies = prefix.map(({ embedding: _embedding, similarity: _similarity, ...memory }): Memory => {
+      const { inReplyTo, chatIdempotency: _chatIdempotency, ...content } = memory.content
+      const replyTo = inReplyTo === undefined ? undefined : ids.get(inReplyTo) ?? inReplyTo
+      return {
+        ...memory, id: copyOf(memory.id), roomId: target.roomId,
+        content: replyTo === undefined ? content : { ...content, inReplyTo: replyTo },
+        metadata: { ...memory.metadata, forkSourceMessageId: memory.id, forkSourceRoomId: source.roomId } as MemoryMetadata,
+      }
+    })
+    const segments = (await Promise.all(prefix.map((memory) => copiedSegments(runtime, memory, copyOf(memory.id), target.roomId)))).flat()
+    await runtime.adapter.upsertMemories([
+      ...segments.map((memory) => ({ memory, tableName: MESSAGE_CONTENT_SEGMENT_TABLE })),
+      ...copies.map((memory) => ({ memory, tableName: "messages" })),
+    ])
+  }
+
+  async function completed(runtime: AgentRuntime, store: ConversationStore, source: ConversationRecord, placed: readonly Placed[], prior: ForkRecord) {
+    const published = await store.find(prior.forkId)
+    if (published !== undefined) return published
+    const pending = await store.findPending(prior.forkId)
+    if (pending === undefined) throw new Error("The fork's conversation was not stored")
+    const held = await runtime.adapter.getMemories({ roomId: pending.roomId, tableName: "messages" })
+    if (held.length !== prior.copies) await copyPrefix(runtime, source, prefixOf(source, placed, modelIdOf(placed, prior.boundary)), pending)
+    return pending
+  }
+
+  export function forkService(runtime: AgentRuntime, store: ConversationStore, ownerId: UUID) {
+    const begin = async (source: ConversationRecord, request: ForkRequest): Promise<ForkResult> => {
+      const placed = await placedMessages(runtime.adapter, ownerId, source)
+      const priors = await forkRecords(runtime, source)
+      const digest = textDigest(request.expectedText)
+      const asked = modelIdOf(placed, request.messageId)
+      const modelForks = priors.map((prior, index): Fork => ({
+        forkId: sourceId + 1 + index, source: sourceId, requestId: prior.requestId,
+        boundary: prior.boundary === request.messageId ? asked : -1, boundaryAt: prior.boundaryAt, textDigest: prior.textDigest === digest ? 1 : 2,
+      }))
+      const answer = forkAnswer(conversationModel(source, placed, modelForks), sourceId, asked, request.requestId, request.expectedText, 1)
+      switch (answer.tag) {
+        case "ForkUnknown": return { kind: "unknown" }
+        case "ForkTextChanged": return { kind: "textChanged" }
+        case "ForkRequestChanged": return { kind: "requestChanged" }
+        case "ForkExisting": return { kind: "forked", fork: await completed(runtime, store, source, placed, priors[answer.forkId - sourceId - 1]) }
+        case "ForkNew": {
+          const boundary = placed[asked - 1]
+          const prefix = prefixOf(source, placed, asked)
+          const pending = await store.createPending(forkTitle(source.title))
+          const record: ForkRecord = {
+            forkId: pending.id, requestId: request.requestId, boundary: boundary.memory.id,
+            boundaryAt: boundary.message.at, textDigest: digest, copies: prefix.length,
+          }
+          await runtime.adapter.setCaches([{ key: forkKey(source), value: { forks: [...priors, record] } }])
+          await copyPrefix(runtime, source, prefix, pending)
+          return { kind: "forked", fork: pending }
+        }
+      }
+    }
+
+    return {
+      begin: (source: ConversationRecord, request: ForkRequest, signal?: AbortSignal) =>
+        runtime.roomHandlerQueue.withLease(source.roomId, () => begin(source, request), signal === undefined ? undefined : { signal }),
+      finish: async (forkId: string) => {
+        const pending = await store.findPending(forkId)
+        return pending === undefined ? undefined : store.publish(pending.id)
+      },
+    }
+  }
+
+  export function forkRoutes(runtime: AgentRuntime, store: ConversationStore, ownerId: UUID): LocalRoute[] {
+    const forks = forkService(runtime, store, ownerId)
+    return [{
+      method: "POST", path: "/api/conversations/{id}/fork",
+      handler: async ({ parameters, body, signal }) => {
+        const source = await store.find(parameters.get("id") ?? "")
+        if (source === undefined) return failure(404, "unknown_conversation")
+        const request = requestBody(body)
+        if (request._tag !== "Some") return failure(400, "invalid_fork")
+        const result = await forks.begin(source, request.value, signal)
+        switch (result.kind) {
+          case "unknown": return failure(404, "unknown_message")
+          case "textChanged": return failure(409, "message_changed")
+          case "requestChanged": return failure(409, "fork_request_changed")
+          case "forked": {
+            const published = result.fork.publication === "Published" ? result.fork : await forks.finish(result.fork.id)
+            if (published === undefined) throw new Error("The fork's conversation was not published")
+            return { status: 200, body: { conversation: conversationView(published) } }
+          }
+        }
+      },
+    }]
+  }
+}
+export { conversationModel, forkRecords, forkRoutes, forkService, forkTitle, modelIdOf, placedMessages, textDigest, type ForkRecord, type ForkRequest, type Placed, type StoredMessage } from node

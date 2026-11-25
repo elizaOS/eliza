@@ -13,7 +13,6 @@ import type {
 } from "../../gen/core__responseEvaluation.ts";
 import { AgentRuntime } from "../../src/runtime.vibe";
 import type { ContextProviderEvent } from "../../src/runtime/context-object.vibe";
-import type { DirectActionRoutingRule } from "../../src/runtime/direct-action-routing.vibe";
 import {
   type ResponseHandlerEvaluationRunResult,
   type ResponseHandlerEvaluator,
@@ -39,7 +38,6 @@ interface Observed {
   registered: RegisteredEvaluator[];
   plan: ResponsePlan;
   invalidatedFields: string[];
-  scopeOwner: number | null;
   errors: EvaluationError[];
   cancellation: string;
   finished: Finished | null;
@@ -58,7 +56,6 @@ interface Run {
   evaluators: Map<string, ResponseHandlerEvaluator>;
   registrations: Map<ResponseHandlerEvaluator, RegisteredEvaluator>;
   handler: MessageHandlerResult;
-  owner: number;
   waiting?: Waiting;
   invalidated?: ReadonlySet<string>;
   ended?: Ended;
@@ -76,7 +73,6 @@ const runOf = (key: string): Run => {
     evaluators: new Map(),
     registrations: new Map(),
     handler: { processMessage: "" as MessageHandlerAction, plan: { contexts: [] }, thought: "" },
-    owner: 0,
   };
   runs.set(key, created);
   return created;
@@ -98,7 +94,6 @@ const evaluatorOf = (run: Run, registration: RegisteredEvaluator): ResponseHandl
     deterministicActions: registration.declaredTools,
     shouldRun: (context) => {
       run.invalidated = context.invalidatedScopeFields;
-      run.owner = context.wholeRequestOwner ? Number(context.wholeRequestOwner.id.slice("owner-".length)) : 0;
       return waitFor(run, "AwaitEligibility") as Promise<boolean>;
     },
     evaluate: () => waitFor(run, "AwaitEvaluation") as Promise<ResponseHandlerPatch | undefined>,
@@ -183,14 +178,6 @@ const specifiedPlan = ({ processMessage, plan }: MessageHandlerResult): Response
   };
 };
 
-const routingOwner = (owner: number): DirectActionRoutingRule => ({
-  id: `owner-${owner}`,
-  actionNames: [],
-  requiredActionTags: [],
-  contexts: [],
-  matches: () => false,
-});
-
 const contextSource = (id: string): ContextProviderEvent => ({ id, type: "provider", name: id });
 
 const handlerPatch = (patch: ResponsePatch): ResponseHandlerPatch => ({
@@ -199,7 +186,6 @@ const handlerPatch = (patch: ResponsePatch): ResponseHandlerPatch => ({
       replaceIntentScope: {
         intents: patch.intentShapeValid ? patch.intents : [...patch.intents, ""],
         invalidateFields: patch.invalidations.map(({ name }) => name),
-        ...(patch.owner > 0 ? { owner: routingOwner(patch.owner) } : {}),
       },
     }
     : {}),
@@ -333,7 +319,6 @@ export const driver: Driver<Observed> = {
       registered: run.runtime.responseHandlerEvaluators.map((evaluator) => registrationOf(run, evaluator)),
       plan: specifiedPlan(run.handler),
       invalidatedFields: [...(run.invalidated ?? [])],
-      scopeOwner: run.ended ? null : run.owner,
       errors: reportedErrors(run),
       cancellation: ended && "cancellation" in ended ? ended.cancellation : "",
       finished: ended && "result" in ended ? finished(ended.result) : null,
@@ -347,7 +332,6 @@ export const options: Options<Observed> = {
     registered: state.registered,
     plan: state.plan,
     invalidatedFields: state.invalidatedFields,
-    scopeOwner: state.phase === "RunFinished" || state.phase === "RunCancelled" ? null : state.scopeOwner,
     errors: state.errors,
     cancellation: state.cancellation,
     finished: state.phase === "RunFinished"

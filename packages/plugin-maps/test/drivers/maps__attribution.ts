@@ -2,8 +2,8 @@
 import { Effect, Exit, Fiber } from "effect";
 import type { Driver, Options } from "../../gen/maps__attribution.conformance.ts";
 import type { MapAttribution } from "../../gen/maps__attribution.ts";
-import { MapsFailure } from "../../src/client/contracts.vibe";
-import { viewportAttribution, type CloudMapsBasemap, type MapsViewport } from "../../src/client/cloud-provider.vibe";
+import { MapsFailure } from "@elizaos/plugin-maps-client";
+import { viewportAttribution, type CloudMapsBasemap, type MapsViewport } from "@elizaos/plugin-maps-client";
 import { gate, until, type Gate } from "../support/gates.ts";
 
 interface Map {

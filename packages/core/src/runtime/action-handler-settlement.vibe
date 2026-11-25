@@ -1,11 +1,4 @@
 // spec/core/execution.md, "Story: Settle an action before publishing its callback"; spec/core/execution.md, "Callbacks wait for a valid admitted result"; spec/core/execution.md, "Mutation delivery requires bound receipts and matching canonical text"; spec/core/execution.md, "Every callback from a finished source reaches delivery settlement"
-import {
-  type BoundRequestOperationAttempt,
-  BoundRequestOperationError,
-  bindRequestOperationResult,
-} from "../actions/task-extraction-context.vibe"
-import { copyBoundOperationDenial } from "./operation-restriction-projection.vibe"
-
 import { Foreign, failingAs, foreign, foreignSync, asLegacy, promised, runDetached, thrownValue } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
 import {
@@ -46,7 +39,6 @@ type BufferedActionCallback = {
 type SettlementPhase = "pending" | "settled" | "failed"
 
 export interface SettleActionHandlerOptions {
-  operationAttempt?: BoundRequestOperationAttempt
   runtime: IAgentRuntime
   action: Action
   callback?: HandlerCallback
@@ -83,7 +75,6 @@ function markCanonicalCallback(
 export effect function normalizeActionResult(
   actionName: string,
   result: unknown,
-  operationAttempt?: BoundRequestOperationAttempt,
 ) {
   if (!isPlainObject(result)) {
     throw invalidActionResult("Action handlers must return a plain ActionResult object.")
@@ -118,20 +109,11 @@ export effect function normalizeActionResult(
       actionName,
     },
   }
-  if (operationAttempt) {
-    try bindRequestOperationResult(normalized, operationAttempt)
-  }
-  copyBoundOperationDenial(rawResult, normalized, operationAttempt)
   if (rawResult.replyFailure === undefined) return normalized
-  const finalResult = try applyGroundedActionReply(normalized, {
+  return try applyGroundedActionReply(normalized, {
     kind: "unavailable",
     failure: try normalizeActionReplyFailure(rawResult.replyFailure),
   })
-  if (operationAttempt) {
-    try bindRequestOperationResult(finalResult, operationAttempt)
-  }
-  copyBoundOperationDenial(normalized, finalResult, operationAttempt)
-  return finalResult
 }
 
 export function actionFailureResult(
@@ -255,30 +237,6 @@ function handlerFailureProvenance(error: unknown, contextOverflow: boolean, proc
 }
 
 effect function handlerFailureResult(options: SettleActionHandlerOptions, error: unknown) {
-  if (error instanceof BoundRequestOperationError) {
-    const denied = actionFailureResult(
-      options.action.name,
-      error.message,
-      {
-        code: error.code,
-        acceptance: "rejected",
-        executionStatus: "not_started",
-        executed: false,
-        retryable: false,
-      },
-      {
-        kind: "handler_error",
-        boundary: "handler",
-        code: error.code,
-        retryable: false,
-      },
-    )
-    if (options.operationAttempt) {
-      try bindRequestOperationResult(denied, options.operationAttempt)
-    }
-    copyBoundOperationDenial(error, denied, options.operationAttempt)
-    return denied
-  }
   const contextOverflow = isProviderContextOverflowFailure(error)
   const processingDenied = isProcessingPolicyDenial(error)
   return actionFailureResult(
@@ -393,10 +351,7 @@ export effect function settleActionHandler(options: SettleActionHandlerOptions) 
       || "userFacingEffectReceiptIds" in rawResult
   }
   const normalized = try result(Effect.catchDefect(asLegacy(TypeError, effect {
-    if (isPlainObject(rawResult) && options.operationAttempt) {
-      try bindRequestOperationResult(rawResult, options.operationAttempt)
-    }
-    const checked = try normalizeActionResult(options.action.name, rawResult, options.operationAttempt)
+    const checked = try normalizeActionResult(options.action.name, rawResult)
     if (
       checked.success !== false
       && tagsMayProduceEffects(options.action.tags)

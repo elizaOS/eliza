@@ -1,0 +1,508 @@
+// spec/cloud/identity/federatedSignIn.md, "Story: Sign in with Google in the browser"; spec/cloud/identity/federatedSignIn.md, "Story: Sign in with the device's Google account"; spec/cloud/identity/federatedSignIn.md, "A code is redeemed once, while live, only with its own return and verifier, and starts a session or a second-factor challenge, never both"; spec/cloud/identity/federatedSignIn.md, "A client address may call the Google sign-in routes 30 times a minute, and over that is refused before anything is stored"
+import { methodRefusal } from "../../gen/cloud__deployment.effect.vibe"
+import {
+  apply, authorizeRefusal, googleSignInPerIp, canBegin, canExchange, canExpireCode, canExpireNative, canIssueNative, codeRefusal, decodeState, elapse, initial, isIssued, isOpen, lateCallbackError, nativeBackupVerdict, nativeRefusal, nativeVerdict,
+  type AttemptStep, type AuthorizeRequest, type CodeBinding, type Event, type GoogleAttempt, type GoogleCallback, type NativeBackupBinding, type NativeBackupPresenter, type NativeProof, type NativePurpose, type NativeVerdict, type NotAState, type PkceMethod, type Rejected, type ReturnError
+} from "../../gen/cloud__identity__federatedSignIn.effect.vibe"
+import { clientCheck, nativeGoogleCheck, nativeGoogleRefusal, type ClientRequest } from "../../gen/cloud__nativeClients__registry.effect.vibe"
+import type { FirstFactorOutcome } from "../../gen/cloud__identity__secondFactor.effect.vibe"
+import { refused, Refused, wireName, type Refusal } from "../http/refusal.vibe"
+import { json, jsonBody, type Handler, type Route, type RouteContext, type Sweep } from "../http/routes.vibe"
+import { admitClient, parseReturn, readRegistry, returnText, servedEnvironment } from "../native-clients/registry.vibe"
+import { Deployment, rowOf } from "@elizaos/cloud"
+import { authorizeUrl, exchangeGoogleCode, readIdToken, type GoogleProfile } from "../providers/google-identity.vibe"
+import { s256 } from "../shared/credential-crypto.vibe"
+import { admitCheck } from "../shared/rate-limit.vibe"
+import { newId, sameText, secretText, tokenDigest } from "../shared/sealing.vibe"
+import { loadRow, stepRow, type Columns, type MachineRows } from "../store/rows.vibe"
+import { Store, toText, type Row, type Tx } from "../store/connection.vibe"
+import { landAccount, type Identity } from "./accounts.vibe"
+import { clientAddress } from "./code-challenges.vibe"
+import { afterFirstFactor } from "./second-factor.vibe"
+
+export type Presenter =
+  | { readonly kind: "signIn"; readonly clientId: string; readonly redirectUri: string; readonly codeVerifier: string }
+  | { readonly kind: "link"; readonly userId: string; readonly codeVerifier: string }
+
+export interface NativePresentation {
+  readonly challengeId: string
+  readonly idToken: string
+  readonly presenter: Presenter
+}
+
+export interface VerifiedGoogle {
+  readonly challengeId: string
+  readonly proof: NativeProof
+  readonly identity: Identity
+  readonly verifiedEmail: string | undefined
+  readonly givenName: string | undefined
+  readonly expiresAt: number
+  readonly verdict: NativeVerdict
+}
+
+interface NativeChallenge {
+  readonly challengeId: string
+  readonly nonce: string
+  readonly serverClientId: string
+  readonly expiresAt: number
+}
+
+interface NativeBackupAttempt {
+  readonly clientId: string
+  readonly redirectUri: string
+  readonly binding: NativeBackupBinding
+}
+
+interface Timed {
+  readonly event: Event
+  readonly now: number
+}
+
+interface Browser {
+  readonly key: string
+  readonly clientId: string
+  readonly redirectUri: string
+  readonly appState: string
+  readonly verifier: string | undefined
+}
+
+type Outcome<A> = { readonly kind: "done"; readonly value: A } | { readonly kind: "refused"; readonly refusal: Refusal }
+
+type Callback =
+  | { readonly kind: "late"; readonly error: ReturnError; readonly withdrawn: boolean }
+  | { readonly kind: "settled"; readonly attempt: GoogleAttempt }
+  | { readonly kind: "exchange" }
+
+const Text = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(2048))
+const ExchangeBody = Schema.Struct({ code: Text, redirectUri: Text, clientId: Text, codeVerifier: Text })
+const NativeBody = Schema.Struct({
+  clientId: Text,
+  environment: Schema.Literals(["production", "staging"]),
+  redirectUri: Text,
+  codeChallenge: Text,
+  codeChallengeMethod: Text
+})
+
+const challengePattern = /^[A-Za-z0-9_-]{43}$/
+const verifierPattern = /^[A-Za-z0-9._~-]{43,128}$/
+const maxAppState = 1024
+const environments: Readonly<Record<string, ClientRequest["environment"] | undefined>> = { production: "Production", staging: "Staging" }
+const callbackPath = "/api/v1/auth/google/callback"
+const noStore = { "cache-control": "no-store", "referrer-policy": "no-referrer" }
+
+effect function applyAt(attempt: GoogleAttempt, timed: Timed): AttemptStep!Rejected {
+  const current = timed.now > attempt.now ? (try apply(attempt, { type: "elapse", elapsed: timed.now - attempt.now })).state : attempt
+  return try apply(current, timed.event)
+}
+
+export const attemptRows: MachineRows<GoogleAttempt, Timed, AttemptStep, Rejected, NotAState> = { table: "oauth_attempts", initial, decodeState, apply: applyAt, next: (stepped) => stepped.state }
+
+function advanced(attempt: GoogleAttempt, now: number): GoogleAttempt {
+  return now > attempt.now ? elapse(attempt, now - attempt.now) : attempt
+}
+
+function dueAt(attempt: GoogleAttempt): number {
+  if (attempt.code.tag === "CodeIssued") return attempt.code.redeemBy
+  if (attempt.native.tag === "ChallengeOpen") return attempt.native.openUntil
+  return attempt.stateExpiresAt
+}
+
+function refusedBy(refusal: Refusal): Outcome<never> {
+  return { kind: "refused", refusal }
+}
+
+function errorName(error: ReturnError): string {
+  return error === "ErrAccessDenied" ? "access_denied" : `oauth_${wireName(error.slice("Err".length))}`
+}
+
+function backToApp(browser: Browser, fields: Readonly<Record<string, string>>) {
+  return HttpServerResponse.redirect(`${browser.redirectUri}#${new URLSearchParams({ ...fields, state: browser.appState })}`, { status: 302, headers: noStore })
+}
+
+function cloudPage(error: ReturnError) {
+  return json({ error: errorName(error) }, { status: 400, headers: { "referrer-policy": "no-referrer" } })
+}
+
+function failedReturn(browser: Browser, error: ReturnError, onCloud: boolean) {
+  return onCloud ? cloudPage(error) : backToApp(browser, { error: errorName(error) })
+}
+
+function returned(browser: Browser, attempt: GoogleAttempt, code: string) {
+  switch (attempt.returned.tag) {
+    case "ReturnsCode": return backToApp(browser, { code })
+    case "ReturnsError": return failedReturn(browser, attempt.returned.error, attempt.target === "CloudPage")
+    case "NotReturned": return failedReturn(browser, lateCallbackError(attempt), attempt.target === "CloudPage")
+    default: {
+      const _exhaustive: never = attempt.returned
+      return _exhaustive
+    }
+  }
+}
+
+effect function step(tx: Tx, key: string, event: Event, now: number, more: Columns = {}) {
+  return try stepRow(tx, attemptRows, key, { event, now }, (attempt) => ({ pending: isIssued(attempt.code) || isOpen(attempt.native), expires_at: dueAt(attempt), updated_at: now, ...more }))
+}
+
+effect function current(tx: Tx, key: string, now: number) {
+  return advanced((try loadRow(tx, attemptRows, key)).state, now)
+}
+
+effect function googleOn(): GoogleProfile!Refused!Deployment {
+  const google = (try Deployment).settings.google
+  if (google === undefined) throw new Refused({ refusal: methodRefusal("GoogleSignIn") })
+  return google
+}
+
+effect function callbackUrl() {
+  return `${(try Deployment).settings.api}${callbackPath}`
+}
+
+effect function inTransaction<A, E, R>(body: (tx: Tx) => A!E!R) {
+  return try (try Store).transaction(body)
+}
+
+effect function settle<A>(outcome: Outcome<A>): A!Refused {
+  if (outcome.kind === "refused") throw new Refused({ refusal: outcome.refusal })
+  return outcome.value
+}
+
+effect function authorize(context: RouteContext) {
+  const query = context.query
+  const clientId = query.get("client_id")
+  const environment = environments[query.get("environment") ?? ""]
+  const rawRedirect = query.get("redirect_uri")
+  const challenge = query.get("code_challenge") ?? ""
+  const appState = query.get("state") ?? ""
+  if (clientId === null || environment === undefined || rawRedirect === null || !challengePattern.test(challenge) || appState.length > maxAppState) throw refused("InvalidRequest")
+  const redirect = parseReturn(rawRedirect)
+  if (redirect === undefined) throw refused("RedirectMismatch")
+  const google = try googleOn()
+  const callback = try callbackUrl()
+  const key = newId()
+  const googleState = secretText("", 32, "base64url")
+  const verifier = secretText("", 48, "base64url")
+  const asked = {
+    responseType: query.get("response_type") === "code" ? "CodeResponse" : "OtherResponse",
+    method: query.get("code_challenge_method") === "S256" ? "S256" : "PlainMethod",
+    hasState: appState !== ""
+  } as const
+  const location = try settle(try inTransaction(effect (tx: Tx) => {
+    const served = try servedEnvironment()
+    const request: AuthorizeRequest = { ...asked, client: clientCheck(try readRegistry(tx), served, { clientId, environment, redirect: { tag: "ClaimsReturn", purpose: "SignInPurpose", url: redirect } }) }
+    if (!canBegin(initial, request)) return refusedBy(authorizeRefusal(request))
+    try step(tx, key, { type: "begin", supported: true, authorize: request }, context.now, {
+      route: "browser",
+      client_id: clientId,
+      redirect_uri: returnText(redirect),
+      challenge_digest: tokenDigest(challenge),
+      app_state: appState,
+      state_digest: tokenDigest(googleState),
+      google_verifier: verifier
+    })
+    try step(tx, key, { type: "createResult", success: true }, context.now)
+    const url = authorizeUrl(google, { state: googleState, challenge: s256(verifier), callback })
+    try step(tx, key, { type: "startProviderResult", success: true }, context.now)
+    try step(tx, key, { type: "writeStart", write: "WriteAcknowledged" }, context.now)
+    return { kind: "done", value: url } as const
+  }))
+  return HttpServerResponse.redirect(location, { status: 302, headers: noStore })
+}
+
+function browserOf(row: Row): Browser {
+  return {
+    key: toText(row.key) ?? "",
+    clientId: toText(row.client_id) ?? "",
+    redirectUri: toText(row.redirect_uri) ?? "",
+    appState: toText(row.app_state) ?? "",
+    verifier: toText(row.google_verifier)
+  }
+}
+
+function callbackOf(query: URLSearchParams, withdrawn: boolean): GoogleCallback {
+  if (withdrawn) return "ReturnWithdrawn"
+  if (query.get("error") !== null) return "GoogleDenied"
+  return query.get("code") === null ? "GoogleIncomplete" : "GoogleCode"
+}
+
+effect function returnWithdrawn(tx: Tx, browser: Browser) {
+  const served = try servedEnvironment()
+  const url = parseReturn(browser.redirectUri)
+  if (url === undefined) return true
+  return clientCheck(try readRegistry(tx), served, { clientId: browser.clientId, environment: served, redirect: { tag: "ClaimsReturn", purpose: "SignInPurpose", url } }).tag !== "ClientAdmitted"
+}
+
+effect function consumeCallback(tx: Tx, browser: Browser, query: URLSearchParams, now: number) {
+  const withdrawn = try returnWithdrawn(tx, browser)
+  const before = try current(tx, browser.key, now)
+  if (before.flow.phase !== "AwaitingCallback") return { kind: "late", error: lateCallbackError(before), withdrawn } satisfies Callback
+  const callback = callbackOf(query, withdrawn)
+  try step(tx, browser.key, { type: "beginCallback", verifierPresent: browser.verifier !== undefined, verifierRequired: true }, now)
+  const consumed = (try step(tx, browser.key, {
+    type: "consume",
+    pendingAndUnexpired: now < before.stateExpiresAt,
+    inputError: callback !== "GoogleCode",
+    providerInstalled: (try Deployment).settings.google !== undefined,
+    callback
+  }, now)).state
+  if (consumed.flow.phase === "ProviderPending") return { kind: "exchange" } satisfies Callback
+  if (consumed.flow.phase !== "FailureWritePending") return { kind: "settled", attempt: consumed } satisfies Callback
+  return { kind: "settled", attempt: (try step(tx, browser.key, { type: "writeFailure", write: "WriteAcknowledged" }, now, { google_verifier: null })).state } satisfies Callback
+}
+
+effect function finishCallback(browser: Browser, code: string) {
+  const google = try googleOn()
+  const exchanged = try exchangeGoogleCode(google, { code, verifier: browser.verifier ?? "", callback: try callbackUrl(), now: try Clock.currentTimeMillis })
+  const issued = secretText("", 32, "base64url")
+  const now = try Clock.currentTimeMillis
+  const attempt = try inTransaction(effect (tx: Tx) => {
+    if (exchanged.kind !== "IdentityVerified") {
+      try step(tx, browser.key, { type: "providerResult", success: false, hasAccount: true, answer: exchanged.kind }, now, { google_verifier: null })
+      return (try step(tx, browser.key, { type: "writeFailure", write: "WriteAcknowledged" }, now)).state
+    }
+    const { identity } = exchanged
+    try step(tx, browser.key, { type: "providerResult", success: true, hasAccount: true, answer: exchanged.kind }, now, { google_verifier: null })
+    try step(tx, browser.key, { type: "accountResult", success: true }, now, { google_subject: identity.subject, verified_email: identity.verifiedEmail ?? null, given_name: identity.givenName ?? null })
+    return (try step(tx, browser.key, { type: "writeSuccess", write: "WriteAcknowledged", selectedStatus: "CompletedState" }, now, { code_digest: tokenDigest(issued) })).state
+  })
+  return returned(browser, attempt, issued)
+}
+
+effect function callback(context: RouteContext) {
+  const state = context.query.get("state")
+  if (state === null) return cloudPage("ErrStateInvalid")
+  const found = (try inTransaction((tx: Tx) => tx.query("SELECT key, client_id, redirect_uri, app_state, google_verifier FROM oauth_attempts WHERE state_digest = $1", [tokenDigest(state)])))[0]
+  if (found === undefined) return cloudPage("ErrStateInvalid")
+  const browser = browserOf(found)
+  const consumed = try inTransaction((tx: Tx) => consumeCallback(tx, browser, context.query, context.now))
+  switch (consumed.kind) {
+    case "late": return failedReturn(browser, consumed.error, consumed.withdrawn)
+    case "settled": return returned(browser, consumed.attempt, "")
+    case "exchange": return try finishCallback(browser, context.query.get("code") ?? "")
+    default: {
+      const _exhaustive: never = consumed
+      return _exhaustive
+    }
+  }
+}
+
+function bindingOf(row: Row, body: typeof ExchangeBody.Type): CodeBinding {
+  if (toText(row.redirect_uri) !== body.redirectUri || toText(row.client_id) !== body.clientId) return "RedirectDiffers"
+  return verifierPattern.test(body.codeVerifier) && sameText(tokenDigest(s256(body.codeVerifier)), toText(row.challenge_digest) ?? "") ? "BindingMatches" : "VerifierDiffers"
+}
+
+effect function redeem(tx: Tx, body: typeof ExchangeBody.Type, now: number) {
+  const row = (try tx.query("SELECT key, client_id, redirect_uri, challenge_digest, google_subject, verified_email, given_name FROM oauth_attempts WHERE code_digest = $1", [tokenDigest(body.code)]))[0]
+  if (row === undefined) return refusedBy(codeRefusal({ tag: "NoCode" }, now))
+  const key = toText(row.key) ?? ""
+  const before = try current(tx, key, now)
+  if (!canExchange(before)) {
+    if (canExpireCode(before)) try step(tx, key, { type: "expireCode" }, now)
+    return refusedBy(codeRefusal(before.code, now))
+  }
+  const binding = bindingOf(row, body)
+  if (binding !== "BindingMatches") return refusedBy(codeRefusal(before.code, now))
+  const landed = try landAccount(tx, { method: "GoogleSignIn", subject: toText(row.google_subject) ?? "" }, toText(row.verified_email), now, toText(row.given_name))
+  const answer = try afterFirstFactor(tx, landed, body.clientId, now)
+  const factorOutcome: FirstFactorOutcome = answer.status === "mfa_required" ? "SecondFactorRequired" : "SessionStarts"
+  try step(tx, key, { type: "exchange", binding, factorOutcome }, now)
+  return { kind: "done", value: answer } as const
+}
+
+effect function openNative(purpose: NativePurpose, request: typeof NativeBody.Type, now: number) {
+  const url = parseReturn(request.redirectUri)
+  if (url === undefined) throw refused("RedirectMismatch")
+  const client: ClientRequest = {
+    clientId: request.clientId,
+    environment: request.environment === "production" ? "Production" : "Staging",
+    redirect: { tag: "ClaimsReturn", purpose: "SignInPurpose", url },
+  }
+  const method: PkceMethod = request.codeChallengeMethod === "S256" ? "S256" : "PlainMethod"
+  const deployment = try Deployment
+  const google = deployment.settings.google
+  if (google === undefined) throw new Refused({ refusal: nativeGoogleRefusal("GoogleNotOffered") })
+  if (!challengePattern.test(request.codeChallenge)) throw refused("InvalidRequest")
+  const key = newId()
+  const nonce = secretText("", 32, "hex")
+  return try inTransaction(effect (tx: Tx) => {
+    const registration = try admitClient(tx, client)
+    const native = nativeGoogleCheck(rowOf(deployment.profile.name, deployment.settings).signIn, registration)
+    if (native !== "NativeGoogleOpen") throw new Refused({ refusal: nativeGoogleRefusal(native) })
+    if (!canIssueNative(initial, purpose, method)) throw refused("InvalidRequest")
+    const issued = try step(tx, key, { type: "issueNative", purpose, method }, now, {
+      route: "native",
+      client_id: registration.clientId,
+      redirect_uri: returnText(url),
+      challenge_digest: tokenDigest(request.codeChallenge),
+      nonce_digest: tokenDigest(nonce),
+      link_user_id: purpose.tag === "NativeLink" ? purpose.userId : null
+    })
+    return { challengeId: key, nonce, serverClientId: google.serverClientId, expiresAt: dueAt(issued.state) } satisfies NativeChallenge
+  })
+}
+
+export effect function issueNativeBackupChallenge(tx: Tx, attempt: NativeBackupAttempt & {
+  readonly accountId: string
+  readonly codeChallenge: string
+  readonly audience: string
+}, now: number) {
+  const purpose: NativePurpose = { tag: "NativeBackup", binding: attempt.binding }
+  if (!challengePattern.test(attempt.codeChallenge) || !canIssueNative(initial, purpose, "S256")) throw refused("InvalidRequest")
+  const key = newId()
+  const nonce = secretText("", 32, "hex")
+  const issued = try step(tx, key, { type: "issueNative", purpose, method: "S256" }, now, {
+    route: "native", client_id: attempt.clientId, redirect_uri: attempt.redirectUri,
+    challenge_digest: tokenDigest(attempt.codeChallenge), nonce_digest: tokenDigest(nonce), link_user_id: attempt.accountId
+  })
+  return { challengeId: key, nonce, serverClientId: attempt.audience, expiresAt: dueAt(issued.state) } satisfies NativeChallenge
+}
+
+export effect function spendNativeBackupChallenge(tx: Tx, attempt: NativeBackupAttempt & {
+  readonly challengeId: string
+  readonly codeVerifier: string
+  readonly nonce: string
+  readonly tokenExpiresAt: number
+  readonly presenterRegistered: boolean
+}, now: number) {
+  const row = (try tx.query("SELECT client_id, redirect_uri, challenge_digest, nonce_digest FROM oauth_attempts WHERE key = $1 AND route = 'native' FOR UPDATE", [attempt.challengeId]))[0]
+  if (row === undefined) return false
+  const before = try current(tx, attempt.challengeId, now)
+  const proof: NativeProof = {
+    clientMatches: attempt.presenterRegistered && toText(row.client_id) === attempt.clientId && toText(row.redirect_uri) === attempt.redirectUri,
+    verifierMatches: verifierPattern.test(attempt.codeVerifier) && sameText(tokenDigest(s256(attempt.codeVerifier)), toText(row.challenge_digest) ?? ""),
+    signatureOk: now < attempt.tokenExpiresAt, issuerOk: true, audienceOk: true,
+    nonceMatches: sameText(tokenDigest(attempt.nonce), toText(row.nonce_digest) ?? "")
+  }
+  const presenter: NativeBackupPresenter = { binding: attempt.binding, deviceCurrent: true, confirmed: true }
+  if (nativeBackupVerdict(before.native, before.now, proof, presenter) !== "NativeAccepted") return false
+  const next = try step(tx, attempt.challengeId, { type: "presentNativeBackup", proof, presenter }, now)
+  return next.state.native.tag === "ChallengeUsed" && next.state.native.usedAs === "GoogleProofYield"
+}
+
+function presenterMatches(row: Row, presenter: Presenter): Pick<NativeProof, "clientMatches" | "verifierMatches"> {
+  const verifierMatches = verifierPattern.test(presenter.codeVerifier) && sameText(tokenDigest(s256(presenter.codeVerifier)), toText(row.challenge_digest) ?? "")
+  switch (presenter.kind) {
+    case "signIn": return {
+      clientMatches: toText(row.link_user_id) === undefined && toText(row.client_id) === presenter.clientId && toText(row.redirect_uri) === presenter.redirectUri,
+      verifierMatches
+    }
+    case "link": return { clientMatches: toText(row.link_user_id) === presenter.userId, verifierMatches }
+    default: {
+      const _exhaustive: never = presenter
+      return _exhaustive
+    }
+  }
+}
+
+effect function nativeClientMatches(tx: Tx, row: Row) {
+  const redirect = parseReturn(toText(row.redirect_uri) ?? "")
+  if (redirect === undefined) return false
+  try tx.query("LOCK TABLE native_clients IN SHARE MODE")
+  const served = try servedEnvironment()
+  const registry = try readRegistry(tx)
+  const deployment = try Deployment
+  const clientId = toText(row.client_id) ?? ""
+  const registration = registry.find((entry) => entry.clientId === clientId && entry.environment === served)
+  const admitted = clientCheck(registry, served, { clientId, environment: served, redirect: { tag: "ClaimsReturn", purpose: "SignInPurpose", url: redirect } }).tag === "ClientAdmitted"
+  return admitted && registration !== undefined && nativeGoogleCheck(rowOf(deployment.profile.name, deployment.settings).signIn, registration) === "NativeGoogleOpen"
+}
+
+export effect function verifyNativeGoogle(tx: Tx, presented: NativePresentation) {
+  const google = (try Deployment).settings.google
+  if (google === undefined) throw new Refused({ refusal: nativeGoogleRefusal("GoogleNotOffered") })
+  const row = (try tx.query("SELECT client_id, redirect_uri, challenge_digest, nonce_digest, link_user_id FROM oauth_attempts WHERE key = $1 AND route = 'native'", [presented.challengeId]))[0]
+  if (row === undefined) throw new Refused({ refusal: nativeRefusal("NativeUnknown") })
+  const token = try readIdToken(google, { idToken: presented.idToken, audience: "native" })
+  const admitted = try nativeClientMatches(tx, row)
+  const now = try Clock.currentTimeMillis
+  const before = try current(tx, presented.challengeId, now)
+  const presenter = presenterMatches(row, presented.presenter)
+  const proof: NativeProof = {
+    ...presenter,
+    clientMatches: presenter.clientMatches && admitted,
+    signatureOk: token.signatureOk && token.expiresAt !== undefined && now < token.expiresAt && token.subject !== undefined,
+    issuerOk: token.issuerOk,
+    audienceOk: token.audienceOk,
+    nonceMatches: token.nonce !== undefined && sameText(tokenDigest(token.nonce), toText(row.nonce_digest) ?? "")
+  }
+  const verdict = nativeVerdict(before.native, before.now, proof)
+  if (verdict !== "NativeAccepted" || token.subject === undefined || token.expiresAt === undefined) throw new Refused({ refusal: nativeRefusal(verdict) })
+  return {
+    challengeId: presented.challengeId,
+    proof,
+    identity: { method: "GoogleSignIn", subject: token.subject },
+    verifiedEmail: token.verifiedEmail,
+    givenName: token.givenName,
+    expiresAt: token.expiresAt,
+    verdict
+  } satisfies VerifiedGoogle
+}
+
+export effect function spendNativeGoogle(tx: Tx, verified: VerifiedGoogle, factorOutcome: FirstFactorOutcome) {
+  const at = try Clock.currentTimeMillis
+  const before = try current(tx, verified.challengeId, at)
+  const proof = { ...verified.proof, signatureOk: verified.proof.signatureOk && at < verified.expiresAt }
+  const verdict = nativeVerdict(before.native, before.now, proof)
+  if (verdict !== "NativeAccepted") throw new Refused({ refusal: nativeRefusal(verdict) })
+  const stepped = try step(tx, verified.challengeId, { type: "presentIdToken", proof, factorOutcome }, at)
+  const spent = stepped.state.native
+  if (spent.tag !== "ChallengeUsed") throw new Refused({ refusal: nativeRefusal("NativeUnknown") })
+  return { verdict, yielded: spent.usedAs, now: at }
+}
+
+export effect function googleLinkChallenge(userId: string, request: typeof NativeBody.Type, now: number) {
+  return try openNative({ tag: "NativeLink", userId }, request, now)
+}
+
+export effect function googleLinkProof(input: { readonly userId: string; readonly challengeId: string; readonly idToken: string; readonly codeVerifier: string; readonly now: number }) {
+  return try inTransaction(effect (tx: Tx) => {
+    const verified = try verifyNativeGoogle(tx, { challengeId: input.challengeId, idToken: input.idToken, presenter: { kind: "link", userId: input.userId, codeVerifier: input.codeVerifier } })
+    try spendNativeGoogle(tx, verified, "SessionStarts")
+    return { subject: verified.identity.subject, provenEmail: verified.verifiedEmail }
+  })
+}
+
+effect function sweepAttempts() {
+  const now = try Clock.currentTimeMillis
+  inTransaction(effect (tx: Tx) => {
+    for (const row of try tx.query("SELECT key FROM oauth_attempts WHERE pending AND expires_at <= $1 ORDER BY key", [now])) {
+      const key = toText(row.key) ?? ""
+      const due = try current(tx, key, now)
+      if (canExpireCode(due)) try step(tx, key, { type: "expireCode" }, now)
+      if (canExpireNative(due)) try step(tx, key, { type: "expireNative" }, now)
+    }
+  }) catch effect (failure) => {
+    try annotateLogs(logWarning("oauth attempt sweep failed"), { cause: failure._tag })
+  }
+}
+
+function perAddress(handler: Handler): Handler {
+  return (context) => effect {
+    try admitCheck({ subject: clientAddress(context), rule: googleSignInPerIp })
+    return try handler(context)
+  }
+}
+
+export const routes: ReadonlyArray<Route> = [
+  { method: "GET", path: "/api/v1/auth/google/authorize", auth: "Public", handler: perAddress(authorize) },
+  { method: "GET", path: callbackPath, auth: "Public", handler: perAddress(callback) },
+  {
+    method: "POST",
+    path: "/api/v1/auth/google/exchange",
+    auth: "Public",
+    handler: perAddress((context) => effect {
+      const body = try jsonBody(context, ExchangeBody)
+      return json(try settle(try inTransaction((tx: Tx) => redeem(tx, body, context.now))))
+    })
+  },
+  {
+    method: "POST",
+    path: "/api/v1/auth/google/native/challenge",
+    auth: "Public",
+    handler: perAddress((context) => effect {
+      const body = try jsonBody(context, NativeBody)
+      return json(try openNative({ tag: "NativeSignIn" }, body, context.now))
+    })
+  }
+]
+
+export const sweeps: ReadonlyArray<Sweep> = [{ name: "expired google attempts", everyMs: 60 * 60_000, run: sweepAttempts() }]

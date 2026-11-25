@@ -2,7 +2,7 @@
 import { Effect } from "effect";
 import type { Driver, Options } from "../../gen/maps__observation.conformance.ts";
 import type { LocateAttempt, MapsObservation, SearchSource } from "../../gen/maps__observation.ts";
-import { mapsObservation, type MapsObservationPort, type MapsSearchSource, type MapsSelectedObject } from "../../src/client/observation.vibe";
+import { mapsObservation, type MapsObservationPort, type MapsSearchSource, type MapsSelectedObject } from "@elizaos/plugin-maps-client";
 
 interface View {
   readonly revision: number;
