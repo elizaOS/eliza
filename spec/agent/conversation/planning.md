@@ -663,9 +663,11 @@ beside an `arguments`, `args`, `parameters`, `params`, `input` or
 `name` or `type` field does beside such an arguments field (names compare
 ignoring case and underscores), so a record that only shares a tool's name
 (`{"name": "GitHub", "url": …}` while a GitHub tool is offered) does not. Text that is only objects
-or bracketed calls is blank when one of them looks like a call; otherwise
-(`{"status": "in_progress"}`, `{"theme": "dark_mode"}`, `{"type":
-"line_chart"}`) it is an `Answer`. An object or bracketed call is beside
+or bracketed calls is blank when one of them looks like a call, or when the
+model gave no tag (below) and one of them names a snake_case call in any
+field (`{"type": "send_message", "to": "Sam"}`); otherwise
+(`{"status": "in_progress"}`, `{"theme": "dark_mode"}`, or a tagged
+`[answer] {"type": "line_chart"}`) it is an `Answer`. An object or bracketed call is beside
 the text when it opens the text or follows the end of a sentence; one
 inside a sentence (`a command such as {"action": "turn_on"} switches the
 lamp on`) makes the text an `Answer`. Cue-shaped text beside one that

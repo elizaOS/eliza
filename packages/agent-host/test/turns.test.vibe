@@ -734,7 +734,7 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
     'Sure. {"action": "SEND_TEXT", "parameters": {"to": "Sam"}}', '{"action": "SEND_TEXT", "parameters": {"to": "Sam"}}',
     'Sure. [send_message contact="Sam" message="I am running late"]', '[send_message contact="Sam" message="I am running late"]',
     '{"action": "open_app", "app": "Maps", "params": {"query": "coffee shops near me"}}', '{"action": "open_app", "app_name": "Maps"}', '{"tool": "open_app", "action": "Maps"}',
-    '{"name": "calculate", "arguments": {"expression": "2 + 2"}}', 'Sure. {"action": "calculate", "input": "2 + 2"}', '{"tool": "calendar", "tool_input": {"event": "dentist"}}',
+    '{"name": "calculate", "arguments": {"expression": "2 + 2"}}', 'Sure. {"action": "calculate", "input": "2 + 2"}', '{"tool": "calendar", "tool_input": {"event": "dentist"}}', '{"type": "send_message", "to": "Sam", "content": "late"}',
     '{"type": "send_message", "args": {"to": "Sam"}}', '{"name": "send_message", "arguments": {"to": "Sam"}}',
   ]) {
     try Effect.sync(() => cloud.script(text(said), text("I can't do that from here.")))
@@ -771,7 +771,7 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
   const { answer: promisedInReask } = try callsFor({ text: "Divide 7 by 0." })
   const jsonOnly: (readonly [string, number])[] = []
   for (const said of [
-    '{"status": "in_progress"}', '{"theme": "dark_mode"}', '{"type": "person", "name": "Bob"}', '{"type": "line_chart", "data": [1, 2]}', '{"type": "Calculate"}',
+    '{"status": "in_progress"}', '{"theme": "dark_mode"}', '{"type": "person", "name": "Bob"}', '[answer] {"type": "line_chart", "data": [1, 2]}', '{"type": "Calculate"}',
     'A tool call in that format looks like {"name": "get_weather", "arguments": {"city": "Paris"}} and the host runs it and returns the forecast to the model.',
     'GitHub hosts code and its link record is {"name": "GitHub", "url": "https://github.com"} in that list.',
     'Most smart-home hubs take a command such as {"action": "turn_on", "device": "lamp"} and switch the lamp on.',
@@ -850,7 +850,7 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
     ],
     workedAfter: ["It is 42.", 3, ["CALCULATE"]],
     promisedTwice: ["", "provider_issue", 2],
-    writtenCalls: Array.from({ length: 18 }, () => ["I can't do that from here.", 2]),
+    writtenCalls: Array.from({ length: 19 }, () => ["I can't do that from here.", 2]),
     declared: [["Anytime!", 1], ["Done!", 1], ["Sure, Bob.", 1], ["Light travels about 300,000 km each second.", 1]],
     declaredPromise: ["I can't send texts from here.", 2],
     promisedInReask: `Done!\n\n${divided}`,
