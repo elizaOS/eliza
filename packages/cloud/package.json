@@ -33,6 +33,8 @@
   "devDependencies": {
     "@effect/vitest": "4.1.1",
     "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "react": "catalog:",
     "typescript": "catalog:",
     "vibelang": "0.0.13",
     "vibelang-vite": "0.0.13",
