@@ -84,3 +84,53 @@ module PasswordBackup {
     scopes.forall(other => other != target implies updated.slots.get(other) == state.slots.get(other))
   })
 }
+
+module NativePasswordBackup {
+  type Purpose = Verify | Read | Save | Delete
+  type Request = { device: int, owner: int, purpose: Purpose, pkce: int, registration: int }
+  type Phase = Picking | OwnerVerified | Issued | Spent | Refused
+  type Attempt = { bound: Request, phase: Phase, count: int }
+  val intended = { device: 1, owner: 1, purpose: Read, pkce: 1, registration: 1 }
+  val requests = Set(intended, { ...intended, device: 2 }, { ...intended, owner: 2 },
+    { ...intended, purpose: Save }, { ...intended, purpose: Verify }, { ...intended, purpose: Delete },
+    { ...intended, pkce: 2 }, { ...intended, registration: 2 })
+  var attempt: Attempt
+
+  pure def approve(a: Attempt, r: Request, current: bool, freshProofAndConsent: bool): Attempt =
+    if (a.phase != Picking or a.bound != r) a
+    else { ...a, phase:
+      if (not(current and freshProofAndConsent)) Refused
+      else if (r.purpose == Verify) OwnerVerified else Issued }
+
+  pure def transfer(a: Attempt, r: Request, current: bool): Attempt =
+    if (a.phase != Issued or a.bound != r) a
+    else if (current) { ...a, phase: Spent, count: a.count + 1 }
+    else { ...a, phase: Refused }
+
+  action init = {
+    nondet r = requests.oneOf()
+    attempt' = { bound: r, phase: Picking, count: 0 }
+  }
+  action step = {
+    nondet r = requests.oneOf()
+    nondet current = Set(true, false).oneOf()
+    nondet proof = Set(true, false).oneOf()
+    any {
+      attempt' = approve(attempt, r, current, proof),
+      attempt' = transfer(attempt, r, current),
+    }
+  }
+  val singleUse = attempt.count <= 1 and (attempt.count == 1 iff attempt.phase == Spent)
+  val verifyIssuesNoData = attempt.bound.purpose == Verify implies
+    not(Set(Issued, Spent).contains(attempt.phase))
+  val exactBinding = requests.forall(r => r != attempt.bound implies
+    approve(attempt, r, true, true) == attempt and transfer(attempt, r, true) == attempt)
+  val revokedStopsTransfer = transfer(attempt, attempt.bound, false).count == attempt.count
+  val normalJourney = requests.forall(r => {
+    val a = { bound: r, phase: Picking, count: 0 }
+    val accepted = approve(a, r, true, true)
+    (r.purpose == Verify implies accepted.phase == OwnerVerified) and
+    (r.purpose != Verify implies transfer(accepted, r, true).count == 1) and
+    approve(a, r, false, true).phase == Refused and approve(a, r, true, false).phase == Refused
+  })
+}
