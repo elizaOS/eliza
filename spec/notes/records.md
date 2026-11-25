@@ -185,9 +185,11 @@ that note, or when it may not be the one meant, it asks the owner whether
 they mean that note. A near title is offered only for a read: it changes
 nothing by itself. Otherwise, with no such note or several, the
 agent answers that no note has that title, with the titles of the notes
-whose text mentions it, and waits on the owner to say which note to use. A
-read by text the note contains, rather than by its title, searches every
-note's text.
+whose text mentions it, and waits on the owner to say which note to use.
+Offering a choice among notes is the read's answer, not a failed step: the
+model's question is the whole reply, and the read's own words to the model
+never reach the owner. A read by text the note contains, rather than by its
+title, searches every note's text.
 
 ```quint
 type TitledRead = ReadsTitledNote | AsksAmongTitledNotes | OffersNearTitle | AsksWhichNote
@@ -203,6 +205,10 @@ pure def lawOnlyOneNearTitleIsOffered(titledNotes: int, nearTitles: int): bool =
   (titledRead(titledNotes, nearTitles) == OffersNearTitle) iff (titledNotes <= 0 and nearTitles == 1)
 pure def lawAnAbsentTitleWithoutOneNearTitleAsksWhichNote(titledNotes: int, nearTitles: int): bool =
   (titledNotes <= 0 and nearTitles != 1) implies titledRead(titledNotes, nearTitles) == AsksWhichNote
+pure def titledReadAnswered(read: TitledRead): bool = match read {
+  | ReadsTitledNote => true | AsksAmongTitledNotes => true | OffersNearTitle => true | AsksWhichNote => true }
+pure def lawATitledReadThatAsksIsAnswered(titledNotes: int, nearTitles: int): bool =
+  titledReadAnswered(titledRead(titledNotes, nearTitles))
 ```
 
 ### A move by name takes the identical copies of the note along
