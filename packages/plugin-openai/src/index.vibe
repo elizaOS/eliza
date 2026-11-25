@@ -5,7 +5,8 @@ import * as Sse from "effect/encoding/Sse"
 import { Machine, machine, type OpenAiAttempt, openAiModelId, openAiTokenizerKey, suitableOpenAiEndpoint } from "../gen/openai.effect.vibe"
 
 module node {
-  import { fetchRemoteMedia, fetchWithConfidentialInference } from "@elizaos/core"
+  import { fetchWithConfidentialInference } from "@elizaos/core"
+  import { fetchRemoteMedia } from "@elizaos/core-node"
   import { getEncoding, type TiktokenEncoding } from "js-tiktoken"
 
   const encodings = new Map<TiktokenEncoding, ReturnType<typeof getEncoding>>()

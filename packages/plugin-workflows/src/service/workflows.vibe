@@ -10,12 +10,12 @@ import {
   phoneDraftAccepted, phoneStepRequiredProtocol, phoneStepUsesDevice, phoneTimeTriggerCron, phoneWorkflowBytes, phoneWorkflowLocalWall, phoneWorkflowUsesDevice,
   validatePhoneWorkflowSpec, workflowSha, workflowUuid,
   type PhoneStep, type PhoneTimeTrigger, type PhoneWorkflowCatalog, type PhoneWorkflowSaveReceipt, type PhoneWorkflowSpec,
-} from "../contract/phone.vibe"
-import { validateWorkflowReadResult, workflowOperationAdmitted, type WorkflowDeviceBinding, type WorkflowDeviceOperation, type WorkflowPhoneReview } from "../contract/device.vibe"
-import { HOSTED_DIGEST_METADATA_KEY } from "../contract/digest.vibe"
-import { WORKFLOW_OPERATION_LABELS } from "../scope.vibe"
-import { WORKFLOW_ENGINE, WORKFLOW_PHONE_SPEC_METADATA_KEY } from "../client/workflow-client.vibe"
-import { workflowRunDeepLink } from "../client/notices.vibe"
+} from "@elizaos/plugin-workflow-client"
+import { validateWorkflowReadResult, workflowOperationAdmitted, type WorkflowDeviceBinding, type WorkflowDeviceOperation, type WorkflowPhoneReview } from "@elizaos/plugin-workflow-client"
+import { HOSTED_DIGEST_METADATA_KEY } from "@elizaos/plugin-workflow-client"
+import { WORKFLOW_OPERATION_LABELS } from "@elizaos/plugin-workflow-client"
+import { WORKFLOW_ENGINE, WORKFLOW_PHONE_SPEC_METADATA_KEY } from "@elizaos/plugin-workflow-client"
+import { workflowRunDeepLink } from "@elizaos/plugin-workflow-client"
 import { TYPED_STEPS_NODE, type ParentMessage, type WorkerMessage, type WorkerResume } from "../worker/protocol.vibe"
 import type { GeneratedEntry, GeneratedWait } from "../worker/engine.vibe"
 import { workflowStore, type WorkflowStoreUnavailable, type ApprovalRow, type DefinitionRow, type ReceiptRow, type RunEvent, type RunRow, type StoredDefinition, type StoredRunEvent } from "./store.vibe"

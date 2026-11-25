@@ -15,8 +15,7 @@
     "rootDirs": [
       ".",
       ".vibe/declarations"
-    ],
-    "jsx": "react-jsx"
+    ]
   },
   "include": [
     "src",

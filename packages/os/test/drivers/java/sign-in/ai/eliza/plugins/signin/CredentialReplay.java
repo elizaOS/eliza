@@ -1,12 +1,15 @@
-// spec/os/signIn/credential.md, "Story: Keep me signed in without a second copy of my key"; spec/os/signIn/credential.md, "Story: Sign out or reset cleanly"; spec/os/signIn/credential.md, "Story: Confirm it is me before a billing change"; spec/os/signIn/credential.md, "Story: Keep my key fresh without signing in again"
+// spec/os/signIn/credential.md, "Story: Keep me signed in without a second copy of my key"; spec/os/signIn/credential.md, "Story: Sign out or reset cleanly"; spec/os/signIn/credential.md, "Story: Confirm it is me before a billing change"
 package ai.eliza.plugins.signin;
 
 import ai.eliza.plugins.signin.CredentialPolicy.Account;
+import ai.eliza.plugins.signin.CredentialPolicy.LeaseOffer;
+import ai.eliza.plugins.signin.CredentialPolicy.LeaseUse;
 import ai.eliza.plugins.signin.CredentialPolicy.Notice;
 import ai.eliza.plugins.signin.CredentialPolicy.Reason;
 import ai.eliza.plugins.signin.CredentialPolicy.RefreshAnswer;
 import ai.eliza.plugins.signin.CredentialPolicy.RejectedOn;
 import ai.eliza.plugins.signin.DeviceCredentialStore.Kept;
+import ai.eliza.plugins.signin.DeviceCredentialStore.LeaseSecret;
 import ai.eliza.plugins.signin.DeviceCredentialStore.Outcome;
 import ai.eliza.plugins.signin.DeviceCredentialStore.SessionRead;
 import ai.eliza.plugins.signin.DeviceCredentialStore.Token;
@@ -29,7 +32,7 @@ public final class CredentialReplay {
     final Map<String, String> held = new HashMap<>();
     KeyWrite next = KeyWrite.WRITE;
 
-    private static boolean key(String slot) { return slot.contains(":key:"); }
+    private static boolean key(String slot) { return slot.contains(":key:") || slot.contains(":lease:"); }
 
     @Override public String read(String slot) throws IOException {
       if (key(slot) && next == KeyWrite.UNREADABLE) throw new IOException("unreadable");
@@ -56,6 +59,7 @@ public final class CredentialReplay {
     store = new DeviceCredentialStore(slots, AUTHORITY, () -> now);
     store.listen(out::add);
     store.onVerifyAccount(() -> out.add(new Notice.VerifyAccount()));
+    store.onRenewKey(() -> out.add(new Notice.RenewKey()));
   }
 
   private void reset() {
@@ -90,6 +94,19 @@ public final class CredentialReplay {
     };
   }
 
+  private static LeaseUse presented(String presented) {
+    return switch (presented) {
+      case "RefreshUse" -> LeaseUse.REFRESH_USE;
+      case "AccessUse" -> LeaseUse.ACCESS_USE;
+      default -> throw new CredentialJson.Malformed("presented " + presented);
+    };
+  }
+
+  private static String secret(String prefix, int length, long seed) {
+    String digits = Long.toString(seed, 36);
+    return prefix + "x".repeat(length - digits.length()) + digits;
+  }
+
   private static boolean settled(String reply) {
     return switch (reply) {
       case "RevokeSettled" -> true;
@@ -102,18 +119,45 @@ public final class CredentialReplay {
     String type = CredentialJson.text(e, "type");
     return switch (type) {
       case "beginSignIn" -> { store.beginSignIn(); yield true; }
-      case "beginRenewal" -> store.beginRenewal() != 0;
       case "tokenAnswered" -> {
+        LeaseOffer offer = CredentialPolicy.offer(e.get("lease"));
+        if (offer instanceof LeaseOffer.Renewal) yield false;
         slots.next = keyWrite(CredentialJson.text(e, "stored"));
         try {
           Account account = CredentialPolicy.account(e.get("account"));
           String credentialId = CredentialJson.text(e, "credentialId");
+          LeaseSecret lease = offer instanceof LeaseOffer.Offered o ? new LeaseSecret(secret("eliza_lease_refresh_", 54, now), o.refreshExpiresAt()) : null;
           yield store.tokenAnswered(CredentialJson.small(e, "attempt"),
-            new Token(credentialId, "key-" + credentialId + "-" + account.userId(), account, CredentialJson.whole(e, "keyExpiresAt"))) != Kept.REFUSED;
+            new Token(credentialId, "key-" + credentialId + "-" + account.userId(), account, CredentialJson.whole(e, "keyExpiresAt"), lease)) != Kept.REFUSED;
         } finally {
           slots.next = KeyWrite.WRITE;
         }
       }
+      case "beginRenewal" -> store.beginRenewal() != null;
+      case "readLease" -> {
+        SessionRead read = store.readLease().stage();
+        if (read == SessionRead.START_REFRESH) out.add(new Notice.RefreshLease());
+        yield read == SessionRead.START_REFRESH || read == SessionRead.AWAIT_REFRESH;
+      }
+      case "leaseRefreshAnswered" -> {
+        Map<String, Object> rotation = CredentialJson.object(e.get("rotation"), "rotation");
+        int version = CredentialJson.small(e, "version");
+        yield switch (CredentialJson.text(rotation, "tag")) {
+          case "LeaseUnanswered" -> store.leaseUnanswered(version) == Outcome.ACCEPTED;
+          case "LeaseRotated" -> {
+            slots.next = keyWrite(CredentialJson.text(rotation, "stored"));
+            try {
+              yield store.leaseRotated(version, secret("eliza_lease_refresh_", 54, now + 1),
+                CredentialJson.whole(rotation, "accessExpiresAt"), CredentialJson.whole(rotation, "refreshExpiresAt")) != Kept.REFUSED;
+            } finally {
+              slots.next = KeyWrite.WRITE;
+            }
+          }
+          default -> throw new CredentialJson.Malformed("rotation");
+        };
+      }
+      case "leaseRejected" -> store.leaseRejected(CredentialJson.small(e, "version"), Reason.ofTag(CredentialJson.text(e, "reason")),
+        presented(CredentialJson.text(e, "presented"))) == Outcome.ACCEPTED;
       case "acknowledged" -> store.acknowledged(CredentialJson.small(e, "attempt"), CredentialJson.text(e, "credentialId"),
         CredentialJson.whole(e, "keyExpiresAt")) == Outcome.ACCEPTED;
       case "signInEnded" -> store.signInEnded(CredentialJson.small(e, "attempt")) == Outcome.ACCEPTED;

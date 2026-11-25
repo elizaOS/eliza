@@ -9,7 +9,7 @@ keeps one resident native context for speech and the end-of-turn score
 and one session for embeddings. The consumer supplies the native library
 behind the host, under its own identity, and the model storage directory
 the host confines every path to. The resident's engine reaches the host
-through `@elizaos/os/inference`. Text is never generated on the device
+through `@elizaos/os`. Text is never generated on the device
 ([model binding](../../agent/models/binding.md)): the host offers no
 generation operation.
 

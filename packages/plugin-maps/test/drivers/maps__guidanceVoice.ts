@@ -2,7 +2,7 @@
 import { Effect, Exit } from "effect";
 import type { Driver, Options } from "../../gen/maps__guidanceVoice.conformance.ts";
 import type { GuidanceVoice } from "../../gen/maps__guidanceVoice.ts";
-import { GuidanceSpeechStopped, navigationVoice, type NavigationVoice } from "../../src/client/guidance.vibe";
+import { GuidanceSpeechStopped, navigationVoice, type NavigationVoice } from "@elizaos/plugin-maps-client";
 import { gate, until, type Gate } from "../support/gates.ts";
 
 const view = (s: GuidanceVoice) => ({

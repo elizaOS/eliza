@@ -176,7 +176,7 @@ number (checked in the Effect Schema) or is negative makes the usage
 unreadable; `./inference.md` settles both as a call that finished without
 usage, at the quote. A capped call (`usageCapped`) is billed at the bound
 and logged as an error through the structured logger
-(`@elizaos/core/logging`).
+(`@elizaos/core`).
 
 ```quint
 type ProviderUsage = { promptTokens: int, cachedTokens: int, completionTokens: int, reasoningTokens: int }

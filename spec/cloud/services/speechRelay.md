@@ -7,7 +7,7 @@ those frames before reading the next input. Each socket holds a `Relay`
 value, while the generated `Session` machine owns the persisted lifecycle.
 The device side is `spec/os/voice/cloudSpeech.md`. JSON, bytes, digests,
 lengths, the id pattern and provider calls stay at the codec and shell
-boundaries (`src/client/relay-frames.ts`, `src/services/speech-session.vibe`).
+boundaries (`src/client/relay-frames.ts`, `packages/cloud-worker/src/services/speech-session.vibe`).
 
 ## Story: Speak the relay protocol on one socket
 

@@ -105,8 +105,8 @@ interface Sources {
   readonly adapters: ReadonlyMap<string, string>;
 }
 
-function sources(): Sources {
-  const files = SOURCE_TREES.flatMap((tree) => javaFiles(path.join(PACKAGE, tree))).sort();
+function sources(trees: readonly string[] = SOURCE_TREES, adapterTrees: readonly string[] = [ADAPTERS]): Sources {
+  const files = trees.flatMap((tree) => javaFiles(path.join(PACKAGE, tree))).sort();
   const digest = createHash("sha256");
   const roots = new Set<string>();
   const adapters = new Map<string, string>();
@@ -115,7 +115,7 @@ function sources(): Sources {
     digest.update(`${path.relative(PACKAGE, file)}\0${text}\0`);
     const root = sourceRoot(file, text);
     roots.add(root);
-    if (file.startsWith(path.join(PACKAGE, ADAPTERS) + path.sep) && /\bpublic\s+static\s+void\s+main\s*\(/.test(text))
+    if (adapterTrees.some((tree) => file.startsWith(path.join(PACKAGE, tree) + path.sep)) && /\bpublic\s+static\s+void\s+main\s*\(/.test(text))
       adapters.set(path.relative(root, file).slice(0, -".java".length).split(path.sep).join("."), file);
   }
   return { digest: digest.digest("hex").slice(0, 24), roots: [...roots], adapters };
@@ -248,9 +248,9 @@ export function compileAdapter(main: string, found: Sources = sources(), depende
   }
 }
 
-export async function orgJsonAdapterClasspath(main: string): Promise<string> {
+export async function orgJsonAdapterClasspath(main: string, trees?: readonly string[]): Promise<string> {
   const jar = await jsonJavaArtifact();
-  return [compileAdapter(main, undefined, [jar]), jar].join(path.delimiter);
+  return [compileAdapter(main, trees === undefined ? undefined : sources(trees, trees), [jar]), jar].join(path.delimiter);
 }
 
 const needsOrgJson = (main: string) =>

@@ -7,10 +7,10 @@
   "license": "MIT",
   "publishConfig": {
     "exports": {
-      "./selected-read": {
-        "types": "./dist/src/selected-read.d.ts",
-        "import": "./dist/src/selected-read.js",
-        "default": "./dist/src/selected-read.js"
+      ".": {
+        "types": "./dist/src/agent.d.ts",
+        "import": "./dist/src/agent.js",
+        "default": "./dist/src/agent.js"
       }
     }
   },
@@ -21,7 +21,9 @@
   },
   "dependencies": {
     "@elizaos/agent": "workspace:*",
+    "@elizaos/agent-host": "workspace:*",
     "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-notes-client": "workspace:*",
     "effect": "4.1.1",
     "vibelang-runtime": "0.0.13"
   },
@@ -40,37 +42,6 @@
       "types": "./dist/src/agent.d.ts",
       "import": "./dist/src/agent.js",
       "default": "./dist/src/agent.js"
-    },
-    "./client": {
-      "eliza-source": "./src/client.vibe",
-      "types": "./dist/src/client.d.ts",
-      "import": "./dist/src/client.js",
-      "default": "./dist/src/client.js"
-    },
-    "./format": {
-      "eliza-source": "./src/format.vibe",
-      "types": "./dist/src/format.d.ts",
-      "import": "./dist/src/format.js",
-      "default": "./dist/src/format.js"
-    },
-    "./types": {
-      "eliza-source": "./src/types.vibe",
-      "types": "./dist/src/types.d.ts",
-      "import": "./dist/src/types.js",
-      "default": "./dist/src/types.js"
-    },
-    "./organize": {
-      "eliza-source": "./src/organize.vibe",
-      "types": "./dist/src/organize.d.ts",
-      "import": "./dist/src/organize.js",
-      "default": "./dist/src/organize.js"
-    },
-    "./selected-read": {
-      "eliza-source": "./src/selected-read.vibe",
-      "types": "./dist/src/selected-read.d.ts",
-      "import": "./dist/src/selected-read.js",
-      "default": "./dist/src/selected-read.js"
-    },
-    "./package.json": "./package.json"
+    }
   }
 }

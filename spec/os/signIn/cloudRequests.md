@@ -63,36 +63,74 @@ pure def lawOneForeignRouteRefusesTheTable(routes: Routes::RouteList): bool =
 
 ### A session-only route is sent only with a live account session, never with the device key
 
-The credential follows the device route's auth class, never the page: a
-`Public` route is sent bare. `Session`, `SessionFamily`, `FreshSession` and
-`StepUp` use only the account session from reauthentication (at most an hour old,
+The credential follows the device route, never the page: a `Public` route
+is sent bare. `Session`, `SessionFamily`, `FreshSession` and `StepUp` use
+only the account session from reauthentication (at most an hour old,
 `./credential.md`), after one shared refresh when its access token has
-expired, and otherwise fails with `ReauthRequired`; every other route
-carries the active device key, or fails with `SignInRequired` when there is
-none. The key and the session token are attached natively and never reach
-the page.
+expired, and otherwise fail with `ReauthRequired`; a mail or calendar route
+uses the lease (the next rule); every other route carries the active device
+key, or fails with `SignInRequired` when there is none. The key, the lease
+and the session token are attached natively and never reach the page.
 
 ```quint
-type Holding = { key: int, sessionHeld: bool, sessionLive: bool }
-type Attach = Bare | WithKey({ version: int }) | WithSession({ version: int })
-type CallRefusal = NoOrigin | NotListed | BodyTooLarge | HeaderRefused | SignInRequired | ReauthRequired
-type CallPlan = Send({ attach: Attach }) | RefreshSessionFirst | Refuse({ why: CallRefusal })
+type Holding = { key: int, sessionHeld: bool, sessionLive: bool, leaseHeld: bool, leaseLive: bool }
+type Attach = Bare | WithKey({ version: int }) | WithSession({ version: int }) | WithLease({ version: int })
+type CallRefusal = NoOrigin | NotListed | BodyTooLarge | HeaderRefused | SignInRequired | MailLeaseUpgradeRequired | ReauthRequired
+type CallPlan = Send({ attach: Attach }) | RefreshSessionFirst | RefreshLeaseFirst | Refuse({ why: CallRefusal })
 pure def holdingOf(c: C::DeviceCredential): Holding =
-  { key: C::activeVersion(c), sessionHeld: c.session != C::NoSession, sessionLive: C::sessionUsable(c) }
+  { key: C::activeVersion(c), sessionHeld: c.session != C::NoSession, sessionLive: C::sessionUsable(c), leaseHeld: c.lease != C::NoLease, leaseLive: C::leaseUsable(c) }
 pure def sessionOnly(auth: AuthClass): bool = auth == Session or auth == SessionFamily or auth == FreshSession or auth == StepUp
-pure def attachFor(h: Holding, auth: AuthClass): CallPlan =
-  if (auth == Public) Send({ attach: Bare })
-  else if (sessionOnly(auth)) (if (h.sessionLive) Send({ attach: WithSession({ version: h.key }) }) else if (h.sessionHeld) RefreshSessionFirst else Refuse({ why: ReauthRequired }))
+pure def attachFor(h: Holding, d: DeviceRoute): CallPlan =
+  if (d.auth == Public) Send({ attach: Bare })
+  else if (sessionOnly(d.auth)) (if (h.sessionLive) Send({ attach: WithSession({ version: h.key }) }) else if (h.sessionHeld) RefreshSessionFirst else Refuse({ why: ReauthRequired }))
+  else if (mailRoute(d)) (if (h.leaseLive) Send({ attach: WithLease({ version: h.key }) }) else if (h.leaseHeld) RefreshLeaseFirst else Refuse({ why: if (h.key >= 1) MailLeaseUpgradeRequired else SignInRequired }))
   else if (h.key >= 1) Send({ attach: WithKey({ version: h.key }) })
   else Refuse({ why: SignInRequired })
-pure val hValues = Set({ key: 0, sessionHeld: false, sessionLive: false }, { key: 1, sessionHeld: false, sessionLive: false },
-  { key: 2, sessionHeld: true, sessionLive: false }, { key: 2, sessionHeld: true, sessionLive: true })
-pure val authValues = Set(Public, KeyOrSession, Session, SessionFamily, FreshSession, StepUp)
+pure val hValues = Set({ key: 0, sessionHeld: false, sessionLive: false, leaseHeld: false, leaseLive: false },
+  { key: 1, sessionHeld: false, sessionLive: false, leaseHeld: false, leaseLive: false },
+  { key: 2, sessionHeld: true, sessionLive: false, leaseHeld: true, leaseLive: false }, { key: 2, sessionHeld: true, sessionLive: true, leaseHeld: true, leaseLive: true })
 pure def keyOf(a: Attach): int = match a { | WithKey(k) => k.version | _ => 0 }
 pure def sentKey(p: CallPlan): int = match p { | Send(s) => keyOf(s.attach) | _ => 0 }
-pure def lawASessionRouteNeverCarriesTheKey(h: Holding, auth: AuthClass): bool = sessionOnly(auth) implies sentKey(attachFor(h, auth)) == 0
-pure def lawAKeyRouteWithoutAKeyIsNotSent(h: Holding, auth: AuthClass): bool =
-  (auth == KeyOrSession and h.key < 1) implies attachFor(h, auth) == Refuse({ why: SignInRequired })
+pure def lawASessionRouteNeverCarriesTheKey(h: Holding, d: DeviceRoute): bool = sessionOnly(d.auth) implies sentKey(attachFor(h, d)) == 0
+pure def lawAKeyRouteWithoutAKeyIsNotSent(h: Holding, d: DeviceRoute): bool =
+  (d.auth == KeyOrSession and h.key < 1) implies attachFor(h, d) == Refuse({ why: SignInRequired })
+```
+
+### A mail or calendar route is sent only with the lease, never with the device key
+
+The agent holds the device key and reads untrusted mail, so the cloud
+refuses that key on its mail routes (`spec/cloud/identity/requestAuth.md`,
+`MailRoute`), and the device never sends it there. The mail routes are the
+device routes the cloud's client lists as `Mail` (`spec/cloud/client.md`):
+Google status, accounts, connect, disconnect, Gmail triage, search, read,
+thread, capabilities, drafts, draft, attachment and operations, and the
+calendar list, feed, event reads and event writes. They carry the lease's
+access token after one shared refresh when necessary (`./credential.md`).
+A device with an active key and no lease gets `MailLeaseUpgradeRequired`.
+The native bridge returns `mail-lease-upgrade-required` before it sends the
+request. The host can offer the user a one-time sign-in to the same account.
+
+For a host reading Google connection status, an inbox page, a message, or a
+calendar window, the native package offers a read-only request bound to the
+owner and current credential identity. The request refuses unknown paths or
+query fields, and drops its reply if that identity changes. The host receives
+the reply and a non-secret scope, while lease credentials stay native.
+The existing key stays available for its usual routes while the user decides
+or cancels. The page sends a new request after the sign-in. A device without
+a live key or lease gets `SignInRequired`. If a refresh ends the lease, the
+native shell uses the current key and lease state to choose the refusal.
+The native one-tap connect and inbox arrival keep the device key. Only mail
+routes carry the lease.
+
+```quint
+pure def mailRoute(d: DeviceRoute): bool = d.auth == Mail
+pure def leaseOf(a: Attach): int = match a { | WithLease(l) => l.version | _ => 0 }
+pure def sentLease(p: CallPlan): int = match p { | Send(s) => leaseOf(s.attach) | _ => 0 }
+pure def lawAMailRouteNeverCarriesTheKey(h: Holding, d: DeviceRoute): bool = mailRoute(d) implies sentKey(attachFor(h, d)) == 0
+pure def lawTheLeaseGoesOnlyToAMailRoute(h: Holding, d: DeviceRoute): bool = sentLease(attachFor(h, d)) >= 1 implies mailRoute(d)
+pure def lawOnlyAMailRouteOnAnExistingKeyWithoutALeaseNeedsTheUpgrade(h: Holding, d: DeviceRoute): bool =
+  (attachFor(h, d) == Refuse({ why: MailLeaseUpgradeRequired })) iff
+    (mailRoute(d) and h.key >= 1 and not(h.leaseHeld or h.leaseLive))
 ```
 
 ### A request is sent only to the deployment origin, admitted by the gate, with headers its route admits
@@ -118,7 +156,7 @@ pure def planRequest(routes: Routes::RouteList, h: Holding, origin: BaseUrl, req
   else if (a == Routes::TooLarge) Refuse({ why: BodyTooLarge })
   else if (Routes::admittedRoute(a).length() != 1 or found.length() != 1) Refuse({ why: NotListed })
   else if (not(headers.every(x => headerAllowed(d, x)))) Refuse({ why: HeaderRefused })
-  else attachFor(h, d.auth)
+  else attachFor(h, d)
 }
 pure def refused(p: CallPlan): bool = match p { | Refuse(r) => true | _ => false }
 pure def lawASentRequestIsAdmittedOnTheOrigin(routes: Routes::RouteList, h: Holding, origin: BaseUrl, request: Routes::Request, headers: List[str]): bool =
@@ -126,7 +164,8 @@ pure def lawASentRequestIsAdmittedOnTheOrigin(routes: Routes::RouteList, h: Hold
     (originAccepted(origin) and Routes::admittedRoute(Routes::admission(routes, request)).length() == 1 and not(headers.includes("Authorization")))
 pure val originValues = Set({ scheme: Https, loopback: false, hasPath: false, hasQueryOrFragment: false }, { scheme: Https, loopback: false, hasPath: true, hasQueryOrFragment: false })
 pure val headersValues = Set(List(), List("Idempotency-Key"), List("If-Match"), List("Authorization"), List("Accept", "If-None-Match"))
-pure def at(names: List[str]): List[Routes::Piece] = List("api", "v1").concat(names).listMap(n => Routes::Literal({ text: n }))
+pure def at(names: List[str]): List[Routes::Piece] =
+  List(Routes::Literal({ text: "api" }), Routes::Literal({ text: "v1" })).concat(names.listMap(n => Routes::Literal({ text: n })))
 pure def seg(text: str): Routes::Segment = { text: text, fits: List() }
 pure val routesValues = {
   val read = { method: Routes::Get, delivery: Routes::Buffered, path: at(List("user")), query: List(), limit: Routes::AnySize }
@@ -155,28 +194,42 @@ The page gets the refusal as the cloud gave it; the request is never sent
 again with another credential. A `401` on a request sent with the device key
 is reported to `./credential.md` as `rejected` for that key's version, as an
 account read when the route was `GET /api/v1/user`, which alone may sign
-out. A `401` on a request sent with the account session drops that session
-only.
+out. A `401` on a request sent with the lease is reported as `leaseRejected`
+for its access token, which only discards that token. A `401` on a request
+sent with the account session drops that session only. A device-key request is
+attached only with a positive credential version. Its attachment kind
+determines where the refusal is reported.
 
 ```quint
-type CredentialReport = NoReport | KeyRejected({ version: int, reason: RefusalReason, on: C::RejectedOn }) | SessionRejected
+type CredentialReport = NoReport | KeyRejected({ version: int, reason: RefusalReason, on: C::RejectedOn }) | LeaseRejected({ version: int, reason: RefusalReason }) | SessionRejected
 pure def isAccountRead(d: DeviceRoute): bool = d.method == Get and d.path == api(List("user"))
 pure def reportOf(attach: Attach, d: DeviceRoute, status: int, reason: RefusalReason): CredentialReport =
   if (status != 401) NoReport
   else match attach {
     | WithKey(k) => KeyRejected({ version: k.version, reason: credentialReasonOf(reason), on: if (isAccountRead(d)) C::AccountRead else C::OtherRequest })
     | WithSession(x) => SessionRejected
+    | WithLease(l) => LeaseRejected({ version: l.version, reason: credentialReasonOf(reason) })
     | Bare => NoReport
   }
 pure def isKeyReport(r: CredentialReport): bool = match r { | KeyRejected(k) => true | _ => false }
-pure def carriesKey(a: Attach): bool = match a { | WithKey(k) => true | _ => false }
-pure val attachValues = Set(Bare, WithKey({ version: 1 }), WithSession({ version: 1 }))
-pure val dValues = Set(noDeviceRoute, { method: Get, path: api(List("user")), auth: KeyOrSession, headers: Set() })
+pure val attachValues = Set(Bare, WithKey({ version: 1 }), WithSession({ version: 1 }), WithLease({ version: 1 }))
+pure val dValues = Set(noDeviceRoute, { method: Get, path: api(List("user")), auth: KeyOrSession, headers: Set() },
+  { method: Get, path: google(List("calendar", "feed")), auth: Mail, headers: Set() },
+  { method: Post, path: google(List("connect", "native")), auth: KeyOrSession, headers: Set() },
+  { method: Get, path: api(List("auth", "mfa")), auth: Session, headers: Set() })
 pure val reasonValues = Set(CredentialExpired, CredentialRevoked, CredentialUnknown, NoReason)
 pure def lawOnlyA401WithACredentialIsReported(attach: Attach, d: DeviceRoute, status: int, reason: RefusalReason): bool =
   (reportOf(attach, d, status, reason) != NoReport) iff (status == 401 and attach != Bare)
+pure def usesDeviceKey(attach: Attach): bool = match attach { | WithKey(k) => true | _ => false }
 pure def lawASession401NeverReachesTheKey(attach: Attach, d: DeviceRoute, status: int, reason: RefusalReason): bool =
-  isKeyReport(reportOf(attach, d, status, reason)) iff (status == 401 and carriesKey(attach))
+  isKeyReport(reportOf(attach, d, status, reason)) iff (status == 401 and usesDeviceKey(attach))
+pure def lawARequestCarriesOnlyAPositiveKeyVersion(h: Holding, d: DeviceRoute): bool = {
+  val plan = attachFor(h, d)
+  match plan {
+    | Send(s) => usesDeviceKey(s.attach) implies keyOf(s.attach) >= 1
+    | _ => true
+  }
+}
 ```
 
 ### A cancel disconnects only the page's own call still in flight, which then settles once as cancelled

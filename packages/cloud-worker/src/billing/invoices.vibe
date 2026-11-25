@@ -1,0 +1,342 @@
+// spec/cloud/billing/subscriptions.md, "Story: Read my invoices and open the billing portal"
+import { invoiceVisible, portalAllowed, customerIdOf, type Subscription } from "../../gen/cloud__billing__subscriptions.effect.vibe"
+import { json, owner, type Route } from "../http/routes.vibe"
+import { refused, type Refused } from "../http/refusal.vibe"
+import { Deployment } from "@elizaos/cloud"
+import { Store, type StoreFailure } from "../store/connection.vibe"
+import type { RowCorrupt } from "../store/rows.vibe"
+import { readSubscription } from "./subscriptions.vibe"
+
+error ProviderMissing { path: string }
+error ProviderFailed { path: string; status: number }
+
+export type InvoiceStatus = "open" | "paid" | "uncollectible" | "void"
+
+export interface InvoiceSummary {
+  readonly id: string
+  readonly number: string | null
+  readonly date: number
+  readonly status: InvoiceStatus
+  readonly amountDueCents: number
+  readonly amountPaidCents: number
+  readonly currency: string
+  readonly hostedInvoiceUrl: string | null
+}
+
+export interface InvoiceLine {
+  readonly id: string
+  readonly description: string | null
+  readonly amountCents: number
+  readonly currency: string
+  readonly quantity: number | null
+  readonly periodStart: number
+  readonly periodEnd: number
+}
+
+export interface InvoiceDetail extends InvoiceSummary {
+  readonly lines: ReadonlyArray<InvoiceLine>
+  readonly periodStart: number
+  readonly periodEnd: number
+  readonly pdfUrl: string | null
+}
+
+export interface InvoicePage {
+  readonly invoices: ReadonlyArray<InvoiceSummary>
+  readonly nextCursor: string | null
+}
+
+const invoicePageDefault = 20
+const invoicePageMax = 100
+const portalConfigurationKey = "cloud_portal_configuration"
+const portalConfigurationVersion = "subscription-v1"
+
+const invoiceIdPattern = /^in_[A-Za-z0-9_]{1,250}$/
+
+const ProviderLine = Schema.Struct({
+  id: Schema.String,
+  description: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  amount: Schema.Int,
+  currency: Schema.String,
+  quantity: Schema.optionalKey(Schema.NullOr(Schema.Int)),
+  period: Schema.Struct({ start: Schema.Int, end: Schema.Int })
+})
+
+const ProviderLines = Schema.Struct({ data: Schema.Array(ProviderLine), has_more: Schema.Boolean })
+
+const ProviderInvoice = Schema.Struct({
+  id: Schema.String,
+  customer: Schema.NullOr(Schema.String),
+  number: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  status: Schema.NullOr(Schema.Literals(["draft", "open", "paid", "uncollectible", "void"])),
+  amount_due: Schema.Int,
+  amount_paid: Schema.Int,
+  currency: Schema.String,
+  hosted_invoice_url: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  invoice_pdf: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  created: Schema.Int,
+  period_start: Schema.Int,
+  period_end: Schema.Int,
+  lines: ProviderLines
+})
+
+type ProviderInvoiceRead = typeof ProviderInvoice.Type
+
+const ProviderInvoices = Schema.Struct({ data: Schema.Array(ProviderInvoice), has_more: Schema.Boolean })
+
+const PortalFeatures = Schema.Struct({
+  customer_update: Schema.Struct({ enabled: Schema.Boolean }),
+  invoice_history: Schema.Struct({ enabled: Schema.Boolean }),
+  payment_method_update: Schema.Struct({ enabled: Schema.Boolean }),
+  subscription_cancel: Schema.Struct({ enabled: Schema.Boolean, mode: Schema.String, proration_behavior: Schema.String }),
+  subscription_update: Schema.Struct({ enabled: Schema.Boolean }),
+  subscription_pause: Schema.optionalKey(Schema.Struct({ enabled: Schema.Boolean }))
+})
+
+const PortalConfiguration = Schema.Struct({
+  id: Schema.String,
+  active: Schema.Boolean,
+  livemode: Schema.Boolean,
+  metadata: Schema.NullOr(Schema.Record(Schema.String, Schema.String)),
+  features: PortalFeatures
+})
+
+type PortalConfigurationRead = typeof PortalConfiguration.Type
+
+const PortalConfigurations = Schema.Struct({ data: Schema.Array(PortalConfiguration), has_more: Schema.Boolean })
+
+schema PortalSession { url: string }
+
+const lockedPortal: ReadonlyArray<readonly [string, string]> = [
+  ["features[customer_update][enabled]", "false"],
+  ["features[invoice_history][enabled]", "true"],
+  ["features[payment_method_update][enabled]", "true"],
+  ["features[subscription_cancel][enabled]", "true"],
+  ["features[subscription_cancel][mode]", "at_period_end"],
+  ["features[subscription_cancel][proration_behavior]", "none"],
+  ["features[subscription_update][enabled]", "false"],
+  [`metadata[${portalConfigurationKey}]`, portalConfigurationVersion]
+]
+
+interface ProviderCall {
+  readonly method: "GET" | "POST"
+  readonly path: string
+  readonly params?: ReadonlyArray<readonly [string, string]>
+  readonly idempotencyKey?: string
+}
+
+effect function provider<A>(call: ProviderCall, schema: Schema.Codec<A>): A!(ProviderMissing | ProviderFailed)!(Deployment | HttpClient.HttpClient) {
+  const deployment = try Deployment
+  const billing = deployment.settings.billing
+  if (billing === undefined) throw new ProviderFailed({ path: call.path, status: 0 })
+  const key = deployment.secret(billing.secretKeyEnv) catch effect () => { throw new ProviderFailed({ path: call.path, status: 0 }) }
+  const client = try HttpClient.HttpClient
+  const form = new URLSearchParams(call.params === undefined ? [] : call.params.map(([name, value]) => [name, value]))
+  const url = `${billing.apiUrl}${call.path}${call.method === "GET" && call.params !== undefined ? `?${form.toString()}` : ""}`
+  let request = HttpClientRequest.setHeader(HttpClientRequest.make(call.method)(url), "authorization", `Bearer ${key}`)
+  if (call.idempotencyKey !== undefined) request = HttpClientRequest.setHeader(request, "idempotency-key", call.idempotencyKey)
+  if (call.method === "POST") request = HttpClientRequest.bodyText(request, form.toString(), "application/x-www-form-urlencoded")
+  return effect {
+    const response = try client.execute(request)
+    if (response.status === 404) throw new ProviderMissing({ path: call.path })
+    if (response.status !== 200) throw new ProviderFailed({ path: call.path, status: response.status })
+    return try Schema.decodeUnknownEffect(schema)(try response.json)
+  } catch effect (failure) => match (failure) {
+    when ProviderMissing: throw failure;
+    when ProviderFailed: throw failure;
+    default: throw new ProviderFailed({ path: call.path, status: 0 });
+  }
+}
+
+function millis(seconds: number): number {
+  return seconds * 1000
+}
+
+function summaryOf(invoice: ProviderInvoiceRead, status: InvoiceStatus): InvoiceSummary {
+  return {
+    id: invoice.id,
+    number: invoice.number ?? null,
+    date: millis(invoice.created),
+    status,
+    amountDueCents: invoice.amount_due,
+    amountPaidCents: invoice.amount_paid,
+    currency: invoice.currency,
+    hostedInvoiceUrl: invoice.hosted_invoice_url ?? null
+  }
+}
+
+function issued(invoice: ProviderInvoiceRead): InvoiceStatus | undefined {
+  return invoice.status === null || invoice.status === "draft" ? undefined : invoice.status
+}
+
+function pageLimit(query: URLSearchParams): number | undefined {
+  const given = query.get("limit")
+  if (given === null) return invoicePageDefault
+  if (!/^\d{1,3}$/.test(given)) return undefined
+  const limit = Number(given)
+  return limit >= 1 && limit <= invoicePageMax ? limit : undefined
+}
+
+effect function pinned(organizationId: string): Subscription!(StoreFailure | RowCorrupt)!Store {
+  const store = try Store
+  return try store.transaction((tx) => readSubscription(tx, organizationId))
+}
+
+effect function listInvoices(organizationId: string, limit: number, cursor: string | undefined): InvoicePage!(StoreFailure | RowCorrupt | ProviderMissing | ProviderFailed)!(Store | Deployment | HttpClient.HttpClient) {
+  const subscription = try pinned(organizationId)
+  if (!invoiceVisible(subscription, customerIdOf(subscription))) return { invoices: [], nextCursor: null }
+  const listed = try provider({
+    method: "GET",
+    path: "/v1/invoices",
+    params: [["customer", customerIdOf(subscription)], ["limit", String(limit)], ...(cursor === undefined ? [] : [["starting_after", cursor] as const])]
+  }, ProviderInvoices)
+  const invoices = listed.data.flatMap((invoice) => {
+    const status = issued(invoice)
+    return status !== undefined && invoice.customer !== null && invoiceVisible(subscription, invoice.customer) ? [summaryOf(invoice, status)] : []
+  })
+  const last = listed.data.at(-1)
+  return { invoices, nextCursor: listed.has_more && last !== undefined ? last.id : null }
+}
+
+effect function remainingLines(invoiceId: string, after: string): ReadonlyArray<typeof ProviderLine.Type>!(ProviderMissing | ProviderFailed)!(Deployment | HttpClient.HttpClient) {
+  const lines: Array<typeof ProviderLine.Type> = []
+  let cursor = after
+  let more = true
+  while (more) {
+    const page: typeof ProviderLines.Type = try provider({ method: "GET", path: `/v1/invoices/${invoiceId}/lines`, params: [["limit", "100"], ["starting_after", cursor]] }, ProviderLines)
+    lines.push(...page.data)
+    const last = page.data.at(-1)
+    more = page.has_more && last !== undefined
+    if (last !== undefined) cursor = last.id
+  }
+  return lines
+}
+
+effect function readInvoice(organizationId: string, invoiceId: string): InvoiceDetail!(StoreFailure | RowCorrupt | ProviderFailed | Refused)!(Store | Deployment | HttpClient.HttpClient) {
+  if (!invoiceIdPattern.test(invoiceId)) throw refused("NotFound")
+  const subscription = try pinned(organizationId)
+  if (!invoiceVisible(subscription, customerIdOf(subscription))) throw refused("NotFound")
+  const invoice = provider({ method: "GET", path: `/v1/invoices/${invoiceId}` }, ProviderInvoice) catch effect (failure) => match (failure) {
+    when ProviderMissing: throw refused("NotFound");
+    default: throw failure;
+  }
+  const status = issued(invoice)
+  if (status === undefined || invoice.customer === null || !invoiceVisible(subscription, invoice.customer)) throw refused("NotFound")
+  const embedded = invoice.lines.data
+  const last = embedded.at(-1)
+  const rest = invoice.lines.has_more && last !== undefined
+    ? remainingLines(invoice.id, last.id) catch effect (failure) => match (failure) {
+        when ProviderMissing: throw refused("NotFound");
+        default: throw failure;
+      }
+    : []
+  return {
+    ...summaryOf(invoice, status),
+    lines: [...embedded, ...rest].map((line) => ({
+      id: line.id,
+      description: line.description ?? null,
+      amountCents: line.amount,
+      currency: line.currency,
+      quantity: line.quantity ?? null,
+      periodStart: millis(line.period.start),
+      periodEnd: millis(line.period.end)
+    })),
+    periodStart: millis(invoice.period_start),
+    periodEnd: millis(invoice.period_end),
+    pdfUrl: invoice.invoice_pdf ?? null
+  }
+}
+
+function portalLocked(configuration: PortalConfigurationRead, livemode: boolean): boolean {
+  const features = configuration.features
+  return configuration.active && configuration.livemode === livemode &&
+    configuration.metadata?.[portalConfigurationKey] === portalConfigurationVersion &&
+    !features.customer_update.enabled && features.invoice_history.enabled && features.payment_method_update.enabled &&
+    features.subscription_cancel.enabled && features.subscription_cancel.mode === "at_period_end" && features.subscription_cancel.proration_behavior === "none" &&
+    !features.subscription_update.enabled && features.subscription_pause?.enabled !== true
+}
+
+effect function ownedConfiguration(): (PortalConfigurationRead | undefined)!(ProviderMissing | ProviderFailed)!(Deployment | HttpClient.HttpClient) {
+  let cursor: string | undefined = undefined
+  let more = true
+  while (more) {
+    const page: typeof PortalConfigurations.Type = try provider({
+      method: "GET",
+      path: "/v1/billing_portal/configurations",
+      params: [["active", "true"], ["limit", "100"], ...(cursor === undefined ? [] : [["starting_after", cursor] as const])]
+    }, PortalConfigurations)
+    const owned = page.data.find((configuration: PortalConfigurationRead) => configuration.metadata?.[portalConfigurationKey] === portalConfigurationVersion)
+    if (owned !== undefined) return owned
+    const last = page.data.at(-1)
+    more = page.has_more && last !== undefined
+    cursor = last?.id
+  }
+  return undefined
+}
+
+effect function lockedConfiguration(): string!(ProviderMissing | ProviderFailed)!(Deployment | HttpClient.HttpClient) {
+  const deployment = try Deployment
+  const livemode = deployment.environment === "production"
+  const found = try ownedConfiguration()
+  const configuration = found === undefined
+    ? try provider({ method: "POST", path: "/v1/billing_portal/configurations", params: lockedPortal, idempotencyKey: `portal-configuration-${portalConfigurationVersion}-${deployment.environment}` }, PortalConfiguration)
+    : portalLocked(found, livemode) ? found
+    : try provider({ method: "POST", path: `/v1/billing_portal/configurations/${found.id}`, params: lockedPortal }, PortalConfiguration)
+  if (!portalLocked(configuration, livemode)) throw new ProviderFailed({ path: "/v1/billing_portal/configurations", status: 200 })
+  return configuration.id
+}
+
+effect function openPortal(organizationId: string): { readonly url: string }!(StoreFailure | RowCorrupt | ProviderMissing | ProviderFailed | Refused)!(Store | Deployment | HttpClient.HttpClient) {
+  const subscription = try pinned(organizationId)
+  if (!portalAllowed(subscription, true)) throw refused("BillingStateConflict")
+  const deployment = try Deployment
+  const configuration = try lockedConfiguration()
+  const session = try provider({
+    method: "POST",
+    path: "/v1/billing_portal/sessions",
+    params: [["customer", customerIdOf(subscription)], ["return_url", deployment.settings.web], ["configuration", configuration]]
+  }, PortalSession)
+  if (!session.url.startsWith("https://")) throw new ProviderFailed({ path: "/v1/billing_portal/sessions", status: 200 })
+  return { url: session.url }
+}
+
+export const routes: ReadonlyArray<Route> = [
+  {
+    method: "GET",
+    path: "/api/v1/billing/invoices",
+    auth: "ServiceAccess",
+    capability: "billing",
+    rateClass: "StandardRequests",
+    handler: (context) => effect {
+      const signed = owner(context.caller)
+      if (signed === undefined) throw refused("AuthenticationRequired", "CredentialUnknown")
+      const limit = pageLimit(context.query)
+      const cursor = context.query.get("cursor") ?? undefined
+      if (limit === undefined || (cursor !== undefined && !invoiceIdPattern.test(cursor))) throw refused("InvalidRequest")
+      return json(try listInvoices(signed.organizationId, limit, cursor))
+    }
+  },
+  {
+    method: "GET",
+    path: "/api/v1/billing/invoices/:invoiceId",
+    auth: "ServiceAccess",
+    capability: "billing",
+    rateClass: "StandardRequests",
+    handler: (context) => effect {
+      const signed = owner(context.caller)
+      if (signed === undefined) throw refused("AuthenticationRequired", "CredentialUnknown")
+      return json(try readInvoice(signed.organizationId, context.params.invoiceId ?? ""))
+    }
+  },
+  {
+    method: "POST",
+    path: "/api/v1/subscriptions/portal",
+    auth: "FreshSession",
+    capability: "billing",
+    rateClass: "StandardRequests",
+    handler: (context) => effect {
+      const signed = owner(context.caller)
+      if (signed === undefined) throw refused("AuthenticationRequired", "CredentialUnknown")
+      return json(try openPortal(signed.organizationId))
+    }
+  }
+]

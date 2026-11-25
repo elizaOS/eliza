@@ -2,22 +2,19 @@
 import { assert, it } from "@effect/vitest"
 import * as KeyValueStore from "effect/persistence/KeyValueStore"
 import { TestClock } from "effect/testing"
-import { activityLabel } from "@elizaos/agent"
+import { activityLabel } from "@elizaos/agent-host"
 import { computeNextCronRunAtMs, ContextRegistry, type ActionResult, type Content, type IAgentRuntime, type JsonObject, type Memory, type Provider } from "@elizaos/core"
 import { activeWorkflowsProvider, workflowAction, workflowInstances, workflowsContext } from "../src/agent.vibe"
 import {
-  keyValueIntentBackend, openWorkflowNotice, parseWorkflowRunDeepLink, resolvePhoneCalendarRange, workflowClient, workflowIntentKey,
-  workflowIntentOwnerPrefix, workflowIntentStore, validatePhoneWorkflowSpec, workflowRecovery, workflowSha, WorkflowLifecycleRejected,
-  type PhoneWorkflowSpec, type WorkflowClient, type WorkflowRequest, type WorkflowRun,
-} from "../src/client/index.vibe"
-import { digestInbox, hostedDigestProtocol, missedRunNowOffers, DIGEST_MISSED_TEXT } from "../src/digests/index.vibe"
-import { importWorkflowSource, publishWorkflowSource, verifyWorkerArtifact, workerArtifactClosure, workerProvenance, SourceRefused, WorkerArtifactRefused } from "../src/worker/index.vibe"
+  keyValueIntentBackend, openWorkflowNotice, parseWorkflowRunDeepLink, resolvePhoneCalendarRange, workflowClient, workflowIntentKey, workflowIntentOwnerPrefix, workflowIntentStore, validatePhoneWorkflowSpec, workflowRecovery, workflowSha, WorkflowLifecycleRejected, type PhoneWorkflowSpec, type WorkflowClient, type WorkflowRequest, type WorkflowRun, digestInbox, hostedDigestProtocol, missedRunNowOffers, DIGEST_MISSED_TEXT, workflowHttpError,
+} from "@elizaos/plugin-workflow-client"
+import { importWorkflowSource, publishWorkflowSource, SourceRefused } from "../src/worker/source.vibe"
+import { verifyWorkerArtifact, workerArtifactClosure, workerProvenance, WorkerArtifactRefused } from "@elizaos/plugin-workflow-worker"
 import { generatedWorkflows, hostedDigests, openWorkflows, type WorkflowDevicePort, type WorkflowHost, type WorkflowNativeDigests, type WorkflowNotice, type WorkflowSql } from "../src/index.vibe"
 import { inProcessWorkerPort, type WorkflowWorkerPort } from "../src/service/host.vibe"
 import { runtimeWorkflowHost } from "../src/runtime.vibe"
 import { EARLIER_RUN_STOPPED_TEXT } from "../src/service/prior.vibe"
 import { workflowRoutes } from "../src/routes.vibe"
-import { workflowHttpError } from "../src/client/workflow-client.vibe"
 import type { ManagedGoogleReads } from "../src/service/google.vibe"
 
 module node {
@@ -26,7 +23,7 @@ module node {
   import { mkdtemp, mkdir, readdir, realpath, rm, writeFile, chmod } from "node:fs/promises"
   import { tmpdir } from "node:os"
   import { join } from "node:path"
-  import type { LocalRoute } from "@elizaos/agent/routes"
+  import type { LocalRoute } from "@elizaos/agent-host"
   import type { WorkflowSql } from "../src/index.vibe"
 
   export async function plant(sql: WorkflowSql, statements: readonly string[]): Promise<void> {
