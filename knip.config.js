@@ -45,7 +45,6 @@ export default {
     "packages/plugin-telegram/src/index.vibe": ["duplicates"],
     "packages/plugin-video/src/index.vibe": ["duplicates"],
     "packages/plugin-vision/src/index.vibe": ["duplicates"],
-    "packages/plugin-wallet/src/index.vibe": ["duplicates"],
     "packages/plugin-web-search/src/index.vibe": ["duplicates"],
     "packages/plugin-x/src/index.vibe": ["duplicates"],
     "packages/plugin-assistant/src/index.vibe": ["duplicates"],
@@ -224,6 +223,9 @@ export default {
       "entry": ["src/**/*.{schema,contract}.{ts,vibe}"]
     },
     "packages/plugin-notes-client": {
+      "entry": ["src/**/*.{schema,contract}.{ts,vibe}"]
+    },
+    "packages/plugin-wallet-client": {
       "entry": ["src/**/*.{schema,contract}.{ts,vibe}"]
     },
     "packages/plugin-workflows": {

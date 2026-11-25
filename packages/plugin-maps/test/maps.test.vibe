@@ -542,6 +542,7 @@ function linkFake(offered: unknown = offer) {
           if (query === "Union Station in Washington") return { kind: "answered", status: 200, body: { providerId: "google", attribution: "Google", places: [chicagoUnion] } }
           if (query === "the Ferry Plaza") return { kind: "answered", status: 200, body: { providerId: "google", attribution: "Google", places: [place("plaza", "Ferry Plaza", ferry, "San Francisco, CA, USA"), place("plaza-market", "Ferry Plaza Farmers Market", { latitude: 37.7956, longitude: -122.3935 }, "1 Ferry Building, San Francisco, CA, USA"), place("plaza-seafood", "Ferry Plaza Seafood", tower, "1 Telegraph Hill Blvd, San Francisco, CA, USA")] } }
           if (query === "Nowhere Plaza") return { kind: "answered", status: 200, body: { providerId: "google", attribution: "Google", places: [] } }
+          if (query === "midnight" || query === "my current location") return { kind: "answered", status: 200, body: { providerId: "google", attribution: "Google", places: [] } }
           if (query === "Broken Plaza") return { kind: "answered", status: 200, body: { providerId: "google", places: [] } }
           return { kind: "answered", status: 200, body: { providerId: "google", attribution: "Google", places: [place("tower", "Coit Tower", tower)] } }
         }
@@ -729,6 +730,35 @@ it.live('A kind of place near me goes to the phone, a kind of place near the pla
     named: [true, true],
     unmoved: notAPlace.map((said) => [said, true, true]),
     unmovedSearches: notAPlace.map(() => ["/api/v1/maps/places/search", undefined]),
+  }))
+})
+
+it.live('A place to search near or a start that the planner wrongly passes is looked up as a place it named: not found is said with no search, a namesake is named in the answer, and the phone\'s position is never searched around or routed from (spec/maps/phonePosition.md, "A kind of place near a named place is searched around that place, never around the phone"; spec/maps/phonePosition.md, "A reported position never becomes a route origin")', effect () => {
+  const { link, bodies } = linkFake()
+  const plugin = createMapsPlugin({ cloud: () => link, navigation: () => sync(() => undefined), savedPlaces: () => undefined })
+  const act = actionRunner(plugin)
+  const recent = messageWith({ latitude: here.latitude, longitude: here.longitude, accuracyMeters: 25, capturedAt: Date.now() - 60_000 }, "find a pharmacy near me")
+  const searchedNear = (query: string) => bodies.filter((made) => made.path === "/api/v1/maps/places/search" && (made.body as { readonly query: string }).query === query)
+    .map((made) => (made.body as { readonly near?: unknown }).near)
+  const routed = () => bodies.filter((made) => made.path === "/api/v1/maps/routes").length
+  const midnight = try act("MAPS_PLACE", recent, { query: "pharmacy", near: "midnight" })
+  const pharmacyAfterMidnight = searchedNear("pharmacy").length
+  const me = try act("MAPS_PLACE", recent, { query: "pharmacy", near: "me" })
+  const routesBefore = routed()
+  const start = try act("MAPS_ROUTE", recent, { origin: "my current location", destination: "Coit Tower", travelMode: "walk" })
+  const startSearches = searchedNear("my current location").length
+  const marked = try act("MAPS_ROUTE", recent, { origin: "my current location", destination: "Coit Tower", travelMode: "walk", useCurrentLocation: true })
+  const kinds = (result: { readonly text?: string }) => recognizedMapsCards(result.text ?? "").map(({ card }) => card.kind)
+  try Effect.try(() => assert.deepStrictEqual({
+    midnight: [midnight.success, midnight.text, kinds(midnight), pharmacyAfterMidnight],
+    me: [me.success, (me.text ?? "").startsWith("Near Coit Tower:"), nearPlace(me), searchedNear("pharmacy")],
+    start: [start.success, start.text, kinds(start), routed() - routesBefore],
+    marked: [marked.success, locateCard(marked), searchedNear("my current location").length - startSearches],
+  }, {
+    midnight: [false, "I couldn't find “midnight” to search near. Name another place or area to search near.", [], 0],
+    me: [true, true, "Coit Tower", [tower]],
+    start: [false, "I couldn't find “my current location”.", [], 0],
+    marked: [false, ["route-origin", undefined, "Coit Tower", "walk"], 0],
   }))
 })
 
