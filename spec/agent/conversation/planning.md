@@ -270,6 +270,32 @@ pure def lawAHostNoticeIsNeverTheAgentsWords(row: HistoryRow): bool = (row.fromA
 pure def lawWhatWasSaidIsRead(row: HistoryRow): bool = not(row.hostNotice) implies readByTheModel(row)
 ```
 
+### A message of the person that got no reply reaches the model marked unanswered, so each turn answers its own message
+
+A turn can end with nothing the model reads as its reply: the model
+service failed, the turn was stopped or timed out before it said anything,
+or the host ended it with a notice. Its failed reply is stored with no
+words, and the history leaves it out, so the person's message would reach
+later turns as a request still waiting, right before the newer one. The
+model then answered that older message, or both, and could say the older
+one was done when nothing had answered it. So in the history the model
+reads, a message of the person that no message of the agent in that history
+follows before the person's next message starts, after its stamp, with `[unanswered: its
+turn ended before any reply; act on it only if the person asks again] `.
+The model still sees what was asked, and a later "try that again" can name
+it, but nothing presents it as the request to answer now. A message with a
+reply, the agent's own words and the latest message are sent as they are.
+Whether a message is answered depends only on the messages stored after it
+and before this turn, so the history stays the same bytes from turn to
+turn.
+
+```quint
+pure def markedUnanswered(fromPerson: bool, replyFollows: bool): bool = fromPerson and not(replyFollows)
+pure def lawTheAgentsOwnWordsAreNeverMarkedUnanswered(replyFollows: bool): bool = not(markedUnanswered(false, replyFollows))
+pure def lawAMessageWithAReplyIsSentAsItIs(fromPerson: bool): bool = not(markedUnanswered(fromPerson, true))
+pure def lawAMessageNoReplyFollowsIsMarked(replyFollows: bool): bool = not(replyFollows) implies markedUnanswered(true, replyFollows)
+```
+
 ### A planner can restore the turn's deferred history once and runs no sibling action from that response
 
 When the planner has action tools, one fixed `RESTORE_CONTEXT` form follows

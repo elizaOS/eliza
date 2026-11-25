@@ -1509,3 +1509,38 @@ it.live(`A calendar move refused without a receipt and then made by the model's 
     neverMoved: { reply: `Done!\n\n${unsaidMove}`, calls: 4, laterRunNote: false },
   }))
 }, 120_000)
+
+it.live(`Over a ten-turn chat each reply answers its own message, and a message whose turn failed before any reply reaches later turns marked unanswered (${planning}, "A message of the person that got no reply reaches the model marked unanswered, so each turn answers its own message"; ${planning}, "The model reads what was said in the conversation, in a window taken once for the whole turn")`, effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const agent = try cloudAgent(cloud)
+  const { id } = try conversation(agent)
+  const asks = [
+    "Create a note called Taco Night Plan.", "Open the note about Taco Night.", "Open example.com in the browser.", "Summarize this page.",
+    "Find 30 minutes free tomorrow afternoon.", "Go home.", "Set a timer for 10 minutes.", "Remind me to buy limes tomorrow at 6 PM.",
+    "Draft a text to 202-555-0142.", "How many minutes are in three hours?",
+  ]
+  const failing = new Set([5, 7])
+  const mark = "[unanswered: its turn ended before any reply; act on it only if the person asks again] "
+  const turns: { readonly reply: Reply; readonly history: readonly { readonly role: string; readonly text: string }[] }[] = []
+  for (const [index, ask] of asks.entries()) {
+    try Effect.sync(() => cloud.script(failing.has(index) ? requestFault("invalid_request") : text(`Answer ${index + 1}.`)))
+    const reply = replyOf(try send(agent, id, { text: ask }))
+    turns.push({ reply, history: failing.has(index) ? [] : lastTurnHistory(cloud) })
+  }
+  const said = (history: readonly { readonly role: string; readonly text: string }[]) =>
+    history.filter(({ role }) => role === "user").map(({ text: line }) => line.replace(stamp, ""))
+  const expectedHistory = (turn: number) => asks.slice(0, turn).map((ask, index) => failing.has(index) ? `${mark}${ask}` : ask)
+  try Effect.try(() => assert.deepStrictEqual({
+    replies: turns.map(({ reply }, index) => failing.has(index) ? "" : reply.text),
+    failed: turns.map(({ reply }, index) => failing.has(index) ? reply.failureKind !== undefined && reply.text === "" : reply.failureKind === undefined),
+    ownMessage: new Set(turns.map(({ reply }) => reply.userMessageId)).size,
+    heard: turns.flatMap(({ history }, index) => failing.has(index) ? [] : [said(history)]),
+    agentWordsUnmarked: turns.every(({ history }) => history.filter(({ role }) => role !== "user").every(({ text: line }) => !line.includes("[unanswered:"))),
+  }, {
+    replies: asks.map((_, index) => failing.has(index) ? "" : `Answer ${index + 1}.`),
+    failed: asks.map(() => true),
+    ownMessage: asks.length,
+    heard: asks.flatMap((_, index) => failing.has(index) ? [] : [expectedHistory(index)]),
+    agentWordsUnmarked: true,
+  }))
+}, 120_000)
