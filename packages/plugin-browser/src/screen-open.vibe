@@ -58,7 +58,7 @@ effect function opened(runtime: IAgentRuntime, message: Memory, options: Handler
 
 export const browserOpenAction: Action = {
   name: BROWSER_OPEN,
-  description: 'Open a web address in the Browser of the screen the owner is asking from, when the owner asks now to open, visit or go to an address they typed in this message ("example dot com" is example.com), a link of the page this message carried that they point to, or a site they name without its address, with the site\'s https address you know. The screen opens an address the owner typed at once and shows any other for their review. Never for a deferred, hypothetical, past or reported mention, or an address the owner says not to open. Navigation only: never claim page content or that the page loaded.',
+  description: 'Open a web address in the Browser of the screen the owner is asking from. This is the one way an address opens: the BROWSER command only goes back, forward or reloads the page already showing. Use it whenever the owner asks now to open, visit or go to a website: an address they typed in this message ("example dot com" is example.com), a link of the page this message carried that they point to, or a site they name without its address, with the site\'s https address you know. Any public https site may be asked for. The screen opens an address the owner typed at once and shows any other for their review. Never for a deferred, hypothetical, past or reported mention, or an address the owner says not to open. Navigation only: never claim page content or that the page loaded.',
   similes: [],
   examples: [],
   contexts: ["browser", "general"],
