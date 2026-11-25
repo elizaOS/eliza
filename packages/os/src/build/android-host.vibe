@@ -54,6 +54,7 @@ const TEMPLATES = "android/host-templates"
 const MARKER = ".eliza-consumer-host.json"
 export const PROFILE_DOCUMENT = ".eliza-consumer-profile.json"
 const IDENTITY_RESOURCES = "eliza-consumer-host/res"
+const AGENT_DATA_DIRECTORY = "eliza-consumer-host/agent"
 const HOST_MANIFEST = "app/eliza-host-manifest.xml"
 const RUNTIME_MAIN = "android/app/src/main"
 const AGENT_PERMISSIONS = ["android.permission.FOREGROUND_SERVICE", "android.permission.FOREGROUND_SERVICE_SPECIAL_USE"]
@@ -265,12 +266,13 @@ effect function agentService(roots: Roots, profile: AndroidHostProfile) {
   const files = try FileSystem.FileSystem
   const agent = profile.agent
   if (agent === undefined) return undefined
-  const sources = { host: try readInput(roots, agent.host, "File"), character: try readInput(roots, agent.character, "File"), policy: try readInput(roots, agent.policy, "File") }
+  const read = effect (source: HostSource) => try files.readFile(try readInput(roots, source, "File"))
+  const bytes = { host: try read(agent.host), character: try read(agent.character), policy: try read(agent.policy) }
   const admitted = try mapError(
-    admitAgentBytes({ host: try files.readFile(sources.host), character: try files.readFile(sources.character), policy: try files.readFile(sources.policy) }),
+    admitAgentBytes(bytes),
     (refused) => new HostInputRefused({ place: agent.host.place, reason: refused.detail }),
   )
-  return { service: admitted.service, files: (["host", "character", "policy"] as const).map((key) => ({ source: sources[key], name: AGENT_ASSETS[key] })) }
+  return { service: admitted.service, files: (["host", "character", "policy"] as const).map((key) => ({ name: AGENT_ASSETS[key], bytes: bytes[key] })) }
 }
 
 effect function claimOutput(consumer: string, output: string, appId: string, files: ReadonlyMap<string, GeneratedFile>) {
@@ -423,6 +425,12 @@ export effect function generateAndroidHost(options: GenerateAndroidHost) {
   for (const source of profile.buildTypes.release.proguardFiles) proguardFiles.push(try readInput(roots, source, "File"))
   const assetFiles = []
   for (const asset of profile.assetFiles) assetFiles.push({ source: try readInput(roots, asset.source, "File"), name: asset.name })
+  const agentFiles = []
+  for (const { name, bytes } of agent?.files ?? []) {
+    const relative = `${AGENT_DATA_DIRECTORY}/${name}`
+    try add(relative, bytes)
+    agentFiles.push({ source: path.join(output, relative), name })
+  }
   const appScripts = []
   for (const script of profile.appScripts) appScripts.push(try readInput(roots, script, "File"))
   const admission = []
@@ -459,7 +467,7 @@ export effect function generateAndroidHost(options: GenerateAndroidHost) {
     versionOverride: profile.versionOverride ?? null,
     admission,
     assetFiles,
-    agentFiles: agent?.files ?? [],
+    agentFiles,
     appScripts,
     modules,
     runtimeMain: runtimeMain ?? null,

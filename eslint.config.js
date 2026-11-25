@@ -103,7 +103,7 @@ const commented = {
   "packages/core/src/retrieval.vibe": 21,
 }
 const scheduled = {
-  "packages/agent-host/src/access/socket.vibe": 3,
+  "packages/agent-host/src/access/socket.vibe": 2,
   "packages/agent-host/test/client-runtime.test.vibe": 2,
   "packages/agent-host/test/client-tasks.test.vibe": 1,
   "packages/agent-host/test/client-turns.test.vibe": 2,

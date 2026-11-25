@@ -92,6 +92,7 @@
     "maps": ["packages/plugin-maps-client"],
     "notes": ["packages/plugin-notes-client"],
     "os": ["packages/os-bridges"],
+    "wallet": ["packages/plugin-wallet-client"],
     "workflow": ["packages/plugin-workflow-client", "packages/plugin-workflow-worker"]
   },
   "scripts": {

@@ -138,14 +138,20 @@ pure val checksValues = Set(List(), List({ window: initial, rule: perWindow("per
 
 A single limit is a group of one. The shell fails closed and counts nothing
 when the store fails, or when the guard refuses (an invalid limit, or a store
-clock behind a row). It sets `Retry-After` from the refusal's time as `types`
-states.
+clock behind a row). A 429 from the gate carries the reason
+`cloud_gate_rate_limited`. It sets `Retry-After` from the refusal's time as
+`types` states.
 
 ```quint
 pure val unavailableRetryMs: Millis = millisPerSecond
 pure def unavailableRefusal(now: Millis): Refusal = refuseUntil(RateLimitUnavailable, now + unavailableRetryMs)
 pure def groupRefusal(checks: List[Check], now: Millis): Refusal =
-  if (allCountable(checks, now)) refuseUntil(RateLimited, retryAtOfAll(checks, now)) else unavailableRefusal(now)
+  if (allCountable(checks, now)) { code: RateLimited, reason: CloudGateRateLimited, wait: RetryAt({ retryAtMs: retryAtOfAll(checks, now) }) }
+  else unavailableRefusal(now)
+pure def lawACloudGateRateLimitNamesTheGate(checks: List[Check], now: Millis): bool = {
+  val answer = groupRefusal(checks, now)
+  (answer.code == RateLimited) iff (answer.reason == CloudGateRateLimited)
+}
 pure def lawEveryLimiterRefusalIsRetryable(checks: List[Check], now: Millis): bool = {
   val answer = groupRefusal(checks, now)
   wellFormed(answer) and isRetryable(answer.code) and (statusOf(answer.code) == 503 iff not(allCountable(checks, now)))
