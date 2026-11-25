@@ -717,7 +717,8 @@ public abstract class TelephonyPlugin extends Plugin {
   final int limit = VoicemailStore.limit(call.getInt("limit", 25));
   if (limit < 0) { call.reject("Voicemail limit must be 1 to 50", "invalid"); return; }
   final String[] account = voiceAccount(); final boolean names = callLogReadable();
-  fenced(call, this::voicemailReadable, "Voicemail", cancel -> VoicemailStore.list(getContext(), limit, account[0], account[1], names, cancel), true);
+  final boolean withWitness = Boolean.TRUE.equals(call.getBoolean("withDeletionWitness", false));
+  fenced(call, this::voicemailReadable, "Voicemail", cancel -> VoicemailStore.list(getContext(), limit, account[0], account[1], names, withWitness, cancel), true);
  }
  /** Asks the voicemail's source to download its audio when it is not on the phone; see {@link VoicemailStore#fetch}. */
  @PluginMethod public void fetchVoicemailAudio(PluginCall call) {
@@ -753,20 +754,27 @@ public abstract class TelephonyPlugin extends Plugin {
  }
  /**
   * Stages one voicemail the owner chose in the host's Undo window: {@code {status: "queued" |
-  * "not-found", deletion?}}. The window deletes it through its source at expiry. Reported even if
+  * "not-found" | "stale", deletion?}}. An optional listed witness binds the staged provider identity.
+  * The window deletes it through its source at expiry. Reported even if
   * access changed meanwhile.
   */
  @PluginMethod public void deleteVoicemail(PluginCall call) {
   if (refused(call)) return;
   final long id = voicemail(call);
-  if (id < 0) { call.reject("Invalid voicemail", "invalid"); return; }
+  final boolean reviewed = call.getData().has("witness");
+  final String witness = reviewed && call.getData().opt("witness") instanceof String ? call.getString("witness") : null;
+  if (id < 0 || (reviewed && !VoicemailStore.validDeletionWitness(witness))) { call.reject("Invalid voicemail", "invalid"); return; }
   final DeletionWindow window = requireWindow(call);
   if (window == null) return;
+  final long selectedGeneration = generation.get();
   fenced(call, this::voicemailWritable, "Voicemail", cancel -> {
    JSObject value = new JSObject();
-   String refusal = VoicemailStore.inspectDeletion(getContext(), id);
+   String refusal = reviewed ? VoicemailStore.inspectDeletion(getContext(), id, witness, cancel) : VoicemailStore.inspectDeletion(getContext(), id);
    if (refusal != null) { value.put("status", refusal); return value; }
-   value.put("status", "queued"); value.put("deletion", window.stage("voicemail", new JSONObject().put("id", Long.toString(id)))); return value;
+   if (reviewed && !current(selectedGeneration, cancel, this::voicemailWritable)) throw new SecurityException();
+   JSONObject target = new JSONObject().put("id", Long.toString(id));
+   if (reviewed) target.put("witness", witness);
+   value.put("status", "queued"); value.put("deletion", window.stage("voicemail", target)); return value;
   }, false);
  }
  /** Whether a staged voicemail deletion may reach the provider at expiry, with or without the screen: the dialer role or the voicemail write grant. */
