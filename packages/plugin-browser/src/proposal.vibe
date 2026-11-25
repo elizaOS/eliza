@@ -169,7 +169,7 @@ effect function ground(proposed: CheckedOperation, turn: DeviceTurn): Grounding!
   }
 }
 
-const OPENING = "The requesting phone shows this exact requested address in its Browser for the owner to open. It has not opened; do not claim that it opened, that it loaded or what it shows."
+const OPENING = "The requesting phone shows this exact requested address for the owner to open, with an Open choice; it opens in Browser only if they choose Open. Browser has not opened and is not showing: do not claim that it opened, that it loaded, what it shows, or that Browser is open."
 const CONTROLLING = "The requesting phone runs this requested Browser control right after this reply, with no review. It has not run yet; do not claim that it finished, what a search found or what a page shows."
 
 function directText(operation: DeviceOperation): ProposalText | undefined {
