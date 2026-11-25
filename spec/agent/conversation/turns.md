@@ -453,3 +453,46 @@ pure val rValues = Set({ ...noReply, id: 2, units: List(104, 105, 33), heard: He
 pure def lawHeardAndUnheardMakeTheReply(r: Reply): bool =
   (boundaryOf(r) >= 0 and boundaryOf(r) <= r.units.length()) implies heardPart(r).concat(unheardPart(r)) == r.units
 ```
+
+## Story: Read my own private data in my own conversation
+
+> As the owner, I want my agent to read my calendar and inbox when I ask
+> in my own conversation with it, so that a private read works for me,
+> while another person, a connector's message or text that reaches the
+> agent some other way never gets that read.
+
+### Only a turn the conversation's turn runner builds for the owner carries owner-only audience evidence, renewed only while that turn runs
+
+Before the message service sees a turn's message, the turn runner attests
+its delivery audience from the stored room with core's
+[trusted delivery audience](../../core/trustedAudience.md) and holds a
+lease on that evidence for the turn alone: once the turn ends the evidence
+is never renewed and lapses at its lifetime. The runner builds that message
+itself, from the launch's conversation owner in the owner's direct
+conversation with the agent, whether the conversation route or
+[trigger delivery](../schedule/triggers.md) started the turn (a scheduled
+prompt keeps the owner's authority). Core admits an owner-private action or
+provider (disclosure gate `owner_exclusive`) in it only on a `ChatAsOwner`
+launch: a `ChatAsUser` launch's turn carries evidence whose speaker is never
+the owner (core: `owner_mismatch`). A message that reaches the message
+service any other way, such as a connector's message from another person or
+one handed to it directly, carries no evidence, and core refuses the action
+as `missing_attestation`. A tool's result, a Browser page or an attachment
+is data inside the owner's turn, never a turn of its own, and attests
+nothing. A failed attestation leaves the turn without evidence, so every
+owner-private read is refused and the rest of the turn goes on.
+
+```quint
+import launch as L from "../host/launch"
+type TurnIngress = TurnRunner | OtherIngress
+pure def attestsAudience(ingress: TurnIngress, lookupFailed: bool): bool = ingress == TurnRunner and not(lookupFailed)
+pure def ownerOnlyTurn(ingress: TurnIngress, role: L::CallerRole, lookupFailed: bool): bool =
+  attestsAudience(ingress, lookupFailed) and role == L::ChatAsOwner
+pure val ingressValues = Set(TurnRunner, OtherIngress)
+pure val roleValues = Set(L::ChatAsOwner, L::ChatAsUser)
+pure val lookupFailedValues = Set(false, true)
+pure def lawOtherIngressIsNeverOwnerOnly(role: L::CallerRole, lookupFailed: bool): bool = not(ownerOnlyTurn(OtherIngress, role, lookupFailed))
+pure def lawAUserLaunchIsNeverOwnerOnly(ingress: TurnIngress, lookupFailed: bool): bool = not(ownerOnlyTurn(ingress, L::ChatAsUser, lookupFailed))
+pure def lawAFailedLookupIsNeverOwnerOnly(ingress: TurnIngress, role: L::CallerRole): bool = not(ownerOnlyTurn(ingress, role, true))
+pure def lawTheOwnerRunnerTurnIsOwnerOnly(lookupFailed: bool): bool = not(lookupFailed) implies ownerOnlyTurn(TurnRunner, L::ChatAsOwner, lookupFailed)
+```

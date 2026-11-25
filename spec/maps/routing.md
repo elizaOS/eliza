@@ -22,6 +22,10 @@ model's choice: nothing routes a request before the model has seen it, and
 no action is refused for the words of a request. The `VIEWS` description
 says that showing a view acts on nothing in it, so showing Maps finds no
 place and plans no route, and a request for one is a Maps action's.
+A Maps result tells the model what Maps found, planned or did, and the
+model words the reply from it: the owner sees the result's card as it is,
+and its sentences only as the model put them. Only the question Maps asks
+before it shares a place is shown in its own words, with its choices.
 
 ### A place named with its locality is taken only from that locality, and otherwise Maps asks which one
 
