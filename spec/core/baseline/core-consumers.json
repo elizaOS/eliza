@@ -1072,7 +1072,10 @@
         }
       ],
       "text": "import { type Action, type ActionExample, type ActionResult, type EffectReceipt, extractUserText, type HandlerCallback, type HandlerOptions, type IAgentRuntime, type Memory, type State, stringToUuid, type Task, TRIGGER_SCHEMA_VERSION, type TriggerConfig, type TriggerType, type TriggerWakeMode, textStatesExplicitRecurrence, toWellFormedUnicode, type UUID, unwrapUserMessageText, validateUuid, } from \"@elizaos/core\";",
-      "v4Package": "agent"
+      "v4Package": "agent",
+      "v4RetiredNames": [
+        "textStatesExplicitRecurrence"
+      ]
     },
     {
       "file": "packages/agent/src/actions/views.ts",
@@ -75961,7 +75964,11 @@
         }
       ],
       "text": "import { selectUserAuthorizedRecurrence, textStatesExplicitRecurrence, } from \"@elizaos/core/protocol\";",
-      "v4Package": "calendar"
+      "v4Package": "calendar",
+      "v4RetiredNames": [
+        "selectUserAuthorizedRecurrence",
+        "textStatesExplicitRecurrence"
+      ]
     },
     {
       "file": "plugins/plugin-calendar/src/actions/calendar-read-selected.test.ts",
@@ -95848,7 +95855,10 @@
         }
       ],
       "text": "import { textStatesExplicitRecurrence } from \"@elizaos/core/protocol\";",
-      "v4Package": "assistant"
+      "v4Package": "assistant",
+      "v4RetiredNames": [
+        "textStatesExplicitRecurrence"
+      ]
     },
     {
       "file": "plugins/plugin-personal-assistant/src/actions/lib/extract-update-fields.ts",
@@ -96262,7 +96272,10 @@
         }
       ],
       "text": "import { textStatesExplicitRecurrence, UI_LANGUAGES, type UiLanguage, } from \"@elizaos/core/protocol\";",
-      "v4Package": "assistant"
+      "v4Package": "assistant",
+      "v4RetiredNames": [
+        "textStatesExplicitRecurrence"
+      ]
     },
     {
       "file": "plugins/plugin-personal-assistant/src/actions/life.cancel-reminder.pglite.integration.test.ts",
