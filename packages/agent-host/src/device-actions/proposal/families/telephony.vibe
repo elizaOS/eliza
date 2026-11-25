@@ -82,7 +82,7 @@ const readGuidance = "messages_read_selected and voicemail_read_selected return 
 const dialGuidance = "A reviewed dial uses phone_dial. After the owner's approval the phone opens its dial screen with the number; the owner places the call there. handed-off proves only that the dial screen opened, never a placed, connected or completed call."
 const composeGuidance = "drafted proves only that the draft is there. submitted proves submission only; sent is not delivery; only delivered establishes delivery."
 
-const roleQuery = "when the owner names them by a role or relation. Use that word alone as the contact query, such as brother for my brother or dentist for the dentist. The phone resolves the contact and lets the owner choose among multiple matches."
+const personQuery = "at once for a person the owner names, without first asking who they are: you never see the address book, and the phone looks the name up. The contact query is the name as the owner said it, or, when the owner names them by a role or relation, that word alone, such as brother for my brother or dentist for the dentist. The phone resolves the contact and lets the owner choose among multiple matches."
 const roleGuidance: Readonly<Record<RoleRule, { readonly operation: string; readonly request: string } | undefined>> = {
   CallOrTextByRole: { operation: "phone_call or sms_compose", request: "a call or text" },
   CallByRole: { operation: "phone_call", request: "a call" },
@@ -407,7 +407,7 @@ function familyGuidance(device: NegotiatedDevice): readonly string[] {
   const guidance = roleGuidance[role]
   return [
     ...(guidance === undefined ? [] : [
-      `Propose ${guidance.operation} with a contact target ${roleQuery}`,
+      `Propose ${guidance.operation} with a contact target ${personQuery}`,
       ...(searchFirstRefused(role, searchOffered) ? [`Do not propose contact_show first for ${guidance.request}.`] : []),
     ]),
     routeGuidance,
