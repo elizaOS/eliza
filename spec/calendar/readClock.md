@@ -135,13 +135,15 @@ model read from the owner's request, and says which clock times the
 owner stated: the start, the start and the end, or none. Code reads no
 day or time from the words; it checks each new clock time against them
 instead. A time is held by the owner's words when they write it in
-digits ("1:10 pm", "13:10", "4", "0900", "1730", "14.30", "2.30 pm"),
+digits ("1:10 pm", "13:10", "4", "0900", "1730", "14.30", "2.30 pm",
+"14h30", "09h15"),
 spell it with its minutes ("one ten PM", "one oh five pm", "six PM"),
 say noon or midnight, alone or after twelve ("12:00 noon", "twelve
-o'clock noon", "12 midnight"), count minutes past, after, to or of the
-hour in words or digits ("ten past nine", "10 past 9", "twenty minutes
+o'clock noon", "12 midnight"), count minutes past, after, to, of, till, til or before
+the hour in words or digits ("ten past nine", "10 past 9", "twenty minutes
 past two", "ten after nine", "twenty to three", "10 to 6", "quarter of
-five", half past, a quarter past, a quarter to, and "half 5" for 5:30),
+five", "ten till six", "5 til 4", "ten before six", half past, a quarter
+past, a quarter to or till, and "half 5" for 5:30),
 or say it with "ish" ("noonish");
 written with am or pm, or with a or p on its number ("10a", "4p"), it is
 that half of the day only. The "am" of "I am", of "am I" after a word
@@ -155,14 +157,18 @@ Every time the words held before the free-time window checks were added
 is still held, save the other half of the day of a number written with a
 or p. A time the words hold is kept, and so is a time sent with words
 the reader cannot read (an unread clock, as the next sections define
-it: "明天下午3点", "a las tres", "14h30") when the words hold neither it
-nor its other half of the day, since the reader can then tell nothing
-against it. Words that hold the other half contradict the time sent
-however much else in them the reader cannot read: "Lunch with Дмитрий
-tomorrow at 1pm" sent at 1 AM, "Dentist at 3pm for 1.5 hours" or "Run
-tomorrow 6am 10.5km" sent at the other half, and "Termin morgen um 15
-Uhr" sent at 3 AM change nothing, as they did before the free-time
-window checks were added. A time the words do not hold is kept
+it: "明天下午3点", "a las tres") when the words hold no clock time at all
+in a spelling above, since the reader can then tell nothing against it.
+Words that hold any clock time contradict a time they do not hold,
+however much else in them the reader cannot read, as they did before the
+free-time window checks were added: "Lunch with Дмитрий tomorrow at
+1pm" sent at 1 AM or 2 PM, "Call Дмитрий tomorrow at quarter to 3" sent
+at 3:45 PM, "Sync with my PM tomorrow at 3pm" sent at 4 PM (a "PM" or
+"AM" that names a person or a team is no half of the day the reader
+can place), "Dentist tomorrow at 3:30pm, 1.5 hrs" sent at 3 PM, "Coffee
+with Ana tomorrow at 10:30, 2h" sent at 10, "Run tomorrow 6am 10.5km"
+sent at 6 PM, "Termin morgen um 15:30 Uhr" sent at 3 PM and "move
+Дмитрий's call to 4:30pm" sent at 4 PM change nothing. A time the words do not hold is kept
 only when the model says the owner stated no clock time ("tomorrow
 afternoon", "push it back an hour"): a time the model chose is no
 misread, and a check of every time would refuse those requests. A time
@@ -186,8 +192,8 @@ pure def statedClockCheck(declared: bool, statedByOwner: bool, heldByOwnerWords:
   else if (not(declared)) ClockUndeclared
   else if (statedByOwner) ClockUnsaid
   else ClockAsSent
-pure def clockHeldOrUnread(wordsRead: bool, heldByOwnerWords: bool, otherHalfHeld: bool): bool =
-  heldByOwnerWords or (not(wordsRead) and not(otherHalfHeld))
+pure def clockHeldOrUnread(wordsRead: bool, heldByOwnerWords: bool, aClockHeld: bool): bool =
+  heldByOwnerWords or (not(wordsRead) and not(aClockHeld))
 pure def lawAStatedClockTheWordsDoNotHoldChangesNothing(heldByOwnerWords: bool): bool =
   (statedClockCheck(true, true, heldByOwnerWords) == ClockUnsaid) iff not(heldByOwnerWords)
 pure def lawAnOpenTimeIsKept(heldByOwnerWords: bool): bool = statedClockCheck(true, false, heldByOwnerWords) == ClockAsSent
@@ -196,10 +202,10 @@ pure def lawAnUndeclaredUnheldTimeChangesNothing(statedByOwner: bool): bool =
   statedClockCheck(false, statedByOwner, false) == ClockUndeclared
 pure def lawWordsTheReaderCannotReadKeepATimeTheyDoNotContradict(declared: bool, statedByOwner: bool, heldByOwnerWords: bool): bool =
   statedClockCheck(declared, statedByOwner, clockHeldOrUnread(false, heldByOwnerWords, false)) == ClockAsSent
-pure def lawAWrittenOtherHalfRefusesAStatedTimeHoweverTheWordsRead(wordsRead: bool): bool =
+pure def lawWordsHoldingAClockRefuseAStatedTimeTheyDoNotHoldHoweverTheyRead(wordsRead: bool): bool =
   statedClockCheck(true, true, clockHeldOrUnread(wordsRead, false, true)) == ClockUnsaid
-pure def lawAHeldTimeIsKeptHoweverTheWordsRead(wordsRead: bool, otherHalfHeld: bool): bool =
-  clockHeldOrUnread(wordsRead, true, otherHalfHeld)
+pure def lawAHeldTimeIsKeptHoweverTheWordsRead(wordsRead: bool, aClockHeld: bool): bool =
+  clockHeldOrUnread(wordsRead, true, aClockHeld)
 ```
 
 ### A free-time window's clock times the owner stated are ones the owner's words hold
@@ -215,7 +221,10 @@ a clock after "from", "after", "at", "since", "start", "starts",
 "starting", "begin", "begins" or "beginning" states a start; one after
 "until", "till", "til", "through", "thru", "before" or "now to" states
 an end. A stated clock time is checked against the owner's words as a
-new event's is: one the words hold is read, and one they do not hold
+new event's is, and is held when the words hold it as written or once
+the hedges the window reading sets aside (next section) are dropped
+("from two uh thirty to four" and "at 2 um 30" hold 2:30), so every
+clock the words state is one they hold: one the words hold is read, and one they do not hold
 reads nothing, and the result names the time sent so the model sends the
 window the owner said, or statedClock none when the model chose it. A
 window the model did not call stated, or called none, is read as asked:
@@ -236,6 +245,9 @@ and get openings from my real calendar" in actions.md.
 ```quint
 pure def windowClockCheck(declared: bool, statedByOwner: bool, wordsStateIt: bool, heldByOwnerWords: bool): StatedClockCheck =
   if (declared and wordsStateIt) statedClockCheck(true, statedByOwner, heldByOwnerWords) else ClockAsSent
+pure def windowClockHeld(heldAsWritten: bool, heldWithoutHedges: bool): bool = heldAsWritten or heldWithoutHedges
+pure def lawAClockTheWordsStateIsRead(declared: bool, statedByOwner: bool, heldAsWritten: bool): bool =
+  windowClockCheck(declared, statedByOwner, true, windowClockHeld(heldAsWritten, true)) == ClockAsSent
 pure def windowStartChecked(startsThisMinute: bool): bool = not(startsThisMinute)
 pure def lawAWindowStartAtNowIsNotChecked(startsThisMinute: bool): bool = windowStartChecked(startsThisMinute) iff not(startsThisMinute)
 pure def lawAStatedWindowClockTheWordsDoNotHoldReadsNothing(heldByOwnerWords: bool): bool =
@@ -270,7 +282,7 @@ word join is the range ("from one-ten to one-thirty PM", "from
 twelve-ten to one PM"), while a dash alone between two hour names joins
 them ("nine-ten PM" is 9 to 10 PM). A run that splits into a range and
 is also, whole, one clock counted to the hour ("ten to six", "10 to 6",
-"five to seven") is that one clock when the window sent starts at it:
+"five to seven", "ten till six", "5 til 4") is that one clock when the window sent starts at it:
 "free at ten to six for an hour" or "from ten to six for an hour" sent
 from 5:50 PM states that start and no range or end, so its end is read
 as sent, as "free at 3 for two hours" is. Sent from any other start, the
@@ -304,7 +316,11 @@ half of the day are its only ones whenever it has one. A window the
 owner's words state elsewhere is the range's too: when the window's
 start is a fit's start or a start the words state outside this range,
 and its end a fit's end or an end they state outside it ("from 2 to 4 pm
-tomorrow, until 6 if needed" sent 2 to 6 PM), the range fits it.
+tomorrow, until 6 if needed" sent 2 to 6 PM), the range fits it. When
+the window sent differs from a fit and its start or end is one the words
+state outside the range, the fit the result names takes that stated
+start or end, the one nearest that widens it: "from 2 to 4 pm tomorrow,
+until 6 if needed" sent 2 AM to 6 PM, or 2 AM to 6 AM, names 2 to 6 PM.
 
 A window that is one of its range's fits is read, however many others
 there are: "from 2 to 4" sent as 2 to 4 PM is read, as it was before
@@ -374,14 +390,16 @@ half"), a half of the day said apart from any clock, as an owner
 correcting it does ("9 to 11 am, er pm", "1 to 3 AM I mean pm"), and a
 statement clock no spelling names. For a free-time window such words
 hold every time and state no start or end, and their windows are not
-paired; a create or change still refuses a time whose other half they
-hold (section "A clock time the owner stated is one the owner's words
-hold"), and a morning-only window still ends by noon (actions.md, "A
+paired; a create or change still refuses a time they do not hold when
+they hold some clock time (section "A clock time the owner stated is one
+the owner's words hold"), and a morning-only window still ends by noon (actions.md, "A
 morning-only question reads only that morning, from midnight to
 noon"). A
 refusal's result always names a window that reads when sent again: the
-window a range fits one other way is its fit, every window listed is a
-fit, and a time the words do not hold reads with statedClock none. So a
+window a range fits one other way is its fit, or that fit with a start
+or end the words state elsewhere, every window listed is a fit, a clock
+the words state is one they hold, and a time the words do not hold
+reads with statedClock none. So a
 window read before these checks is refused only when the owner's words
 plainly give another one.
 

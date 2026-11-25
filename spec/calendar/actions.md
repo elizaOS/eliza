@@ -189,20 +189,27 @@ pure val minutesValues = Set(4, 5, 480, 481)
 The model reads from the owner's request whether it asks about a morning
 and no other period ("am I free tomorrow morning?", "tomorrow morning
 until noon"), and says so with the request; code reads no period words.
-Such a window starts at or after the midnight of the day it starts on,
-and must end no later than that day's noon in the request's zone; a
-window that runs past it is refused before anything is read, pointing to
-a slot search for a shorter opening. Noon itself is inside the morning.
-An end on that day that the owner's words state (readClock.md, "A
-free-time window's clock times the owner stated are ones the owner's
-words hold": a clock after "until", "till", "through", "before" or the
-like, or the end of a range whose start is the window's start or whose
-window is under way) is the owner's and is kept, unless they also state
-its other half of the day as a morning end, from 5 AM to noon and after
-the start:
+Such a window starts at or after the midnight of the day it starts on
+and before that day's noon, and must end no later than that noon in the
+request's zone; a window that starts at noon or later, or runs past
+noon, is refused before anything is read, pointing to a slot search for
+a shorter opening. Noon itself is inside the morning.
+An end on that day that the owner's words state with the morning
+(readClock.md, "A free-time window's clock times the owner stated are
+ones the owner's words hold": a clock after "until", "till", "through",
+"before" or the like, or the end of a range whose start is the window's
+start or whose window is under way, said in the clause that names the
+morning or in a clause of its own beside it, such as "tomorrow morning,
+until 1?") is the owner's and is kept, unless they also state its other
+half of the day as a morning end, from 5 AM to noon and after now:
 "tomorrow morning until 12:30" runs to 12:30 PM, "tomorrow morning until
 1" to 1 PM and "tomorrow morning from 9 to 1" from 9 AM to 1 PM, while
-"tomorrow morning until 11" ends at 11 AM, never 11 PM. A number the
+"tomorrow morning until 11" ends at 11 AM, never 11 PM, and a window
+sent for it from noon on is refused. An end said in another clause is
+about something else and lifts no bound: "free tomorrow morning? I have
+a call until 1", "am I free tomorrow morning? my sitter is here till 1"
+and "free tomorrow morning — busy after, until 2" end by noon, and so do
+words that name no morning. A number the
 words merely hold states no end: a count or a length ("for my 2 kids",
 "1 meeting max", "2 calls", "for 1.5 hours"), a room or a name ("room
 3") leaves the window ending by noon. Words the reader cannot read
@@ -214,24 +221,26 @@ call morning-only is read as asked.
 
 ```quint
 type MorningAdmission = ReadMorning | RefuseOutsideMorning
-pure def morningAdmission(morningOnly: bool, endsAfterNoon: bool, endSaid: bool): MorningAdmission =
-  if (morningOnly and endsAfterNoon and not(endSaid)) RefuseOutsideMorning else ReadMorning
-pure def lawMorningReadStaysInMorning(endsAfterNoon: bool): bool =
-  morningAdmission(true, endsAfterNoon, false) == ReadMorning implies not(endsAfterNoon)
+pure def morningAdmission(morningOnly: bool, startsBeforeNoon: bool, endsAfterNoon: bool, endSaid: bool): MorningAdmission =
+  if (morningOnly and (not(startsBeforeNoon) or (endsAfterNoon and not(endSaid)))) RefuseOutsideMorning else ReadMorning
+pure def lawMorningReadStaysInMorning(startsBeforeNoon: bool, endsAfterNoon: bool): bool =
+  morningAdmission(true, startsBeforeNoon, endsAfterNoon, false) == ReadMorning implies (startsBeforeNoon and not(endsAfterNoon))
 pure def lawAMorningEndTheOwnerSaidIsRead(endsAfterNoon: bool): bool =
-  morningAdmission(true, endsAfterNoon, true) == ReadMorning
-pure def lawWiderRequestIsRead(endsAfterNoon: bool, endSaid: bool): bool =
-  morningAdmission(false, endsAfterNoon, endSaid) == ReadMorning
+  morningAdmission(true, true, endsAfterNoon, true) == ReadMorning
+pure def lawAMorningWindowFromNoonOnIsRefused(endsAfterNoon: bool, endSaid: bool): bool =
+  morningAdmission(true, false, endsAfterNoon, endSaid) == RefuseOutsideMorning
+pure def lawWiderRequestIsRead(startsBeforeNoon: bool, endsAfterNoon: bool, endSaid: bool): bool =
+  morningAdmission(false, startsBeforeNoon, endsAfterNoon, endSaid) == ReadMorning
 pure def morningEndStated(wordsRead: bool, endStated: bool, otherHalfStatedInMorning: bool): bool =
   wordsRead and endStated and not(otherHalfStatedInMorning)
 pure def lawAnEndTheWordsDoNotStateEndsByNoon(wordsRead: bool, otherHalfStatedInMorning: bool): bool =
-  morningAdmission(true, true, morningEndStated(wordsRead, false, otherHalfStatedInMorning)) == RefuseOutsideMorning
+  morningAdmission(true, true, true, morningEndStated(wordsRead, false, otherHalfStatedInMorning)) == RefuseOutsideMorning
 pure def lawUnreadWordsStateNoMorningEnd(endStated: bool, otherHalfStatedInMorning: bool): bool =
-  morningAdmission(true, true, morningEndStated(false, endStated, otherHalfStatedInMorning)) == RefuseOutsideMorning
+  morningAdmission(true, true, true, morningEndStated(false, endStated, otherHalfStatedInMorning)) == RefuseOutsideMorning
 pure def lawAMorningEndWhoseOtherHalfIsStatedEndsByNoon(wordsRead: bool, endStated: bool): bool =
-  morningAdmission(true, true, morningEndStated(wordsRead, endStated, true)) == RefuseOutsideMorning
+  morningAdmission(true, true, true, morningEndStated(wordsRead, endStated, true)) == RefuseOutsideMorning
 pure def lawAStatedLaterEndIsRead(endsAfterNoon: bool): bool =
-  morningAdmission(true, endsAfterNoon, morningEndStated(true, true, false)) == ReadMorning
+  morningAdmission(true, true, endsAfterNoon, morningEndStated(true, true, false)) == ReadMorning
 ```
 
 ### An afternoon-only question reads only that afternoon, from noon to five

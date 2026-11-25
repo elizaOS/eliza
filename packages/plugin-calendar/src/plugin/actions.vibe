@@ -7,9 +7,9 @@ import {
   lookupNearBack, lookupReadLimit, lookupSpanDays, lookupStep, morningAdmission, morningEndStated, occurrenceChoice, offDay, ownerPointedAt, pastWindowNext, residentDeleteStep, slotMinutesAllowed, createStore, windowStartAdmission, type GuestChange, type OwnerAnswer,
 } from "../../gen/calendar__actions.effect.vibe"
 import { positiveOverlap } from "../../gen/calendar__availability.effect.vibe"
-import { clockHeldOrUnread, clockReal, instantRead, statedClockCheck, wallZone, windowClockCheck, startReading, windowFits, windowPairing, windowStartChecked } from "../../gen/calendar__readClock.effect.vibe"
+import { clockHeldOrUnread, clockReal, instantRead, statedClockCheck, wallZone, windowClockCheck, windowClockHeld, startReading, windowFits, windowPairing, windowStartChecked } from "../../gen/calendar__readClock.effect.vibe"
 import { scopeChoice } from "../../gen/calendar__seriesScope.effect.vibe"
-import { addDaysToLocalDate, buildUtcDateFromLocalParts, createNeedsConfirmation, createTimeZone, deviceTimeZone, getZonedDateParts, knownTimeZone, requestTimeZone, startOfCivilDay, statedYearCreate, type LocalDate, type CalendarEvent, type CalendarEventFields, type CalendarMutationOutcome, type CalendarMutationReceipt, type CalendarMutationRequest, FieldsRecord, addressWrittenInWords, clockHeldByWords, clockWordsRead, eventDayInWords, eventNamedInWords, guestIs, guestNamedInWords, windowWordsOf, zoneNamedIn, type StatedClockTime, type WindowWords, RecurrenceRecord, WriteScopeRecord, type CalendarWriteScope } from "@elizaos/plugin-calendar-client"
+import { addDaysToLocalDate, buildUtcDateFromLocalParts, createNeedsConfirmation, createTimeZone, deviceTimeZone, getZonedDateParts, knownTimeZone, requestTimeZone, startOfCivilDay, statedYearCreate, type LocalDate, type CalendarEvent, type CalendarEventFields, type CalendarMutationOutcome, type CalendarMutationReceipt, type CalendarMutationRequest, FieldsRecord, addressWrittenInWords, clockHeldByWords, clockWordsRead, eventDayInWords, wordsHoldAClock, eventNamedInWords, guestIs, guestNamedInWords, windowWordsOf, zoneNamedIn, type StatedClockTime, type WindowWords, RecurrenceRecord, WriteScopeRecord, type CalendarWriteScope } from "@elizaos/plugin-calendar-client"
 import { fieldsSpanValid } from "../mutations/provider-port.vibe"
 import { tripEvents } from "./lookup.vibe"
 import { phoneCalendarOffered } from "./phone-turn.vibe"
@@ -265,14 +265,14 @@ type KeptTimes = { readonly start?: string; readonly end?: string }
 function unsaidClock(sent: Parameters, zone: string, text: string, kept: KeptTimes = {}): UnsaidClock | undefined {
   const endChecked = sent.statedClock === "range"
   const read = clockWordsRead(text)
+  const aClockHeld = wordsHoldAClock(text)
   const sentTimes = [["start", sent.startAt, kept.start], ...(endChecked ? [["end", sent.endAt, kept.end]] as const : [])] as const
   for (const [which, time, keptTime] of sentTimes) {
     const at = time === undefined ? Number.NaN : Date.parse(time)
     const wall = Number.isFinite(at) && (keptTime === undefined || at !== Date.parse(keptTime)) ? getZonedDateParts(new Date(at), zone) : undefined
     if (wall === undefined) continue
     const held = clockHeldByWords({ hour: wall.hour, minute: wall.minute }, text)
-    const otherHalfHeld = clockHeldByWords({ hour: (wall.hour + 12) % 24, minute: wall.minute }, text)
-    const check = statedClockCheck(sent.statedClock !== undefined, sent.statedClock === "start" || sent.statedClock === "range", clockHeldOrUnread(read, held, otherHalfHeld))
+    const check = statedClockCheck(sent.statedClock !== undefined, sent.statedClock === "start" || sent.statedClock === "range", clockHeldOrUnread(read, held, aClockHeld))
     if (check !== "ClockAsSent") return { check, which, at, zone }
   }
   return undefined
@@ -283,7 +283,9 @@ function unsaidWindowClock(parameters: Parameters, begin: number, finish: number
   for (const [which, at, stated] of sides) {
     const wall = getZonedDateParts(new Date(at), zone)
     if (wall === undefined) continue
-    const check = windowClockCheck(parameters.statedClock !== undefined, parameters.statedClock === "start" || parameters.statedClock === "range", words.read && stated, clockHeldByWords({ hour: wall.hour, minute: wall.minute }, text))
+    const clock = { hour: wall.hour, minute: wall.minute }
+    const held = windowClockHeld(clockHeldByWords(clock, text), clockHeldByWords(clock, words.uncounted))
+    const check = windowClockCheck(parameters.statedClock !== undefined, parameters.statedClock === "start" || parameters.statedClock === "range", words.read && stated, held)
     if (check !== "ClockAsSent") return { check, which, at, zone }
   }
   return undefined
@@ -649,10 +651,12 @@ function windowPairings(begin: number, finish: number, zone: string, words: Wind
     const nearest = fitting === all.length ? all : readings.length > 1 ? all.slice(-fitting) : all.slice(0, fitting)
     const said = readings.filter((from) => nearest.some((fit) => fit.begin === from))
     const underWay = !startChecked && said.some((from) => reading(from, ends) === "StartUnderWay")
-    const elsewhere = (statements: WindowWords["starts"], wall: { readonly hour: number; readonly minute: number }) => statements.some((stated) => stated.range !== index && stated.clocks.some(same(wall)))
-    return { range, said, ends, underWay, startElsewhere: elsewhere(words.starts, start), endElsewhere: elsewhere(words.ends, end) }
+    const elsewhere = (statements: WindowWords["starts"], wall: { readonly hour: number; readonly minute: number }) => statements.filter((stated) => stated.range !== index && stated.clocks.some(same(wall))).flatMap((stated) => instants(stated.clocks))
+    const startsElsewhere = elsewhere(words.starts, start)
+    const endsElsewhere = elsewhere(words.ends, end)
+    return { range, said, ends, underWay, startElsewhere: startsElsewhere.length > 0, endElsewhere: endsElsewhere.length > 0, startsElsewhere, endsElsewhere }
   }).filter(({ range, underWay }) => range.starts.some(either(start)) || range.ends.some(either(end)) || underWay)
-  const paired = ranges.map(({ said, ends, underWay, startElsewhere, endElsewhere }) => {
+  const paired = ranges.map(({ said, ends, underWay, startElsewhere, endElsewhere, startsElsewhere, endsElsewhere }) => {
     const opened = said.flatMap((from) => {
       const read = reading(from, ends)
       return read === "StartAsSaid" ? [from] : read === "StartUnderWay" ? [thisMinute] : []
@@ -662,7 +666,12 @@ function windowPairings(begin: number, finish: number, zone: string, words: Wind
     const kept = windowFits(starts.length, ends.length, pairs.length)
     const fits = narrowed(kept === pairs.length ? pairs : starts.length > 1 ? pairs.slice(-kept) : pairs.slice(0, kept))
     const sentSaid = !fits.some((fit) => fit.begin === begin && fit.finish === finish) && (startElsewhere || fits.some((fit) => fit.begin === begin)) && (endElsewhere || fits.some((fit) => fit.finish === finish))
-    return sentSaid ? [{ begin, finish }] : fits
+    const widened = (fit: WindowFit): WindowFit => {
+      const earlier = startsElsewhere.filter((from) => from < fit.begin)
+      const later = endsElsewhere.filter((to) => to > fit.finish)
+      return { begin: earlier.includes(begin) ? begin : earlier.length > 0 ? Math.max(...earlier) : fit.begin, finish: later.includes(finish) ? finish : later.length > 0 ? Math.min(...later) : fit.finish }
+    }
+    return sentSaid ? [{ begin, finish }] : fits.map(widened)
   })
   const settles = paired.find((fits) => fits.length === 1 && fits[0]?.begin === begin && fits[0]?.finish === finish)
   const fits = settles ?? paired.flat().filter((fit, at, all) => all.findIndex((known) => known.begin === fit.begin && known.finish === fit.finish) === at)
@@ -705,14 +714,14 @@ effect function freeTime(host: CalendarHost, parameters: Parameters, zone: strin
   const thisMinute = now - now % 60000
   const startChecked = windowStartChecked(begin >= thisMinute && begin < thisMinute + 60000)
   const rangeOpensWindow = (range: number | undefined) => range === undefined || !startChecked || (startDay !== undefined && (words.ranges[range]?.starts.some(sameClock(startDay)) ?? false))
-  const endStated = (clock: StatedClockTime) => words.ends.some((stated) => stated.clocks.some(sameClock(clock)) && rangeOpensWindow(stated.range))
+  const endStated = (clock: StatedClockTime) => words.ends.some((stated) => stated.withMorning && stated.clocks.some(sameClock(clock)) && rangeOpensWindow(stated.range))
   const otherEndInMorning = (end: NonNullable<typeof endDay>) => {
     const other = { hour: (end.hour + 12) % 24, minute: end.minute }
     const instant = buildUtcDateFromLocalParts(zone, { year: end.year, month: end.month, day: end.day, hour: other.hour, minute: other.minute, second: 0 })?.getTime()
-    return instant !== undefined && other.hour >= 5 && instant > begin && noon !== undefined && instant <= noon && endStated(other)
+    return instant !== undefined && other.hour >= 5 && instant > now && noon !== undefined && instant <= noon && endStated(other)
   }
   const morningEndSaid = sameDay && endDay !== undefined && morningEndStated(words.read, endStated(endDay), otherEndInMorning(endDay))
-  if (morningAdmission(parameters.morningOnly === true, noon === undefined || finish > noon, morningEndSaid) === "RefuseOutsideMorning") {
+  if (morningAdmission(parameters.morningOnly === true, noon !== undefined && begin < noon, noon === undefined || finish > noon, morningEndSaid) === "RefuseOutsideMorning") {
     return failed(subaction, "The owner asked only about a morning. Keep the window on that morning's date and end it by noon in the request's zone, unless the owner said a later end (\"tomorrow morning until 12:30\"); for a shorter opening inside the morning, use propose_times.",
       { code: "CALENDAR_AVAILABILITY_OUTSIDE_REQUESTED_PERIOD" })
   }
