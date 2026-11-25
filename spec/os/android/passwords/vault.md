@@ -398,7 +398,10 @@ Keystore authorization. After that authorization, native code may copy the
 records into a distinct device-unlocked vault and verify the copy before
 selecting it. The original key and ciphertext survive selection. A failed
 or cancelled authorization, an unreadable source, or a different target
-leaves the original selected. An empty install can open directly.
+leaves the original selected. An empty install can open directly. An
+unlock that cannot finish the migration rejects with the status reason:
+`legacy-key-unavailable` when the original key is gone, otherwise
+`legacy-authorization-required`.
 
 ```quint
 type DeviceVaultLegacy = NoLegacyRecords | LegacySelected | DeviceCustodySelected

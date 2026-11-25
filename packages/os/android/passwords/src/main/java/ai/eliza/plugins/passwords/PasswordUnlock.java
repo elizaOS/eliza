@@ -54,7 +54,7 @@ public final class PasswordUnlock {
         }
       } catch (Exception unavailable) {
         access.lock(ticket);
-        result.failed("migration-unavailable");
+        result.failed(access.legacyReason());
       } finally { surface.close(); }
     }
     @Override public void onActivityDestroyed(Activity owner) { if (owner == activity) complete(false, "cancelled"); }
@@ -80,7 +80,7 @@ public final class PasswordUnlock {
     }
     KeyguardManager keyguard = activity.getSystemService(KeyguardManager.class);
     if (keyguard == null || !keyguard.isDeviceSecure()) {
-      result.failed(access.deviceUnlockedCustody() ? "migration-unavailable" : "no-screen-lock");
+      result.failed(access.deviceUnlockedCustody() ? access.legacyReason() : "no-screen-lock");
       return;
     }
     long ticket = access.begin();

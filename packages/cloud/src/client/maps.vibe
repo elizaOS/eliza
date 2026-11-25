@@ -2,7 +2,7 @@
 import type { RefusalCode } from "../../gen/cloud__shared__types.ts"
 import {
   MapsCapabilities, MapsPlaceResponse, MapsPlacesResponse, MapsRoutesResponse, MapsViewportResponse,
-  type PlaceDetailsRequest, type PlacesSearchRequest, type ReverseRequest, type RoutesRequest, type TextSearchRequest, type TileAddress, type ViewportRequest
+  type PlaceDetailsRequest, type PlacesSearchRequest, type RoutesRequest, type TextSearchRequest, type TileAddress, type ViewportRequest
 } from "../services/maps.schema.ts"
 import { answerOf, bytesOf, type CallOptions } from "./answer.vibe"
 import type { CloudTransport } from "./client.vibe"
@@ -52,8 +52,6 @@ export function mapsCalls(transport: CloudTransport) {
     },
     mapsGeocode: (request: TextSearchRequest, options: CallOptions = {}): Promise<MapsPlacesResponse> =>
       post(routesByName.mapsGeocode, MapsPlacesResponse, request, options),
-    mapsReverse: (request: ReverseRequest, options: CallOptions = {}): Promise<MapsPlaceResponse> =>
-      post(routesByName.mapsReverse, MapsPlaceResponse, request, options),
     mapsPlacesSearch: (request: PlacesSearchRequest, options: CallOptions = {}): Promise<MapsPlacesResponse> =>
       post(routesByName.mapsPlacesSearch, MapsPlacesResponse, request, options),
     mapsPlaceDetails: (request: PlaceDetailsRequest, options: CallOptions = {}): Promise<MapsPlaceResponse> =>

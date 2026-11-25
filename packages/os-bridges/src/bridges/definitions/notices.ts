@@ -185,7 +185,7 @@ export interface NotificationsNativePlugin {
   resumeCrossApp(input: { expectedRevision: string }): Promise<unknown>;
   openNotificationAccess(): Promise<unknown>;
   notificationHistory(): Promise<unknown>;
-  clearNotificationHistory(): Promise<unknown>;
+  clearNotificationHistory(input: { expectedRevision: string }): Promise<unknown>;
   list(): Promise<unknown>;
   open(input: NoticeRowRef): Promise<unknown>;
   dismiss(input: NoticeRowRef): Promise<unknown>;
@@ -216,7 +216,7 @@ export interface NoticesClient {
   resumeMirror(expectedRevision: string): Promise<MirrorStatus>;
   openNotificationAccess(): Promise<void>;
   mirrorHistory(): Promise<MirrorHistoryRow[]>;
-  clearMirrorHistory(): Promise<void>;
+  clearMirrorHistory(expectedRevision: string): Promise<void>;
   list(): Promise<{ items: NoticeRow[]; scope: string }>;
   open(row: NoticeRowRef): Promise<void>;
   dismiss(row: NoticeRowRef): Promise<void>;

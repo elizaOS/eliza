@@ -87,6 +87,14 @@ pure def sometimesUnsupportedCarrierRead(s: Voicemail): bool = s.carrier == Carr
 pure def sometimesUnconfiguredCarrierListsRows(s: Voicemail): bool = s.carrier == CarrierUnconfigured and s.rows.length() > 0
 ```
 
+### A retired observer admits no refresh and a replacement waits for acknowledged cleanup
+
+One phone client holds one observation. Closing it stops accepting its
+callbacks before awaiting the listener's removal and Android's disable.
+A replacement waits until both steps are acknowledged. A rejected cleanup
+leaves that step outstanding for the next visit. A late close of the
+retired observation cannot disable its replacement.
+
 ## Story: Hear a voicemail
 
 > As an owner, I want to play a voicemail and have it ready for speech
@@ -182,6 +190,14 @@ deleted and asked to sync, which removes it from the carrier and then from
 the phone; another source's row is deleted through the provider, which
 keeps it deleted for that source. Only a row Android no longer lists is
 deleted; a marked row still listed is uncertain.
+
+A listing that asks for a witness may receive an opaque one from Android's
+stable source identity. A request that names a witness stages only that listed
+row. If the native listing offers none, the bridge refuses before staging.
+At expiry the provider mutation uses the same identity in its selection,
+so a replacement that reused the ID stays untouched. A lost mutation
+acknowledgment leaves the staged deletion uncertain. An owner delete that
+names only its row ID keeps the existing contract.
 
 ```quint
 pure def canStageDelete(s: Voicemail, facts: HostFacts, id: int): bool = canWriteRow(s, facts, id, NoReply)

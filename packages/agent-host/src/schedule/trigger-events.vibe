@@ -1,14 +1,12 @@
-// spec/agent/schedule/triggers.md, "An event trigger runs once for each emitted event of its name, never for its own run's events"
+// spec/agent/schedule/triggers.md, "An event trigger runs once for each event of its name a conversation turn raises, never for a trigger run's events"
 module node {
   import { Option, Schema } from "effect"
-  import { EventType, type AgentRuntime, type EventPayload } from "@elizaos/core"
-
-  export const triggerEventNames = [EventType.MESSAGE_RECEIVED, EventType.MESSAGE_SENT, EventType.REACTION_RECEIVED, EventType.ENTITY_JOINED] as const
-  export type TriggerEventName = typeof triggerEventNames[number]
+  import type { AgentRuntime, EventPayload } from "@elizaos/core"
+  import { triggerEventNames } from "../../gen/agent__schedule__triggers.ts"
 
   export interface TriggerEventTarget {
-    eventTriggers(name: TriggerEventName): Promise<readonly string[]>
-    receiveEvent(triggerId: string, eventId: string, name: TriggerEventName, ownRun: boolean): Promise<void>
+    eventTriggers(name: string): Promise<readonly string[]>
+    receiveEvent(triggerId: string, eventId: string, name: string, byTrigger: boolean): Promise<void>
   }
 
   export interface TriggerEvents {
@@ -18,16 +16,11 @@ module node {
 
   const Id = Schema.String.check(Schema.isMinLength(1))
   const messageEvent = Schema.decodeUnknownOption(Schema.Struct({ message: Schema.Struct({ id: Id, metadata: Schema.optional(Schema.Unknown) }) }))
-  const entityEvent = Schema.decodeUnknownOption(Schema.Struct({ entityId: Id, roomId: Id }))
-  const raisedBy = Schema.decodeUnknownOption(Schema.Struct({ triggerId: Id }))
+  const raisedByTrigger = Schema.decodeUnknownOption(Schema.Struct({ triggerId: Id }))
 
-  function emitted(name: TriggerEventName, payload: unknown): { readonly eventId: string; readonly raisedBy: string | undefined } | undefined {
-    if (name === EventType.ENTITY_JOINED) {
-      const joined = Option.getOrUndefined(entityEvent(payload))
-      return joined === undefined ? undefined : { eventId: `${joined.entityId}:${joined.roomId}`, raisedBy: undefined }
-    }
+  function emitted(payload: unknown): { readonly eventId: string; readonly byTrigger: boolean } | undefined {
     const message = Option.getOrUndefined(messageEvent(payload))?.message
-    return message === undefined ? undefined : { eventId: message.id, raisedBy: Option.getOrUndefined(raisedBy(message.metadata))?.triggerId }
+    return message === undefined ? undefined : { eventId: message.id, byTrigger: Option.isSome(raisedByTrigger(message.metadata)) }
   }
 
   export function startTriggerEvents(runtime: AgentRuntime, target: TriggerEventTarget): TriggerEvents {
@@ -44,11 +37,11 @@ module node {
 
     const handlers = triggerEventNames.map((name) => {
       const handler = async (payload: EventPayload) => {
-        const event = stopped ? undefined : emitted(name, payload)
+        const event = stopped ? undefined : emitted(payload)
         if (event === undefined) return
         try {
           for (const triggerId of await target.eventTriggers(name))
-            enqueue(triggerId, () => target.receiveEvent(triggerId, event.eventId, name, event.raisedBy === triggerId))
+            enqueue(triggerId, () => target.receiveEvent(triggerId, event.eventId, name, event.byTrigger))
         } catch (cause) {
           runtime.reportError("triggers.events", cause, { name })
         }
@@ -69,4 +62,4 @@ module node {
     }
   }
 }
-export { startTriggerEvents, triggerEventNames, type TriggerEventName, type TriggerEventTarget, type TriggerEvents } from node
+export { startTriggerEvents, type TriggerEventTarget, type TriggerEvents } from node

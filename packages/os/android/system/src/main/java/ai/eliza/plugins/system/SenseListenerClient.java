@@ -186,7 +186,7 @@ public final class SenseListenerClient {
     /**
      * Caller package must come from Android's Activity caller API ({@code getLaunchedFromPackage},
      * {@code ComponentCaller}), never an extra or deep link. The same-signer listener marks a
-     * listener wake; the platform-signed system UI marks an assistant gesture
+     * listener wake only while {@link #available()} admits it; the platform-signed system UI marks an assistant gesture
      * ({@link SenseInvocation#SYSTEM}). Android reports the system UI as caller only when it shares
      * its identity with the launch (an image patch); otherwise the caller is unknown and the launch
      * only opens the assistant.
@@ -195,7 +195,12 @@ public final class SenseListenerClient {
         boolean sameSigner = false;
         try { sameSigner = callerPackage != null && context.getPackageManager().checkSignatures(context.getPackageName(), callerPackage) == PackageManager.SIGNATURE_MATCH; } catch (RuntimeException unavailable) { }
         KeyguardManager keyguard = context.getSystemService(KeyguardManager.class);
-        invocation().record(context.getPackageName(), callerPackage, sameSigner, systemAssistCaller(callerPackage), SystemClock.elapsedRealtime(), keyguard == null || keyguard.isKeyguardLocked());
+        boolean admitted = available();
+        SenseInvocation state = invocation();
+        synchronized (state) {
+            state.observeListener(admitted);
+            state.record(context.getPackageName(), callerPackage, sameSigner, systemAssistCaller(callerPackage), SystemClock.elapsedRealtime(), keyguard == null || keyguard.isKeyguardLocked());
+        }
     }
 
     /**

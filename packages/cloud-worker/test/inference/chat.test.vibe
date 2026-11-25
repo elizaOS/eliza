@@ -14,7 +14,7 @@ const prompt = "Please say hello to me now, thank you ok"
 const request = { model: "test-chat", messages: [{ role: "user", content: prompt }], max_tokens: 16 }
 
 effect function chatCloud(additionalOffers = false) {
-  const secondUpstream = "upstream-wide"
+  const secondUpstream = "@cf/qwen/qwen3.8-27b"
   const llm: LlmFake = try sync(() => llmFake([upstreamModel, secondUpstream]))
   const edit = (profile: ReturnType<typeof testProfile>) => {
     if (!additionalOffers) return profile
@@ -143,6 +143,7 @@ describe("WP5 Inference: chat completions", () => {
         idempotencyForwarded: llm.headers.some((headers) => headers["idempotency-key"] !== undefined),
         planningForwarded: Object.fromEntries(Object.keys(planning).map((field) => [field, llm.bodies[9]?.[field]])),
         refusedByProvider: status(refusedByProvider),
+        providerLimitReason: (refusedByProvider.body as { readonly reason?: string }).reason,
         unreadable: status(unreadable),
         rejectedByProvider: [status(rejectedByProvider), fault(rejectedByProvider)],
         providerAuthFailed: [status(providerAuthFailed), fault(providerAuthFailed)],
@@ -166,10 +167,11 @@ describe("WP5 Inference: chat completions", () => {
         upstream: [[upstreamModel, false, undefined, undefined], [upstreamModel, false, 16, undefined],
           [upstreamModel, false, 16, undefined], [upstreamModel, false, 16, undefined], [upstreamModel, false, 16, undefined],
           [upstreamModel, false, 16, undefined], [upstreamModel, false, 16, undefined], [upstreamModel, false, 16, undefined],
-          [upstreamModel, false, 16, undefined], [upstreamModel, false, undefined, 64], ["upstream-wide", true, undefined, undefined]],
+          [upstreamModel, false, 16, undefined], [upstreamModel, false, undefined, 64], ["@cf/qwen/qwen3.8-27b", true, undefined, undefined]],
         idempotencyForwarded: false,
         planningForwarded: planning,
         refusedByProvider: [429, "rate_limited", "59"],
+        providerLimitReason: "provider_rate_limited",
         unreadable: [502, "provider_invalid_response", undefined],
         rejectedByProvider: [[400, "invalid_request", undefined], ["context_length_exceeded", "messages", undefined]],
         providerAuthFailed: [[503, "provider_unavailable", "5"], [undefined, undefined, undefined]],
@@ -186,14 +188,16 @@ describe("WP5 Inference: chat completions", () => {
     ))
   }), 90_000)
 
-  it.live("Stream a reply in the shape clients read (spec/cloud/services/inference.md, \"Story: Stream a reply in the shape clients read\")", () => scoped(effect {
+  it.live("Stream a reply in the shape clients read, charging a hang-up for every delivered character (spec/cloud/services/inference.md, \"Story: Stream a reply in the shape clients read\"; spec/cloud/services/inference.md, \"A dispatched call is charged its reported usage, what it delivered when the caller hung up, and its quote when nothing was reported\")", () => scoped(effect {
     const { cloud, llm, key, chat } = try chatCloud()
     const streamed = try chat({ ...request, stream: true, stream_options: { include_usage: true } })
-    try sync(() => llm.script({ kind: "streamWithoutUsage" }, { kind: "hang", after: 2 }))
+    try sync(() => llm.script({ kind: "streamWithoutUsage" }, { kind: "hang", after: 2 }, { kind: "hangInToolCall" }))
     const withoutUsage = try chat({ ...request, stream: true })
     const hungUp = try hangUpAfterFirstBytes(cloud.url, key)
     try promise(() => llm.untilAborted(1)).pipe(Effect.timeout(Duration.seconds(10)))
-    const usage = try settledCount(cloud, "org-owner", 3)
+    const hungUpInToolCall = try hangUpAfterFirstBytes(cloud.url, key)
+    try promise(() => llm.untilAborted(2)).pipe(Effect.timeout(Duration.seconds(10)))
+    const usage = try settledCount(cloud, "org-owner", 4)
     const text = String(streamed.body)
     const parsed = try chunks(text)
     try check(() => assert.deepStrictEqual(
@@ -207,6 +211,7 @@ describe("WP5 Inference: chat completions", () => {
         withoutUsage: [withoutUsage.status, frames(String(withoutUsage.body)).at(-1)],
         upstream: llm.bodies.map((body) => [body.model, body.stream, body.stream_options]),
         hungUp,
+        hungUpInToolCall,
         aborted: llm.aborted,
         usage
       },
@@ -218,10 +223,11 @@ describe("WP5 Inference: chat completions", () => {
         usageChunks: 1,
         models: ["test-chat"],
         withoutUsage: [200, "[DONE]"],
-        upstream: [[upstreamModel, true, { include_usage: true }], [upstreamModel, true, { include_usage: true }], [upstreamModel, true, { include_usage: true }]],
+        upstream: [[upstreamModel, true, { include_usage: true }], [upstreamModel, true, { include_usage: true }], [upstreamModel, true, { include_usage: true }], [upstreamModel, true, { include_usage: true }]],
         hungUp: [200, "text/event-stream", true],
-        aborted: 1,
-        usage: [["known", 50, 31], ["unknown", 50, 50], ["known", 50, 14]]
+        hungUpInToolCall: [200, "text/event-stream", true],
+        aborted: 2,
+        usage: [["known", 50, 31], ["unknown", 50, 50], ["known", 50, 14], ["known", 50, 43]]
       }
     ))
   }), 90_000)

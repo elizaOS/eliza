@@ -94,9 +94,11 @@ module node {
     return { heard: text.slice(0, boundary), unheard: text.slice(boundary) }
   }
 
+  export const unheardMark = "[Unheard remainder:"
+
   export function textForTurn(memory: Memory, text: string): string {
     const boundary = boundaryOf(memory, text.length)
-    return boundary === undefined ? text : `${text.slice(0, boundary)}\n[Unheard remainder: ${text.slice(boundary)}]`
+    return boundary === undefined ? text : `${text.slice(0, boundary)}\n${unheardMark} ${text.slice(boundary)}]`
   }
 
   export async function recordHeard(runtime: AgentRuntime, roomId: UUID, id: string | undefined, body: unknown) {
@@ -135,4 +137,4 @@ module node {
   }
 }
 
-export { heardView, recordHeard, textForTurn } from node
+export { heardView, recordHeard, textForTurn, unheardMark } from node

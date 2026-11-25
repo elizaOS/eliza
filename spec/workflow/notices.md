@@ -46,7 +46,10 @@ pure def lawRemovedWorkflowOpensNothing(route: NoticeRoute, read: NoticeRead): b
 When its owner returns, a suspended approval notice resumes only while the
 run is unfinished and not being cancelled at the notice's version and the
 same approval is still pending with the same expiry; otherwise it is
-withdrawn. A settled approval unlocks nothing and is never offered again.
+withdrawn. A settled approval unlocks nothing and is never offered again. A phone can
+find candidates in the resident’s bounded workflow notification list. The
+list carries no permission to present an approval. It supplies its exact
+workflow, run, version, proposal and expiry for the fresh approval read.
 
 ```quint
 type ApprovalNoticeRead = { runFinished: bool, cancellationRequested: bool, versionMatches: bool, approvalPending: bool, sameExpiry: bool, expired: bool }

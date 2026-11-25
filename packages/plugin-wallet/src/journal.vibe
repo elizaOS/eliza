@@ -1,0 +1,138 @@
+// spec/wallet/index.md, "A submitted operation retains one durable binding through reconciliation"
+export schema OperationTerms {
+  readonly intentId: string
+  readonly asset: string
+  readonly symbol: string
+  readonly decimals: number
+  readonly atomicUnits: string
+  readonly recipient: string
+  readonly maximumFee: string
+  readonly reservedAt: number
+}
+
+export schema OperationOutcome {
+  readonly intentId: string
+  readonly receipt: "confirmed" | "failed"
+}
+
+export interface JournalRows {
+  readonly reservation: unknown
+  readonly submission: unknown
+  readonly terms: unknown
+  readonly outcome: unknown
+}
+
+module node {
+  import { createHash, randomUUID } from "node:crypto"
+  import { constants } from "node:fs"
+  import { link, mkdir, open, readFile, readdir, unlink } from "node:fs/promises"
+  import { dirname, join } from "node:path"
+  import type { JournalRows } from "./journal.vibe"
+  import type { WalletRun } from "../gen/wallet.ts"
+
+  export type JournalRow = "reservation" | "submission" | "terms" | "outcome"
+
+  const suffixes: Record<JournalRow, string> = { reservation: ".reservation.json", submission: ".json", terms: ".terms.json", outcome: ".outcome.json" }
+
+  export function walletDigest(parts: readonly string[]): string {
+    return createHash("sha256").update(JSON.stringify(parts)).digest("hex")
+  }
+
+  export function walletJournalDirectory(stateDirectory: string, agentId: string): string {
+    return join(stateDirectory, "wallet", walletDigest([agentId]))
+  }
+
+  function coded(error: unknown, code: string): boolean {
+    return typeof error === "object" && error !== null && "code" in error && error.code === code
+  }
+
+  function rowFile(directory: string, intentId: string, row: JournalRow): string {
+    return join(directory, walletDigest([intentId]) + suffixes[row])
+  }
+
+  async function readRow(file: string): Promise<unknown> {
+    try {
+      return JSON.parse(await readFile(file, "utf8"))
+    } catch (error) {
+      if (coded(error, "ENOENT")) return undefined
+      throw error
+    }
+  }
+
+  export function readJournalRow(directory: string, intentId: string, row: JournalRow): Promise<unknown> {
+    return readRow(rowFile(directory, intentId, row))
+  }
+
+  async function syncDirectory(directory: string): Promise<void> {
+    const folder = await open(directory, constants.O_RDONLY)
+    try {
+      await folder.sync()
+    } finally {
+      await folder.close()
+    }
+  }
+
+  async function createDurableChild(directory: string): Promise<void> {
+    try {
+      await mkdir(directory, { mode: 0o700 })
+    } catch (error) {
+      if (!coded(error, "EEXIST")) throw error
+    }
+    await syncDirectory(dirname(directory))
+  }
+
+  export async function openJournal(directory: string): Promise<void> {
+    await mkdir(dirname(dirname(directory)), { recursive: true, mode: 0o700 })
+    await createDurableChild(dirname(directory))
+    await createDurableChild(directory)
+  }
+
+  export async function writeJournalRow(directory: string, intentId: string, row: JournalRow, record: object): Promise<boolean> {
+    const temp = join(directory, randomUUID() + ".tmp")
+    const file = await open(temp, "wx", 0o600)
+    try {
+      try {
+        await file.writeFile(JSON.stringify(record))
+        await file.sync()
+      } finally {
+        await file.close()
+      }
+      try {
+        await link(temp, rowFile(directory, intentId, row))
+      } catch (error) {
+        if (coded(error, "EEXIST")) return false
+        throw error
+      }
+      await syncDirectory(directory)
+      return true
+    } finally {
+      await unlink(temp)
+    }
+  }
+
+  export async function listJournal(directory: string): Promise<JournalRows[]> {
+    let names: string[]
+    try {
+      names = await readdir(directory)
+    } catch (error) {
+      if (coded(error, "ENOENT")) return []
+      throw error
+    }
+    const reserved = names.filter((name) => name.endsWith(suffixes.reservation)).map((name) => join(directory, name.slice(0, -suffixes.reservation.length)))
+    return Promise.all(reserved.map(async (stem) => ({
+      reservation: await readRow(stem + suffixes.reservation),
+      submission: await readRow(stem + suffixes.submission),
+      terms: await readRow(stem + suffixes.terms),
+      outcome: await readRow(stem + suffixes.outcome),
+    })))
+  }
+
+  export function reserveWalletSigning(directory: string, record: WalletRun): Promise<boolean> {
+    return writeJournalRow(directory, record.intent.intentId, "reservation", record)
+  }
+
+  export function claimDispatch(directory: string, record: WalletRun): Promise<boolean> {
+    return writeJournalRow(directory, record.intent.intentId, "submission", record)
+  }
+}
+export { claimDispatch, listJournal, openJournal, readJournalRow, reserveWalletSigning, walletDigest, walletJournalDirectory, writeJournalRow, type JournalRow } from node

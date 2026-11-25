@@ -1,7 +1,7 @@
 // spec/workflow/sourcePublication.md, "Story: Import only complete reviewed workflow source"; spec/workflow/sourcePublication.md, "Only the reservation owner can publish or release an incomplete write"
 import { initial, machineOver } from "../../gen/workflow__sourcePublication.effect.vibe"
 
-export const SOURCE_WAIT_MS = 5000
+const SOURCE_WAIT_MS = 5000
 
 export error SourceRefused { reason: string }
 

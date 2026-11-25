@@ -48,6 +48,7 @@ export interface AgentRun {
   readonly transport: Transport;
   readonly env?: Readonly<Record<string, string>>;
   readonly timeoutMs?: number;
+  readonly entry?: string;
 }
 
 export interface Exited {
@@ -64,6 +65,8 @@ export interface AgentChild {
   output(): { readonly stdout: string; readonly stderr: string };
   health(): Promise<LocalAnswer | Refusal>;
   ready(timeoutMs?: number): Promise<LocalAnswer>;
+  actions(): Promise<readonly string[]>;
+  held(): Promise<void>;
   signal(signal: NodeJS.Signals): void;
   stop(): Promise<Exited>;
 }
@@ -112,24 +115,33 @@ export function startAgentChild(run: AgentRun): AgentChild {
   const lifetimeMs = run.timeoutMs ?? 120_000;
   const child = spawn(
     process.execPath,
-    ["--no-warnings", inject("agentCli"), "serve", "--launch", run.launchFile, "--state", run.stateDir, ...transportArgs(run.transport)],
+    ["--no-warnings", ...(run.entry === undefined ? [inject("agentCli")] : ["--conditions", "eliza-source", "--import", "vibelang/register", run.entry]), "serve", "--launch", run.launchFile, "--state", run.stateDir, ...transportArgs(run.transport)],
     {
       cwd: agentDir,
-      env: { HOME: run.stateDir, TMPDIR: run.stateDir, TZ: "UTC", ...run.env },
-      stdio: ["pipe", "pipe", "pipe"],
+      env: { HOME: run.stateDir, TMPDIR: run.stateDir, TZ: "UTC", ...(run.entry === undefined ? {} : { VIBELANG_CACHE_DIR: join(agentDir, ".cache", "vibelang") }), ...run.env },
+      stdio: ["pipe", "pipe", "pipe", "ipc"],
       timeout: lifetimeMs,
       killSignal: "SIGKILL",
     },
   );
+  const pipes = { stdin: child.stdin, stdout: child.stdout, stderr: child.stderr };
+  if (pipes.stdin === null || pipes.stdout === null || pipes.stderr === null) throw new TypeError("the agent child was spawned without its pipes");
   let stdout = "";
   let stderr = "";
-  child.stdout.setEncoding("utf8").on("data", (data: string) => {
+  pipes.stdout.setEncoding("utf8").on("data", (data: string) => {
     stdout += data;
   });
-  child.stderr.setEncoding("utf8").on("data", (data: string) => {
+  pipes.stderr.setEncoding("utf8").on("data", (data: string) => {
     stderr += data;
   });
-  child.stdin.end(typeof run.frame === "string" ? run.frame : `${JSON.stringify(run.frame)}\n`);
+  const received = (kind: string) => new Promise<object>((done) => {
+    child.on("message", (message: unknown) => {
+      if (typeof message === "object" && message !== null && "kind" in message && message.kind === kind) done(message);
+    });
+  });
+  const actions = received("bundleActionRegistry").then((message) => "actions" in message && Array.isArray(message.actions) ? message.actions.map(String) : []);
+  const held = received("hostedModuleHeld");
+  pipes.stdin.end(typeof run.frame === "string" ? run.frame : `${JSON.stringify(run.frame)}\n`);
   const exited = new Promise<Exited>((done, fail) => {
     child.once("error", fail);
     child.once("close", (code, signal) => done({ code, signal, stdout, stderr }));
@@ -143,6 +155,8 @@ export function startAgentChild(run: AgentRun): AgentChild {
     exited,
     output: () => ({ stdout, stderr }),
     health: () => healthOver(run.transport),
+    actions: () => Promise.race([actions, exited.then(({ stderr: said }) => Promise.reject(new Error(`agent exited before it published its actions: ${said}`)))]),
+    held: () => Promise.race([held.then(() => undefined), exited.then(({ stderr: said }) => Promise.reject(new Error(`agent exited before its hosted module was held: ${said}`)))]),
     ready: async (timeoutMs = lifetimeMs) => {
       const deadline = Date.now() + timeoutMs;
       while (running && Date.now() < deadline) {

@@ -1,0 +1,71 @@
+// spec/browser/control.md, "Story: Open an address on the screen I asked from"; spec/browser/control.md, "An open has one home: the Browser proposal where my enrolled phone takes it, else the screen I asked from"; spec/browser/control.md, "The screen shows the address for me to open, and nothing opens until I choose Open there"; spec/browser/control.md, "A refused Browser proposal tells me how to ask, and never says anything opened"
+import { readTurnContext, type DeviceOperation } from "@elizaos/agent"
+import { deviceTurnFor } from "@elizaos/agent-host"
+import { extractUserText, readViewInteractionClientId, unwrapUserMessageText, type Action, type ActionResult, type HandlerOptions, type IAgentRuntime, type Memory } from "@elizaos/core"
+import { openHome } from "../gen/browser__control.effect.vibe"
+import { browserRefusal, groundOpen } from "./proposal.vibe"
+
+export const BROWSER_OPEN = "BROWSER_OPEN"
+
+export interface ScreenOpenResult {
+  readonly mode: "open"
+  readonly operation: Extract<DeviceOperation, { type: "browser_navigate" }>
+  readonly clientId: string
+}
+
+function screenOf(message: Memory): string | undefined {
+  const metadata = message.content.metadata
+  const completed = typeof metadata === "object" && metadata !== null && "viewDelivery" in metadata && metadata.viewDelivery === "completed-action"
+  return completed ? readViewInteractionClientId(message) : undefined
+}
+
+const probe: DeviceOperation = { type: "browser_navigate", url: "https://example.com/" }
+
+export function opensOnScreen(runtime: IAgentRuntime, message: Memory): boolean {
+  const phone = deviceTurnFor(runtime, message)
+  return openHome(phone?.admit(probe) !== undefined, screenOf(message) !== undefined) === "OpenOnScreen"
+}
+
+function urlOf(options: unknown): string | undefined {
+  const parameters = typeof options === "object" && options !== null && "parameters" in options ? options.parameters : undefined
+  const url = typeof parameters === "object" && parameters !== null ? Object.entries(parameters).find(([name]) => name === "url")?.[1] : undefined
+  return typeof url === "string" && url.trim() !== "" ? url.trim() : undefined
+}
+
+const SHOWN = "The screen the owner asked from shows this address in its Browser for the owner to open; it opens only if they choose Open there. It has not opened; do not claim it opened, that it loaded or what it shows. Which screen shows later is what each later message's screen context says, not this result."
+
+effect function opened(runtime: IAgentRuntime, message: Memory, options: HandlerOptions | undefined): ActionResult!! {
+  const clientId = screenOf(message)
+  if (clientId === undefined) return { success: false, text: "No screen is bound to this turn, so no address can be opened." }
+  const ownerText = extractUserText(unwrapUserMessageText(message))
+  const asked = { message, ownerText, assistantName: runtime.character?.name ?? "", observation: readTurnContext(message).observation }
+  const open = try groundOpen(asked, urlOf(options) ?? "")
+  if (open.kind === "Refused") {
+    const told = browserRefusal(open.refusal, ownerText)
+    return { success: false, text: told.forModel, userFacingText: told.forOwner, data: { actionName: BROWSER_OPEN, code: told.code } }
+  }
+  const handed: ScreenOpenResult = { mode: "open", operation: { type: "browser_navigate", url: open.url }, clientId }
+  const host = URL.parse(open.url)?.host ?? open.url
+  return {
+    success: true,
+    text: `Showing ${host} for the owner to open. ${SHOWN}`,
+    data: { actionName: BROWSER_OPEN, ...handed },
+  }
+}
+
+export const browserOpenAction: Action = {
+  name: BROWSER_OPEN,
+  description: 'Open a web address in the Browser of the screen the owner is asking from. This is the one way an address opens: the BROWSER command only goes back, forward or reloads the page already showing. Use it whenever the owner asks now to open, visit or go to a website: an address they typed in this message ("example dot com" is example.com), a link of the page this message carried that they point to, or a site they name without its address, with the site\'s https address you know. Any public https site may be asked for. The screen shows the address for the owner to open, and nothing opens until they choose Open there. Never for a deferred, hypothetical, past or reported mention, or an address the owner says not to open. Navigation only: never claim page content or that the page loaded. To show Browser itself, with no address to open, use VIEWS.',
+  similes: [],
+  examples: [],
+  contexts: ["browser", "general"],
+  roleGate: { minRole: "OWNER" },
+  validate: async (runtime, message) => opensOnScreen(runtime, message),
+  parameters: [{
+    name: "url",
+    required: true,
+    description: "The https address to open",
+    schema: { type: "string" },
+  }],
+  handler: (runtime, message, _state, options) => runPromise(opened(runtime, message, options)),
+}

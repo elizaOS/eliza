@@ -1,6 +1,6 @@
 // spec/cloud/services/speechRelay.md, "The wire is version 1 with 16 kHz mono PCM16 and bounded frames"
 import { assert, describe, it } from "@effect/vitest"
-import { decodeDeviceFrame, decodeRelayFrame, decodeServerFrame, encodeClientFrame, encodeRelayAudio, encodeWireFrame, relayCloseCodes } from "@elizaos/cloud"
+import { decodeDeviceFrame, decodeRelayFrame, decodeServerFrame, encodeClientFrame, encodeRelayAudio, encodeWireFrame, relayCloseCodes } from "../src/index.vibe"
 
 describe("Speech relay codec", () => {
   it.live("Relay codec round trips and bounds (spec/cloud/services/speechRelay.md, \"The wire is version 1 with 16 kHz mono PCM16 and bounded frames\")", () => Effect.try(() => {

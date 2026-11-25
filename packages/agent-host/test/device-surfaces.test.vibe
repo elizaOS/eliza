@@ -7,6 +7,8 @@ import { deviceJourney } from "./support/device-agent.vibe"
 module node {
   import type { AgentRuntime } from "@elizaos/core"
   import { held, text, toolCalls, type CloudFake, type CloudReply, type Completion } from "./support/cloud-fake.ts"
+
+  const answer = (words: string): CloudReply => text(`[answer] ${words}`)
   import { deviceClient, type DeviceClient } from "./support/device.ts"
 
   export const proposeTool = "PROPOSE_DEVICE_ACTION"
@@ -17,6 +19,7 @@ module node {
   const openPhoto = { kind: "photo", id: "lib:i:12:345" }
   const found = { id: "lib:i:7:1", revision: "rev-a1-1", kind: "image", takenAt: 0, width: 10, height: 10 }
   const direct = { viewDelivery: "completed-action", viewClientId: "renderer-1", voiceUi: { viewDelivery: "completed-action", uiClientId: "renderer-1", agentActionMode: "direct-request-v1" } }
+  const filesOnly = { ...direct, voiceUi: { ...direct.voiceUi, agentActionMode: "direct-files-v1" } }
   const settledText = "Retrieved this request's stored applied receipt."
   const onPhotos = { observation: { view: "photos", revision: 2, sensitive: false, selectedObject: openPhoto } }
   const onNotes = { observation: { view: "notes", revision: 5, sensitive: false, selectedObject: { kind: "note-source", id: "phone-notes", revision: "a".repeat(64) } } }
@@ -88,7 +91,7 @@ module node {
     const settledAgain = async (words: string, metadata: object, call: ReturnType<typeof propose>, receipt: unknown) => {
       const before = new Set((await proposals()).map(({ id }) => id))
       const gate = Promise.withResolvers<void>()
-      cloud.script(toolCalls("", call), held(gate.promise, toolCalls("", call)), text("Okay."))
+      cloud.script(toolCalls("", call), held(gate.promise, toolCalls("", call)), answer("Okay."))
       const pending = turn(words, metadata)
       pending.catch(() => undefined)
       const deadline = Date.now() + 25_000
@@ -103,84 +106,87 @@ module node {
       return { state, told: told.includes(settledText) && !told.includes("already") }
     }
 
-    cloud.script(toolCalls("", capture), text("Okay."))
+    cloud.script(toolCalls("", capture), answer("Okay."))
     const unasked = await say("Summarize the page I have open")
     const firstOffer = offered(cloud, 2)
-    cloud.script(toolCalls("", capture), text("Okay."))
+    cloud.script(toolCalls("", capture), answer("Okay."))
     const asked = await turn("Take a picture", direct)
     const photo = asked.text
     const photoTold = lastToolText(cloud)
     const photoTurn = offered(cloud, 2)
-    cloud.script(toolCalls("", capture), text("Okay."))
+    cloud.script(toolCalls("", capture), answer("Okay."))
     const selfie = await turn("Hey Eliza, could you please take a selfie?", direct)
     const selfieRefusal = lastToolText(cloud)
-    cloud.script(toolCalls("", capture), text("Okay."))
+    cloud.script(toolCalls("", capture), answer("Okay."))
     const whiteboard = await say("Take a photo of the whiteboard", direct)
     const whiteboardTurn = offered(cloud, 2)
     const captures = (await proposals()).filter(({ payload }) => payload.operation.type === "camera_capture_photo").length
     const taken = await settle(client, (await proposals()).find(({ payload }) => payload.requestMessageId === asked.userMessageId), {
       outcome: "applied", operationId: savedPhoto.operationId, result: savedPhoto,
     })
-    cloud.script(toolCalls("", propose({ type: "photos_share", ids: [savedPhoto.libraryId] })), text("Okay."))
+    cloud.script(toolCalls("", propose({ type: "photos_share", ids: [savedPhoto.libraryId] })), answer("Okay."))
     const justTaken = await say("Share the photo you just took")
     const retaken = await settledAgain("Take a picture", direct, capture, {
       outcome: "applied", operationId: "capture-2", result: { ...savedPhoto, operationId: "capture-2", mediaId: "42", libraryId: "lib:i:42:2" },
     })
 
     const onMaps = { observation: { view: "maps", revision: 4, sensitive: false, selectedObject: place } }
-    cloud.script(toolCalls("", propose({ type: "maps_read_selected", target: { ...place, revision: "6" } })), text("Okay."), text(retold))
+    cloud.script(toolCalls("", propose({ type: "maps_read_selected", target: { ...place, revision: "6" } })), answer("Okay."), answer(retold))
     const staleMaps = await say("How far is this place?", onMaps)
     const staleMapsTold = toldAgain(cloud)
-    cloud.script(toolCalls("", propose({ type: "maps_read_selected", target: place })), text("Okay."), text(retold))
+    cloud.script(toolCalls("", propose({ type: "maps_read_selected", target: place })), answer("Okay."), answer(retold))
     const hiddenMaps = await say("How far is this place?", { observation: { ...onMaps.observation, sensitive: true, selectedObject: undefined } })
     const hiddenMapsTold = toldAgain(cloud)
-    cloud.script(toolCalls("", propose({ type: "maps_read_selected", target: place })), text("Okay."))
+    cloud.script(toolCalls("", propose({ type: "maps_read_selected", target: place })), answer("Okay."))
     await say("How far is this place?", onMaps)
 
-    cloud.script(toolCalls("", propose({ type: "photos_share", selected: true })), text("Okay."), text(retold))
+    cloud.script(toolCalls("", propose({ type: "photos_share", selected: true })), answer("Okay."), answer(retold))
     const notShown = await say("Share this photo", { observation: { view: "home", revision: 3, sensitive: false } })
     const notShownTold = toldAgain(cloud)
-    cloud.script(toolCalls("", propose({ type: "photos_share", selected: true })), text("Okay."))
+    cloud.script(toolCalls("", propose({ type: "photos_share", selected: true })), answer("Okay."))
     await say("Share this photo", onPhotos)
-    cloud.script(toolCalls("", propose({ type: "photos_share", ids: ["lib:i:99:1"] })), text("Okay."), text(retold))
+    cloud.script(toolCalls("", propose({ type: "photos_share", ids: ["lib:i:99:1"] })), answer("Okay."), answer(retold))
     const guessed = await say("Share my latest photo")
     const guessedTold = toldAgain(cloud)
-    cloud.script(toolCalls("", propose({ type: "photos_open", id: openPhoto.id })), text("Okay."))
+    cloud.script(toolCalls("", propose({ type: "photos_open", id: openPhoto.id })), answer("Okay."))
     await say("Open this one full screen", onPhotos)
 
-    cloud.script(toolCalls("", propose({ type: "photo_library_search", kind: "image", limit: 1 })), text("Okay."))
+    cloud.script(toolCalls("", propose({ type: "photo_library_search", kind: "image", limit: 1 })), answer("Okay."))
     await say("Find my latest photo")
     const search = (await proposals()).find(({ payload }) => payload.operation.type === "photo_library_search")
     const searched = await settle(client, search, {
       outcome: "applied", operationId: "search-1", result: { kind: "photo_library_search", scope: "full", items: [found], more: false },
     })
-    cloud.script(toolCalls("", propose({ type: "photo_library_review", action: "favorite", items: [{ id: found.id, revision: "rev-a1-2" }] })), text("Okay."), text(retold))
+    cloud.script(toolCalls("", propose({ type: "photo_library_review", action: "favorite", items: [{ id: found.id, revision: "rev-a1-2" }] })), answer("Okay."), answer(retold))
     const staleRevision = await say("Favorite it")
     const staleRevisionTold = toldAgain(cloud)
-    cloud.script(toolCalls("", propose({ type: "photo_library_review", action: "favorite", items: [{ id: found.id, revision: found.revision }] })), text("Okay."))
+    cloud.script(toolCalls("", propose({ type: "photo_library_review", action: "favorite", items: [{ id: found.id, revision: found.revision }] })), answer("Okay."))
     await say("Favorite it")
 
-    cloud.script(text("Opening Files."))
+    cloud.script(answer("Opening Files."))
     await say("Show my files", direct)
     const navigating = offered(cloud, 1)
-    cloud.script(toolCalls("", propose({ type: "open_view", view: "files" })), text("Okay."))
+    cloud.script(toolCalls("", propose({ type: "open_view", view: "files" })), answer("Okay."))
     await say("Open Files")
 
-    cloud.script(toolCalls("", propose({ type: "create_note", title: "Milk", body: "Buy milk" })), text("Okay."))
+    cloud.script(toolCalls("", propose({ type: "create_note", title: "Milk", body: "Buy milk" })), answer("Okay."))
     const fromHome = await say("Make a note to buy milk")
     const homeOffer = offered(cloud, 2)
     const homeTold = lastToolText(cloud)
     const saved = await settledAgain("Make a note to buy milk", { ...direct, ...onNotes }, propose({ type: "create_note", title: "Milk", body: "Buy milk" }), { outcome: "applied", operationId: "note-1" })
     const notesOffer = offered(cloud, 1)
-    cloud.script(toolCalls("", propose({ type: "create_note", title: "Summary", body: "The page lists three deadlines in March." })), text("Okay."))
+    cloud.script(toolCalls("", propose({ type: "create_note", title: "Summary", body: "The page lists three deadlines in March." })), answer("Okay."))
     const summarized = await say("Summarize this page into a note", { ...direct, ...onNotes })
-    cloud.script(text("You saved a note called Milk."))
+    cloud.script(answer("You saved a note called Milk."))
     await say("What did I just save?")
     const recalled = cloud.calls.filter(({ path: called }) => called.endsWith("/chat/completions")).at(-1)?.body as Completion | undefined
     const remembered = JSON.stringify(recalled?.messages?.at(-1) ?? "")
+    cloud.script(toolCalls("", propose({ type: "create_note", title: "Bread", body: "Buy bread" })), answer("Okay."))
+    const filesOnlyNote = await turn("Make a note to buy bread", { ...filesOnly, ...onNotes })
+    const filesOnlyBound = (await proposals()).some(({ payload }) => payload.requestMessageId === filesOnlyNote.userMessageId)
 
     await client.call("POST", "/api/client-devices/view-profile", { version: 1, expectedRevision: null, views: ["home", "photos"] })
-    cloud.script(toolCalls("", propose({ type: "open_view", view: "settings" })), text("Okay."), text(retold))
+    cloud.script(toolCalls("", propose({ type: "open_view", view: "settings" })), answer("Okay."), answer(retold))
     const disabled = await say("Open Settings")
     const disabledTold = toldAgain(cloud)
     const profiled = offered(cloud, 2)
@@ -189,6 +195,7 @@ module node {
       unasked: unasked.includes(reviewText), photo: [photo, photoTold.includes("What the phone shows the owner, in its words (the reply is yours to write): Opening Camera to take the photo.")],
       selfie: { reviewed: selfie.text.includes(reviewText), refused: selfieRefusal.includes("DEVICE_OPERATION_NOT_AVAILABLE_NOW") },
       whiteboard: whiteboard.includes(reviewText), captures,
+      filesOnlyNote: { reviewed: filesOnlyNote.text.includes(reviewText), bound: filesOnlyBound },
       taken, justTaken: justTaken.includes(reviewText), retaken,
       photoTurn: {
         sameTools: photoTurn.tools === firstOffer.tools, lead: photoTurn.note.includes("The owner's whole message asks for a photo now"),
@@ -223,15 +230,14 @@ module node {
     }
   }
 
-  /** @throws {never} */
-  export async function navigationHomes(runtime: AgentRuntime, socket: string, token: string, cloud: CloudFake) {
+  async function navigator(runtime: AgentRuntime, socket: string, token: string, cloud: CloudFake) {
     const client = deviceClient(socket, token, runtime.agentId, negotiated.join(","))
     await client.call("POST", "/api/client-devices/register", { capabilities: negotiated, workflowProtocol: 1 })
     const { conversation } = (await client.host("POST", "/api/conversations", {})).json as { conversation: { id: string } }
     const proposals = async () => ((await client.call("GET", "/api/client-devices/proposals")).json as { proposals: readonly Proposal[] }).proposals
     const say = async (calls: readonly { readonly name: string; readonly arguments: unknown }[], metadata?: object) => {
       const before = (await proposals()).length
-      cloud.script(toolCalls("", ...calls), text("Which view?"))
+      cloud.script(toolCalls("", ...calls), answer("Which view?"))
       const turn = (await client.call("POST", `/api/conversations/${conversation.id}/messages`, { text: "Open my files", ...(metadata === undefined ? {} : { metadata }) })).json as Turn
       const seen = offered(cloud, 2)
       const asked = cloud.calls.filter(({ path }) => path.endsWith("/chat/completions"))
@@ -243,13 +249,29 @@ module node {
         reply: turn.text,
       }
     }
+    return say
+  }
+
+  const openView = propose({ type: "open_view", view: "files" })
+  const rendererBound = { viewDelivery: "completed-action", viewClientId: "renderer-1" }
+
+  /** @throws {never} */
+  export async function navigationHomes(runtime: AgentRuntime, socket: string, token: string, cloud: CloudFake) {
+    const say = await navigator(runtime, socket, token, cloud)
     const views = { name: "VIEWS", arguments: { action: "show", view: "files" } }
-    const openView = propose({ type: "open_view", view: "files" })
     const { tools: typedTools, ...typed } = await say([views])
     const { tools: deliveredTools, ...delivered } = await say([openView], direct)
+    const { tools: rendererTools, ...rendererOnly } = await say([views], rendererBound)
     const { tools: againTools, ...typedAgain } = await say([openView])
     const { tools: bothTools, ...wrongHomeFirst } = await say([{ name: "VIEWS", arguments: { action: "show", view: "photos" } }, propose({ type: "open_view", view: "photos" })])
-    return { sameTools: new Set([typedTools, deliveredTools, againTools, bothTools]).size === 1, typed, delivered, typedAgain, wrongHomeFirst }
+    return { sameTools: new Set([typedTools, deliveredTools, rendererTools, againTools, bothTools]).size === 1, typed, delivered, rendererOnly, typedAgain, wrongHomeFirst }
+  }
+
+  /** @throws {never} */
+  export async function navigationWithoutViews(runtime: AgentRuntime, socket: string, token: string, cloud: CloudFake) {
+    const say = await navigator(runtime, socket, token, cloud)
+    const { tools: _tools, ...rendererBoundOnly } = await say([openView], rendererBound)
+    return rendererBoundOnly
   }
 
   /** @throws {never} */
@@ -257,7 +279,7 @@ module node {
     const client = deviceClient(socket, token, runtime.agentId, negotiated.join(","))
     await client.call("POST", "/api/client-devices/register", { capabilities: negotiated, workflowProtocol: 1 })
     const { conversation } = (await client.host("POST", "/api/conversations", {})).json as { conversation: { id: string } }
-    cloud.script(text("Okay."))
+    cloud.script(answer("Okay."))
     await client.call("POST", `/api/conversations/${conversation.id}/messages`, { text: "Take a picture", metadata: direct })
     const seen = offered(cloud, 1)
     const proposals = ((await client.call("GET", "/api/client-devices/proposals")).json as { proposals: readonly Proposal[] }).proposals
@@ -293,23 +315,23 @@ module node {
       }
     }
     const onMaps = { observation: { view: "maps", revision: 4, sensitive: false, selectedObject: place } }
-    const notes = await send("What does this note say?", onNotes, text("It is empty."))
-    const maps = await send("How far is this place?", onMaps, text("About a mile."))
-    const sensitive = await send("What's on my screen?", { observation: { view: "maps", revision: 5, sensitive: true } }, text("I can't see it."))
+    const notes = await send("What does this note say?", onNotes, answer("It is empty."))
+    const maps = await send("How far is this place?", onMaps, answer("About a mile."))
+    const sensitive = await send("What's on my screen?", { observation: { view: "maps", revision: 5, sensitive: true } }, answer("I can't see it."))
     const photo = await send("Take a photo of me", direct,
-      toolCalls("", capture), text("Okay."))
-    const selfie = await send("Take a selfie", direct, toolCalls("", captureFront), text("Okay."))
-    const wrongLens = await send("Take a selfie", direct, toolCalls("", captureBack), text("Okay."))
-    const rear = await send("Take a photo with the rear camera", direct, toolCalls("", captureBack), text("Okay."))
-    const reviewed = await send("Take a photo with the front camera", undefined, toolCalls("", captureFront), text("Okay."))
-    const conflicting = await send("Take a photo with the front and back cameras", direct, toolCalls("", capture), text("Okay."))
-    const selfieAndSend = await send("Take a selfie and text it to Mom", direct, toolCalls("", captureFront), text("Okay."))
-    const plain = await send("What's the capital of France?", undefined, text("Paris."))
+      toolCalls("", capture), answer("Okay."))
+    const selfie = await send("Take a selfie", direct, toolCalls("", captureFront), answer("Okay."))
+    const wrongLens = await send("Take a selfie", direct, toolCalls("", captureBack), answer("Okay."))
+    const rear = await send("Take a photo with the rear camera", direct, toolCalls("", captureBack), answer("Okay."))
+    const reviewed = await send("Take a photo with the front camera", undefined, toolCalls("", captureFront), answer("Okay."))
+    const conflicting = await send("Take a photo with the front and back cameras", direct, toolCalls("", capture), answer("Okay."))
+    const selfieAndSend = await send("Take a selfie and text it to Mom", direct, toolCalls("", captureFront), answer("Okay."))
+    const plain = await send("What's the capital of France?", undefined, answer("Paris."))
     const noteElsewhere = await send("Make a note to buy milk", { observation: { view: "home", revision: 6, sensitive: false } },
-      toolCalls("", propose({ type: "create_note", title: "Milk", body: "Buy milk" })), text("Okay."))
+      toolCalls("", propose({ type: "create_note", title: "Milk", body: "Buy milk" })), answer("Okay."))
     const noSelection = await send("How far is this place?", { observation: { view: "maps", revision: 7, sensitive: false } },
-      toolCalls("", propose({ type: "maps_read_selected", target: place })), text("Okay."))
-    const guessedId = await send("Open my latest photo", undefined, toolCalls("", propose({ type: "photos_open", id: "lib:i:99:1" })), text("Okay."), text(retold))
+      toolCalls("", propose({ type: "maps_read_selected", target: place })), answer("Okay."))
+    const guessedId = await send("Open my latest photo", undefined, toolCalls("", propose({ type: "photos_open", id: "lib:i:99:1" })), answer("Okay."), answer(retold))
     const taken = await settle(client, selfie.fresh[0], { outcome: "applied", operationId: savedPhoto.operationId, result: savedPhoto })
     const cards = (seen: { readonly fresh: readonly Proposal[] }) => seen.fresh.map(({ payload, state }) => ({ operation: payload.operation, bound: payload.requestMessageId !== undefined, state }))
     const turns = [notes, maps, sensitive, photo, selfie, selfieAndSend, wrongLens, rear, reviewed, conflicting, plain, noteElsewhere, noSelection, guessedId]
@@ -358,12 +380,12 @@ module node {
   }
 }
 
-import { navigationHomes, oneConversation, proposeSurfaces, proposeTool, reviewText, unofferedDeviceTool } from node
+import { navigationHomes, navigationWithoutViews, oneConversation, proposeSurfaces, proposeTool, reviewText, unofferedDeviceTool } from node
 
 it.live(`Take a photo, open a view, read a Maps place, find and share photos and write a phone note only as the owner's words and screen name them (spec/agent/conversation/planning.md, "A recognized card is delivered unfenced, other multi-line tool output is fenced, and grounded prose follows unless one already holds the other"; spec/agent/conversation/planning.md, "A reply that leaves a failure unreported is written again once, and the delivered reply still reports open failures and attachment omissions"; spec/agent/deviceActions/surfaces.md, "Story: Propose a photo, a view, a Maps read or a Photos change only as my words and my screen name them"; spec/agent/deviceActions/surfaces.md, "A surface operation is bound to the owner's message only on a direct-request turn and as the owner asked"; spec/agent/deviceActions/surfaces.md, "A photo runs without its card only when the owner's own message asks for one now"; spec/agent/deviceActions/surfaces.md, "An app view opens with VIEWS where views arrive as completed actions, else with open_view as the installation's profile enables it"; spec/agent/conversation/planning.md, "Every call of a turn is one the model chose, and a call this message serves in another place is refused before it runs and is no step of the turn"; spec/agent/deviceActions/surfaces.md, "A new note is proposed only while the owner's Notes screen selects the phone's own Notes"; spec/agent/deviceActions/surfaces.md, "A new note runs without its card only when its title and body are the owner's own words"; spec/agent/deviceActions/surfaces.md, "A Maps read names exactly the place or route selected on the owner's Maps screen"; spec/agent/deviceActions/surfaces.md, "A Photos proposal names only the item open in the viewer or library IDs the phone returned"; spec/agent/deviceActions/operations.md, "A turn targets the photo open on the owner's screen only from the Photos view, never on a sensitive screen, and names its library ID only under the library capability"; spec/agent/deviceActions/index.md, "A proposal's identity is its request message and its operation, so a repeat returns the same request"; spec/agent/deviceActions/index.md, "A proposal carries the owner's message only for a live turn that asked for it directly, so otherwise the phone shows its card"; spec/agent/deviceActions/index.md, "A later turn of the same conversation learns at most six outcomes of its own requests: what changed, and what ended without running"; spec/agent/deviceActions/operations.md, "A captured photo's library ID reaches the agent only when the request negotiated it")`, effect () => {
   const observed = try deviceJourney({ load: [deviceActionsModuleName, viewsModuleName], allowed: ["REPLY", "IGNORE", "NONE", proposeTool, "VIEWS"] }, "propose device surfaces", proposeSurfaces)
   try Effect.try(() => assert.deepStrictEqual(observed, {
-    unasked: true, photo: ["Okay.", true], selfie: { reviewed: true, refused: false }, whiteboard: true, captures: 2, taken: "done", justTaken: true,
+    unasked: true, photo: ["Okay.", true], selfie: { reviewed: true, refused: false }, whiteboard: true, captures: 2, filesOnlyNote: { reviewed: true, bound: false }, taken: "done", justTaken: true,
     retaken: { state: "done", told: true },
     photoTurn: { sameTools: true, lead: false, inTool: false, views: true, ranFirst: false },
     whiteboardTurn: { allForms: true, views: true },
@@ -387,6 +409,7 @@ it.live(`Take a photo, open a view, read a Maps place, find and share photos and
       { operation: { type: "camera_capture_photo" }, bound: false, state: "pending" },
       { operation: { type: "camera_capture_photo" }, bound: true, state: "done" },
       { operation: { type: "camera_capture_photo" }, bound: true, state: "done" },
+      { operation: { type: "create_note", title: "Bread", body: "Buy bread" }, bound: false, state: "pending" },
       { operation: { type: "create_note", title: "Summary", body: "The page lists three deadlines in March." }, bound: false, state: "pending" },
       { operation: { type: "create_note", title: "Milk", body: "Buy milk" }, bound: true, state: "done" },
       { operation: { type: "maps_read_selected", target: { kind: "map-place", id: "maps_0f8fad5b-d9cb-469f-a165-70867728950e", revision: "7" } }, bound: false, state: "pending" },
@@ -406,9 +429,12 @@ it.live(`A device message opens a view in one place under the same tools: VIEWS 
     sameTools: true,
     typed: { viewsHere: false, viewsNotHere: true, proposed: 0, refused: ["VIEWS"], reply: "Which view?" },
     delivered: { viewsHere: true, viewsNotHere: false, proposed: 0, refused: ["open_view"], reply: "Which view?" },
+    rendererOnly: { viewsHere: true, viewsNotHere: false, proposed: 0, refused: [], reply: "ok" },
     typedAgain: { viewsHere: false, viewsNotHere: true, proposed: 1, refused: [], reply: reviewText },
     wrongHomeFirst: { viewsHere: false, viewsNotHere: true, proposed: 1, refused: ["VIEWS"], reply: reviewText },
   }))
+  const withoutViews = try deviceJourney({ allowed: ["REPLY", "IGNORE", "NONE", proposeTool] }, "offer device navigation without VIEWS", navigationWithoutViews)
+  try Effect.try(() => assert.deepStrictEqual(withoutViews, { viewsHere: false, viewsNotHere: true, proposed: 1, refused: [], reply: reviewText }))
 }, 120_000)
 
 it.live(`One device conversation sends the same tools on every message, whatever its screen or words, names what applies to each message after it, and refuses before dispatch what a message does not allow (spec/agent/conversation/planning.md, "A recognized card is delivered unfenced, other multi-line tool output is fenced, and grounded prose follows unless one already holds the other"; spec/agent/conversation/planning.md, "A reply that leaves a failure unreported is written again once, and the delivered reply still reports open failures and attachment omissions"; spec/agent/conversation/planning.md, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history"; spec/agent/deviceActions/index.md, "A proposal is offered only on an owner turn of the enrolled device, as its family grounded it, and re-admitted under the turn's negotiation"; spec/agent/deviceActions/index.md, "A grounding refusal offers nothing and is a refusal before dispatch"; spec/agent/conversation/planning.md, "Every call of a turn is one the model chose, and a call this message serves in another place is refused before it runs and is no step of the turn"; spec/agent/deviceActions/surfaces.md, "A new note is proposed only while the owner's Notes screen selects the phone's own Notes"; spec/agent/deviceActions/surfaces.md, "A Maps read names exactly the place or route selected on the owner's Maps screen"; spec/agent/deviceActions/surfaces.md, "A Photos proposal names only the item open in the viewer or library IDs the phone returned")`, effect () => {

@@ -94,6 +94,6 @@ effect function namingFaults(reply: HttpServerResponse.HttpServerResponse!{ read
 }
 
 export const chatRoute: Route = {
-  method: "POST", path: "/api/v1/chat/completions", auth: "ServiceAccess", capability: "inference",
+  method: "POST", path: "/api/v1/chat/completions", auth: "ServiceAccess", area: "ChatCompletionRoutes",
   rateClass: "CompletionsRequests", ingressPerMinute: chatIngressPerMinute, maxBodyBytes: 256 * 1024, handler: (context) => namingFaults(chat(context)),
 }

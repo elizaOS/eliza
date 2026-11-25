@@ -19,11 +19,10 @@ module node {
   import { filesProposalFamily } from "../src/device-proposals.vibe"
 
   const asked = "Trash the first two files"
-  const directRequest = { voiceUi: { viewDelivery: "completed-action", uiClientId: "renderer-1", agentActionMode: "direct-request-v1" } }
 
   export interface Screen {
     readonly observation?: DeviceTurn["observation"]
-    readonly direct?: boolean
+    readonly direct?: "direct-request-v1" | "direct-files-v1" | "direct-files-only-v1"
   }
 
   export const onFiles: Screen = { observation: { view: "files", revision: 1, sensitive: false } }
@@ -33,8 +32,8 @@ module node {
     const id = stringToUuid(`files-chat:${capabilities.join(",")}`)
     return negotiatedOwnerTurn(capabilities, {
       runtime, by: { agentId: runtime.agentId, actorId: "owner", connector: runtime.agentId },
-      message: { id, entityId: id, roomId: id, content: { text: asked, ...(screen.direct === true ? { metadata: directRequest } : {}) } }, ownerText: asked,
-      observation: screen.observation, completedActionNavigation: screen.direct === true, completesReads: false,
+      message: { id, entityId: id, roomId: id, content: { text: asked, ...(screen.direct === undefined ? {} : { metadata: { voiceUi: { viewDelivery: "completed-action", uiClientId: "renderer-1", agentActionMode: screen.direct } } }) } }, ownerText: asked,
+      observation: screen.observation, completedActionNavigation: screen.direct !== undefined, completesReads: false,
       conversationId: "files-chat", requestId: "files-chat-1", startedAt: 0, timeZone: undefined,
     })
   }
@@ -59,7 +58,7 @@ module node {
   }
 }
 
-import { chatRuntime, guidanceFor, offeredForms, onHome, proposeFiles, type Screen } from node
+import { chatRuntime, guidanceFor, offeredForms, onFiles, onHome, proposeFiles, type Screen } from node
 
 const check = (assertion: () => void) => Effect.try(assertion)
 const both = [FILES_CAPABILITY, FILES_SHOWN_TARGET_CAPABILITY]
@@ -273,7 +272,7 @@ it.effect('Open the file I asked for, and only from what I was shown (spec/files
   })
 })
 
-it.effect('Name what Files shows without leaking or guessing a file (spec/files/shownTargets.md, "Story: Name what Files shows without leaking or guessing a file"; spec/files/shownTargets.md, "A Files operation the owner asks for in chat is proposed within the Files bounds as the peer negotiated it, wherever the owner is"; spec/files/shownTargets.md, "A Files card is reviewed, and a direct filter or open runs, only on the unlocked phone, and a change only with Files on screen"; spec/files/shownTargets.md, "A card for shown positions exists only when every position resolved to one path, and it executes those paths"; spec/files/shownTargets.md, "A move or trash binds the identity of each reviewed file, and a share binds none")', effect () => {
+it.effect('Name what Files shows without leaking or guessing a file (spec/files/shownTargets.md, "Story: Name what Files shows without leaking or guessing a file"; spec/files/shownTargets.md, "A Files operation the owner asks for in chat is proposed within the Files bounds as the peer negotiated it, wherever the owner is"; spec/files/shownTargets.md, "A Files card is reviewed, and a direct filter or open runs, only on the unlocked phone, and a change only with Files on screen"; spec/files/shownTargets.md, "A card for shown positions exists only when every position resolved to one path, and it executes those paths"; spec/files/shownTargets.md, "A move or trash binds the identity of each reviewed file, and a share binds none"); spec/files/shownTargets.md, "A client that shows no review card is proposed only a filter or an open, which it runs directly"', effect () => {
   provide NodeServices.layer {
     try scoped(effect {
       const { root } = try storage({ "Download/lease.pdf": "lease", "Download/lease notes.txt": "notes" })
@@ -300,7 +299,13 @@ it.effect('Name what Files shows without leaking or guessing a file (spec/files/
         const filterFromHome = try chat(both, { type: "files_filter", text: "lease" }, onHome)
         const lockedScreen = try chat(both, { type: "files_filter", text: "lease" }, { observation: { view: "files", revision: 2, sensitive: true } })
         const unseenScreen = try chat(both, { type: "files_open", path: "Download/lease.pdf" }, {})
-        const directOpen = try chat(both, { type: "files_open", path: "Download/lease.pdf" }, { ...onHome, direct: true })
+        const directOpen = try chat(both, { type: "files_open", path: "Download/lease.pdf" }, { ...onHome, direct: "direct-request-v1" })
+        const filesOnlyOpen = try chat(both, { type: "files_open", path: "Download/lease.pdf" }, { ...onHome, direct: "direct-files-v1" })
+        const cardlessFilter = try chat(both, { type: "files_filter", text: "lease" }, { ...onHome, direct: "direct-files-only-v1" })
+        const cardlessChanges = try Effect.forEach([
+          { type: "files_trash", paths: ["Download/lease.pdf"] }, { type: "files_move", paths: ["Download/lease.pdf"], dest: "Documents" },
+          { type: "files_share", paths: ["Download/lease.pdf"] }, { type: "files_folder_create", parent: "Download", name: "Taxes" },
+        ], (operation) => chat(both, operation, { ...onFiles, direct: "direct-files-only-v1" }))
         const refusal = (grounding: typeof asked) => grounding?.kind === "Refused" ? { code: grounding.code, forOwner: grounding.forOwner } : grounding
         const reviews = try filesReviews(runner, both)
         const trash = try reviews.review("p1", "d1", asked?.kind === "Grounded" ? asked.operation : undefined)
@@ -332,7 +337,8 @@ it.effect('Name what Files shows without leaking or guessing a file (spec/files/
             rival: rival._tag, asked, unnegotiated: refusal(unnegotiatedAsk), chosenIdentity,
             hiddenFolder: hiddenFolder?.kind === "Refused" && hiddenFolder.code === "FILES_OPERATION_INVALID" &&
               hiddenFolder.forModel.startsWith("Invalid Files operation: ") && hiddenFolder.forModel.endsWith('Use paths on Internal storage such as "Download/lease.pdf".'),
-            trashFromHome, filterFromHome, lockedScreen, unseenScreen, directOpen,
+            trashFromHome, filterFromHome, lockedScreen, unseenScreen, directOpen, filesOnlyOpen, cardlessFilter,
+            cardlessChanges: cardlessChanges.map(refusal),
             cards: [
               filesContextNotice({ type: "files_trash", paths: ["Download/lease.pdf"] }, { view: "home", sensitive: false }),
               filesContextNotice({ type: "files_filter", text: "lease" }, { view: "files", sensitive: true }),
@@ -351,6 +357,9 @@ it.effect('Name what Files shows without leaking or guessing a file (spec/files/
             lockedScreen: { kind: "Grounded", operation: { type: "files_filter", text: "lease" }, grounding: "GroundedForReview" },
             unseenScreen: { kind: "Grounded", operation: { type: "files_open", path: "Download/lease.pdf" }, grounding: "GroundedForReview" },
             directOpen: { kind: "Grounded", operation: { type: "files_open", path: "Download/lease.pdf" }, grounding: "GroundedAsAsked" },
+            filesOnlyOpen: { kind: "Grounded", operation: { type: "files_open", path: "Download/lease.pdf" }, grounding: "GroundedAsAsked" },
+            cardlessFilter: { kind: "Grounded", operation: { type: "files_filter", text: "lease" }, grounding: "GroundedAsAsked" },
+            cardlessChanges: Array.from({ length: 4 }, () => ({ code: "FILES_REVIEW_UNAVAILABLE", forOwner: "Ask me in the chat, so you can review that on your phone." })),
             cards: ["Open Files to review this action.", "Unlock the phone to review this action.", undefined, undefined],
             allowed: [false, true],
             forms: [0, 6, 9], guided: true,

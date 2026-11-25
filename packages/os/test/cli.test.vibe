@@ -25,6 +25,7 @@ module node {
   export interface CompiledCli {
     readonly cwd: string
     readonly executable: string
+    readonly leases: string
     readonly children: Set<Promise<Run>>
     remove(): Promise<void>
   }
@@ -40,7 +41,7 @@ module node {
       if (!(await stat(executable)).isFile()) throw new Error("OS CLI build did not emit a regular executable")
       const children = new Set<Promise<Run>>()
       return {
-        cwd, executable, children,
+        cwd, executable, children, leases: path.join(output, "device-leases"),
         async remove() {
           await Promise.allSettled(children)
           await removeOutput()
@@ -55,7 +56,7 @@ module node {
   /** @throws {never} */
   export function eliza(cli: CompiledCli, args: readonly string[]): Promise<Run> {
     const child = new Promise<Run>((resolve) => {
-      execFile(process.execPath, ["--no-warnings", cli.executable, ...args], { cwd: cli.cwd, encoding: "utf8", timeout: 120_000, maxBuffer: 16 * 1024 * 1024 }, (failure, stdout, stderr) => {
+      execFile(process.execPath, ["--no-warnings", cli.executable, ...args], { cwd: cli.cwd, env: { ...process.env, ELIZA_DEVICE_LEASE_DIR: cli.leases }, encoding: "utf8", timeout: 120_000, maxBuffer: 16 * 1024 * 1024 }, (failure, stdout, stderr) => {
         resolve({ status: failure === null ? 0 : typeof failure.code === "number" ? failure.code : null, stdout, stderr })
       })
     })
@@ -410,6 +411,52 @@ it.live("Read an update's status from the device by cable (spec/os/update/operat
   const refusedFallback = try run("ota", "fallback", ...earlierArgs)
   assert.strictEqual(refusedFallback.status, 1, refusedFallback.stdout)
   assert.include(refusedFallback.stderr, "Fallback is not done")
+}), 120_000)
+
+it.live("Fall back to the original slot from an unconfirmed update by cable (spec/os/update/operator.md, \"Story: Get back if the update fails\")", () => journey(effect {
+  const root = try scratch("cli-ota-fallback")
+  const files = try FileSystem.FileSystem
+  const serial = "FAKE0002"
+  const installed = "example/example_device:16/BP2A.251201.001/1:user/release-keys"
+  const start = { device: "example_device", installedBuild: installed, candidateBuild: "example/example_device:16/BP2A.260101.001/2:user/release-keys",
+    candidatePatch: 20260105, originalSlot: "SlotA", originalBoot: "Green", wasLocked: true, virtualAb: true }
+  const binding = { serial, channel: "a".repeat(64), installedRecord: "b".repeat(64), candidateRecord: "c".repeat(64), ota: "d".repeat(64) }
+  try files.writeFileString(`${root}/journal.json`, JSON.stringify({ schema: 1, kind: "aosp-ota-update-journal", binding, events: [],
+    state: { phase: "Transferred", lock: { tag: "Unlocked" }, start } }), { mode: 0o600 })
+  const original = { selinux: "Enforcing" as const, props: { "sys.boot_completed": "1", "ro.product.device": start.device, "ro.build.fingerprint": installed,
+    "ro.boot.slot_suffix": "_a", "ro.boot.verifiedbootstate": "green", "ro.boot.flash.locked": "1", "ro.build.version.security_patch": "2025-12-05" } }
+  const phone = try Effect.try({ try: () => fakeAdb(root, device(serial, { mode: "bootloader", boots: [original], variables: { product: start.device,
+    "current-slot": "b", "slot-successful:b": "no", "slot-unbootable:a": "no", "snapshot-update-status": "snapshotted" } })), catch: failed("start the fake adb") })
+  const args = ["ota", "fallback", "--serial", serial, "--journal", `${root}/journal.json`, "--adb", phone.adb, "--fastboot", phone.fastboot]
+
+  const plan = try run(...args)
+  assert.strictEqual(plan.status, 0, plan.stderr)
+  assert.deepNestedInclude(try parsed("ota fallback plan", plan), { executed: false, admitted: true, "state.phase": "Transferred", "slots.currentSlot": "SlotB" })
+
+  const fell = try run(...args, "--execute", "--confirm-fallback")
+  assert.strictEqual(fell.status, 0, fell.stderr)
+  const result = try parsed("ota fallback", fell)
+  const rolledBack = { phase: "RolledBack", lock: { tag: "Unlocked" }, start }
+  const stored = try Schema.decodeUnknownEffect(Schema.Struct({ state: Schema.Unknown,
+    events: Schema.Array(Schema.Struct({ phase: Schema.String, lock: Schema.String })) }))(try readJson(`${root}/journal.json`))
+  const [calls, now] = try Effect.try({ try: () => [phone.calls(), phone.device()] as const, catch: failed("read the cable") })
+  assert.deepStrictEqual({
+    state: result.state,
+    stored: stored.state,
+    phases: stored.events.map(({ phase, lock }) => `${phase}/${lock}`),
+    writes: calls.filter(({ tool, args }) => tool === "fastboot" && (args[2] === "set_active" || args[2] === "reboot")).map(({ args }) => args.slice(2)),
+    mode: now.mode,
+  }, {
+    state: rolledBack, stored: rolledBack,
+    phases: ["Transferred/Locked", "FallingBack/Locked", "RolledBack/Locked", "RolledBack/Unlocked"],
+    writes: [["set_active", "a"], ["reboot"]],
+    mode: "device",
+  })
+
+  const settled = try files.readFileString(`${root}/journal.json`)
+  const repeated = try run(...args, "--execute", "--confirm-fallback")
+  assert.strictEqual(repeated.status, 1, repeated.stdout)
+  assert.strictEqual(try files.readFileString(`${root}/journal.json`), settled)
 }), 120_000)
 
 it.live("Refuse a malformed signing request and judge the release gates by their evidence (spec/os/image/signing.md, \"Story: Sign a release only with keys I enrolled\"; spec/os/image/signing.md, \"Story: Record my release's qualification gates honestly\"; spec/os/image/signing.md, \"A gate passes only on release evidence, source admission only for the pinned production lock, signed-update recovery only for a distributable channel, and user acceptance last\")", () => journey(effect {

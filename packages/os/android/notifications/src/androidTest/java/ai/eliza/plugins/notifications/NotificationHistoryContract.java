@@ -35,14 +35,23 @@ public final class NotificationHistoryContract {
     check(mirror.prefs(host).edit().putString(OLD_RECORD, old.getJSONObject(0).getString("id")).commit(),
         "Fixture record was not durable");
 
+    String revision = mirror.status(host).getString("revision");
     File base = base(host, mirror);
     File retained = retained(host, mirror);
     byte[] ciphertext = Files.readAllBytes(base.toPath());
+    long admitted = mirror.eventGeneration();
+    try {
+      mirror.clearHistoryBoundary(host, revision + "-stale");
+      throw new AssertionError("Clear accepted a stale policy revision");
+    } catch (IllegalStateException stale) {
+      check(mirror.eventGeneration() == admitted && Arrays.equals(ciphertext, Files.readAllBytes(base.toPath())),
+          "A stale clear changed the current encrypted history");
+    }
     Files.createDirectory(retained.getParentFile().toPath());
     Files.write(retained.toPath(), ciphertext);
     long before = mirror.eventGeneration();
     try {
-      mirror.clearHistoryBoundary(host);
+      mirror.clearHistoryBoundary(host, revision);
       throw new AssertionError("Clear acknowledged an undeleted AtomicFile sidecar");
     } catch (IllegalStateException pending) {
       check(mirror.eventGeneration() != before, "Clear did not invalidate queued callbacks");

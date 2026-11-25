@@ -183,7 +183,7 @@ const selectionUnseen: Refusal = {
 }
 
 function grounded(turn: DeviceTurn, verdict: SurfaceVerdict, operation: DeviceOperation): Grounding {
-  return { kind: "Grounded", operation, grounding: surfaceBound(directRequests(turn), verdict) ? "GroundedAsAsked" : "GroundedForReview" }
+  return { kind: "Grounded", operation, grounding: surfaceBound(directRequests(turn, "surfaces"), verdict) ? "GroundedAsAsked" : "GroundedForReview" }
 }
 
 function decided(turn: DeviceTurn, verdict: SurfaceVerdict, operation: DeviceOperation, refusal: Refusal): Grounding {

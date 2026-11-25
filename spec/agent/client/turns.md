@@ -186,8 +186,10 @@ pure def sometimesStoppedTurnKeptBesideTheNextTurn(c: TurnClient): bool =
 ### A stream that drops before its terminal frame is resent once without streaming under the same clientMessageId
 
 `Dropped` is a stream that ends with no terminal frame and no HTTP refusal
-after the message was posted. Its resend is `POST …/messages` with the same
-body and key, so the agent joins the running turn or replays its reply.
+after the message was posted; a refusal is one whether the stream opens
+with its status or its body raises it. Its resend is `POST …/messages` with
+the same body and key, so the agent joins the running turn or replays its
+reply.
 A refusal (status below 500, a 429 on the resend included), a stream never
 posted and a terminal `done` with `failureKind` or `error` frame are
 outcomes and are never resent. A resend that drops again, or a dropped

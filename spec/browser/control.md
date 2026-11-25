@@ -127,7 +127,12 @@ forward, reload and stop are offered only as the Browser history control,
 and the BROWSER command is not offered on that turn. The BROWSER command,
 bound to the tab the turn observed, answers a history move only on a turn
 whose device negotiated no history control and whose mounted browser takes
-agent commands. Otherwise no history move is offered.
+agent commands. Otherwise no history move is offered. Core's catalog gives the BROWSER
+command the general context every owner turn is planned in, beside its
+browser context, so it runs from any owner chat, as on the phone before
+VibeStack; its owner role gate and these offer rules are unchanged. The
+Browser declares its graphical view, `browser` at `/browser`, and lists the
+`browser-command` capability required by the agent's [views](../agent/views.md).
 
 ```quint
 type HistoryHome = HistoryAsControl | HistoryAsCommand | NoHistoryMove
@@ -146,8 +151,9 @@ pure def lawACommandAnswersOnlyWithoutTheControl(negotiated: Negotiated, command
 > whether it did.
 
 A Browser request my phone opens without review is told as sent, in the
-model's words, from the Browser's own sentence ("Opening wikipedia.org."
-for an open) given to the model as what the phone shows. One proposed
+model's words, from the Browser's own sentence ("wikipedia.org is ready to
+open." for an open, which never says it opened) given to the model as what
+the phone shows. One proposed
 again after it applied is reported from its stored receipt with no sentence of the Browser's own, so
 the model words the reply from that historical result and never says how
 the page looks.
@@ -156,9 +162,10 @@ the page looks.
 
 The mounted browser answers a history command it took with a receipt. Only
 an explicit receipt that says dispatched, not completed, and asks for a
-readback counts, and it is reported as dispatched: the action's own sentence
-says the browser was asked and that the page may still be loading, it ends
-the turn, and it marks the execution dispatched, never completed. Where the
+readback counts, and it is reported as dispatched: the action tells the
+model that the browser was asked and that the page may still be loading,
+the model words the reply from that, it ends the turn, and it marks the
+execution dispatched, never completed. Where the
 device has no read command the report asks for no readback. A refusal the
 browser gave with a typed code before it acted is reported with that code,
 nothing done. A command never handed to the browser is reported not sent.
@@ -292,6 +299,45 @@ pure def lawARefusedOpenAsksOnlyWithoutAnAddress(addressInWords: bool): bool =
 pure def lawOnlyARefusedOpenSpeaksOfAnAddress(refusal: BrowserRefusal, addressInWords: bool): bool =
   (refusalReply(refusal, addressInWords) == AskForAddress or refusalReply(refusal, addressInWords) == SayAddressNotOpened) implies refusal == DestinationNotRequested
 ```
+
+## Story: Open an address on the screen I asked from
+
+> As the owner, I want to ask for a web address from a screen that has no
+> enrolled phone behind it, such as Alpha in a web browser, and see it open
+> in that screen's Browser, under the same rules as on my phone.
+
+### An open has one home: the Browser proposal where my enrolled phone takes it, else the screen I asked from
+
+Where the owner's enrolled phone admits a Browser open, an address is
+opened only as the `browser_navigate` proposal. On a turn with no such phone,
+whose screen takes the agent's views as completed actions, the BROWSER_OPEN
+action is offered instead, for that screen alone. Otherwise no open is
+offered, and the BROWSER command's history moves are unchanged.
+
+```quint
+type OpenHome = OpenAsProposal | OpenOnScreen | NoOpen
+pure def openHome(phoneAdmitsOpen: bool, screenTakesViews: bool): OpenHome =
+  if (phoneAdmitsOpen) OpenAsProposal else if (screenTakesViews) OpenOnScreen else NoOpen
+pure def lawAnOpenMyPhoneTakesIsAProposal(phoneAdmitsOpen: bool, screenTakesViews: bool): bool =
+  phoneAdmitsOpen implies openHome(phoneAdmitsOpen, screenTakesViews) == OpenAsProposal
+pure def lawAScreenOpenNeedsTheScreenAndNoPhone(phoneAdmitsOpen: bool, screenTakesViews: bool): bool =
+  openHome(phoneAdmitsOpen, screenTakesViews) == OpenOnScreen implies (screenTakesViews and not(phoneAdmitsOpen))
+```
+
+### The screen shows the address for me to open, and nothing opens until I choose Open there
+
+BROWSER_OPEN grounds the address exactly as the `browser_navigate` proposal
+does ([request grounding](./requestGrounding.md)): the same https address,
+the same page links, the same refusals, answered as a refused proposal is,
+with nothing handed back. A grounded open is handed back in the action's
+completed result as the typed `browser_navigate` operation, bound to the
+screen that asked, which shows the address for the owner to open; even an
+address the owner's whole message asked for waits for their Open there. The
+model learns that the screen shows the address for the owner to open, and
+never that it opened, that the page loaded or what it shows. Which screen
+shows on a later message is that message's screen context, not this result,
+and a later request to show Browser itself is VIEWS's, as the action's
+description says.
 
 ## Story: Tell me you cannot read my page, and never reload it unasked
 

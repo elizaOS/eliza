@@ -1,17 +1,17 @@
-// spec/agent/schedule/triggers.md, "A new trigger is saved disabled, for a conversation that can take it, with a future first instant or an event name"; spec/agent/schedule/triggers.md, "An edit, enable or removal is refused only when it names a revision that has moved on"; spec/agent/schedule/triggers.md, "Enabling is refused past 100 active triggers, and for a one-time trigger whose time has passed"; spec/agent/schedule/triggers.md, "Run now starts one run of the saved trigger, even a disabled one, after any run in progress"; spec/agent/schedule/triggers.md, "An occurrence fires once, and one missed while the agent was not running is recorded and never run"; spec/agent/schedule/triggers.md, "The run history keeps the last 100 records"; spec/agent/schedule/triggers.md, "A run delivers only to the room it started with and succeeds only when its turn completed"; spec/core/scheduling.md, "Pausing affects later selections while admitted work retains its outcome"; spec/core/taskServiceOwners.md, "Exclusive tasks observe every active invocation of the same task"
+// spec/agent/schedule/triggers.md, "A new trigger is saved disabled, for a conversation that can take it, with a future first instant or an event name"; spec/agent/schedule/triggers.md, "An edit, enable or removal is refused only when it names a revision that has moved on"; spec/agent/schedule/triggers.md, "Enabling is refused past 100 active triggers, for a passed one-time trigger, and for an unsupported event"; spec/agent/schedule/triggers.md, "Run now starts one run of the saved trigger, even a disabled one, after any run in progress"; spec/agent/schedule/triggers.md, "An occurrence fires once, and one missed while the agent was not running is recorded and never run"; spec/agent/schedule/triggers.md, "The run history keeps the last 100 records"; spec/agent/schedule/triggers.md, "A run delivers only to the room it started with and succeeds only when its turn completed"; spec/core/scheduling.md, "Pausing affects later selections while admitted work retains its outcome"; spec/core/taskServiceOwners.md, "Exclusive tasks observe every active invocation of the same task"
 import { agentProcessStartedAtMs, computeNextCronRunAtMs, type AgentRuntime, type IDatabaseAdapter, type Task, type TaskWorker, type UUID } from "@elizaos/core"
 import {
-  enabled, finishRun as finished, machineOver, maxActiveTriggers, revisionMatches, runningScheduledOnce, runStatus, step,
+  enabled, eventSupported, finishRun as finished, machineOver, maxActiveTriggers, revisionMatches, runningScheduledOnce, runStatus, step,
   type Event, type RevisionCheck, type RunRecord, type Trigger, type TriggerType,
 } from "../../gen/agent__schedule__triggers.effect.vibe"
-import type { ConversationOwner } from "../conversation/turns.vibe"
+import type { ConversationOwner } from "../conversation/conversations.vibe"
 import type { ConversationNews } from "../host/module.vibe"
 import {
   countEnabledTriggers, getTrigger, listTriggerRuns, listTriggers, triggerKeeping,
   type StoredTrigger, type TriggerDetails, type TriggerRun as StoredRun,
 } from "./store.vibe"
 import { finishFacts, runError, triggerDelivery, type Delivery, type FiredPrompt, type ResolvedRoom, type TriggerDelivery } from "./trigger-delivery.vibe"
-import { startTriggerEvents, type TriggerEventName, type TriggerEventTarget, type TriggerEvents } from "./trigger-events.vibe"
+import { startTriggerEvents, type TriggerEventTarget, type TriggerEvents } from "./trigger-events.vibe"
 import type {
   SavedTrigger, TriggerDraft, TriggerPort, TriggerRefusal, TriggerRemoval, TriggerRun, TriggerRunNow, TriggerService, TriggerTiming, TriggerWrite,
 } from "./trigger-routes.vibe"
@@ -277,13 +277,14 @@ export function promptTriggers(deps: TriggerDeps): PromptTriggers {
     return try serial(effect {
       const row = try orDie(getTrigger(host.adapter, id))
       if (row === undefined) return { kind: "notFound" } satisfies TriggerWrite
-      const resolved = try promise(() => delivery.resolveRoom(draft.deliveryConversationId ?? row.state.room))
+      const requested = draft.deliveryConversationId
+      const resolved = requested === undefined ? undefined : try promise(() => delivery.resolveRoom(requested))
       const now = try Clock.currentTimeMillis
       const details = detailsOf(draft)
       const moved = try transition(id, {
-        type: "edit", schedule: scheduleOf[draft.timing.kind], requested: draft.deliveryConversationId ?? "",
+        type: "edit", schedule: scheduleOf[draft.timing.kind], requested: requested ?? "",
         eventKind: draft.timing.kind === "event" ? draft.timing.eventKind : "", at: atOf(draft.timing, draft.timezone, now),
-        roomExists: resolved.kind === "Resolved", expected,
+        roomExists: resolved?.kind === "Resolved", expected,
       }, details)
       const after = moved.after
       if (after !== undefined) {
@@ -292,7 +293,7 @@ export function promptTriggers(deps: TriggerDeps): PromptTriggers {
       }
       if (moved.before.life !== "Saved") return { kind: "notFound" } satisfies TriggerWrite
       if (!revisionMatches(expected, moved.before.revision)) return refusal("StaleRevision")
-      return roomRefusal(resolved)
+      return resolved === undefined ? refusal("Invalid") : roomRefusal(resolved)
     })
   }
 
@@ -311,6 +312,7 @@ export function promptTriggers(deps: TriggerDeps): PromptTriggers {
       }
       if (moved.before.life !== "Saved") return { kind: "notFound" } satisfies TriggerWrite
       if (!revisionMatches(expected, moved.before.revision)) return refusal("StaleRevision")
+      if (on && !eventSupported(moved.before)) return refusal("UnsupportedEvent")
       return refusal(on && !moved.before.enabled && activeOthers >= maxActiveTriggers ? "ActiveLimit" : "Invalid")
     })
   }
@@ -353,12 +355,12 @@ export function promptTriggers(deps: TriggerDeps): PromptTriggers {
   }
 
   const target: TriggerEventTarget = {
-    eventTriggers: (name: TriggerEventName) => runPromise(effect {
+    eventTriggers: (name) => runPromise(effect {
       return (try saved()).flatMap((row) =>
         row.state.enabled && row.state.schedule === "OnRuntimeEvent" && row.state.eventKind === name ? [row.id] : [])
     }),
-    receiveEvent: (triggerId, eventId, name, ownRun) => runPromise(effect {
-      try whenIdle(triggerId, { type: "receiveEvent", eventId, name, ownRun })
+    receiveEvent: (triggerId, eventId, name, byTrigger) => runPromise(effect {
+      try whenIdle(triggerId, { type: "receiveEvent", eventId, name, byTrigger })
     }),
   }
 
@@ -373,7 +375,11 @@ export function promptTriggers(deps: TriggerDeps): PromptTriggers {
 
   effect function reconcile() {
     const rows = try saved()
-    for (const row of rows) try armTrigger(host, row.id, row.state)
+    for (const row of rows) {
+      const unsupported = row.state.enabled && !eventSupported(row.state)
+      const moved = unsupported ? try transition(row.id, { type: "setEnabled", on: false, at: 0, activeOthers: 0, expected: { tag: "AtRevision" as const, revision: row.state.revision } }) : undefined
+      try armTrigger(host, row.id, moved === undefined ? row.state : moved.after ?? moved.before)
+    }
     const known = new Set(rows.map((row) => row.id))
     const orphans = (try promise(() => host.getTasks({ tags: [triggerTag] })))
       .flatMap((task) => task.id !== undefined && !known.has(String(task.metadata?.triggerId)) ? [task.id] : [])

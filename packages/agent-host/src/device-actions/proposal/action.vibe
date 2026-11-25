@@ -241,13 +241,13 @@ module node {
     turn.signal.throwIfAborted()
     const kept = await Effect.runPromise(openRequest(runtime.adapter, proposalId(turn.message.id, sought)))
     const keptState = kept === undefined ? undefined : await Effect.runPromise(kept.machine.get())
-    const open = kept === undefined ? await Effect.runPromise(sameOperationOpen(turn, sought, grounding === undefined ? undefined : carriesMessage(turn, grounding))) : undefined
+    const open = kept === undefined ? await Effect.runPromise(sameOperationOpen(turn, sought, grounding === undefined ? undefined : carriesMessage(turn, grounding, family.name))) : undefined
     const found = kept ?? open
     const answer = proposalAnswer(reply, kept !== undefined, keptState !== undefined && requestSettled(keptState.phase), open !== undefined)
     if ((answer === "ReturnedOpen" || answer === "ReturnedSettled") && found !== undefined) return reported(family, found, true, turn, earlier)
     if (answer !== "OfferedNew" || admitted === undefined) return grounded.kind === "Coached" ? coached(grounded) : refused(grounded.kind === "Refused" ? grounded : unavailable)
     const offer = await Effect.runPromise(offerProposal(turn, admitted, {
-      readBack: turn.completesReads && completableRead(admitted.opType, "NoBinding"), grounding,
+      readBack: turn.completesReads && completableRead(admitted.opType, "NoBinding"), grounding, family: family.name,
     }, turn))
     switch (offer.kind) {
       case "ended": return refused(unbound)

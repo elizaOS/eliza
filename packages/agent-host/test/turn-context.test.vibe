@@ -80,6 +80,9 @@ it.effect('A screen reaches the agent whole, only as the process instance the cl
   const contexts = try Effect.forEach([
     [{}, undefined],
     [{ uiViewPath: "", unknownKey: "not carried" }, undefined],
+    [{ ...voiceUi, agentActionMode: "direct-files-v1" }, undefined],
+    [{ ...voiceUi, agentActionMode: "direct-files-only-v1" }, undefined],
+    [{ ...voiceUi, agentActionMode: "direct-files-v1", uiClientId: undefined }, undefined],
     [{ ...voiceUi, uiViewPath: "//elsewhere.example/calendar" }, undefined],
     [{ ...voiceUi, uiViewPath: "calendar" }, undefined],
     [{ ...voiceUi, uiViewPath: `/${"a".repeat(2048)}` }, undefined],
@@ -128,7 +131,7 @@ it.effect('A screen reaches the agent whole, only as the process instance the cl
 
   try Effect.try(() => assert.deepStrictEqual({ observations: decodedObservations, contexts, silent, unreadable, located, unlocated, pages: decodedPages, browsing, stale, unsent }, {
     observations: observations.map(([, expected]) => expected),
-    contexts: ["carried", "carried", ...Array.from({ length: 12 }, () => "VoiceUiContextInvalid")],
+    contexts: ["carried", "carried", "carried", "carried", ...Array.from({ length: 13 }, () => "VoiceUiContextInvalid")],
     silent: { uiViewPath: "" },
     unreadable: {},
     located: { ...calendar, location },
