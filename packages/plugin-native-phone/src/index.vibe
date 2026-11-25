@@ -1,3 +1,3 @@
 // spec/nativePhone/index.md, "Story: Check calls and use the dialer without mistaking a handoff for a call"
-export { phoneClient, telephonyPlugin, TELEPHONY_CALL_LOG_MAX } from "@elizaos/os/bridges/phone"
-export type * from "@elizaos/os/bridges/definitions/phone"
+export { phoneClient, telephonyPlugin, TELEPHONY_CALL_LOG_MAX } from "@elizaos/os-bridges"
+export type { PhoneNumber, VoicemailId, TelephonyPermissionState, TelephonyRole, TelephonyAccessKind, TelephonyRoleState, TelephonySubscription, TelephonyStatus, ImageCapability, TelephonyCallType, TelephonyCallLogEntry, RecentCallsAsk, RecentCallsPage, RecentCallsRefusal, TelephonyHandoffStatus, TelephonyHandoffResult, DialReport, PlaceCallStatus, PlaceCallResult, PlaceReport, PhoneNetworkType, PhoneLine, PhoneInfo, VoicemailCarrierState, VoicemailStatus, VoicemailEntry, VoicemailList, ListedVoicemail, VoicemailListing, VoicemailFetchStatus, VoicemailAudio, VoicemailPcm, VoicemailWriteStatus, VoicemailDeletionReport, VoicemailWriteReport, VoicemailRefusalReason, PhoneNativePlugin, PhoneClient } from "@elizaos/os-bridges"

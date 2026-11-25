@@ -8,11 +8,11 @@
     "typecheck": "vibelang --noEmit -p ."
   },
   "dependencies": {
+    "@elizaos/agent-host": "workspace:*",
+    "@elizaos/cloud": "workspace:*",
     "@elizaos/core": "workspace:*",
     "effect": "4.1.1",
-    "vibelang-runtime": "0.0.13",
-    "@elizaos/cloud": "workspace:*",
-    "@elizaos/agent": "workspace:*"
+    "vibelang-runtime": "0.0.13"
   },
   "devDependencies": {
     "@types/node": "catalog:",

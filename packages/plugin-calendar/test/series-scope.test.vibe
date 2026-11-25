@@ -5,7 +5,7 @@ import {
   guardPendingChanges, trimJournal, undoDeletion, type DeletionRefused, DeviceBridgeFault, InvalidSeriesTime, ScopeMismatch, SeriesChanged,
   type CalendarDocument, type CalendarRow, type DeletionClock, type DeletionOwner, type DeviceInspection, type DeviceRemoval, type DeviceRow,
   type DeviceTicket, type OwnerFacts,
-} from "../src/series/index.vibe"
+} from "@elizaos/plugin-calendar-client"
 
 const day = 86_400_000
 const begin = Date.parse("2026-03-02T17:00:00.000Z")

@@ -1,22 +1,10 @@
 // spec/workflow/generated.md, "Activation needs a passing check and a review of the current source digest"; spec/workflow/worker.md, "Producer, package and installed tree must each prove their own identity"
+import { GENERATED_ENGINE_DECLARATION } from "@elizaos/plugin-workflow-client"
+
+export { GENERATED_ENGINE_DECLARATION }
 export const GENERATED_SOURCE_MAX_BYTES = 65_536
 export const GENERATED_ENGINE_REVISION = "generated-workflow-engine-2"
 export const GENERATED_CONTEXT_METHODS: readonly string[] = ["step", "generate", "approval", "signal", "sleep"]
-export const GENERATED_ENGINE_DECLARATION = `declare module "eliza-workflow" {
-  export type Json = null | boolean | number | string | Json[] | { [key: string]: Json }
-  export interface ApprovalRequest { title: string; summary: string; operation: string; target: string; account: string }
-  export type SignalResult = { received: true; payload: Json } | { received: false }
-  export interface WorkflowContext {
-    readonly input: Json
-    step<T extends Json>(id: string, run: () => T): Promise<T>
-    generate(id: string, request: { prompt: string }): Promise<string>
-    approval(id: string, request: ApprovalRequest): Promise<boolean>
-    signal(id: string, name: string, options?: { timeoutMs?: number }): Promise<SignalResult>
-    sleep(id: string, ms: number): Promise<void>
-  }
-  export type WorkflowProgram = (ctx: WorkflowContext) => Promise<Json>
-}
-`
 
 
 export error CompilerUnavailable { reason: string }

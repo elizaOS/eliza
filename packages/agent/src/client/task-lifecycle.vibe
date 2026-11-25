@@ -1,5 +1,5 @@
 // spec/agent/tasks/wire.md, "Story: Stop a task even before its creation reply arrives"; spec/agent/tasks/wire.md, "A view shows six public fields of the held task, or null"
-import { TASK_ID_PATTERN } from "@elizaos/core/task-events"
+import { TASK_ID_PATTERN } from "@elizaos/core"
 import {
   Machine, admitView, canBeginControl, canFinishFollowUp, canRefresh, machine, shownOr,
   type ClientCommand, type Event, type Rejected, type TaskClient, type TaskViewResult, type ViewStatus,

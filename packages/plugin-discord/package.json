@@ -12,9 +12,10 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
+    "@elizaos/core-node": "workspace:*",
+    "discord.js": "^14.26.4",
     "effect": "4.1.1",
-    "vibelang-runtime": "0.0.13",
-    "discord.js": "^14.26.4"
+    "vibelang-runtime": "0.0.13"
   },
   "devDependencies": {
     "@types/node": "catalog:",

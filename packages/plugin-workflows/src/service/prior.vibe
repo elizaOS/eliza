@@ -3,9 +3,9 @@ import * as A from "../../gen/workflow__admission.effect.vibe"
 import * as L from "../../gen/workflow__lifecycle.effect.vibe"
 import * as X from "../../gen/workflow__execution.effect.vibe"
 import { carriedActive, carriedAs, importedRun, importSettled, storeImport, type EarlierForm } from "../../gen/workflow__earlierStore.effect.vibe"
-import { validatePhoneWorkflowSpec, workflowSha, type PhoneWorkflowSpec } from "../contract/phone.vibe"
-import { digestPhoneSpec, HOSTED_DIGEST_METADATA_KEY, validateDigestSpec, type DigestSourceRecord, type DigestSpec } from "../contract/digest.vibe"
-import { WORKFLOW_PHONE_SPEC_METADATA_KEY } from "../client/workflow-client.vibe"
+import {
+  validatePhoneWorkflowSpec, workflowSha, type PhoneWorkflowSpec, digestPhoneSpec, HOSTED_DIGEST_METADATA_KEY, validateDigestSpec, type DigestSourceRecord, type DigestSpec, WORKFLOW_PHONE_SPEC_METADATA_KEY,
+} from "@elizaos/plugin-workflow-client"
 import type {
   DefinitionRow, EarlierExecutionRow, EarlierImportReceipt, EarlierRows, EarlierSourceRow, EarlierWorkflowRow, Revision, RunEvent, RunRow, workflowStore,
 } from "./store.vibe"

@@ -1,12 +1,7 @@
 // spec/calendar/actions.md, "The managed Google calendar is read and changed as one of the active account's calendars"; spec/calendar/actions.md, "An event is shown only from a listed calendar of the active account"; spec/calendar/actions.md, "A write goes to the active account's writable calendar, at once only for the resident calendar"; spec/calendar/managedFeed.md, "Story: Read the connected Calendar and keep its source information intact"
 import type * as KeyValueStore from "effect/persistence/KeyValueStore"
 import { managedChangeAllowed } from "../../gen/calendar__actions.effect.vibe"
-import { managedExternalId, type ManagedCalendarBroker, type ManagedCalendarSource, type ManagedCalendarTarget } from "../feed/broker.vibe"
-import { CacheStoreFailed, type ImportedSourceScope, type ManagedCacheStore } from "../feed/cache.vibe"
-import { managedFeed } from "../feed/managed.vibe"
-import type { CalendarEvent, CalendarSourceKey } from "../model.vibe"
-import { CalendarWriteNotAccepted } from "../mutations/ledger.vibe"
-import { EventRecord } from "../mutations/records.schema.vibe"
+import { managedExternalId, type ManagedCalendarBroker, type ManagedCalendarSource, type ManagedCalendarTarget, CacheStoreFailed, type ImportedSourceScope, type ManagedCacheStore, managedFeed, type CalendarEvent, type CalendarSourceKey, CalendarWriteNotAccepted, EventRecord } from "@elizaos/plugin-calendar-client"
 import { CalendarSourceUnavailable, eventInWindow, type CalendarAccount, type CalendarProviderPort } from "./providers.vibe"
 
 const cacheKey = "calendar.managed.events"

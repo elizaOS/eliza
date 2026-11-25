@@ -1,0 +1,61 @@
+// spec/agent/views.md, "Views are declared once at boot with distinct ids, paths and names, and never change after"
+import { getViewModalities, type Plugin, type ViewDeclaration as PluginView } from "@elizaos/core"
+import { viewsDistinct, type DeclaredView } from "../../gen/agent__views.effect.vibe"
+import type { ViewDeclaration } from "@elizaos/agent"
+import { ModuleRefused } from "../host/module.vibe"
+
+module node {
+  import { randomUUID } from "node:crypto"
+  /** @throws {never} */
+  export function newInstallationId(): string { return randomUUID() }
+}
+import { newInstallationId } from node
+
+export const viewsModuleName = "@elizaos/agent/views"
+
+interface Declarations {
+  readonly views: DeclaredView[]
+  readonly labels: ReadonlyMap<string, string>
+}
+
+export function foldName(name: string): string {
+  return name.trim().toLocaleLowerCase("en-US")
+}
+
+function folded(view: DeclaredView): DeclaredView {
+  return { ...view, viewId: foldName(view.viewId), label: foldName(view.label), aliases: view.aliases.map(foldName) }
+}
+
+function replaces(launched: ViewDeclaration, builtin: PluginView): boolean {
+  return builtin.id === launched.id && builtin.path === launched.path && builtin.viewKind === "preview"
+}
+
+function pluginViews(plugin: Plugin, installationId: string, launched: readonly ViewDeclaration[]): DeclaredView[] {
+  return (plugin.views ?? [])
+    .filter((view) => getViewModalities(view).includes("gui") && !launched.some((own) => replaces(own, view)))
+    .map((view) => ({
+      viewId: view.id,
+      label: view.label,
+      path: view.path ?? "",
+      aliases: [...(view.navigationAliases ?? [])],
+      installationId,
+    }))
+}
+
+export effect function declareViews(plugins: readonly Plugin[], launched: readonly ViewDeclaration[]) {
+  const refuse = (reason: string) => new ModuleRefused({ module: viewsModuleName, reason })
+  const builtins = plugins.flatMap((plugin) => plugin.views ?? []).filter((view) => getViewModalities(view).includes("gui"))
+  const clash = launched.find((own) => builtins.some((view) => (view.id === own.id || view.path === own.path) && !replaces(own, view)))
+  if (clash !== undefined) throw refuse(`Launch view ${clash.id} replaces a built-in view`)
+  const launchInstallation = newInstallationId()
+  const declared = [
+    ...plugins.flatMap((plugin) => pluginViews(plugin, newInstallationId(), launched)),
+    ...launched.map((own) => ({ viewId: own.id, label: own.label, path: own.path, aliases: [...(own.aliases ?? [])], installationId: launchInstallation })),
+  ]
+  const views = declared.map(folded)
+  if (!viewsDistinct(views)) throw refuse("Two views share a name or a path, or a view lacks one")
+  return {
+    views,
+    labels: new Map(declared.map((view) => [foldName(view.viewId), view.label])),
+  } satisfies Declarations
+}

@@ -1,6 +1,7 @@
 // spec/wallet/index.md, "Story: Preview an exact wallet operation before executing it"; spec/wallet/index.md, "Story: Recover the real outcome of an on-chain operation"; spec/wallet/index.md, "Story: Inspect wallet holdings and venue quotes before making changes"
 import { ManagedRuntime } from "effect"
-import { resolveCanonicalOwnerId, resolveStateDir, validateUuid, type Action, type IAgentRuntime, type Memory, type Plugin } from "@elizaos/core"
+import { resolveCanonicalOwnerId, validateUuid, type Action, type IAgentRuntime, type Memory, type Plugin } from "@elizaos/core"
+import { resolveStateDir } from "@elizaos/core-node"
 import { Machine, atMostAtomic, decodeState, machine, validAtomicAmount, walletObservationMatches, type WalletIntent, type WalletRun } from "../gen/wallet.effect.vibe"
 import { claimDispatch, evmTokenBalance, openWallet, readDispatch, readSigningReservation, reserveWalletSigning, walletDigest, walletJournalDirectory, type NativeTransfer, type WalletConfiguration, type WalletCustodian } from "./custody.vibe"
 
