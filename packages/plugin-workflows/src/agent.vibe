@@ -337,9 +337,9 @@ export const workflowAction: Action = {
     const retryable = retryAllowed(report)
     switch (report) {
       case "ReadFailed":
-        return respond(notApplied(refused.code ?? "WORKFLOW_READ_FAILED", refused.message, "Workflows couldn't be read just now.", { status: refused.status, retryable }))
+        return respond(notApplied(refused.code ?? "WORKFLOW_READ_FAILED", refused.message, refused.status === 400 ? undefined : "Workflows couldn't be read just now.", { status: refused.status, retryable }))
       case "NothingChanged":
-        return respond(notApplied(refused.code ?? "WORKFLOW_NOT_APPLIED", `${refused.message} Nothing was changed.`, unchanged[op], { status: refused.status, retryable }))
+        return respond(notApplied(refused.code ?? "WORKFLOW_NOT_APPLIED", `${refused.message} Nothing was changed.`, refused.status === 400 ? undefined : unchanged[op], { status: refused.status, retryable }))
       case "ReconcileFirst":
         return respond(notApplied("WORKFLOW_OPERATION_FAILED_RECONCILE_BEFORE_RETRY",
           `${refused.message} The change may have gone through. Check the workflow's current state before trying again, and never retry it automatically.`,

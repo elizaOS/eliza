@@ -150,7 +150,7 @@ export const todosAction: Action = {
   roleGate: { minRole: "OWNER" },
   validate: async () => true,
   handler: async (runtime, message, _state, options) => {
-    return onAgent(runtime, Effect.catch(changeTodos(parametersOf(options), message), (failed) => Effect.succeed({ success: false, text: "The to-do list could not be changed.", ...forTheOwner("The to-do list could not be changed."), data: { outcome: failed._tag } } satisfies ActionResult)))
+    return onAgent(runtime, Effect.catch(changeTodos(parametersOf(options), message), (failed) => Effect.succeed({ success: false, text: "The to-do list could not be changed.", ...forTheOwner("Your to-do list couldn't be reached just now."), data: { outcome: failed._tag } } satisfies ActionResult)))
   },
 }
 

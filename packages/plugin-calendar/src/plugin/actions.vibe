@@ -314,11 +314,10 @@ function changeText(outcome: CalendarMutationOutcome, done: string): string {
   }
 }
 
-function changeOwnerText(outcome: Exclude<CalendarMutationOutcome, { readonly kind: "succeeded" }>): string {
+function changeOwnerText(outcome: Exclude<CalendarMutationOutcome, { readonly kind: "succeeded" | "confirmed" }>): string {
   switch (outcome.kind) {
     case "retryable": return "The calendar did not take the change."
     case "invalidated": return "That calendar change can't be made."
-    case "confirmed":
     case "blocked": return changeText(outcome, "")
   }
 }
@@ -341,7 +340,7 @@ function changeResult(subaction: Subaction, result: CalendarChangeResult, zone: 
       answer_scope: "An invitation is answered for this event or the whole series, not this and following.",
       deletes_unsupported: "That calendar can't delete events from here. Delete it in the Calendar app.",
     }[result.reason]
-    return notDone(subaction, text, { refusal: result.reason })
+    return result.reason === "foreign_account" || result.reason === "answer_scope" ? failed(subaction, text, { refusal: result.reason }) : notDone(subaction, text, { refusal: result.reason })
   }
   if (result.kind === "conflict") {
     const made = subaction === "create_event" ? "created" : "changed"
@@ -349,8 +348,9 @@ function changeResult(subaction: Subaction, result: CalendarChangeResult, zone: 
       return notDone(subaction, `Nothing was ${made}: the calendar it goes on could not be read, so I can't tell whether that time is free.`, { code: "CALENDAR_WRITE_SLOT_UNREAD" })
     }
     const held = result.conflicts.slice(0, 5)
-    return notDone(subaction, `Nothing was ${made}: that time overlaps ${held.map((event) => line(event, zone)).join("; ")}. Tell me another time, or move that first.`,
-      { code: "CALENDAR_WRITE_CONFLICT", requiresInput: true, missing: ["available time"], conflicts: held.map((event) => ({ id: event.id, title: event.title, startAt: event.startAt, endAt: event.endAt })) })
+    const overlap = `Nothing was ${made}: that time overlaps ${held.map((event) => line(event, zone)).join("; ")}.`
+    return notDone(subaction, `${overlap} Tell me another time, or move that first.`,
+      { code: "CALENDAR_WRITE_CONFLICT", requiresInput: true, missing: ["available time"], conflicts: held.map((event) => ({ id: event.id, title: event.title, startAt: event.startAt, endAt: event.endAt })) }, overlap)
   }
   const unchecked = result.overlapsUnchecked ? overlapsUnchecked : ""
   if (result.kind === "queued") {
@@ -358,6 +358,7 @@ function changeResult(subaction: Subaction, result: CalendarChangeResult, zone: 
     return { success: true, text: `I've asked for your approval before changing that calendar.${silent}${unchecked}`, data: { subaction, approvalRequestId: result.approvalId, change: result.request.payload } }
   }
   const { outcome, request } = result
+  if (outcome.kind === "confirmed") return failed(subaction, changeText(outcome, ""), { outcome: outcome.kind, requestId: request.id })
   if (outcome.kind !== "succeeded") return notDone(subaction, changeText(outcome, ""), { outcome: outcome.kind, requestId: request.id }, changeOwnerText(outcome))
   const receipt = outcome.receipt
   const effectReceipts = [calendarEffectReceipt(request, receipt, outcome.replayed)]
@@ -821,7 +822,7 @@ effect function handle(host: CalendarHost, ask: CalendarAsk, sent: Parameters): 
       if (lookup.kind === "unread") {
         return notDone(subaction, "Some calendars could not be read, so I can't tell whether that event is there. Nothing was changed.", { code: "CALENDAR_TARGET_UNREAD" })
       }
-      if (lookup.kind === "missing") return notDone(subaction, "I couldn't find that event in this account's calendars.", { code: "CALENDAR_TARGET_NOT_FOUND" })
+      if (lookup.kind === "missing") return failed(subaction, "I couldn't find that event in this account's calendars.", { code: "CALENDAR_TARGET_NOT_FOUND" })
       const found = lookup.found
       const notifyAttendees = parameters.notifyAttendees === true
       const deletingResident = subaction === "delete_event" && found.source.provider === "eliza"

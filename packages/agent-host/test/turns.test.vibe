@@ -36,22 +36,21 @@ module node {
 
   export const movedDentist = "Updated Dentist, Mar 4, 2030, 9:00 AM."
   export const unsaidMove = "Nothing was changed: that start time is not a time the request gives."
-  export const notMoved = "The dentist appointment was not moved."
-  const refusing = { moves: 0 }
+  export const notMoved = "The calendar did not take the change."
+  const refusing: { moves: ("Misread" | "Refused")[] } = { moves: [] }
 
   /** @throws {never} */
-  export function refuseMoves(count: number): void {
-    refusing.moves = count
+  export function refuseMoves(...moves: readonly ("Misread" | "Refused")[]): void {
+    refusing.moves = [...moves]
   }
 
   /** @throws {never} */
   export function calendarProbe(name: string): ReadonlyMap<string, ModuleFactory<never>> {
     let moved = 0
     const move = (agentId: string): ActionResult => {
-      if (refusing.moves > 0) {
-        refusing.moves -= 1
-        return { success: false, text: unsaidMove, userFacingText: notMoved, verifiedUserFacing: true, data: { code: "CALENDAR_CHANGE_REFUSED" } }
-      }
+      const refused = refusing.moves.shift()
+      if (refused === "Misread") return { success: false, text: unsaidMove, data: { code: "CALENDAR_CLOCK_UNSAID" } }
+      if (refused === "Refused") return { success: false, text: `${notMoved} The provider answered 503.`, userFacingText: notMoved, verifiedUserFacing: true, data: { outcome: "retryable" } }
       moved += 1
       const version = `v${moved + 1}`
       return {
@@ -346,7 +345,7 @@ module node {
     return text
   }
 }
-import { namedTools, calendarProbe, completions, notMoved, untitledChecklist, unrealTime, cutTurn, modelLogRooms, failParticipantLookupOnce, handedDirectly, privateAgenda, privateReadCount, privateReader, failNext, fixtureApp, lastTurnHistory, lastTurnPrompt, localDay, loseRoomOwnershipOnceAfterReply, movedDentist, nearestCafes, overlapping, plainLog, refuseMoves, roomMessages, seedHistory, storeNotice, watchRunEnds } from node
+import { namedTools, calendarProbe, completions, notMoved, unsaidMove, untitledChecklist, unrealTime, cutTurn, modelLogRooms, failParticipantLookupOnce, handedDirectly, privateAgenda, privateReadCount, privateReader, failNext, fixtureApp, lastTurnHistory, lastTurnPrompt, localDay, loseRoomOwnershipOnceAfterReply, movedDentist, nearestCafes, overlapping, plainLog, refuseMoves, roomMessages, seedHistory, storeNotice, watchRunEnds } from node
 
 effect function runEndsOf(ends: readonly { messageId?: string, status: string }[], messageId: string | undefined) {
   for (let wait = 0; wait < 100 && !ends.some((end) => end.messageId === messageId); wait += 1) try Effect.sleep("20 millis")
@@ -1678,7 +1677,7 @@ it.live(`A reply that misstates the time a calendar change got is asked for once
   }))
 }, 120_000)
 
-it.live(`A calendar move refused without a receipt and then made by the model's own corrected call adds no refusal words once the model stands by a reply without them, a kept second answer reports it in the model's words alone, its words for the owner follow when the model gives no answer or another answer that is not kept, and a refusal with no later move or in the same response is still reported, so a move that never happened never reads as done (${planning}, "A failure with no receipt that a later run of its action may have answered is the model's to report, and its own words follow the reply unless the model stands by a reply without them"; ${planning}, "A reply that leaves a failure unreported is written again once, and the delivered reply still reports open failures and attachment omissions")`, effect () => {
+it.live(`A calendar move refused without a receipt and then made by the model's own corrected call adds no refusal words once the model stands by a reply without them, a kept second answer reports it in the model's words alone, a misread refusal's words, written to the model, never follow the reply, and a move the calendar would not take follows any reply in its own words for the owner, so it never reads as done (${planning}, "A failure with no receipt that a later run of its action may have answered is the model's to report, and its own words follow the reply unless the model stands by a reply without them"; ${planning}, "A reply that leaves a failure unreported is written again once, and the delivered reply still reports open failures and attachment omissions")`, effect () => {
   const cloud = try cloudFake(deviceKey)
   const agent = try startInProcess({
     launch: { backend: { kind: "cloud", origin: cloud.origin }, callerRole: "owner", load: [basicActionsModuleName], allowed: ["REPLY", "IGNORE", "NONE", "MOVE_EVENT"] },
@@ -1687,37 +1686,39 @@ it.live(`A calendar move refused without a receipt and then made by the model's 
   const { id } = try conversation(agent)
   const misread = { name: "MOVE_EVENT", arguments: { at: "8am" } }
   const move = { name: "MOVE_EVENT", arguments: { at: "9am" } }
-  const turn = effect (refused: number, said: () => readonly CloudReply[]) => {
-    try Effect.sync(() => { refuseMoves(refused); cloud.script(...said()) })
+  const turn = effect (refused: readonly ("Misread" | "Refused")[], said: () => readonly CloudReply[]) => {
+    try Effect.sync(() => { refuseMoves(...refused); cloud.script(...said()) })
     const before = completions(cloud)
     const answer = replyOf(try send(agent, id, { text: "Move my dentist to 9am" }))
     const calls = completions(cloud) - before
     const note = calls > 2 ? lastTurnPrompt(cloud) : ""
-    return { reply: answer.text, calls, laterRunNote: note.includes("a later call of the same action did run") && note.includes(JSON.stringify(notMoved)) }
+    return { reply: answer.text, calls, laterRunNote: note.includes("a later call of the same action did run") && note.includes(wrapExternalContent(unsaidMove, { source: "unknown" })) }
   }
   const right = "Done, your dentist is now 9–10 AM."
-  const sameAgain = try turn(1, () => [toolCalls("", misread), toolCalls("", move), text(right), text(right)])
-  const failedAgain = try turn(1, () => [toolCalls("", misread), toolCalls("", move), text(right), requestFault("invalid_request")])
-  const cuedAgain = try turn(1, () => [toolCalls("", misread), toolCalls("", move), text(right), text("One sec.")])
-  const toldAgain = try turn(1, () => [toolCalls("", misread), toolCalls("", move), text(right), text("Your dentist is now 9–10 AM.")])
-  const rangeWrongAgain = try turn(1, () => [toolCalls("", misread), toolCalls("", move), text(right), text("Done, your dentist moved from 3 PM to 4 PM.")])
+  const sameAgain = try turn(["Misread"], () => [toolCalls("", misread), toolCalls("", move), text(right), text(right)])
+  const failedAgain = try turn(["Misread"], () => [toolCalls("", misread), toolCalls("", move), text(right), requestFault("invalid_request")])
+  const cuedAgain = try turn(["Misread"], () => [toolCalls("", misread), toolCalls("", move), text(right), text("One sec.")])
+  const toldAgain = try turn(["Misread"], () => [toolCalls("", misread), toolCalls("", move), text(right), text("Your dentist is now 9–10 AM.")])
+  const rangeWrongAgain = try turn(["Misread"], () => [toolCalls("", misread), toolCalls("", move), text(right), text("Done, your dentist moved from 3 PM to 4 PM.")])
   const wrongRange = "Done, your dentist is now 3–4 PM."
-  const heldButMistimed = try turn(1, () => [toolCalls("", misread), toolCalls("", move), text(`${notMoved} ${wrongRange}`), text("Done, your dentist is now 2–3 PM.")])
-  const mistimedTwice = try turn(1, () => [toolCalls("", misread), toolCalls("", move), text(wrongRange), text("Done, your dentist is now 2–3 PM.")])
-  const quoted = try turn(1, () => [toolCalls("", misread), toolCalls("", move), text(`${right} ${notMoved}`)])
-  const sameResponse = try turn(1, () => [toolCalls("", misread, move), text(right), text(right)])
-  const neverMoved = try turn(2, () => [toolCalls("", misread), toolCalls("", move), text("Done!"), text("Done!")])
-  try Effect.try(() => assert.deepStrictEqual({ sameAgain, failedAgain, cuedAgain, toldAgain, rangeWrongAgain, heldButMistimed, mistimedTwice, quoted, sameResponse, neverMoved }, {
+  const heldButMistimed = try turn(["Misread"], () => [toolCalls("", misread), toolCalls("", move), text(`${unsaidMove} ${wrongRange}`), text("Done, your dentist is now 2–3 PM.")])
+  const mistimedTwice = try turn(["Misread"], () => [toolCalls("", misread), toolCalls("", move), text(wrongRange), text("Done, your dentist is now 2–3 PM.")])
+  const quoted = try turn(["Misread"], () => [toolCalls("", misread), toolCalls("", move), text(`${right} ${unsaidMove}`)])
+  const sameResponse = try turn(["Misread"], () => [toolCalls("", misread, move), text(right), text(right)])
+  const neverMoved = try turn(["Misread", "Refused"], () => [toolCalls("", misread), toolCalls("", move), text("Done!"), text("Done!")])
+  const providerRefused = try turn(["Refused"], () => [toolCalls("", move), text("Done!"), requestFault("invalid_request")])
+  try Effect.try(() => assert.deepStrictEqual({ sameAgain, failedAgain, cuedAgain, toldAgain, rangeWrongAgain, heldButMistimed, mistimedTwice, quoted, sameResponse, neverMoved, providerRefused }, {
     sameAgain: { reply: right, calls: 4, laterRunNote: true },
-    failedAgain: { reply: `${right}\n\n${notMoved}`, calls: 4, laterRunNote: true },
-    cuedAgain: { reply: `${right}\n\n${notMoved}`, calls: 4, laterRunNote: true },
+    failedAgain: { reply: right, calls: 4, laterRunNote: true },
+    cuedAgain: { reply: right, calls: 4, laterRunNote: true },
     toldAgain: { reply: "Your dentist is now 9–10 AM.", calls: 4, laterRunNote: true },
-    rangeWrongAgain: { reply: `${right}\n\n${notMoved}`, calls: 4, laterRunNote: true },
-    heldButMistimed: { reply: `${movedDentist}\n\n${notMoved}`, calls: 4, laterRunNote: false },
-    mistimedTwice: { reply: `${movedDentist}\n\n${notMoved}`, calls: 4, laterRunNote: true },
-    quoted: { reply: `${right} ${notMoved}`, calls: 3, laterRunNote: false },
-    sameResponse: { reply: `${right}\n\n${notMoved}`, calls: 3, laterRunNote: false },
+    rangeWrongAgain: { reply: right, calls: 4, laterRunNote: true },
+    heldButMistimed: { reply: movedDentist, calls: 4, laterRunNote: false },
+    mistimedTwice: { reply: movedDentist, calls: 4, laterRunNote: true },
+    quoted: { reply: `${right} ${unsaidMove}`, calls: 3, laterRunNote: false },
+    sameResponse: { reply: right, calls: 3, laterRunNote: false },
     neverMoved: { reply: `Done!\n\n${notMoved}`, calls: 4, laterRunNote: false },
+    providerRefused: { reply: `Done!\n\n${notMoved}`, calls: 3, laterRunNote: false },
   }))
 }, 120_000)
 

@@ -297,7 +297,7 @@ export const ownerGoalsAction: Action = {
   handler: async (runtime, message, _state, options) => {
     const given = typeof options === "object" && options !== null && "parameters" in options && typeof options.parameters === "object" && options.parameters !== null ? options.parameters : {}
     const input = Object.fromEntries(Object.entries(given).filter(([, value]) => value !== undefined && value !== null))
-    return onAgent(runtime, Effect.catch(changeGoal(input, requestOf(message).messageId), (failed) => Effect.succeed({ success: false, text: "The goal could not be changed.", ...forTheOwner("The goal could not be changed."), data: { outcome: failed._tag } } satisfies ActionResult)))
+    return onAgent(runtime, Effect.catch(changeGoal(input, requestOf(message).messageId), (failed) => Effect.succeed({ success: false, text: "The goal could not be changed.", ...forTheOwner("Your goals couldn't be reached just now."), data: { outcome: failed._tag } } satisfies ActionResult)))
   },
 }
 
