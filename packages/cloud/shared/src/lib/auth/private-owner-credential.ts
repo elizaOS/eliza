@@ -1,5 +1,4 @@
 /** Extra admission for an already authenticated owner; this never authenticates request claims. */
-import type { DbTransaction } from "../../db/client";
 import {
   readPrivateOwnerAccountAuthority,
   readPrivateOwnerApiKeyAuthority,
@@ -9,62 +8,31 @@ import { ForbiddenError } from "../api/cloud-worker-errors";
 import {
   admitMobileAppAuthRegistration,
   MobileAppAuthProtocolError,
-  type MobileAppAuthRegistration,
   type MobileAppAuthRuntimeEnv,
 } from "../services/mobile-app-auth";
 
-type CredentialRequest = {
+export async function requirePrivateOwnerCredential(args: {
   userId: string;
   organizationId: string;
   authMethod: Variables["authMethod"];
   apiKeyId?: string;
   apiKeyHash?: string;
   env: MobileAppAuthRuntimeEnv;
-};
-
-const refuse = () => ForbiddenError("This credential cannot access private owner data");
-
-export async function requirePrivateOwnerCredential(args: CredentialRequest): Promise<void> {
+}): Promise<void> {
+  const refuse = () => ForbiddenError("This credential cannot access private owner data");
   if (args.authMethod === "session" || args.authMethod === "wallet_signature") {
     if (!(await readPrivateOwnerAccountAuthority(args))) throw refuse();
     return;
   }
-  await privateOwnerKey(args);
-}
-
-export async function requireBackupDevice(
-  args: CredentialRequest,
-  expected: Pick<MobileAppAuthRegistration, "appId" | "clientId" | "environment" | "redirectUri">,
-  tx?: DbTransaction,
-) {
-  const device = await privateOwnerKey(args, tx);
-  if (
-    !device ||
-    device.registration.clientId !== expected.clientId ||
-    device.registration.appId !== expected.appId ||
-    device.registration.environment !== expected.environment ||
-    device.registration.redirectUri !== expected.redirectUri ||
-    !device.packageName ||
-    !device.stewardOwnerId ||
-    device.anonymous !== false
-  )
-    throw refuse();
-  return { packageName: device.packageName, stewardOwnerId: device.stewardOwnerId };
-}
-
-async function privateOwnerKey(args: CredentialRequest, tx?: DbTransaction) {
   // An unproven anonymous-method principal is not an owner credential.
   // Signed-in anonymous account rows still use the legitimate session branch.
   if (args.authMethod !== "api_key" || !args.apiKeyId || !args.apiKeyHash) throw refuse();
-  const rows = await readPrivateOwnerApiKeyAuthority(
-    {
-      apiKeyId: args.apiKeyId,
-      apiKeyHash: args.apiKeyHash,
-      userId: args.userId,
-      organizationId: args.organizationId,
-    },
-    tx,
-  );
+  const rows = await readPrivateOwnerApiKeyAuthority({
+    apiKeyId: args.apiKeyId,
+    apiKeyHash: args.apiKeyHash,
+    userId: args.userId,
+    organizationId: args.organizationId,
+  });
   if (rows.length !== 1) throw refuse();
   const row = rows[0]!;
   if (
@@ -130,10 +98,4 @@ async function privateOwnerKey(args: CredentialRequest, tx?: DbTransaction) {
     !registration.scopes.every((scope) => grant.scopes.includes(scope))
   )
     throw refuse();
-  return {
-    registration,
-    packageName: row.mobileClient.packageName,
-    stewardOwnerId: row.stewardOwnerId,
-    anonymous: row.anonymous,
-  };
 }

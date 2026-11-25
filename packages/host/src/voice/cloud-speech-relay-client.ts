@@ -19,6 +19,7 @@ import {
   SPEECH_RELAY_EXTEND_HEADER,
   SPEECH_RELAY_EXTEND_OFFER,
   SPEECH_RELAY_ROUTES,
+  SPEECH_RELAY_WINDOWS_HEADER,
   SPEECH_RETIREMENT_HEADER,
   type SpeechRelayServerControl,
 } from "./speech-relay-wire";
@@ -93,8 +94,12 @@ export interface CloudSpeechRelayClientOptions {
   credential(): Promise<string>;
   /** Pin owner/credential revision and local agent generation for this whole session. */
   assertCurrent(): void;
-  /** Trusted host callback after a paid window and its revocation fence renew. */
-  onLeaseExtended?(expiresAt: number): void;
+  /**
+   * Trusted host callback after a paid window and its revocation fence renew.
+   * `final` is true when the relay named its window bound at mint and this
+   * window is the last one it grants.
+   */
+  onLeaseExtended?(expiresAt: number, final: boolean): void;
   /** Stable owner/runtime/environment lineage, independent of key rotation; explicit reconciliation only. */
   assertRetirementLineage?(): void;
   signal?: AbortSignal;
@@ -138,6 +143,13 @@ function speechHttpFailureCode(
 const UUID =
   /^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
 const encoder = new TextEncoder();
+/** The relay's window bound from its mint, or undefined when absent or malformed. */
+function windowBound(header: string | null): number | undefined {
+  if (header === null || !/^[0-9]{1,3}$/.test(header)) return undefined;
+  const bound = Number(header);
+  return bound >= 2 && bound <= 120 ? bound : undefined;
+}
+
 function requireValue(value: unknown): asserts value {
   if (!value)
     throw new CloudSpeechRelayClientError(
@@ -311,7 +323,8 @@ export async function createCloudSpeechRelayPorts(
     sessionId: string | undefined,
     expiry = 0,
     extendOffered = false,
-    windows = 1;
+    windows = 1,
+    maxWindows: number | undefined;
   let stt: ((event: CartesiaInkRealtimeEvent) => void) | undefined;
   const pendingStt: CartesiaInkRealtimeEvent[] = [];
   const contexts = new Map<
@@ -667,11 +680,15 @@ export async function createCloudSpeechRelayPorts(
         admissionState = "identified";
       }
       assertCurrent();
-      if (mintRequest)
+      if (mintRequest) {
         extendOffered =
           options.onLeaseExtended !== undefined &&
           response.headers.get(SPEECH_RELAY_EXTEND_HEADER) ===
             SPEECH_RELAY_EXTEND_OFFER;
+        maxWindows = extendOffered
+          ? windowBound(response.headers.get(SPEECH_RELAY_WINDOWS_HEADER))
+          : undefined;
+      }
       returned = true;
       return result;
     } finally {
@@ -1306,7 +1323,10 @@ export async function createCloudSpeechRelayPorts(
           next <= expiry + 60_000 &&
           new Date(next).toISOString() === frame.expiresAt,
       );
-      options.onLeaseExtended?.(next);
+      options.onLeaseExtended?.(
+        next,
+        maxWindows !== undefined && windows + 1 >= maxWindows,
+      );
       expiry = next;
       windows++;
       armExpiry();
