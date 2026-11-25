@@ -366,7 +366,6 @@ module calls {
   import { randomUUID } from "node:crypto"
   import { MODEL_PROVIDER_ATTEMPTS } from "@elizaos/core"
 
-  /** One call's `Idempotency-Key`, and whether the cloud answered an attempt sent under it. */
   export interface CallKey {
     readonly value: string
     answered: boolean
@@ -374,7 +373,7 @@ module calls {
 
   const keys = new WeakMap<object, CallKey>()
 
-  /** The key of the call `params` is an attempt of: its earlier attempt's, unless `fresh` says that one needs a new key. @throws {never} */
+  /** @throws {never} */
   export function callKeyOf(params: object, fresh: (kept: CallKey) => boolean): CallKey {
     const minted = (): CallKey => ({ value: randomUUID(), answered: false })
     const attempts: unknown = (params as { [MODEL_PROVIDER_ATTEMPTS]?: unknown })[MODEL_PROVIDER_ATTEMPTS]
