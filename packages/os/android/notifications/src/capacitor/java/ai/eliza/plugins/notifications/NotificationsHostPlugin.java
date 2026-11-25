@@ -68,6 +68,8 @@ public abstract class NotificationsHostPlugin extends Plugin {
  protected abstract HostNoticePoster.Config posterConfig();
  /** The host's cross-app mirror, or null when the host offers no notification access. */
  protected NotificationMirror mirror(){return null;}
+ /** Hosts with a native account store may require its current authority before changing workflow notices. */
+ protected void requireWorkflowNoticeOwner(JSONObject owner)throws Exception{}
  /**
   * The kind of one of the host's own notices, from its channel. The default recognizes the
   * workflow channels; hosts add their own (reminders, navigation, results). Unknown is "other".
@@ -195,6 +197,7 @@ public abstract class NotificationsHostPlugin extends Plugin {
   Object input=call.getData().get("owner");
   if(input!=JSONObject.NULL&&!(input instanceof JSONObject))throw new IllegalArgumentException("Expected a notice owner or sign-out");
   JSONObject owner=NoticeOwner.identity(input==JSONObject.NULL?null:(JSONObject)input);
+  requireWorkflowNoticeOwner(owner);
   long now=System.currentTimeMillis();
   int withdrawn=coordinator().withdrawOtherOwners(owner,now);
   JSONArray suspended=routes().suspendedApprovals(owner,now);
@@ -217,8 +220,10 @@ public abstract class NotificationsHostPlugin extends Plugin {
   String id=call.getString("id"),binding=call.getString("bindingHash");
   JSONObject route=call.getObject("route");
   NoticeCoordinator notices=coordinator();
-  String status=resume?notices.resumeApproval(id,binding,route,null,expiresAt,now,this::requireNoticeForeground)
-   :notices.postApproval(id,binding,route,null,expiresAt,now,this::requireNoticeForeground);
+  JSONObject owner=NoticeOwner.fromRoute(route);
+  NoticeCoordinator.Check allowed=()->{requireWorkflowNoticeOwner(owner);requireNoticeForeground();};
+  String status=resume?notices.resumeApproval(id,binding,route,null,expiresAt,now,allowed)
+   :notices.postApproval(id,binding,route,null,expiresAt,now,allowed);
   requireNoticeForeground();
   JSObject result=new JSObject();result.put("status",status);call.resolve(result);
  });}
