@@ -2,7 +2,7 @@
 import { openNotice, resumesApprovalNotice } from "../../gen/workflow__notices.effect.vibe"
 import { workflowSha } from "../contract/phone.vibe"
 import type { WorkflowPhoneReview } from "../contract/device.vibe"
-import type { WorkflowApproval, WorkflowClient, WorkflowClientError, WorkflowRun } from "./workflow-client.vibe"
+import type { WorkflowApproval, WorkflowApprovalReceipt, WorkflowClient, WorkflowClientError, WorkflowRun } from "./workflow-client.vibe"
 
 export interface WorkflowNoticeRoute {
   readonly scope: string
@@ -47,20 +47,14 @@ export effect function openWorkflowNotice(client: WorkflowClient, route: Workflo
 export interface WorkflowNoticeReads {
   detail(workflowId: string): { readonly versionId: string; readonly removed: boolean }!WorkflowClientError
   receipt(runId: string, workflowId: string): WorkflowRun!WorkflowClientError
-  phoneReview(run: WorkflowRun): WorkflowPhoneReview!WorkflowClientError
-  pending(review: WorkflowPhoneReview, run: WorkflowRun): readonly { readonly id: string; readonly expiresAt: number; readonly title: string }[]!WorkflowClientError
+  approvals(run: WorkflowRun): (WorkflowApprovalReceipt | null)!WorkflowClientError
 }
 
 export function workflowNoticeReads(client: WorkflowClient): WorkflowNoticeReads {
   return {
     detail: (workflowId) => map(client.detail(workflowId), (found) => ({ versionId: found.versionId, removed: found.removed })),
     receipt: (runId, workflowId) => client.receipt(runId, workflowId),
-    phoneReview: (run) => client.phoneReview(run),
-    effect pending(_review, run) {
-      const receipt = try client.approvals(run)
-      return (receipt?.approvals ?? []).flatMap((approval) => approval.status === "pending" && approval.expiresAt !== undefined
-        ? [{ id: workflowApprovalProposalId(approval), expiresAt: approval.expiresAt, title: approval.title }] : [])
-    },
+    approvals: (run) => client.approvals(run),
   }
 }
 
@@ -84,17 +78,17 @@ export effect function revalidateWorkflowApprovalNotice(notice: SuspendedWorkflo
   if (current.removed || current.versionId !== route.versionId || notice.expiresAt <= at) return "withdraw"
   const run = try reads.receipt(route.runId, route.workflowId)
   if (!valid()) return "stale"
-  const review = run.versionId === route.versionId && !run.finished ? try reads.phoneReview(run) : undefined
+  const receipt = run.versionId === route.versionId && !run.finished ? try reads.approvals(run) : null
   if (!valid()) return "stale"
-  const pending = review === undefined ? [] : try reads.pending(review, run)
   let same = false
-  for (const step of pending) {
-    const bound = try workflowApprovalNoticeIdentity(route, step.id)
-    if (bound.id === notice.id && bound.bindingHash === notice.bindingHash && step.expiresAt === notice.expiresAt) same = true
+  for (const approval of receipt?.approvals ?? []) {
+    if (approval.status !== "pending" || approval.expiresAt !== notice.expiresAt) continue
+    const bound = try workflowApprovalNoticeIdentity(route, workflowApprovalProposalId(approval))
+    if (bound.id === notice.id && bound.bindingHash === notice.bindingHash) same = true
   }
   if (!valid()) return "stale"
   return resumesApprovalNotice({
-    runFinished: run.finished || (review?.finished ?? true), cancellationRequested: review?.cancellationRequestedAt !== null && review !== undefined,
+    runFinished: run.finished || receipt === null || receipt.finished, cancellationRequested: receipt?.cancellationRequested ?? false,
     versionMatches: run.versionId === route.versionId, approvalPending: same, sameExpiry: same, expired: notice.expiresAt <= at,
   }) ? "resume" : "withdraw"
 }
