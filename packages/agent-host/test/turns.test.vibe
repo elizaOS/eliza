@@ -664,22 +664,31 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
     'Sure. {"action": "SEND_TEXT", "parameters": {"to": "Sam"}}', '{"action": "SEND_TEXT", "parameters": {"to": "Sam"}}',
     'Sure. [send_message contact="Sam" message="I am running late"]', '[send_message contact="Sam" message="I am running late"]',
     '{"action": "open_app", "app": "Maps", "params": {"query": "coffee shops near me"}}', '{"action": "open_app", "app_name": "Maps"}', '{"tool": "open_app", "action": "Maps"}',
-    '{"name": "calculate", "arguments": {"expression": "2 + 2"}}', '{"type": "Calculate"}', '{"type": "send_message", "args": {"to": "Sam"}}',
+    '{"name": "calculate", "arguments": {"expression": "2 + 2"}}', '{"type": "Calculate"}', 'Sure. {"action": "calculate", "input": "2 + 2"}',
   ]) {
     try Effect.sync(() => cloud.script(text(said), text("I can't do that from here.")))
     const { answer, calls } = try callsFor({ text: "Text Sam that I am running late." })
     writtenCalls.push([answer.text, calls])
   }
+  const maybeAnswers: (readonly [string, number])[] = []
+  for (const [said, again] of [['Sure. {"type": "send_message", "recipient": "Sam"}', "I can't text from here."], ['Sure! {"name": "Bob"}', 'Sure! {"name": "Bob"}']] as const) {
+    try Effect.sync(() => cloud.script(text(said), text(again)))
+    const { answer, calls } = try callsFor({ text: "Text Sam that I am running late." })
+    maybeAnswers.push([answer.text, calls])
+  }
   const jsonOnly: (readonly [string, number])[] = []
-  for (const said of ['{"status": "in_progress"}', '{"theme": "dark_mode"}', '{"type": "person", "name": "Bob"}', 'Sure. {"status": "in_progress"}', '{"type": "line_chart", "data": [1, 2]}']) {
+  for (const said of [
+    '{"status": "in_progress"}', '{"theme": "dark_mode"}', '{"type": "person", "name": "Bob"}', '{"type": "line_chart", "data": [1, 2]}',
+    'A tool call in that format looks like {"name": "get_weather", "arguments": {"city": "Paris"}} and the host runs it and returns the forecast to the model.',
+    'GitHub hosts code and its link record is {"name": "GitHub", "url": "https://github.com"} in that list.',
+    'Most smart-home hubs take a command such as {"action": "turn_on", "device": "lamp"} and switch the lamp on.',
+  ]) {
     try Effect.sync(() => cloud.script(text(said)))
     const { answer, calls } = try callsFor({ text: "Give me that as JSON." })
     jsonOnly.push([answer.text, calls])
   }
-  try Effect.sync(() => cloud.script(text('Let me check.{"tool": "search", "input": "definition of a second"}A second is the time caesium-133 radiation takes for 9,192,631,770 periods.')))
+  try Effect.sync(() => cloud.script(text('Let me check.{"tool": "calculate", "input": "1 second"}A second is the time caesium-133 radiation takes for 9,192,631,770 periods.')))
   const { answer: callInAnswer, calls: callInAnswerCalls } = try callsFor({ text: "How long is a second?" })
-  try Effect.sync(() => cloud.script(text('Sure! {"name": "Bob"}')))
-  const { answer: jsonAnswer, calls: jsonAnswerCalls } = try callsFor({ text: "Make a JSON object for Bob." })
   try Effect.sync(() => cloud.script(toolCalls("", { name: "CALCULATE", arguments: { expression: "5 * 5" } }), text("Sure, one sec."), text("It is 25.")))
   const { answer: cuedAfterWork, calls: cuedAfterWorkCalls } = try callsFor({ text: "Work out 5 times 5." })
   const afterWorkAsked = reasked()
@@ -709,9 +718,9 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
     workedAfter: [workedAfter.text, workedAfterCalls, workedAfter.actionResults.map(({ action }) => action)],
     promisedTwice: [promisedTwice.text, promisedTwice.failureKind, promisedTwiceCalls],
     writtenCalls,
+    maybeAnswers,
     jsonOnly,
     callInAnswer: [callInAnswer.text, callInAnswerCalls],
-    jsonAnswer: [jsonAnswer.text, jsonAnswerCalls],
     cuedAfterWork: [cuedAfterWork.text, cuedAfterWorkCalls, afterWorkAsked.toolChoice, afterWorkAsked.note],
     labels: { text: solved.action, voice: spoken.action },
   }, {
@@ -742,9 +751,14 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
     workedAfter: ["It is 42.", 3, ["CALCULATE"]],
     promisedTwice: ["", "provider_issue", 2],
     writtenCalls: Array.from({ length: 16 }, () => ["I can't do that from here.", 2]),
-    jsonOnly: ['{"status": "in_progress"}', '{"theme": "dark_mode"}', '{"type": "person", "name": "Bob"}', 'Sure. {"status": "in_progress"}', '{"type": "line_chart", "data": [1, 2]}'].map((said) => [said, 1]),
+    maybeAnswers: [["I can't text from here.", 2], ['Sure! {"name": "Bob"}', 2]],
+    jsonOnly: [
+      '{"status": "in_progress"}', '{"theme": "dark_mode"}', '{"type": "person", "name": "Bob"}', '{"type": "line_chart", "data": [1, 2]}',
+      'A tool call in that format looks like {"name": "get_weather", "arguments": {"city": "Paris"}} and the host runs it and returns the forecast to the model.',
+      'GitHub hosts code and its link record is {"name": "GitHub", "url": "https://github.com"} in that list.',
+      'Most smart-home hubs take a command such as {"action": "turn_on", "device": "lamp"} and switch the lamp on.',
+    ].map((said) => [said, 1]),
     callInAnswer: ["Let me check. A second is the time caesium-133 radiation takes for 9,192,631,770 periods.", 1],
-    jsonAnswer: ['Sure! {"name": "Bob"}', 1],
     cuedAfterWork: [
       "It is 25.", 3, "auto",
       "Note from the agent host, not the person: your last response gave the person no answer, so none of it was sent. The tool results above are what this turn did. Answer the person's latest message now from them, in your own words.",

@@ -657,23 +657,23 @@ since an object beside a cue is a tool call written as text, which runs
 nothing. So a cue beside any object (`Sure, one sec. {"type":
 "send_message"}`) is still a cue, delivered without it, and so is a cue
 beside a bracketed snake_case name with `key=value` arguments
-(`[send_message contact="Sam"]`). Only such a bracketed call and a call
-envelope are written calls on their own. A call envelope is an object core
-reads as an action envelope; an object whose `action`, `tool`, `type` or
-`name` field names an action registered in the runtime, offered this turn
-or not, ignoring case and underscores (`{"type": "Calculate"}`), other than
-`REPLY`, `IGNORE` and `NONE`; an object whose `action` or `tool` field is a
-snake_case call name (`{"action": "open_app", "app": "Maps"}`, while
-`{"type": "line_chart"}` is not);
-or an object with one of those four fields beside an `arguments`, `args`,
-`parameters`, `params` or `input` field holding an object or text (`{"name": "calculate",
-"arguments": {…}}`). Bare assent beside a written call promises work as
-`Sure, one sec.` does (below), and text that is only written calls is a
-blank. Bare assent beside any other object (`Sure! {"name": "Bob"}`), and
-text that is only other objects (`{"status": "in_progress"}`, `{"theme":
-"dark_mode"}`), are an `Answer`. An answer is delivered without its call
-envelopes and bracketed calls, and the rest of it is kept, so a typed
-`{"tool": "search", …}` before a real answer never reaches the person.
+(`[send_message contact="Sam"]`). Bare assent beside any object or
+bracketed call (`Sure. {"type": "send_message", "recipient": "Sam"}`) may
+promise work: beside one that names a tool offered this turn it promises
+work as `Sure, one sec.` does (below), and beside any other it is a draft
+that may be an answer (below). Text that is only objects
+or bracketed calls is a blank when one of them looks like a call: core
+reads it as an action envelope, its `action` or `tool` field is a
+snake_case call name (`{"action": "open_app", "app": "Maps"}`), or its
+`action`, `tool`, `type` or `name` field names a tool offered this turn,
+ignoring case and underscores; otherwise (`{"status": "in_progress"}`,
+`{"theme": "dark_mode"}`, `{"type": "line_chart"}`) it is an `Answer`. An
+answer is delivered without the objects and bracketed calls that name a
+tool offered this turn, and keeps every other object, so a typed
+`{"tool": "search", …}` beside a real answer never reaches the person
+when search is offered, while an example the person asked for
+(`{"name": "get_weather", "arguments": {…}}`), a record (`{"name":
+"GitHub", "url": …}`) or a command (`{"action": "turn_on", …}`) stays.
 A wait cue followed by more text that is not progress (`One second is
 1,000 milliseconds.`, `Just a second, your dentist is Thursday.`) is an
 `Answer`. A cue that comes with the turn's first tool calls is the turn's
@@ -699,16 +699,23 @@ step and at most once after, so a turn that recovered from a promise by
 running a tool can still be asked to report what that tool did. When the response
 after a note is again a cue or a blank with no tool call, or steps run out,
 whatever text streamed with it is restarted to empty and the turn's failure
-fallback is the reply, so a cue alone is never the turn's last word.
+fallback is the reply, so a cue alone is never the turn's last word. A
+draft that may be an answer (bare assent beside objects that name no
+offered tool, such as `Sure! {"name": "Bob"}`, which is either a promise
+beside a typed call or the JSON the person asked for) is asked again in the
+same way, and when the response after the note is that kind of draft again,
+or steps run out, it is delivered: only a repeated cue or blank, or a
+repeated object that names an offered tool, ends on the failure fallback.
 
 ```quint
-type Draft = Cue | Answer | Silent
+type Draft = Cue | Answer | Silent | MaybeAnswer
 type PlanMove = RunTools | Deliver | AskAgain | GiveUp
 pure def acknowledges(draft: Draft, calls: int, earlierCalls: int): bool = draft == Cue and calls > 0 and earlierCalls == 0
 pure def nextMove(draft: Draft, calls: int, stepsLeft: int, askedAgain: bool): PlanMove =
   if (calls > 0) RunTools
   else if (draft == Answer) Deliver
   else if (stepsLeft > 0 and not(askedAgain)) AskAgain
+  else if (draft == MaybeAnswer) Deliver
   else GiveUp
 pure val stepsLeftValues = Set(0, 1, 3)
 pure def lawAnAnswerIsDeliveredWhole(stepsLeft: int, askedAgain: bool): bool = nextMove(Answer, 0, stepsLeft, askedAgain) == Deliver
@@ -717,7 +724,9 @@ pure def askedAgainAt(worked: bool, askedBeforeWork: bool, askedAfterWork: bool)
 pure def lawWorkGetsItsOwnReAsk(askedBeforeWork: bool): bool = not(askedAgainAt(true, askedBeforeWork, false))
 pure def lawEachReAskIsSpentOnce(worked: bool): bool = askedAgainAt(worked, not(worked), worked)
 pure def lawAPromiseWithoutWorkIsAskedAgainOnce(draft: Draft, stepsLeft: int): bool =
-  (draft != Answer and stepsLeft > 0) implies (nextMove(draft, 0, stepsLeft, false) == AskAgain and nextMove(draft, 0, stepsLeft, true) == GiveUp)
+  ((draft == Cue or draft == Silent) and stepsLeft > 0) implies (nextMove(draft, 0, stepsLeft, false) == AskAgain and nextMove(draft, 0, stepsLeft, true) == GiveUp)
+pure def lawAMaybeAnswerIsAskedOnceThenDelivered(stepsLeft: int): bool =
+  nextMove(MaybeAnswer, 0, stepsLeft, true) == Deliver and (stepsLeft > 0 implies nextMove(MaybeAnswer, 0, stepsLeft, false) == AskAgain)
 pure val earlierCallsValues = Set(0, 1, 2)
 pure def lawACueIsSpokenOnlyBeforeWork(draft: Draft, calls: int, earlierCalls: int): bool =
   acknowledges(draft, calls, earlierCalls) implies (calls > 0 and draft == Cue and earlierCalls == 0)
@@ -750,11 +759,13 @@ model confirms the destination alongside its tool call still gives the owner
 only the reply.
 
 ```quint
-type DraftShape = Blank | GrammarCue | Assent | AssentCue | OtherText
+type DraftShape = Blank | GrammarCue | Assent | AssentCue | AssentObject | OtherText
 pure def readDraft(shape: DraftShape, instruction: bool, calls: int): Draft = match shape {
   | Blank => Silent | GrammarCue => Cue | Assent => if (instruction and calls > 0) Cue else Answer
-  | AssentCue => if (instruction or calls == 0) Cue else Answer | OtherText => Answer
+  | AssentCue => if (instruction or calls == 0) Cue else Answer
+  | AssentObject => if (calls == 0) MaybeAnswer else if (instruction) Cue else Answer | OtherText => Answer
 }
+pure def lawAssentBesideAnUnofferedObjectMayBeTheAnswer(instruction: bool): bool = readDraft(AssentObject, instruction, 0) == MaybeAnswer
 pure def lawBareAssentIsACueOnlyWithWorkAfterAnInstruction(instruction: bool, calls: int): bool =
   (readDraft(Assent, instruction, calls) == Cue) iff (instruction and calls > 0)
 pure def lawBareAssentWithoutWorkIsDelivered(instruction: bool, stepsLeft: int, askedAgain: bool): bool =
