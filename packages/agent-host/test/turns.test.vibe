@@ -164,13 +164,19 @@ module node {
   }
 
   /** @throws {never} */
-  export function loseRoomOwnershipOnceReplied(runtime: AgentRuntime): () => void {
+  export function loseRoomOwnershipOnceAfterReply(runtime: AgentRuntime): () => void {
     const save = runtime.createMessageMemory
     const queue = runtime.roomHandlerQueue
     runtime.createMessageMemory = async (memory, unique) => {
       const stored = await save.call(runtime, memory, unique)
       if (memory.entityId === runtime.agentId && memory.content.inReplyTo !== undefined) {
-        Object.defineProperty(queue, "ownsLease", { value: () => false, configurable: true, writable: true })
+        let refused = false
+        const owns = (roomId: string, lease: unknown): boolean => {
+          if (refused) return Reflect.apply(Object.getPrototypeOf(queue).ownsLease, queue, [roomId, lease]) === true
+          refused = true
+          return false
+        }
+        Object.defineProperty(queue, "ownsLease", { value: owns, configurable: true, writable: true })
       }
       return stored
     }
@@ -235,7 +241,7 @@ module node {
     return text
   }
 }
-import { calendarProbe, completions, cutTurn, failNext, fixtureApp, lastTurnHistory, lastTurnPrompt, localDay, loseRoomOwnershipOnceReplied, movedDentist, nearestCafes, overlapping, plainLog, refuseMoves, roomMessages, seedHistory, storeNotice, unsaidMove } from node
+import { calendarProbe, completions, cutTurn, failNext, fixtureApp, lastTurnHistory, lastTurnPrompt, localDay, loseRoomOwnershipOnceAfterReply, movedDentist, nearestCafes, overlapping, plainLog, refuseMoves, roomMessages, seedHistory, storeNotice, unsaidMove } from node
 
 effect function cloudAgent(cloud: CloudFake, state?: Scratch) {
   return try startInProcess({
@@ -313,11 +319,12 @@ it.live('A repeat joins, replays or conflicts by its key, a busy room is 429, a 
   const storedUnnamed = try host("stored unnamed failure", () => first.agent.runtime.getMemoryById(replyOf(unnamed).messageId as UUID))
 
   try Effect.sync(() => cloud.script(unavailable(1), text("Recovered answer.")))
-  const regain = try Effect.sync(() => loseRoomOwnershipOnceReplied(first.agent.runtime))
+  const regain = try Effect.sync(() => loseRoomOwnershipOnceAfterReply(first.agent.runtime))
   const lateFailure = try send(first, id, { text: "Answer after the outage." })
   try Effect.sync(regain)
-  const lateRows = (try host("rows after a late failure", () => roomMessages(first.agent.runtime, roomId)))
-    .filter((memory: Memory) => memory.entityId === first.agent.runtime.agentId && memory.content.inReplyTo === replyOf(lateFailure).userMessageId)
+  const lateRoom = try host("rows after a late failure", () => roomMessages(first.agent.runtime, roomId))
+  const lateAsked = lateRoom.find((memory: Memory) => memory.entityId !== first.agent.runtime.agentId && memory.content.text === "Answer after the outage.")
+  const lateRows = lateRoom.filter((memory: Memory) => memory.entityId === first.agent.runtime.agentId && lateAsked !== undefined && memory.content.inReplyTo === lateAsked.id)
 
   try Effect.sync(() => cloud.script(insufficientCredits()))
   const unfunded = try send(first, id, { text: "Answer me.", clientMessageId: "m-3" })
