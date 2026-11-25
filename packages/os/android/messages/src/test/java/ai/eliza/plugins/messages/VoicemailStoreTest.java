@@ -44,6 +44,9 @@ public final class VoicemailStoreTest {
  /** Rows by table: "status", "voicemail", "calls". Audio bytes by voicemail row. */
  static final Map<String, List<Map<String, Object>>> tables = new HashMap<>();
  static final Map<Long, byte[]> audio = new HashMap<>();
+ static Runnable beforeWrite;
+ static boolean lostWriteReply;
+ static int mutations;
  static Map<String, Object> row(Object... pairs) {
   Map<String, Object> row = new HashMap<>();
   for (int i = 0; i < pairs.length; i += 2) row.put((String) pairs[i], pairs[i + 1]);
@@ -72,15 +75,39 @@ public final class VoicemailStoreTest {
   }
   @Override public String getType(Uri uri) { return null; }
   @Override public Uri insert(Uri uri, ContentValues values) { throw new UnsupportedOperationException(); }
-  @Override public int delete(Uri uri, String selection, String[] args) {
-   List<Map<String, Object>> found = matching(uri);
-   tables.get(uri.getPathSegments().get(0)).removeAll(found);
+  private List<Map<String, Object>> writing(Uri uri, String selection, String[] args) {
+   mutations++;
+   if (beforeWrite != null) beforeWrite.run();
+   List<Map<String, Object>> rows = matching(uri);
+   if (selection == null) return rows;
+   require(uri.getPathSegments().size() == 2, "the voicemail provider updates only an item URI");
+   int bound = 0;
+   for (String clause : selection.split(" AND ")) {
+    if (clause.endsWith(" IS NULL")) {
+     String column = clause.replace(" IS NULL", "");
+     rows.removeIf(row -> row.get(column) != null);
+    } else {
+     String[] condition = clause.split(" = ");
+     require(condition.length == 2, "expected an identity equality");
+     String expected = "?".equals(condition[1]) ? args[bound++] : condition[1];
+     rows.removeIf(row -> !expected.equals(String.valueOf(row.get(condition[0]))));
+    }
+   }
+   return rows;
+  }
+  private int receipt(List<Map<String, Object>> found) {
+   if (lostWriteReply) throw new IllegalStateException("Provider write reply lost");
    return found.size();
   }
+  @Override public int delete(Uri uri, String selection, String[] args) {
+   List<Map<String, Object>> found = writing(uri, selection, args);
+   tables.get(uri.getPathSegments().get(0)).removeAll(found);
+   return receipt(found);
+  }
   @Override public int update(Uri uri, ContentValues values, String selection, String[] args) {
-   List<Map<String, Object>> found = matching(uri);
+   List<Map<String, Object>> found = writing(uri, selection, args);
    for (Map<String, Object> r : found) for (String key : values.keySet()) r.put(key, values.get(key));
-   return found.size();
+   return receipt(found);
   }
   @Override public ParcelFileDescriptor openFile(Uri uri, String mode) throws java.io.FileNotFoundException {
    byte[] bytes = audio.get(Long.parseLong(uri.getLastPathSegment()));
@@ -95,7 +122,7 @@ public final class VoicemailStoreTest {
 
  final Context context = RuntimeEnvironment.getApplication();
  @Before public void providers() {
-  tables.clear(); audio.clear();
+  tables.clear(); audio.clear(); beforeWrite = null; lostWriteReply = false; mutations = 0;
   for (String authority : new String[] { VoicemailContract.AUTHORITY, "call_log" }) {
    ProviderInfo info = new ProviderInfo();
    info.authority = authority;
@@ -228,5 +255,46 @@ public final class VoicemailStoreTest {
   require(!rows.getJSONObject(0).getBoolean("isNew") && rows.getJSONObject(1).getBoolean("isNew"), "only that row is heard");
   require(VoicemailStore.delete(context, 2).equals("deleted") && VoicemailStore.delete(context, 2).equals("not-found"), "deleted once, read back");
   require(VoicemailStore.list(context, 50, PHONE, "1", false, new CancellationSignal()).getJSONArray("voicemails").length() == 1, "the other row stays");
+ }
+
+ @Test public void reviewedDeletionCannotRemoveAReplacementWithTheSameProviderId() throws Exception {
+  source("1", 0);
+  voicemail(2, 2000, "source_data", "wanted");
+  Map<String, Object> row = tables.get("voicemail").get(0);
+  JSONObject oldListing = VoicemailStore.list(context, 50, PHONE, "1", false, new CancellationSignal()).getJSONArray("voicemails").getJSONObject(0);
+  require(!oldListing.has("deletionWitness"), "a legacy listing keeps its original fields");
+  JSONObject listed = VoicemailStore.list(context, 50, PHONE, "1", false, true, new CancellationSignal()).getJSONArray("voicemails").getJSONObject(0);
+  String witness = listed.getString("deletionWitness");
+  require(VoicemailStore.validDeletionWitness(witness) && !listed.has("source_data"), "the listing gives only its opaque witness");
+  JSONObject target = new JSONObject().put("id", "2").put("witness", witness);
+  require(VoicemailStore.inspectDeletion(context, 2, witness, new CancellationSignal()) == null, "the original version is eligible");
+
+  row.put("source_data", "already-replaced");
+  require(VoicemailStore.inspectDeletion(context, 2, witness, new CancellationSignal()).equals("stale"), "staging refuses a stale listing");
+  require(VoicemailStore.dispatchDeletion(context, target, () -> true).getString("status").equals("conflict"), "a changed row refuses at expiry");
+  require(mutations == 0, "a stale provider lookup does not dispatch");
+
+  row.put("source_data", "wanted");
+  beforeWrite = () -> row.put("source_data", "replaced-during-write");
+  require(VoicemailStore.dispatchDeletion(context, target, () -> true).getString("status").equals("conflict"), "the provider selection catches a replacement after the read");
+  require(mutations == 1 && tables.get("voicemail").contains(row), "the conditional write did not touch the replacement");
+
+  beforeWrite = null;
+  row.put("source_data", "wanted");
+  require(VoicemailStore.dispatchDeletion(context, target, () -> true).getString("status").equals("deleted"), "the exact source row can still be deleted");
+  require(mutations == 2 && tables.get("voicemail").isEmpty(), "the exact row was removed once");
+ }
+
+ @Test public void reviewedOwnVoicemailMutationWithALostReplyStaysUnknown() throws Exception {
+  source("1", 0);
+  voicemail(2, 2000, "source_package", context.getPackageName(), "source_data", "wanted");
+  Map<String, Object> row = tables.get("voicemail").get(0);
+  String witness = VoicemailStore.list(context, 50, PHONE, "1", false, true, new CancellationSignal())
+   .getJSONArray("voicemails").getJSONObject(0).getString("deletionWitness");
+  JSONObject target = new JSONObject().put("id", "2").put("witness", witness);
+  lostWriteReply = true;
+
+  require(VoicemailStore.dispatchDeletion(context, target, () -> true).getString("status").equals("unknown"), "write happened but its reply was lost");
+  require(mutations == 1 && Integer.valueOf(1).equals(row.get("deleted")), "no second provider write followed the lost reply");
  }
 }

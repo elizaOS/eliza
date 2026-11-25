@@ -11,7 +11,8 @@ import {
   type HostLaunch,
 } from "../../gen/os__agentService__config.effect.vibe"
 import { characterAdmitted, policyAdmitted, type Backend, type EnvEntry, type UrlShape } from "../../gen/agent__host__launch.effect.vibe"
-import { flatParam, validList, type Accept, type Group, type Piece, type Route as ModelRoute, type RouteList as ModelRouteList } from "../../gen/agent__access__routes.effect.vibe"
+import { validList, type RouteList as ModelRouteList } from "../../gen/agent__access__routes.effect.vibe"
+import { RouteList, modelList } from "@elizaos/agent"
 
 export const AGENT_ASSETS = { host: "agent/host.json", character: "agent/character.json", policy: "agent/policy.json" } as const
 export type AgentFile = keyof typeof AGENT_ASSETS
@@ -26,40 +27,11 @@ const HTTPS_URL = /^https:\/\/[^\s?#@]+$/
 const CLASS_NAME = /^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)+$/
 const ENVIRONMENT_NAME = /^[A-Z][A-Z0-9_]*$/
 const RESERVED_ENVIRONMENT = /^(?:(?:ELIZA_AGENT_|ELIZA_CLOUD_|ELIZA_OWN_|LD_|NODE_).*|PATH|HOME|TMPDIR)$/
-const LITERAL = /^[A-Za-z0-9._-]+$/
-const PLACEHOLDER = /^\{[a-z][A-Za-z]*\}$/
-const isLiteral = (text: string) => LITERAL.test(text) && !/^\.+$/.test(text)
-
-function compiles(pattern: string): boolean {
-  try { new RegExp(`^(?:${pattern})$`, "u"); return pattern !== "" }
-  catch { return false }
-}
 
 function namedZone(zone: string): boolean {
   try { new Intl.DateTimeFormat("en", { timeZone: zone }); return zone === "UTC" || zone.includes("/") }
   catch { return false }
 }
-
-const Pattern = Schema.String.check(Schema.makeFilter(compiles))
-const Path = Schema.String.check(Schema.makeFilter((path) => path.startsWith("/") && path.slice(1).split("/").every((piece) => isLiteral(piece) || PLACEHOLDER.test(piece))))
-const Prefix = Schema.String.check(Schema.makeFilter((path) => path === "" || (path.startsWith("/") && path.slice(1).split("/").every(isLiteral))))
-const Query = Schema.Struct({
-  key: Schema.String,
-  accepts: Schema.Union([
-    Schema.Struct({ kind: Schema.Literal("any") }),
-    Schema.Struct({ kind: Schema.Literal("pattern"), pattern: Pattern }),
-    Schema.Struct({ kind: Schema.Literal("pinned"), value: Schema.String }),
-  ]),
-})
-const Route = Schema.Struct({
-  method: Schema.Literals(["GET", "POST", "PUT", "PATCH", "DELETE"]),
-  path: Path,
-  stream: Schema.optionalKey(Schema.Boolean),
-  query: Schema.optionalKey(Schema.Array(Query)),
-  maxBodyBytes: Schema.optionalKey(PositiveInteger),
-})
-const RouteGroup = Schema.Struct({ prefixes: Schema.Array(Prefix), id: Schema.optionalKey(Pattern), routes: Schema.Array(Route) })
-const RouteList = Schema.Union([Schema.Array(Route), Schema.Array(RouteGroup)])
 
 const Model = Schema.Union([
   Schema.Struct({ backend: Schema.Literal("cloud"), cloudBaseUrl: Schema.String, smallModel: Schema.String, largeModel: Schema.String, imageModel: Schema.String }),
@@ -204,38 +176,6 @@ function hostLaunch(host: HostFile): HostLaunch {
   }
 }
 
-function pieces(path: string): Piece[] {
-  return path.slice(1).split("/").map((text) => PLACEHOLDER.test(text) ? { tag: "Param" } : { tag: "Literal", text })
-}
-
-function accept(accepts: typeof Query.Type["accepts"]): Accept {
-  switch (accepts.kind) {
-    case "any": return { tag: "AnyValue" }
-    case "pattern": return { tag: "Matching", pattern: accepts.pattern }
-    case "pinned": return { tag: "Pinned", value: accepts.value }
-  }
-}
-
-const modelRoute = (route: typeof Route.Type): ModelRoute => ({
-  method: ({ GET: "Get", POST: "Post", PUT: "Put", PATCH: "Patch", DELETE: "Delete" } as const)[route.method],
-  delivery: route.stream ? "Streamed" : "Buffered",
-  path: pieces(route.path),
-  query: (route.query ?? []).map((rule) => ({ key: rule.key, accepts: accept(rule.accepts) })),
-  limit: route.maxBodyBytes === undefined ? { tag: "AnySize" } : { tag: "AtMost", bytes: route.maxBodyBytes },
-})
-
-const modelGroup = (group: typeof RouteGroup.Type): Group => ({
-  prefixes: group.prefixes.map((prefix) => prefix === "" ? [] : prefix.slice(1).split("/")),
-  id: group.id ?? "",
-  routes: group.routes.map(modelRoute),
-})
-
-function routeList(routes: typeof RouteList.Type): ModelRouteList {
-  const flat = routes.flatMap((entry) => "method" in entry ? [entry] : [])
-  if (flat.length > 0) return [modelGroup({ prefixes: [""], id: flatParam, routes: flat })]
-  return routes.flatMap((entry) => "routes" in entry ? [modelGroup(entry)] : [])
-}
-
 function allowed(policy: PolicyFile): string[] {
   const names = policy.actions.allowed
   return Array.isArray(names) ? [...names] : Object.keys(names).sort()
@@ -250,7 +190,7 @@ function agentData(bytes: Readonly<Record<AgentFile, number>>, host: HostFile, c
       schema: host.schema,
       service: CLASS_NAME.test(host.service) ? { tag: "QualifiedClass", className: host.service } : { tag: "MalformedClass" },
       notification: { ...noticeWords(host.notification), failure: noticeWords(host.notification.failure) },
-      routes: routeList(host.routes),
+      routes: modelList(host.routes),
       launch: hostLaunch(host),
     },
     character: { name: character.name, nameUnits: character.name.length, systemBlank: !/\S/.test(character.system) },
@@ -278,7 +218,7 @@ const decodeCharacter = Schema.decodeUnknownEffect(Schema.fromJsonString(Charact
 const decodePolicy = Schema.decodeUnknownEffect(Schema.fromJsonString(PolicyFileCodec), { onExcessProperty: "error" })
 
 effect function text(name: AgentFile, bytes: Uint8Array) {
-  return try Effect.try({ try: () => new TextDecoder("utf-8", { fatal: true }).decode(bytes), catch: () => new AgentConfigRefused({ detail: `The agent ${name} file is not UTF-8` }) })
+  return try Effect.try({ try: () => new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes), catch: () => new AgentConfigRefused({ detail: `The agent ${name} file is not UTF-8` }) })
 }
 
 export effect function admitAgentBytes(files: Readonly<Record<AgentFile, Uint8Array>>) {
@@ -290,7 +230,7 @@ export effect function admitAgentBytes(files: Readonly<Record<AgentFile, Uint8Ar
     if (allowed(policy).includes(name)) throw new AgentConfigRefused({ detail: `Action ${name} is both allowed and refused` })
   if (host.embeddingDimensions !== undefined && host.embeddingDimensions <= 0) throw new AgentConfigRefused({ detail: "The agent embeddingDimensions is a positive whole number" })
   const data = agentData({ host: files.host.byteLength, character: files.character.byteLength, policy: files.policy.byteLength }, host, character, policy)
-  const detail = broken(data, host.nativeRoutes === undefined ? undefined : routeList(host.nativeRoutes))
+  const detail = broken(data, host.nativeRoutes === undefined ? undefined : modelList(host.nativeRoutes))
   if (detail !== undefined) throw new AgentConfigRefused({ detail })
   const notification = data.host.notification
   return {

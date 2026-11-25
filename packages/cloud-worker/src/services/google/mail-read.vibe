@@ -457,13 +457,13 @@ effect function draftRoute(context: RouteContext) {
 const gmailPath = "/api/v1/eliza/google/gmail"
 
 export const mailReadRoutes: ReadonlyArray<Route> = [
-  { method: "GET", path: `${gmailPath}/triage`, auth: "MailAccess", capability: "managedGoogle", handler: triageRoute },
-  { method: "GET", path: `${gmailPath}/search`, auth: "MailAccess", capability: "managedGoogle", handler: searchRoute },
-  { method: "GET", path: `${gmailPath}/read`, auth: "MailAccess", capability: "managedGoogle", handler: readRoute },
-  { method: "GET", path: inboxArrivalPath, auth: "ServiceAccess", capability: "managedGoogle", handler: arrivalRoute },
-  { method: "GET", path: `${gmailPath}/inbox-v1/capabilities`, auth: "MailAccess", capability: "managedGoogle", handler: capabilitiesRoute },
-  { method: "GET", path: `${gmailPath}/inbox-v1/thread`, auth: "MailAccess", capability: "managedGoogle", handler: threadRoute },
-  { method: "GET", path: `${gmailPath}/inbox-v1/attachment`, auth: "MailAccess", capability: "managedGoogle", handler: attachmentRoute },
-  { method: "GET", path: `${gmailPath}/inbox-v1/drafts`, auth: "MailAccess", capability: "managedGoogle", handler: draftsRoute },
-  { method: "GET", path: `${gmailPath}/inbox-v1/draft`, auth: "MailAccess", capability: "managedGoogle", handler: draftRoute }
+  { method: "GET", path: `${gmailPath}/triage`, auth: "MailAccess", area: "GoogleRoutes", handler: triageRoute },
+  { method: "GET", path: `${gmailPath}/search`, auth: "MailAccess", area: "GoogleRoutes", handler: searchRoute },
+  { method: "GET", path: `${gmailPath}/read`, auth: "MailAccess", area: "GoogleRoutes", handler: readRoute },
+  { method: "GET", path: inboxArrivalPath, auth: "ServiceAccess", area: "GoogleRoutes", handler: arrivalRoute },
+  { method: "GET", path: `${gmailPath}/inbox-v1/capabilities`, auth: "MailAccess", area: "GoogleRoutes", handler: capabilitiesRoute },
+  { method: "GET", path: `${gmailPath}/inbox-v1/thread`, auth: "MailAccess", area: "GoogleRoutes", handler: threadRoute },
+  { method: "GET", path: `${gmailPath}/inbox-v1/attachment`, auth: "MailAccess", area: "GoogleRoutes", handler: attachmentRoute },
+  { method: "GET", path: `${gmailPath}/inbox-v1/drafts`, auth: "MailAccess", area: "GoogleRoutes", handler: draftsRoute },
+  { method: "GET", path: `${gmailPath}/inbox-v1/draft`, auth: "MailAccess", area: "GoogleRoutes", handler: draftRoute }
 ]

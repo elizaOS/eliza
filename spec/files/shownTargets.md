@@ -51,7 +51,8 @@ request made from Home, or from a turn that carries no observation, becomes
 the request, and the phone's card waits for the owner to open Files (next
 rule). A move or trash keeps no identity the model sent, since the phone
 reads each one when it builds the card. A proposal carries the owner's
-message only on a direct-request turn ([device
+message only on a direct-request turn for Files (`agentActionMode`
+`direct-request-v1` or `direct-files-v1`, [device
 surfaces](../agent/deviceActions/surfaces.md)), so outside one even a
 filter or an open is reviewed on the phone.
 
