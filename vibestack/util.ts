@@ -266,7 +266,6 @@ export function testInputs(root: string, mode: TestProfile = "normal", read: Inp
     const top = gen && fs.existsSync(path.join(from, "gen")) ? fs.readdirSync(path.join(from, "gen"), { withFileTypes: true }).filter((e) => e.isFile()).map((e) => `gen/${e.name}`).sort() : [];
     for (const file of top.filter(reads[read])) update(from, file);
   }
-if (read === "tests" && !evaluator) return undefined;
   // The OS package's tests also run the Android journeys, so its fingerprint covers the toolchain that ran.
   const isOs = read === "tests" && manifest(root).name === "@elizaos/os";
   const android = isOs ? androidToolchainIdentity() : undefined;
