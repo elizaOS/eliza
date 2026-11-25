@@ -2,7 +2,6 @@
 import type { Action } from "@elizaos/core";
 import { Context, Effect } from "effect";
 import type { ModuleFactory } from "../../../src/host/module.vibe";
-// As a real plugin does, this one imports agent-host's root, which also exports the bundle builder and its Vite.
 import "../../../src/index.vibe";
 
 export const hostedFixtureName = "hosted-fixture";

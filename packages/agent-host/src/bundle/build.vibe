@@ -55,10 +55,6 @@ module node {
   const entryId = "\0eliza-agent-bundle-entry"
   const excludedPrefix = "\0eliza-excluded:"
   const builderToolPrefix = "\0eliza-builder-tool:"
-  /**
-   * The builder's own bundler and the names this module imports from it. Agent-host's root exports this builder, so a
-   * plugin that imports agent-host's root reaches it: the device bundle gets a Vite that refuses to run, never Vite itself.
-   */
   const builderTools: Readonly<Record<string, readonly string[]>> = { vite: ["build", "parseAst"] }
   const rolldownRuntime = "\0rolldown/runtime.js"
   const compiledModule = /^(.+\.vibex?)\.[^./\\]+\.jsx?$/
