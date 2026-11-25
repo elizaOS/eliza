@@ -1,5 +1,7 @@
 // spec/os/image/product.md, "Story: Compose my product from a pinned device profile"; spec/os/image/product.md, "Story: Enroll my product's update channel"; spec/os/image/firstRun.md, "First run requires Home, the assistant the image declares, and the dialer and SMS app only where the image declares them and the device has telephony"
 import { parseDigest } from "./apk.vibe"
+import { clockLines } from "./provisioning.vibe"
+import { verifySource, type VerifySourceOptions } from "./source-lock.vibe"
 import { finalizeNative, inspectPublishedLauncher } from "./stage-launcher.vibe"
 import { hexOf, type Digest } from "../../gen/os__image__apk.effect.vibe"
 import { stagedDescriptor } from "../../gen/os__image__firstRun.effect.vibe"
@@ -10,7 +12,6 @@ import {
   enrollmentProblems,
   isPixel,
   lunchChoices,
-  lockTarget,
   lunchFor,
   recordAdmitted,
   type BootArchive,
@@ -30,7 +31,7 @@ import {
   type UpdaterSource,
 } from "../../gen/os__image__product.effect.vibe"
 import type { DefaultRole, ProvisioningRequest } from "../../gen/os__image__provisioning.effect.vibe"
-import { admitProduct, canAdmitProduct, type BuildPurpose, type ProductName, type SourceVerdict } from "../../gen/os__image__sourceLock.effect.vibe"
+import { admitProduct, canAdmitProduct, type BuildPurpose, type ProductName } from "../../gen/os__image__sourceLock.effect.vibe"
 
 module node {
   import { X509Certificate, createHash } from "node:crypto"
@@ -196,7 +197,7 @@ export type BootAnimationInput =
 export interface ComposeRequest {
   readonly output: string
   readonly descriptor: string
-  readonly source: SourceVerdict
+  readonly source: VerifySourceOptions
   readonly purpose: BuildPurpose
   readonly provisioning: ProvisioningRequest
   readonly bootAnimation?: BootAnimationInput
@@ -288,7 +289,6 @@ const RELEASE = /^[a-z0-9_]+$/
 const MIME = /^vnd\.android\.cursor\.dir\/vnd\.[a-z0-9][a-z0-9_.-]*$/
 const HEX64 = /^[0-9a-f]{64}$/
 const PLACEHOLDER = /^(unset|todo|tbd)$/i
-const CLOCK_LINE = /^\s*PRODUCT_PACKAGES\s*\+=\s*DeskClock\s*$/gm
 const UPDATER_DISABLED = /<bool name="os_update_enabled">false<\/bool>/
 const MAX_BOOT_ANIMATION_BYTES = 64 * 1024 * 1024
 const BOOT_ANIMATION_DESTINATION = "$(TARGET_COPY_OUT_PRODUCT)/media/bootanimation.zip"
@@ -441,10 +441,6 @@ function buildSettings(makefiles: readonly string[]): BuildSettings {
     selinux: /androidboot\.selinux\s*=\s*permissive/.test(all) ? "SelinuxPermissive" : "SelinuxEnforcing",
     neverallows: assignments(all, "SELINUX_IGNORE_NEVERALLOWS").some((value) => value === "true") ? "NeverallowsIgnored" : "NeverallowsChecked",
   }
-}
-
-function clockLines(makefiles: readonly string[]): number {
-  return makefiles.reduce((total, makefile) => total + [...makefile.matchAll(CLOCK_LINE)].length, 0)
 }
 
 function escapeXml(value: string): string {
@@ -664,7 +660,9 @@ export effect function composeProduct(request: ComposeRequest) {
   }
   const brandToken = d.brand.toLowerCase()
   const named = productName(d.productName)
-  const namesPinnedTarget = named.brand === brandToken && named.target === lockTarget(d)
+  const checked = try verifySource(request.source)
+  const checkout = try mapError(files.realPath(request.source.sourceRoot), (cause) => new ProductInputUnreadable({ place: request.source.sourceRoot, message: cause.message }))
+  const output = try mapError(files.realPath(request.output), (cause) => new ProductInputUnreadable({ place: request.output, message: cause.message }))
   const staged = try mapError(inspectPublishedLauncher(request.output), (cause) => new ProductInputUnreadable({ place: request.output, message: cause.message }))
   if (request.purpose === "Production" && staged.call.stagingMode !== "StageProduction")
     throw new ProductRefused({ product: d.productName, problems: ["LauncherDiffers"], message: `${d.productName} needs a production launcher staging record` })
@@ -676,7 +674,7 @@ export effect function composeProduct(request: ComposeRequest) {
   if (d.firstRun && !firstRun.some((file) => file.path === "product.mk")) throw new ProductInputUnreadable({ place: path.join(aosp, "first-run"), message: "The first-run sources have no product.mk" })
   const templates = isPixel(d) ? try readSourceTree(path.join(aosp, "devices", "pixel10a")) : []
   const roles = d.firstRun ? firstRunRoles(d, request.provisioning) : []
-  const clock = clockLines(consumer)
+  const clock = consumer.reduce((total, makefile) => total + clockLines(makefile), 0)
   const planned = new Map<string, StagedFile>()
   const add = (relative: string, bytes: Uint8Array, mode = 0o644) => planned.set(relative, { bytes, mode })
   add("AndroidProducts.mk", utf8(productList(d)))
@@ -687,7 +685,7 @@ export effect function composeProduct(request: ComposeRequest) {
   for (const file of firstRun) add(`first-run/${file.path}`, file.bytes, file.mode)
   if (d.firstRun) add(`first-run/overlay/vendor/${d.vendorDirectory}/first-run/res/values/config.xml`, utf8(firstRunOverlay(roles)))
   const composed = [...planned].filter(([relative]) => relative.endsWith(".mk")).map(([, file]) => textOf(file.bytes))
-  const source = namesPinnedTarget && canAdmitProduct(request.source, brandToken, named, request.purpose) ? admitProduct(request.source, brandToken, named, request.purpose) : request.source
+  const source = canAdmitProduct(checked.state, brandToken, named, request.purpose) ? admitProduct(checked.state, brandToken, named, request.purpose) : checked.state
   const call: CompositionCall = {
     descriptor: d,
     purpose: request.purpose,
@@ -699,9 +697,9 @@ export effect function composeProduct(request: ComposeRequest) {
     bootArchive: boot.archive,
     clockLines: clock,
     updater: d.systemUpdater ? updaterState(updater) : "ReviewedDisabledUpdater",
+    outputInCheckout: output.startsWith(`${checkout}${path.sep}`),
   }
   const problems = compositionProblems(call)
-  if (!namesPinnedTarget && !problems.includes("SourceNotAdmitted")) problems.push("SourceNotAdmitted")
   if (problems.length) throw new ProductRefused({ product: d.productName, problems, message: `${d.productName} cannot be composed: ${problems.join(", ")}` })
   if (staged.conversion === "ConversionPending") try finalizeNative(request.output)
   try publish(request.output, planned)
