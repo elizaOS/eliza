@@ -17,5 +17,10 @@ const hostedAction = (path: string): Action => ({
 
 export const hostedFixtureModule: ModuleFactory<FixtureSocket> = () => Effect.gen(function* () {
   const socket = yield* FixtureSocket;
+  if (socket.path === "HOLD") {
+    process.send?.({ kind: "hostedModuleHeld" });
+    return yield* Effect.never;
+  }
+  if (socket.path === "DEFECT") return yield* Effect.die(new Error("the hosted fixture module failed"));
   return { name: hostedFixtureName, plugin: { name: hostedFixtureName, description: "A host module fixture over a device socket.", actions: [hostedAction(socket.path)] } };
 });

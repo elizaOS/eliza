@@ -44,7 +44,7 @@ module node {
 
   /** @throws {Error} */
   export function project(asks: readonly Ask[]): Answer[] {
-    const out = execFileSync(java, ["-cp", compileAdapter(MAIN), MAIN], { input: asks.map((ask) => JSON.stringify(ask)).join("\n") + "\n", encoding: "utf8", timeout: 120_000 })
+    const out = execFileSync(java, ["-Duser.timezone=Asia/Tokyo", "-cp", compileAdapter(MAIN), MAIN], { input: asks.map((ask) => JSON.stringify(ask)).join("\n") + "\n", encoding: "utf8", timeout: 120_000 })
     return out.trim().split("\n").map((line) => JSON.parse(line) as Answer)
   }
 
@@ -251,9 +251,8 @@ it.effect('Start my agent with my character, policy and model: the service and t
     )
     assert.strictEqual(fullDocument.hostContextRevision, Number.MAX_SAFE_INTEGER)
     const recordDocument = try decodeLaunchDocument((try admittedAnswer(record)).document)
-    assert.deepStrictEqual(recordDocument.model,
-      { backend: "cloud", cloudBaseUrl: "https://cloud.example", smallModel: "", largeModel: "", imageModel: "" })
-    assert.isUndefined(recordDocument.hostContextRevision)
+    assert.deepStrictEqual([recordDocument.model, recordDocument.timeZone, recordDocument.hostContextRevision],
+      [{ backend: "cloud", cloudBaseUrl: "https://cloud.example", smallModel: "", largeModel: "", imageModel: "" }, "Asia/Tokyo", undefined])
     // spec/os/agentService/config.md, "A launch carries the Google consent the owner saved, else the host file's"
     const consents: unknown[] = []
     for (const answer of [full, record, replaced, savedOnly]) consents.push((try decodeLaunchDocument((try admittedAnswer(answer)).document)).google)

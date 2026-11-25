@@ -37,7 +37,6 @@
     "nativeAgent": "packages/plugin-native-agent",
     "nativeAppblocker": "packages/plugin-native-appblocker",
     "nativeBrowserSurface": "packages/plugin-native-browser-surface",
-    "nativeBunRuntime": "packages/plugin-native-bun-runtime",
     "nativeCalendar": "packages/plugin-native-calendar",
     "nativeCamera": "packages/plugin-native-camera",
     "nativeCanvas": "packages/plugin-native-canvas",
@@ -96,6 +95,7 @@
     "maps": ["packages/plugin-maps-client"],
     "notes": ["packages/plugin-notes-client"],
     "os": ["packages/os-bridges"],
+    "wallet": ["packages/plugin-wallet-client"],
     "workflow": ["packages/plugin-workflow-client", "packages/plugin-workflow-worker"]
   },
   "scripts": {
