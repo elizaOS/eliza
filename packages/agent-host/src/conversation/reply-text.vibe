@@ -148,13 +148,28 @@ function hostTexts(notes: readonly string[]): string[] {
 
 const compact = (text: string) => text.replace(/\s+/gu, "").toLowerCase()
 
-function dataOpenings(notes: readonly string[]): string[] {
-  return notes.flatMap((note) => {
+const openingsOf = new WeakMap<readonly string[], readonly string[]>()
+
+function dataOpenings(notes: readonly string[]): readonly string[] {
+  const known = openingsOf.get(notes)
+  if (known !== undefined) return known
+  const openings = notes.flatMap((note) => {
     const lines = note.split("\n").slice(1)
     const outside = lines.findIndex((line) => /external_untrusted_content|security notice/iu.test(line))
     return (outside < 0 ? lines : lines.slice(0, outside)).map((line) => line.trim())
       .filter((line) => line.length >= 32 && line.startsWith("{") && isJsonObject(line)).map((line) => compact(line).slice(0, 32))
   })
+  openingsOf.set(notes, openings)
+  return openings
+}
+
+function compactHead(text: string, from: number, size: number): string {
+  let head = ""
+  for (let at = from; at < text.length && head.length < size; at += 1) {
+    const unit = text[at] ?? ""
+    if (!/\s/u.test(unit)) head += unit.toLowerCase()
+  }
+  return head
 }
 
 export function holdsHostText(text: string, notes: readonly string[]): boolean {
@@ -163,19 +178,22 @@ export function holdsHostText(text: string, notes: readonly string[]): boolean {
   return hostTexts(notes).some((host) => said.includes(host)) || dataOpenings(notes).some((opening) => packed.includes(opening))
 }
 
-function echoAt(text: string, notes: readonly string[]): number {
+function echoAt(text: string, notes: readonly string[], from: number): number {
   const openings = dataOpenings(notes)
   if (openings.length === 0) return text.length
-  for (let at = text.indexOf("{"); at >= 0; at = text.indexOf("{", at + 1)) {
-    const rest = compact(text.slice(at))
-    if (openings.some((opening) => opening.startsWith(rest) || rest.startsWith(opening))) return at
+  for (let at = text.indexOf("{", from); at >= 0; at = text.indexOf("{", at + 1)) {
+    const head = compactHead(text, at, 32)
+    if (openings.some((opening) => opening.startsWith(head) || head.startsWith(opening))) return at
   }
   return text.length
 }
 
-export function shownUpTo(text: string, notes: readonly string[]): number {
-  return Math.min(hostTextAt(text, notes), echoAt(text, notes))
+export function shownUpTo(text: string, notes: readonly string[], shown = 0): number {
+  const from = Math.max(0, shown - hostLookBack)
+  return Math.min(from + hostTextAt(text.slice(from), notes), echoAt(text, notes, shown))
 }
+
+const hostLookBack = 256
 
 function hostTextAt(text: string, notes: readonly string[]): number {
   const { text: said, at } = folded(text)
@@ -205,7 +223,7 @@ function shapeOf(reply: string, offered: ReadonlySet<string>, notes: readonly st
 }
 
 export function draftOf(text: string, calls: number, offered: ReadonlySet<string>, toolsWaiting: boolean, declared: Declared, notes: readonly string[]): Draft {
-  return readDraft(shapeOf(text, offered, notes), calls, toolsWaiting, heardAs(declared, asksSomething(text)))
+  return heardAs(readDraft(shapeOf(text, offered, notes), calls, toolsWaiting, declared), declared, asksSomething(text), calls)
 }
 
 const writtenCallMarker = /<\s*\/?\s*tool_call\b|<\s*function(?:=|_call\b)/iu
@@ -213,8 +231,10 @@ const writtenCallHeads = ["<tool_call", "</tool_call", "<function=", "<function_
 
 export function asksSomething(said: string): boolean {
   const plain = said.replace(/```[\s\S]*?(?:```|$)|`[^`\n]*`|"[^"\n]*"|“[^”\n]*”/gu, "").replace(/\S+:\/\/\S+?([?？؟]?)(?=\s|$)/gu, "$1").trim()
-  const last = plain.split(/(?<=[.!?？؟…])\s+|\n+/u).filter((sentence) => sentence.trim() !== "").at(-1) ?? ""
-  return /[?？؟][^\p{L}\p{N}]*$/u.test(last.trim())
+  const lines = plain.split("\n").map((line) => line.trim()).filter((line) => line !== "")
+  while (lines.length > 1 && /^(?:[-*•]|\d+[.)])\s/u.test(lines.at(-1) ?? "")) lines.pop()
+  const sentences = lines.join(" ").split(/(?<=[.!?？؟…])\s+/u).filter((sentence) => /[\p{L}\p{N}]/u.test(sentence))
+  return /[?？؟][^\p{L}\p{N}]*$/u.test((sentences.at(-1) ?? "").trim())
 }
 
 export function writtenCallFree(text: string): { readonly prose: string; readonly markup: boolean } {
@@ -260,7 +280,11 @@ function openCodeAt(said: string): number {
   return said.indexOf("`", Math.max(kept, line))
 }
 
+const leadingTags = /^\s*(?:(?:\[(?:answer|promise|question)\]|<\/?(?:answer|promise)>)\s*){2,}/iu
+
 export function declaredOf(said: string): { readonly declared: Declared; readonly text: string } {
+  const run = leadingTags.exec(said)
+  if (run !== null) return { declared: "Undeclared", text: withoutTags(said.slice(run[0].length)) }
   const tag = declaredTag.exec(said)
   const leading = tag !== null && withoutWrittenCalls(said.slice(0, tag.index)).trim() === ""
   if (tag === null || !leading) return { declared: "Undeclared", text: withoutTags(said) }

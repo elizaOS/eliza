@@ -747,17 +747,20 @@ and a leading angle tag takes its closing tag off in any letter case
 tagged `[answer]` is an `Answer` delivered at once, however short (`[answer]
 Done!`, `[answer] Hello!`), and text tagged `[promise]` is a `Cue`, never
 delivered (`[promise] Sure, one sec.`), unless it asks the person
-something: text tagged `[promise]` whose last sentence is a question (it ends in
-`?`, `？` or `؟`, perhaps followed by an emoji or `!`, outside quotes, code
-and addresses) is an `Answer`, since the turn waits on the person
-(`[promise] Which Sam do you mean?`, `[promise] Hi! What can I do for you
-today?😊`), while `[promise] Let me open https://example.com/search?q=limes`
-and `[promise] What's the weather in Tokyo? Let me check that for you.` stay
-promises. A leading `[question]`, a tag the model sometimes writes though
+something: text tagged `[promise]` whose last sentence is a question (it
+ends in `?`, `？` or `؟`, perhaps followed by an emoji, an emoticon, `!` or
+a list of options, outside quotes, code and addresses) is a draft that may
+be an answer, asked again once and then delivered (`[promise] Hi! What can
+I do for you today? 😊`, `[promise] Which Sam do you mean?`), and when the
+turn gives up after it, that question is the reply rather than nothing; a
+promise that asks still gets its one re-ask, so `[promise] I'll check your
+email now. Want me to check your calendar too?` is not delivered at once.
+`[promise] Let me open https://example.com/search?q=limes` and `[promise]
+What's the weather in Tokyo? Let me check that for you.` stay promises. A leading `[question]`, a tag the model sometimes writes though
 the rule names only two, is taken off and the text is read by its form, as
-if untagged; anywhere else it is the model's text. A leading tag followed
-by another tag (`[answer][promise] I'll check.`) says nothing: the text is
-read by its form. Blank text, a cue beside a call
+if untagged; anywhere else it is the model's text. Two or more leading tags
+in a row (`[answer][promise] I'll check.`, `[Answer][Question] Which Sam?`)
+say nothing: all of them are taken off and the text is read by its form. Blank text, a cue beside a call
 written as text, and text that holds the agent host's words (below), are
 read by their form whatever the tag, and so is text written with tool
 calls: `[answer]` before an echoed host note is still no answer. Text with no tag is read by its form as above, so
@@ -854,11 +857,13 @@ pure def readDraft(shape: DraftShape, calls: int, toolsWaiting: bool, declared: 
   else match declared {
     | DeclaredAnswer => Answer | DeclaredPromise => Cue | Undeclared => readByForm(shape, calls, toolsWaiting)
   }
-pure def heardAs(declared: Declared, asks: bool): Declared = if (asks and declared == DeclaredPromise) DeclaredAnswer else declared
-pure def lawAQuestionIsNeverHeldAsAPromise(shape: DraftShape, toolsWaiting: bool, stepsLeft: int, askedAgain: bool): bool =
-  (shape != Blank and shape != CueBesideCall and shape != HostText) implies nextMove(readDraft(shape, 0, toolsWaiting, heardAs(DeclaredPromise, true)), 0, stepsLeft, askedAgain) == Deliver
-pure def lawATagIsKeptUnlessAPromiseAsks(declared: Declared, asks: bool): bool =
-  heardAs(declared, asks) == declared or (asks and declared == DeclaredPromise)
+pure def heardAs(draft: Draft, declared: Declared, asks: bool, calls: int): Draft =
+  if (calls <= 0 and asks and declared == DeclaredPromise and draft == Cue) MaybeAnswer else draft
+pure def lawAPromiseThatAsksIsAskedOnceThenDelivered(stepsLeft: int): bool =
+  nextMove(heardAs(Cue, DeclaredPromise, true, 0), 0, stepsLeft, true) == Deliver
+  and (stepsLeft > 0 implies nextMove(heardAs(Cue, DeclaredPromise, true, 0), 0, stepsLeft, false) == AskAgain)
+pure def lawOnlyAPromiseThatAsksIsHeardAgain(draft: Draft, declared: Declared, asks: bool, calls: int): bool =
+  heardAs(draft, declared, asks, calls) == draft or (draft == Cue and declared == DeclaredPromise and asks and calls <= 0)
 pure def lawADeclaredAnswerIsDeliveredAtOnce(shape: DraftShape, toolsWaiting: bool, stepsLeft: int, askedAgain: bool): bool =
   (shape != Blank and shape != CueBesideCall and shape != HostText) implies nextMove(readDraft(shape, 0, toolsWaiting, DeclaredAnswer), 0, stepsLeft, askedAgain) == Deliver
 pure def lawADeclaredPromiseWithoutWorkIsNeverDelivered(shape: DraftShape, toolsWaiting: bool, stepsLeft: int, askedAgain: bool): bool =
@@ -995,8 +1000,10 @@ JSON object, before any external content a note quotes, such as the screen
 context's data, is the exception: a response that holds its first 32
 characters, with any spacing and in any letter case, is the host's words
 (`{"observation":{"view":"launchers",…`), since no answer quotes the host's
-raw data; the reply stream shows nothing from a `{` while what follows it
-could still be such an opening. The notes stay in the model's request as they are.
+raw data; the reply stream shows nothing from a `{` while the 32
+non-space characters after it could still be such an opening, looking only
+past what it has already shown, so a long reply full of braces streams at
+its own pace. The notes stay in the model's request as they are.
 
 ```quint
 pure def lawHostTextIsNeverAnAnswer(calls: int, toolsWaiting: bool, declared: Declared): bool =

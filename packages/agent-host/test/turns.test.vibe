@@ -1773,12 +1773,18 @@ it.live(`A promise that asks the person something is the answer, a leading [ques
     const answer = replyOf(try send(agent, id, metadata === undefined ? { text: request } : { text: request, metadata }))
     return [answer.text, completions(cloud) - before] as const
   }
-  const askedPromise = try turn("Text Sam that I'm late.", () => [text("[promise] Which Sam do you mean, Sam Lee or Sam Ortiz?")])
-  const greeting = try turn("Hello", () => [text("[promise] Hi! What can I do for you today?")])
+  const askedPromise = try turn("Text Sam that I'm late.", () => [text("[promise] Which Sam do you mean, Sam Lee or Sam Ortiz?"), text("[promise] Which Sam do you mean, Sam Lee or Sam Ortiz?")])
+  const promiseThenAsk = try turn("Check my email.", () => [text("[promise] I'll check your email now. Want me to check your calendar too?"), text("[answer] I can't check your email from here.")])
+  const givenUpQuestion = try turn("Text Sam that I'm late.", () => [text("[promise] Which Sam do you mean?"), text("[promise] One sec.")])
+  const spacedEmoji = try turn("Hello", () => [text("[promise] Hi! What can I do for you today? 😊"), text("[promise] Hi! What can I do for you today? :)")])
+  const options = try turn("Order me a drink.", () => [text("[promise] Which one do you want?\n1. Coffee\n2. Tea"), text("[promise] Which one do you want?\n1. Coffee\n2. Tea")])
+  const doubleQuestion = try turn("Text Sam that I'm late.", () => [text("[answer][question] Which Sam do you mean?")])
+  const upperDouble = try turn("Check my calendar.", () => [text("[Answer][Promise] I'll check."), text("[answer] I can't check your calendar from here.")])
+  const greeting = try turn("Hello", () => [text("[promise] Hi! What can I do for you today?"), text("[promise] Hi! What can I do for you today?")])
   const linkPromise = try turn("Find limes nearby.", () => [text("[promise] Let me open https://example.com/search?q=limes for you."), text("[answer] I can't open pages from here.")])
   const quotedPromise = try turn("What does Ça va mean?", () => [text('[promise] I\'ll look up what "Ça va?" means.'), text("[answer] It means \"How are you?\" in French.")])
   const questionTag = try turn("Text Sam that I'm late.", () => [text("[question] Which Sam do you mean, Sam Lee or Sam Ortiz?")])
-  const emojiGreeting = try turn("Hello", () => [text("[promise] Hi! What can I do for you today?😊")])
+  const emojiGreeting = try turn("Hello", () => [text("[promise] Hi! What can I do for you today?😊"), text("[answer] Hi! What can I do for you today?😊")])
   const weatherPromise = try turn("What's the weather in Tokyo?", () => [text("[promise] What's the weather in Tokyo? Let me check that for you."), text("[answer] I can't check the weather from here.")])
   const doubleTag = try turn("Check my calendar.", () => [text("[answer][promise] I'll check that now."), text("[answer] I can't check your calendar from here.")])
   const questionPromise = try turn("Check my calendar.", () => [text("[question] Let me check that for you."), text("[answer] I can't check your calendar from here.")])
@@ -1787,13 +1793,19 @@ it.live(`A promise that asks the person something is the answer, a leading [ques
   const echoedScreen = try turn("Go home.", () => [text('{"observation":{"view":"launchers","revision":1,"sensitive":false,"selectedObject":{"kind":"canvas-screen","id":"home-screen"}}}'), text("[answer] You're already on the home screen.")], screen)
   const spacedScreen = try turn("Go home.", () => [text('[answer] { "observation": { "view": "launchers", "revision": 1, "sensitive": false } }'), text("[answer] You're already on the home screen.")], screen)
   const ownData = try turn("What's my config?", () => [text('[answer] Your config reads {"theme": "dark", "fontSize": 14}.')], screen)
-  try Effect.try(() => assert.deepStrictEqual({ askedPromise, greeting, linkPromise, quotedPromise, questionTag, emojiGreeting, weatherPromise, doubleTag, questionPromise, questionInside, echoedScreen, spacedScreen, ownData }, {
-    askedPromise: ["Which Sam do you mean, Sam Lee or Sam Ortiz?", 1],
-    greeting: ["Hi! What can I do for you today?", 1],
+  try Effect.try(() => assert.deepStrictEqual({ askedPromise, promiseThenAsk, givenUpQuestion, spacedEmoji, options, doubleQuestion, upperDouble, greeting, linkPromise, quotedPromise, questionTag, emojiGreeting, weatherPromise, doubleTag, questionPromise, questionInside, echoedScreen, spacedScreen, ownData }, {
+    askedPromise: ["Which Sam do you mean, Sam Lee or Sam Ortiz?", 2],
+    promiseThenAsk: ["I can't check your email from here.", 2],
+    givenUpQuestion: ["Which Sam do you mean?", 2],
+    spacedEmoji: ["Hi! What can I do for you today? :)", 2],
+    options: ["Which one do you want?\n1. Coffee\n2. Tea", 2],
+    doubleQuestion: ["Which Sam do you mean?", 1],
+    upperDouble: ["I can't check your calendar from here.", 2],
+    greeting: ["Hi! What can I do for you today?", 2],
     linkPromise: ["I can't open pages from here.", 2],
     quotedPromise: ["It means \"How are you?\" in French.", 2],
     questionTag: ["Which Sam do you mean, Sam Lee or Sam Ortiz?", 1],
-    emojiGreeting: ["Hi! What can I do for you today?😊", 1],
+    emojiGreeting: ["Hi! What can I do for you today?😊", 2],
     weatherPromise: ["I can't check the weather from here.", 2],
     doubleTag: ["I can't check your calendar from here.", 2],
     questionPromise: ["I can't check your calendar from here.", 2],
