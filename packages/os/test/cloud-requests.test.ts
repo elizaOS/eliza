@@ -1,4 +1,4 @@
-// spec/os/signIn/cloudRequests.md, "Story: Reach my account's cloud services without holding my key"
+// spec/os/signIn/cloudRequests.md, "Story: Reach my account's cloud services without holding my key"; spec/os/signIn/cloudRequests.md, "Story: Let my agent read my mail without holding a mail credential"
 import { execFileSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 import * as client from "../gen/cloud__client.ts";
@@ -65,6 +65,9 @@ describe("Reach my account's cloud services without holding my key", () => {
       mailWithUnknownQuery: "NOT_LISTED",
       mailWithLease: "200",
       inferenceWithKey: "200",
+      brokerReadForOwner: '200 {"accounts":[]}',
+      brokerReadForAnotherOwner: '403 {"reason":"sign-in-required"}',
+      brokerBearers: "lease",
       mailAfterRevokedLease: "SIGN_IN_REQUIRED",
       bearers: "lease/key,key",
       leaseReuses: 0,
@@ -90,6 +93,45 @@ describe("Reach my account's cloud services without holding my key", () => {
       "https://api.cloud.test?x=1": false,
       "ftp://api.cloud.test": false,
       "not a url": false,
+    });
+  });
+});
+
+describe("Let my agent read my mail without holding a mail credential", () => {
+  it("forwards only the launch owner's Gmail account list and search from a private, current bearer, and says why anything else read nothing (spec/os/signIn/cloudRequests.md, \"The agent reaches the broker only by a bodiless GET on the loopback host, without an origin, with the current launch's bearer\"; spec/os/signIn/cloudRequests.md, \"The broker forwards only the owner's Gmail account list and search, with the lease, while the launch's owner holds it\"; spec/os/signIn/cloudRequests.md, \"The agent gets the cloud's status and body, or a refusal naming why nothing was read, and never the credential that read it\")", () => {
+    const main = "ai.eliza.plugins.signin.GoogleBrokerJourney";
+    const seen = JSON.parse(execFileSync(javaTool("java"), ["-cp", compileAdapter(main), main], { encoding: "utf8", timeout: 120_000 })) as Record<string, string>;
+    const notBrokered = '404 {"reason":"not-brokered"}';
+    const notPrivate = '403 {"reason":"not-private"}';
+    const notAuthorized = '401 {"reason":"not-authorized"}';
+    const signIn = '403 {"reason":"sign-in-required"}';
+    expect(seen).toEqual({
+      accounts: '200 {"accounts":[]}',
+      search: '200 {"accounts":[]}',
+      messageRead: notBrokered,
+      unlistedField: notBrokered,
+      calendarFeed: notBrokered,
+      outsideThePrefix: notBrokered,
+      post: notPrivate,
+      withBody: notPrivate,
+      withOrigin: notPrivate,
+      withoutBearer: notAuthorized,
+      wrongBearer: notAuthorized,
+      samePortForNextLaunch: "true",
+      previousLaunchBearer: notAuthorized,
+      currentLaunchBearer: '200 {"accounts":[]}',
+      anotherOwnerSignedIn: signIn,
+      signedOut: signIn,
+      withoutLease: '403 {"reason":"mail-lease-upgrade-required"}',
+      ownerChangedInFlight: signIn,
+      offline: '503 {"reason":"cloud-unreachable"}',
+      oversize: '502 {"reason":"reply-too-large"}',
+      cloudRefusal: '401 {"error":"authentication_required","reason":"credential_revoked"}',
+      forwarded: [
+        "/api/v1/eliza/google/accounts?side=owner as owner",
+        "/api/v1/eliza/google/gmail/search?side=owner&grantId=g1&query=in%3Ainbox&maxResults=25 as owner",
+        ...Array.from({ length: 6 }, () => "/api/v1/eliza/google/accounts?side=owner as owner"),
+      ].join(","),
     });
   });
 });

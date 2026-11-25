@@ -234,6 +234,30 @@ pure def lawOwnKeyLaunchIsFramedWithTheProviderKeyOrNone(d: AgentData, cred: C::
 pure val providerVersionValues = Set(0, 1, 2)
 ```
 
+### Only a cloud launch is handed the mail broker, by its address and a bearer for that launch, never a credential
+
+When the consumer has registered the device's mail broker
+([cloud requests](../signIn/cloudRequests.md)) and it opens for the launch's
+account, a cloud launch's process environment names the broker's loopback
+endpoint as `ELIZA_MANAGED_GMAIL_READ_BROKER` and a bearer made for this
+launch as `ELIZA_MANAGED_GMAIL_READ_BROKER_TOKEN`. The launch document never
+names either. An own-key or keyless launch, or a broker that is not
+registered or could not open, is handed none, and the agent then reads mail
+as it would without a device. The bearer admits only the broker's reads for
+that account; the device key, the account session and the lease stay in the
+app. Source: the old line's `native-managed-google-host.ts`, which published
+the broker the same way.
+
+```quint
+type BrokerHandoff = BrokerNamed | NoBroker
+pure def brokerHandoff(d: AgentData, brokerOpen: bool): BrokerHandoff =
+  if (needsAccount(d.host.launch.backend) and brokerOpen) BrokerNamed else NoBroker
+pure val brokerOpenValues = Set(true, false)
+pure def lawOnlyACloudLaunchIsHandedTheBroker(d: AgentData, brokerOpen: bool): bool =
+  (brokerHandoff(d, brokerOpen) == BrokerNamed) implies needsAccount(d.host.launch.backend)
+pure def lawABrokerThatDidNotOpenIsHandedToNoLaunch(d: AgentData): bool = brokerHandoff(d, false) == NoBroker
+```
+
 ### A ready launch is admitted unless its backend needs a fitting credential and the frame lacks one
 
 The service refuses an oversized own-key provider key as invalid launch

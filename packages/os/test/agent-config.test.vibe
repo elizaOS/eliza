@@ -24,6 +24,7 @@ module node {
     readonly workflowWorker?: { readonly runtimeDir: string; readonly executable: string; readonly sha256: string }
     readonly frame?: { readonly token: string; readonly epoch: number; readonly credential?: { readonly version: number; readonly value: string }; readonly storageKey?: string }
     readonly google?: { readonly gmailChanges: boolean; readonly calendarEdits: boolean }
+    readonly broker?: "open" | "failing" | "absent"
   }
 
   export type Answer =
@@ -40,6 +41,7 @@ module node {
       readonly shown?: string
       readonly next?: string
       readonly pushOfHeldVersion?: boolean
+      readonly broker?: readonly (readonly [string, string])[]
     }
 
   /** @throws {Error} */
@@ -322,6 +324,23 @@ it.effect('Start my agent with my character, policy and model: the service and t
     assert.isNotEmpty(providerReason)
     assert.notStrictEqual(providerReason, badConfig?.kind === "refused" ? badConfig.reason : "")
   }
+}, 180_000)
+
+it.effect('Only a cloud launch whose broker opened is handed the mail broker, by its loopback address and a launch bearer, and the launch document never names it (spec/os/agentService/config.md, "Only a cloud launch is handed the mail broker, by its address and a bearer for that launch, never a credential")', effect () => {
+  const cases = ADMITTED.flatMap((entry) => (["open", "failing", "absent"] as const).map((broker) => ({ entry, broker })))
+  const answers = try Effect.try(() => project(cases.map(({ entry, broker }) => ({ ...entry.files, ...entry.ask, broker }))))
+  const url = "http://127.0.0.1:40123/__owner-gmail"
+  for (const [index, { entry, broker }] of cases.entries()) {
+    const answer = try admittedAnswer(answers[index])
+    const handed: readonly (readonly [string, string])[] = answer.needsAccount && entry.ask.account !== undefined && broker === "open"
+      ? [["ELIZA_MANAGED_GMAIL_READ_BROKER", url], ["ELIZA_MANAGED_GMAIL_READ_BROKER_TOKEN", "bearer"]]
+      : []
+    assert.deepStrictEqual(answer.broker, handed, `${entry.name} with a broker that is ${broker}`)
+    for (const name of ["ELIZA_MANAGED_GMAIL_READ_BROKER", "__owner-gmail", "b".repeat(64)]) {
+      assert.notInclude(answer.document, name, `${entry.name}: the launch document names ${name}`)
+    }
+  }
+  assert.isTrue(cases.some(({ broker }, index) => broker === "open" && answers[index]?.kind === "admitted" && (answers[index]?.broker ?? []).length === 2))
 }, 180_000)
 
 const UNICODE_CHARACTER_CLASS = 0x100

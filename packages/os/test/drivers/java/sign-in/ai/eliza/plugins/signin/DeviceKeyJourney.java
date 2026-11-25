@@ -1,6 +1,7 @@
-// spec/os/signIn/credential.md, "Story: Keep me signed in without a second copy of my key"; spec/os/signIn/credential.md, "Story: Sign out or reset cleanly"; spec/os/signIn/credential.md, "Story: Confirm it is me before a billing change"; spec/os/signIn/browserReturn.md, "Story: Complete a browser sign-in only for the client that started it"
+// spec/os/signIn/credential.md, "Story: Keep me signed in without a second copy of my key"; spec/os/signIn/credential.md, "Story: Sign out or reset cleanly"; spec/os/signIn/credential.md, "Story: Confirm it is me before a billing change"; spec/os/signIn/browserReturn.md, "Story: Complete a browser sign-in only for the client that started it"; spec/os/signIn/cloudRequests.md, "The broker forwards only the owner's Gmail account list and search, with the lease, while the launch's owner holds it"
 package ai.eliza.plugins.signin;
 
+import ai.eliza.os.agent.AgentCredentials;
 import ai.eliza.plugins.signin.CredentialPolicy.Account;
 import ai.eliza.plugins.signin.CredentialPolicy.Notice;
 import ai.eliza.plugins.signin.DeviceKeyClient.Answer;
@@ -73,7 +74,7 @@ public final class DeviceKeyJourney {
     final AtomicReference<Runnable> beforeLeaseReply = new AtomicReference<>();
     final List<Family> families = new CopyOnWriteArrayList<>();
     final Map<String, Renewal> renewals = new ConcurrentHashMap<>();
-    final List<String> mailBearers = new CopyOnWriteArrayList<>(), modelBearers = new CopyOnWriteArrayList<>();
+    final List<String> mailBearers = new CopyOnWriteArrayList<>(), modelBearers = new CopyOnWriteArrayList<>(), brokerBearers = new CopyOnWriteArrayList<>();
     volatile boolean offline, leases, dropNextRotation;
     volatile Account tokenOwner = ACCOUNT;
     volatile int dropAcks;
@@ -238,6 +239,13 @@ public final class DeviceKeyJourney {
           Runnable before = beforeMailReply.getAndSet(null);
           if (before != null) before.run();
           answer(x, 200, "{\"events\":[]}");
+        }
+        case "GET /api/v1/eliza/google/accounts" -> {
+          String bearer = bearer(x);
+          if (live.containsKey(bearer)) { brokerBearers.add("key"); answer(x, 403, "{\"error\":\"forbidden\",\"reason\":\"device_key_not_allowed\"}"); return; }
+          if (!leaseAccess(bearer, now)) { answer(x, 401, "{\"error\":\"authentication_required\",\"reason\":\"credential_unknown\"}"); return; }
+          brokerBearers.add("lease");
+          answer(x, 200, "{\"accounts\":[]}");
         }
         case "GET /api/v1/models" -> {
           if (!live.containsKey(bearer(x))) { answer(x, 401, "{\"error\":\"authentication_required\",\"reason\":\"credential_unknown\"}"); return; }
@@ -414,6 +422,13 @@ public final class DeviceKeyJourney {
       seen.add(take("mailWithUnknownQuery", outcome(managed.readMail(origin, custody, mailAuthority, feed + "?unexpected=1", Map.of()))));
       seen.add(take("mailWithLease", outcome(managed.readMail(origin, custody, mailAuthority, feed + "?grantId=synthetic&timeMin=2026-11-23", Map.of()))));
       seen.add(take("inferenceWithKey", outcome(requests.send(origin, custody, "GET", models, Map.of(), null))));
+      CloudRequests.Custody leased = custody;
+      try (GoogleBrokerHost broker = GoogleBrokerHost.overDevice(origin, () -> leased, cache.toFile())) {
+        String accounts = "/api/v1/eliza/google/accounts?side=owner";
+        seen.add(take("brokerReadForOwner", GoogleBrokerJourney.read(broker.open(new AgentCredentials.Account(ACCOUNT.userId(), ACCOUNT.organizationId())), accounts)));
+        seen.add(take("brokerReadForAnotherOwner", GoogleBrokerJourney.read(broker.open(new AgentCredentials.Account("user-2", ACCOUNT.organizationId())), accounts)));
+      }
+      seen.add(take("brokerBearers", String.join(",", cloud.brokerBearers)));
       cloud.families.get(cloud.families.size() - 1).ended = true;
       clock.addAndGet(16 * 60_000L);
       seen.add(take("mailAfterRevokedLease", outcome(requests.send(origin, custody, "GET", feed, Map.of(), null))));

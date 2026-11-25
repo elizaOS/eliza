@@ -8,7 +8,8 @@ deployment's API origin with the credential `./credential.md` holds. The
 page names a path and a query, never a host. Which routes exist, their auth
 classes and the headers each admits are `spec/cloud/client.md`'s
 `deviceRoutes`; this spec decides only what the device may forward and with
-which credential. Sockets, URL parsing, hashing, files and HTTP stay in the
+which credential. The same requests serve the on-device agent's mail broker,
+the last story here. Sockets, URL parsing, hashing, files and HTTP stay in the
 Java shell; sources are develop's `CloudConnectionPolicy.java` and
 `NativeAppRequestPolicy.java`, which this replaces.
 
@@ -300,4 +301,128 @@ pure val linkValues = Set({ https: true, host: "billing.stripe.com", defaultPort
   { https: true, host: "billing.stripe.com.evil.test", defaultPort: true, userInfo: false }, { https: false, host: "web.cloud.test", defaultPort: true, userInfo: false })
 pure def lawALinkOpensOnlyOnAListedHost(webHost: str, link: ExternalLink): bool =
   opensExternally(webHost, link) implies (link.host == webHost or providerHosts.contains(link.host))
+```
+
+## Story: Let my agent read my mail without holding a mail credential
+
+> As the owner, I want my on-device agent, which reads untrusted email, to
+> read my Gmail only through a narrow broker in the app that attaches the
+> mail lease itself, so that the agent never holds the lease, never reaches
+> mail with the device key, cannot change mail, and reads only my account.
+
+The broker is the native host's endpoint `http://127.0.0.1:<port>/__owner-gmail`,
+handed only to a cloud launch ([agent data files](../agentService/config.md)).
+The agent names a read as a path and a query after that prefix. The broker
+sends each read as the read-only request bound to the owner and current
+credential identity that the mail rule above describes, so it carries the
+lease and never the key, and it hands the agent only the reply. Sockets,
+HTTP and the bearer stay in the Java shell; the source is the old line's
+`managed-google-agent-broker.ts`, whose sends, mailbox changes and calendar
+reads this does not keep.
+
+### The agent reaches the broker only by a bodiless GET on the loopback host, without an origin, with the current launch's bearer
+
+A request with another method, a body, a `Host` other than `127.0.0.1` with
+the broker's port, or any `Origin` header is not private; one without the
+bearer handed to the current launch, compared in constant time, is not
+authorized. Each is refused, as `403 not-private` or `401 not-authorized`,
+before anything is forwarded. Every launch gets a new bearer, and the
+previous launch's bearer is refused from then on.
+
+```quint
+type BrokerAsk = { get: bool, bodiless: bool, loopbackHost: bool, origin: bool, bearer: bool }
+type BrokerAskVerdict = AskAdmitted | NotPrivate | NotAuthorized
+pure def brokerAskVerdict(ask: BrokerAsk): BrokerAskVerdict =
+  if (not(ask.get) or not(ask.bodiless) or not(ask.loopbackHost) or ask.origin) NotPrivate
+  else if (not(ask.bearer)) NotAuthorized
+  else AskAdmitted
+pure val askValues: Set[BrokerAsk] = {
+  val good = { get: true, bodiless: true, loopbackHost: true, origin: false, bearer: true }
+  Set(good, { ...good, get: false }, { ...good, bodiless: false }, { ...good, loopbackHost: false }, { ...good, origin: true },
+    { ...good, bearer: false }, { ...good, origin: true, bearer: false })
+}
+pure def lawOnlyAPrivateAuthorizedAskIsAdmitted(ask: BrokerAsk): bool =
+  (brokerAskVerdict(ask) == AskAdmitted) iff (ask.get and ask.bodiless and ask.loopbackHost and not(ask.origin) and ask.bearer)
+pure def lawAForeignAskIsNeverTreatedAsTheAgent(ask: BrokerAsk): bool =
+  (ask.origin or not(ask.loopbackHost)) implies brokerAskVerdict(ask) == NotPrivate
+```
+
+### The broker forwards only the owner's Gmail account list and search, with the lease, while the launch's owner holds it
+
+The broker forwards `GET /api/v1/eliza/google/accounts` with at most `side`,
+and `GET /api/v1/eliza/google/gmail/search` with at most `side`, `grantId`,
+`query`, `maxResults` and `pageToken`; any other path or query field reads
+nothing. A read is bound to the account the launch was started for: it is
+planned only while the device's mail authority, the lease of its active
+key, belongs to that account, and its reply is dropped if that authority
+changes before the reply arrives. It is then planned as the route's own
+call, so it carries the lease and never the device key or a session; a
+device without a live lease for that owner reads nothing.
+
+```quint
+type BrokerRead = AccountList | MailSearch | NotBrokered
+type BrokerCall = { read: BrokerRead, fields: List[str], ownerHolds: bool }
+pure def brokerParts(read: BrokerRead): List[str] = match read {
+  | AccountList => List("api", "v1", "eliza", "google", "accounts")
+  | MailSearch => List("api", "v1", "eliza", "google", "gmail", "search")
+  | NotBrokered => List()
+}
+pure def brokerFields(read: BrokerRead): Set[str] = match read {
+  | AccountList => Set("side")
+  | MailSearch => Set("side", "grantId", "query", "maxResults", "pageToken")
+  | NotBrokered => Set()
+}
+pure def brokered(call: BrokerCall): bool = call.read != NotBrokered and call.fields.every(f => brokerFields(call.read).contains(f))
+pure def brokerPlan(h: Holding, call: BrokerCall): CallPlan = {
+  val found = routeFor(Get, brokerParts(call.read))
+  if (not(brokered(call))) Refuse({ why: NotListed })
+  else if (not(call.ownerHolds)) Refuse({ why: SignInRequired })
+  else match found { | Listed(x) => attachFor(h, x.route) | Unlisted => Refuse({ why: NotListed }) }
+}
+pure def isLease(a: Attach): bool = match a { | WithLease(l) => true | _ => false }
+pure def sendsLeaseOnly(p: CallPlan): bool = match p { | Send(s) => isLease(s.attach) | _ => true }
+pure def isSend(p: CallPlan): bool = match p { | Send(s) => true | _ => false }
+pure val callValues: Set[BrokerCall] = Set({ read: AccountList, fields: List("side"), ownerHolds: true },
+  { read: MailSearch, fields: List("side", "grantId", "query", "maxResults"), ownerHolds: true },
+  { read: MailSearch, fields: List("side", "grantId", "query", "maxResults"), ownerHolds: false },
+  { read: MailSearch, fields: List("side", "messageId"), ownerHolds: true }, { read: AccountList, fields: List("grantId"), ownerHolds: true },
+  { read: NotBrokered, fields: List(), ownerHolds: true })
+pure def lawABrokerReadCarriesOnlyTheLease(h: Holding, call: BrokerCall): bool = sendsLeaseOnly(brokerPlan(h, call))
+pure def lawABrokerReadIsSentOnlyForTheLaunchOwnerAndAListedRead(h: Holding, call: BrokerCall): bool =
+  isSend(brokerPlan(h, call)) implies (call.ownerHolds and brokered(call))
+```
+
+### The agent gets the cloud's status and body, or a refusal naming why nothing was read, and never the credential that read it
+
+An answer from the cloud reaches the agent as its status and body, whatever
+the status, within the inline limit above; a larger one is refused whole as
+`502 reply-too-large`. A read the broker does not forward is `404
+not-brokered`; one refused for want of a sign-in for the launch's owner is
+`403 sign-in-required`, and for want of the lease `403
+mail-lease-upgrade-required`; one the device could not send or that got no
+answer is `503 cloud-unreachable`. A refusal carries only that reason. No
+key, lease or session reaches the agent.
+
+```quint
+type BrokerOutcome = CloudAnswered({ status: int }) | CallRefused({ why: CallRefusal }) | CloudUnreachable | ReplyOversize
+type BrokerRefusal = BrokerNotForwarded | BrokerSignInRequired | BrokerLeaseUpgradeRequired | BrokerUnreachable | BrokerReplyTooLarge
+type BrokerReply = BrokerAnswer({ status: int }) | BrokerRefused({ status: int, reason: BrokerRefusal })
+pure def brokerReply(brokerOutcome: BrokerOutcome): BrokerReply = match brokerOutcome {
+  | CloudAnswered(a) => BrokerAnswer({ status: a.status })
+  | CallRefused(r) =>
+    if (r.why == NotListed) BrokerRefused({ status: 404, reason: BrokerNotForwarded })
+    else if (r.why == SignInRequired) BrokerRefused({ status: 403, reason: BrokerSignInRequired })
+    else if (r.why == MailLeaseUpgradeRequired) BrokerRefused({ status: 403, reason: BrokerLeaseUpgradeRequired })
+    else BrokerRefused({ status: 503, reason: BrokerUnreachable })
+  | CloudUnreachable => BrokerRefused({ status: 503, reason: BrokerUnreachable })
+  | ReplyOversize => BrokerRefused({ status: 502, reason: BrokerReplyTooLarge })
+}
+pure val brokerOutcomeValues: Set[BrokerOutcome] = Set(CloudAnswered({ status: 200 }), CloudAnswered({ status: 401 }), CloudAnswered({ status: 403 }),
+  CallRefused({ why: NotListed }), CallRefused({ why: SignInRequired }), CallRefused({ why: MailLeaseUpgradeRequired }), CallRefused({ why: NoOrigin }),
+  CloudUnreachable, ReplyOversize)
+pure def answeredStatus(brokerOutcome: BrokerOutcome): int = match brokerOutcome { | CloudAnswered(c) => c.status | _ => -1 }
+pure def lawOnlyACloudAnswerReachesTheAgentAsAnAnswer(brokerOutcome: BrokerOutcome): bool = {
+  val reply = brokerReply(brokerOutcome)
+  match reply { | BrokerAnswer(a) => a.status == answeredStatus(brokerOutcome) | BrokerRefused(r) => r.status >= 400 and answeredStatus(brokerOutcome) == -1 }
+}
 ```

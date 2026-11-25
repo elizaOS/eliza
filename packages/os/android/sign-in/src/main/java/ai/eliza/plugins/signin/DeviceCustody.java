@@ -1,4 +1,4 @@
-// spec/os/signIn/credential.md, "Story: Keep me signed in without a second copy of my key"; spec/os/signIn/credential.md, "Story: Sign out or reset cleanly"; spec/os/signIn/credential.md, "Story: Confirm it is me before a billing change"
+// spec/os/signIn/credential.md, "Story: Keep me signed in without a second copy of my key"; spec/os/signIn/credential.md, "Story: Sign out or reset cleanly"; spec/os/signIn/credential.md, "Story: Confirm it is me before a billing change"; spec/os/signIn/cloudRequests.md, "Story: Let my agent read my mail without holding a mail credential"
 package ai.eliza.plugins.signin;
 
 import ai.eliza.plugins.securestore.nativeonly.NativeSecureStore;
@@ -13,6 +13,7 @@ import ai.eliza.plugins.signin.SignInPolicy.Failure;
 import ai.eliza.plugins.signin.SignInPolicy.CloudReply;
 import ai.eliza.plugins.signin.SignInRegistration.Environment;
 import android.content.Context;
+import java.io.File;
 import java.net.URI;
 import java.util.HashMap;
 import java.util.Map;
@@ -92,6 +93,11 @@ public final class DeviceCustody implements SignInCustody {
   public static CloudRequests.Custody cloud(Context context, String apiOrigin) {
     Authority authority = authority(context, apiOrigin);
     return new CloudRequests.Custody(authority.store(), authority.session(), authority.lease());
+  }
+
+  public static GoogleBrokerHost googleBroker(Context context, String apiOrigin) {
+    Context application = context.getApplicationContext();
+    return GoogleBrokerHost.overDevice(apiOrigin, () -> cloud(application, apiOrigin), new File(application.getCacheDir(), "owner-gmail-broker"));
   }
 
   public static void reset(Context context, SignInRegistration registration) {

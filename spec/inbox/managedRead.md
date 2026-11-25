@@ -86,3 +86,33 @@ pure def alwaysUnfinishedReadHasNoMail(s: ManagedInboxRead): bool =
 pure def leadsToReadFinishes(s: ManagedInboxRead, later: ManagedInboxRead): bool =
   s.phase == ReadPending implies later.phase != ReadPending
 ```
+
+### The agent reads managed mail through the device's broker when the host names one, and otherwise through its cloud link
+
+When the host names the device's mail broker
+([cloud requests](../os/signIn/cloudRequests.md)) in
+`ELIZA_MANAGED_GMAIL_READ_BROKER`, the agent sends every managed mail read
+there and none through its own cloud link: the broker attaches the mail
+lease, which the agent never holds, where the cloud refuses the device key
+the agent holds. The broker is named only as `http://127.0.0.1:<port>/__owner-gmail`
+with a bearer of 64 URL-safe characters in
+`ELIZA_MANAGED_GMAIL_READ_BROKER_TOKEN`; any other address or bearer offers
+no read, and the agent does not fall back to its cloud link. Through the
+broker the agent only reads: a change it asks for is refused without a call.
+A host that names no broker leaves the agent reading through its cloud link
+with the credential it was launched with. With neither, the read action and
+the access check are not offered.
+
+```quint
+type MailReader = DeviceBroker | CloudLink | NotOffered
+pure def mailReaderOf(brokerNamed: bool, brokerPrivate: bool, cloudLinked: bool): MailReader =
+  if (brokerNamed) (if (brokerPrivate) DeviceBroker else NotOffered)
+  else if (cloudLinked) CloudLink
+  else NotOffered
+pure def lawANamedBrokerIsTheOnlyMailReader(brokerNamed: bool, brokerPrivate: bool, cloudLinked: bool): bool =
+  brokerNamed implies mailReaderOf(brokerNamed, brokerPrivate, cloudLinked) != CloudLink
+pure def lawMailIsReadThroughABrokerOnlyWhenItIsPrivate(brokerNamed: bool, brokerPrivate: bool, cloudLinked: bool): bool =
+  (mailReaderOf(brokerNamed, brokerPrivate, cloudLinked) == DeviceBroker) iff (brokerNamed and brokerPrivate)
+pure def lawWithoutABrokerTheCloudLinkReads(brokerNamed: bool, brokerPrivate: bool, cloudLinked: bool): bool =
+  (mailReaderOf(brokerNamed, brokerPrivate, cloudLinked) == CloudLink) iff (not(brokerNamed) and cloudLinked)
+```

@@ -1,4 +1,4 @@
-// spec/os/agentService/lifecycle.md, "Story: Start the agent after checking its payload"; spec/os/agentService/lifecycle.md, "Story: Start the agent when I sign in and stop it when I sign out"; spec/os/agentService/lifecycle.md, "Story: Restart a crashed or unhealthy agent until it stays up"; spec/os/agentService/lifecycle.md, "Story: Recover my agent's records after a storage failure"; spec/os/agentService/lifecycle.md, "Story: Hold the agent for an app update"; spec/os/agentService/lifecycle.md, "Story: Hand a new device key of the same account to the running agent"; spec/os/agentService/health.md, "Story: Tell a busy agent from an absent one"; spec/os/agentService/lifecycle.md, "Story: See a failed agent even when I silence its status"; spec/os/agentService/lifecycle.md, "A failed agent's notice is on the alerts channel with the failure words, and a starting, running or stopping agent's on the status channel"; spec/os/agentService/config.md, "Story: Start my agent with my character, policy and model"; spec/os/agentService/config.md, "Only a cloud launch is framed with the device key, and an own-key launch with the owner's provider key or none"; spec/os/agentService/channel.md, "Only the device headers and client id the runtime client carries cross the channel"
+// spec/os/agentService/lifecycle.md, "Story: Start the agent after checking its payload"; spec/os/agentService/lifecycle.md, "Story: Start the agent when I sign in and stop it when I sign out"; spec/os/agentService/lifecycle.md, "Story: Restart a crashed or unhealthy agent until it stays up"; spec/os/agentService/lifecycle.md, "Story: Recover my agent's records after a storage failure"; spec/os/agentService/lifecycle.md, "Story: Hold the agent for an app update"; spec/os/agentService/lifecycle.md, "Story: Hand a new device key of the same account to the running agent"; spec/os/agentService/health.md, "Story: Tell a busy agent from an absent one"; spec/os/agentService/lifecycle.md, "Story: See a failed agent even when I silence its status"; spec/os/agentService/lifecycle.md, "A failed agent's notice is on the alerts channel with the failure words, and a starting, running or stopping agent's on the status channel"; spec/os/agentService/config.md, "Story: Start my agent with my character, policy and model"; spec/os/agentService/config.md, "Only a cloud launch is framed with the device key, and an own-key launch with the owner's provider key or none"; spec/os/agentService/channel.md, "Only the device headers and client id the runtime client carries cross the channel"; spec/os/agentService/config.md, "Only a cloud launch is handed the mail broker, by its address and a bearer for that launch, never a credential"
 package ai.eliza.os.agent;
 
 import ai.eliza.os.agent.AgentPolicy.Effect;
@@ -86,6 +86,7 @@ public class AgentService extends Service {
   private static volatile AgentService live;
   private static volatile AgentConfig loaded;
   private static volatile AgentCredentials registered = AgentCredentials.NONE;
+  private static volatile GoogleBroker googleBroker;
 
   public record Review(String token, int retainedCount) {}
 
@@ -118,6 +119,8 @@ public class AgentService extends Service {
   private AgentPolicy.UpdateTarget pendingHold;
 
   public static void useCredentials(AgentCredentials source) { registered = Objects.requireNonNull(source); }
+
+  public static void useGoogleBroker(GoogleBroker broker) { googleBroker = Objects.requireNonNull(broker); }
 
   protected AgentCredentials credentials() { return registered; }
 
@@ -636,8 +639,10 @@ public class AgentService extends Service {
       Path launch = writeLaunch(document);
       Path agentSocket = directories.prepareSocket();
       byte[] frame = readyFrame.encode();
+      Map<String, String> broker = GoogleBroker.launchEnvironment(config.needsAccount(), active.account(), googleBroker, unavailable ->
+        Log.w(TAG, "The mail broker could not open, so the agent starts without it", unavailable));
       AgentSupervisor.Command command = new AgentSupervisor.Command(prepared.node(), prepared.bundleDir(), launch, stateDir, agentSocket,
-        directories.runtime().resolve("agent.log"));
+        directories.runtime().resolve("agent.log"), broker);
       synchronized (EPOCH_LOCK) {
         if (live != this) return;
         spawned = AgentSupervisor.spawn(epoch, command, frame, (spawnedEpoch, pid) -> journal.record(Math.toIntExact(pid), spawnedEpoch),

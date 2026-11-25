@@ -13,6 +13,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.function.Function;
 import java.util.regex.Pattern;
 
 public final class CloudRequestPolicy {
@@ -75,10 +76,12 @@ public final class CloudRequestPolicy {
     gate.load(cloudTableAccepted(routes) ? routes : List.of());
   }
 
-  static CloudRequestPolicy forMailReads() {
+  static CloudRequestPolicy forMailReads() { return forMailReads(MailReadRoutes::queriesFor); }
+
+  static CloudRequestPolicy forMailReads(Function<String, List<String>> queriesFor) {
     List<RouteGate.Route> reads = new ArrayList<>();
     for (DeviceRoute route : DEVICE_ROUTES) {
-      List<String> keys = MailReadRoutes.queriesFor("/" + String.join("/", route.path()));
+      List<String> keys = queriesFor.apply("/" + String.join("/", route.path()));
       if (route.method() != Method.GET || !mailRoute(route) || keys == null) continue;
       reads.add(new RouteGate.Route(Method.GET, RouteGate.Delivery.BUFFERED,
         route.path().stream().map(RouteGate.Piece::new).toList(),
