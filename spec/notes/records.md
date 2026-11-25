@@ -19,7 +19,13 @@ read changes nothing. Replacing a note's fields, editing an authored entry,
 appending, restoring and clearing need the revision of the complete read
 they were prepared from, and any other change since, to any note, refuses
 them with nothing written. A literal substitution needs no revision, but its
-old text must match the current field exactly once.
+old text must match the current field exactly once. A client that reviewed
+a note before moving it to Trash may supply the revision of that complete
+read with the exact note ID. The deletion checks this revision in the same
+transaction that moves the note. A title or text search cannot carry a
+reviewed revision, and a delete without a revision keeps its existing rules.
+The Notes state response advertises this contract as `deleteAtRevision` so
+an older host cannot be mistaken for one that checks it.
 
 ```quint
 pure def committedRevision(currentRevision: int, changed: bool): int = if (changed) currentRevision + 1 else currentRevision

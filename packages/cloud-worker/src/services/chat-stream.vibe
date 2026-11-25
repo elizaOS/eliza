@@ -1,4 +1,4 @@
-// spec/cloud/index.md, "A streamed answer sends complete OpenAI frames and settles the same hold"; spec/cloud/services/inference.md, "A call never dispatched releases its hold, and a provider rejection before any output is charged nothing and answered with a well-formed refusal"; spec/cloud/services/inference.md, "A provider's refusal of the request passes on its listed code and parameter and nothing else"
+// spec/cloud/index.md, "A streamed answer sends complete OpenAI frames and settles the same hold"; spec/cloud/services/inference.md, "A call never dispatched releases its hold, and a provider rejection before any output is charged nothing and answered with a well-formed refusal"; spec/cloud/services/inference.md, "A provider's refusal of the request passes on its listed code and parameter and nothing else"; spec/cloud/services/inference.md, "A dispatched call is charged its reported usage, what it delivered when the caller hung up, and its quote when nothing was reported"
 import { endOfFailure, failureRefusal, failureWait, hangUpCounts, type CompletionEnd, type ProviderFault } from "../../gen/cloud__services__inference.effect.vibe"
 import { refusalBody, refused, Refused, type Refusal } from "../http/refusal.vibe"
 import { maxReplyBytes, ProviderInvalidResponse, ProviderRefused, ProviderTimedOut, ProviderUnreachable, readLlmObject, type LlmFailure } from "../providers/llm.vibe"
@@ -11,8 +11,22 @@ const chunkBytes = 16 * 1024
 const providerFailed: CompletionEnd = { tag: "ProviderFailed", report: { tag: "NoUsage" } }
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
-const DeltaText = Schema.Struct({ delta: Schema.optionalKey(Schema.Struct({ content: Schema.optionalKey(Schema.NullOr(Schema.String)) })) })
+const optionalText = Schema.optionalKey(Schema.NullOr(Schema.String))
+const DeltaText = Schema.Struct({ delta: Schema.optionalKey(Schema.Struct({
+  content: optionalText,
+  reasoning_content: optionalText,
+  reasoning: optionalText,
+  tool_calls: Schema.optionalKey(Schema.NullOr(Schema.Array(Schema.Struct({ function: Schema.optionalKey(Schema.Struct({ name: optionalText, arguments: optionalText })) }))))
+})) })
 const readDeltaText = Schema.decodeUnknownOption(DeltaText)
+
+function deliveredCharsOf(choice: unknown): number {
+  const read = readDeltaText(choice)
+  if (read._tag === "None" || read.value.delta === undefined) return 0
+  const { content, reasoning_content, reasoning, tool_calls } = read.value.delta
+  const calls = (tool_calls ?? []).reduce((sum, call) => sum + (call.function?.name?.length ?? 0) + (call.function?.arguments?.length ?? 0), 0)
+  return (content?.length ?? 0) + (reasoning_content?.length ?? 0) + (reasoning?.length ?? 0) + calls
+}
 
 export error ProviderFaulted { refusal: Refusal; fault: ProviderFault }
 
@@ -90,10 +104,7 @@ export function meteredChatStream({ upstream, publicModelId, quoted, holdKey, pr
       }
     }
     if (payload.choices.length === 0) return undefined
-    for (const choice of payload.choices) {
-      const read = readDeltaText(choice)
-      if (read._tag === "Some") deliveredChars += read.value.delta?.content?.length ?? 0
-    }
+    for (const choice of payload.choices) deliveredChars += deliveredCharsOf(choice)
     return encoder.encode(chunkFrame(JSON.stringify(served)))
   })).pipe(Stream.filter((bytes) => bytes !== undefined))
   const terminal = Stream.suspend(() => settled ? Stream.empty : Stream.fail(new ProviderInvalidResponse()))

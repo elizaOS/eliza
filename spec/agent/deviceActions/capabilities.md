@@ -111,6 +111,19 @@ pure def lawBothReminderVersionsAreRefused(liveEnrollment: bool, names: List[str
   not(oneReminderVersion(names)) implies isRefused(negotiate(liveEnrollment, names))
 ```
 
+### A workflow step negotiates what its device declared at registration
+
+A workflow step has no request and no header. It negotiates exactly the
+capabilities the enrolled device declared when it registered; the header's
+rules do not apply, so a device that declared both reminder record versions
+still meets a reminder need.
+
+```quint
+pure def declaredNegotiation(names: List[str]): Negotiation = Negotiated({ capabilities: namedCapabilities(names) })
+pure def lawADeclaredCapabilityIsNegotiated(names: List[str], c: Capability): bool =
+  negotiatedHas(declaredNegotiation(names), c) iff names.includes(capabilityName(c))
+```
+
 ### An operation runs only on a request that negotiated what it needs
 
 An operation needs every capability of `required` and, when `oneOf` is not

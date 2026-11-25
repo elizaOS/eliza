@@ -316,7 +316,7 @@ function placeOf(reply: GooglePlace, fetchedAt: number): MapsPlace | undefined {
 
 function googleMapsProvider(settings: GoogleSettings): MapsProvider {
   const base = settings.baseUrl.replace(/\/+$/, "")
-  const url = (host: "places" | "maps" | "routes" | "tile", path: string) => `${base}/${host}${path}`
+  const url = (host: "places" | "maps" | "routes" | "tile", path: string) => `${base.replace("{host}", host)}${path}`
 
   effect function apiKey() {
     return try orDie((try Deployment).secret(settings.apiKeyEnv))
