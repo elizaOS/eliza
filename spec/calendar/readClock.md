@@ -238,8 +238,11 @@ or pm, or the other side's half, holds one.
 For a note, and for the contradiction a create or change is checked
 for (previous section), the words hold a clock time in the spellings
 that section lists first and also in the reader's further spellings:
-four digits or a dot ("0900", "1730", "14.30"), an hour and "h"
-("14h30", "09h15"), noon or midnight after twelve ("12:00 noon",
+four digits ("0900", "1730"), any hour, with or without a leading zero,
+and its minutes after a dot ("2.00", "14.30", "09.30"), an hour past
+twelve and its minutes after a space ("14 30"), an hour past twelve or
+with a leading zero, then "h" and its minutes ("14h30", "09h15"), noon
+or midnight after twelve ("12:00 noon",
 "twelve o'clock noon", "12 midnight"), minutes counted past, after, to,
 of, till, til or before the hour in words or digits ("ten past nine",
 "10 past 9", "twenty minutes past two", "ten after nine", "twenty to
