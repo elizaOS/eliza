@@ -1,0 +1,14 @@
+// spec/notes/listFilter.md, "Story: Let the agent narrow my Notes list only after I review it"; spec/notes/organize.md, "Story: Organize my notes only where I can see it"
+import { assert, it } from "@effect/vitest"
+import { decodeNotesOrganizeOperation } from "@elizaos/plugin-notes-client"
+
+it.effect('Decode a list filter only by text and kind, and refuse the rest (spec/notes/listFilter.md, "Story: Let the agent narrow my Notes list only after I review it")', effect () => {
+  assert.deepEqual(try decodeNotesOrganizeOperation({ type: "notes_list_filter", text: "groceries", kind: "text" }), { type: "notes_list_filter", text: "groceries", kind: "text" })
+  assert.deepEqual(try decodeNotesOrganizeOperation({ type: "notes_list_filter", kind: "list" }), { type: "notes_list_filter", kind: "list" })
+  const refusedReason = (value: unknown) => map(Effect.flip(decodeNotesOrganizeOperation(value)), (error) => error.reason)
+  assert.deepEqual([
+    try refusedReason({ type: "notes_list_filter", folder: "Work" }),
+    try refusedReason({ type: "notes_list_filter", kind: "bogus" }),
+    try refusedReason({ type: "notes_list_filter" }),
+  ], ["Unexpected Notes field", "Invalid note kind", "Empty Notes filter"])
+})
