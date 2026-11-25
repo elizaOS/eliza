@@ -1,4 +1,4 @@
-// spec/os/signIn/cloudRequests.md, "Story: Reach my account's cloud services without holding my key"
+// spec/os/signIn/cloudRequests.md, "Story: Reach my account's cloud services without holding my key"; spec/os/signIn/cloudRequests.md, "A call tied to a device credential cannot use a different credential"
 import { execFileSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 import * as client from "../gen/cloud__client.ts";
@@ -69,6 +69,10 @@ describe("Reach my account's cloud services without holding my key", () => {
       bearers: "lease/key,key",
       leaseReuses: 0,
       replyFromPreviousEnrollment: "SIGN_IN_REQUIRED",
+      boundPreviousCredential: "SIGN_IN_REQUIRED",
+      boundCurrentCredential: "200",
+      boundCannotUseLease: "SIGN_IN_REQUIRED",
+      boundReachedOnlyReviewedKey: true,
       sameOwnerReEnrolledAtNewVersion: true,
       legacyVaultBindingMatches: true,
       replyFromBeforeRenewal: "SIGN_IN_REQUIRED",
