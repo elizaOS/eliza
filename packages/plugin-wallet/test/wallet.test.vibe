@@ -58,7 +58,7 @@ effect function called<A>(routes: readonly WalletRoute[], method: string, path: 
   })
   const answer = try promise(() => Promise.resolve(route.handler({ parameters, query: new Map(), headers: new Map(), body, signal: new AbortController().signal })))
   if ("headers" in answer) return { status: answer.status, body: {} as A, reason: undefined }
-  return { status: answer.status, body: answer.body as A, reason: "reason" in answer.body && typeof answer.body.reason === "string" ? answer.body.reason : undefined }
+  return { status: answer.status, body: answer.body as A, reason: "code" in answer.body && "error" in answer.body && typeof answer.body.error === "string" ? answer.body.error : undefined }
 }
 
 effect function world(settings: Record<string, string> = {}) {

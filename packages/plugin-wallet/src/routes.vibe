@@ -1,6 +1,6 @@
 // spec/wallet/custody.md, "Only the owner makes the wallet, once, with an account for each family"; spec/wallet/requests.md, "Only the owner's decision takes a request off the desk"; spec/wallet/index.md, "A review binds the complete immutable wallet operation"
 import type { AgentPlugin } from "@elizaos/agent-host"
-import { WalletAsk, WalletDecision, WalletSwitch, walletPaths } from "@elizaos/plugin-wallet-client"
+import { WalletAsk, WalletDecision, WalletSwitch, walletPaths, type WalletRefusal } from "@elizaos/plugin-wallet-client"
 import { familyOf } from "./networks.vibe"
 import { WalletRefused, WalletUnreachable, type Wallet } from "./wallet.vibe"
 
@@ -11,14 +11,14 @@ const decideBody = Schema.decodeUnknownOption(WalletDecision, { onExcessProperty
 export type WalletRoute = NonNullable<AgentPlugin["routes"]>[number]
 type Answer = { readonly status: number; readonly body: object }
 
-const malformed: Answer = { status: 400, body: { error: "invalid_request" } }
+const malformed: Answer = { status: 400, body: { error: "The wallet could not read that request.", code: "invalid_request" } satisfies WalletRefusal }
 
 effect function settled(run: object!(WalletRefused | WalletUnreachable)): Answer!! {
   return effect {
     return { status: 200, body: try run } satisfies Answer
   } catch (error): Answer => match (error) {
-    when WalletRefused: { status: 409, body: { error: "refused", reason: error.reason } };
-    when WalletUnreachable: { status: 502, body: { error: "unreachable", reason: "The wallet could not reach its network." } };
+    when WalletRefused: { status: 409, body: { error: error.reason, code: "refused" } satisfies WalletRefusal };
+    when WalletUnreachable: { status: 502, body: { error: "The wallet could not reach its network.", code: "unreachable" } satisfies WalletRefusal };
   }
 }
 

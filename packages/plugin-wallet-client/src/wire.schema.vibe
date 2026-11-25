@@ -121,8 +121,8 @@ export schema WalletActivity {
 }
 
 export schema WalletRefusal {
-  readonly error: "refused" | "unreachable" | "invalid_request"
-  readonly reason?: string
+  readonly error: string
+  readonly code: "refused" | "unreachable" | "invalid_request"
 }
 
 export const walletPaths = {
