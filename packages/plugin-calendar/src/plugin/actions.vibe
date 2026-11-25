@@ -690,7 +690,8 @@ effect function freeTime(host: CalendarHost, parameters: Parameters, zone: strin
   const range = { windowStart: new Date(begin).toISOString(), windowEnd: new Date(finish).toISOString(), timeZone: zone, accountId: found.account.accountId, connection: connectionWire[found.connection] }
   const note = freeTimeNote(parameters, begin, finish, zone, text, now)
   const noted = note === undefined ? {} : { windowNote: note }
-  const withNote = (said: string) => `${note === undefined ? said : `${said} ${note.says}`}${connectionNote(found)}`
+  const connected = connectionNote(found)
+  const withNote = (said: string) => `${note === undefined ? said : `${said} ${note.says}`}${connected}`
   if (!propose) {
     const free = intervalFree(asked, busy)
     return {

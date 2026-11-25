@@ -640,9 +640,9 @@ says the work is done or under way, never repeats the request, and is left
 empty, with the work still done, when the person asked for silence; later
 tool calls come with no text. A cue comes only with a tool call: when no
 offered tool can do what was asked, the model writes no cue and says
-plainly, in its own words, that it can't. The same rule asks the model to
-say that something was saved, sent, opened or changed only when a tool
-result of this turn shows it.
+plainly, in its own words, that it can't.
+The same rule asks the model to say that something was saved, sent,
+opened or changed only when a tool result of this turn shows it.
 
 The shell reads the model's text as a `Cue` only when the whole of it is
 one to three sentences of the closed acknowledgment grammar (`On it`,
@@ -789,13 +789,14 @@ pure def lawTextWithoutMarkupIsReadAsItIs(calls: int, markupAskedBefore: bool, s
 
 ### When nothing ran in a turn, the answer it asks for is told so
 
-When a step is asked once more to answer from the turn's tool results (a
-cue or a blank answer with no tool call after a tool of the turn was
-called, above) and no call of the turn was dispatched, so every step it
-holds was refused before it ran, the note says instead that no action ran
-in this turn and nothing was saved, sent or changed, so the answer must
-not say that anything was. The fact is the
-turn's own record of its steps, never read from the model's words.
+When a step is asked once more after the turn's tool calls (a cue or a
+blank answer with no tool call, above) and no call of the turn was
+dispatched, so every step it holds was refused before it ran, the note
+says, in place of the tool results being what the turn did, that no action
+ran in this turn and nothing was saved, sent or changed, so the answer must
+not say that anything was. Before any tool call, the note already says the
+response called no tool. The fact is the turn's own record of its steps,
+never read from the model's words.
 
 ```quint
 pure def nothingRan(outcomes: List[StepOutcome]): bool = not(outcomes.some(o => o != Rejected))
