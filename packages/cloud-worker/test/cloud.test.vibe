@@ -2492,8 +2492,8 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
     const deviceKey = [try keyOnly("/gmail/search?query=plan"), try keyOnly("/gmail/read?messageId=msg-direct"), try keyOnly("/gmail/inbox-v1/drafts"), try keyOnly("/status"), try keyOnly("/calendar/feed")]
       .map((answer) => [answer.status, (answer.body as { readonly reason?: string }).reason])
     const pdf = new TextEncoder().encode("%PDF-plan")
-    type Card = { readonly id: string; readonly triageScore: number; readonly triageReason: string; readonly isImportant: boolean; readonly likelyReplyNeeded: boolean; readonly to: ReadonlyArray<string>; readonly metadata: { readonly historyId: string } }
-    const cards = (answer: { readonly body: unknown }) => (answer.body as { readonly messages: ReadonlyArray<Card> }).messages.map((card) => [card.id, card.triageScore, card.triageReason, card.isImportant, card.likelyReplyNeeded, card.metadata.historyId])
+    type Card = { readonly id: string; readonly triageScore: number; readonly triageReason: string; readonly isImportant: boolean; readonly likelyReplyNeeded: boolean; readonly to: ReadonlyArray<string>; readonly hasAttachments: boolean; readonly metadata: { readonly historyId: string } }
+    const cards = (answer: { readonly body: unknown }) => (answer.body as { readonly messages: ReadonlyArray<Card> }).messages.map((card) => [card.id, card.triageScore, card.triageReason, card.isImportant, card.likelyReplyNeeded, card.metadata.historyId, card.hasAttachments])
     const readBody = read.body as { readonly message: Card; readonly bodyText: string; readonly bodyHtml: string | null; readonly bodyHtmlStatus: string; readonly attachments: ReadonlyArray<unknown>; readonly authenticationResults: string | null }
     const file = attachment.body as { readonly name: string; readonly mimeType: string; readonly size: number; readonly dataBase64: string; readonly sha256: string; readonly supported: boolean }
     const threadBody = thread.body as { readonly historyId: string; readonly total: number; readonly messages: ReadonlyArray<{ readonly bodyText: string }> }
@@ -2526,10 +2526,10 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
       },
       {
         triage: [200, "1004", "12", [
-          ["msg-direct", 110, "unread, important label, directly addressed, likely needs reply", true, true, "1001"],
-          ["msg-digest", 0, "directly addressed, automated sender", false, false, "1002"]
+          ["msg-direct", 110, "unread, important label, directly addressed, likely needs reply", true, true, "1001", true],
+          ["msg-digest", 0, "directly addressed, automated sender", false, false, "1002", false]
         ]],
-        search: [200, "1004", null, [["msg-direct", 110, "unread, important label, directly addressed, likely needs reply", true, true, "1001"]]],
+        search: [200, "1004", null, [["msg-direct", 110, "unread, important label, directly addressed, likely needs reply", true, true, "1001", true]]],
         tooMany: [400, "invalid_request"],
         managed: {
           pages: [200, 200, owner.userId, owner.userId, "inbox", "", true, null, ["msg-digest", "msg-direct"]],
