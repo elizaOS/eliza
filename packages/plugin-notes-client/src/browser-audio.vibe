@@ -1,0 +1,314 @@
+// spec/notes/audioCustody.md, "A stopped recording is claimed once and committed only to its canonical note"; spec/notes/audioCustody.md, "A browser recording answers only to the connection that recorded it"
+module indexed {
+  import { Data, Schema } from "effect"
+  import { type PendingRecording, claimPending, commitAnswer, discardPending, pendingRecoverable, recordingOwner } from "../gen/notes__audioCustody.ts"
+
+  export type NotesAudioRefusal = "storeName" | "identity" | "binding" | "transcriptTooLong" | "needsRecovery" | "anotherConnection"
+    | "notClaimed" | "claimed" | "anotherNote" | "unavailable" | "interrupted"
+  export class NotesAudioRefused extends Data.TaggedError("NotesAudioRefused")<{ readonly reason: NotesAudioRefusal; readonly cause?: unknown }> {}
+  const refused = (reason: NotesAudioRefusal, cause?: unknown) => new NotesAudioRefused(cause === undefined ? { reason } : { reason, cause })
+
+  type Stored = { -readonly [Key in keyof typeof StoredAudio.Type]: (typeof StoredAudio.Type)[Key] }
+  type NotesAudioRow = Omit<Stored, "blob" | "createdAt" | "transcript" | "mimeType"> & {
+    blob: Blob
+    createdAt: number
+    transcript: string
+    mimeType: string
+  }
+  type SavePhase = NonNullable<NotesAudioRow["recordingSave"]>["phase"]
+  const pendingPhases = { stopped: "PendingStopped", claimed: "PendingClaimed", committed: "PendingCommitted" } as const
+  const savePhases = { PendingStopped: "stopped", PendingClaimed: "claimed", PendingCommitted: "committed" } as const
+  function pendingOf(phase: SavePhase): PendingRecording {
+    return { phase: pendingPhases[phase], bytes: true, claims: phase === "stopped" ? 0 : 1, canonicalNote: phase === "committed" }
+  }
+  function savePhaseOf(pending: PendingRecording): SavePhase {
+    if (pending.phase === "PendingEmpty" || pending.phase === "PendingDiscarded") throw refused("needsRecovery")
+    return savePhases[pending.phase]
+  }
+
+  type NotesAudioMetadata = Omit<NotesAudioRow, "blob" | "bytes">;
+  interface NotesAudioStoreOptions {
+    databaseName: string;
+    indexedDB?: IDBFactory;
+    now?: () => number;
+  }
+  export interface NotesAudioStore {
+    retainPendingAudio(
+      audioId: string,
+      binding: { ownerDigest: string; folderId: string | null },
+      clip: { blob: Blob; durationMs: number },
+      transcript: string,
+    ): Promise<void>;
+    pendingAudio(ownerDigest: string): Promise<NotesAudioRow[]>;
+    claimPendingAudio(audioId: string, ownerDigest: string): Promise<boolean>;
+    commitPendingAudio(
+      audioId: string,
+      ownerDigest: string,
+      noteId: string,
+      transcript: string,
+    ): Promise<NotesAudioMetadata>;
+    discardPendingAudio(audioId: string, ownerDigest: string): Promise<void>;
+    audioRecord(audioId: string, connection: string): Promise<NotesAudioRow>;
+  }
+
+  const StoredAudio = Schema.Struct({
+    audioId: Schema.NonEmptyString,
+    noteId: Schema.NonEmptyString,
+    durationMs: Schema.Finite.check(Schema.isGreaterThan(0)),
+    blob: Schema.optionalKey(Schema.instanceOf(Blob)),
+    bytes: Schema.optionalKey(Schema.instanceOf(ArrayBuffer)),
+    transcript: Schema.optionalKey(Schema.String),
+    createdAt: Schema.optionalKey(Schema.Finite),
+    mimeType: Schema.optionalKey(Schema.String),
+    deletedAt: Schema.optionalKey(Schema.Finite),
+    expired: Schema.optionalKey(Schema.Literal(true)),
+    deletionOperations: Schema.optionalKey(Schema.Record(Schema.String, Schema.Literals(["removed", "restored", "purged"]))),
+    activeDeletionOperation: Schema.optionalKey(Schema.String),
+    recordingSave: Schema.optionalKey(Schema.Struct({
+      ownerDigest: Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/)),
+      folderId: Schema.NullOr(Schema.String.check(Schema.isPattern(/^f-[A-Za-z0-9_-]{1,64}$/))),
+      phase: Schema.Literals(["stopped", "claimed", "committed"]),
+    })),
+  })
+  const NOTES_AUDIO_TRANSCRIPT_LIMIT = 64_000;
+  const STORE = "audio";
+
+  const identity = (value: unknown) => {
+    if (typeof value !== "string" || !value || value.length > 128)
+      throw refused("identity");
+  };
+  const transcriptFits = (transcript: unknown) => {
+    if (typeof transcript !== "string" || transcript.length > NOTES_AUDIO_TRANSCRIPT_LIMIT)
+      throw refused("transcriptTooLong");
+  };
+  const sameBytes = (a: ArrayBuffer, b: ArrayBuffer) => {
+    if (a.byteLength !== b.byteLength) return false;
+    const x = new Uint8Array(a);
+    const y = new Uint8Array(b);
+    for (let i = 0; i < x.length; i++) if (x[i] !== y[i]) return false;
+    return true;
+  };
+  const sameClip = (
+    row: NotesAudioRow,
+    clip: { blob: Blob; durationMs: number },
+    bytes: ArrayBuffer,
+  ) =>
+    row.durationMs === clip.durationMs &&
+    (row.mimeType || "application/octet-stream") ===
+      (clip.blob.type || "application/octet-stream") &&
+    (row.bytes instanceof ArrayBuffer
+      ? sameBytes(row.bytes, bytes)
+      : row.blob.size === clip.blob.size);
+  const ownSave = (row: NotesAudioRow | undefined, ownerDigest: string) => {
+    const save = row?.recordingSave;
+    if (row === undefined || save === undefined) throw refused("unavailable");
+    if (!recordingOwner(save.ownerDigest, ownerDigest)) throw refused("anotherConnection");
+    return { row, save };
+  };
+
+  export function notesAudioMetadata({
+    blob: _blob,
+    bytes: _bytes,
+    ...metadata
+  }: NotesAudioRow): NotesAudioMetadata {
+    return metadata;
+  }
+
+  export function createNotesAudioStore(
+    options: NotesAudioStoreOptions,
+  ): NotesAudioStore {
+    if (typeof options?.databaseName !== "string" || !options.databaseName)
+      throw refused("storeName");
+    const now = options.now ?? Date.now;
+    let database: Promise<IDBDatabase> | undefined;
+
+    const db = () => {
+      database ??= new Promise((resolve, reject) => {
+        const factory = options.indexedDB ?? globalThis.indexedDB;
+        const request = factory.open(options.databaseName, 1);
+        request.onupgradeneeded = () =>
+          request.result.createObjectStore(STORE, { keyPath: "audioId" });
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => {
+          database = undefined;
+          reject(refused("unavailable", request.error));
+        };
+      });
+      return database;
+    };
+
+    const normalize = (input: unknown): NotesAudioRow => {
+      const decoded = Schema.decodeUnknownExit(StoredAudio)(input)
+      if (decoded._tag === "Failure") throw refused("needsRecovery", decoded.cause)
+      const row = decoded.value
+      identity(row.audioId)
+      identity(row.noteId)
+      const blob = row.bytes === undefined
+        ? row.blob
+        : new Blob([row.bytes], { type: row.mimeType || "application/octet-stream" })
+      if (blob === undefined || (blob.size === 0 && !row.expired))
+        throw refused("needsRecovery")
+      if (row.recordingSave && row.recordingSave.phase !== "committed" && (row.noteId !== row.audioId || row.deletedAt))
+        throw refused("needsRecovery")
+      return {
+        ...row,
+        blob,
+        transcript: row.transcript ?? "",
+        createdAt: row.createdAt ?? now(),
+        mimeType: blob.type || "application/octet-stream",
+      }
+    }
+    const stored = (row: NotesAudioRow) => {
+      if (row.bytes instanceof ArrayBuffer) {
+        const { blob: _blob, ...data } = row;
+        return data;
+      }
+      return row;
+    };
+    async function withRow<T>(
+      audioId: string,
+      mode: IDBTransactionMode,
+      edit: (row: NotesAudioRow | undefined, store: IDBObjectStore) => T,
+    ): Promise<T> {
+      identity(audioId);
+      const d = await db();
+      return new Promise((resolve, reject) => {
+        const tx = d.transaction(STORE, mode);
+        const store = tx.objectStore(STORE);
+        let result: T;
+        let error: unknown;
+        tx.oncomplete = () => resolve(result);
+        tx.onabort = tx.onerror = () =>
+          reject(error ?? refused("interrupted", tx.error));
+        const request = store.get(audioId);
+        request.onsuccess = () => {
+          try {
+            const row = request.result ? normalize(request.result) : undefined;
+            result = edit(row, store);
+          } catch (e) {
+            error = e;
+            tx.abort();
+          }
+        };
+      });
+    }
+
+    return {
+      async retainPendingAudio(audioId, binding, clip, transcript) {
+        if (
+          !/^[a-f0-9]{64}$/.test(binding.ownerDigest) ||
+          (binding.folderId !== null &&
+            !/^f-[A-Za-z0-9_-]{1,64}$/.test(binding.folderId))
+        )
+          throw refused("binding");
+        transcriptFits(transcript);
+        const bytes = await clip.blob.arrayBuffer();
+        await withRow(audioId, "readwrite", (prior, store) => {
+          if (prior) {
+            const { save } = ownSave(prior, binding.ownerDigest);
+            if (save.folderId !== binding.folderId || !sameClip(prior, clip, bytes))
+              throw refused("binding");
+            return;
+          }
+          store.add(
+            stored(
+              normalize({
+                audioId,
+                noteId: audioId,
+                ...clip,
+                bytes,
+                mimeType: clip.blob.type,
+                transcript,
+                createdAt: now(),
+                recordingSave: { ...binding, phase: "stopped" },
+              }),
+            ),
+          );
+        });
+      },
+      async pendingAudio(ownerDigest) {
+        const d = await db();
+        return new Promise((resolve, reject) => {
+          const tx = d.transaction(STORE, "readonly"),
+            rows: NotesAudioRow[] = [];
+          let error: unknown;
+          tx.oncomplete = () => resolve(rows);
+          tx.onabort = tx.onerror = () =>
+            reject(error ?? refused("interrupted", tx.error));
+          const request = tx.objectStore(STORE).openCursor();
+          request.onsuccess = () => {
+            const cursor = request.result;
+            if (!cursor) return;
+            try {
+              const value: unknown = cursor.value
+              if (typeof value === "object" && value !== null && "recordingSave" in value) {
+                const save = value.recordingSave
+                if (typeof save === "object" && save !== null && "ownerDigest" in save && save.ownerDigest === ownerDigest) {
+                  const row = normalize(value)
+                  if (row.recordingSave !== undefined &&
+                    pendingRecoverable(pendingOf(row.recordingSave.phase), row.recordingSave.ownerDigest, ownerDigest))
+                    rows.push(row)
+                }
+              }
+            } catch (cause) {
+              error = cause;
+              tx.abort();
+              return;
+            }
+            cursor.continue();
+          };
+        });
+      },
+      async claimPendingAudio(audioId, ownerDigest) {
+        return withRow(audioId, "readwrite", (row, store) => {
+          const { row: saved, save } = ownSave(row, ownerDigest);
+          const before = pendingOf(save.phase);
+          const after = claimPending(before, true);
+          if (after.phase === before.phase) return false;
+          store.put(stored({ ...saved, recordingSave: { ...save, phase: savePhaseOf(after) } }));
+          return true;
+        });
+      },
+      async commitPendingAudio(audioId, ownerDigest, noteId, transcript) {
+        identity(noteId);
+        transcriptFits(transcript);
+        return withRow(audioId, "readwrite", (row, store) => {
+          const { row: saved, save } = ownSave(row, ownerDigest);
+          if (saved.deletedAt) throw refused("unavailable");
+          switch (commitAnswer(pendingOf(save.phase), true, true, saved.noteId === noteId)) {
+            case "CommitAlreadyApplied":
+              return notesAudioMetadata(saved);
+            case "CommitRefused":
+              throw refused(save.phase === "committed" ? "anotherNote" : "notClaimed");
+            case "CommitApplied": {
+              const committed: NotesAudioRow = { ...saved, noteId, transcript, recordingSave: { ...save, phase: "committed" } };
+              store.put(stored(committed));
+              return notesAudioMetadata(committed);
+            }
+          }
+        });
+      },
+      async discardPendingAudio(audioId, ownerDigest) {
+        await withRow(audioId, "readwrite", (row, store) => {
+          if (!row) return;
+          const { save } = ownSave(row, ownerDigest);
+          if (discardPending(pendingOf(save.phase), true).phase !== "PendingDiscarded")
+            throw refused("claimed");
+          store.delete(audioId);
+        });
+      },
+      audioRecord(audioId, connection) {
+        return withRow(audioId, "readonly", (row) => {
+          if (row === undefined || row.expired || row.deletedAt) throw refused("unavailable")
+          if (row.recordingSave === undefined) return row
+          if (!recordingOwner(row.recordingSave.ownerDigest, connection)) throw refused("anotherConnection")
+          if (row.recordingSave.phase !== "committed") throw refused("unavailable")
+          return row
+        })
+      },
+    };
+  }
+}
+
+import { type NotesAudioRefusal, type NotesAudioStore, NotesAudioRefused, createNotesAudioStore, notesAudioMetadata } from indexed
+export { type NotesAudioRefusal, type NotesAudioStore, NotesAudioRefused, createNotesAudioStore, notesAudioMetadata }
