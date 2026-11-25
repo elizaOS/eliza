@@ -1019,7 +1019,7 @@ describe("WP2 Native clients and pages: native Google (spec/cloud/nativeClients/
     try sync(() => clock.set(start))
     provide Clock.Clock = clock.clock {
       const registration = { ...native, connectReturn: `${web}/apps/native/google` }
-      const { cloud, google } = try nativeCloud(undefined, registration)
+      const { cloud, google } = try nativeCloud(undefined, registration, clock.clock)
       const owner = try signedCaller(cloud, "native")
       const session = try cloud.store.transaction((tx) => issueSession(tx, { ...owner, assurance: "SingleFactor", accountCreated: false, now: start }))
       const caller = { ...owner, headers: { authorization: "Bearer " + session.accessToken } }
@@ -1123,7 +1123,7 @@ describe("WP2 Native clients and pages: native Google (spec/cloud/nativeClients/
       const namedReturn = try visitLocal(issued(namedMailbox).authUrl)
       const namedPage = try visitLocal(try sync(() => returnToCloud(namedReturn.location)))
       const held = try cloud.call("/api/v1/eliza/google/status", { headers: phoneHeaders })
-      try check(() => assert.deepStrictEqual([refusal(missingMailbox), namedPage.status, (held.body as { readonly identity: { readonly email: string } }).identity.email], ["400 invalid_request", 200, person.email]))
+      try check(() => assert.deepStrictEqual([refusal(missingMailbox), namedPage.status, held.status, (held.body as { readonly identity: { readonly email: string } | null }).identity?.email], ["400 invalid_request", 200, 200, person.email]))
     }
   }), 120_000)
 
