@@ -10783,7 +10783,10 @@
         }
       ],
       "text": "import { checkSenderRole, containsResourceAddress, getStreamingContext, getUserMessageText, type IAgentRuntime, isObjectRecord, type Memory, pinnedDiscriminatorForPromotedChild, type ResponseHandlerEvaluator, type ResponseHandlerFieldEvaluator, registerDirectActionRoutingRule, satisfiesRoleGate, setTurnActionConstraint, } from \"@elizaos/core\";",
-      "v4Package": "agent"
+      "v4Package": "agent",
+      "v4RetiredNames": [
+        "registerDirectActionRoutingRule"
+      ]
     },
     {
       "file": "packages/agent/src/runtime/view-navigation.ts",
@@ -16344,7 +16347,10 @@
         }
       ],
       "text": "import { getDirectActionRoutingRules, type IAgentRuntime, isObjectRecord, type Memory, type UUID, } from \"@elizaos/core\";",
-      "v4Package": "agent"
+      "v4Package": "agent",
+      "v4RetiredNames": [
+        "getDirectActionRoutingRules"
+      ]
     },
     {
       "file": "packages/agent/test/connector-health-runtime-swap-http.test.ts",
@@ -19159,7 +19165,10 @@
         }
       ],
       "text": "import { type Action, AgentRuntime, type ContextObject, type ContextProviderEvent, ContextRegistry, type GenerateTextParams, type GenerateTextResult, getStreamingContext, type IAgentRuntime, isObjectRecord, type Memory, type MessageHandlerResult, MODEL_CANONICAL_CONTEXT, ModelType, projectDeferredProviders, promoteSubactionsToActions, ResponseHandlerFieldRegistry, registerDirectActionRoutingRule, runResponseHandlerEvaluators, runWithStreamingContext, runWithTrajectoryContext, type ToolDefinition, type UUID, } from \"@elizaos/core\";",
-      "v4Package": "agent"
+      "v4Package": "agent",
+      "v4RetiredNames": [
+        "registerDirectActionRoutingRule"
+      ]
     },
     {
       "file": "packages/agent/test/view-navigation-delivery.test.ts",
@@ -19212,7 +19221,10 @@
         }
       ],
       "text": "import { getDirectActionRoutingRules, type IAgentRuntime, type Memory, promoteSubactionsToActions, } from \"@elizaos/core\";",
-      "v4Package": "agent"
+      "v4Package": "agent",
+      "v4RetiredNames": [
+        "getDirectActionRoutingRules"
+      ]
     },
     {
       "file": "packages/agent/test/views-navigate-invalid-body.test.ts",
@@ -40702,7 +40714,10 @@
         }
       ],
       "text": "import { ChannelType, ContextRegistry, effectDeliveryBindingProvesApplication, ModelType, registerDirectActionRoutingRule, type UUID, } from \"@elizaos/core/protocol\";",
-      "v4Package": "agent"
+      "v4Package": "agent",
+      "v4RetiredNames": [
+        "registerDirectActionRoutingRule"
+      ]
     },
     {
       "file": "plugins/plugin-assistant/src/actions/contact.delete-by-id.pglite.test.ts",
@@ -62902,7 +62917,10 @@
         }
       ],
       "text": "import { AgentRuntime, attestAuthenticatedApiDeliveryAudience, getDirectActionRoutingRules, type Memory, promoteSubactionsToActions, runResponseHandlerEvaluators, } from \"@elizaos/core\";",
-      "v4Package": "agent"
+      "v4Package": "agent",
+      "v4RetiredNames": [
+        "getDirectActionRoutingRules"
+      ]
     },
     {
       "file": "plugins/plugin-assistant/src/services/device-actions/calendar-availability-source.test.ts",
@@ -63528,7 +63546,10 @@
         }
       ],
       "text": "import { conversationClientUserMemoryId, extractUserText, getStreamingContext, getTurnActionConstraint, readDurableConversationChatMarker, registerDirectActionRoutingRule, stableStringify, unwrapUserMessageText, withActionGatePolicy, } from \"@elizaos/core\";",
-      "v4Package": "agent"
+      "v4Package": "agent",
+      "v4RetiredNames": [
+        "registerDirectActionRoutingRule"
+      ]
     },
     {
       "file": "plugins/plugin-assistant/src/services/device-actions/tools.ts",
@@ -63581,7 +63602,10 @@
         }
       ],
       "text": "import { ElizaError, registerDirectActionRoutingRule } from \"@elizaos/core\";",
-      "v4Package": "agent"
+      "v4Package": "agent",
+      "v4RetiredNames": [
+        "registerDirectActionRoutingRule"
+      ]
     },
     {
       "file": "plugins/plugin-assistant/src/services/device-actions/workflow-service.ts",
@@ -65302,7 +65326,10 @@
         }
       ],
       "text": "import { ChannelType, createCharacter, ElizaError, EventType, ModelType, PROVIDER_CONTEXT_OVERFLOW, registerDirectActionRoutingRule, } from \"@elizaos/core\";",
-      "v4Package": "agent"
+      "v4Package": "agent",
+      "v4RetiredNames": [
+        "registerDirectActionRoutingRule"
+      ]
     },
     {
       "file": "plugins/plugin-assistant/src/services/message.response-decision.test.ts",
@@ -65451,7 +65478,10 @@
       "text": "import { __resetDirectActionRoutingRulesForTests, getDirectActionRoutingRules, promoteSubactionsToActions, registerCandidateActionBackstopRule, registerDirectActionRoutingRule, runResponseHandlerEvaluators, stringToUuid, } from \"@elizaos/core\";",
       "v4Package": "agent",
       "v4RetiredNames": [
-        "registerCandidateActionBackstopRule"
+        "registerCandidateActionBackstopRule",
+        "__resetDirectActionRoutingRulesForTests",
+        "getDirectActionRoutingRules",
+        "registerDirectActionRoutingRule"
       ]
     },
     {
@@ -66102,7 +66132,10 @@
         }
       ],
       "text": "import { type Action, AgentRuntime, type ContextObject, ContextRegistry, type Memory, promoteSubactionsToActions, registerDirectActionRoutingRule, stringToUuid, } from \"@elizaos/core\";",
-      "v4Package": "agent"
+      "v4Package": "agent",
+      "v4RetiredNames": [
+        "registerDirectActionRoutingRule"
+      ]
     },
     {
       "file": "plugins/plugin-assistant/src/services/message/action-surface.ts",
@@ -66166,7 +66199,10 @@
         }
       ],
       "text": "import type { Action, AgentContext, CodingActionProfile, DirectActionRoutingRule, IAgentRuntime, Memory, MessageHandlerResult, RoleGateRole, State, TrajectoryRecorder, } from \"@elizaos/core\";",
-      "v4Package": "agent"
+      "v4Package": "agent",
+      "v4RetiredNames": [
+        "DirectActionRoutingRule"
+      ]
     },
     {
       "file": "plugins/plugin-assistant/src/services/message/action-surface.ts",
@@ -66240,7 +66276,10 @@
         }
       ],
       "text": "import { actionGateRejection, evaluateConnectorAccountPolicies, getDirectActionRoutingRules, getInferenceTimer, getUserMessageText, inflectionTermKeys, type LocalizedActionExampleResolver, normalizeContextId, readEnvBool, recordInferenceSpan, renewExpiredTrustedDeliveryAudience, withActiveRoutingContexts, } from \"@elizaos/core\";",
-      "v4Package": "agent"
+      "v4Package": "agent",
+      "v4RetiredNames": [
+        "getDirectActionRoutingRules"
+      ]
     },
     {
       "file": "plugins/plugin-assistant/src/services/message/addressing.ts",
@@ -69248,7 +69287,8 @@
       "v4RetiredNames": [
         "beginRequestOperationIssuer",
         "NotesRequestInterpretation",
-        "RequestOperationClassification"
+        "RequestOperationClassification",
+        "getDirectActionRoutingRules"
       ]
     },
     {
@@ -69332,7 +69372,10 @@
         }
       ],
       "text": "import { type Action, AgentRuntime, type Memory, promoteSubactionsToActions, registerDirectActionRoutingRule, } from \"@elizaos/core\";",
-      "v4Package": "agent"
+      "v4Package": "agent",
+      "v4RetiredNames": [
+        "registerDirectActionRoutingRule"
+      ]
     },
     {
       "file": "plugins/plugin-assistant/src/services/message/phone-capability-context.test.ts",
@@ -69631,7 +69674,8 @@
       "text": "import { appendContextEvent, attachAvailableContexts, ChannelTopicsService, ChannelType, CONTEXT_ROUTING_STATE_KEY, canActionRun, captureToolStageIO, createUnavailableGroundedActionReply, DISCOVER_ACTIONS_NAME, ElizaError, extractReplyTextFromTranscript, finalizeTrajectoryRecording, getContextRoutingFromState, getDirectActionRoutingRules, getLocalizedExamplesProvider, getRequestOperationIssuer, getStreamingContext, getTrajectoryContext, getUserMessageText, isDiscoveryActionName, isProviderContextOverflowFailure, isRateLimitError, isObjectRecord as isRecord, isTrajectoryRecordingEnabled, looksLikeRawFieldTranscript, ModelType, promotedSubactionParent, type RecordedStage, readEnv, readProviderRateLimit, runResponseHandlerEvaluators, sanitizeUserVisibleModelOutput, type TrajectoryRecorder, TurnAbortedError, timeInferenceSpan, withSemanticStageFanOut, } from \"@elizaos/core\";",
       "v4Package": "agent",
       "v4RetiredNames": [
-        "getRequestOperationIssuer"
+        "getRequestOperationIssuer",
+        "getDirectActionRoutingRules"
       ]
     },
     {
@@ -71657,7 +71701,9 @@
       "text": "import { activeCommittedEffectReceipts, canActionRun, type DirectActionRoutingRule, evaluateConnectorAccountPolicies, getCandidateActionBackstopRules, getDirectActionRoutingRules, getUserMessageText, normalizeContextId, } from \"@elizaos/core\";",
       "v4Package": "agent",
       "v4RetiredNames": [
-        "getCandidateActionBackstopRules"
+        "getCandidateActionBackstopRules",
+        "DirectActionRoutingRule",
+        "getDirectActionRoutingRules"
       ]
     },
     {
@@ -72084,7 +72130,10 @@
         }
       ],
       "text": "import { type Action, AgentRuntime, ContextRegistry, type Memory, type MessageHandlerResult, type RoleGateRole, registerDirectActionRoutingRule, runResponseHandlerEvaluators, stringToUuid, } from \"@elizaos/core\";",
-      "v4Package": "agent"
+      "v4Package": "agent",
+      "v4RetiredNames": [
+        "registerDirectActionRoutingRule"
+      ]
     },
     {
       "file": "plugins/plugin-assistant/src/services/message/stage1-prompt-tier.ts",
@@ -91742,7 +91791,10 @@
         }
       ],
       "text": "import { AgentRuntime, getDirectActionRoutingRules, type Memory, type ResponseHandlerEvaluatorContext, } from \"@elizaos/core\";",
-      "v4Package": "notes"
+      "v4Package": "notes",
+      "v4RetiredNames": [
+        "getDirectActionRoutingRules"
+      ]
     },
     {
       "file": "plugins/plugin-notes/src/interact.ts",
@@ -91956,7 +92008,10 @@
         }
       ],
       "text": "import { type ContextDefinition, promoteSubactionsToActions, registerDirectActionRoutingRule, } from \"@elizaos/core\";",
-      "v4Package": "notes"
+      "v4Package": "notes",
+      "v4RetiredNames": [
+        "registerDirectActionRoutingRule"
+      ]
     },
     {
       "file": "plugins/plugin-notes/src/provider.test.ts",
@@ -99136,7 +99191,10 @@
         }
       ],
       "text": "import type { DirectActionRoutingRule } from \"@elizaos/core\";",
-      "v4Package": "assistant"
+      "v4Package": "assistant",
+      "v4RetiredNames": [
+        "DirectActionRoutingRule"
+      ]
     },
     {
       "file": "plugins/plugin-personal-assistant/src/lifeops/briefing/engagement-reward.ts",
@@ -104802,7 +104860,11 @@
         }
       ],
       "text": "import { type DirectActionRoutingRule, extractUserText, getUserMessageText, type IAgentRuntime, isObjectRecord, type ResponseHandlerEvaluator, registerDirectActionRoutingRule, validateUuid, } from \"@elizaos/core\";",
-      "v4Package": "assistant"
+      "v4Package": "assistant",
+      "v4RetiredNames": [
+        "DirectActionRoutingRule",
+        "registerDirectActionRoutingRule"
+      ]
     },
     {
       "file": "plugins/plugin-personal-assistant/src/lifeops/repositories/activity-telemetry.ts",
@@ -107162,7 +107224,10 @@
         }
       ],
       "text": "import type { DirectActionRoutingRule } from \"@elizaos/core\";",
-      "v4Package": "assistant"
+      "v4Package": "assistant",
+      "v4RetiredNames": [
+        "DirectActionRoutingRule"
+      ]
     },
     {
       "file": "plugins/plugin-personal-assistant/src/lifeops/triggers/schedule-once.ts",
@@ -107503,7 +107568,8 @@
       "text": "import { type EventPayload, EventType, type IAgentRuntime, type MessagePayload, promoteSubactionsToActions, registerCandidateActionBackstopRule, registerDirectActionRoutingRule, registerLocalizedExamplesProvider, ServiceType, } from \"@elizaos/core\";",
       "v4Package": "assistant",
       "v4RetiredNames": [
-        "registerCandidateActionBackstopRule"
+        "registerCandidateActionBackstopRule",
+        "registerDirectActionRoutingRule"
       ]
     },
     {
@@ -123817,7 +123883,6 @@
         "DeliveryResult",
         "DeliveryTarget",
         "DetokenizeTextParams",
-        "DirectActionRoutingRule",
         "DispatchSensitiveRequest",
         "DmConfig",
         "DmPolicy",
@@ -124535,7 +124600,6 @@
         "WorldMetadataMutationResult",
         "WorldPayload",
         "WorldSettings",
-        "__resetDirectActionRoutingRulesForTests",
         "_resetActionRolePolicyCacheForTests",
         "actionGateFailure",
         "actionGateRejection",
@@ -124766,7 +124830,6 @@
         "getContextRoutingFromMessage",
         "getContextRoutingFromState",
         "getDeterministicNames",
-        "getDirectActionRoutingRules",
         "getEffectDeliveryBinding",
         "getElizaNamespace",
         "getEmbeddingVectorSpace",
@@ -125048,7 +125111,6 @@
         "redactSensitiveRequestMetadata",
         "redactSensitiveText",
         "referencePlannerQueryTokens",
-        "registerDirectActionRoutingRule",
         "registerLocalizedExamplesProvider",
         "registerProviderModels",
         "registerRuntimeManagedInternalActor",
@@ -125368,7 +125430,6 @@
         "parseTrajectorySemanticStage",
         "readViewInteractionClientId",
         "redactTrailingArgs",
-        "registerDirectActionRoutingRule",
         "renderContextObject",
         "replaceIndexedNameTokens",
         "resolveRetainableAgentBackupBytes",
@@ -125713,6 +125774,232 @@
             "registerCandidateActionBackstopRule"
           ],
           "reason": "Retired v4 candidate backstop registry: a backstop matched the person's words to add candidate actions before the model; the model now chooses every call, and current source registers none. Original import facts remain in this row; every other name remains required."
+        }
+      ]
+    },
+    "directRouteRetirement": {
+      "specification": "spec/core/registries.md",
+      "decision": "v4-model-chooses-every-call",
+      "imports": [
+        {
+          "file": "packages/agent/src/runtime/view-navigation.ts",
+          "line": 2,
+          "module": "@elizaos/core",
+          "names": [
+            "registerDirectActionRoutingRule"
+          ],
+          "reason": "Retired v4 direct action route registry: a route matched the person's words to force actions, contexts or a fixed reply before the model; the model now chooses every call, and current source registers none. Original import facts remain in this row; every other name remains required."
+        },
+        {
+          "file": "packages/agent/test/confirmed-navigation-history.test.ts",
+          "line": 3,
+          "module": "@elizaos/core",
+          "names": [
+            "getDirectActionRoutingRules"
+          ],
+          "reason": "Retired v4 direct action route registry: a route matched the person's words to force actions, contexts or a fixed reply before the model; the model now chooses every call, and current source registers none. Original import facts remain in this row; every other name remains required."
+        },
+        {
+          "file": "packages/agent/test/view-navigation-delivery.test.ts",
+          "line": 8,
+          "module": "@elizaos/core",
+          "names": [
+            "registerDirectActionRoutingRule"
+          ],
+          "reason": "Retired v4 direct action route registry: a route matched the person's words to force actions, contexts or a fixed reply before the model; the model now chooses every call, and current source registers none. Original import facts remain in this row; every other name remains required."
+        },
+        {
+          "file": "packages/agent/test/view-navigation-routing.test.ts",
+          "line": 1,
+          "module": "@elizaos/core",
+          "names": [
+            "getDirectActionRoutingRules"
+          ],
+          "reason": "Retired v4 direct action route registry: a route matched the person's words to force actions, contexts or a fixed reply before the model; the model now chooses every call, and current source registers none. Original import facts remain in this row; every other name remains required."
+        },
+        {
+          "file": "plugins/plugin-assistant/src/__tests__/stage1/response-format.test.ts",
+          "line": 10,
+          "module": "@elizaos/core/protocol",
+          "names": [
+            "registerDirectActionRoutingRule"
+          ],
+          "reason": "Retired v4 direct action route registry: a route matched the person's words to force actions, contexts or a fixed reply before the model; the model now chooses every call, and current source registers none. Original import facts remain in this row; every other name remains required."
+        },
+        {
+          "file": "plugins/plugin-assistant/src/services/device-actions/browser-open-routing.test.ts",
+          "line": 1,
+          "module": "@elizaos/core",
+          "names": [
+            "getDirectActionRoutingRules"
+          ],
+          "reason": "Retired v4 direct action route registry: a route matched the person's words to force actions, contexts or a fixed reply before the model; the model now chooses every call, and current source registers none. Original import facts remain in this row; every other name remains required."
+        },
+        {
+          "file": "plugins/plugin-assistant/src/services/device-actions/service.ts",
+          "line": 33,
+          "module": "@elizaos/core",
+          "names": [
+            "registerDirectActionRoutingRule"
+          ],
+          "reason": "Retired v4 direct action route registry: a route matched the person's words to force actions, contexts or a fixed reply before the model; the model now chooses every call, and current source registers none. Original import facts remain in this row; every other name remains required."
+        },
+        {
+          "file": "plugins/plugin-assistant/src/services/device-actions/tools.ts",
+          "line": 7,
+          "module": "@elizaos/core",
+          "names": [
+            "registerDirectActionRoutingRule"
+          ],
+          "reason": "Retired v4 direct action route registry: a route matched the person's words to force actions, contexts or a fixed reply before the model; the model now chooses every call, and current source registers none. Original import facts remain in this row; every other name remains required."
+        },
+        {
+          "file": "plugins/plugin-assistant/src/services/message.preserved-tool-result.test.ts",
+          "line": 33,
+          "module": "@elizaos/core",
+          "names": [
+            "registerDirectActionRoutingRule"
+          ],
+          "reason": "Retired v4 direct action route registry: a route matched the person's words to force actions, contexts or a fixed reply before the model; the model now chooses every call, and current source registers none. Original import facts remain in this row; every other name remains required."
+        },
+        {
+          "file": "plugins/plugin-assistant/src/services/message.side-effect-claim.test.ts",
+          "line": 20,
+          "module": "@elizaos/core",
+          "names": [
+            "__resetDirectActionRoutingRulesForTests",
+            "getDirectActionRoutingRules",
+            "registerDirectActionRoutingRule"
+          ],
+          "reason": "Retired v4 direct action route registry: a route matched the person's words to force actions, contexts or a fixed reply before the model; the model now chooses every call, and current source registers none. Original import facts remain in this row; every other name remains required."
+        },
+        {
+          "file": "plugins/plugin-assistant/src/services/message/action-surface.reminder-payload.test.ts",
+          "line": 2,
+          "module": "@elizaos/core",
+          "names": [
+            "registerDirectActionRoutingRule"
+          ],
+          "reason": "Retired v4 direct action route registry: a route matched the person's words to force actions, contexts or a fixed reply before the model; the model now chooses every call, and current source registers none. Original import facts remain in this row; every other name remains required."
+        },
+        {
+          "file": "plugins/plugin-assistant/src/services/message/action-surface.ts",
+          "line": 3,
+          "module": "@elizaos/core",
+          "names": [
+            "DirectActionRoutingRule"
+          ],
+          "reason": "Retired v4 direct action route registry: a route matched the person's words to force actions, contexts or a fixed reply before the model; the model now chooses every call, and current source registers none. Original import facts remain in this row; every other name remains required."
+        },
+        {
+          "file": "plugins/plugin-assistant/src/services/message/action-surface.ts",
+          "line": 15,
+          "module": "@elizaos/core",
+          "names": [
+            "getDirectActionRoutingRules"
+          ],
+          "reason": "Retired v4 direct action route registry: a route matched the person's words to force actions, contexts or a fixed reply before the model; the model now chooses every call, and current source registers none. Original import facts remain in this row; every other name remains required."
+        },
+        {
+          "file": "plugins/plugin-assistant/src/services/message/notes-request-issuer.ts",
+          "line": 2,
+          "module": "@elizaos/core",
+          "names": [
+            "getDirectActionRoutingRules"
+          ],
+          "reason": "Retired v4 direct action route registry: a route matched the person's words to force actions, contexts or a fixed reply before the model; the model now chooses every call, and current source registers none. Original import facts remain in this row; every other name remains required."
+        },
+        {
+          "file": "plugins/plugin-assistant/src/services/message/owner-route-surface.test.ts",
+          "line": 2,
+          "module": "@elizaos/core",
+          "names": [
+            "registerDirectActionRoutingRule"
+          ],
+          "reason": "Retired v4 direct action route registry: a route matched the person's words to force actions, contexts or a fixed reply before the model; the model now chooses every call, and current source registers none. Original import facts remain in this row; every other name remains required."
+        },
+        {
+          "file": "plugins/plugin-assistant/src/services/message/pipeline.ts",
+          "line": 14,
+          "module": "@elizaos/core",
+          "names": [
+            "getDirectActionRoutingRules"
+          ],
+          "reason": "Retired v4 direct action route registry: a route matched the person's words to force actions, contexts or a fixed reply before the model; the model now chooses every call, and current source registers none. Original import facts remain in this row; every other name remains required."
+        },
+        {
+          "file": "plugins/plugin-assistant/src/services/message/stage1-evaluators.ts",
+          "line": 13,
+          "module": "@elizaos/core",
+          "names": [
+            "DirectActionRoutingRule",
+            "getDirectActionRoutingRules"
+          ],
+          "reason": "Retired v4 direct action route registry: a route matched the person's words to force actions, contexts or a fixed reply before the model; the model now chooses every call, and current source registers none. Original import facts remain in this row; every other name remains required."
+        },
+        {
+          "file": "plugins/plugin-assistant/src/services/message/stage1-owned-outcome.test.ts",
+          "line": 2,
+          "module": "@elizaos/core",
+          "names": [
+            "registerDirectActionRoutingRule"
+          ],
+          "reason": "Retired v4 direct action route registry: a route matched the person's words to force actions, contexts or a fixed reply before the model; the model now chooses every call, and current source registers none. Original import facts remain in this row; every other name remains required."
+        },
+        {
+          "file": "plugins/plugin-notes/src/direct-routing.test.ts",
+          "line": 1,
+          "module": "@elizaos/core",
+          "names": [
+            "getDirectActionRoutingRules"
+          ],
+          "reason": "Retired v4 direct action route registry: a route matched the person's words to force actions, contexts or a fixed reply before the model; the model now chooses every call, and current source registers none. Original import facts remain in this row; every other name remains required."
+        },
+        {
+          "file": "plugins/plugin-notes/src/plugin.ts",
+          "line": 9,
+          "module": "@elizaos/core",
+          "names": [
+            "registerDirectActionRoutingRule"
+          ],
+          "reason": "Retired v4 direct action route registry: a route matched the person's words to force actions, contexts or a fixed reply before the model; the model now chooses every call, and current source registers none. Original import facts remain in this row; every other name remains required."
+        },
+        {
+          "file": "plugins/plugin-personal-assistant/src/lifeops/briefing/direct-routing.ts",
+          "line": 8,
+          "module": "@elizaos/core",
+          "names": [
+            "DirectActionRoutingRule"
+          ],
+          "reason": "Retired v4 direct action route registry: a route matched the person's words to force actions, contexts or a fixed reply before the model; the model now chooses every call, and current source registers none. Original import facts remain in this row; every other name remains required."
+        },
+        {
+          "file": "plugins/plugin-personal-assistant/src/lifeops/reminders/direct-routing.ts",
+          "line": 8,
+          "module": "@elizaos/core",
+          "names": [
+            "DirectActionRoutingRule",
+            "registerDirectActionRoutingRule"
+          ],
+          "reason": "Retired v4 direct action route registry: a route matched the person's words to force actions, contexts or a fixed reply before the model; the model now chooses every call, and current source registers none. Original import facts remain in this row; every other name remains required."
+        },
+        {
+          "file": "plugins/plugin-personal-assistant/src/lifeops/todos/direct-routing.ts",
+          "line": 8,
+          "module": "@elizaos/core",
+          "names": [
+            "DirectActionRoutingRule"
+          ],
+          "reason": "Retired v4 direct action route registry: a route matched the person's words to force actions, contexts or a fixed reply before the model; the model now chooses every call, and current source registers none. Original import facts remain in this row; every other name remains required."
+        },
+        {
+          "file": "plugins/plugin-personal-assistant/src/plugin.ts",
+          "line": 13,
+          "module": "@elizaos/core",
+          "names": [
+            "registerDirectActionRoutingRule"
+          ],
+          "reason": "Retired v4 direct action route registry: a route matched the person's words to force actions, contexts or a fixed reply before the model; the model now chooses every call, and current source registers none. Original import facts remain in this row; every other name remains required."
         }
       ]
     }

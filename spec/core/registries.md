@@ -1,6 +1,6 @@
 # Runtime registries
 
-The registries of one runtime instance, each with its own collision and ordering policy: actions, providers, evaluators, model handlers and event callbacks; localized example factories and direct action routes; task workers, search categories and resolved model providers. Owner zero is direct host registration; positive owners are plugin [registration epochs](./pluginServices.md). Sources: `runtime.ts`, `plugin-lifecycle.ts`, `runtime/model-dispatch.ts`, `runtime/localized-examples-provider.ts`, `runtime/direct-action-routing.ts`.
+The registries of one runtime instance, each with its own collision and ordering policy: actions, providers, evaluators, model handlers and event callbacks; localized example factories; task workers, search categories and resolved model providers. Owner zero is direct host registration; positive owners are plugin [registration epochs](./pluginServices.md). Sources: `runtime.ts`, `plugin-lifecycle.ts`, `runtime/model-dispatch.ts`, `runtime/localized-examples-provider.ts`.
 
 ## Story: Register actions providers and evaluators
 
@@ -18,12 +18,11 @@ type ComponentRegistration = { kind: ComponentKind, name: str, reference: int, o
 type ModelRegistration = { modelType: str, provider: str, reference: int, priority: int, order: int, owner: int }
 type EventRegistration = { eventName: str, reference: int, owner: int }
 type LocalizedProvider = {runtime: int, reference: int}
-type DirectRoute = {runtime: int, id: str, reference: int, actionNames: List[str], replacementNames: List[str], requiredTags: List[str], contexts: List[str], hasWholeRequest: bool, invalidates: List[str], domainOnly: bool, unavailableCode: str, unavailableReply: str}
 type Worker = {name: str, reference: int}
 type SearchCategory = {key: str, category: str, label: str, active: bool, contexts: List[str], filters: List[str], capabilities: List[str], payload: str}
 type ResolvedProvider = {modelType: str, name: str}
-type RuntimeRegistries = { components: List[ComponentRegistration], models: List[ModelRegistration], events: List[EventRegistration], nextOrder: int, collisionWarnings: int, localized: List[LocalizedProvider], direct: List[DirectRoute], workers: List[Worker], categories: List[SearchCategory], providers: List[ResolvedProvider], promptHooks: int, taskWakeRevision: int }
-pure val initial: RuntimeRegistries = { components: List(), models: List(), events: List(), nextOrder: 1, collisionWarnings: 0, localized: List(), direct: List(), workers: List(), categories: List(), providers: List(), promptHooks: 0, taskWakeRevision: 0 }
+type RuntimeRegistries = { components: List[ComponentRegistration], models: List[ModelRegistration], events: List[EventRegistration], nextOrder: int, collisionWarnings: int, localized: List[LocalizedProvider], workers: List[Worker], categories: List[SearchCategory], providers: List[ResolvedProvider], promptHooks: int, taskWakeRevision: int }
+pure val initial: RuntimeRegistries = { components: List(), models: List(), events: List(), nextOrder: 1, collisionWarnings: 0, localized: List(), workers: List(), categories: List(), providers: List(), promptHooks: 0, taskWakeRevision: 0 }
 pure val nameValues = Set("read", "write")
 pure val referenceValues = Set(0, 1, 2, 3)
 pure val ownerValues = Set(0, 1, 2)
@@ -90,31 +89,24 @@ pure def sometimesHostRegistrationSurvives(s: RuntimeRegistries): bool = s.compo
 pure def alwaysRegistryCountersNonnegative(s: RuntimeRegistries): bool = s.nextOrder > 0 and s.collisionWarnings >= 0
 ```
 
-## Story: Supply runtime-specific routing extensions
+## Story: Supply a runtime's own localized examples
 
-> As a host, I want to replace the localized provider and upsert direct
-> routes, so that each runtime's routing stays its own.
+> As a host, I want to replace the localized examples provider of one
+> runtime, so that each runtime's examples stay its own.
 
-A runtime keeps no registry of candidate backstops that add actions from the
-person's words: the model chooses each call.
+A runtime keeps no registry of request routes or candidate backstops that
+match the person's words: the model chooses each call.
 
-### Each routing registry follows its source identity and ordering policy
+### A runtime's localized examples provider is its last registration
 
-Localized providers use last registration for a runtime. Direct route IDs replace at their original position.
+Localized providers use last registration for a runtime, and another runtime's provider is untouched.
 
 ```quint
 pure val runtimeIdValues = Set(1, 2)
-pure val routeValues = Set({runtime: 1, id: "owner-route", reference: 1, actionNames: List("READ"), replacementNames: List(), requiredTags: List("read"), contexts: List("files"), hasWholeRequest: false, invalidates: List(), domainOnly: false, unavailableCode: "", unavailableReply: ""}, {runtime: 2, id: "owner-route", reference: 2, actionNames: List("WRITE"), replacementNames: List("CODE"), requiredTags: List("write"), contexts: List("files"), hasWholeRequest: true, invalidates: List("folder"), domainOnly: true, unavailableCode: "UNAVAILABLE", unavailableReply: "The file action is unavailable."})
 pure def canRegisterLocalized(s: RuntimeRegistries, runtimeId: int, reference: int): bool = runtimeId > 0 and reference > 0
 pure def registerLocalized(s: RuntimeRegistries, runtimeId: int, reference: int): RuntimeRegistries = { ...s, localized: if (s.localized.some(p => p.runtime == runtimeId)) s.localized.listMap(p => if (p.runtime == runtimeId) {runtime: runtimeId, reference: reference} else p) else s.localized.append({runtime: runtimeId, reference: reference}) }
 pure def localizedProvider(s: RuntimeRegistries, runtimeId: int): int = s.localized.select(p => p.runtime == runtimeId).nthOr(0, {runtime: runtimeId, reference: 0}).reference
-pure def canRegisterDirectRoute(s: RuntimeRegistries, route: DirectRoute): bool = route.runtime > 0 and route.reference > 0
-pure def registerDirectRoute(s: RuntimeRegistries, route: DirectRoute): RuntimeRegistries = { ...s, direct: if (s.direct.some(r => r.runtime == route.runtime and r.id == route.id)) s.direct.listMap(r => if (r.runtime == route.runtime and r.id == route.id) route else r) else s.direct.append(route) }
-pure def canResetDirectRoutes(s: RuntimeRegistries, runtimeId: int): bool = runtimeId > 0
-pure def resetDirectRoutes(s: RuntimeRegistries, runtimeId: int): RuntimeRegistries = { ...s, direct: s.direct.select(r => r.runtime != runtimeId) }
-pure def directRoutes(s: RuntimeRegistries, runtimeId: int): List[DirectRoute] = s.direct.select(r => r.runtime == runtimeId)
 pure def alwaysLocalizedSlotUnique(s: RuntimeRegistries): bool = s.localized.every(p => s.localized.select(other => other.runtime == p.runtime).length() == 1)
-pure def alwaysDirectIdsUniquePerRuntime(s: RuntimeRegistries): bool = s.direct.every(r => s.direct.select(other => other.runtime == r.runtime and other.id == r.id).length() == 1)
 pure def sometimesTwoRuntimeProviders(s: RuntimeRegistries): bool = s.localized.some(a => s.localized.some(b => a.runtime != b.runtime and a.reference != b.reference))
 ```
 
