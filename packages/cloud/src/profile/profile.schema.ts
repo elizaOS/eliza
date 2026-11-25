@@ -70,7 +70,7 @@ export const BillingSettings = Schema.Struct({
   secretKeyEnv: SecretName,
   webhookSecretEnv: SecretName,
   publishableKey: pattern(/^pk_(?:live|test)_[A-Za-z0-9]{1,250}$/),
-  plans: Schema.Struct({ plus_monthly: PlanBinding, pro_monthly: PlanBinding }),
+  plans: Schema.Struct({ plus_monthly: PlanBinding, pro_monthly: Schema.optionalKey(PlanBinding) }),
 });
 
 export const InferenceSettings = Schema.Struct({

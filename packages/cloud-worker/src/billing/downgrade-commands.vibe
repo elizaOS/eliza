@@ -59,7 +59,7 @@ effect function ownPlanBinding(row: ReviewedPlanQuote) {
   const target = wirePlanKey(row.command.quote.targetPlanKey)
   const billing = (try Deployment).settings.billing
   if (billing === undefined || source === "free" || target === "free") throw refused("CapabilityUnavailable")
-  if (billing.plans[source].priceId !== row.binding.sourcePriceId || billing.plans[target].priceId !== row.binding.targetPriceId)
+  if (billing.plans[source]?.priceId !== row.binding.sourcePriceId || billing.plans[target]?.priceId !== row.binding.targetPriceId)
     throw refused("BillingStateConflict")
   const terms = termsOf(row)
   const current = try bindPlanChange({ ...row.binding, ...terms }, providerRead)
