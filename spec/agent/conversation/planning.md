@@ -1227,7 +1227,10 @@ successful result that carries the event (its id, start, end, zone and
 version, and a title naming no clock time) and its own applied create or
 update receipt for that event at that version, a reply that states one
 clock range, a start and an end such as "3–4 PM", is read on the event's
-own clock. When its start or end is not the event's, the model is asked
+own clock. An explicit move clause such as "moved your dentist from 3 PM
+to 4 PM" asserts the second clock as the event's new start. The receipt
+supplies the new start. When a range endpoint or a new start disagrees
+with the receipt, the model is asked
 once more with that action's own words as a host note (above), and its
 answer is kept when this check holds of it. Otherwise, or when that call
 fails, the reply is that action's own words. A reply
@@ -1236,14 +1239,21 @@ or an offset, and a turn that changed no event or more than one, are kept
 as they are; identical copies of one result count as one event.
 
 ```quint
-pure def eventRangeIsUngrounded(asksTime: bool, oneRange: bool, zoneStated: bool, changedEvents: int, rangeMatches: bool): bool =
-  not(asksTime) and oneRange and not(zoneStated) and changedEvents == 1 and not(rangeMatches)
-pure def lawTheAppliedRangeIsKept(asksTime: bool, oneRange: bool, zoneStated: bool, changedEvents: int): bool =
-  not(eventRangeIsUngrounded(asksTime, oneRange, zoneStated, changedEvents, true))
-pure def lawOnlyOneChangedEventJudgesARange(asksTime: bool, oneRange: bool, zoneStated: bool, changedEvents: int, rangeMatches: bool): bool =
-  eventRangeIsUngrounded(asksTime, oneRange, zoneStated, changedEvents, rangeMatches) implies changedEvents == 1
-pure def lawAZoneOrASingleClockIsLeftToTheReply(asksTime: bool, changedEvents: int, rangeMatches: bool): bool =
-  not(eventRangeIsUngrounded(asksTime, true, true, changedEvents, rangeMatches)) and not(eventRangeIsUngrounded(asksTime, false, false, changedEvents, rangeMatches))
+type EventTimeClaim = EventTimeRange({ start: int, end: int }) | EventMoveStart({ start: int })
+pure def eventTimeMatches(claim: EventTimeClaim, start: int, end: int): bool = match claim {
+  | EventTimeRange(times) => times.start == start and times.end == end
+  | EventMoveStart(time) => time.start == start
+}
+pure def eventTimeIsUngrounded(asksTime: bool, timeStated: bool, zoneStated: bool, changedEvents: int, timeMatches: bool): bool =
+  not(asksTime) and timeStated and not(zoneStated) and changedEvents == 1 and not(timeMatches)
+pure def lawTheAppliedTimeIsKept(asksTime: bool, timeStated: bool, zoneStated: bool, changedEvents: int): bool =
+  not(eventTimeIsUngrounded(asksTime, timeStated, zoneStated, changedEvents, true))
+pure def lawOnlyOneChangedEventJudgesItsTime(asksTime: bool, timeStated: bool, zoneStated: bool, changedEvents: int, timeMatches: bool): bool =
+  eventTimeIsUngrounded(asksTime, timeStated, zoneStated, changedEvents, timeMatches) implies changedEvents == 1
+pure def lawAZoneOrASingleClockIsLeftToTheReply(asksTime: bool, changedEvents: int, timeMatches: bool): bool =
+  not(eventTimeIsUngrounded(asksTime, true, true, changedEvents, timeMatches)) and not(eventTimeIsUngrounded(asksTime, false, false, changedEvents, timeMatches))
+pure def lawAMoveChecksTheNewStart(statedStart: int, eventStart: int, eventEnd: int): bool =
+  eventTimeMatches(EventMoveStart({ start: statedStart }), eventStart, eventEnd) iff statedStart == eventStart
 pure val changedEventsValues = Set(0, 1, 2)
 ```
 

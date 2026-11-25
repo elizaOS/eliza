@@ -1662,14 +1662,25 @@ it.live(`A reply that misstates the time a calendar change got is asked for once
   const right = try turn("Done, your dentist is now 9–10 AM.")
   const corrected = try turn("Done, your dentist is now 3–4 PM.", "Sorry, your dentist is now 9–10 AM.")
   const stillWrong = try turn("Done, your dentist is now 3–4 PM.", "Done, your dentist is now 2–3 PM.")
+  const moved = "Done, your dentist moved from 8 AM to 9 AM."
+  const rightMove = try turn(moved)
+  const correctedMove = try turn("Done, your dentist moved from 3 PM to 4 PM.", moved)
+  const movedRange = "I moved your dentist and it now runs from 9 AM to 10 AM."
+  const rightRangeAfterMove = try turn(movedRange)
   try Effect.try(() => assert.deepStrictEqual({
     right: [right.reply, right.calls],
     corrected: [corrected.reply, corrected.calls, corrected.note.includes(JSON.stringify(movedDentist))],
     stillWrong: [stillWrong.reply, stillWrong.calls],
+    rightMove: [rightMove.reply, rightMove.calls],
+    correctedMove: [correctedMove.reply, correctedMove.calls, correctedMove.note.includes("another start time")],
+    rightRangeAfterMove: [rightRangeAfterMove.reply, rightRangeAfterMove.calls],
   }, {
     right: ["Done, your dentist is now 9–10 AM.", 2],
     corrected: ["Sorry, your dentist is now 9–10 AM.", 3, true],
     stillWrong: [movedDentist, 3],
+    rightMove: [moved, 2],
+    correctedMove: [moved, 3, true],
+    rightRangeAfterMove: [movedRange, 2],
   }))
 }, 120_000)
 
@@ -1695,19 +1706,19 @@ it.live(`A calendar move refused without a receipt and then made by the model's 
   const failedAgain = try turn(1, () => [toolCalls("", misread), toolCalls("", move), text(right), requestFault("invalid_request")])
   const cuedAgain = try turn(1, () => [toolCalls("", misread), toolCalls("", move), text(right), text("One sec.")])
   const toldAgain = try turn(1, () => [toolCalls("", misread), toolCalls("", move), text(right), text("Your dentist is now 9–10 AM.")])
-  const rangeWrongAgain = try turn(1, () => [toolCalls("", misread), toolCalls("", move), text(right), text("Done, your dentist moved from 3 PM to 4 PM.")])
+  const moveWrongAgain = try turn(1, () => [toolCalls("", misread), toolCalls("", move), text(right), text("Done, your dentist moved from 3 PM to 4 PM.")])
   const wrongRange = "Done, your dentist is now 3–4 PM."
   const heldButMistimed = try turn(1, () => [toolCalls("", misread), toolCalls("", move), text(`${unsaidMove} ${wrongRange}`), text("Done, your dentist is now 2–3 PM.")])
   const mistimedTwice = try turn(1, () => [toolCalls("", misread), toolCalls("", move), text(wrongRange), text("Done, your dentist is now 2–3 PM.")])
   const quoted = try turn(1, () => [toolCalls("", misread), toolCalls("", move), text(`${right} ${unsaidMove}`)])
   const sameResponse = try turn(1, () => [toolCalls("", misread, move), text(right), text(right)])
   const neverMoved = try turn(2, () => [toolCalls("", misread), toolCalls("", move), text("Done!"), text("Done!")])
-  try Effect.try(() => assert.deepStrictEqual({ sameAgain, failedAgain, cuedAgain, toldAgain, rangeWrongAgain, heldButMistimed, mistimedTwice, quoted, sameResponse, neverMoved }, {
+  try Effect.try(() => assert.deepStrictEqual({ sameAgain, failedAgain, cuedAgain, toldAgain, moveWrongAgain, heldButMistimed, mistimedTwice, quoted, sameResponse, neverMoved }, {
     sameAgain: { reply: right, calls: 4, laterRunNote: true },
     failedAgain: { reply: right, calls: 4, laterRunNote: true },
     cuedAgain: { reply: right, calls: 4, laterRunNote: true },
     toldAgain: { reply: "Your dentist is now 9–10 AM.", calls: 4, laterRunNote: true },
-    rangeWrongAgain: { reply: right, calls: 4, laterRunNote: true },
+    moveWrongAgain: { reply: right, calls: 4, laterRunNote: true },
     heldButMistimed: { reply: movedDentist, calls: 4, laterRunNote: false },
     mistimedTwice: { reply: movedDentist, calls: 4, laterRunNote: true },
     quoted: { reply: `${right} ${unsaidMove}`, calls: 3, laterRunNote: false },
