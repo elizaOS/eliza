@@ -43,12 +43,12 @@ export {
   planCloudSpeechChunks, speakCloudSpeechChunks, type CloudSpeechOptions, type SpeakCloudPiece,
   createLiveVoiceSession, parseVoiceTranscriptEnvelope, VOICE_TRANSCRIPT_STREAM,
   type AgentEventSubscribe, type LiveTranscriptEvent, type LiveVoiceSession, type LiveVoiceSessionOptions,
-  audioBlobBase64, captureBlockSamples, decodeRecordedClip, encodeMonoPcm16WavChunks, startCumulativeMicrophoneCapture,
-  browserCaptureAudio, browserClipAudio,
-  attachProgressiveSpeech, SegmentedSpeechPlayback, speakerPortOf,
+  encodeMonoPcm16WavChunks, startCumulativeMicrophoneCapture,
+  browserCaptureAudio,
+  attachProgressiveSpeech, SegmentedSpeechPlayback,
   type ProgressiveSpeechAttachment, type ProgressiveSpeechOptions, type ProgressiveSpeechSource, type SegmentAttach, type SegmentedSpeechOptions,
   type SegmentedSpeechState, type SpeakOptions, type SpeechAttachment, type SpeechAudioFrame, type SpeechPlayer,
-  jsonRequestOf, voiceNetworkPorts, VoiceRouteRefused, type JsonAnswer, type JsonRequest, type RuntimeJsonRequester, type VoiceNetworkPorts,
+  voiceNetworkPorts, VoiceRouteRefused, type JsonAnswer, type JsonRequest, type VoiceNetworkPorts,
   defaultVoiceProfile, type StopReport, type VoiceProfile,
 } from "./voice/index.vibe"
 export { createHeardReports, type HeardReport } from "./voice/heard-reports.vibe"

@@ -128,7 +128,7 @@ export effect function openRenewal(tx: Tx, organizationId: string, invoice: Rene
 
 export effect function openGrantMonths(tx: Tx, organizationId: string, grant: GrantTerm, now: number): ReadonlyArray<PeriodStep>!(AllowanceFailure | PolicyUnreadable) {
   try lockOrganization(tx, organizationId)
-  if ((try readPolicy(tx, organizationId, now)).source === "subscription") return []
+  if ((try readPolicy(tx, organizationId, now)).source === "FromSubscription") return []
   const opened: PeriodStep[] = []
   for (const window of grantMonths(grant, now)) {
     const step = try openGrantMonth(tx, organizationId, grant, window, now)
@@ -278,7 +278,7 @@ effect function openGrantsInForce(store: Store.Shape, now: number): number!! {
       opened += store.transaction(effect (tx: Tx) => {
         const owner = try tx.query("SELECT id FROM organizations WHERE id = $1 FOR UPDATE SKIP LOCKED", [organizationId])
         if (owner.length === 0) return 0
-        if ((try readPolicy(tx, organizationId, now)).source === "subscription") {
+        if ((try readPolicy(tx, organizationId, now)).source === "FromSubscription") {
           try closePeriods(tx, organizationId, { kind: "SupersededByPaid" }, now)
           return 0
         }

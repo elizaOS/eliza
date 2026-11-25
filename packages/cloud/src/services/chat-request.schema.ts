@@ -90,5 +90,3 @@ export const ChatRequest = Schema.Struct({
   prompt_cache_key: Schema.optionalKey(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(1024))),
 });
 export type ChatRequest = typeof ChatRequest.Type;
-
-export const acceptedFields: ReadonlyArray<string> = Object.keys(ChatRequest.fields);

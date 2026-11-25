@@ -1,6 +1,6 @@
 // spec/agent/voice/clientAudio.md, "The capture keeps a bounded prefix in arrival order while the meter keeps counting"; spec/agent/voice/clientAudio.md, "A WAV holds every sample in order as mono PCM16 behind a 44-byte header"
 import { Effect } from "effect"
-import type { CaptureAudioPort, CaptureContext, CaptureNode, ClipAudioPort, DecodedClip } from "../../src/voice/capture.vibe"
+import type { CaptureAudioPort, CaptureContext, CaptureNode } from "../../src/voice/capture.vibe"
 import { browserCaptureAudio } from "../../src/voice/capture-browser.ts"
 import type {
   PlayerEvent, ProgressiveSpeechSource, SpeechAudioFrame, SpeechEndFrame, SpeechMedia, SpeechMediaSource, SpeechPlayer, SpeechSourceBuffer,
@@ -141,21 +141,6 @@ export class FakePlayer extends FakeEvents<PlayerEvent> implements SpeechPlayer 
 
   removeAttribute(): void {
     this.src = ""
-  }
-}
-
-export function fakeClipAudio(duration: number, decoded: () => void = () => undefined): ClipAudioPort<DecodedClip> & { readonly rendered: number[] } {
-  const rendered: number[] = []
-  return {
-    rendered,
-    decode: () => {
-      decoded()
-      return Promise.resolve({ duration })
-    },
-    render: (_clip, length) => {
-      rendered.push(length)
-      return Promise.resolve(new Float32Array(length))
-    },
   }
 }
 

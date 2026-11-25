@@ -78,7 +78,6 @@ const threadPageMaxBytes = 1.5 * mebibyte
 const draftPage = 25
 const messageMaxBytes = Math.ceil(GoogleRead.attachmentMaxBytes / 3) * 4 + 65536
 const threadMaxBytes = 12 * 1024 * 1024
-const metadataHeaders = ["From", "To", "Cc", "Subject", "Reply-To", "Message-ID", "Precedence", "List-Id", "Auto-Submitted"]
 const trashQuery = /(?:^|[\s({])in:(?:spam|trash|anywhere)(?=[\s)}]|$)/i
 
 const kindsByCapability: ReadonlyArray<readonly [GoogleCapability, ReadonlyArray<OperationKind>]> = [
@@ -139,6 +138,7 @@ effect function mailCard(message: MailMessage, selfEmail: string) {
   return {
     id: message.id, externalId: message.id, threadId: message.threadId, subject: headers.get("subject") ?? "", from: headers.get("from") ?? "",
     snippet: message.snippet ?? "", receivedAt, labels, ...GoogleRead.mailTriageFields(labels, headers, selfEmail),
+    hasAttachments: GoogleRead.mailAttachmentHint(message.payload, headers),
     metadata: { historyId: message.historyId ?? null }
   }
 }
@@ -146,7 +146,7 @@ effect function mailCard(message: MailMessage, selfEmail: string) {
 effect function readMessage(grant: ReadGrant, id: string, format: Format) {
   if (!providerId.test(id)) throw refused("InvalidRequest")
   const query = new URLSearchParams({ format })
-  if (format === "metadata") for (const name of metadataHeaders) query.append("metadataHeaders", name)
+  if (format === "metadata") for (const name of GoogleRead.mailMetadataHeaders) query.append("metadataHeaders", name)
   const message = try parsed(MailMessage, try google(grant, `/messages/${id}?${query}`, format === "full" ? messageMaxBytes : undefined))
   if (message.id !== id) throw refused("ProviderInvalidResponse")
   return message

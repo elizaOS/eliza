@@ -1,13 +1,14 @@
 // spec/cloud/index.md, "Story: Ask for a bounded decision about a browser page"
 import type { Client } from "pg"
 import { SecureRandom } from "effect/crypto"
-import { decisionAccountLimit, decisionContinuationLimit, decisionDailyLimit, decisionFundingOf } from "../gen/cloud.effect.vibe"
+import type { DecisionCounter, DecisionCounts, DecisionScope } from "../gen/cloud.ts"
+import { decisionAccountLimit, decisionAccountMatches, decisionContinuationLimit, decisionCounterFits, decisionDailyLimit, decisionFundingOf, decisionIdleCounter, decisionQuotaAdmission } from "../gen/cloud.effect.vibe"
 import { isPaid, planRpm } from "./billing/plans.vibe"
 import { readPolicy } from "./billing/policy.vibe"
-import { foreign, toInt, type Tx } from "./store/connection.vibe"
+import { toInt, type Tx } from "./store/connection.vibe"
 import { WorkerResponse } from "./worker-platform.ts"
 import { limitedBody } from "./worker-platform.ts"
-import { accountTransaction, authQuery, rateLimit, RateLimited } from "./identity-store.vibe"
+import { accountTransaction, authQuery, digestCredential, identityTx, RateLimited } from "./identity-store.vibe"
 import {
   CLEF_DECISION_TIMEOUT_MS, CLEF_NO_CHOICE, CLEF_ASK_THRESHOLD, CLEF_TURN_COMPLETE_THRESHOLD,
   decodeClefRequest, decodeClefResult, type ClefDecisionRequest,
@@ -89,17 +90,30 @@ type Scope = "organization-day" | "subscription-minute"
 
 error DecisionLimited { scope: Scope }
 
-function workerTx(db: Client): Tx {
-  return {
-    query: (sql, params = []) => foreign("query", async () => (await db.query(sql, [...params])).rows),
-    script: (sql) => foreign("script", async () => { await db.query(sql) })
-  }
+const scopeOf: Readonly<Record<DecisionScope, Scope>> = { OrganizationDayScope: "organization-day", SubscriptionMinuteScope: "subscription-minute" }
+
+interface CounterRow {
+  readonly scope: string
+  readonly subject: string
+}
+
+effect function readCounter(tx: Tx, row: CounterRow) {
+  const hash = try digestCredential(row.subject)
+  const found = (try tx.query("SELECT hits, CEIL(EXTRACT(EPOCH FROM expires_at) * 1000)::bigint AS expires_at FROM cloud_auth_limits WHERE scope = $1 AND subject_hash = $2 FOR UPDATE", [row.scope, hash]))[0]
+  const counter: DecisionCounter = found === undefined ? decisionIdleCounter : { hits: toInt(found.hits), expiresAt: toInt(found.expires_at) }
+  return counter
+}
+
+effect function writeCounter(tx: Tx, row: CounterRow, counter: DecisionCounter) {
+  try tx.query(`INSERT INTO cloud_auth_limits (scope, subject_hash, expires_at, hits) VALUES ($1, $2, to_timestamp($3::double precision / 1000), $4)
+    ON CONFLICT (scope, subject_hash) DO UPDATE SET expires_at = EXCLUDED.expires_at, hits = EXCLUDED.hits`, [row.scope, try digestCredential(row.subject), counter.expiresAt, counter.hits])
 }
 
 effect function funding(db: Client, organization: string, now: number) {
-  const tx = workerTx(db)
+  const tx = identityTx(db)
   const policy = readPolicy(tx, organization, now) catch () => undefined
-  const subscribedRpm = policy !== undefined && policy.source === "subscription" && isPaid(policy.planKey) ? planRpm(policy.planKey, "StandardRequests") : 0
+  if (policy === undefined) return decisionFundingOf(0, 0)
+  const subscribedRpm = policy.source === "FromSubscription" && isPaid(policy.planKey) ? planRpm(policy.planKey, "StandardRequests") : 0
   const added = tx.query("SELECT COALESCE(SUM(amount), 0) AS total FROM credit_entries WHERE organization_id = $1 AND kind = 'add'", [organization]) catch () => []
   return decisionFundingOf(subscribedRpm, toInt(added[0]?.total ?? 0))
 }
@@ -108,33 +122,38 @@ effect function admit(db: Client, account: string) {
   const { rows: found } = try authQuery<{ organization_id: string }>(db, "SELECT organization_id FROM accounts WHERE key = $1 AND status = 'active'", [account])
   const organization = found[0]?.organization_id
   if (!organization) return undefined
-  const decided = try funding(db, organization, Date.now())
+  const now = try Clock.currentTimeMillis
+  const decided = try funding(db, organization, now)
   return try accountTransaction(db, effect {
+    const tx = identityTx(db)
     const { rows } = try authQuery<{ organization_id: string }>(db, "SELECT organization_id FROM accounts WHERE key = $1 AND status = 'active' FOR UPDATE", [account])
     if (rows[0]?.organization_id !== organization) return undefined
-    try rateLimit(db, decisionAccountLimit.name, account, decisionAccountLimit.limit, decisionAccountLimit.windowMs / 1000)
-    const daily = decisionDailyLimit(decided)
-    const withinDay = effect {
-      try rateLimit(db, daily.name, organization, daily.limit, daily.windowMs / 1000)
-      return true
-    } catch effect (failure) => {
-      if (!(failure instanceof RateLimited)) throw failure
-      return false
+    const rowsOf = {
+      account: { scope: decisionAccountLimit.name, subject: account },
+      organization: { scope: decisionDailyLimit(decided).name, subject: organization },
+      continuation: { scope: decisionContinuationLimit(decided.tag === "SubscribedDecisionFunding" ? decided.rpm : 0).name, subject: organization }
     }
-    if (withinDay) return "organization-day" as Scope
-    if (decided.tag !== "SubscribedDecisionFunding") throw new DecisionLimited({ scope: "organization-day" })
-    const continuation = decisionContinuationLimit(decided.rpm)
-    rateLimit(db, continuation.name, organization, continuation.limit, continuation.windowMs / 1000) catch effect (failure) => {
-      if (failure instanceof RateLimited) throw new DecisionLimited({ scope: "subscription-minute" })
-      throw failure
+    const counts: DecisionCounts = {
+      account: try readCounter(tx, rowsOf.account),
+      organization: try readCounter(tx, rowsOf.organization),
+      continuation: try readCounter(tx, rowsOf.continuation)
     }
-    return "subscription-minute" as Scope
+    const dispatch = decisionQuotaAdmission({ tag: "DecisionCountersRead", counts }, decided, now)
+    if (dispatch.tag === "DecisionNotDispatched") {
+      if (!decisionCounterFits(counts.account, decisionAccountLimit, now)) throw new RateLimited()
+      throw new DecisionLimited({ scope: decided.tag === "SubscribedDecisionFunding" ? "subscription-minute" : "organization-day" })
+    }
+    for (const key of ["account", "organization", "continuation"] as const) {
+      const counted = dispatch.counts[key]
+      if (counted.hits !== counts[key].hits || counted.expiresAt !== counts[key].expiresAt) try writeCounter(tx, rowsOf[key], counted)
+    }
+    return scopeOf[dispatch.scope]
   })
 }
 
 export async function clefRequest(request: Request, env: ClefEnv, db: Client, account: string): Promise<Response> {
   const expected = request.headers.get("x-eliza-account")
-  if (expected !== null && expected !== account) return WorkerResponse.json({ error: "account_mismatch" }, { status: 403 })
+  if (!decisionAccountMatches(account, expected === null ? { tag: "AnyCurrentDecisionAccount" } : { tag: "ExpectedDecisionAccount", id: expected })) return WorkerResponse.json({ error: "account_mismatch" }, { status: 403 })
   if (request.method !== "POST") return WorkerResponse.json({ error: "method_not_allowed" }, { status: 405, headers: { allow: "POST" } })
   if (request.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase() !== "application/json") {
     return WorkerResponse.json({ error: "invalid_decision" }, { status: 400 })

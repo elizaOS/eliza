@@ -1,7 +1,6 @@
 // spec/agent/voice/session.md, "A turn is sent once, and a half-duplex turn only after the capture confirmed its close"; spec/agent/voice/session.md, "Only a complete end-of-turn score submits before the 1,200 ms long gap, which always submits"; spec/agent/voice/session.md, "A report is posted at most twice, the second 1,500 ms after a lost or missing answer, and its outcomes stay distinct"
 module node {
   import { Option, Schema } from "effect"
-  import { RuntimeRequestError } from "../client/index.vibe"
   import { decodeEndOfTurnReply, END_OF_TURN_PATH, heardPath } from "./heuristics.vibe"
   import type { EndOfTurnPort, HeardPort, TurnPort, VoiceSessionPorts } from "./ports.vibe"
 
@@ -12,10 +11,6 @@ module node {
 
   export type JsonRequest = (method: "GET" | "POST", path: string, body: unknown, signal: AbortSignal) => Promise<JsonAnswer>
 
-  export interface RuntimeJsonRequester {
-    request(path: string, body?: unknown): Promise<unknown>
-  }
-
   export class VoiceRouteRefused extends Error {
     constructor(readonly path: string, readonly status: number) {
       super(`The agent refused ${path} with status ${status}`)
@@ -25,7 +20,7 @@ module node {
 
   const decodeReply = Schema.decodeUnknownOption(Schema.Struct({
     messageId: Schema.String, text: Schema.String,
-    action: Schema.optionalKey(Schema.Struct({ kind: Schema.String, validatedCard: Schema.Boolean, verbatimAsked: Schema.Boolean })),
+    action: Schema.optionalKey(Schema.Struct({ kind: Schema.String, validatedCard: Schema.Boolean })),
   }))
 
   export type VoiceNetworkPorts = Pick<VoiceSessionPorts, "endOfTurn" | "turns" | "heard">
@@ -37,16 +32,6 @@ module node {
       signal.addEventListener("abort", stop, { once: true })
       work().then(resolve, reject).finally(() => signal.removeEventListener("abort", stop))
     })
-  }
-
-  export function jsonRequestOf(client: RuntimeJsonRequester): JsonRequest {
-    return (method, path, body) => client.request(path, method === "GET" ? undefined : body).then(
-      (data): JsonAnswer => ({ status: 200, body: data }),
-      (error: unknown): JsonAnswer => {
-        if (error instanceof RuntimeRequestError) return { status: error.status, body: null }
-        throw error
-      },
-    )
   }
 
   export function voiceNetworkPorts(conversationId: string, request: JsonRequest): VoiceNetworkPorts {
@@ -83,4 +68,4 @@ module node {
     return { endOfTurn, turns, heard }
   }
 }
-export { jsonRequestOf, voiceNetworkPorts, VoiceRouteRefused, type JsonAnswer, type JsonRequest, type RuntimeJsonRequester, type VoiceNetworkPorts } from node
+export { voiceNetworkPorts, VoiceRouteRefused, type JsonAnswer, type JsonRequest, type VoiceNetworkPorts } from node

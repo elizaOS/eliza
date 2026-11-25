@@ -70,7 +70,7 @@ effect function pageBack(agent: InProcess, id: string, first: History) {
   return { held, pages }
 }
 
-it.effect('Create, list, page history to the start, jump to a message and search in pages (spec/agent/conversation/conversations.md, "Creating a conversation gives it a fresh id and room, and a default title when blank"; spec/agent/conversation/conversations.md, "The list shows only published conversations, most recently updated first"; spec/agent/conversation/conversations.md, "The first page is the newest 200 messages"; spec/agent/conversation/conversations.md, "An older page holds only messages before its cursor, and hasMore says whether any are left"; spec/agent/conversation/conversations.md, "A jump to a message answers it with up to 100 messages on each side, and an unknown one is 404"; spec/agent/conversation/conversations.md, "A search page is a slice of the complete set of visible matches")', effect () => {
+it.effect('Create, list, page history to the start, jump to a message and search in pages (spec/agent/conversation/conversations.md, "Creating a conversation gives it a fresh id and room, and a default title when blank"; spec/agent/conversation/conversations.md, "Messages and model-call log rows arrive only in a published conversation"; spec/agent/conversation/conversations.md, "The list shows only published conversations, most recently updated first"; spec/agent/conversation/conversations.md, "The first page is the newest 200 messages"; spec/agent/conversation/conversations.md, "An older page holds only messages before its cursor, and hasMore says whether any are left"; spec/agent/conversation/conversations.md, "A jump to a message answers it with up to 100 messages on each side, and an unknown one is 404"; spec/agent/conversation/conversations.md, "A search page is a slice of the complete set of visible matches")', effect () => {
   const agent = try startInProcess()
   const plans = try open(agent, { title: "  Plans  " })
   const blank = try open(agent, {})
@@ -87,6 +87,8 @@ it.effect('Create, list, page history to the start, jump to a message and search
   const pending = try host("pending fork", () => pendingBeside(agent.agent.runtime, plans.conversation.roomId, "Plans · edit"))
   try seed(agent, pending.roomId, [{ text: "needle in a pending fork", at: base + 600 }])
   const listedAfter = try ask(agent, { method: "GET", path: "/api/conversations" })
+  const toPending = try ask(agent, { method: "POST", path: `/api/conversations/${pending.id}/messages`, body: { text: "Are you there?" } })
+  const stopPending = try ask(agent, { method: "POST", path: `/api/turns/${pending.roomId}/abort`, body: {} })
 
   const first = try history(agent, plans.conversation.id, "")
   const paged = try pageBack(agent, plans.conversation.id, first.page)
@@ -114,12 +116,18 @@ it.effect('Create, list, page history to the start, jump to a message and search
   try Effect.try(() => {
     const everything = inOrder(long)
     const index = everything.indexOf(pivot)
-    const titles = (body: unknown) => (body as { conversations: readonly Conversation[] }).conversations.map(({ title }) => title)
+    const rows = (body: unknown) => (body as { conversations: readonly Conversation[] }).conversations
+    const titles = (body: unknown) => rows(body).map(({ title }) => title)
+    const isoTimes = ({ createdAt, updatedAt }: Conversation) => [createdAt, updatedAt].every((at) => typeof at === "string" && new Date(at).toISOString() === at)
     assert.deepStrictEqual({
       created: [plans.status, blank.status, tooLong.status], titles: [plans.conversation.title, blank.conversation.title],
       listed: titles(listed.body), listedAfter: titles(listedAfter.body),
+      isoTimes: [plans.conversation, blank.conversation, ...rows(listedAfter.body)].every(isoTimes),
+      pendingTakesNoTurn: [toPending, stopPending],
     }, {
       created: [201, 201, 400], titles: ["Plans", "New Chat"], listed: ["New Chat", "Plans"], listedAfter: ["New Chat", "Plans"],
+      isoTimes: true,
+      pendingTakesNoTurn: [{ status: 404, body: { error: "unknown_conversation" } }, { status: 404, body: { error: "unknown_conversation" } }],
     })
     assert.deepStrictEqual({ first: ids(first.page), more: first.page.hasMore }, { first: everything.slice(-200), more: true })
     assert.deepStrictEqual({ held: paged.held, pages: paged.pages }, { held: everything, pages: 1 })

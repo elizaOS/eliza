@@ -1,3 +1,4 @@
+// spec/os/voice/invocation.md, "Story: Start voice from a trusted gesture, once"
 package ai.eliza.plugins.system;
 
 /**
@@ -54,6 +55,7 @@ public final class SenseInvocation {
     private String coldOwner;
     /** The current listener origin was claimed from such a wake. */
     private boolean adopted;
+    private boolean listenerAdmitted;
 
     /** Registers (or with null removes) the host's native owner admission. */
     public synchronized void admit(OwnerAdmission next) { admission = next; }
@@ -87,17 +89,21 @@ public final class SenseInvocation {
     public synchronized void reset() { clear(); session = null; bindingId = null; }
     public synchronized void release(long bridge) { if (bridge == bridgeGeneration) reset(); }
 
-    public synchronized void record(String hostPackage, String callerPackage, boolean sameSigner, long now, boolean lockedAtArrival) {
-        record(hostPackage, callerPackage, sameSigner, false, now, lockedAtArrival);
+    public synchronized boolean observeListener(boolean admitted) {
+        if (listenerAdmitted == admitted) return false;
+        listenerAdmitted = admitted;
+        return true;
     }
 
     /**
      * Records one launch of the assistant surface. {@code systemAssist} is true only when Android
      * reported the platform-signed system UI as the caller (see
-     * {@link SenseListenerClient#recordInvocation}); a listener caller still takes precedence.
+     * {@link SenseListenerClient#recordInvocation}); a listener caller still takes precedence, and
+     * starts voice only while the listener is admitted ({@link #observeListener}).
      */
     public synchronized void record(String hostPackage, String callerPackage, boolean sameSigner, boolean systemAssist, long now, boolean lockedAtArrival) {
-        origin = (hostPackage + ".sense").equals(callerPackage) && sameSigner ? LISTENER : systemAssist ? SYSTEM : ASSIST;
+        boolean listener = (hostPackage + ".sense").equals(callerPackage) && sameSigner;
+        origin = listener ? (listenerAdmitted ? LISTENER : ASSIST) : systemAssist ? SYSTEM : ASSIST;
         invocationSession = session;
         arrivedAt = now;
         locked = lockedAtArrival;
@@ -133,18 +139,18 @@ public final class SenseInvocation {
     }
 
     /**
-     * Returns null after consumption. Unknown or changed ownership never returns a voice origin
+     * Returns null after consumption or for another session, whose arrival keeps waiting. Unknown or
+     * changed ownership never returns a voice origin
      * ({@link #LISTENER}, {@link #SYSTEM} or {@link #POWER}); it returns {@link #ASSIST}.
      */
     public synchronized String take(long bridge, int generation, String owner, String expectedSession, long now, boolean lockedNow) {
         if (bridge != bridgeGeneration || generation != rendererGeneration) return null;
         if (owner == null || !owner.equals(bindingId)) return null;
-        if (origin == null) return null;
+        if (origin == null || session == null || !session.equals(expectedSession)) return null;
         // A protected Power receipt is warm-only: it is never adopted from a cold wait.
         long window = adopted ? COLD_WINDOW_MS : WINDOW_MS;
         boolean ownerUnchanged = !adopted || coldOwner != null && coldOwner.equals(admittedOwner());
-        String result = (startsVoice(origin) || POWER.equals(origin)) && session != null && session.equals(expectedSession)
-                && session.equals(invocationSession) && !locked && !lockedNow && now >= arrivedAt
+        String result = (startsVoice(origin) || POWER.equals(origin)) && session.equals(invocationSession) && !locked && !lockedNow && now >= arrivedAt
                 && now - arrivedAt <= window && ownerUnchanged ? origin : ASSIST;
         clear();
         return result;
