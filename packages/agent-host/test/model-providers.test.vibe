@@ -1,7 +1,7 @@
 // spec/agent/models/binding.md, "No text handler is ever served by a model on the device"; spec/agent/models/binding.md, "Only a network failure, an outage or a provider issue is retried, and a rate limit ends the call for its turn to re-send once"; spec/agent/models/binding.md, "Each refusal is one account state, and the last failure records its kind and time without text"; spec/agent/models/binding.md, "A tool call, a structured answer and the token use reach the caller as one result"; spec/agent/models/binding.md, "A key is held only in the slot of the backend it was given for, and only as a bearer credential that slot accepts"; spec/agent/models/binding.md, "A rate limit holds the account for the provider's whole retry time, and for at most 4 s on a Cerebras own-key endpoint"; spec/agent/models/binding.md, "A tool call the provider could not parse, or a streamed answer silent for a minute, ends the call without a retry"; spec/agent/models/binding.md, "A call sends an output cap only when its caller names one, and a thinking hint sets the reasoning effort only on a model that documents it"; spec/agent/models/binding.md, "A Qwen call on a Cerebras route sends the prompt cache key its caller names, and no call invents one"; spec/agent/conversation/planning.md, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history"
 import { assert, it } from "@effect/vitest"
 import { FetchHttpClient } from "effect/http"
-import { AgentRuntime, ModelType, type GenerateTextParams, type GenerateTextResult } from "@elizaos/core"
+import { AgentRuntime, ModelType, type GenerateTextParams, type GenerateTextResult, type JSONSchema } from "@elizaos/core"
 import { allowanceExhausted, answerJson, cachedText, dropped, echoImages, insufficientCredits, rateLimited, refusal, requestFault, text, textWithoutEof, toolCalls, unavailable, type CloudFake } from "./support/cloud-fake.ts"
 import { parseLaunch } from "../src/host/launch.vibe"
 import { bindModels } from "../src/models/binding.vibe"
@@ -313,7 +313,7 @@ it.effect('A tool call and its token use reach the caller as one result, a strea
     [true, true, [{ expression: longArgument }]])
 })
 
-it.effect('A tool is offered without its pattern constraints, and the rest of its schema is sent as declared (spec/agent/models/binding.md, "A tool call, a structured answer and the token use reach the caller as one result")', effect () => {
+it.effect('A tool is offered without its pattern constraints, meta-schema, redundant non-strict defaults, or excess whitespace, while strict tools keep required arrays and data keywords stay verbatim (spec/agent/models/binding.md, "A tool call, a structured answer and the token use reach the caller as one result")', effect () => {
   const cloud = try cloudFake(deviceKey)
   const { runtime } = try cloudAgent(cloud, { large: "cerebras/qwen-3.8-27b" })
   try Effect.sync(() => cloud.route("POST", "/api/v1/chat/completions", answerJson({
@@ -321,32 +321,47 @@ it.effect('A tool is offered without its pattern constraints, and the rest of it
     usage: { prompt_tokens: 12, completion_tokens: 2, total_tokens: 14 },
   })))
   const handle = "^maps_[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$"
-  const parameters = {
+  const placeId = { type: "string", description: "  A   selection\t handle.  ", pattern: handle }
+  const parameters: JSONSchema = {
+    $schema: "https://json-schema.org/draft/2020-12/schema",
     type: "object", additionalProperties: false, required: [],
     properties: {
-      placeId: { type: "string", description: "A selection handle.", pattern: handle },
+      placeId,
       pattern: { type: "string", description: "A property named pattern.", enum: ["a", "b"] },
+      required: { type: "boolean", description: "" },
+      open: { type: "object", additionalProperties: true, properties: {} },
       codes: { type: "array", items: { type: "string", pattern: "^[0-9]+$" } },
       either: { anyOf: [{ type: "string", pattern: "^x" }, { type: "number" }] },
-      example: { type: "string", default: "x", examples: [{ pattern: "kept as data" }] },
+      example: { type: "string", default: "x", examples: [{ pattern: "kept as data", $schema: "kept", required: [] }] },
     },
   }
   try host("tool offer with patterns", () => runtime.useModel(ModelType.TEXT_LARGE, {
-    tools: [{ name: "MAPS_PLACE", description: "Places.", parameters }], toolChoice: "auto",
+    tools: [{ name: "MAPS_PLACE", description: "  Places.  ", parameters }], toolChoice: "auto",
     messages: [{ role: "user", content: "Coffee near me?" }],
   }))
-  const sent = cloud.calls.at(-1)?.body as { tools: Array<{ function: { parameters: unknown } }> }
+  const sent = cloud.calls.at(-1)?.body as { tools: Array<{ function: { description?: string; parameters: unknown } }> }
+  assert.strictEqual(sent.tools[0]?.function.description, "Places.")
   assert.deepStrictEqual(sent.tools[0]?.function.parameters, {
-    type: "object", additionalProperties: false, required: [],
+    type: "object", additionalProperties: false,
     properties: {
       placeId: { type: "string", description: "A selection handle." },
       pattern: { type: "string", description: "A property named pattern.", enum: ["a", "b"] },
+      required: { type: "boolean" },
+      open: { type: "object", properties: {} },
       codes: { type: "array", items: { type: "string" } },
       either: { anyOf: [{ type: "string" }, { type: "number" }] },
-      example: { type: "string", default: "x", examples: [{ pattern: "kept as data" }] },
+      example: { type: "string", default: "x", examples: [{ pattern: "kept as data", $schema: "kept", required: [] }] },
     },
   })
-  assert.strictEqual(parameters.properties.placeId.pattern, handle)
+  assert.strictEqual(placeId.pattern, handle)
+  try host("strict tool keeps empty required", () => runtime.useModel(ModelType.TEXT_LARGE, {
+    tools: [{ name: "EMPTY_STRICT", description: "No args.", strict: true, parameters: { type: "object", additionalProperties: false, required: [], properties: {} } }],
+    toolChoice: "auto",
+    messages: [{ role: "user", content: "Ping." }],
+  }))
+  const strictSent = cloud.calls.at(-1)?.body as { tools: Array<{ function: { strict?: boolean; parameters: unknown } }> }
+  assert.strictEqual(strictSent.tools[0]?.function.strict, true)
+  assert.deepStrictEqual(strictSent.tools[0]?.function.parameters, { type: "object", additionalProperties: false, required: [], properties: {} })
 })
 
 it.effect('A Cerebras own-key call, or a Cloud call for a model Cloud serves on Cerebras, sends its tools strict only when every tool is, and any other call sends each tool as declared (spec/agent/models/binding.md, "A tool call, a structured answer and the token use reach the caller as one result")', effect () => {

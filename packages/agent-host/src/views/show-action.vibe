@@ -109,12 +109,12 @@ export function viewsShowAction(views: ViewHost.Shape, labels: ReadonlyMap<strin
   const action: Action = {
     name: "VIEWS",
     similes: ["VIEWS_SHOW", "OPEN_VIEW", "NAVIGATE_VIEW"],
-    description: "Show one of the owner's views, named by its id, label or alias, on the renderer of this turn. Navigation only: it does not read or change the view's records, and showing a view acts on nothing in it. Showing Camera takes no photo, and showing Maps finds no place, gives no directions and plans no route: when the owner asks for those, use the action that does it.",
+    description: "Navigate to one of the owner's views. Navigation only: does not read, change, or act on records. Showing Camera takes no photo; showing Maps searches/routes nothing—use the action that does it.",
     roleGate: { minRole: "OWNER" },
     parameters: [
-      { name: "action", description: "show", required: false, schema: { type: "string", enum: ["show"] } },
-      { name: "view", description: "The view's id, label or alias", required: true, schema: { type: "string" } },
-      { name: "note", description: "Only with view notes-editor: the content argument this turn gave NOTES_GET for the saved note, word for word", required: false, schema: { type: "string", minLength: 1, maxLength: 20_000 } },
+      { name: "action", description: "", required: false, schema: { type: "string", enum: ["show"] } },
+      { name: "view", description: "View id, label, or alias.", required: true, schema: { type: "string" } },
+      { name: "note", description: "For view=notes-editor only: exact content arg passed to NOTES_GET this turn.", required: false, schema: { type: "string", minLength: 1, maxLength: 20_000 } },
     ],
     validate: async (runtime, message) => {
       const turn = deviceTurnFor(runtime, message)

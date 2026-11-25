@@ -139,12 +139,12 @@ export effect function changeTodos(input: unknown, message: Memory) {
 
 export const todosAction: Action = {
   name: todoActionName,
-  description: "The owner's to-do list: create, start, complete, cancel, reopen, rename, delete, list or clear. A change names the item by its text, case and punctuation aside, or its t-N reference and applies only when exactly one item matches; clearing asks first.",
+  description: "Owner's to-do list. Changes match one item by text (case/punctuation-insensitive) or t-N ref; clear asks first.",
   similes: ["TODOS", "CREATE_TODO", "ADD_TODO", "COMPLETE_TODO", "FINISH_TODO", "CANCEL_TODO", "RENAME_TODO", "UPDATE_TODO", "DELETE_TODO", "LIST_TODOS", "CLEAR_TODOS"],
   parameters: [
-    { name: "op", required: true, description: "create, start, complete, cancel, reopen, rename, delete, list or clear.", schema: { type: "string", enum: ["create", "start", "complete", "cancel", "reopen", "rename", "delete", "list", "clear"] } },
-    { name: "content", required: false, description: "For create: the to-do's text. For rename: its new text.", schema: { type: "string" } },
-    { name: "target", required: false, description: "For a change: the to-do's text or its t-N reference.", schema: { type: "string" } },
+    { name: "op", required: true, description: "Op.", schema: { type: "string", enum: ["create", "start", "complete", "cancel", "reopen", "rename", "delete", "list", "clear"] } },
+    { name: "content", required: false, description: "create/rename text.", schema: { type: "string" } },
+    { name: "target", required: false, description: "Item text or t-N ref.", schema: { type: "string" } },
   ],
   tags: ["domain:todos", "capability:write", "effect:receipt-required"],
   roleGate: { minRole: "OWNER" },

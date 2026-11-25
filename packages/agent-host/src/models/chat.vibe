@@ -228,25 +228,49 @@ module wireFormat {
     return params.system ? [{ role: "system", content: params.system }, ...said] : said
   }
 
+  const dataKeywords: ReadonlySet<string> = new Set(["enum", "const", "default", "examples"])
+
+  /** @throws {never} */
+  function compactText(text: string): string {
+    return text.replace(/[ \t]+/g, " ").replace(/ *\r?\n[ \t]*/g, "\n").replace(/\n{2,}/g, "\n").trim()
+  }
+
   /** @throws {never} */
   export function toolsOf(tools: readonly ToolDefinition[] | undefined, uniformStrictness: boolean): object[] | undefined {
     if (tools === undefined || tools.length === 0) return undefined
     const strictSent = !uniformStrictness || tools.every((tool) => tool.strict === true)
-    return tools.map((tool) => ({ type: "function", function: {
-      name: tool.name,
-      ...(tool.description === undefined ? {} : { description: tool.description }),
-      parameters: tool.parameters === undefined ? { type: "object", properties: {} } : advertised(tool.parameters),
-      ...(strictSent && tool.strict === true ? { strict: true } : {}),
-    } }))
+    return tools.map((tool) => {
+      const strict = strictSent && tool.strict === true
+      const desc = tool.description === undefined ? undefined : compactText(tool.description)
+      return { type: "function", function: {
+        name: tool.name,
+        ...(desc === undefined || desc === "" ? {} : { description: desc }),
+        parameters: tool.parameters === undefined ? { type: "object", properties: {} } : advertised(tool.parameters, strict),
+        ...(strict ? { strict: true } : {}),
+      } }
+    })
   }
 
-  const dataKeywords: ReadonlySet<string> = new Set(["enum", "const", "default", "examples"])
-
-  function advertised(schema: unknown): unknown {
-    if (Array.isArray(schema)) return schema.map(advertised)
+  function advertised(schema: unknown, strict: boolean, inProperties = false): unknown {
+    if (Array.isArray(schema)) return schema.map((item) => advertised(item, strict))
     if (typeof schema !== "object" || schema === null) return schema
-    return Object.fromEntries(Object.entries(schema).flatMap(([key, value]) =>
-      key === "pattern" && typeof value === "string" ? [] : [[key, dataKeywords.has(key) ? value : advertised(value)]]))
+    if (inProperties) {
+      return Object.fromEntries(Object.entries(schema).map(([key, value]) => [key, advertised(value, strict)]))
+    }
+    return Object.fromEntries(Object.entries(schema).flatMap(([key, value]) => {
+      if (key === "pattern" && typeof value === "string") return []
+      if (key === "$schema" && typeof value === "string") return []
+      if (key === "additionalProperties" && value === true) return []
+      if (!strict && key === "required" && Array.isArray(value) && value.length === 0) return []
+      if (key === "description" && typeof value === "string") {
+        const compact = compactText(value)
+        return compact === "" ? [] : [[key, compact]]
+      }
+      if (key === "properties" && typeof value === "object" && value !== null && !Array.isArray(value)) {
+        return [[key, advertised(value, strict, true)]]
+      }
+      return [[key, dataKeywords.has(key) ? value : advertised(value, strict)]]
+    }))
   }
 
   /** @throws {never} */
