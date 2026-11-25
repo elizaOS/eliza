@@ -119,7 +119,7 @@ Every project built here uses this, and nothing beside it:
 | User interface | React, in `.tsx`, built with Vite | Vue, Svelte, Angular, hand-built DOM |
 | UI state | React hooks over the generated machine's `Machine` service | state kept in a component that the spec owns |
 | Styling | Tailwind CSS v4 with the project's design tokens, shadcn/ui conventions on Radix primitives | hard-coded colors, a second token set, global CSS beyond the token file |
-| Tests | Vitest with `@effect/vitest`, on `test/**/*.test.{vibe,tsx}`; a driver for a shell that keeps a machine's state; Bombadil exploring each page | Jest, `node --test` for a new test |
+| Tests | Vitest with `@effect/vitest`, on `test/**/*.test.{ts,tsx,vibe}`; a driver for a shell that keeps a machine's state; Bombadil exploring each page | Jest, `node --test` for a new test |
 
 - **Every interface is React**: an application's, an example's and Studio's.
 - **Reuse before adding.** Find the component, token or service that exists
