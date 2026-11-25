@@ -86,3 +86,83 @@ pure def alwaysUnfinishedReadHasNoMail(s: ManagedInboxRead): bool =
 pure def leadsToReadFinishes(s: ManagedInboxRead, later: ManagedInboxRead): bool =
   s.phase == ReadPending implies later.phase != ReadPending
 ```
+
+### The agent reads managed mail through the device's broker when the host names one, and otherwise through its cloud link
+
+When the host names the device's mail broker
+([cloud requests](../os/signIn/cloudRequests.md)) in
+`ELIZA_MANAGED_GMAIL_READ_BROKER`, the agent sends every managed mail read
+there and none through its own cloud link: the broker attaches the mail
+lease, which the agent never holds, where the cloud refuses the device key
+the agent holds. The broker is named only as `http://127.0.0.1:<port>/__owner-gmail`
+with a bearer of 64 URL-safe characters in
+`ELIZA_MANAGED_GMAIL_READ_BROKER_TOKEN`; any other address or bearer offers
+no read, and the agent does not fall back to its cloud link. Through the
+broker the agent only reads: a change it asks for is refused without a call.
+The agent waits at most 120 seconds for a broker reply, longer than the
+broker can take to answer a read it holds waiting behind another (five
+seconds each to read and drain that request, and 45 seconds for each of the
+two forwards); a reply not finished by then is mail unreachable. It takes at
+most 8 MiB of a reply, the broker's inline limit, and a larger one is told
+as the broker's `reply-too-large`.
+A host that names no broker leaves the agent reading through its cloud link
+with the credential it was launched with. With neither, the read action and
+the access check are not offered.
+
+```quint
+type MailReader = DeviceBroker | CloudLink | NotOffered
+pure def mailReaderOf(brokerNamed: bool, brokerPrivate: bool, cloudLinked: bool): MailReader =
+  if (brokerNamed) (if (brokerPrivate) DeviceBroker else NotOffered)
+  else if (cloudLinked) CloudLink
+  else NotOffered
+pure def lawANamedBrokerIsTheOnlyMailReader(brokerNamed: bool, brokerPrivate: bool, cloudLinked: bool): bool =
+  brokerNamed implies mailReaderOf(brokerNamed, brokerPrivate, cloudLinked) != CloudLink
+pure def lawMailIsReadThroughABrokerOnlyWhenItIsPrivate(brokerNamed: bool, brokerPrivate: bool, cloudLinked: bool): bool =
+  (mailReaderOf(brokerNamed, brokerPrivate, cloudLinked) == DeviceBroker) iff (brokerNamed and brokerPrivate)
+pure def lawWithoutABrokerTheCloudLinkReads(brokerNamed: bool, brokerPrivate: bool, cloudLinked: bool): bool =
+  (mailReaderOf(brokerNamed, brokerPrivate, cloudLinked) == CloudLink) iff (not(brokerNamed) and cloudLinked)
+```
+
+### The agent tells a broker refusal as the cloud refusal of the same cause
+
+The broker names why it read nothing ([cloud requests](../os/signIn/cloudRequests.md)),
+in a reason that is not one of Cloud's codes. The agent tells the owner such
+a refusal as it tells the cloud refusal of the same cause
+([mail failures](./failures.md)): a request the broker would not take, as
+`not-private`, `request-too-large` or `not-brokered`, as a request Cloud
+rejected; a bearer the broker no longer admits, `not-authorized`, or a device
+not signed in to the launch's owner, `sign-in-required`, as a credential
+Cloud no longer accepts; a device without the mail lease,
+`mail-lease-upgrade-required`, as the device key Cloud refuses on a mail
+route, which asks the owner to authorize Gmail again; a reply over the
+inline limit, `reply-too-large`, as an answer Cloud could not give; and a
+device that could not reach Cloud, `cloud-unreachable`, as a lost
+connection. Only a missing lease sends the owner to authorize Gmail again.
+A reply with another reason, or with Cloud's own code, is the cloud's.
+
+```quint
+import failures.* from "./failures"
+type BrokerRefusalReason = NotPrivateRefusal | RequestTooLargeRefusal | NotBrokeredRefusal | NotAuthorizedRefusal
+  | SignInRequiredRefusal | LeaseUpgradeRequiredRefusal | ReplyTooLargeRefusal | CloudUnreachableRefusal
+type BrokerFailure = BrokerConnectionLost | BrokerStatus({ status: int })
+pure def brokerFailureOf(reason: BrokerRefusalReason): BrokerFailure =
+  if (reason == CloudUnreachableRefusal) BrokerConnectionLost
+  else if (reason == NotAuthorizedRefusal or reason == SignInRequiredRefusal) BrokerStatus({ status: 401 })
+  else if (reason == LeaseUpgradeRequiredRefusal) BrokerStatus({ status: 403 })
+  else if (reason == ReplyTooLargeRefusal) BrokerStatus({ status: 502 })
+  else BrokerStatus({ status: 400 })
+pure def brokerFailureSource(failure: BrokerFailure): FailureSource = match failure {
+  | BrokerConnectionLost => ConnectionLost
+  | BrokerStatus(s) => CloudRefusal({ status: s.status, code: NoCloudCode })
+}
+pure val reasonValues = Set(NotPrivateRefusal, RequestTooLargeRefusal, NotBrokeredRefusal, NotAuthorizedRefusal,
+  SignInRequiredRefusal, LeaseUpgradeRequiredRefusal, ReplyTooLargeRefusal, CloudUnreachableRefusal)
+pure def brokerRefusalKind(reason: BrokerRefusalReason): FailureKind =
+  classifyFailure(brokerFailureSource(brokerFailureOf(reason)), ReadContext, true)
+pure def lawOnlyAMissingLeaseAsksToAuthorizeGmailAgain(reason: BrokerRefusalReason): bool =
+  (brokerRefusalKind(reason) == RevokedFailure) iff (reason == LeaseUpgradeRequiredRefusal)
+pure def lawARequestTheBrokerWouldNotTakeIsRejected(reason: BrokerRefusalReason): bool =
+  (brokerRefusalKind(reason) == RejectedFailure) iff Set(NotPrivateRefusal, RequestTooLargeRefusal, NotBrokeredRefusal).contains(reason)
+pure def lawOnlyAnUnreachableCloudIsOffline(reason: BrokerRefusalReason): bool =
+  (brokerRefusalKind(reason) == OfflineFailure) iff (reason == CloudUnreachableRefusal)
+```
