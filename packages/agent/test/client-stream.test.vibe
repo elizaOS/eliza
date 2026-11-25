@@ -459,7 +459,7 @@ it.live(`Hear a cue by its form, whatever its words or language, and never one t
   }))
 }, 120_000)
 
-it.live(`Hear the result after the cue, never the cue again, and only a cue I heard counts (${planning}, "A delivered cue is told to the model as already said, so the reply never repeats it or takes it as evidence"; ${planning}, "A turn acknowledges at most once, with a cue that comes with its first tool calls, and bare assent is a cue only with work after an instruction")`, effect () => {
+it.live(`Hear the result after the cue, never the cue again, and only a cue I heard counts (${planning}, "A delivered cue is told to the model as already said, so the reply never repeats it or takes it as evidence"; ${planning}, "A turn acknowledges at most once, with a cue that comes with its first tool calls")`, effect () => {
   const cloud = try cloudFake(deviceKey)
   const agent = try startInProcess({
     launch: { backend: { kind: "cloud", origin: cloud.origin }, load: [agendaApp.name], allowed: ["REPLY", "IGNORE", "NONE", "AGENDA_READ"] },
@@ -491,7 +491,7 @@ it.live(`Hear the result after the cue, never the cue again, and only a cue I he
   const unstreamed = try turn("What do I have on Friday?", false)
   try Effect.sync(() => cloud.script(toolCalls("", agenda), text("Friday is open.")))
   const quiet = try turn("Check my availability without a cue", true)
-  try Effect.sync(() => cloud.script(toolCalls("Your agenda is open.", agenda), text("Your agenda is open.")))
+  try Effect.sync(() => cloud.script(toolCalls("Your agenda has 3 events.", agenda), text("Your agenda has 3 events.")))
   const notACue = try turn("Open my agenda", true)
   try Effect.sync(() => cloud.script(toolCalls("", agenda), toolCalls("Let me check.", agenda), text("Nothing booked.")))
   const laterStep = try turn("What is on my agenda this week?", true)

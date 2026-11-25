@@ -532,7 +532,7 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
   const { answer: otherLater, calls: otherLaterCalls } = try callsFor({ text: "Calculate 8 plus 9 and 12 times 3." })
   const otherLaterNote = lastTurnPrompt(cloud)
 
-  try Effect.sync(() => cloud.script(text("One sec."), text("One second is 1,000 milliseconds.")))
+  try Effect.sync(() => cloud.script(toolCalls("One sec.", { name: "CALCULATE", arguments: { expression: "1 * 1000" } }), text("One second is 1,000 milliseconds.")))
   const duration = replyOf(try send(agent, id, { text: "How long is a second?" }))
 
   try Effect.sync(() => cloud.script(toolCalls("", { name: "CALCULATE", arguments: { expression: "12 * 3" } }), text("It is 36.")))
@@ -569,7 +569,7 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
       `${asksAgain}A step of this turn did not happen as asked. The reply must tell the person so truthfully, never claiming it happened. The step's own report: ${JSON.stringify(unavailableNotice)}`,
     ],
     failed: [true, 3, "Done!", true],
-    notFinal: { missingFailure: [`Division is a mathematical operation.\n\n${divided}`, 3], cuedAgain: [`Done!\n\n${divided}`, 3], sameAgain: [`Done!\n\n${divided}`, 3], blankAgain: [`Done!\n\n${divided}`, 6], fencedReport: true },
+    notFinal: { missingFailure: [`Division is a mathematical operation.\n\n${divided}`, 3], cuedAgain: [`One sec.\n\n${divided}`, 3], sameAgain: [`Done!\n\n${divided}`, 3], blankAgain: [`Done!\n\n${divided}`, 6], fencedReport: true },
     quoted: [`It returned: ${divided}`, 2],
     cutAfterFailure: [`${cutOffReply}\n\n${divided}`, 2],
     separate: ["The second result is 36. The first calculation didn't run.\n\nA CALCULATE call did not start.", 3],
@@ -1126,7 +1126,7 @@ it.live(`A calendar move refused without a receipt and then made by the model's 
   try Effect.try(() => assert.deepStrictEqual({ sameAgain, failedAgain, cuedAgain, toldAgain, rangeWrongAgain, heldButMistimed, mistimedTwice, quoted, sameResponse, neverMoved }, {
     sameAgain: { reply: right, calls: 4, laterRunNote: true },
     failedAgain: { reply: `${right}\n\n${unsaidMove}`, calls: 4, laterRunNote: true },
-    cuedAgain: { reply: `${right}\n\n${unsaidMove}`, calls: 4, laterRunNote: true },
+    cuedAgain: { reply: `One sec.\n\n${unsaidMove}`, calls: 4, laterRunNote: true },
     toldAgain: { reply: `Your dentist is now 9–10 AM.\n\n${unsaidMove}`, calls: 4, laterRunNote: true },
     rangeWrongAgain: { reply: `${right}\n\n${unsaidMove}`, calls: 4, laterRunNote: true },
     heldButMistimed: { reply: `${movedDentist}\n\n${unsaidMove}`, calls: 4, laterRunNote: false },

@@ -581,7 +581,8 @@ cue: the model writes nothing with that call, and the reply after it
 confirms the destination (`Maps is open.`). Any question or lookup gets its
 cue, even one about what is on the screen. The cue is left empty, with the
 work still done, when the person asked for silence; later tool calls come
-with no text.
+with no text. A response with no tool call is always the reply, so the rule
+tells the model never to write a cue without calling a tool.
 
 The shell checks only the cue's form, never its words against a list or
 the owner's words against a pattern. Text written with tool calls is a
