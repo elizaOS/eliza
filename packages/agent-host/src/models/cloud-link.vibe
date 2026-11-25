@@ -5,8 +5,7 @@ import { runSquashed } from "./run-squashed.vibe"
 import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/http"
 import type { Backend, GoogleConsent } from "../../gen/agent__host__launch.ts"
 import { googleAdmitted, pluginCloudPathAllowed, type GoogleOperation } from "../../gen/agent__models__binding.effect.vibe"
-import type { LaunchDocument } from "../host/launch.vibe"
-import { backendOf } from "../host/status.vibe"
+import { backendOf, type LaunchDocument } from "../host/launch.vibe"
 
 export const cloudServiceType = "cloud"
 

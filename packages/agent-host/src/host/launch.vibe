@@ -1,10 +1,10 @@
 // spec/agent/host/launch.md, "Story: Start the agent from one launch document"; spec/agent/host/launch.md, "The launch frame is one stdin line with the token, the epoch, and the optional credential and storage key"; spec/agent/host/launch.md, "A refused document is a configuration error, and a cloud or own-key launch without a credential is a credential error"
 export { type LaunchDocument, type LaunchFrame } from "@elizaos/agent"
 import { exitCode } from "../../gen/agent__host__launch.effect.vibe"
-import { ownKeyMaxUnits } from "../../gen/agent__host__launch.ts"
+import { ownKeyMaxUnits, type Backend, type LaunchDocument as LaunchModel, type UrlShape } from "../../gen/agent__host__launch.ts"
 export { exitClass, exitCode, type BootFailure, type ExitClass } from "../../gen/agent__host__launch.effect.vibe"
 import { Stdio } from "effect/Stdio"
-import { decodeLaunchDocument, decodeLaunchFrame, LaunchDocumentRejected, LaunchFrameRejected } from "@elizaos/agent"
+import { decodeLaunchDocument, decodeLaunchFrame, LaunchDocumentRejected, LaunchFrameRejected, type LaunchDocument } from "@elizaos/agent"
 
 export error LaunchCredentialMissing { oversized: boolean }
 
@@ -45,6 +45,41 @@ export effect function readLaunch() {
   }), Effect.mapError(() => new LaunchFrameRejected()))
   if (!frame.endsWith("\n") || frame.indexOf("\n") !== frame.length - 1) throw new LaunchFrameRejected()
   return { ...(try parseLaunch(document, frame.slice(0, -1))), binding, stateDirectory }
+}
+
+function urlShape(url: string): UrlShape {
+  const address = URL.parse(url)
+  if (address === null || address.protocol !== "https:") return "NotHttps"
+  return address.origin === url ? "HttpsOrigin" : "HttpsWithPath"
+}
+
+export function backendOf(model: LaunchDocument["model"]): Backend {
+  return match (model) {
+    when { backend: "cloud" }: { tag: "CloudBackend", baseUrl: model.cloudBaseUrl, baseUrlShape: urlShape(model.cloudBaseUrl), smallModel: model.smallModel, largeModel: model.largeModel, imageModel: model.imageModel };
+    when { backend: "own-key" }: { tag: "OwnKeyBackend", baseUrl: model.ownKeyBaseUrl, baseUrlShape: urlShape(model.ownKeyBaseUrl), smallModel: model.ownKeySmall, largeModel: model.ownKeyLarge };
+    when { backend: "none" }: { tag: "NoBackend" };
+  }
+}
+
+export function launchModel(launch: LaunchDocument): LaunchModel {
+  const { character, policy, account, retention } = launch
+  return {
+    schema: launch.schema,
+    character: { name: character.name, nameUnits: character.name.length, systemBlank: !/\S/.test(character.system) },
+    policy: {
+      actionsAllowed: [...policy.actions.allowed], pluginsLoad: [...policy.plugins.load],
+      productPlugin: policy.plugins.product === undefined ? { tag: "NoProductPlugin" } : { tag: "NamedProductPlugin", name: policy.plugins.product },
+    },
+    backend: backendOf(launch.model),
+    account: account === undefined ? { tag: "NoAccount" } : { tag: "SignedIn", userId: account.userId, organizationId: account.organizationId },
+    embeddings: launch.embeddings === "local" ? { tag: "LocalEmbeddings", dimensions: launch.embeddingDimensions ?? 0 } : { tag: "NoEmbeddings" },
+    persistMemory: launch.persistMemory ?? false,
+    callerRole: launch.callerRole === "owner" ? "ChatAsOwner" : "ChatAsUser",
+    google: { gmailChanges: launch.google?.gmailChanges ?? false, calendarEdits: launch.google?.calendarEdits ?? false },
+    retention: retention === undefined ? { tag: "KeepLogs" }
+      : { tag: "PruneLogs", dayThousandths: Math.ceil(retention.days * 1000), maxRowsPerRoom: retention.maxRowsPerRoom, intervalMinutes: retention.intervalMinutes },
+    environment: Object.entries(launch.environment ?? {}).map(([key, value]) => ({ key, keyKind: "PluginSetting", singleLine: !/[\r\n]/.test(value) })),
+  }
 }
 
 export effect function parseLaunch(document: string, frame: string) {

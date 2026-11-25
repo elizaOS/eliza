@@ -91,6 +91,7 @@ export error VoicemailPcmRefused { id: VoicemailId; reason: PcmRefusal }
 const strict = { onExcessProperty: "error" } as const
 const CALL_ID = /^[1-9]\d{0,15}$/
 const VOICEMAIL_ID = /^[1-9]\d{0,15}$/
+const VOICEMAIL_WITNESS = /^v1:[a-f0-9]{64}$/
 const DIALED = /^(|\+?[0-9]{2,20})$/
 const AUDIO_TYPE = /^audio\/[A-Za-z0-9][A-Za-z0-9.+-]{0,63}$/
 const BASE64 = /^[A-Za-z0-9+/]*={0,2}$/
@@ -161,6 +162,7 @@ const Listing = Schema.Struct({
     isNew: Schema.Boolean,
     hasAudio: Schema.Boolean,
     carrierTranscript: Schema.NullOr(text(TRANSCRIPT_MAX)),
+    deletionWitness: Schema.optionalKey(shaped(VOICEMAIL_WITNESS)),
   })).check(Schema.isMaxLength(maxVoicemails)),
 })
 schema Fetch { status: "ready" | "fetching" | "failed" }
@@ -169,7 +171,7 @@ const Pcm = Schema.Struct({ mimeType: Schema.Literal("audio/wav"), sampleRateHz:
 schema Written { status: "marked" | "unconfirmed" | "not-found" }
 const Staged = Schema.Union([
   Schema.Struct({ status: Schema.Literal("queued"), deletion: Schema.Unknown }),
-  Schema.Struct({ status: Schema.Literal("not-found") }),
+  Schema.Struct({ status: Schema.Literals(["not-found", "stale"]) }),
 ])
 
 effect function parsed<A>(method: string, shape: Schema.Decoder<A>, raw: unknown): A!MalformedReply {
@@ -418,7 +420,7 @@ effect function stored(store: Voicemails, plugin: PhoneNativePlugin, id: Voicema
 
 effect function refresh(store: Voicemails, plugin: PhoneNativePlugin, kind: ReadKind) {
   const facts = try admitted(store, plugin, null)
-  const list = try parseVoicemails(try nativeCall(PLUGIN, "listVoicemail", () => plugin.listVoicemail({ limit: maxVoicemails })))
+  const list = try parseVoicemails(try nativeCall(PLUGIN, "listVoicemail", () => plugin.listVoicemail({ limit: maxVoicemails, withDeletionWitness: true })))
   const listed = list.voicemails.map((row) => ({ id: Number(row.id), heard: !row.isNew, hasAudio: row.hasAudio }))
   const read = { kind, startedAfterSettle: true, succeeded: true }
   store.book.send({ type: "refresh", facts, read, sources: sourcesOf(list.state), listed }) catch effect () => {
@@ -472,13 +474,17 @@ effect function markHeard(store: Voicemails, plugin: PhoneNativePlugin, id: Voic
   return { written, receipt: receiptOfWrite(written), listing: try listing(store) }
 }
 
-effect function stageDeletion(store: Voicemails, plugin: PhoneNativePlugin, id: VoicemailId): VoicemailDeletionReport!(PhoneRequestRefused | VoicemailRefused | BridgeUnavailable | NativeRejection | MalformedReply) {
+effect function stageDeletion(store: Voicemails, plugin: PhoneNativePlugin, id: VoicemailId, witness?: string): VoicemailDeletionReport!(PhoneRequestRefused | VoicemailRefused | BridgeUnavailable | NativeRejection | MalformedReply) {
+  if (witness !== undefined && !VOICEMAIL_WITNESS.test(witness)) throw new PhoneRequestRefused({ problem: "invalid-voicemail" })
   const { row, facts } = try stored(store, plugin, id)
+  if (witness !== undefined && (try Ref.get(store.entries)).get(row)?.deletionWitness !== witness) {
+    return { status: "stale", listing: try listing(store) }
+  }
   store.book.send({ type: "stageDelete", facts, id: row }) catch effect () => {
     try refusal(store, id, "write-blocked")
   }
-  const answer = try reply("deleteVoicemail", Staged, () => plugin.deleteVoicemail({ id }))
-  if (answer.status === "not-found") return { status: "not-found", listing: try listing(store) }
+  const answer = try reply("deleteVoicemail", Staged, () => plugin.deleteVoicemail({ id, ...(witness === undefined ? {} : { witness }) }))
+  if (answer.status !== "queued") return { status: answer.status, listing: try listing(store) }
   const deletion = try parseStagedDeletion(PLUGIN, "deleteVoicemail", "voicemail", answer.deletion)
   try Ref.update(store.queued, (ids) => [...ids, row])
   return { status: "queued", deletion, listing: try listing(store) }
@@ -516,7 +522,7 @@ export function phoneClient(plugin: PhoneNativePlugin = telephonyPlugin(), journ
     voicemailAudio: (id) => settled(serial(audio(store, plugin, id))),
     voicemailPcm: (id) => settled(serial(pcm(store, plugin, id))),
     markVoicemailHeard: (id) => settled(serial(markHeard(store, plugin, id))),
-    deleteVoicemail: (id) => settled(serial(stageDeletion(store, plugin, id))),
+    deleteVoicemail: (id, witness) => settled(serial(stageDeletion(store, plugin, id, witness))),
     observeVoicemail: (onChange) => settled(observe(store, plugin, onChange)),
   }
 }
