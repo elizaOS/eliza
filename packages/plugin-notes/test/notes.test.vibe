@@ -483,7 +483,7 @@ it.effect('Read and save through the owner\'s client, adopting only the committe
   const notes = notesOver(f, { threeDayTrash: true })
   const client = createNotesClient(routed(notesRoutes(notes)))
   const empty = try promise(() => client.readState())
-  assert.deepEqual(empty, { notes: [], revision: 0, trash: [] })
+  assert.deepEqual(empty, { notes: [], revision: 0, trash: [], deleteAtRevision: true })
   const format = { kind: "list", data: { items: [{ t: "tent", done: true }, { t: "stove" }], recordingHandle: "local-only" } }
   const created = try promise(() => client.interact("create-note", { content: "Camping", format, forceNew: true }))
   const note: StickyNote = created.note!
@@ -497,8 +497,13 @@ it.effect('Read and save through the owner\'s client, adopting only the committe
   assert.isTrue(Exit.isFailure(stale))
   const updated = try promise(() => client.interact("update-note", { id: note.id, authoredEdit: { field: "checklist", index: 1, expectedText: "stove", done: true }, expectedRevision: 1 }))
   assert.equal(noteScheduleText(updated.note!), "")
-  try promise(() => client.interact("delete-note", { id: note.id }))
+  const staleDelete = try exit(promise(() => client.interact("delete-note", { id: note.id, expectedRevision: created.state.revision })))
+  const searchedDelete = try exit(promise(() => client.interact("delete-note", { title: note.title, expectedRevision: updated.state.revision })))
+  assert.deepEqual([Exit.isFailure(staleDelete), Exit.isFailure(searchedDelete), try promise(() => client.readState())], [true, true, { ...updated.state, deleteAtRevision: true }])
+  const deleted = try promise(() => client.interact("delete-note", { id: note.id, expectedRevision: updated.state.revision }))
   const state = try promise(() => client.readState())
+  assert.deepEqual(deleted.target, { id: note.id, revision: updated.state.revision + 1 })
+  assert.deepEqual(state, { ...deleted.state, deleteAtRevision: true })
   const row = state.trash![0]!
   const erased = try promise(() => client.eraseTrash({ scope: "entry", expectedRevision: state.revision, id: row.note.id, deletedAt: row.deletedAt }))
   assert.deepEqual([erased.erased, erased.recordingCleanup, erased.state.trash], [1, [], []])
