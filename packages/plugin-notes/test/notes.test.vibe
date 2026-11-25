@@ -306,14 +306,14 @@ it.effect('Keep notes as one collection edited only on the owner\'s words (spec/
     [twoNear.success, twoNear.data?.code, twoNear.data?.awaitingUserInput, Array.isArray(twoNear.data?.candidateIds) ? [...twoNear.data.candidateIds].sort() : undefined],
     editorMatches,
   ], [
-    [false, "NOTES_TITLE_NOT_FOUND", true, true, [weekend.value.note.id], [{ id: weekend.value.note.id, title: "Weekend" }], false],
+    [true, "NOTES_TITLE_NOT_FOUND", true, true, [weekend.value.note.id], [{ id: weekend.value.note.id, title: "Weekend" }], false],
     [true, weekend.value.note.id],
-    [false, "NOTES_AMBIGUOUS_NOTE", true, true, undefined, undefined],
+    [true, "NOTES_AMBIGUOUS_NOTE", true, true, undefined, undefined],
     [true, 2],
     [false, true],
     [true, "NOTES_NEAR_TITLE", true, undefined, undefined, [plan.value.note.id], true, true, false],
     [true, plan.value.note.id],
-    [false, "NOTES_TITLE_NOT_FOUND", true, [plan.value.note.id, shopping.value.note.id].sort()],
+    [true, "NOTES_TITLE_NOT_FOUND", true, [plan.value.note.id, shopping.value.note.id].sort()],
     [true, true, false, false],
   ])
 

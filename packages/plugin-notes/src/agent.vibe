@@ -2,7 +2,7 @@
 import { readTurnContext, type LocalRoute, type RouteInput } from "@elizaos/agent"
 import { type AgentModule, type AgentPlugin, type ModuleFactory, registerDeviceProposalFamily } from "@elizaos/agent-host"
 import type { Action, ActionResult, EffectReceipt, IAgentRuntime, Memory, Provider, ProviderResult, ViewCapability, ViewDeclaration } from "@elizaos/core"
-import { displayZoneSource, emptyCollectionObserved, localTimesShown, notesCapability, receiptOperation, receiptOutcome, refusalKind, titledRead, type NotesCapability, type NotesRefusal, type NotesWrite } from "../gen/notes__records.effect.vibe"
+import { displayZoneSource, emptyCollectionObserved, localTimesShown, notesCapability, receiptOperation, receiptOutcome, refusalKind, titledRead, titledReadAnswered, type NotesCapability, type NotesRefusal, type NotesWrite } from "../gen/notes__records.effect.vibe"
 import { sharedTitleIds, type ModelPick, type NoteTarget, type NotesQuery } from "./collection.vibe"
 import { notesDeviceFamily } from "./device-proposals.vibe"
 import {
@@ -226,7 +226,7 @@ const contentParameter = (description: string) => ({ name: "content", descriptio
 const revisionParameter = { name: "expectedRevision", description: "notesRevision of the complete read this edit was prepared from.", required: false, schema: { type: "integer" as const, minimum: 0 } }
 
 const ownerChoice = (code: "NOTES_AMBIGUOUS_NOTE" | "NOTES_TITLE_NOT_FOUND", offered: readonly StickyNote[], candidates: readonly object[]) => ({
-  actionName: "NOTES_GET", code, awaitingUserInput: true, requiresInput: true, candidateIds: offered.map((note) => note.id), candidates: [...candidates],
+  actionName: "NOTES_GET", code, readOnlyOperation: true, awaitingUserInput: true, requiresInput: true, candidateIds: offered.map((note) => note.id), candidates: [...candidates],
 })
 
 const missingTarget = (target: "missing" | "both"): ActionResult => ({
@@ -316,14 +316,14 @@ function readAction(notes: NotesCollection): Action[] {
         }
         if (asked !== undefined && titled === "AsksWhichNote") {
           return {
-            success: false,
+            success: titledReadAnswered(titled),
             text: `No saved note is titled ${json(asked.trim())}${mentioning.length === 0 ? "" : `; notes that mention it: ${mentioning.map((note) => json(note.title)).join(", ")}`}. Ask the owner which note to use before citing another one.`,
             data: ownerChoice("NOTES_TITLE_NOT_FOUND", mentioning, mentioning.map((note) => ({ id: note.id, title: note.title }))),
           }
         }
         if (first === undefined) return { success: false, text: "No current note matches.", data: { code: "NOTES_NOT_FOUND" } }
         if (found.length > 1) {
-          return { success: false, text: `Several notes match: ${found.map((candidate) => noteRow(candidate)).join(", ")}. Ask which one.`, data: ownerChoice("NOTES_AMBIGUOUS_NOTE", found, found.map(projectNoteForModel)) }
+          return { success: titledReadAnswered("AsksAmongTitledNotes"), text: `Several notes match: ${found.map((candidate) => noteRow(candidate)).join(", ")}. Ask which one.`, data: ownerChoice("NOTES_AMBIGUOUS_NOTE", found, found.map(projectNoteForModel)) }
         }
         const read = noteRead(first, revision, ownerZone(message))
         return { ...read, data: { ...read.data, actionName: "NOTES_GET" } }
