@@ -73,6 +73,20 @@
         "VIBESTACK_QUINT_EVALUATOR"
       ]
     },
+    "@elizaos/os#test": {
+      "dependsOn": [
+        "gen",
+        "//#gen",
+        "^build"
+      ],
+      "cache": false,
+      "passThroughEnv": [
+        "ANDROID_HOME",
+        "ANDROID_SDK_ROOT",
+        "JAVA_HOME",
+        "VIBESTACK_QUINT_EVALUATOR"
+      ]
+    },
     "test:browser": {
       "dependsOn": [
         "gen",
@@ -444,16 +458,10 @@
         "@elizaos/native-activity-tracker#test",
         "@elizaos/capacitor-appblocker#build",
         "@elizaos/capacitor-appblocker#typecheck",
-        "@elizaos/capacitor-calendar#build",
-        "@elizaos/capacitor-calendar#typecheck",
-        "@elizaos/capacitor-camera#build",
-        "@elizaos/capacitor-camera#typecheck",
         "@elizaos/capacitor-canvas#build",
         "@elizaos/capacitor-canvas#typecheck",
         "@elizaos/plugin-native-contacts#build",
         "@elizaos/plugin-native-contacts#typecheck",
-        "@elizaos/capacitor-desktop#build",
-        "@elizaos/capacitor-desktop#typecheck",
         "@elizaos/capacitor-eliza-tasks#build",
         "@elizaos/capacitor-eliza-tasks#typecheck",
         "@elizaos/plugin-native-filesystem#build",
@@ -468,16 +476,12 @@
         "@elizaos/plugin-native-messages#typecheck",
         "@elizaos/capacitor-mobile-signals#build",
         "@elizaos/capacitor-mobile-signals#typecheck",
-        "@elizaos/capacitor-network-policy#build",
-        "@elizaos/capacitor-network-policy#typecheck",
         "@elizaos/capacitor-notification-mirror#build",
         "@elizaos/capacitor-notification-mirror#typecheck",
         "@elizaos/capacitor-passwords#build",
         "@elizaos/capacitor-passwords#typecheck",
         "@elizaos/plugin-native-phone#build",
         "@elizaos/plugin-native-phone#typecheck",
-        "@elizaos/macosreminders#build",
-        "@elizaos/macosreminders#typecheck",
         "@elizaos/plugin-native-settings#build",
         "@elizaos/plugin-native-settings#typecheck",
         "@elizaos/native-plugin-shared-types#build",
@@ -587,11 +591,8 @@
         "@elizaos/capacitor-action-journal#typecheck",
         "@elizaos/native-activity-tracker#typecheck",
         "@elizaos/capacitor-appblocker#typecheck",
-        "@elizaos/capacitor-calendar#typecheck",
-        "@elizaos/capacitor-camera#typecheck",
         "@elizaos/capacitor-canvas#typecheck",
         "@elizaos/plugin-native-contacts#typecheck",
-        "@elizaos/capacitor-desktop#typecheck",
         "@elizaos/capacitor-eliza-tasks#typecheck",
         "@elizaos/plugin-native-filesystem#typecheck",
         "@elizaos/capacitor-gateway#typecheck",
@@ -599,11 +600,9 @@
         "@elizaos/capacitor-owned-media#typecheck",
         "@elizaos/plugin-native-messages#typecheck",
         "@elizaos/capacitor-mobile-signals#typecheck",
-        "@elizaos/capacitor-network-policy#typecheck",
         "@elizaos/capacitor-notification-mirror#typecheck",
         "@elizaos/capacitor-passwords#typecheck",
         "@elizaos/plugin-native-phone#typecheck",
-        "@elizaos/macosreminders#typecheck",
         "@elizaos/plugin-native-settings#typecheck",
         "@elizaos/native-plugin-shared-types#typecheck",
         "@elizaos/capacitor-swabble#typecheck",

@@ -130,7 +130,9 @@ whose device negotiated no history control and whose mounted browser takes
 agent commands. Otherwise no history move is offered. Core's catalog gives the BROWSER
 command the general context every owner turn is planned in, beside its
 browser context, so it runs from any owner chat, as on the phone before
-VibeStack; its owner role gate and these offer rules are unchanged.
+VibeStack; its owner role gate and these offer rules are unchanged. The
+Browser declares its graphical view, `browser` at `/browser`, and lists the
+`browser-command` capability required by the agent's [views](../agent/views.md).
 
 ```quint
 type HistoryHome = HistoryAsControl | HistoryAsCommand | NoHistoryMove
@@ -332,7 +334,10 @@ completed result as the typed `browser_navigate` operation, bound to the
 screen that asked, which shows the address for the owner to open; even an
 address the owner's whole message asked for waits for their Open there. The
 model learns that the screen shows the address for the owner to open, and
-never that it opened, that the page loaded or what it shows.
+never that it opened, that the page loaded or what it shows. Which screen
+shows on a later message is that message's screen context, not this result,
+and a later request to show Browser itself is VIEWS's, as the action's
+description says.
 
 ## Story: Tell me you cannot read my page, and never reload it unasked
 

@@ -4,7 +4,7 @@ import type { AgentPlugin } from "@elizaos/agent-host"
 import { Machine, Rejected, routineNamed, stored, type DefinitionStatus, type Event, type Routines } from "../gen/assistant__routines.effect.vibe"
 import { Facts, Scheduler, onAgent, parametersOf, presentOnce, readRecord, requestOf, writeRecord, type DeliveryAnswer, type TaskRow } from "./host.vibe"
 import { noteOwnerAnswer, routineNudgeMinutes } from "./escalation.vibe"
-import { appliedReceipt, attributed, failedReceipt, unchangedReceipt } from "./replies.vibe"
+import { appliedReceipt, attributed, failedReceipt, forTheOwner, unchangedReceipt } from "./replies.vibe"
 import { OccurrenceAnswer, RoutineCreate, RoutineRequest, RoutineUpdate } from "./requests.schema.vibe"
 import { hhmm, minuteOf } from "./time.vibe"
 import { ownerClockAt } from "./timezone.vibe"
@@ -383,7 +383,7 @@ export const ownerRoutinesAction: Action = {
   validate: async () => true,
   handler: async (runtime, message, _state, options) => {
     const { messageId } = requestOf(message)
-    return onAgent(runtime, Effect.catch(changeRoutine(parametersOf(options), messageId), (failed) => Effect.succeed({ success: false, text: "The routine could not be changed.", data: { outcome: failed._tag } } satisfies ActionResult)))
+    return onAgent(runtime, Effect.catch(changeRoutine(parametersOf(options), messageId), (failed) => Effect.succeed({ success: false, text: "The routine could not be changed.", ...forTheOwner("Your routines couldn't be reached just now."), data: { outcome: failed._tag } } satisfies ActionResult)))
   },
 }
 

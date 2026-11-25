@@ -11,8 +11,7 @@ import com.getcapacitor.annotation.CapacitorPlugin
  *
  * `getMeteredHint` answers `{ metered: true | false | null, source: "android-os" }`
  * from `NET_CAPABILITY_NOT_METERED` of the active network; `null` is unknown,
- * which the caller treats as "ask first". `getPathHints` is iOS's and always
- * answers unknown here.
+ * which the caller treats as "ask first".
  *
  * A host may register a subclass to limit the bridge: [enabled] is checked by
  * every method. Capacitor does not inherit the annotation, so the subclass
@@ -32,10 +31,5 @@ open class NetworkPolicyPlugin : Plugin() {
     @PluginMethod
     fun getMeteredHint(call: PluginCall) {
         if (admitted(call)) call.resolve(NetworkPolicyReader.readMeteredHint(context))
-    }
-
-    @PluginMethod
-    fun getPathHints(call: PluginCall) {
-        if (admitted(call)) call.resolve(NetworkPolicyReader.readPathHints())
     }
 }

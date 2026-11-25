@@ -75,6 +75,8 @@ export type PasswordsErrorCode =
   | "busy"
   | "conflict"
   | "not-admitted"
+  | "legacy-authorization-required"
+  | "legacy-key-unavailable"
   | "unavailable";
 
 export interface ElizaPasswordsPlugin {

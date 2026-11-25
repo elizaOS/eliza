@@ -1,4 +1,4 @@
-// spec/os/android/files/documentGrants.md, "Forgetting gives back the exact grant only when no selection and no note still name the document"; spec/os/android/media/isolatedPdf.md, "A selected-document render accepts only the reply to its own request"
+// spec/os/android/files/documentGrants.md, "The registry never holds more than 32 selections, and a new pick evicts the oldest"; spec/os/android/files/documentGrants.md, "Forgetting gives back the exact grant only when no selection and no note still name the document"; spec/os/android/media/isolatedPdf.md, "A selected-document render accepts only the reply to its own request"
 package ai.eliza.plugins.media;
 
 import java.io.ByteArrayInputStream;
@@ -264,6 +264,31 @@ public final class SelectedDocumentsTest {
                 -> PdfPageLimits.requireReply(
                     true, false, 99001, 10001, size[0], size[1], 2, 0, 0, bytes),
         "internet-allowed preview reply");
+    Map<String, String> picks = new LinkedHashMap<>();
+    Map<String, Integer> grants = new LinkedHashMap<>();
+    for (int i = 0; i < SelectionAdmission.MAX; i++) {
+      picks.put("s" + i, "content://doc/" + i);
+      grants.put("s" + i, 1);
+    }
+    List<List<String>> saves = new java.util.ArrayList<>();
+    SelectionAdmission.admit(picks, grants, "s32", "content://doc/32", 1,
+        () -> saves.add(List.copyOf(grants.keySet())));
+    check(saves.size() == 1 && saves.get(0).size() == SelectionAdmission.MAX
+            && saves.get(0).get(0).equals("s1") && saves.get(0).contains("s32"),
+        "the insert and the eviction of the oldest are saved together");
+    List<Map.Entry<String, String>> pickedBefore = List.copyOf(picks.entrySet());
+    List<Map.Entry<String, Integer>> grantedBefore = List.copyOf(grants.entrySet());
+    boolean refused = false;
+    try {
+      SelectionAdmission.admit(picks, grants, "s33", "content://doc/33", 1, () -> {
+        throw new IllegalStateException("Selection could not be saved");
+      });
+    } catch (IllegalStateException expected) {
+      refused = true;
+    }
+    check(refused && List.copyOf(picks.entrySet()).equals(pickedBefore)
+            && List.copyOf(grants.entrySet()).equals(grantedBefore),
+        "a failed save leaves neither the insert nor the eviction");
     System.out.println(checks + " assertions passed");
   }
 }

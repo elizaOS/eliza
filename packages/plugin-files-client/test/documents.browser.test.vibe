@@ -1,5 +1,20 @@
 // spec/files/scan/review.md, "Story: Assemble a document and retain a reviewable draft"; spec/files/scan/review.md, "Story: Save only the reviewed scan and see whether the save completed"; spec/files/scan/drafts.md, "Story: Restore the same scan and edits after reopening the app"; spec/files/scan/correction.md, "Story: Preview a perspective correction and decide whether to replace my page"; spec/files/scan/drafts.md, "Story: Save or delete a specific revision and know whether storage committed"; spec/files/scan/searchablePdf.md, "Story: Save the reviewed text beside the image of its own page"
 module browser {
+  import { PDFArray, PDFDocument, PDFRawStream, decodePDFRawStream } from "pdf-lib"
+  export async function pdfPages(bytes: Uint8Array) {
+    const document = await PDFDocument.load(bytes)
+    const decoder = new TextDecoder()
+    return document.getPages().map((page) => {
+      const contents = page.node.Contents()
+      const parts = contents instanceof PDFArray ? contents.asArray().map((entry) => document.context.lookup(entry)) : [contents]
+      const commands = parts.map((part) => {
+        if (!(part instanceof PDFRawStream)) throw new Error("Expected a PDF page content stream")
+        return decoder.decode(decodePDFRawStream(part).decode())
+      }).join("\n")
+      return { ...page.getSize(), commands }
+    })
+  }
+
   export function unreadablePage(): Blob {
     return new Blob(["not an image"], { type: "image/png" })
   }
@@ -10,7 +25,8 @@ import { correctionReview, validateScanCorners } from "../src/documents/scan-cor
 import { createScanDocument } from "../src/documents/scan-document.vibe"
 import { createScanDraftStore } from "../src/documents/scan-draft.vibe"
 import { createScanPdf } from "../src/documents/scan-pdf.vibe"
-import { unreadablePage } from browser
+import { cancelledPdf, workerPdf } from "./scanPdf.browser.ts"
+import { pdfPages, unreadablePage } from browser
 
 effect function page(width: number, height: number) {
   return try orDie(encoded(try orDie(rasterOf(undefined, width, height)), "image/png"))
@@ -68,6 +84,23 @@ it.effect('Save only the reviewed scan and see whether the save completed (spec/
   const unknown = try createScanDocument({ first: image })
   assert.equal((try unknown.exportPages(effect () => ({ status: "requested", message: "Sent" }))).status, "requested")
   assert.equal((try unknown.snapshot()).controls.export, false)
+})
+
+it.effect('Save the same reviewed text and page geometry in a worker (spec/files/scan/searchablePdf.md, "Story: Save the reviewed text beside the image of its own page")', effect () => {
+  const images = [try page(80, 50), try page(50, 80)]
+  const layers = [[{ ...line, text: "Café 12" }], []]
+  const onPage = try orDie(createScanPdf({ title: "Scan", creator: "Files" }, images, layers))
+  const offPage = try orDie(tryPromise((signal) => workerPdf(images, layers, signal)))
+  const expected = try orDie(tryPromise(() => pdfPages(onPage)))
+  const actual = try orDie(tryPromise(() => pdfPages(offPage)))
+  assert.deepEqual(actual, expected)
+  assert.equal(actual.length, 2)
+  assert.isTrue(actual[0].width > actual[0].height)
+  assert.isTrue(actual[1].height > actual[1].width)
+  assert.include(actual[0].commands, "3 Tr")
+  assert.include(actual[0].commands.toUpperCase(), "<436166E9203132> TJ")
+  assert.notInclude(actual[1].commands, " Tj")
+  assert.isTrue(try orDie(tryPromise(() => cancelledPdf(images, layers))))
 })
 
 it.effect('Preview a perspective correction and replace my page only by adoption (spec/files/scan/correction.md, "Story: Preview a perspective correction and decide whether to replace my page")', effect () => {

@@ -160,6 +160,10 @@ pure def lawFramesStayNumberedAndWithinCaps(sent: TimedStream, bytes: int): bool
 > text by the deployment's provider and charged for its length, so that I can
 > dictate without running a recognizer on my device.
 
+The provider request and response decoding share a 120-second budget.
+Cloud parses the upload and prepares the multipart request body before
+that budget starts.
+
 ### A transcription body over 25 MiB is refused 413 before its credential is read
 
 Below the cap, and for every synthesis, the credential is checked as

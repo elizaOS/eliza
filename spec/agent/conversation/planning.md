@@ -582,7 +582,14 @@ error or its result text; a call its action's own check declined is
 `unavailableNotice`, and a failure with no words is a sentence that the
 call did not start or did not complete. Of these, only the text its action
 marked as its words for the owner is ever the owner's: the rest is written
-to the model. A left-out document's are that some
+to the model. An action whose failure means the owner's request did not
+happen (a calculation with no answer, an event the calendar would not take,
+mail that could not be read, a workflow its store did not change) marks one
+plain sentence that says so as its words for the owner, naming no action and
+guiding no call; a check that refuses a call the model can correct or ask
+the owner about (a time in the wrong form, a clock the owner's words
+contradict, an event the call's words found none of, a checklist with no
+title) marks none. A left-out document's are that some
 attached documents exceeded what can be read in one turn. When anything is
 unreported, or the reply states a time the turn did not observe (the clock
 rules below), the model is asked once more: the turn's system prompt, its
@@ -777,7 +784,7 @@ Blank text is `Silent`.
 The model says itself what a response with no tool call is. The cue rule
 asks it to begin such a response with one tag the person never sees:
 `[answer]` when the text is its complete reply, or `[promise]` when it only
-says it will do something. A tag after nothing but JSON objects or
+says it will do something, and to use only those two. A tag after nothing but JSON objects or
 bracketed calls counts too, and what came before it is no part of the reply
 (`{"query": "speed of light"}[answer] Light travels…` is delivered as
 `Light travels…`). The tag is for the host alone: the shell strips the exact lowercase tags
@@ -795,10 +802,29 @@ no link, and an inline code span until it closes, so what it streams is
 always the start of what it delivers, and
 streams nothing while the text so far is only an untagged object. Only a
 tag that leads the text, in any letter case (`[ANSWER]Sure, Bob.`), after nothing but JSON objects or bracketed calls,
-says what the response is, and the shell reads it before the form: with no tool call, text
+says what the response is; it may be followed at once by a link or another
+bracket (`[answer][Docs](https://…)` is delivered as `[Docs](https://…)`),
+and a leading angle tag takes its closing tag off in any letter case
+(`<ANSWER>Hi!</ANSWER>` is delivered as `Hi!`). The shell reads it before the form: with no tool call, text
 tagged `[answer]` is an `Answer` delivered at once, however short (`[answer]
 Done!`, `[answer] Hello!`), and text tagged `[promise]` is a `Cue`, never
-delivered (`[promise] Sure, one sec.`). Blank text, a cue beside a call
+delivered (`[promise] Sure, one sec.`), unless it asks the person
+something: text tagged `[promise]` whose last sentence is a question (it
+ends in `?`, `？` or `؟`, perhaps followed by an emoji, an emoticon, `!` or
+a list of options, outside quotes, code and addresses) is a draft that may
+be an answer, asked again once and then delivered (`[promise] Hi! What can
+I do for you today? 😊`, `[promise] Which Sam do you mean?`), and when the
+turn gives up after it with no step run, that question is the reply rather
+than nothing (once a tool has run, the question asked before the work is
+never delivered); a
+promise that asks still gets its one re-ask, so `[promise] I'll check your
+email now. Want me to check your calendar too?` is not delivered at once.
+`[promise] Let me open https://example.com/search?q=limes` and `[promise]
+What's the weather in Tokyo? Let me check that for you.` stay promises. A leading `[question]`, a tag the model sometimes writes though
+the rule names only two, is taken off and the text is read by its form, as
+if untagged; anywhere else it is the model's text. Two or more leading tags
+in a row (`[answer][promise] I'll check.`, `[Answer][Question] Which Sam?`)
+say nothing: all of them are taken off and the text is read by its form. Blank text, a cue beside a call
 written as text, and text that holds the agent host's words (below), are
 read by their form whatever the tag, and so is text written with tool
 calls: `[answer]` before an echoed host note is still no answer. Text with no tag is read by its form as above, so
@@ -895,6 +921,13 @@ pure def readDraft(shape: DraftShape, calls: int, toolsWaiting: bool, declared: 
   else match declared {
     | DeclaredAnswer => Answer | DeclaredPromise => Cue | Undeclared => readByForm(shape, calls, toolsWaiting)
   }
+pure def heardAs(draft: Draft, declared: Declared, asks: bool, calls: int): Draft =
+  if (calls <= 0 and asks and declared == DeclaredPromise and draft == Cue) MaybeAnswer else draft
+pure def lawAPromiseThatAsksIsAskedOnceThenDelivered(stepsLeft: int): bool =
+  nextMove(heardAs(Cue, DeclaredPromise, true, 0), 0, stepsLeft, true) == Deliver
+  and (stepsLeft > 0 implies nextMove(heardAs(Cue, DeclaredPromise, true, 0), 0, stepsLeft, false) == AskAgain)
+pure def lawOnlyAPromiseThatAsksIsHeardAgain(draft: Draft, declared: Declared, asks: bool, calls: int): bool =
+  heardAs(draft, declared, asks, calls) == draft or (draft == Cue and declared == DeclaredPromise and asks and calls <= 0)
 pure def lawADeclaredAnswerIsDeliveredAtOnce(shape: DraftShape, toolsWaiting: bool, stepsLeft: int, askedAgain: bool): bool =
   (shape != Blank and shape != CueBesideCall and shape != HostText) implies nextMove(readDraft(shape, 0, toolsWaiting, DeclaredAnswer), 0, stepsLeft, askedAgain) == Deliver
 pure def lawADeclaredPromiseWithoutWorkIsNeverDelivered(shape: DraftShape, toolsWaiting: bool, stepsLeft: int, askedAgain: bool): bool =
@@ -1027,7 +1060,15 @@ line could begin; what follows is shown once it can no longer be one, or
 with the reply, so neither the label, a note's lead line nor a history mark
 is ever streamed, spoken or stored. A note's later lines are not held: they
 carry the owner's own data, such as the page they are reading, which a true
-answer may quote. The notes stay in the model's request as they are.
+answer may quote. A later line of at least 32 characters that is a whole
+JSON object, before any external content a note quotes, such as the screen
+context's data, is the exception: a response that holds its first 32
+characters, with any spacing and in any letter case, is the host's words
+(`{"observation":{"view":"launchers",…`), since no answer quotes the host's
+raw data; the reply stream shows nothing from a `{` while the 32
+non-space characters after it could still be such an opening, looking only
+past what it has already shown, so a long reply full of braces streams at
+its own pace. The notes stay in the model's request as they are.
 
 ```quint
 pure def lawHostTextIsNeverAnAnswer(calls: int, toolsWaiting: bool, declared: Declared): bool =
@@ -1290,7 +1331,10 @@ successful result that carries the event (its id, start, end, zone and
 version, and a title naming no clock time) and its own applied create or
 update receipt for that event at that version, a reply that states one
 clock range, a start and an end such as "3–4 PM", is read on the event's
-own clock. When its start or end is not the event's, the model is asked
+own clock. An explicit move clause such as "moved your dentist from 3 PM
+to 4 PM" asserts the second clock as the event's new start. The receipt
+supplies the new start. When a range endpoint or a new start disagrees
+with the receipt, the model is asked
 once more with that action's own words as a host note (above), and its
 answer is kept when this check holds of it. Otherwise, or when that call
 fails, the reply is that action's own words. A reply
@@ -1299,14 +1343,21 @@ or an offset, and a turn that changed no event or more than one, are kept
 as they are; identical copies of one result count as one event.
 
 ```quint
-pure def eventRangeIsUngrounded(asksTime: bool, oneRange: bool, zoneStated: bool, changedEvents: int, rangeMatches: bool): bool =
-  not(asksTime) and oneRange and not(zoneStated) and changedEvents == 1 and not(rangeMatches)
-pure def lawTheAppliedRangeIsKept(asksTime: bool, oneRange: bool, zoneStated: bool, changedEvents: int): bool =
-  not(eventRangeIsUngrounded(asksTime, oneRange, zoneStated, changedEvents, true))
-pure def lawOnlyOneChangedEventJudgesARange(asksTime: bool, oneRange: bool, zoneStated: bool, changedEvents: int, rangeMatches: bool): bool =
-  eventRangeIsUngrounded(asksTime, oneRange, zoneStated, changedEvents, rangeMatches) implies changedEvents == 1
-pure def lawAZoneOrASingleClockIsLeftToTheReply(asksTime: bool, changedEvents: int, rangeMatches: bool): bool =
-  not(eventRangeIsUngrounded(asksTime, true, true, changedEvents, rangeMatches)) and not(eventRangeIsUngrounded(asksTime, false, false, changedEvents, rangeMatches))
+type EventTimeClaim = EventTimeRange({ start: int, end: int }) | EventMoveStart({ start: int })
+pure def eventTimeMatches(claim: EventTimeClaim, start: int, end: int): bool = match claim {
+  | EventTimeRange(times) => times.start == start and times.end == end
+  | EventMoveStart(time) => time.start == start
+}
+pure def eventTimeIsUngrounded(asksTime: bool, timeStated: bool, zoneStated: bool, changedEvents: int, timeMatches: bool): bool =
+  not(asksTime) and timeStated and not(zoneStated) and changedEvents == 1 and not(timeMatches)
+pure def lawTheAppliedTimeIsKept(asksTime: bool, timeStated: bool, zoneStated: bool, changedEvents: int): bool =
+  not(eventTimeIsUngrounded(asksTime, timeStated, zoneStated, changedEvents, true))
+pure def lawOnlyOneChangedEventJudgesItsTime(asksTime: bool, timeStated: bool, zoneStated: bool, changedEvents: int, timeMatches: bool): bool =
+  eventTimeIsUngrounded(asksTime, timeStated, zoneStated, changedEvents, timeMatches) implies changedEvents == 1
+pure def lawAZoneOrASingleClockIsLeftToTheReply(asksTime: bool, changedEvents: int, timeMatches: bool): bool =
+  not(eventTimeIsUngrounded(asksTime, true, true, changedEvents, timeMatches)) and not(eventTimeIsUngrounded(asksTime, false, false, changedEvents, timeMatches))
+pure def lawAMoveChecksTheNewStart(statedStart: int, eventStart: int, eventEnd: int): bool =
+  eventTimeMatches(EventMoveStart({ start: statedStart }), eventStart, eventEnd) iff statedStart == eventStart
 pure val changedEventsValues = Set(0, 1, 2)
 ```
 

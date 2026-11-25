@@ -1,5 +1,5 @@
 name: setup
-description: Node 26, pnpm from packageManager and its cache; with verification, Dafny from its pinned release, Quint's evaluator, Chromium and the spec cache; Turborepo's local cache for pull requests and local-only branch pushes.
+description: Node 26, pnpm from packageManager and its cache; with verification, Dafny from its pinned release, Quint's evaluator, Chromium, JDK 21 and the Android SDK for the jobs that run the OS tests, and the spec cache; Turborepo's local cache for pull requests and local-only branch pushes.
 inputs:
   job:
     description: Names the caches this job saves, so that jobs of one run do not save under one key, and what the spec cache holds for it; a job that saves nothing leaves it.
@@ -361,3 +361,21 @@ runs:
         }
         JS
       shell: bash
+
+    - name: Set up JDK 21
+      if: inputs.verification == 'true' && inputs.job == 'verify'
+      uses: actions/setup-java@v4
+      with:
+        java-version: "21"
+        distribution: temurin
+    - name: Set up Android SDK
+      if: inputs.verification == 'true' && inputs.job == 'verify'
+      uses: android-actions/setup-android@v3
+    - name: Install Android build-tools 36.0.0 and platform android-36
+      if: inputs.verification == 'true' && inputs.job == 'verify'
+      shell: bash
+      run: |
+        sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+        # sdkmanager stops reading once it has accepted every license.
+        (set +o pipefail; yes | "$sdkmanager" --licenses >/dev/null)
+        "$sdkmanager" "build-tools;36.0.0" "platforms;android-36"

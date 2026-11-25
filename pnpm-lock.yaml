@@ -373,12 +373,6 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.6
-      '@types/react':
-        specifier: 'catalog:'
-        version: 19.3.0
-      react:
-        specifier: 'catalog:'
-        version: 19.3.1
       typescript:
         specifier: 'catalog:'
         version: 6.0.3
@@ -567,9 +561,6 @@ importers:
       vibelang-runtime:
         specifier: 0.0.13
         version: 0.0.13(@effect/platform-node@4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0))(effect@4.1.1)
-      zod:
-        specifier: ^4.6.5
-        version: 4.6.7
     devDependencies:
       '@effect/vitest':
         specifier: 4.1.1
@@ -1739,53 +1730,6 @@ importers:
         specifier: 0.0.13
         version: 0.0.13(patch_hash=84f6bd90a8ff37080f66a93718a62ff76b42541194e36701abb285d694f59ee8)(@babel/core@7.29.13)(effect@4.1.1)(typescript@6.0.3)
 
-  packages/plugin-native-calendar:
-    dependencies:
-      '@capacitor/core':
-        specifier: 8.4.0
-        version: 8.4.0
-      '@elizaos/os-bridges':
-        specifier: workspace:*
-        version: link:../os-bridges
-      effect:
-        specifier: 4.1.1
-        version: 4.1.1
-      vibelang-runtime:
-        specifier: 0.0.13
-        version: 0.0.13(@effect/platform-node@4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0))(effect@4.1.1)
-    devDependencies:
-      '@types/node':
-        specifier: 'catalog:'
-        version: 26.6.6
-      typescript:
-        specifier: 'catalog:'
-        version: 6.0.3
-      vibelang:
-        specifier: 0.0.13
-        version: 0.0.13(patch_hash=84f6bd90a8ff37080f66a93718a62ff76b42541194e36701abb285d694f59ee8)(@babel/core@7.29.13)(effect@4.1.1)(typescript@6.0.3)
-
-  packages/plugin-native-camera:
-    dependencies:
-      '@elizaos/os-bridges':
-        specifier: workspace:*
-        version: link:../os-bridges
-      effect:
-        specifier: 4.1.1
-        version: 4.1.1
-      vibelang-runtime:
-        specifier: 0.0.13
-        version: 0.0.13(@effect/platform-node@4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0))(effect@4.1.1)
-    devDependencies:
-      '@types/node':
-        specifier: 'catalog:'
-        version: 26.6.6
-      typescript:
-        specifier: 'catalog:'
-        version: 6.0.3
-      vibelang:
-        specifier: 0.0.13
-        version: 0.0.13(patch_hash=84f6bd90a8ff37080f66a93718a62ff76b42541194e36701abb285d694f59ee8)(@babel/core@7.29.13)(effect@4.1.1)(typescript@6.0.3)
-
   packages/plugin-native-canvas:
     dependencies:
       '@capacitor/core':
@@ -1813,31 +1757,6 @@ importers:
 
   packages/plugin-native-contacts:
     dependencies:
-      '@elizaos/os-bridges':
-        specifier: workspace:*
-        version: link:../os-bridges
-      effect:
-        specifier: 4.1.1
-        version: 4.1.1
-      vibelang-runtime:
-        specifier: 0.0.13
-        version: 0.0.13(@effect/platform-node@4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0))(effect@4.1.1)
-    devDependencies:
-      '@types/node':
-        specifier: 'catalog:'
-        version: 26.6.6
-      typescript:
-        specifier: 'catalog:'
-        version: 6.0.3
-      vibelang:
-        specifier: 0.0.13
-        version: 0.0.13(patch_hash=84f6bd90a8ff37080f66a93718a62ff76b42541194e36701abb285d694f59ee8)(@babel/core@7.29.13)(effect@4.1.1)(typescript@6.0.3)
-
-  packages/plugin-native-desktop:
-    dependencies:
-      '@capacitor/core':
-        specifier: 8.4.0
-        version: 8.4.0
       '@elizaos/os-bridges':
         specifier: workspace:*
         version: link:../os-bridges
@@ -2021,28 +1940,6 @@ importers:
         specifier: 0.0.13
         version: 0.0.13(patch_hash=84f6bd90a8ff37080f66a93718a62ff76b42541194e36701abb285d694f59ee8)(@babel/core@7.29.13)(effect@4.1.1)(typescript@6.0.3)
 
-  packages/plugin-native-network-policy:
-    dependencies:
-      '@elizaos/os-bridges':
-        specifier: workspace:*
-        version: link:../os-bridges
-      effect:
-        specifier: 4.1.1
-        version: 4.1.1
-      vibelang-runtime:
-        specifier: 0.0.13
-        version: 0.0.13(@effect/platform-node@4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0))(effect@4.1.1)
-    devDependencies:
-      '@types/node':
-        specifier: 'catalog:'
-        version: 26.6.6
-      typescript:
-        specifier: 'catalog:'
-        version: 6.0.3
-      vibelang:
-        specifier: 0.0.13
-        version: 0.0.13(patch_hash=84f6bd90a8ff37080f66a93718a62ff76b42541194e36701abb285d694f59ee8)(@babel/core@7.29.13)(effect@4.1.1)(typescript@6.0.3)
-
   packages/plugin-native-notifications:
     dependencies:
       '@elizaos/os-bridges':
@@ -2088,28 +1985,6 @@ importers:
         version: 0.0.13(patch_hash=84f6bd90a8ff37080f66a93718a62ff76b42541194e36701abb285d694f59ee8)(@babel/core@7.29.13)(effect@4.1.1)(typescript@6.0.3)
 
   packages/plugin-native-phone:
-    dependencies:
-      '@elizaos/os-bridges':
-        specifier: workspace:*
-        version: link:../os-bridges
-      effect:
-        specifier: 4.1.1
-        version: 4.1.1
-      vibelang-runtime:
-        specifier: 0.0.13
-        version: 0.0.13(@effect/platform-node@4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0))(effect@4.1.1)
-    devDependencies:
-      '@types/node':
-        specifier: 'catalog:'
-        version: 26.6.6
-      typescript:
-        specifier: 'catalog:'
-        version: 6.0.3
-      vibelang:
-        specifier: 0.0.13
-        version: 0.0.13(patch_hash=84f6bd90a8ff37080f66a93718a62ff76b42541194e36701abb285d694f59ee8)(@babel/core@7.29.13)(effect@4.1.1)(typescript@6.0.3)
-
-  packages/plugin-native-reminders:
     dependencies:
       '@elizaos/os-bridges':
         specifier: workspace:*

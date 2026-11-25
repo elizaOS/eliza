@@ -64,6 +64,11 @@ const refusals: Readonly<Partial<Record<string, NotesRefusal>>> = {
   NOTES_CHECKLIST_UNTITLED: "UntitledChecklist",
 }
 
+const unreachable = {
+  NOTES_STORE_UNAVAILABLE: "Notes couldn't be reached just now, so nothing changed.",
+  NOTES_COMMIT_UNCONFIRMED: "Notes didn't confirm that change, so check the note before trying again.",
+} as const
+
 export effect function notesRefusalResult(notes: NotesCollection, error: NotesFailure): ActionResult!! {
   const message = error._tag === "NotesRefused" ? error.message : error.reason
   const candidateIds = error._tag === "NotesRefused" ? error.candidateIds : undefined
@@ -71,10 +76,12 @@ export effect function notesRefusalResult(notes: NotesCollection, error: NotesFa
   if (kind === "RefusalAsksTheOwner") return { success: true, text: message, data: { code: error.code, readOnlyOperation: true, awaitingUserInput: true, requiresInput: true } }
   const waits = kind === "RefusalWaitsOnOwner"
   const pool: readonly StickyNote[] = waits && candidateIds !== undefined ? (map(notes.snapshot(), (snapshot) => snapshot.notes) catch () => []) : []
+  const owner = error._tag === "NotesRefused" ? undefined : unreachable[error.code]
   return {
     success: false,
     text: message,
     error: message,
+    ...(owner === undefined ? {} : { userFacingText: owner, verifiedUserFacing: true }),
     ...(kind === "RefusalCoachesPlanner" ? { transcriptVisibility: "internal" as const } : {}),
     data: {
       code: error.code,

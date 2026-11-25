@@ -513,17 +513,31 @@ it.live(`Hear a cue by its form, whatever its words or language, and never one t
   const spacedWhole = try read(try streamed(agent, id, { text: "Capital of Italy?" }), 3)
   const spacedFinal = spacedWhole.outcome.kind === "Done" ? spacedWhole.outcome.text : spacedWhole.outcome.kind
   const spaced = [spacedFinal, spacedWhole.seen.filter((entry) => entry.startsWith("text:")).every((entry) => spacedFinal.startsWith(entry.slice("text:".length)))]
+  const edges: (readonly [string, boolean, boolean])[] = []
+  for (const said of ["<ANSWER>Hi, 2 of us.</ANSWER>", "[answer][Docs](https://example.com/d) has 2 pages.", "[question] Which of the 2 Sams do you mean?"]) {
+    try Effect.sync(() => cloud.script(thirds(said)))
+    const whole = try read(try streamed(agent, id, { text: "Show me that." }), 3)
+    const final = whole.outcome.kind === "Done" ? whole.outcome.text : whole.outcome.kind
+    const previews = whole.seen.filter((entry) => entry.startsWith("text:")).map((entry) => entry.slice("text:".length))
+    edges.push([final, previews.every((shown) => final.startsWith(shown)), whole.seen.some((entry) => /[[<]\/?(?:answer|promise|question|ans|prom|ques)/iu.test(entry))])
+  }
+  const screen = { observation: { view: "launchers", revision: 1, sensitive: false, selectedObject: { kind: "canvas-screen", id: "home-screen" } } }
+  try Effect.sync(() => cloud.script(thirds('[answer] {"observation":{"view":"launchers","revision":1,"sensitive":false}}'), thirds("[answer] You're already on the home screen.")))
+  const echoWhole = try read(try streamed(agent, id, { text: "Go home.", metadata: screen }), 3)
+  const echoed = [echoWhole.outcome.kind === "Done" ? echoWhole.outcome.text : echoWhole.outcome.kind, echoWhole.seen.some((entry) => entry.includes("observation"))]
   const anywhere = [
     midWhole.outcome.kind === "Done" ? midWhole.outcome.text : midWhole.outcome.kind, leaksTag(midWhole.seen),
     cueWhole.seen.filter((entry) => entry.startsWith("acknowledgment:")), cueWhole.outcome.kind === "Done" ? cueWhole.outcome.text : cueWhole.outcome.kind, leaksTag(cueWhole.seen),
   ]
-  try Effect.try(() => assert.deepStrictEqual({ spoken, unspoken, shortAnswers, tagged, anywhere, streamedSurvivors, upper, spaced }, {
+  try Effect.try(() => assert.deepStrictEqual({ spoken, unspoken, shortAnswers, tagged, anywhere, streamedSurvivors, upper, spaced, edges, echoed }, {
     spoken: requests.flatMap((request) => forms.map((cue): Heard => [request, cue, [cue], "Done."])),
     unspoken: refused.map((cue): Heard => ["Text Sam that I'm late", cue, [], "Done."]),
     shortAnswers: [["Sure.", 0], ["Anytime.", 0]],
     tagged: ["Anytime.", false],
     upper: ["Anytime, 2 of them.", false],
     spaced: ["Rome. More.", true],
+    echoed: ["You're already on the home screen.", false],
+    edges: [["Hi, 2 of us.", true, false], ["[Docs](https://example.com/d) has 2 pages.", true, false], ["Which of the 2 Sams do you mean?", true, false]],
     streamedSurvivors: [...survives.slice(0, 9).map((said) => [said, true] as const), ["Sure.\nParis has about 2 million people.", true], ["Sure.\nSantiago has about 6 million people.", true]],
     anywhere: ["Sure.\nParis has about 2 million people.", false, ["acknowledgment:Let me check."], "Nothing booked.", false],
   }))

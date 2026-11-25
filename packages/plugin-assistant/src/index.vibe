@@ -125,7 +125,6 @@ const ownerClockProvider: Provider = {
   },
 }
 
-/** The model's output for the time zone evaluator, or null when it is not one: a zone that is not text, or a field the schema does not name. */
 function zoneReading(output: unknown): { readonly zone: string } | null {
   if (typeof output !== "object" || output === null || Array.isArray(output) || Object.keys(output).some((key) => key !== "zone")) return null
   const zone = Reflect.get(output, "zone")

@@ -1,10 +1,10 @@
 // spec/agent/views.md, "The agent prepares a navigation only for the renderer bound to its turn and one view its name resolves to"; spec/agent/views.md, "A specific saved Notes editor is prepared only after a matching current lookup on a supported renderer"; spec/agent/deviceActions/surfaces.md, "An app view opens with VIEWS where views arrive as completed actions, else with open_view as the installation's profile enables it"; spec/agent/conversation/planning.md, "An action may narrow its tool to the turn, never beyond its registered form"; spec/agent/conversation/planning.md, "Every call of a turn is one the model chose, and a call this message serves in another place is refused before it runs and is no step of the turn"
-import { readViewInteractionClientId, type Action, type ActionResult, type HandlerOptions, type IAgentRuntime, type Memory } from "@elizaos/core"
+import type { Action, ActionResult, HandlerOptions, IAgentRuntime, Memory } from "@elizaos/core"
 import { viewsShowsOnDevice } from "../../gen/agent__deviceActions__surfaces.ts"
 import { declaredAt, namesOf, savedNotePreparationAllowed, type DeclaredView } from "../../gen/agent__views.effect.vibe"
 import { turnElsewhere, turnNotes } from "../conversation/planning.vibe"
 import { readTurnContext } from "@elizaos/agent"
-import { deviceTurnFor } from "../device-actions/proposal/turn.vibe"
+import { completedActionRenderer, deviceTurnFor } from "../device-actions/proposal/turn.vibe"
 import { foldName } from "./declarations.vibe"
 import type { ViewHost } from "./host.vibe"
 
@@ -68,12 +68,6 @@ async function noteIsCurrent(runtime: IAgentRuntime, noteId: string, query: stri
     && typeof service.matchesSavedEditor === "function" && await service.matchesSavedEditor(noteId, query) === true
 }
 
-function rendererOf(message: Memory): string | undefined {
-  const metadata = message.content.metadata
-  const completedAction = typeof metadata === "object" && metadata !== null && "viewDelivery" in metadata && metadata.viewDelivery === "completed-action"
-  return completedAction ? readViewInteractionClientId(message) : undefined
-}
-
 function parameterOf(options: unknown, key: "view" | "note"): string | undefined {
   const parameters = typeof options === "object" && options !== null && "parameters" in options ? options.parameters : undefined
   const value = typeof parameters === "object" && parameters !== null ? Object.entries(parameters).find(([name]) => name === key)?.[1] : undefined
@@ -87,7 +81,7 @@ function targetOf(options: unknown): string | undefined {
 }
 
 effect function show(views: ViewHost.Shape, labels: ReadonlyMap<string, string>, runtime: IAgentRuntime, message: Memory, options: HandlerOptions | undefined) {
-  const clientId = rendererOf(message)
+  const clientId = completedActionRenderer(message)
   if (clientId === undefined) return refused("No renderer is bound to this turn, so no view can be shown.")
   const target = targetOf(options)
   if (target === undefined) return refused("Name the view to show by its id, label or alias.")
@@ -131,6 +125,8 @@ const elsewhere = {
   text: "Views do not open with VIEWS on this message, so it did not run and nothing was shown. Open the view with the device tool's open_view where that tool offers it, or tell the person it can't be opened here.",
 }
 
+export const viewsActionName = "VIEWS"
+
 const editorNote = "To open one saved note the owner asks for, in any words, first resolve it with NOTES_GET. When it found one current note, call VIEWS with view=notes-editor and note set to the content argument given to NOTES_GET, word for word, or to the noteId it read the note by, never its result. If there are several matches, ask which one. To open the note this turn created with NOTES_CREATE, call VIEWS with view=notes-editor and note set to its title right after the creation, with no NOTES_GET. For the Notes list or any other view, use its name."
 
 function labelOf(view: DeclaredView, labels: ReadonlyMap<string, string>): string {
@@ -151,7 +147,7 @@ function screenNote(declared: readonly DeclaredView[], labels: ReadonlyMap<strin
 
 export function viewsShowAction(views: ViewHost.Shape, labels: ReadonlyMap<string, string>, declared: readonly DeclaredView[]): Action {
   const action: Action = {
-    name: "VIEWS",
+    name: viewsActionName,
     similes: ["VIEWS_SHOW", "OPEN_VIEW", "NAVIGATE_VIEW"],
     description: `Show one of the owner's views, named by its id, label or alias, on the renderer of this turn.${namedViews(declared, labels)} Each view is a screen of the app on the owner's device. Going to a view by its name, such as go home, go to Calendar or back to Notes, is showing that view with VIEWS; only directions, a route or travel to a place is the Maps action's. Navigation only: it does not read or change the view's records, and showing a view acts on nothing in it. Showing Camera takes no photo, and showing Maps finds no place, gives no directions and plans no route: when the owner asks for those, use the action that does it.`,
     roleGate: { minRole: "OWNER" },
@@ -162,12 +158,12 @@ export function viewsShowAction(views: ViewHost.Shape, labels: ReadonlyMap<strin
     ],
     validate: async (runtime, message) => {
       const turn = deviceTurnFor(runtime, message)
-      return rendererOf(message) !== undefined && (turn === undefined || viewsShowsOnDevice(turn.completedActionNavigation))
+      return completedActionRenderer(message) !== undefined && (turn === undefined || viewsShowsOnDevice(turn.completedActionNavigation))
     },
     handler: (runtime, message, _state, options) => runPromise(show(views, labels, runtime, message, options)),
   }
   turnNotes.set(action, (_runtime, message) => {
-    const clientId = rendererOf(message)
+    const clientId = completedActionRenderer(message)
     if (clientId === undefined) return undefined
     const notes = [screenNote(declared, labels, message), offersEditor(message, clientId, true, true) ? editorNote : undefined].filter((note) => note !== undefined)
     return notes.length === 0 ? undefined : notes.join(" ")
