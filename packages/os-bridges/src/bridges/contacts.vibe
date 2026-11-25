@@ -41,9 +41,7 @@ import type {
   ContactRequestProblem,
   ContactSaveResult,
   ContactVersion,
-  ContactsPlugin,
   DisplayOnlyName,
-  ListContactsOptions,
   NameScreen,
   NameSurface,
   ReviewedContact,
@@ -54,16 +52,11 @@ export type * from "./definitions/contacts.ts"
 module capacitor {
   import { registerPlugin } from "@capacitor/core"
   import { Cause, Effect, Exit } from "effect"
-  import type { AddressBookNativePlugin, ContactsPlugin } from "./definitions/contacts.ts"
+  import type { AddressBookNativePlugin } from "./definitions/contacts.ts"
 
   /** @throws {never} */
-  export function addressBookPlugin(name = "ElizaContacts"): AddressBookNativePlugin {
+  export function addressBookPlugin(name: string): AddressBookNativePlugin {
     return registerPlugin<AddressBookNativePlugin>(name)
-  }
-
-  /** @throws {never} */
-  export function contactsPlugin(name = "ElizaContacts"): ContactsPlugin {
-    return registerPlugin<ContactsPlugin>(name)
   }
 
   /** @throws {never} */
@@ -73,8 +66,8 @@ module capacitor {
     throw Cause.squash(exit.cause)
   }
 }
-import { addressBookPlugin, contactsPlugin, settled } from capacitor
-export { addressBookPlugin, contactsPlugin }
+import { addressBookPlugin, settled } from capacitor
+export { addressBookPlugin }
 
 export const CONTACT_PHONE_TYPES = [
   "home",
@@ -111,7 +104,7 @@ export const ADDRESS_BOOK_DEFAULT_PAGE = 50
 export const CONTACT_NAMES_MAX = maxNamedNumbers
 export const CONTACT_PHOTO_MAX = 48 * 1024
 
-export type ContactsMethod = keyof AddressBookNativePlugin | keyof ContactsPlugin
+export type ContactsMethod = keyof AddressBookNativePlugin
 
 export error MalformedContactReply { method: ContactsMethod; issue: string }
 export error ContactCallRejected { method: ContactsMethod; rejection: unknown }
@@ -253,23 +246,6 @@ const Named = Schema.Struct({
   })).check(Schema.isMaxLength(maxNamedNumbers)),
 })
 schema Returned { status: "returned" }
-schema Permission { contacts: "granted" | "denied" | "prompt" | "prompt-with-rationale" }
-const Summaries = Schema.Struct({
-  contacts: Schema.mutable(
-    Schema.Array(
-      Schema.Struct({
-        id: Schema.String,
-        lookupKey: Schema.String,
-        displayName: Schema.String,
-        phoneNumbers: Schema.mutable(Schema.Array(Schema.String)),
-        emailAddresses: Schema.mutable(Schema.Array(Schema.String)),
-        photoUri: Schema.optionalKey(Schema.String),
-        starred: Schema.Boolean,
-      }),
-    ),
-  ),
-})
-
 effect function decoded<A>(method: ContactsMethod, shape: Schema.Decoder<A>, raw: unknown): A!MalformedContactReply {
   return try mapError(Schema.decodeUnknownEffect(shape, strict)(raw), (refusal) => new MalformedContactReply({ method, issue: refusal.message }))
 }
@@ -336,7 +312,7 @@ export effect function parseContactSave(value: unknown, updated?: ContactId): Co
 export effect function parseContactRemove(value: unknown): ContactRemoveResult!MalformedContactReply {
   const removed = try decoded("remove", Removed, value)
   if (removed.status !== "queued") return { status: removed.status }
-  const deletion = try mapError(parseStagedDeletion("ElizaContacts", "remove", "contact", removed.deletion), (bad) => new MalformedContactReply({ method: "remove", issue: bad.issue }))
+  const deletion = try mapError(parseStagedDeletion("AddressBookPlugin", "remove", "contact", removed.deletion), (bad) => new MalformedContactReply({ method: "remove", issue: bad.issue }))
   return { status: "queued", deletion }
 }
 
@@ -552,7 +528,7 @@ effect function remove(book: Book, plugin: AddressBookNativePlugin, install: Con
 }
 
 export function createAddressBookClient(options: AddressBookClientOptions): AddressBookClient {
-  const { install, plugin = addressBookPlugin(), journal = actionJournalPlugin() } = options
+  const { install, plugin, journal = actionJournalPlugin() } = options
   const book = Effect.runSync(held())
   return {
     open: () => settled(open(book, plugin)),
@@ -599,27 +575,10 @@ effect function resolveNames(screens: Screens, plugin: AddressBookNativePlugin, 
   })
 }
 
-export function createContactNames(plugin: AddressBookNativePlugin = addressBookPlugin()): ContactNamesClient {
+export function createContactNames(plugin: AddressBookNativePlugin): ContactNamesClient {
   const screens: Screens = Effect.runSync(Ref.make<ReadonlyMap<NameSurface, number>>(new Map()))
   return {
     resolve: (screen) => settled(resolveNames(screens, plugin, screen)),
     close: (surface) => settled(effect { try advance(screens, surface) }),
-  }
-}
-
-effect function summaries(plugin: ContactsPlugin, options: ListContactsOptions) {
-  const query = options.query ?? ""
-  const limit = options.limit ?? ADDRESS_BOOK_DEFAULT_PAGE
-  if (!bounded(pageAsk(query, limit))) throw new InvalidContactRequest({ problem: "unbounded-page" })
-  const found = try reply("listContacts", Summaries, () => plugin.listContacts({ query, limit }))
-  if (found.contacts.length > limit) throw new MalformedContactReply({ method: "listContacts", issue: "The page is longer than its limit" })
-  return found
-}
-
-export function contactsClient(plugin: ContactsPlugin = contactsPlugin()): ContactsPlugin {
-  return {
-    checkPermissions: () => settled(reply("checkPermissions", Permission, () => plugin.checkPermissions())),
-    requestPermissions: () => settled(reply("requestPermissions", Permission, () => plugin.requestPermissions())),
-    listContacts: (options) => settled(summaries(plugin, options)),
   }
 }

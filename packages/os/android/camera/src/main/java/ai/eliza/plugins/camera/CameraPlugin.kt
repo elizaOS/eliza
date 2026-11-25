@@ -69,7 +69,7 @@ import kotlin.math.roundToInt
 class CameraPlugin : Plugin() {
 
     private companion object {
-        const val FIRST_FRAME_TRACE = "alpha.camera.firstFrame"
+        const val FIRST_FRAME_TRACE = "eliza.camera.firstFrame"
         const val FIRST_FRAME_TIMEOUT_MS = 5000L
         // Safety net only: CameraX normally reports every unbound capture itself.
         const val CAPTURE_SETTLE_TIMEOUT_MS = 15000L

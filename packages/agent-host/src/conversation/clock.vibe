@@ -1,6 +1,6 @@
 // spec/agent/conversation/planning.md, "Story: Ask what time it is and hear my own clock"; spec/agent/conversation/planning.md, "Each turn's model sees the clock of the phone's zone, else the launch zone, else the host's, and it is the owner's local time only from the phone or, for the owner, the launch"; spec/agent/conversation/planning.md, "A standalone answer to a current-time question that names a date, weekday or clock the clock did not observe is asked for again, and the clock's own reading is the last resort"; spec/agent/conversation/planning.md, "A reply that gives a just-changed calendar event a time range other than the one it got is asked for again, and the change's own words are the last resort"
 import type { ActionResult, Memory } from "@elizaos/core"
-import { clockSource, eventRangeIsUngrounded, statedTimeIsUngrounded, type LocalClock, type StatedTime } from "../../gen/agent__conversation__planning.ts"
+import { clockSource, eventTimeIsUngrounded, eventTimeMatches, statedTimeIsUngrounded, type EventTimeClaim, type LocalClock, type StatedTime } from "../../gen/agent__conversation__planning.ts"
 import { knownZone, readTurnContext } from "@elizaos/agent"
 
 export interface TurnClock {
@@ -92,12 +92,9 @@ export function ungroundedTimeReply(reply: string, request: string, clock: TurnC
 
 const clockRange = /\b(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)?\s*(?:-|–|—|to|until|till)\s*(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)(?![a-z])|\b([01]?\d|2[0-3]):([0-5]\d)\s*(?:-|–|—|to|until|till)\s*([01]?\d|2[0-3]):([0-5]\d)\b/gi
 const clockMention = /\b\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?)(?![a-z])|\b(?:[01]?\d|2[0-3]):[0-5]\d\b/i
+const moveFrom = /\bmoved\b[^,;:.!?\n]{0,80}\bfrom\s+$/i
+const intervalFrom = /\b(?:is|runs?|lasts?|now)\s+from\s+$/i
 const changeOperations: ReadonlySet<string> = new Set(["calendar.event.create", "calendar.event.update"])
-
-interface StatedRange {
-  readonly start: number
-  readonly end: number
-}
 
 function minuteOf(hour: string | undefined, minute: string | undefined, half: string | undefined): number | undefined {
   const h = Number(hour), m = Number(minute ?? "0")
@@ -106,13 +103,17 @@ function minuteOf(hour: string | undefined, minute: string | undefined, half: st
   return h >= 1 && h <= 12 ? ((h % 12) + (/^p/i.test(half) ? 12 : 0)) * 60 + m : undefined
 }
 
-function oneRange(reply: string): StatedRange | undefined {
+function statedEventTime(reply: string): EventTimeClaim | undefined {
   const found = [...reply.matchAll(clockRange)]
   const [only] = found
   if (only === undefined || found.length !== 1 || clockMention.test(reply.replace(only[0], " "))) return undefined
   const start = only[1] !== undefined ? minuteOf(only[1], only[2], only[3] ?? only[6]) : minuteOf(only[7], only[8], undefined)
   const end = only[1] !== undefined ? minuteOf(only[4], only[5], only[6]) : minuteOf(only[9], only[10], undefined)
-  return start === undefined || end === undefined ? undefined : { start, end }
+  if (start === undefined || end === undefined) return undefined
+  const lead = reply.slice(0, only.index)
+  return /\bto\b/i.test(only[0]) && moveFrom.test(lead) && !intervalFrom.test(lead)
+    ? { tag: "EventMoveStart", start: end }
+    : { tag: "EventTimeRange", start, end }
 }
 
 function namesAZone(reply: string): boolean {
@@ -165,16 +166,18 @@ function changedEvent(result: ActionResult, agentId: string): ChangedEvent | und
 }
 
 export function ungroundedEventReply(reply: string, request: string, results: readonly ActionResult[], agentId: string): Ungrounded | undefined {
-  const stated = oneRange(reply)
+  const stated = statedEventTime(reply)
   const changed = [...new Map(results.flatMap((result) => {
     const event = changedEvent(result, agentId)
     return event === undefined ? [] : [[event.key, event] as const]
   })).values()]
   const [event] = changed
-  const matches = event !== undefined && stated !== undefined && stated.start === event.start && stated.end === event.end
-  if (event === undefined || !eventRangeIsUngrounded(timeQuestion.test(request.trim()), stated !== undefined, namesAZone(reply), changed.length, matches)) return undefined
+  if (event === undefined || stated === undefined || !eventTimeIsUngrounded(
+    timeQuestion.test(request.trim()), true, namesAZone(reply), changed.length, eventTimeMatches(stated, event.start, event.end)
+  )) return undefined
+  const claim = stated.tag === "EventMoveStart" ? "start time" : "time range"
   return {
-    note: `The calendar change this turn applied reports ${JSON.stringify(event.words)}, and the reply gave that event another time range. State the time the change reports.`,
+    note: `The calendar change this turn applied reports ${JSON.stringify(event.words)}, and the reply gave that event another ${claim}. State the time the change reports.`,
     fixed: event.words,
   }
 }

@@ -27,4 +27,3 @@ export interface LoggerBindings extends Record<string, unknown> {
 
   maxMemoryLogs?: number
 }
-

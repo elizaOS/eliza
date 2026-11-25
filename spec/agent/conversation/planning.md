@@ -472,8 +472,7 @@ refusal stays open as a call that did not start, even if the action later
 runs. An open proposal is reported as awaiting the owner in the action's own
 copy, whatever the model's prose claims. An open failure is reported as that
 action's failure in the action's own words, except a failure with no
-receipt that a later run of its action may have answered under the rule
-below.
+receipt that a later step may have answered under the rule below.
 
 ```quint
 pure def isReceiptOperation(identity: StepIdentity): bool = match identity { | ReceiptOperation(_) => true | _ => false }
@@ -591,21 +590,31 @@ pure def lawTheFirstReplyAgainIsNoSecondAnswer(draft: Draft): bool = not(answere
 pure def lawANewAnswerIsASecondAnswer(sameAsFirst: bool): bool = answeredAgain(Answer, sameAsFirst) == not(sameAsFirst)
 ```
 
-### A failure with no receipt that a later run of its action may have answered is the model's to report, and its own words follow the reply unless the model stands by a reply without them
+### A failure with no receipt that a later step may have answered is the model's to report, and its own words follow the reply unless the model stands by a reply without them
 
 A call that failed or was refused without an effect receipt names nothing
-the host can match, so a later call of the same action that ran (it applied,
-proposed or had no effect) may have put it right: the model corrects its
-own call after a refusal, such as `8 + 9` after a stray argument or 4 PM
-after a misread 8 AM. It may also have been for another request, such as a
-second recipient. A later call can answer a failure only when the model saw
-that failure first, in an earlier planner response. Such a failure stays
-open (above), and only the model can tell whether the later call did what
-the failed one was for. When the reply leaves it out, its host note says a
-later call of that action ran, that when that later call did what the failed
-step was for the model gives its reply exactly as it was, word for word, and
-that otherwise the reply must say the failed step did not happen. When the model
-answers that note with its first reply again, word for word, it stands by
+the host can match, so a later call that ran may have put it right: a later
+call of the same action that applied, proposed or had no effect, when the
+model corrects its own call after a refusal, such as `8 + 9` after a stray
+argument or 4 PM after a misread 8 AM; or, for a failure whose action
+wrote no words for the owner, a later call of another action that applied
+or proposed, when the model reaches the same request through another
+action, such as a reminder one reminders action saved after another's call
+did not start, or a Files filter proposed to the phone after a call that did
+not start. A later call of another action that had no effect answers
+nothing, and nor does any later call of another action answer a failure
+whose action wrote words for the owner, such as a phone that cannot send a
+text or open its keypad from chat: those words reach the owner beside a
+reminder the turn set, whatever the reply claims. A later call may also
+have been for another request, such as a second recipient. A later call can answer a failure only
+when the model saw that failure first, in an earlier planner response. Such
+a failure stays open (above), and only the model can tell whether the later
+call did what the failed one was for. When the reply leaves it out, its host
+note names the failed call's action and says a later call of the turn ran,
+naming the actions of the later calls that may have answered it, that when that later call did what
+the failed step was for the model gives its reply exactly as it was, word
+for word, and that otherwise the reply must say the failed step did not
+happen. When the model answers that note with its first reply again, word for word, it stands by
 that reply, and when that reply is delivered, the failure's own words do not
 follow it. Otherwise the failure is reported as any failure is (above): a
 kept second answer reports it in the model's words, followed only by words
@@ -618,6 +627,9 @@ and safety copy are reported as above.
 
 ```quint
 pure def answerableLater(receiptless: bool, seenFirst: bool, ranLater: bool): bool = receiptless and seenFirst and ranLater
+pure def mayAnswer(sameAction: bool, ownerWords: bool, laterOutcome: StepOutcome): bool =
+  if (sameAction) laterOutcome == Applied or laterOutcome == Proposed or laterOutcome == NoEffect
+  else not(ownerWords) and (laterOutcome == Applied or laterOutcome == Proposed)
 pure def gaveAnAnswer(draft: Draft): bool = draft == Answer
 pure def standsBy(draft: Draft, sameAsFirst: bool): bool = gaveAnAnswer(draft) and sameAsFirst
 pure def followsTheReply(answerable: bool, asked: bool, stoodBy: bool, modelsReply: bool, safetyCopy: bool): bool =
@@ -637,6 +649,15 @@ pure def lawAFailureWithAReceiptStillFollows(seenFirst: bool, ranLater: bool, as
   followsTheReply(answerableLater(false, seenFirst, ranLater), asked, stoodBy, modelsReply, false)
 pure def lawAFailureInTheSameResponseStillFollows(receiptless: bool, ranLater: bool, asked: bool, stoodBy: bool, modelsReply: bool): bool =
   followsTheReply(answerableLater(receiptless, false, ranLater), asked, stoodBy, modelsReply, false)
+pure def lawALaterRunOfTheSameActionMayAnswer(ownerWords: bool): bool =
+  mayAnswer(true, ownerWords, Applied) and mayAnswer(true, ownerWords, Proposed) and mayAnswer(true, ownerWords, NoEffect)
+pure def lawAnotherActionsAppliedOrProposedCallMayAnswerAFailureWithoutWordsForTheOwner(laterOutcome: StepOutcome): bool =
+  mayAnswer(false, false, laterOutcome) == (laterOutcome == Applied or laterOutcome == Proposed)
+pure def lawAnotherActionsCallNeverAnswersAFailureWithWordsForTheOwner(laterOutcome: StepOutcome): bool = not(mayAnswer(false, true, laterOutcome))
+pure def lawAFailedOrRefusedCallAnswersNothing(sameAction: bool, ownerWords: bool): bool =
+  not(mayAnswer(sameAction, ownerWords, Failed)) and not(mayAnswer(sameAction, ownerWords, Rejected))
+pure def lawWithNoLaterCallThatMayAnswerTheFailureStillFollows(receiptless: bool, seenFirst: bool, asked: bool, stoodBy: bool, modelsReply: bool): bool =
+  followsTheReply(answerableLater(receiptless, seenFirst, false), asked, stoodBy, modelsReply, false)
 ```
 
 ### A coaching response stays in the planner transcript
@@ -659,7 +680,7 @@ pure def lawOrdinaryRefusalsRemainOutcomes(internal: bool): bool =
 ### A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole
 
 The system prompt's cue rule asks the model to write, with its first tool
-calls, only a brief cue that it heard the request, in the person's own
+calls, only a brief cue tagged `[promise]` that it heard the request, in the person's own
 language and its own words rather than a stock phrase. The rule describes
 what a cue is and lists none: a few natural words that the agent is looking
 or about to act, which never name the people, items, places, times, numbers
@@ -721,10 +742,11 @@ called: that may be an answer or an action the model meant to take (`Sure.`
 to `Text Sam I'm late`), so it is a draft that may be an answer (below).
 Blank text is `Silent`.
 
-The model says itself what a response with no tool call is. The cue rule
-asks it to begin such a response with one tag the person never sees:
-`[answer]` when the text is its complete reply, or `[promise]` when it only
-says it will do something. A tag after nothing but JSON objects or
+The model says itself what its text is. The cue rule asks it to begin
+all text it writes with one tag the person never sees: `[promise]` when the
+text only says it heard the request or will do something, as every cue
+does, or `[answer]` when the text is its complete reply, and to use only
+those two. A tag after nothing but JSON objects or
 bracketed calls counts too, and what came before it is no part of the reply
 (`{"query": "speed of light"}[answer] Light travels…` is delivered as
 `Light travels…`). The tag is for the host alone: the shell strips the exact lowercase tags
@@ -743,13 +765,32 @@ always the start of what it delivers, and
 streams nothing while the text so far, after a leading tag, begins with an
 object (below). Only a
 tag that leads the text, in any letter case (`[ANSWER]Sure, Bob.`), after nothing but JSON objects or bracketed calls,
-says what the response is, and the shell reads it before the form: with no tool call, text
+says what the response is; it may be followed at once by a link or another
+bracket (`[answer][Docs](https://…)` is delivered as `[Docs](https://…)`),
+and a leading angle tag takes its closing tag off in any letter case
+(`<ANSWER>Hi!</ANSWER>` is delivered as `Hi!`). The shell reads it before the form: with no tool call, text
 tagged `[answer]` is an `Answer` delivered at once, however short (`[answer]
 Done!`, `[answer] Hello!`), and text tagged `[promise]` is a `Cue`, never
-delivered (`[promise] Sure, one sec.`). Blank text, a cue beside a call
+delivered (`[promise] Sure, one sec.`), unless it asks the person
+something: text tagged `[promise]` whose last sentence is a question (it
+ends in `?`, `？` or `؟`, perhaps followed by an emoji, an emoticon, `!` or
+a list of options, outside quotes, code and addresses) is a draft that may
+be an answer, asked again once and then delivered (`[promise] Hi! What can
+I do for you today? 😊`, `[promise] Which Sam do you mean?`), and when the
+turn gives up after it with no step run, that question is the reply rather
+than nothing (once a tool has run, the question asked before the work is
+never delivered); a
+promise that asks still gets its one re-ask, so `[promise] I'll check your
+email now. Want me to check your calendar too?` is not delivered at once.
+`[promise] Let me open https://example.com/search?q=limes` and `[promise]
+What's the weather in Tokyo? Let me check that for you.` stay promises. A leading `[question]`, a tag the model sometimes writes though
+the rule names only two, is taken off and the text is read by its form, as
+if untagged; anywhere else it is the model's text. Two or more leading tags
+in a row (`[answer][promise] I'll check.`, `[Answer][Question] Which Sam?`)
+say nothing: all of them are taken off and the text is read by its form. Blank text, a cue beside a call
 written as text, and text that holds the agent host's words (below), are
 read by their form whatever the tag, and so is text written with tool
-calls: `[answer]` before an echoed host note is still no answer. Text with no tag is read by its form as above, so
+calls: `[answer]` before an echoed host note is still no answer (whether text with tool calls is spoken is the tag's, below). Text with no tag is read by its form as above, so
 a model that skips the tag still never ends a turn on a cue-shaped promise
 while tools are offered. In the second answer asked for an unreported
 failure (above), a `[promise]` is never an answer and an `[answer]` is one,
@@ -829,7 +870,14 @@ starts. When the owner asks for silence the model writes no cue, so none is
 spoken; the shell never reads the owner's message to decide. A cue at a
 later step is dropped with the rest of that step's text. A blank draft, or
 text with tool calls that is not cue-shaped (it is long, asks a question or
-carries data), is never spoken as acknowledgment.
+carries data), is never spoken as acknowledgment. The model says itself
+which text is its cue: text written with the first tool calls is the
+acknowledgment only when the model tagged it `[promise]`, saying it only
+heard the request or will do something. Text with tool calls that has no
+tag or is tagged `[answer]`, such as a claim that the work is done before
+it ran (`Sent.`, `Maps is open.`), is dropped with the step's text and
+never spoken, whatever its form; the tag never makes text that is not
+cue-shaped, or a later step's text, an acknowledgment.
 
 ```quint
 type DraftShape = Blank | CueShaped | CueBesideCall | CueBesideObject | OtherText | HostText
@@ -843,6 +891,13 @@ pure def readDraft(shape: DraftShape, calls: int, toolsWaiting: bool, declared: 
   else match declared {
     | DeclaredAnswer => Answer | DeclaredPromise => Cue | Undeclared => readByForm(shape, calls, toolsWaiting)
   }
+pure def heardAs(draft: Draft, declared: Declared, asks: bool, calls: int): Draft =
+  if (calls <= 0 and asks and declared == DeclaredPromise and draft == Cue) MaybeAnswer else draft
+pure def lawAPromiseThatAsksIsAskedOnceThenDelivered(stepsLeft: int): bool =
+  nextMove(heardAs(Cue, DeclaredPromise, true, 0), 0, stepsLeft, true) == Deliver
+  and (stepsLeft > 0 implies nextMove(heardAs(Cue, DeclaredPromise, true, 0), 0, stepsLeft, false) == AskAgain)
+pure def lawOnlyAPromiseThatAsksIsHeardAgain(draft: Draft, declared: Declared, asks: bool, calls: int): bool =
+  heardAs(draft, declared, asks, calls) == draft or (draft == Cue and declared == DeclaredPromise and asks and calls <= 0)
 pure def lawADeclaredAnswerIsDeliveredAtOnce(shape: DraftShape, toolsWaiting: bool, stepsLeft: int, askedAgain: bool): bool =
   (shape != Blank and shape != CueBesideCall and shape != HostText) implies nextMove(readDraft(shape, 0, toolsWaiting, DeclaredAnswer), 0, stepsLeft, askedAgain) == Deliver
 pure def lawADeclaredPromiseWithoutWorkIsNeverDelivered(shape: DraftShape, toolsWaiting: bool, stepsLeft: int, askedAgain: bool): bool =
@@ -854,6 +909,14 @@ pure def lawACueComesOnlyWithToolCallsOrBesideAWrittenCall(shape: DraftShape, ca
 pure def lawAShortReplyBesideWaitingToolsIsAskedOnceThenDelivered(stepsLeft: int): bool =
   readDraft(CueShaped, 0, true, Undeclared) == MaybeAnswer and nextMove(MaybeAnswer, 0, stepsLeft, true) == Deliver
   and (stepsLeft > 0 implies nextMove(MaybeAnswer, 0, stepsLeft, false) == AskAgain)
+pure def spokenCue(draft: Draft, calls: int, earlierCalls: int, declared: Declared): bool =
+  acknowledges(draft, calls, earlierCalls) and declared == DeclaredPromise
+pure def lawOnlyAPromiseWithTheFirstCallsIsSpoken(shape: DraftShape, calls: int, earlierCalls: int, toolsWaiting: bool, declared: Declared): bool =
+  spokenCue(readDraft(shape, calls, toolsWaiting, declared), calls, earlierCalls, declared)
+  iff (declared == DeclaredPromise and calls > 0 and earlierCalls == 0 and (shape == CueShaped or shape == CueBesideCall or shape == CueBesideObject))
+pure def lawAnAnswerOrUntaggedTextWithWorkIsNeverSpoken(shape: DraftShape, calls: int, earlierCalls: int, toolsWaiting: bool): bool =
+  not(spokenCue(readDraft(shape, calls, toolsWaiting, Undeclared), calls, earlierCalls, Undeclared))
+  and not(spokenCue(readDraft(shape, calls, toolsWaiting, DeclaredAnswer), calls, earlierCalls, DeclaredAnswer))
 pure def lawAnUntaggedCueNeverAnswersAFailureReAsk(sameAsFirst: bool): bool =
   not(answeredAgain(readDraft(CueShaped, 0, true, Undeclared), sameAsFirst)) and answeredAgain(readDraft(CueShaped, 0, true, DeclaredAnswer), false)
 pure def lawAFinishedReplyIsNeverReplacedByACue(sameAsFirst: bool): bool =
@@ -1061,7 +1124,15 @@ line could begin; what follows is shown once it can no longer be one, or
 with the reply, so neither the label, a note's lead line nor a history mark
 is ever streamed, spoken or stored. A note's later lines are not held: they
 carry the owner's own data, such as the page they are reading, which a true
-answer may quote. The notes stay in the model's request as they are.
+answer may quote. A later line of at least 32 characters that is a whole
+JSON object, before any external content a note quotes, such as the screen
+context's data, is the exception: a response that holds its first 32
+characters, with any spacing and in any letter case, is the host's words
+(`{"observation":{"view":"launchers",…`), since no answer quotes the host's
+raw data; the reply stream shows nothing from a `{` while the 32
+non-space characters after it could still be such an opening, looking only
+past what it has already shown, so a long reply full of braces streams at
+its own pace. The notes stay in the model's request as they are.
 
 ```quint
 pure def lawHostTextIsNeverAnAnswer(calls: int, toolsWaiting: bool, declared: Declared): bool =
@@ -1324,7 +1395,10 @@ successful result that carries the event (its id, start, end, zone and
 version, and a title naming no clock time) and its own applied create or
 update receipt for that event at that version, a reply that states one
 clock range, a start and an end such as "3–4 PM", is read on the event's
-own clock. When its start or end is not the event's, the model is asked
+own clock. An explicit move clause such as "moved your dentist from 3 PM
+to 4 PM" asserts the second clock as the event's new start. The receipt
+supplies the new start. When a range endpoint or a new start disagrees
+with the receipt, the model is asked
 once more with that action's own words as a host note (above), and its
 answer is kept when this check holds of it. Otherwise, or when that call
 fails, the reply is that action's own words. A reply
@@ -1333,14 +1407,21 @@ or an offset, and a turn that changed no event or more than one, are kept
 as they are; identical copies of one result count as one event.
 
 ```quint
-pure def eventRangeIsUngrounded(asksTime: bool, oneRange: bool, zoneStated: bool, changedEvents: int, rangeMatches: bool): bool =
-  not(asksTime) and oneRange and not(zoneStated) and changedEvents == 1 and not(rangeMatches)
-pure def lawTheAppliedRangeIsKept(asksTime: bool, oneRange: bool, zoneStated: bool, changedEvents: int): bool =
-  not(eventRangeIsUngrounded(asksTime, oneRange, zoneStated, changedEvents, true))
-pure def lawOnlyOneChangedEventJudgesARange(asksTime: bool, oneRange: bool, zoneStated: bool, changedEvents: int, rangeMatches: bool): bool =
-  eventRangeIsUngrounded(asksTime, oneRange, zoneStated, changedEvents, rangeMatches) implies changedEvents == 1
-pure def lawAZoneOrASingleClockIsLeftToTheReply(asksTime: bool, changedEvents: int, rangeMatches: bool): bool =
-  not(eventRangeIsUngrounded(asksTime, true, true, changedEvents, rangeMatches)) and not(eventRangeIsUngrounded(asksTime, false, false, changedEvents, rangeMatches))
+type EventTimeClaim = EventTimeRange({ start: int, end: int }) | EventMoveStart({ start: int })
+pure def eventTimeMatches(claim: EventTimeClaim, start: int, end: int): bool = match claim {
+  | EventTimeRange(times) => times.start == start and times.end == end
+  | EventMoveStart(time) => time.start == start
+}
+pure def eventTimeIsUngrounded(asksTime: bool, timeStated: bool, zoneStated: bool, changedEvents: int, timeMatches: bool): bool =
+  not(asksTime) and timeStated and not(zoneStated) and changedEvents == 1 and not(timeMatches)
+pure def lawTheAppliedTimeIsKept(asksTime: bool, timeStated: bool, zoneStated: bool, changedEvents: int): bool =
+  not(eventTimeIsUngrounded(asksTime, timeStated, zoneStated, changedEvents, true))
+pure def lawOnlyOneChangedEventJudgesItsTime(asksTime: bool, timeStated: bool, zoneStated: bool, changedEvents: int, timeMatches: bool): bool =
+  eventTimeIsUngrounded(asksTime, timeStated, zoneStated, changedEvents, timeMatches) implies changedEvents == 1
+pure def lawAZoneOrASingleClockIsLeftToTheReply(asksTime: bool, changedEvents: int, timeMatches: bool): bool =
+  not(eventTimeIsUngrounded(asksTime, true, true, changedEvents, timeMatches)) and not(eventTimeIsUngrounded(asksTime, false, false, changedEvents, timeMatches))
+pure def lawAMoveChecksTheNewStart(statedStart: int, eventStart: int, eventEnd: int): bool =
+  eventTimeMatches(EventMoveStart({ start: statedStart }), eventStart, eventEnd) iff statedStart == eventStart
 pure val changedEventsValues = Set(0, 1, 2)
 ```
 

@@ -36,15 +36,15 @@ function object(properties: Record<string, ActionParameterSchema>, required: rea
 const targetSchema = object({ sourceId: string, sourceRevision: string, eventId: string, revision: string })
 const sourceSchema = object({ sourceId: string, sourceRevision: string })
 const fieldsSchema = object({
-  title: { type: "string", description: "The event title in the owner's own words." },
-  description: { type: "string", description: "Only what the owner said to note; otherwise empty." },
-  location: { type: "string", description: "Only the place the owner named; otherwise empty." },
-  start: { type: "string", description: "Canonical UTC ISO instant with exactly three millisecond digits, e.g. 2026-10-04T15:00:00.000Z: the day and clock time the owner said, on the phone's clock this turn; today when the owner stated no day." },
-  end: { type: "string", description: "Canonical UTC ISO instant with three millisecond digits, strictly after start: the end or length the owner said, else one hour after start." },
-  timeZone: { type: "string", description: "The phone's IANA time zone this turn." },
+  title: { type: "string", description: "Title in owner's words." },
+  description: { type: "string", description: "Notes if stated, else empty." },
+  location: { type: "string", description: "Place if stated, else empty." },
+  start: { type: "string", description: "UTC ISO w/ 3ms (2026-10-04T15:00:00.000Z): stated day/clock on phone clock (today if day omitted)." },
+  end: { type: "string", description: "UTC ISO w/ 3ms, > start (stated end/length, else +1h)." },
+  timeZone: { type: "string", description: "Phone IANA zone this turn." },
 })
 const typed = (type: string) => ({ type: "string", enum: [type] }) satisfies ActionParameterSchema
-const recordName = { type: "string", description: "The event name exactly as the owner said it. Never an ID or revision." } satisfies ActionParameterSchema
+const recordName = { type: "string", description: "Exact spoken event name; never an ID/revision." } satisfies ActionParameterSchema
 
 const has = (device: NegotiatedDevice, ...names: readonly string[]) => names.every((name) => device.capabilities.includes(name))
 
@@ -126,21 +126,21 @@ function form(key: FormKey, schema: ActionParameterSchema, type: DeviceOperation
 
 const forms: readonly ProposalForm[] = [
   form("next", object({ type: typed("calendar_read_next") }), "calendar_read_next",
-    "For next-event discovery use calendar_read_next; the phone fixes a window from now through the next 30 local days, discovers its readable calendars in a foreground review and shares only the approved next event, or that there is none. Never infer a calendar from what is on screen; no background access is granted."),
+    "calendar_read_next: next event in 30 local days via phone review; never infer from screen."),
   form("createLocal", object({ type: typed("calendar_create_local"), fields: fieldsSchema }), "calendar_create_local",
-    "For a request to add an event to the phone's own calendar use calendar_create_local, sent as operation { type, fields: { title, description, location, start, end, timeZone } } with start and end as UTC instants, never startAt or a length; the title is in the owner's words, description and location empty unless the owner gave them, and the day and time the owner said on the phone's clock; its start must be a clock time the owner said. It holds one timed event: repeats, guests and all-day events use the CALENDAR action. The phone saves it to its default On this phone calendar after the owner confirms it."),
+    "calendar_create_local: new timed event on phone's calendar ({type,fields:{title,description,location,start,end,timeZone}}, UTC instants, never startAt/length); title/clock in owner's words on phone clock, description/location empty unless stated. Repeats/guests/all-day use CALENDAR."),
   form("create", object({ type: typed("calendar_create"), source: sourceSchema, fields: fieldsSchema }), "calendar_create",
-    "calendar_create adds an event to the calendar selected on the phone; copy the selected calendar's source exactly."),
+    "calendar_create: add event to phone-selected calendar; copy exact source."),
   form("readSelected", object({ type: typed("calendar_read_selected"), target: targetSchema }), "calendar_read_selected",
-    "calendar_read_selected shares the event selected on the phone after the owner approves; copy its exact target. To move the selected event to a new time or by an amount, change when it ends, rename it, or change its place or notes, one or several of these at once, propose calendar_read_selected: once the owner shares it, those changes are prepared for a separate review."),
+    "calendar_read_selected: share phone-selected event (copy exact target); also use first to move/edit it (changes reviewed separately)."),
   form("delete", object({ type: typed("calendar_delete"), target: targetSchema }), "calendar_delete",
-    "calendar_delete deletes the event selected on the phone, only when the owner asked to delete it; copy its exact target."),
+    "calendar_delete: delete phone-selected event only if asked; copy exact target."),
   form("namedRead", object({ type: typed("calendar_named"), action: typed("read"), name: recordName }), "calendar_named",
-    "To move a Calendar event the owner names from Home or Calendar to a new time or by an amount, change when it ends, rename it, or change its place or notes, one or several of these at once, use calendar_named with action read and only the spoken name: the owner chooses the matching event and shares it, and those changes are then reviewed separately."),
+    "calendar_named action=read (spoken name only, Home/Calendar): owner picks/shares event, then edits review separately."),
   form("namedDelete", object({ type: typed("calendar_named"), action: typed("delete"), name: recordName }), "calendar_named",
-    "To delete a Calendar event the owner names, use calendar_named with action delete and only the spoken name; the owner chooses the matching event on the phone."),
-  form("availability", object({ type: typed("calendar_availability"), start: { type: "string", description: "Canonical UTC ISO instant with three millisecond digits: the start of the window the owner asked about, on the phone's clock this turn." }, end: { type: "string", description: "Canonical UTC ISO instant, after start and at most seven days later." }, timeZone: fieldsSchema.properties?.timeZone ?? string }), "calendar_availability",
-    "Free/busy questions use calendar_availability with the window the owner asked about as UTC instants on the phone's clock this turn (a morning ends by noon, a whole day runs from midnight to midnight, one clock time covers an hour) and the phone's zone. The owner selects which calendars the phone reads; only busy intervals are shared, never titles. Events marked free are ignored, tentative events count as busy, all-day events block their whole local days. Report the returned status and intervals only."),
+    "calendar_named action=delete (spoken name only): owner picks event to delete on phone."),
+  form("availability", object({ type: typed("calendar_availability"), start: { type: "string", description: "UTC ISO w/ 3ms: window start on phone clock." }, end: { type: "string", description: "UTC ISO w/ 3ms: > start, <=7d." }, timeZone: fieldsSchema.properties?.timeZone ?? string }), "calendar_availability",
+    "calendar_availability: free/busy window as UTC instants on phone clock (morning<=12:00, whole day 00:00-00:00, single clock=1h) + phone zone. Returns busy intervals only (free ignored, tentative/all-day busy). Report only returned status/intervals."),
 ]
 
 const refused = (code: string, forModel: string, forOwner: string): Refusal => ({ kind: "Refused", code, forModel, forOwner })
@@ -396,7 +396,7 @@ export function calendarProposalFamily(runtime: IAgentRuntime): DeviceProposalFa
     app: calendarContext.id,
     types: ["calendar_read_next", "calendar_create_local", "calendar_create", "calendar_read_selected", "calendar_update", "calendar_delete", "calendar_availability", "calendar_named"],
     forms,
-    guidance: () => ["Phone-native Calendar data uses these device reviews. A next-event read works from any screen; a named event, availability check or new event on the phone's own calendar works from Home or Calendar; an operation on an exact event or calendar needs it selected on the phone. Other Calendar requests, including a new event the owner did not ask to put on the phone's calendar, and any turn with an app Calendar selection, use the CALENDAR action; a phone capability never redirects an app record."],
+    guidance: () => ["Phone-native Calendar device reviews: next-event works anywhere; named/availability/create_local work from Home or Calendar; exact event/calendar ops require phone selection. Other requests (incl. non-phone new events or app Calendar selections) use CALENDAR."],
     prepare: instantsInUtc,
     ground: (proposed, turn) => succeed(groundCalendar(proposed.operation, turn)),
     proposedText: proposedCalendarText,

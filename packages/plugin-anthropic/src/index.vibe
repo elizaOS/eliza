@@ -223,7 +223,7 @@ effect function inference(runtime: IAgentRuntime, params: GenerateTextParams, ti
     hasSchema: params.responseSchema !== undefined, wantsStream: params.stream === true, streamingAllowed: setting(runtime, "ELIZA_ANTHROPIC_DISABLE_STREAM") !== "true",
   }
   const model = params.model || setting(runtime, "ANTHROPIC_" + tier + "_MODEL") || setting(runtime, "ANTHROPIC_MODEL") || "claude-sonnet-4-6"
-  const capacity = Number(setting(runtime, "ANTHROPIC_MAX_OUTPUT_TOKENS") || 8192)
+  const capacity = Number(setting(runtime, "ANTHROPIC_MAX_OUTPUT_TOKENS") || 64000)
   const cap: AnthropicOutputCap = params.maxTokens === undefined || params.omitMaxTokens ? { tag: "AutoCap" } : { tag: "AskedCap", tokens: params.maxTokens }
   const maxTokens = anthropicOutputBudget(capacity, cap)
   const transport = anthropicTransport(auth, input)
@@ -260,12 +260,20 @@ effect function inference(runtime: IAgentRuntime, params: GenerateTextParams, ti
       .filter((part) => part !== undefined).join("\n\n")
     const messages = params.messages?.filter((message) => message.role !== "system" && message.role !== "developer").map(messageWire)
       ?? [{ role: "user", content: params.prompt ?? "" }]
+    const wireTools = params.tools?.map((tool, index, all) => ({
+      name: tool.name,
+      description: tool.description,
+      input_schema: tool.parameters ?? { type: "object" },
+      ...(index === all.length - 1 ? { cache_control: { type: "ephemeral" as const } } : {}),
+    }))
     const wire = {
-      model, system: system === "" ? undefined : system, messages, max_tokens: maxTokens,
+      model,
+      system: system === "" ? undefined : [{ type: "text" as const, text: system, cache_control: { type: "ephemeral" as const } }],
+      messages, max_tokens: maxTokens,
       temperature: sampling === "TemperatureOne" ? 1 : sampling === "RequestedTemperature" ? params.temperature : sampling === "DefaultSampling" ? 0.7 : undefined,
       top_p: sampling === "RequestedTopP" ? params.topP : undefined,
       stream: transport === "SdkStream", stop_sequences: params.stopSequences,
-      tools: params.tools?.map((tool) => ({ name: tool.name, description: tool.description, input_schema: tool.parameters ?? { type: "object" } })),
+      tools: wireTools,
       tool_choice: toolChoice,
       output_config: params.responseSchema === undefined ? undefined : { format: { type: "json_schema", schema: params.responseSchema } },
     }
@@ -322,7 +330,7 @@ function describe(runtime: IAgentRuntime, input: ImageDescriptionParams | string
     const candidate = /^data:(image\/(?:png|jpeg|gif|webp));base64,(.+)$/.exec(params.imageUrl)
     const source = candidate === null ? { type: "url", url: params.imageUrl } : { type: "base64", media_type: candidate[1], data: candidate[2] }
     const answer = try sdkAnswer(runtime, secret, {
-      model: setting(runtime, "ANTHROPIC_IMAGE_MODEL") || "claude-sonnet-4-6", max_tokens: 4096,
+      model: setting(runtime, "ANTHROPIC_IMAGE_MODEL") || "claude-sonnet-4-6", max_tokens: 16384,
       messages: [{ role: "user", content: [{ type: "image", source }, { type: "text", text: params.prompt ?? "Describe this image." }] }],
     })
     if (!["end_turn", "stop_sequence"].includes(answer.stop_reason ?? "")) throw new AnthropicFailed({ reason: "Anthropic image description did not complete." })

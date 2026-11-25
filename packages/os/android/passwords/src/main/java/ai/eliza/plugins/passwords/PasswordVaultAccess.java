@@ -114,7 +114,9 @@ public final class PasswordVaultAccess {
   String blockedDeviceReason() {
     if (!admitted(context)) return "not-admitted";
     if (!ownerForeground()) return "device-locked";
-    if (!needsLegacyAuthorization()) return null;
+    return needsLegacyAuthorization() ? legacyReason() : null;
+  }
+  String legacyReason() {
     try { return legacyStore.unrecoverable() ? "legacy-key-unavailable" : "legacy-authorization-required"; }
     catch (Exception unavailable) { return "legacy-authorization-required"; }
   }

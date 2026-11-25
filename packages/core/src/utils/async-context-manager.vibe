@@ -1,5 +1,4 @@
 // spec/core/asyncContext.md, "Story: Keep concurrent turn context isolated"; spec/core/asyncContext.md, "A continuation owns its current context and restoration stack"; spec/core/asyncContext.md, "Scope restoration and peer isolation are exact for every context value"
-
 module platform {
   import { createAsyncContextStorage, type AsyncContextStorage } from "./async-context-storage.vibe"
 

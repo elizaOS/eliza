@@ -1,19 +1,20 @@
-// spec/agent/notifications.md, "A list query is refused unless each parameter is given once and well formed"; spec/agent/notifications.md, "A native page takes no filter and names its epoch to continue"; spec/agent/notifications.md, "An owner list holds only visible notices that match its filter, newest first"; spec/agent/notifications.md, "An inbox that is not durably available answers 503, never an empty list"; spec/agent/notifications.md, "Marking a notice read answers ok only when this call durably marked an unread notice"
+// spec/agent/notifications.md, "A list query asks for the native page, with each parameter given once and well formed"; spec/agent/notifications.md, "An inbox that is not durably available answers 503, never an empty list"; spec/agent/notifications.md, "Marking a notice read answers ok only when this call durably marked an unread notice"
 import { NotificationNativeError, NotificationService, logger, type AgentNotification, type AgentRuntime, type NativeNotificationQuery } from "@elizaos/core"
-import { emptyNotice, type WriteOutcome } from "../../gen/core__notifications.effect.vibe"
-import { listAnswer, listRequest, markReadAnswer, unreadNotice, type DecimalText, type EpochText, type InboxStatus, type ListAnswer, type ListParams, type MarkReadAnswer, type NoticeIdText, type Row } from "../../gen/agent__notifications.effect.vibe"
+import { emptyNotice, type Notice, type WriteOutcome } from "../../gen/core__notifications.effect.vibe"
+import { listAnswer, listRequest, markReadAnswer, unreadNotice, type DecimalText, type InboxStatus, type ListParams, type MarkReadAnswer, type NoticeIdText } from "../../gen/agent__notifications.effect.vibe"
 import type { LocalRoute } from "@elizaos/agent"
 
-const listKeys = ["category", "unreadOnly", "limit", "nativeTransport", "nativeEpoch", "afterSequence", "throughSequence"] as const
+const listKeys = ["nativeTransport", "nativeEpoch", "limit", "afterSequence", "throughSequence"] as const
 const decimal = /^(0|[1-9][0-9]*)$/
 const uuidShape = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-const currentEpoch = 0
-const otherEpoch = 1
 const startingRetrySeconds = 1
 
-interface Inbox {
+interface Availability {
   readonly status: InboxStatus
   readonly service: NotificationService | undefined
+}
+
+interface Inbox extends Availability {
   readonly notices: readonly AgentNotification[]
 }
 
@@ -23,24 +24,27 @@ const notDurable = (cause: unknown): boolean => cause instanceof NotificationNat
 
 effect function durableInbox(service: NotificationService) {
   const notices = try inboxCall(() => service.listDurableIncludingExpired())
-  return { status: "InboxReady" as const, service, notices: notices.toReversed() } satisfies Inbox
+  return { status: "InboxReady" as const, service, notices } satisfies Inbox
 }
 
-effect function inboxOf(runtime: AgentRuntime) {
+function availabilityOf(runtime: AgentRuntime): Availability {
   const found = runtime.getService(NotificationService.serviceType)
   const service = found instanceof NotificationService ? found : undefined
   switch (NotificationService.getAvailability(runtime)) {
-    case "registered": {
-      if (service === undefined) return absent("InboxStarting")
-      return durableInbox(service) catch effect (failure) => {
-        if (!notDurable(failure.cause)) throw failure
-        return absent("InboxClosed")
-      }
-    }
+    case "registered": return service === undefined ? absent("InboxStarting") : { status: "InboxReady", service }
     case "pending":
     case "registering": return absent("InboxStarting")
     case "failed": return absent("InboxFailed")
     case "disabled": return absent("InboxClosed")
+  }
+}
+
+effect function inboxOf(runtime: AgentRuntime) {
+  const available = availabilityOf(runtime)
+  if (available.service === undefined) return { ...available, notices: [] } satisfies Inbox
+  return durableInbox(available.service) catch effect (failure) => {
+    if (!notDurable(failure.cause)) throw failure
+    return absent("InboxClosed")
   }
 }
 
@@ -49,46 +53,37 @@ function decimalText(text: string): DecimalText {
   return decimal.test(text) && Number.isSafeInteger(value) ? { tag: "Decimal", value } : { tag: "NotDecimal" }
 }
 
-function epochText(text: string, current: string | undefined): EpochText {
-  return uuidShape.test(text) ? { tag: "KnownEpoch", epoch: text.toLowerCase() === current ? currentEpoch : otherEpoch } : { tag: "NotUuid" }
-}
-
-function listParams(query: ReadonlyMap<string, string>, current: string | undefined): ListParams {
+function listParams(query: ReadonlyMap<string, string>): ListParams {
   const given = (key: typeof listKeys[number]): string[] => query.has(key) ? [query.get(key) ?? ""] : []
   return {
-    category: given("category"),
-    unreadOnly: given("unreadOnly"),
-    limit: given("limit").map(decimalText),
     nativeTransport: given("nativeTransport"),
-    nativeEpoch: given("nativeEpoch").map((text) => epochText(text, current)),
+    nativeEpoch: given("nativeEpoch").map((text) => uuidShape.test(text) ? "EpochUuid" : "NotUuid"),
+    limit: given("limit").map(decimalText),
     afterSequence: given("afterSequence").map(decimalText),
     throughSequence: given("throughSequence").map(decimalText),
   }
 }
 
-function nativeQuery(query: ReadonlyMap<string, string>, limit: number): NativeNotificationQuery {
+function nativeQuery(query: ReadonlyMap<string, string>): NativeNotificationQuery {
   const epoch = query.get("nativeEpoch")
+  const limit = query.get("limit")
   const after = query.get("afterSequence")
   const through = query.get("throughSequence")
   return {
-    limit,
+    ...(limit === undefined ? {} : { limit: Number(limit) }),
     ...(epoch === undefined ? {} : { nativeEpoch: epoch }),
     ...(after === undefined ? {} : { afterSequence: Number(after) }),
     ...(through === undefined ? {} : { throughSequence: Number(through) }),
   }
 }
 
-function rowOf(notice: AgentNotification): Row {
+function noticeOf(notice: AgentNotification): Notice {
   return {
-    notice: {
-      ...emptyNotice,
-      id: notice.id,
-      sequence: notice.nativeSequence ?? 0,
-      read: notice.readAt != null,
-      expiry: notice.expiresAt == null ? { mode: "Permanent", at: 0 } : { mode: "Deadline", at: notice.expiresAt },
-    },
-    category: notice.category,
-    silent: notice.priority === "low",
+    ...emptyNotice,
+    id: notice.id,
+    sequence: notice.nativeSequence ?? 0,
+    read: notice.readAt != null,
+    expiry: notice.expiresAt == null ? { mode: "Permanent", at: 0 } : { mode: "Deadline", at: notice.expiresAt },
   }
 }
 
@@ -136,26 +131,17 @@ effect function nativePage(service: NotificationService, query: NativeNotificati
   return reply(200, page)
 }
 
-function ownerList(notices: readonly AgentNotification[], listed: Extract<ListAnswer, { tag: "Listed" }>): Answer {
-  const byId = new Map(notices.map((notice) => [notice.id, notice]))
-  const notifications = listed.notices.flatMap((row) => byId.get(row.notice.id) ?? [])
-  return reply(200, { notifications, unreadCount: listed.unreadCount, serviceStatus: "ready" })
-}
-
 effect function listAnswered(runtime: AgentRuntime, query: ReadonlyMap<string, string>) {
-  const checked = listRequest(listParams(query, undefined), currentEpoch, 0)
-  const inbox = checked.tag === "BadQuery" ? absent("InboxStarting") : try inboxOf(runtime)
-  const latest = inbox.notices.at(-1)
-  const request = checked.tag === "BadQuery" ? checked : listRequest(listParams(query, latest?.nativeEpoch), currentEpoch, latest?.nativeSequence ?? 0)
-  const answer: ListAnswer = listAnswer(request, inbox.status, inbox.notices.map(rowOf), try Clock.currentTimeMillis)
+  const request = listRequest(listParams(query))
+  const inbox = request === "BadQuery" ? absent("InboxStarting") : availabilityOf(runtime)
+  const answer = listAnswer(request, inbox.status)
   switch (answer.tag) {
     case "Refused": return reply(400, { error: "invalid_notification_query" })
     case "Unavailable": return unavailable(runtime, answer.recover)
-    case "Listed": return ownerList(inbox.notices, answer)
     case "PagedByCursor": {
-      if (request.tag !== "NativePage" || inbox.service === undefined) return unavailable(runtime, false)
       const service = inbox.service
-      return nativePage(service, nativeQuery(query, request.limit)) catch effect (failure) => {
+      if (service === undefined) return unavailable(runtime, false)
+      return nativePage(service, nativeQuery(query)) catch effect (failure) => {
         const refused = refusedByCore(failure.cause)
         if (refused === undefined) throw failure
         return refused
@@ -183,13 +169,13 @@ effect function markAnswered(runtime: AgentRuntime, id: string) {
   const requested: NoticeIdText = uuidShape.test(id) ? { tag: "NoticeUuid", id } : { tag: "NotNoticeUuid" }
   const inbox = requested.tag === "NotNoticeUuid" ? absent("InboxStarting") : try inboxOf(runtime)
   const service = inbox.service
-  const rows = inbox.notices.map(rowOf)
+  const rows = inbox.notices.map(noticeOf)
   const notWritten: WriteOutcome = "RejectedBefore"
   if (service === undefined || inbox.status !== "InboxReady" || !unreadNotice(rows, id)) {
     return markReply(runtime, markReadAnswer(requested, inbox.status, rows, notWritten))
   }
   const written = try marked(service, id)
-  if (written === false) return markReply(runtime, markReadAnswer(requested, inbox.status, service.listIncludingExpired().toReversed().map(rowOf), notWritten))
+  if (written === false) return markReply(runtime, markReadAnswer(requested, inbox.status, service.listIncludingExpired().map(noticeOf), notWritten))
   return markReply(runtime, markReadAnswer(requested, inbox.status, rows, written === true ? "Acknowledged" : "LostAcknowledgement"))
 }
 

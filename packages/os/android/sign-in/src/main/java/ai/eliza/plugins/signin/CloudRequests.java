@@ -95,10 +95,15 @@ public final class CloudRequests {
   }
 
   public Outcome send(String name, String apiOrigin, Custody custody, String method, String target, Map<String, String> headers, byte[] body) {
+    return send(name, apiOrigin, custody, method, target, headers, body, null);
+  }
+
+  public Outcome send(String name, String apiOrigin, Custody custody, String method, String target, Map<String, String> headers, byte[] body,
+      String expectedCredentialId) {
     Call call = new Call();
     if (name != null && calls.putIfAbsent(name, call) != null) return new Failed(Failure.NAME_IN_USE);
     try {
-      Outcome outcome = sent(call, apiOrigin, custody, method, target, headers, body, null);
+      Outcome outcome = sent(call, apiOrigin, custody, method, target, headers, body, null, expectedCredentialId);
       return call.cancelled ? new Failed(Failure.CANCELLED) : outcome;
     } finally {
       if (name != null) calls.remove(name, call);
@@ -107,13 +112,20 @@ public final class CloudRequests {
 
   public Outcome readMail(String apiOrigin, Custody custody, MailAuthority expected, String target, Map<String, String> headers) {
     if (expected == null) return new Failed(Failure.SIGN_IN_REQUIRED);
-    return sent(new Call(), apiOrigin, custody, "GET", target, headers, null, expected);
+    return sent(new Call(), apiOrigin, custody, "GET", target, headers, null, expected, null);
   }
 
-  private Outcome sent(Call call, String apiOrigin, Custody custody, String method, String target, Map<String, String> headers, byte[] body, MailAuthority expected) {
+  private static boolean keepsCredential(CredentialReader.Credential key, CredentialPolicy.State state, String expected) {
+    return key != null && state.custody() instanceof CredentialPolicy.Custody.Active active
+      && key.version() == active.version() && expected.equals(key.credentialId()) && expected.equals(active.credentialId());
+  }
+
+  private Outcome sent(Call call, String apiOrigin, Custody custody, String method, String target, Map<String, String> headers, byte[] body,
+      MailAuthority expected, String expectedCredentialId) {
     DeviceCredentialStore store = custody.credentials();
     CredentialReader.Credential key = store.current();
     CredentialPolicy.State snapshot = store.state();
+    if (expectedCredentialId != null && !keepsCredential(key, snapshot, expectedCredentialId)) return new Failed(Failure.SIGN_IN_REQUIRED);
     if (expected != null && !expected.equals(authorityOf(snapshot))) return new Failed(Failure.SIGN_IN_REQUIRED);
     int active = CredentialPolicy.activeVersion(snapshot);
     int version = key == null || key.version() != active ? 0 : active;
@@ -141,6 +153,7 @@ public final class CloudRequests {
       case RefreshLeaseFirst refresh -> { return new Failed(Failure.NETWORK); }
       case Send send -> attach = send.attach();
     }
+    if (expectedCredentialId != null && !(attach instanceof WithKey)) return new Failed(Failure.SIGN_IN_REQUIRED);
     String bearer = switch (attach) {
       case WithKey k -> key.value();
       case WithSession s -> session;
@@ -150,6 +163,7 @@ public final class CloudRequests {
     HttpURLConnection connection = null;
     try {
       if (expected != null && !expected.equals(custody.mailAuthority())) return new Failed(Failure.SIGN_IN_REQUIRED);
+      if (expectedCredentialId != null && !keepsCredential(key, store.state(), expectedCredentialId)) return new Failed(Failure.SIGN_IN_REQUIRED);
       connection = (HttpURLConnection) URI.create(apiOrigin + target).toURL().openConnection();
       call.connection = connection;
       if (call.cancelled) return new Failed(Failure.CANCELLED);

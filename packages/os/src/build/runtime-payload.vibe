@@ -187,6 +187,8 @@ error PayloadOutputExists { output: string }
 
 export const INVENTORY_ASSET = "assets/agent/inventory.json"
 const WORKER_RUNTIME_DIR = "agent/workflow-worker"
+const NODE_NOTICE_DIR = "notices/node"
+const NODE_NOTICE_NAME = "LICENSE"
 
 const ANDROID_MAIN = "android/app/src/main"
 export const INFERENCE_LIBRARY = /^(?:lib(?:llama|llama-common|ggml|mtmd|eliza-llama|elizainference)[^/]*\.so(?:\.\d[^/]*)?|llama-server|llama-omnivoice-server)$/
@@ -203,6 +205,7 @@ interface Runtime {
   readonly candidate: RuntimeCandidate
   readonly abi: AndroidAbi
   readonly bytes: Uint8Array
+  readonly notice?: Uint8Array
 }
 
 const specAbi = (abi: AndroidAbi): Abi => abi === "arm64-v8a" ? "Arm64" : "X86_64"
@@ -277,13 +280,20 @@ effect function builtRuntime(dir: string) {
   return runtime
 }
 
-effect function fetchedRuntime(lock: NodeLock, abi: AndroidAbi, url: string) {
-  const bytes = zipEntry(try download(url), nodeLibraryName)
-  if (bytes === undefined) throw new RuntimeFetchFailed({ url, message: `The release archive carries no readable ${nodeLibraryName}` })
+effect function fetchedRuntime(lock: typeof NodeLockFile.Type, abi: AndroidAbi, url?: string) {
+  const entry = lock.entries.find((candidate) => candidate.abi === abi && (url === undefined || candidate.url === url))
+  if (entry === undefined) throw new PayloadRefused({ reason: "RuntimeNotPinned", subject: abi })
+  const archive = try download(entry.url)
+  if (sha256Hex(archive) !== entry.archiveSha256) throw new PayloadRefused({ reason: "RuntimeNotPinned", subject: abi })
+  const bytes = zipEntry(archive, nodeLibraryName)
+  if (bytes === undefined) throw new RuntimeFetchFailed({ url: entry.url, message: `The release archive carries no readable ${nodeLibraryName}` })
+  const notice = zipEntry(archive, NODE_NOTICE_NAME)
+  if (notice === undefined || notice.byteLength === 0) throw new RuntimeFetchFailed({ url: entry.url, message: `The release archive carries no readable, nonempty ${NODE_NOTICE_NAME}` })
   const runtime: Runtime = {
     abi,
     bytes,
-    candidate: { abi: specAbi(abi), version: lock.version, ndk: lock.ndk, apiLevel: lock.apiLevel, sha256: sha256Hex(bytes), source: { tag: "Fetched", url } },
+    notice,
+    candidate: { abi: specAbi(abi), version: lock.version, ndk: lock.ndk, apiLevel: lock.apiLevel, sha256: sha256Hex(bytes), source: { tag: "Fetched", url: entry.url } },
   }
   return runtime
 }
@@ -292,12 +302,10 @@ effect function runtimesFor(options: StageRuntimePayload, lock: typeof NodeLockF
   const nodeLock: NodeLock = { version: lock.version, ndk: lock.ndk, apiLevel: lock.apiLevel, entries: lock.entries.map((entry) => ({ abi: specAbi(entry.abi), sha256: entry.sha256, url: entry.url })) }
   const runtimes: Runtime[] = []
   for (const input of options.runtimes ?? []) {
-    runtimes.push(input.kind === "built" ? try builtRuntime(input.dir) : try fetchedRuntime(nodeLock, input.abi, input.url))
+    runtimes.push(input.kind === "built" ? try builtRuntime(input.dir) : try fetchedRuntime(lock, input.abi, input.url))
   }
   for (const abi of options.abi.filter((target) => !runtimes.some((runtime) => runtime.abi === target))) {
-    const entry = lock.entries.find((candidate) => candidate.abi === abi)
-    if (entry === undefined) throw new PayloadRefused({ reason: "RuntimeNotPinned", subject: `${abi} has no entry in the Node lock` })
-    runtimes.push(try fetchedRuntime(nodeLock, abi, entry.url))
+    runtimes.push(try fetchedRuntime(lock, abi))
   }
   return { nodeLock, runtimes }
 }
@@ -309,7 +317,7 @@ effect function bundleFiles(bundleDir: string) {
   for (const required of ["agent.mjs", "manifest.json"]) {
     if (!names.includes(required)) throw new PayloadInputInvalid({ reason: `The agent bundle has no ${required}` })
   }
-  const reserved = names.find((name) => name === "inventory.json" || name.startsWith("workflow-worker/"))
+  const reserved = names.find((name) => name === "inventory.json" || name.startsWith("workflow-worker/") || name === "notices" || name === NODE_NOTICE_DIR || name.startsWith(`${NODE_NOTICE_DIR}/`))
   if (reserved !== undefined) throw new PayloadInputInvalid({ reason: `The agent bundle carries ${reserved}, a path the payload reserves` })
   const facts = try decodeJson(BundleFacts, path.join(bundleDir, "manifest.json"))
   const out: Staged[] = []
@@ -413,8 +421,12 @@ export effect function stageRuntimePayload(options: StageRuntimePayload) {
   const libraries = try consumerLibraries(options.nativeLibraries ?? [], options.abi)
   const worker = try workerFiles(options.workflowWorker)
   const allRuntimes = [...runtimes, ...libraries.runtimes]
+  const notices = runtimes.flatMap(({ notice }) => notice === undefined ? [] : [{ bytes: notice, sha256: sha256Hex(notice) }])
+  const [notice] = notices
+  if (notice !== undefined && notices.some((entry) => entry.sha256 !== notice.sha256)) throw new PayloadInputInvalid({ reason: "The pinned Node release archives carry different LICENSE files" })
   const payload: Staged[] = [
     ...runtimes.map((runtime) => staged(`lib/${runtime.abi}/${nodeLibraryName}`, "NodeRuntime", runtime.bytes, runtime.candidate.sha256)),
+    ...(notice === undefined ? [] : [staged(`assets/agent/${NODE_NOTICE_DIR}/${NODE_NOTICE_NAME}`, "BundleFile", notice.bytes, notice.sha256)]),
     ...bundle.files,
     ...assets.files,
     ...libraries.files,

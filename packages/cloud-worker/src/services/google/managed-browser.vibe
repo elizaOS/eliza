@@ -19,10 +19,13 @@ const callbackPath = "/api/v1/oauth/google/callback"
 const noStore = { "cache-control": "no-store", "referrer-policy": "no-referrer" }
 const appStatePattern = /^[A-Za-z0-9_-]{43}$/
 const signedStatePattern = /^([0-9a-f-]{36})\.([A-Za-z0-9_-]{43})\.([0-9a-f]{64})$/
+const MailboxAddress = Schema.String.check(Schema.isTrimmed(), Schema.isMaxLength(254), Schema.isPattern(/^[^\s@]+@[^\s@]+\.[^\s@]+$/))
+const EmailBinding = Schema.Struct({ address: Schema.optionalKey(MailboxAddress) })
 const connectBody = Schema.Struct({
   side: Schema.optionalKey(Schema.String),
   capabilities: Schema.Array(Schema.Literals(googleCapabilities)),
-  redirectUrl: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(2048)))
+  redirectUrl: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(2048))),
+  emailBinding: Schema.optionalKey(EmailBinding)
 })
 
 type AppReturn =
@@ -38,6 +41,7 @@ interface Attempt {
   readonly key: string
   readonly owner: Owner
   readonly target: AppReturn
+  readonly expectedEmailDigest: string | undefined
 }
 
 type Consumed =
@@ -69,6 +73,21 @@ function appReturnText(target: AppReturn): string | null {
 
 effect function signature(key: string, nonce: string) {
   return try keyedDigest(JSON.stringify(["managed-google-connect", (try Deployment).environment, key, nonce]))
+}
+
+effect function mailboxDigest(email: string) {
+  return try keyedDigest(JSON.stringify(["managed-google-connected-email", email.toLowerCase()]))
+}
+
+effect function bindMailbox(tx: Tx, owner: Owner, binding: typeof EmailBinding.Type | undefined) {
+  if (binding === undefined) return null
+  const [account] = try tx.query("SELECT email FROM accounts WHERE key = $1 AND organization_id = $2 AND status = 'active' FOR SHARE", [owner.userId, owner.organizationId])
+  if (account === undefined) throw refused("AuthenticationRequired", "CredentialUnknown")
+  const signedEmail = toText(account.email)?.toLowerCase()
+  const requestedEmail = binding.address?.toLowerCase()
+  const expected = signedEmail ?? requestedEmail
+  if (expected === undefined || (requestedEmail !== undefined && requestedEmail !== expected)) throw refused("InvalidRequest")
+  return try mailboxDigest(expected)
 }
 
 effect function trustedState(raw: string) {
@@ -119,10 +138,11 @@ effect function init(context: RouteContext) {
   try store.transaction(effect (tx: Tx) => {
     const request: ConnectRequest = { side: sideOf(body.side), capabilities, appReturn: try returnFit(tx, target) }
     if (!initiateAdmitted(google !== undefined, request)) throw new Refused({ refusal: initiateRefusal(google !== undefined, request) })
+    const expectedEmailDigest = try bindMailbox(tx, caller, body.emailBinding)
     const opened = try step(tx, key, at, { type: "begin", supported: true, configured: true, request }, { organization_id: caller.organizationId, user_id: caller.userId })
     try tx.query(
-      "INSERT INTO google_connect_states (state_digest, organization_id, user_id, capabilities, redirect_url, verifier, expires_at) VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7)",
-      [tokenDigest(signed), caller.organizationId, caller.userId, JSON.stringify(body.capabilities), appReturnText(target), keptVerifier, opened.stateExpiresAt]
+      "INSERT INTO google_connect_states (state_digest, organization_id, user_id, capabilities, redirect_url, verifier, expires_at, expected_email_digest) VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8)",
+      [tokenDigest(signed), caller.organizationId, caller.userId, JSON.stringify(body.capabilities), appReturnText(target), keptVerifier, opened.stateExpiresAt, expectedEmailDigest]
     )
     try step(tx, key, at, { type: "createResult", success: true })
   })
@@ -155,7 +175,7 @@ effect function finishFailure(tx: Tx, key: string, at: number) {
 
 effect function consume(tx: Tx, key: string, digest: string, query: URLSearchParams, at: number): Consumed!({ readonly _tag: string })!Deployment {
   const row = (try tx.query(
-    `SELECT s.organization_id, s.user_id, s.redirect_url, s.verifier, s.consumed_at
+    `SELECT s.organization_id, s.user_id, s.redirect_url, s.verifier, s.consumed_at, s.expected_email_digest
      FROM google_connect_states s JOIN google_connections c ON c.key = $2 AND c.organization_id = s.organization_id AND c.user_id = s.user_id
      WHERE s.state_digest = $1 FOR UPDATE OF s`, [digest, key]
   ))[0]
@@ -166,14 +186,14 @@ effect function consume(tx: Tx, key: string, digest: string, query: URLSearchPar
   const parsed = parseAppReturn(toText(row.redirect_url))
   const fit = try returnFit(tx, parsed)
   const target = fit === "NoAppReturn" || fit === "RegisteredConnectReturn" ? parsed : { kind: "malformed" } as const
-  const attempt: Attempt = { key, owner: identity, target }
+  const attempt: Attempt = { key, owner: identity, target, expectedEmailDigest: toText(row.expected_email_digest) }
   const input = target.kind === "malformed" ? { kind: "error", callback: "IncompleteCallback" } as const : googleInput(query)
   const ciphertext = toText(row.verifier) ?? ""
   const verifier = unseal("provider-secret", ciphertext) catch () => undefined
   try step(tx, key, at, { type: "beginCallback", verifierPresent: verifier !== undefined, verifierRequired: true })
   const after = try step(tx, key, at, { type: "consume", pendingAndUnexpired: pending.now < pending.stateExpiresAt,
     inputError: input.kind !== "code", providerInstalled: true, callback: input.kind === "code" ? "CodeCallback" : input.callback })
-  try tx.query("UPDATE google_connect_states SET consumed_at = $2, verifier = '' WHERE state_digest = $1", [digest, at])
+  try tx.query("UPDATE google_connect_states SET consumed_at = $2, verifier = '', expected_email_digest = NULL WHERE state_digest = $1", [digest, at])
   if (after.flow.phase === "ProviderPending" && input.kind === "code" && verifier !== undefined) return { kind: "exchange", attempt, verifier, code: input.code }
   const connection = after.flow.phase === "FailureWritePending" ? try finishFailure(tx, key, at) : after
   if (after.flow.phase !== "FailureWritePending") try removePending(tx, key)
@@ -183,10 +203,13 @@ effect function consume(tx: Tx, key: string, digest: string, query: URLSearchPar
 effect function exchange(attempt: Attempt, code: string, verifier: string) {
   const google = try googleForConnect()
   if (google === undefined) return unlinked("google_not_configured")
-  return redeemManagedCode(google, { kind: "browser", code, verifier, redirect: try callbackUrl() }) catch effect (failure) => {
+  const redeemed = redeemManagedCode(google, { kind: "browser", code, verifier, redirect: try callbackUrl() }) catch effect (failure) => {
     try annotateLogs(logWarning("Managed Google browser exchange failed"), { attemptId: attempt.key, failure: failure._tag })
     return unlinked("google_unavailable")
   }
+  if (!redeemed.connected || attempt.expectedEmailDigest === undefined) return redeemed
+  const email = redeemed.landing.email
+  return email !== undefined && sameText(try mailboxDigest(email), attempt.expectedEmailDigest) ? redeemed : unlinked("google_account_mismatch")
 }
 
 effect function recordProviderFailure(attempt: Attempt, code: GoogleLinkFault) {

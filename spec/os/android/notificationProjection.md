@@ -1,7 +1,7 @@
 # Agent notice projection
 
 The agent's notifications reach Android through the native projection in
-`android/notifications/` (`NoticeProjection`, `NativeNotificationInbox`,
+`android/notifications/` (`NativeNotificationInbox`,
 `NativeNotificationWire`, `NativeNotificationChannels`,
 `NativeNotificationProjector`, `NativeNotificationRoute`). The agent owns the
 inbox and its pages ([notification cursor](../../core/notifications/cursor.md));
