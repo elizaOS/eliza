@@ -1,10 +1,8 @@
 // spec/maps/cloudConnection.md, "Maps requests and tiles retain the captured account through completion"; spec/maps/routing.md, "Asked where Maps works, the reply states only what Cloud Maps reports"; spec/maps/attribution.md, "Only the reply to the latest request, for the current view, is shown"; spec/cloud/services/maps.md, "Every operation except capabilities and viewport needs an idempotency key and runs over one hold of the calling credential"; spec/maps/routing.md, "A Maps screen selection asks the planner to name the place"; spec/maps/routing.md, "An answer Maps cannot use is said in the owner's words, naming the place a start could not look up"; spec/maps/phonePosition.md, "A search around a point asks Cloud for the closest places whenever Cloud ranks by distance"
-import type { CloudLinkReply, CloudLinkRequest } from "@elizaos/agent"
-import { readCloudError } from "@elizaos/cloud/client"
+import type { CloudLinkReply, CloudLinkRequest } from "@elizaos/agent-host"
+import { readCloudError } from "@elizaos/cloud"
 import { asksForClosest } from "../gen/maps__phonePosition.effect.vibe"
-import { cloudMapsFailure, unusableMapsAnswer } from "./client/cloud-provider.vibe"
-import { boundedText, type Coordinate, MapsFailure, place, route, TravelMode, type Place, type Route } from "./client/contracts.vibe"
-import type { AgentPlaceRef } from "./client/device-navigation.vibe"
+import { cloudMapsFailure, unusableMapsAnswer, boundedText, type Coordinate, MapsFailure, place, route, TravelMode, type Place, type Route, type AgentPlaceRef } from "@elizaos/plugin-maps-client"
 import { isMapsSelectionHandle } from "./routing.vibe"
 
 module node {

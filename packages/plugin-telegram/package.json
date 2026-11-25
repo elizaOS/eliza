@@ -11,9 +11,10 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
+    "@elizaos/core-node": "workspace:*",
     "effect": "4.1.1",
-    "vibelang-runtime": "0.0.13",
-    "telegraf": "4.16.3"
+    "telegraf": "4.16.3",
+    "vibelang-runtime": "0.0.13"
   },
   "devDependencies": {
     "@types/node": "catalog:",

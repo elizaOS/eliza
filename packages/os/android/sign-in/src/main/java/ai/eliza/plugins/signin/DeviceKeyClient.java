@@ -1,10 +1,13 @@
-// spec/os/signIn/credential.md, "Story: Keep me signed in without a second copy of my key"; spec/os/signIn/credential.md, "Story: Sign out or reset cleanly"; spec/os/signIn/credential.md, "Story: Keep my key fresh without signing in again"
+// spec/os/signIn/credential.md, "Story: Keep me signed in without a second copy of my key"; spec/os/signIn/credential.md, "Story: Sign out or reset cleanly"
 package ai.eliza.plugins.signin;
 
 import ai.eliza.plugins.signin.CredentialPolicy.Account;
+import ai.eliza.plugins.signin.CredentialPolicy.LeaseUse;
 import ai.eliza.plugins.signin.CredentialPolicy.Reason;
 import ai.eliza.plugins.signin.CredentialPolicy.RejectedOn;
+import ai.eliza.plugins.signin.DeviceCredentialStore.HeldLease;
 import ai.eliza.plugins.signin.DeviceCredentialStore.Kept;
+import ai.eliza.plugins.signin.DeviceCredentialStore.LeaseSecret;
 import ai.eliza.plugins.signin.DeviceCredentialStore.Owed;
 import ai.eliza.plugins.signin.DeviceCredentialStore.Outcome;
 import ai.eliza.plugins.signin.DeviceCredentialStore.Pending;
@@ -19,16 +22,19 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.util.Map;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.LongSupplier;
+import java.util.regex.Pattern;
 
 public final class DeviceKeyClient {
   public static final String CONNECT = "/api/v1/app-auth/connect";
   public static final String TOKEN = "/api/v1/app-auth/mobile/token";
   public static final String ACK = "/api/v1/app-auth/mobile/ack";
-  public static final String RENEW = "/api/v1/app-auth/mobile/renew";
   public static final String REVOKE = "/api/v1/api-keys/current";
-  public static final String RENEWED_CREDENTIAL = "X-Renewed-Credential-Id";
+  static final String RENEWED_CREDENTIAL = "X-Renewed-Credential-Id";
+  public static final String LEASE = "/api/v1/app-auth/mobile/lease";
+  public static final String RENEW = "/api/v1/app-auth/mobile/renew";
+  public static final Pattern LEASE_REFRESH = Pattern.compile("eliza_lease_refresh_[A-Za-z0-9_-]{54}");
+  public static final Pattern LEASE_ACCESS = Pattern.compile("eliza_lease_[A-Za-z0-9_-]{43}");
   public static final String USER = "/api/v1/user";
   public static final String CODE_CHALLENGE_METHOD = "S256";
   public static final int CONNECT_TIMEOUT_MS = 8_000;
@@ -49,6 +55,14 @@ public final class DeviceKeyClient {
 
   public record Acknowledgement(String credentialId, long expiresAt) {}
 
+  public record Rotated(String access, long accessExpiresAt, String refresh, long refreshExpiresAt) {
+    @Override public String toString() { return "Rotated[accessExpiresAt=" + accessExpiresAt + ", refreshExpiresAt=" + refreshExpiresAt + "]"; }
+  }
+
+  public record Renewed(String credentialId, String secret, long expiresAt) {
+    @Override public String toString() { return "Renewed[credentialId=" + credentialId + ", expiresAt=" + expiresAt + "]"; }
+  }
+
   public sealed interface Answer<T> {
     record Answered<T>(T value) implements Answer<T> {}
     record Refused<T>(int status, String error, Reason reason) implements Answer<T> {
@@ -68,28 +82,26 @@ public final class DeviceKeyClient {
   private final URI origin;
   private final DeviceCredentialStore store;
   private final Pause pause;
-  private final Set<Integer> renewalsAsked = ConcurrentHashMap.newKeySet();
+  private final LongSupplier clock;
+  private final Object presenting = new Object();
 
   public DeviceKeyClient(URI origin, DeviceCredentialStore store, Pause pause) {
+    this(origin, store, pause, System::currentTimeMillis);
+  }
+
+  public DeviceKeyClient(URI origin, DeviceCredentialStore store, Pause pause, LongSupplier clock) {
     this.origin = origin;
     this.store = store;
     this.pause = pause;
+    this.clock = clock;
   }
 
   public Answer<Grant> connect(String sessionToken, Binding binding, String state, String codeChallenge, String deviceName) {
-    return grant(CONNECT, sessionToken, binding, state, codeChallenge, deviceName);
-  }
-
-  public Answer<Grant> renew(String secret, Binding binding, String state, String codeChallenge, String deviceName) {
-    return grant(RENEW, secret, binding, state, codeChallenge, deviceName);
-  }
-
-  private Answer<Grant> grant(String path, String bearer, Binding binding, String state, String codeChallenge, String deviceName) {
     StringBuilder body = binding(binding).append(",\"flow\":\"mobile_pkce\",\"state\":").append(CredentialJson.quote(state))
       .append(",\"codeChallenge\":").append(CredentialJson.quote(codeChallenge))
       .append(",\"codeChallengeMethod\":\"").append(CODE_CHALLENGE_METHOD).append('"');
     if (deviceName != null) body.append(",\"deviceName\":").append(CredentialJson.quote(deviceName));
-    return ask("POST", path, bearer, body.append('}').toString(), 200,
+    return ask("POST", CONNECT, sessionToken, body.append('}').toString(), 200,
       answer -> new Grant(CredentialJson.text(answer, "code"), instant(answer, "expiresAt")));
   }
 
@@ -97,10 +109,10 @@ public final class DeviceKeyClient {
     String body = binding(binding).append(",\"grantType\":\"authorization_code\",\"code\":").append(CredentialJson.quote(proof.code()))
       .append(",\"state\":").append(CredentialJson.quote(proof.state())).append(",\"codeVerifier\":").append(CredentialJson.quote(proof.verifier()))
       .append('}').toString();
-    return ask("POST", TOKEN, null, body, 200, DeviceKeyClient::token);
+    return ask("POST", TOKEN, null, body, 200, this::token);
   }
 
-  public static Token minted(String answer) {
+  public Token minted(String answer) {
     try {
       return token(CredentialJson.object(CredentialJson.parse(answer), "answer"));
     } catch (IllegalArgumentException unreadable) {
@@ -108,10 +120,65 @@ public final class DeviceKeyClient {
     }
   }
 
-  private static Token token(Map<String, Object> answer) {
+  private Token token(Map<String, Object> answer) {
+    LeaseSecret lease = null;
+    if (answer.get("lease") != null) {
+      Map<String, Object> offered = CredentialJson.object(answer.get("lease"), "lease");
+      lease = new LeaseSecret(secret(offered, "refresh", LEASE_REFRESH), after(offered, "refreshExpiresIn"));
+    }
     return new Token(CredentialJson.text(answer, "credentialId"), CredentialJson.text(answer, "secret"),
       new Account(CredentialJson.text(CredentialJson.object(answer.get("user"), "user"), "id"), CredentialJson.text(answer, "organizationId")),
-      instant(answer, "expiresAt"));
+      instant(answer, "expiresAt"), lease);
+  }
+
+  private static String secret(Map<String, Object> answer, String key, Pattern shape) {
+    String value = CredentialJson.text(answer, key);
+    if (!shape.matcher(value).matches()) throw new CredentialJson.Malformed(key);
+    return value;
+  }
+
+  private long after(Map<String, Object> answer, String key) {
+    long seconds = CredentialJson.whole(answer, key);
+    if (seconds <= 0 || seconds > Integer.MAX_VALUE) throw new CredentialJson.Malformed(key);
+    return clock.getAsLong() + seconds * 1000L;
+  }
+
+  private <T> Answer<T> presentLease(String method, String path, String body, Reading<T> reading, int expectedVersion) {
+    synchronized (presenting) {
+      HeldLease held = store.lease();
+      if (held == null || held.version() != expectedVersion)
+        return new Answer.Refused<>(401, "authentication_required", Reason.CREDENTIAL_UNKNOWN);
+      Answer<T> answer = ask(method, path, held.refresh(), body, 200, reading);
+      if (answer instanceof Answer.Refused<T> refused && refused.status() == 401)
+        store.leaseRejected(held.version(), CloudRequestPolicy.credentialReasonOf(refused.reason()), LeaseUse.REFRESH_USE);
+      return answer;
+    }
+  }
+
+  public Answer<Rotated> rotateLease(int expectedVersion) {
+    return presentLease("POST", LEASE, "{}", answer -> new Rotated(secret(answer, "access", LEASE_ACCESS), after(answer, "accessExpiresIn"),
+      secret(answer, "refresh", LEASE_REFRESH), after(answer, "refreshExpiresIn")), expectedVersion);
+  }
+
+  public Exchange renew() {
+    Pending unacknowledged = store.pendingRenewal();
+    if (unacknowledged != null) return acknowledge(unacknowledged);
+    var renewal = store.beginRenewal();
+    if (renewal == null) return Exchange.SUPERSEDED;
+    int attempt = renewal.attempt();
+    Answer<Renewed> answer = presentLease("POST", RENEW, "{}",
+      body -> new Renewed(CredentialJson.text(body, "credentialId"), CredentialJson.text(body, "secret"), after(body, "expiresIn")),
+      renewal.version());
+    if (!(answer instanceof Answer.Answered<Renewed> renewed)) return end(attempt);
+    Kept kept = store.tokenAnswered(attempt,
+      new Token(renewed.value().credentialId(), renewed.value().secret(), renewal.account(), renewed.value().expiresAt()));
+    if (kept != Kept.KEPT) return end(attempt);
+    Pending pending = store.pending();
+    return pending == null || pending.attempt() != attempt ? Exchange.SUPERSEDED : acknowledge(pending);
+  }
+
+  public void renewIfDue() {
+    if (store.renewDue() || store.pendingRenewal() != null) renew();
   }
 
   public Answer<Acknowledgement> ack(String credentialId, String secret) {
@@ -126,9 +193,15 @@ public final class DeviceKeyClient {
     return revoke(secret, "");
   }
 
-  public boolean revoke(String secret, String successor) {
-    Map<String, String> headers = successor.isEmpty() ? Map.of() : Map.of(RENEWED_CREDENTIAL, successor);
-    Answer<Boolean> answer = ask("DELETE", REVOKE, secret, headers, null, 200, body -> true);
+  private boolean revoke(String secret, String successor) {
+    return settles(ask("DELETE", REVOKE, secret, successor, null, 200, body -> true));
+  }
+
+  public boolean revokeLease(String refresh) {
+    return settles(ask("DELETE", LEASE, refresh, null, 200, body -> true));
+  }
+
+  private static boolean settles(Answer<Boolean> answer) {
     return answer instanceof Answer.Answered<Boolean> || answer instanceof Answer.Refused<Boolean> r && r.status() == 401;
   }
 
@@ -164,33 +237,12 @@ public final class DeviceKeyClient {
     return acknowledge(pending);
   }
 
-  public Exchange resume() {
-    Pending pending = store.pending();
-    return pending == null ? Exchange.SUPERSEDED : acknowledge(pending);
-  }
-
-  public Exchange renewKey(Binding binding) {
-    CredentialReader.Credential held = store.current();
-    if (held == null || !renewalsAsked.add(held.version())) return Exchange.SUPERSEDED;
-    int attempt = store.beginRenewal();
-    if (attempt == 0) {
-      renewalsAsked.remove(held.version());
-      return Exchange.SUPERSEDED;
-    }
-    String state = SignInPolicy.newState(), verifier = SignInPolicy.newVerifier();
-    Answer<Grant> answer = renew(held.value(), binding, state, SignInPolicy.s256(verifier), null);
-    if (answer instanceof Answer.Answered<Grant> granted) return exchange(attempt, binding, new Proof(granted.value().code(), state, verifier));
-    store.signInEnded(attempt);
-    if (answer instanceof Answer.Refused<Grant> refused && refused.status() == 401 && refused.reason().credential())
-      store.rejected(held.version(), refused.reason(), RejectedOn.OTHER_REQUEST);
-    return answer instanceof Answer.Unanswered<Grant> ? Exchange.UNANSWERED : Exchange.REFUSED;
-  }
-
   public void settleDuties() {
     for (Owed owed : store.owed()) {
       for (int ask = 0; ask < owed.tries(); ask++) {
         if (ask > 0 && !rest(ask)) return;
-        if (store.revokeAnswered(owed.version(), revoke(owed.value(), owed.successor())) == Outcome.REFUSED) break;
+        boolean settled = (owed.lease() == null || revokeLease(owed.lease())) & revoke(owed.value(), owed.successor());
+        if (store.revokeAnswered(owed.version(), settled) == Outcome.REFUSED) break;
         if (store.owed().stream().noneMatch(o -> o.version() == owed.version())) break;
       }
     }
@@ -206,6 +258,7 @@ public final class DeviceKeyClient {
   private Exchange acknowledge(Pending pending) {
     for (int ask = 0; ask < ASKS; ask++) {
       if (ask > 0 && !rest(ask)) return Exchange.UNANSWERED;
+      if (!store.maySendAcknowledgement(pending)) return Exchange.SUPERSEDED;
       Answer<Acknowledgement> answer = ack(pending.credentialId(), pending.value());
       if (answer instanceof Answer.Answered<Acknowledgement> answered)
         return store.acknowledged(pending.attempt(), pending.credentialId(), answered.value().expiresAt()) == Outcome.ACCEPTED ? Exchange.SIGNED_IN : Exchange.SUPERSEDED;
@@ -247,13 +300,13 @@ public final class DeviceKeyClient {
   }
 
   <T> Answer<T> ask(String method, String path, String bearer, String body, int expected, Reading<T> reading) {
-    return ask(method, path, bearer, Map.of(), body, expected, reading);
+    return ask(method, path, bearer, "", body, expected, reading);
   }
 
-  private <T> Answer<T> ask(String method, String path, String bearer, Map<String, String> headers, String body, int expected, Reading<T> reading) {
+  private <T> Answer<T> ask(String method, String path, String bearer, String successor, String body, int expected, Reading<T> reading) {
     Reply reply;
     try {
-      reply = send(method, path, bearer, headers, body);
+      reply = send(method, path, bearer, successor, body);
     } catch (IOException unanswered) {
       return new Answer.Unanswered<>();
     }
@@ -276,7 +329,7 @@ public final class DeviceKeyClient {
     }
   }
 
-  private Reply send(String method, String path, String bearer, Map<String, String> headers, String body) throws IOException {
+  private Reply send(String method, String path, String bearer, String successor, String body) throws IOException {
     HttpURLConnection connection = (HttpURLConnection) origin.resolve(path).toURL().openConnection();
     connection.setInstanceFollowRedirects(false);
     connection.setUseCaches(false);
@@ -285,7 +338,7 @@ public final class DeviceKeyClient {
     connection.setRequestMethod(method);
     connection.setRequestProperty("Accept", "application/json");
     if (bearer != null) connection.setRequestProperty("Authorization", "Bearer " + bearer);
-    for (Map.Entry<String, String> header : headers.entrySet()) connection.setRequestProperty(header.getKey(), header.getValue());
+    if (!successor.isEmpty()) connection.setRequestProperty(RENEWED_CREDENTIAL, successor);
     try {
       if (body != null) {
         byte[] bytes = body.getBytes(StandardCharsets.UTF_8);

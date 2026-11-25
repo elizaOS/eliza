@@ -1,0 +1,30 @@
+// spec/agent/access/auth.md, "Only the token of this launch makes a caller Root"; spec/agent/access/auth.md, "Auth status tells any caller only whether it holds the token and which start it reached"; spec/agent/access/auth.md, "The Root caller is the local owner of this agent"
+module node {
+  import { Redacted } from "effect"
+  import { createHash, timingSafeEqual } from "node:crypto"
+  import type { Caller } from "../../gen/agent__access__auth.ts"
+
+  const digest = (text: string): Buffer => createHash("sha256").update(text).digest()
+
+  export function callerOf(token: Redacted.Redacted<string>, authorization: string | undefined): Caller {
+    const launch = Redacted.value(token)
+    const presented = authorization?.startsWith("Bearer ") ? authorization.slice(7) : ""
+    return launch !== "" && presented !== "" && timingSafeEqual(digest(launch), digest(presented)) ? "Root" : "Anonymous"
+  }
+}
+
+import { authMe, authStatus, type Caller } from "../../gen/agent__access__auth.ts"
+import type { LocalRoute, Route } from "@elizaos/agent"
+export { callerOf } from node
+
+export const authStatusRoute = { method: "GET", path: "/api/auth/status" } as const satisfies Route
+
+export function authStatusAnswer(caller: Caller, serverInstanceId: string) {
+  return { status: 200, body: authStatus(caller, serverInstanceId) }
+}
+
+export function authRoutes(agentId: string): LocalRoute[] {
+  const owner = authMe(agentId)
+  const body = { ...owner, access: { ...owner.access, role: "OWNER" } }
+  return [{ method: "GET", path: "/api/auth/me", handler: () => ({ status: 200, body }) }]
+}

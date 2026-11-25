@@ -143,11 +143,10 @@ pure def lawADismissedCheckinStaysOffUntilChosen(slot: CheckinSlot, setting: Che
 
 A morning or evening brief covers today and a weekly brief the seven days
 from today, unless the owner names today, tomorrow or this week. The kind
-and the days are what the owner's own message names: the planner's choice
-counts only when the message says it too, a weekly brief or a week's span
-is never read from a passing mention of the week, and a brief that names
-no kind is the morning brief before 17:00 on the owner's clock and the
-evening brief from then. The brief holds every calendar event that
+and the days are the ones the planner read from the owner's message, as
+its brief and period choices; a choice outside those lists counts as none,
+and a brief that names no kind is the morning brief before 17:00 on the
+owner's clock and the evening brief from then. The brief holds every calendar event that
 overlaps its days, with its end and place when known, the open to-dos,
 the active goals with how they are going, the active routines with when
 they come, and the reminders due in its days; only the evening brief

@@ -396,12 +396,12 @@ export function getStreamingContext(): StreamingContext | undefined {
 }
 
 module node {
-  import { AsyncLocalStorage } from "node:async_hooks"
   import { getAmbientSingleton } from "./ambient-context.vibe"
+  import { createAsyncContextStorage } from "./utils/async-context-storage.vibe"
 
   const modelStreamChunkDeliveryDepth = getAmbientSingleton(
     Symbol.for("elizaos.modelStreamChunkDeliveryDepth"),
-    () => new AsyncLocalStorage<number>(),
+    () => createAsyncContextStorage<number>(),
   )
 
   /** @throws {never} */

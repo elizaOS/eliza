@@ -7,7 +7,8 @@ the class says what credential it needs:
 |---|---|---|
 | Public | anyone; no credential is read | health, public service document, plans, entitlement keys, sign-in starts, return pages |
 | Signature | anyone; the route verifies the provider's signature | the payment provider's webhook |
-| Key or Session | a live device key or session | inference (with `/models`), speech, maps, Google, billing reads (invoices too), checkout start and confirm, redeem, account read, referrals, self-revoke |
+| Key or Session | a live device key or session | inference (with `/models`), speech, maps, Google native connect, billing reads (invoices too), checkout start and confirm, redeem, account read, referrals, self-revoke |
+| Mail | a live session or device lease, never a device key | Google status, accounts, connect, disconnect and sign-in sessions; Gmail; inbox; calendar |
 | Session | a live session | sign-in methods, factors, step-up send, connect |
 | Fresh | a live session signed in or stepped up within 60 minutes | cancel, undo, upgrade, downgrade, payment continuation, portal |
 | Step-up | a live session with a second factor within 5 minutes | unlink a method, change factors |
@@ -20,9 +21,10 @@ the other route classes and supplies a caller for their protected work.
 
 These admission classes read their credential from
 `Authorization: Bearer <token>`. The shell sorts the token by its shape: a
-session token (`eliza_session_` + 43 base64url, `identity/sessions`) or a
-device key (`eliza_mobile_` + 64 hex, `nativeClients/deviceKeys`); anything
-else, or no header, presents nothing. It matches the token's digest in the
+session token (`eliza_session_` + 43 base64url, `identity/sessions`), a
+device lease's access token (`eliza_lease_` + 43 base64url, the same
+`identity/sessions`) or a device key (`eliza_mobile_` + 64 hex,
+`nativeClients/deviceKeys`); anything else, or no header, presents nothing. It matches the token's digest in the
 store and reads the account's status and both revocation epochs in the same
 store operation, and passes them here as the `Standing`. The token itself
 never enters the model. The device half, which decides what a refusal means
@@ -45,10 +47,11 @@ import accounts as A from "./accounts"
 import sessions as S from "./sessions"
 import deviceKeys as Dk from "../nativeClients/deviceKeys"
 import deployment as D from "../deployment"
-type RouteClass = PublicRoute | SignatureRoute | KeyOrSessionRoute | SessionRoute | FreshRoute | StepUpRoute
+type RouteClass = PublicRoute | SignatureRoute | KeyOrSessionRoute | MailRoute | SessionRoute | FreshRoute | StepUpRoute
 type SessionLookup = NoFamily | FamilyRow({ family: S::Family, generation: int })
 type KeyLookup = NoGrant | GrantRow({ grant: Dk::Grant })
 type Presented = NoCredential | SessionBearer({ familyLookup: SessionLookup }) | KeyBearer({ window: R::Window, grantLookup: KeyLookup })
+  | LeaseBearer({ window: R::Window, familyLookup: SessionLookup, grantLookup: KeyLookup })
 type Standing = { status: A::AccountStatus, personEpoch: int, deviceEpoch: int }
 type Admission = Anonymous | Caller({ kind: CredentialKind, expiresAt: Millis }) | Denied({ refusal: Refusal })
 pure def isProtected(route: RouteClass): bool = route != PublicRoute and route != SignatureRoute
@@ -73,6 +76,7 @@ pure def admit(route: RouteClass, presented: Presented, standing: Standing, now:
     | NoCredential => deniedFor(CredentialUnknown)
     | SessionBearer(x) => sessionAdmission(route, x.familyLookup, standing, now)
     | KeyBearer(y) => keyAdmission(route, y.window, y.grantLookup, standing, now)
+    | LeaseBearer(z) => leaseAdmission(route, z.window, z.familyLookup, z.grantLookup, standing, now)
   }
 pure def lawEveryRefusalIsWellFormed(route: RouteClass, presented: Presented, standing: Standing, now: Millis): bool = {
   val a = admit(route, presented, standing, now)
@@ -82,12 +86,14 @@ pure def lawAMissingOrUnknownCredentialIsUnknown(route: RouteClass, window: R::W
   (isProtected(route) and R::admitsAll(keyIngress(window), now)) implies (
     admit(route, NoCredential, standing, now) == deniedFor(CredentialUnknown)
     and admit(route, SessionBearer({ familyLookup: NoFamily }), standing, now) == deniedFor(CredentialUnknown)
-    and admit(route, KeyBearer({ window: window, grantLookup: NoGrant }), standing, now) == deniedFor(CredentialUnknown))
+    and admit(route, KeyBearer({ window: window, grantLookup: NoGrant }), standing, now) == deniedFor(CredentialUnknown)
+    and admit(route, LeaseBearer({ window: window, familyLookup: NoFamily, grantLookup: NoGrant }), standing, now) == deniedFor(CredentialUnknown))
 ```
 
 ### A device key is limited to 120 requests a minute before it is looked up
 
-The subject is a keyed digest of the presented key, never the key. Over the
+The subject is a keyed digest of the presented key, never the key. A device
+lease's access token is limited the same way, before its family is read. Over the
 limit the answer is `429 rate_limited` with its retry time, and `503` when
 the limiter cannot count; either way the key's row is not read.
 
@@ -127,6 +133,7 @@ pure def grantAdmission(route: RouteClass, grant: Dk::Grant, standing: Standing,
   if (reason != NoReason) deniedFor(reason)
   else if (not(isActiveAccount(standing))) deniedFor(CredentialRevoked)
   else if (needsSession(route)) Denied({ refusal: refuse(AccessDenied) })
+  else if (route == MailRoute) Denied({ refusal: refuseFor(AccessDenied, DeviceKeyNotAllowed) })
   else Caller({ kind: DeviceKeyCredential, expiresAt: Dk::ackAnswer(grant).expiresAt })
 }
 pure def liveFamily(family: S::Family, generation: int, standing: Standing, now: Millis): bool =
@@ -134,13 +141,14 @@ pure def liveFamily(family: S::Family, generation: int, standing: Standing, now:
 pure def liveGrant(grant: Dk::Grant, standing: Standing, now: Millis): bool =
   Dk::isLive({ ...grant, now: now }) and not(Dk::revokedSince(grant, standing.deviceEpoch))
 pure def liveLookup(familyLookup: SessionLookup, standing: Standing, now: Millis): bool =
-  match familyLookup { | FamilyRow(x) => liveFamily(x.family, x.generation, standing, now) | NoFamily => false }
+  match familyLookup { | FamilyRow(x) => not(S::isLease(x.family)) and liveFamily(x.family, x.generation, standing, now) | NoFamily => false }
 pure def liveKeyLookup(lookup: KeyLookup, standing: Standing, now: Millis): bool =
   match lookup { | GrantRow(x) => liveGrant(x.grant, standing, now) | NoGrant => false }
 pure def isLiveCredential(presented: Presented, standing: Standing, now: Millis): bool =
   isActiveAccount(standing) and match presented {
     | SessionBearer(x) => liveLookup(x.familyLookup, standing, now)
     | KeyBearer(y) => R::admitsAll(keyIngress(y.window), now) and liveKeyLookup(y.grantLookup, standing, now)
+    | LeaseBearer(z) => R::admitsAll(keyIngress(z.window), now) and liveLeaseLookup(z.familyLookup, z.grantLookup, standing, now)
     | NoCredential => false
   }
 pure def lawARefusedCredentialNeverYieldsACaller(route: RouteClass, presented: Presented, standing: Standing, now: Millis): bool = {
@@ -195,7 +203,7 @@ pure def hasAssurance(route: RouteClass, f: S::Family): bool =
   if (route == FreshRoute) S::isFresh(f) else if (route == StepUpRoute) S::isSteppedUp(f) else true
 pure def familyAdmission(route: RouteClass, family: S::Family, generation: int, standing: Standing, now: Millis): Admission = {
   val f = { ...family, now: now }
-  val reason = S::sessionRefusal(generation, f, standing.personEpoch)
+  val reason = if (S::isLease(f)) CredentialUnknown else S::sessionRefusal(generation, f, standing.personEpoch)
   if (reason != NoReason) deniedFor(reason)
   else if (not(isActiveAccount(standing))) deniedFor(CredentialRevoked)
   else if (not(hasAssurance(route, f))) Denied({ refusal: refuse(FreshSessionRequired) })
@@ -205,16 +213,18 @@ pure def lawSessionRoutesAdmitOnlyAssuredSessions(route: RouteClass, family: S::
   val a = admit(route, SessionBearer({ familyLookup: FamilyRow({ family: family, generation: generation }) }), standing, now)
   val live = liveFamily(family, generation, standing, now) and isActiveAccount(standing)
   val assured = hasAssurance(route, { ...family, now: now })
-  (needsSession(route) and live) implies (a == (if (assured) Caller({ kind: SessionCredential, expiresAt: family.accessExpiresAt }) else Denied({ refusal: refuse(FreshSessionRequired) })))
+  (needsSession(route) and live and not(S::isLease(family))) implies (a == (if (assured) Caller({ kind: SessionCredential, expiresAt: family.accessExpiresAt }) else Denied({ refusal: refuse(FreshSessionRequired) })))
 }
 pure def lawADeviceKeyNeverPassesASessionRoute(route: RouteClass, presented: Presented, standing: Standing, now: Millis): bool = {
   val a = admit(route, presented, standing, now)
   needsSession(route) implies match a { | Caller(x) => x.kind == SessionCredential | _ => true }
 }
-pure val signedIn: S::Family = { phase: S::Live, generation: 1, epoch: 0, seenEpoch: 0, authAt: 0, issuedAt: 0, accessExpiresAt: 900000,
+pure val signedIn: S::Family = { kind: S::BrowserFamily, phase: S::Live, generation: 1, rotation: S::Settled, epoch: 0, seenEpoch: 0, authAt: 0, issuedAt: 0, accessExpiresAt: 900000,
   refreshExpiresAt: 2592000000, stepUpAt: S::Never, mfaAt: S::Never, now: 0 }
+pure val leased: S::Family = { ...signedIn, kind: S::DeviceLease({ grantKey: "g1" }), generation: 2, rotation: S::Offering({ offeredAt: 3600000, answers: 1 }),
+  issuedAt: 0, accessExpiresAt: 900000, refreshExpiresAt: 7779600000 }
 pure val familyValues: Set[S::Family] = Set(signedIn, { ...signedIn, mfaAt: S::At({ ms: 0 }) }, { ...signedIn, phase: S::Revoked },
-  { ...signedIn, generation: 2, issuedAt: 3600000, accessExpiresAt: 4500000 })
+  { ...signedIn, generation: 2, issuedAt: 3600000, accessExpiresAt: 4500000 }, leased, { ...leased, phase: S::Revoked })
 pure val generationValues = Set(1, 2)
 pure val nowValues = Set(1000, 4000000)
 pure val keyed: Dk::Grant = { phase: Dk::Active({ ackedAt: 0, keyExpiresAt: 86400000 }), origin: Dk::Connected,
@@ -231,5 +241,63 @@ pure val presentedValues: Set[Presented] = Set(NoCredential,
   SessionBearer({ familyLookup: FamilyRow({ family: { ...signedIn, mfaAt: S::At({ ms: 0 }) }, generation: 1 }) }),
   SessionBearer({ familyLookup: FamilyRow({ family: { ...signedIn, generation: 2, issuedAt: 3600000, accessExpiresAt: 4500000 }, generation: 2 }) }),
   KeyBearer({ window: R::initial, grantLookup: GrantRow({ grant: keyed }) }), KeyBearer({ window: fullWindow, grantLookup: GrantRow({ grant: keyed }) }),
-  KeyBearer({ window: R::initial, grantLookup: NoGrant }))
+  KeyBearer({ window: R::initial, grantLookup: NoGrant }),
+  LeaseBearer({ window: R::initial, familyLookup: FamilyRow({ family: leased, generation: 2 }), grantLookup: GrantRow({ grant: keyed }) }),
+  LeaseBearer({ window: R::initial, familyLookup: FamilyRow({ family: leased, generation: 3 }), grantLookup: GrantRow({ grant: { ...keyed, phase: Dk::Expired } }) }),
+  LeaseBearer({ window: R::initial, familyLookup: FamilyRow({ family: leased, generation: 3 }), grantLookup: GrantRow({ grant: { ...keyed, epoch: 1 } }) }),
+  LeaseBearer({ window: fullWindow, familyLookup: FamilyRow({ family: leased, generation: 2 }), grantLookup: GrantRow({ grant: keyed }) }),
+  LeaseBearer({ window: R::initial, familyLookup: FamilyRow({ family: signedIn, generation: 1 }), grantLookup: GrantRow({ grant: keyed }) }))
+```
+
+### A mail or calendar route admits a session or a device lease, and never the device key
+
+A live device key on a Mail route is refused `403 access_denied` with reason
+`device_key_not_allowed`: the on-device agent holds the key and reads
+untrusted mail, so it never reaches mail with it. A device lease is accepted
+only when its family is live, the presented generation is the current or the
+offered one and its access token has not expired (`S::sessionRefusal`), the
+family's epoch is the person's session epoch, the account is active, and its
+bound grant is not ended and of the person's current device epoch; the key's
+own expiry does not end the lease. Refusals use the credential reasons of a
+session. A device lease passes no other route: anywhere else it is refused
+`403 access_denied`. The caller's credential ends with the presented access
+token.
+
+```quint
+pure def grantEnded(g: Dk::Grant): bool = Dk::isClosed(g) and g.phase != Dk::Expired
+pure def boundGrantRefusal(grantLookup: KeyLookup, standing: Standing): RefusalReason =
+  match grantLookup {
+    | NoGrant => CredentialRevoked
+    | GrantRow(x) => if (Dk::revokedSince(x.grant, standing.deviceEpoch) or grantEnded(x.grant)) CredentialRevoked else NoReason
+  }
+pure def leaseFamilyAdmission(route: RouteClass, family: S::Family, generation: int, grantLookup: KeyLookup, standing: Standing, now: Millis): Admission = {
+  val f = { ...family, now: now }
+  val reason = if (not(S::isLease(f))) CredentialUnknown else S::sessionRefusal(generation, f, standing.personEpoch)
+  val bound = boundGrantRefusal(grantLookup, standing)
+  if (reason != NoReason) deniedFor(reason)
+  else if (bound != NoReason) deniedFor(bound)
+  else if (not(isActiveAccount(standing))) deniedFor(CredentialRevoked)
+  else if (route != MailRoute) Denied({ refusal: refuse(AccessDenied) })
+  else Caller({ kind: LeaseCredential, expiresAt: S::accessEnd(f, generation) })
+}
+pure def leaseAdmission(route: RouteClass, window: R::Window, familyLookup: SessionLookup, grantLookup: KeyLookup, standing: Standing, now: Millis): Admission =
+  if (not(R::admitsAll(keyIngress(window), now))) Denied({ refusal: R::groupRefusal(keyIngress(window), now) })
+  else match familyLookup {
+    | NoFamily => deniedFor(CredentialUnknown)
+    | FamilyRow(x) => leaseFamilyAdmission(route, x.family, x.generation, grantLookup, standing, now)
+  }
+pure def liveLeaseLookup(familyLookup: SessionLookup, grantLookup: KeyLookup, standing: Standing, now: Millis): bool =
+  match familyLookup {
+    | FamilyRow(x) => S::isLease(x.family) and S::accepts({ ...x.family, now: now }, x.generation, standing.personEpoch) and boundGrantRefusal(grantLookup, standing) == NoReason
+    | NoFamily => false
+  }
+pure def isCallerOfKind(a: Admission, kind: CredentialKind): bool = match a { | Caller(x) => x.kind == kind | _ => false }
+pure def lawADeviceKeyNeverPassesAMailRoute(presented: Presented, standing: Standing, now: Millis): bool =
+  not(isCallerOfKind(admit(MailRoute, presented, standing, now), DeviceKeyCredential))
+pure def lawALeasePassesOnlyAMailRoute(route: RouteClass, presented: Presented, standing: Standing, now: Millis): bool =
+  isCallerOfKind(admit(route, presented, standing, now), LeaseCredential) implies route == MailRoute
+pure def lawALiveKeyOnAMailRouteIsToldItIsNotAllowed(window: R::Window, lookup: KeyLookup, standing: Standing, now: Millis): bool = {
+  val presented = KeyBearer({ window: window, grantLookup: lookup })
+  isLiveCredential(presented, standing, now) implies admit(MailRoute, presented, standing, now) == Denied({ refusal: refuseFor(AccessDenied, DeviceKeyNotAllowed) })
+}
 ```

@@ -10,9 +10,10 @@ back to the model, until the model answers without a tool call, calls
 action's own callback text is the action's verified presentation and is
 held for the reply, never delivered as a second message. After the reply
 is stored, the evaluators plugins registered run on the finished turn.
-The model also sees the turn's clock, and a current-time answer the clock
-did not observe is replaced by the clock's own reading before the reply
-is stored.
+The model also sees the turn's clock. A reply that leaves a failure
+unreported, or states a time the clock or a calendar change did not
+observe, goes back to the model once with those facts before it is stored,
+and fixed words take its place only when that second answer fails too.
 
 Every model call of a turn sends no output cap ([binding](../models/binding.md)).
 The shell (`conversation/planning.vibe`) hands this library the facts it
@@ -400,10 +401,13 @@ A later `Applied` receipt for the same operation and resource closes an
 earlier failure or proposal of that operation. Open outcomes for the same
 operation or receiptless request replace earlier ones of the same identity.
 Pre-dispatch refusals are recorded separately from dispatched failures. A
-later call to the same action can be for another request. The reply reports
-an unlinked refusal as a call that did not start, even if the action later
-runs. It reports an open failure as that action's failure and an open proposal
-as awaiting the owner, whatever the model's prose claims.
+later call to the same action can be for another request. An unlinked
+refusal stays open as a call that did not start, even if the action later
+runs. An open proposal is reported as awaiting the owner in the action's own
+copy, whatever the model's prose claims. An open failure is reported as that
+action's failure in the action's own words, except a failure with no
+receipt that a later run of its action may have answered under the rule
+below.
 
 ```quint
 pure def isReceiptOperation(identity: StepIdentity): bool = match identity { | ReceiptOperation(_) => true | _ => false }
@@ -439,6 +443,109 @@ pure def lawASuccessOfAnotherOperationKeepsTheFailure(steps: List[PlanStep], ear
   (earlier.outcome == Failed and later.identity != earlier.identity) implies failedOpen(steps.append(earlier).append(later)).includes(earlier)
 pure def lawARefusalBeforeDispatchStaysReported(steps: List[PlanStep], earlier: PlanStep, later: PlanStep): bool =
   earlier.outcome == Rejected implies failedOpen(steps.append(earlier).append(later)).includes(earlier)
+```
+
+### A reply that leaves a failure unreported is written again once, and the delivered reply still reports open failures and attachment omissions
+
+After planning, an open failure (above) whose own words the reply does not
+hold is unreported, and so is an attached document left out for the turn's
+allowance. A failure's own words are its action's text for the owner, its
+error or its result text; a call its action's own check declined is
+`unavailableNotice`, and a failure with no words is a sentence that the
+call did not start or did not complete. A left-out document's are that some
+attached documents exceeded what can be read in one turn. When anything is
+unreported, or the reply states a time the turn did not observe (the clock
+rules below), the model is asked once more: the turn's system prompt, its
+tools with none to be chosen, the planner's transcript, the reply as the
+assistant's, and one host note that names each such fact and says the reply
+is not final yet. A failure's own words reach that note cut to a tool
+message's length, and as external data unless the action marked them as its
+words for the owner. Its answer takes the place of the model's prose, and
+the action's own copy stays where composition puts it (below). That reply is
+kept when it answers (it is neither blank nor a pending-work cue, read as
+below), it is not the first reply again, and the clock rules hold of it.
+Otherwise, or when the call fails, the first
+reply is kept, or the clock's or the calendar change's own words (below)
+take its place when it stated a time they did not observe. On either path,
+each remaining open failure and attachment omission is reported in its
+own words if the chosen reply does not already contain those words.
+A reply with nothing unreported and no
+unobserved time makes no further call, a turn cut off at the model's output
+limit is never asked again, and no turn is asked more than once.
+
+Safety copy is never rewritten. A failure whose action marks its words as
+safety copy (the emergency refusal of a phone that cannot open its keypad),
+and every failure of a turn whose tool copy stands alone (below), is not put
+to the model: its own words follow the reply whatever the model wrote.
+
+```quint
+type ReplySource = ModelReply | RevisedReply | FixedWords
+pure def asksAgain(unreported: bool, ungrounded: bool, cutOff: bool): bool = (unreported or ungrounded) and not(cutOff)
+pure def replySource(unreported: bool, ungrounded: bool, cutOff: bool, answered: bool, grounded: bool): ReplySource =
+  if (not(unreported) and not(ungrounded)) ModelReply
+  else if (asksAgain(unreported, ungrounded, cutOff) and answered and grounded) RevisedReply
+  else FixedWords
+pure def putToTheModel(held: bool, safetyCopy: bool): bool = not(held) and not(safetyCopy)
+pure def answeredAgain(draft: Draft, sameAsFirst: bool): bool = gaveAnAnswer(draft) and not(sameAsFirst)
+pure def lawAGroundedReplyMakesNoFurtherCall(cutOff: bool): bool = not(asksAgain(false, false, cutOff))
+pure def lawAGroundedReplyIsTheModels(cutOff: bool, answered: bool, grounded: bool): bool = replySource(false, false, cutOff, answered, grounded) == ModelReply
+pure def lawASecondAnswerThatHoldsIsKept(unreported: bool, ungrounded: bool): bool =
+  (unreported or ungrounded) implies replySource(unreported, ungrounded, false, true, true) == RevisedReply
+pure def lawFixedWordsAreTheLastResort(unreported: bool, ungrounded: bool, cutOff: bool, answered: bool, grounded: bool): bool =
+  replySource(unreported, ungrounded, cutOff, answered, grounded) == FixedWords implies ((unreported or ungrounded) and (cutOff or not(answered) or not(grounded)))
+pure def lawACutOffTurnIsNeverAskedAgain(unreported: bool, ungrounded: bool): bool = not(asksAgain(unreported, ungrounded, true))
+pure def lawSafetyCopyIsNeverRewritten(held: bool): bool = not(putToTheModel(held, true))
+pure def lawWordsTheReplyHoldsAreNotAskedFor(safetyCopy: bool): bool = not(putToTheModel(true, safetyCopy))
+pure def lawACueIsNoSecondAnswer(sameAsFirst: bool): bool = not(answeredAgain(Cue, sameAsFirst)) and not(answeredAgain(Silent, sameAsFirst))
+pure def lawTheFirstReplyAgainIsNoSecondAnswer(draft: Draft): bool = not(answeredAgain(draft, true))
+pure def lawANewAnswerIsASecondAnswer(sameAsFirst: bool): bool = answeredAgain(Answer, sameAsFirst) == not(sameAsFirst)
+```
+
+### A failure with no receipt that a later run of its action may have answered is the model's to report, and its own words follow the reply unless the model stands by a reply without them
+
+A call that failed or was refused without an effect receipt names nothing
+the host can match, so a later call of the same action that ran (it applied,
+proposed or had no effect) may have put it right: the model corrects its
+own call after a refusal, such as `8 + 9` after a stray argument or 4 PM
+after a misread 8 AM. It may also have been for another request, such as a
+second recipient. A later call can answer a failure only when the model saw
+that failure first, in an earlier planner response. Such a failure stays
+open (above), and only the model can tell whether the later call did what
+the failed one was for. When the reply leaves it out, its host note says a
+later call of that action ran, that when that later call did what the failed
+step was for the model gives its reply exactly as it was, word for word, and
+that otherwise the reply must say the failed step did not happen. When the model
+answers that note with its first reply again, word for word, it stands by
+that reply, and when that reply is delivered, the failure's own words do not
+follow it. Otherwise the failure's own words follow the reply as for any
+failure: when the rules keep a second answer, when the call fails, when the model answers
+with a blank or a pending-work cue (read as below), when it gives another
+answer that is not kept, when the failure was never put to the model, or
+when the clock's or the change's words take the reply's place. A failure
+with a receipt, a failure in the same planner response as the later call,
+and safety copy are reported as above.
+
+```quint
+pure def answerableLater(receiptless: bool, seenFirst: bool, ranLater: bool): bool = receiptless and seenFirst and ranLater
+pure def gaveAnAnswer(draft: Draft): bool = draft == Answer
+pure def standsBy(draft: Draft, sameAsFirst: bool): bool = gaveAnAnswer(draft) and sameAsFirst
+pure def followsTheReply(answerable: bool, asked: bool, stoodBy: bool, modelsReply: bool, safetyCopy: bool): bool =
+  safetyCopy or not(answerable and asked and stoodBy and modelsReply)
+pure def lawACueOrSilenceGivesNoAnswer(sameAsFirst: bool): bool =
+  not(gaveAnAnswer(Cue)) and not(gaveAnAnswer(Silent)) and not(standsBy(Cue, sameAsFirst)) and not(standsBy(Silent, sameAsFirst))
+pure def lawAnotherAnswerIsNoStandingBy(draft: Draft): bool = not(standsBy(draft, false))
+pure def lawAFailureALaterRunMayHaveAnsweredDoesNotFollowAReplyTheModelStandsBy(safetyCopy: bool): bool =
+  followsTheReply(true, true, true, true, safetyCopy) == safetyCopy
+pure def lawUnlessTheModelStandsByItsReplyTheFailureStillFollows(answerable: bool, asked: bool, modelsReply: bool, safetyCopy: bool): bool =
+  followsTheReply(answerable, asked, false, modelsReply, safetyCopy)
+pure def lawAFailureNeverPutToTheModelStillFollows(answerable: bool, stoodBy: bool, modelsReply: bool): bool =
+  followsTheReply(answerable, false, stoodBy, modelsReply, false)
+pure def lawUnderTheHostsWordsTheFailureStillFollows(answerable: bool, asked: bool, stoodBy: bool): bool =
+  followsTheReply(answerable, asked, stoodBy, false, false)
+pure def lawAFailureWithAReceiptStillFollows(seenFirst: bool, ranLater: bool, asked: bool, stoodBy: bool, modelsReply: bool): bool =
+  followsTheReply(answerableLater(false, seenFirst, ranLater), asked, stoodBy, modelsReply, false)
+pure def lawAFailureInTheSameResponseStillFollows(receiptless: bool, ranLater: bool, asked: bool, stoodBy: bool, modelsReply: bool): bool =
+  followsTheReply(answerableLater(receiptless, false, ranLater), asked, stoodBy, modelsReply, false)
 ```
 
 ### A coaching response stays in the planner transcript
@@ -708,27 +815,33 @@ any other bracketed text is ordinary output. Tool text the action marked
 verified for the owner is kept verbatim; prose that holds it is the whole
 reply, and prose it already holds adds nothing. Prose carrying a tool-call
 or reasoning marker is never shown. An open confirmation proposal or an
-interaction block (`[CHOICE]`, `[FORM]`) is the action's own copy and is
-delivered alone.
+interaction block (`[CHOICE]`, `[FORM]`) is the action's own copy. It and
+the emergency keypad's safety copy are delivered without model prose.
 
 ```quint
 type Composition = NoText | ToolOnly | ProseOnly | ToolThenProse | FencedToolThenProse
-type ToolTextShape = { present: bool, card: bool, multiline: bool, fenced: bool, ownCopy: bool }
+type ToolTextShape = { present: bool, card: bool, multiline: bool, fenced: bool, ownCopy: bool, alone: bool }
 pure def compose(tool: ToolTextShape, prose: bool, proseHoldsTool: bool, toolHoldsProse: bool): Composition =
   if (not(tool.present)) (if (prose) ProseOnly else NoText)
-  else if (not(prose) or tool.ownCopy or toolHoldsProse) ToolOnly
+  else if (not(prose) or tool.ownCopy or tool.alone or toolHoldsProse) ToolOnly
   else if (proseHoldsTool) ProseOnly
   else if (tool.multiline and not(tool.card) and not(tool.fenced)) FencedToolThenProse
   else ToolThenProse
 pure val toolValues = Set(
-  { present: true, card: true, multiline: true, fenced: false, ownCopy: false },
-  { present: true, card: false, multiline: true, fenced: false, ownCopy: false },
-  { present: true, card: false, multiline: false, fenced: false, ownCopy: true },
-  { present: false, card: false, multiline: false, fenced: false, ownCopy: false })
+  { present: true, card: true, multiline: true, fenced: false, ownCopy: false, alone: false },
+  { present: true, card: false, multiline: true, fenced: false, ownCopy: false, alone: false },
+  { present: true, card: false, multiline: false, fenced: false, ownCopy: true, alone: false },
+  { present: true, card: false, multiline: true, fenced: false, ownCopy: true, alone: false },
+  { present: true, card: false, multiline: false, fenced: false, ownCopy: true, alone: true },
+  { present: false, card: false, multiline: false, fenced: false, ownCopy: false, alone: false })
 pure def lawACardIsNeverFenced(tool: ToolTextShape, prose: bool, proseHoldsTool: bool, toolHoldsProse: bool): bool =
   tool.card implies compose(tool, prose, proseHoldsTool, toolHoldsProse) != FencedToolThenProse
+pure def lawOwnCopyIsNeverFenced(tool: ToolTextShape, prose: bool, proseHoldsTool: bool, toolHoldsProse: bool): bool =
+  tool.ownCopy implies compose(tool, prose, proseHoldsTool, toolHoldsProse) != FencedToolThenProse
 pure def lawGroundedProseIsKept(tool: ToolTextShape, proseHoldsTool: bool): bool =
-  (tool.present and not(tool.ownCopy)) implies compose(tool, true, proseHoldsTool, false) != ToolOnly
+  (tool.present and not(tool.ownCopy) and not(tool.alone)) implies compose(tool, true, proseHoldsTool, false) != ToolOnly
+pure def lawProposalAndSafetyCopyStandAlone(tool: ToolTextShape, prose: bool, proseHoldsTool: bool, toolHoldsProse: bool): bool =
+  (tool.present and (tool.ownCopy or tool.alone)) implies compose(tool, prose, proseHoldsTool, toolHoldsProse) == ToolOnly
 pure def lawToolTextIsNeverDropped(tool: ToolTextShape, prose: bool, toolHoldsProse: bool): bool =
   tool.present implies compose(tool, prose, false, toolHoldsProse) != ProseOnly and compose(tool, prose, false, toolHoldsProse) != NoText
 ```
@@ -822,7 +935,7 @@ pure def lawAMessageStoredWithoutATimeIsSentAsItIs(fromPerson: bool, storedAt: i
 pure def lawWhatThePersonSaidAtAKnownTimeIsStamped(storedAt: int): bool = storedAt > 0 implies stampedForTheModel(true, storedAt)
 ```
 
-### A standalone answer to a current-time question that names a date, weekday or clock the clock did not observe is replaced by the clock's own reading
+### A standalone answer to a current-time question that names a date, weekday or clock the clock did not observe is asked for again, and the clock's own reading is the last resort
 
 The question is the whole message: `what time is it`, `what's the time`,
 `what is the current`, `local` or `today's` `time`, `day` or `date`, or
@@ -839,9 +952,11 @@ alone or with an offset such as `GMT+9` or `GMT+5:30`), and spaces and
 `,.!():`. A stated date disagrees when its month or day, or a year it
 states, is not the local date's; a weekday when it is not today's; a clock
 when it is more than ten minutes from the local time, counted the short
-way around midnight. The reply is then `It's <full date and time to the
-second, with its zone>.`, with no further model call. Any other reply is
-kept as it is.
+way around midnight. The model is then asked once more with the clock's
+full reading as a host note (above), and its answer is kept when this check
+holds of it. Otherwise, or when that call fails, the reply is `It's <full
+date and time to the second, with its zone>.`. Any other reply is kept as
+it is, with no further model call.
 
 ```quint
 type StatedTime = StatedDay({ month: int, day: int, year: int }) | StatedWeekday({ weekday: int }) | StatedClock({ minuteOfDay: int })
@@ -876,15 +991,17 @@ pure def lawAWrongStatementIsReplaced(statement: StatedTime, localClock: LocalCl
   statementDisagrees(statement, localClock) implies statedTimeIsUngrounded(true, true, List(statement), localClock)
 ```
 
-### A reply that gives a just-changed calendar event a time range other than the one it got is replaced by the change's own words
+### A reply that gives a just-changed calendar event a time range other than the one it got is asked for again, and the change's own words are the last resort
 
 When a turn's actions applied exactly one timed calendar event, through a
 successful result that carries the event (its id, start, end, zone and
 version, and a title naming no clock time) and its own applied create or
 update receipt for that event at that version, a reply that states one
 clock range, a start and an end such as "3–4 PM", is read on the event's
-own clock. When its start or end is not the event's, the reply is
-replaced by that action's own words, with no further model call. A reply
+own clock. When its start or end is not the event's, the model is asked
+once more with that action's own words as a host note (above), and its
+answer is kept when this check holds of it. Otherwise, or when that call
+fails, the reply is that action's own words. A reply
 to a current-time question, one that states a single clock time, a zone
 or an offset, and a turn that changed no event or more than one, are kept
 as they are; identical copies of one result count as one event.

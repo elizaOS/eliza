@@ -1,6 +1,6 @@
 // spec/calendar/linkedSync.md, "Story: Link my resident calendar to a verified provider destination"; spec/calendar/linkedSync.md, "Story: Keep a link local or move it to the selected destination only while sync is drained"
 import { assert, it } from "@effect/vitest"
-import type { CalendarEvent, CalendarSummary } from "../src/model.vibe"
+import type { CalendarEvent, CalendarSummary } from "@elizaos/plugin-calendar-client"
 import { calendarHost } from "../src/plugin/host.vibe"
 import { linkedCalendarRoutes } from "../src/plugin/linked-routes.vibe"
 import type { CalendarAccount, CalendarProviderPort } from "../src/plugin/providers.vibe"

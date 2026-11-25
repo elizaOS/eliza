@@ -317,7 +317,7 @@ pure def lawAnAcceptedProfileServesCompleteDocuments(p: Profile, environment: En
 > renews its key, subscribes, speaks, maps and reads Google the same way on
 > either host.
 
-The Worker (`@elizaos/cloud/worker`) reads its profile from the
+The Worker (`@elizaos/cloud-worker`) reads its profile from the
 `CLOUD_PROFILE` binding (the profile's JSON) and its environment from
 `CLOUD_ENVIRONMENT`, its secrets from the Worker's other bindings, and its
 database from Hyperdrive. Each request gets one connection to the database,

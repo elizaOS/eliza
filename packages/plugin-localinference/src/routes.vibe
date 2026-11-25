@@ -1,5 +1,5 @@
 // spec/localInference/models.md, "Story: Run a model of my choice on my device"; spec/localInference/models.md, "A slot is assigned only to an installed model whose role serves it, one slot per change"; spec/localInference/models.md, "An unreadable assignment record is reported, never rewritten from empty"; spec/localInference/models.md, "Only an installed model whose evaluations passed is activated"
-import type { LocalRoute } from "@elizaos/agent/routes"
+import type { LocalRoute } from "@elizaos/agent-host"
 import { modelNamed } from "./catalog.vibe"
 import type { InferenceEngine } from "./engine.vibe"
 import { slotNamed, type LocalModelsApi } from "./models.vibe"

@@ -1,0 +1,508 @@
+// spec/cloud/services/maps.md, "A deployment answers capabilities always, and any other operation only when its provider serves it"; spec/cloud/services/maps.md, "A request reaches the provider only under the standing that admitted it, for at most 10 seconds and 2 MiB"; spec/cloud/services/maps.md, "A dispatched request is charged what the provider billed, or its quote when the reply was lost, and one never dispatched is charged nothing"; spec/cloud/services/maps.md, "A place lookup asks for nearby places first only when preferred, and for the address only when there are none"; spec/cloud/services/maps.md, "A tile is never stored, and none is sent without a freshly admitted hold"; spec/cloud/services/maps.md, "Every tile a process serves shares one provider tile session, started beside the hold and renewed only near its expiry or when it is refused"; spec/cloud/services/maps.md, "A route whose endpoints coincide is a zero-length route, never a malformed answer"
+import { FetchHttpClient, HttpClient, HttpClientRequest, type HttpClientResponse } from "effect/http"
+import { billingOf, detailsPrice, geocodeBillingOf, geocodeFoundNothing, geocodePrice, nearbyPrice, offerOf, placeIdRefused, placeLookup, quoteOf, routeLine, searchPrice, supportsMode, tilePrice, tileSessionFresh, unclearAnswerIsInvalid, upstreamBodyCap, upstreamTimeout, type MapsProvider as ProviderKind, type SearchRank, type TravelMode as SpecMode } from "../../gen/cloud__services__maps.effect.vibe"
+import type { Micros } from "../../gen/cloud__shared__types.ts"
+import {
+  type MapsSettings as MapsSettingsSchema, Deployment, MapsPlace, MapsRoute, tileUrlTemplate, type Coordinate, type MapsCapabilities, type MapsPlaceResponse, type MapsPlacesResponse, type MapsRouteStep, type MapsRoutesResponse, type MapsTransitDetails, type MapsViewportResponse, type Maneuver, type PlaceDetailsRequest, type ReverseRequest, type RoutesRequest, type TextSearchRequest, type TileAddress, type TravelMode, type ViewportRequest,
+} from "@elizaos/cloud"
+import { osmAttribution, osmMapsProvider, routeId } from "./maps-osm.vibe"
+
+export type MapsSettings = typeof MapsSettingsSchema.Type
+type GoogleSettings = Extract<MapsSettings, { readonly provider: "google" }>
+export type ProviderRefusal = "NoRoute" | "UnsupportedMode" | "UnsupportedRegion" | "ProviderInvalidResponse" | "ProviderUnavailable"
+export type LostReplyRefusal = "InvalidRequest" | "ProviderInvalidResponse" | "ProviderUnavailable"
+export type MapsReply<A> =
+  | { readonly kind: "answered"; readonly value: A; readonly observedMicros: Micros }
+  | { readonly kind: "refused"; readonly code: ProviderRefusal; readonly observedMicros: Micros }
+  | { readonly kind: "unknown"; readonly cause: string; readonly code: LostReplyRefusal }
+export interface MapsTile { readonly bytes: Uint8Array; readonly contentType: "image/png" | "image/jpeg" | "image/webp"; readonly attribution: string }
+export type MapsContext = HttpClient.HttpClient | Deployment
+
+type ProviderSearch = { readonly query: string; readonly limit: number } & (
+  | { readonly rank: Extract<SearchRank, "RankByRelevance">; readonly near?: Coordinate }
+  | { readonly rank: Extract<SearchRank, "RankByDistance">; readonly near: Coordinate }
+)
+
+export interface MapsProvider {
+  geocode(request: TextSearchRequest): MapsReply<MapsPlacesResponse>!!MapsContext
+  search(request: ProviderSearch): MapsReply<MapsPlacesResponse>!!MapsContext
+  reverse(request: ReverseRequest): MapsReply<MapsPlaceResponse>!!MapsContext
+  details(request: PlaceDetailsRequest): MapsReply<MapsPlaceResponse>!!MapsContext
+  routes(request: RoutesRequest): MapsReply<MapsRoutesResponse>!!MapsContext
+  tile?(address: TileAddress): MapsReply<MapsTile>!!MapsContext
+  viewport?(request: ViewportRequest): MapsReply<MapsViewportResponse>!!MapsContext
+  prepareTiles?(): Effect.Effect<Effect.Effect<void>, never, MapsContext>
+}
+
+export const providerKindOf: Readonly<Record<MapsSettings["provider"], ProviderKind>> = { google: "GoogleMaps", osm: "OsmMaps", none: "NoMaps" }
+export const specModeOf: Readonly<Record<TravelMode, SpecMode>> = { drive: "Drive", walk: "Walk", bicycle: "Bicycle", transit: "Transit" }
+
+export function mapsProvider(settings: MapsSettings | undefined): MapsProvider | undefined {
+  if (settings === undefined) return undefined
+  switch (settings.provider) {
+    case "none": return undefined
+    case "google": return googleMapsProvider(settings)
+    case "osm": return osmMapsProvider(settings)
+  }
+}
+
+const googleAttribution = "Google Maps"
+const tileAttribution = "Map data © Google"
+const world = [-180, -85.0511, 180, 85.0511] as const
+const sources = {
+  google: { data: "Google Maps", search: "Google Places API", routing: "Google Routes API" },
+  osm: { data: "OpenStreetMap", search: "Nominatim", routing: "GraphHopper" },
+} as const
+const sourceOperator = { google: "Google", osm: undefined } as const
+
+export function describeMaps(settings: MapsSettings | undefined, operator: string): MapsCapabilities {
+  if (settings === undefined || settings.provider === "none") return { available: false }
+  const kind = providerKindOf[settings.provider]
+  const offer = offerOf(kind)
+  const source = sources[settings.provider]
+  const sourceBy = sourceOperator[settings.provider] ?? operator
+  return {
+    available: true,
+    providerId: settings.provider,
+    connectionId: `conn_cloud_maps_provider_${settings.provider}`,
+    revision: settings.datasetRevision,
+    attribution: settings.provider === "google" ? googleAttribution : osmAttribution,
+    sources: source,
+    disclosure: {
+      recipients: [{ role: "gateway", name: "Cloud maps", operator }, { role: "search", name: source.search, operator: sourceBy }, { role: "routing", name: source.routing, operator: sourceBy }],
+      cloudRecords: "operation-and-result-code",
+    },
+    regions: [{ id: settings.coverage, name: settings.coverage, bounds: world }],
+    capabilities: {
+      map: offer.map, search: true, placeDetails: true, geocode: true, reverseGeocode: true, placeLookup: offer.placeLookup, distanceRank: offer.distanceRank,
+      modes: ["drive", ...(["walk", "bicycle", "transit"] as const).filter((mode) => supportsMode(kind, specModeOf[mode]))], alternatives: true, traffic: offer.liveTraffic ? "live" : "none", transit: offer.scheduledTransit ? "scheduled" : "none",
+      offline: { map: false, search: false, routing: false },
+    },
+    ...(offer.map ? { tiles: { urlTemplate: tileUrlTemplate, mapType: "roadmap", minZoom: 0, maxZoom: 22, tileSize: 256, attribution: tileAttribution } as const } : {}),
+  }
+}
+
+error Refused { code: ProviderRefusal }
+error Rejected { status: number }
+error Lost { cause: string; code: LostReplyRefusal }
+type Stop = Refused | Rejected | Lost
+type Meter = { observed: Micros }
+type Got = { readonly status: number; readonly bytes: Uint8Array; readonly contentType: string | undefined }
+type TileSession = { readonly token: string; readonly expiresAt: number; readonly format: MapsTile["contentType"] }
+
+effect function capped(response: HttpClientResponse.HttpClientResponse): Uint8Array!(Refused | Lost) {
+  const chunks: Uint8Array[] = []
+  let size = 0
+  for try (const chunk of Stream.mapError(response.stream, (cause) => new Lost({ cause: cause._tag, code: "ProviderUnavailable" }))) {
+    size += chunk.length
+    if (size > upstreamBodyCap) break
+    chunks.push(chunk)
+  }
+  if (size > upstreamBodyCap) throw new Refused({ code: "ProviderUnavailable" })
+  const bytes = new Uint8Array(size)
+  chunks.reduce((offset, chunk) => { bytes.set(chunk, offset); return offset + chunk.length }, 0)
+  return bytes
+}
+
+effect function send(meter: Meter, request: HttpClientRequest.HttpClientRequest, price: Micros, readable: ReadonlyArray<number> = []): Got!Stop!HttpClient.HttpClient {
+  const exchange = effect {
+    const response = Effect.provideService(HttpClient.execute(request), FetchHttpClient.RequestInit, { redirect: "manual" }) catch effect (cause) => { throw new Lost({ cause: cause._tag, code: "ProviderUnavailable" }) }
+    const billing = billingOf(response.status)
+    if (billing === "CallBilled") meter.observed += price
+    if (billing === "CallNotBilled" || (billing === "CallUnclear" && !readable.includes(response.status))) {
+      Stream.runHead(response.stream) catch () => undefined
+      if (billing === "CallNotBilled") throw new Rejected({ status: response.status })
+      throw new Lost({ cause: `status ${response.status}`, code: unclearAnswerIsInvalid(response.status) ? "ProviderInvalidResponse" : "ProviderUnavailable" })
+    }
+    return { status: response.status, bytes: try capped(response), contentType: response.headers["content-type"] }
+  }
+  return try timeoutOrElse(exchange, { duration: upstreamTimeout, orElse: () => fail(new Lost({ cause: "timeout", code: "ProviderUnavailable" })) })
+}
+
+effect function decoded<A>(got: Got, schema: Schema.Decoder<A>, accepted: ReadonlyArray<number> = [200]): A!Refused {
+  if (!accepted.includes(got.status)) throw new Refused({ code: "ProviderInvalidResponse" })
+  const text = new TextDecoder().decode(got.bytes)
+  const json = try Effect.try({ try: () => JSON.parse(text) as unknown, catch: () => new Refused({ code: "ProviderInvalidResponse" }) })
+  return Schema.decodeUnknownEffect(schema)(json) catch effect () => { throw new Refused({ code: "ProviderInvalidResponse" }) }
+}
+
+effect function metered<A>(work: (meter: Meter) => A!Stop!MapsContext): MapsReply<A>!!MapsContext {
+  const meter: Meter = { observed: 0 }
+  const answered = effect {
+    const value = try work(meter)
+    return { kind: "answered", value, observedMicros: meter.observed } satisfies MapsReply<A>
+  }
+  return answered catch (stop): MapsReply<A> => match (stop) {
+    when Refused: { kind: "refused", code: stop.code, observedMicros: meter.observed };
+    when Rejected: { kind: "refused", code: "ProviderUnavailable", observedMicros: meter.observed };
+    when Lost: { kind: "unknown", cause: stop.cause, code: stop.code };
+  }
+}
+
+schema LatLng { latitude: number; longitude: number }
+schema DisplayName { text: string }
+schema OpeningHours { weekdayDescriptions?: Array<string> }
+schema GooglePlace { id: string; displayName?: DisplayName; formattedAddress?: string; location: LatLng; websiteUri?: string; internationalPhoneNumber?: string; regularOpeningHours?: OpeningHours }
+schema PlacesReply { places?: Array<GooglePlace> }
+schema GeoLocation { lat: number; lng: number }
+schema GeoGeometry { location: GeoLocation }
+schema GeocodeResult { place_id: string; formatted_address: string; geometry: GeoGeometry }
+schema GeocodeReply { status: string; results?: Array<GeocodeResult> }
+schema StopName { name?: string }
+schema StopDetails { departureStop?: StopName; arrivalStop?: StopName; departureTime?: string; arrivalTime?: string }
+schema Vehicle { type?: string }
+schema TransitLine { name?: string; nameShort?: string; color?: string; vehicle?: Vehicle }
+schema TransitReply { headsign?: string; stopCount?: number; stopDetails?: StopDetails; transitLine?: TransitLine }
+schema StartLocation { latLng: LatLng }
+schema Navigation { maneuver?: string; instructions?: string }
+schema StepReply { distanceMeters?: number; startLocation?: StartLocation; navigationInstruction?: Navigation; transitDetails?: TransitReply }
+schema LegReply { steps?: Array<StepReply> }
+schema Polyline { encodedPolyline: string }
+schema RouteReply { distanceMeters?: number; duration: string; staticDuration?: string; polyline: Polyline; legs?: Array<LegReply> }
+schema RoutesReply { routes?: Array<RouteReply> }
+schema SessionReply { session: string; expiry: string | number; imageFormat?: string }
+schema ZoomRect { maxZoom: number }
+schema ViewportReply { copyright: string; maxZoomRects?: Array<ZoomRect> }
+
+const placeId = /^[A-Za-z0-9_-]{10,255}$/
+const placeFields = "places.id,places.displayName,places.formattedAddress,places.location"
+const detailFields = "id,displayName,formattedAddress,location,websiteUri,internationalPhoneNumber,regularOpeningHours.weekdayDescriptions"
+const travelModes: Readonly<Record<TravelMode, string>> = { drive: "DRIVE", walk: "WALK", bicycle: "BICYCLE", transit: "TRANSIT" }
+const maneuvers: Readonly<Record<string, Maneuver>> = {
+  DEPART: "depart", STRAIGHT: "continue", NAME_CHANGE: "continue", MERGE: "continue", TURN_SLIGHT_LEFT: "slight-left", TURN_LEFT: "left",
+  TURN_SHARP_LEFT: "sharp-left", TURN_SLIGHT_RIGHT: "slight-right", TURN_RIGHT: "right", TURN_SHARP_RIGHT: "sharp-right", RAMP_LEFT: "keep-left",
+  FORK_LEFT: "keep-left", RAMP_RIGHT: "keep-right", FORK_RIGHT: "keep-right", UTURN_LEFT: "u-turn", UTURN_RIGHT: "u-turn", ROUNDABOUT_LEFT: "roundabout", ROUNDABOUT_RIGHT: "roundabout",
+}
+const vehicles: Readonly<Record<string, string>> = {
+  BUS: "bus", INTERCITY_BUS: "bus", TROLLEYBUS: "bus", SHARE_TAXI: "shared taxi", SUBWAY: "subway", METRO_RAIL: "metro", LIGHT_RAIL: "light rail", TRAM: "tram",
+  MONORAIL: "monorail", RAIL: "train", HEAVY_RAIL: "train", COMMUTER_TRAIN: "train", HIGH_SPEED_TRAIN: "train", LONG_DISTANCE_TRAIN: "train", FERRY: "ferry",
+  CABLE_CAR: "cable car", GONDOLA_LIFT: "gondola", FUNICULAR: "funicular",
+}
+const isPlace = Schema.is(MapsPlace)
+const isRoute = Schema.is(MapsRoute)
+const tileSessions = new Map<string, Deferred.Deferred<TileSession, Refused>>()
+
+function covered(point: Coordinate): boolean {
+  return Math.abs(point.latitude) <= world[3]
+}
+
+function seconds(value: string | undefined): number | undefined {
+  const match = value === undefined ? null : /^(\d+(?:\.\d+)?)s$/.exec(value)
+  return match === null ? undefined : Number(match[1])
+}
+
+function refusesTheArgument(bytes: Uint8Array): boolean {
+  let body: unknown
+  try {
+    body = JSON.parse(new TextDecoder().decode(bytes))
+  } catch {
+    return false
+  }
+  const error = typeof body === "object" && body !== null && "error" in body ? body.error : undefined
+  if (typeof error !== "object" || error === null || !("status" in error) || error.status !== "INVALID_ARGUMENT") return false
+  const details = "details" in error ? error.details : undefined
+  return details === undefined || (Array.isArray(details) && details.every((detail: unknown) =>
+    typeof detail === "object" && detail !== null && !("reason" in detail) && !String("@type" in detail ? detail["@type"] : "").endsWith("ErrorInfo")))
+}
+
+function lineOf(decoded: ReadonlyArray<Coordinate>, distanceMeters: number, from: Coordinate, to: Coordinate): Coordinate[] | undefined {
+  switch (routeLine(decoded.length, distanceMeters)) {
+    case "ProvidersLine": return [...decoded]
+    case "ItsPointTwice": return [decoded[0], decoded[0]]
+    case "StartToEnd": return [from, to]
+    case "NoUsableLine": return undefined
+  }
+}
+
+function decodePolyline(encoded: string): Coordinate[] | undefined {
+  const points: Coordinate[] = []
+  const position = { index: 0, latitude: 0, longitude: 0 }
+  const next = (): number | undefined => {
+    let result = 0
+    for (let shift = 0; shift <= 30; shift += 5) {
+      const byte = encoded.charCodeAt(position.index++) - 63
+      if (!(byte >= 0 && byte <= 63)) return undefined
+      result |= (byte & 0x1f) << shift
+      if (byte < 0x20) return result & 1 ? ~(result >> 1) : result >> 1
+    }
+    return undefined
+  }
+  while (position.index < encoded.length) {
+    const latitude = next()
+    const longitude = next()
+    if (latitude === undefined || longitude === undefined) return undefined
+    position.latitude += latitude
+    position.longitude += longitude
+    points.push({ latitude: position.latitude / 1e5, longitude: position.longitude / 1e5 })
+  }
+  return points
+}
+
+function simplified(geometry: ReadonlyArray<Coordinate>, steps: ReadonlyArray<MapsRouteStep>): Coordinate[] {
+  const origin = geometry[0]
+  const scale = 111_320 * Math.cos((origin.latitude * Math.PI) / 180)
+  const x = geometry.map((point) => (point.longitude - origin.longitude) * scale)
+  const y = geometry.map((point) => (point.latitude - origin.latitude) * 110_574)
+  const stepPoints = new Set(steps.map(({ coordinate }) => `${coordinate.latitude},${coordinate.longitude}`))
+  const anchors = geometry.flatMap((point, index) => index === 0 || index === geometry.length - 1 || stepPoints.has(`${point.latitude},${point.longitude}`) ? [index] : [])
+  const pass = (tolerance: number): Coordinate[] => {
+    const keep = new Set(anchors)
+    const stack = anchors.slice(1).flatMap((end, index) => [anchors[index], end])
+    while (stack.length > 0) {
+      const end = stack.pop() ?? 0
+      const start = stack.pop() ?? 0
+      const [bx, by] = [x[end] - x[start], y[end] - y[start]]
+      const length = bx * bx + by * by
+      let farthest = { index: -1, distance: tolerance * tolerance }
+      for (let index = start + 1; index < end; index += 1) {
+        const [px, py] = [x[index] - x[start], y[index] - y[start]]
+        const t = length === 0 ? 0 : Math.max(0, Math.min(1, (px * bx + py * by) / length))
+        const distance = (px - t * bx) ** 2 + (py - t * by) ** 2
+        if (distance > farthest.distance) farthest = { index, distance }
+      }
+      if (farthest.index !== -1) {
+        keep.add(farthest.index)
+        stack.push(start, farthest.index, farthest.index, end)
+      }
+    }
+    const kept = geometry.filter((_, index) => keep.has(index))
+    return kept.length > 10_000 && kept.length > anchors.length ? pass(tolerance * 2) : kept
+  }
+  return geometry.length <= 2 ? [...geometry] : pass(5)
+}
+
+function transitOf(reply: TransitReply | undefined): MapsTransitDetails | undefined {
+  const line = reply?.transitLine?.nameShort ?? reply?.transitLine?.name
+  const departureStop = reply?.stopDetails?.departureStop?.name
+  const arrivalStop = reply?.stopDetails?.arrivalStop?.name
+  if (reply === undefined || line === undefined || departureStop === undefined || arrivalStop === undefined) return undefined
+  const color = reply.transitLine?.color?.toLowerCase()
+  const stops = reply.stopDetails
+  return {
+    line, vehicle: vehicles[reply.transitLine?.vehicle?.type ?? ""] ?? "transit", departureStop, arrivalStop,
+    ...(reply.headsign === undefined ? {} : { headsign: reply.headsign }),
+    ...(stops?.departureTime === undefined ? {} : { departureTime: stops.departureTime }),
+    ...(stops?.arrivalTime === undefined ? {} : { arrivalTime: stops.arrivalTime }),
+    ...(reply.stopCount !== undefined && Number.isInteger(reply.stopCount) && reply.stopCount >= 0 ? { stopCount: reply.stopCount } : {}),
+    ...(color !== undefined && /^#[0-9a-f]{6}$/.test(color) ? { color } : {}),
+  }
+}
+
+function stepsOf(route: RouteReply, end: Coordinate): MapsRouteStep[] {
+  const steps = (route.legs ?? []).flatMap((leg) => leg.steps ?? []).flatMap((step): MapsRouteStep[] => {
+    const transit = transitOf(step.transitDetails)
+    const instruction = step.navigationInstruction?.instructions ??
+      (transit === undefined ? undefined : `Take the ${transit.vehicle} ${transit.line}${transit.headsign === undefined ? "" : ` toward ${transit.headsign}`} from ${transit.departureStop} to ${transit.arrivalStop}.`)
+    const maneuver = maneuvers[step.navigationInstruction?.maneuver ?? ""]
+    if (step.startLocation === undefined || instruction === undefined) return []
+    return [{ instruction, coordinate: step.startLocation.latLng, distanceMeters: step.distanceMeters ?? 0, ...(maneuver === undefined ? {} : { maneuver }), ...(transit === undefined ? {} : { transit }) }]
+  })
+  return [...steps, { instruction: "Arrive at your destination.", coordinate: end, distanceMeters: 0, maneuver: "arrive" }]
+}
+
+function placeOf(reply: GooglePlace, fetchedAt: number): MapsPlace | undefined {
+  const website = reply.websiteUri !== undefined && URL.canParse(reply.websiteUri) && /^https?:$/.test(new URL(reply.websiteUri).protocol) ? reply.websiteUri : undefined
+  const phone = reply.internationalPhoneNumber !== undefined && /^[+0-9() .-]{3,80}$/.test(reply.internationalPhoneNumber) ? reply.internationalPhoneNumber : undefined
+  const hours = reply.regularOpeningHours?.weekdayDescriptions?.join("; ")
+  const place = {
+    providerId: "google", id: reply.id, name: reply.displayName?.text ?? reply.formattedAddress ?? "", coordinate: reply.location, attribution: googleAttribution, fetchedAt,
+    ...(reply.formattedAddress === undefined ? {} : { address: reply.formattedAddress }),
+    ...(website === undefined ? {} : { website }),
+    ...(phone === undefined ? {} : { phone }),
+    ...(hours !== undefined && hours.length > 0 && hours.length <= 255 ? { openingHours: hours } : {}),
+  }
+  return placeId.test(reply.id) && isPlace(place) ? place : undefined
+}
+
+function googleMapsProvider(settings: GoogleSettings): MapsProvider {
+  const base = settings.baseUrl.replace(/\/+$/, "")
+  const url = (host: "places" | "maps" | "routes" | "tile", path: string) => `${base}/${host}${path}`
+
+  effect function apiKey() {
+    return try orDie((try Deployment).secret(settings.apiKeyEnv))
+  }
+
+  effect function google(path: string, fields: string, body: object) {
+    const key = try apiKey()
+    return HttpClientRequest.post(path).pipe(HttpClientRequest.setHeaders({ "x-goog-api-key": key, "x-goog-fieldmask": fields }), HttpClientRequest.bodyText(JSON.stringify(body), "application/json"))
+  }
+
+  effect function places(replies: ReadonlyArray<GooglePlace>) {
+    const fetchedAt = try Clock.currentTimeMillis
+    const found = replies.map((reply) => placeOf(reply, fetchedAt))
+    if (found.some((place) => place === undefined)) throw new Refused({ code: "ProviderInvalidResponse" })
+    return found.filter((place): place is MapsPlace => place !== undefined && covered(place.coordinate))
+  }
+
+  effect function geocoding(meter: Meter, params: Readonly<Record<string, string>>) {
+    const request = HttpClientRequest.get(url("maps", "/maps/api/geocode/json"), { urlParams: { ...params, key: try apiKey() } })
+    const got = try send(meter, request, geocodePrice, [400])
+    const reply = decoded(got, GeocodeReply, [200, 400, 404]) catch () => undefined
+    const billing = geocodeBillingOf(got.status, reply?.status ?? "")
+    if (billing !== "CallBilled" && billingOf(got.status) === "CallBilled") meter.observed -= geocodePrice
+    if (billing === "CallNotBilled") throw new Rejected({ status: got.status })
+    if (billing === "CallUnclear" || reply === undefined) throw new Lost({ cause: `geocode ${reply?.status ?? "unreadable"} with status ${got.status}`, code: "ProviderInvalidResponse" })
+    if (geocodeFoundNothing(got.status, reply.status)) return []
+    return try places((reply.results ?? []).map((result) => ({
+      id: result.place_id, formattedAddress: result.formatted_address, displayName: { text: result.formatted_address.split(",")[0].trim() }, location: { latitude: result.geometry.location.lat, longitude: result.geometry.location.lng },
+    })))
+  }
+
+  const answer = (found: ReadonlyArray<MapsPlace>): MapsPlacesResponse => ({ providerId: "google", attribution: googleAttribution, places: found })
+  const single = (place: MapsPlace | undefined): MapsPlaceResponse => ({ providerId: "google", attribution: googleAttribution, place: place ?? null })
+
+  effect function createTileSession(): TileSession!Refused!MapsContext {
+    const key = try apiKey()
+    const request = HttpClientRequest.post(url("tile", "/v1/createSession"), { urlParams: { key } }).pipe(
+      HttpClientRequest.bodyText(JSON.stringify({ mapType: "roadmap", language: "en-US", region: "US", scale: "scaleFactor2x", highDpi: true }), "application/json"))
+    const got = send({ observed: 0 }, request, 0) catch effect (stop) => { throw new Refused({ code: stop._tag === "Refused" ? stop.code : "ProviderUnavailable" }) }
+    const reply = try decoded(got, SessionReply)
+    return { token: reply.session, expiresAt: Number(reply.expiry) * 1000, format: reply.imageFormat === "jpeg" ? "image/jpeg" : reply.imageFormat === "webp" ? "image/webp" : "image/png" } satisfies TileSession
+  }
+
+  effect function settleTileSession(created: Deferred.Deferred<TileSession, Refused>): void!!MapsContext {
+    const outcome = try exit(createTileSession())
+    if (Exit.isFailure(outcome) && tileSessions.get(base) === created) tileSessions.delete(base)
+    try Deferred.done(created, outcome)
+  }
+
+  effect function startTileSession(): Deferred.Deferred<TileSession, Refused>!!MapsContext {
+    const created = try Deferred.make<TileSession, Refused>()
+    const running = tileSessions.get(base)
+    if (running !== undefined) return running
+    tileSessions.set(base, created)
+    fork.detached settleTileSession(created)
+    return created
+  }
+
+  effect function tileSession(): TileSession!Refused!MapsContext {
+    const held = tileSessions.get(base)
+    if (held === undefined) return try Deferred.await(try startTileSession())
+    const session = Deferred.await(held) catch () => undefined
+    const now = try Clock.currentTimeMillis
+    if (session !== undefined && tileSessionFresh(session.expiresAt, now)) return session
+    if (tileSessions.get(base) === held) tileSessions.delete(base)
+    return try tileSession()
+  }
+
+  effect function dropTileSession(refusedUnder: TileSession): void!! {
+    const held = tileSessions.get(base)
+    if (held === undefined) return
+    const current = Deferred.await(held) catch () => undefined
+    if (current === refusedUnder && tileSessions.get(base) === held) tileSessions.delete(base)
+  }
+
+  effect function withSession(meter: Meter, path: string, params: Readonly<Record<string, string>>, price: Micros) {
+    const key = try apiKey()
+    const attempt = effect (session: TileSession) => {
+      return { session, got: try send(meter, HttpClientRequest.get(url("tile", path), { urlParams: { ...params, session: session.token, key } }), price) }
+    }
+    const first = try tileSession()
+    return attempt(first) catch effect (stop) => {
+      if (stop._tag !== "Rejected" || (stop.status !== 401 && stop.status !== 403)) throw stop
+      try dropTileSession(first)
+      return try attempt(try tileSession())
+    }
+  }
+
+  return {
+    prepareTiles: () => effect {
+      const warming = fork.detached tileSession()
+      return Effect.ignore(Fiber.join(warming))
+    },
+    search: (request) => metered(effect (meter) => {
+      const point = request.near
+      if (point !== undefined && !covered(point)) throw new Refused({ code: "UnsupportedRegion" })
+      const body = {
+        textQuery: request.query,
+        pageSize: request.limit,
+        ...(request.rank === "RankByDistance" ? { rankPreference: "DISTANCE" } : {}),
+        ...(point === undefined ? {} : { locationBias: { circle: { center: point, radius: 50_000 } } }),
+      }
+      const reply = try decoded(try send(meter, try google(url("places", "/v1/places:searchText"), placeFields, body), searchPrice), PlacesReply)
+      return answer(try places(reply.places ?? []))
+    }),
+    geocode: (request) => metered(effect (meter) => {
+      const point = request.near
+      if (point !== undefined && !covered(point)) throw new Refused({ code: "UnsupportedRegion" })
+      const bounds: Readonly<Record<string, string>> = point === undefined ? {} : { bounds: `${Math.max(-90, point.latitude - 0.25)},${Math.max(-180, point.longitude - 0.25)}|${Math.min(90, point.latitude + 0.25)},${Math.min(180, point.longitude + 0.25)}` }
+      return answer((try geocoding(meter, { address: request.query, ...bounds })).slice(0, request.limit ?? 10))
+    }),
+    reverse: (request) => metered(effect (meter) => {
+      const point = request.coordinate
+      if (!covered(point)) throw new Refused({ code: "UnsupportedRegion" })
+      const prefer = request.preferPlace === true
+      const nearest: MapsPlace[] = []
+      if (prefer) {
+        const nearby = try google(url("places", "/v1/places:searchNearby"), placeFields, { maxResultCount: 1, rankPreference: "DISTANCE", locationRestriction: { circle: { center: point, radius: request.radiusMeters ?? 60 } } })
+        const reply = try decoded(try send(meter, nearby, nearbyPrice), PlacesReply)
+        nearest.push(...(try places(reply.places ?? [])).slice(0, 1))
+      }
+      if (placeLookup(prefer, false, nearest.length > 0 ? "AnswerPlace" : "AnswerEmpty", "AnswerAddress").geocodeCalls === 0) return single(nearest[0])
+      return single((try geocoding(meter, { latlng: `${point.latitude},${point.longitude}` }))[0])
+    }),
+    details: (request) => metered(effect (meter) => {
+      if (!placeId.test(request.id)) return single(undefined)
+      const key = try apiKey()
+      const got = try send(meter, HttpClientRequest.get(url("places", `/v1/places/${encodeURIComponent(request.id)}`)).pipe(HttpClientRequest.setHeaders({ "x-goog-api-key": key, "x-goog-fieldmask": detailFields })), detailsPrice, [400])
+      if (got.status === 404) return single(undefined)
+      if (got.status === 400) throw new Lost({ cause: "status 400", code: placeIdRefused("PlaceDetails", got.status, refusesTheArgument(got.bytes)) ? "InvalidRequest" : "ProviderInvalidResponse" })
+      const [place] = try places([try decoded(got, GooglePlace)])
+      if (place === undefined) throw new Refused({ code: "UnsupportedRegion" })
+      return single(place)
+    }),
+    routes: (request) => metered(effect (meter) => {
+      const mode = specModeOf[request.mode]
+      if (!supportsMode("GoogleMaps", mode)) throw new Refused({ code: "UnsupportedMode" })
+      if (!covered(request.from) || !covered(request.to)) throw new Refused({ code: "UnsupportedRegion" })
+      const live = request.mode === "drive" && offerOf("GoogleMaps").liveTraffic
+      const now = try Clock.currentTimeMillis
+      const departAt = request.departAt !== undefined && (request.mode === "transit" || live) && Date.parse(request.departAt) > now ? { departureTime: new Date(request.departAt).toISOString() } : {}
+      const alternatives = request.alternatives === true
+      const fields = ["routes.distanceMeters", "routes.duration", "routes.polyline.encodedPolyline", "routes.legs.steps.distanceMeters", "routes.legs.steps.startLocation", "routes.legs.steps.navigationInstruction",
+        ...(live ? ["routes.staticDuration"] : []), ...(request.mode === "transit" ? ["routes.legs.steps.transitDetails"] : [])].join(",")
+      const waypoint = (point: Coordinate) => ({ location: { latLng: point } })
+      const body = {
+        origin: waypoint(request.from), destination: waypoint(request.to), travelMode: travelModes[request.mode],
+        ...(request.mode === "drive" ? { routingPreference: live ? "TRAFFIC_AWARE" : "TRAFFIC_UNAWARE" } : {}),
+        ...departAt, computeAlternativeRoutes: alternatives, polylineEncoding: "ENCODED_POLYLINE", units: "METRIC",
+      }
+      const reply = try decoded(try send(meter, try google(url("routes", "/directions/v2:computeRoutes"), fields, body), quoteOf("Routes", false, mode, live)), RoutesReply)
+      const found: MapsRoute[] = []
+      for (const [index, route] of (reply.routes ?? []).slice(0, alternatives ? 3 : 1).entries()) {
+        const distanceMeters = route.distanceMeters ?? 0
+        const decoded = decodePolyline(route.polyline.encodedPolyline)
+        const geometry = decoded === undefined ? undefined : lineOf(decoded, distanceMeters, request.from, request.to)
+        const durationSeconds = seconds(route.duration)
+        const staticSeconds = seconds(route.staticDuration)
+        if (geometry === undefined || durationSeconds === undefined) throw new Refused({ code: "ProviderInvalidResponse" })
+        const steps = stepsOf(route, geometry[geometry.length - 1])
+        const candidate = {
+          providerId: "google", from: request.from, to: request.to, mode: request.mode, geometry: simplified(geometry, steps), distanceMeters,
+          durationSeconds, steps, attribution: googleAttribution, traffic: live ? "live" : "none", ...(live && staticSeconds !== undefined ? { staticDurationSeconds: staticSeconds } : {}),
+        } as const
+        const built = { id: routeId(JSON.stringify({ index, departAt, ...candidate })), ...candidate, fetchedAt: now }
+        if (!isRoute(built)) throw new Refused({ code: "ProviderInvalidResponse" })
+        found.push(built)
+      }
+      const [first, ...rest] = found
+      if (first === undefined) throw new Refused({ code: "NoRoute" })
+      return { providerId: "google", attribution: googleAttribution, routes: [first, ...rest] } satisfies MapsRoutesResponse
+    }),
+    tile: (address) => metered(effect (meter) => {
+      const { session, got } = try withSession(meter, `/v1/2dtiles/${address.z}/${address.x}/${address.y}`, {}, tilePrice)
+      if (got.status === 404) throw new Refused({ code: "UnsupportedRegion" })
+      const declared = got.contentType?.split(";")[0].trim()
+      const contentType = declared === "image/png" || declared === "image/jpeg" || declared === "image/webp" ? declared : session.format
+      return { bytes: got.bytes, contentType, attribution: tileAttribution } satisfies MapsTile
+    }),
+    viewport: (request) => metered(effect (meter) => {
+      const params = { zoom: String(request.zoom), north: String(request.north), south: String(request.south), east: String(request.east), west: String(request.west) }
+      const { got } = try withSession(meter, "/tile/v1/viewport", params, 0)
+      const reply = try decoded(got, ViewportReply)
+      const maxZoom = Math.max(-1, ...(reply.maxZoomRects ?? []).map((rect) => rect.maxZoom))
+      if (reply.copyright.trim() === "" || reply.copyright.length > 500) throw new Refused({ code: "ProviderInvalidResponse" })
+      return { providerId: "google", copyright: reply.copyright, ...(Number.isInteger(maxZoom) && maxZoom >= 0 && maxZoom <= 22 ? { maxZoom } : {}) } satisfies MapsViewportResponse
+    }),
+  }
+}

@@ -1654,8 +1654,7 @@ public abstract class SpeechStreamBridgePlugin extends Plugin {
     row.put("receivedFrames", own.receivedFrames);
     row.put("receivedBytes", own.receivedBytes);
     if (own.httpStatus != 0) row.put("httpStatus", own.httpStatus);
-    timings.add(row, !own.startupMarked);
-    if ("ready".equals(stage)) own.startupMarked = true;
+    timings.add(own.diagnosticId, stage, row);
   }
 
   private static void submit(Executor executor, Runnable action, Runnable rejected) {
@@ -1682,7 +1681,7 @@ public abstract class SpeechStreamBridgePlugin extends Plugin {
     final long startupStartedMs = SystemClock.elapsedRealtime();
     final Runnable deadline = this::expireStartup;
     final Runnable expiry = () -> apply(this, new Event.RelayLost(), Why.code("expired"));
-    boolean begun, finished, startupMarked;
+    boolean begun, finished;
     volatile String origin, token, wireToken, serverId, address;
     volatile long expiresAt, sentFrames, sentBytes, receivedFrames, receivedBytes, askedAt, consentReported;
     volatile long startupEndsMs = startupStartedMs + HTTP_STARTUP_MS;
