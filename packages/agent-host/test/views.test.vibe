@@ -5,6 +5,7 @@ import { findViewActionHandoff, Service, type Action, type ActionResult, type IA
 import { navigationBusyWaitMs, navigationClaimLeaseMs, navigationWaitMs } from "../gen/agent__views.effect.vibe"
 import type { ViewBinding, ViewHost } from "../src/views/host.vibe"
 import { viewHostServiceType, viewsModuleName } from "../src/views/module.vibe"
+import { turnNotes } from "../src/conversation/planning.vibe"
 import { text, toolCalls } from "./support/cloud-fake.ts"
 import { ask, cloudFake, deviceKey, host, startInProcess, type InProcess } from "./support/kernel.vibe"
 
@@ -367,11 +368,15 @@ effect function show(agent: InProcess, message: Memory, view: string) {
   })
 }
 
-it.effect('The VIEWS show action prepares a navigation for the turn\'s renderer by alias, and the renderer confirms it (spec/agent/views.md, "The agent prepares a navigation only for the renderer bound to its turn and one view its name resolves to"; spec/agent/views.md, "Only a confirmed switch sets the shown view, and a navigation lost after its claim makes it unknown")', effect () => {
+it.effect('The VIEWS show action prepares a navigation for the turn\'s renderer by alias, and the renderer confirms it (spec/agent/views.md, "The agent prepares a navigation only for the renderer bound to its turn and one view its name resolves to"; spec/agent/views.md, "The model is told every declared view by its names, and on a bound turn the view the owner\'s screen showed"; spec/agent/views.md, "Only a confirmed switch sets the shown view, and a navigation lost after its claim makes it unknown")', effect () => {
   const agent = try startInProcess(loaded)
   const { views } = try viewHost(agent)
   const renderer = turn({ viewClientId: "c2", viewDelivery: "completed-action" })
 
+  const action = agent.agent.runtime.actions.find((candidate: Action) => candidate.name === "VIEWS")
+  const note = action === undefined ? undefined : turnNotes.get(action)
+  const onChat = note?.(agent.agent.runtime, turn({ viewClientId: "c2", viewDelivery: "completed-action", observation: { view: "chat", revision: 3, sensitive: false } }))
+  const unbound = note?.(agent.agent.runtime, turn({ observation: { view: "chat", revision: 3, sensitive: false } }))
   const shown = try show(agent, renderer, "Jottings")
   const unknown = try show(agent, renderer, "nowhere")
   const noRenderer = try show(agent, turn({ viewClientId: "c2" }), "notes")
@@ -383,7 +388,11 @@ it.effect('The VIEWS show action prepares a navigation for the turn\'s renderer 
   const now = try views.shownViewOf("c2")
   try Effect.try(() => {
     assert.isTrue(shown.success)
-    assert.include(agent.agent.runtime.actions.find((candidate: Action) => candidate.name === "VIEWS")?.description ?? "", "The owner's views are Notes, Chat.")
+    assert.include(action?.description ?? "", "The owner's views are Notes (jottings), Chat.")
+    assert.include(action?.description ?? "", "never a place")
+    assert.include(onChat ?? "", "The owner's screen showed Chat as they sent this message")
+    assert.notInclude(onChat ?? "", "Notes")
+    assert.isUndefined(unbound)
     assert.deepStrictEqual(Object.keys(values).sort(), [
       "completedActionDelivered", "completedActionHandoffId", "label", "mode", "navigationBinding", "navigationPrepared", "viewId", "viewPath", "viewType",
     ])
