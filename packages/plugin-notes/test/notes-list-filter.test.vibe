@@ -10,6 +10,6 @@ it.effect('Decode a list filter only by text and kind, and refuse the rest (spec
     try refusedReason({ type: "notes_list_filter", folder: "Work" }),
     try refusedReason({ type: "notes_list_filter", kind: "bogus" }),
     try refusedReason({ type: "notes_list_filter" }),
-try refusedReason({ type: "notes_list_filter", text: "g".repeat(200) + " "}),
+    try refusedReason({ type: "notes_list_filter", text: "g".repeat(200) + " " }),
   ], ["Unexpected Notes field", "Invalid note kind", "Empty Notes filter", "Invalid Notes text"])
 })
