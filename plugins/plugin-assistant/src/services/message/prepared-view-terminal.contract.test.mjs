@@ -192,6 +192,32 @@ for (const [name, mutate] of [
       assert.equal(select(a).finalMessage, a.result.finalMessage);
     },
   );
+test("a prepared named note keeps its prospective reply after reply grounding fails", () => {
+  const a = fixture();
+  const step = a.result.trajectory.steps[0];
+  a.stageOne.visualContinuation = {
+    disposition: "planning",
+    viewId: "notes",
+    noteEditor: true,
+  };
+  a.held = "Let me open your notes.";
+  step.toolCall.params = { view: "notes", noteId: "note-fixture" };
+  step.result.data.values.noteId = "note-fixture";
+  step.result.data.navigation.noteId = "note-fixture";
+  step.result.data.awaitingDeviceExecution = true;
+  a.result.terminalFailure = {
+    kind: "reply_generation_error",
+    code: "REPLY_GROUNDING_FAILED",
+  };
+  a.result.replyRecoveryRequired = true;
+  const selected = select(a);
+  assert.equal(selected.finalMessage, a.held);
+  assert.equal(selected.terminalFailure, undefined);
+  assert.equal(selected.replyRecoveryRequired, undefined);
+  assert.equal(step.result.data.values.completedActionDelivered, undefined);
+  step.result.data.navigation.noteId = "other-note";
+  assert.equal(select(a).terminalFailure, a.result.terminalFailure);
+});
 test("effect-free terminal synthesis does not count as another action", () => {
   const a = fixture();
   a.result.trajectory.steps.push({

@@ -2946,7 +2946,9 @@ export async function runV5MessageRuntimeStage1(
         : evaluateCandidateReply(String(plannerResult.finalMessage ?? ""));
     if (
       plannerResult.status === "finished" &&
-      !plannerResult.terminalFailure &&
+      (!plannerResult.terminalFailure ||
+        (plannerResult.terminalFailure.kind === "reply_generation_error" &&
+          plannerResult.terminalFailure.code === "REPLY_GROUNDING_FAILED")) &&
       plannerResult.trajectory.plannedQueue.length === 0
     ) {
       const held = sanitizeUserVisibleModelOutput(
@@ -2964,6 +2966,7 @@ export async function runV5MessageRuntimeStage1(
           ...plannerResult,
           finalMessage: preparedReply,
           replyRecoveryRequired: undefined,
+          terminalFailure: undefined,
         };
         plannedReplyEgressDecision = evaluateCandidateReply(preparedReply);
       }

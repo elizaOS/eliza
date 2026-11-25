@@ -507,9 +507,14 @@ export function preparedViewReply(args: {
     return;
   const visual = args.stageOne.visualContinuation,
     intents = args.stageOne.intents;
+  const plannedNoteEditor =
+    isObjectRecord(visual) &&
+    visual.disposition === "planning" &&
+    visual.viewId === "notes" &&
+    visual.noteEditor === true;
   if (
     !isObjectRecord(visual) ||
-    visual.disposition !== "direct" ||
+    (visual.disposition !== "direct" && !plannedNoteEditor) ||
     typeof visual.viewId !== "string" ||
     !Array.isArray(intents) ||
     intents.length !== 1 ||
@@ -552,6 +557,13 @@ export function preparedViewReply(args: {
     navigation.handoffId !== handoff.completedActionHandoffId ||
     handoff.navigationBinding?.requestId !== navigation.handoffId ||
     effect.resolvedAlias !== navigation.resolvedAlias ||
+    (plannedNoteEditor &&
+      (!handoff.noteId ||
+        handoff.completedActionDelivered === true ||
+        step.result.data.awaitingDeviceExecution !== true ||
+        navigation.noteId !== handoff.noteId ||
+        !isObjectRecord(step.toolCall.params) ||
+        step.toolCall.params.noteId !== handoff.noteId)) ||
     (effect.resolvedAlias !== undefined &&
       (!isObjectRecord(step.toolCall.params) ||
         typeof step.toolCall.params.view !== "string" ||
