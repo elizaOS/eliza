@@ -23,7 +23,7 @@ export {
   type WorkflowDeviceOffer, type WorkflowOfferTiming, type WorkflowStep, type WorkflowStepDevice, type WorkflowStepTarget,
 } from "./device-actions/workflow-offer.vibe"
 export {
-  directRequests, FamilyConflict, registerDeviceProposalFamily, unoffered, untrustedReturnGuidance,
+  directRequests, FamilyConflict, registerDeviceProposalFamily, showsReviewCards, unoffered, untrustedReturnGuidance,
   type DeviceProposalFamily, type DeviceTurn, type EarlierRequest, type FamilyName, type Grounding, type NegotiatedDevice, type PendingRequest, type ProposalForm,
   type ProposalGrounding, type ProposalText, type ReadContinuation, type SwappedValue,
 } from "./device-actions/proposal/registry.vibe"

@@ -52,7 +52,7 @@ the request, and the phone's card waits for the owner to open Files (next
 rule). A move or trash keeps no identity the model sent, since the phone
 reads each one when it builds the card. A proposal carries the owner's
 message only on a direct-request turn for Files (`agentActionMode`
-`direct-request-v1` or `direct-files-v1`, [device
+`direct-request-v1`, `direct-files-v1` or `direct-files-only-v1`, [device
 surfaces](../agent/deviceActions/surfaces.md)), so outside one even a
 filter or an open is reviewed on the phone.
 
@@ -67,6 +67,22 @@ pure def lawAnUnnegotiatedFormIsNeverProposed(kind: FilesKind, form: FilesForm, 
 pure def lawANegotiatedFormIsProposed(kind: FilesKind): bool = filesChatAnswer(kind, PathForm, true, false) == FilesProposed
 pure def lawAChatMoveOrTrashKeepsNoSentIdentity(kind: FilesKind): bool = (kind == MoveKind or kind == TrashKind) implies not(chatKeepsSentIdentities(kind))
 pure def lawWithoutDirectRequestsNoFilesProposalIsBound(answer: FilesChatAnswer): bool = not(filesChatBound(false, answer))
+```
+
+### A client that shows no review card is proposed only a filter or an open, which it runs directly
+
+A turn whose client shows no review card (`agentActionMode`
+`direct-files-only-v1`, such as a phone's voice conversation) can only run a
+Files filter or open the owner asked for. Any other Files operation it would
+have to review is refused before it is proposed, and the model is told to have
+the owner ask in the chat, where the card is shown; so no request waits for a
+card nobody can see.
+
+```quint
+pure def filesProposedOnTurn(kind: FilesKind, showsCards: bool): bool = showsCards or kind == FilterKind or kind == OpenKind
+pure def lawWithoutCardsOnlyAFilterOrAnOpenIsProposed(kind: FilesKind): bool =
+  filesProposedOnTurn(kind, false) implies (kind == FilterKind or kind == OpenKind)
+pure def lawWithCardsEveryKindIsProposed(kind: FilesKind): bool = filesProposedOnTurn(kind, true)
 ```
 
 ### A Files card is reviewed, and a direct filter or open runs, only on the unlocked phone, and a change only with Files on screen
