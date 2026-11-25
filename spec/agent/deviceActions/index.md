@@ -551,7 +551,7 @@ card only for that message, so a later message that asks again, such as
 The reply follows the choice. A pending request that carries the message
 tells the model that it is a handoff that has not run yet, so the model
 never claims what it found or shows; where the family gives the owner a
-sentence for it ("Opening example.com."), the model gets that sentence as
+sentence for it ("example.com is ready to open."), the model gets that sentence as
 what the phone shows and words the reply itself, so the owner never hears
 the family's sentence beside the model's. One kept for review asks the
 owner to review it on the phone, in the family's words and in the turn's
