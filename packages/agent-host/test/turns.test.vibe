@@ -196,12 +196,6 @@ module node {
     return { ends, stop: () => runtime.unregisterEvent(EventType.RUN_ENDED, seen) }
   }
 
-  export async function runEndsOf(ends: readonly { messageId?: string, status: string }[], messageId: string | undefined): Promise<string[]> {
-    for (let wait = 0; wait < 100 && !ends.some((end) => end.messageId === messageId); wait += 1) await new Promise((done) => setTimeout(done, 20))
-    await new Promise((done) => setTimeout(done, 50))
-    return ends.filter((end) => end.messageId === messageId).map(({ status }) => status)
-  }
-
   export async function roomMessages(runtime: AgentRuntime, roomId: UUID): Promise<Memory[]> {
     return runtime.getMemories({ tableName: "messages", roomId, count: 1000 })
   }
@@ -257,7 +251,13 @@ module node {
     return text
   }
 }
-import { calendarProbe, completions, cutTurn, failNext, fixtureApp, lastTurnHistory, lastTurnPrompt, localDay, loseRoomOwnershipOnceAfterReply, movedDentist, nearestCafes, overlapping, plainLog, refuseMoves, roomMessages, runEndsOf, seedHistory, storeNotice, unsaidMove, watchRunEnds } from node
+import { calendarProbe, completions, cutTurn, failNext, fixtureApp, lastTurnHistory, lastTurnPrompt, localDay, loseRoomOwnershipOnceAfterReply, movedDentist, nearestCafes, overlapping, plainLog, refuseMoves, roomMessages, seedHistory, storeNotice, unsaidMove, watchRunEnds } from node
+
+effect function runEndsOf(ends: readonly { messageId?: string, status: string }[], messageId: string | undefined) {
+  for (let wait = 0; wait < 100 && !ends.some((end) => end.messageId === messageId); wait += 1) try Effect.sleep("20 millis")
+  try Effect.sleep("50 millis")
+  return ends.filter((end) => end.messageId === messageId).map(({ status }) => status)
+}
 
 effect function cloudAgent(cloud: CloudFake, state?: Scratch) {
   return try startInProcess({
@@ -341,7 +341,7 @@ it.live('A repeat joins, replays or conflicts by its key, a busy room is 429, a 
   try Effect.sync(regain)
   const lateRoom = try host("rows after a late failure", () => roomMessages(first.agent.runtime, roomId))
   const lateAsked = lateRoom.find((memory: Memory) => memory.entityId !== first.agent.runtime.agentId && memory.content.text === "Answer after the outage.")
-  const lateEnds = try host("how the late-failure run ended", () => runEndsOf(lateRuns.ends, lateAsked?.id))
+  const lateEnds = try runEndsOf(lateRuns.ends, lateAsked?.id)
   try Effect.sync(lateRuns.stop)
   const lateRows = lateRoom.filter((memory: Memory) => memory.entityId === first.agent.runtime.agentId && lateAsked !== undefined && memory.content.inReplyTo === lateAsked.id)
 
