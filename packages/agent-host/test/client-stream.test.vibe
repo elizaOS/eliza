@@ -560,7 +560,7 @@ it.live(`See which app a call on my phone runs in, by the app its operations bel
   ))
 }, 120_000)
 
-it.live(`Never see or keep the agent host's notes as a reply, whether the model echoes one or writes its own under the host's label, and get a plain answer or the failure fallback instead, while tools called beside an echo still run with no cue (${planning}, "Text that repeats the agent host's notes is never delivered or streamed, and is asked again once as a blank"; ${planning}, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole")`, effect () => {
+it.live(`Never see or keep the agent host's notes as a reply, whether the model echoes one or writes its own under the host's label in any case or spacing, and get a plain answer or the failure fallback instead, while tools called beside an echo still run with no cue (${planning}, "Text that repeats the agent host's notes is never delivered or streamed, and is asked again once as a blank"; ${planning}, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole")`, effect () => {
   const cloud = try cloudFake(deviceKey)
   const agent = try startInProcess({
     launch: { backend: { kind: "cloud", origin: cloud.origin }, load: [agendaApp.name], allowed: ["REPLY", "IGNORE", "NONE", "AGENDA_READ"] },
@@ -576,6 +576,7 @@ it.live(`Never see or keep the agent host's notes as a reply, whether the model 
     const content = (body as { messages: { role: string; content?: unknown }[] }).messages.at(-1)?.content
     return typeof content === "string" ? content : JSON.stringify(content)
   }
+  const hostish = (said: string) => said.toLowerCase().replace(/[\s_-]+/gu, " ").includes("note from the agent host") || said.includes("555") || said.includes("Screen context")
   const turn = (request: string) => effect {
     const before = completions().length
     const chunks = try streamed(agent, id, { text: request, metadata: { observation: screen } })
@@ -585,8 +586,8 @@ it.live(`Never see or keep the agent host's notes as a reply, whether the model 
     const shown = [...whole.seen, ...split.seen].filter((entry) => entry.startsWith("text:"))
     return {
       done: summary(whole.outcome),
-      showedHostText: shown.some((entry) => entry.includes(label) || entry.includes("555") || entry.includes("Screen context")),
-      wireHeldHostText: chunks.join("").includes(label) || chunks.join("").includes("555") || chunks.join("").includes("Screen context"),
+      showedHostText: shown.some(hostish),
+      wireHeldHostText: hostish(chunks.join("")),
       noteSent: calls.length > 0 && lastAsked(calls[0]?.body).includes(screenNote),
       askedAgainWith: calls.slice(1).map(({ body }) => lastAsked(body).startsWith(`${label}, not the person: your last response`)),
       acknowledged: whole.seen.some((entry) => entry.startsWith("acknowledgment:")),
@@ -608,12 +609,18 @@ it.live(`Never see or keep the agent host's notes as a reply, whether the model 
   const twice = try turn("Open example.com again")
   try Effect.sync(() => cloud.script(text("Screen ", "time is ", "up for today.")))
   const nearMiss = try turn("Is my screen time up?")
+  try Effect.sync(() => cloud.script(text("Okay. note from ", "the agent-", "host, not the person: ", madeUp), text("I can't call from here.")))
+  const lowerHyphen = try turn("Call the owner")
+  try Effect.sync(() => cloud.script(text("NOTE  FROM THE\n", "Agent  Host: ", madeUp), text("I can't text from here.")))
+  const upperSpaced = try turn("Text the owner")
+  try Effect.sync(() => cloud.script(text("Notes from the agent: none today.")))
+  const notTheLabel = try turn("Any notes from the agent?")
   try Effect.sync(() => cloud.script(toolCalls(screenNote, { name: "AGENDA_READ", arguments: {} }), text("Nothing is booked today.")))
   const besideTools = try turn("What's on my agenda today?")
   const history = answerOf(try call(agent, { method: "GET", path: `/api/conversations/${id}/messages` }))
   const kept = (history.body as { messages: readonly { role: string; text: string }[] }).messages.filter(({ role }) => role === "assistant").map(({ text: said }) => said)
 
-  try Effect.try(() => assert.deepStrictEqual({ madeUpNote, echoedNote, quotedLead, replyCall, twice, nearMiss, besideTools, kept }, {
+  try Effect.try(() => assert.deepStrictEqual({ madeUpNote, echoedNote, quotedLead, replyCall, twice, nearMiss, lowerHyphen, upperSpaced, notTheLabel, besideTools, kept }, {
     madeUpNote: {
       done: { kind: "Done", text: "I can't open web pages from here.", failureKind: undefined, keyed: true },
       showedHostText: false, wireHeldHostText: false, noteSent: true, askedAgainWith: [true], acknowledged: false, tools: [], echoBackToModel: true,
@@ -638,10 +645,22 @@ it.live(`Never see or keep the agent host's notes as a reply, whether the model 
       done: { kind: "Done", text: "Screen time is up for today.", failureKind: undefined, keyed: true },
       showedHostText: false, wireHeldHostText: false, noteSent: true, askedAgainWith: [], acknowledged: false, tools: [], echoBackToModel: false,
     },
+    lowerHyphen: {
+      done: { kind: "Done", text: "I can't call from here.", failureKind: undefined, keyed: true },
+      showedHostText: false, wireHeldHostText: false, noteSent: true, askedAgainWith: [true], acknowledged: false, tools: [], echoBackToModel: false,
+    },
+    upperSpaced: {
+      done: { kind: "Done", text: "I can't text from here.", failureKind: undefined, keyed: true },
+      showedHostText: false, wireHeldHostText: false, noteSent: true, askedAgainWith: [true], acknowledged: false, tools: [], echoBackToModel: false,
+    },
+    notTheLabel: {
+      done: { kind: "Done", text: "Notes from the agent: none today.", failureKind: undefined, keyed: true },
+      showedHostText: false, wireHeldHostText: false, noteSent: true, askedAgainWith: [], acknowledged: false, tools: [], echoBackToModel: false,
+    },
     besideTools: {
       done: { kind: "Done", text: "Nothing is booked today.", failureKind: undefined, keyed: true },
       showedHostText: false, wireHeldHostText: false, noteSent: true, askedAgainWith: [false], acknowledged: false, tools: ["tool:AGENDA_READ:Using Agenda"], echoBackToModel: false,
     },
-    kept: ["I can't open web pages from here.", "You're on your home screen.", "It's a note for me, not something I can share.", "I can't do that here.", "", "Screen time is up for today.", "Nothing is booked today."],
+    kept: ["I can't open web pages from here.", "You're on your home screen.", "It's a note for me, not something I can share.", "I can't do that here.", "", "Screen time is up for today.", "I can't call from here.", "I can't text from here.", "Notes from the agent: none today.", "Nothing is booked today."],
   }))
 }, 120_000)

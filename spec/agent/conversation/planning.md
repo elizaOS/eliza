@@ -830,22 +830,28 @@ pure def lawOnlyTheTurnsAcknowledgmentIsDelivered(draft: Draft, calls: int, earl
 
 ### Text that repeats the agent host's notes is never delivered or streamed, and is asked again once as a blank
 
-The host's notes are for the model only, and the owner never sees them. A
-response whose text holds the host's label, `Note from the agent host`, or
-the opening line of a note this message carried to the model (the host's
-own lead, such as the line that introduces the screen context, or the
-clock's line, with or without its closing colon or period) is the host's
-words, never an answer, whether the model
-echoes a note, quotes part of one or writes one of its own under the
-label: it reads as a blank. With no tool call it is asked again once
-(above), and when the response after that note holds it again, the turn's
-failure fallback is the reply. Beside tool calls it is no cue, so the
-owner hears nothing and the tools still run. A `REPLY` call whose text
-holds it gives no reply, and a second answer that holds it is no second
-answer. The reply stream shows the model's text only up to where the label
-or such a line could begin; what follows is shown once it can no longer be
-one, or with the reply, so no part of a note is ever streamed, spoken or
-stored. The notes stay in the model's request as they are.
+The host's notes are for the model only, and the owner never sees the host's
+label or a note's lead line. A response whose text holds the label, `Note
+from the agent host`, or the opening line of a note this turn carried to
+the model (the host's own lead, such as the line that introduces the screen
+context, or the clock's line, with or without its closing colon or period),
+in any letter case, with any spacing, or with a hyphen or underscore
+between its words, is the host's words, never an answer, whether the model
+echoes a note, quotes its lead or writes one of its own under the label: it
+reads as a blank. The notes a reply is written again with (a failure the
+reply left unreported, an attachment omission, a time or event time the
+reply got wrong) count as notes of the turn for the answer they ask for.
+With no tool call it is asked again once (above), and when the response
+after that note holds it again, the turn's failure fallback is the reply.
+Beside tool calls it is no cue, so the owner hears nothing and the tools
+still run. A `REPLY` call whose text holds it gives no reply, and a second
+answer that holds it is no second answer. The reply stream shows the
+model's text only up to where the label or such a line could begin; what
+follows is shown once it can no longer be one, or with the reply, so
+neither the label nor a note's lead line is ever streamed, spoken or
+stored. A note's later lines are not held: they carry the owner's own
+data, such as the page they are reading, which a true answer may quote.
+The notes stay in the model's request as they are.
 
 ```quint
 pure def lawHostTextIsNeverAnAnswer(calls: int): bool = readDraft(HostText, calls) == Silent

@@ -103,22 +103,52 @@ export function withoutOfferedCalls(said: string, offered: ReadonlySet<string>):
 
 export const hostNoteMark = "Note from the agent host"
 
+const hostTextGap = /[\s\p{Pd}_]/u
+
+interface Folded {
+  readonly text: string
+  readonly at: readonly number[]
+}
+
+function folded(text: string): Folded {
+  let out = ""
+  const at: number[] = []
+  for (let index = 0; index < text.length; index += 1) {
+    const unit = text[index] ?? ""
+    if (hostTextGap.test(unit)) {
+      if (!out.endsWith(" ")) {
+        out += " "
+        at.push(index)
+      }
+      continue
+    }
+    const lower = unit.toLowerCase()
+    out += lower
+    for (let step = 0; step < lower.length; step += 1) at.push(index)
+  }
+  return { text: out, at }
+}
+
 function hostTexts(notes: readonly string[]): string[] {
-  return [hostNoteMark, ...notes.map((note) => (note.trim().split("\n", 1)[0] ?? "").replace(/[\s.:]+$/u, "")).filter((lead) => lead !== "")]
+  return [hostNoteMark, ...notes.map((note) => (note.trim().split("\n", 1)[0] ?? "").replace(/[\s.:]+$/u, ""))]
+    .map((host) => folded(host).text.trim()).filter((host) => host !== "")
 }
 
 export function holdsHostText(text: string, notes: readonly string[]): boolean {
-  return hostTexts(notes).some((host) => text.includes(host))
+  const said = folded(text).text
+  return hostTexts(notes).some((host) => said.includes(host))
 }
 
 export function shownUpTo(text: string, notes: readonly string[]): number {
-  return hostTexts(notes).reduce((upTo, host) => {
-    const whole = text.indexOf(host)
+  const { text: said, at } = folded(text)
+  const upTo = hostTexts(notes).reduce((upTo, host) => {
+    const whole = said.indexOf(host)
     if (whole >= 0) return Math.min(upTo, whole)
-    for (let from = Math.max(0, text.length - host.length + 1); from < upTo; from += 1)
-      if (text.charCodeAt(from) === host.charCodeAt(0) && text.startsWith(host.slice(0, text.length - from), from)) return from
+    for (let from = Math.max(0, said.length - host.length + 1); from < upTo; from += 1)
+      if (said.charCodeAt(from) === host.charCodeAt(0) && said.startsWith(host.slice(0, said.length - from), from)) return from
     return upTo
-  }, text.length)
+  }, said.length)
+  return upTo >= said.length ? text.length : at[upTo] ?? text.length
 }
 
 function shapeOf(reply: string, offered: ReadonlySet<string>, notes: readonly string[]): DraftShape {

@@ -645,7 +645,7 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
       })), signal)
       const answer = writtenCallFree(answerOf(said).text).prose
       const revised = settled.compose(withoutOfferedCalls(answer, offeredNames))
-      const draft = draftOf(answer, 0, offeredNames, input.hostNotes)
+      const draft = draftOf(answer, 0, offeredNames, [...input.hostNotes, ...notes])
       const sameAsFirst = revised.trim() === reply.trim()
       const spoken = revised !== settled.compose(undefined)
       return { revised: spoken && answeredAgain(draft, sameAsFirst) ? revised : undefined, stoodBy: spoken && standsBy(draft, sameAsFirst) }
