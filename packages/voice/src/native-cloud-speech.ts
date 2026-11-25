@@ -157,6 +157,7 @@ export function createCloudStreamingSpeech(
         if (
           event.code === "expired" &&
           !expiryRecovered &&
+          utterances.size > 0 &&
           [...utterances.values()].every((pending) => !pending.started)
         ) {
           expiryRecovered = true;
@@ -381,7 +382,7 @@ export function createCloudStreamingSpeech(
       outputMuted = muted;
     },
     async listen(handlers: AssistantListenHandlers): Promise<AssistantCapture> {
-      await recoveringExpiry;
+      if (recoveringExpiry) await recoveringExpiry;
       check();
       handlers.signal.throwIfAborted();
       if (ownerSignal && ownerSignal !== handlers.signal)
@@ -413,7 +414,7 @@ export function createCloudStreamingSpeech(
         async close() {
           closingCapture = true;
           try {
-            await recoveringExpiry;
+            if (recoveringExpiry) await recoveringExpiry;
             await muteAndDrain();
           } finally {
             if (listening === handlers) {
@@ -438,7 +439,7 @@ export function createCloudStreamingSpeech(
       signal: AbortSignal,
       onStarted: () => void,
     ): Promise<void> {
-      await recoveringExpiry;
+      if (recoveringExpiry) await recoveringExpiry;
       check();
       signal.throwIfAborted();
       if (!opened) throw Error("Cloud speech is not connected.");
