@@ -3,9 +3,9 @@ import { assert, it } from "@effect/vitest"
 import * as NodeServices from "@effect/platform-node/NodeServices"
 import {
   fileArchive, mediaDownloads, type SelectedMedia, blobOf, readBytes, scanLinkReview, scannedLinks, copyScanTextLayers, scanTextLayer, admitSourceReopen, documentSourceOf, recordingRevision, recordingSourceOf, retainedSourceReferences, reviewMailAttachment, sourceKeepSet, sourceProvesPast, summarySourceOf, webSourceOf,
+  reviewScanAllDayEvent, reviewScanEvent, suggestScanEvent, suggestScanEventDetails,
 } from "@elizaos/plugin-files-client"
 import { interpretPdf, loadDocumentRuntime, PdfInterpretationFailed, type ParsedPage, type PdfPorts } from "../src/documents/pdf-interpretation.vibe"
-import { reviewScanAllDayEvent, reviewScanEvent, suggestScanEvent, suggestScanEventDetails } from "../src/documents/scan-event.vibe"
 
 const pdfBytes = new TextEncoder().encode("%PDF-1.7\n1 0 obj<<>>endobj\n%%EOF\n")
 const base64 = (bytes: Uint8Array) => btoa(String.fromCharCode(...bytes))

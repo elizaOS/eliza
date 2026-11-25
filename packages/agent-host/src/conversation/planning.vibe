@@ -13,17 +13,19 @@ import {
   admitsPlannerWork, contextRestoreOf, maxRestoredHistoryBytes, nothingRan, offersContextRestore, terminalAnswerOf, toolDispatch, turnNarrowed, unavailableNotice, writtenMarkupOf, type CallFailure, type PlanStep, type StepOutcome, type ToolSettlement,
 } from "../../gen/agent__conversation__planning.ts"
 import { ModelRefusal } from "../models/chat.vibe"
-import { composeReply, draftOf, requestIsInstruction, requestedNoCue, streamable, writtenCallFree } from "./reply-text.vibe"
+import { composeReply, draftOf, requestIsInstruction, requestedNoCue, streamable, withoutWrittenCalls, writtenCallFree } from "./reply-text.vibe"
 
 type ChatMessage = NonNullable<GenerateTextParams["messages"]>[number]
 
 const toolNamePattern = /^[A-Za-z0-9_-]{1,64}$/
 const toolMessageLimit = 4_000
-const answerNow = "Note from the agent host, not the person: no further work will run in this turn. Answer the person's latest message now with what this turn holds."
-const answerNothingRan = "Note from the agent host, not the person: no further work will run in this turn. No action ran in it: nothing was saved, sent or changed, so do not say that anything was. Answer the person's latest message now with what this turn holds."
 const callWrittenAsText = "Note from the agent host, not the person: your last response wrote a tool call as text. Text never runs as a tool, so nothing ran, and the person did not see it."
 const callWithATool = `${callWrittenAsText} Make the call with one of the offered tools, or answer the person in words.`
 const answerInWords = `${callWrittenAsText} No tool is offered in this turn: answer the person in words.`
+const workOrSayNot = "Note from the agent host, not the person: your last response called no tool and gave the person no answer, so none of it was sent. Do the work now by calling an offered tool, or, if no offered tool can do it, tell the person plainly, in your own words, that you can't."
+const sayNot = "Note from the agent host, not the person: your last response gave the person no answer, so none of it was sent. No tool can be called now, so nothing you write can do the work. Tell the person plainly, in your own words, that you can't do it."
+const answerFromWork = "Note from the agent host, not the person: your last response gave the person no answer, so none of it was sent. The tool results above are what this turn did. Answer the person's latest message now from them, in your own words."
+const answerFromNothing = "Note from the agent host, not the person: your last response gave the person no answer, so none of it was sent. No action ran in this turn: nothing was saved, sent or changed, so do not say that anything was. Answer the person's latest message now with what this turn holds, in your own words."
 const answerAgain = "Note from the agent host, not the person: your reply is not final yet. Write your whole reply to the person's latest message again, in your own words, so that it is true to what follows. Call no tools."
 const deliveredCueNote = (cue: string) =>
   `Note from the agent host, not the person: ${JSON.stringify(cue)} was already sent to the person as progress. Do not repeat or paraphrase it. Go straight to the result, any blocker, or the question you need answered. The cue is not evidence that any work succeeded.`
@@ -434,6 +436,7 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
   let restoredHistory = false
   let restoreCorrectionSent = false
   let markupAsked = false
+  let askedAgain = false
   const seen = new Set<string>()
   const settlements = new Map<string, ToolSettlement>()
   const execute = async (call: ToolCall): Promise<ActionResult> => {
@@ -563,7 +566,7 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
     const draft = draftOf(words, instruction, work.length)
     let cutOff = false
     if (work.length > 0) {
-      const cue = words.trim()
+      const cue = withoutWrittenCalls(words.trim())
       const spoken = !quiet && acknowledges(draft, work.length, steps.length)
       const delivered = cueDelivered(draft, work.length, steps.length, quiet, spoken && (await input.onPlanningAcknowledgment?.(cue)) === true)
       if (displayed) {
@@ -584,16 +587,20 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
     }
     if (plansOn(cutOff, taken, work.length, false)) continue plan
     if (work.length > 0) break plan
-    switch (nextMove(draft, 0, maxPlanSteps - taken)) {
+    switch (nextMove(draft, 0, maxPlanSteps - taken, askedAgain)) {
       case "Deliver":
         prose = words
         break plan
       case "AskAgain":
+        askedAgain = true
         conversation.push({ role: "assistant", content: words })
-        conversation.push({ role: "user", content: nothingRan(steps.flatMap(({ outcomes }) => outcomes.map(({ outcome }) => outcome))) ? answerNothingRan : answerNow })
+        const toolsNext = taken < maxPlanSteps - 1 && tools.some(({ name }) => name !== restoreContext.name)
+        const ranNothing = nothingRan(steps.flatMap(({ outcomes }) => outcomes.map(({ outcome }) => outcome)))
+        conversation.push({ role: "user", content: steps.length > 0 ? (ranNothing ? answerFromNothing : answerFromWork) : toolsNext ? workOrSayNot : sayNot })
         continue plan
       case "GiveUp":
       case "RunTools":
+        if (displayed) input.onReplyRestart?.("")
         break plan
     }
   }
