@@ -1,0 +1,120 @@
+// spec/pty/policy.md, "Interactive and vendor CLI spawning fail closed"
+
+export type PtyVendorCliKind = "claude" | "codex"
+
+export interface ClaudeCliSpecOptions {
+  cwd: string
+  binPath: string
+  oauthToken?: string
+  extraEnv?: Record<string, string | undefined>
+}
+
+export interface CodexCliSpecOptions {
+  cwd: string
+  binPath: string
+  codexHome?: string
+  extraEnv?: Record<string, string | undefined>
+}
+
+interface VendorBinResolveOptions {
+  env?: Record<string, string | undefined>
+  exists?: (p: string) => boolean
+}
+
+module node {
+  import { existsSync } from "node:fs"
+  import path from "node:path"
+  import type { PtySpawnSpec } from "./types.vibe"
+  import type { ClaudeCliSpecOptions, CodexCliSpecOptions } from "./vendor-cli-spec.vibe"
+
+  /** @throws {Error} */
+  export function buildClaudeCliSpec(opts: ClaudeCliSpecOptions): PtySpawnSpec {
+    if (!opts.cwd?.trim()) {
+      throw new Error("claude interactive session requires a cwd.")
+    }
+    if (!opts.binPath?.trim()) {
+      throw new Error("claude interactive session requires a resolved binPath (the claude launcher).")
+    }
+    const cwd = path.resolve(opts.cwd)
+    const oauthToken = opts.oauthToken?.trim()
+    return {
+      command: opts.binPath,
+      args: [],
+      cwd,
+      env: {
+        ...(oauthToken ? { CLAUDE_CODE_OAUTH_TOKEN: oauthToken } : {}),
+        ...(opts.extraEnv ?? {}),
+      },
+      label: "claude · interactive",
+      kind: "claude",
+    }
+  }
+
+  /** @throws {Error} */
+  export function buildCodexCliSpec(opts: CodexCliSpecOptions): PtySpawnSpec {
+    if (!opts.cwd?.trim()) {
+      throw new Error("codex interactive session requires a cwd.")
+    }
+    if (!opts.binPath?.trim()) {
+      throw new Error("codex interactive session requires a resolved binPath (the codex launcher).")
+    }
+    const cwd = path.resolve(opts.cwd)
+    const codexHome = opts.codexHome?.trim()
+    return {
+      command: opts.binPath,
+      args: [],
+      cwd,
+      env: {
+        ...(codexHome ? { CODEX_HOME: codexHome } : {}),
+        ...(opts.extraEnv ?? {}),
+      },
+      label: "codex · interactive",
+      kind: "codex",
+    }
+  }
+
+  function resolveVendorCliBin(
+    opts: { env?: Record<string, string | undefined>; exists?: (p: string) => boolean } | undefined,
+    binName: string,
+    overrideKey: string,
+    installHint: string,
+  ): string {
+    const env = opts?.env ?? process.env
+    const exists = opts?.exists ?? existsSync
+    const override = env[overrideKey]?.trim()
+    if (override) {
+      if (!exists(override)) {
+        throw new Error(`${overrideKey} is set to "${override}" but no file exists there.`)
+      }
+      return path.resolve(override)
+    }
+    const pathValue = env.PATH ?? env.Path ?? ""
+    for (const dir of pathValue.split(path.delimiter)) {
+      if (!dir) continue
+      const candidate = path.join(dir, binName)
+      if (exists(candidate)) return candidate
+    }
+    throw new Error(
+      `Could not locate the ${binName} CLI on PATH. Install it (${installHint}) or set ${overrideKey} to its absolute path.`,
+    )
+  }
+
+  /** @throws {Error} */
+  export function resolveClaudeCliBin(opts?: {
+    env?: Record<string, string | undefined>
+    exists?: (p: string) => boolean
+  }): string {
+    return resolveVendorCliBin(opts, "claude", "PTY_CLAUDE_BIN", "npm install -g @anthropic-ai/claude-code")
+  }
+
+  /** @throws {Error} */
+  export function resolveCodexCliBin(opts?: {
+    env?: Record<string, string | undefined>
+    exists?: (p: string) => boolean
+  }): string {
+    return resolveVendorCliBin(opts, "codex", "PTY_CODEX_BIN", "npm install -g @openai/codex")
+  }
+}
+
+import { buildClaudeCliSpec, buildCodexCliSpec, resolveClaudeCliBin, resolveCodexCliBin } from node
+export { buildClaudeCliSpec, buildCodexCliSpec, resolveClaudeCliBin, resolveCodexCliBin, type VendorBinResolveOptions }

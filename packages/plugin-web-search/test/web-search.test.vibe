@@ -1,0 +1,445 @@
+// spec/webSearch/index.md, "Story: Search the web through my selected profile"; spec/webSearch/edge.md, "Story: Bound edge provider selection and public article fetches"
+import { afterEach, describe, expect, it, vi } from "@effect/vitest"
+import type { IAgentRuntime, Memory } from "@elizaos/core"
+import {
+  KeylessWebSearchUnavailableError,
+  canSearchInBrowser,
+  compactWebSearchDigest,
+  createWebSearchEdgePlugin,
+  fetchKeylessWeb,
+  fetchKeylessWebTransport,
+  runWebSearchEdge,
+  searchAuthorizedBrowser,
+  searchBrowserFirstWeb,
+  searchKeylessWeb,
+  webSearchAction,
+  webSearchEdgeAction,
+  webSearchEdgePlugin,
+  webSearchPlugin,
+  webSearchSourceEvidence,
+  webSearchSourceUrls,
+} from "../src/index.vibe"
+
+module node {
+  import { createWebSearchEdgePlugin, runWebSearchEdge } from "../src/index.vibe"
+
+  export const ORIGINAL_FETCH = globalThis.fetch
+
+  /** @throws {never} */
+  export function setGlobalFetch(impl: typeof globalThis.fetch): void {
+    globalThis.fetch = impl
+  }
+
+  /** @throws {never} */
+  export function restoreGlobalFetch(): void {
+    globalThis.fetch = ORIGINAL_FETCH
+  }
+
+  /** @throws {never} */
+  export function mcpResponse(text: string, options?: { isError?: boolean }): Response {
+    return Response.json({
+      jsonrpc: "2.0",
+      id: 1,
+      result: {
+        isError: options?.isError,
+        content: [{ type: "text", text }],
+      },
+    })
+  }
+
+  /** @throws {never} */
+  export function httpResponse(
+    body: string | null,
+    init: { status?: number; headers?: Record<string, string> },
+  ): Response {
+    return new Response(body, init)
+  }
+
+  /** @throws {never} */
+  export function makeAbortError(): Error {
+    return new DOMException("aborted", "AbortError")
+  }
+
+  /** @throws {never} */
+  export function checkFallbackOptInErrors(): { defaultMsg: string; edgeMsg: string } {
+    let defaultMsg = ""
+    let edgeMsg = ""
+    try {
+      createWebSearchEdgePlugin(undefined, { fallbackEnabled: true })
+    } catch (e) {
+      defaultMsg = e instanceof Error ? e.message : String(e)
+    }
+    try {
+      createWebSearchEdgePlugin(runWebSearchEdge, { fallbackEnabled: true })
+    } catch (e) {
+      edgeMsg = e instanceof Error ? e.message : String(e)
+    }
+    return { defaultMsg, edgeMsg }
+  }
+}
+
+import {
+  checkFallbackOptInErrors,
+  httpResponse,
+  makeAbortError,
+  mcpResponse,
+  restoreGlobalFetch,
+  setGlobalFetch,
+} from node
+
+afterEach(() => {
+  restoreGlobalFetch()
+})
+
+describe("webSearchEdgePlugin and edge evidence", () => {
+  it("exports one Worker-safe, cache-stable public read action", () => {
+    expect(webSearchEdgePlugin.actions).toEqual([webSearchEdgeAction])
+    expect(webSearchPlugin.actions).toEqual([webSearchAction])
+    expect(webSearchEdgeAction.roleGate).toEqual({ minRole: "GUEST" })
+    expect(webSearchEdgeAction.toolSchemaStrict).toBe(true)
+    expect(webSearchEdgeAction.cacheStable).toBe(true)
+    expect(webSearchEdgeAction.descriptionCompressed?.length).toBeLessThan(80)
+  })
+
+  it("returns bounded keyless results with compact promptData projection", async () => {
+    const largeSnippet = "Detailed benchmark analysis ".repeat(40)
+    const rawPayload = JSON.stringify({
+      results: [
+        { url: "https://example.com/current", title: "Current public result", excerpts: [largeSnippet] },
+        { url: "https://example.com/current", title: "Duplicate URL", excerpts: ["dup"] },
+      ],
+    })
+    setGlobalFetch(vi.fn(async () => mcpResponse(rawPayload)) as typeof fetch)
+    const result = await webSearchEdgeAction.handler(
+      {} as IAgentRuntime,
+      {} as Memory,
+      undefined,
+      { parameters: { query: "current public result", numResults: 4 } },
+    )
+    expect(result).toMatchObject({
+      success: true,
+      text: rawPayload,
+      promptDataMode: "replace-data",
+      data: {
+        actionName: "WEB_SEARCH",
+        provider: "parallel",
+        query: "current public result",
+        sourceUrls: ["https://example.com/current"],
+        sources: [{ url: "https://example.com/current", text: expect.stringContaining("Current public result") }],
+      },
+    })
+    const promptJson = JSON.stringify(result.promptData)
+    expect(promptJson.length).toBeLessThan(rawPayload.length)
+    expect((result.promptData as { results: unknown[] }).results).toHaveLength(1)
+    expect(webSearchEdgeAction.summarize?.(result, { query: "current public result" })).toBe(
+      'WEB_SEARCH "current public result" (1 sources)',
+    )
+  })
+
+  it("extracts structured and prose URLs, rejects credentials/private hosts, and bounds hostile JSON", () => {
+    expect(
+      webSearchSourceUrls(
+        `${JSON.stringify({ results: [{ url: "https://example.com/a" }] })}\n` +
+          "Source: https://news.example.org/story). Ignore https://u:p@example.net/private",
+      ),
+    ).toEqual(["https://example.com/a", "https://news.example.org/story"])
+
+    const exact = "https://example.com/path)."
+    const structured = webSearchSourceEvidence(JSON.stringify({ results: [{ url: exact, text: "Exact" }] }))
+    expect(structured.sourceUrls).toEqual([exact])
+    expect(structured.sources[0]?.url).toBe(exact)
+    expect(
+      webSearchSourceUrls(
+        "Source: (https://en.wikipedia.org/wiki/Function_(mathematics)). Nested: https://example.com/a_(b_(c)));",
+      ),
+    ).toEqual(["https://en.wikipedia.org/wiki/Function_(mathematics)", "https://example.com/a_(b_(c))"])
+    expect(webSearchSourceUrls(`https://example.com/path${")".repeat(50_000)}`)).toEqual(["https://example.com/path"])
+
+    const decoded = JSON.stringify({
+      results: [
+        {
+          url: "https://example.com/article",
+          excerpts: ['Intro\nSee https://docs.example.org/guide\nNext says "https://example.net/x" too'],
+        },
+      ],
+    })
+    expect(webSearchSourceUrls(decoded)).toEqual([
+      "https://example.com/article",
+      "https://docs.example.org/guide",
+      "https://example.net/x",
+    ])
+
+    const unsafeFiltered = webSearchSourceEvidence(
+      JSON.stringify({
+        results: [
+          { url: "http://127.0.0.1/admin", text: "local" },
+          { url: "https://public.example/result", text: "See http://127.0.0.1/admin" },
+          { url: "https://excerpt.example/result", excerpts: ["See https://user:pass@example.com/private"] },
+          { url: "https://safe.example/result", text: "Public status is healthy" },
+        ],
+      }),
+    )
+    expect(unsafeFiltered.sources).toEqual([
+      { url: "https://safe.example/result", text: expect.stringContaining("Public status is healthy") },
+    ])
+
+    const parentChild = webSearchSourceEvidence(
+      JSON.stringify({
+        url: "https://example.com/collection",
+        title: "Collection",
+        results: [{ url: "https://example.com/a", text: "value A 10 USD" }],
+      }),
+    )
+    expect(parentChild.sources).toContainEqual({
+      url: "https://example.com/collection",
+      text: expect.not.stringContaining("value A 10 USD"),
+    })
+    expect(parentChild.sources).toContainEqual({
+      url: "https://example.com/a",
+      text: expect.stringContaining("value A 10 USD"),
+    })
+
+    const nested: Record<string, unknown> = {}
+    let cursor = nested
+    for (let i = 0; i < 520; i += 1) {
+      const next: Record<string, unknown> = {}
+      cursor.next = next
+      cursor = next
+    }
+    expect(webSearchSourceEvidence(JSON.stringify(nested))).toMatchObject({ sources: [], overflowed: true })
+
+    const digest = compactWebSearchDigest("q", "parallel", "plain", { sources: [], sourceUrls: [] }, 4)
+    expect(digest.results).toHaveLength(1)
+  })
+
+  it("handles callbacks, oversized queries, typed outages, zero hits, abort, and fallback opt-in", async () => {
+    const callback = vi.fn()
+    setGlobalFetch(vi.fn(async () => mcpResponse('{"results":[{"url":"https://example.com/a","text":"ok"}]}')) as typeof fetch)
+    await webSearchEdgeAction.handler({} as IAgentRuntime, {} as Memory, undefined, { parameters: { query: "public" } }, callback)
+    expect(callback).not.toHaveBeenCalled()
+
+    const fetchMock = vi.fn()
+    setGlobalFetch(fetchMock as typeof fetch)
+    expect(await runWebSearchEdge("x".repeat(2049))).toMatchObject({
+      success: false,
+      text: "Web search queries cannot exceed 2048 characters.",
+    })
+    expect(fetchMock).not.toHaveBeenCalled()
+
+    setGlobalFetch(vi.fn(async () => httpResponse("unavailable", { status: 429, headers: { "Retry-After": "2" } })) as typeof fetch)
+    const outageCb = vi.fn()
+    const outage = await webSearchEdgeAction.handler(
+      {} as IAgentRuntime,
+      {} as Memory,
+      undefined,
+      { parameters: { query: "Tessera" } },
+      outageCb,
+    )
+    expect(outage).toMatchObject({
+      success: false,
+      text: "Web search is temporarily unavailable.",
+      data: { actionName: "WEB_SEARCH", query: "Tessera", unavailable: true, reason: "rate_limited", status: 429, retryAfterMs: 2000 },
+    })
+    expect(outageCb).toHaveBeenCalledWith({ text: "Web search is temporarily unavailable.", transcriptVisibility: "internal" })
+
+    setGlobalFetch(vi.fn(async () => mcpResponse(JSON.stringify({ search_id: "s1", results: [] }))) as typeof fetch)
+    expect(await runWebSearchEdge("empty")).toMatchObject({ success: false, text: "Web search returned no results." })
+
+    const aborted = new AbortController()
+    aborted.abort()
+    await expect(runWebSearchEdge("aborted", { signal: aborted.signal })).rejects.toMatchObject({ name: "AbortError" })
+
+    const optInErrors = checkFallbackOptInErrors()
+    expect(optInErrors.defaultMsg).toContain("host-authorized runner")
+    expect(optInErrors.edgeMsg).toContain("host-authorized runner")
+
+    const host = vi.fn(async () => ({ success: true, text: "host evidence" }))
+    const unavailable = createWebSearchEdgePlugin(host).actions![0]
+    const available = createWebSearchEdgePlugin(host, { fallbackEnabled: true }).actions![0]
+    expect(unavailable.parameters?.some((p) => p.name === "provider")).toBe(false)
+    expect(available.parameters?.find((p) => p.name === "provider")?.schema).toEqual({
+      type: "string",
+      enum: ["default", "fallback"],
+    })
+    expect(
+      await unavailable.handler({} as IAgentRuntime, {} as Memory, undefined, { parameters: { query: "news", provider: "fallback" } }),
+    ).toMatchObject({ success: false })
+    expect(
+      await available.handler({} as IAgentRuntime, {} as Memory, undefined, { parameters: { query: "news", provider: "fallback" } }),
+    ).toMatchObject({ success: true, text: "host evidence" })
+  })
+})
+
+describe("Keyless search and public article fetch transport", () => {
+  it("enforces public host guards, batch bounds, SSE replay/conflict, size caps, and cancellation", async () => {
+    const fetchImpl = vi.fn(async () => mcpResponse("unused"))
+    for (const url of [
+      "http://localhost/article",
+      "http://127.0.0.1/article",
+      "http://10.0.0.1/article",
+      "http://169.254.169.254/article",
+      "http://[::1]/article",
+      "http://[fc00::1]/article",
+      "https://user:password@publisher.example/article",
+      "file:///tmp/article",
+    ]) {
+      await expect(fetchKeylessWeb([url], { fetchImpl })).rejects.toThrow()
+    }
+    expect(fetchImpl).not.toHaveBeenCalled()
+
+    const payload = JSON.stringify({ extract_id: "e1", results: [], errors: [] })
+    const okFetch = vi.fn(async () => mcpResponse(payload))
+    const urls = ["https://publisher.example/news/a", "https://publisher.example/news/b"]
+    const fetched = await fetchKeylessWeb(urls, { fetchImpl: okFetch, sessionId: "session_1" })
+    expect(fetched?.text).toBe(payload)
+    expect(okFetch).toHaveBeenCalledTimes(1)
+    const [endpoint, init] = okFetch.mock.calls[0] as unknown as [string, RequestInit]
+    expect(endpoint).toBe("https://mcp.parallel.ai/mcp")
+    expect(init.redirect).toBe("manual")
+    expect(JSON.parse(String(init.body)).params.name).toBe("web_fetch")
+
+    await expect(fetchKeylessWebTransport([...urls, "https://publisher.example/news/c"], { fetchImpl: okFetch })).rejects.toThrow()
+    await expect(fetchKeylessWebTransport(["https://publisher.example/a", "https://publisher.example/a"], { fetchImpl: okFetch })).rejects.toThrow()
+
+    const redirectFetch = vi.fn(async () => httpResponse(null, { status: 302, headers: { Location: "https://other.example/" } }))
+    await expect(fetchKeylessWeb(["https://publisher.example/a"], { fetchImpl: redirectFetch })).rejects.toMatchObject({
+      reason: "http_error",
+      status: 302,
+    })
+
+    await expect(
+      searchKeylessWeb("oversized", { fetchImpl: async () => mcpResponse("x".repeat(2000)), maxResponseBytes: 100 }),
+    ).rejects.toMatchObject({ reason: "response_too_large" })
+
+    const unicode = await searchKeylessWeb("unicode", {
+      fetchImpl: async () => mcpResponse(`${"x".repeat(19)}🤖${"y".repeat(20)}`),
+      maxResultChars: 5,
+    })
+    expect(unicode?.text).toBe(`${"x".repeat(19)}🤖${"y".repeat(20)}`)
+
+    const envelope = JSON.stringify({ jsonrpc: "2.0", id: 1, result: { content: [{ type: "text", text: "sse-ok" }] } })
+    const conflicting = envelope.replace("sse-ok", "sse-diff")
+    const sseOk = await fetchKeylessWeb(["https://publisher.example/a"], {
+      fetchImpl: async () => httpResponse(`: hb\ndata: ${envelope}\n\ndata: ${envelope}\n\n`, { headers: { "Content-Type": "text/event-stream" } }),
+    })
+    expect(sseOk?.text).toBe("sse-ok")
+    await expect(
+      fetchKeylessWeb(["https://publisher.example/a"], {
+        fetchImpl: async () => httpResponse(`data: ${envelope}\n\ndata: ${conflicting}\n\n`, { headers: { "Content-Type": "text/event-stream" } }),
+      }),
+    ).rejects.toMatchObject({ reason: "malformed_response" })
+
+    const preAborted = new AbortController()
+    preAborted.abort()
+    await expect(searchKeylessWeb("cancel", { signal: preAborted.signal, fetchImpl })).rejects.toBeInstanceOf(
+      KeylessWebSearchUnavailableError,
+    )
+    const hanging = vi.fn(
+      (_u: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((_res, rej) => {
+          init?.signal?.addEventListener("abort", () => rej(makeAbortError()), { once: true })
+        }),
+    )
+    await expect(searchKeylessWeb("timeout", { fetchImpl: hanging, timeoutMs: 25 })).rejects.toMatchObject({ reason: "timeout" })
+  })
+})
+
+describe("Authorized browser-first web search", () => {
+  it("routes provider-specific filters to keyless and honors saved profile precedence", async () => {
+    expect(canSearchInBrowser({ limit: 5, includeAnswer: true })).toBe(true)
+    expect(canSearchInBrowser({ type: "news" })).toBe(false)
+    expect(canSearchInBrowser({ searchDepth: "advanced" })).toBe(false)
+
+    const disabledRt = {
+      getCache: async () => ({ disabled: true }),
+      getSetting: () => "profile-1",
+      getService: () => null,
+    } as unknown as IAgentRuntime
+    expect(await searchAuthorizedBrowser(disabledRt, "trains")).toBeNull()
+
+    const invalidRt = {
+      getCache: async () => ({ targetId: "", profileId: "p1" }),
+      getSetting: () => null,
+      getService: () => null,
+    } as unknown as IAgentRuntime
+    await expect(searchAuthorizedBrowser(invalidRt, "trains")).rejects.toMatchObject({
+      code: "WEB_SEARCH_BROWSER_UNAVAILABLE",
+    })
+  })
+
+  it("opens and reads authorized browser tab, unwraps Google redirects, and never replays after dispatch failure", async () => {
+    const executed: unknown[] = []
+    let profileNow = "owner-profile"
+    let snapshotLinks: Array<{ href: string; heading: string }> = [
+      { href: "https://www.google.com/url?q=https%3A%2F%2Frail.example%2Fschedules", heading: "Rail Schedules" },
+      { href: "https://www.google.com/url?q=http%3A%2F%2Flocalhost%2Fadmin", heading: "Localhost Admin" },
+      { href: "https://www.google.com/url?q=http%3A%2F%2F127.0.0.1%2Fsecret", heading: "Loopback Secret" },
+      { href: "https://www.google.com/search?q=next", heading: "Next page" },
+      { href: "https://user:pass@secret.example/private", heading: "Private" },
+    ]
+    const browserService = {
+      resolveTarget: async () => ({
+        id: "chromium-device",
+        getProfileId: () => profileNow,
+        supports: () => true,
+      }),
+      execute: async (cmd: { subaction: string; url: string; id?: string }) => {
+        executed.push(cmd)
+        if (cmd.subaction === "open") {
+          return { targetId: "chromium-device", value: { profileId: "owner-profile", result: { id: "42" } } }
+        }
+        return {
+          targetId: "chromium-device",
+          value: {
+            profileId: "owner-profile",
+            result: {
+              id: "42",
+              frames: [
+                {
+                  complete: true,
+                  frameId: 0,
+                  url: "https://www.google.com/search?q=train+schedules",
+                  title: "train schedules - Google Search",
+                  text: "Rail Schedules departure times",
+                  readyState: "complete",
+                  elements: snapshotLinks,
+                },
+              ],
+            },
+          },
+        }
+      },
+    }
+    const runtime = {
+      getCache: async () => ({ targetId: "chromium-device", profileId: "owner-profile" }),
+      getSetting: () => null,
+      getService: (name: string) => (name === "browser" ? browserService : null),
+    } as unknown as IAgentRuntime
+
+    const keylessMock = vi.fn(async () => mcpResponse("should-not-run"))
+    setGlobalFetch(keylessMock as typeof fetch)
+
+    const res = await searchBrowserFirstWeb(runtime, "train schedules")
+    expect(res?.provider).toBe("browser")
+    const parsed = JSON.parse(res!.text) as { results: Array<{ url: string; title: string }>; browser: { tabId: string } }
+    expect(parsed.browser.tabId).toBe("42")
+    expect(parsed.results).toHaveLength(1)
+    expect(parsed.results[0]).toMatchObject({ url: "https://rail.example/schedules", title: "Rail Schedules" })
+    expect(keylessMock).not.toHaveBeenCalled()
+
+    snapshotLinks = []
+    await expect(searchBrowserFirstWeb(runtime, "train schedules")).rejects.toMatchObject({
+      code: "WEB_SEARCH_BROWSER_UNAVAILABLE",
+    })
+    expect(keylessMock).not.toHaveBeenCalled()
+
+    profileNow = "other-profile"
+    const actionFallback = vi.fn(async () => mcpResponse('{"results":[{"url":"https://fallback.example/ok","title":"Fallback"}]}'))
+    setGlobalFetch(actionFallback as typeof fetch)
+    const fallbackResult = await webSearchAction.handler(runtime, {} as Memory, undefined, {
+      parameters: { query: "train schedules" },
+    })
+    expect(fallbackResult.success).toBe(true)
+    expect(fallbackResult.data?.provider).toBe("parallel")
+  })
+})
