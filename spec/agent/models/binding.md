@@ -185,16 +185,24 @@ gets one more try ([planning](../conversation/planning.md)). A streamed
 answer whose provider sends no bytes for 60 seconds, first its headers and
 then each next chunk, is abandoned and not re-sent, and the turn ends with
 its failure reply. Only the time between bytes is bounded, never the whole
-answer, so a long answer is never cut. Both are a provider issue in the
-account state.
+answer, so a long answer is never cut; a call that is not streamed has no
+time bound of its own, and only its caller's signal ends it. A stream the
+shell cannot read, a line of more than 262,144 characters or tool-call
+arguments of more than 65,536 bytes, ends the call the same way,
+without a retry; the length of an answer's text never ends a call. Each is
+a provider issue in the account state.
 
 ```quint
-type ShellRefusal = ToolCallUnparsed | SilentStream
+type ShellRefusal = ToolCallUnparsed | SilentStream | UnreadableStream
 pure val streamIdleSeconds = 60
-pure def shellOutcome(r: ShellRefusal): M::Outcome = match r { | ToolCallUnparsed => M::BadRequest | SilentStream => M::ProcessingDenied }
-pure val rValues = Set(ToolCallUnparsed, SilentStream)
+pure val streamLineMaxChars = 262144
+pure val toolArgumentsMaxBytes = 65536
+pure def headerWaitSeconds(streamed: bool): int = if (streamed) streamIdleSeconds else -1
+pure def shellOutcome(r: ShellRefusal): M::Outcome = match r { | ToolCallUnparsed => M::BadRequest | SilentStream => M::ProcessingDenied | UnreadableStream => M::ProcessingDenied }
+pure val rValues = Set(ToolCallUnparsed, SilentStream, UnreadableStream)
 pure def lawAShellRefusalIsNeverRetried(r: ShellRefusal): bool = not(M::retryable(shellOutcome(r)))
 pure def lawOnlyAParseFailureIsABadRequest(r: ShellRefusal): bool = (shellOutcome(r) == M::BadRequest) iff (r == ToolCallUnparsed)
+pure def lawOnlyAStreamWaitsABoundedTime(streamed: bool): bool = (headerWaitSeconds(streamed) >= 0) iff streamed
 ```
 
 ### A tool call, a structured answer and the token use reach the caller as one result
@@ -203,7 +211,13 @@ A call that offers tools, names the tool to use or asks for a schema gets one
 result: the text, every tool call with its arguments, the finish reason and
 the token use. Any other call gets the text alone. Tool results follow the
 call that asked for them; a result no call asked for is sent as the person's
-text. An answer with neither text nor a tool call is a provider issue. A call
+text. An answer whose finish reason says it stopped at the output limit
+fails with the model's output-limit error in every call form, whether it
+holds text, a tool call or nothing visible, and is never sent again: the
+error carries that finish reason, the model, the cap the call sent or none,
+whether nothing visible came and the token use, and the call counts as
+answered in the account state. Any other answer with neither text nor a
+tool call is a provider issue. A call
 sends an output cap only when the caller or its admitted lease sets one;
 otherwise the backend owns the output limit. A
 streamed call asks for its token use (`stream_options.include_usage`), which
@@ -214,22 +228,27 @@ call is measured as a whole one is.
 
 ```quint
 type ChatAsk = { offersTools: bool, choosesTool: bool, asksSchema: bool }
-type ChatAnswer = { textBlank: bool, toolCalls: int }
-type ChatReturn = AnswerText | AnswerResult | AnswerProviderIssue
+type ChatAnswer = { textBlank: bool, toolCalls: int, stoppedAtLimit: bool }
+type ChatReturn = AnswerText | AnswerResult | AnswerCutOff | AnswerProviderIssue
 pure def wantsResult(ask: ChatAsk): bool = ask.offersTools or ask.choosesTool or ask.asksSchema
 pure def chatReturn(ask: ChatAsk, answer: ChatAnswer): ChatReturn =
-  if (answer.textBlank and answer.toolCalls == 0) AnswerProviderIssue
+  if (answer.stoppedAtLimit) AnswerCutOff
+  else if (answer.textBlank and answer.toolCalls == 0) AnswerProviderIssue
   else if (wantsResult(ask)) AnswerResult
   else AnswerText
 pure val askValues = Set({ offersTools: false, choosesTool: false, asksSchema: false }, { offersTools: true, choosesTool: false, asksSchema: false },
   { offersTools: true, choosesTool: true, asksSchema: false }, { offersTools: false, choosesTool: false, asksSchema: true })
-pure val answerValues = Set({ textBlank: true, toolCalls: 0 }, { textBlank: true, toolCalls: 1 }, { textBlank: false, toolCalls: 0 }, { textBlank: false, toolCalls: 2 })
+pure val answerValues = Set({ textBlank: true, toolCalls: 0, stoppedAtLimit: false }, { textBlank: true, toolCalls: 1, stoppedAtLimit: false },
+  { textBlank: false, toolCalls: 0, stoppedAtLimit: false }, { textBlank: false, toolCalls: 2, stoppedAtLimit: false },
+  { textBlank: true, toolCalls: 0, stoppedAtLimit: true }, { textBlank: false, toolCalls: 0, stoppedAtLimit: true }, { textBlank: true, toolCalls: 1, stoppedAtLimit: true })
+pure def lawEveryFormStoppedAtTheLimitIsCutOff(ask: ChatAsk, answer: ChatAnswer): bool =
+  answer.stoppedAtLimit iff chatReturn(ask, answer) == AnswerCutOff
 pure def lawAnEmptyAnswerIsAProviderIssue(ask: ChatAsk, answer: ChatAnswer): bool =
-  (answer.textBlank and answer.toolCalls == 0) iff chatReturn(ask, answer) == AnswerProviderIssue
+  (answer.textBlank and answer.toolCalls == 0 and not(answer.stoppedAtLimit)) iff chatReturn(ask, answer) == AnswerProviderIssue
 pure def lawOnlyAToolOrSchemaCallGetsTheResult(ask: ChatAsk, answer: ChatAnswer): bool =
-  chatReturn(ask, answer) != AnswerProviderIssue implies (chatReturn(ask, answer) == AnswerResult iff wantsResult(ask))
+  (chatReturn(ask, answer) == AnswerText or chatReturn(ask, answer) == AnswerResult) implies (chatReturn(ask, answer) == AnswerResult iff wantsResult(ask))
 pure def lawToolCallsAreNeverDroppedForText(ask: ChatAsk, answer: ChatAnswer): bool =
-  (answer.toolCalls > 0 and not(wantsResult(ask))) implies chatReturn(ask, answer) == AnswerText
+  (answer.toolCalls > 0 and not(answer.stoppedAtLimit) and not(wantsResult(ask))) implies chatReturn(ask, answer) == AnswerText
 pure def usageAsked(streamed: bool): bool = streamed
 pure def lawOnlyAStreamAsksForItsTokenUse(streamed: bool): bool = usageAsked(streamed) iff streamed
 ```

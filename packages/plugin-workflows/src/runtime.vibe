@@ -171,7 +171,7 @@ export function runtimeWorkflowHost(runtime: IAgentRuntime): WorkflowHost {
         if (typeof text !== "string") throw new Error("Model draft was not text")
         return text
       },
-      catch: (cause) => new WorkflowModelFailed({ message: String(cause) }),
+      catch: (cause) => new WorkflowModelFailed({ message: String(cause), cause }),
     }),
     google: managedGoogle(runtime),
     nativeDigests: native === undefined ? undefined : {

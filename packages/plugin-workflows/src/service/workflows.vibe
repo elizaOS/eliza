@@ -37,6 +37,7 @@ export error WorkflowRefused {
   submissionId?: string
   mutationId?: string
   expectedVersionId?: string
+  cause?: unknown
 }
 
 type Bag = Record<string, unknown>

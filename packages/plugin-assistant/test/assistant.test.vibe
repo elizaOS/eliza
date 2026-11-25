@@ -2,8 +2,8 @@
 import { assert, it } from "@effect/vitest"
 import { negotiation, readOperation, validate, type CheckedOperation, type DeviceTurn } from "@elizaos/agent/device-actions"
 import { reminderProposalFamily } from "../src/device-proposals.vibe"
-import { readReminderPresentation, type ActionResult, type IAgentRuntime, type Memory, type RegisteredEvaluator, type UUID } from "@elizaos/core"
-import { composeBrief, recalibrateBrief } from "../src/brief.vibe"
+import { ElizaError, modelOutputIncompleteEvidence, readReminderPresentation, type ActionResult, type IAgentRuntime, type Memory, type RegisteredEvaluator, type UUID } from "@elizaos/core"
+import { briefRequested, composeBrief, recalibrateBrief } from "../src/brief.vibe"
 import { checkinKind, checkinSchedules, collectFacts, followOwnerClock, reconcileCheckins, runCheckin, checkinReport, setCheckinTimes } from "../src/checkin.vibe"
 import { ownerActivity, setDossier } from "../src/dossier.vibe"
 import { restoreEarlier } from "../src/evaluators/pages.vibe"
@@ -14,7 +14,7 @@ import { admitRoute } from "@elizaos/agent"
 import { changeGoal, goalCheckinKind, listGoals, deliverGoalCheckin } from "../src/goals.vibe"
 import { heardReply, replyKind } from "../src/replies.vibe"
 import { answerReminder, checkOriginalMessage, createReminder, deliverReminder, escalateReminder, listReminders, moveReminder, reminderKind, reminderReply, renameReminder, retractRecentSave, setReminderIntensity } from "../src/reminders.vibe"
-import { onAgent } from "../src/host.vibe"
+import { ModelOutputIncomplete, onAgent } from "../src/host.vibe"
 import { deliverEscalation, escalationKind } from "../src/escalation.vibe"
 import { changeRoutine, createRoutine, deleteRoutine, deliverRoutine, routineKind, routineNudgeKind, routineRoutes, updateRoutine } from "../src/routines.vibe"
 import { ownerCalendarZone, ownerClockAt, ownerFacts, recordTravel, stateOwnerZone } from "../src/timezone.vibe"
@@ -27,6 +27,7 @@ const plan = { title: "Call the dentist", due: { kind: "in", minutes: 20 }, dest
 const asked = (messageId: string) => ({ plan, messageId, text: "remind me in 20 minutes to call the dentist", roomId: undefined })
 const outcomeOf = (result: ActionResult) => ({ success: result.success, text: result.text, outcome: result.data?.outcome })
 const equal = <A>(actual: A, expected: A) => Effect.try(() => assert.deepStrictEqual(actual, expected))
+const stoppedAtLimit = new ElizaError("The model's answer was cut off at its output limit", { code: "MODEL_OUTPUT_INCOMPLETE", context: { finishReason: "length", maxTokens: null } })
 
 it.effect('Create each reminder I asked for, once, at the planned time with the delivery the message chose (spec/assistant/reminders.md, "Story: Create the reminder I asked for, and only that"; spec/assistant/reminders.md, "A known delivery choice is kept, and only an unknown one is taken from the message")', effect () => {
   const seen = ports()
@@ -63,11 +64,13 @@ it.effect('A plan alone never saves a reminder: a message that did not ask, or a
   }
 })
 
-it.effect('The owner\'s message is checked again with no output limit on the model (spec/assistant/reminders.md, "The original message is checked before a reminder is written")', effect () => {
+it.effect('The owner\'s message is checked again with no output limit on the model, and a check the model\'s own maximum cut off fails the request with that error (spec/assistant/reminders.md, "The original message is checked before a reminder is written")', effect () => {
   const asked: object[] = []
   const runtime = { agentId: "agent-1", useModel: async (_model: unknown, params: object) => { asked.push(params); return check({}) } } as unknown as IAgentRuntime
   const checked = try tryPromise(() => onAgent(runtime, checkOriginalMessage("remind me in 20 minutes to call the dentist")))
-  try equal([checked?.requested, asked.map((params) => Object.keys(params).sort())], [true, [["prompt", "system"]]])
+  const cut = { agentId: "agent-1", useModel: () => Promise.reject(stoppedAtLimit) } as unknown as IAgentRuntime
+  const failed = try promise(() => onAgent(cut, checkOriginalMessage("remind me in 20 minutes to call the dentist")).then(() => undefined, (failure: unknown) => failure))
+  try equal([checked?.requested, asked.map((params) => Object.keys(params).sort()), modelOutputIncompleteEvidence(failed)?.finishReason], [true, [["prompt", "system"]], "length"])
 })
 
 it.effect('A save that failed and then succeeded is reported saved, and one that never proved itself is not (spec/assistant/replies.md, "A claim that something was not done needs a cited result that failed and was not superseded"; spec/assistant/replies.md, "A claim that something was done needs a result that applied it to that record")', effect () => {
@@ -228,7 +231,7 @@ it.effect('A reminder I named nudges me again on the channels I chose until I an
   }
 })
 
-it.effect('Reminders and routines chase me only as hard as I asked: the first alert always comes, minimal drops follow-ups, a reminder\'s own persistent setting adds a nudge an hour after its last step, high priority comes only from my words, and a quiet owner is chased one notch less (spec/assistant/reminderEscalation.md, "Story: Chase me about my reminders only as hard as I asked"; spec/assistant/reminderEscalation.md, "A reminder\'s own intensity wins over the owner\'s, and an unset one is normal"; spec/assistant/reminderEscalation.md, "Intensity shapes only the follow-ups: minimal drops them, persistent adds one, and high priority only keeps them for a high-priority reminder"; spec/assistant/reminderEscalation.md, "A quiet owner is chased one notch less"; spec/assistant/reminders.md, "A reminder is high priority only when the owner\'s message says so")', effect () => {
+it.effect('Reminders and routines chase me only as hard as I asked: the first alert always comes, minimal drops follow-ups, a reminder\'s own persistent setting adds a nudge an hour after its last step, high priority comes only from my words, a quiet owner is chased one notch less, and a reading of my words the model\'s own maximum cut off fails the request with that error (spec/assistant/reminderEscalation.md, "Story: Chase me about my reminders only as hard as I asked"; spec/assistant/reminderEscalation.md, "A reminder\'s own intensity wins over the owner\'s, and an unset one is normal"; spec/assistant/reminderEscalation.md, "Intensity shapes only the follow-ups: minimal drops them, persistent adds one, and high priority only keeps them for a high-priority reminder"; spec/assistant/reminderEscalation.md, "A quiet owner is chased one notch less"; spec/assistant/reminders.md, "A reminder is high priority only when the owner\'s message says so")', effect () => {
   const seen = ports()
   seen.answers.push(check({}), check({ important: true }))
   const roomId = "room-4" as UUID
@@ -245,6 +248,8 @@ it.effect('Reminders and routines chase me only as hard as I asked: the first al
       try setReminderIntensity("persistent", "Water the plants", said("i6")),
       try setReminderIntensity(undefined, "stretch", said("i10", "be persistent about my stretching routine")),
     ]
+    seen.answers.push(new ModelOutputIncomplete({ cause: stoppedAtLimit }))
+    const unread = try Effect.flip(setReminderIntensity(undefined, "stretch", said("i12", "be relentless about my stretching routine")))
     try escalateReminder({ op: "escalate", target: "Call the dentist", afterMinutes: 10 }, "i7")
     try escalateReminder({ op: "escalate", target: "take pills", afterMinutes: 30 }, "i8")
     const [dentist, pills] = rowsOf(seen, reminderKind)
@@ -258,6 +263,7 @@ it.effect('Reminders and routines chase me only as hard as I asked: the first al
     const once = (from: number, minutes: number) => ({ kind: "once", atIso: new Date(from + minutes * 60_000).toISOString() })
     try equal({
       replies: replies.map(outcomeOf).map(({ success, text, outcome }) => [success, success ? text : outcome]),
+      unread: modelOutputIncompleteEvidence(unread)?.finishReason,
       priorities: [dentist.metadata.priority, pills.metadata.priority],
       alerts: seen.presented.map((shown) => shown.presentation.chatText),
       steps: rowsOf(seen, escalationKind).map((row) => [row.metadata.reminderTaskId, row.metadata.channel, row.trigger]),
@@ -267,6 +273,7 @@ it.effect('Reminders and routines chase me only as hard as I asked: the first al
         [false, "REMINDER_INTENSITY_MISSING"], [true, "Your reminders are now minimal."], [true, 'Reminder intensity for "Take pills" is now persistent.'], [false, "not_found"],
         [true, 'Reminder intensity for the routine "Stretch" is now persistent.'],
       ],
+      unread: "length",
       priorities: ["normal", "high"],
       alerts: ["Call the dentist", "Take pills", "Stretch", "Take pills"],
       steps: [[pills.taskId, "in_app", once(firstFiring, 90)], [pills.taskId, "push", once(firstFiring, 30)], [pills.taskId, "push", once(seen.now, 30)]],
@@ -593,7 +600,9 @@ it.effect('Brief me on my morning, evening or week: the kind and days come from 
     try recalibrateBrief("recalibrate", "goals")
     briefs.push(try told("compose_evening", undefined, "my evening brief please"))
     const unwritten: ActionResult = try composeBrief(undefined, undefined, "brief me")
-    try equal({ briefs, unwritten: [unwritten.success, unwritten.data?.outcome] }, {
+    seen.answers.push(new ModelOutputIncomplete({ cause: stoppedAtLimit }))
+    const cutOff = try Effect.flip(briefRequested({}, "brief-cut-off", "brief me"))
+    try equal({ briefs, unwritten: [unwritten.success, unwritten.data?.outcome], cutOff: modelOutputIncompleteEvidence(cutOff)?.finishReason }, {
       briefs: [
         ["morning", "today", true, ["Dentist", "Offsite, Sat, Nov 21", "at Porto", "buy milk", "Run a 10k: no check-in answered yet", "Call the dentist", "Stretch, afternoon (15:00) every day"]],
         ["weekly", "this week", true, ["Dentist", "Offsite, Sat, Nov 21", "at Porto", "Flight to Lisbon", "buy milk", "Run a 10k: no check-in answered yet", "Call the dentist", "Stretch, afternoon (15:00) every day"]],
@@ -604,6 +613,7 @@ it.effect('Brief me on my morning, evening or week: the kind and days come from 
         ["evening", "today", true, ["Dentist", "Offsite, Sat, Nov 21", "at Porto", "buy milk", "Call the dentist", "Stretch, afternoon (15:00) every day", "# Done today", "To-do done: buy milk", "Routine done: Stretch", "Reminder done: Call the dentist"]],
       ],
       unwritten: [false, "BRIEF_MODEL_UNAVAILABLE"],
+      cutOff: "length",
     })
   }
 })

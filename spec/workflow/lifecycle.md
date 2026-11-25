@@ -226,12 +226,13 @@ pure def lawAWorkflowWithNoWordIsLeftOut(score: int): bool = searchKeeps(score) 
 A change that failed before its write, while the workflow was read, drafted
 or checked, or whose write the service refused as malformed, missing,
 failing its code check or not applied, says nothing was changed and may be
-retried. Any other failure of a write, and a failed readback after a write
-returned, may have committed: the reply asks the owner to check before
-trying again, and the planner is told not to retry. A failed read says the
-read failed. The workflows context the agent reads reports a failed read as
-a failure, never as the owner having no workflows, and a search that
-matches nothing says so.
+retried; one whose draft stopped at the model's own output limit carries
+that error, so the turn does not draft it again. Any other failure of a
+write, and a failed readback after a write returned, may have committed:
+the reply asks the owner to check before trying again, and the planner is
+told not to retry. A failed read says the read failed. The workflows
+context the agent reads reports a failed read as a failure, never as the
+owner having no workflows, and a search that matches nothing says so.
 
 ```quint
 type FailureReport = ReadFailed | NothingChanged | ReconcileFirst

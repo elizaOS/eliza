@@ -17,7 +17,7 @@ export interface ProviderCarried {
 }
 
 export type CloudReply =
-  | { readonly kind: "text"; readonly chunks: readonly string[]; readonly cachedTokens?: number }
+  | { readonly kind: "text"; readonly chunks: readonly string[]; readonly cachedTokens?: number; readonly finishReason?: string }
   | { readonly kind: "refusal"; readonly status: number; readonly error: string; readonly retryable: boolean; readonly reason?: string; readonly retryAt?: number | string; readonly resetsAt?: number; readonly retryAfterSeconds?: number; readonly carried?: ProviderCarried }
   | { readonly kind: "images" }
   | { readonly kind: "drop" }
@@ -57,6 +57,7 @@ export interface CloudFake {
 
 export const text = (...chunks: string[]): CloudReply => ({ kind: "text", chunks });
 export const cachedText = (cachedTokens: number, ...chunks: string[]): CloudReply => ({ kind: "text", chunks, cachedTokens });
+export const cutOff = (...chunks: string[]): CloudReply => ({ kind: "text", chunks, finishReason: "length" });
 
 export const refusal = (status: number, error: string, more: { retryable?: boolean; reason?: string; retryAt?: number | string; resetsAt?: number; retryAfterSeconds?: number; carried?: ProviderCarried } = {}): CloudReply =>
   ({
@@ -192,14 +193,14 @@ function answerCompletion(response: ServerResponse, reply: CloudReply, body: unk
       if (!streams(body)) {
         return json(response, 200, {
           id: "chatcmpl-fake", object: "chat.completion", model,
-          choices: [{ index: 0, message: { role: "assistant", content }, finish_reason: "stop" }], usage,
+          choices: [{ index: 0, message: { role: "assistant", content }, finish_reason: reply.finishReason ?? "stop" }], usage,
         });
       }
       response.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-store" });
       for (const chunk of reply.chunks) {
         response.write(`data: ${JSON.stringify({ id: "chatcmpl-fake", object: "chat.completion.chunk", model, choices: [{ index: 0, delta: { content: chunk }, finish_reason: null }] })}\n\n`);
       }
-      return endStream(response, body, model, "stop", usage);
+      return endStream(response, body, model, reply.finishReason ?? "stop", usage);
     }
     case "frame":
       response.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-store" });

@@ -1,9 +1,10 @@
 // spec/agent/models/binding.md, "No text handler is ever served by a model on the device"; spec/agent/models/binding.md, "Only a network failure, an outage or a provider issue is retried, and a rate limit ends the call for its turn to re-send once"; spec/agent/models/binding.md, "A tool call the provider could not parse, or a streamed answer silent for a minute, ends the call without a retry"; spec/agent/models/binding.md, "Each refusal is one account state, and the last failure records its kind and time without text"; spec/agent/models/binding.md, "A tool call, a structured answer and the token use reach the caller as one result"; spec/agent/models/binding.md, "A call sends an output cap only when its caller names one, and a thinking hint sets the reasoning effort only on a model that documents it"; spec/agent/models/binding.md, "A Qwen call on a Cerebras route sends the conversation cache key its caller names, and no call invents one"; spec/agent/models/binding.md, "A rate limit on an own key at Cerebras holds the account at most four seconds, and every other route keeps the provider's retry time"; spec/agent/conversation/turns.md, "A failed reply names the owner's fix, and only a live rate limit carries its wait"
 import { readCloudError, refusalStatusOf, type CloudFailure } from "@elizaos/cloud/client"
-import type { GenerateTextParams, GenerateTextResult, IAgentRuntime, ModelRegistrationMetadata, StreamChunkCallback, TokenUsage, ToolCall } from "@elizaos/core"
+import { ElizaError, isModelOutputLimitFinishReason, type GenerateTextParams, type GenerateTextResult, type IAgentRuntime, type ModelRegistrationMetadata, type StreamChunkCallback, type TokenUsage, type ToolCall } from "@elizaos/core"
 import { FetchHttpClient, HttpClient, HttpClientRequest, type HttpClientResponse } from "effect/http"
 import {
-  cacheKeySent, capSent, chatReturn, effortFor, failureOf, frameStatus, namedRetryAt, outcomeOf, refusalWait, shellOutcome, streamIdleSeconds, usageAsked,
+  cacheKeySent, capSent, chatReturn, effortFor, failureOf, frameStatus, headerWaitSeconds, namedRetryAt, outcomeOf, refusalWait, shellOutcome, streamIdleSeconds, streamLineMaxChars,
+  toolArgumentsMaxBytes, usageAsked,
   type AccountFailure, type CapAsk, type ChatAsk, type ChatReturn, type ModelBinding, type ModelHandler, type ReasoningEffort, type ReasoningFamily, type ShellRefusal, type ThinkingHint,
 } from "../../gen/agent__models__binding.effect.vibe"
 import { failureKindName, type BoundModels, type FailureKind } from "./binding.vibe"
@@ -329,6 +330,7 @@ function refusalOf(cloud: CloudFailure, hold: Hold = unheld): ModelRefusal {
 const shellRefusals: Record<ShellRefusal, { message: string; code: string }> = {
   ToolCallUnparsed: { message: "The model provider could not read the model's tool call", code: "PROVIDER_TOOL_CALL_PARSE_FAILED" },
   SilentStream: { message: "The model provider sent nothing for a minute", code: "MODEL_ATTEMPT_IDLE_TIMEOUT" },
+  UnreadableStream: { message: "The model provider sent a stream too large to read", code: "MODEL_STREAM_UNREADABLE" },
 }
 
 function shellRefusalOf(refusal: ShellRefusal): ModelRefusal {
@@ -418,11 +420,21 @@ function usageOf(usage: WireUsage | null | undefined): TokenUsage | undefined {
 }
 
 effect function answered(reply: Reply, ask: ChatAsk) {
-  if (reply.text.length > 32768) throw providerIssue()
-  if (reply.toolCalls.some((call) => call.name.trim() === "" || call.id === "")) throw providerIssue()
-  const form = chatReturn(ask, { textBlank: reply.text.trim() === "", toolCalls: reply.toolCalls.length })
+  const form = chatReturn(ask, { textBlank: reply.text.trim() === "", toolCalls: reply.toolCalls.length, stoppedAtLimit: isModelOutputLimitFinishReason(reply.finishReason) })
   if (form === "AnswerProviderIssue") throw providerIssue()
+  if (form !== "AnswerCutOff" && reply.toolCalls.some((call) => call.name.trim() === "" || call.id === "")) throw providerIssue()
   return { reply, form }
+}
+
+function cutOffOf(reply: Reply, model: string | undefined, cap: unknown): ElizaError {
+  return new ElizaError("The model's answer was cut off at its output limit", {
+    code: "MODEL_OUTPUT_INCOMPLETE",
+    context: {
+      finishReason: reply.finishReason, model, maxTokens: typeof cap === "number" ? cap : null,
+      emptyVisibleOutput: reply.text.trim() === "" && reply.toolCalls.length === 0,
+      ...(reply.usage === undefined ? {} : { usage: reply.usage }),
+    },
+  })
 }
 
 effect function collectStream(result: HttpClientResponse.HttpClientResponse, sink: Sink, ask: ChatAsk) {
@@ -432,11 +444,13 @@ effect function collectStream(result: HttpClientResponse.HttpClientResponse, sin
   let finishReason: string | undefined
   let usage: TokenUsage | undefined
   let argumentBytes = 0
+  const encoder = new TextEncoder()
   const calls: { id: string; name: string; arguments: string }[] = []
   const silent = () => Stream.fail(new ShellRefused({ refusal: "SilentStream" }))
+  const unreadable = () => new ShellRefused({ refusal: "UnreadableStream" })
   const lines = Stream.timeoutOrElse(result.stream, { duration: Duration.seconds(streamIdleSeconds), orElse: silent }).pipe(Stream.decodeText(), Stream.splitLines)
   const collect = Stream.runForEach(lines, effect (line) => {
-    if (line.length > 262144) throw providerIssue()
+    if (line.length > streamLineMaxChars) throw unreadable()
     if (!line.startsWith("data:") || terminal) return
     const payload = line.slice(5).trim()
     if (payload === "[DONE]") {
@@ -461,13 +475,12 @@ effect function collectStream(result: HttpClientResponse.HttpClientResponse, sin
       call.id ||= piece.id ?? ""
       call.name += piece.function?.name ?? ""
       call.arguments += piece.function?.arguments ?? ""
-      argumentBytes += piece.function?.arguments?.length ?? 0
-      if (argumentBytes > 65536) throw providerIssue()
+      argumentBytes += encoder.encode(piece.function?.arguments ?? "").byteLength
+      if (argumentBytes > toolArgumentsMaxBytes) throw unreadable()
     }
     const delta = choice.delta?.content
     if (!delta) return
     text += delta
-    if (text.length > 32768) throw providerIssue()
     if (sink.onStreamChunk) try tryPromise({ try: async () => sink.onStreamChunk?.(delta, undefined, text), catch: (cause) => new StreamConsumerFailed({ cause }) })
   })
   collect catch effect (failure) => {
@@ -486,9 +499,10 @@ effect function send(url: string, credential: Redacted.Redacted<string>, callKey
     HttpClientRequest.post(url), { authorization: "Bearer " + Redacted.value(credential), "idempotency-key": callKey },
   ), encoded, "application/json")
   const response = Effect.provideService(HttpClient.execute(request), FetchHttpClient.RequestInit, { redirect: "error" })
-  const streamed = sink.stream === true
-  const result = timeout(response, streamed ? Duration.seconds(streamIdleSeconds) : "90 seconds") catch effect (failure) => {
-    if (streamed && Cause.isTimeoutError(failure)) throw new ShellRefused({ refusal: "SilentStream" })
+  const wait = headerWaitSeconds(sink.stream === true)
+  const answering = wait < 0 ? response : timeout(response, Duration.seconds(wait))
+  const result = answering catch effect (failure) => {
+    if (Cause.isTimeoutError(failure)) throw new ShellRefused({ refusal: "SilentStream" })
     throw new Refused({ cloud: { tag: "CloudNetwork" } })
   }
   if (result.status < 200 || result.status >= 300) throw try refusalFrom(result)
@@ -518,7 +532,7 @@ function heldFor(state: ModelBinding, now: number): Hold {
   return state.accountState.tag === "Failing" ? holdOf(state.accountState.failure, now) : unheld
 }
 
-effect function serve(binding: Binding, handler: ChatHandler, endpoint: Endpoint, callKey: string, fields: object | undefined, sink: Sink, ask: ChatAsk) {
+effect function serve(binding: Binding, handler: ChatHandler, endpoint: Endpoint, callKey: string, fields: Record<string, unknown> | undefined, sink: Sink, ask: ChatAsk) {
   const began = try Clock.currentTimeMillis
   const started = try binding.startCall(handler, began)
   if (typeof started !== "number") throw refusalOf({ tag: "CloudRateLimited", retryAt: started.limitedUntil }, holdOf({ tag: "LimitReached", retryAt: started.limitedUntil }, began))
@@ -536,7 +550,8 @@ effect function serve(binding: Binding, handler: ChatHandler, endpoint: Endpoint
   }
   const at = try Clock.currentTimeMillis
   try binding.answerCall(started, at)
-  return answer
+  if (answer.form === "AnswerCutOff") throw cutOffOf(answer.reply, endpoint.models[handler], fields?.[endpoint.maxTokensField])
+  return { reply: answer.reply, form: answer.form }
 }
 
 const cerebrasModelPrefix = /^(?:cerebras[:/]|openai\/)/
@@ -570,7 +585,7 @@ function capOf(params: GenerateTextParams): CapAsk {
   return capSent(asked, params.omitMaxTokens === true)
 }
 
-function requestOf(endpoint: Endpoint, handler: ChatHandler, params: GenerateTextParams): object | undefined {
+function requestOf(endpoint: Endpoint, handler: ChatHandler, params: GenerateTextParams): Record<string, unknown> | undefined {
   const messages = conversation(params)
   if (messages === undefined) return undefined
   const cap = capOf(params)
@@ -614,7 +629,7 @@ function askOf(params: GenerateTextParams): ChatAsk {
 
 const textAsk: ChatAsk = { offersTools: false, choosesTool: false, asksSchema: false }
 
-function returned(answer: { reply: Reply; form: Exclude<ChatReturn, "AnswerProviderIssue"> }): string | GenerateTextResult {
+function returned(answer: { reply: Reply; form: Exclude<ChatReturn, "AnswerProviderIssue" | "AnswerCutOff"> }): string | GenerateTextResult {
   return answer.form === "AnswerResult" ? resultOf(answer.reply) : answer.reply.text
 }
 

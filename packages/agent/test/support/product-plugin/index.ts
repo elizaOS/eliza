@@ -1,5 +1,5 @@
 // spec/agent/plugins/profile.md, "Story: Register my product's own actions and routes"; spec/agent/models/binding.md, "Plugins reach the cloud only through the cloud service of a cloud backend, and a managed Google change needs the owner's consent"
-import { promoteSubactionsToActions, type Action, type IAgentRuntime } from "@elizaos/core";
+import { ModelType, promoteSubactionsToActions, type Action, type IAgentRuntime } from "@elizaos/core";
 import type { AgentPlugin } from "../../../src/host/module.vibe";
 import type { CloudLinkReply, CloudLinkService } from "../../../src/models/cloud-link.vibe";
 import { scheduledTasksServiceType, type ScheduledTasksApi, type TaskTrigger } from "../../../src/schedule/scheduled-task-routes.vibe";
@@ -58,6 +58,24 @@ export const clearingProductPlugin = {
   name: "clearing-product-fixture",
   description: "A product plugin fixture whose action previews a change and tells only the model the question to ask.",
   actions: [productClearAction],
+} satisfies AgentPlugin;
+
+export const productDraftActionName = "PRODUCT_DRAFT";
+
+const productDraftAction: Action = {
+  name: productDraftActionName,
+  description: "Draft a summary of the product's own list with the text model.",
+  validate: () => Promise.resolve(true),
+  handler: async (runtime) => {
+    const drafted = await runtime.useModel(ModelType.TEXT_SMALL, { prompt: "Summarize the product's list." });
+    return { success: true, text: typeof drafted === "string" ? drafted : "", data: { drafted } };
+  },
+};
+
+export const draftingProductPlugin = {
+  name: "drafting-product-fixture",
+  description: "A product plugin fixture whose action asks the text model for a draft.",
+  actions: [productDraftAction],
 } satisfies AgentPlugin;
 
 export const productGoogleActionName = "PRODUCT_GOOGLE";

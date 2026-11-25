@@ -8,7 +8,7 @@ import type { ManagedGoogleReads } from "./google.vibe"
 
 export error WorkflowWorkerUnavailable { reason: string }
 export error WorkflowDeviceFailed { code: string; message: string }
-export error WorkflowModelFailed { message: string }
+export error WorkflowModelFailed { message: string; cause: unknown }
 export error WorkflowScheduleUnavailable { cause: unknown }
 
 export interface WorkflowWorkerConnection {
