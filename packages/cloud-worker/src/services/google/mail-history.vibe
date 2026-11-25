@@ -29,6 +29,7 @@ interface HistoryEvent {
 
 const gmail = "/gmail/v1/users/me"
 const historyPath = "/api/v1/eliza/google/gmail/history"
+const inboxHistoryPath = "/api/v1/eliza/google/gmail/inbox-v1/history"
 const parameters: ReadonlySet<string> = new Set(["grantId", "startHistoryId", "pageToken", "maxResults", "side"])
 const grantPattern = /^[A-Za-z0-9_-]{1,128}$/
 const providerId = /^[A-Za-z0-9_-]{1,256}$/
@@ -157,7 +158,7 @@ effect function observe(accessToken: string, start: string | undefined, token: s
   return { ...page, read: { ...page.read, consistent: labels.every(([, found]) => found.matches) }, events }
 }
 
-effect function historyRoute(context: RouteContext) {
+effect function historyRoute(context: RouteContext, auth: "ServiceAccess" | "MailRoute") {
   const ask = try askOf(context.query)
   const owner = signed(context.caller)
   if (owner === undefined) throw refused("AuthenticationRequired", "CredentialUnknown")
@@ -168,7 +169,7 @@ effect function historyRoute(context: RouteContext) {
     if (failure._tag === "Refused" && failure.refusal.code === "NotFound") return undefined
     throw failure
   }
-  try recheckAccess(context.request.headers.authorization, owner, "ServiceAccess")
+  try recheckAccess(context.request.headers.authorization, owner, auth)
   const grantCurrent = status !== undefined && status.connected && status.connectionId === grant.connectionId &&
     status.identity?.id === grant.subject && status.grantedCapabilities.includes("google.gmail.triage")
   const answer = historyAnswer({ ...observed.read, grantCurrent })
@@ -189,5 +190,6 @@ effect function historyRoute(context: RouteContext) {
 }
 
 export const mailHistoryRoutes: ReadonlyArray<Route> = [
-  { method: "GET", path: historyPath, auth: "ServiceAccess", area: "GoogleRoutes", handler: historyRoute }
+  { method: "GET", path: historyPath, auth: "ServiceAccess", area: "GoogleRoutes", handler: (context) => historyRoute(context, "ServiceAccess") },
+  { method: "GET", path: inboxHistoryPath, auth: "MailRoute", area: "GoogleRoutes", handler: (context) => historyRoute(context, "MailRoute") }
 ]

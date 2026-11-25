@@ -7,8 +7,10 @@ public final class MailReadRoutes {
  private static final String GOOGLE = "/api/v1/eliza/google/";
  private static final Map<String, List<String>> QUERIES = Map.of(
      GOOGLE + "status", List.of(),
+     GOOGLE + "accounts", List.of("side"),
      GOOGLE + "gmail/triage", List.of("maxResults", "folder", "q", "counts", "pageToken", "grantId"),
      GOOGLE + "gmail/read", List.of("messageId", "grantId"),
+     GOOGLE + "gmail/inbox-v1/history", List.of("grantId", "startHistoryId", "pageToken", "maxResults", "side"),
      GOOGLE + "calendar/feed", List.of("timeMin", "timeMax", "pageToken", "grantId"));
 
  private MailReadRoutes() {}

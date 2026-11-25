@@ -2284,6 +2284,16 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
     const second = try history("&maxResults=50&startHistoryId=1000&pageToken=more")
     const expired = try history("&startHistoryId=900&side=owner")
     const asked = cloud.fakes.seen.filter((request) => request.path.endsWith("/history")).map(({ query }) => [query.get("startHistoryId"), query.get("maxResults"), query.get("pageToken")])
+    const lease = try leasedCaller(cloud, "mail-history-lease")
+    const leaseGrant = "1b63c8a7-2e45-48d1-8f37-b7214f5d309e"
+    const leaseRefresh = try sync(() => seedGrant(google, { subject: `subject-${leaseGrant}`, email: `${leaseGrant}@example.com`, scopes }))
+    try cloud.inside(linkedGrant(cloud, lease, leaseGrant, leaseRefresh, scopes, now - 1000))
+    const leasePath = `/api/v1/eliza/google/gmail/inbox-v1/history?grantId=${leaseGrant}`
+    const leased = try cloud.call(leasePath, { headers: lease.headers })
+    const wrongKey = try cloud.call(leasePath, { headers: { authorization: `Bearer ${lease.deviceKey}` } })
+    try check(() => assert.deepStrictEqual([leased.status, leased.body, wrongKey.status, (wrongKey.body as { readonly reason?: string }).reason], [
+      200, { ...baseline.body as object, grantId: leaseGrant }, 403, "device_key_not_allowed",
+    ]))
     provider = "reordered"
     const beforeReordered = cloud.fakes.seen.length
     const reordered = try history("&startHistoryId=1000")
@@ -2648,6 +2658,50 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
         mailbox: [["UNREAD", "TRASH"], 1]
       }
     ))
+  }))
+
+  it.live("Recover a lost draft save only for the exact bytes, without sending it again (spec/cloud/services/google/mailOperations.md, \"Story: Change or send from my mailbox once, as I reviewed it\"; spec/cloud/shared/dispatchOnce.md, \"Story: Send a change once and recover its outcome without sending it again\")", () => scoped(effect {
+    const { mailbox, switches, operation, grantId } = try mailOperationSetup("ops-draft", sessionMailCaller("ops-draft"))
+    const createId = "52a38be9-67ab-4b26-9c42-1af35977c174"
+    const replaceId = "b8106493-a719-46ed-b03b-6ee42e82af64"
+    const lookup = (requestId: string) => operation(`/${requestId}?grantId=${grantId}`)
+    const send = (requestId: string, proposal: unknown) => effect {
+      const prepared = try operation("", { grantId, requestId, proposal })
+      const reviewDigest = (prepared.body as OperationAnswer).receipt.reviewDigest
+      switches.dropNextReply = true
+      return try operation(`/${requestId}/dispatch`, { grantId, reviewDigest, proposal })
+    }
+    const create = { kind: "draft-create", mode: "compose", to: ["ada@example.org"], subject: "Plan", bodyText: "Initial draft" }
+    const lostCreate = try send(createId, create)
+    const created = [...mailbox.drafts.values()][0]
+    if (!created) throw new Error("Gmail did not create the draft")
+    const createDigest = sha256Hex(created.raw)
+    const foundCreate = try lookup(createId)
+    const replace = { ...create, kind: "draft-replace", draftId: created.id, expectedDigest: createDigest, bodyText: "Reviewed replacement" }
+    const lostReplace = try send(replaceId, replace)
+    const replaced = mailbox.drafts.get(created.id)
+    if (!replaced) throw new Error("Gmail did not replace the specified draft")
+    mailbox.drafts.set(replaced.id, { ...replaced, raw: created.raw })
+    const changed = try lookup(replaceId)
+    mailbox.drafts.set(replaced.id, replaced)
+    const foundReplace = try lookup(replaceId)
+    const inspected = (answer: typeof foundCreate) => (answer.body as OperationAnswer).receipt.providerResult
+    try check(() => assert.deepStrictEqual({
+      lost: [receiptOf(lostCreate), receiptOf(lostReplace)],
+      changed: receiptOf(changed),
+      recovered: [receiptOf(foundCreate), receiptOf(foundReplace)],
+      copies: [inspected(foundCreate), inspected(foundReplace)],
+      providerWrites: switches.calls,
+    }, {
+      lost: [["draft-create", "outcome-unknown", null, true, false], ["draft-replace", "outcome-unknown", null, true, false]],
+      changed: ["draft-replace", "outcome-unknown", null, true, false],
+      recovered: [["draft-create", "succeeded", null, true, true], ["draft-replace", "succeeded", null, true, true]],
+      copies: [
+        { draftId: created.id, messageId: created.messageId, providerDigest: createDigest },
+        { draftId: replaced.id, messageId: replaced.messageId, providerDigest: sha256Hex(replaced.raw) },
+      ],
+      providerWrites: [{ method: "POST", path: "/drafts" }, { method: "PUT", path: `/drafts/${created.id}` }],
+    }))
   }))
 
   it.live("Send a message with an attachment once though the dispatch is replayed, and refuse a forward at a stale history id (spec/cloud/services/google/mailOperations.md, \"Story: Change or send from my mailbox once, as I reviewed it\"; spec/cloud/services/google/mailRead.md, \"Story: Read my mail through the grant I chose\")", () => scoped(effect {

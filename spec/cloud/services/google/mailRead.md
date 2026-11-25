@@ -436,8 +436,9 @@ pure def lawNoAnswerAfterAuthorityEnds(watch: InboxWatch, nowAt: int, grantCurre
 
 ### A background history read names one grant and a count within its bound, and continues only from the start it began at
 
-`GET …/gmail/history` (develop `api/v1/eliza/google/gmail/history`, read by
-the phone's background mail check) takes `grantId`, which it requires,
+`GET …/gmail/inbox-v1/history` admits an account session or a device mail
+lease. Existing background checks use `GET …/gmail/history` with their
+original device credential. Both reads take `grantId`, which they require,
 `startHistoryId` (1 to 20 digits, no leading zero), `pageToken` (1 to 4,096
 characters, only beside the start it continues), `maxResults` (1 to 100,
 50 when omitted) and `side`, only `owner`. Any other parameter, or one given
