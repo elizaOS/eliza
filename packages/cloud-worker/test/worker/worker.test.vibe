@@ -38,7 +38,7 @@ effect function body(response: Response) {
 }
 
 describe('Serve the deployment from a Worker (spec/cloud/deployment.md, "Story: Serve the deployment from a Worker")', () => {
-  it.live("serves native sign-in, plans and the service document from the applied registration, keeps the Worker-only routes and refuses bindings that disagree", () => scoped(effect {
+  it.live("serves native sign-in, plans and the service document from the applied registration, keeps the Worker-only routes, sends sign-in mail through its mail binding and refuses bindings that disagree or are missing", () => scoped(effect {
     const fakes = try fakeServer()
     const profile = try sync(() => {
       fakes.mount("/stripe/", stripeCatalog(catalogPrices))
@@ -82,6 +82,16 @@ describe('Serve the deployment from a Worker (spec/cloud/deployment.md, "Story: 
     const decision = try call("/api/v1/decisions", env, { method: "POST", headers: { origin: web, "content-type": "application/json" }, body: "{}" })
     const unserved = try call("/api/v1/agents")
     const disagreeing = try call("/api/public/service", { ...env, WEB_ORIGIN: "https://www.other.example.com" })
+    const mailed: Array<{ from: string; to: string; text: string }> = []
+    const bound = {
+      ...env,
+      CLOUD_PROFILE: JSON.stringify({ ...profile, environments: { ...profile.environments, staging: { ...profile.environments.staging, mail: { kind: "binding", binding: "SIGN_IN_EMAIL" } } } }),
+      SIGN_IN_EMAIL: { send: async (message: { from: string; to: string; text: string }) => { mailed.push(message) } }
+    } satisfies CloudBindings
+    const { SIGN_IN_EMAIL: _unbound, ...unbound } = bound
+    const codeRequest = () => ({ method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email: "ada@example.com", clientId: phone.clientId, codeChallenge: "c".repeat(43), codeChallengeMethod: "S256" }) })
+    const boundSend = try call("/api/v1/auth/email/code/send", bound, codeRequest())
+    const unboundSend = try call("/api/v1/auth/email/code/send", unbound, codeRequest())
     try tryPromise(() => worker.scheduled({ scheduledTime: Date.UTC(2026, 10, 22, 12, 0) }, env))
     try check(() => {
       assert.deepEqual([config.status, (config.body as { clientId?: string; redirectUri?: string }).clientId, (config.body as { redirectUri?: string }).redirectUri], [200, phone.clientId, phone.signInReturn])
@@ -89,6 +99,8 @@ describe('Serve the deployment from a Worker (spec/cloud/deployment.md, "Story: 
       assert.equal(plans.status, 200)
       assert.deepEqual([service.status, (service.body as { service?: { name?: string } }).service?.name], [200, "Test Cloud"])
       assert.deepEqual([decision.status, unserved.status, disagreeing.status], [401, 404, 503])
+      assert.deepEqual([boundSend.status, mailed.map((message) => [message.from, message.to, /\b\d{6}\b/.test(message.text)]), unboundSend.status],
+        [200, [[profile.environments.staging.mailSender, "ada@example.com", true]], 503])
     })
   }), 60_000)
 })

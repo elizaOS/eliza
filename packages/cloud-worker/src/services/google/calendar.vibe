@@ -715,12 +715,12 @@ effect function sweepStaleWrites(): number!!CloudContext {
 const calendar = "/api/v1/eliza/google/calendar"
 
 export const calendarRoutes: ReadonlyArray<Route> = [
-  { method: "GET", path: `${calendar}/calendars`, auth: "MailAccess", capability: "managedGoogle", handler: calendarsRoute },
-  { method: "GET", path: `${calendar}/feed`, auth: "MailAccess", capability: "managedGoogle", handler: feedRoute },
-  { method: "GET", path: `${calendar}/events/:eventId`, auth: "MailAccess", capability: "managedGoogle", handler: eventRoute },
-  { method: "POST", path: `${calendar}/events`, auth: "SignedSession", capability: "managedGoogle", handler: (context) => refusingWrite(createRoute(context)) },
-  { method: "PATCH", path: `${calendar}/events/:eventId`, auth: "SignedSession", capability: "managedGoogle", handler: (context) => refusingWrite(changeRoute(context)) },
-  { method: "DELETE", path: `${calendar}/events/:eventId`, auth: "SignedSession", capability: "managedGoogle", handler: (context) => refusingWrite(deleteRoute(context)) }
+  { method: "GET", path: `${calendar}/calendars`, auth: "MailAccess", area: "GoogleRoutes", handler: calendarsRoute },
+  { method: "GET", path: `${calendar}/feed`, auth: "MailAccess", area: "GoogleRoutes", handler: feedRoute },
+  { method: "GET", path: `${calendar}/events/:eventId`, auth: "MailAccess", area: "GoogleRoutes", handler: eventRoute },
+  { method: "POST", path: `${calendar}/events`, auth: "SignedSession", area: "GoogleRoutes", handler: (context) => refusingWrite(createRoute(context)) },
+  { method: "PATCH", path: `${calendar}/events/:eventId`, auth: "SignedSession", area: "GoogleRoutes", handler: (context) => refusingWrite(changeRoute(context)) },
+  { method: "DELETE", path: `${calendar}/events/:eventId`, auth: "SignedSession", area: "GoogleRoutes", handler: (context) => refusingWrite(deleteRoute(context)) }
 ]
 
 export const calendarSweeps: ReadonlyArray<Sweep> = [
