@@ -859,14 +859,21 @@ public abstract class TelephonyPlugin extends Plugin {
   if (active != null) for (SubscriptionInfo info : active) if (info != null && info.getSubscriptionId() == id && info.getSimSlotIndex() >= 0) return info;
   return null;
  }
+ /**
+  * Checks host-specific conditions for an SMS send on the send worker. Throwing refuses dispatch.
+  * Runs before journaling and immediately before each recipient, including for host-approved SMS.
+  */
+ protected void checkSmsDispatch() {}
+
  private SmsTelephony.DispatchGuard sendGuard(ReviewCall call, int sub, SubscriptionInfo reviewed,
-   java.util.function.BooleanSupplier blocked) {
+   java.util.function.BooleanSupplier blocked, boolean sms) {
   final int slot = reviewed.getSimSlotIndex(), carrier = reviewed.getCarrierId();
   return () -> {
    SubscriptionInfo current = activeSubscription(sub);
    if (call.cancelled || !admitted() || !unlockedForeground() || blocked.getAsBoolean()
      || current == null || current.getSimSlotIndex() != slot || current.getCarrierId() != carrier)
     throw new IllegalStateException("Reviewed SIM or access changed");
+   if (sms) checkSmsDispatch();
    if (call.ownerGuard != null) call.ownerGuard.check();
   };
  }
@@ -936,7 +943,7 @@ public abstract class TelephonyPlugin extends Plugin {
   if (sim == null) { decide(call, journal, operationId, recipients, body, subscriptionId, "denied", now, boot); return; }
   final int sub = subscriptionId;
   final java.util.function.BooleanSupplier blockedNow = () -> sendBlocker(sub) != null;
-  final SmsTelephony.DispatchGuard guard = sendGuard(call, sub, sim, blockedNow);
+  final SmsTelephony.DispatchGuard guard = sendGuard(call, sub, sim, blockedNow, true);
   final Runnable dispatch = () -> {
    if (!admitted() || !unlockedForeground() || blockedNow.getAsBoolean()) {
     decide(call, journal, operationId, recipients, body, sub, "denied", now, boot);
@@ -1138,7 +1145,7 @@ public abstract class TelephonyPlugin extends Plugin {
   SubscriptionInfo sim = activeSubscription(sub);
   if (sim == null) { decideMms(call, journal, operationId, to, body, attachments, sub, "denied", now, boot); return; }
   final java.util.function.BooleanSupplier blockedNow = () -> mmsBlocker(sub) != null;
-  final SmsTelephony.DispatchGuard guard = sendGuard(call, sub, sim, blockedNow);
+  final SmsTelephony.DispatchGuard guard = sendGuard(call, sub, sim, blockedNow, false);
   final Runnable dispatch = () -> {
    if (!admitted() || !unlockedForeground() || blockedNow.getAsBoolean()) {
     decideMms(call, journal, operationId, to, body, attachments, sub, "denied", now, boot);

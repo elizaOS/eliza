@@ -36,6 +36,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.robolectric.Robolectric;
@@ -102,6 +103,7 @@ public final class TelephonyPluginReviewTest {
     boolean imageAllowed=true, smsAllowed=true;
     final java.util.List<org.json.JSONObject> staged=new java.util.ArrayList<>();
     Runnable onStage;
+    volatile Runnable smsDispatchCheck = () -> {};
     Host(AppCompatActivity activity) { this.activity = activity; }
     @Override protected DeletionWindow deletionWindow() {
       return (kind, target) -> {
@@ -113,6 +115,7 @@ public final class TelephonyPluginReviewTest {
     @Override public AppCompatActivity getActivity() { return activity; }
     @Override public PermissionState getPermissionState(String alias) { return alias.equals("sms") && !smsAllowed ? PermissionState.DENIED : PermissionState.GRANTED; }
     @Override protected SmsTelephonyConfiguration configuration() { throw new AssertionError("fixture installs its configuration"); }
+    @Override protected void checkSmsDispatch() { smsDispatchCheck.run(); }
     void pause() { handleOnPause(); }
     void sendFromComposer(Call call, SmsTelephony.DispatchGuard guard) {
       if (call.getMethodName().equals("sendMms")) sendOwnerApprovedMms(call, guard);
@@ -316,6 +319,40 @@ public final class TelephonyPluginReviewTest {
     ShadowLooper.idleMainLooper();
     SmsTelephony.WORK.submit(() -> {}).get(10, TimeUnit.SECONDS);
     SmsTelephony.WORK.submit(() -> {}).get(10, TimeUnit.SECONDS);
+  }
+  @Test public void reviewedSmsRechecksTheHostAfterConfirmationAndBeforeTheRecipient() throws Exception {
+    Host host = host("host-check-reviewed-sms");
+    Call send = send("sendSms");
+    host.sendSms(send);
+    SmsTelephony.WORK.submit(() -> {}).get(10, TimeUnit.SECONDS);
+    ShadowLooper.idleMainLooper();
+    AlertDialog shown = ShadowAlertDialog.getLatestAlertDialog();
+    assertNotNull(shown);
+    assertTrue(shown.isShowing());
+    AtomicInteger checks = new AtomicInteger();
+    host.smsDispatchCheck = () -> {
+      if (checks.incrementAndGet() > 1) throw new IllegalStateException("Host policy changed before radio");
+    };
+    try {
+      shown.getButton(android.content.DialogInterface.BUTTON_POSITIVE).performClick();
+      settleComposer();
+      assertEquals(2, checks.get());
+      assertEquals("denied", send.result.getString("status"));
+      assertEquals(1, send.resolutions);
+      noRadioAndNoRetainedOwner(host);
+    } finally { shown.dismiss(); }
+  }
+  @Test public void ownerApprovedSmsAlsoRequiresTheHostDispatchCheck() throws Exception {
+    Host host = host("host-check-owner-sms");
+    host.smsDispatchCheck = () -> { throw new IllegalStateException("Host policy denied the send"); };
+    Call send = send("sendSms");
+    host.sendFromComposer(send, () -> {});
+    settleComposer();
+    AlertDialog shown = ShadowAlertDialog.getLatestAlertDialog();
+    assertTrue(shown == null || !shown.isShowing());
+    assertEquals("denied", send.result.getString("status"));
+    assertEquals(1, send.resolutions);
+    noRadioAndNoRetainedOwner(host);
   }
   @Test public void ownerApprovedSmsUsesTheSameReceiptWithoutDialogOrReplay() throws Exception {
     Host host = host("owner-sms");
