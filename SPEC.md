@@ -238,7 +238,9 @@ it does for the root's own `src/` and `test/`:
 - **`gen/`.** The modules of the owner's specs, and of every spec they
   import, are also written to `<owner>/gen/` under the names they have in the
   root's: `spec/agent/index.md` is `packages/agent/gen/agent.ts`, with
-  `agent.effect.vibe` and `agent.conformance.ts` (its driver's types); `spec/agent/cart.md` is
+  `agent.effect.vibe`; a state machine among its children, such as
+  `spec/agent/approvals.md`, also gets `agent__approvals.conformance.ts`
+  (its driver's types); `spec/agent/cart.md` is
   `agent__cart.ts`; a library `spec/shared/money.md` it imports is
   `shared__money.ts`. A package imports only from its own `gen/`. `pnpm gen`
   and `pnpm install` write it too.
