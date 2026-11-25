@@ -329,7 +329,6 @@ export function windowRangesInWords(text: string): readonly WindowSides[] {
   return ranges
 }
 
-const leadingDecline = /^[\s"“'‘]*(?:no(?!\s+(?:need|longer)\b)|nope|nah|wait|hold\s+on|never\s*mind|nevermind|keep\s+it|leave\s+it|forget\s+(?:it|that))\b|^\s*cancel\s+that\s*[.!]*\s*$/iu
 const folded = (text: string) => text.normalize("NFKC").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim()
 
 export interface NamedGuest {
@@ -357,10 +356,6 @@ export function addressWrittenInWords(address: string, text: string): boolean {
   const asked = address.trim().toLowerCase()
   const pattern = String.raw`(?<![\w.+@-])` + literal(asked) + String.raw`(?![\w@+-])`
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(asked) && compiled(pattern, "u").test(text.normalize("NFKC").toLowerCase())
-}
-
-export function declinesInWords(text: string, verbs: RegExp): boolean {
-  return leadingDecline.test(text) || compiled(String.raw`\b(?:don['’]?t|do\s+not|never|not|no\s+need\s+to)\s+(?!(?:forget|hesitate)\b)(?:\p{L}+\s+){0,2}?(?:${verbs.source})`, "iu").test(text)
 }
 
 export function namedInWords(name: string, text: string): boolean {
