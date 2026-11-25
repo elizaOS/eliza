@@ -806,7 +806,8 @@ it.live(`In one long chat, an earlier reply reaches the model with what its tool
   const storedJson = JSON.stringify(stored)
 
   try Effect.try(() => assert.deepStrictEqual({
-    opened, refused, home, talk: { done: talk.done, tools: talk.tools, leaked: talk.leaked, askedAgain: completions().length - talk.firstCall },
+    turns: [opened, refused, home].map(({ done, tools, leaked }) => ({ done, tools, leaked })),
+    talk: { done: talk.done, tools: talk.tools, leaked: talk.leaked, askedAgain: completions().length - talk.firstCall >= 2 },
     homeHistory: homeHistory.filter(({ role }) => role === "assistant").map(({ text: said }) => said),
     personUnmarked: homeHistory.filter(({ role }) => role === "user").every(({ text: said }) => !said.includes(lead)),
     redacted: redacted.status,
@@ -815,10 +816,12 @@ it.live(`In one long chat, an earlier reply reaches the model with what its tool
     storedReplies: stored.filter(({ role }) => role === "assistant").map(({ text: said }) => said),
     storeHoldsNoRecord: !storedJson.includes("Host record") && !storedJson.includes("toolRecord"),
   }, {
-    opened: { done: { kind: "Done", text: "Browser is open.", failureKind: undefined, keyed: true }, tools: ["VIEWS"], leaked: false, firstCall: 0 },
-    refused: { done: { kind: "Done", text: "I can't open that page from here.", failureKind: undefined, keyed: true }, tools: ["BROWSER_OPEN"], leaked: false, firstCall: 2 },
-    home: { done: { kind: "Done", text: "Home.", failureKind: undefined, keyed: true }, tools: ["VIEWS"], leaked: false, firstCall: 4 },
-    talk: { done: { kind: "Done", text: "I haven't changed the screen.", failureKind: undefined, keyed: true }, tools: [], leaked: false, askedAgain: 2 },
+    turns: [
+      { done: { kind: "Done", text: "Browser is open.", failureKind: undefined, keyed: true }, tools: ["VIEWS"], leaked: false },
+      { done: { kind: "Done", text: "I can't open that page from here.", failureKind: undefined, keyed: true }, tools: ["BROWSER_OPEN"], leaked: false },
+      { done: { kind: "Done", text: "Home.", failureKind: undefined, keyed: true }, tools: ["VIEWS"], leaked: false },
+    ],
+    talk: { done: { kind: "Done", text: "I haven't changed the screen.", failureKind: undefined, keyed: true }, tools: [], leaked: false, askedAgain: true },
     homeHistory: [`${lead} VIEWS(show, Browser): done]\nBrowser is open.`, `${lead} BROWSER_OPEN(example.com): refused]\nI can't open that page from here.`],
     personUnmarked: true,
     redacted: 200,

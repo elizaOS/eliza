@@ -2,15 +2,15 @@
 import { carriesARecord, maxRecordedValueChars, maxRecordedValuesChars, recordedOutcome, recordedSteps, type RecordedOutcome } from "../../gen/agent__conversation__planning.ts"
 import type { PlannedStep } from "./planning.vibe"
 
-export interface RecordedStep {
-  readonly action: string
-  readonly values: string
-  readonly outcome: RecordedOutcome
+export type RecordedStep = {
+  action: string
+  values: string
+  outcome: RecordedOutcome
 }
 
-export interface ToolRecord {
-  readonly steps: readonly RecordedStep[]
-  readonly more: number
+export type ToolRecord = {
+  steps: RecordedStep[]
+  more: number
 }
 
 export const toolRecordLead = "[Host record of the tools run for this reply:"

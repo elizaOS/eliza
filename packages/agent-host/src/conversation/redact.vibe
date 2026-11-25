@@ -58,7 +58,7 @@ module node {
           const logs = await scrubLogs(adapter, record, expectedText)
           await adapter.updateMemories([
             ...changed.map(({ memory }) => ({ id: memory.id, content: noticeOnly(memory.content), embedding: undefined })),
-            ...recorded.map(({ memory }) => ({ id: memory.id, content: { ...memory.content, toolRecord: scrubbed(memory.content.toolRecord, expectedText) } })),
+            ...recorded.map(({ memory }) => ({ id: memory.id, content: { ...memory.content, toolRecord: scrubbed(memory.content.toolRecord, expectedText) as Content["toolRecord"] } })),
           ])
           const segments = changed.flatMap(({ memory }) => textSegmentIds(memory))
           if (segments.length > 0) await adapter.deleteMemories(segments)
