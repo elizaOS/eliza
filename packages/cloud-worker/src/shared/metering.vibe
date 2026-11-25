@@ -186,13 +186,15 @@ effect function holdRow(tx: Tx, key: string): HoldRow!(StoreFailure | HoldUnknow
   }
 }
 
+export effect function markDispatchedIn(tx: Tx, key: string, now: number): Hold!MeteringFailure {
+  const row = try holdRow(tx, key)
+  return (try stepRow(tx, holdRows, key, { type: "markDispatched", now }, columns(row, now))).state
+}
+
 export effect function markDispatched(key: string): Hold!MeteringFailure!Store {
   const store = try Store
   const now = try Clock.currentTimeMillis
-  return try store.transaction(effect (tx: Tx) => {
-    const row = try holdRow(tx, key)
-    return (try stepRow(tx, holdRows, key, { type: "markDispatched", now }, columns(row, now))).state
-  })
+  return try store.transaction((tx) => markDispatchedIn(tx, key, now))
 }
 
 export type Settlement =

@@ -21,7 +21,7 @@ export {
   type AgentEventSubscribe, type LiveTranscriptEvent, type LiveVoiceSession, type LiveVoiceSessionOptions,
 } from "./live-session.vibe"
 export {
-  encodeMonoPcm16WavChunks, startCumulativeMicrophoneCapture,
+  encodeMonoPcm16BytesWav, encodeMonoPcm16WavChunks, startCumulativeMicrophoneCapture,
 } from "./capture.vibe"
 export { browserCaptureAudio } from "./capture-browser.ts"
 export {

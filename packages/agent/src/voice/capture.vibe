@@ -82,8 +82,7 @@ function writeAscii(view: DataView, offset: number, text: string): void {
   for (let index = 0; index < text.length; index += 1) view.setUint8(offset + index, text.charCodeAt(index))
 }
 
-function wavOf(chunks: readonly Float32Array[], sampleRate: number): Uint8Array {
-  const samples = chunks.reduce((sum, chunk) => sum + chunk.length, 0)
+function wavHeaded(samples: number, sampleRate: number): Uint8Array {
   const bytes = new Uint8Array(wavByteLength(samples))
   const view = new DataView(bytes.buffer)
   const dataBytes = bytes.length - wavHeaderBytes
@@ -100,6 +99,12 @@ function wavOf(chunks: readonly Float32Array[], sampleRate: number): Uint8Array 
   view.setUint16(34, 16, true)
   writeAscii(view, 36, "data")
   view.setUint32(40, dataBytes, true)
+  return bytes
+}
+
+function wavOf(chunks: readonly Float32Array[], sampleRate: number): Uint8Array {
+  const bytes = wavHeaded(chunks.reduce((sum, chunk) => sum + chunk.length, 0), sampleRate)
+  const view = new DataView(bytes.buffer)
   let offset = wavHeaderBytes
   for (const chunk of chunks) {
     for (const sample of chunk) {
@@ -113,6 +118,17 @@ function wavOf(chunks: readonly Float32Array[], sampleRate: number): Uint8Array 
 export effect function encodeMonoPcm16WavChunks(chunks: readonly Float32Array[], sampleRate: number): Uint8Array!WavRateRefused {
   if (!Number.isInteger(sampleRate) || !wavRateAccepted(sampleRate)) throw new WavRateRefused({ rate: sampleRate })
   return wavOf(chunks, sampleRate)
+}
+
+export effect function encodeMonoPcm16BytesWav(chunks: readonly Uint8Array[], sampleRate: number): Uint8Array!WavRateRefused {
+  if (!Number.isInteger(sampleRate) || !wavRateAccepted(sampleRate)) throw new WavRateRefused({ rate: sampleRate })
+  const bytes = wavHeaded(chunks.reduce((sum, chunk) => sum + chunk.byteLength, 0) / 2, sampleRate)
+  let offset = wavHeaderBytes
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+  return bytes
 }
 
 function safely(release: () => void): void {
