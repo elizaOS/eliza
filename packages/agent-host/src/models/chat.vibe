@@ -5,7 +5,7 @@ import type { GenerateTextParams, GenerateTextResult, IAgentRuntime, ModelRegist
 import { runSquashed } from "./run-squashed.vibe"
 import { FetchHttpClient, HttpClient, HttpClientRequest, type HttpClientResponse } from "effect/http"
 import {
-  cacheKeySent, capSent, chatReturn, clockAt, effortFor, writtenCallsRead, failureOf, fundsCodeName, fundsCodeOf, limitOriginOf, outcomeOf, reportedRetryAt, shellOutcome, streamIdleSeconds, usageAsked, warmUpSent,
+  cacheKeySent, capSent, chatReturn, clockAt, effortFor, writtenCallsRead, failureOf, fundsCodeName, fundsCodeOf, limitOriginOf, outcomeOf, reportedRetryAt, retryKey, shellOutcome, streamIdleSeconds, usageAsked, warmUpSent,
   type CapAsk, type ChatAsk, type ChatReturn, type FundsCode, type LimitOrigin, type ModelBinding, type ModelHandler, type ReasoningEffort, type ReasoningFamily, type ShellRefusal, type ThinkingHint,
 } from "../../gen/agent__models__binding.effect.vibe"
 import { failureKindName, type BoundModels, type FailureKind } from "./binding.vibe"
@@ -366,15 +366,23 @@ module calls {
   import { randomUUID } from "node:crypto"
   import { MODEL_PROVIDER_ATTEMPTS } from "@elizaos/core"
 
-  const keys = new WeakMap<object, string>()
+  export interface CallKey {
+    readonly value: string
+    readonly freshKeyTaken: boolean
+    closedByCloud: boolean
+  }
+
+  const keys = new WeakMap<object, CallKey>()
 
   /** @throws {never} */
-  export function callKeyOf(params: object): string {
+  export function callKeyOf(params: object): CallKey {
+    const minted = (freshKeyTaken: boolean): CallKey => ({ value: randomUUID(), freshKeyTaken, closedByCloud: false })
     const attempts: unknown = (params as { [MODEL_PROVIDER_ATTEMPTS]?: unknown })[MODEL_PROVIDER_ATTEMPTS]
-    if (typeof attempts !== "object" || attempts === null) return randomUUID()
-    const kept = keys.get(attempts) ?? randomUUID()
-    keys.set(attempts, kept)
-    return kept
+    if (typeof attempts !== "object" || attempts === null) return minted(false)
+    const kept = keys.get(attempts)
+    const key = kept === undefined ? minted(false) : kept.closedByCloud ? minted(true) : kept
+    keys.set(attempts, key)
+    return key
   }
 
   /** @throws {never} */
@@ -382,7 +390,7 @@ module calls {
     return `call_${randomUUID()}`
   }
 }
-import { callKeyOf, freshCallId } from calls
+import { callKeyOf, freshCallId, type CallKey } from calls
 
 function refusalOf(cloud: CloudFailure, hold: Hold = unheld, funds: FundsCode = "NoFundsCode", origin: LimitOrigin = "NoLimitOrigin", limitCallId?: number): ModelRefusal {
   const failureKind = failureKindName(failureOf(cloud, 0))
@@ -439,16 +447,17 @@ function providerRefusal(status: number, words: string): CloudFailure | undefine
   return undefined
 }
 
-effect function refusalFrom(result: HttpClientResponse.HttpClientResponse, cloudRoute: boolean) {
+effect function refusalFrom(result: HttpClientResponse.HttpClientResponse, cloudRoute: boolean, callKey?: CallKey) {
   const now = try Clock.currentTimeMillis
   const raw = timeout(result.text, "20 seconds") catch effect () => { throw new Refused({ cloud: { tag: "CloudNetwork" } }) }
+  const body = Option.getOrUndefined(decodeRefusalCode(raw))
+  if (callKey !== undefined) callKey.closedByCloud = retryKey(cloudRoute, result.status, body?.error ?? "", callKey.freshKeyTaken) === "FreshKey"
   if (toolCallUnparsed(result.status, raw)) return new ShellRefused({ refusal: "ToolCallUnparsed" })
   const words = providerWords(raw)
   const classified = words === undefined ? undefined : providerRefusal(result.status, words)
   if (classified !== undefined) return new Refused({ cloud: classified })
   const response = { status: result.status, headers: { get: (name: string) => result.headers[name] ?? null }, text: async () => raw }
   const read = try Effect.promise(() => readCloudError(response, now))
-  const body = Option.getOrUndefined(decodeRefusalCode(raw))
   const funds = fundsCodeOf(cloudRoute, result.status, body?.error ?? "")
   const reason = body?.error === "rate_limited" && typeof body.reason === "string" ? body.reason : ""
   const origin = limitOriginOf(cloudRoute, read.failure.tag === "CloudRateLimited", reason)
@@ -522,11 +531,11 @@ effect function collectStream(result: HttpClientResponse.HttpClientResponse, sin
   return try answered({ text, toolCalls, finishReason, usage, reasoning }, ask)
 }
 
-effect function send(endpoint: Endpoint, credential: Redacted.Redacted<string>, callKey: string, body: object | undefined, sink: Sink, ask: ChatAsk) {
+effect function send(endpoint: Endpoint, credential: Redacted.Redacted<string>, callKey: CallKey, body: object | undefined, sink: Sink, ask: ChatAsk) {
   if (body === undefined) throw providerIssue()
   const encoded = try Effect.try({ try: () => JSON.stringify(body), catch: () => providerIssue() })
   const request = HttpClientRequest.bodyText(HttpClientRequest.setHeaders(
-    HttpClientRequest.post(endpoint.url), { authorization: "Bearer " + Redacted.value(credential), "idempotency-key": callKey },
+    HttpClientRequest.post(endpoint.url), { authorization: "Bearer " + Redacted.value(credential), "idempotency-key": callKey.value },
   ), encoded, "application/json")
   const response = Effect.provideService(HttpClient.execute(request), FetchHttpClient.RequestInit, { redirect: "error" })
   const streamed = sink.stream === true
@@ -534,7 +543,7 @@ effect function send(endpoint: Endpoint, credential: Redacted.Redacted<string>, 
     if (streamed && Cause.isTimeoutError(failure)) throw new ShellRefused({ refusal: "SilentStream" })
     throw new Refused({ cloud: { tag: "CloudNetwork" } })
   }
-  if (result.status < 200 || result.status >= 300) throw try refusalFrom(result, endpoint.cloudRoute)
+  if (result.status < 200 || result.status >= 300) throw try refusalFrom(result, endpoint.cloudRoute, callKey)
   if (sink.stream && result.headers["content-type"]?.startsWith("text/event-stream")) return try collectStream(result, sink, ask)
   const raw = timeout(result.json, "20 seconds") catch effect () => { throw new Refused({ cloud: { tag: "CloudNetwork" } }) }
   const decoded = decode(raw) catch effect () => { throw providerIssue() }
@@ -564,7 +573,7 @@ function warmsUp(params: GenerateTextParams): boolean {
   return typeof eliza === "object" && eliza !== null && (eliza as { warmUp?: unknown }).warmUp === true
 }
 
-effect function serve(binding: Binding, handler: ChatHandler, endpoint: Endpoint, callKey: string, fields: object | undefined, sink: Sink, ask: ChatAsk, warmUp = false) {
+effect function serve(binding: Binding, handler: ChatHandler, endpoint: Endpoint, callKey: CallKey, fields: object | undefined, sink: Sink, ask: ChatAsk, warmUp = false) {
   const began = try Clock.currentTimeMillis
   const streamed = sink.stream === true
   const body = fields === undefined ? undefined : { model: endpoint.models[handler], stream: streamed, ...(usageAsked(streamed) ? { stream_options: { include_usage: true } } : {}), ...fields }

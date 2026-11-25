@@ -125,10 +125,26 @@ handler classifies its HTTP failures into the same variants. Core retries
 `RefusedConnection` and `RetryEnvelope` on the second registration. A rate
 limit is core's exhausted budget, which removes the provider's remaining
 registration; a refused request is a bad request; every other refusal ends
-the call. Both attempts of one call carry the same `Idempotency-Key`, fresh
-for each call, so a connection lost after the cloud dispatched the first
-attempt is answered `409 already_dispatched` instead of running and charging
-the generation again; for a rate limit, the transport never re-sends it;
+the call. Each call starts with a fresh `Idempotency-Key`, and every later
+attempt of the call (core sends it again on the second registration and on
+its fallback model) carries the key of the attempt before it, with one
+exception: when the cloud itself answered that attempt `503
+provider_unavailable` and the call has not taken a fresh key yet, the next
+attempt takes one. That 503 is the cloud's own refusal for a provider call
+that failed or was refused: the cloud closed that attempt's hold and
+delivered no generation, though it usually charges a provider failure its
+full quote. Under the same key the cloud could only refuse the retry `409
+already_dispatched`, and the outage the retry is there for would end the
+turn as a provider issue. A call takes at most one fresh key, so an outage
+costs it at most two charged attempts, as pressing Retry once would: every
+later attempt keeps that key, and the cloud answers it `409
+already_dispatched` without a provider call or a charge. Every other attempt
+keeps its key: a lost connection, and a 5xx without the cloud's refusal body
+(a gateway or proxy in front of the cloud may answer while the cloud still
+runs and charges the generation), are answered `409 already_dispatched`
+instead of running and charging the generation again. An own-key provider's
+refusal keeps its key too. For a rate limit, the transport
+never re-sends it;
 the refusal carries the time left until the provider's retry time, and the turn
 that made the call waits for that, at most five seconds, and sends it once more
 ([planning](../conversation/planning.md)).
@@ -150,6 +166,18 @@ pure def transient(e: C::CloudError): bool = match e { | CloudNetwork => true | 
 pure def rateLimited(e: C::CloudError): bool = match e { | CloudRateLimited(_) => true | _ => false }
 pure def lawOnlyTransientRefusalsAreRetried(e: C::CloudError): bool = (M::retryable(outcomeOf(e)) and outcomeOf(e) != M::ExhaustedBudget) iff transient(e)
 pure def lawRateLimitExhaustsTheProvider(e: C::CloudError): bool = rateLimited(e) iff outcomeOf(e) == M::ExhaustedBudget
+type RetryKey = SameKey | FreshKey
+pure def cloudClosedAttempt(cloudRoute: bool, refusalStatus: int, bodyCode: str): bool =
+  cloudRoute and refusalStatus == 503 and bodyCode == "provider_unavailable"
+pure def retryKey(cloudRoute: bool, refusalStatus: int, bodyCode: str, freshKeyTaken: bool): RetryKey =
+  if (cloudClosedAttempt(cloudRoute, refusalStatus, bodyCode) and not(freshKeyTaken)) FreshKey else SameKey
+pure def lawOnlyTheCloudsOwnOutageRefusalTakesAFreshKey(cloudRoute: bool, refusalStatus: int, bodyCode: str, freshKeyTaken: bool): bool =
+  (retryKey(cloudRoute, refusalStatus, bodyCode, freshKeyTaken) == FreshKey)
+    iff (cloudRoute and refusalStatus == 503 and bodyCode == "provider_unavailable" and not(freshKeyTaken))
+pure def lawACallTakesAtMostOneFreshKey(cloudRoute: bool, refusalStatus: int, bodyCode: str): bool =
+  retryKey(cloudRoute, refusalStatus, bodyCode, true) == SameKey
+pure def lawABare5xxKeepsItsKey(refusalStatus: int, freshKeyTaken: bool): bool = retryKey(true, refusalStatus, "", freshKeyTaken) == SameKey
+pure def lawAnOwnKeyRefusalKeepsItsKey(refusalStatus: int, bodyCode: str, freshKeyTaken: bool): bool = retryKey(false, refusalStatus, bodyCode, freshKeyTaken) == SameKey
 ```
 
 ### A tool call the provider could not parse, or a streamed answer silent for a minute, ends the call without a retry
@@ -379,8 +407,8 @@ pure def fundsCodeOf(cloudRoute: bool, refusalStatus: int, bodyCode: str): Funds
   else if (bodyCode == "allowance_exhausted") AllowanceSpent
   else NoFundsCode
 pure def fundsCodeName(code: FundsCode): str = match code { | NoFundsCode => "" | CreditsSpent => "insufficient_credits" | AllowanceSpent => "allowance_exhausted" }
-pure val refusalStatusValues = Set(400, 401, 402, 429, 503)
-pure val bodyCodeValues = Set("", "insufficient_credits", "allowance_exhausted", "payment_required", "rate_limited")
+pure val refusalStatusValues = Set(400, 401, 402, 429, 502, 503, 504)
+pure val bodyCodeValues = Set("", "insufficient_credits", "allowance_exhausted", "payment_required", "rate_limited", "provider_unavailable")
 pure def lawOnlyACloud402NamingFundsCarriesACode(cloudRoute: bool, refusalStatus: int, bodyCode: str): bool =
   fundsCodeOf(cloudRoute, refusalStatus, bodyCode) != NoFundsCode implies (cloudRoute and refusalStatus == 402)
 pure def lawTheCodeIsTheOneCloudNamed(cloudRoute: bool, refusalStatus: int, bodyCode: str): bool =
