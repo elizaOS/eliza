@@ -16,7 +16,7 @@ import {
 } from "../../gen/agent__conversation__planning.ts"
 import { originAfterResend } from "../../gen/agent__conversation__turns.ts"
 import { ModelRefusal } from "../models/chat.vibe"
-import { actionNameKey, composeReply, declaredOf, draftOf, holdsHostText, shownUpTo, streamable, withoutOfferedCalls, withoutWrittenCalls, writtenCallFree } from "./reply-text.vibe"
+import { actionNameKey, asksSomething, composeReply, declaredOf, draftOf, holdsHostText, shownUpTo, streamable, withoutOfferedCalls, withoutWrittenCalls, writtenCallFree } from "./reply-text.vibe"
 
 type ChatMessage = NonNullable<GenerateTextParams["messages"]>[number]
 
@@ -463,6 +463,7 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
   let markupAsked = false
   let askedBeforeWork = false
   let askedAfterWork = false
+  let askingPromise: string | undefined
   const seen = new Set<string>()
   const settlements = new Map<string, ToolSettlement>()
   const execute = async (call: ToolCall): Promise<ActionResult> => {
@@ -519,7 +520,7 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
           onStreamChunk: (chunk: string, messageId?: string, accumulated?: string) => {
             written = accumulated ?? written + chunk
             const visible = streamable(written)
-            const shown = visible.slice(0, shownUpTo(visible, input.hostNotes))
+            const shown = visible.slice(0, shownUpTo(visible, input.hostNotes, streamed.length))
             if (shown.length <= streamed.length) return
             const fresh = shown.slice(streamed.length)
             streamed = shown
@@ -592,6 +593,7 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
     const { declared, text: words } = declaredOf(unwritten.prose)
     const toolsNext = taken < maxPlanSteps - 1 && tools.some(({ name }) => name !== restoreContext.name)
     const draft = draftOf(words, work.length, offeredNames, toolsNext && steps.length === 0 && !markupAsked, declared, input.hostNotes)
+    if (work.length === 0 && declared === "DeclaredPromise" && draft === "MaybeAnswer" && asksSomething(words)) askingPromise = words
     let cutOff = false
     if (work.length > 0) {
       const cue = withoutWrittenCalls(words.trim())
@@ -632,6 +634,9 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
         continue plan
       }
       case "GiveUp":
+        if (displayed) input.onReplyRestart?.("")
+        if (askingPromise !== undefined && steps.length === 0) prose = withoutOfferedCalls(askingPromise, offeredNames)
+        break plan
       case "RunTools":
         if (displayed) input.onReplyRestart?.("")
         break plan

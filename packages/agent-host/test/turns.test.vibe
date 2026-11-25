@@ -784,7 +784,7 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
     bareAssent.push([answer.text, calls, typeof note === "string" ? note : ""])
   }
   const declared: (readonly [string, number])[] = []
-  for (const [request, said] of [["Thanks.", "[answer] Anytime!"], ["Did that work?", "[answer] Done!"], ["Call me Bob.", "[ANSWER]Sure, Bob."], ["Call me Ann.", "[answer]Sure, Ann."], ["Look it up.", '{"query": "speed of light"}[answer] Light travels about 300,000 km each second.'], ["Capital of France, briefly.", "Sure.\n[answer] Paris has about 2 million people."], ["And of Italy?", "Rome has about 3 million people. [answer]"], ["And of Spain?", "It is [answer] Madrid, home to about 3 million people."], ["And of Peru?", "<answer> Lima is the capital of Peru.</answer>"], ["And of Chile?", "Sure.\n[answer]\nSantiago has about 6 million people."]] as const) {
+  for (const [request, said] of [["Thanks.", "[answer] Anytime!"], ["Did that work?", "[answer] Done!"], ["Call me Bob.", "[ANSWER]Sure, Bob."], ["Call me Ann.", "[answer]Sure, Ann."], ["Look it up.", '{"query": "speed of light"}[answer] Light travels about 300,000 km each second.'], ["Capital of France, briefly.", "Sure.\n[answer] Paris has about 2 million people."], ["And of Italy?", "Rome has about 3 million people. [answer]"], ["And of Spain?", "It is [answer] Madrid, home to about 3 million people."], ["And of Peru?", "<answer> Lima is the capital of Peru.</answer>"], ["And of Chile?", "Sure.\n[answer]\nSantiago has about 6 million people."], ["Say hi.", "<ANSWER>Hi!</ANSWER>"], ["Where are the docs?", "[answer][Docs](https://example.com/d) has 2 pages."]] as const) {
     try Effect.sync(() => cloud.script(text(said)))
     const { answer, calls } = try callsFor({ text: request })
     declared.push([answer.text, calls])
@@ -910,7 +910,7 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
     declared: [
       ["Anytime!", 1], ["Done!", 1], ["Sure, Bob.", 1], ["Sure, Ann.", 1], ["Light travels about 300,000 km each second.", 1], ["Sure.\nParis has about 2 million people.", 1],
       ["Rome has about 3 million people.", 1], ["It is Madrid, home to about 3 million people.", 1], ["Lima is the capital of Peru.", 1],
-      ["Sure.\nSantiago has about 6 million people.", 1],
+      ["Sure.\nSantiago has about 6 million people.", 1], ["Hi!", 1], ["[Docs](https://example.com/d) has 2 pages.", 1],
     ],
     declaredPromise: ["I can't send texts from here.", 2],
     upperPromise: ["I can't send texts from here.", 2],
@@ -1754,5 +1754,66 @@ it.live(`Over a ten-turn chat each reply answers its own message, and a message 
     ownMessage: asks.length,
     heard: asks.flatMap((_, index) => failing.has(index) ? [] : [expectedHistory(index)]),
     agentWordsUnmarked: true,
+  }))
+}, 120_000)
+
+it.live(`A promise that asks the person something is the answer, a leading [question] is read as [answer], and a reply that echoes the screen context's data is the host's words, asked again once (${planning}, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"; ${planning}, "Text that repeats the agent host's notes is never delivered or streamed, and is asked again once as a blank")`, effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const agent = try startInProcess({
+    launch: {
+      backend: { kind: "cloud", origin: cloud.origin }, callerRole: "owner",
+      load: [basicActionsModuleName], allowed: ["REPLY", "IGNORE", "NONE", "CALCULATE"],
+    },
+    frame: { credential: { version: 1, value: deviceKey } }, modules: builtinModuleFactories,
+  })
+  const { id } = try conversation(agent)
+  const turn = effect (request: string, scripted: () => readonly CloudReply[], metadata?: object) => {
+    try Effect.sync(() => cloud.script(...scripted()))
+    const before = completions(cloud)
+    const answer = replyOf(try send(agent, id, metadata === undefined ? { text: request } : { text: request, metadata }))
+    return [answer.text, completions(cloud) - before] as const
+  }
+  const askedPromise = try turn("Text Sam that I'm late.", () => [text("[promise] Which Sam do you mean, Sam Lee or Sam Ortiz?"), text("[promise] Which Sam do you mean, Sam Lee or Sam Ortiz?")])
+  const promiseThenAsk = try turn("Check my email.", () => [text("[promise] I'll check your email now. Want me to check your calendar too?"), text("[answer] I can't check your email from here.")])
+  const givenUpQuestion = try turn("Text Sam that I'm late.", () => [text("[promise] Which Sam do you mean?"), text("[promise] One sec.")])
+  const spacedEmoji = try turn("Hello", () => [text("[promise] Hi! What can I do for you today? 😊"), text("[promise] Hi! What can I do for you today? :)")])
+  const options = try turn("Order me a drink.", () => [text("[promise] Which one do you want?\n1. Coffee\n2. Tea"), text("[promise] Which one do you want?\n1. Coffee\n2. Tea")])
+  const staleQuestion = try turn("Check my email.", () => [text("[promise] I'll check your email now. Want me to check your calendar too?"), toolCalls("", { name: "CALCULATE", arguments: { expression: "2 + 2" } }), text("[promise] Let me look."), text("[promise] Let me look.")])
+  const doubleQuestion = try turn("Text Sam that I'm late.", () => [text("[answer][question] Which Sam do you mean?")])
+  const upperDouble = try turn("Check my calendar.", () => [text("[Answer][Promise] I'll check."), text("[answer] I can't check your calendar from here.")])
+  const greeting = try turn("Hello", () => [text("[promise] Hi! What can I do for you today?"), text("[promise] Hi! What can I do for you today?")])
+  const linkPromise = try turn("Find limes nearby.", () => [text("[promise] Let me open https://example.com/search?q=limes for you."), text("[answer] I can't open pages from here.")])
+  const quotedPromise = try turn("What does Ça va mean?", () => [text('[promise] I\'ll look up what "Ça va?" means.'), text("[answer] It means \"How are you?\" in French.")])
+  const questionTag = try turn("Text Sam that I'm late.", () => [text("[question] Which Sam do you mean, Sam Lee or Sam Ortiz?")])
+  const emojiGreeting = try turn("Hello", () => [text("[promise] Hi! What can I do for you today?😊"), text("[answer] Hi! What can I do for you today?😊")])
+  const weatherPromise = try turn("What's the weather in Tokyo?", () => [text("[promise] What's the weather in Tokyo? Let me check that for you."), text("[answer] I can't check the weather from here.")])
+  const doubleTag = try turn("Check my calendar.", () => [text("[answer][promise] I'll check that now."), text("[answer] I can't check your calendar from here.")])
+  const questionPromise = try turn("Check my calendar.", () => [text("[question] Let me check that for you."), text("[answer] I can't check your calendar from here.")])
+  const questionInside = try turn("What does the tag mean?", () => [text("[answer] Some models write [question] before a question.")])
+  const screen = { observation: { view: "launchers", revision: 1, sensitive: false, selectedObject: { kind: "canvas-screen", id: "home-screen" } } }
+  const echoedScreen = try turn("Go home.", () => [text('{"observation":{"view":"launchers","revision":1,"sensitive":false,"selectedObject":{"kind":"canvas-screen","id":"home-screen"}}}'), text("[answer] You're already on the home screen.")], screen)
+  const spacedScreen = try turn("Go home.", () => [text('[answer] { "observation": { "view": "launchers", "revision": 1, "sensitive": false } }'), text("[answer] You're already on the home screen.")], screen)
+  const ownData = try turn("What's my config?", () => [text('[answer] Your config reads {"theme": "dark", "fontSize": 14}.')], screen)
+  try Effect.try(() => assert.deepStrictEqual({ askedPromise, promiseThenAsk, givenUpQuestion, staleQuestion: [staleQuestion[0].includes("I'll check your email"), staleQuestion[1]], spacedEmoji, options, doubleQuestion, upperDouble, greeting, linkPromise, quotedPromise, questionTag, emojiGreeting, weatherPromise, doubleTag, questionPromise, questionInside, echoedScreen, spacedScreen, ownData }, {
+    askedPromise: ["Which Sam do you mean, Sam Lee or Sam Ortiz?", 2],
+    promiseThenAsk: ["I can't check your email from here.", 2],
+    givenUpQuestion: ["Which Sam do you mean?", 2],
+    staleQuestion: [false, 4],
+    spacedEmoji: ["Hi! What can I do for you today? :)", 2],
+    options: ["Which one do you want?\n1. Coffee\n2. Tea", 2],
+    doubleQuestion: ["Which Sam do you mean?", 1],
+    upperDouble: ["I can't check your calendar from here.", 2],
+    greeting: ["Hi! What can I do for you today?", 2],
+    linkPromise: ["I can't open pages from here.", 2],
+    quotedPromise: ["It means \"How are you?\" in French.", 2],
+    questionTag: ["Which Sam do you mean, Sam Lee or Sam Ortiz?", 1],
+    emojiGreeting: ["Hi! What can I do for you today?😊", 2],
+    weatherPromise: ["I can't check the weather from here.", 2],
+    doubleTag: ["I can't check your calendar from here.", 2],
+    questionPromise: ["I can't check your calendar from here.", 2],
+    questionInside: ["Some models write [question] before a question.", 1],
+    echoedScreen: ["You're already on the home screen.", 2],
+    spacedScreen: ["You're already on the home screen.", 2],
+    ownData: ['Your config reads {"theme": "dark", "fontSize": 14}.', 1],
   }))
 }, 120_000)
