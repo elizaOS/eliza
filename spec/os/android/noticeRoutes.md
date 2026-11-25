@@ -5,7 +5,7 @@ The device posts notices for the account it is signed in to
 approvals of the agent on this device. Notices are os's records. The native
 host (`android/notifications/`, `NoticeRoutes`, `NoticeDelivery`,
 `NoticeTapInbox`) keeps the route ledger, the post receipts, the tap tokens
-and the presentation; the renderer client (`src/bridges/notices.vibe`) keeps
+and the presentation; the renderer client (`packages/os-bridges/src/bridges/notices.vibe`) keeps
 the owner fence and the read-only reads that decide a tap or a returning
 approval. When the account changes, the device withdraws the other account's
 results and suspends its approvals at once; a suspended approval comes back

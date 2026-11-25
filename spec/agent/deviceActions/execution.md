@@ -5,7 +5,7 @@ device that reviewed it, from its journal reservation through the single
 executor call to the result it reports back. The agent owns the request,
 its claim and its ambiguity; this machine owns what the device knows and
 does. It runs on the device and is exported as `DeviceExecution` from
-`@elizaos/agent/client`; the native executors and review screens implement
+the `@elizaos/agent` root; the native executors and review screens implement
 it, and the operation shapes are `operations.md`.
 
 The journal is a durable store on the device, owned by the current

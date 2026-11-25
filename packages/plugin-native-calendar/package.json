@@ -10,10 +10,10 @@
     "typecheck": "vibelang --noEmit -p ."
   },
   "dependencies": {
-    "@elizaos/os": "workspace:*",
+    "@capacitor/core": "8.4.0",
+    "@elizaos/os-bridges": "workspace:*",
     "effect": "4.1.1",
-    "vibelang-runtime": "0.0.13",
-    "@capacitor/core": "8.4.0"
+    "vibelang-runtime": "0.0.13"
   },
   "devDependencies": {
     "@types/node": "catalog:",

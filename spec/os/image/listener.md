@@ -6,7 +6,7 @@ product's wake names on the device. This spec decides whether a listener
 APK may be staged into an image and whether the image activates it. The
 shell is `stageListener`, `verifyListenerQualification` and
 `listenerPermissions` in `src/image/listener.vibe`, exported from
-`@elizaos/os/image`. Sources: develop's `sense-listener.mjs` (staging
+`@elizaos/os`. Sources: develop's `sense-listener.mjs` (staging
 half), `verify-sense-apk.py` and `sense-systemui.mjs`, and the staged
 policy and qualification check a downstream image used.
 

@@ -22,15 +22,46 @@ import {
   redactTrailingArgs,
 } from "./security/log-redaction.vibe"
 
+export interface LoggerNodeHost {
+  processId(): number
+  hostName(): string
+  onProcessExit(listener: () => void): void
+  prepareSinkPaths(target: string, inWorkingDirectory: boolean): readonly string[] | undefined
+  openPrivate(path: string): number | undefined
+  closeDescriptor(fd: number): boolean
+  writeDescriptor(fd: number, parts: readonly string[]): string | undefined
+}
+
+let activeLoggerNodeHost: LoggerNodeHost | undefined
+
+export function registerLoggerNodeHost(host: LoggerNodeHost): void {
+  activeLoggerNodeHost = host
+}
+
 module node {
-  import * as fs from "node:fs"
-  import { hostname } from "node:os"
-  import * as pathMod from "node:path"
+  import type { LoggerNodeHost } from "./logger.vibe"
+
+  export const defaultLoggerNodeHost: LoggerNodeHost = {
+    processId: () => {
+      const proc = (globalThis as { process?: { pid?: unknown } }).process
+      return typeof proc?.pid === "number" ? proc.pid : 0
+    },
+    hostName: () => "localhost",
+    onProcessExit: (listener) => {
+      const proc = (globalThis as { process?: { on?: (event: string, fn: () => void) => void } }).process
+      if (typeof proc?.on === "function") proc.on("exit", listener)
+    },
+    prepareSinkPaths: () => undefined,
+    openPrivate: () => undefined,
+    closeDescriptor: () => true,
+    writeDescriptor: () => undefined,
+  }
 
   /** @throws {never} */
   export function writeStderr(message: string): void {
-    if (typeof process !== "undefined" && process.stderr?.write) {
-      process.stderr.write(`${message}\n`)
+    const proc = (globalThis as { process?: { stderr?: { write?: (chunk: string) => void } } }).process
+    if (typeof proc?.stderr?.write === "function") {
+      proc.stderr.write(`${message}\n`)
     } else {
       console.warn(message)
     }
@@ -51,67 +82,85 @@ module node {
   }
 
   /** @throws {never} */
-  export function processId(): number {
-    return process.pid
+  export function processIdFrom(host: LoggerNodeHost): number {
+    return host.processId()
   }
 
   /** @throws {never} */
-  export function hostName(): string {
-    return hostname()
+  export function hostNameFrom(host: LoggerNodeHost): string {
+    return host.hostName()
   }
 
   /** @throws {never} */
-  export function onProcessExit(listener: () => void): void {
-    process.on("exit", listener)
+  export function onProcessExitFrom(host: LoggerNodeHost, listener: () => void): void {
+    host.onProcessExit(listener)
   }
 
   /** @throws {never} */
-  export function prepareSinkPaths(target: string, inWorkingDirectory: boolean): readonly string[] | undefined {
-    try {
-      const output = inWorkingDirectory ? pathMod.join(process.cwd(), "output.log") : target
-      const directory = pathMod.dirname(output)
-      fs.mkdirSync(directory, { recursive: true })
-      return [output, pathMod.join(directory, "prompts.log"), pathMod.join(directory, "chat.log")]
-    } catch {
-      return undefined
-    }
+  export function prepareSinkPathsFrom(host: LoggerNodeHost, target: string, inWorkingDirectory: boolean): readonly string[] | undefined {
+    return host.prepareSinkPaths(target, inWorkingDirectory)
   }
 
   /** @throws {never} */
-  export function openPrivate(path: string): number | undefined {
-    try {
-      const fd = fs.openSync(path, "a", 0o600)
-      try {
-        fs.fchmodSync(fd, 0o600)
-      } catch {
-      }
-      return fd
-    } catch {
-      return undefined
-    }
+  export function openPrivateFrom(host: LoggerNodeHost, path: string): number | undefined {
+    return host.openPrivate(path)
   }
 
   /** @throws {never} */
-  export function closeDescriptor(fd: number): boolean {
-    try {
-      fs.closeSync(fd)
-      return true
-    } catch {
-      return false
-    }
+  export function closeDescriptorFrom(host: LoggerNodeHost, fd: number): boolean {
+    return host.closeDescriptor(fd)
   }
 
   /** @throws {never} */
-  export function writeDescriptor(fd: number, parts: readonly string[]): string | undefined {
-    try {
-      for (const part of parts) fs.writeSync(fd, part)
-      return undefined
-    } catch (error) {
-      return error instanceof Error ? error.message : String(error)
-    }
+  export function writeDescriptorFrom(host: LoggerNodeHost, fd: number, parts: readonly string[]): string | undefined {
+    return host.writeDescriptor(fd, parts)
   }
 }
-import { clearConsole, closeDescriptor, hostName, onProcessExit, openPrivate, prepareSinkPaths, processId, reportToConsole, writeDescriptor, writeStderr } from node
+import {
+  clearConsole,
+  closeDescriptorFrom,
+  defaultLoggerNodeHost,
+  hostNameFrom,
+  onProcessExitFrom,
+  openPrivateFrom,
+  prepareSinkPathsFrom,
+  processIdFrom,
+  reportToConsole,
+  writeDescriptorFrom,
+  writeStderr,
+} from node
+
+function currentLoggerNodeHost(): LoggerNodeHost {
+  return activeLoggerNodeHost ?? defaultLoggerNodeHost
+}
+
+function processId(): number {
+  return processIdFrom(currentLoggerNodeHost())
+}
+
+function hostName(): string {
+  return hostNameFrom(currentLoggerNodeHost())
+}
+
+function onProcessExit(listener: () => void): void {
+  onProcessExitFrom(currentLoggerNodeHost(), listener)
+}
+
+function prepareSinkPaths(target: string, inWorkingDirectory: boolean): readonly string[] | undefined {
+  return prepareSinkPathsFrom(currentLoggerNodeHost(), target, inWorkingDirectory)
+}
+
+function openPrivate(path: string): number | undefined {
+  return openPrivateFrom(currentLoggerNodeHost(), path)
+}
+
+function closeDescriptor(fd: number): boolean {
+  return closeDescriptorFrom(currentLoggerNodeHost(), fd)
+}
+
+function writeDescriptor(fd: number, parts: readonly string[]): string | undefined {
+  return writeDescriptorFrom(currentLoggerNodeHost(), fd, parts)
+}
 
 interface AdzeLogMethods {
   alert(...args: unknown[]): void

@@ -1,0 +1,100 @@
+// spec/core/index.md, "Each boundary operation has one owning layer"; spec/core/catalog.md, "Story: Discover and register first-party capabilities"; spec/core/media.md, "Story: Fetch an attachment through its correct trust boundary"
+export {
+  createNodeLoggerHostAdapter,
+  installNodeRuntimeAdapters,
+} from "./node-runtime.vibe"
+export {
+  loadRegistryOrThrow as loadRegistry,
+  registerRegistryEntryOrThrow as registerRegistryEntry,
+} from "./catalog/registry.vibe"
+export {
+  contentTypeForMime,
+  DEFAULT_CONNECTOR_ATTACHMENT_MAX_BYTES,
+  type RawConnectorAttachment,
+  resolveAttachmentBytesPromise as resolveAttachmentBytes,
+  type ResolvedAttachmentBytes,
+  toMedia,
+} from "./media/attachments.vibe"
+export {
+  DEFAULT_MEDIA_FETCH_TIMEOUT_MS,
+  type FetchLike,
+  type FetchMediaOptions,
+  type FetchMediaResult,
+  fetchRemoteMediaPromise as fetchRemoteMedia,
+  MediaFetchError,
+  type MediaFetchErrorCode,
+  readErrorBodySnippetPromise as readErrorBodySnippet,
+  readResponseWithLimitPromise as readResponseWithLimit,
+} from "./media/fetch.vibe"
+export {
+  type CachedImageDescription,
+  describeImageCachedPromise as describeImageCached,
+  normalizeImageDescription,
+} from "./media/image-description-cache.vibe"
+export {
+  getLocalServerUrl,
+  trustedLocalMediaUrlOrThrow as trustedLocalMediaUrl,
+  VISION_IMAGE_FETCH_TIMEOUT_MS,
+  VISION_IMAGE_MAX_BYTES,
+} from "./media/local-store.vibe"
+export {
+  resolveOutboundAttachmentBytesPromise as resolveOutboundAttachmentBytes,
+  type ResolveOutboundAttachmentOptions,
+  summarizeOutboundAttachmentUrl,
+} from "./media/outbound.vibe"
+export {
+  fetchWithSsrfGuardPromise as fetchWithSsrfGuard,
+  type GuardedFetchOptions,
+  type GuardedFetchResult,
+  type PinnedLookupFetchLike,
+  type PinnedLookupFetchParams,
+} from "./network/fetch-guard.vibe"
+export {
+  createValidatedLookup,
+  nodeLookupFn,
+  nodePinnedFetchPromise as nodePinnedFetch,
+} from "./network/node-pinned-fetch.vibe"
+export {
+  ipFamily,
+  isLoopbackRemoteAddress,
+  isRemoteAddressInCidrList,
+  isTrustedLocalRequest,
+  type LocalRequestTrustPolicy,
+  proxyClientHeaderBlocksLocalTrust,
+} from "./security/loopback-trust.vibe"
+export { validateMcpServerConfigPromise as validateMcpServerConfig } from "./security/mcp-server-config.vibe"
+export { firstHeaderValue, getProvidedApiToken, tokenMatches } from "./security/request-token.vibe"
+export { HookService } from "./services/hook.vibe"
+export {
+  readJsonFilePromise as readJsonFile,
+  writeJsonAtomicPromise as writeJsonAtomic,
+  writeJsonAtomicSyncOrThrow as writeJsonAtomicSync,
+} from "./utils/atomic-json.vibe"
+export {
+  createDecipheriv,
+  createHashOrThrow as createHash,
+  decryptAes256Gcm,
+  encryptAes256Gcm,
+} from "./utils/crypto-compat.vibe"
+export {
+  copyPromise as copy,
+  ensureDirPromise as ensureDir,
+  ensureSymlinkPromise as ensureSymlink,
+  pathExistsPromise as pathExists,
+  readdir,
+  readFile,
+  readJsonPromise as readJson,
+  removePromise as remove,
+  rmdir,
+  stat,
+  type SymlinkType,
+  unlink,
+  writeJsonPromise as writeJson,
+} from "./utils/filesystem.vibe"
+export {
+  getElizaNamespace,
+  getOptimizationRootDir,
+  resolveOAuthDir,
+  resolveStateDir,
+  resolveUserPath,
+} from "./utils/state-dir.vibe"

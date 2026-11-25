@@ -1,0 +1,287 @@
+// spec/agent/tasks/wire.md, "Story: Stop a task even before its creation reply arrives"; spec/agent/tasks/wire.md, "A view shows six public fields of the held task, or null"
+import { assert, it } from "@effect/vitest"
+import { host, startInProcess, type InProcess } from "./support/kernel.vibe"
+
+module node {
+  import { randomBytes } from "node:crypto"
+  import type { ModuleFactory } from "../src/host/module.vibe"
+  import { builtinModuleFactories } from "../src/plugins/profile.vibe"
+  import { tasksModule, tasksModuleName, type TaskActuator, type TaskGoalAuthorizer } from "../src/tasks/module.vibe"
+  import { createSurfaceClient, SurfaceTransport, TaskLifecycle, TaskView, type SurfaceRequest, type TaskLifecycleRequest, type TaskLifecycleState } from "@elizaos/agent"
+  import type { SurfaceChannelService } from "../src/tasks/surface-channel.vibe"
+  import { Option, Schema } from "effect"
+
+  export const storageKey = randomBytes(32).toString("base64")
+  const messages = { start: "Could not start", pause: "Could not pause", resume: "Could not resume", cancel: "Could not cancel" }
+
+  let observationVersion = 0
+  const actuator: TaskActuator = {
+    capabilities: ["read"],
+    observe: () => {
+      const version = ++observationVersion
+      return Promise.resolve({ id: `observation-${version}`, pageId: "page-1", origin: "https://example.com", version, inputRevision: version, observedAt: Date.now() })
+    },
+    execute: () => Promise.reject(new Error("No operation runs in these journeys")),
+    quiesce: () => Promise.resolve(),
+  }
+
+  let made = 0
+  const authorizer: TaskGoalAuthorizer = {
+    authorize: (goalRef) => {
+      made += 1
+      return Promise.resolve({
+        id: `task-${made}`, goalRef,
+        authorization: { decisionId: `decision-${made}`, policyRevision: "1", decidedAt: new Date().toISOString(), state: "active", revokedAt: null },
+        allowedCapabilities: ["read"], allowedOrigins: ["https://example.com"],
+      })
+    },
+  }
+
+  export const modules: ReadonlyMap<string, ModuleFactory<never>> = new Map([
+    ...builtinModuleFactories, [tasksModuleName, tasksModule({ actuator, authorizer })],
+  ])
+
+  interface Wire {
+    readonly port: number
+    readonly token: string
+  }
+
+  async function send(wire: Wire, path: string, body: unknown, signal?: AbortSignal): Promise<{ status: number; json: unknown }> {
+    const response = await fetch(`http://127.0.0.1:${wire.port}${path}`, {
+      method: body === undefined ? "GET" : "POST",
+      headers: { authorization: `Bearer ${wire.token}`, ...(body === undefined ? {} : { "content-type": "application/json" }) },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      ...(signal === undefined ? {} : { signal }),
+    })
+    const text = await response.text()
+    return { status: response.status, json: text === "" ? null : JSON.parse(text) }
+  }
+
+  const json = async (wire: Wire, path: string, body?: unknown) => (await send(wire, path, body)).json
+  const decodeView = Schema.decodeUnknownOption(Schema.Struct({ task: Schema.NullOr(TaskView) }))
+  const viewOf = (reply: unknown) => Option.getOrUndefined(decodeView(reply))?.task
+
+  async function until(check: () => boolean): Promise<void> {
+    const deadline = Date.now() + 10_000
+    while (!check()) {
+      if (Date.now() > deadline) throw new Error("The awaited client state never came")
+      await new Promise((resolve) => setTimeout(resolve, 10))
+    }
+  }
+
+  function lifecycle(request: TaskLifecycleRequest) {
+    const states: TaskLifecycleState[] = []
+    return { life: new TaskLifecycle(request, (state) => states.push(state), messages), states }
+  }
+
+  export async function pauseBeforeCreationReply(wire: Wire) {
+    const sent: string[] = []
+    const creation = Promise.withResolvers<void>()
+    const { life, states } = lifecycle(async (path, body, signal) => {
+      sent.push(path)
+      if (path === "/api/tasks") await creation.promise
+      return (await send(wire, path, body, signal)).json
+    })
+    const starting = life.start("goal:inbox/1")
+    await until(() => sent.includes("/api/tasks"))
+    const paused = await life.control("pause")
+    const whilePending = life.snapshot()
+    creation.resolve()
+    const started = await starting
+    await until(() => life.snapshot().task?.status === "paused")
+    return {
+      paused, started, whilePending, sent,
+      shownActive: states.some((state) => state.task?.status === "active"),
+      final: life.snapshot(), isPaused: life.isPaused(), currentTaskId: life.currentTaskId(),
+      held: viewOf(await json(wire, "/api/tasks/current"))?.status,
+    }
+  }
+
+  export async function staleResumeAndChangedIdentity(wire: Wire) {
+    let interfere: ((path: string) => Promise<unknown>) | undefined
+    const { life } = lifecycle(async (path, body, signal) => {
+      const replaced = interfere === undefined ? undefined : await interfere(path)
+      return replaced ?? (await send(wire, path, body, signal)).json
+    })
+    const started = await life.start("goal:inbox/2")
+    const paused = await life.control("pause")
+    const first = viewOf(await json(wire, "/api/tasks/current"))
+    interfere = async (path) => {
+      if (!path.endsWith("/resume")) return undefined
+      interfere = undefined
+      const resumed = viewOf(await json(wire, `/api/tasks/${first?.id}/resume`, { expectedRevision: first?.revision }))
+      await json(wire, `/api/tasks/${first?.id}/pause`, { expectedRevision: resumed?.revision })
+      return undefined
+    }
+    const stale = await life.control("resume")
+    const afterStale = life.snapshot()
+    const retried = await life.retry()
+    const resumed = life.snapshot()
+    await life.control("pause")
+    const base = viewOf(await json(wire, "/api/tasks/current"))
+    interfere = async (path) => {
+      if (!path.endsWith("/resume")) return undefined
+      interfere = undefined
+      await json(wire, `/api/tasks/${base?.id}/cancel`, { expectedRevision: base?.revision })
+      await json(wire, "/api/tasks", { goalRef: "goal:inbox/3" })
+      return json(wire, "/api/tasks/current")
+    }
+    const foreign = await life.control("resume")
+    return {
+      started, paused, stale, afterStale, retried, resumed, foreign, afterForeign: life.snapshot(),
+      firstId: first?.id, other: viewOf(await json(wire, "/api/tasks/current")),
+    }
+  }
+
+  export async function cancelNeedsANewEpoch(wire: Wire) {
+    let sameEpoch = false
+    let pausedEpoch = -1
+    const { life } = lifecycle(async (path, body, signal) => {
+      const reply = (await send(wire, path, body, signal)).json
+      const view = viewOf(reply)
+      if (path === "/api/tasks/current/pause" && view !== null && view !== undefined) pausedEpoch = view.epoch
+      if (sameEpoch && path.endsWith("/cancel") && view !== null && view !== undefined) return { task: { ...view, epoch: pausedEpoch } }
+      return reply
+    })
+    await life.start("goal:inbox/4")
+    const cancelled = await life.control("cancel")
+    const shown = life.snapshot()
+    const firstPausedEpoch = pausedEpoch
+    await life.start("goal:inbox/5")
+    const secondId = life.currentTaskId()
+    sameEpoch = true
+    const repeated = await life.control("cancel")
+    return {
+      cancelled, shown, firstPausedEpoch, repeated, afterRepeated: life.snapshot(),
+      held: viewOf(await json(wire, "/api/tasks/current")),
+      retained: viewOf(await json(wire, `/api/tasks/${secondId}`))?.status,
+    }
+  }
+
+  export async function malformedViewIsNotNoTask(wire: Wire) {
+    const replies: unknown[] = [{}, { task: { id: "task-x", revision: 1 } }, { task: "none" }, { code: "TASK_UNAVAILABLE" }]
+    let tamper = false
+    const { life } = lifecycle(async (path, body, signal) =>
+      tamper && path === "/api/tasks/current" ? replies.shift() : (await send(wire, path, body, signal)).json)
+    await life.start("goal:inbox/6")
+    const before = life.snapshot()
+    tamper = true
+    const seen: TaskLifecycleState["task"][] = []
+    for (let read = 0; read < 4; read += 1) {
+      await life.refresh()
+      seen.push(life.snapshot().task)
+    }
+    return { before, seen, currentTaskId: life.currentTaskId() }
+  }
+
+  export async function surfaceConnections(wire: Wire, channel: SurfaceChannelService) {
+    const request: SurfaceRequest = async (path, body, signal) => {
+      const answer = await send(wire, path, body, signal)
+      if (answer.status < 200 || answer.status >= 300) return Promise.reject(answer.json)
+      return answer.json
+    }
+    const handled: unknown[] = []
+    const handleCommand = (input: unknown) => {
+      handled.push(input)
+      if (typeof input === "object" && input !== null && "fail" in input && input.fail === true) {
+        return Promise.reject(new Error("The page could not act"))
+      }
+      return Promise.resolve({ done: true })
+    }
+    const connect = (epoch: number) => createSurfaceClient({ request, clientId: "page-1", epoch, handleCommand })
+    const first = await connect(1)
+    try {
+      const current = await channel.currentConnection()
+      const answered = await channel.send({ connectionId: first.connectionId, effect: false, input: { go: 1 } })
+      const failed = await channel.send({ connectionId: first.connectionId, effect: true, input: { fail: true } })
+      await first.close()
+      const afterClose = await channel.currentConnection()
+      const stale = await connect(1).then(
+        (client) => client.close().then(() => "connected"),
+        (error: unknown) => error instanceof SurfaceTransport
+          && typeof error.cause === "object" && error.cause !== null && "code" in error.cause ? error.cause.code : null,
+      )
+      const second = await connect(2)
+      await second.close()
+      return { firstId: first.connectionId, current, answered, failed, afterClose, stale, secondId: second.connectionId, handled }
+    } finally {
+      await first.close()
+    }
+  }
+
+}
+
+import {
+  cancelNeedsANewEpoch, malformedViewIsNotNoTask, modules, pauseBeforeCreationReply, staleResumeAndChangedIdentity, storageKey, surfaceConnections,
+} from node
+import { tasksModuleName } from "../src/tasks/module.vibe"
+import { surfaceChannelServiceType, surfaceModuleName, type SurfaceChannelService } from "../src/tasks/surface-channel.vibe"
+
+effect function boot() {
+  return try startInProcess({ http: true, cloud: true, frame: { storageKey }, launch: { load: [tasksModuleName], callerRole: "owner" }, modules })
+}
+
+const wireOf = (agent: InProcess) => ({ port: agent.transport.kind === "http" ? agent.transport.port : 0, token: agent.frame.token })
+
+it.effect('A pause sent before the creation reply goes out at once and again once the start settles, and the late creation reply keeps the pause (spec/agent/tasks/wire.md, "The first pause goes out at once and a second follows when creation settles")', effect () => {
+  const agent = try boot()
+  const observed = try host("pause before creation", () => pauseBeforeCreationReply(wireOf(agent)))
+  try Effect.try(() => {
+    assert.deepStrictEqual([observed.paused, observed.started], [true, false])
+    assert.deepStrictEqual(observed.whilePending, { task: null, pending: false, error: "" })
+    assert.deepStrictEqual(observed.sent, ["/api/tasks/current", "/api/tasks", "/api/tasks/current/pause", "/api/tasks/current/pause"])
+    assert.strictEqual(observed.shownActive, false)
+    assert.deepStrictEqual([observed.final.task?.status, observed.final.pending, observed.final.error], ["paused", false, ""])
+    assert.deepStrictEqual([observed.isPaused, observed.currentTaskId, observed.held], [true, observed.final.task?.id, "paused"])
+  })
+}, 120_000)
+
+it.effect('Resume against a stale revision or a reply naming another task is a problem, never success (spec/agent/tasks/wire.md, "A changed identity or stale revision never becomes a successful Resume or Cancel")', effect () => {
+  const agent = try boot()
+  const observed = try host("stale resume", () => staleResumeAndChangedIdentity(wireOf(agent)))
+  try Effect.try(() => {
+    assert.deepStrictEqual([observed.started, observed.paused], [true, true])
+    assert.deepStrictEqual([observed.stale, observed.afterStale.error, observed.afterStale.task?.status], [false, "Could not resume", "paused"])
+    assert.deepStrictEqual([observed.retried, observed.resumed.task?.status, observed.resumed.error], [true, "active", ""])
+    assert.deepStrictEqual([observed.foreign, observed.afterForeign.error, observed.afterForeign.task?.id], [false, "Could not resume", observed.firstId])
+    assert.notStrictEqual(observed.other?.id, observed.firstId)
+  })
+}, 120_000)
+
+it.effect('Cancel succeeds only with a cancelled reply at a later epoch than the pause it made (spec/agent/tasks/wire.md, "A changed identity or stale revision never becomes a successful Resume or Cancel")', effect () => {
+  const agent = try boot()
+  const observed = try host("cancel epoch", () => cancelNeedsANewEpoch(wireOf(agent)))
+  try Effect.try(() => {
+    assert.deepStrictEqual([observed.cancelled, observed.shown.task?.status, observed.shown.error], [true, "cancelled", ""])
+    assert.isTrue((observed.shown.task?.epoch ?? -1) > observed.firstPausedEpoch)
+    assert.deepStrictEqual([observed.repeated, observed.afterRepeated.error, observed.held, observed.retained], [false, "Could not cancel", null, "cancelled"])
+  })
+}, 120_000)
+
+it.effect('A reply with no task member or a malformed view is never read as no task (spec/agent/tasks/wire.md, "A view shows six public fields of the held task, or null")', effect () => {
+  const agent = try boot()
+  const observed = try host("malformed view", () => malformedViewIsNotNoTask(wireOf(agent)))
+  try Effect.try(() => {
+    assert.strictEqual(observed.before.task?.status, "active")
+    assert.deepStrictEqual(observed.seen, [observed.before.task, observed.before.task, observed.before.task, observed.before.task])
+    assert.strictEqual(observed.currentTaskId, observed.before.task?.id)
+  })
+}, 120_000)
+
+it.live('The page runs delivered commands once, reports an uncertain effect, and reconnects at a higher epoch (spec/agent/surfaceChannel.md, "A connection opens only with an epoch higher than any seen before"; spec/agent/surfaceChannel.md, "A pull hands over only the oldest command not yet handed over, and only one pull waits at a time"; spec/agent/surfaceChannel.md, "A reply settles only a handed-over command of the same connection before its deadline"; spec/agent/surfaceChannel.md, "Opening, closing, lapsing or stopping retires every pending command with one settlement each")', effect () => {
+  const agent = try startInProcess({ http: true, launch: { load: [surfaceModuleName] } })
+  const found = try host("surface service", () => agent.agent.runtime.getServiceLoadPromise(surfaceChannelServiceType))
+  const service = try Effect.try(() => {
+    assert.isDefined(found)
+    return found as unknown as SurfaceChannelService
+  })
+  const observed = try host("surface client over HTTP", () => surfaceConnections(wireOf(agent), service))
+  try Effect.try(() => {
+    assert.strictEqual(observed.current, observed.firstId)
+    assert.deepStrictEqual(observed.answered, { kind: "answered", result: { done: true } })
+    assert.deepStrictEqual(observed.failed, { kind: "refused", code: "UNCERTAIN_OUTCOME", message: "The page could not act" })
+    assert.deepStrictEqual([observed.afterClose, observed.stale], [null, "STALE_REF"])
+    assert.notStrictEqual(observed.secondId, observed.firstId)
+    assert.deepStrictEqual(observed.handled, [{ go: 1 }, { fail: true }])
+  })
+}, 120_000)

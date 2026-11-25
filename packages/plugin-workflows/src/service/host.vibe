@@ -1,7 +1,5 @@
 // spec/agent/plugins/profile.md, "The worker is installed only after its executable digest matches the launch"; spec/workflow/approvals.md, "Device steps require the exact reviewed scope and enrolled device"; spec/workflow/execution.md, "Retirement releases host reservations without rewriting the terminal result"
-import type { WorkflowDeviceBinding, WorkflowDeviceOperation } from "../contract/device.vibe"
-import type { PhoneDeviceTarget } from "../contract/phone.vibe"
-import type { DigestTemplate, HostedNativeSelection } from "../contract/digest.vibe"
+import type { WorkflowDeviceBinding, WorkflowDeviceOperation, PhoneDeviceTarget, DigestTemplate, HostedNativeSelection } from "@elizaos/plugin-workflow-client"
 import { decodeParentMessage, serveWorker, type ParentMessage, type WorkerChannel, type WorkerMessage } from "../worker/protocol.vibe"
 import type { WorkflowSql } from "./store.vibe"
 import type { ManagedGoogleReads } from "./google.vibe"

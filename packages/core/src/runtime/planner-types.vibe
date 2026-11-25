@@ -1,5 +1,4 @@
 // spec/core/execution.md, "Story: Settle an action before publishing its callback"
-import type { RequestOperationIssuer } from "../actions/task-extraction-context.vibe"
 import type { ActionFailureKind, ActionFailureProvenance } from "../types/action-failure.vibe"
 import type { ActionReplyFailure } from "../types/action-reply.vibe"
 import type {
@@ -264,7 +263,6 @@ export interface PlannerLoopResult {
 }
 
 export interface PlannerLoopParams {
-  requestOperationIssuer?: RequestOperationIssuer
   resolveTypedReadReply?: TypedReadReplyResolver
   onTypedReadEgress?: (receipt: TypedReadEgressReceipt) => void
   admitTypedReadCorrection?: () => boolean

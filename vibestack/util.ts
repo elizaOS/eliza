@@ -100,6 +100,41 @@ export function specOwnerPaths(root: string, name: string): string[] {
 }
 
 /**
+ * The other directories that hold an area's code beside its owner, from `specCompanions` in the root `package.json`:
+ * a package split out of the owner, such as the Node host of a browser-safe library, keeps its code under the same
+ * spec, so every stage reads it as it reads the owner's (SPEC.md, "One spec tree").
+ */
+export function specCompanionPaths(root: string, name: string): string[] {
+  const declared: unknown = manifest(root).specCompanions;
+  if (declared === undefined) return [];
+  if (typeof declared !== "object" || declared === null || Array.isArray(declared)) {
+    throw new Error("package.json: specCompanions must map spec areas to lists of workspace directories");
+  }
+  const owners = new Set(Object.values((manifest(root).specOwners ?? {}) as Record<string, unknown>));
+  const claimed = new Set<string>();
+  let match: string[] = [];
+  for (const [area, dirs] of Object.entries(declared)) {
+    if (badSpecName(area) || !Array.isArray(dirs) || !dirs.length
+      || dirs.some((dir) => typeof dir !== "string" || !/^(?:apps|packages)\/[A-Za-z0-9][A-Za-z0-9._-]*$/.test(dir))) {
+      throw new Error(`package.json: specCompanions.${area} must list workspace directories under apps/ or packages/`);
+    }
+    for (const dir of dirs as string[]) {
+      if (claimed.has(dir) || owners.has(dir)) throw new Error(`package.json: specCompanions assigns ${dir} to more than one spec area or also owns an area with it`);
+      claimed.add(dir);
+    }
+    if (area === name) match = dirs as string[];
+  }
+  return match;
+}
+
+/** An area's companions that are packages with no `spec/` of their own, as paths from the root. */
+export function companions(root: string, spec: string): string[] {
+  const [top, name, below] = spec.split("/");
+  if (top !== "spec" || below === undefined) return [];
+  return specCompanionPaths(root, name).filter((dir) => fs.existsSync(path.join(root, dir, "package.json")) && !fs.existsSync(path.join(root, dir, "spec")));
+}
+
+/**
  * The workspace package a spec belongs to by name, as a path from the root: `spec/<name>/…` is `apps/<name>` or
  * `packages/<name>`, if that is a package with no `spec/` of its own. The root's check generates into its `gen/` and
  * checks its code (SPEC.md, "One spec tree").
@@ -113,10 +148,16 @@ export function owner(root: string, spec: string, observe?: (file: string) => vo
 }
 /**
  * The directories whose code a check reads, each as the prefix of a path from the root: "" for the root's own
- * `src/` and `test/`, then `apps/app/` for each package that owns a directory of the spec tree.
+ * `src/` and `test/`, then `apps/app/` for each package that owns a directory of the spec tree, and each companion
+ * of an owned area (`specCompanionPaths`).
  */
 export const codeDirs = (root: string): string[] => ["", ...!fs.existsSync(path.join(root, "spec")) ? []
-  : [...new Set(fs.readdirSync(path.join(root, "spec")).flatMap((name) => owner(root, `spec/${name}/`) ?? []))].sort().map((dir) => `${dir}/`)];
+  : [...new Set(fs.readdirSync(path.join(root, "spec")).flatMap((name) => areaDirs(root, `spec/${name}/`)))].sort().map((dir) => `${dir}/`)];
+/** The owner of a spec's area, then its companions: every directory whose code the area's spec governs. */
+export const areaDirs = (root: string, spec: string): string[] => {
+  const dir = owner(root, spec);
+  return dir ? [dir, ...companions(root, spec)] : [];
+};
 /** Which of `codeDirs` a path from the root is in: the root holds no `apps/` or `packages/` code of its own. */
 export const codeDirOf = (file: string): string => file.match(/^(?:(?:apps|packages)\/[^/]+\/)?/)![0];
 
