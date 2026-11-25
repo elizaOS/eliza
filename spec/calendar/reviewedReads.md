@@ -169,17 +169,18 @@ pure def lawASpacedNameNeedsItsWholeWords(wholeDenseDelete: bool): bool = not(na
 pure def lawADenseNameIsNamedByItsWholeDelete(wholeWordsSaid: bool): bool = nameSaid(wholeWordsSaid, true, true)
 ```
 
-### A new phone event is the timed event the model read, at a clock time the owner said, on the phone's clock
+### A new phone event is the timed event the model read, at a clock time the owner's words do not contradict, on the phone's clock
 
 A new event is proposed with the title, start and end the model read from
 the owner's request; code reads no day or time from the words. It is
 proposed only when the phone reported its zone for the turn and the model
 placed the event on that zone (a time in another zone the owner named,
 "3pm Tokyo time", offers nothing and asks for the phone's clock), its
-start is a clock time the owner's words hold, as a [stated clock
-is](./readClock.md#a-clock-time-the-owner-stated-is-one-the-owners-words-hold),
-on that clock, its start is still ahead of the turn, and the title's
-words are among the owner's; the phone's operation already holds an end
+start on that clock is no time the owner's words contradict, as a
+[stated clock is
+checked](./readClock.md#a-stated-clock-time-is-refused-only-where-the-owners-words-give-another),
+its start is still ahead of the turn, and the title's words are among
+the owner's; the phone's operation already holds an end
 after its start. One phone event holds
 no repeat, guests or all-day time, so the model sends those to the
 Calendar action instead; code reads no repeat words, so a one-off phone
@@ -192,15 +193,15 @@ and for an availability window alike; a time with no offset names no
 instant and is checked as sent.
 
 ```quint
-pure def newEventStated(phoneZoneKnown: bool, onPhoneZone: bool, startHeldByOwnerWords: bool, startAhead: bool, titleInOwnerWords: bool): bool =
-  phoneZoneKnown and onPhoneZone and startHeldByOwnerWords and startAhead and titleInOwnerWords
+pure def newEventStated(phoneZoneKnown: bool, onPhoneZone: bool, startUncontradicted: bool, startAhead: bool, titleInOwnerWords: bool): bool =
+  phoneZoneKnown and onPhoneZone and startUncontradicted and startAhead and titleInOwnerWords
 pure def ownerWordsKept(stated: bool, proposed: str): str = if (stated) proposed else ""
-pure def lawAnotherZoneIsNeverAStart(phoneZoneKnown: bool, startHeldByOwnerWords: bool, startAhead: bool, titleInOwnerWords: bool): bool =
-  not(newEventStated(phoneZoneKnown, false, startHeldByOwnerWords, startAhead, titleInOwnerWords))
-pure def lawAnUnsaidClockIsNeverAStart(phoneZoneKnown: bool, onPhoneZone: bool, startAhead: bool, titleInOwnerWords: bool): bool =
+pure def lawAnotherZoneIsNeverAStart(phoneZoneKnown: bool, startUncontradicted: bool, startAhead: bool, titleInOwnerWords: bool): bool =
+  not(newEventStated(phoneZoneKnown, false, startUncontradicted, startAhead, titleInOwnerWords))
+pure def lawAContradictedClockIsNeverAStart(phoneZoneKnown: bool, onPhoneZone: bool, startAhead: bool, titleInOwnerWords: bool): bool =
   not(newEventStated(phoneZoneKnown, onPhoneZone, false, startAhead, titleInOwnerWords))
-pure def lawAPastStartIsNeverProposed(phoneZoneKnown: bool, onPhoneZone: bool, startHeldByOwnerWords: bool, titleInOwnerWords: bool): bool =
-  not(newEventStated(phoneZoneKnown, onPhoneZone, startHeldByOwnerWords, false, titleInOwnerWords))
+pure def lawAPastStartIsNeverProposed(phoneZoneKnown: bool, onPhoneZone: bool, startUncontradicted: bool, titleInOwnerWords: bool): bool =
+  not(newEventStated(phoneZoneKnown, onPhoneZone, startUncontradicted, false, titleInOwnerWords))
 pure def lawUnstatedWordsAreNeverKept(proposed: str): bool = ownerWordsKept(false, proposed) == ""
 ```
 
