@@ -189,124 +189,88 @@ pure val minutesValues = Set(4, 5, 480, 481)
 The model reads from the owner's request whether it asks about a morning
 and no other period ("am I free tomorrow morning?", "tomorrow morning
 until noon"), and says so with the request; code reads no period words.
-Such a window starts at or after the midnight of the day it starts on
-and before that day's noon, and must end no later than that noon in the
-request's zone; a window that starts at noon or later, or runs past
-noon, is refused before anything is read, pointing to a slot search for
-a shorter opening. Noon itself is inside the morning.
-An end on that day that the owner's words state with the morning
-(readClock.md, "A free-time window's clock times the owner stated are
-ones the owner's words hold": a clock after "until", "till", "through",
-"before" or the like, or the end of a range whose start is the window's
-start or whose window is under way, said in the clause that names the
-morning or in a clause of its own beside it, such as "tomorrow morning,
-until 1?") is the owner's and is kept, unless they also state its other
-half of the day as a morning end, from 5 AM to noon and after now:
-"tomorrow morning until 12:30" runs to 12:30 PM, "tomorrow morning until
-1" to 1 PM and "tomorrow morning from 9 to 1" from 9 AM to 1 PM, while
-"tomorrow morning until 11" ends at 11 AM, never 11 PM, and a window
-sent for it from noon on is refused. An end said in another clause is
-about something else and lifts no bound: "free tomorrow morning? I have
-a call until 1", "am I free tomorrow morning? my sitter is here till 1"
-and "free tomorrow morning — busy after, until 2" end by noon, and so do
-words that name no morning. A number the
-words merely hold states no end: a count or a length ("for my 2 kids",
-"1 meeting max", "2 calls", "for 1.5 hours"), a room or a name ("room
-3") leaves the window ending by noon. Words the reader cannot read
-(readClock.md, "A window check refuses only a window the owner's words
-contradict") state no end either ("Asking for Дмитрий", "明天上午到12点半"),
-so their window also ends by noon, as every morning window did before
-the free-time window checks were added. A request the model does not
-call morning-only is read as asked.
+Such a window starts at or after the midnight of the day it starts on,
+and must end no later than that day's noon in the request's zone; a
+window that runs past it is refused before anything is read, pointing to
+a slot search for a shorter opening. Noon itself is inside the morning.
+A request the model does not call morning-only is read as asked.
 
 ```quint
 type MorningAdmission = ReadMorning | RefuseOutsideMorning
-pure def morningAdmission(morningOnly: bool, startsBeforeNoon: bool, endsAfterNoon: bool, endSaid: bool): MorningAdmission =
-  if (morningOnly and (not(startsBeforeNoon) or (endsAfterNoon and not(endSaid)))) RefuseOutsideMorning else ReadMorning
-pure def lawMorningReadStaysInMorning(startsBeforeNoon: bool, endsAfterNoon: bool): bool =
-  morningAdmission(true, startsBeforeNoon, endsAfterNoon, false) == ReadMorning implies (startsBeforeNoon and not(endsAfterNoon))
-pure def lawAMorningEndTheOwnerSaidIsRead(endsAfterNoon: bool): bool =
-  morningAdmission(true, true, endsAfterNoon, true) == ReadMorning
-pure def lawAMorningWindowFromNoonOnIsRefused(endsAfterNoon: bool, endSaid: bool): bool =
-  morningAdmission(true, false, endsAfterNoon, endSaid) == RefuseOutsideMorning
-pure def lawWiderRequestIsRead(startsBeforeNoon: bool, endsAfterNoon: bool, endSaid: bool): bool =
-  morningAdmission(false, startsBeforeNoon, endsAfterNoon, endSaid) == ReadMorning
-pure def morningEndStated(wordsRead: bool, endStated: bool, otherHalfStatedInMorning: bool): bool =
-  wordsRead and endStated and not(otherHalfStatedInMorning)
-pure def lawAnEndTheWordsDoNotStateEndsByNoon(wordsRead: bool, otherHalfStatedInMorning: bool): bool =
-  morningAdmission(true, true, true, morningEndStated(wordsRead, false, otherHalfStatedInMorning)) == RefuseOutsideMorning
-pure def lawUnreadWordsStateNoMorningEnd(endStated: bool, otherHalfStatedInMorning: bool): bool =
-  morningAdmission(true, true, true, morningEndStated(false, endStated, otherHalfStatedInMorning)) == RefuseOutsideMorning
-pure def lawAMorningEndWhoseOtherHalfIsStatedEndsByNoon(wordsRead: bool, endStated: bool): bool =
-  morningAdmission(true, true, true, morningEndStated(wordsRead, endStated, true)) == RefuseOutsideMorning
-pure def lawAStatedLaterEndIsRead(endsAfterNoon: bool): bool =
-  morningAdmission(true, true, endsAfterNoon, morningEndStated(true, true, false)) == ReadMorning
+pure def morningAdmission(morningOnly: bool, endsAfterNoon: bool): MorningAdmission =
+  if (morningOnly and endsAfterNoon) RefuseOutsideMorning else ReadMorning
+pure def lawMorningReadStaysInMorning(endsAfterNoon: bool): bool =
+  morningAdmission(true, endsAfterNoon) == ReadMorning implies not(endsAfterNoon)
+pure def lawWiderRequestIsRead(endsAfterNoon: bool): bool =
+  morningAdmission(false, endsAfterNoon) == ReadMorning
 ```
 
-### An afternoon-only question reads only that afternoon, from noon to five
+### A free-time question refuses only as before the window notes, and a note never changes the window read
 
-The model reads from the owner's request whether it asks about an
-afternoon and no other period ("am I free tomorrow afternoon?", "find me
-30 minutes tomorrow afternoon"), also when an errand explains the time
-("tomorrow when I can pick up groceries in the afternoon"), and says so
-with the request; code reads no period words. Such a window starts no
-earlier than noon of the day it starts on and ends no later than five PM
-that day in the request's zone; a window that starts before noon or runs
-past five is refused before anything is read, pointing to a slot search
-for a shorter opening. Noon and five are inside the afternoon. A start,
-or an end on that day, that the owner's words hold (readClock.md, "A
-clock time the owner stated is one the owner's words hold"), other than
-as a number counting a length, is the owner's and is kept, unless they also hold its other half of the day
-inside the afternoon and on that side of the window's other end:
-"tomorrow afternoon until 5:30" runs from noon to 5:30 PM, and "tomorrow
-afternoon from 1 to 6" from 1 to 6 PM, while "tomorrow afternoon from 2"
-starts at 2 PM, never 2 AM. Words the reader cannot read (readClock.md,
-"A window check refuses only a window the owner's words contradict")
-keep the start and end as sent. A request the model does not call
-afternoon-only is read as asked.
+A free-time question refuses only for the reasons it always had: a
+window or a length it cannot read, a morning-only window that runs past
+noon, and a read that is incomplete (sections above). It never refuses
+for anything the owner's words seem to say about the window: their clock
+times, a range they state, a start already past, or an afternoon the
+model said was asked. It reads the window exactly as sent, and its
+answer may carry one short note, as text after the answer and as a
+typed `windowNote` with a kind, the words it adds to the answer, and for
+a range the windows the words fit (readClock.md, "The owner's words are
+read for a free-time window only to note one they seem to give
+otherwise"):
 
-```quint
-type AfternoonAdmission = ReadAfternoon | RefuseOutsideAfternoon
-pure def afternoonAdmission(afternoonOnly: bool, startsBeforeNoon: bool, endsAfterFive: bool, startSaid: bool, endSaid: bool): AfternoonAdmission =
-  if (afternoonOnly and ((startsBeforeNoon and not(startSaid)) or (endsAfterFive and not(endSaid)))) RefuseOutsideAfternoon else ReadAfternoon
-pure def lawAfternoonReadStaysInAfternoon(startsBeforeNoon: bool, endsAfterFive: bool): bool =
-  afternoonAdmission(true, startsBeforeNoon, endsAfterFive, false, false) == ReadAfternoon implies not(startsBeforeNoon) and not(endsAfterFive)
-pure def lawAnAfternoonBoundTheOwnerSaidIsRead(startsBeforeNoon: bool, endsAfterFive: bool): bool =
-  afternoonAdmission(true, startsBeforeNoon, endsAfterFive, true, true) == ReadAfternoon
-pure def lawWiderAfternoonRequestIsRead(startsBeforeNoon: bool, endsAfterFive: bool, startSaid: bool, endSaid: bool): bool =
-  afternoonAdmission(false, startsBeforeNoon, endsAfterFive, startSaid, endSaid) == ReadAfternoon
-```
+- the owner's words seem to give another window, when a side of the
+  window sent is off (readClock.md): the note names the windows a range
+  about the window fits that day, or else the start or end the words
+  state;
+- the window starts before the current minute: the note says the model
+  can start the rest of a period under way at now, and that
+  search_events lists what was on earlier;
+- the model said the owner asked only about an afternoon, and the window
+  starts before noon or ends after 5 PM at a clock the owner's words do
+  not hold ("tomorrow afternoon until 5:30" holds its end).
 
-### A free-time window starts no earlier than the current minute
-
-A free-time question asks about time still to come. A window that starts
-before the current minute is refused before anything is read, and the
-result says what to send instead. A window still under way at the current
-minute is the rest of a period the owner asked about ("is today free?",
-"am I free this afternoon?" at 2 PM, "between noon and five today" at 1
-PM): the result tells the model to start it at the current time and keep
-its end and what it said of the owner's clock times, since a start at the
-current minute is not checked against the owner's words (readClock.md, "A
-free-time window's clock times the owner stated are ones the owner's
-words hold"). A window that ended by the current time asks about a past
-period ("was I free yesterday afternoon?"), which no opening answers: the
-result tells the model to list that period's events with search_events
-instead. A window that starts within the current minute or later is read
-as asked.
+Only one note is given, in that order. Words the reader cannot read with
+confidence, or that name a zone other than the request's, carry no note
+at all. The model may mention the note to the owner, ask which window
+was meant, or ask again with another window; the answer itself stands.
 
 ```quint
-type WindowStartAdmission = ReadFromStart | RefusePastStart
-pure def windowStartAdmission(startMs: int, nowMs: int): WindowStartAdmission =
-  if (startMs < nowMs - nowMs % 60000) RefusePastStart else ReadFromStart
-pure def lawAWindowBeforeThisMinuteReadsNothing(startMs: int, nowMs: int): bool =
-  (windowStartAdmission(startMs, nowMs) == RefusePastStart) iff startMs < nowMs - nowMs % 60000
-pure def lawAWindowFromThisMinuteIsRead(nowMs: int): bool =
-  windowStartAdmission(nowMs - nowMs % 60000, nowMs) == ReadFromStart
-pure val startMsValues = Set(0, 59999, 60000, 120000)
-pure val nowMsValues = Set(0, 60000, 119999, 120000)
-type PastWindowNext = StartAtNow | SearchThePast
-pure def pastWindowNext(endedByNow: bool): PastWindowNext = if (endedByNow) SearchThePast else StartAtNow
-pure def lawAPastPeriodIsSearched(endedByNow: bool): bool = (pastWindowNext(endedByNow) == SearchThePast) iff endedByNow
+type WindowNote = NoNote | WordsGiveAnotherWindow | StartsBeforeNow | AfternoonAsked
+pure def windowNote(wordsRead: bool, otherZoneNamed: bool, sidesOff: bool, startPassed: bool, afternoonLeft: bool): WindowNote =
+  if (not(wordsRead) or otherZoneNamed) NoNote
+  else if (sidesOff) WordsGiveAnotherWindow
+  else if (startPassed) StartsBeforeNow
+  else if (afternoonLeft) AfternoonAsked
+  else NoNote
+type FreeTimeOutcome = FreeTimeRefusesWindow | FreeTimeRefusesOutsideMorning | FreeTimeUnknown | FreeTimeAnswered
+type FreeTimeAnswer = { outcome: FreeTimeOutcome, readStart: int, readEnd: int, note: WindowNote }
+pure def freeTimeAnswer(windowValid: bool, durationValid: bool, morning: MorningAdmission, readComplete: bool, sentStart: int, sentEnd: int, note: WindowNote): FreeTimeAnswer = {
+  outcome: if (freeTimeRead(windowValid, durationValid, true) == RefuseWindow) FreeTimeRefusesWindow
+    else if (morning == RefuseOutsideMorning) FreeTimeRefusesOutsideMorning
+    else if (freeTimeRead(windowValid, durationValid, readComplete) != AvailabilityKnown) FreeTimeUnknown
+    else FreeTimeAnswered,
+  readStart: sentStart,
+  readEnd: sentEnd,
+  note: note
+}
+pure def lawFreeTimeNeverRefusesOnWords(windowValid: bool, durationValid: bool, morning: MorningAdmission, readComplete: bool, wordsRead: bool, otherZoneNamed: bool, sidesOff: bool, startPassed: bool, afternoonLeft: bool): bool =
+  freeTimeAnswer(windowValid, durationValid, morning, readComplete, 0, 60000, windowNote(wordsRead, otherZoneNamed, sidesOff, startPassed, afternoonLeft)).outcome
+    == freeTimeAnswer(windowValid, durationValid, morning, readComplete, 0, 60000, NoNote).outcome
+pure def lawFreeTimeRefusesOnlyAsBefore(windowValid: bool, durationValid: bool, morning: MorningAdmission, readComplete: bool, note: WindowNote): bool =
+  (freeTimeAnswer(windowValid, durationValid, morning, readComplete, 0, 60000, note).outcome != FreeTimeAnswered)
+    iff (not(windowValid and durationValid) or morning == RefuseOutsideMorning or not(readComplete))
+pure def lawANoteNeverChangesTheWindowRead(sentStart: int, sentEnd: int, note: WindowNote): bool =
+  freeTimeAnswer(true, true, ReadMorning, true, sentStart, sentEnd, note).readStart == sentStart
+    and freeTimeAnswer(true, true, ReadMorning, true, sentStart, sentEnd, note).readEnd == sentEnd
+pure def lawUnreadWordsCarryNoNote(otherZoneNamed: bool, sidesOff: bool, startPassed: bool, afternoonLeft: bool): bool =
+  windowNote(false, otherZoneNamed, sidesOff, startPassed, afternoonLeft) == NoNote
+pure def lawAnotherZoneCarriesNoNote(wordsRead: bool, sidesOff: bool, startPassed: bool, afternoonLeft: bool): bool =
+  windowNote(wordsRead, true, sidesOff, startPassed, afternoonLeft) == NoNote
+pure def lawANoteHasItsReason(wordsRead: bool, otherZoneNamed: bool, sidesOff: bool, startPassed: bool, afternoonLeft: bool): bool =
+  windowNote(wordsRead, otherZoneNamed, sidesOff, startPassed, afternoonLeft) != NoNote implies (sidesOff or startPassed or afternoonLeft)
+pure val sentStartValues = Set(0, 60000)
+pure val sentEndValues = Set(60000, 3600000)
 ```
 
 ### A period is free only when no blocking event overlaps it
@@ -835,27 +799,6 @@ pure def createOutcome(written: bool, readBack: bool, sameSource: bool, fieldsMa
   else CreatedUnconfirmed
 pure def lawCreatedNeedsSameCalendarReadback(written: bool, readBack: bool, sameSource: bool, fieldsMatch: bool): bool =
   createOutcome(written, readBack, sameSource, fieldsMatch) == CreatedAndRead implies readBack and sameSource and fieldsMatch
-```
-
-### A create the owner gave a start and an end for reports the saved range
-
-A created event's reply names its title and when it starts. When the
-model says the owner stated the new event's start and end ("from one ten
-PM to one thirty PM", "from 3pm to 3:45pm") and sends that end, and those
-clock times are ones the owner's words hold, the reply names the saved
-start and end, so the owner hears the range as it was saved. An all-day
-event, and a create whose end the model worked out or chose, reports its
-start only; so does a create called a stated range that sends no end,
-whose end code worked out from a length.
-
-```quint
-type CreateReplyTime = SavedStart | SavedRange
-pure def createReplyTime(statedRange: bool, endSent: bool, allDay: bool): CreateReplyTime =
-  if (statedRange and endSent and not(allDay)) SavedRange else SavedStart
-pure def lawAStatedRangeIsReportedWhole(allDay: bool): bool =
-  (createReplyTime(true, true, allDay) == SavedRange) iff not(allDay)
-pure def lawAnUnstatedEndIsNotReported(endSent: bool, allDay: bool): bool = createReplyTime(false, endSent, allDay) == SavedStart
-pure def lawAnUnsentEndIsNotReported(statedRange: bool, allDay: bool): bool = createReplyTime(statedRange, false, allDay) == SavedStart
 ```
 
 ### A repeating create carries its reviewed recurrence and reads back with it
