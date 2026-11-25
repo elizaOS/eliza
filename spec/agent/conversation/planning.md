@@ -527,11 +527,13 @@ step was for the model gives its reply exactly as it was, word for word, and
 that otherwise the reply must say the failed step did not happen. When the model
 answers that note with its first reply again, word for word, it stands by
 that reply, and when that reply is delivered, the failure's own words do not
-follow it. Otherwise the failure's own words follow the reply as for any
-failure: when the rules keep a second answer, when the call fails, when the model answers
-with a blank or a pending-work cue (read as below), when it gives another
-answer that is not kept, when the failure was never put to the model, or
-when the clock's or the change's words take the reply's place. A failure
+follow it. Otherwise the failure is reported as any failure is (above): a
+kept second answer reports it in the model's words, followed only by words
+its action wrote for the owner, and its own words follow the reply when the
+call fails, when the model answers with a blank or a pending-work cue (read
+as below), when it gives another answer that is not kept, when the failure
+was never put to the model, or when the clock's or the change's words take
+the reply's place. A failure
 with a receipt, a failure in the same planner response as the later call,
 and safety copy are reported as above.
 

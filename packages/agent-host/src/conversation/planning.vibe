@@ -394,12 +394,12 @@ function settleReply(steps: readonly PlannedStep[]): SettledReply {
   const failedKeys = new Set(failed.map(entryKey))
   const notices = new Map<string, FailureNotice>()
   for (const step of steps.filter(({ outcomes }) => outcomes.some((entry) => failedKeys.has(entryKey(entry))))) {
-    const { words, verified, ownCopy } = failureNotice(step)
+    const { words, verified, ownCopy: actionsOwn } = failureNotice(step)
     const earlier = notices.get(words)
     const laterRan = laterRunOf(steps, step)
     notices.set(words, {
       words, safetyCopy: earlier?.safetyCopy === true || alone || safetyCopyOf(step.result), verified: (earlier?.verified ?? true) && verified,
-      ownCopy: (earlier?.ownCopy ?? true) && ownCopy,
+      ownCopy: (earlier?.ownCopy ?? true) && actionsOwn,
       answerableLater: (earlier?.answerableLater ?? true) && laterRan,
     })
   }
