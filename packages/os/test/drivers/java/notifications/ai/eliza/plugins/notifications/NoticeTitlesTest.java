@@ -93,6 +93,9 @@ public final class NoticeTitlesTest {
 
     refused(() -> coordinator.postApproval(id, binding, route("owner", "titled"), "", expires, now), "a blank title");
     check(routes.token(id) == null && poster.posts == 0, "a refused title prepares no route and posts nothing");
+    NoticeCoordinator.Check away = () -> { throw new IllegalStateException("Host view left the foreground"); };
+    refused(() -> coordinator.postApproval(id, binding, route("owner", "titled"), title, expires, now, away), "a post after leaving the app");
+    check(routes.token(id) == null && poster.posts == 0, "a foreground refusal keeps no route or visible notice");
 
     check("succeeded".equals(coordinator.postApproval(id, binding, route("owner", "titled"), title, expires, now)), "a titled approval is published");
     check(poster.active.get(id).equals(title + "\n" + BODY) && poster.posts == 1, "Android shows the approval's own title over the configured body");
@@ -110,7 +113,11 @@ public final class NoticeTitlesTest {
 
     check(coordinator.withdrawOtherOwners(NoticeOwner.fromRoute(route("second", "x")), now + minute) == 1 && !poster.active.containsKey(id), "another owner's fence suspends the titled approval");
     coordinator.withdrawOtherOwners(NoticeOwner.fromRoute(route("owner", "x")), now + 2 * minute);
+    String retainedToken = routes.token(id);
     refused(() -> coordinator.resumeApproval(id, binding, route("owner", "titled"), expires, now + 2 * minute), "a resume under the configured title");
+    refused(() -> coordinator.resumeApproval(id, binding, route("owner", "titled"), title, expires + minute, now + 2 * minute), "a changed expiry");
+    refused(() -> coordinator.resumeApproval(id, binding, route("owner", "titled"), title, expires, now + 2 * minute, away), "a resume after leaving the app");
+    check(retainedToken.equals(routes.token(id)) && poster.quiet == 0, "a refused resume leaves the old route and posts nothing");
     check("succeeded".equals(coordinator.resumeApproval(id, binding, route("owner", "titled"), title, expires, now + 2 * minute)) && poster.quiet == 1, "the owner's resume reposts quietly under the same title");
     check(poster.active.get(id).equals(title + "\n" + BODY), "the resumed notice keeps its title");
 

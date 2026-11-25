@@ -32,7 +32,7 @@ it.effect("A preview binds its photo stream only at an aspect ratio the device l
 
 it.effect('An approval notice\'s title is part of its receipt, and a call that names no title means the configured one (spec/os/android/noticeRoutes.md, "An approval notice\'s title is part of its receipt, and a call that names no title means the configured one")', () => effect {
   const answer = try tryPromise(() => hostChecks("NoticeTitlesTest"))
-  try Effect.try(() => assert.strictEqual(answer, "NoticeTitlesTest checks: 19"))
+  try Effect.try(() => assert.strictEqual(answer, "NoticeTitlesTest checks: 24"))
 }, 180_000)
 
 it.effect('A new-mail count counts the notices still unread, a notice the shade cap withdrew included (spec/os/android/notificationProjection.md, "A new-mail count counts the notices still unread, a notice the shade cap withdrew included")', () => effect {
