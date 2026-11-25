@@ -1,0 +1,82 @@
+// spec/workflow/budget.md, "Story: Bound workflow tokens, model calls and cost across multi-step runs"; spec/workflow/budget.md, "Step context compaction bounds every prompt input to the configured window"; spec/workflow/budget.md, "Parallel DAG waves batch only ready non-barrier steps"; spec/workflow/budget.md, "Fast evaluations and short step drafts route to the fast model tier"
+import {
+  compactedLength, defaultContextWindowChars, defaultMaxCostMicros, defaultMaxModelCalls, defaultMaxRunTokens, defaultMaxStepTokens,
+  fastDraftThresholdChars, routeModelTier, waveAdmitsStep, type CallPurpose, type ModelTier,
+} from "../../gen/workflow__budget.effect.vibe"
+import type { PhoneStep } from "./phone.vibe"
+
+export const WORKFLOW_DEFAULT_BUDGET = {
+  maxRunTokens: defaultMaxRunTokens,
+  maxStepTokens: defaultMaxStepTokens,
+  maxModelCalls: defaultMaxModelCalls,
+  maxCostMicros: defaultMaxCostMicros,
+  maxContextChars: defaultContextWindowChars,
+} as const
+
+export const WORKFLOW_FAST_DRAFT_THRESHOLD_CHARS = fastDraftThresholdChars
+
+export interface CompactedText {
+  readonly text: string
+  readonly compacted: boolean
+  readonly originalChars: number
+  readonly retainedChars: number
+}
+
+export function estimateWorkflowTokens(chars: number): number {
+  return chars <= 0 ? 0 : Math.ceil(chars / 3.5)
+}
+
+export function estimateWorkflowCostMicros(tokens: number, tier: ModelTier): number {
+  if (tokens <= 0) return 0
+  return tier === "FastEvalTier" ? Math.max(1, Math.ceil(tokens * 0.6)) : Math.max(1, Math.ceil(tokens * 3))
+}
+
+export function compactStepOutput(text: string, maxChars: number = defaultContextWindowChars): CompactedText {
+  const target = compactedLength(text.length, maxChars)
+  if (target <= 0) return { text: "", compacted: text.length > 0, originalChars: text.length, retainedChars: 0 }
+  if (text.length <= target) return { text, compacted: false, originalChars: text.length, retainedChars: text.length }
+  const marker = `\n...[compacted ${text.length - target} chars of ${text.length}]...\n`
+  if (marker.length >= target) {
+    const sliced = text.slice(0, target)
+    return { text: sliced, compacted: true, originalChars: text.length, retainedChars: sliced.length }
+  }
+  const budget = target - marker.length
+  const headChars = Math.ceil(budget * 0.6)
+  const tailChars = budget - headChars
+  const combined = tailChars > 0 ? text.slice(0, headChars) + marker + text.slice(text.length - tailChars) : text.slice(0, headChars) + marker
+  const bounded = combined.length > target ? combined.slice(0, target) : combined
+  return { text: bounded, compacted: true, originalChars: text.length, retainedChars: bounded.length }
+}
+
+export type WorkflowModelTier = ModelTier
+export type WorkflowCallPurpose = CallPurpose
+
+export function selectWorkflowModelTier(purpose: WorkflowCallPurpose, inputChars: number): WorkflowModelTier {
+  return routeModelTier(purpose, inputChars)
+}
+
+export function isDeviceStepBarrier(step: PhoneStep): boolean {
+  return step.operation === "selected_notes" || step.operation === "selected_reminders" || step.operation === "calendar_range"
+    || step.operation === "save_note" || step.operation === "app_notification" || step.operation === "read_aloud"
+}
+
+export function nextParallelWaveIndices(steps: readonly PhoneStep[], startIndex: number, completedIds: ReadonlySet<string>): readonly number[] {
+  if (startIndex >= steps.length) return []
+  const first = steps[startIndex]
+  const firstApproval = isDeviceStepBarrier(first)
+  const firstControl = first.kind === "If"
+  if (!waveAdmitsStep(true, false, firstApproval, firstControl)) return [startIndex]
+  const wave: number[] = []
+  const waveIds = new Set<string>()
+  for (let index = startIndex; index < steps.length; index++) {
+    const candidate = steps[index]
+    const approval = isDeviceStepBarrier(candidate)
+    const control = candidate.kind === "If"
+    const source = "source" in candidate ? candidate.source : undefined
+    const depsReady = source === undefined || (completedIds.has(source) && !waveIds.has(source))
+    if (!waveAdmitsStep(depsReady, completedIds.has(candidate.id), approval, control)) break
+    wave.push(index)
+    waveIds.add(candidate.id)
+  }
+  return wave.length > 0 ? wave : [startIndex]
+}

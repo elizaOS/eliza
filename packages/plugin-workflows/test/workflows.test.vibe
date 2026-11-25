@@ -4,13 +4,14 @@ import * as KeyValueStore from "effect/persistence/KeyValueStore"
 import { TestClock } from "effect/testing"
 import { activityLabel } from "@elizaos/agent-host"
 import { computeNextCronRunAtMs, ContextRegistry, type ActionResult, type Content, type IAgentRuntime, type JsonObject, type Memory, type Provider } from "@elizaos/core"
-import { activeWorkflowsProvider, workflowAction, workflowInstances, workflowsContext } from "../src/agent.vibe"
+import { activeWorkflowsProvider, workflowAction, workflowInstances, workflowsContext, workflowStatusProvider } from "../src/agent.vibe"
 import {
-  keyValueIntentBackend, openWorkflowNotice, parseWorkflowRunDeepLink, resolvePhoneCalendarRange, workflowClient, workflowIntentKey, workflowIntentOwnerPrefix, workflowIntentStore, validatePhoneWorkflowSpec, workflowRecovery, workflowSha, WorkflowLifecycleRejected, type PhoneWorkflowSpec, type WorkflowClient, type WorkflowRequest, type WorkflowRun, digestInbox, hostedDigestProtocol, missedRunNowOffers, DIGEST_MISSED_TEXT, workflowHttpError,
+  compactStepOutput, digestZoneNote, keyValueIntentBackend, openWorkflowNotice, parseWorkflowRunDeepLink, resolvePhoneCalendarRange, workflowClient, workflowIntentKey, workflowIntentOwnerPrefix, workflowIntentStore, validatePhoneWorkflowSpec, workflowRecovery, workflowSha, WorkflowLifecycleRejected, type PhoneWorkflowSpec, type WorkflowClient, type WorkflowRequest, type WorkflowRun, digestInbox, hostedDigestProtocol, missedRunNowOffers, DIGEST_MISSED_TEXT, workflowHttpError,
 } from "@elizaos/plugin-workflow-client"
 import { importWorkflowSource, publishWorkflowSource, SourceRefused } from "../src/worker/source.vibe"
+import { WORKFLOW_MODEL_DRAFT_STATIC_PREFIX } from "../src/worker/protocol.vibe"
 import { verifyWorkerArtifact, workerArtifactClosure, workerProvenance, WorkerArtifactRefused } from "@elizaos/plugin-workflow-worker"
-import { generatedWorkflows, hostedDigests, openWorkflows, type WorkflowDevicePort, type WorkflowHost, type WorkflowNativeDigests, type WorkflowNotice, type WorkflowSql } from "../src/index.vibe"
+import { createWorkflowDispatchService, generatedDraftPrompt, generatedWorkflows, hostedDigests, openWorkflows, registerWorkflowDispatchService, unregisterWorkflowDispatchService, WORKFLOW_DISPATCH_SERVICE_TYPE, type WorkflowDevicePort, type WorkflowDraftOptions, type WorkflowHost, type WorkflowNativeDigests, type WorkflowNotice, type WorkflowSql } from "../src/index.vibe"
 import { inProcessWorkerPort, type WorkflowWorkerPort } from "../src/service/host.vibe"
 import { runtimeWorkflowHost } from "../src/runtime.vibe"
 import { EARLIER_RUN_STOPPED_TEXT } from "../src/service/prior.vibe"
@@ -142,7 +143,7 @@ interface Phone {
   notes: readonly { readonly id: string; readonly title: string; readonly text: string }[]
 }
 
-effect function harness(options: { readonly phone?: Phone; readonly draft?: (prompt: string) => string | undefined; readonly google?: ManagedGoogleReads; readonly native?: WorkflowNativeDigests; readonly worker?: WorkflowWorkerPort; readonly earlier?: EarlierStore } = {}) {
+effect function harness(options: { readonly phone?: Phone; readonly draft?: (prompt: string, opts?: WorkflowDraftOptions) => string | undefined; readonly google?: ManagedGoogleReads; readonly native?: WorkflowNativeDigests; readonly worker?: WorkflowWorkerPort; readonly earlier?: EarlierStore } = {}) {
   const db = try acquireRelease(promise(() => openDatabase()), (opened) => promise(() => opened.close()))
   const earlier = options.earlier
   if (earlier !== undefined) try promise(() => writeEarlierStore(db.sql as WorkflowSql, earlier))
@@ -162,8 +163,8 @@ effect function harness(options: { readonly phone?: Phone; readonly draft?: (pro
   const draft = options.draft
   const host: WorkflowHost = {
     sql: db.sql as WorkflowSql, owner, agentId: "agent", origin: "agent:test", worker: options.worker ?? try inProcessWorkerPort(), device: port,
-    draft: draft === undefined ? undefined : (prompt) => Effect.suspend(() => {
-      const text = draft(prompt)
+    draft: draft === undefined ? undefined : (prompt, opts) => Effect.suspend(() => {
+      const text = draft(prompt, opts)
       return text === undefined ? Effect.never : succeed(text)
     }), nativeDigests: options.native, google: options.google,
     notify: (notice) => sync(() => { notices.push(notice) }),
@@ -969,4 +970,159 @@ it.live('Keep the workflows I saved before this version (spec/workflow/earlierSt
   const again = try openWorkflows(rig.host)
   const ids = (try again.list(false)).map((row) => row.id)
   try check(() => assert.deepStrictEqual([(again.status() as { readonly earlierImport?: unknown }).earlierImport, ids.includes("wf-late"), ids.length], [imported, false, 3]))
+})
+
+it.live('Dispatch workflows idempotently, serve revision/evaluation routes, and format digest zone notes (spec/workflow/admission.md, "One owner, workflow, submission, version and input survive a retry"; spec/workflow/hostedDigest.md, "Story: Acknowledge a page of digests only after it is stored")', effect () => {
+  const rig = try harness({
+    draft: (prompt, opts) => opts?.purpose === "fast_eval"
+      ? JSON.stringify({ passed: true, score: 0.95, reason: "Clear greeting output" })
+      : prompt.includes("Write one TypeScript module")
+        ? JSON.stringify({ name: "Batch code", description: "Batch", source: generatedSource })
+        : "Drafted reply",
+  })
+  const { catalog, receipt } = try saved(rig, greeting)
+  const edited = try rig.client.validatePhone({ ...greeting, name: "Morning note v2" }, catalog)
+  try rig.client.savePhone(edited.spec, catalog, {
+    mutationId: "77777777-7777-4777-8777-777777777777", specDigest: edited.specDigest, compilerRevision: catalog.compilerRevision,
+    workflowId: receipt.workflowId, versionId: receipt.versionId,
+  })
+  const revList = try rig.client.revisions(receipt.workflowId)
+  const restored = try rig.client.restoreRevision(receipt.workflowId, receipt.versionId)
+
+  const servicesMap = new Map<string, unknown[]>()
+  const fakeRuntime = { services: servicesMap } as unknown as IAgentRuntime
+  registerWorkflowDispatchService(fakeRuntime, () => rig.service)
+  const dispatch = createWorkflowDispatchService(() => rig.service)
+  const firstDispatch = try promise(() => dispatch.execute(receipt.workflowId, { source: "trigger" }, { idempotencyKey: "k-1" }))
+  const dupDispatch = try promise(() => dispatch.execute(receipt.workflowId, { source: "trigger" }, { idempotencyKey: "k-1" }))
+  const missingDispatch = try promise(() => dispatch.execute("nonexistent-wf", {}, { idempotencyKey: "k-2" }))
+  if (firstDispatch.executionId !== undefined) try settled(rig.client, { id: firstDispatch.executionId, workflowId: receipt.workflowId })
+  const suite = try rig.client.evaluationSamples(receipt.workflowId)
+  const fastEval = firstDispatch.executionId === undefined ? undefined : try rig.service.evaluateRunFast(firstDispatch.executionId, "Must contain greeting")
+  unregisterWorkflowDispatchService(fakeRuntime)
+
+  const protocol = hostedDigestProtocol(rig.request)
+  const digestAvailable = try protocol.available()
+  const zoneNote = digestZoneNote({ removed: false, spec: { version: 1, template: "morning", sourceId: "s1", sourceRevision: "a".repeat(64), timeZone: "America/New_York", localTime: "08:00", enabled: true } }, "UTC", Date.UTC(2026, 6, 1, 12, 0))
+  const sameZoneNote = digestZoneNote({ removed: false, spec: { version: 1, template: "morning", sourceId: "s1", sourceRevision: "a".repeat(64), timeZone: "UTC", localTime: "08:00", enabled: true } }, "UTC", Date.UTC(2026, 6, 1, 12, 0))
+  try check(() => assert.deepStrictEqual({
+    revisions: revList.revisions.length >= 2,
+    restoredVersionChanged: restored.versionId !== revList.currentVersionId,
+    registered: !servicesMap.has(WORKFLOW_DISPATCH_SERVICE_TYPE),
+    dispatchOk: firstDispatch.ok && firstDispatch.dedup !== true,
+    dispatchDedup: dupDispatch.ok && dupDispatch.dedup === true && dupDispatch.executionId === firstDispatch.executionId,
+    dispatchMissing: missingDispatch.ok === false && missingDispatch.code === "workflow_not_found",
+    suiteCount: suite.sampleCount >= 1 && suite.summary?.passRate === 1,
+    fastEval: [fastEval?.passed, fastEval?.modelTier, fastEval?.score],
+    digestAvailable,
+    zoneNote: [zoneNote.includes("America/New_York"), sameZoneNote],
+  }, {
+    revisions: true,
+    restoredVersionChanged: true,
+    registered: true,
+    dispatchOk: true,
+    dispatchDedup: true,
+    dispatchMissing: true,
+    suiteCount: true,
+    fastEval: [true, "FastEvalTier", 0.95],
+    digestAvailable: true,
+    zoneNote: [true, ""],
+  }))
+})
+
+it.live('Bound workflow budgets, compact oversized context, execute parallel DAG waves and keep prompt prefixes cache-stable (spec/workflow/budget.md, "Story: Bound workflow tokens, model calls and cost across multi-step runs"; spec/workflow/budget.md, "Story: Compact step context, batch independent DAG steps and route fast evaluations"; spec/workflow/budget.md, "Step context compaction bounds every prompt input to the configured window"; spec/workflow/budget.md, "Parallel DAG waves batch only ready non-barrier steps"; spec/workflow/budget.md, "Fast evaluations and short step drafts route to the fast model tier")', effect () => {
+  const seenCalls: { readonly prompt: string; readonly modelClass: string | undefined; readonly purpose: string | undefined }[] = []
+  const rig = try harness({
+    draft: (prompt, opts) => {
+      seenCalls.push({ prompt, modelClass: opts?.modelClass, purpose: opts?.purpose })
+      return `ok:${seenCalls.length}`
+    },
+  })
+
+  const parallelSpec = manual("Parallel DAG", [
+    { id: "root", kind: "Read", operation: "supplied_text", text: "alpha data" },
+    { id: "branchA", kind: "Write", operation: "model_draft", source: "root", instruction: "Summarize A" },
+    { id: "branchB", kind: "Write", operation: "model_draft", source: "root", instruction: "Summarize B" },
+    { id: "branchC", kind: "Write", operation: "model_draft", source: "root", instruction: "Summarize C" },
+  ])
+  const { receipt: dagReceipt } = try saved(rig, parallelSpec)
+  const dagRun = try rig.client.run(dagReceipt.workflowId, dagReceipt.versionId, () => succeed(undefined))
+  const dagDone = try settled(rig.client, dagRun)
+  const dagStored = try rig.service.runOf(dagDone.id)
+
+  const bigText = "HEAD-MARKER " + "x".repeat(15_500) + " TAIL-MARKER"
+  const compactSpec = manual("Compact chain", [
+    { id: "big", kind: "Read", operation: "supplied_text", text: bigText },
+    { id: "draft", kind: "Write", operation: "model_draft", source: "big", instruction: "Summarize key points" },
+  ])
+  const { receipt: compactReceipt } = try saved(rig, compactSpec)
+  const compactRun = try rig.client.run(compactReceipt.workflowId, compactReceipt.versionId, () => succeed(undefined))
+  const compactDone = try settled(rig.client, compactRun)
+  const compactStored = try rig.service.runOf(compactDone.id)
+
+  const overBudget = try rig.service.run(dagReceipt.workflowId, {
+    input: { budget: { maxRunTokens: 10000, maxStepTokens: 10000, maxModelCalls: 1, maxCostMicros: 500000 } },
+    submissionId: "88888888-8888-4888-8888-888888888888",
+    expectedVersionId: dagReceipt.versionId,
+  })
+  const overDone = try settled(rig.client, { id: overBudget.execution.id, workflowId: dagReceipt.workflowId })
+
+  const batchGenSource = `import type { WorkflowContext } from "eliza-workflow"
+export default async function (ctx: WorkflowContext) {
+  const packed = ctx.compact("A".repeat(400), 120)
+  const answers = await ctx.generateBatch("fanout", [{ prompt: "First", fast: true }, { prompt: "Second", fast: true }])
+  return { packedLen: packed.length, answers }
+}
+`
+  const genSaved = try rig.request("/api/workflow/workflows", {
+    name: "Batch generated", description: "Parallel generateBatch", source: batchGenSource, mutationId: "99999999-9999-4999-8999-999999999999",
+  })
+  const genRec = (genSaved as { readonly receipt: { readonly workflowId: string; readonly versionId: string; readonly sourceDigest: string } }).receipt
+  try rig.client.reviewGenerated(genRec.workflowId, genRec.versionId, genRec.sourceDigest)
+  const genRun = try rig.client.run(genRec.workflowId, genRec.versionId, () => succeed(undefined))
+  const genDone = try settled(rig.client, genRun)
+
+  const runtime = chatRuntime()
+  workflowInstances.set(runtime, { service: rig.service, digests: rig.digests, generated: rig.generated })
+  const listResult = try promise(() => workflowAction.handler(runtime, { content: { text: "list" } } as Memory, undefined, { parameters: { action: "list" } }) as Promise<ActionResult>)
+  const statusRes = try promise(() => workflowStatusProvider.get(runtime, { content: { text: "" } } as Memory, {} as Parameters<Provider["get"]>[2]))
+  const summaryLine = workflowAction.summarize?.(listResult, { action: "list" })
+
+  const prefixA = generatedDraftPrompt("first task").split("\n---INPUT---\n")[0]
+  const prefixB = generatedDraftPrompt("second task").split("\n---INPUT---\n")[0]
+  const compactedCheck = compactStepOutput("0123456789".repeat(500), 200)
+  const shortDraftCalls = seenCalls.slice(0, 3)
+  const bigDraftCall = seenCalls[3]
+
+  const paramNames = (workflowAction.parameters ?? []).map((p) => p.name)
+  const paramsSorted = paramNames.every((name, i) => i === 0 || paramNames[i - 1]! < name)
+  try check(() => assert.deepStrictEqual({
+    dagStatus: dagDone.status,
+    dagModelCalls: dagStored.budget?.modelCallsUsed,
+    dagAllFastTier: shortDraftCalls.every((call) => call.modelClass === "TEXT_SMALL" && call.prompt.startsWith(WORKFLOW_MODEL_DRAFT_STATIC_PREFIX)),
+    compactStatus: compactDone.status,
+    compactCount: compactStored.compactedSteps,
+    compactUsesLargeTier: bigDraftCall?.modelClass === "TEXT_LARGE",
+    compactBounded: (bigDraftCall?.prompt.length ?? 999999) < 13_500 && bigDraftCall?.prompt.includes("compactedFromChars") === true,
+    overBudgetFailed: overDone.status === "failed" && (overDone.error ?? "").includes("budget"),
+    genDone: [genDone.status, genDone.output?.includes('"packedLen":120')],
+    staticPrefixesMatch: prefixA === prefixB && prefixA.length > 400,
+    compactedHelper: [compactedCheck.compacted, compactedCheck.retainedChars <= 200],
+    actionOpt: [workflowAction.toolSchemaStrict, workflowAction.cacheStable, paramsSorted, (workflowAction.descriptionCompressed?.length ?? 999) < 350, listResult.promptDataMode, summaryLine],
+    providerOpt: [workflowStatusProvider.cacheStable, workflowStatusProvider.dynamic, Boolean(statusRes.discoveryText)],
+  }, {
+    dagStatus: "finished",
+    dagModelCalls: 3,
+    dagAllFastTier: true,
+    compactStatus: "finished",
+    compactCount: 1,
+    compactUsesLargeTier: true,
+    compactBounded: true,
+    overBudgetFailed: true,
+    genDone: ["finished", true],
+    staticPrefixesMatch: true,
+    compactedHelper: [true, true],
+    actionOpt: [true, true, true, true, "replace-data", "WORKFLOW list [ok]"],
+    providerOpt: [false, true, true],
+  }))
 })

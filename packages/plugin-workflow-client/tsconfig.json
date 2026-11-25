@@ -16,6 +16,7 @@
   },
   "include": [
     "src",
+    "test",
     "gen/*.ts",
     "gen/*.vibe",
     "*.config.ts"
