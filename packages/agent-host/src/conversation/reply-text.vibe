@@ -163,7 +163,21 @@ export function holdsHostText(text: string, notes: readonly string[]): boolean {
   return hostTexts(notes).some((host) => said.includes(host)) || dataOpenings(notes).some((opening) => packed.includes(opening))
 }
 
+function echoAt(text: string, notes: readonly string[]): number {
+  const openings = dataOpenings(notes)
+  if (openings.length === 0) return text.length
+  for (let at = text.indexOf("{"); at >= 0; at = text.indexOf("{", at + 1)) {
+    const rest = compact(text.slice(at))
+    if (openings.some((opening) => opening.startsWith(rest) || rest.startsWith(opening))) return at
+  }
+  return text.length
+}
+
 export function shownUpTo(text: string, notes: readonly string[]): number {
+  return Math.min(hostTextAt(text, notes), echoAt(text, notes))
+}
+
+function hostTextAt(text: string, notes: readonly string[]): number {
   const { text: said, at } = folded(text)
   const upTo = hostTexts(notes).reduce((upTo, host) => {
     const whole = said.indexOf(host)
@@ -198,7 +212,9 @@ const writtenCallMarker = /<\s*\/?\s*tool_call\b|<\s*function(?:=|_call\b)/iu
 const writtenCallHeads = ["<tool_call", "</tool_call", "<function=", "<function_call"]
 
 export function asksSomething(said: string): boolean {
-  return /[?？](?=[\s)\]*_]|$)/u.test(said.replace(/```[\s\S]*?(?:```|$)|`[^`\n]*`|"[^"\n]*"|“[^”\n]*”|\S+:\/\/\S+/gu, ""))
+  const plain = said.replace(/```[\s\S]*?(?:```|$)|`[^`\n]*`|"[^"\n]*"|“[^”\n]*”/gu, "").replace(/\S+:\/\/\S+?([?？؟]?)(?=\s|$)/gu, "$1").trim()
+  const last = plain.split(/(?<=[.!?？؟…])\s+|\n+/u).filter((sentence) => sentence.trim() !== "").at(-1) ?? ""
+  return /[?？؟][^\p{L}\p{N}]*$/u.test(last.trim())
 }
 
 export function writtenCallFree(text: string): { readonly prose: string; readonly markup: boolean } {
@@ -206,7 +222,7 @@ export function writtenCallFree(text: string): { readonly prose: string; readonl
   return at < 0 ? { prose: text, markup: false } : { prose: text.slice(0, at).trimEnd(), markup: true }
 }
 
-const declaredTag = /(?:\[(answer|promise|question)\](?!\()|<(answer|promise)>)\s*/iu
+const declaredTag = /(?:\[(answer|promise|question)\](?!\(|\s*[[<]\/?(?:answer|promise|question)[\]>])|<(answer|promise)>)\s*/iu
 const modelTag = /[ \t]*(?:\[(?:answer|promise)\](?![([])|<\/?(?:answer|promise)>)[ \t]*(\n?)/gu
 const codeSpan = /(`{3,}|~{3,})[\s\S]*?(?:\1|$)|(?<!`)(`+)(?!`)[^\n]*?(?<!`)\2(?!`)/gu
 const trailingTag = /\[(?:answer|promise)\]$/u
@@ -249,7 +265,8 @@ export function declaredOf(said: string): { readonly declared: Declared; readonl
   const leading = tag !== null && withoutWrittenCalls(said.slice(0, tag.index)).trim() === ""
   if (tag === null || !leading) return { declared: "Undeclared", text: withoutTags(said) }
   const rest = withoutTags(said.slice(tag.index + tag[0].length))
-  return { declared: (tag[1] ?? tag[2]).toLowerCase() === "promise" ? "DeclaredPromise" : "DeclaredAnswer", text: tag[2] === undefined ? rest : withoutTags(rest, anyCaseClosing) }
+  const word = (tag[1] ?? tag[2]).toLowerCase()
+  return { declared: word === "question" ? "Undeclared" : word === "promise" ? "DeclaredPromise" : "DeclaredAnswer", text: tag[2] === undefined ? rest : withoutTags(rest, anyCaseClosing) }
 }
 
 function partialTagAt(text: string): number {

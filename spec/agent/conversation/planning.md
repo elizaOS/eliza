@@ -747,14 +747,17 @@ and a leading angle tag takes its closing tag off in any letter case
 tagged `[answer]` is an `Answer` delivered at once, however short (`[answer]
 Done!`, `[answer] Hello!`), and text tagged `[promise]` is a `Cue`, never
 delivered (`[promise] Sure, one sec.`), unless it asks the person
-something: text tagged `[promise]` that asks something (a question mark
-that ends a sentence, outside quotes, code and addresses) is an `Answer`,
-since the turn waits on the person (`[promise] Which Sam do you mean?`,
-`[promise] Hi! What can I do for you today?`), while `[promise] Let me open
-https://example.com/search?q=limes` stays a promise. A leading
-`[question]`, a tag the model sometimes writes though the rule names only
-two, is read as `[answer]` and taken off; anywhere else it is the model's
-text. Blank text, a cue beside a call
+something: text tagged `[promise]` whose last sentence is a question (it ends in
+`?`, `？` or `؟`, perhaps followed by an emoji or `!`, outside quotes, code
+and addresses) is an `Answer`, since the turn waits on the person
+(`[promise] Which Sam do you mean?`, `[promise] Hi! What can I do for you
+today?😊`), while `[promise] Let me open https://example.com/search?q=limes`
+and `[promise] What's the weather in Tokyo? Let me check that for you.` stay
+promises. A leading `[question]`, a tag the model sometimes writes though
+the rule names only two, is taken off and the text is read by its form, as
+if untagged; anywhere else it is the model's text. A leading tag followed
+by another tag (`[answer][promise] I'll check.`) says nothing: the text is
+read by its form. Blank text, a cue beside a call
 written as text, and text that holds the agent host's words (below), are
 read by their form whatever the tag, and so is text written with tool
 calls: `[answer]` before an echoed host note is still no answer. Text with no tag is read by its form as above, so
@@ -992,7 +995,8 @@ JSON object, before any external content a note quotes, such as the screen
 context's data, is the exception: a response that holds its first 32
 characters, with any spacing and in any letter case, is the host's words
 (`{"observation":{"view":"launchers",…`), since no answer quotes the host's
-raw data. The notes stay in the model's request as they are.
+raw data; the reply stream shows nothing from a `{` while what follows it
+could still be such an opening. The notes stay in the model's request as they are.
 
 ```quint
 pure def lawHostTextIsNeverAnAnswer(calls: int, toolsWaiting: bool, declared: Declared): bool =
