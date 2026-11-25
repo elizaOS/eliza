@@ -4355,7 +4355,8 @@ module node {
           const id = url.pathname.split("/").at(-1)
           const labelIds = id === "moved-to-trash" ? ["TRASH", "INBOX"] : [id === "trashed-message" ? "TRASH" : "INBOX"]
           const internalDate = searchReply && id === "trashed-message" ? "1760000000001" : "1760000000000"
-          return Response.json({ id, threadId: "trash-thread", internalDate, labelIds })
+          const payload = id === "moved-to-trash" ? { mimeType: "application/pdf", filename: "plan.pdf" } : { mimeType: "text/plain" }
+          return Response.json({ id, threadId: "trash-thread", internalDate, labelIds, payload })
         }
         if (url.origin === "https://gmail.googleapis.com" && url.pathname === "/gmail/v1/users/me/messages/mail-external/attachments/plain") {
           return Response.json({ data: Buffer.from(externalText).toString("base64url") })
@@ -4385,6 +4386,8 @@ module node {
         if (url.hostname === "gmail.googleapis.com" && url.pathname === "/gmail/v1/users/me/messages/fixture-message")
           return Response.json({ id: "fixture-message", threadId: "fixture-thread", internalDate: "1760000000000", historyId: "789", labelIds: ["INBOX", "UNREAD"],
             payload: { headers: [{ name: "From", value: "Ada <ada@example.test>" }, { name: "Cc", value: '"Owner, Gmail" < ATTACHMENT-OWNER@example.test >' },
+              ...(url.searchParams.get("format") === "full" || url.searchParams.getAll("metadataHeaders").includes("Content-Type")
+                ? [{ name: "Content-Type", value: 'Multipart/Mixed; boundary="fixture"' }] : []),
               { name: "Received", value: "by 2002:a05:6400:1::1 with SMTP id a1; Tue, 1 Dec 2026 10:00:01 -0800" },
               { name: "Received", value: "from mail.example.test (mail.example.test. [192.0.2.10]) by mx.google.com with ESMTPS id b2 for <owner@example.com>; Tue, 1 Dec 2026 10:00:00 -0800" },
               { name: "Received-SPF", value: "pass (google.com: domain of sender@example.test designates 192.0.2.10 as permitted sender)" },
@@ -4602,6 +4605,7 @@ module node {
           [firstSearch.messages.map((message) => message.id), firstSearch.mailboxHistoryId, firstSearch.nextPageToken === suppliedPage, firstSearch.supportsSpamTrash],
           [nextSearch.messages.map((message) => message.id), nextSearch.mailboxHistoryId, nextSearch.nextPageToken, nextSearch.supportsSpamTrash],
         ],
+        hints: [firstSearch.messages.map((message) => message.hasAttachments), nextSearch.messages.map((message) => message.hasAttachments)],
         providerRefusals: [repeatedSearch, oversizedSearch, missingSearchRevision],
         denied: deniedSearch, invalid: invalidSearch, providersOnDenied: providerCalls.length - beforeDeniedSearch,
         requests: searchCalls, cards: searchCards.sort(),
@@ -4846,6 +4850,7 @@ it.live('Read complete mail text, open the selected named attachment, watch for 
           [["fixture-message", "trashed-message"], "10000000000000000011", true, true],
           [["moved-to-trash"], "10000000000000000012", null, true],
         ],
+        hints: [[true, false], [true]],
         providerRefusals: Array.from({ length: 3 }, () => [502, "provider_invalid_response"]),
         denied: [401, 403, 409, 403], invalid: Array.from({ length: 5 }, () => [400, "invalid_request"]), providersOnDenied: 0,
         cards: ["fixture-message:metadata", "moved-to-trash:metadata", "trashed-message:metadata"],

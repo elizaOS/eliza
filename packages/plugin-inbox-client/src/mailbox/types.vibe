@@ -60,6 +60,7 @@ export interface GmailDraftContent {
   readonly providerDigest: string
   readonly to: readonly string[]
   readonly cc: readonly string[]
+  readonly hasAttachments?: boolean
   readonly bcc: readonly string[]
   readonly subject: string
   readonly bodyText: string
