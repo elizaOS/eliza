@@ -9,7 +9,7 @@ import {
   buildPlannerToolsFromActions, DISCOVER_ACTIONS_NAME, executePlannedToolCall, isDiscoveryActionName, isModelOutputLimitFinishReason, ModelType, modelAttemptCapture, modelOutputIncompleteEvidence, resolveActionContexts, sha256Hex, sleepWithAbort, stableStringify, tagsMayProduceEffects, wrapExternalContent,
 } from "@elizaos/core"
 import {
-  acknowledges, actionNoteSent, answerableLater, answeredAgain, callAdmission, cueDelivered, standsBy, cutOffReply, failedOpen, isTurnStep, maxPlanSteps, nextMove, offered, openOutcomes, plannerOnlyCoaching, plansOn, resendWait, toolActivity,
+  acknowledges, actionNoteSent, askedAgainAt, answerableLater, answeredAgain, callAdmission, cueDelivered, standsBy, cutOffReply, failedOpen, isTurnStep, maxPlanSteps, nextMove, offered, openOutcomes, plannerOnlyCoaching, plansOn, resendWait, toolActivity,
   admitsPlannerWork, contextRestoreOf, maxRestoredHistoryBytes, offersContextRestore, terminalAnswerOf, toolDispatch, turnNarrowed, unavailableNotice, type CallFailure, type PlanStep, type StepOutcome, type ToolSettlement,
 } from "../../gen/agent__conversation__planning.ts"
 import { ModelRefusal } from "../models/chat.vibe"
@@ -19,8 +19,8 @@ type ChatMessage = NonNullable<GenerateTextParams["messages"]>[number]
 
 const toolNamePattern = /^[A-Za-z0-9_-]{1,64}$/
 const toolMessageLimit = 4_000
-const workOrSayNot = "Note from the agent host, not the person: your last response called no tool and gave the person no answer, so none of it was sent. Do the work now by calling an offered tool, or, if no offered tool can do it, tell the person plainly, in your own words, that you can't."
-const sayNot = "Note from the agent host, not the person: your last response gave the person no answer, so none of it was sent. No tool can be called now, so nothing you write can do the work. Tell the person plainly, in your own words, that you can't do it."
+const answerWorkOrSayNot = "Note from the agent host, not the person: your last response called no tool and gave the person no answer, so none of it was sent. If the person's latest message is a question you can answer from what you already know, answer it now, in your own words. Otherwise do the work now by calling an offered tool, or, if no offered tool can do it, tell the person plainly, in your own words, that you can't."
+const answerOrSayNot = "Note from the agent host, not the person: your last response gave the person no answer, so none of it was sent. No tool can be called now, so nothing can be done, opened, sent or looked up in this turn. If the person's latest message is a question you can answer from what you already know, answer it now, in your own words. Otherwise tell the person plainly, in your own words, that you can't do it, and write no tool call as text."
 const answerFromWork = "Note from the agent host, not the person: your last response gave the person no answer, so none of it was sent. The tool results above are what this turn did. Answer the person's latest message now from them, in your own words."
 const answerAgain = "Note from the agent host, not the person: your reply is not final yet. Write your whole reply to the person's latest message again, in your own words, so that it is true to what follows. Call no tools."
 const deliveredCueNote = (cue: string) =>
@@ -437,7 +437,8 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
   let terminalCorrectionSent = false
   let restoredHistory = false
   let restoreCorrectionSent = false
-  let askedAgain = false
+  let askedBeforeWork = false
+  let askedAfterWork = false
   const seen = new Set<string>()
   const settlements = new Map<string, ToolSettlement>()
   const execute = async (call: ToolCall): Promise<ActionResult> => {
@@ -575,16 +576,18 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
     }
     if (plansOn(cutOff, taken, work.length, false)) continue plan
     if (work.length > 0) break plan
-    switch (nextMove(draft, 0, maxPlanSteps - taken, askedAgain)) {
+    switch (nextMove(draft, 0, maxPlanSteps - taken, askedAgainAt(steps.length > 0, askedBeforeWork, askedAfterWork))) {
       case "Deliver":
         prose = answered.text
         break plan
-      case "AskAgain":
-        askedAgain = true
-        conversation.push({ role: "assistant", content: answered.text })
+      case "AskAgain": {
         const toolsNext = taken < maxPlanSteps - 1 && tools.some(({ name }) => name !== restoreContext.name)
-        conversation.push({ role: "user", content: steps.length > 0 ? answerFromWork : toolsNext ? workOrSayNot : sayNot })
+        if (steps.length > 0) askedAfterWork = true
+        else askedBeforeWork = true
+        conversation.push({ role: "assistant", content: answered.text })
+        conversation.push({ role: "user", content: steps.length > 0 ? answerFromWork : toolsNext ? answerWorkOrSayNot : answerOrSayNot })
         continue plan
+      }
       case "GiveUp":
       case "RunTools":
         if (displayed) input.onReplyRestart?.("")
