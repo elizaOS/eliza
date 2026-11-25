@@ -867,7 +867,8 @@ The host's notes are for the model only, and the owner never sees them. A
 response whose text holds the host's label, `Note from the agent host`, or
 the opening line of a note this message carried to the model (the host's
 own lead, such as the line that introduces the screen context, or the
-clock's line) is the host's words, never an answer, whether the model
+clock's line, with or without its closing colon or period) is the host's
+words, never an answer, whether the model
 echoes a note, quotes part of one or writes one of its own under the
 label: it reads as a blank. With no tool call it is asked again once
 (above), and when the response after that note holds it again, the turn's
