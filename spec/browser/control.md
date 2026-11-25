@@ -296,6 +296,49 @@ pure def lawOnlyARefusedOpenSpeaksOfAnAddress(refusal: BrowserRefusal, addressIn
   (refusalReply(refusal, addressInWords) == AskForAddress or refusalReply(refusal, addressInWords) == SayAddressNotOpened) implies refusal == DestinationNotRequested
 ```
 
+## Story: Open an address on the screen I asked from
+
+> As the owner, I want to ask for a web address from a screen that has no
+> enrolled phone behind it, such as Alpha in a web browser, and see it open
+> in that screen's Browser, under the same rules as on my phone.
+
+### An open has one home: the Browser proposal where my enrolled phone takes it, else the screen I asked from
+
+Where the owner's enrolled phone admits a Browser open, an address is
+opened only as the `browser_navigate` proposal. On a turn with no such phone,
+whose screen takes the agent's views as completed actions, the BROWSER_OPEN
+action is offered instead, for that screen alone. Otherwise no open is
+offered, and the BROWSER command's history moves are unchanged.
+
+```quint
+type OpenHome = OpenAsProposal | OpenOnScreen | NoOpen
+pure def openHome(phoneAdmitsOpen: bool, screenTakesViews: bool): OpenHome =
+  if (phoneAdmitsOpen) OpenAsProposal else if (screenTakesViews) OpenOnScreen else NoOpen
+pure def lawAnOpenMyPhoneTakesIsAProposal(phoneAdmitsOpen: bool, screenTakesViews: bool): bool =
+  phoneAdmitsOpen implies openHome(phoneAdmitsOpen, screenTakesViews) == OpenAsProposal
+pure def lawAScreenOpenNeedsTheScreenAndNoPhone(phoneAdmitsOpen: bool, screenTakesViews: bool): bool =
+  openHome(phoneAdmitsOpen, screenTakesViews) == OpenOnScreen implies (screenTakesViews and not(phoneAdmitsOpen))
+```
+
+### The screen opens at once only an address my whole message asked for, and shows any other for my review first
+
+BROWSER_OPEN grounds the address exactly as the `browser_navigate` proposal
+does ([request grounding](./requestGrounding.md)): the same https address,
+the same page links, the same refusals, answered as a refused proposal is,
+with nothing handed back. A grounded open is handed back in the action's
+completed result as the typed `browser_navigate` operation, bound to the
+screen that asked, and marked to open at once only when it would be bound to
+the owner's message as a proposal; every other open waits for the owner's
+review on that screen. The model learns that the screen opens the address or
+shows it for review, and never that the page loaded or what it shows.
+
+```quint
+type ScreenOpen = OpenAtOnce | OpenAfterReview
+pure def screenOpen(bound: bool): ScreenOpen = if (bound) OpenAtOnce else OpenAfterReview
+pure def lawOnlyABoundOpenSkipsReview(bound: bool): bool = screenOpen(bound) == OpenAtOnce implies bound
+pure def lawAnUnboundOpenIsReviewed(bound: bool): bool = not(bound) implies screenOpen(bound) == OpenAfterReview
+```
+
 ## Story: Tell me you cannot read my page, and never reload it unasked
 
 > As the owner, I want the agent to tell me when it cannot read the page I
