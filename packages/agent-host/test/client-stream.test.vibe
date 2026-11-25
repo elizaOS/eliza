@@ -334,7 +334,7 @@ it.live(`Hear that the agent heard me once while work is pending, and see which 
   const politeAsk = try turn("Can you text Sam")
   try Effect.sync(() => cloud.script(text("Hello.")))
   const answer = try turn("Hi")
-  try Effect.sync(() => cloud.script(text("Sure.")))
+  try Effect.sync(() => cloud.script(text("Sure."), text("Sure.")))
   const assentWithoutWork = try turn("Remember that I like tea")
   try Effect.sync(() => cloud.script(text("Sure, one sec."), text("I can't send texts from here.")))
   const promiseWithoutWork = try turn("Text Sam that I'm late")
@@ -399,7 +399,7 @@ it.live(`Hear that the agent heard me once while work is pending, and see which 
       acknowledgedBeforeTools: true, cueLeftTheText: true, sameWhenSplit: true,
     },
     answer: { done: done("Hello."), asked: 1, acknowledgments: [], tools: [], acknowledgedBeforeTools: true, cueLeftTheText: true, sameWhenSplit: true },
-    assentWithoutWork: { done: done("Sure."), asked: 1, acknowledgments: [], tools: [], acknowledgedBeforeTools: true, cueLeftTheText: true, sameWhenSplit: true },
+    assentWithoutWork: { done: done("Sure."), asked: 2, acknowledgments: [], tools: [], acknowledgedBeforeTools: true, cueLeftTheText: true, sameWhenSplit: true },
     promiseWithoutWork: { done: done("I can't send texts from here."), asked: 2, acknowledgments: [], tools: [], acknowledgedBeforeTools: true, cueLeftTheText: true, sameWhenSplit: true },
     workAfterPromise: {
       done: done("Nothing booked."), asked: 3, acknowledgments: ["acknowledgment:Sure, one sec."], tools: ["tool:AGENDA_READ:Using Agenda"],

@@ -57,32 +57,43 @@ function inGrammar(words: string, assent: string | undefined): boolean {
 }
 
 const callKeys = new Set(["action", "tool", "type", "name"])
+const argumentKeys = new Set(["arguments", "args", "parameters", "params", "input"])
 const bracketName = /^\[([a-z][a-z0-9_]*)/u
 
 export function actionNameKey(name: string): string {
   return name.toUpperCase().replace(/[^A-Z0-9]/gu, "")
 }
 
-function namedIn(body: string): readonly (readonly [string, string])[] {
+interface Named {
+  readonly names: readonly (readonly [string, string])[]
+  readonly withArguments: boolean
+}
+
+function namedIn(body: string): Named {
   const bracket = bracketName.exec(body)?.[1]
-  if (bracket !== undefined) return [["tool", bracket]]
+  if (bracket !== undefined) return { names: [["tool", bracket]], withArguments: true }
   try {
     const parsed: unknown = JSON.parse(body)
-    return typeof parsed === "object" && parsed !== null
-      ? Object.entries(parsed).flatMap(([key, value]) => callKeys.has(key) && typeof value === "string" ? [[key, value] as const] : [])
-      : []
+    if (typeof parsed !== "object" || parsed === null) return { names: [], withArguments: false }
+    const fields = Object.entries(parsed)
+    return {
+      names: fields.flatMap(([key, value]) => callKeys.has(key) && typeof value === "string" ? [[key, value] as const] : []),
+      withArguments: fields.some(([key, value]) => argumentKeys.has(key) && value !== null && (typeof value === "string" || typeof value === "object")),
+    }
   } catch {
-    return []
+    return { names: [], withArguments: false }
   }
 }
 
-function namesOffered(body: string, offered: ReadonlySet<string>): boolean {
-  return namedIn(body).some(([, value]) => offered.has(actionNameKey(value)))
+function callsOffered(body: string, offered: ReadonlySet<string>): boolean {
+  const { names, withArguments } = namedIn(body)
+  return names.some(([key, value]) => offered.has(actionNameKey(value)) && (key === "action" || key === "tool" || withArguments))
 }
 
 function looksLikeCall(body: string, offered: ReadonlySet<string>): boolean {
-  return looksLikeActionEnvelopeJson(body)
-    || namedIn(body).some(([key, value]) => offered.has(actionNameKey(value)) || ((key === "action" || key === "tool") && callName.test(value)))
+  const { names, withArguments } = namedIn(body)
+  return looksLikeActionEnvelopeJson(body) || callsOffered(body, offered)
+    || names.some(([key, value]) => callName.test(value) && (key === "action" || key === "tool" || withArguments))
 }
 
 interface Objects {
@@ -119,8 +130,9 @@ function objectsOut(said: string, strip: (body: string, before: string) => boole
     found.push(body)
     if (!strip(body, text.slice(0, start))) continue
     changed = true
-    rest += `${text.slice(kept, start)} `
+    rest += `${text.slice(kept, start).replace(/[ \t]+$/u, "")} `
     kept = index + 1
+    while (text[kept] === " " || text[kept] === "\t") kept += 1
   }
   return { text: changed ? `${rest}${text.slice(kept)}`.replace(emptyWrapper, " ").trim() : said, found }
 }
@@ -136,7 +148,7 @@ function afterCue(before: string): boolean {
 }
 
 export function withoutOfferedCalls(said: string, offered: ReadonlySet<string>): string {
-  return objectsOut(said, (body, before) => namesOffered(body, offered) || afterCue(before)).text
+  return objectsOut(said, (body, before) => callsOffered(body, offered) || afterCue(before)).text
 }
 
 function shapeOf(reply: string, offered: ReadonlySet<string>): DraftShape {
@@ -152,11 +164,11 @@ function shapeOf(reply: string, offered: ReadonlySet<string>): DraftShape {
   if (assent === undefined || !inGrammar(words, assent)) return "OtherText"
   if (words !== assent) return "AssentCue"
   if (found.length === 0) return "Assent"
-  return found.some((body) => namesOffered(body, offered)) ? "AssentCue" : "AssentObject"
+  return found.some((body) => looksLikeCall(body, offered)) ? "AssentCue" : "AssentObject"
 }
 
-export function draftOf(text: string, instruction: boolean, calls: number, offered: ReadonlySet<string>): Draft {
-  return readDraft(shapeOf(text, offered), instruction, calls)
+export function draftOf(text: string, instruction: boolean, calls: number, offered: ReadonlySet<string>, toolsOffered: boolean): Draft {
+  return readDraft(shapeOf(text, offered), instruction, calls, toolsOffered)
 }
 
 const requestFiller = new Set(["hey", "hi", "hello", "ok", "okay", "alright", "so", "please", "oh", "um", "uh", "well", "yo", "and", "also", "but", "then", "now", "actually"])

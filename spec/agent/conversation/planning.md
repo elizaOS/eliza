@@ -659,24 +659,28 @@ since an object beside a cue is a tool call written as text, which runs
 nothing. So a cue beside any object (`Sure, one sec. {"type":
 "send_message"}`) is still a cue, delivered without it, and so is a cue
 beside a bracketed snake_case name with `key=value` arguments
-(`[send_message contact="Sam"]`). Bare assent beside any object or
-bracketed call (`Sure. {"type": "send_message", "recipient": "Sam"}`) may
-promise work: beside one that names a tool offered this turn it promises
-work as `Sure, one sec.` does (below), and beside any other it is a draft
-that may be an answer (below). Text that is only objects
-or bracketed calls is a blank when one of them looks like a call: core
-reads it as an action envelope, its `action` or `tool` field is a
-snake_case call name (`{"action": "open_app", "app": "Maps"}`), or its
-`action`, `tool`, `type` or `name` field names a tool offered this turn,
-ignoring case and underscores; otherwise (`{"status": "in_progress"}`,
-`{"theme": "dark_mode"}`, `{"type": "line_chart"}`) it is an `Answer`. An
-answer is delivered without the objects and bracketed calls that name a
-tool offered this turn or come straight after a cue
-(`Let me check.{"tool": "search", …}The speed of light is …`), and keeps
-every other object, so a typed call beside a real answer never reaches the
-person, while an example the person asked for
-(`{"name": "get_weather", "arguments": {…}}`), a record (`{"name":
-"GitHub", "url": …}`) or a command (`{"action": "turn_on", …}`) stays.
+(`[send_message contact="Sam"]`). An object calls an offered tool when its
+`action` or `tool` field names a tool offered in this turn's request, or its
+`name` or `type` field does beside an `arguments`, `args`, `parameters`,
+`params` or `input` field (names compare ignoring case and underscores). It
+looks like a call when it calls an offered tool, when core reads it as an
+action envelope, when its `action` or `tool` field is a snake_case call name
+(`{"action": "open_app", "app": "Maps"}`), or when its `name` or `type`
+field is one beside an arguments field (`{"type": "send_message", "args":
+{…}}`, `{"name": "send_message", "arguments": {…}}`). Bare assent beside an
+object or bracketed call that looks like a call promises work as `Sure, one
+sec.` does (below), and beside any other object (`Sure. {"type":
+"send_message", "recipient": "Sam"}`, `Sure! {"name": "Bob"}`) it is a
+draft that may be an answer (below). Text that is only objects or bracketed
+calls is a blank when one of them looks like a call; otherwise
+(`{"status": "in_progress"}`, `{"theme": "dark_mode"}`, `{"type":
+"line_chart"}`) it is an `Answer`. An answer is delivered without the
+objects and bracketed calls that call an offered tool or come straight after
+a cue (`Let me check.{"tool": "search", …}The speed of light is …`), and
+keeps every other object, so a typed call beside a real answer never reaches
+the person, while an example the person asked for (`{"name": "get_weather",
+"arguments": {…}}`), a record (`{"name": "GitHub", "url": …}`, even when a
+GitHub tool is offered) or a command (`{"action": "turn_on", …}`) stays.
 A wait cue followed by more text that is not progress (`One second is
 1,000 milliseconds.`, `Just a second, your dentist is Thursday.`) is an
 `Answer`. A cue that comes with the turn's first tool calls is the turn's
@@ -695,7 +699,11 @@ tool or, if no offered tool can do it, tells the person plainly, in its own
 words, that it can't; when no tool can be called on the next step, it says
 that nothing can be done, opened, sent or looked up in the turn, that the
 model answers such a question now in its own words, and that otherwise it
-tells the person plainly that it can't and writes no tool call as text. After a step was recorded, it says
+tells the person plainly that it can't and writes no tool call as text.
+For a draft that may be an answer (below) before the turn recorded a step,
+when a tool can be called next, the note instead says that if the model
+meant to act on the latest message it calls the tool now, and otherwise it
+gives its answer in its own words. After a step was recorded, it says
 the tool results are what the turn did and that the model answers from
 them, in its own words. A turn asks this at most once before it records a
 step and at most once after, so a turn that recovered from a promise by
@@ -744,9 +752,16 @@ and a wake name, it opens with a command verb (`text`, `set`, `call`, `remind`, 
 question mark, and no sentence or comma clause opens with a question word
 or an auxiliary (`am`, `is`, `can`, `what`, …). `Can you text Sam`, `Am I
 free Friday` and `Any meetings today` are not instructions, so a bare
-`Sure.` after them is an answer. With no tool call, assent is the answer
-after any message: `Sure.` to `Call me Bob` or `Remember that I like tea`
-is delivered, never asked again. Assent followed by a comma, dash, colon,
+`Sure.` after them is an answer. With no tool call, in a turn that offers
+no tool the model can call, assent is the answer after any message: `Sure.`
+to `Call me Bob` or `Remember that I like tea` is delivered, never asked
+again. In a turn that offers tools, bare assent with no tool call and
+nothing else may be an answer or an action the model meant to take (`Sure.`
+to `Text Sam I'm late`), so it is a draft that may be an answer: the model
+is asked once more with a note that if it meant to act it calls the tool
+now, and otherwise gives its answer, and its second reply is delivered as
+it is (a cue or blank again ends as above). `Call me Bob` costs one more
+model call and is still answered. Assent followed by a comma, dash, colon,
 semicolon or sentence break and one or two sentences of the grammar
 (`Sure, one sec.`, `Yeah. Let me check your calendar.`) also promises work:
 with tool calls it is a cue only after an instruction, as bare assent is,
@@ -763,23 +778,26 @@ only the reply.
 
 ```quint
 type DraftShape = Blank | GrammarCue | Assent | AssentCue | AssentObject | OtherText
-pure def readDraft(shape: DraftShape, instruction: bool, calls: int): Draft = match shape {
-  | Blank => Silent | GrammarCue => Cue | Assent => if (instruction and calls > 0) Cue else Answer
+pure def readDraft(shape: DraftShape, instruction: bool, calls: int, toolsOffered: bool): Draft = match shape {
+  | Blank => Silent | GrammarCue => Cue
+  | Assent => if (calls > 0) (if (instruction) Cue else Answer) else if (toolsOffered) MaybeAnswer else Answer
   | AssentCue => if (instruction or calls == 0) Cue else Answer
   | AssentObject => if (calls == 0) MaybeAnswer else if (instruction) Cue else Answer | OtherText => Answer
 }
-pure def lawAssentBesideAnUnofferedObjectMayBeTheAnswer(instruction: bool): bool = readDraft(AssentObject, instruction, 0) == MaybeAnswer
-pure def lawBareAssentIsACueOnlyWithWorkAfterAnInstruction(instruction: bool, calls: int): bool =
-  (readDraft(Assent, instruction, calls) == Cue) iff (instruction and calls > 0)
-pure def lawBareAssentWithoutWorkIsDelivered(instruction: bool, stepsLeft: int, askedAgain: bool): bool =
-  nextMove(readDraft(Assent, instruction, 0), 0, stepsLeft, askedAgain) == Deliver
-pure def lawAssentBeforeACueIsACueWithWorkOnlyAfterAnInstruction(instruction: bool, calls: int): bool =
-  calls > 0 implies ((readDraft(AssentCue, instruction, calls) == Cue) iff instruction)
-pure def lawAssentBeforeACueWithoutWorkIsNeverDelivered(instruction: bool, stepsLeft: int, askedAgain: bool): bool =
-  nextMove(readDraft(AssentCue, instruction, 0), 0, stepsLeft, askedAgain) != Deliver
-pure def lawTheGrammarIsACueAfterAnyMessage(instruction: bool, calls: int): bool = readDraft(GrammarCue, instruction, calls) == Cue
-pure def lawNoCueOrADestinationConfirmationNeverAcknowledges(instruction: bool, calls: int, earlierCalls: int): bool =
-  not(acknowledges(readDraft(Blank, instruction, calls), calls, earlierCalls)) and not(acknowledges(readDraft(OtherText, instruction, calls), calls, earlierCalls))
+pure def lawAssentBesideAnUnofferedObjectMayBeTheAnswer(instruction: bool, toolsOffered: bool): bool = readDraft(AssentObject, instruction, 0, toolsOffered) == MaybeAnswer
+pure def lawBareAssentIsACueOnlyWithWorkAfterAnInstruction(instruction: bool, calls: int, toolsOffered: bool): bool =
+  (readDraft(Assent, instruction, calls, toolsOffered) == Cue) iff (instruction and calls > 0)
+pure def lawBareAssentWithoutToolsIsDelivered(instruction: bool, stepsLeft: int, askedAgain: bool): bool =
+  nextMove(readDraft(Assent, instruction, 0, false), 0, stepsLeft, askedAgain) == Deliver
+pure def lawBareAssentBesideOfferedToolsIsAskedOnceThenDelivered(instruction: bool): bool =
+  readDraft(Assent, instruction, 0, true) == MaybeAnswer
+pure def lawAssentBeforeACueIsACueWithWorkOnlyAfterAnInstruction(instruction: bool, calls: int, toolsOffered: bool): bool =
+  calls > 0 implies ((readDraft(AssentCue, instruction, calls, toolsOffered) == Cue) iff instruction)
+pure def lawAssentBeforeACueWithoutWorkIsNeverDelivered(instruction: bool, stepsLeft: int, askedAgain: bool, toolsOffered: bool): bool =
+  nextMove(readDraft(AssentCue, instruction, 0, toolsOffered), 0, stepsLeft, askedAgain) != Deliver
+pure def lawTheGrammarIsACueAfterAnyMessage(instruction: bool, calls: int, toolsOffered: bool): bool = readDraft(GrammarCue, instruction, calls, toolsOffered) == Cue
+pure def lawNoCueOrADestinationConfirmationNeverAcknowledges(instruction: bool, calls: int, earlierCalls: int, toolsOffered: bool): bool =
+  not(acknowledges(readDraft(Blank, instruction, calls, toolsOffered), calls, earlierCalls)) and not(acknowledges(readDraft(OtherText, instruction, calls, toolsOffered), calls, earlierCalls))
 pure def lawATurnAcknowledgesAtMostOnce(draft: Draft, calls: int, earlierCalls: int, laterDraft: Draft, laterCalls: int): bool =
   acknowledges(draft, calls, earlierCalls) implies not(acknowledges(laterDraft, laterCalls, earlierCalls + calls))
 ```

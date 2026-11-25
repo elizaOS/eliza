@@ -177,6 +177,16 @@ module node {
     },
   }
 
+  const quietTool = (name: string): Action => ({
+    name, description: `Fixture ${name.toLowerCase()} tool that is offered and never called.`, similes: [], parameters: [],
+    validate: async () => true, handler: async () => ({ success: true, text: "" }),
+  })
+
+  export const namedTools: AgentPlugin = {
+    name: "named-tools", description: "Fixture tools named like the GitHub, Browser, Wallet, Workflow, Vision and web search plugins",
+    actions: ["GITHUB", "BROWSER", "WALLET", "WORKFLOW", "VISION", "WEB_SEARCH"].map(quietTool),
+  }
+
   export const fixtureApp: AgentPlugin = {
     name: "fixture-app", description: "Fixture writes with receipts on texts and calendar events, and verified results to show",
     actions: [
@@ -312,7 +322,7 @@ module node {
     return text
   }
 }
-import { calendarProbe, completions, cutTurn, modelLogRooms, failParticipantLookupOnce, handedDirectly, privateAgenda, privateReadCount, privateReader, failNext, fixtureApp, lastTurnHistory, lastTurnPrompt, localDay, loseRoomOwnershipOnceAfterReply, movedDentist, nearestCafes, overlapping, plainLog, refuseMoves, roomMessages, seedHistory, storeNotice, unsaidMove, watchRunEnds } from node
+import { namedTools, calendarProbe, completions, cutTurn, modelLogRooms, failParticipantLookupOnce, handedDirectly, privateAgenda, privateReadCount, privateReader, failNext, fixtureApp, lastTurnHistory, lastTurnPrompt, localDay, loseRoomOwnershipOnceAfterReply, movedDentist, nearestCafes, overlapping, plainLog, refuseMoves, roomMessages, seedHistory, storeNotice, unsaidMove, watchRunEnds } from node
 
 effect function runEndsOf(ends: readonly { messageId?: string, status: string }[], messageId: string | undefined) {
   for (let wait = 0; wait < 100 && !ends.some((end) => end.messageId === messageId); wait += 1) try Effect.sleep("20 millis")
@@ -701,6 +711,7 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
   const { answer: otherLater, calls: otherLaterCalls } = try callsFor({ text: "Calculate 8 plus 9 and 12 times 3." })
   const otherLaterNote = lastTurnPrompt(cloud)
 
+  const actOrAnswer = "Note from the agent host, not the person: your last response called no tool and none of it was sent yet. If you meant to act on the person's latest message, call the tool now. Otherwise give your answer to it, in your own words."
   try Effect.sync(() => cloud.script(text("One sec."), text("One second is 1,000 milliseconds.")))
   const duration = replyOf(try send(agent, id, { text: "How long is a second?" }))
   const durationNote = reasked().note
@@ -718,7 +729,8 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
     'Sure. {"action": "SEND_TEXT", "parameters": {"to": "Sam"}}', '{"action": "SEND_TEXT", "parameters": {"to": "Sam"}}',
     'Sure. [send_message contact="Sam" message="I am running late"]', '[send_message contact="Sam" message="I am running late"]',
     '{"action": "open_app", "app": "Maps", "params": {"query": "coffee shops near me"}}', '{"action": "open_app", "app_name": "Maps"}', '{"tool": "open_app", "action": "Maps"}',
-    '{"name": "calculate", "arguments": {"expression": "2 + 2"}}', '{"type": "Calculate"}', 'Sure. {"action": "calculate", "input": "2 + 2"}',
+    '{"name": "calculate", "arguments": {"expression": "2 + 2"}}', 'Sure. {"action": "calculate", "input": "2 + 2"}',
+    '{"type": "send_message", "args": {"to": "Sam"}}', '{"name": "send_message", "arguments": {"to": "Sam"}}',
   ]) {
     try Effect.sync(() => cloud.script(text(said), text("I can't do that from here.")))
     const { answer, calls } = try callsFor({ text: "Text Sam that I am running late." })
@@ -730,9 +742,21 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
     const { answer, calls } = try callsFor({ text: "Text Sam that I am running late." })
     maybeAnswers.push([answer.text, calls])
   }
+  const bareAssent: (readonly [string, number, string])[] = []
+  for (const [request, script] of [
+    ["Work out 2 plus 2.", () => cloud.script(text("Sure."), toolCalls("", { name: "CALCULATE", arguments: { expression: "2 + 2" } }), text("It is 4."))],
+    ["Call me Bob.", () => cloud.script(text("Sure."), text("Sure, Bob."))],
+    ["Remember that I like tea.", () => cloud.script(text("Sure."), text("Sure."))],
+  ] as const) {
+    try Effect.sync(script)
+    const before = completionsSent().length
+    const { answer, calls } = try callsFor({ text: request })
+    const note = completionsSent()[before + 1]?.messages.at(-1)?.content
+    bareAssent.push([answer.text, calls, typeof note === "string" ? note : ""])
+  }
   const jsonOnly: (readonly [string, number])[] = []
   for (const said of [
-    '{"status": "in_progress"}', '{"theme": "dark_mode"}', '{"type": "person", "name": "Bob"}', '{"type": "line_chart", "data": [1, 2]}',
+    '{"status": "in_progress"}', '{"theme": "dark_mode"}', '{"type": "person", "name": "Bob"}', '{"type": "line_chart", "data": [1, 2]}', '{"type": "Calculate"}',
     'A tool call in that format looks like {"name": "get_weather", "arguments": {"city": "Paris"}} and the host runs it and returns the forecast to the model.',
     'GitHub hosts code and its link record is {"name": "GitHub", "url": "https://github.com"} in that list.',
     'Most smart-home hubs take a command such as {"action": "turn_on", "device": "lamp"} and switch the lamp on.',
@@ -774,6 +798,7 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
     workedAfter: [workedAfter.text, workedAfterCalls, workedAfter.actionResults.map(({ action }) => action)],
     promisedTwice: [promisedTwice.text, promisedTwice.failureKind, promisedTwiceCalls],
     writtenCalls,
+    bareAssent,
     maybeAnswers,
     jsonOnly,
     callInAnswer: [callInAnswer.text, callInAnswerCalls],
@@ -807,10 +832,11 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
     ],
     workedAfter: ["It is 42.", 3, ["CALCULATE"]],
     promisedTwice: ["", "provider_issue", 2],
-    writtenCalls: Array.from({ length: 16 }, () => ["I can't do that from here.", 2]),
+    writtenCalls: Array.from({ length: 17 }, () => ["I can't do that from here.", 2]),
+    bareAssent: [["It is 4.", 3, actOrAnswer], ["Sure, Bob.", 2, actOrAnswer], ["Sure.", 2, actOrAnswer]],
     maybeAnswers: [["I can't text from here.", 2], ['Sure! {"name": "Bob"}', 2]],
     jsonOnly: [
-      '{"status": "in_progress"}', '{"theme": "dark_mode"}', '{"type": "person", "name": "Bob"}', '{"type": "line_chart", "data": [1, 2]}',
+      '{"status": "in_progress"}', '{"theme": "dark_mode"}', '{"type": "person", "name": "Bob"}', '{"type": "line_chart", "data": [1, 2]}', '{"type": "Calculate"}',
       'A tool call in that format looks like {"name": "get_weather", "arguments": {"city": "Paris"}} and the host runs it and returns the forecast to the model.',
       'GitHub hosts code and its link record is {"name": "GitHub", "url": "https://github.com"} in that list.',
       'Most smart-home hubs take a command such as {"action": "turn_on", "device": "lamp"} and switch the lamp on.',
@@ -880,6 +906,39 @@ it.live(`A tool call the model wrote as text is read as the call on Qwen, and is
   const madeCall = (qwen.cloud.calls.filter(({ path }) => path.endsWith("/chat/completions"))[1]?.body as { messages: { role: string; content?: unknown; tool_calls?: { function: { name: string; arguments: string } }[] }[] } | undefined)
     ?.messages.find(({ role, tool_calls }) => role === "assistant" && tool_calls !== undefined)
   try Effect.try(() => assert.deepStrictEqual([madeCall?.content, madeCall?.tool_calls?.map(({ function: called }) => [called.name, JSON.parse(called.arguments)])], [null, [["CALCULATE", { expression: "2 + 2" }]]]))
+}, 120_000)
+
+it.live(`An answer keeps JSON that only shares a name with an offered tool and loses a typed call to one (${planning}, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole")`, effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const agent = try startInProcess({
+    launch: {
+      backend: { kind: "cloud", origin: cloud.origin }, callerRole: "owner",
+      load: [namedTools.name], allowed: ["REPLY", "IGNORE", "NONE", "GITHUB", "BROWSER", "WALLET", "WORKFLOW", "VISION", "WEB_SEARCH"],
+    },
+    frame: { credential: { version: 1, value: deviceKey } }, modules: builtinModuleFactories, bundled: new Map([[namedTools.name, namedTools]]),
+  })
+  const { id } = try conversation(agent)
+  const kept = [
+    'GitHub hosts code, and its entry in your list is {"name": "GitHub", "url": "https://github.com"} for reference.',
+    'Your bookmark reads {"name": "Browser", "homepage": "https://example.com"} in the export you shared.',
+    'The wallet summary is {"type": "wallet", "balance": 12} as of this morning.',
+    'That automation is saved as {"name": "Workflow", "steps": ["fetch", "post"]} in the file.',
+    'The image settings are {"type": "vision", "model": "small"} in your config.',
+    'The search history entry is {"name": "web_search", "results": 3} from yesterday.',
+    '{"name": "GitHub", "url": "https://github.com"}',
+  ]
+  const delivered: (readonly [string, number])[] = []
+  for (const said of [...kept, 'Here is what I found. {"tool": "web_search", "input": "tide times"} High tide is at 6:40 this evening.']) {
+    try Effect.sync(() => cloud.script(text(said)))
+    const before = completions(cloud)
+    const answered = replyOf(try send(agent, id, { text: "Tell me about that." }))
+    delivered.push([answered.text, completions(cloud) - before])
+  }
+  const offered = (cloud.calls.filter(({ path }) => path.endsWith("/chat/completions")).at(-1)?.body as { tools?: { function?: { name?: string } }[] } | undefined)?.tools?.map((tool) => tool.function?.name) ?? []
+  try Effect.try(() => assert.deepStrictEqual({ offered: ["GITHUB", "BROWSER", "WALLET", "WORKFLOW", "VISION", "WEB_SEARCH"].every((name) => offered.includes(name)), delivered }, {
+    offered: true,
+    delivered: [...kept.map((said) => [said, 1] as const), ["Here is what I found. High tide is at 6:40 this evening.", 1]],
+  }))
 }, 120_000)
 
 it.live(`A failure on one recipient or event stays reported beside a success on another, in either order, the model is asked once to report it, its own words follow only a reply the model did not answer again, and a retry of the same operation that succeeds closes it (${planning}, "A failure or proposal the turn made stays reported unless a later success of the same operation supersedes it"; ${planning}, "A reply that leaves a failure unreported is written again once, and the delivered reply still reports open failures and attachment omissions"; ${planning}, "A failure with no receipt that a later run of its action may have answered is the model's to report, and its own words follow the reply unless the model stands by a reply without them"; ${planning}, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole")`, effect () => {
