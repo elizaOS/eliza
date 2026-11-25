@@ -5,7 +5,7 @@ import type { DeviceOperationType } from "@elizaos/agent"
 import type { DeviceProposalFamily, DeviceTurn, NegotiatedDevice, ProposalForm } from "./family.vibe"
 
 export {
-  directRequests, unoffered, untrustedReturnGuidance,
+  directRequests, showsReviewCards, unoffered, untrustedReturnGuidance,
   type DeviceProposalFamily, type DeviceTurn, type EarlierRequest, type FamilyName, type Grounding, type NegotiatedDevice, type PendingRequest,
   type ProposalForm, type ProposalGrounding, type ProposalText, type ReadContinuation, type SwappedValue,
 } from "./family.vibe"

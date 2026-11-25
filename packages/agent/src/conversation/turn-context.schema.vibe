@@ -82,7 +82,7 @@ export const VoiceUiContext = Schema.Struct({
   uiBrowserSurface: Schema.optionalKey(Schema.Literal("native")),
   viewDelivery: Schema.optionalKey(Schema.Literal("completed-action")),
   uiClientId: Schema.optionalKey(Schema.String),
-  agentActionMode: Schema.optionalKey(Schema.Literals(["direct-request-v1", "direct-files-v1"])),
+  agentActionMode: Schema.optionalKey(Schema.Literals(["direct-request-v1", "direct-files-v1", "direct-files-only-v1"])),
   uiNotesEditor: Schema.optionalKey(Schema.Literal("saved-note-v1")),
 })
 
@@ -274,7 +274,7 @@ function decideVoiceUi(input: unknown, clientId: string | undefined): Decided<Vo
     surface: stated(uiBrowserSurface, "native", "NoSurface", "NativeSurface", "OtherSurface"),
     delivery: stated(viewDelivery, "completed-action", "NoDelivery", "CompletedAction", "OtherDelivery"),
     routingId: uiClientId === undefined ? "NoRouting" : routing !== undefined && (clientId === undefined || routing === clientId) ? "Routing" : "MalformedRouting",
-    actionMode: agentActionMode === "direct-files-v1" ? "DirectFilesRequest" : stated(agentActionMode, "direct-request-v1", "NoActionMode", "DirectRequest", "OtherActionMode"),
+    actionMode: agentActionMode === "direct-files-v1" ? "DirectFilesRequest" : agentActionMode === "direct-files-only-v1" ? "DirectFilesOnlyRequest" : stated(agentActionMode, "direct-request-v1", "NoActionMode", "DirectRequest", "OtherActionMode"),
     noteEditor: stated(uiNotesEditor, "saved-note-v1", "NoNoteEditor", "SavedNoteEditor", "OtherNoteEditor"),
   }
   switch (voiceUiOutcome(facts)) {
@@ -285,7 +285,7 @@ function decideVoiceUi(input: unknown, clientId: string | undefined): Decided<Vo
       ...(uiBrowserSurface === "native" ? { uiBrowserSurface } : {}),
       ...(viewDelivery === "completed-action" ? { viewDelivery } : {}),
       ...(routing === undefined ? {} : { uiClientId: routing }),
-      ...(agentActionMode === "direct-request-v1" || agentActionMode === "direct-files-v1" ? { agentActionMode } : {}),
+      ...(agentActionMode === "direct-request-v1" || agentActionMode === "direct-files-v1" || agentActionMode === "direct-files-only-v1" ? { agentActionMode } : {}),
       ...(uiNotesEditor === "saved-note-v1" ? { uiNotesEditor } : {}),
     } }
     case "ContextDropped":
