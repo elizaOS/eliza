@@ -1,9 +1,10 @@
 // spec/agent/host/process.md, "Status says running only when health says ready, and the agent can respond only with a text backend and an unblocked account"; spec/agent/models/binding.md, "Each refusal is one account state, and the last failure records its kind and time without text"; spec/agent/access/auth.md, "A Root-only route admits only a caller holding the launch token"
 import type { Backend } from "../../gen/agent__host__launch.ts"
 import { agentStateOf, mayRespond, type AgentProcess } from "../../gen/agent__host__process.ts"
-import { blocked, failureName, type AccountState, type LastCloudFailure } from "../../gen/agent__models__binding.ts"
+import { blocked, type AccountState, type LastCloudFailure } from "../../gen/agent__models__binding.ts"
 import { messageBodyLimitBytes } from "../../gen/agent__access__transport.ts"
 import type { LocalRoute } from "../access/routes.vibe"
+import { lastFailureOf } from "../models/binding.vibe"
 import type { LaunchDocument } from "./launch.vibe"
 
 export type AgentState = "starting" | "running" | "stopping"
@@ -42,9 +43,8 @@ export function backendOf(model: LaunchDocument["model"]): Backend {
 const backendName = { CloudBackend: "cloud", OwnKeyBackend: "own-key", NoBackend: "none" } as const
 
 function lastFailure(last: LastCloudFailure) {
-  if (last.tag === "NoCloudFailure") return {}
-  const { failure, at } = last
-  return { lastCloudFailure: { kind: failureName(failure), at, ...(failure.tag === "LimitReached" ? { retryAt: failure.retryAt } : {}) } }
+  const view = lastFailureOf(last)
+  return view === undefined ? {} : { lastCloudFailure: view }
 }
 
 export function statusRoutes(view: StatusView): LocalRoute[] {

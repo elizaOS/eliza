@@ -22,9 +22,13 @@ module node {
 }
 import { digest } from node
 
-effect function bound(backend: Backend, key: string) {
+effect function bindingOf(backend: Backend, key: string) {
   const parsed = try parseLaunch(JSON.stringify(launchDocument({ backend })), JSON.stringify(launchFrame({ credential: { version: 1, value: key } })))
-  const binding = try bindModels(parsed.launch, parsed.authority)
+  return try bindModels(parsed.launch, parsed.authority)
+}
+
+effect function bound(backend: Backend, key: string) {
+  const binding = try bindingOf(backend, key)
   const state = try scratch("model-providers")
   const store = try acquireRelease(host("device storage", () => openDeviceStorage({ stateDirectory: state.path, persistMemory: false, account: null, embeddingDimensions: 0 })),
     (opened) => orDie(host("device storage close", () => opened.adapter.close())))
@@ -243,7 +247,7 @@ it.effect('An own-key overload or timeout is a provider issue and is retried, an
   assert.deepStrictEqual([bodies[0]?.temperature, bodies[0]?.stop, "max_tokens" in (bodies[0] ?? {}), "max_completion_tokens" in (bodies[0] ?? {}), bodies[2]?.max_completion_tokens], [0.2, ["\n\n"], false, false, 256])
 })
 
-it.effect('A rate limit on an own key at Cerebras holds the account four seconds and every other route the provider\'s whole time, a limit that names no wait carries none, a parse failure is not retried, a thinking hint reaches only a model that documents it, and only a Qwen call on a Cerebras route sends the conversation cache key (spec/agent/models/binding.md, "A rate limit on an own key at Cerebras holds the account at most four seconds, and every other route keeps the provider\'s retry time"; spec/agent/models/binding.md, "Only a network failure, an outage or a provider issue is retried, and a rate limit ends the call for its turn to re-send once"; spec/agent/models/binding.md, "A Qwen call on a Cerebras route sends the conversation cache key its caller names, and no call invents one"; spec/agent/models/binding.md, "A tool call the provider could not parse, or a streamed answer silent for a minute, ends the call without a retry"; spec/agent/models/binding.md, "A call sends an output cap only when its caller names one, and a thinking hint sets the reasoning effort only on a model that documents it")', effect () => {
+it.effect('A rate limit on an own key at Cerebras holds the account four seconds while its refusals, the provider\'s own and the hold\'s, carry the provider\'s whole wait, every other route holds the provider\'s whole time, a limit that names no wait carries none, a parse failure is not retried, a thinking hint reaches only a model that documents it, and only a Qwen call on a Cerebras route sends the conversation cache key (spec/agent/models/binding.md, "A rate limit on an own key at Cerebras holds the account at most four seconds, and every other route keeps the provider\'s retry time"; spec/agent/models/binding.md, "Only a network failure, an outage or a provider issue is retried, and a rate limit ends the call for its turn to re-send once"; spec/agent/models/binding.md, "A Qwen call on a Cerebras route sends the conversation cache key its caller names, and no call invents one"; spec/agent/models/binding.md, "A tool call the provider could not parse, or a streamed answer silent for a minute, ends the call without a retry"; spec/agent/models/binding.md, "A call sends an output cap only when its caller names one, and a thinking hint sets the reasoning effort only on a model that documents it")', effect () => {
   const cloud = try cloudFake(deviceKey)
   const at = Date.now()
   const routes: [Backend, string][] = [
@@ -253,16 +257,32 @@ it.effect('A rate limit on an own key at Cerebras holds the account four seconds
   ]
   const holds: unknown[] = []
   for (const [backend, key] of routes) {
-    const { binding } = try bound(backend, key)
+    const binding = try bindingOf(backend, key)
     const id = try binding.startCall("TextLarge", at)
     if (typeof id === "number") try binding.refuseCall(id, at, { tag: "CloudRateLimited", retryAt: at + 59_000 })
     holds.push([try binding.startCall("TextLarge", at + 3_999), try binding.startCall("TextLarge", at + 4_000)])
   }
+  const limitOf = (retryAt: number) => ({ limited: { tag: "LimitReached", retryAt, providerRetryAt: at + 59_000 } })
   assert.deepStrictEqual(holds, [
-    [{ limitedUntil: at + 4_000 }, 1],
-    [{ limitedUntil: at + 59_000 }, { limitedUntil: at + 59_000 }],
-    [{ limitedUntil: at + 59_000 }, { limitedUntil: at + 59_000 }],
+    [limitOf(at + 4_000), 1],
+    [limitOf(at + 59_000), limitOf(at + 59_000)],
+    [limitOf(at + 59_000), limitOf(at + 59_000)],
   ])
+
+  const onCerebras = { baseUrl: cloud.ownKeyCerebrasBaseUrl, small: "small", large: "large" }
+  const cerebras = try bound({ kind: "ownKey", baseUrl: onCerebras.baseUrl, smallModel: onCerebras.small, largeModel: onCerebras.large }, cloud.ownKey)
+  registerOwnKeyModels(cerebras.runtime, cerebras.binding, onCerebras)
+  try Effect.sync(() => cloud.script(refusal(429, "rate_limit_exceeded", { retryAfterSeconds: 59 })))
+  const cerebrasSent = completions(cloud)
+  const refusedAt = Date.now()
+  const minute = try refusalOf(cerebras.runtime, { prompt: "Busy." })
+  const heldBack = try refusalOf(cerebras.runtime, { prompt: "Still busy." })
+  const heldAt = Date.now()
+  const heldUntil = (try cerebras.binding.read()).lastCloudFailure?.retryAt ?? 0
+  const providerWindow = (wait: unknown) => typeof wait === "number" && wait > 58_000 - (heldAt - refusedAt) && wait <= 59_000
+  assert.deepStrictEqual(
+    [minute?.status, heldBack?.status, providerWindow(minute?.retryAfterMs), providerWindow(heldBack?.retryAfterMs), completions(cloud) - cerebrasSent, heldUntil >= refusedAt + 4_000 && heldUntil <= heldAt + 4_000],
+    [429, 429, true, true, 1, true])
 
   const unhinted = try cloudAgent(cloud)
   const own = { baseUrl: cloud.ownKeyBaseUrl, small: "qwen-3.8-27b", large: "large" }
@@ -325,15 +345,20 @@ it.effect('A refusal inside a streamed answer is read as the HTTP refusal it nam
   const carriedUnparsed = try refusalRead(cloud, () => [refusal(400, "invalid_request", { carried: unparsedCall })], false)
   const carriedOverload = try refusalRead(cloud, () => [refusal(400, "invalid_request", { carried: { providerMessage: "The server is overloaded, please try again." } }), text("after the overload")], false)
   const limited = try framed([{ error: { message: "Rate limit exceeded. Please try again later.", type: "rate_limit_error", code: 429, retryAfterMs: 1_500 } }])
+  const limitedInSeconds = try framed([{ error: { message: "Rate limited", type: "rate_limit_error", code: 429, retryAfterSeconds: 2 } }])
+  const limitedWithoutWait = try framed([{ error: { message: "Rate limited", type: "rate_limit_error", code: 429, retryAfterMs: -1 } }])
   const cloudLimited = try framed([{ error: "rate_limited", errorDescription: "Rate limited.", retryable: true, retryAt: Date.now() + 60_000 }])
   const broken = try framed([1, 2, 3, 4].map(() => ({ error: { message: "Something broke." } })))
   const wait = (read: { waited?: unknown }) => typeof read.waited === "number" ? read.waited : -1
   const parseFailed = { code: "PROVIDER_TOOL_CALL_PARSE_FAILED", status: 400, waited: undefined, sent: 1, state: "provider_issue", retryAt: undefined }
-  assert.deepStrictEqual([unparsed, cloudUnparsed, carriedUnparsed, carriedOverload, { ...limited, waited: wait(limited) > 0 && wait(limited) <= 2_000, retryAt: typeof limited.retryAt },
-    { ...cloudLimited, waited: wait(cloudLimited) > 0 && wait(cloudLimited) <= 60_000, retryAt: typeof cloudLimited.retryAt }, broken], [
+  const waitedUpTo = (read: { waited?: unknown; retryAt?: unknown }, most: number) => ({ ...read, waited: wait(read) > 0 && wait(read) <= most, retryAt: typeof read.retryAt })
+  assert.deepStrictEqual([unparsed, cloudUnparsed, carriedUnparsed, carriedOverload, waitedUpTo(limited, 2_000), waitedUpTo(limitedInSeconds, 2_000), limitedWithoutWait,
+    waitedUpTo(cloudLimited, 60_000), broken], [
     parseFailed, parseFailed, parseFailed,
     { code: undefined, status: undefined, waited: undefined, sent: 2, state: "usable", retryAt: undefined },
     { code: "MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED", status: 429, waited: true, sent: 1, state: "limit_reached", retryAt: "number" },
+    { code: "MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED", status: 429, waited: true, sent: 1, state: "limit_reached", retryAt: "number" },
+    { code: "MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED", status: 429, waited: undefined, sent: 1, state: "limit_reached", retryAt: undefined },
     { code: "MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED", status: 429, waited: true, sent: 1, state: "limit_reached", retryAt: "number" },
     { code: undefined, status: 503, waited: undefined, sent: 4, state: "provider_issue", retryAt: undefined },
   ])

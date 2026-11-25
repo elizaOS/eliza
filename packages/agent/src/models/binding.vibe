@@ -1,7 +1,7 @@
 // spec/agent/models/binding.md, "The binding is set once from an admitted launch and never changes while the process runs"; spec/agent/models/binding.md, "A model call starts only for a handler the backend serves, with the credential the binding holds"; spec/agent/models/binding.md, "Each refusal is one account state, and the last failure records its kind and time without text"; spec/agent/models/binding.md, "No call starts before a rate limit's retry time, and a provider issue does not lift a limit still in force"; spec/agent/models/binding.md, "A rate limit on an own key at Cerebras holds the account at most four seconds, and every other route keeps the provider's retry time"; spec/agent/models/binding.md, "An answer clears the account state, except a limit not yet over"; spec/agent/models/binding.md, "A pushed credential replaces the key only at a higher version of the launch account, and needs no restart"; spec/agent/models/binding.md, "A refusal of a replaced credential never marks the new one invalid"; spec/agent/models/binding.md, "Warm answers from the binding state and never reaches the cloud"; spec/agent/models/binding.md, "A key is held only in the slot of the backend it was given for, and only as a bearer credential that slot accepts"
 import type { Backend, GoogleConsent, LaunchDocument as LaunchModel, UrlShape } from "../../gen/agent__host__launch.ts"
 import {
-  Machine, accountStateName, blocked, clockAt, failureName, keyAdmitted, keySlot, limitedAt, machine, namedRetryAt, pushVerdict, retryAtOf, warmAnswer,
+  Machine, accountStateName, blocked, clockAt, failureName, keyAdmitted, keySlot, limitedAt, machine, namedRetryAt, pushVerdict, warmAnswer,
   type AccountFailure, type KeyShape, type ModelBinding, type ModelHandler, type PushVerdict, type WarmAnswer,
 } from "../../gen/agent__models__binding.effect.vibe"
 import type { CloudError } from "../../gen/cloud__client.ts"
@@ -10,7 +10,7 @@ import type { LaunchDocument, LaunchFrame } from "../host/launch.schema.vibe"
 
 export type FailureKind = "credential_invalid" | "insufficient_credits" | "limit_reached" | "provider_issue"
 export type BackendName = "cloud" | "own-key" | "none"
-export type CallStart = number | { readonly limitedUntil: number }
+export type CallStart = number | { readonly limited: AccountFailure }
 
 export interface LastCloudFailure {
   readonly kind: FailureKind
@@ -95,8 +95,7 @@ function launchModel(launch: LaunchDocument): LaunchModel {
   }
 }
 
-function lastFailureOf(state: ModelBinding): LastCloudFailure | undefined {
-  const last = state.lastCloudFailure
+export function lastFailureOf(last: ModelBinding["lastCloudFailure"]): LastCloudFailure | undefined {
   if (last.tag === "NoCloudFailure") return undefined
   const retryAt = namedRetryAt(last.failure)
   return { kind: failureKindName(last.failure), at: last.at, ...(retryAt < 0 ? {} : { retryAt }) }
@@ -135,7 +134,7 @@ export effect function bindModels(launch: LaunchDocument, frame: LaunchFrame) {
   effect function read() {
     const state = try models.get()
     const now = clockAt(state, try Clock.currentTimeMillis)
-    const last = lastFailureOf(state)
+    const last = lastFailureOf(state.lastCloudFailure)
     return {
       backend: backendNames[state.backend.tag],
       accountState: accountStateName(state.accountState) as BindingView["accountState"],
@@ -180,10 +179,10 @@ export effect function bindModels(launch: LaunchDocument, frame: LaunchFrame) {
     startCall: effect (handler: ModelHandler, now: number) => {
       const next = models.send({ type: "startCall", handler, now }) catch effect (rejected) => {
         const account = rejected.state.accountState
-        if (account.tag === "Failing" && limitedAt(account, clockAt(rejected.state, now))) return { limitedUntil: retryAtOf(account.failure) }
+        if (account.tag === "Failing" && limitedAt(account, clockAt(rejected.state, now))) return { limited: account.failure }
         return try Effect.die(rejected)
       }
-      return "limitedUntil" in next ? next : next.nextCall - 1
+      return "limited" in next ? next : next.nextCall - 1
     },
     answerCall: effect (id: number, now: number) => {
       try orDie(models.send({ type: "answerCall", id, now }))

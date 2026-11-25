@@ -164,7 +164,7 @@ module node {
       case undefined: return { tag: "Answered" }
       case "credential_invalid": return { tag: "AccountFailed", failure: { tag: "CredentialInvalid", version: 0 } }
       case "insufficient_credits": return { tag: "AccountFailed", failure: { tag: "InsufficientCredits" } }
-      case "limit_reached": return { tag: "AccountFailed", failure: { tag: "LimitReached", retryAt: failure.retryAt ?? 0 } }
+      case "limit_reached": return { tag: "AccountFailed", failure: { tag: "LimitReached", retryAt: failure.retryAt ?? 0, providerRetryAt: failure.retryAt ?? 0 } }
       case "provider_issue": return { tag: "AccountFailed", failure: { tag: "ProviderIssue" } }
       case "timeout": return { tag: "TimedOut" }
       default: return { tag: "Aborted" }
