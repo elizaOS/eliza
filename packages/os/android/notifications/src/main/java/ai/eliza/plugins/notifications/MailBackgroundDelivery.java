@@ -174,8 +174,23 @@ public final class MailBackgroundDelivery {
   host.removeState();poster.cancelAll();scheduler.cancel();
  }}
  /** Host resume: reschedules a still-current selection, retires a stale one. */
- public void resume(){try{synchronized(host.lock()){if(admittedAttempt!=attempts.get())return;JSONObject s=saved();if(s==null){poster.cancelAll();scheduler.cancel();return;}JSONObject binding=s.getJSONObject("binding");current(binding);scheduler.schedule(binding.getString("generation"));}}catch(Exception stale){try{withdraw(null);}catch(Exception ignored){/* Existing callback guards still fail closed. */}}}
- public JSONObject status()throws Exception{synchronized(host.lock()){JSONObject s=saved();if(s==null)return new JSONObject().put("status","disabled");return engine(s.getJSONObject("binding")).status().put("notificationsAllowed",poster.allowed());}}
+ public void resume(){synchronized(host.lock()){
+  if(admittedAttempt!=attempts.get())return;
+  try{
+   JSONObject state=saved();
+   if(state==null){poster.cancelAll();scheduler.cancel();return;}
+   JSONObject binding=state.getJSONObject("binding");
+   admitted(binding);
+   scheduler.schedule(binding.getString("generation"));
+  }catch(Exception stale){try{withdraw(null);}catch(Exception ignored){return;}}
+ }}
+ public JSONObject status()throws Exception{synchronized(host.lock()){
+  JSONObject state=saved();
+  if(state==null||admittedAttempt!=attempts.get())return new JSONObject().put("status","disabled");
+  JSONObject binding=state.getJSONObject("binding");
+  try{admitted(binding);}catch(SecurityException stale){withdraw(null);return new JSONObject().put("status","disabled");}
+  return engine(binding).status().put("notificationsAllowed",poster.allowed());
+ }}
  private static final class HttpFailure extends IOException {final int status;final boolean history;HttpFailure(int status,boolean history){super("Mail service unavailable");this.status=status;this.history=history;}}
  private String get(JSONObject binding,String path,MailHistoryReconciliation.Guard guard)throws Exception{
   // Constructed paths only, with a fixed service authority. No remote-agent host or redirect.

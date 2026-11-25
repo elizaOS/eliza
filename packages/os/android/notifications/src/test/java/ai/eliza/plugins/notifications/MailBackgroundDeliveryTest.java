@@ -101,8 +101,12 @@ public final class MailBackgroundDeliveryTest {
     } catch (SecurityException expected) {
       require(state.equals(f.state), "late reply did not alter durable state");
     }
+    require(delivery.status().getString("status").equals("disabled"), "a rotated watch is shown as off");
+    require(f.active.isEmpty() && f.state == null && f.scheduled == null, "status retires stale notices and work before resume");
+    long renewed = delivery.begin("grant");
     delivery.resume();
-    require(f.active.isEmpty() && f.state == null && f.scheduled == null, "stale notices and work retired");
+    delivery.configure(renewed, "cred", "grant", "owner", "org");
+    require(f.scheduled != null && f.active.isEmpty(), "resume leaves a newer foreground selection in place");
     require(f.routes.stream().noneMatch(path -> path.contains("/user")), "no raw device key route");
   }
 }
