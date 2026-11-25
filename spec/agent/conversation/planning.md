@@ -466,9 +466,16 @@ kept when it answers (it is neither blank nor a pending-work cue, read as
 below), it is not the first reply again, and the clock rules hold of it.
 Otherwise, or when the call fails, the first
 reply is kept, or the clock's or the calendar change's own words (below)
-take its place when it stated a time they did not observe. On either path,
-each remaining open failure and attachment omission is reported in its
-own words if the chosen reply does not already contain those words.
+take its place when it stated a time they did not observe. Under the
+model's reply, first or kept second, each remaining open failure whose words
+its action wrote for the owner, and each attachment omission, is reported in
+those words if the reply does not already contain them; a failure's error,
+its result text that no action marked for the owner, and the host's own
+sentence that a call did not start or did not complete reached the model
+only, and the owner hears that failure in the model's words alone. Only as
+the last resort, under fixed words, does each remaining open failure follow
+in its own words if the reply does not already contain them, so that a
+reply never stands as if the step had happened.
 A reply with nothing unreported and no
 unobserved time makes no further call, a turn cut off at the model's output
 limit is never asked again, and no turn is asked more than once.
@@ -486,6 +493,7 @@ pure def replySource(unreported: bool, ungrounded: bool, cutOff: bool, answered:
   else if (asksAgain(unreported, ungrounded, cutOff) and answered and grounded) RevisedReply
   else FixedWords
 pure def putToTheModel(held: bool, safetyCopy: bool): bool = not(held) and not(safetyCopy)
+pure def reachesTheOwner(ownCopy: bool, safetyCopy: bool): bool = ownCopy or safetyCopy
 pure def answeredAgain(draft: Draft, sameAsFirst: bool): bool = gaveAnAnswer(draft) and not(sameAsFirst)
 pure def lawAGroundedReplyMakesNoFurtherCall(cutOff: bool): bool = not(asksAgain(false, false, cutOff))
 pure def lawAGroundedReplyIsTheModels(cutOff: bool, answered: bool, grounded: bool): bool = replySource(false, false, cutOff, answered, grounded) == ModelReply
@@ -495,6 +503,8 @@ pure def lawFixedWordsAreTheLastResort(unreported: bool, ungrounded: bool, cutOf
   replySource(unreported, ungrounded, cutOff, answered, grounded) == FixedWords implies ((unreported or ungrounded) and (cutOff or not(answered) or not(grounded)))
 pure def lawACutOffTurnIsNeverAskedAgain(unreported: bool, ungrounded: bool): bool = not(asksAgain(unreported, ungrounded, true))
 pure def lawSafetyCopyIsNeverRewritten(held: bool): bool = not(putToTheModel(held, true))
+pure def lawOnlySafetyCopyFollowsAReplyWithoutTheActionsOwnWords(safetyCopy: bool): bool = reachesTheOwner(false, safetyCopy) == safetyCopy
+pure def lawAnActionsOwnWordsForTheOwnerMayFollowAReply(safetyCopy: bool): bool = reachesTheOwner(true, safetyCopy)
 pure def lawWordsTheReplyHoldsAreNotAskedFor(safetyCopy: bool): bool = not(putToTheModel(true, safetyCopy))
 pure def lawACueIsNoSecondAnswer(sameAsFirst: bool): bool = not(answeredAgain(Cue, sameAsFirst)) and not(answeredAgain(Silent, sameAsFirst))
 pure def lawTheFirstReplyAgainIsNoSecondAnswer(draft: Draft): bool = not(answeredAgain(draft, true))
