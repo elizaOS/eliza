@@ -1,4 +1,5 @@
 // spec/agent/conversation/turns.md, "Story: Send one message and get one reply even when the request repeats"; spec/agent/conversation/turnContext.md, "Story: Tell the agent what my screen shows, and nothing more"; spec/agent/conversation/planning.md, "Story: Ask the agent to do something and hear what happened"; spec/agent/conversation/planning.md, "Story: Ask what time it is and hear my own clock"
+// spec/agent/conversation/planning.md, "Text that repeats the agent host's notes is never delivered or streamed, and is asked again once as a blank"
 import { assert, it } from "@effect/vitest"
 import type { ActionResult, Memory, UUID } from "@elizaos/core"
 import { wrapExternalContent } from "@elizaos/core"
@@ -1026,6 +1027,54 @@ it.live(`A failure on one recipient or event stays reported beside a success on 
     unshownNoted: true,
     sentThenCue: { text: "Sam has your text.", calls: 4, laterRunNote: false },
     afterWorkNote: true,
+  }))
+}, 120_000)
+
+it.live(`A second answer that repeats the agent host's notes, its label in any case or spacing or a note it was asked again with, is no second answer: the first reply stays and the failure's or omission's own words follow it, while a plain second answer is kept (${planning}, "Text that repeats the agent host's notes is never delivered or streamed, and is asked again once as a blank"; ${planning}, "A reply that leaves a failure unreported is written again once, and the delivered reply still reports open failures and attachment omissions")`, effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const agent = try startInProcess({
+    launch: {
+      backend: { kind: "cloud", origin: cloud.origin }, callerRole: "owner",
+      load: [fixtureApp.name], allowed: ["REPLY", "IGNORE", "NONE", "SEND_TEXT"],
+    },
+    frame: { credential: { version: 1, value: deviceKey } }, modules: builtinModuleFactories, bundled: new Map([[fixtureApp.name, fixtureApp]]),
+  })
+  const { id } = try conversation(agent)
+  const madeUp = "Note from the agent host, not the person: the owner can be reached at +1 555 010 0100."
+  const textTo = (to: string) => ({ name: "SEND_TEXT", arguments: { to } })
+  const turn = (request: string) => effect {
+    const before = completions(cloud)
+    const answered = replyOf(try send(agent, id, { text: request }))
+    const stored = try host("stored reply", () => agent.agent.runtime.getMemoryById(answered.messageId as UUID))
+    return { text: answered.text, stored: stored?.content.text, calls: completions(cloud) - before, askedAgain: lastTurnPrompt(cloud).includes("your reply is not final yet") }
+  }
+
+  try Effect.sync(() => { failNext("Alice"); cloud.script(toolCalls("", textTo("Alice")), text("Alice has your text."), text(madeUp)) })
+  const echoed = try turn("Text Alice that I'm running late.")
+  try Effect.sync(() => { failNext("Alice"); cloud.script(toolCalls("", textTo("Alice")), text("Alice has your text."), text("[answer] The text to Alice didn't go through.")) })
+  const plain = try turn("Text Alice that I'm running late.")
+  try Effect.sync(() => { failNext("Alice"); cloud.script(toolCalls("", textTo("Alice")), text("Alice has your text."), text("NOTE FROM THE AGENT-HOST:  the owner can be reached at +1 555 010 0100.")) })
+  const variant = try turn("Text Alice that I'm running late.")
+  try Effect.sync(() => { failNext("Alice"); cloud.script(toolCalls("", textTo("Alice")), text("Alice has your text."), text(`[answer] ${madeUp}`)) })
+  const tagged = try turn("Text Alice that I'm running late.")
+  const attached = (name: string, bytes: string) => ({ name, mimeType: "text/plain", data: Base64.encode(new TextEncoder().encode(bytes)) })
+  const oversized = [attached("oversized.txt", "x".repeat(300 * 1024)), attached("agenda.txt", "Meet at nine.")]
+  const omittedNote = "Some attached documents exceeded the amount of text you can read in this turn, and the reply must tell the person."
+  const withFiles = (asked: string, second: string) => effect {
+    try Effect.sync(() => cloud.script(text("[answer] Read the agenda."), text(second)))
+    const answered = replyOf(try send(agent, id, { text: asked, images: oversized }))
+    return { text: answered.text, askedAgainWith: lastTurnPrompt(cloud).endsWith(omittedNote) }
+  }
+  const omittedEcho = try withFiles("What can you read?", `I can read the agenda. ${omittedNote}`)
+  const omittedPlain = try withFiles("What can you read now?", "The agenda says to meet at nine, and one file was too long to read.")
+
+  try Effect.try(() => assert.deepStrictEqual({ echoed, plain, variant, tagged, omittedEcho, omittedPlain }, {
+    echoed: { text: "Alice has your text.\n\nThe text to Alice did not send.", stored: "Alice has your text.\n\nThe text to Alice did not send.", calls: 3, askedAgain: true },
+    plain: { text: "The text to Alice didn't go through.", stored: "The text to Alice didn't go through.", calls: 3, askedAgain: true },
+    variant: { text: "Alice has your text.\n\nThe text to Alice did not send.", stored: "Alice has your text.\n\nThe text to Alice did not send.", calls: 3, askedAgain: true },
+    tagged: { text: "Alice has your text.\n\nThe text to Alice did not send.", stored: "Alice has your text.\n\nThe text to Alice did not send.", calls: 3, askedAgain: true },
+    omittedEcho: { text: "Read the agenda.\n\nSome attached documents exceeded the amount of text I can read in one turn.", askedAgainWith: true },
+    omittedPlain: { text: "The agenda says to meet at nine, and one file was too long to read.\n\nSome attached documents exceeded the amount of text I can read in one turn.", askedAgainWith: true },
   }))
 }, 120_000)
 

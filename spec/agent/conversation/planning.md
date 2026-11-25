@@ -729,9 +729,10 @@ tag that leads the text, after nothing but JSON objects or bracketed calls,
 says what the response is, and the shell reads it before the form: with no tool call, text
 tagged `[answer]` is an `Answer` delivered at once, however short (`[answer]
 Done!`, `[answer] Hello!`), and text tagged `[promise]` is a `Cue`, never
-delivered (`[promise] Sure, one sec.`). Blank text, and a cue beside a call
-written as text, are read by their form whatever the tag, and so is text
-written with tool calls. Text with no tag is read by its form as above, so
+delivered (`[promise] Sure, one sec.`). Blank text, a cue beside a call
+written as text, and text that holds the agent host's words (below), are
+read by their form whatever the tag, and so is text written with tool
+calls: `[answer]` before an echoed host note is still no answer. Text with no tag is read by its form as above, so
 a model that skips the tag still never ends a turn on a cue-shaped promise
 while tools are offered. In the second answer asked for an unreported
 failure (above), a `[promise]` is never an answer and an `[answer]` is one,
@@ -814,19 +815,19 @@ text with tool calls that is not cue-shaped (it is long, asks a question or
 carries data), is never spoken as acknowledgment.
 
 ```quint
-type DraftShape = Blank | CueShaped | CueBesideCall | CueBesideObject | OtherText
+type DraftShape = Blank | CueShaped | CueBesideCall | CueBesideObject | OtherText | HostText
 type Declared = DeclaredAnswer | DeclaredPromise | Undeclared
 pure def readByForm(shape: DraftShape, calls: int, toolsWaiting: bool): Draft = match shape {
   | Blank => Silent | CueShaped => if (calls > 0) Cue else if (toolsWaiting) MaybeAnswer else Answer | CueBesideCall => Cue
-  | CueBesideObject => if (calls > 0) Cue else MaybeAnswer | OtherText => Answer
+  | CueBesideObject => if (calls > 0) Cue else MaybeAnswer | OtherText => Answer | HostText => Silent
 }
 pure def readDraft(shape: DraftShape, calls: int, toolsWaiting: bool, declared: Declared): Draft =
-  if (calls > 0 or shape == Blank or shape == CueBesideCall) readByForm(shape, calls, toolsWaiting)
+  if (calls > 0 or shape == Blank or shape == CueBesideCall or shape == HostText) readByForm(shape, calls, toolsWaiting)
   else match declared {
     | DeclaredAnswer => Answer | DeclaredPromise => Cue | Undeclared => readByForm(shape, calls, toolsWaiting)
   }
 pure def lawADeclaredAnswerIsDeliveredAtOnce(shape: DraftShape, toolsWaiting: bool, stepsLeft: int, askedAgain: bool): bool =
-  (shape != Blank and shape != CueBesideCall) implies nextMove(readDraft(shape, 0, toolsWaiting, DeclaredAnswer), 0, stepsLeft, askedAgain) == Deliver
+  (shape != Blank and shape != CueBesideCall and shape != HostText) implies nextMove(readDraft(shape, 0, toolsWaiting, DeclaredAnswer), 0, stepsLeft, askedAgain) == Deliver
 pure def lawADeclaredPromiseWithoutWorkIsNeverDelivered(shape: DraftShape, toolsWaiting: bool, stepsLeft: int, askedAgain: bool): bool =
   nextMove(readDraft(shape, 0, toolsWaiting, DeclaredPromise), 0, stepsLeft, askedAgain) != Deliver
 pure def lawWorkIsReadByFormWhateverTheTag(shape: DraftShape, calls: int, toolsWaiting: bool, declared: Declared): bool =
@@ -926,6 +927,47 @@ pure def lawOnlyACueTheStreamTookIsDelivered(draft: Draft, calls: int, earlierCa
   not(cueDelivered(draft, calls, earlierCalls, false))
 pure def lawOnlyTheTurnsAcknowledgmentIsDelivered(draft: Draft, calls: int, earlierCalls: int, streamTook: bool): bool =
   cueDelivered(draft, calls, earlierCalls, streamTook) implies acknowledges(draft, calls, earlierCalls)
+```
+
+### Text that repeats the agent host's notes is never delivered or streamed, and is asked again once as a blank
+
+The host's notes are for the model only, and the owner never sees the
+host's label or a note's lead line. A response whose text holds the label,
+`Note from the agent host`, or the opening line of a note this turn carried
+to the model (the host's own lead, such as the line that introduces the
+screen context, or the clock's line, with or without its closing colon or
+period), or a mark the host puts on the history it shows the model
+(`[unanswered:` before a message whose turn got no reply, `[Unheard
+remainder:` before the part of a reply the person did not hear), in any
+letter case, with any spacing, or with a hyphen or underscore between its
+words, is the host's words, never an answer, whether the model echoes a
+note, quotes its lead or writes one of its own under the label: it reads as
+a blank, and an `[answer]` or `[promise]` tag before it changes nothing,
+since the shell looks for it in the text with the tag taken off. The notes
+a reply is written again with (a failure the reply left unreported, an
+attachment omission, a time or event time the reply got wrong) count as
+notes of the turn for the answer they ask for. With no tool call it is
+asked again once (above), and when the response after that note holds it
+again, the turn's failure fallback is the reply. Beside tool calls it is no
+cue, so the owner hears nothing and the tools still run. A `REPLY` call
+whose text holds it gives no reply, and a second answer that holds it is no
+second answer. The reply stream, besides holding back a tag and an untagged
+object (above), shows the model's text only up to where the label or such a
+line could begin; what follows is shown once it can no longer be one, or
+with the reply, so neither the label, a note's lead line nor a history mark
+is ever streamed, spoken or stored. A note's later lines are not held: they
+carry the owner's own data, such as the page they are reading, which a true
+answer may quote. The notes stay in the model's request as they are.
+
+```quint
+pure def lawHostTextIsNeverAnAnswer(calls: int, toolsWaiting: bool, declared: Declared): bool =
+  readDraft(HostText, calls, toolsWaiting, declared) == Silent
+pure def lawHostTextIsAskedAgainOnceAndNeverDelivered(stepsLeft: int, askedAgain: bool, toolsWaiting: bool, declared: Declared): bool =
+  nextMove(readDraft(HostText, 0, toolsWaiting, declared), 0, stepsLeft, askedAgain) != Deliver
+pure def lawHostTextNeverAcknowledges(calls: int, earlierCalls: int, toolsWaiting: bool, declared: Declared): bool =
+  not(acknowledges(readDraft(HostText, calls, toolsWaiting, declared), calls, earlierCalls))
+pure def lawHostTextIsNoSecondAnswer(sameAsFirst: bool, toolsWaiting: bool, declared: Declared): bool =
+  not(answeredAgain(readDraft(HostText, 0, toolsWaiting, declared), sameAsFirst))
 ```
 
 ### A tool's progress names its app only when one labelled app applies, and never its arguments or results

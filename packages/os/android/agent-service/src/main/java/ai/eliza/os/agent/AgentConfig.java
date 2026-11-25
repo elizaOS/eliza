@@ -25,7 +25,7 @@ public final class AgentConfig {
 
   private static final Pattern CLASS_NAME = Pattern.compile("[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)+");
   private static final Pattern ORIGIN = Pattern.compile("https://([a-zA-Z0-9-]+\\.)*[a-zA-Z0-9-]+(:([0-9]{1,5}))?");
-  private static final Pattern HTTPS_URL = Pattern.compile("https://[^\\s\\ufeff?#@]+", Pattern.UNICODE_CHARACTER_CLASS);
+  private static final Pattern HTTPS_URL = Pattern.compile("https://[^\\p{IsWhite_Space}\\ufeff?#@]+");
   private static final Pattern ENVIRONMENT_NAME = Pattern.compile("[A-Z][A-Z0-9_]*");
   private static final Pattern RESERVED_ENVIRONMENT = Pattern.compile("(ELIZA_AGENT_|ELIZA_CLOUD_|ELIZA_OWN_|LD_|NODE_).*|PATH|HOME|TMPDIR");
   private static final Pattern SHA256 = Pattern.compile("[a-f0-9]{64}");

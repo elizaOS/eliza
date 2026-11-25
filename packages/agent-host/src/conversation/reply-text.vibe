@@ -1,4 +1,4 @@
-// spec/agent/conversation/planning.md, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"; spec/agent/conversation/planning.md, "A turn acknowledges at most once, with a cue that comes with its first tool calls"; spec/agent/conversation/planning.md, "A recognized card is delivered unfenced, other multi-line tool output is fenced, and grounded prose follows unless one already holds the other"; spec/agent/conversation/planning.md, "A voice turn that ran an action answers with that action's label: its kind and whether the reply is a validated card"; spec/agent/conversation/planning.md, "A tool call the model wrote as text never reaches the owner, and its step is asked again once"
+// spec/agent/conversation/planning.md, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"; spec/agent/conversation/planning.md, "A turn acknowledges at most once, with a cue that comes with its first tool calls"; spec/agent/conversation/planning.md, "A recognized card is delivered unfenced, other multi-line tool output is fenced, and grounded prose follows unless one already holds the other"; spec/agent/conversation/planning.md, "A voice turn that ran an action answers with that action's label: its kind and whether the reply is a validated card"; spec/agent/conversation/planning.md, "A tool call the model wrote as text never reaches the owner, and its step is asked again once"; spec/agent/conversation/planning.md, "Text that repeats the agent host's notes is never delivered or streamed, and is asked again once as a blank"
 import { looksLikeActionEnvelopeJson, looksLikeEvaluatorEnvelopeJson, parseInteractionBlocks, sanitizeUserVisibleModelOutput } from "@elizaos/core"
 import { actionLabel, compose, readDraft, type ActionLabel, type Composition, type Declared, type Draft, type DraftShape, type VoiceAction } from "../../gen/agent__conversation__planning.ts"
 
@@ -113,9 +113,60 @@ export function withoutOfferedCalls(said: string, offered: ReadonlySet<string>):
   return objectsOut(said, (body, before) => callsOffered(body, offered) || afterCue(said, body, before)).text
 }
 
-function shapeOf(reply: string, offered: ReadonlySet<string>): DraftShape {
+export const hostNoteMark = "Note from the agent host"
+
+const hostTextGap = /[\s\p{Pd}_]/u
+
+interface Folded {
+  readonly text: string
+  readonly at: readonly number[]
+}
+
+function folded(text: string): Folded {
+  let out = ""
+  const at: number[] = []
+  for (let index = 0; index < text.length; index += 1) {
+    const unit = text[index] ?? ""
+    if (hostTextGap.test(unit)) {
+      if (!out.endsWith(" ")) {
+        out += " "
+        at.push(index)
+      }
+      continue
+    }
+    const lower = unit.toLowerCase()
+    out += lower
+    for (let step = 0; step < lower.length; step += 1) at.push(index)
+  }
+  return { text: out, at }
+}
+
+function hostTexts(notes: readonly string[]): string[] {
+  return [hostNoteMark, ...notes.map((note) => (note.trim().split("\n", 1)[0] ?? "").replace(/[\s.:]+$/u, ""))]
+    .map((host) => folded(host).text.trim()).filter((host) => host !== "")
+}
+
+export function holdsHostText(text: string, notes: readonly string[]): boolean {
+  const said = folded(text).text
+  return hostTexts(notes).some((host) => said.includes(host))
+}
+
+export function shownUpTo(text: string, notes: readonly string[]): number {
+  const { text: said, at } = folded(text)
+  const upTo = hostTexts(notes).reduce((upTo, host) => {
+    const whole = said.indexOf(host)
+    if (whole >= 0) return Math.min(upTo, whole)
+    for (let from = Math.max(0, said.length - host.length + 1); from < upTo; from += 1)
+      if (said.charCodeAt(from) === host.charCodeAt(0) && said.startsWith(host.slice(0, said.length - from), from)) return from
+    return upTo
+  }, said.length)
+  return upTo >= said.length ? text.length : at[upTo] ?? text.length
+}
+
+function shapeOf(reply: string, offered: ReadonlySet<string>, notes: readonly string[]): DraftShape {
   const said = reply.trim()
   if (!said) return "Blank"
+  if (holdsHostText(said, notes)) return "HostText"
   let beside = true
   const { text, found } = objectsOut(said, (_body, before) => {
     beside &&= afterSentence(before)
@@ -127,8 +178,8 @@ function shapeOf(reply: string, offered: ReadonlySet<string>): DraftShape {
   return found.length === 0 ? "CueShaped" : "CueBesideObject"
 }
 
-export function draftOf(text: string, calls: number, offered: ReadonlySet<string>, toolsWaiting: boolean, declared: Declared): Draft {
-  return readDraft(shapeOf(text, offered), calls, toolsWaiting, declared)
+export function draftOf(text: string, calls: number, offered: ReadonlySet<string>, toolsWaiting: boolean, declared: Declared, notes: readonly string[]): Draft {
+  return readDraft(shapeOf(text, offered, notes), calls, toolsWaiting, declared)
 }
 
 const writtenCallMarker = /<\s*\/?\s*tool_call\b|<\s*function(?:=|_call\b)/iu
