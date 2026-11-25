@@ -871,11 +871,11 @@ it.effect(`A read with no connected calendar account says that none is connected
 
   assert.deepStrictEqual({ empty, unbookedHour, created: dentist.success, residentEvent: [residentEvent.connection, residentEvent.events, (residentEvent.text ?? "").endsWith(notConnected)], connected, connectedFree, contextUnconnected, contextConnected }, {
     empty: { text: `No events match in that range.${notConnected}`, connection: "none", events: 0 },
-    unbookedHour: { text: `You're free Mon, Mar 4, 9:00 – 10:00 AM UTC.${notConnected}`, connection: "none", events: undefined },
+    unbookedHour: { text: `You're free Mon, Mar 4, 9:00\u2009\u2013\u200910:00 AM UTC.${notConnected}`, connection: "none", events: undefined },
     created: true,
     residentEvent: ["none", 1, true],
     connected: { text: "No events match in that range.", connection: "connected", events: 0 },
-    connectedFree: { text: "You're free Mon, Mar 4, 9:00 – 10:00 AM UTC.", connection: "connected", events: undefined },
+    connectedFree: { text: "You're free Mon, Mar 4, 9:00\u2009\u2013\u200910:00 AM UTC.", connection: "connected", events: undefined },
     contextUnconnected: { text: `No calendar events in the next 24 hours.${notConnected}`, connection: "none" },
     contextConnected: { text: "No calendar events in the next 24 hours.", connection: "connected" },
   })
