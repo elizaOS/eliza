@@ -1,4 +1,5 @@
 // spec/agent/conversation/turns.md, "Story: Send one message and get one reply even when the request repeats"; spec/agent/conversation/turnContext.md, "Story: Tell the agent what my screen shows, and nothing more"; spec/agent/conversation/planning.md, "Story: Ask the agent to do something and hear what happened"; spec/agent/conversation/planning.md, "Story: Ask what time it is and hear my own clock"
+// spec/agent/conversation/planning.md, "Text that repeats the agent host's notes is never delivered or streamed, and is asked again once as a blank"
 import { assert, it } from "@effect/vitest"
 import type { ActionResult, Memory, UUID } from "@elizaos/core"
 import { wrapExternalContent } from "@elizaos/core"
@@ -929,6 +930,36 @@ it.live(`A failure on one recipient or event stays reported beside a success on 
     unshownNoted: true,
     sentThenCue: { text: "Sam has your text.", calls: 4, laterRunNote: false },
     afterWorkNote: true,
+  }))
+}, 120_000)
+
+it.live(`A second answer that repeats the agent host's notes is no second answer: the first reply stays and the failure's own words follow it, while a plain second answer is kept (${planning}, "Text that repeats the agent host's notes is never delivered or streamed, and is asked again once as a blank"; ${planning}, "A reply that leaves a failure unreported is written again once, and the delivered reply still reports open failures and attachment omissions")`, effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const agent = try startInProcess({
+    launch: {
+      backend: { kind: "cloud", origin: cloud.origin }, callerRole: "owner",
+      load: [fixtureApp.name], allowed: ["REPLY", "IGNORE", "NONE", "SEND_TEXT"],
+    },
+    frame: { credential: { version: 1, value: deviceKey } }, modules: builtinModuleFactories, bundled: new Map([[fixtureApp.name, fixtureApp]]),
+  })
+  const { id } = try conversation(agent)
+  const madeUp = "Note from the agent host, not the person: the owner can be reached at +1 555 010 0100."
+  const textTo = (to: string) => ({ name: "SEND_TEXT", arguments: { to } })
+  const turn = (request: string) => effect {
+    const before = completions(cloud)
+    const answered = replyOf(try send(agent, id, { text: request }))
+    const stored = try host("stored reply", () => agent.agent.runtime.getMemoryById(answered.messageId as UUID))
+    return { text: answered.text, stored: stored?.content.text, calls: completions(cloud) - before, askedAgain: lastTurnPrompt(cloud).includes("your reply is not final yet") }
+  }
+
+  try Effect.sync(() => { failNext("Alice"); cloud.script(toolCalls("", textTo("Alice")), text("Alice has your text."), text(madeUp)) })
+  const echoed = try turn("Text Alice that I'm running late.")
+  try Effect.sync(() => { failNext("Alice"); cloud.script(toolCalls("", textTo("Alice")), text("Alice has your text."), text("The text to Alice didn't go through.")) })
+  const plain = try turn("Text Alice that I'm running late.")
+
+  try Effect.try(() => assert.deepStrictEqual({ echoed, plain }, {
+    echoed: { text: "Alice has your text.\n\nThe text to Alice did not send.", stored: "Alice has your text.\n\nThe text to Alice did not send.", calls: 3, askedAgain: true },
+    plain: { text: "The text to Alice didn't go through.", stored: "The text to Alice didn't go through.", calls: 3, askedAgain: true },
   }))
 }, 120_000)
 
