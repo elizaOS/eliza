@@ -26,6 +26,7 @@ export interface Endpoint {
 interface Sink {
   readonly stream?: boolean
   readonly onStreamChunk?: StreamChunkCallback
+  readonly onToolCallStart?: (text: string, firstToolName: string) => void | Promise<void>
 }
 
 interface Reply {
@@ -398,6 +399,7 @@ effect function collectStream(result: HttpClientResponse.HttpClientResponse, sin
   let finishReason: string | undefined
   let usage: TokenUsage | undefined
   const calls: { id: string; name: string; arguments: string }[] = []
+  let toolCallNotified = false
   const silent = () => Stream.fail(new ShellRefused({ refusal: "SilentStream" }))
   const lines = Stream.timeoutOrElse(result.stream, { duration: Duration.seconds(streamIdleSeconds), orElse: silent }).pipe(Stream.decodeText(), Stream.splitLines)
   const ended = (line: string) => line.startsWith("data:") && line.slice(5).trim() === "[DONE]"
@@ -423,6 +425,11 @@ effect function collectStream(result: HttpClientResponse.HttpClientResponse, sin
       call.id ||= piece.id ?? ""
       call.name += piece.function?.name ?? ""
       call.arguments += piece.function?.arguments ?? ""
+    }
+    if (!toolCallNotified && calls[0] !== undefined && calls[0].name !== "" && sink.onToolCallStart !== undefined) {
+      toolCallNotified = true
+      const firstToolName = calls[0].name
+      try tryPromise({ try: async () => sink.onToolCallStart?.(text, firstToolName), catch: (cause) => new StreamConsumerFailed({ cause }) })
     }
     const delta = choice.delta?.content
     if (!delta) return
@@ -585,9 +592,17 @@ function returned(answer: { reply: Reply; form: Exclude<ChatReturn, "AnswerProvi
   return answer.form === "AnswerResult" ? resultOf(answer.reply) : answer.reply.text
 }
 
+function sinkOf(params: GenerateTextParams): Sink {
+  const eliza = params.providerOptions?.eliza
+  const onToolCallStart = typeof eliza === "object" && eliza !== null && typeof (eliza as { onToolCallStart?: unknown }).onToolCallStart === "function"
+    ? (eliza as { onToolCallStart: Sink["onToolCallStart"] }).onToolCallStart
+    : undefined
+  return onToolCallStart === undefined ? params : { stream: params.stream, onStreamChunk: params.onStreamChunk, onToolCallStart }
+}
+
 export function generateText(binding: Binding, endpoint: Endpoint, handler: ChatHandler) {
   return (_runtime: IAgentRuntime, params: GenerateTextParams): Promise<string | GenerateTextResult> => run(
-    Effect.provide(Effect.map(serve(binding, handler, endpoint, callKeyOf(params), requestOf(endpoint, handler, params), params, askOf(params), warmsUp(params)), returned), FetchHttpClient.layer),
+    Effect.provide(Effect.map(serve(binding, handler, endpoint, callKeyOf(params), requestOf(endpoint, handler, params), sinkOf(params), askOf(params), warmsUp(params)), returned), FetchHttpClient.layer),
     params.signal,
   )
 }
