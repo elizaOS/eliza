@@ -28,18 +28,6 @@
           ]
         },
         {
-          "name": "__resetDirectActionRoutingRulesForTests",
-          "typeOnly": false,
-          "declarations": [
-            {
-              "path": "packages/core/src/runtime/direct-action-routing.ts",
-              "line": 88,
-              "kind": "FunctionDeclaration",
-              "signature": "(runtime: IAgentRuntime): void"
-            }
-          ]
-        },
-        {
           "name": "_resetActionRolePolicyCacheForTests",
           "typeOnly": false,
           "declarations": [
@@ -12988,18 +12976,6 @@
           ]
         },
         {
-          "name": "DirectActionRoutingRule",
-          "typeOnly": true,
-          "declarations": [
-            {
-              "path": "packages/core/src/runtime/direct-action-routing.ts",
-              "line": 13,
-              "kind": "InterfaceDeclaration",
-              "signature": "export interface DirectActionRoutingRule { /** Stable diagnostic identifier owned by the registering plugin. */ readonly id: string; /** Runtime action names that can satisfy this intent. */ readonly actionNames: readonly string[]; /** * Stage-1 candidates that this rule may replace after its action has passed * the normal execution gates. This is intentionally opt-in: an owner route * must not rewrite an unrelated, already-tool-bearing plan. */ readonly replacesActionNames?: readonly string[]; /** * Every selected action must declare all of these tags. This prevents a * same-named or context-adjacent action from masquerading as the required * read/write capability. */ readonly requiredActionTags: readonly string[]; /** Contexts to add when the route is selected. */ readonly contexts: readonly AgentContext[]; /** * Optional, stricter ownership of the complete original request. Only an * admitted, unambiguous owner may replace model-derived intent scope. The * broad matches() route remains additive for other requests. Named fields are * inferred operation-scope extensions, never core or original source data. */ readonly wholeRequest?: { matches(messageText: string, message?: Memory): boolean; readonly invalidateFields: readonly string[]; /** The closed request has no visible-surface dependency. Never inferred from model output. */ readonly inputScope?: \"domain-only\"; }; /** * Fail-closed reply used when this exact intent is owned by the rule but no * eligible action is available for the current actor/turn. This is opt-in: * rules without an unavailable contract preserve their existing Stage-1 * fallback behavior. */ readonly unavailable?: { /** Stable machine-readable identifier, also included in diagnostics. */ readonly code: string; /** Honest user-facing reply; must not claim that an action ran. */ readonly reply: string; }; /** * True only for a current-turn request owned by this route. The optional * message exposes typed control metadata for routing, never effect authority. */ matches(messageText: string, message?: Memory): boolean; }"
-            }
-          ]
-        },
-        {
           "name": "DISABLED_TRIGGER_INTERVAL_MS",
           "typeOnly": false,
           "declarations": [
@@ -16972,18 +16948,6 @@
               "line": 82,
               "kind": "FunctionDeclaration",
               "signature": "(count: number, seed: string | number): string[]"
-            }
-          ]
-        },
-        {
-          "name": "getDirectActionRoutingRules",
-          "typeOnly": false,
-          "declarations": [
-            {
-              "path": "packages/core/src/runtime/direct-action-routing.ts",
-              "line": 82,
-              "kind": "FunctionDeclaration",
-              "signature": "(runtime: IAgentRuntime): readonly DirectActionRoutingRule[]"
             }
           ]
         },
@@ -34675,18 +34639,6 @@
           ]
         },
         {
-          "name": "registerDirectActionRoutingRule",
-          "typeOnly": false,
-          "declarations": [
-            {
-              "path": "packages/core/src/runtime/direct-action-routing.ts",
-              "line": 65,
-              "kind": "FunctionDeclaration",
-              "signature": "(runtime: IAgentRuntime, rule: DirectActionRoutingRule): void"
-            }
-          ]
-        },
-        {
           "name": "RegisteredEvaluator",
           "typeOnly": true,
           "declarations": [
@@ -48821,18 +48773,6 @@
       "source": "packages/core/src/protocol.ts",
       "exports": [
         {
-          "name": "__resetDirectActionRoutingRulesForTests",
-          "typeOnly": false,
-          "declarations": [
-            {
-              "path": "packages/core/src/runtime/direct-action-routing.ts",
-              "line": 88,
-              "kind": "FunctionDeclaration",
-              "signature": "(runtime: IAgentRuntime): void"
-            }
-          ]
-        },
-        {
           "name": "AccessContext",
           "typeOnly": true,
           "declarations": [
@@ -55576,18 +55516,6 @@
           ]
         },
         {
-          "name": "DirectActionRoutingRule",
-          "typeOnly": true,
-          "declarations": [
-            {
-              "path": "packages/core/src/runtime/direct-action-routing.ts",
-              "line": 13,
-              "kind": "InterfaceDeclaration",
-              "signature": "export interface DirectActionRoutingRule { /** Stable diagnostic identifier owned by the registering plugin. */ readonly id: string; /** Runtime action names that can satisfy this intent. */ readonly actionNames: readonly string[]; /** * Stage-1 candidates that this rule may replace after its action has passed * the normal execution gates. This is intentionally opt-in: an owner route * must not rewrite an unrelated, already-tool-bearing plan. */ readonly replacesActionNames?: readonly string[]; /** * Every selected action must declare all of these tags. This prevents a * same-named or context-adjacent action from masquerading as the required * read/write capability. */ readonly requiredActionTags: readonly string[]; /** Contexts to add when the route is selected. */ readonly contexts: readonly AgentContext[]; /** * Optional, stricter ownership of the complete original request. Only an * admitted, unambiguous owner may replace model-derived intent scope. The * broad matches() route remains additive for other requests. Named fields are * inferred operation-scope extensions, never core or original source data. */ readonly wholeRequest?: { matches(messageText: string, message?: Memory): boolean; readonly invalidateFields: readonly string[]; /** The closed request has no visible-surface dependency. Never inferred from model output. */ readonly inputScope?: \"domain-only\"; }; /** * Fail-closed reply used when this exact intent is owned by the rule but no * eligible action is available for the current actor/turn. This is opt-in: * rules without an unavailable contract preserve their existing Stage-1 * fallback behavior. */ readonly unavailable?: { /** Stable machine-readable identifier, also included in diagnostics. */ readonly code: string; /** Honest user-facing reply; must not claim that an action ran. */ readonly reply: string; }; /** * True only for a current-turn request owned by this route. The optional * message exposes typed control metadata for routing, never effect authority. */ matches(messageText: string, message?: Memory): boolean; }"
-            }
-          ]
-        },
-        {
           "name": "DISABLED_TRIGGER_INTERVAL_MS",
           "typeOnly": false,
           "declarations": [
@@ -58174,18 +58102,6 @@
               "line": 82,
               "kind": "FunctionDeclaration",
               "signature": "(count: number, seed: string | number): string[]"
-            }
-          ]
-        },
-        {
-          "name": "getDirectActionRoutingRules",
-          "typeOnly": false,
-          "declarations": [
-            {
-              "path": "packages/core/src/runtime/direct-action-routing.ts",
-              "line": 82,
-              "kind": "FunctionDeclaration",
-              "signature": "(runtime: IAgentRuntime): readonly DirectActionRoutingRule[]"
             }
           ]
         },
@@ -69734,18 +69650,6 @@
               "line": 133,
               "kind": "FunctionDeclaration",
               "signature": "(canonical: string, metadata: ConnectorSourceMetadata, owner?: string): void"
-            }
-          ]
-        },
-        {
-          "name": "registerDirectActionRoutingRule",
-          "typeOnly": false,
-          "declarations": [
-            {
-              "path": "packages/core/src/runtime/direct-action-routing.ts",
-              "line": 65,
-              "kind": "FunctionDeclaration",
-              "signature": "(runtime: IAgentRuntime, rule: DirectActionRoutingRule): void"
             }
           ]
         },
@@ -222561,6 +222465,133 @@
               "line": 41,
               "kind": "FunctionDeclaration",
               "signature": "(runtime: IAgentRuntime, rule: CandidateActionBackstopRule): void"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "v4DirectRouteRetirement": {
+    "specification": "spec/core/registries.md",
+    "decision": "v4-model-chooses-every-call",
+    "reason": "Retired v4 direct action route registry: a route matched the person's words to force actions, contexts or a fixed reply before the model; the model now chooses every call, and current source registers none.",
+    "historicalExports": [
+      {
+        "entry": ".",
+        "export": {
+          "name": "__resetDirectActionRoutingRulesForTests",
+          "typeOnly": false,
+          "declarations": [
+            {
+              "path": "packages/core/src/runtime/direct-action-routing.ts",
+              "line": 88,
+              "kind": "FunctionDeclaration",
+              "signature": "(runtime: IAgentRuntime): void"
+            }
+          ]
+        }
+      },
+      {
+        "entry": ".",
+        "export": {
+          "name": "DirectActionRoutingRule",
+          "typeOnly": true,
+          "declarations": [
+            {
+              "path": "packages/core/src/runtime/direct-action-routing.ts",
+              "line": 13,
+              "kind": "InterfaceDeclaration",
+              "signature": "export interface DirectActionRoutingRule { /** Stable diagnostic identifier owned by the registering plugin. */ readonly id: string; /** Runtime action names that can satisfy this intent. */ readonly actionNames: readonly string[]; /** * Stage-1 candidates that this rule may replace after its action has passed * the normal execution gates. This is intentionally opt-in: an owner route * must not rewrite an unrelated, already-tool-bearing plan. */ readonly replacesActionNames?: readonly string[]; /** * Every selected action must declare all of these tags. This prevents a * same-named or context-adjacent action from masquerading as the required * read/write capability. */ readonly requiredActionTags: readonly string[]; /** Contexts to add when the route is selected. */ readonly contexts: readonly AgentContext[]; /** * Optional, stricter ownership of the complete original request. Only an * admitted, unambiguous owner may replace model-derived intent scope. The * broad matches() route remains additive for other requests. Named fields are * inferred operation-scope extensions, never core or original source data. */ readonly wholeRequest?: { matches(messageText: string, message?: Memory): boolean; readonly invalidateFields: readonly string[]; /** The closed request has no visible-surface dependency. Never inferred from model output. */ readonly inputScope?: \"domain-only\"; }; /** * Fail-closed reply used when this exact intent is owned by the rule but no * eligible action is available for the current actor/turn. This is opt-in: * rules without an unavailable contract preserve their existing Stage-1 * fallback behavior. */ readonly unavailable?: { /** Stable machine-readable identifier, also included in diagnostics. */ readonly code: string; /** Honest user-facing reply; must not claim that an action ran. */ readonly reply: string; }; /** * True only for a current-turn request owned by this route. The optional * message exposes typed control metadata for routing, never effect authority. */ matches(messageText: string, message?: Memory): boolean; }"
+            }
+          ]
+        }
+      },
+      {
+        "entry": ".",
+        "export": {
+          "name": "getDirectActionRoutingRules",
+          "typeOnly": false,
+          "declarations": [
+            {
+              "path": "packages/core/src/runtime/direct-action-routing.ts",
+              "line": 82,
+              "kind": "FunctionDeclaration",
+              "signature": "(runtime: IAgentRuntime): readonly DirectActionRoutingRule[]"
+            }
+          ]
+        }
+      },
+      {
+        "entry": ".",
+        "export": {
+          "name": "registerDirectActionRoutingRule",
+          "typeOnly": false,
+          "declarations": [
+            {
+              "path": "packages/core/src/runtime/direct-action-routing.ts",
+              "line": 65,
+              "kind": "FunctionDeclaration",
+              "signature": "(runtime: IAgentRuntime, rule: DirectActionRoutingRule): void"
+            }
+          ]
+        }
+      },
+      {
+        "entry": "./protocol",
+        "export": {
+          "name": "__resetDirectActionRoutingRulesForTests",
+          "typeOnly": false,
+          "declarations": [
+            {
+              "path": "packages/core/src/runtime/direct-action-routing.ts",
+              "line": 88,
+              "kind": "FunctionDeclaration",
+              "signature": "(runtime: IAgentRuntime): void"
+            }
+          ]
+        }
+      },
+      {
+        "entry": "./protocol",
+        "export": {
+          "name": "DirectActionRoutingRule",
+          "typeOnly": true,
+          "declarations": [
+            {
+              "path": "packages/core/src/runtime/direct-action-routing.ts",
+              "line": 13,
+              "kind": "InterfaceDeclaration",
+              "signature": "export interface DirectActionRoutingRule { /** Stable diagnostic identifier owned by the registering plugin. */ readonly id: string; /** Runtime action names that can satisfy this intent. */ readonly actionNames: readonly string[]; /** * Stage-1 candidates that this rule may replace after its action has passed * the normal execution gates. This is intentionally opt-in: an owner route * must not rewrite an unrelated, already-tool-bearing plan. */ readonly replacesActionNames?: readonly string[]; /** * Every selected action must declare all of these tags. This prevents a * same-named or context-adjacent action from masquerading as the required * read/write capability. */ readonly requiredActionTags: readonly string[]; /** Contexts to add when the route is selected. */ readonly contexts: readonly AgentContext[]; /** * Optional, stricter ownership of the complete original request. Only an * admitted, unambiguous owner may replace model-derived intent scope. The * broad matches() route remains additive for other requests. Named fields are * inferred operation-scope extensions, never core or original source data. */ readonly wholeRequest?: { matches(messageText: string, message?: Memory): boolean; readonly invalidateFields: readonly string[]; /** The closed request has no visible-surface dependency. Never inferred from model output. */ readonly inputScope?: \"domain-only\"; }; /** * Fail-closed reply used when this exact intent is owned by the rule but no * eligible action is available for the current actor/turn. This is opt-in: * rules without an unavailable contract preserve their existing Stage-1 * fallback behavior. */ readonly unavailable?: { /** Stable machine-readable identifier, also included in diagnostics. */ readonly code: string; /** Honest user-facing reply; must not claim that an action ran. */ readonly reply: string; }; /** * True only for a current-turn request owned by this route. The optional * message exposes typed control metadata for routing, never effect authority. */ matches(messageText: string, message?: Memory): boolean; }"
+            }
+          ]
+        }
+      },
+      {
+        "entry": "./protocol",
+        "export": {
+          "name": "getDirectActionRoutingRules",
+          "typeOnly": false,
+          "declarations": [
+            {
+              "path": "packages/core/src/runtime/direct-action-routing.ts",
+              "line": 82,
+              "kind": "FunctionDeclaration",
+              "signature": "(runtime: IAgentRuntime): readonly DirectActionRoutingRule[]"
+            }
+          ]
+        }
+      },
+      {
+        "entry": "./protocol",
+        "export": {
+          "name": "registerDirectActionRoutingRule",
+          "typeOnly": false,
+          "declarations": [
+            {
+              "path": "packages/core/src/runtime/direct-action-routing.ts",
+              "line": 65,
+              "kind": "FunctionDeclaration",
+              "signature": "(runtime: IAgentRuntime, rule: DirectActionRoutingRule): void"
             }
           ]
         }
