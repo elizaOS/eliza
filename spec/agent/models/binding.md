@@ -130,10 +130,10 @@ attempt carries the first attempt's key when the first ended without an
 answer from the cloud, so a connection lost after the cloud dispatched it is
 answered `409 already_dispatched` instead of running and charging the
 generation again. When the cloud answered the first attempt with a refusal,
-the cloud settled that attempt and generated nothing for it, so the second
-attempt takes a fresh key and runs: under the same key the cloud could only
-refuse it `409 already_dispatched`, and an outage the retry is there for
-would end the turn as a provider issue. For a rate limit, the transport
+the cloud has already settled that attempt and returned no generation for
+it, so the second attempt takes a fresh key and runs: under the same key the
+cloud could only refuse it `409 already_dispatched`, and an outage the retry
+is there for would end the turn as a provider issue. For a rate limit, the transport
 never re-sends it;
 the refusal carries the time left until the provider's retry time, and the turn
 that made the call waits for that, at most five seconds, and sends it once more
