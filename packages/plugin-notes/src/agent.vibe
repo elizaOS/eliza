@@ -288,11 +288,11 @@ function readAction(notes: NotesCollection): Action[] {
     notesAction(notes, {
       name: "NOTES_GET",
       similes: ["NOTES_GET_NOTE"],
-      description: "Read one current note by exact noteId, by the title the owner named it by, or by text it contains; give exactly one. A title no saved note has reads nothing and asks the owner which note they mean, so never cite another note in its place. Several distinct matches return candidates for the owner's choice.",
+      description: "Read one current note by exact noteId, by the title the owner named it by, or by text it contains or what the owner says it is about; give exactly one. A title no saved note has reads nothing and asks the owner which note they mean, so never cite another note in its place. Several distinct matches return candidates for the owner's choice.",
       parameters: [
         idParameter("Exact note ID."),
-        { name: "title", description: "The title the owner named the note by, as they said it.", required: false, schema: { type: "string", maxLength: 240 } },
-        contentParameter("Unique text the note contains, when the owner did not name its title."),
+        { name: "title", description: "The title the owner named the note by, as they said it; never what they say the note is about.", required: false, schema: { type: "string", maxLength: 240 } },
+        contentParameter("Unique text the note contains, or what the owner says the note is about, when the owner did not name its title."),
       ],
       run: effect (params, message) => {
         const title = text(params, "title")

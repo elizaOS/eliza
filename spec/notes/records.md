@@ -170,8 +170,9 @@ note is read. Several are offered for the owner to choose, and none is read.
 When no saved note has the title, no note is read and no other note is
 cited in its place: the agent answers that no note has that title, with
 the titles of the notes whose text mentions it, and waits on the owner to
-say which note to use. A read by text the note contains, rather than by its
-title, searches every note's text.
+say which note to use. A read by text the note contains, or by what the
+owner says the note is about, rather than by a title they named, searches
+every note's text.
 
 ```quint
 type TitledRead = ReadsTitledNote | AsksAmongTitledNotes | AsksWhichNote
