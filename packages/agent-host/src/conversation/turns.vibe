@@ -4,7 +4,7 @@
 // spec/agent/conversation/turns.md, "A Stop is confirmed only when its turn ends within five seconds, and is otherwise uncertain"
 // spec/agent/conversation/turns.md, "An interrupted reply keeps proof of an applied effect"; spec/agent/conversation/turns.md, "An aborted reply records what ended its turn, and never in its text"
 // spec/agent/schedule/triggers.md, "An event trigger runs once for each event of its name a conversation turn raises, never for a trigger run's events"
-// spec/agent/conversation/turnContext.md, "A voice view context is accepted only when every stated field has an allowed value and direct requests have completed-action delivery and a routing identity"; spec/agent/conversation/turnContext.md, "A Browser page is kept only when every field is valid, it is the Browser tab the kept observation selects at that revision on a screen not sensitive, and it fits 16,384 bytes"
+// spec/agent/conversation/turnContext.md, "A voice view context is accepted only when every stated field has an allowed value and direct requests have completed-action delivery and a routing identity"; spec/agent/conversation/turnContext.md, "A Browser page is kept only when every field is valid, it is the Browser tab the kept observation selects at that revision on a screen not sensitive, and it fits 16,384 bytes"; spec/agent/conversation/turnContext.md, "A reviewed email is kept only when every field is valid and it fits 48,000 bytes"; spec/agent/conversation/turnContext.md, "A voice-note transcript flag is kept only when true and bound to a selected canonical note on a non-sensitive screen"
 // spec/agent/conversation/events.md, "Story: Hear about my conversations while my screen is open"
 // spec/agent/conversation/replyStream.md, "Only a message that starts its own turn streams text, a repeat waits for its reply, and a refusal opens no stream"; spec/agent/conversation/planning.md, "A turn acknowledges at most once, with a cue that comes with its first tool calls"
 // spec/agent/tasks/wire.md, "A chat turn names a task only while the host presents it at that epoch"
@@ -20,7 +20,7 @@ module node {
   import { warmUpDeadlineMs, warmUpStarts } from "../../gen/agent__conversation__planning.ts"
   import { plannerWarmUps } from "./message-service.vibe"
   import { abortCauseOf, admitsReplyTarget, cloudCodeOn, decide, planActionOf, providerWaitMs, publishesCutOffEffect, receiptRetentionMs, stopConfirmMs, stopWindowOpen, turnDeadlineMs, type Admission, type KeyView, type ReplyKind, type TurnEnder } from "../../gen/agent__conversation__turns.ts"
-  import { type LocalRoute, decodeBrowserPage, decodeObservation, decodeVoiceUiContext } from "@elizaos/agent"
+  import { type LocalRoute, decodeBrowserPage, decodeObservation, decodeReviewedEmail, decodeSelectedVoiceNoteTranscript, decodeVoiceUiContext } from "@elizaos/agent"
   import type { VoiceAction } from "../../gen/agent__conversation__planning.ts"
   import { voiceActionLabel } from "./reply-text.vibe"
   import type { DeviceTurnPort, DeviceTurnSession } from "../device-actions/proposal/turn.vibe"
@@ -90,23 +90,34 @@ module node {
     const clientId = parseViewInteractionClientId(sent)
     if (sent !== undefined && clientId === undefined) return { kind: "refused", status: 400, error: "invalid_client_id" }
     const parsed = turnBody(body)
-    if (parsed._tag !== "Some" || (!parsed.value.text && !parsed.value.images?.length)) {
+    if (parsed._tag !== "Some") {
       return { kind: "refused", status: 400, error: "invalid_message" }
     }
     const metadata = parsed.value.metadata
-    if (metadata === undefined) return { kind: "input", body: parsed.value, clientId }
-    const { observation, voiceUi, browserPage, ...rest } = metadata
-    const voice = voiceUi === undefined ? undefined : Effect.runSync(Effect.result(decodeVoiceUiContext(voiceUi, clientId)))
-    if (voice !== undefined && Result.isFailure(voice)) return { kind: "refused", status: 400, error: "VOICE_UI_CONTEXT_INVALID" }
+    if (metadata === undefined) {
+      if (!parsed.value.text && !parsed.value.images?.length) return { kind: "refused", status: 400, error: "invalid_message" }
+      return { kind: "input", body: parsed.value, clientId }
+    }
+    const { observation, voiceUi, browserPage, reviewedEmail, useSelectedVoiceNoteTranscript, ...rest } = metadata
     const seen = observation === undefined ? undefined : Effect.runSync(Effect.result(decodeObservation(observation)))
     const kept = seen !== undefined && Result.isSuccess(seen) ? seen.success : undefined
     const page = browserPage === undefined ? undefined : Effect.runSync(Effect.result(decodeBrowserPage(browserPage, kept)))
+    const email = reviewedEmail === undefined ? undefined : Effect.runSync(Effect.result(decodeReviewedEmail(reviewedEmail)))
+    const voiceNote = useSelectedVoiceNoteTranscript === undefined ? undefined : Effect.runSync(Effect.result(decodeSelectedVoiceNoteTranscript(useSelectedVoiceNoteTranscript, kept)))
+    const hasSubject = Boolean(parsed.value.text) || Boolean(parsed.value.images?.length)
+      || (email !== undefined && Result.isSuccess(email))
+      || (voiceNote !== undefined && Result.isSuccess(voiceNote))
+    if (!hasSubject) return { kind: "refused", status: 400, error: "invalid_message" }
+    const voice = voiceUi === undefined ? undefined : Effect.runSync(Effect.result(decodeVoiceUiContext(voiceUi, clientId)))
+    if (voice !== undefined && Result.isFailure(voice)) return { kind: "refused", status: 400, error: "VOICE_UI_CONTEXT_INVALID" }
     return {
       kind: "input", body: parsed.value, clientId, metadata: {
         ...rest,
         ...(voice === undefined ? {} : { voiceUi: voice.success }),
         ...(kept === undefined ? {} : { observation: kept }),
         ...(page !== undefined && Result.isSuccess(page) ? { browserPage: page.success } : {}),
+        ...(email !== undefined && Result.isSuccess(email) ? { reviewedEmail: email.success } : {}),
+        ...(voiceNote !== undefined && Result.isSuccess(voiceNote) ? { useSelectedVoiceNoteTranscript: voiceNote.success } : {}),
       } as JsonObject,
     }
   }

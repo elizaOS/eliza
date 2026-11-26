@@ -1,9 +1,9 @@
-// spec/agent/conversation/turnContext.md, "Story: Tell the agent what my screen shows, and nothing more"; spec/agent/conversation/turnContext.md, "A Browser page is kept only when every field is valid, it is the Browser tab the kept observation selects at that revision on a screen not sensitive, and it fits 16,384 bytes"; spec/agent/conversation/turnContext.md, "An observation is kept only when every field is valid, a sensitive screen names no record, a civil day is on the calendar stated not sensitive in its own zone, and it fits 2,048 bytes"; spec/agent/conversation/turnContext.md, "A voice view context is accepted only when every stated field has an allowed value and direct requests have completed-action delivery and a routing identity"; spec/agent/conversation/turnContext.md, "Optional fields go only to the process instance the client compared for this turn"; spec/agent/conversation/turnContext.md, "A location is kept on any screen only when each coordinate, its accuracy and its time are in range, and it counts within the 2,048 bytes"
+// spec/agent/conversation/turnContext.md, "Story: Tell the agent what my screen shows, and nothing more"; spec/agent/conversation/turnContext.md, "A Browser page is kept only when every field is valid, it is the Browser tab the kept observation selects at that revision on a screen not sensitive, and it fits 16,384 bytes"; spec/agent/conversation/turnContext.md, "A reviewed email is kept only when every field is valid and it fits 48,000 bytes"; spec/agent/conversation/turnContext.md, "A voice-note transcript flag is kept only when true and bound to a selected canonical note on a non-sensitive screen"; spec/agent/conversation/turnContext.md, "An observation is kept only when every field is valid, a sensitive screen names no record, a civil day is on the calendar stated not sensitive in its own zone, and it fits 2,048 bytes"; spec/agent/conversation/turnContext.md, "A voice view context is accepted only when every stated field has an allowed value and direct requests have completed-action delivery and a routing identity"; spec/agent/conversation/turnContext.md, "Optional fields go only to the process instance the client compared for this turn"; spec/agent/conversation/turnContext.md, "A location is kept on any screen only when each coordinate, its accuracy and its time are in range, and it counts within the 2,048 bytes"
 import type { Content } from "@elizaos/core"
 import { parseViewInteractionClientId } from "@elizaos/core"
 import {
-  browserPageAccepted, comparePeer, learnPeer, maxSafeInteger, observationOutcome, sendsOptionalFields, voiceUiOutcome,
-  type BrowserPageFacts, type ObservationFacts, type PageBinding, type PageContent, type PeerSupport, type Sensitivity, type StatusRead, type TextField, type VoiceUiFacts,
+  browserPageAccepted, comparePeer, learnPeer, maxSafeInteger, observationOutcome, reviewedEmailAccepted, sendsOptionalFields, voiceNoteTranscriptAccepted, voiceUiOutcome,
+  type BrowserPageFacts, type NoteBinding, type ObservationFacts, type PageBinding, type PageContent, type PeerSupport, type ReviewedEmailFacts, type Sensitivity, type StatusRead, type TextField, type VoiceNoteTranscriptFacts, type VoiceUiFacts,
 } from "../../gen/agent__conversation__turnContext.effect.vibe"
 
 export { comparePeer, learnPeer, sendsOptionalFields, type PeerSupport, type StatusRead }
@@ -44,8 +44,10 @@ export const Observation = Schema.Struct({
 
 const plainLine = (value: string) => value.isWellFormed() && !/[\p{Cc}\u2028\u2029]/u.test(value)
 const plainLines = (value: string) => value.isWellFormed() && !/[^\P{Cc}\t\n]|[\u2028\u2029]/u.test(value)
+const emailPlainLines = (value: string) => value.isWellFormed() && !/[^\P{Cc}\t\n\r]|[\u2028\u2029]/u.test(value)
 const line = (max: number) => Schema.String.check(Schema.isMaxLength(max), Schema.makeFilter(plainLine))
 const lines = (max: number) => Schema.String.check(Schema.isMaxLength(max), Schema.makeFilter(plainLines))
+const emailLines = (max: number) => Schema.String.check(Schema.isMaxLength(max), Schema.makeFilter(emailPlainLines))
 
 function webPageAddress(value: string): boolean {
   const parsed = value.length <= 2048 && !value.includes("#") ? URL.parse(value) : null
@@ -75,6 +77,14 @@ const WithheldPage = Schema.Struct({ ...pageFields, withheld: Schema.Literals(["
 export const BrowserPage = Schema.Union([ReadPage, WithheldPage])
 export type BrowserPage = typeof BrowserPage.Type
 
+export const ReviewedEmail = Schema.Struct({
+  from: line(512),
+  to: Schema.Array(line(512)).check(Schema.isMaxLength(50)),
+  subject: line(1000),
+  bodyText: emailLines(48_000),
+})
+export type ReviewedEmail = typeof ReviewedEmail.Type
+
 export const VoiceUiContext = Schema.Struct({
   uiViewPath: Schema.optionalKey(Schema.String),
   uiViewSubview: Schema.optionalKey(Schema.String),
@@ -95,10 +105,14 @@ export interface TurnContext {
   readonly observation?: Observation
   readonly voiceUi?: VoiceUiContext
   readonly browserPage?: BrowserPage
+  readonly reviewedEmail?: ReviewedEmail
+  readonly useSelectedVoiceNoteTranscript?: true
 }
 
 export error ObservationDropped { facts: ObservationFacts | undefined }
 export error BrowserPageDropped { facts: BrowserPageFacts | undefined }
+export error ReviewedEmailDropped { facts: ReviewedEmailFacts | undefined }
+export error VoiceNoteTranscriptDropped { facts: VoiceNoteTranscriptFacts | undefined }
 export error VoiceUiContextInvalid { facts: VoiceUiFacts | undefined }
 
 type Decided<A, F> = { readonly kind: "carried"; readonly value: A } | { readonly kind: "refused"; readonly facts: F | undefined }
@@ -109,7 +123,9 @@ const selectedObjectOf = Schema.decodeUnknownOption(SelectedObject, strict)
 const calendarDayOf = Schema.decodeUnknownOption(CalendarDay, strict)
 const locationOf = Schema.decodeUnknownOption(Location, strict)
 const browserPageOf = Schema.decodeUnknownOption(BrowserPage, strict)
+const reviewedEmailOf = Schema.decodeUnknownOption(ReviewedEmail, strict)
 const browserPageKeys: ReadonlySet<string> = new Set(["tabId", "revision", "url", "title", "capturedAt", "withheld", "text", "truncated", "selection", "links"])
+const reviewedEmailKeys: ReadonlySet<string> = new Set(["from", "to", "subject", "bodyText"])
 const pageContentKeys = ["text", "truncated", "selection", "links"] as const
 const isName = Schema.is(Name)
 const isZoneName = Schema.is(ZoneName)
@@ -252,6 +268,37 @@ function decideBrowserPage(input: unknown, observation: Observation | undefined)
   return page !== undefined && browserPageAccepted(facts) ? { kind: "carried", value: page } : { kind: "refused", facts }
 }
 
+function canonicalEmail(email: ReviewedEmail): ReviewedEmail {
+  return { from: email.from, to: [...email.to], subject: email.subject, bodyText: email.bodyText }
+}
+
+function decideReviewedEmail(input: unknown): Decided<ReviewedEmail, ReviewedEmailFacts> {
+  const fields = table(input)
+  if (fields === undefined) return { kind: "refused", facts: undefined }
+  const decoded = Option.getOrUndefined(reviewedEmailOf(fields))
+  const email = decoded === undefined ? undefined : canonicalEmail(decoded)
+  const facts: ReviewedEmailFacts = {
+    unknownField: Object.keys(fields).some((key) => !reviewedEmailKeys.has(key)),
+    fieldsValid: email !== undefined,
+    bytes: email === undefined ? 0 : new TextEncoder().encode(JSON.stringify(email)).byteLength,
+  }
+  return email !== undefined && reviewedEmailAccepted(facts) ? { kind: "carried", value: email } : { kind: "refused", facts }
+}
+
+function noteBindingOf(observation: Observation | undefined): NoteBinding {
+  if (observation === undefined) return "NoNoteObservation"
+  if (observation.sensitive) return "SensitiveNote"
+  return observation.selectedObject?.kind === "canonical-note" ? "SelectedCanonicalNote" : "OtherSelectedObject"
+}
+
+function decideSelectedVoiceNoteTranscript(input: unknown, observation: Observation | undefined): Decided<true, VoiceNoteTranscriptFacts> {
+  const facts: VoiceNoteTranscriptFacts = {
+    requested: input === true,
+    binding: noteBindingOf(observation),
+  }
+  return voiceNoteTranscriptAccepted(facts) ? { kind: "carried", value: true } : { kind: "refused", facts }
+}
+
 function textOf(value: unknown): TextField {
   if (value === undefined) return { tag: "NoText" }
   if (typeof value !== "string") return { tag: "NotText" }
@@ -305,6 +352,18 @@ export effect function decodeBrowserPage(input: unknown, observation: Observatio
   return decided.value
 }
 
+export effect function decodeReviewedEmail(input: unknown) {
+  const decided = decideReviewedEmail(input)
+  if (decided.kind === "refused") throw new ReviewedEmailDropped({ facts: decided.facts })
+  return decided.value
+}
+
+export effect function decodeSelectedVoiceNoteTranscript(input: unknown, observation: Observation | undefined) {
+  const decided = decideSelectedVoiceNoteTranscript(input, observation)
+  if (decided.kind === "refused") throw new VoiceNoteTranscriptDropped({ facts: decided.facts })
+  return decided.value
+}
+
 export effect function decodeLocationObservation(input: unknown) {
   const position = Option.getOrUndefined(locationOf(input))
   if (position === undefined) throw new ObservationDropped({ facts: undefined })
@@ -328,19 +387,25 @@ export function readTurnContext(message: { readonly content: Content | { readonl
   const voiceUi = metadata?.voiceUi === undefined ? undefined : decideVoiceUi(metadata.voiceUi, undefined)
   const kept = observation?.kind === "carried" ? observation.value : undefined
   const page = metadata?.browserPage === undefined ? undefined : decideBrowserPage(metadata.browserPage, kept)
+  const email = metadata?.reviewedEmail === undefined ? undefined : decideReviewedEmail(metadata.reviewedEmail)
+  const voiceNote = metadata?.useSelectedVoiceNoteTranscript === undefined ? undefined : decideSelectedVoiceNoteTranscript(metadata.useSelectedVoiceNoteTranscript, kept)
   return {
     ...(kept === undefined ? {} : { observation: kept }),
     ...(voiceUi?.kind === "carried" ? { voiceUi: voiceUi.value } : {}),
     ...(page?.kind === "carried" ? { browserPage: page.value } : {}),
+    ...(email?.kind === "carried" ? { reviewedEmail: email.value } : {}),
+    ...(voiceNote?.kind === "carried" ? { useSelectedVoiceNoteTranscript: voiceNote.value } : {}),
   }
 }
 
 export function encodeTurnContext(context: TurnContext, peer: { readonly optionalFields: boolean }): TurnContext {
-  const { observation, voiceUi, browserPage } = context
+  const { observation, voiceUi, browserPage, reviewedEmail, useSelectedVoiceNoteTranscript } = context
   return {
     ...(observation === undefined ? {} : { observation: canonical(peer.optionalFields ? observation : withoutOptionalFields(observation)) }),
     ...(voiceUi === undefined ? {} : { voiceUi }),
     ...(browserPage === undefined || observation === undefined || !peer.optionalFields ? {} : { browserPage: canonicalPage(browserPage) }),
+    ...(reviewedEmail === undefined || !peer.optionalFields ? {} : { reviewedEmail: canonicalEmail(reviewedEmail) }),
+    ...(useSelectedVoiceNoteTranscript !== true || observation === undefined || !peer.optionalFields ? {} : { useSelectedVoiceNoteTranscript: true }),
   }
 }
 

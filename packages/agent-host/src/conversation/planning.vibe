@@ -667,11 +667,19 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
     const { declared: givenTag, text: givenWords } = declaredOf(writtenCallFree(given.text).prose)
     const results = conversation.slice(input.messages.length).flatMap(({ role, content }) => role === "tool" ? textsOf(content) : [])
     const lone = given.toolCalls.length === 0
-      ? writtenCallOf(givenWords, tools, () => ({
-        anywhere: [...input.messages.flatMap(({ content }) => textsOf(content)), ...input.hostNotes, ...results],
-        untrusted: [...results, ...attachedTexts(input.messages.at(-1)?.content), ...[readTurnContext(message).browserPage].flatMap((page) => page === undefined ? [] : [JSON.stringify(page)])],
-        host: hostObjects(input.hostNotes, results),
-      }))
+      ? writtenCallOf(givenWords, tools, () => {
+        const turnContext = readTurnContext(message)
+        return {
+          anywhere: [...input.messages.flatMap(({ content }) => textsOf(content)), ...input.hostNotes, ...results],
+          untrusted: [
+            ...results,
+            ...attachedTexts(input.messages.at(-1)?.content),
+            ...(turnContext.browserPage === undefined ? [] : [JSON.stringify(turnContext.browserPage)]),
+            ...(turnContext.reviewedEmail === undefined ? [] : [JSON.stringify(turnContext.reviewedEmail)]),
+          ],
+          host: hostObjects(input.hostNotes, results),
+        }
+      })
       : undefined
     const loneMove = loneObjectMove(lone !== undefined, lone?.naming ?? "NamesNoTool", lone?.fits ?? false, lone?.copied ?? false, lone?.hostData ?? false, givenTag,
       taken < maxPlanSteps, askedAgainAt(steps.length > 0, askedBeforeWork, askedAfterWork), maxPlanSteps - taken)
