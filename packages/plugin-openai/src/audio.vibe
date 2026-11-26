@@ -1,0 +1,359 @@
+// spec/openai/index.md, "Story: Use an OpenAI-compatible model for the requested capability"
+import { logger, type IAgentRuntime, type TextToSpeechParams, type TranscriptionParams } from "@elizaos/core"
+import { Schema } from "effect"
+import { getApiKey, getBaseURL, getTranscriptionModel, getTTSInstructions, getTTSModel, getTTSVoice } from "./config.vibe"
+import { OpenAiFailure } from "./errors.vibe"
+import { fetchAudioMedia, openAiPost, resolveAllowKeyless } from "./transport.vibe"
+
+export type AudioMimeType =
+  | "audio/wav"
+  | "audio/mpeg"
+  | "audio/ogg"
+  | "audio/flac"
+  | "audio/mp4"
+  | "audio/webm"
+  | "application/octet-stream"
+
+export type TTSOutputFormat = "mp3" | "opus" | "aac" | "flac" | "wav" | "pcm"
+
+export interface LocalTranscriptionParams {
+  audio: Blob | File | Uint8Array | ArrayBuffer
+  model?: string
+  language?: string
+  responseFormat?: "json" | "text" | "srt" | "verbose_json" | "vtt"
+  prompt?: string
+  temperature?: number
+  timestampGranularities?: Array<"word" | "segment">
+  mimeType?: string
+  signal?: AbortSignal
+}
+
+export interface ExtendedTextToSpeechParams extends TextToSpeechParams {
+  format?: TTSOutputFormat
+  model?: string
+  instructions?: string
+}
+
+const TRANSCRIPTION_AUDIO_MAX_BYTES = 25 * 1024 * 1024
+const TRANSCRIPTION_AUDIO_FETCH_TIMEOUT_MS = 30000
+const TRANSCRIPTION_AUDIO_MAX_REDIRECTS = 5
+
+const AUDIO_SNIFF_BYTES = 64
+const AUDIO_TRANSCRIPTION_TIMEOUT_MS = 120000
+const AUDIO_TTS_TIMEOUT_MS = 60000
+const MIN_DETECTION_BUFFER_SIZE = 12
+
+const WAV_HEADER = [0x52, 0x49, 0x46, 0x46] as const
+const WAV_ID = [0x57, 0x41, 0x56, 0x45] as const
+const MP3_ID3 = [0x49, 0x44, 0x33] as const
+const OGG_HEADER = [0x4f, 0x67, 0x67, 0x53] as const
+const FLAC_HEADER = [0x66, 0x4c, 0x61, 0x43] as const
+const FTYP_HEADER = [0x66, 0x74, 0x79, 0x70] as const
+const WEBM_EBML = [0x1a, 0x45, 0xdf, 0xa3] as const
+
+const AUDIO_MIME_ALIASES: Readonly<Record<string, AudioMimeType>> = {
+  "audio/wav": "audio/wav",
+  "audio/x-wav": "audio/wav",
+  "audio/wave": "audio/wav",
+  "audio/vnd.wave": "audio/wav",
+  "audio/mpeg": "audio/mpeg",
+  "audio/mp3": "audio/mpeg",
+  "audio/mpeg3": "audio/mpeg",
+  "audio/x-mpeg-3": "audio/mpeg",
+  "audio/mpg": "audio/mpeg",
+  "audio/ogg": "audio/ogg",
+  "audio/opus": "audio/ogg",
+  "audio/oga": "audio/ogg",
+  "audio/vorbis": "audio/ogg",
+  "audio/flac": "audio/flac",
+  "audio/x-flac": "audio/flac",
+  "audio/mp4": "audio/mp4",
+  "audio/m4a": "audio/mp4",
+  "audio/x-m4a": "audio/mp4",
+  "audio/x-m4b": "audio/mp4",
+  "audio/aac": "audio/mp4",
+  "audio/x-aac": "audio/mp4",
+  "audio/webm": "audio/webm",
+  "application/octet-stream": "application/octet-stream",
+}
+
+module node {
+  /** @throws {never} */
+  export function isBlobInstance(value: unknown): value is Blob {
+    return value instanceof Blob
+  }
+
+  /** @throws {never} */
+  export function makeAudioBlob(bytes: Uint8Array, mimeType: string): Blob {
+    return new Blob([Uint8Array.from(bytes)], { type: mimeType })
+  }
+
+  /** @throws {never} */
+  export function buildTranscriptionFormData(args: {
+    blob: Blob
+    filename: string
+    modelName: string
+    language?: string
+    responseFormat?: string
+    prompt?: string
+    temperature?: number
+    timestampGranularities?: readonly string[]
+  }): FormData {
+    const formData = new FormData()
+    formData.append("file", args.blob, args.filename)
+    formData.append("model", args.modelName)
+    if (args.language) formData.append("language", args.language)
+    if (args.responseFormat) formData.append("response_format", args.responseFormat)
+    if (args.prompt) formData.append("prompt", args.prompt)
+    if (args.temperature !== undefined) formData.append("temperature", String(args.temperature))
+    if (args.timestampGranularities) {
+      for (const granularity of args.timestampGranularities) {
+        formData.append("timestamp_granularities[]", granularity)
+      }
+    }
+    return formData
+  }
+}
+import { buildTranscriptionFormData, isBlobInstance, makeAudioBlob } from node
+
+function matchBytes(buffer: Uint8Array, offset: number, expected: readonly number[]): boolean {
+  for (let i = 0; i < expected.length; i++) {
+    if (buffer[offset + i] !== expected[i]) return false
+  }
+  return true
+}
+
+export function detectAudioMimeType(buffer: Uint8Array): AudioMimeType {
+  if (buffer.length < MIN_DETECTION_BUFFER_SIZE) return "application/octet-stream"
+  if (matchBytes(buffer, 0, WAV_HEADER) && matchBytes(buffer, 8, WAV_ID)) return "audio/wav"
+  const first = buffer[0]
+  const second = buffer[1]
+  if (matchBytes(buffer, 0, MP3_ID3) || (first === 0xff && second !== undefined && (second & 0xe0) === 0xe0)) {
+    return "audio/mpeg"
+  }
+  if (matchBytes(buffer, 0, OGG_HEADER)) return "audio/ogg"
+  if (matchBytes(buffer, 0, FLAC_HEADER)) return "audio/flac"
+  if (matchBytes(buffer, 4, FTYP_HEADER)) return "audio/mp4"
+  if (matchBytes(buffer, 0, WEBM_EBML)) return "audio/webm"
+  logger.debug("[OpenAI] Could not detect audio format from buffer; using generic binary type")
+  return "application/octet-stream"
+}
+
+export function normalizeAudioMimeType(raw: string | null | undefined): AudioMimeType {
+  if (!raw) return "application/octet-stream"
+  const base = raw.split(";")[0]?.trim().toLowerCase() ?? ""
+  return AUDIO_MIME_ALIASES[base] ?? "application/octet-stream"
+}
+
+export function getExtensionForMimeType(mimeType: AudioMimeType): string {
+  switch (mimeType) {
+    case "audio/wav":
+      return "wav"
+    case "audio/mpeg":
+      return "mp3"
+    case "audio/ogg":
+      return "ogg"
+    case "audio/flac":
+      return "flac"
+    case "audio/mp4":
+      return "m4a"
+    case "audio/webm":
+      return "webm"
+    case "application/octet-stream":
+      return "bin"
+  }
+}
+
+export function getFilenameForMimeType(mimeType: AudioMimeType): string {
+  return `recording.${getExtensionForMimeType(mimeType)}`
+}
+
+schema TranscriptionJsonReply {
+  text: string
+}
+
+const decodeTranscriptionJson = Schema.decodeUnknownEffect(TranscriptionJsonReply)
+
+function toAudioBlob(bytes: Uint8Array, contentType?: string | null): Blob {
+  const mimeType = contentType?.startsWith("audio/") ? contentType : detectAudioMimeType(bytes)
+  return makeAudioBlob(bytes, mimeType)
+}
+
+effect function fetchTranscriptionBlob(url: string): Blob!OpenAiFailure {
+  const fetched = try tryPromise({
+    try: (signal) => fetchAudioMedia(
+      url,
+      TRANSCRIPTION_AUDIO_MAX_BYTES,
+      TRANSCRIPTION_AUDIO_FETCH_TIMEOUT_MS,
+      TRANSCRIPTION_AUDIO_MAX_REDIRECTS,
+      signal,
+    ),
+    catch: (cause) => new OpenAiFailure({ reason: "Failed to fetch transcription audio from URL.", retryable: false, cause }),
+  })
+  return toAudioBlob(fetched.buffer, fetched.contentType)
+}
+
+effect function resolveUploadMimeType(blob: Blob, declaredType: string) {
+  const slice = try tryPromise({
+    try: () => blob.slice(0, AUDIO_SNIFF_BYTES).arrayBuffer(),
+    catch: (cause) => new OpenAiFailure({ reason: "Failed to read audio header bytes.", retryable: false, cause }),
+  })
+  const sniffed = detectAudioMimeType(new Uint8Array(slice))
+  if (sniffed !== "application/octet-stream") return sniffed
+  return normalizeAudioMimeType(declaredType)
+}
+
+function extractAbortSignal(input: unknown): AbortSignal | undefined {
+  if (typeof input !== "object" || input === null || !("signal" in input)) return undefined
+  const signal = (input as { signal?: unknown }).signal
+  return signal instanceof AbortSignal ? signal : undefined
+}
+
+export type TranscriptionInput = Blob | File | Uint8Array | LocalTranscriptionParams | TranscriptionParams | string
+
+export function handleTranscription(runtime: IAgentRuntime, input: TranscriptionInput): Promise<string> {
+  const callerSignal = extractAbortSignal(input)
+  return runPromise(effect {
+    let modelName = getTranscriptionModel(runtime)
+    let blob: Blob
+    let language: string | undefined
+    let responseFormat: LocalTranscriptionParams["responseFormat"]
+    let prompt: string | undefined
+    let temperature: number | undefined
+    let timestampGranularities: Array<"word" | "segment"> | undefined
+
+    if (typeof input === "string") {
+      if (input.trim().length === 0) {
+        throw new OpenAiFailure({ reason: "TRANSCRIPTION requires a valid audio URL.", retryable: false })
+      }
+      blob = try fetchTranscriptionBlob(input)
+    } else if (isBlobInstance(input)) {
+      blob = input
+    } else if (input instanceof Uint8Array) {
+      blob = makeAudioBlob(input, detectAudioMimeType(input))
+    } else if (typeof input === "object" && input !== null) {
+      const record = input as Partial<LocalTranscriptionParams> & Partial<TranscriptionParams>
+      if (record.model) modelName = record.model
+      language = record.language
+      responseFormat = record.responseFormat
+      prompt = record.prompt
+      temperature = record.temperature
+      timestampGranularities = record.timestampGranularities
+
+      if (isBlobInstance(record.audio)) {
+        blob = record.audio
+      } else if (record.audio instanceof Uint8Array || record.audio instanceof ArrayBuffer) {
+        const bytes = record.audio instanceof ArrayBuffer ? new Uint8Array(record.audio) : record.audio
+        const mimeType = record.mimeType ?? detectAudioMimeType(bytes)
+        blob = makeAudioBlob(bytes, mimeType)
+      } else if (typeof record.audioUrl === "string") {
+        if (record.audioUrl.trim().length === 0) {
+          throw new OpenAiFailure({
+            reason: "TRANSCRIPTION requires audio bytes or a non-empty audioUrl; received an empty audioUrl with no audio.",
+            retryable: false,
+          })
+        }
+        blob = try fetchTranscriptionBlob(record.audioUrl)
+      } else {
+        throw new OpenAiFailure({
+          reason: "TRANSCRIPTION expects Blob, File, Uint8Array, URL string, or TranscriptionParams object.",
+          retryable: false,
+        })
+      }
+    } else {
+      throw new OpenAiFailure({
+        reason: "TRANSCRIPTION expects Blob, File, Uint8Array, URL string, or TranscriptionParams object.",
+        retryable: false,
+      })
+    }
+
+    const declaredMime = blob.type || "audio/webm"
+    const providedName = "name" in blob && typeof (blob as { name?: unknown }).name === "string"
+      ? (blob as { name: string }).name
+      : ""
+    const filename = providedName || getFilenameForMimeType(try resolveUploadMimeType(blob, declaredMime))
+    const formData = buildTranscriptionFormData({
+      blob,
+      filename,
+      modelName,
+      language,
+      responseFormat,
+      prompt,
+      temperature,
+      timestampGranularities,
+    })
+
+    const baseURL = getBaseURL(runtime)
+    const response = try openAiPost({
+      baseURL,
+      path: "/audio/transcriptions",
+      apiKey: getApiKey(runtime),
+      body: formData,
+      timeoutMs: AUDIO_TRANSCRIPTION_TIMEOUT_MS,
+      allowKeyless: resolveAllowKeyless(runtime, baseURL),
+    })
+
+    if (responseFormat === "text" || responseFormat === "srt" || responseFormat === "vtt") {
+      return try tryPromise({
+        try: () => response.text(),
+        catch: (cause) => new OpenAiFailure({ reason: "OpenAI transcription text response could not be read.", retryable: false, cause }),
+      })
+    }
+
+    const raw = try tryPromise({
+      try: (): Promise<unknown> => response.json(),
+      catch: (cause) => new OpenAiFailure({ reason: "OpenAI transcription response was not JSON.", retryable: false, cause }),
+    })
+    const decoded = decodeTranscriptionJson(raw) catch effect (cause) => {
+      throw new OpenAiFailure({ reason: "OpenAI transcription response had an invalid shape.", retryable: false, cause })
+    }
+    return decoded.text
+  }, { signal: callerSignal })
+}
+
+export function handleTextToSpeech(
+  runtime: IAgentRuntime,
+  input: string | ExtendedTextToSpeechParams,
+): Promise<ArrayBuffer> {
+  const callerSignal = extractAbortSignal(input)
+  return runPromise(effect {
+    const request: ExtendedTextToSpeechParams = typeof input === "string" ? { text: input } : input
+    const text = request.text
+    if (!text || text.trim().length === 0) {
+      throw new OpenAiFailure({ reason: "TEXT_TO_SPEECH requires non-empty text.", retryable: false })
+    }
+    if (text.length > 4096) {
+      throw new OpenAiFailure({ reason: "TEXT_TO_SPEECH text exceeds 4096 character limit.", retryable: false })
+    }
+    const model = request.model ?? getTTSModel(runtime)
+    const voice = request.voice ?? getTTSVoice(runtime)
+    const format: TTSOutputFormat = request.format ?? "mp3"
+    const instructions = request.instructions ?? getTTSInstructions(runtime)
+    const payload: Record<string, string | number> = {
+      model,
+      voice,
+      input: text,
+      response_format: format,
+      ...(request.speed !== undefined ? { speed: request.speed } : {}),
+      ...(instructions.length > 0 ? { instructions } : {}),
+    }
+    const baseURL = getBaseURL(runtime)
+    const response = try openAiPost({
+      baseURL,
+      path: "/audio/speech",
+      apiKey: getApiKey(runtime),
+      body: payload,
+      timeoutMs: AUDIO_TTS_TIMEOUT_MS,
+      extraHeaders: format === "mp3" ? { Accept: "audio/mpeg" } : undefined,
+      allowKeyless: resolveAllowKeyless(runtime, baseURL),
+    })
+    const buffer = try tryPromise({
+      try: () => response.arrayBuffer(),
+      catch: (cause) => new OpenAiFailure({ reason: "OpenAI speech audio response could not be read.", retryable: false, cause }),
+    })
+    if (buffer.byteLength === 0) {
+      throw new OpenAiFailure({ reason: "OpenAI TTS returned an empty audio response.", retryable: false })
+    }
+    return buffer
+  }, { signal: callerSignal })
+}

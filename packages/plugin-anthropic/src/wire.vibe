@@ -1,0 +1,533 @@
+// spec/anthropic/index.md, "Prompt caching and strict tool budgets stay within Anthropic wire limits"; spec/anthropic/index.md, "Temperature and nucleus sampling are mutually exclusive"
+import {
+  ElizaError,
+  buildCanonicalSystemPrompt,
+  deepToWellFormedUnicode,
+  dropDuplicateLeadingSystemMessage,
+  resolveEffectiveSystemPrompt,
+  toWellFormedUnicode,
+  type GenerateTextAttachment,
+  type GenerateTextParams,
+  type IAgentRuntime,
+  type PromptSegment,
+} from "@elizaos/core"
+
+type ChatMessage = NonNullable<GenerateTextParams["messages"]>[number]
+import { anthropicSegmentBreakpointBudget } from "../gen/anthropic.effect.vibe"
+import type { AnthropicCacheControl } from "./config.vibe"
+import type { AnthropicCacheBreakpoint, AnthropicProviderOptions } from "./provider-options.vibe"
+
+export type AnthropicWireContentBlock = Record<string, unknown>
+
+export interface AnthropicWireMessage {
+  readonly role: "user" | "assistant"
+  readonly content: string | AnthropicWireContentBlock[]
+}
+
+const DATA_IMAGE_RE = /^data:(image\/(?:png|jpeg|gif|webp));base64,(.+)$/i
+const DATA_PDF_RE = /^data:(application\/pdf);base64,(.+)$/i
+const DATA_TEXT_RE = /^data:(text\/plain)(?:;charset=[^;,]+)?;base64,(.+)$/i
+const TRAJECTORY_CACHEABLE_TYPES = new Set(["text", "tool_use", "tool_result"])
+
+module node {
+  /** @throws {never} */
+  export function decodeBase64Utf8(encoded: string): string {
+    return Buffer.from(encoded, "base64").toString("utf8")
+  }
+}
+import { decodeBase64Utf8 } from node
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+}
+
+function uint8ToBase64(bytes: Uint8Array): string {
+  let binary = ""
+  const chunkSize = 8192
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const slice = bytes.subarray(i, i + chunkSize)
+    binary += String.fromCharCode(...slice)
+  }
+  return btoa(binary)
+}
+
+function isHttpUrl(value: string): boolean {
+  return value.startsWith("https://") || value.startsWith("http://")
+}
+
+export function imageSourceForWire(
+  input: string | URL | Uint8Array,
+  mediaType?: string,
+): Record<string, unknown> {
+  if (input instanceof URL) {
+    return { type: "url", url: input.toString() }
+  }
+  if (input instanceof Uint8Array) {
+    return {
+      type: "base64",
+      media_type: mediaType || "image/png",
+      data: uint8ToBase64(input),
+    }
+  }
+  const match = DATA_IMAGE_RE.exec(input)
+  if (match) {
+    return { type: "base64", media_type: match[1].toLowerCase(), data: match[2] }
+  }
+  if (isHttpUrl(input)) {
+    return { type: "url", url: input }
+  }
+  return {
+    type: "base64",
+    media_type: mediaType || "image/png",
+    data: input,
+  }
+}
+
+function attachmentToWireBlock(attachment: GenerateTextAttachment): AnthropicWireContentBlock {
+  const mime = attachment.mediaType.trim().toLowerCase()
+  if (mime.startsWith("image/")) {
+    return {
+      type: "image",
+      source: imageSourceForWire(attachment.data, mime),
+    }
+  }
+  if (mime === "application/pdf") {
+    let source: Record<string, unknown>
+    if (attachment.data instanceof URL) {
+      source = { type: "url", url: attachment.data.toString() }
+    } else if (attachment.data instanceof Uint8Array) {
+      source = { type: "base64", media_type: "application/pdf", data: uint8ToBase64(attachment.data) }
+    } else {
+      const pdfMatch = DATA_PDF_RE.exec(attachment.data)
+      if (pdfMatch) {
+        source = { type: "base64", media_type: "application/pdf", data: pdfMatch[2] }
+      } else if (isHttpUrl(attachment.data)) {
+        source = { type: "url", url: attachment.data }
+      } else {
+        source = { type: "base64", media_type: "application/pdf", data: attachment.data }
+      }
+    }
+    return {
+      type: "document",
+      source,
+      ...(attachment.filename ? { title: toWellFormedUnicode(attachment.filename) } : {}),
+    }
+  }
+  if (attachment.data instanceof Uint8Array) {
+    const decoded = new TextDecoder().decode(attachment.data)
+    return {
+      type: "document",
+      source: { type: "text", media_type: "text/plain", data: toWellFormedUnicode(decoded) },
+      ...(attachment.filename ? { title: toWellFormedUnicode(attachment.filename) } : {}),
+    }
+  }
+  const str = attachment.data instanceof URL ? attachment.data.toString() : attachment.data
+  const textMatch = DATA_TEXT_RE.exec(str)
+  if (textMatch) {
+    return {
+      type: "document",
+      source: { type: "text", media_type: "text/plain", data: toWellFormedUnicode(decodeBase64Utf8(textMatch[2])) },
+      ...(attachment.filename ? { title: toWellFormedUnicode(attachment.filename) } : {}),
+    }
+  }
+  return {
+    type: "document",
+    source: { type: "text", media_type: "text/plain", data: toWellFormedUnicode(str) },
+    ...(attachment.filename ? { title: toWellFormedUnicode(attachment.filename) } : {}),
+  }
+}
+
+function normalizeBreakpointCacheControl(
+  breakpoint: AnthropicCacheBreakpoint,
+  fallback: AnthropicCacheControl,
+): AnthropicCacheControl {
+  if (
+    breakpoint.cacheControl
+    && typeof breakpoint.cacheControl === "object"
+    && breakpoint.cacheControl.type === "ephemeral"
+  ) {
+    return breakpoint.cacheControl.ttl === "1h"
+      ? { type: "ephemeral", ttl: "1h" }
+      : { type: "ephemeral" }
+  }
+  if (breakpoint.ttl === "long" || breakpoint.ttl === "1h") {
+    return { type: "ephemeral", ttl: "1h" }
+  }
+  if (breakpoint.ttl === "short" || breakpoint.ttl === "5m") {
+    return { ...fallback }
+  }
+  return fallback
+}
+
+function buildSegmentCacheControls(
+  segments: readonly PromptSegment[],
+  anthropicOptions: AnthropicProviderOptions | undefined,
+  fallbackCacheControl: AnthropicCacheControl | undefined,
+  cacheSystem: boolean,
+  cacheTools: boolean,
+): Map<number, AnthropicCacheControl> {
+  const controls = new Map<number, AnthropicCacheControl>()
+  if (!fallbackCacheControl) return controls
+  const maxRaw = anthropicOptions?.maxBreakpoints
+  const maxBreakpoints =
+    typeof maxRaw === "number" && Number.isFinite(maxRaw)
+      ? Math.max(0, Math.floor(maxRaw))
+      : 4
+  const budget = anthropicSegmentBreakpointBudget(maxBreakpoints, cacheSystem, cacheTools)
+  if (budget === 0) return controls
+
+  const planned = Array.isArray(anthropicOptions?.cacheBreakpoints)
+    ? (anthropicOptions.cacheBreakpoints as unknown[]).filter(isRecord) as AnthropicCacheBreakpoint[]
+    : undefined
+  if (planned) {
+    for (const bp of planned.slice(-budget)) {
+      if (typeof bp.segmentIndex !== "number") continue
+      controls.set(bp.segmentIndex, normalizeBreakpointCacheControl(bp, fallbackCacheControl))
+    }
+    return controls
+  }
+
+  const stableIndices: number[] = []
+  segments.forEach((segment, index) => {
+    if (segment.stable) stableIndices.push(index)
+  })
+  for (const index of stableIndices.slice(-budget)) {
+    const seg = segments[index]
+    const segCache: AnthropicCacheControl =
+      seg?.ttl === "long" ? { type: "ephemeral", ttl: "1h" } : fallbackCacheControl
+    controls.set(index, segCache)
+  }
+  return controls
+}
+
+function buildSegmentedBlocks(
+  segments: readonly PromptSegment[],
+  attachments: readonly GenerateTextAttachment[] | undefined,
+  cacheControls: Map<number, AnthropicCacheControl>,
+): AnthropicWireContentBlock[] {
+  const blocks: AnthropicWireContentBlock[] = []
+  segments.forEach((segment, index) => {
+    const cache = cacheControls.get(index)
+    blocks.push({
+      type: "text",
+      text: segment.content,
+      ...(cache !== undefined ? { cache_control: cache } : {}),
+    })
+  })
+  for (const attachment of attachments ?? []) {
+    blocks.push(attachmentToWireBlock(attachment))
+  }
+  return blocks
+}
+
+function stringifyToolResultContent(value: unknown): string {
+  if (typeof value === "string") return value
+  if (value === undefined || value === null) return ""
+  try {
+    return JSON.stringify(value)
+  } catch {
+    return String(value)
+  }
+}
+
+function normalizeContentPartForWire(part: unknown): AnthropicWireContentBlock | undefined {
+  if (!isRecord(part) || typeof part.type !== "string") return undefined
+  if (part.type === "text" && typeof part.text === "string") {
+    return { type: "text", text: part.text }
+  }
+  if (part.type === "image" && "image" in part) {
+    const image = part.image
+    if (typeof image === "string" || image instanceof URL || image instanceof Uint8Array) {
+      return {
+        type: "image",
+        source: imageSourceForWire(image, typeof part.mediaType === "string" ? part.mediaType : undefined),
+      }
+    }
+  }
+  if (part.type === "file" && "data" in part && typeof part.mediaType === "string") {
+    const data = part.data
+    if (typeof data === "string" || data instanceof URL || data instanceof Uint8Array) {
+      return attachmentToWireBlock({
+        data,
+        mediaType: part.mediaType,
+        ...(typeof part.filename === "string" ? { filename: part.filename } : {}),
+      })
+    }
+  }
+  if (part.type === "tool-call" || part.type === "tool_use") {
+    const id = typeof part.toolCallId === "string" ? part.toolCallId : typeof part.id === "string" ? part.id : undefined
+    const name = typeof part.toolName === "string" ? part.toolName : typeof part.name === "string" ? part.name : undefined
+    const input = "input" in part ? part.input : "args" in part ? part.args : {}
+    if (id && name) {
+      return { type: "tool_use", id, name, input: input ?? {} }
+    }
+  }
+  if (part.type === "tool-result" || part.type === "tool_result") {
+    const toolUseId =
+      typeof part.toolCallId === "string"
+        ? part.toolCallId
+        : typeof part.tool_use_id === "string"
+          ? part.tool_use_id
+          : undefined
+    if (toolUseId) {
+      const content =
+        "content" in part
+          ? part.content
+          : "output" in part
+            ? part.output
+            : "result" in part
+              ? part.result
+              : ""
+      return {
+        type: "tool_result",
+        tool_use_id: toolUseId,
+        content: stringifyToolResultContent(content),
+      }
+    }
+  }
+  return part as AnthropicWireContentBlock
+}
+
+function toWireMessage(message: ChatMessage): AnthropicWireMessage | undefined {
+  if (message.role === "system" || message.role === "developer") return undefined
+  if (message.role === "tool") {
+    if (Array.isArray(message.content)) {
+      const blocks = message.content
+        .map(normalizeContentPartForWire)
+        .filter((b: AnthropicWireContentBlock | undefined): b is AnthropicWireContentBlock => b !== undefined)
+      if (blocks.length > 0) return { role: "user", content: blocks }
+    }
+    return {
+      role: "user",
+      content: [
+        {
+          type: "tool_result",
+          tool_use_id: message.toolCallId ?? "",
+          content: stringifyToolResultContent(message.content),
+        },
+      ],
+    }
+  }
+  if (message.role === "assistant") {
+    const blocks: AnthropicWireContentBlock[] = []
+    if (typeof message.content === "string" && message.content !== "") {
+      blocks.push({ type: "text", text: message.content })
+    } else if (Array.isArray(message.content)) {
+      for (const part of message.content) {
+        const normalized = normalizeContentPartForWire(part)
+        if (normalized) blocks.push(normalized)
+      }
+    }
+    if (message.toolCalls?.length) {
+      for (const call of message.toolCalls) {
+        let parsedInput: unknown = call.arguments
+        if (typeof call.arguments === "string") {
+          try {
+            parsedInput = JSON.parse(call.arguments)
+          } catch {
+            parsedInput = { raw: call.arguments }
+          }
+        }
+        blocks.push({
+          type: "tool_use",
+          id: call.id,
+          name: call.name,
+          input: parsedInput ?? {},
+        })
+      }
+    }
+    if (blocks.length > 0) return { role: "assistant", content: blocks }
+    return { role: "assistant", content: typeof message.content === "string" ? message.content : "" }
+  }
+  if (Array.isArray(message.content)) {
+    const blocks = message.content
+      .map(normalizeContentPartForWire)
+      .filter((b: AnthropicWireContentBlock | undefined): b is AnthropicWireContentBlock => b !== undefined)
+    return { role: "user", content: blocks }
+  }
+  return { role: "user", content: typeof message.content === "string" ? message.content : "" }
+}
+
+function mergeConsecutiveToolResultUsers(messages: readonly AnthropicWireMessage[]): AnthropicWireMessage[] {
+  const merged: AnthropicWireMessage[] = []
+  for (const msg of messages) {
+    const prev = merged[merged.length - 1]
+    if (
+      prev
+      && prev.role === "user"
+      && msg.role === "user"
+      && Array.isArray(prev.content)
+      && Array.isArray(msg.content)
+      && prev.content.every((block) => block.type === "tool_result")
+      && msg.content.every((block) => block.type === "tool_result")
+    ) {
+      merged[merged.length - 1] = {
+        role: "user",
+        content: [...prev.content, ...msg.content],
+      }
+    } else {
+      merged.push(msg)
+    }
+  }
+  return merged
+}
+
+export function applyTrajectoryTailCacheBreakpoint(
+  messages: readonly AnthropicWireMessage[],
+  cacheControl: AnthropicCacheControl,
+): AnthropicWireMessage[] {
+  if (messages.length === 0) return [...messages]
+  const lastIndex = messages.length - 1
+  const last = messages[lastIndex]
+  if (!last || !Array.isArray(last.content) || last.content.length === 0) {
+    return [...messages]
+  }
+  const isAssistant = last.role === "assistant"
+  const isToolUser =
+    last.role === "user"
+    && last.content.some((part) => part.type === "tool_result")
+  if (!isAssistant && !isToolUser) return [...messages]
+  const lastPart = last.content[last.content.length - 1]
+  if (!lastPart || typeof lastPart.type !== "string" || !TRAJECTORY_CACHEABLE_TYPES.has(lastPart.type)) {
+    return [...messages]
+  }
+  if (lastPart.cache_control !== undefined) return [...messages]
+  const stamped: AnthropicWireContentBlock = { ...lastPart, cache_control: cacheControl }
+  const next = [...messages]
+  next[lastIndex] = {
+    ...last,
+    content: [...last.content.slice(0, -1), stamped],
+  }
+  return next
+}
+
+export function resolveSystemAndMessages(options: {
+  runtime: IAgentRuntime
+  params: GenerateTextParams
+  anthropicOptions: AnthropicProviderOptions | undefined
+  cacheControl: AnthropicCacheControl | undefined
+  cacheSystem: boolean
+  cacheTools: boolean
+  cacheTrajectory: boolean
+}): {
+  readonly systemPrompt: string | undefined
+  readonly systemBlocks: AnthropicWireContentBlock[] | undefined
+  readonly messages: AnthropicWireMessage[]
+} {
+  const { runtime, params, anthropicOptions, cacheControl, cacheSystem, cacheTools, cacheTrajectory } = options
+  const fallbackSystem = buildCanonicalSystemPrompt({
+    character: (runtime as { character?: IAgentRuntime["character"] }).character,
+  })
+  const baseSystem = resolveEffectiveSystemPrompt({ params, fallback: fallbackSystem })
+  const dedupedMessages = dropDuplicateLeadingSystemMessage(params.messages, baseSystem)
+
+  const extraSystemParts = (dedupedMessages ?? []).flatMap((message) =>
+    (message.role === "system" || message.role === "developer") && typeof message.content === "string"
+      ? [message.content.trim()]
+      : [],
+  ).filter((part) => part.length > 0 && part !== baseSystem?.trim())
+
+  const combinedSystem = [baseSystem, ...extraSystemParts]
+    .filter((part): part is string => typeof part === "string" && part.trim().length > 0)
+    .join("\n\n")
+  const systemPrompt = combinedSystem.length > 0 ? combinedSystem : undefined
+
+  const systemBlocks = systemPrompt
+    ? [
+        {
+          type: "text",
+          text: systemPrompt,
+          ...(cacheSystem && cacheControl ? { cache_control: cacheControl } : {}),
+        },
+      ]
+    : undefined
+
+  const segments = Array.isArray(params.promptSegments) && params.promptSegments.length > 0
+    ? params.promptSegments
+    : undefined
+  const attachments = params.attachments
+
+  let wireMessages: AnthropicWireMessage[]
+  if (dedupedMessages && dedupedMessages.length > 0) {
+    const converted = mergeConsecutiveToolResultUsers(
+      dedupedMessages
+        .map(toWireMessage)
+        .filter((msg): msg is AnthropicWireMessage => msg !== undefined),
+    )
+    if (segments) {
+      const dynamicSegments = segments.filter((segment) => !segment.stable)
+      if (dynamicSegments.length > 0 || (attachments?.length ?? 0) > 0) {
+        const dynamicContent = buildSegmentedBlocks(dynamicSegments, attachments, new Map())
+        if (converted[0]?.role === "user") {
+          wireMessages = [{ role: "user", content: dynamicContent }, ...converted.slice(1)]
+        } else {
+          wireMessages = [{ role: "user", content: dynamicContent }, ...converted]
+        }
+      } else {
+        wireMessages = converted
+      }
+    } else if (converted.length > 0) {
+      wireMessages = converted
+    } else {
+      wireMessages = [{ role: "user", content: params.prompt ?? "" }]
+    }
+    if (cacheControl && cacheTrajectory) {
+      wireMessages = applyTrajectoryTailCacheBreakpoint(wireMessages, cacheControl)
+    }
+  } else if (segments) {
+    const controls = buildSegmentCacheControls(
+      segments,
+      anthropicOptions,
+      cacheControl,
+      Boolean(systemBlocks && cacheSystem),
+      cacheTools,
+    )
+    wireMessages = [{ role: "user", content: buildSegmentedBlocks(segments, attachments, controls) }]
+  } else if (attachments && attachments.length > 0) {
+    const blocks: AnthropicWireContentBlock[] = [
+      { type: "text", text: params.prompt ?? "" },
+      ...attachments.map(attachmentToWireBlock),
+    ]
+    wireMessages = [{ role: "user", content: blocks }]
+  } else {
+    wireMessages = [{ role: "user", content: params.prompt ?? "" }]
+  }
+
+  return { systemPrompt, systemBlocks, messages: wireMessages }
+}
+
+export effect function sanitizeWireValueEffect<T>(value: T): T!ElizaError {
+  return try Effect.try({
+    try: () => deepToWellFormedUnicode(value),
+    catch: (cause) =>
+      cause instanceof ElizaError
+        ? cause
+        : new ElizaError("Outgoing Anthropic wire value cannot be sanitized safely", {
+            code: "WELL_FORMED_UNSAFE_VALUE",
+            cause,
+          }),
+  })
+}
+
+export function stripLocalAnthropicCacheOptions(
+  anthropicOptions: AnthropicProviderOptions | undefined,
+): Record<string, unknown> | undefined {
+  if (!anthropicOptions) return undefined
+  const out: Record<string, unknown> = {}
+  const localKeys = new Set([
+    "cacheControl",
+    "cacheBreakpoints",
+    "cacheSystem",
+    "maxBreakpoints",
+    "cacheTools",
+    "cacheTrajectory",
+    "thinking",
+    "effort",
+  ])
+  for (const [key, value] of Object.entries(anthropicOptions)) {
+    if (!localKeys.has(key) && value !== undefined) {
+      out[key] = value
+    }
+  }
+  return Object.keys(out).length > 0 ? out : undefined
+}

@@ -1,348 +1,453 @@
 // spec/openai/index.md, "Story: Use an OpenAI-compatible model for the requested capability"
-import { ModelType, VECTOR_DIMS, type GenerateTextParams, type IAgentRuntime, type ImageDescriptionParams, type Plugin, type TextStreamResult, type TokenUsage } from "@elizaos/core"
-import { Cause, Exit, Queue, Schema, Stream } from "effect"
-import * as Sse from "effect/encoding/Sse"
-import { Machine, machine, type OpenAiAttempt, openAiModelId, openAiTokenizerKey, suitableOpenAiEndpoint } from "../gen/openai.effect.vibe"
+import {
+  EventType,
+  logger,
+  ModelType,
+  registerProviderModels,
+  type IAgentRuntime,
+  type Plugin,
+} from "@elizaos/core"
+import { openAiSupportsCapability, type OpenAiOperation } from "../gen/openai.effect.vibe"
+import {
+  detectAudioMimeType,
+  getExtensionForMimeType,
+  getFilenameForMimeType,
+  handleTextToSpeech,
+  handleTranscription,
+  normalizeAudioMimeType,
+  type AudioMimeType,
+  type ExtendedTextToSpeechParams,
+  type LocalTranscriptionParams,
+  type TranscriptionInput,
+  type TTSOutputFormat,
+} from "./audio.vibe"
+import {
+  buildPluginConfig,
+  DEFAULT_CEREBRAS_TEXT_MODEL,
+  DEFAULT_EVOLINK_TEXT_MODEL,
+  DEFAULT_OPENAI_LARGE_MODEL,
+  DEFAULT_OPENAI_SMALL_MODEL,
+  getActionPlannerModel,
+  getApiKey,
+  getAuthHeader,
+  getBaseURL,
+  getEmbeddingApiKey,
+  getEmbeddingBaseURL,
+  getEmbeddingModel,
+  getExperimentalTelemetry,
+  getImageDescriptionApiKey,
+  getImageDescriptionAuthHeader,
+  getImageDescriptionBaseURL,
+  getImageDescriptionModel,
+  getImageModel,
+  getLargeModel,
+  getMediumModel,
+  getMegaModel,
+  getNanoModel,
+  getProviderMode,
+  getReasoningLargeModel,
+  getReasoningSmallModel,
+  getResearchModel,
+  getResearchTimeout,
+  getResponseHandlerModel,
+  getSetting,
+  getSmallModel,
+  getTranscriptionModel,
+  getTTSInstructions,
+  getTTSModel,
+  getTTSVoice,
+  getUsageProvider,
+  hasNonEmptySetting,
+  isCerebrasMode,
+  isEvoLinkMode,
+  isOpenCodeGoEndpoint,
+  isOpenCodeGoMode,
+  resolveOpenAIBaseURL,
+  shouldEnable,
+  warnWhenApiKeyIsMissing,
+  type EndpointSettingReader,
+  type OpenAiUsageProvider,
+} from "./config.vibe"
+import {
+  emitModelUsageEvent,
+  extractErrorBodyMessage,
+  isModelAttemptIdleTimeout,
+  isProviderToolCallParseFailure,
+  isSpuriousToolPairingRejection,
+  isTransientProviderError,
+  MODEL_ATTEMPT_IDLE_TIMEOUT,
+  OpenAiFailure,
+  ProviderRateLimitCooldownError,
+  RATE_LIMIT_MAX_HOLD_MS,
+  resolveFallbackModelName,
+  runtimeRateLimitCooldowns,
+  selectRequestModelName,
+  TRANSIENT_LANE_MAX_BACKOFF_MS,
+  type ModelRetryTelemetry,
+} from "./errors.vibe"
+import {
+  handleImageDescription,
+  handleImageGeneration,
+  handleResearch,
+  handleTextEmbedding,
+  parseImageDescriptionResponse,
+  type ExtendedImageGenerationParams,
+  type ExtendedImageGenerationResult,
+} from "./media.vibe"
+import {
+  CEREBRAS_SCHEMA_UNBOUNDED,
+  cerebrasReasoningContent,
+  createStructuredOutputProgressTracker,
+  factorResponseSchema,
+  isCerebrasReasoningPart,
+  isCerebrasSchemaUnbounded,
+  isWireStrictSchema,
+  MAX_CEREBRAS_SCHEMA_WALK_DEPTH,
+  MAX_CEREBRAS_SCHEMA_WALK_NODES,
+  normalizeSchemaForCerebras,
+  parseToolCallArguments,
+  parseWireToolCalls,
+  repairToolMessagePairing,
+  resolveWireProviderExtraFields,
+  sanitizeFunctionNameForCerebras,
+  wrapCerebrasRootUnion,
+  type CerebrasReasoningPart,
+  type CerebrasSchemaNormalizationOptions,
+  type WireMessage,
+  type WireProviderExtraFields,
+} from "./schema.vibe"
+import {
+  handleActionPlanner,
+  handleReasoningLarge,
+  handleReasoningSmall,
+  handleResponseHandler,
+  handleTextLarge,
+  handleTextMedium,
+  handleTextMega,
+  handleTextNano,
+  handleTextSmall,
+} from "./text.vibe"
+import {
+  handleTokenizerDecode,
+  handleTokenizerEncode,
+  loadEncoder,
+  loadedEncodingNames,
+  resolveTokenizerEncodingName,
+  type BpeEncoder,
+  type SupportedTiktokenEncoding,
+} from "./tokenizer.vibe"
+import { preconnectProvider } from "./transport.vibe"
 
-module node {
-  import { fetchWithConfidentialInference } from "@elizaos/core"
-  import { fetchRemoteMedia } from "@elizaos/core-node"
-  import { getEncoding, type TiktokenEncoding } from "js-tiktoken"
+const PLUGIN_NAME = "@elizaos/plugin-openai"
 
-  const encodings = new Map<TiktokenEncoding, ReturnType<typeof getEncoding>>()
-  export function encodingFor(name: TiktokenEncoding) {
-    const known = encodings.get(name)
-    if (known) return known
-    const encoding = getEncoding(name)
-    encodings.set(name, encoding)
-    return encoding
-  }
-
-  export function postOpenAi(address: string, key: string, payload: object, signal: AbortSignal, timeoutMs?: number) {
-    return fetchWithConfidentialInference(address, {
-      method: "POST", redirect: "error",
-      signal: timeoutMs === undefined ? signal : AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)]),
-      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    }, globalThis.fetch)
-  }
-
-  export async function transcribeOpenAi(address: string, key: string, source: string | Uint8Array, model: string, signal: AbortSignal) {
-    const bytes = typeof source === "string"
-      ? (await fetchRemoteMedia({ url: source, maxBytes: 26214400, signal })).buffer
-      : source
-    const body = new FormData()
-    body.set("model", model)
-    body.set("file", new Blob([Uint8Array.from(bytes)]), "audio.wav")
-    return globalThis.fetch(address, { method: "POST", redirect: "error", signal, headers: { Authorization: `Bearer ${key}` }, body })
-  }
-}
-import { encodingFor, postOpenAi, transcribeOpenAi } from node
-
-export error OpenAiFailure { reason: string; retryable: boolean }
-
-function setting(runtime: IAgentRuntime, name: string): string {
-  const value = runtime.getSetting(name)
-  return typeof value === "string" ? value.trim() : ""
-}
-
-function callOpenAi(runtime: IAgentRuntime, path: string, body: object, selectedAddress?: string) {
-  const base = (selectedAddress ?? (setting(runtime, "OPENAI_BASE_URL") || "https://api.openai.com/v1")).replace(/\/+$/, "")
-  return effect {
-    const key = setting(runtime, "OPENAI_API_KEY")
-    if (key === "" && setting(runtime, "OPENAI_BASE_URL") === "") throw new OpenAiFailure({ reason: "No OpenAI connection is configured.", retryable: false })
-    const response = try tryPromise({
-      try: (signal) => postOpenAi(base + path, key, body, signal, 120000),
-      catch: () => new OpenAiFailure({ reason: "The OpenAI endpoint could not be reached.", retryable: true }),
-    })
-    if (!response.ok) {
-      try Effect.ignore(tryPromise(async () => { await response.body?.cancel() }))
-      throw new OpenAiFailure({ reason: `OpenAI endpoint returned HTTP ${response.status}.`, retryable: response.status === 408 || response.status === 409 || response.status === 429 || response.status >= 500 })
-    }
-    return response
-  }
-}
-
-effect function jsonPost(runtime: IAgentRuntime, path: string, body: object, selectedAddress?: string) {
-  const response = try callOpenAi(runtime, path, body, selectedAddress)
-  return try tryPromise({
-    try: (): Promise<unknown> => response.json(),
-    catch: () => new OpenAiFailure({ reason: "OpenAI response was not JSON.", retryable: false }),
-  })
-}
-
-const usageSchema = Schema.Struct({
-  prompt_tokens: Schema.Int,
-  completion_tokens: Schema.Int,
-  total_tokens: Schema.Int,
-  prompt_tokens_details: Schema.optionalKey(Schema.NullOr(Schema.Struct({
-    cached_tokens: Schema.optionalKey(Schema.NullOr(Schema.Int)),
-  }))),
-})
-
-function toTokenUsage(reported: typeof usageSchema.Type): TokenUsage {
-  const cachedTokens = reported.prompt_tokens_details?.cached_tokens
-  return {
-    promptTokens: reported.prompt_tokens,
-    completionTokens: reported.completion_tokens,
-    totalTokens: reported.total_tokens,
-    ...(typeof cachedTokens === "number" ? { cacheReadInputTokens: cachedTokens } : {}),
-  }
-}
-const streamFrameSchema = Schema.Struct({
-  choices: Schema.Array(Schema.Struct({
-    delta: Schema.Struct({ content: Schema.optionalKey(Schema.NullOr(Schema.String)) }),
-    finish_reason: Schema.optionalKey(Schema.NullOr(Schema.String)),
-  })),
-  usage: Schema.optionalKey(Schema.NullOr(usageSchema)),
-})
-const streamFrame = Schema.decodeUnknownEffect(Schema.fromJsonString(streamFrameSchema))
-
-function observed<T>(promise: Promise<T>): Promise<T> {
-  void promise.catch(() => undefined)
-  return promise
-}
-
-effect function streamAnswer(response: Response, model: Machine.Shape, attempt: OpenAiAttempt) {
-  if (response.body === null || response.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase() !== "text/event-stream") {
-    try Effect.ignore(tryPromise(async () => { await response.body?.cancel() }))
-    throw new OpenAiFailure({ reason: "OpenAI did not return a completion event stream.", retryable: false })
-  }
-  const body = response.body
-  const replies = Stream.fromReadableStream({ evaluate: () => body, onError: () => new OpenAiFailure({ reason: "OpenAI event stream disconnected.", retryable: false }) })
-    .pipe(Stream.decodeText(), Stream.pipeThroughChannel(Sse.decode({ maxEventSize: 1048576 })))
-  const queue = try Queue.unbounded<string, OpenAiFailure | Cause.Done>()
-  const produce = effect {
-    let text = ""
-    let reason: string | undefined
-    let usage: TokenUsage | undefined
-    let done = false
-    for try (const event of replies) {
-      if (event.data === "[DONE]") {
-        done = true
-        break
-      }
-      const next = try streamFrame(event.data)
-      const reported = next.usage
-      if (reported != null) usage = toTokenUsage(reported)
-      for (const choice of next.choices) {
-        if (choice.finish_reason != null) reason = choice.finish_reason
-        const delta = choice.delta.content
-        if (delta == null || delta === "") continue
-        if (text.length + delta.length > 4194304) throw new OpenAiFailure({ reason: "OpenAI exceeded the response text budget.", retryable: false })
-        try model.send({ type: "publishOpenAiPiece", attempt })
-        text += delta
-        try Queue.offer(queue, delta)
-      }
-    }
-    if (!done || reason !== "stop") throw new OpenAiFailure({ reason: "OpenAI stopped without completing the event stream.", retryable: false })
-    try model.send({ type: "acceptOpenAi", attempt, terminal: true, shapeMatches: true })
-    return { text, reason, usage }
-  }
-  return {
-    kind: "live",
-    queue,
-    produce: Effect.onExit(produce, (outcome) => Exit.isSuccess(outcome)
-      ? Queue.end(queue)
-      : Queue.fail(queue, new OpenAiFailure({ reason: "OpenAI did not complete the event stream.", retryable: false }))),
-  } as const
-}
-
-const chatResponse = Schema.Struct({
-  choices: Schema.NonEmptyArray(Schema.Struct({ message: Schema.Struct({ content: Schema.optionalKey(Schema.NullOr(Schema.String)), tool_calls: Schema.optionalKey(Schema.Array(Schema.Unknown)) }), finish_reason: Schema.String })),
-  usage: Schema.optionalKey(usageSchema),
-})
-const decodeChat = Schema.decodeUnknownEffect(chatResponse)
-
-function isWireStrictSchema(schema: unknown): boolean {
-  if (typeof schema !== "object" || schema === null) return false
-  const record = schema as Record<string, unknown>
-  if (record.type === "object" || record.properties !== undefined) {
-    if (record.additionalProperties !== false) return false
-    const props = record.properties
-    if (typeof props === "object" && props !== null) {
-      const required = new Set(Array.isArray(record.required) ? record.required.filter((item): item is string => typeof item === "string") : [])
-      for (const [key, value] of Object.entries(props)) {
-        if (!required.has(key) || !isWireStrictSchema(value)) return false
-      }
-    }
-    return true
-  }
-  if (record.type === "array") {
-    return record.items === undefined || isWireStrictSchema(record.items)
-  }
-  return true
-}
-
-function modelEndpoint(runtime: IAgentRuntime, modelId: string) {
-  return { address: setting(runtime, "OPENAI_BASE_URL") || "https://api.openai.com/v1", modelId, acceptsOperation: true, acceptsSchema: true, confidential: setting(runtime, "OPENAI_CONFIDENTIAL") === "true" }
-}
-
-effect function textRequest(runtime: IAgentRuntime, params: GenerateTextParams, tier: string) {
-  const primary = modelEndpoint(runtime, openAiModelId(params.model ?? "", setting(runtime, "OPENAI_" + tier + "_MODEL"), setting(runtime, "OPENAI_MODEL") || "gpt-4.1-mini"))
-  const fallback = modelEndpoint(runtime, setting(runtime, "OPENAI_FALLBACK_MODEL"))
-  const needsSchema = params.responseSchema !== undefined
-  const needsConfidential = setting(runtime, "OPENAI_CONFIDENTIAL") === "true"
-  if (!suitableOpenAiEndpoint(primary, needsSchema, needsConfidential)) throw new OpenAiFailure({ reason: "The OpenAI route cannot honor this request.", retryable: false })
-  provide machine() {
-    const model = try Machine
-    let run = try model.send({ type: "beginOpenAi", primary, fallback, needsSchema, needsConfidential })
-    while (run.phase === "CallingOpenAi") {
-      const endpoint = run.attempt === "PrimaryOpenAi" ? primary : fallback
-      const result = try Effect.exit(effect {
-        const messages = params.messages ?? [
-          ...(params.system === undefined ? [] : [{ role: "system", content: params.system }]),
-          { role: "user", content: params.prompt ?? "" },
-        ]
-        const wantsEvents = params.stream === true && !needsSchema && (params.tools?.length ?? 0) === 0 && params.toolChoice === undefined
-        const allToolsStrict = params.tools !== undefined && params.tools.length > 0 && params.tools.every((tool) => tool.strict === true && isWireStrictSchema(tool.parameters))
-        const payload = {
-          model: endpoint.modelId, messages, stream: wantsEvents, temperature: params.temperature, top_p: params.topP,
-          max_completion_tokens: params.omitMaxTokens ? undefined : params.maxTokens, stop: params.stopSequences,
-          tools: params.tools?.map((tool) => ({
-            type: "function",
-            function: {
-              name: tool.name,
-              description: tool.description,
-              parameters: tool.parameters,
-              ...(allToolsStrict ? { strict: true } : {}),
-            },
-          })),
-          tool_choice: params.toolChoice, seed: params.seed,
-          response_format: params.responseSchema === undefined ? params.responseFormat : { type: "json_schema", json_schema: { name: "response", strict: true, schema: params.responseSchema } },
-        }
-        if (wantsEvents) {
-          const response = try callOpenAi(runtime, "/chat/completions", { ...payload, stream_options: { include_usage: true } }, endpoint.address)
-          return try streamAnswer(response, model, run.attempt)
-        }
-        const known = try jsonPost(runtime, "/chat/completions", payload, endpoint.address)
-        const full = decodeChat(known) catch effect () => { throw new OpenAiFailure({ reason: "OpenAI reply had an invalid completion shape.", retryable: false }) }
-        return { kind: "full", full } as const
-      })
-      if (result._tag === "Success") {
-        if (result.value.kind === "live") return result.value
-        const complete = result.value.full
-        const choice = complete.choices[0]
-        const valid = choice.finish_reason === "stop" || choice.finish_reason === "tool_calls"
-        if (!valid) throw new OpenAiFailure({ reason: "OpenAI did not complete its response.", retryable: false })
-        const hasContent = choice.message.content !== null && choice.message.content !== undefined
-        const hasToolCalls = choice.finish_reason === "tool_calls" && (choice.message.tool_calls?.length ?? 0) > 0
-        try model.send({ type: "acceptOpenAi", attempt: run.attempt, terminal: valid, shapeMatches: hasContent || hasToolCalls })
-        const text = choice.message.content ?? ""
-        const reported = complete.usage
-        if (!params.stream && choice.message.tool_calls === undefined) return text
-        return {
-          kind: "full",
-          text,
-          usage: reported && toTokenUsage(reported),
-          finishReason: choice.finish_reason,
-          toolCalls: choice.message.tool_calls,
-        } as const
-      }
-      if (Cause.hasInterruptsOnly(result.cause)) return try Effect.failCause(result.cause)
-      const failure = Cause.squash(result.cause)
-      run = try model.send({ type: "failOpenAi", attempt: run.attempt, failure: failure instanceof OpenAiFailure && failure.retryable ? "RetryableOpenAi" : "ProviderRefusedOpenAi" })
-      if (run.phase === "FailedOpenAi") return try Effect.failCause(result.cause)
-    }
-    throw new OpenAiFailure({ reason: "No OpenAI attempt completed.", retryable: false })
-  }
-}
-
-const embeddingReply = Schema.Struct({ data: Schema.NonEmptyArray(Schema.Struct({ embedding: Schema.Array(Schema.Number) })) })
-const imageReply = Schema.Struct({ data: Schema.Array(Schema.Struct({ url: Schema.optionalKey(Schema.String), b64_json: Schema.optionalKey(Schema.String) })) })
-const textReply = Schema.Struct({ text: Schema.String })
-
-function describe(runtime: IAgentRuntime, input: ImageDescriptionParams | string) {
-  const params = typeof input === "string" ? { imageUrl: input } : input
-  return runPromise(effect {
-    const raw = try jsonPost(runtime, "/chat/completions", {
-      model: setting(runtime, "OPENAI_IMAGE_DESCRIPTION_MODEL") || "gpt-4.1-mini",
-      messages: [{ role: "user", content: [{ type: "text", text: params.prompt ?? "Describe this image." }, { type: "image_url", image_url: { url: params.imageUrl } }] }],
-    }, setting(runtime, "OPENAI_IMAGE_DESCRIPTION_BASE_URL") || undefined)
-    const parsed = try Schema.decodeUnknownEffect(chatResponse)(raw)
-    const description = parsed.choices[0].message.content
-    if (description == null) throw new OpenAiFailure({ reason: "OpenAI returned no image description.", retryable: false })
-    return { title: "", description }
-  }, { signal: "signal" in params ? params.signal : undefined })
-}
-
-function textHandler(tier: string) {
-  return async (runtime: IAgentRuntime, params: GenerateTextParams): Promise<string | TextStreamResult> => {
-    const answer = await runPromise(textRequest(runtime, params, tier), { signal: params.signal })
-    if (typeof answer === "string") return answer
-    if (answer.kind === "full") {
-      const { text, usage, finishReason, toolCalls } = answer
-      return {
-        textStream: (async function* () { if (text !== "") yield text })(),
-        text: Promise.resolve(text),
-        usage: Promise.resolve(usage),
-        finishReason: Promise.resolve(finishReason),
-        toolCalls,
-      }
-    }
-    const completion = observed(runPromise(answer.produce, { signal: params.signal }))
-    return {
-      textStream: Stream.toAsyncIterable(Stream.fromQueue(answer.queue)),
-      text: observed(completion.then((result) => result.text)),
-      finishReason: observed(completion.then((result) => result.reason)),
-      usage: observed(completion.then((result) => result.usage)),
-    }
-  }
-}
-
-export const plugin: Plugin = {
-  name: "@elizaos/plugin-openai",
-  description: "OpenAI-compatible text, tokenization, image, audio, and embedding handlers.",
-  models: {
-    [ModelType.TEXT_NANO]: textHandler("NANO"),
-    [ModelType.TEXT_SMALL]: textHandler("SMALL"),
-    [ModelType.TEXT_MEDIUM]: textHandler("MEDIUM"),
-    [ModelType.TEXT_LARGE]: textHandler("LARGE"),
-    [ModelType.TEXT_MEGA]: textHandler("MEGA"),
-    [ModelType.RESPONSE_HANDLER]: textHandler("SMALL"),
-    [ModelType.ACTION_PLANNER]: textHandler("LARGE"),
-    [ModelType.TEXT_EMBEDDING]: (runtime, params) => runPromise(effect {
-      if (params === null) return Array.from({ length: VECTOR_DIMS.XXL }, (_item, index) => index === 0 ? 0.1 : 0)
-      const raw = try jsonPost(runtime, "/embeddings", { model: setting(runtime, "OPENAI_EMBEDDING_MODEL") || "text-embedding-3-small", input: typeof params === "string" ? params : params.text })
-      const parsed = try Schema.decodeUnknownEffect(embeddingReply)(raw)
-      if (!parsed.data[0].embedding.every(Number.isFinite)) throw new OpenAiFailure({ reason: "OpenAI returned an invalid vector.", retryable: false })
-      return [...parsed.data[0].embedding]
-    }, typeof params === "object" && params !== null ? { signal: params.signal } : undefined),
-    [ModelType.TEXT_TOKENIZER_ENCODE]: (_runtime, params) => {
-      const encoding = openAiTokenizerKey("", "o200k_base")
-      return Promise.resolve(encodingFor(encoding === "cl100k_base" ? encoding : "o200k_base").encode(params.prompt))
-    },
-    [ModelType.TEXT_TOKENIZER_DECODE]: (_runtime, params) => Promise.resolve(encodingFor("o200k_base").decode(params.tokens)),
-    [ModelType.IMAGE]: (runtime, params) => runPromise(effect {
-      const raw = try jsonPost(runtime, "/images/generations", { model: setting(runtime, "OPENAI_IMAGE_MODEL") || "gpt-image-1", prompt: params.prompt, size: params.size, n: params.count })
-      const parsed = try Schema.decodeUnknownEffect(imageReply)(raw)
-      return parsed.data.flatMap((item) => item.url !== undefined ? [{ url: item.url }] : item.b64_json !== undefined ? [{ url: "data:image/png;base64," + item.b64_json }] : [])
-    }),
-    [ModelType.IMAGE_DESCRIPTION]: describe,
-    [ModelType.TRANSCRIPTION]: (runtime, params) => runPromise(effect {
-      const source = typeof params === "string" || params instanceof Uint8Array ? params : params.audio instanceof ArrayBuffer ? new Uint8Array(params.audio) : params.audio ?? params.audioUrl
-      const response = try tryPromise({
-        try: (signal) => transcribeOpenAi((setting(runtime, "OPENAI_BASE_URL") || "https://api.openai.com/v1").replace(/\/+$/, "") + "/audio/transcriptions",
-          setting(runtime, "OPENAI_API_KEY"), source, setting(runtime, "OPENAI_TRANSCRIPTION_MODEL") || "whisper-1", signal),
-        catch: () => new OpenAiFailure({ reason: "OpenAI transcription could not be reached.", retryable: true }),
-      })
-      if (!response.ok) throw new OpenAiFailure({ reason: `OpenAI transcription returned HTTP ${response.status}.`, retryable: false })
-      const decoded = try Schema.decodeUnknownEffect(textReply)(try tryPromise((): Promise<unknown> => response.json()))
-      return decoded.text
-    }, typeof params === "object" && "signal" in params ? { signal: params.signal } : undefined),
-    [ModelType.TEXT_TO_SPEECH]: (runtime, params) => {
-      const request = typeof params === "string" ? { text: params } : params
-      return runPromise(effect {
-        const response = try tryPromise({
-          try: (signal) => postOpenAi((setting(runtime, "OPENAI_BASE_URL") || "https://api.openai.com/v1").replace(/\/+$/, "") + "/audio/speech",
-            setting(runtime, "OPENAI_API_KEY"), { model: setting(runtime, "OPENAI_TTS_MODEL") || "tts-1", input: request.text, voice: request.voice ?? "alloy", speed: request.speed }, signal),
-          catch: () => new OpenAiFailure({ reason: "OpenAI speech could not be reached.", retryable: true }),
-        })
-        if (!response.ok) throw new OpenAiFailure({ reason: `OpenAI speech returned HTTP ${response.status}.`, retryable: false })
-        return new Uint8Array(try tryPromise(() => response.arrayBuffer()))
-      }, { signal: request.signal })
-    },
+const openaiTextModelMetadata: NonNullable<Plugin["modelMetadata"]> = {
+  [ModelType.TEXT_NANO]: {
+    streamable: true,
+    displayModelSettings: [
+      "OPENAI_NANO_MODEL",
+      "CEREBRAS_SMALL_MODEL",
+      "CEREBRAS_MODEL",
+      "EVOLINK_MODEL",
+      "NANO_MODEL",
+      "OPENAI_SMALL_MODEL",
+      "SMALL_MODEL",
+    ],
+    displayModelDefault: DEFAULT_OPENAI_SMALL_MODEL,
+  },
+  [ModelType.TEXT_SMALL]: {
+    streamable: true,
+    displayModelSettings: [
+      "OPENAI_SMALL_MODEL",
+      "CEREBRAS_SMALL_MODEL",
+      "CEREBRAS_MODEL",
+      "EVOLINK_MODEL",
+      "SMALL_MODEL",
+    ],
+    displayModelDefault: DEFAULT_OPENAI_SMALL_MODEL,
+  },
+  [ModelType.TEXT_MEDIUM]: {
+    streamable: true,
+    displayModelSettings: [
+      "OPENAI_MEDIUM_MODEL",
+      "CEREBRAS_SMALL_MODEL",
+      "CEREBRAS_MODEL",
+      "EVOLINK_MODEL",
+      "MEDIUM_MODEL",
+      "OPENAI_SMALL_MODEL",
+      "SMALL_MODEL",
+    ],
+    displayModelDefault: DEFAULT_OPENAI_SMALL_MODEL,
+  },
+  [ModelType.TEXT_LARGE]: {
+    streamable: true,
+    displayModelSettings: [
+      "OPENAI_LARGE_MODEL",
+      "CEREBRAS_LARGE_MODEL",
+      "CEREBRAS_MODEL",
+      "EVOLINK_MODEL",
+      "LARGE_MODEL",
+    ],
+    displayModelDefault: DEFAULT_OPENAI_LARGE_MODEL,
+  },
+  [ModelType.TEXT_MEGA]: {
+    streamable: true,
+    displayModelSettings: [
+      "OPENAI_MEGA_MODEL",
+      "MEGA_MODEL",
+      "OPENAI_LARGE_MODEL",
+      "CEREBRAS_LARGE_MODEL",
+      "CEREBRAS_MODEL",
+      "EVOLINK_MODEL",
+      "LARGE_MODEL",
+    ],
+    displayModelDefault: DEFAULT_OPENAI_LARGE_MODEL,
+  },
+  [ModelType.RESPONSE_HANDLER]: {
+    streamable: true,
+    displayModelSettings: [
+      "OPENAI_RESPONSE_HANDLER_MODEL",
+      "OPENAI_SHOULD_RESPOND_MODEL",
+      "CEREBRAS_SMALL_MODEL",
+      "CEREBRAS_MODEL",
+      "EVOLINK_MODEL",
+      "RESPONSE_HANDLER_MODEL",
+      "SHOULD_RESPOND_MODEL",
+      "OPENAI_SMALL_MODEL",
+      "SMALL_MODEL",
+    ],
+    displayModelDefault: DEFAULT_OPENAI_SMALL_MODEL,
+  },
+  [ModelType.ACTION_PLANNER]: {
+    streamable: true,
+    displayModelSettings: [
+      "OPENAI_ACTION_PLANNER_MODEL",
+      "OPENAI_PLANNER_MODEL",
+      "CEREBRAS_SMALL_MODEL",
+      "CEREBRAS_MODEL",
+      "EVOLINK_MODEL",
+      "ACTION_PLANNER_MODEL",
+      "PLANNER_MODEL",
+      "OPENAI_SMALL_MODEL",
+      "SMALL_MODEL",
+    ],
+    displayModelDefault: DEFAULT_OPENAI_SMALL_MODEL,
+  },
+  [ModelType.TEXT_REASONING_SMALL]: {
+    streamable: true,
+    displayModelSettings: ["OPENAI_REASONING_SMALL_MODEL", "REASONING_SMALL_MODEL", "OPENAI_SMALL_MODEL"],
+    displayModelDefault: DEFAULT_OPENAI_SMALL_MODEL,
+  },
+  [ModelType.TEXT_REASONING_LARGE]: {
+    streamable: true,
+    displayModelSettings: ["OPENAI_REASONING_LARGE_MODEL", "REASONING_LARGE_MODEL", "OPENAI_LARGE_MODEL"],
+    displayModelDefault: DEFAULT_OPENAI_LARGE_MODEL,
+  },
+  [ModelType.TEXT_EMBEDDING]: {
+    displayModelSetting: "OPENAI_EMBEDDING_MODEL",
+    displayModelDefault: "text-embedding-3-small",
   },
 }
 
+interface MediaRegistrationSpec {
+  readonly modelType: string
+  readonly operation: OpenAiOperation
+  readonly overrideKeys: readonly string[]
+  readonly handler: Parameters<IAgentRuntime["registerModel"]>[1]
+}
+
+const MEDIA_REGISTRATIONS: readonly MediaRegistrationSpec[] = [
+  {
+    modelType: ModelType.IMAGE,
+    operation: "CreateImage",
+    overrideKeys: [],
+    handler: handleImageGeneration as unknown as Parameters<IAgentRuntime["registerModel"]>[1],
+  },
+  {
+    modelType: ModelType.IMAGE_DESCRIPTION,
+    operation: "DescribeImage",
+    overrideKeys: ["OPENAI_IMAGE_DESCRIPTION_BASE_URL"],
+    handler: handleImageDescription as unknown as Parameters<IAgentRuntime["registerModel"]>[1],
+  },
+  {
+    modelType: ModelType.TRANSCRIPTION,
+    operation: "TranscribeAudio",
+    overrideKeys: [],
+    handler: handleTranscription as unknown as Parameters<IAgentRuntime["registerModel"]>[1],
+  },
+  {
+    modelType: ModelType.TEXT_TO_SPEECH,
+    operation: "SpeakText",
+    overrideKeys: [],
+    handler: handleTextToSpeech as unknown as Parameters<IAgentRuntime["registerModel"]>[1],
+  },
+]
+
+export function registerMediaModels(runtime: IAgentRuntime): void {
+  const providerMode = getProviderMode(runtime)
+  const registrations: Array<Parameters<typeof registerProviderModels>[2][number]> = []
+  for (const spec of MEDIA_REGISTRATIONS) {
+    const hasOverride = spec.overrideKeys.some((key) => hasNonEmptySetting(runtime, key))
+    if (!openAiSupportsCapability(providerMode, spec.operation, hasOverride)) {
+      logger.info(`[OpenAI] Not registering ${spec.modelType}: the selected endpoint does not serve it`)
+      continue
+    }
+    registrations.push({
+      modelType: spec.modelType,
+      handler: spec.handler,
+      priority: plugin.priority,
+    })
+  }
+  registerProviderModels(runtime, PLUGIN_NAME, registrations)
+}
+
+export const plugin: Plugin = {
+  name: PLUGIN_NAME,
+  description: "OpenAI-compatible text, reasoning, tokenization, image, audio, embedding, and deep research handlers.",
+  autoEnable: {
+    envKeys: ["OPENAI_API_KEY", "CEREBRAS_API_KEY", "EVOLINK_API_KEY"],
+    shouldEnable: (env) => shouldEnable(env),
+  },
+  config: buildPluginConfig(),
+  events: {
+    [EventType.MESSAGE_RECEIVED]: [async ({ runtime }) => { preconnectProvider(runtime) }],
+    [EventType.VOICE_MESSAGE_RECEIVED]: [async ({ runtime }) => { preconnectProvider(runtime) }],
+  },
+  async init(_config: Record<string, string>, runtime: IAgentRuntime): Promise<void> {
+    warnWhenApiKeyIsMissing(runtime)
+    registerMediaModels(runtime)
+  },
+  modelMetadata: openaiTextModelMetadata,
+  models: {
+    [ModelType.TEXT_NANO]: handleTextNano,
+    [ModelType.TEXT_SMALL]: handleTextSmall,
+    [ModelType.TEXT_MEDIUM]: handleTextMedium,
+    [ModelType.TEXT_LARGE]: handleTextLarge,
+    [ModelType.TEXT_MEGA]: handleTextMega,
+    [ModelType.RESPONSE_HANDLER]: handleResponseHandler,
+    [ModelType.ACTION_PLANNER]: handleActionPlanner,
+    [ModelType.TEXT_REASONING_SMALL]: handleReasoningSmall,
+    [ModelType.TEXT_REASONING_LARGE]: handleReasoningLarge,
+    [ModelType.TEXT_EMBEDDING]: handleTextEmbedding,
+    [ModelType.TEXT_TOKENIZER_ENCODE]: handleTokenizerEncode,
+    [ModelType.TEXT_TOKENIZER_DECODE]: handleTokenizerDecode,
+    [ModelType.RESEARCH]: handleResearch,
+  },
+}
+
+export const openaiPlugin: Plugin = plugin
 export default plugin
+
+export {
+  CEREBRAS_SCHEMA_UNBOUNDED,
+  cerebrasReasoningContent,
+  createStructuredOutputProgressTracker,
+  DEFAULT_CEREBRAS_TEXT_MODEL,
+  DEFAULT_EVOLINK_TEXT_MODEL,
+  DEFAULT_OPENAI_LARGE_MODEL,
+  DEFAULT_OPENAI_SMALL_MODEL,
+  detectAudioMimeType,
+  emitModelUsageEvent,
+  extractErrorBodyMessage,
+  factorResponseSchema,
+  getActionPlannerModel,
+  getApiKey,
+  getAuthHeader,
+  getBaseURL,
+  getEmbeddingApiKey,
+  getEmbeddingBaseURL,
+  getEmbeddingModel,
+  getExperimentalTelemetry,
+  getExtensionForMimeType,
+  getFilenameForMimeType,
+  getImageDescriptionApiKey,
+  getImageDescriptionAuthHeader,
+  getImageDescriptionBaseURL,
+  getImageDescriptionModel,
+  getImageModel,
+  getLargeModel,
+  getMediumModel,
+  getMegaModel,
+  getNanoModel,
+  getProviderMode,
+  getReasoningLargeModel,
+  getReasoningSmallModel,
+  getResearchModel,
+  getResearchTimeout,
+  getResponseHandlerModel,
+  getSetting,
+  getSmallModel,
+  getTranscriptionModel,
+  getTTSInstructions,
+  getTTSModel,
+  getTTSVoice,
+  getUsageProvider,
+  handleActionPlanner,
+  handleImageDescription,
+  handleImageGeneration,
+  handleReasoningLarge,
+  handleReasoningSmall,
+  handleResearch,
+  handleResponseHandler,
+  handleTextEmbedding,
+  handleTextLarge,
+  handleTextMedium,
+  handleTextMega,
+  handleTextNano,
+  handleTextSmall,
+  handleTextToSpeech,
+  handleTokenizerDecode,
+  handleTokenizerEncode,
+  handleTranscription,
+  isCerebrasMode,
+  isCerebrasReasoningPart,
+  isCerebrasSchemaUnbounded,
+  isEvoLinkMode,
+  isModelAttemptIdleTimeout,
+  isOpenCodeGoEndpoint,
+  isOpenCodeGoMode,
+  isProviderToolCallParseFailure,
+  isSpuriousToolPairingRejection,
+  isTransientProviderError,
+  isWireStrictSchema,
+  loadEncoder,
+  loadedEncodingNames,
+  MAX_CEREBRAS_SCHEMA_WALK_DEPTH,
+  MAX_CEREBRAS_SCHEMA_WALK_NODES,
+  MODEL_ATTEMPT_IDLE_TIMEOUT,
+  normalizeAudioMimeType,
+  normalizeSchemaForCerebras,
+  OpenAiFailure,
+  parseImageDescriptionResponse,
+  parseToolCallArguments,
+  parseWireToolCalls,
+  preconnectProvider,
+  ProviderRateLimitCooldownError,
+  RATE_LIMIT_MAX_HOLD_MS,
+  repairToolMessagePairing,
+  resolveFallbackModelName,
+  resolveOpenAIBaseURL,
+  resolveTokenizerEncodingName,
+  resolveWireProviderExtraFields,
+  runtimeRateLimitCooldowns,
+  sanitizeFunctionNameForCerebras,
+  selectRequestModelName,
+  shouldEnable,
+  TRANSIENT_LANE_MAX_BACKOFF_MS,
+  wrapCerebrasRootUnion,
+  type AudioMimeType,
+  type BpeEncoder,
+  type CerebrasReasoningPart,
+  type CerebrasSchemaNormalizationOptions,
+  type EndpointSettingReader,
+  type ExtendedImageGenerationParams,
+  type ExtendedImageGenerationResult,
+  type ExtendedTextToSpeechParams,
+  type LocalTranscriptionParams,
+  type ModelRetryTelemetry,
+  type OpenAiUsageProvider,
+  type SupportedTiktokenEncoding,
+  type TranscriptionInput,
+  type TTSOutputFormat,
+  type WireMessage,
+  type WireProviderExtraFields,
+}
