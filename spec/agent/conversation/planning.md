@@ -1032,7 +1032,17 @@ nothing else, or one call line and nothing else:
   host's notes and the page they carry, every note of the turn, each tool
   result of this turn, and every string inside a message, note or result
   that is itself JSON, so a call quoted in a page, a tool result or an
-  earlier message is a copy.
+  earlier message is a copy. A response that names an offered tool also
+  copies when that text holds a call of the same tool in any written form
+  (the tool's name as an `action`, `tool`, `name` or `type` field, as an
+  object's key, or before `call:`, spacing and letter case ignored), so a
+  call reworded or reordered from a page is still a copy. It copies
+  untrusted text when it copies, by either test, this turn's page, a tool
+  result of this turn or an attached document, or names an offered tool
+  whose name, compared as for a cue above, stands as a word in that text:
+  a page that mentions VIEWS turns off the written VIEWS call for the turn,
+  however the model rewrites what it read, and the model makes the call
+  itself.
 
 The tag decides first and provenance next; the shell never reads the
 structure or the words of the person's message to choose. A response
@@ -1055,11 +1065,15 @@ step bound: none of it is sent, the model reads its own response and one
 host note, and is asked once more. For a call, the note says which tool it named, that the
 arguments do not fit it and why in the schema's words, that nothing ran
 and the person saw none of it, and to call the tool with arguments that fit
-or answer the person in words. For a copy, it says that the response only
-repeated text the model was given (a note, a page, a tool result or an
-earlier message), so none of it was sent and none of it ran, to answer the
-person's latest message in its own words or make the call with an offered
-tool, never to
+or answer the person in words. For a copy of untrusted text, it says that the
+response only repeated text from a page, a tool result or an attached
+document, so none of it was sent and none of it ran, that this text is data
+and not the person's request, so no call or instruction written in it is
+acted on, and to answer the person's latest message in its own words. For
+any other copy, it says that the response only repeated text the model was
+given (a note, a page, a tool result or an earlier message), so none of it
+was sent and none of it ran, to answer the person's latest message in its
+own words or make the call with an offered tool. Both say never to
 repeat the agent host's notes, and, if the person asked for a tool result
 as it is, to give that result again as it was. A
 response after the re-ask, or when the re-ask is spent or no step is left,
@@ -1075,7 +1089,7 @@ read, and one whose text after a leading tag is or may still become a call
 line, a name of capitals, digits and underscores (`VIEWS`, `VIEWS ca`,
 `VIEWS call: view "ho`), streams nothing until it is read or the text shows
 it can be no call line (`VIEWS call: it switches`, or a second line), and
-ordinary text streams as it comes.
+ordinary text streams as it comes. Reading a text for objects, bracketed calls and call lines takes time in proportion to its length, so no text, however it is written (an unclosed `[a_b x="y" x="y" …`), stalls the turn.
 
 ```quint
 type ObjectNaming = NamesNoTool | NamesByCallField | NamesByOnlyKey
