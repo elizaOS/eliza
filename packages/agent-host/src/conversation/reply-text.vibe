@@ -443,7 +443,8 @@ const declaredTag = /(?:\[(answer|promise|question)\](?!\(|\s*[[<]\/?(?:answer|p
 const modelTag = /[ \t]*(?:\[(?:answer|promise)\](?![([])|<\/?(?:answer|promise)>)[ \t]*(\n?)/gu
 const codeSpan = /(`{3,}|~{3,})[\s\S]*?(?:\1|$)|(?<!`)(`+)(?!`)[^\n]*?(?<!`)\2(?!`)/gu
 const trailingTag = /\[(?:answer|promise)\]$/u
-const tagHeads = ["[answer]", "[promise]", "[question]", "<answer>", "<promise>", "</answer>", "</promise>"]
+const tagHeads = ["[answer]", "[promise]", "[question]", "<answer>", "<promise>", "</answer>", "</promise>", "[reported", "(reported"]
+const reportLineAt = /(?:^|\n)[ \t]*(?:[-*•][ \t]+)?[*_]*[ \t]*[[(]?[ \t]*reported\b/iu
 
 const anyCaseClosing = /[ \t]*<\/(?:answer|promise)>[ \t]*(\n?)/giu
 
@@ -497,7 +498,9 @@ function partialTagAt(text: string): number {
   return !tail.includes("]") && !tail.includes(">") && tagHeads.some((head) => head.startsWith(tail)) ? open : -1
 }
 
-export function streamable(written: string): string {
+export function streamable(streamed: string): string {
+  const reportAt = streamed.search(reportLineAt)
+  const written = reportAt < 0 ? streamed : streamed.slice(0, reportAt)
   const tagless = trailingTag.test(written) ? written.slice(0, written.lastIndexOf("[")).trimEnd() : written
   const code = openCodeAt(tagless)
   const said = code < 0 ? tagless : tagless.slice(0, code)

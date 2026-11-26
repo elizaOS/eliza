@@ -22,7 +22,7 @@ interface Reply {
   readonly agentName: string
   readonly messageId: string
   readonly userMessageId: string
-  readonly actionResults: readonly { readonly action: string; readonly data: { readonly executionStatus?: string } }[]
+  readonly actionResults: readonly { readonly action: string; readonly data: { readonly executionStatus?: string; readonly untold?: boolean } }[]
   readonly failureKind?: string
   readonly cloudCode?: string
   readonly planAction?: string
@@ -430,7 +430,7 @@ module node {
     return text
   }
 }
-import { namedTools, briefProbe, briefs, calendarProbe, completions, notMoved, phoneWords, unsaidMove, untitledChecklist, unrealTime, cutTurn, modelLogRooms, failParticipantLookupOnce, handedDirectly, privateAgenda, privateReadCount, privateReader, failNext, fixtureApp, lastTurnHistory, lastTurnPrompt, localDay, loseRoomOwnershipOnceAfterReply, movedDentist, nearestCafes, overlapping, plainLog, refuseMoves, hostWords, reviewText, roomMessages, seedHistory, storeNotice, watchRunEnds } from node
+import { namedTools, briefProbe, briefs, calendarProbe, completions, notMoved, phoneWords, unsaidMove, untitledChecklist, unrealTime, cutTurn, modelLogRooms, failParticipantLookupOnce, handedDirectly, privateAgenda, privateReadCount, privateReader, failNext, fixtureApp, lastTurnHistory, lastTurnPrompt, localDay, loseRoomOwnershipOnceAfterReply, movedDentist, nearestCafes, overlapping, plainLog, refuseMoves, hostWords, refusedConnection, reviewText, roomMessages, seedHistory, storeNotice, watchRunEnds } from node
 
 effect function runEndsOf(ends: readonly { messageId?: string, status: string }[], messageId: string | undefined) {
   for (let wait = 0; wait < 100 && !ends.some((end) => end.messageId === messageId); wait += 1) try Effect.sleep("20 millis")
@@ -791,14 +791,14 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
   try send(agent, id, { text: "Show me home.", metadata: { viewDelivery: "completed-action", viewClientId: "renderer-1" } })
   const rendered = completionsSent().at(-1)
 
-  try Effect.sync(() => cloud.script(toolCalls("", { name: "VIEWS", arguments: { action: "show", view: "home" } }), text("I can't switch screens from this chat."), text("[answer] I can't switch screens from this chat, so home isn't showing."), text(`[reported 1: "I can't switch screens from this chat, so home isn't showing."]`)))
+  try Effect.sync(() => cloud.script(toolCalls("", { name: "VIEWS", arguments: { action: "show", view: "home" } }), text("I can't switch screens from this chat."), text(`[answer] I can't switch screens from this chat, so home isn't showing.\n[reported 1: "I can't switch screens from this chat, so home isn't showing."]`)))
   const { answer: unrendered, calls: unrenderedCalls } = try callsFor({ text: "Show me home here." })
   const declined = completionsSent().at(-1)?.messages.findLast(({ role }) => role === "tool")?.content
-  const unrenderedAsked = reasked(2)
+  const unrenderedAsked = reasked()
 
-  try Effect.sync(() => cloud.script(toolCalls("", { name: "CALCULATE", arguments: { expression: "two plus two" } }), text("Done!"), text("I couldn't add two plus two: the calculator didn't take it."), text(`[reported 1: "I couldn't add two plus two: the calculator didn't take it."]`)))
+  try Effect.sync(() => cloud.script(toolCalls("", { name: "CALCULATE", arguments: { expression: "two plus two" } }), text("Done!"), text(`I couldn't add two plus two: the calculator didn't take it.\n[reported 1: "I couldn't add two plus two: the calculator didn't take it."]`)))
   const { answer: failed, calls: failedCalls } = try callsFor({ text: "Add two plus two." })
-  const failedAsked = reasked(2)
+  const failedAsked = reasked()
 
   const noAnswer = "That calculation has no answer: it divides by zero."
   const unparsed = `CALCULATE could not evaluate "two plus two": a number was expected at position 1. Supported: numbers with + - * / % ^ and parentheses.`
@@ -830,7 +830,7 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
   try Effect.sync(() => cloud.script(toolCalls("",
     { name: "CALCULATE", arguments: { expression: "8 + 9", stray: true } },
     { name: "CALCULATE", arguments: { expression: "12 * 3" } },
-  ), text("The second result is 36."), text("The second result is 36. The first calculation didn't run."), text(`[reported 1: "The first calculation didn't run."]`)))
+  ), text("The second result is 36."), text(`The second result is 36. The first calculation didn't run.\n[reported 1: "The first calculation didn't run."]`)))
   const { answer: separate, calls: separateCalls } = try callsFor({ text: "Calculate 8 plus 9 and 12 times 3." })
 
   try Effect.sync(() => cloud.script(
@@ -1002,10 +1002,10 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
     solved: ["That is 1,123,324.", 2],
     actions: ["CALCULATE"],
     unrendered: [
-      "I can't switch screens from this chat, so home isn't showing.", 4, "none", "I can't switch screens from this chat.",
+      "I can't switch screens from this chat, so home isn't showing.", 3, "none", "I can't switch screens from this chat.",
       `${asksAgain}(1) A step of this turn did not happen as asked. The reply must tell the person so truthfully, never claiming it happened. The step's own report: ${JSON.stringify(unavailableNotice)}\n${reportNote}`,
     ],
-    failed: [true, 4, "Done!", true],
+    failed: [true, 3, "Done!", true],
     notFinal: {
       toldInItsWords: ["7 divided by 0 has no answer (a divide-by-zero), so I couldn't work it out.", 3], cuedAgain: [noAnswer, 3], stoodBy: ["You can't divide 7 by 0.", 3],
       doneTwice: [noAnswer, 3], keptSuccess: [noAnswer, 3], misquoted: [noAnswer, 3], curlyQuoted: ["7 divided by 0 doesn’t work, so there’s no answer.", 3], fragmentQuoted: [noAnswer, 3], repeatedQuoted: [noAnswer, 3],
@@ -1013,7 +1013,7 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
     },
     quoted: [`It returned: ${noAnswer}`, 2],
     cutAfterFailure: [`${cutOffReply}\n\n${noAnswer}`, 2],
-    separate: ["The second result is 36. The first calculation didn't run.", 4],
+    separate: ["The second result is 36. The first calculation didn't run.", 3],
     corrected: ["The result is 17.", 4],
     correctedAgain: ["The result is 17.", 4, true],
     otherLater: ["12 times 3 is 36. I couldn't work out 8 plus 9.", 4, true],
@@ -1090,7 +1090,7 @@ it.live(`A tool call the model wrote as text is read as the call on Qwen, and is
   const nothing = try other.turn("Add a note: call the plumber Tuesday.")
   try Effect.sync(() => other.cloud.script(toolCalls("", { name: "CALCULATE", arguments: { expression: "5 * 5" } }), text('One sec. {"action": "add_note"}'), text("It is 25.")))
   const ranFirst = try other.turn("What is 5 times 5?")
-  try Effect.sync(() => other.cloud.script(toolCalls("", { name: "CALCULATE", arguments: { expression: "2 + 2", stray: true } }), text('On it. {"action": "add_note"}'), text("I couldn't work that out."), text("I couldn't work that out."), text(`[reported 1: "I couldn't work that out."]`)))
+  try Effect.sync(() => other.cloud.script(toolCalls("", { name: "CALCULATE", arguments: { expression: "2 + 2", stray: true } }), text('On it. {"action": "add_note"}'), text("I couldn't work that out."), text(`[answer] I couldn't work that out.\n[reported 1: "I couldn't work that out."]`)))
   const refused = try other.turn("What is 2 plus 2?")
   const refusedAsked = lastTurnPrompt(other.cloud, refused.calls - 2)
 
@@ -1160,8 +1160,14 @@ it.live(`A failure on one recipient or event stays reported beside a success on 
     const before = completions(cloud)
     const answered = replyOf(try send(agent, id, { text: request }))
     const note = completions(cloud) - before > 2 ? lastTurnPrompt(cloud) : ""
-    return { text: answered.text, calls: completions(cloud) - before, laterRunNote: note.includes("a later call of this turn did run") }
+    const untold = answered.actionResults.filter(({ data }) => data.untold === true).map(({ action }) => action)
+    return {
+      text: answered.text, calls: completions(cloud) - before, laterRunNote: note.includes("a later call of this turn did run"),
+      ...(untold.length === 0 ? {} : { untold }), ...(answered.failureKind === undefined ? {} : { failureKind: answered.failureKind }),
+    }
   }
+  const settle = (reply: string, ...told: readonly (readonly [number, string])[]) =>
+    text(JSON.stringify({ reply, told: told.map(([point, sentence]) => ({ point, sentence })) }))
 
   const onlyBob = "Bob has your text. The one to Alice didn't go through."
   const onlyBobAgain = `[answer] ${onlyBob}\n[reported: "The one to Alice didn't go through."]`
@@ -1203,10 +1209,24 @@ it.live(`A failure on one recipient or event stays reported beside a success on 
   const spanningQuote = try turn(bothAsked)
   const textAndTime = () => toolCalls("", textTo("Alice"), { name: "SCHEDULE_EVENT", arguments: { startAt: "2030-03-02T25:70" } })
   const textAndTimeAsked = "Text Alice that I'm running late and put the dentist on my calendar tomorrow at 25:70."
-  try Effect.sync(() => { failNext("Alice"); cloud.script(textAndTime(), text("Both done."), text("Both done."), text(`[reported 1: "25:70 isn't a real time, so nothing was added."]`)) })
+  try Effect.sync(() => { failNext("Alice"); cloud.script(textAndTime(), text("Both done."), text("Both done.")) })
   const unwordedUnreported = try turn(textAndTimeAsked)
-  try Effect.sync(() => { failNext("Alice"); cloud.script(textAndTime(), text("Both done."), text("Both done."), text("Both done.")) })
-  const unwordedUntold = try turn(textAndTimeAsked)
+  try Effect.sync(() => { failNext("Alice"); cloud.script(textAndTime(), text("Both done."), settle("The text to Alice didn't send. 25:70 isn't a real time, so nothing was added.", [1, "The text to Alice didn't send."], [2, "25:70 isn't a real time, so nothing was added."])) })
+  const unwordedSettled = try turn(textAndTimeAsked)
+  try Effect.sync(() => { failNext("Alice", "standup"); cloud.script(textAndStandup(), text("Both done."), settle("The text to Alice didn't send. Your standup moved.", [1, "The text to Alice didn't send."])) })
+  const shortTold = try turn(bothAsked)
+  try Effect.sync(() => { failNext("Alice"); cloud.script(toolCalls("", textTo("Alice")), text("Done, I sent it."), text("{not json")) })
+  const notJson = try turn("Text Alice that I'm running late.")
+  try Effect.sync(() => { failNext("Alice"); cloud.script(toolCalls("", textTo("Alice")), text("Done, I sent it."), text(JSON.stringify({ told: [{ point: 1, sentence: "Done, I sent it." }] }))) })
+  const noReplyField = try turn("Text Alice that I'm running late.")
+  try Effect.sync(() => { failNext("+14155550100"); cloud.script(toolCalls("", textTo("+14155550100")), text("Done."), settle("The text to +1 415 555 0100 didn't send.", [1, "The text to +1 415 555 0100 didn't send."])) })
+  const phoneNumberPasses = try turn("Text +1 415 555 0100 that I'm running late.")
+  try Effect.sync(() => { failNext("Alice", "standup"); cloud.script(textAndStandup(), text("Both done."), settle("The text to Alice didn't send, but your standup is done.", [1, "The text to Alice didn't send, but your standup is done."])) })
+  const falseClause = try turn(bothAsked)
+  try Effect.sync(() => { failNext("Alice"); cloud.script(toolCalls("", textTo("Alice")), text(`I couldn't text Alice: it didn't go through.\n[reported 1: "I couldn't text Alice: it didn't go through."]`)) })
+  const toldFirst = try turn("Text Alice that I'm running late.")
+  try Effect.sync(() => { failNext("Alice", "standup"); cloud.script(textAndStandup(), text(`I couldn't text Alice. Your standup moved.\n[reported 1: "I couldn't text Alice."]`), text("I couldn't text Alice. Your standup moved.")) })
+  const toldFirstPartly = try turn(bothAsked)
   try Effect.sync(() => { failNext("Alice"); cloud.script(textAndTime(), text("Both done."), text(`[answer] Alice has your text. 25:70 isn't a real time, so nothing was added.\n[reported 2: "25:70 isn't a real time, so nothing was added."]`)) })
   const unwordedQuoted = try turn(textAndTimeAsked)
   try Effect.sync(() => { failNext("Alice"); cloud.script(toolCalls("", textTo("Alice"), { name: "SHOW_RESULT", arguments: { which: "cafes" } }), text("Alice has your text, and here are the cafes."), text("Alice has your text, and here are the cafes.")) })
@@ -1228,28 +1248,43 @@ it.live(`A failure on one recipient or event stays reported beside a success on 
     try Effect.sync(() => cloud.script(toolCalls("", unreal), ...said()))
     return try turn("Put the dentist on my calendar tomorrow at 25:70.")
   }
-  const timeAskedTwice = try badTime(() => [text(askedTime), text(askedTime), text(`[reported 1: "25:70 isn't a time on the clock."]`)])
-  const timeBlankAgain = try badTime(() => [text(askedTime), text(""), text(""), text(""), text(""), text(`[reported 1: "25:70 isn't a time on the clock."]`)])
-  const timeFaultAgain = try badTime(() => [text(askedTime), requestFault("invalid_request"), text(`[reported 1: "25:70 isn't a time on the clock."]`)])
+  const timeAskedTwice = try badTime(() => [text(askedTime), settle(askedTime, [1, "25:70 isn't a time on the clock."])])
+  const timeBlankAgain = try badTime(() => [text(askedTime), text(""), text(""), text(""), text("")])
+  const timeFaultAgain = try badTime(() => [text(askedTime), requestFault("invalid_request")])
   const timeCut = try badTime(() => [cutOff("Let me")])
-  const timeTold = try badTime(() => [text("Done."), text("[answer] I couldn't add it: 25:70 isn't a real time. What time did you mean?"), text(`[reported 1: "I couldn't add it: 25:70 isn't a real time."]`)])
-  const booking = effect (failure: "Refused" | "NotStarted", said: () => readonly CloudReply[]) => {
-    try Effect.sync(() => cloud.script(toolCalls("", { name: failure === "Refused" ? "BOOK_TABLE" : "HOLD_SEAT", arguments: { place: "Nopa" } }), ...said()))
-    const answered = try turn("Book me a table at Nopa for 8.")
-    return { ...answered, hostText: hostWords.filter((words) => answered.text.includes(words)) }
+  const timeTold = try badTime(() => [text("Done."), text(`[answer] I couldn't add it: 25:70 isn't a real time. What time did you mean?\n[reported 1: "I couldn't add it: 25:70 isn't a real time."]`)])
+  const booking = effect (failure: "Refused" | "NotStarted", said: () => readonly CloudReply[], ...also: readonly { readonly name: string; readonly arguments: unknown }[]) => {
+    try Effect.sync(() => cloud.script(toolCalls("", { name: failure === "Refused" ? "BOOK_TABLE" : "HOLD_SEAT", arguments: { place: "Nopa" } }, ...also), ...said()))
+    const before = completions(cloud)
+    const sent = replyOf(try send(agent, id, { text: "Book me a table at Nopa for 8." }))
+    const stored = try host("stored reply", () => agent.agent.runtime.getMemoryById(sent.messageId as UUID))
+    const untold = sent.actionResults.filter(({ data }) => data.untold === true).map(({ action }) => action)
+    const seen = `${sent.text}\n${stored?.content.text ?? ""}`.toLowerCase()
+    return {
+      text: sent.text, stored: stored?.content.text, calls: completions(cloud) - before, untold, failureKind: sent.failureKind,
+      booked: seen.includes("booked") && !seen.includes("not booked") && !seen.includes("nothing was booked"), hostText: hostWords.filter((words) => seen.includes(words.toLowerCase())),
+    }
   }
-  const bookedTwice = () => [text("Your table is booked."), text("Your table is booked.")]
-  const refusedToldOwn = try booking("Refused", () => [...bookedTwice(), text(`[reported 1: "I couldn't book the table: the booking service didn't answer."]`)])
-  const notStartedToldOwn = try booking("NotStarted", () => [...bookedTwice(), text(`[reported 1: "I couldn't hold a seat at Nopa; nothing was booked."]`)])
-  const refusedToldInReply = try booking("Refused", () => [text("I couldn't book Nopa: the booking service is down."), text("I couldn't book Nopa: the booking service is down."), text(`[reported 1: "I couldn't book Nopa: the booking service is down."]`)])
-  const bookedUntold = try booking("Refused", () => [...bookedTwice(), text("Your table is booked.")])
+  const bookedOnce = () => text("Your table is booked.")
+  const refusedToldOwn = try booking("Refused", () => [bookedOnce(), settle("I couldn't book the table: the booking service didn't answer.", [1, "I couldn't book the table: the booking service didn't answer."])])
+  const notStartedToldOwn = try booking("NotStarted", () => [bookedOnce(), settle("I couldn't hold a seat at Nopa; nothing was booked.", [1, "I couldn't hold a seat at Nopa; nothing was booked."])])
+  const refusedToldInReply = try booking("Refused", () => [text("I couldn't book Nopa: the booking service is down."), text(`[answer] I couldn't book Nopa: the booking service is down.\n[reported 1: "I couldn't book Nopa: the booking service is down."]`)])
+  const bookedUntold = try booking("Refused", () => [bookedOnce(), bookedOnce()])
+  const bookedBlank = try booking("Refused", () => [bookedOnce(), text("")])
+  const bookedFault = try booking("Refused", () => [bookedOnce(), requestFault("invalid_request")])
+  const errorEchoed = try booking("Refused", () => [bookedOnce(), settle(`It failed: ${refusedConnection}`, [1, `It failed: ${refusedConnection}`])])
+  const echoedFirst = try booking("Refused", () => [text(`It failed: ${refusedConnection}\n[reported 1: "It failed: ${refusedConnection}"]`), bookedOnce()])
+  const notStartedEchoed = try booking("NotStarted", () => [bookedOnce(), settle("A HOLD_SEAT call did not start.", [1, "A HOLD_SEAT call did not start."])])
+  const saturdayPasses = try booking("Refused", () => [bookedOnce(), settle("I couldn't book Nopa for Saturday.", [1, "I couldn't book Nopa for Saturday."])])
+  const abbreviated = try booking("Refused", () => [bookedOnce(), settle("I couldn't book Nopa for 8 p.m. tonight.", [1, "I couldn't book Nopa for 8 p.m. tonight."])])
+  const bookedBesideCard = try booking("Refused", () => [text("Booked, and here are the cafes."), text("Booked, and here are the cafes.")], { name: "SHOW_RESULT", arguments: { which: "cafes" } })
   const modelWords = [untitledChecklist, unrealTime, "Write each as", "Ask the owner", "One of those times is not a real date"]
-  const ownerHeard = [untitled, timeAskedTwice, timeBlankAgain, timeFaultAgain, timeCut, timeTold, unwordedUnreported, unwordedUntold].map(({ text: said }) => modelWords.filter((words) => said.includes(words)))
+  const ownerHeard = [untitled, timeAskedTwice, timeBlankAgain, timeFaultAgain, timeCut, timeTold, unwordedUnreported, unwordedSettled].map(({ text: said }) => modelWords.filter((words) => said.includes(words)))
 
   try Effect.try(() => assert.deepStrictEqual({
-    bobFirst, aliceFirst, retried, events, told, unanswered, bothClaimed, sentClaimed, prefixQuoted, oneOfTwoQuoted, unnumberedOfTwo, bothQuoted, bothQuotedOddly, sameQuoteTwice, spanningQuote, unwordedUnreported, unwordedUntold, unwordedQuoted, besideACard, besideAProposal, sentThenCue, unshownNoted, afterWorkNote: sentThenCueNote.includes("The tool results above are what this turn did."),
+    bobFirst, aliceFirst, retried, events, told, unanswered, bothClaimed, sentClaimed, prefixQuoted, oneOfTwoQuoted, unnumberedOfTwo, bothQuoted, bothQuotedOddly, sameQuoteTwice, spanningQuote, unwordedUnreported, unwordedSettled, unwordedQuoted, shortTold, notJson, noReplyField, phoneNumberPasses, falseClause, toldFirst, toldFirstPartly, besideACard, besideAProposal, sentThenCue, unshownNoted, afterWorkNote: sentThenCueNote.includes("The tool results above are what this turn did."),
     untitled, timeAskedTwice, timeBlankAgain, timeFaultAgain, timeCut: timeCut.text === cutOffReply, timeTold, ownerHeard,
-    refusedToldOwn, notStartedToldOwn, refusedToldInReply, bookedUntold: { booked: (bookedUntold.text ?? "").includes("booked"), hostText: bookedUntold.hostText },
+    refusedToldOwn, notStartedToldOwn, refusedToldInReply, bookedUntold, bookedBlank, bookedFault, errorEchoed, echoedFirst, notStartedEchoed, saturdayPasses, abbreviated, bookedBesideCard,
   }, {
     bobFirst: { text: onlyBob, calls: 3, laterRunNote: false },
     aliceFirst: { text: onlyBob, calls: 4, laterRunNote: false },
@@ -1266,8 +1301,15 @@ it.live(`A failure on one recipient or event stays reported beside a success on 
     bothQuotedOddly: { text: "The text to Alice didn't send. Your standup didn't change either.", calls: 3, laterRunNote: false },
     sameQuoteTwice: { text: "Neither went through.\n\nThe standup event did not change.", calls: 3, laterRunNote: false },
     spanningQuote: { text: "The text to Alice did not send.\n\nThe standup event did not change.", calls: 3, laterRunNote: false },
-    unwordedUnreported: { text: "The text to Alice did not send.\n\n25:70 isn't a real time, so nothing was added.", calls: 4, laterRunNote: false },
-    unwordedUntold: { text: "The text to Alice did not send.", calls: 4, laterRunNote: false },
+    unwordedUnreported: { text: "The text to Alice did not send.", calls: 3, laterRunNote: false, untold: ["SCHEDULE_EVENT"] },
+    unwordedSettled: { text: "The text to Alice didn't send. 25:70 isn't a real time, so nothing was added.", calls: 3, laterRunNote: false },
+    shortTold: { text: "The text to Alice didn't send.\n\nThe standup event did not change.", calls: 3, laterRunNote: false },
+    notJson: { text: "The text to Alice did not send.", calls: 3, laterRunNote: false },
+    noReplyField: { text: "The text to Alice did not send.", calls: 3, laterRunNote: false },
+    phoneNumberPasses: { text: "The text to +1 415 555 0100 didn't send.", calls: 3, laterRunNote: false },
+    falseClause: { text: "The text to Alice didn't send, but your standup is done.\n\nThe standup event did not change.", calls: 3, laterRunNote: false },
+    toldFirst: { text: "I couldn't text Alice: it didn't go through.", calls: 2, laterRunNote: false },
+    toldFirstPartly: { text: "The text to Alice did not send.\n\nThe standup event did not change.", calls: 3, laterRunNote: false },
     unwordedQuoted: { text: "The text to Alice did not send.\n\n25:70 isn't a real time, so nothing was added.", calls: 3, laterRunNote: false },
     besideACard: { text: `${nearestCafes}\n\nThe text to Alice did not send.`, calls: 3, laterRunNote: false },
     besideAProposal: { text: `${reviewText("Bob")}\n\nThe text to Alice did not send.`, calls: 3, laterRunNote: false },
@@ -1275,16 +1317,24 @@ it.live(`A failure on one recipient or event stays reported beside a success on 
     sentThenCue: { text: "Sam has your text.", calls: 4, laterRunNote: false },
     afterWorkNote: true,
     untitled: { text: askedTitle, calls: 2, laterRunNote: false },
-    timeAskedTwice: { text: askedTime, calls: 4, laterRunNote: false },
-    timeBlankAgain: { text: askedTime, calls: 7, laterRunNote: false },
-    timeFaultAgain: { text: askedTime, calls: 4, laterRunNote: false },
+    timeAskedTwice: { text: askedTime, calls: 3, laterRunNote: false },
+    timeBlankAgain: { text: "", calls: 6, laterRunNote: false, untold: ["SCHEDULE_EVENT"] },
+    timeFaultAgain: { text: "", calls: 3, laterRunNote: false, untold: ["SCHEDULE_EVENT"] },
     timeCut: true,
-    timeTold: { text: "I couldn't add it: 25:70 isn't a real time. What time did you mean?", calls: 4, laterRunNote: false },
+    timeTold: { text: "I couldn't add it: 25:70 isn't a real time. What time did you mean?", calls: 3, laterRunNote: false },
     ownerHeard: [[], [], [], [], [], [], [], []],
-    refusedToldOwn: { text: "I couldn't book the table: the booking service didn't answer.", calls: 4, laterRunNote: false, hostText: [] },
-    notStartedToldOwn: { text: "I couldn't hold a seat at Nopa; nothing was booked.", calls: 4, laterRunNote: false, hostText: [] },
-    refusedToldInReply: { text: "I couldn't book Nopa: the booking service is down.", calls: 4, laterRunNote: false, hostText: [] },
-    bookedUntold: { booked: false, hostText: [] },
+    refusedToldOwn: { text: "I couldn't book the table: the booking service didn't answer.", stored: "I couldn't book the table: the booking service didn't answer.", calls: 3, untold: [], failureKind: undefined, booked: false, hostText: [] },
+    notStartedToldOwn: { text: "I couldn't hold a seat at Nopa; nothing was booked.", stored: "I couldn't hold a seat at Nopa; nothing was booked.", calls: 3, untold: [], failureKind: undefined, booked: false, hostText: [] },
+    refusedToldInReply: { text: "I couldn't book Nopa: the booking service is down.", stored: "I couldn't book Nopa: the booking service is down.", calls: 3, untold: [], failureKind: undefined, booked: false, hostText: [] },
+    bookedUntold: { text: "", stored: "", calls: 3, untold: ["BOOK_TABLE"], failureKind: undefined, booked: false, hostText: [] },
+    bookedBlank: { text: "", stored: "", calls: 4, untold: ["BOOK_TABLE"], failureKind: undefined, booked: false, hostText: [] },
+    bookedFault: { text: "", stored: "", calls: 3, untold: ["BOOK_TABLE"], failureKind: undefined, booked: false, hostText: [] },
+    errorEchoed: { text: "", stored: "", calls: 3, untold: ["BOOK_TABLE"], failureKind: undefined, booked: false, hostText: [] },
+    echoedFirst: { text: "", stored: "", calls: 3, untold: ["BOOK_TABLE"], failureKind: undefined, booked: false, hostText: [] },
+    notStartedEchoed: { text: "", stored: "", calls: 3, untold: ["HOLD_SEAT"], failureKind: undefined, booked: false, hostText: [] },
+    saturdayPasses: { text: "I couldn't book Nopa for Saturday.", stored: "I couldn't book Nopa for Saturday.", calls: 3, untold: [], failureKind: undefined, booked: false, hostText: [] },
+    abbreviated: { text: "", stored: "", calls: 3, untold: ["BOOK_TABLE"], failureKind: undefined, booked: false, hostText: [] },
+    bookedBesideCard: { text: nearestCafes, stored: nearestCafes, calls: 3, untold: ["BOOK_TABLE"], failureKind: undefined, booked: false, hostText: [] },
   }))
 }, 120_000)
 
@@ -2088,13 +2138,13 @@ it.live(`A calendar move refused without a receipt and then made by the model's 
   const heldButMistimed = try turn(["Misread"], () => [toolCalls("", misread), toolCalls("", move), text(`${unsaidMove} ${wrongRange}`), text("Done, your dentist is now 2–3 PM.")])
   const mistimedTwice = try turn(["Misread"], () => [toolCalls("", misread), toolCalls("", move), text(wrongRange), text("Done, your dentist is now 2–3 PM.")])
   const quoted = try turn(["Misread"], () => [toolCalls("", misread), toolCalls("", move), text(`${right} ${unsaidMove}`)])
-  const sameResponse = try turn(["Misread"], () => [toolCalls("", misread, move), text(right), text(right), text(`[reported 1: "My first try misread the time, but your dentist is now 9–10 AM."]`)])
+  const sameResponse = try turn(["Misread"], () => [toolCalls("", misread, move), text(right), text(JSON.stringify({ reply: `${right} My first try misread the time.`, told: [{ point: 1, sentence: "My first try misread the time." }] }))])
   const notTaken = "I couldn't move your dentist: the calendar didn't take it."
   const neverMoved = try turn(["Misread", "Refused"], () => [toolCalls("", misread), toolCalls("", move), text(notTaken), text(`[answer] ${notTaken} My first try misread the time.\n[reported 1: "My first try misread the time."]\n[reported 2: "${notTaken}"]`)])
   const providerRefused = try turn(["Refused"], () => [toolCalls("", move), text("Done!"), requestFault("invalid_request")])
   const unavailable = JSON.stringify(unavailableNotice)
   const otherActionFirst = try turn([], () => [toolCalls("", showCalendar), toolCalls("", move), text(right), text(right)], [unavailable, "(a VIEWS call)"])
-  const otherActionAlone = try turn([], () => [toolCalls("", showCalendar), text("Done!"), text("[answer] I couldn't show your calendar, so nothing changed."), text(`[reported 1: "I couldn't show your calendar, so nothing changed."]`)], [unavailable])
+  const otherActionAlone = try turn([], () => [toolCalls("", showCalendar), text("Done!"), text(`[answer] I couldn't show your calendar, so nothing changed.\n[reported 1: "I couldn't show your calendar, so nothing changed."]`)], [unavailable])
   const doneBoth = "Done, I sent it and your dentist is now 9–10 AM."
   const phone = (operation: string, said: () => readonly CloudReply[]) => turn([], () => [toolCalls("", { name: "PHONE_ACTION", arguments: { operation } }), toolCalls("", move), ...said()], [JSON.stringify(phoneWords[operation])])
   const textUnsent = "I couldn't send the text, but your dentist is now 9–10 AM."
@@ -2108,14 +2158,14 @@ it.live(`A calendar move refused without a receipt and then made by the model's 
     cuedAgain: { reply: right, calls: 4, laterRunNote: true },
     toldAgain: { reply: "Your dentist is now 9–10 AM.", calls: 4, laterRunNote: true },
     moveWrongAgain: { reply: right, calls: 4, laterRunNote: true },
-    heldButMistimed: { reply: movedDentist, calls: 4, laterRunNote: false },
+    heldButMistimed: { reply: movedDentist, calls: 4, laterRunNote: true },
     mistimedTwice: { reply: movedDentist, calls: 4, laterRunNote: true },
-    quoted: { reply: `${right} ${unsaidMove}`, calls: 3, laterRunNote: false },
-    sameResponse: { reply: "My first try misread the time, but your dentist is now 9–10 AM.", calls: 4, laterRunNote: false },
+    quoted: { reply: `${right} ${unsaidMove}`, calls: 4, laterRunNote: true },
+    sameResponse: { reply: `${right} My first try misread the time.`, calls: 3, laterRunNote: false },
     neverMoved: { reply: `${notTaken} My first try misread the time.`, calls: 4, laterRunNote: false },
     providerRefused: { reply: notMoved, calls: 3, laterRunNote: false },
     otherActionFirst: { reply: right, calls: 4, laterRunNote: true },
-    otherActionAlone: { reply: "I couldn't show your calendar, so nothing changed.", calls: 4, laterRunNote: false },
+    otherActionAlone: { reply: "I couldn't show your calendar, so nothing changed.", calls: 3, laterRunNote: false },
     textRefusedThenMoved: { reply: textUnsent, calls: 4, laterRunNote: false },
     textClaimedThenMoved: { reply: phoneWords.send_sms, calls: 4, laterRunNote: false },
     textClauseQuoted: { reply: phoneWords.send_sms, calls: 4, laterRunNote: false },

@@ -262,7 +262,7 @@ module node {
     const views = { name: "VIEWS", arguments: { action: "show", view: "files" } }
     const { tools: typedTools, ...typed } = await say([views])
     const { tools: deliveredTools, ...delivered } = await say([openView], direct)
-    const { tools: rendererTools, ...rendererOnly } = await say([views], rendererBound, answer("Which view?"), answer(`[reported 1: "I couldn't open Files here."]`))
+    const { tools: rendererTools, ...rendererOnly } = await say([views], rendererBound, text(JSON.stringify({ reply: "Which view? I couldn't open Files here.", told: [{ point: 1, sentence: "I couldn't open Files here." }] })))
     const { tools: againTools, ...typedAgain } = await say([openView])
     const { tools: bothTools, ...wrongHomeFirst } = await say([{ name: "VIEWS", arguments: { action: "show", view: "photos" } }, propose({ type: "open_view", view: "photos" })])
     return { sameTools: new Set([typedTools, deliveredTools, rendererTools, againTools, bothTools]).size === 1, typed, delivered, rendererOnly, typedAgain, wrongHomeFirst }
@@ -430,7 +430,7 @@ it.live(`A device message opens a view in one place under the same tools: VIEWS 
     sameTools: true,
     typed: { viewsHere: false, viewsNotHere: true, proposed: 0, refused: ["VIEWS"], reply: "Which view?" },
     delivered: { viewsHere: true, viewsNotHere: false, proposed: 0, refused: ["open_view"], reply: "Which view?" },
-    rendererOnly: { viewsHere: true, viewsNotHere: false, proposed: 0, refused: [], reply: "I couldn't open Files here." },
+    rendererOnly: { viewsHere: true, viewsNotHere: false, proposed: 0, refused: [], reply: "Which view? I couldn't open Files here." },
     typedAgain: { viewsHere: false, viewsNotHere: true, proposed: 1, refused: [], reply: reviewText },
     wrongHomeFirst: { viewsHere: false, viewsNotHere: true, proposed: 1, refused: ["VIEWS"], reply: reviewText },
   }))

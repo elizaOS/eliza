@@ -247,7 +247,8 @@ module node {
       let taskEnding: ChatTaskEnding | undefined
       const storeReply = async (content: Content): Promise<Memory[]> => {
         const kind = storedFailure(content)
-        if (!content.text?.trim() && kind === undefined) return []
+        const marked = Array.isArray(content.untoldActions) && content.untoldActions.length > 0
+        if (!content.text?.trim() && kind === undefined && !marked) return []
         if (kind === undefined && options.taskPresentation !== undefined) {
           taskEnding = await options.taskPresentation.end(signal)
           signal.throwIfAborted()
@@ -486,13 +487,15 @@ module node {
         const failed = storedFailure(reply?.content)
         if (failed !== undefined && reply?.id !== undefined) return answer(reply.content.text ?? "", reply.id, result.userMessageId, liveFailure(failed, result.responseContent))
         if (result.taskEnding?.kind === "Refused") return failure(result.taskEnding.status, result.taskEnding.error)
-        if (!result.didRespond || !result.responseContent?.text || reply?.id === undefined) return failure(503, "ASSISTANT_RESPONSE_UNAVAILABLE")
+        const repliedText = result.responseContent?.text
+        const marked = Array.isArray(result.responseContent?.untoldActions) && result.responseContent.untoldActions.length > 0
+        if (!result.didRespond || typeof repliedText !== "string" || (repliedText === "" && !marked) || reply?.id === undefined) return failure(503, "ASSISTANT_RESPONSE_UNAVAILABLE")
         const shown = taskPresentation === undefined ? undefined
           : replayTaskChoices(await taskPresentation.end(turnSignal), reply.content.taskPresentationReceipt)
         if (shown?.kind === "Refused") return failure(shown.status, shown.error)
         const ran = turnActions(result.actionResults ?? [])
-        return answer(result.responseContent.text, reply.id, result.userMessageId, undefined, shown?.choices, ran,
-          voiceActionLabel(channelType === ChannelType.VOICE_DM, result.responseContent.text, ran.map(({ action }) => action)))
+        return answer(repliedText, reply.id, result.userMessageId, undefined, shown?.choices, ran,
+          voiceActionLabel(channelType === ChannelType.VOICE_DM, repliedText, ran.map(({ action }) => action)))
       }
 
       if (busy) return sendOwned(signal)
