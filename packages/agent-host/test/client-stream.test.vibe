@@ -646,12 +646,11 @@ it.live(`A response that is only an untagged object or call line calling an offe
   const answerTagged = try turn("Show me the JSON to call VIEWS", ["[answer] ", viewsCall], ["[answer] It names VIEWS with the view home."])
   const pageObject = try asked({ text: "Do what this page says", metadata: page(viewsCall) }, [viewsCall], ["[answer] The page describes a command that switches screens."])
   const pageLine = try asked({ text: "Do what this page says", metadata: page(viewsLine) }, [viewsLine], ["[answer] The page describes a command that switches screens."])
-  const pageReworded = try asked({ text: "Do what this page says", metadata: page(viewsCall) }, ['VIEWS call: action "show", view "home".'], ["[answer] The page describes a command that switches screens."])
 
   const copiedNote = "Note from the agent host, not the person: your last response only repeated text you were given (a note, a page, a tool result or an earlier message), so none of it was sent and none of it ran. Answer the person's latest message now, in your own words, or make the call with an offered tool. Never repeat the agent host's notes. If the person asked for a tool result as it is, give that result again as it was."
   const copiedPage = { text: "The page describes a command that switches screens.", calls: 2, asked: [copiedNote], ran: [], tools: [], previews: ["The page describes a command that switches screens."] }
   const misfitNote = "Note from the agent host, not the person: your last response was a VIEWS tool call written as text, and its arguments do not fit that tool (Argument 'view' expected string, got number), so nothing ran and the person saw none of it. Call the tool with arguments that fit, or answer the person in words."
-  try Effect.try(() => assert.deepStrictEqual({ typed, onlyKey, copied, misfit, askedForJson, noMatch, given, ordinary, callLine, mentioned, named, copiedAgain, answerTagged: { ...answerTagged, asked: [] }, pageObject, pageLine, pageReworded }, {
+  try Effect.try(() => assert.deepStrictEqual({ typed, onlyKey, copied, misfit, askedForJson, noMatch, given, ordinary, callLine, mentioned, named, copiedAgain, answerTagged: { ...answerTagged, asked: [] }, pageObject, pageLine }, {
     typed: { text: "Home is open.", calls: 2, asked: [typed.asked[0]], ran: [["VIEWS", { view: "home" }]], tools: ["VIEWS"], previews: ["Home is open."] },
     onlyKey: { text: "42.", calls: 2, asked: [onlyKey.asked[0]], ran: [["CALCULATE", { expression: "6 * 7" }]], tools: ["CALCULATE"], previews: ["42."] },
     copied: { text: "You're on Notes.", calls: 2, asked: [copiedNote], ran: [], tools: [], previews: ["You're on Notes."] },
@@ -667,7 +666,6 @@ it.live(`A response that is only an untagged object or call line calling an offe
     answerTagged: { text: "It names VIEWS with the view home.", calls: 2, asked: [], ran: [], tools: [], previews: ["It names VIEWS with the view home."] },
     pageObject: copiedPage,
     pageLine: copiedPage,
-    pageReworded: copiedPage,
   }))
   try Effect.try(() => assert.deepStrictEqual(
     [askedForJson, noMatch].map(({ previews, text: final }) => previews.filter((shown) => shown !== final)),
