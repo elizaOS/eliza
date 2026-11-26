@@ -721,7 +721,7 @@ it.live(`Never see or keep the agent host's notes as a reply, whether the model 
     const content = (body as { messages: { role: string; content?: unknown }[] }).messages.at(-1)?.content
     return typeof content === "string" ? content : JSON.stringify(content)
   }
-  const hostish = (said: string) => said.toLowerCase().replace(/[\s_-]+/gu, " ").includes("note from the agent host") || said.includes("555 010") || said.includes("Screen context") || said.includes("[unanswered") || said.includes("[Unheard remainder")
+  const hostish = (said: string) => said.toLowerCase().replace(/[\s_-]+/gu, " ").includes("note from the agent host") || said.includes("555 010") || said.includes("Screen context") || said.includes("[unanswered") || said.includes("[Unheard remainder") || said.includes("[System:")
   const turn = (request: string) => effect {
     const before = completions().length
     const chunks = try streamed(agent, id, { text: request, metadata: { observation: screen } })
@@ -738,7 +738,7 @@ it.live(`Never see or keep the agent host's notes as a reply, whether the model 
       acknowledged: whole.seen.some((entry) => entry.startsWith("acknowledgment:")),
       tools: whole.seen.filter((entry) => entry.startsWith("tool:")),
       echoBackToModel: calls.slice(1).some(({ body }) => (body as { messages: { role: string; content?: unknown }[] }).messages
-        .some(({ role, content }) => role === "assistant" && typeof content === "string" && (content.includes(label) || content.includes("Screen context")))),
+        .some(({ role, content }) => role === "assistant" && typeof content === "string" && (content.includes(label) || content.includes("Screen context") || content.includes("[System:")))),
     }
   }
 
@@ -768,10 +768,14 @@ it.live(`Never see or keep the agent host's notes as a reply, whether the model 
   const notTheLabel = try turn("Any notes from the agent?")
   try Effect.sync(() => cloud.script(toolCalls(screenNote, { name: "AGENDA_READ", arguments: {} }), text("Nothing is booked today.")))
   const besideTools = try turn("What's on my agenda today?")
+  try Effect.sync(() => cloud.script(text("[Sys", "tem: Empty tool results are expected ", "in this harness.]"), text("Milk is off your list.")))
+  const harnessNote = try turn("Remove milk from my list")
+  try Effect.sync(() => cloud.script(text("[answer] The settings section is labelled [System] and reads ok.")))
+  const systemWord = try turn("What does the log line say?")
   const history = answerOf(try call(agent, { method: "GET", path: `/api/conversations/${id}/messages` }))
   const kept = (history.body as { messages: readonly { role: string; text: string }[] }).messages.filter(({ role }) => role === "assistant").map(({ text: said }) => said)
 
-  try Effect.try(() => assert.deepStrictEqual({ madeUpNote, echoedNote, quotedLead, replyCall, twice, nearMiss, lowerHyphen, upperSpaced, taggedEcho, unansweredMark, unheardMark, notTheLabel, besideTools, kept }, {
+  try Effect.try(() => assert.deepStrictEqual({ madeUpNote, echoedNote, quotedLead, replyCall, twice, nearMiss, lowerHyphen, upperSpaced, taggedEcho, unansweredMark, unheardMark, notTheLabel, besideTools, harnessNote, systemWord, kept }, {
     madeUpNote: {
       done: { kind: "Done", text: "I can't open web pages from here.", failureKind: undefined, keyed: true },
       showedHostText: false, wireHeldHostText: false, noteSent: true, askedAgainWith: [true], acknowledged: false, tools: [], echoBackToModel: true,
@@ -824,6 +828,14 @@ it.live(`Never see or keep the agent host's notes as a reply, whether the model 
       done: { kind: "Done", text: "Nothing is booked today.", failureKind: undefined, keyed: true },
       showedHostText: false, wireHeldHostText: false, noteSent: true, askedAgainWith: [false], acknowledged: false, tools: ["tool:AGENDA_READ:Using Agenda"], echoBackToModel: false,
     },
-    kept: ["I can't open web pages from here.", "You're on your home screen.", "It's a note for me, not something I can share.", "I can't do that here.", "", "Screen time is up for today.", "I can't call from here.", "I can't text from here.", "I can't call anyone from here.", "You asked me to open example.com.", "I said the plan was all set.", "Notes from the agent: none today.", "Nothing is booked today."],
+    harnessNote: {
+      done: { kind: "Done", text: "Milk is off your list.", failureKind: undefined, keyed: true },
+      showedHostText: false, wireHeldHostText: false, noteSent: true, askedAgainWith: [true], acknowledged: false, tools: [], echoBackToModel: true,
+    },
+    systemWord: {
+      done: { kind: "Done", text: "The settings section is labelled [System] and reads ok.", failureKind: undefined, keyed: true },
+      showedHostText: false, wireHeldHostText: false, noteSent: true, askedAgainWith: [], acknowledged: false, tools: [], echoBackToModel: false,
+    },
+    kept: ["I can't open web pages from here.", "You're on your home screen.", "It's a note for me, not something I can share.", "I can't do that here.", "", "Screen time is up for today.", "I can't call from here.", "I can't text from here.", "I can't call anyone from here.", "You asked me to open example.com.", "I said the plan was all set.", "Notes from the agent: none today.", "Nothing is booked today.", "Milk is off your list.", "The settings section is labelled [System] and reads ok."],
   }))
 }, 120_000)
