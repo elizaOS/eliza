@@ -37,7 +37,7 @@ it.effect('No token, a wrong token or an earlier launch token is Anonymous and r
   }
 })
 
-it.effect('A plugin route declared public stays Root-only and no plugin takes the two public paths (spec/agent/access/auth.md, "Only the agent\'s own health and auth status reads are public")', effect () => {
+it.effect(`A plugin route declared public stays Root-only and no plugin takes the two public paths (spec/agent/access/auth.md, "Only the agent's own health and auth status reads are public")`, effect () => {
   const anonymous = try call("GET", "/api/plugin/x")
   const health = try call("GET", "/api/health")
   const status = try call("GET", "/api/auth/status")

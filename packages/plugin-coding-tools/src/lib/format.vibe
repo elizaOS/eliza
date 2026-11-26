@@ -1,0 +1,305 @@
+// spec/codingTools/index.md, "Bounded output projection never exceeds line or byte ceilings and spills to an artifact when truncated"
+import type { ActionResult, IAgentRuntime, ProviderDataRecord } from "@elizaos/core"
+import { toWellFormedUnicode } from "@elizaos/core"
+import { projectOutput } from "../../gen/codingTools.effect.vibe"
+import { FAILURE_TEXT_PREFIX, type ActionResultData, type ToolFailure } from "../types.vibe"
+
+export const DEFAULT_OUTPUT_MAX_LINES = 300
+export const DEFAULT_OUTPUT_MAX_BYTES = 16_384
+export const HARD_OUTPUT_MAX_LINES = 2_000
+export const HARD_OUTPUT_MAX_BYTES = 50_000
+
+export interface TruncationResult {
+  readonly text: string
+  readonly truncated: boolean
+  readonly totalLines: number
+  readonly totalBytes: number
+  readonly shownLines: number
+  readonly shownBytes: number
+  readonly startLine: number
+  readonly endLine: number
+}
+
+function utf8ByteLength(value: string): number {
+  return new TextEncoder().encode(value).byteLength
+}
+
+function sliceUtf8Head(value: string, maxBytes: number): string {
+  if (maxBytes <= 0) return ""
+  const bytes = new TextEncoder().encode(value)
+  if (bytes.byteLength <= maxBytes) return value
+  let end = maxBytes
+  while (end > 0 && (bytes[end] & 0xc0) === 0x80) end -= 1
+  return new TextDecoder("utf-8", { fatal: false }).decode(bytes.subarray(0, end))
+}
+
+function sliceUtf8Tail(value: string, maxBytes: number): string {
+  if (maxBytes <= 0) return ""
+  const bytes = new TextEncoder().encode(value)
+  if (bytes.byteLength <= maxBytes) return value
+  let start = bytes.byteLength - maxBytes
+  while (start < bytes.byteLength && (bytes[start] & 0xc0) === 0x80) start += 1
+  return new TextDecoder("utf-8", { fatal: false }).decode(bytes.subarray(start))
+}
+
+function truncateWindow(
+  input: string,
+  direction: "head" | "tail",
+  maxLines: number,
+  maxBytes: number,
+): TruncationResult {
+  const effectiveMaxLines = Math.min(Math.max(1, maxLines), HARD_OUTPUT_MAX_LINES)
+  const effectiveMaxBytes = Math.min(Math.max(64, maxBytes), HARD_OUTPUT_MAX_BYTES)
+  const lines = input.length === 0 ? [] : input.split("\n")
+  const totalBytes = utf8ByteLength(input)
+  const projection = projectOutput(lines.length, totalBytes, effectiveMaxLines, effectiveMaxBytes)
+  if (!projection.truncated) {
+    return {
+      text: input,
+      truncated: false,
+      totalLines: lines.length,
+      totalBytes,
+      shownLines: lines.length,
+      shownBytes: totalBytes,
+      startLine: lines.length === 0 ? 0 : 1,
+      endLine: lines.length,
+    }
+  }
+  const kept: string[] = []
+  let bytesUsed = 0
+  if (direction === "head") {
+    for (let i = 0; i < Math.min(lines.length, effectiveMaxLines); i += 1) {
+      const piece = (i === 0 ? "" : "\n") + lines[i]
+      const pieceBytes = utf8ByteLength(piece)
+      if (bytesUsed + pieceBytes > effectiveMaxBytes) {
+        if (kept.length === 0) kept.push(sliceUtf8Head(lines[i], effectiveMaxBytes))
+        break
+      }
+      kept.push(lines[i])
+      bytesUsed += pieceBytes
+    }
+    const text = kept.join("\n")
+    return {
+      text,
+      truncated: true,
+      totalLines: lines.length,
+      totalBytes,
+      shownLines: kept.length,
+      shownBytes: utf8ByteLength(text),
+      startLine: kept.length === 0 ? 0 : 1,
+      endLine: kept.length,
+    }
+  }
+  const floor = Math.max(0, lines.length - effectiveMaxLines)
+  for (let i = lines.length - 1; i >= floor; i -= 1) {
+    const piece = (kept.length === 0 ? "" : "\n") + lines[i]
+    const pieceBytes = utf8ByteLength(piece)
+    if (bytesUsed + pieceBytes > effectiveMaxBytes) {
+      if (kept.length === 0) kept.push(sliceUtf8Tail(lines[i], effectiveMaxBytes))
+      break
+    }
+    kept.push(lines[i])
+    bytesUsed += pieceBytes
+  }
+  kept.reverse()
+  const text = kept.join("\n")
+  const endLine = lines.length
+  return {
+    text,
+    truncated: true,
+    totalLines: lines.length,
+    totalBytes,
+    shownLines: kept.length,
+    shownBytes: utf8ByteLength(text),
+    startLine: Math.max(1, endLine - kept.length + 1),
+    endLine,
+  }
+}
+
+export function truncateHead(
+  input: string,
+  maxLines = DEFAULT_OUTPUT_MAX_LINES,
+  maxBytes = DEFAULT_OUTPUT_MAX_BYTES,
+): TruncationResult {
+  return truncateWindow(input, "head", maxLines, maxBytes)
+}
+
+export function truncateTail(
+  input: string,
+  maxLines = DEFAULT_OUTPUT_MAX_LINES,
+  maxBytes = DEFAULT_OUTPUT_MAX_BYTES,
+): TruncationResult {
+  return truncateWindow(input, "tail", maxLines, maxBytes)
+}
+
+export function fencePreformatted(text: string): string {
+  const matches = text.match(/`+/g)
+  let longest = 0
+  if (matches) {
+    for (const run of matches) {
+      if (run.length > longest) longest = run.length
+    }
+  }
+  const fence = "`".repeat(Math.max(3, longest + 1))
+  const body = text.endsWith("\n") ? text : `${text}\n`
+  return `${fence}\n${body}${fence}`
+}
+
+export function capTranscriptForChat(text: string, maxChars = 1500): string {
+  if (text.length <= maxChars) return text
+  const headBudget = Math.floor(maxChars * 0.65)
+  const tailBudget = maxChars - headBudget
+  const head = text.slice(0, headBudget)
+  const tail = text.slice(-tailBudget)
+  const headEnd = head.lastIndexOf("\n")
+  const tailStart = tail.indexOf("\n")
+  const headPart = headEnd > 0 ? head.slice(0, headEnd) : head
+  const tailPart = tailStart >= 0 ? tail.slice(tailStart + 1) : tail
+  const middle = text
+    .slice(headPart.length, text.length - tailPart.length)
+    .replace(/^\n/, "")
+    .replace(/\n$/, "")
+  const omitted = middle.length === 0 ? 0 : middle.split("\n").length
+  return `${headPart}\n... [${omitted} lines omitted] ...\n${tailPart}`
+}
+
+export function readParam(options: unknown, name: string): unknown {
+  if (typeof options !== "object" || options === null) return undefined
+  const record = options as Record<string, unknown>
+  const nested = record.parameters
+  if (typeof nested === "object" && nested !== null && Object.hasOwn(nested, name)) {
+    return (nested as Record<string, unknown>)[name]
+  }
+  if (Object.hasOwn(record, name)) return record[name]
+  return undefined
+}
+
+export function readStringParam(options: unknown, name: string): string | undefined {
+  const value = readParam(options, name)
+  return typeof value === "string" ? value : undefined
+}
+
+export function readNumberParam(options: unknown, name: string): number | undefined {
+  const value = readParam(options, name)
+  if (typeof value === "number" && Number.isFinite(value)) return value
+  if (typeof value === "string" && value.trim() !== "") {
+    const parsed = Number(value)
+    if (Number.isFinite(parsed)) return parsed
+  }
+  return undefined
+}
+
+export function readBoolParam(options: unknown, name: string): boolean | undefined {
+  const value = readParam(options, name)
+  if (typeof value === "boolean") return value
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase()
+    if (normalized === "true" || normalized === "1") return true
+    if (normalized === "false" || normalized === "0") return false
+  }
+  return undefined
+}
+
+export function readArrayParam(options: unknown, name: string): readonly unknown[] | undefined {
+  const value = readParam(options, name)
+  return Array.isArray(value) ? value : undefined
+}
+
+export function readStringArrayParam(options: unknown, name: string): string[] | undefined {
+  const items = readArrayParam(options, name)
+  if (!items) return undefined
+  return items.filter((item): item is string => typeof item === "string")
+}
+
+export function readPositiveIntSetting(runtime: IAgentRuntime, key: string): number | undefined {
+  const raw = runtime.getSetting(key)
+  if (typeof raw === "number" && Number.isSafeInteger(raw) && raw > 0) return raw
+  if (typeof raw === "string" && /^[1-9]\d*$/.test(raw.trim())) {
+    const parsed = Number(raw.trim())
+    if (Number.isSafeInteger(parsed) && parsed > 0) return parsed
+  }
+  return undefined
+}
+
+export function readStringSetting(runtime: IAgentRuntime, key: string): string | undefined {
+  const raw = runtime.getSetting(key)
+  return typeof raw === "string" && raw.trim().length > 0 ? raw.trim() : undefined
+}
+
+function payloadFields(
+  data?: ProviderDataRecord,
+  promptData?: ProviderDataRecord,
+): Pick<ActionResult, "data" | "promptData" | "promptDataMode"> {
+  return {
+    ...(data === undefined ? {} : { data: data as ActionResultData }),
+    ...(promptData === undefined ? {} : { promptData, promptDataMode: "replace-data" as const }),
+  }
+}
+
+export function failureToActionResult(
+  toolFailure: ToolFailure,
+  data?: ProviderDataRecord,
+  promptData?: ProviderDataRecord,
+): ActionResult {
+  const text = `${FAILURE_TEXT_PREFIX} ${toolFailure.reason}: ${toolFailure.message}`
+  return { success: false, text, error: new Error(text), ...payloadFields(data, promptData) }
+}
+
+export function successActionResult(
+  text: string,
+  data?: ProviderDataRecord,
+  promptData?: ProviderDataRecord,
+): ActionResult {
+  return { success: true, text, ...payloadFields(data, promptData) }
+}
+
+export function basename(filePath: string): string {
+  const parts = filePath.split(/[\\/]/)
+  return parts[parts.length - 1] || filePath
+}
+
+export function preserveSummaryText(text: string): string {
+  return toWellFormedUnicode(text.replace(/\s+/g, " ").trim())
+}
+
+export function summarizeFileOperation(params: Record<string, unknown>): string | undefined {
+  const action = String(params.action ?? "").toLowerCase()
+  const rawPath = params.file_path ?? params.path
+  const name = typeof rawPath === "string" ? basename(rawPath) : undefined
+  if (!name) return undefined
+  if (action === "write" || action === "create") return `wrote ${name}`
+  if (action === "edit") return `edited ${name}`
+  if (action === "read") return `read ${name}`
+  return undefined
+}
+
+export function summarizeShellCommand(redactedCommand: unknown): string | undefined {
+  if (typeof redactedCommand !== "string" || redactedCommand.trim().length === 0) return undefined
+  const compact = preserveSummaryText(redactedCommand)
+  const clipped = compact.length > 80 ? `${compact.slice(0, 77)}...` : compact
+  return `ran \`${clipped}\``
+}
+
+export function finalLineEnding(text: string): "crlf" | "lf" | "none" {
+  if (text.endsWith("\r\n")) return "crlf"
+  if (text.endsWith("\n")) return "lf"
+  return "none"
+}
+
+export function formatNumberedLines(text: string, startLineOneBased: number): string {
+  if (text.length === 0) return ""
+  const lines = text.split("\n")
+  return lines.map((line, idx) => `${startLineOneBased + idx}|${line}`).join("\n")
+}
+
+export function formatCompactEditDiff(
+  filePath: string,
+  firstLine: number,
+  oldText: string,
+  newText: string,
+  maxLines = 24,
+): string {
+  const removed = oldText.split("\n").slice(0, Math.floor(maxLines / 2)).map((l) => `-${l}`)
+  const added = newText.split("\n").slice(0, Math.floor(maxLines / 2)).map((l) => `+${l}`)
+  return [`@@ ${basename(filePath)}:${firstLine} @@`, ...removed, ...added].join("\n")
+}

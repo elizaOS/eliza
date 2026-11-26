@@ -340,9 +340,7 @@ it.effect('Send only what I meant: a turn sent at a pause and taken back before 
   })
 })
 
-const profileRule = "A session's timings and Stop report are the profile it started with: a short gap no longer than the long gap, a long gap of at most 10,000 ms, a hold of at most 5,000 ms, and 300, 1,200 and 700 ms with a heard report on Stop by default"
-
-it.effect(`An open-mic profile submits without gaps, confirms a barge-in after its 400 ms hold, sends no heard report on Stop, and an out-of-bounds profile refuses Start (spec/agent/voice/session.md, "${profileRule}")`, () => effect {
+it.effect(`An open-mic profile submits without gaps, confirms a barge-in after its 400 ms hold, sends no heard report on Stop, and an out-of-bounds profile refuses Start (spec/agent/voice/session.md, "A session's timings and Stop report are the profile it started with: a short gap no longer than the long gap, a long gap of at most 10,000 ms, a hold of at most 5,000 ms, and 300, 1,200 and 700 ms with a heard report on Stop by default")`, () => effect {
   const refused = harness()
   refused.live.start("ConversationMode", "FullDuplex", { shortGapMs: 500, longGapMs: 100, bargeInHoldMs: 700, stopReport: "StopReportsHeard" })
   const openMic = { shortGapMs: 0, longGapMs: 0, bargeInHoldMs: 400, stopReport: "StopReportsNone" } as const

@@ -1,7 +1,7 @@
 lemma enqueue_ensures(s: PriorityState, payload: string, priority: QueuePriority)
   ensures (inv(s) ==> canEnqueue(s, payload, priority) ==> alwaysPriorityBucketsAgree(enqueue(s, payload, priority)))
-  ensures (inv(s) ==> canEnqueue(s, payload, priority) ==> alwaysTicketsCountFromOne(enqueue(s, payload, priority)))
   ensures (inv(s) ==> canEnqueue(s, payload, priority) ==> alwaysQueueTicketsUnique(enqueue(s, payload, priority)))
+  ensures (inv(s) ==> canEnqueue(s, payload, priority) ==> alwaysTicketsCountFromOne(enqueue(s, payload, priority)))
 {
   if inv(s) && canEnqueue(s, payload, priority) {
     var warned := s.(overflowWarnings := (s.overflowWarnings + (if (s.hasMax && (queueSize(s) >= s.maxSize)) then 1 else 0)));
@@ -14,8 +14,8 @@ lemma enqueue_ensures(s: PriorityState, payload: string, priority: QueuePriority
 
 lemma resolvePressure_ensures(s: PriorityState, accepted: bool)
   ensures (inv(s) ==> canResolvePressure(s, accepted) ==> alwaysPriorityBucketsAgree(resolvePressure(s, accepted)))
-  ensures (inv(s) ==> canResolvePressure(s, accepted) ==> alwaysTicketsCountFromOne(resolvePressure(s, accepted)))
   ensures (inv(s) ==> canResolvePressure(s, accepted) ==> alwaysQueueTicketsUnique(resolvePressure(s, accepted)))
+  ensures (inv(s) ==> canResolvePressure(s, accepted) ==> alwaysTicketsCountFromOne(resolvePressure(s, accepted)))
 {
   if inv(s) && canResolvePressure(s, accepted) {
     var released := s.(pressurePending := false);
@@ -28,8 +28,8 @@ lemma resolvePressure_ensures(s: PriorityState, accepted: bool)
 
 lemma drainTickets_ensures(s: PriorityState, tickets: seq<int>)
   ensures (inv(s) ==> canDrainTickets(s, tickets) ==> alwaysPriorityBucketsAgree(drainTickets(s, tickets)))
-  ensures (inv(s) ==> canDrainTickets(s, tickets) ==> alwaysTicketsCountFromOne(drainTickets(s, tickets)))
   ensures (inv(s) ==> canDrainTickets(s, tickets) ==> alwaysQueueTicketsUnique(drainTickets(s, tickets)))
+  ensures (inv(s) ==> canDrainTickets(s, tickets) ==> alwaysTicketsCountFromOne(drainTickets(s, tickets)))
 {
   if inv(s) && canDrainTickets(s, tickets) {
     var after := drainTickets(s, tickets);
@@ -52,8 +52,8 @@ lemma drainTickets_ensures(s: PriorityState, tickets: seq<int>)
 
 lemma dequeue_ensures(s: PriorityState, count: int)
   ensures (inv(s) ==> canDequeue(s, count) ==> alwaysPriorityBucketsAgree(dequeue(s, count)))
-  ensures (inv(s) ==> canDequeue(s, count) ==> alwaysTicketsCountFromOne(dequeue(s, count)))
   ensures (inv(s) ==> canDequeue(s, count) ==> alwaysQueueTicketsUnique(dequeue(s, count)))
+  ensures (inv(s) ==> canDequeue(s, count) ==> alwaysTicketsCountFromOne(dequeue(s, count)))
 {
   if inv(s) && canDequeue(s, count) {
     var after := dequeue(s, count);

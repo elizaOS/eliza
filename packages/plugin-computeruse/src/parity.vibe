@@ -1,0 +1,109 @@
+// spec/computerUse/index.md, "Story: Control an authorized computer session"
+
+export type ParityMatrixStatus = "have" | "partial" | "na"
+export type OsName = "windows" | "linux" | "macos" | "aosp"
+export type OsCoverage = "covered" | "planned" | "na"
+
+export interface ParityCapability {
+  readonly id: string
+  readonly elizaVerb?: string
+  readonly status: ParityMatrixStatus
+  readonly os: Readonly<Record<OsName, OsCoverage>>
+  readonly note?: string
+}
+
+const DESKTOP_COVERED: Readonly<Record<OsName, OsCoverage>> = {
+  windows: "covered",
+  linux: "covered",
+  macos: "covered",
+  aosp: "na",
+}
+
+export const PARITY_MATRIX: readonly ParityCapability[] = [
+  { id: "screenshot", elizaVerb: "COMPUTER_USE", status: "have", os: { ...DESKTOP_COVERED, aosp: "covered" } },
+  { id: "left_click", elizaVerb: "COMPUTER_USE", status: "have", os: { ...DESKTOP_COVERED, aosp: "covered" } },
+  { id: "right_click", elizaVerb: "COMPUTER_USE", status: "have", os: DESKTOP_COVERED },
+  { id: "double_click", elizaVerb: "COMPUTER_USE", status: "have", os: DESKTOP_COVERED },
+  { id: "middle_click", elizaVerb: "COMPUTER_USE", status: "have", os: DESKTOP_COVERED },
+  { id: "mouse_move", elizaVerb: "COMPUTER_USE", status: "have", os: DESKTOP_COVERED },
+  { id: "mouse_down", elizaVerb: "COMPUTER_USE", status: "have", os: DESKTOP_COVERED },
+  { id: "mouse_up", elizaVerb: "COMPUTER_USE", status: "have", os: DESKTOP_COVERED },
+  { id: "type_text", elizaVerb: "COMPUTER_USE", status: "have", os: { ...DESKTOP_COVERED, aosp: "covered" } },
+  { id: "press_key", elizaVerb: "COMPUTER_USE", status: "have", os: DESKTOP_COVERED },
+  { id: "hotkey", elizaVerb: "COMPUTER_USE", status: "have", os: DESKTOP_COVERED },
+  { id: "scroll", elizaVerb: "COMPUTER_USE", status: "have", os: DESKTOP_COVERED },
+  { id: "drag_to", elizaVerb: "COMPUTER_USE", status: "have", os: DESKTOP_COVERED },
+  { id: "get_cursor_position", elizaVerb: "COMPUTER_USE", status: "have", os: DESKTOP_COVERED },
+  { id: "detect_elements", elizaVerb: "COMPUTER_USE", status: "have", os: DESKTOP_COVERED },
+  { id: "ocr", elizaVerb: "COMPUTER_USE", status: "have", os: { ...DESKTOP_COVERED, aosp: "covered" } },
+  { id: "open", elizaVerb: "COMPUTER_USE", status: "have", os: DESKTOP_COVERED },
+  { id: "launch", elizaVerb: "COMPUTER_USE", status: "have", os: DESKTOP_COVERED },
+  { id: "kill_app", elizaVerb: "COMPUTER_USE", status: "have", os: DESKTOP_COVERED },
+  { id: "batch", elizaVerb: "COMPUTER_USE", status: "have", os: DESKTOP_COVERED, note: "Multi-step sequence batching" },
+  { id: "window_management", elizaVerb: "WINDOW", status: "have", os: DESKTOP_COVERED },
+  { id: "clipboard", elizaVerb: "CLIPBOARD", status: "have", os: DESKTOP_COVERED },
+  { id: "autonomous_agent_loop", elizaVerb: "COMPUTER_USE_AGENT", status: "have", os: { ...DESKTOP_COVERED, aosp: "covered" } },
+]
+
+export interface ParityValidationProblem {
+  readonly capabilityId: string
+  readonly message: string
+}
+
+export interface ParityValidationResult {
+  readonly valid: boolean
+  readonly problems: readonly ParityValidationProblem[]
+}
+
+export function validateParityMatrix(registeredActionNames: readonly string[]): ParityValidationResult {
+  const registered = new Set(registeredActionNames)
+  const problems: ParityValidationProblem[] = []
+  for (const cap of PARITY_MATRIX) {
+    if ((cap.status === "have" || cap.status === "partial") && cap.elizaVerb && !registered.has(cap.elizaVerb)) {
+      problems.push({ capabilityId: cap.id, message: `Missing registered action "${cap.elizaVerb}"` })
+    }
+  }
+  return { valid: problems.length === 0, problems }
+}
+
+export function parityMatrixSummary(): { readonly total: number; readonly have: number; readonly partial: number; readonly na: number } {
+  let have = 0
+  let partial = 0
+  let na = 0
+  for (const cap of PARITY_MATRIX) {
+    if (cap.status === "have") have += 1
+    else if (cap.status === "partial") partial += 1
+    else na += 1
+  }
+  return { total: PARITY_MATRIX.length, have, partial, na }
+}
+
+export interface ParityCoverageByOs {
+  readonly covered: number
+  readonly planned: number
+  readonly na: number
+}
+
+export function parityCoverageByOs(): Record<OsName, ParityCoverageByOs> {
+  const tally = (os: OsName): ParityCoverageByOs => {
+    let covered = 0
+    let planned = 0
+    let na = 0
+    for (const cap of PARITY_MATRIX) {
+      if (cap.os[os] === "covered") covered += 1
+      else if (cap.os[os] === "planned") planned += 1
+      else na += 1
+    }
+    return { covered, planned, na }
+  }
+  return {
+    windows: tally("windows"),
+    linux: tally("linux"),
+    macos: tally("macos"),
+    aosp: tally("aosp"),
+  }
+}
+
+export function validateParityCoverage(registeredActionNames: readonly string[]): ParityValidationResult {
+  return validateParityMatrix(registeredActionNames)
+}

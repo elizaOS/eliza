@@ -1,0 +1,139 @@
+// spec/pty/index.md, "Story: Open and close an owner-bound terminal session"; spec/pty/policy.md, "Story: Enforce session capacity, confinement, and safe teardown"
+import type { IAgentRuntime, Plugin } from "@elizaos/core"
+
+export interface PtyDisposable {
+  dispose(): void
+}
+
+export interface PtyHandle {
+  readonly pid?: number
+  write(data: string): void
+  resize(cols: number, rows: number): void
+  kill(signal?: string): void
+  onData(listener: (data: string) => void): PtyDisposable | undefined
+  onExit(listener: (event: { exitCode: number; signal?: number }) => void): PtyDisposable | undefined
+}
+
+export type PtySpawn = (
+  file: string,
+  args: string[],
+  options: {
+    cwd?: string
+    env?: Record<string, string | undefined>
+    name?: string
+    cols?: number
+    rows?: number
+  },
+) => PtyHandle
+
+export interface PtySpawnSpec {
+  command: string
+  args: string[]
+  cwd: string
+  env?: Record<string, string | undefined>
+  cols?: number
+  rows?: number
+  label?: string
+  kind?: string
+  ownerClientId?: string
+}
+
+export interface PtySessionInfo {
+  sessionId: string
+  command: string
+  args: string[]
+  cwd: string
+  label?: string
+  kind?: string
+  ownerClientId?: string
+  pid?: number
+  createdAt: number
+  exited: boolean
+  exitCode?: number | null
+}
+
+export interface ConsoleBridge {
+  on(event: string, listener: (...args: unknown[]) => void): void
+  off(event: string, listener: (...args: unknown[]) => void): void
+  writeRaw(sessionId: string, data: string): void
+  resize(sessionId: string, cols: number, rows: number): void
+}
+
+export interface SessionOutputEvent {
+  sessionId: string
+  data: string
+}
+
+export interface SessionExitEvent {
+  sessionId: string
+  exitCode: number | null
+}
+
+export interface PtyRouteContext {
+  body?: unknown
+  params?: Record<string, string>
+  query: Record<string, string | string[] | undefined>
+  headers: Record<string, string | string[] | undefined>
+  method?: string
+  path?: string
+  runtime: IAgentRuntime
+  inProcess?: boolean
+  isTrustedLocal?: boolean
+}
+
+export interface PtyRouteResult {
+  status: number
+  headers?: Record<string, string>
+  body: unknown
+}
+
+export interface PtyRoute {
+  type: "GET" | "POST" | "DELETE"
+  path: string
+  rawPath: true
+  name: string
+  routeHandler: (ctx: PtyRouteContext) => Promise<PtyRouteResult>
+}
+
+export interface PtyPlugin extends Plugin {
+  readonly routes: readonly PtyRoute[]
+}
+
+export interface TerminalLaunch {
+  readonly ownerId: string
+  readonly terminalId: string
+  readonly executable: string
+  readonly arguments: readonly string[]
+  readonly directory: string
+  readonly environment: Readonly<Record<string, string>>
+}
+
+export interface BoundedOutputOptions {
+  readonly cursor?: number
+  readonly maxChars?: number
+  readonly maxLines?: number
+}
+
+export interface BoundedOutputResult {
+  readonly sessionId: string
+  readonly output: string
+  readonly cursor: number
+  readonly totalChars: number
+  readonly truncated: boolean
+  readonly omittedChars: number
+  readonly exited: boolean
+  readonly exitCode: number | null | undefined
+}
+
+export interface SendAndWaitOptions {
+  readonly waitMs?: number
+  readonly idleMs?: number
+  readonly pattern?: string
+  readonly maxChars?: number
+  readonly maxLines?: number
+}
+
+export interface SendAndWaitResult extends BoundedOutputResult {
+  readonly matched: boolean
+  readonly timedOut: boolean
+}

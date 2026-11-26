@@ -121,7 +121,7 @@ it.effect('A persisted store opens only for the account and embedding size it wa
   }))
 }, 240_000)
 
-it.effect('A second process is refused while the first holds the store, and a killed holder is replaced (spec/agent/storage/database.md, "Story: Keep the agent\'s records in one store that never loses a committed write")', effect () => {
+it.effect(`A second process is refused while the first holds the store, and a killed holder is replaced (spec/agent/storage/database.md, "Story: Keep the agent's records in one store that never loses a committed write")`, effect () => {
   const state = try scratch("agent-lock")
   const holder = try start(state, "holder", { persistMemory: true })
   const created = try agentId(holder)

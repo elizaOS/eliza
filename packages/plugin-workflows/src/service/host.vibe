@@ -42,6 +42,12 @@ export interface WorkflowNativeDigests {
   read(selection: HostedNativeSelection, at: number, window: DigestTemplate): string!WorkflowDeviceFailed
 }
 
+export interface WorkflowDraftOptions {
+  readonly modelClass?: "TEXT_LARGE" | "TEXT_SMALL"
+  readonly maxTokens?: number
+  readonly purpose?: "code_synthesis" | "step_draft" | "fast_eval" | "summary"
+}
+
 export interface WorkflowHost {
   readonly sql: WorkflowSql
   readonly owner: string
@@ -49,7 +55,7 @@ export interface WorkflowHost {
   readonly origin: string
   readonly worker: WorkflowWorkerPort | undefined
   readonly device: WorkflowDevicePort | undefined
-  readonly draft: ((prompt: string) => string!WorkflowModelFailed) | undefined
+  readonly draft: ((prompt: string, options?: WorkflowDraftOptions) => string!WorkflowModelFailed) | undefined
   readonly nativeDigests: WorkflowNativeDigests | undefined
   readonly google: ManagedGoogleReads | undefined
   readonly notify: (notice: WorkflowNotice) => void!!

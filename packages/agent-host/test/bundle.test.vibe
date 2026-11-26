@@ -117,7 +117,7 @@ it.effect('The payload refuses weights, addons and, without local inference, ver
   })
 })
 
-it.effect('A consumer entry inside a named source package starts the agent with a host module built over its device service, and the smoke registers that module\'s action (spec/agent/plugins/bundle.md, "A consumer entry ships only as a named package\'s code inside the source root, and passes the same load smoke as the generated entry"; spec/agent/plugins/bundle.md, "A host module is named only for a bundled package that is not an agent module, and runs with its entry\'s services over the resident\'s platform layer")', effect () => {
+it.effect(`A consumer entry inside a named source package starts the agent with a host module built over its device service, and the smoke registers that module's action (spec/agent/plugins/bundle.md, "A consumer entry ships only as a named package's code inside the source root, and passes the same load smoke as the generated entry"; spec/agent/plugins/bundle.md, "A host module is named only for a bundled package that is not an agent module, and runs with its entry's services over the resident's platform layer")`, effect () => {
   try fixturePackage()
   const out = try scratch("bundle-entry-out")
   const manifest = try host("bundle build with a consumer entry", () =>
@@ -136,7 +136,7 @@ it.effect(`A consumer entry's host services are built over the launch environmen
   try Effect.try(() => assert.include(actions, "HOSTED_DEVICE"))
 }, 300_000)
 
-it.effect('A SIGTERM while a listed plugin is still loading stops the boot, releases the store and exits 0 (spec/agent/host/process.md, "The first signal stops the runtime at once, and a repeated signal joins that stop"; spec/agent/host/process.md, "The exit code is the boot failure\'s code, else 0 after a clean release and 1 after a failed one")', effect () => {
+it.effect(`A SIGTERM while a listed plugin is still loading stops the boot, releases the store and exits 0 (spec/agent/host/process.md, "The first signal stops the runtime at once, and a repeated signal joins that stop"; spec/agent/host/process.md, "The exit code is the boot failure's code, else 0 after a clean release and 1 after a failed one")`, effect () => {
   try fixturePackage()
   const booted = try boot({ entry: consumerEntryFile, launch: { load: [hostedFixtureName], persistMemory: true, environment: { FIXTURE_SOCKET: "HOLD" } } })
   try host("hosted module held", () => booted.child.held())
@@ -145,7 +145,7 @@ it.effect('A SIGTERM while a listed plugin is still loading stops the boot, rele
   try Effect.try(() => assert.deepStrictEqual({ code: exited.code, signal: exited.signal }, { code: 0, signal: null }, exited.stderr))
 }, 300_000)
 
-it.effect('A listed plugin that fails while loading is logged, releases the store and exits with the agent failure code (spec/agent/host/process.md, "The exit code is the boot failure\'s code, else 0 after a clean release and 1 after a failed one")', effect () => {
+it.effect(`A listed plugin that fails while loading is logged, releases the store and exits with the agent failure code (spec/agent/host/process.md, "The exit code is the boot failure's code, else 0 after a clean release and 1 after a failed one")`, effect () => {
   try fixturePackage()
   const booted = try boot({ entry: consumerEntryFile, launch: { load: [hostedFixtureName], persistMemory: true, environment: { FIXTURE_SOCKET: "DEFECT" } } })
   const exited = try host("exit", () => booted.child.exited)

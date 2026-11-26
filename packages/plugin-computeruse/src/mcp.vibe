@@ -1,0 +1,156 @@
+// spec/computerUse/index.md, "A command is scoped to one session generation, surface and authorized operation"; spec/computerUse/batching.md, "Story: Execute a bounded sequence of desktop actions in a single LLM turn"
+import type { ComputerUseResult } from "./types.vibe"
+
+export interface ComputerUseCommandRunner {
+  executeCommand(command: string, parameters?: Record<string, unknown>): Promise<ComputerUseResult>
+}
+
+export interface McpToolProperty {
+  readonly type: "string" | "number" | "boolean" | "array" | "object"
+  readonly description: string
+  readonly items?: { readonly type: string }
+}
+
+export interface ComputerUseMcpTool {
+  readonly name: string
+  readonly description: string
+  readonly command: string
+  readonly destructive: boolean
+  readonly properties: Readonly<Record<string, McpToolProperty>>
+  readonly required?: readonly string[]
+}
+
+const COORD: McpToolProperty = { type: "array", description: "[x, y] pixel coordinate.", items: { type: "number" } }
+const DISPLAY: McpToolProperty = { type: "number", description: "Target display id." }
+const APP: McpToolProperty = { type: "string", description: "App id, name, bundle id, or pid." }
+const STATE_ID: McpToolProperty = { type: "string", description: "Fresh stateId from computer_get_app_state." }
+const ELEMENT_INDEX: McpToolProperty = { type: "number", description: "Ephemeral element_index from app state." }
+
+export const COMPUTERUSE_MCP_TOOLS: readonly ComputerUseMcpTool[] = [
+  { name: "computer_app_click", description: "Click an app element by stateId and element_index.", command: "app_click", destructive: true, properties: { app: APP, stateId: STATE_ID, element_index: ELEMENT_INDEX }, required: ["app", "stateId", "element_index"] },
+  { name: "computer_app_key", description: "Send key and optional modifiers to one app.", command: "app_key", destructive: true, properties: { app: APP, stateId: STATE_ID, key: { type: "string", description: "Key name." }, modifiers: { type: "array", description: "Modifiers.", items: { type: "string" } } }, required: ["app", "stateId", "key"] },
+  { name: "computer_app_select_text", description: "Select text in an app element.", command: "app_select_text", destructive: true, properties: { app: APP, stateId: STATE_ID, element_index: ELEMENT_INDEX }, required: ["app", "stateId", "element_index"] },
+  { name: "computer_app_set_value", description: "Set value on an app element.", command: "app_set_value", destructive: true, properties: { app: APP, stateId: STATE_ID, element_index: ELEMENT_INDEX, text: { type: "string", description: "New value." } }, required: ["app", "stateId", "element_index", "text"] },
+  { name: "computer_app_type", description: "Type Unicode text into an app.", command: "app_type", destructive: true, properties: { app: APP, stateId: STATE_ID, text: { type: "string", description: "Text to type." } }, required: ["app", "stateId", "text"] },
+  { name: "computer_batch", description: "Execute a bounded sequence of desktop actions in a single call.", command: "batch", destructive: true, properties: { steps: { type: "array", description: "Ordered desktop action steps.", items: { type: "object" } }, stopOnError: { type: "boolean", description: "Stop on first error (default true)." } }, required: ["steps"] },
+  { name: "computer_detect_elements", description: "Detect interactive AX and OCR elements on screen.", command: "detect_elements", destructive: false, properties: { displayId: DISPLAY } },
+  { name: "computer_double_click", description: "Double-click at [x, y].", command: "double_click", destructive: true, properties: { coordinate: COORD, displayId: DISPLAY }, required: ["coordinate"] },
+  { name: "computer_drag", description: "Drag from startCoordinate to coordinate or along path.", command: "drag", destructive: true, properties: { startCoordinate: COORD, coordinate: COORD, path: { type: "array", description: "Multi-point polyline.", items: { type: "array" } }, displayId: DISPLAY } },
+  { name: "computer_get_app_state", description: "Capture app AX state, element indices, and incremental diff.", command: "get_app_state", destructive: false, properties: { app: APP, disableDiff: { type: "boolean", description: "Disable incremental diff." } }, required: ["app"] },
+  { name: "computer_get_cursor_position", description: "Return current cursor coordinates.", command: "get_cursor_position", destructive: false, properties: {} },
+  { name: "computer_key", description: "Press a single key.", command: "key_press", destructive: true, properties: { key: { type: "string", description: "Key name." } }, required: ["key"] },
+  { name: "computer_key_combo", description: "Press a key combination.", command: "key_combo", destructive: true, properties: { key: { type: "string", description: "Combo string." } }, required: ["key"] },
+  { name: "computer_key_down", description: "Press and hold a key.", command: "key_down", destructive: true, properties: { key: { type: "string", description: "Key name." } }, required: ["key"] },
+  { name: "computer_key_up", description: "Release a held key.", command: "key_up", destructive: true, properties: { key: { type: "string", description: "Key name." } }, required: ["key"] },
+  { name: "computer_kill_app", description: "Terminate an application.", command: "kill_app", destructive: true, properties: { app: APP }, required: ["app"] },
+  { name: "computer_launch", description: "Launch an application.", command: "launch", destructive: true, properties: { app: APP, appArgs: { type: "array", description: "Launch arguments.", items: { type: "string" } } }, required: ["app"] },
+  { name: "computer_left_click", description: "Left-click at [x, y].", command: "click", destructive: true, properties: { coordinate: COORD, displayId: DISPLAY }, required: ["coordinate"] },
+  { name: "computer_list_apps", description: "List running applications for app-scoped control.", command: "list_apps", destructive: false, properties: {} },
+  { name: "computer_middle_click", description: "Middle-click at [x, y].", command: "middle_click", destructive: true, properties: { coordinate: COORD, displayId: DISPLAY }, required: ["coordinate"] },
+  { name: "computer_mouse_down", description: "Press and hold mouse button at [x, y].", command: "mouse_down", destructive: true, properties: { coordinate: COORD, button: { type: "string", description: "left|middle|right" }, displayId: DISPLAY }, required: ["coordinate"] },
+  { name: "computer_mouse_move", description: "Move cursor to [x, y].", command: "mouse_move", destructive: true, properties: { coordinate: COORD, displayId: DISPLAY }, required: ["coordinate"] },
+  { name: "computer_mouse_up", description: "Release mouse button at [x, y].", command: "mouse_up", destructive: true, properties: { coordinate: COORD, button: { type: "string", description: "left|middle|right" }, displayId: DISPLAY }, required: ["coordinate"] },
+  { name: "computer_ocr", description: "Run OCR on current screen.", command: "ocr", destructive: false, properties: { displayId: DISPLAY } },
+  { name: "computer_open", description: "Open a file, folder, or URL.", command: "open", destructive: true, properties: { target: { type: "string", description: "Target path or URL." } }, required: ["target"] },
+  { name: "computer_right_click", description: "Right-click at [x, y].", command: "right_click", destructive: true, properties: { coordinate: COORD, displayId: DISPLAY }, required: ["coordinate"] },
+  { name: "computer_screenshot", description: "Capture current screen.", command: "screenshot", destructive: false, properties: { displayId: DISPLAY } },
+  { name: "computer_scroll", description: "Scroll at [x, y].", command: "scroll", destructive: true, properties: { coordinate: COORD, scrollDirection: { type: "string", description: "up|down|left|right" }, scrollAmount: { type: "number", description: "Scroll ticks." }, displayId: DISPLAY } },
+  { name: "computer_type", description: "Type text at current focus.", command: "type", destructive: true, properties: { text: { type: "string", description: "Text to type." } }, required: ["text"] },
+]
+
+export function findComputerUseMcpTool(name: string): ComputerUseMcpTool | undefined {
+  return COMPUTERUSE_MCP_TOOLS.find((tool) => tool.name === name)
+}
+
+export async function dispatchComputerUseMcpTool(
+  runner: ComputerUseCommandRunner,
+  toolName: string,
+  args: Record<string, unknown> = {},
+): Promise<ComputerUseResult> {
+  const tool = findComputerUseMcpTool(toolName)
+  if (!tool) {
+    return { success: false, error: `Unknown MCP tool: ${toolName}`, errorCode: "unknown_tool" }
+  }
+  for (const reqField of tool.required ?? []) {
+    if (args[reqField] === undefined) {
+      return { success: false, error: `Missing required parameter "${reqField}" for ${toolName}`, errorCode: "missing_param" }
+    }
+  }
+  return runner.executeCommand(tool.command, args)
+}
+
+export interface JsonRpcRequest {
+  readonly jsonrpc: "2.0"
+  readonly id?: string | number | null
+  readonly method: string
+  readonly params?: Record<string, unknown>
+}
+
+export interface JsonRpcResponse {
+  readonly jsonrpc: "2.0"
+  readonly id: string | number | null
+  readonly result?: unknown
+  readonly error?: { readonly code: number; readonly message: string }
+}
+
+export interface ComputerUseMcpServer {
+  readonly name: string
+  readonly version: string
+  handleJsonRpc(request: JsonRpcRequest): Promise<JsonRpcResponse>
+}
+
+export function createComputerUseMcpServer(runner: ComputerUseCommandRunner): ComputerUseMcpServer {
+  return {
+    name: "@elizaos/plugin-computeruse",
+    version: "4.0.0",
+    async handleJsonRpc(request: JsonRpcRequest): Promise<JsonRpcResponse> {
+      const id = request.id ?? null
+      if (request.method === "initialize") {
+        return {
+          jsonrpc: "2.0",
+          id,
+          result: {
+            protocolVersion: "2024-11-05",
+            serverInfo: { name: "@elizaos/plugin-computeruse", version: "4.0.0" },
+            capabilities: { tools: {} },
+          },
+        }
+      }
+      if (request.method === "tools/list") {
+        return {
+          jsonrpc: "2.0",
+          id,
+          result: {
+            tools: COMPUTERUSE_MCP_TOOLS.map((t) => ({
+              name: t.name,
+              description: t.description,
+              inputSchema: {
+                type: "object",
+                properties: t.properties,
+                ...(t.required ? { required: [...t.required] } : {}),
+              },
+            })),
+          },
+        }
+      }
+      if (request.method === "tools/call") {
+        const name = String(request.params?.name ?? "")
+        const args = (request.params?.arguments ?? {}) as Record<string, unknown>
+        const res = await dispatchComputerUseMcpTool(runner, name, args)
+        return {
+          jsonrpc: "2.0",
+          id,
+          result: {
+            isError: !res.success,
+            content: [{ type: "text", text: JSON.stringify(res) }],
+          },
+        }
+      }
+      return {
+        jsonrpc: "2.0",
+        id,
+        error: { code: -32601, message: `Method not found: ${request.method}` },
+      }
+    },
+  }
+}

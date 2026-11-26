@@ -1,0 +1,476 @@
+// spec/computerUse/index.md, "A command is scoped to one session generation, surface and authorized operation"; spec/computerUse/observation.md, "Change detection, image attachment policy, pixel budgets, and coordinate bounds obey pure safety laws"
+import { pointInDisplayBounds } from "../gen/computerUse__observation.effect.vibe"
+
+export const BROWSER_EXECUTE_DISABLED_MESSAGE =
+  "browser_execute is permanently disabled for security (GHSA-rcvr-766c-4phv). Use DOM, clickables, click, type, navigate, and screenshot instead."
+
+export const INVALID_BROWSER_TAB_ID_MESSAGE =
+  "Browser tab id must be a non-empty alphanumeric/hyphen/underscore identifier up to 128 characters."
+
+export const BLOCKED_BROWSER_URL_SCHEME_MESSAGE =
+  "Only http:// and https:// URLs are permitted for browser navigation."
+
+export const MAX_COMPUTER_USE_PLAIN_DATA_DEPTH = 6
+export const MAX_COMPUTER_USE_PLAIN_DATA_NODES = 256
+export const MAX_COMPUTER_USE_PLAIN_DATA_CHARS = 16_384
+export const COMPUTER_USE_PLAIN_DATA_UNBOUNDED = "COMPUTER_USE_PLAIN_DATA_UNBOUNDED"
+
+export error BrowserExecuteDisabledError { reason: string }
+export error InvalidBrowserTabIdError { tabId: string; reason: string }
+export error BlockedBrowserUrlError { url: string; reason: string }
+export error ComputerUsePlainDataUnboundedError { code: string; details: Record<string, unknown> }
+export error ComputerUseTrajectoryTextError { field: string; reason: string }
+
+export interface PathValidationResult {
+  readonly allowed: boolean
+  readonly reason?: string
+}
+
+export interface CommandRiskResult {
+  readonly blocked: boolean
+  readonly reason?: string
+}
+
+interface LabelledPattern {
+  readonly pattern: RegExp
+  readonly label: string
+}
+
+interface DangerousPattern {
+  readonly pattern: RegExp
+  readonly reason: string
+}
+
+const CREDENTIAL_PATTERNS: readonly LabelledPattern[] = [
+  { pattern: /(?:^|\/)\.ssh\/(?:id_|.*\.pem$|authorized_keys$|config$)/i, label: "SSH key/config" },
+  { pattern: /(?:^|\/)\.gnupg\//i, label: "GPG keyring" },
+  { pattern: /(?:^|\/)\.aws\/credentials$/i, label: "AWS credentials" },
+  { pattern: /(?:^|\/)\.config\/gcloud\/application_default_credentials\.json$/i, label: "GCP credentials" },
+  { pattern: /(?:^|\/)\.docker\/config\.json$/i, label: "Docker credentials" },
+  { pattern: /(?:^|\/)\.kube\/config$/i, label: "Kubernetes config" },
+  { pattern: /(?:^|\/)\.netrc$/i, label: "netrc credentials" },
+  { pattern: /(?:^|\/)\.npmrc$/i, label: "npm credentials" },
+  { pattern: /(?:^|\/)\.git-credentials$/i, label: "Git stored credentials" },
+  { pattern: /(?:^|\/)Library\/Keychains\//i, label: "macOS Keychain" },
+  { pattern: /\/(?:Google\/Chrome|Microsoft\/Edge|BraveSoftware\/Brave-Browser)\/.*\/Login Data$/i, label: "browser password database" },
+  { pattern: /\/(?:Google\/Chrome|Microsoft\/Edge|BraveSoftware\/Brave-Browser)\/.*\/Cookies$/i, label: "browser cookie database" },
+  { pattern: /\/\.mozilla\/firefox\/.*\/(?:logins\.json|key[34]\.db|cookies\.sqlite)$/i, label: "Firefox credential/cookie store" },
+]
+
+const SYSTEM_DIR_PATTERNS_WIN32: readonly LabelledPattern[] = [
+  { pattern: /^[A-Z]:\/Windows\//i, label: "Windows system directory" },
+  { pattern: /^[A-Z]:\/Program Files/i, label: "Program Files directory" },
+  { pattern: /^[A-Z]:\/ProgramData\//i, label: "ProgramData directory" },
+  { pattern: /^[A-Z]:\/PROGRA~[1-4]\//i, label: "Program Files (8.3 short name)" },
+]
+
+const SYSTEM_DIR_PATTERNS_UNIX: readonly LabelledPattern[] = [
+  { pattern: /^\/boot\//i, label: "boot directory" },
+  { pattern: /^\/sbin\//i, label: "system binary directory" },
+  { pattern: /^\/usr\/sbin\//i, label: "system admin binary directory" },
+  { pattern: /^\/usr\/lib\//i, label: "system library directory" },
+  { pattern: /^(?:\/private)?\/etc\/(?:shadow|sudoers|pam\.d|master\.passwd)/i, label: "system auth config" },
+  { pattern: /^\/System\//i, label: "macOS System directory" },
+  { pattern: /^\/private\/var\/db\/dslocal/i, label: "macOS Directory Services" },
+  { pattern: /^\/dev\//i, label: "device node" },
+  { pattern: /^\/proc\//i, label: "proc filesystem" },
+  { pattern: /^\/sys\//i, label: "sys filesystem" },
+]
+
+const WINDOWS_DEVICE_NAME = /^(CON|PRN|AUX|NUL|COM\d|LPT\d)(\..+)?$/i
+const SAFE_TAB_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/
+const SAFE_WINDOW_ID_PATTERN = /^[A-Za-z0-9._:/-]{1,128}$/
+const SAFE_KEYPRESS_PATTERN = /^[A-Za-z0-9+_.,: -]{1,128}$/
+
+const STRIP_EXACT_ENV = new Set<string>([
+  "INTERNAL_API_KEY",
+  "CSRF_SECRET",
+  "ENCRYPTION_KEY",
+  "SUPABASE_SERVICE_ROLE",
+  "STRIPE_API_KEY",
+  "STRIPE_WEBHOOK_SECRET",
+  "POSTHOG_API_KEY",
+])
+
+const STRIP_PATTERN_ENV: readonly RegExp[] = [
+  /^SUPABASE_.*(?:SERVICE_ROLE|SECRET)/i,
+  /^STRIPE_.*(?:SECRET|WEBHOOK)/i,
+  /^ELIZA_.*(?:SECRET|KEY|TOKEN)/i,
+  /^(?:ANTHROPIC|OPENAI|OPENROUTER|GROQ|XAI|GOOGLE|GEMINI|GOOGLE_GENERATIVE_AI|CEREBRAS|ELEVENLABS|DEEPGRAM|MISTRAL|COHERE|DISCORD|TELEGRAM|SLACK|FARCASTER|TWITTER|AWS)_.*(?:KEY|TOKEN|SECRET|PASSWORD)/i,
+  /_(?:API_KEY|SECRET|TOKEN|PASSWORD|PRIVATE_KEY)$/i,
+]
+
+const DANGEROUS_COMMAND_PATTERNS: readonly DangerousPattern[] = [
+  { pattern: /\brm\s+-[^\n;|&]*r[^\n;|&]*\s+\/(\s*$|\s*;|\s*&|\s*\|)/im, reason: "Recursive deletion of the root filesystem (rm -rf /)." },
+  { pattern: /\brm\s+-[^\n;|&]*r[^\n;|&]*\s+\/\*/im, reason: "Recursive deletion of all root contents (rm -rf /*)." },
+  { pattern: /\brm\s+-[^\n;|&]*r[^\n;|&]*\s+~\/?(\s|$|;|&|\|)/im, reason: "Recursive deletion of the entire home directory." },
+  { pattern: /\bRemove-Item\b(?=[^;|&]*-Recurse)(?=[^;|&]*[\s'"][A-Z]:[\\/](?=[^a-zA-Z0-9]|$))/im, reason: "PowerShell recursive deletion of drive root." },
+  { pattern: /\bmkfs(?:\.[a-z0-9]+)?\b/i, reason: "Filesystem formatting command (mkfs) is blocked." },
+  { pattern: /\bdd\s+if=.*\bof=\/dev\/(?:sd|nvme|disk|hd)/i, reason: "Raw block device overwrite (dd to /dev/*) is blocked." },
+  { pattern: /:\(\)\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*;\s*:/, reason: "Fork bomb detected and blocked." },
+  { pattern: /\b(?:shutdown|reboot|halt|poweroff)\b/i, reason: "System power-state command is blocked." },
+  { pattern: /\bFormat-Volume\b/i, reason: "PowerShell disk formatting (Format-Volume) is blocked." },
+  { pattern: /\bClear-Disk\b/i, reason: "PowerShell disk wipe (Clear-Disk) is blocked." },
+  { pattern: /\bcurl\b[^|\n]*\|\s*(?:sh|bash|zsh)\b/i, reason: "Piping remote curl output directly to a shell is blocked." },
+  { pattern: /\bwget\b[^|\n]*\|\s*(?:sh|bash|zsh)\b/i, reason: "Piping remote wget output directly to a shell is blocked." },
+]
+
+export function isBrowserExecuteAllowed(): boolean {
+  return false
+}
+
+export effect function assertBrowserExecuteAllowed(): void!BrowserExecuteDisabledError {
+  throw new BrowserExecuteDisabledError({ reason: BROWSER_EXECUTE_DISABLED_MESSAGE })
+}
+
+export effect function normalizeBrowserTabId(raw: unknown): string!InvalidBrowserTabIdError {
+  if (typeof raw !== "string") {
+    throw new InvalidBrowserTabIdError({ tabId: String(raw ?? ""), reason: INVALID_BROWSER_TAB_ID_MESSAGE })
+  }
+  const trimmed = raw.trim()
+  if (!SAFE_TAB_ID_PATTERN.test(trimmed)) {
+    throw new InvalidBrowserTabIdError({ tabId: trimmed, reason: INVALID_BROWSER_TAB_ID_MESSAGE })
+  }
+  return trimmed
+}
+
+export effect function assertHttpBrowserUrl(rawUrl: unknown): string!BlockedBrowserUrlError {
+  if (typeof rawUrl !== "string") {
+    throw new BlockedBrowserUrlError({ url: String(rawUrl ?? ""), reason: BLOCKED_BROWSER_URL_SCHEME_MESSAGE })
+  }
+  const trimmed = rawUrl.trim()
+  if (!trimmed) {
+    throw new BlockedBrowserUrlError({ url: trimmed, reason: BLOCKED_BROWSER_URL_SCHEME_MESSAGE })
+  }
+  const parsed = try Effect.try({
+    try: () => new URL(trimmed),
+    catch: () => new BlockedBrowserUrlError({ url: trimmed, reason: BLOCKED_BROWSER_URL_SCHEME_MESSAGE }),
+  })
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new BlockedBrowserUrlError({ url: trimmed, reason: BLOCKED_BROWSER_URL_SCHEME_MESSAGE })
+  }
+  return parsed.toString()
+}
+
+export function validateFilePath(targetPath: string): PathValidationResult {
+  if (!targetPath || targetPath.includes("\0")) {
+    return { allowed: false, reason: "File path is empty or contains null bytes." }
+  }
+  const normalized = targetPath.replaceAll("\\", "/")
+  const baseName = normalized.split("/").pop() ?? ""
+  if (WINDOWS_DEVICE_NAME.test(baseName)) {
+    return { allowed: false, reason: `Reserved Windows device name "${baseName}" is blocked.` }
+  }
+  for (const entry of CREDENTIAL_PATTERNS) {
+    if (entry.pattern.test(normalized)) {
+      return { allowed: false, reason: `Access to ${entry.label} is blocked.` }
+    }
+  }
+  for (const entry of SYSTEM_DIR_PATTERNS_UNIX) {
+    if (entry.pattern.test(normalized)) {
+      return { allowed: false, reason: `Access to ${entry.label} is blocked.` }
+    }
+  }
+  for (const entry of SYSTEM_DIR_PATTERNS_WIN32) {
+    if (entry.pattern.test(normalized)) {
+      return { allowed: false, reason: `Access to ${entry.label} is blocked.` }
+    }
+  }
+  return { allowed: true }
+}
+
+export function checkDangerousCommand(command: string): CommandRiskResult {
+  const trimmed = command.trim()
+  if (!trimmed) {
+    return { blocked: true, reason: "Command must not be empty." }
+  }
+  if (trimmed.includes("\0")) {
+    return { blocked: true, reason: "Command contains null bytes." }
+  }
+  for (const rule of DANGEROUS_COMMAND_PATTERNS) {
+    if (rule.pattern.test(trimmed)) {
+      return { blocked: true, reason: rule.reason }
+    }
+  }
+  return { blocked: false }
+}
+
+export function sanitizeChildEnv(env: Record<string, string | undefined>): Record<string, string> {
+  const clean: Record<string, string> = {}
+  for (const [key, value] of Object.entries(env)) {
+    if (value === undefined) continue
+    if (STRIP_EXACT_ENV.has(key)) continue
+    if (STRIP_PATTERN_ENV.some((pattern) => pattern.test(key))) continue
+    clean[key] = value
+  }
+  return clean
+}
+
+export function validateInt(value: unknown, min: number, max: number): number | undefined {
+  if (typeof value !== "number" || !Number.isSafeInteger(value)) return undefined
+  if (value < min || value > max) return undefined
+  return value
+}
+
+export function validateCoordinate(
+  x: unknown,
+  y: unknown,
+  width = 32_768,
+  height = 32_768,
+): readonly [number, number] | undefined {
+  if (typeof x !== "number" || typeof y !== "number") return undefined
+  const rx = Math.round(x)
+  const ry = Math.round(y)
+  if (!Number.isSafeInteger(rx) || !Number.isSafeInteger(ry)) return undefined
+  if (!pointInDisplayBounds(rx, ry, width, height)) return undefined
+  return [rx, ry]
+}
+
+export function validateWindowId(windowId: unknown): string | undefined {
+  if (typeof windowId !== "string") return undefined
+  const trimmed = windowId.trim()
+  if (!SAFE_WINDOW_ID_PATTERN.test(trimmed)) return undefined
+  return trimmed
+}
+
+export function validateText(text: unknown, maxLength = 16_384): string | undefined {
+  if (typeof text !== "string") return undefined
+  if (text.length === 0 || text.length > maxLength || text.includes("\0")) return undefined
+  return text
+}
+
+export function validateKeypress(key: unknown): string | undefined {
+  if (typeof key !== "string") return undefined
+  const trimmed = key.trim()
+  if (!SAFE_KEYPRESS_PATTERN.test(trimmed)) return undefined
+  return trimmed
+}
+
+export function escapeAppleScript(value: string): string {
+  return value
+    .replaceAll("\\", "\\\\")
+    .replaceAll("\"", "\\\"")
+    .replaceAll("\n", "\\n")
+    .replaceAll("\r", "\\r")
+}
+
+export function safeXdotoolKey(key: string): string {
+  const map: Record<string, string> = {
+    enter: "Return",
+    return: "Return",
+    esc: "Escape",
+    escape: "Escape",
+    tab: "Tab",
+    space: "space",
+    backspace: "BackSpace",
+    delete: "Delete",
+    up: "Up",
+    down: "Down",
+    left: "Left",
+    right: "Right",
+    home: "Home",
+    end: "End",
+    pageup: "Page_Up",
+    pagedown: "Page_Down",
+    cmd: "Super_L",
+    command: "Super_L",
+    meta: "Super_L",
+    super: "Super_L",
+    ctrl: "Control_L",
+    control: "Control_L",
+    alt: "Alt_L",
+    option: "Alt_L",
+    shift: "Shift_L",
+  }
+  const lower = key.trim().toLowerCase()
+  return map[lower] ?? key.trim()
+}
+
+export type ComputerUseTrajectoryTextField =
+  | "goal"
+  | "actionKind"
+  | "error"
+  | "errorCode"
+  | "rationale"
+
+export interface ComputerUseAgentStepTrajectoryPayload {
+  readonly step: number
+  readonly goal: string
+  readonly actionKind: string
+  readonly rationale: string
+  readonly success: boolean
+  readonly error?: string
+  readonly errorCode?: string
+}
+
+export effect function assertComputerUseTrajectoryText(
+  field: ComputerUseTrajectoryTextField,
+  value: string | undefined,
+): void!ComputerUseTrajectoryTextError {
+  if (value === undefined) return
+  if (value.includes("\0")) {
+    throw new ComputerUseTrajectoryTextError({ field, reason: "Trajectory text contains null byte" })
+  }
+  if (value.length > 8192) {
+    throw new ComputerUseTrajectoryTextError({ field, reason: `Trajectory field exceeds 8192 characters (${value.length})` })
+  }
+}
+
+export effect function buildComputerUseAgentStepTrajectoryPayload(
+  event: ComputerUseAgentStepTrajectoryPayload,
+): ComputerUseAgentStepTrajectoryPayload!ComputerUseTrajectoryTextError {
+  try assertComputerUseTrajectoryText("goal", event.goal)
+  try assertComputerUseTrajectoryText("actionKind", event.actionKind)
+  try assertComputerUseTrajectoryText("error", event.error)
+  try assertComputerUseTrajectoryText("errorCode", event.errorCode)
+  try assertComputerUseTrajectoryText("rationale", event.rationale)
+  return { ...event }
+}
+
+interface WalkContext {
+  visits: number
+  readonly visiting: WeakSet<object>
+}
+
+function appendBoundedLine(
+  lines: string[],
+  currentChars: number,
+  line: string,
+  first: boolean,
+): { readonly ok: true; readonly chars: number } | { readonly ok: false; readonly details: Record<string, unknown> } {
+  const nextChars = currentChars + (first ? 0 : 1) + line.length
+  if (nextChars > MAX_COMPUTER_USE_PLAIN_DATA_CHARS) {
+    return { ok: false, details: { outputChars: nextChars, maxChars: MAX_COMPUTER_USE_PLAIN_DATA_CHARS } }
+  }
+  lines.push(line)
+  return { ok: true, chars: nextChars }
+}
+
+function renderPlainDataWalk(
+  value: unknown,
+  depth: number,
+  ctx: WalkContext,
+): { readonly ok: true; readonly text: string } | { readonly ok: false; readonly details: Record<string, unknown> } {
+  if (depth > MAX_COMPUTER_USE_PLAIN_DATA_DEPTH) {
+    return { ok: false, details: { depth, max: MAX_COMPUTER_USE_PLAIN_DATA_DEPTH } }
+  }
+  if (value === null || value === undefined) {
+    return { ok: true, text: "none" }
+  }
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    ctx.visits += 1
+    if (ctx.visits > MAX_COMPUTER_USE_PLAIN_DATA_NODES) {
+      return { ok: false, details: { visits: ctx.visits, maxNodes: MAX_COMPUTER_USE_PLAIN_DATA_NODES } }
+    }
+    const text = String(value)
+    if (text.length > MAX_COMPUTER_USE_PLAIN_DATA_CHARS) {
+      return { ok: false, details: { outputChars: text.length, maxChars: MAX_COMPUTER_USE_PLAIN_DATA_CHARS } }
+    }
+    return { ok: true, text }
+  }
+  if (typeof value !== "object") {
+    return { ok: false, details: { unsupportedType: typeof value } }
+  }
+  ctx.visits += 1
+  if (ctx.visits > MAX_COMPUTER_USE_PLAIN_DATA_NODES) {
+    return { ok: false, details: { visits: ctx.visits, maxNodes: MAX_COMPUTER_USE_PLAIN_DATA_NODES } }
+  }
+  if (ctx.visiting.has(value)) {
+    return { ok: false, details: { cycle: true } }
+  }
+  ctx.visiting.add(value)
+  const prefix = "  ".repeat(depth)
+  const lines: string[] = []
+  let outputChars = 0
+  if (Array.isArray(value)) {
+    if (value.length === 0) {
+      ctx.visiting.delete(value)
+      return { ok: true, text: "items[0]:" }
+    }
+    const header = `items[${value.length}]:`
+    lines.push(header)
+    outputChars = header.length
+    for (let i = 0; i < value.length; i += 1) {
+      const nested = renderPlainDataWalk(value[i], depth + 1, ctx)
+      if (!nested.ok) {
+        ctx.visiting.delete(value)
+        return nested
+      }
+      const added = appendBoundedLine(lines, outputChars, `${prefix}- ${nested.text}`, false)
+      if (!added.ok) {
+        ctx.visiting.delete(value)
+        return added
+      }
+      outputChars = added.chars
+    }
+  } else {
+    for (const [key, entryVal] of Object.entries(value as Record<string, unknown>)) {
+      const nested = renderPlainDataWalk(entryVal, depth + 1, ctx)
+      if (!nested.ok) {
+        ctx.visiting.delete(value)
+        return nested
+      }
+      const isObj = entryVal !== null && typeof entryVal === "object"
+      const added = appendBoundedLine(lines, outputChars, isObj ? `${key}:\n${nested.text}` : `${key}: ${nested.text}`, lines.length === 0)
+      if (!added.ok) {
+        ctx.visiting.delete(value)
+        return added
+      }
+      outputChars = added.chars
+    }
+  }
+  ctx.visiting.delete(value)
+  return { ok: true, text: lines.join("\n") }
+}
+
+export effect function renderPlainData(value: unknown): string!ComputerUsePlainDataUnboundedError {
+  const result = renderPlainDataWalk(value, 0, { visits: 0, visiting: new WeakSet<object>() })
+  if (!result.ok) {
+    throw new ComputerUsePlainDataUnboundedError({ code: COMPUTER_USE_PLAIN_DATA_UNBOUNDED, details: result.details })
+  }
+  return result.text
+}
+
+export effect function stringifyData(value: unknown): string!ComputerUsePlainDataUnboundedError {
+  if (typeof value === "string") {
+    if (value.length > MAX_COMPUTER_USE_PLAIN_DATA_CHARS) {
+      throw new ComputerUsePlainDataUnboundedError({
+        code: COMPUTER_USE_PLAIN_DATA_UNBOUNDED,
+        details: { outputChars: value.length, maxChars: MAX_COMPUTER_USE_PLAIN_DATA_CHARS },
+      })
+    }
+    return value
+  }
+  return try renderPlainData(value)
+}
+
+export function truncateOutputText(
+  text: string,
+  options: { readonly maxChars?: number; readonly maxLines?: number; readonly mode?: "head" | "tail"; readonly refId?: string } = {},
+): { readonly text: string; readonly truncated: boolean; readonly totalChars: number; readonly totalLines: number } {
+  const maxChars = options.maxChars ?? 12_000
+  const maxLines = options.maxLines ?? 240
+  const mode = options.mode ?? "head"
+  const lines = text.split("\n")
+  const totalLines = lines.length
+  const totalChars = text.length
+  if (totalChars <= maxChars && totalLines <= maxLines) {
+    return { text, truncated: false, totalChars, totalLines }
+  }
+  const slicedLines = mode === "tail" ? lines.slice(-maxLines) : lines.slice(0, maxLines)
+  let joined = slicedLines.join("\n")
+  if (joined.length > maxChars) {
+    joined = mode === "tail" ? joined.slice(-maxChars) : joined.slice(0, maxChars)
+  }
+  const refSuffix = options.refId ? ` Ref: ${options.refId}` : ""
+  const shownLines = joined.split("\n").length
+  const notice = mode === "tail"
+    ? `[Showing last ${shownLines} of ${totalLines} lines (${totalChars} chars).${refSuffix}]`
+    : `[Showing first ${shownLines} of ${totalLines} lines (${totalChars} chars).${refSuffix}]`
+  return {
+    text: mode === "tail" ? `${notice}\n${joined}` : `${joined}\n${notice}`,
+    truncated: true,
+    totalChars,
+    totalLines,
+  }
+}

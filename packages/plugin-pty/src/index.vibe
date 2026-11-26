@@ -1,20 +1,17 @@
-// spec/pty/index.md, "Story: Open and close an owner-bound terminal session"
-import { machineOver, initial, terminalAcceptsInput } from "../gen/pty.effect.vibe"
+// spec/pty/index.md, "Story: Open and close an owner-bound terminal session"; spec/pty/policy.md, "Story: Enforce session capacity, confinement, and safe teardown"
+import { initial, machineOver, terminalAcceptsInput } from "../gen/pty.effect.vibe"
+import { validTerminalGeometry } from "../gen/pty__policy.effect.vibe"
+import { ptySessionAction } from "./action.vibe"
+import { ptyRoutes } from "./routes.vibe"
+import { PtyService } from "./service.vibe"
+import type { PtyPlugin, TerminalLaunch } from "./types.vibe"
 
 export error TerminalUnavailable { terminalId: string }
 export error TerminalRequestRefused { terminalId: string }
 
 module node {
   import { spawn, type IDisposable, type IPty } from "@lydell/node-pty"
-
-  export interface TerminalLaunch {
-    readonly ownerId: string
-    readonly terminalId: string
-    readonly executable: string
-    readonly arguments: readonly string[]
-    readonly directory: string
-    readonly environment: Readonly<Record<string, string>>
-  }
+  import type { TerminalLaunch } from "./types.vibe"
 
   interface PtyConnection {
     readonly process: IPty
@@ -41,8 +38,7 @@ module node {
     return { process, dispose, exit, snapshot: () => ({ sequence, output }) }
   }
 }
-import { startPty, type TerminalLaunch } from node
-export { type TerminalLaunch } from node
+import { startPty } from node
 
 export effect function openTerminalSession(launch: TerminalLaunch) {
   const active = try Ref.make(initial)
@@ -93,5 +89,73 @@ effect function assertTerminalOwner(ownerId: string, launch: TerminalLaunch) {
 }
 
 function validSize(columns: number, rows: number) {
-  return Number.isSafeInteger(columns) && Number.isSafeInteger(rows) && columns > 0 && rows > 0 && columns <= 500 && rows <= 500
+  return Number.isSafeInteger(columns) && Number.isSafeInteger(rows) && validTerminalGeometry(columns, rows)
 }
+
+export const ptyPlugin: PtyPlugin = {
+  name: "pty",
+  description: "Interactive PTY terminal service — real CLI (eliza-code on cerebras) in the web terminal",
+  services: [PtyService],
+  actions: [ptySessionAction],
+  routes: ptyRoutes,
+  async dispose(runtime) {
+    await runtime.getService<PtyService>(PtyService.serviceType)?.stop()
+  },
+}
+
+export const plugin: PtyPlugin = ptyPlugin
+export default ptyPlugin
+
+export {
+  buildElizaCodeCerebrasSpec,
+  ELIZA_CLOUD_DEFAULT_BASE_URL,
+  ELIZA_CLOUD_FAST_MODEL,
+  ELIZA_CLOUD_SMART_MODEL,
+  resetDevCloudEnvAuthorityForTests,
+  resolveElizaCodeBin,
+  resolveElizaCodeCloudTuple,
+  type DevCloudEnvAuthority,
+  type ElizaCodeCerebrasOptions,
+  type ElizaCodeCloudTuple,
+} from "./eliza-code-spec.vibe"
+export {
+  buildClaudeCliSpec,
+  buildCodexCliSpec,
+  resolveClaudeCliBin,
+  resolveCodexCliBin,
+  type ClaudeCliSpecOptions,
+  type CodexCliSpecOptions,
+  type PtyVendorCliKind,
+} from "./vendor-cli-spec.vibe"
+export { bunTruePtySpawn, isBunRuntime } from "./bun-pty-spawn.vibe"
+export { PtyService, resolveIdleTimeoutMs } from "./service.vibe"
+export {
+  defaultSpawnResolver,
+  formatBoundedTail,
+  PtyConsoleBridge,
+  PtySessionStore,
+  type PtySessionStoreOptions,
+  type PtySpawnResolver,
+  type PtyTimerHandle,
+} from "./session-store.vibe"
+export { ptyRoutes } from "./routes.vibe"
+export { ptySessionAction } from "./action.vibe"
+export type {
+  BoundedOutputOptions,
+  BoundedOutputResult,
+  ConsoleBridge,
+  PtyDisposable,
+  PtyHandle,
+  PtyPlugin,
+  PtyRoute,
+  PtyRouteContext,
+  PtyRouteResult,
+  PtySessionInfo,
+  PtySpawn,
+  PtySpawnSpec,
+  SendAndWaitOptions,
+  SendAndWaitResult,
+  SessionExitEvent,
+  SessionOutputEvent,
+  TerminalLaunch,
+} from "./types.vibe"

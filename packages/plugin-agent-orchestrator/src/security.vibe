@@ -1,0 +1,663 @@
+// spec/agentOrchestrator/sessionAdmission.md, "Disk budget, spend allowance, and subscription attendance fail closed"; spec/agentOrchestrator/lanesAndRouting.md, "Backend routing follows strict precedence while honoring operator allow-lists"
+module node {
+  import { createHash, randomBytes, timingSafeEqual } from "node:crypto"
+  import { lookup } from "node:dns/promises"
+  import { mkdir, realpath, stat } from "node:fs/promises"
+  import * as os from "node:os"
+  import * as path from "node:path"
+
+  /** @throws {never} */
+  export function randomHex(bytes: number): string {
+    return randomBytes(bytes).toString("hex")
+  }
+
+  /** @throws {never} */
+  export function sha256Hex(value: string): string {
+    return createHash("sha256").update(value, "utf8").digest("hex")
+  }
+
+  /** @throws {never} */
+  export function safeHashEqual(expectedHex: string, actualHex: string): boolean {
+    if (expectedHex.length !== actualHex.length || expectedHex.length === 0) return false
+    const a = Buffer.from(expectedHex, "utf8")
+    const b = Buffer.from(actualHex, "utf8")
+    return a.length === b.length && timingSafeEqual(a, b)
+  }
+
+  /** @throws {never} */
+  export function defaultWorkspacesRoot(): string {
+    return path.join(os.homedir(), ".eliza", "workspaces")
+  }
+
+  export async function resolveRealPath(target: string, ensureDir: boolean): Promise<string> {
+    if (ensureDir) await mkdir(target, { recursive: true })
+    return realpath(target)
+  }
+
+  export async function pathExists(target: string): Promise<boolean> {
+    try {
+      await stat(target)
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  /** @throws {never} */
+  export function joinPath(base: string, ...parts: string[]): string {
+    return path.join(base, ...parts)
+  }
+
+  /** @throws {never} */
+  export function pathSep(): string {
+    return path.sep
+  }
+
+  export async function dnsLookupAll(hostname: string): Promise<readonly string[]> {
+    const records = await lookup(hostname, { all: true })
+    return records.map((entry) => entry.address)
+  }
+
+  /** @throws {never} */
+  export function readEnvMap(): Readonly<Record<string, string | undefined>> {
+    return { ...process.env }
+  }
+
+  /** @throws {never} */
+  export function hostPlatform(): string {
+    return process.platform
+  }
+
+  export async function runFetch(url: string, init?: RequestInit): Promise<Response> {
+    return fetch(url, init)
+  }
+}
+import {
+  defaultWorkspacesRoot,
+  dnsLookupAll,
+  hostPlatform,
+  joinPath,
+  pathSep,
+  randomHex,
+  readEnvMap,
+  resolveRealPath,
+  runFetch,
+  safeHashEqual,
+  sha256Hex,
+} from node
+import {
+  evaluateSpendAllowance,
+  isAttendanceAuthValid,
+  type SpendVerdict,
+} from "../gen/agentOrchestrator__sessionAdmission.effect.vibe"
+import {
+  SsrfBlockedError,
+  SUBSCRIPTION_EXECUTION_AUTHORIZATION_METADATA_KEY,
+  SUBSCRIPTION_EXECUTION_AUTHORIZATION_TTL_MS,
+  UnsafeGitRefError,
+  UnsafeGitRemoteError,
+  WorkspaceOperationError,
+  type SubscriptionExecutionAuthorization,
+} from "./types.vibe"
+
+export const CREDENTIAL_BRIDGE_TOKEN_ENV = "ELIZA_SESSION_BRIDGE_TOKEN"
+export const CREDENTIAL_BRIDGE_TOKEN_HASH_METADATA = "credentialBridgeTokenHash"
+const MODEL_GATEWAY_URL_KEY = "ELIZA_MODEL_GATEWAY_URL"
+const MODEL_GATEWAY_TOKEN_KEY = "ELIZA_MODEL_GATEWAY_TOKEN"
+const MODEL_GATEWAY_STRICT_KEY = "ELIZA_MODEL_GATEWAY_STRICT"
+const CODEX_NO_LANDLOCK_SANDBOX_MODE_ENV = "ELIZA_CODEX_ACP_NO_LANDLOCK_SANDBOX_MODE"
+const DEFAULT_GIT_IDENTITY_NAME = "Eliza Agent"
+const DEFAULT_GIT_IDENTITY_EMAIL = "eliza-agent@users.noreply.github.com"
+
+export const MODEL_GATEWAY_EXCLUDED_PROVIDER_KEYS: readonly string[] = [
+  "OPENAI_API_KEY",
+  "ANTHROPIC_API_KEY",
+  "GOOGLE_GENERATIVE_AI_API_KEY",
+  "GEMINI_API_KEY",
+  "DEEPSEEK_API_KEY",
+  "XAI_API_KEY",
+  "CEREBRAS_API_KEY",
+  "OPENROUTER_API_KEY",
+]
+
+export const SUB_AGENT_SYSTEM_ENV_KEYS: readonly string[] = [
+  "PATH",
+  "HOME",
+  "USER",
+  "SHELL",
+  "TERM",
+  "LANG",
+  "LC_ALL",
+  "TMPDIR",
+  "TMP",
+  "TEMP",
+  "XDG_CONFIG_HOME",
+  "XDG_DATA_HOME",
+  "XDG_CACHE_HOME",
+  "NODE_ENV",
+]
+
+export const SUB_AGENT_PROVIDER_ENV_KEYS: readonly string[] = [
+  "ANTHROPIC_API_KEY",
+  "ANTHROPIC_BASE_URL",
+  "OPENAI_API_KEY",
+  "OPENAI_BASE_URL",
+  "CEREBRAS_API_KEY",
+  "DEEPSEEK_API_KEY",
+  "MOONSHOT_API_KEY",
+  "ZAI_API_KEY",
+  "XAI_API_KEY",
+  "KIMI_CODE_HOME",
+  "GROK_HOME",
+]
+
+const DENIED_ENV_PATTERNS: readonly RegExp[] = [
+  /^OPENCODE_CONFIG_CONTENT$/i,
+  /^ELIZA_CLOUD_API_KEY$/i,
+  /^ELIZA_OWNER_TOKEN$/i,
+  /^ELIZA_ADMIN_TOKEN$/i,
+  /^ELIZA_SESSION_SECRET$/i,
+  /^AWS_SECRET_ACCESS_KEY$/i,
+  /^AWS_SESSION_TOKEN$/i,
+  /^GITHUB_TOKEN$/i,
+  /^GH_TOKEN$/i,
+  /^GITLAB_TOKEN$/i,
+]
+
+export function isDeniedSubAgentEnvKey(key: string): boolean {
+  return DENIED_ENV_PATTERNS.some((pattern) => pattern.test(key))
+}
+
+export function isCloudKeyForwardingOptIn(env: Readonly<Record<string, string | undefined>> = readEnvMap()): boolean {
+  const raw = env.ELIZA_FORWARD_CLOUD_KEYS?.trim().toLowerCase()
+  return raw === "1" || raw === "true" || raw === "yes"
+}
+
+export function forwardableSubAgentEnv(
+  sourceEnv: Readonly<Record<string, string | undefined>> = readEnvMap(),
+  overrides: Readonly<Record<string, string>> = {},
+): Record<string, string> {
+  const allowKeys = new Set([...SUB_AGENT_SYSTEM_ENV_KEYS, ...SUB_AGENT_PROVIDER_ENV_KEYS])
+  const cloudOptIn = isCloudKeyForwardingOptIn(sourceEnv)
+  const out: Record<string, string> = {}
+  for (const [key, value] of Object.entries(sourceEnv)) {
+    if (value === undefined) continue
+    if (isDeniedSubAgentEnvKey(key) && !(cloudOptIn && key === "ELIZA_CLOUD_API_KEY")) continue
+    if (allowKeys.has(key) || (cloudOptIn && key === "ELIZA_CLOUD_API_KEY")) {
+      out[key] = value
+    }
+  }
+  for (const [key, value] of Object.entries(overrides)) {
+    if (!isDeniedSubAgentEnvKey(key)) out[key] = value
+  }
+  return out
+}
+
+export interface ModelGatewayConfig {
+  readonly url: string
+  readonly token: string
+  readonly strict: boolean
+}
+
+export function resolveModelGatewayConfig(
+  env: Readonly<Record<string, string | undefined>> = readEnvMap(),
+): ModelGatewayConfig | undefined {
+  const url = env[MODEL_GATEWAY_URL_KEY]?.trim()
+  const token = env[MODEL_GATEWAY_TOKEN_KEY]?.trim()
+  if (!url || !token) return undefined
+  const strictRaw = env[MODEL_GATEWAY_STRICT_KEY]?.trim().toLowerCase()
+  return {
+    url: url.replace(/\/+$/u, ""),
+    token,
+    strict: strictRaw === "1" || strictRaw === "true",
+  }
+}
+
+export function applyModelGatewayEnv(
+  env: Record<string, string>,
+  config: ModelGatewayConfig | undefined,
+): Record<string, string> {
+  if (!config) return env
+  const next: Record<string, string> = { ...env }
+  for (const key of MODEL_GATEWAY_EXCLUDED_PROVIDER_KEYS) {
+    delete next[key]
+  }
+  next.OPENAI_BASE_URL = `${config.url}/v1`
+  next.OPENAI_API_KEY = config.token
+  next.ANTHROPIC_BASE_URL = config.url
+  next.ANTHROPIC_API_KEY = config.token
+  return next
+}
+
+export interface ModelGatewayLease {
+  readonly leaseId: string
+  readonly token: string
+  readonly expiresAtMs: number
+  readonly budgetUsd: number
+}
+
+export function isLeaseExpired(lease: ModelGatewayLease, nowMs = Date.now()): boolean {
+  return !Number.isFinite(lease.expiresAtMs) || nowMs >= lease.expiresAtMs
+}
+
+export function createCredentialBridgeToken(): { readonly token: string; readonly hash: string } {
+  const token = randomHex(32)
+  return { token, hash: sha256Hex(token) }
+}
+
+export function hashCredentialBridgeToken(token: string): string {
+  return sha256Hex(token)
+}
+
+export function matchesCredentialBridgeToken(token: string, expectedHash: string): boolean {
+  return safeHashEqual(expectedHash, sha256Hex(token))
+}
+
+export function verifySessionBridgeToken(
+  providedToken: string | undefined,
+  sessionMetadata: Readonly<Record<string, unknown>> | undefined,
+): boolean {
+  const token = providedToken?.trim()
+  const expected = typeof sessionMetadata?.[CREDENTIAL_BRIDGE_TOKEN_HASH_METADATA] === "string"
+    ? sessionMetadata[CREDENTIAL_BRIDGE_TOKEN_HASH_METADATA]
+    : undefined
+  if (!token || !expected) return false
+  return matchesCredentialBridgeToken(token, expected)
+}
+
+export function isLoopbackRemoteAddress(address: string | undefined): boolean {
+  const normalized = address?.trim().toLowerCase() ?? ""
+  return (
+    normalized === "127.0.0.1"
+    || normalized === "::1"
+    || normalized === "::ffff:127.0.0.1"
+    || normalized === "localhost"
+  )
+}
+
+function classifyIpv4Octets(a: number, b: number, c: number, _d: number): "loopback" | "private" | "metadata" | "public" {
+  if (a === 127 || a === 0) return "loopback"
+  if (a === 169 && b === 254) return "metadata"
+  if (
+    a === 10
+    || (a === 172 && b >= 16 && b <= 31)
+    || (a === 192 && b === 168)
+    || (a === 100 && b >= 64 && b <= 127)
+    || (a === 192 && b === 0 && c === 0)
+    || (a === 198 && (b === 18 || b === 19))
+    || a >= 224
+  ) {
+    return "private"
+  }
+  return "public"
+}
+
+function parseIpv4Quad(raw: string): readonly [number, number, number, number] | undefined {
+  const parts = raw.split(".")
+  if (parts.length !== 4) return undefined
+  const nums = parts.map((part) => (/^\d{1,3}$/u.test(part) ? Number(part) : -1))
+  if (nums.some((n) => n < 0 || n > 255)) return undefined
+  return [nums[0]!, nums[1]!, nums[2]!, nums[3]!]
+}
+
+function expandIpv6Hextets(raw: string): readonly number[] | undefined {
+  const withoutZone = raw.split("%")[0] ?? raw
+  const halves = withoutZone.split("::")
+  if (halves.length > 2) return undefined
+  const parsePart = (segment: string): number[] | undefined => {
+    if (!segment) return []
+    const tokens = segment.split(":")
+    const out: number[] = []
+    for (let i = 0; i < tokens.length; i += 1) {
+      const tok = tokens[i]!
+      if (tok.includes(".") && i === tokens.length - 1) {
+        const quad = parseIpv4Quad(tok)
+        if (!quad) return undefined
+        out.push((quad[0] << 8) | quad[1], (quad[2] << 8) | quad[3])
+      } else if (/^[0-9a-f]{1,4}$/iu.test(tok)) {
+        out.push(Number.parseInt(tok, 16))
+      } else {
+        return undefined
+      }
+    }
+    return out
+  }
+  const left = parsePart(halves[0] ?? "")
+  if (!left) return undefined
+  if (halves.length === 1) return left.length === 8 ? left : undefined
+  const right = parsePart(halves[1] ?? "")
+  if (!right) return undefined
+  const missing = 8 - (left.length + right.length)
+  if (missing < 1) return undefined
+  return [...left, ...Array.from({ length: missing }, () => 0), ...right]
+}
+
+export function classifyIpLiteral(ip: string): "loopback" | "private" | "link-local" | "metadata" | "public" | "invalid" {
+  const trimmed = ip.trim().toLowerCase().replace(/^\[|\]$/gu, "")
+  const v4 = parseIpv4Quad(trimmed)
+  if (v4) return classifyIpv4Octets(v4[0], v4[1], v4[2], v4[3])
+  if (!trimmed.includes(":")) return "invalid"
+  const hextets = expandIpv6Hextets(trimmed)
+  if (!hextets) return "invalid"
+  const [h0, h1, h2, h3, h4, h5, h6, h7] = hextets
+  const isAllZeroPrefix = h0 === 0 && h1 === 0 && h2 === 0 && h3 === 0 && h4 === 0
+  if (isAllZeroPrefix && h5 === 0 && h6 === 0 && (h7 === 0 || h7 === 1)) return "loopback"
+  if (isAllZeroPrefix && h5 === 0xffff) {
+    return classifyIpv4Octets(h6! >> 8, h6! & 0xff, h7! >> 8, h7! & 0xff)
+  }
+  if (h0 === 0x0064 && h1 === 0xff9b && h2 === 0 && h3 === 0 && h4 === 0 && h5 === 0) {
+    return classifyIpv4Octets(h6! >> 8, h6! & 0xff, h7! >> 8, h7! & 0xff)
+  }
+  if ((h0! & 0xffc0) === 0xfe80) return "link-local"
+  if ((h0! & 0xfe00) === 0xfc00) return "private"
+  if ((h0! & 0xff00) === 0xff00) return "private"
+  return "public"
+}
+
+export effect function assertUrlAllowed(rawUrl: string): URL!SsrfBlockedError {
+  const parsed = try Effect.try({
+    try: () => new URL(rawUrl),
+    catch: () => new SsrfBlockedError({ url: rawUrl, reason: "invalid_url" }),
+  })
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+    throw new SsrfBlockedError({ url: rawUrl, reason: "disallowed_protocol" })
+  }
+  const host = parsed.hostname.toLowerCase()
+  if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".internal") || host === "metadata.google.internal") {
+    throw new SsrfBlockedError({ url: rawUrl, reason: "blocked_hostname" })
+  }
+  const literalKind = classifyIpLiteral(host)
+  if (literalKind !== "invalid" && literalKind !== "public") {
+    throw new SsrfBlockedError({ url: rawUrl, reason: `blocked_ip_${literalKind}` })
+  }
+  if (literalKind === "invalid") {
+    const resolved = try tryPromise({
+      try: () => dnsLookupAll(host),
+      catch: () => new SsrfBlockedError({ url: rawUrl, reason: "dns_lookup_failed" }),
+    })
+    if (resolved.length === 0) {
+      throw new SsrfBlockedError({ url: rawUrl, reason: "dns_empty" })
+    }
+    for (const ip of resolved) {
+      const kind = classifyIpLiteral(ip)
+      if (kind !== "public") {
+        throw new SsrfBlockedError({ url: rawUrl, reason: `blocked_resolved_ip_${kind}` })
+      }
+    }
+  }
+  return parsed
+}
+
+export effect function safeFetch(rawUrl: string, init?: RequestInit): Response!SsrfBlockedError {
+  const parsed = try assertUrlAllowed(rawUrl)
+  return try tryPromise({
+    try: () => runFetch(parsed.toString(), { ...init, redirect: "error" }),
+    catch: (cause) => new SsrfBlockedError({
+      url: rawUrl,
+      reason: cause instanceof Error ? cause.message : "fetch_failed",
+    }),
+  })
+}
+
+const ALLOWED_REPO_HOSTS: ReadonlySet<string> = new Set([
+  "github.com",
+  "gitlab.com",
+  "bitbucket.org",
+])
+
+export effect function assertSafeGitRemote(remote: string): string!UnsafeGitRemoteError {
+  const trimmed = remote.trim()
+  if (!trimmed || trimmed.startsWith("-") || /^ext::/iu.test(trimmed) || trimmed.includes("--upload-pack")) {
+    throw new UnsafeGitRemoteError({ remote, reason: "unsafe_git_remote_option" })
+  }
+  if (/^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/u.test(trimmed)) {
+    return `https://github.com/${trimmed}`
+  }
+  const parsed = try Effect.try({
+    try: () => new URL(trimmed),
+    catch: () => new UnsafeGitRemoteError({ remote, reason: "invalid_remote_url" }),
+  })
+  if (parsed.protocol !== "https:") {
+    throw new UnsafeGitRemoteError({ remote, reason: "https_required" })
+  }
+  if (!ALLOWED_REPO_HOSTS.has(parsed.hostname.toLowerCase())) {
+    throw new UnsafeGitRemoteError({ remote, reason: `disallowed_host_${parsed.hostname}` })
+  }
+  return parsed.toString()
+}
+
+export effect function assertSafeGitRef(ref: string): string!UnsafeGitRefError {
+  const trimmed = ref.trim()
+  if (
+    !trimmed
+    || trimmed.startsWith("-")
+    || trimmed.includes("..")
+    || trimmed.includes("@{")
+    || /[\s~^:?*[\]\\]/u.test(trimmed)
+    || trimmed.endsWith(".lock")
+    || trimmed.endsWith("/")
+  ) {
+    throw new UnsafeGitRefError({ ref, reason: "invalid_git_ref" })
+  }
+  return trimmed
+}
+
+export function extractRepositoryUrlFromText(text: string): string | undefined {
+  const urlMatch = text.match(/https?:\/\/(?:github\.com|gitlab\.com|bitbucket\.org)\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+/u)
+  if (urlMatch) return urlMatch[0].replace(/\.git$/u, "")
+  const slugMatch = text.match(/\b([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)\b/u)
+  return slugMatch ? slugMatch[1] : undefined
+}
+
+export function normalizeRepositoryInput(raw: string): { readonly owner: string; readonly repo: string; readonly url: string } | undefined {
+  const cleaned = raw.trim().replace(/\.git$/u, "").replace(/\/+$/u, "")
+  const direct = cleaned.match(/^([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)$/u)
+  if (direct) {
+    return { owner: direct[1], repo: direct[2], url: `https://github.com/${direct[1]}/${direct[2]}` }
+  }
+  const hosted = cleaned.match(/^https?:\/\/(github\.com|gitlab\.com|bitbucket\.org)\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)$/u)
+  if (hosted) {
+    return { owner: hosted[2], repo: hosted[3], url: `https://${hosted[1]}/${hosted[2]}/${hosted[3]}` }
+  }
+  return undefined
+}
+
+export effect function resolveAllowedWorkdir(
+  candidate: string,
+  allowedRoots?: readonly string[],
+  ensureDir = true,
+): string!WorkspaceOperationError {
+  const roots = allowedRoots ?? [defaultWorkspacesRoot()]
+  const trimmed = candidate.trim()
+  if (!trimmed || trimmed.includes("\0")) {
+    throw new WorkspaceOperationError({ workspaceId: candidate, code: "INVALID_WORKDIR", reason: "Workdir path is invalid." })
+  }
+  const resolvedCandidate = try tryPromise({
+    try: () => resolveRealPath(trimmed, ensureDir),
+    catch: () => new WorkspaceOperationError({ workspaceId: candidate, code: "WORKDIR_UNRESOLVED", reason: "Unable to resolve workdir path." }),
+  })
+  const sep = pathSep()
+  for (const root of roots) {
+    const resolvedRoot = try tryPromise({
+      try: () => resolveRealPath(root, true),
+      catch: () => new WorkspaceOperationError({ workspaceId: root, code: "ROOT_UNRESOLVED", reason: "Unable to resolve workspace root." }),
+    })
+    const prefix = resolvedRoot.endsWith(sep) ? resolvedRoot : `${resolvedRoot}${sep}`
+    if (resolvedCandidate === resolvedRoot || resolvedCandidate.startsWith(prefix)) {
+      return resolvedCandidate
+    }
+  }
+  throw new WorkspaceOperationError({
+    workspaceId: candidate,
+    code: "WORKDIR_OUTSIDE_ALLOWED_ROOTS",
+    reason: "Workdir is outside allowed workspace roots.",
+  })
+}
+
+export effect function ensureTaskWorkdir(
+  taskSlug: string,
+  baseRoot?: string,
+): string!WorkspaceOperationError {
+  const root = baseRoot ?? defaultWorkspacesRoot()
+  const safeSlug = taskSlug.replace(/[^a-zA-Z0-9._-]+/gu, "-").replace(/^-+|-+$/gu, "") || "task"
+  const target = joinPath(root, safeSlug)
+  return try resolveAllowedWorkdir(target, [root], true)
+}
+
+export type CodexSandboxMode = "read-only" | "workspace-write" | "danger-full-access"
+
+export function normalizeCodexSandboxMode(raw: string | undefined): CodexSandboxMode | undefined {
+  const value = raw?.trim().toLowerCase()
+  if (value === "read-only" || value === "workspace-write" || value === "danger-full-access") {
+    return value
+  }
+  return undefined
+}
+
+export function resolveCodexSandboxApprovalPair(
+  mode: CodexSandboxMode,
+): { readonly sandboxMode: CodexSandboxMode; readonly approvalPolicy: "on-request" | "never" } {
+  return {
+    sandboxMode: mode,
+    approvalPolicy: mode === "danger-full-access" ? "never" : "on-request",
+  }
+}
+
+export function detectLandlockAvailability(env: Readonly<Record<string, string | undefined>> = readEnvMap()): "available" | "unavailable" | "not-applicable" {
+  const forced = env.ELIZA_CODEX_ACP_LANDLOCK?.trim().toLowerCase()
+  if (forced === "1" || forced === "true") return "available"
+  if (forced === "0" || forced === "false") return "unavailable"
+  return hostPlatform() === "linux" ? "available" : "not-applicable"
+}
+
+export function resolveNoLandlockSandboxMode(
+  env: Readonly<Record<string, string | undefined>> = readEnvMap(),
+): CodexSandboxMode | undefined {
+  return normalizeCodexSandboxMode(env[CODEX_NO_LANDLOCK_SANDBOX_MODE_ENV])
+}
+
+export function buildGitIdentityEnvPatch(
+  name: string = DEFAULT_GIT_IDENTITY_NAME,
+  email: string = DEFAULT_GIT_IDENTITY_EMAIL,
+): Record<string, string> {
+  return {
+    GIT_AUTHOR_NAME: name,
+    GIT_AUTHOR_EMAIL: email,
+    GIT_COMMITTER_NAME: name,
+    GIT_COMMITTER_EMAIL: email,
+  }
+}
+
+export function createSubscriptionExecutionAuthorization(
+  requestId: string,
+  subjectId: string,
+  nowMs = Date.now(),
+): SubscriptionExecutionAuthorization | undefined {
+  const normalizedRequestId = requestId.trim()
+  const normalizedSubjectId = subjectId.trim()
+  if (!normalizedRequestId || !normalizedSubjectId || !Number.isFinite(nowMs)) return undefined
+  return {
+    version: 1,
+    mode: "user-attended",
+    source: "interactive-message",
+    requestId: normalizedRequestId,
+    subjectId: normalizedSubjectId,
+    issuedAtMs: nowMs,
+    expiresAtMs: nowMs + SUBSCRIPTION_EXECUTION_AUTHORIZATION_TTL_MS,
+  }
+}
+
+export function subscriptionExecutionAuthorizationFromMetadata(
+  metadata: Readonly<Record<string, unknown>> | undefined,
+  nowMs = Date.now(),
+): SubscriptionExecutionAuthorization | undefined {
+  const raw = metadata?.[SUBSCRIPTION_EXECUTION_AUTHORIZATION_METADATA_KEY]
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return undefined
+  const record = raw as Record<string, unknown>
+  if (
+    record.version !== 1
+    || record.mode !== "user-attended"
+    || record.source !== "interactive-message"
+    || typeof record.requestId !== "string"
+    || !record.requestId.trim()
+    || typeof record.subjectId !== "string"
+    || !record.subjectId.trim()
+    || typeof record.issuedAtMs !== "number"
+    || typeof record.expiresAtMs !== "number"
+  ) {
+    return undefined
+  }
+  const valid = isAttendanceAuthValid(
+    Math.trunc(record.issuedAtMs),
+    Math.trunc(record.expiresAtMs),
+    Math.trunc(nowMs),
+    SUBSCRIPTION_EXECUTION_AUTHORIZATION_TTL_MS,
+  )
+  if (!valid) return undefined
+  return {
+    version: 1,
+    mode: "user-attended",
+    source: "interactive-message",
+    requestId: record.requestId.trim(),
+    subjectId: record.subjectId.trim(),
+    issuedAtMs: record.issuedAtMs,
+    expiresAtMs: record.expiresAtMs,
+  }
+}
+
+export interface SpendDecisionInput {
+  readonly spentUsd: number
+  readonly estimatedUsd: number
+  readonly capUsd: number
+  readonly highRisk: boolean
+  readonly userApproved: boolean
+}
+
+export interface SpendDecision {
+  readonly allowed: boolean
+  readonly verdict: SpendVerdict
+  readonly remainingUsd: number
+}
+
+export function decideSpendAuthorization(input: SpendDecisionInput): SpendDecision {
+  const spentCents = Math.round(input.spentUsd * 100)
+  const estimatedCents = Math.round(input.estimatedUsd * 100)
+  const capCents = Math.round(input.capUsd * 100)
+  const verdict = evaluateSpendAllowance(spentCents, estimatedCents, capCents, input.highRisk, input.userApproved)
+  return {
+    allowed: verdict === "SpendAllow",
+    verdict,
+    remainingUsd: Math.max(0, (capCents - spentCents) / 100),
+  }
+}
+
+const ROLE_ORDER: Readonly<Record<string, number>> = {
+  GUEST: 0,
+  USER: 1,
+  MODERATOR: 2,
+  ADMIN: 3,
+  OWNER: 4,
+}
+
+export function resolveServerAllowedWorkdirRoots(
+  env: Readonly<Record<string, string | undefined>> = readEnvMap(),
+): readonly string[] {
+  const extra = (env.ELIZA_ALLOWED_WORKDIR_ROOTS ?? "")
+    .split(hostPlatform() === "win32" ? ";" : ":")
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+  return [...new Set([defaultWorkspacesRoot(), ...extra])]
+}
+
+export function requireTaskAgentAccess(
+  role: string | undefined,
+  action: "create" | "interact",
+): { readonly allowed: boolean; readonly reason?: string } {
+  const normalized = (role ?? "USER").trim().toUpperCase()
+  const rank = ROLE_ORDER[normalized] ?? 0
+  const minRank = action === "create" ? ROLE_ORDER.USER : ROLE_ORDER.USER
+  if (rank < minRank) {
+    return { allowed: false, reason: `Role ${normalized} cannot ${action} coding tasks.` }
+  }
+  return { allowed: true }
+}

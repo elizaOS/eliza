@@ -1,0 +1,572 @@
+// spec/agentOrchestrator/routerGuard.md, "Story: Bound subagent round-trips, deduplicate completion relays, and dispatch streaming parent directives once"; spec/agentOrchestrator/lanesAndRouting.md, "Multi-lane wave execution prevents scope collisions and enforces concurrency and budget caps"
+import {
+  Service,
+  SWARM_COORDINATOR_SERVICE_TYPE,
+  type IAgentRuntime,
+  type ISwarmCoordinatorService,
+  type SwarmCoordinatorAgentDecisionCallback,
+  type SwarmCoordinatorBindState,
+  type SwarmCoordinatorChatCallback,
+  type SwarmCoordinatorCompleteCallback,
+  type SwarmCoordinatorTaskContext,
+  type SwarmCoordinatorWsBroadcastCallback,
+  type SwarmEvent,
+  type SwarmEventListener,
+} from "@elizaos/core"
+import {
+  advanceDirectiveChunk,
+  apply as applyRouterGuard,
+  classifyInterruption,
+  initial as initialRouterGuard,
+  isApproachingCap,
+  type Event as RouterGuardEvent,
+  type InterruptionAction,
+  type InterruptionIntent,
+  type RouterGuardState,
+  type StreamChunkKind,
+} from "../gen/agentOrchestrator__routerGuard.effect.vibe"
+import {
+  apply as applyWaveState,
+  evaluateLaneReadiness,
+  initial as initialWaveState,
+  type Event as WaveEvent,
+  type LaneReadyState,
+  type WaveState,
+} from "../gen/agentOrchestrator__lanesAndRouting.effect.vibe"
+import {
+  WaveBudgetBreachError,
+  WaveConcurrencyCapError,
+  type OrchestratorTaskRecord,
+  type SessionInfo,
+} from "./types.vibe"
+import {
+  buildCompactTaskDigest,
+  sanitizeCompletionRelay,
+} from "./optimization.vibe"
+
+export const SUB_AGENT_ROUTER_SERVICE_TYPE = "ACPX_SUB_AGENT_ROUTER"
+export const TASK_SUPERVISOR_SERVICE_TYPE = "TASK_SUPERVISOR_SERVICE"
+export const TASK_WATCHDOG_SERVICE_TYPE = "TASK_WATCHDOG_SERVICE"
+export const WAVE_SUPERVISOR_SERVICE_TYPE = "WAVE_SUPERVISOR_SERVICE"
+export const PARENT_AGENT_DIRECTIVE_MARKER = "USE_SKILL parent-agent"
+export const STALL_GRILL_PROMPT = "Status check: report your concrete progress, blocking error, or final verification evidence."
+
+const PERSONA_NAMES: readonly string[] = [
+  "Ada",
+  "Bob",
+  "Cora",
+  "Devon",
+  "Elena",
+  "Felix",
+  "Grace",
+  "Hana",
+]
+
+export function pickSubAgentName(existingLabels: readonly string[]): string {
+  const taken = new Set(existingLabels.map((l) => l.trim().toLowerCase()))
+  for (const name of PERSONA_NAMES) {
+    if (!taken.has(name.toLowerCase())) return name
+  }
+  for (let i = 2; ; i += 1) {
+    const candidate = `Agent-${i}`
+    if (!taken.has(candidate.toLowerCase())) return candidate
+  }
+}
+
+export interface ParentAgentDirective {
+  readonly command: string
+  readonly params: Readonly<Record<string, unknown>>
+}
+
+export interface ParentAgentDirectiveTake {
+  readonly directive?: ParentAgentDirective
+  readonly remainingBuffer: string
+  readonly chunkKind: StreamChunkKind
+}
+
+export function takeParentAgentDirective(buffer: string): ParentAgentDirectiveTake {
+  const idx = buffer.indexOf(PARENT_AGENT_DIRECTIVE_MARKER)
+  if (idx < 0) {
+    return { remainingBuffer: "", chunkKind: "ChunkProse" }
+  }
+  const afterMarker = buffer.slice(idx + PARENT_AGENT_DIRECTIVE_MARKER.length).trimStart()
+  if (!afterMarker.startsWith("{")) {
+    return { remainingBuffer: afterMarker, chunkKind: "ChunkMention" }
+  }
+  let depth = 0
+  let inString = false
+  let escaped = false
+  let closeIdx = -1
+  for (let i = 0; i < afterMarker.length; i += 1) {
+    const ch = afterMarker[i]
+    if (escaped) { escaped = false; continue }
+    if (ch === "\\") { escaped = true; continue }
+    if (ch === '"') { inString = !inString; continue }
+    if (inString) continue
+    if (ch === "{") depth += 1
+    else if (ch === "}") {
+      depth -= 1
+      if (depth === 0) { closeIdx = i; break }
+    }
+  }
+  if (closeIdx < 0) {
+    return { remainingBuffer: buffer.slice(idx), chunkKind: "ChunkOpening" }
+  }
+  const jsonText = afterMarker.slice(0, closeIdx + 1)
+  const rest = afterMarker.slice(closeIdx + 1)
+  try {
+    const parsed = JSON.parse(jsonText) as Record<string, unknown>
+    const command = typeof parsed.command === "string" ? parsed.command : typeof parsed.action === "string" ? parsed.action : ""
+    if (!command) {
+      return { remainingBuffer: rest, chunkKind: "ChunkMalformed" }
+    }
+    const params = typeof parsed.params === "object" && parsed.params !== null && !Array.isArray(parsed.params)
+      ? parsed.params as Record<string, unknown>
+      : {}
+    return { directive: { command, params }, remainingBuffer: rest, chunkKind: "ChunkDirective" }
+  } catch {
+    return { remainingBuffer: rest, chunkKind: "ChunkMalformed" }
+  }
+}
+
+export function stepParentDirectiveBuffer(
+  pendingBefore: boolean,
+  previousBuffer: string,
+  incomingChunk: string,
+): { readonly pendingAfter: boolean; readonly dispatched: readonly ParentAgentDirective[]; readonly buffer: string } {
+  let working = previousBuffer + incomingChunk
+  let pending = pendingBefore
+  const dispatched: ParentAgentDirective[] = []
+  for (let i = 0; i < 8; i += 1) {
+    const taken = takeParentAgentDirective(working)
+    const effectiveKind: StreamChunkKind = pending && taken.chunkKind === "ChunkDirective" ? "ChunkClosing" : taken.chunkKind
+    const stepRes = advanceDirectiveChunk(pending, effectiveKind)
+    pending = stepRes.pendingAfter
+    if (stepRes.dispatchedNow && taken.directive) {
+      dispatched.push(taken.directive)
+    }
+    working = taken.remainingBuffer
+    if (pending || !working.includes(PARENT_AGENT_DIRECTIVE_MARKER)) break
+  }
+  return { pendingAfter: pending, dispatched, buffer: pending ? working : "" }
+}
+
+export function decideInterruption(input: {
+  readonly addressed: boolean
+  readonly sessionBusy: boolean
+  readonly text: string
+}): InterruptionAction {
+  const lower = input.text.trim().toLowerCase()
+  const intent: InterruptionIntent =
+    /\b(stop|cancel|abort|halt|kill)\b/u.test(lower) ? "IntentStop"
+      : /\b(instead|switch to|change direction|redirect)\b/u.test(lower) ? "IntentRedirect"
+        : /\b(nice|thanks|great|looks good|cool)\b/u.test(lower) && lower.length < 40 ? "IntentAmbient"
+          : /\b(also|unrelated|new task|separately)\b/u.test(lower) ? "IntentUnrelated"
+            : "IntentFollowUp"
+  return classifyInterruption(input.addressed, input.sessionBusy, intent)
+}
+
+export class SubAgentInbox {
+  readonly queues = new Map<string, string[]>()
+  readonly maxPerSession: number
+  dropped = 0
+
+  constructor(maxPerSession = 16) {
+    this.maxPerSession = maxPerSession
+  }
+
+  enqueue(sessionId: string, message: string): boolean {
+    const queue = this.queues.get(sessionId) ?? []
+    if (queue.length >= this.maxPerSession) {
+      queue.shift()
+      this.dropped += 1
+    }
+    queue.push(message)
+    this.queues.set(sessionId, queue)
+    return true
+  }
+
+  drain(sessionId: string): readonly string[] {
+    const items = this.queues.get(sessionId) ?? []
+    this.queues.delete(sessionId)
+    return items
+  }
+
+  size(sessionId: string): number {
+    return this.queues.get(sessionId)?.length ?? 0
+  }
+
+  droppedCount(): number {
+    return this.dropped
+  }
+
+  clearAll(): void {
+    this.queues.clear()
+  }
+}
+
+export class SubAgentRouter extends Service {
+  static override serviceType = SUB_AGENT_ROUTER_SERVICE_TYPE
+  override capabilityDescription = "Routes sub-agent completions, enforces loop/respawn caps, and deduplicates relays."
+
+  readonly guards = new Map<string, RouterGuardState>()
+  readonly originSpawnCounts = new Map<string, number>()
+  readonly originBestResults = new Map<string, string>()
+
+  static override start(runtime: IAgentRuntime): Promise<Service> {
+    return Promise.resolve(new SubAgentRouter(runtime))
+  }
+
+  getGuardState(sessionId: string): RouterGuardState {
+    return this.guards.get(sessionId) ?? initialRouterGuard
+  }
+
+  effect dispatchGuard(sessionId: string, event: RouterGuardEvent): { readonly accepted: boolean; readonly state: RouterGuardState }!! {
+    const current = this.getGuardState(sessionId)
+    const outcome = applyRouterGuard(current, event) catch () => undefined
+    if (outcome === undefined) {
+      return { accepted: false, state: current }
+    }
+    this.guards.set(sessionId, outcome)
+    return { accepted: true, state: outcome }
+  }
+
+  effect stepGuard(sessionId: string, event: RouterGuardEvent): RouterGuardState!! {
+    return (try this.dispatchGuard(sessionId, event)).state
+  }
+
+  advanceRoundTrip(sessionId: string): RouterGuardState {
+    return runSync(this.stepGuard(sessionId, { type: "advanceRoundTrip" }))
+  }
+
+  recordStateLostRespawn(sessionId: string): RouterGuardState {
+    return runSync(this.stepGuard(sessionId, { type: "recordStateLostRespawn" }))
+  }
+
+  claimCompletionPost(sessionId: string): { readonly claimed: boolean; readonly state: RouterGuardState } {
+    const next = runSync(this.stepGuard(sessionId, { type: "postCompletion" }))
+    return { claimed: next.lastDecision === "LoopProceed", state: next }
+  }
+
+  isSessionApproachingCap(sessionId: string): boolean {
+    const g = this.getGuardState(sessionId)
+    return isApproachingCap(g.roundTrips, g.roundTripCap)
+  }
+
+  noteSpawnForOrigin(originId: string): number {
+    const next = (this.originSpawnCounts.get(originId) ?? 0) + 1
+    this.originSpawnCounts.set(originId, next)
+    return next
+  }
+
+  spawnCountForOrigin(originId: string): number {
+    return this.originSpawnCounts.get(originId) ?? 0
+  }
+
+  recordOriginResult(originId: string, text: string): void {
+    this.originBestResults.set(originId, sanitizeCompletionRelay(text))
+  }
+
+  bestResultFor(originId: string): string | undefined {
+    return this.originBestResults.get(originId)
+  }
+
+  override async stop(): Promise<void> {
+    this.guards.clear()
+    this.originSpawnCounts.clear()
+    this.originBestResults.clear()
+  }
+}
+
+export interface LaneSpec {
+  readonly id: string
+  readonly task: string
+  readonly agentType?: string
+  readonly dependencies: readonly string[]
+  readonly scopePaths: readonly string[]
+  readonly branchName: string
+  readonly estimatedCostCents: number
+}
+
+export interface LanePlan {
+  readonly lanes: readonly LaneSpec[]
+  readonly maxParallel: number
+}
+
+export function extractScopePaths(text: string): readonly string[] {
+  const matches = text.match(/\b(?:src|packages|spec|test|apps)\/[A-Za-z0-9_./-]+\b/gu) ?? []
+  return [...new Set(matches)].sort()
+}
+
+export function scopeSetsOverlap(left: readonly string[], right: readonly string[]): boolean {
+  for (const a of left) {
+    for (const b of right) {
+      if (a === b || a.startsWith(`${b}/`) || b.startsWith(`${a}/`)) return true
+    }
+  }
+  return false
+}
+
+export function sanitizeLaneBranchName(raw: string): string {
+  return raw.toLowerCase().replace(/[^a-z0-9._/-]+/gu, "-").replace(/^-+|-+$/gu, "").slice(0, 64) || "lane"
+}
+
+export function validateLaneDependencyGraph(lanes: readonly LaneSpec[]): { readonly valid: boolean; readonly error?: string } {
+  const ids = new Set(lanes.map((l) => l.id))
+  for (const lane of lanes) {
+    for (const dep of lane.dependencies) {
+      if (!ids.has(dep)) return { valid: false, error: `Unknown lane dependency: ${dep}` }
+      if (dep === lane.id) return { valid: false, error: `Self-dependency on lane: ${lane.id}` }
+    }
+  }
+  const visiting = new Set<string>()
+  const visited = new Set<string>()
+  const byId = new Map(lanes.map((l) => [l.id, l]))
+  const hasCycle = (id: string): boolean => {
+    if (visited.has(id)) return false
+    if (visiting.has(id)) return true
+    visiting.add(id)
+    const lane = byId.get(id)
+    for (const dep of lane?.dependencies ?? []) {
+      if (hasCycle(dep)) return true
+    }
+    visiting.delete(id)
+    visited.add(id)
+    return false
+  }
+  for (const lane of lanes) {
+    if (hasCycle(lane.id)) return { valid: false, error: `Cyclic dependency involving lane: ${lane.id}` }
+  }
+  return { valid: true }
+}
+
+export function createDeterministicLanePlan(input: {
+  readonly parts: readonly string[]
+  readonly dependencies?: Readonly<Record<string, readonly string[]>>
+  readonly maxParallel?: number
+}): LanePlan {
+  const lanes: LaneSpec[] = input.parts.map((part, idx) => {
+    const id = `lane-${idx + 1}`
+    return {
+      id,
+      task: part.trim(),
+      dependencies: [...(input.dependencies?.[id] ?? [])],
+      scopePaths: extractScopePaths(part),
+      branchName: sanitizeLaneBranchName(`orch/${id}`),
+      estimatedCostCents: 1,
+    }
+  })
+  return {
+    lanes,
+    maxParallel: Math.max(1, Math.min(input.maxParallel ?? 3, 8)),
+  }
+}
+
+export function laneReadiness(
+  lane: LaneSpec,
+  completedIds: ReadonlySet<string>,
+  activeLanes: readonly LaneSpec[],
+): LaneReadyState {
+  const done = completedIds.has(lane.id)
+  const depsSatisfied = lane.dependencies.every((dep) => completedIds.has(dep))
+  const overlaps = activeLanes.some((active) => active.id !== lane.id && scopeSetsOverlap(lane.scopePaths, active.scopePaths))
+  return evaluateLaneReadiness(done, depsSatisfied, overlaps)
+}
+
+export class WaveSupervisor extends Service {
+  static override serviceType = WAVE_SUPERVISOR_SERVICE_TYPE
+  override capabilityDescription = "Supervises multi-lane wave concurrency, scope isolation, and budget caps."
+
+  readonly waves = new Map<string, WaveState>()
+
+  static override start(runtime: IAgentRuntime): Promise<Service> {
+    return Promise.resolve(new WaveSupervisor(runtime))
+  }
+
+  getWaveState(waveId: string): WaveState {
+    return this.waves.get(waveId) ?? initialWaveState
+  }
+
+  effect stepWave(waveId: string, event: WaveEvent): WaveState!(WaveConcurrencyCapError | WaveBudgetBreachError) {
+    const current = this.getWaveState(waveId)
+    const next = applyWaveState(current, event) catch effect (rejected) => {
+      if (event.type === "launchLane" && rejected.state.spentCents + event.laneCost > rejected.state.budgetCapCents) {
+        throw new WaveBudgetBreachError({
+          waveId,
+          spentCents: rejected.state.spentCents + event.laneCost,
+          budgetCapCents: rejected.state.budgetCapCents,
+        })
+      }
+      throw new WaveConcurrencyCapError({
+        waveId,
+        activeLanes: rejected.state.activeLanes,
+        maxParallel: rejected.state.maxParallel,
+      })
+    }
+    this.waves.set(waveId, next)
+    return next
+  }
+
+  getWaveStatuses(): readonly { readonly waveId: string; readonly state: WaveState }[] {
+    return [...this.waves.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([waveId, state]) => ({ waveId, state }))
+  }
+
+  override async stop(): Promise<void> {
+    this.waves.clear()
+  }
+}
+
+export function statusEmoji(status: OrchestratorTaskRecord["status"]): string {
+  switch (status) {
+    case "done": return "[DONE]"
+    case "failed": return "[FAIL]"
+    case "validating": return "[VERIFY]"
+    case "blocked": return "[BLOCKED]"
+    case "waiting_on_user": return "[WAIT]"
+    case "interrupted": return "[PAUSED]"
+    case "archived": return "[ARCHIVED]"
+    default: return "[ACTIVE]"
+  }
+}
+
+export function composeRoomDigest(tasks: readonly { readonly task: OrchestratorTaskRecord; readonly sessionCount: number }[]): string {
+  if (tasks.length === 0) return "No active coding tasks."
+  return tasks
+    .map(({ task, sessionCount }) => `${statusEmoji(task.status)} ${buildCompactTaskDigest(task, sessionCount)}`)
+    .join("\n")
+}
+
+export class TaskSupervisorService extends Service {
+  static override serviceType = TASK_SUPERVISOR_SERVICE_TYPE
+  override capabilityDescription = "Composes compact multi-task room status digests."
+
+  static override start(runtime: IAgentRuntime): Promise<Service> {
+    return Promise.resolve(new TaskSupervisorService(runtime))
+  }
+
+  override async stop(): Promise<void> {
+    return
+  }
+}
+
+export function detectStalledSessions(
+  sessions: readonly SessionInfo[],
+  nowMs: number,
+  stallThresholdMs = 180_000,
+): readonly SessionInfo[] {
+  return sessions.filter((s) =>
+    (s.status === "running" || s.status === "busy" || s.status === "tool_running")
+    && nowMs - s.lastActivityAt >= stallThresholdMs,
+  )
+}
+
+export class TaskWatchdogService extends Service {
+  static override serviceType = TASK_WATCHDOG_SERVICE_TYPE
+  override capabilityDescription = "Detects stalled coding sessions and approaching round-trip or spend caps."
+
+  readonly stalledIds = new Set<string>()
+  readonly approachingCapIds = new Set<string>()
+
+  static override start(runtime: IAgentRuntime): Promise<Service> {
+    return Promise.resolve(new TaskWatchdogService(runtime))
+  }
+
+  inspect(sessions: readonly SessionInfo[], router: SubAgentRouter, nowMs = Date.now()): {
+    readonly stalled: readonly string[]
+    readonly approachingCap: readonly string[]
+  } {
+    this.stalledIds.clear()
+    this.approachingCapIds.clear()
+    for (const s of detectStalledSessions(sessions, nowMs)) this.stalledIds.add(s.id)
+    for (const s of sessions) {
+      if (router.isSessionApproachingCap(s.id)) this.approachingCapIds.add(s.id)
+    }
+    return {
+      stalled: [...this.stalledIds].sort(),
+      approachingCap: [...this.approachingCapIds].sort(),
+    }
+  }
+
+  getStalledSessionIds(): readonly string[] {
+    return [...this.stalledIds].sort()
+  }
+
+  getApproachingCapSessionIds(): readonly string[] {
+    return [...this.approachingCapIds].sort()
+  }
+
+  override async stop(): Promise<void> {
+    this.stalledIds.clear()
+    this.approachingCapIds.clear()
+  }
+}
+
+export class SwarmCoordinatorService extends Service implements ISwarmCoordinatorService {
+  static override serviceType = SWARM_COORDINATOR_SERVICE_TYPE
+  override capabilityDescription = "Coordinates swarm events, task contexts, and chat/WS callbacks."
+
+  readonly listeners = new Set<SwarmEventListener>()
+  readonly contexts = new Map<string, SwarmCoordinatorTaskContext>()
+  chatCallback?: SwarmCoordinatorChatCallback
+  wsBroadcast?: SwarmCoordinatorWsBroadcastCallback
+  decisionCallback?: SwarmCoordinatorAgentDecisionCallback
+  completeCallback?: SwarmCoordinatorCompleteCallback
+  sourceRoomId: string | null = null
+  acpBindState: SwarmCoordinatorBindState = { status: "bound", reason: null, attempts: 1 }
+
+  static override start(runtime: IAgentRuntime): Promise<Service> {
+    return Promise.resolve(new SwarmCoordinatorService(runtime))
+  }
+
+  subscribe(listener: SwarmEventListener): () => void {
+    this.listeners.add(listener)
+    return () => { this.listeners.delete(listener) }
+  }
+
+  publish(event: SwarmEvent): void {
+    for (const listener of this.listeners) listener(event)
+    this.wsBroadcast?.(event)
+  }
+
+  setChatCallback(cb: SwarmCoordinatorChatCallback): void {
+    this.chatCallback = cb
+  }
+
+  setWsBroadcast(cb: SwarmCoordinatorWsBroadcastCallback): void {
+    this.wsBroadcast = cb
+  }
+
+  setAgentDecisionCallback(cb: SwarmCoordinatorAgentDecisionCallback): void {
+    this.decisionCallback = cb
+  }
+
+  setSwarmCompleteCallback(cb: SwarmCoordinatorCompleteCallback): void {
+    this.completeCallback = cb
+  }
+
+  registerTaskContext(sessionId: string, ctx: SwarmCoordinatorTaskContext): void {
+    this.contexts.set(sessionId, ctx)
+  }
+
+  getTaskContext(sessionId: string): SwarmCoordinatorTaskContext | undefined {
+    return this.contexts.get(sessionId)
+  }
+
+  getAllTaskContexts(): SwarmCoordinatorTaskContext[] {
+    return [...this.contexts.values()]
+  }
+
+  async getTaskThread(threadId: string): Promise<{ roomId?: string | null } | null> {
+    const found = [...this.contexts.values()].find((c) => c.threadId === threadId)
+    return found ? { roomId: found.originRoomId ?? null } : null
+  }
+
+  override async stop(): Promise<void> {
+    this.listeners.clear()
+    this.contexts.clear()
+  }
+}
+
+export { SWARM_COORDINATOR_SERVICE_TYPE }

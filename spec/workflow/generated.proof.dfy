@@ -1,5 +1,3 @@
-// A journal whose calls each appear once still has that after an entry for a call it does not hold, once nothing is
-// pending.
 lemma GenAppendFresh(r: GeneratedRun, after: GeneratedRun, x: JournalEntry)
   requires alwaysCallsJournaledOnce(r) && !journaled(r, x.call)
   requires after.journal == r.journal + [x] && after.pending == ""
@@ -25,7 +23,6 @@ lemma GenAppendFresh(r: GeneratedRun, after: GeneratedRun, x: JournalEntry)
   }
 }
 
-// An entry changes the count of journaled effects by whether it is one.
 lemma GenAppendEffects(r: GeneratedRun, after: GeneratedRun, x: JournalEntry)
   requires alwaysEffectsAtMostOnce(r) && after.journal == r.journal + [x] && after.effectsSent == r.effectsSent
   requires (if r.pending != "" then 1 else 0) == (if after.pending != "" then 1 else 0) + (if x.kind.EffectCall? then 1 else 0)
@@ -36,8 +33,8 @@ lemma GenAppendEffects(r: GeneratedRun, after: GeneratedRun, x: JournalEntry)
 }
 
 lemma checkpointStep_ensures(r: GeneratedRun, call: string, digest: string)
-  ensures (inv(r) ==> canCheckpointStep(r, call, digest) ==> alwaysEffectsAtMostOnce(checkpointStep(r, call, digest)))
   ensures (inv(r) ==> canCheckpointStep(r, call, digest) ==> alwaysCallsJournaledOnce(checkpointStep(r, call, digest)))
+  ensures (inv(r) ==> canCheckpointStep(r, call, digest) ==> alwaysEffectsAtMostOnce(checkpointStep(r, call, digest)))
   ensures (inv(r) ==> canCheckpointStep(r, call, digest) ==> alwaysWaitingHasOneWait(checkpointStep(r, call, digest)))
   ensures (inv(r) ==> canCheckpointStep(r, call, digest) ==> stepEndedRunStaysEnded(r, checkpointStep(r, call, digest)))
 {
@@ -50,8 +47,8 @@ lemma checkpointStep_ensures(r: GeneratedRun, call: string, digest: string)
 }
 
 lemma commitEffect_ensures(r: GeneratedRun)
-  ensures (inv(r) ==> canCommitEffect(r) ==> alwaysEffectsAtMostOnce(commitEffect(r)))
   ensures (inv(r) ==> canCommitEffect(r) ==> alwaysCallsJournaledOnce(commitEffect(r)))
+  ensures (inv(r) ==> canCommitEffect(r) ==> alwaysEffectsAtMostOnce(commitEffect(r)))
   ensures (inv(r) ==> canCommitEffect(r) ==> alwaysWaitingHasOneWait(commitEffect(r)))
   ensures (inv(r) ==> canCommitEffect(r) ==> stepEndedRunStaysEnded(r, commitEffect(r)))
 {
@@ -65,8 +62,8 @@ lemma commitEffect_ensures(r: GeneratedRun)
 }
 
 lemma recoverEffect_ensures(r: GeneratedRun, receiptFound: bool)
-  ensures (inv(r) ==> canRecoverEffect(r, receiptFound) ==> alwaysEffectsAtMostOnce(recoverEffect(r, receiptFound)))
   ensures (inv(r) ==> canRecoverEffect(r, receiptFound) ==> alwaysCallsJournaledOnce(recoverEffect(r, receiptFound)))
+  ensures (inv(r) ==> canRecoverEffect(r, receiptFound) ==> alwaysEffectsAtMostOnce(recoverEffect(r, receiptFound)))
   ensures (inv(r) ==> canRecoverEffect(r, receiptFound) ==> alwaysWaitingHasOneWait(recoverEffect(r, receiptFound)))
   ensures (inv(r) ==> canRecoverEffect(r, receiptFound) ==> stepEndedRunStaysEnded(r, recoverEffect(r, receiptFound)))
 {
@@ -76,8 +73,8 @@ lemma recoverEffect_ensures(r: GeneratedRun, receiptFound: bool)
 }
 
 lemma resumeWait_ensures(r: GeneratedRun, call: string, digest: string)
-  ensures (inv(r) ==> canResumeWait(r, call, digest) ==> alwaysEffectsAtMostOnce(resumeWait(r, call, digest)))
   ensures (inv(r) ==> canResumeWait(r, call, digest) ==> alwaysCallsJournaledOnce(resumeWait(r, call, digest)))
+  ensures (inv(r) ==> canResumeWait(r, call, digest) ==> alwaysEffectsAtMostOnce(resumeWait(r, call, digest)))
   ensures (inv(r) ==> canResumeWait(r, call, digest) ==> alwaysWaitingHasOneWait(resumeWait(r, call, digest)))
   ensures (inv(r) ==> canResumeWait(r, call, digest) ==> stepEndedRunStaysEnded(r, resumeWait(r, call, digest)))
 {

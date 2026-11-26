@@ -311,10 +311,10 @@ lemma beginDeliveryBoundary_ensures(s: PostDelivery, runtimeId: int, room: strin
   ensures (inv(s) ==> canBeginDeliveryBoundary(s, runtimeId, room, leaseId) ==> alwaysUnresolvedCaptureHasNoEffect(beginDeliveryBoundary(s, runtimeId, room, leaseId)))
   ensures (inv(s) ==> canBeginDeliveryBoundary(s, runtimeId, room, leaseId) ==> alwaysUnresolvedCaptureHasBoundary(beginDeliveryBoundary(s, runtimeId, room, leaseId)))
   ensures (inv(s) ==> canBeginDeliveryBoundary(s, runtimeId, room, leaseId) ==> stepQuarantinePersists(s, beginDeliveryBoundary(s, runtimeId, room, leaseId)))
-  ensures (inv(s) ==> canBeginDeliveryBoundary(s, runtimeId, room, leaseId) ==> stepQuarantinePreventsNewTasks(s, beginDeliveryBoundary(s, runtimeId, room, leaseId)))
-  ensures (inv(s) ==> canBeginDeliveryBoundary(s, runtimeId, room, leaseId) ==> stepInvocationChecksAbort(s, "beginDeliveryBoundary", beginDeliveryBoundary(s, runtimeId, room, leaseId)))
   ensures (inv(s) ==> canBeginDeliveryBoundary(s, runtimeId, room, leaseId) ==> stepQuarantineRetainsPending(s, beginDeliveryBoundary(s, runtimeId, room, leaseId)))
+  ensures (inv(s) ==> canBeginDeliveryBoundary(s, runtimeId, room, leaseId) ==> stepQuarantinePreventsNewTasks(s, beginDeliveryBoundary(s, runtimeId, room, leaseId)))
   ensures (inv(s) ==> canBeginDeliveryBoundary(s, runtimeId, room, leaseId) ==> stepDrainsReturnEmpty(s, beginDeliveryBoundary(s, runtimeId, room, leaseId)))
+  ensures (inv(s) ==> canBeginDeliveryBoundary(s, runtimeId, room, leaseId) ==> stepInvocationChecksAbort(s, "beginDeliveryBoundary", beginDeliveryBoundary(s, runtimeId, room, leaseId)))
 {
   if inv(s) && canBeginDeliveryBoundary(s, runtimeId, room, leaseId) {
     PostBeginBoundary(s, beginDeliveryBoundary(s, runtimeId, room, leaseId),
@@ -338,10 +338,10 @@ lemma removeDeliveryBoundary_ensures(s: PostDelivery, runtimeId: int, room: stri
   ensures (inv(s) ==> canRemoveDeliveryBoundary(s, runtimeId, room) ==> alwaysUnresolvedCaptureHasNoEffect(removeDeliveryBoundary(s, runtimeId, room)))
   ensures (inv(s) ==> canRemoveDeliveryBoundary(s, runtimeId, room) ==> alwaysUnresolvedCaptureHasBoundary(removeDeliveryBoundary(s, runtimeId, room)))
   ensures (inv(s) ==> canRemoveDeliveryBoundary(s, runtimeId, room) ==> stepQuarantinePersists(s, removeDeliveryBoundary(s, runtimeId, room)))
-  ensures (inv(s) ==> canRemoveDeliveryBoundary(s, runtimeId, room) ==> stepQuarantinePreventsNewTasks(s, removeDeliveryBoundary(s, runtimeId, room)))
-  ensures (inv(s) ==> canRemoveDeliveryBoundary(s, runtimeId, room) ==> stepInvocationChecksAbort(s, "removeDeliveryBoundary", removeDeliveryBoundary(s, runtimeId, room)))
   ensures (inv(s) ==> canRemoveDeliveryBoundary(s, runtimeId, room) ==> stepQuarantineRetainsPending(s, removeDeliveryBoundary(s, runtimeId, room)))
+  ensures (inv(s) ==> canRemoveDeliveryBoundary(s, runtimeId, room) ==> stepQuarantinePreventsNewTasks(s, removeDeliveryBoundary(s, runtimeId, room)))
   ensures (inv(s) ==> canRemoveDeliveryBoundary(s, runtimeId, room) ==> stepDrainsReturnEmpty(s, removeDeliveryBoundary(s, runtimeId, room)))
+  ensures (inv(s) ==> canRemoveDeliveryBoundary(s, runtimeId, room) ==> stepInvocationChecksAbort(s, "removeDeliveryBoundary", removeDeliveryBoundary(s, runtimeId, room)))
 {
   if inv(s) && canRemoveDeliveryBoundary(s, runtimeId, room) {
     var after := removeDeliveryBoundary(s, runtimeId, room);
@@ -394,10 +394,10 @@ lemma settleDeliveryBoundary_ensures(s: PostDelivery, runtimeId: int, room: stri
   ensures (inv(s) ==> canSettleDeliveryBoundary(s, runtimeId, room, delivered) ==> alwaysUnresolvedCaptureHasNoEffect(settleDeliveryBoundary(s, runtimeId, room, delivered)))
   ensures (inv(s) ==> canSettleDeliveryBoundary(s, runtimeId, room, delivered) ==> alwaysUnresolvedCaptureHasBoundary(settleDeliveryBoundary(s, runtimeId, room, delivered)))
   ensures (inv(s) ==> canSettleDeliveryBoundary(s, runtimeId, room, delivered) ==> stepQuarantinePersists(s, settleDeliveryBoundary(s, runtimeId, room, delivered)))
-  ensures (inv(s) ==> canSettleDeliveryBoundary(s, runtimeId, room, delivered) ==> stepQuarantinePreventsNewTasks(s, settleDeliveryBoundary(s, runtimeId, room, delivered)))
-  ensures (inv(s) ==> canSettleDeliveryBoundary(s, runtimeId, room, delivered) ==> stepInvocationChecksAbort(s, "settleDeliveryBoundary", settleDeliveryBoundary(s, runtimeId, room, delivered)))
   ensures (inv(s) ==> canSettleDeliveryBoundary(s, runtimeId, room, delivered) ==> stepQuarantineRetainsPending(s, settleDeliveryBoundary(s, runtimeId, room, delivered)))
+  ensures (inv(s) ==> canSettleDeliveryBoundary(s, runtimeId, room, delivered) ==> stepQuarantinePreventsNewTasks(s, settleDeliveryBoundary(s, runtimeId, room, delivered)))
   ensures (inv(s) ==> canSettleDeliveryBoundary(s, runtimeId, room, delivered) ==> stepDrainsReturnEmpty(s, settleDeliveryBoundary(s, runtimeId, room, delivered)))
+  ensures (inv(s) ==> canSettleDeliveryBoundary(s, runtimeId, room, delivered) ==> stepInvocationChecksAbort(s, "settleDeliveryBoundary", settleDeliveryBoundary(s, runtimeId, room, delivered)))
 {
   if inv(s) && canSettleDeliveryBoundary(s, runtimeId, room, delivered) {
     var after := settleDeliveryBoundary(s, runtimeId, room, delivered);
@@ -459,10 +459,10 @@ lemma trackPostTask_ensures(s: PostDelivery, taskId: int, runtimeId: int, room: 
   ensures (inv(s) ==> canTrackPostTask(s, taskId, runtimeId, room, leaseId, kind, cooperative) ==> alwaysUnresolvedCaptureHasNoEffect(trackPostTask(s, taskId, runtimeId, room, leaseId, kind, cooperative, label_, waitsForDelivery)))
   ensures (inv(s) ==> canTrackPostTask(s, taskId, runtimeId, room, leaseId, kind, cooperative) ==> alwaysUnresolvedCaptureHasBoundary(trackPostTask(s, taskId, runtimeId, room, leaseId, kind, cooperative, label_, waitsForDelivery)))
   ensures (inv(s) ==> canTrackPostTask(s, taskId, runtimeId, room, leaseId, kind, cooperative) ==> stepQuarantinePersists(s, trackPostTask(s, taskId, runtimeId, room, leaseId, kind, cooperative, label_, waitsForDelivery)))
-  ensures (inv(s) ==> canTrackPostTask(s, taskId, runtimeId, room, leaseId, kind, cooperative) ==> stepQuarantinePreventsNewTasks(s, trackPostTask(s, taskId, runtimeId, room, leaseId, kind, cooperative, label_, waitsForDelivery)))
-  ensures (inv(s) ==> canTrackPostTask(s, taskId, runtimeId, room, leaseId, kind, cooperative) ==> stepInvocationChecksAbort(s, "trackPostTask", trackPostTask(s, taskId, runtimeId, room, leaseId, kind, cooperative, label_, waitsForDelivery)))
   ensures (inv(s) ==> canTrackPostTask(s, taskId, runtimeId, room, leaseId, kind, cooperative) ==> stepQuarantineRetainsPending(s, trackPostTask(s, taskId, runtimeId, room, leaseId, kind, cooperative, label_, waitsForDelivery)))
+  ensures (inv(s) ==> canTrackPostTask(s, taskId, runtimeId, room, leaseId, kind, cooperative) ==> stepQuarantinePreventsNewTasks(s, trackPostTask(s, taskId, runtimeId, room, leaseId, kind, cooperative, label_, waitsForDelivery)))
   ensures (inv(s) ==> canTrackPostTask(s, taskId, runtimeId, room, leaseId, kind, cooperative) ==> stepDrainsReturnEmpty(s, trackPostTask(s, taskId, runtimeId, room, leaseId, kind, cooperative, label_, waitsForDelivery)))
+  ensures (inv(s) ==> canTrackPostTask(s, taskId, runtimeId, room, leaseId, kind, cooperative) ==> stepInvocationChecksAbort(s, "trackPostTask", trackPostTask(s, taskId, runtimeId, room, leaseId, kind, cooperative, label_, waitsForDelivery)))
 {
   if inv(s) && canTrackPostTask(s, taskId, runtimeId, room, leaseId, kind, cooperative) {
     var after := trackPostTask(s, taskId, runtimeId, room, leaseId, kind, cooperative, label_, waitsForDelivery);
@@ -493,10 +493,10 @@ lemma startPostTask_ensures(s: PostDelivery, taskId: int)
   ensures (inv(s) ==> canStartPostTask(s, taskId) ==> alwaysUnresolvedCaptureHasNoEffect(startPostTask(s, taskId)))
   ensures (inv(s) ==> canStartPostTask(s, taskId) ==> alwaysUnresolvedCaptureHasBoundary(startPostTask(s, taskId)))
   ensures (inv(s) ==> canStartPostTask(s, taskId) ==> stepQuarantinePersists(s, startPostTask(s, taskId)))
-  ensures (inv(s) ==> canStartPostTask(s, taskId) ==> stepQuarantinePreventsNewTasks(s, startPostTask(s, taskId)))
-  ensures (inv(s) ==> canStartPostTask(s, taskId) ==> stepInvocationChecksAbort(s, "startPostTask", startPostTask(s, taskId)))
   ensures (inv(s) ==> canStartPostTask(s, taskId) ==> stepQuarantineRetainsPending(s, startPostTask(s, taskId)))
+  ensures (inv(s) ==> canStartPostTask(s, taskId) ==> stepQuarantinePreventsNewTasks(s, startPostTask(s, taskId)))
   ensures (inv(s) ==> canStartPostTask(s, taskId) ==> stepDrainsReturnEmpty(s, startPostTask(s, taskId)))
+  ensures (inv(s) ==> canStartPostTask(s, taskId) ==> stepInvocationChecksAbort(s, "startPostTask", startPostTask(s, taskId)))
 {
   if inv(s) && canStartPostTask(s, taskId) {
     var after := startPostTask(s, taskId);
@@ -527,10 +527,10 @@ lemma settlePostTask_ensures(s: PostDelivery, taskId: int, ok: bool)
   ensures (inv(s) ==> canSettlePostTask(s, taskId, ok) ==> alwaysUnresolvedCaptureHasNoEffect(settlePostTask(s, taskId, ok)))
   ensures (inv(s) ==> canSettlePostTask(s, taskId, ok) ==> alwaysUnresolvedCaptureHasBoundary(settlePostTask(s, taskId, ok)))
   ensures (inv(s) ==> canSettlePostTask(s, taskId, ok) ==> stepQuarantinePersists(s, settlePostTask(s, taskId, ok)))
-  ensures (inv(s) ==> canSettlePostTask(s, taskId, ok) ==> stepQuarantinePreventsNewTasks(s, settlePostTask(s, taskId, ok)))
-  ensures (inv(s) ==> canSettlePostTask(s, taskId, ok) ==> stepInvocationChecksAbort(s, "settlePostTask", settlePostTask(s, taskId, ok)))
   ensures (inv(s) ==> canSettlePostTask(s, taskId, ok) ==> stepQuarantineRetainsPending(s, settlePostTask(s, taskId, ok)))
+  ensures (inv(s) ==> canSettlePostTask(s, taskId, ok) ==> stepQuarantinePreventsNewTasks(s, settlePostTask(s, taskId, ok)))
   ensures (inv(s) ==> canSettlePostTask(s, taskId, ok) ==> stepDrainsReturnEmpty(s, settlePostTask(s, taskId, ok)))
+  ensures (inv(s) ==> canSettlePostTask(s, taskId, ok) ==> stepInvocationChecksAbort(s, "settlePostTask", settlePostTask(s, taskId, ok)))
 {
   if inv(s) && canSettlePostTask(s, taskId, ok) {
     var after := settlePostTask(s, taskId, ok);
@@ -573,10 +573,10 @@ lemma quarantineRuntime_ensures(s: PostDelivery, runtimeId: int)
   ensures (inv(s) ==> canQuarantineRuntime(s, runtimeId) ==> alwaysUnresolvedCaptureHasNoEffect(quarantineRuntime(s, runtimeId)))
   ensures (inv(s) ==> canQuarantineRuntime(s, runtimeId) ==> alwaysUnresolvedCaptureHasBoundary(quarantineRuntime(s, runtimeId)))
   ensures (inv(s) ==> canQuarantineRuntime(s, runtimeId) ==> stepQuarantinePersists(s, quarantineRuntime(s, runtimeId)))
-  ensures (inv(s) ==> canQuarantineRuntime(s, runtimeId) ==> stepQuarantinePreventsNewTasks(s, quarantineRuntime(s, runtimeId)))
-  ensures (inv(s) ==> canQuarantineRuntime(s, runtimeId) ==> stepInvocationChecksAbort(s, "quarantineRuntime", quarantineRuntime(s, runtimeId)))
   ensures (inv(s) ==> canQuarantineRuntime(s, runtimeId) ==> stepQuarantineRetainsPending(s, quarantineRuntime(s, runtimeId)))
+  ensures (inv(s) ==> canQuarantineRuntime(s, runtimeId) ==> stepQuarantinePreventsNewTasks(s, quarantineRuntime(s, runtimeId)))
   ensures (inv(s) ==> canQuarantineRuntime(s, runtimeId) ==> stepDrainsReturnEmpty(s, quarantineRuntime(s, runtimeId)))
+  ensures (inv(s) ==> canQuarantineRuntime(s, runtimeId) ==> stepInvocationChecksAbort(s, "quarantineRuntime", quarantineRuntime(s, runtimeId)))
 {
   if inv(s) && canQuarantineRuntime(s, runtimeId) {
     var after := quarantineRuntime(s, runtimeId);
@@ -604,10 +604,10 @@ lemma resumePostTask_ensures(s: PostDelivery, taskId: int)
   ensures (inv(s) ==> canResumePostTask(s, taskId) ==> alwaysUnresolvedCaptureHasNoEffect(resumePostTask(s, taskId)))
   ensures (inv(s) ==> canResumePostTask(s, taskId) ==> alwaysUnresolvedCaptureHasBoundary(resumePostTask(s, taskId)))
   ensures (inv(s) ==> canResumePostTask(s, taskId) ==> stepQuarantinePersists(s, resumePostTask(s, taskId)))
-  ensures (inv(s) ==> canResumePostTask(s, taskId) ==> stepQuarantinePreventsNewTasks(s, resumePostTask(s, taskId)))
-  ensures (inv(s) ==> canResumePostTask(s, taskId) ==> stepInvocationChecksAbort(s, "resumePostTask", resumePostTask(s, taskId)))
   ensures (inv(s) ==> canResumePostTask(s, taskId) ==> stepQuarantineRetainsPending(s, resumePostTask(s, taskId)))
+  ensures (inv(s) ==> canResumePostTask(s, taskId) ==> stepQuarantinePreventsNewTasks(s, resumePostTask(s, taskId)))
   ensures (inv(s) ==> canResumePostTask(s, taskId) ==> stepDrainsReturnEmpty(s, resumePostTask(s, taskId)))
+  ensures (inv(s) ==> canResumePostTask(s, taskId) ==> stepInvocationChecksAbort(s, "resumePostTask", resumePostTask(s, taskId)))
 {
   if inv(s) && canResumePostTask(s, taskId) {
     var after := resumePostTask(s, taskId);
@@ -654,10 +654,10 @@ lemma applyPostTaskEffect_ensures(s: PostDelivery, taskId: int)
   ensures (inv(s) ==> canApplyPostTaskEffect(s, taskId) ==> alwaysUnresolvedCaptureHasNoEffect(applyPostTaskEffect(s, taskId)))
   ensures (inv(s) ==> canApplyPostTaskEffect(s, taskId) ==> alwaysUnresolvedCaptureHasBoundary(applyPostTaskEffect(s, taskId)))
   ensures (inv(s) ==> canApplyPostTaskEffect(s, taskId) ==> stepQuarantinePersists(s, applyPostTaskEffect(s, taskId)))
-  ensures (inv(s) ==> canApplyPostTaskEffect(s, taskId) ==> stepQuarantinePreventsNewTasks(s, applyPostTaskEffect(s, taskId)))
-  ensures (inv(s) ==> canApplyPostTaskEffect(s, taskId) ==> stepInvocationChecksAbort(s, "applyPostTaskEffect", applyPostTaskEffect(s, taskId)))
   ensures (inv(s) ==> canApplyPostTaskEffect(s, taskId) ==> stepQuarantineRetainsPending(s, applyPostTaskEffect(s, taskId)))
+  ensures (inv(s) ==> canApplyPostTaskEffect(s, taskId) ==> stepQuarantinePreventsNewTasks(s, applyPostTaskEffect(s, taskId)))
   ensures (inv(s) ==> canApplyPostTaskEffect(s, taskId) ==> stepDrainsReturnEmpty(s, applyPostTaskEffect(s, taskId)))
+  ensures (inv(s) ==> canApplyPostTaskEffect(s, taskId) ==> stepInvocationChecksAbort(s, "applyPostTaskEffect", applyPostTaskEffect(s, taskId)))
 {
   if inv(s) && canApplyPostTaskEffect(s, taskId) {
     var after := applyPostTaskEffect(s, taskId);
@@ -696,10 +696,10 @@ lemma beginPostDrain_ensures(s: PostDelivery, drainId: int, runtimeId: int, room
   ensures (inv(s) ==> canBeginPostDrain(s, drainId, runtimeId, room, abortable) ==> alwaysUnresolvedCaptureHasNoEffect(beginPostDrain(s, drainId, runtimeId, room, abortable, alreadyAborted)))
   ensures (inv(s) ==> canBeginPostDrain(s, drainId, runtimeId, room, abortable) ==> alwaysUnresolvedCaptureHasBoundary(beginPostDrain(s, drainId, runtimeId, room, abortable, alreadyAborted)))
   ensures (inv(s) ==> canBeginPostDrain(s, drainId, runtimeId, room, abortable) ==> stepQuarantinePersists(s, beginPostDrain(s, drainId, runtimeId, room, abortable, alreadyAborted)))
-  ensures (inv(s) ==> canBeginPostDrain(s, drainId, runtimeId, room, abortable) ==> stepQuarantinePreventsNewTasks(s, beginPostDrain(s, drainId, runtimeId, room, abortable, alreadyAborted)))
-  ensures (inv(s) ==> canBeginPostDrain(s, drainId, runtimeId, room, abortable) ==> stepInvocationChecksAbort(s, "beginPostDrain", beginPostDrain(s, drainId, runtimeId, room, abortable, alreadyAborted)))
   ensures (inv(s) ==> canBeginPostDrain(s, drainId, runtimeId, room, abortable) ==> stepQuarantineRetainsPending(s, beginPostDrain(s, drainId, runtimeId, room, abortable, alreadyAborted)))
+  ensures (inv(s) ==> canBeginPostDrain(s, drainId, runtimeId, room, abortable) ==> stepQuarantinePreventsNewTasks(s, beginPostDrain(s, drainId, runtimeId, room, abortable, alreadyAborted)))
   ensures (inv(s) ==> canBeginPostDrain(s, drainId, runtimeId, room, abortable) ==> stepDrainsReturnEmpty(s, beginPostDrain(s, drainId, runtimeId, room, abortable, alreadyAborted)))
+  ensures (inv(s) ==> canBeginPostDrain(s, drainId, runtimeId, room, abortable) ==> stepInvocationChecksAbort(s, "beginPostDrain", beginPostDrain(s, drainId, runtimeId, room, abortable, alreadyAborted)))
 {
   if inv(s) && canBeginPostDrain(s, drainId, runtimeId, room, abortable) {
     var after := beginPostDrain(s, drainId, runtimeId, room, abortable, alreadyAborted);
@@ -730,10 +730,10 @@ lemma cancelPostDrain_ensures(s: PostDelivery, drainId: int)
   ensures (inv(s) ==> canCancelPostDrain(s, drainId) ==> alwaysUnresolvedCaptureHasNoEffect(cancelPostDrain(s, drainId)))
   ensures (inv(s) ==> canCancelPostDrain(s, drainId) ==> alwaysUnresolvedCaptureHasBoundary(cancelPostDrain(s, drainId)))
   ensures (inv(s) ==> canCancelPostDrain(s, drainId) ==> stepQuarantinePersists(s, cancelPostDrain(s, drainId)))
-  ensures (inv(s) ==> canCancelPostDrain(s, drainId) ==> stepQuarantinePreventsNewTasks(s, cancelPostDrain(s, drainId)))
-  ensures (inv(s) ==> canCancelPostDrain(s, drainId) ==> stepInvocationChecksAbort(s, "cancelPostDrain", cancelPostDrain(s, drainId)))
   ensures (inv(s) ==> canCancelPostDrain(s, drainId) ==> stepQuarantineRetainsPending(s, cancelPostDrain(s, drainId)))
+  ensures (inv(s) ==> canCancelPostDrain(s, drainId) ==> stepQuarantinePreventsNewTasks(s, cancelPostDrain(s, drainId)))
   ensures (inv(s) ==> canCancelPostDrain(s, drainId) ==> stepDrainsReturnEmpty(s, cancelPostDrain(s, drainId)))
+  ensures (inv(s) ==> canCancelPostDrain(s, drainId) ==> stepInvocationChecksAbort(s, "cancelPostDrain", cancelPostDrain(s, drainId)))
 {
   if inv(s) && canCancelPostDrain(s, drainId) {
     var selected := ProofLib.Filter((d: PostDrain) => (d.id == drainId), s.drains);
@@ -763,10 +763,10 @@ lemma releasePostLease_ensures(s: PostDelivery, runtimeId: int, room: string, le
   ensures (inv(s) ==> canReleasePostLease(s, runtimeId, room, leaseId) ==> alwaysUnresolvedCaptureHasNoEffect(releasePostLease(s, runtimeId, room, leaseId)))
   ensures (inv(s) ==> canReleasePostLease(s, runtimeId, room, leaseId) ==> alwaysUnresolvedCaptureHasBoundary(releasePostLease(s, runtimeId, room, leaseId)))
   ensures (inv(s) ==> canReleasePostLease(s, runtimeId, room, leaseId) ==> stepQuarantinePersists(s, releasePostLease(s, runtimeId, room, leaseId)))
-  ensures (inv(s) ==> canReleasePostLease(s, runtimeId, room, leaseId) ==> stepQuarantinePreventsNewTasks(s, releasePostLease(s, runtimeId, room, leaseId)))
-  ensures (inv(s) ==> canReleasePostLease(s, runtimeId, room, leaseId) ==> stepInvocationChecksAbort(s, "releasePostLease", releasePostLease(s, runtimeId, room, leaseId)))
   ensures (inv(s) ==> canReleasePostLease(s, runtimeId, room, leaseId) ==> stepQuarantineRetainsPending(s, releasePostLease(s, runtimeId, room, leaseId)))
+  ensures (inv(s) ==> canReleasePostLease(s, runtimeId, room, leaseId) ==> stepQuarantinePreventsNewTasks(s, releasePostLease(s, runtimeId, room, leaseId)))
   ensures (inv(s) ==> canReleasePostLease(s, runtimeId, room, leaseId) ==> stepDrainsReturnEmpty(s, releasePostLease(s, runtimeId, room, leaseId)))
+  ensures (inv(s) ==> canReleasePostLease(s, runtimeId, room, leaseId) ==> stepInvocationChecksAbort(s, "releasePostLease", releasePostLease(s, runtimeId, room, leaseId)))
 {
   if inv(s) && canReleasePostLease(s, runtimeId, room, leaseId) {
     var after := releasePostLease(s, runtimeId, room, leaseId);

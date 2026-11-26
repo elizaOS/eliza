@@ -1,5 +1,11 @@
-// spec/workflow/execution.md, "A wakeup reserves the earliest due attempt for a persisted run"; spec/workflow/sourcePublication.md, "Only the reservation owner can publish or release an incomplete write"
+// spec/workflow/execution.md, "A wakeup reserves the earliest due attempt for a persisted run"; spec/workflow/sourcePublication.md, "Only the reservation owner can publish or release an incomplete write"; spec/workflow/budget.md, "Parallel DAG waves batch only ready non-barrier steps"
 export const WorkerResult = Schema.Struct({ id: Schema.String, status: Schema.Literals(["completed", "skipped"]), text: Schema.String })
+export const DraftBatchItem = Schema.Struct({
+  stepId: Schema.String,
+  ok: Schema.Boolean,
+  text: Schema.optionalKey(Schema.String),
+  message: Schema.optionalKey(Schema.String),
+})
 export const ParentLine = Schema.Union([
   Schema.Struct({
     type: Schema.Literal("start"), runId: Schema.String, spec: Schema.Unknown, specDigest: Schema.String, anchorAt: Schema.String,
@@ -12,6 +18,7 @@ export const ParentLine = Schema.Union([
   }),
   Schema.Struct({ type: Schema.Literal("draft"), stepId: Schema.String, text: Schema.String }),
   Schema.Struct({ type: Schema.Literal("draftFailed"), stepId: Schema.String, message: Schema.String }),
+  Schema.Struct({ type: Schema.Literal("draftBatch"), results: Schema.Array(DraftBatchItem) }),
   Schema.Struct({ type: Schema.Literal("cancel") }),
   Schema.Struct({ type: Schema.Literal("check"), source: Schema.String }),
   Schema.Struct({
@@ -22,5 +29,6 @@ export const ParentLine = Schema.Union([
   }),
   Schema.Struct({ type: Schema.Literal("effect"), call: Schema.String, text: Schema.String }),
   Schema.Struct({ type: Schema.Literal("effectFailed"), call: Schema.String, message: Schema.String }),
+  Schema.Struct({ type: Schema.Literal("effectBatch"), call: Schema.String, texts: Schema.Array(Schema.String) }),
   Schema.Struct({ type: Schema.Literal("checkpointed"), call: Schema.String, digest: Schema.String }),
 ])

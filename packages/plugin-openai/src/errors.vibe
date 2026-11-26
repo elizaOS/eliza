@@ -1,0 +1,406 @@
+// spec/openai/index.md, "A cooling route does not resend before the provider's reset"
+import {
+  EventType,
+  isPermanentQuotaError,
+  logger,
+  MODEL_PROVIDER_ATTEMPTS,
+  normalizeProviderUsage,
+  providerRetryAfterMs,
+  toWellFormedUnicode,
+  truncateWellFormed,
+  type GenerateTextParams,
+  type IAgentRuntime,
+  type ModelEventPayload,
+  type ModelTypeName,
+  type TokenUsage,
+} from "@elizaos/core"
+import { openAiCooldownHoldMs, openAiErrorRetryable, openAiSelectModel } from "../gen/openai.effect.vibe"
+import { getApiKey, getBaseURL, getTrimmedSetting, getUsageProvider, type OpenAiUsageProvider } from "./config.vibe"
+
+export const MODEL_ATTEMPT_IDLE_TIMEOUT = "MODEL_ATTEMPT_IDLE_TIMEOUT"
+export const RATE_LIMIT_MAX_HOLD_MS = 4000
+export const TRANSIENT_LANE_MAX_BACKOFF_MS = 3000
+
+const SPURIOUS_TOOL_PAIRING_400_RE = /messages with role ['"]?tool['"]? must be a response to a prec?eeding message with ['"]?tool_calls['"]?/i
+const TRANSIENT_OPENROUTER_NO_MODELS_400_RE = /\bno models provided\b/i
+const NON_RETRYABLE_VALIDATION_RE = /invalid|unsupported|must be|required(?: field)?|malformed|not allowed|json schema|schema/i
+const TRANSIENT_NO_STATUS_RE = /timeout|timed out|econnreset|econnrefused|socket|network|fetch failed|terminated|server error|server_error|try again|overload|capacity|temporarily|unavailable|busy|rate ?limit|please retry/i
+const TRANSIENT_400_RE = /server error|try again|overload|capacity|temporarily|busy|\brate\b|rate.?limit/i
+
+export error OpenAiFailure {
+  reason: string
+  retryable: boolean
+  status?: number
+  statusCode?: number
+  responseHeaders?: Record<string, string>
+  retryAfterMs?: number
+  responseBody?: string
+  url?: string
+  code?: string
+  cause?: unknown
+  get message(): string {
+    return this.reason
+  }
+}
+
+export error ProviderRateLimitCooldownError {
+  modelName: string
+  retryAfterMs: number
+  status: number
+  statusCode: number
+  code: string
+  get message(): string {
+    return `${this.modelName} is rate limited (Too Many Requests; provider window resets in ${Math.ceil(this.retryAfterMs / 1000)}s); not re-sent`
+  }
+}
+
+export interface ModelRetryTelemetry {
+  retryCount: number
+  lastRetryReason: string | undefined
+}
+
+export function extractErrorBodyMessage(responseBody: string | undefined): string | undefined {
+  if (!responseBody || responseBody.trim().length === 0) return undefined
+  try {
+    const parsed = JSON.parse(responseBody) as {
+      message?: unknown
+      error?: { message?: unknown } | string
+    }
+    const candidates = [
+      parsed?.message,
+      typeof parsed?.error === "object" && parsed.error !== null ? parsed.error.message : parsed?.error,
+    ]
+    for (const candidate of candidates) {
+      if (typeof candidate === "string" && candidate.trim().length > 0) {
+        return candidate.trim()
+      }
+    }
+  } catch {
+    return truncateWellFormed(toWellFormedUnicode(responseBody.replace(/\s+/g, " ").trim()), 300)
+  }
+  return truncateWellFormed(toWellFormedUnicode(responseBody.replace(/\s+/g, " ").trim()), 300)
+}
+
+export function readErrorStatus(error: unknown): number | undefined {
+  if (!error || typeof error !== "object") return undefined
+  const record = error as { statusCode?: unknown; status?: unknown }
+  const status = typeof record.statusCode === "number" ? record.statusCode : record.status
+  return typeof status === "number" && Number.isFinite(status) ? status : undefined
+}
+
+export function isModelAttemptIdleTimeout(error: unknown): boolean {
+  let current: unknown = error
+  for (let depth = 0; depth < 4 && current && typeof current === "object"; depth++) {
+    if ((current as { code?: unknown }).code === MODEL_ATTEMPT_IDLE_TIMEOUT) return true
+    current = (current as { cause?: unknown }).cause
+  }
+  return false
+}
+
+export function isProviderToolCallParseFailure(error: unknown): boolean {
+  const seen = new Set<unknown>()
+  let node: unknown = error
+  for (let depth = 0; depth < 5 && node && typeof node === "object" && !seen.has(node); depth++) {
+    seen.add(node)
+    const record = node as { data?: unknown; responseBody?: unknown; cause?: unknown }
+    let body: unknown
+    if (typeof record.responseBody === "string") {
+      try {
+        body = JSON.parse(record.responseBody)
+      } catch {
+        body = undefined
+      }
+    }
+    for (const candidate of [record.data, body]) {
+      if (!candidate || typeof candidate !== "object") continue
+      const envelope = (candidate as { error?: unknown }).error
+      const fields = (envelope && typeof envelope === "object" ? envelope : candidate) as {
+        code?: unknown
+        type?: unknown
+        param?: unknown
+      }
+      if (fields.code === "parser_error") return true
+      if (fields.type === "generation_error" && fields.param === "tool_calls") return true
+    }
+    node = record.cause
+  }
+  return false
+}
+
+function providerErrorSearchText(error: unknown): string {
+  const parts: string[] = []
+  const seen = new Set<unknown>()
+  let node: unknown = error
+  for (let depth = 0; depth < 5 && node && typeof node === "object" && !seen.has(node); depth++) {
+    seen.add(node)
+    const record = node as {
+      reason?: unknown
+      message?: unknown
+      responseBody?: unknown
+      code?: unknown
+      cause?: unknown
+    }
+    if (typeof record.reason === "string") parts.push(record.reason)
+    if (typeof record.message === "string") parts.push(record.message)
+    if (typeof record.responseBody === "string") parts.push(record.responseBody)
+    if (typeof record.code === "string") parts.push(record.code)
+    node = record.cause
+  }
+  return parts.join(" ").toLowerCase()
+}
+
+export function isSpuriousToolPairingRejection(error: unknown): boolean {
+  return SPURIOUS_TOOL_PAIRING_400_RE.test(providerErrorSearchText(error))
+}
+
+function hasTransientMessage(status: number, error: unknown): boolean {
+  const text = providerErrorSearchText(error)
+  if (status === 0) {
+    if (NON_RETRYABLE_VALIDATION_RE.test(text)) return false
+    return TRANSIENT_NO_STATUS_RE.test(text)
+  }
+  if (status === 400) {
+    if (SPURIOUS_TOOL_PAIRING_400_RE.test(text) || TRANSIENT_OPENROUTER_NO_MODELS_400_RE.test(text)) {
+      return true
+    }
+    if (NON_RETRYABLE_VALIDATION_RE.test(text)) return false
+    return TRANSIENT_400_RE.test(text)
+  }
+  return false
+}
+
+export function isTransientProviderError(error: unknown): boolean {
+  const status = readErrorStatus(error) ?? 0
+  const retryAfter = providerRetryAfterMs(error)
+  const retryOutlastsLane = retryAfter !== undefined && retryAfter > TRANSIENT_LANE_MAX_BACKOFF_MS
+  return openAiErrorRetryable(
+    status,
+    isPermanentQuotaError(error),
+    isProviderToolCallParseFailure(error),
+    isModelAttemptIdleTimeout(error),
+    retryOutlastsLane,
+    hasTransientMessage(status, error),
+  )
+}
+
+export function describeRetryReason(error: unknown): string {
+  const status = readErrorStatus(error)
+  const body = error && typeof error === "object" ? extractErrorBodyMessage((error as { responseBody?: string }).responseBody) : undefined
+  if (body) return status ? `HTTP ${status}: ${body}` : body
+  if (error instanceof OpenAiFailure) return error.reason
+  if (error instanceof Error && error.message) return error.message
+  return status ? `HTTP ${status}` : String(error)
+}
+
+const rateLimitCooldowns = new WeakMap<IAgentRuntime, Map<string, Map<string | undefined, Map<string, number>>>>()
+const providerWindowResets = new WeakMap<Map<string, number>, Map<string, number>>()
+const exhaustedEndpointRetries = new WeakMap<object, WeakMap<object, Map<string, unknown>>>()
+
+export function runtimeRateLimitCooldowns(
+  runtime: IAgentRuntime,
+  endpoint = getBaseURL(runtime),
+  credential = getApiKey(runtime),
+): Map<string, number> {
+  let endpoints = rateLimitCooldowns.get(runtime)
+  if (!endpoints) {
+    endpoints = new Map()
+    rateLimitCooldowns.set(runtime, endpoints)
+  }
+  let credentials = endpoints.get(endpoint)
+  if (!credentials) {
+    credentials = new Map()
+    endpoints.set(endpoint, credentials)
+  }
+  let models = credentials.get(credential)
+  if (!models) {
+    models = new Map()
+    credentials.set(credential, models)
+  }
+  const now = Date.now()
+  for (const [model, until] of models) {
+    if (until <= now) models.delete(model)
+  }
+  const resets = providerWindowResets.get(models)
+  for (const [model, resetAt] of resets ?? []) {
+    if (resetAt <= now) resets?.delete(model)
+  }
+  return models
+}
+
+export function isModelCoolingDown(models: Map<string, number>, modelName: string): boolean {
+  const until = models.get(modelName)
+  if (until === undefined) return false
+  if (until <= Date.now()) {
+    models.delete(modelName)
+    return false
+  }
+  return true
+}
+
+export function cooldownErrorForModel(models: Map<string, number>, modelName: string): ProviderRateLimitCooldownError | undefined {
+  const until = models.get(modelName)
+  if (until === undefined) return undefined
+  const now = Date.now()
+  const remaining = until - now
+  if (remaining <= 0) {
+    models.delete(modelName)
+    return undefined
+  }
+  const resetAt = providerWindowResets.get(models)?.get(modelName) ?? until
+  return new ProviderRateLimitCooldownError({
+    modelName,
+    retryAfterMs: Math.max(remaining, resetAt - now),
+    status: 429,
+    statusCode: 429,
+    code: "PROVIDER_RATE_LIMIT_COOLDOWN",
+  })
+}
+
+export function noteRateLimitCooldown(
+  models: Map<string, number>,
+  modelName: string,
+  error: unknown,
+  boundHold: boolean,
+): void {
+  const status = readErrorStatus(error)
+  if (status !== 429 || isPermanentQuotaError(error)) return
+  const retryAfterMs = providerRetryAfterMs(error)
+  if (retryAfterMs === undefined || retryAfterMs <= TRANSIENT_LANE_MAX_BACKOFF_MS) return
+  const holdMs = openAiCooldownHoldMs(Math.ceil(retryAfterMs), RATE_LIMIT_MAX_HOLD_MS, boundHold)
+  const now = Date.now()
+  const untilMs = now + holdMs
+  const existing = models.get(modelName) ?? 0
+  if (untilMs > existing) models.set(modelName, untilMs)
+  let resets = providerWindowResets.get(models)
+  if (!resets) {
+    resets = new Map()
+    providerWindowResets.set(models, resets)
+  }
+  const resetAt = now + retryAfterMs
+  if (resetAt > (resets.get(modelName) ?? 0)) resets.set(modelName, resetAt)
+  logger.warn(
+    {
+      src: "plugin:openai",
+      model: modelName,
+      retryAfterSeconds: retryAfterMs / 1000,
+      ...(holdMs < retryAfterMs ? { heldSeconds: holdMs / 1000 } : {}),
+    },
+    "[OpenAI] provider rate limit reached; holding this model locally",
+  )
+}
+
+export function resolveFallbackModelName(runtime: IAgentRuntime, primaryModelName: string): string | undefined {
+  const fallback = getTrimmedSetting(runtime, "OPENAI_FALLBACK_MODEL")
+    || getTrimmedSetting(runtime, "CEREBRAS_FALLBACK_MODEL")
+  if (!fallback || fallback === primaryModelName) return undefined
+  return fallback
+}
+
+export function selectRequestModelName(
+  models: Map<string, number>,
+  primaryModelName: string,
+  fallbackModelName: string | undefined,
+): string {
+  const fallback = fallbackModelName ?? ""
+  return openAiSelectModel(
+    primaryModelName,
+    fallback,
+    isModelCoolingDown(models, primaryModelName),
+    fallback !== "" && isModelCoolingDown(models, fallback),
+  )
+}
+
+export function getExhaustedEndpointError(
+  params: GenerateTextParams,
+  endpointIdentity: object,
+  model: string,
+  heldFallback?: string,
+): { prior?: unknown; record: (error: unknown) => void } {
+  const attempts = params[MODEL_PROVIDER_ATTEMPTS]
+  if (!attempts) return { record: () => undefined }
+  let endpoints = exhaustedEndpointRetries.get(attempts)
+  if (!endpoints) {
+    endpoints = new WeakMap()
+    exhaustedEndpointRetries.set(attempts, endpoints)
+  }
+  let models = endpoints.get(endpointIdentity)
+  if (!models) {
+    models = new Map()
+    endpoints.set(endpointIdentity, models)
+  }
+  const prior = models.has(model)
+    ? models.get(model)
+    : heldFallback !== undefined && models.has(heldFallback)
+    ? models.get(heldFallback)
+    : undefined
+  return {
+    prior,
+    record: (error: unknown) => {
+      const status = readErrorStatus(error)
+      if (status === 429 || (status !== undefined && status >= 500 && status < 600)) {
+        models.set(model, error)
+      }
+    },
+  }
+}
+
+export function emitModelUsageEvent(
+  runtime: IAgentRuntime,
+  type: ModelTypeName,
+  prompt: string,
+  usage: TokenUsage,
+  modelName: string,
+  retry?: ModelRetryTelemetry,
+  provider: OpenAiUsageProvider = getUsageProvider(runtime),
+): void {
+  const emitEvent = (runtime as { emitEvent?: IAgentRuntime["emitEvent"] }).emitEvent
+  if (typeof emitEvent !== "function") return
+  const model = modelName.trim()
+  if (!model) return
+  const normalized = normalizeProviderUsage(usage)
+  const payload: ModelEventPayload & Record<string, unknown> = {
+    runtime,
+    source: "openai",
+    provider,
+    type,
+    model,
+    modelName: model,
+    modelLabel: String(type),
+    prompt,
+    usageReported: {
+      prompt: Number.isFinite(usage.promptTokens) && usage.promptTokens >= 0,
+      completion: Number.isFinite(usage.completionTokens) && usage.completionTokens >= 0,
+      total: Number.isFinite(usage.totalTokens) && usage.totalTokens >= 0,
+      cacheRead: normalized.cacheReadInputTokens !== undefined,
+      reasoning: normalized.reasoningTokens !== undefined,
+    },
+    ...(retry
+      ? {
+        retryCount: retry.retryCount,
+        ...(retry.lastRetryReason !== undefined ? { lastRetryReason: retry.lastRetryReason } : {}),
+      }
+      : {}),
+    tokens: {
+      prompt: normalized.promptTokens,
+      completion: normalized.completionTokens,
+      total: normalized.totalTokens,
+      ...(normalized.cacheReadInputTokens !== undefined
+        ? {
+          cached: normalized.cacheReadInputTokens,
+          cachedInputTokens: normalized.cacheReadInputTokens,
+          cacheReadInputTokens: normalized.cacheReadInputTokens,
+        }
+        : {}),
+      ...(normalized.reasoningTokens !== undefined ? { reasoningTokens: normalized.reasoningTokens } : {}),
+    },
+  }
+  void Promise.resolve(emitEvent.call(runtime, EventType.MODEL_USED, payload)).catch((error: unknown) => {
+    const reportError = (runtime as { reportError?: IAgentRuntime["reportError"] }).reportError
+    if (typeof reportError === "function") {
+      reportError.call(runtime, "OpenAIModelUsage.emitEvent", error, {
+        model,
+        modelType: String(type),
+      })
+    }
+  })
+}

@@ -166,8 +166,8 @@ lemma invokeWork_ensures(s: ProviderState, workId: int)
   ensures (inv(s) ==> canInvokeWork(s, workId) ==> alwaysWaiterAbortHasNoCallers(invokeWork(s, workId)))
   ensures (inv(s) ==> canInvokeWork(s, workId) ==> alwaysStopReachesEveryExecution(invokeWork(s, workId)))
   ensures (inv(s) ==> canInvokeWork(s, workId) ==> alwaysCleanedWorkIsInactive(invokeWork(s, workId)))
-  ensures (inv(s) ==> canInvokeWork(s, workId) ==> alwaysCreatedWorkHasStarted(invokeWork(s, workId)))
   ensures (inv(s) ==> canInvokeWork(s, workId) ==> alwaysProviderDeadlockFree(invokeWork(s, workId)))
+  ensures (inv(s) ==> canInvokeWork(s, workId) ==> alwaysCreatedWorkHasStarted(invokeWork(s, workId)))
   ensures (inv(s) ==> canInvokeWork(s, workId) ==> stepAbortedWorkCannotStart(s, invokeWork(s, workId)))
 {
   if inv(s) && canInvokeWork(s, workId) {
@@ -201,8 +201,8 @@ lemma settleWork_ensures(s: ProviderState, workId: int)
   ensures (inv(s) ==> canSettleWork(s, workId) ==> alwaysWaiterAbortHasNoCallers(settleWork(s, workId)))
   ensures (inv(s) ==> canSettleWork(s, workId) ==> alwaysStopReachesEveryExecution(settleWork(s, workId)))
   ensures (inv(s) ==> canSettleWork(s, workId) ==> alwaysCleanedWorkIsInactive(settleWork(s, workId)))
-  ensures (inv(s) ==> canSettleWork(s, workId) ==> alwaysCreatedWorkHasStarted(settleWork(s, workId)))
   ensures (inv(s) ==> canSettleWork(s, workId) ==> alwaysProviderDeadlockFree(settleWork(s, workId)))
+  ensures (inv(s) ==> canSettleWork(s, workId) ==> alwaysCreatedWorkHasStarted(settleWork(s, workId)))
   ensures (inv(s) ==> canSettleWork(s, workId) ==> stepAbortedWorkCannotStart(s, settleWork(s, workId)))
 {
   if inv(s) && canSettleWork(s, workId) {
@@ -236,8 +236,8 @@ lemma cleanWork_ensures(s: ProviderState, workId: int)
   ensures (inv(s) ==> canCleanWork(s, workId) ==> alwaysWaiterAbortHasNoCallers(cleanWork(s, workId)))
   ensures (inv(s) ==> canCleanWork(s, workId) ==> alwaysStopReachesEveryExecution(cleanWork(s, workId)))
   ensures (inv(s) ==> canCleanWork(s, workId) ==> alwaysCleanedWorkIsInactive(cleanWork(s, workId)))
-  ensures (inv(s) ==> canCleanWork(s, workId) ==> alwaysCreatedWorkHasStarted(cleanWork(s, workId)))
   ensures (inv(s) ==> canCleanWork(s, workId) ==> alwaysProviderDeadlockFree(cleanWork(s, workId)))
+  ensures (inv(s) ==> canCleanWork(s, workId) ==> alwaysCreatedWorkHasStarted(cleanWork(s, workId)))
   ensures (inv(s) ==> canCleanWork(s, workId) ==> stepAbortedWorkCannotStart(s, cleanWork(s, workId)))
 {
   if inv(s) && canCleanWork(s, workId) {
@@ -271,8 +271,8 @@ lemma stopProviders_ensures(s: ProviderState)
   ensures (inv(s) ==> canStopProviders(s) ==> alwaysWaiterAbortHasNoCallers(stopProviders(s)))
   ensures (inv(s) ==> canStopProviders(s) ==> alwaysStopReachesEveryExecution(stopProviders(s)))
   ensures (inv(s) ==> canStopProviders(s) ==> alwaysCleanedWorkIsInactive(stopProviders(s)))
-  ensures (inv(s) ==> canStopProviders(s) ==> alwaysCreatedWorkHasStarted(stopProviders(s)))
   ensures (inv(s) ==> canStopProviders(s) ==> alwaysProviderDeadlockFree(stopProviders(s)))
+  ensures (inv(s) ==> canStopProviders(s) ==> alwaysCreatedWorkHasStarted(stopProviders(s)))
   ensures (inv(s) ==> canStopProviders(s) ==> stepAbortedWorkCannotStart(s, stopProviders(s)))
 {
   if inv(s) && canStopProviders(s) {
@@ -290,8 +290,8 @@ lemma invokeNextWork_ensures(s: ProviderState)
   ensures (inv(s) ==> canInvokeNextWork(s) ==> alwaysWaiterAbortHasNoCallers(invokeNextWork(s)))
   ensures (inv(s) ==> canInvokeNextWork(s) ==> alwaysStopReachesEveryExecution(invokeNextWork(s)))
   ensures (inv(s) ==> canInvokeNextWork(s) ==> alwaysCleanedWorkIsInactive(invokeNextWork(s)))
-  ensures (inv(s) ==> canInvokeNextWork(s) ==> alwaysCreatedWorkHasStarted(invokeNextWork(s)))
   ensures (inv(s) ==> canInvokeNextWork(s) ==> alwaysProviderDeadlockFree(invokeNextWork(s)))
+  ensures (inv(s) ==> canInvokeNextWork(s) ==> alwaysCreatedWorkHasStarted(invokeNextWork(s)))
   ensures (inv(s) ==> canInvokeNextWork(s) ==> stepAbortedWorkCannotStart(s, invokeNextWork(s)))
 {
   if inv(s) && canInvokeNextWork(s) { invokeWork_ensures(s, nextInvokableWork(s).id); }
@@ -305,8 +305,8 @@ lemma settleNextWork_ensures(s: ProviderState)
   ensures (inv(s) ==> canSettleNextWork(s) ==> alwaysWaiterAbortHasNoCallers(settleNextWork(s)))
   ensures (inv(s) ==> canSettleNextWork(s) ==> alwaysStopReachesEveryExecution(settleNextWork(s)))
   ensures (inv(s) ==> canSettleNextWork(s) ==> alwaysCleanedWorkIsInactive(settleNextWork(s)))
-  ensures (inv(s) ==> canSettleNextWork(s) ==> alwaysCreatedWorkHasStarted(settleNextWork(s)))
   ensures (inv(s) ==> canSettleNextWork(s) ==> alwaysProviderDeadlockFree(settleNextWork(s)))
+  ensures (inv(s) ==> canSettleNextWork(s) ==> alwaysCreatedWorkHasStarted(settleNextWork(s)))
   ensures (inv(s) ==> canSettleNextWork(s) ==> stepAbortedWorkCannotStart(s, settleNextWork(s)))
 {
   if inv(s) && canSettleNextWork(s) { settleWork_ensures(s, nextSettleableWork(s).id); }
@@ -320,8 +320,8 @@ lemma cleanNextWork_ensures(s: ProviderState)
   ensures (inv(s) ==> canCleanNextWork(s) ==> alwaysWaiterAbortHasNoCallers(cleanNextWork(s)))
   ensures (inv(s) ==> canCleanNextWork(s) ==> alwaysStopReachesEveryExecution(cleanNextWork(s)))
   ensures (inv(s) ==> canCleanNextWork(s) ==> alwaysCleanedWorkIsInactive(cleanNextWork(s)))
-  ensures (inv(s) ==> canCleanNextWork(s) ==> alwaysCreatedWorkHasStarted(cleanNextWork(s)))
   ensures (inv(s) ==> canCleanNextWork(s) ==> alwaysProviderDeadlockFree(cleanNextWork(s)))
+  ensures (inv(s) ==> canCleanNextWork(s) ==> alwaysCreatedWorkHasStarted(cleanNextWork(s)))
   ensures (inv(s) ==> canCleanNextWork(s) ==> stepAbortedWorkCannotStart(s, cleanNextWork(s)))
 {
   if inv(s) && canCleanNextWork(s) { cleanWork_ensures(s, nextCleanableWork(s).id); }
@@ -398,8 +398,8 @@ lemma receiveResult_ensures(s: ProviderState, caller: int)
   ensures (inv(s) ==> canReceiveResult(s, caller) ==> alwaysWaiterAbortHasNoCallers(receiveResult(s, caller)))
   ensures (inv(s) ==> canReceiveResult(s, caller) ==> alwaysStopReachesEveryExecution(receiveResult(s, caller)))
   ensures (inv(s) ==> canReceiveResult(s, caller) ==> alwaysCleanedWorkIsInactive(receiveResult(s, caller)))
-  ensures (inv(s) ==> canReceiveResult(s, caller) ==> alwaysCreatedWorkHasStarted(receiveResult(s, caller)))
   ensures (inv(s) ==> canReceiveResult(s, caller) ==> alwaysProviderDeadlockFree(receiveResult(s, caller)))
+  ensures (inv(s) ==> canReceiveResult(s, caller) ==> alwaysCreatedWorkHasStarted(receiveResult(s, caller)))
   ensures (inv(s) ==> canReceiveResult(s, caller) ==> stepAbortedWorkCannotStart(s, receiveResult(s, caller)))
 {
   if inv(s) && canReceiveResult(s, caller) {
@@ -428,8 +428,8 @@ lemma detachCancelled_ensures(s: ProviderState, caller: int)
   ensures (inv(s) ==> canDetachCancelled(s, caller) ==> alwaysWaiterAbortHasNoCallers(detachCancelled(s, caller)))
   ensures (inv(s) ==> canDetachCancelled(s, caller) ==> alwaysStopReachesEveryExecution(detachCancelled(s, caller)))
   ensures (inv(s) ==> canDetachCancelled(s, caller) ==> alwaysCleanedWorkIsInactive(detachCancelled(s, caller)))
-  ensures (inv(s) ==> canDetachCancelled(s, caller) ==> alwaysCreatedWorkHasStarted(detachCancelled(s, caller)))
   ensures (inv(s) ==> canDetachCancelled(s, caller) ==> alwaysProviderDeadlockFree(detachCancelled(s, caller)))
+  ensures (inv(s) ==> canDetachCancelled(s, caller) ==> alwaysCreatedWorkHasStarted(detachCancelled(s, caller)))
   ensures (inv(s) ==> canDetachCancelled(s, caller) ==> stepAbortedWorkCannotStart(s, detachCancelled(s, caller)))
 {
   if inv(s) && canDetachCancelled(s, caller) {
@@ -496,8 +496,8 @@ lemma attach_ensures(s: ProviderState, caller: int, keyed: bool)
   ensures (inv(s) ==> canAttach(s, caller, keyed) ==> alwaysWaiterAbortHasNoCallers(attach(s, caller, keyed)))
   ensures (inv(s) ==> canAttach(s, caller, keyed) ==> alwaysStopReachesEveryExecution(attach(s, caller, keyed)))
   ensures (inv(s) ==> canAttach(s, caller, keyed) ==> alwaysCleanedWorkIsInactive(attach(s, caller, keyed)))
-  ensures (inv(s) ==> canAttach(s, caller, keyed) ==> alwaysCreatedWorkHasStarted(attach(s, caller, keyed)))
   ensures (inv(s) ==> canAttach(s, caller, keyed) ==> alwaysProviderDeadlockFree(attach(s, caller, keyed)))
+  ensures (inv(s) ==> canAttach(s, caller, keyed) ==> alwaysCreatedWorkHasStarted(attach(s, caller, keyed)))
   ensures (inv(s) ==> canAttach(s, caller, keyed) ==> stepAbortedWorkCannotStart(s, attach(s, caller, keyed)))
 {
   if inv(s) && canAttach(s, caller, keyed) {
@@ -581,8 +581,8 @@ lemma runNextCallback_ensures(s: ProviderState)
   ensures (inv(s) ==> canRunNextCallback(s) ==> alwaysWaiterAbortHasNoCallers(runNextCallback(s)))
   ensures (inv(s) ==> canRunNextCallback(s) ==> alwaysStopReachesEveryExecution(runNextCallback(s)))
   ensures (inv(s) ==> canRunNextCallback(s) ==> alwaysCleanedWorkIsInactive(runNextCallback(s)))
-  ensures (inv(s) ==> canRunNextCallback(s) ==> alwaysCreatedWorkHasStarted(runNextCallback(s)))
   ensures (inv(s) ==> canRunNextCallback(s) ==> alwaysProviderDeadlockFree(runNextCallback(s)))
+  ensures (inv(s) ==> canRunNextCallback(s) ==> alwaysCreatedWorkHasStarted(runNextCallback(s)))
   ensures (inv(s) ==> canRunNextCallback(s) ==> stepAbortedWorkCannotStart(s, runNextCallback(s)))
 {
   if inv(s) && canRunNextCallback(s) {

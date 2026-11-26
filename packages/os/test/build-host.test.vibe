@@ -135,7 +135,7 @@ effect function consumerWith(prefix: string, tree: Tree) {
 
 const tagOf = (error: unknown) => (error as { readonly _tag?: string })._tag ?? String(error)
 
-it.effect('Generate my app\'s Android host from data: an agent host gets the agent service project, its data files and a specialUse service (spec/os/build/androidHost.md, "Story: Generate my app\'s Android host from data"; spec/os/build/androidHost.md, "The agent entry, its notification and its launch hook need the agent service module and extracted 16 KiB aligned native libraries"; spec/os/build/androidHost.md, "The generated project uses the pinned Gradle, Android Gradle plugin, Kotlin and Java, with the wrapper the record names")', effect () => {
+it.effect(`Generate my app's Android host from data: an agent host gets the agent service project, its data files and a specialUse service (spec/os/build/androidHost.md, "Story: Generate my app's Android host from data"; spec/os/build/androidHost.md, "The agent entry, its notification and its launch hook need the agent service module and extracted 16 KiB aligned native libraries"; spec/os/build/androidHost.md, "The generated project uses the pinned Gradle, Android Gradle plugin, Kotlin and Java, with the wrapper the record names")`, effect () => {
   provide NodeServices.layer {
     const files = try FileSystem.FileSystem
     const path = try Path.Path
@@ -191,7 +191,7 @@ it.effect('Generate my app\'s Android host from data: an agent host gets the age
   }
 })
 
-it.effect('Generate my app\'s Android host from data: a schema-1 resident host maps to os modules and drops what no module was asked for (spec/os/build/androidHost.md, "Story: Generate my app\'s Android host from data"; spec/os/build/androidHost.md, "An os module adds no permission or exported component the profile did not request"; spec/os/build/androidHost.md, "A schema-1 field without a successor is refused when it is set, and an upstream source becomes the os module its path lies in")', effect () => {
+it.effect(`Generate my app's Android host from data: a schema-1 resident host maps to os modules and drops what no module was asked for (spec/os/build/androidHost.md, "Story: Generate my app's Android host from data"; spec/os/build/androidHost.md, "An os module adds no permission or exported component the profile did not request"; spec/os/build/androidHost.md, "A schema-1 field without a successor is refused when it is set, and an upstream source becomes the os module its path lies in")`, effect () => {
   provide NodeServices.layer {
     const path = try Path.Path
     const workspaceTree = { "pnpm-workspace.yaml": "packages:\n  - apps/*\n  - packages/*\n", "packages/capacitor-android/package.json": JSON.stringify({ name: "@capacitor/android" }), "packages/capacitor-android/capacitor/build.gradle": "" }
@@ -226,7 +226,7 @@ it.effect('Generate my app\'s Android host from data: a schema-1 resident host m
   }
 })
 
-it.effect('Generate my app\'s Android host from data: an updater copies file subsets, joins instrumentation tests and regenerates only what it owns (spec/os/build/androidHost.md, "Story: Generate my app\'s Android host from data"; spec/os/build/androidHost.md, "An os module comes from the closed list once, whole or as a subset of its main or androidTest sources, with the os modules it needs"; spec/os/build/androidHost.md, "The output is a directory strictly inside the consumer and outside the os package")', effect () => {
+it.effect(`Generate my app's Android host from data: an updater copies file subsets, joins instrumentation tests and regenerates only what it owns (spec/os/build/androidHost.md, "Story: Generate my app's Android host from data"; spec/os/build/androidHost.md, "An os module comes from the closed list once, whole or as a subset of its main or androidTest sources, with the os modules it needs"; spec/os/build/androidHost.md, "The output is a directory strictly inside the consumer and outside the os package")`, effect () => {
   provide NodeServices.layer {
     const files = try FileSystem.FileSystem
     const path = try Path.Path

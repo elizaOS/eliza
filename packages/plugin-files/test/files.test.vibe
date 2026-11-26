@@ -238,7 +238,7 @@ it.effect('Keep every batch outcome, including the ones I cannot be sure of (spe
   })
 })
 
-it.effect('Open the file I asked for, and only from what I was shown (spec/files/requests.md, "Story: Open the file I asked for, and only from what I was shown"; spec/files/requests.md, "A granted selection opens only for the current request; a late one is released"; spec/files/requests.md, "The view\'s reload never retires the request")', effect () => {
+it.effect(`Open the file I asked for, and only from what I was shown (spec/files/requests.md, "Story: Open the file I asked for, and only from what I was shown"; spec/files/requests.md, "A granted selection opens only for the current request; a late one is released"; spec/files/requests.md, "The view's reload never retires the request")`, effect () => {
   const view = try filesView()
   const released: string[] = []
   const ports = (during: { access?: () => void; select?: () => void } = {}): OpenPorts => ({
@@ -370,7 +370,7 @@ it.effect('Name what Files shows without leaking or guessing a file (spec/files/
   }
 })
 
-it.effect('Keep the agent\'s working files inside its workspace (spec/files/workspace.md, "Story: Keep the agent\'s working files inside its workspace"; spec/files/workspace.md, "A call touches a file only when its real location is inside the workspace, and a write never follows a link")', effect () => {
+it.effect(`Keep the agent's working files inside its workspace (spec/files/workspace.md, "Story: Keep the agent's working files inside its workspace"; spec/files/workspace.md, "A call touches a file only when its real location is inside the workspace, and a write never follows a link")`, effect () => {
   provide NodeServices.layer {
     try scoped(effect {
       const fs = try FileSystem.FileSystem

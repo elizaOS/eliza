@@ -269,7 +269,7 @@ effect function actionParameterSchemaToJsonSchema(
           path: `${path}.*`,
         })
     } else {
-      jsonSchema.additionalProperties = false
+      jsonSchema.additionalProperties = Object.keys(properties).length > 0 ? false : true
     }
   }
 

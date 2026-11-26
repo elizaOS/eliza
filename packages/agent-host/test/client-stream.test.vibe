@@ -11,6 +11,7 @@ import { REPLY_STREAM_PROTOCOL, type ReplyOutcome } from "@elizaos/agent"
 import { cueRule, hostObjects, streamable, withoutWrittenCalls, writtenCallOf } from "../src/conversation/reply-text.vibe"
 import { deviceActionsModuleName } from "../src/device-actions/proposal/module.vibe"
 import { viewsModuleName } from "../src/views/module.vibe"
+import { recordedTurn } from "../src/conversation/tool-record.vibe"
 import { deviceKeyHex } from "./support/device.ts"
 
 module node {
@@ -258,7 +259,7 @@ for (const transport of ["socket", "http"] as const) {
         { cut: { kind: "Dropped" }, broken: { kind: "Dropped" }, preview: { text: "Let me think", provisional: true } }))
     }, 120_000)
 
-    it.live('An account refusal is Done with its failure kind and Cloud\'s own code, and a frame after the terminal one is a protocol failure (spec/agent/conversation/replyStream.md, "Every stream that is not dropped ends with exactly one done or error frame, after which nothing is written"; spec/agent/conversation/turns.md, "A reply that spent credits on a refusal naming Cloud\'s own code carries that code, and every other reply carries none")', effect () => {
+    it.live(`An account refusal is Done with its failure kind and Cloud's own code, and a frame after the terminal one is a protocol failure (spec/agent/conversation/replyStream.md, "Every stream that is not dropped ends with exactly one done or error frame, after which nothing is written"; spec/agent/conversation/turns.md, "A reply that spent credits on a refusal naming Cloud's own code carries that code, and every other reply carries none")`, effect () => {
       const { agent, id } = try streamingConversation(transport, () => insufficientCredits())
       const chunks = try streamed(agent, id, { text: "Answer me." })
       const refused = try read(chunks, 11)
@@ -902,7 +903,7 @@ it.live(`Never see or keep the agent host's notes as a reply, whether the model 
   }))
 }, 120_000)
 
-it.live(`In one long chat, an earlier reply reaches the model with what its tools really did, "go home" after "Browser is open." still runs VIEWS, a refused call is never recorded as done, and no record reaches me in a reply, the stream, the store or Talk (${planning}, "An earlier reply reaches the model with the host's record of the tools its turn ran and how each ended"; ${planning}, "Text that repeats the agent host's notes is never delivered or streamed, and is asked again once as a blank"; spec/agent/conversation/conversations.md, "Redacting replaces the message and every exact copy of its text in its conversation with a fixed notice")`, effect () => {
+it.live(`In one long chat, an earlier reply reaches the model with what its tools really did, "go home" after "Browser is open." still runs VIEWS, each call comes back with its arguments in the order the model wrote them, a refused call is never recorded as done, and no record reaches me in a reply, the stream, the store or Talk (${planning}, "An earlier reply reaches the model with the host's record of the tools its turn ran and how each ended"; ${planning}, "Text that repeats the agent host's notes is never delivered or streamed, and is asked again once as a blank"; spec/agent/conversation/conversations.md, "Redacting replaces the message and every exact copy of its text in its conversation with a fixed notice")`, effect () => {
   const cloud = try cloudFake(deviceKey)
   const agent = try startInProcess({
     launch: {
@@ -934,7 +935,7 @@ it.live(`In one long chat, an earlier reply reaches the model with what its tool
   const opened = try turn({ text: "Open the browser.", metadata: on("home") })
   try Effect.sync(() => cloud.script(toolCalls("", { name: "BROWSER_OPEN", arguments: { url: address } }), text("I can't open that page from here.")))
   const refused = try turn({ text: address, metadata: on("browser") })
-  try Effect.sync(() => cloud.script(toolCalls("", show("Home")), text("Home.")))
+  try Effect.sync(() => cloud.script(toolCalls("", { name: "VIEWS", arguments: { view: "Home", action: "show" } }), text("Home.")))
   const home = try turn({ text: "Go home.", metadata: on("notes") })
   const homeAsked = asked(home.firstCall)
   try Effect.sync(() => cloud.script(text("[answer] I haven't changed the screen.")))
@@ -981,10 +982,20 @@ it.live(`In one long chat, an earlier reply reaches the model with what its tool
     redacted: [200, 200],
     afterRedaction: [
       'VIEWS({"action":"show","view":"Browser"})', "-> done", 'BROWSER_OPEN({"url":"[Private information removed]"})', "-> refused, did not run",
-      'VIEWS({"action":"show","view":"Home"})', "-> done",
+      'VIEWS({"view":"Home","action":"show"})', "-> done",
     ],
     addressGone: true,
     storedReplies: ["Browser is open.", "I can't open that page from here.", "Home.", "I haven't changed the screen.", "Noted.", "You're welcome."],
     storeHoldsNoRecord: true,
   }))
+  const recordOf = (args: unknown) => recordedTurn({ steps: [{ action: "NOTES_CREATE", args, outcome: "RecordedDone" }], more: 0 }, false, "reply-1")[0]?.toolCalls?.map(({ arguments: given }) => JSON.stringify(given))
+  assert.deepStrictEqual([
+    recordOf([["content", "Shopping List"], ["checklist", '["milk"]']]),
+    recordOf({ content: "Shopping List", checklist: '["milk"]' }),
+    recordOf([["content"]]),
+  ], [
+    ['{"content":"Shopping List","checklist":"[\\"milk\\"]"}'],
+    ['{"checklist":"[\\"milk\\"]","content":"Shopping List"}'],
+    undefined,
+  ])
 }, 120_000)

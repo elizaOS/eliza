@@ -1,0 +1,154 @@
+// spec/openai/index.md, "Tokenizer cache keys distinguish concrete model encodings"
+import { ModelType, type DetokenizeTextParams, type IAgentRuntime, type ModelTypeName, type TokenizeTextParams } from "@elizaos/core"
+import { openAiFallbackEncoding, openAiTokenizerKey } from "../gen/openai.effect.vibe"
+import {
+  getActionPlannerModel,
+  getLargeModel,
+  getMediumModel,
+  getMegaModel,
+  getNanoModel,
+  getReasoningLargeModel,
+  getReasoningSmallModel,
+  getResponseHandlerModel,
+  getSmallModel,
+} from "./config.vibe"
+import { OpenAiFailure } from "./errors.vibe"
+
+export type SupportedTiktokenEncoding = "cl100k_base" | "o200k_base" | "gpt2" | "r50k_base" | "p50k_base" | "p50k_edit"
+
+module node {
+  import { getEncoding, getEncodingNameForModel, type TiktokenEncoding, type TiktokenModel } from "js-tiktoken"
+
+  export interface BpeEncoder {
+    encode(text: string): number[]
+    decode(tokens: number[]): string
+  }
+
+  const loadedEncoders = new Map<TiktokenEncoding, Promise<BpeEncoder>>()
+
+  /** @throws {never} */
+  export function lookupModelEncoding(modelName: string): string {
+    try {
+      return getEncodingNameForModel(modelName as TiktokenModel)
+    } catch {
+      return ""
+    }
+  }
+
+  export function loadEncoder(encoding: TiktokenEncoding): Promise<BpeEncoder> {
+    let pending = loadedEncoders.get(encoding)
+    if (!pending) {
+      pending = Promise.resolve().then(() => {
+        const enc = getEncoding(encoding)
+        return {
+          encode: (text: string) => enc.encode(text),
+          decode: (tokens: number[]) => enc.decode(tokens),
+        }
+      })
+      void pending.catch(() => {
+        if (loadedEncoders.get(encoding) === pending) {
+          loadedEncoders.delete(encoding)
+        }
+      })
+      loadedEncoders.set(encoding, pending)
+    }
+    return pending
+  }
+
+  /** @throws {never} */
+  export function loadedEncodingNames(): TiktokenEncoding[] {
+    return [...loadedEncoders.keys()]
+  }
+}
+import { loadEncoder, loadedEncodingNames, lookupModelEncoding, type BpeEncoder } from node
+
+export { loadEncoder, loadedEncodingNames, type BpeEncoder }
+
+const VALID_ENCODINGS: ReadonlySet<string> = new Set([
+  "cl100k_base",
+  "o200k_base",
+  "gpt2",
+  "r50k_base",
+  "p50k_base",
+  "p50k_edit",
+])
+
+function isModernO200kModel(modelName: string): boolean {
+  const normalized = modelName.trim().toLowerCase()
+  return (
+    normalized.includes("4o")
+    || normalized.includes("gpt-5")
+    || normalized.includes("gpt-4.1")
+    || /(?:^|[/:_-])o[134](?:$|[/:_-])/.test(normalized)
+  )
+}
+
+export function resolveTokenizerEncodingName(modelName: string): SupportedTiktokenEncoding {
+  const fallback = openAiFallbackEncoding(isModernO200kModel(modelName))
+  const resolved = openAiTokenizerKey(lookupModelEncoding(modelName), fallback)
+  return VALID_ENCODINGS.has(resolved) ? (resolved as SupportedTiktokenEncoding) : "cl100k_base"
+}
+
+function modelNameForSlot(runtime: IAgentRuntime, modelType: ModelTypeName): string {
+  switch (String(modelType)) {
+    case ModelType.TEXT_NANO:
+      return getNanoModel(runtime)
+    case ModelType.TEXT_SMALL:
+      return getSmallModel(runtime)
+    case ModelType.TEXT_MEDIUM:
+      return getMediumModel(runtime)
+    case ModelType.TEXT_MEGA:
+      return getMegaModel(runtime)
+    case ModelType.RESPONSE_HANDLER:
+      return getResponseHandlerModel(runtime)
+    case ModelType.ACTION_PLANNER:
+      return getActionPlannerModel(runtime)
+    case ModelType.TEXT_REASONING_SMALL:
+      return getReasoningSmallModel(runtime)
+    case ModelType.TEXT_REASONING_LARGE:
+      return getReasoningLargeModel(runtime)
+    default:
+      return getLargeModel(runtime)
+  }
+}
+
+effect function resolveSlotEncoder(runtime: IAgentRuntime, modelType: ModelTypeName): BpeEncoder!OpenAiFailure {
+  const encoding = resolveTokenizerEncodingName(modelNameForSlot(runtime, modelType))
+  return try tryPromise({
+    try: () => loadEncoder(encoding),
+    catch: (cause) => new OpenAiFailure({ reason: `Failed to initialize tokenizer encoding ${encoding}.`, retryable: false, cause }),
+  })
+}
+
+export function handleTokenizerEncode(runtime: IAgentRuntime, params: TokenizeTextParams): Promise<number[]> {
+  return runPromise(effect {
+    if (!params.prompt) {
+      throw new OpenAiFailure({ reason: "Tokenization requires a non-empty prompt.", retryable: false })
+    }
+    const encoder = try resolveSlotEncoder(runtime, params.modelType)
+    return try Effect.try({
+      try: () => encoder.encode(params.prompt),
+      catch: (cause) => new OpenAiFailure({ reason: "Failed to encode tokens.", retryable: false, cause }),
+    })
+  })
+}
+
+export function handleTokenizerDecode(runtime: IAgentRuntime, params: DetokenizeTextParams): Promise<string> {
+  return runPromise(effect {
+    if (!params.tokens || !Array.isArray(params.tokens)) {
+      throw new OpenAiFailure({ reason: "Detokenization requires a valid tokens array.", retryable: false })
+    }
+    if (params.tokens.length === 0) return ""
+    for (let i = 0; i < params.tokens.length; i++) {
+      const token = params.tokens[i]
+      if (typeof token !== "number" || !Number.isFinite(token)) {
+        throw new OpenAiFailure({ reason: `Invalid token at index ${i}: expected finite number.`, retryable: false })
+      }
+    }
+    const encoder = try resolveSlotEncoder(runtime, params.modelType)
+    return try Effect.try({
+      try: () => encoder.decode(params.tokens),
+      catch: (cause) => new OpenAiFailure({ reason: "Failed to decode tokens.", retryable: false, cause }),
+    })
+  })
+}
