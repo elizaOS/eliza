@@ -1,14 +1,17 @@
-// spec/cloud/deployment.md, "A Worker answers a path from the server's route table first, and its Worker-only routes only for a path the table does not serve"; spec/cloud/index.md, "Story: Sign in to the Cloud"; spec/cloud/index.md, "Story: Back up my passwords for another device"; spec/cloud/index.md, "Story: Ask for a bounded decision about a browser page"
+// spec/cloud/deployment.md, "A Worker routes the declared Grace Google mount, then the server table, then Worker-only paths"; spec/cloud/index.md, "Story: Sign in to the Cloud"; spec/cloud/index.md, "Story: Back up my passwords for another device"; spec/cloud/index.md, "Story: Ask for a bounded decision about a browser page"
 import type { Client } from "pg"
 import { CLEF_DECISIONS_PATH } from "@elizaos/cloud"
 import { clefRequest, type ClefEnv } from "../clef-worker.vibe"
-import { deviceAttachmentPath, googleRequest, googleResponse, reminderSchedule, selectedAttachmentPath, type GoogleEnv } from "../google.vibe"
+import { browserGoogleCallbackPath, deviceAttachmentPath, googleRequest, googleResponse, reminderSchedule, selectedAttachmentPath, type GoogleEnv } from "../google.vibe"
+import { authenticate } from "../http/request-auth.vibe"
+import { refusalResponse, refused } from "../http/refusal.vibe"
 import { cloudCredential, identityRequest, inferenceAccount, leaseAccount, sessionAccount, type IdentityEnv } from "../identity.vibe"
 import { bearerToken, leaseAccessPattern } from "../identity/sessions.vibe"
 import { ownsPasswordBackupPath } from "../password-backup.vibe"
 import { inboxArrivalPath } from "../services/google/inbox-arrival.vibe"
+import { Store } from "../store/connection.vibe"
 import { limitedBody, WorkerHeaders, WorkerResponse, withRequestBody } from "../worker-platform.ts"
-import { withCloudDatabase, type WorkerDatabase } from "../worker-store.vibe"
+import { clientStore, withCloudDatabase, type WorkerDatabase } from "../worker-store.vibe"
 
 export type LegacyBindings = ClefEnv & IdentityEnv & GoogleEnv & WorkerDatabase
 
@@ -25,11 +28,75 @@ interface WorkerOnlyRoute<E extends LegacyBindings> {
 }
 
 const remindersPath = "/api/v1/calendar-reminders/device"
-const compatibleGmailPaths: ReadonlySet<string> = new Set([
+const mailLeaseReads = [
   "/api/v1/eliza/google/status", "/api/v1/eliza/google/gmail/triage", "/api/v1/eliza/google/gmail/search", "/api/v1/eliza/google/gmail/read",
-  "/api/v1/eliza/google/calendar/feed", inboxArrivalPath,
+  "/api/v1/eliza/google/calendar/feed",
+]
+const compatibleGmailPaths: ReadonlySet<string> = new Set([...mailLeaseReads, inboxArrivalPath])
+type GraceGoogleAccess = "Browser" | "MailLease" | "Arrival" | "Callback"
+type GraceGoogleRoute = readonly [method: "GET" | "POST", access: GraceGoogleAccess]
+const graceGoogleRoutes = new Map<string, GraceGoogleRoute>([
+  ...mailLeaseReads.map((path) => [path, ["GET", "MailLease"]] as const),
+  [inboxArrivalPath, ["GET", "Arrival"]],
+  [selectedAttachmentPath, ["GET", "Browser"]],
+  [browserGoogleCallbackPath, ["GET", "Callback"]],
+  ["/api/v1/eliza/google/gmail/send/status", ["GET", "Browser"]],
+  ["/api/v1/eliza/google/calendar/series", ["GET", "Browser"]],
+  ["/api/v1/eliza/google/calendar/reminder/event", ["GET", "Browser"]],
+  ["/api/v1/eliza/google/connect/initiate", ["POST", "Browser"]],
+  ["/api/v1/eliza/google/disconnect", ["POST", "Browser"]],
+  ["/api/v1/eliza/google/gmail/trash", ["POST", "Browser"]],
+  ["/api/v1/eliza/google/gmail/send", ["POST", "Browser"]],
+  ["/api/v1/eliza/google/calendar/reminder", ["POST", "Browser"]],
+  ["/api/v1/eliza/google/calendar/change", ["POST", "Browser"]],
 ])
 const refusal = (status: number, error: string) => WorkerResponse.json({ error }, { status })
+
+export function graceGoogleRoute(method: string, path: string): GraceGoogleAccess | undefined {
+  const route = graceGoogleRoutes.get(path)
+  return route !== undefined && (method === route[0] || method === "OPTIONS") ? route[1] : undefined
+}
+
+function admitGraceDevice(request: Request, db: Client, access: "MailLease" | "Arrival", countRequest = true) {
+  return runPromise(effect {
+    const now = try Clock.currentTimeMillis
+    provide Layer.effect(Store, clientStore(db)) {
+      const authenticateDevice = effect {
+        const caller = try authenticate(request.headers.get("authorization") ?? undefined, access === "MailLease" ? "MailAccess" : "ServiceAccess", countRequest)
+        if ((access === "MailLease" && caller.kind === "lease") || (access === "Arrival" && caller.kind === "deviceKey")) {
+          return { kind: "Admitted", owner: caller.userId } as const
+        }
+        throw refused("AuthenticationRequired", "CredentialUnknown")
+      }
+      return authenticateDevice catch effect (error) => {
+        const result = error._tag === "Refused" ? error : refused("ServiceUnavailable", "NoReason", now + 5000)
+        return { kind: "Refused", response: HttpServerResponse.toWeb(refusalResponse(result.refusal, now)) } as const
+      }
+    }
+  })
+}
+
+async function graceGoogleRequest<E extends LegacyBindings>(request: Request, env: E, db: Client, ports: WorkerPorts<E>, access: GraceGoogleAccess) {
+  const browser = !request.headers.has("authorization")
+  const origin = request.headers.get("origin")
+  if (browser && origin !== env.WEB_ORIGIN && !(access === "Callback" && origin === null)) return refusal(403, "forbidden_origin")
+  if (!browser && access !== "MailLease" && access !== "Arrival") return refusal(401, "authentication_required")
+  const credential = access === "Arrival" ? await cloudCredential(request) : null
+  const account = () => browser ? sessionAccount(request, db) : inferenceAccount(request, db, env, "recorded")
+  const admission = !browser && (access === "MailLease" || access === "Arrival") ? await admitGraceDevice(request, db, access) : undefined
+  if (admission?.kind === "Refused") return admission.response
+  const owner = admission !== undefined && access === "MailLease" ? admission.owner : await account()
+  if (!owner || (admission !== undefined && owner !== admission.owner)) return refusal(401, "authentication_required")
+  const current = async () => await account() === owner
+  const response = await googleRequest(request, env, db, owner, ports.providerFetch, credential === null ? undefined : { credential, current })
+  if (!response.ok || request.method !== "GET" || access === "Arrival") return response
+  if (!browser) {
+    const held = await admitGraceDevice(request, db, "MailLease", false)
+    if (held.kind === "Refused") return held.response
+    return held.owner === owner ? response : refusal(401, "authentication_required")
+  }
+  return await current() ? response : refusal(401, "authentication_required")
+}
 
 export async function legacyGmailResponse(request: Request, routePath: string, env: LegacyBindings, db: Client, providerFetch: typeof fetch): Promise<HttpServerResponse.HttpServerResponse | undefined> {
   if (request.method !== "GET" || !compatibleGmailPaths.has(routePath)) return undefined
@@ -143,19 +210,21 @@ function corsFor(request: Request, env: LegacyBindings, path: string) {
   return { origin, cors, foreign: origin !== null && origin !== env.WEB_ORIGIN && origin !== env.PUBLIC_API_ORIGIN }
 }
 
-export async function workerOnlyRequest<E extends LegacyBindings>(request: Request, env: E, ports: WorkerPorts<E>): Promise<Response> {
-  const path = new URL(request.url).pathname
+export async function workerOnlyRequest<E extends LegacyBindings>(request: Request, env: E, ports: WorkerPorts<E>, google?: { access: GraceGoogleAccess; enabled: boolean }): Promise<Response> {
+  const { origin: destination, pathname: path } = new URL(request.url)
   const route = workerOnlyRoutes<E>().find((each) => each.owns(path, ports))
   const { origin, cors, foreign } = corsFor(request, env, path)
   if (foreign) return WorkerResponse.json({ error: "forbidden_origin" }, { status: 403 })
+  if (google !== undefined && (destination !== env.PUBLIC_API_ORIGIN || !google.enabled)) return WorkerResponse.json({ error: "capability_unavailable" }, { status: 404, headers: cors })
   if (request.method === "OPTIONS") return new WorkerResponse(null, { status: 204, headers: cors })
   if (request.method !== "GET" && !origin && !request.headers.has("authorization") &&
       path !== "/api/auth/device/exchange" && !ownsPasswordBackupPath(path)) {
     return WorkerResponse.json({ error: "origin_required" }, { status: 403, headers: cors })
   }
-  if (route === undefined) return WorkerResponse.json({ error: "route_not_found" }, { status: 404, headers: cors })
+  const serve = google === undefined ? route?.serve : (request: Request, env: E, db: Client, ports: WorkerPorts<E>) => graceGoogleRequest(request, env, db, ports, google.access)
+  if (serve === undefined) return WorkerResponse.json({ error: "route_not_found" }, { status: 404, headers: cors })
   try {
-    const result = await withCloudDatabase(env, (db) => route.serve(request, env, db, ports))
+    const result = await withCloudDatabase(env, (db) => serve(request, env, db, ports))
     const headers = new WorkerHeaders(result.headers)
     for (const [key, value] of cors) headers.set(key, value)
     return new WorkerResponse(result.body, { status: result.status, headers })
