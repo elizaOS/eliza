@@ -48,13 +48,14 @@ module node {
     const tools = body?.tools ?? []
     const tool = tools.find(({ function: called }) => called?.name === proposeTool)?.function
     const messages = body?.messages ?? []
+    const userMessage = messages.findLastIndex(({ role }) => role === "user")
     return {
       types: [...new Set(tool?.parameters?.properties?.operation?.anyOf?.flatMap((form) => form.properties?.type?.enum ?? []) ?? [])].toSorted(),
       description: tool?.description ?? "",
       views: tools.some(({ function: called }) => called?.name === "VIEWS"),
       tools: JSON.stringify(tools),
       note: JSON.stringify(messages.filter(({ role }) => role === "user").at(-1)?.content ?? ""),
-      ranFirst: messages.some((said) => said.role === "assistant" && JSON.stringify(said).includes("camera_capture_photo")),
+      ranFirst: messages.slice(userMessage + 1).some((said) => said.role === "assistant" && JSON.stringify(said).includes("camera_capture_photo")),
     }
   }
 

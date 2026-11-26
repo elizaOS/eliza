@@ -1,4 +1,4 @@
-// spec/agent/conversation/conversations.md, "Story: Remove private text I sent by mistake"; spec/agent/conversation/conversations.md, "Redacting replaces the message and every exact copy of its text in its conversation with a fixed notice"; spec/agent/conversation/conversations.md, "No message is ever removed, and only redaction changes one"
+// spec/agent/conversation/conversations.md, "Story: Remove private text I sent by mistake"; spec/agent/conversation/conversations.md, "Redacting replaces the message and every exact copy of its text in its conversation with a fixed notice"; spec/agent/conversation/conversations.md, "No message is ever removed, and only redaction changes one"; spec/agent/conversation/planning.md, "An earlier reply reaches the model with the host's record of the tools its turn ran and how each ended"
 module node {
   import { Schema } from "effect"
   import type { AgentRuntime, Content, IDatabaseAdapter, Log, LogBody, UUID } from "@elizaos/core"
@@ -7,6 +7,7 @@ module node {
   import type { ConversationRecord, ConversationStore } from "./conversations.vibe"
   import { conversationModel, modelIdOf, placedMessages } from "./fork.vibe"
   import { messageView, textSegmentIds } from "./history.vibe"
+  import { scrubToolRecord, toolRecordHolds } from "./tool-record.vibe"
 
   export type RedactResult =
     | { readonly kind: "unknown" }
@@ -17,7 +18,7 @@ module node {
   const Request = Schema.Struct({ expectedText: Schema.String.check(Schema.isMinLength(1)) })
   const requestBody = Schema.decodeUnknownOption(Request, { onExcessProperty: "error" })
   const failure = (status: number, error: string) => ({ status, body: { error } })
-  const noticeOnly = ({ messageTextSource: _source, ...content }: Content): Content => ({ ...content, text: privateNotice })
+  const noticeOnly = ({ messageTextSource: _source, toolRecord: _record, ...content }: Content): Content => ({ ...content, text: privateNotice })
 
   function scrubbed(value: unknown, text: string): unknown {
     if (typeof value === "string") return value.replaceAll(text, privateNotice)
@@ -54,10 +55,12 @@ module node {
         case "RedactNow": {
           const after = redact(model, 1, asked, expectedText).messages
           const changed = placed.filter(({ message }, index) => message.body.tag !== after[index].body.tag)
+          const recorded = placed.filter(({ memory }) => !changed.some((entry) => entry.memory.id === memory.id) && toolRecordHolds(memory.content.toolRecord, expectedText))
           const logs = await scrubLogs(adapter, record, expectedText)
-          await adapter.updateMemories(changed.map(({ memory }) => ({
-            id: memory.id, content: noticeOnly(memory.content), embedding: undefined,
-          })))
+          await adapter.updateMemories([
+            ...changed.map(({ memory }) => ({ id: memory.id, content: noticeOnly(memory.content), embedding: undefined })),
+            ...recorded.map(({ memory }) => ({ id: memory.id, content: { ...memory.content, toolRecord: scrubToolRecord(memory.content.toolRecord, expectedText, privateNotice) } })),
+          ])
           const segments = changed.flatMap(({ memory }) => textSegmentIds(memory))
           if (segments.length > 0) await adapter.deleteMemories(segments)
           return { kind: "redacted", messages: changed.length, logs }

@@ -59,7 +59,7 @@ export interface StripeCheckoutSession {
   readonly metadata: Metadata;
   subscription: string | null;
   invoice: string | null;
-  readonly ui_mode: "hosted" | "embedded";
+  readonly ui_mode: "hosted_page" | "embedded_page";
   url: string | null;
   client_secret: string | null;
   readonly success_url: string | null;
@@ -474,19 +474,22 @@ export function createStripeFake(options: StripeFakeOptions = {}): StripeFake {
     if (!Number.isInteger(expiresAt) || expiresAt < created + 1_800 || expiresAt > created + 86_400) {
       return refuse(400, "The `expires_at` timestamp must be between 30 minutes and 24 hours from the Checkout Session's creation.", { param: "expires_at" });
     }
-    const uiMode = text(form, "ui_mode") ?? "hosted";
-    if (uiMode !== "hosted" && uiMode !== "embedded") return refuse(400, `Invalid ui_mode: ${uiMode}`, { param: "ui_mode" });
+    const uiMode = text(form, "ui_mode") ?? "hosted_page";
+    if (uiMode !== "hosted_page" && uiMode !== "embedded_page") return refuse(400, `Invalid ui_mode: ${uiMode}`, { param: "ui_mode" });
+    const embedded = uiMode === "embedded_page";
     const redirect = text(form, "redirect_on_completion");
     if (redirect !== undefined && redirect !== "always" && redirect !== "if_required" && redirect !== "never") return refuse(400, `Invalid redirect_on_completion: ${redirect}`, { param: "redirect_on_completion" });
     const successUrl = text(form, "success_url") ?? null;
     const cancelUrl = text(form, "cancel_url") ?? null;
     const returnUrl = text(form, "return_url") ?? null;
-    if (uiMode === "embedded" && (successUrl !== null || cancelUrl !== null)) return refuse(400, "success_url and cancel_url are not allowed with ui_mode embedded.", { param: successUrl === null ? "cancel_url" : "success_url" });
-    if (uiMode === "embedded" && returnUrl === null && redirect !== "never") return refuse(400, "return_url is required with ui_mode embedded unless redirect_on_completion is never.", { param: "return_url" });
-    if (uiMode === "hosted" && successUrl === null) return refuse(400, "Missing required param: success_url.", { param: "success_url" });
-    if (uiMode === "hosted" && returnUrl !== null) return refuse(400, "return_url is only allowed with ui_mode embedded.", { param: "return_url" });
+    if (embedded && (successUrl !== null || cancelUrl !== null)) return refuse(400, "success_url and cancel_url are not allowed with ui_mode embedded_page.", { param: successUrl === null ? "cancel_url" : "success_url" });
+    if (embedded && returnUrl === null && redirect !== "never") return refuse(400, "return_url is required with ui_mode embedded_page unless redirect_on_completion is never.", { param: "return_url" });
+    if (!embedded && successUrl === null) return refuse(400, "Missing required param: success_url.", { param: "success_url" });
+    if (!embedded && returnUrl !== null) return refuse(400, "return_url is only allowed with ui_mode embedded_page.", { param: "return_url" });
+    if (form.payment_method_types !== undefined) return refuse(400, "Unknown parameter: payment_method_types.", { param: "payment_method_types" });
+    const methods = form.allowed_payment_method_types;
+    if (methods !== undefined && (!Array.isArray(methods) || methods.length !== 1 || methods[0] !== "card")) return refuse(400, "The fake sells card-only Checkout Sessions.", { param: "allowed_payment_method_types" });
     const id = nextId("checkout.session");
-    const methods = strings(form, "payment_method_types");
     const session = keep<StripeCheckoutSession>({
       id,
       object: "checkout.session",
@@ -499,13 +502,13 @@ export function createStripeFake(options: StripeFakeOptions = {}): StripeFake {
       subscription: null,
       invoice: null,
       ui_mode: uiMode,
-      url: uiMode === "hosted" ? `https://checkout.stripe.com/c/pay/${id}` : null,
-      client_secret: uiMode === "embedded" ? `${id}_secret_fake` : null,
+      url: embedded ? null : `https://checkout.stripe.com/c/pay/${id}`,
+      client_secret: embedded ? `${id}_secret_fake` : null,
       success_url: successUrl,
       cancel_url: cancelUrl,
       return_url: returnUrl,
-      redirect_on_completion: uiMode === "embedded" ? (redirect ?? "always") : null,
-      payment_method_types: methods.length > 0 ? methods : ["card"],
+      redirect_on_completion: embedded ? (redirect ?? "always") : null,
+      payment_method_types: ["card"],
       allow_promotion_codes: text(form, "allow_promotion_codes") === "true",
       currency: "usd",
       amount_subtotal: price.unit_amount,
