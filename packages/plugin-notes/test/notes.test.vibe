@@ -274,11 +274,12 @@ it.effect(`Keep notes as one collection edited only on the owner's words (spec/n
   const described = (name: string) => (plugin.actions ?? []).find((candidate) => candidate.name === name)
   assert.deepEqual([
     described("NOTES_CREATE")?.description.includes("A new checklist the owner asks for is a creation, never items added to a checklist already saved: put the title the owner gave it alone in content and the owner's items, in their order, in checklist"),
-    described("NOTES_CREATE")?.description.includes(`at most ${noteLimits.checklistItems} items of at most ${noteLimits.checklistItem} characters each. When the owner gave the checklist no title, ask what to call it instead of creating it.`),
+    described("NOTES_CREATE")?.description.includes(`at most ${noteLimits.checklistItems} items of at most ${noteLimits.checklistItem} characters each.`) && described("NOTES_CREATE")?.description.includes("When the owner gave the checklist no title, ask what to call it instead of creating it."),
+    described("NOTES_CREATE")?.description.includes("Adding an item to a named list that has no note yet (e.g. add milk to my shopping list) creates that list as a checklist: its name alone in content, the item in checklist."),
     described("NOTES_CREATE")?.parameters?.some((parameter) => parameter.name === "checklist" && parameter.schema.items?.maxLength === noteLimits.checklistItem),
     described("NOTES_UPDATE")?.description.includes("adds one list item in the note's own form, to a note the owner named, never as a new checklist the owner asked for (that is NOTES_CREATE with checklist)"),
     described("NOTES_GET")?.description.includes("A title no saved note has reads nothing and never cites another note in its place: when one saved note's title holds those words, it names that note's noteId, which you read to answer about, show or open the note when it is plainly the note meant; before changing or deleting it, or when it may not be the one, ask the owner which note they mean."),
-  ], [true, true, true, true, true])
+  ], [true, true, true, true, true, true])
   const getting = action(plugin, "NOTES_GET")
   const weekend = try notes.create({ content: "Weekend\nbring the gear bag" })
   const absentTitle = try getting(message("what's in my gear note"), { title: "gear" })
