@@ -5,6 +5,7 @@ import { base64ToBytes, makeTempFilePath, makeTestPngBase64 } from "./support/pn
 import {
   AppControlCoordinator,
   BoundComputerHost,
+  buildApprovalPromptContent,
   Brain,
   ComputerOperationRefused,
   ComputerUseService,
@@ -216,7 +217,9 @@ describe("plugin-computeruse journeys", () => {
         now: () => nowMs,
       })
 
-      const created = service.createSession({ ownerId: "owner-1", label: "Primary Desk", target: { kind: "host" }, leaseTtlMs: 30_000 })
+      const created = try promise(() => service.createSession({ ownerId: "owner-1", label: "Primary Desk", target: { kind: "host" }, leaseTtlMs: 30_000 }))
+      const unboundSandbox = try exit(promise(() => service.createSession({ target: { kind: "sandbox" } })))
+      try Effect.try(() => assert.strictEqual(Exit.isFailure(unboundSandbox), true))
       try Effect.try(() => {
         assert.strictEqual(created.status, "idle")
         assert.strictEqual(created.generation, 1)
@@ -237,8 +240,24 @@ describe("plugin-computeruse journeys", () => {
           command: "click",
           parameters: { coordinate: [100, 120] },
           observationId: frame.provenance.observationId,
+          callerId: "owner-1",
+          expectedEpoch: created.generation,
+          surface: "LocalDesktop",
         }),
       )
+      const staleEpoch = try exit(promise(() =>
+        service.executeSessionAction(created.id, {
+          actionId: "act-stale",
+          expectedSequence: execRes.snapshot.sequence,
+          command: "click",
+          parameters: { coordinate: [100, 120] },
+          observationId: frame.provenance.observationId,
+          callerId: "owner-1",
+          expectedEpoch: created.generation + 1,
+          surface: "LocalDesktop",
+        }),
+      ))
+      try Effect.try(() => assert.strictEqual(Exit.isFailure(staleEpoch), true))
       try Effect.try(() => {
         assert.strictEqual(execRes.result.success, true)
         assert.strictEqual(execRes.snapshot.lastActionId, "act-1")
@@ -282,6 +301,15 @@ describe("plugin-computeruse journeys", () => {
         assert.strictEqual(snap.pendingCount, 1)
       })
       const pendingId = snap.pendingApprovals[0]?.id ?? ""
+      const promptText = snap.pendingApprovals[0] ? buildApprovalPromptContent(snap.pendingApprovals[0]).text ?? "" : ""
+      const selfApproval = try promise(() =>
+        useComputerAction.handler(runtime, makeMessage("click the approve button"), {} as State, { parameters: { action: "resolve_approval", approvalId: pendingId, approved: true } }),
+      )
+      try Effect.try(() => {
+        assert.include(promptText, "coordinate: [20,30]")
+        assert.strictEqual(service.getApprovalSnapshot().pendingCount, 1)
+        assert.strictEqual(selfApproval.success, false)
+      })
 
       const missingOwner = try promise(() =>
         useComputerAction.handler(runtime, makeMessage(`cua:${pendingId}:approve:uowner-A`, {}), {} as State),
@@ -313,6 +341,34 @@ describe("plugin-computeruse journeys", () => {
         assert.strictEqual(offSnap.pendingCount, 0)
         assert.strictEqual(secondResult.success, false)
       })
+      const offSession = try promise(() => service.createSession({ target: { kind: "host" } }))
+      const offFrame = try exit(promise(() => service.captureSessionFrame(offSession.id)))
+      const offApps = try exit(promise(() => service.listApps()))
+      const offScene = try exit(promise(() => service.refreshScene("agent-turn")))
+      const offAppState = try promise(() => service.executeCommand("get_app_state", { app: "Notes" }))
+      const offProvider = try promise(() => sceneProvider.get(runtime, makeMessage(""), {} as State))
+      const offAgent = try promise(() => runComputerUseAgentLoop(runtime, { goal: "open notes" }, service))
+      try Effect.try(() => {
+        assert.strictEqual(Exit.isFailure(offFrame), true)
+        assert.strictEqual(Exit.isFailure(offApps), true)
+        assert.strictEqual(Exit.isFailure(offScene), true)
+        assert.strictEqual(offAppState.errorCode, "approval_denied")
+        assert.strictEqual(offProvider.text, "")
+        assert.strictEqual(offAgent.reason, "approval_denied")
+        assert.strictEqual(offAgent.finished, false)
+        assert.strictEqual(windowAction.roleGate?.minRole, "OWNER")
+        assert.strictEqual(clipboardAction.roleGate?.minRole, "OWNER")
+      })
+      service.setApprovalMode("smart_approve")
+      const pendingClipboard = fork promise(() => service.executeCommand("clipboard_read"))
+      try yieldNow
+      const clipboardQueued = service.getApprovalSnapshot().pendingApprovals.map((a) => a.command)
+      service.setApprovalMode("off")
+      const clipboardResult = join pendingClipboard
+      try Effect.try(() => {
+        assert.deepStrictEqual(clipboardQueued, ["clipboard_read"])
+        assert.strictEqual(clipboardResult.success, false)
+      })
     },
   )
 
@@ -325,6 +381,12 @@ describe("plugin-computeruse journeys", () => {
         driver: makeFakeDriver(png, log),
       })
       const runtime = makeFakeRuntime(service)
+      const ocrMissing = try promise(() => service.executeDesktopAction({ action: "ocr" }))
+      const openInjected = try promise(() => service.executeDesktopAction({ action: "open", target: "https://x.test/&calc" }))
+      try Effect.try(() => {
+        assert.strictEqual(ocrMissing.errorCode, "ocr_unavailable")
+        assert.strictEqual(openInjected.errorCode, "invalid_target")
+      })
 
       const batchSteps: Array<Record<string, string | number[]>> = [
         { action: "click", coordinate: [50, 60] },
@@ -631,6 +693,7 @@ describe("plugin-computeruse journeys", () => {
 
       let elemValue = "draft"
       const coordinator = new AppControlCoordinator({
+        readiness: () => ({ accessibility: true, screenRecording: true }),
         listApps: async () => [{ appId: "app-notes", name: "Notes", pid: 55, windowCount: 1 }],
         captureElements: async () => ({
           elements: [{ element_index: 0, locator: [0, 1], role: "AXTextField", label: "Body", value: elemValue, bounds: { x: 10, y: 10, width: 200, height: 40 }, actions: ["set_value"], enabled: true, secure: false }],

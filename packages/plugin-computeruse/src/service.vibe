@@ -1,12 +1,12 @@
-// spec/computerUse/index.md, "Story: Control an authorized computer session"; spec/computerUse/batching.md, "Story: Execute a bounded sequence of desktop actions in a single LLM turn"; spec/computerUse/approvals.md, "Story: Gate computer-use commands by approval mode and operator decisions"
-import { Service, type IAgentRuntime } from "@elizaos/core"
+// spec/computerUse/index.md, "Story: Control an authorized computer session"; spec/computerUse/batching.md, "Story: Execute a bounded sequence of desktop actions in a single LLM turn"; spec/computerUse/approvals.md, "Story: Gate computer-use commands by approval mode and operator decisions"; spec/computerUse/index.md, "A session grants only the operations its bound target can carry out, and each command is its own operation"
+import { ElizaError, Service, type IAgentRuntime } from "@elizaos/core"
 import {
   apply as applyBatch,
   initial as initialBatchMachine,
   type BatchMachine,
   type Event as BatchEvent,
 } from "../gen/computerUse__batching.effect.vibe"
-import { AppControlCoordinator } from "./app-control.vibe"
+import { AppControlCoordinator, AppControlError } from "./app-control.vibe"
 import { ComputerUseApprovalManager, isApprovalMode } from "./approvals.vibe"
 import {
   appendNativeFile,
@@ -67,9 +67,11 @@ import {
   validateCoordinate,
   validateFilePath,
   validateKeypress,
+  validateOpenTarget,
   validateText,
 } from "./security.vibe"
 import {
+  ComputerUseSessionError,
   ComputerUseSessionManager,
   type ComputerUseSessionAction,
   type ComputerUseSessionActionResult,
@@ -252,7 +254,7 @@ export class ComputerUseService extends Service {
   private readonly cdpTransport: BrowserCdpTransport
   private readonly recentActions: ActionHistoryEntry[] = []
   private readonly terminalSessions = new Map<string, ManagedTerminalSession>()
-  private readonly targetExecutors = new Map<string, ComputerUseSessionExecutor>()
+  private readonly boundTargets = new Map<string, { readonly executor: ComputerUseSessionExecutor; readonly frameProvider: ComputerUseSessionFrameProvider }>()
   private readonly browserState: ManagedBrowserState = {
     connected: false,
     cdpEndpoint: "http://127.0.0.1:9222",
@@ -372,6 +374,15 @@ export class ComputerUseService extends Service {
     return resolution.reason ?? `Command "${command}" denied in ${resolution.mode} mode`
   }
 
+  async requireApproval(command: string, parameters: Record<string, unknown> = {}, signal?: AbortSignal): Promise<void> {
+    const denied = await this.awaitApproval(command, parameters, signal)
+    if (denied) throw new ElizaError(denied, { code: "approval_denied", context: { command } })
+  }
+
+  observationAutoApproved(): boolean {
+    return this.approvals.evaluateCommand("screenshot") === "AutoApproved"
+  }
+
   getSessionManager(): ComputerUseSessionManager {
     return this.sessionManager
   }
@@ -389,8 +400,15 @@ export class ComputerUseService extends Service {
     return { accepted: true, state: this.batchMachine }
   }
 
-  createSession(input: CreateComputerUseSessionInput): ComputerUseSessionSnapshot {
-    return this.sessionManager.create(input)
+  async createSession(input: CreateComputerUseSessionInput): Promise<ComputerUseSessionSnapshot> {
+    const bound = this.boundTargets.has(input.target.kind)
+    if (input.target.kind !== "host" && !bound) {
+      throw new ComputerUseSessionError({
+        code: "unsupported_target",
+        message: `No executor and frame provider are registered for ${input.target.kind} sessions`,
+      })
+    }
+    return this.sessionManager.create(input, bound)
   }
 
   listSessions(): ComputerUseSessionSnapshot[] {
@@ -425,17 +443,26 @@ export class ComputerUseService extends Service {
     return this.sessionManager.getEvents(sessionId, limit)
   }
 
-  registerSessionTargetExecutor(kind: string, executor: ComputerUseSessionExecutor): void {
-    this.targetExecutors.set(kind, executor)
+  registerSessionTarget(kind: string, executor: ComputerUseSessionExecutor, frameProvider: ComputerUseSessionFrameProvider): void {
+    this.boundTargets.set(kind, { executor, frameProvider })
   }
 
-  async captureSessionFrame(sessionId: string, provider?: ComputerUseSessionFrameProvider, signal?: AbortSignal): Promise<ComputerUseSessionFrame> {
-    const activeProvider: ComputerUseSessionFrameProvider = provider ?? (async () => {
+  async captureSessionFrame(sessionId: string, signal?: AbortSignal): Promise<ComputerUseSessionFrame> {
+    await this.requireApproval("screenshot", { sessionId }, signal)
+    const hostProvider: ComputerUseSessionFrameProvider = async () => {
       const dims = this.getScreenDimensions()
       const data = await this.hostDriver.captureScreenshot()
       return { mimeType: "image/png", data, width: dims.width, height: dims.height }
-    })
-    return this.sessionManager.captureFrame(sessionId, activeProvider, signal)
+    }
+    const provider: ComputerUseSessionFrameProvider = async (target, sig) => {
+      if (target.kind === "host") return hostProvider(target, sig)
+      const bound = this.boundTargets.get(target.kind)
+      if (!bound) {
+        throw new ComputerUseSessionError({ code: "unsupported_target", message: `No frame provider is registered for ${target.kind} sessions` })
+      }
+      return bound.frameProvider(target, sig)
+    }
+    return this.sessionManager.captureFrame(sessionId, provider, signal)
   }
 
   async executeSessionAction(
@@ -444,8 +471,15 @@ export class ComputerUseService extends Service {
     signal?: AbortSignal,
   ): Promise<{ readonly snapshot: ComputerUseSessionSnapshot; readonly result: ComputerUseSessionActionResult }> {
     const executor: ComputerUseSessionExecutor = async (target, act, sig) => {
-      const custom = this.targetExecutors.get(target.kind)
-      if (custom) return custom(target, act, sig)
+      if (target.kind !== "host") {
+        const bound = this.boundTargets.get(target.kind)
+        if (!bound) {
+          return { success: false, error: `No executor is registered for ${target.kind} sessions`, errorCode: "unsupported_target", outcomeStatus: "blocked" }
+        }
+        const denied = await this.awaitApproval(act.command, act.parameters ?? {}, sig)
+        if (denied) return { success: false, error: denied, errorCode: "approval_denied", outcomeStatus: "blocked" }
+        return bound.executor(target, act, sig)
+      }
       const res = await this.executeCommand(act.command, act.parameters ?? {}, sig)
       return {
         success: res.success,
@@ -463,7 +497,8 @@ export class ComputerUseService extends Service {
     return this.sceneBuilder.getCurrentScene()
   }
 
-  async refreshScene(mode: "idle" | "active" | "agent-turn" = "agent-turn"): Promise<Scene> {
+  async refreshScene(mode: "idle" | "active" | "agent-turn" = "agent-turn", signal?: AbortSignal): Promise<Scene> {
+    await this.requireApproval("screenshot", { purpose: `scene:${mode}` }, signal)
     return this.sceneBuilder.refresh(mode)
   }
 
@@ -483,11 +518,13 @@ export class ComputerUseService extends Service {
     return this.screenStateStore.getStats()
   }
 
-  async listApps() {
+  async listApps(signal?: AbortSignal) {
+    await this.requireApproval("list_apps", {}, signal)
     return this.appControl.listApps()
   }
 
-  async getAppState(app: string, options?: { readonly disableDiff?: boolean }) {
+  async getAppState(app: string, options?: { readonly disableDiff?: boolean }, signal?: AbortSignal) {
+    await this.requireApproval("get_app_state", { app }, signal)
     return this.appControl.getAppState(app, options)
   }
 
@@ -748,14 +785,19 @@ export class ComputerUseService extends Service {
           return { success: true, message: msg }
         }
         case "detect_elements": {
-          const scene = await this.refreshScene("active")
+          const scene = await this.sceneBuilder.refresh("active")
           const elements = [...scene.ax, ...scene.ocr]
           const msg = `Detected ${elements.length} screen element(s).`
           this.recordHistory("detect_elements", true, msg)
           return { success: true, message: msg, elements }
         }
         case "ocr": {
-          const scene = await this.refreshScene("active")
+          if (!this.sceneBuilder.hasOcr()) {
+            const msg = "No OCR backend is configured on this host"
+            this.recordHistory("ocr", false, msg, msg)
+            return { success: false, error: msg, errorCode: "ocr_unavailable" }
+          }
+          const scene = await this.sceneBuilder.refresh("active")
           const ocrText = scene.ocr.map((b) => b.text).join("\n")
           const msg = ocrText.length > 0 ? ocrText : "No OCR text detected on current frame."
           this.recordHistory("ocr", true, `OCR returned ${scene.ocr.length} box(es)`)
@@ -764,6 +806,8 @@ export class ComputerUseService extends Service {
         case "open": {
           const target = params.target?.trim()
           if (!target) return { success: false, error: "open requires target" }
+          const invalidTarget = validateOpenTarget(target)
+          if (invalidTarget) return { success: false, error: invalidTarget, errorCode: "invalid_target" }
           const ok = await this.hostDriver.openTarget(target)
           const msg = ok ? `Opened ${target}.` : `Failed to open ${target}.`
           this.recordHistory("open", ok, msg, ok ? undefined : msg)
@@ -1246,13 +1290,22 @@ export class ComputerUseService extends Service {
     signal?: AbortSignal,
   ): Promise<ComputerUseResult> {
     if (command === "list_apps" || command === "app_list_apps") {
-      const apps = await this.listApps()
+      const approvalError = await this.awaitApproval("list_apps", parameters, signal)
+      if (approvalError) return { success: false, error: approvalError, errorCode: "approval_denied" }
+      const apps = await this.appControl.listApps()
       return { success: true, message: `Found ${apps.length} app(s).`, data: { apps } }
     }
     if (command === "get_app_state" || command === "app_get_state") {
+      const approvalError = await this.awaitApproval("get_app_state", parameters, signal)
+      if (approvalError) return { success: false, error: approvalError, errorCode: "approval_denied" }
       const app = String(parameters.app ?? "")
-      const state = await this.getAppState(app, { disableDiff: parameters.disableDiff === true })
-      return { success: true, message: `Captured state ${state.stateId} for ${state.app.name}.`, data: state }
+      try {
+        const state = await this.appControl.getAppState(app, { disableDiff: parameters.disableDiff === true })
+        return { success: true, message: `Captured state ${state.stateId} for ${state.app.name}.`, data: state }
+      } catch (err) {
+        if (err instanceof AppControlError) return { success: false, error: err.message, errorCode: err.code }
+        throw err
+      }
     }
     if (
       command === "app_click"
@@ -1268,7 +1321,9 @@ export class ComputerUseService extends Service {
       const approvalError = await this.awaitApproval(command, parameters, signal)
       if (approvalError) return { success: false, error: approvalError, errorCode: "approval_denied" }
       const kind = command.slice(4) as "click" | "key" | "type" | "set_value" | "select_text" | "paste" | "scroll" | "hover_target" | "secondary_action"
-      const outcome = await this.appControl.executeAppAction({
+      let outcome: Awaited<ReturnType<AppControlCoordinator["executeAppAction"]>>
+      try {
+        outcome = await this.appControl.executeAppAction({
         app: String(parameters.app ?? ""),
         stateId: String(parameters.stateId ?? ""),
         kind,
@@ -1277,7 +1332,11 @@ export class ComputerUseService extends Service {
         ...(typeof parameters.key === "string" ? { key: parameters.key } : {}),
         ...(Array.isArray(parameters.modifiers) ? { modifiers: parameters.modifiers.filter((m): m is string => typeof m === "string") } : {}),
         ...(typeof parameters.secondaryAction === "string" ? { secondaryAction: parameters.secondaryAction } : {}),
-      })
+        })
+      } catch (err) {
+        if (err instanceof AppControlError) return { success: false, error: err.message, errorCode: err.code }
+        throw err
+      }
       return { success: outcome.success, message: `Completed ${command} (${outcome.receiptId}).`, data: outcome }
     }
     if (command === "clipboard_read") {
@@ -1381,7 +1440,9 @@ export class VisionContextProvider extends Service {
   async getContext(): Promise<VisionContext> {
     const found: unknown = this.runtime.getService(COMPUTERUSE_SERVICE_TYPE)
     const service = found instanceof ComputerUseService ? found : undefined
-    const scene = service ? (service.getCurrentScene() ?? await service.refreshScene("idle")) : null
+    const scene = service
+      ? (service.getCurrentScene() ?? (service.observationAutoApproved() ? await service.refreshScene("idle") : null))
+      : null
     const openApps = scene && scene.apps.length > 0
       ? scene.apps.filter((a) => a.windows.length > 0).map((a) => a.name)
       : [...new Set(listProcesses().map((p) => p.name).filter((n) => n.length > 0 && n !== "launchd"))].slice(0, 50)

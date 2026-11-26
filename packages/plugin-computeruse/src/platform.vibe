@@ -1324,8 +1324,8 @@ export function launchHostApp(app: string, appArgs: readonly string[] = []): { r
 export effect function openHostTarget(target: string): boolean!! {
   const env = try nativeCleanEnv()
   const platform = try nativePlatform()
-  const cmd = platform === "darwin" ? "open" : platform === "win32" ? "cmd" : "xdg-open"
-  const args = platform === "win32" ? ["/c", "start", "", target] : [target]
+  const cmd = platform === "darwin" ? "open" : platform === "win32" ? "rundll32" : "xdg-open"
+  const args = platform === "win32" ? ["url.dll,FileProtocolHandler", target] : [target]
   const res = try promise(() => runNativeCommand(cmd, args, { timeoutMs: 5000, env }))
   return res.exitCode === 0
 }

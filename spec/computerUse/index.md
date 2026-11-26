@@ -13,11 +13,11 @@ This area defines the formal rules for desktop, browser, sandbox, and mobile com
 
 ### A command is scoped to one session generation, surface and authorized operation
 
-The shell binds the device, browser or approved remote connector to a session. It validates the initiating principal, screenshot and clipboard access, tab identifiers, and the requested operation before dispatching it to the bound host.
+The shell binds the device, browser or approved remote connector to a session. It validates the initiating principal, screenshot and clipboard access, tab identifiers, and the requested operation before dispatching it to the bound host. The caller supplies the session generation and surface it expects; the shell never fills them in from the session itself.
 
 ```quint
 type ComputerSurface = LocalDesktop | BrowserSurface | MobileDevice | RemoteDesktop
-type ComputerOperation = ReadScreen | ClickTarget | TypeText | WindowControl | ClipboardRead | ClipboardWrite
+type ComputerOperation = ReadScreen | ClickTarget | TypeText | WindowControl | ClipboardRead | ClipboardWrite | FileRead | FileWrite | TerminalExecute | BrowserControl | AppControl
 type ComputerSession = { sessionId: str, ownerId: str, sessionEpoch: int, surface: ComputerSurface, operations: Set[ComputerOperation], open: bool }
 type ComputerCommand = { callerId: str, forSession: str, expectedEpoch: int, forSurface: ComputerSurface, operation: ComputerOperation }
 pure def computerCommandAllowed(session: ComputerSession, command: ComputerCommand): bool =
@@ -28,6 +28,20 @@ pure def lawClosedSessionRefusesCommands(session: ComputerSession, command: Comp
   not(session.open) implies not(computerCommandAllowed(session, command))
 pure def lawGenerationMismatchRefusesCommands(session: ComputerSession, command: ComputerCommand): bool =
   session.sessionEpoch != command.expectedEpoch implies not(computerCommandAllowed(session, command))
+```
+
+### A session grants only the operations its bound target can carry out, and each command is its own operation
+
+Reading or writing files, running terminal commands, driving a browser and acting on an application are distinct operations, never a screen click. A session on the host grants every operation. A session on any other target (sandbox, browser, remote guest) grants none, and cannot be created, until the host registers an executor and a frame provider for that target kind; it never falls through to the host's own desktop or shell. Terminal execution, file deletion and browser script execution are destructive; file and terminal reads are read-only; the other commands mutate. Before asking for approval, the shell refuses a terminal command that matches its dangerous-command filter, a file path on its deny-list, and passes child processes an environment stripped of credentials.
+
+```quint
+pure val allOperations: Set[ComputerOperation] = Set(ReadScreen, ClickTarget, TypeText, WindowControl, ClipboardRead, ClipboardWrite, FileRead, FileWrite, TerminalExecute, BrowserControl, AppControl)
+pure def grantedOperations(isHostTarget: bool, targetBound: bool): Set[ComputerOperation] =
+  if (isHostTarget or targetBound) allOperations else Set()
+pure def maySessionCarry(isHostTarget: bool, targetBound: bool, operation: ComputerOperation): bool =
+  grantedOperations(isHostTarget, targetBound).contains(operation)
+pure def lawUnboundTargetCarriesNothing(operation: ComputerOperation): bool =
+  not(maySessionCarry(false, false, operation))
 ```
 
 ### A pending operation accepts only the observation for its own identifier and session generation

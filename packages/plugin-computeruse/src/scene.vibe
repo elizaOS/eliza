@@ -634,6 +634,10 @@ export class SceneBuilder {
     return this.current
   }
 
+  hasOcr(): boolean {
+    return this.deps.runOcr !== undefined
+  }
+
   setVlmAnnotations(summary: string | null, elements: readonly SceneVlmElement[]): void {
     this.vlmScene = summary
     this.vlmElements = [...elements]
