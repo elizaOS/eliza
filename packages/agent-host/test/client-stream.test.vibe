@@ -255,10 +255,10 @@ for (const transport of ["socket", "http"] as const) {
       try Effect.try(() => assert.deepStrictEqual({
         whole: summary(whole.outcome), split: summary(split.outcome), samePreviews: split.previews.length === whole.previews.length,
         lastPreview: split.previews.at(-1), firstStatus: split.statuses[0],
-        allPreviewsProvisional: split.previews.every(({ provisional }) => provisional),
+        earlierPreviewsProvisional: split.previews.slice(0, -1).every(({ provisional }) => provisional),
       }, {
         whole: { kind: "Done", text: long, failureKind: undefined, keyed: true }, split: { kind: "Done", text: long, failureKind: undefined, keyed: true }, samePreviews: true,
-        lastPreview: { text: long, provisional: true }, firstStatus: "thinking", allPreviewsProvisional: true,
+        lastPreview: { text: long, provisional: false }, firstStatus: "thinking", earlierPreviewsProvisional: true,
       }))
     }, 120_000)
 

@@ -685,7 +685,10 @@ model only, and the owner hears such a failure in the model's words alone:
 nothing written to the model is ever added to the owner's reply.
 A reply with nothing unreported and no
 unobserved time makes no further call, a turn cut off at the model's output
-limit is never asked again, and no turn is asked more than once.
+limit is never asked again, and no turn is asked more than once. The reply
+this decides, with the words that follow it, is the turn's settled text: a
+streamed turn writes it at once, whole and without the provisional mark, and
+nothing it streamed before is ever unmarked ([reply stream](./replyStream.md)).
 
 Safety copy is never rewritten. A failure whose action marks its words as
 safety copy (the emergency refusal of a phone that cannot open its keypad),

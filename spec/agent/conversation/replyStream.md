@@ -162,8 +162,14 @@ pure def stepFramesRebuildTheText(before: ReplyStream, after: ReplyStream, out: 
 ### A frame marks its text provisional while any of it may be taken back, and only a whole text clears the mark
 
 Resident chat sends model text, action callbacks and corrected previews as
-provisional until the turn settles. A tool call or reply check can still
-change the preview. A voice client never speaks provisional text, so an
+provisional until the turn has decided its reply. A tool call or reply check
+can still change the preview. Once planning and the reply check
+([planning](./planning.md)) have decided the reply the turn will store, and
+nothing left in the turn can change it, the turn writes that whole reply once
+without the mark, before storing it; that settled text is never taken back:
+no text is written after it, and an answered terminal reply carries it. A
+turn whose reply waits on a task presentation keeps its text marked until the
+terminal. A voice client never speaks provisional text, so an
 append can only keep or add the mark: a client that ORs the mark over
 appends and one that reads it per frame agree. The terminal reply carries
 the settled text and clears the mark.
