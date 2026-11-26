@@ -29,6 +29,7 @@ public final class CloudRequestLawCheck {
   private static final List<Long> BYTES = List.of(0L, 8_388_608L, 8_388_609L, 67_108_864L, 67_108_865L);
   private static final List<String> WEB_HOSTS = List.of("web.cloud.test");
   private static final List<ExternalLink> LINKS = List.of(new ExternalLink(true, "billing.stripe.com", true, false),
+    new ExternalLink(true, "invoice.stripe.com", true, false),
     new ExternalLink(true, "billing.stripe.com.evil.test", true, false), new ExternalLink(false, "web.cloud.test", true, false),
     new ExternalLink(true, "web.cloud.test", true, false), new ExternalLink(true, "accounts.google.com", false, false),
     new ExternalLink(true, "checkout.stripe.com", true, true));
