@@ -51,7 +51,7 @@ error DatabaseUnavailable
 const route = "/api/v1/eliza/google"
 export const selectedAttachmentPath = route + "/gmail/attachment"
 export const deviceAttachmentPath = "/api/v1/google-attachments/device"
-const callbackPath = route + "/connect/callback"
+export const browserGoogleCallbackPath = route + "/connect/callback"
 const oauthCookie = "__Host-eliza-google-connect"
 const oauthSeconds = 300
 const googleOAuth = "https://oauth2.googleapis.com"
@@ -88,7 +88,7 @@ effect function googleConfig(env: GoogleEnv) {
   const credentials = client(env)
   if (!credentials) throw new ConnectionUnavailable()
   const key = try tokenKey(env.GOOGLE_CONNECT_TOKEN_KEY)
-  return { clientId: credentials.id, clientSecret: credentials.secret, key, redirectUri: env.PUBLIC_API_ORIGIN + callbackPath }
+  return { clientId: credentials.id, clientSecret: credentials.secret, key, redirectUri: env.PUBLIC_API_ORIGIN + browserGoogleCallbackPath }
 }
 
 effect function tokenKey(raw: string | undefined) {
@@ -816,7 +816,7 @@ effect function routeGoogle(request: Request, env: GoogleEnv, db: Client, accoun
     if (path === "/gmail/send") return try sendMail(request, env, db, account)
   }
   if (request.method === "GET") {
-    if (url.pathname === callbackPath) {
+    if (url.pathname === browserGoogleCallbackPath) {
       const suffix = effect {
         try complete(request, url, env, db, account)
         return "/#account"
