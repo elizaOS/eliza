@@ -102,7 +102,7 @@ effect function show(views: ViewHost.Shape, labels: ReadonlyMap<string, string>,
   const named = viewNamed((try views.current()).views, target)
   if (named !== undefined && !screenShows(message, named)) {
     const label = labels.get(named.viewId) ?? named.label
-    return refused(`${label} can't be shown on the owner's screen right now, so nothing was opened and nothing will open.`)
+    return refused(`The owner's screen here has no ${label}, so it was not opened and will not open on this screen.`)
   }
   const query = exact ? parameterOf(options, "note") : undefined
   if (exact && !offersEditor(message, clientId, true, true)) return refused("This turn cannot open a saved Notes editor.")

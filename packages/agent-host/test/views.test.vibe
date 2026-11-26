@@ -168,9 +168,9 @@ it.live('A view the turn\'s screen says it cannot show is refused before anythin
   try Effect.try(() => {
     assert.strictEqual(withheld.status, 200)
     assert.isUndefined(withheld.binding)
-    assert.include(withheld.seen, "can't be shown on the owner's screen right now, so nothing was opened and nothing will open.")
+    assert.include(withheld.seen, "The owner's screen here has no Notes, so it was not opened and will not open on this screen.")
     assert.strictEqual(listed.binding?.viewId, "notes")
-    assert.notInclude(listed.seen, "can't be shown on the owner's screen")
+    assert.notInclude(listed.seen, "The owner's screen here has no")
     assert.strictEqual(silent.binding?.viewId, "notes")
     assert.strictEqual(malformed.status, 400)
     assert.isUndefined(malformed.binding)
