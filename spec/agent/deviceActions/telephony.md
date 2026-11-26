@@ -379,7 +379,7 @@ prepare a text, and leaves it out when the owner asks to send one. A draft
 the owner asks to see here, in the chat ("show me the draft here"), is the
 model's own reply and proposes nothing: the tool tells the model so, and the
 model decides from the owner's words. A text the owner then asks to send is
-proposed as any text is, so it waits for its card. It
+proposed as any text is, so it waits for its card. The model
 proposes the recipient the owner addressed ("to Sam", "for +1 415 555
 0124"), grounded as any recipient is (above), so a number inside the words to
 send never becomes the recipient; nothing re-reads the owner's words to turn
