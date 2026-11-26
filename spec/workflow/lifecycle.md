@@ -81,6 +81,15 @@ passes is still held to the owner's workflows by the reference rule below,
 so a remove or rename never acts on part of a name, and a create never
 shares a name.
 
+```quint
+type PlannerSource = ModelProposed | PreModelOverride
+type PlannerDispatch = DispatchAsProposed | RejectPreModelOverride
+pure def plannerDispatch(source: PlannerSource): PlannerDispatch =
+  if (source == ModelProposed) DispatchAsProposed else RejectPreModelOverride
+pure def lawPreModelRoutingIsNeverAdmitted(source: PlannerSource): bool =
+  plannerDispatch(source) == DispatchAsProposed iff source == ModelProposed
+```
+
 ### A workflow reference resolves to the one workflow the owner named, and a remove or rename never acts on part of a name
 
 A name is compared after NFKC folding, lowercasing, dropping quotes and

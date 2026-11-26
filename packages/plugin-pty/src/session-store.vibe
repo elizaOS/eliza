@@ -1,4 +1,4 @@
-// spec/pty/policy.md, "Story: Enforce session capacity, confinement, and safe teardown"; spec/pty/policy.md, "Sessions respect capacity, unique ids, and safe stop semantics"; spec/pty/policy.md, "Idle timeout and terminal geometry stay within safe bounds"
+// spec/pty/policy.md, "Story: Enforce session capacity, confinement, and safe teardown"; spec/pty/policy.md, "Sessions respect capacity, unique ids, and safe stop semantics"; spec/pty/policy.md, "Idle timeout, terminal geometry, and output slices stay within safe bounds"
 import { boundedOutputSlice } from "../gen/pty__policy.effect.vibe"
 import type { PtySpawn } from "./types.vibe"
 

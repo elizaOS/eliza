@@ -8,6 +8,8 @@ Enforces HTTPS-only, public-network-only outbound reads for `WEB_FETCH` and `WEB
 
 ### Public web requests require an active capability, HTTPS without credentials or private addresses, and bounded responses
 
+A public web request is admitted only when the capability is active (kill switch not triggered), the target uses HTTPS with no embedded credentials, no custom port, no private or blocked hostname, no sensitive query parameters, and no plaintext redirect downgrade. Responses must enforce a positive byte ceiling (`maxBytes > 0`) and stay within `[0, maxBytes]`.
+
 ```quint
 type WebRequestCheck = {
   killSwitchOff: bool,

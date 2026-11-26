@@ -83,11 +83,14 @@ pure def lawBlockedAuthorityDisablesCloud(authority: CloudAuthority): bool =
   (authority == StagingDefault or authority == Offline) implies resolveCloudTupleMode(authority) == CloudDisabled
 ```
 
-### Idle timeout and terminal geometry stay within safe bounds
+### Idle timeout, terminal geometry, and output slices stay within safe bounds
 
 An idle timeout is either 0 (disabled) or a positive integer up to 2147483647
-milliseconds. Terminal resize geometry requires positive finite columns and rows
-within bounds.
+milliseconds. Terminal resize geometry requires integer columns and rows from 1
+to 500 inclusive. Bounded output slicing returns 0 when either `totalChars` or
+`maxChars` is non-positive, and otherwise returns the smaller of `totalChars`
+and `maxChars`, so for every non-negative cap the returned slice length stays in
+`0..maxChars`.
 
 ```quint
 pure def validIdleTimeoutMs(ms: int): bool = ms >= 0 and ms <= 2147483647

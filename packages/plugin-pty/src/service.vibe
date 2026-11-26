@@ -1,4 +1,4 @@
-// spec/pty/policy.md, "Idle timeout and terminal geometry stay within safe bounds"; spec/pty/policy.md, "Story: Enforce session capacity, confinement, and safe teardown"
+// spec/pty/policy.md, "Idle timeout, terminal geometry, and output slices stay within safe bounds"; spec/pty/policy.md, "Story: Enforce session capacity, confinement, and safe teardown"
 
 module node {
   import { ElizaError, type IAgentRuntime, logger, Service } from "@elizaos/core"

@@ -22,7 +22,7 @@ pure def lawLongerFileNameNotMatched(follower: PathFollower): bool =
 
 ### Claimed edits, completion residuals, and diff secrets enforce fail-closed verification
 
-Every claimed file modification must be backed by the session's observed write ledger or filesystem verification. Unresolved completion residuals block completion, and any secret-leak or critical diff finding blocks PR submission. Refined acceptance criteria drop invented unnamed-file checks and maintain a floor of at least three concrete criteria.
+Every claimed file modification must be backed by the session's observed write ledger or filesystem verification. Unresolved completion residuals block completion when the gate is enabled, and any secret-leak finding, critical diff finding, or oversized diff (`overSizeLimit`) blocks PR submission. Refined acceptance criteria drop invented unnamed-file checks and maintain a floor of at least three concrete criteria.
 
 ```quint
 type GateOutcome = GatePass | GateBlock
