@@ -80,8 +80,14 @@ public final class GoogleBrokerJourney {
   }
 
   private static String listening(GoogleBroker.Endpoint endpoint) throws IOException {
-    try (Socket socket = new Socket(InetAddress.getByAddress(new byte[] {127, 0, 0, 1}), endpoint.port())) { return "listening"; }
+    Socket socket;
+    try { socket = new Socket(InetAddress.getByAddress(new byte[] {127, 0, 0, 1}), endpoint.port()); }
     catch (ConnectException refused) { return "closed"; }
+    catch (SocketException reset) {
+      if ("Connection reset by peer".equals(reset.getMessage())) return "closed";
+      throw reset;
+    }
+    try (socket) { return "listening"; }
   }
 
   private static GoogleBroker.Endpoint opened(BrokerLaunches.Launch launch) {
