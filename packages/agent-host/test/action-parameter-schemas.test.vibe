@@ -1,0 +1,174 @@
+// spec/agent/conversation/planning.md, "Every offered action's parameters name the fields the action reads"
+import { assert, it } from "@effect/vitest"
+import type { Action } from "@elizaos/core"
+import { builtinModuleFactories } from "../src/plugins/profile.vibe"
+import { cloudFake, deviceKey, startInProcess } from "./support/kernel.vibe"
+
+module node {
+  import { readdirSync, readFileSync, statSync } from "node:fs"
+  import { join } from "node:path"
+  import { pathToFileURL } from "node:url"
+  import { actionToJsonSchema, validateToolArgs, type Action } from "@elizaos/core"
+
+  let packages = ""
+
+  type Schema = { type?: string | string[]; properties?: Record<string, Schema>; additionalProperties?: boolean | Schema; items?: Schema; enum?: unknown[]; anyOf?: Schema[]; oneOf?: Schema[]; required?: string[]; minimum?: number; minLength?: number; minItems?: number; default?: unknown; examples?: unknown[]; const?: unknown }
+
+  export interface Audit { readonly actions: number; readonly names: string[]; readonly unloaded: string[]; readonly bare: string[]; readonly refused: string[] }
+
+  /** @throws {never} */
+  function sources(directory: string): string[] {
+    return readdirSync(directory).flatMap((entry) => {
+      const path = join(directory, entry)
+      return statSync(path).isDirectory() ? sources(path) : path.endsWith(".vibe") ? [path] : []
+    })
+  }
+
+  /** @throws {never} */
+  function declaringFiles(): string[] {
+    return readdirSync(packages).flatMap((name) => {
+      const src = join(packages, name, "src")
+      try {
+        return name !== "core" && statSync(src).isDirectory() ? sources(src) : []
+      } catch {
+        return []
+      }
+    }).filter((path) => /\bparameters\b/u.test(readFileSync(path, "utf8")))
+  }
+
+  /** @throws {never} */
+  function candidateFiles(): string[] {
+    const declaring = declaringFiles()
+    const entries = [...new Set(declaring.map((path) => join(packages, path.slice(packages.length + 1).split("/")[0] ?? "", "src", "index.vibe")))]
+      .filter((path) => {
+        try {
+          return statSync(path).isFile()
+        } catch {
+          return false
+        }
+      })
+    return [...new Set([...declaring, ...entries])]
+  }
+
+  /** @throws {never} */
+  async function built(name: string, value: unknown, failed: string[]): Promise<Action[]> {
+    if (typeof value !== "function" || !/Plugin$/u.test(name) || /^create/u.test(name)) return []
+    try {
+      const stub = new Proxy({}, { get: () => undefined })
+      return actionsIn(await (value as (...args: unknown[]) => unknown)(stub, "owner"))
+    } catch (cause) {
+      failed.push(`${name}: ${String(cause).slice(0, 160)}`)
+      return []
+    }
+  }
+
+  /** @throws {never} */
+  function isAction(value: unknown): value is Action {
+    return typeof value === "object" && value !== null && typeof (value as { name?: unknown }).name === "string" && typeof (value as { handler?: unknown }).handler === "function"
+  }
+
+  /** @throws {never} */
+  function actionsIn(value: unknown, depth = 0): Action[] {
+    if (isAction(value)) return [value]
+    if (depth > 1 || typeof value !== "object" || value === null) return []
+    if (Array.isArray(value)) return value.flatMap((entry) => actionsIn(entry, depth + 1))
+    const actions = (value as { actions?: unknown }).actions
+    return Array.isArray(actions) ? actions.flatMap((entry) => actionsIn(entry, depth + 1)) : []
+  }
+
+  /** @throws {never} */
+  function itemlessArrays(schema: unknown, path: string): string[] {
+    if (typeof schema !== "object" || schema === null) return []
+    const node = schema as Schema
+    const kinds = Array.isArray(node.type) ? node.type : [node.type]
+    const own = kinds.includes("array") && node.items === undefined ? [path] : []
+    return [...own, ...Object.entries(node.properties ?? {}).flatMap(([key, child]) => itemlessArrays(child, `${path}.${key}`)),
+      ...(node.items === undefined ? [] : itemlessArrays(node.items, `${path}[]`)),
+      ...[...(node.anyOf ?? []), ...(node.oneOf ?? [])].flatMap((child) => itemlessArrays(child, path))]
+  }
+
+  /** @throws {never} */
+  function bareObjects(schema: Schema, path: string): string[] {
+    const kinds = Array.isArray(schema.type) ? schema.type : [schema.type]
+    const nested = [...Object.entries(schema.properties ?? {}).flatMap(([key, child]) => bareObjects(child, `${path}.${key}`)),
+      ...(schema.items === undefined ? [] : bareObjects(schema.items, `${path}[]`)),
+      ...(typeof schema.additionalProperties === "object" ? bareObjects(schema.additionalProperties, `${path}.*`) : []),
+      ...[...(schema.anyOf ?? []), ...(schema.oneOf ?? [])].flatMap((child) => bareObjects(child, path))]
+    const bare = kinds.includes("object") && Object.keys(schema.properties ?? {}).length === 0 && schema.additionalProperties !== true
+      && typeof schema.additionalProperties !== "object" && schema.anyOf === undefined && schema.oneOf === undefined
+    return bare ? [path, ...nested] : nested
+  }
+
+  /** @throws {never} */
+  function example(schema: Schema): unknown {
+    if (schema.const !== undefined) return schema.const
+    if (schema.enum !== undefined && schema.enum.length > 0) return schema.enum[0]
+    const choice = schema.anyOf?.[0] ?? schema.oneOf?.[0]
+    if (choice !== undefined) return example(choice)
+    const kind = Array.isArray(schema.type) ? schema.type.find((entry) => entry !== "null") : schema.type
+    if (kind === "string") return "x".repeat(Math.max(1, schema.minLength ?? 1))
+    if (kind === "number" || kind === "integer") return schema.minimum ?? 1
+    if (kind === "boolean") return true
+    if (kind === "array") return Array.from({ length: Math.max(1, schema.minItems ?? 1) }, () => example(schema.items ?? { type: "string" }))
+    if (kind === "object") {
+      const properties = Object.entries(schema.properties ?? {})
+      if (properties.length === 0) return schema.additionalProperties === undefined || schema.additionalProperties === false ? { probe: "x" } : {}
+      return Object.fromEntries(properties.map(([key, child]) => [key, example(child)]))
+    }
+    return "x"
+  }
+
+  /** @throws {never} */
+  export async function audit(registered: readonly Action[], testDirectory: string): Promise<Audit> {
+    packages = join(testDirectory, "..", "..")
+    const found = new Map<string, [string, Action]>()
+    const unloaded: string[] = []
+    for (const path of candidateFiles()) {
+      const where = path.slice(packages.length + 1)
+      try {
+        const loaded = await import(pathToFileURL(path).href) as Record<string, unknown>
+        for (const [name, value] of Object.entries(loaded)) {
+          for (const action of [...actionsIn(value), ...await built(name, value, unloaded)]) found.set(`${where} ${action.name}`, [where, action])
+        }
+      } catch (cause) {
+        unloaded.push(`${where}: ${String(cause).slice(0, 220)}`)
+      }
+    }
+    const named = new Set([...found.values()].map(([, action]) => action.name))
+    for (const action of registered) if (!named.has(action.name)) found.set(`registered ${action.name}`, ["registered", action])
+    const bare: string[] = []
+    const refused: string[] = []
+    for (const [, [where, action]] of found) {
+      const name = action.name
+      const parameters = Array.isArray(action.parameters) ? action.parameters : []
+      for (const parameter of parameters) {
+        const declared = (parameter as { name?: string; schema?: unknown })
+        bare.push(...itemlessArrays(declared.schema, `${name}.${declared.name ?? "?"}`).map((path) => `${where} ${path} (array without items)`))
+      }
+      try {
+        const schema = actionToJsonSchema(action) as Schema
+        const declared = Array.isArray(action.parameters) ? action.parameters.length > 0 : action.parameters !== undefined
+        bare.push(...bareObjects(schema, name).filter((path) => declared || path !== name).map((path) => `${where} ${path}`))
+        for (const error of validateToolArgs(action, example(schema)).errors) if (/Unexpected argument '[^']*\./u.test(error)) refused.push(`${where} ${name}: ${error}`)
+      } catch (cause) {
+        refused.push(`${where} ${name}: ${String(cause)}`)
+      }
+    }
+    return { actions: found.size, names: [...new Set([...found.values()].map(([, action]) => action.name))].sort(), unloaded, bare, refused }
+  }
+}
+import { audit } from node
+
+it.live(`Every action's parameters name their fields, so the runtime's argument check never refuses the keys an action reads (spec/agent/conversation/planning.md, "Every offered action's parameters name the fields the action reads")`, effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const agent = try startInProcess({
+    launch: { backend: { kind: "cloud", origin: cloud.origin }, callerRole: "owner", load: [...builtinModuleFactories.keys()] },
+    frame: { credential: { version: 1, value: deviceKey } }, modules: builtinModuleFactories,
+  })
+  const registered: readonly Action[] = agent.agent.runtime.actions
+  const found = try Effect.promise(() => audit(registered, import.meta.dirname))
+  const expected = ["BROWSER_OPEN", "CALENDAR", "INBOX_READ", "MAPS_PLACE", "NOTES_UPDATE", "OWNER_REMINDERS", "OWNER_ROUTINES", "PROPOSE_DEVICE_ACTION", "WALLET", "WORKFLOW"]
+  try Effect.try(() => assert.deepStrictEqual({
+    enough: found.actions >= 40, missing: expected.filter((name) => !found.names.includes(name)), unloaded: found.unloaded, bare: found.bare, refused: found.refused,
+  }, { enough: true, missing: [], unloaded: [], bare: [], refused: [] }))
+}, 300_000)

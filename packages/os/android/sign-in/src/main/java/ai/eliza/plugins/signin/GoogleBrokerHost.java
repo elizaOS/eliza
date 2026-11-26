@@ -58,7 +58,7 @@ public final class GoogleBrokerHost implements GoogleBroker {
 
   private record Exchange(int status, byte[] body) {}
 
-  private record Listening(ServerSocket server, ExecutorService workers, Semaphore admitted) {}
+  private record Listening(ServerSocket server, ExecutorService workers, Semaphore admitted, Thread accepting) {}
 
   private record Admitted(GoogleBrokerHost host, Socket socket, Semaphore places) implements Runnable {
     @Override public void run() {
@@ -78,7 +78,7 @@ public final class GoogleBrokerHost implements GoogleBroker {
   private final MailReads reads;
   private final Consumer<RuntimeException> failed;
   private Listening listening;
-  private boolean closed;
+  private volatile boolean closed;
   private volatile Launch launch;
 
   public GoogleBrokerHost(MailReads reads, Consumer<RuntimeException> failed) {
@@ -104,14 +104,15 @@ public final class GoogleBrokerHost implements GoogleBroker {
     if (closed) throw new Closed();
     if (listening == null) {
       ServerSocket bound = new ServerSocket(0, BACKLOG, InetAddress.getByAddress(LOOPBACK));
-      listening = new Listening(bound, Executors.newFixedThreadPool(WORKERS, task -> {
+      ExecutorService workers = Executors.newFixedThreadPool(WORKERS, task -> {
         Thread thread = new Thread(task, "ElizaOwnerGmailBroker");
         thread.setDaemon(true);
         return thread;
-      }), new Semaphore(WORKERS + WAITING));
-      Listening serving = listening;
-      Thread accepting = new Thread(() -> accept(serving), "ElizaOwnerGmailBrokerAccept");
+      });
+      Semaphore admitted = new Semaphore(WORKERS + WAITING);
+      Thread accepting = new Thread(() -> accept(bound, workers, admitted), "ElizaOwnerGmailBrokerAccept");
       accepting.setDaemon(true);
+      listening = new Listening(bound, workers, admitted, accepting);
       accepting.start();
     }
     byte[] secret = new byte[48];
@@ -134,16 +135,21 @@ public final class GoogleBrokerHost implements GoogleBroker {
     Listening closing = listening;
     listening = null;
     for (Runnable queued : closing.workers().shutdownNow()) if (queued instanceof Admitted admitted) quietly(admitted.socket());
-    closing.server().close();
+    try {
+      closing.server().close();
+    } finally {
+      closing.accepting().interrupt();
+      awaitAccept(closing.accepting());
+    }
   }
 
-  private void accept(Listening serving) {
+  private void accept(ServerSocket server, ExecutorService workers, Semaphore admitted) {
     boolean failing = false;
-    while (!serving.server().isClosed()) {
+    while (!closed && !server.isClosed()) {
       Socket socket;
-      try { socket = serving.server().accept(); }
+      try { socket = server.accept(); }
       catch (IOException refused) {
-        if (serving.server().isClosed()) return;
+        if (closed || server.isClosed()) return;
         if (!failing) failed.accept(new UncheckedIOException("The mail broker could not accept a connection", refused));
         failing = true;
         try { Thread.sleep(ACCEPT_RETRY_MS); }
@@ -154,14 +160,14 @@ public final class GoogleBrokerHost implements GoogleBroker {
         continue;
       }
       failing = false;
-      if (!serving.admitted().tryAcquire()) {
+      if (!admitted.tryAcquire()) {
         quietly(socket);
         continue;
       }
       try {
-        serving.workers().execute(new Admitted(this, socket, serving.admitted()));
-      } catch (RejectedExecutionException closed) {
-        serving.admitted().release();
+        workers.execute(new Admitted(this, socket, admitted));
+      } catch (RejectedExecutionException rejected) {
+        admitted.release();
         quietly(socket);
       }
     }
@@ -286,6 +292,20 @@ public final class GoogleBrokerHost implements GoogleBroker {
       if (count < 0) return;
       drained += count;
     }
+  }
+
+  private static void awaitAccept(Thread accepting) throws IOException {
+    if (Thread.currentThread() == accepting) return;
+    boolean interrupted = false;
+    long until = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(DEADLINE_MS);
+    while (accepting.isAlive()) {
+      long left = TimeUnit.NANOSECONDS.toMillis(until - System.nanoTime());
+      if (left < 1) break;
+      try { accepting.join(left); }
+      catch (InterruptedException ignored) { interrupted = true; }
+    }
+    if (interrupted) Thread.currentThread().interrupt();
+    if (accepting.isAlive()) throw new IOException("The mail broker's port did not stop accepting within " + DEADLINE_MS + " ms");
   }
 
   private static void quietly(Socket socket) {

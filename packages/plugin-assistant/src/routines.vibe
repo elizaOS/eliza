@@ -373,9 +373,9 @@ export const ownerRoutinesAction: Action = {
   parameters: [
     { name: "op", required: true, description: "Op.", schema: { type: "string", enum: ["create", "pause", "resume", "archive", "delete", "list", "complete", "skip", "snooze", "mute", "unmute"] } },
     { name: "title", required: false, description: "create: title.", schema: { type: "string" } },
-    { name: "windows", required: false, description: "create: morning(09:00), afternoon(15:00), evening(18:00), night(21:00).", schema: { type: "array" } },
-    { name: "times", required: false, description: "create: HH:MM (owner clock) if named.", schema: { type: "array" } },
-    { name: "days", required: false, description: "create: mon..sun if named (default daily).", schema: { type: "array" } },
+    { name: "windows", required: false, description: "create: morning(09:00), afternoon(15:00), evening(18:00), night(21:00).", schema: { type: "array", items: { type: "string", enum: ["morning", "afternoon", "evening", "night"] } } },
+    { name: "times", required: false, description: "create: HH:MM (owner clock) if named.", schema: { type: "array", items: { type: "string", maxLength: 5 } } },
+    { name: "days", required: false, description: "create: mon..sun if named (default daily).", schema: { type: "array", items: { type: "string", enum: ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] } } },
     { name: "target", required: false, description: "Non-create/list: title or id.", schema: { type: "string" } },
   ],
   tags: ["domain:routines", "capability:write", "effect:receipt-required"],
