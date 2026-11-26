@@ -475,7 +475,7 @@ const FilterText = Schema.String.check(
   SchemaTransformation.transform({ decode: (text) => text.trim(), encode: (text) => text }),
 ))
 const collapsed = (name: string) => name.replace(/\s+/g, " ").trim()
-const FolderName = Schema.String.pipe(Schema.decodeTo(
+const FolderName = Schema.String.check(Schema.isMaxLength(40)).pipe(Schema.decodeTo(
   Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(40), Schema.makeFilter((name: string) => !name.includes("\0") && name === collapsed(name))),
   SchemaTransformation.transform({ decode: collapsed, encode: (name: string) => name }),
 ))
