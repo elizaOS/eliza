@@ -1,5 +1,5 @@
 // spec/cloud/index.md, "Story: Use inference on my subscription or funded pilot account"; spec/cloud/index.md, "A request needs an active account and sufficient funding for its quote"; spec/cloud/index.md, "A streamed answer sends complete OpenAI frames and settles the same hold"; spec/cloud/shared/metering.md, "A call reaches its provider only after its hold is durably marked dispatched"; spec/cloud/services/inference.md, "A provider's refusal of the request passes on its listed code and parameter and nothing else"
-import { endOfFailure, hangUpCounts } from "../../gen/cloud__services__inference.effect.vibe"
+import { endOfFailure, hangUpCounts, wireOutputCap } from "../../gen/cloud__services__inference.effect.vibe"
 import { statusOf } from "../../gen/cloud__shared__types.effect.vibe"
 import { refused } from "../http/refusal.vibe"
 import { signed } from "../http/request-auth.vibe"
@@ -49,7 +49,8 @@ effect function chat(context: RouteContext): HttpServerResponse.HttpServerRespon
   const store = try Store
   const { model, provider } = try store.transaction((tx) => chooseFor(tx, settings, body.model, hasImage(body)))
   const priced = try quote(body, model)
-  const payload = providerBody(body, model.upstreamModel, priced.wireCap)
+  const wire = wireOutputCap(priced.capped, provider.kind === "workers-ai", priced.outputCap)
+  const payload = providerBody(body, model.upstreamModel, wire.tag === "AskFor" ? wire.tokens : undefined)
   const ticket = try reserve(caller, { service: "MeteredInference", caller: caller.organizationId, requestId: id ?? context.requestId, part: { tag: "WholeRequest" } }, priced.micros)
   if (ticket.replayed) throw refused("AlreadyDispatched")
 
