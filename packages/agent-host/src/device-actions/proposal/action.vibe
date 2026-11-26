@@ -241,7 +241,7 @@ module node {
     turn.signal.throwIfAborted()
     const kept = await Effect.runPromise(openRequest(runtime.adapter, proposalId(turn.message.id, sought)))
     const keptState = kept === undefined ? undefined : await Effect.runPromise(kept.machine.get())
-    const open = kept === undefined ? await Effect.runPromise(sameOperationOpen(turn, sought, grounding === undefined ? undefined : carriesMessage(turn, grounding, family.name))) : undefined
+    const open = kept === undefined ? await Effect.runPromise(sameOperationOpen(turn, sought, grounding === undefined ? undefined : carriesMessage(turn, grounding, family.name, sought.type))) : undefined
     const found = kept ?? open
     const answer = proposalAnswer(reply, kept !== undefined, keptState !== undefined && requestSettled(keptState.phase), open !== undefined)
     if ((answer === "ReturnedOpen" || answer === "ReturnedSettled") && found !== undefined) return reported(family, found, true, turn, earlier)

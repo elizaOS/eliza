@@ -133,7 +133,7 @@ const forms: readonly ProposalForm[] = [
       recipientKind, reviewRequested,
     }),
     guidance: [
-      "sms_compose sends reviewed SMS to one recipient from any view (phone picks SIM); prefer over sms_send. Set draft: true when owner asks to draft, write or prepare a text rather than send it.",
+      "sms_compose sends reviewed SMS to one recipient from any view (phone picks SIM); prefer over sms_send. Set draft: true when owner asks to draft, write or prepare a text rather than send it; to see the draft here in chat, write it in your reply and propose nothing.",
       composeGuidance, targetGuidance, referenceGuidance,
     ],
   },
