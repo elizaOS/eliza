@@ -151,7 +151,17 @@ it('A Photos operation names no more items than its review takes (spec/agent/dev
   assert.isUndefined(readOperation({ type: "photos_album_create", name: "   ", ids: ids(1) }))
   assert.isUndefined(readOperation({ type: "photos_filter", text: "trip\u0007" }))
 })
-
+it('A telephony contact query is no more than 128 units as submitted (spec agent/deviceActions/telephony.md, "A proposed contact name is one the owner wrote as whole words, outside the text to send")', () => {
+  const bounded: ReadonlyArray<readonly [unknown, unknown]> = [
+    [{ type: "phone_call", target: { kind: "contact", query: "a".repeat(128) } }, { type: "phone_call", target: { kind: "contact", query: ` ${"a".repeat(128)} ` } }],
+    [{ type: "phone_call", target: { kind: "contact", query: "a".repeat(128) } }, { type: "phone_call", target: { kind: "contact", query: "a".repeat(129) } }],
+  ]
+  for (const [within, beyond] of bounded) {
+    assert.isDefined(readOperation(within), JSON.stringify(within).slice(0, 120))
+    assert.isUndefined(readOperation(beyond), JSON.stringify(beyond).slice(0, 120))
+  }
+  assert.isUndefined(readOperation({ type: "phone_call", target: { kind: "contact", query: " " } }))
+})
 it("Propose only operations the device can check: each operation needs its own capability and a workflow read needs its binding", () => {
   assert.isDefined(validate(sms, negotiation(true, "sms.send.v1"), "NoBinding"))
   assert.isUndefined(validate(sms, negotiation(true, "sms.compose.v1"), "NoBinding"))
