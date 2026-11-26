@@ -698,7 +698,7 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
 
   try Effect.sync(() => cloud.script(toolCalls("", { name: "VIEWS", arguments: { action: "show", view: "home" } }), text("I can't switch screens from this chat."), text("[answer] I can't switch screens from this chat, so home isn't showing.")))
   const { answer: unrendered, calls: unrenderedCalls } = try callsFor({ text: "Show me home here." })
-  const declined = completionsSent().at(-1)?.messages.find(({ role }) => role === "tool")?.content
+  const declined = completionsSent().at(-1)?.messages.findLast(({ role }) => role === "tool")?.content
   const unrenderedAsked = reasked()
 
   try Effect.sync(() => cloud.script(toolCalls("", { name: "CALCULATE", arguments: { expression: "two plus two" } }), text("Done!"), text("I couldn't add two plus two: the calculator didn't take it.")))
