@@ -49,7 +49,6 @@ module node {
 
   const reportOf = /The step's own report: (".*")$/mu
   const retold = "I didn't set that up, so nothing was called, sent or saved. Tell me who or what to use instead."
-  const retoldReported = `${retold}\n[reported: "I didn't set that up, so nothing was called, sent or saved."]`
 
   function reportedTo(calls: readonly { readonly path: string; readonly body: unknown }[]): string | undefined {
     const note = calls.filter(({ path }) => path.endsWith("/chat/completions")).flatMap(({ body }) => {
@@ -189,13 +188,13 @@ module node {
     const turnWith = async (words: string, operations: readonly unknown[], answer = "Okay.", caps?: string, refused = false) => {
       const before = new Set((await proposals(client)).map(({ id }) => id))
       const sent = cloud.calls.length
-      cloud.script(...operations.map((operation) => toolCalls("", propose(operation))), reply(answer), ...(refused ? [reply(retoldReported)] : []))
+      cloud.script(...operations.map((operation) => toolCalls("", propose(operation))), reply(answer), ...(refused ? [reply(retold)] : []))
       const turn = (await client.call("POST", path, { text: words, metadata: direct }, caps)).json as Turn
       const offered = (await proposals(client)).find(({ id }) => !before.has(id))
       const told = reportedTo(cloud.calls.slice(sent))
       return {
         reply: told ?? turn.text, operation: offered?.payload.operation,
-        ...(told === undefined ? {} : { heard: turn.text === retold }),
+        ...(told === undefined ? {} : { heard: turn.text === told }),
         ...(offered !== undefined && offered.payload.requestMessageId !== turn.userMessageId ? { reviewed: true } : {}),
       }
     }
