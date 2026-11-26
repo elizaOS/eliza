@@ -70,7 +70,9 @@ public final class CodeSignIn {
 
   public sealed interface Checked {
     record SessionIssued(Session session) implements Checked {}
-    record KeyMinted(Proof proof, String userId, long keyExpiresAt, boolean googleConnected) implements Checked {}
+    record KeyMinted(Proof proof, Account account, long keyExpiresAt, boolean googleConnected) implements Checked {
+      boolean belongsTo(Account expected) { return account.equals(expected); }
+    }
     record FactorAsked(String challengeId, List<String> factors, long expiresAt) implements Checked {}
     record NotChecked(CloudReply reply) implements Checked {}
   }
@@ -137,14 +139,29 @@ public final class CodeSignIn {
     return session == null ? new Checked.NotChecked(new CloudReply.Unanswered()) : new Checked.SessionIssued(session);
   }
 
-  public static Session session(JSONObject body, long now) {
+  static Checked checkedGoogle(Answer answer, String state, String verifier, long now) {
+    if (!answer.ok() || !"signed_in".equals(answer.body.optString("status"))) return checked(answer, now);
+    JSONObject body = answer.body, google = body.optJSONObject("google");
+    String code = body.optString("code", "");
+    Account owner = account(body);
+    long keyExpiresAt = SignInPolicy.instant(body.opt("expiresAt"));
+    if (code.isEmpty() || owner == null || keyExpiresAt <= now) return new Checked.NotChecked(new CloudReply.Unanswered());
+    return new Checked.KeyMinted(new Proof(code, state, verifier), owner, keyExpiresAt, google != null && google.optBoolean("connected", false));
+  }
+
+  private static Account account(JSONObject body) {
     JSONObject user = body.optJSONObject("user");
-    String userId = user == null ? "" : user.optString("id", "");
-    String organizationId = body.optString("organizationId", "");
+    if (user == null || !(user.opt("id") instanceof String userId) || userId.isEmpty() || userId.length() > 256
+        || !(body.opt("organizationId") instanceof String organizationId) || organizationId.isEmpty() || organizationId.length() > 256) return null;
+    return new Account(userId, organizationId);
+  }
+
+  public static Session session(JSONObject body, long now) {
+    Account owner = account(body);
     String access = body.optString("accessToken", ""), refresh = body.optString("refreshToken", "");
     long accessExpiresAt = SignInPolicy.instant(body.opt("accessExpiresAt"));
-    if (userId.isEmpty() || organizationId.isEmpty() || !SignInPolicy.validBearer(access) || !SignInPolicy.validBearer(refresh) || accessExpiresAt <= now) return null;
-    return new Session(new Account(userId, organizationId), access, refresh, accessExpiresAt);
+    if (owner == null || !SignInPolicy.validBearer(access) || !SignInPolicy.validBearer(refresh) || accessExpiresAt <= now) return null;
+    return new Session(owner, access, refresh, accessExpiresAt);
   }
 
   private static List<String> factors(JSONArray methods) {
