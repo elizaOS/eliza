@@ -1,4 +1,4 @@
-// spec/anthropic/index.md, "Story: Ask an Anthropic model for a complete response"
+// spec/anthropic/index.md, "Story: Ask an Anthropic model for a complete response"; spec/anthropic/index.md, "Reported usage carries the cache read and cache write tokens the provider reports"
 import { ModelType, type GenerateTextParams, type IAgentRuntime, type ImageDescriptionParams, type Plugin, type TextStreamResult, type TokenUsage } from "@elizaos/core"
 import { type Cause, Exit, Queue, Schema, Stream } from "effect"
 import * as Sse from "effect/encoding/Sse"

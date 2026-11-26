@@ -5088,8 +5088,8 @@ it.live('Two scrub items drained together keep both people\'s pseudonyms, and a 
   }))
 }), 60_000)
 
-// spec/core/actionPlanning.md, "A promoted subaction is checked by its own name and its umbrella's, so allowing an umbrella allows none of its subactions and refusing it refuses them all"
-it.effect('Promoted subactions preserve summarize and modelClass with override precedence and pin their discriminator (spec/core/actionPlanning.md, "A promoted subaction is checked by its own name and its umbrella\'s, so allowing an umbrella allows none of its subactions and refusing it refuses them all")', () => effect {
+// spec/core/actionPlanning.md, "A promoted subaction keeps its umbrella's summarize and model class unless it sets its own"
+it.effect('Promoted subactions preserve summarize and modelClass with override precedence and pin their discriminator (spec/core/actionPlanning.md, "A promoted subaction keeps its umbrella\'s summarize and model class unless it sets its own")', () => effect {
   const seen: Record<string, unknown>[] = []
   const parentSummarize = (result: { text?: string } | undefined) => `parent:${result?.text ?? ""}`
   const listSummarize = (result: { text?: string } | undefined) => `list:${result?.text ?? ""}`
@@ -5145,8 +5145,8 @@ it.effect('Promoted subactions preserve summarize and modelClass with override p
   })
 })
 
-// spec/core/actionPlanning.md, "Story: Plan and execute tool calls"
-it.effect('Open-ended object schemas allow arbitrary keys while closed objects with declared properties reject unknown keys (spec/core/actionPlanning.md, "Story: Plan and execute tool calls")', () => effect {
+// spec/core/actionPlanning.md, "An object parameter with no declared properties accepts any keys, and one with declared properties accepts no others unless it says so"
+it.effect('Open-ended object schemas allow arbitrary keys while closed objects with declared properties reject unknown keys (spec/core/actionPlanning.md, "An object parameter with no declared properties accepts any keys, and one with declared properties accepts no others unless it says so")', () => effect {
   const action: Action = {
     name: "WORKFLOW_TEST",
     description: "Test schema.",

@@ -1,4 +1,4 @@
-// spec/openai/index.md, "Story: Use an OpenAI-compatible model for the requested capability"
+// spec/openai/index.md, "Story: Use an OpenAI-compatible model for the requested capability"; spec/openai/index.md, "Tools are sent strict only when every tool in the request is strict"; spec/openai/index.md, "Reported usage carries the cached prompt tokens the provider reports"
 import { ModelType, VECTOR_DIMS, type GenerateTextParams, type IAgentRuntime, type ImageDescriptionParams, type Plugin, type TextStreamResult, type TokenUsage } from "@elizaos/core"
 import { Cause, Exit, Queue, Schema, Stream } from "effect"
 import * as Sse from "effect/encoding/Sse"

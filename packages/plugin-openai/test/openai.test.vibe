@@ -44,7 +44,7 @@ function openaiRuntime(endpoint: string): IAgentRuntime {
   } as unknown as IAgentRuntime
 }
 
-it('OpenAI & Cerebras prompt-cache usage, omitted content on tool_calls, and batch-uniform wire strict gating work end to end (spec/openai/index.md, "Story: Use an OpenAI-compatible model for the requested capability")', async () => {
+it('OpenAI & Cerebras prompt-cache usage, omitted content on tool_calls, and batch-uniform wire strict gating work end to end (spec/openai/index.md, "Story: Use an OpenAI-compatible model for the requested capability"; spec/openai/index.md, "Tools are sent strict only when every tool in the request is strict"; spec/openai/index.md, "Reported usage carries the cached prompt tokens the provider reports")', async () => {
   let callIndex = 0
   const srv = await startOpenAiTestServer((body, res) => {
     callIndex += 1

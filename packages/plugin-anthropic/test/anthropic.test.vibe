@@ -48,7 +48,7 @@ function makeRuntime(baseUrl: string): IAgentRuntime {
 }
 
 describe('Anthropic prompt-cache breakpoints and telemetry (spec/anthropic/index.md, "Story: Ask an Anthropic model for a complete response")', () => {
-  it('emits ephemeral cache_control on system block and final tool entry and returns cache token usage (spec/anthropic/index.md, "Story: Ask an Anthropic model for a complete response")', async () => {
+  it('emits ephemeral cache_control on system block and final tool entry and returns cache token usage (spec/anthropic/index.md, "Story: Ask an Anthropic model for a complete response"; spec/anthropic/index.md, "Reported usage carries the cache read and cache write tokens the provider reports")', async () => {
     const server = await startAnthropicServer((_payload, _req, res) => {
       res.writeHead(200, { "content-type": "application/json" })
       res.end(JSON.stringify({
