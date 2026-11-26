@@ -1,0 +1,44 @@
+{
+  "id": "ctcc",
+  "name": "Cinqueport Token Control Check (CTCC™)",
+  "description": "Deterministic smart-contract authority and control inspection on Base Mainnet via x402 v2 micropayments ($0.01 USDC)",
+  "npmName": "@cinqueport/plugin-ctcc",
+  "version": "1.0.0",
+  "source": "community",
+  "tags": ["base", "smart-contract", "token-safety", "security", "x402"],
+  "config": {
+    "EVM_PRIVATE_KEY": {
+      "type": "string",
+      "required": false,
+      "sensitive": true,
+      "label": "EVM Private Key",
+      "help": "Hex-encoded EVM private key for automatic $0.01 USDC x402 micropayment signing on Base Mainnet",
+      "advanced": false
+    },
+    "CTCC_ENDPOINT": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "CTCC Endpoint",
+      "help": "Custom CTCC endpoint URL (defaults to https://cinqueport.net/check)",
+      "advanced": true
+    }
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "Shield",
+    "group": "security",
+    "groupOrder": 1,
+    "actions": ["enable", "configure"]
+  },
+  "resources": {
+    "homepage": "https://cinqueport.net/#ctcc",
+    "repository": "https://github.com/jamesbjgates-web/ctcc-mcp",
+    "setupGuideUrl": "https://cinqueport.net/openapi.json"
+  },
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "security"
+}
