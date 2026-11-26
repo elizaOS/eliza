@@ -35,7 +35,9 @@ function taskService(host: TaskHostHandle, owner: TaskOwner | undefined, present
       if (owner !== undefined) {
         const opened = await Effect.runPromiseExit(host.start(owner))
         if (Exit.isFailure(opened)) {
-          logger.warn({ src: "agent", agentId: runtime.agentId, code: "TASK_STORAGE_UNAVAILABLE" }, "The interactive task host could not start")
+          const failure = Cause.squash(opened.cause)
+          const reason = typeof failure === "object" && failure !== null && "reason" in failure ? String(failure.reason) : String(failure)
+          logger.warn({ src: "agent", agentId: runtime.agentId, code: "TASK_STORAGE_UNAVAILABLE", reason }, "The interactive task host could not start")
         } else if (presentation !== undefined) {
           service.detachPresentation = bindTaskPresentation(runtime, host, presentation)
         }
