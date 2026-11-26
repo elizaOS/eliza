@@ -309,7 +309,7 @@ describe('Frames the agent never writes (spec/agent/conversation/replyStream.md,
 })
 
 const planning = "spec/agent/conversation/planning.md"
-const cued = (cue: string, call: { readonly name: string; readonly arguments: object }) => ({ name: call.name, arguments: { cue, ...call.arguments } })
+const cued = (cue: string, call: { readonly name: string; readonly arguments: object }, tag = "[promise] ") => ({ name: call.name, arguments: { cue: `${tag}${cue}`, ...call.arguments } })
 
 it.live(`Hear that the agent heard me once while work is pending, and see which app it uses (spec/agent/conversation/replyStream.md, "The acknowledgment is written at most once, before the text and progress waiting with it, and only its own frame clears it"; ${planning}, "A turn acknowledges at most once, with a cue that comes with its first tool calls"; ${planning}, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"; ${planning}, "A tool's progress names its app only when one labelled app applies, and never its arguments or results"; ${planning}, "Every call of a turn is one the model chose, and a call this message serves in another place is refused before it runs and is no step of the turn"; ${planning}, "A coaching response stays in the planner transcript")`, effect () => {
   const cloud = try cloudFake(deviceKey)
@@ -461,7 +461,7 @@ it.live(`Hear that the agent heard me once while work is pending, and see which 
   }))
 }, 120_000)
 
-it.live(`Hear the cue the model wrote in its tool call's cue field, whatever its words or language, and never text beside the calls, a claim the work is done, or a cue that asks, carries data or runs long (${planning}, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"; ${planning}, "A turn acknowledges at most once, with a cue that comes with its first tool calls")`, effect () => {
+it.live(`Hear the cue the model wrote in its tool call's cue field, whatever its words or language, and never text beside the calls, a cue it did not tag [promise], a claim the work is done, or a cue that asks, carries data or runs long (${planning}, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"; ${planning}, "A turn acknowledges at most once, with a cue that comes with its first tool calls")`, effect () => {
   const cloud = try cloudFake(deviceKey)
   const agent = try startInProcess({
     launch: { backend: { kind: "cloud", origin: cloud.origin }, load: [agendaApp.name], allowed: ["REPLY", "IGNORE", "NONE", "AGENDA_READ"] },
@@ -469,8 +469,8 @@ it.live(`Hear the cue the model wrote in its tool call's cue field, whatever its
   })
   const { id } = try conversation(agent)
   const agenda = { name: "AGENDA_READ", arguments: {} }
-  const heard = (request: string, cue: string, beside?: string) => effect {
-    try Effect.sync(() => cloud.script(beside === undefined ? toolCalls("", cued(cue, agenda)) : toolCalls(`${beside}${cue}`, agenda), text("Done.")))
+  const heard = (request: string, cue: string, beside?: string, fieldTag = "[promise] ") => effect {
+    try Effect.sync(() => cloud.script(beside === undefined ? toolCalls("", cued(cue, agenda, fieldTag)) : toolCalls(`${beside}${cue}`, agenda), text("Done.")))
     const chunks = try streamed(agent, id, { text: request })
     const whole = try read(chunks, 0)
     const said = whole.outcome.kind === "Done" ? whole.outcome.text : whole.outcome.kind
@@ -494,7 +494,10 @@ it.live(`Hear the cue the model wrote in its tool call's cue field, whatever its
   for (const cue of claims) unclaimed.push(try heard("Text Sam that I'm late", cue, ""))
   for (const cue of claims) unclaimed.push(try heard("Text Sam that I'm late", cue, "[answer] "))
   for (const cue of claims) unclaimed.push(try heard("Text Sam that I'm late", cue, "[promise] "))
-  for (const cue of claims) unclaimed.push(try heard("Text Sam that I'm late", `[answer] ${cue}`))
+  for (const cue of claims) unclaimed.push(try heard("Text Sam that I'm late", cue, undefined, "[answer] "))
+  for (const cue of claims) unclaimed.push(try heard("Text Sam that I'm late", cue, undefined, ""))
+  const untaggedForms: Heard[] = []
+  for (const cue of forms) untaggedForms.push(try heard("Am I free Friday", cue, undefined, ""))
   const shortAnswers = [try answered("Call me Bob", "Sure."), try answered("Thanks", "Anytime.")]
   try Effect.sync(() => cloud.script(text("[answer] Anytime.")))
   const taggedWhole = try read(try streamed(agent, id, { text: "Thanks again" }), 0)
@@ -502,7 +505,7 @@ it.live(`Hear the cue the model wrote in its tool call's cue field, whatever its
   const leaksTag = (seen: readonly string[]) => seen.some((entry) => /[[<]\/?(?:answer|promise|ans|prom)/iu.test(entry))
   try Effect.sync(() => cloud.script(text("Sure.\n[answer] Paris has about 2 million people. [answer]")))
   const midWhole = try read(try streamed(agent, id, { text: "Capital of France?" }), 3)
-  try Effect.sync(() => cloud.script(toolCalls("", cued("[promise] Let me check. [promise]", agenda)), text("<answer> Nothing booked.</answer>")))
+  try Effect.sync(() => cloud.script(toolCalls("", cued("[promise] Let me check. [promise]", agenda, "")), text("<answer> Nothing booked.</answer>")))
   const cueWhole = try read(try streamed(agent, id, { text: "Text Sam that I'm late" }), 3)
   const thirds = (words: string) => text(...(words.match(/[\s\S]{1,3}/gu) ?? []))
   const survives = [
@@ -549,10 +552,11 @@ it.live(`Hear the cue the model wrote in its tool call's cue field, whatever its
     midWhole.outcome.kind === "Done" ? midWhole.outcome.text : midWhole.outcome.kind, leaksTag(midWhole.seen),
     cueWhole.seen.filter((entry) => entry.startsWith("acknowledgment:")), cueWhole.outcome.kind === "Done" ? cueWhole.outcome.text : cueWhole.outcome.kind, leaksTag(cueWhole.seen),
   ]
-  try Effect.try(() => assert.deepStrictEqual({ spoken, unspoken, unclaimed, shortAnswers, tagged, anywhere, streamedSurvivors, upper, spaced, edges, echoed }, {
+  try Effect.try(() => assert.deepStrictEqual({ spoken, unspoken, unclaimed, untaggedForms, shortAnswers, tagged, anywhere, streamedSurvivors, upper, spaced, edges, echoed }, {
     spoken: requests.flatMap((request) => forms.map((cue): Heard => [request, cue, [cue], "Done."])),
     unspoken: refused.map((cue): Heard => ["Text Sam that I'm late", cue, [], "Done."]),
-    unclaimed: [...claims, ...claims, ...claims, ...claims.map((cue) => `[answer] ${cue}`)].map((cue): Heard => ["Text Sam that I'm late", cue, [], "Done."]),
+    unclaimed: [...claims, ...claims, ...claims, ...claims, ...claims].map((cue): Heard => ["Text Sam that I'm late", cue, [], "Done."]),
+    untaggedForms: forms.map((cue): Heard => ["Am I free Friday", cue, [], "Done."]),
     shortAnswers: [["Sure.", 0], ["Anytime.", 0]],
     tagged: ["Anytime.", false],
     upper: ["Anytime, 2 of them.", false],
@@ -906,7 +910,7 @@ it.live(`Never see or keep the agent host's notes as a reply, whether the model 
   }))
 }, 120_000)
 
-it.live(`In one long chat, an earlier reply reaches the model with what its tools really did, "go home" after "Browser is open." still runs VIEWS, each call comes back with its arguments in the order the model wrote them, a refused call is never recorded as done, and no record reaches me in a reply, the stream, the store or Talk (${planning}, "An earlier reply reaches the model with the host's record of the tools its turn ran and how each ended"; ${planning}, "Text that repeats the agent host's notes is never delivered or streamed, and is asked again once as a blank"; spec/agent/conversation/conversations.md, "Redacting replaces the message and every exact copy of its text in its conversation with a fixed notice")`, effect () => {
+it.live(`In one long chat, an earlier reply reaches the model with what its tools really did, "go home" after "Browser is open." still runs VIEWS, each call comes back with the cue the model wrote in it first and its arguments in the order the model wrote them, a refused call is never recorded as done, and no record reaches me in a reply, the stream, the store or Talk (${planning}, "An earlier reply reaches the model with the host's record of the tools its turn ran and how each ended"; ${planning}, "Text that repeats the agent host's notes is never delivered or streamed, and is asked again once as a blank"; spec/agent/conversation/conversations.md, "Redacting replaces the message and every exact copy of its text in its conversation with a fixed notice")`, effect () => {
   const cloud = try cloudFake(deviceKey)
   const agent = try startInProcess({
     launch: {
@@ -936,7 +940,7 @@ it.live(`In one long chat, an earlier reply reaches the model with what its tool
 
   try Effect.sync(() => cloud.script(toolCalls("", show("Browser")), text("Browser is open.")))
   const opened = try turn({ text: "Open the browser.", metadata: on("home") })
-  try Effect.sync(() => cloud.script(toolCalls("", { name: "BROWSER_OPEN", arguments: { url: address } }), text("I can't open that page from here.")))
+  try Effect.sync(() => cloud.script(toolCalls("", cued("Let me look.", { name: "BROWSER_OPEN", arguments: { url: address } })), text("I can't open that page from here.")))
   const refused = try turn({ text: address, metadata: on("browser") })
   try Effect.sync(() => cloud.script(toolCalls("", { name: "VIEWS", arguments: { view: "Home", action: "show" } }), text("Home.")))
   const home = try turn({ text: "Go home.", metadata: on("notes") })
@@ -980,12 +984,12 @@ it.live(`In one long chat, an earlier reply reaches the model with what its tool
       { done: { kind: "Done", text: "Home.", failureKind: undefined, keyed: true }, tools: ["VIEWS"], leaked: false },
     ],
     talk: { done: { kind: "Done", text: "I haven't changed the screen.", failureKind: undefined, keyed: true }, tools: [], leaked: false },
-    homeRecords: ['VIEWS({"action":"show","view":"Browser"})', "-> done", `BROWSER_OPEN(${JSON.stringify({ url: `${address.slice(0, 39)}…` })})`, "-> refused, did not run"],
+    homeRecords: ['VIEWS({"cue":"","action":"show","view":"Browser"})', "-> done", `BROWSER_OPEN(${JSON.stringify({ cue: "[promise] Let me look.", url: `${address.slice(0, 39)}…` })})`, "-> refused, did not run"],
     replies: ["Browser is open.", "I can't open that page from here.", "Home.", "I haven't changed the screen.", "Noted."],
     redacted: [200, 200],
     afterRedaction: [
-      'VIEWS({"action":"show","view":"Browser"})', "-> done", 'BROWSER_OPEN({"url":"[Private information removed]"})', "-> refused, did not run",
-      'VIEWS({"view":"Home","action":"show"})', "-> done",
+      'VIEWS({"cue":"","action":"show","view":"Browser"})', "-> done", 'BROWSER_OPEN({"cue":"[promise] Let me look.","url":"[Private information removed]"})', "-> refused, did not run",
+      'VIEWS({"cue":"","view":"Home","action":"show"})', "-> done",
     ],
     addressGone: true,
     storedReplies: ["Browser is open.", "I can't open that page from here.", "Home.", "I haven't changed the screen.", "Noted.", "You're welcome."],
@@ -996,9 +1000,11 @@ it.live(`In one long chat, an earlier reply reaches the model with what its tool
     recordOf([["content", "Shopping List"], ["checklist", '["milk"]']]),
     recordOf({ content: "Shopping List", checklist: '["milk"]' }),
     recordOf([["content"]]),
+    recordOf([["cue", "x".repeat(130)], ["a", "1"], ["b", "2"], ["c", "3"], ["d", "4"], ["e", "5"], ["f", "6"], ["g", "7"]]),
   ], [
     ['{"content":"Shopping List","checklist":"[\\"milk\\"]"}'],
     ['{"checklist":"[\\"milk\\"]","content":"Shopping List"}'],
     undefined,
+    [JSON.stringify({ cue: "x".repeat(120), a: "1", b: "2", c: "3", d: "4", e: "5", f: "6" })],
   ])
 }, 120_000)

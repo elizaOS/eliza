@@ -82,8 +82,9 @@ keyed by that workflow's own input names). An array names what it holds. An acti
 key of a representative argument, every field named, is refused by the
 runtime's check as unexpected. The `cue` field every offered tool carries
 (below) is the planner's own, not the action's: it is taken off each call
-before the call's arguments are checked, the action runs or the step is
-recorded.
+before the call's arguments are checked, the action runs or the action's
+arguments are recorded; the step's record keeps it apart, as its own first
+argument (below).
 
 ### Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history
 
@@ -341,8 +342,12 @@ screen opened or a note was saved reads the same whether a tool did it or
 not. Copying such an earlier reply, the model said a screen had changed
 without calling the tool, and nothing changed. So when a reply is stored,
 the steps of its turn (above) are stored with it, for the model only: each
-step's action, its arguments in the order the model wrote them, and how it
-ended. In the history the model
+step's action, the `cue` the model wrote in its call (empty when it wrote
+none), its arguments in the order the model wrote them, and how it ended.
+The cue comes first, as the model writes it, so an earlier call reads as a
+call the model makes now: every offered tool requires a `cue`, and a
+history of calls without one taught the model to leave it out, so later
+turns of a long chat went silent before their work. In the history the model
 reads, a reply whose turn ran at least one step comes after that record,
 written as the model writes a turn's work: one assistant message calling
 each recorded step's tool with its arguments, under ids that are the
@@ -361,8 +366,9 @@ applied or was proposed and part failed; and `refused, did not run` when it
 was refused before it ran. A step that failed or never ran is never
 recorded as done. The record names at most six steps, in the order they
 ran, and the last tool message says how many more calls followed; it keeps
-the first six arguments of a step, each text value cut to 40 characters, so a
-record stays a few hundred bytes at most. The model reads its own call again
+a step's cue cut to 120 characters, the longest a spoken cue can be, and the
+first six arguments of the step besides it, each text value cut to 40
+characters, so a record stays a few hundred bytes at most. The model reads its own call again
 as it made it: the order of a call's arguments changes how it reads its
 earlier work, so a record never reorders them (a record stored before records
 kept that order gives them by name). A reply whose turn ran no step, a
@@ -809,18 +815,22 @@ pure def lawOrdinaryRefusalsRemainOutcomes(internal: bool): bool =
 ### A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole
 
 Every offered tool except `RESTORE_CONTEXT` carries a required `cue` field,
-first among its parameters and the same on every call, whose description
-restates the system prompt's cue rule in brief. The rule asks the model to write in
+first among its parameters and the same on every call, whose short
+description only points at the system prompt's cue rule, so the field adds
+little to the prompt. The rule asks the model to write in
 the cue field of the first call of its first tool calls only a brief cue,
 tagged `[promise]`, that it heard the request, in the person's own
 language and its own words rather than a stock phrase, and to leave the
 field empty on every other call. A cue is a field the model must fill, not
 text it may choose to write beside a call: a model that writes no text
 beside its native tool calls still fills it, and empty is allowed. The rule describes
-what a cue is and lists none: a few natural words that the agent is looking
-or about to act, which never name the people, items, places, days, times, numbers
-or outcome, never ask anything, never say the work is done, under way or happening now and
-never repeat the request, and never open with assent after a question. A
+what a cue is and lists none: a few natural words saying only what the
+agent is about to do. The work may still fail or wait for the owner's
+approval (a page the owner opens with a tap, a send held for review), so a
+cue never says or implies that the work is done, under way or happening now,
+the way an `-ing` verb does (`Opening that page.`). It never names the
+people, items, places, days, times, numbers or outcome, never asks anything,
+never repeats the request, and never opens with assent after a question. A
 message asking for several lookups or about several named people or items
 gets a general cue that names no source, and a source is named only for one
 simple lookup; the rule dictates no phrase, so every cue is worded by the
@@ -1004,10 +1014,16 @@ stream](./replyStream.md)'s `acknowledgment` frame, and only before work
 starts. When the owner asks for silence the model leaves the cue empty, so none is
 spoken; the shell never reads the owner's message to decide. The model says itself
 which text is its cue by writing it in the `cue` field: the turn's cue is
-the first non-empty `cue` among the first response's tool calls. The rule
-asks the model to tag it `[promise]` there too; the tag is taken off as
-anywhere else, an untagged cue is read as a promise, and a cue the model
-tagged `[answer]` (`[answer] Opening that page.`) is never spoken. A cue in a later step's calls is dropped. An empty
+the first non-empty `cue` among the first response's tool calls, in call
+order (the rule asks for it on the first call). The rule asks the model to
+tag it `[promise]` there too, and the tag is the model's own word that the
+text only says what it is about to do and claims no effect, as the v119
+build's `pending` effect status did for its acknowledgment: the tag is taken
+off as anywhere else, and a cue with no tag (`Sent.`) or tagged `[answer]`
+(`[answer] Opening that page.`) is never spoken, so a claim written in the
+field without the tag is never heard before the work runs. The shell keeps
+no list of claim words: whether a cue claims an effect is the model's own
+declaration, checked only by the tag and the form below. A cue in a later step's calls is dropped. An empty
 cue, or one that is not cue-shaped (it is long, asks a question or carries
 data), is never spoken as acknowledgment. Text the model writes beside its
 tool calls is never a cue, whatever its tag or form: such text, such as a
@@ -1057,6 +1073,17 @@ pure def lawOnlyAPromiseWithTheFirstCallsIsSpoken(shape: DraftShape, calls: int,
 pure def lawAnAnswerOrUntaggedTextWithWorkIsNeverSpoken(shape: DraftShape, calls: int, earlierCalls: int, toolsWaiting: bool): bool =
   not(spokenCue(readDraft(shape, calls, toolsWaiting, Undeclared), calls, earlierCalls, Undeclared))
   and not(spokenCue(readDraft(shape, calls, toolsWaiting, DeclaredAnswer), calls, earlierCalls, DeclaredAnswer))
+type CueSource = CueField | BesideCalls
+pure def spokenFrom(source: CueSource, draft: Draft, calls: int, earlierCalls: int, declared: Declared): bool =
+  source == CueField and spokenCue(draft, calls, earlierCalls, declared)
+pure def lawTextBesideCallsIsNeverSpoken(shape: DraftShape, calls: int, earlierCalls: int, toolsWaiting: bool, declared: Declared): bool =
+  not(spokenFrom(BesideCalls, readDraft(shape, calls, toolsWaiting, declared), calls, earlierCalls, declared))
+pure def lawOnlyAPromiseInTheFirstCueFieldIsSpoken(source: CueSource, shape: DraftShape, calls: int, earlierCalls: int, toolsWaiting: bool, declared: Declared): bool =
+  spokenFrom(source, readDraft(shape, calls, toolsWaiting, declared), calls, earlierCalls, declared)
+  iff (source == CueField and declared == DeclaredPromise and calls > 0 and earlierCalls == 0 and (shape == CueShaped or shape == CueBesideCall or shape == CueBesideObject))
+pure def lawAnUntaggedOrAnswerCueFieldIsNeverSpoken(shape: DraftShape, calls: int, earlierCalls: int, toolsWaiting: bool): bool =
+  not(spokenFrom(CueField, readDraft(shape, calls, toolsWaiting, Undeclared), calls, earlierCalls, Undeclared))
+  and not(spokenFrom(CueField, readDraft(shape, calls, toolsWaiting, DeclaredAnswer), calls, earlierCalls, DeclaredAnswer))
 pure def lawAnUntaggedCueNeverAnswersAFailureReAsk(sameAsFirst: bool): bool =
   not(answeredAgain(readDraft(CueShaped, 0, true, Undeclared), sameAsFirst)) and answeredAgain(readDraft(CueShaped, 0, true, DeclaredAnswer), false)
 pure def lawAFinishedReplyIsNeverReplacedByACue(sameAsFirst: bool): bool =

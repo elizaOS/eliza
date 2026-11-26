@@ -3,6 +3,7 @@ import { Schema } from "effect"
 import type { GenerateTextParams } from "@elizaos/core"
 import { carriesARecord, maxRecordedArguments, maxRecordedValueChars, recordedOutcome, recordedSteps, type RecordedOutcome } from "../../gen/agent__conversation__planning.ts"
 import type { PlannedStep } from "./planning.vibe"
+import { maxCueLength } from "./reply-text.vibe"
 
 type ChatMessage = NonNullable<GenerateTextParams["messages"]>[number]
 type RecordedValue = string | number | boolean
@@ -31,6 +32,7 @@ schema StoredToolRecord {
 }
 
 const decodeRecord = Schema.decodeUnknownOption(StoredToolRecord)
+const cueName = "cue"
 
 const outcomeWords: Readonly<Record<RecordedOutcome, string>> = {
   RecordedDone: "done",
@@ -44,6 +46,7 @@ const outcomeWords: Readonly<Record<RecordedOutcome, string>> = {
 const byKey = ([a]: readonly [string, unknown], [b]: readonly [string, unknown]) => a < b ? -1 : a > b ? 1 : 0
 const cut = (text: string) => text.length > maxRecordedValueChars ? `${text.slice(0, maxRecordedValueChars - 1)}…` : text
 const plainOf = (text: string) => text.replace(/\s+/gu, " ").trim()
+const cutCue = (text: string) => text.length > maxCueLength ? text.slice(0, maxCueLength) : text
 const cutCopy = (value: string, said: string) => value.length === maxRecordedValueChars && value.endsWith("…") && said.startsWith(value.slice(0, -1))
 const copies = (value: string, text: string) => plainOf(text) !== "" && (value.includes(plainOf(text)) || cutCopy(value, plainOf(text)))
 const withoutCopies = (value: string, text: string, notice: string) => cutCopy(value, plainOf(text)) ? notice : value.replaceAll(plainOf(text), notice)
@@ -67,8 +70,8 @@ export function toolRecordOf(steps: readonly PlannedStep[]): ToolRecord | undefi
   if (!carriesARecord(true, false, steps.length)) return undefined
   const kept = steps.slice(0, recordedSteps(steps.length))
   return {
-    steps: kept.map(({ action, params, outcomes, result }) => ({
-      action, args: argsOf(params), outcome: recordedOutcome(outcomes.map(({ outcome }) => outcome), (result.effectReceipts ?? []).length > 0),
+    steps: kept.map(({ action, cue, params, outcomes, result }) => ({
+      action, args: [[cueName, cutCue(plainOf(cue))], ...argsOf(params)], outcome: recordedOutcome(outcomes.map(({ outcome }) => outcome), (result.effectReceipts ?? []).length > 0),
     })),
     more: steps.length - kept.length,
   }
@@ -91,8 +94,9 @@ function storedRecord(value: unknown): ToolRecord | undefined {
   const read = decoded.value.steps.flatMap(({ action, args, outcome }) => {
     const stored = storedArgs(args)
     if (!/^[A-Za-z0-9_-]{1,64}$/u.test(action) || stored === undefined) return []
-    const kept = stored.slice(0, maxRecordedArguments)
-    return [{ action, args: kept.map(([name, keptValue]): RecordedArgument => [name, typeof keptValue === "string" ? cut(keptValue) : keptValue]), outcome }]
+    const cue = stored[0]?.[0] === cueName && typeof stored[0][1] === "string" ? [[cueName, cutCue(stored[0][1])] satisfies RecordedArgument] : []
+    const kept = stored.slice(cue.length, cue.length + maxRecordedArguments)
+    return [{ action, args: [...cue, ...kept.map(([name, keptValue]): RecordedArgument => [name, typeof keptValue === "string" ? cut(keptValue) : keptValue])], outcome }]
   })
   return read.length === decoded.value.steps.length ? { steps: read.slice(0, recordedSteps(read.length)), more: decoded.value.more } : undefined
 }
