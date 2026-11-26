@@ -1055,7 +1055,7 @@ it.live(`Redact a PIN or a yes I sent by mistake, and no later turn sends it to 
     set: { kind: "Done", text: "Your lock is set.", failureKind: undefined, keyed: true },
     beforeRedaction: [`LOCK_SET(${JSON.stringify({ pin: 602214, remember: true })})`],
     redactions: [200, 200],
-    stored: [{ steps: [{ action: "LOCK_SET", args: { pin: "[Private information removed]", remember: "[Private information removed]" }, outcome: "RecordedDone" }], more: 0 }],
+    stored: [{ steps: [{ action: "LOCK_SET", args: [["pin", "[Private information removed]"], ["remember", "[Private information removed]"]], outcome: "RecordedDone" }], more: 0 }],
     afterRedaction: [`LOCK_SET(${JSON.stringify({ pin: "[Private information removed]", remember: "[Private information removed]" })})`],
     pinGone: true,
   }))

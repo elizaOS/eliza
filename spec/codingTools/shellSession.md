@@ -139,8 +139,8 @@ pure def lawCheckedStdinNeedsTheOwner(forbidden: bool): bool =
   not(mayWriteBackgroundStdin(StdinChecked, forbidden, false))
 pure def lawForbiddenCheckedStdinIsRefused(ownerConfirmed: bool): bool =
   not(mayWriteBackgroundStdin(StdinChecked, true, ownerConfirmed))
-pure def lawConfirmedCheckedStdinIsWritten: bool =
-  mayWriteBackgroundStdin(StdinChecked, false, true)
+pure def lawConfirmedCheckedStdinIsWritten(forbidden: bool): bool =
+  not(forbidden) implies mayWriteBackgroundStdin(StdinChecked, forbidden, true)
 ```
 
 ### Leased output artifacts allow bounded paging until lease expiration
