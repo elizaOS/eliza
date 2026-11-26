@@ -7,6 +7,7 @@ module node {
   import type { ConversationRecord, ConversationStore } from "./conversations.vibe"
   import { conversationModel, modelIdOf, placedMessages } from "./fork.vibe"
   import { messageView, textSegmentIds } from "./history.vibe"
+  import { scrubToolRecord, toolRecordHolds } from "./tool-record.vibe"
 
   export type RedactResult =
     | { readonly kind: "unknown" }
@@ -54,11 +55,11 @@ module node {
         case "RedactNow": {
           const after = redact(model, 1, asked, expectedText).messages
           const changed = placed.filter(({ message }, index) => message.body.tag !== after[index].body.tag)
-          const recorded = placed.filter(({ memory }) => !changed.some((placed) => placed.memory.id === memory.id) && holds(memory.content.toolRecord, expectedText))
+          const recorded = placed.filter(({ memory }) => !changed.some((entry) => entry.memory.id === memory.id) && toolRecordHolds(memory.content.toolRecord, expectedText))
           const logs = await scrubLogs(adapter, record, expectedText)
           await adapter.updateMemories([
             ...changed.map(({ memory }) => ({ id: memory.id, content: noticeOnly(memory.content), embedding: undefined })),
-            ...recorded.map(({ memory }) => ({ id: memory.id, content: { ...memory.content, toolRecord: scrubbed(memory.content.toolRecord, expectedText) as Content["toolRecord"] } })),
+            ...recorded.map(({ memory }) => ({ id: memory.id, content: { ...memory.content, toolRecord: scrubToolRecord(memory.content.toolRecord, expectedText, privateNotice) } })),
           ])
           const segments = changed.flatMap(({ memory }) => textSegmentIds(memory))
           if (segments.length > 0) await adapter.deleteMemories(segments)

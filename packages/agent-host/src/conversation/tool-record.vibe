@@ -1,4 +1,5 @@
 // spec/agent/conversation/planning.md, "An earlier reply reaches the model with the host's record of the tools its turn ran and how each ended"
+import { Schema } from "effect"
 import type { GenerateTextParams } from "@elizaos/core"
 import { carriesARecord, maxRecordedArguments, maxRecordedValueChars, recordedOutcome, recordedSteps, type RecordedOutcome } from "../../gen/agent__conversation__planning.ts"
 import type { PlannedStep } from "./planning.vibe"
@@ -17,6 +18,19 @@ export type ToolRecord = {
   more: number
 }
 
+schema StoredStep {
+  readonly action: string
+  readonly args: Record<string, Schema.Unknown>
+  readonly outcome: "RecordedDone" | "RecordedUnchanged" | "RecordedProposed" | "RecordedFailed" | "RecordedPartly" | "RecordedRefused"
+}
+
+schema StoredToolRecord {
+  readonly steps: readonly StoredStep[]
+  readonly more: Schema.Int
+}
+
+const decodeRecord = Schema.decodeUnknownOption(StoredToolRecord)
+
 const outcomeWords: Readonly<Record<RecordedOutcome, string>> = {
   RecordedDone: "done",
   RecordedUnchanged: "no change",
@@ -26,10 +40,12 @@ const outcomeWords: Readonly<Record<RecordedOutcome, string>> = {
   RecordedRefused: "refused, did not run",
 }
 
+const byKey = ([a]: readonly [string, unknown], [b]: readonly [string, unknown]) => a < b ? -1 : a > b ? 1 : 0
 const cut = (text: string) => text.length > maxRecordedValueChars ? `${text.slice(0, maxRecordedValueChars - 1)}…` : text
 
 function valueOf(value: unknown): RecordedValue | undefined {
-  if (typeof value === "number" || typeof value === "boolean") return value
+  if (typeof value === "boolean") return value
+  if (typeof value === "number") return Number.isFinite(value) ? value : undefined
   const written = typeof value === "string" ? value : value === undefined || value === null ? "" : JSON.stringify(value) ?? ""
   const plain = written.replace(/\s+/gu, " ").trim()
   return plain === "" ? undefined : cut(plain)
@@ -39,7 +55,7 @@ function argsOf(params: Readonly<Record<string, unknown>>): RecordedStep["args"]
   return Object.fromEntries(Object.entries(params).flatMap(([name, value]) => {
     const kept = valueOf(value)
     return kept === undefined ? [] : [[name, kept] as const]
-  }).slice(0, maxRecordedArguments))
+  }).sort(byKey).slice(0, maxRecordedArguments))
 }
 
 export function toolRecordOf(steps: readonly PlannedStep[]): ToolRecord | undefined {
@@ -53,21 +69,40 @@ export function toolRecordOf(steps: readonly PlannedStep[]): ToolRecord | undefi
   }
 }
 
-const isOutcome = (value: unknown): value is RecordedOutcome => typeof value === "string" && Object.hasOwn(outcomeWords, value)
-const isValue = (value: unknown): value is RecordedValue => typeof value === "string" || typeof value === "number" || typeof value === "boolean"
+const isValue = (value: unknown): value is RecordedValue =>
+  typeof value === "string" || (typeof value === "number" && Number.isFinite(value)) || typeof value === "boolean"
 
 function storedRecord(value: unknown): ToolRecord | undefined {
-  if (typeof value !== "object" || value === null) return undefined
-  const { steps, more } = value as { steps?: unknown; more?: unknown }
-  if (!Array.isArray(steps) || typeof more !== "number" || !Number.isSafeInteger(more) || more < 0) return undefined
-  const read = steps.flatMap((step: unknown) => {
-    if (typeof step !== "object" || step === null) return []
-    const { action, args, outcome } = step as { action?: unknown; args?: unknown; outcome?: unknown }
-    if (typeof action !== "string" || !/^[A-Za-z0-9_-]{1,64}$/u.test(action) || typeof args !== "object" || args === null || Array.isArray(args) || !isOutcome(outcome)) return []
-    const kept = Object.entries(args).filter((entry): entry is [string, RecordedValue] => isValue(entry[1])).slice(0, maxRecordedArguments)
-    return [{ action, args: Object.fromEntries(kept.map(([name, kept]) => [name, typeof kept === "string" ? cut(kept) : kept])), outcome }]
+  const decoded = decodeRecord(value)
+  if (decoded._tag !== "Some" || decoded.value.more < 0) return undefined
+  const read = decoded.value.steps.flatMap(({ action, args, outcome }) => {
+    if (!/^[A-Za-z0-9_-]{1,64}$/u.test(action) || Array.isArray(args)) return []
+    const kept = Object.entries(args).filter((entry): entry is [string, RecordedValue] => isValue(entry[1])).sort(byKey).slice(0, maxRecordedArguments)
+    return [{ action, args: Object.fromEntries(kept.map(([name, keptValue]) => [name, typeof keptValue === "string" ? cut(keptValue) : keptValue])), outcome }]
   })
-  return read.length === steps.length ? { steps: read.slice(0, recordedSteps(read.length)), more } : undefined
+  return read.length === decoded.value.steps.length ? { steps: read.slice(0, recordedSteps(read.length)), more: decoded.value.more } : undefined
+}
+
+export function toolRecordHolds(stored: unknown, text: string): boolean {
+  const decoded = decodeRecord(stored)
+  if (decoded._tag !== "Some") return false
+  return decoded.value.steps.some(({ args }) => !Array.isArray(args) && Object.values(args).some((value) => typeof value === "string" && value.includes(text)))
+}
+
+export function scrubToolRecord(stored: unknown, text: string, notice: string): ToolRecord | undefined {
+  const decoded = decodeRecord(stored)
+  if (decoded._tag !== "Some" || decoded.value.more < 0) return undefined
+  return {
+    steps: decoded.value.steps.map(({ action, args, outcome }) => ({
+      action,
+      args: Array.isArray(args) ? {} : Object.fromEntries(Object.entries(args)
+        .filter((entry): entry is [string, RecordedValue] => isValue(entry[1]))
+        .sort(byKey)
+        .map(([key, value]) => [key, typeof value === "string" ? value.replaceAll(text, notice) : value])),
+      outcome,
+    })),
+    more: decoded.value.more,
+  }
 }
 
 export function recordedTurn(stored: unknown, redacted: boolean, replyId: string): ChatMessage[] {
