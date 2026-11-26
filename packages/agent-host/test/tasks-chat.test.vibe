@@ -68,6 +68,7 @@ import { contextMarker, modelCalls, readFrames, storageKey, taskProduct, testCal
 
 const roomOf = Schema.decodeUnknownSync(Schema.Struct({ conversation: Schema.Struct({ id: Schema.String, roomId: Schema.String }) }))
 const taskOf = Schema.decodeUnknownSync(Schema.Struct({ task: TaskView }))
+const frameOf = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Struct({ type: Schema.String, provisional: Schema.optional(Schema.Boolean) })))
 const replyOf = Schema.decodeUnknownSync(Schema.Struct({
   text: Schema.String, userMessageId: Schema.String, messageId: Schema.String, taskChoices: Schema.Array(Schema.Unknown),
 }))
@@ -158,6 +159,32 @@ it.live('A live owner task contributes only model context and offers a current c
     assert.deepStrictEqual([retired, late], [changed, changed])
     assert.deepStrictEqual(messagesAfterRetirement.map(({ content }) => content.text).sort(), [asked.text, asked.text, reply.text].sort())
   })
+}, 120_000)
+
+it.live('A streamed task turn keeps its text marked until the terminal, which carries the choice (spec/agent/conversation/replyStream.md, "A frame marks its text provisional while any of it may be taken back, and only a whole text clears the mark"; spec/agent/tasks/wire.md, "A choice batch is shown only when every choice is valid for the task and epoch")', effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const product = try Effect.try(() => taskProduct())
+  const modules = new Map(builtinModuleFactories)
+  modules.set(tasksModuleName, product.factory)
+  const agent = try startInProcess({
+    launch: { backend: { kind: "cloud", origin: cloud.origin }, load: [tasksModuleName], callerRole: "owner", persistMemory: true },
+    frame: { credential: { version: 1, value: deviceKey }, storageKey }, modules,
+  })
+  const created = try ask(agent, post("/api/tasks", { goalRef: "preference" }))
+  const { task } = try Effect.try(() => taskOf(created.body))
+  const room = try ask(agent, post("/api/conversations", {}))
+  const { conversation } = try Effect.try(() => roomOf(room.body))
+  try Effect.sync(() => cloud.script(text("You can ", "choose Daily.")))
+  const asked = { text: "Which view?", task: { taskId: task.id, expectedEpoch: task.epoch }, clientMessageId: "task-stream-01" }
+  const streamed = try stream(agent, post(`/api/conversations/${conversation.id}/messages/stream`, asked))
+  const end = try host("read streamed task turn", () => readFrames(streamed.chunks))
+  const frames = streamed.text.split("\n\n").flatMap((event) => event.startsWith("data: ") ? Option.toArray(frameOf(event.slice(6))) : [])
+  const tokens = frames.filter(({ type }) => type === "token")
+  try Effect.try(() => assert.deepStrictEqual({
+    marked: tokens.length > 0 && tokens.every(({ provisional }) => provisional === true),
+    kinds: frames.map(({ type }) => type).filter((type) => type !== "status" && type !== "token"),
+    end: [end.kind, end.kind === "Done" && end.text, end.kind === "Done" && end.taskChoices],
+  }, { marked: true, kinds: ["done"], end: ["Done", "You can choose Daily.", [product.choice]] }))
 }, 120_000)
 
 it.live('A launch without a task presenter refuses a task chat before storing or calling the model (spec/agent/tasks/wire.md, "A chat turn names a task only while the host presents it at that epoch")', effect () => {

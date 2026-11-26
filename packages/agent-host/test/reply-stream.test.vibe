@@ -1,8 +1,10 @@
 // spec/agent/conversation/replyStream.md, "Story: See a reply as it is written"
 import { assert, describe, it } from "@effect/vitest"
-import { held, insufficientCredits, partial, text } from "./support/cloud-fake.ts"
-import { call, host, stream, type InProcess } from "./support/kernel.vibe"
-import { streamingConversation } from "./support/streaming.vibe"
+import { held, insufficientCredits, partial, text, toolCalls } from "./support/cloud-fake.ts"
+import { call, cloudFake, deviceKey, host, startInProcess, stream, type InProcess } from "./support/kernel.vibe"
+import { conversation, streamingConversation } from "./support/streaming.vibe"
+import { basicActionsModuleName } from "../src/plugins/basic-actions.vibe"
+import { builtinModuleFactories } from "../src/plugins/profile.vibe"
 import type { StreamCut, StreamedAnswer } from "./support/socket-client.ts"
 
 type Frame = {
@@ -51,6 +53,19 @@ effect function send(agent: InProcess, id: string, body: object, cut?: StreamCut
 }
 
 const piece = (letter: string) => letter.repeat(1500)
+
+const settledTexts = (frames: readonly Frame[]) => frames.flatMap((frame, at) =>
+  frame.type === "token" && frame.provisional !== true ? [rebuilt(frames.slice(0, at + 1))] : [])
+
+function settledOrder(frames: readonly Frame[]) {
+  const settledAt = frames.findIndex(({ type, provisional }) => type === "token" && provisional !== true)
+  return {
+    settled: settledTexts(frames), done: frames.at(-1)?.fullText,
+    markedBefore: frames.slice(0, settledAt).filter(({ type }) => type === "token").every(({ provisional }) => provisional === true),
+    after: kinds(frames.slice(settledAt + 1)),
+    toolsBefore: frames.slice(0, settledAt).some(({ type }) => type === "tool"),
+  }
+}
 
 for (const transport of ["socket", "http"] as const) {
   describe(`See a reply as it is written over the ${transport} (spec/agent/conversation/replyStream.md, "Story: See a reply as it is written")`, () => {
@@ -143,7 +158,8 @@ for (const transport of ["socket", "http"] as const) {
       try Effect.try(() => {
         assert.strictEqual(answer.status, 200)
         assert.strictEqual(rebuilt(frames), "This reply never committed.")
-        assert.isTrue(frames.filter(({ type }) => type === "token").every(({ provisional }) => provisional === true))
+        assert.deepStrictEqual(settledTexts(frames), ["This reply never committed."])
+        assert.isTrue(frames.filter(({ type }) => type === "token").slice(0, -1).every(({ provisional }) => provisional === true))
         assert.deepStrictEqual(frames.filter(({ type }) => type !== "status" && type !== "token").map(({ type }) => type), ["error"])
       })
     }, 120_000)
@@ -169,3 +185,30 @@ for (const transport of ["socket", "http"] as const) {
     }, 120_000)
   })
 }
+
+it.live('A turn writes the reply it decided once without the mark, after its tools and its reply check and before reply_ready, and nothing before it is unmarked (spec/agent/conversation/replyStream.md, "A frame marks its text provisional while any of it may be taken back, and only a whole text clears the mark"; spec/agent/conversation/planning.md, "A reply that leaves a failure unreported is written again once, and the delivered reply still reports open failures and attachment omissions")', effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const agent = try startInProcess({
+    launch: {
+      backend: { kind: "cloud", origin: cloud.origin }, callerRole: "owner",
+      load: [basicActionsModuleName], allowed: ["REPLY", "IGNORE", "NONE", "CALCULATE"],
+    },
+    frame: { credential: { version: 1, value: deviceKey } }, modules: builtinModuleFactories,
+  })
+  const { id } = try conversation(agent)
+  const turn = effect (words: string) => settledOrder(framesOf(try send(agent, id, { text: words })))
+
+  try Effect.sync(() => cloud.script(toolCalls("Let me check.", { name: "CALCULATE", arguments: { expression: "3847 * 292" } }), text("That is ", "1,123,324.")))
+  const tool = try turn("What is 3847 times 292?")
+  try Effect.sync(() => cloud.script(toolCalls("", { name: "CALCULATE", arguments: { expression: "two plus two" } }), text("Done!"), text("I couldn't add two plus two: the calculator didn't take it.")))
+  const revised = try turn("Add two plus two.")
+  const plain = try turn("Say ok.")
+  try Effect.try(() => assert.deepStrictEqual({ plain, tool, revised }, {
+    plain: { settled: ["ok"], done: "ok", markedBefore: true, after: ["reply_ready", "done"], toolsBefore: false },
+    tool: { settled: ["That is 1,123,324."], done: "That is 1,123,324.", markedBefore: true, after: ["reply_ready", "done"], toolsBefore: true },
+    revised: {
+      settled: ["I couldn't add two plus two: the calculator didn't take it."], done: "I couldn't add two plus two: the calculator didn't take it.",
+      markedBefore: true, after: ["reply_ready", "done"], toolsBefore: true,
+    },
+  }))
+}, 120_000)

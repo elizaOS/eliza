@@ -14,7 +14,7 @@ framing and its heartbeats. The frames are:
 | `tool` | `{name, label}`: a tool the turn runs and its label for the owner, `Using <app>` or `Working` ([planning](./planning.md)), display only |
 | `reply_ready` | `{fullText, actionResults}`: the stored reply ahead of the terminal frame |
 | `done` | `{fullText, messageId, userMessageId, agentName, actionResults, taskChoices?, failureKind?, cloudCode?, planAction?, retryAfterMs?, cutOffEffect?}`, with Cloud's own funding code, the fix, live wait and negotiated effect marker of [turns](./turns.md) |
-| `error` | `{code, message}`: the turn left no reply |
+| `error` | `{code, message}`: the turn left no reply; text it already settled stays as written |
 
 One machine follows one request. The turn itself (admission, deadline,
 Stop, the stored reply and its kind) is the [turns](./turns.md) machine's;
@@ -162,8 +162,15 @@ pure def stepFramesRebuildTheText(before: ReplyStream, after: ReplyStream, out: 
 ### A frame marks its text provisional while any of it may be taken back, and only a whole text clears the mark
 
 Resident chat sends model text, action callbacks and corrected previews as
-provisional until the turn settles. A tool call or reply check can still
-change the preview. A voice client never speaks provisional text, so an
+provisional until the turn has decided its reply. A tool call or reply check
+can still change the preview. Once planning and the reply check
+([planning](./planning.md)) have decided the reply the turn will store, and
+nothing left in the turn can change it, the turn writes that whole reply once
+without the mark, before storing it; that settled text is never taken back:
+no text is written after it, and an answered terminal reply carries it. If
+storing it then fails, the stream ends with `error` and the settled text
+stays as written beside that failure. A turn whose reply waits on a task presentation keeps its text marked until the
+terminal. A voice client never speaks provisional text, so an
 append can only keep or add the mark: a client that ORs the mark over
 appends and one that reads it per frame agree. The terminal reply carries
 the settled text and clears the mark.
