@@ -103,7 +103,7 @@ held (`Credential`), anything else (`Runtime`). A failed spawn is
 `Failed(Agent)`. The child gets the held key and the state directory of the
 key's account (for example `filesDir/agent/<account digest>`). Its frame
 carries the account's task storage key ([task keys](../android/taskKeys.md))
-when custody releases it and it is still held as the frame is written; a
+when custody releases it and it is still held when the service reads it for the frame; a
 refused or retired release frames the launch without one and is no failure.
 
 ```quint
