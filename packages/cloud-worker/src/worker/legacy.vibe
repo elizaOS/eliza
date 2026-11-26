@@ -33,7 +33,7 @@ const mailLeaseReads = [
   "/api/v1/eliza/google/calendar/feed",
 ]
 const compatibleGmailPaths: ReadonlySet<string> = new Set([...mailLeaseReads, inboxArrivalPath])
-type GraceGoogleAccess = "Browser" | "MailLease" | "Arrival" | "Callback"
+type GraceGoogleAccess = "Browser" | "MailLease" | "Arrival" | "Callback" | "DeviceConnect" | "Disconnect"
 type GraceGoogleRoute = readonly [method: "GET" | "POST", access: GraceGoogleAccess]
 const graceGoogleRoutes = new Map<string, GraceGoogleRoute>([
   ...mailLeaseReads.map((path) => [path, ["GET", "MailLease"]] as const),
@@ -44,7 +44,8 @@ const graceGoogleRoutes = new Map<string, GraceGoogleRoute>([
   ["/api/v1/eliza/google/calendar/series", ["GET", "Browser"]],
   ["/api/v1/eliza/google/calendar/reminder/event", ["GET", "Browser"]],
   ["/api/v1/eliza/google/connect/initiate", ["POST", "Browser"]],
-  ["/api/v1/eliza/google/disconnect", ["POST", "Browser"]],
+  ["/api/v1/eliza/google/connect/native", ["POST", "DeviceConnect"]],
+  ["/api/v1/eliza/google/disconnect", ["POST", "Disconnect"]],
   ["/api/v1/eliza/google/gmail/trash", ["POST", "Browser"]],
   ["/api/v1/eliza/google/gmail/send", ["POST", "Browser"]],
   ["/api/v1/eliza/google/calendar/reminder", ["POST", "Browser"]],
@@ -57,13 +58,13 @@ export function graceGoogleRoute(method: string, path: string): GraceGoogleAcces
   return route !== undefined && (method === route[0] || method === "OPTIONS") ? route[1] : undefined
 }
 
-function admitGraceDevice(request: Request, db: Client, access: "MailLease" | "Arrival", countRequest = true) {
+function admitGraceDevice(request: Request, db: Client, access: "MailLease" | "Device", countRequest = true) {
   return runPromise(effect {
     const now = try Clock.currentTimeMillis
     provide Layer.effect(Store, clientStore(db)) {
       const authenticateDevice = effect {
         const caller = try authenticate(request.headers.get("authorization") ?? undefined, access === "MailLease" ? "MailAccess" : "ServiceAccess", countRequest)
-        if ((access === "MailLease" && caller.kind === "lease") || (access === "Arrival" && caller.kind === "deviceKey")) {
+        if ((access === "MailLease" && caller.kind === "lease") || (access === "Device" && caller.kind === "deviceKey")) {
           return { kind: "Admitted", owner: caller.userId } as const
         }
         throw refused("AuthenticationRequired", "CredentialUnknown")
@@ -80,15 +81,21 @@ async function graceGoogleRequest<E extends LegacyBindings>(request: Request, en
   const browser = !request.headers.has("authorization")
   const origin = request.headers.get("origin")
   if (browser && origin !== env.WEB_ORIGIN && !(access === "Callback" && origin === null)) return refusal(403, "forbidden_origin")
-  if (!browser && access !== "MailLease" && access !== "Arrival") return refusal(401, "authentication_required")
+  const deviceWrite = !browser && (access === "DeviceConnect" || access === "Disconnect")
+  if ((browser && access === "DeviceConnect") || (!browser && access !== "MailLease" && access !== "Arrival" && !deviceWrite))
+    return refusal(401, "authentication_required")
   const credential = access === "Arrival" ? await cloudCredential(request) : null
   const account = () => browser ? sessionAccount(request, db) : inferenceAccount(request, db, env, "recorded")
-  const admission = !browser && (access === "MailLease" || access === "Arrival") ? await admitGraceDevice(request, db, access) : undefined
+  const admission = browser ? undefined : await admitGraceDevice(request, db, access === "MailLease" ? "MailLease" : "Device")
   if (admission?.kind === "Refused") return admission.response
   const owner = admission !== undefined && access === "MailLease" ? admission.owner : await account()
   if (!owner || (admission !== undefined && owner !== admission.owner)) return refusal(401, "authentication_required")
   const current = async () => await account() === owner
-  const response = await googleRequest(request, env, db, owner, ports.providerFetch, credential === null ? undefined : { credential, current })
+  if (deviceWrite) {
+    const recorded = async () => await inferenceAccount(request, db, env, "recordedForUpdate") === owner
+    return bounded(request, 16 * 1024, (body) => googleRequest(body, env, db, owner, ports.providerFetch, { kind: "DeviceWrite", current: recorded }))
+  }
+  const response = await googleRequest(request, env, db, owner, ports.providerFetch, credential === null ? undefined : { kind: "Arrival", credential, current })
   if (!response.ok || request.method !== "GET" || access === "Arrival") return response
   if (!browser) {
     const held = await admitGraceDevice(request, db, "MailLease", false)
@@ -119,7 +126,7 @@ export async function legacyGmailResponse(request: Request, routePath: string, e
   const arrival = routePath === inboxArrivalPath
   if (!browser && !lease && !arrival) return denied(401, "authentication_required")
   const current = async () => await account() === owner && !await canonical()
-  const response = await googleResponse(request, env, db, owner, providerFetch, arrival && credential !== null ? { credential, current } : undefined)
+  const response = await googleResponse(request, env, db, owner, providerFetch, arrival && credential !== null ? { kind: "Arrival", credential, current } : undefined)
   return response.status === 200 && !arrival && !await current() ? denied(401, "authentication_required") : response
 }
 

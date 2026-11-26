@@ -32,7 +32,7 @@ export type LegacyGoogleCustody = Pick<Connection, "account_id" | "subject" | "r
 type Authorization = Capabilities & { expected_email: string | null; provider: string; provider_subject: string }
 type User = { provider: string; provider_subject: string; email: string | null }
 
-schema NativeConnect { serverAuthCode: string }
+schema NativeConnect { serverAuthCode: string; mail: boolean; calendar: boolean; sendMail: boolean; trashMail: boolean; writeCalendar: boolean }
 schema Consent { mail: boolean; calendar: boolean; sendMail?: boolean; trashMail?: boolean; writeCalendar?: boolean; expectedEmail?: string }
 schema SendMail { accountId: string; grantId: string; operationId: string; recipient: string; subject: string; text: string; replyTo?: string }
 schema GmailAccepted { id: string; threadId?: string }
@@ -41,6 +41,7 @@ schema GoogleProfile { sub: string; email: string; email_verified: boolean }
 
 error BadRequest
 error AuthorizationFailed
+error DeviceWriteDenied
 error ConnectionUnavailable
 error ProviderUnavailable
 error GoogleNotFound
@@ -222,14 +223,18 @@ function selectedScopes(consent: Capabilities) {
   return ["openid", "email", ...capabilities(consent)]
 }
 
+function selectsGoogleScopes(consent: Consent) {
+  return (consent.mail || consent.calendar) && (!(consent.sendMail || consent.trashMail) || consent.mail) &&
+    (!consent.writeCalendar || consent.calendar)
+}
+
 effect function authorize(request: Request, env: GoogleEnv, db: Client, account: string) {
   const config = try googleConfig(env)
   if (request.headers.get("content-type")?.split(";")[0] !== "application/json") throw new BadRequest()
   const message = HttpServerRequest.fromWeb(request)
   const raw = Effect.provideService(message.json, HttpIncomingMessage.MaxBodySize, ByteSize.kibibytes(4)) catch effect () => { throw new BadRequest() }
   const parsed = Schema.decodeUnknownOption(Consent, { onExcessProperty: "error" })(raw)
-  if (Option.isNone(parsed) || !(parsed.value.mail || parsed.value.calendar)) throw new BadRequest()
-  if (((parsed.value.sendMail || parsed.value.trashMail) && !parsed.value.mail) || (parsed.value.writeCalendar && !parsed.value.calendar)) throw new BadRequest()
+  if (Option.isNone(parsed) || !selectsGoogleScopes(parsed.value)) throw new BadRequest()
   const consent = { ...parsed.value, send_mail: parsed.value.sendMail ?? false, trash_mail: parsed.value.trashMail ?? false, write_calendar: parsed.value.writeCalendar ?? false }
   const { rows } = try query<User>(db, "SELECT p.provider, p.provider_subject, a.email     FROM accounts a     JOIN cloud_sign_in_identities p ON p.account_id = a.key     WHERE a.key = $1 AND a.status = 'active'     ORDER BY CASE p.provider WHEN 'google' THEN 1 WHEN 'email' THEN 2 ELSE 3 END     LIMIT 1", [account])
   const user = rows[0]
@@ -295,10 +300,21 @@ effect function verifiedProfile(credentials: OAuthResult) {
   return { sub: verified.value.sub, email: verified.value.email.trim().toLowerCase() }
 }
 
-effect function link(env: GoogleEnv, config: Config, db: Client, account: string, profile: { sub: string; email: string }, scopes: Capabilities, refreshToken: string, stateHash: string | null) {
+type DeviceWrite = { readonly kind: "DeviceWrite"; readonly current: () => Promise<boolean> }
+
+effect function recheckDeviceWrite(device: DeviceWrite | undefined) {
+  if (device !== undefined) {
+    const current = try tryPromise({ try: device.current, catch: () => new DatabaseUnavailable() })
+    if (!current) throw new DeviceWriteDenied()
+  }
+}
+
+effect function link(env: GoogleEnv, config: Config, db: Client, account: string, profile: { sub: string; email: string }, scopes: Capabilities, refreshToken: string, stateHash: string | null, device?: DeviceWrite) {
   const id = try (try SecureRandom.SecureRandom).uuidV4()
   const refresh = try seal(config, refreshToken, credentialContext(env, account, profile.sub, scopes))
-  const { rowCount } = try forAccount(db, account, query(db, `
+  const { rowCount } = try forAccount(db, account, effect {
+    try recheckDeviceWrite(device)
+    return try query(db, `
     WITH approved AS (
       DELETE FROM cloud_google_authorizations
       WHERE account_id = $1 AND state_hash = $2 AND expires_at > now()
@@ -314,45 +330,48 @@ effect function link(env: GoogleEnv, config: Config, db: Client, account: string
     ON CONFLICT (account_id) DO UPDATE SET
       id = EXCLUDED.id, subject = EXCLUDED.subject, email = EXCLUDED.email, mail = EXCLUDED.mail,
       calendar = EXCLUDED.calendar, send_mail = EXCLUDED.send_mail, trash_mail = EXCLUDED.trash_mail, write_calendar = EXCLUDED.write_calendar, refresh_cipher = EXCLUDED.refresh_cipher, linked_at = now(), last_used_at = NULL
-  `, [account, stateHash, id, profile.sub, profile.email, scopes.mail, scopes.calendar, scopes.send_mail, scopes.trash_mail, scopes.write_calendar, refresh]))
+    `, [account, stateHash, id, profile.sub, profile.email, scopes.mail, scopes.calendar, scopes.send_mail, scopes.trash_mail, scopes.write_calendar, refresh])
+  })
   if (!rowCount) throw new AuthorizationFailed()
 }
 
-effect function connectCode(env: GoogleEnv, db: Client, account: string, signedInSubject: string, serverAuthCode: string) {
+effect function connectNative(request: Request, env: GoogleEnv, db: Client, account: string, device: DeviceWrite) {
+  const selected = try readAction(request, NativeConnect)
+  if (!selectsGoogleScopes(selected) || !/^[A-Za-z0-9/_.~-]{10,2048}$/.test(selected.serverAuthCode)) throw new BadRequest()
   if (!nativeConnectReady(env)) throw new ConnectionUnavailable()
-  const config = try googleConfig(env)
-  if (!/^[A-Za-z0-9/_.~-]{10,2048}$/.test(serverAuthCode)) throw new BadRequest()
-  if (signedInSubject === "") throw new AuthorizationFailed()
-  const credentials = try oauthToken(config, new URLSearchParams({ grant_type: "authorization_code", code: serverAuthCode, redirect_uri: "" }))
-  const refreshToken = credentials.refresh_token ?? ""
-  const granted = new Set((credentials.scope ?? "").split(/\s+/))
-  const profile = try verifiedProfile(credentials)
-  const stored = nativeConnectStores(signedInSubject, profile.sub, refreshToken !== "", {
-    readMail: granted.has(scopeByCapability.mail), sendMail: granted.has(scopeByCapability.send_mail), trashMail: granted.has(scopeByCapability.trash_mail),
-    readCalendar: granted.has(scopeByCapability.calendar), writeCalendar: granted.has(scopeByCapability.write_calendar)
-  })
-  if (!nativeConnectStoresAny(stored)) throw new AuthorizationFailed()
-  try link(env, config, db, account, profile, {
-    mail: stored.readMail, send_mail: stored.sendMail, trash_mail: stored.trashMail, calendar: stored.readCalendar, write_calendar: stored.writeCalendar
-  }, refreshToken, null)
-  return true
-}
-
-effect function connectNative(request: Request, env: GoogleEnv, db: Client, account: string) {
-  const { serverAuthCode } = try readAction(request, NativeConnect)
   try rateLimit(db, "google:native:connect", account, nativeConnectAttempts, nativeConnectWindowSeconds)
   const { rows } = try query<{ provider_subject: string }>(db, `
     SELECT p.provider_subject FROM accounts a JOIN cloud_sign_in_identities p ON p.account_id = a.key
     WHERE a.key = $1 AND a.status = 'active' AND p.provider = 'google'`, [account])
-  try connectCode(env, db, account, rows[0]?.provider_subject ?? "", serverAuthCode)
+  const signedInSubject = rows[0]?.provider_subject
+  if (!signedInSubject) throw new AuthorizationFailed()
+  const config = try googleConfig(env)
+  const credentials = try oauthToken(config, new URLSearchParams({ grant_type: "authorization_code", code: selected.serverAuthCode, redirect_uri: "" }))
+  const refreshToken = credentials.refresh_token ?? ""
+  const granted = new Set((credentials.scope ?? "").split(/\s+/))
+  const profile = try verifiedProfile(credentials)
+  const stored = nativeConnectStores(signedInSubject, profile.sub, refreshToken !== "", {
+    readMail: selected.mail && granted.has(scopeByCapability.mail),
+    sendMail: selected.sendMail && granted.has(scopeByCapability.send_mail),
+    trashMail: selected.trashMail && granted.has(scopeByCapability.trash_mail),
+    readCalendar: selected.calendar && granted.has(scopeByCapability.calendar),
+    writeCalendar: selected.writeCalendar && granted.has(scopeByCapability.write_calendar)
+  })
+  if (!nativeConnectStoresAny(stored)) throw new AuthorizationFailed()
+  try link(env, config, db, account, profile, {
+    mail: stored.readMail, send_mail: stored.sendMail, trash_mail: stored.trashMail, calendar: stored.readCalendar, write_calendar: stored.writeCalendar
+  }, refreshToken, null, device)
   return try status(db, env, account)
 }
 
-effect function disconnect(db: Client, account: string) {
-  try forAccount(db, account, query(db, `
-    WITH canceled AS (DELETE FROM cloud_google_authorizations WHERE account_id = $1)
-    DELETE FROM cloud_google_connections WHERE account_id = $1
-  `, [account]))
+effect function disconnect(db: Client, account: string, device: DeviceWrite | undefined) {
+  try forAccount(db, account, effect {
+    try recheckDeviceWrite(device)
+    try query(db, `
+      WITH canceled AS (DELETE FROM cloud_google_authorizations WHERE account_id = $1)
+      DELETE FROM cloud_google_connections WHERE account_id = $1
+    `, [account])
+  })
   return body(200, { disconnected: true })
 }
 
@@ -715,6 +734,7 @@ effect function mailGrant(db: Client, account: string, grant: string | null) {
 }
 
 interface ArrivalAuthorization {
+  readonly kind: "Arrival"
   readonly credential: NonNullable<Awaited<ReturnType<typeof cloudCredential>>>
   readonly current: () => Promise<boolean>
 }
@@ -776,16 +796,19 @@ effect function redeemAttachment(request: Request, env: GoogleEnv, db: Client, a
   return body(200, file)
 }
 
-effect function routeGoogle(request: Request, env: GoogleEnv, db: Client, account: string, arrivalAuthorization?: ArrivalAuthorization) {
+type GoogleAuthorization = ArrivalAuthorization | DeviceWrite
+
+effect function routeGoogle(request: Request, env: GoogleEnv, db: Client, account: string, authorization?: GoogleAuthorization) {
   const url = try Effect.try({ try: () => new URL(request.url), catch: () => new BadRequest() })
   if (url.pathname === deviceAttachmentPath && request.method === "POST") return try redeemAttachment(request, env, db, account)
   const path = url.pathname.slice(route.length)
-  if (request.method === "POST" && path === "/connect/native") return try connectNative(request, env, db, account)
   if (request.method === "POST") {
     const origin = request.headers.get("origin")
     if (!request.headers.has("authorization") && origin !== env.PUBLIC_API_ORIGIN && origin !== env.WEB_ORIGIN) return body(403, { error: "forbidden_origin" })
     if (path === "/connect/initiate") return try authorize(request, env, db, account)
-    if (path === "/disconnect") return try disconnect(db, account)
+    if (path === "/connect/native") return authorization?.kind === "DeviceWrite"
+      ? try connectNative(request, env, db, account, authorization) : body(401, { error: "authentication_required" })
+    if (path === "/disconnect") return try disconnect(db, account, authorization?.kind === "DeviceWrite" ? authorization : undefined)
     if (path === "/gmail/trash") return try changeTrash(request, env, db, account)
     if (path === "/calendar/reminder") return try chooseReminder(request, env, db, account)
     if (path === "/calendar/change") return try changeCalendar(request, env, db, account)
@@ -801,9 +824,9 @@ effect function routeGoogle(request: Request, env: GoogleEnv, db: Client, accoun
       return flowCookie(response, "", "", 0)
     }
     if (url.searchParams.has("side") && url.searchParams.get("side") !== "owner") return body(403, { error: "owner_consent_required" })
-    if (url.pathname === inboxArrivalPath) return arrivalAuthorization === undefined
-      ? body(401, { error: "authentication_required" })
-      : try inboxArrival(request, url, env, db, account, arrivalAuthorization)
+    if (url.pathname === inboxArrivalPath) return authorization?.kind === "Arrival"
+      ? try inboxArrival(request, url, env, db, account, authorization)
+      : body(401, { error: "authentication_required" })
     if (path === "/gmail/send/status") return try sentMailReceipt(url, db, account)
     if (path === "/status") return try status(db, env, account)
     const selected = url.searchParams.get("grantId")
@@ -860,9 +883,10 @@ effect function routeGoogle(request: Request, env: GoogleEnv, db: Client, accoun
   return body(404, { error: "route_not_found" })
 }
 
-export function googleResponse(request: Request, env: GoogleEnv, db: Client, account: string, send: typeof fetch, arrivalAuthorization?: ArrivalAuthorization): Promise<HttpServerResponse.HttpServerResponse> {
+export function googleResponse(request: Request, env: GoogleEnv, db: Client, account: string, send: typeof fetch, authorization?: GoogleAuthorization): Promise<HttpServerResponse.HttpServerResponse> {
   const routed = effect {
-    return routeGoogle(request, env, db, account, arrivalAuthorization) catch (error) => match (error) {
+    return routeGoogle(request, env, db, account, authorization) catch (error) => match (error) {
+      when DeviceWriteDenied: body(401, { error: "authentication_required" });
       when BadRequest: body(400, { error: "invalid_request" });
       when InboxWatchRequestInvalid: body(400, { error: "invalid_request" });
       when GoogleReadInput: body(400, { error: "invalid_request" });
@@ -888,6 +912,6 @@ export function googleResponse(request: Request, env: GoogleEnv, db: Client, acc
     { signal: request.signal })
 }
 
-export function googleRequest(request: Request, env: GoogleEnv, db: Client, account: string, send: typeof fetch, arrivalAuthorization?: ArrivalAuthorization): Promise<Response> {
-  return googleResponse(request, env, db, account, send, arrivalAuthorization).then((response) => HttpServerResponse.toWeb(response))
+export function googleRequest(request: Request, env: GoogleEnv, db: Client, account: string, send: typeof fetch, authorization?: GoogleAuthorization): Promise<Response> {
+  return googleResponse(request, env, db, account, send, authorization).then((response) => HttpServerResponse.toWeb(response))
 }
