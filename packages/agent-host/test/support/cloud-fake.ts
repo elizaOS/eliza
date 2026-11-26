@@ -87,6 +87,13 @@ export const answerJson = (body: unknown, status = 200): RouteReply => ({ kind: 
 export const answerStatus = (status: number): RouteReply => ({ kind: "status", status });
 
 const ownKeyPrefix = "/own-key/v1";
+const defaultTemperatureOnlyModels = new Set(["o4-mini", "gpt-5-mini"]);
+
+function refusesTemperature(body: unknown): boolean {
+  if (typeof body !== "object" || body === null) return false;
+  const { model, temperature } = body as { model?: unknown; temperature?: unknown };
+  return typeof model === "string" && defaultTemperatureOnlyModels.has(model) && temperature !== undefined && temperature !== 1;
+}
 
 const execute = promisify(execFile);
 
@@ -274,6 +281,9 @@ export async function startCloudFake(options: { deviceKey: string; ownKey?: stri
       }
       const call = pathname.slice(ownKeyPrefix.length);
       if (request.method === "GET" && call === "/models") return json(response, 200, models());
+      if (request.method === "POST" && call === "/chat/completions" && refusesTemperature(body)) {
+        return json(response, 400, { error: { message: "Unsupported value: 'temperature' does not support this value with this model. Only the default (1) value is supported.", type: "invalid_request_error", param: "temperature", code: "unsupported_value" } });
+      }
       if (request.method === "POST" && call === "/chat/completions") return answerCompletion(response, queue.shift() ?? text("ok"), body, "openai");
       return json(response, 404, { error: { message: "not found", type: "invalid_request_error", code: "not_found" } });
     }

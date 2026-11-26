@@ -288,6 +288,27 @@ pure def lawNoCapUnlessTheCallerNamesOne(omit: bool): bool = capSent(NoCapAsked,
 pure def lawOmittingDropsTheCap(asked: CapAsk): bool = capSent(asked, true) == NoCapAsked
 ```
 
+### A call sends its caller's temperature only to a model that takes one
+
+OpenAI's reasoning models refuse every temperature but their own default,
+so a call to one sends no `temperature` and the model samples at its
+default. They are the ids `o` followed by a digit (`o1`, `o3-mini`,
+`o4-mini`) and the `gpt-5` family other than its `-chat` models, read as
+the hint rule reads the id, on the cloud and on any own-key endpoint. Every
+other model gets the temperature its caller names, from the call or from
+the launch's sampling settings ([models](../../core/models.md)), and a
+call that names none sends none. The model id decides before the call is
+sent; a provider's refusal of a temperature is never retried without one.
+
+```quint
+type SamplingControl = TakesTemperature | DefaultTemperatureOnly
+pure def temperatureSent(control: SamplingControl, named: bool): bool = named and control == TakesTemperature
+pure val controlValues = Set(TakesTemperature, DefaultTemperatureOnly)
+pure def lawNoTemperatureIsInvented(control: SamplingControl): bool = not(temperatureSent(control, false))
+pure def lawADefaultOnlyModelGetsNoTemperature(named: bool): bool = not(temperatureSent(DefaultTemperatureOnly, named))
+pure def lawAModelThatTakesOneGetsTheNamedTemperature(named: bool): bool = temperatureSent(TakesTemperature, named) == named
+```
+
 ### A Qwen call on a Cerebras route sends the prompt cache key its caller names, and no call invents one
 
 A caller names its prompt cache key (the planner's is its agent's) in

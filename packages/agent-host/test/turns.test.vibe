@@ -1415,7 +1415,7 @@ it.live(`Each call keeps the system prompt and puts the turn's notes after the h
   }))
 }, 120_000)
 
-it.live(`A warm-up sends the planner's own system prompt and tools once with a one-token cap, answers at once, skips a second within four minutes, drops a failure and stores nothing (${planning}, "A warm-up sends the planner's tools and system prompt once with a one-token cap, at most once every four minutes, and stores and shows nothing"; ${planning}, "Every planner call asks the model at temperature zero")`, effect () => {
+it.live(`A warm-up sends the planner's own system prompt and tools once with a one-token cap, answers at once, skips a second within four minutes, drops a failure and stores nothing (${planning}, "A warm-up sends the planner's tools and system prompt once with a one-token cap, at most once every four minutes, and stores and shows nothing"; ${planning}, "Every planner call asks the model at temperature zero, unless the model takes only its default")`, effect () => {
   const cloud = try cloudFake(deviceKey)
   const agent = try startInProcess({ launch: { backend: { kind: "cloud", origin: cloud.origin, largeModel: "cerebras/qwen-3.8-27b" }, load: [basicActionsModuleName], allowed: ["REPLY", "IGNORE", "NONE", "CALCULATE"] }, frame: { credential: { version: 1, value: deviceKey } }, modules: builtinModuleFactories })
   const sent = () => cloud.calls.filter(({ path }) => path.endsWith("/chat/completions")).map(({ body }) => body as { messages: { role: string; content?: unknown }[]; tools?: unknown; tool_choice?: unknown; max_tokens?: unknown; prompt_cache_key?: unknown; temperature?: unknown })
@@ -1466,6 +1466,28 @@ it.live(`A warm-up sends the planner's own system prompt and tools once with a o
     reply: "First answer.", history: 2,
     logged: [true, true],
     afterFailures: failures.map(() => ({ asked: 202, canRespond: true, blocked: false, lastCloudFailure: "none", reply: "Still here.", failureKind: "none" })),
+  }))
+}, 120_000)
+
+it.live(`An own-key planner asks a model that takes a temperature at zero, and an OpenAI reasoning model at its default, and both answer (${planning}, "Every planner call asks the model at temperature zero, unless the model takes only its default"; spec/agent/models/binding.md, "A call sends its caller's temperature only to a model that takes one")`, effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const turnOn = effect (largeModel: string) => {
+    const agent = try startInProcess({
+      launch: { backend: { kind: "ownKey", baseUrl: cloud.ownKeyBaseUrl, smallModel: "small", largeModel }, load: [basicActionsModuleName], allowed: ["REPLY", "IGNORE", "NONE", "CALCULATE"] },
+      frame: { credential: { version: 1, value: cloud.ownKey } }, modules: builtinModuleFactories,
+    })
+    const { id } = try conversation(agent)
+    const before = cloud.calls.length
+    try Effect.sync(() => cloud.script(text("Own answer."), text("Own answer.")))
+    const reply = replyOf(try send(agent, id, { text: "Hi" }))
+    const planned = cloud.calls.slice(before).find(({ path, body }) => path.endsWith("/chat/completions") && (body as { model?: unknown }).model === largeModel)?.body as Record<string, unknown> | undefined
+    return { reply: reply.text, failureKind: reply.failureKind ?? "none", sent: planned === undefined ? "no call" : ["temperature" in planned, planned.temperature] }
+  }
+  const takes = try turnOn("large")
+  const reasoning = try turnOn("o4-mini")
+  try Effect.try(() => assert.deepStrictEqual({ takes, reasoning }, {
+    takes: { reply: "Own answer.", failureKind: "none", sent: [true, 0] },
+    reasoning: { reply: "Own answer.", failureKind: "none", sent: [false, undefined] },
   }))
 }, 120_000)
 

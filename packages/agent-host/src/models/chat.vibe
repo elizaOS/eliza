@@ -1,12 +1,12 @@
 // spec/agent/models/binding.md, "A planner warm-up is sent only while the account is not blocked, and neither its answer nor its refusal changes the account state"
-// spec/agent/models/binding.md, "No text handler is ever served by a model on the device"; spec/agent/models/binding.md, "Only a network failure, an outage or a provider issue is retried, and a rate limit ends the call for its turn to re-send once"; spec/agent/models/binding.md, "A tool call the provider could not parse, or a streamed answer silent for a minute, ends the call without a retry"; spec/agent/models/binding.md, "Each refusal is one account state, and the last failure records its kind and time without text"; spec/agent/models/binding.md, "A tool call, a structured answer and the token use reach the caller as one result"; spec/agent/models/binding.md, "A call sends an output cap only when its caller names one, and a thinking hint sets the reasoning effort only on a model that documents it"; spec/agent/models/binding.md, "A Qwen call on a Cerebras route sends the prompt cache key its caller names, and no call invents one"; spec/agent/models/binding.md, "A rate limit holds the account for the provider's whole retry time, and for at most 4 s on a Cerebras own-key endpoint"; spec/agent/conversation/turns.md, "A failed reply names the owner's fix, and only a live rate limit carries its wait"; spec/agent/models/binding.md, "A cloud refusal that names spent credits or a spent allowance carries Cloud's own code, and no other refusal carries one"; spec/agent/models/binding.md, "A rate limit names whether the model provider or Cloud set it, and no other refusal names one"; spec/agent/models/binding.md, "A Qwen call on a Cerebras route reads a tool call the model wrote as text as that call, when it names an offered tool"
+// spec/agent/models/binding.md, "No text handler is ever served by a model on the device"; spec/agent/models/binding.md, "Only a network failure, an outage or a provider issue is retried, and a rate limit ends the call for its turn to re-send once"; spec/agent/models/binding.md, "A tool call the provider could not parse, or a streamed answer silent for a minute, ends the call without a retry"; spec/agent/models/binding.md, "Each refusal is one account state, and the last failure records its kind and time without text"; spec/agent/models/binding.md, "A tool call, a structured answer and the token use reach the caller as one result"; spec/agent/models/binding.md, "A call sends an output cap only when its caller names one, and a thinking hint sets the reasoning effort only on a model that documents it"; spec/agent/models/binding.md, "A call sends its caller's temperature only to a model that takes one"; spec/agent/models/binding.md, "A Qwen call on a Cerebras route sends the prompt cache key its caller names, and no call invents one"; spec/agent/models/binding.md, "A rate limit holds the account for the provider's whole retry time, and for at most 4 s on a Cerebras own-key endpoint"; spec/agent/conversation/turns.md, "A failed reply names the owner's fix, and only a live rate limit carries its wait"; spec/agent/models/binding.md, "A cloud refusal that names spent credits or a spent allowance carries Cloud's own code, and no other refusal carries one"; spec/agent/models/binding.md, "A rate limit names whether the model provider or Cloud set it, and no other refusal names one"; spec/agent/models/binding.md, "A Qwen call on a Cerebras route reads a tool call the model wrote as text as that call, when it names an offered tool"
 import { readCloudError, type CloudFailure } from "@elizaos/cloud"
 import type { GenerateTextParams, GenerateTextResult, IAgentRuntime, ModelRegistrationMetadata, StreamChunkCallback, TokenUsage, ToolCall } from "@elizaos/core"
 import { runSquashed } from "./run-squashed.vibe"
 import { FetchHttpClient, HttpClient, HttpClientRequest, type HttpClientResponse } from "effect/http"
 import {
-  cacheKeySent, capSent, chatReturn, clockAt, effortFor, writtenCallsRead, failureOf, fundsCodeName, fundsCodeOf, limitOriginOf, outcomeOf, reportedRetryAt, retryKey, shellOutcome, streamIdleSeconds, usageAsked, warmUpSent,
-  type CapAsk, type ChatAsk, type ChatReturn, type FundsCode, type LimitOrigin, type ModelBinding, type ModelHandler, type ReasoningEffort, type ReasoningFamily, type ShellRefusal, type ThinkingHint,
+  cacheKeySent, capSent, chatReturn, clockAt, effortFor, writtenCallsRead, failureOf, fundsCodeName, fundsCodeOf, limitOriginOf, outcomeOf, reportedRetryAt, retryKey, shellOutcome, streamIdleSeconds, temperatureSent, usageAsked, warmUpSent,
+  type CapAsk, type ChatAsk, type ChatReturn, type FundsCode, type LimitOrigin, type ModelBinding, type ModelHandler, type ReasoningEffort, type ReasoningFamily, type SamplingControl, type ShellRefusal, type ThinkingHint,
 } from "../../gen/agent__models__binding.effect.vibe"
 import { failureKindName, type BoundModels, type FailureKind } from "./binding.vibe"
 
@@ -635,12 +635,22 @@ effect function serve(binding: Binding, handler: ChatHandler, endpoint: Endpoint
 
 const cerebrasModelPrefix = /^(?:cerebras[:/]|openai\/)/
 
+function modelIdOf(model: string | undefined): string {
+  return (model ?? "").trim().toLowerCase().replace(cerebrasModelPrefix, "").replace(/:(?!free$).+$/, "")
+}
+
 function familyOf(model: string | undefined): ReasoningFamily {
-  const id = (model ?? "").trim().toLowerCase().replace(cerebrasModelPrefix, "").replace(/:(?!free$).+$/, "")
+  const id = modelIdOf(model)
   if (id === "qwen-3.8-27b") return "QwenReasoning"
   if (id === "gpt-oss-120b") return "GptOssReasoning"
   if (id === "zai-glm-4.7" || id === "gemma-4-31b") return "OffOnlyReasoning"
   return "OtherReasoning"
+}
+
+const defaultTemperatureOnlyModel = /^(?:o\d|gpt-5(?!.*-chat))/
+
+function samplingOf(model: string | undefined): SamplingControl {
+  return defaultTemperatureOnlyModel.test(modelIdOf(model)) ? "DefaultTemperatureOnly" : "TakesTemperature"
 }
 
 function hintOf(params: GenerateTextParams): ThinkingHint {
@@ -675,12 +685,13 @@ function requestOf(endpoint: Endpoint, handler: ChatHandler, params: GenerateTex
   const tools = toolsOf(params.tools, endpoint.uniformToolStrictness === "OnCerebrasModels" ? family !== "OtherReasoning" : endpoint.uniformToolStrictness)
   const toolChoice = toolChoiceOf(params.toolChoice)
   const format = responseFormatOf(params)
+  const temperature = temperatureSent(samplingOf(endpoint.models[handler]), params.temperature !== undefined) ? params.temperature : undefined
   return {
     messages,
     ...(cap.tag === "CapAsked" ? { [endpoint.maxTokensField]: cap.tokens } : {}),
     ...(effort === undefined ? {} : { reasoning_effort: effort }),
     ...(cacheKey === undefined ? {} : { prompt_cache_key: cacheKey }),
-    ...(params.temperature === undefined ? {} : { temperature: params.temperature }),
+    ...(temperature === undefined ? {} : { temperature }),
     ...(params.topP === undefined ? {} : { top_p: params.topP }),
     ...(params.stopSequences === undefined || params.stopSequences.length === 0 ? {} : { stop: params.stopSequences }),
     ...(params.frequencyPenalty === undefined ? {} : { frequency_penalty: params.frequencyPenalty }),
