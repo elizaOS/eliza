@@ -195,8 +195,12 @@ public final class MailBackgroundDeliveryTest {
     String before = f.state;
     refused(() -> delivery.sync(generation, () -> {}), "a reply that arrives after the lease rotated");
     check(before.equals(f.state), "a late reply leaves the durable state as it was");
+    check(delivery.status().getString("status").equals("disabled"), "a rotated watch is shown as off");
+    check(f.active.isEmpty() && f.state == null && f.scheduled == null, "a status read retires the stale watch, its notices and its work before a resume");
+    long renewed = delivery.begin("grant");
     delivery.resume();
-    check(f.active.isEmpty() && f.state == null && f.scheduled == null, "a resume retires the stale watch, its notices and its work");
+    delivery.configure(renewed, "cred", "grant", "owner", "org", f.foreground());
+    check(f.scheduled != null && f.active.isEmpty(), "a resume leaves a newer foreground selection in place");
   }
 
   public static void main(String[] args) throws Exception {

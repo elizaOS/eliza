@@ -42,7 +42,7 @@ it.effect('A new-mail count counts the notices still unread, a notice the shade 
 
 it.effect('A leased background mail check is admitted only in the foreground for the lease\'s owner, reads only the account list and inbox-v1 history, and retires its notices once the lease rotates (spec/cloud/services/google/mailRead.md, "Story: Hear about new mail while my phone is idle"; spec/os/signIn/cloudRequests.md, "A mail or calendar route is sent only with the lease, never with the device key")', () => effect {
   const answer = try tryPromise(() => hostChecks("MailBackgroundDeliveryTest"))
-  try Effect.try(() => assert.strictEqual(answer, "MailBackgroundDeliveryTest checks: 32"))
+  try Effect.try(() => assert.strictEqual(answer, "MailBackgroundDeliveryTest checks: 34"))
 }, 180_000)
 
 it.effect('Browse hidden entries only when asked, never the Trash, and move or copy into another volume (spec/os/android/files/storage.md, "A listing or folder walk shows dot entries only when asked, and never the Trash under any spelling"; spec/os/android/files/storage.md, "A move into another volume takes the copy path, and its copy is written and cleaned up on that volume")', () => effect {
