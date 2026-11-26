@@ -572,7 +572,7 @@ export const NOTES_CAPABILITIES: ViewCapability[] = [
     ...noteTargetParameters({ title: "Exact first-line label of the note to update.", query: "Unique existing text of the note to update." }),
     content: { type: "string", maxLength: 20_241, description: "Replacement complete note content." },
     format: { type: "object", description: "Replacement rich format; omitted keeps it." },
-    authoredEdit: { type: "object", description: "One authored edit or checklist append." },
+    authoredEdit: { type: "object", description: "One authored edit, checklist append, or checklist item removal {field:checklist,action:remove,index,expectedText}." },
     color: { type: "string", enum: ["yellow", "green", "rose", "slate"], description: "Replacement color." },
     expectedRevision: { type: "integer", required: true, minimum: 0, description: "Revision of the snapshot this edit was prepared from." },
   } },

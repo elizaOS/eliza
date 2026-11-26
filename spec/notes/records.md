@@ -133,7 +133,9 @@ shopping list`) is an edit of that note: the one item at the index the
 model read, while it still holds the text read there, comes out, and every
 other item, the title and the note itself stay. An item whose text changed
 since the read, or an index outside the list, removes nothing and asks for
-a fresh read. Removing the last item leaves the note, with an empty list.
+a fresh read. Removing the last item of a titled checklist leaves the note, with its
+title and an empty list; a note with no title, body or other content left
+is refused as empty, as any edit that would empty a note is.
 A line of a plain note comes out by replacing its text with nothing. The
 Notes actions tell the model so, and that deleting the note is only for an
 owner who asks to delete the note itself, never to take something off it.
