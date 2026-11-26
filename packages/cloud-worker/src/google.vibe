@@ -1,8 +1,8 @@
-// spec/cloud/index.md, "Story: Connect Google mail and calendar"; spec/cloud/services/google/mailRead.md, "Story: Notice new mail while I sign in privately"; spec/cloud/identity/federatedSignIn.md, "Story: Connect mail and calendar from the same Google sheet"; spec/cloud/identity/federatedSignIn.md, "Grace native consent stores only permissions Grace selected and Google granted"
+// spec/cloud/index.md, "Story: Connect Google mail and calendar"; spec/cloud/services/google/mailRead.md, "Story: Notice new mail while I sign in privately"; spec/cloud/identity/federatedSignIn.md, "Story: Connect mail and calendar from the same Google sheet"; spec/cloud/identity/federatedSignIn.md, "A native connect stores tokens only for the signed-in account's own Google identity and only the selected scopes Google granted"
 import type { Client } from "pg"
 import type { cloudCredential } from "./identity.vibe"
 import { canReadCloudCalendarReminder, currentAttachmentTransfer } from "../gen/cloud.effect.vibe"
-import { graceNativeConnectStores, nativeConnectAttempts, nativeConnectStoresAny, nativeConnectWindowSeconds } from "../gen/cloud__identity__federatedSignIn.effect.vibe"
+import { nativeConnectAttempts, nativeConnectSelection, nativeConnectSelectionNamed, nativeConnectStores, nativeConnectStoresAny, nativeConnectWindowSeconds } from "../gen/cloud__identity__federatedSignIn.effect.vibe"
 import { inboxWatchCanAnswer } from "../gen/cloud__services__google__mailRead.effect.vibe"
 import { decodeInboxWatch, inboxArrivalBodyLimit, inboxArrivalPath, inboxWatchBinding, inboxWatchInput, observeInboxWatch, InboxHistoryInvalid, InboxWatchRequestInvalid } from "./services/google/inbox-arrival.vibe"
 import { Aead, Digest, SecureRandom } from "effect/crypto"
@@ -32,7 +32,7 @@ export type LegacyGoogleCustody = Pick<Connection, "account_id" | "subject" | "r
 type Authorization = Capabilities & { expected_email: string | null; provider: string; provider_subject: string }
 type User = { provider: string; provider_subject: string; email: string | null }
 
-schema NativeConnect { serverAuthCode: string; mail: boolean; calendar: boolean; sendMail: boolean; trashMail: boolean; writeCalendar: boolean }
+schema NativeConnect { serverAuthCode: string; mail?: boolean; calendar?: boolean; sendMail?: boolean; trashMail?: boolean; writeCalendar?: boolean }
 schema Consent { mail: boolean; calendar: boolean; sendMail?: boolean; trashMail?: boolean; writeCalendar?: boolean; expectedEmail?: string }
 schema SendMail { accountId: string; grantId: string; operationId: string; recipient: string; subject: string; text: string; replyTo?: string }
 schema GmailAccepted { id: string; threadId?: string }
@@ -336,8 +336,16 @@ effect function link(env: GoogleEnv, config: Config, db: Client, account: string
 }
 
 effect function connectNative(request: Request, env: GoogleEnv, db: Client, account: string, device: DeviceWrite) {
-  const selected = try readAction(request, NativeConnect)
-  if (!selectsGoogleScopes(selected) || !/^[A-Za-z0-9/_.~-]{10,2048}$/.test(selected.serverAuthCode)) throw new BadRequest()
+  const action = try readAction(request, NativeConnect)
+  const named = [action.mail, action.calendar, action.sendMail, action.trashMail, action.writeCalendar]
+  const namedFields = named.filter((field) => field !== undefined).length
+  if (!nativeConnectSelectionNamed(namedFields)) throw new BadRequest()
+  const selected = nativeConnectSelection(namedFields, {
+    readMail: action.mail ?? false, sendMail: action.sendMail ?? false, trashMail: action.trashMail ?? false,
+    readCalendar: action.calendar ?? false, writeCalendar: action.writeCalendar ?? false
+  })
+  const consent = { mail: selected.readMail, calendar: selected.readCalendar, sendMail: selected.sendMail, trashMail: selected.trashMail, writeCalendar: selected.writeCalendar }
+  if (!selectsGoogleScopes(consent) || !/^[A-Za-z0-9/_.~-]{10,2048}$/.test(action.serverAuthCode)) throw new BadRequest()
   if (!nativeConnectReady(env)) throw new ConnectionUnavailable()
   try rateLimit(db, "google:native:connect", account, nativeConnectAttempts, nativeConnectWindowSeconds)
   const { rows } = try query<{ provider_subject: string }>(db, `
@@ -346,14 +354,11 @@ effect function connectNative(request: Request, env: GoogleEnv, db: Client, acco
   const signedInSubject = rows[0]?.provider_subject
   if (!signedInSubject) throw new AuthorizationFailed()
   const config = try googleConfig(env)
-  const credentials = try oauthToken(config, new URLSearchParams({ grant_type: "authorization_code", code: selected.serverAuthCode, redirect_uri: "" }))
+  const credentials = try oauthToken(config, new URLSearchParams({ grant_type: "authorization_code", code: action.serverAuthCode, redirect_uri: "" }))
   const refreshToken = credentials.refresh_token ?? ""
   const granted = new Set((credentials.scope ?? "").split(/\s+/))
   const profile = try verifiedProfile(credentials)
-  const stored = graceNativeConnectStores(signedInSubject, profile.sub, refreshToken !== "", {
-    readMail: selected.mail, sendMail: selected.sendMail, trashMail: selected.trashMail,
-    readCalendar: selected.calendar, writeCalendar: selected.writeCalendar
-  }, {
+  const stored = nativeConnectStores(signedInSubject, profile.sub, refreshToken !== "", selected, {
     readMail: granted.has(scopeByCapability.mail),
     sendMail: granted.has(scopeByCapability.send_mail),
     trashMail: granted.has(scopeByCapability.trash_mail),

@@ -1,7 +1,7 @@
 // spec/cloud/deployment.md, "A Worker routes the declared Grace Google mount, then the server table, then Worker-only paths"; spec/cloud/index.md, "Story: Sign in to the Cloud"; spec/cloud/index.md, "Story: Back up my passwords for another device"; spec/cloud/index.md, "Story: Ask for a bounded decision about a browser page"
 import type { Client } from "pg"
 import { CLEF_DECISIONS_PATH } from "@elizaos/cloud"
-import { graceGoogleDeviceMayWrite } from "../../gen/cloud__deployment.effect.vibe"
+import { graceDeviceWrite, graceGoogleAdmits, graceGoogleDeviceMayWrite, type GraceGoogleAccess } from "../../gen/cloud__deployment.effect.vibe"
 import { clefRequest, type ClefEnv } from "../clef-worker.vibe"
 import { browserGoogleCallbackPath, deviceAttachmentPath, googleRequest, googleResponse, reminderSchedule, selectedAttachmentPath, type GoogleEnv } from "../google.vibe"
 import { authenticate } from "../http/request-auth.vibe"
@@ -34,23 +34,22 @@ const mailLeaseReads = [
   "/api/v1/eliza/google/calendar/feed",
 ]
 const compatibleGmailPaths: ReadonlySet<string> = new Set([...mailLeaseReads, inboxArrivalPath])
-type GraceGoogleAccess = "Browser" | "MailLease" | "Arrival" | "Callback" | "DeviceConnect" | "Disconnect"
 type GraceGoogleRoute = readonly [method: "GET" | "POST", access: GraceGoogleAccess]
 const graceGoogleRoutes = new Map<string, GraceGoogleRoute>([
-  ...mailLeaseReads.map((path) => [path, ["GET", "MailLease"]] as const),
-  [inboxArrivalPath, ["GET", "Arrival"]],
-  [selectedAttachmentPath, ["GET", "Browser"]],
-  [browserGoogleCallbackPath, ["GET", "Callback"]],
-  ["/api/v1/eliza/google/gmail/send/status", ["GET", "Browser"]],
-  ["/api/v1/eliza/google/calendar/series", ["GET", "Browser"]],
-  ["/api/v1/eliza/google/calendar/reminder/event", ["GET", "Browser"]],
-  ["/api/v1/eliza/google/connect/initiate", ["POST", "Browser"]],
-  ["/api/v1/eliza/google/connect/native", ["POST", "DeviceConnect"]],
-  ["/api/v1/eliza/google/disconnect", ["POST", "Disconnect"]],
-  ["/api/v1/eliza/google/gmail/trash", ["POST", "Browser"]],
-  ["/api/v1/eliza/google/gmail/send", ["POST", "Browser"]],
-  ["/api/v1/eliza/google/calendar/reminder", ["POST", "Browser"]],
-  ["/api/v1/eliza/google/calendar/change", ["POST", "Browser"]],
+  ...mailLeaseReads.map((path) => [path, ["GET", "GraceMailLease"]] as const),
+  [inboxArrivalPath, ["GET", "GraceArrival"]],
+  [selectedAttachmentPath, ["GET", "GraceBrowser"]],
+  [browserGoogleCallbackPath, ["GET", "GraceCallback"]],
+  ["/api/v1/eliza/google/gmail/send/status", ["GET", "GraceBrowser"]],
+  ["/api/v1/eliza/google/calendar/series", ["GET", "GraceBrowser"]],
+  ["/api/v1/eliza/google/calendar/reminder/event", ["GET", "GraceBrowser"]],
+  ["/api/v1/eliza/google/connect/initiate", ["POST", "GraceBrowser"]],
+  ["/api/v1/eliza/google/connect/native", ["POST", "GraceDeviceConnect"]],
+  ["/api/v1/eliza/google/disconnect", ["POST", "GraceDisconnect"]],
+  ["/api/v1/eliza/google/gmail/trash", ["POST", "GraceBrowser"]],
+  ["/api/v1/eliza/google/gmail/send", ["POST", "GraceBrowser"]],
+  ["/api/v1/eliza/google/calendar/reminder", ["POST", "GraceBrowser"]],
+  ["/api/v1/eliza/google/calendar/change", ["POST", "GraceBrowser"]],
 ])
 const refusal = (status: number, error: string) => WorkerResponse.json({ error }, { status })
 
@@ -80,12 +79,11 @@ function admitGraceDevice(request: Request, db: Client, access: "MailLease" | "D
 async function graceGoogleRequest<E extends LegacyBindings>(request: Request, env: E, db: Client, ports: WorkerPorts<E>, access: GraceGoogleAccess) {
   const browser = !request.headers.has("authorization")
   const origin = request.headers.get("origin")
-  if (browser && origin !== env.WEB_ORIGIN && !(access === "Callback" && origin === null)) return refusal(403, "forbidden_origin")
-  const deviceWrite = !browser && (access === "DeviceConnect" || access === "Disconnect")
-  if ((browser && access === "DeviceConnect") || (!browser && access !== "MailLease" && access !== "Arrival" && !deviceWrite))
-    return refusal(401, "authentication_required")
-  const credential = access === "Arrival" ? await cloudCredential(request) : null
-  const admission = browser ? undefined : await admitGraceDevice(request, db, access === "MailLease" ? "MailLease" : "Device")
+  if (browser && origin !== env.WEB_ORIGIN && !(access === "GraceCallback" && origin === null)) return refusal(403, "forbidden_origin")
+  if (!graceGoogleAdmits(access, !browser)) return refusal(401, "authentication_required")
+  const deviceWrite = graceDeviceWrite(access, !browser)
+  const credential = access === "GraceArrival" ? await cloudCredential(request) : null
+  const admission = browser ? undefined : await admitGraceDevice(request, db, access === "GraceMailLease" ? "MailLease" : "Device")
   if (admission?.kind === "Refused") return admission.response
   const account = () => browser ? sessionAccount(request, db)
     : admission?.kind === "Device" ? inferenceAccount(request, db, env, { grantKey: admission.grantKey, lock: false }) : Promise.resolve(null)
@@ -99,7 +97,7 @@ async function graceGoogleRequest<E extends LegacyBindings>(request: Request, en
     return bounded(request, 16 * 1024, (body) => googleRequest(body, env, db, owner, ports.providerFetch, { kind: "DeviceWrite", current: locked }))
   }
   const response = await googleRequest(request, env, db, owner, ports.providerFetch, credential === null ? undefined : { kind: "Arrival", credential, current })
-  if (!response.ok || request.method !== "GET" || access === "Arrival") return response
+  if (!response.ok || request.method !== "GET" || access === "GraceArrival") return response
   if (!browser) {
     const held = await admitGraceDevice(request, db, "MailLease", false)
     if (held.kind === "Refused") return held.response

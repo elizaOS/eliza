@@ -4576,14 +4576,20 @@ module node {
       const acknowledged = await post("/api/v1/app-auth/mobile/ack", { credentialId: key.credentialId, secret: key.secret })
       const device = bearer(key.secret)
       const selection = { serverAuthCode: "native-oauth-code", mail: true, calendar: false, sendMail: false, trashMail: false, writeCalendar: false }
-      const connectNative = (headers: Record<string, string>, body = selection) => grace.fetch(new Request(root + "connect/native", {
+      const connectNative = (headers: Record<string, string>, body: object = selection) => grace.fetch(new Request(root + "connect/native", {
         method: "POST", headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify(body),
       }), env)
       const browserCannotConnectNative = await connectNative(browser)
       const invalidSelection = await connectNative(device, { ...selection, writeCalendar: true })
       verifiedSubject = "different-google-owner"
       const wrongGoogle = await connectNative(device)
+      const otherConnected = await connectNative(otherDevice)
       verifiedSubject = subject
+      const widened = await connectNative(device, { ...selection, sendMail: true, calendar: true })
+      const widenedScopes = [...(await status()).grantedScopes].sort()
+      const unnamed = await connectNative(device, { serverAuthCode: selection.serverAuthCode })
+      const unnamedScopes = [...(await status()).grantedScopes].sort()
+      const partial = await connectNative(device, { serverAuthCode: selection.serverAuthCode, mail: true })
       const nativeResponse = await connectNative(device)
       if (!nativeResponse.ok) throw new Error(`Grace native consent returned ${nativeResponse.status}: ${await nativeResponse.text()}`)
       const nativeLinked = await status()
@@ -4594,8 +4600,12 @@ module node {
       }), { headers: bearer(access) }), env)
       if (!read.ok) throw new Error(`Grace native Gmail read returned ${read.status}: ${await read.text()}`)
       const message = Schema.decodeUnknownSync(Schema.Struct({ accountId: Schema.String, bodyText: Schema.String }))(await read.json())
+      const connectedAccounts = async () => (await fixture.db.query<{ account_id: string }>(
+        "SELECT account_id FROM cloud_google_connections ORDER BY account_id")).rows.map((row) => row.account_id)
+      const bothConnected = await connectedAccounts()
       const unrelatedDisconnect = await disconnect(otherDevice)
       const stillLinked = await status()
+      const afterOtherDisconnect = await connectedAccounts()
       const nativeDisconnect = await disconnect(device)
       revokeDuringConsent = async () => {
         const revoked = await grace.fetch(new Request(api + "/api/v1/api-keys/current", { method: "DELETE", headers: device }), env)
@@ -4616,9 +4626,12 @@ module node {
         native: {
           signedIn: [challenge.status, signed.status, key.accountCreated, key.user.id === owner.account.id, acknowledged.status],
           refused: [browserCannotConnectNative.status, invalidSelection.status, wrongGoogle.status, expiredDuringConsent.status],
+          selected: [widened.status, widenedScopes, unnamed.status, unnamedScopes, partial.status],
           connected: [nativeResponse.status, nativeLinked.connected, nativeLinked.accountId === verified.account.id, nativeLinked.identity?.email, nativeLinked.grantedScopes],
           mail: [lease.status, read.status, message.accountId === owner.account.id, message.bodyText],
-          disconnected: [unrelatedDisconnect.status, stillLinked.connectionId === nativeLinked.connectionId, nativeDisconnect.status, (await status()).connected],
+          disconnected: [otherConnected.status, bothConnected.length === 2 && bothConnected.includes(verified.account.id) && bothConnected.includes(other.account.id),
+            unrelatedDisconnect.status, afterOtherDisconnect.length === 1 && afterOtherDisconnect[0] === verified.account.id,
+            stillLinked.connectionId === nativeLinked.connectionId, nativeDisconnect.status, (await status()).connected],
         },
       }
     } finally {
@@ -5192,7 +5205,7 @@ it.live('A reviewed link decision stays within the current account and candidate
 }, 30_000)
 
 
-it.live('Use Grace Google consent on the web and tablet, send once, then disconnect (spec/cloud/deployment.md, "A Worker routes the declared Grace Google mount, then the server table, then Worker-only paths"; spec/cloud/identity/accounts.md, "A sign-in lands on the account holding its subject, else on the one holding its proven address, else on a new account, and never on an account that is not active"; spec/cloud/identity/federatedSignIn.md, "Story: Connect mail and calendar from the same Google sheet")', () => effect {
+it.live('Use Grace Google consent on the web and tablet, send once, then disconnect (spec/cloud/deployment.md, "A Worker routes the declared Grace Google mount, then the server table, then Worker-only paths"; spec/cloud/identity/accounts.md, "A sign-in lands on the account holding its subject, else on the one holding its proven address, else on a new account, and never on an account that is not active"; spec/cloud/identity/federatedSignIn.md, "Story: Connect mail and calendar from the same Google sheet"; spec/cloud/identity/federatedSignIn.md, "A native connect stores tokens only for the signed-in account\'s own Google identity and only the selected scopes Google granted"; spec/cloud/identity/sessions.md, "A mail or calendar route admits a session or a device lease, and refuses the device key"; spec/cloud/index.md, "An approved connection grants the owner only the selected reads")', () => effect {
   const got = try tryPromise(() => openGraceGoogleConnector())
   try check(() => assert.deepStrictEqual(got, {
     refusals: [403, 403, 401, 401, 404, 404],
@@ -5206,9 +5219,12 @@ it.live('Use Grace Google consent on the web and tablet, send once, then disconn
     native: {
       signedIn: [200, 200, false, true, 200],
       refused: [401, 400, 409, 401],
+      selected: [200, ["email", "https://www.googleapis.com/auth/calendar.events.readonly", "https://www.googleapis.com/auth/gmail.readonly", "https://www.googleapis.com/auth/gmail.send", "openid"],
+        200, ["email", "https://www.googleapis.com/auth/calendar.events.owned", "https://www.googleapis.com/auth/calendar.events.readonly", "https://www.googleapis.com/auth/gmail.modify",
+          "https://www.googleapis.com/auth/gmail.readonly", "https://www.googleapis.com/auth/gmail.send", "openid"], 400],
       connected: [200, true, true, "grace-owner@example.test", ["openid", "email", "https://www.googleapis.com/auth/gmail.readonly"]],
       mail: [200, 200, true, "Mail for this Grace account"],
-      disconnected: [200, true, 200, false],
+      disconnected: [200, true, 200, true, true, 200, false],
     },
   }))
 }, 120_000)

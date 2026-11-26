@@ -395,11 +395,13 @@ GET callback may arrive without an Origin and still requires that session
 and the matching OAuth flow. Enrolled tablets use a live mail lease for
 managed reads and a recorded device credential for the new-mail hint, both
 subject to the cloud's device request limit.
-The tablet's device credential also connects or disconnects its owner's
-Google connection. Its current owner is observed under the write lock, and
-only from the same admitted credential if it remains active for the
-configured client. The write is allowed only if that owner is still the
-original account. A native connection follows the selected-permission rule
+The tablet's device credential also connects natively or disconnects its
+owner's Google connection; it writes nothing else on the mount, and a
+browser never uses native connect. Its current owner is observed under the
+write lock, and only from the same admitted credential if it remains active
+for the configured client. The write is allowed only if that owner is still
+the original account, and it changes only that owner's connection, never
+another account's. A native connection follows the selected-permission rule
 in [Google sign-in](identity/federatedSignIn.md).
 Other Workers and other paths use the server table and Worker-only routes
 in their usual order.
@@ -423,6 +425,20 @@ pure val ownerValues = Set("", "owner1", "owner2")
 pure val liveOwnerValues = ownerValues
 pure def lawAGraceGoogleDeviceWriteNeedsItsOriginalLiveOwner(owner: str, liveOwner: str): bool =
   (owner == "" or liveOwner != owner) implies not(graceGoogleDeviceMayWrite(owner, liveOwner))
+type GraceGoogleAccess = GraceBrowser | GraceMailLease | GraceArrival | GraceCallback | GraceDeviceConnect | GraceDisconnect
+pure def graceDeviceWrite(access: GraceGoogleAccess, bearer: bool): bool =
+  bearer and (access == GraceDeviceConnect or access == GraceDisconnect)
+pure def graceGoogleAdmits(access: GraceGoogleAccess, bearer: bool): bool =
+  if (bearer) access == GraceMailLease or access == GraceArrival or graceDeviceWrite(access, bearer)
+  else access != GraceDeviceConnect
+pure val accessValues = Set(GraceBrowser, GraceMailLease, GraceArrival, GraceCallback, GraceDeviceConnect, GraceDisconnect)
+pure val bearerValues = Set(true, false)
+pure def lawADeviceKeyWritesOnlyThroughNativeConnectAndDisconnect(access: GraceGoogleAccess): bool =
+  graceGoogleAdmits(access, true) iff (access == GraceMailLease or access == GraceArrival or graceDeviceWrite(access, true))
+pure def lawABrowserNeverUsesNativeConnect(access: GraceGoogleAccess): bool =
+  graceGoogleAdmits(access, false) iff access != GraceDeviceConnect
+pure def lawOnlyADeviceCredentialWrites(access: GraceGoogleAccess, bearer: bool): bool =
+  graceDeviceWrite(access, bearer) implies (bearer and graceGoogleAdmits(access, bearer))
 ```
 
 ### A scheduled tick runs each sweep whose period ends within the tick
