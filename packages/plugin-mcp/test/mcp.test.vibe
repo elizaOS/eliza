@@ -12,7 +12,7 @@ module node {
   import { Ajv } from "ajv"
 
   const text = { type: "string" }
-  const deep = (levels: number): object => levels === 0 ? { type: "integer" } : { type: "object", properties: { next: deep(levels - 1) }, required: ["next"] }
+  const deep = (levels: number, leaf: object = { type: "integer" }): object => levels === 0 ? leaf : { type: "object", properties: { next: deep(levels - 1, leaf) }, required: ["next"] }
 
   const tools = [
     { name: "push_files", inputSchema: { type: "object", properties: { branch: text, files: { type: "array", items: { type: "object", properties: { path: text, content: text }, required: ["path", "content"], additionalProperties: false } } }, required: ["branch", "files"] } },
@@ -28,7 +28,8 @@ module node {
         properties: {
           filter: {
             anyOf: [
-              { type: "object", properties: { owner: text }, required: ["owner"], additionalProperties: false },
+              { type: "object", description: "Owner filter", properties: { owner: text }, required: ["owner"], additionalProperties: false },
+              { type: ["string", "null"] },
               { type: "null" },
             ],
           },
@@ -44,6 +45,16 @@ module node {
               {},
             ],
           },
+          both: {
+            anyOf: [text, { type: "integer" }],
+            oneOf: [text, { type: "integer" }],
+          },
+          atLimit: deep(4, {
+            anyOf: [
+              { type: "object", properties: { leaf: { type: "integer" } }, required: ["leaf"], additionalProperties: false },
+              { type: "null" },
+            ],
+          }),
         },
         required: ["filter"],
       },
@@ -110,11 +121,14 @@ const cases: ReadonlyArray<readonly [string, Record<string, unknown>, string | n
   ["set_labels", { labels: { team: 1 } }, "Argument 'labels.team' expected string, got number", false],
   ["nest", { root: nested(7, 1) }, null, true],
   ["nest", { root: nested(7, "one") }, null, false],
-  ["query_items", { filter: { owner: "alice" }, tags: [1, 2], flex: { ok: true } }, null, true],
+  ["query_items", { filter: { owner: "alice" }, tags: [1, 2], flex: { ok: true }, both: "s", atLimit: nested(4, { leaf: 7 }) }, null, true],
   ["query_items", { filter: null, tags: null }, null, true],
   ["query_items", { filter: {} }, "Argument 'filter' did not satisfy any anyOf branch", false],
   ["query_items", { filter: { owner: "alice", extra: 1 } }, "Argument 'filter' did not satisfy any anyOf branch", false],
   ["query_items", { filter: null, tags: ["bad"] }, "Argument 'tags' did not satisfy any anyOf branch", false],
+  ["query_items", { filter: null, both: { x: 1 } }, "Argument 'both' did not satisfy any anyOf branch", false],
+  ["query_items", { filter: null, both: [1] }, "Argument 'both' did not satisfy any anyOf branch", false],
+  ["query_items", { filter: null, atLimit: nested(4, {}) }, "Argument 'atLimit.next.next.next.next' did not satisfy any anyOf branch", false],
   ["resolve_target", { target: { issue: 42 } }, null, true],
   ["resolve_target", { target: { slug: "core" } }, null, true],
   ["resolve_target", { target: {} }, "Argument 'target' did not satisfy any anyOf branch", false],
@@ -178,7 +192,8 @@ it.live("An MCP tool's nested argument shapes reach the planner and the server (
       anyValueArrayLevels: 4,
       title: { type: "string", description: 'Page title JSON schema: {"type":"string","minLength":1,"description":"Page title"}' },
       queryFilterAnyOf: [
-        { type: "object", properties: { owner: { type: "string" } }, required: ["owner"], additionalProperties: false },
+        { type: "object", description: "Owner filter", properties: { owner: { type: "string" } }, required: ["owner"], additionalProperties: false },
+        { type: "string" },
         { type: "null" },
       ],
       queryTagsAnyOf: [
