@@ -3,7 +3,7 @@ import { looksLikeActionEnvelopeJson, looksLikeEvaluatorEnvelopeJson, parseInter
 import { actionLabel, compose, heardAs, readDraft, type ActionLabel, type Composition, type Declared, type Draft, type DraftShape, type ObjectNaming, type VoiceAction } from "../../gen/agent__conversation__planning.ts"
 
 const maxCueLength = 120
-const bracketCall = /\[[a-z][a-z0-9]*(?:_[a-z0-9]+)+(?:\s+[a-z_]+=(?:"[^"\n]*"|[^\s\]]+))+\s*\]/gu
+const bracketCall = /\[[a-z][a-z0-9]*(?:_[a-z0-9]+)+(?:\s+[a-z_]+=(?:"[^"\n]*"|[^\s\]"][^\s\]]*))+\s*\]/gu
 const callName = /^[a-z]+(?:_[a-z0-9]+)+$/u
 const emptyWrapper = /```[\w-]*\s*```|<([\w-]+)>\s*<\/\1>/gu
 const dataToken = /\p{N}|\b[ap]\.m\.|\b(?:pm|noon|midnight|o['’]clock|zero|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|(?:hundred|thousand|dozen)s?|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth|\p{L}+(?:teenth|tieth)|few|couple|handful|several|single|only|(?:half|quarter) (?:past|to|after|till?))\b|\b(?:at|by|until|till|before|after|around) one\b|\bone [ap]m\b/iu
@@ -234,6 +234,7 @@ export interface WrittenCall {
   readonly fits: boolean
   readonly copied: boolean
   readonly hostData: boolean
+  readonly untrusted: boolean
   readonly call: { readonly name: string; readonly arguments: Exclude<ToolCall["arguments"], string> } | undefined
   readonly misfit: string
 }
@@ -257,7 +258,7 @@ function fieldsOf(value: unknown): Fields | undefined {
 }
 
 const toolNameInCaps = "[A-Z][A-Z0-9_]*"
-const callLine = new RegExp(`^(${toolNameInCaps}) call:[ \\t]*([^\\n]*?)[ \\t]*\\.?$`, "u")
+const callLineHead = new RegExp(`^(${toolNameInCaps}) call:([^\\n]*)$`, "u")
 const callLineNaming = new RegExp(`^${toolNameInCaps}(?: (?:c(?:a(?:l(?:l)?)?)?)?)?$`, "u")
 const argumentEndings = ["", "0", " 0", "a 0", 'x"', 'n"', '0"', '00"', '000"', '0000"', "rue", "ue", "e", "alse", "lse", "se"]
 const callLineValue = /^[ \t]*([A-Za-z_]\w*)(?:[ \t]*[:=])?[ \t]*("(?:[^"\\\n]|\\.)*"|-?\d+(?:\.\d+)?|true|false)[ \t]*(?:,|$)/u
@@ -278,20 +279,27 @@ function callLineArguments(written: string): Fields | undefined {
   return args
 }
 
+function callLineOf(text: string): { readonly name: string; readonly written: string } | undefined {
+  const line = callLineHead.exec(text)
+  if (line === null) return undefined
+  const written = (line[2] ?? "").trim()
+  return { name: line[1] ?? "", written: written.endsWith(".") ? written.slice(0, -1).trimEnd() : written }
+}
+
 function mayBeCallLine(text: string): boolean {
   if (callLineNaming.test(text)) return true
   return [text, text.trimEnd()].some((start) => argumentEndings.some((ending) => {
-    const line = callLine.exec(start + ending)
-    return line !== null && callLineArguments(line[2] ?? "") !== undefined
+    const line = callLineOf(start + ending)
+    return line !== undefined && callLineArguments(line.written) !== undefined
   }))
 }
 
 function namedTool(said: string, tools: readonly ToolDefinition[]): CalledTool | undefined {
   const byKey = new Map(tools.map((tool) => [actionNameKey(tool.name), tool]))
-  const line = callLine.exec(said)
-  if (line !== null) {
-    const tool = tools.find(({ name }) => name === line[1])
-    const args = callLineArguments(line[2] ?? "")
+  const line = callLineOf(said)
+  if (line !== undefined) {
+    const tool = tools.find(({ name }) => name === line.name)
+    const args = callLineArguments(line.written)
     return tool === undefined || args === undefined ? undefined : { naming: "NamesByCallField", tool, args }
   }
   const object = fieldsOf(said)
@@ -360,7 +368,13 @@ function quotesACall(name: string, given: readonly string[]): boolean {
 
 export interface GivenText {
   readonly anywhere: readonly string[]
+  readonly untrusted: readonly string[]
   readonly host: readonly Fields[]
+}
+
+function namesTool(name: string, given: readonly string[]): boolean {
+  const tool = actionNameKey(name)
+  return given.some((source) => source.split(/[^A-Za-z0-9_.]+/u).some((word) => word !== "" && actionNameKey(word) === tool))
 }
 
 export function writtenCallOf(said: string, tools: readonly ToolDefinition[], given: () => GivenText): WrittenCall | undefined {
@@ -369,13 +383,17 @@ export function writtenCallOf(said: string, tools: readonly ToolDefinition[], gi
   const object = text.startsWith("{") ? fieldsOf(text) : undefined
   if (named === undefined && object === undefined) return undefined
   const misfit = named === undefined ? [] : misfitOf(named)
-  const { anywhere, host } = given()
+  const { anywhere, untrusted, host } = given()
   const hostData = object !== undefined && host.some((written) => copies(object, written))
   const flat = compact(text)
-  const texts = givenTexts(anywhere)
+  const quoted = (sources: readonly string[]) => {
+    const texts = givenTexts(sources)
+    return texts.some((source) => compact(source).includes(flat)) || (named !== undefined && quotesACall(named.tool.name, texts))
+  }
+  const fromUntrusted = quoted(untrusted) || (named !== undefined && namesTool(named.tool.name, givenTexts(untrusted)))
   return {
     naming: named?.naming ?? "NamesNoTool", fits: named !== undefined && misfit.length === 0,
-    copied: hostData || texts.some((source) => compact(source).includes(flat)) || (named !== undefined && quotesACall(named.tool.name, texts)), hostData,
+    copied: hostData || fromUntrusted || quoted(anywhere), hostData, untrusted: fromUntrusted,
     call: named === undefined ? undefined : { name: named.tool.name, arguments: { ...named.args } as Exclude<ToolCall["arguments"], string> },
     misfit: misfit.join("; "),
   }
