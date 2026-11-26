@@ -131,13 +131,13 @@ function isEncryptedV1(value: string): boolean {
 
 function isEncryptedV2(value: string): boolean {
   if (!value.startsWith("v2:")) return false
-  const parts = value.split(":")
+  const parts = value.trimEnd().split(":")
   if (parts.length !== 4) return false
     const [, ivHex, ciphertextHex, tagHex] = parts
   return (
-    /^[0-9a-fA-F]{24}$/.test(ivHex)
-    && /^([0-9a-fA-F]{2})+$/.test(ciphertextHex)
-    && /^[0-9a-fA-F]{32}$/.test(tagHex)
+    /^[0-9a-fA-F]{24}$/.test(ivHex.replace(/\s/g, ""))
+    && /^([0-9a-fA-F]{2})*$/.test(ciphertextHex.replace(/\s/g, ""))
+    && /^[0-9a-fA-F]{32}$/.test(tagHex.replace(/\s/g, ""))
   )
 }
 
@@ -175,7 +175,7 @@ effect function decryptEnvelope(value: string, salt: string) {
   if (kind === "Plaintext") {
     return value
   }
-  const parts = value.split(":")
+  const parts = value.trimEnd().split(":")
   const key = settingsKey(salt)
 
   if (kind === "AuthenticatedGcm") {
