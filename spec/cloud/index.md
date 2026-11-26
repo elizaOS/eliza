@@ -195,8 +195,10 @@ account and approved scopes. Disconnecting removes the local credential and any
 pending consent authorizations. Browser and native inference credentials
 have separate permissions: every mail and calendar route refuses the device
 key with `403 device_key_not_allowed`, even beside a browser session, except
-the four the device itself calls with its key: inbox arrival notices,
-attachment handoff redemption, its reminder schedule and native connect. A
+the five the device itself calls with its key: inbox arrival notices,
+attachment handoff redemption, its reminder schedule, native connect and, on
+the Grace Google mount (`deployment`), disconnecting its own owner's
+connection. A device key never disconnects another account's connection. A
 request that carries an `Authorization` header is authenticated by that
 header alone, never by a cookie. The owner can search Inbox, Sent, Drafts or Trash.
 Counts show the provider’s unread Inbox messages and total draft messages across
