@@ -97,6 +97,7 @@ export const VoiceUiContext = Schema.Struct({
   uiClientId: Schema.optionalKey(Schema.String),
   agentActionMode: Schema.optionalKey(Schema.Literals(["direct-request-v1", "direct-files-v1", "direct-files-only-v1"])),
   uiNotesEditor: Schema.optionalKey(Schema.Literal("saved-note-v1")),
+  uiViews: Schema.optionalKey(Schema.Array(Schema.String)),
 })
 
 export type Observation = typeof Observation.Type
@@ -320,11 +321,21 @@ function stated<None, Allowed, Other>(value: unknown, allowed: string, none: Non
   return value === undefined ? none : value === allowed ? chosen : other
 }
 
+const viewIdPattern = /^[a-z][a-z0-9_-]{0,63}$/u
+
+/** The views a renderer says it can show now: a list of 1 to 64 distinct declared-view ids, or undefined for any other value. */
+function screenViewsOf(value: unknown): readonly string[] | undefined {
+  if (!Array.isArray(value) || value.length === 0 || value.length > 64) return undefined
+  const ids = value.filter((id): id is string => typeof id === "string" && viewIdPattern.test(id))
+  return ids.length === value.length && new Set(ids).size === ids.length ? ids : undefined
+}
+
 function decideVoiceUi(input: unknown, clientId: string | undefined): Decided<VoiceUiContext, VoiceUiFacts> {
   const fields = table(input)
   if (fields === undefined) return { kind: "refused", facts: undefined }
-  const { uiViewPath, uiViewSubview, uiTimeZone, uiBrowserSurface, viewDelivery, uiClientId, agentActionMode, uiNotesEditor } = fields
+  const { uiViewPath, uiViewSubview, uiTimeZone, uiBrowserSurface, viewDelivery, uiClientId, agentActionMode, uiNotesEditor, uiViews } = fields
   const routing = parseViewInteractionClientId(uiClientId)
+  const screenViews = screenViewsOf(uiViews)
   const facts: VoiceUiFacts = {
     viewPath: textOf(uiViewPath),
     subview: textOf(uiViewSubview),
@@ -334,6 +345,7 @@ function decideVoiceUi(input: unknown, clientId: string | undefined): Decided<Vo
     routingId: uiClientId === undefined ? "NoRouting" : routing !== undefined && (clientId === undefined || routing === clientId) ? "Routing" : "MalformedRouting",
     actionMode: agentActionMode === "direct-files-v1" ? "DirectFilesRequest" : agentActionMode === "direct-files-only-v1" ? "DirectFilesOnlyRequest" : stated(agentActionMode, "direct-request-v1", "NoActionMode", "DirectRequest", "OtherActionMode"),
     noteEditor: stated(uiNotesEditor, "saved-note-v1", "NoNoteEditor", "SavedNoteEditor", "OtherNoteEditor"),
+    screenViews: uiViews === undefined ? "NoScreenViews" : screenViews === undefined ? "OtherScreenViews" : "StatedScreenViews",
   }
   switch (voiceUiOutcome(facts)) {
     case "ContextCarried": return { kind: "carried", value: {
@@ -345,6 +357,7 @@ function decideVoiceUi(input: unknown, clientId: string | undefined): Decided<Vo
       ...(routing === undefined ? {} : { uiClientId: routing }),
       ...(agentActionMode === "direct-request-v1" || agentActionMode === "direct-files-v1" || agentActionMode === "direct-files-only-v1" ? { agentActionMode } : {}),
       ...(uiNotesEditor === "saved-note-v1" ? { uiNotesEditor } : {}),
+      ...(screenViews === undefined ? {} : { uiViews: [...screenViews] }),
     } }
     case "ContextDropped":
     case "TurnRefused": return { kind: "refused", facts }

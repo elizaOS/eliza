@@ -141,6 +141,42 @@ it.live('A completed chat reply gives its renderer the exact prepared switch it 
   })
 }, 120_000)
 
+it.live('A view the turn\'s screen says it cannot show is refused before anything is prepared, and the views it can show still open (spec/agent/views.md, "The agent prepares a navigation only for the renderer bound to its turn and one view its name resolves to"; spec/agent/conversation/turnContext.md, "A voice view context is accepted only when every stated field has an allowed value and direct requests have completed-action delivery and a routing identity")', effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const agent = try startInProcess({
+    launch: { ...loaded.launch, callerRole: "owner", backend: { kind: "cloud", origin: cloud.origin }, allowed: ["REPLY", "IGNORE", "NONE", "VIEWS"] },
+    frame: { credential: { version: 1, value: deviceKey } },
+  })
+  const opened = try ask(agent, { method: "POST", path: "/api/conversations", body: {} })
+  const { id } = (opened.body as { conversation: { id: string } }).conversation
+  const clientId = "screen-views"
+  const turn = effect (uiViews: readonly unknown[] | undefined) => {
+    const from = cloud.calls.length
+    try Effect.sync(() => cloud.script(toolCalls("", { name: "VIEWS", arguments: { action: "show", view: "Jottings" } }), text("Done.")))
+    const voiceUi = { viewDelivery: "completed-action", uiClientId: clientId, ...(uiViews === undefined ? {} : { uiViews }) }
+    const reply = try ask(agent, { method: "POST", path: `/api/conversations/${id}/messages`, headers: { "x-elizaos-client-id": clientId },
+      body: { text: "Show my notes.", metadata: { viewDelivery: "completed-action", viewClientId: clientId, voiceUi } } })
+    const steps = (reply.body as { actionResults?: readonly { action: string; data?: { values?: { navigationBinding?: ViewBinding } } }[] }).actionResults ?? []
+    const binding = steps.find(({ action }) => action === "VIEWS")?.data?.values?.navigationBinding
+    if (binding !== undefined) try result(agent, binding, claimIdOf((try claim(agent, binding)).body), true)
+    return { status: reply.status, binding, seen: JSON.stringify(cloud.calls.slice(from).filter(({ path }) => path.endsWith("/chat/completions"))) }
+  }
+  const withheld = try turn(["home", "calendar"])
+  const listed = try turn(["home", "notes"])
+  const silent = try turn(undefined)
+  const malformed = try turn(["Notes!"])
+  try Effect.try(() => {
+    assert.strictEqual(withheld.status, 200)
+    assert.isUndefined(withheld.binding)
+    assert.include(withheld.seen, "The owner's screen here has no Notes, so it was not opened and will not open on this screen.")
+    assert.strictEqual(listed.binding?.viewId, "notes")
+    assert.notInclude(listed.seen, "The owner's screen here has no")
+    assert.strictEqual(silent.binding?.viewId, "notes")
+    assert.strictEqual(malformed.status, 400)
+    assert.isUndefined(malformed.binding)
+  })
+}, 120_000)
+
 it.live('A completed turn prepares the saved editor for the note the model named, only after its current Notes lookup or its own creation (spec/agent/views.md, "A specific saved Notes editor is prepared only after a matching current lookup on a supported renderer")', effect () => {
   const cloud = try cloudFake(deviceKey)
   let current = true
