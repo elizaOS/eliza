@@ -26,6 +26,16 @@ function bytesOf(text: string): number[] {
   return [...new TextEncoder().encode(text)]
 }
 
+function asctimeOf(date: Date): string {
+  const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+  const day = String(date.getUTCDate()).padStart(2, " ")
+  const hours = String(date.getUTCHours()).padStart(2, "0")
+  const minutes = String(date.getUTCMinutes()).padStart(2, "0")
+  const seconds = String(date.getUTCSeconds()).padStart(2, "0")
+  return `${weekdays[date.getUTCDay()]} ${months[date.getUTCMonth()]} ${day} ${hours}:${minutes}:${seconds} ${date.getUTCFullYear()}`
+}
+
 describe("WP5 Inference: provider adapter", () => {
   it.live("Send one call per request to the provider and pass its answer through (spec/cloud/index.md, \"Story: Use inference on my subscription or funded pilot account\")", () => scoped(effect {
     const { llm, provider, layer } = try llmAdapter()
@@ -61,11 +71,23 @@ describe("WP5 Inference: provider adapter", () => {
     provide layer {
       const now = Date.parse("2026-11-26T09:00:00Z")
       const at = new Date(now + 600_000).toUTCString()
-      try sync(() => llm.script({ kind: "refuse", retryAfterHeader: at }))
+            const liveAt = asctimeOf(new Date(Date.now() + 600_000))
+      const pastAt = asctimeOf(new Date(Date.now() - 600_000))
+      try sync(() => llm.script({ kind: "refuse", retryAfterHeader: liveAt }, { kind: "refuse", retryAfterHeader: "1.5" }, { kind: "refuse", retryAfterHeader: pastAt }))
       const refused = try outcome(complete(provider, request)) as readonly unknown[]
       try check(() => assert.deepStrictEqual(refused[0], "ProviderRefused"))
       try check(() => assert.deepStrictEqual(refused[1], 429))
-      try check(() => assert.isNumber(refused[2]))
+            const adapterWait = refused[2] as number
+      try check(() => assert.isAtLeast(adapterWait, 590_000))
+      try check(() => assert.isAtMost(adapterWait, 600_000))
+            const invalid = try outcome(complete(provider, request)) as readonly unknown[]
+      try check(() => assert.deepStrictEqual(invalid[0], "ProviderRefused"))
+      try check(() => assert.deepStrictEqual(invalid[1], 429))
+      try check(() => assert.isUndefined(invalid[2]))
+      const past = try outcome(complete(provider, request)) as readonly unknown[]
+      try check(() => assert.deepStrictEqual(past[0], "ProviderRefused"))
+      try check(() => assert.deepStrictEqual(past[1], 429))
+      try check(() => assert.deepStrictEqual(past[2], 0))
       const wait = retryAfter(at, now)
       try check(() => assert.deepStrictEqual(wait, 600_000))
     }
