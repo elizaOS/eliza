@@ -1233,6 +1233,8 @@ it.live(`A failure on one recipient or event stays reported beside a success on 
   const besideACard = try turn("Text Alice that I'm running late and show me cafes nearby.")
   try Effect.sync(() => { failNext("Alice"); cloud.script(toolCalls("", textTo("Alice"), { name: "PROPOSE_TEXT", arguments: { to: "Bob" } }), text("Both texts are on their way."), text("Both texts are on their way.")) })
   const besideAProposal = try turn("Text Alice and Bob that I'm running late.")
+  try Effect.sync(() => { failNext("Alice"); cloud.script(toolCalls("", textTo("Alice"), { name: "PROPOSE_TEXT", arguments: { to: "Bob" } }), text(`The text to Alice didn't go through.\n[reported 1: "The text to Alice didn't go through."]`)) })
+  const declaredBesideAProposal = try turn("Text Alice and Bob that I'm running late.")
   const toolSeen = cloud.calls.flatMap(({ body }) => (body as { readonly messages?: ReadonlyArray<{ readonly role: string; readonly content?: unknown }> }).messages ?? [])
     .filter(({ role }) => role === "tool").map(({ content }) => String(content))
   const unshownNoted = toolSeen.some((content) => content.includes("Done for Bob.") && content.includes("The owner sees none of this tool text"))
@@ -1282,7 +1284,7 @@ it.live(`A failure on one recipient or event stays reported beside a success on 
   const ownerHeard = [untitled, timeAskedTwice, timeBlankAgain, timeFaultAgain, timeCut, timeTold, unwordedUnreported, unwordedSettled].map(({ text: said }) => modelWords.filter((words) => said.includes(words)))
 
   try Effect.try(() => assert.deepStrictEqual({
-    bobFirst, aliceFirst, retried, events, told, unanswered, bothClaimed, sentClaimed, prefixQuoted, oneOfTwoQuoted, unnumberedOfTwo, bothQuoted, bothQuotedOddly, sameQuoteTwice, spanningQuote, unwordedUnreported, unwordedSettled, unwordedQuoted, shortTold, notJson, noReplyField, phoneNumberPasses, falseClause, toldFirst, toldFirstPartly, besideACard, besideAProposal, sentThenCue, unshownNoted, afterWorkNote: sentThenCueNote.includes("The tool results above are what this turn did."),
+    bobFirst, aliceFirst, retried, events, told, unanswered, bothClaimed, sentClaimed, prefixQuoted, oneOfTwoQuoted, unnumberedOfTwo, bothQuoted, bothQuotedOddly, sameQuoteTwice, spanningQuote, unwordedUnreported, unwordedSettled, unwordedQuoted, shortTold, notJson, noReplyField, phoneNumberPasses, falseClause, toldFirst, toldFirstPartly, besideACard, besideAProposal, declaredBesideAProposal, sentThenCue, unshownNoted, afterWorkNote: sentThenCueNote.includes("The tool results above are what this turn did."),
     untitled, timeAskedTwice, timeBlankAgain, timeFaultAgain, timeCut: timeCut.text === cutOffReply, timeTold, ownerHeard,
     refusedToldOwn, notStartedToldOwn, refusedToldInReply, bookedUntold, bookedBlank, bookedFault, errorEchoed, echoedFirst, notStartedEchoed, saturdayPasses, abbreviated, bookedBesideCard,
   }, {
@@ -1313,6 +1315,7 @@ it.live(`A failure on one recipient or event stays reported beside a success on 
     unwordedQuoted: { text: "The text to Alice did not send.\n\n25:70 isn't a real time, so nothing was added.", calls: 3, laterRunNote: false },
     besideACard: { text: `${nearestCafes}\n\nThe text to Alice did not send.`, calls: 3, laterRunNote: false },
     besideAProposal: { text: `${reviewText("Bob")}\n\nThe text to Alice did not send.`, calls: 3, laterRunNote: false },
+    declaredBesideAProposal: { text: `${reviewText("Bob")}\n\nThe text to Alice did not send.`, calls: 3, laterRunNote: false },
     unshownNoted: true,
     sentThenCue: { text: "Sam has your text.", calls: 4, laterRunNote: false },
     afterWorkNote: true,

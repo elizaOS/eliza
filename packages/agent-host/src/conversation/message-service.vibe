@@ -343,7 +343,10 @@ interface Settled {
 
 async function settledReply(planned: PlannedTurn, omitted: boolean, misgrounded: (reply: string) => Ungrounded | undefined): Promise<Settled> {
   const considered = planned.notices.filter((notice) => putToTheModel(notice.owner !== undefined && planned.reply.includes(notice.words), notice.safetyCopy))
-  const toldFirst = (notice: FailureNotice) => notice.steps.some((at) => planned.firstReports.get(at + 1)?.span === "OneSentence")
+  const toldFirst = (notice: FailureNotice) => notice.steps.some((at) => {
+    const report = planned.firstReports.get(at + 1)
+    return report?.span === "OneSentence" && planned.reply.includes(report.sentence)
+  })
   const asked = omitted || considered.some((notice) => !toldFirst(notice)) ? considered : []
   const ownerWords = (notice: FailureNotice) => notice.owner !== undefined
   const points: readonly Point[] = [
