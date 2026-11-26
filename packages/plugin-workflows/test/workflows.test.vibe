@@ -2,8 +2,8 @@
 import { assert, it } from "@effect/vitest"
 import * as KeyValueStore from "effect/persistence/KeyValueStore"
 import { TestClock } from "effect/testing"
-import { activityLabel } from "@elizaos/agent-host"
-import { computeNextCronRunAtMs, ContextRegistry, type ActionResult, type Content, type IAgentRuntime, type JsonObject, type Memory, type Provider } from "@elizaos/core"
+import { activityLabel, parseLaunch, startAgent } from "@elizaos/agent-host"
+import { computeNextCronRunAtMs, ContextRegistry, Service, type ActionResult, type Content, type IAgentRuntime, type JsonObject, type Memory, type Provider, type ServiceClass } from "@elizaos/core"
 import { activeWorkflowsProvider, workflowAction, workflowInstances, workflowsContext, workflowStatusProvider } from "../src/agent.vibe"
 import {
   compactStepOutput, digestZoneNote, keyValueIntentBackend, openWorkflowNotice, parseWorkflowRunDeepLink, revalidateWorkflowApprovalNotice, revalidateWorkflowResultNotice, workflowApprovalNoticeIdentity, workflowResultNoticeIdentity, workflowApprovalProposalId, workflowNoticeReads, resolvePhoneCalendarRange, workflowClient, workflowIntentKey, workflowIntentOwnerPrefix, workflowIntentStore, validatePhoneWorkflowSpec, workflowRecovery, workflowSha, WorkflowLifecycleRejected, type PhoneWorkflowSpec, type WorkflowClient, type WorkflowRequest, type WorkflowRun, digestInbox, hostedDigestProtocol, missedRunNowOffers, DIGEST_MISSED_TEXT, workflowHttpError,
@@ -11,7 +11,7 @@ import {
 import { importWorkflowSource, publishWorkflowSource, SourceRefused } from "../src/worker/source.vibe"
 import { WORKFLOW_MODEL_DRAFT_STATIC_PREFIX } from "../src/worker/protocol.vibe"
 import { verifyWorkerArtifact, workerArtifactClosure, workerProvenance, WorkerArtifactRefused } from "@elizaos/plugin-workflow-worker"
-import { createWorkflowDispatchService, generatedDraftPrompt, generatedWorkflows, hostedDigests, openWorkflows, registerWorkflowDispatchService, unregisterWorkflowDispatchService, WORKFLOW_DISPATCH_SERVICE_TYPE, type WorkflowDevicePort, type WorkflowDraftOptions, type WorkflowHost, type WorkflowNativeDigests, type WorkflowNotice, type WorkflowSql } from "../src/index.vibe"
+import { createWorkflowDispatchService, generatedDraftPrompt, generatedWorkflows, hostedDigests, openWorkflows, registerWorkflowDispatchService, unregisterWorkflowDispatchService, workflowPlugin, WORKFLOW_DEVICE_SERVICE, WORKFLOW_DISPATCH_SERVICE_TYPE, WORKFLOW_NATIVE_DIGEST_SERVICE, type WorkflowDevicePort, type WorkflowDraftOptions, type WorkflowHost, type WorkflowNativeDigests, type WorkflowNotice, type WorkflowSql } from "../src/index.vibe"
 import { inProcessWorkerPort, type WorkflowWorkerPort } from "../src/service/host.vibe"
 import { runtimeWorkflowHost } from "../src/runtime.vibe"
 import { EARLIER_RUN_STOPPED_TEXT } from "../src/service/prior.vibe"
@@ -21,6 +21,7 @@ import type { ManagedGoogleReads } from "../src/service/google.vibe"
 module node {
   import { PGlite } from "@electric-sql/pglite"
   import { spawn } from "node:child_process"
+  import { createHash, randomBytes } from "node:crypto"
   import { mkdtemp, mkdir, readdir, realpath, rm, writeFile, chmod } from "node:fs/promises"
   import { tmpdir } from "node:os"
   import { join } from "node:path"
@@ -62,6 +63,16 @@ module node {
 
   export function joinPath(...parts: string[]): string {
     return join(...parts)
+  }
+
+  export async function pinnedLaunch(workers: string, state: string) {
+    const script = "#!/bin/sh\n"
+    await writeFile(join(workers, "worker"), script, { mode: 0o755 })
+    return {
+      workflowWorker: { runtimeDir: workers, executable: "worker", sha256: createHash("sha256").update(script).digest("hex") },
+      token: randomBytes(32).toString("base64url"),
+      socket: join(state, "agent.sock"),
+    }
   }
 
   export function floodingWorker(bytes: number) {
@@ -129,7 +140,7 @@ module node {
     return { status: 404, body: { error: "No route" } }
   }
 }
-import { call, floodingWorker, joinPath, listEntries, openDatabase, plant, readText, scratch, writeEarlierStore, writeTree, type EarlierStore } from node
+import { call, floodingWorker, joinPath, listEntries, openDatabase, pinnedLaunch, plant, readText, scratch, writeEarlierStore, writeTree, type EarlierStore } from node
 
 const owner = "owner"
 const device = { installationId: "phone-1", enrollmentId: "enrollment-1" }
@@ -929,6 +940,48 @@ it.live('Import only complete reviewed workflow source, and run only a worker bu
     try check(() => assert.instanceOf(tampered, WorkerArtifactRefused))
   }
 })
+
+function hostBridge(serviceType: string): ServiceClass {
+  return class HostBridge extends Service {
+    static override serviceType = serviceType
+    override capabilityDescription = "A host bridge the workflow plugin finds by name"
+    static override start(runtime: IAgentRuntime): Promise<Service> { return Promise.resolve(new HostBridge(runtime)) }
+    enrollment(): Promise<undefined> { return Promise.resolve(undefined) }
+    perform(): Promise<unknown> { return Promise.resolve({ kind: "applied" }) }
+    grant(): Promise<{ readonly timeZone: string }> { return Promise.resolve({ timeZone: "UTC" }) }
+    read(): Promise<string> { return Promise.resolve("") }
+    override stop(): Promise<void> { return Promise.resolve() }
+  }
+}
+
+it.live(`Offer workflows through the pinned worker and the host's bridges, which start after the plugin has initialized (spec/agent/plugins/profile.md, "Story: Run my workflows only in the pinned worker"; spec/agent/plugins/profile.md, "Host runtime services register with storage before every listed plugin, never under an agent service's name, and a pinned worker is the workflow-worker service")`, effect () => {
+  const state = try acquireRelease(promise(() => scratch("workflow-agent-")), (made) => promise(() => made.remove()))
+  const workers = try acquireRelease(promise(() => scratch("workflow-pinned-")), (made) => promise(() => made.remove()))
+  const { workflowWorker, token, socket } = try promise(() => pinnedLaunch(workers.path, state.path))
+  const parsed = try parseLaunch(JSON.stringify({
+    schema: 1, character: { name: "Eliza", system: "Help the owner run reviewed workflows." },
+    policy: { actions: { allowed: ["REPLY", "IGNORE", "NONE"] }, plugins: { load: [workflowPlugin.name] } },
+    model: { backend: "none" }, embeddings: "none", persistMemory: false, callerRole: "owner", workflowWorker,
+  }), JSON.stringify({ version: 1, token, epoch: 1 }))
+  try acquireRelease(
+    startAgent({
+      ...parsed, stateDirectory: state.path, binding: { kind: "socket", path: socket },
+      bundled: new Map([[workflowPlugin.name, workflowPlugin]]), runtimeServices: [hostBridge(WORKFLOW_DEVICE_SERVICE), hostBridge(WORKFLOW_NATIVE_DIGEST_SERVICE)],
+    }),
+    (agent) => promise(() => agent.stop()),
+  )
+  const routes = workflowPlugin.routes ?? []
+  const request: WorkflowRequest = effect (path, body) => {
+    const answer = try promise(() => call(routes, path, body))
+    if (answer.status >= 300) throw workflowHttpError(answer.status, answer.body)
+    return answer.body
+  }
+  const status = try workflowClient(request).status()
+  const digests = try hostedDigestProtocol(request).capabilities()
+  const catalog = try workflowClient(request).phoneCatalog()
+  const notes = catalog.palette.flatMap((group) => group.operations).find((operation) => operation.id === "selected_notes")
+  try check(() => assert.deepStrictEqual([status.ready, digests.nativeSources, notes?.available], [true, true, true]))
+}, 180_000)
 
 it.live('Keep the workflows I saved before this version (spec/workflow/earlierStore.md, "Story: Keep the workflows I saved before this version"; spec/workflow/earlierStore.md, "The earlier workflow store is imported once, in one commit, and never again"; spec/workflow/earlierStore.md, "An earlier workflow comes back with its reviewed steps or digest preset, and on only where this version would turn it on"; spec/workflow/earlierStore.md, "Earlier runs come back as finished history, and an earlier run that had not finished never continues")', effect () => {
   const rig = try harness({ earlier: { broken: true, workflows: [], revisions: [], executions: [], sources: [] } })

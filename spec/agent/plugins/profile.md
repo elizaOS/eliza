@@ -247,9 +247,11 @@ pure def sometimesWorkerRan(s: PluginPlan): bool = s.workerRuns > 0
 
 ### Host runtime services register with storage before every listed plugin, never under an agent service's name, and a pinned worker is the workflow-worker service
 
-A plugin finds its host's bridges by runtime service name when it
-initializes, so the agent registers them with its storage plugin, ahead
-of every listed plugin. When the launch pins a worker the agent registers
+A plugin finds its host's bridges by runtime service name, so the agent
+registers them with its storage plugin, ahead of every listed plugin. The
+runtime starts a service only after every plugin has initialized, so a
+plugin looks a bridge up each time it uses one and never keeps what it
+found while initializing. When the launch pins a worker the agent registers
 `workflow-worker`, whose `spawnWorker` runs the verified worker under the
 rules above and refuses until the agent is ready. Every other bridge comes
 from the consumer: `runAgentCli({ runtimeServices, hostServices })` hands
