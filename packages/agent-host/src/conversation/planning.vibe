@@ -41,7 +41,7 @@ const answerFromNothing = "Note from the agent host, not the person: your last r
 const answerAgain = "Note from the agent host, not the person: your reply is not final yet. Write your whole reply to the person's latest message again, in your own words, so that it is true to what follows. Call no tools."
 const misfitNote = (name: string, why: string) =>
   `Note from the agent host, not the person: your last response was a ${name} tool call written as text, and its arguments do not fit that tool (${why}), so nothing ran and the person saw none of it. Call the tool with arguments that fit, or answer the person in words.`
-const copiedNote = "Note from the agent host, not the person: your last response only repeated data the agent host gave you, so none of it was sent. Answer the person's latest message now, in your own words, or call an offered tool. If the person asked for that data as it is, give it again as it was."
+const copiedNote = "Note from the agent host, not the person: your last response only repeated data the agent host gave you, so none of it was sent. Answer the person's latest message now, in your own words, or call an offered tool. Never repeat the agent host's notes. If the person asked for a tool result as it is, give that result again as it was."
 const deliveredCueNote = (cue: string) =>
   `Note from the agent host, not the person: ${JSON.stringify(cue)} was already sent to the person as progress. Do not repeat or paraphrase it. Go straight to the result, any blocker, or the question you need answered. The cue is not evidence that any work succeeded.`
 const restoreContext: ToolDefinition = {

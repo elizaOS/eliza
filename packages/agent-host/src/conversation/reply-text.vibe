@@ -254,7 +254,10 @@ function fieldsOf(value: unknown): Fields | undefined {
   }
 }
 
-const callLine = /^([A-Z][A-Z0-9_]*) call:[ \t]*([^\n]*?)[ \t]*\.?$/u
+const toolNameInCaps = "[A-Z][A-Z0-9_]*"
+const callLine = new RegExp(`^(${toolNameInCaps}) call:[ \\t]*([^\\n]*?)[ \\t]*\\.?$`, "u")
+const callLineNaming = new RegExp(`^${toolNameInCaps}(?: (?:c(?:a(?:l(?:l)?)?)?)?)?$`, "u")
+const argumentEndings = ["", "0", " 0", "a 0", 'x"', "rue", "ue", "e", "alse", "lse", "se"]
 const callLineValue = /^[ \t]*([A-Za-z_]\w*)(?:[ \t]*[:=])?[ \t]*("(?:[^"\\\n]|\\.)*"|-?\d+(?:\.\d+)?|true|false)[ \t]*(?:,|$)/u
 
 function callLineArguments(written: string): Fields | undefined {
@@ -271,6 +274,14 @@ function callLineArguments(written: string): Fields | undefined {
     rest = rest.slice(pair[0].length)
   }
   return args
+}
+
+function mayBeCallLine(text: string): boolean {
+  if (callLineNaming.test(text)) return true
+  return [text, text.trimEnd()].some((start) => argumentEndings.some((ending) => {
+    const line = callLine.exec(start + ending)
+    return line !== null && callLineArguments(line[2] ?? "") !== undefined
+  }))
 }
 
 function namedTool(said: string, tools: readonly ToolDefinition[]): CalledTool | undefined {
@@ -319,8 +330,7 @@ export function hostObjects(notes: readonly string[], results: readonly string[]
 
 function copies(object: Fields, host: Fields): boolean {
   const keys = Object.keys(object)
-  return keys.length > 0 && keys.every((key) => Object.hasOwn(host, key))
-    && (keys.length >= Math.min(2, Object.keys(host).length) || keys.some((key) => isFields(object[key]) && isFields(host[key])))
+  return keys.length > 0 && keys.every((key) => Object.hasOwn(host, key)) && keys.length >= Math.min(2, Object.keys(host).length)
 }
 
 export function writtenCallOf(said: string, tools: readonly ToolDefinition[], host: readonly Fields[]): WrittenCall | undefined {
@@ -360,7 +370,6 @@ export function writtenCallFree(text: string): { readonly prose: string; readonl
 const declaredTag = /(?:\[(answer|promise|question)\](?!\(|\s*[[<]\/?(?:answer|promise|question)[\]>])|<(answer|promise)>)\s*/iu
 const modelTag = /[ \t]*(?:\[(?:answer|promise)\](?![([])|<\/?(?:answer|promise)>)[ \t]*(\n?)/gu
 const codeSpan = /(`{3,}|~{3,})[\s\S]*?(?:\1|$)|(?<!`)(`+)(?!`)[^\n]*?(?<!`)\2(?!`)/gu
-const callLineHead = /^[A-Z][A-Z0-9_]+(?:$| (?:c(?:a(?:l(?:l(?::[\s\S]*)?)?)?)?)?$)/u
 const trailingTag = /\[(?:answer|promise)\]$/u
 const tagHeads = ["[answer]", "[promise]", "[question]", "<answer>", "<promise>", "</answer>", "</promise>"]
 
@@ -424,7 +433,7 @@ export function streamable(written: string): string {
   if (lead !== "" && tagHeads.some((head) => head.startsWith(lead.toLowerCase()))) return ""
   const { declared, text: whole } = declaredOf(said)
   const head = declared === "Undeclared" ? lead : whole.trimStart()
-  if (head.startsWith("{") || callLineHead.test(head)) return ""
+  if (head.startsWith("{") || mayBeCallLine(head)) return ""
   const partial = partialTagAt(whole)
   const text = (partial < 0 ? whole : whole.slice(0, partial)).trimEnd()
   const at = text.search(writtenCallMarker)

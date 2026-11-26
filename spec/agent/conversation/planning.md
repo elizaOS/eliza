@@ -763,7 +763,7 @@ person whole; while streaming it holds back a partial tag at the tail
 no link, and an inline code span until it closes, so what it streams is
 always the start of what it delivers, and
 streams nothing while the text so far, after a leading tag, begins with an
-object (below). Only a
+object or may still be a call line (below). Only a
 tag that leads the text, in any letter case (`[ANSWER]Sure, Bob.`), after nothing but JSON objects or bracketed calls,
 says what the response is; it may be followed at once by a link or another
 bracket (`[answer][Docs](https://…)` is delivered as `[Docs](https://…)`),
@@ -994,11 +994,13 @@ nothing else, or one call line and nothing else:
   (`{"VIEWS": {"view": "home"}}`).
 - Its arguments fit when they pass the parameter schema that tool was
   offered with in this turn's request.
-- An object copies the host's data when every field it has is a field of
+- An object copies the host's data when every key it has is a key of
   one object the agent host wrote into this turn's model-only text (a note's
   object, such as the screen context, or a tool result of this turn), and
-  it has at least two of them unless that object has only one, so a lone
-  field another object shares (`{"text": "milk"}`) is no copy.
+  it has at least two keys unless that object has only one; only the keys
+  are compared, never their values. So a lone key another object shares
+  (`{"text": "milk"}`, or `{"observation": {…}}` while the screen context
+  holds `observation` and `voiceUi`) is no copy.
 - The person wrote structure when the person's latest message holds a
   JSON object, or a code block or span: what the model writes may then be
   the object the person gave or asked for, so it is read as written.
@@ -1017,19 +1019,24 @@ arguments do not fit it and why in the schema's words, that nothing ran
 and the person saw none of it, and to call the tool with arguments that fit
 or answer the person in words. For a copy, it says that the response only
 repeated data the agent host gave it, so none of it was sent, to answer the
-person's latest message in its own words or call an offered tool, and, if
-the person asked for that data as it is, to give it again as it was. A
+person's latest message in its own words or call an offered tool, never to
+repeat the agent host's notes, and, if the person asked for a tool result
+as it is, to give that result again as it was. A
 response after the re-ask, or when the re-ask is spent or no step is left,
 and every other response, including an object naming an offered tool by
 its only key whose arguments do not fit, is read as written (the cue rule
-above): a JSON object that calls no offered tool and copies nothing, or
-one the person asked for, is still delivered whole, whatever it holds. The
+above): a JSON object that calls no offered tool and copies nothing, one
+the person asked for, or a tool result given again after the re-ask, is
+delivered whole, unless it holds the host's words (below), which are never
+delivered however they were asked for. The
 shell reads only the structure of the object, the offered tools and the
 host's own text, never the person's words. While streaming, a response
-whose text after a leading tag begins with `{`, or with a word in capitals
-that is or may still become the head of a call line (`VIEWS`, `VIEWS
-call:`), streams nothing until it is read or the next text shows it is no
-call line, and ordinary text streams as it comes.
+whose text after a leading tag begins with `{` streams nothing until it is
+read, and one whose text after a leading tag is or may still become a call
+line, a name of capitals, digits and underscores (`VIEWS`, `VIEWS ca`,
+`VIEWS call: view "ho`), streams nothing until it is read or the text shows
+it can be no call line (`VIEWS call: it switches`, or a second line), and
+ordinary text streams as it comes.
 
 ```quint
 type ObjectNaming = NamesNoTool | NamesByCallField | NamesByOnlyKey
@@ -1118,9 +1125,9 @@ asked again once (above), and when the response after that note holds it
 again, the turn's failure fallback is the reply. Beside tool calls it is no
 cue, so the owner hears nothing and the tools still run. A `REPLY` call
 whose text holds it gives no reply, and a second answer that holds it is no
-second answer. The reply stream, besides holding back a tag and an untagged
-object (above), shows the model's text only up to where the label or such a
-line could begin; what follows is shown once it can no longer be one, or
+second answer. The reply stream, besides holding back a tag, an object
+and what may still become a call line (above), shows the model's text only
+up to where the label or such a line could begin; what follows is shown once it can no longer be one, or
 with the reply, so neither the label, a note's lead line nor a history mark
 is ever streamed, spoken or stored. A note's later lines are not held: they
 carry the owner's own data, such as the page they are reading, which a true
