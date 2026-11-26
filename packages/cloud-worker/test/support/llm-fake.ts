@@ -11,7 +11,7 @@ export type LlmScript =
   | { readonly kind: "truncated"; readonly reportUsage?: boolean }
   | { readonly kind: "malformedFrame" }
   | { readonly kind: "oversizedFrame" }
-  | { readonly kind: "refuse"; readonly retryAfterSeconds?: number }
+  | { readonly kind: "refuse"; readonly retryAfterSeconds?: number; readonly retryAfterHeader?: string }
   | { readonly kind: "reject"; readonly status: number; readonly body?: object }
   | { readonly kind: "hang"; readonly after: number }
   | { readonly kind: "hangInToolCall" }
@@ -99,7 +99,9 @@ function answerFor(script: LlmScript, cut: () => void): FakeAnswer {
       return {
         status: 429,
         body: { error: { type: "rate_limit_exceeded", message: "slow down" } },
-        headers: script.retryAfterSeconds === undefined ? {} : { "retry-after": String(script.retryAfterSeconds) },
+        headers: script.retryAfterHeader !== undefined
+            ? { "retry-after": script.retryAfterHeader }
+            : script.retryAfterSeconds === undefined ? {} : { "retry-after": String(script.retryAfterSeconds) },
       };
     case "reject":
       return { status: script.status, body: script.body ?? { error: { code: "context_length_exceeded", param: "messages", message: "too long" } } };
