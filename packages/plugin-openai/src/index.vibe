@@ -195,6 +195,7 @@ effect function textRequest(runtime: IAgentRuntime, params: GenerateTextParams, 
           { role: "user", content: params.prompt ?? "" },
         ]
         const wantsEvents = params.stream === true && !needsSchema && (params.tools?.length ?? 0) === 0 && params.toolChoice === undefined
+        const allToolsStrict = params.tools !== undefined && params.tools.length > 0 && params.tools.every((tool) => tool.strict === true && isWireStrictSchema(tool.parameters))
         const payload = {
           model: endpoint.modelId, messages, stream: wantsEvents, temperature: params.temperature, top_p: params.topP,
           max_completion_tokens: params.omitMaxTokens ? undefined : params.maxTokens, stop: params.stopSequences,
@@ -204,7 +205,7 @@ effect function textRequest(runtime: IAgentRuntime, params: GenerateTextParams, 
               name: tool.name,
               description: tool.description,
               parameters: tool.parameters,
-              ...(tool.strict === true && isWireStrictSchema(tool.parameters) ? { strict: true } : {}),
+              ...(allToolsStrict ? { strict: true } : {}),
             },
           })),
           tool_choice: params.toolChoice, seed: params.seed,

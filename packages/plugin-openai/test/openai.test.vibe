@@ -44,7 +44,7 @@ function openaiRuntime(endpoint: string): IAgentRuntime {
   } as unknown as IAgentRuntime
 }
 
-it('OpenAI & Cerebras prompt-cache usage, omitted content on tool_calls, and wire strict gating work end to end (spec/openai/index.md, "Story: Use an OpenAI-compatible model for the requested capability")', async () => {
+it('OpenAI & Cerebras prompt-cache usage, omitted content on tool_calls, and batch-uniform wire strict gating work end to end (spec/openai/index.md, "Story: Use an OpenAI-compatible model for the requested capability")', async () => {
   let callIndex = 0
   const srv = await startOpenAiTestServer((body, res) => {
     callIndex += 1
@@ -78,15 +78,22 @@ it('OpenAI & Cerebras prompt-cache usage, omitted content on tool_calls, and wir
   try {
     const handler = plugin.models?.[ModelType.TEXT_SMALL] as (runtime: IAgentRuntime, params: unknown) => Promise<TextStreamResult>
     const runtime = openaiRuntime(srv.endpoint)
-    const toolReply = await handler(runtime, {
+    const strictRead = {
+      name: "READ",
+      description: "Read",
+      strict: true,
+      parameters: { type: "object", additionalProperties: false, properties: { path: { type: "string" } }, required: ["path"] },
+    }
+    const strictSearch = {
+      name: "WEB_SEARCH",
+      description: "Search",
+      strict: true,
+      parameters: { type: "object", additionalProperties: false, properties: { query: { type: "string" } }, required: ["query"] },
+    }
+    const mixedBatch = await handler(runtime, {
       prompt: "Read file",
       tools: [
-        {
-          name: "READ",
-          description: "Read",
-          strict: true,
-          parameters: { type: "object", additionalProperties: false, properties: { path: { type: "string" } }, required: ["path"] },
-        },
+        strictRead,
         {
           name: "EDIT",
           description: "Edit",
@@ -101,23 +108,31 @@ it('OpenAI & Cerebras prompt-cache usage, omitted content on tool_calls, and wir
         },
       ],
     })
-    const zeroCached = await handler(runtime, { prompt: "Cold turn" })
+    const allStrictBatch = await handler(runtime, {
+      prompt: "Search web",
+      tools: [strictRead, strictSearch],
+    })
     const withoutDetails = await handler(runtime, { prompt: "Legacy provider" })
     const streamed = await handler(runtime, { prompt: "Stream cached", stream: true })
-    const sentTools = srv.requests[0]?.tools as Array<{ function: { name: string; strict?: boolean } }>
+    const mixedTools = srv.requests[0]?.tools as Array<{ function: { name: string; strict?: boolean } }>
+    const uniformStrictTools = srv.requests[1]?.tools as Array<{ function: { name: string; strict?: boolean } }>
     assert.deepStrictEqual(
-      sentTools.map((tool) => [tool.function.name, "strict" in tool.function ? tool.function.strict : undefined]),
-      [["READ", true], ["EDIT", undefined], ["WORKFLOW", undefined]],
+      mixedTools.map((tool) => [tool.function.name, "strict" in tool.function ? tool.function.strict : undefined]),
+      [["READ", undefined], ["EDIT", undefined], ["WORKFLOW", undefined]],
     )
-    assert.deepStrictEqual(toolReply.toolCalls, [{ id: "call_1", type: "function", function: { name: "READ", arguments: "{\"path\":\"a.ts\"}" } }])
-    assert.strictEqual(await toolReply.text, "")
-    assert.deepStrictEqual(await toolReply.usage, {
+    assert.deepStrictEqual(
+      uniformStrictTools.map((tool) => [tool.function.name, "strict" in tool.function ? tool.function.strict : undefined]),
+      [["READ", true], ["WEB_SEARCH", true]],
+    )
+    assert.deepStrictEqual(mixedBatch.toolCalls, [{ id: "call_1", type: "function", function: { name: "READ", arguments: "{\"path\":\"a.ts\"}" } }])
+    assert.strictEqual(await mixedBatch.text, "")
+    assert.deepStrictEqual(await mixedBatch.usage, {
       promptTokens: 2048,
       completionTokens: 64,
       totalTokens: 2112,
       cacheReadInputTokens: 1920,
     })
-    assert.deepStrictEqual(await zeroCached.usage, {
+    assert.deepStrictEqual(await allStrictBatch.usage, {
       promptTokens: 256,
       completionTokens: 16,
       totalTokens: 272,
