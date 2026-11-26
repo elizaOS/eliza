@@ -1,15 +1,16 @@
 // spec/os/signIn/credential.md, "Story: Keep me signed in without a second copy of my key"; spec/os/signIn/credential.md, "Story: Sign out or reset cleanly"; spec/os/signIn/credential.md, "Story: Confirm it is me before a billing change"; spec/os/signIn/credential.md, "Story: Keep my key fresh without signing in again"; spec/os/signIn/browserReturn.md, "Story: Complete a browser sign-in only for the client that started it"
 import { execFileSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
-import { compileAdapter } from "./drivers/jvm-adapter.ts";
+import { orgJsonAdapterClasspath } from "./drivers/jvm-adapter.ts";
 
 const main = "ai.eliza.plugins.signin.DeviceKeyJourney";
 const javaTool = (name: string) => process.env.JAVA_HOME ? `${process.env.JAVA_HOME}/bin/${name}` : name;
+const classpath = await orgJsonAdapterClasspath(main);
 
 let walked: Readonly<Record<string, unknown>> | undefined;
 
 function journey(): Readonly<Record<string, unknown>> {
-  walked ??= JSON.parse(execFileSync(javaTool("java"), ["-cp", compileAdapter(main), main], { encoding: "utf8", timeout: 120_000 })) as Record<string, unknown>;
+  walked ??= JSON.parse(execFileSync(javaTool("java"), ["-cp", classpath, main], { encoding: "utf8", timeout: 120_000 })) as Record<string, unknown>;
   return walked;
 }
 
@@ -69,6 +70,6 @@ describe("Confirm it is me before a billing change", () => {
 });
 
 it('Complete an ordinary browser sign-in once across recreation without adopting a stale or reauthentication return (spec/os/signIn/browserReturn.md, "Story: Complete a browser sign-in only for the client that started it")', () => {
-  const output = execFileSync(javaTool("java"), ["-cp", compileAdapter(main), main, "browser"], { encoding: "utf8", timeout: 120_000 });
+  const output = execFileSync(javaTool("java"), ["-cp", classpath, main, "browser"], { encoding: "utf8", timeout: 120_000 });
   expect(JSON.parse(output)).toEqual({ adopted: true, oneUse: true, isolated: true, drift: true, reauthClosed: true, keptAccount: true });
 });
