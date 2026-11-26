@@ -5,7 +5,7 @@ import { addCredits } from "../../src/billing/funds.vibe"
 import { issueSession } from "../../src/identity/sessions.vibe"
 import { setModelPrice } from "../../src/services/models.vibe"
 import { Store } from "../../src/store/connection.vibe"
-import { complete, stream, type LlmFailure } from "../../src/providers/llm.vibe"
+import { complete, retryAfter, stream, type LlmFailure } from "../../src/providers/llm.vibe"
 import { contentFrames, doneFrame, llmFake, replyText, streamText, upstreamModel, usage, wholeAnswer } from "../support/llm-fake.ts"
 import { secrets } from "../support/profile.ts"
 import { check, testCloud, type TestCloud } from "../support/cloud.vibe"
@@ -56,22 +56,20 @@ describe("WP5 Inference: provider adapter", () => {
     }
   }))
 
-  it.live("Keep a provider Retry-After HTTP-date as the refusal wait (spec/cloud/services/inference.md, \"A provider's refusal …\")", () => scoped(effect {
-      const { llm, provider, layer } = try llmAdapter()
-      provide layer {
-        // Date 600 s ahead of the call, formatted as an IMF-fixdate (RFC 9110 HTTP-date).
-        const at = new Date(Date.now() + 600_000).toUTCString()
-        try sync(() => llm.script({ kind: "refuse", retryAfterHeader: at }))
-        const refused = try outcome(complete(provider, request))
-        try check(() => assert.deepStrictEqual(refused[0], "ProviderRefused"))
-        try check(() => assert.deepStrictEqual(refused[1], 429))
-        // Exact equality is impossible (wall clock moves between building `at` and the call),
-        // so assert the window: the 600 s date must survive as ~600 s, not the 4 s default.
-        const wait = refused[2] as number
-        try check(() => assert.isAtLeast(wait, 590_000))
-        try check(() => assert.isBelow(wait, 600_000))
-      }
-    }))
+  it.live("Keep a provider Retry-After HTTP-date as the refusal wait (spec/cloud/services/inference.md, \"A call never dispatched releases its hold, and a provider rejection before any output is charged nothing and answered with a well-formed refusal\")", () => scoped(effect {
+    const { llm, provider, layer } = try llmAdapter()
+    provide layer {
+      const now = Date.parse("2026-11-26T09:00:00Z")
+      const at = new Date(now + 600_000).toUTCString()
+      try sync(() => llm.script({ kind: "refuse", retryAfterHeader: at }))
+      const refused = try outcome(complete(provider, request)) as readonly unknown[]
+      try check(() => assert.deepStrictEqual(refused[0], "ProviderRefused"))
+      try check(() => assert.deepStrictEqual(refused[1], 429))
+      try check(() => assert.isNumber(refused[2]))
+      const wait = retryAfter(at, now)
+      try check(() => assert.deepStrictEqual(wait, 600_000))
+    }
+  }))
 
     it.live("Pass the provider's stream through and cancel it when the caller goes away (spec/cloud/index.md, \"A streamed answer sends complete OpenAI frames and settles the same hold\")", () => scoped(effect {
     const { llm, provider, layer } = try llmAdapter()
