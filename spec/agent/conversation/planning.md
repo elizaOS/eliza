@@ -828,11 +828,11 @@ language and its own words rather than a stock phrase, and to leave the
 field empty on every other call. A cue is a field the model must fill, not
 text it may choose to write beside a call: a model that writes no text
 beside its native tool calls still fills it, and empty is allowed. The rule describes
-what a cue is and lists none: a few natural words saying only what the
-agent is about to do. The work may still fail or wait for the owner's
-approval (a page the owner opens with a tap, a send held for review), so a
-cue never says or implies that the work is done, under way or happening now,
-the way an `-ing` verb does (`Opening that page.`). It never names the
+what a cue is and lists none: a few natural words that promise, in the
+future tense, what the agent will do next. The work may still fail or wait
+for the owner's approval (a page the owner opens with a tap, a send held
+for review), so a cue never describes the work as done or in progress
+(`Opening that page.`). It never names the
 people, items, places, days, times, numbers or outcome, never asks anything,
 never repeats the request, and never opens with assent after a question. A
 message asking for several lookups or about several named people or items
@@ -1021,7 +1021,7 @@ which text is its cue by writing it in the `cue` field: the turn's cue is
 the first non-empty `cue` among the first response's tool calls, in call
 order (the rule asks for it on the first call). The rule asks the model to
 tag it `[promise]` there too, and the tag is the model's own word that the
-text only says what it is about to do and claims no effect, as the v119
+text only promises what it will do and claims no effect, as the v119
 build's `pending` effect status did for its acknowledgment: the tag is taken
 off as anywhere else, and a cue with no tag (`Sent.`) or tagged `[answer]`
 (`[answer] Opening that page.`) is never spoken, so a claim written in the
