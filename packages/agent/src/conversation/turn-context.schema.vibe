@@ -2,11 +2,11 @@
 import type { Content } from "@elizaos/core"
 import { parseViewInteractionClientId } from "@elizaos/core"
 import {
-  browserPageAccepted, comparePeer, learnPeer, maxSafeInteger, observationOutcome, reviewedEmailAccepted, sendsOptionalFields, voiceNoteTranscriptAccepted, voiceUiOutcome,
+  browserPageAccepted, comparePeer, emptyTextTurnAccepted, learnPeer, maxSafeInteger, observationOutcome, reviewedEmailAccepted, sendsOptionalFields, unauthoredTurnAllowsCall, voiceNoteTranscriptAccepted, voiceUiOutcome,
   type BrowserPageFacts, type NoteBinding, type ObservationFacts, type PageBinding, type PageContent, type PeerSupport, type ReviewedEmailFacts, type Sensitivity, type StatusRead, type TextField, type VoiceNoteTranscriptFacts, type VoiceUiFacts,
 } from "../../gen/agent__conversation__turnContext.effect.vibe"
 
-export { comparePeer, learnPeer, sendsOptionalFields, type PeerSupport, type StatusRead }
+export { comparePeer, emptyTextTurnAccepted, learnPeer, sendsOptionalFields, unauthoredTurnAllowsCall, type PeerSupport, type StatusRead }
 
 const Name = Schema.String.check(Schema.isPattern(/^[a-z][a-z0-9-]{0,63}$/))
 const Identifier = Schema.String.check(Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9._:@=+-]{0,511}$/))

@@ -20,7 +20,7 @@ module node {
   import { warmUpDeadlineMs, warmUpStarts } from "../../gen/agent__conversation__planning.ts"
   import { plannerWarmUps } from "./message-service.vibe"
   import { abortCauseOf, admitsReplyTarget, cloudCodeOn, decide, planActionOf, providerWaitMs, publishesCutOffEffect, receiptRetentionMs, stopConfirmMs, stopWindowOpen, turnDeadlineMs, type Admission, type KeyView, type ReplyKind, type TurnEnder } from "../../gen/agent__conversation__turns.ts"
-  import { type LocalRoute, decodeBrowserPage, decodeObservation, decodeReviewedEmail, decodeSelectedVoiceNoteTranscript, decodeVoiceUiContext } from "@elizaos/agent"
+  import { type LocalRoute, decodeBrowserPage, decodeObservation, decodeReviewedEmail, decodeSelectedVoiceNoteTranscript, decodeVoiceUiContext, emptyTextTurnAccepted } from "@elizaos/agent"
   import type { VoiceAction } from "../../gen/agent__conversation__planning.ts"
   import { voiceActionLabel } from "./reply-text.vibe"
   import type { DeviceTurnPort, DeviceTurnSession } from "../device-actions/proposal/turn.vibe"
@@ -104,9 +104,12 @@ module node {
     const page = browserPage === undefined ? undefined : Effect.runSync(Effect.result(decodeBrowserPage(browserPage, kept)))
     const email = reviewedEmail === undefined ? undefined : Effect.runSync(Effect.result(decodeReviewedEmail(reviewedEmail)))
     const voiceNote = useSelectedVoiceNoteTranscript === undefined ? undefined : Effect.runSync(Effect.result(decodeSelectedVoiceNoteTranscript(useSelectedVoiceNoteTranscript, kept)))
-    const hasSubject = Boolean(parsed.value.text) || Boolean(parsed.value.images?.length)
-      || (email !== undefined && Result.isSuccess(email))
-      || (voiceNote !== undefined && Result.isSuccess(voiceNote))
+    const hasSubject = emptyTextTurnAccepted(
+      Boolean(parsed.value.text),
+      Boolean(parsed.value.images?.length),
+      email !== undefined && Result.isSuccess(email),
+      voiceNote !== undefined && Result.isSuccess(voiceNote),
+    )
     if (!hasSubject) return { kind: "refused", status: 400, error: "invalid_message" }
     const voice = voiceUi === undefined ? undefined : Effect.runSync(Effect.result(decodeVoiceUiContext(voiceUi, clientId)))
     if (voice !== undefined && Result.isFailure(voice)) return { kind: "refused", status: 400, error: "VOICE_UI_CONTEXT_INVALID" }
