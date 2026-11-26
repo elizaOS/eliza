@@ -24,3 +24,38 @@ export const aSealedSettingOpensUnderItsSaltAndIsNotSealedTwice = contract({
   invariant: ({ value }, { sealed, opened, resealed }) =>
     sealed !== null && sealed.startsWith("v2:") && opened === value && resealed === sealed,
 });
+
+const malformedV2Envelopes = [
+  "v2:0123456789abcdef01234567!:abcd:0123456789abcdef0123456789abcdef",
+  "v2:0123456789abcdef01234567:abcd:0123456789abcdef0123456789abcdef!",
+  "v2:0123456789abcdef01234567:not-hex:0123456789abcdef0123456789abcdef",
+] as const;
+
+const emptyPlaintext = ({ salt }: { salt: string }) => {
+  const sealed = succeeded(encryptStringValue("", salt));
+  return { sealed, opened: sealed === null ? null : succeeded(decryptStringValue(sealed, salt)), resealed: sealed === null ? null : succeeded(encryptStringValue(sealed, salt)) };
+};
+
+export const anEmptySettingSealsAndOpensLikeAnyOther = contract({
+  input: Arbitrary.all({ salt: text }),
+  run: emptyPlaintext,
+  invariant: (_input, { sealed, opened, resealed }) =>
+    sealed !== null && sealed.startsWith("v2:") && opened === "" && resealed === sealed,
+});
+
+const malformed = ({ salt }: { salt: string }) =>
+  malformedV2Envelopes.map((value) => ({
+    value,
+    opened: succeeded(decryptStringValue(value, salt)),
+    sealed: succeeded(encryptStringValue(value, salt)),
+  }));
+
+export const aMalformedV2EnvelopeStaysPlaintext = contract({
+  input: Arbitrary.all({ salt: text }),
+  run: malformed,
+  invariant: (_input, checked) =>
+    checked.every(
+      ({ value, opened, sealed }) =>
+        opened === value && sealed !== null && sealed !== value && sealed.startsWith("v2:"),
+    ),
+});
