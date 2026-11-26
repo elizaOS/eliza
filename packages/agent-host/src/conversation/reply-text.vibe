@@ -349,6 +349,15 @@ function givenTexts(sources: readonly string[]): string[] {
   })
 }
 
+function quotesACall(name: string, given: readonly string[]): boolean {
+  const tool = compact(name)
+  const forms = [`"action":"${tool}"`, `"tool":"${tool}"`, `"name":"${tool}"`, `"type":"${tool}"`, `"functions.${tool}"`, `{"${tool}":`, `${tool}call:`]
+  return given.some((source) => {
+    const flat = compact(source)
+    return forms.some((form) => flat.includes(form))
+  })
+}
+
 export interface GivenText {
   readonly anywhere: readonly string[]
   readonly host: readonly Fields[]
@@ -363,9 +372,10 @@ export function writtenCallOf(said: string, tools: readonly ToolDefinition[], gi
   const { anywhere, host } = given()
   const hostData = object !== undefined && host.some((written) => copies(object, written))
   const flat = compact(text)
+  const texts = givenTexts(anywhere)
   return {
     naming: named?.naming ?? "NamesNoTool", fits: named !== undefined && misfit.length === 0,
-    copied: hostData || givenTexts(anywhere).some((source) => compact(source).includes(flat)), hostData,
+    copied: hostData || texts.some((source) => compact(source).includes(flat)) || (named !== undefined && quotesACall(named.tool.name, texts)), hostData,
     call: named === undefined ? undefined : { name: named.tool.name, arguments: { ...named.args } as Exclude<ToolCall["arguments"], string> },
     misfit: misfit.join("; "),
   }
