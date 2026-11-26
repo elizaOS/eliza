@@ -42,6 +42,7 @@
   },
   "devDependencies": {
     "@effect/vitest": "4.1.1",
+    "@elizaos/plugin-workflow-client": "workspace:*",
     "@types/node": "catalog:",
     "typescript": "catalog:",
     "vibelang": "0.0.13",
