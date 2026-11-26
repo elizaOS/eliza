@@ -93,10 +93,11 @@ list` with no shopping list saved) asks for that list: a new checklist whose
 title is the list's name and whose one entry is that item, never a plain note
 with the item as its body. The Notes actions tell the model so, that the
 model asks the owner what to call a checklist they gave no title, and that
-adding items to a checklist already saved is an edit of that note. A checklist creation is never answered by a saved note,
-not even a checklist of the same title, unless it repeats the client's own
-creation ID. A checklist holds 1 to 100 items, each at most 240 units, the
-bound of a title, since an item is one line of the list. A checklist with a
+adding items to a checklist already saved is an edit of that note. A
+checklist creation is never answered by a saved note, not even a checklist
+of the same title, unless it repeats the client's own creation ID. A
+checklist holds 1 to 100 items, each at most 240 units, the bound of a
+title, since an item is one line of the list. A checklist with a
 blank title writes nothing, and its answer, that nothing was saved and the
 owner is to be asked what to call it, is a question for the model to put to
 the owner (below), never a failed step. A checklist with a title and no

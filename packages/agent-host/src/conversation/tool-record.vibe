@@ -8,7 +8,6 @@ type ChatMessage = NonNullable<GenerateTextParams["messages"]>[number]
 type RecordedValue = string | number | boolean
 type RecordedArgument = [name: string, value: RecordedValue]
 
-/** A step's arguments are kept as [name, value] pairs in the order the model wrote them, which a stored object would not keep. */
 export type RecordedStep = {
   action: string
   args: RecordedArgument[]
@@ -80,10 +79,6 @@ const isValue = (value: unknown): value is RecordedValue =>
 
 const isPair = (entry: unknown): entry is readonly [string, unknown] => Array.isArray(entry) && entry.length === 2 && typeof entry[0] === "string"
 
-/**
- * The stored arguments in the order they are written again: [name, value] pairs as stored, and an object, as a record
- * stored before pairs holds them, by name; anything else is no record of arguments.
- */
 function storedArgs(args: unknown): RecordedArgument[] | undefined {
   const entries = Array.isArray(args) ? (args.every(isPair) ? args : undefined)
     : typeof args === "object" && args !== null ? Object.entries(args).sort(byKey) : undefined
