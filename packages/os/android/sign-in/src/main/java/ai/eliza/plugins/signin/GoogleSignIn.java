@@ -4,7 +4,6 @@ package ai.eliza.plugins.signin;
 import ai.eliza.plugins.securestore.google.NativeGoogleAuthorization;
 import ai.eliza.plugins.signin.CodeSignIn.Answer;
 import ai.eliza.plugins.signin.CodeSignIn.Checked;
-import ai.eliza.plugins.signin.SignInCustody.Proof;
 import ai.eliza.plugins.signin.SignInPolicy.Failure;
 import ai.eliza.plugins.signin.SignInPolicy.CloudReply;
 import ai.eliza.plugins.signin.SignInPolicy.PickerResult;
@@ -110,12 +109,7 @@ public final class GoogleSignIn {
     Answer answer;
     try { answer = http.post(environment.apiOrigin + MOBILE_GOOGLE, body, null); }
     catch (IOException | RuntimeException unanswered) { return new Checked.NotChecked(new CloudReply.Unanswered()); }
-    if (!answer.ok() || !"signed_in".equals(answer.body().optString("status"))) return CodeSignIn.checked(answer, now);
-    JSONObject minted = answer.body(), user = minted.optJSONObject("user"), google = minted.optJSONObject("google");
-    String oneTime = minted.optString("code", ""), userId = user == null ? "" : user.optString("id", "");
-    long keyExpiresAt = SignInPolicy.instant(minted.opt("expiresAt"));
-    if (oneTime.isEmpty() || userId.isEmpty() || keyExpiresAt <= now) return new Checked.NotChecked(new CloudReply.Unanswered());
-    return new Checked.KeyMinted(new Proof(oneTime, state, verifier), userId, keyExpiresAt, google != null && google.optBoolean("connected", false));
+    return CodeSignIn.checkedGoogle(answer, state, verifier, now);
   }
 
   public boolean connectNative(SignInRegistration.Environment environment, String key, SecretServerCode serverCode) {

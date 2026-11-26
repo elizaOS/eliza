@@ -31,9 +31,29 @@ pure def lawInvalidTokenRejected(inProcess: bool): bool =
   evaluateRouteAccess(true, inProcess, false, true, false) == AccessUnauthorizedInvalid
 ```
 
+### Store sessions belong to the operator, not to a self-reported client
+
+The route gate authenticates the operator who holds the terminal token, not an
+individual client, so every caller that passes it may list, read, write to,
+resize and stop every store session. A client identifier sent by the caller is
+never treated as ownership. From chat, only the owner may drive store sessions,
+because they can run vendor CLIs under the operator's own credentials.
+
+```quint
+type PtyCaller = RouteOperator | ChatOwner | ChatAdmin | ChatUser
+pure def mayDriveStoreSession(caller: PtyCaller): bool = caller == RouteOperator or caller == ChatOwner
+pure def lawOnlyTheOwnerDrivesFromChat(caller: PtyCaller): bool =
+  (caller == ChatAdmin or caller == ChatUser) implies not(mayDriveStoreSession(caller))
+```
+
 ### Interactive and vendor CLI spawning fail closed
 
-Store builds reject all interactive and vendor CLI spawns. The interactive flag
+Store builds reject all interactive and vendor CLI spawns; the build variant is
+read only from the launch environment, never from runtime settings. A runtime
+setting can only narrow the launch environment's flags: an explicit non-truthy
+value from either one disables the flag, and otherwise the launch environment's
+value stands, so a truthy setting never enables a flag the launch environment
+left unset. The interactive flag
 defaults on when unset, allows explicit truthy values, and fails closed on any
 other explicit value. Vendor CLI sessions (`claude` and `codex`) require both
 interactive spawning and an explicit truthy vendor flag. Unsupported session
@@ -57,6 +77,12 @@ pure def evaluateSpawnGate(isStoreBuild: bool, interactiveFlag: FlagState, vendo
   }
 pure def lawStoreBuildBlocksAllSpawns(interactiveFlag: FlagState, vendorFlag: FlagState, kind: SpawnKind): bool =
   evaluateSpawnGate(true, interactiveFlag, vendorFlag, kind) == SpawnDisabled
+pure def narrowFlag(launch: FlagState, setting: FlagState): FlagState =
+  if (launch == FlagOther or setting == FlagOther) FlagOther else launch
+pure def lawSettingNeverWidensLaunchFlag(launch: FlagState, setting: FlagState): bool =
+  narrowFlag(launch, setting) == FlagTrue implies launch == FlagTrue
+pure def lawSettingAloneNeverEnablesVendor(setting: FlagState): bool =
+  not(vendorAllowed(false, narrowFlag(FlagUnset, setting)))
 pure def lawVendorDefaultsClosed(interactiveFlag: FlagState): bool =
   evaluateSpawnGate(false, interactiveFlag, FlagUnset, KindClaude) != SpawnAdmitted and
   evaluateSpawnGate(false, interactiveFlag, FlagUnset, KindCodex) != SpawnAdmitted
@@ -86,8 +112,10 @@ pure def lawBlockedAuthorityDisablesCloud(authority: CloudAuthority): bool =
 ### Idle timeout, terminal geometry, and output slices stay within safe bounds
 
 An idle timeout is either 0 (disabled) or a positive integer up to 2147483647
-milliseconds. Terminal resize geometry requires integer columns and rows from 1
-to 500 inclusive. Bounded output slicing returns 0 when either `totalChars` or
+milliseconds. Terminal geometry requires whole columns and rows from 1 to 500,
+whether it comes from the agent action, a spawn request, or a console resize; the
+store refuses anything else and the spawn route answers it with bad-request
+status. Bounded output slicing returns 0 when either `totalChars` or
 `maxChars` is non-positive, and otherwise returns the smaller of `totalChars`
 and `maxChars`, so for every non-negative cap the returned slice length stays in
 `0..maxChars`.
@@ -103,6 +131,50 @@ pure def lawBoundedOutputNeverExceedsCap(totalChars: int, maxChars: int): bool =
   maxChars >= 0 implies boundedOutputSlice(totalChars, maxChars) <= maxChars and boundedOutputSlice(totalChars, maxChars) >= 0
 ```
 
+### The chat action reads, waits and resizes within fixed bounds
+
+`PTY_SESSION` lists the store's sessions and reads, sends to, resizes or stops
+one named session. A read returns the output after the caller's cursor, ending
+with a cursor for the next read; `maxChars` is clamped to 1..50,000 characters
+of the newest output and defaults to 16,000. `send_wait` writes its input,
+then waits until its regular expression matches the new output, the output
+goes quiet, or the wait ends; the wait is clamped to 10..30,000 milliseconds
+and defaults to 1,500. An invalid pattern, a failed write, or input for an
+exited session is a failure, never a match.
+
+```quint
+pure def clampOutputChars(requested: int): int =
+  if (requested < 1) 1 else if (requested > 50000) 50000 else requested
+pure def clampWaitMs(requested: int): int =
+  if (requested < 10) 10 else if (requested > 30000) 30000 else requested
+pure def lawActionOutputWithinCap(requested: int): bool =
+  clampOutputChars(requested) >= 1 and clampOutputChars(requested) <= 50000
+pure def lawWaitNeverExceedsThirtySeconds(requested: int): bool =
+  clampWaitMs(requested) >= 10 and clampWaitMs(requested) <= 30000
+```
+
+### Scrollback and default limits are fixed, and lost scrollback is reported
+
+A store holds at most 24 sessions unless configured otherwise, reaps an exited
+session 15 seconds after it exits, and stops a session idle for 15 minutes. A
+session keeps the most recent 200,000 characters of output as scrollback. A
+read from a cursor older than the scrollback counts the characters that left it
+as omitted and says so, and the buffered-output route reports where its
+scrollback starts.
+
+```quint
+pure val defaultMaxSessions: int = 24
+pure val defaultExitedSessionTtlMs: int = 15000
+pure val defaultIdleTimeoutMs: int = 900000
+pure val scrollbackChars: int = 200000
+pure def charsLostFromScrollback(cursor: int, scrollbackStart: int): int =
+  if (scrollbackStart > cursor) scrollbackStart - cursor else 0
+pure def lawDefaultIdleTimeoutIsValid(ms: int): bool =
+  ms == defaultIdleTimeoutMs implies validIdleTimeoutMs(ms)
+pure def lawLostScrollbackIsCounted(cursor: int, scrollbackStart: int): bool =
+  (cursor >= 0 and scrollbackStart > cursor) implies charsLostFromScrollback(cursor, scrollbackStart) > 0
+```
+
 ## Story: Enforce session capacity, confinement, and safe teardown
 
 > As the host, I want the PTY session store to enforce a strict capacity cap,
@@ -115,8 +187,12 @@ pure def lawBoundedOutputNeverExceedsCap(totalChars: int, maxChars: int): bool =
 Starting a session requires available capacity, a confined canonical working
 directory, and a fresh non-empty identifier. Exiting transitions a live session
 to exited so late subscribers can drain scrollback before reaping. Stopping a
-live session removes it only when the OS kill succeeds; a failed kill leaves the
-live session tracked and observable.
+live session signals the process, waits a bounded time for its exit, and then
+forces the kill; the kill succeeds only when the process's exit is observed.
+Stopping removes the session only after a successful kill; a failed kill
+leaves the live session tracked, observable and counted against capacity.
+Stopping, writing to or resizing an unknown session, and writing to or
+resizing an exited one, is reported as a failure, never as done.
 
 ```quint
 type PoolStatus = PoolLive | PoolExited

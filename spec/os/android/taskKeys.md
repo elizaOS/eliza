@@ -66,7 +66,10 @@ an account other than the verified one, and for an epoch that is not newer
 than every epoch asked before, so a retired release or a frame already
 written is never answered again. A refusal for an unreadable key still uses
 up its epoch. Each answer is the key of the launch's account and nothing
-else.
+else. A refused launch is framed without a storage key, so the agent's task
+store stays closed (`spec/agent/tasks/store.md`). An account whose user or
+organization id is longer than 256 characters names no slot: custody takes
+it as signed out, and its launches are refused as not the verified account.
 
 ```quint
 pure def canRelease(s: TaskKeyCustody, account: C::Account, epoch: int): bool =
@@ -112,10 +115,15 @@ A new account announced by the device credential, a sign-out (the person's
 or the cloud's) and a reset of the app's data retire the current release:
 the holder the agent service received is wiped, and the next release needs
 a new launch epoch of the verified account. A new key of the same account
-keeps the release. Sign-out and an account change keep the keys in their
-slots, so an account that signs in again opens its own tasks. A reset
-clears the app's data, slots and this record with it, and stops the
-process, so custody starts again from nothing.
+keeps the release. A release retired before the agent service reads it into
+the frame is read as no key: that launch is framed without a storage key,
+as a refused one is, and the notice that retired it stops the launch.
+Custody follows the credential in the order the credential changes: the
+account is read and custody stepped as one, so an account read before a
+sign-out is never verified after it. Sign-out and an account change keep
+the keys in their slots, so an account that signs in again opens its own
+tasks. A reset clears the app's data, slots and this record with it, and
+stops the process, so custody starts again from nothing.
 
 ```quint
 pure def canAccountVerified(s: TaskKeyCustody, account: C::Account): bool = account.userId != "" and account.organizationId != ""

@@ -1,4 +1,4 @@
-// spec/computerUse/index.md, "A command is scoped to one session generation, surface and authorized operation"; spec/computerUse/observation.md, "Change detection, image attachment policy, pixel budgets, and coordinate bounds obey pure safety laws"
+// spec/computerUse/index.md, "A command is scoped to one session generation, surface and authorized operation"; spec/computerUse/index.md, "A session grants only the operations its bound target can carry out, and each command is its own operation"; spec/computerUse/observation.md, "Change detection, image attachment policy, pixel budgets, and coordinate bounds obey pure safety laws"
 import { pointInDisplayBounds } from "../gen/computerUse__observation.effect.vibe"
 
 export const BROWSER_EXECUTE_DISABLED_MESSAGE =
@@ -204,6 +204,21 @@ export function sanitizeChildEnv(env: Record<string, string | undefined>): Recor
     clean[key] = value
   }
   return clean
+}
+
+export function validateOpenTarget(target: string): string | undefined {
+  if (target.length === 0 || target.length > 4096) return "open target must be 1-4096 characters"
+  if ([...target].some((ch) => ch.charCodeAt(0) < 0x20) || /[&|<>^"%!`]/.test(target)) return "open target contains control or shell metacharacters"
+  if (/^https?:\/\//i.test(target)) {
+    try {
+      const url = new URL(target)
+      return url.protocol === "http:" || url.protocol === "https:" ? undefined : "open target must be an http(s) URL or an absolute path"
+    } catch {
+      return "open target is not a valid URL"
+    }
+  }
+  if (target.startsWith("/") || /^[A-Za-z]:\\/.test(target)) return validateFilePath(target).allowed ? undefined : "open target path is denied"
+  return "open target must be an http(s) URL or an absolute path"
 }
 
 export function validateInt(value: unknown, min: number, max: number): number | undefined {

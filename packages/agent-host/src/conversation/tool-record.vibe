@@ -50,6 +50,7 @@ const cutCue = (text: string) => text.length > maxCueLength ? text.slice(0, maxC
 const cutCopy = (value: string, said: string) => value.length === maxRecordedValueChars && value.endsWith("…") && said.startsWith(value.slice(0, -1))
 const copies = (value: string, text: string) => plainOf(text) !== "" && (value.includes(plainOf(text)) || cutCopy(value, plainOf(text)))
 const withoutCopies = (value: string, text: string, notice: string) => cutCopy(value, plainOf(text)) ? notice : value.replaceAll(plainOf(text), notice)
+const formOf = (value: RecordedValue) => typeof value === "string" ? value : JSON.stringify(value)
 
 function valueOf(value: unknown): RecordedValue | undefined {
   if (typeof value === "boolean") return value
@@ -104,7 +105,7 @@ function storedRecord(value: unknown): ToolRecord | undefined {
 export function toolRecordHolds(stored: unknown, text: string): boolean {
   const decoded = decodeRecord(stored)
   if (decoded._tag !== "Some") return false
-  return decoded.value.steps.some(({ args }) => (storedArgs(args) ?? []).some(([, value]) => typeof value === "string" && copies(value, text)))
+  return decoded.value.steps.some(({ args }) => (storedArgs(args) ?? []).some(([, value]) => copies(formOf(value), text)))
 }
 
 export function scrubToolRecord(stored: unknown, text: string, notice: string): ToolRecord | undefined {
@@ -113,7 +114,7 @@ export function scrubToolRecord(stored: unknown, text: string, notice: string): 
   return {
     steps: decoded.value.steps.map(({ action, args, outcome }) => ({
       action,
-      args: (storedArgs(args) ?? []).map(([key, value]): RecordedArgument => [key, typeof value === "string" ? withoutCopies(value, text, notice) : value]),
+      args: (storedArgs(args) ?? []).map(([key, value]): RecordedArgument => [key, typeof value === "string" || copies(formOf(value), text) ? withoutCopies(formOf(value), text, notice) : value]),
       outcome,
     })),
     more: decoded.value.more,

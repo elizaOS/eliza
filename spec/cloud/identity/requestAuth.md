@@ -14,6 +14,10 @@ the class says what credential it needs:
 | Step-up | a live session with a second factor within 5 minutes | unlink a method, change factors |
 | Session family | an issued token for the same family | sign out here |
 
+The Grace Google mount (`deployment`) answers its own paths before this
+table. There a recorded device key may also connect natively and disconnect
+its own owner's Google connection, and never another account's.
+
 The session-family route checks an issued access or refresh token in its
 header or body through the [session logout rules](./sessions.md). Its
 digest selects the family for revocation. The admission model below covers
@@ -261,7 +265,9 @@ bound grant is not ended and of the person's current device epoch; the key's
 own expiry does not end the lease. Refusals use the credential reasons of a
 session. A device lease passes no other route: anywhere else it is refused
 `403 access_denied`. The caller's credential ends with the presented access
-token.
+token. These are the server table's routes; on the Grace Google mount
+(`deployment`) the recorded device key may also connect natively and
+disconnect only its own owner's connection, never another account's.
 
 ```quint
 pure def grantEnded(g: Dk::Grant): bool = Dk::isClosed(g) and g.phase != Dk::Expired

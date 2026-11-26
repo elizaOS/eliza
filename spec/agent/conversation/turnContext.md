@@ -380,6 +380,10 @@ A context that fails refuses the whole turn with 400
 preference was not applied; a failed observation only drops itself. The
 direct-request preference grants no system or provider permission. A saved
 Notes editor also requires completed-action delivery and a routing identity.
+A renderer may say which of the declared views it can show now
+(`uiViews`); the agent then prepares no other view for it
+(`spec/agent/views.md`), so a reply never promises a view that screen
+cannot open.
 
 | Key | Allowed value |
 | --- | --- |
@@ -390,6 +394,7 @@ Notes editor also requires completed-action delivery and a routing identity.
 | `uiClientId` | a view interaction client id (core's pattern), equal to the turn's `X-ElizaOS-Client-Id` when it sends one; it names the client that receives completed-action views |
 | `agentActionMode` | `direct-request-v1`; `direct-files-v1`, which asks for direct requests of the Files family only; or `direct-files-only-v1`, the same from a client that shows no review card on that turn |
 | `uiNotesEditor` | `saved-note-v1`, with completed-action delivery and a routing identity |
+| `uiViews` | a list of 1 to 64 distinct view ids, each matching `^[a-z][a-z0-9_-]{0,63}$`: the declared views this renderer can show now |
 
 A key not named here is not carried.
 
@@ -400,8 +405,9 @@ type Delivery = NoDelivery | CompletedAction | OtherDelivery
 type BrowserSurface = NoSurface | NativeSurface | OtherSurface
 type ActionMode = NoActionMode | DirectRequest | DirectFilesRequest | DirectFilesOnlyRequest | OtherActionMode
 type NoteEditorMode = NoNoteEditor | SavedNoteEditor | OtherNoteEditor
+type ScreenViews = NoScreenViews | StatedScreenViews | OtherScreenViews
 type RoutingFact = NoRouting | Routing | MalformedRouting
-type VoiceUiFacts = { viewPath: TextField, subview: TextField, timeZone: TextField, surface: BrowserSurface, delivery: Delivery, routingId: RoutingFact, actionMode: ActionMode, noteEditor: NoteEditorMode }
+type VoiceUiFacts = { viewPath: TextField, subview: TextField, timeZone: TextField, surface: BrowserSurface, delivery: Delivery, routingId: RoutingFact, actionMode: ActionMode, noteEditor: NoteEditorMode, screenViews: ScreenViews }
 type ContextOutcome = ContextCarried | ContextDropped | TurnRefused
 pure val viewPathMaxUnits = 2048
 pure val shortTextMaxUnits = 128
@@ -412,11 +418,11 @@ pure def pathRooted(units: List[int]): bool = units.length() == 0 or (unitPrefix
 pure def asksDirect(mode: ActionMode): bool = mode == DirectRequest or mode == DirectFilesRequest or mode == DirectFilesOnlyRequest
 pure def voiceUiAccepted(u: VoiceUiFacts): bool =
   textWithin(u.viewPath, viewPathMaxUnits) and pathRooted(textUnits(u.viewPath)) and textWithin(u.subview, shortTextMaxUnits) and textWithin(u.timeZone, shortTextMaxUnits) and
-  u.surface != OtherSurface and u.delivery != OtherDelivery and u.routingId != MalformedRouting and u.actionMode != OtherActionMode and u.noteEditor != OtherNoteEditor and
+  u.surface != OtherSurface and u.delivery != OtherDelivery and u.routingId != MalformedRouting and u.actionMode != OtherActionMode and u.noteEditor != OtherNoteEditor and u.screenViews != OtherScreenViews and
   ((asksDirect(u.actionMode) or u.noteEditor == SavedNoteEditor) implies (u.delivery == CompletedAction and u.routingId == Routing))
 pure def observationOutcome(o: ObservationFacts): ContextOutcome = if (observationAccepted(o)) ContextCarried else ContextDropped
 pure def voiceUiOutcome(u: VoiceUiFacts): ContextOutcome = if (voiceUiAccepted(u)) ContextCarried else TurnRefused
-pure val silentRenderer: VoiceUiFacts = { viewPath: NoText, subview: NoText, timeZone: NoText, surface: NoSurface, delivery: NoDelivery, routingId: NoRouting, actionMode: NoActionMode, noteEditor: NoNoteEditor }
+pure val silentRenderer: VoiceUiFacts = { viewPath: NoText, subview: NoText, timeZone: NoText, surface: NoSurface, delivery: NoDelivery, routingId: NoRouting, actionMode: NoActionMode, noteEditor: NoNoteEditor, screenViews: NoScreenViews }
 pure val uValues: Set[VoiceUiFacts] = {
   val bound = { ...silentRenderer, viewPath: Text({ units: List(47, 99) }), subview: Text({ units: List(100) }), surface: NativeSurface, delivery: CompletedAction, routingId: Routing, actionMode: DirectRequest }
   List(
@@ -434,7 +440,10 @@ pure val uValues: Set[VoiceUiFacts] = {
     { ...bound, surface: OtherSurface },
     { ...bound, actionMode: NoActionMode, noteEditor: SavedNoteEditor },
     { ...bound, actionMode: NoActionMode, noteEditor: SavedNoteEditor, routingId: NoRouting },
-    { ...bound, noteEditor: OtherNoteEditor }
+    { ...bound, noteEditor: OtherNoteEditor },
+    { ...bound, screenViews: StatedScreenViews },
+    { ...silentRenderer, screenViews: StatedScreenViews },
+    { ...bound, screenViews: OtherScreenViews }
   ).foldl(Set(), (acc, u) => acc.union(Set(u)))
 }
 pure def lawDirectRequestNeedsTheBoundRenderer(u: VoiceUiFacts): bool =

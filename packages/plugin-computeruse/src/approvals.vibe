@@ -44,7 +44,6 @@ const READ_ONLY_COMMANDS = new Set<string>([
   "file_read_bytes",
   "file_list_downloads",
   "terminal_read",
-  "clipboard_read",
 ])
 
 const DESTRUCTIVE_COMMANDS = new Set<string>([

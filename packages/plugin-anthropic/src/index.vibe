@@ -1,4 +1,4 @@
-// spec/anthropic/index.md, "Story: Ask an Anthropic model for a complete response"
+// spec/anthropic/index.md, "Story: Ask an Anthropic model for a complete response"; spec/anthropic/index.md, "Reported usage carries the cache read and cache write tokens the provider reports"
 import {
   ElizaError,
   ModelType,

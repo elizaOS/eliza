@@ -258,26 +258,30 @@ pure def sometimesLinkCapturedBesideWaitingSignIn(s: BrowserReturns): bool = isW
 > again for mail and calendar without losing my current device account.
 
 `CloudDeviceAccount` exposes the upgrade state to its consumer host. The host
-shows the prompt on its existing account surfaces and starts the normal browser
-sign-in when the owner chooses to continue. The existing native registration
+shows the prompt on its existing account surfaces and starts Google sign-in
+when the owner chooses to continue. It may use the native Google account
+picker with a registered challenge and nonce, or the registered browser
+return. The existing native registration
 configuration must advertise the mail lease before a new attempt starts or a
 returned proof is exchanged. Without that capability the owner can continue to
 open hosted mail and calendar in the browser. The state contains no token.
 
 ### Only the current owner can complete the upgrade, and cancellation keeps the current device account
 
-The native shell keeps the existing credential and binds the browser attempt
-to it. An already open attempt is reused. The return follows the existing
-App Link, state, and PKCE checks. The native shell accepts a replacement
+The native shell keeps the existing credential and binds the active attempt
+to it. Repeated requests leave the active attempt in place. A browser return
+uses the existing App Link, state, and PKCE checks. The native picker result
+uses the native Google challenge, nonce, and PKCE checks and belongs to the
+same pending attempt. The native shell accepts a replacement
 only for the same account and organization and with a mail lease. A
-cancellation affects only its own pending browser attempt. A stale callback,
+cancellation affects only the active upgrade. A stale return,
 a different owner, or a response without a lease leaves the old credential
 in place.
 
 ```quint
 type UpgradeKey = { owner: C::Account, version: int }
 type StandaloneUpgrade = StandaloneSignedOut | LegacyDeviceKey(UpgradeKey)
-  | UpgradeBrowser({ prior: UpgradeKey, attempt: int })
+  | UpgradeAuthenticating({ prior: UpgradeKey, attempt: int })
   | UpgradeAcknowledging({ prior: UpgradeKey, replacement: UpgradeKey })
   | UpgradedDeviceKey({ active: UpgradeKey, retired: UpgradeKey })
 type UpgradeExchange = NoLeaseReply | LeaseReply(UpgradeKey)
@@ -293,20 +297,20 @@ pure def legacyDeviceKey(key: UpgradeKey): StandaloneUpgrade =
   LegacyDeviceKey({ owner: key.owner, version: key.version })
 pure def upgradePrompt(s: StandaloneUpgrade): UpgradePrompt = match s {
   | LegacyDeviceKey(_) => UpgradeRequired
-  | UpgradeBrowser(_) => UpgradeSignInPending
+  | UpgradeAuthenticating(_) => UpgradeSignInPending
   | UpgradeAcknowledging(_) => UpgradeAcknowledgmentPending
   | _ => NoUpgradePrompt
 }
 pure def beginStandaloneUpgrade(s: StandaloneUpgrade, attempt: int): StandaloneUpgrade = match s {
-  | LegacyDeviceKey(k) => UpgradeBrowser({ prior: { owner: k.owner, version: k.version }, attempt: attempt })
+  | LegacyDeviceKey(k) => UpgradeAuthenticating({ prior: { owner: k.owner, version: k.version }, attempt: attempt })
   | _ => s
 }
 pure def cancelStandaloneUpgrade(s: StandaloneUpgrade, attempt: int): StandaloneUpgrade = match s {
-  | UpgradeBrowser(p) => if (p.attempt == attempt) legacyDeviceKey(p.prior) else s
+  | UpgradeAuthenticating(p) => if (p.attempt == attempt) legacyDeviceKey(p.prior) else s
   | _ => s
 }
 pure def stageStandaloneUpgrade(s: StandaloneUpgrade, attempt: int, response: UpgradeExchange): StandaloneUpgrade = match s {
-  | UpgradeBrowser(p) => if (p.attempt != attempt) s else match response {
+  | UpgradeAuthenticating(p) => if (p.attempt != attempt) s else match response {
       | NoLeaseReply => legacyDeviceKey(p.prior)
       | LeaseReply(k) => if (k.owner == p.prior.owner and k.version != p.prior.version)
           UpgradeAcknowledging({ prior: p.prior, replacement: { owner: k.owner, version: k.version } }) else legacyDeviceKey(p.prior)
@@ -316,7 +320,7 @@ pure def stageStandaloneUpgrade(s: StandaloneUpgrade, attempt: int, response: Up
 pure def lawCancelingAnUpgradeKeepsTheCurrentKey(prior: UpgradeKey, attempt: int): bool =
   cancelStandaloneUpgrade(beginStandaloneUpgrade(legacyDeviceKey(prior), attempt), attempt) == legacyDeviceKey(prior)
 pure def lawAnUpgradeRequiresAReplacementKeyForTheSameOwner(prior: UpgradeKey, replacement: UpgradeKey, attempt: int): bool =
-  (upgradePrompt(stageStandaloneUpgrade(UpgradeBrowser({ prior: prior, attempt: attempt }), attempt,
+  (upgradePrompt(stageStandaloneUpgrade(UpgradeAuthenticating({ prior: prior, attempt: attempt }), attempt,
     LeaseReply({ owner: replacement.owner, version: replacement.version })))
     == UpgradeAcknowledgmentPending) iff (replacement.owner == prior.owner and replacement.version != prior.version)
 ```

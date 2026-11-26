@@ -1,7 +1,6 @@
 // spec/codingTools/index.md, "Story: Read and edit my authorized project files"
 import { Schema } from "effect"
 import type { ActionResult, UUID } from "@elizaos/core"
-import type { WorkspaceAccess } from "../gen/codingTools.effect.vibe"
 
 export const CODING_TOOLS_LOG_PREFIX = "[CodingTools]"
 
@@ -19,14 +18,6 @@ export const CODING_TOOLS_CONTEXTS = [
   "automation",
 ] as const
 export type CodingToolsContext = (typeof CODING_TOOLS_CONTEXTS)[number]
-
-export interface WorkspaceDirectory {
-  readonly root: string
-  readonly access: WorkspaceAccess
-}
-
-export error WorkspaceDenied { target: string }
-export error StaleWorkspaceFile { target: string }
 
 export interface FileMeta {
   readonly path: string

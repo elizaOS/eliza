@@ -144,6 +144,25 @@ pure def lawACommandAnswersOnlyWithoutTheControl(negotiated: Negotiated, command
   historyHome(negotiated, commandReachable) == HistoryAsCommand implies (commandReachable and not(controlOffered(HistoryControl, negotiated)))
 ```
 
+### An address my whole message asked for opens at once only on a phone that negotiated it, and every other open waits for my review
+
+A phone that negotiated `browser.open-direct.v1` opens an address at once,
+with no card, when the `browser_navigate` proposal is bound to the owner's
+whole message ([request grounding](./requestGrounding.md)), since that
+proposal then carries the message
+([device actions](../agent/deviceActions/index.md)). The owner's sentence
+for it is "Opening example.com.", and the model learns that the phone opens
+it right after the reply, never that it loaded or what it shows. An open not
+bound to the message, such as a link of the page the message carried or an
+address the model proposed, still waits for the owner's review on the
+phone, and a phone that did not negotiate the capability reviews every open.
+
+```quint
+pure def openRunsAtOnce(bound: bool, opensDirectly: bool): bool = bound and opensDirectly
+pure def lawAnUnboundOpenIsAlwaysReviewed(opensDirectly: bool): bool = not(openRunsAtOnce(false, opensDirectly))
+pure def lawOnlyAPhoneThatOpensDirectlyOpensAtOnce(bound: bool): bool = not(openRunsAtOnce(bound, false))
+```
+
 ## Story: Tell me a Browser command was sent, never that the page finished
 
 > As the owner, I want to hear that my browser was asked to go back, forward
@@ -324,43 +343,46 @@ pure def lawAScreenOpenNeedsTheScreenAndNoPhone(phoneAdmitsOpen: bool, screenTak
   openHome(phoneAdmitsOpen, screenTakesViews) == OpenOnScreen implies (screenTakesViews and not(phoneAdmitsOpen))
 ```
 
-### The screen shows the address for me to open, and nothing opens until I choose Open there
+### The screen opens an address my whole message asked for at once, and shows any other address for me to open
 
 BROWSER_OPEN grounds the address exactly as the `browser_navigate` proposal
 does ([request grounding](./requestGrounding.md)): the same https address,
 the same page links, the same refusals, answered as a refused proposal is,
 with nothing handed back. A grounded open is handed back in the action's
 completed result as the typed `browser_navigate` operation, bound to the
-screen that asked, which shows the address for the owner to open; even an
-address the owner's whole message asked for waits for their Open there. The
-model learns that the screen shows the address for the owner to open, and
-never that it opened, that the page loaded or what it shows. Which screen
+screen that asked. An address bound to the owner's whole message is marked
+to open at once, and the screen opens it with no card, as the owner's
+enrolled phone does where it negotiated `browser.open-direct.v1` (above);
+any other address the screen shows for the owner to open, and it opens only
+when they choose Open there. The model learns which: that the screen opens
+the address, or that it shows it for the owner to open, and never that the
+page loaded or what it shows. Which screen
 shows on a later message is that message's screen context, not this result,
 and a later request to show Browser itself is VIEWS's, as the action's
 description says.
 
 ```quint
 type ScreenOpenOutcome = ScreenOpenRefused | ScreenOpenShown | ScreenOpenOpened
-type ScreenOpenReport = ScreenReportRefused | ScreenReportShown
+type ScreenOpenReport = ScreenReportRefused | ScreenReportShown | ScreenReportOpening
 type ScreenOpenRequest = { grounded: bool, wholeMessage: bool, ownerChoseOpen: bool }
 pure def screenOpenOutcome(screenOpen: ScreenOpenRequest): ScreenOpenOutcome =
   if (not(screenOpen.grounded)) ScreenOpenRefused
-  else if (screenOpen.ownerChoseOpen) ScreenOpenOpened
+  else if (screenOpen.wholeMessage or screenOpen.ownerChoseOpen) ScreenOpenOpened
   else ScreenOpenShown
-pure def screenOpenReport(grounded: bool): ScreenOpenReport =
-  if (grounded) ScreenReportShown else ScreenReportRefused
-pure val screenOpenWaiting: ScreenOpenRequest = { grounded: true, wholeMessage: true, ownerChoseOpen: false }
-pure val screenOpenValues = Set(screenOpenWaiting, { ...screenOpenWaiting, wholeMessage: false },
+pure def screenOpenReport(grounded: bool, wholeMessage: bool): ScreenOpenReport =
+  if (not(grounded)) ScreenReportRefused else if (wholeMessage) ScreenReportOpening else ScreenReportShown
+pure val screenOpenWaiting: ScreenOpenRequest = { grounded: true, wholeMessage: false, ownerChoseOpen: false }
+pure val screenOpenValues = Set(screenOpenWaiting, { ...screenOpenWaiting, wholeMessage: true },
   { ...screenOpenWaiting, ownerChoseOpen: true }, { ...screenOpenWaiting, grounded: false },
-  { ...screenOpenWaiting, grounded: false, ownerChoseOpen: true })
+  { ...screenOpenWaiting, grounded: false, wholeMessage: true, ownerChoseOpen: true })
 pure def lawUngroundedScreenOpenIsRefused(screenOpen: ScreenOpenRequest): bool =
-  not(screenOpen.grounded) implies (screenOpenOutcome(screenOpen) == ScreenOpenRefused and screenOpenReport(screenOpen.grounded) == ScreenReportRefused)
-pure def lawScreenOpenWaitsForOwnerEvenForWholeMessage(screenOpen: ScreenOpenRequest): bool =
-  (screenOpen.grounded and not(screenOpen.ownerChoseOpen)) implies screenOpenOutcome(screenOpen) == ScreenOpenShown
-pure def lawScreenOpenOpensOnlyWhenGroundedAndChosen(screenOpen: ScreenOpenRequest): bool =
-  (screenOpenOutcome(screenOpen) == ScreenOpenOpened) iff (screenOpen.grounded and screenOpen.ownerChoseOpen)
-pure def lawScreenOpenReportNeverClaimsOpened(grounded: bool): bool =
-  screenOpenReport(grounded) == ScreenReportShown iff grounded
+  not(screenOpen.grounded) implies (screenOpenOutcome(screenOpen) == ScreenOpenRefused and screenOpenReport(screenOpen.grounded, screenOpen.wholeMessage) == ScreenReportRefused)
+pure def lawScreenOpenWaitsForOwnerUnlessWholeMessage(screenOpen: ScreenOpenRequest): bool =
+  (screenOpen.grounded and not(screenOpen.wholeMessage) and not(screenOpen.ownerChoseOpen)) implies screenOpenOutcome(screenOpen) == ScreenOpenShown
+pure def lawScreenOpenOpensOnlyWhenGroundedAndAskedOrChosen(screenOpen: ScreenOpenRequest): bool =
+  (screenOpenOutcome(screenOpen) == ScreenOpenOpened) iff (screenOpen.grounded and (screenOpen.wholeMessage or screenOpen.ownerChoseOpen))
+pure def lawScreenOpenReportsOpeningOnlyForAWholeMessage(grounded: bool, wholeMessage: bool): bool =
+  (screenOpenReport(grounded, wholeMessage) == ScreenReportOpening) iff (grounded and wholeMessage)
 ```
 
 ## Story: Tell me you cannot read my page, and never reload it unasked

@@ -76,6 +76,46 @@ pure def stepInvokedOnlyAfterValidation(before: Planning, after: Planning): bool
   after.calls.every(c => c.phase != Invoked or before.calls.some(b => b.id == c.id and (b.phase == Validated or b.phase == Invoked)))
 ```
 
+### An object parameter with no declared properties accepts any keys, and one with declared properties accepts no others unless it says so
+
+An object parameter schema that declares no properties is an open object: its
+JSON schema allows any additional keys, so arguments carrying keys are valid. An
+object that declares properties is closed: keys it does not declare fail
+validation. An explicit `additionalProperties` on the schema always wins.
+
+```quint
+type ExtraKeysChoice = ExtraKeysUnset | ExtraKeysAllowed | ExtraKeysRefused
+pure def acceptsExtraKeys(declaredCount: int, choice: ExtraKeysChoice): bool = match choice {
+  | ExtraKeysAllowed => true
+  | ExtraKeysRefused => false
+  | ExtraKeysUnset => declaredCount == 0
+}
+pure def lawDeclaredPropertiesCloseByDefault(declaredCount: int): bool =
+  declaredCount > 0 implies not(acceptsExtraKeys(declaredCount, ExtraKeysUnset))
+pure def lawEmptyObjectOpenByDefault(declaredCount: int): bool =
+  declaredCount == 0 implies acceptsExtraKeys(declaredCount, ExtraKeysUnset)
+pure def lawExplicitChoiceWins(declaredCount: int): bool =
+  acceptsExtraKeys(declaredCount, ExtraKeysAllowed) and not(acceptsExtraKeys(declaredCount, ExtraKeysRefused))
+pure val declaredCountValues = Set(0, 1, 3)
+```
+
+### A promoted subaction keeps its umbrella's summarize and model class unless it sets its own
+
+A subaction promoted to its own action takes the umbrella's `summarize` and
+`modelClass` when its override sets none, and its override's own when it does.
+
+```quint
+type PromotedField = Unset | SetTo({ value: str })
+pure def promotedValue(override: PromotedField, umbrella: PromotedField): PromotedField =
+  if (override != Unset) override else umbrella
+pure def lawOverrideWins(value: str, umbrella: PromotedField): bool =
+  promotedValue(SetTo({ value: value }), umbrella) == SetTo({ value: value })
+pure def lawUmbrellaFillsUnsetOverride(umbrella: PromotedField): bool =
+  promotedValue(Unset, umbrella) == umbrella
+pure val valueValues = Set("TEXT_SMALL", "TEXT_LARGE")
+pure val umbrellaValues = Set(Unset, SetTo({ value: "TEXT_SMALL" }), SetTo({ value: "TEXT_LARGE" }))
+```
+
 ### A subaction stays within its parent's authority
 
 An umbrella action dispatches a subaction only while it is itself running. The subaction runs with the parent's caller role, never another, and only a subaction the parent's declaration names can pass validation; any other is rejected as unknown.

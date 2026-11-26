@@ -247,7 +247,12 @@ describe("webSearchEdgePlugin and edge evidence", () => {
     expect(outageCb).toHaveBeenCalledWith({ text: "Web search is temporarily unavailable.", transcriptVisibility: "internal" })
 
     setGlobalFetch(vi.fn(async () => mcpResponse(JSON.stringify({ search_id: "s1", results: [] }))) as typeof fetch)
-    expect(await runWebSearchEdge("empty")).toMatchObject({ success: false, text: "Web search returned no results." })
+    expect(await runWebSearchEdge("empty")).toMatchObject({
+      success: true,
+      text: "No results.",
+      data: { actionName: "WEB_SEARCH", query: "empty", resultCount: 0, sources: [] },
+      promptData: { count: 0, results: [] },
+    })
 
     const aborted = new AbortController()
     aborted.abort()
@@ -304,6 +309,10 @@ describe("Keyless search and public article fetch transport", () => {
 
     await expect(fetchKeylessWebTransport([...urls, "https://publisher.example/news/c"], { fetchImpl: okFetch })).rejects.toThrow()
     await expect(fetchKeylessWebTransport(["https://publisher.example/a", "https://publisher.example/a"], { fetchImpl: okFetch })).rejects.toThrow()
+    for (const internal of ["http://127.0.0.1/admin", "http://169.254.169.254/latest/meta-data", "http://[::1]/", "http://localhost/"]) {
+      await expect(fetchKeylessWebTransport([internal], { fetchImpl: okFetch })).rejects.toThrow("batch bounds")
+    }
+    expect(okFetch).toHaveBeenCalledTimes(1)
 
     const redirectFetch = vi.fn(async () => httpResponse(null, { status: 302, headers: { Location: "https://other.example/" } }))
     await expect(fetchKeylessWeb(["https://publisher.example/a"], { fetchImpl: redirectFetch })).rejects.toMatchObject({
