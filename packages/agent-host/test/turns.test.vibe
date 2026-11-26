@@ -997,7 +997,7 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
     ],
     declaredPromise: ["I can't send texts from here.", 2],
     upperPromise: ["I can't send texts from here.", 2],
-    promisedInReask: `Done!\n\n${noAnswer}`,
+    promisedInReask: noAnswer,
     bareAssent: [["It is 4.", 3, actOrAnswer], ["Sure, Bob.", 2, actOrAnswer], ["Sure.", 2, actOrAnswer]],
     maybeAnswers: [["I can't text from here.", 2], ['Sure! {"name": "Bob"}', 2]],
     jsonOnly: [
@@ -1994,7 +1994,7 @@ it.live(`A calendar move refused without a receipt and then made by the model's 
   const quoted = try turn(["Misread"], () => [toolCalls("", misread), toolCalls("", move), text(`${right} ${unsaidMove}`)])
   const sameResponse = try turn(["Misread"], () => [toolCalls("", misread, move), text(right), text(right)])
   const notTaken = "I couldn't move your dentist: the calendar didn't take it."
-  const neverMoved = try turn(["Misread", "Refused"], () => [toolCalls("", misread), toolCalls("", move), text(notTaken), text(`[answer] ${notTaken}`)])
+  const neverMoved = try turn(["Misread", "Refused"], () => [toolCalls("", misread), toolCalls("", move), text(notTaken), text(`[answer] ${notTaken}\n[reported: "${notTaken}"]`)])
   const providerRefused = try turn(["Refused"], () => [toolCalls("", move), text("Done!"), requestFault("invalid_request")])
   const unavailable = JSON.stringify(unavailableNotice)
   const otherActionFirst = try turn([], () => [toolCalls("", showCalendar), toolCalls("", move), text(right), text(right)], [unavailable, "(a VIEWS call)"])
@@ -2002,7 +2002,7 @@ it.live(`A calendar move refused without a receipt and then made by the model's 
   const doneBoth = "Done, I sent it and your dentist is now 9–10 AM."
   const phone = (operation: string, said: () => readonly CloudReply[]) => turn([], () => [toolCalls("", { name: "PHONE_ACTION", arguments: { operation } }), toolCalls("", move), ...said()], [JSON.stringify(phoneWords[operation])])
   const textUnsent = "I couldn't send the text, but your dentist is now 9–10 AM."
-  const textRefusedThenMoved = try phone("send_sms", () => [text(textUnsent), text(`[answer] ${textUnsent}`)])
+  const textRefusedThenMoved = try phone("send_sms", () => [text(textUnsent), text(`[answer] ${textUnsent}\n[reported: "I couldn't send the text"]`)])
   const keypadRefusedThenMoved = try phone("open_dialer", () => [text(doneBoth), requestFault("invalid_request")])
   try Effect.try(() => assert.deepStrictEqual({ sameAgain, failedAgain, cuedAgain, toldAgain, moveWrongAgain, heldButMistimed, mistimedTwice, quoted, sameResponse, neverMoved, providerRefused, otherActionFirst, otherActionAlone, textRefusedThenMoved, keypadRefusedThenMoved }, {
     sameAgain: { reply: right, calls: 4, laterRunNote: true },
@@ -2015,11 +2015,11 @@ it.live(`A calendar move refused without a receipt and then made by the model's 
     quoted: { reply: `${right} ${unsaidMove}`, calls: 3, laterRunNote: false },
     sameResponse: { reply: right, calls: 3, laterRunNote: false },
     neverMoved: { reply: notTaken, calls: 4, laterRunNote: false },
-    providerRefused: { reply: `Done!\n\n${notMoved}`, calls: 3, laterRunNote: false },
+    providerRefused: { reply: notMoved, calls: 3, laterRunNote: false },
     otherActionFirst: { reply: right, calls: 4, laterRunNote: true },
     otherActionAlone: { reply: "I couldn't show your calendar, so nothing changed.", calls: 3, laterRunNote: false },
     textRefusedThenMoved: { reply: textUnsent, calls: 4, laterRunNote: false },
-    keypadRefusedThenMoved: { reply: `${doneBoth}\n\n${phoneWords.open_dialer}`, calls: 4, laterRunNote: false },
+    keypadRefusedThenMoved: { reply: phoneWords.open_dialer, calls: 4, laterRunNote: false },
   }))
 }, 120_000)
 
