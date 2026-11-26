@@ -100,8 +100,8 @@ function answerFor(script: LlmScript, cut: () => void): FakeAnswer {
         status: 429,
         body: { error: { type: "rate_limit_exceeded", message: "slow down" } },
         headers: script.retryAfterHeader !== undefined
-            ? { "retry-after": script.retryAfterHeader }
-            : script.retryAfterSeconds === undefined ? {} : { "retry-after": String(script.retryAfterSeconds) },
+          ? { "retry-after": script.retryAfterHeader }
+          : script.retryAfterSeconds === undefined ? {} : { "retry-after": String(script.retryAfterSeconds) },
       };
     case "reject":
       return { status: script.status, body: script.body ?? { error: { code: "context_length_exceeded", param: "messages", message: "too long" } } };
