@@ -96,7 +96,11 @@ function reportOf(said: string): { readonly said: string; readonly quote: string
   return { said: said.replace(reportLine, "").trim(), quote: quotes.at(-1) ?? "" }
 }
 
-const spaced = (text: string) => text.replace(/\s+/g, " ").trim()
+const spaced = (text: string) => text.replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/\s+/g, " ").trim()
+const quoted = (reply: string, quote: string) => {
+  const said = spaced(quote).replace(/[.!?,;:]+$/, "")
+  return said !== "" && spaced(reply).includes(said)
+}
 
 export interface PlannedTurn {
   readonly reply: string
@@ -831,7 +835,7 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
       return {
         revised: spoken && answeredAgain(draft, sameAsFirst) ? revised : undefined,
         stoodBy: spoken && standsBy(draft, sameAsFirst),
-        quoted: quote !== "" && spaced(revised).includes(spaced(quote)),
+        quoted: quoted(revised, quote),
       }
     } catch (error: unknown) {
       if (signal.aborted) throw error

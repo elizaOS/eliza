@@ -780,6 +780,7 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
   const doneTwice = try secondAnswer("Done!", "Done!")
   const keptSuccess = try secondAnswer("Done!", "[answer] All set, that's worked out.")
   const misquoted = try secondAnswer("Done!", `[answer] All set.\n[reported: "7 has no answer."]`)
+  const curlyQuoted = try secondAnswer("Done!", `[answer] 7 divided by 0 doesn’t work, so there’s no answer.\n[reported: “7 divided by 0 doesn't work.”]`)
   const blankAgain = try secondAnswer("Done!", "", "", "", "")
   const quotedNote = reasked().note
   try Effect.sync(() => cloud.script(toolCalls("", dividing), text(`It's ${localDay("UTC", 3).weekday}.`), text(reporting("7 divided by 0 has no answer."))))
@@ -929,7 +930,7 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
     actions: solved.actionResults.map(({ action }) => action),
     unrendered: [unrendered.text, unrenderedCalls, unrenderedAsked.toolChoice, unrenderedAsked.said, unrenderedAsked.note],
     failed: [failed.text === "I couldn't add two plus two: the calculator didn't take it.", failedCalls, failedAsked.said, failedAsked.note.startsWith(asksAgain) && failedAsked.note.includes("A step of this turn did not happen as asked.")],
-    notFinal: { toldInItsWords, cuedAgain, stoodBy, doneTwice, keptSuccess, misquoted, blankAgain, dayRevised: [dayRevised.text, dayRevisedCalls], ownersReport: quotedNote.includes(JSON.stringify(noAnswer)), fencedReport: failedAsked.note.includes(wrapExternalContent(unparsed, { source: "unknown" })) },
+    notFinal: { toldInItsWords, cuedAgain, stoodBy, doneTwice, keptSuccess, misquoted, curlyQuoted, blankAgain, dayRevised: [dayRevised.text, dayRevisedCalls], ownersReport: quotedNote.includes(JSON.stringify(noAnswer)), fencedReport: failedAsked.note.includes(wrapExternalContent(unparsed, { source: "unknown" })) },
     quoted: [quoted.text, quotedCalls],
     cutAfterFailure: [cutAfterFailure.text, cutAfterFailureCalls],
     separate: [separate.text, separateCalls],
@@ -970,7 +971,7 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
     failed: [true, 3, "Done!", true],
     notFinal: {
       toldInItsWords: ["7 divided by 0 has no answer, so I couldn't work it out.", 3], cuedAgain: [noAnswer, 3], stoodBy: ["You can't divide 7 by 0.", 3],
-      doneTwice: [noAnswer, 3], keptSuccess: [noAnswer, 3], misquoted: [noAnswer, 3],
+      doneTwice: [noAnswer, 3], keptSuccess: [noAnswer, 3], misquoted: [noAnswer, 3], curlyQuoted: ["7 divided by 0 doesn’t work, so there’s no answer.", 3],
       blankAgain: [noAnswer, 6], dayRevised: ["7 divided by 0 has no answer.", 3], ownersReport: true, fencedReport: true,
     },
     quoted: [`It returned: ${noAnswer}`, 2],

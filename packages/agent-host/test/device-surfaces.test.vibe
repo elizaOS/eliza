@@ -14,6 +14,7 @@ module node {
   export const proposeTool = "PROPOSE_DEVICE_ACTION"
   export const reviewText = "Review this request on your phone before it can run."
   const retold = "Nothing happened on your phone. Show me which one you mean first."
+  const retoldReported = `${retold}\n[reported: "Nothing happened on your phone."]`
   const negotiated = ["camera.capture-photo.v1", "camera.capture-library-id.v1", "maps.selected-read.v1", "photos.library.v1", "photos.view.v1", "photos.view-selected.v1"]
   const place = { kind: "map-place", id: "maps_0f8fad5b-d9cb-469f-a165-70867728950e", revision: "7" }
   const openPhoto = { kind: "photo", id: "lib:i:12:345" }
@@ -132,21 +133,21 @@ module node {
     })
 
     const onMaps = { observation: { view: "maps", revision: 4, sensitive: false, selectedObject: place } }
-    cloud.script(toolCalls("", propose({ type: "maps_read_selected", target: { ...place, revision: "6" } })), answer("Okay."), answer(retold))
+    cloud.script(toolCalls("", propose({ type: "maps_read_selected", target: { ...place, revision: "6" } })), answer("Okay."), answer(retoldReported))
     const staleMaps = await say("How far is this place?", onMaps)
     const staleMapsTold = toldAgain(cloud)
-    cloud.script(toolCalls("", propose({ type: "maps_read_selected", target: place })), answer("Okay."), answer(retold))
+    cloud.script(toolCalls("", propose({ type: "maps_read_selected", target: place })), answer("Okay."), answer(retoldReported))
     const hiddenMaps = await say("How far is this place?", { observation: { ...onMaps.observation, sensitive: true, selectedObject: undefined } })
     const hiddenMapsTold = toldAgain(cloud)
     cloud.script(toolCalls("", propose({ type: "maps_read_selected", target: place })), answer("Okay."))
     await say("How far is this place?", onMaps)
 
-    cloud.script(toolCalls("", propose({ type: "photos_share", selected: true })), answer("Okay."), answer(retold))
+    cloud.script(toolCalls("", propose({ type: "photos_share", selected: true })), answer("Okay."), answer(retoldReported))
     const notShown = await say("Share this photo", { observation: { view: "home", revision: 3, sensitive: false } })
     const notShownTold = toldAgain(cloud)
     cloud.script(toolCalls("", propose({ type: "photos_share", selected: true })), answer("Okay."))
     await say("Share this photo", onPhotos)
-    cloud.script(toolCalls("", propose({ type: "photos_share", ids: ["lib:i:99:1"] })), answer("Okay."), answer(retold))
+    cloud.script(toolCalls("", propose({ type: "photos_share", ids: ["lib:i:99:1"] })), answer("Okay."), answer(retoldReported))
     const guessed = await say("Share my latest photo")
     const guessedTold = toldAgain(cloud)
     cloud.script(toolCalls("", propose({ type: "photos_open", id: openPhoto.id })), answer("Okay."))
@@ -158,7 +159,7 @@ module node {
     const searched = await settle(client, search, {
       outcome: "applied", operationId: "search-1", result: { kind: "photo_library_search", scope: "full", items: [found], more: false },
     })
-    cloud.script(toolCalls("", propose({ type: "photo_library_review", action: "favorite", items: [{ id: found.id, revision: "rev-a1-2" }] })), answer("Okay."), answer(retold))
+    cloud.script(toolCalls("", propose({ type: "photo_library_review", action: "favorite", items: [{ id: found.id, revision: "rev-a1-2" }] })), answer("Okay."), answer(retoldReported))
     const staleRevision = await say("Favorite it")
     const staleRevisionTold = toldAgain(cloud)
     cloud.script(toolCalls("", propose({ type: "photo_library_review", action: "favorite", items: [{ id: found.id, revision: found.revision }] })), answer("Okay."))
@@ -187,7 +188,7 @@ module node {
     const filesOnlyBound = (await proposals()).some(({ payload }) => payload.requestMessageId === filesOnlyNote.userMessageId)
 
     await client.call("POST", "/api/client-devices/view-profile", { version: 1, expectedRevision: null, views: ["home", "photos"] })
-    cloud.script(toolCalls("", propose({ type: "open_view", view: "settings" })), answer("Okay."), answer(retold))
+    cloud.script(toolCalls("", propose({ type: "open_view", view: "settings" })), answer("Okay."), answer(retoldReported))
     const disabled = await say("Open Settings")
     const disabledTold = toldAgain(cloud)
     const profiled = offered(cloud, 2)
@@ -207,9 +208,9 @@ module node {
         types: firstOffer.types, camera: firstOffer.description.includes("camera_capture_photo takes one still image"),
         photos: firstOffer.description.includes("use the one item the owner has open in the Photos viewer instead of ids"), capabilitiesNamed: negotiated.filter((name) => firstOffer.tools.includes(name)),
       },
-      staleMaps: [staleMaps.startsWith(`${retold}\n\n`), staleMapsTold.includes("Select the place or route in Maps")], hiddenMaps: [hiddenMaps.startsWith(`${retold}\n\n`), hiddenMapsTold.includes("Select the place or route in Maps")],
-      notShown: [notShown.startsWith(`${retold}\n\n`), notShownTold.includes("Open the photo in Photos first")], guessed: [guessed.startsWith(`${retold}\n\n`), guessedTold.includes("couldn't tell which photos you meant")],
-      searched, staleRevision: [staleRevision.startsWith(`${retold}\n\n`), staleRevisionTold.includes("couldn't tell which photos you meant")],
+      staleMaps: [staleMaps === retold, staleMapsTold.includes("Select the place or route in Maps")], hiddenMaps: [hiddenMaps === retold, hiddenMapsTold.includes("Select the place or route in Maps")],
+      notShown: [notShown === retold, notShownTold.includes("Open the photo in Photos first")], guessed: [guessed === retold, guessedTold.includes("couldn't tell which photos you meant")],
+      searched, staleRevision: [staleRevision === retold, staleRevisionTold.includes("couldn't tell which photos you meant")],
       navigating: {
         sameTools: navigating.tools === firstOffer.tools, openView: navigating.types.includes("open_view"),
         views: navigating.note.includes("Open app views with VIEWS (mode show) on this message"), offered: navigating.views,
@@ -223,7 +224,7 @@ module node {
         summarized: summarized.includes(reviewText),
         saved, learned: remembered.includes('\\"operation\\":\\"create_note\\"') && remembered.includes('\\"label\\":\\"Milk\\"'),
       },
-      profile: { refused: [disabled.startsWith(`${retold}\n\n`), disabledTold.includes("That view isn't turned on for your phone.")], told: profiled.description.includes('allows open_view only for ["home","photos"]') },
+      profile: { refused: [disabled === retold, disabledTold.includes("That view isn't turned on for your phone.")], told: profiled.description.includes('allows open_view only for ["home","photos"]') },
       proposed: (await proposals())
         .map(({ payload, state }) => ({ operation: payload.operation, bound: payload.requestMessageId !== undefined, state }))
         .toSorted((a, b) => a.operation.type.localeCompare(b.operation.type) || Number(a.bound) - Number(b.bound) ||
@@ -332,7 +333,7 @@ module node {
       toolCalls("", propose({ type: "create_note", title: "Milk", body: "Buy milk" })), answer("Okay."))
     const noSelection = await send("How far is this place?", { observation: { view: "maps", revision: 7, sensitive: false } },
       toolCalls("", propose({ type: "maps_read_selected", target: place })), answer("Okay."))
-    const guessedId = await send("Open my latest photo", undefined, toolCalls("", propose({ type: "photos_open", id: "lib:i:99:1" })), answer("Okay."), answer(retold))
+    const guessedId = await send("Open my latest photo", undefined, toolCalls("", propose({ type: "photos_open", id: "lib:i:99:1" })), answer("Okay."), answer(retoldReported))
     const taken = await settle(client, selfie.fresh[0], { outcome: "applied", operationId: savedPhoto.operationId, result: savedPhoto })
     const cards = (seen: { readonly fresh: readonly Proposal[] }) => seen.fresh.map(({ payload, state }) => ({ operation: payload.operation, bound: payload.requestMessageId !== undefined, state }))
     const turns = [notes, maps, sensitive, photo, selfie, selfieAndSend, wrongLens, rear, reviewed, conflicting, plain, noteElsewhere, noSelection, guessedId]
@@ -375,7 +376,7 @@ module node {
       refused: {
         noteElsewhere: { code: noteElsewhere.toolText.includes("DEVICE_OPERATION_NOT_AVAILABLE_NOW"), sent: noteElsewhere.fresh.length, reply: noteElsewhere.reply },
         noSelection: { code: noSelection.toolText.includes("MAPS_SELECTION_UNAVAILABLE"), sent: noSelection.fresh.length },
-        guessedId: { sent: guessedId.fresh.length, reply: [guessedId.reply.startsWith(`${retold}\n\n`), guessedId.told.includes("couldn't tell which photos you meant")] },
+        guessedId: { sent: guessedId.fresh.length, reply: [guessedId.reply === retold, guessedId.told.includes("couldn't tell which photos you meant")] },
       },
     }
   }
