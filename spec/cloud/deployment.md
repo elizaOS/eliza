@@ -395,10 +395,12 @@ GET callback may arrive without an Origin and still requires that session
 and the matching OAuth flow. Enrolled tablets use a live mail lease for
 managed reads and a recorded device credential for the new-mail hint, both
 subject to the cloud's device request limit.
-The recorded credential also connects or disconnects the tablet owner's
-Google connection. The write rechecks the credential and owner. A native
-connection stores only the selected permissions Google granted for the
-signed-in account's verified Google identity.
+The tablet's device credential also connects or disconnects its owner's
+Google connection. Its current owner is observed under the write lock, and
+only from the same admitted credential if it remains active for the
+configured client. The write is allowed only if that owner is still the
+original account. A native connection follows the selected-permission rule
+in [Google sign-in](identity/federatedSignIn.md).
 Other Workers and other paths use the server table and Worker-only routes
 in their usual order.
 
@@ -415,6 +417,12 @@ pure def lawAWorkerOnlyRouteNeverReplacesTheTable(inTable: bool, workerOnly: boo
   workerAnswer(inTable, workerOnly, graceGoogle) == FromWorkerOnly implies (workerOnly and not(inTable))
 pure def lawTheGraceGoogleMountOnlyAndAlwaysAnswersItsRoutes(inTable: bool, workerOnly: bool, graceGoogle: bool): bool =
   (workerAnswer(inTable, workerOnly, graceGoogle) == FromGraceGoogle) == graceGoogle
+pure def graceGoogleDeviceMayWrite(owner: str, liveOwner: str): bool =
+  owner != "" and liveOwner == owner
+pure val ownerValues = Set("", "owner1", "owner2")
+pure val liveOwnerValues = ownerValues
+pure def lawAGraceGoogleDeviceWriteNeedsItsOriginalLiveOwner(owner: str, liveOwner: str): bool =
+  (owner == "" or liveOwner != owner) implies not(graceGoogleDeviceMayWrite(owner, liveOwner))
 ```
 
 ### A scheduled tick runs each sweep whose period ends within the tick

@@ -448,3 +448,30 @@ pure def lawANativeConnectStoresOnlyTheSignedInAccountsGrantedScopes(signedInSub
     implies (stored.readMail == granted.readMail and stored.readCalendar == granted.readCalendar))
 }
 ```
+
+### Grace native consent stores only permissions Grace selected and Google granted
+
+The Grace tablet's explicit Google connection also carries the permissions
+the person selected. Its connection uses the intersection of that selection
+and Google's granted permissions, under the same subject, refresh token and
+read-permission requirements as any native connection.
+
+```quint
+pure def graceNativeConnectStores(signedInSubject: str, grantedSubject: str, refreshIssued: bool, selected: NativeGoogleScopes, granted: NativeGoogleScopes): NativeGoogleScopes =
+  nativeConnectStores(signedInSubject, grantedSubject, refreshIssued, {
+    readMail: selected.readMail and granted.readMail,
+    sendMail: selected.sendMail and granted.sendMail,
+    trashMail: selected.trashMail and granted.trashMail,
+    readCalendar: selected.readCalendar and granted.readCalendar,
+    writeCalendar: selected.writeCalendar and granted.writeCalendar
+  })
+pure val selectedValues = grantedValues
+pure def lawAGraceNativeConnectStoresOnlySelectedAndGrantedPermissions(signedInSubject: str, grantedSubject: str, refreshIssued: bool, selected: NativeGoogleScopes, granted: NativeGoogleScopes): bool = {
+  val stored = graceNativeConnectStores(signedInSubject, grantedSubject, refreshIssued, selected, granted)
+  (stored.readMail implies (selected.readMail and granted.readMail))
+  and (stored.sendMail implies (selected.sendMail and granted.sendMail))
+  and (stored.trashMail implies (selected.trashMail and granted.trashMail))
+  and (stored.readCalendar implies (selected.readCalendar and granted.readCalendar))
+  and (stored.writeCalendar implies (selected.writeCalendar and granted.writeCalendar))
+}
+```

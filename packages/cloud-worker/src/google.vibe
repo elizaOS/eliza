@@ -1,8 +1,8 @@
-// spec/cloud/index.md, "Story: Connect Google mail and calendar"; spec/cloud/services/google/mailRead.md, "Story: Notice new mail while I sign in privately"; spec/cloud/identity/federatedSignIn.md, "Story: Connect mail and calendar from the same Google sheet"
+// spec/cloud/index.md, "Story: Connect Google mail and calendar"; spec/cloud/services/google/mailRead.md, "Story: Notice new mail while I sign in privately"; spec/cloud/identity/federatedSignIn.md, "Story: Connect mail and calendar from the same Google sheet"; spec/cloud/identity/federatedSignIn.md, "Grace native consent stores only permissions Grace selected and Google granted"
 import type { Client } from "pg"
 import type { cloudCredential } from "./identity.vibe"
 import { canReadCloudCalendarReminder, currentAttachmentTransfer } from "../gen/cloud.effect.vibe"
-import { nativeConnectAttempts, nativeConnectStores, nativeConnectStoresAny, nativeConnectWindowSeconds } from "../gen/cloud__identity__federatedSignIn.effect.vibe"
+import { graceNativeConnectStores, nativeConnectAttempts, nativeConnectStoresAny, nativeConnectWindowSeconds } from "../gen/cloud__identity__federatedSignIn.effect.vibe"
 import { inboxWatchCanAnswer } from "../gen/cloud__services__google__mailRead.effect.vibe"
 import { decodeInboxWatch, inboxArrivalBodyLimit, inboxArrivalPath, inboxWatchBinding, inboxWatchInput, observeInboxWatch, InboxHistoryInvalid, InboxWatchRequestInvalid } from "./services/google/inbox-arrival.vibe"
 import { Aead, Digest, SecureRandom } from "effect/crypto"
@@ -350,12 +350,15 @@ effect function connectNative(request: Request, env: GoogleEnv, db: Client, acco
   const refreshToken = credentials.refresh_token ?? ""
   const granted = new Set((credentials.scope ?? "").split(/\s+/))
   const profile = try verifiedProfile(credentials)
-  const stored = nativeConnectStores(signedInSubject, profile.sub, refreshToken !== "", {
-    readMail: selected.mail && granted.has(scopeByCapability.mail),
-    sendMail: selected.sendMail && granted.has(scopeByCapability.send_mail),
-    trashMail: selected.trashMail && granted.has(scopeByCapability.trash_mail),
-    readCalendar: selected.calendar && granted.has(scopeByCapability.calendar),
-    writeCalendar: selected.writeCalendar && granted.has(scopeByCapability.write_calendar)
+  const stored = graceNativeConnectStores(signedInSubject, profile.sub, refreshToken !== "", {
+    readMail: selected.mail, sendMail: selected.sendMail, trashMail: selected.trashMail,
+    readCalendar: selected.calendar, writeCalendar: selected.writeCalendar
+  }, {
+    readMail: granted.has(scopeByCapability.mail),
+    sendMail: granted.has(scopeByCapability.send_mail),
+    trashMail: granted.has(scopeByCapability.trash_mail),
+    readCalendar: granted.has(scopeByCapability.calendar),
+    writeCalendar: granted.has(scopeByCapability.write_calendar)
   })
   if (!nativeConnectStoresAny(stored)) throw new AuthorizationFailed()
   try link(env, config, db, account, profile, {
