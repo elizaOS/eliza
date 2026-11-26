@@ -32,7 +32,6 @@ import {
   subtractChangeSetBaseline,
 } from "./workspace.vibe"
 import {
-  SubAgentInbox,
   SubAgentRouter,
   SUB_AGENT_ROUTER_SERVICE_TYPE,
   SwarmCoordinatorService,
@@ -44,10 +43,8 @@ import {
   WaveSupervisor,
   WAVE_SUPERVISOR_SERVICE_TYPE,
   STALL_GRILL_PROMPT,
-  PARENT_AGENT_DIRECTIVE_MARKER,
   composeRoomDigest,
   createDeterministicLanePlan,
-  decideInterruption,
   detectStalledSessions,
   extractScopePaths,
   laneReadiness,
@@ -55,8 +52,6 @@ import {
   sanitizeLaneBranchName,
   scopeSetsOverlap,
   statusEmoji,
-  stepParentDirectiveBuffer,
-  takeParentAgentDirective,
   validateLaneDependencyGraph,
 } from "./routing.vibe"
 import {
@@ -166,7 +161,6 @@ import {
   buildGoalPrompt,
   buildIndependentVerifierPrompt,
   buildSubAgentIdentityMd,
-  collectCompletionResiduals,
   collectFsObservedFiles,
   defaultAuditLogPath,
   deleteBuiltApp,
@@ -185,7 +179,6 @@ import {
   runIndependentVerification,
   staticAcceptanceCriteria,
   summarizeEnvelope,
-  verifyClaimedFiles,
   writeWorkspaceIdentity,
 } from "./verification.vibe"
 import {
@@ -202,7 +195,6 @@ import {
   classifyIpLiteral,
   createCredentialBridgeToken,
   createSubscriptionExecutionAuthorization,
-  decideSpendAuthorization,
   detectLandlockAvailability,
   ensureTaskWorkdir,
   extractRepositoryUrlFromText,
@@ -301,8 +293,6 @@ export function createAgentOrchestratorPlugin(opts?: {
     init: async (_config, runtime: IAgentRuntime) => {
       runtime.contexts.tryRegister(orchestratorContext)
       const cleanups: Array<() => void> = []
-      const inbox = new SubAgentInbox()
-      cleanups.push(() => inbox.clearAll())
       const auditPath = typeof runtime.getSetting === "function"
         ? (typeof runtime.getSetting("ACP_AUDIT_LOG_PATH") === "string" ? String(runtime.getSetting("ACP_AUDIT_LOG_PATH")) : defaultAuditLogPath())
         : defaultAuditLogPath()
@@ -326,7 +316,7 @@ export function createAgentOrchestratorPlugin(opts?: {
       }
       const acpSvc: unknown = runtime.getService(ACP_SUBPROCESS_SERVICE_TYPE)
       if (acpSvc instanceof AcpService) {
-        const unsub = acpSvc.onSessionEvent((sessionId, event, data) => {
+        const unsub = acpSvc.onSessionEvent((_sessionId, event, data) => {
           if (event === "promoted" && typeof data.sessionId === "string" && typeof data.taskId === "string") {
             const tasks = runtime.getService(ORCHESTRATOR_TASK_SERVICE_TYPE)
             const promoted = acpSvc.getSession(data.sessionId)
@@ -338,12 +328,6 @@ export function createAgentOrchestratorPlugin(opts?: {
                 status: promoted.status,
                 workdir: promoted.workdir,
               })
-            }
-          }
-          if (event === "task_complete" || event === "ready" || event === "reconnected") {
-            const queued = inbox.drain(sessionId)
-            for (const msg of queued) {
-              void acpSvc.sendToSession(sessionId, msg)
             }
           }
         })
@@ -404,7 +388,6 @@ export {
   ORCHESTRATOR_TASK_SERVICE_TYPE,
   ORDERED_ADAPTER_IDS,
   OrchestratorTaskService,
-  PARENT_AGENT_DIRECTIVE_MARKER,
   PI_PROVIDER_CREDENTIAL_ENVS,
   PI_PROVIDER_ROUTES,
   RecoveryConflictError,
@@ -420,7 +403,6 @@ export {
   SWARM_COORDINATOR_SERVICE_TYPE,
   SessionCapError,
   SsrfBlockedError,
-  SubAgentInbox,
   SubAgentRouter,
   SubscriptionCodingAdapterError,
   SwarmCoordinatorService,
@@ -473,7 +455,6 @@ export {
   cleanForChat,
   codingAgentExamplesProvider,
   codingSessionChangesProvider,
-  collectCompletionResiduals,
   collectFsObservedFiles,
   compactContextWindow,
   compactProgressText,
@@ -484,8 +465,6 @@ export {
   createSubscriptionExecutionAuthorization,
   createTaskAction,
   createTerminalUnsupportedTasksAction,
-  decideInterruption,
-  decideSpendAuthorization,
   defaultAuditLogPath,
   deleteBuiltApp,
   detectLandlockAvailability,
@@ -569,7 +548,6 @@ export {
   startCodingTaskAction,
   staticAcceptanceCriteria,
   statusEmoji,
-  stepParentDirectiveBuffer,
   stopAgentAction,
   stopTaskAgentAction,
   storeOutputArtifact,
@@ -585,7 +563,6 @@ export {
   subtractChangeSetBaseline,
   summarizeEnvelope,
   summarizeUsageRows,
-  takeParentAgentDirective,
   taskAgentExamplesProvider,
   taskControlAction,
   taskHistoryAction,
@@ -599,7 +576,6 @@ export {
   validateLaneDependencyGraph,
   verifiedUrlsExcludingDead,
   verifyChildTask,
-  verifyClaimedFiles,
   verifySessionBridgeToken,
   writeWorkspaceIdentity,
 }

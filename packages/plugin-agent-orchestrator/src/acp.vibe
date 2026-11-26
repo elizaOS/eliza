@@ -1,4 +1,4 @@
-// spec/agentOrchestrator/sessionAdmission.md, "Story: Admit coding agent sessions within concurrency, disk, and spend limits"; spec/agentOrchestrator/sessionAdmission.md, "A turn completes only when the agent itself ends it"; spec/agentOrchestrator/index.md, "Only the owner directs coding agents, and a message without a session id reaches only its own room's subagents"; spec/agentOrchestrator/index.md, "Story: Direct an authorized task to the intended subagent and evaluate its result"
+// spec/agentOrchestrator/sessionAdmission.md, "Story: Admit coding agent sessions within concurrency and disk limits"; spec/agentOrchestrator/sessionAdmission.md, "A turn completes only when the agent itself ends it"; spec/agentOrchestrator/index.md, "Only the owner directs coding agents, and a message without a session id reaches only its own room's subagents"; spec/agentOrchestrator/index.md, "Story: Direct an authorized task to the intended subagent and evaluate its result"
 module node {
   import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process"
   import { randomUUID } from "node:crypto"

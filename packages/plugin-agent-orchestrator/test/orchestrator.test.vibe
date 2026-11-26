@@ -1,4 +1,4 @@
-// spec/agentOrchestrator/index.md, "Story: Direct an authorized task to the intended subagent and evaluate its result"; spec/agentOrchestrator/taskLifecycle.md, "Story: Track an orchestrated coding task from creation through verified completion"; spec/agentOrchestrator/sessionAdmission.md, "Story: Admit coding agent sessions within concurrency, disk, and spend limits"; spec/agentOrchestrator/routerGuard.md, "Story: Bound subagent round-trips, deduplicate completion relays, and dispatch streaming parent directives once"; spec/agentOrchestrator/verification.md, "Story: Verify subagent deliverables against concrete evidence and route fast evaluations cleanly"; spec/agentOrchestrator/lanesAndRouting.md, "Story: Route coding tasks to authorized adapters, coordinate parallel lanes safely, and compact context within budget"
+// spec/agentOrchestrator/index.md, "Story: Direct an authorized task to the intended subagent and evaluate its result"; spec/agentOrchestrator/taskLifecycle.md, "Story: Track an orchestrated coding task from creation through verified completion"; spec/agentOrchestrator/sessionAdmission.md, "Story: Admit coding agent sessions within concurrency and disk limits"; spec/agentOrchestrator/verification.md, "Story: Verify subagent deliverables against concrete evidence and route fast evaluations cleanly"; spec/agentOrchestrator/lanesAndRouting.md, "Story: Route coding tasks to authorized adapters, coordinate parallel lanes safely, and compact context within budget"
 module node {
   import { execFileSync } from "node:child_process"
   import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
@@ -82,7 +82,6 @@ import {
   FileTaskStore,
   NativeStdioAcpTransport,
   OrchestratorTaskService,
-  SubAgentInbox,
   SubAgentRouter,
   SwarmCoordinatorService,
   TASK_AUDIT_EVENT,
@@ -103,15 +102,12 @@ import {
   classifyIpLiteral,
   codingAgentExamplesProvider,
   codingSessionChangesProvider,
-  collectCompletionResiduals,
   collectFsObservedFiles,
   compactContextWindow,
   createAgentOrchestratorPlugin,
   createCredentialBridgeToken,
   createDeterministicLanePlan,
   createSubscriptionExecutionAuthorization,
-  decideInterruption,
-  decideSpendAuthorization,
   deleteBuiltApp,
   dispatchParallelBatch,
   enforcePiProviderCredentialIsolation,
@@ -134,7 +130,6 @@ import {
   runFastCodeEval,
   sanitizeCompletionRelay,
   sendChildDirective,
-  stepParentDirectiveBuffer,
   stripAnsi,
   stripSubscriptionApiEnvironment,
   subAgentCompletionResponseEvaluator,
@@ -144,7 +139,6 @@ import {
   truncateTail,
   validateLaneDependencyGraph,
   verifyChildTask,
-  verifyClaimedFiles,
   verifySessionBridgeToken,
   type ChildSession,
   type SessionInfo,
@@ -345,7 +339,7 @@ it.effect('Durable 9-status task lifecycle enforces coordinator authority, bound
   })
 })
 
-it.effect('ACP session admission enforces concurrency caps, priority-FIFO aging queue, spend allowance, disk backpressure, and subscription attendance TTL (spec/agentOrchestrator/sessionAdmission.md, "Story: Admit coding agent sessions within concurrency, disk, and spend limits"; spec/agentOrchestrator/sessionAdmission.md, "Active workers and queued admissions stay within configured bounds"; spec/agentOrchestrator/sessionAdmission.md, "Disk budget, spend allowance, and subscription attendance fail closed")', effect () => {
+it.effect('ACP session admission enforces concurrency caps, priority-FIFO aging queue, disk backpressure, and subscription attendance TTL (spec/agentOrchestrator/sessionAdmission.md, "Story: Admit coding agent sessions within concurrency and disk limits"; spec/agentOrchestrator/sessionAdmission.md, "Active workers and queued admissions stay within configured bounds"; spec/agentOrchestrator/sessionAdmission.md, "Disk budget and subscription attendance fail closed")', effect () => {
   const capturedEnvs: Record<string, string>[] = []
   const spyTransport = {
     id: "spy",
@@ -380,8 +374,6 @@ it.effect('ACP session admission enforces concurrency caps, priority-FIFO aging 
     { id: "q-normal-new", agentType: "elizaos", priority: "normal", enqueuedAtMs: 120_000, spawnOptions: { workdir: "/tmp" } },
     { id: "q-urgent-new", agentType: "elizaos", priority: "urgent", enqueuedAtMs: 120_000, spawnOptions: { workdir: "/tmp" } },
   ], 150_000, 30_000)
-  const overCapSpend = decideSpendAuthorization({ spentUsd: 9, estimatedUsd: 2, capUsd: 10, highRisk: false, userApproved: false })
-  const highRiskSpend = decideSpendAuthorization({ spentUsd: 1, estimatedUsd: 1, capUsd: 10, highRisk: true, userApproved: false })
   const now = 1_700_000_000_000
   const validAuth = createSubscriptionExecutionAuthorization("req-1", "user-1", now)
   const kimiOk = assertSubscriptionCodingAdapterReady("kimi", "user-attended", { [SUBSCRIPTION_EXECUTION_AUTHORIZATION_METADATA_KEY]: validAuth }, now + 5_000) catch () => "failed"
@@ -412,8 +404,6 @@ it.effect('ACP session admission enforces concurrency caps, priority-FIFO aging 
     assert.strictEqual(acp.admissionQueue.length, 0)
     assert.strictEqual(activeSessionsAfterStop.length, 2)
     assert.strictEqual(ordered[0]?.id, "q-low-old")
-    assert.strictEqual(overCapSpend.verdict, "SpendDenyCap")
-    assert.strictEqual(highRiskSpend.verdict, "SpendRequireApproval")
     assert.notStrictEqual(kimiOk, "failed")
     assert.strictEqual(kimiExpired, "failed")
     assert.strictEqual(strippedKimiEnv.MOONSHOT_API_KEY, undefined)
@@ -434,7 +424,7 @@ it.effect('ACP session admission enforces concurrency caps, priority-FIFO aging 
   })
 })
 
-it.effect('A real ACP agent process completes a turn only on its own end_turn, and a vanished agent errors its session and frees its slot (spec/agentOrchestrator/sessionAdmission.md, "Story: Admit coding agent sessions within concurrency, disk, and spend limits"; spec/agentOrchestrator/sessionAdmission.md, "A turn completes only when the agent itself ends it")', effect () => {
+it.effect('A real ACP agent process completes a turn only on its own end_turn, and a vanished agent errors its session and frees its slot (spec/agentOrchestrator/sessionAdmission.md, "Story: Admit coding agent sessions within concurrency and disk limits"; spec/agentOrchestrator/sessionAdmission.md, "A turn completes only when the agent itself ends it")', effect () => {
   const dir = makeTempDir("orch-acp-agent-")
   const command = writeFakeAcpAgent(dir)
   const transport = new NativeStdioAcpTransport()
@@ -480,39 +470,7 @@ it.effect('A real ACP agent process completes a turn only on its own end_turn, a
   })
 })
 
-it.effect('Router loop guard bounds round-trips and deduplicates completion relays while streaming parent directives and interruptions classify cleanly (spec/agentOrchestrator/routerGuard.md, "Story: Bound subagent round-trips, deduplicate completion relays, and dispatch streaming parent directives once"; spec/agentOrchestrator/routerGuard.md, "Router round-trips, state-lost respawns, and completion relays obey strict caps"; spec/agentOrchestrator/routerGuard.md, "Streaming parent directives are buffered across chunks and malformed markers never block later directives"; spec/agentOrchestrator/routerGuard.md, "Mid-turn room messages classify cleanly into ignore, queue, interrupt, or new task")', effect () => {
-  const router = new SubAgentRouter()
-  for (let i = 0; i < 4; i += 1) router.advanceRoundTrip("sess-1")
-  const exceeded = router.advanceRoundTrip("sess-1")
-  const firstClaim = router.claimCompletionPost("sess-1")
-  const dupClaim = router.claimCompletionPost("sess-1")
-  const step1 = stepParentDirectiveBuffer(false, "", 'Mention USE_SKILL parent-agent in prose. USE_SKILL parent-agent {"command":"cloud.health",')
-  const step2 = stepParentDirectiveBuffer(step1.pendingAfter, step1.buffer, '"params":{"ok":true}} trailing')
-  const busyStop = decideInterruption({ addressed: true, sessionBusy: true, text: "stop right now" })
-  const busyFollowUp = decideInterruption({ addressed: true, sessionBusy: true, text: "also update the readme" })
-  const ambient = decideInterruption({ addressed: true, sessionBusy: true, text: "nice" })
-  const inbox = new SubAgentInbox(2)
-  inbox.enqueue("sess-1", "m1")
-  inbox.enqueue("sess-1", "m2")
-  inbox.enqueue("sess-1", "m3")
-  const drained = inbox.drain("sess-1")
-  try Effect.try(() => {
-    assert.strictEqual(exceeded.lastDecision, "LoopCapExceeded")
-    assert.strictEqual(firstClaim.claimed, true)
-    assert.strictEqual(dupClaim.claimed, false)
-    assert.strictEqual(step1.pendingAfter, true)
-    assert.strictEqual(step1.dispatched.length, 0)
-    assert.strictEqual(step2.pendingAfter, false)
-    assert.strictEqual(step2.dispatched[0]?.command, "cloud.health")
-    assert.strictEqual(busyStop, "InterruptionInterrupt")
-    assert.strictEqual(busyFollowUp, "InterruptionNewTask")
-    assert.strictEqual(ambient, "InterruptionIgnore")
-    assert.deepStrictEqual(drained, ["m2", "m3"])
-    assert.strictEqual(inbox.droppedCount(), 1)
-  })
-})
-
-it.effect('Verification pipeline enforces sentence-end path mining, claimed-file ledger, residuals, diff secrets, Cerebras fast-eval routing, and memory redaction (spec/agentOrchestrator/verification.md, "Story: Verify subagent deliverables against concrete evidence and route fast evaluations cleanly"; spec/agentOrchestrator/verification.md, "Sentence-end punctuation keeps named files while longer names are never truncated"; spec/agentOrchestrator/verification.md, "Claimed edits, completion residuals, and diff secrets enforce fail-closed verification"; spec/agentOrchestrator/verification.md, "Bounded verification and classification tasks route to fast low-latency evaluators")', effect () => {
+it.effect('Verification pipeline enforces sentence-end path mining, the commit diff gate, Cerebras fast-eval routing, and memory redaction (spec/agentOrchestrator/verification.md, "Story: Verify subagent deliverables against concrete evidence and route fast evaluations cleanly"; spec/agentOrchestrator/verification.md, "Sentence-end punctuation keeps named files while longer names are never truncated"; spec/agentOrchestrator/verification.md, "Diff secrets, critical findings and oversized diffs block a commit, and refined criteria keep a floor"; spec/agentOrchestrator/verification.md, "Bounded verification and classification tasks route to fast low-latency evaluators")', effect () => {
   const dir = makeTempDir("orch-verify-")
   const started = Date.now() - 2_000
   writeTempFile(dir, "index.html", "<h1>ok</h1>")
@@ -520,10 +478,6 @@ it.effect('Verification pipeline enforces sentence-end path mining, claimed-file
   const fsObserved = try collectFsObservedFiles(dir, ["Created ./index.html!"], started)
   const fsLongerNotMatched = try collectFsObservedFiles(dir, ["Created ./index.htmlbak"], started)
   removeTempDir(dir)
-  const claimedPass = verifyClaimedFiles(["src/a.ts"], ["src/a.ts", "src/b.ts"])
-  const claimedBlock = verifyClaimedFiles(["src/a.ts", "src/ghost.ts"], ["src/a.ts"])
-  const residualsClean = collectCompletionResiduals({ uncommittedFiles: ["AGENTS.md"], ownedArtifacts: ["AGENTS.md"], failedChecks: [] })
-  const residualsBlocked = collectCompletionResiduals({ uncommittedFiles: ["src/dirty.ts"], failedChecks: ["vitest"] })
   const diffSecretBlocked = reviewDiff({ changedFiles: ["src/a.ts"], diff: "+const k = 'sk-123456789012345678901234567890';" })
   const diffClean = reviewDiff({ changedFiles: ["src/a.ts"], diff: "+export const ok = 1;" })
   const criteria = generateDefaultAcceptanceCriteria("Fix login", ["Unnamed file check", "Keep auth green", "Keep auth green"])
@@ -538,10 +492,6 @@ it.effect('Verification pipeline enforces sentence-end path mining, claimed-file
     assert.ok(mined.includes("src/app.ts"))
     assert.deepStrictEqual(fsObserved, ["./index.html"])
     assert.deepStrictEqual(fsLongerNotMatched, [])
-    assert.strictEqual(claimedPass.passed, true)
-    assert.strictEqual(claimedBlock.passed, false)
-    assert.strictEqual(residualsClean.passed, true)
-    assert.strictEqual(residualsBlocked.passed, false)
     assert.strictEqual(diffSecretBlocked.passed, false)
     assert.strictEqual(diffClean.passed, true)
     assert.ok(criteria.length >= 3)
@@ -675,8 +625,10 @@ it.effect('Backend routing, Pi credential isolation, multi-lane waves, real git 
   const pActive = try tryPromise(() => activeSubAgentsProvider.get(runtime, makeMessage("code"), {} as State))
   const pWs = try tryPromise(() => activeWorkspaceContextProvider.get(runtime, makeMessage("code"), {} as State))
   const pEx = try tryPromise(() => codingAgentExamplesProvider.get(runtime, makeMessage("code"), {} as State))
-  acp.updateSessionMetadata(spawnedId, { lastChangeSet: { ...changeSet, capturedAt: Date.now() } })
+  const longDiff = `${changeSet.diff}\n${Array.from({ length: 400 }, (_, i) => `+const filler${i} = "${"y".repeat(40)}"`).join("\n")}\n+export const lastLine = true`
+  acp.updateSessionMetadata(spawnedId, { lastChangeSet: { ...changeSet, diff: longDiff, capturedAt: Date.now() } })
   const pChanges = try tryPromise(() => codingSessionChangesProvider.get(runtime, makeMessage("what changed"), {} as State))
+  const wavesAfterCreates = waves.getWaveStatuses().filter((w) => w.waveId !== "wave-1")
 
   const completionMsg = makeMessage("[tool output: bash]ok[/tool output] Done!", {
     content: { text: "Done!", source: MESSAGE_SOURCE_SUB_AGENT, metadata: { subAgent: true, subAgentEvent: "task_complete", subAgentDeliverable: "Built auth cleanly" } },
@@ -776,6 +728,9 @@ it.effect('Backend routing, Pi credential isolation, multi-lane waves, real git 
     assert.ok((pWs.text ?? "").includes("active_workspace_context"))
     assert.ok((pEx.text ?? "").includes("task_agent_action_examples"))
     assert.ok((pChanges.text ?? "").includes("feature.ts"))
+    assert.ok((pChanges.text ?? "").includes(longDiff))
+    assert.ok((pChanges.text ?? "").includes("+export const lastLine = true"))
+    assert.deepStrictEqual(wavesAfterCreates, [])
     assert.strictEqual(evalPatch?.reply, "Built auth cleanly")
     assert.ok(failPatch?.reply?.includes("Ada"))
     assert.strictEqual(builtAppsCount, 1)
@@ -806,5 +761,45 @@ it.effect('Backend routing, Pi credential isolation, multi-lane waves, real git 
     assert.strictEqual(stripAnsi(`${String.fromCharCode(27)}[32mgreen${String.fromCharCode(27)}[0m`), "green")
     assert.strictEqual(sanitizeCompletionRelay("[tool output: sh]raw[/tool output] Clean answer"), "Clean answer")
     assert.strictEqual(swarm.acpBindState.status, "bound")
+  })
+})
+
+it.effect('A create releases the slot of a lane whose session failed, reports a lane held by the concurrency cap as held, and forgets its wave when it returns (spec/agentOrchestrator/lanesAndRouting.md, "Multi-lane wave execution prevents scope collisions and enforces concurrency and budget caps")', effect () => {
+  const flakyTransport = {
+    id: "flaky",
+    spawn(_session: SessionInfo, _env: Record<string, string>) {
+      return { ok: true }
+    },
+    prompt(session: SessionInfo, input: string): Promise<{ readonly output: string; readonly stopReason: string }> {
+      if (input.includes("explode")) return Promise.reject(new Error("agent process crashed"))
+      return Promise.resolve({ output: `${session.label} did: ${input}`, stopReason: input.includes("cut off") ? "max_tokens" : "end_turn" })
+    },
+    async cancel() { return },
+    async close() { return },
+  }
+  const acp = new AcpService(undefined, { transport: flakyTransport })
+  const waves = new WaveSupervisor()
+  const runtime = makeMockRuntime({
+    [ACP_SUBPROCESS_SERVICE_TYPE]: acp,
+    [ORCHESTRATOR_TASK_SERVICE_TYPE]: new OrchestratorTaskService(),
+    [WAVE_SUPERVISOR_SERVICE_TYPE]: waves,
+  })
+  const workdir = try ensureTaskWorkdir("orch-test-waves")
+  const released = try tryPromise(() => tasksAction.handler(runtime, makeMessage("lanes"), undefined, {
+    parameters: { action: "create", agents: "Build packages/g/src/x.ts and explode | Build packages/h/src/y.ts", maxParallel: 1, workdir },
+  }))
+  const held = try tryPromise(() => tasksAction.handler(runtime, makeMessage("lanes"), undefined, {
+    parameters: { action: "create", agents: "Build packages/i/src/z.ts and get cut off | Build packages/j/src/w.ts", maxParallel: 1, workdir },
+  }))
+  try Effect.try(() => {
+    const releasedSessions = (released.data as { sessions: { laneId: string; ok: boolean; status: string }[] }).sessions
+    assert.strictEqual(released.success, true)
+    assert.deepStrictEqual(releasedSessions.map((s) => [s.laneId, s.ok]), [["lane-1", false], ["lane-2", true]])
+    assert.deepStrictEqual((released.data as { notLaunchedLaneIds: string[] }).notLaunchedLaneIds, [])
+    assert.strictEqual(held.success, true)
+    assert.deepStrictEqual((held.data as { notLaunchedLaneIds: string[] }).notLaunchedLaneIds, ["lane-2"])
+    assert.deepStrictEqual((held.promptData as { capHeldLaneIds: string[] }).capHeldLaneIds, ["lane-2"])
+    assert.match(held.text ?? "", /lane-2 not launched: held by the wave's concurrency cap: 1 of 1 lanes were still active/)
+    assert.deepStrictEqual(waves.getWaveStatuses(), [])
   })
 })

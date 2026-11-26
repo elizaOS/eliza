@@ -1,4 +1,4 @@
-// spec/agentOrchestrator/routerGuard.md, "Story: Bound subagent round-trips, deduplicate completion relays, and dispatch streaming parent directives once"; spec/agentOrchestrator/lanesAndRouting.md, "Multi-lane wave execution prevents scope collisions and enforces concurrency and budget caps"
+// spec/agentOrchestrator/lanesAndRouting.md, "Multi-lane wave execution prevents scope collisions and enforces concurrency and budget caps"
 import {
   Service,
   SWARM_COORDINATOR_SERVICE_TYPE,
@@ -13,18 +13,6 @@ import {
   type SwarmEvent,
   type SwarmEventListener,
 } from "@elizaos/core"
-import {
-  advanceDirectiveChunk,
-  apply as applyRouterGuard,
-  classifyInterruption,
-  initial as initialRouterGuard,
-  isApproachingCap,
-  type Event as RouterGuardEvent,
-  type InterruptionAction,
-  type InterruptionIntent,
-  type RouterGuardState,
-  type StreamChunkKind,
-} from "../gen/agentOrchestrator__routerGuard.effect.vibe"
 import {
   apply as applyWaveState,
   evaluateLaneReadiness,
@@ -48,7 +36,6 @@ export const SUB_AGENT_ROUTER_SERVICE_TYPE = "ACPX_SUB_AGENT_ROUTER"
 export const TASK_SUPERVISOR_SERVICE_TYPE = "TASK_SUPERVISOR_SERVICE"
 export const TASK_WATCHDOG_SERVICE_TYPE = "TASK_WATCHDOG_SERVICE"
 export const WAVE_SUPERVISOR_SERVICE_TYPE = "WAVE_SUPERVISOR_SERVICE"
-export const PARENT_AGENT_DIRECTIVE_MARKER = "USE_SKILL parent-agent"
 export const STALL_GRILL_PROMPT = "Status check: report your concrete progress, blocking error, or final verification evidence."
 
 const PERSONA_NAMES: readonly string[] = [
@@ -73,184 +60,15 @@ export function pickSubAgentName(existingLabels: readonly string[]): string {
   }
 }
 
-export interface ParentAgentDirective {
-  readonly command: string
-  readonly params: Readonly<Record<string, unknown>>
-}
-
-export interface ParentAgentDirectiveTake {
-  readonly directive?: ParentAgentDirective
-  readonly remainingBuffer: string
-  readonly chunkKind: StreamChunkKind
-}
-
-export function takeParentAgentDirective(buffer: string): ParentAgentDirectiveTake {
-  const idx = buffer.indexOf(PARENT_AGENT_DIRECTIVE_MARKER)
-  if (idx < 0) {
-    return { remainingBuffer: "", chunkKind: "ChunkProse" }
-  }
-  const afterMarker = buffer.slice(idx + PARENT_AGENT_DIRECTIVE_MARKER.length).trimStart()
-  if (!afterMarker.startsWith("{")) {
-    return { remainingBuffer: afterMarker, chunkKind: "ChunkMention" }
-  }
-  let depth = 0
-  let inString = false
-  let escaped = false
-  let closeIdx = -1
-  for (let i = 0; i < afterMarker.length; i += 1) {
-    const ch = afterMarker[i]
-    if (escaped) { escaped = false; continue }
-    if (ch === "\\") { escaped = true; continue }
-    if (ch === '"') { inString = !inString; continue }
-    if (inString) continue
-    if (ch === "{") depth += 1
-    else if (ch === "}") {
-      depth -= 1
-      if (depth === 0) { closeIdx = i; break }
-    }
-  }
-  if (closeIdx < 0) {
-    return { remainingBuffer: buffer.slice(idx), chunkKind: "ChunkOpening" }
-  }
-  const jsonText = afterMarker.slice(0, closeIdx + 1)
-  const rest = afterMarker.slice(closeIdx + 1)
-  try {
-    const parsed = JSON.parse(jsonText) as Record<string, unknown>
-    const command = typeof parsed.command === "string" ? parsed.command : typeof parsed.action === "string" ? parsed.action : ""
-    if (!command) {
-      return { remainingBuffer: rest, chunkKind: "ChunkMalformed" }
-    }
-    const params = typeof parsed.params === "object" && parsed.params !== null && !Array.isArray(parsed.params)
-      ? parsed.params as Record<string, unknown>
-      : {}
-    return { directive: { command, params }, remainingBuffer: rest, chunkKind: "ChunkDirective" }
-  } catch {
-    return { remainingBuffer: rest, chunkKind: "ChunkMalformed" }
-  }
-}
-
-export function stepParentDirectiveBuffer(
-  pendingBefore: boolean,
-  previousBuffer: string,
-  incomingChunk: string,
-): { readonly pendingAfter: boolean; readonly dispatched: readonly ParentAgentDirective[]; readonly buffer: string } {
-  let working = previousBuffer + incomingChunk
-  let pending = pendingBefore
-  const dispatched: ParentAgentDirective[] = []
-  for (let i = 0; i < 8; i += 1) {
-    const taken = takeParentAgentDirective(working)
-    const effectiveKind: StreamChunkKind = pending && taken.chunkKind === "ChunkDirective" ? "ChunkClosing" : taken.chunkKind
-    const stepRes = advanceDirectiveChunk(pending, effectiveKind)
-    pending = stepRes.pendingAfter
-    if (stepRes.dispatchedNow && taken.directive) {
-      dispatched.push(taken.directive)
-    }
-    working = taken.remainingBuffer
-    if (pending || !working.includes(PARENT_AGENT_DIRECTIVE_MARKER)) break
-  }
-  return { pendingAfter: pending, dispatched, buffer: pending ? working : "" }
-}
-
-export function decideInterruption(input: {
-  readonly addressed: boolean
-  readonly sessionBusy: boolean
-  readonly text: string
-}): InterruptionAction {
-  const lower = input.text.trim().toLowerCase()
-  const intent: InterruptionIntent =
-    /\b(stop|cancel|abort|halt|kill)\b/u.test(lower) ? "IntentStop"
-      : /\b(instead|switch to|change direction|redirect)\b/u.test(lower) ? "IntentRedirect"
-        : /\b(nice|thanks|great|looks good|cool)\b/u.test(lower) && lower.length < 40 ? "IntentAmbient"
-          : /\b(also|unrelated|new task|separately)\b/u.test(lower) ? "IntentUnrelated"
-            : "IntentFollowUp"
-  return classifyInterruption(input.addressed, input.sessionBusy, intent)
-}
-
-export class SubAgentInbox {
-  readonly queues = new Map<string, string[]>()
-  readonly maxPerSession: number
-  dropped = 0
-
-  constructor(maxPerSession = 16) {
-    this.maxPerSession = maxPerSession
-  }
-
-  enqueue(sessionId: string, message: string): boolean {
-    const queue = this.queues.get(sessionId) ?? []
-    if (queue.length >= this.maxPerSession) {
-      queue.shift()
-      this.dropped += 1
-    }
-    queue.push(message)
-    this.queues.set(sessionId, queue)
-    return true
-  }
-
-  drain(sessionId: string): readonly string[] {
-    const items = this.queues.get(sessionId) ?? []
-    this.queues.delete(sessionId)
-    return items
-  }
-
-  size(sessionId: string): number {
-    return this.queues.get(sessionId)?.length ?? 0
-  }
-
-  droppedCount(): number {
-    return this.dropped
-  }
-
-  clearAll(): void {
-    this.queues.clear()
-  }
-}
-
 export class SubAgentRouter extends Service {
   static override serviceType = SUB_AGENT_ROUTER_SERVICE_TYPE
-  override capabilityDescription = "Routes sub-agent completions, enforces loop/respawn caps, and deduplicates relays."
+  override capabilityDescription = "Counts sub-agent spawns per origin and keeps each origin's latest sanitized result."
 
-  readonly guards = new Map<string, RouterGuardState>()
   readonly originSpawnCounts = new Map<string, number>()
   readonly originBestResults = new Map<string, string>()
 
   static override start(runtime: IAgentRuntime): Promise<Service> {
     return Promise.resolve(new SubAgentRouter(runtime))
-  }
-
-  getGuardState(sessionId: string): RouterGuardState {
-    return this.guards.get(sessionId) ?? initialRouterGuard
-  }
-
-  effect dispatchGuard(sessionId: string, event: RouterGuardEvent): { readonly accepted: boolean; readonly state: RouterGuardState }!! {
-    const current = this.getGuardState(sessionId)
-    const outcome = applyRouterGuard(current, event) catch () => undefined
-    if (outcome === undefined) {
-      return { accepted: false, state: current }
-    }
-    this.guards.set(sessionId, outcome)
-    return { accepted: true, state: outcome }
-  }
-
-  effect stepGuard(sessionId: string, event: RouterGuardEvent): RouterGuardState!! {
-    return (try this.dispatchGuard(sessionId, event)).state
-  }
-
-  advanceRoundTrip(sessionId: string): RouterGuardState {
-    return runSync(this.stepGuard(sessionId, { type: "advanceRoundTrip" }))
-  }
-
-  recordStateLostRespawn(sessionId: string): RouterGuardState {
-    return runSync(this.stepGuard(sessionId, { type: "recordStateLostRespawn" }))
-  }
-
-  claimCompletionPost(sessionId: string): { readonly claimed: boolean; readonly state: RouterGuardState } {
-    const next = runSync(this.stepGuard(sessionId, { type: "postCompletion" }))
-    return { claimed: next.lastDecision === "LoopProceed", state: next }
-  }
-
-  isSessionApproachingCap(sessionId: string): boolean {
-    const g = this.getGuardState(sessionId)
-    return isApproachingCap(g.roundTrips, g.roundTripCap)
   }
 
   noteSpawnForOrigin(originId: string): number {
@@ -272,7 +90,6 @@ export class SubAgentRouter extends Service {
   }
 
   override async stop(): Promise<void> {
-    this.guards.clear()
     this.originSpawnCounts.clear()
     this.originBestResults.clear()
   }
@@ -392,8 +209,12 @@ export class WaveSupervisor extends Service {
   openWave(owner: string, limits: { readonly maxParallel: number; readonly totalLanes: number; readonly budgetCapCents: number }): string {
     this.opened += 1
     const waveId = `${owner}:wave-${this.opened}`
-    this.waves.set(waveId, { activeLanes: 0, completedLanes: 0, spentCents: 0, ...limits })
+    this.waves.set(waveId, { activeLanes: 0, completedLanes: 0, failedLanes: 0, spentCents: 0, ...limits })
     return waveId
+  }
+
+  closeWave(waveId: string): boolean {
+    return this.waves.delete(waveId)
   }
 
   effect stepWave(waveId: string, event: WaveEvent): WaveState!(WaveConcurrencyCapError | WaveBudgetBreachError) {
@@ -473,42 +294,26 @@ export function detectStalledSessions(
 
 export class TaskWatchdogService extends Service {
   static override serviceType = TASK_WATCHDOG_SERVICE_TYPE
-  override capabilityDescription = "Detects stalled coding sessions and approaching round-trip or spend caps."
+  override capabilityDescription = "Detects stalled coding sessions."
 
   readonly stalledIds = new Set<string>()
-  readonly approachingCapIds = new Set<string>()
 
   static override start(runtime: IAgentRuntime): Promise<Service> {
     return Promise.resolve(new TaskWatchdogService(runtime))
   }
 
-  inspect(sessions: readonly SessionInfo[], router: SubAgentRouter, nowMs = Date.now()): {
-    readonly stalled: readonly string[]
-    readonly approachingCap: readonly string[]
-  } {
+  inspect(sessions: readonly SessionInfo[], nowMs = Date.now()): { readonly stalled: readonly string[] } {
     this.stalledIds.clear()
-    this.approachingCapIds.clear()
     for (const s of detectStalledSessions(sessions, nowMs)) this.stalledIds.add(s.id)
-    for (const s of sessions) {
-      if (router.isSessionApproachingCap(s.id)) this.approachingCapIds.add(s.id)
-    }
-    return {
-      stalled: [...this.stalledIds].sort(),
-      approachingCap: [...this.approachingCapIds].sort(),
-    }
+    return { stalled: [...this.stalledIds].sort() }
   }
 
   getStalledSessionIds(): readonly string[] {
     return [...this.stalledIds].sort()
   }
 
-  getApproachingCapSessionIds(): readonly string[] {
-    return [...this.approachingCapIds].sort()
-  }
-
   override async stop(): Promise<void> {
     this.stalledIds.clear()
-    this.approachingCapIds.clear()
   }
 }
 

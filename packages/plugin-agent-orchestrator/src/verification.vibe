@@ -61,10 +61,8 @@ import {
 } from "../gen/agentOrchestrator.effect.vibe"
 import {
   evaluateDiffReviewGate,
-  evaluateResidualsGate,
   refinedCriteriaCount,
   sentencePathMatchesFile,
-  verifyClaimedWrite,
   type PathFollower,
 } from "../gen/agentOrchestrator__verification.effect.vibe"
 import {
@@ -258,56 +256,6 @@ export effect function collectFsObservedFiles(
     }
   }
   return verified.sort()
-}
-
-export interface ClaimedFileVerdict {
-  readonly passed: boolean
-  readonly claimed: readonly string[]
-  readonly verified: readonly string[]
-  readonly unverified: readonly string[]
-}
-
-export function verifyClaimedFiles(
-  claimedFiles: readonly string[],
-  observedLedgerFiles: readonly string[],
-): ClaimedFileVerdict {
-  const observed = new Set(observedLedgerFiles.map((f) => f.replace(/^\.\//u, "")))
-  const claimed = [...new Set(claimedFiles.map((f) => f.replace(/^\.\//u, "")))].sort()
-  const verified = claimed.filter((f) => observed.has(f))
-  const unverified = claimed.filter((f) => !observed.has(f))
-  const outcome = verifyClaimedWrite(claimed.length, verified.length)
-  return {
-    passed: outcome === "GatePass" && unverified.length === 0,
-    claimed,
-    verified,
-    unverified,
-  }
-}
-
-export interface CompletionResidualsInput {
-  readonly uncommittedFiles: readonly string[]
-  readonly failedChecks: readonly string[]
-  readonly ownedArtifacts?: readonly string[]
-  readonly gateEnabled?: boolean
-}
-
-export interface CompletionResidualsResult {
-  readonly passed: boolean
-  readonly remainingUncommitted: readonly string[]
-  readonly failedChecks: readonly string[]
-  readonly summary: string
-}
-
-export function collectCompletionResiduals(input: CompletionResidualsInput): CompletionResidualsResult {
-  const owned = new Set(input.ownedArtifacts ?? [])
-  const remainingUncommitted = input.uncommittedFiles.filter((file) => !owned.has(file)).sort()
-  const gateEnabled = input.gateEnabled !== false
-  const outcome = evaluateResidualsGate(remainingUncommitted.length, input.failedChecks.length, gateEnabled)
-  const passed = outcome === "GatePass"
-  const summary = passed
-    ? "No blocking completion residuals."
-    : `Blocked by ${remainingUncommitted.length} uncommitted files and ${input.failedChecks.length} failed checks.`
-  return { passed, remainingUncommitted, failedChecks: input.failedChecks, summary }
 }
 
 export interface DiffGateFinding {

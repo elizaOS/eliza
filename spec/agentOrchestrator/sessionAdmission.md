@@ -1,10 +1,10 @@
-# Session admission, capacity, and spend budgets
+# Session admission, capacity, and disk budgets
 
-This specification governs ACP session concurrency caps, priority-FIFO admission queues with aging, workspace disk-budget backpressure, per-session spend authorization, and short-lived subscription attendance capabilities.
+This specification governs ACP session concurrency caps, priority-FIFO admission queues with aging, workspace disk-budget backpressure, and short-lived subscription attendance capabilities.
 
-## Story: Admit coding agent sessions within concurrency, disk, and spend limits
+## Story: Admit coding agent sessions within concurrency and disk limits
 
-> As an owner, I want concurrent coding sessions bounded by capacity and disk limits, queued fairly by priority and age when busy, and prevented from exceeding spend or subscription attendance limits.
+> As an owner, I want concurrent coding sessions bounded by capacity and disk limits, queued fairly by priority and age when busy, and prevented from exceeding subscription attendance limits. Spending across a create's lanes is bounded by the wave budget in [Lanes, waves and routing](./lanesAndRouting.md).
 
 ### Active workers and queued admissions stay within configured bounds
 
@@ -96,28 +96,19 @@ pure def turnOutcome(end: TurnEnd): TurnOutcome = match end {
 pure def lawOnlyEndTurnCompletes(end: TurnEnd): bool = (turnOutcome(end) == TurnCompleted) iff (end == EndTurn)
 pure def lawVanishedAgentErrors(end: TurnEnd): bool = (end == AgentGone) implies turnOutcome(end) == TurnErrored
 ```
-### Disk budget, spend allowance, and subscription attendance fail closed
+### Disk budget and subscription attendance fail closed
 
-Workspace provisioning is admitted only when projected usage stays within the disk cap and free space remains at or above the minimum threshold. Spend actions that exceed the session spend cap always fail closed (`SpendDenyCap`), even if user-approved, while high-risk actions within the cap require explicit user approval (`SpendRequireApproval`) before admission. Subscription-only adapters require an unexpired user-attended authorization window matching the fixed TTL.
+Workspace provisioning is admitted only when projected usage stays within the disk cap and free space remains at or above the minimum threshold. Subscription-only adapters require an unexpired user-attended authorization window matching the fixed TTL.
 
 ```quint
 type BudgetVerdict = BudgetAllowed | BudgetDenied
-type SpendVerdict = SpendAllow | SpendRequireApproval | SpendDenyCap
 pure def evaluateDiskBudget(usedBytes: int, capBytes: int, freeBytes: int, minFreeBytes: int): BudgetVerdict =
   if (capBytes <= 0 or minFreeBytes < 0 or usedBytes > capBytes or freeBytes < minFreeBytes) BudgetDenied
   else BudgetAllowed
-pure def evaluateSpendAllowance(spentCents: int, estimatedCents: int, capCents: int, highRisk: bool, userApproved: bool): SpendVerdict =
-  if (estimatedCents < 0 or spentCents < 0 or capCents < 0) SpendDenyCap
-  else if (spentCents + estimatedCents > capCents) SpendDenyCap
-  else if (highRisk and not(userApproved)) SpendRequireApproval
-  else SpendAllow
 pure def isAttendanceAuthValid(issuedAt: int, expiresAt: int, nowAt: int, expectedTtl: int): bool =
   expectedTtl > 0 and expiresAt - issuedAt == expectedTtl and nowAt >= issuedAt and nowAt < expiresAt
 pure def lawLowDiskAlwaysDenied(usedBytes: int, capBytes: int, freeBytes: int, minFreeBytes: int): bool =
   (freeBytes < minFreeBytes) implies evaluateDiskBudget(usedBytes, capBytes, freeBytes, minFreeBytes) == BudgetDenied
-pure def lawOverSpendCapAlwaysDenied(spentCents: int, estimatedCents: int, capCents: int, highRisk: bool, userApproved: bool): bool =
-  (spentCents >= 0 and estimatedCents >= 0 and capCents >= 0 and spentCents + estimatedCents > capCents) implies
-    evaluateSpendAllowance(spentCents, estimatedCents, capCents, highRisk, userApproved) == SpendDenyCap
 pure def lawExpiredAttendanceRejected(issuedAt: int, expiresAt: int, nowAt: int, expectedTtl: int): bool =
   (nowAt >= expiresAt) implies not(isAttendanceAuthValid(issuedAt, expiresAt, nowAt, expectedTtl))
 ```

@@ -34,6 +34,7 @@ import {
   laneReadiness,
   pickSubAgentName,
   validateLaneDependencyGraph,
+  type LanePlan,
   type LaneSpec,
   type WaveSupervisor,
 } from "./routing.vibe"
@@ -60,6 +61,7 @@ import {
   IN_FLIGHT_TASK_STATUSES,
   type AgentType,
   type ApprovalPreset,
+  type OrchestratorTaskDocument,
   type OrchestratorTaskStatus,
   type SessionInfo,
   type SpawnOptions,
@@ -322,7 +324,30 @@ async function handleCreate(
     totalLanes: plan.lanes.length,
     budgetCapCents: requestedBudget === undefined ? plannedCost : Math.max(0, Math.floor(requestedBudget)),
   })
+  return runCreateLanes(waves, waveId, { runtime, acp, tasks, bag, message, plan, doc, agentType, workdir })
+    .finally(() => {
+      waves.closeWave(waveId)
+    })
+}
+
+async function runCreateLanes(
+  waves: WaveSupervisor,
+  waveId: string,
+  ctx: {
+    readonly runtime: IAgentRuntime
+    readonly acp: AcpService
+    readonly tasks: OrchestratorTaskService | undefined
+    readonly bag: Bag
+    readonly message: Memory
+    readonly plan: LanePlan
+    readonly doc: OrchestratorTaskDocument | undefined
+    readonly agentType: string
+    readonly workdir: string
+  },
+): Promise<ActionResult> {
+  const { acp, tasks, bag, message, plan, doc, agentType, workdir } = ctx
   const completedLaneIds = new Set<string>()
+  const capHeld = new Map<string, string>()
   const remaining = [...plan.lanes]
   const spawned: Array<{
     readonly laneId: string
@@ -351,7 +376,14 @@ async function handleCreate(
       })
       if ("refusal" in launch) {
         const refusal = launch.refusal
-        if (refusal._tag === "WaveConcurrencyCapError") break
+        if (refusal._tag === "WaveConcurrencyCapError") {
+          const reason = `held by the wave's concurrency cap: ${refusal.activeLanes} of ${refusal.maxParallel} lanes were still active`
+          for (const held of remaining) {
+            if (waveLanes.includes(held)) continue
+            if (laneReadiness(held, completedLaneIds, [...unfinishedLanes, ...waveLanes]) === "LaneReady") capHeld.set(held.id, reason)
+          }
+          break
+        }
         overBudget.push(candidate)
         spawned.push({
           laneId: candidate.id,
@@ -366,6 +398,7 @@ async function handleCreate(
         })
         continue
       }
+      capHeld.delete(candidate.id)
       waveLanes.push(candidate)
     }
     for (const lane of overBudget) remaining.splice(remaining.indexOf(lane), 1)
@@ -410,9 +443,13 @@ async function handleCreate(
         runSync(effect {
           return waves.stepWave(waveId, { type: "completeLane" }) catch () => undefined
         })
+      } else if (!item.ok) {
+        runSync(effect {
+          return waves.stepWave(waveId, { type: "failLane" }) catch () => undefined
+        })
       } else {
         const lane = waveLanes.find((l) => l.id === item.laneId)
-        if (lane && item.ok) unfinishedLanes.push(lane)
+        if (lane) unfinishedLanes.push(lane)
       }
     }
     const dispatchedIds = new Set(waveLanes.map((l) => l.id))
@@ -427,7 +464,11 @@ async function handleCreate(
   }
   const widgetLine = doc ? `[TASK:${doc.task.id}]${doc.task.title}[/TASK]` : ""
   const summaryLines = spawned.map((s) => `- ${s.label} (${s.sessionId}) [${s.agentType}] ${s.status}${s.stopReason ? ` (${s.stopReason})` : ""}${s.reason ? `: ${s.reason}` : ""}`)
-  const notLaunched = remaining.map((lane) => `- ${lane.id} not launched: waits on ${lane.dependencies.filter((dep) => !completedLaneIds.has(dep)).join(", ") || "a lane sharing its file scope"} that did not complete`)
+  const notLaunched = remaining.map((lane) => {
+    const held = capHeld.get(lane.id)
+    if (held) return `- ${lane.id} not launched: ${held}`
+    return `- ${lane.id} not launched: waits on ${lane.dependencies.filter((dep) => !completedLaneIds.has(dep)).join(", ") || "a lane sharing its file scope"} that did not complete`
+  })
   const text = [widgetLine, `Launched ${succeeded.length}/${plan.lanes.length} session(s):`, ...summaryLines, ...notLaunched].filter(Boolean).join("\n")
   const resourceId = doc?.task.id ?? succeeded[0]!.sessionId
   return {
@@ -440,6 +481,7 @@ async function handleCreate(
       wavesExecuted: waveIndex,
       sessions: spawned.map((s) => ({ laneId: s.laneId, id: s.sessionId, label: s.label, agentType: s.agentType, status: s.status, stopReason: s.stopReason })),
       notLaunchedLaneIds: remaining.map((lane) => lane.id),
+      capHeldLaneIds: remaining.filter((lane) => capHeld.has(lane.id)).map((lane) => lane.id),
     },
     promptDataMode: "replace-data",
     data: { task: doc ? toTaskThread(doc) : undefined, sessions: spawned, laneCount: plan.lanes.length, wavesExecuted: waveIndex, notLaunchedLaneIds: remaining.map((lane) => lane.id) },
