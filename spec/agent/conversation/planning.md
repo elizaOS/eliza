@@ -746,6 +746,9 @@ A reply with nothing unreported and no
 unobserved time makes no further call, a turn cut off at the model's output
 limit is never asked again, and no turn is asked more than twice, the
 second time only about failures whose actions wrote no words for the owner.
+The reply this decides, with the words that follow it, is the turn's settled
+text: a streamed turn writes it at once, whole and without the provisional
+mark, and nothing it streamed before is ever unmarked ([reply stream](./replyStream.md)).
 
 Safety copy is never rewritten. A failure whose action marks its words as
 safety copy (the emergency refusal of a phone that cannot open its keypad),
