@@ -1,6 +1,8 @@
 // spec/pty/policy.md, "Story: Enforce session capacity, confinement, and safe teardown"
 import type { Driver } from "../../gen/pty__policy.conformance.ts"
 import type { Event, PtyPool } from "../../gen/pty__policy.ts"
+import { dirname } from "node:path"
+import { fileURLToPath } from "node:url"
 import { PtyConsoleBridge, PtySessionStore, type PtyHandle, type PtySpawn } from "../../src/index.vibe"
 
 interface DriverPty extends PtyHandle {
@@ -16,6 +18,7 @@ function createDriverPty(): DriverPty {
     resize() {},
     kill() {
       if (handle.killError) throw handle.killError
+      handle.emitExit(0)
     },
     onData() {
       return { dispose() {} }
@@ -44,6 +47,8 @@ interface PoolInstance {
 }
 
 const instances = new Map<string, PoolInstance>()
+const ALLOWED_ROOT = dirname(fileURLToPath(import.meta.url))
+const OUTSIDE_ROOT = dirname(ALLOWED_ROOT)
 
 function getOrCreate(key: string): PoolInstance {
   const existing = instances.get(key)
@@ -60,7 +65,7 @@ function getOrCreate(key: string): PoolInstance {
   const store = new PtySessionStore(
     bridge,
     () => Promise.resolve(spawn),
-    { maxSessions: 2, idleTimeoutMs: 0, exitedSessionTtlMs: 10_000 },
+    { allowedRoot: ALLOWED_ROOT, maxSessions: 2, idleTimeoutMs: 0, exitedSessionTtlMs: 10_000 },
     (delayMs, run) => {
       if (delayMs === 10_000) {
         const exited = store.list().find((s) => s.exited && !reapCallbacks.has(s.sessionId))
@@ -110,14 +115,14 @@ export const driver: Driver = {
   async dispatch(key: string, event: Event) {
     const instance = getOrCreate(key)
     if (event.type === "startPoolSession") {
-      if (!event.cwdConfined || event.sessionId === "" || instance.idMap.has(event.sessionId)) {
+      if (event.sessionId === "" || instance.idMap.has(event.sessionId)) {
         return "refused"
       }
       try {
         const info = await instance.store.start({
           command: "sh",
           args: [],
-          cwd: process.cwd(),
+          cwd: event.cwdConfined ? ALLOWED_ROOT : OUTSIDE_ROOT,
           kind: "test",
         })
         instance.idMap.set(event.sessionId, info.sessionId)

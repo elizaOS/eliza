@@ -32,7 +32,7 @@ pure def lawProtectedFileCannotBeRead(access: WorkspaceAccess, file: WorkspaceFi
 
 ### A command uses the current authorized workspace and a bound approval when required
 
-The shell executes the submitted argv and the canonical directory under the host's isolation and process policy. It validates the scope of the owner approval and provides a redacted structured result.
+The shell executes the submitted command in the canonical directory under the host's isolation and process policy. The command's workspace is the authorized root that contains that directory; with no authorized root the command is refused. A command that needs approval runs only after the owner confirms it, and the approval covers that command digest alone. The result is redacted and structured.
 
 ```quint
 type WorkspaceCommand = { inWorkspace: str, commandKey: str, needsApproval: bool }
@@ -52,7 +52,7 @@ pure val requestValues = Set({ inWorkspace: "/work", commandKey: "reviewed", nee
 
 ### Sandbox path policy blocks sensitive locations, pseudo-descriptors, and escapes outside configured roots
 
-A path is admitted only when it is non-empty, contains no NUL byte, is not a UNC path, does not target or traverse a blocked path or pseudo-descriptor (`/dev/fd`, `/proc/*/fd`), and lies within an allowed root whenever allow-roots are configured.
+A path is admitted only when it is non-empty, contains no NUL byte, is not a UNC path, does not target or traverse a blocked path or pseudo-descriptor (`/dev/fd`, `/proc/*/fd`), and lies within a configured workspace root. With no workspace root configured, every path is refused. Every file action (read, write, edit, search, list, and the working directory of a command) is then checked against the authorized-root rules of the story above, so a protected file such as `.env`, `.git` or `.ssh` is refused whatever action names it. A content search admits every file it reports through the same check, whichever search engine found it, so a search glob such as `*` or `.env*` never brings a protected or blocked file into the results, at any depth.
 
 ```quint
 type PathCheck = {
@@ -67,9 +67,9 @@ type PathCheck = {
 pure def pathAllowed(p: PathCheck): bool =
   not(p.isEmpty) and not(p.hasNul) and not(p.isUnc) and
   not(p.isBlocked) and not(p.traversesBlocked) and
-  (not(p.hasAllowRoots) or p.withinAllowedRoot)
+  p.hasAllowRoots and p.withinAllowedRoot
 pure def lawBlockedOrOutsidePathNeverAllowed(p: PathCheck): bool =
-  (p.isEmpty or p.hasNul or p.isUnc or p.isBlocked or p.traversesBlocked or (p.hasAllowRoots and not(p.withinAllowedRoot)))
+  (p.isEmpty or p.hasNul or p.isUnc or p.isBlocked or p.traversesBlocked or not(p.hasAllowRoots) or not(p.withinAllowedRoot))
     implies not(pathAllowed(p))
 pure val pValues = Set(
   { isEmpty: false, hasNul: false, isUnc: false, isBlocked: false, traversesBlocked: false, hasAllowRoots: true, withinAllowedRoot: true },

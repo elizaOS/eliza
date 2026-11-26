@@ -1,3 +1,4 @@
+// spec/os/signIn/flow.md, "Standalone email sign-in exchanges a session only after an accepted code and retires an attempt that needs an additional factor"
 package ai.eliza.plugins.securestore.nativeonly;
 
 import android.content.Context;
@@ -14,8 +15,10 @@ import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.TreeSet;
@@ -29,10 +32,18 @@ public final class CloudDeviceAccount {
  private static final Pattern ID = Pattern.compile("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}");
  private static final Object LOCK = new Object();
  private static final long PENDING_MS = 15 * 60_000L;
+ private static final long EMAIL_CODE_MS = 10 * 60_000L;
+ private static final long NATIVE_GOOGLE_PENDING_MS = 2 * 60_000L;
+ private static final long NATIVE_GOOGLE_CHALLENGE_MS = 5 * 60_000L;
  private static final long MAX_CREDENTIAL_SECONDS = 7 * 24 * 60 * 60L;
  private static final long MAX_DEVICE_KEY_MS = 90 * 24 * 60 * 60_000L;
  private static final String CHALLENGE = "/api/v1/auth/google/native/challenge";
  private static final String SIGN_IN = "/api/v1/app-auth/mobile/google";
+ private static final String EMAIL_START = "/api/v1/auth/email/code/send";
+ private static final String EMAIL_VERIFY = "/api/v1/auth/email/code/verify";
+ private static final String SESSION_LOGOUT = "/api/v1/auth/logout";
+ private static final String DEVICE_CONNECT = "/api/v1/app-auth/connect";
+ private static final String DEVICE_TOKEN = "/api/v1/app-auth/mobile/token";
  private static final String ACKNOWLEDGE = "/api/v1/app-auth/mobile/ack";
  private static final String SIGN_OUT = "/api/v1/api-keys/current";
  private static final String LEASE_PATH = "/api/v1/app-auth/mobile/lease";
@@ -173,9 +184,110 @@ public final class CloudDeviceAccount {
       && left.optString("redirectUri").equals(right.optString("redirectUri"));
  }
 
- public NativeGoogleAttempt prepareNativeGoogle(String clientId, String environment) throws Exception {
+ public enum EmailSignIn { SIGNED_IN, ADDITIONAL_VERIFICATION, REFUSED }
+
+ public void sendEmailSignInCode(String clientId, String environment, String destination) throws Exception {
+  String email = emailAddress(destination);
   JSONObject client = mobileClient(clientId, environment);
   JSONObject config = mobileConfiguration(client);
+  var methods = config.optJSONObject("methods");
+  if (!sameRegistration(client, config) || methods == null || !Boolean.TRUE.equals(methods.opt("email")))
+   throw new IOException("Email sign-in is unavailable");
+  JSONObject pending;
+  synchronized (LOCK) {
+   if (credential() != null || slots.read(ACK) != null) throw new IOException("The device account changed");
+   pending = newPending("email", EMAIL_CODE_MS).put("email", email).put("client", client);
+   slots.write(PENDING, pending.toString());
+  }
+  String state = pending.getString("state");
+  try {
+   var request = new JSONObject().put("email", email).put("clientId", clientId)
+     .put("codeChallenge", challenge(pending)).put("codeChallengeMethod", "S256");
+   var sent = new JSONObject(post(EMAIL_START, request, null, 200, 202).body());
+   long expires = sent.getLong("expiresAt");
+   synchronized (LOCK) {
+    if (sent.getInt("codeLength") != 6 || expires <= System.currentTimeMillis()
+        || !pending.toString().equals(pendingSnapshot(state, "email"))) throw new IOException("Email sign-in was not started");
+    pending.put("expiresAt", Math.min(pending.getLong("expiresAt"), expires));
+    slots.write(PENDING, pending.toString());
+   }
+  } catch (Exception unavailable) {
+   clearPending("email", state);
+   throw unavailable;
+  }
+ }
+
+ public EmailSignIn verifyEmailSignInCode(String destination, String code) throws Exception {
+  String email = emailAddress(destination);
+  if (code == null || !code.matches("[0-9]{6}")) return EmailSignIn.REFUSED;
+  String snapshot = slots.read(PENDING);
+  var pending = snapshot == null ? null : new JSONObject(snapshot);
+  if (pending == null || !"email".equals(pending.optString("method")) || !email.equals(pending.optString("email")) || !pendingActive(pending))
+   return EmailSignIn.REFUSED;
+  var client = pending.getJSONObject("client");
+  String state = pending.getString("state"), verifier = pending.getString("verifier");
+  var proof = new JSONObject().put("email", email).put("code", code).put("clientId", client.getString("clientId"))
+    .put("codeVerifier", verifier);
+  var result = new JSONObject(post(EMAIL_VERIFY, proof, null, 200).body());
+  if ("mfa_required".equals(result.optString("status"))) {
+   clearPending("email", state);
+   return EmailSignIn.ADDITIONAL_VERIFICATION;
+  }
+  if (!"signed_in".equals(result.optString("status"))) return EmailSignIn.REFUSED;
+  String session = result.getString("accessToken"), refresh = result.getString("refreshToken");
+  if (!session.matches("eliza_session_[A-Za-z0-9_-]{43}") || !refresh.matches("eliza_refresh_[A-Za-z0-9_-]{54}"))
+   throw new IOException("Invalid sign-in session");
+  try {
+   if (!snapshot.equals(pendingSnapshot(state, "email")) || result.getLong("accessExpiresAt") <= System.currentTimeMillis())
+    return EmailSignIn.REFUSED;
+   String exchangeVerifier = randomValue();
+   var connect = new JSONObject(client.toString()).put("state", state).put("codeChallenge", digest(exchangeVerifier))
+     .put("codeChallengeMethod", "S256").put("flow", "mobile_pkce");
+   var enrollment = new JSONObject(post(DEVICE_CONNECT, connect, session, 200).body());
+   String grant = enrollment.getString("code");
+   if (!grant.matches("emac_[a-f0-9]{64}") || !snapshot.equals(pendingSnapshot(state, "email"))) return EmailSignIn.REFUSED;
+   var request = new JSONObject(client.toString()).put("grantType", "authorization_code").put("code", grant)
+     .put("state", state).put("codeVerifier", exchangeVerifier);
+   var key = new JSONObject(post(DEVICE_TOKEN, request, null, 200).body());
+   if (!identifier(result.getJSONObject("user"), "id").equals(identifier(key.getJSONObject("user"), "id"))
+       || !identifier(result, "organizationId").equals(identifier(key, "organizationId"))) {
+    synchronized (LOCK) { oweRevocation(duty(deviceKey(key))); }
+    return EmailSignIn.REFUSED;
+   }
+   return keepDeviceKey(key, snapshot) ? EmailSignIn.SIGNED_IN : EmailSignIn.REFUSED;
+  } finally {
+   try { post(SESSION_LOGOUT, new JSONObject().put("refreshToken", refresh), null, 204, 401); }
+   catch (Exception unavailable) { }
+   clearPending("email", state);
+  }
+ }
+
+ public void cancelEmailSignInCode() throws Exception { clearPending("email", null); }
+
+ private static String emailAddress(String value) throws IOException {
+  String normalized = value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
+  if (normalized.length() > 254 || !normalized.matches("[^\\s@]+@[^\\s@]+\\.[^\\s@]+")) throw new IOException("Invalid sign-in address");
+  return normalized;
+ }
+
+ public NativeGoogleAttempt prepareNativeGoogle(String clientId, String environment) throws Exception {
+  return prepareNativeGoogle(clientId, environment, null);
+ }
+
+ public NativeGoogleAttempt prepareNativeGoogleLeaseUpgrade(String clientId, String environment) throws Exception {
+  JSONObject upgrade = mobileClient(clientId, environment);
+  synchronized (LOCK) {
+   if (leaseUpgradeStatus() != LeaseUpgradeStatus.REQUIRED || slots.read(ACK) != null)
+    throw new IllegalStateException("An existing device account without a mail lease is required");
+   upgrade.put("credential", digest(stored().getString("token")));
+  }
+  return prepareNativeGoogle(clientId, environment, upgrade);
+ }
+
+ private NativeGoogleAttempt prepareNativeGoogle(String clientId, String environment, JSONObject upgrade) throws Exception {
+  JSONObject client = mobileClient(clientId, environment);
+  JSONObject config = mobileConfiguration(client);
+  if (upgrade != null && (!Boolean.TRUE.equals(config.opt("mailLease")) || !sameRegistration(client, config))) return null;
   JSONObject google = config.optJSONObject("google");
   if (google == null || !google.optBoolean("nativeSignIn")) return null;
   String serverClientId = google.getString("serverClientId");
@@ -188,17 +300,17 @@ public final class CloudDeviceAccount {
    if (!scope.matches("openid|email|https://www\\.googleapis\\.com/auth/[a-z.]{1,64}")) throw new IOException("Invalid Google scope");
    scopes.add(scope);
   }
-  JSONObject pending = beginPending("google", 120_000L);
+  JSONObject pending = beginPending("google", NATIVE_GOOGLE_PENDING_MS, upgrade);
   String state = pending.getString("state");
   try {
    JSONObject response = new JSONObject(post(CHALLENGE,
        client.put("codeChallenge", challenge(pending)).put("codeChallengeMethod", "S256"), null, 200).body());
    String challengeId = identifier(response, "challengeId"), nonce = response.getString("nonce");
    long due = response.getLong("expiresAt"), now = System.currentTimeMillis();
-   if (!opaque(nonce) || due <= now || due > now + 120_000L || !serverClientId.equals(response.getString("serverClientId")))
+   if (!opaque(nonce) || due <= now || due > now + NATIVE_GOOGLE_CHALLENGE_MS || !serverClientId.equals(response.getString("serverClientId")))
     throw new IOException("Invalid Google challenge");
    long expiry = Math.min(pending.getLong("expiresAt"), due);
-   return new NativeGoogleAttempt(clientId, environment, serverClientId, List.copyOf(scopes), challengeId, nonce, state, expiry);
+   return new NativeGoogleAttempt(clientId, environment, serverClientId, Collections.unmodifiableList(scopes), challengeId, nonce, state, expiry);
   } catch (Exception failure) {
    clearNativeGoogle(state);
    throw failure;
@@ -210,7 +322,13 @@ public final class CloudDeviceAccount {
    throw new IOException("Invalid Google result");
   String snapshot = pendingSnapshot(attempt.state(), "google");
   if (snapshot == null || attempt.expiresAt() <= System.currentTimeMillis()) return false;
-  String verifier = new JSONObject(snapshot).getString("verifier");
+  JSONObject pending = new JSONObject(snapshot);
+  JSONObject upgrade = pending.optJSONObject("upgrade");
+  if (upgrade != null && (!offersMailLease(upgrade) || !snapshot.equals(pendingSnapshot(attempt.state(), "google")))) {
+   clearNativeGoogle(attempt.state());
+   return false;
+  }
+  String verifier = pending.getString("verifier");
   JSONObject request = mobileClient(attempt.clientId(), attempt.environment()).put("state", attempt.state()).put("codeVerifier", verifier)
       .put("identity", new JSONObject().put("challengeId", attempt.challengeId()).put("idToken", idToken).put("codeVerifier", verifier));
   if (serverAuthCode != null && serverAuthCode.matches("[A-Za-z0-9/_.~-]{10,2048}")) request.put("serverAuthCode", serverAuthCode);
@@ -223,6 +341,10 @@ public final class CloudDeviceAccount {
  }
 
  private boolean keepDeviceKey(JSONObject response, String snapshot) throws Exception {
+  return stageCredential(deviceKey(response), snapshot);
+ }
+
+ private static JSONObject deviceKey(JSONObject response) throws Exception {
   String secret = response.getString("secret");
   String credentialId = identifier(response, "credentialId");
   String accountId = identifier(response.getJSONObject("user"), "id"), organizationId = identifier(response, "organizationId");
@@ -233,7 +355,7 @@ public final class CloudDeviceAccount {
   JSONObject offered = response.optJSONObject("lease");
   if (offered != null) key.put("lease", new JSONObject().put("refresh", leaseRefresh(offered, "refresh"))
       .put("refreshExpiresAt", now + leaseSeconds(offered, "refreshExpiresIn", MAX_LEASE_SECONDS) * 1000));
-  return stageCredential(key, snapshot);
+  return key;
  }
 
  public void cancelNativeGoogle(NativeGoogleAttempt attempt) throws Exception {
@@ -241,11 +363,15 @@ public final class CloudDeviceAccount {
  }
 
  private void clearNativeGoogle(String state) throws Exception {
+  clearPending("google", state);
+ }
+
+ private void clearPending(String method, String state) throws Exception {
   synchronized (LOCK) {
    String saved = slots.read(PENDING);
    if (saved == null) return;
    JSONObject pending = new JSONObject(saved);
-   if ("google".equals(pending.optString("method")) && state.equals(pending.getString("state"))) slots.remove(PENDING);
+   if (method.equals(pending.optString("method")) && (state == null || state.equals(pending.getString("state")))) slots.remove(PENDING);
   }
  }
 
@@ -307,15 +433,33 @@ public final class CloudDeviceAccount {
   }
  }
 
+ public void cancelLeaseUpgrade() throws Exception {
+  synchronized (LOCK) {
+   JSONObject pending = record(PENDING);
+   if (pending != null && pending.optJSONObject("upgrade") != null) slots.remove(PENDING);
+  }
+ }
+
  private Uri browserStart(JSONObject pending) throws Exception {
   return manageAccount().buildUpon().appendQueryParameter("device_challenge", challenge(pending))
       .appendQueryParameter("device_state", pending.getString("state")).build();
  }
 
  private JSONObject beginPending(String method, long duration) throws Exception {
+  return beginPending(method, duration, null);
+ }
+
+ private JSONObject beginPending(String method, long duration, JSONObject upgrade) throws Exception {
   synchronized (LOCK) {
-   if (credential() != null) throw new IllegalStateException("Sign out before adding another device account");
    JSONObject pending = newPending(method, duration);
+   if (upgrade == null) {
+    if (credential() != null) throw new IllegalStateException("Sign out before adding another device account");
+   } else {
+    JSONObject current = stored();
+    if (!matchesUpgrade(current, upgrade) || leaseUpgradeStatus() != LeaseUpgradeStatus.REQUIRED || slots.read(ACK) != null)
+     throw new IllegalStateException("The device account changed");
+    pending.put("upgrade", upgrade);
+   }
    slots.write(PENDING, pending.toString());
    return pending;
   }

@@ -1,6 +1,7 @@
-// spec/agentOrchestrator/lanesAndRouting.md, "Output truncation and shift-handoff compaction keep context within token budgets"; spec/agentOrchestrator/verification.md, "Story: Verify subagent deliverables against concrete evidence and route fast evaluations cleanly"
+// spec/agentOrchestrator/index.md, "Only the owner directs coding agents, and a message without a session id reaches only its own room's subagents"; spec/agentOrchestrator/lanesAndRouting.md, "Output truncation and shift-handoff compaction keep context within token budgets"; spec/agentOrchestrator/verification.md, "Story: Verify subagent deliverables against concrete evidence and route fast evaluations cleanly"
 import {
   MESSAGE_SOURCE_SUB_AGENT,
+  hasOwnerAccess,
   isLoopbackHost,
   type IAgentRuntime,
   type Memory,
@@ -8,6 +9,7 @@ import {
   type ResponseHandlerEvaluator,
   type State,
 } from "@elizaos/core"
+import { implicitTargetReachable, taskOpAllowed } from "../gen/agentOrchestrator.effect.vibe"
 import {
   ACP_SUBPROCESS_SERVICE_TYPE,
   AcpService,
@@ -37,7 +39,6 @@ import {
   buildCompactSessionDigest,
   buildCompactTaskDigest,
   sanitizeCompletionRelay,
-  truncateTail,
 } from "./optimization.vibe"
 import {
   IN_FLIGHT_TASK_STATUSES,
@@ -127,13 +128,14 @@ export const activeSubAgentsProvider: Provider = {
   cacheScope: "turn",
   contexts: ["general", "tasks", "code", "automation"],
   contextGate: { anyOf: ["general", "tasks", "code", "automation"] },
-  get: async (runtime: IAgentRuntime) => {
+  get: async (runtime: IAgentRuntime, message: Memory) => {
     const acp = getAcp(runtime)
-    if (!acp) return { text: "", values: {}, data: {} }
-    const sessions = acp.listSessions().filter((s) => !isSessionTerminal(s.status)).sort((a, b) => a.id.localeCompare(b.id))
+    if (!acp || !taskOpAllowed({ isOwner: await hasOwnerAccess(runtime, message), roomId: message.roomId })) return { text: "", values: {}, data: {} }
+    const sessions = acp.listSessions()
+      .filter((s) => implicitTargetReachable(s.roomId ?? "", message.roomId) && !isSessionTerminal(s.status))
+      .sort((a, b) => a.id.localeCompare(b.id))
     const watchdog = getWatchdog(runtime)
     const stalledSet = new Set(watchdog?.getStalledSessionIds() ?? [])
-    const capSet = new Set(watchdog?.getApproachingCapSessionIds() ?? [])
     const cap = acp.getCapacity()
     const waves = getWaveSupervisor(runtime)?.getWaveStatuses() ?? []
     const inFlight = getTasks(runtime)?.listTasks({ statuses: IN_FLIGHT_TASK_STATUSES, limit: 20 }) ?? []
@@ -144,12 +146,11 @@ export const activeSubAgentsProvider: Provider = {
       `capacity: workers=${cap.activeWorkers}/${cap.maxSessions} queued=${cap.queuedCount}/${cap.maxQueue} diskBlocked=${cap.diskBlocked}`,
     ]
     for (const w of waves) {
-      lines.push(`wave ${w.waveId}: active=${w.state.activeLanes}/${w.state.maxParallel} done=${w.state.completedLanes}/${w.state.totalLanes} spent=${w.state.spentCents}/${w.state.budgetCapCents}`)
+      lines.push(`wave ${w.waveId}: active=${w.state.activeLanes}/${w.state.maxParallel} done=${w.state.completedLanes}/${w.state.totalLanes} failed=${w.state.failedLanes} spent=${w.state.spentCents}/${w.state.budgetCapCents}`)
     }
     for (const s of sessions) {
       const bucket = bucketSessionStatus(s, stalledSet)
-      const capTag = capSet.has(s.id) ? " approachingCap=round-trip" : ""
-      lines.push(`- [${s.label}] sessionId=${s.id} agentType=${s.agentType} status=${bucket}${capTag} workdir=${s.workdir}`)
+      lines.push(`- [${s.label}] sessionId=${s.id} agentType=${s.agentType} status=${bucket} workdir=${s.workdir}`)
     }
     if (inFlight.length > 0) {
       lines.push("## In-flight tasks")
@@ -254,8 +255,8 @@ function readChangeSet(session: SessionInfo): WorkspaceChangeSet | undefined {
 
 export const codingSessionChangesProvider: Provider = {
   name: "CODING_SESSION_CHANGES",
-  description: "Recent git change set from the latest completed coding subagent with staleness guard and bounded diff.",
-  descriptionCompressed: "Recent coding subagent file changes + bounded diff.",
+  description: "Recent git change set from the latest completed coding subagent with staleness guard and its complete diff.",
+  descriptionCompressed: "Recent coding subagent file changes + full diff.",
   position: 1,
   contexts: ["code", "tasks", "agent_internal"],
   contextGate: { anyOf: ["code", "tasks", "agent_internal"] },
@@ -264,9 +265,8 @@ export const codingSessionChangesProvider: Provider = {
   cacheScope: "turn",
   get: async (runtime: IAgentRuntime, message: Memory, _state: State) => {
     const acp = getAcp(runtime)
-    if (!acp) return { text: "", values: {}, data: {} }
-    const roomId = message.roomId
-    const scoped = acp.listSessions().filter((s) => !roomId || !s.roomId || s.roomId === roomId)
+    if (!acp || !taskOpAllowed({ isOwner: await hasOwnerAccess(runtime, message), roomId: message.roomId })) return { text: "", values: {}, data: {} }
+    const scoped = acp.listSessions().filter((s) => implicitTargetReachable(s.roomId ?? "", message.roomId))
     const now = Date.now()
     const top = scoped
       .map((session) => ({ session, changeSet: readChangeSet(session) }))
@@ -284,13 +284,12 @@ export const codingSessionChangesProvider: Provider = {
       const note = "recent_coding_changes:\n  note: Your latest coding task produced no captured diff. Do not describe an older diff."
       return { text: note, values: { recentCodingChanges: note }, data: {} }
     }
-    const boundedDiff = truncateTail(top.changeSet.diff, 80, 6_144)
     const text = [
       "recent_coding_changes:",
       `  task: ${top.session.label}`,
       `  changedFiles: ${top.changeSet.changedFiles.join(", ")}`,
       `  diffStat: ${top.changeSet.diffStat || "(summary unavailable)"}`,
-      `  diff:\n${boundedDiff.text}`,
+      `  diff:\n${top.changeSet.diff}`,
     ].join("\n")
     return {
       text,
@@ -300,8 +299,6 @@ export const codingSessionChangesProvider: Provider = {
           task: top.session.label,
           changedFiles: top.changeSet.changedFiles,
           diffStat: top.changeSet.diffStat,
-          truncated: boundedDiff.truncated,
-          artifactRef: boundedDiff.artifactRef,
         },
       },
     }

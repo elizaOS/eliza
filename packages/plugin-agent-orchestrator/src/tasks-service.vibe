@@ -1,7 +1,8 @@
-// spec/agentOrchestrator/taskLifecycle.md, "Story: Track an orchestrated coding task from creation through verified completion"; spec/agentOrchestrator/verification.md, "Story: Verify subagent deliverables against concrete evidence and route fast evaluations cleanly"
+// spec/agentOrchestrator/taskLifecycle.md, "Story: Track an orchestrated coding task from creation through verified completion"; spec/agentOrchestrator/index.md, "A task can pass its acceptance gate only with evidence for every required criterion"; spec/agentOrchestrator/verification.md, "Story: Verify subagent deliverables against concrete evidence and route fast evaluations cleanly"
 module node {
   import { randomUUID } from "node:crypto"
-  import { mkdir, readFile, writeFile } from "node:fs/promises"
+  import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs"
+  import * as os from "node:os"
   import * as path from "node:path"
 
   /** @throws {never} */
@@ -9,20 +10,79 @@ module node {
     return `${prefix}-${randomUUID().slice(0, 12)}`
   }
 
-  export async function readTaskSnapshot<T>(filePath: string): Promise<T | undefined> {
-    try {
-      return JSON.parse(await readFile(filePath, "utf8")) as T
-    } catch {
-      return undefined
-    }
+  /** @throws {never} */
+  export function defaultTaskStorePath(): string {
+    return path.join(os.homedir(), ".eliza", "agent-orchestrator", "tasks.json")
   }
 
-  export async function writeTaskSnapshot(filePath: string, payload: unknown): Promise<void> {
-    await mkdir(path.dirname(filePath), { recursive: true })
-    await writeFile(filePath, JSON.stringify(payload, null, 2), "utf8")
+  interface StoredDocument {
+    readonly task: { readonly id: string; readonly lastActivityAt: number }
+  }
+
+  export class JsonFileDocumentStore<D extends StoredDocument> {
+    readonly docs = new Map<string, D>()
+    onPersistFailure: (error: unknown, taskId: string) => void = () => undefined
+
+    constructor(readonly filePath: string) {
+      let text: string | undefined
+      try {
+        text = readFileSync(filePath, "utf8")
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error
+      }
+      if (text === undefined) return
+      const parsed: unknown = JSON.parse(text)
+      if (!Array.isArray(parsed)) throw new Error(`Task store ${filePath} does not hold a JSON array`)
+      for (const doc of parsed as D[]) this.docs.set(doc.task.id, doc)
+    }
+
+    /** @throws {never} */
+    saveDocument(doc: D): void {
+      const previous = this.docs.get(doc.task.id)
+      this.docs.set(doc.task.id, doc)
+      try {
+        this.persist()
+      } catch (error) {
+        if (previous) this.docs.set(doc.task.id, previous)
+        else this.docs.delete(doc.task.id)
+        this.onPersistFailure(error, doc.task.id)
+      }
+    }
+
+    /** @throws {never} */
+    getDocument(taskId: string): D | undefined {
+      return this.docs.get(taskId)
+    }
+
+    /** @throws {never} */
+    listDocuments(): D[] {
+      return [...this.docs.values()].sort((a, b) => b.task.lastActivityAt - a.task.lastActivityAt)
+    }
+
+    /** @throws {never} */
+    deleteDocument(taskId: string): boolean {
+      const previous = this.docs.get(taskId)
+      if (!previous) return false
+      this.docs.delete(taskId)
+      try {
+        this.persist()
+      } catch (error) {
+        this.docs.set(taskId, previous)
+        this.onPersistFailure(error, taskId)
+        return false
+      }
+      return true
+    }
+
+    persist(): void {
+      mkdirSync(path.dirname(this.filePath), { recursive: true })
+      const tmp = `${this.filePath}.${process.pid}.${randomUUID().slice(0, 8)}.tmp`
+      writeFileSync(tmp, JSON.stringify([...this.docs.values()], null, 2), "utf8")
+      renameSync(tmp, this.filePath)
+    }
   }
 }
-import { makeTaskId, readTaskSnapshot, writeTaskSnapshot } from node
+import { JsonFileDocumentStore, defaultTaskStorePath, makeTaskId } from node
 import { Service, type IAgentRuntime } from "@elizaos/core"
 import {
   apply as applyTaskLifecycle,
@@ -32,6 +92,7 @@ import {
   type Event as TaskLifecycleEvent,
   type TaskLifecycle,
 } from "../gen/agentOrchestrator__taskLifecycle.effect.vibe"
+import { evaluateTask, type Evidence } from "../gen/agentOrchestrator.effect.vibe"
 import {
   fromSpecTaskStatus,
   RecoveryConflictError,
@@ -95,32 +156,7 @@ export class InMemoryTaskStore implements TaskStore {
   }
 }
 
-export class FileTaskStore extends InMemoryTaskStore {
-  readonly filePath: string
-
-  constructor(filePath: string) {
-    super()
-    this.filePath = filePath
-  }
-
-  effect hydrate(): void!! {
-    const loaded = tryPromise({
-      try: () => readTaskSnapshot<OrchestratorTaskDocument[]>(this.filePath),
-      catch: () => undefined,
-    }) catch () => undefined
-    for (const doc of loaded ?? []) {
-      this.docs.set(doc.task.id, doc)
-    }
-  }
-
-  effect flush(): void!! {
-    const snapshot = this.listDocuments()
-    tryPromise({
-      try: () => writeTaskSnapshot(this.filePath, snapshot),
-      catch: () => undefined,
-    }) catch () => undefined
-  }
-}
+export class FileTaskStore extends JsonFileDocumentStore<OrchestratorTaskDocument> implements TaskStore {}
 
 export interface TaskUsageSummary {
   readonly inputTokens: number
@@ -249,6 +285,8 @@ export interface DurableTurnExecutionResult {
   readonly status: "completed" | "failed"
 }
 
+export const TERMINAL_TASK_STATUSES: ReadonlySet<OrchestratorTaskRecord["status"]> = new Set(["done", "failed", "archived"])
+
 export class OrchestratorTaskService extends Service {
   static override serviceType = ORCHESTRATOR_TASK_SERVICE_TYPE
   override capabilityDescription = "Durable orchestrator task store, verified 9-status lifecycle FSM, plan revisions, and verification gates."
@@ -262,7 +300,22 @@ export class OrchestratorTaskService extends Service {
   }
 
   static override start(runtime: IAgentRuntime): Promise<Service> {
-    return Promise.resolve(new OrchestratorTaskService(runtime))
+    const configured = runtime.getSetting("ORCHESTRATOR_TASK_STORE_PATH")
+    const filePath = typeof configured === "string" && configured.trim() !== "" ? configured.trim() : defaultTaskStorePath()
+    return runPromise(effect {
+      const store = try Effect.try({
+        try: () => new FileTaskStore(filePath),
+        catch: (cause) => new TaskLifecycleError({
+          taskId: "*",
+          code: "TASK_STORE_UNREADABLE",
+          reason: `Task store ${filePath} could not be opened: ${cause instanceof Error ? cause.message : String(cause)}`,
+        }),
+      })
+      store.onPersistFailure = (error, taskId) => {
+        runtime.reportError("OrchestratorTaskService.persist", error, { taskId, filePath })
+      }
+      return new OrchestratorTaskService(runtime, store)
+    })
   }
 
   subscribeTaskChanges(listener: (taskId: string) => void): () => void {
@@ -418,7 +471,7 @@ export class OrchestratorTaskService extends Service {
     role?: TaskCompletionRole,
   ): OrchestratorTaskDocument | undefined {
     const doc = this.store.getDocument(taskId)
-    if (!doc) return undefined
+    if (!doc || TERMINAL_TASK_STATUSES.has(doc.task.status)) return undefined
     const assignedRole: TaskCompletionRole = role ?? (doc.task.completionCoordinatorSessionId ? "contributor" : "coordinator")
     const coordinatorId = assignedRole === "coordinator" ? session.id : doc.task.completionCoordinatorSessionId
     const nowIso = new Date().toISOString()
@@ -482,6 +535,20 @@ export class OrchestratorTaskService extends Service {
   }): OrchestratorTaskDocument!TaskLifecycleError {
     const doc = this.store.getDocument(taskId)
     if (!doc) throw new TaskLifecycleError({ taskId, code: "TASK_NOT_FOUND", reason: `Task ${taskId} not found.` })
+    if (input.passed && !input.humanOverride) {
+      const generation = doc.task.lifecycle.generation
+      const evidence = this.acceptanceEvidence(taskId, generation)
+      const decision = evidence
+        ? evaluateTask({ taskKey: taskId, taskGeneration: generation, requiredCriteria: [...doc.task.acceptanceCriteria] }, evidence)
+        : "EvaluationFailed"
+      if (decision !== "ReadyForReview") {
+        throw new TaskLifecycleError({
+          taskId,
+          code: "MISSING_EVIDENCE",
+          reason: `Task ${taskId} cannot pass validation: acceptance evidence for generation ${generation} is ${evidence ? decision : "not recorded"}.`,
+        })
+      }
+    }
     const actor = input.verifier ?? "verifier"
     const summary = input.summary ?? (input.passed ? "Validation passed." : "Validation failed.")
     const updated = input.humanOverride
@@ -536,7 +603,7 @@ export class OrchestratorTaskService extends Service {
     if (doc.task.status !== "validating") {
       throw new TaskLifecycleError({ taskId, code: "NOT_VALIDATING", reason: `Task ${taskId} status is ${doc.task.status}, expected validating.` })
     }
-    const verdict = try runIndependentVerification({
+    const verdict = runIndependentVerification({
       goal: doc.task.goal,
       acceptanceCriteria: doc.task.acceptanceCriteria,
       changedFiles: input.changedFiles,
@@ -544,14 +611,39 @@ export class OrchestratorTaskService extends Service {
       testSummary: input.testSummary,
       runtime: this.runtime,
       env: input.env,
-    })
+    }) catch effect (failure) => {
+      throw new TaskLifecycleError({ taskId, code: "EVALUATION_FAILED", reason: `Independent verification could not run; the task stays validating: ${failure.reason}` })
+    }
+    const generation = doc.task.lifecycle.generation
+    const required = doc.task.acceptanceCriteria
+    const evidence: Evidence = {
+      taskId,
+      evaluatedGeneration: generation,
+      provedCriteria: required.filter((criterion) => verdict.satisfied.includes(criterion)),
+      executionSucceeded: true,
+    }
+    this.recordAcceptanceEvidence(taskId, evidence)
+    const decision = evaluateTask({ taskKey: taskId, taskGeneration: generation, requiredCriteria: [...required] }, evidence)
+    const passed = verdict.passed && decision === "ReadyForReview"
+    const unproved = required.filter((criterion) => !evidence.provedCriteria.includes(criterion))
     const updated = try this.validateTaskEffect(taskId, {
-      passed: verdict.passed,
-      summary: verdict.summary,
-      missing: verdict.missing,
+      passed,
+      summary: passed || !verdict.passed ? verdict.summary : `${verdict.summary} Acceptance gate: ${decision}; unproved criteria: ${unproved.join("; ")}.`,
+      missing: passed ? [] : [...new Set([...verdict.missing, ...unproved])],
       verifier: `independent-verifier:${verdict.provider}`,
     })
     return { task: updated, verdict }
+  }
+
+  acceptanceEvidence(taskId: string, generation: number): Evidence | undefined {
+    const recorded = this.store.getDocument(taskId)?.task.metadata.acceptanceEvidence as Evidence | undefined
+    return recorded && recorded.taskId === taskId && recorded.evaluatedGeneration === generation ? recorded : undefined
+  }
+
+  recordAcceptanceEvidence(taskId: string, evidence: Evidence): void {
+    const doc = this.store.getDocument(taskId)
+    if (!doc) return
+    this.store.saveDocument({ ...doc, task: { ...doc.task, metadata: { ...doc.task.metadata, acceptanceEvidence: evidence } } })
   }
 
   effect pauseTaskEffect(taskId: string): OrchestratorTaskDocument!TaskLifecycleError {
@@ -677,35 +769,6 @@ export class OrchestratorTaskService extends Service {
     const removed = this.store.deleteDocument(taskId)
     if (removed) this.notifyChange(taskId)
     return removed
-  }
-
-  updateTask(taskId: string, patch: {
-    readonly title?: string
-    readonly goal?: string
-    readonly summary?: string
-    readonly priority?: OrchestratorTaskRecord["priority"]
-    readonly acceptanceCriteria?: readonly string[]
-  }): OrchestratorTaskDocument | undefined {
-    const doc = this.store.getDocument(taskId)
-    if (!doc) return undefined
-    const nowMs = Date.now()
-    const nowIso = new Date(nowMs).toISOString()
-    const nextTask: OrchestratorTaskRecord = {
-      ...doc.task,
-      title: patch.title?.trim() || doc.task.title,
-      goal: patch.goal?.trim() || doc.task.goal,
-      summary: patch.summary !== undefined ? patch.summary : doc.task.summary,
-      priority: patch.priority ?? doc.task.priority,
-      acceptanceCriteria: patch.acceptanceCriteria && patch.acceptanceCriteria.length > 0
-        ? [...patch.acceptanceCriteria]
-        : doc.task.acceptanceCriteria,
-      updatedAt: nowIso,
-      lastActivityAt: nowMs,
-    }
-    const updated: OrchestratorTaskDocument = { ...doc, task: nextTask }
-    this.store.saveDocument(updated)
-    this.notifyChange(taskId)
-    return updated
   }
 
   pauseAll(): number {

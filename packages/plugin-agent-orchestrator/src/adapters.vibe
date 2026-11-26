@@ -561,14 +561,7 @@ export effect function runFastCodeEval(args: {
       cachedPromptTokens: 0,
     }
   }
-  return {
-    lane: target.lane,
-    provider: target.provider,
-    model: target.model,
-    content: JSON.stringify({ passed: true, summary: "deterministic-fallback", missing: [] }),
-    latencyMs: Date.now() - startedAt,
-    cachedPromptTokens: 0,
-  }
+  throw new FastEvalFailure({ reason: `No evaluator is configured for ${args.kind}: set CEREBRAS_API_KEY or provide a runtime model` })
 }
 
 export function resolveAdapterCommand(

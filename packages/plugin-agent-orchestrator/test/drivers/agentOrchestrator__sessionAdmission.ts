@@ -1,4 +1,4 @@
-// spec/agentOrchestrator/sessionAdmission.md, "Story: Admit coding agent sessions within concurrency, disk, and spend limits"
+// spec/agentOrchestrator/sessionAdmission.md, "Story: Admit coding agent sessions within concurrency and disk limits"
 import { Effect, Exit } from "effect"
 import type { Driver, Options } from "../../gen/agentOrchestrator__sessionAdmission.conformance.ts"
 import type { AdmissionPool, Event } from "../../gen/agentOrchestrator__sessionAdmission.ts"

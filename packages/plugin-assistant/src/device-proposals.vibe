@@ -84,7 +84,7 @@ function recordsProposed(turn: DeviceTurn): boolean {
 }
 
 const recordsNow: NonNullable<ProposalForm["now"]> = {
-  unavailable: "the assistant keeps the owner's reminders here and no phone reminder is selected on the owner's screen on this message, so a reminder uses the owner's reminders action",
+  unavailable: "the assistant keeps the owner's reminders here and no phone reminder is selected on the owner's screen on this message, so a reminder uses the owner's reminders action, and an alarm is never made a reminder",
   available: recordsProposed,
 }
 const selectedNow: NonNullable<ProposalForm["now"]> = {

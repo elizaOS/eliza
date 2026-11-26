@@ -197,12 +197,20 @@ public class ElizaSignInPlugin extends Plugin {
   }
 
   @PluginMethod public void upgradeMailLease(PluginCall call) {
+    upgradeMailLease(call, Method.GOOGLE_BROWSER);
+  }
+
+  protected final void upgradeMailLeaseWithPicker(PluginCall call) {
+    upgradeMailLease(call, Method.GOOGLE_PICKER);
+  }
+
+  private void upgradeMailLease(PluginCall call, Method method) {
     SignInRegistration.Environment environment = environment(call);
     if (environment == null) return;
     try {
       CredentialPolicy.MailLeaseUpgrade expected = custody.mailLeaseUpgrade(environment);
       if (expected == null) { reject(call, Failure.REJECTED); return; }
-      openGoogle(call, environment, Method.GOOGLE_BROWSER, false, expected);
+      openGoogle(call, environment, method, false, expected);
     } catch (DeviceCredentialStore.StorageFailure unavailable) {
       reject(call, Failure.UNAVAILABLE);
     }
@@ -342,7 +350,7 @@ public class ElizaSignInPlugin extends Plugin {
         }
 
         @Override public void refused(Failure problem) {
-          run(() -> browserRefused(opened, problem));
+          run(() -> signInRefused(opened, problem));
         }
       });
       return;
@@ -378,7 +386,7 @@ public class ElizaSignInPlugin extends Plugin {
     Picked.Token token = (Picked.Token) picked;
     synchronized (lock) { attempt.idToken = token.idToken(); }
     List<String> scopes = registration.googleScopes();
-    if (scopes.isEmpty()) { pickerAnswered(attempt, false, null); return; }
+    if (attempt.upgrade != null || scopes.isEmpty()) { pickerAnswered(attempt, false, null); return; }
     GoogleSignIn.authorize(getActivity(), attempt.challenge, token.account(), scopes, attempt.cancellation, authorized ->
       pickerAnswered(attempt, authorized instanceof Authorized.Code, authorized instanceof Authorized.Code granted ? granted.code() : null));
   }
@@ -402,7 +410,7 @@ public class ElizaSignInPlugin extends Plugin {
     dispatch(new Event.CloudAnswered(attempt.number, sent.reply()));
   }
 
-  private void browserRefused(Attempt attempt, Failure problem) {
+  private void signInRefused(Attempt attempt, Failure problem) {
     if (problem == Failure.CANCELLED) {
       dispatch(new Event.Cancel(attempt.number));
       return;
@@ -445,7 +453,7 @@ public class ElizaSignInPlugin extends Plugin {
     if (attempt.upgrade != null && (reserved != 0 || !attempt.upgrade.account().equals(session.account()))) {
       if (reserved > 0) custody.signInEnded(attempt.environment, reserved);
       codes.logout(attempt.environment, session);
-      browserRefused(attempt, Failure.REJECTED);
+      signInRefused(attempt, Failure.REJECTED);
       return;
     }
     int credentialAttempt = reserved > 0 ? reserved : begin(attempt);
@@ -473,15 +481,16 @@ public class ElizaSignInPlugin extends Plugin {
   }
 
   private void keyMinted(Attempt attempt, Checked.KeyMinted minted, int reserved) {
-    if (attempt.upgrade != null) {
+    if (attempt.upgrade != null && (reserved != 0 || !minted.belongsTo(attempt.upgrade.account()))) {
       if (reserved > 0) custody.signInEnded(attempt.environment, reserved);
-      browserRefused(attempt, Failure.REJECTED);
+      signInRefused(attempt, Failure.REJECTED);
       return;
     }
     int credentialAttempt = reserved > 0 ? reserved : begin(attempt);
     if (credentialAttempt == 0) { dispatch(new Event.CloudAnswered(attempt.number, new CloudReply.Unanswered())); return; }
-    GoogleReport report = minted.googleConnected() ? GoogleReport.GOOGLE_CONNECTED : GoogleReport.GOOGLE_REFUSED;
-    if (!dispatch(new Event.CloudAnswered(attempt.number, new CloudReply.Authenticated(minted.userId(), credentialAttempt, minted.keyExpiresAt(), report)))) {
+    GoogleReport report = attempt.upgrade != null ? GoogleReport.GOOGLE_NOT_REQUESTED
+      : minted.googleConnected() ? GoogleReport.GOOGLE_CONNECTED : GoogleReport.GOOGLE_REFUSED;
+    if (!dispatch(new Event.CloudAnswered(attempt.number, new CloudReply.Authenticated(minted.account().userId(), credentialAttempt, minted.keyExpiresAt(), report)))) {
       custody.signInEnded(attempt.environment, credentialAttempt);
       return;
     }

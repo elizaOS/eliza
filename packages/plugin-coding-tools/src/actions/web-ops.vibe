@@ -135,6 +135,9 @@ function validatePublicUrl(rawUrl: string, killSwitchOff: boolean, isRedirectDow
 }
 
 module node {
+  import { resolvePinnedHostnameWithPolicy } from "@elizaos/core"
+  import { nodeLookupFn, nodePinnedFetch } from "@elizaos/core-node"
+
   export interface HttpFetchOutcome {
     readonly ok: boolean
     readonly status: number
@@ -184,13 +187,20 @@ module node {
       ? AbortSignal.any([init.signal, AbortSignal.timeout(timeoutMs)])
       : AbortSignal.timeout(timeoutMs)
     for (let hop = 0; hop <= maxRedirects; hop += 1) {
-      const response = await globalThis.fetch(current, {
-        method: init.method ?? "GET",
-        headers: init.headers,
-        body: init.body,
-        redirect: "manual",
-        cache: "no-store",
-        signal,
+      const target = new URL(current)
+      const pinned = await resolvePinnedHostnameWithPolicy(target.hostname, { lookupFn: nodeLookupFn })
+      const response = await nodePinnedFetch({
+        url: target,
+        init: {
+          method: init.method ?? "GET",
+          headers: init.headers,
+          body: init.body,
+          redirect: "manual",
+          cache: "no-store",
+          signal,
+        },
+        lookup: pinned.lookup,
+        addresses: pinned.addresses,
       })
       if (response.status >= 300 && response.status < 400) {
         const location = response.headers.get("location")

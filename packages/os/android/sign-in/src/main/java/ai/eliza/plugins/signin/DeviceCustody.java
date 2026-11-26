@@ -1,7 +1,9 @@
-// spec/os/signIn/credential.md, "Story: Keep me signed in without a second copy of my key"; spec/os/signIn/credential.md, "Story: Sign out or reset cleanly"; spec/os/signIn/credential.md, "Story: Confirm it is me before a billing change"; spec/os/signIn/cloudRequests.md, "Story: Let my agent read my mail without holding a mail credential"
+// spec/os/signIn/credential.md, "Story: Keep me signed in without a second copy of my key"; spec/os/signIn/credential.md, "Story: Sign out or reset cleanly"; spec/os/signIn/credential.md, "Story: Confirm it is me before a billing change"; spec/os/signIn/cloudRequests.md, "Story: Let my agent read my mail without holding a mail credential"; spec/os/android/taskKeys.md, "Story: Keep each account's tasks under its own key"
 package ai.eliza.plugins.signin;
 
+import ai.eliza.os.agent.AgentCredentials;
 import ai.eliza.plugins.securestore.nativeonly.NativeSecureStore;
+import ai.eliza.plugins.securestore.nativeonly.TaskKeyCustody;
 import ai.eliza.plugins.signin.CredentialPolicy.Account;
 import ai.eliza.plugins.signin.CredentialPolicy.MailLeaseUpgrade;
 import ai.eliza.plugins.signin.DeviceKeyClient.Acknowledgement;
@@ -23,9 +25,12 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 public final class DeviceCustody implements SignInCustody {
-  private record Authority(DeviceCredentialStore store, DeviceKeyClient client, AccountSession session, DeviceLease lease) {}
+  private record Authority(DeviceCredentialStore store, DeviceKeyClient client, AccountSession session, DeviceLease lease,
+      TaskKeyCustody taskKeys, AgentCredentials agent) {}
 
   private static final String TAG = "ElizaSignIn";
+  private static final String TASK_KEYS = "eliza-task-keys";
+  private static final String TASK_KEY_ALIAS = "ai.elizaos.task-key.v1.";
   private static final Map<String, Authority> AUTHORITIES = new HashMap<>();
   private static final ExecutorService DUTIES = Executors.newSingleThreadExecutor();
 
@@ -43,6 +48,10 @@ public final class DeviceCustody implements SignInCustody {
 
   public static CredentialReader reader(Context context, String apiOrigin) {
     return authority(context, apiOrigin).store();
+  }
+
+  public static AgentCredentials agentCredentials(Context context, String apiOrigin) {
+    return authority(context, apiOrigin).agent();
   }
 
   public static LegacyCredentialAuthority legacyCredentials(Context context, String apiOrigin) {
@@ -108,6 +117,7 @@ public final class DeviceCustody implements SignInCustody {
       Authority authority = authority(context, environment.apiOrigin);
       authority.session().drop();
       authority.store().reset();
+      authority.taskKeys().reset();
       DUTIES.execute(authority.client()::settleDuties);
     }
   }
@@ -124,7 +134,10 @@ public final class DeviceCustody implements SignInCustody {
     DeviceKeyClient client = new DeviceKeyClient(URI.create(apiOrigin), store, Thread::sleep);
     store.onVerifyAccount(() -> DUTIES.execute(client::verifyAccount));
     store.onRenewKey(() -> DUTIES.execute(client::renew));
-    Authority created = new Authority(store, client, new AccountSession(store, client), new DeviceLease(store, client, () -> DUTIES.execute(client::renewIfDue)));
+    TaskKeyCustody taskKeys = new TaskKeyCustody(new File(context.getApplicationContext().getNoBackupFilesDir(), TASK_KEYS), TASK_KEY_ALIAS, apiOrigin);
+    AgentCredentials agent = new DeviceAgentCredentials(store, taskKeys, refused -> Log.w(TAG, "The agent launches without a task storage key", refused));
+    Authority created = new Authority(store, client, new AccountSession(store, client), new DeviceLease(store, client, () -> DUTIES.execute(client::renewIfDue)),
+      taskKeys, agent);
     AUTHORITIES.put(apiOrigin, created);
     DUTIES.execute(client::settleDuties);
     DUTIES.execute(client::renewIfDue);
