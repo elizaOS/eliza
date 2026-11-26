@@ -12,7 +12,6 @@ import { cueRule, hostObjects, streamable, withoutWrittenCalls, writtenCallOf } 
 import { deviceActionsModuleName } from "../src/device-actions/proposal/module.vibe"
 import { viewsModuleName } from "../src/views/module.vibe"
 import { deviceKeyHex } from "./support/device.ts"
-import { viewsModuleName } from "../src/views/module.vibe"
 
 module node {
   import { Effect } from "effect"
