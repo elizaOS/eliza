@@ -1469,11 +1469,11 @@ it.live(`A warm-up sends the planner's own system prompt and tools once with a o
   }))
 }, 120_000)
 
-it.live(`An own-key planner asks a model that takes a temperature at zero, and an OpenAI reasoning model at its default, and both answer (${planning}, "Every planner call asks the model at temperature zero, unless the model takes only its default"; spec/agent/models/binding.md, "A call sends its caller's temperature only to a model that takes one")`, effect () => {
+it.live(`An own-key planner asks a model that takes a temperature at zero, and an OpenAI reasoning model, known by its id or declared by the launch, at its default, and all answer (${planning}, "Every planner call asks the model at temperature zero, unless the model takes only its default"; spec/agent/models/binding.md, "A call sends its caller's temperature only to a model that takes one")`, effect () => {
   const cloud = try cloudFake(deviceKey)
-  const turnOn = effect (largeModel: string) => {
+  const turnOn = effect (largeModel: string, sampling?: { readonly large: "default-temperature-only" }) => {
     const agent = try startInProcess({
-      launch: { backend: { kind: "ownKey", baseUrl: cloud.ownKeyBaseUrl, smallModel: "small", largeModel }, load: [basicActionsModuleName], allowed: ["REPLY", "IGNORE", "NONE", "CALCULATE"] },
+      launch: { backend: { kind: "ownKey", baseUrl: cloud.ownKeyBaseUrl, smallModel: "small", largeModel, ...(sampling === undefined ? {} : { sampling }) }, load: [basicActionsModuleName], allowed: ["REPLY", "IGNORE", "NONE", "CALCULATE"] },
       frame: { credential: { version: 1, value: cloud.ownKey } }, modules: builtinModuleFactories,
     })
     const { id } = try conversation(agent)
@@ -1485,9 +1485,11 @@ it.live(`An own-key planner asks a model that takes a temperature at zero, and a
   }
   const takes = try turnOn("large")
   const reasoning = try turnOn("o4-mini")
-  try Effect.try(() => assert.deepStrictEqual({ takes, reasoning }, {
+  const declared = try turnOn("my-o3", { large: "default-temperature-only" })
+  try Effect.try(() => assert.deepStrictEqual({ takes, reasoning, declared }, {
     takes: { reply: "Own answer.", failureKind: "none", sent: [true, 0] },
     reasoning: { reply: "Own answer.", failureKind: "none", sent: [false, undefined] },
+    declared: { reply: "Own answer.", failureKind: "none", sent: [false, undefined] },
   }))
 }, 120_000)
 

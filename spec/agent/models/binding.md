@@ -292,21 +292,36 @@ pure def lawOmittingDropsTheCap(asked: CapAsk): bool = capSent(asked, true) == N
 
 OpenAI's reasoning models refuse every temperature but their own default,
 so a call to one sends no `temperature` and the model samples at its
-default. They are the ids `o` followed by a digit (`o1`, `o3-mini`,
-`o4-mini`) and the `gpt-5` family other than its `-chat` models, read as
-the hint rule reads the id, on the cloud and on any own-key endpoint. Every
-other model gets the temperature its caller names, from the call or from
-the launch's sampling settings ([models](../../core/models.md)), and a
-call that names none sends none. The model id decides before the call is
-sent; a provider's refusal of a temperature is never retried without one.
+default. An own-key launch may declare, for its small and its large model,
+whether the model takes a temperature (`ownKeySampling`,
+[launch](../host/launch.md)), and a declaration decides for that model: an
+owner whose deployment or gateway alias hides a reasoning model declares it
+`default-temperature-only`, and one whose model the id rule misreads
+declares it `takes-temperature`. An undeclared model is read by its id:
+the ids `o` followed by a digit (`o1`, `o3-mini`, `o4-mini`) and the
+`gpt-5` family other than its `-chat` models, read as the hint rule reads
+the id, on the cloud and on any own-key endpoint, take only their default.
+Every other model gets the temperature its caller names, from the call or
+from the launch's sampling settings ([models](../../core/models.md)), and a
+call that names none sends none. The declaration or the id decides before
+the call is sent; a provider's refusal of a temperature is never retried
+without one.
 
 ```quint
 type SamplingControl = TakesTemperature | DefaultTemperatureOnly
+type SamplingDeclaration = SamplingDeclared({ control: SamplingControl }) | SamplingUndeclared
+pure def samplingControl(declared: SamplingDeclaration, byId: SamplingControl): SamplingControl = match declared {
+  | SamplingDeclared(d) => d.control
+  | SamplingUndeclared => byId
+}
 pure def temperatureSent(control: SamplingControl, named: bool): bool = named and control == TakesTemperature
 pure val controlValues = Set(TakesTemperature, DefaultTemperatureOnly)
+pure val byIdValues = Set(TakesTemperature, DefaultTemperatureOnly)
 pure def lawNoTemperatureIsInvented(control: SamplingControl): bool = not(temperatureSent(control, false))
 pure def lawADefaultOnlyModelGetsNoTemperature(named: bool): bool = not(temperatureSent(DefaultTemperatureOnly, named))
 pure def lawAModelThatTakesOneGetsTheNamedTemperature(named: bool): bool = temperatureSent(TakesTemperature, named) == named
+pure def lawTheOwnersDeclarationDecides(control: SamplingControl, byId: SamplingControl): bool = samplingControl(SamplingDeclared({ control: control }), byId) == control
+pure def lawAnUndeclaredModelIsReadByItsId(byId: SamplingControl): bool = samplingControl(SamplingUndeclared, byId) == byId
 ```
 
 ### A Qwen call on a Cerebras route sends the prompt cache key its caller names, and no call invents one

@@ -18,7 +18,7 @@ export async function scratchDirectory(prefix: string): Promise<Scratch> {
 
 export type Backend =
   | { readonly kind: "cloud"; readonly origin: string; readonly smallModel?: string; readonly largeModel?: string; readonly imageModel?: string }
-  | { readonly kind: "ownKey"; readonly baseUrl: string; readonly smallModel: string; readonly largeModel: string }
+  | { readonly kind: "ownKey"; readonly baseUrl: string; readonly smallModel: string; readonly largeModel: string; readonly sampling?: { readonly small?: "takes-temperature" | "default-temperature-only"; readonly large?: "takes-temperature" | "default-temperature-only" } }
   | { readonly kind: "none" };
 
 export interface LaunchOptions {
@@ -42,12 +42,12 @@ export interface LaunchOptions {
 
 export const account = { userId: "owner-user", organizationId: "owner-org" } as const;
 
-function model(backend: Backend): Record<string, string> {
+function model(backend: Backend): Record<string, unknown> {
   switch (backend.kind) {
     case "cloud":
       return { backend: "cloud", cloudBaseUrl: backend.origin, smallModel: backend.smallModel ?? "small", largeModel: backend.largeModel ?? "large", imageModel: backend.imageModel ?? "small" };
     case "ownKey":
-      return { backend: "own-key", ownKeyBaseUrl: backend.baseUrl, ownKeySmall: backend.smallModel, ownKeyLarge: backend.largeModel };
+      return { backend: "own-key", ownKeyBaseUrl: backend.baseUrl, ownKeySmall: backend.smallModel, ownKeyLarge: backend.largeModel, ...(backend.sampling === undefined ? {} : { ownKeySampling: backend.sampling }) };
     case "none":
       return { backend: "none" };
     default: {

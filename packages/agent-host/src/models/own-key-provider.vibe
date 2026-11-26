@@ -2,17 +2,27 @@
 import { ModelType, type IAgentRuntime } from "@elizaos/core"
 import type { HttpClient } from "effect/http"
 import { onCerebras } from "./binding.vibe"
+import type { SamplingControl, SamplingDeclaration } from "../../gen/agent__models__binding.effect.vibe"
 import { Refused, describeImage, generateText, listModels, registerTwice, type Binding, type ShellRefused } from "./chat.vibe"
+
+export type OwnKeySampling = "takes-temperature" | "default-temperature-only"
 
 export interface OwnKeyModels {
   readonly baseUrl: string
   readonly small: string
   readonly large: string
+  readonly sampling?: { readonly small?: OwnKeySampling; readonly large?: OwnKeySampling }
+}
+
+const samplingControls = { "takes-temperature": "TakesTemperature", "default-temperature-only": "DefaultTemperatureOnly" } as const satisfies Record<OwnKeySampling, SamplingControl>
+
+function declaredOf(declared: OwnKeySampling | undefined): SamplingDeclaration {
+  return declared === undefined ? { tag: "SamplingUndeclared" } : { tag: "SamplingDeclared", control: samplingControls[declared] }
 }
 
 export function registerOwnKeyModels(runtime: IAgentRuntime, binding: Binding, own: OwnKeyModels): void {
   const cerebras = onCerebras(own.baseUrl)
-  const endpoint = { url: own.baseUrl + "/chat/completions", models: { TextSmall: own.small, TextLarge: own.large, ImageDescription: own.large }, maxTokensField: "max_completion_tokens", reasoningHints: cerebras, uniformToolStrictness: cerebras, cloudRoute: false } as const
+  const endpoint = { url: own.baseUrl + "/chat/completions", models: { TextSmall: own.small, TextLarge: own.large, ImageDescription: own.large }, sampling: { TextSmall: declaredOf(own.sampling?.small), TextLarge: declaredOf(own.sampling?.large), ImageDescription: declaredOf(own.sampling?.large) }, maxTokensField: "max_completion_tokens", reasoningHints: cerebras, uniformToolStrictness: cerebras, cloudRoute: false } as const
   registerTwice(runtime, "@elizaos/agent/own-key", {
     [ModelType.TEXT_SMALL]: generateText(binding, endpoint, "TextSmall"),
     [ModelType.TEXT_LARGE]: generateText(binding, endpoint, "TextLarge"),

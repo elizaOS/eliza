@@ -185,9 +185,10 @@ overridden by the launch's sampling settings
 ([models](../../core/models.md)). Other model calls (evaluators,
 extractors, reply drafts and reads) keep their own. The exception is a
 model that takes no temperature but its default, such as an OpenAI
-reasoning model on an own-key endpoint: the binding sends that model no
-temperature, and the planner runs at the model's default instead of
-failing ([binding](../models/binding.md)).
+reasoning model on an own-key endpoint, known by its id or declared so by
+the owner's launch: the binding sends that model no temperature, and the
+planner runs at the model's default instead of failing
+([binding](../models/binding.md)).
 
 ```quint
 type PlannerCall = PlanningStep | AnswerAgain | WarmUpCall

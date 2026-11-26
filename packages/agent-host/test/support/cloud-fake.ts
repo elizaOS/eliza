@@ -87,7 +87,7 @@ export const answerJson = (body: unknown, status = 200): RouteReply => ({ kind: 
 export const answerStatus = (status: number): RouteReply => ({ kind: "status", status });
 
 const ownKeyPrefix = "/own-key/v1";
-const defaultTemperatureOnlyModels = new Set(["o4-mini", "gpt-5-mini"]);
+const defaultTemperatureOnlyModels = new Set(["o4-mini", "gpt-5-mini", "my-o3"]);
 
 function refusesTemperature(body: unknown): boolean {
   if (typeof body !== "object" || body === null) return false;

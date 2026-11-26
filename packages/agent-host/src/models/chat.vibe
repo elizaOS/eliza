@@ -5,8 +5,8 @@ import type { GenerateTextParams, GenerateTextResult, IAgentRuntime, ModelRegist
 import { runSquashed } from "./run-squashed.vibe"
 import { FetchHttpClient, HttpClient, HttpClientRequest, type HttpClientResponse } from "effect/http"
 import {
-  cacheKeySent, capSent, chatReturn, clockAt, effortFor, writtenCallsRead, failureOf, fundsCodeName, fundsCodeOf, limitOriginOf, outcomeOf, reportedRetryAt, retryKey, shellOutcome, streamIdleSeconds, temperatureSent, usageAsked, warmUpSent,
-  type CapAsk, type ChatAsk, type ChatReturn, type FundsCode, type LimitOrigin, type ModelBinding, type ModelHandler, type ReasoningEffort, type ReasoningFamily, type SamplingControl, type ShellRefusal, type ThinkingHint,
+  cacheKeySent, capSent, chatReturn, clockAt, effortFor, writtenCallsRead, failureOf, fundsCodeName, fundsCodeOf, limitOriginOf, outcomeOf, reportedRetryAt, retryKey, samplingControl, shellOutcome, streamIdleSeconds, temperatureSent, usageAsked, warmUpSent,
+  type CapAsk, type ChatAsk, type ChatReturn, type FundsCode, type LimitOrigin, type ModelBinding, type ModelHandler, type ReasoningEffort, type ReasoningFamily, type SamplingControl, type SamplingDeclaration, type ShellRefusal, type ThinkingHint,
 } from "../../gen/agent__models__binding.effect.vibe"
 import { failureKindName, type BoundModels, type FailureKind } from "./binding.vibe"
 
@@ -17,6 +17,7 @@ export type Binding = Pick<BoundModels, "credential" | "startCall" | "answerCall
 export interface Endpoint {
   readonly url: string
   readonly models: Readonly<Partial<Record<ChatHandler, string>>>
+  readonly sampling?: Readonly<Partial<Record<ChatHandler, SamplingDeclaration>>>
   readonly maxTokensField: "max_tokens" | "max_completion_tokens"
   readonly reasoningHints: boolean
   readonly uniformToolStrictness: boolean | "OnCerebrasModels"
@@ -649,8 +650,9 @@ function familyOf(model: string | undefined): ReasoningFamily {
 
 const defaultTemperatureOnlyModel = /^(?:o\d|gpt-5(?!.*-chat))/
 
-function samplingOf(model: string | undefined): SamplingControl {
-  return defaultTemperatureOnlyModel.test(modelIdOf(model)) ? "DefaultTemperatureOnly" : "TakesTemperature"
+function samplingOf(endpoint: Endpoint, handler: ChatHandler): SamplingControl {
+  const byId = defaultTemperatureOnlyModel.test(modelIdOf(endpoint.models[handler])) ? "DefaultTemperatureOnly" : "TakesTemperature"
+  return samplingControl(endpoint.sampling?.[handler] ?? { tag: "SamplingUndeclared" }, byId)
 }
 
 function hintOf(params: GenerateTextParams): ThinkingHint {
@@ -685,7 +687,7 @@ function requestOf(endpoint: Endpoint, handler: ChatHandler, params: GenerateTex
   const tools = toolsOf(params.tools, endpoint.uniformToolStrictness === "OnCerebrasModels" ? family !== "OtherReasoning" : endpoint.uniformToolStrictness)
   const toolChoice = toolChoiceOf(params.toolChoice)
   const format = responseFormatOf(params)
-  const temperature = temperatureSent(samplingOf(endpoint.models[handler]), params.temperature !== undefined) ? params.temperature : undefined
+  const temperature = temperatureSent(samplingOf(endpoint, handler), params.temperature !== undefined) ? params.temperature : undefined
   return {
     messages,
     ...(cap.tag === "CapAsked" ? { [endpoint.maxTokensField]: cap.tokens } : {}),
