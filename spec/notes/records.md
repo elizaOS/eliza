@@ -126,6 +126,34 @@ pure def lawNothingBesideTheChecklistItems(titled: bool, itemCount: int, blankIt
   not(checklistCreationAdmitted(titled, itemCount, blankItemCount, longestItemUnits, true))
 ```
 
+### Removing one item from a list is an edit of that note, never a delete
+
+Taking one item off a saved checklist (`remove it` after `add milk to my
+shopping list`) is an edit of that note: the one item at the index the
+model read, while it still holds the text read there, comes out, and every
+other item, the title and the note itself stay. An item whose text changed
+since the read, or an index outside the list, removes nothing and asks for
+a fresh read. Removing the last item leaves the note, with an empty list.
+A line of a plain note comes out by replacing its text with nothing. The
+Notes actions tell the model so, and that deleting the note is only for an
+owner who asks to delete the note itself, never to take something off it.
+
+```quint
+pure def itemRemoved(index: int, itemCount: int, textMatches: bool): bool =
+  index >= 0 and index < itemCount and textMatches
+pure def itemsLeft(index: int, itemCount: int, textMatches: bool): int =
+  if (itemRemoved(index, itemCount, textMatches)) itemCount - 1 else itemCount
+pure val removedIndexValues = Set(-1, 0, 1, 2, 100)
+pure def lawARemovalTakesOutExactlyOneItem(removedIndex: int, itemCount: int): bool =
+  itemRemoved(removedIndex, itemCount, true) implies itemsLeft(removedIndex, itemCount, true) == itemCount - 1
+pure def lawAChangedItemIsNeverRemoved(removedIndex: int, itemCount: int): bool =
+  not(itemRemoved(removedIndex, itemCount, false)) and itemsLeft(removedIndex, itemCount, false) == itemCount
+pure def lawAnIndexOutsideTheListRemovesNothing(removedIndex: int, itemCount: int, textMatches: bool): bool =
+  (removedIndex < 0 or removedIndex >= itemCount) implies itemsLeft(removedIndex, itemCount, textMatches) == itemCount
+pure def lawARemovalNeverLeavesFewerThanNone(removedIndex: int, itemCount: int, textMatches: bool): bool =
+  itemCount >= 0 implies itemsLeft(removedIndex, itemCount, textMatches) >= 0
+```
+
 ### The agent reads and changes Notes only for the owner, and changes the note the model picked
 
 Only the owner reaches the Notes actions, the saved-notes context and the
