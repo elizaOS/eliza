@@ -92,14 +92,27 @@ function isSchemaNode(value: unknown): value is SchemaNode {
   return typeof value === "object" && value !== null && !Array.isArray(value)
 }
 
-function typeNames(node: SchemaNode): string[] {
+function unionBranches(node: SchemaNode): readonly SchemaNode[] | undefined {
+  if (node.type !== undefined || (node.anyOf !== undefined && node.oneOf !== undefined)) return undefined
   const branches = node.anyOf ?? node.oneOf
-  const named = node.type !== undefined
-    ? [node.type]
-    : Array.isArray(branches) && branches.length > 0 && branches.every((branch) => isSchemaNode(branch) && branch.type !== undefined)
-      ? branches.map((branch) => isSchemaNode(branch) ? branch.type : undefined)
-      : []
-  return named.flat().filter((name): name is string => typeof name === "string")
+  return Array.isArray(branches) && branches.length > 0 && branches.every(isSchemaNode) ? branches : undefined
+}
+
+function directTypeNames(node: SchemaNode): string[] | undefined {
+  if (typeof node.type === "string") return [node.type]
+  if (Array.isArray(node.type) && node.type.length > 0 && node.type.every((name): name is string => typeof name === "string")) return node.type
+  return undefined
+}
+
+function isTypedSchema(node: SchemaNode, seen: ReadonlySet<SchemaNode> = new Set()): boolean {
+  if (seen.has(node)) return false
+  const direct = directTypeNames(node)
+  if (direct !== undefined) return direct.every((name) => name === "null" || VALUE_TYPES.some((type) => type === name))
+  const union = unionBranches(node)
+  if (union === undefined) return false
+  const nextSeen = new Set(seen)
+  nextSeen.add(node)
+  return union.every((branch) => isTypedSchema(branch, nextSeen))
 }
 
 function anyValue(depth: number): ActionParameterSchema {
@@ -124,12 +137,28 @@ function declaredFacets(node: SchemaNode): ShapeFacet[] {
   ]
 }
 
-function parameterShape(node: unknown, depth: number): ActionParameterSchema {
+function parameterShape(node: unknown, depth: number, inUnion = false): ActionParameterSchema {
   if (!isSchemaNode(node)) return anyValue(depth)
-  const names = typeNames(node)
-  const typed = names.length > 0 && names.every((name) => name === "null" || VALUE_TYPES.some((type) => type === name))
+  const typed = isTypedSchema(node)
   const shape = projectShape(declaredFacets(node), typed, depth)
   if (shape.anyValue) return anyValue(depth)
+  const description = (depth > 0 || inUnion) && typeof node.description === "string" ? { description: node.description } : {}
+  const union = unionBranches(node)
+  if (union !== undefined) {
+    const branches: ActionParameterSchema[] = []
+    const pushBranch = (entry: ActionParameterSchema) => {
+      if (entry.type === "null" && entry.description === undefined && branches.some((existing) => existing.type === "null" && existing.description === undefined)) return
+      branches.push(entry)
+    }
+    for (const branch of union) {
+      const projected = parameterShape(branch, depth, true)
+      if (projected.anyOf !== undefined && projected.description === undefined) projected.anyOf.forEach(pushBranch)
+      else pushBranch(projected)
+    }
+    if (node.nullable === true) pushBranch({ type: "null" })
+    return branches.length === 1 ? { ...branches[0], ...description } : { anyOf: branches, ...description }
+  }
+  const names = directTypeNames(node) ?? []
   const has = (facet: ShapeFacet) => shape.facets.includes(facet)
   const branches: ActionParameterSchema[] = VALUE_TYPES.filter((type) => names.includes(type)).map((type) => {
     if (type === "object") {
@@ -148,7 +177,6 @@ function parameterShape(node: unknown, depth: number): ActionParameterSchema {
     return { type }
   })
   if (names.includes("null") || node.nullable === true) branches.push({ type: "null" })
-  const description = depth > 0 && typeof node.description === "string" ? { description: node.description } : {}
   return branches.length === 1 ? { ...branches[0], ...description } : { anyOf: branches, ...description }
 }
 
