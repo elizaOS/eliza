@@ -241,10 +241,10 @@ effect function googleStart(env: IdentityEnv, purpose: BrowserGooglePurpose) {
     include_granted_scopes: "false",
     state,
     code_challenge: challenge,
-    code_challenge_method: "S256"
+    code_challenge_method: "S256",
+    prompt: "select_account"
   })
   const backup = purpose === "GooglePasswordBackup"
-  if (backup) params.set("prompt", "select_account")
   const flow = state + "." + verifier + (backup ? "." + backupFlowMarker : "")
   return redirect("https://accounts.google.com/o/oauth2/v2/auth?" + params, [cookieValue(flowCookie, flow, codeSeconds)])
 }

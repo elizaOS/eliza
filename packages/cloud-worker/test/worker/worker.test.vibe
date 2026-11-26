@@ -70,10 +70,25 @@ describe('Serve the deployment from a Worker (spec/cloud/deployment.md, "Story: 
 
     const env = {
       CLOUD_PROFILE: JSON.stringify(profile), CLOUD_ENVIRONMENT: "staging", DATABASE_URL: database.url,
-      CLOUD_IDENTITY_DIGEST: testDatabaseIdentity, PUBLIC_API_ORIGIN: api, WEB_ORIGIN: web, ...secrets
+      CLOUD_IDENTITY_DIGEST: testDatabaseIdentity, PUBLIC_API_ORIGIN: api, WEB_ORIGIN: web,
+      GOOGLE_CLIENT_ID: profile.environments.staging.google.clientId, ...secrets
     } satisfies CloudBindings
     const worker = cloudWorker<CloudBindings>()
     const call = (path: string, bindings: CloudBindings = env, init?: RequestInit) => tryPromise(() => worker.fetch(webRequest(api + path, init), bindings))
+    const chooseGoogle = effect (start: string) => {
+      const response = try call(start)
+      const destination = try Effect.try(() => new URL(response.headers.get("location") ?? ""))
+      const { searchParams } = destination
+      return [response.status, destination.origin, destination.pathname, searchParams.get("client_id"),
+        searchParams.get("redirect_uri"), searchParams.get("code_challenge_method"), searchParams.get("prompt")]
+    }
+    const google = try chooseGoogle("/api/auth/google/start")
+    const backup = try chooseGoogle("/api/auth/google/start?password_backup=1")
+    try check(() => {
+      const chooser = [303, "https://accounts.google.com", "/o/oauth2/v2/auth", env.GOOGLE_CLIENT_ID,
+        `${api}/api/auth/google/callback`, "S256", "select_account"]
+      assert.deepEqual([google, backup], [chooser, chooser])
+    })
 
     const config = try body(try call("/api/v1/app-auth/mobile/config?" + new URLSearchParams({ clientId: phone.clientId, environment: "staging", redirectUri: phone.signInReturn }).toString()))
     const links = try body(try call("/.well-known/assetlinks.json"))
