@@ -108,8 +108,6 @@ it.effect('A symlinked worker executable is refused before the plan loads (spec/
   try Effect.try(() => assert.strictEqual(failed._tag === "AgentBootFailed" ? failed.phase : failed._tag, "Config"))
 }, 60_000)
 
-const hostServicesRule = "Host runtime services register with storage before every listed plugin, never under an agent service's name, and a pinned worker is the workflow-worker service"
-
 function hostService(serviceType: string): ServiceClass {
   return class HostBridge extends Service {
     static override serviceType = serviceType
@@ -121,7 +119,7 @@ function hostService(serviceType: string): ServiceClass {
   }
 }
 
-it.effect(`A pinned worker is the workflow-worker service, a host's bridges are found by name, and a host service under an agent service's name refuses boot (spec/agent/plugins/profile.md, "${hostServicesRule}")`, effect () => {
+it.effect(`A pinned worker is the workflow-worker service, a host's bridges are found by name, and a host service under an agent service's name refuses boot (spec/agent/plugins/profile.md, "Host runtime services register with storage before every listed plugin, never under an agent service's name, and a pinned worker is the workflow-worker service")`, effect () => {
   const state = try scratch("ww-services-state")
   const workers = try scratch("ww-services-dir")
   try host("worker fixture", () => writeWorker(workers.path, "worker"))

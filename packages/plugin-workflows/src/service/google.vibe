@@ -20,7 +20,7 @@ function identity(value: unknown, maximum = 256): value is string {
 }
 
 effect function call<A>(work: () => Promise<A>): A!WorkflowRefused {
-  return try Effect.catch(timeout(tryPromise({ try: work, catch: () => new WorkflowRefused({ status: 409, message: unavailableText }) }), readTimeout), () => unavailable())
+  return timeout(tryPromise({ try: work, catch: () => new WorkflowRefused({ status: 409, message: unavailableText }) }), readTimeout) catch effect () => try unavailable()
 }
 
 export effect function validateHostedGoogleSelection(value: unknown): HostedLiveSelection!WorkflowRefused {

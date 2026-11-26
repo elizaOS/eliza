@@ -1,0 +1,70 @@
+// spec/codingTools/index.md, "Story: Enforce sandbox confinement and bounded tool outputs"
+import type { IAgentRuntime, Memory, Provider, ProviderResult, State } from "@elizaos/core"
+import type { ShellService } from "./services/services.vibe"
+import { CODING_TOOLS_CONTEXTS, SHELL_SERVICE } from "./types.vibe"
+
+const TOOL_NAMES = [
+  "EDIT",
+  "FILE",
+  "READ",
+  "SHELL",
+  "WEB_FETCH",
+  "WEB_SEARCH",
+  "WORKTREE",
+  "WRITE",
+] as const
+
+const STATIC_TOOL_GUIDE = [
+  "# Coding tools",
+  "Core loop: READ (supports batch paths[] and line_numbers), EDIT (supports multi-hunk edits[]), WRITE (new files or overwrite=true), FILE (grep/glob/ls + batch patterns[]), SHELL (foreground/background/artifact paging/history), WORKTREE (enter/exit), WEB_FETCH, WEB_SEARCH.",
+  "Rules: read before editing; pass exact text or hunks[] instead of full rewrites; page large outputs via ref/artifact handles; run focused verification (test/typecheck/lint) directly without masking exit codes.",
+  ...TOOL_NAMES.map((name) => `- ${name}`),
+].join("\n")
+
+export const availableToolsProvider: Provider = {
+  name: "AVAILABLE_CODING_TOOLS",
+  description: "Static catalog of native workspace coding tools.",
+  descriptionCompressed: "Native coding tool catalog.",
+  position: -10,
+  contexts: [...CODING_TOOLS_CONTEXTS],
+  contextGate: { anyOf: [...CODING_TOOLS_CONTEXTS] },
+  cacheStable: true,
+  cacheScope: "agent",
+  get: async (): Promise<ProviderResult> => ({
+    text: STATIC_TOOL_GUIDE,
+    data: { codingTools: [...TOOL_NAMES] },
+  }),
+}
+
+export const shellHistoryProvider: Provider = {
+  name: "SHELL_HISTORY",
+  description: "Recent redacted shell commands for the active conversation.",
+  descriptionCompressed: "Recent conversation shell history.",
+  dynamic: true,
+  cacheStable: false,
+  cacheScope: "turn",
+  contexts: [...CODING_TOOLS_CONTEXTS],
+  contextGate: { anyOf: [...CODING_TOOLS_CONTEXTS] },
+  get: async (runtime: IAgentRuntime, message: Memory, _state: State): Promise<ProviderResult> => {
+    const conversationId = message.roomId !== undefined && message.roomId !== null ? String(message.roomId) : undefined
+    if (!conversationId) return { text: "", discoveryText: "Shell history: 0 commands", referenceBodyDeferred: true }
+    const shellSvc = runtime.getService(SHELL_SERVICE) as ShellService | null
+    if (!shellSvc) return { text: "", discoveryText: "Shell history: unavailable", referenceBodyDeferred: true }
+    const recent = shellSvc.getHistory(conversationId, 10)
+    if (recent.length === 0) {
+      return { text: "", discoveryText: "Shell history: 0 commands", referenceBodyDeferred: true, data: { count: 0 } }
+    }
+    const last = recent[recent.length - 1]
+    const discoveryText = `Shell history: ${recent.length} recent (last: [exit ${last.exitCode}] ${last.command})`
+    const text = [
+      "# Recent shell history",
+      ...recent.map((e, idx) => `${idx + 1}. [exit ${e.exitCode}] ${e.command} (${e.cwd})`),
+    ].join("\n")
+    return {
+      text,
+      discoveryText,
+      referenceBodyDeferred: true,
+      data: { count: recent.length, commands: recent.map((e) => ({ command: e.command, exitCode: e.exitCode, cwd: e.cwd })) },
+    }
+  },
+}

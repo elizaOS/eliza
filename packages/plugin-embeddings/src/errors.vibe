@@ -1,0 +1,28 @@
+// spec/embeddings/index.md, "A failed primary can use a configured fallback once"
+export error EmbeddingProviderFailed {
+  reason: string
+  message?: string
+  status?: number
+  statusCode?: number
+  responseHeaders?: Record<string, string>
+  responseBody?: string
+  url?: string
+  code?: string
+  cause?: unknown
+}
+
+export function providerFailure(fields: {
+  readonly reason: string
+  readonly status?: number
+  readonly statusCode?: number
+  readonly responseHeaders?: Record<string, string>
+  readonly responseBody?: string
+  readonly url?: string
+  readonly code?: string
+  readonly cause?: unknown
+}): EmbeddingProviderFailed {
+  return new EmbeddingProviderFailed({
+    ...fields,
+    message: fields.reason,
+  })
+}

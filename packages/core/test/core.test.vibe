@@ -1,6 +1,6 @@
 // spec/core/index.md, "Story: Compose a kernel through explicit services"
 import { assert, it } from "@effect/vitest"
-import { type Action, addLogListener, asyncContextStorageFactoryFor, AsyncContextUnavailableError, type AgentEventPayload, AgentEventService, type AgentNotification, AgentRuntime, annotateActiveTrajectoryStep, type ApprovalRequest, type ApprovalResult, ApprovalService, BatchProcessor, bindIncomingMessagePersistence, bridgeActionCompletedToStreams, bridgeActionStartedToStreams, bridgeRunEndedToStreams, bridgeRunStartedToStreams, buildPairingReplyMessage, buildPlannerActionGrammarStrict, callModelWithValidation, canModifyRole, ChannelTopicsService, ChannelType, checkPairingAllowed, clearSaltCache, collectMessageContentSegmentIds, compactHistoricalReceiptSegments, completionContextSources, type ConnectorAccount, type ConnectorAccountProvider, type Content, type ContextObject, createCharacter, createLogger, createMessageMemory, createModelAttemptAllowance, createPreparedModelRequestGuard, createService, createUniqueUuid, decryptStringValue, effectDeliveryBindingIsValid, effectDeliveryBindingProvesApplication, ElizaError, EmbeddingGenerationService, EncryptedCachePseudonymMapStore, ensureAgentVoice, ensureTaskTrajectory, EventType, executePlannedToolCall, getConnectorAccountManager, getEmbeddingVectorSpace, getTrajectoryContext, getWorldSettings, type HandlerCallback, handoffTaskSchedulerAdapter, type IAgentRuntime, identifyEmbeddingVector, incomingMessagePersistenceSnapshot, inheritIncomingMessagePersistence, isElizaError, isInAllowlist, isScrubDone, logActiveTrajectoryLlmCall, type LogEntry, type Memory, MESSAGE_CONTENT_SEGMENT_MAX_BYTES, MESSAGE_CONTENT_SEGMENT_TABLE, type MessageHandlerResult, MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED, ModelType, NoModelProviderConfiguredError, nodeSecretCipher, normalizeEffectReceipt, type NotificationInboxSnapshot, NotificationNativeError, NotificationService, PairingService, persistIncomingMessageMemory, PiiScrubService, PseudonymSession, type PipelineHookContext, type Plugin, recentLogs, recordLlmCall, registerProxyInspector, registerScheduledProcessTask, registerSecretCipher, removeLogListener, requireConfirmation, resolveCanonicalOwnerId, resolveEntityRole, resolveOwnerEntityIdOrDefault, type ResponseHandlerFieldEvaluator, ResponseHandlerFieldRegistry, Role, ROLE_WRITE_AUDIT_LOG_TYPE, type RoleName, RoomHandlerQueueAbortedError, RoomHandlerQueueClosedError, runExtractorPipeline, runResponseHandlerEvaluators, RunTerminalOwner, runWithStreamingContext, runWithTrajectoryContext, selectCompletionContext, Service, type ServiceClass, ServiceType, setEntityRoleCas, SecretCipherUnavailableError, SecretSwapSession, STANDARD_OPTIONS, startTaskScheduler, stopTaskScheduler, type StreamingContext, stringToUuid, TaskDrain, TaskService, type TaskWorker, type TrajectoryContext, TurnAbortedError, updateWorldSettings, type UUID, VoiceCancellationRegistry, withEvaluatorStep, withRoomDeliverySettlement, withStandaloneTrajectory, withVisibleComponents, type World } from "../src/index.vibe"
+import { type Action, addLogListener, asyncContextStorageFactoryFor, AsyncContextUnavailableError, type AgentEventPayload, AgentEventService, type AgentNotification, AgentRuntime, annotateActiveTrajectoryStep, type ApprovalRequest, type ApprovalResult, ApprovalService, BatchProcessor, bindIncomingMessagePersistence, bridgeActionCompletedToStreams, bridgeActionStartedToStreams, bridgeRunEndedToStreams, bridgeRunStartedToStreams, buildPairingReplyMessage, buildPlannerActionGrammarStrict, callModelWithValidation, canModifyRole, ChannelTopicsService, ChannelType, checkPairingAllowed, clearSaltCache, collectMessageContentSegmentIds, compactHistoricalReceiptSegments, completionContextSources, type ConnectorAccount, type ConnectorAccountProvider, type Content, type ContextObject, createCharacter, createLogger, createMessageMemory, createModelAttemptAllowance, createPreparedModelRequestGuard, createService, createUniqueUuid, decryptStringValue, effectDeliveryBindingIsValid, effectDeliveryBindingProvesApplication, ElizaError, EmbeddingGenerationService, EncryptedCachePseudonymMapStore, ensureAgentVoice, ensureTaskTrajectory, EventType, executePlannedToolCall, getConnectorAccountManager, getEmbeddingVectorSpace, getTrajectoryContext, getWorldSettings, type HandlerCallback, handoffTaskSchedulerAdapter, type IAgentRuntime, identifyEmbeddingVector, incomingMessagePersistenceSnapshot, inheritIncomingMessagePersistence, isElizaError, isInAllowlist, isScrubDone, logActiveTrajectoryLlmCall, type LogEntry, type Memory, MESSAGE_CONTENT_SEGMENT_MAX_BYTES, MESSAGE_CONTENT_SEGMENT_TABLE, type MessageHandlerResult, MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED, ModelType, NoModelProviderConfiguredError, nodeSecretCipher, normalizeEffectReceipt, type NotificationInboxSnapshot, NotificationNativeError, NotificationService, PairingService, persistIncomingMessageMemory, PiiScrubService, promoteSubactionsToActions, PseudonymSession, type PipelineHookContext, type Plugin, recentLogs, recordLlmCall, registerProxyInspector, registerScheduledProcessTask, registerSecretCipher, removeLogListener, requireConfirmation, resolveCanonicalOwnerId, resolveEntityRole, resolveOwnerEntityIdOrDefault, type ResponseHandlerFieldEvaluator, ResponseHandlerFieldRegistry, Role, ROLE_WRITE_AUDIT_LOG_TYPE, type RoleName, RoomHandlerQueueAbortedError, RoomHandlerQueueClosedError, runExtractorPipeline, runResponseHandlerEvaluators, RunTerminalOwner, runWithStreamingContext, runWithTrajectoryContext, selectCompletionContext, Service, type ServiceClass, ServiceType, setEntityRoleCas, SecretCipherUnavailableError, SecretSwapSession, STANDARD_OPTIONS, startTaskScheduler, stopTaskScheduler, type StreamingContext, stringToUuid, TaskDrain, TaskService, type TaskWorker, type TrajectoryContext, TurnAbortedError, updateWorldSettings, type UUID, VoiceCancellationRegistry, withEvaluatorStep, withRoomDeliverySettlement, withStandaloneTrajectory, withVisibleComponents, type World } from "../src/index.vibe"
 import { coreDir, installPacked, packCandidate, runNode, sha256File } from "./support/child.ts"
 import { host, kernel, scratch, withEnv } from "./support/kernel.vibe"
 import { providerError, scriptedModels, type ScriptedReply, type SeenCall } from "./support/models.ts"
@@ -8,6 +8,8 @@ import { scriptedOAuthProvider } from "./support/oauth.ts"
 import { loopback } from "./support/servers.ts"
 import { DatabaseAdapter } from "../src/database.vibe"
 import { parseAndValidateCharacter } from "../src/character-schema.vibe"
+import { actionToJsonSchemaOrThrow } from "../src/actions/action-schema.vibe"
+import { validateToolArgsOrThrow } from "../src/actions/validate-tool-args.vibe"
 import { SqliteAdapter, SqliteStore } from "./support/sqlite-adapter.ts"
 import { sha1Digest, sha256HexDigest } from "../src/utils/crypto-primitives.vibe"
 
@@ -1183,6 +1185,8 @@ it.live("Dispatch a model request through failover, swaps, streams, cancellation
       caller: new AbortController(),
       leaseTurn: new AbortController(),
       allowanceOwner: new AbortController(),
+      scopedLeaseTurn: new AbortController(),
+      scopedAllowanceOwner: new AbortController(),
       logGate: Promise.withResolvers<void>(),
       decoded: (JSON.parse(RAW) as { text: string }).text,
       alphaBackup: scriptedModels("alpha", 20, { [ModelType.TEXT_LARGE]: [{ reply: "answer from alpha 20" }, { chunks }] }),
@@ -1190,10 +1194,14 @@ it.live("Dispatch a model request through failover, swaps, streams, cancellation
         [ModelType.TEXT_LARGE]: [{ reply: "answer from beta" }],
         [ModelType.TEXT_TO_SPEECH]: [{ reply: new Uint8Array([1, 2, 3]) }],
       }),
+      scopedAnthropic: scriptedModels("@elizaos/plugin-anthropic", 0, { [ModelType.TEXT_LARGE]: [{ reply: "answer from scoped anthropic" }] }),
+      scopedEmbeddings: scriptedModels("@elizaos/plugin-embeddings", 0, { [ModelType.TEXT_EMBEDDING]: [{ reply: [0.25, 0.75] }] }),
+      otherOpenai: scriptedModels("@other/plugin-openai", 0, { [ModelType.TEXT_LARGE]: [{ reply: "unqualified other openai" }] }),
+      scopedOpenai: scriptedModels("@elizaos/plugin-openai", 0, { [ModelType.TEXT_LARGE]: [{ reply: transport(1) }, { reply: transport(1) }] }),
       openai: scriptedModels("openai", 0, { [ModelType.TEXT_LARGE]: [{ reply: transport(2) }, { reply: transport(1) }] }),
     }
   })
-  const { alpha, alphaBackup, beta, openai } = fx
+  const { alpha, alphaBackup, beta, scopedAnthropic, scopedEmbeddings, otherOpenai, scopedOpenai, openai } = fx
   const store = try storeAt("core-j03")
 
   const journey = try Effect.scoped(effect {
@@ -1543,11 +1551,34 @@ it.live("Dispatch a model request through failover, swaps, streams, cancellation
 
     runtime.setSetting("ELIZA_BRAIN_PROVIDER", "gamma")
     const pinned = failure(try host(() => large({ prompt: "pinned" })))
+    try Effect.try(() => {
+      scopedAnthropic.register(runtime)
+      scopedEmbeddings.register(runtime)
+    })
+    runtime.setSetting("ELIZA_BRAIN_PROVIDER", "anthropic")
+    const brainShort = try host(() => large({ prompt: "brain short" }))
+    runtime.setSetting("ELIZA_BRAIN_PROVIDER", "@elizaos/plugin-anthropic")
+    const brainScoped = try host(() => large({ prompt: "brain scoped" }))
     runtime.setSetting("ELIZA_BRAIN_PROVIDER", null)
+    const explicitShort = try host(() => large({ prompt: "explicit short" }, "anthropic"))
+    const explicitScoped = try host(() => large({ prompt: "explicit scoped" }, "@elizaos/plugin-beta"))
+    const embed = (textInput: string, provider?: string) =>
+      outcome(runtime.useModel(ModelType.TEXT_EMBEDDING, { text: textInput }, provider).then((value) => {
+        answered.push(`useModel:${ModelType.TEXT_EMBEDDING}`)
+        return value
+      }))
+    const embedShort = try host(() => embed("embed short", "embeddings"))
+    const embedScoped = try host(() => embed("embed scoped", "@elizaos/plugin-embeddings"))
     const pin = {
       isElizaError: pinned instanceof ElizaError,
       code: (pinned as { code?: unknown }).code,
       namesProvider: String((pinned as { message?: unknown }).message).includes("\"gamma\""),
+      brainShort: valueOf(brainShort),
+      brainScoped: valueOf(brainScoped),
+      explicitShort: valueOf(explicitShort),
+      explicitScoped: valueOf(explicitScoped),
+      embedShort: valueOf(embedShort),
+      embedScoped: valueOf(embedScoped),
     }
 
     // spec/core/pseudonymSession.md, "Story: Keep substitutions reversible across repeated model calls"; spec/core/secretSession.md, "Story: Restore known placeholders while keeping credentials out of replies"
@@ -1585,7 +1616,7 @@ it.live("Dispatch a model request through failover, swaps, streams, cancellation
       callerSignal: [(text(alpha)[5]?.params as { signal?: unknown } | undefined)?.signal === fx.caller.signal, imageSeen?.signal === fx.caller.signal],
       connectorSend,
     }
-    // spec/core/secretSession.md, "At the action boundary pseudonyms are restored before references, and local name recognition never reads this session's references"; spec/core/secretSession.md, "A map coordinate never becomes a contact reference"
+    // spec/core/secretSession.md, "Egress restores pseudonyms before placeholders, and recognition never reads a placeholder"; spec/core/secretSession.md, "A map coordinate never becomes a contact reference"
     const PHONE = "+12025550123"
     const CARD = `[MAPSCARD]\n${JSON.stringify({ kind: "place", place: { latitude: 37.7749295, longitude: -122.4194093 } })}\n[/MAPSCARD]`
     const secret = new SecretSwapSession()
@@ -1690,6 +1721,28 @@ it.live("Dispatch a model request through failover, swaps, streams, cancellation
     }
 
     // spec/core/modelAttemptLeases.md, "Story: Issue a turn-scoped model allowance"; spec/core/preparedRequests.md, "Story: Bind every transport retry to the admitted request"
+    try Effect.try(() => otherOpenai.register(runtime))
+    const otherScopeShortRejected = failure(try host(() => large({ prompt: "other scope short" }, "openai"))) instanceof Error
+    const otherScopeElizaRejected = failure(try host(() => large({ prompt: "other scope eliza" }, "@elizaos/plugin-openai"))) instanceof Error
+    try Effect.try(() => scopedOpenai.register(runtime))
+    const scopedLease = try Effect.try(() => createModelAttemptAllowance({
+      signal: fx.scopedAllowanceOwner.signal,
+      budgetMicroUsd: 1_000_000,
+      maxAttempts: 2,
+      maxOutputTokens: 256,
+      expiresAt: Date.now() + 60_000,
+      tariffs: [{ provider: "openai", model: "gpt-test", route: "responses", inputNanoUsdPerToken: 1, outputNanoUsdPerToken: 1, inputTokenUpperBound: 100_000 }],
+    }).openTurn("turn-8b", fx.scopedLeaseTurn.signal))
+    const scopedLeased = (prompt: string, provider: string) => host(() => scoped(
+      { messageId: "turn-8b", modelAttemptTurnId: "turn-8b", modelAttemptLease: scopedLease, abortSignal: fx.scopedLeaseTurn.signal },
+      () => large({ prompt, maxTokens: 1_000 }, provider),
+    ))
+    const scopedLeasedResults = [
+      try scopedLeased("short to scoped", "openai"),
+      try scopedLeased("scoped to scoped", "@elizaos/plugin-openai"),
+      try scopedLeased("other-scope openai", "@other/plugin-openai"),
+      try scopedLeased("non-openai scoped", "anthropic"),
+    ]
     try Effect.try(() => openai.register(runtime))
     const lease = try Effect.try(() => createModelAttemptAllowance({
       signal: fx.allowanceOwner.signal,
@@ -1705,6 +1758,10 @@ it.live("Dispatch a model request through failover, swaps, streams, cancellation
     ))
     const leasedResults = [try leased("first, retried once café 😀"), try leased("second"), try leased("third")]
     const allowance = {
+      otherScopeLookupRejected: [otherScopeShortRejected, otherScopeElizaRejected],
+      otherScopeCalls: otherOpenai.seen.length,
+      scopedResults: scopedLeasedResults.map((settled) => "value" in settled ? settled.value : (settled.error as { code?: unknown }).code),
+      scopedProviderMaxTokens: text(scopedOpenai).map((call) => (call.params as { maxTokens?: unknown }).maxTokens),
       results: leasedResults.map((settled) => "value" in settled ? settled.value : (settled.error as { code?: unknown }).code),
       providerMaxTokens: text(openai).map((call) => (call.params as { maxTokens?: unknown }).maxTokens),
       guards,
@@ -1725,7 +1782,17 @@ it.live("Dispatch a model request through failover, swaps, streams, cancellation
       failover: { result: "answer from alpha 20", sameBytes: true, budgetIsFullMeasure: true },
       exhausted: { result: "answer from beta", siblingCalls: 0 },
       terminal: { funding: true, policy: true, abort: true, speech: true, secondCalls: [0, 0, 0] },
-      pin: { isElizaError: true, code: "MODEL_PROVIDER_PIN_UNAVAILABLE", namesProvider: true },
+      pin: {
+        isElizaError: true,
+        code: "MODEL_PROVIDER_PIN_UNAVAILABLE",
+        namesProvider: true,
+        brainShort: "answer from scoped anthropic",
+        brainScoped: "answer from scoped anthropic",
+        explicitShort: "answer from scoped anthropic",
+        explicitScoped: "answer from beta",
+        embedShort: [0.25, 0.75],
+        embedScoped: [0.25, 0.75],
+      },
       swaps: {
         providerSawRealValues: false,
         surrogateReused: true,
@@ -1741,9 +1808,18 @@ it.live("Dispatch a model request through failover, swaps, streams, cancellation
       cancellation: { sameTurn: true, socketClosed: [true], otherTurn: "answer in another turn", preAborted: true, handlerCalls: 10, fallbackCalls: [0, 0] },
       streams: { visible: [fx.decoded, fx.decoded], results: [RAW, RAW], revisionsPerAttempt: [1, 1], retriedSkipsFailedAttempt: 2, retriedBy: 2 },
       allowance: {
+        otherScopeLookupRejected: [true, true],
+        otherScopeCalls: 0,
+        scopedResults: ["allowed short to scoped", "allowed scoped to scoped", "MODEL_ATTEMPT_POLICY_ROUTE", "MODEL_ATTEMPT_POLICY_ROUTE"],
+        scopedProviderMaxTokens: [256, 256],
         results: ["allowed first, retried once café 😀", "allowed second", "MODEL_ATTEMPT_POLICY_EXHAUSTED"],
         providerMaxTokens: [256, 256, 256],
-        guards: [{ attempts: 2, countsAdmittedBody: true, changedBody: "MODEL_PREPARED_REQUEST_MUTATED" }, { attempts: 1, countsAdmittedBody: true, changedBody: "MODEL_PREPARED_REQUEST_MUTATED" }],
+        guards: [
+          { attempts: 1, countsAdmittedBody: true, changedBody: "MODEL_PREPARED_REQUEST_MUTATED" },
+          { attempts: 1, countsAdmittedBody: true, changedBody: "MODEL_PREPARED_REQUEST_MUTATED" },
+          { attempts: 2, countsAdmittedBody: true, changedBody: "MODEL_PREPARED_REQUEST_MUTATED" },
+          { attempts: 1, countsAdmittedBody: true, changedBody: "MODEL_PREPARED_REQUEST_MUTATED" },
+        ],
       },
     }))
     return { answer: valueOf(finalAnswer), gatePendingAtStop: !logGate.released }
@@ -5085,3 +5161,94 @@ it.live('Two scrub items drained together keep both people\'s pseudonyms, and a 
     distinct: true,
   }))
 }), 60_000)
+
+// spec/core/actionPlanning.md, "A promoted subaction is checked by its own name and its umbrella's, so allowing an umbrella allows none of its subactions and refusing it refuses them all"
+it.effect(`Promoted subactions preserve summarize and modelClass with override precedence and pin their discriminator (spec/core/actionPlanning.md, "A promoted subaction is checked by its own name and its umbrella's, so allowing an umbrella allows none of its subactions and refusing it refuses them all")`, () => effect {
+  const seen: Record<string, unknown>[] = []
+  const parentSummarize = (result: { text?: string } | undefined) => `parent:${result?.text ?? ""}`
+  const listSummarize = (result: { text?: string } | undefined) => `list:${result?.text ?? ""}`
+  const parent: Action = {
+    name: "TASKS",
+    description: "Manage tasks.",
+    modelClass: "TEXT_LARGE",
+    summarize: parentSummarize,
+    parameters: [
+      { name: "action", description: "Op.", required: false, schema: { type: "string", enum: ["create", "list"] } },
+      { name: "task", description: "Task.", required: false, subactions: ["create"], requiredForSubactions: ["create"], schema: { type: "string" } },
+      { name: "limit", description: "Limit.", required: false, subactions: ["list"], schema: { type: "integer" } },
+    ],
+    validate: async () => true,
+    handler: async (_runtime, _message, _state, options) => {
+      seen.push(((options as { parameters?: Record<string, unknown> } | undefined)?.parameters) ?? {})
+      return { success: true, text: "ok" }
+    },
+  }
+  const promoted = promoteSubactionsToActions(parent, {
+    overrides: {
+      list: { modelClass: "TEXT_SMALL", summarize: listSummarize },
+    },
+  })
+  const createAction = promoted.find((action) => action.name === "TASKS_CREATE")
+  const listAction = promoted.find((action) => action.name === "TASKS_LIST")
+  assert.isDefined(createAction)
+  assert.isDefined(listAction)
+  const runtime = try Effect.try(() => new AgentRuntime({ character: createCharacter({ name: "Eliza", bio: [] }) }))
+  const message = createMessageMemory({ id: createUniqueUuid(runtime, "promote-msg"), entityId: createUniqueUuid(runtime, "promote-user"), roomId: createUniqueUuid(runtime, "promote-room"), content: { text: "list tasks" } })
+  const listResult = try Effect.promise(() => listAction!.handler(runtime, message, undefined, { parameters: { limit: 5 } }))
+  const contradiction = try Effect.promise(() => listAction!.handler(runtime, message, undefined, { parameters: { action: "create" } }))
+  assert.deepStrictEqual({
+    createModelClass: createAction!.modelClass,
+    listModelClass: listAction!.modelClass,
+    createSummary: createAction!.summarize?.({ success: true, text: "x" }, {}),
+    listSummary: listAction!.summarize?.({ success: true, text: "x" }, {}),
+    createParams: createAction!.parameters?.map((param) => [param.name, param.required, param.schema.enum]),
+    listParams: listAction!.parameters?.map((param) => [param.name, param.required, param.schema.enum]),
+    listOk: listResult.success,
+    contradictionOk: contradiction.success,
+    seen,
+  }, {
+    createModelClass: "TEXT_LARGE",
+    listModelClass: "TEXT_SMALL",
+    createSummary: "parent:x",
+    listSummary: "list:x",
+    createParams: [["action", false, ["create"]], ["task", true, undefined]],
+    listParams: [["action", false, ["list"]], ["limit", false, undefined]],
+    listOk: true,
+    contradictionOk: false,
+    seen: [{ limit: 5, action: "list", subaction: "list" }],
+  })
+})
+
+// spec/core/actionPlanning.md, "Story: Plan and execute tool calls"
+it.effect('Open-ended object schemas allow arbitrary keys while closed objects with declared properties reject unknown keys (spec/core/actionPlanning.md, "Story: Plan and execute tool calls")', () => effect {
+  const action: Action = {
+    name: "WORKFLOW_TEST",
+    description: "Test schema.",
+    parameters: [
+      { name: "input", description: "Open payload.", required: false, schema: { type: "object" } },
+      { name: "closed", description: "Explicitly closed empty object.", required: false, schema: { type: "object", additionalProperties: false } },
+      { name: "config", description: "Typed object.", required: false, schema: { type: "object", properties: { mode: { type: "string" } } } },
+    ],
+    validate: async () => true,
+    handler: async () => ({ success: true }),
+  }
+  const schema = actionToJsonSchemaOrThrow(action)
+  const openValid = validateToolArgsOrThrow(action, { input: { env: "prod", retries: 2 }, config: { mode: "fast" } })
+  const closedInvalid = validateToolArgsOrThrow(action, { closed: { extra: true } })
+  const typedExtraInvalid = validateToolArgsOrThrow(action, { config: { mode: "fast", unknownKey: 1 } })
+  assert.deepStrictEqual({
+    inputAdditional: schema.properties.input?.additionalProperties,
+    closedAdditional: schema.properties.closed?.additionalProperties,
+    configAdditional: schema.properties.config?.additionalProperties,
+    openValid: openValid.valid,
+    closedValid: closedInvalid.valid,
+    typedExtraValid: typedExtraInvalid.valid,
+  }, {
+    inputAdditional: true,
+    closedAdditional: false,
+    configAdditional: false,
+    openValid: true,
+    closedValid: false,
+    typedExtraValid: false,
+  })
+})

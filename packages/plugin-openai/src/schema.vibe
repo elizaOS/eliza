@@ -1,0 +1,1081 @@
+// spec/openai/index.md, "An attempt can change upstream only before publishing any output"
+import {
+  buildCanonicalSystemPrompt,
+  dropDuplicateLeadingSystemMessage,
+  ElizaError,
+  logger,
+  resolveEffectiveSystemPrompt,
+  toWellFormedUnicode,
+  type GenerateTextContentPart,
+  type GenerateTextParams,
+  type IAgentRuntime,
+  type ToolCall,
+  type ToolChoice,
+  type ToolDefinition,
+} from "@elizaos/core"
+
+type ChatMessage = NonNullable<GenerateTextParams["messages"]>[number]
+type ToolCallArgsObject = Exclude<ToolCall["arguments"], string>
+import { openAiBatchToolsStrict } from "../gen/openai.effect.vibe"
+import { OpenAiFailure } from "./errors.vibe"
+import { getSetting, isCerebrasMode, isOpenCodeGoMode } from "./config.vibe"
+
+export const MAX_CEREBRAS_SCHEMA_WALK_DEPTH = 64
+export const MAX_CEREBRAS_SCHEMA_WALK_NODES = 100000
+export const CEREBRAS_SCHEMA_UNBOUNDED = "CEREBRAS_SCHEMA_UNBOUNDED"
+
+const MAX_CONSECUTIVE_JSON_WHITESPACE = 4096
+const FUNCTION_NAME_PATTERN = /[^a-zA-Z0-9_-]/g
+const VALID_REASONING_EFFORTS = ["minimal", "low", "medium", "high", "xhigh"] as const
+type ReasoningEffort = (typeof VALID_REASONING_EFFORTS)[number]
+
+const FACTOR_SCALAR_KEYS = new Set([
+  "type", "title", "description", "default", "examples", "enum", "const", "required",
+  "minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "multipleOf",
+  "minLength", "maxLength", "pattern", "format", "minItems", "maxItems", "uniqueItems",
+  "minProperties", "maxProperties", "readOnly", "writeOnly",
+])
+const FACTOR_SINGLE_KEYS = new Set(["items", "additionalProperties", "additionalItems", "contains", "not", "if", "then", "else", "propertyNames"])
+const FACTOR_ARRAY_KEYS = new Set(["anyOf", "oneOf", "allOf"])
+const FACTOR_MAP_KEYS = new Set(["properties", "patternProperties"])
+const ROOT_UNION_ALLOWED_KEYS = new Set([
+  "$schema", "type", "title", "description", "properties", "required", "additionalProperties",
+  "items", "anyOf", "enum", "const", "minLength", "maxLength", "minimum", "maximum",
+  "exclusiveMinimum", "exclusiveMaximum", "multipleOf", "minItems", "maxItems",
+])
+
+export interface CerebrasSchemaNormalizationOptions {
+  strict?: boolean
+}
+
+export interface CerebrasReasoningPart extends GenerateTextContentPart {
+  type: "reasoning"
+  text: string
+  providerOptions: { cerebras: { model: string } }
+}
+
+export function sanitizeFunctionNameForCerebras(name: string): string {
+  return name.replace(FUNCTION_NAME_PATTERN, "_")
+}
+
+export function isCerebrasSchemaUnbounded(error: unknown): boolean {
+  return error instanceof ElizaError && error.code === CEREBRAS_SCHEMA_UNBOUNDED
+}
+
+export function isWireStrictSchema(schema: unknown): boolean {
+  if (typeof schema !== "object" || schema === null) return false
+  const record = schema as Record<string, unknown>
+  if (record.type === "object" || record.properties !== undefined) {
+    if (record.additionalProperties !== false) return false
+    const props = record.properties
+    if (typeof props === "object" && props !== null) {
+      const required = new Set(
+        Array.isArray(record.required)
+          ? record.required.filter((item): item is string => typeof item === "string")
+          : [],
+      )
+      for (const [key, value] of Object.entries(props)) {
+        if (!required.has(key) || !isWireStrictSchema(value)) return false
+      }
+    }
+    return true
+  }
+  if (record.type === "array") {
+    return record.items === undefined || isWireStrictSchema(record.items)
+  }
+  return true
+}
+
+module node {
+  import { ElizaError } from "@elizaos/core"
+
+  const DEPTH_LIMIT = 64
+  const NODE_LIMIT = 100000
+  const UNBOUNDED_CODE = "CEREBRAS_SCHEMA_UNBOUNDED"
+  const MAP_KEYS = ["properties", "patternProperties", "$defs", "definitions", "dependentSchemas"] as const
+  const ARRAY_KEYS = ["anyOf", "oneOf", "allOf", "prefixItems"] as const
+  const SINGLE_KEYS = ["additionalProperties", "additionalItems", "contains", "propertyNames", "not", "if", "then", "else"] as const
+
+  interface WalkCtx {
+    visits: number
+    visiting: WeakSet<object>
+  }
+
+  function failUnbounded(context: Record<string, unknown>, cause?: unknown): never {
+    throw new ElizaError("Cerebras tool schema exceeds the walk budget", {
+      code: UNBOUNDED_CODE,
+      cause,
+      context,
+      severity: "fatal",
+    })
+  }
+
+  function inspect<T>(operation: string, fn: () => T): T {
+    try {
+      return fn()
+    } catch (cause) {
+      if (cause instanceof ElizaError && cause.code === UNBOUNDED_CODE) throw cause
+      failUnbounded({ inspection: operation }, cause)
+    }
+  }
+
+  function reserve(ctx: WalkCtx, count: number): void {
+    if (count > NODE_LIMIT - ctx.visits) {
+      failUnbounded({ visits: ctx.visits + count, maxNodes: NODE_LIMIT })
+    }
+    ctx.visits += count
+  }
+
+  function ownEntries(value: object, ctx: WalkCtx): Array<{ key: string; value: unknown }> {
+    const keys = inspect("ownKeys", () => Reflect.ownKeys(value))
+    const entries: Array<{ key: string; value: unknown }> = []
+    for (const key of keys) {
+      if (typeof key !== "string") continue
+      const descriptor = inspect("getOwnPropertyDescriptor", () => Object.getOwnPropertyDescriptor(value, key))
+      if (!descriptor?.enumerable) continue
+      if (!("value" in descriptor)) failUnbounded({ accessor: true, key })
+      entries.push({ key, value: descriptor.value })
+    }
+    reserve(ctx, entries.length)
+    return entries
+  }
+
+  function ownArrayValues(value: unknown[]): unknown[] {
+    const lengthDesc = inspect("getOwnPropertyDescriptor", () => Object.getOwnPropertyDescriptor(value, "length"))
+    if (!lengthDesc || !("value" in lengthDesc) || typeof lengthDesc.value !== "number" || !Number.isFinite(lengthDesc.value) || lengthDesc.value < 0) {
+      failUnbounded({ arrayLength: true })
+    }
+    const len = Math.trunc(lengthDesc.value)
+    const out: unknown[] = []
+    for (let i = 0; i < len; i++) {
+      const desc = inspect("getOwnPropertyDescriptor", () => Object.getOwnPropertyDescriptor(value, String(i)))
+      if (desc && !("value" in desc)) failUnbounded({ accessor: true, key: String(i) })
+      out.push(desc ? desc.value : undefined)
+    }
+    return out
+  }
+
+  function defineData(target: Record<string, unknown>, key: string, value: unknown): void {
+    Object.defineProperty(target, key, { value, enumerable: true, writable: true, configurable: true })
+  }
+
+  function isPlainRecord(value: unknown): value is Record<string, unknown> {
+    return inspect("isPlainRecord", () => {
+      if (!value || typeof value !== "object" || Array.isArray(value)) return false
+      const proto = Object.getPrototypeOf(value)
+      return proto === Object.prototype || proto === null
+    })
+  }
+
+  function isPlainArray(value: unknown): value is unknown[] {
+    return inspect("isPlainArray", () => Array.isArray(value) && Object.getPrototypeOf(value) === Array.prototype)
+  }
+
+  function closedEmptyObject(): Record<string, unknown> {
+    return { type: "object", properties: {}, required: [], additionalProperties: false }
+  }
+
+  function hasIllegalRoot(node: Record<string, unknown>): boolean {
+    return (
+      node.oneOf !== undefined
+      || node.anyOf !== undefined
+      || node.allOf !== undefined
+      || node.enum !== undefined
+      || node.not !== undefined
+      || (node.type !== undefined && node.type !== "object")
+    )
+  }
+
+  function enforceStrictObject(node: Record<string, unknown>): void {
+    const isObject = node.type === "object" || node.properties !== undefined
+    if (!isObject) return
+    node.type = "object"
+    if (node.additionalProperties === undefined || node.additionalProperties === true) {
+      node.additionalProperties = false
+    }
+    if (isPlainRecord(node.properties)) {
+      const propKeys = Object.keys(node.properties)
+      if (!Array.isArray(node.required)) {
+        node.required = propKeys
+      }
+    } else if (node.properties === undefined) {
+      node.properties = {}
+      if (!Array.isArray(node.required)) node.required = []
+    }
+  }
+
+  function normalizeNullableNumber(node: Record<string, unknown>): void {
+    if (!Array.isArray(node.anyOf)) return
+    const items = node.anyOf as unknown[]
+    if (items.length !== 2) return
+    const hasNull = items.some((entry) => isPlainRecord(entry) && entry.type === "null")
+    const numEntry = items.find((entry) => isPlainRecord(entry) && (entry.type === "number" || entry.type === "integer"))
+    if (hasNull && isPlainRecord(numEntry)) {
+      node.type = [numEntry.type as string, "null"]
+      delete node.anyOf
+    }
+  }
+
+  function walk(schema: unknown, isRoot: boolean, strict: boolean, depth: number, ctx: WalkCtx): unknown {
+    if (!schema || typeof schema !== "object" || inspect("isArray", () => Array.isArray(schema))) {
+      if (isRoot) return strict ? closedEmptyObject() : { type: "object" }
+      return schema
+    }
+    if (depth > DEPTH_LIMIT) failUnbounded({ depth, max: DEPTH_LIMIT })
+    if (ctx.visiting.has(schema)) failUnbounded({ cycle: true, depth })
+    ctx.visiting.add(schema)
+    reserve(ctx, 1)
+    try {
+      let node: Record<string, unknown> = {}
+      for (const entry of ownEntries(schema, ctx)) {
+        defineData(node, entry.key, entry.value)
+      }
+      if (isRoot && hasIllegalRoot(node)) {
+        node = {
+          type: "object",
+          properties: { value: node },
+          required: ["value"],
+          additionalProperties: false,
+        }
+      }
+      if (strict) {
+        enforceStrictObject(node)
+        if (isPlainArray(node.oneOf) && ownArrayValues(node.oneOf).length > 0) {
+          const existing = isPlainArray(node.anyOf) ? ownArrayValues(node.anyOf) : []
+          node.anyOf = [...existing, ...ownArrayValues(node.oneOf)]
+          delete node.oneOf
+        }
+      }
+      for (const key of MAP_KEYS) {
+        const value = node[key]
+        if (!isPlainRecord(value)) continue
+        const mapped: Record<string, unknown> = {}
+        for (const entry of ownEntries(value, ctx)) {
+          defineData(mapped, entry.key, walk(entry.value, false, strict, depth + 1, ctx))
+        }
+        node[key] = mapped
+      }
+      for (const key of ARRAY_KEYS) {
+        const value = node[key]
+        if (!isPlainArray(value)) continue
+        const values = ownArrayValues(value)
+        reserve(ctx, values.length)
+        node[key] = values.map((item) => walk(item, false, strict, depth + 1, ctx))
+      }
+      if (isPlainArray(node.items)) {
+        const values = ownArrayValues(node.items)
+        reserve(ctx, values.length)
+        node.items = values.map((item) => walk(item, false, strict, depth + 1, ctx))
+      } else if (node.items !== undefined) {
+        node.items = walk(node.items, false, strict, depth + 1, ctx)
+      }
+      for (const key of SINGLE_KEYS) {
+        const value = node[key]
+        if (!isPlainRecord(value)) continue
+        node[key] = walk(value, false, strict, depth + 1, ctx)
+      }
+      if (isPlainRecord(node.dependencies)) {
+        const mapped: Record<string, unknown> = {}
+        for (const entry of ownEntries(node.dependencies, ctx)) {
+          if (isPlainArray(entry.value)) {
+            const values = ownArrayValues(entry.value)
+            reserve(ctx, values.length)
+            defineData(mapped, entry.key, values.map((item) => walk(item, false, strict, depth + 1, ctx)))
+          } else {
+            defineData(mapped, entry.key, walk(entry.value, false, strict, depth + 1, ctx))
+          }
+        }
+        node.dependencies = mapped
+      }
+      if (strict) normalizeNullableNumber(node)
+      return node
+    } finally {
+      ctx.visiting.delete(schema)
+    }
+  }
+
+  export function normalizeSchemaForCerebrasSync(schema: unknown, isRoot: boolean, strict: boolean): unknown {
+    return walk(schema, isRoot, strict, 0, { visits: 0, visiting: new WeakSet() })
+  }
+
+  export function sanitizeUnicodeDeep(value: unknown, depth = 0): unknown {
+    if (depth > 64) return value
+    if (typeof value === "string") return value.toWellFormed()
+    if (Array.isArray(value)) return value.map((item) => sanitizeUnicodeDeep(item, depth + 1))
+    if (value && typeof value === "object") {
+      const proto = Object.getPrototypeOf(value)
+      if (proto !== Object.prototype && proto !== null) return value
+      const out: Record<string, unknown> = {}
+      for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+        out[k.toWellFormed()] = sanitizeUnicodeDeep(v, depth + 1)
+      }
+      return out
+    }
+    return value
+  }
+}
+import { normalizeSchemaForCerebrasSync, sanitizeUnicodeDeep } from node
+
+export function normalizeSchemaForCerebras(
+  schema: unknown,
+  isRoot = false,
+  options: CerebrasSchemaNormalizationOptions = {},
+): unknown {
+  return normalizeSchemaForCerebrasSync(schema, isRoot, options.strict !== false)
+}
+
+function deepSanitizeUnicode<T>(value: T): T {
+  return sanitizeUnicodeDeep(value) as T
+}
+
+function isSchemaNode(value: unknown): value is Record<string, unknown> | boolean {
+  return typeof value === "boolean" || (value !== null && typeof value === "object" && !Array.isArray(value))
+}
+
+function safeJsonStringify(value: unknown): string {
+  try {
+    return JSON.stringify(value) ?? ""
+  } catch {
+    return ""
+  }
+}
+
+export function factorResponseSchema(schema: Record<string, unknown>): Record<string, unknown> {
+  const counts = new Map<string, number>()
+  let supported = true
+  const visitChildren = (
+    node: Record<string, unknown>,
+    visit: (child: Record<string, unknown> | boolean) => Record<string, unknown> | boolean,
+  ): Record<string, unknown> => {
+    const out: Record<string, unknown> = {}
+    for (const [key, value] of Object.entries(node)) {
+      if (FACTOR_SCALAR_KEYS.has(key)) {
+        out[key] = value
+      } else if (FACTOR_SINGLE_KEYS.has(key) && isSchemaNode(value)) {
+        out[key] = visit(value)
+      } else if ((FACTOR_ARRAY_KEYS.has(key) || key === "items") && Array.isArray(value) && value.every(isSchemaNode)) {
+        out[key] = value.map(visit)
+      } else if (FACTOR_MAP_KEYS.has(key) && value !== null && typeof value === "object" && !Array.isArray(value)) {
+        const entries = Object.entries(value as Record<string, unknown>)
+        if (entries.every(([, child]) => isSchemaNode(child))) {
+          const mapped: Record<string, unknown> = {}
+          for (const [name, child] of entries) {
+            mapped[name] = visit(child as Record<string, unknown> | boolean)
+          }
+          out[key] = mapped
+        } else {
+          supported = false
+          out[key] = value
+        }
+      } else {
+        supported = false
+        out[key] = value
+      }
+    }
+    return out
+  }
+  const count = (node: Record<string, unknown> | boolean): Record<string, unknown> | boolean => {
+    if (typeof node === "boolean") return node
+    const serialized = safeJsonStringify(node)
+    if (serialized.length > 200) {
+      counts.set(serialized, (counts.get(serialized) ?? 0) + 1)
+    }
+    visitChildren(node, count)
+    return node
+  }
+  count(schema)
+  if (!supported) return schema
+  const names = new Map<string, string>()
+  const definitions: Record<string, Record<string, unknown>> = {}
+  const project = (node: Record<string, unknown> | boolean): Record<string, unknown> | boolean => {
+    if (typeof node === "boolean") return node
+    const serialized = safeJsonStringify(node)
+    if ((counts.get(serialized) ?? 0) > 1) {
+      let name = names.get(serialized)
+      if (name === undefined) {
+        name = `d${names.size}`
+        names.set(serialized, name)
+        definitions[name] = node
+      }
+      return { $ref: `#/$defs/${name}` }
+    }
+    return visitChildren(node, project)
+  }
+  const result = { ...visitChildren(schema, project), $defs: definitions }
+  return names.size > 0 && safeJsonStringify(result).length < safeJsonStringify(schema).length
+    ? result
+    : schema
+}
+
+export interface WrappedRootUnion {
+  readonly schema: Record<string, unknown>
+  restoreText(text: string): string | undefined
+}
+
+export function wrapCerebrasRootUnion(schema: unknown): WrappedRootUnion | undefined {
+  if (!schema || typeof schema !== "object" || Array.isArray(schema)) return undefined
+  const root = schema as Record<string, unknown>
+  if (!Array.isArray(root.anyOf) || root.anyOf.length === 0) return undefined
+  if (root.$schema !== undefined && root.$schema !== "https://json-schema.org/draft/2020-12/schema") {
+    return undefined
+  }
+  const queue: unknown[] = [root]
+  while (queue.length > 0) {
+    const node = queue.pop()
+    if (typeof node === "boolean") continue
+    if (!node || typeof node !== "object" || Array.isArray(node)) return undefined
+    const record = node as Record<string, unknown>
+    if (record !== root && Object.hasOwn(record, "$schema")) return undefined
+    if (Object.keys(record).some((key) => !ROOT_UNION_ALLOWED_KEYS.has(key))) return undefined
+    if (record.properties && typeof record.properties === "object") {
+      queue.push(...Object.values(record.properties as Record<string, unknown>))
+    }
+    if (record.items !== undefined) queue.push(record.items)
+    if (record.additionalProperties !== undefined) queue.push(record.additionalProperties)
+    if (Array.isArray(record.anyOf)) queue.push(...record.anyOf)
+  }
+  const envelopeKey = "__eliza_response"
+  const { $schema, ...valueSchema } = root
+  return {
+    schema: {
+      type: "object",
+      properties: { [envelopeKey]: valueSchema },
+      required: [envelopeKey],
+      additionalProperties: false,
+      ...(typeof $schema === "string" ? { $schema } : {}),
+    },
+    restoreText(text: string): string | undefined {
+      try {
+        const parsed: unknown = JSON.parse(text)
+        if (
+          !parsed
+          || typeof parsed !== "object"
+          || Array.isArray(parsed)
+          || Object.keys(parsed).length !== 1
+          || !Object.hasOwn(parsed, envelopeKey)
+        ) {
+          return undefined
+        }
+        return JSON.stringify((parsed as Record<string, unknown>)[envelopeKey])
+      } catch {
+        return undefined
+      }
+    },
+  }
+}
+
+export interface ProgressTracker {
+  observe(chunk: string): { stalled: boolean; consecutiveWhitespace: number }
+}
+
+export function createStructuredOutputProgressTracker(): ProgressTracker {
+  let insideString = false
+  let escaped = false
+  let whitespace = 0
+  return {
+    observe(chunk: string) {
+      for (const character of chunk) {
+        if (insideString) {
+          if (escaped) escaped = false
+          else if (character === "\\") escaped = true
+          else if (character === '"') insideString = false
+          continue
+        }
+        if (character === " " || character === "\t" || character === "\r" || character === "\n") {
+          whitespace += 1
+          if (whitespace > MAX_CONSECUTIVE_JSON_WHITESPACE) {
+            return { stalled: true, consecutiveWhitespace: whitespace }
+          }
+        } else {
+          whitespace = 0
+          if (character === '"') insideString = true
+        }
+      }
+      return { stalled: false, consecutiveWhitespace: whitespace }
+    },
+  }
+}
+
+function asOptionalRecord(value: unknown): Record<string, unknown> | undefined {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined
+}
+
+export function isCerebrasReasoningPart(value: unknown, model: string): value is CerebrasReasoningPart {
+  const part = asOptionalRecord(value)
+  const binding = asOptionalRecord(asOptionalRecord(part?.providerOptions)?.cerebras)
+  return part?.type === "reasoning" && typeof part.text === "string" && binding?.model === model
+}
+
+export function cerebrasReasoningContent(reasoning: string | null | undefined, model: string): CerebrasReasoningPart[] {
+  return typeof reasoning === "string" && reasoning.length > 0
+    ? [{ type: "reasoning", text: reasoning, providerOptions: { cerebras: { model } } }]
+    : []
+}
+
+function normalizeCerebrasModelId(modelName: string): string {
+  return modelName
+    .trim()
+    .toLowerCase()
+    .replace(/^cerebras[:/]/, "")
+    .replace(/^openai\//, "")
+    .replace(/:(?!free$).+$/, "")
+}
+
+function resolveThinkingOffReasoningEffort(runtime: IAgentRuntime, modelName: string | undefined): "low" | "none" | undefined {
+  if (!modelName) return undefined
+  const cerebrasId = normalizeCerebrasModelId(modelName)
+  if (isCerebrasMode(runtime)) {
+    if (cerebrasId === "gpt-oss-120b") return "low"
+    if (cerebrasId === "zai-glm-4.7" || cerebrasId === "gemma-4-31b" || cerebrasId === "qwen-3.8-27b") return "none"
+  }
+  if (modelName.trim().toLowerCase() === "deepseek-v4-flash" && isOpenCodeGoMode(runtime)) return "none"
+  return undefined
+}
+
+function resolveThinkingLowReasoningEffort(runtime: IAgentRuntime, modelName: string | undefined): "low" | undefined {
+  if (!modelName || !isCerebrasMode(runtime)) return undefined
+  const cerebrasId = normalizeCerebrasModelId(modelName)
+  return cerebrasId === "qwen-3.8-27b" || cerebrasId === "gpt-oss-120b" ? "low" : undefined
+}
+
+function resolveCerebrasDefaultReasoningEffort(modelName: string | undefined): ReasoningEffort | undefined {
+  if (!modelName) return undefined
+  const id = normalizeCerebrasModelId(modelName)
+  if (id === "gpt-oss-120b" || id === "zai-glm-4.7" || id === "qwen-3.8-27b") return "high"
+  return undefined
+}
+
+function resolveReasoningEffort(runtime: IAgentRuntime, modelName?: string): ReasoningEffort | "none" | undefined {
+  const raw = getSetting(runtime, "OPENAI_REASONING_EFFORT")
+  const normalized = typeof raw === "string" ? raw.trim().toLowerCase() : ""
+  if (normalized === "none") {
+    if (isCerebrasMode(runtime) && modelName && normalizeCerebrasModelId(modelName) === "qwen-3.8-27b") {
+      return "none"
+    }
+  } else if (normalized) {
+    if ((VALID_REASONING_EFFORTS as readonly string[]).includes(normalized)) {
+      return normalized as ReasoningEffort
+    }
+    logger.warn(
+      `[OpenAI] OPENAI_REASONING_EFFORT=${raw} is not a valid reasoning effort; ignoring. Expected one of: ${VALID_REASONING_EFFORTS.join(", ")}.`,
+    )
+  }
+  if (isCerebrasMode(runtime)) return resolveCerebrasDefaultReasoningEffort(modelName)
+  return undefined
+}
+
+export interface WireProviderExtraFields {
+  readonly prompt_cache_key?: string
+  readonly prompt_cache_retention?: string
+  readonly reasoning_effort?: string
+  readonly reasoning?: { enabled: false } | { effort: string }
+  readonly provider?: { require_parameters: true; data_collection: "deny"; sort: "latency" }
+}
+
+export function resolveWireProviderExtraFields(
+  params: GenerateTextParams,
+  runtime: IAgentRuntime,
+  modelName: string,
+  forOpenRouter = false,
+): WireProviderExtraFields {
+  const rawOptions = asOptionalRecord(params.providerOptions)
+  const cerebrasOpts = asOptionalRecord(rawOptions?.cerebras)
+  const openaiOpts = asOptionalRecord(rawOptions?.openai)
+  const elizaOpts = asOptionalRecord(rawOptions?.eliza)
+  const cerebras = isCerebrasMode(runtime)
+
+  const promptCacheKey = cerebras && cerebrasOpts
+    ? (typeof cerebrasOpts.promptCacheKey === "string"
+      ? cerebrasOpts.promptCacheKey
+      : typeof cerebrasOpts.prompt_cache_key === "string"
+      ? cerebrasOpts.prompt_cache_key
+      : undefined)
+    : typeof openaiOpts?.promptCacheKey === "string"
+    ? openaiOpts.promptCacheKey
+    : undefined
+
+  const promptCacheRetention = !cerebras && !forOpenRouter && typeof openaiOpts?.promptCacheRetention === "string"
+    ? openaiOpts.promptCacheRetention
+    : undefined
+
+  const explicitReasoning = typeof openaiOpts?.reasoningEffort === "string" ? openaiOpts.reasoningEffort : undefined
+  const envEffort = resolveReasoningEffort(runtime, modelName)
+  const rawConfigured = getSetting(runtime, "OPENAI_REASONING_EFFORT")
+  const normalizedConfigured = typeof rawConfigured === "string" ? rawConfigured.trim().toLowerCase() : ""
+  const hostPinnedEffort = (VALID_REASONING_EFFORTS as readonly string[]).includes(normalizedConfigured)
+    || (normalizedConfigured === "none" && envEffort === "none")
+
+  const thinkingHint = elizaOpts?.thinking ?? params.reasoning
+  const preferToolReasoning = elizaOpts?.preferToolReasoning === true && normalizedConfigured !== "none"
+  const thinkingOffEffort = thinkingHint === "off" ? resolveThinkingOffReasoningEffort(runtime, modelName) : undefined
+  const thinkingLowEffort = thinkingHint === "low" && !hostPinnedEffort
+    ? resolveThinkingLowReasoningEffort(runtime, modelName)
+    : undefined
+  const thinkingOnEffort = (thinkingHint === "on" || preferToolReasoning)
+      && cerebras
+      && normalizeCerebrasModelId(modelName) === "qwen-3.8-27b"
+    ? (envEffort && envEffort !== "none" ? envEffort : "low")
+    : undefined
+
+  const effectiveReasoning = explicitReasoning
+    ?? (preferToolReasoning ? thinkingOnEffort : undefined)
+    ?? thinkingOffEffort
+    ?? thinkingOnEffort
+    ?? thinkingLowEffort
+    ?? envEffort
+
+  if (forOpenRouter) {
+    return {
+      ...(promptCacheKey ? { prompt_cache_key: promptCacheKey } : {}),
+      provider: { require_parameters: true, data_collection: "deny", sort: "latency" },
+      ...(effectiveReasoning
+        ? { reasoning: effectiveReasoning === "none" ? { enabled: false } : { effort: effectiveReasoning } }
+        : {}),
+    }
+  }
+  return {
+    ...(promptCacheKey ? { prompt_cache_key: promptCacheKey } : {}),
+    ...(promptCacheRetention ? { prompt_cache_retention: promptCacheRetention } : {}),
+    ...(effectiveReasoning ? { reasoning_effort: effectiveReasoning } : {}),
+  }
+}
+
+export interface WireMessage {
+  role: string
+  content: unknown
+  tool_calls?: Array<{ id: string; type: "function"; function: { name: string; arguments: string } }>
+  tool_call_id?: string
+  name?: string
+  reasoning?: string
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = ""
+  for (let i = 0; i < bytes.length; i++) {
+    binary += String.fromCharCode(bytes[i] ?? 0)
+  }
+  return btoa(binary)
+}
+
+function attachmentToWirePart(attachment: { data: string | Uint8Array | URL; mediaType: string; filename?: string }): Record<string, unknown> {
+  const rawData = attachment.data instanceof URL
+    ? attachment.data.toString()
+    : attachment.data instanceof Uint8Array
+    ? `data:${attachment.mediaType};base64,${bytesToBase64(attachment.data)}`
+    : attachment.data
+  if (attachment.mediaType.startsWith("image/")) {
+    return { type: "image_url", image_url: { url: rawData } }
+  }
+  return {
+    type: "file",
+    file: {
+      file_data: rawData,
+      ...(attachment.filename ? { filename: attachment.filename } : {}),
+    },
+  }
+}
+
+function contentToWireString(content: unknown): string {
+  if (typeof content === "string") return toWellFormedUnicode(content)
+  if (content === null || content === undefined) return ""
+  return toWellFormedUnicode(safeJsonStringify(content))
+}
+
+function serializeToolCallArguments(args: unknown): string {
+  if (typeof args === "string") return toWellFormedUnicode(args)
+  return toWellFormedUnicode(safeJsonStringify(args ?? {}))
+}
+
+function normalizeMessageContentToWire(
+  message: ChatMessage,
+  reasoningModel: string | undefined,
+  toolNameMap: ReadonlyMap<string, string>,
+): WireMessage[] {
+  const role = message.role
+  if (role === "system" || role === "developer") {
+    return [{ role, content: contentToWireString(message.content) }]
+  }
+  if (role === "tool") {
+    if (Array.isArray(message.content)) {
+      const results: WireMessage[] = []
+      for (const part of message.content) {
+        const record = asOptionalRecord(part)
+        if (record?.type === "tool-result") {
+          const id = typeof record.toolCallId === "string" ? record.toolCallId : (message.toolCallId ?? "tool-call")
+          const output = asOptionalRecord(record.output)
+          const rawVal = output && "value" in output ? output.value : record.content
+          results.push({
+            role: "tool",
+            tool_call_id: id,
+            content: contentToWireString(rawVal),
+          })
+        }
+      }
+      if (results.length > 0) return results
+    }
+    return [{
+      role: "tool",
+      tool_call_id: message.toolCallId ?? "tool-call",
+      content: contentToWireString(message.content),
+    }]
+  }
+  if (role === "assistant") {
+    let text = ""
+    let reasoning = ""
+    const wireCalls: Array<{ id: string; type: "function"; function: { name: string; arguments: string } }> = []
+    if (typeof message.content === "string") {
+      text = toWellFormedUnicode(message.content)
+    } else if (Array.isArray(message.content)) {
+      for (const part of message.content) {
+        const record = asOptionalRecord(part)
+        if (!record) continue
+        if (record.type === "text" && typeof record.text === "string") {
+          text += toWellFormedUnicode(record.text)
+        } else if (record.type === "reasoning" || record.type === "thinking") {
+          if (reasoningModel !== undefined && isCerebrasReasoningPart(record, reasoningModel)) {
+            reasoning += toWellFormedUnicode(record.text)
+          }
+        } else if (record.type === "tool-call") {
+          const id = typeof record.toolCallId === "string" ? record.toolCallId : typeof record.id === "string" ? record.id : ""
+          const rawName = typeof record.toolName === "string" ? record.toolName : typeof record.name === "string" ? record.name : ""
+          if (id && rawName) {
+            const wireName = toolNameMap.get(rawName) ?? rawName
+            wireCalls.push({
+              id,
+              type: "function",
+              function: {
+                name: toWellFormedUnicode(wireName),
+                arguments: serializeToolCallArguments("input" in record ? record.input : record.arguments),
+              },
+            })
+          }
+        }
+      }
+    }
+    for (const call of message.toolCalls ?? []) {
+      const wireName = toolNameMap.get(call.name) ?? call.name
+      wireCalls.push({
+        id: call.id,
+        type: "function",
+        function: {
+          name: toWellFormedUnicode(wireName),
+          arguments: serializeToolCallArguments(call.arguments),
+        },
+      })
+    }
+    const contentValue = text.length > 0
+      ? text
+      : wireCalls.length > 0 || reasoning.length > 0
+      ? null
+      : ""
+    return [{
+      role: "assistant",
+      content: contentValue,
+      ...(wireCalls.length > 0 ? { tool_calls: wireCalls } : {}),
+      ...(reasoning.length > 0 ? { reasoning } : {}),
+    }]
+  }
+  if (Array.isArray(message.content)) {
+    const parts = message.content.map((part) => {
+      const record = asOptionalRecord(part)
+      if (!record) return { type: "text", text: "" }
+      if (record.type === "text" && typeof record.text === "string") {
+        return { type: "text", text: toWellFormedUnicode(record.text) }
+      }
+      if (record.type === "image" && record.image !== undefined) {
+        const mediaType = typeof record.mediaType === "string" ? record.mediaType : "image/png"
+        return attachmentToWirePart({ data: record.image as string | Uint8Array | URL, mediaType })
+      }
+      if (record.type === "file" && record.data !== undefined && typeof record.mediaType === "string") {
+        return attachmentToWirePart({
+          data: record.data as string | Uint8Array | URL,
+          mediaType: record.mediaType,
+          filename: typeof record.filename === "string" ? record.filename : undefined,
+        })
+      }
+      return deepSanitizeUnicode(record)
+    })
+    return [{ role: "user", content: parts }]
+  }
+  return [{ role: "user", content: contentToWireString(message.content) }]
+}
+
+export function repairToolMessagePairing(messages: WireMessage[]): WireMessage[] {
+  interface AssistantNode {
+    kind: "assistant"
+    message: WireMessage
+    responses: WireMessage[]
+  }
+  interface PlainNode {
+    kind: "plain"
+    message: WireMessage
+  }
+  const nodes: Array<AssistantNode | PlainNode> = []
+  const announcerById = new Map<string, AssistantNode>()
+  for (const message of messages) {
+    if (message.role === "assistant" && Array.isArray(message.tool_calls) && message.tool_calls.length > 0) {
+      const node: AssistantNode = { kind: "assistant", message, responses: [] }
+      nodes.push(node)
+      for (const call of message.tool_calls) {
+        if (typeof call.id === "string" && call.id.length > 0) {
+          announcerById.set(call.id, node)
+        }
+      }
+      continue
+    }
+    if (message.role === "tool") {
+      const announcer = typeof message.tool_call_id === "string" ? announcerById.get(message.tool_call_id) : undefined
+      if (announcer !== undefined) {
+        announcer.responses.push(message)
+        continue
+      }
+      nodes.push({
+        kind: "plain",
+        message: {
+          role: "user",
+          content: `[tool result]\n${contentToWireString(message.content)}`,
+        },
+      })
+      continue
+    }
+    nodes.push({ kind: "plain", message })
+  }
+  return nodes.flatMap((node) => (node.kind === "plain" ? [node.message] : [node.message, ...node.responses]))
+}
+
+export function buildWireMessages(
+  runtime: IAgentRuntime,
+  params: GenerateTextParams,
+  reasoningModel: string | undefined,
+  toolNameMap: ReadonlyMap<string, string>,
+): WireMessage[] {
+  const fallbackSystem = runtime.character ? buildCanonicalSystemPrompt({ character: runtime.character }) : undefined
+  const effectiveSystem = resolveEffectiveSystemPrompt({ params, fallback: fallbackSystem })
+  if (Array.isArray(params.messages)) {
+    const cleaned = (effectiveSystem ? dropDuplicateLeadingSystemMessage(params.messages, effectiveSystem) : params.messages) ?? []
+    const normalized: WireMessage[] = []
+    if (effectiveSystem && cleaned[0]?.role !== "system" && cleaned[0]?.role !== "developer") {
+      normalized.push({ role: "system", content: toWellFormedUnicode(effectiveSystem) })
+    }
+    for (const msg of cleaned) {
+      normalized.push(...normalizeMessageContentToWire(msg, reasoningModel, toolNameMap))
+    }
+    return repairToolMessagePairing(normalized)
+  }
+  const out: WireMessage[] = []
+  if (effectiveSystem) {
+    out.push({ role: "system", content: toWellFormedUnicode(effectiveSystem) })
+  }
+  const promptText = toWellFormedUnicode(params.prompt ?? "")
+  if ((params.attachments?.length ?? 0) > 0) {
+    out.push({
+      role: "user",
+      content: [
+        { type: "text", text: promptText },
+        ...(params.attachments ?? []).map(attachmentToWirePart),
+      ],
+    })
+  } else {
+    out.push({ role: "user", content: promptText })
+  }
+  return out
+}
+
+export interface NormalizedWireTools {
+  readonly tools: Array<{
+    type: "function"
+    function: {
+      name: string
+      description?: string
+      parameters?: unknown
+      strict?: true
+    }
+  }> | undefined
+  readonly toolNameMap: Map<string, string>
+  readonly reverseToolNameMap: Map<string, string>
+}
+
+export effect function normalizeWireTools(
+  tools: readonly ToolDefinition[] | undefined,
+  cerebrasMode: boolean,
+): NormalizedWireTools!(ElizaError | OpenAiFailure) {
+  const toolNameMap = new Map<string, string>()
+  const reverseToolNameMap = new Map<string, string>()
+  if (!tools || tools.length === 0) {
+    return { tools: undefined, toolNameMap, reverseToolNameMap }
+  }
+  const allStrict = openAiBatchToolsStrict(
+    tools.length,
+    tools.every((tool) => tool.strict === true && isWireStrictSchema(tool.parameters)),
+  )
+  const wireTools: NonNullable<NormalizedWireTools["tools"]> = []
+  for (const tool of tools) {
+    const wellFormedName = toWellFormedUnicode(tool.name)
+    const wireName = cerebrasMode ? sanitizeFunctionNameForCerebras(wellFormedName) : wellFormedName
+    const existingOriginal = reverseToolNameMap.get(wireName)
+    if (existingOriginal !== undefined && existingOriginal !== tool.name) {
+      throw new ElizaError("[OpenAI] Native tool names collide after provider normalization.", {
+        code: "OPENAI_TOOL_NAME_COLLISION",
+        context: { registeredName: wireName, toolNames: [existingOriginal, tool.name] },
+        severity: "ephemeral",
+      })
+    }
+    toolNameMap.set(tool.name, wireName)
+    reverseToolNameMap.set(wireName, tool.name)
+    let parameters: unknown = tool.parameters
+    if (parameters !== undefined) {
+      parameters = deepSanitizeUnicode(parameters)
+      if (cerebrasMode) {
+        parameters = try Effect.try({
+          try: () => normalizeSchemaForCerebras(parameters, true, { strict: allStrict }),
+          catch: (cause) => new OpenAiFailure({
+            reason: cause instanceof Error ? cause.message : "Cerebras tool schema normalization failed.",
+            retryable: false,
+            code: CEREBRAS_SCHEMA_UNBOUNDED,
+            cause,
+          }),
+        })
+      }
+    }
+    wireTools.push({
+      type: "function",
+      function: {
+        name: wireName,
+        ...(tool.description !== undefined ? { description: toWellFormedUnicode(tool.description) } : {}),
+        ...(parameters !== undefined ? { parameters } : {}),
+        ...(allStrict ? { strict: true } : {}),
+      },
+    })
+  }
+  return { tools: wireTools, toolNameMap, reverseToolNameMap }
+}
+
+export function hasNonTextContentForLease(params: GenerateTextParams): boolean {
+  if ((params.attachments?.length ?? 0) > 0) return true
+  if (params.messages === undefined) return typeof params.prompt !== "string" && params.prompt !== undefined
+  if (!Array.isArray(params.messages)) return true
+  return params.messages.some((message) => {
+    const content = message.content
+    if (content === null || content === undefined || typeof content === "string") return false
+    if (!Array.isArray(content)) return true
+    return content.some((part) => {
+      if (!part || typeof part !== "object") return true
+      const value = part as { type?: unknown; text?: unknown; output?: { type?: unknown; value?: unknown } }
+      if (value.type === "text" || value.type === "reasoning") return typeof value.text !== "string"
+      if (value.type === "tool-call") return false
+      if (value.type !== "tool-result" || !value.output) return true
+      if (value.output.type === "text" || value.output.type === "json" || value.output.type === "error-text" || value.output.type === "error-json") {
+        return false
+      }
+      return (
+        value.output.type !== "content"
+        || !Array.isArray(value.output.value)
+        || value.output.value.some(
+          (item) => !item || typeof item !== "object" || (item as { type?: unknown }).type !== "text" || typeof (item as { text?: unknown }).text !== "string",
+        )
+      )
+    })
+  })
+}
+
+export function normalizeWireToolChoice(
+  toolChoice: ToolChoice | undefined,
+  toolNameMap: ReadonlyMap<string, string>,
+): unknown {
+  if (toolChoice === undefined) return undefined
+  if (typeof toolChoice === "string") return toolChoice
+  const rawName = "function" in toolChoice ? toolChoice.function.name : toolChoice.name
+  const wireName = toolNameMap.get(rawName) ?? rawName
+  return { type: "function", function: { name: wireName } }
+}
+
+export function parseToolCallArguments(raw: unknown): ToolCallArgsObject | string {
+  if (typeof raw === "string") {
+    try {
+      const parsed: unknown = JSON.parse(raw)
+      if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return parsed as ToolCallArgsObject
+      }
+      return raw
+    } catch {
+      return raw
+    }
+  }
+  if (raw !== null && typeof raw === "object" && !Array.isArray(raw)) {
+    return raw as ToolCallArgsObject
+  }
+  return {}
+}
+
+export function parseWireToolCalls(
+  rawToolCalls: readonly unknown[] | undefined,
+  reverseToolNameMap: ReadonlyMap<string, string>,
+): ToolCall[] {
+  if (!rawToolCalls || rawToolCalls.length === 0) return []
+  const calls: ToolCall[] = []
+  for (let index = 0; index < rawToolCalls.length; index++) {
+    const raw = asOptionalRecord(rawToolCalls[index])
+    if (!raw) continue
+    const fn = asOptionalRecord(raw.function)
+    const id = typeof raw.id === "string" && raw.id.length > 0 ? raw.id : `call_${index}`
+    const wireName = typeof fn?.name === "string"
+      ? fn.name
+      : typeof raw.name === "string"
+      ? raw.name
+      : ""
+    if (!wireName) continue
+    const name = reverseToolNameMap.get(wireName) ?? wireName
+    const args = parseToolCallArguments(fn !== undefined ? fn.arguments : raw.arguments)
+    calls.push({ id, name, arguments: args })
+  }
+  return calls
+}
+
+export interface PreparedResponseFormat {
+  readonly wireFormat: unknown
+  readonly restoreText: (text: string) => string | undefined
+}
+
+export function prepareResponseFormat(params: GenerateTextParams, cerebrasMode: boolean): PreparedResponseFormat {
+  if (params.responseSchema === undefined) {
+    return {
+      wireFormat: params.responseFormat,
+      restoreText: (text: string) => text,
+    }
+  }
+  const raw = params.responseSchema as Record<string, unknown>
+  const wrapped = "schema" in raw && typeof raw.schema === "object" && raw.schema !== null
+    ? {
+      schema: raw.schema as Record<string, unknown>,
+      name: typeof raw.name === "string" ? raw.name : "response",
+      description: typeof raw.description === "string" ? raw.description : undefined,
+    }
+    : { schema: raw, name: "response", description: undefined }
+  const sanitizedBase = deepSanitizeUnicode(wrapped.schema)
+  const rootUnion = cerebrasMode ? wrapCerebrasRootUnion(sanitizedBase) : undefined
+  const candidate = rootUnion ? rootUnion.schema : sanitizedBase
+  const factored = cerebrasMode ? factorResponseSchema(candidate) : candidate
+  return {
+    wireFormat: {
+      type: "json_schema",
+      json_schema: {
+        name: wrapped.name,
+        ...(wrapped.description ? { description: wrapped.description } : {}),
+        strict: true,
+        schema: factored,
+      },
+    },
+    restoreText: rootUnion ? rootUnion.restoreText : (text: string) => text,
+  }
+}
+
+export function usesNativeTextResult(params: GenerateTextParams): boolean {
+  return Boolean(
+    params.messages !== undefined
+    || (params.tools !== undefined && params.tools.length > 0)
+    || params.toolChoice !== undefined
+    || params.responseSchema !== undefined,
+  )
+}

@@ -1,9 +1,9 @@
 lemma beginRewrite_ensures(s: StyleRewrite, key: StyleCacheKey, originalText: string)
   ensures (inv(s) ==> alwaysCacheCapacityAndKeys(beginRewrite(s, key, originalText)))
-  ensures (inv(s) ==> alwaysPendingOrFailureRetainsOriginal(beginRewrite(s, key, originalText)))
   ensures (inv(s) ==> alwaysCallIdentityAtSlot(beginRewrite(s, key, originalText)))
-  ensures (inv(s) ==> stepFailurePreservesSharedCache(s, beginRewrite(s, key, originalText)))
+  ensures (inv(s) ==> alwaysPendingOrFailureRetainsOriginal(beginRewrite(s, key, originalText)))
   ensures (inv(s) ==> stepCompletedCallIsImmutable(s, beginRewrite(s, key, originalText)))
+  ensures (inv(s) ==> stepFailurePreservesSharedCache(s, beginRewrite(s, key, originalText)))
 {
   if inv(s) {
     var after := beginRewrite(s, key, originalText);
@@ -24,10 +24,10 @@ lemma beginRewrite_ensures(s: StyleRewrite, key: StyleCacheKey, originalText: st
 
 lemma settleRewrite_ensures(s: StyleRewrite, ticket: int, normalizedText: string)
   ensures (inv(s) ==> canSettleRewrite(s, ticket) ==> alwaysCacheCapacityAndKeys(settleRewrite(s, ticket, normalizedText)))
-  ensures (inv(s) ==> canSettleRewrite(s, ticket) ==> alwaysPendingOrFailureRetainsOriginal(settleRewrite(s, ticket, normalizedText)))
   ensures (inv(s) ==> canSettleRewrite(s, ticket) ==> alwaysCallIdentityAtSlot(settleRewrite(s, ticket, normalizedText)))
-  ensures (inv(s) ==> canSettleRewrite(s, ticket) ==> stepFailurePreservesSharedCache(s, settleRewrite(s, ticket, normalizedText)))
+  ensures (inv(s) ==> canSettleRewrite(s, ticket) ==> alwaysPendingOrFailureRetainsOriginal(settleRewrite(s, ticket, normalizedText)))
   ensures (inv(s) ==> canSettleRewrite(s, ticket) ==> stepCompletedCallIsImmutable(s, settleRewrite(s, ticket, normalizedText)))
+  ensures (inv(s) ==> canSettleRewrite(s, ticket) ==> stepFailurePreservesSharedCache(s, settleRewrite(s, ticket, normalizedText)))
 {
   if inv(s) && canSettleRewrite(s, ticket) {
     var after := settleRewrite(s, ticket, normalizedText);
@@ -42,10 +42,10 @@ lemma settleRewrite_ensures(s: StyleRewrite, ticket: int, normalizedText: string
 
 lemma settleNext_ensures(s: StyleRewrite, normalizedText: string)
   ensures (inv(s) ==> canSettleNext(s) ==> alwaysCacheCapacityAndKeys(settleNext(s, normalizedText)))
-  ensures (inv(s) ==> canSettleNext(s) ==> alwaysPendingOrFailureRetainsOriginal(settleNext(s, normalizedText)))
   ensures (inv(s) ==> canSettleNext(s) ==> alwaysCallIdentityAtSlot(settleNext(s, normalizedText)))
-  ensures (inv(s) ==> canSettleNext(s) ==> stepFailurePreservesSharedCache(s, settleNext(s, normalizedText)))
+  ensures (inv(s) ==> canSettleNext(s) ==> alwaysPendingOrFailureRetainsOriginal(settleNext(s, normalizedText)))
   ensures (inv(s) ==> canSettleNext(s) ==> stepCompletedCallIsImmutable(s, settleNext(s, normalizedText)))
+  ensures (inv(s) ==> canSettleNext(s) ==> stepFailurePreservesSharedCache(s, settleNext(s, normalizedText)))
 {
   if inv(s) && canSettleNext(s) {
     settleRewrite_ensures(s, oldestPending(s), normalizedText);

@@ -10,9 +10,11 @@ module node {
   const GuestStackBytes = 256 * 1024
   let engine: ReturnType<typeof newQuickJSWASMModuleFromVariant> | undefined
 
+  const generateItem = Schema.Struct({ prompt: Schema.String, fast: Schema.optionalKey(Schema.Boolean) })
   const request = Schema.Union([
     Schema.Struct({ kind: Schema.Literal("step"), call: Schema.String, source: Schema.String }),
-    Schema.Struct({ kind: Schema.Literal("generate"), call: Schema.String, prompt: Schema.String }),
+    Schema.Struct({ kind: Schema.Literal("generate"), call: Schema.String, prompt: Schema.String, fast: Schema.optionalKey(Schema.Boolean) }),
+    Schema.Struct({ kind: Schema.Literal("generateBatch"), call: Schema.String, requests: Schema.Array(generateItem) }),
     Schema.Struct({ kind: Schema.Literal("approval"), call: Schema.String, title: Schema.String, summary: Schema.String, operation: Schema.String, target: Schema.String, account: Schema.String }),
     Schema.Struct({ kind: Schema.Literal("signal"), call: Schema.String, name: Schema.String, timeoutMs: Schema.optionalKey(Schema.Number) }),
     Schema.Struct({ kind: Schema.Literal("sleep"), call: Schema.String, ms: Schema.Number }),
@@ -36,10 +38,24 @@ module node {
     const sourceOf = Function.prototype.call.bind(Function.prototype.toString);
     const pack = value => stringify(value ?? null);
     const request = async (message, callback) => parse(await send(pack(message), callback));
+    const compact = (value, maxChars = 12000) => {
+      const text = typeof value === "string" ? value : "";
+      const limit = typeof maxChars === "number" && Number.isFinite(maxChars) && maxChars >= 0 ? Math.floor(maxChars) : 12000;
+      if (limit <= 0) return "";
+      if (text.length <= limit) return text;
+      const marker = "\\n...[compacted " + (text.length - limit) + " chars of " + text.length + "]...\\n";
+      if (marker.length >= limit) return text.slice(0, limit);
+      const budget = limit - marker.length;
+      const head = Math.ceil(budget * 0.6);
+      const tail = budget - head;
+      return (tail > 0 ? text.slice(0, head) + marker + text.slice(text.length - tail) : text.slice(0, head) + marker).slice(0, limit);
+    };
     return Object.freeze({
       input: parse(input),
       step: (call, fn) => request({kind: "step", call, source: sourceOf(fn)}, () => pack(fn())),
-      generate: (call, {prompt}) => request({kind: "generate", call, prompt}),
+      generate: (call, {prompt, fast}) => request(fast === undefined ? {kind: "generate", call, prompt} : {kind: "generate", call, prompt, fast: Boolean(fast)}),
+      generateBatch: (call, requests) => request({kind: "generateBatch", call, requests: Array.isArray(requests) ? requests.map((r) => r && r.fast !== undefined ? {prompt: String(r.prompt ?? ""), fast: Boolean(r.fast)} : {prompt: String(r?.prompt ?? "")}) : []}),
+      compact,
       approval: (call, {title, summary, operation, target, account}) => request({kind: "approval", call, title, summary, operation, target, account}),
       signal: (call, name, options) => request({kind: "signal", call, name, timeoutMs: options?.timeoutMs}),
       sleep: async (call, ms) => { await request({kind: "sleep", call, ms}); },

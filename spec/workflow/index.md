@@ -8,7 +8,7 @@ remove it. Every run is bound to the exact version the owner reviewed.
 | --- | --- |
 | Authoring and review | [Typed authoring](./authoring.md), [generated code](./generated.md), [source publication](./sourcePublication.md), [worker provenance](./worker.md) |
 | Admission | [Reviewed admission](./admission.md), [request archive](./intents.md), [lifecycle](./lifecycle.md) |
-| Running | [Schedule occurrences](./schedule.md), [execution and wakeups](./execution.md), [approvals](./approvals.md), [run scope](./runScope.md) |
+| Running | [Schedule occurrences](./schedule.md), [execution and wakeups](./execution.md), [budgets, compaction and routing](./budget.md), [approvals](./approvals.md), [run scope](./runScope.md) |
 | Hosted digests | [Offers and delivery](./hostedDigest.md) |
 | Notices | [Run notices](./notices.md) |
 | Updating | [Workflows saved by the earlier version](./earlierStore.md) |

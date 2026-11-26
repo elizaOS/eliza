@@ -1023,7 +1023,7 @@ function statusBlock(code: number, stream: string): string {
 const PASSED_RUN = `${statusBlock(1, "")}${statusBlock(0, ".")}INSTRUMENTATION_RESULT: stream=\n\nTime: 0.1\n\nOK (1 test)\n\n\nINSTRUMENTATION_CODE: -1\n`
 const CRASHED_RUN = `${statusBlock(1, "")}INSTRUMENTATION_RESULT: shortMsg=Process crashed.\nINSTRUMENTATION_CODE: 0\n`
 
-it.live('Hold one device alone in a private lease directory the caller or the environment names (spec/os/image/harness.md, "Story: Run instrumentation on a device I hold alone"; spec/os/image/harness.md, "A lease lives in the caller\'s directory, else the one the environment names, in a real directory the operator owns"; spec/os/image/harness.md, "A lease is active only while its holder lives within its time, or while it is marked for writes")', effect () => {
+it.live(`Hold one device alone in a private lease directory the caller or the environment names (spec/os/image/harness.md, "Story: Run instrumentation on a device I hold alone"; spec/os/image/harness.md, "A lease lives in the caller's directory, else the one the environment names, in a real directory the operator owns"; spec/os/image/harness.md, "A lease is active only while its holder lives within its time, or while it is marked for writes")`, effect () => {
   provide NodeServices.layer {
     try scoped(effect {
       const files = try FileSystem.FileSystem

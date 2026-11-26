@@ -1,4 +1,5 @@
-// spec/computerUse/index.md, "Story: Control an authorized computer session"
+// spec/computerUse/index.md, "Story: Control an authorized computer session"; spec/computerUse/sessions.md, "Story: Manage leased computer-use sessions with fresh observations"; spec/computerUse/approvals.md, "Story: Gate computer-use commands by approval mode and operator decisions"; spec/computerUse/observation.md, "Story: Minimize vision tokens while keeping coordinates and history strictly bounded"; spec/computerUse/batching.md, "Story: Execute a bounded sequence of desktop actions in a single LLM turn"
+import type { AgentPlugin } from "@elizaos/agent-host"
 import {
   acceptsComputerObservation,
   computerCommandAllowed,
@@ -6,6 +7,21 @@ import {
   type ComputerSession,
   type OperationObservation,
 } from "../gen/computerUse.effect.vibe"
+import {
+  clipboardAction,
+  computerUseAgentAction,
+  useComputerAction,
+  windowAction,
+} from "./actions.vibe"
+import { computerCapabilitiesProvider, computerStateProvider, sceneProvider } from "./providers.vibe"
+import { computerUseRoutes } from "./routes.vibe"
+import {
+  COMPUTERUSE_SERVICE_TYPE,
+  ComputerUseService,
+  VisionContextProvider,
+  getActiveComputerUseService,
+  setActiveComputerUseService,
+} from "./service.vibe"
 
 export error ComputerOperationRefused { operationId: string }
 export error ComputerHostFailed { operationId: string; reason: string }
@@ -45,3 +61,52 @@ export effect function useComputer(request: Omit<ComputerCommand, "operation">, 
   }
   return observed.value
 }
+
+export const computerUsePlugin: AgentPlugin = {
+  name: "@elizaos/plugin-computeruse",
+  description:
+    "Desktop automation — screenshots, mouse/keyboard control, multi-step action batching, browser CDP, window management, app-control, sessions, and approvals.",
+  services: [ComputerUseService, VisionContextProvider],
+  actions: [useComputerAction, windowAction, clipboardAction, computerUseAgentAction],
+  providers: [computerCapabilitiesProvider, computerStateProvider, sceneProvider],
+  routes: computerUseRoutes(() => getActiveComputerUseService()),
+  autoEnable: {
+    envKeys: ["COMPUTER_USE_ENABLED"],
+    shouldEnable: (env, config) => {
+      if (env.COMPUTER_USE_ENABLED === "1" || env.COMPUTER_USE_ENABLED === "true") return true
+      const features = config?.features
+      return Boolean(features && typeof features === "object" && (features as Record<string, unknown>).computeruse === true)
+    },
+  },
+  init: async (_config, runtime) => {
+    const found: unknown = runtime.getService(COMPUTERUSE_SERVICE_TYPE)
+    if (found instanceof ComputerUseService) setActiveComputerUseService(found)
+  },
+  dispose: async (runtime) => {
+    const found: unknown = runtime.getService(COMPUTERUSE_SERVICE_TYPE)
+    if (found instanceof ComputerUseService) {
+      await found.stop()
+      if (getActiveComputerUseService() === found) setActiveComputerUseService(undefined)
+    }
+  },
+}
+
+export const computerusePlugin = computerUsePlugin
+export default computerUsePlugin
+
+export * from "./actions.vibe"
+export * from "./actor.vibe"
+export * from "./app-control.vibe"
+export * from "./approvals.vibe"
+export * from "./mcp.vibe"
+export * from "./mobile.vibe"
+export * from "./parity.vibe"
+export * from "./platform.vibe"
+export * from "./providers.vibe"
+export * from "./routes.vibe"
+export * from "./sandbox.vibe"
+export * from "./scene.vibe"
+export * from "./security.vibe"
+export * from "./service.vibe"
+export * from "./sessions.vibe"
+export * from "./types.vibe"

@@ -32,14 +32,14 @@ const story = {
   resume: 'spec/inbox/reads.md, "Story: Resume my own mailbox from what was saved, and recheck its access"',
   drafts: 'spec/inbox/drafts.md, "Story: Keep drafts recoverable across account switches and provider failures"',
   outgoing: 'spec/inbox/outgoing.md, "Story: Attach files and send exactly the email I reviewed"',
-  readState: 'spec/inbox/readState.md, "Story: Change a message\'s read state once, and never repeat a change I did not ask for"',
+  readState: `spec/inbox/readState.md, "Story: Change a message's read state once, and never repeat a change I did not ask for"`,
   notices: 'spec/inbox/backgroundNotices.md, "Story: Open the Inbox or ask about the exact notification I tapped"',
   managed: 'spec/inbox/managedRead.md, "Story: Read my managed inbox fresh, and only for me"',
-  broker: 'spec/inbox/managedRead.md, "The agent reads managed mail through the device\'s broker when the host names one, and otherwise through its cloud link"',
+  broker: `spec/inbox/managedRead.md, "The agent reads managed mail through the device's broker when the host names one, and otherwise through its cloud link"`,
   brokerRefusals: 'spec/inbox/managedRead.md, "The agent tells a broker refusal as the cloud refusal of the same cause"',
-  handoff: 'spec/inbox/handoff.md, "Story: Put the agent\'s words into an email draft without sending it"',
+  handoff: `spec/inbox/handoff.md, "Story: Put the agent's words into an email draft without sending it"`,
   failures: 'spec/inbox/failures.md, "Story: Know what happened when Gmail fails"',
-  progress: 'spec/agent/conversation/planning.md, "A tool\'s progress names its app only when one labelled app applies, and never its arguments or results"',
+  progress: `spec/agent/conversation/planning.md, "A tool's progress names its app only when one labelled app applies, and never its arguments or results"`,
 }
 
 const readOnly = ["google.basic_identity", "google.gmail.triage"]

@@ -167,7 +167,7 @@ it.effect('Interpret the complete attachment only while it is still authorized (
   }
 })
 
-it.effect('Turn a scanned poster into a Calendar draft I review (spec/files/scan/event.md, "Story: Turn a scanned poster into a Calendar draft I review"; spec/files/scan/event.md, "A date is suggested only when every date printed agrees, and a year, weekday or relative day is inferred only from the device\'s clock and disclosed"; spec/files/scan/event.md, "A start time is suggested only when every time printed agrees, in the device\'s zone or in one explicit zone it converts from"; spec/files/scan/event.md, "A repeat is only a hint the owner turns on"; spec/files/scan/event.md, "A draft holds only reviewed fields within their bounds, timed or all day as the owner reviewed it")', effect () => {
+it.effect(`Turn a scanned poster into a Calendar draft I review (spec/files/scan/event.md, "Story: Turn a scanned poster into a Calendar draft I review"; spec/files/scan/event.md, "A date is suggested only when every date printed agrees, and a year, weekday or relative day is inferred only from the device's clock and disclosed"; spec/files/scan/event.md, "A start time is suggested only when every time printed agrees, in the device's zone or in one explicit zone it converts from"; spec/files/scan/event.md, "A repeat is only a hint the owner turns on"; spec/files/scan/event.md, "A draft holds only reviewed fields within their bounds, timed or all day as the owner reviewed it")`, effect () => {
   const now = new Date("2026-10-03T15:00:00Z")
   const details = (text: string, timeZone = "America/New_York") => suggestScanEventDetails(text, { now, timeZone })
   const valid = { title: " Reviewed event ", date: "2027-01-02", time: "23:45", minutes: 90, location: " Hall " }

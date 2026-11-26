@@ -69,7 +69,7 @@ function transcript(events: readonly ContextEvent[], zone?: string): string[] {
     .promptSegments.filter((segment) => segment.label === "prior_message:user").map(segmentBlock)
 }
 
-it('An earlier message is read with its local date and minute, its year when that is not the newest, UTC when no zone is usable, and its offset only in the hour a zone repeats (spec/core/context.md, "Story: Know when each earlier message was said"; spec/core/context.md, "A message\'s stamp is its local date and minute, with the year only when it is not the newest year and an offset only when the minute alone names no one instant")', () => {
+it(`An earlier message is read with its local date and minute, its year when that is not the newest, UTC when no zone is usable, and its offset only in the hour a zone repeats (spec/core/context.md, "Story: Know when each earlier message was said"; spec/core/context.md, "A message's stamp is its local date and minute, with the year only when it is not the newest year and an offset only when the minute alone names no one instant")`, () => {
   const opened = prior("2026-11-20T21:18:13.690Z", "Open Messages.")
   assert.deepStrictEqual({
     localMinute: transcript([prior("2026-11-20T04:59:59.999Z", "Before midnight."), opened], "America/New_York"),

@@ -1,0 +1,520 @@
+// spec/openai/index.md, "Story: Use an OpenAI-compatible model for the requested capability"
+import {
+  ElizaError,
+  ModelType,
+  toWellFormedUnicode,
+  VECTOR_DIMS,
+  type IAgentRuntime,
+  type ImageDescriptionParams,
+  type ImageDescriptionResult,
+  type ImageGenerationParams,
+  type ImageGenerationResult,
+  type ResearchAnnotation,
+  type ResearchCodeInterpreterCall,
+  type ResearchFileSearchCall,
+  type ResearchMcpToolCall,
+  type ResearchMessageOutput,
+  type ResearchOutputItem,
+  type ResearchParams,
+  type ResearchResult,
+  type ResearchTool,
+  type ResearchWebSearchCall,
+  type TextEmbeddingParams,
+} from "@elizaos/core"
+import { Schema } from "effect"
+import { openAiSupportsCapability } from "../gen/openai.effect.vibe"
+import {
+  getApiKey,
+  getBaseURL,
+  getEmbeddingApiKey,
+  getEmbeddingBaseURL,
+  getEmbeddingModel,
+  getImageDescriptionApiKey,
+  getImageDescriptionBaseURL,
+  getImageDescriptionModel,
+  getImageModel,
+  getNumericSetting,
+  getProviderMode,
+  getResearchModel,
+  getResearchTimeout,
+  getUsageProvider,
+  hasExplicitEmbeddingDimensions,
+  hasExplicitEmbeddingEndpoint,
+} from "./config.vibe"
+import { emitModelUsageEvent, OpenAiFailure } from "./errors.vibe"
+import { openAiJsonPost, resolveAllowKeyless } from "./transport.vibe"
+
+const TEXT_EMBEDDING_TIMEOUT_MS = 30000
+const IMAGE_GENERATION_TIMEOUT_MS = 120000
+const IMAGE_DESCRIPTION_TIMEOUT_MS = 45000
+const DEFAULT_IMAGE_DESCRIPTION_PROMPT = "Please analyze this image and provide a title and detailed description."
+const DEFAULT_IMAGE_TITLE = "Image Analysis"
+const LEADING_TITLE_LINE = /^\s*title\s*[:-]\s*(.*?)(?:\r?\n|$)/i
+const LEADING_DESCRIPTION_LABEL = /^\s*description\s*[:-]\s*/i
+
+const embeddingReplySchema = Schema.Struct({
+  data: Schema.NonEmptyArray(Schema.Struct({ embedding: Schema.Array(Schema.Number) })),
+  usage: Schema.optionalKey(Schema.Struct({
+    prompt_tokens: Schema.Int,
+    total_tokens: Schema.Int,
+  })),
+})
+const decodeEmbeddingReply = Schema.decodeUnknownEffect(embeddingReplySchema)
+
+const imageReplySchema = Schema.Struct({
+  data: Schema.Array(Schema.Struct({
+    url: Schema.optionalKey(Schema.String),
+    b64_json: Schema.optionalKey(Schema.String),
+    revised_prompt: Schema.optionalKey(Schema.String),
+  })),
+  output_format: Schema.optionalKey(Schema.String),
+})
+const decodeImageReply = Schema.decodeUnknownEffect(imageReplySchema)
+
+const visionReplySchema = Schema.Struct({
+  choices: Schema.NonEmptyArray(Schema.Struct({
+    message: Schema.Struct({
+      content: Schema.optionalKey(Schema.NullOr(Schema.String)),
+    }),
+    finish_reason: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  })),
+  usage: Schema.optionalKey(Schema.Struct({
+    prompt_tokens: Schema.Int,
+    completion_tokens: Schema.Int,
+    total_tokens: Schema.Int,
+  })),
+})
+const decodeVisionReply = Schema.decodeUnknownEffect(visionReplySchema)
+
+const VALID_VECTOR_DIMS: ReadonlySet<number> = new Set(Object.values<number>(VECTOR_DIMS))
+
+export function handleTextEmbedding(
+  runtime: IAgentRuntime,
+  params: TextEmbeddingParams | string | null,
+): Promise<number[]> {
+  const signal = typeof params === "object" && params !== null ? params.signal : undefined
+  return runPromise(effect {
+    const dimension = getNumericSetting(runtime, "OPENAI_EMBEDDING_DIMENSIONS", VECTOR_DIMS.XXL)
+    if (dimension === undefined || !VALID_VECTOR_DIMS.has(dimension)) {
+      throw new OpenAiFailure({
+        reason: `Invalid embedding dimension: must be one of ${[...VALID_VECTOR_DIMS].join(", ")}.`,
+        retryable: false,
+      })
+    }
+    if (!openAiSupportsCapability(getProviderMode(runtime), "EmbedText", hasExplicitEmbeddingEndpoint(runtime))) {
+      throw new ElizaError(
+        "Cerebras does not provide embeddings. Configure OPENAI_EMBEDDING_URL or select a real embedding provider.",
+        { code: "EMBEDDING_PROVIDER_UNAVAILABLE" },
+      )
+    }
+    if (params === null) {
+      return Array.from({ length: dimension }, (_item, index) => index === 0 ? 0.1 : 0)
+    }
+    const rawText = typeof params === "string"
+      ? params
+      : typeof params === "object" && typeof params.text === "string"
+      ? params.text
+      : undefined
+    if (rawText === undefined) {
+      throw new OpenAiFailure({
+        reason: "Invalid embedding params: expected string, { text: string }, or null.",
+        retryable: false,
+      })
+    }
+    const trimmed = toWellFormedUnicode(rawText.trim())
+    if (trimmed.length === 0) {
+      throw new OpenAiFailure({ reason: "Cannot generate embedding for empty text.", retryable: false })
+    }
+    const model = getEmbeddingModel(runtime)
+    const baseURL = getEmbeddingBaseURL(runtime)
+    const raw = try openAiJsonPost({
+      baseURL,
+      path: "/embeddings",
+      apiKey: getEmbeddingApiKey(runtime),
+      body: {
+        model,
+        input: trimmed,
+        ...(hasExplicitEmbeddingDimensions(runtime) ? { dimensions: dimension } : {}),
+      },
+      timeoutMs: TEXT_EMBEDDING_TIMEOUT_MS,
+      allowKeyless: resolveAllowKeyless(runtime, baseURL),
+    })
+    const parsed = decodeEmbeddingReply(raw) catch effect (cause) => {
+      throw new OpenAiFailure({ reason: "OpenAI API returned invalid embedding response structure.", retryable: false, cause })
+    }
+    const vector = parsed.data[0].embedding
+    if (!vector.every(Number.isFinite)) {
+      throw new OpenAiFailure({ reason: "OpenAI returned an invalid vector with non-finite coordinates.", retryable: false })
+    }
+    if (vector.length !== dimension) {
+      throw new OpenAiFailure({
+        reason: `Embedding dimension mismatch: got ${vector.length}, expected ${dimension}.`,
+        retryable: false,
+      })
+    }
+    if (parsed.usage) {
+      emitModelUsageEvent(
+        runtime,
+        ModelType.TEXT_EMBEDDING,
+        trimmed,
+        {
+          promptTokens: parsed.usage.prompt_tokens,
+          completionTokens: 0,
+          totalTokens: parsed.usage.total_tokens,
+        },
+        model,
+      )
+    }
+    return [...vector]
+  }, { signal })
+}
+
+export interface ExtendedImageGenerationParams extends ImageGenerationParams {
+  quality?: "standard" | "hd"
+  style?: "vivid" | "natural"
+}
+
+export interface ExtendedImageGenerationResult extends ImageGenerationResult {
+  revisedPrompt?: string
+}
+
+export function handleImageGeneration(
+  runtime: IAgentRuntime,
+  params: ExtendedImageGenerationParams,
+): Promise<ExtendedImageGenerationResult[]> {
+  return runPromise(effect {
+    if (typeof params.prompt !== "string" || params.prompt.trim().length === 0) {
+      throw new OpenAiFailure({ reason: "IMAGE generation requires a non-empty prompt.", retryable: false })
+    }
+    const count = params.count ?? 1
+    if (!Number.isInteger(count) || count < 1 || count > 10) {
+      throw new OpenAiFailure({ reason: "IMAGE count must be between 1 and 10.", retryable: false })
+    }
+    const model = getImageModel(runtime)
+    const size = params.size ?? "1024x1024"
+    const baseURL = getBaseURL(runtime)
+    const raw = try openAiJsonPost({
+      baseURL,
+      path: "/images/generations",
+      apiKey: getApiKey(runtime),
+      body: {
+        model,
+        prompt: params.prompt,
+        n: count,
+        size,
+        ...(params.quality ? { quality: params.quality } : {}),
+        ...(params.style ? { style: params.style } : {}),
+      },
+      timeoutMs: IMAGE_GENERATION_TIMEOUT_MS,
+      allowKeyless: resolveAllowKeyless(runtime, baseURL),
+    })
+    const parsed = decodeImageReply(raw) catch effect (cause) => {
+      throw new OpenAiFailure({ reason: "OpenAI image generation reply had an invalid shape.", retryable: false, cause })
+    }
+    if (parsed.data.length === 0) {
+      throw new OpenAiFailure({ reason: "OpenAI API returned no images.", retryable: false })
+    }
+    const mimeType = `image/${parsed.output_format ?? "png"}`
+    const results: ExtendedImageGenerationResult[] = []
+    for (const item of parsed.data) {
+      if (item.url !== undefined && item.url.length > 0) {
+        results.push({
+          url: item.url,
+          ...(item.revised_prompt !== undefined ? { revisedPrompt: item.revised_prompt } : {}),
+        })
+      } else if (item.b64_json !== undefined && item.b64_json.length > 0) {
+        results.push({
+          url: `data:${mimeType};base64,${item.b64_json}`,
+          ...(item.revised_prompt !== undefined ? { revisedPrompt: item.revised_prompt } : {}),
+        })
+      } else {
+        throw new OpenAiFailure({
+          reason: "OpenAI API returned an image without a URL or b64_json data.",
+          retryable: false,
+        })
+      }
+    }
+    return results
+  })
+}
+
+export function parseImageDescriptionResponse(content: string): ImageDescriptionResult {
+  const trimmed = content.trim()
+  const titleLine = trimmed.match(LEADING_TITLE_LINE)
+  if (!titleLine) {
+    return { title: DEFAULT_IMAGE_TITLE, description: trimmed }
+  }
+  const titleText = titleLine[1]?.trim() ?? ""
+  const remainder = trimmed.slice(titleLine[0].length).trim()
+  if (remainder.length > 0) {
+    const description = remainder.replace(LEADING_DESCRIPTION_LABEL, "").trim()
+    return {
+      title: titleText.length > 0 ? titleText : DEFAULT_IMAGE_TITLE,
+      description,
+    }
+  }
+  return { title: DEFAULT_IMAGE_TITLE, description: titleText }
+}
+
+export function handleImageDescription(
+  runtime: IAgentRuntime,
+  input: ImageDescriptionParams | string,
+): Promise<ImageDescriptionResult> {
+  const params = typeof input === "string" ? { imageUrl: input } : input
+  const signal = "signal" in params ? params.signal : undefined
+  return runPromise(effect {
+    if (!params.imageUrl || params.imageUrl.trim().length === 0) {
+      throw new OpenAiFailure({ reason: "IMAGE_DESCRIPTION requires a valid image URL.", retryable: false })
+    }
+    const model = getImageDescriptionModel(runtime)
+    const promptText = params.prompt ?? DEFAULT_IMAGE_DESCRIPTION_PROMPT
+    const baseURL = getImageDescriptionBaseURL(runtime)
+    const raw = try openAiJsonPost({
+      baseURL,
+      path: "/chat/completions",
+      apiKey: getImageDescriptionApiKey(runtime),
+      body: {
+        model,
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "text", text: promptText },
+              { type: "image_url", image_url: { url: params.imageUrl } },
+            ],
+          },
+        ],
+      },
+      timeoutMs: IMAGE_DESCRIPTION_TIMEOUT_MS,
+      allowKeyless: resolveAllowKeyless(runtime, baseURL),
+    })
+    const parsed = decodeVisionReply(raw) catch effect (cause) => {
+      throw new OpenAiFailure({ reason: "OpenAI image description reply had an invalid shape.", retryable: false, cause })
+    }
+    const choice = parsed.choices[0]
+    if (parsed.usage) {
+      emitModelUsageEvent(
+        runtime,
+        ModelType.IMAGE_DESCRIPTION,
+        typeof input === "string" ? input : (params.prompt ?? ""),
+        {
+          promptTokens: parsed.usage.prompt_tokens,
+          completionTokens: parsed.usage.completion_tokens,
+          totalTokens: parsed.usage.total_tokens,
+        },
+        model,
+      )
+    }
+    if (choice.finish_reason === "length") {
+      throw new ElizaError("OpenAI reached its output boundary; refusing partial image description", {
+        code: "MODEL_OUTPUT_INCOMPLETE",
+        context: {
+          provider: getUsageProvider(runtime),
+          model,
+          finishReason: "length",
+          ...(parsed.usage
+            ? {
+              usage: {
+                promptTokens: parsed.usage.prompt_tokens,
+                completionTokens: parsed.usage.completion_tokens,
+                totalTokens: parsed.usage.total_tokens,
+              },
+            }
+            : {}),
+        },
+      })
+    }
+    const content = choice.message.content
+    if (!content) {
+      throw new OpenAiFailure({ reason: "OpenAI API returned empty image description.", retryable: false })
+    }
+    return parseImageDescriptionResponse(content)
+  }, { signal })
+}
+
+interface RawResearchOutputItem {
+  id?: string
+  type: string
+  status?: string
+  action?: { type: string; query?: string; url?: string }
+  query?: string
+  results?: Array<{ file_id: string; file_name: string; score: number }>
+  code?: string
+  output?: string
+  server_label?: string
+  tool_name?: string
+  arguments?: Record<string, unknown>
+  result?: unknown
+  content?: Array<{
+    type: string
+    text: string
+    annotations?: Array<{ url: string; title: string; start_index: number; end_index: number }>
+  }>
+}
+
+interface RawResearchResponse {
+  id?: string
+  status?: "queued" | "in_progress" | "completed" | "failed"
+  output?: RawResearchOutputItem[]
+  output_text?: string
+  error?: { message?: string; code?: string }
+}
+
+function convertResearchTool(tool: ResearchTool): Record<string, unknown> {
+  switch (tool.type) {
+    case "web_search_preview":
+      return { type: "web_search_preview" }
+    case "file_search":
+      return { type: "file_search", vector_store_ids: tool.vectorStoreIds }
+    case "code_interpreter":
+      return { type: "code_interpreter", container: tool.container ?? { type: "auto" } }
+    case "mcp":
+      return {
+        type: "mcp",
+        server_label: tool.serverLabel,
+        server_url: tool.serverUrl,
+        require_approval: tool.requireApproval ?? "never",
+      }
+  }
+}
+
+function convertResearchOutputItem(item: RawResearchOutputItem): ResearchOutputItem | null {
+  switch (item.type) {
+    case "web_search_call":
+      return {
+        id: item.id ?? "",
+        type: "web_search_call",
+        status: item.status === "failed" ? "failed" : "completed",
+        action: {
+          type: item.action?.type === "open_page" || item.action?.type === "find_in_page" ? item.action.type : "search",
+          query: item.action?.query,
+          url: item.action?.url,
+        },
+      } satisfies ResearchWebSearchCall
+    case "file_search_call":
+      return {
+        id: item.id ?? "",
+        type: "file_search_call",
+        status: item.status === "failed" ? "failed" : "completed",
+        query: item.query ?? "",
+        results: item.results?.map((entry) => ({
+          fileId: entry.file_id,
+          fileName: entry.file_name,
+          score: entry.score,
+        })),
+      } satisfies ResearchFileSearchCall
+    case "code_interpreter_call":
+      return {
+        id: item.id ?? "",
+        type: "code_interpreter_call",
+        status: item.status === "failed" ? "failed" : "completed",
+        code: item.code ?? "",
+        output: item.output,
+      } satisfies ResearchCodeInterpreterCall
+    case "mcp_tool_call":
+      return {
+        id: item.id ?? "",
+        type: "mcp_tool_call",
+        status: item.status === "failed" ? "failed" : "completed",
+        serverLabel: item.server_label ?? "",
+        toolName: item.tool_name ?? "",
+        arguments: (item.arguments ?? {}) as ResearchMcpToolCall["arguments"],
+        result: item.result as ResearchMcpToolCall["result"],
+      } satisfies ResearchMcpToolCall
+    case "message":
+      return {
+        type: "message",
+        content: item.content?.map((part) => ({
+          type: "output_text" as const,
+          text: part.text,
+          annotations: part.annotations?.map((ann) => ({
+            url: ann.url,
+            title: ann.title,
+            startIndex: ann.start_index,
+            endIndex: ann.end_index,
+          })) ?? [],
+        })) ?? [],
+      } satisfies ResearchMessageOutput
+    default:
+      return null
+  }
+}
+
+export function handleResearch(runtime: IAgentRuntime, params: ResearchParams): Promise<ResearchResult> {
+  return runPromise(effect {
+    const baseURL = getBaseURL(runtime)
+    const apiKey = getApiKey(runtime)
+    const allowKeyless = resolveAllowKeyless(runtime, baseURL)
+    if (!apiKey && !allowKeyless) {
+      throw new OpenAiFailure({
+        reason: "OPENAI_API_KEY is required for deep research.",
+        retryable: false,
+        code: "OPENAI_API_KEY_MISSING",
+      })
+    }
+    const model = params.model ?? getResearchModel(runtime)
+    const timeoutMs = getResearchTimeout(runtime)
+    const inputTools = params.tools ?? []
+    const hasDataSource = inputTools.some(
+      (tool) => tool.type === "web_search_preview" || tool.type === "file_search" || tool.type === "mcp",
+    )
+    const resolvedTools: ResearchTool[] = hasDataSource
+      ? [...inputTools]
+      : [{ type: "web_search_preview" }, ...inputTools]
+    const requestBody: Record<string, unknown> = {
+      model,
+      input: params.input,
+      tools: resolvedTools.map(convertResearchTool),
+      ...(params.instructions ? { instructions: params.instructions } : {}),
+      ...(params.background !== undefined ? { background: params.background } : {}),
+      ...(params.maxToolCalls !== undefined ? { max_tool_calls: params.maxToolCalls } : {}),
+      ...(params.reasoningSummary ? { reasoning: { summary: params.reasoningSummary } } : {}),
+    }
+    const raw = try openAiJsonPost({
+      baseURL,
+      path: "/responses",
+      apiKey,
+      body: requestBody,
+      timeoutMs,
+      allowKeyless,
+    })
+    if (typeof raw !== "object" || raw === null) {
+      throw new OpenAiFailure({ reason: "OpenAI research response had an invalid shape.", retryable: false })
+    }
+    const data = raw as RawResearchResponse
+    if (data.error) {
+      throw new OpenAiFailure({
+        reason: `Deep research error: ${data.error.message ?? data.error.code ?? "unknown error"}`,
+        retryable: false,
+        code: data.error.code,
+      })
+    }
+    const annotations: ResearchAnnotation[] = []
+    let fallbackText = ""
+    const outputItems: ResearchOutputItem[] = []
+    for (const item of data.output ?? []) {
+      const converted = convertResearchOutputItem(item)
+      if (converted) outputItems.push(converted)
+      if (item.type === "message" && Array.isArray(item.content)) {
+        for (const part of item.content) {
+          fallbackText += part.text ?? ""
+          for (const ann of part.annotations ?? []) {
+            annotations.push({
+              url: ann.url,
+              title: ann.title,
+              startIndex: ann.start_index,
+              endIndex: ann.end_index,
+            })
+          }
+        }
+      }
+    }
+    return {
+      id: data.id ?? "",
+      text: data.output_text ?? fallbackText,
+      annotations,
+      outputItems,
+      status: data.status,
+    }
+  }, { signal: params.signal })
+}

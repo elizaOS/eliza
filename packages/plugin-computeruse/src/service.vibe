@@ -1,0 +1,1404 @@
+// spec/computerUse/index.md, "Story: Control an authorized computer session"; spec/computerUse/batching.md, "Story: Execute a bounded sequence of desktop actions in a single LLM turn"; spec/computerUse/approvals.md, "Story: Gate computer-use commands by approval mode and operator decisions"
+import { Service, type IAgentRuntime } from "@elizaos/core"
+import {
+  apply as applyBatch,
+  initial as initialBatchMachine,
+  type BatchMachine,
+  type Event as BatchEvent,
+} from "../gen/computerUse__batching.effect.vibe"
+import { AppControlCoordinator } from "./app-control.vibe"
+import { ComputerUseApprovalManager, isApprovalMode } from "./approvals.vibe"
+import {
+  appendNativeFile,
+  base64ToBytes,
+  bytesToBase64,
+  createNativeDir,
+  deleteNativeDir,
+  deleteNativeFile,
+  fetchJsonOverHttp,
+  getEnvValue,
+  getProcessEnvSnapshot,
+  listNativeDirectory,
+  nextUniqueId,
+  readNativeBytes,
+  readNativeFile,
+  resolveCanonicalPath,
+  runNativeCommand,
+  sendCdpCommand,
+  statNativePath,
+  writeNativeBytes,
+  writeNativeFile,
+} from "./platform-native.ts"
+import {
+  captureDesktopScreenshot,
+  detectDesktopControlCapabilities,
+  findWindowsByQuery,
+  getPrimaryDisplay,
+  killHostApp,
+  launchHostApp,
+  listDesktopWindows,
+  listDisplays,
+  listProcesses,
+  localToGlobalDefault,
+  openHostTarget,
+  performDesktopClick,
+  performDesktopClickWithModifiers,
+  performDesktopDoubleClick,
+  performDesktopDragPath,
+  performDesktopKeyHold,
+  performDesktopKeypress,
+  performDesktopMouseDown,
+  performDesktopMouseMove,
+  performDesktopMouseUp,
+  performDesktopScroll,
+  performDesktopTextInput,
+  performHostWindowControl,
+  readHostClipboard,
+  writeHostClipboard,
+} from "./platform.vibe"
+import { SceneBuilder, ScreenStateStore, type ScreenState, type ScreenStateStats } from "./scene.vibe"
+import {
+  assertBrowserExecuteAllowed,
+  assertHttpBrowserUrl,
+  checkDangerousCommand,
+  normalizeBrowserTabId,
+  sanitizeChildEnv,
+  truncateOutputText,
+  validateCoordinate,
+  validateFilePath,
+  validateKeypress,
+  validateText,
+} from "./security.vibe"
+import {
+  ComputerUseSessionManager,
+  type ComputerUseSessionAction,
+  type ComputerUseSessionActionResult,
+  type ComputerUseSessionEvent,
+  type ComputerUseSessionExecutor,
+  type ComputerUseSessionFrame,
+  type ComputerUseSessionFrameProvider,
+  type ComputerUseSessionSnapshot,
+  type CreateComputerUseSessionInput,
+} from "./sessions.vibe"
+import type {
+  ActionHistoryEntry,
+  ApprovalMode,
+  ApprovalResolution,
+  ApprovalSnapshot,
+  BatchStepResult,
+  BrowserActionParams,
+  BrowserActionResult,
+  BrowserTab,
+  ComputerActionResult,
+  ComputerUseConfig,
+  ComputerUseResult,
+  DesktopActionParams,
+  DisplayDescriptor,
+  FileActionParams,
+  FileActionResult,
+  PlatformCapabilities,
+  Scene,
+  SceneVlmElement,
+  ScreenSize,
+  TerminalActionParams,
+  TerminalActionResult,
+  WindowActionParams,
+  WindowActionResult,
+  WindowInfo,
+} from "./types.vibe"
+
+export const COMPUTERUSE_SERVICE_TYPE = "computeruse"
+export const VISION_CONTEXT_SERVICE_TYPE = "vision-context"
+export const VISION_CONTEXT_TASK_GOAL_CACHE_KEY = "vision-context:task-goal"
+export const MAX_FILE_OP_BYTES = 10 * 1024 * 1024
+
+export function parseComputerUseActionTimeoutMs(raw?: string): number {
+  const candidate = raw ?? getEnvValue("COMPUTER_USE_ACTION_TIMEOUT_MS")
+  const parsed = candidate ? Number(candidate) : 10_000
+  if (!Number.isFinite(parsed) || parsed < 1000) return 10_000
+  return Math.min(120_000, Math.round(parsed))
+}
+
+export function parseSandboxRpcPort(raw?: string): number {
+  const candidate = raw ?? getEnvValue("COMPUTERUSE_SANDBOX_RPC_PORT")
+  const parsed = candidate ? Number(candidate) : 8765
+  if (!Number.isSafeInteger(parsed) || parsed < 1 || parsed > 65535) return 8765
+  return parsed
+}
+
+export type MutatingWindowAction =
+  | "focus"
+  | "switch"
+  | "arrange"
+  | "move"
+  | "minimize"
+  | "maximize"
+  | "restore"
+  | "close"
+  | "set_bounds"
+
+export interface ComputerUseHostDriver {
+  captureScreenshot(): Promise<string>
+  click(x: number, y: number, button: "left" | "middle" | "right"): Promise<void>
+  clickWithModifiers?(x: number, y: number, modifiers: readonly string[]): Promise<void>
+  doubleClick(x: number, y: number): Promise<void>
+  mouseMove(x: number, y: number): Promise<void>
+  mouseDown?(x: number, y: number, button: "left" | "middle" | "right"): Promise<void>
+  mouseUp?(x: number, y: number, button: "left" | "middle" | "right"): Promise<void>
+  dragPath?(waypoints: readonly (readonly [number, number])[], button: "left" | "middle" | "right"): Promise<void>
+  scroll(x: number, y: number, direction: "up" | "down" | "left" | "right", amount: number): Promise<void>
+  typeText(text: string): Promise<void>
+  keyPress(key: string): Promise<void>
+  keyCombo?(keys: readonly string[]): Promise<void>
+  keyDown?(key: string): Promise<void>
+  keyUp?(key: string): Promise<void>
+  listWindows(): Promise<WindowInfo[]>
+  controlWindow?(action: MutatingWindowAction, target: WindowInfo | undefined, params: WindowActionParams): Promise<boolean>
+  readClipboard(): Promise<string>
+  writeClipboard(text: string): Promise<void>
+  openTarget(target: string): Promise<boolean>
+  launchApp(app: string, appArgs?: readonly string[]): Promise<{ readonly pid: number; readonly launched: boolean }>
+  killApp(app: string): Promise<boolean>
+}
+
+export interface BrowserCdpTransport {
+  fetchJson(url: string): Promise<{ readonly status: number; readonly body: unknown }>
+  sendCommand(wsUrl: string, method: string, params?: Record<string, unknown>): Promise<Record<string, unknown>>
+}
+
+interface BrowserServiceDelegate {
+  executeBrowserAction?(params: BrowserActionParams): Promise<BrowserActionResult>
+}
+
+function isBrowserServiceDelegate(candidate: unknown): candidate is BrowserServiceDelegate {
+  return Boolean(
+    candidate
+    && typeof candidate === "object"
+    && typeof (candidate as { readonly executeBrowserAction?: unknown }).executeBrowserAction === "function",
+  )
+}
+
+function defaultHostDriver(): ComputerUseHostDriver {
+  return {
+    captureScreenshot: () => runPromise(captureDesktopScreenshot()),
+    click: (x, y, button) => runPromise(performDesktopClick(x, y, button)),
+    clickWithModifiers: (x, y, modifiers) => runPromise(performDesktopClickWithModifiers(x, y, modifiers)),
+    doubleClick: (x, y) => runPromise(performDesktopDoubleClick(x, y)),
+    mouseMove: (x, y) => runPromise(performDesktopMouseMove(x, y)),
+    mouseDown: (x, y, button) => runPromise(performDesktopMouseDown(x, y, button)),
+    mouseUp: (x, y, button) => runPromise(performDesktopMouseUp(x, y, button)),
+    dragPath: (waypoints, button) => runPromise(performDesktopDragPath(waypoints, button)),
+    scroll: (x, y, direction, amount) => runPromise(performDesktopScroll(x, y, direction, amount)),
+    typeText: (text) => runPromise(performDesktopTextInput(text)),
+    keyPress: (key) => runPromise(performDesktopKeypress(key)),
+    keyCombo: (keys) => runPromise(performDesktopKeypress(keys.join("+"))),
+    keyDown: (key) => runPromise(performDesktopKeyHold(key, "down")),
+    keyUp: (key) => runPromise(performDesktopKeyHold(key, "up")),
+    listWindows: async () => listDesktopWindows(),
+    controlWindow: (action, target, params) => runPromise(performHostWindowControl(action, target, params)),
+    readClipboard: () => runPromise(readHostClipboard()),
+    writeClipboard: (text) => runPromise(writeHostClipboard(text)),
+    openTarget: (target) => runPromise(openHostTarget(target)),
+    launchApp: async (app, appArgs) => launchHostApp(app, appArgs),
+    killApp: (app) => runPromise(killHostApp(app)),
+  }
+}
+
+function defaultCdpTransport(): BrowserCdpTransport {
+  return {
+    fetchJson: (url) => fetchJsonOverHttp(url),
+    sendCommand: (wsUrl, method, params) => sendCdpCommand(wsUrl, method, params),
+  }
+}
+
+let activeComputerUseService: ComputerUseService | undefined
+
+export function getActiveComputerUseService(): ComputerUseService | undefined {
+  return activeComputerUseService
+}
+
+export function setActiveComputerUseService(service: ComputerUseService | undefined): void {
+  activeComputerUseService = service
+}
+
+interface ManagedBrowserState {
+  connected: boolean
+  cdpEndpoint: string
+  tabs: BrowserTab[]
+  wsUrlByTabId: Map<string, string>
+  activeTabId: string
+  lastHtml: string
+}
+
+interface ManagedTerminalSession {
+  readonly id: string
+  readonly cwd: string
+  output: string
+  closed: boolean
+}
+
+export class ComputerUseService extends Service {
+  static override serviceType = COMPUTERUSE_SERVICE_TYPE
+  override capabilityDescription =
+    "Desktop, browser CDP, window, clipboard, app-control, session, and approval automation service."
+
+  private readonly computerConfig: ComputerUseConfig
+  private readonly approvals: ComputerUseApprovalManager
+  private readonly sessionManager: ComputerUseSessionManager
+  private readonly sceneBuilder: SceneBuilder
+  private readonly screenStateStore: ScreenStateStore
+  private readonly appControl: AppControlCoordinator
+  private readonly hostDriver: ComputerUseHostDriver
+  private readonly cdpTransport: BrowserCdpTransport
+  private readonly recentActions: ActionHistoryEntry[] = []
+  private readonly terminalSessions = new Map<string, ManagedTerminalSession>()
+  private readonly targetExecutors = new Map<string, ComputerUseSessionExecutor>()
+  private readonly browserState: ManagedBrowserState = {
+    connected: false,
+    cdpEndpoint: "http://127.0.0.1:9222",
+    tabs: [],
+    wsUrlByTabId: new Map<string, string>(),
+    activeTabId: "",
+    lastHtml: "",
+  }
+  private cursorPosition: { readonly x: number; readonly y: number } = { x: 0, y: 0 }
+  private batchMachine: BatchMachine = initialBatchMachine
+
+  constructor(
+    runtime?: IAgentRuntime,
+    options: {
+      readonly config?: Partial<ComputerUseConfig>
+      readonly driver?: ComputerUseHostDriver
+      readonly cdpTransport?: BrowserCdpTransport
+      readonly appControl?: AppControlCoordinator
+      readonly sceneBuilder?: SceneBuilder
+      readonly now?: () => number
+    } = {},
+  ) {
+    super(runtime)
+    const envMode = getEnvValue("COMPUTER_USE_APPROVAL_MODE")
+    const approvalMode: ApprovalMode = options.config?.approvalMode
+      ?? (isApprovalMode(envMode) ? envMode : "smart_approve")
+    this.computerConfig = {
+      enabled: options.config?.enabled ?? getEnvValue("COMPUTER_USE_ENABLED") === "1",
+      screenshotAfterAction: options.config?.screenshotAfterAction ?? getEnvValue("COMPUTER_USE_SCREENSHOT_AFTER_ACTION") !== "0",
+      actionTimeoutMs: options.config?.actionTimeoutMs ?? parseComputerUseActionTimeoutMs(),
+      approvalMode,
+      browserHeadless: options.config?.browserHeadless ?? getEnvValue("COMPUTER_USE_BROWSER_HEADLESS") === "1",
+      maxHistoryEntries: options.config?.maxHistoryEntries ?? 24,
+      maxRetainedImages: options.config?.maxRetainedImages ?? 2,
+      brainImagePolicy: options.config?.brainImagePolicy ?? "on-escalation",
+      maxBatchSteps: options.config?.maxBatchSteps ?? initialBatchMachine.maxSteps,
+    }
+    this.approvals = new ComputerUseApprovalManager(this.computerConfig.approvalMode)
+    this.sessionManager = new ComputerUseSessionManager({ now: options.now })
+    this.sceneBuilder = options.sceneBuilder ?? new SceneBuilder({ now: options.now })
+    this.screenStateStore = new ScreenStateStore({
+      maxEntries: this.computerConfig.maxHistoryEntries,
+      maxImages: this.computerConfig.maxRetainedImages,
+    })
+    this.appControl = options.appControl ?? new AppControlCoordinator()
+    this.hostDriver = options.driver ?? defaultHostDriver()
+    this.cdpTransport = options.cdpTransport ?? defaultCdpTransport()
+  }
+
+  static override async start(runtime: IAgentRuntime): Promise<ComputerUseService> {
+    const instance = new ComputerUseService(runtime)
+    setActiveComputerUseService(instance)
+    return instance
+  }
+
+  override async stop(): Promise<void> {
+    if (getActiveComputerUseService() === this) {
+      setActiveComputerUseService(undefined)
+    }
+    this.approvals.cancelAll("ComputerUseService stopped")
+    for (const session of this.sessionManager.list()) {
+      if (session.status !== "closed") {
+        this.sessionManager.close(session.id)
+      }
+    }
+    this.terminalSessions.clear()
+  }
+
+  getConfig(): ComputerUseConfig {
+    return this.computerConfig
+  }
+
+  getCapabilities(): PlatformCapabilities {
+    return detectDesktopControlCapabilities()
+  }
+
+  getDisplays(): DisplayDescriptor[] {
+    return listDisplays()
+  }
+
+  getScreenDimensions(): ScreenSize {
+    const primary = getPrimaryDisplay(this.getDisplays())
+    return { width: primary.bounds.width, height: primary.bounds.height }
+  }
+
+  getRecentActions(limit = this.computerConfig.maxHistoryEntries): ActionHistoryEntry[] {
+    return this.recentActions.slice(-Math.max(1, limit))
+  }
+
+  getApprovalMode(): ApprovalMode {
+    return this.approvals.getMode()
+  }
+
+  setApprovalMode(mode: ApprovalMode): ApprovalSnapshot {
+    return this.approvals.setMode(mode)
+  }
+
+  getApprovalSnapshot(): ApprovalSnapshot {
+    return this.approvals.getSnapshot()
+  }
+
+  getApprovalManager(): ComputerUseApprovalManager {
+    return this.approvals
+  }
+
+  subscribeApprovals(listener: (snapshot: ApprovalSnapshot) => void): () => void {
+    return this.approvals.subscribe(listener)
+  }
+
+  resolveApproval(id: string, approved: boolean, reason?: string): ApprovalResolution | null {
+    return this.approvals.resolveApproval(id, approved, reason)
+  }
+
+  async awaitApproval(command: string, parameters: Record<string, unknown> = {}, signal?: AbortSignal): Promise<string | null> {
+    const resolution = await this.approvals.requestApproval(command, parameters, signal)
+    if (resolution.approved) return null
+    return resolution.reason ?? `Command "${command}" denied in ${resolution.mode} mode`
+  }
+
+  getSessionManager(): ComputerUseSessionManager {
+    return this.sessionManager
+  }
+
+  getBatchState(): BatchMachine {
+    return this.batchMachine
+  }
+
+  stepBatch(event: BatchEvent): { readonly accepted: boolean; readonly state: BatchMachine } {
+    const res = Effect.runSync(Effect.result(applyBatch(this.batchMachine, event)))
+    if (Result.isFailure(res)) {
+      return { accepted: false, state: this.batchMachine }
+    }
+    this.batchMachine = res.success
+    return { accepted: true, state: this.batchMachine }
+  }
+
+  createSession(input: CreateComputerUseSessionInput): ComputerUseSessionSnapshot {
+    return this.sessionManager.create(input)
+  }
+
+  listSessions(): ComputerUseSessionSnapshot[] {
+    return this.sessionManager.list()
+  }
+
+  getSession(id: string): ComputerUseSessionSnapshot | undefined {
+    return this.sessionManager.get(id)
+  }
+
+  closeSession(id: string): ComputerUseSessionSnapshot | undefined {
+    return this.sessionManager.close(id)
+  }
+
+  pauseSession(id: string): ComputerUseSessionSnapshot | undefined {
+    return this.sessionManager.pause(id)
+  }
+
+  resumeSession(id: string): ComputerUseSessionSnapshot | undefined {
+    return this.sessionManager.resume(id)
+  }
+
+  stopSession(id: string): ComputerUseSessionSnapshot | undefined {
+    return this.sessionManager.stop(id)
+  }
+
+  renewSessionLease(id: string, ttlMs?: number): ComputerUseSessionSnapshot | undefined {
+    return this.sessionManager.renewHostLease(id, ttlMs)
+  }
+
+  getSessionEvents(sessionId?: string, limit = 100): ComputerUseSessionEvent[] {
+    return this.sessionManager.getEvents(sessionId, limit)
+  }
+
+  registerSessionTargetExecutor(kind: string, executor: ComputerUseSessionExecutor): void {
+    this.targetExecutors.set(kind, executor)
+  }
+
+  async captureSessionFrame(sessionId: string, provider?: ComputerUseSessionFrameProvider, signal?: AbortSignal): Promise<ComputerUseSessionFrame> {
+    const activeProvider: ComputerUseSessionFrameProvider = provider ?? (async () => {
+      const dims = this.getScreenDimensions()
+      const data = await this.hostDriver.captureScreenshot()
+      return { mimeType: "image/png", data, width: dims.width, height: dims.height }
+    })
+    return this.sessionManager.captureFrame(sessionId, activeProvider, signal)
+  }
+
+  async executeSessionAction(
+    sessionId: string,
+    action: ComputerUseSessionAction,
+    signal?: AbortSignal,
+  ): Promise<{ readonly snapshot: ComputerUseSessionSnapshot; readonly result: ComputerUseSessionActionResult }> {
+    const executor: ComputerUseSessionExecutor = async (target, act, sig) => {
+      const custom = this.targetExecutors.get(target.kind)
+      if (custom) return custom(target, act, sig)
+      const res = await this.executeCommand(act.command, act.parameters ?? {}, sig)
+      return {
+        success: res.success,
+        ...(res.error ? { error: res.error } : {}),
+        ...(res.errorCode ? { errorCode: res.errorCode } : {}),
+        ...(res.data !== undefined ? { data: res.data } : {}),
+        cursorPosition: this.cursorPosition,
+        outcomeStatus: res.success ? "completed" : "failed",
+      }
+    }
+    return this.sessionManager.execute(sessionId, action, executor, signal)
+  }
+
+  getCurrentScene(): Scene | null {
+    return this.sceneBuilder.getCurrentScene()
+  }
+
+  async refreshScene(mode: "idle" | "active" | "agent-turn" = "agent-turn"): Promise<Scene> {
+    return this.sceneBuilder.refresh(mode)
+  }
+
+  setSceneVlmAnnotations(summary: string | null, elements: readonly SceneVlmElement[]): void {
+    this.sceneBuilder.setVlmAnnotations(summary, elements)
+  }
+
+  getScreenState(displayId = 0): ScreenState | undefined {
+    return this.screenStateStore.getLatest(displayId)
+  }
+
+  getScreenStateStore(): ScreenStateStore {
+    return this.screenStateStore
+  }
+
+  getScreenStateStats(): ScreenStateStats {
+    return this.screenStateStore.getStats()
+  }
+
+  async listApps() {
+    return this.appControl.listApps()
+  }
+
+  async getAppState(app: string, options?: { readonly disableDiff?: boolean }) {
+    return this.appControl.getAppState(app, options)
+  }
+
+  getAppControlReadiness() {
+    return this.appControl.getReadiness()
+  }
+
+  async captureScreen(): Promise<{ readonly pngBase64: string; readonly changed: boolean; readonly tokensAvoided: number }> {
+    const dims = this.getScreenDimensions()
+    const pngBase64 = await this.hostDriver.captureScreenshot()
+    const change = this.screenStateStore.ingestCapture(
+      {
+        displayId: 0,
+        width: dims.width,
+        height: dims.height,
+        scaleFactor: 1,
+        pngBase64,
+        capturedAt: Date.now(),
+      },
+      true,
+    )
+    return { pngBase64, changed: change.changed, tokensAvoided: change.tokensAvoided }
+  }
+
+  async executeDesktopAction(params: DesktopActionParams, signal?: AbortSignal): Promise<ComputerActionResult> {
+    if (params.action === "batch") {
+      return this.executeDesktopBatch(params, signal)
+    }
+    const approvalError = await this.awaitApproval(params.action, params as unknown as Record<string, unknown>, signal)
+    if (approvalError) {
+      this.recordHistory(params.action, false, approvalError, approvalError)
+      return { success: false, error: approvalError, errorCode: "approval_denied" }
+    }
+    return this.runSingleDesktopAction(params)
+  }
+
+  private async executeDesktopBatch(params: DesktopActionParams, signal?: AbortSignal): Promise<ComputerActionResult> {
+    const steps = params.steps ?? []
+    if (steps.length === 0 || steps.length > this.computerConfig.maxBatchSteps) {
+      return {
+        success: false,
+        error: `batch requires between 1 and ${this.computerConfig.maxBatchSteps} steps (got ${steps.length})`,
+        errorCode: "invalid_batch",
+      }
+    }
+    const stopOnError = params.stopOnError ?? true
+    for (const step of steps) {
+      const approvalError = await this.awaitApproval(step.action, step as unknown as Record<string, unknown>, signal)
+      if (approvalError) {
+        return { success: false, error: approvalError, errorCode: "approval_denied" }
+      }
+    }
+    if (this.batchMachine.status === "BatchCompleted" || this.batchMachine.status === "BatchAborted") {
+      this.stepBatch({ type: "resetBatch" })
+    }
+    const started = this.stepBatch({ type: "startBatch", stepCount: steps.length, stopOnError })
+    if (!started.accepted) {
+      return { success: false, error: "Batch machine refused start", errorCode: "batch_busy" }
+    }
+    const results: BatchStepResult[] = []
+    for (let i = 0; i < steps.length; i += 1) {
+      if (signal?.aborted) {
+        this.stepBatch({ type: "abortBatch" })
+        results.push({ index: i, action: steps[i]?.action ?? "unknown", success: false, error: "cancelled" })
+        break
+      }
+      const step = steps[i]
+      if (!step) break
+      const stepRes = await this.runSingleDesktopAction({ ...step, screenshotAfter: false })
+      results.push({
+        index: i,
+        action: step.action,
+        success: stepRes.success,
+        ...(stepRes.message ? { message: stepRes.message } : {}),
+        ...(stepRes.error ? { error: stepRes.error } : {}),
+      })
+      const advanced = this.stepBatch({ type: "advanceStep", succeeded: stepRes.success })
+      if (advanced.state.status === "BatchAborted") {
+        break
+      }
+    }
+    const finalState = this.batchMachine
+    const allSucceeded = finalState.status === "BatchCompleted" && finalState.failedSteps === 0
+    let screenshot: string | undefined
+    if (params.screenshotAfter ?? this.computerConfig.screenshotAfterAction) {
+      try {
+        const cap = await this.captureScreen()
+        screenshot = cap.pngBase64
+      } catch {
+        screenshot = undefined
+      }
+    }
+    const summary = `Batch executed ${finalState.completedSteps}/${finalState.totalSteps} step(s) (${finalState.failedSteps} failed)`
+    this.recordHistory("batch", allSucceeded, summary, allSucceeded ? undefined : summary)
+    return {
+      success: allSucceeded,
+      message: summary,
+      ...(allSucceeded ? {} : { error: results.find((r) => !r.success)?.error ?? summary }),
+      ...(screenshot ? { screenshot } : {}),
+      batchResults: results,
+      stepsExecuted: finalState.completedSteps,
+      stepsRequested: finalState.totalSteps,
+      ...(finalState.abortedAtStep >= 0 ? { abortedAtStep: finalState.abortedAtStep } : {}),
+    }
+  }
+
+  private async runSingleDesktopAction(params: DesktopActionParams): Promise<ComputerActionResult> {
+    const displays = this.getDisplays()
+    const primary = getPrimaryDisplay(displays)
+    try {
+      switch (params.action) {
+        case "screenshot": {
+          const cap = await this.captureScreen()
+          const msg = cap.changed
+            ? "Captured updated screenshot."
+            : `Screenshot unchanged (deduplicated; saved ~${cap.tokensAvoided} vision tokens).`
+          this.recordHistory("screenshot", true, msg)
+          return { success: true, message: msg, screenshot: cap.pngBase64 }
+        }
+        case "get_cursor_position": {
+          const msg = `Cursor at (${this.cursorPosition.x}, ${this.cursorPosition.y}).`
+          this.recordHistory("get_cursor_position", true, msg)
+          return { success: true, message: msg, cursorPosition: this.cursorPosition }
+        }
+        case "click":
+        case "double_click":
+        case "right_click":
+        case "middle_click":
+        case "click_with_modifiers":
+        case "mouse_move":
+        case "mouse_down":
+        case "mouse_up": {
+          const rawX = params.coordinate?.[0] ?? params.x
+          const rawY = params.coordinate?.[1] ?? params.y
+          const valid = validateCoordinate(rawX, rawY, primary.bounds.width * 4, primary.bounds.height * 4)
+          if (!valid) {
+            return { success: false, error: `${params.action} requires valid [x, y] coordinate` }
+          }
+          const global = localToGlobalDefault(valid[0], valid[1], displays, params.displayId)
+          this.cursorPosition = { x: global.x, y: global.y }
+          if (params.action === "double_click") {
+            await this.hostDriver.doubleClick(global.x, global.y)
+          } else if (params.action === "mouse_move") {
+            await this.hostDriver.mouseMove(global.x, global.y)
+          } else if (params.action === "click_with_modifiers") {
+            const modifiers = params.modifiers ?? []
+            if (this.hostDriver.clickWithModifiers) {
+              await this.hostDriver.clickWithModifiers(global.x, global.y, modifiers)
+            } else {
+              await this.hostDriver.click(global.x, global.y, "left")
+            }
+          } else if (params.action === "mouse_down") {
+            const button = params.button ?? "left"
+            if (!this.hostDriver.mouseDown) {
+              return { success: false, error: "mouse_down is unsupported by the active host driver" }
+            }
+            await this.hostDriver.mouseDown(global.x, global.y, button)
+          } else if (params.action === "mouse_up") {
+            const button = params.button ?? "left"
+            if (!this.hostDriver.mouseUp) {
+              return { success: false, error: "mouse_up is unsupported by the active host driver" }
+            }
+            await this.hostDriver.mouseUp(global.x, global.y, button)
+          } else {
+            const button = params.action === "right_click"
+              ? "right"
+              : params.action === "middle_click"
+                ? "middle"
+                : params.button ?? "left"
+            await this.hostDriver.click(global.x, global.y, button)
+          }
+          const msg = `Completed ${params.action} at (${global.x}, ${global.y}).`
+          this.recordHistory(params.action, true, msg)
+          return { success: true, message: msg, coordinate: [global.x, global.y], cursorPosition: this.cursorPosition }
+        }
+        case "scroll": {
+          const rawX = params.coordinate?.[0] ?? params.x ?? Math.floor(primary.bounds.width / 2)
+          const rawY = params.coordinate?.[1] ?? params.y ?? Math.floor(primary.bounds.height / 2)
+          const global = localToGlobalDefault(rawX, rawY, displays, params.displayId)
+          const dir = params.scrollDirection ?? "down"
+          const amount = params.scrollAmount ?? params.amount ?? 3
+          await this.hostDriver.scroll(global.x, global.y, dir, amount)
+          const msg = `Scrolled ${dir} by ${amount} at (${global.x}, ${global.y}).`
+          this.recordHistory("scroll", true, msg)
+          return { success: true, message: msg }
+        }
+        case "drag": {
+          const waypoints = params.path && params.path.length >= 2
+            ? params.path
+            : params.startCoordinate && params.coordinate
+              ? [params.startCoordinate, params.coordinate]
+              : params.x1 !== undefined && params.y1 !== undefined && params.x2 !== undefined && params.y2 !== undefined
+                ? [[params.x1, params.y1] as const, [params.x2, params.y2] as const]
+                : []
+          if (waypoints.length < 2) {
+            return { success: false, error: "drag requires path (>=2 points) or startCoordinate + coordinate" }
+          }
+          const globalPoints = waypoints.map((pt) => {
+            const g = localToGlobalDefault(pt[0], pt[1], displays, params.displayId)
+            return [g.x, g.y] as const
+          })
+          const button = params.button ?? "left"
+          if (this.hostDriver.dragPath) {
+            await this.hostDriver.dragPath(globalPoints, button)
+          } else if (this.hostDriver.mouseDown && this.hostDriver.mouseUp) {
+            const start = globalPoints[0]
+            const end = globalPoints[globalPoints.length - 1]
+            if (start && end) {
+              await this.hostDriver.mouseDown(start[0], start[1], button)
+              for (let i = 1; i < globalPoints.length - 1; i += 1) {
+                const pt = globalPoints[i]
+                if (pt) await this.hostDriver.mouseMove(pt[0], pt[1])
+              }
+              await this.hostDriver.mouseUp(end[0], end[1], button)
+            }
+          } else {
+            return { success: false, error: "drag is unsupported by the active host driver" }
+          }
+          const finalPt = globalPoints[globalPoints.length - 1]
+          if (finalPt) this.cursorPosition = { x: finalPt[0], y: finalPt[1] }
+          const msg = `Dragged across ${globalPoints.length} waypoint(s).`
+          this.recordHistory("drag", true, msg)
+          return { success: true, message: msg, cursorPosition: this.cursorPosition }
+        }
+        case "type":
+        case "set_value": {
+          const text = validateText(params.text)
+          if (!text) return { success: false, error: `${params.action} requires non-empty text` }
+          await this.hostDriver.typeText(text)
+          const msg = `Typed ${text.length} character(s).`
+          this.recordHistory(params.action, true, msg)
+          return { success: true, message: msg }
+        }
+        case "key":
+        case "key_combo":
+        case "key_down":
+        case "key_up": {
+          const rawKey = params.key ?? (params.hold_keys && params.hold_keys.length > 0 ? params.hold_keys.join("+") : undefined)
+          const key = validateKeypress(rawKey)
+          if (!key) return { success: false, error: `${params.action} requires a valid key` }
+          if (params.action === "key_combo" && this.hostDriver.keyCombo) {
+            await this.hostDriver.keyCombo(key.split("+").map((k) => k.trim()).filter((k) => k.length > 0))
+          } else if (params.action === "key_down") {
+            if (!this.hostDriver.keyDown) {
+              return { success: false, error: "key_down is unsupported by the active host driver" }
+            }
+            await this.hostDriver.keyDown(key)
+          } else if (params.action === "key_up") {
+            if (!this.hostDriver.keyUp) {
+              return { success: false, error: "key_up is unsupported by the active host driver" }
+            }
+            await this.hostDriver.keyUp(key)
+          } else {
+            await this.hostDriver.keyPress(key)
+          }
+          const msg = `Completed ${params.action} (${key}).`
+          this.recordHistory(params.action, true, msg)
+          return { success: true, message: msg }
+        }
+        case "detect_elements": {
+          const scene = await this.refreshScene("active")
+          const elements = [...scene.ax, ...scene.ocr]
+          const msg = `Detected ${elements.length} screen element(s).`
+          this.recordHistory("detect_elements", true, msg)
+          return { success: true, message: msg, elements }
+        }
+        case "ocr": {
+          const scene = await this.refreshScene("active")
+          const ocrText = scene.ocr.map((b) => b.text).join("\n")
+          const msg = ocrText.length > 0 ? ocrText : "No OCR text detected on current frame."
+          this.recordHistory("ocr", true, `OCR returned ${scene.ocr.length} box(es)`)
+          return { success: true, message: msg, ocrText }
+        }
+        case "open": {
+          const target = params.target?.trim()
+          if (!target) return { success: false, error: "open requires target" }
+          const ok = await this.hostDriver.openTarget(target)
+          const msg = ok ? `Opened ${target}.` : `Failed to open ${target}.`
+          this.recordHistory("open", ok, msg, ok ? undefined : msg)
+          return { success: ok, message: msg, ...(ok ? {} : { error: msg }) }
+        }
+        case "launch": {
+          const app = params.app?.trim()
+          if (!app) return { success: false, error: "launch requires app" }
+          const launched = await this.hostDriver.launchApp(app, params.appArgs)
+          const msg = launched.launched ? `Launched ${app} (pid ${launched.pid}).` : `Failed to launch ${app}.`
+          this.recordHistory("launch", launched.launched, msg, launched.launched ? undefined : msg)
+          return { success: launched.launched, message: msg, pid: launched.pid, ...(launched.launched ? {} : { error: msg }) }
+        }
+        case "kill_app": {
+          const app = params.app?.trim()
+          if (!app) return { success: false, error: "kill_app requires app" }
+          const ok = await this.hostDriver.killApp(app)
+          const msg = ok ? `Terminated ${app}.` : `Could not terminate ${app}.`
+          this.recordHistory("kill_app", ok, msg, ok ? undefined : msg)
+          return { success: ok, message: msg, ...(ok ? {} : { error: msg }) }
+        }
+        default:
+          return { success: false, error: `Unsupported desktop action: ${String(params.action)}` }
+      }
+    } catch (err) {
+      const error = err instanceof Error ? err.message : String(err)
+      this.recordHistory(params.action, false, error, error)
+      return { success: false, error }
+    }
+  }
+
+  async executeWindowAction(params: WindowActionParams, signal?: AbortSignal): Promise<WindowActionResult> {
+    const approvalError = await this.awaitApproval(params.action, params as unknown as Record<string, unknown>, signal)
+    if (approvalError) {
+      return { success: false, error: approvalError, errorCode: "approval_denied" }
+    }
+    const windows = await this.hostDriver.listWindows()
+    const query = {
+      windowId: params.windowId ?? params.window,
+      windowTitle: params.windowTitle ?? params.title,
+      appName: params.appName,
+    }
+    if (params.action === "list") {
+      const msg = `Found ${windows.length} window(s).`
+      this.recordHistory("window:list", true, msg)
+      return { success: true, message: msg, windows }
+    }
+    if (params.action === "get_current_window_id") {
+      const active = windows.find((w) => w.focused) ?? windows[0]
+      if (!active) return { success: false, error: "No active window found" }
+      return { success: true, message: `Active window: ${active.id}`, windowId: active.id, window: active }
+    }
+    if (params.action === "get_application_windows") {
+      const matched = findWindowsByQuery(windows, { appName: query.appName ?? query.windowTitle })
+      return { success: true, message: `Found ${matched.length} window(s) for application.`, windows: matched }
+    }
+    const matched = findWindowsByQuery(windows, query)
+    const target = matched[0]
+    if (!target && params.action !== "arrange") {
+      return { success: false, error: `No window matched query (${query.windowId ?? query.windowTitle ?? query.appName ?? "unspecified"})` }
+    }
+    if (params.action === "get_window_size" || params.action === "get_window_position") {
+      const bounds = target?.bounds ?? { x: 0, y: 0, width: 1280, height: 800 }
+      return { success: true, message: `Window ${target?.id} bounds: ${bounds.x},${bounds.y} ${bounds.width}x${bounds.height}`, window: target, bounds }
+    }
+    if (!this.hostDriver.controlWindow) {
+      const err = `Window control (${params.action}) is unsupported by the active host driver`
+      this.recordHistory(`window:${params.action}`, false, err, err)
+      return { success: false, error: err }
+    }
+    try {
+      const applied = await this.hostDriver.controlWindow(params.action, target, params)
+      if (!applied) {
+        const err = `Window ${params.action} failed for target ${target?.id ?? "unspecified"}`
+        this.recordHistory(`window:${params.action}`, false, err, err)
+        return { success: false, error: err }
+      }
+    } catch (cause) {
+      const err = cause instanceof Error ? cause.message : String(cause)
+      this.recordHistory(`window:${params.action}`, false, err, err)
+      return { success: false, error: err }
+    }
+    const msg = target
+      ? `Applied window ${params.action} to "${target.title}" (${target.id}).`
+      : `Arranged ${windows.length} window(s) (${params.arrangement ?? "tile"}).`
+    this.recordHistory(`window:${params.action}`, true, msg)
+    return { success: true, message: msg, ...(target ? { window: target, windowId: target.id } : {}), windows }
+  }
+
+  private async syncCdpTabs(): Promise<BrowserTab[]> {
+    const res = await this.cdpTransport.fetchJson(`${this.browserState.cdpEndpoint}/json/list`)
+    if (res.status !== 200 || !Array.isArray(res.body)) return this.browserState.tabs
+    const tabs: BrowserTab[] = []
+    this.browserState.wsUrlByTabId.clear()
+    for (const raw of res.body) {
+      const item = raw as Record<string, unknown>
+      if (item.type !== undefined && item.type !== "page") continue
+      const id = typeof item.id === "string" && item.id.length > 0 ? item.id : nextUniqueId("tab")
+      const url = typeof item.url === "string" ? item.url : "about:blank"
+      const title = typeof item.title === "string" ? item.title : url
+      if (typeof item.webSocketDebuggerUrl === "string") {
+        this.browserState.wsUrlByTabId.set(id, item.webSocketDebuggerUrl)
+      }
+      tabs.push({ id, title, url, active: id === this.browserState.activeTabId })
+    }
+    if (tabs.length > 0 && !tabs.some((t) => t.active)) {
+      const first = tabs[0]
+      if (first) {
+        this.browserState.activeTabId = first.id
+        tabs[0] = { ...first, active: true }
+      }
+    }
+    this.browserState.tabs = tabs
+    return tabs
+  }
+
+  async executeBrowserAction(params: BrowserActionParams, signal?: AbortSignal): Promise<BrowserActionResult> {
+    if (params.action === "execute") {
+      const blocked = Effect.runSync(Effect.result(assertBrowserExecuteAllowed()))
+      const reason = Result.isFailure(blocked) ? blocked.failure.reason : "browser_execute is disabled"
+      this.recordHistory("browser_execute", false, reason, reason)
+      return { success: false, error: reason, errorCode: "browser_execute_disabled" }
+    }
+    const approvalError = await this.awaitApproval(`browser_${params.action}`, params as unknown as Record<string, unknown>, signal)
+    if (approvalError) {
+      return { success: false, error: approvalError, errorCode: "approval_denied" }
+    }
+    if (params.url !== undefined) {
+      const checked = Effect.runSync(Effect.result(assertHttpBrowserUrl(params.url)))
+      if (Result.isFailure(checked)) {
+        return { success: false, error: checked.failure.reason, errorCode: "blocked_browser_url" }
+      }
+    }
+    if (params.tabId !== undefined) {
+      const checked = Effect.runSync(Effect.result(normalizeBrowserTabId(params.tabId)))
+      if (Result.isFailure(checked)) {
+        return { success: false, error: checked.failure.reason, errorCode: "invalid_browser_tab_id" }
+      }
+    }
+    const browserDelegate: unknown = typeof this.runtime?.getService === "function"
+      ? this.runtime.getService("browser")
+      : undefined
+    if (isBrowserServiceDelegate(browserDelegate) && browserDelegate.executeBrowserAction) {
+      const delegated = await browserDelegate.executeBrowserAction(params)
+      this.recordHistory(`browser_${params.action}`, delegated.success, delegated.message ?? `Delegated browser_${params.action}`, delegated.error)
+      return delegated
+    }
+    try {
+      if (params.action === "open" || params.action === "connect" || params.action === "open_tab") {
+        const tabs = await this.syncCdpTabs()
+        const url = params.url ?? "https://example.com"
+        if (params.action === "open_tab" || tabs.length === 0) {
+          const created = await this.cdpTransport.fetchJson(`${this.browserState.cdpEndpoint}/json/new?${encodeURIComponent(url)}`)
+          if (created.status >= 200 && created.status < 300 && created.body && typeof created.body === "object") {
+            const rec = created.body as Record<string, unknown>
+            const tabId = typeof rec.id === "string" ? rec.id : nextUniqueId("tab")
+            if (typeof rec.webSocketDebuggerUrl === "string") {
+              this.browserState.wsUrlByTabId.set(tabId, rec.webSocketDebuggerUrl)
+            }
+            this.browserState.activeTabId = tabId
+            await this.syncCdpTabs()
+          }
+        }
+        const activeWs = this.browserState.wsUrlByTabId.get(this.browserState.activeTabId)
+        if (!activeWs) {
+          return { success: false, error: `No reachable CDP browser target at ${this.browserState.cdpEndpoint}`, errorCode: "browser_unavailable" }
+        }
+        this.browserState.connected = true
+        await this.cdpTransport.sendCommand(activeWs, "Page.enable", {})
+        await this.cdpTransport.sendCommand(activeWs, "DOM.enable", {})
+        if (params.url && params.action !== "open_tab") {
+          await this.cdpTransport.sendCommand(activeWs, "Page.navigate", { url })
+        }
+        this.recordHistory(`browser_${params.action}`, true, `Browser ${params.action} ${url}`)
+        return { success: true, message: `Browser ${params.action}: ${url}`, url, tabId: this.browserState.activeTabId, tabs: this.browserState.tabs }
+      }
+      if (params.action === "list_tabs") {
+        const tabs = await this.syncCdpTabs()
+        return { success: true, message: `${tabs.length} browser tab(s).`, tabs }
+      }
+      if (params.action === "switch_tab") {
+        await this.syncCdpTabs()
+        const target = params.tabId
+          ? this.browserState.tabs.find((t) => t.id === params.tabId)
+          : this.browserState.tabs[params.index ?? params.tab_index ?? 0]
+        if (!target) return { success: false, error: "Requested browser tab not found" }
+        await this.cdpTransport.fetchJson(`${this.browserState.cdpEndpoint}/json/activate/${encodeURIComponent(target.id)}`)
+        this.browserState.activeTabId = target.id
+        this.browserState.tabs = this.browserState.tabs.map((t) => ({ ...t, active: t.id === target.id }))
+        return { success: true, message: `Switched to tab ${target.id}.`, tabId: target.id, url: target.url, tabs: this.browserState.tabs }
+      }
+      if (params.action === "close_tab") {
+        const idToClose = params.tabId ?? this.browserState.activeTabId
+        if (!idToClose) return { success: false, error: "No browser tab selected to close" }
+        await this.cdpTransport.fetchJson(`${this.browserState.cdpEndpoint}/json/close/${encodeURIComponent(idToClose)}`)
+        this.browserState.wsUrlByTabId.delete(idToClose)
+        this.browserState.tabs = this.browserState.tabs.filter((t) => t.id !== idToClose)
+        this.browserState.activeTabId = this.browserState.tabs[0]?.id ?? ""
+        return { success: true, message: `Closed tab ${idToClose}.`, tabs: this.browserState.tabs }
+      }
+      if (params.action === "close") {
+        for (const tab of this.browserState.tabs) {
+          await this.cdpTransport.fetchJson(`${this.browserState.cdpEndpoint}/json/close/${encodeURIComponent(tab.id)}`)
+        }
+        this.browserState.connected = false
+        this.browserState.tabs = []
+        this.browserState.wsUrlByTabId.clear()
+        this.browserState.activeTabId = ""
+        return { success: true, message: "Closed browser session." }
+      }
+      const active = this.browserState.tabs.find((t) => t.id === this.browserState.activeTabId)
+      if (params.action === "info") {
+        return {
+          success: true,
+          message: this.browserState.connected ? `Connected to ${active?.url ?? "about:blank"}` : "Browser disconnected",
+          info: {
+            connected: this.browserState.connected,
+            url: active?.url ?? "",
+            title: active?.title ?? "",
+            tabCount: this.browserState.tabs.length,
+            tabs: this.browserState.tabs,
+          },
+        }
+      }
+      const wsUrl = this.browserState.wsUrlByTabId.get(this.browserState.activeTabId)
+      if (!wsUrl) {
+        return { success: false, error: "Browser CDP session is not connected; call open or connect first", errorCode: "browser_unavailable" }
+      }
+      if (params.action === "navigate") {
+        const url = params.url ?? ""
+        await this.cdpTransport.sendCommand(wsUrl, "Page.navigate", { url })
+        this.browserState.tabs = this.browserState.tabs.map((t) => (t.id === this.browserState.activeTabId ? { ...t, url } : t))
+        return { success: true, message: `Navigated to ${url}.`, url, tabId: this.browserState.activeTabId }
+      }
+      if (params.action === "click") {
+        let x = params.coordinate?.[0]
+        let y = params.coordinate?.[1]
+        if ((x === undefined || y === undefined) && params.selector) {
+          const doc = await this.cdpTransport.sendCommand(wsUrl, "DOM.getDocument", { depth: 1 })
+          const rootId = (doc.root as { readonly nodeId?: number } | undefined)?.nodeId ?? 1
+          const found = await this.cdpTransport.sendCommand(wsUrl, "DOM.querySelector", { nodeId: rootId, selector: params.selector })
+          const nodeId = typeof found.nodeId === "number" ? found.nodeId : 0
+          if (nodeId <= 0) return { success: false, error: `Selector not found: ${params.selector}` }
+          const box = await this.cdpTransport.sendCommand(wsUrl, "DOM.getBoxModel", { nodeId })
+          const content = (box.model as { readonly content?: number[] } | undefined)?.content
+          if (Array.isArray(content) && content.length >= 6) {
+            x = Math.round(((content[0] ?? 0) + (content[4] ?? 0)) / 2)
+            y = Math.round(((content[1] ?? 0) + (content[5] ?? 0)) / 2)
+          }
+        }
+        if (x === undefined || y === undefined) {
+          return { success: false, error: "browser click requires coordinate or matching selector" }
+        }
+        await this.cdpTransport.sendCommand(wsUrl, "Input.dispatchMouseEvent", { type: "mousePressed", x, y, button: "left", clickCount: 1 })
+        await this.cdpTransport.sendCommand(wsUrl, "Input.dispatchMouseEvent", { type: "mouseReleased", x, y, button: "left", clickCount: 1 })
+        return { success: true, message: `Clicked browser at (${x}, ${y}).`, url: active?.url }
+      }
+      if (params.action === "type") {
+        const text = validateText(params.text)
+        if (!text) return { success: false, error: "browser type requires non-empty text" }
+        await this.cdpTransport.sendCommand(wsUrl, "Input.insertText", { text })
+        return { success: true, message: `Typed ${text.length} character(s) in browser.`, url: active?.url }
+      }
+      if (params.action === "scroll") {
+        const deltaY = (params.direction === "up" ? -1 : 1) * Math.max(100, (params.amount ?? 3) * 120)
+        await this.cdpTransport.sendCommand(wsUrl, "Input.dispatchMouseEvent", { type: "mouseWheel", x: 100, y: 100, deltaX: 0, deltaY })
+        return { success: true, message: `Scrolled browser ${params.direction ?? "down"}.`, url: active?.url }
+      }
+      if (params.action === "screenshot") {
+        const shot = await this.cdpTransport.sendCommand(wsUrl, "Page.captureScreenshot", { format: "png" })
+        const data = typeof shot.data === "string" ? shot.data : ""
+        if (!data) return { success: false, error: "CDP Page.captureScreenshot returned empty payload" }
+        return { success: true, message: "Captured browser screenshot.", screenshot: data, url: active?.url }
+      }
+      if (params.action === "dom" || params.action === "get_dom" || params.action === "state" || params.action === "context" || params.action === "get_context") {
+        const html = await this.readCdpOuterHtml(wsUrl)
+        const bounded = truncateOutputText(html, { mode: "head" })
+        this.browserState.lastHtml = bounded.text
+        if (params.action === "dom" || params.action === "get_dom") {
+          return { success: true, message: `Captured browser DOM (${html.length} chars).`, dom: bounded.text, url: active?.url }
+        }
+        return {
+          success: true,
+          message: `Browser state: ${active?.url ?? "connected"}`,
+          state: { url: active?.url ?? "", title: active?.title ?? "", text: bounded.text, clickables: [], tabs: this.browserState.tabs },
+        }
+      }
+      if (params.action === "clickables" || params.action === "get_clickables") {
+        const doc = await this.cdpTransport.sendCommand(wsUrl, "DOM.getDocument", { depth: -1 })
+        const rootId = (doc.root as { readonly nodeId?: number } | undefined)?.nodeId ?? 1
+        const matched = await this.cdpTransport.sendCommand(wsUrl, "DOM.querySelectorAll", {
+          nodeId: rootId,
+          selector: "a,button,input,textarea,select,[role='button']",
+        })
+        const nodeIds = Array.isArray(matched.nodeIds) ? matched.nodeIds.filter((n): n is number => typeof n === "number").slice(0, 50) : []
+        const clickables = []
+        for (let i = 0; i < nodeIds.length; i += 1) {
+          const nodeId = nodeIds[i]
+          if (nodeId === undefined) continue
+          const box = await this.cdpTransport.sendCommand(wsUrl, "DOM.getBoxModel", { nodeId })
+          const content = (box.model as { readonly content?: number[] } | undefined)?.content
+          const x = Array.isArray(content) && content.length >= 2 ? Math.round(content[0] ?? 0) : 0
+          const y = Array.isArray(content) && content.length >= 2 ? Math.round(content[1] ?? 0) : 0
+          const width = Array.isArray(content) && content.length >= 6 ? Math.max(1, Math.round((content[4] ?? x) - x)) : 1
+          const height = Array.isArray(content) && content.length >= 6 ? Math.max(1, Math.round((content[5] ?? y) - y)) : 1
+          clickables.push({ index: i, tag: "element", text: `node-${nodeId}`, selector: `[data-cdp-node="${nodeId}"]`, x, y, width, height })
+        }
+        return { success: true, message: `Found ${clickables.length} clickable element(s).`, clickables, url: active?.url }
+      }
+      if (params.action === "wait") {
+        const html = await this.readCdpOuterHtml(wsUrl)
+        if (params.waitForText && !html.includes(params.waitForText)) {
+          return { success: false, error: `Text not present in browser DOM: ${params.waitForText}` }
+        }
+        if (params.waitForTextGone && html.includes(params.waitForTextGone)) {
+          return { success: false, error: `Text still present in browser DOM: ${params.waitForTextGone}` }
+        }
+        return { success: true, message: "Browser wait condition satisfied.", url: active?.url }
+      }
+      return { success: false, error: `Unsupported browser action: ${String(params.action)}` }
+    } catch (cause) {
+      const error = cause instanceof Error ? cause.message : String(cause)
+      return { success: false, error, errorCode: "browser_cdp_error" }
+    }
+  }
+
+  private async readCdpOuterHtml(wsUrl: string): Promise<string> {
+    const doc = await this.cdpTransport.sendCommand(wsUrl, "DOM.getDocument", { depth: -1 })
+    const rootId = (doc.root as { readonly nodeId?: number } | undefined)?.nodeId ?? 1
+    const outer = await this.cdpTransport.sendCommand(wsUrl, "DOM.getOuterHTML", { nodeId: rootId })
+    return typeof outer.outerHTML === "string" ? outer.outerHTML : ""
+  }
+
+  async executeFileAction(params: FileActionParams, signal?: AbortSignal): Promise<FileActionResult> {
+    const approvalError = await this.awaitApproval(`file_${params.action}`, params as unknown as Record<string, unknown>, signal)
+    if (approvalError) {
+      return { success: false, error: approvalError, errorCode: "approval_denied" }
+    }
+    const rawPath = params.path?.trim() ?? ""
+    const preCheck = validateFilePath(rawPath)
+    if (!preCheck.allowed) {
+      return { success: false, error: preCheck.reason ?? "Blocked file path", errorCode: "blocked_path" }
+    }
+    const canonical = await resolveCanonicalPath(rawPath)
+    const postCheck = validateFilePath(canonical)
+    if (!postCheck.allowed) {
+      return { success: false, error: postCheck.reason ?? "Blocked canonical file path", errorCode: "blocked_path" }
+    }
+    try {
+      switch (params.action) {
+        case "read": {
+          const content = await readNativeFile(canonical)
+          const bounded = truncateOutputText(content, { mode: "head" })
+          return { success: true, message: bounded.text, content: bounded.text, path: canonical }
+        }
+        case "write": {
+          await writeNativeFile(canonical, params.content ?? "")
+          return { success: true, message: `Wrote ${canonical}.`, path: canonical }
+        }
+        case "append": {
+          await appendNativeFile(canonical, params.content ?? "")
+          return { success: true, message: `Appended to ${canonical}.`, path: canonical }
+        }
+        case "edit": {
+          if (params.oldText === undefined || params.newText === undefined) {
+            return { success: false, error: "file edit requires oldText and newText" }
+          }
+          const current = await readNativeFile(canonical)
+          if (!current.includes(params.oldText)) {
+            return { success: false, error: "oldText not found in file" }
+          }
+          await writeNativeFile(canonical, current.replace(params.oldText, params.newText))
+          return { success: true, message: `Edited ${canonical}.`, path: canonical }
+        }
+        case "delete": {
+          await deleteNativeFile(canonical)
+          return { success: true, message: `Deleted ${canonical}.`, path: canonical }
+        }
+        case "exists":
+        case "directory_exists":
+        case "get_file_size": {
+          const st = await statNativePath(canonical)
+          return {
+            success: true,
+            exists: params.action === "directory_exists" ? st.exists && st.isDirectory : st.exists,
+            size: st.size,
+            path: canonical,
+            message: st.exists ? `${canonical} (${st.size} bytes)` : `${canonical} does not exist`,
+          }
+        }
+        case "list_directory": {
+          const entries = await listNativeDirectory(canonical)
+          return { success: true, message: `${entries.length} entries in ${canonical}.`, entries, path: canonical }
+        }
+        case "create_dir": {
+          await createNativeDir(canonical)
+          return { success: true, message: `Created directory ${canonical}.`, path: canonical }
+        }
+        case "delete_directory": {
+          await deleteNativeDir(canonical, params.recursive === true)
+          return { success: true, message: `Deleted directory ${canonical}.`, path: canonical }
+        }
+        case "read_bytes": {
+          const bytes = await readNativeBytes(canonical, MAX_FILE_OP_BYTES)
+          return { success: true, message: `Read ${bytes.length} byte(s).`, bytesBase64: bytesToBase64(bytes), size: bytes.length, path: canonical }
+        }
+        case "write_bytes": {
+          const bytes = base64ToBytes(params.bytesBase64 ?? "")
+          if (bytes.length > MAX_FILE_OP_BYTES) {
+            return { success: false, error: `Payload exceeds ${MAX_FILE_OP_BYTES} bytes` }
+          }
+          await writeNativeBytes(canonical, bytes)
+          return { success: true, message: `Wrote ${bytes.length} byte(s) to ${canonical}.`, size: bytes.length, path: canonical }
+        }
+        default:
+          return { success: false, error: `Unsupported file action: ${params.action}` }
+      }
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : String(err) }
+    }
+  }
+
+  async executeTerminalAction(params: TerminalActionParams, signal?: AbortSignal): Promise<TerminalActionResult> {
+    const approvalError = await this.awaitApproval(`terminal_${params.action}`, params as unknown as Record<string, unknown>, signal)
+    if (approvalError) {
+      return { success: false, error: approvalError, errorCode: "approval_denied" }
+    }
+    if (params.action === "connect") {
+      const id = params.sessionId ?? nextUniqueId("term")
+      this.terminalSessions.set(id, { id, cwd: params.cwd ?? ".", output: "", closed: false })
+      return { success: true, sessionId: id, message: `Connected terminal session ${id}.` }
+    }
+    if (params.action === "close") {
+      const id = params.sessionId ?? ""
+      this.terminalSessions.delete(id)
+      return { success: true, sessionId: id, message: `Closed terminal session ${id}.` }
+    }
+    if (params.action === "clear") {
+      const session = params.sessionId ? this.terminalSessions.get(params.sessionId) : undefined
+      if (session) session.output = ""
+      return { success: true, sessionId: session?.id, message: "Cleared terminal buffer." }
+    }
+    if (params.action === "read") {
+      const session = params.sessionId ? this.terminalSessions.get(params.sessionId) : undefined
+      const bounded = truncateOutputText(session?.output ?? "", { mode: "tail" })
+      return { success: true, sessionId: session?.id, output: bounded.text, truncated: bounded.truncated, message: bounded.text }
+    }
+    const command = params.command ?? params.text ?? ""
+    const risk = checkDangerousCommand(command)
+    if (risk.blocked) {
+      return { success: false, error: risk.reason ?? "Dangerous command blocked", errorCode: "dangerous_command" }
+    }
+    const env = sanitizeChildEnv(getProcessEnvSnapshot())
+    const res = await runNativeCommand("/bin/sh", ["-lc", command], {
+      cwd: params.cwd,
+      timeoutMs: Math.min(120_000, Math.max(1000, (params.timeoutSeconds ?? 15) * 1000)),
+      env,
+    })
+    const combined = `${res.stdout}${res.stderr ? `\n${res.stderr}` : ""}`.trim()
+    const bounded = truncateOutputText(combined, { mode: "tail" })
+    if (params.sessionId) {
+      const existing = this.terminalSessions.get(params.sessionId)
+      if (existing) existing.output = `${existing.output}\n${bounded.text}`.slice(-32_768)
+    }
+    return {
+      success: res.exitCode === 0,
+      stdout: truncateOutputText(res.stdout, { mode: "tail" }).text,
+      stderr: truncateOutputText(res.stderr, { mode: "tail" }).text,
+      exitCode: res.exitCode,
+      output: bounded.text,
+      truncated: bounded.truncated,
+      message: bounded.text || `Command exited with code ${res.exitCode}`,
+      ...(res.exitCode === 0 ? {} : { error: res.stderr || `Command exited with code ${res.exitCode}` }),
+    }
+  }
+
+  async executeCommand(
+    command: string,
+    parameters: Record<string, unknown> = {},
+    signal?: AbortSignal,
+  ): Promise<ComputerUseResult> {
+    if (command === "list_apps" || command === "app_list_apps") {
+      const apps = await this.listApps()
+      return { success: true, message: `Found ${apps.length} app(s).`, data: { apps } }
+    }
+    if (command === "get_app_state" || command === "app_get_state") {
+      const app = String(parameters.app ?? "")
+      const state = await this.getAppState(app, { disableDiff: parameters.disableDiff === true })
+      return { success: true, message: `Captured state ${state.stateId} for ${state.app.name}.`, data: state }
+    }
+    if (
+      command === "app_click"
+      || command === "app_key"
+      || command === "app_type"
+      || command === "app_set_value"
+      || command === "app_select_text"
+      || command === "app_paste"
+      || command === "app_scroll"
+      || command === "app_hover_target"
+      || command === "app_secondary_action"
+    ) {
+      const approvalError = await this.awaitApproval(command, parameters, signal)
+      if (approvalError) return { success: false, error: approvalError, errorCode: "approval_denied" }
+      const kind = command.slice(4) as "click" | "key" | "type" | "set_value" | "select_text" | "paste" | "scroll" | "hover_target" | "secondary_action"
+      const outcome = await this.appControl.executeAppAction({
+        app: String(parameters.app ?? ""),
+        stateId: String(parameters.stateId ?? ""),
+        kind,
+        ...(typeof parameters.element_index === "number" ? { element_index: parameters.element_index } : {}),
+        ...(typeof parameters.text === "string" ? { text: parameters.text } : {}),
+        ...(typeof parameters.key === "string" ? { key: parameters.key } : {}),
+        ...(Array.isArray(parameters.modifiers) ? { modifiers: parameters.modifiers.filter((m): m is string => typeof m === "string") } : {}),
+        ...(typeof parameters.secondaryAction === "string" ? { secondaryAction: parameters.secondaryAction } : {}),
+      })
+      return { success: outcome.success, message: `Completed ${command} (${outcome.receiptId}).`, data: outcome }
+    }
+    if (command === "clipboard_read") {
+      const approvalError = await this.awaitApproval("clipboard_read", parameters, signal)
+      if (approvalError) return { success: false, error: approvalError, errorCode: "approval_denied" }
+      const text = await this.hostDriver.readClipboard()
+      return { success: true, message: text || "Clipboard is empty.", data: { text } }
+    }
+    if (command === "clipboard_write") {
+      const approvalError = await this.awaitApproval("clipboard_write", parameters, signal)
+      if (approvalError) return { success: false, error: approvalError, errorCode: "approval_denied" }
+      const text = typeof parameters.text === "string" ? parameters.text : ""
+      await this.hostDriver.writeClipboard(text)
+      return { success: true, message: `Wrote ${text.length} character(s) to clipboard.` }
+    }
+    if (command.startsWith("browser_")) {
+      const sub = command.slice("browser_".length) as BrowserActionParams["action"]
+      return this.executeBrowserAction({ ...(parameters as Omit<BrowserActionParams, "action">), action: sub }, signal)
+    }
+    if (command.startsWith("file_")) {
+      const sub = command.slice("file_".length) as FileActionParams["action"]
+      return this.executeFileAction({ ...(parameters as Omit<FileActionParams, "action">), action: sub }, signal)
+    }
+    if (command.startsWith("terminal_")) {
+      const sub = command.slice("terminal_".length) as TerminalActionParams["action"]
+      return this.executeTerminalAction({ ...(parameters as Omit<TerminalActionParams, "action">), action: sub }, signal)
+    }
+    const windowMap: Record<string, WindowActionParams["action"]> = {
+      list_windows: "list",
+      switch_to_window: "switch",
+      arrange_windows: "arrange",
+      move_window: "move",
+      minimize_window: "minimize",
+      maximize_window: "maximize",
+      restore_window: "restore",
+      close_window: "close",
+      get_current_window_id: "get_current_window_id",
+      get_application_windows: "get_application_windows",
+      set_bounds: "set_bounds",
+      get_window_size: "get_window_size",
+      get_window_position: "get_window_position",
+    }
+    const winAction = windowMap[command]
+    if (winAction) {
+      return this.executeWindowAction({ ...(parameters as Omit<WindowActionParams, "action">), action: winAction }, signal)
+    }
+    const normalizedDesktop = command === "key_press" ? "key" : command
+    return this.executeDesktopAction(
+      { ...(parameters as Omit<DesktopActionParams, "action">), action: normalizedDesktop as DesktopActionParams["action"] },
+      signal,
+    )
+  }
+
+  private recordHistory(action: string, success: boolean, summary: string, error?: string): void {
+    this.recentActions.push({
+      id: nextUniqueId("act"),
+      action,
+      timestamp: Date.now(),
+      success,
+      summary,
+      ...(error ? { error } : {}),
+    })
+    if (this.recentActions.length > this.computerConfig.maxHistoryEntries) {
+      this.recentActions.splice(0, this.recentActions.length - this.computerConfig.maxHistoryEntries)
+    }
+  }
+}
+
+export type VisionContextBBox = readonly [number, number, number, number]
+
+export interface VisionContextFocusedWindow {
+  readonly app: string
+  readonly title: string
+  readonly bbox: VisionContextBBox | null
+}
+
+export interface VisionContextRecentAction {
+  readonly action: string
+  readonly ts: number
+}
+
+export interface VisionContext {
+  readonly openApps: readonly string[]
+  readonly focusedWindow: VisionContextFocusedWindow | null
+  readonly recentActions: readonly VisionContextRecentAction[]
+  readonly currentTaskGoal: string | null
+}
+
+export class VisionContextProvider extends Service {
+  static override serviceType = VISION_CONTEXT_SERVICE_TYPE
+  override capabilityDescription = "Provides compact desktop scene context for vision prompts."
+
+  static override async start(runtime: IAgentRuntime): Promise<VisionContextProvider> {
+    return new VisionContextProvider(runtime)
+  }
+
+  override async stop(): Promise<void> {
+    return Promise.resolve()
+  }
+
+  async getContext(): Promise<VisionContext> {
+    const found: unknown = this.runtime.getService(COMPUTERUSE_SERVICE_TYPE)
+    const service = found instanceof ComputerUseService ? found : undefined
+    const scene = service ? (service.getCurrentScene() ?? await service.refreshScene("idle")) : null
+    const openApps = scene && scene.apps.length > 0
+      ? scene.apps.filter((a) => a.windows.length > 0).map((a) => a.name)
+      : [...new Set(listProcesses().map((p) => p.name).filter((n) => n.length > 0 && n !== "launchd"))].slice(0, 50)
+    const focused = scene?.focused_window
+      ? { app: scene.focused_window.app, title: scene.focused_window.title, bbox: scene.focused_window.bounds }
+      : null
+    const recentActions = service
+      ? service.getRecentActions(8).map((entry) => ({ action: entry.action, ts: entry.timestamp }))
+      : []
+    const cachedGoal = typeof this.runtime.getCache === "function"
+      ? await this.runtime.getCache<string>(VISION_CONTEXT_TASK_GOAL_CACHE_KEY)
+      : undefined
+    return {
+      openApps,
+      focusedWindow: focused,
+      recentActions,
+      currentTaskGoal: typeof cachedGoal === "string" && cachedGoal.trim().length > 0 ? cachedGoal.trim() : null,
+    }
+  }
+}

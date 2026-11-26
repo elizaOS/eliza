@@ -1,0 +1,385 @@
+// spec/webSearch/index.md, "Selection binds the destination before issuing the query"; spec/webSearch/index.md, "Browser reads stay on the dispatched target profile and tab"; spec/webSearch/index.md, "A citation needs a usable web destination and a heading"
+import { isBlockedHostname, isPrivateIpAddress, type ElizaError, type IAgentRuntime } from "@elizaos/core"
+import { Machine, machine, usableCitation, type BrowserSelection } from "../gen/webSearch.effect.vibe"
+import {
+  searchKeylessWeb,
+  type KeylessWebSearchOptions,
+  type KeylessWebSearchResult,
+} from "./keyless-web-search.vibe"
+import type { SearchOptions, SearchResponse } from "./types.vibe"
+
+type Command = { subaction: "open" | "snapshot"; url: string; id?: string }
+
+interface Dispatcher {
+  resolveTarget(id: string, command: Command): Promise<unknown>
+  execute(command: Command, targetId: string): Promise<unknown>
+}
+
+interface ProfileTarget {
+  id: string
+  getProfileId(): string | null
+  supports(command: Command): boolean
+}
+
+interface PageFrame {
+  frameId: number
+  url: string
+  title: string
+  text: string
+  readyState: string
+  elements: Array<{ href?: string | null; label?: string | null; heading?: string | null }>
+}
+
+module node {
+  import { ElizaError } from "@elizaos/core"
+
+  /** @throws {never} */
+  export function makeUnavailable(message: string, context: Record<string, unknown> = {}): ElizaError {
+    return new ElizaError(message, { code: "WEB_SEARCH_BROWSER_UNAVAILABLE", context })
+  }
+
+  /** @throws {never} */
+  export function buildGoogleSearchUrl(query: string): URL {
+    const url = new URL("https://www.google.com/search")
+    url.searchParams.set("q", query)
+    return url
+  }
+
+  /** @throws {never} */
+  export function parseUrlSafe(input: string): URL | undefined {
+    try {
+      return new URL(input)
+    } catch {
+      return undefined
+    }
+  }
+}
+
+import { buildGoogleSearchUrl, makeUnavailable, parseUrlSafe } from node
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+
+function isDispatcher(value: unknown): value is Dispatcher {
+  return isRecord(value) && typeof value.resolveTarget === "function" && typeof value.execute === "function"
+}
+
+function isProfileTarget(value: unknown): value is ProfileTarget {
+  return (
+    isRecord(value) &&
+    typeof value.id === "string" &&
+    typeof value.getProfileId === "function" &&
+    typeof value.supports === "function"
+  )
+}
+
+function settingsString(runtime: IAgentRuntime, name: string): string | null {
+  const value = runtime.getSetting?.(name)
+  return typeof value === "string" && value.trim() ? value.trim() : null
+}
+
+export function canSearchInBrowser(options?: SearchOptions): boolean {
+  if (!options) return true
+  return Object.entries(options).every(
+    ([name, value]) =>
+      value === undefined ||
+      name === "limit" ||
+      name === "includeAnswer" ||
+      (name === "offset" && value === 0) ||
+      ((name === "type" || name === "topic") && value === "general") ||
+      (name === "searchDepth" && value === "basic") ||
+      (name === "includeImages" && value === false),
+  )
+}
+
+function resolveBrowserSelection(saved: unknown, runtime: IAgentRuntime): BrowserSelection {
+  if (isRecord(saved) && saved.disabled === true) return { tag: "Disabled" }
+  if (saved !== undefined) {
+    if (
+      !isRecord(saved) ||
+      typeof saved.profileId !== "string" ||
+      !saved.profileId.trim() ||
+      typeof saved.targetId !== "string" ||
+      !saved.targetId.trim()
+    ) {
+      return { tag: "Invalid" }
+    }
+    return { tag: "Ready", targetId: saved.targetId, profileId: saved.profileId }
+  }
+  const profileId = settingsString(runtime, "WEB_SEARCH_BROWSER_PROFILE_ID")
+  if (!profileId) return { tag: "Missing" }
+  const targetId = settingsString(runtime, "WEB_SEARCH_BROWSER_TARGET_ID") ?? "chromium-device"
+  return { tag: "Ready", targetId, profileId }
+}
+
+function unwrapReceipt(
+  input: unknown,
+  targetId: string,
+  profileId: string,
+): Record<string, unknown> | undefined {
+  if (
+    !isRecord(input) ||
+    input.targetId !== targetId ||
+    !isRecord(input.value) ||
+    input.value.profileId !== profileId ||
+    !isRecord(input.value.result)
+  ) {
+    return undefined
+  }
+  return input.value.result
+}
+
+function parseFrames(value: unknown): PageFrame[] | "empty" | "incomplete" | "invalid_links" {
+  if (!Array.isArray(value) || value.length === 0) return "empty"
+  const out: PageFrame[] = []
+  for (const frame of value) {
+    if (
+      !isRecord(frame) ||
+      frame.complete !== true ||
+      typeof frame.frameId !== "number" ||
+      typeof frame.url !== "string" ||
+      typeof frame.title !== "string" ||
+      typeof frame.text !== "string" ||
+      typeof frame.readyState !== "string" ||
+      !Array.isArray(frame.elements)
+    ) {
+      return "incomplete"
+    }
+    const elements: PageFrame["elements"] = []
+    for (const element of frame.elements) {
+      if (
+        !isRecord(element) ||
+        (element.href !== undefined && element.href !== null && typeof element.href !== "string") ||
+        (element.label !== undefined && element.label !== null && typeof element.label !== "string") ||
+        (element.heading !== undefined && element.heading !== null && typeof element.heading !== "string")
+      ) {
+        return "invalid_links"
+      }
+      elements.push({ href: element.href, label: element.label, heading: element.heading })
+    }
+    out.push({
+      frameId: frame.frameId,
+      url: frame.url,
+      title: frame.title,
+      text: frame.text,
+      readyState: frame.readyState,
+      elements,
+    })
+  }
+  return out
+}
+
+function extractResultLinks(page: PageFrame): Array<{ title: string; url: string }> {
+  const links = new Map<string, { title: string; url: string }>()
+  for (const element of page.elements) {
+    if (!element.href || !element.heading?.trim()) continue
+    let url = parseUrlSafe(element.href)
+    if (!url) continue
+    if (url.origin === "https://www.google.com" && url.pathname === "/url") {
+      const destination = url.searchParams.get("q") ?? url.searchParams.get("url")
+      if (!destination) continue
+      url = parseUrlSafe(destination)
+      if (!url) continue
+    }
+    const ok = usableCitation({
+      destination: url.href,
+      heading: element.heading.trim(),
+      isWeb: url.protocol === "https:" || url.protocol === "http:",
+      hasCredentials: url.username !== "" || url.password !== "",
+      isSearchControl:
+        url.origin === "https://www.google.com" &&
+        ["/search", "/preferences", "/advanced_search"].includes(url.pathname),
+      destinationPublic: !isBlockedHostname(url.hostname) && !isPrivateIpAddress(url.hostname),
+    })
+    if (!ok) continue
+    links.set(url.href, { title: element.heading, url: url.href })
+  }
+  return [...links.values()]
+}
+
+export effect function searchAuthorizedBrowserEffect(
+  runtime: IAgentRuntime,
+  query: string,
+  options?: SearchOptions,
+): (SearchResponse | null)!ElizaError {
+  const supportsFilters = canSearchInBrowser(options)
+  const saved: unknown =
+    typeof runtime.getCache === "function"
+      ? try tryPromise({
+          try: () => runtime.getCache<unknown>("browser.search-profile"),
+          catch: (cause) => makeUnavailable("Unable to read saved browser search profile.", { cause }),
+        })
+      : undefined
+  const selection = resolveBrowserSelection(saved, runtime)
+  const service: unknown = runtime.getService?.("browser")
+  const url = buildGoogleSearchUrl(query)
+  const open: Command = { subaction: "open", url: url.href }
+  let target: unknown
+  if (supportsFilters && selection.tag === "Ready" && isDispatcher(service)) {
+    target = try tryPromise({
+      try: () => service.resolveTarget(selection.targetId, open),
+      catch: (cause) => makeUnavailable("Unable to resolve browser search target.", { cause }),
+    })
+  }
+  const targetReady =
+    selection.tag === "Ready" &&
+    isProfileTarget(target) &&
+    target.id === selection.targetId &&
+    (try Effect.try({
+      try: () =>
+        target.getProfileId() === selection.profileId &&
+        target.supports(open) &&
+        target.supports({ subaction: "snapshot", url: url.href }),
+      catch: () => makeUnavailable("Unable to verify browser target capabilities."),
+    }))
+  provide machine() {
+    const run = try Machine
+    const queryUnits = [...query].length
+    const dispatched = run.send({
+      type: "dispatchSearch",
+      query,
+      queryUnits: queryUnits > 0 ? queryUnits : 1,
+      selection,
+      supportsFilters,
+      targetReady,
+    }) catch effect () => {
+      throw makeUnavailable("Browser search query could not be dispatched.")
+    }
+    if (dispatched.route.tag === "RefuseSearch") {
+      throw makeUnavailable(
+        "The agent's saved browser search selection is invalid. Select a connected profile in Browser settings.",
+      )
+    }
+    if (dispatched.route.tag === "Keyless") return null
+    if (!isDispatcher(service) || !isProfileTarget(target)) return null
+    const targetId = dispatched.route.target
+    const profileId = dispatched.route.profile
+    const rawOpened = try tryPromise({
+      try: () => service.execute(open, targetId),
+      catch: (cause) => makeUnavailable("The browser failed to open the search tab.", { targetId, cause }),
+    })
+    const opened = unwrapReceipt(rawOpened, targetId, profileId)
+    if (!opened) {
+      throw makeUnavailable(
+        "The browser reply did not match the authorized profile. The search was not replayed.",
+        { targetId },
+      )
+    }
+    if (typeof opened.id !== "string" || !/^\d+$/.test(opened.id)) {
+      throw makeUnavailable("The browser did not return the search tab identity.", { targetId })
+    }
+    const tabId = opened.id
+    run.send({ type: "openSearchTab", targetId, profileId, tabId }) catch effect () => {
+      throw makeUnavailable("The browser search tab transition was refused.", { targetId, tabId })
+    }
+    const deadline = (try Clock.currentTimeMillis) + 15_000
+    let pageFrames: PageFrame[] | undefined
+    for (;;) {
+      const currentProfile = try Effect.try({
+        try: () => target.getProfileId(),
+        catch: () => makeUnavailable("The authorized browser profile disconnected during search.", { targetId, tabId }),
+      })
+      if (currentProfile !== profileId) {
+        throw makeUnavailable("The authorized browser profile disconnected during search.", { targetId, tabId })
+      }
+      const rawSnapshot = try tryPromise({
+        try: () => service.execute({ subaction: "snapshot", url: url.href, id: tabId }, targetId),
+        catch: (cause) => makeUnavailable("The browser failed to snapshot the search tab.", { targetId, tabId, cause }),
+      })
+      const snapshot = unwrapReceipt(rawSnapshot, targetId, profileId)
+      if (!snapshot) {
+        throw makeUnavailable(
+          "The browser reply did not match the authorized profile. The search was not replayed.",
+          { targetId },
+        )
+      }
+      if (snapshot.id !== tabId) {
+        throw makeUnavailable("The browser returned a different search tab.", { targetId, tabId })
+      }
+      const parsedFrames = parseFrames(snapshot.frames)
+      if (parsedFrames === "empty") throw makeUnavailable("The browser returned no search-page frames.")
+      if (parsedFrames === "incomplete") throw makeUnavailable("The browser search-page snapshot was incomplete.")
+      if (parsedFrames === "invalid_links") {
+        throw makeUnavailable("The browser returned invalid search-page link metadata.")
+      }
+      pageFrames = parsedFrames
+      const main = pageFrames.find((frame) => frame.frameId === 0)
+      if (!main) throw makeUnavailable("The search page's main frame is missing.", { targetId, tabId })
+      const observed = parseUrlSafe(main.url)
+      if (!observed) {
+        throw makeUnavailable("The browser returned an invalid search-page URL.", { targetId, tabId })
+      }
+      if (
+        observed.origin !== url.origin ||
+        observed.pathname !== url.pathname ||
+        observed.searchParams.get("q") !== query
+      ) {
+        throw makeUnavailable(
+          "The search tab navigated away from the requested search. Inspect that browser tab before retrying.",
+          { targetId, tabId, observedUrl: main.url },
+        )
+      }
+      if (pageFrames.every((frame) => frame.readyState === "complete")) break
+      if ((try Clock.currentTimeMillis) >= deadline) {
+        throw makeUnavailable(
+          "The browser search page did not finish loading. No fallback search was sent.",
+          { targetId, tabId },
+        )
+      }
+      try sleep("200 millis")
+    }
+    const main = pageFrames.find((frame) => frame.frameId === 0)
+    if (!main) throw makeUnavailable("The search page's main frame is missing.")
+    const links = extractResultLinks(main)
+    if (links.length === 0) {
+      throw makeUnavailable(
+        "The search page did not expose result links. It may need consent or a human check; inspect the same tab.",
+        { targetId, tabId, url: main.url },
+      )
+    }
+    run.send({
+      type: "readSearchTab",
+      targetId,
+      profileId,
+      tabId,
+      complete: true,
+      resultCount: links.length,
+    }) catch effect () => {
+      throw makeUnavailable("The browser search completion transition was refused.", { targetId, tabId })
+    }
+    const text = pageFrames.map((frame) => frame.text).join("\n\n")
+    const selected = options?.limit === undefined ? links : links.slice(0, options.limit)
+    return {
+      query,
+      answer: options?.includeAnswer === false ? undefined : text,
+      images: [],
+      results: selected.map((link, index) => ({
+        ...link,
+        description: link.title,
+        content: link.title,
+        rawContent: index === 0 ? text : undefined,
+        score: 1 / (index + 1),
+      })),
+      browser: { targetId, profileId, tabId, url: main.url },
+    }
+  }
+}
+
+export async function searchAuthorizedBrowser(
+  runtime: IAgentRuntime,
+  query: string,
+  options?: SearchOptions,
+): Promise<SearchResponse | null> {
+  return runPromise(searchAuthorizedBrowserEffect(runtime, query, options))
+}
+
+export async function searchBrowserFirstWeb(
+  runtime: IAgentRuntime,
+  query: string,
+  options: KeylessWebSearchOptions = {},
+): Promise<KeylessWebSearchResult | { provider: "browser"; text: string; truncated: false } | null> {
+  const result = await searchAuthorizedBrowser(runtime, query)
+  if (result) return { provider: "browser", text: JSON.stringify(result), truncated: false }
+  return (await searchKeylessWeb(query, options)) ?? null
+}

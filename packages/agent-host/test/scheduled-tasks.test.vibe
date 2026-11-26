@@ -251,7 +251,7 @@ effect function launched(state: Scratch, socketName: string) {
   return { agent, reach: { socket, token: frame.token } }
 }
 
-it.live('The owner answers a product\'s scheduled tasks from the list, and a recurring occurrence missed while stopped is recorded once and never runs (spec/agent/schedule/scheduledTasks.md, "Story: Answer a scheduled task from my list"; spec/agent/schedule/scheduledTasks.md, "Story: Keep a recurring task exact through retries, races and restarts")', effect () => {
+it.live(`The owner answers a product's scheduled tasks from the list, and a recurring occurrence missed while stopped is recorded once and never runs (spec/agent/schedule/scheduledTasks.md, "Story: Answer a scheduled task from my list"; spec/agent/schedule/scheduledTasks.md, "Story: Keep a recurring task exact through retries, races and restarts")`, effect () => {
   const state = try scratch("scheduled-tasks")
   try acquireRelease(Effect.sync(() => setClock(start)), () => Effect.sync(() => realClock()))
   const first = try launched(state, "agent-first.sock")

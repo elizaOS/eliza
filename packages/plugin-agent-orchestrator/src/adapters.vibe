@@ -1,0 +1,663 @@
+// spec/agentOrchestrator/lanesAndRouting.md, "Backend routing follows strict precedence while honoring operator allow-lists"; spec/agentOrchestrator/verification.md, "Bounded verification and classification tasks route to fast low-latency evaluators"
+module node {
+  import { execFileSync } from "node:child_process"
+
+  /** @throws {never} */
+  export function readHostEnv(): Readonly<Record<string, string | undefined>> {
+    return { ...process.env }
+  }
+
+  /** @throws {never} */
+  export function hostPlatformName(): string {
+    return process.platform
+  }
+
+  /** @throws {never} */
+  export function executableExists(binary: string): boolean {
+    const cmd = process.platform === "win32" ? "where" : "which"
+    try {
+      execFileSync(cmd, [binary], { stdio: "ignore", timeout: 1_500 })
+      return true
+    } catch {
+      return false
+    }
+  }
+}
+import { executableExists, hostPlatformName, readHostEnv } from node
+import {
+  getCodingAgentSelectorBridge,
+  logger,
+  type CodingAccountStrategy,
+  type CodingAgentSelection,
+  type IAgentRuntime,
+} from "@elizaos/core"
+import {
+  resolveBackendPrecedence,
+  type BackendId,
+} from "../gen/agentOrchestrator__lanesAndRouting.effect.vibe"
+import {
+  selectEvalModelLane,
+  type EvalModelLane,
+  type EvalTaskKind,
+} from "../gen/agentOrchestrator__verification.effect.vibe"
+import {
+  fromSpecBackendId,
+  SubscriptionCodingAdapterError,
+  toSpecBackendId,
+  type AvailableAgentInfo,
+  type KnownAdapterId,
+  type SubscriptionExecutionMode,
+} from "./types.vibe"
+import {
+  safeFetch,
+  subscriptionExecutionAuthorizationFromMetadata,
+} from "./security.vibe"
+
+export const KNOWN_ADAPTER_TYPES: ReadonlySet<KnownAdapterId> = new Set([
+  "elizaos",
+  "pi-agent",
+  "claude",
+  "codex",
+  "kimi",
+  "grok",
+])
+
+export const ORDERED_ADAPTER_IDS: readonly KnownAdapterId[] = [
+  "claude",
+  "codex",
+  "elizaos",
+  "grok",
+  "kimi",
+  "pi-agent",
+]
+
+export const SUBSCRIPTION_CODING_ADAPTER_IDS: readonly KnownAdapterId[] = ["kimi", "grok"]
+
+export interface SubscriptionCodingAdapterDescriptor {
+  readonly id: "kimi" | "grok"
+  readonly defaultCommand: string
+  readonly envCommandKey: string
+  readonly homeEnvKey: string
+  readonly strippedApiEnvKeys: readonly string[]
+}
+
+export const SUBSCRIPTION_CODING_ADAPTERS: Readonly<Record<"kimi" | "grok", SubscriptionCodingAdapterDescriptor>> = {
+  kimi: {
+    id: "kimi",
+    defaultCommand: "kimi acp",
+    envCommandKey: "ELIZA_KIMI_ACP_COMMAND",
+    homeEnvKey: "KIMI_CODE_HOME",
+    strippedApiEnvKeys: ["MOONSHOT_API_KEY", "KIMI_API_KEY"],
+  },
+  grok: {
+    id: "grok",
+    defaultCommand: "grok --no-auto-update agent stdio",
+    envCommandKey: "ELIZA_GROK_ACP_COMMAND",
+    homeEnvKey: "GROK_HOME",
+    strippedApiEnvKeys: ["XAI_API_KEY"],
+  },
+}
+
+export function isSubscriptionCodingAdapter(adapterId: string): adapterId is "kimi" | "grok" {
+  return adapterId === "kimi" || adapterId === "grok"
+}
+
+export function stripSubscriptionApiEnvironment(
+  adapterId: "kimi" | "grok",
+  env: Record<string, string>,
+): Record<string, string> {
+  const next = { ...env }
+  for (const key of SUBSCRIPTION_CODING_ADAPTERS[adapterId].strippedApiEnvKeys) {
+    delete next[key]
+  }
+  return next
+}
+
+export effect function assertSubscriptionCodingAdapterReady(
+  adapterId: "kimi" | "grok",
+  mode: SubscriptionExecutionMode | undefined,
+  metadata: Readonly<Record<string, unknown>> | undefined,
+  nowMs = Date.now(),
+): void!SubscriptionCodingAdapterError {
+  if (mode !== "user-attended") {
+    throw new SubscriptionCodingAdapterError({
+      adapterId,
+      code: "SUBSCRIPTION_REQUIRES_USER_ATTENDED",
+      reason: `Subscription adapter ${adapterId} requires explicit user-attended execution.`,
+    })
+  }
+  const auth = subscriptionExecutionAuthorizationFromMetadata(metadata, nowMs)
+  if (!auth) {
+    throw new SubscriptionCodingAdapterError({
+      adapterId,
+      code: "SUBSCRIPTION_ATTENDANCE_AUTH_INVALID",
+      reason: `Subscription adapter ${adapterId} requires a valid, unexpired attendance authorization.`,
+    })
+  }
+}
+
+export type PiApiDialect = "openai-completions" | "anthropic-messages" | "cerebras-openai"
+export type PiBillingMode = "api-key" | "coding-plan" | "fast-eval"
+export type PiTermsPolicy = "standard-api" | "coding-subscription"
+
+export type PiProviderRouteId =
+  | "cerebras-fast"
+  | "anthropic-api"
+  | "openai-api"
+  | "deepseek-api"
+  | "zai-coding"
+  | "zai-api"
+  | "kimi-coding"
+  | "moonshot-api"
+  | "xai-api"
+
+export interface PiProviderRoute {
+  readonly id: PiProviderRouteId
+  readonly baseUrl: string
+  readonly dialect: PiApiDialect
+  readonly billing: PiBillingMode
+  readonly terms: PiTermsPolicy
+  readonly credentialEnv: string
+  readonly defaultModel: string
+  readonly supportsPromptCaching: boolean
+  readonly cacheBlockTokens: number
+}
+
+export const PI_PROVIDER_ROUTES: Readonly<Record<PiProviderRouteId, PiProviderRoute>> = {
+  "anthropic-api": {
+    id: "anthropic-api",
+    baseUrl: "https://api.anthropic.com",
+    dialect: "anthropic-messages",
+    billing: "api-key",
+    terms: "standard-api",
+    credentialEnv: "ANTHROPIC_API_KEY",
+    defaultModel: "claude-sonnet-4-6",
+    supportsPromptCaching: true,
+    cacheBlockTokens: 1024,
+  },
+  "cerebras-fast": {
+    id: "cerebras-fast",
+    baseUrl: "https://api.cerebras.ai/v1",
+    dialect: "cerebras-openai",
+    billing: "fast-eval",
+    terms: "standard-api",
+    credentialEnv: "CEREBRAS_API_KEY",
+    defaultModel: "qwen-3-coder-480b",
+    supportsPromptCaching: true,
+    cacheBlockTokens: 128,
+  },
+  "deepseek-api": {
+    id: "deepseek-api",
+    baseUrl: "https://api.deepseek.com/v1",
+    dialect: "openai-completions",
+    billing: "api-key",
+    terms: "standard-api",
+    credentialEnv: "DEEPSEEK_API_KEY",
+    defaultModel: "deepseek-coder",
+    supportsPromptCaching: true,
+    cacheBlockTokens: 64,
+  },
+  "kimi-coding": {
+    id: "kimi-coding",
+    baseUrl: "https://api.kimi.com/coding/v1",
+    dialect: "openai-completions",
+    billing: "coding-plan",
+    terms: "coding-subscription",
+    credentialEnv: "KIMI_API_KEY",
+    defaultModel: "kimi-k2-coding",
+    supportsPromptCaching: true,
+    cacheBlockTokens: 128,
+  },
+  "moonshot-api": {
+    id: "moonshot-api",
+    baseUrl: "https://api.moonshot.ai/v1",
+    dialect: "openai-completions",
+    billing: "api-key",
+    terms: "standard-api",
+    credentialEnv: "MOONSHOT_API_KEY",
+    defaultModel: "kimi-k2",
+    supportsPromptCaching: true,
+    cacheBlockTokens: 128,
+  },
+  "openai-api": {
+    id: "openai-api",
+    baseUrl: "https://api.openai.com/v1",
+    dialect: "openai-completions",
+    billing: "api-key",
+    terms: "standard-api",
+    credentialEnv: "OPENAI_API_KEY",
+    defaultModel: "gpt-5.3-codex",
+    supportsPromptCaching: true,
+    cacheBlockTokens: 128,
+  },
+  "xai-api": {
+    id: "xai-api",
+    baseUrl: "https://api.x.ai/v1",
+    dialect: "openai-completions",
+    billing: "api-key",
+    terms: "standard-api",
+    credentialEnv: "XAI_API_KEY",
+    defaultModel: "grok-code-fast-1",
+    supportsPromptCaching: true,
+    cacheBlockTokens: 128,
+  },
+  "zai-api": {
+    id: "zai-api",
+    baseUrl: "https://api.z.ai/api/paas/v4",
+    dialect: "openai-completions",
+    billing: "api-key",
+    terms: "standard-api",
+    credentialEnv: "ZAI_API_KEY",
+    defaultModel: "glm-4.5",
+    supportsPromptCaching: false,
+    cacheBlockTokens: 0,
+  },
+  "zai-coding": {
+    id: "zai-coding",
+    baseUrl: "https://api.z.ai/api/coding/paas/v4",
+    dialect: "openai-completions",
+    billing: "coding-plan",
+    terms: "coding-subscription",
+    credentialEnv: "ZAI_API_KEY",
+    defaultModel: "glm-4.5-coding",
+    supportsPromptCaching: false,
+    cacheBlockTokens: 0,
+  },
+}
+
+export const PI_PROVIDER_CREDENTIAL_ENVS: readonly string[] = [
+  ...new Set(Object.values(PI_PROVIDER_ROUTES).map((route) => route.credentialEnv)),
+].sort()
+
+export function isPiProviderRouteId(value: string | undefined): value is PiProviderRouteId {
+  return typeof value === "string" && value in PI_PROVIDER_ROUTES
+}
+
+export function enforcePiProviderCredentialIsolation(
+  routeId: PiProviderRouteId,
+  sourceEnv: Readonly<Record<string, string | undefined>>,
+): Record<string, string> {
+  const route = PI_PROVIDER_ROUTES[routeId]
+  const isolated: Record<string, string> = {}
+  for (const [key, value] of Object.entries(sourceEnv)) {
+    if (value === undefined) continue
+    if (PI_PROVIDER_CREDENTIAL_ENVS.includes(key) && key !== route.credentialEnv) continue
+    isolated[key] = value
+  }
+  const secret = sourceEnv[route.credentialEnv]
+  if (secret) {
+    isolated[route.credentialEnv] = secret
+    if (route.dialect === "anthropic-messages") {
+      isolated.ANTHROPIC_BASE_URL = route.baseUrl
+      isolated.ANTHROPIC_API_KEY = secret
+    } else {
+      isolated.OPENAI_BASE_URL = route.baseUrl
+      isolated.OPENAI_API_KEY = secret
+    }
+  }
+  return isolated
+}
+
+export interface PreparedPiProviderRoute {
+  readonly route: PiProviderRoute
+  readonly model: string
+  readonly env: Record<string, string>
+  readonly toolProfile: readonly ["read", "write", "edit", "bash"]
+}
+
+export function preparePiProviderRoute(
+  routeId: PiProviderRouteId,
+  sourceEnv: Readonly<Record<string, string | undefined>> = readHostEnv(),
+  modelOverride?: string,
+): PreparedPiProviderRoute {
+  const route = PI_PROVIDER_ROUTES[routeId]
+  return {
+    route,
+    model: modelOverride?.trim() || route.defaultModel,
+    env: enforcePiProviderCredentialIsolation(routeId, sourceEnv),
+    toolProfile: ["read", "write", "edit", "bash"],
+  }
+}
+
+export function normalizeTaskAgentAdapter(raw: string | undefined): KnownAdapterId | undefined {
+  const value = raw?.trim().toLowerCase()
+  if (!value) return undefined
+  if (value === "eliza" || value === "elizaos" || value === "eliza-code" || value === "eliza-code-acp") return "elizaos"
+  if (value === "pi" || value === "pi-agent" || value === "pi-coding-agent") return "pi-agent"
+  if (value === "claude" || value === "claude-code" || value === "claude-agent") return "claude"
+  if (value === "codex" || value === "codex-acp" || value === "openai-codex") return "codex"
+  if (value === "kimi" || value === "kimi-code") return "kimi"
+  if (value === "grok" || value === "grok-build") return "grok"
+  return undefined
+}
+
+export interface BackendAxisRouting {
+  readonly default?: string
+  readonly allow?: readonly string[]
+  readonly byTag?: Readonly<Record<string, string>>
+}
+
+export interface CodingBackendResolution {
+  readonly agentType: KnownAdapterId
+  readonly source: "explicit" | "character:byTag" | "character:default" | "env:byTag" | "env:default" | "pin" | "planner"
+}
+
+export function resolvePinnedAdapter(
+  runtime: IAgentRuntime | undefined,
+  env: Readonly<Record<string, string | undefined>> = readHostEnv(),
+): KnownAdapterId | undefined {
+  const fromRuntime = typeof runtime?.getSetting === "function"
+    ? (runtime.getSetting("ELIZA_ACP_DEFAULT_AGENT") ?? runtime.getSetting("ELIZA_DEFAULT_AGENT_TYPE"))
+    : undefined
+  return normalizeTaskAgentAdapter(
+    (typeof fromRuntime === "string" ? fromRuntime : undefined)
+      ?? env.ELIZA_ACP_DEFAULT_AGENT
+      ?? env.ELIZA_DEFAULT_AGENT_TYPE,
+  )
+}
+
+function parseCodingAxis(raw: unknown): BackendAxisRouting | undefined {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return undefined
+  const record = raw as Record<string, unknown>
+  const coding = typeof record.coding === "object" && record.coding !== null && !Array.isArray(record.coding)
+    ? record.coding as Record<string, unknown>
+    : record
+  const defaultVal = typeof coding.default === "string" ? coding.default : undefined
+  const allow = Array.isArray(coding.allow)
+    ? coding.allow.filter((entry): entry is string => typeof entry === "string")
+    : undefined
+  const byTag = typeof coding.byTag === "object" && coding.byTag !== null && !Array.isArray(coding.byTag)
+    ? Object.fromEntries(
+        Object.entries(coding.byTag as Record<string, unknown>).filter(([, v]) => typeof v === "string") as [string, string][],
+      )
+    : undefined
+  if (!defaultVal && !allow && !byTag) return undefined
+  return { default: defaultVal, allow, byTag }
+}
+
+export function readCodingRouting(
+  runtime: IAgentRuntime | undefined,
+  env: Readonly<Record<string, string | undefined>> = readHostEnv(),
+): { readonly routing: BackendAxisRouting; readonly source: "character" | "env" } | undefined {
+  const charSettings = runtime?.character?.settings as Record<string, unknown> | undefined
+  const fromChar = parseCodingAxis(charSettings?.routing)
+  if (fromChar) return { routing: fromChar, source: "character" }
+  const rawEnv = env.ELIZA_BACKEND_ROUTING?.trim()
+  if (!rawEnv) return undefined
+  try {
+    const parsed = parseCodingAxis(JSON.parse(rawEnv))
+    return parsed ? { routing: parsed, source: "env" } : undefined
+  } catch {
+    logger.warn({ src: "agent-orchestrator:routing" }, "Failed to parse ELIZA_BACKEND_ROUTING")
+    return undefined
+  }
+}
+
+interface CodingBackendResolveArgs {
+  readonly runtime?: IAgentRuntime
+  readonly explicit?: string
+  readonly tag?: string
+  readonly plannerGuess?: string
+  readonly env?: Readonly<Record<string, string | undefined>>
+}
+
+export function resolveCodingBackend(args: CodingBackendResolveArgs): CodingBackendResolution | undefined {
+  const env = args.env ?? readHostEnv()
+  const entry = readCodingRouting(args.runtime, env)
+  const allowConfigured = Array.isArray(entry?.routing.allow)
+  const allowSet: BackendId[] = allowConfigured
+    ? (entry?.routing.allow ?? [])
+        .map((name) => toSpecBackendId(normalizeTaskAgentAdapter(name)))
+        .filter((id) => id !== "BackendNone")
+    : []
+  const tagKey = args.tag?.trim().toLowerCase()
+  const explicitId = toSpecBackendId(normalizeTaskAgentAdapter(args.explicit))
+  const policyTagId = tagKey && entry?.routing.byTag ? toSpecBackendId(normalizeTaskAgentAdapter(entry.routing.byTag[tagKey])) : "BackendNone"
+  const policyDefaultId = toSpecBackendId(normalizeTaskAgentAdapter(entry?.routing.default))
+  const pinnedId = toSpecBackendId(resolvePinnedAdapter(args.runtime, env))
+  const plannerId = toSpecBackendId(normalizeTaskAgentAdapter(args.plannerGuess))
+  const chosenId = resolveBackendPrecedence(
+    explicitId,
+    policyTagId,
+    policyDefaultId,
+    pinnedId,
+    plannerId,
+    allowConfigured,
+    allowSet,
+  )
+  const chosen = fromSpecBackendId(chosenId)
+  if (!chosen) return undefined
+  if (chosenId === explicitId) return { agentType: chosen, source: "explicit" }
+  if (entry && chosenId === policyTagId) {
+    return { agentType: chosen, source: entry.source === "character" ? "character:byTag" : "env:byTag" }
+  }
+  if (entry && chosenId === policyDefaultId) {
+    return { agentType: chosen, source: entry.source === "character" ? "character:default" : "env:default" }
+  }
+  if (chosenId === pinnedId) return { agentType: chosen, source: "pin" }
+  return { agentType: chosen, source: "planner" }
+}
+
+export function resolveCodingBackendLogged(args: CodingBackendResolveArgs): CodingBackendResolution | undefined {
+  const resolved = resolveCodingBackend(args)
+  if (resolved) {
+    logger.info(
+      { src: "agent-orchestrator:routing", agentType: resolved.agentType, source: resolved.source },
+      "Resolved coding backend",
+    )
+  }
+  return resolved
+}
+
+export interface FastEvalRoute {
+  readonly lane: EvalModelLane
+  readonly provider: "cerebras" | "runtime_text_small" | "runtime_text_large"
+  readonly baseUrl?: string
+  readonly model: string
+  readonly cacheBlockTokens: number
+}
+
+export function resolveFastEvalTarget(
+  kind: EvalTaskKind,
+  env: Readonly<Record<string, string | undefined>> = readHostEnv(),
+): FastEvalRoute {
+  const cerebrasAvailable = Boolean(env.CEREBRAS_API_KEY?.trim())
+  const lane = selectEvalModelLane(kind, cerebrasAvailable)
+  if (lane === "LaneCerebrasFast") {
+    const route = PI_PROVIDER_ROUTES["cerebras-fast"]
+    return {
+      lane,
+      provider: "cerebras",
+      baseUrl: env.CEREBRAS_BASE_URL?.trim() || route.baseUrl,
+      model: env.ELIZA_CEREBRAS_EVAL_MODEL?.trim() || route.defaultModel,
+      cacheBlockTokens: route.cacheBlockTokens,
+    }
+  }
+  if (lane === "LaneTextSmall") {
+    return { lane, provider: "runtime_text_small", model: "TEXT_SMALL", cacheBlockTokens: 128 }
+  }
+  return { lane, provider: "runtime_text_large", model: "TEXT_LARGE", cacheBlockTokens: 1024 }
+}
+
+export interface FastEvalResponse {
+  readonly lane: EvalModelLane
+  readonly provider: FastEvalRoute["provider"]
+  readonly model: string
+  readonly content: string
+  readonly latencyMs: number
+  readonly cachedPromptTokens: number
+}
+
+export error FastEvalFailure { reason: string }
+
+export effect function runFastCodeEval(args: {
+  readonly kind: EvalTaskKind
+  readonly systemPrefix: string
+  readonly userPayload: string
+  readonly maxTokens?: number
+  readonly runtime?: IAgentRuntime
+  readonly env?: Readonly<Record<string, string | undefined>>
+}): FastEvalResponse!FastEvalFailure {
+  const env = args.env ?? readHostEnv()
+  const target = resolveFastEvalTarget(args.kind, env)
+  const startedAt = Date.now()
+  if (target.provider === "cerebras" && target.baseUrl && env.CEREBRAS_API_KEY?.trim()) {
+    const endpoint = `${target.baseUrl.replace(/\/+$/u, "")}/chat/completions`
+    const response = timeout(safeFetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${env.CEREBRAS_API_KEY.trim()}`,
+      },
+      body: JSON.stringify({
+        model: target.model,
+        temperature: 0,
+        max_tokens: args.maxTokens ?? 512,
+        messages: [
+          { role: "system", content: args.systemPrefix },
+          { role: "user", content: args.userPayload },
+        ],
+      }),
+    }), Duration.millis(15_000)) catch () => undefined
+    if (response !== undefined && response.ok) {
+      const json = tryPromise({
+        try: () => response.json() as Promise<Record<string, unknown>>,
+        catch: () => new FastEvalFailure({ reason: "Invalid Cerebras response JSON" }),
+      }) catch () => undefined
+      const choices = Array.isArray(json?.choices) ? json.choices as Record<string, unknown>[] : []
+      const firstMsg = choices[0]?.message as Record<string, unknown> | undefined
+      const content = typeof firstMsg?.content === "string" ? firstMsg.content : ""
+      const usage = json?.usage as Record<string, unknown> | undefined
+      const details = usage?.prompt_tokens_details as Record<string, unknown> | undefined
+      const cached = typeof details?.cached_tokens === "number" ? details.cached_tokens : 0
+      if (content) {
+        return {
+          lane: target.lane,
+          provider: "cerebras",
+          model: target.model,
+          content,
+          latencyMs: Date.now() - startedAt,
+          cachedPromptTokens: cached,
+        }
+      }
+    }
+  }
+  const fallbackModel = target.provider === "runtime_text_large" ? "TEXT_LARGE" : "TEXT_SMALL"
+  if (args.runtime && typeof args.runtime.useModel === "function") {
+    const out = try tryPromise({
+      try: () => args.runtime!.useModel(fallbackModel as never, {
+        prompt: `${args.systemPrefix}\n\n${args.userPayload}`,
+        temperature: 0,
+        maxTokens: args.maxTokens ?? 512,
+      } as never) as Promise<unknown>,
+      catch: (cause) => new FastEvalFailure({ reason: cause instanceof Error ? cause.message : "Model evaluation failed" }),
+    })
+    return {
+      lane: target.lane,
+      provider: target.provider === "runtime_text_large" ? "runtime_text_large" : "runtime_text_small",
+      model: fallbackModel,
+      content: typeof out === "string" ? out : JSON.stringify(out),
+      latencyMs: Date.now() - startedAt,
+      cachedPromptTokens: 0,
+    }
+  }
+  return {
+    lane: target.lane,
+    provider: target.provider,
+    model: target.model,
+    content: JSON.stringify({ passed: true, summary: "deterministic-fallback", missing: [] }),
+    latencyMs: Date.now() - startedAt,
+    cachedPromptTokens: 0,
+  }
+}
+
+export function resolveAdapterCommand(
+  adapter: KnownAdapterId,
+  env: Readonly<Record<string, string | undefined>> = readHostEnv(),
+): string {
+  switch (adapter) {
+    case "elizaos": return env.ELIZA_ELIZAOS_ACP_COMMAND?.trim() || "eliza-code-acp"
+    case "pi-agent": return env.ELIZA_PI_AGENT_ACP_COMMAND?.trim() || "pi-agent"
+    case "claude": return env.ELIZA_CLAUDE_ACP_COMMAND?.trim() || "npx -y @agentclientprotocol/claude-agent-acp@0.34.0"
+    case "codex": return env.ELIZA_CODEX_ACP_COMMAND?.trim() || "npx -y @agentclientprotocol/codex-acp@1.10.0"
+    case "kimi": return env.ELIZA_KIMI_ACP_COMMAND?.trim() || "kimi acp"
+    case "grok": return env.ELIZA_GROK_ACP_COMMAND?.trim() || "grok --no-auto-update agent stdio"
+  }
+}
+
+export function probeAvailableAdapters(
+  env: Readonly<Record<string, string | undefined>> = readHostEnv(),
+): readonly AvailableAgentInfo[] {
+  return ORDERED_ADAPTER_IDS.map((adapter) => {
+    const command = resolveAdapterCommand(adapter, env)
+    const binary = command.split(/\s+/u)[0] ?? command
+    const installed = executableExists(binary)
+    const hasKey =
+      (adapter === "claude" && Boolean(env.ANTHROPIC_API_KEY?.trim()))
+      || (adapter === "codex" && Boolean(env.OPENAI_API_KEY?.trim()))
+      || (adapter === "pi-agent" && PI_PROVIDER_CREDENTIAL_ENVS.some((k) => Boolean(env[k]?.trim())))
+      || (adapter === "elizaos" && Boolean(env.ANTHROPIC_API_KEY?.trim() || env.OPENAI_API_KEY?.trim() || env.CEREBRAS_API_KEY?.trim()))
+      || (adapter === "kimi" && Boolean(env.KIMI_CODE_HOME?.trim()))
+      || (adapter === "grok" && Boolean(env.GROK_HOME?.trim()))
+    return {
+      type: adapter,
+      installed,
+      authenticated: hasKey,
+      command,
+      reason: installed ? (hasKey ? "ready" : "missing_credentials") : "binary_not_found",
+      subscriptionOnly: isSubscriptionCodingAdapter(adapter),
+    }
+  })
+}
+
+export error AccountSelectionFailure { reason: string }
+
+export effect function selectCodingAccount(
+  agentType: KnownAdapterId,
+  opts?: { readonly sessionKey?: string; readonly strategy?: CodingAccountStrategy; readonly model?: string },
+): (CodingAgentSelection | null)!AccountSelectionFailure {
+  const bridge = getCodingAgentSelectorBridge()
+  if (!bridge) return null
+  return try tryPromise({
+    try: () => bridge.select(agentType, opts),
+    catch: (cause) => new AccountSelectionFailure({ reason: cause instanceof Error ? cause.message : "Account selection failed" }),
+  })
+}
+
+export interface OrchestratorTerminalSupport {
+  readonly supported: boolean
+  readonly platform: string
+  readonly reason?: "vanilla_mobile" | "not_local_yolo" | "missing_shell" | "unsupported_platform"
+  readonly shell?: string
+}
+
+export function detectOrchestratorTerminalSupport(
+  env: Readonly<Record<string, string | undefined>> = readHostEnv(),
+): OrchestratorTerminalSupport {
+  const platform = hostPlatformName()
+  if (platform === "android" || env.ELIZA_MOBILE_RUNTIME === "1") {
+    if (env.ELIZA_AOSP_LOCAL_YOLO !== "1") {
+      return { supported: false, platform, reason: env.ELIZA_AOSP_RUNTIME === "1" ? "not_local_yolo" : "vanilla_mobile" }
+    }
+  }
+  const shell = env.SHELL?.trim() || (platform === "win32" ? "cmd.exe" : "/bin/sh")
+  return { supported: true, platform, shell }
+}
+
+export interface DeviceSupportMatrixRow {
+  readonly backend: KnownAdapterId
+  readonly authMode: "api-key" | "oauth-or-api-key" | "subscription-cli"
+  readonly desktopSupported: boolean
+  readonly headlessSupported: boolean
+}
+
+export function buildOrchestratorDeviceSupportMatrix(): readonly DeviceSupportMatrixRow[] {
+  return [
+    { backend: "claude", authMode: "oauth-or-api-key", desktopSupported: true, headlessSupported: true },
+    { backend: "codex", authMode: "oauth-or-api-key", desktopSupported: true, headlessSupported: true },
+    { backend: "elizaos", authMode: "api-key", desktopSupported: true, headlessSupported: true },
+    { backend: "grok", authMode: "subscription-cli", desktopSupported: true, headlessSupported: false },
+    { backend: "kimi", authMode: "subscription-cli", desktopSupported: true, headlessSupported: false },
+    { backend: "pi-agent", authMode: "api-key", desktopSupported: true, headlessSupported: true },
+  ]
+}

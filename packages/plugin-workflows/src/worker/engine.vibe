@@ -7,14 +7,20 @@ export type GeneratedWait =
   | { readonly kind: "approval"; readonly request: { readonly title: string; readonly summary: string; readonly operation: string; readonly target: string; readonly account: string } }
   | { readonly kind: "signal"; readonly name: string; readonly timeoutMs?: number }
   | { readonly kind: "timer"; readonly ms: number }
+export interface EffectRequest { readonly prompt: string; readonly fast?: boolean }
 export type EngineMessage =
   | { readonly type: "checkpoint"; readonly call: string; readonly digest: string; readonly value: unknown }
-  | { readonly type: "needsEffect"; readonly call: string; readonly digest: string; readonly request: { readonly prompt: string } }
+  | { readonly type: "needsEffect"; readonly call: string; readonly digest: string; readonly request: EffectRequest }
+  | { readonly type: "needsEffectBatch"; readonly call: string; readonly digest: string; readonly requests: readonly EffectRequest[] }
   | { readonly type: "park"; readonly call: string; readonly digest: string; readonly wait: GeneratedWait }
   | { readonly type: "diverged"; readonly call: string }
   | { readonly type: "done"; readonly text: string; readonly output: unknown }
   | { readonly type: "failed"; readonly message: string; readonly cancelled: boolean }
-export type EffectAnswer = { readonly type: "effect"; readonly call: string; readonly text: string } | { readonly type: "effectFailed"; readonly call: string; readonly message: string } | { readonly type: "cancel" }
+export type EffectAnswer =
+  | { readonly type: "effect"; readonly call: string; readonly text: string }
+  | { readonly type: "effectBatch"; readonly call: string; readonly texts: readonly string[] }
+  | { readonly type: "effectFailed"; readonly call: string; readonly message: string }
+  | { readonly type: "cancel" }
 export type CheckpointAnswer = { readonly type: "checkpointed"; readonly call: string; readonly digest: string }
 export type CheckpointStatus = "acknowledged" | "cancelled" | "refused"
 export interface GeneratedStart {
@@ -101,17 +107,38 @@ module node {
           }
           case "generate": {
             const prompt = request.prompt.slice(0, 16000)
-            const { digest, entry } = await enter(call, ["generate", call, prompt])
+            const fast = request.fast === true
+            const { digest, entry } = await enter(call, ["generate", call, prompt, ...(fast ? [true] : [])])
             if (entry !== undefined) return typeof entry.value === "string" ? value(entry.value)
               : { kind: "failed", message: "The text model could not draft this call" }
-            await io.send({ type: "needsEffect", call, digest, request: { prompt } })
+            await io.send({ type: "needsEffect", call, digest, request: { prompt, ...(fast ? { fast: true } : {}) } })
             const answer = await io.effect(call)
             if (answer.type === "cancel") {
               stopped = new Parked("cancelled")
               throw stopped
             }
             if (answer.type === "effectFailed") return { kind: "failed", message: answer.message }
+            if (answer.type !== "effect") return { kind: "failed", message: "The effect answer did not match its call" }
             return value(answer.text)
+          }
+          case "generateBatch": {
+            if (request.requests.length === 0 || request.requests.length > 16) throw new Error("A generateBatch call requires 1 to 16 prompts")
+            const requests = request.requests.map((item) => ({
+              prompt: item.prompt.slice(0, 16000),
+              ...(item.fast === true ? { fast: true } : {}),
+            }))
+            const { digest, entry } = await enter(call, ["generateBatch", call, requests])
+            if (entry !== undefined) return Array.isArray(entry.value) ? value(entry.value)
+              : { kind: "failed", message: "The text model could not draft this batch call" }
+            await io.send({ type: "needsEffectBatch", call, digest, requests })
+            const answer = await io.effect(call)
+            if (answer.type === "cancel") {
+              stopped = new Parked("cancelled")
+              throw stopped
+            }
+            if (answer.type === "effectFailed") return { kind: "failed", message: answer.message }
+            if (answer.type !== "effectBatch") return { kind: "failed", message: "The batch effect answer did not match its call" }
+            return value(answer.texts)
           }
           case "approval": {
             const shown = { title: request.title.slice(0, 500), summary: request.summary.slice(0, 4000), operation: request.operation.slice(0, 500), target: request.target.slice(0, 1000), account: request.account.slice(0, 500) }

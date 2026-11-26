@@ -1,228 +1,82 @@
-// spec/webSearch/index.md, "Story: Search the web through my selected profile"
-import { isBlockedHostname, isPrivateIpAddress, type Action, type IAgentRuntime, type Plugin } from "@elizaos/core"
-import { Schema } from "effect"
-import { Machine, machine, usableCitation, type BrowserSelection } from "../gen/webSearch.effect.vibe"
-
-module node {
-  export async function publicSearch(query: string, signal: AbortSignal): Promise<unknown[]> {
-    const response = await globalThis.fetch("https://mcp.parallel.ai/mcp", {
-      method: "POST", redirect: "error", signal: AbortSignal.any([signal, AbortSignal.timeout(15000)]),
-      headers: { Accept: "application/json, text/event-stream", "Content-Type": "application/json" },
-      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "web_search", arguments: { objective: query, search_queries: [query] } } }),
-    })
-    if (!response.ok || response.body === null) {
-      await response.body?.cancel()
-      throw new Error(`Public web search returned HTTP ${response.status}.`)
-    }
-    const reader = response.body.getReader()
-    const decoder = new TextDecoder("utf-8", { fatal: true })
-    let size = 0
-    let text = ""
-    try {
-      for (;;) {
-        const item = await reader.read()
-        if (item.done) break
-        size += item.value.byteLength
-        if (size > 262144) throw new Error("Public search exceeded its response budget.")
-        text += decoder.decode(item.value, { stream: true })
-      }
-    } finally {
-      await reader.cancel()
-      reader.releaseLock()
-    }
-    text += decoder.decode()
-    const contentType = response.headers.get("content-type") ?? ""
-    if (contentType.includes("application/json")) return [JSON.parse(text)]
-    if (!contentType.includes("text/event-stream")) throw new Error("Public search returned an unsupported response format.")
-    return text.split(/\r?\n\r?\n/).flatMap((event) => {
-      const data = event.split(/\r?\n/).flatMap((line) => line.startsWith("data:") ? [line.slice(5).trimStart()] : []).join("\n")
-      return data === "" || data === "[DONE]" ? [] : [JSON.parse(data)]
-    })
-  }
-
-  export function searchUrl(query: string): URL {
-    const url = new URL("https://www.google.com/search")
-    url.searchParams.set("q", query)
-    return url
-  }
-
-  export function readUrl(input: string): URL | undefined {
-    return URL.canParse(input) ? new URL(input) : undefined
-  }
-}
-import { publicSearch, readUrl, searchUrl } from node
+// spec/webSearch/index.md, "Story: Search the web through my selected profile"; spec/webSearch/edge.md, "Story: Bound edge provider selection and public article fetches"
+import type { Action, Plugin } from "@elizaos/core"
+import { searchBrowserFirstWeb } from "./browser-search.vibe"
+import { createWebSearchEdgePlugin, runWebSearchWith, webSearchEdgeAction } from "./edge.vibe"
 
 export error WebSearchFailed { reason: string }
 
-interface SearchCommand {
-  readonly subaction: "open" | "snapshot"
-  readonly url: string
-  readonly id?: string
-}
-
-interface BrowserDispatcher {
-  resolveTarget(id: string, command: SearchCommand): Promise<unknown>
-  execute(command: SearchCommand, id: string): Promise<unknown>
-}
-
-interface BrowserTarget {
-  id: string
-  getProfileId(): string | null
-  supports(command: SearchCommand): boolean
-}
-
-function isDispatcher(value: unknown): value is BrowserDispatcher {
-  return typeof value === "object" && value !== null && "resolveTarget" in value && typeof value.resolveTarget === "function" &&
-    "execute" in value && typeof value.execute === "function"
-}
-
-function isBrowserTarget(value: unknown): value is BrowserTarget {
-  return typeof value === "object" && value !== null && "id" in value && typeof value.id === "string" &&
-    "getProfileId" in value && typeof value.getProfileId === "function" && "supports" in value && typeof value.supports === "function"
-}
-
-function setting(runtime: IAgentRuntime, key: string): string {
-  const value = runtime.getSetting(key)
-  return typeof value === "string" ? value.trim() : ""
-}
-
-function browserSelection(saved: unknown, runtime: IAgentRuntime): BrowserSelection {
-  if (saved !== undefined) {
-    if (typeof saved !== "object" || saved === null) return { tag: "Invalid" }
-    if ("disabled" in saved && saved.disabled === true) return { tag: "Disabled" }
-    if (!("targetId" in saved) || typeof saved.targetId !== "string" || saved.targetId.trim() === "" ||
-      !("profileId" in saved) || typeof saved.profileId !== "string" || saved.profileId.trim() === "") return { tag: "Invalid" }
-    return { tag: "Ready", targetId: saved.targetId, profileId: saved.profileId }
-  }
-  const profileId = setting(runtime, "WEB_SEARCH_BROWSER_PROFILE_ID")
-  return profileId === "" ? { tag: "Missing" } : { tag: "Ready", profileId, targetId: setting(runtime, "WEB_SEARCH_BROWSER_TARGET_ID") || "chromium-device" }
-}
-
-const browserReceipt = Schema.Struct({
-  targetId: Schema.String,
-  value: Schema.Struct({
-    profileId: Schema.String,
-    result: Schema.Struct({
-      id: Schema.String,
-      frames: Schema.optionalKey(Schema.Array(Schema.Struct({
-        complete: Schema.Boolean, frameId: Schema.Int, url: Schema.String, text: Schema.String, readyState: Schema.String,
-        elements: Schema.Array(Schema.Struct({ href: Schema.optionalKey(Schema.NullOr(Schema.String)), heading: Schema.optionalKey(Schema.NullOr(Schema.String)) })),
-      }))),
-    }),
-  }),
-})
-
-const searchReply = Schema.Struct({
-  id: Schema.Literal(1),
-  result: Schema.Struct({
-    isError: Schema.optionalKey(Schema.Boolean),
-    content: Schema.Array(Schema.Struct({ type: Schema.String, text: Schema.optionalKey(Schema.String) })),
-  }),
-})
-
-function publicResult(urlInput: string, heading: string) {
-  const observed = readUrl(urlInput)
-  if (observed === undefined) return []
-  const href = observed.origin === "https://www.google.com" && observed.pathname === "/url" ? observed.searchParams.get("q") ?? observed.searchParams.get("url") : observed.href
-  if (href === null) return []
-  const destination = readUrl(href)
-  if (destination === undefined) return []
-  const evidence = {
-    destination: destination.href, heading: heading.trim(),
-    isWeb: destination.protocol === "https:" || destination.protocol === "http:",
-    hasCredentials: destination.username !== "" || destination.password !== "",
-    isSearchControl: destination.origin === "https://www.google.com" && ["/search", "/advanced_search", "/preferences"].includes(destination.pathname),
-    destinationPublic: !isBlockedHostname(destination.hostname) && !isPrivateIpAddress(destination.hostname),
-  }
-  return usableCitation(evidence) ? [{ url: evidence.destination, title: evidence.heading }] : []
-}
-
-effect function executeSearch(runtime: IAgentRuntime, query: string) {
-  const stored: unknown = try tryPromise(() => runtime.getCache<unknown>("browser.search-profile"))
-  const selection = browserSelection(stored, runtime)
-  const browser: unknown = runtime.getService("browser")
-  const url = try Effect.try({ try: () => searchUrl(query), catch: () => new WebSearchFailed({ reason: "The search query URL could not be built." }) })
-  const open: SearchCommand = { subaction: "open", url: url.href }
-  const target = selection.tag === "Ready" && isDispatcher(browser)
-    ? (try tryPromise(() => browser.resolveTarget(selection.targetId, open)))
-    : undefined
-  const targetReady = selection.tag === "Ready" && isBrowserTarget(target) && target.id === selection.targetId &&
-    (try Effect.try(() => target.getProfileId() === selection.profileId && target.supports(open) && target.supports({ subaction: "snapshot", url: url.href })))
-  provide machine() {
-    const run = try Machine
-    const state = try run.send({ type: "dispatchSearch", query, queryUnits: [...query].length, selection, supportsFilters: true, targetReady })
-    if (state.route.tag === "RefuseSearch") throw new WebSearchFailed({ reason: "Select an authorized browser search profile." })
-    if (state.route.tag === "Keyless") {
-      const answers = try tryPromise({
-        try: (signal) => publicSearch(query, signal),
-        catch: () => new WebSearchFailed({ reason: "The public search provider did not answer." }),
-      })
-      const matching = answers.filter((answer) => typeof answer === "object" && answer !== null && "id" in answer && answer.id === 1)
-      if (matching.length !== 1) throw new WebSearchFailed({ reason: "The public search reply did not match this request." })
-      const reply = try Schema.decodeUnknownEffect(searchReply)(matching[0])
-      if (reply.result.isError) throw new WebSearchFailed({ reason: "The public search provider refused the query." })
-      const text = reply.result.content.flatMap((part) => part.type === "text" && part.text !== undefined ? [part.text] : []).join("\n")
-      const empty = text.trim() === "" || /^\s*\[\s*\]\s*$/.test(text) || /^\s*\{\s*"results"\s*:\s*\[\s*\]\s*\}\s*$/.test(text)
-      try run.send({ type: "readKeylessSearch", resultCount: empty ? 0 : 1 })
-      return { provider: "parallel", text: empty ? "No results." : text, links: [] }
-    }
-    if (!isDispatcher(browser) || !isBrowserTarget(target)) throw new WebSearchFailed({ reason: "The authorized browser is unavailable." })
-    const route = state.route
-    const opened = try Schema.decodeUnknownEffect(browserReceipt)(try tryPromise(() => browser.execute(open, route.target)))
-    const tabId = opened.value.result.id
-    if (!/^\d+$/.test(tabId)) throw new WebSearchFailed({ reason: "The authorized browser did not identify its search tab." })
-    try run.send({ type: "openSearchTab", targetId: opened.targetId, profileId: opened.value.profileId, tabId })
-    const deadline = (try Clock.currentTimeMillis) + 15000
-    for (;;) {
-      if ((try Effect.try(() => target.getProfileId())) !== route.profile) throw new WebSearchFailed({ reason: "The browser search profile changed after dispatch." })
-      const snapshot = try Schema.decodeUnknownEffect(browserReceipt)(try tryPromise(() => browser.execute({ subaction: "snapshot", url: url.href, id: tabId }, route.target)))
-      const frames = snapshot.value.result.frames ?? []
-      const main = frames.find((frame) => frame.frameId === 0)
-      const page = main === undefined ? undefined : try Effect.try({ try: () => readUrl(main.url), catch: () => new WebSearchFailed({ reason: "The browser returned an invalid search URL." }) })
-      if (snapshot.targetId !== route.target || snapshot.value.profileId !== route.profile || snapshot.value.result.id !== tabId ||
-        page === undefined || page.origin !== url.origin || page.pathname !== url.pathname || page.searchParams.get("q") !== query) {
-        throw new WebSearchFailed({ reason: "The browser search page no longer matches the dispatched query." })
-      }
-      if (frames.every((frame) => frame.complete && frame.readyState === "complete")) {
-        const found = main?.elements.flatMap((element) => publicResult(element.href ?? "", element.heading ?? "")) ?? []
-        const links = [...new Map(found.map((link) => [link.url, link])).values()]
-        if (links.length === 0) throw new WebSearchFailed({ reason: "The search page exposed no result links. Check the authorized tab." })
-        try run.send({ type: "readSearchTab", targetId: route.target, profileId: route.profile, tabId, complete: true, resultCount: links.length })
-        return { provider: "browser", text: frames.map((frame) => frame.text).join("\n\n"), links }
-      }
-      if ((try Clock.currentTimeMillis) >= deadline) throw new WebSearchFailed({ reason: "The authorized browser search did not finish." })
-      try sleep("200 millis")
-    }
-  }
-}
-
-function queryArgument(options: unknown): string {
-  if (typeof options !== "object" || options === null) return ""
-  const parameters = "parameters" in options ? options.parameters : options
-  if (typeof parameters !== "object" || parameters === null) return ""
-  for (const key of ["query", "q", "objective"]) {
-    const raw = Object.getOwnPropertyDescriptor(parameters, key)?.value
-    if (typeof raw === "string" && raw.trim() !== "") return raw.trim()
-  }
-  return ""
-}
-
 export const webSearchAction: Action = {
-  name: "WEB_SEARCH",
-  description: "Search with the owner's authorized browser or public search if a browser route is unavailable before dispatch.",
-  parameters: [{ name: "query", description: "Web search query.", required: true, schema: { type: "string" } }],
-  validate: (_runtime, _message, _state, options) => Promise.resolve(queryArgument(options) !== ""),
-  handler: (runtime, _message, _state, options) => runPromise(effect {
-    const query = queryArgument(options)
-    if (query === "" || [...query].length > 2048) throw new WebSearchFailed({ reason: "A search needs 1–2048 characters." })
-    const result = try executeSearch(runtime, query)
-    return { success: true, text: result.text, data: { provider: result.provider, links: result.links } }
-  }, { signal: typeof options?.abortSignal === "object" && options.abortSignal instanceof AbortSignal ? options.abortSignal : undefined }),
+  ...webSearchEdgeAction,
+  override: true,
+  contexts: ["general", "research", "web", "code"],
+  contextGate: { anyOf: ["general", "research", "web", "code"] },
+  description:
+    "Search the current web using the agent's explicitly authorized Chromium profile. Uses public keyless search only when no eligible browser is available before dispatch. Dispatched searches are never replayed through another provider.",
+  descriptionCompressed: "Search web via authorized browser or keyless fallback.",
+  handler: async (runtime, message, state, options, callback) => {
+    const action = createWebSearchEdgePlugin((query, runOpts) =>
+      runWebSearchWith(
+        query,
+        (value) => searchBrowserFirstWeb(runtime, value, { signal: runOpts?.signal }),
+        { signal: runOpts?.signal },
+      ),
+    ).actions?.[0]
+    if (!action) {
+      return { success: false, text: "WEB_SEARCH action is missing.", error: "WEB_SEARCH action is missing." }
+    }
+    return action.handler(runtime, message, state, options, callback)
+  },
 }
 
-export const plugin: Plugin = {
+export const webSearchPlugin: Plugin = {
   name: "@elizaos/plugin-web-search",
-  description: "Owner-scoped browser search and the public Parallel search endpoint.",
+  description: "Authorized browser-first web search with public keyless fallback.",
   actions: [webSearchAction],
 }
-export default plugin
+
+export const plugin: Plugin = webSearchPlugin
+export default webSearchPlugin
+
+export {
+  compactWebSearchDigest,
+  createWebSearchEdgePlugin,
+  fetchKeylessWeb,
+  runWebSearchEdge,
+  runWebSearchWith,
+  WEB_SEARCH_EDGE_COMPATIBILITY,
+  webSearchEdgeAction,
+  webSearchEdgePlugin,
+  webSearchSourceEvidence,
+  webSearchSourceUrls,
+  type WebSearchEdgeRunner,
+  type WebSearchSourceEvidence,
+} from "./edge.vibe"
+
+export {
+  fetchKeylessWebTransport,
+  isKeylessWebSearchUnavailableError,
+  KeylessWebSearchUnavailableError,
+  searchKeylessWeb,
+  type KeylessWebFetchOptions,
+  type KeylessWebSearchFailureReason,
+  type KeylessWebSearchFetch,
+  type KeylessWebSearchOptions,
+  type KeylessWebSearchProvider,
+  type KeylessWebSearchResult,
+} from "./keyless-web-search.vibe"
+
+export {
+  canSearchInBrowser,
+  searchAuthorizedBrowser,
+  searchAuthorizedBrowserEffect,
+  searchBrowserFirstWeb,
+} from "./browser-search.vibe"
+
+export type {
+  CompactSearchDigest,
+  CompactSearchSnippet,
+  SearchImage,
+  SearchOptions,
+  SearchResponse,
+  SearchResult,
+} from "./types.vibe"

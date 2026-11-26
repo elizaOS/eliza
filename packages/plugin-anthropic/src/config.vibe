@@ -1,0 +1,398 @@
+// spec/anthropic/index.md, "Transport must support the request and keeps the requested output budget"; spec/anthropic/index.md, "Temperature and nucleus sampling are mutually exclusive"
+import {
+  ElizaError,
+  logger,
+  processEnv,
+  thrown,
+  type GenerateTextParams,
+  type IAgentRuntime,
+  type PluginAutoEnableContext,
+} from "@elizaos/core"
+import type { AnthropicEffort } from "../gen/anthropic.effect.vibe"
+
+export type ValidatedApiKey = string & { readonly __brand: "ValidatedApiKey" }
+export type ModelName = string & { readonly __brand: "ModelName" }
+export type ModelSize = "small" | "large"
+export type AnthropicAuthMode = "cli" | "oauth" | "apikey"
+export type EndpointSettingReader = (key: string) => string | undefined
+
+export const ANTHROPIC_EFFORT_LEVELS = ["low", "medium", "high", "xhigh", "max"] as const
+export type AnthropicEffortLevel = (typeof ANTHROPIC_EFFORT_LEVELS)[number]
+
+export interface AnthropicCacheControl {
+  readonly type: "ephemeral"
+  readonly ttl?: "5m" | "1h"
+}
+
+export interface PluginConfig {
+  readonly ANTHROPIC_API_KEY?: string
+  readonly ANTHROPIC_SMALL_MODEL?: string
+  readonly ANTHROPIC_LARGE_MODEL?: string
+  readonly ANTHROPIC_EXPERIMENTAL_TELEMETRY?: string
+  readonly ANTHROPIC_BASE_URL?: string
+  readonly ANTHROPIC_COT_BUDGET?: string
+  readonly ANTHROPIC_COT_BUDGET_SMALL?: string
+  readonly ANTHROPIC_COT_BUDGET_LARGE?: string
+  readonly ANTHROPIC_AUTH_MODE?: string
+  readonly ANTHROPIC_REASONING_SMALL_MODEL?: string
+  readonly ANTHROPIC_REASONING_LARGE_MODEL?: string
+}
+
+export const DEFAULT_SMALL_MODEL = "claude-sonnet-5"
+export const DEFAULT_LARGE_MODEL = "claude-opus-4-8"
+export const DEFAULT_BASE_URL = "https://api.anthropic.com/v1"
+
+effect function createModelNameEffect(name: string): ModelName!ElizaError {
+  const trimmed = name.trim()
+  if (trimmed.length === 0) {
+    throw new ElizaError("Model name cannot be empty", { code: "ANTHROPIC_INVALID_MODEL_NAME" })
+  }
+  return trimmed as ModelName
+}
+
+export const createModelName = thrown(createModelNameEffect)
+
+function envValue(key: string): string | undefined {
+  const raw = processEnv()[key]
+  return typeof raw === "string" && raw.trim().length > 0 ? raw.trim() : undefined
+}
+
+function getRawSetting(runtime: IAgentRuntime, key: string): string | undefined {
+  const runtimeValue = runtime.getSetting(key)
+  if (typeof runtimeValue === "string" && runtimeValue.trim().length > 0) {
+    return runtimeValue.trim()
+  }
+  if (typeof runtimeValue === "number" && Number.isFinite(runtimeValue)) {
+    return String(runtimeValue)
+  }
+  return envValue(key)
+}
+
+export function shouldEnable(ctx: Pick<PluginAutoEnableContext, "env">): boolean {
+  const env = ctx.env
+  return Boolean(
+    (typeof env.ANTHROPIC_API_KEY === "string" && env.ANTHROPIC_API_KEY.trim() !== "")
+      || (typeof env.CLAUDE_API_KEY === "string" && env.CLAUDE_API_KEY.trim() !== ""),
+  )
+}
+
+export function getApiKeyOptional(runtime: IAgentRuntime): ValidatedApiKey | null {
+  const apiKey = getRawSetting(runtime, "ANTHROPIC_API_KEY") ?? getRawSetting(runtime, "CLAUDE_API_KEY")
+  if (!apiKey || apiKey.trim().length === 0) return null
+  return apiKey.trim() as ValidatedApiKey
+}
+
+export function resolveAnthropicBaseURL(readSetting: EndpointSettingReader): string {
+  return readSetting("ANTHROPIC_BASE_URL")?.trim() || DEFAULT_BASE_URL
+}
+
+export function getBaseURL(runtime: IAgentRuntime): string {
+  return resolveAnthropicBaseURL((key) => getRawSetting(runtime, key))
+}
+
+export function getSmallModel(runtime: IAgentRuntime): ModelName {
+  const model =
+    getRawSetting(runtime, "ANTHROPIC_SMALL_MODEL")
+    ?? getRawSetting(runtime, "SMALL_MODEL")
+    ?? getRawSetting(runtime, "ANTHROPIC_MODEL")
+    ?? DEFAULT_SMALL_MODEL
+  return model as ModelName
+}
+
+export function getNanoModel(runtime: IAgentRuntime): ModelName {
+  const model =
+    getRawSetting(runtime, "ANTHROPIC_NANO_MODEL")
+    ?? getRawSetting(runtime, "NANO_MODEL")
+    ?? getSmallModel(runtime)
+  return model as ModelName
+}
+
+export function getMediumModel(runtime: IAgentRuntime): ModelName {
+  const model =
+    getRawSetting(runtime, "ANTHROPIC_MEDIUM_MODEL")
+    ?? getRawSetting(runtime, "MEDIUM_MODEL")
+    ?? getSmallModel(runtime)
+  return model as ModelName
+}
+
+export function getLargeModel(runtime: IAgentRuntime): ModelName {
+  const model =
+    getRawSetting(runtime, "ANTHROPIC_LARGE_MODEL")
+    ?? getRawSetting(runtime, "LARGE_MODEL")
+    ?? getRawSetting(runtime, "ANTHROPIC_MODEL")
+    ?? DEFAULT_LARGE_MODEL
+  return model as ModelName
+}
+
+export function getMegaModel(runtime: IAgentRuntime): ModelName {
+  const model =
+    getRawSetting(runtime, "ANTHROPIC_MEGA_MODEL")
+    ?? getRawSetting(runtime, "MEGA_MODEL")
+    ?? getLargeModel(runtime)
+  return model as ModelName
+}
+
+export function getResponseHandlerModel(runtime: IAgentRuntime): ModelName {
+  const model =
+    getRawSetting(runtime, "ANTHROPIC_RESPONSE_HANDLER_MODEL")
+    ?? getRawSetting(runtime, "ANTHROPIC_SHOULD_RESPOND_MODEL")
+    ?? getRawSetting(runtime, "RESPONSE_HANDLER_MODEL")
+    ?? getRawSetting(runtime, "SHOULD_RESPOND_MODEL")
+    ?? getSmallModel(runtime)
+  return model as ModelName
+}
+
+export function getActionPlannerModel(runtime: IAgentRuntime): ModelName {
+  const model =
+    getRawSetting(runtime, "ANTHROPIC_ACTION_PLANNER_MODEL")
+    ?? getRawSetting(runtime, "ANTHROPIC_PLANNER_MODEL")
+    ?? getRawSetting(runtime, "ACTION_PLANNER_MODEL")
+    ?? getRawSetting(runtime, "PLANNER_MODEL")
+    ?? getLargeModel(runtime)
+  return model as ModelName
+}
+
+export function getReasoningSmallModel(runtime: IAgentRuntime): ModelName {
+  const model =
+    getRawSetting(runtime, "ANTHROPIC_REASONING_SMALL_MODEL")
+    ?? getRawSetting(runtime, "REASONING_SMALL_MODEL")
+    ?? getSmallModel(runtime)
+  return model as ModelName
+}
+
+export function getReasoningLargeModel(runtime: IAgentRuntime): ModelName {
+  const model =
+    getRawSetting(runtime, "ANTHROPIC_REASONING_LARGE_MODEL")
+    ?? getRawSetting(runtime, "REASONING_LARGE_MODEL")
+    ?? getLargeModel(runtime)
+  return model as ModelName
+}
+
+export function getImageModel(runtime: IAgentRuntime): ModelName {
+  const model = getRawSetting(runtime, "ANTHROPIC_IMAGE_MODEL") ?? getSmallModel(runtime)
+  return model as ModelName
+}
+
+export function resolveRequestedModelName(params: GenerateTextParams, fallback: ModelName): ModelName {
+  const requested = params.model
+  return typeof requested === "string" && requested.trim().length > 0
+    ? (requested.trim() as ModelName)
+    : fallback
+}
+
+export function getExperimentalTelemetry(runtime: IAgentRuntime): boolean {
+  const raw = getRawSetting(runtime, "ANTHROPIC_EXPERIMENTAL_TELEMETRY")
+  return raw !== undefined && raw.toLowerCase() === "true"
+}
+
+function isAnthropicEffortLevel(value: string): value is AnthropicEffortLevel {
+  return (ANTHROPIC_EFFORT_LEVELS as readonly string[]).includes(value)
+}
+
+export function getAnthropicEffort(
+  runtime: IAgentRuntime,
+  modelSize: ModelSize,
+): AnthropicEffortLevel | undefined {
+  const specificKey = modelSize === "small" ? "ANTHROPIC_EFFORT_SMALL" : "ANTHROPIC_EFFORT_LARGE"
+  const raw = getRawSetting(runtime, specificKey) ?? getRawSetting(runtime, "ANTHROPIC_EFFORT")
+  if (raw === undefined) return undefined
+  const normalized = raw.trim().toLowerCase()
+  if (!normalized) return undefined
+  if (!isAnthropicEffortLevel(normalized)) {
+    logger.warn(
+      `[Anthropic] ignoring invalid effort ${JSON.stringify(raw)} (expected ${ANTHROPIC_EFFORT_LEVELS.join("|")})`,
+    )
+    return undefined
+  }
+  return normalized
+}
+
+export function toSpecEffort(effort: AnthropicEffortLevel | undefined): AnthropicEffort {
+  if (effort === "low") return "EffortLow"
+  if (effort === "medium") return "EffortMedium"
+  if (effort === "high") return "EffortHigh"
+  if (effort === "xhigh") return "EffortXHigh"
+  if (effort === "max") return "EffortMax"
+  return "NoEffort"
+}
+
+export function fromSpecEffort(effort: AnthropicEffort): AnthropicEffortLevel | undefined {
+  if (effort === "EffortLow") return "low"
+  if (effort === "EffortMedium") return "medium"
+  if (effort === "EffortHigh") return "high"
+  if (effort === "EffortXHigh") return "xhigh"
+  if (effort === "EffortMax") return "max"
+  return undefined
+}
+
+effect function parseIntegerSettingEffect(options: {
+  code: string
+  setting: string
+  value: string
+  allowZero: boolean
+  entry?: string
+}): number!ElizaError {
+  const { code, setting, value, allowZero, entry } = options
+  const trimmed = value.trim()
+  const parsed = Number(trimmed)
+  const minimum = allowZero ? 0 : 1
+  if (/^\d+$/.test(trimmed) && Number.isSafeInteger(parsed) && parsed >= minimum) {
+    return parsed
+  }
+  throw new ElizaError(
+    `Invalid ${setting} value ${JSON.stringify(value)}; expected a ${allowZero ? "non-negative" : "positive"} safe decimal integer`,
+    {
+      code,
+      context: {
+        setting,
+        value,
+        ...(entry === undefined ? {} : { entry }),
+        minimum,
+      },
+      severity: "fatal",
+    },
+  )
+}
+
+export effect function getCoTBudgetEffect(
+  runtime: IAgentRuntime,
+  modelSize: ModelSize,
+): number!ElizaError {
+  const specificKey =
+    modelSize === "small" ? "ANTHROPIC_COT_BUDGET_SMALL" : "ANTHROPIC_COT_BUDGET_LARGE"
+  const specificValue = getRawSetting(runtime, specificKey)
+  if (specificValue !== undefined) {
+    return try parseIntegerSettingEffect({
+      code: "ANTHROPIC_COT_BUDGET_INVALID",
+      setting: specificKey,
+      value: specificValue,
+      allowZero: true,
+    })
+  }
+  const sharedValue = getRawSetting(runtime, "ANTHROPIC_COT_BUDGET")
+  if (sharedValue !== undefined) {
+    return try parseIntegerSettingEffect({
+      code: "ANTHROPIC_COT_BUDGET_INVALID",
+      setting: "ANTHROPIC_COT_BUDGET",
+      value: sharedValue,
+      allowZero: true,
+    })
+  }
+  return 0
+}
+
+export const getCoTBudget = thrown(getCoTBudgetEffect)
+
+export function isOpus4Model(modelName: string): boolean {
+  return modelName.toLowerCase().includes("opus-4")
+}
+
+export function isAlwaysAdaptiveModel(modelName: string): boolean {
+  return modelName.toLowerCase().includes("fable-5")
+}
+
+export function supportsEffortParameter(modelName: string): boolean {
+  const name = modelName.toLowerCase()
+  return !name.includes("haiku") && !name.includes("claude-3")
+}
+
+export function supportsExtendedEffort(modelName: string): boolean {
+  const name = modelName.toLowerCase()
+  if (name.includes("fable-5")) return true
+  const opus = name.match(/opus-4-(\d+)/)
+  return opus !== null && Number(opus[1]) >= 7
+}
+
+export function isTemperatureLockedModel(runtime: IAgentRuntime, modelName: string): boolean {
+  const raw = getRawSetting(runtime, "ANTHROPIC_TEMPERATURE_LOCKED_MODELS")
+  if (!raw) return false
+  const target = modelName.toLowerCase()
+  return raw.split(",").some((entry) => entry.trim().toLowerCase() === target)
+}
+
+export function getAnthropicModelOutputLimit(modelName: string): number {
+  const name = modelName.toLowerCase()
+  if (
+    name === "claude-fable-5"
+    || name === "claude-opus-5"
+    || name === "claude-opus-4-8"
+    || name === "claude-opus-4-7"
+    || name === "claude-opus-4-6"
+    || name === "claude-sonnet-5"
+    || name === "claude-sonnet-4-6"
+  ) {
+    return 128_000
+  }
+  return isOpus4Model(modelName) ? 32_000 : 64_000
+}
+
+effect function getMaxOutputTokensOverrideEffect(
+  runtime: IAgentRuntime,
+  modelName: string,
+): (number | undefined)!ElizaError {
+  const raw = getRawSetting(runtime, "ANTHROPIC_MAX_OUTPUT_TOKENS")
+  if (!raw) return undefined
+  const target = modelName.toLowerCase()
+  let selected: number | undefined
+  let fallback: number | undefined
+  for (const entry of raw.split(",")) {
+    const trimmed = entry.trim()
+    if (!trimmed) continue
+    const separator = trimmed.lastIndexOf(":")
+    const modelSelector = separator === -1 ? undefined : trimmed.slice(0, separator).trim()
+    if (modelSelector !== undefined && modelSelector.length === 0) {
+      throw new ElizaError(
+        `Invalid ANTHROPIC_MAX_OUTPUT_TOKENS entry ${JSON.stringify(trimmed)}; model id is required before ':'`,
+        {
+          code: "ANTHROPIC_MAX_OUTPUT_TOKENS_INVALID",
+          context: { setting: "ANTHROPIC_MAX_OUTPUT_TOKENS", value: raw, entry: trimmed },
+          severity: "fatal",
+        },
+      )
+    }
+    const parsed = try parseIntegerSettingEffect({
+      code: "ANTHROPIC_MAX_OUTPUT_TOKENS_INVALID",
+      setting: "ANTHROPIC_MAX_OUTPUT_TOKENS",
+      value: separator === -1 ? trimmed : trimmed.slice(separator + 1),
+      allowZero: false,
+      entry: trimmed,
+    })
+    if (modelSelector === undefined) {
+      fallback = parsed
+    } else if (selected === undefined && modelSelector.toLowerCase() === target) {
+      selected = parsed
+    }
+  }
+  return selected ?? fallback
+}
+
+export const getMaxOutputTokensOverride = thrown(getMaxOutputTokensOverrideEffect)
+
+export effect function resolveAnthropicMaxOutputTokensEffect(
+  runtime: IAgentRuntime,
+  modelName: string,
+): number!ElizaError {
+  return (try getMaxOutputTokensOverrideEffect(runtime, modelName)) ?? getAnthropicModelOutputLimit(modelName)
+}
+
+export const resolveAnthropicMaxOutputTokens = thrown(resolveAnthropicMaxOutputTokensEffect)
+
+export function getAuthMode(runtime: IAgentRuntime): AnthropicAuthMode {
+  const mode = getRawSetting(runtime, "ANTHROPIC_AUTH_MODE")?.toLowerCase()
+  if (mode === "claude-cli" || mode === "cli") return "cli"
+  if (mode === "oauth") return "oauth"
+  return "apikey"
+}
+
+export function getRuntimeCacheControl(runtime: IAgentRuntime): AnthropicCacheControl {
+  const ttlSetting = getRawSetting(runtime, "ANTHROPIC_PROMPT_CACHE_TTL")
+  if (ttlSetting && ttlSetting.toLowerCase() === "1h") {
+    return { type: "ephemeral", ttl: "1h" }
+  }
+  return { type: "ephemeral" }
+}
+
+export function isStreamDisabledEnv(runtime: IAgentRuntime): boolean {
+  const raw = getRawSetting(runtime, "ELIZA_ANTHROPIC_DISABLE_STREAM")?.toLowerCase()
+  return raw === "1" || raw === "true"
+}

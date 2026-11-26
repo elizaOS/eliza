@@ -1,0 +1,20 @@
+// spec/embeddings/index.md, "Vectors cover every index exactly once and share one width"
+export interface TokenUsage {
+  promptTokens: number
+  completionTokens: number
+  totalTokens: number
+}
+
+export interface EmbeddingResponse {
+  object: "list"
+  data: Array<{
+    object: "embedding"
+    embedding: number[]
+    index: number
+  }>
+  model: string
+  usage?: {
+    prompt_tokens: number
+    total_tokens: number
+  }
+}

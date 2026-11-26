@@ -1,0 +1,540 @@
+// spec/codingTools/shellSession.md, "Story: Gate destructive shell commands, manage background jobs, and page spilled output artifacts"; spec/codingTools/worktree.md, "Story: Enter and exit git worktrees without losing the previous working directory"
+import type {
+  Action,
+  ActionResult,
+  HandlerCallback,
+  IAgentRuntime,
+  Memory,
+  ProviderDataRecord,
+  State,
+} from "@elizaos/core"
+import {
+  beginLocalWorkspaceDeltaObservation,
+  finishLocalWorkspaceDeltaObservation,
+  persistShellOutputArtifact,
+  readShellOutputArtifactPage,
+  type ShellOutputArtifactStream,
+} from "../lib/artifacts.vibe"
+import {
+  DEFAULT_OUTPUT_MAX_BYTES,
+  DEFAULT_OUTPUT_MAX_LINES,
+  failureToActionResult,
+  readBoolParam,
+  readNumberParam,
+  readPositiveIntSetting,
+  readStringParam,
+  readStringSetting,
+  successActionResult,
+  summarizeShellCommand,
+  truncateTail,
+} from "../lib/format.vibe"
+import {
+  classifyDestructiveCommand,
+  extractCompactFailureDiagnostics,
+  isForbiddenCommand,
+  issueDestructiveChallenge,
+  redactShellText,
+  shellVerificationReceipt,
+  verifyAndConsumeDestructiveChallenge,
+} from "../lib/security.vibe"
+import {
+  platformShellDialect,
+  resolveInputPath,
+  runGitCommand,
+  runShellProcessNode,
+  type BackgroundShellService,
+  type SandboxService,
+  type SessionCwdService,
+  type ShellService,
+} from "../services/services.vibe"
+import {
+  BACKGROUND_SHELL_SERVICE,
+  CODING_TOOLS_CONTEXTS,
+  SANDBOX_SERVICE,
+  SESSION_CWD_SERVICE,
+  SHELL_SERVICE,
+} from "../types.vibe"
+
+const TIMEOUT_MIN_MS = 100
+const TIMEOUT_MAX_MS = 600_000
+const DEFAULT_TIMEOUT_MS = 120_000
+
+type ShellSubaction =
+  | "run"
+  | "read_output_artifact"
+  | "start_background"
+  | "poll_background"
+  | "write_background"
+  | "kill_background"
+  | "list_background"
+  | "clear_history"
+  | "view_history"
+
+function normalizeShellSubaction(raw: string | undefined): ShellSubaction | undefined {
+  if (raw === undefined || raw.trim() === "") return "run"
+  const norm = raw.trim().toLowerCase().replace(/-/g, "_")
+  switch (norm) {
+    case "run":
+    case "exec":
+    case "execute":
+      return "run"
+    case "read_artifact":
+    case "read_output_artifact":
+      return "read_output_artifact"
+    case "start_background":
+      return "start_background"
+    case "poll_background":
+      return "poll_background"
+    case "write_background":
+      return "write_background"
+    case "kill_background":
+      return "kill_background"
+    case "list_background":
+      return "list_background"
+    case "clear_history":
+    case "history_clear":
+      return "clear_history"
+    case "view_history":
+    case "show_history":
+    case "list_history":
+    case "history_view":
+      return "view_history"
+    default:
+      return undefined
+  }
+}
+
+function resolveShellTimeout(runtime: IAgentRuntime, requested: number | undefined): { readonly ok: true; readonly ms: number } | { readonly ok: false; readonly message: string } {
+  const configuredRaw = runtime.getSetting("CODING_TOOLS_SHELL_TIMEOUT_MS")
+  let fallback = DEFAULT_TIMEOUT_MS
+  if (configuredRaw !== undefined && configuredRaw !== null && configuredRaw !== "") {
+    const parsed = readPositiveIntSetting(runtime, "CODING_TOOLS_SHELL_TIMEOUT_MS")
+    if (parsed === undefined || parsed < TIMEOUT_MIN_MS || parsed > TIMEOUT_MAX_MS) {
+      return { ok: false, message: `CODING_TOOLS_SHELL_TIMEOUT_MS must be an integer in [${TIMEOUT_MIN_MS}, ${TIMEOUT_MAX_MS}]` }
+    }
+    fallback = parsed
+  }
+  const value = requested === undefined ? fallback : Math.floor(requested)
+  return { ok: true, ms: Math.min(Math.max(value, TIMEOUT_MIN_MS), TIMEOUT_MAX_MS) }
+}
+
+function conversationIdOf(message: Memory): string | undefined {
+  return message.roomId !== undefined && message.roomId !== null ? String(message.roomId) : undefined
+}
+
+async function resolveValidatedCwd(
+  runtime: IAgentRuntime,
+  conversationId: string,
+  requestedCwd: string | undefined,
+): Promise<{ readonly ok: true; readonly cwd: string } | { readonly ok: false; readonly result: ActionResult }> {
+  const sandbox = runtime.getService(SANDBOX_SERVICE) as SandboxService | null
+  const session = runtime.getService(SESSION_CWD_SERVICE) as SessionCwdService | null
+  if (!sandbox || !session) {
+    return { ok: false, result: failureToActionResult({ reason: "internal", message: "coding-tools services unavailable" }) }
+  }
+  let target: string
+  if (requestedCwd === undefined) {
+    target = (await session.getExistingCwd(conversationId)).cwd
+  } else {
+    const resolved = resolveInputPath(runtime, conversationId, requestedCwd)
+    if (!resolved.ok) return { ok: false, result: failureToActionResult(resolved.failure) }
+    target = resolved.value
+  }
+  const check = await sandbox.validatePath(conversationId, target)
+  if (!check.ok) {
+    return {
+      ok: false,
+      result: failureToActionResult({ reason: check.reason === "blocked" ? "path_blocked" : "invalid_param", message: check.message }),
+    }
+  }
+  return { ok: true, cwd: check.resolved }
+}
+
+export const shellAction: Action = {
+  name: "SHELL",
+  contexts: [...CODING_TOOLS_CONTEXTS],
+  contextGate: { anyOf: [...CODING_TOOLS_CONTEXTS] },
+  roleGate: { minRole: "ADMIN" },
+  cacheStable: true,
+  cacheScope: "agent",
+  toolSchemaStrict: true,
+  similes: ["BASH", "RUN_COMMAND", "EXEC", "TERMINAL"],
+  description: "Run shell commands with bounded tail output and artifact paging, manage background jobs, or view/clear shell history.",
+  descriptionCompressed: "SHELL: run|read_output_artifact|start/poll/write/kill/list_background|view/clear_history.",
+  parameters: [
+    { name: "action", description: "Subaction (default run).", descriptionCompressed: "Subaction", required: false, schema: { type: "string", enum: ["clear_history", "kill_background", "list_background", "poll_background", "read_output_artifact", "run", "start_background", "view_history", "write_background"] } },
+    { name: "artifact_limit", description: "Artifact page chars (max 20000).", descriptionCompressed: "Page chars", required: false, schema: { type: "number" } },
+    { name: "artifact_offset", description: "Artifact char offset.", descriptionCompressed: "Char offset", required: false, schema: { type: "number" } },
+    { name: "artifact_stream", description: "stdout or stderr.", descriptionCompressed: "Stream", required: false, schema: { type: "string", enum: ["stderr", "stdout"] } },
+    { name: "command", description: "Shell command to run.", descriptionCompressed: "Command", required: false, schema: { type: "string" } },
+    { name: "confirm", description: "Confirm destructive command.", descriptionCompressed: "Confirm", required: false, schema: { type: "boolean" } },
+    { name: "confirmation_challenge", description: "One-time challenge token.", descriptionCompressed: "Challenge token", required: false, schema: { type: "string" } },
+    { name: "cwd", description: "Working directory.", descriptionCompressed: "Cwd", required: false, schema: { type: "string" } },
+    { name: "description", description: "Short command label.", descriptionCompressed: "Label", required: false, schema: { type: "string" } },
+    { name: "handle", description: "Background or artifact handle.", descriptionCompressed: "Handle", required: false, schema: { type: "string" } },
+    { name: "limit", description: "History limit.", descriptionCompressed: "Limit", required: false, schema: { type: "number" } },
+    { name: "stderr_offset", description: "Background stderr cursor.", descriptionCompressed: "Stderr offset", required: false, schema: { type: "number" } },
+    { name: "stdin", description: "Text to write to background stdin.", descriptionCompressed: "Stdin", required: false, schema: { type: "string" } },
+    { name: "stdout_offset", description: "Background stdout cursor.", descriptionCompressed: "Stdout offset", required: false, schema: { type: "number" } },
+    { name: "timeout", description: "Hard timeout ms [100..600000].", descriptionCompressed: "Timeout ms", required: false, schema: { type: "number" } },
+  ],
+  validate: async () => true,
+  summarize: (result, params) => {
+    if (!result) return undefined
+    const data = result.data as Record<string, unknown> | undefined
+    const redacted = typeof data?.command === "string"
+      ? data.command
+      : (typeof params.command === "string" ? redactShellText(undefined, params.command) : undefined)
+    const cmd = summarizeShellCommand(redacted)
+    const code = data?.exit_code
+    return cmd ? `${cmd}${typeof code === "number" ? ` [exit ${code}]` : ""}` : undefined
+  },
+  handler: async (runtime, message, _state, options, _callback): Promise<ActionResult> => {
+    const conversationId = conversationIdOf(message)
+    if (!conversationId) return failureToActionResult({ reason: "missing_param", message: "no roomId" })
+
+    const subaction = normalizeShellSubaction(readStringParam(options, "action"))
+    if (!subaction) {
+      return failureToActionResult({ reason: "invalid_param", message: "unsupported SHELL action" })
+    }
+
+    if (subaction === "read_output_artifact") {
+      const handle = readStringParam(options, "handle")
+      const streamRaw = readStringParam(options, "artifact_stream")
+      if (!handle) return failureToActionResult({ reason: "missing_param", message: "handle is required" })
+      if (streamRaw !== "stdout" && streamRaw !== "stderr") {
+        return failureToActionResult({ reason: "missing_param", message: "artifact_stream must be stdout or stderr" })
+      }
+      const stream: ShellOutputArtifactStream = streamRaw
+      const pageRes = await readShellOutputArtifactPage({
+        conversationId,
+        handle,
+        stream,
+        offset: readNumberParam(options, "artifact_offset"),
+        limit: readNumberParam(options, "artifact_limit"),
+      })
+      if (!pageRes.ok) return failureToActionResult({ reason: "invalid_param", message: pageRes.message })
+      const p = pageRes.page
+      const suffix = p.hasMore ? `\n[More ${stream}: offset=${p.nextOffset}/${p.totalChars} handle=${p.handle}]` : ""
+      const summary: ProviderDataRecord = {
+        handle: p.handle,
+        stream: p.stream,
+        offset: p.offset,
+        next_offset: p.nextOffset,
+        total_chars: p.totalChars,
+        has_more: p.hasMore,
+      }
+      return successActionResult(p.content + suffix, summary, summary)
+    }
+
+    if (subaction === "clear_history" || subaction === "view_history") {
+      const shellSvc = runtime.getService(SHELL_SERVICE) as ShellService | null
+      if (!shellSvc) return failureToActionResult({ reason: "internal", message: "shell history service unavailable" })
+      if (subaction === "clear_history") {
+        shellSvc.clearHistory(conversationId)
+        return successActionResult("Shell command history cleared.", { cleared: true })
+      }
+      const entries = shellSvc.getHistory(conversationId, readNumberParam(options, "limit"))
+      const lines = entries.length === 0
+        ? "(no shell history)"
+        : entries.map((e, i) => `${i + 1}. [exit ${e.exitCode}] ${e.command} (${e.cwd})`).join("\n")
+      return successActionResult(lines, { count: entries.length, entries }, { count: entries.length })
+    }
+
+    const bgSvc = runtime.getService(BACKGROUND_SHELL_SERVICE) as BackgroundShellService | null
+    if (subaction === "list_background") {
+      if (!bgSvc) return failureToActionResult({ reason: "internal", message: "background shell service unavailable" })
+      const sessions = bgSvc.list(conversationId)
+      const text = sessions.length === 0
+        ? "(no background sessions)"
+        : sessions.map((s) => `- ${s.handle} [${s.status}] ${s.command}`).join("\n")
+      return successActionResult(text, { sessions }, { count: sessions.length, handles: sessions.map((s) => s.handle) })
+    }
+
+    if (subaction === "poll_background") {
+      if (!bgSvc) return failureToActionResult({ reason: "internal", message: "background shell service unavailable" })
+      const handle = readStringParam(options, "handle")
+      if (!handle) return failureToActionResult({ reason: "missing_param", message: "handle is required" })
+      const polled = bgSvc.poll({
+        conversationId,
+        handle,
+        stdoutOffset: readNumberParam(options, "stdout_offset"),
+        stderrOffset: readNumberParam(options, "stderr_offset"),
+      })
+      if (!polled.ok) return failureToActionResult({ reason: "invalid_param", message: polled.message })
+      const res = polled.result
+      const outTail = truncateTail(res.stdout, DEFAULT_OUTPUT_MAX_LINES, DEFAULT_OUTPUT_MAX_BYTES)
+      const errTail = truncateTail(res.stderr, 80, 4096)
+      const parts = [`[${res.snapshot.handle} ${res.snapshot.status}${res.snapshot.exitCode !== null ? ` exit=${res.snapshot.exitCode}` : ""}]`]
+      if (outTail.text) parts.push(outTail.text)
+      if (errTail.text) parts.push(`[stderr]\n${errTail.text}`)
+      const summary: ProviderDataRecord = {
+        handle: res.snapshot.handle,
+        status: res.snapshot.status,
+        exit_code: res.snapshot.exitCode,
+        stdout_offset: res.nextStdoutOffset,
+        stderr_offset: res.nextStderrOffset,
+      }
+      return successActionResult(parts.join("\n"), { ...summary, snapshot: res.snapshot }, summary)
+    }
+
+    if (subaction === "write_background") {
+      if (!bgSvc) return failureToActionResult({ reason: "internal", message: "background shell service unavailable" })
+      const handle = readStringParam(options, "handle")
+      const stdin = readStringParam(options, "stdin")
+      if (!handle) return failureToActionResult({ reason: "missing_param", message: "handle is required" })
+      if (stdin === undefined) return failureToActionResult({ reason: "missing_param", message: "stdin is required" })
+      const written = bgSvc.write({ conversationId, handle, stdin })
+      if (!written.ok) return failureToActionResult({ reason: "invalid_param", message: written.message })
+      return successActionResult(`Wrote ${written.bytesWritten} bytes to ${handle}`, { handle, bytes_written: written.bytesWritten })
+    }
+
+    if (subaction === "kill_background") {
+      if (!bgSvc) return failureToActionResult({ reason: "internal", message: "background shell service unavailable" })
+      const handle = readStringParam(options, "handle")
+      if (!handle) return failureToActionResult({ reason: "missing_param", message: "handle is required" })
+      const killed = bgSvc.kill({ conversationId, handle })
+      if (!killed.ok) return failureToActionResult({ reason: "invalid_param", message: killed.message })
+      return successActionResult(`Terminated ${handle}`, { handle, status: killed.snapshot.status })
+    }
+
+    const command = readStringParam(options, "command")
+    if (!command || command.trim().length === 0) {
+      return failureToActionResult({ reason: "missing_param", message: "command is required" })
+    }
+
+    const extraDeny = (readStringSetting(runtime, "CODING_TOOLS_DENY_COMMANDS") ?? "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0)
+    const deniedPattern = isForbiddenCommand(command, extraDeny)
+    if (deniedPattern) {
+      return failureToActionResult({ reason: "path_blocked", message: `command denied by policy: ${deniedPattern}` })
+    }
+
+    const cwdRes = await resolveValidatedCwd(runtime, conversationId, readStringParam(options, "cwd"))
+    if (!cwdRes.ok) return cwdRes.result
+    const cwd = cwdRes.cwd
+
+    const verdict = classifyDestructiveCommand(command, platformShellDialect())
+    if (verdict.destructive) {
+      const challenge = readStringParam(options, "confirmation_challenge")
+      const confirmed = readBoolParam(options, "confirm") === true
+      if (!confirmed || !challenge) {
+        const token = issueDestructiveChallenge({ runtime, command, executionDirectory: cwd, message })
+        return failureToActionResult(
+          {
+            reason: "needs_confirmation",
+            message: `destructive command (${verdict.reason ?? "high risk"}) requires confirm=true and confirmation_challenge`,
+          },
+          { confirmation_challenge: token, reason: verdict.reason ?? "destructive", cwd },
+          { confirmation_challenge: token, reason: verdict.reason ?? "destructive" },
+        )
+      }
+      const verified = verifyAndConsumeDestructiveChallenge({ runtime, token: challenge, command, executionDirectory: cwd, message })
+      if (!verified.ok) {
+        return failureToActionResult({ reason: "needs_confirmation", message: verified.message })
+      }
+    }
+
+    if (subaction === "start_background") {
+      if (!bgSvc) return failureToActionResult({ reason: "internal", message: "background shell service unavailable" })
+      const started = bgSvc.startSession({ conversationId, command, cwd })
+      if (!started.ok) return failureToActionResult({ reason: "invalid_param", message: started.message })
+      const snap = started.snapshot
+      const summary: ProviderDataRecord = {
+        handle: snap.handle,
+        status: snap.status,
+        cwd: snap.cwd,
+        stdout_offset: 0,
+        stderr_offset: 0,
+      }
+      return successActionResult(`Started background session ${snap.handle}`, { ...summary, snapshot: snap }, summary)
+    }
+
+    const timeoutRes = resolveShellTimeout(runtime, readNumberParam(options, "timeout"))
+    if (!timeoutRes.ok) return failureToActionResult({ reason: "invalid_param", message: timeoutRes.message })
+
+    const deltaObs = await beginLocalWorkspaceDeltaObservation(cwd)
+    const proc = await runShellProcessNode(command, { cwd, timeoutMs: timeoutRes.ms })
+    const delta = await finishLocalWorkspaceDeltaObservation(deltaObs)
+
+    const redactedCmd = redactShellText(runtime, command)
+    const redactedCwd = redactShellText(runtime, cwd)
+    const redactedOut = redactShellText(runtime, proc.stdout)
+    const redactedErr = redactShellText(runtime, proc.stderr)
+
+    const shellSvc = runtime.getService(SHELL_SERVICE) as ShellService | null
+    shellSvc?.recordHistory(conversationId, {
+      command: redactedCmd,
+      cwd: redactedCwd,
+      exitCode: proc.exitCode,
+      timestamp: Date.now(),
+      stdoutPreview: redactedOut.slice(0, 200),
+    })
+
+    const outTail = truncateTail(redactedOut, DEFAULT_OUTPUT_MAX_LINES, DEFAULT_OUTPUT_MAX_BYTES)
+    const errTail = truncateTail(redactedErr, 100, 6144)
+    const needsSpill = outTail.truncated || errTail.truncated
+    const artifact = needsSpill
+      ? await persistShellOutputArtifact({ conversationId, stdout: redactedOut, stderr: redactedErr })
+      : undefined
+
+    const sections: string[] = [`$ ${redactedCmd}`, `[exit ${proc.exitCode}]`]
+    if (outTail.text) sections.push(outTail.text)
+    if (errTail.text) sections.push(`[stderr]\n${errTail.text}`)
+    if (artifact) {
+      sections.push(`[Output spilled: handle=${artifact.handle} stdout=${artifact.source.stdout.lines}L/${artifact.source.stdout.bytes}B stderr=${artifact.source.stderr.lines}L/${artifact.source.stderr.bytes}B. Use SHELL action=read_output_artifact]`)
+    }
+    const deltaCount = delta.created.length + delta.modified.length + delta.deleted.length
+    if (deltaCount > 0) {
+      sections.push(`[Workspace delta: +${delta.created.length} ~${delta.modified.length} -${delta.deleted.length}]`)
+    }
+    const combinedOutput = sections.join("\n")
+    const diagnostics = proc.exitCode !== 0 ? extractCompactFailureDiagnostics(`${redactedOut}\n${redactedErr}`) : []
+    const verification = shellVerificationReceipt({ command: redactedCmd, exitCode: proc.exitCode, output: `${redactedOut}\n${redactedErr}` })
+
+    const fullData: ProviderDataRecord = {
+      command: redactedCmd,
+      cwd: redactedCwd,
+      exit_code: proc.exitCode,
+      signal: proc.signal,
+      output_truncated: needsSpill,
+      ...(artifact ? { output_artifact_handle: artifact.handle, output_artifact_revision: artifact.contentRevision } : {}),
+      workspace_delta: delta,
+      ...(diagnostics.length > 0 ? { diagnostics } : {}),
+    }
+    const promptData: ProviderDataRecord = {
+      exit_code: proc.exitCode,
+      ...(artifact ? { output_artifact_handle: artifact.handle } : {}),
+      ...(diagnostics.length > 0 ? { diagnostics } : {}),
+      ...(deltaCount > 0 ? { delta_counts: { created: delta.created.length, modified: delta.modified.length, deleted: delta.deleted.length } } : {}),
+    }
+
+    if (proc.timedOut) {
+      return {
+        ...(verification ? { verification } : {}),
+        ...failureToActionResult({ reason: "timeout", message: `command timed out after ${timeoutRes.ms}ms` }, fullData, promptData),
+      }
+    }
+    if (proc.exitCode !== 0) {
+      return {
+        ...(verification ? { verification } : {}),
+        ...failureToActionResult({ reason: "command_failed", message: `exit ${proc.exitCode}\n${combinedOutput}` }, fullData, promptData),
+      }
+    }
+    return {
+      ...(verification ? { verification } : {}),
+      ...successActionResult(combinedOutput, fullData, promptData),
+    }
+  },
+}
+
+function resolveWorktreeContext(
+  runtime: IAgentRuntime,
+  message: Memory,
+): { readonly ok: true; readonly conversationId: string; readonly sandbox: SandboxService; readonly session: SessionCwdService } | { readonly ok: false; readonly result: ActionResult } {
+  const conversationId = conversationIdOf(message)
+  if (!conversationId) return { ok: false, result: failureToActionResult({ reason: "missing_param", message: "no roomId" }) }
+  const sandbox = runtime.getService(SANDBOX_SERVICE) as SandboxService | null
+  const session = runtime.getService(SESSION_CWD_SERVICE) as SessionCwdService | null
+  if (!sandbox || !session) return { ok: false, result: failureToActionResult({ reason: "internal", message: "coding-tools services unavailable" }) }
+  return { ok: true, conversationId, sandbox, session }
+}
+
+export async function enterWorktreeHandler(
+  runtime: IAgentRuntime,
+  message: Memory,
+  _state?: State,
+  options?: unknown,
+  _callback?: HandlerCallback,
+): Promise<ActionResult> {
+  const ctx = resolveWorktreeContext(runtime, message)
+  if (!ctx.ok) return ctx.result
+  const { conversationId, sandbox, session } = ctx
+  const branch = readStringParam(options, "branch") ?? readStringParam(options, "name")
+  const rawPath = readStringParam(options, "path")
+  const base = readStringParam(options, "base") ?? "HEAD"
+  if (!branch) return failureToActionResult({ reason: "missing_param", message: "branch (or name) is required" })
+  if (!rawPath) return failureToActionResult({ reason: "missing_param", message: "path is required" })
+
+  const input = resolveInputPath(runtime, conversationId, rawPath)
+  if (!input.ok) return failureToActionResult(input.failure)
+  const validated = await sandbox.validatePath(conversationId, input.value)
+  if (!validated.ok) {
+    return failureToActionResult({ reason: validated.reason === "blocked" ? "path_blocked" : "invalid_param", message: validated.message })
+  }
+  const worktreePath = validated.resolved
+  const cwd = session.getCwd(conversationId)
+
+  const gitRes = await runGitCommand({ cwd, gitArgs: ["worktree", "add", "-b", branch, worktreePath, base] })
+  if (gitRes.exitCode !== 0) {
+    return failureToActionResult({ reason: "io_error", message: `git worktree add failed: ${gitRes.stderr.trim()}` })
+  }
+
+  sandbox.addRoot(conversationId, worktreePath)
+  session.pushWorktree(conversationId, worktreePath)
+  const text = `Entered worktree ${worktreePath} on branch ${branch} (base ${base})`
+  const data: ProviderDataRecord = { worktreePath, branch, base, depth: session.worktreeDepth(conversationId) }
+  return successActionResult(text, data, data)
+}
+
+export async function exitWorktreeHandler(
+  runtime: IAgentRuntime,
+  message: Memory,
+  _state?: State,
+  options?: unknown,
+): Promise<ActionResult> {
+  const ctx = resolveWorktreeContext(runtime, message)
+  if (!ctx.ok) return ctx.result
+  const { conversationId, sandbox, session } = ctx
+
+  const cleanup = readBoolParam(options, "cleanup") ?? false
+  const popped = session.popWorktree(conversationId, cleanup)
+  if (!popped) return failureToActionResult({ reason: "invalid_param", message: "no active worktree to exit" })
+
+  sandbox.removeRoot(conversationId, popped.entered)
+  let cleaned = false
+  if (cleanup) {
+    const gitRes = await runGitCommand({ cwd: popped.previousCwd, gitArgs: ["worktree", "remove", "--force", popped.entered] })
+    if (gitRes.exitCode !== 0) {
+      return failureToActionResult(
+        { reason: "io_error", message: `git worktree remove failed: ${gitRes.stderr.trim()}` },
+        { exited: popped.entered, restoredTo: popped.previousCwd, cleaned: false },
+      )
+    }
+    cleaned = true
+  }
+  const text = cleaned
+    ? `Exited and removed worktree ${popped.entered}; cwd -> ${popped.previousCwd}`
+    : `Exited worktree ${popped.entered}; cwd -> ${popped.previousCwd}`
+  const data: ProviderDataRecord = { exited: popped.entered, restoredTo: popped.previousCwd, cleaned }
+  return successActionResult(text, data, data)
+}
+
+export const worktreeAction: Action = {
+  name: "WORKTREE",
+  contexts: [...CODING_TOOLS_CONTEXTS],
+  contextGate: { anyOf: [...CODING_TOOLS_CONTEXTS] },
+  roleGate: { minRole: "ADMIN" },
+  cacheStable: true,
+  cacheScope: "agent",
+  toolSchemaStrict: true,
+  description: "Enter or exit a git worktree on the per-conversation directory stack.",
+  descriptionCompressed: "WORKTREE: enter (branch, path, base?) or exit (cleanup?).",
+  parameters: [
+    { name: "action", description: "enter or exit.", descriptionCompressed: "enter|exit", required: true, schema: { type: "string", enum: ["enter", "exit"] } },
+    { name: "base", description: "Base git ref (default HEAD).", descriptionCompressed: "Base ref", required: false, schema: { type: "string" } },
+    { name: "branch", description: "New branch name for enter.", descriptionCompressed: "Branch", required: false, schema: { type: "string" } },
+    { name: "cleanup", description: "Remove worktree dir on exit.", descriptionCompressed: "Remove on exit", required: false, schema: { type: "boolean" } },
+    { name: "path", description: "Absolute worktree path.", descriptionCompressed: "Path", required: false, schema: { type: "string" } },
+  ],
+  validate: async () => true,
+  summarize: (result, params) => result?.success === true ? `WORKTREE ${String(params.action ?? "")}` : undefined,
+  handler: async (runtime, message, state, options, callback) => {
+    const op = (readStringParam(options, "action") ?? "").trim().toLowerCase()
+    if (op === "enter") return enterWorktreeHandler(runtime, message, state, options, callback)
+    if (op === "exit") return exitWorktreeHandler(runtime, message, state, options)
+    return failureToActionResult({ reason: "missing_param", message: "WORKTREE requires action=enter|exit" })
+  },
+}

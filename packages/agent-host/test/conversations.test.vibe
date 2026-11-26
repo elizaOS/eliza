@@ -162,7 +162,7 @@ effect function seedMarked(agent: InProcess, roomId: UUID, rows: readonly { read
   })
 }
 
-it.effect('A reopened reply refused for spent plan allowance and credits carries Cloud\'s funds code, and no other row does (spec/agent/conversation/conversations.md, "A history row carries its send key only on the owner\'s message, and a failure kind, what ended its turn and Cloud\'s funds code only on the agent\'s reply")', effect () => {
+it.effect(`A reopened reply refused for spent plan allowance and credits carries Cloud's funds code, and no other row does (spec/agent/conversation/conversations.md, "A history row carries its send key only on the owner's message, and a failure kind, what ended its turn and Cloud's funds code only on the agent's reply")`, effect () => {
   const agent = try startInProcess()
   const chat = try open(agent, {})
   const base = 1_700_000_000_000

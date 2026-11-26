@@ -1,0 +1,129 @@
+// spec/anthropic/index.md, "Completion follows the provider terminal reason"
+import {
+  EventType,
+  logger,
+  normalizeProviderUsage,
+  type EventPayload,
+  type IAgentRuntime,
+  type ModelTypeName,
+  type TokenUsage,
+} from "@elizaos/core"
+
+export interface AnthropicRawUsage {
+  readonly input_tokens?: number
+  readonly output_tokens?: number
+  readonly cache_read_input_tokens?: number
+  readonly cache_creation_input_tokens?: number
+  readonly promptTokens?: number
+  readonly completionTokens?: number
+  readonly inputTokens?: number
+  readonly outputTokens?: number
+  readonly totalTokens?: number
+  readonly cacheReadInputTokens?: number
+  readonly cacheCreationInputTokens?: number
+}
+
+function firstFiniteNumber(...values: unknown[]): number | undefined {
+  for (const value of values) {
+    if (typeof value === "number" && Number.isFinite(value)) return value
+  }
+  return undefined
+}
+
+export function normalizeAnthropicUsage(usage: AnthropicRawUsage | undefined): TokenUsage | undefined {
+  if (!usage) return undefined
+  const promptTokens = firstFiniteNumber(usage.promptTokens, usage.inputTokens, usage.input_tokens) ?? 0
+  const completionTokens = firstFiniteNumber(usage.completionTokens, usage.outputTokens, usage.output_tokens) ?? 0
+  const totalTokens = firstFiniteNumber(usage.totalTokens) ?? promptTokens + completionTokens
+  const cacheRead = firstFiniteNumber(usage.cacheReadInputTokens, usage.cache_read_input_tokens)
+  const cacheCreation = firstFiniteNumber(usage.cacheCreationInputTokens, usage.cache_creation_input_tokens)
+  return {
+    promptTokens,
+    completionTokens,
+    totalTokens,
+    ...(cacheRead !== undefined ? { cacheReadInputTokens: cacheRead } : {}),
+    ...(cacheCreation !== undefined ? { cacheCreationInputTokens: cacheCreation } : {}),
+  }
+}
+
+export function classifyPromptCacheUsage(
+  cacheRead: number | undefined,
+  cacheWrite: number | undefined,
+): "hit" | "write" | "none" {
+  if (typeof cacheRead === "number" && cacheRead > 0) return "hit"
+  if (typeof cacheWrite === "number" && cacheWrite > 0) return "write"
+  return "none"
+}
+
+export function emitModelUsageEvent(
+  runtime: IAgentRuntime,
+  type: ModelTypeName,
+  usage: AnthropicRawUsage,
+  modelName?: string,
+): TokenUsage {
+  const normalizedUsage = normalizeAnthropicUsage(usage) ?? {
+    promptTokens: 0,
+    completionTokens: 0,
+    totalTokens: 0,
+  }
+  const canonical = normalizeProviderUsage(normalizedUsage)
+  const promptTokens = canonical.promptTokens
+  const completionTokens = canonical.completionTokens
+  const totalTokens = canonical.totalTokens
+  const cacheRead = normalizedUsage.cacheReadInputTokens
+  const cacheWrite = normalizedUsage.cacheCreationInputTokens
+  const model = modelName?.trim() || String(type)
+  const cacheOutcome = classifyPromptCacheUsage(cacheRead, cacheWrite)
+
+  logger.debug(
+    {
+      provider: "anthropic",
+      model,
+      modelType: String(type),
+      promptTokens,
+      completionTokens,
+      cacheReadInputTokens: cacheRead ?? 0,
+      cacheCreationInputTokens: cacheWrite ?? 0,
+      cacheOutcome,
+    },
+    `[Anthropic] prompt cache ${cacheOutcome}: read=${cacheRead ?? 0} write=${cacheWrite ?? 0} prompt=${promptTokens} (${model})`,
+  )
+
+  const payload = {
+    runtime,
+    source: "anthropic",
+    provider: "anthropic",
+    type,
+    model,
+    modelName: model,
+    modelLabel: String(type),
+    tokens: {
+      prompt: promptTokens,
+      completion: completionTokens,
+      total: totalTokens,
+      ...(cacheRead !== undefined ? { cacheRead } : {}),
+      ...(cacheWrite !== undefined ? { cacheWrite } : {}),
+    },
+  } as EventPayload
+
+  const emitter = (runtime as { emitEvent?: IAgentRuntime["emitEvent"] }).emitEvent
+  if (typeof emitter === "function") {
+    void Promise.resolve(emitter.call(runtime, EventType.MODEL_USED, payload)).catch((error: unknown) => {
+      const reporter = (runtime as { reportError?: IAgentRuntime["reportError"] }).reportError
+      if (typeof reporter === "function") {
+        reporter.call(runtime, "AnthropicModelUsage.emitEvent", error, {
+          model,
+          modelType: String(type),
+        })
+      }
+    })
+  }
+
+  return {
+    promptTokens,
+    completionTokens,
+    totalTokens,
+    ...(cacheRead !== undefined ? { cacheReadInputTokens: cacheRead } : {}),
+    ...(cacheWrite !== undefined ? { cacheCreationInputTokens: cacheWrite } : {}),
+  }
+}

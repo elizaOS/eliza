@@ -1,0 +1,40 @@
+// spec/embeddings/index.md, "Vectors cover every index exactly once and share one width"
+import { EventType, type IAgentRuntime, type ModelEventPayload, type ModelTypeName } from "@elizaos/core"
+
+export interface EmbeddingUsage {
+  readonly promptTokens?: number
+  readonly completionTokens?: number
+  readonly totalTokens?: number
+}
+
+export function emitModelUsageEvent(
+  runtime: IAgentRuntime,
+  type: ModelTypeName,
+  prompt: string,
+  usage: EmbeddingUsage,
+): void {
+  if (typeof runtime.emitEvent !== "function") return
+  const promptTokens = usage.promptTokens ?? 0
+  const completionTokens = usage.completionTokens ?? 0
+  const payload: ModelEventPayload & { readonly prompt: string } = {
+    runtime,
+    source: "embeddings",
+    provider: "embeddings",
+    type,
+    prompt,
+    tokens: {
+      prompt: promptTokens,
+      completion: completionTokens,
+      total: usage.totalTokens ?? promptTokens + completionTokens,
+    },
+  }
+  void Promise.resolve()
+    .then(() => runtime.emitEvent(EventType.MODEL_USED, payload))
+    .catch((error: unknown) => {
+      if (typeof runtime.reportError === "function") {
+        runtime.reportError("EmbeddingsModelUsage.emitEvent", error, {
+          modelType: String(type),
+        })
+      }
+    })
+}

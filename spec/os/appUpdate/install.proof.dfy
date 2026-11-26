@@ -1,5 +1,3 @@
-// A step that announces only releases, keeps the hold or clears it, and announces a release exactly when it clears a
-// hold it had, announces its holds.
 lemma InsHolds(j: Journal, via: string, r: JournalStep)
   requires forall e :: e in r.out ==> e.Release?
   requires r.state.hold.Unheld? || r.state.hold == j.hold
@@ -13,7 +11,6 @@ lemma InsHolds(j: Journal, via: string, r: JournalStep)
   assert forall e :: e in r.out ==> !isHold(e);
 }
 
-// Adding a value once keeps what the list held, holds the value, and holds nothing else.
 lemma InsAdd(q: seq<int>, c: int)
   ensures c in q + Std.Collections.Seq.Filter((set_x: int) => !((set_x in q)), [c])
   ensures forall x :: x in q ==> x in q + Std.Collections.Seq.Filter((set_x: int) => !((set_x in q)), [c])
@@ -23,12 +20,13 @@ lemma InsAdd(q: seq<int>, c: int)
   assert [c][1..] == [];
 }
 
-// A release of a candidate that is not quarantined stays within the budget, and quarantines it when it spends it.
 lemma InsRelease(j: Journal)
   requires inv(j) && !j.phase.Idle? && !(j.plan.candidate in j.quarantine)
   ensures alwaysRetryBudget(afterRelease(releaseCount(j), j))
   ensures alwaysQuarantinedPlanNamesItsCandidate(afterRelease(releaseCount(j), j))
 {
+  reveal Std.Collections.Seq.Filter();
+  assert [j.plan.candidate][1..] == [];
   InsAdd(j.quarantine, j.plan.candidate);
   assert validPlan(j.plan);
   if j.releasedCandidate == j.plan.candidate {
@@ -40,8 +38,8 @@ lemma dropPlan_ensures(j: Journal, planId: int)
   ensures (inv(j) ==> canDropPlan(j, planId) ==> alwaysPlanOutsideIdle(dropPlan(j, planId).state))
   ensures (inv(j) ==> canDropPlan(j, planId) ==> alwaysAwaitingIsHeld(dropPlan(j, planId).state))
   ensures (inv(j) ==> canDropPlan(j, planId) ==> alwaysHoldOnlyForAnOpenAttempt(dropPlan(j, planId).state))
-  ensures (inv(j) ==> canDropPlan(j, planId) ==> alwaysUnknownOutcomeIsNotRecovery(dropPlan(j, planId).state))
   ensures (inv(j) ==> canDropPlan(j, planId) ==> alwaysOpenCandidateIsNotQuarantined(dropPlan(j, planId).state))
+  ensures (inv(j) ==> canDropPlan(j, planId) ==> alwaysUnknownOutcomeIsNotRecovery(dropPlan(j, planId).state))
   ensures (inv(j) ==> canDropPlan(j, planId) ==> alwaysRetryBudget(dropPlan(j, planId).state))
   ensures (inv(j) ==> canDropPlan(j, planId) ==> alwaysQuarantinedPlanNamesItsCandidate(dropPlan(j, planId).state))
   ensures (inv(j) ==> canDropPlan(j, planId) ==> alwaysRecoveryFollowsQuarantinedCandidate(dropPlan(j, planId).state))
@@ -61,8 +59,8 @@ lemma changeChannel_ensures(j: Journal)
   ensures (inv(j) ==> alwaysPlanOutsideIdle(changeChannel(j).state))
   ensures (inv(j) ==> alwaysAwaitingIsHeld(changeChannel(j).state))
   ensures (inv(j) ==> alwaysHoldOnlyForAnOpenAttempt(changeChannel(j).state))
-  ensures (inv(j) ==> alwaysUnknownOutcomeIsNotRecovery(changeChannel(j).state))
   ensures (inv(j) ==> alwaysOpenCandidateIsNotQuarantined(changeChannel(j).state))
+  ensures (inv(j) ==> alwaysUnknownOutcomeIsNotRecovery(changeChannel(j).state))
   ensures (inv(j) ==> alwaysRetryBudget(changeChannel(j).state))
   ensures (inv(j) ==> alwaysQuarantinedPlanNamesItsCandidate(changeChannel(j).state))
   ensures (inv(j) ==> alwaysRecoveryFollowsQuarantinedCandidate(changeChannel(j).state))
@@ -82,8 +80,8 @@ lemma requestHold_ensures(j: Journal)
   ensures (inv(j) ==> canRequestHold(j) ==> alwaysPlanOutsideIdle(requestHold(j).state))
   ensures (inv(j) ==> canRequestHold(j) ==> alwaysAwaitingIsHeld(requestHold(j).state))
   ensures (inv(j) ==> canRequestHold(j) ==> alwaysHoldOnlyForAnOpenAttempt(requestHold(j).state))
-  ensures (inv(j) ==> canRequestHold(j) ==> alwaysUnknownOutcomeIsNotRecovery(requestHold(j).state))
   ensures (inv(j) ==> canRequestHold(j) ==> alwaysOpenCandidateIsNotQuarantined(requestHold(j).state))
+  ensures (inv(j) ==> canRequestHold(j) ==> alwaysUnknownOutcomeIsNotRecovery(requestHold(j).state))
   ensures (inv(j) ==> canRequestHold(j) ==> alwaysRetryBudget(requestHold(j).state))
   ensures (inv(j) ==> canRequestHold(j) ==> alwaysQuarantinedPlanNamesItsCandidate(requestHold(j).state))
   ensures (inv(j) ==> canRequestHold(j) ==> alwaysRecoveryFollowsQuarantinedCandidate(requestHold(j).state))
@@ -105,8 +103,8 @@ lemma releaseUnhandedHold_ensures(j: Journal)
   ensures (inv(j) ==> canReleaseUnhandedHold(j) ==> alwaysPlanOutsideIdle(releaseUnhandedHold(j).state))
   ensures (inv(j) ==> canReleaseUnhandedHold(j) ==> alwaysAwaitingIsHeld(releaseUnhandedHold(j).state))
   ensures (inv(j) ==> canReleaseUnhandedHold(j) ==> alwaysHoldOnlyForAnOpenAttempt(releaseUnhandedHold(j).state))
-  ensures (inv(j) ==> canReleaseUnhandedHold(j) ==> alwaysUnknownOutcomeIsNotRecovery(releaseUnhandedHold(j).state))
   ensures (inv(j) ==> canReleaseUnhandedHold(j) ==> alwaysOpenCandidateIsNotQuarantined(releaseUnhandedHold(j).state))
+  ensures (inv(j) ==> canReleaseUnhandedHold(j) ==> alwaysUnknownOutcomeIsNotRecovery(releaseUnhandedHold(j).state))
   ensures (inv(j) ==> canReleaseUnhandedHold(j) ==> alwaysRetryBudget(releaseUnhandedHold(j).state))
   ensures (inv(j) ==> canReleaseUnhandedHold(j) ==> alwaysQuarantinedPlanNamesItsCandidate(releaseUnhandedHold(j).state))
   ensures (inv(j) ==> canReleaseUnhandedHold(j) ==> alwaysRecoveryFollowsQuarantinedCandidate(releaseUnhandedHold(j).state))
@@ -126,8 +124,8 @@ lemma observeInstall_ensures(j: Journal, readback: Readback)
   ensures (inv(j) ==> canObserveInstall(j, readback) ==> alwaysPlanOutsideIdle(observeInstall(j, readback).state))
   ensures (inv(j) ==> canObserveInstall(j, readback) ==> alwaysAwaitingIsHeld(observeInstall(j, readback).state))
   ensures (inv(j) ==> canObserveInstall(j, readback) ==> alwaysHoldOnlyForAnOpenAttempt(observeInstall(j, readback).state))
-  ensures (inv(j) ==> canObserveInstall(j, readback) ==> alwaysUnknownOutcomeIsNotRecovery(observeInstall(j, readback).state))
   ensures (inv(j) ==> canObserveInstall(j, readback) ==> alwaysOpenCandidateIsNotQuarantined(observeInstall(j, readback).state))
+  ensures (inv(j) ==> canObserveInstall(j, readback) ==> alwaysUnknownOutcomeIsNotRecovery(observeInstall(j, readback).state))
   ensures (inv(j) ==> canObserveInstall(j, readback) ==> alwaysRetryBudget(observeInstall(j, readback).state))
   ensures (inv(j) ==> canObserveInstall(j, readback) ==> alwaysQuarantinedPlanNamesItsCandidate(observeInstall(j, readback).state))
   ensures (inv(j) ==> canObserveInstall(j, readback) ==> alwaysRecoveryFollowsQuarantinedCandidate(observeInstall(j, readback).state))
@@ -139,6 +137,8 @@ lemma observeInstall_ensures(j: Journal, readback: Readback)
   ensures (inv(j) ==> canObserveInstall(j, readback) ==> stepGenerationNeverGoesBack(j, observeInstall(j, readback).state))
 {
   if inv(j) && canObserveInstall(j, readback) {
+    reveal Std.Collections.Seq.Filter();
+    assert [j.plan.candidate][1..] == [];
     var r := observeInstall(j, readback);
     InsHolds(j, "observeInstall", r);
     InsAdd(j.quarantine, j.plan.candidate);
@@ -153,8 +153,8 @@ lemma abandonUnknown_ensures(j: Journal)
   ensures (inv(j) ==> canAbandonUnknown(j) ==> alwaysPlanOutsideIdle(abandonUnknown(j).state))
   ensures (inv(j) ==> canAbandonUnknown(j) ==> alwaysAwaitingIsHeld(abandonUnknown(j).state))
   ensures (inv(j) ==> canAbandonUnknown(j) ==> alwaysHoldOnlyForAnOpenAttempt(abandonUnknown(j).state))
-  ensures (inv(j) ==> canAbandonUnknown(j) ==> alwaysUnknownOutcomeIsNotRecovery(abandonUnknown(j).state))
   ensures (inv(j) ==> canAbandonUnknown(j) ==> alwaysOpenCandidateIsNotQuarantined(abandonUnknown(j).state))
+  ensures (inv(j) ==> canAbandonUnknown(j) ==> alwaysUnknownOutcomeIsNotRecovery(abandonUnknown(j).state))
   ensures (inv(j) ==> canAbandonUnknown(j) ==> alwaysRetryBudget(abandonUnknown(j).state))
   ensures (inv(j) ==> canAbandonUnknown(j) ==> alwaysQuarantinedPlanNamesItsCandidate(abandonUnknown(j).state))
   ensures (inv(j) ==> canAbandonUnknown(j) ==> alwaysRecoveryFollowsQuarantinedCandidate(abandonUnknown(j).state))
@@ -176,8 +176,8 @@ lemma observeHealth_ensures(j: Journal, evidence: HealthEvidence)
   ensures (inv(j) ==> canObserveHealth(j, evidence) ==> alwaysPlanOutsideIdle(observeHealth(j, evidence)))
   ensures (inv(j) ==> canObserveHealth(j, evidence) ==> alwaysAwaitingIsHeld(observeHealth(j, evidence)))
   ensures (inv(j) ==> canObserveHealth(j, evidence) ==> alwaysHoldOnlyForAnOpenAttempt(observeHealth(j, evidence)))
-  ensures (inv(j) ==> canObserveHealth(j, evidence) ==> alwaysUnknownOutcomeIsNotRecovery(observeHealth(j, evidence)))
   ensures (inv(j) ==> canObserveHealth(j, evidence) ==> alwaysOpenCandidateIsNotQuarantined(observeHealth(j, evidence)))
+  ensures (inv(j) ==> canObserveHealth(j, evidence) ==> alwaysUnknownOutcomeIsNotRecovery(observeHealth(j, evidence)))
   ensures (inv(j) ==> canObserveHealth(j, evidence) ==> alwaysRetryBudget(observeHealth(j, evidence)))
   ensures (inv(j) ==> canObserveHealth(j, evidence) ==> alwaysQuarantinedPlanNamesItsCandidate(observeHealth(j, evidence)))
   ensures (inv(j) ==> canObserveHealth(j, evidence) ==> alwaysRecoveryFollowsQuarantinedCandidate(observeHealth(j, evidence)))
@@ -189,6 +189,9 @@ lemma observeHealth_ensures(j: Journal, evidence: HealthEvidence)
   ensures (inv(j) ==> canObserveHealth(j, evidence) ==> stepGenerationNeverGoesBack(j, observeHealth(j, evidence)))
 {
   if inv(j) && canObserveHealth(j, evidence) {
+    reveal Std.Collections.Seq.Filter();
+    assert [j.plan.candidate][1..] == [];
+    assert [j.plan.recovery][1..] == [];
     var q := j.quarantine + Std.Collections.Seq.Filter((set_x: int) => !((set_x in j.quarantine)), [j.plan.candidate]);
     InsAdd(j.quarantine, j.plan.candidate);
     InsAdd(q, j.plan.recovery);
@@ -199,8 +202,8 @@ lemma denyRecovery_ensures(j: Journal)
   ensures (inv(j) ==> canDenyRecovery(j) ==> alwaysPlanOutsideIdle(denyRecovery(j).state))
   ensures (inv(j) ==> canDenyRecovery(j) ==> alwaysAwaitingIsHeld(denyRecovery(j).state))
   ensures (inv(j) ==> canDenyRecovery(j) ==> alwaysHoldOnlyForAnOpenAttempt(denyRecovery(j).state))
-  ensures (inv(j) ==> canDenyRecovery(j) ==> alwaysUnknownOutcomeIsNotRecovery(denyRecovery(j).state))
   ensures (inv(j) ==> canDenyRecovery(j) ==> alwaysOpenCandidateIsNotQuarantined(denyRecovery(j).state))
+  ensures (inv(j) ==> canDenyRecovery(j) ==> alwaysUnknownOutcomeIsNotRecovery(denyRecovery(j).state))
   ensures (inv(j) ==> canDenyRecovery(j) ==> alwaysRetryBudget(denyRecovery(j).state))
   ensures (inv(j) ==> canDenyRecovery(j) ==> alwaysQuarantinedPlanNamesItsCandidate(denyRecovery(j).state))
   ensures (inv(j) ==> canDenyRecovery(j) ==> alwaysRecoveryFollowsQuarantinedCandidate(denyRecovery(j).state))

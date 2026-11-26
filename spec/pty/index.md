@@ -1,5 +1,7 @@
 # Interactive terminals
 
+Session lifecycle, access gates, spawn policy, capacity, and output bounds are specified in [Session store, access and spawn policy](./policy.md).
+
 ## Story: Open and close an owner-bound terminal session
 
 > As the owner, I can attach to my interactive process, send input or resize it, and close it. Output from a previous process does not appear in a replacement session.

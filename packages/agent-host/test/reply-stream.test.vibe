@@ -54,7 +54,7 @@ const piece = (letter: string) => letter.repeat(1500)
 
 for (const transport of ["socket", "http"] as const) {
   describe(`See a reply as it is written over the ${transport} (spec/agent/conversation/replyStream.md, "Story: See a reply as it is written")`, () => {
-    it.live('Appended text carries the whole text again at the cadence, and retries receive only the same done (spec/agent/conversation/replyStream.md, "Appended text carries the whole text again once the units appended since the last whole text reach the larger of 2048 and that text\'s length"; spec/agent/conversation/replyStream.md, "Only a message that starts its own turn streams text, a repeat waits for its reply, and a refusal opens no stream")', effect () => {
+    it.live(`Appended text carries the whole text again at the cadence, and retries receive only the same done (spec/agent/conversation/replyStream.md, "Appended text carries the whole text again once the units appended since the last whole text reach the larger of 2048 and that text's length"; spec/agent/conversation/replyStream.md, "Only a message that starts its own turn streams text, a repeat waits for its reply, and a refusal opens no stream")`, effect () => {
       const { cloud, agent, id } = try streamingConversation(transport)
       try Effect.sync(() => delayReplyWrite(agent.agent.runtime, false))
       const offered = { text: "Write at length.", channelType: "VOICE_DM", metadata: { voiceUi: { surface: "voice" } }, clientMessageId: "cadence" }

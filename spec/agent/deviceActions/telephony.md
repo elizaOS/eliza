@@ -156,6 +156,21 @@ to judge: no fixed question answers the turn before the model sees it.
 Alternatives within the text body remain part of the body, and a message
 that also asks for emergency services keeps the emergency rule.
 
+```quint
+type AlternativeRecipientAction = AskWhichRecipient | ProceedToProposal | KeepEmergencyRule
+pure def alternativeSmsGuidanceShown(smsOffered: bool): bool = smsOffered
+pure def alternativeRecipientAction(alternativeRecipient: bool, emergency: bool): AlternativeRecipientAction =
+  if (emergency) KeepEmergencyRule
+  else if (alternativeRecipient) AskWhichRecipient
+  else ProceedToProposal
+pure def lawAlternativeSmsGuidanceRequiresSmsCapability(smsOffered: bool): bool =
+  alternativeSmsGuidanceShown(smsOffered) iff smsOffered
+pure def lawAlternativeRecipientsAskBeforeLookupOrProposal(alternativeRecipient: bool): bool =
+  (alternativeRecipientAction(alternativeRecipient, false) == AskWhichRecipient) iff alternativeRecipient
+pure def lawEmergencyOverridesAlternativeRecipients(alternativeRecipient: bool): bool =
+  alternativeRecipientAction(alternativeRecipient, true) == KeepEmergencyRule
+```
+
 ### A call or text to someone the owner names by a role is proposed at once, with that word as the contact query
 
 Where the phone is offered a call or a text that takes a contact target,
