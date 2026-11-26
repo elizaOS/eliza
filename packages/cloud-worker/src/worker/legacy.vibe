@@ -64,9 +64,8 @@ function admitGraceDevice(request: Request, db: Client, access: "MailLease" | "D
     provide Layer.effect(Store, clientStore(db)) {
       const authenticateDevice = effect {
         const caller = try authenticate(request.headers.get("authorization") ?? undefined, access === "MailLease" ? "MailAccess" : "ServiceAccess", countRequest)
-        if ((access === "MailLease" && caller.kind === "lease") || (access === "Device" && caller.kind === "deviceKey")) {
-          return { kind: "Admitted", owner: caller.userId } as const
-        }
+        if (access === "MailLease" && caller.kind === "lease") return { kind: "Lease", owner: caller.userId } as const
+        if (access === "Device" && caller.kind === "deviceKey") return { kind: "Device", owner: caller.userId, grantKey: caller.grantKey } as const
         throw refused("AuthenticationRequired", "CredentialUnknown")
       }
       return authenticateDevice catch effect (error) => {
@@ -85,15 +84,16 @@ async function graceGoogleRequest<E extends LegacyBindings>(request: Request, en
   if ((browser && access === "DeviceConnect") || (!browser && access !== "MailLease" && access !== "Arrival" && !deviceWrite))
     return refusal(401, "authentication_required")
   const credential = access === "Arrival" ? await cloudCredential(request) : null
-  const account = () => browser ? sessionAccount(request, db) : inferenceAccount(request, db, env, "recorded")
   const admission = browser ? undefined : await admitGraceDevice(request, db, access === "MailLease" ? "MailLease" : "Device")
   if (admission?.kind === "Refused") return admission.response
-  const owner = admission !== undefined && access === "MailLease" ? admission.owner : await account()
+  const account = () => browser ? sessionAccount(request, db)
+    : admission?.kind === "Device" ? inferenceAccount(request, db, env, { grantKey: admission.grantKey, lock: false }) : Promise.resolve(null)
+  const owner = admission?.kind === "Lease" ? admission.owner : await account()
   if (!owner || (admission !== undefined && owner !== admission.owner)) return refusal(401, "authentication_required")
   const current = async () => await account() === owner
-  if (deviceWrite) {
-    const recorded = async () => await inferenceAccount(request, db, env, "recordedForUpdate") === owner
-    return bounded(request, 16 * 1024, (body) => googleRequest(body, env, db, owner, ports.providerFetch, { kind: "DeviceWrite", current: recorded }))
+  if (deviceWrite && admission?.kind === "Device") {
+    const locked = async () => await inferenceAccount(request, db, env, { grantKey: admission.grantKey, lock: true }) === owner
+    return bounded(request, 16 * 1024, (body) => googleRequest(body, env, db, owner, ports.providerFetch, { kind: "DeviceWrite", current: locked }))
   }
   const response = await googleRequest(request, env, db, owner, ports.providerFetch, credential === null ? undefined : { kind: "Arrival", credential, current })
   if (!response.ok || request.method !== "GET" || access === "Arrival") return response

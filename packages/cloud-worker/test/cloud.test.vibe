@@ -4478,7 +4478,7 @@ module node {
       let version = 789
       let folder = "INBOX"
       let verifiedSubject = subject
-      let revokeDuringConsent = false
+      let revokeDuringConsent: (() => Promise<void>) | undefined
       const selectedMessage = "https://gmail.googleapis.com/gmail/v1/users/me/messages/selected-mail"
       const providerFetch: typeof fetch = async (input, init) => {
         const request = new Request(input, init)
@@ -4488,7 +4488,7 @@ module node {
           return Response.json({ access_token: "fixture-access", refresh_token: "fixture-refresh", scope: scopes.join(" ") })
         }
         if (url.href === "https://openidconnect.googleapis.com/v1/userinfo") {
-          if (revokeDuringConsent) await fixture.db.query("UPDATE device_grants SET key_expires_at = 0 WHERE user_id = $1", [owner.account.id])
+          await revokeDuringConsent?.()
           return Response.json({ sub: verifiedSubject, email, email_verified: true })
         }
         if (url.href === "https://gmail.googleapis.com/gmail/v1/users/me/messages/send") return Response.json({ id: "sent-from-grace" })
@@ -4585,17 +4585,22 @@ module node {
       const wrongGoogle = await connectNative(device)
       verifiedSubject = subject
       const nativeResponse = await connectNative(device)
+      if (!nativeResponse.ok) throw new Error(`Grace native consent returned ${nativeResponse.status}: ${await nativeResponse.text()}`)
       const nativeLinked = await status()
       const lease = await post("/api/v1/app-auth/mobile/lease", {}, bearer(key.lease.refresh))
       const { access } = Schema.decodeUnknownSync(Schema.Struct({ access: Schema.String }))(await lease.json())
       const read = await grace.fetch(new Request(root + "gmail/read?" + new URLSearchParams({
         messageId: "selected-mail", grantId: nativeLinked.connectionId ?? "",
       }), { headers: bearer(access) }), env)
+      if (!read.ok) throw new Error(`Grace native Gmail read returned ${read.status}: ${await read.text()}`)
       const message = Schema.decodeUnknownSync(Schema.Struct({ accountId: Schema.String, bodyText: Schema.String }))(await read.json())
       const unrelatedDisconnect = await disconnect(otherDevice)
       const stillLinked = await status()
       const nativeDisconnect = await disconnect(device)
-      revokeDuringConsent = true
+      revokeDuringConsent = async () => {
+        const revoked = await grace.fetch(new Request(api + "/api/v1/api-keys/current", { method: "DELETE", headers: device }), env)
+        if (revoked.status !== 204) throw new Error(`Grace device revocation returned ${revoked.status}`)
+      }
       const expiredDuringConsent = await connectNative(device)
       return {
         refusals, preflight: [preflight.status, preflight.headers.get("access-control-allow-origin"), preflight.headers.get("access-control-allow-credentials")],
