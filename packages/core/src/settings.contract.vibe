@@ -24,3 +24,31 @@ export const aSealedSettingOpensUnderItsSaltAndIsNotSealedTwice = contract({
   invariant: ({ value }, { sealed, opened, resealed }) =>
     sealed !== null && sealed.startsWith("v2:") && opened === value && resealed === sealed,
 });
+
+const malformedV2Envelopes = [
+  // Non-hex junk in the IV part: 24 hex digits plus "!".
+  "v2:0123456789abcdef01234567!:abcd:0123456789abcdef0123456789abcdef",
+  // Non-hex junk in the tag part: 32 hex digits plus "!".
+  "v2:0123456789abcdef01234567:abcd:0123456789abcdef0123456789abcdef!",
+  // Empty ciphertext part.
+  "v2:0123456789abcdef01234567::0123456789abcdef0123456789abcdef",
+  // Non-hex ciphertext part.
+  "v2:0123456789abcdef01234567:not-hex:0123456789abcdef0123456789abcdef",
+] as const;
+
+const malformed = ({ salt }: { salt: string }) =>
+  malformedV2Envelopes.map((value) => ({
+    value,
+    opened: succeeded(decryptStringValue(value, salt)),
+    sealed: succeeded(encryptStringValue(value, salt)),
+  }));
+
+export const aMalformedV2EnvelopeStaysPlaintext = contract({
+  input: Arbitrary.all({ salt: text }),
+  run: malformed,
+  invariant: (_input, checked) =>
+    checked.every(
+      ({ value, opened, sealed }) =>
+        opened === value && sealed !== null && sealed !== value && sealed.startsWith("v2:"),
+    ),
+});
