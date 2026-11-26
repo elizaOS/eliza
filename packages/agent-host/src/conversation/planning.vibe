@@ -5,6 +5,7 @@
 // spec/agent/conversation/planning.md, "A response with competing terminal decisions runs no sibling action and can be repaired once"
 // spec/agent/conversation/planning.md, "A delivered cue is told to the model as already said, so the reply never repeats it or takes it as evidence"
 // spec/agent/conversation/planning.md, "Text that repeats the agent host's notes is never delivered or streamed, and is asked again once as a blank"
+// spec/agent/conversation/planning.md, "A response that is only a written call of an offered tool runs as that call, and one copying the host's own data is asked again once"
 import {
   type Action, type ActionParameterSchema, type ActionResult, type AgentRuntime, type EffectReceipt, type IAgentRuntime, type GenerateTextParams, type GenerateTextResult,
   type AgentContext, type HistorySource, type Memory, type RoleGateRole, type State, type StreamChunkCallback, type ToolCall, type ToolDefinition,
@@ -12,11 +13,18 @@ import {
 } from "@elizaos/core"
 import {
   actionNoteSent, askedAgainAt, answerableLater, answeredAgain, callAdmission, cueDelivered, standsBy, cutOffReply, failedOpen, isTurnStep, maxPlanSteps, mayAnswer, nextMove, offered, openOutcomes, plannerOnlyCoaching, plansOn, resendWait, spokenCue, toolActivity,
-  admitsPlannerWork, contextRestoreOf, maxRestoredHistoryBytes, nothingRan, offersContextRestore, terminalAnswerOf, toolDispatch, turnNarrowed, unavailableNotice, writtenMarkupOf, type CallFailure, type PlanStep, type StepOutcome, type ToolSettlement,
+  admitsPlannerWork, contextRestoreOf, loneObjectMove, maxRestoredHistoryBytes, nothingRan, offersContextRestore, terminalAnswerOf, toolDispatch, turnNarrowed, unavailableNotice, writtenMarkupOf, type CallFailure, type PlanStep, type StepOutcome, type ToolSettlement,
 } from "../../gen/agent__conversation__planning.ts"
 import { originAfterResend } from "../../gen/agent__conversation__turns.ts"
 import { ModelRefusal } from "../models/chat.vibe"
-import { actionNameKey, asksSomething, composeReply, declaredOf, draftOf, holdsHostText, shownUpTo, streamable, withoutOfferedCalls, withoutWrittenCalls, writtenCallFree } from "./reply-text.vibe"
+import { actionNameKey, asksSomething, composeReply, declaredOf, draftOf, holdsHostText, hostObjects, shownUpTo, streamable, withoutOfferedCalls, withoutWrittenCalls, writtenCallFree, writtenCallOf, wroteStructure } from "./reply-text.vibe"
+
+module node {
+  import { randomUUID } from "node:crypto"
+  /** @throws {never} */
+  export function freshCallId(): string { return `call_${randomUUID()}` }
+}
+import { freshCallId } from node
 
 type ChatMessage = NonNullable<GenerateTextParams["messages"]>[number]
 
@@ -31,6 +39,9 @@ const actOrAnswer = "Note from the agent host, not the person: your last respons
 const answerFromWork = "Note from the agent host, not the person: your last response gave the person no answer, so none of it was sent. The tool results above are what this turn did. Answer the person's latest message now from them, in your own words."
 const answerFromNothing = "Note from the agent host, not the person: your last response gave the person no answer, so none of it was sent. No action ran in this turn: nothing was saved, sent or changed, so do not say that anything was. Answer the person's latest message now with what this turn holds, in your own words."
 const answerAgain = "Note from the agent host, not the person: your reply is not final yet. Write your whole reply to the person's latest message again, in your own words, so that it is true to what follows. Call no tools."
+const misfitNote = (name: string, why: string) =>
+  `Note from the agent host, not the person: your last response was a ${name} tool call written as text, and its arguments do not fit that tool (${why}), so nothing ran and the person saw none of it. Call the tool with arguments that fit, or answer the person in words.`
+const copiedNote = "Note from the agent host, not the person: your last response only repeated data the agent host gave you, so none of it was sent. Answer the person's latest message now, in your own words, or call an offered tool. Never repeat the agent host's notes. If the person asked for a tool result as it is, give that result again as it was."
 const deliveredCueNote = (cue: string) =>
   `Note from the agent host, not the person: ${JSON.stringify(cue)} was already sent to the person as progress. Do not repeat or paraphrase it. Go straight to the result, any blocker, or the question you need answered. The cue is not evidence that any work succeeded.`
 const restoreContext: ToolDefinition = {
@@ -569,6 +580,7 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
   const steps: PlannedStep[] = []
   const named = new Map(actions.map((action) => [action.name, action]))
   const offeredNames = new Set(tools.map(({ name }) => actionNameKey(name)))
+  const personWroteStructure = wroteStructure(message.content.text ?? "")
   let taken = 0
   let displayed = false
   let streamed = ""
@@ -637,11 +649,24 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
       stoppedShort = true
       break plan
     }
-    const answered = answerOf(said)
+    const given = answerOf(said)
     signal.throwIfAborted()
     taken += 1
     if (restartFirst && !restarted) input.onReplyRestart?.("")
     displayed = streamed.length > 0
+    const givenWords = declaredOf(writtenCallFree(given.text).prose).text
+    const results = conversation.slice(input.messages.length).flatMap(({ role, content }) => role === "tool" && typeof content === "string" ? [content] : [])
+    const lone = given.toolCalls.length === 0 ? writtenCallOf(givenWords, tools, hostObjects(input.hostNotes, results)) : undefined
+    const loneMove = loneObjectMove(lone !== undefined, lone?.naming ?? "NamesNoTool", lone?.fits ?? false, lone?.copiesHost ?? false, personWroteStructure,
+      taken < maxPlanSteps, askedAgainAt(steps.length > 0, askedBeforeWork, askedAfterWork), maxPlanSteps - taken)
+    if (loneMove === "AskAboutObject") {
+      if (steps.length > 0) askedAfterWork = true
+      else askedBeforeWork = true
+      conversation.push({ role: "assistant", content: givenWords })
+      conversation.push({ role: "user", content: lone?.call !== undefined && lone.naming === "NamesByCallField" && !lone.fits ? misfitNote(lone.call.name, lone.misfit) : copiedNote })
+      continue plan
+    }
+    const answered = loneMove === "RunAsCall" && lone?.call !== undefined ? { text: "", toolCalls: [{ id: freshCallId(), ...lone.call }] } : given
     const restores = answered.toolCalls.filter(({ name }) => name === restoreContext.name)
     const [restore] = restores
     if (restore !== undefined && !admitsPlannerWork(restores.length)) {

@@ -1,6 +1,6 @@
-// spec/agent/conversation/planning.md, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"; spec/agent/conversation/planning.md, "A turn acknowledges at most once, with a cue that comes with its first tool calls"; spec/agent/conversation/planning.md, "A recognized card is delivered unfenced, other multi-line tool output is fenced, and grounded prose follows unless one already holds the other"; spec/agent/conversation/planning.md, "A voice turn that ran an action answers with that action's label: its kind and whether the reply is a validated card"; spec/agent/conversation/planning.md, "A tool call the model wrote as text never reaches the owner, and its step is asked again once"; spec/agent/conversation/planning.md, "Text that repeats the agent host's notes is never delivered or streamed, and is asked again once as a blank"
-import { looksLikeActionEnvelopeJson, looksLikeEvaluatorEnvelopeJson, parseInteractionBlocks, sanitizeUserVisibleModelOutput } from "@elizaos/core"
-import { actionLabel, compose, heardAs, readDraft, type ActionLabel, type Composition, type Declared, type Draft, type DraftShape, type VoiceAction } from "../../gen/agent__conversation__planning.ts"
+// spec/agent/conversation/planning.md, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"; spec/agent/conversation/planning.md, "A turn acknowledges at most once, with a cue that comes with its first tool calls"; spec/agent/conversation/planning.md, "A recognized card is delivered unfenced, other multi-line tool output is fenced, and grounded prose follows unless one already holds the other"; spec/agent/conversation/planning.md, "A voice turn that ran an action answers with that action's label: its kind and whether the reply is a validated card"; spec/agent/conversation/planning.md, "A tool call the model wrote as text never reaches the owner, and its step is asked again once"; spec/agent/conversation/planning.md, "Text that repeats the agent host's notes is never delivered or streamed, and is asked again once as a blank"; spec/agent/conversation/planning.md, "A response that is only a written call of an offered tool runs as that call, and one copying the host's own data is asked again once"
+import { looksLikeActionEnvelopeJson, looksLikeEvaluatorEnvelopeJson, parseInteractionBlocks, sanitizeUserVisibleModelOutput, validateSchema, type JsonSchema, type ToolCall, type ToolDefinition } from "@elizaos/core"
+import { actionLabel, compose, heardAs, readDraft, type ActionLabel, type Composition, type Declared, type Draft, type DraftShape, type ObjectNaming, type VoiceAction } from "../../gen/agent__conversation__planning.ts"
 
 const maxCueLength = 120
 const bracketCall = /\[[a-z][a-z0-9]*(?:_[a-z0-9]+)+(?:\s+[a-z_]+=(?:"[^"\n]*"|[^\s\]]+))+\s*\]/gu
@@ -226,6 +226,131 @@ export function draftOf(text: string, calls: number, offered: ReadonlySet<string
   return heardAs(readDraft(shapeOf(text, offered, notes), calls, toolsWaiting, declared), declared, asksSomething(text), calls)
 }
 
+type Fields = Readonly<Record<string, unknown>>
+
+export interface WrittenCall {
+  readonly naming: ObjectNaming
+  readonly fits: boolean
+  readonly copiesHost: boolean
+  readonly call: { readonly name: string; readonly arguments: Exclude<ToolCall["arguments"], string> } | undefined
+  readonly misfit: string
+}
+
+interface CalledTool {
+  readonly naming: ObjectNaming
+  readonly tool: ToolDefinition
+  readonly args: Fields | undefined
+}
+
+const isFields = (value: unknown): value is Fields => typeof value === "object" && value !== null && !Array.isArray(value)
+
+function fieldsOf(value: unknown): Fields | undefined {
+  if (typeof value !== "string") return isFields(value) ? value : undefined
+  try {
+    const parsed: unknown = JSON.parse(value)
+    return isFields(parsed) ? parsed : undefined
+  } catch {
+    return undefined
+  }
+}
+
+const toolNameInCaps = "[A-Z][A-Z0-9_]*"
+const callLine = new RegExp(`^(${toolNameInCaps}) call:[ \\t]*([^\\n]*?)[ \\t]*\\.?$`, "u")
+const callLineNaming = new RegExp(`^${toolNameInCaps}(?: (?:c(?:a(?:l(?:l)?)?)?)?)?$`, "u")
+const argumentEndings = ["", "0", " 0", "a 0", 'x"', 'n"', '0"', '00"', '000"', '0000"', "rue", "ue", "e", "alse", "lse", "se"]
+const callLineValue = /^[ \t]*([A-Za-z_]\w*)(?:[ \t]*[:=])?[ \t]*("(?:[^"\\\n]|\\.)*"|-?\d+(?:\.\d+)?|true|false)[ \t]*(?:,|$)/u
+
+function callLineArguments(written: string): Fields | undefined {
+  const args: Record<string, unknown> = {}
+  let rest = written
+  while (rest.trim() !== "") {
+    const pair = callLineValue.exec(rest)
+    if (pair === null) return undefined
+    try {
+      args[pair[1] ?? ""] = JSON.parse(pair[2] ?? "null")
+    } catch {
+      return undefined
+    }
+    rest = rest.slice(pair[0].length)
+  }
+  return args
+}
+
+function mayBeCallLine(text: string): boolean {
+  if (callLineNaming.test(text)) return true
+  return [text, text.trimEnd()].some((start) => argumentEndings.some((ending) => {
+    const line = callLine.exec(start + ending)
+    return line !== null && callLineArguments(line[2] ?? "") !== undefined
+  }))
+}
+
+function namedTool(said: string, tools: readonly ToolDefinition[]): CalledTool | undefined {
+  const byKey = new Map(tools.map((tool) => [actionNameKey(tool.name), tool]))
+  const line = callLine.exec(said)
+  if (line !== null) {
+    const tool = tools.find(({ name }) => name === line[1])
+    const args = callLineArguments(line[2] ?? "")
+    return tool === undefined || args === undefined ? undefined : { naming: "NamesByCallField", tool, args }
+  }
+  const object = fieldsOf(said)
+  if (object === undefined) return undefined
+  const fields = Object.entries(object)
+  const given = fields.find(([key]) => argumentKeys.has(key))
+  for (const [key, value] of fields) {
+    const tool = callKeys.has(key) && typeof value === "string" ? byKey.get(actionNameKey(value)) : undefined
+    if (tool === undefined || ((key === "name" || key === "type") && given === undefined)) continue
+    return { naming: "NamesByCallField", tool, args: given === undefined ? Object.fromEntries(fields.filter(([other]) => other !== key)) : fieldsOf(given[1]) }
+  }
+  const [only] = fields
+  const tool = fields.length === 1 && only !== undefined && isFields(only[1]) ? byKey.get(actionNameKey(only[0])) : undefined
+  return tool === undefined ? undefined : { naming: "NamesByOnlyKey", tool, args: fieldsOf(only?.[1]) }
+}
+
+function misfitOf({ tool, args }: CalledTool): string[] {
+  if (args === undefined) return ["its arguments are not an object"]
+  const errors: string[] = []
+  validateSchema((tool.parameters ?? { type: "object" }) as JsonSchema, args, "", errors)
+  return errors
+}
+
+function objectsWithin(value: unknown): Fields[] {
+  if (Array.isArray(value)) return value.flatMap(objectsWithin)
+  return isFields(value) ? [value, ...Object.values(value).flatMap(objectsWithin)] : []
+}
+
+export function hostObjects(notes: readonly string[], results: readonly string[]): Fields[] {
+  return [
+    ...notes.flatMap((note) => objectsOut(note, () => false).found.flatMap((body) => objectsWithin(fieldsOf(body)))),
+    ...results.flatMap((result) => {
+      const written = fieldsOf(result)
+      return written === undefined ? [] : [written]
+    }),
+  ]
+}
+
+function copies(object: Fields, host: Fields): boolean {
+  const keys = Object.keys(object)
+  return keys.length > 0 && keys.every((key) => Object.hasOwn(host, key)) && keys.length >= Math.min(2, Object.keys(host).length)
+}
+
+export function writtenCallOf(said: string, tools: readonly ToolDefinition[], host: readonly Fields[]): WrittenCall | undefined {
+  const text = said.trim()
+  const named = namedTool(text, tools)
+  const object = text.startsWith("{") ? fieldsOf(text) : undefined
+  if (named === undefined && object === undefined) return undefined
+  const misfit = named === undefined ? [] : misfitOf(named)
+  return {
+    naming: named?.naming ?? "NamesNoTool", fits: named !== undefined && misfit.length === 0,
+    copiesHost: object !== undefined && host.some((written) => copies(object, written)),
+    call: named === undefined ? undefined : { name: named.tool.name, arguments: { ...named.args } as Exclude<ToolCall["arguments"], string> },
+    misfit: misfit.join("; "),
+  }
+}
+
+export function wroteStructure(text: string): boolean {
+  return text.search(codeSpan) >= 0 || objectsOut(text, () => false).found.some(isJsonObject)
+}
+
 const writtenCallMarker = /<\s*\/?\s*tool_call\b|<\s*function(?:=|_call\b)/iu
 const writtenCallHeads = ["<tool_call", "</tool_call", "<function=", "<function_call"]
 
@@ -307,7 +432,8 @@ export function streamable(written: string): string {
   const lead = said.trimStart()
   if (lead !== "" && tagHeads.some((head) => head.startsWith(lead.toLowerCase()))) return ""
   const { declared, text: whole } = declaredOf(said)
-  if (declared === "Undeclared" && lead.startsWith("{")) return ""
+  const head = declared === "Undeclared" ? lead : whole.trimStart()
+  if (head.startsWith("{") || mayBeCallLine(head)) return ""
   const partial = partialTagAt(whole)
   const text = (partial < 0 ? whole : whole.slice(0, partial)).trimEnd()
   const at = text.search(writtenCallMarker)
