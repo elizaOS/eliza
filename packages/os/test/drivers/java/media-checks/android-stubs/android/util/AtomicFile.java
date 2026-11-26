@@ -35,6 +35,10 @@ public class AtomicFile {
     return new FileInputStream(base);
   }
 
+  public byte[] readFully() throws IOException {
+    try (FileInputStream in = openRead()) { return in.readAllBytes(); }
+  }
+
   public FileOutputStream startWrite() throws IOException {
     restoreLegacy();
     return new FileOutputStream(next);

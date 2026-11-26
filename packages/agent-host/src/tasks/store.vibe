@@ -487,7 +487,8 @@ export effect function createTaskStore(options: TaskStoreOptions) {
       const lock = custody ? host(() => takeLock(lockFile), "") catch () => undefined : undefined
       const evidence = { privatePath: custody, exclusiveLock: lock !== undefined, key }
       if (keys === undefined || lock === undefined || !admitsOpen(evidence) || !admitsAccount(state, account)) {
-        return try refuse(account, evidence, keys, lock, "Task storage custody could not be verified")
+        return try refuse(account, evidence, keys, lock,
+          `Task storage custody could not be verified (key ${key}, private path ${custody}, exclusive lock ${lock !== undefined}, launch account ${admitsAccount(state, account)})`)
       }
       const sealer = host(() => createTaskSealer(keys), "") catch () => undefined
       const opened = sealer === undefined ? undefined : host(() => openTaskRows(open, file), "") catch () => undefined
