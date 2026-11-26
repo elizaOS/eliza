@@ -236,11 +236,11 @@ module node {
     await client.call("POST", "/api/client-devices/register", { capabilities: negotiated, workflowProtocol: 1 })
     const { conversation } = (await client.host("POST", "/api/conversations", {})).json as { conversation: { id: string } }
     const proposals = async () => ((await client.call("GET", "/api/client-devices/proposals")).json as { proposals: readonly Proposal[] }).proposals
-    const say = async (calls: readonly { readonly name: string; readonly arguments: unknown }[], metadata?: object) => {
+    const say = async (calls: readonly { readonly name: string; readonly arguments: unknown }[], metadata?: object, ...after: readonly CloudReply[]) => {
       const before = (await proposals()).length
-      cloud.script(toolCalls("", ...calls), answer("Which view?"))
+      cloud.script(toolCalls("", ...calls), answer("Which view?"), ...after)
       const turn = (await client.call("POST", `/api/conversations/${conversation.id}/messages`, { text: "Open my files", ...(metadata === undefined ? {} : { metadata }) })).json as Turn
-      const seen = offered(cloud, 2)
+      const seen = offered(cloud, 2 + Math.max(0, after.length - 1))
       const asked = cloud.calls.filter(({ path }) => path.endsWith("/chat/completions"))
       const told = JSON.stringify(((asked.at(-1)?.body as Completion | undefined)?.messages ?? []).filter(({ role }) => role === "tool").map(({ content }) => content))
       return {
@@ -262,7 +262,7 @@ module node {
     const views = { name: "VIEWS", arguments: { action: "show", view: "files" } }
     const { tools: typedTools, ...typed } = await say([views])
     const { tools: deliveredTools, ...delivered } = await say([openView], direct)
-    const { tools: rendererTools, ...rendererOnly } = await say([views], rendererBound)
+    const { tools: rendererTools, ...rendererOnly } = await say([views], rendererBound, answer("Which view?"), answer(`[reported 1: "I couldn't open Files here."]`))
     const { tools: againTools, ...typedAgain } = await say([openView])
     const { tools: bothTools, ...wrongHomeFirst } = await say([{ name: "VIEWS", arguments: { action: "show", view: "photos" } }, propose({ type: "open_view", view: "photos" })])
     return { sameTools: new Set([typedTools, deliveredTools, rendererTools, againTools, bothTools]).size === 1, typed, delivered, rendererOnly, typedAgain, wrongHomeFirst }
@@ -430,7 +430,7 @@ it.live(`A device message opens a view in one place under the same tools: VIEWS 
     sameTools: true,
     typed: { viewsHere: false, viewsNotHere: true, proposed: 0, refused: ["VIEWS"], reply: "Which view?" },
     delivered: { viewsHere: true, viewsNotHere: false, proposed: 0, refused: ["open_view"], reply: "Which view?" },
-    rendererOnly: { viewsHere: true, viewsNotHere: false, proposed: 0, refused: [], reply: "Which view?" },
+    rendererOnly: { viewsHere: true, viewsNotHere: false, proposed: 0, refused: [], reply: "I couldn't open Files here." },
     typedAgain: { viewsHere: false, viewsNotHere: true, proposed: 1, refused: [], reply: reviewText },
     wrongHomeFirst: { viewsHere: false, viewsNotHere: true, proposed: 1, refused: ["VIEWS"], reply: reviewText },
   }))

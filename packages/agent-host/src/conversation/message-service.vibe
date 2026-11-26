@@ -5,7 +5,7 @@
 import {
   type Action, type ActionResult, type AgentRuntime, type GenerateTextParams, type HandlerCallback, type IMessageService, type Media, type Memory, type MessageProcessingOptions, type MessageProcessingResult, type RoleGateRole, type RoomHandlerLease, type State, executePlannedToolCall, ModelType, getTrajectoryContext, historyWindowNotice, readSystemNotice, runWithTrajectoryContext, RunTerminalOwner, ServiceType, stampedMessage, stampYear, toElizaError, trackPostDeliveryTask, windowHistory, withActionGatePolicy, withRoomDeliverySettlement, wrapExternalContent, revertedEffectReceiptIds, utf8ByteLength, type EffectReceipt,
 } from "@elizaos/core"
-import { asksAgain, attachedDocumentBytes, attachedRead, documentTextFits, failureAnswered, followsTheReply, hostNoteLabels, markedUnanswered, offersContextRestore, partInPlace, putToTheModel, reachesTheOwner, replacesTheReply, replySource, reportsIt, stampedForTheModel, type AttachedKind } from "../../gen/agent__conversation__planning.ts"
+import { asksAgain, attachedDocumentBytes, attachedRead, asksAboutIt, documentTextFits, failureAnswered, followsTheReply, needsItsTelling, hostNoteLabels, markedUnanswered, offersContextRestore, partInPlace, putToTheModel, reachesTheOwner, replacesTheReply, replySource, reportsIt, stampedForTheModel, type AttachedKind } from "../../gen/agent__conversation__planning.ts"
 import { carriesCutOffEffect, failureEndsTheRun, limitOriginOn, replyQuoteChars, storedFailureName } from "../../gen/agent__conversation__turns.ts"
 import type { BindingView, LastCloudFailure } from "../models/binding.vibe"
 import { turnClock, ungroundedEventReply, ungroundedTimeReply, type Ungrounded } from "./clock.vibe"
@@ -14,7 +14,7 @@ import { bodyOf, storedText } from "./history.vibe"
 import { ModelRefusal } from "../models/chat.vibe"
 import { emptyTextTurnAccepted, readTurnContext, type BrowserPage, type ReviewedEmail } from "@elizaos/agent"
 import { plannerTemperature, warmUpOutputCap } from "../../gen/agent__conversation__planning.ts"
-import { actionNotes, agentCache, failureNote, failureSentence, offeredActions, plannerTools, planTurn, reportNote, type FailureNotice, type PlannedTurn, type Report } from "./planning.vibe"
+import { actionNotes, agentCache, failureNote, offeredActions, plannerTools, planTurn, reportNote, type FailureNotice, type PlannedTurn, type Report, type Telling } from "./planning.vibe"
 import { cueRule, hostNoteMark } from "./reply-text.vibe"
 import { runTurnEvaluators } from "./turn-evaluators.vibe"
 import { recordedTurn, toolRecordOf } from "./tool-record.vibe"
@@ -339,27 +339,34 @@ async function settledReply(planned: PlannedTurn, omitted: boolean, misgrounded:
   const asked = planned.notices.filter((notice) => putToTheModel(planned.reply.includes(notice.words), notice.safetyCopy))
   const unreported = [...asked.map(failureNote), ...(omitted ? [omittedNote] : [])]
   const wrong = misgrounded(planned.reply)
-  const { revised, stoodBy, reports } = asksAgain(unreported.length > 0, wrong !== undefined, planned.cutOff)
+  const { revised, stoodBy, prose, reports } = asksAgain(unreported.length > 0, wrong !== undefined, planned.cutOff)
     ? await planned.reask(unreported, [...(unreported.length === 0 ? [] : [reportNote]), ...(wrong === undefined ? [] : [wrong.note])])
-    : { revised: undefined, stoodBy: false, reports: new Map<number, Report>() }
+    : { revised: undefined, stoodBy: false, prose: "", reports: new Map<number, Report>() }
   const source = replySource(unreported.length > 0, wrong !== undefined, planned.cutOff, revised !== undefined, revised !== undefined && misgrounded(revised) === undefined)
   const modelsReply = !planned.cutOff && !(source === "FixedWords" && wrong !== undefined)
   const reportedAt = (point: number) => modelsReply && reportsIt(source === "RevisedReply", stoodBy, reports.get(point)?.span ?? "NoQuote")
   const pointOf = (notice: FailureNotice) => asked.indexOf(notice) + 1
-  const answered = (notice: FailureNotice) => failureAnswered(modelsReply, reportedAt(pointOf(notice)), notice.answerableLater, stoodBy)
+  const ownerWords = (notice: FailureNotice) => notice.owner !== undefined
+  const answeredFirst = (notice: FailureNotice) => failureAnswered(modelsReply, reportedAt(pointOf(notice)), notice.answerableLater, stoodBy)
+  const said = source === "RevisedReply" ? revised ?? "" : source === "FixedWords" ? wrong?.fixed ?? planned.reply : planned.reply
+  const needed = asked.some((notice) => needsItsTelling(answeredFirst(notice), ownerWords(notice), notice.answerableLater))
+  const untold = asked.filter((notice) => asksAboutIt(modelsReply, needed, answeredFirst(notice), ownerWords(notice)))
+  const tellings = untold.length === 0 ? new Map<number, Telling>() : await planned.tell(untold.map(failureNote), said, source === "RevisedReply" ? prose : planned.prose)
+  const tellingOf = (notice: FailureNotice) => untold.includes(notice) ? tellings.get(untold.indexOf(notice) + 1) : undefined
+  const answered = (notice: FailureNotice) =>
+    failureAnswered(modelsReply, reportedAt(pointOf(notice)) || tellingOf(notice)?.told === "ToldInTheReply", notice.answerableLater, stoodBy)
   const ownersWords = planned.notices
-    .filter((notice) => reachesTheOwner(notice.owner !== undefined, followsTheReply(answered(notice), asked.includes(notice), notice.safetyCopy)))
+    .filter((notice) => reachesTheOwner(ownerWords(notice), followsTheReply(answered(notice), asked.includes(notice), notice.safetyCopy)))
     .flatMap(({ owner }) => owner ?? [])
   const omissionPoint = asked.length + 1
   const omissionReported = omitted && reportedAt(omissionPoint)
   const attachmentWords = omitted && !omissionReported ? [omittedDocuments] : []
-  const said = source === "RevisedReply" ? revised ?? "" : source === "FixedWords" ? wrong?.fixed ?? planned.reply : planned.reply
-  if (!replacesTheReply(modelsReply, asked.some((notice) => !answered(notice) && notice.owner !== undefined))) return withWords(said, [...ownersWords, ...attachmentWords])
+  if (!replacesTheReply(modelsReply, asked.some((notice) => needsItsTelling(answered(notice), ownerWords(notice), notice.answerableLater)))) return withWords(said, [...ownersWords, ...attachmentWords])
   const inPlace = asked.flatMap((notice) => {
-    switch (partInPlace(reportedAt(pointOf(notice)), answered(notice), notice.owner !== undefined)) {
-      case "ModelsReport": return [reports.get(pointOf(notice))?.sentence ?? ""]
+    switch (partInPlace(reportedAt(pointOf(notice)), answered(notice), ownerWords(notice), tellingOf(notice)?.told ?? "Untold")) {
+      case "ModelsReport": return [reportedAt(pointOf(notice)) ? reports.get(pointOf(notice))?.sentence ?? "" : tellingOf(notice)?.sentence ?? ""]
       case "ActionsWords": return [notice.owner ?? ""]
-      case "FailureText": return [failureSentence(notice.words)]
+      case "ModelsSentence": return [tellingOf(notice)?.sentence ?? ""]
       case "NoPart": return []
     }
   })

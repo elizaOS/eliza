@@ -13,7 +13,7 @@ import {
 } from "@elizaos/core"
 import {
   actionNoteSent, askedAgainAt, answerableLater, answeredAgain, callAdmission, callRunOf, cueDelivered, standsBy, cutOffReply, failedOpen, isTurnStep, maxPlanSteps, mayAnswer, nextMove, offered, openOutcomes, plannerOnlyCoaching, plansOn, resendWait, spokenFrom, toolActivity,
-  admitsPlannerWork, contextRestoreOf, loneObjectMove, maxRestoredHistoryBytes, nothingRan, offersContextRestore, plannerTemperature, terminalAnswerOf, toolDispatch, turnNarrowed, unavailableNotice, writtenMarkupOf, type CallFailure, type PlanStep, type QuoteSpan, type StepOutcome, type ToolSettlement,
+  admitsPlannerWork, contextRestoreOf, loneObjectMove, maxRestoredHistoryBytes, nothingRan, offersContextRestore, plannerTemperature, terminalAnswerOf, toolDispatch, turnNarrowed, unavailableNotice, writtenMarkupOf, type CallFailure, type PlanStep, type QuoteSpan, type StepOutcome, type Told, type ToolSettlement,
 } from "../../gen/agent__conversation__planning.ts"
 import { originAfterResend } from "../../gen/agent__conversation__turns.ts"
 import { readTurnContext, unauthoredTurnAllowsCall } from "@elizaos/agent"
@@ -91,9 +91,9 @@ export function failureNote({ words, verified, answerableLater, failedActions, l
 
 export const reportNote = `For each numbered point above that your answer tells the person, end your answer with a line of its own, [reported N: "…"], where N is that point's number and the quote is the one sentence of your answer that tells it, copied exactly. Quote a different sentence for each point. Leave out the line of any point your answer does not tell.`
 
-const reportTag = /[[(][ \t]*reported[ \t]*(\d*)[ \t]*:[ \t]*(“[^”\n]*”|"[^"\n]*"|[^\])\n]*)[ \t]*[\])]/giu
-const reportLabel = /^[ \t]*[*_]*[ \t]*[[(][ \t]*reported[ \t]*(\d*)[ \t]*[\])][ \t]*[*_]*[ \t]*:[ \t]*([^\n]*)$/gimu
-const reportBare = /^[ \t]*[*_]*[ \t]*reported[ \t]*(\d*)[ \t]*[*_]*[ \t]*:[ \t]*[*_]*[ \t]*(["“][^\n]*["”])[ \t]*[*_]*[ \t]*$/gimu
+const reportTag = /\[[ \t]*reported[ \t]*#?(\d*)[ \t]*:[ \t]*(“[^”\n]*”|"[^"\n]*"|[^\]\n]*)[ \t]*\]|\([ \t]*reported[ \t]*#?(\d*)[ \t]*:[ \t]*(“[^”\n]*”|"[^"\n]*")[ \t]*\)/giu
+const reportLabel = /^[ \t]*(?:[-*•][ \t]+)?[*_]*[ \t]*[[(][ \t]*reported[ \t]*#?(\d*)[ \t]*[\])][ \t]*[*_]*[ \t]*:[ \t]*([^\n]*)$/gimu
+const reportBare = /^[ \t]*(?:[-*•][ \t]+)?[*_]*[ \t]*reported[ \t]*#?(\d*)[ \t]*[*_]*[ \t]*:[ \t]*[*_]*[ \t]*(["“][^\n]*["”])[ \t]*[*_]*[ \t]*$/gimu
 const quoteMarks = /^[\s"“”'‘’*_]+|[\s"“”'‘’*_]+$/gu
 
 function reportsOf(said: string, points: number): { readonly said: string; readonly quotes: ReadonlyMap<number, readonly string[]> } {
@@ -101,7 +101,9 @@ function reportsOf(said: string, points: number): { readonly said: string; reado
   const untagged = labelled.replace(reportTag, "")
   const found = [...said.matchAll(reportLabel), ...labelled.matchAll(reportTag), ...untagged.matchAll(reportBare)]
   const quotes = new Map<number, string[]>()
-  for (const [, point, quote] of found) {
+  for (const [, tagPoint, tagQuote, parenPoint, parenQuote] of found) {
+    const point = tagPoint ?? parenPoint ?? ""
+    const quote = tagQuote ?? parenQuote
     const at = point === "" ? (points === 1 ? 1 : 0) : Number(point)
     if (at >= 1 && at <= points) quotes.set(at, [...quotes.get(at) ?? [], (quote ?? "").replace(quoteMarks, "")])
   }
@@ -121,11 +123,6 @@ export interface Report {
 }
 
 const insideASentence = /[.!?…]["'”’)\]]*\s/u
-
-export function failureSentence(words: string): string {
-  const first = words.trim().split(/(?<=[.!?…])\s+/u)[0] ?? ""
-  return first.length > 300 ? `${first.slice(0, 300).trimEnd()}…` : first
-}
 
 export function reportsEach(quotes: ReadonlyMap<number, readonly Report[]>): ReadonlyMap<number, Report> {
   const told = new Set<string>()
@@ -148,19 +145,44 @@ export function reportIn(prose: string, quote: string): Report {
   return whole === null ? { span: "Fragment", sentence: "" } : { span: "OneSentence", sentence: whole[0].trim() }
 }
 
+export interface Telling {
+  readonly told: Told
+  readonly sentence: string
+}
+
+const tellAgain = "Note from the agent host, not the person: your reply above has not yet told the person about these steps of this turn, which did not happen as asked. Call no tools."
+const tellNote = `For each numbered point above, write one line of its own, [reported N: "…"], where N is that point's number and the quote is either the one sentence of your reply above that tells the person it did not happen, copied exactly, or else one sentence of your own that tells the person truthfully that it did not happen. Write nothing else.`
+
+function tellingsOf(quotes: ReadonlyMap<number, readonly string[]>, prose: string, notes: readonly string[]): ReadonlyMap<number, Telling> {
+  const told = new Set<string>()
+  return new Map([...quotes].toSorted(([a], [b]) => a - b).map(([point, said]): [number, Telling] => {
+    const inReply = said.map((quote) => reportIn(prose, quote)).find(({ span, sentence }) => span === "OneSentence" && !told.has(sentence))
+    if (inReply !== undefined) {
+      told.add(inReply.sentence)
+      return [point, { told: "ToldInTheReply", sentence: inReply.sentence }]
+    }
+    const own = said.map((quote) => quote.trim()).find((quote) => quote !== "" && !insideASentence.test(quote.replace(/[\s.!?…]+$/u, "")) && !holdsHostText(quote, notes) && !told.has(quote))
+    if (own !== undefined) told.add(own)
+    return [point, own === undefined ? { told: "Untold", sentence: "" } : { told: "ToldInItsOwnSentence", sentence: own }]
+  }))
+}
+
 export interface PlannedTurn {
   readonly reply: string
   readonly notices: readonly FailureNotice[]
   readonly cutOff: boolean
   readonly steps: readonly PlannedStep[]
   readonly streamed: string
+  readonly prose: string
   readonly reask: (points: readonly string[], notes: readonly string[]) => Promise<Reasked>
+  readonly tell: (points: readonly string[], reply: string, prose: string) => Promise<ReadonlyMap<number, Telling>>
   readonly compose: (prose: string | undefined) => string
 }
 
 export interface Reasked {
   readonly revised: string | undefined
   readonly stoodBy: boolean
+  readonly prose: string
   readonly reports: ReadonlyMap<number, Report>
 }
 
@@ -888,12 +910,26 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
       return {
         revised: spoken && answeredAgain(draft, sameAsFirst) ? revised : undefined,
         stoodBy: spoken && standsBy(draft, sameAsFirst),
+        prose,
         reports: reportsEach(new Map([...quotes].map(([point, said]) => [point, said.map((quote) => reportIn(prose, quote))]))),
       }
     } catch (error: unknown) {
       if (signal.aborted) throw error
-      return { revised: undefined, stoodBy: false, reports: new Map() }
+      return { revised: undefined, stoodBy: false, prose: "", reports: new Map() }
     }
   }
-  return { reply, notices: settled.notices, cutOff: stoppedShort, steps, streamed, reask, compose: settled.compose }
+  const tell = async (points: readonly string[], said: string, spoken: string): Promise<ReadonlyMap<number, Telling>> => {
+    try {
+      const answered = await sentAtMostTwice((bind) => runtime.useModel(ModelType.TEXT_LARGE, bind({
+        system: input.system, reasoning: "off", temperature: plannerTemperature, signal, providerOptions: agentCache(runtime, "planner"),
+        messages: [...conversation, ...(said.trim() ? [{ role: "assistant" as const, content: said }] : []), { role: "user" as const, content: [tellAgain, ...points.map((point, at) => `(${at + 1}) ${point}`), tellNote].join("\n") }],
+        ...(tools.length === 0 ? {} : { tools, toolChoice: "none" as const }),
+      })), signal)
+      return tellingsOf(reportsOf(answerOf(answered).text, points.length).quotes, spoken, [...input.hostNotes, ...points, tellAgain, tellNote])
+    } catch (error: unknown) {
+      if (signal.aborted) throw error
+      return new Map()
+    }
+  }
+  return { reply, prose: prose ?? "", notices: settled.notices, cutOff: stoppedShort, steps, streamed, reask, tell, compose: settled.compose }
 }
