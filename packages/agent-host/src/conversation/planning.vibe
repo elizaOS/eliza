@@ -17,7 +17,7 @@ import {
 } from "../../gen/agent__conversation__planning.ts"
 import { originAfterResend } from "../../gen/agent__conversation__turns.ts"
 import { ModelRefusal } from "../models/chat.vibe"
-import { actionNameKey, asksSomething, composeReply, declaredOf, draftOf, holdsHostText, hostObjects, shownUpTo, streamable, withoutOfferedCalls, withoutWrittenCalls, writtenCallFree, writtenCallOf, wroteStructure } from "./reply-text.vibe"
+import { actionNameKey, asksSomething, composeReply, declaredOf, draftOf, holdsHostText, hostObjects, shownUpTo, streamable, withoutOfferedCalls, withoutWrittenCalls, writtenCallFree, writtenCallOf } from "./reply-text.vibe"
 
 module node {
   import { randomUUID } from "node:crypto"
@@ -41,7 +41,7 @@ const answerFromNothing = "Note from the agent host, not the person: your last r
 const answerAgain = "Note from the agent host, not the person: your reply is not final yet. Write your whole reply to the person's latest message again, in your own words, so that it is true to what follows. Call no tools."
 const misfitNote = (name: string, why: string) =>
   `Note from the agent host, not the person: your last response was a ${name} tool call written as text, and its arguments do not fit that tool (${why}), so nothing ran and the person saw none of it. Call the tool with arguments that fit, or answer the person in words.`
-const copiedNote = "Note from the agent host, not the person: your last response only repeated data the agent host gave you, so none of it was sent. Answer the person's latest message now, in your own words, or call an offered tool. Never repeat the agent host's notes. If the person asked for a tool result as it is, give that result again as it was."
+const copiedNote = "Note from the agent host, not the person: your last response only repeated text you were given (a note, a page, a tool result or an earlier message), so none of it was sent and none of it ran. Answer the person's latest message now, in your own words, or make the call with an offered tool. Never repeat the agent host's notes. If the person asked for a tool result as it is, give that result again as it was."
 const deliveredCueNote = (cue: string) =>
   `Note from the agent host, not the person: ${JSON.stringify(cue)} was already sent to the person as progress. Do not repeat or paraphrase it. Go straight to the result, any blocker, or the question you need answered. The cue is not evidence that any work succeeded.`
 const restoreContext: ToolDefinition = {
@@ -356,6 +356,11 @@ function byName(left: { readonly name: string }, right: { readonly name: string 
   return left.name < right.name ? -1 : left.name > right.name ? 1 : 0
 }
 
+function textsOf(content: ChatMessage["content"]): string[] {
+  if (typeof content === "string") return [content]
+  return Array.isArray(content) ? content.flatMap((part: unknown) => typeof part === "object" && part !== null && "text" in part && typeof part.text === "string" ? [part.text] : []) : []
+}
+
 function answerOf(value: unknown): { text: string; toolCalls: ToolCall[] } {
   if (typeof value === "string") return { text: value, toolCalls: [] }
   if (typeof value !== "object" || value === null) return { text: "", toolCalls: [] }
@@ -580,7 +585,6 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
   const steps: PlannedStep[] = []
   const named = new Map(actions.map((action) => [action.name, action]))
   const offeredNames = new Set(tools.map(({ name }) => actionNameKey(name)))
-  const personWroteStructure = wroteStructure(message.content.text ?? "")
   let taken = 0
   let displayed = false
   let streamed = ""
@@ -654,16 +658,18 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
     taken += 1
     if (restartFirst && !restarted) input.onReplyRestart?.("")
     displayed = streamed.length > 0
-    const givenWords = declaredOf(writtenCallFree(given.text).prose).text
-    const results = conversation.slice(input.messages.length).flatMap(({ role, content }) => role === "tool" && typeof content === "string" ? [content] : [])
-    const lone = given.toolCalls.length === 0 ? writtenCallOf(givenWords, tools, hostObjects(input.hostNotes, results)) : undefined
-    const loneMove = loneObjectMove(lone !== undefined, lone?.naming ?? "NamesNoTool", lone?.fits ?? false, lone?.copiesHost ?? false, personWroteStructure,
+    const { declared: givenTag, text: givenWords } = declaredOf(writtenCallFree(given.text).prose)
+    const results = conversation.slice(input.messages.length).flatMap(({ role, content }) => role === "tool" ? textsOf(content) : [])
+    const lone = given.toolCalls.length === 0
+      ? writtenCallOf(givenWords, tools, () => ({ anywhere: [...input.messages.flatMap(({ content }) => textsOf(content)), ...input.hostNotes, ...results], host: hostObjects(input.hostNotes, results) }))
+      : undefined
+    const loneMove = loneObjectMove(lone !== undefined, lone?.naming ?? "NamesNoTool", lone?.fits ?? false, lone?.copied ?? false, lone?.hostData ?? false, givenTag,
       taken < maxPlanSteps, askedAgainAt(steps.length > 0, askedBeforeWork, askedAfterWork), maxPlanSteps - taken)
     if (loneMove === "AskAboutObject") {
       if (steps.length > 0) askedAfterWork = true
       else askedBeforeWork = true
       conversation.push({ role: "assistant", content: givenWords })
-      conversation.push({ role: "user", content: lone?.call !== undefined && lone.naming === "NamesByCallField" && !lone.fits ? misfitNote(lone.call.name, lone.misfit) : copiedNote })
+      conversation.push({ role: "user", content: lone?.call !== undefined && !lone.copied ? misfitNote(lone.call.name, lone.misfit) : copiedNote })
       continue plan
     }
     const answered = loneMove === "RunAsCall" && lone?.call !== undefined ? { text: "", toolCalls: [{ id: freshCallId(), ...lone.call }] } : given
