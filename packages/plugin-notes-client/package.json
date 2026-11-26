@@ -30,7 +30,8 @@
   "scripts": {
     "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && vibelang -p tsconfig.build.json",
     "typecheck": "vibelang --noEmit -p .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:browser": "vitest run --project browser"
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",

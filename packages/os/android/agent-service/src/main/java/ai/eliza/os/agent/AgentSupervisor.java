@@ -13,6 +13,7 @@ import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 final class AgentSupervisor {
@@ -21,7 +22,9 @@ final class AgentSupervisor {
   static final long LOG_BYTES = 1024 * 1024;
   static final String AGENT_SCRIPT = "agent.mjs";
 
-  record Command(Path node, Path bundleDir, Path launchDocument, Path stateDir, Path socket, Path log) {
+  record Command(Path node, Path bundleDir, Path launchDocument, Path stateDir, Path socket, Path log, Map<String, String> broker) {
+    Command { broker = Map.copyOf(broker); }
+
     ProcessBuilder builder() throws IOException {
       Path tmp = stateDir.resolve("tmp");
       Files.createDirectories(tmp, PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------")));
@@ -35,6 +38,7 @@ final class AgentSupervisor {
       environment.put("PATH", "/system/bin");
       environment.put("HOME", stateDir.toAbsolutePath().toString());
       environment.put("TMPDIR", tmp.toAbsolutePath().toString());
+      environment.putAll(broker);
       return builder;
     }
   }

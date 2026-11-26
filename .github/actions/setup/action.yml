@@ -371,11 +371,5 @@ runs:
     - name: Set up Android SDK
       if: inputs.verification == 'true' && inputs.job == 'verify'
       uses: android-actions/setup-android@v3
-    - name: Install Android build-tools 36.0.0 and platform android-36
-      if: inputs.verification == 'true' && inputs.job == 'verify'
-      shell: bash
-      run: |
-        sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
-        # sdkmanager stops reading once it has accepted every license.
-        (set +o pipefail; yes | "$sdkmanager" --licenses >/dev/null)
-        "$sdkmanager" "build-tools;36.0.0" "platforms;android-36"
+      with:
+        packages: 'platform-tools build-tools;36.0.0 platforms;android-36'

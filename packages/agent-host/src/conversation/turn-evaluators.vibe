@@ -1,5 +1,5 @@
 // spec/agent/conversation/planning.md, "Story: Let my plugins learn from a finished turn"; spec/agent/conversation/planning.md, "After the reply is stored, each evaluator that opts in runs in priority order, and one evaluator's failure stops neither its peers nor the turn"; spec/agent/conversation/planning.md, "A model call is sent again at most once, after a temporary rate limit or a tool call the provider could not parse"; spec/agent/conversation/planning.md, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history"
-import { type AgentRuntime, type Memory, type RegisteredEvaluator, type State, isTextGenerationModelType, logger, ModelType } from "@elizaos/core"
+import { type AgentRuntime, type JSONSchema, type Memory, type RegisteredEvaluator, type State, isTextGenerationModelType, logger, ModelType } from "@elizaos/core"
 import { runsNext } from "../../gen/agent__conversation__planning.ts"
 import { agentCache, sentAtMostTwice } from "./planning.vibe"
 
@@ -32,21 +32,24 @@ function outputOf(value: unknown): unknown {
   return value
 }
 
-async function runOne(runtime: AgentRuntime, evaluator: RegisteredEvaluator, message: Memory, state: State, responses: Memory[], signal: AbortSignal): Promise<void> {
-  const context = { runtime, message, state, options: { didRespond: responses.length > 0, responses } }
-  if (!await evaluator.shouldRun(context)) return
-  const prepared = evaluator.prepare === undefined ? undefined : await evaluator.prepare({ ...context, state })
-  const prompted = { ...context, state, prepared }
-  const resolved = evaluator.resolveOutput !== undefined && (evaluator.resolveOutputWhen?.(prompted) ?? true)
-  let raw: unknown
-  if (resolved && evaluator.resolveOutput !== undefined) {
-    raw = evaluator.resolveOutput(prompted)
-  } else {
-    const modelType = evaluator.modelType?.trim().toUpperCase() ?? ModelType.TEXT_SMALL
-    if (!isTextGenerationModelType(modelType)) throw new Error(`Unsupported evaluator model type: ${evaluator.modelType}`)
-    raw = outputOf(await sentAtMostTwice((bind) => runtime.useModel(modelType, bind({ prompt: evaluator.prompt(prompted), responseSchema: evaluator.schema, reasoning: "off", signal, providerOptions: agentCache(runtime, "evaluator") })), signal))
-  }
-  const output = evaluator.parse === undefined ? raw : evaluator.parse(raw, { ...prompted, outputSource: resolved ? "resolved" : "model" })
+const mergedEvaluatorSystem = "Evaluate every section below independently and reply with one JSON object whose keys are the exact section names and whose values match each section's schema, and nothing else."
+
+interface PreparedEvaluator {
+  readonly evaluator: RegisteredEvaluator
+  readonly prompted: { readonly runtime: AgentRuntime; readonly message: Memory; readonly state: State; readonly options: { readonly didRespond: boolean; readonly responses: Memory[] }; readonly prepared: unknown }
+  readonly resolved: boolean
+  readonly modelType?: string
+  readonly promptText?: string
+}
+
+async function applyEvaluatorOutput(
+  entry: PreparedEvaluator,
+  raw: unknown,
+  outputSource: "resolved" | "model",
+  signal: AbortSignal,
+): Promise<void> {
+  const { evaluator, prompted } = entry
+  const output = evaluator.parse === undefined ? raw : evaluator.parse(raw, { ...prompted, outputSource })
   if (output === null || output === undefined) return
   for (const processor of byPriority(evaluator.processors ?? [])) {
     signal.throwIfAborted()
@@ -58,14 +61,110 @@ async function runOne(runtime: AgentRuntime, evaluator: RegisteredEvaluator, mes
   }
 }
 
+async function runSingleModel(runtime: AgentRuntime, entry: PreparedEvaluator, signal: AbortSignal): Promise<void> {
+  const { evaluator, modelType, promptText } = entry
+  if (modelType === undefined || promptText === undefined || !isTextGenerationModelType(modelType)) {
+    throw new Error(`Unsupported evaluator model type: ${evaluator.modelType}`)
+  }
+  const raw = outputOf(await sentAtMostTwice((bind) => runtime.useModel(modelType, bind({
+    prompt: promptText, responseSchema: evaluator.schema, reasoning: "off", signal, providerOptions: agentCache(runtime, "evaluator"),
+  })), signal))
+  await applyEvaluatorOutput(entry, raw, "model", signal)
+}
+
+function asRecord(value: unknown): Readonly<Record<string, unknown>> | undefined {
+  return typeof value === "object" && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : undefined
+}
+
 export async function runTurnEvaluators(runtime: AgentRuntime, message: Memory, state: State, responses: Memory[], signal: AbortSignal): Promise<void> {
   const evaluators = byPriority(runtime.evaluators.filter((evaluator) => inline(runtime, evaluator)))
+  const ready: PreparedEvaluator[] = []
   for (const [done, evaluator] of evaluators.entries()) {
     if (signal.aborted || !runsNext(done, evaluators.length, "Ran")) return
     try {
-      await runOne(runtime, evaluator, message, state, responses, signal)
+      const context = { runtime, message, state, options: { didRespond: responses.length > 0, responses } }
+      if (!await evaluator.shouldRun(context)) continue
+      const prepared = evaluator.prepare === undefined ? undefined : await evaluator.prepare({ ...context, state })
+      const prompted = { ...context, state, prepared }
+      const resolved = evaluator.resolveOutput !== undefined && (evaluator.resolveOutputWhen?.(prompted) ?? true)
+      if (resolved) {
+        ready.push({ evaluator, prompted, resolved: true })
+      } else {
+        const modelType = evaluator.modelType?.trim().toUpperCase() ?? ModelType.TEXT_SMALL
+        if (!isTextGenerationModelType(modelType)) throw new Error(`Unsupported evaluator model type: ${evaluator.modelType}`)
+        ready.push({ evaluator, prompted, resolved: false, modelType, promptText: evaluator.prompt(prompted) })
+      }
     } catch (error: unknown) {
       logger.warn({ src: "agent", evaluator: evaluator.name, error: String(error) }, "A turn evaluator failed")
+    }
+  }
+  const batches = new Map<string, PreparedEvaluator[]>()
+  for (const entry of ready) {
+    if (!entry.resolved && entry.modelType !== undefined) {
+      batches.set(entry.modelType, [...(batches.get(entry.modelType) ?? []), entry])
+    }
+  }
+  const mergedResults = new Map<string, unknown>()
+  for (const [modelType, group] of batches) {
+    if (signal.aborted) return
+    if (group.length < 2 || !isTextGenerationModelType(modelType)) continue
+    if (group.some((entry) => entry.evaluator.schema === undefined)) continue
+    const properties: Record<string, JSONSchema> = {}
+    const required: string[] = []
+    const sections: string[] = []
+    let sharedOwnerLine: string | undefined
+    const ownerLinePattern = /\n(The owner's message: [^\n]+)$/u
+    const strippedSections: string[] = []
+    let allShareOwnerLine = true
+    for (const entry of group) {
+      if (entry.evaluator.schema === undefined) continue
+      properties[entry.evaluator.name] = entry.evaluator.schema
+      required.push(entry.evaluator.name)
+      const text = entry.promptText ?? ""
+      sections.push(`## ${entry.evaluator.name}\n${text}`)
+      const matched = ownerLinePattern.exec(text)
+      if (matched !== null && (sharedOwnerLine === undefined || sharedOwnerLine === matched[1])) {
+        sharedOwnerLine = matched[1]
+        strippedSections.push(`## ${entry.evaluator.name}\n${text.slice(0, matched.index)}`)
+      } else {
+        allShareOwnerLine = false
+      }
+    }
+    const mergedPrompt = allShareOwnerLine && sharedOwnerLine !== undefined
+      ? `${strippedSections.join("\n\n")}\n\n${sharedOwnerLine}`
+      : sections.join("\n\n")
+    const mergedSchema: JSONSchema = { type: "object", additionalProperties: false, properties, required }
+    try {
+      const answered = outputOf(await sentAtMostTwice((bind) => runtime.useModel(modelType, bind({
+        system: mergedEvaluatorSystem,
+        prompt: mergedPrompt,
+        responseSchema: mergedSchema,
+        reasoning: "off",
+        signal,
+        providerOptions: agentCache(runtime, "evaluator"),
+      })), signal))
+      const record = asRecord(answered)
+      if (record !== undefined) {
+        for (const entry of group) {
+          if (Object.hasOwn(record, entry.evaluator.name)) mergedResults.set(entry.evaluator.name, record[entry.evaluator.name])
+        }
+      }
+    } catch (error: unknown) {
+      logger.warn({ src: "agent", evaluators: required.join(","), error: String(error) }, "Merged turn evaluator call failed; falling back per evaluator")
+    }
+  }
+  for (const entry of ready) {
+    if (signal.aborted) return
+    try {
+      if (entry.resolved && entry.evaluator.resolveOutput !== undefined) {
+        await applyEvaluatorOutput(entry, entry.evaluator.resolveOutput(entry.prompted), "resolved", signal)
+      } else if (mergedResults.has(entry.evaluator.name)) {
+        await applyEvaluatorOutput(entry, mergedResults.get(entry.evaluator.name), "model", signal)
+      } else {
+        await runSingleModel(runtime, entry, signal)
+      }
+    } catch (error: unknown) {
+      logger.warn({ src: "agent", evaluator: entry.evaluator.name, error: String(error) }, "A turn evaluator failed")
     }
   }
 }

@@ -70,11 +70,14 @@ export const BillingSettings = Schema.Struct({
   secretKeyEnv: SecretName,
   webhookSecretEnv: SecretName,
   publishableKey: pattern(/^pk_(?:live|test)_[A-Za-z0-9]{1,250}$/),
-  plans: Schema.Struct({ plus_monthly: PlanBinding, pro_monthly: PlanBinding }),
+  plans: Schema.Struct({ plus_monthly: PlanBinding, pro_monthly: Schema.optionalKey(PlanBinding) }),
 });
 
 export const InferenceSettings = Schema.Struct({
-  providers: Schema.NonEmptyArray(Schema.Struct({ id: Identifier, baseUrl: ProviderUrl, apiKeyEnv: SecretName })),
+  providers: Schema.NonEmptyArray(Schema.Union([
+    Schema.Struct({ id: Identifier, kind: Schema.optionalKey(Schema.Literal("http")), baseUrl: ProviderUrl, apiKeyEnv: SecretName }),
+    Schema.Struct({ id: Identifier, kind: Schema.Literal("workers-ai"), binding: SecretName }),
+  ])),
   models: Schema.NonEmptyArray(Schema.Struct({
     id: Identifier, provider: Identifier, upstreamModel: UpstreamModel, vision: Schema.Boolean,
     defaultMaxTokens: Schema.optionalKey(bounded(1, maxTokensPerSide)),

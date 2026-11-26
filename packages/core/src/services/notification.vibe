@@ -1,6 +1,7 @@
-// spec/core/notifications/index.md, "Inbox mutations retain stable IDs and increasing sequence coordinates"; spec/core/notifications/index.md, "Acknowledgement publishes success while ambiguity requires reconciliation"; spec/core/notifications/index.md, "Read fences use quiescent durable state and restart reloads that state"; spec/core/notifications/index.md, "Exact grouped projections reuse the durable row"; spec/core/notifications/index.md, "Group count and expiry use the current row and commit time"; spec/core/notifications/startup.md, "Hydration validates every row and the complete coordinate map"; spec/core/notifications/recovery.md, "Availability and in-flight ownership decide recovery admission"; spec/core/notifications/recovery.md, "Failure cleanup retains attempt ownership and elapsed time controls the next retry"; spec/core/notifications/recoveryOwners.md, "A successful old callback clears the map only if its own identity is still mapped"; spec/core/notifications/index.md, "An explicit priority wins, otherwise the category sets it"
+// spec/core/notifications/index.md, "Inbox mutations retain stable IDs and increasing sequence coordinates"; spec/core/notifications/index.md, "Acknowledgement publishes success while ambiguity requires reconciliation"; spec/core/notifications/index.md, "Read fences use quiescent durable state and restart reloads that state"; spec/core/notifications/index.md, "Exact grouped projections reuse the durable row"; spec/core/notifications/index.md, "Group count and expiry use the current row and commit time"; spec/core/notifications/startup.md, "Hydration validates every row and the complete coordinate map"; spec/core/notifications/recovery.md, "Availability and in-flight ownership decide recovery admission"; spec/core/notifications/recovery.md, "Failure cleanup retains attempt ownership and elapsed time controls the next retry"; spec/core/notifications/recoveryOwners.md, "A successful old callback clears the map only if its own identity is still mapped"; spec/core/notifications/index.md, "An explicit priority wins, otherwise the category sets it"; spec/core/notifications/index.md, "A native record carries only closed presentation data, and a workflow notice its exact run route"
 import { errorText } from "../utils/errors.vibe"
 import { delayMs } from "../../gen/core__notifications__recovery.effect.vibe"
+import { nativeRoute, type RouteText } from "../../gen/core__notifications.effect.vibe"
 import { asLegacy, Foreign, foreign, foreignSync, runDetached, thrownValue } from "../edge.vibe"
 import { logger } from "../logger.vibe"
 import {
@@ -25,7 +26,7 @@ import {
   tierForPriority,
 } from "../types/notification.vibe"
 import type { AgentEventObserver } from "./agent-event.vibe"
-import { asUUID, type UUID } from "../types/primitives.vibe"
+import { asUUID, type JsonValue, type UUID } from "../types/primitives.vibe"
 import type { IAgentRuntime } from "../types/runtime.vibe"
 import { Service, ServiceType } from "../types/service.vibe"
 import { utf8ByteLength } from "../utils/unicode.vibe"
@@ -618,6 +619,36 @@ function recordTooLarge(message: string): NotificationNativeError {
   return new NotificationNativeError("NATIVE_NOTIFICATION_RECORD_TOO_LARGE", message, 413)
 }
 
+function presentationData(given: AgentNotification["data"]): NativeNotification["data"] {
+  const data: { ownerType?: string; conversationId?: string; messageId?: string } = {}
+  if (given?.ownerType === "clock" || given?.ownerType === "reminder" || given?.ownerType === "occurrence") data.ownerType = given.ownerType
+  for (const field of ["conversationId", "messageId"] as const) {
+    const id = validateUuid(given?.[field])
+    if (id) data[field] = id
+  }
+  return Object.keys(data).length ? data : undefined
+}
+
+function routeText(value: JsonValue | undefined, longest: number): RouteText {
+  return typeof value === "string" && value !== "" && value.length <= longest && !hasControlCharacter(value) ? { tag: "RouteId", value } : { tag: "NotRouteId" }
+}
+
+function workflowRoute(given: AgentNotification["data"]): NativeNotification["data"] {
+  const route = nativeRoute({
+    category: "workflow",
+    kind: given?.kind === "result" ? "KindResult" : given?.kind === "approval" ? "KindApproval" : "KindOther",
+    workflowId: routeText(given?.workflowId, 128),
+    runId: routeText(given?.runId, 128),
+    versionId: routeText(given?.versionId, 128),
+    proposalId: routeText(given?.proposalId, 256),
+  })
+  switch (route.tag) {
+    case "NoRoute": return undefined
+    case "ResultRoute": return { kind: "result", workflowId: route.workflowId, runId: route.runId, versionId: route.versionId }
+    case "ApprovalRoute": return { kind: "approval", workflowId: route.workflowId, runId: route.runId, versionId: route.versionId, proposalId: route.proposalId }
+  }
+}
+
 function nativeRecord(inbox: Inbox, n: AgentNotification): NativeNotification | null {
   const record: NativeNotification = {
     id: n.id,
@@ -635,19 +666,8 @@ function nativeRecord(inbox: Inbox, n: AgentNotification): NativeNotification | 
     record.deepLink = n.deepLink
   }
   if (n.groupKey != null) record.groupKey = n.groupKey
-  const data: NonNullable<NativeNotification["data"]> = {}
-  if (
-    n.data?.ownerType === "clock"
-    || n.data?.ownerType === "reminder"
-    || n.data?.ownerType === "occurrence"
-  ) {
-    data.ownerType = n.data.ownerType
-  }
-  for (const field of ["conversationId", "messageId"] as const) {
-    const id = validateUuid(n.data?.[field])
-    if (id) data[field] = id
-  }
-  if (Object.keys(data).length) record.data = data
+  const data = n.category === "workflow" ? workflowRoute(n.data) : presentationData(n.data)
+  if (data !== undefined) record.data = data
   const tooLarge = record.title.length > 512
     || record.body.length > 4096
     || record.title.includes("\0")

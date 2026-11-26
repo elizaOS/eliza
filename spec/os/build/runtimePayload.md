@@ -11,6 +11,8 @@ for Node: there is no loader, no C++ runtime library, no seccomp shim and
 no gateway. The agent bundle build (its manifest gives the bundle's
 profile and the worker's digest) and the launch document belong to the
 agent; reading files, hashing, fetching and copying stay in the shell.
+For a fetched runtime, the stager checks the ZIP's locked SHA-256 and
+inventories its Node `LICENSE` once at `assets/agent/notices/node/LICENSE`.
 
 ## Story: Ship the agent with a pinned Node runtime
 
@@ -77,6 +79,9 @@ pure def runtimeLayoutValid(targets: List[Abi], runtimes: List[RuntimeCandidate]
 under `assets/agent/`, the consumer's extra asset trees
 (`extraAssets: [{dir, name}]`) and native libraries per ABI, and the
 workflow worker. A consumer addition is admitted only through this list.
+Android packaging keeps the listed path and bytes for compressed archives,
+including the vector extension archive. An asset that conflicts with a
+staged archive is a build failure.
 
 ```quint
 type FileKind = NodeRuntime | BundleFile | NodeAddon | ModelFile | InferenceLibrary | ConsumerAsset | ConsumerLibrary | WorkerFile

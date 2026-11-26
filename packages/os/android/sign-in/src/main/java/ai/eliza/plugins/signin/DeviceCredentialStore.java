@@ -132,6 +132,8 @@ public final class DeviceCredentialStore implements CredentialReader {
     synchronized (lock) { advance(); return state; }
   }
 
+  Object mailCommitLock() { return lock; }
+
   public int generation() {
     synchronized (lock) { return state.generation(); }
   }

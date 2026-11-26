@@ -224,7 +224,7 @@ function androidTreeFiles(root: string, label: string): { file: string; label: s
  * different one. Nothing is returned when the SDK is absent or incomplete, so a run without the
  * toolchain never records a result a run with it could reuse.
  */
-function readAndroidToolchain(observed?: string[]): string | undefined {
+function readAndroidToolchain(): string | undefined {
   try {
     const sdk = [
       process.env.ANDROID_HOME,
@@ -276,7 +276,6 @@ function readAndroidToolchain(observed?: string[]): string | undefined {
       const digest = digestFile(file);
       if (!digest) return false;
       digests.push(`${label} ${digest}`);
-      if (observed) observed.push(file, real, stamp([file]));
       return true;
     };
     for (const { file, label } of files) {
@@ -284,7 +283,6 @@ function readAndroidToolchain(observed?: string[]): string | undefined {
     }
     for (const [name, executable] of Object.entries(executables))
       digests.push(`${name} ${digestFile(executable)}`);
-    if (observed) observed.push(sdk, ...Object.values(executables));
     return createHash("sha256").update(JSON.stringify(["android-toolchain-v2", ...digests])).digest("hex");
   } catch {
     return undefined;
@@ -294,28 +292,4 @@ function readAndroidToolchain(observed?: string[]): string | undefined {
 /** The digest of the Android toolchain the OS tests would run against, if that toolchain is complete. */
 export function androidToolchainIdentity(): string | undefined {
   return readAndroidToolchain();
-}
-
-export interface AndroidToolchain {
-  id: string;
-  unchanged: () => boolean;
-}
-
-/** The Android toolchain as installed now, with a check for whether it is still the same one. */
-export function installedAndroidToolchain(): AndroidToolchain | undefined {
-  const observed: string[] = [];
-  const id = readAndroidToolchain(observed);
-  return id
-    ? {
-        id,
-        unchanged: () => {
-          const current: string[] = [];
-          return (
-            readAndroidToolchain(current) === id &&
-            current.length === observed.length &&
-            current.every((value, index) => value === observed[index])
-          );
-        },
-      }
-    : undefined;
 }

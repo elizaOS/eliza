@@ -126,6 +126,7 @@ module node {
         return {
           scopes: ["phone_call or sms_compose", "phone_call", "sms_compose"].filter((scope) => description.includes(`Propose ${scope} with a contact target`)),
           mentions: description.split("names them by a role or relation").length - 1,
+          named: /with a contact target at once for a person the owner names, without first asking who they are/u.test(description),
           skipLookup: /Do not propose contact_show first for a (call or text|call|text)\./u.exec(description)?.[1] ?? null,
         }
       }),
@@ -407,17 +408,17 @@ const nameNotWritten = "I didn't set that up, because that name isn't one you wr
 const senderGone = "No current SMS sender for this reply. Ask who texted you or choose a recipient."
 const emergencyKeypad = "Opening the keypad. Dial your local emergency number (911 in the US and Canada, 112 in most of Europe) and tap Call."
 
-it.live('An admitted contact target tells the planner to propose a role directly (spec/agent/deviceActions/telephony.md, "A call or text to someone the owner names by a role is proposed at once, with that word as the contact query")', effect () => {
+it.live('An admitted contact target tells the planner to propose a named person or a role directly, without asking who they are (spec/agent/deviceActions/telephony.md, "A call or text to someone the owner names by a role is proposed at once, with that word as the contact query")', effect () => {
   const observed = try deviceJourney({ allowed: ["REPLY", "IGNORE", "NONE", proposeTool], persistMemory: true }, "role guidance at the chat provider", roleGuidanceFromChat)
   try Effect.try(() => assert.deepStrictEqual(observed, {
     stable: true,
     guidance: [
-      { scopes: ["phone_call or sms_compose"], mentions: 1, skipLookup: "call or text" },
-      { scopes: ["phone_call or sms_compose"], mentions: 1, skipLookup: "call or text" },
-      { scopes: ["phone_call"], mentions: 1, skipLookup: "call" },
-      { scopes: ["sms_compose"], mentions: 1, skipLookup: null },
-      { scopes: [], mentions: 0, skipLookup: null },
-      { scopes: ["sms_compose"], mentions: 1, skipLookup: "text" },
+      { scopes: ["phone_call or sms_compose"], mentions: 1, named: true, skipLookup: "call or text" },
+      { scopes: ["phone_call or sms_compose"], mentions: 1, named: true, skipLookup: "call or text" },
+      { scopes: ["phone_call"], mentions: 1, named: true, skipLookup: "call" },
+      { scopes: ["sms_compose"], mentions: 1, named: true, skipLookup: null },
+      { scopes: [], mentions: 0, named: false, skipLookup: null },
+      { scopes: ["sms_compose"], mentions: 1, named: true, skipLookup: "text" },
     ],
     calls: 2,
     proposal: "pending",

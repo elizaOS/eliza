@@ -12,9 +12,12 @@ import org.json.*;
  * ({@code POST /api/asr/local-inference/live}). The host supplies the {@link Transport}: it posts
  * one JSON body to the agent of the owner who started the capture and {@link Transport#check}
  * throws once that owner, runtime or enrollment changed, so no audio, cleanup or retry ever reaches
- * a different owner. Nothing is persisted or retried. The session is warmed before the microphone
- * opens ({@link #ready}); {@link #cutoff} drops frames and VAD edges after an explicit Stop;
- * {@link #close} with discard drops queued audio and cancels the request in flight, otherwise the
+ * a different owner. Nothing is persisted or retried. Frames offered before the session is warmed
+ * ({@link #ready}) wait within the bounds and are sent only once the warm post succeeds; a close
+ * without discard before then, even before draining starts, still warms first and sends them after
+ * it. {@link #expire} ends a session that is not warm by the caller's deadline as TRANSPORT, and
+ * does nothing once it is warm, cancelled or finished. {@link #cutoff} drops frames and VAD edges after
+ * an explicit Stop; {@link #close} with discard drops queued audio and cancels the request in flight, otherwise the
  * captured tail is sent and the server close is acknowledged through the returned future.
  * Failures are reported once as BUSY, BACKPRESSURE, INVALID_AUDIO, TRANSPORT or ASR_FAILED.
  */
@@ -28,7 +31,7 @@ public final class LiveSegmentPipe implements LiveCaptureController.Pipe {
  private int queuedFrames,queuedChars;
  private final CompletableFuture<Boolean> closed=new CompletableFuture<>(),ready=new CompletableFuture<>();
  @Override public CompletableFuture<Boolean> ready(){return ready;}
- private boolean closing,cancelled,finished;private double cutoff=Double.POSITIVE_INFINITY;
+ private boolean closing,cancelled,finished,warmed;private double cutoff=Double.POSITIVE_INFINITY;
  public LiveSegmentPipe(Transport transport,LiveCaptureController.Pipe.Sink sink,String sessionId,String roomId){
   if(!sessionId.matches("[a-fA-F0-9-]{36}")||roomId!=null&&roomId.length()>128)throw new IllegalArgumentException("Invalid voice identity");
   this.transport=transport;this.sink=sink;this.sessionId=sessionId;this.roomId=roomId;
@@ -50,14 +53,17 @@ public final class LiveSegmentPipe implements LiveCaptureController.Pipe {
   }catch(Exception invalid){fail("INVALID_AUDIO");return false;}
  }
  @Override public synchronized void cutoff(double at){cutoff=Math.min(cutoff,at);}
+ /** The warm-up deadline passed: decided under this lock against the drain marking the session warm. */
+ @Override public void expire(){fail("TRANSPORT",true);}
  @Override public CompletableFuture<Boolean> close(boolean discard,double at){
   synchronized(this){cutoff=Math.min(cutoff,at);closing=true;cancelled|=discard;if(cancelled)clearQueue();notifyAll();}
   if(discard)transport.cancelInFlight();return closed;
  }
 
- private void fail(String code){
+ private void fail(String code){fail(code,false);}
+ private void fail(String code,boolean warmup){
   boolean report;
-  synchronized(this){report=!cancelled&&!finished;cancelled=true;closing=true;clearQueue();notifyAll();}
+  synchronized(this){if(warmup&&(warmed||cancelled||finished))return;report=!cancelled&&!finished;cancelled=true;closing=true;clearQueue();notifyAll();}
   try{transport.cancelInFlight();if(report)sink.failed(code);}
   finally{
    // Rejected work has no drainer. Failed cancellation or notification cannot strand these futures.
@@ -98,12 +104,15 @@ public final class LiveSegmentPipe implements LiveCaptureController.Pipe {
  private void drain(){
   boolean serverClosed=false;
   try{
-   boolean abandoned;synchronized(this){abandoned=closing;}
+   // Queued audio is sent only after the session is warm; a cancellation has already dropped it.
+   boolean abandoned;synchronized(this){abandoned=cancelled;}
    if(!abandoned){
     transport.check();JSONObject warm=body(new JSONObject().put("frames",new JSONArray()).put("vad",new JSONArray()));
     JSONObject response=transport.post(warm);transport.check();
     if(response.optInt("status")!=200)throw new IllegalStateException("ASR startup unavailable");
-    reply(response);ready.complete(true);
+    reply(response);
+    boolean live;synchronized(this){live=!cancelled;warmed=live;}
+    ready.complete(live);
    }else ready.complete(false);
    for(;;){
     JSONObject batch;

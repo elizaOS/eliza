@@ -3,7 +3,7 @@ import { assert, it } from "@effect/vitest"
 import { negotiatedOwnerTurn, type DeviceTurn, activityLabel } from "@elizaos/agent-host"
 import { readOperation, type CheckedOperation, admitRoute } from "@elizaos/agent"
 import { reminderProposalFamily } from "../src/device-proposals.vibe"
-import { canActionRun, ContextRegistry, readReminderPresentation, resolveActionContexts, type ActionResult, type IAgentRuntime, type Memory, type RegisteredEvaluator, type UUID } from "@elizaos/core"
+import { canActionRun, ContextRegistry, readReminderPresentation, resolveActionContexts, validateToolArgs, type ActionResult, type IAgentRuntime, type Memory, type RegisteredEvaluator, type UUID } from "@elizaos/core"
 import { composeBrief, recalibrateBrief } from "../src/brief.vibe"
 import { checkinKind, checkinSchedules, collectFacts, followOwnerClock, reconcileCheckins, runCheckin, checkinReport, setCheckinTimes } from "../src/checkin.vibe"
 import { ownerActivity, setDossier } from "../src/dossier.vibe"
@@ -29,9 +29,9 @@ const outcomeOf = (result: ActionResult) => ({ success: result.success, text: re
 const equal = <A>(actual: A, expected: A) => Effect.try(() => assert.deepStrictEqual(actual, expected))
 const heard = (id: string, text: string) => ({ id: id as UUID, entityId: "owner-1" as UUID, roomId: "room-1" as UUID, content: { text } }) satisfies Memory
 
-it.effect('Create each reminder I asked for, once, at the planned time with the delivery the message chose, and with an alert when nobody stated one (spec/assistant/reminders.md, "Story: Create the reminder I asked for, and only that"; spec/assistant/reminders.md, "A known delivery choice is kept, and only an unknown one is taken from the message"; spec/assistant/reminders.md, "An alert nobody stated is an alert")', effect () => {
+it.effect('Create each reminder I asked for, once, at the planned time with the delivery the message chose, and with an alert when nobody stated one, from a plan in the shape the model is told (spec/assistant/reminders.md, "Story: Create the reminder I asked for, and only that"; spec/assistant/reminders.md, "A reminder intent is proposed with a plan and what the original message asked"; spec/assistant/reminders.md, "A known delivery choice is kept, and only an unknown one is taken from the message"; spec/assistant/reminders.md, "An alert nobody stated is an alert")', effect () => {
   const seen = ports()
-  seen.answers.push(check({ destination: "device", clock: "owner_local" }), check({ destination: "device" }), check({ alert: null }))
+  seen.answers.push(check({ destination: "device", clock: "owner_local" }), check({ destination: "device" }), check({ alert: null }), check({}))
   provide portsLayer(seen) {
     const first = try createReminder(asked("m1"))
     const again = try createReminder(asked("m1"))
@@ -42,10 +42,20 @@ it.effect('Create each reminder I asked for, once, at the planned time with the 
       success: true, heardInFull: true, phase: "ReminderSaved",
     })
     try equal(reminderReply(again).success, true)
+    const told = (args: object) => validateToolArgs(ownerRemindersAction, args)
+    const stretch = try Effect.try(() => told({ op: "create", plan: { title: "Stretch", due: { kind: "in", minutes: 10 } } }))
+    const stretched = reminderReply(try createReminder({ ...asked("m2"), plan: stretch.args?.plan, text: "remind me in 10 minutes to stretch" }))
+    const dues = [{ kind: "at", instant: "2026-11-22T16:00:00Z" }, { kind: "local", date: "2026-11-23", time: "09:00" }, { kind: "day", date: "2026-11-25" }, { kind: "repeat", time: "07:30" }, { kind: "repeat", time: "07:30", days: ["mon", "fri"] }, { kind: "every", minutes: 30 }]
+    const refused = try Effect.try(() => dues.flatMap((due) => [
+      ...told({ op: "create", plan: { title: "Stretch", body: "Neck and back", due, destination: "chat", alert: null } }).errors,
+      ...told({ op: "move", target: "that", due }).errors,
+    ]))
+    try equal({ errors: stretch.errors, saved: [stretched.success, stretched.text?.startsWith('I\'ll remind you: "Stretch" in 10 minutes')], refused }, { errors: [], saved: [true, true], refused: [] })
     const rows = rowsOf(seen, reminderKind)
     try equal(rows.map((row) => ({ trigger: row.trigger, destination: row.metadata.destination, alert: row.metadata.alert, clock: row.metadata.clock })), [
       { trigger: { kind: "once", atIso: new Date(seen.now + 20 * 60_000).toISOString() }, destination: "device", alert: "alert", clock: "UtcClock" },
       { trigger: { kind: "once", atIso: new Date(seen.now + 40 * 60_000).toISOString() }, destination: "chat", alert: "alert", clock: "UtcClock" },
+      { trigger: { kind: "once", atIso: new Date(seen.now + 10 * 60_000).toISOString() }, destination: "chat", alert: "alert", clock: "UtcClock" },
     ])
   }
 })

@@ -141,6 +141,8 @@ effect function requested(plugin: ElizaCloudPlugin, request: CloudRequest, id: s
     ...(request.body === undefined ? {} : { body: JSON.stringify(request.body) }),
     ...(environment === undefined ? {} : { environment }),
     ...(id === undefined ? {} : { id }),
+    ...(request.expectedCredentialId === undefined ? {} : { expectedCredentialId: request.expectedCredentialId }),
+    ...(request.expectedSessionCredentialId === undefined ? {} : { expectedSessionCredentialId: request.expectedSessionCredentialId }),
   }
   const reply = try answer("request", Answered, () => plugin.request(native))
   const body = "grant" in reply ? try granted(plugin, reply.grant.id, reply.grant.size) : decode(reply.body)
