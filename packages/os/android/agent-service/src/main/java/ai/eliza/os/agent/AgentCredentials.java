@@ -17,6 +17,7 @@ public interface AgentCredentials {
   }
 
   interface StorageKey extends AutoCloseable {
+    /** The key, or null once custody retired it (a sign-out or an account change), which frames the launch without it. */
     String value();
     @Override void close();
   }

@@ -27,11 +27,14 @@ module node {
     readonly signedInAgain: string
     readonly afterRestart: string
     readonly wrappingKeyLost: string
+    readonly retiredBeforeFramed: string
+    readonly unnamedAccount: string
     readonly signedOutHasNoCredential: boolean
     readonly sameEpochAskedAgain: boolean
     readonly anotherAccountAsked: boolean
     readonly retiredBySignOut: boolean
     readonly askedAfterSignOut: boolean
+    readonly signOutDuringVerify: boolean
     readonly refusals: readonly string[]
   }
 
@@ -388,7 +391,7 @@ effect function taskStoreAfterBoot(name: string, document: string, frame: string
   return { exit, files: try Effect.try(() => taskStoreFiles(state)) }
 }
 
-it.effect('A signed-in launch is framed with its account\'s 32-byte task key for one newer epoch, and the agent opens its task store only under that key (spec/os/android/taskKeys.md, "The current account\'s key is released only as the storage key of a launch newer than every earlier one"; spec/os/android/taskKeys.md, "Each account has at most one task key, and a stored key is never replaced"; spec/os/android/taskKeys.md, "An account change, a sign-out or a reset retires the release"; spec/agent/tasks/store.md, "Storage opens only with a private path, the exclusive lock, a 32-byte key and the launch account")', effect () => {
+it.effect('A signed-in launch is framed with its account\'s 32-byte task key for one newer epoch, and the agent opens its task store only under that key; a key retired before its frame is written, or an account custody cannot name, frames the launch without one, and a sign-out during a launch\'s verify leaves no key readable (spec/os/agentService/lifecycle.md, "A child is spawned only after the stale child is reaped, a key is held and every check passed"; spec/os/android/taskKeys.md, "The current account\'s key is released only as the storage key of a launch newer than every earlier one"; spec/os/android/taskKeys.md, "Each account has at most one task key, and a stored key is never replaced"; spec/os/android/taskKeys.md, "An account change, a sign-out or a reset retires the release"; spec/agent/tasks/store.md, "Storage opens only with a private path, the exclusive lock, a 32-byte key and the launch account")', effect () => {
   provide NodeServices.layer {
     const seen = try Effect.promise(() => walkTaskKeys())
     const [first, relaunch, second, signedInAgain, afterRestart, wrappingKeyLost] = try Effect.try(() =>
@@ -399,9 +402,11 @@ it.effect('A signed-in launch is framed with its account\'s 32-byte task key for
     assert.deepStrictEqual([relaunch?.key, signedInAgain?.key, afterRestart?.key], [first?.key, first?.key, first?.key])
     assert.notStrictEqual(second?.key, first?.key)
     assert.deepStrictEqual(
-      [seen.signedOutHasNoCredential, seen.sameEpochAskedAgain, seen.anotherAccountAsked, seen.retiredBySignOut, seen.askedAfterSignOut],
-      [true, true, true, true, true])
-    assert.deepStrictEqual(seen.refusals, ["StaleEpoch", "NotVerifiedAccount", "NotVerifiedAccount", "KeyUnavailable"])
+      [seen.signedOutHasNoCredential, seen.sameEpochAskedAgain, seen.anotherAccountAsked, seen.retiredBySignOut, seen.askedAfterSignOut, seen.signOutDuringVerify],
+      [true, true, true, true, true, true])
+    const [retiredBeforeFramed, unnamedAccount] = try Effect.try(() => [seen.retiredBeforeFramed, seen.unnamedAccount].map(framed))
+    assert.deepStrictEqual([retiredBeforeFramed, unnamedAccount].map((frame) => [frame?.epoch, frame?.keyBytes]), [[3, 0], [8, 0]])
+    assert.deepStrictEqual(seen.refusals, ["StaleEpoch", "NotVerifiedAccount", "NotVerifiedAccount", "KeyUnavailable", "NotVerifiedAccount"])
 
     const [launch] = try Effect.try(() => project([{
       ...files({ ...HOST, model: { backend: "none" }, callerRole: "owner" }, CHARACTER, { ...POLICY, plugins: { load: [tasksModuleName] } }),

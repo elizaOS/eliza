@@ -607,8 +607,18 @@ public class AgentService extends Service {
       step(new AgentPolicy.FailUnclassified("The device credential could not be read: " + unreadable.getMessage()));
       return;
     }
+    String sealing;
+    try {
+      sealing = storageKey == null ? null : storageKey.value();
+    } catch (RuntimeException unreadable) {
+      storageKey.close();
+      step(new AgentPolicy.FailUnclassified("The task storage key could not be read: " + unreadable.getMessage()));
+      return;
+    }
+    if (storageKey != null && sealing == null)
+      Log.w(TAG, "The task storage key was retired before its launch frame was written, so the agent launches without it");
     try (storageKey) {
-      launchFramed(epoch, config, prepared, active, framed, storageKey == null ? null : storageKey.value());
+      launchFramed(epoch, config, prepared, active, framed, sealing);
     }
   }
 

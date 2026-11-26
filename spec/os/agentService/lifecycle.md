@@ -101,7 +101,10 @@ returning only non-secret variables) or the configuration refused
 (`Config`), the state directory cannot be prepared (`Storage`), no key is
 held (`Credential`), anything else (`Runtime`). A failed spawn is
 `Failed(Agent)`. The child gets the held key and the state directory of the
-key's account (for example `filesDir/agent/<account digest>`).
+key's account (for example `filesDir/agent/<account digest>`). Its frame
+carries the account's task storage key ([task keys](../android/taskKeys.md))
+when custody releases it and it is still held as the frame is written; a
+refused or retired release frames the launch without one and is no failure.
 
 ```quint
 pure def childOwned(c: Child): bool = match c { | Owned(_) => true | _ => false }

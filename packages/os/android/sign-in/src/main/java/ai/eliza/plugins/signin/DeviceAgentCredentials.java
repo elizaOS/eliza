@@ -9,6 +9,7 @@ final class DeviceAgentCredentials implements AgentCredentials {
   private final CredentialReader reader;
   private final TaskKeyCustody taskKeys;
   private final Consumer<TaskKeyCustody.ReleaseRefused> refused;
+  private final Object following = new Object();
 
   DeviceAgentCredentials(CredentialReader reader, TaskKeyCustody taskKeys, Consumer<TaskKeyCustody.ReleaseRefused> refused) {
     this.reader = reader;
@@ -18,10 +19,23 @@ final class DeviceAgentCredentials implements AgentCredentials {
     verify();
   }
 
+  // The account is read and custody stepped under one lock, so a verify that read an account before a sign-out
+  // cannot apply it after the listener's verify applied the sign-out.
   private void verify() {
-    CredentialPolicy.Account held = reader.account();
-    if (held.complete()) taskKeys.accountVerified(new TaskKeyCustody.Account(held.userId(), held.organizationId()));
-    else taskKeys.signedOut();
+    synchronized (following) {
+      CredentialPolicy.Account held = reader.account();
+      TaskKeyCustody.Account named = held.complete() ? custodyAccount(held.userId(), held.organizationId()) : null;
+      if (named != null) taskKeys.accountVerified(named);
+      else taskKeys.signedOut();
+    }
+  }
+
+  private static TaskKeyCustody.Account custodyAccount(String userId, String organizationId) {
+    try {
+      return new TaskKeyCustody.Account(userId, organizationId);
+    } catch (IllegalArgumentException unnamed) {
+      return null;
+    }
   }
 
   @Override public Active current() {
@@ -35,13 +49,21 @@ final class DeviceAgentCredentials implements AgentCredentials {
     verify();
     TaskKeyCustody.StorageKey released;
     try {
-      released = taskKeys.releaseForLaunch(new TaskKeyCustody.Account(account.userId(), account.organizationId()), epoch);
+      TaskKeyCustody.Account named = custodyAccount(account.userId(), account.organizationId());
+      if (named == null) throw new TaskKeyCustody.ReleaseRefused(TaskKeyCustody.Refusal.NotVerifiedAccount, null);
+      released = taskKeys.releaseForLaunch(named, epoch);
     } catch (TaskKeyCustody.ReleaseRefused refusal) {
       refused.accept(refusal);
       return null;
     }
     return new StorageKey() {
-      @Override public String value() { return released.value(); }
+      @Override public String value() {
+        try {
+          return released.value();
+        } catch (IllegalStateException retired) {
+          return null;
+        }
+      }
       @Override public void close() { released.close(); }
     };
   }
