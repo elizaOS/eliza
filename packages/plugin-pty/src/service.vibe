@@ -98,6 +98,11 @@ module node {
       return this.store.stop(sessionId)
     }
 
+    /** @throws {ElizaError} */
+    resizeSession(sessionId: string, cols: number, rows: number): void {
+      this.store.resize(sessionId, cols, rows)
+    }
+
     /** @throws {never} */
     listSessions(): PtySessionInfo[] {
       return this.store.list()

@@ -16,6 +16,7 @@ function createDriverPty(): DriverPty {
     resize() {},
     kill() {
       if (handle.killError) throw handle.killError
+      handle.emitExit(0)
     },
     onData() {
       return { dispose() {} }

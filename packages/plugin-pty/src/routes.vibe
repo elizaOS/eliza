@@ -1,8 +1,8 @@
-// spec/pty/policy.md, "HTTP routes enforce terminal token or trusted local access"; spec/pty/policy.md, "Interactive and vendor CLI spawning fail closed"; spec/pty/policy.md, "Launcher Cloud authority owns or disables the Cloud tuple"
+// spec/pty/policy.md, "HTTP routes enforce terminal token or trusted local access"; spec/pty/policy.md, "Store sessions belong to the operator, not to a self-reported client"; spec/pty/policy.md, "Interactive and vendor CLI spawning fail closed"; spec/pty/policy.md, "Launcher Cloud authority owns or disables the Cloud tuple"
 
 module node {
   import { timingSafeEqual } from "node:crypto"
-  import { type IAgentRuntime, logger } from "@elizaos/core"
+  import { ElizaError, type IAgentRuntime, logger } from "@elizaos/core"
   import {
     evaluateRouteAccess,
     evaluateSpawnGate,
@@ -262,7 +262,6 @@ module node {
       } else {
         spec = vendorCliSpecFromRequest(runtime, kind as PtyVendorCliKind, cwd)
       }
-      spec.ownerClientId = header(ctx, "x-elizaos-client-id")
       const cols = num(body.cols)
       const rows = num(body.rows)
       if (cols) spec.cols = cols
@@ -304,7 +303,12 @@ module node {
     if (!svc) return json(503, { error: "PTY_SERVICE is not available." })
     const id = ctx.params?.id
     if (!id) return json(400, { error: "Missing session id." })
-    await svc.stopSession(id)
+    try {
+      await svc.stopSession(id)
+    } catch (err) {
+      if (err instanceof ElizaError && err.code === "PTY_SESSION_NOT_FOUND") return json(404, { error: err.message })
+      return json(500, { error: err instanceof Error ? err.message : String(err) })
+    }
     return json(200, { ok: true })
   }
 

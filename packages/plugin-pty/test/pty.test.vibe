@@ -68,6 +68,7 @@ module node {
       if (this.killError) throw this.killError
       this.killed = true
       this.killedSignal = signal
+      this.emitExit(0, signal === "SIGKILL" ? 9 : 1)
     }
 
     /** @throws {never} */
@@ -191,7 +192,7 @@ module node {
   export async function runRealPtyProbe(
     bridge: { on(event: string, listener: (...args: unknown[]) => void): void },
     store: StoreType,
-  ): Promise<{ captured: string; code: number | null; available: boolean }> {
+  ): Promise<{ captured: string; code: number | null; available: boolean; stubbornStopped: boolean }> {
     let available = typeof (globalThis as { Bun?: unknown }).Bun !== "undefined"
     if (!available) {
       try {
@@ -201,7 +202,7 @@ module node {
         available = false
       }
     }
-    if (!available) return { captured: "", code: null, available: false }
+    if (!available) return { captured: "", code: null, available: false, stubbornStopped: false }
     const isWin = process.platform === "win32"
     let captured = ""
     bridge.on("session_output", (e) => {
@@ -218,7 +219,21 @@ module node {
     })
     const code = await exited
     await store.stop(info.sessionId)
-    return { captured, code, available: true }
+    if (isWin) return { captured, code, available: true, stubbornStopped: true }
+    const trapped = new Promise<void>((resolve) => {
+      bridge.on("session_output", (e) => {
+        if ((e as SessionOutputEvent).data.includes("TRAPPED")) resolve()
+      })
+    })
+    const stubborn = await store.start({
+      command: "sh",
+      args: ["-c", "trap '' HUP TERM; echo TRAPPED; while :; do sleep 1; done"],
+      cwd: process.cwd(),
+      kind: "test",
+    })
+    await trapped
+    await store.stop(stubborn.sessionId)
+    return { captured, code, available: true, stubbornStopped: !store.has(stubborn.sessionId) && store.getPoolState().entries.length === 0 }
   }
 }
 
@@ -547,8 +562,8 @@ describe("PtyService idle-timeout configuration and routes", () => {
       }),
     )
     expect(trusted.status).toBe(200)
-    const sid = (trusted.body as { session: { sessionId: string; ownerClientId?: string } }).session.sessionId
-    expect((trusted.body as { session: { ownerClientId?: string } }).session.ownerClientId).toBe("client-1")
+    const sid = (trusted.body as { session: { sessionId: string } }).session.sessionId
+    expect(JSON.stringify(trusted.body).includes("client-1")).toBe(false)
     expect(withTok.calls[0].opts.env?.OPENAI_SMALL_MODEL).toBe(ELIZA_CLOUD_SMART_MODEL)
     withTok.fake.ptys[0].emitData("ready> ")
     const tokHdr = { headers: { "x-eliza-terminal-token": "pty-secret" }, inProcess: false }
@@ -558,6 +573,7 @@ describe("PtyService idle-timeout configuration and routes", () => {
     expect((await routeByName("pty-list-sessions")(makeCtx(withTok.runtime, undefined, undefined, tokHdr))).status).toBe(200)
     expect((await routeByName("pty-stop-session")(makeCtx(withTok.runtime, undefined, { id: sid }, tokHdr))).status).toBe(200)
     expect(withTok.svc?.hasSession(sid)).toBe(false)
+    expect((await routeByName("pty-stop-session")(makeCtx(withTok.runtime, undefined, { id: sid }, tokHdr))).status).toBe(404)
 
     for (const badFlag of ["false", " FALSE ", "off", "no", " enabled ", "2"]) {
       const h = makeHarness({ settings: { PTY_ELIZA_CLOUD_API_KEY: "sk", PTY_INTERACTIVE_ENABLED: badFlag } })
@@ -670,6 +686,10 @@ describe("Optimized PTY incremental reads, send_wait batching, and real OS PTY",
     expect(badRegex.text).toContain("Invalid PTY wait pattern")
     expect(h.fake.ptys[0].written).toEqual(["echo hi\r"])
 
+    expect(ptySessionAction.roleGate).toEqual({ minRole: "OWNER" })
+    expect(ptySessionAction.tags).toContain("capability:execute")
+    expect(sendRes.effectReceipts?.map((r) => r.operation)).toEqual(["pty.input"])
+
     h.fake.ptys[0].killError = new Error("EPERM")
     const failedStop = await ptySessionAction.handler(h.runtime, {} as Memory, undefined, {
       parameters: { op: "stop", sessionId: info.sessionId },
@@ -677,6 +697,24 @@ describe("Optimized PTY incremental reads, send_wait batching, and real OS PTY",
     expect(failedStop.success).toBe(false)
     expect(failedStop.text).toContain("Unable to stop PTY session")
     h.fake.ptys[0].killError = undefined
+    const stopped = await ptySessionAction.handler(h.runtime, {} as Memory, undefined, {
+      parameters: { op: "stop", sessionId: info.sessionId },
+    })
+    expect(stopped.effectReceipts?.map((r) => r.operation)).toEqual(["pty.stop"])
+    const stopUnknown = await ptySessionAction.handler(h.runtime, {} as Memory, undefined, {
+      parameters: { op: "stop", sessionId: info.sessionId },
+    })
+    expect(stopUnknown.success).toBe(false)
+    const exitedInfo = await h.svc!.startSession(makeSpec({ cwd: fsTools.cwd() }))
+    h.fake.ptys[1].emitExit(0)
+    const resizeExited = await ptySessionAction.handler(h.runtime, {} as Memory, undefined, {
+      parameters: { op: "resize", sessionId: exitedInfo.sessionId, cols: 80, rows: 24 },
+    })
+    expect(resizeExited.success).toBe(false)
+    const sendExited = await ptySessionAction.handler(h.runtime, {} as Memory, undefined, {
+      parameters: { op: "send_wait", sessionId: exitedInfo.sessionId, input: "late\r" },
+    })
+    expect(sendExited.success).toBe(false)
     await h.svc!.stop()
   })
 
@@ -688,6 +726,7 @@ describe("Optimized PTY incremental reads, send_wait batching, and real OS PTY",
     try Effect.try(() => {
       assert.include(probe.captured, "PTYHELLO")
       assert.equal(probe.code, 0)
+      assert.equal(probe.stubbornStopped, true)
       assert.equal(typeof isBunRuntime(), "boolean")
     })
     const isWin = fsTools.platform() === "win32"

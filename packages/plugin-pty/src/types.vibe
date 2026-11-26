@@ -35,7 +35,6 @@ export interface PtySpawnSpec {
   rows?: number
   label?: string
   kind?: string
-  ownerClientId?: string
 }
 
 export interface PtySessionInfo {
@@ -45,7 +44,6 @@ export interface PtySessionInfo {
   cwd: string
   label?: string
   kind?: string
-  ownerClientId?: string
   pid?: number
   createdAt: number
   exited: boolean

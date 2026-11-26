@@ -90,6 +90,25 @@ module node {
   const DEFAULT_OUTPUT_BUFFER_CHARS = 200_000
   const DEFAULT_EXITED_SESSION_TTL_MS = 15_000
   const DEFAULT_IDLE_TIMEOUT_MS = 15 * 60_000
+  const STOP_GRACE_MS = 2_000
+  const STOP_FORCE_WAIT_MS = 2_000
+
+  function sessionNotFound(sessionId: string): ElizaError {
+    return new ElizaError(`PTY session ${sessionId} not found.`, { code: "PTY_SESSION_NOT_FOUND", context: { sessionId } })
+  }
+
+  function sessionExited(sessionId: string): ElizaError {
+    return new ElizaError(`PTY session ${sessionId} has exited.`, { code: "PTY_SESSION_EXITED", context: { sessionId } })
+  }
+
+  function stopFailed(sessionId: string, pid: number | undefined, cause?: unknown): ElizaError {
+    return new ElizaError(`Unable to stop PTY session ${sessionId}; the process may still be running.`, {
+      code: "PTY_SESSION_STOP_FAILED",
+      ...(cause === undefined ? {} : { cause }),
+      context: { sessionId, pid },
+      severity: "ephemeral",
+    })
+  }
 
   const SAFE_INHERITED_ENV_KEYS = new Set([
     "PATH",
@@ -181,6 +200,7 @@ module node {
     reapTimer?: PtyTimerHandle
     idleTimer?: PtyTimerHandle
     lastActivityAt: number
+    exitWaiters: Array<() => void>
   }
 
   export const defaultSpawnResolver: PtySpawnResolver = async () => {
@@ -224,12 +244,20 @@ module node {
 
     /** @throws {never} */
     writeRaw(sessionId: string, data: string): void {
-      this.store?.write(sessionId, data)
+      try {
+        this.store?.write(sessionId, data)
+      } catch (error) {
+        logger.warn({ error, sessionId }, "[plugin-pty] console write refused")
+      }
     }
 
     /** @throws {never} */
     resize(sessionId: string, cols: number, rows: number): void {
-      this.store?.resize(sessionId, cols, rows)
+      try {
+        this.store?.resize(sessionId, cols, rows)
+      } catch (error) {
+        logger.warn({ error, sessionId }, "[plugin-pty] console resize refused")
+      }
     }
 
     /** @throws {never} */
@@ -335,7 +363,6 @@ module node {
         cwd,
         label: spec.label,
         kind: spec.kind,
-        ownerClientId: spec.ownerClientId,
         pid: pty.pid,
         createdAt: Date.now(),
         exited: false,
@@ -350,6 +377,7 @@ module node {
         bufferStartOffset: 0,
         totalOutputChars: 0,
         lastActivityAt: Date.now(),
+        exitWaiters: [],
       })
       this.scheduleIdleReap(sessionId)
       const onData = pty.onData((data) => {
@@ -366,49 +394,79 @@ module node {
       return { ...info }
     }
 
-    /** @throws {never} */
-    write(sessionId: string, data: string): void {
+    /** @throws {ElizaError} */
+    private liveSession(sessionId: string): LiveSession {
       const session = this.sessions.get(sessionId)
-      if (!session || session.info.exited) return
+      if (!session) throw sessionNotFound(sessionId)
+      if (session.info.exited) throw sessionExited(sessionId)
+      return session
+    }
+
+    /** @throws {ElizaError} */
+    write(sessionId: string, data: string): void {
+      const session = this.liveSession(sessionId)
       this.touch(sessionId)
       try {
         session.pty.write(data)
-      } catch (err) {
-        logger.warn(`[plugin-pty] write to session ${sessionId} failed: ${String(err)}`)
+      } catch (cause) {
+        throw new ElizaError(`Writing to PTY session ${sessionId} failed.`, { code: "PTY_WRITE_FAILED", cause, context: { sessionId } })
       }
     }
 
-    /** @throws {never} */
+    /** @throws {ElizaError} */
     resize(sessionId: string, cols: number, rows: number): void {
-      const session = this.sessions.get(sessionId)
-      if (!session || session.info.exited) return
+      const session = this.liveSession(sessionId)
       if (!Number.isFinite(cols) || !Number.isFinite(rows) || cols < 1 || rows < 1) {
-        return
+        throw new ElizaError(`Invalid PTY geometry ${cols}x${rows}.`, { code: "PTY_INVALID_GEOMETRY", context: { sessionId, cols, rows } })
       }
+      this.touch(sessionId)
       try {
-        this.touch(sessionId)
         session.pty.resize(Math.floor(cols), Math.floor(rows))
-      } catch (err) {
-        logger.warn(`[plugin-pty] resize of session ${sessionId} failed: ${String(err)}`)
+      } catch (cause) {
+        throw new ElizaError(`Resizing PTY session ${sessionId} failed.`, { code: "PTY_RESIZE_FAILED", cause, context: { sessionId } })
       }
+    }
+
+    private waitForExit(session: LiveSession, delayMs: number): Promise<boolean> {
+      if (session.info.exited) return Promise.resolve(true)
+      return new Promise((resolve) => {
+        let settled = false
+        let timer: PtyTimerHandle | undefined
+        const finish = (exited: boolean) => {
+          if (settled) return
+          settled = true
+          timer?.cancel()
+          resolve(exited)
+        }
+        session.exitWaiters.push(() => finish(true))
+        timer = this.scheduleTimer(delayMs, () => finish(session.info.exited))
+      })
+    }
+
+    private async terminate(sessionId: string, session: LiveSession): Promise<boolean> {
+      try {
+        session.pty.kill()
+      } catch (cause) {
+        throw stopFailed(sessionId, session.info.pid, cause)
+      }
+      if (await this.waitForExit(session, STOP_GRACE_MS)) return true
+      logger.warn({ sessionId, pid: session.info.pid }, "[plugin-pty] session ignored termination; forcing kill")
+      try {
+        session.pty.kill(process.platform === "win32" ? undefined : "SIGKILL")
+      } catch (cause) {
+        throw stopFailed(sessionId, session.info.pid, cause)
+      }
+      return this.waitForExit(session, STOP_FORCE_WAIT_MS)
     }
 
     async stop(sessionId: string): Promise<void> {
       const session = this.sessions.get(sessionId)
-      if (!session) return
-      try {
-        if (!session.info.exited) session.pty.kill()
-      } catch (cause) {
-        throw new ElizaError(`Unable to stop PTY session ${sessionId}; the process may still be running.`, {
-          code: "PTY_SESSION_STOP_FAILED",
-          cause,
-          context: { sessionId, pid: session.info.pid },
-          severity: "ephemeral",
-        })
+      if (!session) throw sessionNotFound(sessionId)
+      const killSucceeded = session.info.exited || (await this.terminate(sessionId, session))
+      if (!canStopPoolSession(this.poolState, sessionId, killSucceeded)) {
+        throw stopFailed(sessionId, session.info.pid)
       }
-      if (canStopPoolSession(this.poolState, sessionId, true)) {
-        this.poolState = stopPoolSession(this.poolState, sessionId, true)
-      }
+      this.poolState = stopPoolSession(this.poolState, sessionId, killSucceeded)
       session.reapTimer?.cancel()
       session.idleTimer?.cancel()
       for (const disposer of session.disposers) {
@@ -479,7 +537,7 @@ module node {
         }
       }
       const startCursor = session.totalOutputChars
-      if (input.length > 0 && !session.info.exited) {
+      if (input.length > 0) {
         this.write(sessionId, input)
       }
       const waitMs = Math.max(10, Math.min(30_000, opts.waitMs ?? 1_500))
@@ -570,6 +628,7 @@ module node {
       if (canExitPoolSession(this.poolState, sessionId)) {
         this.poolState = exitPoolSession(this.poolState, sessionId)
       }
+      for (const waiter of session.exitWaiters.splice(0)) waiter()
       this.bridge.emitExit(sessionId, exitCode)
       logger.info(`[plugin-pty] session ${sessionId} exited (code=${exitCode ?? "null"})`)
       session.reapTimer = this.scheduleTimer(this.exitedSessionTtlMs, () => {

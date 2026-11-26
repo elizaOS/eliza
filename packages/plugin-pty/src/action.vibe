@@ -1,7 +1,17 @@
-// spec/pty/policy.md, "Idle timeout and terminal geometry stay within safe bounds"; spec/pty/policy.md, "Story: Enforce session capacity, confinement, and safe teardown"
-import type { Action, ActionResult, IAgentRuntime } from "@elizaos/core"
+// spec/pty/policy.md, "Idle timeout and terminal geometry stay within safe bounds"; spec/pty/policy.md, "Store sessions belong to the operator, not to a self-reported client"; spec/pty/policy.md, "Story: Enforce session capacity, confinement, and safe teardown"
+import type { Action, ActionResult, AppliedEffectReceipt, IAgentRuntime } from "@elizaos/core"
 import { validTerminalGeometry } from "../gen/pty__policy.effect.vibe"
 import type { PtyService } from "./service.vibe"
+
+module node {
+  import { randomUUID } from "node:crypto"
+
+  /** @throws {never} */
+  export function newReceiptId(): string {
+    return `pty:${randomUUID()}`
+  }
+}
+import { newReceiptId } from node
 
 type PtyOp = "list" | "read" | "resize" | "send_wait" | "stop"
 
@@ -34,6 +44,25 @@ function fail(text: string): ActionResult {
   return { success: false, text, error: text }
 }
 
+function failWith(err: unknown): ActionResult {
+  return fail(err instanceof Error ? err.message : String(err))
+}
+
+function terminalReceipt(operation: string, sessionId: string, commit: "durable" | "provider_accepted"): AppliedEffectReceipt {
+  const observedAt = new Date().toISOString()
+  const receiptId = newReceiptId()
+  return {
+    receiptId,
+    operation,
+    resource: { kind: "pty.session", id: sessionId },
+    artifacts: [],
+    idempotency: { key: null, replayed: false },
+    observedAt,
+    outcome: "applied",
+    commit: { kind: commit, id: receiptId, committedAt: observedAt },
+  }
+}
+
 function getPtyService(runtime: IAgentRuntime): PtyService | undefined {
   const service = runtime.getService("PTY_SERVICE") as PtyService | null | undefined
   return service ?? undefined
@@ -43,10 +72,10 @@ export const ptySessionAction: Action = {
   name: "PTY_SESSION",
   description: "Control interactive PTY sessions: list, read incremental bounded output, send input and wait in one call, resize, or stop.",
   descriptionCompressed: "Control PTY sessions: list, read(cursor), send_wait(input), resize, stop.",
-  tags: ["resource:terminal", "capability:exec"],
+  tags: ["resource:terminal", "capability:execute", "capability:delete"],
   contexts: ["code", "terminal"],
   contextGate: { anyOf: ["code", "terminal"] },
-  roleGate: { minRole: "ADMIN" },
+  roleGate: { minRole: "OWNER" },
   toolSchemaStrict: true,
   cacheStable: true,
   cacheScope: "agent",
@@ -142,6 +171,7 @@ export const ptySessionAction: Action = {
         data: { sessions },
         promptData: { count: compact.length, sessions: compact },
         promptDataMode: "replace-data",
+        effectReceipts: [],
       }
     }
     const sessionId = readStr(params, "sessionId")
@@ -164,6 +194,7 @@ export const ptySessionAction: Action = {
           output: result.output,
         },
         promptDataMode: "replace-data",
+        effectReceipts: [],
       }
     }
     if (op === "send_wait") {
@@ -176,13 +207,14 @@ export const ptySessionAction: Action = {
           maxChars: readClampedMaxChars(params),
         })
       } catch (err) {
-        return fail(err instanceof Error ? err.message : String(err))
+        return failWith(err)
       }
       if (!result) return fail("PTY session not found.")
       return {
         success: true,
         text: result.output,
         data: { ...result },
+        effectReceipts: input.length > 0 ? [terminalReceipt("pty.input", sessionId, "provider_accepted")] : [],
         promptData: {
           sessionId: result.sessionId,
           cursor: result.cursor,
@@ -207,24 +239,29 @@ export const ptySessionAction: Action = {
       ) {
         return fail("Invalid terminal geometry; cols and rows must be integers from 1 to 500.")
       }
-      if (!svc.hasSession(sessionId)) return fail("PTY session not found.")
-      svc.consoleBridge.resize(sessionId, cols, rows)
+      try {
+        svc.resizeSession(sessionId, cols, rows)
+      } catch (err) {
+        return failWith(err)
+      }
       return {
         success: true,
         text: `Resized ${sessionId} to ${cols}x${rows}.`,
         data: { sessionId, cols, rows },
+        effectReceipts: [terminalReceipt("pty.resize", sessionId, "provider_accepted")],
       }
     }
     if (op === "stop") {
       try {
         await svc.stopSession(sessionId)
       } catch (err) {
-        return fail(err instanceof Error ? err.message : String(err))
+        return failWith(err)
       }
       return {
         success: true,
         text: `Stopped PTY session ${sessionId}.`,
         data: { sessionId, stopped: true },
+        effectReceipts: [terminalReceipt("pty.stop", sessionId, "durable")],
       }
     }
     return fail(`Unsupported PTY operation "${String(params.op ?? "")}".`)

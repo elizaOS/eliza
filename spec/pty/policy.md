@@ -31,6 +31,21 @@ pure def lawInvalidTokenRejected(inProcess: bool): bool =
   evaluateRouteAccess(true, inProcess, false, true, false) == AccessUnauthorizedInvalid
 ```
 
+### Store sessions belong to the operator, not to a self-reported client
+
+The route gate authenticates the operator who holds the terminal token, not an
+individual client, so every caller that passes it may list, read, write to,
+resize and stop every store session. A client identifier sent by the caller is
+never treated as ownership. From chat, only the owner may drive store sessions,
+because they can run vendor CLIs under the operator's own credentials.
+
+```quint
+type PtyCaller = RouteOperator | ChatOwner | ChatAdmin | ChatUser
+pure def mayDriveStoreSession(caller: PtyCaller): bool = caller == RouteOperator or caller == ChatOwner
+pure def lawOnlyTheOwnerDrivesFromChat(caller: PtyCaller): bool =
+  (caller == ChatAdmin or caller == ChatUser) implies not(mayDriveStoreSession(caller))
+```
+
 ### Interactive and vendor CLI spawning fail closed
 
 Store builds reject all interactive and vendor CLI spawns. The interactive flag
@@ -112,8 +127,12 @@ pure def lawBoundedOutputNeverExceedsCap(totalChars: int, maxChars: int): bool =
 Starting a session requires available capacity, a confined canonical working
 directory, and a fresh non-empty identifier. Exiting transitions a live session
 to exited so late subscribers can drain scrollback before reaping. Stopping a
-live session removes it only when the OS kill succeeds; a failed kill leaves the
-live session tracked and observable.
+live session signals the process, waits a bounded time for its exit, and then
+forces the kill; the kill succeeds only when the process's exit is observed.
+Stopping removes the session only after a successful kill; a failed kill
+leaves the live session tracked, observable and counted against capacity.
+Stopping, writing to or resizing an unknown session, and writing to or
+resizing an exited one, is reported as a failure, never as done.
 
 ```quint
 type PoolStatus = PoolLive | PoolExited
