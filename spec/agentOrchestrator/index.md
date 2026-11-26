@@ -72,3 +72,19 @@ pure def lawStaleTaskEvidenceCannotPass(task: TaskEvaluation, evidence: Evidence
 pure val taskValues = Set({ taskKey: "task-1", taskGeneration: 1, requiredCriteria: Set("tests") })
 pure val evidenceValues = Set({ taskId: "task-1", evaluatedGeneration: 1, provedCriteria: Set("tests"), executionSucceeded: true }, { taskId: "task-1", evaluatedGeneration: 2, provedCriteria: Set(), executionSucceeded: false })
 ```
+
+### Only the owner directs coding agents, and a message without a session id reaches only its own room's subagents
+
+Every TASKS operation, and every provider that shows subagent sessions, workdirs or diffs, requires the owner. The role is resolved by the host from the sender, never from message metadata. A session records the room and the owner that spawned it. A send, stop or share that names no session id considers only the live sessions spawned from the message's room.
+
+```quint
+type TaskCaller = { isOwner: bool, roomId: str }
+pure def taskOpAllowed(caller: TaskCaller): bool = caller.isOwner
+pure def implicitTargetReachable(sessionRoom: str, callerRoom: str): bool = sessionRoom != "" and sessionRoom == callerRoom
+pure def lawNonOwnerNeverDirectsAgents(roomId: str): bool = not(taskOpAllowed({ isOwner: false, roomId: roomId }))
+pure def lawImplicitTargetStaysInRoom(sessionRoom: str, callerRoom: str): bool =
+  sessionRoom != callerRoom implies not(implicitTargetReachable(sessionRoom, callerRoom))
+pure val roomIdValues = Set("", "r1", "r2")
+pure val sessionRoomValues = Set("", "r1", "r2")
+pure val callerRoomValues = Set("", "r1", "r2")
+```

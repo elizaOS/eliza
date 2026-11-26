@@ -1,6 +1,7 @@
-// spec/agentOrchestrator/lanesAndRouting.md, "Output truncation and shift-handoff compaction keep context within token budgets"; spec/agentOrchestrator/verification.md, "Story: Verify subagent deliverables against concrete evidence and route fast evaluations cleanly"
+// spec/agentOrchestrator/index.md, "Only the owner directs coding agents, and a message without a session id reaches only its own room's subagents"; spec/agentOrchestrator/lanesAndRouting.md, "Output truncation and shift-handoff compaction keep context within token budgets"; spec/agentOrchestrator/verification.md, "Story: Verify subagent deliverables against concrete evidence and route fast evaluations cleanly"
 import {
   MESSAGE_SOURCE_SUB_AGENT,
+  hasOwnerAccess,
   isLoopbackHost,
   type IAgentRuntime,
   type Memory,
@@ -8,6 +9,7 @@ import {
   type ResponseHandlerEvaluator,
   type State,
 } from "@elizaos/core"
+import { implicitTargetReachable, taskOpAllowed } from "../gen/agentOrchestrator.effect.vibe"
 import {
   ACP_SUBPROCESS_SERVICE_TYPE,
   AcpService,
@@ -127,10 +129,12 @@ export const activeSubAgentsProvider: Provider = {
   cacheScope: "turn",
   contexts: ["general", "tasks", "code", "automation"],
   contextGate: { anyOf: ["general", "tasks", "code", "automation"] },
-  get: async (runtime: IAgentRuntime) => {
+  get: async (runtime: IAgentRuntime, message: Memory) => {
     const acp = getAcp(runtime)
-    if (!acp) return { text: "", values: {}, data: {} }
-    const sessions = acp.listSessions().filter((s) => !isSessionTerminal(s.status)).sort((a, b) => a.id.localeCompare(b.id))
+    if (!acp || !taskOpAllowed({ isOwner: await hasOwnerAccess(runtime, message), roomId: message.roomId })) return { text: "", values: {}, data: {} }
+    const sessions = acp.listSessions()
+      .filter((s) => implicitTargetReachable(s.roomId ?? "", message.roomId) && !isSessionTerminal(s.status))
+      .sort((a, b) => a.id.localeCompare(b.id))
     const watchdog = getWatchdog(runtime)
     const stalledSet = new Set(watchdog?.getStalledSessionIds() ?? [])
     const capSet = new Set(watchdog?.getApproachingCapSessionIds() ?? [])
@@ -264,9 +268,8 @@ export const codingSessionChangesProvider: Provider = {
   cacheScope: "turn",
   get: async (runtime: IAgentRuntime, message: Memory, _state: State) => {
     const acp = getAcp(runtime)
-    if (!acp) return { text: "", values: {}, data: {} }
-    const roomId = message.roomId
-    const scoped = acp.listSessions().filter((s) => !roomId || !s.roomId || s.roomId === roomId)
+    if (!acp || !taskOpAllowed({ isOwner: await hasOwnerAccess(runtime, message), roomId: message.roomId })) return { text: "", values: {}, data: {} }
+    const scoped = acp.listSessions().filter((s) => implicitTargetReachable(s.roomId ?? "", message.roomId))
     const now = Date.now()
     const top = scoped
       .map((session) => ({ session, changeSet: readChangeSet(session) }))

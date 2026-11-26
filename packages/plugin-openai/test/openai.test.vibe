@@ -65,14 +65,21 @@ it('OpenAI & Cerebras prompt-cache usage, omitted content on tool_calls, and bat
     }
     if (callIndex === 2) {
       res.end(JSON.stringify({
-        choices: [{ message: { content: null, tool_calls: [] }, finish_reason: "stop" }],
+        choices: [{ message: { content: "searched", tool_calls: [] }, finish_reason: "stop" }],
         usage: { prompt_tokens: 256, completion_tokens: 16, total_tokens: 272, prompt_tokens_details: { cached_tokens: 0 } },
       }))
       return
     }
+    if (callIndex === 3) {
+      res.end(JSON.stringify({
+        choices: [{ message: { content: "legacy answer", tool_calls: [] }, finish_reason: "stop" }],
+        usage: { prompt_tokens: 100, completion_tokens: 10, total_tokens: 110 },
+      }))
+      return
+    }
     res.end(JSON.stringify({
-      choices: [{ message: { content: null, tool_calls: [] }, finish_reason: "stop" }],
-      usage: { prompt_tokens: 100, completion_tokens: 10, total_tokens: 110 },
+      choices: [{ message: callIndex === 4 ? { role: "assistant" } : { content: null, tool_calls: [] }, finish_reason: "stop" }],
+      usage: { prompt_tokens: 100, completion_tokens: 0, total_tokens: 100 },
     }))
   })
   try {
@@ -113,6 +120,8 @@ it('OpenAI & Cerebras prompt-cache usage, omitted content on tool_calls, and bat
       tools: [strictRead, strictSearch],
     })
     const withoutDetails = await handler(runtime, { prompt: "Legacy provider" })
+    const absentContent = await handler(runtime, { prompt: "Empty reply" }).then(() => "succeeded", (error: unknown) => String((error as { readonly reason?: unknown }).reason))
+    const nullContent = await handler(runtime, { prompt: "Null reply" }).then(() => "succeeded", (error: unknown) => String((error as { readonly reason?: unknown }).reason))
     const streamed = await handler(runtime, { prompt: "Stream cached", stream: true })
     const mixedTools = srv.requests[0]?.tools as Array<{ function: { name: string; strict?: boolean } }>
     const uniformStrictTools = srv.requests[1]?.tools as Array<{ function: { name: string; strict?: boolean } }>
@@ -138,6 +147,8 @@ it('OpenAI & Cerebras prompt-cache usage, omitted content on tool_calls, and bat
       totalTokens: 272,
       cacheReadInputTokens: 0,
     })
+    assert.ok(absentContent.includes("no content and no tool calls"))
+    assert.ok(nullContent.includes("no content and no tool calls"))
     assert.deepStrictEqual(await withoutDetails.usage, {
       promptTokens: 100,
       completionTokens: 10,

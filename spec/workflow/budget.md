@@ -18,7 +18,11 @@ replay journal.
 A run starts with default ceilings of 100,000 tokens, 16,000 tokens per step,
 32 model calls and 5,000,000 micro-units of cost, and may be configured before
 any model call runs. Each admitted model call accounts for its tokens, increments
-the call count by one and records its cost; reaching any ceiling exhausts the
+the call count by one and records its cost. A call's tokens are its estimated
+prompt tokens plus the output bound it is sent with as its maximum: the smaller
+of 4,096 tokens and what remains under the step and run token ceilings, so the
+ceilings bound everything a run can spend; a call with no output room left is
+not admitted. Reaching any ceiling exhausts the
 budget so no further model call is admitted. A call exceeding any remaining
 ceiling exhausts the budget without admitting the call. Halting a budget is
 permanent.
@@ -39,6 +43,16 @@ pure val defaultMaxRunTokens: int = 100000
 pure val defaultMaxStepTokens: int = 16000
 pure val defaultMaxModelCalls: int = 32
 pure val defaultMaxCostMicros: int = 5000000
+pure val draftOutputTokens: int = 4096
+pure def draftOutputBound(b: RunBudget, promptTokens: int): int =
+  val stepRoom = b.maxStepTokens - promptTokens
+  val runRoom = b.maxRunTokens - b.tokensUsed - promptTokens
+  val room = if (stepRoom < runRoom) stepRoom else runRoom
+  if (draftOutputTokens < room) draftOutputTokens else room
+pure def lawDraftOutputBoundFitsCeilings(b: RunBudget, promptTokens: int): bool =
+  (promptTokens >= 0 and draftOutputBound(b, promptTokens) >= 1) implies
+    (promptTokens + draftOutputBound(b, promptTokens) <= b.maxStepTokens and b.tokensUsed + promptTokens + draftOutputBound(b, promptTokens) <= b.maxRunTokens)
+pure val promptTokensValues = Set(0, 10, 4000, 16000, 20000)
 pure val initial: RunBudget = {
   phase: BudgetOpen,
   maxRunTokens: defaultMaxRunTokens,

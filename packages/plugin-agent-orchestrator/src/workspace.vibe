@@ -85,7 +85,6 @@ import {
   safeFetch,
 } from "./security.vibe"
 import { reviewDiff } from "./verification.vibe"
-import { truncateTail } from "./optimization.vibe"
 
 export const CODING_WORKSPACE_SERVICE_TYPE = "CODING_WORKSPACE_SERVICE"
 const DEFAULT_WORKSPACE_DISK_CAP_BYTES = 10 * 1024 * 1024 * 1024
@@ -191,30 +190,28 @@ export effect function captureWorkspaceChangeSet(
     try: () => execGit(["diff", "--name-only"], workdir).then((r) => r.stdout.split("\n").map((s) => s.trim()).filter(Boolean)),
     catch: (cause) => new WorkspaceOperationError({ workspaceId: workdir, code: "GIT_DIFF_FAILED", reason: cause instanceof Error ? cause.message : "git diff failed" }),
   })
-  const untracked = tryPromise({
+  const untracked = try tryPromise({
     try: () => execGit(["ls-files", "--others", "--exclude-standard"], workdir).then((r) => r.stdout.split("\n").map((s) => s.trim()).filter(Boolean)),
-    catch: () => [] as string[],
-  }) catch () => [] as string[]
+    catch: (cause) => new WorkspaceOperationError({ workspaceId: workdir, code: "GIT_LS_FILES_FAILED", reason: cause instanceof Error ? cause.message : "git ls-files failed" }),
+  })
   const allChanged = [...new Set([...tracked, ...untracked])].sort()
   const changedFiles = baseline ? subtractChangeSetBaseline(allChanged, baseline) : allChanged
-  const diffStat = tryPromise({
+  const diffStat = try tryPromise({
     try: () => execGit(["diff", "--stat"], workdir).then((r) => r.stdout.trim()),
-    catch: () => "",
-  }) catch () => ""
-  const rawDiff = tryPromise({
+    catch: (cause) => new WorkspaceOperationError({ workspaceId: workdir, code: "GIT_DIFF_FAILED", reason: cause instanceof Error ? cause.message : "git diff --stat failed" }),
+  })
+  const rawDiff = try tryPromise({
     try: () => execGit(["diff"], workdir).then((r) => r.stdout),
-    catch: () => "",
-  }) catch () => ""
-  const bounded = truncateTail(rawDiff, 200, 16_384)
+    catch: (cause) => new WorkspaceOperationError({ workspaceId: workdir, code: "GIT_DIFF_FAILED", reason: cause instanceof Error ? cause.message : "git diff failed" }),
+  })
   return {
     workdir,
     branch,
     baselineSha: baseline?.sha ?? null,
     changedFiles,
     diffStat,
-    diff: bounded.text,
-    truncated: bounded.truncated,
-    artifactRef: bounded.artifactRef,
+    diff: rawDiff,
+    truncated: false,
     capturedAt: Date.now(),
   }
 }
@@ -366,27 +363,38 @@ export class CodingWorkspaceService extends Service {
   effect commitEffect(workspaceId: string, message: string): { readonly committed: boolean; readonly sha?: string; readonly changedFiles: readonly string[] }!(WorkspaceOperationError | DiffGateBlockedError) {
     const ws = this.workspaces.get(workspaceId)
     if (!ws) throw new WorkspaceOperationError({ workspaceId, code: "WORKSPACE_NOT_FOUND", reason: "Workspace not found." })
-    const changeSet = try captureWorkspaceChangeSet(ws.path)
-    if (changeSet.changedFiles.length === 0) {
-      return { committed: false, changedFiles: [] }
-    }
-    const gate = reviewDiff(changeSet)
-    if (!gate.passed) {
-      throw new DiffGateBlockedError({ workdir: ws.path, reasons: gate.findings.map((f) => f.message) })
-    }
     try tryPromise({
       try: () => execGit(["add", "-A"], ws.path),
       catch: (cause) => new WorkspaceOperationError({ workspaceId, code: "GIT_ADD_FAILED", reason: cause instanceof Error ? cause.message : "git add failed" }),
     })
+    const staged = try tryPromise({
+      try: () => Promise.all([
+        execGit(["diff", "--cached", "--name-only"], ws.path).then((r) => r.stdout.split("\n").map((f) => f.trim()).filter(Boolean)),
+        execGit(["diff", "--cached", "--binary"], ws.path).then((r) => r.stdout),
+      ]),
+      catch: (cause) => new WorkspaceOperationError({ workspaceId, code: "GIT_DIFF_FAILED", reason: cause instanceof Error ? cause.message : "git diff --cached failed" }),
+    })
+    const [changedFiles, stagedDiff] = staged
+    if (changedFiles.length === 0) {
+      return { committed: false, changedFiles: [] }
+    }
+    const gate = reviewDiff({ changedFiles, diff: stagedDiff })
+    if (!gate.passed) {
+      try tryPromise({
+        try: () => execGit(["reset", "--quiet"], ws.path),
+        catch: (cause) => new WorkspaceOperationError({ workspaceId, code: "GIT_RESET_FAILED", reason: `Diff gate refused the commit and unstaging failed: ${cause instanceof Error ? cause.message : String(cause)}` }),
+      })
+      throw new DiffGateBlockedError({ workdir: ws.path, reasons: gate.findings.map((f) => f.message) })
+    }
     try tryPromise({
       try: () => execGit(["commit", "-m", message], ws.path),
       catch: (cause) => new WorkspaceOperationError({ workspaceId, code: "GIT_COMMIT_FAILED", reason: cause instanceof Error ? cause.message : "git commit failed" }),
     })
-    const sha = tryPromise({
+    const sha = try tryPromise({
       try: () => execGit(["rev-parse", "HEAD"], ws.path).then((r) => r.stdout.trim()),
-      catch: () => undefined,
-    }) catch () => undefined
-    return { committed: true, sha, changedFiles: changeSet.changedFiles }
+      catch: (cause) => new WorkspaceOperationError({ workspaceId, code: "GIT_REV_PARSE_FAILED", reason: cause instanceof Error ? cause.message : "git rev-parse failed" }),
+    })
+    return { committed: true, sha, changedFiles }
   }
 
   async commit(workspaceId: string, message: string) {
@@ -498,23 +506,30 @@ export class CodingWorkspaceService extends Service {
       head: ws.branch,
       base: opts.baseBranch ?? ws.baseBranch,
       draft: opts.draft === true,
-    })) as Record<string, unknown>
+    }))
+    const pr = typeof raw === "object" && raw !== null ? raw as Record<string, unknown> : {}
+    if (typeof pr.number !== "number" || typeof pr.html_url !== "string" || typeof pr.state !== "string") {
+      throw new WorkspaceOperationError({ workspaceId, code: "GITHUB_RESPONSE_INVALID", reason: "GitHub answered the pull request request without a number, URL and state." })
+    }
     return {
-      number: typeof raw.number === "number" ? raw.number : 0,
-      url: typeof raw.html_url === "string" ? raw.html_url : "",
-      title: typeof raw.title === "string" ? raw.title : opts.title,
-      state: typeof raw.state === "string" ? raw.state : "open",
-      draft: raw.draft === true,
+      number: pr.number,
+      url: pr.html_url,
+      title: typeof pr.title === "string" ? pr.title : opts.title,
+      state: pr.state,
+      draft: pr.draft === true,
     }
   }
 
-  toIssueSummary(raw: unknown, fallbackState = "open"): GitHubIssueSummary {
+  effect toIssueSummary(repoInput: string, raw: unknown): GitHubIssueSummary!WorkspaceOperationError {
     const row = typeof raw === "object" && raw !== null ? raw as Record<string, unknown> : {}
+    if (typeof row.number !== "number" || typeof row.title !== "string" || typeof row.state !== "string" || typeof row.html_url !== "string") {
+      throw new WorkspaceOperationError({ workspaceId: repoInput, code: "GITHUB_RESPONSE_INVALID", reason: "GitHub returned an issue without a number, title, state and URL." })
+    }
     return {
-      number: typeof row.number === "number" ? row.number : 0,
-      title: typeof row.title === "string" ? row.title : "",
-      state: typeof row.state === "string" ? row.state : fallbackState,
-      url: typeof row.html_url === "string" ? row.html_url : "",
+      number: row.number,
+      title: row.title,
+      state: row.state,
+      url: row.html_url,
       body: typeof row.body === "string" ? row.body : undefined,
       labels: Array.isArray(row.labels)
         ? (row.labels as Record<string, unknown>[]).map((l) => String(l.name ?? "")).filter(Boolean)
@@ -525,12 +540,17 @@ export class CodingWorkspaceService extends Service {
   effect listIssuesEffect(repoInput: string, state: "open" | "closed" | "all" = "open", labels?: readonly string[]): readonly GitHubIssueSummary[]!WorkspaceOperationError {
     const labelParam = labels && labels.length > 0 ? `&labels=${encodeURIComponent(labels.join(","))}` : ""
     const rows = try this.githubRequest(repoInput, "GET", `/issues?state=${state}&per_page=25${labelParam}`)
-    return Array.isArray(rows) ? rows.map((row) => this.toIssueSummary(row, state)) : []
+    if (!Array.isArray(rows)) {
+      throw new WorkspaceOperationError({ workspaceId: repoInput, code: "GITHUB_RESPONSE_INVALID", reason: "GitHub answered the issue listing with something other than a list." })
+    }
+    const issues: GitHubIssueSummary[] = []
+    for (const row of rows) issues.push(try this.toIssueSummary(repoInput, row))
+    return issues
   }
 
   effect getIssueEffect(repoInput: string, issueNumber: number): GitHubIssueSummary!WorkspaceOperationError {
     const raw = try this.githubRequest(repoInput, "GET", `/issues/${Math.trunc(issueNumber)}`)
-    return this.toIssueSummary(raw)
+    return try this.toIssueSummary(repoInput, raw)
   }
 
   effect createIssueEffect(
@@ -542,7 +562,7 @@ export class CodingWorkspaceService extends Service {
       ...(input.body ? { body: input.body } : {}),
       ...(input.labels && input.labels.length > 0 ? { labels: [...input.labels] } : {}),
     })
-    return this.toIssueSummary(raw)
+    return try this.toIssueSummary(repoInput, raw)
   }
 
   effect updateIssueEffect(
@@ -556,23 +576,28 @@ export class CodingWorkspaceService extends Service {
       ...(patch.state !== undefined ? { state: patch.state } : {}),
       ...(patch.labels !== undefined ? { labels: [...patch.labels] } : {}),
     })
-    return this.toIssueSummary(raw, patch.state ?? "open")
+    return try this.toIssueSummary(repoInput, raw)
   }
 
   effect addIssueCommentEffect(repoInput: string, issueNumber: number, body: string): GitHubIssueComment!WorkspaceOperationError {
-    const raw = (try this.githubRequest(repoInput, "POST", `/issues/${Math.trunc(issueNumber)}/comments`, { body })) as Record<string, unknown>
+    const raw = try this.githubRequest(repoInput, "POST", `/issues/${Math.trunc(issueNumber)}/comments`, { body })
+    const comment = typeof raw === "object" && raw !== null ? raw as Record<string, unknown> : {}
+    if (typeof comment.id !== "number" || typeof comment.html_url !== "string") {
+      throw new WorkspaceOperationError({ workspaceId: repoInput, code: "GITHUB_RESPONSE_INVALID", reason: "GitHub answered the comment request without an id and URL." })
+    }
     return {
-      id: typeof raw.id === "number" ? raw.id : 0,
-      url: typeof raw.html_url === "string" ? raw.html_url : "",
-      body: typeof raw.body === "string" ? raw.body : body,
+      id: comment.id,
+      url: comment.html_url,
+      body: typeof comment.body === "string" ? comment.body : body,
     }
   }
 
   effect addIssueLabelsEffect(repoInput: string, issueNumber: number, labels: readonly string[]): readonly string[]!WorkspaceOperationError {
     const raw = try this.githubRequest(repoInput, "POST", `/issues/${Math.trunc(issueNumber)}/labels`, { labels: [...labels] })
-    return Array.isArray(raw)
-      ? (raw as Record<string, unknown>[]).map((l) => String(l.name ?? "")).filter(Boolean)
-      : [...labels]
+    if (!Array.isArray(raw)) {
+      throw new WorkspaceOperationError({ workspaceId: repoInput, code: "GITHUB_RESPONSE_INVALID", reason: "GitHub answered the label request with something other than the issue's label list." })
+    }
+    return (raw as Record<string, unknown>[]).map((l) => String(l.name ?? "")).filter(Boolean)
   }
 
   override async stop(): Promise<void> {

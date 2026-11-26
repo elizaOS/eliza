@@ -1,5 +1,6 @@
-// spec/agentOrchestrator/index.md, "Story: Direct an authorized task to the intended subagent and evaluate its result"; spec/agentOrchestrator/taskLifecycle.md, "Story: Track an orchestrated coding task from creation through verified completion"; spec/agentOrchestrator/lanesAndRouting.md, "Multi-lane wave execution prevents scope collisions and enforces concurrency and budget caps"
+// spec/agentOrchestrator/index.md, "Story: Direct an authorized task to the intended subagent and evaluate its result"; spec/agentOrchestrator/index.md, "Only the owner directs coding agents, and a message without a session id reaches only its own room's subagents"; spec/agentOrchestrator/sessionAdmission.md, "A turn completes only when the agent itself ends it"; spec/agentOrchestrator/taskLifecycle.md, "Story: Track an orchestrated coding task from creation through verified completion"; spec/agentOrchestrator/lanesAndRouting.md, "Multi-lane wave execution prevents scope collisions and enforces concurrency and budget caps"
 import {
+  hasOwnerAccess,
   promoteSubactionsToActions,
   type Action,
   type ActionParameter,
@@ -9,14 +10,18 @@ import {
   type Memory,
   type State,
 } from "@elizaos/core"
+import { implicitTargetReachable, taskOpAllowed } from "../gen/agentOrchestrator.effect.vibe"
 import {
   ACP_SUBPROCESS_SERVICE_TYPE,
   AcpService,
+  acpChildAgentSessions,
   isSessionTerminal,
+  sendChildDirective,
 } from "./acp.vibe"
 import {
   ORCHESTRATOR_TASK_SERVICE_TYPE,
   OrchestratorTaskService,
+  TERMINAL_TASK_STATUSES,
   toTaskThread,
 } from "./tasks-service.vibe"
 import {
@@ -34,21 +39,18 @@ import {
   buildCompactSessionDigest,
   buildCompactTaskDigest,
   dispatchParallelBatch,
-  truncateHead,
 } from "./optimization.vibe"
 import {
   detectTaskType,
   generateDefaultAcceptanceCriteria,
 } from "./verification.vibe"
 import {
-  normalizeTaskAgentAdapter,
   resolveCodingBackendLogged,
   type OrchestratorTerminalSupport,
 } from "./adapters.vibe"
 import {
   ensureTaskWorkdir,
   extractRepositoryUrlFromText,
-  requireTaskAgentAccess,
   resolveAllowedWorkdir,
   resolveServerAllowedWorkdirRoots,
 } from "./security.vibe"
@@ -200,12 +202,27 @@ function failResult(op: TaskOp, code: string, message: string): ActionResult {
   }
 }
 
-function resolveSessionTarget(acp: AcpService, bag: Bag): SessionInfo | undefined {
+function failureOf(failure: unknown, fallbackCode: string): { readonly code: string; readonly reason: string } {
+  if (typeof failure === "object" && failure !== null) {
+    const record = failure as { readonly _tag?: unknown; readonly code?: unknown; readonly reason?: unknown; readonly message?: unknown }
+    const code = typeof record.code === "string" ? record.code : typeof record._tag === "string" ? record._tag : fallbackCode
+    const reason = typeof record.reason === "string" ? record.reason : typeof record.message === "string" ? record.message : String(failure)
+    return { code, reason }
+  }
+  return { code: fallbackCode, reason: String(failure) }
+}
+
+function failWith(runtime: IAgentRuntime, op: TaskOp, fallbackCode: string, failure: unknown, prefix: string): ActionResult {
+  runtime.reportError?.(`TASKS.${op}`, failure, { code: fallbackCode })
+  const typed = failureOf(failure, fallbackCode)
+  return failResult(op, typed.code, `${prefix}: ${typed.reason}`)
+}
+
+function resolveSessionTarget(acp: AcpService, bag: Bag, roomId: string): SessionInfo | undefined {
   const sessionId = strParam(bag, "sessionId")
-  const sessions = acp.listSessions()
-  if (sessionId) return sessions.find((s) => s.id === sessionId)
-  const live = sessions.filter((s) => !isSessionTerminal(s.status))
-  return live.sort((a, b) => b.lastActivityAt - a.lastActivityAt)[0]
+  if (sessionId) return acp.getSession(sessionId)
+  const live = acp.listSessions().filter((s) => implicitTargetReachable(s.roomId ?? "", roomId) && !isSessionTerminal(s.status))
+  return live.length === 1 ? live[0] : undefined
 }
 
 function parseApprovalPreset(raw: string | undefined): ApprovalPreset {
@@ -234,6 +251,7 @@ async function resolveActionWorkdir(bag: Bag, fallbackSlug: string): Promise<str
 
 function buildSpawnOptionsFromBag(
   bag: Bag,
+  message: Memory,
   base: {
     readonly agentType: AgentType
     readonly workdir: string
@@ -247,6 +265,7 @@ function buildSpawnOptionsFromBag(
     approvalPreset: parseApprovalPreset(strParam(bag, "approvalPreset")),
     model: strParam(bag, "model"),
     providerRoute: strParam(bag, "providerRoute"),
+    metadata: { roomId: message.roomId, ownerEntityId: message.entityId },
   }
 }
 
@@ -255,6 +274,7 @@ async function handleCreate(
   acp: AcpService,
   tasks: OrchestratorTaskService | undefined,
   bag: Bag,
+  message: Memory,
   requestText: string,
 ): Promise<ActionResult> {
   if (strParam(bag, "repo")) {
@@ -288,8 +308,9 @@ async function handleCreate(
   })
   const explicitBackend = strParam(bag, "requestedBackend") ?? strParam(bag, "agentType")
   const tag = strParam(bag, "taskComplexity")
-  const resolved = resolveCodingBackendLogged({ runtime, explicit: explicitBackend, tag })
-  const agentType = resolved?.agentType ?? "elizaos"
+  const resolved = resolveCodingBackendLogged({ runtime, explicit: explicitBackend, tag, plannerGuess: "elizaos" })
+  if (!resolved) return failResult("create", "BACKEND_NOT_ALLOWED", "No allowed coding backend matches this request; check the operator allow-list.")
+  const agentType = resolved.agentType
   const completedLaneIds = new Set<string>()
   const remaining = [...plan.lanes]
   const spawned: Array<{
@@ -300,30 +321,44 @@ async function handleCreate(
     readonly status: string
     readonly label: string
     readonly ok: boolean
+    readonly queued?: boolean
+    readonly stopReason?: string
+    readonly code?: string
+    readonly reason?: string
   }> = []
+  const unfinishedLanes: LaneSpec[] = []
   let waveIndex = 0
   while (remaining.length > 0 && waveIndex < plan.lanes.length + 1) {
     waveIndex += 1
     const waveLanes: LaneSpec[] = []
     for (const candidate of remaining) {
       if (waveLanes.length >= plan.maxParallel) break
-      if (laneReadiness(candidate, completedLaneIds, waveLanes) === "LaneReady") {
+      if (laneReadiness(candidate, completedLaneIds, [...unfinishedLanes, ...waveLanes]) === "LaneReady") {
         waveLanes.push(candidate)
       }
     }
     if (waveLanes.length === 0) break
-    const existingLabels = acp.listSessions().map((s) => s.label)
-    const waveResults = await runPromise(dispatchParallelBatch(waveLanes, plan.maxParallel, (lane, idx) => effect {
-      const label = strParam(bag, "label") ?? pickSubAgentName([...existingLabels, ...Array.from({ length: idx }, (_, n) => `Lane-${waveIndex}-${n + 1}`)])
-      const res = acp.spawnSessionEffect(buildSpawnOptionsFromBag(bag, {
+    const takenLabels = acp.listSessions().map((s) => s.label)
+    const explicitLabel = strParam(bag, "label")
+    const waveLabels = waveLanes.map((lane) => {
+      const label = explicitLabel && plan.lanes.length === 1 ? explicitLabel : pickSubAgentName(takenLabels)
+      takenLabels.push(label)
+      return { laneId: lane.id, label }
+    })
+    const waveResults = await runPromise(dispatchParallelBatch(waveLanes, plan.maxParallel, (lane) => effect {
+      const label = waveLabels.find((entry) => entry.laneId === lane.id)?.label ?? lane.id
+      const res = acp.spawnSessionEffect(buildSpawnOptionsFromBag(bag, message, {
         agentType,
         workdir,
         task: lane.task,
         label,
         taskId: doc?.task.id,
-      })) catch () => undefined
-      if (!res) {
-        return { laneId: lane.id, sessionId: `err-${lane.id}`, agentType, workdir, status: "errored", label, ok: false }
+      })) catch (failure) => ({ failure: failureOf(failure, "SPAWN_FAILED") })
+      if ("failure" in res) {
+        return { laneId: lane.id, sessionId: `err-${lane.id}`, agentType, workdir, status: "errored", label, ok: false, ...res.failure }
+      }
+      if (res.queued) {
+        return { laneId: lane.id, sessionId: res.sessionId, agentType: res.agentType, workdir: res.workdir, status: res.status, label: res.label, ok: true, queued: true }
       }
       if (doc && tasks) {
         tasks.attachSession(doc.task.id, {
@@ -334,11 +369,15 @@ async function handleCreate(
           workdir: res.workdir,
         })
       }
-      return { laneId: lane.id, sessionId: res.sessionId, agentType: res.agentType, workdir: res.workdir, status: res.status, label: res.label, ok: true }
+      return { laneId: lane.id, sessionId: res.sessionId, agentType: res.agentType, workdir: res.workdir, status: res.status, label: res.label, ok: true, stopReason: res.stopReason }
     }))
     for (const item of waveResults) {
       spawned.push(item)
-      if (item.ok) completedLaneIds.add(item.laneId)
+      if (item.ok && item.stopReason === "end_turn") completedLaneIds.add(item.laneId)
+      else {
+        const lane = waveLanes.find((l) => l.id === item.laneId)
+        if (lane && item.ok) unfinishedLanes.push(lane)
+      }
     }
     const dispatchedIds = new Set(waveLanes.map((l) => l.id))
     for (let i = remaining.length - 1; i >= 0; i -= 1) {
@@ -347,11 +386,13 @@ async function handleCreate(
   }
   const succeeded = spawned.filter((s) => s.ok)
   if (succeeded.length === 0) {
-    return failResult("create", "ALL_LANES_FAILED", "No coding sessions could be spawned within capacity limits.")
+    const first = spawned.find((s) => s.code)
+    return failResult("create", first?.code ?? "ALL_LANES_FAILED", first?.reason ?? "No coding sessions could be spawned.")
   }
   const widgetLine = doc ? `[TASK:${doc.task.id}]${doc.task.title}[/TASK]` : ""
-  const summaryLines = spawned.map((s) => `- ${s.label} (${s.sessionId}) [${s.agentType}] ${s.status}`)
-  const text = [widgetLine, `Launched ${succeeded.length}/${plan.lanes.length} session(s):`, ...summaryLines].filter(Boolean).join("\n")
+  const summaryLines = spawned.map((s) => `- ${s.label} (${s.sessionId}) [${s.agentType}] ${s.status}${s.stopReason ? ` (${s.stopReason})` : ""}${s.reason ? `: ${s.reason}` : ""}`)
+  const notLaunched = remaining.map((lane) => `- ${lane.id} not launched: waits on ${lane.dependencies.filter((dep) => !completedLaneIds.has(dep)).join(", ") || "a lane sharing its file scope"} that did not complete`)
+  const text = [widgetLine, `Launched ${succeeded.length}/${plan.lanes.length} session(s):`, ...summaryLines, ...notLaunched].filter(Boolean).join("\n")
   const resourceId = doc?.task.id ?? succeeded[0]!.sessionId
   return {
     success: true,
@@ -361,10 +402,11 @@ async function handleCreate(
       op: "create",
       taskId: doc?.task.id,
       wavesExecuted: waveIndex,
-      sessions: spawned.map((s) => ({ laneId: s.laneId, id: s.sessionId, label: s.label, agentType: s.agentType, status: s.status })),
+      sessions: spawned.map((s) => ({ laneId: s.laneId, id: s.sessionId, label: s.label, agentType: s.agentType, status: s.status, stopReason: s.stopReason })),
+      notLaunchedLaneIds: remaining.map((lane) => lane.id),
     },
     promptDataMode: "replace-data",
-    data: { task: doc ? toTaskThread(doc) : undefined, sessions: spawned, laneCount: plan.lanes.length, wavesExecuted: waveIndex },
+    data: { task: doc ? toTaskThread(doc) : undefined, sessions: spawned, laneCount: plan.lanes.length, wavesExecuted: waveIndex, notLaunchedLaneIds: remaining.map((lane) => lane.id) },
   }
 }
 
@@ -373,27 +415,35 @@ async function handleSpawnAgent(
   acp: AcpService,
   tasks: OrchestratorTaskService | undefined,
   bag: Bag,
+  message: Memory,
 ): Promise<ActionResult> {
   const taskText = strParam(bag, "task")
   if (!taskText) return failResult("spawn_agent", "CHILD_TASK_REQUIRED", "Parameter 'task' is required for spawn_agent.")
   const explicit = strParam(bag, "requestedBackend") ?? strParam(bag, "agentType")
-  const agentType = normalizeTaskAgentAdapter(explicit) ?? resolveCodingBackendLogged({ runtime, explicit, tag: strParam(bag, "taskComplexity") })?.agentType ?? "elizaos"
+  const resolved = resolveCodingBackendLogged({ runtime, explicit, tag: strParam(bag, "taskComplexity"), plannerGuess: "elizaos" })
+  if (!resolved) return failResult("spawn_agent", "BACKEND_NOT_ALLOWED", "No allowed coding backend matches this request; check the operator allow-list.")
+  const agentType = resolved.agentType
+  const existingTaskId = strParam(bag, "taskId") ?? strParam(bag, "threadId")
+  const existing = existingTaskId && tasks ? tasks.getTask(existingTaskId) : undefined
+  if (existingTaskId && tasks && !existing) return failResult("spawn_agent", "TASK_NOT_FOUND", `Task ${existingTaskId} not found.`)
+  if (existing && TERMINAL_TASK_STATUSES.has(existing.task.status)) {
+    return failResult("spawn_agent", "TASK_TERMINAL", `Task ${existing.task.id} is ${existing.task.status}; reopen or restart it before spawning work.`)
+  }
   const workdir = await resolveActionWorkdir(bag, taskText.slice(0, 40))
   if (!workdir) return failResult("spawn_agent", "WORKDIR_FORBIDDEN", "Requested workdir is outside allowed workspace roots.")
   const label = strParam(bag, "label") ?? pickSubAgentName(acp.listSessions().map((s) => s.label))
-  const existingTaskId = strParam(bag, "taskId") ?? strParam(bag, "threadId")
-  const doc = existingTaskId ? tasks?.getTask(existingTaskId) : tasks?.createTask({ title: taskText.slice(0, 80), goal: taskText, workdir })
+  const doc = existing ?? tasks?.createTask({ title: taskText.slice(0, 80), goal: taskText, workdir })
   const spawned = await runPromise(effect {
-    return acp.spawnSessionEffect(buildSpawnOptionsFromBag(bag, {
+    return acp.spawnSessionEffect(buildSpawnOptionsFromBag(bag, message, {
       agentType,
       workdir,
       task: taskText,
       label,
       taskId: doc?.task.id,
-    })) catch () => undefined
+    })) catch (failure) => ({ failure: failureOf(failure, "SPAWN_FAILED") })
   })
-  if (!spawned) return failResult("spawn_agent", "SPAWN_FAILED", "Unable to spawn coding session within capacity limits.")
-  if (doc && tasks) {
+  if ("failure" in spawned) return failResult("spawn_agent", spawned.failure.code, spawned.failure.reason)
+  if (doc && tasks && !spawned.queued) {
     tasks.attachSession(doc.task.id, {
       id: spawned.sessionId,
       agentType: spawned.agentType,
@@ -413,67 +463,127 @@ async function handleSpawnAgent(
   }
 }
 
-async function handleSend(acp: AcpService, bag: Bag): Promise<ActionResult> {
+async function handleSend(runtime: IAgentRuntime, acp: AcpService, bag: Bag, message: Memory, requestText: string): Promise<ActionResult> {
   if ((strParam(bag, "taskId") || strParam(bag, "threadId")) && !strParam(bag, "sessionId")) {
     return failResult("send", "SESSION_ID_REQUIRED", "Provide sessionId explicitly when targeting a session.")
   }
-  const target = resolveSessionTarget(acp, bag)
-  if (!target) return failResult("send", "SESSION_NOT_FOUND", "No active coding session found.")
   const keys = strParam(bag, "keys")
   const input = strParam(bag, "input") ?? strParam(bag, "task")
   if (!keys && !input) return failResult("send", "INPUT_REQUIRED", "Provide input or keys to send.")
-  const res = keys ? await acp.sendKeysToSession(target.id, keys) : await acp.sendToSession(target.id, input!)
-  const bounded = truncateHead(res.output, 60, 4_096)
+  const sessionId = strParam(bag, "sessionId")
+  if (!sessionId) {
+    if (keys) return failResult("send", "SESSION_ID_REQUIRED", "Provide sessionId to send raw keys.")
+    const routed = await runPromise(effect {
+      provide acpChildAgentSessions(acp) {
+        return sendChildDirective(message.roomId, { directive: "DirectMessage", text: requestText || input!, payload: input }) catch (failure) => ({ failure })
+      }
+    })
+    if ("failure" in routed) return failWith(runtime, "send", "SEND_FAILED", routed.failure, "Could not deliver the message")
+    if (routed.length === 0) {
+      return failResult("send", "SESSION_NOT_FOUND", "No subagent in this room is addressed: name it, @-mention it, or pass sessionId.")
+    }
+    const outputs = routed.map((id) => ({ sessionId: id, output: acp.lastTurnOutput(id) }))
+    return {
+      success: true,
+      text: outputs.map((o) => `${acp.getSession(o.sessionId)?.label ?? o.sessionId}: ${o.output}`).join("\n\n"),
+      effectReceipts: routed.map((id) => buildReceipt("send", id, "applied")),
+      promptData: { op: "send", sessionIds: routed, outputs },
+      promptDataMode: "replace-data",
+      data: { sessionIds: routed, outputs },
+    }
+  }
+  const target = acp.getSession(sessionId)
+  if (!target) return failResult("send", "SESSION_NOT_FOUND", `Session ${sessionId} not found.`)
+  const sent = await runPromise(effect {
+    return (keys ? acp.sendPromptEffect(target.id, keys, { keys }) : acp.sendPromptEffect(target.id, input!)) catch (failure) => ({ failure })
+  })
+  if ("failure" in sent) return failWith(runtime, "send", "SEND_FAILED", sent.failure, `Session ${target.id} did not take the message`)
   return {
     success: true,
-    text: bounded.text,
+    text: sent.output,
     effectReceipts: [buildReceipt("send", target.id, "applied")],
-    promptData: { op: "send", sessionId: target.id, status: res.status, output: bounded.text, truncated: bounded.truncated, artifactRef: bounded.artifactRef },
+    promptData: { op: "send", sessionId: target.id, status: sent.status, stopReason: sent.stopReason, output: sent.output },
     promptDataMode: "replace-data",
-    data: { result: res },
+    data: { result: sent },
   }
 }
 
 async function handleStopOrCancel(
+  runtime: IAgentRuntime,
   acp: AcpService,
   tasks: OrchestratorTaskService | undefined,
   op: "stop_agent" | "cancel",
   bag: Bag,
+  message: Memory,
+  requestText: string,
 ): Promise<ActionResult> {
   if (op === "stop_agent" && (strParam(bag, "taskId") || strParam(bag, "threadId")) && !strParam(bag, "sessionId")) {
     return failResult(op, "SESSION_ID_REQUIRED", "Provide sessionId when using stop_agent.")
   }
+  const sessionId = strParam(bag, "sessionId")
+  if (sessionId && acp.admissionQueue.some((entry) => entry.id === sessionId)) {
+    const dequeued = await runPromise(effect { return acp.cancelQueued(sessionId) catch (failure) => ({ failure }) })
+    if (typeof dequeued === "object") return failWith(runtime, op, "CANCEL_FAILED", dequeued.failure, `Queued spawn ${sessionId} could not be cancelled`)
+    return {
+      success: true,
+      text: `Cancelled queued spawn ${sessionId}.`,
+      effectReceipts: [buildReceipt(op, sessionId, "applied")],
+      promptData: { op, cancelledQueueIds: [sessionId] },
+      promptDataMode: "replace-data",
+      data: { cancelledQueueIds: [sessionId] },
+    }
+  }
   const allFlag = boolParam(bag, "all") === true
-  const liveSessions = acp.listSessions().filter((s) => !isSessionTerminal(s.status))
+  const roomLive = acp.listSessions().filter((s) => implicitTargetReachable(s.roomId ?? "", message.roomId) && !isSessionTerminal(s.status))
   const taskId = strParam(bag, "taskId") ?? strParam(bag, "threadId")
   const search = strParam(bag, "search")?.toLowerCase()
+  if (!sessionId && !allFlag && !(op === "cancel" && (taskId || search))) {
+    const routed = await runPromise(effect {
+      provide acpChildAgentSessions(acp) {
+        return sendChildDirective(message.roomId, { directive: "StopTurn", text: requestText || "stop" }) catch (failure) => ({ failure })
+      }
+    })
+    if ("failure" in routed) return failWith(runtime, op, "STOP_FAILED", routed.failure, "Could not stop the subagent")
+    if (routed.length === 0) return failResult(op, "SESSION_NOT_FOUND", "No running subagent in this room is addressed by this request.")
+    return {
+      success: true,
+      text: `Stopped the current turn of ${routed.length} session(s): ${routed.join(", ")}`,
+      effectReceipts: routed.map((id) => buildReceipt(op, id, "applied")),
+      promptData: { op, stoppedSessionIds: routed },
+      promptDataMode: "replace-data",
+      data: { stoppedSessionIds: routed },
+    }
+  }
   const targets = allFlag
-    ? liveSessions
-    : op === "cancel" && taskId && tasks
+    ? roomLive
+    : op === "cancel" && taskId && tasks && !sessionId
       ? (() => {
           const doc = tasks.getTask(taskId)
           const ids = new Set((doc?.sessions ?? []).map((s) => s.sessionId))
-          return liveSessions.filter((s) => ids.has(s.id) || s.taskId === taskId)
+          return acp.listSessions().filter((s) => !isSessionTerminal(s.status) && (ids.has(s.id) || s.taskId === taskId))
         })()
-      : op === "cancel" && search
-        ? liveSessions.filter((s) => `${s.id} ${s.label} ${s.workdir}`.toLowerCase().includes(search))
+      : op === "cancel" && search && !sessionId
+        ? roomLive.filter((s) => `${s.id} ${s.label} ${s.workdir}`.toLowerCase().includes(search))
         : (() => {
-            const single = resolveSessionTarget(acp, bag)
-            return single ? [single] : []
+            const single = sessionId ? acp.getSession(sessionId) : undefined
+            return single && !isSessionTerminal(single.status) ? [single] : []
           })()
   if (targets.length === 0) return failResult(op, "SESSION_NOT_FOUND", "No active session to stop.")
   const stoppedIds: string[] = []
+  const failed: string[] = []
   for (const s of targets) {
-    const ok = op === "cancel" ? await acp.cancelSession(s.id) : await acp.stopSession(s.id)
+    const ok = await (op === "cancel" ? acp.cancelSession(s.id) : acp.stopSession(s.id))
     if (ok) stoppedIds.push(s.id)
+    else failed.push(s.id)
   }
+  if (stoppedIds.length === 0) return failResult(op, "STOP_FAILED", `No session could be stopped: ${failed.join(", ")}`)
   return {
     success: true,
-    text: `Stopped ${stoppedIds.length} session(s): ${stoppedIds.join(", ")}`,
-    effectReceipts: [buildReceipt(op, stoppedIds[0] ?? op, "applied")],
-    promptData: { op, stoppedSessionIds: stoppedIds },
+    text: `Stopped ${stoppedIds.length} session(s): ${stoppedIds.join(", ")}${failed.length > 0 ? `; already ended: ${failed.join(", ")}` : ""}`,
+    effectReceipts: stoppedIds.map((id) => buildReceipt(op, id, "applied")),
+    promptData: { op, stoppedSessionIds: stoppedIds, notStoppedSessionIds: failed },
     promptDataMode: "replace-data",
-    data: { stoppedSessionIds: stoppedIds },
+    data: { stoppedSessionIds: stoppedIds, notStoppedSessionIds: failed },
   }
 }
 
@@ -546,10 +656,9 @@ function handleHistory(acp: AcpService, tasks: OrchestratorTaskService | undefin
 function handleListAgents(acp: AcpService): ActionResult {
   const sessions = acp.listSessions()
   const lines = sessions.map((s) => buildCompactSessionDigest(s))
-  const bounded = truncateHead(lines.length > 0 ? lines.join("\n") : "No coding sessions.", 50, 4_096)
   return {
     success: true,
-    text: bounded.text,
+    text: lines.length > 0 ? lines.join("\n") : "No coding sessions.",
     effectReceipts: [buildReceipt("list_agents", "sessions", "noop")],
     promptData: { op: "list_agents", count: sessions.length, sessions: sessions.map((s) => ({ id: s.id, label: s.label, agentType: s.agentType, status: s.status })) },
     promptDataMode: "replace-data",
@@ -558,15 +667,18 @@ function handleListAgents(acp: AcpService): ActionResult {
 }
 
 async function handleControl(
+  runtime: IAgentRuntime,
   acp: AcpService,
   tasks: OrchestratorTaskService | undefined,
   op: "control" | "archive" | "reopen",
   bag: Bag,
+  message: Memory,
+  requestText: string,
 ): Promise<ActionResult> {
   const controlAction = op === "archive" ? "archive" : op === "reopen" ? "reopen" : (strParam(bag, "controlAction")?.toLowerCase() ?? "")
   const taskId = strParam(bag, "taskId") ?? strParam(bag, "threadId")
   if (!controlAction) return failResult(op, "CONTROL_ACTION_REQUIRED", "Specify controlAction: pause|resume|continue|stop|archive|reopen.")
-  if (controlAction === "stop") return handleStopOrCancel(acp, tasks, "stop_agent", bag)
+  if (controlAction === "stop") return handleStopOrCancel(runtime, acp, tasks, "stop_agent", bag, message, requestText)
   if (!tasks || !taskId) return failResult(op, "TASK_ID_REQUIRED", "Provide taskId or threadId for lifecycle control.")
   const updated = await runPromise(effect {
     return (controlAction === "pause"
@@ -575,13 +687,16 @@ async function handleControl(
         ? tasks.archiveTaskEffect(taskId)
         : controlAction === "reopen"
           ? tasks.reopenTaskEffect(taskId)
-          : tasks.resumeTaskEffect(taskId)) catch () => undefined
+          : tasks.resumeTaskEffect(taskId)) catch (failure) => ({ failure })
   })
-  if (!updated) return failResult(op, "CONTROL_REJECTED", `Unable to apply ${controlAction} to task ${taskId}.`)
+  if ("failure" in updated) return failWith(runtime, op, "CONTROL_REJECTED", updated.failure, `Unable to apply ${controlAction} to task ${taskId}`)
   const instruction = strParam(bag, "instruction")
   if ((controlAction === "resume" || controlAction === "continue") && instruction) {
     const live = updated.sessions.find((s) => !isSessionTerminal(s.status))
-    if (live) await acp.sendToSession(live.sessionId, instruction)
+    if (live) {
+      const resumed = await runPromise(effect { return acp.sendPromptEffect(live.sessionId, instruction) catch (failure) => ({ failure }) })
+      if ("failure" in resumed) return failWith(runtime, op, "RESUME_SEND_FAILED", resumed.failure, `Task ${updated.task.id} resumed, but its session did not take the instruction`)
+    }
   }
   return {
     success: true,
@@ -593,7 +708,7 @@ async function handleControl(
   }
 }
 
-function handleShare(acp: AcpService, tasks: OrchestratorTaskService | undefined, bag: Bag): ActionResult {
+function handleShare(acp: AcpService, tasks: OrchestratorTaskService | undefined, bag: Bag, roomId: string): ActionResult {
   const taskId = strParam(bag, "taskId") ?? strParam(bag, "threadId")
   const session = taskId && tasks
     ? (() => {
@@ -601,8 +716,8 @@ function handleShare(acp: AcpService, tasks: OrchestratorTaskService | undefined
         const sid = doc?.sessions[doc.sessions.length - 1]?.sessionId
         return sid ? acp.getSession(sid) : undefined
       })()
-    : resolveSessionTarget(acp, bag)
-  if (!session) return failResult("share", "SESSION_NOT_FOUND", "No session available to share.")
+    : resolveSessionTarget(acp, bag, roomId)
+  if (!session) return failResult("share", "SESSION_NOT_FOUND", "No session available to share: pass sessionId or taskId when the room has several.")
   const digest = buildCompactSessionDigest(session)
   return {
     success: true,
@@ -622,6 +737,7 @@ function labelsParam(bag: Bag): readonly string[] {
 }
 
 async function handleManageIssuesOp(
+  runtime: IAgentRuntime,
   wsService: CodingWorkspaceService,
   bag: Bag,
   requestText: string,
@@ -634,8 +750,8 @@ async function handleManageIssuesOp(
   if (issueAction === "list") {
     const stateVal = strParam(bag, "state")
     const issueState = stateVal === "closed" || stateVal === "all" ? stateVal : "open"
-    const issues = await runPromise(effect { return wsService.listIssuesEffect(repo, issueState, labels) catch () => undefined })
-    if (!issues) return failResult("manage_issues", "ISSUES_FETCH_FAILED", `Unable to list issues for ${repo}.`)
+    const issues = await runPromise(effect { return wsService.listIssuesEffect(repo, issueState, labels) catch (failure) => ({ failure }) })
+    if ("failure" in issues) return failWith(runtime, "manage_issues", "ISSUES_FETCH_FAILED", issues.failure, `Unable to list issues for ${repo}`)
     const lines = issues.slice(0, 15).map((i) => `#${i.number} [${i.state}] ${i.title}`)
     return {
       success: true,
@@ -648,8 +764,8 @@ async function handleManageIssuesOp(
   }
   if (issueAction === "get") {
     if (!issueNumber) return failResult("manage_issues", "ISSUE_NUMBER_REQUIRED", "issueNumber is required for get.")
-    const issue = await runPromise(effect { return wsService.getIssueEffect(repo, issueNumber) catch () => undefined })
-    if (!issue) return failResult("manage_issues", "ISSUE_GET_FAILED", `Unable to fetch issue #${issueNumber}.`)
+    const issue = await runPromise(effect { return wsService.getIssueEffect(repo, issueNumber) catch (failure) => ({ failure }) })
+    if ("failure" in issue) return failWith(runtime, "manage_issues", "ISSUE_GET_FAILED", issue.failure, `Unable to fetch issue #${issueNumber}`)
     return {
       success: true,
       text: `#${issue.number} [${issue.state}] ${issue.title}`,
@@ -662,8 +778,8 @@ async function handleManageIssuesOp(
   if (issueAction === "create") {
     const title = strParam(bag, "title")
     if (!title) return failResult("manage_issues", "ISSUE_TITLE_REQUIRED", "title is required to create an issue.")
-    const created = await runPromise(effect { return wsService.createIssueEffect(repo, { title, body: strParam(bag, "body"), labels }) catch () => undefined })
-    if (!created) return failResult("manage_issues", "ISSUE_CREATE_FAILED", `Unable to create issue in ${repo}.`)
+    const created = await runPromise(effect { return wsService.createIssueEffect(repo, { title, body: strParam(bag, "body"), labels }) catch (failure) => ({ failure }) })
+    if ("failure" in created) return failWith(runtime, "manage_issues", "ISSUE_CREATE_FAILED", created.failure, `Unable to create issue in ${repo}`)
     return {
       success: true,
       text: `Created issue #${created.number}: ${created.title} (${created.url})`,
@@ -677,8 +793,8 @@ async function handleManageIssuesOp(
   if (issueAction === "comment") {
     const body = strParam(bag, "body")
     if (!body) return failResult("manage_issues", "COMMENT_BODY_REQUIRED", "body is required to comment on an issue.")
-    const comment = await runPromise(effect { return wsService.addIssueCommentEffect(repo, issueNumber, body) catch () => undefined })
-    if (!comment) return failResult("manage_issues", "ISSUE_COMMENT_FAILED", `Unable to comment on #${issueNumber}.`)
+    const comment = await runPromise(effect { return wsService.addIssueCommentEffect(repo, issueNumber, body) catch (failure) => ({ failure }) })
+    if ("failure" in comment) return failWith(runtime, "manage_issues", "ISSUE_COMMENT_FAILED", comment.failure, `Unable to comment on #${issueNumber}`)
     return {
       success: true,
       text: `Commented on #${issueNumber} (${comment.url}).`,
@@ -690,8 +806,8 @@ async function handleManageIssuesOp(
   }
   if (issueAction === "add_labels") {
     if (labels.length === 0) return failResult("manage_issues", "LABELS_REQUIRED", "labels is required for add_labels.")
-    const applied = await runPromise(effect { return wsService.addIssueLabelsEffect(repo, issueNumber, labels) catch () => undefined })
-    if (!applied) return failResult("manage_issues", "ISSUE_LABELS_FAILED", `Unable to label #${issueNumber}.`)
+    const applied = await runPromise(effect { return wsService.addIssueLabelsEffect(repo, issueNumber, labels) catch (failure) => ({ failure }) })
+    if ("failure" in applied) return failWith(runtime, "manage_issues", "ISSUE_LABELS_FAILED", applied.failure, `Unable to label #${issueNumber}`)
     return {
       success: true,
       text: `Applied labels [${applied.join(", ")}] to #${issueNumber}.`,
@@ -708,9 +824,9 @@ async function handleManageIssuesOp(
       body: strParam(bag, "body"),
       state: nextState,
       ...(labels.length > 0 ? { labels } : {}),
-    }) catch () => undefined
+    }) catch (failure) => ({ failure })
   })
-  if (!updated) return failResult("manage_issues", "ISSUE_UPDATE_FAILED", `Unable to ${issueAction} issue #${issueNumber}.`)
+  if ("failure" in updated) return failWith(runtime, "manage_issues", "ISSUE_UPDATE_FAILED", updated.failure, `Unable to ${issueAction} issue #${issueNumber}`)
   return {
     success: true,
     text: `Updated issue #${updated.number} [${updated.state}]: ${updated.title}`,
@@ -722,6 +838,7 @@ async function handleManageIssuesOp(
 }
 
 async function handleWorkspaceOps(
+  runtime: IAgentRuntime,
   wsService: CodingWorkspaceService | undefined,
   op: "provision_workspace" | "submit_workspace" | "manage_issues",
   bag: Bag,
@@ -737,9 +854,9 @@ async function handleWorkspaceOps(
         baseBranch: strParam(bag, "baseBranch"),
         useWorktree: boolParam(bag, "useWorktree"),
         parentWorkspaceId: strParam(bag, "parentWorkspaceId"),
-      }) catch () => undefined
+      }) catch (failure) => ({ failure })
     })
-    if (!provisioned) return failResult(op, "PROVISION_FAILED", `Failed to provision workspace for ${repo}.`)
+    if ("failure" in provisioned) return failWith(runtime, op, "PROVISION_FAILED", provisioned.failure, `Failed to provision workspace for ${repo}`)
     return {
       success: true,
       text: `Provisioned workspace ${provisioned.id} (${provisioned.branch}) at ${provisioned.path}.`,
@@ -752,8 +869,8 @@ async function handleWorkspaceOps(
   if (op === "submit_workspace") {
     const workspaceId = strParam(bag, "workspaceId") ?? wsService.listWorkspaces().at(-1)?.id
     if (!workspaceId) return failResult(op, "WORKSPACE_NOT_FOUND", "Specify workspaceId to submit.")
-    const status = await runPromise(effect { return wsService.getStatusEffect(workspaceId) catch () => undefined })
-    if (!status) return failResult(op, "STATUS_FAILED", `Unable to inspect workspace ${workspaceId}.`)
+    const status = await runPromise(effect { return wsService.getStatusEffect(workspaceId) catch (failure) => ({ failure }) })
+    if ("failure" in status) return failWith(runtime, op, "STATUS_FAILED", status.failure, `Unable to inspect workspace ${workspaceId}`)
     if (status.clean) {
       return {
         success: true,
@@ -764,34 +881,64 @@ async function handleWorkspaceOps(
         data: { status, committed: false },
       }
     }
-    const committed = await runPromise(effect { return wsService.commitEffect(workspaceId, strParam(bag, "commitMessage") ?? "chore: submit coding task changes") catch () => undefined })
-    if (!committed) return failResult(op, "SUBMIT_FAILED", `Commit or diff gate refused workspace ${workspaceId}.`)
-    const pushed = await runPromise(effect { return wsService.pushEffect(workspaceId, { setUpstream: true }) catch () => undefined })
-    const skipPR = boolParam(bag, "skipPR") === true
-    const pr = pushed && !skipPR
-      ? await runPromise(effect {
-          return wsService.createPrEffect(workspaceId, {
-            title: strParam(bag, "prTitle") ?? strParam(bag, "commitMessage") ?? `Coding task changes (${status.branch})`,
-            body: strParam(bag, "prBody") ?? `Committed ${committed.changedFiles.length} file(s).`,
-            baseBranch: strParam(bag, "baseBranch"),
-            draft: boolParam(bag, "draft") === true,
-          }) catch () => undefined
-        })
-      : undefined
+    const committed = await runPromise(effect { return wsService.commitEffect(workspaceId, strParam(bag, "commitMessage") ?? "chore: submit coding task changes") catch (failure) => ({ failure }) })
+    if ("failure" in committed) return failWith(runtime, op, "SUBMIT_FAILED", committed.failure, `Commit or diff gate refused workspace ${workspaceId}`)
+    const commitReceipt = buildReceipt(op, `${workspaceId}:commit`, "applied")
+    const pushed = await runPromise(effect { return wsService.pushEffect(workspaceId, { setUpstream: true }) catch (failure) => ({ failure }) })
+    if (typeof pushed === "object" && pushed !== null && "failure" in pushed) {
+      runtime.reportError?.("TASKS.submit_workspace.push", pushed.failure, { workspaceId })
+      const typed = failureOf(pushed.failure, "PUSH_FAILED")
+      return {
+        success: false,
+        text: `Committed ${committed.changedFiles.length} file(s) (${committed.sha ?? "head"}), but pushing ${status.branch} failed: ${typed.reason}`,
+        error: typed.code,
+        effectReceipts: [commitReceipt, buildReceipt(op, typed.code, "failed")],
+        promptData: { ok: false, op, code: typed.code, message: typed.reason, workspaceId, committed: true, pushed: false, sha: committed.sha },
+        promptDataMode: "replace-data",
+        data: { commit: committed, pushed: false, code: typed.code, message: typed.reason },
+      }
+    }
+    if (boolParam(bag, "skipPR") === true) {
+      return {
+        success: true,
+        text: `Committed ${committed.changedFiles.length} file(s) and pushed ${status.branch}.`,
+        effectReceipts: [commitReceipt, buildReceipt(op, `${workspaceId}:push`, "applied")],
+        promptData: { op, workspaceId, committed: committed.committed, pushed: true, sha: committed.sha, fileCount: committed.changedFiles.length },
+        promptDataMode: "replace-data",
+        data: { commit: committed, pushed: true },
+      }
+    }
+    const pr = await runPromise(effect {
+      return wsService.createPrEffect(workspaceId, {
+        title: strParam(bag, "prTitle") ?? strParam(bag, "commitMessage") ?? `Coding task changes (${status.branch})`,
+        body: strParam(bag, "prBody") ?? `Committed ${committed.changedFiles.length} file(s).`,
+        baseBranch: strParam(bag, "baseBranch"),
+        draft: boolParam(bag, "draft") === true,
+      }) catch (failure) => ({ failure })
+    })
+    if ("failure" in pr) {
+      runtime.reportError?.("TASKS.submit_workspace.pr", pr.failure, { workspaceId })
+      const typed = failureOf(pr.failure, "PR_CREATE_FAILED")
+      return {
+        success: false,
+        text: `Committed ${committed.changedFiles.length} file(s) and pushed ${status.branch}, but opening the pull request failed: ${typed.reason}`,
+        error: typed.code,
+        effectReceipts: [commitReceipt, buildReceipt(op, `${workspaceId}:push`, "applied"), buildReceipt(op, typed.code, "failed")],
+        promptData: { ok: false, op, code: typed.code, message: typed.reason, workspaceId, committed: true, pushed: true, sha: committed.sha },
+        promptDataMode: "replace-data",
+        data: { commit: committed, pushed: true, code: typed.code, message: typed.reason },
+      }
+    }
     return {
       success: true,
-      text: pr
-        ? `Committed ${committed.changedFiles.length} file(s), pushed ${status.branch}, opened PR #${pr.number} (${pr.url}).`
-        : pushed
-          ? `Committed ${committed.changedFiles.length} file(s) and pushed ${status.branch}.`
-          : `Committed ${committed.changedFiles.length} file(s) (${committed.sha ?? "head"}).`,
-      effectReceipts: [buildReceipt(op, workspaceId, "applied")],
-      promptData: { op, workspaceId, committed: committed.committed, pushed: Boolean(pushed), prUrl: pr?.url, sha: committed.sha, fileCount: committed.changedFiles.length },
+      text: `Committed ${committed.changedFiles.length} file(s), pushed ${status.branch}, opened PR #${pr.number} (${pr.url}).`,
+      effectReceipts: [commitReceipt, buildReceipt(op, `${workspaceId}:push`, "applied"), buildReceipt(op, `${workspaceId}:pr:${pr.number}`, "applied")],
+      promptData: { op, workspaceId, committed: committed.committed, pushed: true, prUrl: pr.url, sha: committed.sha, fileCount: committed.changedFiles.length },
       promptDataMode: "replace-data",
-      data: { commit: committed, pushed: Boolean(pushed), pr },
+      data: { commit: committed, pushed: true, pr },
     }
   }
-  return handleManageIssuesOp(wsService, bag, requestText)
+  return handleManageIssuesOp(runtime, wsService, bag, requestText)
 }
 
 const COMPACT_PARAMETERS: ActionParameter[] = [
@@ -874,7 +1021,7 @@ export const tasksAction: Action = {
   tags: ["domain:coding", "domain:agent-orchestration", "capability:delegate", "effect:receipt-required"],
   contexts: ["code", "automation", "agent_internal", "connectors"],
   contextGate: { anyOf: ["code", "automation", "agent_internal", "connectors"] },
-  roleGate: { minRole: "USER" },
+  roleGate: { minRole: "OWNER" },
   toolSchemaStrict: true,
   cacheStable: true,
   cacheScope: "agent",
@@ -906,12 +1053,9 @@ export const tasksAction: Action = {
   handler: async (runtime: IAgentRuntime, message: Memory, _state?: State, options?: unknown) => {
     const bag = paramsOf(options)
     const op = normalizeTaskOp(bag)
-    const metaBag = (message.metadata ?? {}) as Record<string, unknown>
-    const access = requireTaskAgentAccess(
-      typeof metaBag.role === "string" ? metaBag.role : "USER",
-      op === "create" || op === "spawn_agent" || op === "provision_workspace" ? "create" : "interact",
-    )
-    if (!access.allowed) return failResult(op, "ACCESS_DENIED", access.reason ?? "Access denied.")
+    if (!taskOpAllowed({ isOwner: await hasOwnerAccess(runtime, message), roomId: message.roomId })) {
+      return failResult(op, "ACCESS_DENIED", "Only the owner can run, direct, inspect or stop coding agents and their workspaces.")
+    }
     const acp = getAcpService(runtime)
     const tasks = getTaskService(runtime)
     const ws = getWorkspaceService(runtime)
@@ -920,20 +1064,20 @@ export const tasksAction: Action = {
     }
     const requestText = typeof message.content?.text === "string" ? message.content.text : ""
     switch (op) {
-      case "create": return handleCreate(runtime, acp!, tasks, bag, requestText)
-      case "spawn_agent": return handleSpawnAgent(runtime, acp!, tasks, bag)
-      case "send": return handleSend(acp!, bag)
+      case "create": return handleCreate(runtime, acp!, tasks, bag, message, requestText)
+      case "spawn_agent": return handleSpawnAgent(runtime, acp!, tasks, bag, message)
+      case "send": return handleSend(runtime, acp!, bag, message, requestText)
       case "stop_agent":
-      case "cancel": return handleStopOrCancel(acp!, tasks, op, bag)
+      case "cancel": return handleStopOrCancel(runtime, acp!, tasks, op, bag, message, requestText)
       case "list_agents": return handleListAgents(acp!)
       case "history": return handleHistory(acp!, tasks, bag)
       case "control":
       case "archive":
-      case "reopen": return handleControl(acp!, tasks, op, bag)
-      case "share": return handleShare(acp!, tasks, bag)
+      case "reopen": return handleControl(runtime, acp!, tasks, op, bag, message, requestText)
+      case "share": return handleShare(acp!, tasks, bag, message.roomId)
       case "provision_workspace":
       case "submit_workspace":
-      case "manage_issues": return handleWorkspaceOps(ws, op, bag, requestText)
+      case "manage_issues": return handleWorkspaceOps(runtime, ws, op, bag, requestText)
     }
   },
 }

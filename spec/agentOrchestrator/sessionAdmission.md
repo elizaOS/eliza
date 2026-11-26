@@ -77,6 +77,25 @@ pure def sometimesDiskBackpressure(pool: AdmissionPool): bool =
   pool.diskBlocked
 ```
 
+
+### A turn completes only when the agent itself ends it
+
+A session runs a real ACP agent process: the shell sends initialize and session/new, then one session/prompt per turn, and collects the agent's message chunks until the agent answers the prompt. Only the stop reason `end_turn` completes the turn's work; `max_tokens`, `max_turn_requests`, `refusal` and `cancelled` stop the turn without completing it. A prompt the agent never answers, because its process could not start, exited or wrote something other than JSON-RPC, errors the session and frees its worker slot. An agent's permission request is answered from the session's approval preset: `autonomous` and `permissive` allow once, every other preset rejects once.
+
+```quint
+type TurnEnd = EndTurn | MaxTokens | MaxTurnRequests | Refusal | CancelledTurn | AgentGone
+type TurnOutcome = TurnCompleted | TurnStopped | TurnErrored
+pure def turnOutcome(end: TurnEnd): TurnOutcome = match end {
+  | EndTurn => TurnCompleted
+  | AgentGone => TurnErrored
+  | MaxTokens => TurnStopped
+  | MaxTurnRequests => TurnStopped
+  | Refusal => TurnStopped
+  | CancelledTurn => TurnStopped
+}
+pure def lawOnlyEndTurnCompletes(end: TurnEnd): bool = (turnOutcome(end) == TurnCompleted) iff (end == EndTurn)
+pure def lawVanishedAgentErrors(end: TurnEnd): bool = (end == AgentGone) implies turnOutcome(end) == TurnErrored
+```
 ### Disk budget, spend allowance, and subscription attendance fail closed
 
 Workspace provisioning is admitted only when projected usage stays within the disk cap and free space remains above the minimum threshold. Spend actions that exceed the session spend cap require explicit approval or fail closed. Subscription-only adapters require an unexpired user-attended authorization window matching the fixed TTL.
