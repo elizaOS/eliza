@@ -1,0 +1,639 @@
+// spec/agentOrchestrator/sessionAdmission.md, "Story: Admit coding agent sessions within concurrency, disk, and spend limits"; spec/agentOrchestrator/index.md, "Story: Direct an authorized task to the intended subagent and evaluate its result"
+module node {
+  import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process"
+  import { randomUUID } from "node:crypto"
+  import { mkdir, readFile, writeFile } from "node:fs/promises"
+  import * as path from "node:path"
+
+  /** @throws {never} */
+  export function makeId(prefix: string): string {
+    return `${prefix}-${randomUUID().slice(0, 12)}`
+  }
+
+  export async function readJsonFile<T>(filePath: string): Promise<T | undefined> {
+    try {
+      const text = await readFile(filePath, "utf8")
+      return JSON.parse(text) as T
+    } catch {
+      return undefined
+    }
+  }
+
+  export async function writeJsonFile(filePath: string, value: unknown): Promise<void> {
+    await mkdir(path.dirname(filePath), { recursive: true })
+    await writeFile(filePath, JSON.stringify(value, null, 2), "utf8")
+  }
+
+  export function spawnAcpProcess(
+    command: string,
+    cwd: string,
+    env: Record<string, string>,
+  ): ChildProcessWithoutNullStreams {
+    const parts = command.trim().split(/\s+/u).filter(Boolean)
+    const bin = parts[0] ?? command
+    const args = parts.slice(1)
+    return spawn(bin, args, { cwd, env, stdio: "pipe" })
+  }
+}
+import { makeId, readJsonFile, spawnAcpProcess, writeJsonFile } from node
+import { Service, normalizeKeywordMatchText, textIncludesKeywordTerm, type IAgentRuntime } from "@elizaos/core"
+import {
+  evaluateTask,
+  peerAddress,
+  routeDirective,
+  type Evidence,
+  type PeerDirective,
+  type TaskEvaluation,
+} from "../gen/agentOrchestrator.effect.vibe"
+import {
+  apply as applyAdmission,
+  effectivePriorityBand,
+  initial as initialAdmissionPool,
+  isPromptableSessionSlot,
+  isTerminalSessionSlot,
+  type AdmissionPool,
+  type Event as AdmissionEvent,
+} from "../gen/agentOrchestrator__sessionAdmission.effect.vibe"
+import {
+  AdmissionQueueFullError,
+  SessionCapError,
+  TERMINAL_SESSION_STATUSES,
+  toSpecPriority,
+  toSpecSessionSlotStatus,
+  type AcpCapacity,
+  type AcpEventCallback,
+  type AcpJsonRpcMessage,
+  type AgentType,
+  type AvailableAgentInfo,
+  type ChildSession,
+  type ChildSessionFailure,
+  type KnownAdapterId,
+  type OrchestratorTaskPriority,
+  type PromptResult,
+  type SendOptions,
+  type SessionEventCallback,
+  type SessionEventName,
+  type SessionInfo,
+  type SessionStatus,
+  type SpawnOptions,
+  type SpawnResult,
+} from "./types.vibe"
+import {
+  assertSubscriptionCodingAdapterReady,
+  isPiProviderRouteId,
+  isSubscriptionCodingAdapter,
+  normalizeTaskAgentAdapter,
+  preparePiProviderRoute,
+  probeAvailableAdapters,
+  resolveAdapterCommand,
+  resolveCodingBackendLogged,
+  stripSubscriptionApiEnvironment,
+} from "./adapters.vibe"
+import {
+  CREDENTIAL_BRIDGE_TOKEN_ENV,
+  CREDENTIAL_BRIDGE_TOKEN_HASH_METADATA,
+  applyModelGatewayEnv,
+  buildGitIdentityEnvPatch,
+  createCredentialBridgeToken,
+  forwardableSubAgentEnv,
+  resolveModelGatewayConfig,
+} from "./security.vibe"
+import { truncateTail } from "./optimization.vibe"
+
+export const ACP_SUBPROCESS_SERVICE_TYPE = "ACP_SUBPROCESS_SERVICE"
+
+export service ChildAgentSessions {
+  list(roomId: string): ChildSession[]!ChildSessionFailure
+  send(sessionId: string, text: string): void!ChildSessionFailure
+  cancel(sessionId: string): void!ChildSessionFailure
+  evidence(taskKey: string, generation: number): Evidence!ChildSessionFailure
+}
+
+function mentionsLabel(text: string, label: string): boolean {
+  const term = normalizeKeywordMatchText(label)
+  return term !== "" && normalizeKeywordMatchText(text).split("@").slice(1)
+    .some((rest) => rest.startsWith(term) && textIncludesKeywordTerm(rest.slice(0, term.length + 1), term))
+}
+
+function resolvePeerAddress(text: string, peers: readonly ChildSession[]) {
+  const childIds = (labelled: (label: string) => boolean) =>
+    peers.filter((peer) => labelled(peer.label)).map((peer) => peer.childId)
+  return peerAddress(
+    childIds((label) => mentionsLabel(text, label)),
+    childIds((label) => textIncludesKeywordTerm(text, label)),
+    text.includes("@"),
+  )
+}
+
+export effect function sendChildDirective(roomId: string, input: {
+  readonly directive: PeerDirective
+  readonly text: string
+}) {
+  const sessions = try ChildAgentSessions
+  const peers = try sessions.list(roomId)
+  const address = resolvePeerAddress(input.text, peers)
+  const touched: string[] = []
+  for (const peer of peers) {
+    const decision = routeDirective(address, input.directive, peer.childId, peers.length, peer.running)
+    if (decision === "NoPeerAction") continue
+    if (decision === "CancelTurn") try sessions.cancel(peer.sessionId)
+    else try sessions.send(peer.sessionId, input.text)
+    touched.push(peer.childId)
+  }
+  return touched
+}
+
+export effect function verifyChildTask(task: TaskEvaluation) {
+  const sessions = try ChildAgentSessions
+  return evaluateTask(task, try sessions.evidence(task.taskKey, task.taskGeneration))
+}
+
+export function isSessionPromptable(status: SessionStatus): boolean {
+  return isPromptableSessionSlot(toSpecSessionSlotStatus(status))
+}
+
+export function isSessionTerminal(status: SessionStatus): boolean {
+  return isTerminalSessionSlot(toSpecSessionSlotStatus(status))
+}
+
+export interface AdmissionQueueEntry {
+  readonly id: string
+  readonly taskId?: string
+  readonly priority: OrchestratorTaskPriority
+  readonly enqueuedAtMs: number
+  readonly spawnOptions: SpawnOptions
+}
+
+export function orderAdmissionQueue(
+  entries: readonly AdmissionQueueEntry[],
+  nowMs: number,
+  agingIntervalMs = 30_000,
+): readonly AdmissionQueueEntry[] {
+  return [...entries].sort((a, b) => {
+    const waitedA = Math.max(0, Math.trunc((nowMs - a.enqueuedAtMs) / Math.max(1, agingIntervalMs)))
+    const waitedB = Math.max(0, Math.trunc((nowMs - b.enqueuedAtMs) / Math.max(1, agingIntervalMs)))
+    const bandA = effectivePriorityBand(toSpecPriority(a.priority), waitedA, 1)
+    const bandB = effectivePriorityBand(toSpecPriority(b.priority), waitedB, 1)
+    if (bandA !== bandB) return bandB - bandA
+    return a.enqueuedAtMs - b.enqueuedAtMs
+  })
+}
+
+export interface SessionStore {
+  create(session: SessionInfo): void
+  get(sessionId: string): SessionInfo | undefined
+  list(): SessionInfo[]
+  update(sessionId: string, patch: Partial<SessionInfo>): SessionInfo | undefined
+  delete(sessionId: string): boolean
+}
+
+export class InMemorySessionStore implements SessionStore {
+  readonly sessions = new Map<string, SessionInfo>()
+
+  create(session: SessionInfo): void {
+    this.sessions.set(session.id, session)
+  }
+
+  get(sessionId: string): SessionInfo | undefined {
+    return this.sessions.get(sessionId)
+  }
+
+  list(): SessionInfo[] {
+    return [...this.sessions.values()].sort((a, b) => a.id.localeCompare(b.id))
+  }
+
+  update(sessionId: string, patch: Partial<SessionInfo>): SessionInfo | undefined {
+    const existing = this.sessions.get(sessionId)
+    if (!existing) return undefined
+    const next: SessionInfo = { ...existing, ...patch }
+    this.sessions.set(sessionId, next)
+    return next
+  }
+
+  delete(sessionId: string): boolean {
+    return this.sessions.delete(sessionId)
+  }
+}
+
+export class FileSessionStore extends InMemorySessionStore {
+  readonly filePath: string
+
+  constructor(filePath: string) {
+    super()
+    this.filePath = filePath
+  }
+
+  effect hydrate(): void!! {
+    const loaded = tryPromise({
+      try: () => readJsonFile<SessionInfo[]>(this.filePath),
+      catch: () => undefined,
+    }) catch () => undefined
+    for (const session of loaded ?? []) {
+      this.sessions.set(session.id, session)
+    }
+  }
+
+  effect flush(): void!! {
+    const snapshot = this.list()
+    tryPromise({
+      try: () => writeJsonFile(this.filePath, snapshot),
+      catch: () => undefined,
+    }) catch () => undefined
+  }
+}
+
+export interface AcpTransportAdapter {
+  readonly id: string
+  spawn(session: SessionInfo, env: Record<string, string>, command: string): { readonly ok: boolean; readonly pid?: number }
+  prompt(session: SessionInfo, input: string): Promise<{ readonly output: string; readonly stopReason: string }>
+  cancel(session: SessionInfo): Promise<void>
+  close(session: SessionInfo): Promise<void>
+}
+
+export class InProcessAcpTransport implements AcpTransportAdapter {
+  readonly id = "in-process-acp"
+
+  spawn(_session: SessionInfo, _env: Record<string, string>, _command: string) {
+    return { ok: true }
+  }
+
+  async prompt(session: SessionInfo, input: string) {
+    return {
+      output: `[${session.agentType}:${session.label}] completed prompt (${input.slice(0, 120)})`,
+      stopReason: "end_turn",
+    }
+  }
+
+  async cancel(_session: SessionInfo) {
+    return
+  }
+
+  async close(_session: SessionInfo) {
+    return
+  }
+}
+
+export class NativeStdioAcpTransport implements AcpTransportAdapter {
+  readonly id = "native-stdio-acp"
+  readonly children = new Map<string, ReturnType<typeof spawnAcpProcess>>()
+
+  spawn(session: SessionInfo, env: Record<string, string>, command: string) {
+    const child = spawnAcpProcess(command, session.workdir, env)
+    this.children.set(session.id, child)
+    return { ok: true, pid: child.pid }
+  }
+
+  async prompt(session: SessionInfo, input: string) {
+    const child = this.children.get(session.id)
+    if (!child) return { output: "", stopReason: "session_closed" }
+    const req: AcpJsonRpcMessage = {
+      jsonrpc: "2.0",
+      id: makeId("rpc"),
+      method: "session/prompt",
+      params: { sessionId: session.id, prompt: input },
+    }
+    child.stdin.write(`${JSON.stringify(req)}\n`)
+    return { output: `dispatched:${req.id}`, stopReason: "end_turn" }
+  }
+
+  async cancel(session: SessionInfo) {
+    const child = this.children.get(session.id)
+    if (!child) return
+    const req: AcpJsonRpcMessage = {
+      jsonrpc: "2.0",
+      id: makeId("rpc"),
+      method: "session/cancel",
+      params: { sessionId: session.id },
+    }
+    child.stdin.write(`${JSON.stringify(req)}\n`)
+  }
+
+  async close(session: SessionInfo) {
+    const child = this.children.get(session.id)
+    if (child) {
+      child.kill("SIGTERM")
+      this.children.delete(session.id)
+    }
+  }
+}
+
+export class AcpService extends Service {
+  static override serviceType = ACP_SUBPROCESS_SERVICE_TYPE
+  override capabilityDescription = "Spawns and manages coding agent ACP sessions with verified admission and isolation."
+
+  readonly store: SessionStore
+  readonly transport: AcpTransportAdapter
+  readonly outputBuffers = new Map<string, string[]>()
+  readonly sessionListeners = new Set<SessionEventCallback>()
+  readonly acpListeners = new Set<AcpEventCallback>()
+  readonly admissionQueue: AdmissionQueueEntry[] = []
+  poolState: AdmissionPool = initialAdmissionPool
+
+  constructor(runtime?: IAgentRuntime, opts?: { readonly store?: SessionStore; readonly transport?: AcpTransportAdapter }) {
+    super(runtime)
+    this.store = opts?.store ?? new InMemorySessionStore()
+    this.transport = opts?.transport ?? new InProcessAcpTransport()
+  }
+
+  static override start(runtime: IAgentRuntime): Promise<Service> {
+    return Promise.resolve(new AcpService(runtime))
+  }
+
+  effect admissionStep(event: AdmissionEvent): AdmissionPool!(SessionCapError | AdmissionQueueFullError) {
+    const next = applyAdmission(this.poolState, event) catch effect (rejected) => {
+      if (event.type === "enqueueWorker") {
+        throw new AdmissionQueueFullError({
+          queuedCount: rejected.state.queuedCount,
+          maxQueue: rejected.state.maxQueue,
+          reason: "Admission queue is full or disk backpressure is active.",
+        })
+      }
+      throw new SessionCapError({
+        activeWorkers: rejected.state.activeWorkers,
+        maxWorkers: rejected.state.maxWorkers,
+        reason: `Admission refused ${event.type} in current pool state.`,
+      })
+    }
+    this.poolState = next
+    return next
+  }
+
+  getAdmissionState(): AdmissionPool {
+    return this.poolState
+  }
+
+  setDiskBackpressure(blocked: boolean): AdmissionPool {
+    return runSync(effect { return this.admissionStep({ type: "setDiskBackpressure", blocked }) catch () => this.poolState })
+  }
+
+  getCapacity(): AcpCapacity {
+    return {
+      activeWorkers: this.poolState.activeWorkers,
+      maxSessions: this.poolState.maxWorkers,
+      queuedCount: this.poolState.queuedCount,
+      maxQueue: this.poolState.maxQueue,
+      diskBlocked: this.poolState.diskBlocked,
+      poolState: this.poolState,
+    }
+  }
+
+  onSessionEvent(cb: SessionEventCallback): () => void {
+    this.sessionListeners.add(cb)
+    return () => { this.sessionListeners.delete(cb) }
+  }
+
+  onAcpEvent(cb: AcpEventCallback): () => void {
+    this.acpListeners.add(cb)
+    return () => { this.acpListeners.delete(cb) }
+  }
+
+  emitSessionEvent(sessionId: string, event: SessionEventName, data: Readonly<Record<string, unknown>> = {}): void {
+    for (const listener of this.sessionListeners) {
+      listener(sessionId, event, data)
+    }
+  }
+
+  resolveAgentType(requested?: string, tag?: string): AgentType {
+    const resolved = resolveCodingBackendLogged({
+      runtime: this.runtime,
+      explicit: requested,
+      tag,
+    })
+    return resolved?.agentType ?? "elizaos"
+  }
+
+  getAvailableAgents(): readonly AvailableAgentInfo[] {
+    return probeAvailableAdapters()
+  }
+
+  async checkAvailableAgents(): Promise<readonly AvailableAgentInfo[]> {
+    return this.getAvailableAgents()
+  }
+
+  materializeSession(opts: SpawnOptions, agentType: KnownAdapterId): SessionInfo {
+    const sessionId = makeId("sess")
+    const bridge = createCredentialBridgeToken()
+    let env = forwardableSubAgentEnv(undefined, {
+      ...buildGitIdentityEnvPatch(),
+      ...opts.env,
+      [CREDENTIAL_BRIDGE_TOKEN_ENV]: bridge.token,
+    })
+    if (agentType === "pi-agent" && isPiProviderRouteId(opts.providerRoute)) {
+      env = preparePiProviderRoute(opts.providerRoute, env, opts.model).env
+    }
+    if (isSubscriptionCodingAdapter(agentType)) {
+      env = stripSubscriptionApiEnvironment(agentType, env)
+    }
+    env = applyModelGatewayEnv(env, resolveModelGatewayConfig())
+    const nowIso = new Date().toISOString()
+    const label = opts.label?.trim() || `${agentType}-${sessionId.slice(-4)}`
+    const session: SessionInfo = {
+      id: sessionId,
+      name: label,
+      label,
+      agentType,
+      workdir: opts.workdir,
+      status: "ready",
+      createdAt: nowIso,
+      lastActivityAt: Date.now(),
+      approvalPreset: opts.approvalPreset ?? "standard",
+      model: opts.model,
+      providerRoute: opts.providerRoute,
+      taskId: opts.taskId,
+      roomId: typeof opts.metadata?.roomId === "string" ? opts.metadata.roomId : undefined,
+      slotClass: opts.slotClass ?? "worker",
+      metadata: {
+        ...(opts.metadata ?? {}),
+        [CREDENTIAL_BRIDGE_TOKEN_HASH_METADATA]: bridge.hash,
+        label,
+      },
+    }
+    this.store.create(session)
+    this.outputBuffers.set(sessionId, [])
+    this.transport.spawn(session, env, resolveAdapterCommand(agentType))
+    this.emitSessionEvent(sessionId, "ready", { agentType, workdir: opts.workdir, label })
+    return session
+  }
+
+  effect spawnSessionEffect(opts: SpawnOptions): SpawnResult!(SessionCapError | AdmissionQueueFullError | Error) {
+    const agentType = normalizeTaskAgentAdapter(opts.agentType) ?? normalizeTaskAgentAdapter(this.resolveAgentType(opts.agentType)) ?? "elizaos"
+    if (isSubscriptionCodingAdapter(agentType)) {
+      assertSubscriptionCodingAdapterReady(agentType, opts.subscriptionExecutionMode, opts.metadata) catch effect (err) => {
+        throw new SessionCapError({ activeWorkers: this.poolState.activeWorkers, maxWorkers: this.poolState.maxWorkers, reason: err.reason })
+      }
+    }
+    const slotClass = opts.slotClass ?? "worker"
+    if (slotClass === "worker") {
+      if (this.poolState.activeWorkers >= this.poolState.maxWorkers) {
+        try this.admissionStep({ type: "enqueueWorker" })
+        const entry: AdmissionQueueEntry = {
+          id: makeId("q"),
+          taskId: opts.taskId,
+          priority: opts.priority ?? "normal",
+          enqueuedAtMs: Date.now(),
+          spawnOptions: opts,
+        }
+        this.admissionQueue.push(entry)
+        return {
+          sessionId: entry.id,
+          agentType,
+          workdir: opts.workdir,
+          status: "blocked",
+          label: opts.label ?? agentType,
+          queued: true,
+        }
+      }
+      try this.admissionStep({ type: "spawnWorker" })
+    }
+    const session = this.materializeSession(opts, agentType)
+    if (opts.task) {
+      try this.sendPromptEffect(session.id, opts.task)
+    }
+    const latest = this.store.get(session.id) ?? session
+    return {
+      sessionId: latest.id,
+      agentType: latest.agentType,
+      workdir: latest.workdir,
+      status: latest.status,
+      label: latest.label,
+    }
+  }
+
+  async spawnSession(opts: SpawnOptions): Promise<SpawnResult> {
+    return runPromise(this.spawnSessionEffect(opts))
+  }
+
+  effect sendPromptEffect(sessionId: string, input: string, _opts?: SendOptions): PromptResult!SessionCapError {
+    const existing = this.store.get(sessionId)
+    if (!existing || !isSessionPromptable(existing.status)) {
+      throw new SessionCapError({
+        activeWorkers: this.poolState.activeWorkers,
+        maxWorkers: this.poolState.maxWorkers,
+        reason: `Session ${sessionId} is not promptable.`,
+      })
+    }
+    const startedAt = Date.now()
+    this.store.update(sessionId, { status: "busy", lastActivityAt: startedAt })
+    const result = try tryPromise({
+      try: () => this.transport.prompt(existing, input),
+      catch: () => new SessionCapError({
+        activeWorkers: this.poolState.activeWorkers,
+        maxWorkers: this.poolState.maxWorkers,
+        reason: `Prompt failed for session ${sessionId}`,
+      }),
+    })
+    this.appendOutput(sessionId, result.output)
+    this.store.update(sessionId, { status: "ready", lastActivityAt: Date.now() })
+    this.emitSessionEvent(sessionId, "message", { text: result.output })
+    this.emitSessionEvent(sessionId, "task_complete", { summary: result.output, stopReason: result.stopReason })
+    return {
+      sessionId,
+      status: "ready",
+      output: result.output,
+      stopReason: result.stopReason,
+      durationMs: Date.now() - startedAt,
+    }
+  }
+
+  async sendPrompt(sessionId: string, input: string, opts?: SendOptions): Promise<PromptResult> {
+    return runPromise(this.sendPromptEffect(sessionId, input, opts))
+  }
+
+  async sendToSession(sessionId: string, input: string, opts?: SendOptions): Promise<PromptResult> {
+    return this.sendPrompt(sessionId, input, opts)
+  }
+
+  async sendKeysToSession(sessionId: string, keys: string): Promise<PromptResult> {
+    return this.sendPrompt(sessionId, keys, { keys })
+  }
+
+  async releaseWorkerAndPromote(): Promise<void> {
+    if (this.poolState.activeWorkers <= 0) return
+    const prevQueued = this.poolState.queuedCount
+    const nextPool = await runPromise(effect { return this.admissionStep({ type: "releaseWorker" }) catch () => this.poolState })
+    if (prevQueued > nextPool.queuedCount && this.admissionQueue.length > 0) {
+      const ordered = orderAdmissionQueue(this.admissionQueue, Date.now())
+      const nextEntry = ordered[0]
+      if (nextEntry) {
+        const idx = this.admissionQueue.findIndex((item) => item.id === nextEntry.id)
+        if (idx >= 0) this.admissionQueue.splice(idx, 1)
+        const adapter = normalizeTaskAgentAdapter(nextEntry.spawnOptions.agentType) ?? "elizaos"
+        const promoted = this.materializeSession(nextEntry.spawnOptions, adapter)
+        if (nextEntry.spawnOptions.task) {
+          await runPromise(effect { return this.sendPromptEffect(promoted.id, nextEntry.spawnOptions.task!) catch () => undefined })
+        }
+      }
+    }
+  }
+
+  async cancelSession(sessionId: string): Promise<boolean> {
+    const existing = this.store.get(sessionId)
+    if (!existing || isSessionTerminal(existing.status)) return false
+    await this.transport.cancel(existing)
+    this.store.update(sessionId, { status: "cancelled", lastActivityAt: Date.now() })
+    if (existing.slotClass === "worker") {
+      await this.releaseWorkerAndPromote()
+    }
+    this.emitSessionEvent(sessionId, "stopped", { reason: "cancelled" })
+    return true
+  }
+
+  async stopSession(sessionId: string): Promise<boolean> {
+    const existing = this.store.get(sessionId)
+    if (!existing) return false
+    const wasActive = !TERMINAL_SESSION_STATUSES.has(existing.status)
+    await this.transport.close(existing)
+    this.store.update(sessionId, { status: "stopped", lastActivityAt: Date.now() })
+    if (wasActive && existing.slotClass === "worker") {
+      await this.releaseWorkerAndPromote()
+    }
+    this.emitSessionEvent(sessionId, "stopped", { reason: "stopped" })
+    return true
+  }
+
+  async closeSession(sessionId: string): Promise<boolean> {
+    return this.stopSession(sessionId)
+  }
+
+  deleteSession(sessionId: string): boolean {
+    this.outputBuffers.delete(sessionId)
+    return this.store.delete(sessionId)
+  }
+
+  listSessions(): SessionInfo[] {
+    return this.store.list()
+  }
+
+  getSession(sessionId: string): SessionInfo | undefined {
+    return this.store.get(sessionId)
+  }
+
+  updateSessionMetadata(sessionId: string, patch: Readonly<Record<string, unknown>>): SessionInfo | undefined {
+    const existing = this.store.get(sessionId)
+    if (!existing) return undefined
+    return this.store.update(sessionId, {
+      metadata: { ...existing.metadata, ...patch },
+      lastActivityAt: Date.now(),
+    })
+  }
+
+  appendOutput(sessionId: string, chunk: string): void {
+    const buf = this.outputBuffers.get(sessionId) ?? []
+    buf.push(chunk)
+    this.outputBuffers.set(sessionId, buf)
+  }
+
+  getSessionOutput(sessionId: string, maxLines = 200): string {
+    const joined = (this.outputBuffers.get(sessionId) ?? []).join("\n")
+    return truncateTail(joined, maxLines).text
+  }
+
+  override async stop(): Promise<void> {
+    const active = this.listSessions().filter((s) => !isSessionTerminal(s.status))
+    for (const session of active) {
+      await this.stopSession(session.id)
+    }
+    this.sessionListeners.clear()
+    this.acpListeners.clear()
+  }
+}

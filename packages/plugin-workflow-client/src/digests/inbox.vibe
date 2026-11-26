@@ -8,7 +8,7 @@ import {
   DIGEST_PAGE_LIMIT, DIGEST_RENEWAL_WINDOW_MS, DIGEST_RETAINED_RESULTS, digestSourceState, isDigestNotRunStatus, missedRunNowMutationId,
   type DigestNotRunStatus, type DigestSourceState, type DigestSpec, type DigestTemplate, type HostedLiveSelection, type HostedNativeSelection,
 } from "../contract/digest.vibe"
-import { workflowUuid } from "../contract/phone.vibe"
+import { workflowUuid, zoneOffsetMinutes } from "../contract/phone.vibe"
 import { WorkflowResponseInvalid, type WorkflowHttpError, type WorkflowRequest } from "../client/workflow-client.vibe"
 
 export interface DigestSource {
@@ -162,6 +162,14 @@ export function digestLoopState(loop: DigestLoop, sources: readonly DigestSource
   return "On"
 }
 
+export function digestZoneNote(loop: Pick<DigestLoop, "spec" | "removed">, deviceZone: string, now: number): string {
+  if (loop.removed || !loop.spec.enabled || loop.spec.timeZone === deviceZone) return ""
+  const reviewed = zoneOffsetMinutes(now, loop.spec.timeZone)
+  const device = zoneOffsetMinutes(now, deviceZone)
+  if (reviewed === device) return ""
+  return `Runs at ${loop.spec.localTime} in ${loop.spec.timeZone}, not ${deviceZone}.`
+}
+
 export function missedRunNowOffers(results: readonly DigestResult[], loops: readonly DigestLoop[], sources: readonly DigestSource[], now: number): Map<string, MissedRunNow> {
   const offers = new Map<string, MissedRunNow>()
   for (const result of results) {
@@ -289,7 +297,11 @@ export function hostedDigestProtocol(request: WorkflowRequest) {
     try request("/api/workflow/hosted/results/ack", { clientId, cursor: last.cursor, runId: last.runId })
   }
 
-  return { capabilities, liveAccounts, liveCalendars, sources, loops, mutate, results, ack }
+  effect function available(): boolean!ProtocolError {
+    return (try capabilities()).digests
+  }
+
+  return { capabilities, available, liveAccounts, liveCalendars, sources, loops, mutate, results, ack }
 }
 
 export type HostedDigestProtocol = ReturnType<typeof hostedDigestProtocol>

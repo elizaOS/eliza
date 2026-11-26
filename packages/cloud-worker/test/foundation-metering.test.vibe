@@ -1,4 +1,4 @@
-// spec/cloud/shared/metering.md, "Story: Never overdraw an account"; spec/cloud/shared/metering.md, "Story: Settle every call once"; spec/cloud/billing/funds.md, "Story: Spend only money the account has"; spec/cloud/billing/plans.md, "Story: Apply the plan that funds a call"
+// spec/cloud/shared/metering.md, "Story: Never overdraw an account"; spec/cloud/shared/metering.md, "Story: Settle every call once"; spec/cloud/billing/funds.md, "Story: Spend only money the account has"; spec/cloud/billing/subscriptions.md, "Story: Keep my plan as the provider says it is"
 import { assert, describe, it } from "@effect/vitest"
 import { drainProviderEvents, webhookPath } from "../src/billing/provider-events.vibe"
 import { observeSubscription, reconcileSubscription } from "../src/billing/subscriptions.vibe"
@@ -68,7 +68,7 @@ effect function retainLegacyInference(cloud: TestCloud, owner: HoldOwner, reques
 }
 
 describe("WP0 Foundation: metering and funds", () => {
-  it.live("Spend the plan's allowance before credits, from the plan the policy funds (spec/cloud/shared/metering.md, \"Story: Never overdraw an account\"; spec/cloud/billing/plans.md, \"Story: Apply the plan that funds a call\")", () => scoped(effect {
+  it.live(`Spend the plan's allowance before credits, from the plan the policy funds (spec/cloud/shared/metering.md, "Story: Never overdraw an account"; spec/cloud/billing/allowance.md, "Story: Spend my plan's allowance before my credits, and never carry it over")`, () => scoped(effect {
     const cloud = try testCloud()
     for (const id of ["org-active", "org-granted", "org-broken", "org-lapsed"]) try organization(cloud, id)
     try subscribe(cloud, "org-active", "active", "plus_monthly")

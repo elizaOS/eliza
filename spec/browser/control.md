@@ -339,6 +339,30 @@ shows on a later message is that message's screen context, not this result,
 and a later request to show Browser itself is VIEWS's, as the action's
 description says.
 
+```quint
+type ScreenOpenOutcome = ScreenOpenRefused | ScreenOpenShown | ScreenOpenOpened
+type ScreenOpenReport = ScreenReportRefused | ScreenReportShown
+type ScreenOpenRequest = { grounded: bool, wholeMessage: bool, ownerChoseOpen: bool }
+pure def screenOpenOutcome(screenOpen: ScreenOpenRequest): ScreenOpenOutcome =
+  if (not(screenOpen.grounded)) ScreenOpenRefused
+  else if (screenOpen.ownerChoseOpen) ScreenOpenOpened
+  else ScreenOpenShown
+pure def screenOpenReport(grounded: bool): ScreenOpenReport =
+  if (grounded) ScreenReportShown else ScreenReportRefused
+pure val screenOpenWaiting: ScreenOpenRequest = { grounded: true, wholeMessage: true, ownerChoseOpen: false }
+pure val screenOpenValues = Set(screenOpenWaiting, { ...screenOpenWaiting, wholeMessage: false },
+  { ...screenOpenWaiting, ownerChoseOpen: true }, { ...screenOpenWaiting, grounded: false },
+  { ...screenOpenWaiting, grounded: false, ownerChoseOpen: true })
+pure def lawUngroundedScreenOpenIsRefused(screenOpen: ScreenOpenRequest): bool =
+  not(screenOpen.grounded) implies (screenOpenOutcome(screenOpen) == ScreenOpenRefused and screenOpenReport(screenOpen.grounded) == ScreenReportRefused)
+pure def lawScreenOpenWaitsForOwnerEvenForWholeMessage(screenOpen: ScreenOpenRequest): bool =
+  (screenOpen.grounded and not(screenOpen.ownerChoseOpen)) implies screenOpenOutcome(screenOpen) == ScreenOpenShown
+pure def lawScreenOpenOpensOnlyWhenGroundedAndChosen(screenOpen: ScreenOpenRequest): bool =
+  (screenOpenOutcome(screenOpen) == ScreenOpenOpened) iff (screenOpen.grounded and screenOpen.ownerChoseOpen)
+pure def lawScreenOpenReportNeverClaimsOpened(grounded: bool): bool =
+  screenOpenReport(grounded) == ScreenReportShown iff grounded
+```
+
 ## Story: Tell me you cannot read my page, and never reload it unasked
 
 > As the owner, I want the agent to tell me when it cannot read the page I

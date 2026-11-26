@@ -1,0 +1,195 @@
+// spec/openai/index.md, "Confidential and capability requirements are routing constraints"
+import { logger, providerRetryAfterMs, type IAgentRuntime } from "@elizaos/core"
+import { getBaseURL, hasCustomBaseURL } from "./config.vibe"
+import { extractErrorBodyMessage, isTransientProviderError, OpenAiFailure } from "./errors.vibe"
+
+module node {
+  import { fetchWithConfidentialInference } from "@elizaos/core"
+  import { fetchRemoteMedia, type FetchMediaResult } from "@elizaos/core-node"
+
+  export function postConfidential(
+    url: string,
+    headers: Record<string, string>,
+    body: string | FormData,
+    signal: AbortSignal,
+    timeoutMs?: number,
+  ): Promise<Response> {
+    const combinedSignal = timeoutMs === undefined ? signal : AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)])
+    return fetchWithConfidentialInference(
+      url,
+      {
+        method: "POST",
+        redirect: "error",
+        signal: combinedSignal,
+        headers,
+        body,
+      },
+      globalThis.fetch,
+    )
+  }
+
+  export function fetchAudioMedia(url: string, maxBytes: number, timeoutMs: number, maxRedirects: number, signal?: AbortSignal): Promise<FetchMediaResult> {
+    return fetchRemoteMedia({ url, maxBytes, timeoutMs, maxRedirects, signal })
+  }
+
+  /** @throws {never} */
+  export function isFormDataBody(value: unknown): value is FormData {
+    return value instanceof FormData
+  }
+
+  /** @throws {never} */
+  export function collectHeaders(headers: Headers): Record<string, string> {
+    return Object.fromEntries(Array.from(headers.entries(), ([name, value]) => [name.toLowerCase(), value]))
+  }
+
+  /** @throws {never} */
+  export function readErrorCode(error: unknown): string | undefined {
+    let node: unknown = error
+    for (let depth = 0; depth < 4 && node && typeof node === "object"; depth++) {
+      const code = (node as { code?: unknown }).code
+      if (typeof code === "string" && code.length > 0) return code
+      node = (node as { cause?: unknown }).cause
+    }
+    return undefined
+  }
+
+  export function preconnectUrl(url: string): boolean {
+    const fn = (globalThis.fetch as typeof fetch & { preconnect?: (target: string) => void }).preconnect
+    if (typeof fn !== "function") return false
+    fn(url)
+    return true
+  }
+}
+import { collectHeaders, fetchAudioMedia, isFormDataBody, postConfidential, preconnectUrl, readErrorCode } from node
+
+export { fetchAudioMedia }
+
+export interface PostOptions {
+  readonly baseURL: string
+  readonly path: string
+  readonly apiKey: string | undefined
+  readonly body: object | FormData | string
+  readonly timeoutMs?: number
+  readonly extraHeaders?: Record<string, string>
+  readonly allowKeyless?: boolean
+}
+
+export effect function openAiPost(options: PostOptions) {
+  const url = options.baseURL.replace(/\/+$/, "") + options.path
+  const key = options.apiKey?.trim() ?? ""
+  if (key === "" && !options.allowKeyless) {
+    throw new OpenAiFailure({
+      reason: "No OpenAI API key is configured for the selected endpoint.",
+      retryable: false,
+      code: "OPENAI_API_KEY_MISSING",
+      url,
+    })
+  }
+  const isFormData = isFormDataBody(options.body)
+  const headers: Record<string, string> = {
+    ...(key === "" ? {} : { Authorization: `Bearer ${key}` }),
+    ...(isFormData ? {} : { "Content-Type": "application/json" }),
+    ...(options.extraHeaders ?? {}),
+  }
+  const serialized: string | FormData = isFormData || typeof options.body === "string"
+    ? options.body
+    : try Effect.try({
+      try: () => JSON.stringify(options.body),
+      catch: (cause) => new OpenAiFailure({
+        reason: "OpenAI request body could not be serialized as JSON.",
+        retryable: false,
+        url,
+        cause,
+      }),
+    })
+  const response = try tryPromise({
+    try: (signal) => postConfidential(url, headers, serialized, signal, options.timeoutMs),
+    catch: (cause) => {
+      const code = readErrorCode(cause)
+      const detail = cause instanceof Error && cause.message ? cause.message : "The OpenAI endpoint could not be reached."
+      const candidate = new OpenAiFailure({
+        reason: detail,
+        retryable: false,
+        code,
+        url,
+        cause,
+      })
+      return new OpenAiFailure({
+        reason: detail,
+        retryable: isTransientProviderError(candidate),
+        code,
+        url,
+        cause,
+      })
+    },
+  })
+  if (!response.ok) {
+    const responseHeaders = collectHeaders(response.headers)
+    const rawBody = tryPromise(() => response.text()) catch () => ""
+    const bodyText = typeof rawBody === "string" ? rawBody : try rawBody
+    const bodyMessage = extractErrorBodyMessage(bodyText)
+    const baseReason = `OpenAI endpoint returned HTTP ${response.status}${response.statusText ? ` ${response.statusText}` : ""}`
+    const reason = bodyMessage ? `${baseReason}: ${bodyMessage}` : `${baseReason}.`
+    const retryAfterMs = providerRetryAfterMs({ responseHeaders })
+    const probe = new OpenAiFailure({
+      reason,
+      retryable: false,
+      status: response.status,
+      statusCode: response.status,
+      responseHeaders,
+      retryAfterMs,
+      responseBody: bodyText,
+      url,
+    })
+    throw new OpenAiFailure({
+      reason,
+      retryable: isTransientProviderError(probe),
+      status: response.status,
+      statusCode: response.status,
+      responseHeaders,
+      retryAfterMs,
+      responseBody: bodyText,
+      url,
+    })
+  }
+  return response
+}
+
+export effect function openAiJsonPost(options: PostOptions) {
+  const response = try openAiPost(options)
+  const url = options.baseURL.replace(/\/+$/, "") + options.path
+  return try tryPromise({
+    try: (): Promise<unknown> => response.json(),
+    catch: (cause) => new OpenAiFailure({
+      reason: "OpenAI response was not valid JSON.",
+      retryable: false,
+      url,
+      cause,
+    }),
+  })
+}
+
+export function resolveAllowKeyless(_runtime: IAgentRuntime, address: string): boolean {
+  return hasCustomBaseURL(address)
+}
+
+const providerPreconnects = new WeakMap<IAgentRuntime, { baseURL: string; attemptedAt: number }>()
+
+export function preconnectProvider(runtime: IAgentRuntime): void {
+  try {
+    const baseURL = getBaseURL(runtime)
+    const now = Date.now()
+    const previous = providerPreconnects.get(runtime)
+    if (
+      previous?.baseURL === baseURL
+      && now >= previous.attemptedAt
+      && now - previous.attemptedAt < 15000
+    ) {
+      return
+    }
+    providerPreconnects.set(runtime, { baseURL, attemptedAt: now })
+    preconnectUrl(baseURL)
+  } catch {
+    logger.debug("[OpenAI] Connection warm-up unavailable; continuing with normal model requests.")
+  }
+}

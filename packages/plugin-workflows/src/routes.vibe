@@ -91,6 +91,17 @@ export function workflowRoutes(target: WorkflowRouteTarget): LocalRoute[] {
     route("POST", "/api/workflow/workflows/{id}/run", (input, { service }) => service.run(id(input), input.body)),
     route("GET", "/api/workflow/workflows/{id}/submissions/{submissionId}", (input, { service }) => service.submission(id(input), param(input, "submissionId"))),
     route("GET", "/api/workflow/workflows/{id}/executions", (input, { service }) => service.executions(id(input))),
+    route("GET", "/api/workflow/workflows/{id}/revisions", (input, { service }) => effect {
+      const workflowId = id(input)
+      const current = try service.detail(workflowId)
+      const limit = Math.max(1, Math.min(50, Number(input.query.get("limit")) || 50))
+      const revisions = try service.revisions(workflowId, limit)
+      return { currentVersionId: current.versionId, revisions }
+    }, { query: [{ key: "limit", accepts: { kind: "pattern", pattern: "[1-9][0-9]{0,2}" } }] }),
+    route("POST", "/api/workflow/workflows/{id}/revisions/{versionId}/restore", (input, { service }) => service.restoreRevision(id(input), param(input, "versionId"))),
+    route("GET", "/api/workflow/workflows/{id}/evaluation-samples", (input, { service }) =>
+      service.evaluationSuite(id(input), Math.max(1, Math.min(100, Number(input.query.get("limit")) || 20))),
+    { query: [{ key: "limit", accepts: { kind: "pattern", pattern: "[1-9][0-9]{0,2}" } }] }),
     route("GET", "/api/workflow/executions/{id}", (input, { service }) => service.execution(id(input))),
     route("POST", "/api/workflow/executions/{id}/cancel", (input, { service }) => service.cancel(id(input)), { status: 202 }),
     route("GET", "/api/workflow/executions/{id}/approvals", (input, { service }) => service.approvals(id(input))),

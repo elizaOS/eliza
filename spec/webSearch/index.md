@@ -3,7 +3,9 @@
 Search through the owner's explicitly selected browser profile when it can
 perform the query. The keyless HTTP provider is an independent fallback
 during route selection. A browser dispatch commits the search to that
-profile and tab.
+profile and tab. Edge provider policy, public article fetches, typed outage
+classification, and compact snippet bounds are specified in
+[Edge search and public fetch policy](./edge.md).
 
 ## Story: Search the web through my selected profile
 

@@ -99,7 +99,7 @@ pure val digestValues = Set("d1", "d2")
 pure def alwaysContractIsBound(c: Checkout): bool =
   ((c.phase == NotStarted) iff (c.receipt.session.phase == S::Absent))
   and (c.phase != NotStarted implies (c.commandId != "" and isPaid(c.planKey) and returnFits(c.presentation, c.returns)
-    and c.receipt.providerKey == providerKeyOf(c.commandId) and c.sessionExpiresAt == c.receipt.claimedAt + sessionLifetime
+    and D::usesProviderKey(c.receipt, providerKeyOf(c.commandId)) and c.sessionExpiresAt == c.receipt.claimedAt + sessionLifetime
     and c.nextReadBackAt >= c.receipt.claimedAt + firstReadBack))
 pure def stepContractIsFixed(before: Checkout, after: Checkout): bool =
   before.phase != NotStarted implies (after.commandId == before.commandId and after.planKey == before.planKey and after.presentation == before.presentation

@@ -1,0 +1,344 @@
+// spec/computerUse/index.md, "A command is scoped to one session generation, surface and authorized operation"; spec/computerUse/index.md, "A pending operation accepts only the observation for its own identifier and session generation"
+import { getEnvValue, nextUniqueId } from "./platform-native.ts"
+import { enumerateApps } from "./scene.vibe"
+
+export type AppControlRouteId =
+  | "semantic_ax"
+  | "browser_cdp"
+  | "process_pid_keyboard"
+  | "exact_window_pointer"
+  | "isolated_target"
+  | "global_physical_pointer"
+
+export type AppControlRouteStatus =
+  | "supported"
+  | "conditional"
+  | "disabled_by_default"
+  | "policy_blocked"
+
+export type AppControlPointerEffect = "none" | "software_only" | "physical"
+
+export interface AppControlRouteCapability {
+  readonly id: AppControlRouteId
+  readonly status: AppControlRouteStatus
+  readonly deliveryScope:
+    | "accessibility_element"
+    | "browser_target"
+    | "process"
+    | "window"
+    | "isolated_guest"
+    | "host_global"
+  readonly pointerEffect: AppControlPointerEffect
+  readonly exactWindowDelivery: boolean
+  readonly reason: string
+  readonly requirements: readonly string[]
+}
+
+export interface AppControlRoutePolicyOptions {
+  readonly globalPhysicalFallbackEnabled?: boolean
+  readonly experimentalExactWindowComponentPresent?: boolean
+}
+
+export function getAppControlRouteMatrix(
+  options: AppControlRoutePolicyOptions = {},
+): AppControlRouteCapability[] {
+  const globalPhysicalFallbackEnabled = options.globalPhysicalFallbackEnabled
+    ?? getEnvValue("OPEN_COMPUTER_USE_ALLOW_GLOBAL_POINTER_FALLBACKS") === "1"
+  const experimentalExactWindowComponentPresent = options.experimentalExactWindowComponentPresent ?? false
+
+  return [
+    {
+      id: "semantic_ax",
+      status: "supported",
+      deliveryScope: "accessibility_element",
+      pointerEffect: "none",
+      exactWindowDelivery: true,
+      reason: "The indexed AX element is revalidated inside the exact bound accessibility window before dispatch.",
+      requirements: ["Accessibility permission", "exact PID and window binding", "element-exposed semantic action"],
+    },
+    {
+      id: "browser_cdp",
+      status: "supported",
+      deliveryScope: "browser_target",
+      pointerEffect: "software_only",
+      exactWindowDelivery: false,
+      reason: "CDP addresses an exact browser target without host pointer injection.",
+      requirements: ["registered CDP browser target", "target-bound readback"],
+    },
+    {
+      id: "process_pid_keyboard",
+      status: "conditional",
+      deliveryScope: "process",
+      pointerEffect: "none",
+      exactWindowDelivery: false,
+      reason: "PID keyboard delivery is process-scoped and requires unchanged window binding and target readback.",
+      requirements: ["indexed target element", "single eligible same-PID window", "target readback"],
+    },
+    {
+      id: "exact_window_pointer",
+      status: experimentalExactWindowComponentPresent ? "disabled_by_default" : "policy_blocked",
+      deliveryScope: "window",
+      pointerEffect: "none",
+      exactWindowDelivery: false,
+      reason: experimentalExactWindowComponentPresent
+        ? "Experimental exact-window component requires explicit opt-in and signed acceptance."
+        : "No public CGWindowID-addressed pointer API is available in the signed distribution.",
+      requirements: ["explicit route selection", "action-specific target readback"],
+    },
+    {
+      id: "isolated_target",
+      status: "conditional",
+      deliveryScope: "isolated_guest",
+      pointerEffect: "software_only",
+      exactWindowDelivery: false,
+      reason: "Sandbox and remote-guest control uses an isolated target backend with target-bound observations.",
+      requirements: ["configured isolated backend", "target-bound observation", "backend action receipt"],
+    },
+    {
+      id: "global_physical_pointer",
+      status: globalPhysicalFallbackEnabled ? "conditional" : "disabled_by_default",
+      deliveryScope: "host_global",
+      pointerEffect: "physical",
+      exactWindowDelivery: false,
+      reason: globalPhysicalFallbackEnabled
+        ? "Global host input is available only as a supervised fallback with explicit action-time approval."
+        : "Global host input is disabled until explicitly opted in.",
+      requirements: ["explicit opt-in", "action-time approval"],
+    },
+  ]
+}
+
+export interface AppDescriptor {
+  readonly appId: string
+  readonly name: string
+  readonly pid: number
+  readonly bundleId?: string
+  readonly windowCount: number
+}
+
+export interface AppElementBounds {
+  readonly x: number
+  readonly y: number
+  readonly width: number
+  readonly height: number
+}
+
+export interface AppElement {
+  readonly element_index: number
+  readonly locator: readonly number[]
+  readonly role: string
+  readonly subrole?: string
+  readonly label: string
+  readonly value?: string
+  readonly bounds: AppElementBounds
+  readonly actions: readonly string[]
+  readonly enabled: boolean
+  readonly secure: boolean
+}
+
+export interface AppStateDiff {
+  readonly added: readonly number[]
+  readonly changed: readonly number[]
+  readonly removed: readonly number[]
+  readonly axTextChanged: boolean
+}
+
+export interface AppState {
+  readonly stateId: string
+  readonly app: AppDescriptor
+  readonly capturedAt: string
+  readonly elements: readonly AppElement[]
+  readonly axText: string
+  readonly diff?: AppStateDiff
+}
+
+export type AppActionKind =
+  | "click"
+  | "key"
+  | "type"
+  | "set_value"
+  | "select_text"
+  | "paste"
+  | "scroll"
+  | "hover_target"
+  | "secondary_action"
+
+export interface AppActionRequest {
+  readonly app: string
+  readonly stateId: string
+  readonly kind: AppActionKind
+  readonly element_index?: number
+  readonly text?: string
+  readonly key?: string
+  readonly modifiers?: readonly string[]
+  readonly direction?: "up" | "down" | "left" | "right"
+  readonly amount?: number
+  readonly secondaryAction?: string
+  readonly allowPhysicalFallback?: boolean
+}
+
+export interface AppActionOutcome {
+  readonly success: boolean
+  readonly receiptId: string
+  readonly appId: string
+  readonly kind: AppActionKind
+  readonly beforeStateId: string
+  readonly afterStateId: string
+  readonly executionMode: AppControlRouteId
+  readonly changed: boolean
+  readonly physicalPointerMoved: boolean
+  readonly error?: string
+}
+
+export interface AppControlPermissionState {
+  readonly accessibility: boolean
+  readonly screenRecording: boolean
+  readonly routes: readonly AppControlRouteCapability[]
+}
+
+export error AppControlError {
+  code: string
+  message: string
+}
+
+export interface AppControlBackend {
+  listApps(): Promise<AppDescriptor[]>
+  captureElements(app: AppDescriptor): Promise<{ readonly elements: readonly AppElement[]; readonly axText: string }>
+  performAction(app: AppDescriptor, request: AppActionRequest, target?: AppElement): Promise<{ readonly executionMode: AppControlRouteId; readonly physicalPointerMoved: boolean }>
+}
+
+function elementSignature(element: AppElement): string {
+  return JSON.stringify({
+    locator: element.locator,
+    role: element.role,
+    label: element.secure ? "[REDACTED_SECURE_FIELD]" : element.label,
+    value: element.secure ? undefined : element.value,
+    bounds: element.bounds,
+    enabled: element.enabled,
+  })
+}
+
+function computeAppDiff(previous: AppState, nextElements: readonly AppElement[], nextAxText: string): AppStateDiff {
+  const prevSigs = new Set(previous.elements.map(elementSignature))
+  const nextSigs = new Set(nextElements.map(elementSignature))
+  return {
+    added: nextElements.filter((el) => !prevSigs.has(elementSignature(el))).map((el) => el.element_index),
+    changed: nextElements
+      .filter((el, idx) => {
+        const prior = previous.elements[idx]
+        return prior !== undefined && elementSignature(prior) !== elementSignature(el)
+      })
+      .map((el) => el.element_index),
+    removed: previous.elements.filter((el) => !nextSigs.has(elementSignature(el))).map((el) => el.element_index),
+    axTextChanged: previous.axText !== nextAxText,
+  }
+}
+
+export class AppControlCoordinator {
+  private readonly backend: AppControlBackend
+  private readonly statesByApp = new Map<string, AppState>()
+  private readonly statesById = new Map<string, AppState>()
+
+  constructor(backend?: AppControlBackend) {
+    this.backend = backend ?? {
+      listApps: async () => enumerateApps().map((app) => ({
+        appId: `app-${app.pid}-${app.name.toLowerCase().replaceAll(/[^a-z0-9]+/g, "-")}`,
+        name: app.name,
+        pid: app.pid,
+        ...(app.bundleId ? { bundleId: app.bundleId } : {}),
+        windowCount: app.windows.length,
+      })),
+      captureElements: async () => ({ elements: [], axText: "" }),
+      performAction: async () => ({ executionMode: "semantic_ax", physicalPointerMoved: false }),
+    }
+  }
+
+  getReadiness(options?: AppControlRoutePolicyOptions): AppControlPermissionState {
+    return {
+      accessibility: true,
+      screenRecording: true,
+      routes: getAppControlRouteMatrix(options),
+    }
+  }
+
+  async listApps(): Promise<AppDescriptor[]> {
+    return this.backend.listApps()
+  }
+
+  async resolveApp(query: string): Promise<AppDescriptor | undefined> {
+    const apps = await this.listApps()
+    const needle = query.trim().toLowerCase()
+    return apps.find((a) =>
+      a.appId.toLowerCase() === needle
+      || a.name.toLowerCase() === needle
+      || (a.bundleId !== undefined && a.bundleId.toLowerCase() === needle)
+      || String(a.pid) === needle
+    ) ?? apps.find((a) => a.name.toLowerCase().includes(needle))
+  }
+
+  async getAppState(appQuery: string, options: { readonly disableDiff?: boolean } = {}): Promise<AppState> {
+    const app = await this.resolveApp(appQuery)
+    if (!app) {
+      throw new AppControlError({ code: "app_not_found", message: `Application "${appQuery}" not found` })
+    }
+    const previous = this.statesByApp.get(app.appId)
+    const captured = await this.backend.captureElements(app)
+    const sanitizedElements: AppElement[] = captured.elements.map((el) => ({
+      ...el,
+      label: el.secure ? "[REDACTED_SECURE_FIELD]" : el.label,
+      ...(el.secure ? { value: undefined } : {}),
+    }))
+    const stateId = nextUniqueId("appstate")
+    const diff = !options.disableDiff && previous
+      ? computeAppDiff(previous, sanitizedElements, captured.axText)
+      : undefined
+    const state: AppState = {
+      stateId,
+      app,
+      capturedAt: new Date().toISOString(),
+      elements: sanitizedElements,
+      axText: captured.axText,
+      ...(diff ? { diff } : {}),
+    }
+    this.statesByApp.set(app.appId, state)
+    this.statesById.set(stateId, state)
+    return state
+  }
+
+  async executeAppAction(request: AppActionRequest): Promise<AppActionOutcome> {
+    const prior = this.statesById.get(request.stateId)
+    if (!prior) {
+      throw new AppControlError({ code: "stale_state", message: `Unknown or stale stateId "${request.stateId}"` })
+    }
+    const latest = this.statesByApp.get(prior.app.appId)
+    if (!latest || latest.stateId !== request.stateId) {
+      throw new AppControlError({ code: "stale_state", message: `stateId "${request.stateId}" is superseded; call get_app_state first` })
+    }
+    let target: AppElement | undefined
+    if (request.element_index !== undefined) {
+      target = prior.elements.find((el) => el.element_index === request.element_index)
+      if (!target) {
+        throw new AppControlError({ code: "element_not_found", message: `element_index ${request.element_index} not found in state ${request.stateId}` })
+      }
+      if (!target.enabled) {
+        throw new AppControlError({ code: "element_disabled", message: `element_index ${request.element_index} is disabled` })
+      }
+    }
+    const executed = await this.backend.performAction(prior.app, request, target)
+    const afterState = await this.getAppState(prior.app.appId)
+    const changed = afterState.diff
+      ? (afterState.diff.added.length > 0 || afterState.diff.changed.length > 0 || afterState.diff.removed.length > 0 || afterState.diff.axTextChanged)
+      : true
+    return {
+      success: true,
+      receiptId: nextUniqueId("rcpt"),
+      appId: prior.app.appId,
+      kind: request.kind,
+      beforeStateId: prior.stateId,
+      afterStateId: afterState.stateId,
+      executionMode: executed.executionMode,
+      changed,
+      physicalPointerMoved: executed.physicalPointerMoved,
+    }
+  }
+}

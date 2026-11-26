@@ -1,0 +1,166 @@
+// spec/workflow/admission.md, "One owner, workflow, submission, version and input survive a retry"; spec/workflow/schedule.md, "A fresh occurrence uses the current reviewed version and exact cron instant"
+import type { IAgentRuntime } from "@elizaos/core"
+import type { WorkflowRefused, WorkflowService } from "./service/workflows.vibe"
+
+export const WORKFLOW_DISPATCH_SERVICE_TYPE = "WORKFLOW_DISPATCH" as const
+
+export interface WorkflowDispatchResult {
+  readonly ok: boolean
+  readonly error?: string
+  readonly executionId?: string
+  readonly dedup?: boolean
+  readonly missed?: boolean
+  readonly code?: "workflow_not_found"
+}
+
+export interface WorkflowDispatchOptions {
+  readonly triggerData?: Readonly<Record<string, unknown>>
+  readonly idempotencyKey?: string
+  readonly triggerChainDepth?: number
+  readonly scheduledAtMs?: number
+}
+
+export interface WorkflowDispatchService {
+  execute(
+    workflowId: string,
+    payload?: Readonly<Record<string, unknown>>,
+    options?: WorkflowDispatchOptions,
+  ): Promise<WorkflowDispatchResult>
+}
+
+interface WorkflowDispatchServiceEntry extends WorkflowDispatchService {
+  stop(): Promise<void>
+  readonly capabilityDescription: string
+}
+
+interface RuntimeServiceRegistry {
+  set(serviceType: string, services: WorkflowDispatchServiceEntry[]): void
+  delete?(serviceType: string): boolean
+}
+
+function serviceRegistry(runtime: IAgentRuntime): RuntimeServiceRegistry | undefined {
+  const services: unknown = Reflect.get(runtime, "services")
+  if (typeof services !== "object" || services === null) return undefined
+  const set: unknown = Reflect.get(services, "set")
+  if (typeof set !== "function") return undefined
+  const del: unknown = Reflect.get(services, "delete")
+  return {
+    set(serviceType, entries) {
+      Reflect.apply(set, services, [serviceType, entries])
+    },
+    ...(typeof del === "function" ? {
+      delete(serviceType: string) {
+        return Boolean(Reflect.apply(del, services, [serviceType]))
+      },
+    } : {}),
+  }
+}
+
+function dispatchSubmissionId(idempotencyKey: string): string {
+  return `dispatch:${idempotencyKey}`.slice(0, 128)
+}
+
+function dispatchFailure(error: unknown): WorkflowDispatchResult {
+  const refused = typeof error === "object" && error !== null && "_tag" in error && error._tag === "WorkflowRefused"
+    ? error as WorkflowRefused : undefined
+  if (refused !== undefined) {
+    return {
+      ok: false,
+      error: refused.message,
+      ...(refused.status === 404 ? { code: "workflow_not_found" as const } : {}),
+    }
+  }
+  return { ok: false, error: error instanceof Error ? error.message : String(error) }
+}
+
+export function createWorkflowDispatchService(resolveService: () => WorkflowService | undefined): WorkflowDispatchService {
+  const inflight = new Map<string, Promise<WorkflowDispatchResult>>()
+
+  async function runDispatch(
+    service: WorkflowService,
+    workflowId: string,
+    triggerData: Readonly<Record<string, unknown>>,
+    idempotencyKey: string | undefined,
+    triggerChainDepth: number | undefined,
+    scheduledAtMs: number | undefined,
+  ): Promise<WorkflowDispatchResult> {
+    const outcome = await runPromise(Effect.result(effect {
+      const current = try service.definitionOf(workflowId)
+      const version = current.row.admission.version
+      const submissionId = idempotencyKey !== undefined && idempotencyKey.trim() !== ""
+        ? dispatchSubmissionId(idempotencyKey.trim())
+        : `dispatch:${workflowId}:${try Clock.currentTimeMillis}`
+      const input: Record<string, unknown> = {
+        ...triggerData,
+        ...(triggerChainDepth === undefined ? {} : { triggerChainDepth }),
+        ...(scheduledAtMs === undefined ? {} : { scheduledAtMs }),
+      }
+      const submitted = try service.submit(workflowId, submissionId, version, input)
+      if (!submitted.fresh) {
+        return {
+          ok: true,
+          executionId: submitted.run.id,
+          dedup: true,
+          ...(submitted.run.missedOccurrenceAt !== undefined ? { missed: true } : {}),
+        } satisfies WorkflowDispatchResult
+      }
+      try service.launch(submitted.run.id)
+      return {
+        ok: true,
+        executionId: submitted.run.id,
+        ...(submitted.run.missedOccurrenceAt !== undefined ? { missed: true } : {}),
+      } satisfies WorkflowDispatchResult
+    }))
+    if (Result.isFailure(outcome)) return dispatchFailure(outcome.failure)
+    return outcome.success
+  }
+
+  return {
+    async execute(workflowId, payload = {}, options = {}) {
+      const id = workflowId.trim()
+      if (id === "") return { ok: false, error: "workflow id required" }
+      const service = resolveService()
+      if (service === undefined) return { ok: false, error: "workflow service not registered" }
+      const triggerData = options.triggerData ?? payload
+      const key = options.idempotencyKey?.trim()
+      if (key !== undefined && key !== "") {
+        const submissionId = dispatchSubmissionId(key)
+        const existing = await runPromise(Effect.result(service.submission(id, submissionId)))
+        if (!Result.isFailure(existing) && existing.success.execution !== null) {
+          return {
+            ok: true,
+            executionId: existing.success.execution.id,
+            dedup: true,
+            ...(existing.success.execution.missedOccurrenceAt !== undefined ? { missed: true } : {}),
+          }
+        }
+        const inflightKey = `${id}::${key}`
+        const pending = inflight.get(inflightKey)
+        if (pending !== undefined) {
+          const settled = await pending
+          return settled.ok ? { ...settled, dedup: true } : settled
+        }
+        const running = runDispatch(service, id, triggerData, key, options.triggerChainDepth, options.scheduledAtMs).finally(() => {
+          inflight.delete(inflightKey)
+        })
+        inflight.set(inflightKey, running)
+        return running
+      }
+      return runDispatch(service, id, triggerData, undefined, options.triggerChainDepth, options.scheduledAtMs)
+    },
+  }
+}
+
+export function registerWorkflowDispatchService(runtime: IAgentRuntime, resolveService: () => WorkflowService | undefined): void {
+  const dispatch = createWorkflowDispatchService(resolveService)
+  const entry: WorkflowDispatchServiceEntry = {
+    execute: (workflowId, payload, options) => dispatch.execute(workflowId, payload, options),
+    stop: async () => undefined,
+    capabilityDescription: "Executes reviewed workflows by id with durable idempotency deduplication.",
+  }
+  serviceRegistry(runtime)?.set(WORKFLOW_DISPATCH_SERVICE_TYPE, [entry])
+}
+
+export function unregisterWorkflowDispatchService(runtime: IAgentRuntime): void {
+  serviceRegistry(runtime)?.delete?.(WORKFLOW_DISPATCH_SERVICE_TYPE)
+}

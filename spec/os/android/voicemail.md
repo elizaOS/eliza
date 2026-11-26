@@ -95,6 +95,53 @@ A replacement waits until both steps are acknowledged. A rejected cleanup
 leaves that step outstanding for the next visit. A late close of the
 retired observation cannot disable its replacement.
 
+```quint
+type ObserverSlot = { hasLease: bool, leaseId: int, active: bool, listenerPending: bool, disablePending: bool }
+pure def observerAdmitsCallback(slot: ObserverSlot, targetLeaseId: int): bool =
+  slot.hasLease and slot.active and slot.leaseId == targetLeaseId
+pure def observerCanStartReplacement(slot: ObserverSlot): bool =
+  not(slot.hasLease) or (not(slot.active) and not(slot.listenerPending) and not(slot.disablePending))
+pure def observerBeginClose(slot: ObserverSlot, targetLeaseId: int): ObserverSlot =
+  if (not(slot.hasLease) or slot.leaseId != targetLeaseId) slot else { ...slot, active: false }
+pure def observerSettleCleanup(slot: ObserverSlot, targetLeaseId: int, listenerRemoved: bool, disableAcked: bool): ObserverSlot = {
+  val nextListenerPending = slot.listenerPending and not(listenerRemoved)
+  val nextDisablePending = slot.disablePending and not(disableAcked)
+  if (not(slot.hasLease) or slot.leaseId != targetLeaseId) slot
+  else if (not(nextListenerPending) and not(nextDisablePending))
+    { hasLease: false, leaseId: slot.leaseId, active: false, listenerPending: false, disablePending: false }
+  else
+    { ...slot, active: false, listenerPending: nextListenerPending, disablePending: nextDisablePending }
+}
+pure def observerInstallReplacement(slot: ObserverSlot, nextLeaseId: int): ObserverSlot =
+  if (observerCanStartReplacement(slot) and nextLeaseId > slot.leaseId)
+    { hasLease: true, leaseId: nextLeaseId, active: true, listenerPending: true, disablePending: true }
+  else slot
+pure val slotValues = Set(
+  { hasLease: false, leaseId: 0, active: false, listenerPending: false, disablePending: false },
+  { hasLease: true, leaseId: 1, active: true, listenerPending: true, disablePending: true },
+  { hasLease: true, leaseId: 1, active: false, listenerPending: true, disablePending: true },
+  { hasLease: true, leaseId: 1, active: false, listenerPending: true, disablePending: false },
+  { hasLease: true, leaseId: 1, active: false, listenerPending: false, disablePending: true },
+  { hasLease: true, leaseId: 2, active: true, listenerPending: true, disablePending: true }
+)
+pure val targetLeaseIdValues = Set(1, 2)
+pure val nextLeaseIdValues = Set(1, 2, 3)
+pure def lawRetiredObserverAdmitsNoRefreshAndLateCloseLeavesReplacement(slot: ObserverSlot, targetLeaseId: int, listenerRemoved: bool, disableAcked: bool): bool = {
+  val closed = observerBeginClose(slot, targetLeaseId)
+  val cleaned = observerSettleCleanup(slot, targetLeaseId, listenerRemoved, disableAcked)
+  not(observerAdmitsCallback(closed, targetLeaseId)) and
+  ((slot.hasLease and slot.leaseId != targetLeaseId) implies (closed == slot and cleaned == slot))
+}
+pure def lawReplacementWaitsForAcknowledgedCleanup(slot: ObserverSlot, targetLeaseId: int, nextLeaseId: int, listenerRemoved: bool, disableAcked: bool): bool = {
+  val cleaned = observerSettleCleanup(slot, targetLeaseId, listenerRemoved, disableAcked)
+  val replaced = observerInstallReplacement(slot, nextLeaseId)
+  ((slot.hasLease and (slot.active or slot.listenerPending or slot.disablePending)) implies (not(observerCanStartReplacement(slot)) and replaced == slot)) and
+  ((slot.hasLease and slot.leaseId == targetLeaseId and slot.listenerPending and not(listenerRemoved)) implies (cleaned.hasLease and cleaned.listenerPending and not(observerCanStartReplacement(cleaned)))) and
+  ((slot.hasLease and slot.leaseId == targetLeaseId and slot.disablePending and not(disableAcked)) implies (cleaned.hasLease and cleaned.disablePending and not(observerCanStartReplacement(cleaned)))) and
+  ((slot.hasLease and slot.leaseId == targetLeaseId and (not(slot.listenerPending) or listenerRemoved) and (not(slot.disablePending) or disableAcked)) implies (not(cleaned.hasLease) and observerCanStartReplacement(cleaned)))
+}
+```
+
 ## Story: Hear a voicemail
 
 > As an owner, I want to play a voicemail and have it ready for speech

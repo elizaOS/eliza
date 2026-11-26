@@ -5,7 +5,7 @@ import { basicActionsModuleName, calculate, calculationLimits, type Calculation 
 import { builtinModuleFactories } from "../src/plugins/profile.vibe"
 import { host, startInProcess } from "./support/kernel.vibe"
 
-const rule = 'spec/agent/plugins/profile.md, "A load list names only plugins the bundle carries or the agent\'s own modules"'
+const rule = `spec/agent/plugins/profile.md, "A load list names only plugins the bundle carries or the agent's own modules"`
 
 const values: ReadonlyArray<readonly [string, string, boolean]> = [
   ["2 + 3 * 4", "14", true],

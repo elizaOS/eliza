@@ -1,0 +1,1060 @@
+// spec/openai/index.md, "An attempt can change upstream only before publishing any output"; spec/openai/index.md, "A cooling route does not resend before the provider's reset"
+import {
+  ElizaError,
+  isPermanentQuotaError,
+  logger,
+  ModelType,
+  providerRetryAfterMs,
+  type GenerateTextParams,
+  type GenerateTextResult,
+  type IAgentRuntime,
+  type ModelAttemptLease,
+  type ModelTypeName,
+  type PreparedModelRequestGuard,
+  type TextStreamResult,
+  type TokenUsage,
+  type ToolCall,
+} from "@elizaos/core"
+import { Cause, Duration, Exit, Option, Queue, Schema, Stream } from "effect"
+import * as Sse from "effect/encoding/Sse"
+import {
+  Machine,
+  machine,
+  mayRetryOpenAi,
+  openAiModelId,
+  suitableOpenAiEndpoint,
+  type OpenAiAttempt,
+  type OpenAiEndpoint,
+} from "../gen/openai.effect.vibe"
+import {
+  getActionPlannerModel,
+  getApiKey,
+  getBaseURL,
+  getBooleanSetting,
+  getLargeModel,
+  getMediumModel,
+  getMegaModel,
+  getNanoModel,
+  getReasoningLargeModel,
+  getReasoningSmallModel,
+  getResponseHandlerModel,
+  getSmallModel,
+  getTrimmedSetting,
+  getUsageProvider,
+  isCerebrasMode,
+  type OpenAiUsageProvider,
+} from "./config.vibe"
+import {
+  cooldownErrorForModel,
+  describeRetryReason,
+  emitModelUsageEvent,
+  getExhaustedEndpointError,
+  isModelAttemptIdleTimeout,
+  isModelCoolingDown,
+  isTransientProviderError,
+  MODEL_ATTEMPT_IDLE_TIMEOUT,
+  noteRateLimitCooldown,
+  OpenAiFailure,
+  readErrorStatus,
+  resolveFallbackModelName,
+  runtimeRateLimitCooldowns,
+  selectRequestModelName,
+  TRANSIENT_LANE_MAX_BACKOFF_MS,
+  type ModelRetryTelemetry,
+} from "./errors.vibe"
+import {
+  buildWireMessages,
+  cerebrasReasoningContent,
+  createStructuredOutputProgressTracker,
+  hasNonTextContentForLease,
+  normalizeWireToolChoice,
+  normalizeWireTools,
+  parseWireToolCalls,
+  prepareResponseFormat,
+  resolveWireProviderExtraFields,
+  usesNativeTextResult,
+  type NormalizedWireTools,
+} from "./schema.vibe"
+import { openAiJsonPost, openAiPost, resolveAllowKeyless } from "./transport.vibe"
+
+const CEREBRAS_STREAM_IDLE_TIMEOUT_MS = 60000
+const DEFAULT_HTTP_TIMEOUT_MS = 120000
+const MAX_STREAM_TEXT_BYTES = 4194304
+const MAX_GENERATE_RETRIES = 3
+const MAX_STREAM_START_RETRIES = 5
+
+const usageSchema = Schema.Struct({
+  prompt_tokens: Schema.Int,
+  completion_tokens: Schema.Int,
+  total_tokens: Schema.Int,
+  prompt_tokens_details: Schema.optionalKey(Schema.NullOr(Schema.Struct({
+    cached_tokens: Schema.optionalKey(Schema.NullOr(Schema.Int)),
+  }))),
+  completion_tokens_details: Schema.optionalKey(Schema.NullOr(Schema.Struct({
+    reasoning_tokens: Schema.optionalKey(Schema.NullOr(Schema.Int)),
+  }))),
+})
+
+const streamToolCallDeltaSchema = Schema.Struct({
+  index: Schema.optionalKey(Schema.Int),
+  id: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  type: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  function: Schema.optionalKey(Schema.NullOr(Schema.Struct({
+    name: Schema.optionalKey(Schema.NullOr(Schema.String)),
+    arguments: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  }))),
+})
+
+const streamFrameSchema = Schema.Struct({
+  choices: Schema.Array(Schema.Struct({
+    delta: Schema.Struct({
+      content: Schema.optionalKey(Schema.NullOr(Schema.String)),
+      reasoning: Schema.optionalKey(Schema.NullOr(Schema.String)),
+      tool_calls: Schema.optionalKey(Schema.NullOr(Schema.Array(streamToolCallDeltaSchema))),
+    }),
+    finish_reason: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  })),
+  usage: Schema.optionalKey(Schema.NullOr(usageSchema)),
+})
+const decodeStreamFrame = Schema.decodeUnknownEffect(Schema.fromJsonString(streamFrameSchema))
+
+const chatResponseSchema = Schema.Struct({
+  choices: Schema.NonEmptyArray(Schema.Struct({
+    message: Schema.Struct({
+      content: Schema.optionalKey(Schema.NullOr(Schema.String)),
+      reasoning: Schema.optionalKey(Schema.NullOr(Schema.String)),
+      tool_calls: Schema.optionalKey(Schema.NullOr(Schema.Array(Schema.Unknown))),
+    }),
+    finish_reason: Schema.NullOr(Schema.String),
+  })),
+  usage: Schema.optionalKey(Schema.NullOr(usageSchema)),
+})
+const decodeChatResponse = Schema.decodeUnknownEffect(chatResponseSchema)
+
+module node {
+  import {
+    assertModelOutputComplete,
+    createPreparedModelRequestGuard,
+    ElizaError,
+    getModelAttemptLease,
+    type ModelAttemptLease,
+    type PreparedModelRequestGuard,
+    type TokenUsage,
+  } from "@elizaos/core"
+
+  /** @throws {never} */
+  export function iteratorOf<T>(iterable: AsyncIterable<T>): AsyncIterator<T> {
+    return iterable[Symbol.asyncIterator]()
+  }
+
+  /** @throws {never} */
+  export function readActiveLease(): { readonly ok: true; readonly lease: ModelAttemptLease | undefined } | { readonly ok: false; readonly error: ElizaError } {
+    try {
+      return { ok: true, lease: getModelAttemptLease() }
+    } catch (error) {
+      return {
+        ok: false,
+        error: error instanceof ElizaError
+          ? error
+          : new ElizaError(error instanceof Error ? error.message : "Invalid model turn lease", {
+            code: "MODEL_ATTEMPT_POLICY_INVALID",
+            cause: error,
+          }),
+      }
+    }
+  }
+
+  /** @throws {never} */
+  export function createLeaseGuardSafe(args: {
+    model: string
+    route: string
+    lease: ModelAttemptLease
+    wireBody: string
+    effectiveMaxTokens: number | undefined
+  }): { readonly ok: true; readonly guard: PreparedModelRequestGuard } | { readonly ok: false; readonly error: ElizaError } {
+    try {
+      return {
+        ok: true,
+        guard: createPreparedModelRequestGuard({
+          provider: "openai-compatible",
+          model: args.model,
+          route: args.route,
+          attemptLease: args.lease,
+          serializeRequest: () => args.wireBody,
+          ...(args.effectiveMaxTokens !== undefined ? { outputReserveTokens: args.effectiveMaxTokens } : {}),
+        }),
+      }
+    } catch (error) {
+      return {
+        ok: false,
+        error: error instanceof ElizaError
+          ? error
+          : new ElizaError(error instanceof Error ? error.message : "Prepared model request guard failed.", {
+            code: "MODEL_ATTEMPT_POLICY_ROUTE",
+            cause: error,
+          }),
+      }
+    }
+  }
+
+  /** @throws {never} */
+  export function assertLeaseBeforeAttemptSafe(guard: PreparedModelRequestGuard): ElizaError | undefined {
+    try {
+      guard.assertBeforeAttempt()
+      return undefined
+    } catch (error) {
+      return error instanceof ElizaError
+        ? error
+        : new ElizaError(error instanceof Error ? error.message : "Model attempt lease denied dispatch.", {
+          code: "MODEL_ATTEMPT_POLICY_ROUTE",
+          cause: error,
+        })
+    }
+  }
+
+  /** @throws {never} */
+  export function checkOutputComplete(options: {
+    finishReason: unknown
+    provider: string
+    model: string
+    maxTokens?: number | null
+    usage?: TokenUsage
+  }): ElizaError | undefined {
+    try {
+      assertModelOutputComplete(options)
+      return undefined
+    } catch (error) {
+      if (error instanceof ElizaError) return error
+      return new ElizaError(error instanceof Error ? error.message : "Model output did not complete.", {
+        code: "MODEL_OUTPUT_INCOMPLETE",
+        cause: error,
+      })
+    }
+  }
+}
+import { assertLeaseBeforeAttemptSafe, checkOutputComplete, createLeaseGuardSafe, iteratorOf, readActiveLease } from node
+
+function toTokenUsage(reported: typeof usageSchema.Type): TokenUsage {
+  const cachedTokens = reported.prompt_tokens_details?.cached_tokens
+  const reasoningTokens = reported.completion_tokens_details?.reasoning_tokens
+  return {
+    promptTokens: reported.prompt_tokens,
+    completionTokens: reported.completion_tokens,
+    totalTokens: reported.total_tokens,
+    ...(typeof cachedTokens === "number" ? { cacheReadInputTokens: cachedTokens } : {}),
+    ...(typeof reasoningTokens === "number" ? { reasoningTokens } : {}),
+  }
+}
+
+function observed<T>(promise: Promise<T>): Promise<T> {
+  void promise.catch(() => undefined)
+  return promise
+}
+
+interface EndpointTarget {
+  readonly specEndpoint: OpenAiEndpoint
+  readonly apiKey: string | undefined
+  readonly allowKeyless: boolean
+  readonly provider: OpenAiUsageProvider
+  readonly isOpenRouter: boolean
+  readonly boundHold: boolean
+  readonly idleTimeoutMs: number | undefined
+}
+
+interface AccumulatedToolCall {
+  id: string
+  name: string
+  argumentsText: string
+}
+
+interface StreamSummary {
+  text: string
+  reason: string | undefined
+  usage: TokenUsage | undefined
+  toolCalls: ToolCall[]
+}
+
+interface StreamContinuation {
+  readonly kind: "live"
+  readonly queue: Queue.Queue<string, OpenAiFailure | ElizaError | Cause.Done>
+  readonly produce: StreamSummary!(OpenAiFailure | ElizaError)
+  readonly providerMetadata: Record<string, unknown>
+}
+
+interface FullAnswer {
+  readonly kind: "full"
+  readonly text: string
+  readonly reasoning: string | undefined
+  readonly usage: TokenUsage | undefined
+  readonly finishReason: string | undefined
+  readonly toolCalls: ToolCall[]
+  readonly modelName: string
+  readonly provider: OpenAiUsageProvider
+  readonly retryState: ModelRetryTelemetry
+  readonly hasToolsOrNative: boolean
+}
+
+function accumulateToolCallDeltas(
+  slots: Map<number, AccumulatedToolCall>,
+  deltas: readonly (typeof streamToolCallDeltaSchema.Type)[],
+): void {
+  for (let i = 0; i < deltas.length; i++) {
+    const delta = deltas[i]
+    if (!delta) continue
+    const idx = delta.index ?? i
+    const existing = slots.get(idx) ?? { id: "", name: "", argumentsText: "" }
+    if (typeof delta.id === "string" && delta.id.length > 0) existing.id = delta.id
+    if (typeof delta.function?.name === "string" && delta.function.name.length > 0) {
+      existing.name += delta.function.name
+    }
+    if (typeof delta.function?.arguments === "string" && delta.function.arguments.length > 0) {
+      existing.argumentsText += delta.function.arguments
+    }
+    slots.set(idx, existing)
+  }
+}
+
+function finalizeAccumulatedToolCalls(
+  slots: Map<number, AccumulatedToolCall>,
+  reverseToolNameMap: ReadonlyMap<string, string>,
+): ToolCall[] {
+  const ordered = [...slots.entries()].sort((a, b) => a[0] - b[0]).map((entry) => ({
+    id: entry[1].id,
+    function: { name: entry[1].name, arguments: entry[1].argumentsText },
+  }))
+  return parseWireToolCalls(ordered, reverseToolNameMap)
+}
+
+function isTerminalCompleteFinish(reason: string | null | undefined): boolean {
+  return reason === "stop" || reason === "tool_calls"
+}
+
+interface StreamState {
+  text: string
+  reason: string | undefined
+  usage: TokenUsage | undefined
+  done: boolean
+  publishedFirst: boolean
+}
+
+effect function publishStreamPiece(
+  model: Machine.Shape,
+  attempt: OpenAiAttempt,
+  state: StreamState,
+): void!OpenAiFailure {
+  model.send({ type: "publishOpenAiPiece", attempt }) catch effect () => {
+    throw new OpenAiFailure({ reason: "OpenAI stream published out of state.", retryable: false })
+  }
+  state.publishedFirst = true
+}
+
+effect function processStreamFrame(args: {
+  data: string
+  state: StreamState
+  model: Machine.Shape
+  attempt: OpenAiAttempt
+  needsSchema: boolean
+  toolSlots: Map<number, AccumulatedToolCall>
+  progressGuard: ReturnType<typeof createStructuredOutputProgressTracker> | undefined
+  onVisibleDelta: (delta: string) => void!(OpenAiFailure | ElizaError)
+}): ("done" | "visible" | "continue")!(OpenAiFailure | ElizaError) {
+  const { data, state, model, attempt, needsSchema, toolSlots, progressGuard, onVisibleDelta } = args
+  if (data === "[DONE]") {
+    state.done = true
+    return "done"
+  }
+  const frame = decodeStreamFrame(data) catch effect (cause) => {
+    throw new OpenAiFailure({ reason: "OpenAI event stream emitted malformed JSON frame.", retryable: false, cause })
+  }
+  if (frame.usage != null) state.usage = toTokenUsage(frame.usage)
+  for (const choice of frame.choices) {
+    if (choice.finish_reason != null) state.reason = choice.finish_reason
+    if (choice.delta.tool_calls && choice.delta.tool_calls.length > 0) {
+      accumulateToolCallDeltas(toolSlots, choice.delta.tool_calls)
+      if (!state.publishedFirst && !needsSchema) {
+        try publishStreamPiece(model, attempt, state)
+      }
+    }
+    const delta = choice.delta.content
+    if (delta == null || delta === "") continue
+    if (progressGuard) {
+      const progress = progressGuard.observe(delta)
+      if (progress.stalled) {
+        throw new ElizaError(
+          "Structured output stopped making JSON progress; the incomplete request was aborted.",
+          { code: "STRUCTURED_OUTPUT_STALLED", context: { consecutiveWhitespace: progress.consecutiveWhitespace } },
+        )
+      }
+    }
+    if (state.text.length + delta.length > MAX_STREAM_TEXT_BYTES) {
+      throw new OpenAiFailure({ reason: "OpenAI exceeded the response text budget.", retryable: false })
+    }
+    state.text += delta
+    if (!needsSchema) {
+      try publishStreamPiece(model, attempt, state)
+      try onVisibleDelta(delta)
+    }
+  }
+  return state.publishedFirst ? "visible" : "continue"
+}
+
+effect function nextBoundedSseEvent(
+  iterator: AsyncIterator<Sse.Event>,
+  idleTimeoutMs: number | undefined,
+): IteratorResult<Sse.Event>!OpenAiFailure {
+  const pull = tryPromise({
+    try: () => iterator.next(),
+    catch: (cause) => cause instanceof OpenAiFailure
+      ? cause
+      : new OpenAiFailure({ reason: "OpenAI event stream disconnected.", retryable: true, cause }),
+  })
+  if (idleTimeoutMs === undefined) return try pull
+  const timed = try Effect.timeoutOption(pull, Duration.millis(idleTimeoutMs))
+  if (Option.isNone(timed)) {
+    try Effect.ignore(tryPromise(async () => { await iterator.return?.() }))
+    throw new OpenAiFailure({
+      reason: `OpenAI stream chunk timed out after ${idleTimeoutMs}ms.`,
+      retryable: false,
+      code: MODEL_ATTEMPT_IDLE_TIMEOUT,
+    })
+  }
+  return timed.value
+}
+
+effect function finalizeStreamState(args: {
+  runtime: IAgentRuntime
+  params: GenerateTextParams
+  modelType: ModelTypeName
+  target: EndpointTarget
+  model: Machine.Shape
+  attempt: OpenAiAttempt
+  state: StreamState
+  toolSlots: Map<number, AccumulatedToolCall>
+  reverseToolNameMap: ReadonlyMap<string, string>
+  restoreText: (text: string) => string | undefined
+  needsSchema: boolean
+  retryState: ModelRetryTelemetry
+  queue: Queue.Queue<string, OpenAiFailure | ElizaError | Cause.Done>
+}): StreamSummary!(OpenAiFailure | ElizaError) {
+  const { runtime, params, modelType, target, model, attempt, state, toolSlots, reverseToolNameMap, restoreText, needsSchema, retryState, queue } = args
+  if (state.usage) {
+    emitModelUsageEvent(runtime, modelType, params.prompt ?? "", state.usage, target.specEndpoint.modelId, retryState, target.provider)
+  }
+  const incomplete = checkOutputComplete({
+    finishReason: state.reason,
+    provider: target.provider,
+    model: target.specEndpoint.modelId,
+    maxTokens: params.omitMaxTokens ? null : params.maxTokens,
+    usage: state.usage,
+  })
+  if (incomplete !== undefined) throw incomplete
+  const toolCalls = finalizeAccumulatedToolCalls(toolSlots, reverseToolNameMap)
+  if (!state.done || !isTerminalCompleteFinish(state.reason)) {
+    throw new OpenAiFailure({
+      reason: `OpenAI stopped without completing the event stream (finish_reason=${state.reason ?? "none"}).`,
+      retryable: false,
+    })
+  }
+  const restoredText = needsSchema ? restoreText(state.text) : state.text
+  if (needsSchema) {
+    if (restoredText === undefined) {
+      throw new OpenAiFailure({ reason: "OpenAI structured output envelope could not be unwrapped.", retryable: false })
+    }
+    try Effect.try({
+      try: () => { JSON.parse(restoredText) },
+      catch: () => new OpenAiFailure({ reason: "OpenAI structured output was not valid JSON.", retryable: false }),
+    })
+    if (restoredText.length > 0) {
+      try Queue.offer(queue, restoredText)
+    }
+  }
+  const finalText = restoredText ?? state.text
+  model.send({ type: "acceptOpenAi", attempt, terminal: true, shapeMatches: !needsSchema || finalText.length > 0 }) catch effect () => {
+    throw new OpenAiFailure({ reason: "OpenAI stream completion rejected by state machine.", retryable: false })
+  }
+  return { text: finalText, reason: state.reason, usage: state.usage, toolCalls }
+}
+
+interface AttemptExecutionBase {
+  readonly runtime: IAgentRuntime
+  readonly params: GenerateTextParams
+  readonly modelType: ModelTypeName
+  readonly target: EndpointTarget
+  readonly wireBody: string
+  readonly model: Machine.Shape
+  readonly attempt: OpenAiAttempt
+  readonly reverseToolNameMap: ReadonlyMap<string, string>
+  readonly restoreText: (text: string) => string | undefined
+  readonly needsSchema: boolean
+  readonly retryState: ModelRetryTelemetry
+}
+
+function isEventStreamResponse(response: Response): boolean {
+  const mediaType = response.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase()
+  return response.body !== null && mediaType === "text/event-stream"
+}
+
+effect function openStreamingAttempt(args: AttemptExecutionBase & { readonly cerebrasMode: boolean }) {
+  const { runtime, params, modelType, target, wireBody, model, attempt, reverseToolNameMap, restoreText, needsSchema, cerebrasMode, retryState } = args
+  const url = target.specEndpoint.address.replace(/\/+$/, "") + "/chat/completions"
+  const postEffect = openAiPost({
+    baseURL: target.specEndpoint.address,
+    path: "/chat/completions",
+    apiKey: target.apiKey,
+    body: wireBody,
+    timeoutMs: target.idleTimeoutMs ?? DEFAULT_HTTP_TIMEOUT_MS,
+    allowKeyless: target.allowKeyless,
+  })
+  const response = target.idleTimeoutMs !== undefined
+    ? do {
+      const raced = try Effect.timeoutOption(postEffect, Duration.millis(target.idleTimeoutMs))
+      if (Option.isNone(raced)) {
+        throw new OpenAiFailure({
+          reason: `OpenAI stream headers timed out after ${target.idleTimeoutMs}ms.`,
+          retryable: false,
+          code: MODEL_ATTEMPT_IDLE_TIMEOUT,
+          url,
+        })
+      }
+      raced.value
+    }
+    : try postEffect
+
+  if (!isEventStreamResponse(response) || response.body === null) {
+    if (response.body !== null) {
+      const streamBody = response.body
+      try Effect.ignore(tryPromise(() => streamBody.cancel()))
+    }
+    throw new OpenAiFailure({ reason: "OpenAI did not return a completion event stream.", retryable: false, url })
+  }
+
+  const body = response.body
+  const sseStream = Stream.fromReadableStream({
+    evaluate: () => body,
+    onError: (cause) => new OpenAiFailure({ reason: "OpenAI event stream disconnected.", retryable: true, cause, url }),
+  }).pipe(Stream.decodeText(), Stream.pipeThroughChannel(Sse.decode({ maxEventSize: 1048576 })))
+
+  const iterator = iteratorOf(Stream.toAsyncIterable(sseStream))
+  const queue = try Queue.unbounded<string, OpenAiFailure | ElizaError | Cause.Done>()
+  const progressGuard = cerebrasMode && needsSchema ? createStructuredOutputProgressTracker() : undefined
+  const toolSlots = new Map<number, AccumulatedToolCall>()
+  const state: StreamState = { text: "", reason: undefined, usage: undefined, done: false, publishedFirst: false }
+  const prePulledDeltas: string[] = []
+
+  const pumpFrames = effect (
+    stopOnVisible: boolean,
+    onVisibleDelta: (delta: string) => void!(OpenAiFailure | ElizaError),
+  ) => {
+    while (!state.done && (!stopOnVisible || !state.publishedFirst)) {
+      const step = try nextBoundedSseEvent(iterator, target.idleTimeoutMs)
+      if (step.done) break
+      const outcome = try processStreamFrame({
+        data: step.value.data,
+        state,
+        model,
+        attempt,
+        needsSchema,
+        toolSlots,
+        progressGuard,
+        onVisibleDelta,
+      })
+      if (outcome === "done" || (stopOnVisible && outcome === "visible")) break
+    }
+  }
+
+  try pumpFrames(true, effect (delta) => { prePulledDeltas.push(delta) })
+
+  const produce: StreamSummary!(OpenAiFailure | ElizaError) = effect {
+    for (const chunk of prePulledDeltas) {
+      try Queue.offer(queue, chunk)
+    }
+    try pumpFrames(false, effect (delta) => { try Queue.offer(queue, delta) })
+    return try finalizeStreamState({
+      runtime,
+      params,
+      modelType,
+      target,
+      model,
+      attempt,
+      state,
+      toolSlots,
+      reverseToolNameMap,
+      restoreText,
+      needsSchema,
+      retryState,
+      queue,
+    })
+  }
+
+  return {
+    kind: "live" as const,
+    queue,
+    produce: Effect.onExit(produce, (outcome) =>
+      Exit.isSuccess(outcome)
+        ? Queue.end(queue)
+        : Queue.fail(
+          queue,
+          do {
+            const err = Cause.squash(outcome.cause)
+            err instanceof OpenAiFailure || err instanceof ElizaError
+              ? err
+              : new OpenAiFailure({ reason: "OpenAI did not complete the event stream.", retryable: false, cause: err })
+          },
+        ),
+    ),
+    providerMetadata: {
+      modelName: target.specEndpoint.modelId,
+      provider: target.provider,
+      retryCount: retryState.retryCount,
+      ...(retryState.lastRetryReason !== undefined ? { lastRetryReason: retryState.lastRetryReason } : {}),
+    },
+  } satisfies StreamContinuation
+}
+
+effect function runCompleteAttempt(
+  args: AttemptExecutionBase & { readonly effectiveMaxTokens: number | undefined },
+): FullAnswer!(OpenAiFailure | ElizaError) {
+  const { runtime, params, modelType, target, wireBody, model, attempt, reverseToolNameMap, restoreText, needsSchema, effectiveMaxTokens, retryState } = args
+  const raw = try openAiJsonPost({
+    baseURL: target.specEndpoint.address,
+    path: "/chat/completions",
+    apiKey: target.apiKey,
+    body: wireBody,
+    timeoutMs: DEFAULT_HTTP_TIMEOUT_MS,
+    allowKeyless: target.allowKeyless,
+  })
+  const parsed = decodeChatResponse(raw) catch effect (cause) => {
+    throw new OpenAiFailure({ reason: "OpenAI reply had an invalid completion shape.", retryable: false, cause })
+  }
+  const choice = parsed.choices[0]
+  const usage = parsed.usage ? toTokenUsage(parsed.usage) : undefined
+  if (usage) {
+    emitModelUsageEvent(runtime, modelType, params.prompt ?? "", usage, target.specEndpoint.modelId, retryState, target.provider)
+  }
+  const incomplete = checkOutputComplete({
+    finishReason: choice.finish_reason,
+    provider: target.provider,
+    model: target.specEndpoint.modelId,
+    maxTokens: effectiveMaxTokens ?? null,
+    usage,
+  })
+  if (incomplete !== undefined) throw incomplete
+  const validFinish = isTerminalCompleteFinish(choice.finish_reason)
+  if (!validFinish) {
+    throw new OpenAiFailure({
+      reason: `OpenAI did not complete its response (finish_reason=${choice.finish_reason ?? "none"}).`,
+      retryable: false,
+    })
+  }
+  const toolCalls = parseWireToolCalls(choice.message.tool_calls ?? undefined, reverseToolNameMap)
+  const hasContent = choice.message.content !== null && choice.message.content !== undefined
+  const hasToolCalls = choice.finish_reason === "tool_calls" && toolCalls.length > 0
+  const rawText = choice.message.content ?? ""
+  const restoredText = needsSchema ? restoreText(rawText) : rawText
+  let shapeMatches = hasContent || hasToolCalls
+  if (needsSchema) {
+    if (restoredText === undefined) {
+      shapeMatches = false
+    } else {
+      shapeMatches = Effect.try({
+        try: () => {
+          JSON.parse(restoredText)
+          return true
+        },
+        catch: () => new OpenAiFailure({ reason: "Invalid JSON", retryable: false }),
+      }) catch () => false
+    }
+  }
+  if (!shapeMatches) {
+    throw new OpenAiFailure({ reason: "OpenAI reply did not match the requested response shape.", retryable: false })
+  }
+  model.send({ type: "acceptOpenAi", attempt, terminal: validFinish, shapeMatches }) catch effect () => {
+    throw new OpenAiFailure({ reason: "OpenAI completion rejected by state machine.", retryable: false })
+  }
+  return {
+    kind: "full",
+    text: restoredText ?? "",
+    reasoning: choice.message.reasoning ?? undefined,
+    usage,
+    finishReason: choice.finish_reason ?? undefined,
+    toolCalls,
+    modelName: target.specEndpoint.modelId,
+    provider: target.provider,
+    retryState,
+    hasToolsOrNative: usesNativeTextResult(params) || toolCalls.length > 0,
+  }
+}
+
+effect function prepareLeaseGuard(args: {
+  lease: ModelAttemptLease | undefined
+  target: EndpointTarget
+  wireBody: string
+  effectiveMaxTokens: number | undefined
+}): (PreparedModelRequestGuard | undefined)!ElizaError {
+  const { lease, target, wireBody, effectiveMaxTokens } = args
+  if (!lease) return undefined
+  const created = createLeaseGuardSafe({
+    model: target.specEndpoint.modelId,
+    route: target.specEndpoint.address,
+    lease,
+    wireBody,
+    effectiveMaxTokens,
+  })
+  if (!created.ok) throw created.error
+  return created.guard
+}
+
+effect function assertLeaseGuardBeforeAttempt(guard: PreparedModelRequestGuard | undefined): void!ElizaError {
+  if (!guard) return
+  const denied = assertLeaseBeforeAttemptSafe(guard)
+  if (denied !== undefined) throw denied
+}
+
+effect function runEndpointWithRetries(args: {
+  runtime: IAgentRuntime
+  params: GenerateTextParams
+  modelType: ModelTypeName
+  target: EndpointTarget
+  fallbackTarget: EndpointTarget | undefined
+  runAttempt: OpenAiAttempt
+  requestedModel: string
+  selectedPrimaryModel: string
+  configuredFallbackModel: string | undefined
+  normalizedTools: NormalizedWireTools
+  preparedFormat: ReturnType<typeof prepareResponseFormat>
+  wantsStream: boolean
+  needsSchema: boolean
+  cerebras: boolean
+  maxRetries: number
+  lease: ModelAttemptLease | undefined
+  model: Machine.Shape
+}) {
+  const {
+    runtime, params, modelType, target, fallbackTarget, runAttempt, requestedModel,
+    selectedPrimaryModel, configuredFallbackModel, normalizedTools, preparedFormat,
+    wantsStream, needsSchema, cerebras, maxRetries, lease, model,
+  } = args
+  const targetCooldowns = runtimeRateLimitCooldowns(runtime, target.specEndpoint.address, target.apiKey)
+  const heldFallback = runAttempt === "PrimaryOpenAi"
+      && configuredFallbackModel !== undefined
+      && selectedPrimaryModel === requestedModel
+      && isModelCoolingDown(targetCooldowns, requestedModel)
+    ? configuredFallbackModel
+    : undefined
+  const budget = getExhaustedEndpointError(params, targetCooldowns, target.specEndpoint.modelId, heldFallback)
+  const retryState: ModelRetryTelemetry = { retryCount: 0, lastRetryReason: undefined }
+  const reasoningModel = cerebras && !target.isOpenRouter ? target.specEndpoint.modelId : undefined
+  const messages = buildWireMessages(runtime, params, reasoningModel, normalizedTools.toolNameMap)
+  const extraWire = resolveWireProviderExtraFields(
+    params,
+    runtime,
+    target.isOpenRouter ? requestedModel : target.specEndpoint.modelId,
+    target.isOpenRouter,
+  )
+  const effectiveMaxTokens = lease
+    ? (params.maxTokens !== undefined ? Math.min(params.maxTokens, lease.maxOutputTokens) : lease.maxOutputTokens)
+    : params.omitMaxTokens
+    ? undefined
+    : params.maxTokens
+
+  const payload: Record<string, unknown> = {
+    model: target.specEndpoint.modelId,
+    messages,
+    stream: wantsStream,
+    ...(wantsStream ? { stream_options: { include_usage: true } } : {}),
+    ...(params.temperature !== undefined ? { temperature: params.temperature } : {}),
+    ...(params.topP !== undefined ? { top_p: params.topP } : {}),
+    ...(params.frequencyPenalty !== undefined ? { frequency_penalty: params.frequencyPenalty } : {}),
+    ...(params.presencePenalty !== undefined ? { presence_penalty: params.presencePenalty } : {}),
+    ...(effectiveMaxTokens !== undefined ? { max_completion_tokens: effectiveMaxTokens } : {}),
+    ...(params.stopSequences !== undefined && params.stopSequences.length > 0 ? { stop: params.stopSequences } : {}),
+    ...(normalizedTools.tools !== undefined ? { tools: normalizedTools.tools } : {}),
+    ...(params.toolChoice !== undefined
+      ? { tool_choice: normalizeWireToolChoice(params.toolChoice, normalizedTools.toolNameMap) }
+      : {}),
+    ...(params.seed !== undefined ? { seed: params.seed } : {}),
+    ...(params.user !== undefined ? { user: params.user } : {}),
+    ...(preparedFormat.wireFormat !== undefined ? { response_format: preparedFormat.wireFormat } : {}),
+    ...extraWire,
+  }
+  const wireBody = try Effect.try({
+    try: () => JSON.stringify(payload),
+    catch: (cause) => new OpenAiFailure({ reason: "OpenAI request payload could not be serialized.", retryable: false, cause }),
+  })
+  const guard = try prepareLeaseGuard({ lease, target, wireBody, effectiveMaxTokens })
+
+  if (budget.prior !== undefined) {
+    throw budget.prior instanceof OpenAiFailure || budget.prior instanceof ElizaError
+      ? budget.prior
+      : new OpenAiFailure({
+        reason: describeRetryReason(budget.prior),
+        retryable: false,
+        status: readErrorStatus(budget.prior),
+        statusCode: readErrorStatus(budget.prior),
+        cause: budget.prior,
+      })
+  }
+
+  let localAttempt = 0
+  while (true) {
+    const cooldownErr = cooldownErrorForModel(targetCooldowns, target.specEndpoint.modelId)
+    if (cooldownErr !== undefined) throw cooldownErr
+    try assertLeaseGuardBeforeAttempt(guard)
+    const attemptBase: AttemptExecutionBase = {
+      runtime,
+      params,
+      modelType,
+      target,
+      wireBody,
+      model,
+      attempt: runAttempt,
+      reverseToolNameMap: normalizedTools.reverseToolNameMap,
+      restoreText: preparedFormat.restoreText,
+      needsSchema,
+      retryState,
+    }
+    const attemptEffect: (StreamContinuation | FullAnswer)!(OpenAiFailure | ElizaError) = wantsStream
+      ? openStreamingAttempt({ ...attemptBase, cerebrasMode: cerebras && !target.isOpenRouter })
+      : runCompleteAttempt({ ...attemptBase, effectiveMaxTokens })
+    const single = try Effect.exit(attemptEffect)
+    if (Exit.isSuccess(single)) return single.value
+    if (Cause.hasInterruptsOnly(single.cause)) return try Effect.failCause(single.cause)
+    const err = Cause.squash(single.cause)
+    noteRateLimitCooldown(targetCooldowns, target.specEndpoint.modelId, err, target.boundHold)
+    const currentState = try model.get()
+    const visibleAlready = currentState.phase === "PartialOpenAi"
+    const cancelled = params.signal?.aborted === true
+    const status = readErrorStatus(err)
+    const yieldToOpenRouter = runAttempt === "PrimaryOpenAi"
+      && fallbackTarget?.isOpenRouter === true
+      && status === 429
+      && !visibleAlready
+      && !cancelled
+    if (yieldToOpenRouter) {
+      budget.record(err)
+      return try Effect.failCause(single.cause)
+    }
+    const transient = isTransientProviderError(err)
+    const canRetryNow = mayRetryOpenAi(
+      { resetAt: 0, attempts: localAttempt, attemptLimit: maxRetries },
+      Date.now(),
+      transient,
+      visibleAlready,
+      cancelled,
+    )
+    if (!canRetryNow) {
+      if (transient && localAttempt >= maxRetries) budget.record(err)
+      return try Effect.failCause(single.cause)
+    }
+    localAttempt += 1
+    retryState.retryCount = localAttempt
+    retryState.lastRetryReason = describeRetryReason(err)
+    const serverWait = providerRetryAfterMs(err)
+    const backoffMs = serverWait !== undefined
+      ? Math.min(serverWait, TRANSIENT_LANE_MAX_BACKOFF_MS)
+      : Math.min(250 * (2 ** (localAttempt - 1)), TRANSIENT_LANE_MAX_BACKOFF_MS)
+    if (backoffMs > 0) {
+      try sleep(Duration.millis(backoffMs))
+    }
+  }
+}
+
+effect function executeTextRequest(
+  runtime: IAgentRuntime,
+  params: GenerateTextParams,
+  modelType: ModelTypeName,
+  resolveTierModel: (runtime: IAgentRuntime) => string,
+) {
+  const cerebras = isCerebrasMode(runtime)
+  const needsConfidential = getBooleanSetting(runtime, "OPENAI_CONFIDENTIAL", false)
+  const needsSchema = params.responseSchema !== undefined
+  const baseAddress = getBaseURL(runtime)
+  const primaryKey = getApiKey(runtime)
+  const primaryCooldowns = runtimeRateLimitCooldowns(runtime, baseAddress, primaryKey)
+  const requestedModel = openAiModelId((params.model ?? "").trim(), resolveTierModel(runtime), "gpt-5.6-luna")
+  const configuredFallbackModel = resolveFallbackModelName(runtime, requestedModel)
+  const selectedPrimaryModel = selectRequestModelName(primaryCooldowns, requestedModel, configuredFallbackModel)
+  const openRouterKey = getTrimmedSetting(runtime, "OPENROUTER_API_KEY")
+  const openRouterModel = getTrimmedSetting(runtime, "OPENROUTER_FALLBACK_MODEL")
+  const openRouterBase = getTrimmedSetting(runtime, "OPENROUTER_BASE_URL") || "https://openrouter.ai/api/v1"
+  const openRouterConfidential = getBooleanSetting(runtime, "OPENROUTER_CONFIDENTIAL", false)
+
+  const leaseCheck = readActiveLease()
+  if (!leaseCheck.ok) throw leaseCheck.error
+  const lease = leaseCheck.lease
+  if (lease && hasNonTextContentForLease(params)) {
+    throw new ElizaError("Bounded voice requires text-only model input", {
+      code: "MODEL_ATTEMPT_POLICY_ROUTE",
+    })
+  }
+
+  const buildPrimaryEndpointTarget = (modelId: string): EndpointTarget => ({
+    specEndpoint: {
+      address: baseAddress,
+      modelId,
+      acceptsOperation: true,
+      acceptsSchema: true,
+      confidential: needsConfidential,
+    },
+    apiKey: primaryKey,
+    allowKeyless: resolveAllowKeyless(runtime, baseAddress),
+    provider: getUsageProvider(runtime),
+    isOpenRouter: false,
+    boundHold: cerebras,
+    idleTimeoutMs: cerebras ? CEREBRAS_STREAM_IDLE_TIMEOUT_MS : undefined,
+  })
+
+  const primaryTarget = buildPrimaryEndpointTarget(selectedPrimaryModel)
+
+  const fallbackTarget: EndpointTarget | undefined = cerebras && openRouterKey !== "" && openRouterModel !== ""
+    ? {
+      specEndpoint: {
+        address: openRouterBase,
+        modelId: openRouterModel,
+        acceptsOperation: true,
+        acceptsSchema: true,
+        confidential: openRouterConfidential,
+      },
+      apiKey: openRouterKey,
+      allowKeyless: false,
+      provider: "openrouter",
+      isOpenRouter: true,
+      boundHold: false,
+      idleTimeoutMs: undefined,
+    }
+    : configuredFallbackModel !== undefined && configuredFallbackModel !== selectedPrimaryModel
+    ? buildPrimaryEndpointTarget(configuredFallbackModel)
+    : undefined
+
+  const fallbackSpecEndpoint: OpenAiEndpoint = fallbackTarget?.specEndpoint ?? {
+    address: "",
+    modelId: "",
+    acceptsOperation: false,
+    acceptsSchema: false,
+    confidential: false,
+  }
+
+  if (!suitableOpenAiEndpoint(primaryTarget.specEndpoint, needsSchema, needsConfidential)) {
+    throw new OpenAiFailure({ reason: "The OpenAI route cannot honor this request.", retryable: false })
+  }
+
+  const normalizedTools = try normalizeWireTools(params.tools, cerebras)
+  const preparedFormat = prepareResponseFormat(params, cerebras)
+  const wantsStream = params.stream === true
+  const maxRetries = wantsStream ? MAX_STREAM_START_RETRIES : MAX_GENERATE_RETRIES
+
+  provide machine() {
+    const model = try Machine
+    let run = try model.send({
+      type: "beginOpenAi",
+      primary: primaryTarget.specEndpoint,
+      fallback: fallbackSpecEndpoint,
+      needsSchema,
+      needsConfidential,
+    })
+
+    while (run.phase === "CallingOpenAi") {
+      const target = run.attempt === "PrimaryOpenAi" ? primaryTarget : fallbackTarget
+      if (!target) {
+        throw new OpenAiFailure({ reason: "No eligible OpenAI fallback endpoint is configured.", retryable: false })
+      }
+      const attemptResult = try Effect.exit(runEndpointWithRetries({
+        runtime,
+        params,
+        modelType,
+        target,
+        fallbackTarget,
+        runAttempt: run.attempt,
+        requestedModel,
+        selectedPrimaryModel,
+        configuredFallbackModel,
+        normalizedTools,
+        preparedFormat,
+        wantsStream,
+        needsSchema,
+        cerebras,
+        maxRetries,
+        lease,
+        model,
+      }))
+      if (Exit.isSuccess(attemptResult)) return attemptResult.value
+      if (Cause.hasInterruptsOnly(attemptResult.cause)) {
+        try Effect.ignore(model.send({ type: "cancelOpenAi" }))
+        return try Effect.failCause(attemptResult.cause)
+      }
+      const err = Cause.squash(attemptResult.cause)
+      const status = readErrorStatus(err)
+      const retryableForFallback = !isPermanentQuotaError(err)
+        && !isModelAttemptIdleTimeout(err)
+        && ((err instanceof OpenAiFailure && err.retryable)
+          || status === 429
+          || (status !== undefined && status >= 500 && status < 600))
+      const currentState = try model.get()
+      if (currentState.phase === "CallingOpenAi" && run.attempt === "PrimaryOpenAi" && run.fallbackEligible && retryableForFallback) {
+        logger.info(
+          {
+            src: "plugin:openai",
+            modelType,
+            fallbackModel: fallbackTarget?.specEndpoint.modelId,
+            provider: fallbackTarget?.provider,
+          },
+          "[OpenAI] Primary attempt failed before output; failing over to configured fallback",
+        )
+      }
+      run = try model.send({
+        type: "failOpenAi",
+        attempt: run.attempt,
+        failure: retryableForFallback ? "RetryableOpenAi" : "ProviderRefusedOpenAi",
+      })
+      if (run.phase === "FailedOpenAi") {
+        return try Effect.failCause(attemptResult.cause)
+      }
+    }
+    throw new OpenAiFailure({ reason: "No OpenAI attempt completed.", retryable: false })
+  }
+}
+
+function createTextHandler(modelType: ModelTypeName, resolveTierModel: (runtime: IAgentRuntime) => string) {
+  return async (runtime: IAgentRuntime, params: GenerateTextParams): Promise<string | TextStreamResult> => {
+    const answer = await runPromise(executeTextRequest(runtime, params, modelType, resolveTierModel), { signal: params.signal })
+    if (answer.kind === "live") {
+      const completion = observed(runPromise(answer.produce, { signal: params.signal }))
+      return {
+        textStream: Stream.toAsyncIterable(Stream.fromQueue(answer.queue)),
+        text: observed(completion.then((result) => result.text)),
+        finishReason: observed(completion.then((result) => result.reason)),
+        usage: observed(completion.then((result) => result.usage)),
+        toolCalls: observed(completion.then((result) => result.toolCalls)),
+        providerMetadata: answer.providerMetadata,
+      }
+    }
+    if (!answer.hasToolsOrNative) {
+      return answer.text
+    }
+    const reasoningParts = answer.reasoning ? cerebrasReasoningContent(answer.reasoning, answer.modelName) : []
+    const nativeResult: GenerateTextResult = {
+      text: answer.text,
+      ...(reasoningParts.length > 0 ? { content: [...reasoningParts, { type: "text", text: answer.text }] } : {}),
+      toolCalls: answer.toolCalls,
+      finishReason: answer.finishReason,
+      usage: answer.usage,
+      providerMetadata: {
+        modelName: answer.modelName,
+        provider: answer.provider,
+        retryCount: answer.retryState.retryCount,
+        ...(answer.retryState.lastRetryReason !== undefined ? { lastRetryReason: answer.retryState.lastRetryReason } : {}),
+      },
+    }
+    return nativeResult as unknown as TextStreamResult
+  }
+}
+
+export const handleTextNano = createTextHandler(ModelType.TEXT_NANO, getNanoModel)
+export const handleTextSmall = createTextHandler(ModelType.TEXT_SMALL, getSmallModel)
+export const handleTextMedium = createTextHandler(ModelType.TEXT_MEDIUM, getMediumModel)
+export const handleTextLarge = createTextHandler(ModelType.TEXT_LARGE, getLargeModel)
+export const handleTextMega = createTextHandler(ModelType.TEXT_MEGA, getMegaModel)
+export const handleResponseHandler = createTextHandler(ModelType.RESPONSE_HANDLER, getResponseHandlerModel)
+export const handleActionPlanner = createTextHandler(ModelType.ACTION_PLANNER, getActionPlannerModel)
+export const handleReasoningSmall = createTextHandler(ModelType.TEXT_REASONING_SMALL, getReasoningSmallModel)
+export const handleReasoningLarge = createTextHandler(ModelType.TEXT_REASONING_LARGE, getReasoningLargeModel)

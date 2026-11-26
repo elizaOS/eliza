@@ -77,10 +77,10 @@ lemma Setup(r: ApprovalRun, caller: string)
 }
 
 lemma requestDecision_ensures(r: ApprovalRun, caller: string, decision: ApprovalState, ownerOk: bool, versionOk: bool, digestOk: bool)
-  ensures (inv(r) ==> canRequestDecision(r, caller, decision) ==> alwaysHonestResponse(requestDecision(r, caller, decision, ownerOk, versionOk, digestOk)))
-  ensures (inv(r) ==> canRequestDecision(r, caller, decision) ==> alwaysCachedHasCanonicalReceipt(requestDecision(r, caller, decision, ownerOk, versionOk, digestOk)))
   ensures (inv(r) ==> canRequestDecision(r, caller, decision) ==> alwaysOneCanonicalDecision(requestDecision(r, caller, decision, ownerOk, versionOk, digestOk)))
   ensures (inv(r) ==> canRequestDecision(r, caller, decision) ==> alwaysUnsupportedNeverApproved(requestDecision(r, caller, decision, ownerOk, versionOk, digestOk)))
+  ensures (inv(r) ==> canRequestDecision(r, caller, decision) ==> alwaysHonestResponse(requestDecision(r, caller, decision, ownerOk, versionOk, digestOk)))
+  ensures (inv(r) ==> canRequestDecision(r, caller, decision) ==> alwaysCachedHasCanonicalReceipt(requestDecision(r, caller, decision, ownerOk, versionOk, digestOk)))
   ensures (inv(r) ==> canRequestDecision(r, caller, decision) ==> alwaysAttemptsWantADecision(requestDecision(r, caller, decision, ownerOk, versionOk, digestOk)))
   ensures (inv(r) ==> canRequestDecision(r, caller, decision) ==> alwaysLockHeldByWorkingCaller(requestDecision(r, caller, decision, ownerOk, versionOk, digestOk)))
 {
@@ -93,10 +93,10 @@ lemma requestDecision_ensures(r: ApprovalRun, caller: string, decision: Approval
 }
 
 lemma acquireRun_ensures(r: ApprovalRun, caller: string)
-  ensures (inv(r) ==> canAcquireRun(r, caller) ==> alwaysHonestResponse(acquireRun(r, caller)))
-  ensures (inv(r) ==> canAcquireRun(r, caller) ==> alwaysCachedHasCanonicalReceipt(acquireRun(r, caller)))
   ensures (inv(r) ==> canAcquireRun(r, caller) ==> alwaysOneCanonicalDecision(acquireRun(r, caller)))
   ensures (inv(r) ==> canAcquireRun(r, caller) ==> alwaysUnsupportedNeverApproved(acquireRun(r, caller)))
+  ensures (inv(r) ==> canAcquireRun(r, caller) ==> alwaysHonestResponse(acquireRun(r, caller)))
+  ensures (inv(r) ==> canAcquireRun(r, caller) ==> alwaysCachedHasCanonicalReceipt(acquireRun(r, caller)))
   ensures (inv(r) ==> canAcquireRun(r, caller) ==> alwaysAttemptsWantADecision(acquireRun(r, caller)))
   ensures (inv(r) ==> canAcquireRun(r, caller) ==> alwaysLockHeldByWorkingCaller(acquireRun(r, caller)))
 {
@@ -114,10 +114,10 @@ lemma acquireRun_ensures(r: ApprovalRun, caller: string)
 }
 
 lemma sendControl_ensures(r: ApprovalRun, caller: string, committed: bool)
-  ensures (inv(r) ==> canSendControl(r, caller) ==> alwaysHonestResponse(sendControl(r, caller, committed)))
-  ensures (inv(r) ==> canSendControl(r, caller) ==> alwaysCachedHasCanonicalReceipt(sendControl(r, caller, committed)))
   ensures (inv(r) ==> canSendControl(r, caller) ==> alwaysOneCanonicalDecision(sendControl(r, caller, committed)))
   ensures (inv(r) ==> canSendControl(r, caller) ==> alwaysUnsupportedNeverApproved(sendControl(r, caller, committed)))
+  ensures (inv(r) ==> canSendControl(r, caller) ==> alwaysHonestResponse(sendControl(r, caller, committed)))
+  ensures (inv(r) ==> canSendControl(r, caller) ==> alwaysCachedHasCanonicalReceipt(sendControl(r, caller, committed)))
   ensures (inv(r) ==> canSendControl(r, caller) ==> alwaysAttemptsWantADecision(sendControl(r, caller, committed)))
   ensures (inv(r) ==> canSendControl(r, caller) ==> alwaysLockHeldByWorkingCaller(sendControl(r, caller, committed)))
 {
@@ -135,10 +135,10 @@ lemma sendControl_ensures(r: ApprovalRun, caller: string, committed: bool)
 }
 
 lemma readBack_ensures(r: ApprovalRun, caller: string, available: bool)
-  ensures (inv(r) ==> canReadBack(r, caller) ==> alwaysHonestResponse(readBack(r, caller, available)))
-  ensures (inv(r) ==> canReadBack(r, caller) ==> alwaysCachedHasCanonicalReceipt(readBack(r, caller, available)))
   ensures (inv(r) ==> canReadBack(r, caller) ==> alwaysOneCanonicalDecision(readBack(r, caller, available)))
   ensures (inv(r) ==> canReadBack(r, caller) ==> alwaysUnsupportedNeverApproved(readBack(r, caller, available)))
+  ensures (inv(r) ==> canReadBack(r, caller) ==> alwaysHonestResponse(readBack(r, caller, available)))
+  ensures (inv(r) ==> canReadBack(r, caller) ==> alwaysCachedHasCanonicalReceipt(readBack(r, caller, available)))
   ensures (inv(r) ==> canReadBack(r, caller) ==> alwaysAttemptsWantADecision(readBack(r, caller, available)))
   ensures (inv(r) ==> canReadBack(r, caller) ==> alwaysLockHeldByWorkingCaller(readBack(r, caller, available)))
 {
@@ -156,10 +156,10 @@ lemma readBack_ensures(r: ApprovalRun, caller: string, available: bool)
 }
 
 lemma persistDecision_ensures(r: ApprovalRun, caller: string, committed: bool)
-  ensures (inv(r) ==> canPersistDecision(r, caller) ==> alwaysHonestResponse(persistDecision(r, caller, committed)))
-  ensures (inv(r) ==> canPersistDecision(r, caller) ==> alwaysCachedHasCanonicalReceipt(persistDecision(r, caller, committed)))
   ensures (inv(r) ==> canPersistDecision(r, caller) ==> alwaysOneCanonicalDecision(persistDecision(r, caller, committed)))
   ensures (inv(r) ==> canPersistDecision(r, caller) ==> alwaysUnsupportedNeverApproved(persistDecision(r, caller, committed)))
+  ensures (inv(r) ==> canPersistDecision(r, caller) ==> alwaysHonestResponse(persistDecision(r, caller, committed)))
+  ensures (inv(r) ==> canPersistDecision(r, caller) ==> alwaysCachedHasCanonicalReceipt(persistDecision(r, caller, committed)))
   ensures (inv(r) ==> canPersistDecision(r, caller) ==> alwaysAttemptsWantADecision(persistDecision(r, caller, committed)))
   ensures (inv(r) ==> canPersistDecision(r, caller) ==> alwaysLockHeldByWorkingCaller(persistDecision(r, caller, committed)))
 {
@@ -177,10 +177,10 @@ lemma persistDecision_ensures(r: ApprovalRun, caller: string, committed: bool)
 }
 
 lemma resumeRun_ensures(r: ApprovalRun, caller: string, resumed: bool)
-  ensures (inv(r) ==> canResumeRun(r, caller) ==> alwaysHonestResponse(resumeRun(r, caller, resumed)))
-  ensures (inv(r) ==> canResumeRun(r, caller) ==> alwaysCachedHasCanonicalReceipt(resumeRun(r, caller, resumed)))
   ensures (inv(r) ==> canResumeRun(r, caller) ==> alwaysOneCanonicalDecision(resumeRun(r, caller, resumed)))
   ensures (inv(r) ==> canResumeRun(r, caller) ==> alwaysUnsupportedNeverApproved(resumeRun(r, caller, resumed)))
+  ensures (inv(r) ==> canResumeRun(r, caller) ==> alwaysHonestResponse(resumeRun(r, caller, resumed)))
+  ensures (inv(r) ==> canResumeRun(r, caller) ==> alwaysCachedHasCanonicalReceipt(resumeRun(r, caller, resumed)))
   ensures (inv(r) ==> canResumeRun(r, caller) ==> alwaysAttemptsWantADecision(resumeRun(r, caller, resumed)))
   ensures (inv(r) ==> canResumeRun(r, caller) ==> alwaysLockHeldByWorkingCaller(resumeRun(r, caller, resumed)))
 {
@@ -198,10 +198,10 @@ lemma resumeRun_ensures(r: ApprovalRun, caller: string, resumed: bool)
 }
 
 lemma reviewApproval_ensures(r: ApprovalRun, caller: string)
-  ensures (inv(r) ==> canReviewApproval(r, caller) ==> alwaysHonestResponse(reviewApproval(r, caller)))
-  ensures (inv(r) ==> canReviewApproval(r, caller) ==> alwaysCachedHasCanonicalReceipt(reviewApproval(r, caller)))
   ensures (inv(r) ==> canReviewApproval(r, caller) ==> alwaysOneCanonicalDecision(reviewApproval(r, caller)))
   ensures (inv(r) ==> canReviewApproval(r, caller) ==> alwaysUnsupportedNeverApproved(reviewApproval(r, caller)))
+  ensures (inv(r) ==> canReviewApproval(r, caller) ==> alwaysHonestResponse(reviewApproval(r, caller)))
+  ensures (inv(r) ==> canReviewApproval(r, caller) ==> alwaysCachedHasCanonicalReceipt(reviewApproval(r, caller)))
   ensures (inv(r) ==> canReviewApproval(r, caller) ==> alwaysAttemptsWantADecision(reviewApproval(r, caller)))
   ensures (inv(r) ==> canReviewApproval(r, caller) ==> alwaysLockHeldByWorkingCaller(reviewApproval(r, caller)))
 {

@@ -165,7 +165,7 @@ it.effect('A trigger prompt reaches only its own conversation, tells the feed ea
   }))
 }, 180_000)
 
-it.effect('An owner turn runs each event trigger once, and no trigger run starts another (spec/agent/schedule/triggers.md, "An event trigger runs once for each event of its name a conversation turn raises, never for a trigger run\'s events")', effect () => {
+it.effect(`An owner turn runs each event trigger once, and no trigger run starts another (spec/agent/schedule/triggers.md, "An event trigger runs once for each event of its name a conversation turn raises, never for a trigger run's events")`, effect () => {
   const { running, cloud } = try owned()
   const observed = try host("event journey", () => runOnEvents(running, cloud))
   try Effect.try(() => assert.deepStrictEqual(observed.runs, [

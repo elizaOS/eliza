@@ -1,0 +1,198 @@
+// spec/anthropic/index.md, "Prompt caching and strict tool budgets stay within Anthropic wire limits"
+import { ElizaError, thrown } from "@elizaos/core"
+import type { AnthropicCacheControl, AnthropicEffortLevel } from "./config.vibe"
+
+export const MAX_ANTHROPIC_PROVIDER_OPTIONS_DEPTH = 32
+export const MAX_ANTHROPIC_PROVIDER_OPTIONS_NODES = 2_048
+export const ANTHROPIC_PROVIDER_OPTIONS_UNBOUNDED = "ANTHROPIC_PROVIDER_OPTIONS_UNBOUNDED"
+
+export type ProviderOptionValue =
+  | string
+  | number
+  | boolean
+  | null
+  | ProviderOptionValue[]
+  | { [key: string]: ProviderOptionValue | undefined }
+
+export interface AnthropicCacheBreakpoint {
+  readonly segmentIndex?: number
+  readonly ttl?: "short" | "long" | "5m" | "1h"
+  readonly cacheControl?: AnthropicCacheControl
+}
+
+export interface AnthropicProviderOptions {
+  [key: string]: ProviderOptionValue | undefined
+  readonly thinking?:
+    | {
+        [key: string]: ProviderOptionValue | undefined
+        readonly type: "enabled"
+        readonly budgetTokens: number
+      }
+    | {
+        [key: string]: ProviderOptionValue | undefined
+        readonly type: "adaptive"
+      }
+  readonly effort?: AnthropicEffortLevel
+  readonly cacheControl?: AnthropicCacheControl & { [key: string]: ProviderOptionValue | undefined }
+  readonly cacheSystem?: boolean
+  readonly cacheTools?: boolean
+  readonly cacheTrajectory?: boolean
+  readonly maxBreakpoints?: number
+  readonly cacheBreakpoints?: ProviderOptionValue[]
+}
+
+export interface ProviderOptions {
+  [key: string]: ProviderOptionValue | undefined
+  readonly agentName?: string
+  readonly anthropic?: AnthropicProviderOptions
+}
+
+interface WalkContext {
+  visits: number
+  visiting: WeakSet<object>
+}
+
+effect function failUnbounded(context: Record<string, unknown>, cause?: unknown): never!ElizaError {
+  throw new ElizaError("Anthropic providerOptions JSON exceeds the parse walk budget", {
+    code: ANTHROPIC_PROVIDER_OPTIONS_UNBOUNDED,
+    context,
+    cause,
+    severity: "fatal",
+  })
+}
+
+effect function reserve(ctx: WalkContext, count: number): void!ElizaError {
+  if (count > MAX_ANTHROPIC_PROVIDER_OPTIONS_NODES - ctx.visits) {
+    try failUnbounded({
+      visits: ctx.visits + count,
+      maxNodes: MAX_ANTHROPIC_PROVIDER_OPTIONS_NODES,
+    })
+  }
+  ctx.visits += count
+}
+
+effect function inspectRecord<T>(operation: string, inspect: () => T): T!ElizaError {
+  return try Effect.try({
+    try: inspect,
+    catch: (cause) =>
+      new ElizaError("Anthropic providerOptions JSON exceeds the parse walk budget", {
+        code: ANTHROPIC_PROVIDER_OPTIONS_UNBOUNDED,
+        context: { inspection: operation },
+        cause,
+        severity: "fatal",
+      }),
+  })
+}
+
+effect function ownDescriptor(value: object, key: PropertyKey): (PropertyDescriptor | undefined)!ElizaError {
+  return try inspectRecord("getOwnPropertyDescriptor", () => Object.getOwnPropertyDescriptor(value, key))
+}
+
+effect function isArrayRecord(value: unknown): boolean!ElizaError {
+  return try inspectRecord("isArray", () => Array.isArray(value))
+}
+
+effect function readProviderOptionValue(
+  value: unknown,
+  depth: number,
+  ctx: WalkContext,
+  visitAlreadyReserved = false,
+): (ProviderOptionValue | undefined)!ElizaError {
+  if (depth > MAX_ANTHROPIC_PROVIDER_OPTIONS_DEPTH) {
+    try failUnbounded({ depth, max: MAX_ANTHROPIC_PROVIDER_OPTIONS_DEPTH })
+  }
+  if (
+    value === null
+    || typeof value === "string"
+    || typeof value === "number"
+    || typeof value === "boolean"
+  ) {
+    if (!visitAlreadyReserved) try reserve(ctx, 1)
+    return value
+  }
+  if (value === undefined || typeof value !== "object") return undefined
+  if (!visitAlreadyReserved) try reserve(ctx, 1)
+  if (ctx.visiting.has(value)) try failUnbounded({ cycle: true })
+  ctx.visiting.add(value)
+  return try ensuring(
+    effect {
+      if (try isArrayRecord(value)) {
+        const lengthDescriptor = try ownDescriptor(value, "length")
+        if (!lengthDescriptor || !("value" in lengthDescriptor)) {
+          return try failUnbounded({ invalidArrayLength: true })
+        }
+        const length = lengthDescriptor.value
+        if (typeof length !== "number" || !Number.isSafeInteger(length) || length < 0) {
+          try failUnbounded({ invalidArrayLength: true })
+        }
+        try reserve(ctx, length)
+        const out = new Array<ProviderOptionValue>(length)
+        for (let index = 0; index < length; index += 1) {
+          const descriptor = try ownDescriptor(value, String(index))
+          if (!descriptor) continue
+          if (!("value" in descriptor)) {
+            try failUnbounded({ accessor: true, side: "array", index })
+          }
+          const nested = try readProviderOptionValue(descriptor.value, depth + 1, ctx, true)
+          if (nested === undefined) return undefined
+          out[index] = nested
+        }
+        return out
+      }
+      const keys = try inspectRecord("ownKeys", () => Reflect.ownKeys(value))
+      try reserve(ctx, keys.length)
+      const record: { [key: string]: ProviderOptionValue | undefined } = {}
+      for (const key of keys) {
+        if (typeof key !== "string") continue
+        const descriptor = try ownDescriptor(value, key)
+        if (!descriptor?.enumerable) continue
+        if (!("value" in descriptor)) {
+          try failUnbounded({ accessor: true, side: "object", key })
+        }
+        if (descriptor.value === undefined) {
+          try inspectRecord("defineProperty", () =>
+            Object.defineProperty(record, key, {
+              value: undefined,
+              enumerable: true,
+              configurable: true,
+              writable: true,
+            }),
+          )
+          continue
+        }
+        const nested = try readProviderOptionValue(descriptor.value, depth + 1, ctx, true)
+        if (nested === undefined) return undefined
+        try inspectRecord("defineProperty", () =>
+          Object.defineProperty(record, key, {
+            value: nested,
+            enumerable: true,
+            configurable: true,
+            writable: true,
+          }),
+        )
+      }
+      return record
+    },
+    sync(() => {
+      ctx.visiting.delete(value)
+    }),
+  )
+}
+
+export effect function readProviderOptionsEffect(value: unknown): (ProviderOptions | undefined)!ElizaError {
+  if (typeof value !== "object" || value === null || (try isArrayRecord(value))) {
+    return undefined
+  }
+  const copied = try readProviderOptionValue(value, 0, { visits: 0, visiting: new WeakSet<object>() })
+  if (
+    copied === undefined
+    || copied === null
+    || typeof copied !== "object"
+    || Array.isArray(copied)
+  ) {
+    return undefined
+  }
+  return copied as ProviderOptions
+}
+
+export const readProviderOptions = thrown(readProviderOptionsEffect)

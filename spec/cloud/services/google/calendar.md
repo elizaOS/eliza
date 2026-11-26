@@ -184,7 +184,7 @@ pure def alwaysWriteIsWellFormed(w: Write): bool =
   ((w.op == NoWrite) iff (w.receipt.session.phase == S::Absent))
   and (w.op == NoWrite implies (w.grantId == "" and w.eventId == "" and w.expectedEtag == "" and w.resultEtag == ""))
   and (w.op != NoWrite implies (w.grantId != "" and w.calendarId != "" and w.eventId != "" and w.receipt.providerKey.providerKind == CalendarEvent))
-  and (w.op == CreateEvent implies (w.expectedEtag == "" and w.receipt.providerKey == keyOf(w.eventId)))
+  and (w.op == CreateEvent implies (w.expectedEtag == "" and D::usesProviderKey(w.receipt, keyOf(w.eventId))))
   and ((w.op == ChangeEvent or w.op == RemoveEvent) implies w.expectedEtag != "")
 pure def stepTargetIsFixed(before: Write, after: Write): bool =
   before.op != NoWrite implies (after.op == before.op and after.grantId == before.grantId and after.calendarId == before.calendarId

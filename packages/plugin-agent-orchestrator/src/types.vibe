@@ -1,0 +1,539 @@
+// spec/agentOrchestrator/index.md, "Story: Direct an authorized task to the intended subagent and evaluate its result"; spec/agentOrchestrator/taskLifecycle.md, "Story: Track an orchestrated coding task from creation through verified completion"; spec/agentOrchestrator/sessionAdmission.md, "Story: Admit coding agent sessions within concurrency, disk, and spend limits"
+import { type TaskLifecycle, type TaskRole, type TaskStatus } from "../gen/agentOrchestrator__taskLifecycle.effect.vibe"
+import { type AdmissionPool, type PriorityLevel, type SessionSlotStatus } from "../gen/agentOrchestrator__sessionAdmission.effect.vibe"
+import { type BackendId } from "../gen/agentOrchestrator__lanesAndRouting.effect.vibe"
+
+export type AgentType = "elizaos" | "pi-agent" | "claude" | "codex" | "kimi" | "grok" | (string & {})
+
+export type KnownAdapterId = "elizaos" | "pi-agent" | "claude" | "codex" | "kimi" | "grok"
+
+export type SubscriptionExecutionMode = "user-attended" | "unattended"
+
+export const SUBSCRIPTION_EXECUTION_AUTHORIZATION_METADATA_KEY = "subscriptionExecutionAuthorization"
+
+export const SUBSCRIPTION_EXECUTION_AUTHORIZATION_TTL_MS = 120_000
+
+export interface SubscriptionExecutionAuthorization {
+  readonly version: 1
+  readonly mode: "user-attended"
+  readonly source: "interactive-message"
+  readonly requestId: string
+  readonly subjectId: string
+  readonly issuedAtMs: number
+  readonly expiresAtMs: number
+}
+
+export type ApprovalPreset = "readonly" | "standard" | "permissive" | "autonomous" | "verifier"
+
+export type SessionStatus =
+  | "running"
+  | "ready"
+  | "busy"
+  | "blocked"
+  | "authenticating"
+  | "completed"
+  | "stopped"
+  | "errored"
+  | "cancelled"
+  | "tool_running"
+
+export type SessionEventName =
+  | "ready"
+  | "blocked"
+  | "login_required"
+  | "task_complete"
+  | "tool_running"
+  | "stopped"
+  | "error"
+  | "message"
+  | "reasoning"
+  | "plan"
+  | "reconnected"
+  | "account_switched"
+  | "parent_agent_failure"
+
+export const TERMINAL_SESSION_STATUSES: ReadonlySet<SessionStatus> = new Set([
+  "completed",
+  "stopped",
+  "errored",
+  "cancelled",
+])
+
+export type SessionSlotClass = "worker" | "system"
+
+export interface AcpCapacity {
+  readonly activeWorkers: number
+  readonly maxSessions: number
+  readonly queuedCount: number
+  readonly maxQueue: number
+  readonly diskBlocked: boolean
+  readonly poolState: AdmissionPool
+}
+
+export interface AcpToolCall {
+  readonly id?: string
+  readonly title?: string
+  readonly kind?: string
+  readonly status?: string
+  readonly rawInput?: Readonly<Record<string, unknown>>
+  readonly output?: string
+  readonly locations?: readonly { readonly path?: string; readonly line?: number }[]
+}
+
+export interface AcpJsonRpcMessage {
+  readonly jsonrpc: "2.0"
+  readonly id?: string | number
+  readonly method?: string
+  readonly params?: Readonly<Record<string, unknown>>
+  readonly result?: unknown
+  readonly error?: { readonly code: number; readonly message: string; readonly data?: unknown }
+}
+
+export interface SpawnOptions {
+  readonly agentType?: AgentType
+  readonly workdir: string
+  readonly task?: string
+  readonly label?: string
+  readonly approvalPreset?: ApprovalPreset
+  readonly model?: string
+  readonly providerRoute?: string
+  readonly timeoutMs?: number
+  readonly metadata?: Readonly<Record<string, unknown>>
+  readonly env?: Readonly<Record<string, string>>
+  readonly slotClass?: SessionSlotClass
+  readonly taskId?: string
+  readonly priority?: OrchestratorTaskPriority
+  readonly subscriptionExecutionMode?: SubscriptionExecutionMode
+}
+
+export interface SpawnResult {
+  readonly sessionId: string
+  readonly agentType: AgentType
+  readonly workdir: string
+  readonly status: SessionStatus
+  readonly label: string
+  readonly queued?: boolean
+}
+
+export interface SendOptions {
+  readonly timeoutMs?: number
+  readonly keys?: string
+}
+
+export interface PromptResult {
+  readonly sessionId: string
+  readonly status: SessionStatus
+  readonly output: string
+  readonly stopReason?: string
+  readonly durationMs: number
+  readonly usage?: NormalizedUsage
+}
+
+export interface NormalizedUsage {
+  readonly inputTokens: number
+  readonly outputTokens: number
+  readonly cacheReadTokens: number
+  readonly cacheWriteTokens: number
+  readonly costUsd: number
+  readonly state: UsageState
+}
+
+export interface AvailableAgentInfo {
+  readonly type: KnownAdapterId
+  readonly installed: boolean
+  readonly authenticated: boolean
+  readonly command: string
+  readonly reason: string
+  readonly subscriptionOnly?: boolean
+}
+
+export interface SessionInfo {
+  readonly id: string
+  readonly name: string
+  readonly label: string
+  readonly agentType: AgentType
+  readonly workdir: string
+  readonly status: SessionStatus
+  readonly createdAt: string
+  readonly lastActivityAt: number
+  readonly approvalPreset: ApprovalPreset
+  readonly model?: string
+  readonly providerRoute?: string
+  readonly taskId?: string
+  readonly roomId?: string
+  readonly slotClass: SessionSlotClass
+  readonly metadata: Record<string, unknown>
+}
+
+export type SessionEventCallback = (
+  sessionId: string,
+  event: SessionEventName,
+  data: Readonly<Record<string, unknown>>,
+) => void
+
+export type AcpEventCallback = (sessionId: string, message: AcpJsonRpcMessage) => void
+
+export type OrchestratorTaskStatus =
+  | "open"
+  | "active"
+  | "waiting_on_user"
+  | "blocked"
+  | "validating"
+  | "done"
+  | "failed"
+  | "archived"
+  | "interrupted"
+
+export type OrchestratorTaskPriority = "low" | "normal" | "high" | "urgent"
+
+export type UsageState = "measured" | "estimated" | "unavailable"
+
+export type TaskCompletionRole = "coordinator" | "contributor"
+
+export type TaskMessageSenderKind = "user" | "orchestrator" | "sub_agent" | "system"
+
+export type TaskMessageDirection = "stdout" | "stderr" | "stdin" | "keys" | "system"
+
+export type ArtifactVerificationStatus = "pending" | "passed" | "failed" | "unknown"
+
+export const TERMINAL_TASK_STATUSES: ReadonlySet<OrchestratorTaskStatus> = new Set([
+  "done",
+  "failed",
+  "archived",
+])
+
+export const IN_FLIGHT_TASK_STATUSES: readonly OrchestratorTaskStatus[] = [
+  "open",
+  "active",
+  "waiting_on_user",
+  "blocked",
+  "validating",
+  "interrupted",
+]
+
+export const MAX_SESSION_RETRY_ATTEMPTS = 3
+
+export interface AttemptReflection {
+  readonly attempt: number
+  readonly missing: readonly string[]
+  readonly summary: string
+}
+
+export interface TaskProviderPolicy {
+  readonly framework?: KnownAdapterId
+  readonly providerSource?: string
+  readonly model?: string
+  readonly evalFastLane?: boolean
+  readonly allowBackends?: readonly KnownAdapterId[]
+}
+
+export interface OrchestratorTaskSession {
+  readonly sessionId: string
+  readonly agentType: AgentType
+  readonly label: string
+  readonly status: SessionStatus
+  readonly role: TaskCompletionRole
+  readonly workdir: string
+  readonly attachedAt: string
+  readonly updatedAt: string
+}
+
+export interface OrchestratorTaskEvent {
+  readonly id: string
+  readonly taskId: string
+  readonly type: string
+  readonly sessionId?: string
+  readonly summary: string
+  readonly data: Readonly<Record<string, unknown>>
+  readonly createdAt: string
+}
+
+export interface OrchestratorTaskMessage {
+  readonly id: string
+  readonly taskId: string
+  readonly senderKind: TaskMessageSenderKind
+  readonly direction: TaskMessageDirection
+  readonly sessionId?: string
+  readonly content: string
+  readonly createdAt: string
+}
+
+export interface OrchestratorTaskUsage {
+  readonly id: string
+  readonly taskId: string
+  readonly sessionId?: string
+  readonly model: string
+  readonly inputTokens: number
+  readonly outputTokens: number
+  readonly cacheReadTokens: number
+  readonly cacheWriteTokens: number
+  readonly costUsd: number
+  readonly state: UsageState
+  readonly createdAt: string
+}
+
+export interface OrchestratorTaskArtifact {
+  readonly id: string
+  readonly taskId: string
+  readonly kind: string
+  readonly path?: string
+  readonly url?: string
+  readonly label: string
+  readonly verificationStatus: ArtifactVerificationStatus
+  readonly createdAt: string
+}
+
+export interface OrchestratorTaskDecision {
+  readonly id: string
+  readonly taskId: string
+  readonly kind: string
+  readonly summary: string
+  readonly actor: string
+  readonly createdAt: string
+}
+
+export interface OrchestratorTaskPlanRevision {
+  readonly id: string
+  readonly taskId: string
+  readonly revision: number
+  readonly basePlanRevisionId?: string
+  readonly plan: Readonly<Record<string, unknown>>
+  readonly editSummary?: string
+  readonly createdBy: string
+  readonly createdAt: string
+}
+
+export interface OrchestratorTaskRecord {
+  readonly id: string
+  readonly title: string
+  readonly goal: string
+  readonly kind: string
+  readonly status: OrchestratorTaskStatus
+  readonly priority: OrchestratorTaskPriority
+  readonly originalRequest: string
+  readonly summary?: string
+  readonly acceptanceCriteria: readonly string[]
+  readonly currentPlan?: Readonly<Record<string, unknown>>
+  readonly ownerUserId?: string
+  readonly worldId?: string
+  readonly projectId?: string
+  readonly roomId?: string
+  readonly taskRoomId?: string
+  readonly parentTaskId?: string
+  readonly forkSource?: string
+  readonly completionCoordinatorSessionId?: string
+  readonly boundWorkdir?: string
+  readonly boundRepo?: string | null
+  readonly providerPolicy?: TaskProviderPolicy
+  readonly paused: boolean
+  readonly archived: boolean
+  readonly lifecycle: TaskLifecycle
+  readonly createdAt: string
+  readonly updatedAt: string
+  readonly closedAt?: string | null
+  readonly archivedAt?: string | null
+  readonly lastActivityAt: number
+  readonly metadata: Record<string, unknown>
+}
+
+export interface OrchestratorTaskDocument {
+  readonly task: OrchestratorTaskRecord
+  readonly sessions: readonly OrchestratorTaskSession[]
+  readonly events: readonly OrchestratorTaskEvent[]
+  readonly messages: readonly OrchestratorTaskMessage[]
+  readonly usage: readonly OrchestratorTaskUsage[]
+  readonly artifacts: readonly OrchestratorTaskArtifact[]
+  readonly decisions: readonly OrchestratorTaskDecision[]
+  readonly planRevisions: readonly OrchestratorTaskPlanRevision[]
+}
+
+export interface TaskListFilter {
+  readonly statuses?: readonly OrchestratorTaskStatus[]
+  readonly search?: string
+  readonly includeArchived?: boolean
+  readonly projectId?: string
+  readonly sessionId?: string
+  readonly taskId?: string
+  readonly limit?: number
+}
+
+export interface CreateTaskInput {
+  readonly title: string
+  readonly goal?: string
+  readonly originalRequest?: string
+  readonly kind?: string
+  readonly priority?: OrchestratorTaskPriority
+  readonly acceptanceCriteria?: readonly string[]
+  readonly currentPlan?: Readonly<Record<string, unknown>>
+  readonly ownerUserId?: string
+  readonly worldId?: string
+  readonly projectId?: string
+  readonly workdir?: string
+  readonly roomId?: string
+  readonly taskRoomId?: string
+  readonly parentTaskId?: string
+  readonly forkSource?: string
+  readonly providerPolicy?: TaskProviderPolicy
+  readonly metadata?: Readonly<Record<string, unknown>>
+}
+
+export interface WorkspaceChangeSet {
+  readonly workdir: string
+  readonly branch: string
+  readonly baselineSha: string | null
+  readonly changedFiles: readonly string[]
+  readonly diffStat: string
+  readonly diff: string
+  readonly truncated: boolean
+  readonly artifactRef?: string
+  readonly capturedAt: number
+}
+
+export interface WorkspaceResult {
+  readonly id: string
+  readonly repo: string
+  readonly path: string
+  readonly branch: string
+  readonly baseBranch: string
+  readonly isWorktree: boolean
+  readonly parentWorkspaceId?: string
+  readonly label?: string
+  readonly createdAt: string
+  readonly terminal?: boolean
+}
+
+export interface ShiftHandoffDigest {
+  readonly taskId: string
+  readonly goal: string
+  readonly status: OrchestratorTaskStatus
+  readonly changedFiles: readonly string[]
+  readonly verificationStatus: "pending" | "passed" | "failed"
+  readonly activeArtifacts: readonly string[]
+  readonly recentTail: string
+  readonly nextAction: string
+  readonly estimatedTokens: number
+}
+
+export interface TruncatedOutput {
+  readonly text: string
+  readonly truncated: boolean
+  readonly totalLines: number
+  readonly shownLines: number
+  readonly totalBytes: number
+  readonly shownBytes: number
+  readonly artifactRef?: string
+  readonly mode: "head" | "tail"
+}
+
+export interface BuiltAppRecord {
+  readonly target: "custom" | "eliza-cloud"
+  readonly slug: string
+  readonly title: string
+  readonly url: string
+  readonly workdir?: string
+  readonly taskId?: string
+  readonly createdAt: string
+}
+
+export interface ChildSession {
+  readonly childId: string
+  readonly sessionId: string
+  readonly label: string
+  readonly running: boolean
+}
+
+export error ChildSessionFailure { childId: string; reason: string }
+export error SessionCapError { activeWorkers: number; maxWorkers: number; reason: string }
+export error AdmissionQueueFullError { queuedCount: number; maxQueue: number; reason: string }
+export error RecoveryConflictError { taskId: string; reason: string }
+export error WaveConcurrencyCapError { waveId: string; activeLanes: number; maxParallel: number }
+export error WaveBudgetBreachError { waveId: string; spentCents: number; budgetCapCents: number }
+export error DiffGateBlockedError { workdir: string; reasons: readonly string[] }
+export error SsrfBlockedError { url: string; reason: string }
+export error UnsafeGitRemoteError { remote: string; reason: string }
+export error UnsafeGitRefError { ref: string; reason: string }
+export error SubscriptionCodingAdapterError { adapterId: string; code: string; reason: string }
+export error WorkspaceOperationError { workspaceId: string; code: string; reason: string }
+export error TaskLifecycleError { taskId: string; code: string; reason: string }
+
+export function toSpecTaskStatus(status: OrchestratorTaskStatus): TaskStatus {
+  switch (status) {
+    case "open": return "TaskOpen"
+    case "active": return "TaskActive"
+    case "waiting_on_user": return "TaskWaitingOnUser"
+    case "blocked": return "TaskBlocked"
+    case "validating": return "TaskValidating"
+    case "done": return "TaskDone"
+    case "failed": return "TaskFailed"
+    case "archived": return "TaskArchived"
+    case "interrupted": return "TaskInterrupted"
+  }
+}
+
+export function fromSpecTaskStatus(status: TaskStatus): OrchestratorTaskStatus {
+  switch (status) {
+    case "TaskOpen": return "open"
+    case "TaskActive": return "active"
+    case "TaskWaitingOnUser": return "waiting_on_user"
+    case "TaskBlocked": return "blocked"
+    case "TaskValidating": return "validating"
+    case "TaskDone": return "done"
+    case "TaskFailed": return "failed"
+    case "TaskArchived": return "archived"
+    case "TaskInterrupted": return "interrupted"
+  }
+}
+
+export function toSpecTaskRole(role: TaskCompletionRole): TaskRole {
+  return role === "coordinator" ? "CoordinatorRole" : "ContributorRole"
+}
+
+export function toSpecPriority(priority: OrchestratorTaskPriority): PriorityLevel {
+  switch (priority) {
+    case "low": return "PriorityLow"
+    case "normal": return "PriorityNormal"
+    case "high": return "PriorityHigh"
+    case "urgent": return "PriorityUrgent"
+  }
+}
+
+export function toSpecSessionSlotStatus(status: SessionStatus): SessionSlotStatus {
+  switch (status) {
+    case "running": return "SlotRunning"
+    case "ready": return "SlotReady"
+    case "busy": return "SlotBusy"
+    case "blocked": return "SlotBlocked"
+    case "authenticating": return "SlotAuthenticating"
+    case "tool_running": return "SlotToolRunning"
+    case "completed": return "SlotCompleted"
+    case "stopped": return "SlotStopped"
+    case "errored": return "SlotErrored"
+    case "cancelled": return "SlotCancelled"
+  }
+}
+
+export function toSpecBackendId(adapter: string | undefined): BackendId {
+  switch (adapter?.trim().toLowerCase()) {
+    case "elizaos": return "BackendElizaOs"
+    case "pi-agent": return "BackendPiAgent"
+    case "claude": return "BackendClaude"
+    case "codex": return "BackendCodex"
+    case "kimi": return "BackendKimi"
+    case "grok": return "BackendGrok"
+    default: return "BackendNone"
+  }
+}
+
+export function fromSpecBackendId(id: BackendId): KnownAdapterId | undefined {
+  switch (id) {
+    case "BackendElizaOs": return "elizaos"
+    case "BackendPiAgent": return "pi-agent"
+    case "BackendClaude": return "claude"
+    case "BackendCodex": return "codex"
+    case "BackendKimi": return "kimi"
+    case "BackendGrok": return "grok"
+    case "BackendNone": return undefined
+  }
+}
+
+export type { TaskLifecycle, AdmissionPool }

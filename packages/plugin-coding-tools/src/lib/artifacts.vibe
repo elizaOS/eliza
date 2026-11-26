@@ -1,0 +1,313 @@
+// spec/codingTools/shellSession.md, "Leased output artifacts allow bounded paging until lease expiration"; spec/codingTools/fileSession.md, "Reading a file records its current revision and binds a resumable reference"
+import { canCreateArtifact, canReadArtifactPage, createArtifact, initial as initialShellSession, readArtifactPage } from "../../gen/codingTools__shellSession.effect.vibe"
+import { newUuid, sha256Hex } from "./security.vibe"
+
+module node {
+  import * as fs from "node:fs/promises"
+  import { tmpdir } from "node:os"
+  import * as path from "node:path"
+
+  export function artifactBaseDir(): string {
+    return path.join(tmpdir(), "eliza-coding-tools-artifacts")
+  }
+
+  export async function writeArtifactFile(dir: string, fileName: string, content: string): Promise<string> {
+    await fs.mkdir(dir, { recursive: true })
+    const full = path.join(dir, fileName)
+    await fs.writeFile(full, content, "utf8")
+    return full
+  }
+
+  export async function readArtifactFile(filePath: string): Promise<string | undefined> {
+    try {
+      return await fs.readFile(filePath, "utf8")
+    } catch {
+      return undefined
+    }
+  }
+
+  export async function removeArtifactDir(dir: string): Promise<void> {
+    await fs.rm(dir, { recursive: true, force: true }).catch(() => undefined)
+  }
+
+  export async function snapshotDirectoryFiles(root: string, maxEntries = 2000): Promise<Map<string, string>> {
+    const map = new Map<string, string>()
+    const excluded = new Set(["node_modules", ".git", "dist", ".turbo", ".spec-cache"])
+    async function walk(current: string): Promise<void> {
+      if (map.size >= maxEntries) return
+      let entries: readonly { readonly name: string; isDirectory(): boolean; isFile(): boolean }[]
+      try {
+        entries = await fs.readdir(current, { withFileTypes: true, encoding: "utf8" })
+      } catch {
+        return
+      }
+      for (const entry of entries) {
+        if (map.size >= maxEntries) return
+        if (excluded.has(entry.name)) continue
+        const full = path.join(current, entry.name)
+        const rel = path.relative(root, full).split(path.sep).join("/")
+        if (entry.isDirectory()) {
+          await walk(full)
+        } else if (entry.isFile()) {
+          try {
+            const st = await fs.stat(full)
+            map.set(rel, `${st.size}:${Math.trunc(st.mtimeMs)}`)
+          } catch {
+            continue
+          }
+        }
+      }
+    }
+    await walk(root)
+    return map
+  }
+}
+
+import { artifactBaseDir, readArtifactFile, removeArtifactDir, snapshotDirectoryFiles, writeArtifactFile } from node
+
+export interface FileReadReferenceEntry {
+  readonly token: string
+  readonly conversationId: string
+  readonly filePath: string
+  readonly revision: string
+  readonly issuedAt: number
+}
+
+const fileReadRefs = new Map<string, FileReadReferenceEntry>()
+const MAX_FILE_READ_REFS = 512
+
+export function publishFileReadReference(input: {
+  readonly conversationId: string
+  readonly filePath: string
+  readonly revision: string
+  readonly now?: number
+}): string {
+  const digest = sha256Hex(`${input.conversationId}\0${input.filePath}\0${input.revision}`)
+  const token = `file:${digest}`
+  if (fileReadRefs.size >= MAX_FILE_READ_REFS) {
+    const oldest = fileReadRefs.keys().next().value
+    if (typeof oldest === "string") fileReadRefs.delete(oldest)
+  }
+  fileReadRefs.set(token, {
+    token,
+    conversationId: input.conversationId,
+    filePath: input.filePath,
+    revision: input.revision,
+    issuedAt: input.now ?? Date.now(),
+  })
+  return token
+}
+
+export function resolveFileReadReference(input: {
+  readonly conversationId: string
+  readonly token: string
+}): FileReadReferenceEntry | undefined {
+  if (!/^file:[a-f0-9]{64}$/.test(input.token)) return undefined
+  const entry = fileReadRefs.get(input.token)
+  if (!entry || entry.conversationId !== input.conversationId) return undefined
+  return entry
+}
+
+export function invalidateFileReadReferences(conversationId: string, filePath: string): void {
+  for (const [token, entry] of fileReadRefs) {
+    if (entry.conversationId === conversationId && entry.filePath === filePath) {
+      fileReadRefs.delete(token)
+    }
+  }
+}
+
+export type ShellOutputArtifactStream = "stdout" | "stderr"
+
+export interface ShellStreamMetrics {
+  readonly bytes: number
+  readonly lines: number
+  readonly chars: number
+}
+
+export interface ShellOutputArtifact {
+  readonly handle: string
+  readonly conversationId: string
+  readonly contentRevision: string
+  readonly expiresAt: number
+  readonly directory: string
+  readonly stdoutPath: string
+  readonly stderrPath: string
+  readonly source: {
+    readonly stdout: ShellStreamMetrics
+    readonly stderr: ShellStreamMetrics
+  }
+}
+
+export interface ShellOutputArtifactPage {
+  readonly handle: string
+  readonly stream: ShellOutputArtifactStream
+  readonly offset: number
+  readonly nextOffset: number
+  readonly totalChars: number
+  readonly hasMore: boolean
+  readonly content: string
+  readonly contentRevision: string
+  readonly expiresAt: number
+}
+
+const DEFAULT_ARTIFACT_TTL_MS = 30 * 60 * 1000
+const ARTIFACT_PAGE_DEFAULT_CHARS = 12_000
+const ARTIFACT_PAGE_MAX_CHARS = 20_000
+const artifactRegistry = new Map<string, ShellOutputArtifact>()
+
+function measureStream(text: string): ShellStreamMetrics {
+  return {
+    bytes: new TextEncoder().encode(text).byteLength,
+    lines: text.length === 0 ? 0 : text.split("\n").length,
+    chars: text.length,
+  }
+}
+
+export async function persistShellOutputArtifact(options: {
+  readonly conversationId: string
+  readonly stdout: string
+  readonly stderr: string
+  readonly ttlMs?: number
+  readonly now?: number
+}): Promise<ShellOutputArtifact> {
+  const now = options.now ?? Date.now()
+  for (const [handle, item] of artifactRegistry) {
+    if (item.expiresAt <= now) {
+      artifactRegistry.delete(handle)
+      await removeArtifactDir(item.directory)
+    }
+  }
+  const handle = `shell_${newUuid().replace(/-/g, "").slice(0, 20)}`
+  const directory = `${artifactBaseDir()}/${handle}`
+  const stdoutPath = await writeArtifactFile(directory, "stdout.txt", options.stdout)
+  const stderrPath = await writeArtifactFile(directory, "stderr.txt", options.stderr)
+  const contentRevision = sha256Hex(`${options.stdout}\0${options.stderr}`).slice(0, 16)
+  const ttl = Math.max(60_000, options.ttlMs ?? DEFAULT_ARTIFACT_TTL_MS)
+  const artifact: ShellOutputArtifact = {
+    handle,
+    conversationId: options.conversationId,
+    contentRevision,
+    expiresAt: now + ttl,
+    directory,
+    stdoutPath,
+    stderrPath,
+    source: {
+      stdout: measureStream(options.stdout),
+      stderr: measureStream(options.stderr),
+    },
+  }
+  artifactRegistry.set(handle, artifact)
+  return artifact
+}
+
+export async function readShellOutputArtifactPage(options: {
+  readonly conversationId: string
+  readonly handle: string
+  readonly stream: ShellOutputArtifactStream
+  readonly offset?: number
+  readonly limit?: number
+  readonly now?: number
+}): Promise<{ readonly ok: true; readonly page: ShellOutputArtifactPage } | { readonly ok: false; readonly message: string }> {
+  const now = options.now ?? Date.now()
+  const artifact = artifactRegistry.get(options.handle)
+  if (!artifact || artifact.conversationId !== options.conversationId) {
+    return { ok: false, message: `unknown shell output artifact handle: ${options.handle}` }
+  }
+  if (artifact.expiresAt <= now) {
+    artifactRegistry.delete(options.handle)
+    await removeArtifactDir(artifact.directory)
+    return { ok: false, message: `shell output artifact expired: ${options.handle}` }
+  }
+  const raw = await readArtifactFile(options.stream === "stdout" ? artifact.stdoutPath : artifact.stderrPath)
+  if (raw === undefined) {
+    return { ok: false, message: `shell output artifact stream missing: ${options.handle}` }
+  }
+  const offset = Math.max(0, Math.floor(options.offset ?? 0))
+  const limit = Math.min(Math.max(1, Math.floor(options.limit ?? ARTIFACT_PAGE_DEFAULT_CHARS)), ARTIFACT_PAGE_MAX_CHARS)
+  const specSize = Math.min(Math.max(1, raw.length), 10_000)
+  const specOffset = Math.min(offset, specSize)
+  if (canCreateArtifact(initialShellSession, specSize)) {
+    const withArt = createArtifact(initialShellSession, specSize)
+    if (canReadArtifactPage(withArt, specOffset, limit)) {
+      readArtifactPage(withArt, specOffset, limit)
+    }
+  }
+  const content = raw.slice(offset, offset + limit)
+  const nextOffset = offset + content.length
+  return {
+    ok: true,
+    page: {
+      handle: artifact.handle,
+      stream: options.stream,
+      offset,
+      nextOffset,
+      totalChars: raw.length,
+      hasMore: nextOffset < raw.length,
+      content,
+      contentRevision: artifact.contentRevision,
+      expiresAt: artifact.expiresAt,
+    },
+  }
+}
+
+export function renewShellOutputArtifactLease(options: {
+  readonly conversationId: string
+  readonly handle: string
+  readonly ttlMs?: number
+  readonly now?: number
+}): { readonly ok: true; readonly expiresAt: number } | { readonly ok: false; readonly message: string } {
+  const now = options.now ?? Date.now()
+  const artifact = artifactRegistry.get(options.handle)
+  if (!artifact || artifact.conversationId !== options.conversationId || artifact.expiresAt <= now) {
+    return { ok: false, message: `artifact unavailable: ${options.handle}` }
+  }
+  const expiresAt = now + Math.max(60_000, options.ttlMs ?? DEFAULT_ARTIFACT_TTL_MS)
+  artifactRegistry.set(options.handle, { ...artifact, expiresAt })
+  return { ok: true, expiresAt }
+}
+
+export async function deleteShellOutputArtifact(options: {
+  readonly conversationId: string
+  readonly handle: string
+}): Promise<boolean> {
+  const artifact = artifactRegistry.get(options.handle)
+  if (!artifact || artifact.conversationId !== options.conversationId) return false
+  artifactRegistry.delete(options.handle)
+  await removeArtifactDir(artifact.directory)
+  return true
+}
+
+export interface LocalWorkspaceDeltaObservation {
+  readonly root: string
+  readonly before: Map<string, string>
+}
+
+export interface WorkspaceDeltaSummary {
+  readonly created: readonly string[]
+  readonly modified: readonly string[]
+  readonly deleted: readonly string[]
+}
+
+export async function beginLocalWorkspaceDeltaObservation(root: string): Promise<LocalWorkspaceDeltaObservation> {
+  const before = await snapshotDirectoryFiles(root)
+  return { root, before }
+}
+
+export async function finishLocalWorkspaceDeltaObservation(obs: LocalWorkspaceDeltaObservation): Promise<WorkspaceDeltaSummary> {
+  const after = await snapshotDirectoryFiles(obs.root)
+  const created: string[] = []
+  const modified: string[] = []
+  const deleted: string[] = []
+  for (const [rel, sig] of after) {
+    const prev = obs.before.get(rel)
+    if (prev === undefined) created.push(rel)
+    else if (prev !== sig) modified.push(rel)
+  }
+  for (const rel of obs.before.keys()) {
+    if (!after.has(rel)) deleted.push(rel)
+  }
+  created.sort()
+  modified.sort()
+  deleted.sort()
+  return { created, modified, deleted }
+}

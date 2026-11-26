@@ -1,65 +1,659 @@
-// spec/agentOrchestrator/index.md, "Story: Direct an authorized task to the intended subagent and evaluate its result"; spec/agentOrchestrator/index.md, "An @-mention of a subagent addresses only the subagents it mentions"
-import { normalizeKeywordMatchText, textIncludesKeywordTerm } from "@elizaos/core"
+// spec/agentOrchestrator/index.md, "Story: Direct an authorized task to the intended subagent and evaluate its result"; spec/agentOrchestrator/index.md, "An @-mention of a subagent addresses only the subagents it mentions"; spec/agentOrchestrator/taskLifecycle.md, "Story: Track an orchestrated coding task from creation through verified completion"
+import type { ContextDefinition, IAgentRuntime, Plugin } from "@elizaos/core"
 import {
-  evaluateTask,
-  peerAddress,
-  routeDirective,
-  type Evidence,
-  type PeerDirective,
-  type TaskEvaluation,
-} from "../gen/agentOrchestrator.effect.vibe"
+  AcpService,
+  ACP_SUBPROCESS_SERVICE_TYPE,
+  ChildAgentSessions,
+  FileSessionStore,
+  InMemorySessionStore,
+  InProcessAcpTransport,
+  NativeStdioAcpTransport,
+  isSessionPromptable,
+  isSessionTerminal,
+  orderAdmissionQueue,
+  sendChildDirective,
+  verifyChildTask,
+} from "./acp.vibe"
+import {
+  OrchestratorTaskService,
+  ORCHESTRATOR_TASK_SERVICE_TYPE,
+  FileTaskStore,
+  InMemoryTaskStore,
+  buildOrchestratorWidgetSnapshot,
+  buildResumePreamble,
+  summarizeUsageRows,
+  toTaskThread,
+} from "./tasks-service.vibe"
+import {
+  CodingWorkspaceService,
+  CODING_WORKSPACE_SERVICE_TYPE,
+  WorkspaceRegistry,
+  captureGitBaseline,
+  captureWorkspaceChangeSet,
+  subtractChangeSetBaseline,
+} from "./workspace.vibe"
+import {
+  SubAgentInbox,
+  SubAgentRouter,
+  SUB_AGENT_ROUTER_SERVICE_TYPE,
+  SwarmCoordinatorService,
+  SWARM_COORDINATOR_SERVICE_TYPE,
+  TaskSupervisorService,
+  TASK_SUPERVISOR_SERVICE_TYPE,
+  TaskWatchdogService,
+  TASK_WATCHDOG_SERVICE_TYPE,
+  WaveSupervisor,
+  WAVE_SUPERVISOR_SERVICE_TYPE,
+  STALL_GRILL_PROMPT,
+  PARENT_AGENT_DIRECTIVE_MARKER,
+  composeRoomDigest,
+  createDeterministicLanePlan,
+  decideInterruption,
+  detectStalledSessions,
+  extractScopePaths,
+  laneReadiness,
+  pickSubAgentName,
+  sanitizeLaneBranchName,
+  scopeSetsOverlap,
+  statusEmoji,
+  stepParentDirectiveBuffer,
+  takeParentAgentDirective,
+  validateLaneDependencyGraph,
+} from "./routing.vibe"
+import {
+  buildPromotedTaskActions,
+  createTerminalUnsupportedTasksAction,
+  getAcpService,
+  looksLikePersonalLifeOpsTask,
+  normalizeTaskOp,
+  tasksAction,
+  tasksSandboxStubAction,
+  SUPPORTED_OPS,
+  TASKS_SIMILES,
+  archiveCodingTaskAction,
+  cancelTaskAction,
+  createTaskAction,
+  finalizeWorkspaceAction,
+  listAgentsAction,
+  listTaskAgentsAction,
+  manageIssuesAction,
+  provisionWorkspaceAction,
+  reopenCodingTaskAction,
+  sendToAgentAction,
+  sendToTaskAgentAction,
+  spawnAgentAction,
+  spawnTaskAgentAction,
+  startCodingTaskAction,
+  stopAgentAction,
+  stopTaskAgentAction,
+  taskControlAction,
+  taskHistoryAction,
+  taskShareAction,
+} from "./actions.vibe"
+import {
+  acpAvailableAgentsProvider,
+  activeSubAgentsProvider,
+  activeWorkspaceContextProvider,
+  availableAgentsProvider,
+  codingAgentExamplesProvider,
+  codingSessionChangesProvider,
+  completionHasFailureMarkerWithoutPositiveEvidence,
+  extractFailureReason,
+  subAgentCompletionResponseEvaluator,
+  subAgentFailureResponseEvaluator,
+  taskAgentExamplesProvider,
+  verifiedUrlsExcludingDead,
+} from "./providers.vibe"
+import {
+  AGENT_ORCHESTRATOR_WIDGET_DECLARATIONS,
+  CODING_AGENT_ROUTE_PATHS,
+  ORCHESTRATOR_CAPABILITY_AUTHORITY,
+  ORCHESTRATOR_VIEW_DECLARATIONS,
+  createCodingAgentRouteHandler,
+  createTaskAgentRouteHandler,
+  handleCodingAgentRoutes,
+} from "./routes.vibe"
+import {
+  detectOrchestratorTerminalSupport,
+  buildOrchestratorDeviceSupportMatrix,
+  KNOWN_ADAPTER_TYPES,
+  ORDERED_ADAPTER_IDS,
+  PI_PROVIDER_CREDENTIAL_ENVS,
+  PI_PROVIDER_ROUTES,
+  SUBSCRIPTION_CODING_ADAPTERS,
+  SUBSCRIPTION_CODING_ADAPTER_IDS,
+  assertSubscriptionCodingAdapterReady,
+  enforcePiProviderCredentialIsolation,
+  isPiProviderRouteId,
+  isSubscriptionCodingAdapter,
+  normalizeTaskAgentAdapter,
+  preparePiProviderRoute,
+  probeAvailableAdapters,
+  readCodingRouting,
+  resolveAdapterCommand,
+  resolveCodingBackend,
+  resolveCodingBackendLogged,
+  resolveFastEvalTarget,
+  resolvePinnedAdapter,
+  runFastCodeEval,
+  selectCodingAccount,
+  stripSubscriptionApiEnvironment,
+} from "./adapters.vibe"
+import {
+  buildCacheStableOrchestratorPrefix,
+  buildCompactSessionDigest,
+  buildCompactTaskDigest,
+  buildShiftHandoffDigest,
+  cleanForChat,
+  compactContextWindow,
+  compactProgressText,
+  dispatchParallelBatch,
+  estimateTextTokens,
+  estimateTokensFromChars,
+  extractCompletionSummary,
+  pollSessionsBatched,
+  readOutputArtifactSlice,
+  sanitizeCompletionRelay,
+  sanitizePlannerText,
+  storeOutputArtifact,
+  stripAnsi,
+  stripEnvelopeSummaryLines,
+  stripProgressLabelPrefix,
+  stripStructuredProofLines,
+  stripToolTranscript,
+  truncateBounded,
+  truncateHead,
+  truncateTail,
+  SPAWN_ACK_FALLBACK,
+  TOOL_OUTPUT_END_MARKER,
+} from "./optimization.vibe"
+import {
+  COMPLETION_ENVELOPE_INSTRUCTION,
+  CuratedCodingMemoryStore,
+  DEFAULT_CRITERIA_TEMPLATES,
+  TASK_AUDIT_EVENT,
+  appendAuditLine,
+  buildGoalPrompt,
+  buildIndependentVerifierPrompt,
+  buildSubAgentIdentityMd,
+  collectCompletionResiduals,
+  collectFsObservedFiles,
+  defaultAuditLogPath,
+  deleteBuiltApp,
+  detectTaskType,
+  envelopeCorrection,
+  evaluateTaskAcceptance,
+  generateDefaultAcceptanceCriteria,
+  isNonTrivialGoal,
+  listBuiltApps,
+  mineCandidatePaths,
+  parseCompletionEnvelope,
+  parseJudgeResponse,
+  redactCodingMemoryText,
+  registerBuiltApp,
+  reviewDiff,
+  runIndependentVerification,
+  staticAcceptanceCriteria,
+  summarizeEnvelope,
+  verifyClaimedFiles,
+  writeWorkspaceIdentity,
+} from "./verification.vibe"
+import {
+  CREDENTIAL_BRIDGE_TOKEN_ENV,
+  CREDENTIAL_BRIDGE_TOKEN_HASH_METADATA,
+  MODEL_GATEWAY_EXCLUDED_PROVIDER_KEYS,
+  SUB_AGENT_PROVIDER_ENV_KEYS,
+  SUB_AGENT_SYSTEM_ENV_KEYS,
+  applyModelGatewayEnv,
+  assertSafeGitRef,
+  assertSafeGitRemote,
+  assertUrlAllowed,
+  buildGitIdentityEnvPatch,
+  classifyIpLiteral,
+  createCredentialBridgeToken,
+  createSubscriptionExecutionAuthorization,
+  decideSpendAuthorization,
+  detectLandlockAvailability,
+  ensureTaskWorkdir,
+  extractRepositoryUrlFromText,
+  forwardableSubAgentEnv,
+  hashCredentialBridgeToken,
+  isCloudKeyForwardingOptIn,
+  isDeniedSubAgentEnvKey,
+  isLeaseExpired,
+  isLoopbackRemoteAddress,
+  matchesCredentialBridgeToken,
+  normalizeCodexSandboxMode,
+  normalizeRepositoryInput,
+  requireTaskAgentAccess,
+  resolveAllowedWorkdir,
+  resolveCodexSandboxApprovalPair,
+  resolveModelGatewayConfig,
+  resolveNoLandlockSandboxMode,
+  resolveServerAllowedWorkdirRoots,
+  safeFetch,
+  subscriptionExecutionAuthorizationFromMetadata,
+  verifySessionBridgeToken,
+} from "./security.vibe"
+import {
+  AdmissionQueueFullError,
+  ChildSessionFailure,
+  DiffGateBlockedError,
+  IN_FLIGHT_TASK_STATUSES,
+  MAX_SESSION_RETRY_ATTEMPTS,
+  RecoveryConflictError,
+  SUBSCRIPTION_EXECUTION_AUTHORIZATION_METADATA_KEY,
+  SessionCapError,
+  SsrfBlockedError,
+  SubscriptionCodingAdapterError,
+  TERMINAL_SESSION_STATUSES,
+  TERMINAL_TASK_STATUSES,
+  TaskLifecycleError,
+  UnsafeGitRefError,
+  UnsafeGitRemoteError,
+  WaveBudgetBreachError,
+  WaveConcurrencyCapError,
+  WorkspaceOperationError,
+} from "./types.vibe"
 
-export error ChildSessionFailure { childId: string; reason: string }
-
-export interface ChildSession {
-  readonly childId: string
-  readonly sessionId: string
-  readonly label: string
-  readonly running: boolean
+export const orchestratorContext: ContextDefinition = {
+  id: "code",
+  label: "Coding Orchestration",
+  description: "Spawns and coordinates coding subagents, workspaces, and verification gates.",
+  descriptionCompressed: "Coding subagent orchestration.",
+  sensitivity: "personal",
+  cacheStable: true,
+  cacheScope: "agent",
 }
 
-export service ChildAgentSessions {
-  list(roomId: string): ChildSession[]!ChildSessionFailure
-  send(sessionId: string, text: string): void!ChildSessionFailure
-  cancel(sessionId: string): void!ChildSessionFailure
-  evidence(taskKey: string, generation: number): Evidence!ChildSessionFailure
-}
+const runtimeCleanups = new WeakMap<object, Array<() => void>>()
 
-function mentionsLabel(text: string, label: string): boolean {
-  const term = normalizeKeywordMatchText(label)
-  return term !== "" && normalizeKeywordMatchText(text).split("@").slice(1)
-    .some((rest) => rest.startsWith(term) && textIncludesKeywordTerm(rest.slice(0, term.length + 1), term))
-}
-
-function resolvePeerAddress(text: string, peers: readonly ChildSession[]) {
-  const childIds = (labelled: (label: string) => boolean) =>
-    peers.filter((peer) => labelled(peer.label)).map((peer) => peer.childId)
-  return peerAddress(
-    childIds((label) => mentionsLabel(text, label)),
-    childIds((label) => textIncludesKeywordTerm(text, label)),
-    text.includes("@"),
-  )
-}
-
-export effect function sendChildDirective(roomId: string, input: {
-  readonly directive: PeerDirective
-  readonly text: string
-}) {
-  const sessions = try ChildAgentSessions
-  const peers = try sessions.list(roomId)
-  const address = resolvePeerAddress(input.text, peers)
-  const touched: string[] = []
-  for (const peer of peers) {
-    const decision = routeDirective(address, input.directive, peer.childId, peers.length, peer.running)
-    if (decision === "NoPeerAction") continue
-    if (decision === "CancelTurn") try sessions.cancel(peer.sessionId)
-    else try sessions.send(peer.sessionId, input.text)
-    touched.push(peer.childId)
+export function createAgentOrchestratorPlugin(opts?: {
+  readonly localCodeExecutionAllowed?: boolean
+  readonly env?: Readonly<Record<string, string | undefined>>
+}): Plugin {
+  const localAllowed = opts?.localCodeExecutionAllowed !== false
+  const terminalSupport = detectOrchestratorTerminalSupport(opts?.env)
+  const enabled = localAllowed && terminalSupport.supported
+  if (!enabled) {
+    return {
+      name: "@elizaos/plugin-agent-orchestrator",
+      description: "Coding agent orchestration (disabled on unsupported host/sandbox).",
+      actions: [localAllowed ? createTerminalUnsupportedTasksAction(terminalSupport) : tasksSandboxStubAction],
+      providers: [],
+      services: [],
+    }
   }
-  return touched
+  return {
+    name: "@elizaos/plugin-agent-orchestrator",
+    description: "Canonical ElizaOS plugin for spawning and orchestrating ACP coding subagents (elizaos, pi-agent, claude, codex, kimi, grok) with verified lifecycles, parallel lanes, workspaces, and Cerebras fast evaluation.",
+    services: [
+      AcpService,
+      OrchestratorTaskService,
+      SubAgentRouter,
+      CodingWorkspaceService,
+      TaskSupervisorService,
+      TaskWatchdogService,
+      WaveSupervisor,
+      SwarmCoordinatorService,
+    ],
+    actions: buildPromotedTaskActions(),
+    providers: [
+      availableAgentsProvider,
+      activeSubAgentsProvider,
+      activeWorkspaceContextProvider,
+      codingAgentExamplesProvider,
+      codingSessionChangesProvider,
+    ],
+    responseHandlerEvaluators: [
+      subAgentCompletionResponseEvaluator,
+      subAgentFailureResponseEvaluator,
+    ],
+    widgets: [...AGENT_ORCHESTRATOR_WIDGET_DECLARATIONS],
+    views: [...ORCHESTRATOR_VIEW_DECLARATIONS],
+    init: async (_config, runtime: IAgentRuntime) => {
+      runtime.contexts.tryRegister(orchestratorContext)
+      const cleanups: Array<() => void> = []
+      const inbox = new SubAgentInbox()
+      cleanups.push(() => inbox.clearAll())
+      const auditPath = typeof runtime.getSetting === "function"
+        ? (typeof runtime.getSetting("ACP_AUDIT_LOG_PATH") === "string" ? String(runtime.getSetting("ACP_AUDIT_LOG_PATH")) : defaultAuditLogPath())
+        : defaultAuditLogPath()
+      const rtEvents = runtime as unknown as {
+        registerEvent?: (event: string, handler: (payload: unknown) => Promise<void>) => void
+      }
+      if (typeof rtEvents.registerEvent === "function") {
+        rtEvents.registerEvent(TASK_AUDIT_EVENT, async (payload: unknown) => {
+          const rec = typeof payload === "object" && payload !== null ? payload as Record<string, unknown> : {}
+          await runPromise(appendAuditLine(auditPath, {
+            action: typeof rec.action === "string" ? rec.action : "audit",
+            taskId: typeof rec.taskId === "string" ? rec.taskId : undefined,
+            sessionId: typeof rec.sessionId === "string" ? rec.sessionId : undefined,
+            actor: typeof rec.actor === "string" ? rec.actor : undefined,
+            outcome: typeof rec.outcome === "string" ? rec.outcome : "ok",
+            timestamp: typeof rec.timestamp === "string" ? rec.timestamp : new Date().toISOString(),
+          }))
+        })
+      }
+      const acpSvc: unknown = runtime.getService(ACP_SUBPROCESS_SERVICE_TYPE)
+      if (acpSvc instanceof AcpService) {
+        const unsub = acpSvc.onSessionEvent((sessionId, event) => {
+          if (event === "task_complete" || event === "ready" || event === "reconnected") {
+            const queued = inbox.drain(sessionId)
+            for (const msg of queued) {
+              void acpSvc.sendToSession(sessionId, msg)
+            }
+          }
+        })
+        cleanups.push(unsub)
+      }
+      runtimeCleanups.set(runtime, cleanups)
+    },
+    dispose: async (runtime: IAgentRuntime) => {
+      for (const fn of runtimeCleanups.get(runtime) ?? []) fn()
+      runtimeCleanups.delete(runtime)
+      const serviceTypes = [
+        ACP_SUBPROCESS_SERVICE_TYPE,
+        ORCHESTRATOR_TASK_SERVICE_TYPE,
+        SUB_AGENT_ROUTER_SERVICE_TYPE,
+        CODING_WORKSPACE_SERVICE_TYPE,
+        TASK_SUPERVISOR_SERVICE_TYPE,
+        TASK_WATCHDOG_SERVICE_TYPE,
+        WAVE_SUPERVISOR_SERVICE_TYPE,
+        SWARM_COORDINATOR_SERVICE_TYPE,
+      ]
+      for (const serviceType of serviceTypes) {
+        const svc = runtime.getService(serviceType) as { stop?: () => Promise<void> } | null | undefined
+        if (svc && typeof svc.stop === "function") await svc.stop()
+      }
+    },
+    autoEnable: {
+      envKeys: ["ELIZA_ACP_DEFAULT_AGENT", "ELIZA_PI_AGENT_ACP_COMMAND", "CEREBRAS_API_KEY"],
+      shouldEnable: (env) => detectOrchestratorTerminalSupport(env).supported,
+    },
+  }
 }
 
-export effect function verifyChildTask(task: TaskEvaluation) {
-  const sessions = try ChildAgentSessions
-  return evaluateTask(task, try sessions.evidence(task.taskKey, task.taskGeneration))
+export const agentOrchestratorPlugin: Plugin = createAgentOrchestratorPlugin()
+export default agentOrchestratorPlugin
+
+export {
+  ACP_SUBPROCESS_SERVICE_TYPE,
+  AGENT_ORCHESTRATOR_WIDGET_DECLARATIONS,
+  AcpService,
+  AdmissionQueueFullError,
+  CODING_AGENT_ROUTE_PATHS,
+  CODING_WORKSPACE_SERVICE_TYPE,
+  COMPLETION_ENVELOPE_INSTRUCTION,
+  CREDENTIAL_BRIDGE_TOKEN_ENV,
+  CREDENTIAL_BRIDGE_TOKEN_HASH_METADATA,
+  ChildAgentSessions,
+  ChildSessionFailure,
+  CodingWorkspaceService,
+  CuratedCodingMemoryStore,
+  DEFAULT_CRITERIA_TEMPLATES,
+  DiffGateBlockedError,
+  FileSessionStore,
+  FileTaskStore,
+  IN_FLIGHT_TASK_STATUSES,
+  InMemorySessionStore,
+  InMemoryTaskStore,
+  InProcessAcpTransport,
+  KNOWN_ADAPTER_TYPES,
+  MAX_SESSION_RETRY_ATTEMPTS,
+  MODEL_GATEWAY_EXCLUDED_PROVIDER_KEYS,
+  NativeStdioAcpTransport,
+  ORCHESTRATOR_CAPABILITY_AUTHORITY,
+  ORCHESTRATOR_TASK_SERVICE_TYPE,
+  ORCHESTRATOR_VIEW_DECLARATIONS,
+  ORDERED_ADAPTER_IDS,
+  OrchestratorTaskService,
+  PARENT_AGENT_DIRECTIVE_MARKER,
+  PI_PROVIDER_CREDENTIAL_ENVS,
+  PI_PROVIDER_ROUTES,
+  RecoveryConflictError,
+  SPAWN_ACK_FALLBACK,
+  STALL_GRILL_PROMPT,
+  SUBSCRIPTION_CODING_ADAPTERS,
+  SUBSCRIPTION_CODING_ADAPTER_IDS,
+  SUBSCRIPTION_EXECUTION_AUTHORIZATION_METADATA_KEY,
+  SUB_AGENT_PROVIDER_ENV_KEYS,
+  SUB_AGENT_ROUTER_SERVICE_TYPE,
+  SUB_AGENT_SYSTEM_ENV_KEYS,
+  SUPPORTED_OPS,
+  SWARM_COORDINATOR_SERVICE_TYPE,
+  SessionCapError,
+  SsrfBlockedError,
+  SubAgentInbox,
+  SubAgentRouter,
+  SubscriptionCodingAdapterError,
+  SwarmCoordinatorService,
+  TASKS_SIMILES,
+  TASK_AUDIT_EVENT,
+  TASK_SUPERVISOR_SERVICE_TYPE,
+  TASK_WATCHDOG_SERVICE_TYPE,
+  TERMINAL_SESSION_STATUSES,
+  TERMINAL_TASK_STATUSES,
+  TOOL_OUTPUT_END_MARKER,
+  TaskLifecycleError,
+  TaskSupervisorService,
+  TaskWatchdogService,
+  UnsafeGitRefError,
+  UnsafeGitRemoteError,
+  WAVE_SUPERVISOR_SERVICE_TYPE,
+  WaveBudgetBreachError,
+  WaveConcurrencyCapError,
+  WaveSupervisor,
+  WorkspaceOperationError,
+  WorkspaceRegistry,
+  acpAvailableAgentsProvider,
+  activeSubAgentsProvider,
+  activeWorkspaceContextProvider,
+  appendAuditLine,
+  applyModelGatewayEnv,
+  archiveCodingTaskAction,
+  assertSafeGitRef,
+  assertSafeGitRemote,
+  assertSubscriptionCodingAdapterReady,
+  assertUrlAllowed,
+  availableAgentsProvider,
+  buildCacheStableOrchestratorPrefix,
+  buildCompactSessionDigest,
+  buildCompactTaskDigest,
+  buildGitIdentityEnvPatch,
+  buildGoalPrompt,
+  buildIndependentVerifierPrompt,
+  buildOrchestratorDeviceSupportMatrix,
+  buildOrchestratorWidgetSnapshot,
+  buildPromotedTaskActions,
+  buildResumePreamble,
+  buildShiftHandoffDigest,
+  buildSubAgentIdentityMd,
+  cancelTaskAction,
+  captureGitBaseline,
+  captureWorkspaceChangeSet,
+  classifyIpLiteral,
+  cleanForChat,
+  codingAgentExamplesProvider,
+  codingSessionChangesProvider,
+  collectCompletionResiduals,
+  collectFsObservedFiles,
+  compactContextWindow,
+  compactProgressText,
+  completionHasFailureMarkerWithoutPositiveEvidence,
+  composeRoomDigest,
+  createCodingAgentRouteHandler,
+  createCredentialBridgeToken,
+  createDeterministicLanePlan,
+  createSubscriptionExecutionAuthorization,
+  createTaskAction,
+  createTaskAgentRouteHandler,
+  createTerminalUnsupportedTasksAction,
+  decideInterruption,
+  decideSpendAuthorization,
+  defaultAuditLogPath,
+  deleteBuiltApp,
+  detectLandlockAvailability,
+  detectOrchestratorTerminalSupport,
+  detectStalledSessions,
+  detectTaskType,
+  dispatchParallelBatch,
+  enforcePiProviderCredentialIsolation,
+  ensureTaskWorkdir,
+  envelopeCorrection,
+  estimateTextTokens,
+  estimateTokensFromChars,
+  evaluateTaskAcceptance,
+  extractCompletionSummary,
+  extractFailureReason,
+  extractRepositoryUrlFromText,
+  extractScopePaths,
+  finalizeWorkspaceAction,
+  forwardableSubAgentEnv,
+  generateDefaultAcceptanceCriteria,
+  getAcpService,
+  handleCodingAgentRoutes,
+  hashCredentialBridgeToken,
+  isCloudKeyForwardingOptIn,
+  isDeniedSubAgentEnvKey,
+  isLeaseExpired,
+  isLoopbackRemoteAddress,
+  isNonTrivialGoal,
+  isPiProviderRouteId,
+  isSessionPromptable,
+  isSessionTerminal,
+  isSubscriptionCodingAdapter,
+  laneReadiness,
+  listAgentsAction,
+  listBuiltApps,
+  listTaskAgentsAction,
+  looksLikePersonalLifeOpsTask,
+  manageIssuesAction,
+  matchesCredentialBridgeToken,
+  mineCandidatePaths,
+  normalizeCodexSandboxMode,
+  normalizeRepositoryInput,
+  normalizeTaskAgentAdapter,
+  normalizeTaskOp,
+  orderAdmissionQueue,
+  parseCompletionEnvelope,
+  parseJudgeResponse,
+  pickSubAgentName,
+  pollSessionsBatched,
+  preparePiProviderRoute,
+  probeAvailableAdapters,
+  provisionWorkspaceAction,
+  readCodingRouting,
+  readOutputArtifactSlice,
+  redactCodingMemoryText,
+  registerBuiltApp,
+  reopenCodingTaskAction,
+  requireTaskAgentAccess,
+  resolveAdapterCommand,
+  resolveAllowedWorkdir,
+  resolveCodingBackend,
+  resolveCodingBackendLogged,
+  resolveCodexSandboxApprovalPair,
+  resolveFastEvalTarget,
+  resolveModelGatewayConfig,
+  resolveNoLandlockSandboxMode,
+  resolvePinnedAdapter,
+  resolveServerAllowedWorkdirRoots,
+  reviewDiff,
+  runFastCodeEval,
+  runIndependentVerification,
+  safeFetch,
+  sanitizeCompletionRelay,
+  sanitizeLaneBranchName,
+  sanitizePlannerText,
+  scopeSetsOverlap,
+  selectCodingAccount,
+  sendChildDirective,
+  sendToAgentAction,
+  sendToTaskAgentAction,
+  spawnAgentAction,
+  spawnTaskAgentAction,
+  startCodingTaskAction,
+  staticAcceptanceCriteria,
+  statusEmoji,
+  stepParentDirectiveBuffer,
+  stopAgentAction,
+  stopTaskAgentAction,
+  storeOutputArtifact,
+  stripAnsi,
+  stripEnvelopeSummaryLines,
+  stripProgressLabelPrefix,
+  stripStructuredProofLines,
+  stripSubscriptionApiEnvironment,
+  stripToolTranscript,
+  subAgentCompletionResponseEvaluator,
+  subAgentFailureResponseEvaluator,
+  subscriptionExecutionAuthorizationFromMetadata,
+  subtractChangeSetBaseline,
+  summarizeEnvelope,
+  summarizeUsageRows,
+  takeParentAgentDirective,
+  taskAgentExamplesProvider,
+  taskControlAction,
+  taskHistoryAction,
+  taskShareAction,
+  tasksAction,
+  tasksSandboxStubAction,
+  toTaskThread,
+  truncateBounded,
+  truncateHead,
+  truncateTail,
+  validateLaneDependencyGraph,
+  verifiedUrlsExcludingDead,
+  verifyChildTask,
+  verifyClaimedFiles,
+  verifySessionBridgeToken,
+  writeWorkspaceIdentity,
 }
+
+export type {
+  AcpCapacity,
+  AcpEventCallback,
+  AcpJsonRpcMessage,
+  AcpToolCall,
+  AgentType,
+  ApprovalPreset,
+  ArtifactVerificationStatus,
+  AttemptReflection,
+  AvailableAgentInfo,
+  BuiltAppRecord,
+  ChildSession,
+  CreateTaskInput,
+  KnownAdapterId,
+  NormalizedUsage,
+  OrchestratorTaskArtifact,
+  OrchestratorTaskDecision,
+  OrchestratorTaskDocument,
+  OrchestratorTaskEvent,
+  OrchestratorTaskMessage,
+  OrchestratorTaskPlanRevision,
+  OrchestratorTaskPriority,
+  OrchestratorTaskRecord,
+  OrchestratorTaskSession,
+  OrchestratorTaskStatus,
+  OrchestratorTaskUsage,
+  PromptResult,
+  SendOptions,
+  SessionEventCallback,
+  SessionEventName,
+  SessionInfo,
+  SessionSlotClass,
+  SessionStatus,
+  ShiftHandoffDigest,
+  SpawnOptions,
+  SpawnResult,
+  SubscriptionExecutionAuthorization,
+  SubscriptionExecutionMode,
+  TaskCompletionRole,
+  TaskListFilter,
+  TaskProviderPolicy,
+  TruncatedOutput,
+  UsageState,
+  WorkspaceChangeSet,
+  WorkspaceResult,
+} from "./types.vibe"
