@@ -136,6 +136,9 @@ public final class CloudDeviceAccountJourney {
     int reuses;
     volatile HeldRefusal heldRefusal;
     Object advertisedMailLease = true;
+    String emailVerifierChallenge, emailAddress, connectVerifierChallenge, connectState;
+    String sessionAccess, sessionRefresh;
+    boolean requireSecondFactor, emailOffer = true;
 
     synchronized Reply answer(String method, String path, String query, String bearer, String body, Map<String, String> headers) throws Exception {
       long now = System.currentTimeMillis();
@@ -151,8 +154,53 @@ public final class CloudDeviceAccountJourney {
         case "/api/v1/app-auth/mobile/config" -> {
           return Reply.json(200, new JSONObject().put("clientId", CLIENT_ID).put("environment", "staging")
               .put("redirectUri", "https://app.example.test/android/auth/callback").putOpt("mailLease", advertisedMailLease)
+              .put("methods", new JSONObject().put("email", emailOffer))
               .put("google", new JSONObject().put("nativeSignIn", true).put("serverClientId", SERVER_CLIENT)
                 .put("scopes", new JSONArray().put("openid"))));
+        }
+        case "/api/v1/auth/email/code/send" -> {
+          JSONObject input = new JSONObject(body);
+          if (!CLIENT_ID.equals(input.getString("clientId")) || !"S256".equals(input.getString("codeChallengeMethod")))
+            throw new AssertionError("Email send was not bound to the registered client and S256");
+          emailAddress = input.getString("email");
+          emailVerifierChallenge = input.getString("codeChallenge");
+          return Reply.json(200, new JSONObject().put("expiresAt", now + 600_000).put("codeLength", 6));
+        }
+        case "/api/v1/auth/email/code/verify" -> {
+          JSONObject input = new JSONObject(body);
+          if (!CLIENT_ID.equals(input.getString("clientId")) || !emailAddress.equals(input.getString("email"))
+              || !emailVerifierChallenge.equals(proofChallenge(input.getString("codeVerifier"))) || !"123456".equals(input.getString("code")))
+            return Reply.refused("credential_proof_invalid");
+          if (requireSecondFactor) return Reply.json(200, new JSONObject().put("status", "mfa_required").put("methods", new JSONArray().put("totp")));
+          sessionAccess = secret("eliza_session_", 43);
+          sessionRefresh = secret("eliza_refresh_", 54);
+          return Reply.json(200, new JSONObject().put("status", "signed_in").put("user", new JSONObject().put("id", ACCOUNT))
+              .put("organizationId", ORGANIZATION).put("accessToken", sessionAccess).put("refreshToken", sessionRefresh).put("accessExpiresAt", now + 600_000));
+        }
+        case "/api/v1/app-auth/connect" -> {
+          JSONObject input = new JSONObject(body);
+          if (!sessionAccess.equals(bearer) || !CLIENT_ID.equals(input.getString("clientId")) || !"staging".equals(input.getString("environment"))
+              || !"https://app.example.test/android/auth/callback".equals(input.getString("redirectUri"))) throw new AssertionError("Unbound enrollment");
+          connectState = input.getString("state");
+          connectVerifierChallenge = input.getString("codeChallenge");
+          if (connectVerifierChallenge.equals(emailVerifierChallenge)) throw new AssertionError("Enrollment reused the email verifier");
+          return Reply.json(200, new JSONObject().put("code", "emac_" + "a".repeat(64)));
+        }
+        case "/api/v1/app-auth/mobile/token" -> {
+          JSONObject input = new JSONObject(body);
+          if (!connectState.equals(input.getString("state")) || !connectVerifierChallenge.equals(proofChallenge(input.getString("codeVerifier")))
+              || !("emac_" + "a".repeat(64)).equals(input.getString("code"))) throw new AssertionError("Unbound device key");
+          Grant grant = signedIn(now, true);
+          return Reply.json(200, new JSONObject().put("secret", grant.key).put("credentialId", grant.credentialId)
+              .put("user", new JSONObject().put("id", exchangeAccount)).put("organizationId", exchangeOrganization)
+              .put("expiresAt", java.time.Instant.ofEpochMilli(grant.expiresAt).toString())
+              .put("lease", new JSONObject().put("refresh", grant.family.refresh).put("refreshExpiresIn", LEASE_SECONDS)));
+        }
+        case "/api/v1/auth/logout" -> {
+          if (bearer != null || !sessionRefresh.equals(new JSONObject(body).getString("refreshToken")))
+            throw new AssertionError("The transient session was not closed through its own refresh proof");
+          sessionAccess = sessionRefresh = null;
+          return new Reply(204, "", null, false);
         }
         case "/api/v1/auth/google/native/challenge" -> {
           return Reply.json(200, new JSONObject().put("challengeId", java.util.UUID.randomUUID().toString()).put("nonce", secret("", 43))
@@ -302,6 +350,10 @@ public final class CloudDeviceAccountJourney {
     StringBuilder value = new StringBuilder(prefix);
     for (int index = 0; index < length; index++) value.append(ALPHABET.charAt(RANDOM.nextInt(ALPHABET.length())));
     return value.toString();
+  }
+
+  private static String proofChallenge(String proof) throws Exception {
+    return Base64.getUrlEncoder().withoutPadding().encodeToString(MessageDigest.getInstance("SHA-256").digest(proof.getBytes(StandardCharsets.UTF_8)));
   }
 
   private static void serve(Cloud cloud, HttpExchange exchange) throws IOException {
@@ -491,6 +543,49 @@ public final class CloudDeviceAccountJourney {
     account.retryRevocation();
   }
 
+  private static void signInWithEmail(CloudDeviceAccount account, Cloud cloud) throws Exception {
+    String destination = "member@example.test";
+    String verify = "POST /api/v1/auth/email/code/verify";
+    cloud.keySeconds = 60;
+    cloud.emailOffer = false;
+    try {
+      account.sendEmailSignInCode(CLIENT_ID, "staging", destination);
+      throw new AssertionError("The disabled method sent a code");
+    } catch (IOException expected) { }
+    cloud.emailOffer = true;
+    account.sendEmailSignInCode(CLIENT_ID, "staging", " Member@EXAMPLE.test ");
+    int submitted = Collections.frequency(cloud.paths, verify);
+    if (account.verifyEmailSignInCode("other@example.test", "123456") != CloudDeviceAccount.EmailSignIn.REFUSED)
+      throw new AssertionError("A different address reached email sign-in");
+    account.cancelEmailSignInCode();
+    if (account.verifyEmailSignInCode(destination, "123456") != CloudDeviceAccount.EmailSignIn.REFUSED
+        || submitted != Collections.frequency(cloud.paths, verify)) throw new AssertionError("Canceled email proof was exchanged");
+    cloud.requireSecondFactor = true;
+    account.sendEmailSignInCode(CLIENT_ID, "staging", destination);
+    if (account.verifyEmailSignInCode(destination, "123456") != CloudDeviceAccount.EmailSignIn.ADDITIONAL_VERIFICATION
+        || account.session() != null || cloud.sessionAccess != null) throw new AssertionError("Email sign-in bypassed second factor");
+    cloud.requireSecondFactor = false;
+    cloud.exchangeOrganization = ACCOUNT;
+    account.sendEmailSignInCode(CLIENT_ID, "staging", destination);
+    if (account.verifyEmailSignInCode(destination, "123456") != CloudDeviceAccount.EmailSignIn.REFUSED
+        || cloud.sessionAccess != null || account.session() != null || cloud.latest().grant.acknowledged)
+      throw new AssertionError("A key outside the verified organization was stored");
+    account.retryRevocation();
+    cloud.exchangeOrganization = ORGANIZATION;
+    account.sendEmailSignInCode(CLIENT_ID, "staging", destination);
+    try {
+      account.verifyEmailSignInCode(destination, "654321");
+      throw new AssertionError("A wrong code was accepted");
+    } catch (IOException expected) { }
+    if (account.verifyEmailSignInCode(destination, "123456") != CloudDeviceAccount.EmailSignIn.SIGNED_IN
+        || cloud.sessionAccess != null || !ACCOUNT.equals(account.session().accountId()) || status(account) != 200 || !cloud.latest().grant.acknowledged)
+      throw new AssertionError("Email sign-in did not save only the acknowledged device credential");
+    if (account.verifyEmailSignInCode(destination, "123456") != CloudDeviceAccount.EmailSignIn.REFUSED)
+      throw new AssertionError("A completed code was used twice");
+    account.clear();
+    account.retryRevocation();
+  }
+
   private static int duties(File directory) throws Exception {
     String stored = new JsonCredentialSlots(directory, "eliza-cloud-device-account.v1", (slot) -> 2048).read("revoke");
     return stored == null ? 0 : new JSONObject(stored).getJSONArray("duties").length();
@@ -673,6 +768,7 @@ public final class CloudDeviceAccountJourney {
     upgradeLegacyAccount(account, cloud, home, false);
     upgradeLegacyAccount(account, cloud, home, true);
     upgradeLegacyAccountWithNativeGoogle(account, cloud);
+    signInWithEmail(account, cloud);
     seen.put("newEnrollmentSurvivedLateRefreshRefusal", reEnrollDuringRefusal(account, cloud, slots, false));
     seen.put("newEnrollmentSurvivedLateRenewalRefusal", reEnrollDuringRefusal(account, cloud, slots, true));
 
