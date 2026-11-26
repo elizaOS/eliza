@@ -371,7 +371,7 @@ pure def lawAWorkerNeverOpensTheOtherEnvironmentsDatabase(p: Profile, environmen
   workerStart(p, environment, read, bindingsAgree, catalog) == WorkerServes implies read != ReadDigest({ digest: rowOf(p, otherEnvironment(environment)).databaseDigest })
 ```
 
-### A Worker answers a path from the server's route table first, and its Worker-only routes only for a path the table does not serve
+### A Worker routes the declared Grace Google mount, then the server table, then Worker-only paths
 
 The table is every route `serve` mounts. The relay socket
 (`services/speechRelay`) runs the same route on the server half of a Worker
@@ -385,16 +385,32 @@ attachments, a product's own `/api/product/` routes and `/health`. A path in
 neither is answered by the table's return page fallback, or `404 not_found`.
 CORS and refusals are the table's for its routes.
 
+The Grace Worker explicitly mounts its existing Google connector on the exact
+methods and paths used by the Grace web app and its enrolled tablets. This
+mount uses the established Google callback and saved grants, including
+read-only Calendar access and owned-event writes. Requests to the mount are
+admitted only on the API origin with managed Google enabled. Browser
+requests require a live session from the Grace web origin. The registered
+GET callback may arrive without an Origin and still requires that session
+and the matching OAuth flow. Enrolled tablets use a live mail lease for
+managed reads and a recorded device credential for the new-mail hint, both
+subject to the cloud's device request limit.
+Other Workers and other paths use the server table and Worker-only routes
+in their usual order.
+
 ```quint
-type WorkerAnswer = FromServerTable | FromWorkerOnly | FromServerFallback
-pure def workerAnswer(inTable: bool, workerOnly: bool): WorkerAnswer =
-  if (inTable) FromServerTable else if (workerOnly) FromWorkerOnly else FromServerFallback
+type WorkerAnswer = FromGraceGoogle | FromServerTable | FromWorkerOnly | FromServerFallback
+pure def workerAnswer(inTable: bool, workerOnly: bool, graceGoogle: bool): WorkerAnswer =
+  if (graceGoogle) FromGraceGoogle else if (inTable) FromServerTable else if (workerOnly) FromWorkerOnly else FromServerFallback
 pure val inTableValues = Set(true, false)
 pure val workerOnlyValues = Set(true, false)
-pure def lawATableRouteIsNeverShadowed(inTable: bool, workerOnly: bool): bool =
-  inTable implies workerAnswer(inTable, workerOnly) == FromServerTable
-pure def lawAWorkerOnlyRouteNeverReplacesTheTable(inTable: bool, workerOnly: bool): bool =
-  workerAnswer(inTable, workerOnly) == FromWorkerOnly implies (workerOnly and not(inTable))
+pure val graceGoogleValues = Set(true, false)
+pure def lawATableRouteIsNeverShadowedOutsideTheGraceGoogleMount(inTable: bool, workerOnly: bool, graceGoogle: bool): bool =
+  inTable and not(graceGoogle) implies workerAnswer(inTable, workerOnly, graceGoogle) == FromServerTable
+pure def lawAWorkerOnlyRouteNeverReplacesTheTable(inTable: bool, workerOnly: bool, graceGoogle: bool): bool =
+  workerAnswer(inTable, workerOnly, graceGoogle) == FromWorkerOnly implies (workerOnly and not(inTable))
+pure def lawTheGraceGoogleMountOnlyAndAlwaysAnswersItsRoutes(inTable: bool, workerOnly: bool, graceGoogle: bool): bool =
+  (workerAnswer(inTable, workerOnly, graceGoogle) == FromGraceGoogle) == graceGoogle
 ```
 
 ### A scheduled tick runs each sweep whose period ends within the tick

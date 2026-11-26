@@ -11,7 +11,7 @@ import { legacyRegistrations, registrationText, type NativeRegistryEnv } from ".
 import { PageTemplates } from "../pages/templates.vibe"
 import { renderedTemplate } from "../pages/rendered.ts"
 import { ProviderSockets, realtimeOpenBudget } from "../providers/speech.vibe"
-import { deploymentLayer, parseEnvironment, parseProfile, requireSecrets, specProfile, type CloudEnvironment, type CloudProfile } from "@elizaos/cloud"
+import { capabilityEnabled, deploymentLayer, parseEnvironment, parseProfile, requireSecrets, specProfile, type CloudEnvironment, type CloudProfile } from "@elizaos/cloud"
 import { Store } from "../store/connection.vibe"
 import { observeIdentity } from "../store/identity.vibe"
 import { WorkerRequest, WorkerResponse, type WorkerLifetime } from "../worker-platform.ts"
@@ -211,6 +211,11 @@ export function workerReady(env: ProfileBindings): Promise<Response | undefined>
       return unreadyAnswer(now)
     }
   })
+}
+
+export function workerManagedGoogle(env: ProfileBindings): boolean {
+  const ready = prepared.get(env)
+  return ready !== undefined && capabilityEnabled(ready.profile.environments[ready.environment], "managedGoogle")
 }
 
 export function serveFromTable(request: Request, env: ProfileBindings & LegacyBindings, providerFetch: typeof fetch, lifetime?: WorkerLifetime): Promise<Response> {

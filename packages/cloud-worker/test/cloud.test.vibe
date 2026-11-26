@@ -4336,7 +4336,7 @@ module node {
   import { exportJWK, generateKeyPair, SignJWT } from "jose"
   import { CLEF_DECISIONS_PATH, createClefDecisionsClient, type ClefDecisionRequest, CloudError, createCloudClient } from "@elizaos/cloud"
   import { signInWithProof } from "../src/identity-store.vibe"
-  import { cloudWorker, type CloudBindings } from "../src/worker.vibe"
+  import { cloudWorker, graceCloudWorker, type CloudBindings } from "../src/worker.vibe"
   import { googleRequest } from "../src/google.vibe"
   import { htmlAtLimit, htmlOverLimit, htmlReadSummary, mimeBoundaryPayload, mimeReadSummary } from "./support/fakes/google-gmail.ts"
   import { openBackupDatabase } from "./support/password-backup.ts"
@@ -4419,6 +4419,110 @@ module node {
         withheld: providerInputs.every((input) => !input.includes("token=private") && !input.includes("https://example.test")),
       }
     } finally { await fixture.close() }
+  }
+  export async function openGraceGoogleConnector() {
+    const fixture = await openBackupDatabase()
+    try {
+      const digest = "a".repeat(64)
+      const api = "https://api.example.test"
+      const web = "https://app.example.test"
+      const email = "grace-owner@example.test"
+      await fixture.db.query("INSERT INTO cloud_identity (digest, environment, created_at) VALUES ($1, 'staging', 1)", [digest])
+      const owner = await Effect.runPromise(Effect.provide(signInWithProof(fixture.db, { provider: "email", subject: email, email }), SecureRandom.layerWebCrypto))
+      const env = {
+        ...workerBindings({ api, web, digest }), DATABASE_URL: fixture.databaseUrl,
+        AI: { run: async () => { throw new Error("Unexpected inference") } },
+        GOOGLE_CLIENT_ID: "fixture-client", GOOGLE_CLIENT_SECRET: "fixture-secret", GOOGLE_CONNECT_TOKEN_KEY: "11".repeat(32),
+      } satisfies CloudBindings
+      const scopes = ["openid", "email", "gmail.readonly", "gmail.send", "gmail.modify", "calendar.events.readonly", "calendar.events.owned"]
+        .map((scope) => scope.includes(".") ? "https://www.googleapis.com/auth/" + scope : scope)
+      const calls: string[] = []
+      let version = 789
+      let folder = "INBOX"
+      const selectedMessage = "https://gmail.googleapis.com/gmail/v1/users/me/messages/selected-mail"
+      const providerFetch: typeof fetch = async (input, init) => {
+        const request = new Request(input, init)
+        const url = new URL(request.url)
+        calls.push(`${request.method} ${url.origin}${url.pathname}`)
+        if (url.href === "https://oauth2.googleapis.com/token") {
+          return Response.json({ access_token: "fixture-access", refresh_token: "fixture-refresh", scope: scopes.join(" ") })
+        }
+        if (url.href === "https://openidconnect.googleapis.com/v1/userinfo") {
+          return Response.json({ sub: "grace-google-owner", email, email_verified: true })
+        }
+        if (url.href === "https://gmail.googleapis.com/gmail/v1/users/me/messages/send") return Response.json({ id: "sent-from-grace" })
+        const address = url.origin + url.pathname
+        if (request.method === "POST" && (address === selectedMessage + "/trash" || address === selectedMessage + "/untrash")) {
+          folder = address.endsWith("/untrash") ? "INBOX" : "TRASH"
+          version += 1
+        }
+        if (address === selectedMessage || address === selectedMessage + "/trash" || address === selectedMessage + "/untrash") {
+          return Response.json({ id: "selected-mail", historyId: String(version), labelIds: [folder] })
+        }
+        return Response.json({ error: "unexpected fixture request" }, { status: 500 })
+      }
+      const grace = graceCloudWorker(undefined, providerFetch)
+      const plain = cloudWorker(undefined, providerFetch)
+      const root = api + "/api/v1/eliza/google/"
+      const cookie = "__Host-eliza-session=" + owner.access
+      const browser = { origin: web, cookie }
+      const start = (headers: Record<string, string>) => new Request(root + "connect/initiate", {
+        method: "POST", headers: { ...headers, "content-type": "application/json" },
+        body: JSON.stringify({ mail: true, calendar: true, sendMail: true, trashMail: true, writeCalendar: true, expectedEmail: email }),
+      })
+      const refusals = [
+        await grace.fetch(start({ ...browser, origin: "https://unrelated.example.test" }), env),
+        await grace.fetch(start({ cookie }), env),
+        await grace.fetch(start({ origin: web }), env),
+        await plain.fetch(start(browser), env),
+        await grace.fetch(new Request(root + "gmail/send/suffix", { method: "POST", headers: browser }), env),
+        await grace.fetch(new Request(web + "/api/v1/eliza/google/status", { headers: browser }), env),
+      ].map((response) => response.status)
+      const preflight = await grace.fetch(new Request(root + "connect/initiate", { method: "OPTIONS", headers: { origin: web, "access-control-request-method": "POST" } }), env)
+      const opened = await grace.fetch(start(browser), env)
+      const { authorizeUrl } = Schema.decodeUnknownSync(Schema.Struct({ authorizeUrl: Schema.String }))(await opened.json())
+      const authorization = new URL(authorizeUrl)
+      const callback = new URL(authorization.searchParams.get("redirect_uri") ?? "")
+      const flow = opened.headers.get("set-cookie")?.split(";", 1)[0]
+      if (!flow) throw new Error("The Google consent flow cookie is absent")
+      const callbackCookie = { cookie: cookie + "; " + flow }
+      const denied = await grace.fetch(new Request(callback + "?code=fixture-code&state=wrong", { headers: callbackCookie }), env)
+      const beforeConsent = calls.length
+      callback.search = new URLSearchParams({ code: "fixture-code", state: authorization.searchParams.get("state") ?? "" }).toString()
+      const complete = await grace.fetch(new Request(callback, { headers: callbackCookie }), env)
+      const status = async () => {
+        const response = await grace.fetch(new Request(root + "status", { headers: browser }), env)
+        return Schema.decodeUnknownSync(Schema.Struct({ accountId: Schema.String, connected: Schema.Boolean, connectionId: Schema.NullOr(Schema.String),
+          identity: Schema.NullOr(Schema.Struct({ email: Schema.String })), grantedScopes: Schema.Array(Schema.String) }))(await response.json())
+      }
+      const linked = await status()
+      const operationId = "b31b2735-90aa-46cd-8b32-51a6a5bd53fd"
+      const change = (path: string, body: object) => grace.fetch(new Request(root + path, {
+        method: "POST", headers: { ...browser, "content-type": "application/json" },
+        body: JSON.stringify({ accountId: owner.account.id, grantId: linked.connectionId, ...body }),
+      }), env)
+      const send = () => change("gmail/send", { operationId, recipient: "recipient@example.test", subject: "Hello", text: "I can send my reviewed message" })
+      const receipts = await Promise.all([(await send()).json(), (await send()).json()])
+      const receipt = await grace.fetch(new Request(root + "gmail/send/status?" + new URLSearchParams({ grantId: linked.connectionId ?? "", operationId }), { headers: browser }), env)
+      const trashId = "d00b7b70-fabd-4fb6-a93e-d65759b38ea1"
+      const trash = await change("gmail/trash", { operationId: trashId, messageId: "selected-mail", version: "789" })
+      const undo = await change("gmail/trash", { operationId: "bcd5b8c0-99f5-4b9d-883e-1a905f1ffd40", messageId: "selected-mail", version: "790", undoOf: trashId })
+      const disconnected = await grace.fetch(new Request(root + "disconnect", { method: "POST", headers: browser }), env)
+      return {
+        refusals, preflight: [preflight.status, preflight.headers.get("access-control-allow-origin"), preflight.headers.get("access-control-allow-credentials")],
+        start: [opened.status, opened.headers.get("access-control-allow-origin"), authorization.origin, authorization.pathname, callback.origin, callback.pathname],
+        denied: [denied.status, denied.headers.get("location"), beforeConsent],
+        complete: [complete.status, complete.headers.get("location")],
+        linked: [linked.connected, linked.accountId === owner.account.id, linked.identity?.email, [...linked.grantedScopes].sort().join(" ") === [...scopes].sort().join(" "),
+          authorization.searchParams.get("scope")?.split(" ").sort().join(" ") === [...scopes].sort().join(" ")],
+        sent: [...receipts, await receipt.json()].map((body) => Schema.decodeUnknownSync(Schema.Struct({ messageId: Schema.String }))(body).messageId),
+        calls: calls.filter((line) => line.endsWith("/messages/send")).length,
+        trash: [trash.status, undo.status, folder, version],
+        disconnected: [disconnected.status, (await status()).connected],
+      }
+    } finally {
+      await fixture.close()
+    }
   }
   export async function readSelectedAttachment() {
     const fixture = await openBackupDatabase()
@@ -4894,10 +4998,26 @@ module node {
       const mailPath = "gmail/read?" + query
       const calendarPath = "calendar/feed?timeMin=2026-12-01T00:00:00Z&timeMax=2026-12-02T00:00:00Z&grantId=" + grant
       const tabletMessage = await readTablet(mailPath, tabletHeaders)
-      const messageBody = Schema.decodeUnknownSync(Schema.Struct({ accountId: Schema.String, bodyText: Schema.String }))(await tabletMessage.json())
+      const mailBodyOf = Schema.decodeUnknownSync(Schema.Struct({ accountId: Schema.String, bodyText: Schema.String }))
+      const messageBody = mailBodyOf(await tabletMessage.json())
       const tabletCalendar = await readTablet(calendarPath, tabletHeaders)
-      const calendarBody = Schema.decodeUnknownSync(Schema.Struct({ accountId: Schema.String,
-        events: Schema.Array(Schema.Struct({ externalId: Schema.String, title: Schema.String })) }))(await tabletCalendar.json())
+      const calendarBodyOf = Schema.decodeUnknownSync(Schema.Struct({ accountId: Schema.String,
+        events: Schema.Array(Schema.Struct({ externalId: Schema.String, title: Schema.String })) }))
+      const calendarBody = calendarBodyOf(await tabletCalendar.json())
+      const grace = graceCloudWorker(undefined, providerFetch)
+      const mounted = (path: string, headers: Record<string, string>) => grace.fetch(new Request(api + "/api/v1/eliza/google/" + path, { headers }), env)
+      const mountedMail = await mounted(mailPath, tabletHeaders)
+      const mountedCalendar = await mounted(calendarPath, tabletHeaders)
+      const mountedDeviceRefusal = await mounted(mailPath, { ...webHeaders, ...bearerHeaders(tablet.token) })
+      const limitKey = "device-key|" + createHash("sha256").update(pair.access).digest("hex")
+      await fixture.db.query(`UPDATE rate_windows SET state = jsonb_set(jsonb_set(state, '{count}', '119'), '{end}', to_jsonb($2::bigint)),
+        window_end = $2 WHERE key = $1`, [limitKey, Date.now() + 60_000])
+      const lastRead = await mounted("status", tabletHeaders)
+      const rateRefusal = await mounted("status", tabletHeaders)
+      await fixture.db.query("DELETE FROM rate_windows WHERE key = $1", [limitKey])
+      await fixture.db.query("ALTER TABLE rate_windows RENAME TO temporarily_unavailable_rate_windows")
+      const rateUnavailable = await mounted("status", tabletHeaders)
+      await fixture.db.query("ALTER TABLE temporarily_unavailable_rate_windows RENAME TO rate_windows")
       const deviceAndCookie = await readTablet(mailPath, { ...webHeaders, ...bearerHeaders(tablet.token) })
       const forbiddenWrite = await worker.fetch(new Request(api + "/api/v1/eliza/google/gmail/inbox-v1/operations", {
         method: "POST", headers: { ...webHeaders, ...tabletHeaders, "content-type": "application/json" }, body: "{}",
@@ -4927,6 +5047,9 @@ module node {
       const officialClosed = await mobile("mobile/lease", "DELETE", {}, bearerHeaders(officialPair.refresh))
       const officialAfter = await readTablet(mailPath, bearerHeaders(officialPair.access))
       const tabletReads = {
+        grace: [mountedMail.status, mailBodyOf(await mountedMail.json()).bodyText, mountedCalendar.status,
+          calendarBodyOf(await mountedCalendar.json()).events, mountedDeviceRefusal.status, lastRead.status,
+          rateRefusal.status, rateRefusal.headers.has("retry-after"), rateUnavailable.status],
         canonical: [begin.status, mint.status, officialAcknowledged.status, officialRefresh.status, officialRead.status, officialClosed.status, officialAfter.status],
         enrollment: [granted.status, exchanged.status, replayedExchange.status, tablet.token === repeatedTablet.token,
           tablet.lease.refresh === repeatedTablet.lease.refresh, beforeAcknowledgement.status, acknowledged.status, lease.status],
@@ -4964,7 +5087,7 @@ module node {
   }
 
 }
-import { decideForSignedInAccount, forwardedHref, nativeGoogleFixture, readMailThroughClient, readSelectedAttachment } from node
+import { decideForSignedInAccount, forwardedHref, nativeGoogleFixture, openGraceGoogleConnector, readMailThroughClient, readSelectedAttachment } from node
 
 it.live('A reviewed link decision stays within the current account and candidates (spec/cloud/index.md, "Story: Ask for a bounded decision about a browser page")', () => effect {
   const result = try tryPromise(() => decideForSignedInAccount())
@@ -4975,6 +5098,20 @@ it.live('A reviewed link decision stays within the current account and candidate
   }))
 }, 30_000)
 
+
+it.live('Use the Grace Google consent, send once, then disconnect (spec/cloud/deployment.md, "A Worker routes the declared Grace Google mount, then the server table, then Worker-only paths")', () => effect {
+  const got = try tryPromise(() => openGraceGoogleConnector())
+  try check(() => assert.deepStrictEqual(got, {
+    refusals: [403, 403, 401, 401, 404, 404],
+    preflight: [204, "https://app.example.test", "true"],
+    start: [200, "https://app.example.test", "https://accounts.google.com", "/o/oauth2/v2/auth", "https://api.example.test", "/api/v1/eliza/google/connect/callback"],
+    denied: [303, "https://app.example.test/?googleConnectionError=authorization_failed#account", 0],
+    complete: [303, "https://app.example.test/#account"],
+    linked: [true, true, "grace-owner@example.test", true, true],
+    sent: ["sent-from-grace", "sent-from-grace", "sent-from-grace"], calls: 1,
+    trash: [200, 200, "INBOX", 791], disconnected: [200, false],
+  }))
+}, 120_000)
 
 it.live('Read complete mail text, open the selected named attachment, watch for new mail and read the connected calendar from a signed-in tablet (spec/cloud/identity/sessions.md, "Story: Keep a tablet signed in to mail and calendar"; spec/cloud/services/google/mailRead.md, "Story: Read my mail through the grant I chose"; "Story: Notice new mail while I sign in privately"; spec/cloud/identity/requestAuth.md, "A device key is limited to 120 requests a minute before it is looked up"; spec/cloud/index.md, "A device reminder follows the reviewed event occurrence")', () => effect {
   const got = try tryPromise(() => readSelectedAttachment())
@@ -5021,6 +5158,7 @@ it.live('Read complete mail text, open the selected named attachment, watch for 
         ],
       },
       tablet: {
+        grace: [200, "hello", 200, [{ externalId: "fixture-appointment", title: "Library visit" }], 403, 200, 429, true, 503],
         canonical: [200, 200, 200, 200, 200, 204, 401],
         enrollment: [200, 200, 200, true, true, 401, 204, 200],
         renewal: [200, 200, true, true, 204],
