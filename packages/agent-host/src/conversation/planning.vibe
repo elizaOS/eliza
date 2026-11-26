@@ -13,12 +13,12 @@ import {
 } from "@elizaos/core"
 import {
   actionNoteSent, askedAgainAt, answerableLater, answeredAgain, callAdmission, callRunOf, cueDelivered, standsBy, cutOffReply, failedOpen, isTurnStep, maxPlanSteps, mayAnswer, nextMove, offered, openOutcomes, plannerOnlyCoaching, plansOn, resendWait, spokenCue, toolActivity,
-  admitsPlannerWork, contextRestoreOf, loneObjectMove, maxRestoredHistoryBytes, nothingRan, offersContextRestore, plannerTemperature, terminalAnswerOf, toolDispatch, turnNarrowed, unavailableNotice, writtenMarkupOf, type CallFailure, type PlanStep, type StepOutcome, type ToolSettlement,
+  admitsPlannerWork, contextRestoreOf, loneObjectMove, maxRestoredHistoryBytes, nothingRan, offersContextRestore, plannerTemperature, terminalAnswerOf, toolDispatch, turnNarrowed, unavailableNotice, writtenMarkupOf, type CallFailure, type Declared, type PlanStep, type StepOutcome, type ToolSettlement,
 } from "../../gen/agent__conversation__planning.ts"
 import { originAfterResend } from "../../gen/agent__conversation__turns.ts"
 import { readTurnContext, unauthoredTurnAllowsCall } from "@elizaos/agent"
 import { ModelRefusal } from "../models/chat.vibe"
-import { actionNameKey, asksSomething, composeReply, declaredOf, draftOf, holdsHostText, hostObjects, shownUpTo, streamable, withoutOfferedCalls, withoutWrittenCalls, writtenCallFree, writtenCallOf } from "./reply-text.vibe"
+import { actionNameKey, asksSomething, composeReply, cueOf, declaredOf, draftOf, holdsHostText, hostObjects, shownUpTo, streamable, withCue, withoutOfferedCalls, withoutWrittenCalls, writtenCallFree, writtenCallOf } from "./reply-text.vibe"
 
 module node {
   import { randomUUID } from "node:crypto"
@@ -462,6 +462,7 @@ function settleReply(steps: readonly PlannedStep[]): SettledReply {
 
 export function plannerTools(runtime: AgentRuntime, message: Memory, actions: readonly Action[]): ToolDefinition[] {
   const tools: ToolDefinition[] = actions.length === 0 ? [] : buildPlannerToolsFromActions(actions.toSorted(byName).map((action) => forTurn(runtime, message, action)))
+    .map((tool) => messageServiceActions.has(tool.name) ? tool : withCue(tool))
   if (offersContextRestore(tools.length)) {
     const afterDiscovery = tools.findLastIndex(({ name }) => isDiscoveryActionName(name)) + 1
     tools.splice(afterDiscovery, 0, restoreContext)
@@ -616,6 +617,11 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
   let askedAfterWork = false
   let askingPromise: string | undefined
   const runTools = plannedToolRunner(input, named, steps, conversation)
+  const heardCue = (written: string, calls: number) => {
+    const { declared, text } = declaredOf(written)
+    const tag: Declared = declared === "DeclaredAnswer" ? declared : "DeclaredPromise"
+    return { tag, draft: draftOf(text, calls, offeredNames, false, tag, input.hostNotes), cue: withoutWrittenCalls(text.trim()) }
+  }
   plan: while (true) {
     signal.throwIfAborted()
     const restartFirst = displayed
@@ -630,13 +636,10 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
         const dispositions = calls.filter(({ name }) => messageServiceActions.has(name)).length
         const work = calls.length - restores - dispositions
         if (earlyAck !== undefined || work === 0 || !admitsPlannerWork(restores) || terminalAnswerOf(dispositions, terminalCorrectionSent, taken + 1 < maxPlanSteps) !== "AdmitTerminalAnswer") return
-        const unwritten = writtenCallFree(wholeText)
-        const { declared, text: earlyWords } = declaredOf(unwritten.prose)
-        const earlyDraft = draftOf(earlyWords, work, offeredNames, false, declared, input.hostNotes)
-        const earlyCue = withoutWrittenCalls(earlyWords.trim())
-        if (!spokenCue(earlyDraft, work, steps.length, declared)) return
-        const delivered = cueDelivered(earlyDraft, work, steps.length, (await input.onPlanningAcknowledgment?.(earlyCue)) === true)
-        earlyAck = { cue: earlyCue, delivered }
+        const early = heardCue(cueOf(calls.filter(({ name }) => !messageServiceActions.has(name))).cue, work)
+        if (!spokenCue(early.draft, work, steps.length, early.tag)) return
+        const delivered = cueDelivered(early.draft, work, steps.length, (await input.onPlanningAcknowledgment?.(early.cue)) === true)
+        earlyAck = { cue: early.cue, delivered }
         if (streamed.length > 0) {
           input.onReplyRestart?.("")
           displayed = false
@@ -744,7 +747,7 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
       continue plan
     }
     const reply = dispositions.find(({ name }) => name === "REPLY")
-    const work = answered.toolCalls.filter(({ name }) => !messageServiceActions.has(name))
+    const { cue: writtenCue, calls: work } = cueOf(answered.toolCalls.filter(({ name }) => !messageServiceActions.has(name)))
     const unwritten = writtenCallFree(answered.text)
     if (writtenMarkupOf(unwritten.markup, answered.toolCalls.length, markupAsked, maxPlanSteps - taken) === "AskForTheCall") {
       markupAsked = true
@@ -758,11 +761,12 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
     if (work.length === 0 && declared === "DeclaredPromise" && draft === "MaybeAnswer" && asksSomething(words)) askingPromise = words
     let cutOff = false
     if (work.length > 0) {
-      const cue = earlyAck !== undefined ? earlyAck.cue : withoutWrittenCalls(words.trim())
-      const spoken = earlyAck === undefined && spokenCue(draft, work.length, steps.length, declared)
+      const written = heardCue(writtenCue, work.length)
+      const cue = earlyAck !== undefined ? earlyAck.cue : written.cue
+      const spoken = earlyAck === undefined && spokenCue(written.draft, work.length, steps.length, written.tag)
       const delivered = earlyAck !== undefined
         ? earlyAck.delivered
-        : cueDelivered(draft, work.length, steps.length, spoken && (await input.onPlanningAcknowledgment?.(cue)) === true)
+        : cueDelivered(written.draft, work.length, steps.length, spoken && (await input.onPlanningAcknowledgment?.(cue)) === true)
       if (displayed) {
         input.onReplyRestart?.("")
         displayed = false
