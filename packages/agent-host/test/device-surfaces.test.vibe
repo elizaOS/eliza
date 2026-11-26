@@ -352,7 +352,7 @@ module node {
       photo: {
         lead: photo.note.includes("The owner's whole message asks for a photo now"), ranFirst: photo.ranFirst,
         captured: photo.fresh.map(({ payload }) => ({ operation: payload.operation, bound: payload.requestMessageId === photo.userMessageId })),
-        viewsRefused: photo.toolText.includes("ROUTE_REFUSED"), switched: photo.toolText.includes("Prepared the switch"),
+        viewsRefused: photo.toolText.includes("ROUTE_REFUSED"), switched: photo.toolText.includes("once this reply is shown"),
         otherRefused: photo.toolText.includes("DEVICE_OPERATION_ROUTED"),
         reply: photo.reply, toldThePhoneWords: photo.toolText.includes("Opening Camera to take the photo."),
       },
