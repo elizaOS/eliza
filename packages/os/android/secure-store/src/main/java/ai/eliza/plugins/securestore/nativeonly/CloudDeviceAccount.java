@@ -174,8 +174,23 @@ public final class CloudDeviceAccount {
  }
 
  public NativeGoogleAttempt prepareNativeGoogle(String clientId, String environment) throws Exception {
+  return prepareNativeGoogle(clientId, environment, null);
+ }
+
+ public NativeGoogleAttempt prepareNativeGoogleLeaseUpgrade(String clientId, String environment) throws Exception {
+  JSONObject upgrade = mobileClient(clientId, environment);
+  synchronized (LOCK) {
+   if (leaseUpgradeStatus() != LeaseUpgradeStatus.REQUIRED || slots.read(ACK) != null)
+    throw new IllegalStateException("An existing device account without a mail lease is required");
+   upgrade.put("credential", digest(stored().getString("token")));
+  }
+  return prepareNativeGoogle(clientId, environment, upgrade);
+ }
+
+ private NativeGoogleAttempt prepareNativeGoogle(String clientId, String environment, JSONObject upgrade) throws Exception {
   JSONObject client = mobileClient(clientId, environment);
   JSONObject config = mobileConfiguration(client);
+  if (upgrade != null && (!Boolean.TRUE.equals(config.opt("mailLease")) || !sameRegistration(client, config))) return null;
   JSONObject google = config.optJSONObject("google");
   if (google == null || !google.optBoolean("nativeSignIn")) return null;
   String serverClientId = google.getString("serverClientId");
@@ -188,7 +203,7 @@ public final class CloudDeviceAccount {
    if (!scope.matches("openid|email|https://www\\.googleapis\\.com/auth/[a-z.]{1,64}")) throw new IOException("Invalid Google scope");
    scopes.add(scope);
   }
-  JSONObject pending = beginPending("google", 120_000L);
+  JSONObject pending = beginPending("google", 120_000L, upgrade);
   String state = pending.getString("state");
   try {
    JSONObject response = new JSONObject(post(CHALLENGE,
@@ -210,7 +225,13 @@ public final class CloudDeviceAccount {
    throw new IOException("Invalid Google result");
   String snapshot = pendingSnapshot(attempt.state(), "google");
   if (snapshot == null || attempt.expiresAt() <= System.currentTimeMillis()) return false;
-  String verifier = new JSONObject(snapshot).getString("verifier");
+  JSONObject pending = new JSONObject(snapshot);
+  JSONObject upgrade = pending.optJSONObject("upgrade");
+  if (upgrade != null && (!offersMailLease(upgrade) || !snapshot.equals(pendingSnapshot(attempt.state(), "google")))) {
+   clearNativeGoogle(attempt.state());
+   return false;
+  }
+  String verifier = pending.getString("verifier");
   JSONObject request = mobileClient(attempt.clientId(), attempt.environment()).put("state", attempt.state()).put("codeVerifier", verifier)
       .put("identity", new JSONObject().put("challengeId", attempt.challengeId()).put("idToken", idToken).put("codeVerifier", verifier));
   if (serverAuthCode != null && serverAuthCode.matches("[A-Za-z0-9/_.~-]{10,2048}")) request.put("serverAuthCode", serverAuthCode);
@@ -307,15 +328,33 @@ public final class CloudDeviceAccount {
   }
  }
 
+ public void cancelLeaseUpgrade() throws Exception {
+  synchronized (LOCK) {
+   JSONObject pending = record(PENDING);
+   if (pending != null && pending.optJSONObject("upgrade") != null) slots.remove(PENDING);
+  }
+ }
+
  private Uri browserStart(JSONObject pending) throws Exception {
   return manageAccount().buildUpon().appendQueryParameter("device_challenge", challenge(pending))
       .appendQueryParameter("device_state", pending.getString("state")).build();
  }
 
  private JSONObject beginPending(String method, long duration) throws Exception {
+  return beginPending(method, duration, null);
+ }
+
+ private JSONObject beginPending(String method, long duration, JSONObject upgrade) throws Exception {
   synchronized (LOCK) {
-   if (credential() != null) throw new IllegalStateException("Sign out before adding another device account");
    JSONObject pending = newPending(method, duration);
+   if (upgrade == null) {
+    if (credential() != null) throw new IllegalStateException("Sign out before adding another device account");
+   } else {
+    JSONObject current = stored();
+    if (!matchesUpgrade(current, upgrade) || leaseUpgradeStatus() != LeaseUpgradeStatus.REQUIRED || slots.read(ACK) != null)
+     throw new IllegalStateException("The device account changed");
+    pending.put("upgrade", upgrade);
+   }
    slots.write(PENDING, pending.toString());
    return pending;
   }

@@ -161,7 +161,7 @@ public final class CloudDeviceAccountJourney {
         case "/api/v1/app-auth/mobile/google" -> {
           Grant grant = signedIn(now, offerLease);
           JSONObject response = new JSONObject().put("status", "signed_in").put("secret", grant.key).put("credentialId", grant.credentialId)
-              .put("user", new JSONObject().put("id", ACCOUNT)).put("organizationId", ORGANIZATION)
+              .put("user", new JSONObject().put("id", exchangeAccount)).put("organizationId", exchangeOrganization)
               .put("expiresAt", java.time.Instant.ofEpochMilli(grant.expiresAt).toString());
           if (grant.family != null) response.put("lease", new JSONObject().put("refresh", grant.family.refresh).put("refreshExpiresIn", LEASE_SECONDS));
           return Reply.json(200, response);
@@ -436,6 +436,61 @@ public final class CloudDeviceAccountJourney {
     account.retryRevocation();
   }
 
+  private static void upgradeLegacyAccountWithNativeGoogle(CloudDeviceAccount account, Cloud cloud) throws Exception {
+    cloud.keySeconds = 60;
+    cloud.offerLease = false;
+    if (!signIn(account)) throw new AssertionError("The legacy account could not sign in");
+    String original = account.session().token();
+    String proof = "header.payload.signature";
+    String challenge = "POST /api/v1/auth/google/native/challenge";
+    String signIn = "POST /api/v1/app-auth/mobile/google";
+    int challenges = Collections.frequency(cloud.paths, challenge);
+    cloud.advertisedMailLease = false;
+    if (account.prepareNativeGoogleLeaseUpgrade(CLIENT_ID, "staging") != null || challenges != Collections.frequency(cloud.paths, challenge))
+      throw new AssertionError("The device opened a picker for a missing lease offer");
+    cloud.advertisedMailLease = true;
+    var canceled = account.prepareNativeGoogleLeaseUpgrade(CLIENT_ID, "staging");
+    if (account.leaseUpgradeStatus() != CloudDeviceAccount.LeaseUpgradeStatus.SIGN_IN_PENDING)
+      throw new AssertionError("The native picker is not reported as pending");
+    try {
+      account.prepareNativeGoogleLeaseUpgrade(CLIENT_ID, "staging");
+      throw new AssertionError("A pending native upgrade was replaced");
+    } catch (IllegalStateException expected) { }
+    account.cancelLeaseUpgrade();
+    int exchanges = Collections.frequency(cloud.paths, signIn);
+    if (account.finishNativeGoogle(canceled, proof, null) || exchanges != Collections.frequency(cloud.paths, signIn))
+      throw new AssertionError("A canceled native picker result reached sign-in");
+    var withdrawn = account.prepareNativeGoogleLeaseUpgrade(CLIENT_ID, "staging");
+    cloud.advertisedMailLease = false;
+    if (account.finishNativeGoogle(withdrawn, proof, null) || exchanges != Collections.frequency(cloud.paths, signIn))
+      throw new AssertionError("A withdrawn lease offer reached sign-in");
+    cloud.advertisedMailLease = true;
+    if (account.finishNativeGoogle(account.prepareNativeGoogleLeaseUpgrade(CLIENT_ID, "staging"), proof, null)
+        || !original.equals(account.session().token()) || exchanges + 1 != Collections.frequency(cloud.paths, signIn)
+        || cloud.grants.get(cloud.grants.size() - 1).acknowledged)
+      throw new AssertionError("A key without a lease replaced the current owner");
+    cloud.offerLease = true;
+    for (String other : List.of("account", "organization")) {
+      cloud.exchangeAccount = "account".equals(other) ? ORGANIZATION : ACCOUNT;
+      cloud.exchangeOrganization = "organization".equals(other) ? ACCOUNT : ORGANIZATION;
+      if (account.finishNativeGoogle(account.prepareNativeGoogleLeaseUpgrade(CLIENT_ID, "staging"), proof, null)
+          || !original.equals(account.session().token()) || cloud.latest().grant.acknowledged
+          || account.leaseUpgradeStatus() != CloudDeviceAccount.LeaseUpgradeStatus.REQUIRED)
+        throw new AssertionError("A different " + other + " was acknowledged during native upgrade");
+    }
+    cloud.exchangeAccount = ACCOUNT;
+    cloud.exchangeOrganization = ORGANIZATION;
+    if (!account.finishNativeGoogle(account.prepareNativeGoogleLeaseUpgrade(CLIENT_ID, "staging"), proof, null)
+        || original.equals(account.session().token()) || !ACCOUNT.equals(account.session().accountId())
+        || !ORGANIZATION.equals(account.session().organizationId())
+        || account.leaseUpgradeStatus() != CloudDeviceAccount.LeaseUpgradeStatus.NOT_REQUIRED || status(account) != 200)
+      throw new AssertionError("The same owner did not gain native mail access");
+    account.retryRevocation();
+    if (!cloud.grant(original).ended) throw new AssertionError("The replaced key did not retire");
+    account.clear();
+    account.retryRevocation();
+  }
+
   private static int duties(File directory) throws Exception {
     String stored = new JsonCredentialSlots(directory, "eliza-cloud-device-account.v1", (slot) -> 2048).read("revoke");
     return stored == null ? 0 : new JSONObject(stored).getJSONArray("duties").length();
@@ -617,6 +672,7 @@ public final class CloudDeviceAccountJourney {
     seen.put("cookieOrOrigin", cloud.cookieOrOrigin);
     upgradeLegacyAccount(account, cloud, home, false);
     upgradeLegacyAccount(account, cloud, home, true);
+    upgradeLegacyAccountWithNativeGoogle(account, cloud);
     seen.put("newEnrollmentSurvivedLateRefreshRefusal", reEnrollDuringRefusal(account, cloud, slots, false));
     seen.put("newEnrollmentSurvivedLateRenewalRefusal", reEnrollDuringRefusal(account, cloud, slots, true));
 
