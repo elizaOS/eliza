@@ -178,7 +178,7 @@ module node {
 }
 import { stateEntries } from node
 
-const localEmbeddingsRule = 'spec/agent/host/launch.md, "Local embeddings boot only when the device serves them: no operator endpoint or chosen hosted service takes precedence, and the local inference plugin is listed"; spec/agent/plugins/profile.md, "A load list names only plugins the bundle carries or the agent\'s own modules"'
+const localEmbeddingsRule = `spec/agent/host/launch.md, "Local embeddings boot only when the device serves them: no operator endpoint or chosen hosted service takes precedence, and the local inference plugin is listed"; spec/agent/plugins/profile.md, "A load list names only plugins the bundle carries or the agent's own modules"`
 
 it.effect(`Local embeddings without the local inference plugin, with an operator endpoint or with chosen hosted embeddings, and a hosted module the bundle does not carry, are Config refusals before any store opens (${localEmbeddingsRule})`, effect () => {
   const state = try scratch("local-embeddings")

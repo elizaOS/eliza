@@ -73,14 +73,14 @@ lemma HydrationMigratedSnapshotValid(rows: seq<string>)
 }
 
 lemma readLoaded_ensures(s: Hydration)
+  ensures (inv(s) ==> canReadLoaded(s) ==> alwaysReadyHasDurableCoordinates(readLoaded(s)))
   ensures (inv(s) ==> canReadLoaded(s) ==> alwaysReadinessMatchesPhase(readLoaded(s)))
   ensures (inv(s) ==> canReadLoaded(s) ==> alwaysMigrationKeepsInsertionOrder(readLoaded(s)))
+  ensures (inv(s) ==> canReadLoaded(s) ==> alwaysPendingMigrationIsValid(readLoaded(s)))
   ensures (inv(s) ==> canReadLoaded(s) ==> alwaysReadingStartsFresh(readLoaded(s)))
   ensures (inv(s) ==> canReadLoaded(s) ==> alwaysStartupAccounting(readLoaded(s)))
-  ensures (inv(s) ==> canReadLoaded(s) ==> alwaysReadyHasDurableCoordinates(readLoaded(s)))
-  ensures (inv(s) ==> canReadLoaded(s) ==> alwaysPendingMigrationIsValid(readLoaded(s)))
-  ensures (inv(s) ==> canReadLoaded(s) ==> stepCurrentSnapshotLoadRetainsEpoch(s, "readLoaded", readLoaded(s)))
   ensures (inv(s) ==> canReadLoaded(s) ==> stepInvalidCurrentSnapshotNeverWrites(s, "readLoaded", readLoaded(s)))
+  ensures (inv(s) ==> canReadLoaded(s) ==> stepCurrentSnapshotLoadRetainsEpoch(s, "readLoaded", readLoaded(s)))
 {
   if inv(s) && canReadLoaded(s) && s.store.format.LegacyInbox? && uniqueLegacy(s.store.snapshot.rowIds) {
     HydrationMigratedSnapshotValid(s.store.snapshot.rowIds);

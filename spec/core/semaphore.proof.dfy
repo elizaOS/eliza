@@ -133,8 +133,8 @@ lemma acquire_ensures(s: SemaphoreState, caller: int)
   ensures (inv(s) ==> canAcquire(s, caller) ==> alwaysFIFOGrants(acquire(s, caller)))
   ensures (inv(s) ==> canAcquire(s, caller) ==> alwaysQueuedAbortWasAborted(acquire(s, caller)))
   ensures (inv(s) ==> canAcquire(s, caller) ==> alwaysGrantedTicketsWereIssued(acquire(s, caller)))
-  ensures (inv(s) ==> canAcquire(s, caller) ==> alwaysConfiguredSemaphoreHasCapacity(acquire(s, caller)))
   ensures (inv(s) ==> canAcquire(s, caller) ==> alwaysSemaphoreDeadlockFree(acquire(s, caller)))
+  ensures (inv(s) ==> canAcquire(s, caller) ==> alwaysConfiguredSemaphoreHasCapacity(acquire(s, caller)))
 {
   if inv(s) && canAcquire(s, caller) {
     var a := acquire(s, caller);
@@ -162,8 +162,8 @@ lemma abortWaiter_ensures(s: SemaphoreState, caller: int)
   ensures (inv(s) ==> canAbortWaiter(s, caller) ==> alwaysFIFOGrants(abortWaiter(s, caller)))
   ensures (inv(s) ==> canAbortWaiter(s, caller) ==> alwaysQueuedAbortWasAborted(abortWaiter(s, caller)))
   ensures (inv(s) ==> canAbortWaiter(s, caller) ==> alwaysGrantedTicketsWereIssued(abortWaiter(s, caller)))
-  ensures (inv(s) ==> canAbortWaiter(s, caller) ==> alwaysConfiguredSemaphoreHasCapacity(abortWaiter(s, caller)))
   ensures (inv(s) ==> canAbortWaiter(s, caller) ==> alwaysSemaphoreDeadlockFree(abortWaiter(s, caller)))
+  ensures (inv(s) ==> canAbortWaiter(s, caller) ==> alwaysConfiguredSemaphoreHasCapacity(abortWaiter(s, caller)))
 {
   if inv(s) && canAbortWaiter(s, caller) {
     Shapes(s, caller);
@@ -184,8 +184,8 @@ lemma cancelListener_ensures(s: SemaphoreState, caller: int)
   ensures (inv(s) ==> canCancelListener(s, caller) ==> alwaysFIFOGrants(cancelListener(s, caller)))
   ensures (inv(s) ==> canCancelListener(s, caller) ==> alwaysQueuedAbortWasAborted(cancelListener(s, caller)))
   ensures (inv(s) ==> canCancelListener(s, caller) ==> alwaysGrantedTicketsWereIssued(cancelListener(s, caller)))
-  ensures (inv(s) ==> canCancelListener(s, caller) ==> alwaysConfiguredSemaphoreHasCapacity(cancelListener(s, caller)))
   ensures (inv(s) ==> canCancelListener(s, caller) ==> alwaysSemaphoreDeadlockFree(cancelListener(s, caller)))
+  ensures (inv(s) ==> canCancelListener(s, caller) ==> alwaysConfiguredSemaphoreHasCapacity(cancelListener(s, caller)))
 {
   if inv(s) && canCancelListener(s, caller) {
     var a := cancelListener(s, caller);
@@ -284,8 +284,8 @@ lemma release_ensures(s: SemaphoreState, caller: int)
   ensures (inv(s) ==> canRelease(s, caller) ==> alwaysFIFOGrants(release(s, caller)))
   ensures (inv(s) ==> canRelease(s, caller) ==> alwaysQueuedAbortWasAborted(release(s, caller)))
   ensures (inv(s) ==> canRelease(s, caller) ==> alwaysGrantedTicketsWereIssued(release(s, caller)))
-  ensures (inv(s) ==> canRelease(s, caller) ==> alwaysConfiguredSemaphoreHasCapacity(release(s, caller)))
   ensures (inv(s) ==> canRelease(s, caller) ==> alwaysSemaphoreDeadlockFree(release(s, caller)))
+  ensures (inv(s) ==> canRelease(s, caller) ==> alwaysConfiguredSemaphoreHasCapacity(release(s, caller)))
 {
   if inv(s) && canRelease(s, caller) {
     var a := release(s, caller);

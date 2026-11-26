@@ -189,9 +189,9 @@ lemma PrivacyTicketLookup(s: PrivacyService, ticket: int)
 lemma request_ensures(s: PrivacyService, id: string, key: string, priority: core__priorityQueue_QueuePriority)
   ensures (inv(s) ==> canRequest(s, id, key, priority) ==> alwaysPromiseIdentitiesAreValid(request(s, id, key, priority)))
   ensures (inv(s) ==> canRequest(s, id, key, priority) ==> alwaysEveryJobRetainsSettlement(request(s, id, key, priority)))
+  ensures (inv(s) ==> canRequest(s, id, key, priority) ==> alwaysQueueReferencesKnownJobs(request(s, id, key, priority)))
   ensures (inv(s) ==> canRequest(s, id, key, priority) ==> alwaysCommittedJobHasSharedMarker(request(s, id, key, priority)))
   ensures (inv(s) ==> canRequest(s, id, key, priority) ==> alwaysJobIdsAreUnique(request(s, id, key, priority)))
-  ensures (inv(s) ==> canRequest(s, id, key, priority) ==> alwaysQueueReferencesKnownJobs(request(s, id, key, priority)))
   ensures (inv(s) ==> canRequest(s, id, key, priority) ==> stepJoiningStopKeepsIdentity(s, "request", request(s, id, key, priority)))
 {
   if inv(s) && canRequest(s, id, key, priority) {
@@ -207,9 +207,9 @@ lemma request_ensures(s: PrivacyService, id: string, key: string, priority: core
 lemma finishAdmission_ensures(s: PrivacyService, id: string)
   ensures (inv(s) ==> canFinishAdmission(s, id) ==> alwaysPromiseIdentitiesAreValid(finishAdmission(s, id)))
   ensures (inv(s) ==> canFinishAdmission(s, id) ==> alwaysEveryJobRetainsSettlement(finishAdmission(s, id)))
+  ensures (inv(s) ==> canFinishAdmission(s, id) ==> alwaysQueueReferencesKnownJobs(finishAdmission(s, id)))
   ensures (inv(s) ==> canFinishAdmission(s, id) ==> alwaysCommittedJobHasSharedMarker(finishAdmission(s, id)))
   ensures (inv(s) ==> canFinishAdmission(s, id) ==> alwaysJobIdsAreUnique(finishAdmission(s, id)))
-  ensures (inv(s) ==> canFinishAdmission(s, id) ==> alwaysQueueReferencesKnownJobs(finishAdmission(s, id)))
   ensures (inv(s) ==> canFinishAdmission(s, id) ==> stepJoiningStopKeepsIdentity(s, "finishAdmission", finishAdmission(s, id)))
 {
   if inv(s) && canFinishAdmission(s, id) {
@@ -236,9 +236,9 @@ lemma finishAdmission_ensures(s: PrivacyService, id: string)
 lemma scrubbed_ensures(s: PrivacyService, id: string)
   ensures (inv(s) ==> canScrubbed(s, id) ==> alwaysPromiseIdentitiesAreValid(scrubbed(s, id)))
   ensures (inv(s) ==> canScrubbed(s, id) ==> alwaysEveryJobRetainsSettlement(scrubbed(s, id)))
+  ensures (inv(s) ==> canScrubbed(s, id) ==> alwaysQueueReferencesKnownJobs(scrubbed(s, id)))
   ensures (inv(s) ==> canScrubbed(s, id) ==> alwaysCommittedJobHasSharedMarker(scrubbed(s, id)))
   ensures (inv(s) ==> canScrubbed(s, id) ==> alwaysJobIdsAreUnique(scrubbed(s, id)))
-  ensures (inv(s) ==> canScrubbed(s, id) ==> alwaysQueueReferencesKnownJobs(scrubbed(s, id)))
   ensures (inv(s) ==> canScrubbed(s, id) ==> stepJoiningStopKeepsIdentity(s, "scrubbed", scrubbed(s, id)))
 {
   if inv(s) && canScrubbed(s, id) {
@@ -264,9 +264,9 @@ lemma scrubbed_ensures(s: PrivacyService, id: string)
 lemma persistMap_ensures(s: PrivacyService, id: string)
   ensures (inv(s) ==> canPersistMap(s, id) ==> alwaysPromiseIdentitiesAreValid(persistMap(s, id)))
   ensures (inv(s) ==> canPersistMap(s, id) ==> alwaysEveryJobRetainsSettlement(persistMap(s, id)))
+  ensures (inv(s) ==> canPersistMap(s, id) ==> alwaysQueueReferencesKnownJobs(persistMap(s, id)))
   ensures (inv(s) ==> canPersistMap(s, id) ==> alwaysCommittedJobHasSharedMarker(persistMap(s, id)))
   ensures (inv(s) ==> canPersistMap(s, id) ==> alwaysJobIdsAreUnique(persistMap(s, id)))
-  ensures (inv(s) ==> canPersistMap(s, id) ==> alwaysQueueReferencesKnownJobs(persistMap(s, id)))
   ensures (inv(s) ==> canPersistMap(s, id) ==> stepJoiningStopKeepsIdentity(s, "persistMap", persistMap(s, id)))
 {
   if inv(s) && canPersistMap(s, id) {
@@ -292,9 +292,9 @@ lemma persistMap_ensures(s: PrivacyService, id: string)
 lemma confirmMarker_ensures(s: PrivacyService, id: string)
   ensures (inv(s) ==> canConfirmMarker(s, id) ==> alwaysPromiseIdentitiesAreValid(confirmMarker(s, id)))
   ensures (inv(s) ==> canConfirmMarker(s, id) ==> alwaysEveryJobRetainsSettlement(confirmMarker(s, id)))
+  ensures (inv(s) ==> canConfirmMarker(s, id) ==> alwaysQueueReferencesKnownJobs(confirmMarker(s, id)))
   ensures (inv(s) ==> canConfirmMarker(s, id) ==> alwaysCommittedJobHasSharedMarker(confirmMarker(s, id)))
   ensures (inv(s) ==> canConfirmMarker(s, id) ==> alwaysJobIdsAreUnique(confirmMarker(s, id)))
-  ensures (inv(s) ==> canConfirmMarker(s, id) ==> alwaysQueueReferencesKnownJobs(confirmMarker(s, id)))
   ensures (inv(s) ==> canConfirmMarker(s, id) ==> stepJoiningStopKeepsIdentity(s, "confirmMarker", confirmMarker(s, id)))
 {
   if inv(s) && canConfirmMarker(s, id) {
@@ -324,9 +324,9 @@ lemma confirmMarker_ensures(s: PrivacyService, id: string)
 lemma observeCompletion_ensures(s: PrivacyService, id: string, observerSucceeded: bool)
   ensures (inv(s) ==> canObserveCompletion(s, id, observerSucceeded) ==> alwaysPromiseIdentitiesAreValid(observeCompletion(s, id, observerSucceeded)))
   ensures (inv(s) ==> canObserveCompletion(s, id, observerSucceeded) ==> alwaysEveryJobRetainsSettlement(observeCompletion(s, id, observerSucceeded)))
+  ensures (inv(s) ==> canObserveCompletion(s, id, observerSucceeded) ==> alwaysQueueReferencesKnownJobs(observeCompletion(s, id, observerSucceeded)))
   ensures (inv(s) ==> canObserveCompletion(s, id, observerSucceeded) ==> alwaysCommittedJobHasSharedMarker(observeCompletion(s, id, observerSucceeded)))
   ensures (inv(s) ==> canObserveCompletion(s, id, observerSucceeded) ==> alwaysJobIdsAreUnique(observeCompletion(s, id, observerSucceeded)))
-  ensures (inv(s) ==> canObserveCompletion(s, id, observerSucceeded) ==> alwaysQueueReferencesKnownJobs(observeCompletion(s, id, observerSucceeded)))
   ensures (inv(s) ==> canObserveCompletion(s, id, observerSucceeded) ==> stepJoiningStopKeepsIdentity(s, "observeCompletion", observeCompletion(s, id, observerSucceeded)))
 {
   if inv(s) && canObserveCompletion(s, id, observerSucceeded) {
@@ -352,9 +352,9 @@ lemma observeCompletion_ensures(s: PrivacyService, id: string, observerSucceeded
 lemma finishAttempt_ensures(s: PrivacyService, ticket: int, ok: bool, retry: bool)
   ensures (inv(s) ==> canFinishAttempt(s, ticket, ok, retry) ==> alwaysPromiseIdentitiesAreValid(finishAttempt(s, ticket, ok, retry)))
   ensures (inv(s) ==> canFinishAttempt(s, ticket, ok, retry) ==> alwaysEveryJobRetainsSettlement(finishAttempt(s, ticket, ok, retry)))
+  ensures (inv(s) ==> canFinishAttempt(s, ticket, ok, retry) ==> alwaysQueueReferencesKnownJobs(finishAttempt(s, ticket, ok, retry)))
   ensures (inv(s) ==> canFinishAttempt(s, ticket, ok, retry) ==> alwaysCommittedJobHasSharedMarker(finishAttempt(s, ticket, ok, retry)))
   ensures (inv(s) ==> canFinishAttempt(s, ticket, ok, retry) ==> alwaysJobIdsAreUnique(finishAttempt(s, ticket, ok, retry)))
-  ensures (inv(s) ==> canFinishAttempt(s, ticket, ok, retry) ==> alwaysQueueReferencesKnownJobs(finishAttempt(s, ticket, ok, retry)))
   ensures (inv(s) ==> canFinishAttempt(s, ticket, ok, retry) ==> stepJoiningStopKeepsIdentity(s, "finishAttempt", finishAttempt(s, ticket, ok, retry)))
 {
   if inv(s) && canFinishAttempt(s, ticket, ok, retry) {
@@ -410,9 +410,9 @@ lemma lawDetachedCollectionPreservesSettlement_ensures(s: PrivacyService, ticket
 lemma driveQueue_ensures(s: PrivacyService, queueEvent: PiiQueueEvent, ticket: int, ok: bool)
   ensures (inv(s) ==> canDriveQueue(s, queueEvent, ticket, ok) ==> alwaysPromiseIdentitiesAreValid(driveQueue(s, queueEvent, ticket, ok)))
   ensures (inv(s) ==> canDriveQueue(s, queueEvent, ticket, ok) ==> alwaysEveryJobRetainsSettlement(driveQueue(s, queueEvent, ticket, ok)))
+  ensures (inv(s) ==> canDriveQueue(s, queueEvent, ticket, ok) ==> alwaysQueueReferencesKnownJobs(driveQueue(s, queueEvent, ticket, ok)))
   ensures (inv(s) ==> canDriveQueue(s, queueEvent, ticket, ok) ==> alwaysCommittedJobHasSharedMarker(driveQueue(s, queueEvent, ticket, ok)))
   ensures (inv(s) ==> canDriveQueue(s, queueEvent, ticket, ok) ==> alwaysJobIdsAreUnique(driveQueue(s, queueEvent, ticket, ok)))
-  ensures (inv(s) ==> canDriveQueue(s, queueEvent, ticket, ok) ==> alwaysQueueReferencesKnownJobs(driveQueue(s, queueEvent, ticket, ok)))
   ensures (inv(s) ==> canDriveQueue(s, queueEvent, ticket, ok) ==> stepJoiningStopKeepsIdentity(s, "driveQueue", driveQueue(s, queueEvent, ticket, ok)))
 {
   if inv(s) && canDriveQueue(s, queueEvent, ticket, ok) {
@@ -445,9 +445,9 @@ lemma driveQueue_ensures(s: PrivacyService, queueEvent: PiiQueueEvent, ticket: i
 lemma stop_ensures(s: PrivacyService)
   ensures (inv(s) ==> alwaysPromiseIdentitiesAreValid(stop(s)))
   ensures (inv(s) ==> alwaysEveryJobRetainsSettlement(stop(s)))
+  ensures (inv(s) ==> alwaysQueueReferencesKnownJobs(stop(s)))
   ensures (inv(s) ==> alwaysCommittedJobHasSharedMarker(stop(s)))
   ensures (inv(s) ==> alwaysJobIdsAreUnique(stop(s)))
-  ensures (inv(s) ==> alwaysQueueReferencesKnownJobs(stop(s)))
   ensures (inv(s) ==> stepJoiningStopKeepsIdentity(s, "stop", stop(s)))
 {
   if inv(s) && true {
@@ -470,9 +470,9 @@ lemma stop_ensures(s: PrivacyService)
 lemma completeStop_ensures(s: PrivacyService)
   ensures (inv(s) ==> canCompleteStop(s) ==> alwaysPromiseIdentitiesAreValid(completeStop(s)))
   ensures (inv(s) ==> canCompleteStop(s) ==> alwaysEveryJobRetainsSettlement(completeStop(s)))
+  ensures (inv(s) ==> canCompleteStop(s) ==> alwaysQueueReferencesKnownJobs(completeStop(s)))
   ensures (inv(s) ==> canCompleteStop(s) ==> alwaysCommittedJobHasSharedMarker(completeStop(s)))
   ensures (inv(s) ==> canCompleteStop(s) ==> alwaysJobIdsAreUnique(completeStop(s)))
-  ensures (inv(s) ==> canCompleteStop(s) ==> alwaysQueueReferencesKnownJobs(completeStop(s)))
   ensures (inv(s) ==> canCompleteStop(s) ==> stepJoiningStopKeepsIdentity(s, "completeStop", completeStop(s)))
 {
   if inv(s) && canCompleteStop(s) {
@@ -495,9 +495,9 @@ lemma completeStop_ensures(s: PrivacyService)
 lemma beginDisposal_ensures(s: PrivacyService, fast: bool)
   ensures (inv(s) ==> canBeginDisposal(s, fast) ==> alwaysPromiseIdentitiesAreValid(beginDisposal(s, fast)))
   ensures (inv(s) ==> canBeginDisposal(s, fast) ==> alwaysEveryJobRetainsSettlement(beginDisposal(s, fast)))
+  ensures (inv(s) ==> canBeginDisposal(s, fast) ==> alwaysQueueReferencesKnownJobs(beginDisposal(s, fast)))
   ensures (inv(s) ==> canBeginDisposal(s, fast) ==> alwaysCommittedJobHasSharedMarker(beginDisposal(s, fast)))
   ensures (inv(s) ==> canBeginDisposal(s, fast) ==> alwaysJobIdsAreUnique(beginDisposal(s, fast)))
-  ensures (inv(s) ==> canBeginDisposal(s, fast) ==> alwaysQueueReferencesKnownJobs(beginDisposal(s, fast)))
   ensures (inv(s) ==> canBeginDisposal(s, fast) ==> stepJoiningStopKeepsIdentity(s, "beginDisposal", beginDisposal(s, fast)))
 {
   if inv(s) && canBeginDisposal(s, fast) {
@@ -524,9 +524,9 @@ lemma beginDisposal_ensures(s: PrivacyService, fast: bool)
 lemma finishUrgentItem_ensures(s: PrivacyService, ok: bool)
   ensures (inv(s) ==> canFinishUrgentItem(s, ok) ==> alwaysPromiseIdentitiesAreValid(finishUrgentItem(s, ok)))
   ensures (inv(s) ==> canFinishUrgentItem(s, ok) ==> alwaysEveryJobRetainsSettlement(finishUrgentItem(s, ok)))
+  ensures (inv(s) ==> canFinishUrgentItem(s, ok) ==> alwaysQueueReferencesKnownJobs(finishUrgentItem(s, ok)))
   ensures (inv(s) ==> canFinishUrgentItem(s, ok) ==> alwaysCommittedJobHasSharedMarker(finishUrgentItem(s, ok)))
   ensures (inv(s) ==> canFinishUrgentItem(s, ok) ==> alwaysJobIdsAreUnique(finishUrgentItem(s, ok)))
-  ensures (inv(s) ==> canFinishUrgentItem(s, ok) ==> alwaysQueueReferencesKnownJobs(finishUrgentItem(s, ok)))
   ensures (inv(s) ==> canFinishUrgentItem(s, ok) ==> stepJoiningStopKeepsIdentity(s, "finishUrgentItem", finishUrgentItem(s, ok)))
 {
   if inv(s) && canFinishUrgentItem(s, ok) {
@@ -549,9 +549,9 @@ lemma finishUrgentItem_ensures(s: PrivacyService, ok: bool)
 lemma beginUrgentItem_ensures(s: PrivacyService)
   ensures (inv(s) ==> canBeginUrgentItem(s) ==> alwaysPromiseIdentitiesAreValid(beginUrgentItem(s)))
   ensures (inv(s) ==> canBeginUrgentItem(s) ==> alwaysEveryJobRetainsSettlement(beginUrgentItem(s)))
+  ensures (inv(s) ==> canBeginUrgentItem(s) ==> alwaysQueueReferencesKnownJobs(beginUrgentItem(s)))
   ensures (inv(s) ==> canBeginUrgentItem(s) ==> alwaysCommittedJobHasSharedMarker(beginUrgentItem(s)))
   ensures (inv(s) ==> canBeginUrgentItem(s) ==> alwaysJobIdsAreUnique(beginUrgentItem(s)))
-  ensures (inv(s) ==> canBeginUrgentItem(s) ==> alwaysQueueReferencesKnownJobs(beginUrgentItem(s)))
   ensures (inv(s) ==> canBeginUrgentItem(s) ==> stepJoiningStopKeepsIdentity(s, "beginUrgentItem", beginUrgentItem(s)))
 {
   if inv(s) && canBeginUrgentItem(s) {

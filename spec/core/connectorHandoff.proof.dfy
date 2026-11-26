@@ -116,8 +116,8 @@ lemma enqueue_ensures(s: Handoff, manager: string)
   ensures (inv(s) ==> stepWarningIsSticky(s, enqueue(s, manager)))
   ensures (inv(s) ==> stepOperationUsesResolvedBackend(s, "enqueue", enqueue(s, manager)))
   ensures (inv(s) ==> stepFailureRetainsFallback(s, "enqueue", enqueue(s, manager)))
-  ensures (inv(s) ==> stepMirrorOnlyConsumePreservesDurableTarget(s, "enqueue", enqueue(s, manager)))
   ensures (inv(s) ==> stepClearRetainsEveryCopiedAccount(s, "enqueue", enqueue(s, manager)))
+  ensures (inv(s) ==> stepMirrorOnlyConsumePreservesDurableTarget(s, "enqueue", enqueue(s, manager)))
 {
   if inv(s) {
     core__connectorQueues_admit_ensures(s.queue, core__connectorQueues_QueueScope(manager, "storage"));
@@ -141,8 +141,8 @@ lemma beginOperation_ensures(s: Handoff, ticket: int, service: int, adapter: int
   ensures (inv(s) ==> canBeginOperation(s, ticket, service, adapter) ==> stepWarningIsSticky(s, beginOperation(s, ticket, service, adapter, hasRuntime, methods)))
   ensures (inv(s) ==> canBeginOperation(s, ticket, service, adapter) ==> stepOperationUsesResolvedBackend(s, "beginOperation", beginOperation(s, ticket, service, adapter, hasRuntime, methods)))
   ensures (inv(s) ==> canBeginOperation(s, ticket, service, adapter) ==> stepFailureRetainsFallback(s, "beginOperation", beginOperation(s, ticket, service, adapter, hasRuntime, methods)))
-  ensures (inv(s) ==> canBeginOperation(s, ticket, service, adapter) ==> stepMirrorOnlyConsumePreservesDurableTarget(s, "beginOperation", beginOperation(s, ticket, service, adapter, hasRuntime, methods)))
   ensures (inv(s) ==> canBeginOperation(s, ticket, service, adapter) ==> stepClearRetainsEveryCopiedAccount(s, "beginOperation", beginOperation(s, ticket, service, adapter, hasRuntime, methods)))
+  ensures (inv(s) ==> canBeginOperation(s, ticket, service, adapter) ==> stepMirrorOnlyConsumePreservesDurableTarget(s, "beginOperation", beginOperation(s, ticket, service, adapter, hasRuntime, methods)))
 {
   if inv(s) && canBeginOperation(s, ticket, service, adapter) {
     QueueBegin(s, ticket, service, adapter, hasRuntime, methods);
@@ -161,8 +161,8 @@ lemma beginNextOperation_ensures(s: Handoff, service: int, adapter: int, hasRunt
   ensures (inv(s) ==> canBeginNextOperation(s, service, adapter) ==> stepWarningIsSticky(s, beginNextOperation(s, service, adapter, hasRuntime, methods)))
   ensures (inv(s) ==> canBeginNextOperation(s, service, adapter) ==> stepOperationUsesResolvedBackend(s, "beginNextOperation", beginNextOperation(s, service, adapter, hasRuntime, methods)))
   ensures (inv(s) ==> canBeginNextOperation(s, service, adapter) ==> stepFailureRetainsFallback(s, "beginNextOperation", beginNextOperation(s, service, adapter, hasRuntime, methods)))
-  ensures (inv(s) ==> canBeginNextOperation(s, service, adapter) ==> stepMirrorOnlyConsumePreservesDurableTarget(s, "beginNextOperation", beginNextOperation(s, service, adapter, hasRuntime, methods)))
   ensures (inv(s) ==> canBeginNextOperation(s, service, adapter) ==> stepClearRetainsEveryCopiedAccount(s, "beginNextOperation", beginNextOperation(s, service, adapter, hasRuntime, methods)))
+  ensures (inv(s) ==> canBeginNextOperation(s, service, adapter) ==> stepMirrorOnlyConsumePreservesDurableTarget(s, "beginNextOperation", beginNextOperation(s, service, adapter, hasRuntime, methods)))
 {
   if inv(s) && canBeginNextOperation(s, service, adapter) {
     QueueBegin(s, core__connectorQueues_firstEligible(s.queue), service, adapter, hasRuntime, methods);
@@ -181,8 +181,8 @@ lemma finishBridgeCreate_ensures(s: Handoff)
   ensures (inv(s) ==> canFinishBridgeCreate(s) ==> stepWarningIsSticky(s, finishBridgeCreate(s)))
   ensures (inv(s) ==> canFinishBridgeCreate(s) ==> stepOperationUsesResolvedBackend(s, "finishBridgeCreate", finishBridgeCreate(s)))
   ensures (inv(s) ==> canFinishBridgeCreate(s) ==> stepFailureRetainsFallback(s, "finishBridgeCreate", finishBridgeCreate(s)))
-  ensures (inv(s) ==> canFinishBridgeCreate(s) ==> stepMirrorOnlyConsumePreservesDurableTarget(s, "finishBridgeCreate", finishBridgeCreate(s)))
   ensures (inv(s) ==> canFinishBridgeCreate(s) ==> stepClearRetainsEveryCopiedAccount(s, "finishBridgeCreate", finishBridgeCreate(s)))
+  ensures (inv(s) ==> canFinishBridgeCreate(s) ==> stepMirrorOnlyConsumePreservesDurableTarget(s, "finishBridgeCreate", finishBridgeCreate(s)))
 {
   if inv(s) && canFinishBridgeCreate(s) {
     QueueFinish(s, false);
@@ -202,8 +202,8 @@ lemma finishBridgeConsumption_ensures(s: Handoff)
   ensures (inv(s) ==> canFinishBridgeConsumption(s) ==> stepWarningIsSticky(s, finishBridgeConsumption(s)))
   ensures (inv(s) ==> canFinishBridgeConsumption(s) ==> stepOperationUsesResolvedBackend(s, "finishBridgeConsumption", finishBridgeConsumption(s)))
   ensures (inv(s) ==> canFinishBridgeConsumption(s) ==> stepFailureRetainsFallback(s, "finishBridgeConsumption", finishBridgeConsumption(s)))
-  ensures (inv(s) ==> canFinishBridgeConsumption(s) ==> stepMirrorOnlyConsumePreservesDurableTarget(s, "finishBridgeConsumption", finishBridgeConsumption(s)))
   ensures (inv(s) ==> canFinishBridgeConsumption(s) ==> stepClearRetainsEveryCopiedAccount(s, "finishBridgeConsumption", finishBridgeConsumption(s)))
+  ensures (inv(s) ==> canFinishBridgeConsumption(s) ==> stepMirrorOnlyConsumePreservesDurableTarget(s, "finishBridgeConsumption", finishBridgeConsumption(s)))
 {
   if inv(s) && canFinishBridgeConsumption(s) {
     QueueFinish(s, false);
@@ -223,8 +223,8 @@ lemma transferFails_ensures(s: Handoff)
   ensures (inv(s) ==> canTransferFails(s) ==> stepWarningIsSticky(s, transferFails(s)))
   ensures (inv(s) ==> canTransferFails(s) ==> stepOperationUsesResolvedBackend(s, "transferFails", transferFails(s)))
   ensures (inv(s) ==> canTransferFails(s) ==> stepFailureRetainsFallback(s, "transferFails", transferFails(s)))
-  ensures (inv(s) ==> canTransferFails(s) ==> stepMirrorOnlyConsumePreservesDurableTarget(s, "transferFails", transferFails(s)))
   ensures (inv(s) ==> canTransferFails(s) ==> stepClearRetainsEveryCopiedAccount(s, "transferFails", transferFails(s)))
+  ensures (inv(s) ==> canTransferFails(s) ==> stepMirrorOnlyConsumePreservesDurableTarget(s, "transferFails", transferFails(s)))
 {
   if inv(s) && canTransferFails(s) {
     QueueFinish(s, false);
@@ -244,8 +244,8 @@ lemma finishOperation_ensures(s: Handoff, success: bool)
   ensures (inv(s) ==> canFinishOperation(s) ==> stepWarningIsSticky(s, finishOperation(s, success)))
   ensures (inv(s) ==> canFinishOperation(s) ==> stepOperationUsesResolvedBackend(s, "finishOperation", finishOperation(s, success)))
   ensures (inv(s) ==> canFinishOperation(s) ==> stepFailureRetainsFallback(s, "finishOperation", finishOperation(s, success)))
-  ensures (inv(s) ==> canFinishOperation(s) ==> stepMirrorOnlyConsumePreservesDurableTarget(s, "finishOperation", finishOperation(s, success)))
   ensures (inv(s) ==> canFinishOperation(s) ==> stepClearRetainsEveryCopiedAccount(s, "finishOperation", finishOperation(s, success)))
+  ensures (inv(s) ==> canFinishOperation(s) ==> stepMirrorOnlyConsumePreservesDurableTarget(s, "finishOperation", finishOperation(s, success)))
 {
   if inv(s) && canFinishOperation(s) {
     QueueFinish(s, success);
@@ -263,8 +263,8 @@ lemma copyAccount_ensures(s: Handoff)
   ensures (inv(s) ==> canCopyAccount(s) ==> stepWarningIsSticky(s, copyAccount(s)))
   ensures (inv(s) ==> canCopyAccount(s) ==> stepOperationUsesResolvedBackend(s, "copyAccount", copyAccount(s)))
   ensures (inv(s) ==> canCopyAccount(s) ==> stepFailureRetainsFallback(s, "copyAccount", copyAccount(s)))
-  ensures (inv(s) ==> canCopyAccount(s) ==> stepMirrorOnlyConsumePreservesDurableTarget(s, "copyAccount", copyAccount(s)))
   ensures (inv(s) ==> canCopyAccount(s) ==> stepClearRetainsEveryCopiedAccount(s, "copyAccount", copyAccount(s)))
+  ensures (inv(s) ==> canCopyAccount(s) ==> stepMirrorOnlyConsumePreservesDurableTarget(s, "copyAccount", copyAccount(s)))
 {
   if inv(s) && canCopyAccount(s) {
     var after := copyAccount(s);
@@ -295,8 +295,8 @@ lemma writeFallbackAccount_ensures(s: Handoff, account: core__accountValues_Acco
   ensures (inv(s) ==> canWriteFallbackAccount(s, account) ==> stepWarningIsSticky(s, writeFallbackAccount(s, account)))
   ensures (inv(s) ==> canWriteFallbackAccount(s, account) ==> stepOperationUsesResolvedBackend(s, "writeFallbackAccount", writeFallbackAccount(s, account)))
   ensures (inv(s) ==> canWriteFallbackAccount(s, account) ==> stepFailureRetainsFallback(s, "writeFallbackAccount", writeFallbackAccount(s, account)))
-  ensures (inv(s) ==> canWriteFallbackAccount(s, account) ==> stepMirrorOnlyConsumePreservesDurableTarget(s, "writeFallbackAccount", writeFallbackAccount(s, account)))
   ensures (inv(s) ==> canWriteFallbackAccount(s, account) ==> stepClearRetainsEveryCopiedAccount(s, "writeFallbackAccount", writeFallbackAccount(s, account)))
+  ensures (inv(s) ==> canWriteFallbackAccount(s, account) ==> stepMirrorOnlyConsumePreservesDurableTarget(s, "writeFallbackAccount", writeFallbackAccount(s, account)))
 {
   if inv(s) && canWriteFallbackAccount(s, account) {
     IdentityUnique(s.fallback);
@@ -316,8 +316,8 @@ lemma finishTransfer_ensures(s: Handoff)
   ensures (inv(s) ==> canFinishTransfer(s) ==> stepWarningIsSticky(s, finishTransfer(s)))
   ensures (inv(s) ==> canFinishTransfer(s) ==> stepOperationUsesResolvedBackend(s, "finishTransfer", finishTransfer(s)))
   ensures (inv(s) ==> canFinishTransfer(s) ==> stepFailureRetainsFallback(s, "finishTransfer", finishTransfer(s)))
-  ensures (inv(s) ==> canFinishTransfer(s) ==> stepMirrorOnlyConsumePreservesDurableTarget(s, "finishTransfer", finishTransfer(s)))
   ensures (inv(s) ==> canFinishTransfer(s) ==> stepClearRetainsEveryCopiedAccount(s, "finishTransfer", finishTransfer(s)))
+  ensures (inv(s) ==> canFinishTransfer(s) ==> stepMirrorOnlyConsumePreservesDurableTarget(s, "finishTransfer", finishTransfer(s)))
 {
   if inv(s) && canFinishTransfer(s) {
     Copied(s);
@@ -337,8 +337,8 @@ lemma nextPhase_ensures(s: Handoff)
   ensures (inv(s) ==> canNextPhase(s) ==> stepWarningIsSticky(s, nextPhase(s)))
   ensures (inv(s) ==> canNextPhase(s) ==> stepOperationUsesResolvedBackend(s, "nextPhase", nextPhase(s)))
   ensures (inv(s) ==> canNextPhase(s) ==> stepFailureRetainsFallback(s, "nextPhase", nextPhase(s)))
-  ensures (inv(s) ==> canNextPhase(s) ==> stepMirrorOnlyConsumePreservesDurableTarget(s, "nextPhase", nextPhase(s)))
   ensures (inv(s) ==> canNextPhase(s) ==> stepClearRetainsEveryCopiedAccount(s, "nextPhase", nextPhase(s)))
+  ensures (inv(s) ==> canNextPhase(s) ==> stepMirrorOnlyConsumePreservesDurableTarget(s, "nextPhase", nextPhase(s)))
 {
   if inv(s) && canNextPhase(s) {
     Copied(s);
@@ -357,8 +357,8 @@ lemma copyFlow_ensures(s: Handoff)
   ensures (inv(s) ==> canCopyFlow(s) ==> stepWarningIsSticky(s, copyFlow(s)))
   ensures (inv(s) ==> canCopyFlow(s) ==> stepOperationUsesResolvedBackend(s, "copyFlow", copyFlow(s)))
   ensures (inv(s) ==> canCopyFlow(s) ==> stepFailureRetainsFallback(s, "copyFlow", copyFlow(s)))
-  ensures (inv(s) ==> canCopyFlow(s) ==> stepMirrorOnlyConsumePreservesDurableTarget(s, "copyFlow", copyFlow(s)))
   ensures (inv(s) ==> canCopyFlow(s) ==> stepClearRetainsEveryCopiedAccount(s, "copyFlow", copyFlow(s)))
+  ensures (inv(s) ==> canCopyFlow(s) ==> stepMirrorOnlyConsumePreservesDurableTarget(s, "copyFlow", copyFlow(s)))
 {
   if inv(s) && canCopyFlow(s) {
     Copied(s);
@@ -377,8 +377,8 @@ lemma getFacade_ensures(s: Handoff)
   ensures (inv(s) ==> stepWarningIsSticky(s, getFacade(s)))
   ensures (inv(s) ==> stepOperationUsesResolvedBackend(s, "getFacade", getFacade(s)))
   ensures (inv(s) ==> stepFailureRetainsFallback(s, "getFacade", getFacade(s)))
-  ensures (inv(s) ==> stepMirrorOnlyConsumePreservesDurableTarget(s, "getFacade", getFacade(s)))
   ensures (inv(s) ==> stepClearRetainsEveryCopiedAccount(s, "getFacade", getFacade(s)))
+  ensures (inv(s) ==> stepMirrorOnlyConsumePreservesDurableTarget(s, "getFacade", getFacade(s)))
 {
   if inv(s) && true {
     Copied(s);
@@ -397,8 +397,8 @@ lemma setExplicit_ensures(s: Handoff, reference: int)
   ensures (inv(s) ==> stepWarningIsSticky(s, setExplicit(s, reference)))
   ensures (inv(s) ==> stepOperationUsesResolvedBackend(s, "setExplicit", setExplicit(s, reference)))
   ensures (inv(s) ==> stepFailureRetainsFallback(s, "setExplicit", setExplicit(s, reference)))
-  ensures (inv(s) ==> stepMirrorOnlyConsumePreservesDurableTarget(s, "setExplicit", setExplicit(s, reference)))
   ensures (inv(s) ==> stepClearRetainsEveryCopiedAccount(s, "setExplicit", setExplicit(s, reference)))
+  ensures (inv(s) ==> stepMirrorOnlyConsumePreservesDurableTarget(s, "setExplicit", setExplicit(s, reference)))
 {
   if inv(s) && true {
     Copied(s);
@@ -417,8 +417,8 @@ lemma setClock_ensures(s: Handoff, now: int)
   ensures (inv(s) ==> stepWarningIsSticky(s, setClock(s, now)))
   ensures (inv(s) ==> stepOperationUsesResolvedBackend(s, "setClock", setClock(s, now)))
   ensures (inv(s) ==> stepFailureRetainsFallback(s, "setClock", setClock(s, now)))
-  ensures (inv(s) ==> stepMirrorOnlyConsumePreservesDurableTarget(s, "setClock", setClock(s, now)))
   ensures (inv(s) ==> stepClearRetainsEveryCopiedAccount(s, "setClock", setClock(s, now)))
+  ensures (inv(s) ==> stepMirrorOnlyConsumePreservesDurableTarget(s, "setClock", setClock(s, now)))
 {
   if inv(s) && true {
     Copied(s);
@@ -437,8 +437,8 @@ lemma resolveCreate_ensures(s: Handoff, value: core__connectorStorage_FlowValue,
   ensures (inv(s) ==> canResolveCreate(s, value) ==> stepWarningIsSticky(s, resolveCreate(s, value, succeeded)))
   ensures (inv(s) ==> canResolveCreate(s, value) ==> stepOperationUsesResolvedBackend(s, "resolveCreate", resolveCreate(s, value, succeeded)))
   ensures (inv(s) ==> canResolveCreate(s, value) ==> stepFailureRetainsFallback(s, "resolveCreate", resolveCreate(s, value, succeeded)))
-  ensures (inv(s) ==> canResolveCreate(s, value) ==> stepMirrorOnlyConsumePreservesDurableTarget(s, "resolveCreate", resolveCreate(s, value, succeeded)))
   ensures (inv(s) ==> canResolveCreate(s, value) ==> stepClearRetainsEveryCopiedAccount(s, "resolveCreate", resolveCreate(s, value, succeeded)))
+  ensures (inv(s) ==> canResolveCreate(s, value) ==> stepMirrorOnlyConsumePreservesDurableTarget(s, "resolveCreate", resolveCreate(s, value, succeeded)))
 {
   if inv(s) && canResolveCreate(s, value) {
     Copied(s);
@@ -457,8 +457,8 @@ lemma replay_ensures(s: Handoff)
   ensures (inv(s) ==> canReplay(s) ==> stepWarningIsSticky(s, replay(s)))
   ensures (inv(s) ==> canReplay(s) ==> stepOperationUsesResolvedBackend(s, "replay", replay(s)))
   ensures (inv(s) ==> canReplay(s) ==> stepFailureRetainsFallback(s, "replay", replay(s)))
-  ensures (inv(s) ==> canReplay(s) ==> stepMirrorOnlyConsumePreservesDurableTarget(s, "replay", replay(s)))
   ensures (inv(s) ==> canReplay(s) ==> stepClearRetainsEveryCopiedAccount(s, "replay", replay(s)))
+  ensures (inv(s) ==> canReplay(s) ==> stepMirrorOnlyConsumePreservesDurableTarget(s, "replay", replay(s)))
 {
   if inv(s) && canReplay(s) {
     Copied(s);

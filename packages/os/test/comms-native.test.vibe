@@ -25,7 +25,7 @@ it.effect('The native journal keeps one winner between Undo and the provider, ne
   try Effect.try(() => assert.match(answer, /^\d+ assertions passed$/))
 }, 180_000)
 
-it.effect('The send journal binds an operation to its content, keeps its evidence across a restart and pages rows of one timestamp once (spec/os/android/messages.md, "A repeated operation ID answers its journal record and never sends again"; spec/os/android/messages.md, "A message\'s status is supported by the evidence of every part, and an interrupted send reads unknown"; spec/os/android/messages.md, "A page of conversations or messages is read only on an unlocked phone with the SMS grant, and holds 1 to 50 rows")', effect () => {
+it.effect(`The send journal binds an operation to its content, keeps its evidence across a restart and pages rows of one timestamp once (spec/os/android/messages.md, "A repeated operation ID answers its journal record and never sends again"; spec/os/android/messages.md, "A message's status is supported by the evidence of every part, and an interrupted send reads unknown"; spec/os/android/messages.md, "A page of conversations or messages is read only on an unlocked phone with the SMS grant, and holds 1 to 50 rows")`, effect () => {
   const passed = try tryPromise(() => sendJournalSuites())
   try Effect.try(() => assert.deepStrictEqual(passed, [
     "passed SmsSendJournalTest.journalBindingEvidenceDurabilityAndMapping",

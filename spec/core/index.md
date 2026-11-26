@@ -52,6 +52,8 @@ The [legacy transition inventory](./baseline/legacy-transition-map.json)
 keeps the original target paths. These are the current owners for the three
 targets that were consolidated.
 
+### Each consolidated legacy target maps to its own current spec owner
+
 - **`ChannelTopicRetirement` (`topicRooms.md`).** The per-room model checks
   `RoomOrder` with `alwaysOnlyHeadIsActive`. The service model admits only
   current-generation calls before stop (`NoLateOriginalAdmission`).
@@ -95,6 +97,19 @@ targets that were consolidated.
   errors remain adapter conformance boundaries. Composition across these
   owners remains a refinement obligation.
   [Dispatch cancellation and progress](./models.md#cancellation-follows-turn-identity-and-blocks-fallback) · [Room signal scan](./turnControllers.md#a-room-notice-follows-the-last-native-signal-callback) · [Nested events](./turnControllers.md#each-event-visits-the-live-listeners-in-order-and-finishes-nested-events-before-resuming) · [Continuation scope](./asyncContext.md#scope-restoration-and-peer-isolation-are-exact-for-every-context-value)
+
+```quint
+type LegacyTarget = ChannelTopicRetirement | EmbeddingWriteSettlement | TurnCancellation
+type ConsolidatedOwner = ChannelTopicsSpec | EmbeddingWriteSpec | TurnDispatchSpec
+
+pure def consolidatedOwner(target: LegacyTarget): ConsolidatedOwner =
+  if (target == ChannelTopicRetirement) ChannelTopicsSpec
+  else if (target == EmbeddingWriteSettlement) EmbeddingWriteSpec
+  else TurnDispatchSpec
+
+pure def lawEachLegacyTargetHasItsOwnConsolidatedOwner(a: LegacyTarget, b: LegacyTarget): bool =
+  (consolidatedOwner(a) == consolidatedOwner(b)) iff (a == b)
+```
 
 ## Story: Compose a kernel through explicit services
 

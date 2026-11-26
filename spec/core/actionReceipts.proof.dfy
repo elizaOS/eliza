@@ -57,10 +57,10 @@ lemma admitAction_ensures(s: ActionReceipts, allowed: bool, mutation: bool, acti
   ensures (inv(s) ==> canAdmitAction(s, allowed, mutation, actionName) ==> alwaysCallbackQueueAgrees(admitAction(s, allowed, mutation, actionName)))
   ensures (inv(s) ==> canAdmitAction(s, allowed, mutation, actionName) ==> alwaysPendingCallbackUnprocessed(admitAction(s, allowed, mutation, actionName)))
   ensures (inv(s) ==> canAdmitAction(s, allowed, mutation, actionName) ==> alwaysPendingSuffixIsQueued(admitAction(s, allowed, mutation, actionName)))
-  ensures (inv(s) ==> canAdmitAction(s, allowed, mutation, actionName) ==> alwaysMutationInvocationBound(admitAction(s, allowed, mutation, actionName)))
-  ensures (inv(s) ==> canAdmitAction(s, allowed, mutation, actionName) ==> alwaysDeliveryKeysUnique(admitAction(s, allowed, mutation, actionName)))
   ensures (inv(s) ==> canAdmitAction(s, allowed, mutation, actionName) ==> alwaysAppliedCallbackKeepsReceipt(admitAction(s, allowed, mutation, actionName)))
   ensures (inv(s) ==> canAdmitAction(s, allowed, mutation, actionName) ==> alwaysConfirmationGrounded(admitAction(s, allowed, mutation, actionName)))
+  ensures (inv(s) ==> canAdmitAction(s, allowed, mutation, actionName) ==> alwaysMutationInvocationBound(admitAction(s, allowed, mutation, actionName)))
+  ensures (inv(s) ==> canAdmitAction(s, allowed, mutation, actionName) ==> alwaysDeliveryKeysUnique(admitAction(s, allowed, mutation, actionName)))
 {
   if inv(s) && canAdmitAction(s, allowed, mutation, actionName) {
     ActionQueueInvariant(s);
@@ -76,10 +76,10 @@ lemma returnAction_ensures(s: ActionReceipts, resultKind: core__execution_Handle
   ensures (inv(s) ==> canReturnAction(s, resultKind, verified, canonicalText, receipts, selectedIds) ==> alwaysCallbackQueueAgrees(returnAction(s, resultKind, verified, canonicalText, receipts, selectedIds)))
   ensures (inv(s) ==> canReturnAction(s, resultKind, verified, canonicalText, receipts, selectedIds) ==> alwaysPendingCallbackUnprocessed(returnAction(s, resultKind, verified, canonicalText, receipts, selectedIds)))
   ensures (inv(s) ==> canReturnAction(s, resultKind, verified, canonicalText, receipts, selectedIds) ==> alwaysPendingSuffixIsQueued(returnAction(s, resultKind, verified, canonicalText, receipts, selectedIds)))
-  ensures (inv(s) ==> canReturnAction(s, resultKind, verified, canonicalText, receipts, selectedIds) ==> alwaysMutationInvocationBound(returnAction(s, resultKind, verified, canonicalText, receipts, selectedIds)))
-  ensures (inv(s) ==> canReturnAction(s, resultKind, verified, canonicalText, receipts, selectedIds) ==> alwaysDeliveryKeysUnique(returnAction(s, resultKind, verified, canonicalText, receipts, selectedIds)))
   ensures (inv(s) ==> canReturnAction(s, resultKind, verified, canonicalText, receipts, selectedIds) ==> alwaysAppliedCallbackKeepsReceipt(returnAction(s, resultKind, verified, canonicalText, receipts, selectedIds)))
   ensures (inv(s) ==> canReturnAction(s, resultKind, verified, canonicalText, receipts, selectedIds) ==> alwaysConfirmationGrounded(returnAction(s, resultKind, verified, canonicalText, receipts, selectedIds)))
+  ensures (inv(s) ==> canReturnAction(s, resultKind, verified, canonicalText, receipts, selectedIds) ==> alwaysMutationInvocationBound(returnAction(s, resultKind, verified, canonicalText, receipts, selectedIds)))
+  ensures (inv(s) ==> canReturnAction(s, resultKind, verified, canonicalText, receipts, selectedIds) ==> alwaysDeliveryKeysUnique(returnAction(s, resultKind, verified, canonicalText, receipts, selectedIds)))
 {
   if inv(s) && canReturnAction(s, resultKind, verified, canonicalText, receipts, selectedIds) {
     ActionQueueInvariant(s);
@@ -95,10 +95,10 @@ lemma emitCallback_ensures(s: ActionReceipts, callbackId: int, actionName: strin
   ensures (inv(s) ==> canEmitCallback(s, callbackId, actionName, text, suppliedIds) ==> alwaysCallbackQueueAgrees(emitCallback(s, callbackId, actionName, text, suppliedIds)))
   ensures (inv(s) ==> canEmitCallback(s, callbackId, actionName, text, suppliedIds) ==> alwaysPendingCallbackUnprocessed(emitCallback(s, callbackId, actionName, text, suppliedIds)))
   ensures (inv(s) ==> canEmitCallback(s, callbackId, actionName, text, suppliedIds) ==> alwaysPendingSuffixIsQueued(emitCallback(s, callbackId, actionName, text, suppliedIds)))
-  ensures (inv(s) ==> canEmitCallback(s, callbackId, actionName, text, suppliedIds) ==> alwaysMutationInvocationBound(emitCallback(s, callbackId, actionName, text, suppliedIds)))
-  ensures (inv(s) ==> canEmitCallback(s, callbackId, actionName, text, suppliedIds) ==> alwaysDeliveryKeysUnique(emitCallback(s, callbackId, actionName, text, suppliedIds)))
   ensures (inv(s) ==> canEmitCallback(s, callbackId, actionName, text, suppliedIds) ==> alwaysAppliedCallbackKeepsReceipt(emitCallback(s, callbackId, actionName, text, suppliedIds)))
   ensures (inv(s) ==> canEmitCallback(s, callbackId, actionName, text, suppliedIds) ==> alwaysConfirmationGrounded(emitCallback(s, callbackId, actionName, text, suppliedIds)))
+  ensures (inv(s) ==> canEmitCallback(s, callbackId, actionName, text, suppliedIds) ==> alwaysMutationInvocationBound(emitCallback(s, callbackId, actionName, text, suppliedIds)))
+  ensures (inv(s) ==> canEmitCallback(s, callbackId, actionName, text, suppliedIds) ==> alwaysDeliveryKeysUnique(emitCallback(s, callbackId, actionName, text, suppliedIds)))
 {
   if inv(s) && canEmitCallback(s, callbackId, actionName, text, suppliedIds) {
     ActionQueueInvariant(s);
@@ -137,10 +137,10 @@ lemma transformCallback_ensures(s: ActionReceipts, callbackId: int, visibleText:
   ensures (inv(s) ==> canTransformCallback(s, callbackId, visibleText, visibleIds) ==> alwaysCallbackQueueAgrees(transformCallback(s, callbackId, visibleText, visibleIds)))
   ensures (inv(s) ==> canTransformCallback(s, callbackId, visibleText, visibleIds) ==> alwaysPendingCallbackUnprocessed(transformCallback(s, callbackId, visibleText, visibleIds)))
   ensures (inv(s) ==> canTransformCallback(s, callbackId, visibleText, visibleIds) ==> alwaysPendingSuffixIsQueued(transformCallback(s, callbackId, visibleText, visibleIds)))
-  ensures (inv(s) ==> canTransformCallback(s, callbackId, visibleText, visibleIds) ==> alwaysMutationInvocationBound(transformCallback(s, callbackId, visibleText, visibleIds)))
-  ensures (inv(s) ==> canTransformCallback(s, callbackId, visibleText, visibleIds) ==> alwaysDeliveryKeysUnique(transformCallback(s, callbackId, visibleText, visibleIds)))
   ensures (inv(s) ==> canTransformCallback(s, callbackId, visibleText, visibleIds) ==> alwaysAppliedCallbackKeepsReceipt(transformCallback(s, callbackId, visibleText, visibleIds)))
   ensures (inv(s) ==> canTransformCallback(s, callbackId, visibleText, visibleIds) ==> alwaysConfirmationGrounded(transformCallback(s, callbackId, visibleText, visibleIds)))
+  ensures (inv(s) ==> canTransformCallback(s, callbackId, visibleText, visibleIds) ==> alwaysMutationInvocationBound(transformCallback(s, callbackId, visibleText, visibleIds)))
+  ensures (inv(s) ==> canTransformCallback(s, callbackId, visibleText, visibleIds) ==> alwaysDeliveryKeysUnique(transformCallback(s, callbackId, visibleText, visibleIds)))
 {
   if inv(s) && canTransformCallback(s, callbackId, visibleText, visibleIds) {
     var after := transformCallback(s, callbackId, visibleText, visibleIds);
@@ -176,10 +176,10 @@ lemma acknowledgeCallback_ensures(s: ActionReceipts, callbackId: int, accepted: 
   ensures (inv(s) ==> canAcknowledgeCallback(s, callbackId, accepted) ==> alwaysCallbackQueueAgrees(acknowledgeCallback(s, callbackId, accepted)))
   ensures (inv(s) ==> canAcknowledgeCallback(s, callbackId, accepted) ==> alwaysPendingCallbackUnprocessed(acknowledgeCallback(s, callbackId, accepted)))
   ensures (inv(s) ==> canAcknowledgeCallback(s, callbackId, accepted) ==> alwaysPendingSuffixIsQueued(acknowledgeCallback(s, callbackId, accepted)))
-  ensures (inv(s) ==> canAcknowledgeCallback(s, callbackId, accepted) ==> alwaysMutationInvocationBound(acknowledgeCallback(s, callbackId, accepted)))
-  ensures (inv(s) ==> canAcknowledgeCallback(s, callbackId, accepted) ==> alwaysDeliveryKeysUnique(acknowledgeCallback(s, callbackId, accepted)))
   ensures (inv(s) ==> canAcknowledgeCallback(s, callbackId, accepted) ==> alwaysAppliedCallbackKeepsReceipt(acknowledgeCallback(s, callbackId, accepted)))
   ensures (inv(s) ==> canAcknowledgeCallback(s, callbackId, accepted) ==> alwaysConfirmationGrounded(acknowledgeCallback(s, callbackId, accepted)))
+  ensures (inv(s) ==> canAcknowledgeCallback(s, callbackId, accepted) ==> alwaysMutationInvocationBound(acknowledgeCallback(s, callbackId, accepted)))
+  ensures (inv(s) ==> canAcknowledgeCallback(s, callbackId, accepted) ==> alwaysDeliveryKeysUnique(acknowledgeCallback(s, callbackId, accepted)))
 {
   if inv(s) && canAcknowledgeCallback(s, callbackId, accepted) {
     ActionQueueInvariant(s);
@@ -220,10 +220,10 @@ lemma processCallback_ensures(s: ActionReceipts)
   ensures (inv(s) ==> canProcessCallback(s) ==> alwaysCallbackQueueAgrees(processCallback(s)))
   ensures (inv(s) ==> canProcessCallback(s) ==> alwaysPendingCallbackUnprocessed(processCallback(s)))
   ensures (inv(s) ==> canProcessCallback(s) ==> alwaysPendingSuffixIsQueued(processCallback(s)))
-  ensures (inv(s) ==> canProcessCallback(s) ==> alwaysMutationInvocationBound(processCallback(s)))
-  ensures (inv(s) ==> canProcessCallback(s) ==> alwaysDeliveryKeysUnique(processCallback(s)))
   ensures (inv(s) ==> canProcessCallback(s) ==> alwaysAppliedCallbackKeepsReceipt(processCallback(s)))
   ensures (inv(s) ==> canProcessCallback(s) ==> alwaysConfirmationGrounded(processCallback(s)))
+  ensures (inv(s) ==> canProcessCallback(s) ==> alwaysMutationInvocationBound(processCallback(s)))
+  ensures (inv(s) ==> canProcessCallback(s) ==> alwaysDeliveryKeysUnique(processCallback(s)))
 {
   if inv(s) && canProcessCallback(s) {
     ActionQueueInvariant(s);
@@ -270,10 +270,10 @@ lemma acknowledgeNextCallback_ensures(s: ActionReceipts, accepted: bool)
   ensures (inv(s) ==> canAcknowledgeNextCallback(s, accepted) ==> alwaysCallbackQueueAgrees(acknowledgeNextCallback(s, accepted)))
   ensures (inv(s) ==> canAcknowledgeNextCallback(s, accepted) ==> alwaysPendingCallbackUnprocessed(acknowledgeNextCallback(s, accepted)))
   ensures (inv(s) ==> canAcknowledgeNextCallback(s, accepted) ==> alwaysPendingSuffixIsQueued(acknowledgeNextCallback(s, accepted)))
-  ensures (inv(s) ==> canAcknowledgeNextCallback(s, accepted) ==> alwaysMutationInvocationBound(acknowledgeNextCallback(s, accepted)))
-  ensures (inv(s) ==> canAcknowledgeNextCallback(s, accepted) ==> alwaysDeliveryKeysUnique(acknowledgeNextCallback(s, accepted)))
   ensures (inv(s) ==> canAcknowledgeNextCallback(s, accepted) ==> alwaysAppliedCallbackKeepsReceipt(acknowledgeNextCallback(s, accepted)))
   ensures (inv(s) ==> canAcknowledgeNextCallback(s, accepted) ==> alwaysConfirmationGrounded(acknowledgeNextCallback(s, accepted)))
+  ensures (inv(s) ==> canAcknowledgeNextCallback(s, accepted) ==> alwaysMutationInvocationBound(acknowledgeNextCallback(s, accepted)))
+  ensures (inv(s) ==> canAcknowledgeNextCallback(s, accepted) ==> alwaysDeliveryKeysUnique(acknowledgeNextCallback(s, accepted)))
 {
   if inv(s) && canAcknowledgeNextCallback(s, accepted) {
     acknowledgeCallback_ensures(s, sendingCallback(s), accepted);
@@ -341,10 +341,10 @@ lemma finishSuppressed_ensures(s: ActionReceipts)
   ensures (inv(s) ==> canFinishSuppressed(s) ==> alwaysCallbackQueueAgrees(finishSuppressed(s)))
   ensures (inv(s) ==> canFinishSuppressed(s) ==> alwaysPendingCallbackUnprocessed(finishSuppressed(s)))
   ensures (inv(s) ==> canFinishSuppressed(s) ==> alwaysPendingSuffixIsQueued(finishSuppressed(s)))
-  ensures (inv(s) ==> canFinishSuppressed(s) ==> alwaysMutationInvocationBound(finishSuppressed(s)))
-  ensures (inv(s) ==> canFinishSuppressed(s) ==> alwaysDeliveryKeysUnique(finishSuppressed(s)))
   ensures (inv(s) ==> canFinishSuppressed(s) ==> alwaysAppliedCallbackKeepsReceipt(finishSuppressed(s)))
   ensures (inv(s) ==> canFinishSuppressed(s) ==> alwaysConfirmationGrounded(finishSuppressed(s)))
+  ensures (inv(s) ==> canFinishSuppressed(s) ==> alwaysMutationInvocationBound(finishSuppressed(s)))
+  ensures (inv(s) ==> canFinishSuppressed(s) ==> alwaysDeliveryKeysUnique(finishSuppressed(s)))
 {
   if inv(s) && canFinishSuppressed(s) {
     ActionQueueInvariant(s);

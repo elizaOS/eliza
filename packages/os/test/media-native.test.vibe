@@ -31,7 +31,7 @@ it.effect('A trash removal names its exact rows, or everything only on an explic
   try checked("TrashDeleteRequestTest")
 }, 180_000)
 
-it.effect('Library identities are volume-qualified and kind-specific, and a video copy keeps its range, geometry and host placement (spec/os/android/media/catalog.md, "A query applies the catalog\'s filters and provider bounds"; spec/os/android/media/editCopy.md, "Only the active editor\'s unchanged source and a new changed edit reserve a copy")', effect () => {
+it.effect(`Library identities are volume-qualified and kind-specific, and a video copy keeps its range, geometry and host placement (spec/os/android/media/catalog.md, "A query applies the catalog's filters and provider bounds"; spec/os/android/media/editCopy.md, "Only the active editor's unchanged source and a new changed edit reserve a copy")`, effect () => {
   try checked("PermittedMediaTest")
 }, 180_000)
 
@@ -43,7 +43,7 @@ it.effect('A selected copy is exact, the registry admits a pick and evicts the o
   try checked("SelectedDocumentsTest")
 }, 180_000)
 
-it.effect('The Photos bridge reports scope per kind, maps listings to catalog filters and binds reviewed selections to exact ids and revisions (spec/os/android/media/catalog.md, "A query applies the catalog\'s filters and provider bounds"; spec/os/android/media/review.md, "A review admits only one valid selection at a time"; spec/os/android/media/trash.md, "A batch names 1 to 20 distinct items and reports each one in its order")', effect () => {
+it.effect(`The Photos bridge reports scope per kind, maps listings to catalog filters and binds reviewed selections to exact ids and revisions (spec/os/android/media/catalog.md, "A query applies the catalog's filters and provider bounds"; spec/os/android/media/review.md, "A review admits only one valid selection at a time"; spec/os/android/media/trash.md, "A batch names 1 to 20 distinct items and reports each one in its order")`, effect () => {
   try checked("PhotoLibraryAccessTest")
 }, 180_000)
 
@@ -55,7 +55,7 @@ it.effect('A recording is saved only on a committed receipt, and its owner fence
   try checked("RecordingStoreTest")
 }, 180_000)
 
-it.effect('A folder session stays bounded, evicts outside the listed chain and continues a page only from its own cursor (spec/os/android/files/documentGrants.md, "A rename rebinds the same selection to the provider\'s returned document only while access allows"; spec/os/android/files/documentGrants.md, "The registry never holds more than 32 selections, and a new pick evicts the oldest")', effect () => {
+it.effect(`A folder session stays bounded, evicts outside the listed chain and continues a page only from its own cursor (spec/os/android/files/documentGrants.md, "A rename rebinds the same selection to the provider's returned document only while access allows"; spec/os/android/files/documentGrants.md, "The registry never holds more than 32 selections, and a new pick evicts the oldest")`, effect () => {
   try checked("FolderSessionTest")
 }, 180_000)
 
@@ -63,6 +63,6 @@ it.effect('An export is verified by exact readback or answered unverified, and P
   try checked("DocumentExportTest")
 }, 180_000)
 
-it.effect('A capture is admitted only as a bounded JPEG and owned-media selections stay within their own rows (spec/os/android/camera.md, "A capture, a viewfinder control and a recording share one slot"; spec/os/android/media/catalog.md, "A query applies the catalog\'s filters and provider bounds")', effect () => {
+it.effect(`A capture is admitted only as a bounded JPEG and owned-media selections stay within their own rows (spec/os/android/camera.md, "A capture, a viewfinder control and a recording share one slot"; spec/os/android/media/catalog.md, "A query applies the catalog's filters and provider bounds")`, effect () => {
   try checked("OwnedCapturesTest")
 }, 180_000)
