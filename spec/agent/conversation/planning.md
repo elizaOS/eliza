@@ -1136,7 +1136,11 @@ to the model (the host's own lead, such as the line that introduces the
 screen context, or the clock's line, with or without its closing colon or
 period), or a mark the host puts on the history it shows the model
 (`[unanswered:` before a message whose turn got no reply, `[Unheard
-remainder:` before the part of a reply the person did not hear), in any
+remainder:` before the part of a reply the person did not hear), or
+`[System:`, the opening of a harness note the model sometimes writes as if
+the host had sent it (`[System: Empty tool results are expected…]`; this
+mark in any letter case but spelled as written, so `[System]` and
+`[ System :` are not it), in any
 letter case, with any spacing, or with a hyphen or underscore between its
 words, is the host's words, never an answer, whether the model echoes a
 note, quotes its lead or writes one of its own under the label: it reads as
