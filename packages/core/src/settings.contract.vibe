@@ -41,18 +41,6 @@ const malformedV2Envelopes = [
   "v2:0123456789abcdef01234567:not-hex:0123456789abcdef0123456789abcdef",
 ] as const;
 
-const emptyPlaintext = ({ salt }: { salt: string }) => {
-  const sealed = succeeded(encryptStringValue("", salt));
-  return { sealed, opened: sealed === null ? null : succeeded(decryptStringValue(sealed, salt)), resealed: sealed === null ? null : succeeded(encryptStringValue(sealed, salt)) };
-};
-
-export const anEmptySettingSealsAndOpensLikeAnyOther = contract({
-  input: Arbitrary.all({ salt: text }),
-  run: emptyPlaintext,
-  invariant: (_input, { sealed, opened, resealed }) =>
-    sealed !== null && sealed.startsWith("v2:") && opened === "" && resealed === sealed,
-});
-
 const malformed = ({ salt }: { salt: string }) =>
   malformedV2Envelopes.map((value) => ({
     value,

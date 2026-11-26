@@ -31,14 +31,26 @@ type LlmContext = Deployment | HttpClient.HttpClient
 
 const imfFixdate = /^(Mon|Tue|Wed|Thu|Fri|Sat|Sun), \d{2} (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) \d{4} \d{2}:\d{2}:\d{2} GMT$/
 const rfc850Date = /^(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday), \d{2}-(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)-\d{2} \d{2}:\d{2}:\d{2} GMT$/
-const asctimeDate = /^(Mon|Tue|Wed|Thu|Fri|Sat|Sun) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) ( \d|\d{2}) \d{2}:\d{2}:\d{2} \d{4}$/
+const asctimeDate = /^(Mon|Tue|Wed|Thu|Fri|Sat|Sun) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) ( \d|\d{2}) (\d{2}):(\d{2}):(\d{2}) (\d{4})$/
+const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+function asctimeUtc(value: string): number | undefined {
+  const parts = asctimeDate.exec(value)
+  if (parts === null) return undefined
+  const month = monthNames.indexOf(parts[2])
+  if (month === -1) return undefined
+  return Date.UTC(Number(parts[7]), month, Number(parts[3]), Number(parts[4]), Number(parts[5]), Number(parts[6]))
+}
 
 export function retryAfter(header: string | undefined, now = Date.now()): Millis | undefined {
   if (header === undefined) return undefined
   const value = header.trim()
   if (value.length === 0) return undefined
   if (/^\d{1,9}$/.test(value)) return Number(value) * 1000
-  const at = imfFixdate.test(value) || rfc850Date.test(value) ? Date.parse(value) : asctimeDate.test(value) ? Date.parse(`${value} GMT`) : Number.NaN
+  const asctime = asctimeUtc(value)
+  if (asctime !== undefined) return Math.max(0, asctime - now)
+  if (!imfFixdate.test(value) && !rfc850Date.test(value)) return undefined
+  const at = Date.parse(value)
   return Number.isFinite(at) ? Math.max(0, at - now) : undefined
 }
 
