@@ -17,6 +17,14 @@ out `ConnectGoogle`, `AbandonExchange` (the credential's `signInEnded`) and
 `HandSession` (the credential's `grantSession`), and answers each renderer
 call with its `Settled` receipt.
 
+The standalone Android account custodian offers email codes when its exact
+native client registration advertises email sign-in. It keeps the pending
+address and verifier in the existing native credential store and abandons it
+on cancellation or replacement. It exchanges the temporary session for the
+same account's device key, acknowledges the key before publishing sign-in,
+and ends the temporary session. A host that lacks a second-factor screen
+reports that additional verification is required and ends its local attempt.
+
 ## Story: Sign in with a code, Google or a second factor
 
 > As a person signing in on the device, I want to use an email code, an SMS
