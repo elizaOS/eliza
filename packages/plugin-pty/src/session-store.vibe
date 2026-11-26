@@ -1,0 +1,624 @@
+// spec/pty/policy.md, "Story: Enforce session capacity, confinement, and safe teardown"; spec/pty/policy.md, "Sessions respect capacity, unique ids, and safe stop semantics"; spec/pty/policy.md, "Idle timeout, terminal geometry, and output slices stay within safe bounds"
+import { boundedOutputSlice } from "../gen/pty__policy.effect.vibe"
+import type { PtySpawn } from "./types.vibe"
+
+export type PtySpawnResolver = () => Promise<PtySpawn>
+
+export interface PtyTimerHandle {
+  cancel(): void
+}
+
+export interface PtySessionStoreOptions {
+  allowedRoot?: string
+  maxSessions?: number
+  idleTimeoutMs?: number
+  exitedSessionTtlMs?: number
+}
+
+export function scheduleEffectTimer(delayMs: number, run: () => void): PtyTimerHandle {
+  const fiber = runFork(effect {
+    try sleep(Duration.millis(delayMs))
+    try sync(run)
+  })
+  return {
+    cancel: () => {
+      runFork(Fiber.interrupt(fiber))
+    },
+  }
+}
+
+export function formatBoundedTail(
+  text: string,
+  maxChars = 16_000,
+  maxLines = 250,
+): { readonly text: string; readonly truncated: boolean; readonly omittedChars: number } {
+  const allowedChars = boundedOutputSlice(text.length, maxChars)
+  let sliced = allowedChars < text.length ? text.slice(text.length - allowedChars) : text
+  const lines = sliced.split("\n")
+  if (maxLines > 0 && lines.length > maxLines) {
+    sliced = lines.slice(lines.length - maxLines).join("\n")
+  }
+  const omittedChars = text.length - sliced.length
+  if (omittedChars <= 0) {
+    return { text: sliced, truncated: false, omittedChars: 0 }
+  }
+  return {
+    text: `[Truncated ${omittedChars} earlier chars]\n${sliced}`,
+    truncated: true,
+    omittedChars,
+  }
+}
+
+module node {
+  import { randomUUID } from "node:crypto"
+  import { EventEmitter } from "node:events"
+  import { promises as fs } from "node:fs"
+  import path from "node:path"
+  import { ElizaError, logger } from "@elizaos/core"
+  import {
+    canExitPoolSession,
+    canReapPoolSession,
+    canStartPoolSession,
+    canStopPoolSession,
+    exitPoolSession,
+    initial as initialPool,
+    reapPoolSession,
+    startPoolSession,
+    stopPoolSession,
+    type PtyPool,
+  } from "../gen/pty__policy.ts"
+  import { bunTruePtySpawn, isBunRuntime } from "./bun-pty-spawn.vibe"
+  import { formatBoundedTail, scheduleEffectTimer, type PtySessionStoreOptions, type PtySpawnResolver, type PtyTimerHandle } from "./session-store.vibe"
+  import type {
+    BoundedOutputOptions,
+    BoundedOutputResult,
+    ConsoleBridge,
+    PtyDisposable,
+    PtyHandle,
+    PtySessionInfo,
+    PtySpawn,
+    PtySpawnSpec,
+    SendAndWaitOptions,
+    SendAndWaitResult,
+    SessionExitEvent,
+    SessionOutputEvent,
+  } from "./types.vibe"
+
+  const DEFAULT_COLS = 120
+  const DEFAULT_ROWS = 30
+  const DEFAULT_MAX_SESSIONS = 24
+  const DEFAULT_OUTPUT_BUFFER_CHARS = 200_000
+  const DEFAULT_EXITED_SESSION_TTL_MS = 15_000
+  const DEFAULT_IDLE_TIMEOUT_MS = 15 * 60_000
+
+  const SAFE_INHERITED_ENV_KEYS = new Set([
+    "PATH",
+    "Path",
+    "HOME",
+    "USER",
+    "LOGNAME",
+    "SHELL",
+    "TMPDIR",
+    "TMP",
+    "TEMP",
+    "LANG",
+    "LC_ALL",
+    "LC_CTYPE",
+    "COLORTERM",
+    "TERM_PROGRAM",
+    "TERM_PROGRAM_VERSION",
+    "FORCE_COLOR",
+    "NO_COLOR",
+    "BUN_INSTALL",
+    "XDG_CACHE_HOME",
+    "XDG_CONFIG_HOME",
+    "XDG_DATA_HOME",
+  ])
+
+  const ALLOWED_SPEC_ENV_KEYS = new Set([
+    "ELIZA_CODE_PROVIDER",
+    "ELIZA_CODE_CODING_ONLY",
+    "OPENAI_API_KEY",
+    "OPENAI_BASE_URL",
+    "OPENAI_SMALL_MODEL",
+    "OPENAI_MEDIUM_MODEL",
+    "OPENAI_LARGE_MODEL",
+    "CODING_TOOLS_WORKSPACE_ROOTS",
+    "SHELL_ALLOWED_DIRECTORY",
+    "CLAUDE_CODE_OAUTH_TOKEN",
+    "CODEX_HOME",
+    "TERM",
+    "COLORTERM",
+    "FORCE_COLOR",
+    "NO_COLOR",
+  ])
+
+  function buildPtyEnv(
+    specEnv: Record<string, string | undefined> | undefined,
+    cwd: string,
+  ): Record<string, string | undefined> {
+    const env: Record<string, string | undefined> = {}
+    for (const key of SAFE_INHERITED_ENV_KEYS) {
+      const value = process.env[key]
+      if (value !== undefined) env[key] = value
+    }
+    for (const [key, value] of Object.entries(specEnv ?? {})) {
+      if (ALLOWED_SPEC_ENV_KEYS.has(key)) env[key] = value
+    }
+    env.PWD = cwd
+    env.TERM = specEnv?.TERM ?? process.env.TERM ?? "xterm-256color"
+    return env
+  }
+
+  async function resolveExistingDirectory(input: string, kind: "allowed root" | "cwd"): Promise<string> {
+    const absolute = path.resolve(input)
+    try {
+      const canonical = await fs.realpath(absolute)
+      if (!(await fs.stat(canonical)).isDirectory()) {
+        throw new ElizaError(`PTY ${kind} "${absolute}" is not a directory.`, {
+          code: "PTY_CWD_NOT_DIRECTORY",
+          context: { kind, path: absolute },
+        })
+      }
+      return canonical
+    } catch (error) {
+      if (error instanceof ElizaError) throw error
+      throw new ElizaError(`Unable to resolve PTY ${kind} "${absolute}".`, {
+        code: "PTY_CWD_RESOLUTION_FAILED",
+        cause: error,
+        context: { kind, path: absolute },
+      })
+    }
+  }
+
+  interface LiveSession {
+    info: PtySessionInfo
+    pty: PtyHandle
+    disposers: PtyDisposable[]
+    outputBuffer: string
+    bufferStartOffset: number
+    totalOutputChars: number
+    reapTimer?: PtyTimerHandle
+    idleTimer?: PtyTimerHandle
+    lastActivityAt: number
+  }
+
+  export const defaultSpawnResolver: PtySpawnResolver = async () => {
+    if (isBunRuntime()) {
+      return bunTruePtySpawn
+    }
+    const mod = (await import("@lydell/node-pty")) as {
+      spawn?: PtySpawn
+      default?: { spawn?: PtySpawn }
+    }
+    const spawn = mod.spawn ?? mod.default?.spawn
+    if (typeof spawn !== "function") {
+      throw new Error("PTY support unavailable: @lydell/node-pty did not expose a spawn() function.")
+    }
+    return spawn
+  }
+
+  export class PtyConsoleBridge implements ConsoleBridge {
+    private readonly emitter = new EventEmitter()
+    private store: PtySessionStore | null = null
+
+    /** @throws {never} */
+    constructor() {
+      this.emitter.setMaxListeners(0)
+    }
+
+    /** @throws {never} */
+    attachStore(store: PtySessionStore): void {
+      this.store = store
+    }
+
+    /** @throws {never} */
+    on(event: string, listener: (...args: unknown[]) => void): void {
+      this.emitter.on(event, listener)
+    }
+
+    /** @throws {never} */
+    off(event: string, listener: (...args: unknown[]) => void): void {
+      this.emitter.off(event, listener)
+    }
+
+    /** @throws {never} */
+    writeRaw(sessionId: string, data: string): void {
+      this.store?.write(sessionId, data)
+    }
+
+    /** @throws {never} */
+    resize(sessionId: string, cols: number, rows: number): void {
+      this.store?.resize(sessionId, cols, rows)
+    }
+
+    /** @throws {never} */
+    emitOutput(sessionId: string, data: string): void {
+      const payload: SessionOutputEvent = { sessionId, data }
+      this.emitter.emit("session_output", payload)
+    }
+
+    /** @throws {never} */
+    emitExit(sessionId: string, exitCode: number | null): void {
+      const payload: SessionExitEvent = { sessionId, exitCode }
+      this.emitter.emit("session_exit", payload)
+    }
+  }
+
+  export class PtySessionStore {
+    private readonly sessions = new Map<string, LiveSession>()
+    private resolvedSpawn: PtySpawn | null = null
+    private poolState: PtyPool
+    private readonly scheduleTimer: (delayMs: number, run: () => void) => PtyTimerHandle
+
+    /** @throws {never} */
+    constructor(
+      readonly bridge: PtyConsoleBridge,
+      private readonly resolveSpawn: PtySpawnResolver = defaultSpawnResolver,
+      private readonly opts: PtySessionStoreOptions = {},
+      scheduleTimer: (delayMs: number, run: () => void) => PtyTimerHandle = scheduleEffectTimer,
+    ) {
+      this.scheduleTimer = scheduleTimer
+      this.poolState = { ...initialPool, maxSessions: this.maxSessions }
+      bridge.attachStore(this)
+    }
+
+    private get maxSessions(): number {
+      return this.opts.maxSessions ?? DEFAULT_MAX_SESSIONS
+    }
+
+    private get idleTimeoutMs(): number {
+      return this.opts.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS
+    }
+
+    private get exitedSessionTtlMs(): number {
+      return this.opts.exitedSessionTtlMs ?? DEFAULT_EXITED_SESSION_TTL_MS
+    }
+
+    get size(): number {
+      return this.sessions.size
+    }
+
+    /** @throws {never} */
+    getPoolState(): PtyPool {
+      return this.poolState
+    }
+
+    private async confineCwd(cwd: string): Promise<string> {
+      const resolved = path.resolve(cwd)
+      const root = this.opts.allowedRoot ? path.resolve(this.opts.allowedRoot) : null
+      if (!root) return resolved
+      const realCwd = await resolveExistingDirectory(resolved, "cwd")
+      const realRoot = await resolveExistingDirectory(root, "allowed root")
+      const rel = path.relative(realRoot, realCwd)
+      if (rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel))) {
+        return realCwd
+      }
+      throw new ElizaError(`PTY cwd "${resolved}" is outside the allowed root "${root}".`, {
+        code: "PTY_CWD_OUTSIDE_ALLOWED_ROOT",
+        context: { cwd: resolved, allowedRoot: root },
+      })
+    }
+
+    private assertCapacity(): void {
+      if (this.sessions.size >= this.maxSessions) {
+        throw new Error(`PTY session limit reached (${this.maxSessions}); stop a session before starting another.`)
+      }
+    }
+
+    async start(spec: PtySpawnSpec): Promise<PtySessionInfo> {
+      this.assertCapacity()
+      let cwd = await this.confineCwd(spec.cwd)
+      if (!this.resolvedSpawn) {
+        this.resolvedSpawn = await this.resolveSpawn()
+        cwd = await this.confineCwd(spec.cwd)
+      }
+      const spawn = this.resolvedSpawn
+      const env = buildPtyEnv(spec.env, cwd)
+      this.assertCapacity()
+      const sessionId = randomUUID()
+      if (!canStartPoolSession(this.poolState, sessionId, true)) {
+        throw new Error(`PTY session limit reached (${this.maxSessions}); stop a session before starting another.`)
+      }
+      const pty = spawn(spec.command, spec.args, {
+        cwd,
+        env,
+        name: env.TERM,
+        cols: spec.cols ?? DEFAULT_COLS,
+        rows: spec.rows ?? DEFAULT_ROWS,
+      })
+      this.poolState = startPoolSession(this.poolState, sessionId, true)
+      const info: PtySessionInfo = {
+        sessionId,
+        command: spec.command,
+        args: spec.args,
+        cwd,
+        label: spec.label,
+        kind: spec.kind,
+        ownerClientId: spec.ownerClientId,
+        pid: pty.pid,
+        createdAt: Date.now(),
+        exited: false,
+        exitCode: undefined,
+      }
+      const disposers: PtyDisposable[] = []
+      this.sessions.set(sessionId, {
+        info,
+        pty,
+        disposers,
+        outputBuffer: "",
+        bufferStartOffset: 0,
+        totalOutputChars: 0,
+        lastActivityAt: Date.now(),
+      })
+      this.scheduleIdleReap(sessionId)
+      const onData = pty.onData((data) => {
+        this.touch(sessionId)
+        this.appendBufferedOutput(sessionId, data)
+        this.bridge.emitOutput(sessionId, data)
+      })
+      if (onData) disposers.push(onData)
+      const onExit = pty.onExit(({ exitCode }) => {
+        this.handleExit(sessionId, exitCode ?? null)
+      })
+      if (onExit) disposers.push(onExit)
+      logger.info(`[plugin-pty] started session ${sessionId} (${spec.label ?? spec.command}) pid=${pty.pid ?? "?"} cwd=${cwd}`)
+      return { ...info }
+    }
+
+    /** @throws {never} */
+    write(sessionId: string, data: string): void {
+      const session = this.sessions.get(sessionId)
+      if (!session || session.info.exited) return
+      this.touch(sessionId)
+      try {
+        session.pty.write(data)
+      } catch (err) {
+        logger.warn(`[plugin-pty] write to session ${sessionId} failed: ${String(err)}`)
+      }
+    }
+
+    /** @throws {never} */
+    resize(sessionId: string, cols: number, rows: number): void {
+      const session = this.sessions.get(sessionId)
+      if (!session || session.info.exited) return
+      if (!Number.isFinite(cols) || !Number.isFinite(rows) || cols < 1 || rows < 1) {
+        return
+      }
+      try {
+        this.touch(sessionId)
+        session.pty.resize(Math.floor(cols), Math.floor(rows))
+      } catch (err) {
+        logger.warn(`[plugin-pty] resize of session ${sessionId} failed: ${String(err)}`)
+      }
+    }
+
+    async stop(sessionId: string): Promise<void> {
+      const session = this.sessions.get(sessionId)
+      if (!session) return
+      try {
+        if (!session.info.exited) session.pty.kill()
+      } catch (cause) {
+        throw new ElizaError(`Unable to stop PTY session ${sessionId}; the process may still be running.`, {
+          code: "PTY_SESSION_STOP_FAILED",
+          cause,
+          context: { sessionId, pid: session.info.pid },
+          severity: "ephemeral",
+        })
+      }
+      if (canStopPoolSession(this.poolState, sessionId, true)) {
+        this.poolState = stopPoolSession(this.poolState, sessionId, true)
+      }
+      session.reapTimer?.cancel()
+      session.idleTimer?.cancel()
+      for (const disposer of session.disposers) {
+        try {
+          disposer.dispose()
+        } catch {
+          void 0
+        }
+      }
+      this.sessions.delete(sessionId)
+      logger.info(`[plugin-pty] stopped session ${sessionId}`)
+    }
+
+    async stopAll(): Promise<void> {
+      const ids = [...this.sessions.keys()]
+      await Promise.all(ids.map((id) => this.stop(id)))
+    }
+
+    /** @throws {never} */
+    list(): PtySessionInfo[] {
+      return [...this.sessions.values()].map((s) => ({ ...s.info }))
+    }
+
+    /** @throws {never} */
+    has(sessionId: string): boolean {
+      return this.sessions.has(sessionId)
+    }
+
+    /** @throws {never} */
+    getBufferedOutput(sessionId: string): string | undefined {
+      return this.sessions.get(sessionId)?.outputBuffer
+    }
+
+    /** @throws {never} */
+    readBoundedOutput(sessionId: string, opts: BoundedOutputOptions = {}): BoundedOutputResult | undefined {
+      const session = this.sessions.get(sessionId)
+      if (!session) return undefined
+      const requestedCursor = opts.cursor ?? 0
+      const clampedCursor = Math.max(0, Math.min(requestedCursor, session.totalOutputChars))
+      const sliceIndex = Math.max(0, clampedCursor - session.bufferStartOffset)
+      const delta = session.outputBuffer.slice(sliceIndex)
+      const bounded = formatBoundedTail(delta, opts.maxChars ?? 16_000, opts.maxLines ?? 250)
+      return {
+        sessionId,
+        output: bounded.text,
+        cursor: session.totalOutputChars,
+        totalChars: session.totalOutputChars,
+        truncated: bounded.truncated,
+        omittedChars: bounded.omittedChars,
+        exited: session.info.exited,
+        exitCode: session.info.exitCode,
+      }
+    }
+
+    async sendAndWait(sessionId: string, input: string, opts: SendAndWaitOptions = {}): Promise<SendAndWaitResult | undefined> {
+      const session = this.sessions.get(sessionId)
+      if (!session) return undefined
+      let matcher: RegExp | undefined
+      if (opts.pattern) {
+        try {
+          matcher = new RegExp(opts.pattern, "u")
+        } catch (cause) {
+          throw new ElizaError(`Invalid PTY wait pattern "${opts.pattern}".`, {
+            code: "PTY_INVALID_PATTERN",
+            cause,
+            context: { sessionId, pattern: opts.pattern },
+          })
+        }
+      }
+      const startCursor = session.totalOutputChars
+      if (input.length > 0 && !session.info.exited) {
+        this.write(sessionId, input)
+      }
+      const waitMs = Math.max(10, Math.min(30_000, opts.waitMs ?? 1_500))
+      const idleMs = Math.max(10, Math.min(waitMs, opts.idleMs ?? 200))
+      if (session.info.exited) {
+        const current = this.readBoundedOutput(sessionId, { cursor: startCursor, maxChars: opts.maxChars, maxLines: opts.maxLines })
+        if (!current) return undefined
+        return { ...current, matched: matcher ? matcher.test(current.output) : true, timedOut: false }
+      }
+      const outcome = await new Promise<{ matched: boolean; timedOut: boolean }>((resolve) => {
+        let settled = false
+        let idleTimer: PtyTimerHandle | undefined
+        let deadlineTimer: PtyTimerHandle | undefined
+        const finish = (matched: boolean, timedOut: boolean) => {
+          if (settled) return
+          settled = true
+          idleTimer?.cancel()
+          deadlineTimer?.cancel()
+          this.bridge.off("session_output", onOutput)
+          this.bridge.off("session_exit", onExit)
+          resolve({ matched, timedOut })
+        }
+        const readDelta = () => {
+          const live = this.sessions.get(sessionId)
+          if (!live) return ""
+          const sliceIndex = Math.max(0, startCursor - live.bufferStartOffset)
+          return live.outputBuffer.slice(sliceIndex)
+        }
+        const resetIdle = () => {
+          idleTimer?.cancel()
+          idleTimer = this.scheduleTimer(idleMs, () => {
+            finish(matcher ? matcher.test(readDelta()) : true, false)
+          })
+        }
+        const onOutput = (evt: unknown) => {
+          const payload = evt as SessionOutputEvent
+          if (payload.sessionId !== sessionId) return
+          if (matcher && matcher.test(readDelta())) {
+            finish(true, false)
+            return
+          }
+          if (!matcher) resetIdle()
+        }
+        const onExit = (evt: unknown) => {
+          const payload = evt as SessionExitEvent
+          if (payload.sessionId !== sessionId) return
+          finish(matcher ? matcher.test(readDelta()) : true, false)
+        }
+        this.bridge.on("session_output", onOutput)
+        this.bridge.on("session_exit", onExit)
+        deadlineTimer = this.scheduleTimer(waitMs, () => {
+          finish(matcher ? matcher.test(readDelta()) : false, true)
+        })
+        if (!matcher && session.totalOutputChars > startCursor) {
+          resetIdle()
+        }
+      })
+      const snapshot = this.readBoundedOutput(sessionId, {
+        cursor: startCursor,
+        maxChars: opts.maxChars,
+        maxLines: opts.maxLines,
+      })
+      if (!snapshot) return undefined
+      return { ...snapshot, ...outcome }
+    }
+
+    private appendBufferedOutput(sessionId: string, data: string): void {
+      if (!data) return
+      const session = this.sessions.get(sessionId)
+      if (!session) return
+      session.totalOutputChars += data.length
+      const next = session.outputBuffer + data
+      if (next.length > DEFAULT_OUTPUT_BUFFER_CHARS) {
+        const drop = next.length - DEFAULT_OUTPUT_BUFFER_CHARS
+        session.outputBuffer = next.slice(drop)
+        session.bufferStartOffset += drop
+      } else {
+        session.outputBuffer = next
+      }
+    }
+
+    private handleExit(sessionId: string, exitCode: number | null): void {
+      const session = this.sessions.get(sessionId)
+      if (!session) return
+      session.idleTimer?.cancel()
+      session.info.exited = true
+      session.info.exitCode = exitCode
+      if (canExitPoolSession(this.poolState, sessionId)) {
+        this.poolState = exitPoolSession(this.poolState, sessionId)
+      }
+      this.bridge.emitExit(sessionId, exitCode)
+      logger.info(`[plugin-pty] session ${sessionId} exited (code=${exitCode ?? "null"})`)
+      session.reapTimer = this.scheduleTimer(this.exitedSessionTtlMs, () => {
+        const still = this.sessions.get(sessionId)
+        if (!still) return
+        for (const disposer of still.disposers) {
+          try {
+            disposer.dispose()
+          } catch {
+            void 0
+          }
+        }
+        still.idleTimer?.cancel()
+        if (canReapPoolSession(this.poolState, sessionId)) {
+          this.poolState = reapPoolSession(this.poolState, sessionId)
+        }
+        this.sessions.delete(sessionId)
+      })
+    }
+
+    private touch(sessionId: string): void {
+      const session = this.sessions.get(sessionId)
+      if (!session || session.info.exited) return
+      session.lastActivityAt = Date.now()
+      this.scheduleIdleReap(sessionId)
+    }
+
+    private scheduleIdleReap(sessionId: string): void {
+      const session = this.sessions.get(sessionId)
+      if (!session || session.info.exited) return
+      session.idleTimer?.cancel()
+      const timeout = this.idleTimeoutMs
+      if (!Number.isFinite(timeout) || timeout <= 0) return
+      session.idleTimer = this.scheduleTimer(timeout, () => {
+        const current = this.sessions.get(sessionId)
+        if (!current || current.info.exited) return
+        if (Date.now() - current.lastActivityAt < timeout) {
+          this.scheduleIdleReap(sessionId)
+          return
+        }
+        logger.warn(`[plugin-pty] idle timeout reached for session ${sessionId}; stopping orphaned PTY`)
+        void this.stop(sessionId).catch((error) => {
+          logger.warn(`[plugin-pty] idle stop of session ${sessionId} failed: ${String(error)}`)
+          this.scheduleIdleReap(sessionId)
+        })
+      })
+    }
+  }
+}
+
+import { defaultSpawnResolver, PtyConsoleBridge, PtySessionStore } from node
+export { defaultSpawnResolver, PtyConsoleBridge, PtySessionStore }

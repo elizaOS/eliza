@@ -2,6 +2,7 @@
 export * from "./contract/phone.vibe"
 export * from "./contract/device.vibe"
 export * from "./contract/digest.vibe"
+export * from "./contract/optimization.vibe"
 export * from "./client/workflow-client.vibe"
 export * from "./client/intents.vibe"
 export * from "./client/notices.vibe"

@@ -1,0 +1,318 @@
+// spec/anthropic/index.md, "Provider errors classify retryability and failover without retrying credit or auth failures"
+import {
+  isElizaError,
+  isInsufficientCreditsMessage,
+  logger,
+} from "@elizaos/core"
+import { anthropicIsRetryable, type AnthropicErrorKind } from "../gen/anthropic.effect.vibe"
+
+export error AnthropicFailed {
+  reason: string
+  status?: number
+  statusCode?: number
+  responseHeaders?: Record<string, string>
+  retryAfterMs?: number
+  responseBody?: string
+  data?: unknown
+  url?: string
+  isRetryable?: boolean
+  cause?: unknown
+  get message(): string {
+    return this.reason
+  }
+}
+
+export const ANTHROPIC_ERROR_TYPE_STATUS: Readonly<Record<string, number>> = {
+  invalid_request_error: 400,
+  authentication_error: 401,
+  billing_error: 402,
+  permission_error: 403,
+  not_found_error: 404,
+  request_too_large: 413,
+  rate_limit_error: 429,
+  api_error: 500,
+  timeout_error: 504,
+  overloaded_error: 529,
+}
+
+export interface RetryConfig {
+  readonly maxRetries: number
+  readonly initialDelayMs: number
+  readonly maxDelayMs: number
+  readonly backoffFactor: number
+}
+
+const DEFAULT_RETRY_CONFIG: RetryConfig = {
+  maxRetries: 3,
+  initialDelayMs: 500,
+  maxDelayMs: 4_000,
+  backoffFactor: 2,
+}
+
+interface ErrorShape {
+  readonly cause?: unknown
+  readonly code?: unknown
+  readonly data?: unknown
+  readonly isRetryable?: unknown
+  readonly message?: unknown
+  readonly name?: unknown
+  readonly responseBody?: unknown
+  readonly responseHeaders?: unknown
+  readonly retryAfterMs?: unknown
+  readonly status?: unknown
+  readonly statusCode?: unknown
+  readonly url?: unknown
+}
+
+function asShape(error: unknown): ErrorShape | null {
+  return typeof error === "object" && error !== null ? (error as ErrorShape) : null
+}
+
+function rawErrorMessage(error: unknown): string {
+  if (error instanceof AnthropicFailed) return error.reason
+  if (error instanceof Error) return error.message
+  const shape = asShape(error)
+  if (typeof shape?.message === "string") return shape.message
+  return String(error)
+}
+
+function readProviderErrorMessage(error: unknown): string | undefined {
+  const shape = asShape(error)
+  const data = shape?.data
+  if (data && typeof data === "object") {
+    const providerError = (data as { error?: { message?: unknown } }).error
+    if (typeof providerError?.message === "string" && providerError.message.trim()) {
+      return providerError.message.trim()
+    }
+  }
+  const body = shape?.responseBody
+  if (typeof body === "string" && body.trim()) {
+    try {
+      const parsed = JSON.parse(body) as { error?: { message?: unknown } }
+      if (typeof parsed.error?.message === "string" && parsed.error.message.trim()) {
+        return parsed.error.message.trim()
+      }
+    } catch {
+      const fallback = rawErrorMessage(error).trim()
+      return fallback.length > 0 ? fallback : undefined
+    }
+  }
+  const msg = rawErrorMessage(error).trim()
+  return msg.length > 0 ? msg : undefined
+}
+
+function getStatusCode(error: unknown): number | undefined {
+  const shape = asShape(error)
+  if (typeof shape?.statusCode === "number" && Number.isFinite(shape.statusCode)) return shape.statusCode
+  if (typeof shape?.status === "number" && Number.isFinite(shape.status)) return shape.status
+  return undefined
+}
+
+function hasTimeoutMessage(error: unknown): boolean {
+  const msg = rawErrorMessage(error).toLowerCase()
+  return msg.includes("timed out") || msg.includes("timeout")
+}
+
+function hasOverloadMessage(error: unknown): boolean {
+  const msg = rawErrorMessage(error).toLowerCase()
+  return (
+    msg.includes("overload")
+    || msg.includes("overloaded")
+    || msg.includes("capacity")
+    || msg.includes("temporarily unavailable")
+  )
+}
+
+export function classifyAnthropicErrorKind(error: unknown): AnthropicErrorKind {
+  const status = getStatusCode(error)
+  const providerMessage = readProviderErrorMessage(error) ?? ""
+  if (status === 402 || isInsufficientCreditsMessage(providerMessage)) return "CreditBalanceError"
+  if (status === 401 || status === 403) return "AuthFailureError"
+  if (status === 429) return "RateLimitError"
+  if (status === 529 || hasOverloadMessage(error)) return "OverloadedError"
+  if (status === 408 || status === 504 || hasTimeoutMessage(error)) return "TimeoutError"
+  if (status !== undefined && status >= 500) return "ServerRetryableError"
+  if (status !== undefined && status >= 400 && status < 500) return "ClientInvalidError"
+  const shape = asShape(error)
+  if (shape?.isRetryable === true) return "ServerRetryableError"
+  return "StreamDisconnectedError"
+}
+
+export function isRetryableModelError(error: unknown): boolean {
+  if (isElizaError(error)) return false
+  const shape = asShape(error)
+  if (shape?.name === "AbortError" || shape?.code === "ABORT_ERR") return false
+  return anthropicIsRetryable(classifyAnthropicErrorKind(error))
+}
+
+function parseRetryAfterHeaderMs(headers: Record<string, string>): number | undefined {
+  const rawMs = headers["retry-after-ms"]
+  if (rawMs !== undefined) {
+    const parsedMs = Number(rawMs)
+    if (Number.isFinite(parsedMs) && parsedMs >= 0) return parsedMs
+  }
+  const rawAfter = headers["retry-after"]
+  if (rawAfter === undefined) return undefined
+  const seconds = Number(rawAfter)
+  if (Number.isFinite(seconds) && seconds >= 0) return seconds * 1000
+  const dateMs = Date.parse(rawAfter)
+  return Number.isFinite(dateMs) ? Math.max(0, dateMs - Date.now()) : undefined
+}
+
+function collectResponseHeaders(headers: Headers): Record<string, string> {
+  const out: Record<string, string> = {}
+  headers.forEach((value, key) => {
+    out[key.toLowerCase()] = value
+  })
+  return out
+}
+
+export function sanitizeUrlForLogs(url: string): string {
+  try {
+    const parsed = new URL(url)
+    return `${parsed.origin}${parsed.pathname}`
+  } catch {
+    return "[invalid-url]"
+  }
+}
+
+export effect function parseAnthropicHttpError(
+  response: Response,
+  url: string,
+): AnthropicFailed!! {
+  const responseBody = tryPromise({
+    try: () => response.text(),
+    catch: () => new AnthropicFailed({ reason: "" }),
+  }) catch () => ""
+  const responseHeaders = collectResponseHeaders(response.headers)
+  const retryAfterMs = parseRetryAfterHeaderMs(responseHeaders)
+  const parsedData: unknown = responseBody
+    ? (Effect.try({
+        try: (): unknown => JSON.parse(responseBody),
+        catch: () => new AnthropicFailed({ reason: "" }),
+      }) catch () => undefined)
+    : undefined
+  const providerMessage = readProviderErrorMessage({ data: parsedData, responseBody })
+  const status = response.status
+  const safeUrl = sanitizeUrlForLogs(url)
+  const candidate = new AnthropicFailed({
+    reason: providerMessage || `Anthropic returned HTTP ${status}.`,
+    status,
+    statusCode: status,
+    responseHeaders,
+    ...(retryAfterMs !== undefined ? { retryAfterMs } : {}),
+    responseBody,
+    data: parsedData,
+    url: safeUrl,
+  })
+  return new AnthropicFailed({
+    reason: candidate.reason,
+    status,
+    statusCode: status,
+    responseHeaders,
+    ...(retryAfterMs !== undefined ? { retryAfterMs } : {}),
+    responseBody,
+    data: parsedData,
+    url: safeUrl,
+    isRetryable: anthropicIsRetryable(classifyAnthropicErrorKind(candidate)),
+  })
+}
+
+export function toAnthropicStreamError(error: unknown): AnthropicFailed | Error {
+  if (error instanceof AnthropicFailed || error instanceof Error) return error
+  const body = asShape(error) as { type?: unknown; message?: unknown } | null
+  const message =
+    typeof body?.message === "string" && body.message.trim()
+      ? body.message.trim()
+      : "Anthropic stream error"
+  const statusCode =
+    typeof body?.type === "string" ? ANTHROPIC_ERROR_TYPE_STATUS[body.type] : undefined
+  const data = { type: "error", error: body ?? error }
+  const responseBody = JSON.stringify(data)
+  return new AnthropicFailed({
+    reason: message,
+    ...(statusCode !== undefined ? { status: statusCode, statusCode } : {}),
+    data,
+    responseBody,
+    isRetryable: statusCode !== undefined && (statusCode === 429 || statusCode >= 500),
+  })
+}
+
+export function formatModelError(operationName: string, error: unknown): AnthropicFailed | Error {
+  if (isElizaError(error)) return error
+  const statusCode = getStatusCode(error)
+  const providerMessage = readProviderErrorMessage(error)
+  const shape = asShape(error)
+  let reason = "An unexpected error occurred while processing the request."
+  if (statusCode === 401) {
+    reason = "Authentication failed. Check the configured Anthropic API key."
+  } else if (statusCode === 400 && providerMessage) {
+    reason = providerMessage
+  } else if (statusCode === 402 && providerMessage) {
+    reason = providerMessage
+  } else if (statusCode === 403 && providerMessage) {
+    reason = providerMessage
+  } else if (statusCode === 404 && providerMessage) {
+    reason = providerMessage
+  } else if (statusCode === 413 && providerMessage) {
+    reason = providerMessage
+  } else if (statusCode === 429) {
+    reason = "Anthropic rate limited the request. Retry after a short delay."
+  } else if (statusCode === 504 || hasTimeoutMessage(error)) {
+    reason = "The request timed out. Retry with a shorter prompt or a smaller max token limit."
+  } else if (statusCode === 529 || hasOverloadMessage(error)) {
+    reason = "Anthropic is temporarily overloaded. Retry in a moment."
+  } else if (statusCode !== undefined && statusCode >= 500) {
+    reason = "Anthropic is temporarily unavailable. Retry in a moment."
+  } else if (providerMessage) {
+    reason = providerMessage
+  }
+
+  const formattedMessage = `[Anthropic] ${operationName} failed: ${reason}`
+  return new AnthropicFailed({
+    reason: formattedMessage,
+    ...(statusCode !== undefined ? { status: statusCode, statusCode } : {}),
+    ...(shape?.responseHeaders && typeof shape.responseHeaders === "object"
+      ? { responseHeaders: shape.responseHeaders as Record<string, string> }
+      : {}),
+    ...(typeof shape?.retryAfterMs === "number" ? { retryAfterMs: shape.retryAfterMs } : {}),
+    ...(typeof shape?.responseBody === "string" ? { responseBody: shape.responseBody } : {}),
+    ...(shape?.data !== undefined ? { data: shape.data } : {}),
+    ...(typeof shape?.url === "string" ? { url: shape.url } : {}),
+    cause: error,
+  })
+}
+
+export effect function executeWithRetry<T, E>(
+  operationName: string,
+  run: () => T!E,
+  config: RetryConfig = DEFAULT_RETRY_CONFIG,
+  signal?: AbortSignal,
+): T!(E | AnthropicFailed) {
+  let delayMs = config.initialDelayMs
+  for (let attempt = 0; attempt <= config.maxRetries; attempt += 1) {
+    if (signal?.aborted) {
+      throw new AnthropicFailed({
+        reason: signal.reason instanceof Error ? signal.reason.message : "Request aborted",
+        cause: signal.reason,
+      })
+    }
+    const outcome = try exit(run())
+    if (Exit.isSuccess(outcome)) return outcome.value
+    const failure = Cause.squash(outcome.cause)
+    if (signal?.aborted || !isRetryableModelError(failure) || attempt === config.maxRetries) {
+      return try Effect.failCause(outcome.cause)
+    }
+    logger.warn(
+      `[Anthropic] ${operationName} failed with retryable error (attempt ${attempt + 1} of ${config.maxRetries + 1} total): ${rawErrorMessage(failure)}`,
+    )
+    const shape = asShape(failure)
+    const retryWaitMs =
+      typeof shape?.retryAfterMs === "number" && shape.retryAfterMs > 0
+        ? Math.min(shape.retryAfterMs, config.maxDelayMs)
+        : delayMs
+    try sleep(`${retryWaitMs} millis`)
+    delayMs = Math.min(Math.round(delayMs * config.backoffFactor), config.maxDelayMs)
+  }
+  throw new AnthropicFailed({ reason: `[Anthropic] ${operationName} failed after exhausting retries.` })
+}

@@ -492,6 +492,24 @@ export effect function assertCanonicalModelCapabilityEnabled(core: DispatchCore,
   )
 }
 
+const ELIZA_PLUGIN_PREFIX = "@elizaos/plugin-"
+
+function canonicalElizaProvider(provider: string): string {
+  return provider.startsWith(ELIZA_PLUGIN_PREFIX) && provider.length > ELIZA_PLUGIN_PREFIX.length
+    ? provider.slice(ELIZA_PLUGIN_PREFIX.length)
+    : provider
+}
+
+function findModelByProvider(
+  models: readonly ModelHandler[],
+  provider: string,
+): ModelHandler | undefined {
+  const exact = models.find((model) => model.provider === provider)
+  if (exact) return exact
+  const canonical = canonicalElizaProvider(provider)
+  return models.find((model) => canonicalElizaProvider(model.provider) === canonical)
+}
+
 export function resolveModelRegistrations(
   core: DispatchCore,
   modelType: ModelTypeName | string,
@@ -507,7 +525,7 @@ export function resolveModelRegistrations(
     if (!models?.length) {
       continue
     }
-    const modelWithProvider = provider && models.find((model) => model.provider === provider)
+    const modelWithProvider = provider ? findModelByProvider(models, provider) : undefined
     const candidateModels = provider
       ? modelWithProvider
         ? [modelWithProvider]
@@ -1166,7 +1184,8 @@ effect function startAttempt(run: DispatchRun, model: ResolvedModelRegistration,
   const modelKey = String(model.modelKey)
   if (
     (try getModelAttemptLease())
-    && (!isTextGenerationModelKey(modelKey) || model.provider !== "openai")
+    && (!isTextGenerationModelKey(modelKey)
+      || (model.provider !== "openai" && model.provider !== "@elizaos/plugin-openai"))
   ) {
     throw new ElizaError("Model provider has no qualified attempt guard", {
       code: "MODEL_ATTEMPT_POLICY_ROUTE",

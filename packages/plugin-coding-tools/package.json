@@ -3,20 +3,26 @@
   "version": "4.0.0-alpha.0",
   "private": true,
   "type": "module",
-  "description": "Native Claude-Code-style coding tools (Read, Write, Edit, Bash, Grep, Glob, etc.) for the Eliza agent.",
+  "description": "Native Claude-Code/Pi-style coding tools (FILE, READ, WRITE, EDIT, SHELL, WORKTREE, WEB_FETCH, WEB_SEARCH) for Eliza.",
   "license": "MIT",
   "scripts": {
     "build": "vibelang -p tsconfig.build.json",
+    "test": "vitest run",
     "typecheck": "vibelang --noEmit -p ."
   },
   "dependencies": {
+    "@effect/platform-node": "4.1.1",
+    "@elizaos/core": "workspace:*",
     "effect": "4.1.1",
     "vibelang-runtime": "0.0.13"
   },
   "devDependencies": {
+    "@effect/vitest": "4.1.1",
     "@types/node": "catalog:",
     "typescript": "catalog:",
-    "vibelang": "0.0.13"
+    "vibelang": "0.0.13",
+    "vibestack": "workspace:*",
+    "vitest": "catalog:"
   },
   "exports": {
     ".": {

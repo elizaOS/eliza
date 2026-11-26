@@ -299,6 +299,55 @@ function readScope(step: PhoneStep): string {
 
 const reads = new Set(["selected_notes", "selected_reminders", "calendar_range"])
 
+export interface WorkflowRevisionSummary {
+  readonly versionId: string
+  readonly name: string
+  readonly description: string
+  readonly specDigest: string
+  readonly createdAt: string
+  readonly reason: string
+  readonly steps: readonly { readonly label: string }[]
+}
+export interface WorkflowEvaluationSample {
+  readonly executionId: string
+  readonly workflowVersionId: string
+  readonly input: Readonly<Record<string, unknown>>
+  readonly output: unknown
+  readonly status: string
+  readonly passed: boolean
+  readonly tokensUsed?: number
+  readonly modelCallsUsed?: number
+}
+export interface WorkflowEvaluationSuite {
+  readonly workflowId: string
+  readonly workflowName: string
+  readonly workflowVersionId: string
+  readonly generatedAt: string
+  readonly sampleCount: number
+  readonly samples: readonly WorkflowEvaluationSample[]
+  readonly engine: string
+  readonly summary?: { readonly passRate: number; readonly totalTokens: number; readonly totalModelCalls: number }
+}
+export interface WorkflowGeneratedDraft {
+  readonly name: string
+  readonly description: string
+  readonly source: string
+  readonly sourceDigest: string
+  readonly ok: boolean
+  readonly diagnostics: readonly string[]
+  readonly calls: readonly { readonly id: string; readonly method: string }[]
+  readonly compilerRevision: string
+}
+export interface WorkflowGeneratedSource {
+  readonly workflowId: string
+  readonly versionId: string
+  readonly source: string
+  readonly sourceDigest: string
+  readonly compiledDigest: string
+  readonly compilerRevision: string
+  readonly calls: readonly { readonly id: string; readonly method: string }[]
+  readonly reviewed: boolean
+}
 export interface WorkflowClient {
   status(): WorkflowStatus!WorkflowClientError
   phoneCatalog(): PhoneWorkflowCatalog!WorkflowClientError
@@ -325,6 +374,13 @@ export interface WorkflowClient {
   cancel(id: string, workflowId: string): WorkflowRun!WorkflowClientError
   receipt(id: string, workflowId: string): WorkflowRun!WorkflowClientError
   phoneReview(run: Pick<WorkflowRun, "id" | "workflowId" | "versionId">): WorkflowPhoneReview!WorkflowClientError
+  revisions(id: string): { readonly currentVersionId: string; readonly revisions: readonly WorkflowRevisionSummary[] }!WorkflowClientError
+  restoreRevision(id: string, versionId: string): RemoteWorkflow!WorkflowClientError
+  evaluationSamples(id: string): WorkflowEvaluationSuite!WorkflowClientError
+  signal(runId: string, workflowId: string, signalName: string, payload?: unknown): WorkflowRun!WorkflowClientError
+  generateCode(prompt: string, workflowId?: string): WorkflowGeneratedDraft!WorkflowClientError
+  generatedSource(id: string): WorkflowGeneratedSource!WorkflowClientError
+  reviewGenerated(id: string, expectedVersionId: string, sourceDigest: string): { readonly workflowId: string; readonly versionId: string; readonly sourceDigest: string; readonly reviewed: boolean }!WorkflowClientError
 }
 
 export interface WorkflowClientOptions {
@@ -345,6 +401,101 @@ effect function lifecycleResult(value: unknown, id: string, version: string, mut
   const r = try obj(p.receipt)
   if (r.workflowId !== id || r.previousVersionId !== version || r.mutationId !== mutationId || r.operation !== operation) return try invalid("Lifecycle receipt mismatch")
   return { workflowId: id, previousVersionId: version, mutationId, operation, versionId: try str(r.versionId), appliedAt: try str(r.appliedAt) }
+}
+
+function workflowExtensions(request: WorkflowRequest, path: (...segments: readonly string[]) => string) {
+  effect function revisions(id: string) {
+    const data = try obj(try request(path("workflows", id, "revisions"), undefined))
+    if (!Array.isArray(data.revisions)) return try invalid("Invalid revisions list")
+    const entries: WorkflowRevisionSummary[] = []
+    for (const raw of data.revisions) {
+      const r = try obj(raw)
+      const stepsRaw = Array.isArray(r.steps) ? r.steps : []
+      const steps: { label: string }[] = []
+      for (const s of stepsRaw) steps.push({ label: try str((try obj(s)).label) })
+      entries.push({
+        versionId: try str(r.versionId), name: try str(r.name), description: typeof r.description === "string" ? r.description : "",
+        specDigest: try str(r.specDigest), createdAt: try str(r.createdAt), reason: typeof r.reason === "string" ? r.reason : "", steps,
+      })
+    }
+    return { currentVersionId: try str(data.currentVersionId), revisions: entries }
+  }
+
+  effect function restoreRevision(id: string, versionId: string) {
+    const workflow = try parseRemoteWorkflow(try request(path("workflows", id, "revisions", versionId, "restore"), {}))
+    if (workflow.id !== id) return try invalid("Workflow identity changed")
+    return workflow
+  }
+
+  effect function evaluationSamples(id: string) {
+    const data = try obj(try request(path("workflows", id, "evaluation-samples"), undefined))
+    if (data.workflowId !== id || !Array.isArray(data.samples) || typeof data.sampleCount !== "number") return try invalid("Invalid evaluation suite")
+    const samples: WorkflowEvaluationSample[] = []
+    for (const raw of data.samples) {
+      const s = try obj(raw)
+      if (typeof s.passed !== "boolean") return try invalid("Invalid evaluation sample")
+      samples.push({
+        executionId: try str(s.executionId), workflowVersionId: try str(s.workflowVersionId),
+        input: typeof s.input === "object" && s.input !== null && !Array.isArray(s.input) ? s.input as Bag : {},
+        output: s.output ?? null, status: try str(s.status), passed: s.passed,
+        ...(typeof s.tokensUsed === "number" ? { tokensUsed: s.tokensUsed } : {}),
+        ...(typeof s.modelCallsUsed === "number" ? { modelCallsUsed: s.modelCallsUsed } : {}),
+      })
+    }
+    const summaryRaw = typeof data.summary === "object" && data.summary !== null && !Array.isArray(data.summary) ? data.summary as Bag : undefined
+    const summary = summaryRaw !== undefined && typeof summaryRaw.passRate === "number" && typeof summaryRaw.totalTokens === "number" && typeof summaryRaw.totalModelCalls === "number"
+      ? { passRate: summaryRaw.passRate, totalTokens: summaryRaw.totalTokens, totalModelCalls: summaryRaw.totalModelCalls } : undefined
+    return {
+      workflowId: id, workflowName: try str(data.workflowName), workflowVersionId: try str(data.workflowVersionId),
+      generatedAt: try str(data.generatedAt), sampleCount: data.sampleCount, samples, engine: try str(data.engine),
+      ...(summary === undefined ? {} : { summary }),
+    }
+  }
+
+  effect function signal(runId: string, workflowId: string, signalName: string, payload?: unknown) {
+    const data = try obj(try request(path("executions", runId, "signals", signalName), payload === undefined ? {} : { payload }))
+    const found = try parseWorkflowRun(data.execution)
+    if (found.id !== runId || found.workflowId !== workflowId) return try invalid("Signal execution identity mismatch")
+    return found
+  }
+
+  effect function generateCode(prompt: string, workflowId?: string) {
+    const data = try obj(try request(path("workflows", "generate"), workflowId === undefined ? { prompt } : { prompt, workflowId }))
+    if (typeof data.ok !== "boolean" || !Array.isArray(data.diagnostics) || !Array.isArray(data.calls)) return try invalid("Invalid generated draft")
+    const calls: { id: string; method: string }[] = []
+    for (const raw of data.calls) {
+      const c = try obj(raw)
+      calls.push({ id: try str(c.id), method: try str(c.method) })
+    }
+    return {
+      name: try str(data.name), description: typeof data.description === "string" ? data.description : "", source: try str(data.source),
+      sourceDigest: try str(data.sourceDigest), ok: data.ok, diagnostics: data.diagnostics.map(String), calls, compilerRevision: try str(data.compilerRevision),
+    }
+  }
+
+  effect function generatedSource(id: string) {
+    const data = try obj(try request(path("workflows", id, "source"), undefined))
+    if (data.workflowId !== id || typeof data.reviewed !== "boolean" || !Array.isArray(data.calls)) return try invalid("Invalid generated source")
+    const calls: { id: string; method: string }[] = []
+    for (const raw of data.calls) {
+      const c = try obj(raw)
+      calls.push({ id: try str(c.id), method: try str(c.method) })
+    }
+    return {
+      workflowId: id, versionId: try str(data.versionId), source: try str(data.source), sourceDigest: try str(data.sourceDigest),
+      compiledDigest: try str(data.compiledDigest), compilerRevision: try str(data.compilerRevision), calls, reviewed: data.reviewed,
+    }
+  }
+
+  effect function reviewGenerated(id: string, expectedVersionId: string, sourceDigest: string) {
+    const data = try obj(try request(path("workflows", id, "review"), { expectedVersionId, sourceDigest }))
+    if (data.workflowId !== id || data.versionId !== expectedVersionId || data.sourceDigest !== sourceDigest || data.reviewed !== true) {
+      return try invalid("Generated review confirmation mismatch")
+    }
+    return { workflowId: id, versionId: expectedVersionId, sourceDigest, reviewed: true }
+  }
+
+  return { revisions, restoreRevision, evaluationSamples, signal, generateCode, generatedSource, reviewGenerated }
 }
 
 export function workflowClient(request: WorkflowRequest, options: WorkflowClientOptions = {}): WorkflowClient {
@@ -619,5 +770,6 @@ export function workflowClient(request: WorkflowRequest, options: WorkflowClient
   return {
     status, phoneCatalog, generatePhone, verifyPhoneValidation, validatePhone, savePhone, phoneSaveReceipt, approvals, decideApproval, changeMetadata, reconcileMetadata,
     removedWorkflows, lifecycle, reconcileLifecycle, list, detail, pause, activate, run, resubmit, reconcile, executions, cancel, receipt, phoneReview,
+    ...workflowExtensions(request, path),
   }
 }

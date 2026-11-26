@@ -7,8 +7,8 @@ lemma WorkflowKeyInjective(left: string, right: string)
 
 lemma submitWorkflow_ensures(w: Workflow, by_: string, form: RequestForm, submission: string, expected: int, inputKey: string)
   ensures (inv(w) ==> alwaysDefinitionVersion(submitWorkflow(w, by_, form, submission, expected, inputKey)))
-  ensures (inv(w) ==> alwaysRunReplyIsExplicit(submitWorkflow(w, by_, form, submission, expected, inputKey)))
   ensures (inv(w) ==> alwaysSubmittedRunHasIdentity(submitWorkflow(w, by_, form, submission, expected, inputKey)))
+  ensures (inv(w) ==> alwaysRunReplyIsExplicit(submitWorkflow(w, by_, form, submission, expected, inputKey)))
   ensures (inv(w) ==> alwaysTypedActiveUsesReviewedSchedule(submitWorkflow(w, by_, form, submission, expected, inputKey)))
   ensures (inv(w) ==> stepRetainsSubmittedRuns(w, submitWorkflow(w, by_, form, submission, expected, inputKey)))
 {

@@ -1,0 +1,300 @@
+// spec/computerUse/index.md, "A command is scoped to one session generation, surface and authorized operation"
+import { commandExists, fetchJsonOverHttp, getEnvValue, runNativeCommand } from "./platform-native.ts"
+import type { FileActionResult, ProcessInfo, ScreenRegion, TerminalActionResult, WindowInfo } from "./types.vibe"
+
+export type ScrollDirection = "up" | "down" | "left" | "right"
+
+export type SandboxOp =
+  | { readonly kind: "screenshot"; readonly region?: ScreenRegion }
+  | { readonly kind: "mouse_move"; readonly x: number; readonly y: number }
+  | { readonly kind: "mouse_click"; readonly x: number; readonly y: number }
+  | { readonly kind: "mouse_double_click"; readonly x: number; readonly y: number }
+  | { readonly kind: "mouse_right_click"; readonly x: number; readonly y: number }
+  | { readonly kind: "mouse_drag"; readonly x1: number; readonly y1: number; readonly x2: number; readonly y2: number }
+  | { readonly kind: "mouse_scroll"; readonly x: number; readonly y: number; readonly direction: ScrollDirection; readonly amount: number }
+  | { readonly kind: "keyboard_type"; readonly text: string }
+  | { readonly kind: "keyboard_key_press"; readonly key: string }
+  | { readonly kind: "keyboard_hotkey"; readonly combo: string }
+  | { readonly kind: "list_windows" }
+  | { readonly kind: "focus_window"; readonly window_id: string }
+  | { readonly kind: "list_processes" }
+  | { readonly kind: "run_command"; readonly command: string; readonly cwd?: string; readonly timeout_seconds?: number }
+  | { readonly kind: "read_file"; readonly path: string }
+  | { readonly kind: "write_file"; readonly path: string; readonly content: string }
+
+export interface SandboxBackend {
+  readonly name: string
+  start(): Promise<void>
+  stop(): Promise<void>
+  invoke<TResult>(op: SandboxOp): Promise<TResult>
+}
+
+export interface GuestRpcRequest {
+  readonly method: string
+  readonly params: Record<string, unknown>
+}
+
+export interface GuestRpcResponse<TResult = unknown> {
+  readonly ok: boolean
+  readonly result?: TResult
+  readonly error?: string
+}
+
+export interface RemoteGuestTransport {
+  send<TResult>(request: GuestRpcRequest): Promise<GuestRpcResponse<TResult>>
+}
+
+export error SandboxBackendUnavailableError { backend: string; reason: string }
+export error SandboxInvocationError { op: string; reason: string }
+
+export function sandboxOpToRpc(op: SandboxOp): GuestRpcRequest {
+  const { kind, ...params } = op
+  return { method: kind, params }
+}
+
+export function resolveGuestRpcUrl(rawUrl?: string, defaultPort = 8765): string {
+  const value = (rawUrl ?? getEnvValue("COMPUTERUSE_SANDBOX_RPC_URL") ?? "").trim()
+  if (value.startsWith("http://") || value.startsWith("https://")) {
+    return value
+  }
+  const portRaw = getEnvValue("COMPUTERUSE_SANDBOX_RPC_PORT")
+  const port = portRaw && /^\d+$/.test(portRaw) ? Number(portRaw) : defaultPort
+  const safePort = port >= 1 && port <= 65535 ? port : defaultPort
+  return `http://127.0.0.1:${safePort}/rpc`
+}
+
+export class HttpGuestTransport implements RemoteGuestTransport {
+  readonly url: string
+  private readonly authToken?: string
+
+  constructor(url?: string, authToken?: string) {
+    this.url = resolveGuestRpcUrl(url)
+    this.authToken = authToken
+  }
+
+  async send<TResult>(request: GuestRpcRequest): Promise<GuestRpcResponse<TResult>> {
+    const headers: Record<string, string> = { "content-type": "application/json" }
+    if (this.authToken) headers.authorization = `Bearer ${this.authToken}`
+    const response = await fetchJsonOverHttp(this.url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(request),
+    })
+    if (response.status >= 200 && response.status < 300 && response.body && typeof response.body === "object") {
+      return response.body as GuestRpcResponse<TResult>
+    }
+    return { ok: false, error: `Guest RPC HTTP ${response.status}` }
+  }
+}
+
+export interface DockerBackendOptions {
+  readonly image?: string
+  readonly containerName?: string
+  readonly rpcUrl?: string
+  readonly transport?: RemoteGuestTransport
+}
+
+export class DockerBackend implements SandboxBackend {
+  readonly name = "docker"
+  private readonly image: string
+  private readonly containerName: string
+  private readonly transport: RemoteGuestTransport
+  private started = false
+
+  constructor(options: DockerBackendOptions = {}) {
+    this.image = options.image ?? "elizaos/computeruse-sandbox:latest"
+    this.containerName = options.containerName ?? "eliza-computeruse-sandbox"
+    this.transport = options.transport ?? new HttpGuestTransport(options.rpcUrl)
+  }
+
+  async start(): Promise<void> {
+    if (this.started) return
+    if (!commandExists("docker")) {
+      throw new SandboxBackendUnavailableError({ backend: "docker", reason: "docker binary is not available on PATH" })
+    }
+    const res = await runNativeCommand("docker", ["run", "-d", "--rm", "--name", this.containerName, this.image], { timeoutMs: 30_000 })
+    if (res.exitCode !== 0 && !res.stderr.includes("already in use")) {
+      throw new SandboxBackendUnavailableError({ backend: "docker", reason: res.stderr || "failed to start docker sandbox" })
+    }
+    this.started = true
+  }
+
+  async stop(): Promise<void> {
+    if (!this.started) return
+    this.started = false
+    if (commandExists("docker")) {
+      await runNativeCommand("docker", ["rm", "-f", this.containerName], { timeoutMs: 10_000 })
+    }
+  }
+
+  async invoke<TResult>(op: SandboxOp): Promise<TResult> {
+    const rpc = sandboxOpToRpc(op)
+    const response = await this.transport.send<TResult>(rpc)
+    if (!response.ok) {
+      throw new SandboxInvocationError({ op: op.kind, reason: response.error ?? "sandbox invocation failed" })
+    }
+    return response.result as TResult
+  }
+}
+
+abstract class ManagedRpcSandboxBackend implements SandboxBackend {
+  abstract readonly name: string
+  protected readonly transport: RemoteGuestTransport
+  private running = false
+
+  constructor(options: { readonly rpcUrl?: string; readonly transport?: RemoteGuestTransport } = {}) {
+    this.transport = options.transport ?? new HttpGuestTransport(options.rpcUrl)
+  }
+
+  async start(): Promise<void> {
+    this.running = true
+  }
+
+  async stop(): Promise<void> {
+    this.running = false
+  }
+
+  async invoke<TResult>(op: SandboxOp): Promise<TResult> {
+    if (!this.running) {
+      throw new SandboxBackendUnavailableError({ backend: this.name, reason: `${this.name} sandbox is not started` })
+    }
+    const response = await this.transport.send<TResult>(sandboxOpToRpc(op))
+    if (!response.ok) {
+      throw new SandboxInvocationError({ op: op.kind, reason: response.error ?? `${this.name} invocation failed` })
+    }
+    return response.result as TResult
+  }
+}
+
+export interface QemuBackendOptions {
+  readonly rpcUrl?: string
+  readonly transport?: RemoteGuestTransport
+}
+
+export class QEMUBackend extends ManagedRpcSandboxBackend {
+  readonly name = "qemu"
+
+  constructor(options: QemuBackendOptions = {}) {
+    super(options)
+  }
+}
+
+export interface WsbBackendOptions {
+  readonly rpcUrl?: string
+  readonly transport?: RemoteGuestTransport
+}
+
+export function isWindowsSandboxAvailable(): boolean {
+  return commandExists("WindowsSandbox.exe")
+}
+
+export class WSBBackend extends ManagedRpcSandboxBackend {
+  readonly name = "wsb"
+
+  constructor(options: WsbBackendOptions = {}) {
+    super(options)
+  }
+}
+
+export class SandboxDriver {
+  readonly name: string
+  private readonly backend: SandboxBackend
+
+  constructor(backend: SandboxBackend) {
+    this.backend = backend
+    this.name = `sandbox:${backend.name}`
+  }
+
+  async start(): Promise<void> {
+    await this.backend.start()
+  }
+
+  async dispose(): Promise<void> {
+    await this.backend.stop()
+  }
+
+  async mouseMove(x: number, y: number): Promise<void> {
+    await this.backend.invoke({ kind: "mouse_move", x, y })
+  }
+
+  async mouseClick(x: number, y: number): Promise<void> {
+    await this.backend.invoke({ kind: "mouse_click", x, y })
+  }
+
+  async mouseDoubleClick(x: number, y: number): Promise<void> {
+    await this.backend.invoke({ kind: "mouse_double_click", x, y })
+  }
+
+  async mouseRightClick(x: number, y: number): Promise<void> {
+    await this.backend.invoke({ kind: "mouse_right_click", x, y })
+  }
+
+  async mouseDrag(x1: number, y1: number, x2: number, y2: number): Promise<void> {
+    await this.backend.invoke({ kind: "mouse_drag", x1, y1, x2, y2 })
+  }
+
+  async mouseScroll(x: number, y: number, direction: ScrollDirection, amount: number): Promise<void> {
+    await this.backend.invoke({ kind: "mouse_scroll", x, y, direction, amount })
+  }
+
+  async keyboardType(text: string): Promise<void> {
+    await this.backend.invoke({ kind: "keyboard_type", text })
+  }
+
+  async keyboardKeyPress(key: string): Promise<void> {
+    await this.backend.invoke({ kind: "keyboard_key_press", key })
+  }
+
+  async keyboardHotkey(combo: string): Promise<void> {
+    await this.backend.invoke({ kind: "keyboard_hotkey", combo })
+  }
+
+  async screenshot(region?: ScreenRegion): Promise<string> {
+    return this.backend.invoke<string>({ kind: "screenshot", ...(region ? { region } : {}) })
+  }
+
+  async listWindows(): Promise<WindowInfo[]> {
+    return this.backend.invoke<WindowInfo[]>({ kind: "list_windows" })
+  }
+
+  async focusWindow(windowId: string): Promise<void> {
+    await this.backend.invoke({ kind: "focus_window", window_id: windowId })
+  }
+
+  async listProcesses(): Promise<ProcessInfo[]> {
+    return this.backend.invoke<ProcessInfo[]>({ kind: "list_processes" })
+  }
+
+  async runCommand(command: string, options: { readonly cwd?: string; readonly timeoutSeconds?: number } = {}): Promise<TerminalActionResult> {
+    return this.backend.invoke<TerminalActionResult>({
+      kind: "run_command",
+      command,
+      ...(options.cwd ? { cwd: options.cwd } : {}),
+      ...(options.timeoutSeconds !== undefined ? { timeout_seconds: options.timeoutSeconds } : {}),
+    })
+  }
+
+  async readFile(targetPath: string): Promise<FileActionResult> {
+    return this.backend.invoke<FileActionResult>({ kind: "read_file", path: targetPath })
+  }
+
+  async writeFile(targetPath: string, content: string): Promise<FileActionResult> {
+    return this.backend.invoke<FileActionResult>({ kind: "write_file", path: targetPath, content })
+  }
+}
+
+export type SandboxMode = "host" | "docker" | "qemu" | "wsb"
+
+export function resolveModeFromEnv(): SandboxMode {
+  const raw = (getEnvValue("COMPUTERUSE_SANDBOX_MODE") ?? "host").trim().toLowerCase()
+  if (raw === "docker" || raw === "qemu" || raw === "wsb") return raw
+  return "host"
+}
+
+export function createSandboxDriver(options: { readonly mode?: SandboxMode; readonly backend?: SandboxBackend; readonly rpcUrl?: string; readonly transport?: RemoteGuestTransport } = {}): SandboxDriver {
+  if (options.backend) return new SandboxDriver(options.backend)
+  const mode = options.mode ?? resolveModeFromEnv()
+  if (mode === "qemu") return new SandboxDriver(new QEMUBackend({ rpcUrl: options.rpcUrl, transport: options.transport }))
+  if (mode === "wsb") return new SandboxDriver(new WSBBackend({ rpcUrl: options.rpcUrl, transport: options.transport }))
+  return new SandboxDriver(new DockerBackend({ rpcUrl: options.rpcUrl, transport: options.transport }))
+}

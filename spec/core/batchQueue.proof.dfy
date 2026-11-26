@@ -112,9 +112,9 @@ lemma enqueueBatchItem_ensures(s: BatchQueue, payload: string, priority: core__p
   ensures (inv(s) ==> canEnqueueBatchItem(s, payload, priority) ==> alwaysFallbackProcessorKeepsItsRules(enqueueBatchItem(s, payload, priority)))
   ensures (inv(s) ==> canEnqueueBatchItem(s, payload, priority) ==> alwaysRemovedTicketsLeftTheQueue(enqueueBatchItem(s, payload, priority)))
   ensures (inv(s) ==> canEnqueueBatchItem(s, payload, priority) ==> alwaysBatchedCallItemsAreUnsubmitted(enqueueBatchItem(s, payload, priority)))
+  ensures (inv(s) ==> canEnqueueBatchItem(s, payload, priority) ==> alwaysDisposedQueueRejectsEnqueue(enqueueBatchItem(s, payload, priority)))
   ensures (inv(s) ==> canEnqueueBatchItem(s, payload, priority) ==> alwaysCompletedDisposalClearsQueue(enqueueBatchItem(s, payload, priority)))
   ensures (inv(s) ==> canEnqueueBatchItem(s, payload, priority) ==> alwaysDisposalKeepsTheQueueDisposed(enqueueBatchItem(s, payload, priority)))
-  ensures (inv(s) ==> canEnqueueBatchItem(s, payload, priority) ==> alwaysDisposedQueueRejectsEnqueue(enqueueBatchItem(s, payload, priority)))
 {
   if inv(s) && canEnqueueBatchItem(s, payload, priority) {
     core__priorityQueue_enqueue_ensures(s.queue, payload, priority);
@@ -131,9 +131,9 @@ lemma finishCapabilityProbe_ensures(s: BatchQueue, ok: bool, useBatch: bool)
   ensures (inv(s) ==> canFinishCapabilityProbe(s, ok, useBatch) ==> alwaysFallbackProcessorKeepsItsRules(finishCapabilityProbe(s, ok, useBatch)))
   ensures (inv(s) ==> canFinishCapabilityProbe(s, ok, useBatch) ==> alwaysRemovedTicketsLeftTheQueue(finishCapabilityProbe(s, ok, useBatch)))
   ensures (inv(s) ==> canFinishCapabilityProbe(s, ok, useBatch) ==> alwaysBatchedCallItemsAreUnsubmitted(finishCapabilityProbe(s, ok, useBatch)))
+  ensures (inv(s) ==> canFinishCapabilityProbe(s, ok, useBatch) ==> alwaysDisposedQueueRejectsEnqueue(finishCapabilityProbe(s, ok, useBatch)))
   ensures (inv(s) ==> canFinishCapabilityProbe(s, ok, useBatch) ==> alwaysCompletedDisposalClearsQueue(finishCapabilityProbe(s, ok, useBatch)))
   ensures (inv(s) ==> canFinishCapabilityProbe(s, ok, useBatch) ==> alwaysDisposalKeepsTheQueueDisposed(finishCapabilityProbe(s, ok, useBatch)))
-  ensures (inv(s) ==> canFinishCapabilityProbe(s, ok, useBatch) ==> alwaysDisposedQueueRejectsEnqueue(finishCapabilityProbe(s, ok, useBatch)))
 {
   if inv(s) && canFinishCapabilityProbe(s, ok, useBatch) {
     if ok {
@@ -178,9 +178,9 @@ lemma collectFallback_ensures(s: BatchQueue, ticket: int)
   ensures (inv(s) ==> canCollectFallback(s, ticket) ==> alwaysFallbackProcessorKeepsItsRules(collectFallback(s, ticket)))
   ensures (inv(s) ==> canCollectFallback(s, ticket) ==> alwaysRemovedTicketsLeftTheQueue(collectFallback(s, ticket)))
   ensures (inv(s) ==> canCollectFallback(s, ticket) ==> alwaysBatchedCallItemsAreUnsubmitted(collectFallback(s, ticket)))
+  ensures (inv(s) ==> canCollectFallback(s, ticket) ==> alwaysDisposedQueueRejectsEnqueue(collectFallback(s, ticket)))
   ensures (inv(s) ==> canCollectFallback(s, ticket) ==> alwaysCompletedDisposalClearsQueue(collectFallback(s, ticket)))
   ensures (inv(s) ==> canCollectFallback(s, ticket) ==> alwaysDisposalKeepsTheQueueDisposed(collectFallback(s, ticket)))
-  ensures (inv(s) ==> canCollectFallback(s, ticket) ==> alwaysDisposedQueueRejectsEnqueue(collectFallback(s, ticket)))
 {
   if inv(s) && canCollectFallback(s, ticket) {
     var after := collectFallback(s, ticket);
@@ -206,9 +206,9 @@ lemma settleBatchedCall_ensures(s: BatchQueue, successful: seq<int>, retryable: 
   ensures (inv(s) ==> canSettleBatchedCall(s, successful, retryable, threw) ==> alwaysFallbackProcessorKeepsItsRules(settleBatchedCall(s, successful, retryable, threw)))
   ensures (inv(s) ==> canSettleBatchedCall(s, successful, retryable, threw) ==> alwaysRemovedTicketsLeftTheQueue(settleBatchedCall(s, successful, retryable, threw)))
   ensures (inv(s) ==> canSettleBatchedCall(s, successful, retryable, threw) ==> alwaysBatchedCallItemsAreUnsubmitted(settleBatchedCall(s, successful, retryable, threw)))
+  ensures (inv(s) ==> canSettleBatchedCall(s, successful, retryable, threw) ==> alwaysDisposedQueueRejectsEnqueue(settleBatchedCall(s, successful, retryable, threw)))
   ensures (inv(s) ==> canSettleBatchedCall(s, successful, retryable, threw) ==> alwaysCompletedDisposalClearsQueue(settleBatchedCall(s, successful, retryable, threw)))
   ensures (inv(s) ==> canSettleBatchedCall(s, successful, retryable, threw) ==> alwaysDisposalKeepsTheQueueDisposed(settleBatchedCall(s, successful, retryable, threw)))
-  ensures (inv(s) ==> canSettleBatchedCall(s, successful, retryable, threw) ==> alwaysDisposedQueueRejectsEnqueue(settleBatchedCall(s, successful, retryable, threw)))
 {
   if inv(s) && canSettleBatchedCall(s, successful, retryable, threw) {
     BatchSameTickets(s, settleBatchedCall(s, successful, retryable, threw));
@@ -225,9 +225,9 @@ lemma startFallbackAttempt_ensures(s: BatchQueue, ticket: int)
   ensures (inv(s) ==> canStartFallbackAttempt(s, ticket) ==> alwaysFallbackProcessorKeepsItsRules(startFallbackAttempt(s, ticket)))
   ensures (inv(s) ==> canStartFallbackAttempt(s, ticket) ==> alwaysRemovedTicketsLeftTheQueue(startFallbackAttempt(s, ticket)))
   ensures (inv(s) ==> canStartFallbackAttempt(s, ticket) ==> alwaysBatchedCallItemsAreUnsubmitted(startFallbackAttempt(s, ticket)))
+  ensures (inv(s) ==> canStartFallbackAttempt(s, ticket) ==> alwaysDisposedQueueRejectsEnqueue(startFallbackAttempt(s, ticket)))
   ensures (inv(s) ==> canStartFallbackAttempt(s, ticket) ==> alwaysCompletedDisposalClearsQueue(startFallbackAttempt(s, ticket)))
   ensures (inv(s) ==> canStartFallbackAttempt(s, ticket) ==> alwaysDisposalKeepsTheQueueDisposed(startFallbackAttempt(s, ticket)))
-  ensures (inv(s) ==> canStartFallbackAttempt(s, ticket) ==> alwaysDisposedQueueRejectsEnqueue(startFallbackAttempt(s, ticket)))
 {
   if inv(s) && canStartFallbackAttempt(s, ticket) {
     core__batchProcessor_startItem_ensures(s.processor, ticket);
@@ -244,9 +244,9 @@ lemma finishFallbackAttempt_ensures(s: BatchQueue, ticket: int, ok: bool, retry:
   ensures (inv(s) ==> canFinishFallbackAttempt(s, ticket, ok, retry) ==> alwaysFallbackProcessorKeepsItsRules(finishFallbackAttempt(s, ticket, ok, retry)))
   ensures (inv(s) ==> canFinishFallbackAttempt(s, ticket, ok, retry) ==> alwaysRemovedTicketsLeftTheQueue(finishFallbackAttempt(s, ticket, ok, retry)))
   ensures (inv(s) ==> canFinishFallbackAttempt(s, ticket, ok, retry) ==> alwaysBatchedCallItemsAreUnsubmitted(finishFallbackAttempt(s, ticket, ok, retry)))
+  ensures (inv(s) ==> canFinishFallbackAttempt(s, ticket, ok, retry) ==> alwaysDisposedQueueRejectsEnqueue(finishFallbackAttempt(s, ticket, ok, retry)))
   ensures (inv(s) ==> canFinishFallbackAttempt(s, ticket, ok, retry) ==> alwaysCompletedDisposalClearsQueue(finishFallbackAttempt(s, ticket, ok, retry)))
   ensures (inv(s) ==> canFinishFallbackAttempt(s, ticket, ok, retry) ==> alwaysDisposalKeepsTheQueueDisposed(finishFallbackAttempt(s, ticket, ok, retry)))
-  ensures (inv(s) ==> canFinishFallbackAttempt(s, ticket, ok, retry) ==> alwaysDisposedQueueRejectsEnqueue(finishFallbackAttempt(s, ticket, ok, retry)))
 {
   if inv(s) && canFinishFallbackAttempt(s, ticket, ok, retry) {
     core__batchProcessor_finishItemAttempt_ensures(s.processor, ticket, ok, retry);
@@ -263,9 +263,9 @@ lemma finishFallbackBackoff_ensures(s: BatchQueue, ticket: int)
   ensures (inv(s) ==> canFinishFallbackBackoff(s, ticket) ==> alwaysFallbackProcessorKeepsItsRules(finishFallbackBackoff(s, ticket)))
   ensures (inv(s) ==> canFinishFallbackBackoff(s, ticket) ==> alwaysRemovedTicketsLeftTheQueue(finishFallbackBackoff(s, ticket)))
   ensures (inv(s) ==> canFinishFallbackBackoff(s, ticket) ==> alwaysBatchedCallItemsAreUnsubmitted(finishFallbackBackoff(s, ticket)))
+  ensures (inv(s) ==> canFinishFallbackBackoff(s, ticket) ==> alwaysDisposedQueueRejectsEnqueue(finishFallbackBackoff(s, ticket)))
   ensures (inv(s) ==> canFinishFallbackBackoff(s, ticket) ==> alwaysCompletedDisposalClearsQueue(finishFallbackBackoff(s, ticket)))
   ensures (inv(s) ==> canFinishFallbackBackoff(s, ticket) ==> alwaysDisposalKeepsTheQueueDisposed(finishFallbackBackoff(s, ticket)))
-  ensures (inv(s) ==> canFinishFallbackBackoff(s, ticket) ==> alwaysDisposedQueueRejectsEnqueue(finishFallbackBackoff(s, ticket)))
 {
   if inv(s) && canFinishFallbackBackoff(s, ticket) {
     core__batchProcessor_finishBackoff_ensures(s.processor, ticket);
@@ -282,9 +282,9 @@ lemma finishFallbackExhaustion_ensures(s: BatchQueue, ticket: int, callbackOk: b
   ensures (inv(s) ==> canFinishFallbackExhaustion(s, ticket, callbackOk) ==> alwaysFallbackProcessorKeepsItsRules(finishFallbackExhaustion(s, ticket, callbackOk)))
   ensures (inv(s) ==> canFinishFallbackExhaustion(s, ticket, callbackOk) ==> alwaysRemovedTicketsLeftTheQueue(finishFallbackExhaustion(s, ticket, callbackOk)))
   ensures (inv(s) ==> canFinishFallbackExhaustion(s, ticket, callbackOk) ==> alwaysBatchedCallItemsAreUnsubmitted(finishFallbackExhaustion(s, ticket, callbackOk)))
+  ensures (inv(s) ==> canFinishFallbackExhaustion(s, ticket, callbackOk) ==> alwaysDisposedQueueRejectsEnqueue(finishFallbackExhaustion(s, ticket, callbackOk)))
   ensures (inv(s) ==> canFinishFallbackExhaustion(s, ticket, callbackOk) ==> alwaysCompletedDisposalClearsQueue(finishFallbackExhaustion(s, ticket, callbackOk)))
   ensures (inv(s) ==> canFinishFallbackExhaustion(s, ticket, callbackOk) ==> alwaysDisposalKeepsTheQueueDisposed(finishFallbackExhaustion(s, ticket, callbackOk)))
-  ensures (inv(s) ==> canFinishFallbackExhaustion(s, ticket, callbackOk) ==> alwaysDisposedQueueRejectsEnqueue(finishFallbackExhaustion(s, ticket, callbackOk)))
 {
   if inv(s) && canFinishFallbackExhaustion(s, ticket, callbackOk) {
     core__batchProcessor_finishExhaustion_ensures(s.processor, ticket, callbackOk);
@@ -301,9 +301,9 @@ lemma startFallback_ensures(s: BatchQueue, ticket: int, perItemAttempts: int)
   ensures (inv(s) ==> canStartFallback(s, ticket, perItemAttempts) ==> alwaysFallbackProcessorKeepsItsRules(startFallback(s, ticket, perItemAttempts)))
   ensures (inv(s) ==> canStartFallback(s, ticket, perItemAttempts) ==> alwaysRemovedTicketsLeftTheQueue(startFallback(s, ticket, perItemAttempts)))
   ensures (inv(s) ==> canStartFallback(s, ticket, perItemAttempts) ==> alwaysBatchedCallItemsAreUnsubmitted(startFallback(s, ticket, perItemAttempts)))
+  ensures (inv(s) ==> canStartFallback(s, ticket, perItemAttempts) ==> alwaysDisposedQueueRejectsEnqueue(startFallback(s, ticket, perItemAttempts)))
   ensures (inv(s) ==> canStartFallback(s, ticket, perItemAttempts) ==> alwaysCompletedDisposalClearsQueue(startFallback(s, ticket, perItemAttempts)))
   ensures (inv(s) ==> canStartFallback(s, ticket, perItemAttempts) ==> alwaysDisposalKeepsTheQueueDisposed(startFallback(s, ticket, perItemAttempts)))
-  ensures (inv(s) ==> canStartFallback(s, ticket, perItemAttempts) ==> alwaysDisposedQueueRejectsEnqueue(startFallback(s, ticket, perItemAttempts)))
 {
   if inv(s) && canStartFallback(s, ticket, perItemAttempts) {
     var after := startFallback(s, ticket, perItemAttempts);
@@ -324,9 +324,9 @@ lemma beginDispose_ensures(s: BatchQueue, flushHigh: bool)
   ensures (inv(s) ==> canBeginDispose(s, flushHigh) ==> alwaysFallbackProcessorKeepsItsRules(beginDispose(s, flushHigh)))
   ensures (inv(s) ==> canBeginDispose(s, flushHigh) ==> alwaysRemovedTicketsLeftTheQueue(beginDispose(s, flushHigh)))
   ensures (inv(s) ==> canBeginDispose(s, flushHigh) ==> alwaysBatchedCallItemsAreUnsubmitted(beginDispose(s, flushHigh)))
+  ensures (inv(s) ==> canBeginDispose(s, flushHigh) ==> alwaysDisposedQueueRejectsEnqueue(beginDispose(s, flushHigh)))
   ensures (inv(s) ==> canBeginDispose(s, flushHigh) ==> alwaysCompletedDisposalClearsQueue(beginDispose(s, flushHigh)))
   ensures (inv(s) ==> canBeginDispose(s, flushHigh) ==> alwaysDisposalKeepsTheQueueDisposed(beginDispose(s, flushHigh)))
-  ensures (inv(s) ==> canBeginDispose(s, flushHigh) ==> alwaysDisposedQueueRejectsEnqueue(beginDispose(s, flushHigh)))
 {
   if inv(s) && canBeginDispose(s, flushHigh) {
     var after := beginDispose(s, flushHigh);

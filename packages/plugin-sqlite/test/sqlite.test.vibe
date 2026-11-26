@@ -3,7 +3,7 @@ import { assert, it } from "@effect/vitest"
 import * as NodeServices from "@effect/platform-node/NodeServices"
 import { openSqlite } from "../src/index.vibe"
 
-it.effect('Reopen my agent\'s SQLite database in the owning runtime (spec/sqlite/index.md, "Story: Reopen my agent\'s SQLite database in the owning runtime")', effect () => {
+it.effect(`Reopen my agent's SQLite database in the owning runtime (spec/sqlite/index.md, "Story: Reopen my agent's SQLite database in the owning runtime")`, effect () => {
   provide NodeServices.layer {
     try scoped(effect {
       const fs = try FileSystem.FileSystem

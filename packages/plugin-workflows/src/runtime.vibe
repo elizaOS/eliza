@@ -178,11 +178,19 @@ export function runtimeWorkflowHost(runtime: IAgentRuntime): WorkflowHost {
       enrollment: Effect.orElseSucceed(tryPromise(() => device.enrollment()), () => undefined),
       perform: (binding, target, operation) => tryPromise({ try: () => device.perform(binding, target, operation), catch: (cause) => new WorkflowDeviceFailed({ code: "DEVICE_STEP_FAILED", message: String(cause) }) }),
     },
-    draft: (prompt) => tryPromise({
+    draft: (prompt, options) => tryPromise({
       try: async () => {
-        const text: unknown = await runtime.useModel(ModelType.TEXT_LARGE, { prompt })
-        if (typeof text !== "string") throw new Error("Model draft was not text")
-        return text
+        const primary = options?.modelClass === "TEXT_SMALL" ? ModelType.TEXT_SMALL : ModelType.TEXT_LARGE
+        const params = { prompt, ...(options?.maxTokens === undefined ? {} : { maxTokens: options.maxTokens }) }
+        try {
+          const text: unknown = await runtime.useModel(primary, params)
+          if (typeof text === "string") return text
+        } catch (error) {
+          if (primary === ModelType.TEXT_LARGE) throw error
+        }
+        const fallback: unknown = await runtime.useModel(ModelType.TEXT_LARGE, params)
+        if (typeof fallback !== "string") throw new Error("Model draft was not text")
+        return fallback
       },
       catch: (cause) => new WorkflowModelFailed({ message: String(cause) }),
     }),

@@ -3,8 +3,8 @@ lemma register_ensures(s: ProcessScheduler, name: string)
   ensures (inv(s) ==> canRegister(s, name) ==> alwaysDisposedCallbacksDrained(register(s, name)))
   ensures (inv(s) ==> canRegister(s, name) ==> alwaysDisposingIsDetached(register(s, name)))
   ensures (inv(s) ==> canRegister(s, name) ==> alwaysAllocatedIdentitiesFresh(register(s, name)))
-  ensures (inv(s) ==> canRegister(s, name) ==> alwaysTimerIsRequired(register(s, name)))
   ensures (inv(s) ==> canRegister(s, name) ==> alwaysActiveTickIsOwned(register(s, name)))
+  ensures (inv(s) ==> canRegister(s, name) ==> alwaysTimerIsRequired(register(s, name)))
 {
   if inv(s) && canRegister(s, name) {
     var after := register(s, name);
@@ -31,8 +31,8 @@ lemma returnDispose_ensures(s: ProcessScheduler, id: int)
   ensures (inv(s) ==> canReturnDispose(s, id) ==> alwaysDisposedCallbacksDrained(returnDispose(s, id)))
   ensures (inv(s) ==> canReturnDispose(s, id) ==> alwaysDisposingIsDetached(returnDispose(s, id)))
   ensures (inv(s) ==> canReturnDispose(s, id) ==> alwaysAllocatedIdentitiesFresh(returnDispose(s, id)))
-  ensures (inv(s) ==> canReturnDispose(s, id) ==> alwaysTimerIsRequired(returnDispose(s, id)))
   ensures (inv(s) ==> canReturnDispose(s, id) ==> alwaysActiveTickIsOwned(returnDispose(s, id)))
+  ensures (inv(s) ==> canReturnDispose(s, id) ==> alwaysTimerIsRequired(returnDispose(s, id)))
 {
   if inv(s) && canReturnDispose(s, id) {
     var after := returnDispose(s, id);
@@ -53,8 +53,8 @@ lemma tick_ensures(s: ProcessScheduler)
   ensures (inv(s) ==> canTick(s) ==> alwaysDisposedCallbacksDrained(tick(s)))
   ensures (inv(s) ==> canTick(s) ==> alwaysDisposingIsDetached(tick(s)))
   ensures (inv(s) ==> canTick(s) ==> alwaysAllocatedIdentitiesFresh(tick(s)))
-  ensures (inv(s) ==> canTick(s) ==> alwaysTimerIsRequired(tick(s)))
   ensures (inv(s) ==> canTick(s) ==> alwaysActiveTickIsOwned(tick(s)))
+  ensures (inv(s) ==> canTick(s) ==> alwaysTimerIsRequired(tick(s)))
 {
   if inv(s) && canTick(s) {
     var after := tick(s);
@@ -77,8 +77,8 @@ lemma finishTick_ensures(s: ProcessScheduler, id: int)
   ensures (inv(s) ==> canFinishTick(s, id) ==> alwaysDisposedCallbacksDrained(finishTick(s, id)))
   ensures (inv(s) ==> canFinishTick(s, id) ==> alwaysDisposingIsDetached(finishTick(s, id)))
   ensures (inv(s) ==> canFinishTick(s, id) ==> alwaysAllocatedIdentitiesFresh(finishTick(s, id)))
-  ensures (inv(s) ==> canFinishTick(s, id) ==> alwaysTimerIsRequired(finishTick(s, id)))
   ensures (inv(s) ==> canFinishTick(s, id) ==> alwaysActiveTickIsOwned(finishTick(s, id)))
+  ensures (inv(s) ==> canFinishTick(s, id) ==> alwaysTimerIsRequired(finishTick(s, id)))
 {
   if inv(s) && canFinishTick(s, id) {
     var after := finishTick(s, id);
@@ -102,8 +102,8 @@ lemma advanceDisposal_ensures(s: ProcessScheduler, success: bool)
   ensures (inv(s) ==> canAdvanceDisposal(s) ==> alwaysDisposedCallbacksDrained(advanceDisposal(s, success)))
   ensures (inv(s) ==> canAdvanceDisposal(s) ==> alwaysDisposingIsDetached(advanceDisposal(s, success)))
   ensures (inv(s) ==> canAdvanceDisposal(s) ==> alwaysAllocatedIdentitiesFresh(advanceDisposal(s, success)))
-  ensures (inv(s) ==> canAdvanceDisposal(s) ==> alwaysTimerIsRequired(advanceDisposal(s, success)))
   ensures (inv(s) ==> canAdvanceDisposal(s) ==> alwaysActiveTickIsOwned(advanceDisposal(s, success)))
+  ensures (inv(s) ==> canAdvanceDisposal(s) ==> alwaysTimerIsRequired(advanceDisposal(s, success)))
 {
   if inv(s) && canAdvanceDisposal(s) {
     var p := (task: ProcessEntry) => task.disposing && !task.disposed;
@@ -125,8 +125,8 @@ lemma dispose_ensures(s: ProcessScheduler, id: int)
   ensures (inv(s) ==> canDispose(s, id) ==> alwaysDisposedCallbacksDrained(dispose(s, id)))
   ensures (inv(s) ==> canDispose(s, id) ==> alwaysDisposingIsDetached(dispose(s, id)))
   ensures (inv(s) ==> canDispose(s, id) ==> alwaysAllocatedIdentitiesFresh(dispose(s, id)))
-  ensures (inv(s) ==> canDispose(s, id) ==> alwaysTimerIsRequired(dispose(s, id)))
   ensures (inv(s) ==> canDispose(s, id) ==> alwaysActiveTickIsOwned(dispose(s, id)))
+  ensures (inv(s) ==> canDispose(s, id) ==> alwaysTimerIsRequired(dispose(s, id)))
 {
   if inv(s) && canDispose(s, id) {
     var after := dispose(s, id);
@@ -139,8 +139,8 @@ lemma enterProcess_ensures(s: ProcessScheduler, id: int)
   ensures (inv(s) ==> canEnterProcess(s, id) ==> alwaysDisposedCallbacksDrained(enterProcess(s, id)))
   ensures (inv(s) ==> canEnterProcess(s, id) ==> alwaysDisposingIsDetached(enterProcess(s, id)))
   ensures (inv(s) ==> canEnterProcess(s, id) ==> alwaysAllocatedIdentitiesFresh(enterProcess(s, id)))
-  ensures (inv(s) ==> canEnterProcess(s, id) ==> alwaysTimerIsRequired(enterProcess(s, id)))
   ensures (inv(s) ==> canEnterProcess(s, id) ==> alwaysActiveTickIsOwned(enterProcess(s, id)))
+  ensures (inv(s) ==> canEnterProcess(s, id) ==> alwaysTimerIsRequired(enterProcess(s, id)))
 {
   if inv(s) && canEnterProcess(s, id) {
     var after := enterProcess(s, id);
@@ -153,8 +153,8 @@ lemma finishProcess_ensures(s: ProcessScheduler, id: int, success: bool)
   ensures (inv(s) ==> canFinishProcess(s, id) ==> alwaysDisposedCallbacksDrained(finishProcess(s, id, success)))
   ensures (inv(s) ==> canFinishProcess(s, id) ==> alwaysDisposingIsDetached(finishProcess(s, id, success)))
   ensures (inv(s) ==> canFinishProcess(s, id) ==> alwaysAllocatedIdentitiesFresh(finishProcess(s, id, success)))
-  ensures (inv(s) ==> canFinishProcess(s, id) ==> alwaysTimerIsRequired(finishProcess(s, id, success)))
   ensures (inv(s) ==> canFinishProcess(s, id) ==> alwaysActiveTickIsOwned(finishProcess(s, id, success)))
+  ensures (inv(s) ==> canFinishProcess(s, id) ==> alwaysTimerIsRequired(finishProcess(s, id, success)))
 {
   if inv(s) && canFinishProcess(s, id) {
     var after := finishProcess(s, id, success);

@@ -1,0 +1,235 @@
+// spec/pty/policy.md, "Launcher Cloud authority owns or disables the Cloud tuple"
+
+export const ELIZA_CLOUD_DEFAULT_BASE_URL = "https://api.eliza.app/v1"
+export const ELIZA_CLOUD_FAST_MODEL = "qwen-3.8-27b"
+export const ELIZA_CLOUD_SMART_MODEL = "qwen-3.8-27b"
+
+export type DevCloudEnvAuthority =
+  | "staging-default"
+  | "offline"
+  | "staging-explicit"
+  | "production-explicit"
+
+export interface ElizaCodeCloudTuple {
+  authority: DevCloudEnvAuthority | null
+  enabled: boolean
+  apiKey?: string
+  baseUrl?: string
+}
+
+export interface ElizaCodeCerebrasOptions {
+  cwd: string
+  apiKey: string
+  binPath: string
+  runner?: string
+  baseUrl?: string
+  fastModel?: string
+  smartModel?: string
+  tier?: "fast" | "smart"
+  extraEnv?: Record<string, string | undefined>
+}
+
+module node {
+  import { existsSync } from "node:fs"
+  import path from "node:path"
+  import { resolveCloudTupleMode, type CloudAuthority } from "../gen/pty__policy.ts"
+  import type { DevCloudEnvAuthority, ElizaCodeCerebrasOptions, ElizaCodeCloudTuple } from "./eliza-code-spec.vibe"
+  import type { PtySpawnSpec } from "./types.vibe"
+
+  const DEFAULT_BASE_URL = "https://api.eliza.app/v1"
+  const DEFAULT_MODEL = "qwen-3.8-27b"
+
+  interface FrozenAuthority {
+    readonly authority: DevCloudEnvAuthority
+    readonly apiKey: string | undefined
+    readonly baseUrl: string | undefined
+  }
+
+  let frozenSnapshot: FrozenAuthority | undefined
+
+  function trimmed(value: string | undefined): string | undefined {
+    const normalized = value?.trim()
+    return normalized || undefined
+  }
+
+  function toElizaCodeInferenceBaseUrl(value: string | undefined): string | undefined {
+    const normalized = trimmed(value)?.replace(/\/+$/, "")
+    return normalized?.replace(/\/api\/v1$/, "/v1")
+  }
+
+  function parseAuthority(env: Record<string, string | undefined>): DevCloudEnvAuthority | null {
+    if (trimmed(env.ELIZA_DEV_SOURCE) !== "1") return null
+    const raw = trimmed(env.ELIZA_DEV_CLOUD_ENV_AUTHORITY)
+    if (
+      raw === "staging-default" ||
+      raw === "offline" ||
+      raw === "staging-explicit" ||
+      raw === "production-explicit"
+    ) {
+      return raw
+    }
+    return null
+  }
+
+  function toModelAuthority(authority: DevCloudEnvAuthority | null): CloudAuthority {
+    if (authority === "staging-default") return "StagingDefault"
+    if (authority === "offline") return "Offline"
+    if (authority === "staging-explicit") return "StagingExplicit"
+    if (authority === "production-explicit") return "ProductionExplicit"
+    return "NoAuthority"
+  }
+
+  function captureAuthority(env: Record<string, string | undefined> = process.env): FrozenAuthority | null {
+    const authority = parseAuthority(env)
+    if (authority === null) return null
+    if (env === process.env) {
+      if (frozenSnapshot === undefined) {
+        frozenSnapshot = {
+          authority,
+          apiKey: trimmed(env.ELIZAOS_CLOUD_API_KEY),
+          baseUrl: toElizaCodeInferenceBaseUrl(env.ELIZAOS_CLOUD_BASE_URL),
+        }
+      }
+      return frozenSnapshot
+    }
+    return {
+      authority,
+      apiKey: trimmed(env.ELIZAOS_CLOUD_API_KEY),
+      baseUrl: toElizaCodeInferenceBaseUrl(env.ELIZAOS_CLOUD_BASE_URL),
+    }
+  }
+
+  function isAuthorityControlledChildEnvKey(key: string): boolean {
+    const normalized = key.toUpperCase()
+    return (
+      normalized === "OPENAI_API_KEY" ||
+      normalized === "OPENAI_BASE_URL" ||
+      normalized === "PTY_ELIZA_CLOUD_API_KEY" ||
+      normalized === "PTY_ELIZA_CLOUD_BASE_URL" ||
+      normalized.startsWith("ELIZAOS_CLOUD_") ||
+      normalized.startsWith("ELIZA_CLOUD_") ||
+      normalized.startsWith("ELIZACLOUD_") ||
+      normalized.startsWith("WAIFU_ELIZA_CLOUD_")
+    )
+  }
+
+  /** @throws {never} */
+  export function resetDevCloudEnvAuthorityForTests(): void {
+    frozenSnapshot = undefined
+  }
+
+  /** @throws {never} */
+  export function resolveElizaCodeCloudTuple(input?: {
+    apiKey?: string
+    baseUrl?: string
+  }): ElizaCodeCloudTuple {
+    const captured = captureAuthority()
+    const mode = resolveCloudTupleMode(toModelAuthority(captured?.authority ?? null))
+    if (mode === "CloudDisabled") {
+      return { authority: captured?.authority ?? null, enabled: false }
+    }
+    if (mode === "CloudLauncherFrozen" && captured !== null) {
+      return {
+        authority: captured.authority,
+        enabled: true,
+        apiKey: captured.apiKey,
+        baseUrl: captured.baseUrl,
+      }
+    }
+    return {
+      authority: null,
+      enabled: true,
+      apiKey: trimmed(input?.apiKey),
+      baseUrl: toElizaCodeInferenceBaseUrl(input?.baseUrl) ?? DEFAULT_BASE_URL,
+    }
+  }
+
+  /** @throws {Error} */
+  export function buildElizaCodeCerebrasSpec(opts: ElizaCodeCerebrasOptions): PtySpawnSpec {
+    const cloud = resolveElizaCodeCloudTuple({ apiKey: opts.apiKey, baseUrl: opts.baseUrl })
+    if (!cloud.enabled) {
+      throw new Error(`eliza-code Cloud sessions are disabled for the ${cloud.authority} development target.`)
+    }
+    const apiKey = cloud.apiKey
+    if (!apiKey) {
+      throw new Error("eliza-code interactive session requires an Eliza Cloud API key (apiKey).")
+    }
+    if (!opts.cwd?.trim()) {
+      throw new Error("eliza-code interactive session requires a cwd.")
+    }
+    if (!opts.binPath?.trim()) {
+      throw new Error("eliza-code interactive session requires a resolved binPath (dist/index.js).")
+    }
+    const baseUrl = cloud.baseUrl
+    if (!baseUrl) {
+      throw new Error("eliza-code interactive session requires an Eliza Cloud base URL.")
+    }
+    const fastModel = (opts.fastModel ?? DEFAULT_MODEL).trim()
+    const smartModel = (opts.smartModel ?? DEFAULT_MODEL).trim()
+    const tier = opts.tier ?? "fast"
+    const runner = (opts.runner ?? "bun").trim()
+    const cwd = path.resolve(opts.cwd)
+    const smallModel = tier === "smart" ? smartModel : fastModel
+    const env: Record<string, string | undefined> = {
+      ELIZA_CODE_PROVIDER: "openai",
+      ELIZA_CODE_CODING_ONLY: "1",
+      OPENAI_API_KEY: apiKey,
+      OPENAI_BASE_URL: baseUrl,
+      OPENAI_SMALL_MODEL: smallModel,
+      OPENAI_MEDIUM_MODEL: smallModel,
+      OPENAI_LARGE_MODEL: smartModel,
+      CODING_TOOLS_WORKSPACE_ROOTS: cwd,
+      SHELL_ALLOWED_DIRECTORY: cwd,
+      ...(opts.extraEnv ?? {}),
+    }
+    if (cloud.authority) {
+      for (const key of Object.keys(env)) {
+        if (isAuthorityControlledChildEnvKey(key)) delete env[key]
+      }
+      env.OPENAI_API_KEY = apiKey
+      env.OPENAI_BASE_URL = baseUrl
+    }
+    return {
+      command: runner,
+      args: [opts.binPath, "--interactive", "--coding-only"],
+      cwd,
+      env,
+      label: `eliza-code · ${tier} · ${tier === "smart" ? smartModel : fastModel}`,
+      kind: "eliza-code",
+    }
+  }
+
+  /** @throws {Error} */
+  export function resolveElizaCodeBin(opts?: {
+    env?: Record<string, string | undefined>
+    exists?: (p: string) => boolean
+  }): string {
+    const env = opts?.env ?? process.env
+    const exists = opts?.exists ?? existsSync
+    const configuredPath = env.ELIZA_CODE_BIN?.trim()
+    if (!configuredPath) {
+      throw new Error("ELIZA_CODE_BIN must be set to the absolute path of an installed eliza-code entrypoint.")
+    }
+    if (!path.isAbsolute(configuredPath)) {
+      throw new Error("ELIZA_CODE_BIN must be an absolute path.")
+    }
+    if (!exists(configuredPath)) {
+      throw new Error(`ELIZA_CODE_BIN is set to "${configuredPath}" but no file exists there.`)
+    }
+    return path.resolve(configuredPath)
+  }
+}
+
+import {
+  buildElizaCodeCerebrasSpec,
+  resetDevCloudEnvAuthorityForTests,
+  resolveElizaCodeBin,
+  resolveElizaCodeCloudTuple,
+} from node
+
+export {
+  buildElizaCodeCerebrasSpec,
+  resetDevCloudEnvAuthorityForTests,
+  resolveElizaCodeBin,
+  resolveElizaCodeCloudTuple,
+}

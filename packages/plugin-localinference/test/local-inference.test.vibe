@@ -228,7 +228,7 @@ it.effect('Download, verify, assign, activate and remove models, keeping the own
   }
 })
 
-it.effect('Embed with the assigned model in its vector space and serve speech on the device (spec/localInference/textAndEmbeddings.md, "Story: Answer from the model I chose"; spec/localInference/textAndEmbeddings.md, "An embedding is computed only by the model assigned to embeddings"; spec/localInference/textAndEmbeddings.md, "Vectors are compared only within one vector space"; spec/localInference/textAndEmbeddings.md, "The operator\'s embedding endpoint wins, then the hosted service when chosen, then the device")', effect () => {
+it.effect(`Embed with the assigned model in its vector space and serve speech on the device (spec/localInference/textAndEmbeddings.md, "Story: Answer from the model I chose"; spec/localInference/textAndEmbeddings.md, "An embedding is computed only by the model assigned to embeddings"; spec/localInference/textAndEmbeddings.md, "Vectors are compared only within one vector space"; spec/localInference/textAndEmbeddings.md, "The operator's embedding endpoint wins, then the hosted service when chosen, then the device")`, effect () => {
   const published = hub()
   const { engine, calls, controls } = fakeEngine()
   provide NodeServices.layer, Layer.succeed(HttpClient.HttpClient, published.client), InferenceEngine = engine {
@@ -320,7 +320,7 @@ it.effect('Start streamed speech over as few connections as the server allows (s
   assert.deepStrictEqual(sent, ["consent", "session"])
 })
 
-it.effect('Hear each reply on its admitted route, on this phone when the network fails before audio (spec/localInference/speechRoute.md, "Story: Hear a reply on the admitted speech route"; spec/localInference/speechRoute.md, "The owner\'s speech key speaks first, then a usable hosted account, then this device"; spec/localInference/speechRoute.md, "A turn is heard only on the route admitted when it began"; spec/localInference/speechRoute.md, "A network route that fails before audio hands its turn to this device once and holds its key off the network"; spec/localInference/speechRoute.md, "Once audio started, or when the person cancels, the turn ends on its route and holds nothing"; spec/localInference/speechRoute.md, "A hold belongs to the key that failed, lapses at its time, and lifts when the device cannot speak")', effect () => {
+it.effect(`Hear each reply on its admitted route, on this phone when the network fails before audio (spec/localInference/speechRoute.md, "Story: Hear a reply on the admitted speech route"; spec/localInference/speechRoute.md, "The owner's speech key speaks first, then a usable hosted account, then this device"; spec/localInference/speechRoute.md, "A turn is heard only on the route admitted when it began"; spec/localInference/speechRoute.md, "A network route that fails before audio hands its turn to this device once and holds its key off the network"; spec/localInference/speechRoute.md, "Once audio started, or when the person cancels, the turn ends on its route and holds nothing"; spec/localInference/speechRoute.md, "A hold belongs to the key that failed, lapses at its time, and lifts when the device cannot speak")`, effect () => {
   provide speechRouting() {
     const tried: SpeechRoute[] = []
     const failing = (error: unknown): SpeechAttemptFailed => new SpeechAttemptFailed({ failure: speechFailureOf(error) ?? { tag: "RequestRefused" }, cause: error })

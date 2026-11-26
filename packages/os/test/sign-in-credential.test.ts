@@ -1,4 +1,4 @@
-// spec/os/signIn/credential.md, "Story: Keep me signed in without a second copy of my key"; spec/os/signIn/credential.md, "Story: Sign out or reset cleanly"; spec/os/signIn/credential.md, "Story: Confirm it is me before a billing change"; spec/os/signIn/credential.md, "Story: Keep my key fresh without signing in again"; spec/os/signIn/browserReturn.md, "Story: Complete a browser sign-in only for the client that started it"
+// spec/os/signIn/credential.md, "Story: Keep me signed in without a second copy of my key"; spec/os/signIn/credential.md, "Story: Sign out or reset cleanly"; spec/os/signIn/credential.md, "Story: Confirm it is me before a billing change"; spec/os/signIn/credential.md, "Only the lease renews the key, and a renewed key keeps the account and the lease"; spec/os/signIn/browserReturn.md, "Story: Complete a browser sign-in only for the client that started it"
 import { execFileSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 import { compileAdapter } from "./drivers/jvm-adapter.ts";

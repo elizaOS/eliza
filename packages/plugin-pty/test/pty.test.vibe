@@ -1,0 +1,708 @@
+// spec/pty/index.md, "Story: Open and close an owner-bound terminal session"; spec/pty/policy.md, "Story: Gate interactive and vendor PTY access"; spec/pty/policy.md, "Story: Enforce session capacity, confinement, and safe teardown"
+import { assert, afterEach, beforeEach, describe, expect, it } from "@effect/vitest"
+import type { ElizaError, IAgentRuntime, Memory } from "@elizaos/core"
+import {
+  ELIZA_CLOUD_SMART_MODEL,
+  PtyConsoleBridge,
+  PtyService,
+  PtySessionStore,
+  defaultSpawnResolver,
+  formatBoundedTail,
+  isBunRuntime,
+  openTerminalSession,
+  ptyPlugin,
+  ptyRoutes,
+  ptySessionAction,
+  resetDevCloudEnvAuthorityForTests,
+  resolveIdleTimeoutMs,
+  type PtyRouteContext,
+  type PtySpawnSpec,
+  type SessionExitEvent,
+  type SessionOutputEvent,
+} from "../src/index.vibe"
+
+module node {
+  import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
+  import { tmpdir } from "node:os"
+  import path from "node:path"
+  import type {
+    PtyHandle,
+    PtyRoute,
+    PtySessionStore as StoreType,
+    PtySpawn,
+    PtySpawnResolver,
+    PtyTimerHandle,
+    SessionExitEvent,
+    SessionOutputEvent,
+  } from "../src/index.vibe"
+
+  export const EXISTING_FILE = process.execPath
+
+  export class FakePty implements PtyHandle {
+    readonly pid: number
+    readonly written: string[] = []
+    readonly resized: Array<[number, number]> = []
+    killed = false
+    killedSignal: string | undefined
+    killError: Error | undefined
+    private readonly dataListeners: Array<(data: string) => void> = []
+    private readonly exitListeners: Array<(event: { exitCode: number; signal?: number }) => void> = []
+
+    /** @throws {never} */
+    constructor(pid = 4242) {
+      this.pid = pid
+    }
+
+    /** @throws {never} */
+    write(data: string): void {
+      this.written.push(data)
+    }
+
+    /** @throws {never} */
+    resize(cols: number, rows: number): void {
+      this.resized.push([cols, rows])
+    }
+
+    /** @throws {Error} */
+    kill(signal?: string): void {
+      if (this.killError) throw this.killError
+      this.killed = true
+      this.killedSignal = signal
+    }
+
+    /** @throws {never} */
+    onData(listener: (data: string) => void): { dispose(): void } {
+      this.dataListeners.push(listener)
+      return { dispose: () => void 0 }
+    }
+
+    /** @throws {never} */
+    onExit(listener: (event: { exitCode: number; signal?: number }) => void): { dispose(): void } {
+      this.exitListeners.push(listener)
+      return { dispose: () => void 0 }
+    }
+
+    /** @throws {never} */
+    emitData(data: string): void {
+      for (const l of this.dataListeners) l(data)
+    }
+
+    /** @throws {never} */
+    emitExit(exitCode: number, signal?: number): void {
+      for (const l of this.exitListeners) l({ exitCode, signal })
+    }
+  }
+
+  export interface SpawnCall {
+    file: string
+    args: string[]
+    opts: {
+      cwd?: string
+      env?: Record<string, string | undefined>
+      name?: string
+      cols?: number
+      rows?: number
+    }
+  }
+
+  /** @throws {never} */
+  export function makeFakeSpawn(): {
+    spawn: PtySpawn
+    resolver: PtySpawnResolver
+    calls: SpawnCall[]
+    ptys: FakePty[]
+  } {
+    const calls: SpawnCall[] = []
+    const ptys: FakePty[] = []
+    const spawn: PtySpawn = (file, args, opts) => {
+      const pty = new FakePty(1000 + ptys.length)
+      calls.push({ file, args, opts })
+      ptys.push(pty)
+      return pty
+    }
+    const resolver: PtySpawnResolver = () => Promise.resolve(spawn)
+    return { spawn, resolver, calls, ptys }
+  }
+
+  /** @throws {never} */
+  export function createFakeClock(): {
+    schedule: (delayMs: number, fn: () => void) => PtyTimerHandle
+    advance: (ms: number) => void
+  } {
+    const pending: Array<{ at: number; fn: () => void; cancelled: boolean }> = []
+    let now = 0
+    return {
+      schedule: (delayMs: number, fn: () => void) => {
+        const entry = { at: now + delayMs, fn, cancelled: false }
+        pending.push(entry)
+        return {
+          cancel: () => {
+            entry.cancelled = true
+          },
+        }
+      },
+      advance: (ms: number) => {
+        now += ms
+        const due = pending.filter((entry) => !entry.cancelled && entry.at <= now)
+        for (const entry of due) {
+          entry.cancelled = true
+          entry.fn()
+        }
+      },
+    }
+  }
+
+  /** @throws {never} */
+  export function routeHandlerOf(routes: readonly PtyRoute[], name: string): PtyRoute["routeHandler"] {
+    const route = routes.find((x) => x.name === name)
+    if (!route) return () => Promise.resolve({ status: 500, body: { error: `route ${name} missing` } })
+    return route.routeHandler
+  }
+
+  export const fsTools = {
+    mkdirSync,
+    mkdtempSync,
+    realpathSync,
+    rmSync,
+    symlinkSync,
+    writeFileSync,
+    tmpdir,
+    path,
+    /** @throws {never} */
+    cwd: () => process.cwd(),
+    /** @throws {never} */
+    platform: () => process.platform,
+    /** @throws {never} */
+    getEnv: (k: string) => process.env[k],
+    /** @throws {never} */
+    setEnv: (k: string, v: string | undefined) => {
+      if (v === undefined) delete process.env[k]
+      else process.env[k] = v
+    },
+    /** @throws {never} */
+    onUnhandled: (fn: (reason: unknown) => void) => {
+      process.on("unhandledRejection", fn)
+      return () => {
+        process.off("unhandledRejection", fn)
+      }
+    },
+  }
+
+  export async function runRealPtyProbe(
+    bridge: { on(event: string, listener: (...args: unknown[]) => void): void },
+    store: StoreType,
+  ): Promise<{ captured: string; code: number | null; available: boolean }> {
+    let available = typeof (globalThis as { Bun?: unknown }).Bun !== "undefined"
+    if (!available) {
+      try {
+        await import("@lydell/node-pty")
+        available = true
+      } catch {
+        available = false
+      }
+    }
+    if (!available) return { captured: "", code: null, available: false }
+    const isWin = process.platform === "win32"
+    let captured = ""
+    bridge.on("session_output", (e) => {
+      captured += (e as SessionOutputEvent).data
+    })
+    const exited = new Promise<number | null>((resolve) => {
+      bridge.on("session_exit", (e) => resolve((e as SessionExitEvent).exitCode))
+    })
+    const info = await store.start({
+      command: isWin ? "cmd" : "sh",
+      args: isWin ? ["/c", "echo PTYHELLO"] : ["-c", "printf PTYHELLO"],
+      cwd: process.cwd(),
+      kind: "test",
+    })
+    const code = await exited
+    await store.stop(info.sessionId)
+    return { captured, code, available: true }
+  }
+}
+
+import {
+  EXISTING_FILE,
+  createFakeClock,
+  fsTools,
+  makeFakeSpawn,
+  routeHandlerOf,
+  runRealPtyProbe,
+} from node
+
+function makeStore(opts?: {
+  allowedRoot?: string
+  maxSessions?: number
+  idleTimeoutMs?: number
+  exitedSessionTtlMs?: number
+}) {
+  const fake = makeFakeSpawn()
+  const bridge = new PtyConsoleBridge()
+  const store = new PtySessionStore(bridge, fake.resolver, opts)
+  return { store, bridge, fake }
+}
+
+const makeSpec = (over: Partial<PtySpawnSpec> = {}): PtySpawnSpec => ({
+  command: "bun",
+  args: ["/bin/eliza-code.js", "--interactive", "--coding-only"],
+  cwd: "/work/repo",
+  env: {
+    ELIZA_CODE_CODING_ONLY: "1",
+    OPENAI_API_KEY: "sk-1",
+    TERM: "xterm-256color",
+  },
+  label: "eliza-code · fast",
+  kind: "eliza-code",
+  ...over,
+})
+
+const routeByName = (name: string) => routeHandlerOf(ptyRoutes, name)
+
+function makeHarness(opts?: { settings?: Record<string, string>; noService?: boolean }) {
+  const fake = makeFakeSpawn()
+  const svc = opts?.noService ? null : new PtyService(undefined, fake.resolver, { allowedRoot: fsTools.cwd() })
+  const settings = opts?.settings ?? {}
+  const runtime = {
+    getSetting: (k: string) => settings[k],
+    getService: (t: string) => (t === "PTY_SERVICE" ? svc : null),
+  } as unknown as IAgentRuntime
+  return { runtime, svc, calls: fake.calls, fake }
+}
+
+function makeCtx(
+  runtime: IAgentRuntime,
+  body?: unknown,
+  params?: Record<string, string>,
+  opts?: {
+    headers?: Record<string, string>
+    query?: Record<string, string>
+    inProcess?: boolean
+    isTrustedLocal?: boolean
+  },
+): PtyRouteContext {
+  return {
+    body,
+    params: params ?? {},
+    query: opts?.query ?? {},
+    headers: opts?.headers ?? {},
+    method: "POST",
+    path: "/api/pty/sessions",
+    runtime,
+    inProcess: opts?.inProcess ?? true,
+    isTrustedLocal: opts?.isTrustedLocal ?? false,
+  }
+}
+
+describe("PtySessionStore and PtyConsoleBridge", () => {
+  const savedEnv = new Map<string, string | undefined>()
+  const setEnv = (key: string, value: string) => {
+    if (!savedEnv.has(key)) savedEnv.set(key, fsTools.getEnv(key))
+    fsTools.setEnv(key, value)
+  }
+
+  afterEach(() => {
+    for (const [key, value] of savedEnv) fsTools.setEnv(key, value)
+    savedEnv.clear()
+  })
+
+  it("spawns with minimal allowed env, isolates secrets, and forwards vendor credentials", async () => {
+    setEnv("AWS_SECRET_ACCESS_KEY", "aws-secret")
+    setEnv("DATABASE_URL", "postgres://secret")
+    setEnv("ELIZA_API_TOKEN", "api-secret")
+    const { store, fake } = makeStore({ idleTimeoutMs: 0 })
+    const info = await store.start(
+      makeSpec({
+        env: {
+          ELIZA_CODE_CODING_ONLY: "1",
+          OPENAI_API_KEY: "sk-1",
+          CLAUDE_CODE_OAUTH_TOKEN: "sk-ant-oat-1",
+          CODEX_HOME: "/accounts/codex-a1",
+          TERM: "xterm-256color",
+          AWS_SECRET_ACCESS_KEY: "should-not-pass",
+          NOT_ALLOWLISTED: "dropped",
+        },
+      }),
+    )
+    expect(fake.calls).toHaveLength(1)
+    const call = fake.calls[0]
+    expect(call.file).toBe("bun")
+    expect(call.args).toEqual(["/bin/eliza-code.js", "--interactive", "--coding-only"])
+    expect(call.opts.cwd).toBe("/work/repo")
+    expect(call.opts.env?.ELIZA_CODE_CODING_ONLY).toBe("1")
+    expect(call.opts.env?.OPENAI_API_KEY).toBe("sk-1")
+    expect(call.opts.env?.CLAUDE_CODE_OAUTH_TOKEN).toBe("sk-ant-oat-1")
+    expect(call.opts.env?.CODEX_HOME).toBe("/accounts/codex-a1")
+    expect(call.opts.env?.PWD).toBe("/work/repo")
+    expect(call.opts.env?.TERM).toBe("xterm-256color")
+    expect(call.opts.env?.AWS_SECRET_ACCESS_KEY).toBeUndefined()
+    expect(call.opts.env?.DATABASE_URL).toBeUndefined()
+    expect(call.opts.env?.ELIZA_API_TOKEN).toBeUndefined()
+    expect(call.opts.env?.NOT_ALLOWLISTED).toBeUndefined()
+    expect(call.opts.cols).toBe(120)
+    expect(call.opts.rows).toBe(30)
+    expect(info.sessionId).toMatch(/[0-9a-f-]{36}/)
+    expect(info.exited).toBe(false)
+    await store.stopAll()
+  })
+
+  it("streams, buffers, isolates sessions, and routes bridge writeRaw and resize", async () => {
+    const { store, bridge, fake } = makeStore({ idleTimeoutMs: 0 })
+    const events: SessionOutputEvent[] = []
+    bridge.on("session_output", (e) => events.push(e as SessionOutputEvent))
+    const a = await store.start(makeSpec({ label: "a" }))
+    const b = await store.start(makeSpec({ label: "b" }))
+    fake.ptys[1].emitData("from-b")
+    fake.ptys[0].emitData("prompt> ")
+    expect(events).toEqual([
+      { sessionId: b.sessionId, data: "from-b" },
+      { sessionId: a.sessionId, data: "prompt> " },
+    ])
+    expect(store.getBufferedOutput(a.sessionId)).toBe("prompt> ")
+    bridge.writeRaw(a.sessionId, "ls\r")
+    bridge.writeRaw("missing", "x")
+    bridge.resize(a.sessionId, 100, 40)
+    bridge.resize(a.sessionId, 0, 40)
+    bridge.resize(a.sessionId, Number.NaN, 10)
+    bridge.resize(a.sessionId, 80.9, 24.9)
+    expect(fake.ptys[0].written).toEqual(["ls\r"])
+    expect(fake.ptys[1].written).toEqual([])
+    expect(fake.ptys[0].resized).toEqual([[100, 40], [80, 24]])
+    const exits: SessionExitEvent[] = []
+    bridge.on("session_exit", (e) => exits.push(e as SessionExitEvent))
+    fake.ptys[0].emitExit(3)
+    bridge.writeRaw(a.sessionId, "after-exit")
+    expect(fake.ptys[0].written).toEqual(["ls\r"])
+    expect(exits).toEqual([{ sessionId: a.sessionId, exitCode: 3 }])
+    expect(store.list().find((s) => s.sessionId === a.sessionId)?.exited).toBe(true)
+    expect(Object.keys(store.list()[0])).not.toContain("pty")
+    await store.stopAll()
+  })
+
+  it("holds capacity cap across concurrent start races", async () => {
+    const { store, fake } = makeStore({ maxSessions: 1, idleTimeoutMs: 0 })
+    const results = await Promise.allSettled([
+      store.start(makeSpec({ label: "a" })),
+      store.start(makeSpec({ label: "b" })),
+    ])
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1)
+    const rejected = results.find((r) => r.status === "rejected")
+    expect(rejected?.status).toBe("rejected")
+    expect(fake.calls).toHaveLength(1)
+    expect(store.size).toBe(1)
+    await store.stopAll()
+  })
+
+  it("confines cwd, blocks symlink escapes, and rechecks after lazy spawn resolver", async () => {
+    const root = fsTools.mkdtempSync(fsTools.path.join(fsTools.tmpdir(), "pty-jail-"))
+    const outside = fsTools.mkdtempSync(fsTools.path.join(fsTools.tmpdir(), "pty-outside-"))
+    const inside = fsTools.path.join(root, "repo", "sub")
+    fsTools.mkdirSync(inside, { recursive: true })
+    const escapeLink = fsTools.path.join(root, "escape")
+    fsTools.symlinkSync(outside, escapeLink, fsTools.platform() === "win32" ? "junction" : "dir")
+    const innerAlias = fsTools.path.join(root, "alias")
+    fsTools.symlinkSync(inside, innerAlias, fsTools.platform() === "win32" ? "junction" : "dir")
+    try {
+      const { store, fake } = makeStore({ allowedRoot: root, idleTimeoutMs: 0 })
+      await store.start(makeSpec({ cwd: innerAlias }))
+      expect(fake.calls[0].opts.cwd).toBe(fsTools.realpathSync(inside))
+      await expect(store.start(makeSpec({ cwd: fsTools.tmpdir() }))).rejects.toThrow(/outside the allowed root/i)
+      await expect(store.start(makeSpec({ cwd: escapeLink }))).rejects.toThrow(/outside the allowed root/i)
+      await expect(store.start(makeSpec({ cwd: fsTools.path.join(root, "missing") }))).rejects.toMatchObject({
+        code: "PTY_CWD_RESOLUTION_FAILED",
+      })
+      await store.stopAll()
+
+      const swapTarget = fsTools.path.join(root, "swapped")
+      fsTools.mkdirSync(swapTarget)
+      const raceFake = makeFakeSpawn()
+      const raceStore = new PtySessionStore(
+        new PtyConsoleBridge(),
+        async () => {
+          fsTools.rmSync(swapTarget, { recursive: true, force: true })
+          fsTools.symlinkSync(outside, swapTarget, fsTools.platform() === "win32" ? "junction" : "dir")
+          return raceFake.spawn
+        },
+        { allowedRoot: root, idleTimeoutMs: 0 },
+      )
+      await expect(raceStore.start(makeSpec({ cwd: swapTarget }))).rejects.toThrow(/outside the allowed root/i)
+      expect(raceFake.calls).toHaveLength(0)
+    } finally {
+      fsTools.rmSync(root, { recursive: true, force: true })
+      fsTools.rmSync(outside, { recursive: true, force: true })
+    }
+  })
+
+  it("keeps live session observable on failed stop and retries idle stop cleanly", async () => {
+    const unhandled: unknown[] = []
+    const detach = fsTools.onUnhandled((reason) => unhandled.push(reason))
+    try {
+      const clock = createFakeClock()
+      const fake = makeFakeSpawn()
+      const bridge = new PtyConsoleBridge()
+      const store = new PtySessionStore(bridge, fake.resolver, { idleTimeoutMs: 100 }, clock.schedule)
+      const a = await store.start(makeSpec())
+      fake.ptys[0].killError = new Error("EPERM")
+      await expect(store.stop(a.sessionId)).rejects.toMatchObject({ code: "PTY_SESSION_STOP_FAILED" })
+      expect(store.has(a.sessionId)).toBe(true)
+      const events: SessionOutputEvent[] = []
+      bridge.on("session_output", (e) => events.push(e as SessionOutputEvent))
+      fake.ptys[0].emitData("still-alive")
+      expect(events).toEqual([{ sessionId: a.sessionId, data: "still-alive" }])
+      fake.ptys[0].killError = undefined
+      await store.stop(a.sessionId)
+      expect(fake.ptys[0].killed).toBe(true)
+      expect(store.has(a.sessionId)).toBe(false)
+
+      const liveIdle = makeStore({ idleTimeoutMs: 30 })
+      const b = await liveIdle.store.start(makeSpec())
+      liveIdle.fake.ptys[0].killError = new Error("EPERM")
+      await runPromise(sleep("50 millis"))
+      expect(liveIdle.store.has(b.sessionId)).toBe(true)
+      liveIdle.fake.ptys[0].killError = undefined
+      await runPromise(sleep("80 millis"))
+      expect(liveIdle.fake.ptys[0].killed).toBe(true)
+      expect(liveIdle.store.has(b.sessionId)).toBe(false)
+      expect(unhandled).toEqual([])
+    } finally {
+      detach()
+    }
+  })
+})
+
+describe("PtyService idle-timeout configuration and routes", () => {
+  const CLOUD_ENV_KEYS = [
+    "ELIZA_CODE_BIN",
+    "ELIZA_DEV_SOURCE",
+    "ELIZA_DEV_CLOUD_ENV_AUTHORITY",
+    "ELIZA_DEV_CLOUD_TARGET",
+    "ELIZAOS_CLOUD_API_KEY",
+    "ELIZAOS_CLOUD_BASE_URL",
+    "PTY_ELIZA_CLOUD_API_KEY",
+    "PTY_ALLOWED_BASE_URLS",
+    "PTY_ELIZA_CLOUD_BASE_URL_ALLOWLIST",
+    "PTY_IDLE_TIMEOUT_MS",
+    "PTY_CLAUDE_BIN",
+    "PTY_CODEX_BIN",
+    "CLAUDE_CODE_OAUTH_TOKEN",
+    "CODEX_HOME",
+    "PTY_VENDOR_CLI_ENABLED",
+  ] as const
+  const saved = new Map<string, string | undefined>()
+
+  beforeEach(() => {
+    resetDevCloudEnvAuthorityForTests()
+    for (const key of CLOUD_ENV_KEYS) {
+      saved.set(key, fsTools.getEnv(key))
+      fsTools.setEnv(key, undefined)
+    }
+    fsTools.setEnv("ELIZA_CODE_BIN", EXISTING_FILE)
+    fsTools.setEnv("PTY_CLAUDE_BIN", EXISTING_FILE)
+    fsTools.setEnv("PTY_CODEX_BIN", EXISTING_FILE)
+  })
+
+  afterEach(() => {
+    for (const [key, value] of saved) fsTools.setEnv(key, value)
+    saved.clear()
+    resetDevCloudEnvAuthorityForTests()
+  })
+
+  it("validates PTY_IDLE_TIMEOUT_MS runtime and env settings", async () => {
+    const rt = (value: string | number | boolean | null) =>
+      ({ getSetting: (k: string) => (k === "PTY_IDLE_TIMEOUT_MS" ? value : null) }) as unknown as IAgentRuntime
+    expect(resolveIdleTimeoutMs(rt(null))).toBeUndefined()
+    for (const [input, expected] of [["0", 0], [0, 0], [" 900000 ", 900_000], [2_147_483_647, 2_147_483_647]] as const) {
+      expect(resolveIdleTimeoutMs(rt(input))).toBe(expected)
+      const svc = await PtyService.start(rt(input))
+      await svc.stop()
+    }
+    for (const bad of ["1.5", 1.5, "-1", -1, "2147483648", 2_147_483_648, "900000oops", "1e3", true]) {
+      await expect(PtyService.start(rt(bad as unknown as string))).rejects.toMatchObject({
+        code: "PTY_IDLE_TIMEOUT_INVALID",
+        severity: "fatal",
+      } satisfies Partial<ElizaError>)
+    }
+    fsTools.setEnv("PTY_IDLE_TIMEOUT_MS", "-1")
+    await expect(PtyService.start(rt(""))).rejects.toMatchObject({
+      code: "PTY_IDLE_TIMEOUT_INVALID",
+      context: { configured: "-1", source: "environment" },
+    })
+    expect(resolveIdleTimeoutMs(rt(" 900000 "))).toBe(900_000)
+  })
+
+  it("enforces terminal token auth, interactive/vendor gates, Cloud authority, and route lifecycle", async () => {
+    const noTok = makeHarness({ settings: { PTY_ELIZA_CLOUD_API_KEY: "sk-cloud" } })
+    expect((await routeByName("pty-spawn-session")(makeCtx(noTok.runtime, { cwd: fsTools.cwd() }, undefined, { inProcess: false }))).status).toBe(403)
+
+    const withTok = makeHarness({
+      settings: { PTY_ELIZA_CLOUD_API_KEY: "sk-cloud", ELIZA_TERMINAL_RUN_TOKEN: "pty-secret" },
+    })
+    expect((await routeByName("pty-spawn-session")(makeCtx(withTok.runtime, { cwd: fsTools.cwd() }, undefined, { inProcess: false }))).status).toBe(401)
+    expect((await routeByName("pty-spawn-session")(makeCtx(withTok.runtime, { cwd: fsTools.cwd() }, undefined, { headers: { "x-eliza-terminal-token": "wrong" }, inProcess: false }))).status).toBe(401)
+    const trusted = await routeByName("pty-spawn-session")(
+      makeCtx(withTok.runtime, { kind: "eliza-code", cwd: fsTools.cwd(), tier: "smart" }, undefined, {
+        headers: { "x-elizaos-client-id": "client-1" },
+        inProcess: false,
+        isTrustedLocal: true,
+      }),
+    )
+    expect(trusted.status).toBe(200)
+    const sid = (trusted.body as { session: { sessionId: string; ownerClientId?: string } }).session.sessionId
+    expect((trusted.body as { session: { ownerClientId?: string } }).session.ownerClientId).toBe("client-1")
+    expect(withTok.calls[0].opts.env?.OPENAI_SMALL_MODEL).toBe(ELIZA_CLOUD_SMART_MODEL)
+    withTok.fake.ptys[0].emitData("ready> ")
+    const tokHdr = { headers: { "x-eliza-terminal-token": "pty-secret" }, inProcess: false }
+    expect((await routeByName("pty-buffered-output")(makeCtx(withTok.runtime, undefined, { id: sid }, tokHdr))).body).toEqual({ output: "ready> " })
+    expect((await routeByName("pty-buffered-output")(makeCtx(withTok.runtime, undefined, { id: "missing" }, tokHdr))).status).toBe(404)
+    expect((await routeByName("pty-list-sessions")(makeCtx(withTok.runtime, undefined, undefined, { inProcess: false }))).status).toBe(401)
+    expect((await routeByName("pty-list-sessions")(makeCtx(withTok.runtime, undefined, undefined, tokHdr))).status).toBe(200)
+    expect((await routeByName("pty-stop-session")(makeCtx(withTok.runtime, undefined, { id: sid }, tokHdr))).status).toBe(200)
+    expect(withTok.svc?.hasSession(sid)).toBe(false)
+
+    for (const badFlag of ["false", " FALSE ", "off", "no", " enabled ", "2"]) {
+      const h = makeHarness({ settings: { PTY_ELIZA_CLOUD_API_KEY: "sk", PTY_INTERACTIVE_ENABLED: badFlag } })
+      expect((await routeByName("pty-spawn-session")(makeCtx(h.runtime, { cwd: fsTools.cwd() }))).status).toBe(403)
+    }
+    const storeBuild = makeHarness({ settings: { PTY_ELIZA_CLOUD_API_KEY: "sk", ELIZA_BUILD_VARIANT: "store" } })
+    expect((await routeByName("pty-spawn-session")(makeCtx(storeBuild.runtime, {}))).status).toBe(403)
+    const noSvc = makeHarness({ noService: true, settings: { PTY_ELIZA_CLOUD_API_KEY: "sk" } })
+    expect((await routeByName("pty-spawn-session")(makeCtx(noSvc.runtime, {}))).status).toBe(503)
+    const badKind = makeHarness({ settings: { PTY_ELIZA_CLOUD_API_KEY: "sk" } })
+    expect((await routeByName("pty-spawn-session")(makeCtx(badKind.runtime, { kind: "bash" }))).status).toBe(400)
+    const noPrimaryFallback = makeHarness({ settings: { OPENAI_API_KEY: "sk-primary" } })
+    expect((await routeByName("pty-spawn-session")(makeCtx(noPrimaryFallback.runtime, { cwd: fsTools.cwd() }))).status).toBe(400)
+
+    const vendorOff = makeHarness({ settings: {} })
+    expect((await routeByName("pty-spawn-session")(makeCtx(vendorOff.runtime, { kind: "claude", cwd: fsTools.cwd() }))).status).toBe(403)
+    const vendorOn = makeHarness({
+      settings: { PTY_VENDOR_CLI_ENABLED: " YES ", CLAUDE_CODE_OAUTH_TOKEN: "sk-ant-oat-test", CODEX_HOME: "/accounts/c1" },
+    })
+    expect((await routeByName("pty-spawn-session")(makeCtx(vendorOn.runtime, { kind: "claude", cwd: fsTools.cwd() }))).status).toBe(200)
+    expect(vendorOn.calls[0].opts.env?.CLAUDE_CODE_OAUTH_TOKEN).toBe("sk-ant-oat-test")
+    expect((await routeByName("pty-spawn-session")(makeCtx(vendorOn.runtime, { kind: "codex", cwd: fsTools.cwd() }))).status).toBe(200)
+    expect(vendorOn.calls[1].opts.env?.CODEX_HOME).toBe("/accounts/c1")
+    await vendorOn.svc?.stop()
+
+    const allowlist = makeHarness({
+      settings: {
+        PTY_ELIZA_CLOUD_API_KEY: "sk",
+        PTY_ALLOWED_BASE_URLS: "https://staging.example/v1",
+        PTY_ELIZA_CLOUD_FAST_MODEL: "fast-pin",
+      },
+    })
+    expect((await routeByName("pty-spawn-session")(makeCtx(allowlist.runtime, { cwd: fsTools.cwd(), baseUrl: "https://attacker.example/v1" }))).status).toBe(400)
+    expect((await routeByName("pty-spawn-session")(makeCtx(allowlist.runtime, { cwd: fsTools.cwd(), baseUrl: "https://staging.example/v1/" }))).status).toBe(200)
+    expect(allowlist.calls[0].opts.env?.OPENAI_SMALL_MODEL).toBe("fast-pin")
+    expect(allowlist.calls[0].opts.env?.OPENAI_LARGE_MODEL).toBe(ELIZA_CLOUD_SMART_MODEL)
+    await allowlist.svc?.stop()
+
+    fsTools.setEnv("ELIZA_DEV_SOURCE", "1")
+    fsTools.setEnv("ELIZA_DEV_CLOUD_ENV_AUTHORITY", "offline")
+    const offline = makeHarness({ settings: { PTY_ELIZA_CLOUD_API_KEY: "sk" } })
+    expect((await routeByName("pty-spawn-session")(makeCtx(offline.runtime, { cwd: fsTools.cwd(), apiKey: "body-key" }))).status).toBe(403)
+
+    resetDevCloudEnvAuthorityForTests()
+    fsTools.setEnv("ELIZA_DEV_SOURCE", "1")
+    fsTools.setEnv("ELIZA_DEV_CLOUD_ENV_AUTHORITY", "staging-explicit")
+    fsTools.setEnv("ELIZAOS_CLOUD_API_KEY", "staging-launch-key")
+    fsTools.setEnv("ELIZAOS_CLOUD_BASE_URL", "https://api-staging.eliza.app/api/v1")
+    const staged = makeHarness({ settings: { PTY_ELIZA_CLOUD_API_KEY: "runtime-key" } })
+    const s1 = await routeByName("pty-spawn-session")(
+      makeCtx(staged.runtime, { cwd: fsTools.cwd(), apiKey: "body-key", baseUrl: "https://untrusted.example/v1" }),
+    )
+    expect(s1.status).toBe(200)
+    expect(staged.calls[0].opts.env?.OPENAI_API_KEY).toBe("staging-launch-key")
+    expect(staged.calls[0].opts.env?.OPENAI_BASE_URL).toBe("https://api-staging.eliza.app/v1")
+    fsTools.setEnv("ELIZAOS_CLOUD_API_KEY", "late-prod-key")
+    const s2 = await routeByName("pty-spawn-session")(
+      makeCtx(staged.runtime, { cwd: fsTools.cwd(), apiKey: "body-2", baseUrl: "not-a-url" }),
+    )
+    expect(s2.status).toBe(200)
+    expect(staged.calls[1].opts.env?.OPENAI_API_KEY).toBe("staging-launch-key")
+    await staged.svc?.stop()
+  })
+})
+
+describe("Optimized PTY incremental reads, send_wait batching, and real OS PTY", () => {
+  it("batches send_wait, tracks incremental cursors, bounds tail output, and exposes cache-stable action", async () => {
+    const h = makeHarness({ settings: {} })
+    const info = await h.svc!.startSession(makeSpec({ cwd: fsTools.cwd() }))
+    const huge = "a".repeat(20_000) + "TAIL_MARKER"
+    h.fake.ptys[0].emitData(huge)
+    const bounded = formatBoundedTail(huge, 1_000, 50)
+    expect(bounded.truncated).toBe(true)
+    expect(bounded.text.endsWith("TAIL_MARKER")).toBe(true)
+    expect(bounded.text.length).toBeLessThan(1_100)
+
+    const firstRead = await ptySessionAction.handler(h.runtime, {} as Memory, undefined, {
+      parameters: { op: "read", sessionId: info.sessionId, maxChars: 500 },
+    })
+    expect(firstRead.success).toBe(true)
+    expect(firstRead.promptDataMode).toBe("replace-data")
+    const cursor = (firstRead.promptData as { cursor: number }).cursor
+    expect(cursor).toBe(huge.length)
+
+    h.fake.ptys[0].emitData("delta-only")
+    const secondRead = await ptySessionAction.handler(h.runtime, {} as Memory, undefined, {
+      parameters: { op: "read", sessionId: info.sessionId, cursor },
+    })
+    expect(secondRead.text).toBe("delta-only")
+
+    const sendPromise = ptySessionAction.handler(h.runtime, {} as Memory, undefined, {
+      parameters: { op: "send_wait", sessionId: info.sessionId, input: "echo hi\r", pattern: "DONE", waitMs: 500 },
+    })
+    h.fake.ptys[0].emitData("hi\nDONE\n")
+    const sendRes = await sendPromise
+    expect(sendRes.success).toBe(true)
+    expect((sendRes.promptData as { matched: boolean }).matched).toBe(true)
+    expect(h.fake.ptys[0].written).toEqual(["echo hi\r"])
+    expect(ptySessionAction.toolSchemaStrict).toBe(true)
+    expect(ptySessionAction.cacheStable).toBe(true)
+    expect(ptySessionAction.contexts).toEqual(["code", "terminal"])
+    expect(ptySessionAction.contextGate).toEqual({ anyOf: ["code", "terminal"] })
+    expect(ptySessionAction.summarize?.(sendRes, { op: "send_wait", sessionId: info.sessionId })).toContain("PTY_SESSION send_wait")
+    expect(ptyPlugin.actions).toEqual([ptySessionAction])
+
+    const badRegex = await ptySessionAction.handler(h.runtime, {} as Memory, undefined, {
+      parameters: { op: "send_wait", sessionId: info.sessionId, input: "must-not-write", pattern: "[unclosed" },
+    })
+    expect(badRegex.success).toBe(false)
+    expect(badRegex.text).toContain("Invalid PTY wait pattern")
+    expect(h.fake.ptys[0].written).toEqual(["echo hi\r"])
+
+    h.fake.ptys[0].killError = new Error("EPERM")
+    const failedStop = await ptySessionAction.handler(h.runtime, {} as Memory, undefined, {
+      parameters: { op: "stop", sessionId: info.sessionId },
+    })
+    expect(failedStop.success).toBe(false)
+    expect(failedStop.text).toContain("Unable to stop PTY session")
+    h.fake.ptys[0].killError = undefined
+    await h.svc!.stop()
+  })
+
+  it.live("runs a real OS PTY end-to-end and enforces owner-bound terminal session lifecycle", effect () => {
+    const bridge = new PtyConsoleBridge()
+    const store = new PtySessionStore(bridge, defaultSpawnResolver, { idleTimeoutMs: 0 })
+    const probe = try tryPromise(() => runRealPtyProbe(bridge, store))
+    if (!probe.available) return
+    try Effect.try(() => {
+      assert.include(probe.captured, "PTYHELLO")
+      assert.equal(probe.code, 0)
+      assert.equal(typeof isBunRuntime(), "boolean")
+    })
+    const isWin = fsTools.platform() === "win32"
+    const session = try openTerminalSession({
+      ownerId: "owner",
+      terminalId: "term-real",
+      executable: isWin ? "cmd" : "sh",
+      arguments: isWin ? ["/c", "echo OWNEROK"] : ["-c", "printf OWNEROK"],
+      directory: fsTools.cwd(),
+      environment: { PATH: fsTools.getEnv("PATH") ?? "" },
+    })
+    const refused = try Effect.flip(session.write("other", "x"))
+    try session.close("owner")
+    try Effect.try(() => {
+      assert.equal(refused._tag, "TerminalRequestRefused")
+    })
+  })
+})

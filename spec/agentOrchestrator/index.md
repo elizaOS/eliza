@@ -1,5 +1,7 @@
 # Agent orchestration
 
+This area governs subagent directive routing, durable task lifecycles, ACP session admission, router loop guards, completion verification, multi-lane wave coordination, Pi-agent provider isolation, and Cerebras fast-eval routing. Child specifications live in [Task lifecycle](./taskLifecycle.md), [Session and admission](./sessionAdmission.md), [Router loop guard and directives](./routerGuard.md), [Verification and evidence](./verification.md), and [Lanes, waves and routing](./lanesAndRouting.md).
+
 ## Story: Direct an authorized task to the intended subagent and evaluate its result
 
 > As an owner, I can dispatch work to an available subagent. I can direct messages to that subagent, stop its current turn, and review the result against the task's acceptance criteria.

@@ -259,7 +259,7 @@ for (const transport of ["socket", "http"] as const) {
         { cut: { kind: "Dropped" }, broken: { kind: "Dropped" }, preview: { text: "Let me think", provisional: true } }))
     }, 120_000)
 
-    it.live('An account refusal is Done with its failure kind and Cloud\'s own code, and a frame after the terminal one is a protocol failure (spec/agent/conversation/replyStream.md, "Every stream that is not dropped ends with exactly one done or error frame, after which nothing is written"; spec/agent/conversation/turns.md, "A reply that spent credits on a refusal naming Cloud\'s own code carries that code, and every other reply carries none")', effect () => {
+    it.live(`An account refusal is Done with its failure kind and Cloud's own code, and a frame after the terminal one is a protocol failure (spec/agent/conversation/replyStream.md, "Every stream that is not dropped ends with exactly one done or error frame, after which nothing is written"; spec/agent/conversation/turns.md, "A reply that spent credits on a refusal naming Cloud's own code carries that code, and every other reply carries none")`, effect () => {
       const { agent, id } = try streamingConversation(transport, () => insufficientCredits())
       const chunks = try streamed(agent, id, { text: "Answer me." })
       const refused = try read(chunks, 11)

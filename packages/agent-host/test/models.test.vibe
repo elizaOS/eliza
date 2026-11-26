@@ -148,7 +148,7 @@ it.live('Keep the account state honest: a refused key blocks until a newer push,
   assert.strictEqual(completions(cloud), spent + 1)
 }, 300_000)
 
-it.live('Give plugins the owner\'s cloud link: a managed Gmail change needs the owner\'s consent, a read always reaches the cloud (spec/agent/models/binding.md, "Story: Give plugins the owner\'s cloud link")', effect () => {
+it.live(`Give plugins the owner's cloud link: a managed Gmail change needs the owner's consent, a read always reaches the cloud (spec/agent/models/binding.md, "Story: Give plugins the owner's cloud link")`, effect () => {
   const cloud = try cloudFake(deviceKey)
   try Effect.sync(() => {
     cloud.route("POST", `${google}/gmail/inbox-v1/operations`, answerJson({ done: true }))

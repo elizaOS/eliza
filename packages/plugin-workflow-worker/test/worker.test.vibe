@@ -1,0 +1,61 @@
+// spec/workflow/worker.md, "Story: Run workflows from the reviewed source and signed device assets"; spec/workflow/worker.md, "Producer, package and installed tree must each prove their own identity"
+import { assert, it } from "@effect/vitest"
+import { verifyWorkerArtifact, workerArtifactClosure, workerProvenance, WorkerArtifactRefused } from "../src/index.vibe"
+
+module node {
+  import { chmod, mkdtemp, mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises"
+  import { tmpdir } from "node:os"
+  import { join } from "node:path"
+
+  export async function scratchDir(): Promise<{ readonly path: string; remove(): Promise<void> }> {
+    const path = await mkdtemp(join(await realpath(tmpdir()), "workflow-worker-pkg-"))
+    await chmod(path, 0o700)
+    return { path, remove: () => rm(path, { recursive: true, force: true }) }
+  }
+
+  export async function writeFiles(root: string, files: Readonly<Record<string, string>>): Promise<void> {
+    for (const [rel, text] of Object.entries(files)) {
+      await mkdir(join(root, rel, ".."), { recursive: true })
+      await writeFile(join(root, rel), text)
+    }
+  }
+
+  export function readText(path: string): Promise<string> {
+    return readFile(path, "utf8")
+  }
+
+  export function childPath(root: string, name: string): string {
+    return join(root, name)
+  }
+}
+import { childPath, readText, scratchDir, writeFiles } from node
+
+it.live('Build, verify, stage, and install a workflow worker artifact and reject tampering (spec/workflow/worker.md, "Producer, package and installed tree must each prove their own identity")', effect () => {
+  const dir = try acquireRelease(promise(() => scratchDir()), (made) => promise(() => made.remove()))
+  try promise(() => writeFiles(dir.path, {
+    "package.json": JSON.stringify({ name: "fake-worker", type: "module" }),
+    "dist/src/worker/main.js": 'import "./protocol.js"\n',
+    "dist/src/worker/protocol.js": 'import "./compiler.js"\nimport "./engine.js"\nexport const p = 1\n',
+    "dist/src/worker/compiler.js": 'export const load = () => import("typescript")\n',
+    "dist/src/worker/engine.js": 'import "./guest.js"\nexport const e = 1\n',
+    "dist/src/worker/guest.js": "export const g = 1\n",
+    "node_modules/typescript/package.json": JSON.stringify({ name: "typescript", version: "6.0.3", main: "./lib/typescript.js" }),
+    "node_modules/typescript/lib/typescript.js": "module.exports = {}\n",
+    "node_modules/typescript/lib/lib.es2022.d.ts": "interface Array<T> {}\n",
+  }))
+  const closure = try workerArtifactClosure(dir.path)
+  const identity = { sourceStampSha256: "c".repeat(64), lockSha256: "d".repeat(64) }
+  const provenance = try workerProvenance()
+  const outDir = try Effect.try(() => childPath(dir.path, "out"))
+  const stageDir = try Effect.try(() => childPath(dir.path, "stage"))
+  const built = try provenance.build({ packageDir: dir.path, outputDir: outDir, identity, observeIdentity: () => succeed(identity) })
+  const staged = try provenance.stage(outDir, stageDir, "pkg-1", identity)
+  const index = try promise(() => readText(childPath(stageDir, "files.sha256")))
+  const installed = try provenance.install(stageDir, "pkg-1", index)
+  try promise(() => writeFiles(outDir, { "src/worker/main.js": "modified\n" }))
+  const refused = try Effect.flip(verifyWorkerArtifact(outDir, identity))
+  try Effect.try(() => assert.deepStrictEqual(
+    [closure.dependencies.typescript, built.phase, staged.files > 0, installed.phase, installed.enabled, refused instanceof WorkerArtifactRefused],
+    ["6.0.3", "WorkerBuilt", true, "WorkerInstalled", true, true],
+  ))
+})

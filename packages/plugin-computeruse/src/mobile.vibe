@@ -1,0 +1,247 @@
+// spec/computerUse/index.md, "A command is scoped to one session generation, surface and authorized operation"
+import type { SceneAxNode } from "./types.vibe"
+
+export const ANDROID_BRIDGE_JS_NAME = "__ELIZA_ANDROID_COMPUTERUSE__"
+export const ANDROID_DEFAULT_FPS = 2
+export const ANDROID_LOGICAL_DISPLAY_ID = 100
+export const IOS_BRIDGE_JS_NAME = "__ELIZA_IOS_COMPUTERUSE__"
+export const IOS_APP_GROUP_ID = "group.ai.elizaos.computeruse"
+export const IOS_LOGICAL_DISPLAY_ID = 200
+export const REPLAYKIT_FOREGROUND_MAX_BUFFER = 4
+export const REPLAYKIT_FOREGROUND_MAX_SESSION_SEC = 300
+
+export type AndroidBridgeErrorCode =
+  | "bridge_unavailable"
+  | "permission_denied"
+  | "projection_inactive"
+  | "gesture_failed"
+  | "invalid_args"
+
+export type IosBridgeErrorCode =
+  | "bridge_unavailable"
+  | "unsupported_on_ios"
+  | "intent_not_found"
+  | "replaykit_inactive"
+  | "ocr_failed"
+
+export interface AndroidBridgeResult<T> {
+  readonly ok: boolean
+  readonly value?: T
+  readonly errorCode?: AndroidBridgeErrorCode
+  readonly error?: string
+}
+
+export interface IosBridgeResult<T> {
+  readonly ok: boolean
+  readonly value?: T
+  readonly errorCode?: IosBridgeErrorCode
+  readonly error?: string
+}
+
+export interface AndroidAxNode {
+  readonly id: string
+  readonly className: string
+  readonly text: string
+  readonly contentDescription?: string
+  readonly bounds: readonly [number, number, number, number]
+  readonly clickable: boolean
+  readonly editable: boolean
+  readonly password?: boolean
+}
+
+export interface AndroidComputerUseBridge {
+  captureFrame(): Promise<AndroidBridgeResult<{ readonly pngBase64: string; readonly width: number; readonly height: number }>>
+  getAccessibilityTree(): Promise<AndroidBridgeResult<readonly AndroidAxNode[]>>
+  tap(x: number, y: number): Promise<AndroidBridgeResult<{ readonly dispatched: boolean }>>
+  swipe(x1: number, y1: number, x2: number, y2: number, durationMs?: number): Promise<AndroidBridgeResult<{ readonly dispatched: boolean }>>
+  inputText(text: string): Promise<AndroidBridgeResult<{ readonly dispatched: boolean }>>
+  globalAction(action: "back" | "home" | "recents" | "notifications"): Promise<AndroidBridgeResult<{ readonly dispatched: boolean }>>
+}
+
+export interface IosIntentParameterSpec {
+  readonly name: string
+  readonly type: "string" | "number" | "boolean"
+  readonly required: boolean
+  readonly description: string
+}
+
+export interface IosIntentSpec {
+  readonly id: string
+  readonly bundleId: string
+  readonly title: string
+  readonly description: string
+  readonly parameters: readonly IosIntentParameterSpec[]
+}
+
+export interface IosComputerUseBridge {
+  captureForegroundFrame(): Promise<IosBridgeResult<{ readonly pngBase64: string; readonly width: number; readonly height: number }>>
+  invokeIntent(intentId: string, params: Record<string, unknown>): Promise<IosBridgeResult<unknown>>
+  recognizeText(pngBase64: string): Promise<IosBridgeResult<readonly OcrLine[]>>
+}
+
+export const IOS_APP_INTENT_REGISTRY: readonly IosIntentSpec[] = [
+  {
+    id: "com.apple.mobilesafari.open-url",
+    bundleId: "com.apple.mobilesafari",
+    title: "Open URL in Safari",
+    description: "Opens an HTTP(S) URL in Safari via iOS AppIntent.",
+    parameters: [{ name: "url", type: "string", required: true, description: "Target URL" }],
+  },
+  {
+    id: "com.apple.mobilenotes.create-note",
+    bundleId: "com.apple.mobilenotes",
+    title: "Create Apple Note",
+    description: "Creates a note via iOS AppIntent.",
+    parameters: [
+      { name: "title", type: "string", required: false, description: "Note title" },
+      { name: "body", type: "string", required: true, description: "Note contents" },
+    ],
+  },
+  {
+    id: "com.apple.reminders.create",
+    bundleId: "com.apple.reminders",
+    title: "Create Reminder",
+    description: "Creates a reminder via iOS AppIntent.",
+    parameters: [{ name: "title", type: "string", required: true, description: "Reminder title" }],
+  },
+  {
+    id: "com.apple.shortcuts.run",
+    bundleId: "com.apple.shortcuts",
+    title: "Run Shortcut",
+    description: "Runs a user-authored iOS Shortcut by name.",
+    parameters: [
+      { name: "name", type: "string", required: true, description: "Shortcut name" },
+      { name: "input", type: "string", required: false, description: "Optional shortcut input" },
+    ],
+  },
+]
+
+export const IOS_APP_INTENT_BUNDLE_IDS: readonly string[] = [
+  ...new Set(IOS_APP_INTENT_REGISTRY.map((intent) => intent.bundleId)),
+].sort()
+
+export function listIosAppIntents(): readonly IosIntentSpec[] {
+  return IOS_APP_INTENT_REGISTRY
+}
+
+export function findIosAppIntent(id: string): IosIntentSpec | undefined {
+  return IOS_APP_INTENT_REGISTRY.find((intent) => intent.id === id)
+}
+
+export function findIosAppIntentsForBundle(bundleId: string): readonly IosIntentSpec[] {
+  return IOS_APP_INTENT_REGISTRY.filter((intent) => intent.bundleId === bundleId)
+}
+
+let registeredAndroidBridge: AndroidComputerUseBridge | null = null
+let registeredIosBridge: IosComputerUseBridge | null = null
+
+export function setAndroidBridge(bridge: AndroidComputerUseBridge | null): void {
+  registeredAndroidBridge = bridge
+}
+
+export function getAndroidBridge(): AndroidComputerUseBridge | null {
+  return registeredAndroidBridge
+}
+
+export function setIosBridge(bridge: IosComputerUseBridge | null): void {
+  registeredIosBridge = bridge
+}
+
+export function getIosBridge(): IosComputerUseBridge | null {
+  return registeredIosBridge
+}
+
+export function androidFeatureCheck(): { readonly available: boolean; readonly bridgeName: string; readonly defaultFps: number } {
+  return {
+    available: registeredAndroidBridge !== null,
+    bridgeName: ANDROID_BRIDGE_JS_NAME,
+    defaultFps: ANDROID_DEFAULT_FPS,
+  }
+}
+
+export function iosFeatureCheck(): { readonly available: boolean; readonly bridgeName: string; readonly appGroupId: string; readonly intentCount: number } {
+  return {
+    available: registeredIosBridge !== null,
+    bridgeName: IOS_BRIDGE_JS_NAME,
+    appGroupId: IOS_APP_GROUP_ID,
+    intentCount: IOS_APP_INTENT_REGISTRY.length,
+  }
+}
+
+export function normalizeAndroidAxNode(node: AndroidAxNode, displayId = ANDROID_LOGICAL_DISPLAY_ID): SceneAxNode {
+  const actions: string[] = []
+  if (node.clickable) actions.push("click")
+  if (node.editable) actions.push("set_value")
+  return {
+    id: `a${displayId}-${node.id}`,
+    role: node.password ? "passwordField" : node.className,
+    label: node.password ? "[REDACTED_SECURE_FIELD]" : (node.text || node.contentDescription || ""),
+    bbox: node.bounds,
+    actions,
+    displayId,
+  }
+}
+
+export function parseAndroidAxTree(nodes: readonly AndroidAxNode[], displayId = ANDROID_LOGICAL_DISPLAY_ID): SceneAxNode[] {
+  return nodes.map((node) => normalizeAndroidAxNode(node, displayId))
+}
+
+export interface OcrLine {
+  readonly text: string
+  readonly bbox: readonly [number, number, number, number]
+  readonly confidence: number
+}
+
+export interface OcrResult {
+  readonly provider: string
+  readonly lines: readonly OcrLine[]
+  readonly text: string
+}
+
+export interface OcrProvider {
+  readonly name: string
+  readonly priority: number
+  isAvailable(): boolean
+  recognize(pngBase64: string): Promise<OcrResult>
+}
+
+const ocrProviders = new Map<string, OcrProvider>()
+
+export function registerOcrProvider(provider: OcrProvider): void {
+  ocrProviders.set(provider.name, provider)
+}
+
+export function unregisterOcrProvider(name: string): void {
+  ocrProviders.delete(name)
+}
+
+export function listOcrProviders(): OcrProvider[] {
+  return [...ocrProviders.values()].sort((a, b) => b.priority - a.priority || a.name.localeCompare(b.name))
+}
+
+export function selectOcrProvider(): OcrProvider | undefined {
+  return listOcrProviders().find((p) => p.isAvailable())
+}
+
+export function createIosVisionOcrProvider(bridge?: IosComputerUseBridge | null): OcrProvider {
+  return {
+    name: "ios-vision",
+    priority: 100,
+    isAvailable: () => (bridge ?? getIosBridge()) !== null,
+    recognize: async (pngBase64: string) => {
+      const active = bridge ?? getIosBridge()
+      if (!active) return { provider: "ios-vision", lines: [], text: "" }
+      const res = await active.recognizeText(pngBase64)
+      const lines = res.ok && res.value ? res.value : []
+      return {
+        provider: "ios-vision",
+        lines,
+        text: lines.map((line) => line.text).join("\n"),
+      }
+    },
+  }
+}
+
+export function _resetOcrProvidersForTests(): void {
+  ocrProviders.clear()
+}

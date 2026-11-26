@@ -1,0 +1,467 @@
+// spec/computerUse/index.md, "Story: Control an authorized computer session"; spec/computerUse/sessions.md, "Story: Manage leased computer-use sessions with fresh observations"; spec/computerUse/approvals.md, "Story: Gate computer-use commands by approval mode and operator decisions"; spec/computerUse/observation.md, "Story: Minimize vision tokens while keeping coordinates and history strictly bounded"; spec/computerUse/batching.md, "Story: Execute a bounded sequence of desktop actions in a single LLM turn"
+
+export type PlatformOS = "darwin" | "linux" | "win32"
+
+export type PermissionType =
+  | "accessibility"
+  | "screen_recording"
+  | "microphone"
+  | "camera"
+  | "shell"
+
+export type ApprovalMode = "full_control" | "smart_approve" | "approve_all" | "off"
+
+export interface PendingApproval {
+  readonly id: string
+  readonly command: string
+  readonly parameters: Record<string, unknown>
+  readonly requestedAt: string
+}
+
+export interface ApprovalResolution {
+  readonly id: string
+  readonly command: string
+  readonly approved: boolean
+  readonly cancelled: boolean
+  readonly mode: ApprovalMode
+  readonly requestedAt: string
+  readonly resolvedAt: string
+  readonly reason?: string
+}
+
+export interface ApprovalSnapshot {
+  readonly mode: ApprovalMode
+  readonly pendingCount: number
+  readonly pendingApprovals: PendingApproval[]
+}
+
+export type DesktopActionType =
+  | "screenshot"
+  | "click"
+  | "click_with_modifiers"
+  | "double_click"
+  | "right_click"
+  | "mouse_move"
+  | "middle_click"
+  | "mouse_down"
+  | "mouse_up"
+  | "type"
+  | "key"
+  | "key_combo"
+  | "key_down"
+  | "key_up"
+  | "scroll"
+  | "drag"
+  | "get_cursor_position"
+  | "detect_elements"
+  | "ocr"
+  | "open"
+  | "launch"
+  | "kill_app"
+  | "set_value"
+  | "batch"
+
+export interface DesktopBatchStep {
+  readonly action: Exclude<DesktopActionType, "batch">
+  readonly coordinate?: readonly [number, number]
+  readonly startCoordinate?: readonly [number, number]
+  readonly path?: readonly (readonly [number, number])[]
+  readonly displayId?: number
+  readonly modifiers?: readonly string[]
+  readonly text?: string
+  readonly key?: string
+  readonly button?: "left" | "middle" | "right"
+  readonly scrollDirection?: "up" | "down" | "left" | "right"
+  readonly scrollAmount?: number
+  readonly target?: string
+  readonly app?: string
+  readonly appArgs?: readonly string[]
+  readonly waitMs?: number
+}
+
+export interface DesktopActionParams {
+  readonly action: DesktopActionType
+  readonly coordinate?: readonly [number, number]
+  readonly startCoordinate?: readonly [number, number]
+  readonly path?: readonly (readonly [number, number])[]
+  readonly displayId?: number
+  readonly coordSource?: "logical" | "backing"
+  readonly modifiers?: readonly string[]
+  readonly text?: string
+  readonly key?: string
+  readonly hold_keys?: readonly string[]
+  readonly button?: "left" | "middle" | "right"
+  readonly scrollDirection?: "up" | "down" | "left" | "right"
+  readonly scrollAmount?: number
+  readonly amount?: number
+  readonly x?: number
+  readonly y?: number
+  readonly x1?: number
+  readonly y1?: number
+  readonly x2?: number
+  readonly y2?: number
+  readonly target?: string
+  readonly app?: string
+  readonly appArgs?: readonly string[]
+  readonly steps?: readonly DesktopBatchStep[]
+  readonly stopOnError?: boolean
+  readonly screenshotAfter?: boolean
+}
+
+export type BrowserActionType =
+  | "open"
+  | "connect"
+  | "close"
+  | "navigate"
+  | "click"
+  | "type"
+  | "scroll"
+  | "screenshot"
+  | "dom"
+  | "get_dom"
+  | "clickables"
+  | "get_clickables"
+  | "execute"
+  | "state"
+  | "info"
+  | "context"
+  | "get_context"
+  | "wait"
+  | "list_tabs"
+  | "open_tab"
+  | "close_tab"
+  | "switch_tab"
+
+export interface BrowserActionParams {
+  readonly action: BrowserActionType
+  readonly url?: string
+  readonly selector?: string
+  readonly coordinate?: readonly [number, number]
+  readonly text?: string
+  readonly code?: string
+  readonly waitForText?: string
+  readonly waitForTextGone?: string
+  readonly direction?: "up" | "down"
+  readonly amount?: number
+  readonly tabId?: string
+  readonly index?: number
+  readonly tab_index?: number
+  readonly timeout?: number
+}
+
+export type WindowActionType =
+  | "list"
+  | "focus"
+  | "switch"
+  | "arrange"
+  | "move"
+  | "minimize"
+  | "maximize"
+  | "restore"
+  | "close"
+  | "get_current_window_id"
+  | "get_application_windows"
+  | "set_bounds"
+  | "get_window_size"
+  | "get_window_position"
+
+export interface WindowActionParams {
+  readonly action: WindowActionType
+  readonly windowId?: string
+  readonly windowTitle?: string
+  readonly appName?: string
+  readonly title?: string
+  readonly window?: string
+  readonly arrangement?: string
+  readonly x?: number
+  readonly y?: number
+  readonly width?: number
+  readonly height?: number
+}
+
+export type FileActionType =
+  | "read"
+  | "write"
+  | "edit"
+  | "append"
+  | "delete"
+  | "exists"
+  | "list_directory"
+  | "create_dir"
+  | "delete_directory"
+  | "directory_exists"
+  | "get_file_size"
+  | "read_bytes"
+  | "write_bytes"
+  | "upload"
+  | "download"
+  | "list_downloads"
+
+export interface FileActionParams {
+  readonly action: FileActionType
+  readonly path?: string
+  readonly content?: string
+  readonly oldText?: string
+  readonly newText?: string
+  readonly encoding?: string
+  readonly bytesBase64?: string
+  readonly recursive?: boolean
+}
+
+export type TerminalActionType =
+  | "connect"
+  | "execute"
+  | "read"
+  | "type"
+  | "clear"
+  | "close"
+
+export interface TerminalActionParams {
+  readonly action: TerminalActionType
+  readonly sessionId?: string
+  readonly command?: string
+  readonly text?: string
+  readonly cwd?: string
+  readonly timeoutSeconds?: number
+}
+
+export interface ScreenSize {
+  readonly width: number
+  readonly height: number
+}
+
+export interface ScreenRegion {
+  readonly x: number
+  readonly y: number
+  readonly width: number
+  readonly height: number
+}
+
+export interface DisplayDescriptor {
+  readonly id: number
+  readonly name: string
+  readonly bounds: ScreenRegion
+  readonly scaleFactor: number
+  readonly primary: boolean
+}
+
+export interface WindowInfo {
+  readonly id: string
+  readonly title: string
+  readonly app: string
+  readonly pid?: number
+  readonly displayId?: number
+  readonly bounds?: ScreenRegion
+  readonly focused?: boolean
+}
+
+export interface BrowserTab {
+  readonly id: string
+  readonly title: string
+  readonly url: string
+  readonly active: boolean
+}
+
+export interface ClickableElement {
+  readonly index: number
+  readonly tag: string
+  readonly text: string
+  readonly selector: string
+  readonly x: number
+  readonly y: number
+  readonly width: number
+  readonly height: number
+}
+
+export interface BrowserInfo {
+  readonly connected: boolean
+  readonly url: string
+  readonly title: string
+  readonly tabCount: number
+  readonly tabs: BrowserTab[]
+}
+
+export interface BrowserState {
+  readonly url: string
+  readonly title: string
+  readonly text: string
+  readonly clickables: ClickableElement[]
+  readonly tabs: BrowserTab[]
+}
+
+export interface FileEntry {
+  readonly name: string
+  readonly path: string
+  readonly isDirectory: boolean
+  readonly size: number
+}
+
+export interface CapabilityEntry {
+  readonly available: boolean
+  readonly tool: string
+}
+
+export interface PlatformCapabilities {
+  readonly screenshot: CapabilityEntry
+  readonly computerUse: CapabilityEntry
+  readonly windowList: CapabilityEntry
+  readonly browser: CapabilityEntry
+  readonly terminal: CapabilityEntry
+  readonly fileSystem: CapabilityEntry
+  readonly clipboard: CapabilityEntry
+}
+
+export interface ActionHistoryEntry {
+  readonly id: string
+  readonly action: string
+  readonly timestamp: number
+  readonly success: boolean
+  readonly summary: string
+  readonly error?: string
+}
+
+export interface ComputerUseConfig {
+  readonly enabled: boolean
+  readonly screenshotAfterAction: boolean
+  readonly actionTimeoutMs: number
+  readonly approvalMode: ApprovalMode
+  readonly browserHeadless: boolean
+  readonly maxHistoryEntries: number
+  readonly maxRetainedImages: number
+  readonly brainImagePolicy: "always" | "on-escalation" | "never"
+  readonly maxBatchSteps: number
+}
+
+export interface ComputerUseResult {
+  readonly success: boolean
+  readonly message?: string
+  readonly error?: string
+  readonly errorCode?: string
+  readonly permissionDenied?: boolean
+  readonly permissionType?: PermissionType
+  readonly approvalRequired?: boolean
+  readonly approvalId?: string
+  readonly screenshot?: string
+  readonly frontendScreenshot?: string
+  readonly data?: unknown
+}
+
+export interface BatchStepResult {
+  readonly index: number
+  readonly action: string
+  readonly success: boolean
+  readonly message?: string
+  readonly error?: string
+}
+
+export interface ComputerActionResult extends ComputerUseResult {
+  readonly coordinate?: readonly [number, number]
+  readonly cursorPosition?: { readonly x: number; readonly y: number }
+  readonly elements?: readonly unknown[]
+  readonly ocrText?: string
+  readonly pid?: number
+  readonly batchResults?: readonly BatchStepResult[]
+  readonly stepsExecuted?: number
+  readonly stepsRequested?: number
+  readonly abortedAtStep?: number
+}
+
+export interface BrowserActionResult extends ComputerUseResult {
+  readonly url?: string
+  readonly title?: string
+  readonly dom?: string
+  readonly clickables?: readonly ClickableElement[]
+  readonly tabs?: readonly BrowserTab[]
+  readonly tabId?: string
+  readonly state?: BrowserState
+  readonly info?: BrowserInfo
+}
+
+export interface WindowActionResult extends ComputerUseResult {
+  readonly windows?: readonly WindowInfo[]
+  readonly window?: WindowInfo
+  readonly windowId?: string
+  readonly bounds?: ScreenRegion
+}
+
+export interface FileActionResult extends ComputerUseResult {
+  readonly content?: string
+  readonly bytesBase64?: string
+  readonly exists?: boolean
+  readonly size?: number
+  readonly entries?: readonly FileEntry[]
+  readonly path?: string
+}
+
+export interface TerminalActionResult extends ComputerUseResult {
+  readonly sessionId?: string
+  readonly stdout?: string
+  readonly stderr?: string
+  readonly exitCode?: number
+  readonly output?: string
+  readonly truncated?: boolean
+}
+
+export interface SceneAppWindow {
+  readonly id: string
+  readonly title: string
+  readonly displayId: number
+  readonly bounds?: readonly [number, number, number, number]
+}
+
+export interface SceneApp {
+  readonly name: string
+  readonly pid: number
+  readonly bundleId?: string
+  readonly windows: readonly SceneAppWindow[]
+}
+
+export interface SceneFocusedWindow {
+  readonly id: string
+  readonly app: string
+  readonly title: string
+  readonly displayId: number
+  readonly bounds: readonly [number, number, number, number] | null
+}
+
+export interface SceneOcrBox {
+  readonly id: string
+  readonly text: string
+  readonly bbox: readonly [number, number, number, number]
+  readonly conf: number
+  readonly displayId: number
+}
+
+export interface SceneAxNode {
+  readonly id: string
+  readonly role: string
+  readonly label: string
+  readonly bbox: readonly [number, number, number, number]
+  readonly actions: readonly string[]
+  readonly displayId: number
+}
+
+export interface SceneVlmElement {
+  readonly id: string
+  readonly label: string
+  readonly bbox: readonly [number, number, number, number]
+  readonly displayId: number
+  readonly confidence?: number
+}
+
+export interface Scene {
+  readonly timestamp: number
+  readonly displays: readonly DisplayDescriptor[]
+  readonly focused_window: SceneFocusedWindow | null
+  readonly apps: readonly SceneApp[]
+  readonly ocr: readonly SceneOcrBox[]
+  readonly ax: readonly SceneAxNode[]
+  readonly vlm_scene: string | null
+  readonly vlm_elements: readonly SceneVlmElement[]
+}
+
+export interface ProcessInfo {
+  readonly pid: number
+  readonly name: string
+  readonly command?: string
+}

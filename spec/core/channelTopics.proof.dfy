@@ -1,10 +1,10 @@
 lemma admit_ensures(t: TopicService, capturedGeneration: int, callId: string, readOnly: bool, incoming: seq<string>)
+  ensures (inv(t) ==> canAdmit(t, capturedGeneration, callId, readOnly, incoming) ==> alwaysCallIdsUnique(admit(t, capturedGeneration, callId, readOnly, incoming)))
+  ensures (inv(t) ==> canAdmit(t, capturedGeneration, callId, readOnly, incoming) ==> alwaysQueueOwnsCalls(admit(t, capturedGeneration, callId, readOnly, incoming)))
   ensures (inv(t) ==> canAdmit(t, capturedGeneration, callId, readOnly, incoming) ==> alwaysOnlyHeadIsActive(admit(t, capturedGeneration, callId, readOnly, incoming)))
   ensures (inv(t) ==> canAdmit(t, capturedGeneration, callId, readOnly, incoming) ==> alwaysTopicCapacity(admit(t, capturedGeneration, callId, readOnly, incoming)))
   ensures (inv(t) ==> canAdmit(t, capturedGeneration, callId, readOnly, incoming) ==> alwaysTopicCacheOwnership(admit(t, capturedGeneration, callId, readOnly, incoming)))
   ensures (inv(t) ==> canAdmit(t, capturedGeneration, callId, readOnly, incoming) ==> alwaysUnhydratedHasNoCache(admit(t, capturedGeneration, callId, readOnly, incoming)))
-  ensures (inv(t) ==> canAdmit(t, capturedGeneration, callId, readOnly, incoming) ==> alwaysCallIdsUnique(admit(t, capturedGeneration, callId, readOnly, incoming)))
-  ensures (inv(t) ==> canAdmit(t, capturedGeneration, callId, readOnly, incoming) ==> alwaysQueueOwnsCalls(admit(t, capturedGeneration, callId, readOnly, incoming)))
   ensures (inv(t) ==> canAdmit(t, capturedGeneration, callId, readOnly, incoming) ==> alwaysRetiredServiceJoined(admit(t, capturedGeneration, callId, readOnly, incoming)))
   ensures (inv(t) ==> canAdmit(t, capturedGeneration, callId, readOnly, incoming) ==> alwaysActiveCallMatchesHydration(admit(t, capturedGeneration, callId, readOnly, incoming)))
 {
@@ -27,12 +27,12 @@ lemma admit_ensures(t: TopicService, capturedGeneration: int, callId: string, re
 }
 
 lemma claimHead_ensures(t: TopicService)
+  ensures (inv(t) ==> canClaimHead(t) ==> alwaysCallIdsUnique(claimHead(t)))
+  ensures (inv(t) ==> canClaimHead(t) ==> alwaysQueueOwnsCalls(claimHead(t)))
   ensures (inv(t) ==> canClaimHead(t) ==> alwaysOnlyHeadIsActive(claimHead(t)))
   ensures (inv(t) ==> canClaimHead(t) ==> alwaysTopicCapacity(claimHead(t)))
   ensures (inv(t) ==> canClaimHead(t) ==> alwaysTopicCacheOwnership(claimHead(t)))
   ensures (inv(t) ==> canClaimHead(t) ==> alwaysUnhydratedHasNoCache(claimHead(t)))
-  ensures (inv(t) ==> canClaimHead(t) ==> alwaysCallIdsUnique(claimHead(t)))
-  ensures (inv(t) ==> canClaimHead(t) ==> alwaysQueueOwnsCalls(claimHead(t)))
   ensures (inv(t) ==> canClaimHead(t) ==> alwaysRetiredServiceJoined(claimHead(t)))
   ensures (inv(t) ==> canClaimHead(t) ==> alwaysActiveCallMatchesHydration(claimHead(t)))
 {
@@ -44,12 +44,12 @@ lemma claimHead_ensures(t: TopicService)
 }
 
 lemma hydrate_ensures(t: TopicService, hydration: TopicHydration)
+  ensures (inv(t) ==> canHydrate(t, hydration) ==> alwaysCallIdsUnique(hydrate(t, hydration)))
+  ensures (inv(t) ==> canHydrate(t, hydration) ==> alwaysQueueOwnsCalls(hydrate(t, hydration)))
   ensures (inv(t) ==> canHydrate(t, hydration) ==> alwaysOnlyHeadIsActive(hydrate(t, hydration)))
   ensures (inv(t) ==> canHydrate(t, hydration) ==> alwaysTopicCapacity(hydrate(t, hydration)))
   ensures (inv(t) ==> canHydrate(t, hydration) ==> alwaysTopicCacheOwnership(hydrate(t, hydration)))
   ensures (inv(t) ==> canHydrate(t, hydration) ==> alwaysUnhydratedHasNoCache(hydrate(t, hydration)))
-  ensures (inv(t) ==> canHydrate(t, hydration) ==> alwaysCallIdsUnique(hydrate(t, hydration)))
-  ensures (inv(t) ==> canHydrate(t, hydration) ==> alwaysQueueOwnsCalls(hydrate(t, hydration)))
   ensures (inv(t) ==> canHydrate(t, hydration) ==> alwaysRetiredServiceJoined(hydrate(t, hydration)))
   ensures (inv(t) ==> canHydrate(t, hydration) ==> alwaysActiveCallMatchesHydration(hydrate(t, hydration)))
 {
@@ -62,12 +62,12 @@ lemma hydrate_ensures(t: TopicService, hydration: TopicHydration)
 }
 
 lemma persist_ensures(t: TopicService, persistence: TopicPersistence)
+  ensures (inv(t) ==> canPersist(t) ==> alwaysCallIdsUnique(persist(t, persistence)))
+  ensures (inv(t) ==> canPersist(t) ==> alwaysQueueOwnsCalls(persist(t, persistence)))
   ensures (inv(t) ==> canPersist(t) ==> alwaysOnlyHeadIsActive(persist(t, persistence)))
   ensures (inv(t) ==> canPersist(t) ==> alwaysTopicCapacity(persist(t, persistence)))
   ensures (inv(t) ==> canPersist(t) ==> alwaysTopicCacheOwnership(persist(t, persistence)))
   ensures (inv(t) ==> canPersist(t) ==> alwaysUnhydratedHasNoCache(persist(t, persistence)))
-  ensures (inv(t) ==> canPersist(t) ==> alwaysCallIdsUnique(persist(t, persistence)))
-  ensures (inv(t) ==> canPersist(t) ==> alwaysQueueOwnsCalls(persist(t, persistence)))
   ensures (inv(t) ==> canPersist(t) ==> alwaysRetiredServiceJoined(persist(t, persistence)))
   ensures (inv(t) ==> canPersist(t) ==> alwaysActiveCallMatchesHydration(persist(t, persistence)))
 {
@@ -79,12 +79,12 @@ lemma persist_ensures(t: TopicService, persistence: TopicPersistence)
 }
 
 lemma start_ensures(t: TopicService)
+  ensures (inv(t) ==> canStart(t) ==> alwaysCallIdsUnique(start(t)))
+  ensures (inv(t) ==> canStart(t) ==> alwaysQueueOwnsCalls(start(t)))
   ensures (inv(t) ==> canStart(t) ==> alwaysOnlyHeadIsActive(start(t)))
   ensures (inv(t) ==> canStart(t) ==> alwaysTopicCapacity(start(t)))
   ensures (inv(t) ==> canStart(t) ==> alwaysTopicCacheOwnership(start(t)))
   ensures (inv(t) ==> canStart(t) ==> alwaysUnhydratedHasNoCache(start(t)))
-  ensures (inv(t) ==> canStart(t) ==> alwaysCallIdsUnique(start(t)))
-  ensures (inv(t) ==> canStart(t) ==> alwaysQueueOwnsCalls(start(t)))
   ensures (inv(t) ==> canStart(t) ==> alwaysRetiredServiceJoined(start(t)))
   ensures (inv(t) ==> canStart(t) ==> alwaysActiveCallMatchesHydration(start(t)))
 {
@@ -103,12 +103,12 @@ lemma start_ensures(t: TopicService)
 }
 
 lemma advanceRoom_ensures(t: TopicService, hydration: TopicHydration, persistence: TopicPersistence)
+  ensures (inv(t) ==> canAdvanceRoom(t, hydration) ==> alwaysCallIdsUnique(advanceRoom(t, hydration, persistence)))
+  ensures (inv(t) ==> canAdvanceRoom(t, hydration) ==> alwaysQueueOwnsCalls(advanceRoom(t, hydration, persistence)))
   ensures (inv(t) ==> canAdvanceRoom(t, hydration) ==> alwaysOnlyHeadIsActive(advanceRoom(t, hydration, persistence)))
   ensures (inv(t) ==> canAdvanceRoom(t, hydration) ==> alwaysTopicCapacity(advanceRoom(t, hydration, persistence)))
   ensures (inv(t) ==> canAdvanceRoom(t, hydration) ==> alwaysTopicCacheOwnership(advanceRoom(t, hydration, persistence)))
   ensures (inv(t) ==> canAdvanceRoom(t, hydration) ==> alwaysUnhydratedHasNoCache(advanceRoom(t, hydration, persistence)))
-  ensures (inv(t) ==> canAdvanceRoom(t, hydration) ==> alwaysCallIdsUnique(advanceRoom(t, hydration, persistence)))
-  ensures (inv(t) ==> canAdvanceRoom(t, hydration) ==> alwaysQueueOwnsCalls(advanceRoom(t, hydration, persistence)))
   ensures (inv(t) ==> canAdvanceRoom(t, hydration) ==> alwaysRetiredServiceJoined(advanceRoom(t, hydration, persistence)))
   ensures (inv(t) ==> canAdvanceRoom(t, hydration) ==> alwaysActiveCallMatchesHydration(advanceRoom(t, hydration, persistence)))
 {
