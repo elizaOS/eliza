@@ -2,13 +2,36 @@
 import { looksLikeActionEnvelopeJson, looksLikeEvaluatorEnvelopeJson, parseInteractionBlocks, sanitizeUserVisibleModelOutput, validateSchema, type JsonSchema, type ToolCall, type ToolDefinition } from "@elizaos/core"
 import { actionLabel, compose, heardAs, readDraft, type ActionLabel, type Composition, type Declared, type Draft, type DraftShape, type ObjectNaming, type VoiceAction } from "../../gen/agent__conversation__planning.ts"
 
-const maxCueLength = 120
+export const maxCueLength = 120
 const bracketCall = /\[[a-z][a-z0-9]*(?:_[a-z0-9]+)+(?:\s+[a-z_]+=(?:"[^"\n]*"|[^\s\]"][^\s\]]*))+\s*\]/gu
 const callName = /^[a-z]+(?:_[a-z0-9]+)+$/u
 const emptyWrapper = /```[\w-]*\s*```|<([\w-]+)>\s*<\/\1>/gu
 const dataToken = /\p{N}|\b[ap]\.m\.|\b(?:pm|noon|midnight|o['’]clock|zero|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|(?:hundred|thousand|dozen)s?|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth|\p{L}+(?:teenth|tieth)|few|couple|handful|several|single|only|(?:half|quarter) (?:past|to|after|till?))\b|\b(?:at|by|until|till|before|after|around) one\b|\bone [ap]m\b/iu
 
-export const cueRule = "When you call tools, write with your first tool calls only a brief cue tagged [promise], in the person's own language, that you heard the request; the real reply comes after the work. A cue is a few natural words that you are looking or about to do it, in your own words rather than a stock phrase: it never names the people, items, places, times, numbers or outcome, never asks anything, never says the work is done or under way, and never repeats the request. Never open a cue with assent such as Sure or Yeah after a question; it sounds like the answer. When one message asks for several lookups, or about several named people or items, keep the cue general and name no source; name a source only for one simple lookup. Write a cue only with a tool call in the same response: when no offered tool can do what was asked, write no cue and tell the person plainly, in your own words, that you can't. Any question or lookup gets its cue, even one about what is on the screen. A request only to open one app, with nothing to read, find or change there, still calls the tool that opens it, with no cue: write nothing with that call, and the reply after it confirms the destination. Your text after the last tool result is the reply itself, never another cue, and a response with no tool call is always your reply, so never write a cue without calling a tool. If the person asked for silence or no acknowledgment, write nothing and still do the work. Write no text with later tool calls. Say that something was saved, sent, opened or changed only when a tool result in this turn shows it. Begin all text you write with one tag the person never sees: [promise] when it only says that you heard the request or will do something, as every cue does, or [answer] when it is your complete reply. Text written with tool calls is said only when it is a cue tagged [promise]. Use only these two tags, spelled exactly so."
+export const cueRule = "When you call tools, write in the cue field of your first tool call only a brief cue tagged [promise], in the person's own language, that you heard the request; the real reply comes after the work. A cue is a few natural words, in your own words rather than a stock phrase, that promise in the future tense what you will do next; it never describes the work as done or in progress, because the work may still fail or wait for the person's approval. It never names the people, items, places, days, times, numbers or outcome, never asks anything, and never repeats the request. Never open a cue with assent such as Sure or Yeah after a question; it sounds like the answer. When one message asks for several lookups, or about several named people or items, keep the cue general and name no source; name a source only for one simple lookup. Write a cue only with a tool call in the same response: when no offered tool can do what was asked, write no cue and tell the person plainly, in your own words, that you can't. Any question or lookup gets its cue, even one about what is on the screen. A request only to open one app, with nothing to read, find or change there, still calls the tool that opens it, with no cue: leave its cue empty, and your [answer] after the tool result confirms the destination. Your text after the last tool result is the reply itself, never another cue, and a response with no tool call is always your reply, so never write a cue without calling a tool. If the person asked for silence or no acknowledgment, leave the cue empty and still do the work. Leave the cue empty on every later tool call, and write no text beside any tool call. Say that something was saved, sent, opened or changed only when a tool result in this turn shows it. Begin all text you write with one tag the person never sees: [promise] when it only says that you heard the request or will do something, as every cue does, or [answer] when it is your complete reply. Only a cue tagged [promise] in the cue field is said before the work; text written beside tool calls is never said. Use only these two tags, spelled exactly so."
+
+const cueField = "cue"
+const cueSchema = { type: "string", description: "Your [promise] cue, per the cue rule; empty on later calls." }
+
+export function withCue(tool: ToolDefinition): ToolDefinition {
+  const parameters = tool.parameters ?? { type: "object", additionalProperties: false }
+  return { ...tool, parameters: { ...parameters, properties: { [cueField]: cueSchema, ...parameters.properties }, required: [cueField, ...parameters.required ?? []] } }
+}
+
+export function cueOf(calls: readonly ToolCall[]): { readonly cue: string; readonly calls: ToolCall[]; readonly cues: string[] } {
+  const cues: string[] = []
+  const bare = calls.map((call) => {
+    const args = fieldsOf(call.arguments)
+    if (args === undefined || !Object.hasOwn(args, cueField)) {
+      cues.push("")
+      return call
+    }
+    const { [cueField]: written, ...rest } = args
+    cues.push(typeof written === "string" ? written.trim() : "")
+    return { ...call, arguments: rest as Exclude<ToolCall["arguments"], string> }
+  })
+  return { cue: cues.find((written) => written !== "") ?? "", calls: bare, cues }
+}
 
 const callKeys = new Set(["action", "tool", "type", "name"])
 const argumentKeys = new Set(["arguments", "args", "parameters", "params", "input", "tool_input"])
@@ -319,7 +342,8 @@ function namedTool(said: string, tools: readonly ToolDefinition[]): CalledTool |
 function misfitOf({ tool, args }: CalledTool): string[] {
   if (args === undefined) return ["its arguments are not an object"]
   const errors: string[] = []
-  validateSchema((tool.parameters ?? { type: "object" }) as JsonSchema, args, "", errors)
+  const written = tool.parameters?.properties?.[cueField] === undefined ? args : { [cueField]: "", ...args }
+  validateSchema((tool.parameters ?? { type: "object" }) as JsonSchema, written, "", errors)
   return errors
 }
 
