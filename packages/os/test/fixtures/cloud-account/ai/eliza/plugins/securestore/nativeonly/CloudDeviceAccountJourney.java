@@ -156,7 +156,7 @@ public final class CloudDeviceAccountJourney {
         }
         case "/api/v1/auth/google/native/challenge" -> {
           return Reply.json(200, new JSONObject().put("challengeId", java.util.UUID.randomUUID().toString()).put("nonce", secret("", 43))
-              .put("expiresAt", now + 60_000).put("serverClientId", SERVER_CLIENT));
+              .put("expiresAt", now + 300_000).put("serverClientId", SERVER_CLIENT));
         }
         case "/api/v1/app-auth/mobile/google" -> {
           Grant grant = signedIn(now, offerLease);
@@ -654,6 +654,8 @@ public final class CloudDeviceAccountJourney {
     cloud.keySeconds = 6;
     int nativeFrom = cloud.paths.size();
     CloudDeviceAccount.NativeGoogleAttempt attempt = account.prepareNativeGoogle(CLIENT_ID, "staging");
+    if (attempt.expiresAt() > System.currentTimeMillis() + 120_000L)
+      throw new AssertionError("The Cloud challenge must not extend the tablet's pending sign-in");
     seen.put("nativeSignedIn", account.finishNativeGoogle(attempt, "header.payload.signature", null));
     long nativeAt = System.currentTimeMillis();
     String nativeKey = account.session().token();

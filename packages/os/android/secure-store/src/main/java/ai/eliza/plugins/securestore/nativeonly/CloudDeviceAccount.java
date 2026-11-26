@@ -30,6 +30,8 @@ public final class CloudDeviceAccount {
  private static final Pattern ID = Pattern.compile("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}");
  private static final Object LOCK = new Object();
  private static final long PENDING_MS = 15 * 60_000L;
+ private static final long NATIVE_GOOGLE_PENDING_MS = 2 * 60_000L;
+ private static final long NATIVE_GOOGLE_CHALLENGE_MS = 5 * 60_000L;
  private static final long MAX_CREDENTIAL_SECONDS = 7 * 24 * 60 * 60L;
  private static final long MAX_DEVICE_KEY_MS = 90 * 24 * 60 * 60_000L;
  private static final String CHALLENGE = "/api/v1/auth/google/native/challenge";
@@ -204,14 +206,14 @@ public final class CloudDeviceAccount {
    if (!scope.matches("openid|email|https://www\\.googleapis\\.com/auth/[a-z.]{1,64}")) throw new IOException("Invalid Google scope");
    scopes.add(scope);
   }
-  JSONObject pending = beginPending("google", 120_000L, upgrade);
+  JSONObject pending = beginPending("google", NATIVE_GOOGLE_PENDING_MS, upgrade);
   String state = pending.getString("state");
   try {
    JSONObject response = new JSONObject(post(CHALLENGE,
        client.put("codeChallenge", challenge(pending)).put("codeChallengeMethod", "S256"), null, 200).body());
    String challengeId = identifier(response, "challengeId"), nonce = response.getString("nonce");
    long due = response.getLong("expiresAt"), now = System.currentTimeMillis();
-   if (!opaque(nonce) || due <= now || due > now + 120_000L || !serverClientId.equals(response.getString("serverClientId")))
+   if (!opaque(nonce) || due <= now || due > now + NATIVE_GOOGLE_CHALLENGE_MS || !serverClientId.equals(response.getString("serverClientId")))
     throw new IOException("Invalid Google challenge");
    long expiry = Math.min(pending.getLong("expiresAt"), due);
    return new NativeGoogleAttempt(clientId, environment, serverClientId, Collections.unmodifiableList(scopes), challengeId, nonce, state, expiry);
