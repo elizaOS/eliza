@@ -17,7 +17,9 @@ email nor a voice-note transcript flag is ever concatenated into the message
 text or the owner's authored request words. Each
 part is accepted whole or not at all. An observation may also carry
 the phone's last known position, which a client sends only while the
-platform's location permission is granted and the owner has location on. Every
+platform's location permission is granted and the owner has location on, and
+`chatHeight`, the assistant chat overlay's current height (`hidden`, `bar`,
+`typing`, `sheet` or `full`). Every
 other key of `metadata` is stored with the message and decoded by nothing
 here. Actions and providers (device-action admission, actions on the
 selected record, the current-time provider) read an accepted part only
@@ -53,6 +55,7 @@ from these wire forms (any other key is an unknown field):
 | `selectedObject` | `{kind, id, revision?, accountId?, sourceRevision?, occurrenceId?, timingVersion?}`: `kind` as `view`; `id` `[A-Za-z0-9][A-Za-z0-9._:@=+-]{0,511}`; `accountId`, `sourceRevision`, `occurrenceId` `[A-Za-z0-9][A-Za-z0-9._:@=+-]{0,255}`; `revision` that form or an entity tag `(W/)?"[!#-~]+"`, at most 256 characters; `timingVersion` 2 |
 | `calendarDay` | `{date, timeZone}`: `date` `YYYY-MM-DD`, a real civil date from 1970 on; `timeZone` as above |
 | `location` | `{latitude, longitude, accuracyMeters?, capturedAt}`: `latitude` a number from −90 to 90; `longitude` from −180 to 180; `accuracyMeters` from 0 to 1,000,000; `capturedAt` epoch milliseconds, a safe integer, 0 or more |
+| `chatHeight` | optional; `hidden`, `bar`, `typing`, `sheet` or `full` |
 
 The size is the UTF-8 length of the JSON of the decoded observation, keys
 in the table's order, `sensitive` always written as a boolean, and only the
@@ -65,7 +68,8 @@ type ZoneFact = NoZone | Zone({ zoneName: str }) | UnknownZone
 type RecordFact = NoSelectedRecord | SelectedRecord | MalformedRecord
 type DayFact = NoDay | Day({ dayZone: str, dayBytes: int }) | MalformedDay
 type LocationFact = NoLocation | Located({ locationBytes: int }) | MalformedLocation
-type ObservationFacts = { unknownField: bool, view: ViewName, revision: int, sensitivity: Sensitivity, zone: ZoneFact, selection: RecordFact, day: DayFact, location: LocationFact, coreBytes: int }
+type ChatHeightFact = NoChatHeight | ChatHeight({ chatHeightBytes: int }) | MalformedChatHeight
+type ObservationFacts = { unknownField: bool, view: ViewName, revision: int, sensitivity: Sensitivity, zone: ZoneFact, selection: RecordFact, day: DayFact, location: LocationFact, chatHeight: ChatHeightFact, coreBytes: int }
 pure val observationMaxBytes = 2048
 pure val maxSafeInteger = 9007199254740991
 pure val calendarView: ViewName = View({ viewName: "calendar" })
@@ -77,13 +81,15 @@ pure def dayAccepted(day: DayFact, view: ViewName, sensitivity: Sensitivity, zon
 pure def dayBytesOf(day: DayFact): int = match day { | Day(d) => d.dayBytes | _ => 0 }
 pure def locationAccepted(location: LocationFact): bool = match location { | NoLocation => true | MalformedLocation => false | Located(p) => p.locationBytes > 0 }
 pure def locationBytesOf(location: LocationFact): int = match location { | Located(p) => p.locationBytes | _ => 0 }
+pure def chatHeightAccepted(chatHeight: ChatHeightFact): bool = match chatHeight { | NoChatHeight => true | MalformedChatHeight => false | ChatHeight(h) => h.chatHeightBytes > 0 }
+pure def chatHeightBytesOf(chatHeight: ChatHeightFact): int = match chatHeight { | ChatHeight(h) => h.chatHeightBytes | _ => 0 }
 pure def observationAccepted(o: ObservationFacts): bool =
   not(o.unknownField) and o.view != MalformedView and o.revision >= 0 and o.revision <= maxSafeInteger and o.zone != UnknownZone and o.selection != MalformedRecord and
-  not(o.sensitivity == Sensitive and o.selection != NoSelectedRecord) and dayAccepted(o.day, o.view, o.sensitivity, o.zone) and locationAccepted(o.location) and
-  o.coreBytes + dayBytesOf(o.day) + locationBytesOf(o.location) <= observationMaxBytes
-pure def withoutOptionalFields(o: ObservationFacts): ObservationFacts = { ...o, day: NoDay, location: NoLocation }
+  not(o.sensitivity == Sensitive and o.selection != NoSelectedRecord) and dayAccepted(o.day, o.view, o.sensitivity, o.zone) and locationAccepted(o.location) and chatHeightAccepted(o.chatHeight) and
+  o.coreBytes + dayBytesOf(o.day) + locationBytesOf(o.location) + chatHeightBytesOf(o.chatHeight) <= observationMaxBytes
+pure def withoutOptionalFields(o: ObservationFacts): ObservationFacts = { ...o, day: NoDay, location: NoLocation, chatHeight: NoChatHeight }
 pure val oValues: Set[ObservationFacts] = {
-  val base = { unknownField: false, view: View({ viewName: "calendar" }), revision: 3, sensitivity: NotSensitive, zone: Zone({ zoneName: "Europe/Berlin" }), selection: SelectedRecord, day: Day({ dayZone: "Europe/Berlin", dayBytes: 60 }), location: NoLocation, coreBytes: 400 }
+  val base = { unknownField: false, view: View({ viewName: "calendar" }), revision: 3, sensitivity: NotSensitive, zone: Zone({ zoneName: "Europe/Berlin" }), selection: SelectedRecord, day: Day({ dayZone: "Europe/Berlin", dayBytes: 60 }), location: NoLocation, chatHeight: NoChatHeight, coreBytes: 400 }
   List(
     base,
     { ...base, sensitivity: Sensitive, day: NoDay },
@@ -98,7 +104,11 @@ pure val oValues: Set[ObservationFacts] = {
     { ...base, location: Located({ locationBytes: 90 }) },
     { ...base, sensitivity: Sensitive, selection: NoSelectedRecord, day: NoDay, location: Located({ locationBytes: 90 }) },
     { ...base, location: MalformedLocation },
-    { ...base, coreBytes: 1950, location: Located({ locationBytes: 90 }) }
+    { ...base, coreBytes: 1950, location: Located({ locationBytes: 90 }) },
+    { ...base, chatHeight: ChatHeight({ chatHeightBytes: 21 }) },
+    { ...base, sensitivity: Sensitive, selection: NoSelectedRecord, day: NoDay, chatHeight: ChatHeight({ chatHeightBytes: 21 }) },
+    { ...base, chatHeight: MalformedChatHeight },
+    { ...base, day: NoDay, coreBytes: 2030, chatHeight: ChatHeight({ chatHeightBytes: 21 }) }
   ).foldl(Set(), (acc, o) => acc.union(Set(o)))
 }
 pure def lawASensitiveScreenSharesNoRecordAndNoDay(o: ObservationFacts): bool =
@@ -109,7 +119,7 @@ pure def lawTheCalendarDayIsAcceptedInItsOwnZone(o: ObservationFacts): bool = {
   val zone = o.zone
   val calendarCoreAccepted = observationAccepted(withoutOptionalFields(o)) and o.view == calendarView and o.sensitivity == NotSensitive and o.coreBytes < observationMaxBytes
   calendarCoreAccepted implies
-    match zone { | Zone(z) => observationAccepted({ ...o, location: NoLocation, day: Day({ dayZone: z.zoneName, dayBytes: observationMaxBytes - o.coreBytes }) }) | _ => true }
+    match zone { | Zone(z) => observationAccepted({ ...o, location: NoLocation, chatHeight: NoChatHeight, day: Day({ dayZone: z.zoneName, dayBytes: observationMaxBytes - o.coreBytes }) }) | _ => true }
 }
 pure def lawWithoutOptionalFieldsTheObservationStaysAccepted(o: ObservationFacts): bool =
   observationAccepted(o) implies observationAccepted(withoutOptionalFields(o))
@@ -140,6 +150,34 @@ pure def lawALocationIsKeptOnAnyScreen(o: ObservationFacts, locationBytes: int):
 pure def lawAMalformedLocationDropsTheObservation(o: ObservationFacts): bool = not(observationAccepted({ ...o, location: MalformedLocation }))
 pure def lawALocationCountsWithinTheBound(o: ObservationFacts): bool =
   observationAccepted(o) implies o.coreBytes + locationBytesOf(o.location) <= observationMaxBytes
+```
+
+### A chat height is kept on any screen only when it names a valid overlay height, and it counts within the 2,048 bytes
+
+`chatHeight` reports how far the assistant chat overlay covers the active
+view as the message was sent (`hidden`, `bar`, `typing`, `sheet` or `full`).
+It describes only overlay chrome, never screen contents or a selected record,
+so a sensitive screen keeps it; a malformed value drops the whole observation,
+as any malformed field does. It is shown to the model with the rest of the
+accepted observation, labelled untrusted data about the device, never an
+instruction. With it comes a note explaining that `full` covers the active
+view completely, `sheet` covers part of it, and `typing`, `bar` or `hidden`
+leave the view unobstructed, so when `chatHeight` is `full` or `sheet` and
+the owner asks to go home or show that view, the model should still open or
+navigate to it rather than assuming it is uncovered. It never enters
+`message.content.text` or owner request words (`turn.ownerText`), never
+shapes offered tools, and never accepts an empty-text turn on its own.
+
+```quint
+pure val chatHeightBytesValues = Set(1, 21, 2048)
+pure def lawAChatHeightIsKeptOnAnyScreen(o: ObservationFacts, chatHeightBytes: int): bool = {
+  val core = withoutOptionalFields(o)
+  (observationAccepted(core) and chatHeightBytes > 0 and o.coreBytes + chatHeightBytes <= observationMaxBytes) implies
+    observationAccepted({ ...core, chatHeight: ChatHeight({ chatHeightBytes: chatHeightBytes }) })
+}
+pure def lawAMalformedChatHeightDropsTheObservation(o: ObservationFacts): bool = not(observationAccepted({ ...o, chatHeight: MalformedChatHeight }))
+pure def lawAChatHeightCountsWithinTheBound(o: ObservationFacts): bool =
+  observationAccepted(o) implies o.coreBytes + dayBytesOf(o.day) + locationBytesOf(o.location) + chatHeightBytesOf(o.chatHeight) <= observationMaxBytes
 ```
 
 ### A Browser page is kept only when every field is valid, it is the Browser tab the kept observation selects at that revision on a screen not sensitive, and it fits 16,384 bytes
@@ -415,8 +453,8 @@ pure def lawAPathFromAnotherHostIsRefused(rest: List[int]): bool =
 
 ### Optional fields go only to the process instance the client compared for this turn
 
-An optional field (today the civil day, the location, the Browser page, the
-reviewed email and the selected voice-note transcript flag)
+An optional field (today the civil day, the location, the chat height, the
+Browser page, the reviewed email and the selected voice-note transcript flag)
 is a format the agent process understands, never a permission. A client learns the process instance once
 per verified connection from the non-empty `serverInstanceId` of an
 authenticated `GET /api/status`, compared exactly as returned. A turn that
