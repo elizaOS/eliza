@@ -139,8 +139,19 @@ export effect function githubActionRun(runtime: IAgentRuntime, message: Memory, 
   const receipt = try Schema.decodeUnknownEffect(MutationReceipt)(observed)
   if (receipt.id <= 0) return failed("GitHub did not return a mutation receipt.")
   try journal.send({ type: "observeGitHub", proposal, observation: { tag: "GitHubSuccess", providerReceipt: String(receipt.id) } }, "GitHubAdapter")
-  const missing = op.tag === "CreateIssue" ? { labels: githubMissingNames(op.labels, receipt.labels?.map(label => label.name) ?? []), assignees: githubMissingNames(op.assignees, receipt.assignees?.map(user => user.login) ?? []) } : undefined
-  return { success: true, text: `GitHub confirmed the operation${receipt.number === undefined ? "" : ` for #${receipt.number}`}.${receipt.html_url === undefined ? "" : ` ${receipt.html_url}`}`, data: { receiptId: receipt.id, ...(missing === undefined ? {} : { notApplied: missing }) } } satisfies ActionResult
+  const assigned = receipt.assignees?.map(user => user.login) ?? []
+  const link = receipt.html_url === undefined ? "" : ` ${receipt.html_url}`
+  if (op.tag === "AssignIssue") {
+    const missingLogins = githubMissingNames(op.assignees.map(login => login.toLowerCase()), assigned.map(login => login.toLowerCase()))
+    const assignees = op.assignees.filter(login => missingLogins.includes(login.toLowerCase()))
+    if (assignees.length > 0) return {
+      success: false,
+      text: `GitHub did not assign ${assignees.join(", ")} to #${op.issue}.${link}`,
+      data: { receiptId: receipt.id, notApplied: { assignees } },
+    } satisfies ActionResult
+  }
+  const missing = op.tag === "CreateIssue" ? { labels: githubMissingNames(op.labels, receipt.labels?.map(label => label.name) ?? []), assignees: githubMissingNames(op.assignees, assigned) } : undefined
+  return { success: true, text: `GitHub confirmed the operation${receipt.number === undefined ? "" : ` for #${receipt.number}`}.${link}`, data: { receiptId: receipt.id, ...(missing === undefined ? {} : { notApplied: missing }) } } satisfies ActionResult
 }
 
 export const githubAction: Action = {
