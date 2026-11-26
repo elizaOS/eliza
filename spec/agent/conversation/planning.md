@@ -78,9 +78,9 @@ The runtime checks a call's arguments against each parameter's schema, and
 an object parameter that names no fields accepts no keys at all. So every
 object an action's parameters hold, at any depth, names the fields the
 action's own code reads, or says it takes any keys (a workflow's run input,
-keyed by that workflow's own input names). An action with no parameters
-takes none. A representative argument of every declared action passes the
-runtime's check.
+keyed by that workflow's own input names). An array names what it holds. An action with no parameters takes none. No
+key of a representative argument, every field named, is refused by the
+runtime's check as unexpected.
 
 ### Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history
 

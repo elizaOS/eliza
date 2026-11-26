@@ -10,7 +10,7 @@ module node {
   import { pathToFileURL } from "node:url"
   import { actionToJsonSchema, validateToolArgs, type Action } from "@elizaos/core"
 
-  const packages = join(process.cwd(), "..")
+  let packages = ""
 
   type Schema = { type?: string | string[]; properties?: Record<string, Schema>; additionalProperties?: boolean | Schema; items?: Schema; enum?: unknown[]; anyOf?: Schema[]; oneOf?: Schema[]; required?: string[]; minimum?: number; minLength?: number; minItems?: number; default?: unknown; examples?: unknown[]; const?: unknown }
 
@@ -33,7 +33,7 @@ module node {
       } catch {
         return []
       }
-    }).filter((path) => /parameters:\s*\[/u.test(readFileSync(path, "utf8")))
+    }).filter((path) => /\bparameters\b/u.test(readFileSync(path, "utf8")))
   }
 
   /** @throws {never} */
@@ -51,12 +51,13 @@ module node {
   }
 
   /** @throws {never} */
-  function built(name: string, value: unknown): Action[] {
+  async function built(name: string, value: unknown, failed: string[]): Promise<Action[]> {
     if (typeof value !== "function" || !/Plugin$/u.test(name) || /^create/u.test(name)) return []
     try {
       const stub = new Proxy({}, { get: () => undefined })
-      return actionsIn((value as (...args: unknown[]) => unknown)(stub, "owner"))
-    } catch {
+      return actionsIn(await (value as (...args: unknown[]) => unknown)(stub, "owner"))
+    } catch (cause) {
+      failed.push(`${name}: ${String(cause).slice(0, 160)}`)
       return []
     }
   }
@@ -76,6 +77,17 @@ module node {
   }
 
   /** @throws {never} */
+  function itemlessArrays(schema: unknown, path: string): string[] {
+    if (typeof schema !== "object" || schema === null) return []
+    const node = schema as Schema
+    const kinds = Array.isArray(node.type) ? node.type : [node.type]
+    const own = kinds.includes("array") && node.items === undefined ? [path] : []
+    return [...own, ...Object.entries(node.properties ?? {}).flatMap(([key, child]) => itemlessArrays(child, `${path}.${key}`)),
+      ...(node.items === undefined ? [] : itemlessArrays(node.items, `${path}[]`)),
+      ...[...(node.anyOf ?? []), ...(node.oneOf ?? [])].flatMap((child) => itemlessArrays(child, path))]
+  }
+
+  /** @throws {never} */
   function bareObjects(schema: Schema, path: string): string[] {
     const kinds = Array.isArray(schema.type) ? schema.type : [schema.type]
     const nested = [...Object.entries(schema.properties ?? {}).flatMap(([key, child]) => bareObjects(child, `${path}.${key}`)),
@@ -90,8 +102,6 @@ module node {
   /** @throws {never} */
   function example(schema: Schema): unknown {
     if (schema.const !== undefined) return schema.const
-    if (schema.default !== undefined) return schema.default
-    if (schema.examples !== undefined && schema.examples.length > 0) return schema.examples[0]
     if (schema.enum !== undefined && schema.enum.length > 0) return schema.enum[0]
     const choice = schema.anyOf?.[0] ?? schema.oneOf?.[0]
     if (choice !== undefined) return example(choice)
@@ -102,29 +112,39 @@ module node {
     if (kind === "array") return Array.from({ length: Math.max(1, schema.minItems ?? 1) }, () => example(schema.items ?? { type: "string" }))
     if (kind === "object") {
       const properties = Object.entries(schema.properties ?? {})
-      const chosen = properties.filter(([key]) => (schema.required ?? []).includes(key))
-      return Object.fromEntries((chosen.length > 0 ? chosen : properties).map(([key, child]) => [key, example(child)]))
+      if (properties.length === 0) return schema.additionalProperties === undefined || schema.additionalProperties === false ? { probe: "x" } : {}
+      return Object.fromEntries(properties.map(([key, child]) => [key, example(child)]))
     }
     return "x"
   }
 
   /** @throws {never} */
-  export async function audit(registered: readonly Action[]): Promise<Audit> {
+  export async function audit(registered: readonly Action[], testDirectory: string): Promise<Audit> {
+    packages = join(testDirectory, "..", "..")
     const found = new Map<string, [string, Action]>()
     const unloaded: string[] = []
     for (const path of candidateFiles()) {
       const where = path.slice(packages.length + 1)
       try {
         const loaded = await import(pathToFileURL(path).href) as Record<string, unknown>
-        for (const [name, value] of Object.entries(loaded)) for (const action of [...actionsIn(value), ...built(name, value)]) found.set(action.name, [where, action])
+        for (const [name, value] of Object.entries(loaded)) {
+          for (const action of [...actionsIn(value), ...await built(name, value, unloaded)]) found.set(`${where} ${action.name}`, [where, action])
+        }
       } catch (cause) {
         unloaded.push(`${where}: ${String(cause).slice(0, 220)}`)
       }
     }
-    for (const action of registered) if (!found.has(action.name)) found.set(action.name, ["registered", action])
+    const named = new Set([...found.values()].map(([, action]) => action.name))
+    for (const action of registered) if (!named.has(action.name)) found.set(`registered ${action.name}`, ["registered", action])
     const bare: string[] = []
     const refused: string[] = []
-    for (const [name, [where, action]] of found) {
+    for (const [, [where, action]] of found) {
+      const name = action.name
+      const parameters = Array.isArray(action.parameters) ? action.parameters : []
+      for (const parameter of parameters) {
+        const declared = (parameter as { name?: string; schema?: unknown })
+        bare.push(...itemlessArrays(declared.schema, `${name}.${declared.name ?? "?"}`).map((path) => `${where} ${path} (array without items)`))
+      }
       try {
         const schema = actionToJsonSchema(action) as Schema
         const declared = Array.isArray(action.parameters) ? action.parameters.length > 0 : action.parameters !== undefined
@@ -134,7 +154,7 @@ module node {
         refused.push(`${where} ${name}: ${String(cause)}`)
       }
     }
-    return { actions: found.size, names: [...found].map(([name, [where]]) => `${where} ${name}`).sort(), unloaded, bare, refused }
+    return { actions: found.size, names: [...new Set([...found.values()].map(([, action]) => action.name))].sort(), unloaded, bare, refused }
   }
 }
 import { audit } from node
@@ -146,6 +166,9 @@ it.live(`Every action's parameters name their fields, so the runtime's argument 
     frame: { credential: { version: 1, value: deviceKey } }, modules: builtinModuleFactories,
   })
   const registered: readonly Action[] = agent.agent.runtime.actions
-  const found = try Effect.promise(() => audit(registered))
-  try Effect.try(() => assert.deepStrictEqual({ enough: found.actions >= 40, unloaded: found.unloaded, bare: found.bare, refused: found.refused }, { enough: true, unloaded: [], bare: [], refused: [] }))
+  const found = try Effect.promise(() => audit(registered, import.meta.dirname))
+  const expected = ["BROWSER_OPEN", "CALENDAR", "INBOX_READ", "MAPS_PLACE", "NOTES_UPDATE", "OWNER_REMINDERS", "OWNER_ROUTINES", "PROPOSE_DEVICE_ACTION", "WALLET", "WORKFLOW"]
+  try Effect.try(() => assert.deepStrictEqual({
+    enough: found.actions >= 40, missing: expected.filter((name) => !found.names.includes(name)), unloaded: found.unloaded, bare: found.bare, refused: found.refused,
+  }, { enough: true, missing: [], unloaded: [], bare: [], refused: [] }))
 }, 300_000)
