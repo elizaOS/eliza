@@ -72,6 +72,16 @@ module node {
     actions: [agendaRead, agendaFind, plannerShow],
   }
 
+  export const browserApp: AgentPlugin = {
+    name: "browser-app", description: "A Browser that opens a web address only from its own screen",
+    actions: [{
+      name: "BROWSER_OPEN", description: "Opens a web address in the owner's Browser.",
+      parameters: [{ name: "url", required: true, description: "The web address to open.", schema: { type: "string" } }],
+      validate: async () => false,
+      handler: async () => ({ success: true, text: "Opened." }),
+    }],
+  }
+
   export const privateEffectPayload = "private-fixture-effect-payload"
   export const appliedReceiptId = "private-fixture-applied-receipt"
   const fixtureEffect = (rolledBack: boolean, record: (effect: "applied" | "rolled_back") => void): Action => ({
@@ -155,7 +165,7 @@ module node {
     return reading.then(() => false, (answered: unknown) => answered === reason)
   }
 }
-import { agendaApp, appliedReceiptId, effectApp, leftRead, privateEffectPayload, readErrorBeforeEof, readSplit, slowAgendaReads, unheardCueTurn } from node
+import { agendaApp, appliedReceiptId, browserApp, effectApp, leftRead, privateEffectPayload, readErrorBeforeEof, readSplit, slowAgendaReads, unheardCueTurn } from node
 
 
 effect function streamed(agent: InProcess, id: string, body: object, abortAfterChunks?: number) {
@@ -549,19 +559,22 @@ it.live(`Hear the result after the cue, never the cue again, and only a cue I he
   const sentNote = "was already sent to the person as progress"
   const planned = (before: number) => cloud.calls.filter(({ path }) => path === "/api/v1/chat/completions").slice(before)
     .map(({ body }) => (body as { messages: { role: string; content?: unknown; tool_calls?: unknown }[] }).messages)
-  const transcript = (messages: readonly { role: string; content?: unknown; tool_calls?: unknown }[] | undefined) => ({
-    stepText: (messages ?? []).filter(({ role, tool_calls }) => role === "assistant" && tool_calls !== undefined).map(({ content }) => content ?? null),
-    notes: (messages ?? []).filter(({ role, content }) => role === "user" && typeof content === "string" && content.includes(sentNote)).map(({ content }) => content),
-  })
+  const transcript = (calls: readonly (readonly { role: string; content?: unknown; tool_calls?: unknown }[])[]) => {
+    const messages = (calls.at(-1) ?? []).slice(calls[0]?.length ?? 0)
+    return {
+      stepText: messages.filter(({ role, tool_calls }) => role === "assistant" && tool_calls !== undefined).map(({ content }) => content ?? null),
+      notes: messages.filter(({ role, content }) => role === "user" && typeof content === "string" && content.includes(sentNote)).map(({ content }) => content),
+    }
+  }
   const turn = (request: string, streams: boolean) => effect {
     const before = cloud.calls.filter(({ path }) => path === "/api/v1/chat/completions").length
     if (!streams) {
       try call(agent, { method: "POST", path: `/api/conversations/${id}/messages`, body: { text: request } })
-      return { heard: [] as string[], ...transcript(planned(before).at(-1)) }
+      return { heard: [] as string[], ...transcript(planned(before)) }
     }
     const chunks = try streamed(agent, id, { text: request })
     const whole = try read(chunks, 0)
-    return { heard: whole.seen.filter((entry) => entry.startsWith("acknowledgment:")), ...transcript(planned(before).at(-1)) }
+    return { heard: whole.seen.filter((entry) => entry.startsWith("acknowledgment:")), ...transcript(planned(before)) }
   }
 
   try Effect.sync(() => cloud.script(toolCalls("[promise] Let me check your calendar.", agenda), text("Nothing is booked tomorrow.")))
@@ -577,11 +590,11 @@ it.live(`Hear the result after the cue, never the cue again, and only a cue I he
   try Effect.sync(() => cloud.script(toolCalls("[promise] Let me check your calendar.", agenda), text("Nothing is booked on Sunday.")))
   const refusedFrom = cloud.calls.filter(({ path }) => path === "/api/v1/chat/completions").length
   const offered = try host("a turn whose reply stream refuses its cue", () => unheardCueTurn(agent.agent.runtime, roomId, "What do I have on Sunday?", false))
-  const refused = { offered, ...transcript(planned(refusedFrom).at(-1)) }
+  const refused = { offered, ...transcript(planned(refusedFrom)) }
   try Effect.sync(() => cloud.script(toolCalls("[promise] Let me check your calendar.", agenda), text("Nothing is booked on Saturday.")))
   const unreportedFrom = cloud.calls.filter(({ path }) => path === "/api/v1/chat/completions").length
   const reportedNothing = try host("a turn whose display reports nothing about its cue", () => unheardCueTurn(agent.agent.runtime, roomId, "What do I have on Saturday?", undefined))
-  const unreported = { offered: reportedNothing, ...transcript(planned(unreportedFrom).at(-1)) }
+  const unreported = { offered: reportedNothing, ...transcript(planned(unreportedFrom)) }
 
   try Effect.try(() => assert.deepStrictEqual({ delivered, unstreamed, quiet, notACue, laterStep, refused, unreported }, {
     delivered: {
@@ -619,7 +632,7 @@ it.live(`A response that is only an untagged object or call line calling an offe
     const split = try read(chunks, 5)
     const calls = completions().slice(before)
     const notes = calls.slice(1).map(({ messages }) => messages.at(-1)?.content)
-    const ran = try Effect.try(() => calls.slice(1, 2).flatMap(({ messages }) => messages.flatMap(({ role, tool_calls }) => role === "assistant" && tool_calls !== undefined ? tool_calls.map(({ function: called }): readonly [string, unknown] => [called.name, JSON.parse(called.arguments)]) : [])))
+    const ran = try Effect.try(() => calls.slice(1, 2).flatMap(({ messages }) => messages.slice(calls[0]?.messages.length ?? 0).flatMap(({ role, tool_calls }) => role === "assistant" && tool_calls !== undefined ? tool_calls.map(({ function: called }): readonly [string, unknown] => [called.name, JSON.parse(called.arguments)]) : [])))
     return {
       text: whole.outcome.kind === "Done" ? whole.outcome.text : whole.outcome.kind,
       calls: calls.length, asked: notes, ran,
@@ -863,5 +876,92 @@ it.live(`Never see or keep the agent host's notes as a reply, whether the model 
       showedHostText: false, wireHeldHostText: false, noteSent: true, askedAgainWith: [], acknowledged: false, tools: [], echoBackToModel: false,
     },
     kept: ["I can't open web pages from here.", "You're on your home screen.", "It's a note for me, not something I can share.", "I can't do that here.", "", "Screen time is up for today.", "I can't call from here.", "I can't text from here.", "I can't call anyone from here.", "You asked me to open example.com.", "I said the plan was all set.", "Notes from the agent: none today.", "Nothing is booked today.", "Milk is off your list.", "The settings section is labelled [System] and reads ok."],
+  }))
+}, 120_000)
+
+it.live(`In one long chat, an earlier reply reaches the model with what its tools really did, "go home" after "Browser is open." still runs VIEWS, a refused call is never recorded as done, and no record reaches me in a reply, the stream, the store or Talk (${planning}, "An earlier reply reaches the model with the host's record of the tools its turn ran and how each ended"; ${planning}, "Text that repeats the agent host's notes is never delivered or streamed, and is asked again once as a blank"; spec/agent/conversation/conversations.md, "Redacting replaces the message and every exact copy of its text in its conversation with a fixed notice")`, effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const agent = try startInProcess({
+    launch: {
+      backend: { kind: "cloud", origin: cloud.origin }, callerRole: "owner", load: [viewsModuleName, browserApp.name], allowed: ["REPLY", "IGNORE", "NONE", "VIEWS", "BROWSER_OPEN"],
+      views: [{ id: "home", label: "Home", path: "/home", aliases: ["home screen"] }, { id: "notes", label: "Notes", path: "/notes" }, { id: "browser", label: "Browser", path: "/browser" }],
+    },
+    frame: { credential: { version: 1, value: deviceKey } }, modules: builtinModuleFactories, bundled: new Map([[browserApp.name, browserApp]]),
+  })
+  const { id } = try conversation(agent)
+  const headers = { "x-elizaos-client-id": "c1" }
+  const on = (view: string) => ({ viewDelivery: "completed-action", viewClientId: "c1", observation: { view, revision: 1, sensitive: false } })
+  const completions = () => cloud.calls.filter(({ path }) => path === "/api/v1/chat/completions")
+  const asked = (index: number) => (completions()[index]?.body as { messages: { role: string; content?: unknown; tool_calls?: { id: string; function: { name: string; arguments: string } }[] }[] }).messages
+  const turn = (body: object) => effect {
+    const before = completions().length
+    const answer = try stream(agent, { method: "POST", path: `/api/conversations/${id}/messages/stream`, headers, body })
+    const whole = try read(answer.chunks, 0)
+    const split = try read(answer.chunks, 7)
+    return {
+      done: summary(whole.outcome), tools: whole.seen.filter((entry) => entry.startsWith("tool:")).map((entry) => entry.split(":")[1]),
+      leaked: answer.chunks.join("").includes("history_") || [...whole.seen, ...split.seen].some((entry) => entry.includes("history_") || entry.includes("did not run")),
+      firstCall: before,
+    }
+  }
+  const show = (view: string) => ({ name: "VIEWS", arguments: { action: "show", view } })
+  const address = "example.com/account/private-path?session=abc123"
+
+  try Effect.sync(() => cloud.script(toolCalls("", show("Browser")), text("Browser is open.")))
+  const opened = try turn({ text: "Open the browser.", metadata: on("home") })
+  try Effect.sync(() => cloud.script(toolCalls("", { name: "BROWSER_OPEN", arguments: { url: address } }), text("I can't open that page from here.")))
+  const refused = try turn({ text: address, metadata: on("browser") })
+  try Effect.sync(() => cloud.script(toolCalls("", show("Home")), text("Home.")))
+  const home = try turn({ text: "Go home.", metadata: on("notes") })
+  const homeAsked = asked(home.firstCall)
+  try Effect.sync(() => cloud.script(text("[answer] I haven't changed the screen.")))
+  const talk = try turn({ text: "Is the browser open?", channelType: "VOICE_DM", metadata: { voiceUi: { surface: "voice" } } })
+  try Effect.sync(() => cloud.script(text("[answer] Noted.")))
+  try turn({ text: "Done", metadata: on("home") })
+  const messages = () => effect {
+    const listed = answerOf(try call(agent, { method: "GET", path: `/api/conversations/${id}/messages` }))
+    return (listed.body as { messages: readonly { id: string; role: string; text: string }[] }).messages
+  }
+  const beforeRedaction = try messages()
+  const typed = beforeRedaction.find(({ role, text: said }) => role === "user" && said === address)
+  const outcomeWord = beforeRedaction.find(({ role, text: said }) => role === "user" && said === "Done")
+  const redacted = answerOf(try call(agent, { method: "POST", path: `/api/conversations/${id}/messages/${typed?.id ?? ""}/redact`, body: { expectedText: address } }))
+  const redactedWord = answerOf(try call(agent, { method: "POST", path: `/api/conversations/${id}/messages/${outcomeWord?.id ?? ""}/redact`, body: { expectedText: "Done" } }))
+  try Effect.sync(() => cloud.script(text("[answer] You're welcome.")))
+  const thanks = try turn({ text: "Thanks.", metadata: on("home") })
+  const afterRedaction = asked(thanks.firstCall)
+  const recordsIn = (sent: ReturnType<typeof asked>) => sent.flatMap(({ role, content, tool_calls: calls }) =>
+    role === "tool" ? [`-> ${String(content)}`] : (calls ?? []).map(({ id: callId, function: { name, arguments: args } }) => `${callId.startsWith("history_") ? "" : "fresh "}${name}(${args})`))
+  const repliesOf = (sent: ReturnType<typeof asked>) => sent.filter(({ role, tool_calls: calls }) => role === "assistant" && calls === undefined).map(({ content }) => content)
+  const stored = try messages()
+  const storedJson = JSON.stringify(stored)
+
+  try Effect.try(() => assert.deepStrictEqual({
+    turns: [opened, refused, home].map(({ done, tools, leaked }) => ({ done, tools, leaked })),
+    talk: { done: talk.done, tools: talk.tools, leaked: talk.leaked },
+    homeRecords: recordsIn(homeAsked),
+    replies: repliesOf(afterRedaction),
+    redacted: [redacted.status, redactedWord.status],
+    afterRedaction: recordsIn(afterRedaction),
+    addressGone: !JSON.stringify(afterRedaction).includes(address.slice(0, 20)),
+    storedReplies: stored.filter(({ role }) => role === "assistant").map(({ text: said }) => said),
+    storeHoldsNoRecord: !storedJson.includes("history_") && !storedJson.includes("toolRecord") && !storedJson.includes("did not run"),
+  }, {
+    turns: [
+      { done: { kind: "Done", text: "Browser is open.", failureKind: undefined, keyed: true }, tools: ["VIEWS"], leaked: false },
+      { done: { kind: "Done", text: "I can't open that page from here.", failureKind: undefined, keyed: true }, tools: ["BROWSER_OPEN"], leaked: false },
+      { done: { kind: "Done", text: "Home.", failureKind: undefined, keyed: true }, tools: ["VIEWS"], leaked: false },
+    ],
+    talk: { done: { kind: "Done", text: "I haven't changed the screen.", failureKind: undefined, keyed: true }, tools: [], leaked: false },
+    homeRecords: ['VIEWS({"action":"show","view":"Browser"})', "-> done", `BROWSER_OPEN(${JSON.stringify({ url: `${address.slice(0, 39)}…` })})`, "-> refused, did not run"],
+    replies: ["Browser is open.", "I can't open that page from here.", "Home.", "I haven't changed the screen.", "Noted."],
+    redacted: [200, 200],
+    afterRedaction: [
+      'VIEWS({"action":"show","view":"Browser"})', "-> done", 'BROWSER_OPEN({"url":"[Private information removed]"})', "-> refused, did not run",
+      'VIEWS({"action":"show","view":"Home"})', "-> done",
+    ],
+    addressGone: true,
+    storedReplies: ["Browser is open.", "I can't open that page from here.", "Home.", "I haven't changed the screen.", "Noted.", "You're welcome."],
+    storeHoldsNoRecord: true,
   }))
 }, 120_000)

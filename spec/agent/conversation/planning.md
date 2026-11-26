@@ -320,6 +320,73 @@ pure def lawAMessageWithAReplyIsSentAsItIs(fromPerson: bool): bool = not(markedU
 pure def lawAMessageNoReplyFollowsIsMarked(replyFollows: bool): bool = not(replyFollows) implies markedUnanswered(true, replyFollows)
 ```
 
+### An earlier reply reaches the model with the host's record of the tools its turn ran and how each ended
+
+The history keeps what was said, and to the model a reply that says a
+screen opened or a note was saved reads the same whether a tool did it or
+not. Copying such an earlier reply, the model said a screen had changed
+without calling the tool, and nothing changed. So when a reply is stored,
+the steps of its turn (above) are stored with it, for the model only: each
+step's action, its arguments and how it ended. In the history the model
+reads, a reply whose turn ran at least one step comes after that record,
+written as the model writes a turn's work: one assistant message calling
+each recorded step's tool with its arguments, under ids that are the
+reply's own (`history_<reply id>_<index>`), then one tool message for each
+call that says how it ended, then the reply's words. The model reads its
+earlier work as it reads the work of the turn it is in, so an earlier
+reply is never the only evidence of what was done, and it never takes the
+record for words of a reply: a text mark before or after a reply was
+written again by the model, with no tool called, as if it were part of its
+answer. A tool message says `done` when the step applied a change, or
+succeeded with no receipt; `no change` when each of its receipts changed
+nothing; `proposed to the person (not applied by this call)` when it
+left a change for the person to confirm, which the record never updates,
+so it never says the person agreed; `failed` when it failed; `partly failed` when part of it
+applied or was proposed and part failed; and `refused, did not run` when it
+was refused before it ran. A step that failed or never ran is never
+recorded as done. The record names at most six steps, in the order they
+ran, and the last tool message says how many more calls followed; it keeps
+at most six arguments of a step, each text value cut to 40 characters, so a
+record stays a few hundred bytes at most. A reply whose turn ran no step, a
+reply stored before replies kept a record, and a redacted reply carry none.
+The record is read only from what was stored with the reply, so the
+history stays the same bytes from turn to turn. It reaches the model only:
+it is never part of the reply's text, so it is never delivered, streamed,
+spoken or stored as words, and no conversation route shows it.
+Nothing in the person's words is matched: the model reads the record and
+decides.
+
+```quint
+type RecordedOutcome = RecordedDone | RecordedUnchanged | RecordedProposed | RecordedFailed | RecordedPartly | RecordedRefused
+pure val maxRecordedSteps = 6
+pure val maxRecordedValueChars = 40
+pure val maxRecordedArguments = 6
+pure def recordedOutcome(stepOutcomes: List[StepOutcome], receipted: bool): RecordedOutcome =
+  if (nothingRan(stepOutcomes)) RecordedRefused
+  else if (stepOutcomes.some(o => o == Failed)) { if (stepOutcomes.some(o => o == Applied or o == Proposed)) RecordedPartly else RecordedFailed }
+  else if (stepOutcomes.some(o => o == Proposed)) RecordedProposed
+  else if (stepOutcomes.some(o => o == Applied) or not(receipted)) RecordedDone
+  else RecordedUnchanged
+pure def recordedSteps(ranSteps: int): int = if (ranSteps > maxRecordedSteps) maxRecordedSteps else if (ranSteps < 0) 0 else ranSteps
+pure def carriesARecord(fromAgent: bool, redacted: bool, ranSteps: int): bool = fromAgent and not(redacted) and ranSteps > 0
+pure val stepOutcomesValues = Set(List(), List(Rejected), List(Applied), List(NoEffect), List(Proposed), List(Failed), List(Applied, Failed), List(Proposed, Failed), List(Rejected, Failed))
+pure val ranStepsValues = Set(-1, 0, 1, 6, 7, 20)
+pure def lawAStepThatNeverRanIsRecordedRefused(stepOutcomes: List[StepOutcome], receipted: bool): bool =
+  nothingRan(stepOutcomes) implies recordedOutcome(stepOutcomes, receipted) == RecordedRefused
+pure def lawAFailureIsNeverRecordedDone(stepOutcomes: List[StepOutcome], receipted: bool): bool =
+  stepOutcomes.some(o => o == Failed) implies (recordedOutcome(stepOutcomes, receipted) == RecordedFailed or recordedOutcome(stepOutcomes, receipted) == RecordedPartly)
+pure def lawOnlyARunStepIsRecordedDone(stepOutcomes: List[StepOutcome], receipted: bool): bool =
+  recordedOutcome(stepOutcomes, receipted) == RecordedDone implies (not(nothingRan(stepOutcomes)) and not(stepOutcomes.some(o => o == Failed or o == Proposed)))
+pure def lawAnAppliedChangeIsRecordedDone(stepOutcomes: List[StepOutcome], receipted: bool): bool =
+  (stepOutcomes.some(o => o == Applied) and not(stepOutcomes.some(o => o == Failed or o == Proposed or o == Rejected))) implies recordedOutcome(stepOutcomes, receipted) == RecordedDone
+pure def lawTheRecordIsCapped(ranSteps: int): bool = recordedSteps(ranSteps) <= maxRecordedSteps and recordedSteps(ranSteps) >= 0
+pure def lawTheRecordKeepsEveryStepUpToTheCap(ranSteps: int): bool = (ranSteps >= 0 and ranSteps <= maxRecordedSteps) implies recordedSteps(ranSteps) == ranSteps
+pure def lawOnlyAnAgentReplyThatRanAStepCarriesARecord(fromAgent: bool, redacted: bool, ranSteps: int): bool =
+  carriesARecord(fromAgent, redacted, ranSteps) implies (fromAgent and ranSteps > 0)
+pure def lawARedactedReplyCarriesNoRecord(fromAgent: bool, ranSteps: int): bool = not(carriesARecord(fromAgent, true, ranSteps))
+pure def lawAReplyThatRanAStepCarriesItsRecord(ranSteps: int): bool = ranSteps > 0 implies carriesARecord(true, false, ranSteps)
+```
+
 ### A planner can restore the turn's deferred history once and runs no sibling action from that response
 
 When the planner has action tools, one fixed `RESTORE_CONTEXT` form follows
