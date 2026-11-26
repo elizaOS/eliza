@@ -1,0 +1,360 @@
+// spec/pty/policy.md, "HTTP routes enforce terminal token or trusted local access"; spec/pty/policy.md, "Scrollback and default limits are fixed, and lost scrollback is reported"; spec/pty/policy.md, "Idle timeout, terminal geometry, and output slices stay within safe bounds"; spec/pty/policy.md, "Store sessions belong to the operator, not to a self-reported client"; spec/pty/policy.md, "Interactive and vendor CLI spawning fail closed"; spec/pty/policy.md, "Launcher Cloud authority owns or disables the Cloud tuple"
+
+module node {
+  import { timingSafeEqual } from "node:crypto"
+  import { ElizaError, type IAgentRuntime, logger } from "@elizaos/core"
+  import {
+    evaluateRouteAccess,
+    evaluateSpawnGate,
+    narrowFlag,
+    type FlagState,
+    type SpawnKind,
+    validTerminalGeometry,
+  } from "../gen/pty__policy.ts"
+  import {
+    buildElizaCodeCerebrasSpec,
+    ELIZA_CLOUD_DEFAULT_BASE_URL,
+    type ElizaCodeCloudTuple,
+    resolveElizaCodeBin,
+    resolveElizaCodeCloudTuple,
+  } from "./eliza-code-spec.vibe"
+  import type { PtyService } from "./service.vibe"
+  import type { PtyRoute, PtyRouteContext, PtyRouteResult, PtySpawnSpec } from "./types.vibe"
+  import {
+    buildClaudeCliSpec,
+    buildCodexCliSpec,
+    type PtyVendorCliKind,
+    resolveClaudeCliBin,
+    resolveCodexCliBin,
+  } from "./vendor-cli-spec.vibe"
+
+  function json(status: number, body: unknown): PtyRouteResult {
+    return { status, headers: { "content-type": "application/json" }, body }
+  }
+
+  function str(v: unknown): string | undefined {
+    return typeof v === "string" && v.trim().length > 0 ? v : undefined
+  }
+
+  function num(v: unknown): number | undefined {
+    return typeof v === "number" && Number.isFinite(v) ? v : undefined
+  }
+
+  function getStr(runtime: IAgentRuntime, key: string): string | undefined {
+    const fromSetting = runtime.getSetting?.(key)
+    if (typeof fromSetting === "string" && fromSetting.trim().length > 0) {
+      return fromSetting.trim()
+    }
+    const fromEnv = process.env[key]
+    return fromEnv && fromEnv.trim().length > 0 ? fromEnv.trim() : undefined
+  }
+
+  function getService(ctx: PtyRouteContext): PtyService | null {
+    return (ctx.runtime.getService("PTY_SERVICE") as PtyService | null) ?? null
+  }
+
+  function timingSafeTokenMatches(expected: string, provided: string): boolean {
+    const expectedBytes = Buffer.from(expected)
+    const providedBytes = Buffer.from(provided)
+    return expectedBytes.length === providedBytes.length && timingSafeEqual(expectedBytes, providedBytes)
+  }
+
+  function header(ctx: PtyRouteContext, name: string): string | undefined {
+    const raw = ctx.headers[name] ?? ctx.headers[name.toLowerCase()] ?? ctx.headers[name.toUpperCase()]
+    return str(Array.isArray(raw) ? raw[0] : raw)
+  }
+
+  function query(ctx: PtyRouteContext, name: string): string | undefined {
+    const value = ctx.query[name]
+    return str(Array.isArray(value) ? value[0] : value)
+  }
+
+  function bodyToken(body: Record<string, unknown>): string | undefined {
+    return str(body.terminalToken) ?? str(body.ptyToken)
+  }
+
+  function splitCsv(v: string | undefined): string[] {
+    return (v ?? "")
+      .split(",")
+      .map((part) => part.trim())
+      .filter(Boolean)
+  }
+
+  function normalizeBaseUrl(raw: string): string {
+    const url = new URL(raw)
+    url.hash = ""
+    url.search = ""
+    url.pathname = url.pathname.replace(/\/+$/, "")
+    return url.toString().replace(/\/+$/, "")
+  }
+
+  function allowedBaseUrls(runtime: IAgentRuntime): Set<string> {
+    const configured = [
+      ...splitCsv(getStr(runtime, "PTY_ALLOWED_BASE_URLS")),
+      ...splitCsv(getStr(runtime, "PTY_ELIZA_CLOUD_BASE_URL_ALLOWLIST")),
+    ]
+    return new Set([ELIZA_CLOUD_DEFAULT_BASE_URL, ...configured].map((url) => normalizeBaseUrl(url)))
+  }
+
+  function resolveAllowedBaseUrl(runtime: IAgentRuntime, requested: string | undefined): string | undefined {
+    if (!requested) return undefined
+    const normalized = normalizeBaseUrl(requested)
+    if (!allowedBaseUrls(runtime).has(normalized)) {
+      throw new Error(`Unsupported PTY baseUrl "${requested}". Configure PTY_ALLOWED_BASE_URLS to allow it explicitly.`)
+    }
+    return normalized
+  }
+
+  function providedTerminalToken(ctx: PtyRouteContext, body: Record<string, unknown> = {}): string | undefined {
+    return (
+      header(ctx, "x-eliza-terminal-token") ??
+      header(ctx, "x-pty-terminal-token") ??
+      bodyToken(body) ??
+      query(ctx, "terminalToken") ??
+      query(ctx, "ptyToken")
+    )
+  }
+
+  function ptyAccessRejection(ctx: PtyRouteContext, body: Record<string, unknown> = {}): PtyRouteResult | null {
+    const expected = getStr(ctx.runtime, "ELIZA_TERMINAL_RUN_TOKEN") ?? getStr(ctx.runtime, "PTY_TERMINAL_RUN_TOKEN")
+    const provided = providedTerminalToken(ctx, body)
+    const verdict = evaluateRouteAccess(
+      expected !== undefined,
+      ctx.inProcess === true,
+      ctx.isTrustedLocal === true,
+      provided !== undefined,
+      expected !== undefined && provided !== undefined && timingSafeTokenMatches(expected, provided),
+    )
+    if (verdict === "AccessAllowed") return null
+    if (verdict === "AccessForbiddenNoToken") {
+      return json(403, {
+        error: "Interactive PTY routes require a terminal token (ELIZA_TERMINAL_RUN_TOKEN) for HTTP access.",
+      })
+    }
+    if (verdict === "AccessUnauthorizedMissing") {
+      return json(401, {
+        error: "Missing terminal token. Provide X-Eliza-Terminal-Token or terminalToken.",
+      })
+    }
+    return json(401, { error: "Invalid terminal token." })
+  }
+
+  function flagOf(raw: unknown): FlagState {
+    const value = typeof raw === "string" ? raw.trim().toLowerCase() : ""
+    if (value === "") return "FlagUnset"
+    if (value === "true" || value === "1" || value === "on" || value === "yes") return "FlagTrue"
+    return "FlagOther"
+  }
+
+  function readFlagState(runtime: IAgentRuntime, key: string): FlagState {
+    return narrowFlag(flagOf(process.env[key]), flagOf(runtime.getSetting?.(key)))
+  }
+
+  function isStoreBuild(): boolean {
+    return (process.env.ELIZA_BUILD_VARIANT ?? "").trim().toLowerCase() === "store"
+  }
+
+  function toModelKind(kind: string): SpawnKind {
+    if (kind === "eliza-code") return "KindElizaCode"
+    if (kind === "claude") return "KindClaude"
+    if (kind === "codex") return "KindCodex"
+    return "KindUnsupported"
+  }
+
+  function resolveRequestCloudTuple(runtime: IAgentRuntime, body: Record<string, unknown>): ElizaCodeCloudTuple {
+    const launcherTuple = resolveElizaCodeCloudTuple()
+    if (launcherTuple.authority) return launcherTuple
+    return resolveElizaCodeCloudTuple({
+      apiKey: str(body.apiKey) ?? getStr(runtime, "PTY_ELIZA_CLOUD_API_KEY"),
+      baseUrl: resolveAllowedBaseUrl(runtime, str(body.baseUrl)),
+    })
+  }
+
+  function defaultCwd(runtime: IAgentRuntime): string {
+    return getStr(runtime, "PTY_ALLOWED_DIRECTORY") ?? process.cwd()
+  }
+
+  function elizaCodeSpecFromRequest(
+    runtime: IAgentRuntime,
+    body: Record<string, unknown>,
+    cwd: string,
+    cloud: ElizaCodeCloudTuple,
+  ): PtySpawnSpec {
+    if (!cloud.apiKey || !cloud.baseUrl) {
+      throw new Error("Eliza Cloud PTY tuple is incomplete.")
+    }
+    return buildElizaCodeCerebrasSpec({
+      cwd,
+      apiKey: cloud.apiKey,
+      binPath: resolveElizaCodeBin(),
+      tier: str(body.tier) === "smart" ? "smart" : "fast",
+      baseUrl: cloud.baseUrl,
+      fastModel: str(body.fastModel) ?? getStr(runtime, "PTY_ELIZA_CLOUD_FAST_MODEL"),
+      smartModel: str(body.smartModel) ?? getStr(runtime, "PTY_ELIZA_CLOUD_SMART_MODEL"),
+    })
+  }
+
+  function vendorCliSpecFromRequest(runtime: IAgentRuntime, kind: PtyVendorCliKind, cwd: string): PtySpawnSpec {
+    if (kind === "claude") {
+      return buildClaudeCliSpec({
+        cwd,
+        binPath: resolveClaudeCliBin(),
+        oauthToken: getStr(runtime, "CLAUDE_CODE_OAUTH_TOKEN"),
+      })
+    }
+    return buildCodexCliSpec({
+      cwd,
+      binPath: resolveCodexCliBin(),
+      codexHome: getStr(runtime, "CODEX_HOME"),
+    })
+  }
+
+  async function spawnHandler(ctx: PtyRouteContext): Promise<PtyRouteResult> {
+    const { runtime } = ctx
+    const body = (ctx.body ?? {}) as Record<string, unknown>
+    const rejection = ptyAccessRejection(ctx, body)
+    if (rejection) return rejection
+    const kind = str(body.kind) ?? "eliza-code"
+    const gate = evaluateSpawnGate(
+      isStoreBuild(),
+      readFlagState(runtime, "PTY_INTERACTIVE_ENABLED"),
+      readFlagState(runtime, "PTY_VENDOR_CLI_ENABLED"),
+      toModelKind(kind),
+    )
+    if (gate === "SpawnDisabled") {
+      return json(403, {
+        error: "Interactive PTY sessions are disabled (PTY_INTERACTIVE_ENABLED=false or store build).",
+      })
+    }
+    const svc = getService(ctx)
+    if (!svc) return json(503, { error: "PTY_SERVICE is not available." })
+    if (gate === "SpawnBadKind") {
+      return json(400, {
+        error: `Unsupported session kind "${kind}". Supported kinds: "eliza-code", "claude", "codex".`,
+      })
+    }
+    if (gate === "SpawnVendorDisabled") {
+      return json(403, {
+        error:
+          `Interactive "${kind}" CLI sessions are an experimental tier that is off by default ` +
+          "(runs the real vendor CLI on your own subscription). Set PTY_VENDOR_CLI_ENABLED=true to enable it.",
+      })
+    }
+    const cwd = str(body.cwd) ?? defaultCwd(runtime)
+    try {
+      let spec: PtySpawnSpec
+      if (kind === "eliza-code") {
+        const cloud = resolveRequestCloudTuple(runtime, body)
+        if (!cloud.enabled) {
+          return json(403, {
+            error: `Eliza Cloud PTY sessions are disabled for the ${cloud.authority} development target.`,
+          })
+        }
+        if (!cloud.apiKey) {
+          return json(400, {
+            error: cloud.authority
+              ? `The ${cloud.authority} development target has no launcher-owned Eliza Cloud API key.`
+              : "No dedicated Eliza Cloud API key available. Pass { apiKey } or configure PTY_ELIZA_CLOUD_API_KEY.",
+          })
+        }
+        if (!cloud.baseUrl) {
+          return json(400, {
+            error: cloud.authority
+              ? `The ${cloud.authority} development target has no launcher-owned Eliza Cloud base URL.`
+              : "No Eliza Cloud base URL is available.",
+          })
+        }
+        spec = elizaCodeSpecFromRequest(runtime, body, cwd, cloud)
+      } else {
+        spec = vendorCliSpecFromRequest(runtime, kind as PtyVendorCliKind, cwd)
+      }
+      if (body.cols !== undefined) {
+        const cols = num(body.cols)
+        if (cols === undefined || !Number.isSafeInteger(cols) || !validTerminalGeometry(cols, 1)) return json(400, { error: "cols must be a whole number from 1 to 500." })
+        spec.cols = cols
+      }
+      if (body.rows !== undefined) {
+        const rows = num(body.rows)
+        if (rows === undefined || !Number.isSafeInteger(rows) || !validTerminalGeometry(1, rows)) return json(400, { error: "rows must be a whole number from 1 to 500." })
+        spec.rows = rows
+      }
+      const session = await svc.startSession(spec)
+      logger.info(`[plugin-pty] spawned interactive session ${session.sessionId} kind=${kind} label=${spec.label} cwd=${cwd}`)
+      return json(200, { session })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      logger.warn(`[plugin-pty] spawn failed: ${message}`)
+      return json(400, { error: message })
+    }
+  }
+
+  async function listHandler(ctx: PtyRouteContext): Promise<PtyRouteResult> {
+    const rejection = ptyAccessRejection(ctx)
+    if (rejection) return rejection
+    const svc = getService(ctx)
+    if (!svc) return json(503, { error: "PTY_SERVICE is not available." })
+    return json(200, { sessions: svc.listSessions() })
+  }
+
+  async function bufferedOutputHandler(ctx: PtyRouteContext): Promise<PtyRouteResult> {
+    const rejection = ptyAccessRejection(ctx)
+    if (rejection) return rejection
+    const svc = getService(ctx)
+    if (!svc) return json(503, { error: "PTY_SERVICE is not available." })
+    const id = ctx.params?.id
+    if (!id) return json(400, { error: "Missing session id." })
+    const buffered = svc.getBufferedOutput(id)
+    if (buffered === undefined) return json(404, { error: "PTY session not found." })
+    return json(200, { output: buffered.output, bufferStartOffset: buffered.bufferStartOffset, totalChars: buffered.totalChars, truncated: buffered.bufferStartOffset > 0 })
+  }
+
+  async function stopHandler(ctx: PtyRouteContext): Promise<PtyRouteResult> {
+    const rejection = ptyAccessRejection(ctx)
+    if (rejection) return rejection
+    const svc = getService(ctx)
+    if (!svc) return json(503, { error: "PTY_SERVICE is not available." })
+    const id = ctx.params?.id
+    if (!id) return json(400, { error: "Missing session id." })
+    try {
+      await svc.stopSession(id)
+    } catch (err) {
+      if (err instanceof ElizaError && err.code === "PTY_SESSION_NOT_FOUND") return json(404, { error: err.message })
+      return json(500, { error: err instanceof Error ? err.message : String(err) })
+    }
+    return json(200, { ok: true })
+  }
+
+  export const ptyRoutes: PtyRoute[] = [
+    {
+      type: "POST",
+      path: "/api/pty/sessions",
+      rawPath: true,
+      name: "pty-spawn-session",
+      routeHandler: spawnHandler,
+    },
+    {
+      type: "GET",
+      path: "/api/pty/sessions",
+      rawPath: true,
+      name: "pty-list-sessions",
+      routeHandler: listHandler,
+    },
+    {
+      type: "GET",
+      path: "/api/pty/sessions/:id/buffered-output",
+      rawPath: true,
+      name: "pty-buffered-output",
+      routeHandler: bufferedOutputHandler,
+    },
+    {
+      type: "DELETE",
+      path: "/api/pty/sessions/:id",
+      rawPath: true,
+      name: "pty-stop-session",
+      routeHandler: stopHandler,
+    },
+  ]
+}
+
+import { ptyRoutes } from node
+export { ptyRoutes }

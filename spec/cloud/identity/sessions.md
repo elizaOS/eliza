@@ -500,7 +500,9 @@ admission. A lease view is live when its family accepts the presented
 generation at the person's epoch, the account is active, and its bound grant
 is not ended and of the person's current device epoch; the key's expiry does
 not end the lease. The native one-tap `connect/native` stays a device-key
-route.
+route. On the Grace Google mount (`deployment`), which answers before the
+server table, the recorded device key may also disconnect its own owner's
+connection, and never another account's.
 
 ```quint
 pure def lawADeviceKeyNeverPassesAMailRoute(principal: RequestPrincipal, now: Millis): bool =

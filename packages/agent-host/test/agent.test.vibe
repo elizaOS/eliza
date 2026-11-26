@@ -16,7 +16,7 @@ import type { LocalAnswer, Refusal } from "./support/socket-client.ts"
 
 const healthOf = (answer: LocalAnswer | Refusal) => "status" in answer ? [answer.status, answer.json] : answer
 
-it.effect('A cloud launch with no plugins reaches Ready, echoes its epoch on health and exits 0 on SIGTERM (spec/agent/host/process.md, "A cloud launch becomes ready with no plugin loaded"; spec/agent/host/process.md, "Health is 200 only when boot is done and no stop began, and it echoes this launch\'s epoch")', effect () => {
+it.effect(`A cloud launch with no plugins reaches Ready, echoes its epoch on health and exits 0 on SIGTERM (spec/agent/host/process.md, "A cloud launch becomes ready with no plugin loaded"; spec/agent/host/process.md, "Health is 200 only when boot is done and no stop began, and it echoes this launch's epoch")`, effect () => {
   const booted = try boot({ cloud: true, frame: { epoch: 7 } })
   try ready(booted)
   const health = try host("health", () => booted.child.health())
@@ -38,7 +38,7 @@ it.effect('A repeated SIGTERM joins the stop already running and the process sti
   try Effect.try(() => assert.deepStrictEqual({ code: exited.code, signal: exited.signal }, { code: 0, signal: null }))
 }, 120_000)
 
-it.effect('A launch\'s plugin settings reach the runtime, and after stop the phase reports the exit, health says stopping and a second stop joins with the same code (spec/agent/host/process.md, "Story: Boot from a launch and serve only when ready"; spec/agent/host/process.md, "A requested stop ends in an exit")', effect () => {
+it.effect(`A launch's plugin settings reach the runtime, and after stop the phase reports the exit, health says stopping and a second stop joins with the same code (spec/agent/host/process.md, "Story: Boot from a launch and serve only when ready"; spec/agent/host/process.md, "A requested stop ends in an exit")`, effect () => {
   const started = try startInProcess({ launch: { environment: { PRODUCT_SETTING: "launched", ELIZA_NOTES_TRASH_RETENTION_DAYS: "7" } } })
   const settings = try Effect.try(() => ["PRODUCT_SETTING", "ELIZA_NOTES_TRASH_RETENTION_DAYS", "UNSET_SETTING"].map((key) => started.agent.runtime.getSetting(key)))
   const before = try Effect.try(() => healthReply(started.agent.phase()))
@@ -51,7 +51,7 @@ it.effect('A launch\'s plugin settings reach the runtime, and after stop the pha
   }))
 }, 120_000)
 
-it.effect('A store whose release fails on stop exits 1 (spec/agent/host/process.md, "The exit code is the boot failure\'s code, else 0 after a clean release and 1 after a failed one")', effect () => {
+it.effect(`A store whose release fails on stop exits 1 (spec/agent/host/process.md, "The exit code is the boot failure's code, else 0 after a clean release and 1 after a failed one")`, effect () => {
   const booted = try boot({ launch: { persistMemory: true } })
   try ready(booted)
   try acquireRelease(host("lock owners", () => storeOwners(booted.state.path, 0o500)), () => orDie(host("unlock owners", () => storeOwners(booted.state.path, 0o700))))
@@ -60,7 +60,7 @@ it.effect('A store whose release fails on stop exits 1 (spec/agent/host/process.
   try Effect.try(() => assert.strictEqual(exited.code, 1, exited.stderr))
 }, 180_000)
 
-it.effect('A store held by another process exits 74 and an allowed action no plugin registers exits 78 (spec/agent/host/process.md, "The exit code is the boot failure\'s code, else 0 after a clean release and 1 after a failed one")', effect () => {
+it.effect(`A store held by another process exits 74 and an allowed action no plugin registers exits 78 (spec/agent/host/process.md, "The exit code is the boot failure's code, else 0 after a clean release and 1 after a failed one")`, effect () => {
   const holder = try boot({ launch: { persistMemory: true } })
   try ready(holder)
   const second = try scratch("agent-second")

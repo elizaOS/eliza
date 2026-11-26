@@ -1,82 +1,399 @@
-// spec/codingTools/index.md, "Story: Read and edit my authorized project files"
-import { FileSystem } from "effect/FileSystem"
-import { Path } from "effect/Path"
-import { ChildProcessSpawner } from "effect/process/ChildProcessSpawner"
-import * as ChildProcess from "effect/process/ChildProcess"
-import { mayEditFile, mayReadFile, mayRunCommand, type WorkspaceAccess } from "../gen/codingTools.effect.vibe"
+// spec/codingTools/index.md, "Story: Read and edit my authorized project files"; spec/codingTools/index.md, "Story: Enforce sandbox confinement and bounded tool outputs"
+import type { IAgentRuntime, Plugin } from "@elizaos/core"
+import type { WorkspaceAccess } from "../gen/codingTools.effect.vibe"
+import {
+  editAction,
+  editFileHandler,
+  fileAction,
+  globHandler,
+  grepHandler,
+  lsHandler,
+  readAction,
+  readFileHandler,
+  writeAction,
+  writeFileHandler,
+} from "./actions/file-ops.vibe"
+import {
+  enterWorktreeHandler,
+  exitWorktreeHandler,
+  shellAction,
+  worktreeAction,
+} from "./actions/shell-worktree.vibe"
+import {
+  createWebFetchAction,
+  createWebFetchEdgeAction,
+  guardedHttpsFetch,
+  htmlToReadableText,
+  isCodingWebFetchEnabled,
+  isCodingWebSearchEnabled,
+  parseKeylessSearchResponse,
+  runCodingKeylessWebSearch,
+  webFetchAction,
+  webSearchAction,
+  type WebFetchReader,
+} from "./actions/web-ops.vibe"
+import {
+  beginLocalWorkspaceDeltaObservation,
+  deleteShellOutputArtifact,
+  finishLocalWorkspaceDeltaObservation,
+  invalidateFileReadReferences,
+  persistShellOutputArtifact,
+  publishFileReadReference,
+  readShellOutputArtifactPage,
+  renewShellOutputArtifactLease,
+  resolveFileReadReference,
+  type FileReadReferenceEntry,
+  type LocalWorkspaceDeltaObservation,
+  type ShellOutputArtifact,
+  type ShellOutputArtifactPage,
+  type ShellOutputArtifactStream,
+  type ShellStreamMetrics,
+  type WorkspaceDeltaSummary,
+} from "./lib/artifacts.vibe"
+import {
+  DEFAULT_OUTPUT_MAX_BYTES,
+  DEFAULT_OUTPUT_MAX_LINES,
+  HARD_OUTPUT_MAX_BYTES,
+  HARD_OUTPUT_MAX_LINES,
+  basename,
+  capTranscriptForChat,
+  failureToActionResult,
+  fencePreformatted,
+  finalLineEnding,
+  formatCompactEditDiff,
+  formatNumberedLines,
+  preserveSummaryText,
+  readArrayParam,
+  readBoolParam,
+  readNumberParam,
+  readParam,
+  readPositiveIntSetting,
+  readStringArrayParam,
+  readStringParam,
+  readStringSetting,
+  successActionResult,
+  summarizeFileOperation,
+  summarizeShellCommand,
+  truncateHead,
+  truncateTail,
+  type TruncationResult,
+} from "./lib/format.vibe"
+import {
+  DEFAULT_FORBIDDEN_COMMANDS,
+  classifyDestructiveCommand,
+  defaultBlockedPaths,
+  destructiveCommandDigest,
+  detectSecrets,
+  expandHome,
+  extractCompactFailureDiagnostics,
+  fileEffectReceipt,
+  fileMutationResult,
+  isAbsolutePath,
+  isBlockedPseudoPath,
+  isForbiddenCommand,
+  classifyStdinTarget,
+  type StdinTarget,
+  isUncPath,
+  isWithin,
+  issueDestructiveChallenge,
+  redactShellText,
+  shellVerificationReceipt,
+  splitShellArgs,
+  traversesBlockedPath,
+  verifyAndConsumeDestructiveChallenge,
+  type DestructiveVerdict,
+  type SecretMatch,
+  type ShellDialect,
+  type ShellVerificationReceipt,
+} from "./lib/security.vibe"
+import { availableToolsProvider, shellHistoryProvider } from "./providers.vibe"
+import {
+  BackgroundShellService,
+  DEFAULT_SAFE_BINS,
+  ExecApprovalService,
+  FileStateService,
+  RipgrepService,
+  SandboxService,
+  SessionCwdService,
+  ShellService,
+  detectTerminalSupported,
+  fileRevision,
+  resolveInputPath,
+  runGitCommand,
+  type BackgroundShellPollResult,
+  type BackgroundShellSessionSnapshot,
+  type CommandHistoryEntry,
+  type ExecAllowlistEntry,
+  type ExecCommandAnalysis,
+  type RipgrepMode,
+  type RipgrepOptions,
+  type RipgrepResult,
+  type SandboxValidation,
+  type WritableGate,
+} from "./services/services.vibe"
+import {
+  BACKGROUND_SHELL_SERVICE,
+  CODING_TOOLS_CONTEXTS,
+  CODING_TOOLS_LOG_PREFIX,
+  CapturedErrorSchema,
+  CodingAgentContextSchema,
+  CodingIterationSchema,
+  CommandResultSchema,
+  ConnectorConfigSchema,
+  ConnectorTypeSchema,
+  EXEC_APPROVAL_SERVICE,
+  FAILURE_TEXT_PREFIX,
+  FILE_STATE_SERVICE,
+  FileOperationSchema,
+  HumanFeedbackSchema,
+  InteractionModeSchema,
+  RIPGREP_SERVICE,
+  SANDBOX_SERVICE,
+  SESSION_CWD_SERVICE,
+  SHELL_SERVICE,
+  appendCodingFeedback,
+  appendCodingIteration,
+  createCodingAgentContext,
+  failure,
+  success,
+  type ActionResultData,
+  type CodingAgentContext,
+  type CodingCapturedError,
+  type CodingCommandResult,
+  type CodingFileOperation,
+  type CodingHumanFeedback,
+  type CodingIteration,
+  type CodingToolsContext,
+  type ConnectorConfig,
+  type ConnectorType,
+  type FileMeta,
+  type InteractionMode,
+  type SessionKey,
+  type ToolFailure,
+  type ToolFailureReason,
+  type ToolResult,
+} from "./types.vibe"
 
-export error WorkspaceDenied { target: string }
-export error StaleWorkspaceFile { target: string }
-
-export interface WorkspaceDirectory {
-  readonly root: string
-  readonly access: WorkspaceAccess
+export {
+  BACKGROUND_SHELL_SERVICE,
+  CODING_TOOLS_CONTEXTS,
+  CODING_TOOLS_LOG_PREFIX,
+  CapturedErrorSchema,
+  CodingAgentContextSchema,
+  CodingIterationSchema,
+  CommandResultSchema,
+  ConnectorConfigSchema,
+  ConnectorTypeSchema,
+  DEFAULT_FORBIDDEN_COMMANDS,
+  DEFAULT_OUTPUT_MAX_BYTES,
+  DEFAULT_OUTPUT_MAX_LINES,
+  DEFAULT_SAFE_BINS,
+  EXEC_APPROVAL_SERVICE,
+  FAILURE_TEXT_PREFIX,
+  FILE_STATE_SERVICE,
+  FileOperationSchema,
+  HARD_OUTPUT_MAX_BYTES,
+  HARD_OUTPUT_MAX_LINES,
+  HumanFeedbackSchema,
+  InteractionModeSchema,
+  RIPGREP_SERVICE,
+  SANDBOX_SERVICE,
+  SESSION_CWD_SERVICE,
+  SHELL_SERVICE,
+  BackgroundShellService,
+  ExecApprovalService,
+  FileStateService,
+  RipgrepService,
+  SandboxService,
+  SessionCwdService,
+  ShellService,
+  appendCodingFeedback,
+  appendCodingIteration,
+  availableToolsProvider,
+  basename,
+  beginLocalWorkspaceDeltaObservation,
+  capTranscriptForChat,
+  classifyDestructiveCommand,
+  createCodingAgentContext,
+  createWebFetchAction,
+  createWebFetchEdgeAction,
+  defaultBlockedPaths,
+  deleteShellOutputArtifact,
+  destructiveCommandDigest,
+  detectSecrets,
+  detectTerminalSupported,
+  editAction,
+  editFileHandler,
+  enterWorktreeHandler,
+  exitWorktreeHandler,
+  expandHome,
+  extractCompactFailureDiagnostics,
+  failure,
+  failureToActionResult,
+  fencePreformatted,
+  fileAction,
+  fileEffectReceipt,
+  fileMutationResult,
+  fileRevision,
+  finalLineEnding,
+  finishLocalWorkspaceDeltaObservation,
+  formatCompactEditDiff,
+  formatNumberedLines,
+  globHandler,
+  grepHandler,
+  guardedHttpsFetch,
+  htmlToReadableText,
+  invalidateFileReadReferences,
+  isAbsolutePath,
+  isBlockedPseudoPath,
+  isCodingWebFetchEnabled,
+  isCodingWebSearchEnabled,
+  isForbiddenCommand,
+  classifyStdinTarget,
+  type StdinTarget,
+  isUncPath,
+  isWithin,
+  issueDestructiveChallenge,
+  lsHandler,
+  parseKeylessSearchResponse,
+  persistShellOutputArtifact,
+  preserveSummaryText,
+  publishFileReadReference,
+  readAction,
+  readArrayParam,
+  readBoolParam,
+  readFileHandler,
+  readNumberParam,
+  readParam,
+  readPositiveIntSetting,
+  readShellOutputArtifactPage,
+  readStringArrayParam,
+  readStringParam,
+  readStringSetting,
+  redactShellText,
+  renewShellOutputArtifactLease,
+  resolveFileReadReference,
+  resolveInputPath,
+  runCodingKeylessWebSearch,
+  runGitCommand,
+  shellAction,
+  shellHistoryProvider,
+  shellVerificationReceipt,
+  splitShellArgs,
+  success,
+  successActionResult,
+  summarizeFileOperation,
+  summarizeShellCommand,
+  traversesBlockedPath,
+  truncateHead,
+  truncateTail,
+  verifyAndConsumeDestructiveChallenge,
+  webFetchAction,
+  webSearchAction,
+  worktreeAction,
+  writeAction,
+  writeFileHandler,
 }
 
-export effect function readWorkspaceFile(workspace: WorkspaceDirectory, relativePath: string) {
-  const file = try resolveWorkspaceFile(workspace, relativePath)
-  const fs = try FileSystem
-  const details = try fs.stat(file)
-  if (details.type !== "File") throw new WorkspaceDenied({ target: relativePath })
-  const contents = try fs.readFileString(file)
-  const afterRead = try fs.stat(file)
-  const revision = versionOf(details)
-  if (revision !== versionOf(afterRead)) throw new StaleWorkspaceFile({ target: relativePath })
-  return { contents, revision }
+export type {
+  ActionResultData,
+  BackgroundShellPollResult,
+  BackgroundShellSessionSnapshot,
+  CodingAgentContext,
+  CodingCapturedError,
+  CodingCommandResult,
+  CodingFileOperation,
+  CodingHumanFeedback,
+  CodingIteration,
+  CodingToolsContext,
+  CommandHistoryEntry,
+  ConnectorConfig,
+  ConnectorType,
+  DestructiveVerdict,
+  ExecAllowlistEntry,
+  ExecCommandAnalysis,
+  FileMeta,
+  FileReadReferenceEntry,
+  InteractionMode,
+  LocalWorkspaceDeltaObservation,
+  RipgrepMode,
+  RipgrepOptions,
+  RipgrepResult,
+  SandboxValidation,
+  SecretMatch,
+  SessionKey,
+  ShellDialect,
+  ShellOutputArtifact,
+  ShellOutputArtifactPage,
+  ShellOutputArtifactStream,
+  ShellStreamMetrics,
+  ShellVerificationReceipt,
+  ToolFailure,
+  ToolFailureReason,
+  ToolResult,
+  TruncationResult,
+  WebFetchReader,
+  WorkspaceAccess,
+  WorkspaceDeltaSummary,
+  WritableGate,
 }
 
-export effect function runWorkspaceCommand(workspace: WorkspaceDirectory, request: {
-  readonly argv: readonly [string, ...string[]]
-  readonly needsApproval: boolean
-  readonly approvedKey: string
-}) {
-  const fs = try FileSystem
-  const root = try fs.realPath(workspace.root)
-  const commandKey = JSON.stringify([root, ...request.argv])
-  if (!mayRunCommand(workspace.access, { inWorkspace: root, commandKey, needsApproval: request.needsApproval }, request.approvedKey)) {
-    throw new WorkspaceDenied({ target: root })
-  }
-  const [executable, ...args] = request.argv
-  const runner = try ChildProcessSpawner
-  return try runner.string(ChildProcess.make(executable, args, { cwd: root, shell: false }))
+function isFeatureFlagEnabled(feature: unknown): boolean {
+  if (feature === true) return true
+  return typeof feature === "object" && feature !== null && (feature as { enabled?: unknown }).enabled !== false
 }
 
-export effect function editWorkspaceFile(workspace: WorkspaceDirectory, relativePath: string, revision: string, replacement: string) {
-  const fs = try FileSystem
-  const file = try resolveWorkspaceFile(workspace, relativePath)
-  const root = try fs.realPath(workspace.root)
-  const details = try fs.stat(file)
-  if (details.type !== "File" || !mayEditFile(workspace.access, { workspaceKey: root, fileKey: file, revision: versionOf(details), protectedPath: false }, revision)) {
-    throw new StaleWorkspaceFile({ target: relativePath })
-  }
-  const path = try Path
-  return try scoped(effect {
-    const staged = try fs.makeTempFileScoped({ directory: path.dirname(file) })
-    try fs.writeFileString(staged, replacement)
-    try fs.chmod(staged, details.mode)
-    const current = try fs.stat(file)
-    if (versionOf(current) !== revision) throw new StaleWorkspaceFile({ target: relativePath })
-    try fs.rename(staged, file)
-    return { revision: versionOf(try fs.stat(file)) }
-  })
+export const codingToolsPlugin: Plugin = {
+  name: "@elizaos/plugin-coding-tools",
+  description: "Native coding tools: READ, WRITE, EDIT, FILE (grep/glob/ls), SHELL (run/background/artifacts/history), WORKTREE, WEB_FETCH, WEB_SEARCH.",
+  services: [
+    ShellService,
+    ExecApprovalService,
+    BackgroundShellService,
+    FileStateService,
+    SandboxService,
+    SessionCwdService,
+    RipgrepService,
+  ],
+  providers: [availableToolsProvider, shellHistoryProvider],
+  actions: [
+    readAction,
+    writeAction,
+    editAction,
+    fileAction,
+    shellAction,
+    worktreeAction,
+    webFetchAction,
+    webSearchAction,
+  ],
+  init: async (_config, _runtime: IAgentRuntime) => {},
+  dispose: async (runtime: IAgentRuntime) => {
+    const types = [
+      SHELL_SERVICE,
+      EXEC_APPROVAL_SERVICE,
+      BACKGROUND_SHELL_SERVICE,
+      SANDBOX_SERVICE,
+      FILE_STATE_SERVICE,
+      SESSION_CWD_SERVICE,
+      RIPGREP_SERVICE,
+    ]
+    for (const serviceType of types) {
+      const svc = runtime.getService(serviceType) as { stop?: () => Promise<void> } | null
+      if (svc && typeof svc.stop === "function") await svc.stop()
+    }
+  },
+  autoEnable: {
+    shouldEnable: (env, config) => {
+      const features = config.features as Record<string, unknown> | undefined
+      return (
+        (isFeatureFlagEnabled(features?.codingTools) ||
+          isFeatureFlagEnabled(features?.["coding-agent"]) ||
+          isFeatureFlagEnabled(features?.shell)) &&
+        detectTerminalSupported(env)
+      )
+    },
+  },
 }
 
-effect function resolveWorkspaceFile(workspace: WorkspaceDirectory, relativePath: string) {
-  const fs = try FileSystem
-  const path = try Path
-  const root = try fs.realPath(workspace.root)
-  if (relativePath === "" || path.isAbsolute(relativePath)) throw new WorkspaceDenied({ target: relativePath })
-  const absolute = try fs.realPath(path.resolve(root, relativePath))
-  const relative = path.relative(root, absolute)
-  const protectedPath = relative === "" || path.isAbsolute(relative) || relative.split(path.sep).some(
-    (part) => part === ".." || part === ".git" || part === ".ssh" || part === ".env" || part.startsWith(".env."),
-  )
-  if (!mayReadFile(workspace.access, { workspaceKey: root, fileKey: absolute, revision: "", protectedPath })) {
-    throw new WorkspaceDenied({ target: relativePath })
-  }
-  return absolute
-}
-
-function versionOf(file: FileSystem.File.Info) {
-  return String(file.ino) + ":" + String(file.size) + ":" + (Option.isSome(file.mtime) ? String(file.mtime.value.getTime()) : "")
-}
+export const plugin = codingToolsPlugin
+export default codingToolsPlugin

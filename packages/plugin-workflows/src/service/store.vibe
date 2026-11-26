@@ -4,6 +4,7 @@ import type { Workflow as Admission } from "../../gen/workflow__admission.effect
 import type { WakeupRun } from "../../gen/workflow__execution.effect.vibe"
 import type { ApprovalRun } from "../../gen/workflow__approvals.effect.vibe"
 import type { GeneratedRun } from "../../gen/workflow__generated.effect.vibe"
+import type { RunBudget } from "../../gen/workflow__budget.effect.vibe"
 import type { PhoneScheduledOccurrence, PhoneWorkflowSpec } from "@elizaos/plugin-workflow-client"
 import type { DigestSourceRecord, DigestSpec } from "@elizaos/plugin-workflow-client"
 import type { WorkflowDeviceOperation } from "@elizaos/plugin-workflow-client"
@@ -101,6 +102,8 @@ export interface RunRow {
   readonly jsDigest?: string
   readonly waitDigest?: string
   readonly signals?: readonly { readonly name: string; readonly payload: unknown; readonly receivedAt: string; readonly receivedBy: string }[]
+  readonly budget?: RunBudget
+  readonly compactedSteps?: number
 }
 export interface EarlierImportReceipt {
   readonly importedAt: string

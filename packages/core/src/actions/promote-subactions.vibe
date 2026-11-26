@@ -1,11 +1,12 @@
-// spec/core/actionPlanning.md, "A promoted subaction is checked by its own name and its umbrella's, so allowing an umbrella allows none of its subactions and refusing it refuses them all"; spec/core/actionPlanning.md, "A subaction stays within its parent's authority"
+// spec/core/actionPlanning.md, "A promoted subaction keeps its umbrella's summarize and model class unless it sets its own"; spec/core/actionPlanning.md, "A promoted subaction is checked by its own name and its umbrella's, so allowing an umbrella allows none of its subactions and refusing it refuses them all"; spec/core/actionPlanning.md, "A subaction stays within its parent's authority"
 import { foreign, runDetached } from "../edge.vibe"
 import type {
   Action,
-  ActionResult,
   ActionExample,
+  ActionModelClass,
   ActionParameter,
   ActionParameters,
+  ActionResult,
   Handler,
   HandlerOptions,
   Validator,
@@ -23,6 +24,10 @@ export interface SubactionPromotionOverrides {
   similes?: readonly string[]
 
   examples?: ActionExample[][]
+
+  summarize?: Action["summarize"]
+
+  modelClass?: ActionModelClass
 }
 
 export interface PromoteSubactionsOptions {
@@ -168,7 +173,7 @@ function pinDiscriminatorForVirtual(
       const baseSchema = parameter.schema && typeof parameter.schema === "object"
         ? parameter.schema
         : { type: "string" as const }
-      const { subactions: _stray, ...discriminatorRest } = parameter
+      const { subactions: _stray, requiredForSubactions: _required, ...discriminatorRest } = parameter
       sliced.push({
         ...discriminatorRest,
         description: pinnedDiscriminatorDescription(subaction),
@@ -357,6 +362,8 @@ export function promoteSubactionsToActions(
       priority: parent.priority,
       connectorAccountPolicy: parent.connectorAccountPolicy,
       accountPolicy: parent.accountPolicy,
+      summarize: override.summarize ?? parent.summarize,
+      modelClass: override.modelClass ?? parent.modelClass,
     }
 
     Object.defineProperty(virtual, PROMOTED_MARKER, {

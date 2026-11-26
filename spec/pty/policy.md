@@ -1,0 +1,233 @@
+# PTY session store, access and spawn policy
+
+This specification covers the access gates, spawn configuration policy,
+concurrency capacity, failure-safe teardown, and bounded output windows for
+interactive PTY sessions.
+
+## Story: Gate interactive and vendor PTY access
+
+> As an operator, I want HTTP PTY routes to enforce step-up terminal tokens,
+> build-variant restrictions, fail-closed feature gates, and immutable launcher
+> Cloud authority before any process is spawned.
+
+### HTTP routes enforce terminal token or trusted local access
+
+When no terminal run token is configured, only in-process or trusted local
+callers may access PTY routes; remote HTTP callers receive 403. When a token is
+configured, trusted local callers pass and all other HTTP callers must present a
+matching token or receive 401.
+
+```quint
+type AccessVerdict = AccessAllowed | AccessForbiddenNoToken | AccessUnauthorizedMissing | AccessUnauthorizedInvalid
+pure def evaluateRouteAccess(hasToken: bool, inProcess: bool, isTrustedLocal: bool, tokenProvided: bool, tokenMatches: bool): AccessVerdict =
+  if (not(hasToken)) (if (inProcess or isTrustedLocal) AccessAllowed else AccessForbiddenNoToken)
+  else if (isTrustedLocal) AccessAllowed
+  else if (not(tokenProvided)) AccessUnauthorizedMissing
+  else if (tokenMatches) AccessAllowed
+  else AccessUnauthorizedInvalid
+pure def lawRemoteHttpDeniedWithoutToken(tokenProvided: bool, tokenMatches: bool): bool =
+  evaluateRouteAccess(false, false, false, tokenProvided, tokenMatches) == AccessForbiddenNoToken
+pure def lawInvalidTokenRejected(inProcess: bool): bool =
+  evaluateRouteAccess(true, inProcess, false, true, false) == AccessUnauthorizedInvalid
+```
+
+### Store sessions belong to the operator, not to a self-reported client
+
+The route gate authenticates the operator who holds the terminal token, not an
+individual client, so every caller that passes it may list, read, write to,
+resize and stop every store session. A client identifier sent by the caller is
+never treated as ownership. From chat, only the owner may drive store sessions,
+because they can run vendor CLIs under the operator's own credentials.
+
+```quint
+type PtyCaller = RouteOperator | ChatOwner | ChatAdmin | ChatUser
+pure def mayDriveStoreSession(caller: PtyCaller): bool = caller == RouteOperator or caller == ChatOwner
+pure def lawOnlyTheOwnerDrivesFromChat(caller: PtyCaller): bool =
+  (caller == ChatAdmin or caller == ChatUser) implies not(mayDriveStoreSession(caller))
+```
+
+### Interactive and vendor CLI spawning fail closed
+
+Store builds reject all interactive and vendor CLI spawns; the build variant is
+read only from the launch environment, never from runtime settings. A runtime
+setting can only narrow the launch environment's flags: an explicit non-truthy
+value from either one disables the flag, and otherwise the launch environment's
+value stands, so a truthy setting never enables a flag the launch environment
+left unset. The interactive flag
+defaults on when unset, allows explicit truthy values, and fails closed on any
+other explicit value. Vendor CLI sessions (`claude` and `codex`) require both
+interactive spawning and an explicit truthy vendor flag. Unsupported session
+kinds are rejected with bad-kind status.
+
+```quint
+type FlagState = FlagUnset | FlagTrue | FlagOther
+type SpawnKind = KindElizaCode | KindClaude | KindCodex | KindUnsupported
+type SpawnGateResult = SpawnAdmitted | SpawnDisabled | SpawnVendorDisabled | SpawnBadKind
+pure def interactiveAllowed(isStoreBuild: bool, flag: FlagState): bool =
+  not(isStoreBuild) and (flag == FlagUnset or flag == FlagTrue)
+pure def vendorAllowed(isStoreBuild: bool, flag: FlagState): bool =
+  not(isStoreBuild) and flag == FlagTrue
+pure def evaluateSpawnGate(isStoreBuild: bool, interactiveFlag: FlagState, vendorFlag: FlagState, kind: SpawnKind): SpawnGateResult =
+  if (not(interactiveAllowed(isStoreBuild, interactiveFlag))) SpawnDisabled
+  else match kind {
+    | KindElizaCode => SpawnAdmitted
+    | KindClaude => if (vendorAllowed(isStoreBuild, vendorFlag)) SpawnAdmitted else SpawnVendorDisabled
+    | KindCodex => if (vendorAllowed(isStoreBuild, vendorFlag)) SpawnAdmitted else SpawnVendorDisabled
+    | KindUnsupported => SpawnBadKind
+  }
+pure def lawStoreBuildBlocksAllSpawns(interactiveFlag: FlagState, vendorFlag: FlagState, kind: SpawnKind): bool =
+  evaluateSpawnGate(true, interactiveFlag, vendorFlag, kind) == SpawnDisabled
+pure def narrowFlag(launch: FlagState, setting: FlagState): FlagState =
+  if (launch == FlagOther or setting == FlagOther) FlagOther else launch
+pure def lawSettingNeverWidensLaunchFlag(launch: FlagState, setting: FlagState): bool =
+  narrowFlag(launch, setting) == FlagTrue implies launch == FlagTrue
+pure def lawSettingAloneNeverEnablesVendor(setting: FlagState): bool =
+  not(vendorAllowed(false, narrowFlag(FlagUnset, setting)))
+pure def lawVendorDefaultsClosed(interactiveFlag: FlagState): bool =
+  evaluateSpawnGate(false, interactiveFlag, FlagUnset, KindClaude) != SpawnAdmitted and
+  evaluateSpawnGate(false, interactiveFlag, FlagUnset, KindCodex) != SpawnAdmitted
+```
+
+### Launcher Cloud authority owns or disables the Cloud tuple
+
+Under `staging-default` or `offline` launcher authority, Eliza Cloud PTY
+sessions are disabled regardless of body or runtime inputs. Explicit launcher
+authorities freeze the launcher-provided Cloud tuple and ignore caller overrides.
+
+```quint
+type CloudAuthority = NoAuthority | StagingDefault | Offline | StagingExplicit | ProductionExplicit
+type CloudTupleMode = CloudDisabled | CloudLauncherFrozen | CloudOperatorInput
+pure def resolveCloudTupleMode(authority: CloudAuthority): CloudTupleMode =
+  match authority {
+    | StagingDefault => CloudDisabled
+    | Offline => CloudDisabled
+    | StagingExplicit => CloudLauncherFrozen
+    | ProductionExplicit => CloudLauncherFrozen
+    | NoAuthority => CloudOperatorInput
+  }
+pure def lawBlockedAuthorityDisablesCloud(authority: CloudAuthority): bool =
+  (authority == StagingDefault or authority == Offline) implies resolveCloudTupleMode(authority) == CloudDisabled
+```
+
+### Idle timeout, terminal geometry, and output slices stay within safe bounds
+
+An idle timeout is either 0 (disabled) or a positive integer up to 2147483647
+milliseconds. Terminal geometry requires whole columns and rows from 1 to 500,
+whether it comes from the agent action, a spawn request, or a console resize; the
+store refuses anything else and the spawn route answers it with bad-request
+status. Bounded output slicing returns 0 when either `totalChars` or
+`maxChars` is non-positive, and otherwise returns the smaller of `totalChars`
+and `maxChars`, so for every non-negative cap the returned slice length stays in
+`0..maxChars`.
+
+```quint
+pure def validIdleTimeoutMs(ms: int): bool = ms >= 0 and ms <= 2147483647
+pure def validTerminalGeometry(cols: int, rows: int): bool = cols >= 1 and rows >= 1 and cols <= 500 and rows <= 500
+pure def boundedOutputSlice(totalChars: int, maxChars: int): int =
+  if (totalChars <= 0 or maxChars <= 0) 0
+  else if (totalChars < maxChars) totalChars
+  else maxChars
+pure def lawBoundedOutputNeverExceedsCap(totalChars: int, maxChars: int): bool =
+  maxChars >= 0 implies boundedOutputSlice(totalChars, maxChars) <= maxChars and boundedOutputSlice(totalChars, maxChars) >= 0
+```
+
+### The chat action reads, waits and resizes within fixed bounds
+
+`PTY_SESSION` lists the store's sessions and reads, sends to, resizes or stops
+one named session. A read returns the output after the caller's cursor, ending
+with a cursor for the next read; `maxChars` is clamped to 1..50,000 characters
+of the newest output and defaults to 16,000. `send_wait` writes its input,
+then waits until its regular expression matches the new output, the output
+goes quiet, or the wait ends; the wait is clamped to 10..30,000 milliseconds
+and defaults to 1,500. An invalid pattern, a failed write, or input for an
+exited session is a failure, never a match.
+
+```quint
+pure def clampOutputChars(requested: int): int =
+  if (requested < 1) 1 else if (requested > 50000) 50000 else requested
+pure def clampWaitMs(requested: int): int =
+  if (requested < 10) 10 else if (requested > 30000) 30000 else requested
+pure def lawActionOutputWithinCap(requested: int): bool =
+  clampOutputChars(requested) >= 1 and clampOutputChars(requested) <= 50000
+pure def lawWaitNeverExceedsThirtySeconds(requested: int): bool =
+  clampWaitMs(requested) >= 10 and clampWaitMs(requested) <= 30000
+```
+
+### Scrollback and default limits are fixed, and lost scrollback is reported
+
+A store holds at most 24 sessions unless configured otherwise, reaps an exited
+session 15 seconds after it exits, and stops a session idle for 15 minutes. A
+session keeps the most recent 200,000 characters of output as scrollback. A
+read from a cursor older than the scrollback counts the characters that left it
+as omitted and says so, and the buffered-output route reports where its
+scrollback starts.
+
+```quint
+pure val defaultMaxSessions: int = 24
+pure val defaultExitedSessionTtlMs: int = 15000
+pure val defaultIdleTimeoutMs: int = 900000
+pure val scrollbackChars: int = 200000
+pure def charsLostFromScrollback(cursor: int, scrollbackStart: int): int =
+  if (scrollbackStart > cursor) scrollbackStart - cursor else 0
+pure def lawDefaultIdleTimeoutIsValid(ms: int): bool =
+  ms == defaultIdleTimeoutMs implies validIdleTimeoutMs(ms)
+pure def lawLostScrollbackIsCounted(cursor: int, scrollbackStart: int): bool =
+  (cursor >= 0 and scrollbackStart > cursor) implies charsLostFromScrollback(cursor, scrollbackStart) > 0
+```
+
+## Story: Enforce session capacity, confinement, and safe teardown
+
+> As the host, I want the PTY session store to enforce a strict capacity cap,
+> require canonical directory confinement, preserve a live session when kill
+> fails so operators can observe and retry it, and reap exited sessions only
+> after they exit.
+
+### Sessions respect capacity, unique ids, and safe stop semantics
+
+Starting a session requires available capacity, a confined canonical working
+directory, and a fresh non-empty identifier. Exiting transitions a live session
+to exited so late subscribers can drain scrollback before reaping. Stopping a
+live session signals the process, waits a bounded time for its exit, and then
+forces the kill; the kill succeeds only when the process's exit is observed.
+Stopping removes the session only after a successful kill; a failed kill
+leaves the live session tracked, observable and counted against capacity.
+Stopping, writing to or resizing an unknown session, and writing to or
+resizing an exited one, is reported as a failure, never as done.
+
+```quint
+type PoolStatus = PoolLive | PoolExited
+type PoolEntry = { sessionId: str, epoch: int, status: PoolStatus }
+type PtyPool = { entries: List[PoolEntry], maxSessions: int, nextEpoch: int }
+pure val initial: PtyPool = { entries: List(), maxSessions: 2, nextEpoch: 1 }
+pure val sessionIdValues = Set("s1", "s2", "s3")
+pure def hasEntry(entries: List[PoolEntry], sid: str): bool = entries.some(e => e.sessionId == sid)
+pure def isLiveEntry(entries: List[PoolEntry], sid: str): bool = entries.some(e => e.sessionId == sid and e.status == PoolLive)
+pure def isExitedEntry(entries: List[PoolEntry], sid: str): bool = entries.some(e => e.sessionId == sid and e.status == PoolExited)
+pure def canStartPoolSession(pool: PtyPool, sessionId: str, cwdConfined: bool): bool =
+  cwdConfined and sessionId != "" and pool.entries.length() < pool.maxSessions and not(hasEntry(pool.entries, sessionId))
+pure def startPoolSession(pool: PtyPool, sessionId: str, cwdConfined: bool): PtyPool =
+  { ...pool, entries: pool.entries.append({ sessionId: sessionId, epoch: pool.nextEpoch, status: PoolLive }), nextEpoch: pool.nextEpoch + 1 }
+pure def canExitPoolSession(pool: PtyPool, sessionId: str): bool = isLiveEntry(pool.entries, sessionId)
+pure def exitPoolSession(pool: PtyPool, sessionId: str): PtyPool =
+  { ...pool, entries: pool.entries.listMap(e => if (e.sessionId == sessionId) { ...e, status: PoolExited } else e) }
+pure def canStopPoolSession(pool: PtyPool, sessionId: str, killSucceeded: bool): bool =
+  isExitedEntry(pool.entries, sessionId) or (isLiveEntry(pool.entries, sessionId) and killSucceeded)
+pure def stopPoolSession(pool: PtyPool, sessionId: str, killSucceeded: bool): PtyPool =
+  { ...pool, entries: pool.entries.select(e => e.sessionId != sessionId) }
+pure def canReapPoolSession(pool: PtyPool, sessionId: str): bool = isExitedEntry(pool.entries, sessionId)
+pure def reapPoolSession(pool: PtyPool, sessionId: str): PtyPool =
+  { ...pool, entries: pool.entries.select(e => e.sessionId != sessionId) }
+pure def alwaysPoolWithinCapacity(pool: PtyPool): bool =
+  pool.maxSessions >= 0 and pool.entries.length() <= pool.maxSessions
+pure def alwaysPoolIdsUnique(pool: PtyPool): bool =
+  pool.entries.every(a => pool.entries.select(b => b.sessionId == a.sessionId).length() == 1)
+pure def stepPoolEpochMonotonic(before: PtyPool, after: PtyPool): bool =
+  after.nextEpoch >= before.nextEpoch and after.maxSessions == before.maxSessions
+pure def lawFailedKillCannotRemoveLive(pool: PtyPool, sessionId: str): bool =
+  isLiveEntry(pool.entries, sessionId) and not(isExitedEntry(pool.entries, sessionId)) implies not(canStopPoolSession(pool, sessionId, false))
+pure def sometimesPoolAtCapacity(pool: PtyPool): bool = pool.entries.length() == pool.maxSessions
+pure val eval_witness_sometimesPoolAtCapacity = (("startPoolSession", "s1", true), ("startPoolSession", "s2", true))
+pure def sometimesPoolExitedReaped(pool: PtyPool): bool = pool.nextEpoch > 1 and pool.entries.length() == 0
+pure val eval_witness_sometimesPoolExitedReaped = (("startPoolSession", "s1", true), ("exitPoolSession", "s1"), ("reapPoolSession", "s1"))
+pure val poolValues = Set(initial, { entries: List({ sessionId: "s1", epoch: 1, status: PoolLive }), maxSessions: 2, nextEpoch: 2 })
+```

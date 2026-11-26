@@ -87,13 +87,17 @@ pure def lawPairedOrPlainUnitKept(codeUnit: int, paired: bool): bool = (paired o
 
 A new checklist the owner asks Notes for is a creation, never an edit: one
 new note whose label is the title the owner gave, holding the owner's items
-as checklist entries in the order given, each unchecked. The Notes actions
-tell the model so, that the model asks the owner what to call a checklist
-they gave no title, and that adding items to a checklist already saved is an
-edit of that note. A checklist creation is never answered by a saved note,
-not even a checklist of the same title, unless it repeats the client's own
-creation ID. A checklist holds 1 to 100 items, each at most 240 units, the
-bound of a title, since an item is one line of the list. A checklist with a
+as checklist entries in the order given, each unchecked. An item the owner
+adds to a named list that no saved note holds yet (`add milk to my shopping
+list` with no shopping list saved) asks for that list: a new checklist whose
+title is the list's name and whose one entry is that item, never a plain note
+with the item as its body. The Notes actions tell the model so, that the
+model asks the owner what to call a checklist they gave no title, and that
+adding items to a checklist already saved is an edit of that note. A
+checklist creation is never answered by a saved note, not even a checklist
+of the same title, unless it repeats the client's own creation ID. A
+checklist holds 1 to 100 items, each at most 240 units, the bound of a
+title, since an item is one line of the list. A checklist with a
 blank title writes nothing, and its answer, that nothing was saved and the
 owner is to be asked what to call it, is a question for the model to put to
 the owner (below), never a failed step. A checklist with a title and no
@@ -124,6 +128,13 @@ pure def lawATitledChecklistWithinBoundsIsAdmitted(itemCount: int, longestItemUn
   (itemCount >= 1 and itemCount <= 100 and longestItemUnits <= 240) implies checklistCreationAdmitted(true, itemCount, 0, longestItemUnits, false)
 pure def lawNothingBesideTheChecklistItems(titled: bool, itemCount: int, blankItemCount: int, longestItemUnits: int): bool =
   not(checklistCreationAdmitted(titled, itemCount, blankItemCount, longestItemUnits, true))
+type CreatedNoteForm = ChecklistForm | WrittenForm
+pure def createdNoteForm(askedForChecklist: bool, itemForUnsavedList: bool): CreatedNoteForm =
+  if (askedForChecklist or itemForUnsavedList) ChecklistForm else WrittenForm
+pure def lawAnItemForAnUnsavedListStartsThatChecklist(askedForChecklist: bool): bool =
+  createdNoteForm(askedForChecklist, true) == ChecklistForm
+pure def lawUnaskedTextIsSavedAsWritten(askedForChecklist: bool, itemForUnsavedList: bool): bool =
+  not(askedForChecklist or itemForUnsavedList) implies createdNoteForm(askedForChecklist, itemForUnsavedList) == WrittenForm
 ```
 
 ### Removing one item from a list is an edit of that note, never a delete

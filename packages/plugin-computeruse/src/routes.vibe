@@ -1,0 +1,223 @@
+// spec/computerUse/sessions.md, "Story: Manage leased computer-use sessions with fresh observations"; spec/computerUse/approvals.md, "Story: Gate computer-use commands by approval mode and operator decisions"; spec/computerUse/index.md, "A command is scoped to one session generation, surface and authorized operation"
+import { ElizaError } from "@elizaos/core"
+import type { LocalRoute, RouteInput } from "@elizaos/agent-host"
+import { isApprovalMode } from "./approvals.vibe"
+import { currentPlatform } from "./platform.vibe"
+import type { ComputerUseService } from "./service.vibe"
+import { LOCAL_HOST_PRINCIPAL, type ComputerUseSessionAction, type CreateComputerUseSessionInput } from "./sessions.vibe"
+
+const SURFACES = new Set(["LocalDesktop", "BrowserSurface", "MobileDevice", "RemoteDesktop"])
+
+function failureAnswer(err: unknown, fallbackStatus: number): Answer {
+  const message = err instanceof Error ? err.message : String(err)
+  if (err instanceof ElizaError && err.code === "approval_denied") return { status: 403, body: { error: message } }
+  return { status: fallbackStatus, body: { error: message } }
+}
+
+export type ComputerUseRouteTarget = () => ComputerUseService | undefined
+
+type Answer = { readonly status: number; readonly body: object }
+
+const param = (input: RouteInput, name: string) => input.parameters.get(name) ?? ""
+
+function routeOver(target: ComputerUseRouteTarget) {
+  return (
+    method: "GET" | "POST" | "DELETE",
+    path: string,
+    handle: (input: RouteInput, service: ComputerUseService) => Promise<Answer> | Answer,
+  ): LocalRoute => ({
+    method,
+    path,
+    handler: async (input) => {
+      const service = target()
+      if (!service) return { status: 503, body: { error: "ComputerUseService is starting" } }
+      return handle(input, service)
+    },
+  })
+}
+
+export function computerUseRoutes(target: ComputerUseRouteTarget): LocalRoute[] {
+  const route = routeOver(target)
+  return [
+    route("GET", "/api/computer-use/apps", async (input, service) => {
+      try {
+        return { status: 200, body: { apps: await service.listApps(input.signal), readiness: service.getAppControlReadiness() } }
+      } catch (err) {
+        return failureAnswer(err, 500)
+      }
+    }),
+    route("GET", "/api/computer-use/apps/state", async (input, service) => {
+      const app = input.query.get("app") ?? ""
+      if (!app) return { status: 400, body: { error: "Missing app query parameter" } }
+      try {
+        const state = await service.getAppState(app, { disableDiff: input.query.get("disableDiff") === "true" }, input.signal)
+        return { status: 200, body: { state } }
+      } catch (err) {
+        return failureAnswer(err, 404)
+      }
+    }),
+    route("GET", "/api/computer-use/sessions", (_input, service) => ({
+      status: 200,
+      body: { sessions: service.listSessions(), approvals: service.getApprovalSnapshot() },
+    })),
+    route("POST", "/api/computer-use/sessions", async (input, service) => {
+      const body = (input.body && typeof input.body === "object" ? input.body : {}) as Partial<CreateComputerUseSessionInput>
+      const targetSpec = body.target ?? { kind: "host" }
+      try {
+        const created = await service.createSession({
+          ownerId: LOCAL_HOST_PRINCIPAL,
+          ...(body.label ? { label: body.label } : {}),
+          ...(body.leaseTtlMs !== undefined ? { leaseTtlMs: body.leaseTtlMs } : {}),
+          target: targetSpec,
+        })
+        return { status: 201, body: { session: created } }
+      } catch (err) {
+        return failureAnswer(err, 400)
+      }
+    }),
+    route("GET", "/api/computer-use/sessions/{id}", (input, service) => {
+      const session = service.getSession(param(input, "id"))
+      return session ? { status: 200, body: { session } } : { status: 404, body: { error: "Session not found" } }
+    }),
+    route("DELETE", "/api/computer-use/sessions/{id}", (input, service) => {
+      const closed = service.closeSession(param(input, "id"))
+      return closed ? { status: 200, body: { session: closed } } : { status: 404, body: { error: "Session not found" } }
+    }),
+    route("POST", "/api/computer-use/sessions/{id}/actions", async (input, service) => {
+      const body = (input.body && typeof input.body === "object" ? input.body : {}) as Partial<ComputerUseSessionAction>
+      if (
+        !body.actionId || !body.command || typeof body.expectedSequence !== "number" ||
+        typeof body.expectedEpoch !== "number" || typeof body.surface !== "string" || !SURFACES.has(body.surface)
+      ) {
+        return { status: 400, body: { error: "actionId, command, expectedSequence, expectedEpoch and surface are required" } }
+      }
+      try {
+        const outcome = await service.executeSessionAction(param(input, "id"), {
+          actionId: body.actionId,
+          command: body.command,
+          expectedSequence: body.expectedSequence,
+          callerId: LOCAL_HOST_PRINCIPAL,
+          expectedEpoch: body.expectedEpoch,
+          surface: body.surface,
+          ...(body.parameters ? { parameters: body.parameters } : {}),
+          ...(body.observationId ? { observationId: body.observationId } : {}),
+          ...(body.observationSequence !== undefined ? { observationSequence: body.observationSequence } : {}),
+        })
+        return { status: 200, body: outcome }
+      } catch (err) {
+        return { status: 409, body: { error: err instanceof Error ? err.message : String(err) } }
+      }
+    }),
+    route("POST", "/api/computer-use/sessions/{id}/lease", (input, service) => {
+      const body = (input.body && typeof input.body === "object" ? input.body : {}) as { readonly ttlMs?: number }
+      const renewed = service.renewSessionLease(param(input, "id"), body.ttlMs)
+      return renewed ? { status: 200, body: { session: renewed } } : { status: 404, body: { error: "Session not found or closed" } }
+    }),
+    route("POST", "/api/computer-use/sessions/{id}/pause", (input, service) => {
+      const paused = service.pauseSession(param(input, "id"))
+      return paused ? { status: 200, body: { session: paused } } : { status: 409, body: { error: "Cannot pause session" } }
+    }),
+    route("POST", "/api/computer-use/sessions/{id}/resume", (input, service) => {
+      const resumed = service.resumeSession(param(input, "id"))
+      return resumed ? { status: 200, body: { session: resumed } } : { status: 409, body: { error: "Cannot resume session" } }
+    }),
+    route("POST", "/api/computer-use/sessions/{id}/stop", (input, service) => {
+      const stopped = service.stopSession(param(input, "id"))
+      return stopped ? { status: 200, body: { session: stopped } } : { status: 409, body: { error: "Cannot stop session" } }
+    }),
+    route("GET", "/api/computer-use/sessions/{id}/frame", async (input, service) => {
+      try {
+        const frame = await service.captureSessionFrame(param(input, "id"), input.signal)
+        return { status: 200, body: { frame } }
+      } catch (err) {
+        return failureAnswer(err, 409)
+      }
+    }),
+    route("GET", "/api/computer-use/approvals", (_input, service) => ({
+      status: 200,
+      body: service.getApprovalSnapshot(),
+    })),
+    route("POST", "/api/computer-use/approval-mode", (input, service) => {
+      const body = (input.body && typeof input.body === "object" ? input.body : {}) as { readonly mode?: unknown }
+      if (!isApprovalMode(body.mode)) {
+        return { status: 400, body: { error: "Invalid approval mode" } }
+      }
+      return { status: 200, body: service.setApprovalMode(body.mode) }
+    }),
+    route("POST", "/api/computer-use/approvals/{id}", (input, service) => {
+      const body = (input.body && typeof input.body === "object" ? input.body : {}) as { readonly approved?: unknown; readonly reason?: string }
+      if (typeof body.approved !== "boolean") {
+        return { status: 400, body: { error: "approved boolean is required" } }
+      }
+      const resolution = service.resolveApproval(param(input, "id"), body.approved, body.reason)
+      return resolution ? { status: 200, body: { resolution } } : { status: 404, body: { error: "Pending approval not found" } }
+    }),
+  ]
+}
+
+export interface SandboxRouteManager {
+  getStatus(): Record<string, unknown>
+  getEventLog(): readonly unknown[]
+  start(): Promise<void>
+  stop(): Promise<void>
+  recover(): Promise<void>
+  exec?(command: string, workdir?: string, timeoutMs?: number): Promise<Record<string, unknown>>
+}
+
+export interface SandboxRouteRequest {
+  readonly method: string
+  readonly pathname: string
+  readonly body?: Record<string, unknown>
+}
+
+export interface SandboxRouteResponse {
+  readonly handled: boolean
+  readonly status: number
+  readonly body?: object
+}
+
+export async function handleSandboxRoute(
+  req: SandboxRouteRequest,
+  manager: SandboxRouteManager | null,
+): Promise<SandboxRouteResponse> {
+  if (!req.pathname.startsWith("/api/sandbox")) {
+    return { handled: false, status: 404 }
+  }
+  const method = req.method.toUpperCase()
+  if (method === "GET" && req.pathname === "/api/sandbox/platform") {
+    return { handled: true, status: 200, body: { platform: currentPlatform() } }
+  }
+  if (!manager) {
+    return { handled: true, status: 503, body: { error: "Sandbox manager not initialized" } }
+  }
+  if (method === "GET" && req.pathname === "/api/sandbox/status") {
+    return { handled: true, status: 200, body: manager.getStatus() }
+  }
+  if (method === "GET" && req.pathname === "/api/sandbox/events") {
+    return { handled: true, status: 200, body: { events: manager.getEventLog().slice(-100) } }
+  }
+  if (method === "POST" && req.pathname === "/api/sandbox/start") {
+    await manager.start()
+    return { handled: true, status: 200, body: manager.getStatus() }
+  }
+  if (method === "POST" && req.pathname === "/api/sandbox/stop") {
+    await manager.stop()
+    return { handled: true, status: 200, body: manager.getStatus() }
+  }
+  if (method === "POST" && req.pathname === "/api/sandbox/recover") {
+    await manager.recover()
+    return { handled: true, status: 200, body: manager.getStatus() }
+  }
+  if (method === "POST" && req.pathname === "/api/sandbox/exec") {
+    const command = typeof req.body?.command === "string" ? req.body.command : ""
+    if (!command) return { handled: true, status: 400, body: { error: "command is required" } }
+    if (!manager.exec) return { handled: true, status: 501, body: { error: "exec unsupported on this sandbox" } }
+    const res = await manager.exec(
+      command,
+      typeof req.body?.workdir === "string" ? req.body.workdir : undefined,
+      typeof req.body?.timeoutMs === "number" ? req.body.timeoutMs : undefined,
+    )
+    return { handled: true, status: 200, body: res }
+  }
+  return { handled: true, status: 404, body: { error: `Unknown sandbox route: ${method} ${req.pathname}` } }
+}

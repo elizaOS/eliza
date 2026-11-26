@@ -1,0 +1,1302 @@
+// spec/codingTools/index.md, "Sandbox path policy blocks sensitive locations, pseudo-descriptors, and escapes outside configured roots"; spec/codingTools/fileSession.md, "Reading a file records its current revision and binds a resumable reference"; spec/codingTools/shellSession.md, "Background shell sessions enforce concurrency caps and monotone incremental output polling"; spec/codingTools/worktree.md, "Entering and exiting a worktree keeps the directory stack and dynamic sandbox roots in lockstep"
+import { Service, type IAgentRuntime } from "@elizaos/core"
+import { mayEditFile, mayReadFile, pathAllowed, type WorkspaceAccess } from "../../gen/codingTools.effect.vibe"
+import {
+  canCreateNewFile,
+  canEditFile,
+  canReadFile,
+  canWriteExistingFile,
+  createNewFile,
+  deleteExternally,
+  editFile,
+  externalModify,
+  initial as initialFileSession,
+  readFile as stepReadFile,
+  writeExistingFile,
+  type FileSession,
+} from "../../gen/codingTools__fileSession.effect.vibe"
+import {
+  appendBgOutput,
+  canAppendBgOutput,
+  canExitBackground,
+  canKillBackground,
+  canPollBackground,
+  canStartBackground,
+  exitBackground,
+  initial as initialShellSession,
+  killBackground,
+  pollBackground,
+  startBackground,
+  type ShellSession,
+} from "../../gen/codingTools__shellSession.effect.vibe"
+import {
+  canEnterWorktree,
+  canExitWorktree,
+  currentCwd as specCurrentCwd,
+  enterWorktree as specEnterWorktree,
+  exitWorktree as specExitWorktree,
+  initial as initialWorktreeSession,
+  type WorktreeSession,
+} from "../../gen/codingTools__worktree.effect.vibe"
+import { invalidateFileReadReferences } from "../lib/artifacts.vibe"
+import { DEFAULT_OUTPUT_MAX_BYTES, DEFAULT_OUTPUT_MAX_LINES, readStringSetting, truncateHead } from "../lib/format.vibe"
+import {
+  currentProcessCwd,
+  defaultBlockedPaths,
+  expandHome,
+  isAbsolutePath,
+  isBlockedPseudoPath,
+  isUncPath,
+  isWithin,
+  newUuid,
+  osPlatform,
+  pathDirname,
+  pathRelative,
+  pathResolve,
+  classifyStdinTarget,
+  redactShellText,
+  resolveRealPathNode,
+  splitShellArgs,
+  traversesBlockedPath,
+  type StdinTarget,
+} from "../lib/security.vibe"
+import {
+  BACKGROUND_SHELL_SERVICE,
+  EXEC_APPROVAL_SERVICE,
+  FILE_STATE_SERVICE,
+  RIPGREP_SERVICE,
+  SANDBOX_SERVICE,
+  SESSION_CWD_SERVICE,
+  SHELL_SERVICE,
+  failure,
+  success,
+  type FileMeta,
+  type ToolResult,
+} from "../types.vibe"
+
+module node {
+  import { execFile, spawn, type ChildProcess } from "node:child_process"
+  import * as fs from "node:fs/promises"
+  import * as path from "node:path"
+
+  export interface FileStatInfo {
+    readonly exists: boolean
+    readonly isFile: boolean
+    readonly isDirectory: boolean
+    readonly ino: number
+    readonly size: number
+    readonly mtimeMs: number
+  }
+
+  export async function statPathNode(target: string): Promise<FileStatInfo> {
+    try {
+      const info = await fs.stat(target)
+      return {
+        exists: true,
+        isFile: info.isFile(),
+        isDirectory: info.isDirectory(),
+        ino: info.ino,
+        size: info.size,
+        mtimeMs: info.mtimeMs,
+      }
+    } catch {
+      return { exists: false, isFile: false, isDirectory: false, ino: 0, size: 0, mtimeMs: 0 }
+    }
+  }
+
+  export async function existsDirNode(target: string): Promise<boolean> {
+    try {
+      const info = await fs.stat(target)
+      return info.isDirectory()
+    } catch {
+      return false
+    }
+  }
+
+  export type ExecOutcome = "exited" | "timed_out" | "spawn_failed" | "output_overflow" | "signaled"
+
+  export interface ExecProcessOutput {
+    readonly outcome: ExecOutcome
+    readonly exitCode: number
+    readonly stdout: string
+    readonly stderr: string
+    readonly timedOut: boolean
+    readonly signal: string | null
+    readonly errorCode?: string
+  }
+
+  export function execFileNode(
+    executable: string,
+    args: readonly string[],
+    options: { readonly cwd: string; readonly timeoutMs: number; readonly maxBuffer?: number },
+  ): Promise<ExecProcessOutput> {
+    return new Promise((resolve) => {
+      execFile(
+        executable,
+        [...args],
+        {
+          cwd: options.cwd,
+          timeout: options.timeoutMs,
+          maxBuffer: options.maxBuffer ?? 8 * 1024 * 1024,
+          windowsHide: true,
+        },
+        (error, stdout, stderr) => {
+          if (!error) {
+            resolve({ outcome: "exited", exitCode: 0, stdout: String(stdout), stderr: String(stderr), timedOut: false, signal: null })
+            return
+          }
+          const killed = Boolean((error as { killed?: boolean }).killed)
+          const signal = (error as { signal?: string | null }).signal ?? null
+          const rawCode = (error as { code?: unknown }).code
+          const errorCode = typeof rawCode === "string" ? rawCode : undefined
+          const timedOut = killed && signal === "SIGTERM" && errorCode === undefined
+          const outcome: ExecOutcome = typeof rawCode === "number"
+            ? "exited"
+            : errorCode === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER"
+              ? "output_overflow"
+              : timedOut
+                ? "timed_out"
+                : errorCode !== undefined
+                  ? "spawn_failed"
+                  : "signaled"
+          resolve({
+            outcome,
+            exitCode: typeof rawCode === "number" ? rawCode : errorCode === "ENOENT" ? 127 : errorCode === "EACCES" ? 126 : -1,
+            stdout: String(stdout),
+            stderr: String(stderr || error.message),
+            timedOut,
+            signal,
+            ...(errorCode === undefined ? {} : { errorCode }),
+          })
+        },
+      )
+    })
+  }
+
+  export function runShellProcessNode(
+    command: string,
+    options: { readonly cwd: string; readonly timeoutMs: number },
+  ): Promise<ExecProcessOutput> {
+    const shell = process.platform === "win32" ? "powershell.exe" : (process.env.SHELL?.endsWith("fish") ? "/bin/bash" : (process.env.SHELL || "/bin/sh"))
+    const shellArgs = process.platform === "win32" ? ["-NoProfile", "-NonInteractive", "-Command", command] : ["-c", command]
+    return execFileNode(shell, shellArgs, { cwd: options.cwd, timeoutMs: options.timeoutMs, maxBuffer: 16 * 1024 * 1024 })
+  }
+
+  export interface SpawnedBgChild {
+    readonly pid: number | undefined
+    readonly writeStdin: (text: string) => boolean
+    readonly kill: (sig?: NodeJS.Signals) => boolean
+    readonly exited: () => boolean
+  }
+
+  export function spawnBgShellNode(
+    command: string,
+    cwd: string,
+    onStdout: (chunk: string) => void,
+    onStderr: (chunk: string) => void,
+    onExit: (code: number | null, signal: string | null) => void,
+  ): SpawnedBgChild {
+    const shell = process.platform === "win32" ? "powershell.exe" : "/bin/sh"
+    const shellArgs = process.platform === "win32" ? ["-NoProfile", "-NonInteractive", "-Command", command] : ["-c", command]
+    const child: ChildProcess = spawn(shell, shellArgs, { cwd, stdio: ["pipe", "pipe", "pipe"], windowsHide: true })
+    let hasExited = false
+    child.stdout?.on("data", (chunk: Buffer) => onStdout(chunk.toString("utf8")))
+    child.stderr?.on("data", (chunk: Buffer) => onStderr(chunk.toString("utf8")))
+    child.on("close", (code, sig) => {
+      hasExited = true
+      onExit(code, sig)
+    })
+    child.on("error", (err) => {
+      onStderr(err.message)
+      hasExited = true
+      onExit(1, null)
+    })
+    return {
+      pid: child.pid,
+      writeStdin: (text: string) => {
+        if (hasExited || !child.stdin || !child.stdin.writable) return false
+        return child.stdin.write(text, "utf8")
+      },
+      kill: (sig?: NodeJS.Signals) => {
+        if (hasExited) return true
+        return child.kill(sig ?? "SIGTERM")
+      },
+      exited: () => hasExited,
+    }
+  }
+
+  export async function fallbackGrepWalkNode(params: {
+    readonly root: string
+    readonly admit: (filePath: string) => Promise<boolean>
+    readonly regex: RegExp
+    readonly glob?: string
+    readonly mode: "content" | "files_with_matches" | "count"
+    readonly showLineNumbers: boolean
+    readonly contextBefore: number
+    readonly contextAfter: number
+    readonly headLimit: number
+  }): Promise<{ readonly stdout: string; readonly matchCount: number; readonly filesMatched: number }> {
+    const excluded = new Set(["node_modules", ".git", "dist", ".turbo", ".spec-cache", ".next"])
+    const linesOut: string[] = []
+    let matchCount = 0
+    let filesMatched = 0
+
+    const matchGlob = (name: string, pattern: string): boolean => {
+      const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*").replace(/\?/g, ".")
+      return new RegExp(`^${escaped}$`).test(name)
+    }
+
+    async function searchFile(filePath: string): Promise<void> {
+      if (linesOut.length >= params.headLimit) return
+      if (!(await params.admit(filePath))) return
+      let bytes: Buffer
+      try {
+        bytes = await fs.readFile(filePath)
+      } catch {
+        return
+      }
+      if (bytes.includes(0) || bytes.byteLength > 2 * 1024 * 1024) return
+      const text = bytes.toString("utf8")
+      const fileLines = text.split("\n")
+      const hitIndices: number[] = []
+      for (let i = 0; i < fileLines.length; i += 1) {
+        params.regex.lastIndex = 0
+        if (params.regex.test(fileLines[i])) hitIndices.push(i)
+      }
+      if (hitIndices.length === 0) return
+      filesMatched += 1
+      matchCount += hitIndices.length
+      if (params.mode === "files_with_matches") {
+        linesOut.push(filePath)
+        return
+      }
+      if (params.mode === "count") {
+        linesOut.push(`${filePath}:${hitIndices.length}`)
+        return
+      }
+      const emitted = new Set<number>()
+      for (const idx of hitIndices) {
+        const start = Math.max(0, idx - params.contextBefore)
+        const end = Math.min(fileLines.length - 1, idx + params.contextAfter)
+        for (let j = start; j <= end; j += 1) {
+          if (emitted.has(j)) continue
+          emitted.add(j)
+          const prefix = params.showLineNumbers ? `${filePath}:${j + 1}:` : `${filePath}:`
+          linesOut.push(`${prefix}${fileLines[j]}`)
+          if (linesOut.length >= params.headLimit) return
+        }
+      }
+    }
+
+    async function walk(current: string): Promise<void> {
+      if (linesOut.length >= params.headLimit) return
+      const info = await fs.stat(current).catch(() => undefined)
+      if (!info) return
+      if (info.isFile()) {
+        await searchFile(current)
+        return
+      }
+      if (!info.isDirectory()) return
+      const entries = await fs.readdir(current, { withFileTypes: true }).catch(() => [])
+      entries.sort((a, b) => a.name.localeCompare(b.name))
+      for (const entry of entries) {
+        if (linesOut.length >= params.headLimit) return
+        if (excluded.has(entry.name) || entry.name.startsWith(".")) continue
+        const full = path.join(current, entry.name)
+        if (entry.isDirectory()) {
+          await walk(full)
+        } else if (entry.isFile()) {
+          if (params.glob && !matchGlob(entry.name, params.glob)) continue
+          await searchFile(full)
+        }
+      }
+    }
+
+    await walk(params.root)
+    return { stdout: linesOut.join("\n"), matchCount, filesMatched }
+  }
+
+  export async function readJsonFileSafeNode(filePath: string): Promise<string | undefined> {
+    try {
+      return await fs.readFile(filePath, "utf8")
+    } catch {
+      return undefined
+    }
+  }
+
+  export async function writeJsonFileSafeNode(filePath: string, content: string): Promise<void> {
+    await fs.mkdir(path.dirname(filePath), { recursive: true })
+    await fs.writeFile(filePath, content, "utf8")
+  }
+}
+
+import {
+  execFileNode,
+  existsDirNode,
+  fallbackGrepWalkNode,
+  readJsonFileSafeNode,
+  runShellProcessNode,
+  spawnBgShellNode,
+  statPathNode,
+  writeJsonFileSafeNode,
+  type ExecOutcome,
+  type ExecProcessOutput,
+  type FileStatInfo,
+  type SpawnedBgChild,
+} from node
+
+export { runShellProcessNode, statPathNode, type ExecOutcome, type ExecProcessOutput, type FileStatInfo }
+
+function parseCsvList(raw: string | undefined): string[] {
+  if (!raw) return []
+  return raw.split(",").map((item) => item.trim()).filter((item) => item.length > 0)
+}
+
+function dedupeStrings(items: readonly string[]): string[] {
+  return [...new Set(items)].sort()
+}
+
+export type SandboxValidation =
+  | { readonly ok: true; readonly resolved: string; readonly root: string }
+  | { readonly ok: false; readonly reason: "blocked" | "invalid"; readonly message: string }
+
+export function workspaceAccess(root: string, ownerConfirmed = false): WorkspaceAccess {
+  return { authorizedRoot: root, ownerConfirmed, canWrite: true, canRunCommands: true }
+}
+
+function isProtectedSegment(segment: string): boolean {
+  return segment === ".git" || segment === ".ssh" || segment === ".env" || segment.startsWith(".env.")
+}
+
+export class SandboxService extends Service {
+  static override serviceType = SANDBOX_SERVICE
+  override capabilityDescription = "Path safety policy for coding tools. Blocks sensitive paths and enforces configured workspace roots."
+
+  private blockedPaths: string[] = []
+  private allowedRoots: string[] = []
+  private conversationRoots = new Map<string, Set<string>>()
+
+  static override async start(runtime: IAgentRuntime): Promise<SandboxService> {
+    const svc = new SandboxService(runtime)
+    await svc.loadConfig()
+    return svc
+  }
+
+  override async stop(): Promise<void> {
+    this.blockedPaths = []
+    this.allowedRoots = []
+    this.conversationRoots.clear()
+  }
+
+  async loadConfig(): Promise<void> {
+    const replace = readStringSetting(this.runtime, "CODING_TOOLS_BLOCKED_PATHS")
+    const additions = readStringSetting(this.runtime, "CODING_TOOLS_BLOCKED_PATHS_ADD")
+    const rootsRaw = readStringSetting(this.runtime, "CODING_TOOLS_WORKSPACE_ROOTS")
+    let rawBlocked = replace ? parseCsvList(replace) : defaultBlockedPaths()
+    if (additions) rawBlocked = rawBlocked.concat(parseCsvList(additions))
+    const resolvedBlocked = await Promise.all(
+      rawBlocked.map((p) => resolveRealPathNode(pathResolve(expandHome(p)))),
+    )
+    this.blockedPaths = dedupeStrings(resolvedBlocked)
+    const rawRoots = parseCsvList(rootsRaw)
+    const resolvedRoots = await Promise.all(
+      rawRoots.map((p) => resolveRealPathNode(pathResolve(expandHome(p)))),
+    )
+    this.allowedRoots = dedupeStrings(resolvedRoots)
+  }
+
+  getBlockedPaths(): string[] {
+    return this.blockedPaths.slice()
+  }
+
+  getAllowedRoots(conversationId?: string): string[] {
+    const extra = conversationId ? [...(this.conversationRoots.get(conversationId) ?? [])] : []
+    return dedupeStrings([...this.allowedRoots, ...extra])
+  }
+
+  addRoot(conversationId: string | undefined, absPath: string): void {
+    if (!conversationId || !isAbsolutePath(absPath) || isUncPath(absPath)) return
+    const roots = this.conversationRoots.get(conversationId) ?? new Set<string>()
+    roots.add(pathResolve(expandHome(absPath)))
+    this.conversationRoots.set(conversationId, roots)
+  }
+
+  removeRoot(conversationId: string | undefined, absPath: string): void {
+    if (!conversationId) return
+    const roots = this.conversationRoots.get(conversationId)
+    if (!roots) return
+    roots.delete(pathResolve(expandHome(absPath)))
+    if (roots.size === 0) this.conversationRoots.delete(conversationId)
+  }
+
+  async validatePath(conversationId: string | undefined, inputPath: string): Promise<SandboxValidation> {
+    const expanded = expandHome(inputPath)
+    const isEmpty = expanded.trim().length === 0
+    const hasNul = expanded.includes("\0")
+    const unc = isUncPath(expanded)
+    if (isEmpty || hasNul || unc || !isAbsolutePath(expanded)) {
+      return { ok: false, reason: "invalid", message: `invalid or non-absolute path: ${inputPath}` }
+    }
+    const traverses = await traversesBlockedPath(expanded)
+    const resolved = await resolveRealPathNode(expanded)
+    const blockedPseudo = isBlockedPseudoPath(expanded) || isBlockedPseudoPath(resolved)
+    const blockedConfigured = this.blockedPaths.some((root) => isWithin(root, resolved))
+    const activeRoots = await Promise.all(this.getAllowedRoots(conversationId).map((r) => resolveRealPathNode(r)))
+    const hasAllowRoots = activeRoots.length > 0
+    const root = activeRoots.filter((candidate) => isWithin(candidate, resolved)).sort((a, b) => b.length - a.length)[0]
+    const withinAllowedRoot = root !== undefined
+    const allowed = pathAllowed({
+      isEmpty,
+      hasNul,
+      isUnc: unc,
+      isBlocked: blockedPseudo || blockedConfigured,
+      traversesBlocked: traverses,
+      hasAllowRoots,
+      withinAllowedRoot,
+    })
+    if (!allowed || root === undefined) {
+      return {
+        ok: false,
+        reason: "blocked",
+        message: blockedPseudo || blockedConfigured || traverses
+          ? `path is blocked by sandbox policy: ${inputPath}`
+          : hasAllowRoots
+            ? `path is outside allowed workspace roots: ${inputPath}`
+            : `no workspace root is configured (CODING_TOOLS_WORKSPACE_ROOTS); refusing ${inputPath}`,
+      }
+    }
+    const protectedPath = pathRelative(root, resolved).split(/[\\/]/).some(isProtectedSegment)
+    if (!mayReadFile(workspaceAccess(root), { workspaceKey: root, fileKey: resolved, revision: "", protectedPath })) {
+      return { ok: false, reason: "blocked", message: `path is protected (.env, .git, .ssh): ${inputPath}` }
+    }
+    return { ok: true, resolved, root }
+  }
+
+  mayEdit(root: string, resolved: string, currentRevision: string, readRevision: string): boolean {
+    return mayEditFile(workspaceAccess(root), { workspaceKey: root, fileKey: resolved, revision: currentRevision, protectedPath: false }, readRevision)
+  }
+}
+
+export function fileRevision(stat: FileStatInfo): string {
+  return `${stat.ino}:${stat.size}:${Math.trunc(stat.mtimeMs)}`
+}
+
+interface TrackedFileEntry {
+  readonly meta: FileMeta
+  readonly session: FileSession
+}
+
+export type WritableGate =
+  | { readonly ok: true; readonly exists: false }
+  | { readonly ok: true; readonly exists: true; readonly currentRevision: string; readonly readRevision: string }
+  | { readonly ok: false; readonly reason: "stale_read" | "unread"; readonly message: string }
+
+export class FileStateService extends Service {
+  static override serviceType = FILE_STATE_SERVICE
+  override capabilityDescription = "Tracks per-conversation file revisions to prevent stale edits and blind overwrites."
+
+  private sessions = new Map<string, Map<string, TrackedFileEntry>>()
+
+  static override async start(runtime: IAgentRuntime): Promise<FileStateService> {
+    return new FileStateService(runtime)
+  }
+
+  override async stop(): Promise<void> {
+    this.sessions.clear()
+  }
+
+  private convMap(conversationId: string): Map<string, TrackedFileEntry> {
+    let map = this.sessions.get(conversationId)
+    if (!map) {
+      map = new Map()
+      this.sessions.set(conversationId, map)
+    }
+    return map
+  }
+
+  private saveEntry(
+    map: Map<string, TrackedFileEntry>,
+    absPath: string,
+    stat: FileStatInfo,
+    revision: string,
+    session: FileSession,
+  ): FileMeta {
+    const meta: FileMeta = { path: absPath, mtimeMs: stat.mtimeMs, size: stat.size, readAt: Date.now(), revision }
+    map.set(absPath, { meta, session })
+    return meta
+  }
+
+  async recordRead(conversationId: string, absPath: string, statOverride?: FileStatInfo): Promise<FileMeta> {
+    const stat = statOverride ?? (await statPathNode(absPath))
+    const revision = fileRevision(stat)
+    const map = this.convMap(conversationId)
+    const prev = map.get(absPath)
+    let nextSession = prev ? prev.session : initialFileSession
+    if (!nextSession.fileExists) {
+      nextSession = canCreateNewFile(nextSession, false) ? createNewFile(nextSession, false) : initialFileSession
+    }
+    if (prev && prev.meta.revision !== revision && nextSession.fileExists) {
+      nextSession = externalModify(nextSession)
+    }
+    if (canReadFile(nextSession)) {
+      nextSession = stepReadFile(nextSession)
+    }
+    return this.saveEntry(map, absPath, stat, revision, nextSession)
+  }
+
+  async recordWrite(conversationId: string, absPath: string, mode: "write" | "edit" = "write"): Promise<FileMeta> {
+    const stat = await statPathNode(absPath)
+    const revision = fileRevision(stat)
+    const map = this.convMap(conversationId)
+    const prev = map.get(absPath)
+    let nextSession = prev ? prev.session : deleteExternally(initialFileSession)
+    if (mode === "edit" && canEditFile(nextSession, false, 1, false)) {
+      nextSession = editFile(nextSession, false, 1, false)
+    } else if (canWriteExistingFile(nextSession, true, false)) {
+      nextSession = writeExistingFile(nextSession, true, false)
+    } else if (canCreateNewFile(nextSession, false)) {
+      nextSession = createNewFile(nextSession, false)
+    } else {
+      nextSession = stepReadFile(initialFileSession)
+    }
+    invalidateFileReadReferences(conversationId, absPath)
+    return this.saveEntry(map, absPath, stat, revision, nextSession)
+  }
+
+  get(conversationId: string, absPath: string): FileMeta | undefined {
+    return this.sessions.get(conversationId)?.get(absPath)?.meta
+  }
+
+  async assertWritable(conversationId: string, absPath: string): Promise<WritableGate> {
+    const stat = await statPathNode(absPath)
+    if (!stat.exists) {
+      return { ok: true, exists: false }
+    }
+    const currentRevision = fileRevision(stat)
+    const entry = this.sessions.get(conversationId)?.get(absPath)
+    if (!entry) {
+      return {
+        ok: false,
+        reason: "unread",
+        message: `file must be read in this conversation before editing or overwriting: ${absPath}`,
+      }
+    }
+    if (entry.meta.revision !== currentRevision) {
+      const staled = entry.session.fileExists ? externalModify(entry.session) : entry.session
+      this.convMap(conversationId).set(absPath, { meta: entry.meta, session: staled })
+      return {
+        ok: false,
+        reason: "stale_read",
+        message: `file changed on disk since last read (${entry.meta.revision} != ${currentRevision}); re-read ${absPath} first`,
+      }
+    }
+    return { ok: true, exists: true, currentRevision, readRevision: entry.meta.revision }
+  }
+
+  private deviceKey(devicePath: string): string {
+    return `device:${devicePath}`
+  }
+
+  recordDeviceRead(conversationId: string, devicePath: string, revision: string, size: number): FileMeta {
+    const key = this.deviceKey(devicePath)
+    const map = this.convMap(conversationId)
+    const prev = map.get(key)
+    let nextSession = prev ? prev.session : initialFileSession
+    if (!nextSession.fileExists) {
+      nextSession = canCreateNewFile(nextSession, false) ? createNewFile(nextSession, false) : initialFileSession
+    }
+    if (prev && prev.meta.revision !== revision && nextSession.fileExists) {
+      nextSession = externalModify(nextSession)
+    }
+    if (canReadFile(nextSession)) {
+      nextSession = stepReadFile(nextSession)
+    }
+    return this.saveEntry(map, key, { exists: true, isFile: true, isDirectory: false, ino: 0, size, mtimeMs: 0 }, revision, nextSession)
+  }
+
+  deviceReadMatches(conversationId: string, devicePath: string, currentRevision: string): boolean {
+    const entry = this.sessions.get(conversationId)?.get(this.deviceKey(devicePath))
+    return entry !== undefined && entry.session.hasRead && entry.meta.revision === currentRevision
+  }
+
+  recordDeviceWrite(conversationId: string, devicePath: string, revision: string, size: number, existed: boolean): FileMeta {
+    const key = this.deviceKey(devicePath)
+    const map = this.convMap(conversationId)
+    const prev = map.get(key)
+    let nextSession = prev ? prev.session : existed ? initialFileSession : deleteExternally(initialFileSession)
+    if (existed && canWriteExistingFile(nextSession, true, false)) {
+      nextSession = writeExistingFile(nextSession, true, false)
+    } else if (!existed && canCreateNewFile(nextSession, false)) {
+      nextSession = createNewFile(nextSession, false)
+    } else {
+      nextSession = stepReadFile(initialFileSession)
+    }
+    return this.saveEntry(map, key, { exists: true, isFile: true, isDirectory: false, ino: 0, size, mtimeMs: 0 }, revision, nextSession)
+  }
+
+  invalidate(conversationId: string, absPath: string): void {
+    this.sessions.get(conversationId)?.delete(absPath)
+    invalidateFileReadReferences(conversationId, absPath)
+  }
+
+  clearConversation(conversationId: string): void {
+    this.sessions.delete(conversationId)
+  }
+}
+
+export class SessionCwdService extends Service {
+  static override serviceType = SESSION_CWD_SERVICE
+  override capabilityDescription = "Tracks per-conversation working directory and git worktree stack."
+
+  private worktrees = new Map<string, WorktreeSession>()
+
+  static override async start(runtime: IAgentRuntime): Promise<SessionCwdService> {
+    return new SessionCwdService(runtime)
+  }
+
+  override async stop(): Promise<void> {
+    this.worktrees.clear()
+  }
+
+  defaultCwd(): string {
+    const configured = parseCsvList(readStringSetting(this.runtime, "CODING_TOOLS_WORKSPACE_ROOTS"))
+    if (configured.length > 0) return pathResolve(expandHome(configured[0]))
+    return currentProcessCwd()
+  }
+
+  private sessionFor(conversationId: string): WorktreeSession {
+    let state = this.worktrees.get(conversationId)
+    if (!state) {
+      state = { ...initialWorktreeSession, baseCwd: this.defaultCwd() }
+      this.worktrees.set(conversationId, state)
+    }
+    return state
+  }
+
+  getCwd(conversationId: string | undefined): string {
+    if (!conversationId) return this.defaultCwd()
+    return specCurrentCwd(this.sessionFor(conversationId))
+  }
+
+  async getExistingCwd(conversationId: string | undefined): Promise<{ readonly cwd: string; readonly fallback: boolean }> {
+    const candidate = this.getCwd(conversationId)
+    if (await existsDirNode(candidate)) return { cwd: candidate, fallback: false }
+    const fallback = this.defaultCwd()
+    return { cwd: fallback, fallback: true }
+  }
+
+  setCwd(conversationId: string, absPath: string): void {
+    const resolved = pathResolve(expandHome(absPath))
+    const current = this.sessionFor(conversationId)
+    this.worktrees.set(conversationId, { ...current, baseCwd: resolved, stack: [] })
+  }
+
+  pushWorktree(conversationId: string, absPath: string): string {
+    const resolved = pathResolve(expandHome(absPath))
+    const current = this.sessionFor(conversationId)
+    if (canEnterWorktree(current, resolved)) {
+      const next = specEnterWorktree(current, resolved)
+      this.worktrees.set(conversationId, next)
+      return specCurrentCwd(next)
+    }
+    return specCurrentCwd(current)
+  }
+
+  peekWorktree(conversationId: string): { readonly entered: string; readonly previousCwd: string } | undefined {
+    const current = this.sessionFor(conversationId)
+    if (!canExitWorktree(current)) return undefined
+    return { entered: specCurrentCwd(current), previousCwd: specCurrentCwd(specExitWorktree(current, false)) }
+  }
+
+  popWorktree(conversationId: string, cleanup = false): { readonly entered: string; readonly previousCwd: string } | undefined {
+    const current = this.sessionFor(conversationId)
+    if (!canExitWorktree(current)) return undefined
+    const entered = specCurrentCwd(current)
+    const next = specExitWorktree(current, cleanup)
+    this.worktrees.set(conversationId, next)
+    return { entered, previousCwd: specCurrentCwd(next) }
+  }
+
+  worktreeDepth(conversationId: string): number {
+    return this.sessionFor(conversationId).stack.length
+  }
+
+  getWorktreeState(conversationId: string): WorktreeSession {
+    const state = this.sessionFor(conversationId)
+    return { baseCwd: state.baseCwd, stack: state.stack.slice(), cleanedCount: state.cleanedCount }
+  }
+}
+
+export function resolveInputPath(
+  runtime: IAgentRuntime,
+  conversationId: string | undefined,
+  rawPath: string,
+): ToolResult<string> {
+  const trimmed = rawPath.trim()
+  if (trimmed.length === 0) return failure("missing_param", "path is empty")
+  const expanded = expandHome(trimmed)
+  if (isUncPath(expanded)) return failure("path_blocked", "UNC paths are not allowed")
+  if (isAbsolutePath(expanded)) return success(pathResolve(expanded))
+  const session = runtime.getService(SESSION_CWD_SERVICE) as SessionCwdService | null
+  const base = session ? session.getCwd(conversationId) : currentProcessCwd()
+  return success(pathResolve(base, expanded))
+}
+
+export async function runGitCommand(args: {
+  readonly cwd: string
+  readonly gitArgs: readonly string[]
+  readonly timeoutMs?: number
+}): Promise<ExecProcessOutput> {
+  return execFileNode("git", args.gitArgs, {
+    cwd: args.cwd,
+    timeoutMs: args.timeoutMs ?? 30_000,
+  })
+}
+
+export type RipgrepMode = "content" | "files_with_matches" | "count"
+
+export interface RipgrepOptions {
+  readonly pattern: string
+  readonly path: string
+  readonly glob?: string
+  readonly type?: string
+  readonly contextBefore?: number
+  readonly contextAfter?: number
+  readonly contextAround?: number
+  readonly caseInsensitive?: boolean
+  readonly multiline?: boolean
+  readonly showLineNumbers?: boolean
+  readonly headLimit?: number
+}
+
+export type RipgrepResult =
+  | { readonly ok: true; readonly exitCode: 0 | 1; readonly stdout: string; readonly engine: "rg" | "fallback" }
+  | { readonly ok: false; readonly reason: "timeout" | "invalid_param" | "io_error"; readonly message: string }
+
+const PROTECTED_SEARCH_GLOBS: readonly string[] = [".git", ".ssh", ".env", ".env.*"]
+
+async function admitRipgrepOutput(
+  stdout: string,
+  mode: RipgrepMode,
+  showLineNumbers: boolean,
+  admit: (filePath: string) => Promise<boolean>,
+): Promise<string> {
+  const verdicts = new Map<string, boolean>()
+  const admitted = async (filePath: string): Promise<boolean> => {
+    const known = verdicts.get(filePath)
+    if (known !== undefined) return known
+    const verdict = filePath.length > 0 && (await admit(filePath))
+    verdicts.set(filePath, verdict)
+    return verdict
+  }
+  if (mode === "files_with_matches") {
+    const kept: string[] = []
+    for (const filePath of stdout.split("\0")) {
+      const trimmed = filePath.replace(/^\n+|\n+$/g, "")
+      if (trimmed && (await admitted(trimmed))) kept.push(trimmed)
+    }
+    return kept.length > 0 ? `${kept.join("\n")}\n` : ""
+  }
+  const lines: string[] = []
+  for (const line of stdout.split("\n")) {
+    const nul = line.indexOf("\0")
+    if (nul === -1) {
+      if (line === "--" && lines.length > 0 && lines[lines.length - 1] !== "--") lines.push("--")
+      continue
+    }
+    const filePath = line.slice(0, nul)
+    if (!(await admitted(filePath))) continue
+    const rest = line.slice(nul + 1)
+    if (mode === "count") {
+      lines.push(`${filePath}:${rest}`)
+      continue
+    }
+    const numbered = /^(\d+)([:-])/.exec(rest)
+    if (!numbered) continue
+    const separator = numbered[2]!
+    const text = rest.slice(numbered[0].length)
+    lines.push(showLineNumbers ? `${filePath}${separator}${numbered[1]}${separator}${text}` : `${filePath}${separator}${text}`)
+  }
+  while (lines.length > 0 && lines[lines.length - 1] === "--") lines.pop()
+  return lines.length > 0 ? `${lines.join("\n")}\n` : ""
+}
+
+export class RipgrepService extends Service {
+  static override serviceType = RIPGREP_SERVICE
+  override capabilityDescription = "Fast content search over workspace files via ripgrep, with a sandboxed pure-Node walk only where ripgrep is not installed."
+
+  static override async start(runtime: IAgentRuntime): Promise<RipgrepService> {
+    return new RipgrepService(runtime)
+  }
+
+  override async stop(): Promise<void> {}
+
+  async search(
+    options: RipgrepOptions,
+    mode: RipgrepMode,
+    sandbox: { readonly blockedPaths: readonly string[]; readonly admit: (filePath: string) => Promise<boolean> },
+  ): Promise<RipgrepResult> {
+    const args: string[] = ["--color=never", "--no-heading", "--null"]
+    if (mode === "files_with_matches") args.push("--files-with-matches")
+    else if (mode === "count") args.push("--count", "--with-filename")
+    else {
+      args.push("--with-filename", "--line-number")
+      if (options.contextAround !== undefined && options.contextAround > 0) args.push("-C", String(options.contextAround))
+      else {
+        if (options.contextBefore !== undefined && options.contextBefore > 0) args.push("-B", String(options.contextBefore))
+        if (options.contextAfter !== undefined && options.contextAfter > 0) args.push("-A", String(options.contextAfter))
+      }
+    }
+    if (options.caseInsensitive) args.push("-i")
+    if (options.multiline) args.push("-U", "--multiline-dotall")
+    if (options.glob) args.push("--glob", options.glob)
+    if (options.type) args.push("--type", options.type)
+    args.push("--glob", "!node_modules/**", "--glob", "!dist/**", "--glob", "!.turbo/**")
+    for (const name of PROTECTED_SEARCH_GLOBS) args.push("--glob", `!${name}`)
+    for (const blocked of sandbox.blockedPaths) {
+      if (blocked !== options.path && isWithin(options.path, blocked)) {
+        args.push("--glob", `!/${pathRelative(options.path, blocked).replace(/\\/g, "/")}/**`)
+      }
+    }
+    args.push("-e", options.pattern, options.path)
+
+    const rgOut = await execFileNode("rg", args, { cwd: pathDirname(options.path), timeoutMs: 20_000 })
+    if (rgOut.outcome === "exited" && (rgOut.exitCode === 0 || rgOut.exitCode === 1)) {
+      const admitted = await admitRipgrepOutput(rgOut.stdout, mode, options.showLineNumbers !== false, sandbox.admit)
+      return { ok: true, exitCode: admitted.length > 0 ? 0 : 1, stdout: admitted, engine: "rg" }
+    }
+    if (rgOut.outcome === "timed_out") return { ok: false, reason: "timeout", message: "ripgrep timed out after 20000ms; narrow path or glob" }
+    if (rgOut.outcome === "output_overflow") return { ok: false, reason: "io_error", message: "ripgrep output exceeded the 8 MiB buffer; narrow path, glob or pattern" }
+    if (rgOut.outcome !== "spawn_failed" || rgOut.errorCode !== "ENOENT") {
+      return { ok: false, reason: "invalid_param", message: `ripgrep failed (${rgOut.errorCode ?? `exit ${rgOut.exitCode}`}): ${rgOut.stderr.trim()}` }
+    }
+    let regex: RegExp
+    try {
+      regex = new RegExp(options.pattern, `${options.caseInsensitive ? "i" : ""}${options.multiline ? "s" : ""}`)
+    } catch (err) {
+      return { ok: false, reason: "invalid_param", message: `invalid pattern: ${err instanceof Error ? err.message : String(err)}` }
+    }
+    const fallback = await fallbackGrepWalkNode({
+      root: options.path,
+      admit: sandbox.admit,
+      regex,
+      glob: options.glob,
+      mode,
+      showLineNumbers: options.showLineNumbers !== false,
+      contextBefore: options.contextBefore ?? options.contextAround ?? 0,
+      contextAfter: options.contextAfter ?? options.contextAround ?? 0,
+      headLimit: options.headLimit ?? 500,
+    })
+    return { ok: true, exitCode: fallback.matchCount > 0 ? 0 : 1, stdout: fallback.stdout, engine: "fallback" }
+  }
+}
+
+const MAX_BG_SESSIONS_PER_CONV = 16
+const MAX_BG_SESSIONS_GLOBAL = 128
+const MAX_BG_BUFFER_CHARS = 1_000_000
+const MAX_BG_RETAINED_ENDED = 64
+const BG_ENDED_RETENTION_MS = 30 * 60 * 1000
+
+export interface BackgroundShellSessionSnapshot {
+  readonly handle: string
+  readonly conversationId: string
+  readonly command: string
+  readonly cwd: string
+  readonly status: "running" | "exited" | "killed"
+  readonly pid: number | undefined
+  readonly startedAt: number
+  readonly endedAt?: number
+  readonly exitCode: number | null
+  readonly signal: string | null
+  readonly stdoutTotalChars: number
+  readonly stderrTotalChars: number
+  readonly stdoutDroppedChars: number
+  readonly stderrDroppedChars: number
+}
+
+export interface BackgroundShellStreamPage {
+  readonly text: string
+  readonly offset: number
+  readonly nextOffset: number
+  readonly totalChars: number
+  readonly hasMore: boolean
+}
+
+export interface BackgroundShellPollResult {
+  readonly snapshot: BackgroundShellSessionSnapshot
+  readonly stdout: BackgroundShellStreamPage
+  readonly stderr: BackgroundShellStreamPage
+}
+
+interface InternalBgSession {
+  readonly handle: string
+  readonly conversationId: string
+  readonly command: string
+  readonly cwd: string
+  readonly startedAt: number
+  readonly child: SpawnedBgChild
+  status: "running" | "exited" | "killed"
+  endedAt?: number
+  exitCode: number | null
+  signal: string | null
+  stdoutBuf: string
+  stderrBuf: string
+  stdoutDropped: number
+  stderrDropped: number
+  specState: ShellSession
+}
+
+function appendBounded(current: string, chunk: string): { readonly buf: string; readonly dropped: number } {
+  const room = Math.max(0, MAX_BG_BUFFER_CHARS - current.length)
+  return { buf: current + chunk.slice(0, room), dropped: Math.max(0, chunk.length - room) }
+}
+
+export class BackgroundShellService extends Service {
+  static override serviceType = BACKGROUND_SHELL_SERVICE
+  override capabilityDescription = "Manages bounded per-conversation background shell sessions with incremental output polling."
+
+  private sessions = new Map<string, InternalBgSession>()
+
+  static override async start(runtime: IAgentRuntime): Promise<BackgroundShellService> {
+    return new BackgroundShellService(runtime)
+  }
+
+  override async stop(): Promise<void> {
+    for (const session of this.sessions.values()) {
+      if (session.status === "running") {
+        session.child.kill("SIGTERM")
+        session.status = "killed"
+      }
+    }
+    this.sessions.clear()
+  }
+
+  startSession(args: {
+    readonly conversationId: string
+    readonly command: string
+    readonly cwd: string
+  }): { readonly ok: true; readonly snapshot: BackgroundShellSessionSnapshot } | { readonly ok: false; readonly message: string } {
+    this.evictEnded(Date.now())
+    const running = [...this.sessions.values()].filter((s) => s.status === "running").length
+    if (running >= MAX_BG_SESSIONS_GLOBAL) {
+      return { ok: false, message: `global background shell cap reached (${MAX_BG_SESSIONS_GLOBAL} running)` }
+    }
+    const convRunning = [...this.sessions.values()].filter(
+      (s) => s.conversationId === args.conversationId && s.status === "running",
+    ).length
+    if (convRunning >= MAX_BG_SESSIONS_PER_CONV) {
+      return { ok: false, message: `conversation background shell cap reached (${MAX_BG_SESSIONS_PER_CONV})` }
+    }
+    const handle = `bg_${newUuid().replace(/-/g, "").slice(0, 16)}`
+    let specState = initialShellSession
+    if (canStartBackground(specState)) specState = startBackground(specState)
+
+    const session: InternalBgSession = {
+      handle,
+      conversationId: args.conversationId,
+      command: args.command,
+      cwd: args.cwd,
+      startedAt: Date.now(),
+      status: "running",
+      exitCode: null,
+      signal: null,
+      stdoutBuf: "",
+      stderrBuf: "",
+      stdoutDropped: 0,
+      stderrDropped: 0,
+      specState,
+      child: spawnBgShellNode(
+        args.command,
+        args.cwd,
+        (chunk) => {
+          const next = appendBounded(session.stdoutBuf, chunk)
+          session.stdoutBuf = next.buf
+          session.stdoutDropped += next.dropped
+          const delta = Math.min(Math.max(1, chunk.length), 1000)
+          if (canAppendBgOutput(session.specState, delta)) {
+            session.specState = appendBgOutput(session.specState, delta)
+          }
+        },
+        (chunk) => {
+          const next = appendBounded(session.stderrBuf, chunk)
+          session.stderrBuf = next.buf
+          session.stderrDropped += next.dropped
+        },
+        (code, sig) => {
+          if (session.status === "running") {
+            session.status = "exited"
+            if (canExitBackground(session.specState)) {
+              session.specState = exitBackground(session.specState)
+            }
+          }
+          session.endedAt = Date.now()
+          session.exitCode = code
+          session.signal = sig
+        },
+      ),
+    }
+    this.sessions.set(handle, session)
+    return { ok: true, snapshot: this.toSnapshot(session) }
+  }
+
+  private evictEnded(now: number): void {
+    const ended = [...this.sessions.values()]
+      .filter((s) => s.status !== "running")
+      .sort((a, b) => (a.endedAt ?? 0) - (b.endedAt ?? 0))
+    const excess = Math.max(0, ended.length - MAX_BG_RETAINED_ENDED)
+    ended.forEach((s, index) => {
+      if (index < excess || now - (s.endedAt ?? now) > BG_ENDED_RETENTION_MS) this.sessions.delete(s.handle)
+    })
+  }
+
+  private pageStream(buf: string, requestedOffset: number | undefined, maxLines: number, maxBytes: number): BackgroundShellStreamPage {
+    const offset = Math.max(0, Math.min(Math.floor(requestedOffset ?? 0), buf.length))
+    const raw = buf.slice(offset)
+    const window = truncateHead(raw, maxLines, maxBytes)
+    const consumed = window.text.length + (window.truncated && raw[window.text.length] === "\n" ? 1 : 0)
+    const nextOffset = window.truncated ? offset + consumed : buf.length
+    return {
+      text: redactShellText(this.runtime, window.text),
+      offset,
+      nextOffset,
+      totalChars: buf.length,
+      hasMore: nextOffset < buf.length,
+    }
+  }
+
+  private lookupSession(
+    conversationId: string,
+    handle: string,
+  ): { readonly ok: true; readonly session: InternalBgSession } | { readonly ok: false; readonly message: string } {
+    const session = this.sessions.get(handle)
+    if (!session || session.conversationId !== conversationId) {
+      return { ok: false, message: `unknown background session handle: ${handle}` }
+    }
+    return { ok: true, session }
+  }
+
+  poll(args: {
+    readonly conversationId: string
+    readonly handle: string
+    readonly stdoutOffset?: number
+    readonly stderrOffset?: number
+  }): { readonly ok: true; readonly result: BackgroundShellPollResult } | { readonly ok: false; readonly message: string } {
+    const found = this.lookupSession(args.conversationId, args.handle)
+    if (!found.ok) return found
+    const { session } = found
+    const stdout = this.pageStream(session.stdoutBuf, args.stdoutOffset, DEFAULT_OUTPUT_MAX_LINES, DEFAULT_OUTPUT_MAX_BYTES)
+    const stderr = this.pageStream(session.stderrBuf, args.stderrOffset, 80, 4096)
+    const specOffset = Math.min(stdout.offset, session.specState.bgStdoutTotal)
+    if (canPollBackground(session.specState, specOffset)) {
+      session.specState = pollBackground(session.specState, specOffset)
+    }
+    return { ok: true, result: { snapshot: this.toSnapshot(session), stdout, stderr } }
+  }
+
+  describe(args: {
+    readonly conversationId: string
+    readonly handle: string
+  }): { readonly ok: true; readonly snapshot: BackgroundShellSessionSnapshot } | { readonly ok: false; readonly message: string } {
+    const found = this.lookupSession(args.conversationId, args.handle)
+    if (!found.ok) return found
+    return { ok: true, snapshot: this.toSnapshot(found.session) }
+  }
+
+  stdinTarget(args: {
+    readonly conversationId: string
+    readonly handle: string
+  }): { readonly ok: true; readonly target: StdinTarget } | { readonly ok: false; readonly message: string } {
+    const found = this.lookupSession(args.conversationId, args.handle)
+    if (!found.ok) return found
+    return { ok: true, target: classifyStdinTarget(found.session.command) }
+  }
+
+  write(args: {
+    readonly conversationId: string
+    readonly handle: string
+    readonly stdin: string
+  }): { readonly ok: true; readonly bytesWritten: number } | { readonly ok: false; readonly message: string } {
+    const found = this.lookupSession(args.conversationId, args.handle)
+    if (!found.ok) return found
+    const { session } = found
+    if (session.status !== "running") {
+      return { ok: false, message: `background session is not running: ${args.handle}` }
+    }
+    const ok = session.child.writeStdin(args.stdin)
+    if (!ok) return { ok: false, message: `failed to write stdin to ${args.handle}` }
+    return { ok: true, bytesWritten: new TextEncoder().encode(args.stdin).byteLength }
+  }
+
+  kill(args: {
+    readonly conversationId: string
+    readonly handle: string
+  }): { readonly ok: true; readonly snapshot: BackgroundShellSessionSnapshot } | { readonly ok: false; readonly message: string } {
+    const found = this.lookupSession(args.conversationId, args.handle)
+    if (!found.ok) return found
+    const { session } = found
+    if (session.status === "running") {
+      session.child.kill("SIGTERM")
+      session.status = "killed"
+      session.endedAt = Date.now()
+      if (canKillBackground(session.specState)) {
+        session.specState = killBackground(session.specState)
+      }
+    }
+    return { ok: true, snapshot: this.toSnapshot(session) }
+  }
+
+  list(conversationId: string): BackgroundShellSessionSnapshot[] {
+    return [...this.sessions.values()]
+      .filter((s) => s.conversationId === conversationId)
+      .sort((a, b) => a.handle.localeCompare(b.handle))
+      .map((s) => this.toSnapshot(s))
+  }
+
+  private toSnapshot(session: InternalBgSession): BackgroundShellSessionSnapshot {
+    return {
+      handle: session.handle,
+      conversationId: session.conversationId,
+      command: redactShellText(this.runtime, session.command),
+      cwd: redactShellText(this.runtime, session.cwd),
+      status: session.status,
+      pid: session.child.pid,
+      startedAt: session.startedAt,
+      ...(session.endedAt === undefined ? {} : { endedAt: session.endedAt }),
+      exitCode: session.exitCode,
+      signal: session.signal,
+      stdoutTotalChars: session.stdoutBuf.length,
+      stderrTotalChars: session.stderrBuf.length,
+      stdoutDroppedChars: session.stdoutDropped,
+      stderrDroppedChars: session.stderrDropped,
+    }
+  }
+}
+
+export const DEFAULT_SAFE_BINS: readonly string[] = [
+  "cat", "cut", "diff", "echo", "find", "git", "grep", "head", "jq", "ls",
+  "pwd", "rg", "sed", "sort", "stat", "tail", "tr", "uniq", "wc", "which",
+]
+
+export interface ExecAllowlistEntry {
+  readonly id: string
+  readonly pattern: string
+  readonly addedAt: number
+}
+
+export interface ExecCommandAnalysis {
+  readonly executable: string
+  readonly args: readonly string[]
+  readonly safeBin: boolean
+  readonly allowlisted: boolean
+}
+
+export class ExecApprovalService extends Service {
+  static override serviceType = EXEC_APPROVAL_SERVICE
+  override capabilityDescription = "Analyzes shell commands and evaluates per-agent exec approval allowlists."
+
+  private allowlist: ExecAllowlistEntry[] = []
+
+  static override async start(runtime: IAgentRuntime): Promise<ExecApprovalService> {
+    return new ExecApprovalService(runtime)
+  }
+
+  override async stop(): Promise<void> {
+    this.allowlist = []
+  }
+
+  addAllowlistEntry(pattern: string): ExecAllowlistEntry {
+    const entry: ExecAllowlistEntry = { id: newUuid(), pattern: pattern.trim(), addedAt: Date.now() }
+    this.allowlist.push(entry)
+    return entry
+  }
+
+  getAllowlist(): readonly ExecAllowlistEntry[] {
+    return this.allowlist.slice()
+  }
+
+  analyzeCommand(command: string): ExecCommandAnalysis {
+    const tokens = splitShellArgs(command) ?? []
+    const executable = (tokens[0] ?? "").split("/").pop() ?? ""
+    const args = tokens.slice(1)
+    const safeBin = DEFAULT_SAFE_BINS.includes(executable)
+    const allowlisted = this.allowlist.some((entry) => command.trim().startsWith(entry.pattern))
+    return { executable, args, safeBin, allowlisted }
+  }
+
+  async persistAllowlist(filePath: string): Promise<void> {
+    await writeJsonFileSafeNode(filePath, JSON.stringify({ allowlist: this.allowlist }, null, 2))
+  }
+
+  async loadAllowlist(filePath: string): Promise<void> {
+    const raw = await readJsonFileSafeNode(filePath)
+    if (!raw) return
+    try {
+      const parsed = JSON.parse(raw) as { allowlist?: ExecAllowlistEntry[] }
+      if (Array.isArray(parsed.allowlist)) this.allowlist = parsed.allowlist
+    } catch {
+      return
+    }
+  }
+}
+
+export interface CommandHistoryEntry {
+  readonly command: string
+  readonly cwd: string
+  readonly exitCode: number
+  readonly timestamp: number
+  readonly stdoutPreview: string
+}
+
+export class ShellService extends Service {
+  static override serviceType = SHELL_SERVICE
+  override capabilityDescription = "Executes shell commands and records per-conversation redacted command history."
+
+  private history = new Map<string, CommandHistoryEntry[]>()
+
+  static override async start(runtime: IAgentRuntime): Promise<ShellService> {
+    return new ShellService(runtime)
+  }
+
+  override async stop(): Promise<void> {
+    this.history.clear()
+  }
+
+  recordHistory(conversationId: string, entry: CommandHistoryEntry): void {
+    const list = this.history.get(conversationId) ?? []
+    list.push({
+      ...entry,
+      command: redactShellText(this.runtime, entry.command),
+      cwd: redactShellText(this.runtime, entry.cwd),
+      stdoutPreview: redactShellText(this.runtime, entry.stdoutPreview).slice(0, 400),
+    })
+    if (list.length > 50) list.splice(0, list.length - 50)
+    this.history.set(conversationId, list)
+  }
+
+  getHistory(conversationId: string, limit?: number): readonly CommandHistoryEntry[] {
+    const list = this.history.get(conversationId) ?? []
+    if (limit !== undefined && limit > 0) return list.slice(-limit)
+    return list.slice()
+  }
+
+  clearHistory(conversationId: string): void {
+    this.history.delete(conversationId)
+  }
+
+  async execute(command: string, cwd: string, timeoutMs = 120_000): Promise<ExecProcessOutput> {
+    return runShellProcessNode(command, { cwd, timeoutMs })
+  }
+}
+
+export function detectTerminalSupported(env: Readonly<Record<string, string | undefined>>): boolean {
+  const variant = (env.ELIZA_BUILD_VARIANT ?? "").trim().toLowerCase()
+  if (variant === "store") return false
+  const platform = (env.ELIZA_PLATFORM ?? "").trim().toLowerCase()
+  const mobile = platform === "android" || platform === "ios" || Boolean(env.ANDROID_ROOT || env.ANDROID_DATA)
+  if (!mobile) return true
+  return platform === "android" && (env.ELIZA_RUNTIME_MODE ?? "").trim().toLowerCase() === "local-yolo"
+}
+
+export function platformShellDialect(): "posix" | "powershell" {
+  return osPlatform() === "win32" ? "powershell" : "posix"
+}

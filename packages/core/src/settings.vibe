@@ -133,7 +133,12 @@ function isEncryptedV2(value: string): boolean {
   if (!value.startsWith("v2:")) return false
   const parts = value.split(":")
   if (parts.length !== 4) return false
-  return BufferUtils.fromHex(parts[1]).length === 12 && BufferUtils.fromHex(parts[3]).length === 16
+  const [, ivHex, ciphertextHex, tagHex] = parts
+  return (
+    /^[0-9a-fA-F]{24}$/.test(ivHex)
+    && /^([0-9a-fA-F]{2})*$/.test(ciphertextHex)
+    && /^[0-9a-fA-F]{32}$/.test(tagHex)
+  )
 }
 
 function envelopeKind(value: string, legacyFirst = false): EnvelopeKind {

@@ -1,0 +1,532 @@
+// spec/webSearch/index.md, "A citation needs a usable web destination and a heading"; spec/webSearch/edge.md, "Fallback search requires explicit host opt-in"; spec/webSearch/edge.md, "Public article fetch validates canonical public URLs and batch bounds before dispatch"; spec/webSearch/edge.md, "Provider outages stay distinct from zero-hit searches and prompt projections stay bounded"
+import type { ActionResult } from "@elizaos/core"
+
+export const WEB_SEARCH_EDGE_COMPATIBILITY = {
+  target: "edge",
+  state: "none",
+  effects: ["public-network-read"],
+  requiredBindings: [],
+  requiredSecrets: [],
+} as const
+
+export interface WebSearchSourceEvidence {
+  url: string
+  text: string
+}
+
+export type WebSearchEdgeRunner = (
+  query: string,
+  options?: { numResults?: number; signal?: AbortSignal; provider?: "default" | "fallback" },
+) => Promise<ActionResult>
+
+module node {
+  import type {
+    Action,
+    ActionResult,
+    HandlerCallback,
+    IAgentRuntime,
+    Memory,
+    Plugin,
+    State,
+  } from "@elizaos/core"
+  import { isBlockedHostname, isPrivateIpAddress } from "@elizaos/core"
+  import { usableCitation } from "../gen/webSearch.ts"
+  import { admitEdgeProvider, compactSnippetLimit, type EdgeProviderChoice } from "../gen/webSearch__edge.ts"
+  import type { WebSearchEdgeRunner, WebSearchSourceEvidence } from "./edge.vibe"
+  import {
+    fetchKeylessWebTransport,
+    isKeylessWebSearchUnavailableError,
+    type KeylessWebFetchOptions,
+    type KeylessWebSearchResult,
+    searchKeylessWeb,
+  } from "./keyless-web-search.vibe"
+  import type { CompactSearchDigest, CompactSearchSnippet } from "./types.vibe"
+
+  const MAX_PROVIDER_JSON_NODES = 512
+  const MAX_WEB_SEARCH_QUERY_CODE_POINTS = 2048
+  const MAX_COMPACT_SNIPPETS = 8
+  const MAX_SNIPPET_CHARS = 320
+  const SOURCE_URL_KEYS = new Set(["url", "source_url", "sourceUrl"])
+  const HTTP_URL = /https?:\/\/[^\s<>"']+/giu
+  const SOURCE_TEXT_ARRAY_KEYS = new Set(["excerpts"])
+
+  function readParameters(options: unknown): Record<string, unknown> {
+    if (!options || typeof options !== "object") return {}
+    const record = options as Record<string, unknown>
+    return record.parameters && typeof record.parameters === "object"
+      ? (record.parameters as Record<string, unknown>)
+      : record
+  }
+
+  function readQuery(parameters: Record<string, unknown>): string | undefined {
+    for (const key of ["query", "q", "objective"]) {
+      const value = parameters[key]
+      if (typeof value === "string" && value.trim()) return value.trim()
+    }
+    return undefined
+  }
+
+  function stripTrailingProsePunctuation(value: string): string {
+    let excessClosing = 0
+    for (const char of value) {
+      if (char === ")") excessClosing += 1
+      else if (char === "(") excessClosing -= 1
+    }
+    let end = value.length
+    while (end > 0) {
+      const char = value[end - 1]
+      if (char === "," || char === "." || char === ";") end -= 1
+      else if (char === ")" && excessClosing > 0) {
+        end -= 1
+        excessClosing -= 1
+      } else break
+    }
+    return value.slice(0, end)
+  }
+
+  function publicHttpUrl(value: unknown): string | undefined {
+    if (typeof value !== "string") return undefined
+    try {
+      const parsed = new URL(value)
+      const ok = usableCitation({
+        destination: parsed.toString(),
+        heading: "source",
+        isWeb: parsed.protocol === "https:" || parsed.protocol === "http:",
+        hasCredentials: parsed.username !== "" || parsed.password !== "",
+        isSearchControl: false,
+        destinationPublic: !isBlockedHostname(parsed.hostname) && !isPrivateIpAddress(parsed.hostname),
+      })
+      return ok ? parsed.toString() : undefined
+    } catch {
+      return undefined
+    }
+  }
+
+  function containsUnsafeHttpUrl(value: string): boolean {
+    HTTP_URL.lastIndex = 0
+    for (const match of value.matchAll(HTTP_URL)) {
+      if (!publicHttpUrl(stripTrailingProsePunctuation(match[0]))) return true
+    }
+    return false
+  }
+
+  function decodedStrings(text: string): string[] {
+    const strings: string[] = []
+    try {
+      JSON.parse(text, (_key, value) => {
+        if (typeof value === "string") strings.push(value)
+        return value
+      })
+      return strings
+    } catch {
+      return [text]
+    }
+  }
+
+  /** @throws {never} */
+  export function webSearchSourceEvidence(text: string): {
+    sources: WebSearchSourceEvidence[]
+    sourceUrls: string[]
+    overflowed: boolean
+  } {
+    const sourceTextByUrl = new Map<string, string>()
+    const sourceUrls = new Set<string>()
+    let overflowed = false
+    try {
+      const pending: unknown[] = [JSON.parse(text)]
+      let visited = 0
+      while (pending.length > 0) {
+        const value = pending.pop()
+        visited += 1
+        if (visited > MAX_PROVIDER_JSON_NODES) {
+          overflowed = true
+          break
+        }
+        if (Array.isArray(value)) {
+          for (const item of value) pending.push(item)
+          continue
+        }
+        if (!value || typeof value !== "object") continue
+        const record = value as Record<string, unknown>
+        const recordUrls = new Set<string>()
+        const scalarRecord: Record<string, unknown> = {}
+        let recordContainsUnsafeUrl = false
+        for (const [key, item] of Object.entries(record)) {
+          if (SOURCE_URL_KEYS.has(key)) {
+            const parsed = publicHttpUrl(item)
+            if (parsed) {
+              recordUrls.add(parsed)
+              scalarRecord[key] = parsed
+            } else if (typeof item === "string") {
+              recordContainsUnsafeUrl = true
+            }
+            continue
+          }
+          if (
+            SOURCE_TEXT_ARRAY_KEYS.has(key) &&
+            Array.isArray(item) &&
+            item.length > 0 &&
+            item.every((entry) => typeof entry === "string")
+          ) {
+            scalarRecord[key] = item
+            if (item.some((entry) => containsUnsafeHttpUrl(entry))) {
+              recordContainsUnsafeUrl = true
+            }
+          } else if (item && typeof item === "object") {
+            pending.push(item)
+          } else {
+            scalarRecord[key] = item
+            if (typeof item === "string" && containsUnsafeHttpUrl(item)) {
+              recordContainsUnsafeUrl = true
+            }
+          }
+        }
+        for (const url of recordUrls) sourceUrls.add(url)
+        if (recordUrls.size === 1 && !recordContainsUnsafeUrl) {
+          const [recordUrl] = recordUrls
+          sourceTextByUrl.set(recordUrl, JSON.stringify(scalarRecord))
+        }
+      }
+    } catch {
+      void 0
+    }
+    for (const prose of decodedStrings(text)) {
+      for (const match of prose.matchAll(/https?:\/\/[^\s<>"']+/gu)) {
+        const exact = publicHttpUrl(match[0])
+        if (exact && sourceUrls.has(exact)) continue
+        const parsed = publicHttpUrl(stripTrailingProsePunctuation(match[0]))
+        if (parsed) sourceUrls.add(parsed)
+      }
+    }
+    return {
+      sources: overflowed ? [] : [...sourceTextByUrl].map(([url, sourceText]) => ({ url, text: sourceText })),
+      sourceUrls: [...sourceUrls],
+      overflowed,
+    }
+  }
+
+  /** @throws {never} */
+  export function webSearchSourceUrls(text: string): string[] {
+    return webSearchSourceEvidence(text).sourceUrls
+  }
+
+  function compactText(raw: string, limit: number): string {
+    const normalized = raw.replace(/\s+/g, " ").trim()
+    return normalized.length <= limit ? normalized : `${normalized.slice(0, Math.max(0, limit - 1))}…`
+  }
+
+  function extractCompactSnippet(source: WebSearchSourceEvidence): CompactSearchSnippet {
+    try {
+      const parsed = JSON.parse(source.text) as Record<string, unknown>
+      const title = typeof parsed.title === "string" ? compactText(parsed.title, 120) : undefined
+      const excerpt =
+        Array.isArray(parsed.excerpts) && typeof parsed.excerpts[0] === "string"
+          ? parsed.excerpts.filter((x): x is string => typeof x === "string").join(" ")
+          : typeof parsed.text === "string"
+            ? parsed.text
+            : typeof parsed.description === "string"
+              ? parsed.description
+              : typeof parsed.content === "string"
+                ? parsed.content
+                : source.text
+      return {
+        url: source.url,
+        ...(title ? { title } : {}),
+        snippet: compactText(excerpt, MAX_SNIPPET_CHARS),
+      }
+    } catch {
+      return { url: source.url, snippet: compactText(source.text, MAX_SNIPPET_CHARS) }
+    }
+  }
+
+  /** @throws {never} */
+  export function compactWebSearchDigest(
+    query: string,
+    provider: string,
+    text: string,
+    evidence: { sources: WebSearchSourceEvidence[]; sourceUrls: string[] },
+    maxSnippets = MAX_COMPACT_SNIPPETS,
+  ): CompactSearchDigest {
+    const dedup = new Map<string, CompactSearchSnippet>()
+    for (const source of evidence.sources) {
+      if (!dedup.has(source.url)) {
+        dedup.set(source.url, extractCompactSnippet(source))
+      }
+    }
+    const ordered = [...dedup.values()]
+    const cap = compactSnippetLimit(ordered.length, maxSnippets)
+    const results =
+      cap > 0
+        ? ordered.slice(0, cap)
+        : evidence.sourceUrls.length > 0
+          ? evidence.sourceUrls.slice(0, compactSnippetLimit(evidence.sourceUrls.length, maxSnippets)).map((url) => ({
+              url,
+              snippet: compactText(text, MAX_SNIPPET_CHARS),
+            }))
+          : [{ url: "", snippet: compactText(text, MAX_SNIPPET_CHARS) }]
+    return {
+      provider,
+      query,
+      count: results.length,
+      totalUrls: evidence.sourceUrls.length,
+      truncated: ordered.length > cap || text.length > MAX_SNIPPET_CHARS * Math.max(1, results.length),
+      results,
+    }
+  }
+
+  export async function fetchKeylessWeb(
+    urls: readonly string[],
+    options: KeylessWebFetchOptions = {},
+  ): Promise<KeylessWebSearchResult | undefined> {
+    for (const url of urls) {
+      if (publicHttpUrl(url) !== url) throw new Error("Canonical public article URL is required")
+    }
+    return fetchKeylessWebTransport(urls, options)
+  }
+
+  async function fail(text: string, callback?: HandlerCallback, query?: string): Promise<ActionResult> {
+    await callback?.({ text, transcriptVisibility: "internal" })
+    return {
+      success: false,
+      text,
+      data: { actionName: "WEB_SEARCH", ...(query ? { query } : {}) },
+      error: text,
+    }
+  }
+
+  function toProviderChoice(provider: unknown): EdgeProviderChoice {
+    if (provider === undefined || provider === "default") return "DefaultChoice"
+    if (provider === "fallback") return "FallbackChoice"
+    return "UnknownChoice"
+  }
+
+  export async function runWebSearchWith(
+    query: string,
+    search: (
+      query: string,
+    ) => Promise<{ provider: string; text: string; truncated: boolean } | null | undefined>,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<ActionResult> {
+    const normalizedQuery = query.trim()
+    if (!normalizedQuery) return await fail("A web search query is required.")
+    if ([...normalizedQuery].length > MAX_WEB_SEARCH_QUERY_CODE_POINTS) {
+      return await fail(
+        `Web search queries cannot exceed ${MAX_WEB_SEARCH_QUERY_CODE_POINTS} characters.`,
+        undefined,
+        normalizedQuery,
+      )
+    }
+    const observedAt = Date.now()
+    options.signal?.throwIfAborted()
+    let result: Awaited<ReturnType<typeof search>>
+    try {
+      result = await search(normalizedQuery)
+    } catch (error) {
+      options.signal?.throwIfAborted()
+      if (!isKeylessWebSearchUnavailableError(error)) throw error
+      return {
+        success: false,
+        text: "Web search is temporarily unavailable.",
+        data: {
+          actionName: "WEB_SEARCH",
+          query: normalizedQuery,
+          unavailable: true,
+          provider: error.provider,
+          reason: error.reason,
+          ...(error.status !== undefined ? { status: error.status } : {}),
+          ...(error.retryAfterMs !== undefined ? { retryAfterMs: error.retryAfterMs } : {}),
+        },
+        error: error.message,
+      }
+    }
+    options.signal?.throwIfAborted()
+    if (!result) {
+      return {
+        success: true,
+        text: "No results.",
+        data: {
+          actionName: "WEB_SEARCH",
+          query: normalizedQuery,
+          observedAt,
+          resultCount: 0,
+          sourceUrls: [],
+          sources: [],
+          evidenceOverflowed: false,
+          truncated: false,
+          value: "",
+        },
+        promptData: { actionName: "WEB_SEARCH", query: normalizedQuery, count: 0, totalUrls: 0, truncated: false, results: [] },
+        promptDataMode: "replace-data",
+      }
+    }
+    const evidence = webSearchSourceEvidence(result.text)
+    const digest = compactWebSearchDigest(normalizedQuery, result.provider, result.text, evidence)
+    return {
+      success: true,
+      text: result.text,
+      data: {
+        actionName: "WEB_SEARCH",
+        query: normalizedQuery,
+        provider: result.provider,
+        observedAt,
+        sourceUrls: evidence.sourceUrls,
+        sources: result.provider === "browser" ? [] : evidence.sources,
+        evidenceOverflowed: evidence.overflowed,
+        truncated: result.truncated,
+        value: result.text,
+      },
+      promptData: {
+        actionName: "WEB_SEARCH",
+        provider: digest.provider,
+        query: digest.query,
+        count: digest.count,
+        totalUrls: digest.totalUrls,
+        truncated: digest.truncated,
+        results: digest.results.map((entry) => ({
+          url: entry.url,
+          ...(entry.title ? { title: entry.title } : {}),
+          snippet: entry.snippet,
+        })),
+      },
+      promptDataMode: "replace-data",
+    }
+  }
+
+  export async function runWebSearchEdge(
+    query: string,
+    options: { numResults?: number; signal?: AbortSignal; provider?: "default" | "fallback" } = {},
+  ): Promise<ActionResult> {
+    options.signal?.throwIfAborted()
+    if (admitEdgeProvider(toProviderChoice(options.provider), false) !== "AdmitDefault") {
+      return await fail("The alternate search provider requires a host-authorized runner.")
+    }
+    return runWebSearchWith(query, (value) => searchKeylessWeb(value, { signal: options.signal }), options)
+  }
+
+  function createWebSearchEdgeAction(runner: WebSearchEdgeRunner, fallbackEnabled = false): Action {
+    return {
+      name: "WEB_SEARCH",
+      similes: ["SEARCH_WEB", "WEB_QUERY", "FIND_ONLINE", "SEARCH_INTERNET"],
+      tags: ["resource:web", "capability:read"],
+      contexts: ["general", "research", "web", "code"],
+      contextGate: { anyOf: ["general", "research", "web", "code"] },
+      roleGate: { minRole: "GUEST" },
+      toolSchemaStrict: true,
+      cacheStable: true,
+      cacheScope: "agent",
+      modelClass: "TEXT_SMALL",
+      description:
+        "Search the current public web for facts, news, recommendations, products, places, or other information that may have changed. Returns bounded source results for Eliza to answer from. This does not control a browser or access private accounts.",
+      descriptionCompressed: "Search the public web and return compact cited results.",
+      parameters: [
+        ...(fallbackEnabled
+          ? [
+              {
+                name: "provider",
+                description:
+                  "Use default free search first. Choose fallback only for the host-authorized alternate search. The host owns query scope and spending limits; do not repeat a denied fallback.",
+                descriptionCompressed: "Provider: default or host fallback.",
+                required: false,
+                schema: { type: "string", enum: ["default", "fallback"] },
+              },
+            ]
+          : []),
+        {
+          name: "query",
+          description: "Specific public-web search query.",
+          descriptionCompressed: "Search query.",
+          required: true,
+          schema: { type: "string" },
+        },
+      ],
+      summarize: (result, params) => {
+        const q = typeof params.query === "string" ? params.query.slice(0, 60) : ""
+        const urls = Array.isArray(result?.data?.sourceUrls) ? result.data.sourceUrls.length : 0
+        return result?.success ? `WEB_SEARCH "${q}" (${urls} sources)` : `WEB_SEARCH "${q}" [failed]`
+      },
+      validate: async () => true,
+      handler: async (
+        _runtime: IAgentRuntime,
+        _message: Memory,
+        _state?: State,
+        options?: unknown,
+        callback?: HandlerCallback,
+      ): Promise<ActionResult> => {
+        const parameters = readParameters(options)
+        const query = readQuery(parameters)
+        if (!query) return await fail("A web search query is required.", callback)
+        const candidateSignal =
+          options && typeof options === "object" ? (options as { abortSignal?: unknown }).abortSignal : undefined
+        const signal = candidateSignal instanceof AbortSignal ? candidateSignal : undefined
+        signal?.throwIfAborted()
+        const verdict = admitEdgeProvider(toProviderChoice(parameters.provider), fallbackEnabled)
+        if (verdict === "RefuseUnsupportedProvider") {
+          return await fail("The requested search provider is not supported.", callback)
+        }
+        if (verdict === "RefuseFallbackUnavailable") {
+          return await fail("The alternate search provider is not available for this turn.", callback)
+        }
+        const result = await runner(query, {
+          signal,
+          ...(verdict === "AdmitFallback" ? { provider: "fallback" as const } : {}),
+        })
+        signal?.throwIfAborted()
+        if (result.success !== true && result.text) {
+          await callback?.({
+            text: result.text,
+            transcriptVisibility: "internal",
+          })
+        }
+        return result
+      },
+    }
+  }
+
+  export const webSearchEdgeAction: Action = createWebSearchEdgeAction(runWebSearchEdge)
+
+  /** @throws {Error} */
+  export function createWebSearchEdgePlugin(
+    runner: WebSearchEdgeRunner = runWebSearchEdge,
+    options: { fallbackEnabled?: boolean } = {},
+  ): Plugin {
+    const fallbackEnabled = options.fallbackEnabled === true
+    if (fallbackEnabled && runner === runWebSearchEdge) {
+      throw new Error("Fallback search requires a host-authorized runner.")
+    }
+    return {
+      name: "web-search-edge",
+      description: "Credential-free, public, read-only web search for edge runtimes.",
+      actions: [createWebSearchEdgeAction(runner, fallbackEnabled)],
+    }
+  }
+
+  export const webSearchEdgePlugin: Plugin = {
+    name: "web-search-edge",
+    description: "Credential-free, public, read-only web search for edge runtimes.",
+    actions: [webSearchEdgeAction],
+  }
+}
+
+import {
+  compactWebSearchDigest,
+  createWebSearchEdgePlugin,
+  fetchKeylessWeb,
+  runWebSearchEdge,
+  runWebSearchWith,
+  webSearchEdgeAction,
+  webSearchEdgePlugin,
+  webSearchSourceEvidence,
+  webSearchSourceUrls,
+} from node
+
+export {
+  compactWebSearchDigest,
+  createWebSearchEdgePlugin,
+  fetchKeylessWeb,
+  runWebSearchEdge,
+  runWebSearchWith,
+  webSearchEdgeAction,
+  webSearchEdgePlugin,
+  webSearchSourceEvidence,
+  webSearchSourceUrls,
+}

@@ -2,6 +2,7 @@
 import type { IAgentRuntime } from "@elizaos/core"
 import type { AgentPlugin } from "@elizaos/agent-host"
 import { activeWorkflowsProvider, workflowAction, workflowInstances, workflowsContext, workflowStatusProvider } from "./agent.vibe"
+import { registerWorkflowDispatchService, unregisterWorkflowDispatchService } from "./dispatch.vibe"
 import { workflowRoutes } from "./routes.vibe"
 import { runtimeWorkflowHost, WORKFLOW_SCHEDULE_TASK } from "./runtime.vibe"
 import { hostedDigests } from "./service/digests.vibe"
@@ -39,8 +40,10 @@ export const workflowPlugin: AgentPlugin = {
     const instance = await runPromise(open(runtime))
     workflowInstances.set(runtime, instance)
     current = instance
+    registerWorkflowDispatchService(runtime, () => workflowInstances.get(runtime)?.service)
   },
   dispose: async (runtime) => {
+    unregisterWorkflowDispatchService(runtime)
     const instance = workflowInstances.get(runtime)
     if (instance === undefined) return
     await runPromise(instance.service.stop())
@@ -54,7 +57,8 @@ export default workflowPlugin
 export { openWorkflows, phoneWorkflowCatalog, PHONE_CATALOG_REVISION, PHONE_COMPILER_REVISION, WorkflowRefused, type WorkflowService } from "./service/workflows.vibe"
 export { hostedDigests } from "./service/digests.vibe"
 export { generatedWorkflows, generatedDraftPrompt } from "./service/generated.vibe"
-export { type WorkflowHost, type WorkflowWorkerPort, type WorkflowDevicePort, type WorkflowNotice, type WorkflowScheduler, type WorkflowNativeDigests } from "./service/host.vibe"
+export { type WorkflowDraftOptions, type WorkflowHost, type WorkflowWorkerPort, type WorkflowDevicePort, type WorkflowNotice, type WorkflowScheduler, type WorkflowNativeDigests } from "./service/host.vibe"
 export { WORKFLOW_DEVICE_SERVICE, WORKFLOW_NATIVE_DIGEST_SERVICE, WORKFLOW_SCHEDULE_TASK, WORKFLOW_WORKER_SERVICE, runtimeWorkflowHost } from "./runtime.vibe"
+export { WORKFLOW_DISPATCH_SERVICE_TYPE, createWorkflowDispatchService, registerWorkflowDispatchService, unregisterWorkflowDispatchService, type WorkflowDispatchOptions, type WorkflowDispatchResult, type WorkflowDispatchService } from "./dispatch.vibe"
 export type { WorkflowSql, WorkflowQuery } from "./service/store.vibe"
 export type { ManagedGoogleReads } from "./service/google.vibe"

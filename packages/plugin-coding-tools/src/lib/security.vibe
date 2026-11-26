@@ -1,0 +1,1100 @@
+// spec/codingTools/index.md, "Sandbox path policy blocks sensitive locations, pseudo-descriptors, and escapes outside configured roots"; spec/codingTools/shellSession.md, "Destructive commands require a bound, unexpired, single-use confirmation challenge"; spec/codingTools/shellSession.md, "Background stdin reaches a command interpreter only through the command policy"
+import type { ActionResult, AppliedEffectReceipt, HandlerCallback, IAgentRuntime, Memory, ProviderDataRecord } from "@elizaos/core"
+import { ElizaError } from "@elizaos/core"
+import { canConsumeChallenge, canIssueChallenge, consumeChallenge, initial as initialShellSession, issueChallenge, type ShellSession } from "../../gen/codingTools__shellSession.effect.vibe"
+import { finalLineEnding, successActionResult } from "./format.vibe"
+
+module node {
+  import { createHash, randomBytes, randomUUID } from "node:crypto"
+  import * as fs from "node:fs/promises"
+  import { homedir } from "node:os"
+  import * as path from "node:path"
+
+  export function osHomeDir(): string {
+    return homedir()
+  }
+
+  export function osPlatform(): string {
+    return process.platform
+  }
+
+  export function envVar(name: string): string | undefined {
+    return process.env[name]
+  }
+
+  export function currentProcessCwd(): string {
+    return process.cwd()
+  }
+
+  export function pathResolve(...parts: string[]): string {
+    return path.resolve(...parts)
+  }
+
+  export function pathJoin(...parts: string[]): string {
+    return path.join(...parts)
+  }
+
+  export function pathDirname(p: string): string {
+    return path.dirname(p)
+  }
+
+  export function pathRelative(from: string, to: string): string {
+    return path.relative(from, to)
+  }
+
+  export function pathIsAbsolute(p: string): boolean {
+    return path.isAbsolute(p)
+  }
+
+  export function pathSep(): string {
+    return path.sep
+  }
+
+  export function sha256Hex(value: string | Uint8Array): string {
+    return createHash("sha256").update(value).digest("hex")
+  }
+
+  export function randomTokenBase64Url(bytes = 18): string {
+    return randomBytes(bytes).toString("base64url")
+  }
+
+  export function newUuid(): string {
+    return randomUUID()
+  }
+
+  export async function resolveRealPathNode(target: string): Promise<string> {
+    const resolved = path.resolve(target)
+    try {
+      return await fs.realpath(resolved)
+    } catch {
+      const parent = path.dirname(resolved)
+      if (parent === resolved) return resolved
+      const realParent = await resolveRealPathNode(parent)
+      return path.join(realParent, path.basename(resolved))
+    }
+  }
+
+  export async function readFileBytesNode(target: string): Promise<Uint8Array> {
+    return fs.readFile(target)
+  }
+
+  export async function readLinkSafeNode(target: string): Promise<string | undefined> {
+    try {
+      return await fs.readlink(target)
+    } catch {
+      return undefined
+    }
+  }
+}
+
+import {
+  currentProcessCwd,
+  envVar,
+  newUuid,
+  osHomeDir,
+  osPlatform,
+  pathDirname,
+  pathIsAbsolute,
+  pathJoin,
+  pathRelative,
+  pathResolve,
+  pathSep,
+  randomTokenBase64Url,
+  readFileBytesNode,
+  readLinkSafeNode,
+  resolveRealPathNode,
+  sha256Hex,
+} from node
+
+export {
+  currentProcessCwd,
+  envVar,
+  newUuid,
+  osPlatform,
+  pathDirname,
+  pathRelative,
+  pathResolve,
+  resolveRealPathNode,
+  sha256Hex,
+}
+
+const BLOCKED_PSEUDO_PATHS = new Set([
+  "/dev/random",
+  "/dev/urandom",
+  "/dev/stdin",
+  "/dev/stdout",
+  "/dev/stderr",
+])
+
+const BLOCKED_DEVICE_FD = /^\/dev\/fd(?:\/|$)/
+const BLOCKED_PROC_DESCRIPTOR =
+  /^\/proc\/(?:(?:\d+|self)(?:\/task\/\d+)?|thread-self)\/(?:fd|root|cwd|exe|map_files)(?:\/|$)/
+
+export function expandHome(input: string): string {
+  const home = osHomeDir()
+  if (input === "~" || input === "$HOME") return home
+  if (input.startsWith("~/") || input.startsWith("~\\")) return pathJoin(home, input.slice(2))
+  if (input.startsWith("$HOME/") || input.startsWith("$HOME\\")) return pathJoin(home, input.slice(6))
+  return input
+}
+
+export function isUncPath(p: string): boolean {
+  return p.startsWith("\\\\") || p.startsWith("//")
+}
+
+export function isAbsolutePath(p: string): boolean {
+  if (!p || isUncPath(p)) return false
+  return pathIsAbsolute(p)
+}
+
+export function isBlockedPseudoPath(p: string): boolean {
+  const normalized = p.replace(/\\/g, "/")
+  return BLOCKED_PSEUDO_PATHS.has(normalized) || BLOCKED_DEVICE_FD.test(normalized) || BLOCKED_PROC_DESCRIPTOR.test(normalized)
+}
+
+export function isWithin(root: string, candidate: string): boolean {
+  const rel = pathRelative(root, candidate)
+  if (rel === "") return true
+  return !rel.startsWith("..") && !pathIsAbsolute(rel)
+}
+
+export function defaultBlockedPaths(): string[] {
+  const home = osHomeDir()
+  const base = [
+    pathJoin(home, ".ssh"),
+    pathJoin(home, ".aws"),
+    pathJoin(home, ".gnupg"),
+    pathJoin(home, ".kube"),
+    pathJoin(home, ".docker"),
+    pathJoin(home, ".netrc"),
+    pathJoin(home, ".npmrc"),
+    pathJoin(home, ".pypirc"),
+    pathJoin(home, ".git-credentials"),
+    pathJoin(home, ".config", "gh"),
+    pathJoin(home, ".config", "gcloud"),
+  ]
+  if (osPlatform() === "win32") {
+    const appData = envVar("APPDATA") ?? pathJoin(home, "AppData", "Roaming")
+    return [
+      ...base,
+      pathJoin(appData, "Microsoft", "Protect"),
+      pathJoin(appData, "Microsoft", "Crypto"),
+      "C:\\Windows\\System32\\config",
+    ]
+  }
+  return [
+    ...base,
+    "/etc/shadow",
+    "/etc/sudoers",
+    "/etc/sudoers.d",
+    "/etc/ssh",
+    "/boot",
+    "/sbin",
+    "/usr/sbin",
+  ]
+}
+
+export async function traversesBlockedPath(inputPath: string): Promise<boolean> {
+  let candidate = pathResolve(inputPath)
+  const seen = new Set<string>()
+  for (let hop = 0; hop < 32; hop += 1) {
+    if (isBlockedPseudoPath(candidate)) return true
+    if (seen.has(candidate)) break
+    seen.add(candidate)
+    const parts = candidate.split(pathSep())
+    let prefix = candidate.startsWith(pathSep()) ? pathSep() : ""
+    let redirected: string | undefined
+    for (const part of parts) {
+      if (!part) continue
+      prefix = prefix === "" ? part : pathJoin(prefix, part)
+      if (isBlockedPseudoPath(prefix)) return true
+      const linkTarget = await readLinkSafeNode(prefix)
+      if (linkTarget !== undefined) {
+        const nextPrefix = isAbsolutePath(linkTarget)
+          ? pathResolve(linkTarget)
+          : pathResolve(pathDirname(prefix), linkTarget)
+        if (isBlockedPseudoPath(nextPrefix)) return true
+        const remainder = pathRelative(prefix, candidate)
+        redirected = remainder ? pathResolve(nextPrefix, remainder) : nextPrefix
+        break
+      }
+    }
+    if (redirected === undefined) break
+    candidate = redirected
+  }
+  return false
+}
+
+export interface SecretMatch {
+  readonly name: string
+  readonly preview: string
+}
+
+const SECRET_PATTERNS: readonly { readonly name: string; readonly regex: RegExp }[] = [
+  { name: "aws_access_key", regex: /\bAKIA[0-9A-Z]{16}\b/ },
+  { name: "github_token", regex: /\bghp_[A-Za-z0-9]{36}\b/ },
+  { name: "github_oauth", regex: /\bgho_[A-Za-z0-9]{36}\b/ },
+  { name: "github_app", regex: /\b(?:ghu|ghs)_[A-Za-z0-9]{36}\b/ },
+  { name: "openai_key", regex: /\bsk-(?:(?:proj|svcacct|admin)-[A-Za-z0-9_-]{20,}|[A-Za-z0-9]{20,})\b/ },
+  { name: "anthropic_key", regex: /\bsk-ant-[A-Za-z0-9_-]{40,}\b/ },
+  { name: "google_api_key", regex: /\bAIza[0-9A-Za-z_-]{35}\b/ },
+  { name: "slack_token", regex: /\bxox[abprs]-[A-Za-z0-9-]{10,}\b/ },
+  { name: "stripe_secret", regex: /\bsk_live_[A-Za-z0-9]{24,}\b/ },
+  { name: "private_key_pem", regex: /-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----/ },
+  { name: "jwt_like", regex: /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/ },
+]
+
+export function detectSecrets(content: string): SecretMatch[] {
+  const matches: SecretMatch[] = []
+  for (const entry of SECRET_PATTERNS) {
+    const found = entry.regex.exec(content)
+    if (found) {
+      const value = found[0]
+      const preview = value.length > 16 ? `${value.slice(0, 6)}...${value.slice(-4)}` : value
+      matches.push({ name: entry.name, preview })
+    }
+  }
+  return matches
+}
+
+export function redactShellText(runtime: IAgentRuntime | undefined, text: string): string {
+  if (!text) return text
+  let output = text
+  for (const entry of SECRET_PATTERNS) {
+    const globalRegex = new RegExp(entry.regex.source, "g")
+    output = output.replace(globalRegex, `[REDACTED:${entry.name}]`)
+  }
+  if (runtime) {
+    for (const key of ["OPENAI_API_KEY", "ANTHROPIC_API_KEY", "CEREBRAS_API_KEY", "GITHUB_TOKEN", "GITHUB_USER_PAT", "GITHUB_AGENT_PAT"]) {
+      const secret = runtime.getSetting(key)
+      if (typeof secret === "string" && secret.trim().length >= 8) {
+        output = output.split(secret.trim()).join(`[REDACTED:${key}]`)
+      }
+    }
+  }
+  return output
+}
+
+export function splitShellArgs(raw: string): string[] | null {
+  const tokens: string[] = []
+  let buf = ""
+  let inSingle = false
+  let inDouble = false
+  let escaped = false
+  const pushToken = () => {
+    if (buf.length > 0) {
+      tokens.push(buf)
+      buf = ""
+    }
+  }
+  for (let i = 0; i < raw.length; i += 1) {
+    const ch = raw[i]
+    if (escaped) {
+      buf += ch
+      escaped = false
+      continue
+    }
+    if (!inSingle && ch === "\\" && raw[i + 1] === "\n") {
+      i += 1
+      continue
+    }
+    if (!inSingle && !inDouble && ch === "\\") {
+      escaped = true
+      continue
+    }
+    if (inSingle) {
+      if (ch === "'") inSingle = false
+      else buf += ch
+      continue
+    }
+    if (inDouble) {
+      if (ch === '"') inDouble = false
+      else buf += ch
+      continue
+    }
+    if (ch === "'") {
+      inSingle = true
+      continue
+    }
+    if (ch === '"') {
+      inDouble = true
+      continue
+    }
+    if (/\s/.test(ch)) {
+      pushToken()
+      continue
+    }
+    buf += ch
+  }
+  if (inSingle || inDouble || escaped) return null
+  pushToken()
+  return tokens
+}
+
+export const DEFAULT_FORBIDDEN_COMMANDS: readonly string[] = [
+  "rm -rf /",
+  "rm -fr /",
+  "mkfs",
+  "dd if=/dev/zero of=/dev/",
+  ":(){ :|:& };:",
+  "chmod -R 777 /",
+  "shutdown",
+  "reboot",
+  "halt",
+  "poweroff",
+]
+
+interface ForbiddenRule {
+  readonly pattern: string
+  readonly literal?: string
+  readonly head: string
+  readonly flags: ReadonlySet<string>
+  readonly longFlags: readonly string[]
+  readonly args: readonly string[]
+}
+
+const LONG_FLAG_ALIASES: Readonly<Record<string, Readonly<Record<string, string>>>> = {
+  rm: { "--recursive": "r", "--force": "f" },
+  chmod: { "--recursive": "R" },
+  chown: { "--recursive": "R" },
+}
+
+const NESTED_SHELLS = new Set(["sh", "bash", "zsh", "dash", "ksh", "ash", "mksh", "fish", "su"])
+
+function longFlagAlias(head: string, flag: string): string | undefined {
+  const table = Object.hasOwn(LONG_FLAG_ALIASES, head) ? LONG_FLAG_ALIASES[head] : undefined
+  return table && Object.hasOwn(table, flag) ? table[flag] : undefined
+}
+
+function normalizeShortFlag(head: string, letter: string): string {
+  return head === "rm" && letter === "R" ? "r" : letter
+}
+
+function normalizePositional(arg: string): string {
+  const lower = arg.toLowerCase()
+  if (/^\/+(?:\.|\*)?\/*$/.test(lower)) return "/"
+  return lower.replace(/\/{2,}/g, "/")
+}
+
+function compileForbiddenRule(pattern: string): ForbiddenRule | undefined {
+  const cleaned = pattern.trim()
+  if (cleaned.length === 0) return undefined
+  const tokens = splitShellArgs(cleaned)
+  const headToken = tokens?.[0]
+  if (!tokens || headToken === undefined || !/^[A-Za-z0-9._+-]+$/.test(headToken)) {
+    return { pattern, literal: cleaned.toLowerCase().replace(/\s+/g, ""), head: "", flags: new Set(), longFlags: [], args: [] }
+  }
+  const head = headToken.toLowerCase()
+  const flags = new Set<string>()
+  const longFlags: string[] = []
+  const args: string[] = []
+  for (const token of tokens.slice(1)) {
+    if (/^-[A-Za-z]+$/.test(token)) {
+      for (const letter of token.slice(1)) flags.add(normalizeShortFlag(head, letter))
+    } else if (token.startsWith("--")) {
+      const alias = longFlagAlias(head, token.toLowerCase())
+      if (alias) flags.add(alias)
+      else longFlags.push(token.toLowerCase())
+    } else {
+      args.push(normalizePositional(token))
+    }
+  }
+  return { pattern, head, flags, longFlags, args }
+}
+
+function splitForbiddenSegments(command: string): string[] {
+  const segments: string[] = []
+  let buf = ""
+  let inSingle = false
+  let inDouble = false
+  const flush = () => {
+    if (buf.trim().length > 0) segments.push(buf.trim())
+    buf = ""
+  }
+  for (let i = 0; i < command.length; i += 1) {
+    const ch = command[i]
+    const next = command[i + 1]
+    if (inSingle) {
+      if (ch === "'") inSingle = false
+      buf += ch
+      continue
+    }
+    if (ch === "\\") {
+      if (next === "\n") {
+        i += 1
+        continue
+      }
+      buf += ch
+      if (next !== undefined) {
+        buf += next
+        i += 1
+      }
+      continue
+    }
+    if (ch === "`" || (ch === "$" && next === "(")) {
+      flush()
+      if (ch === "$") i += 1
+      continue
+    }
+    if (inDouble) {
+      if (ch === '"') inDouble = false
+      if (ch === ")") {
+        flush()
+        continue
+      }
+      buf += ch
+      continue
+    }
+    if (ch === "'") {
+      inSingle = true
+      buf += ch
+      continue
+    }
+    if (ch === '"') {
+      inDouble = true
+      buf += ch
+      continue
+    }
+    if (";&|()\n".includes(ch) || ((ch === "{" || ch === "}") && isWordBoundary(command[i - 1]) && isWordBoundary(next))) {
+      flush()
+      continue
+    }
+    if ((ch === "<" || ch === ">") && next === "(") {
+      flush()
+      i += 1
+      continue
+    }
+    buf += ch
+  }
+  flush()
+  return segments
+}
+
+function tokenizeLoosely(segment: string): string[] {
+  return splitShellArgs(segment) ?? segment.split(/\s+/).map((t) => t.replace(/["'\\]/g, "")).filter((t) => t.length > 0)
+}
+
+function nestedShellScript(tokens: readonly string[]): string | undefined {
+  if (!NESTED_SHELLS.has(commandBaseName(tokens[0] ?? ""))) return undefined
+  const args = tokens.slice(1)
+  const cIdx = args.findIndex((a) => /^-[a-zA-Z]*c[a-zA-Z]*$/.test(a))
+  return cIdx === -1 ? undefined : args[cIdx + 1]
+}
+
+function commandTokenLists(command: string, depth = 0): string[][] {
+  if (depth > 8) return []
+  const lists: string[][] = []
+  for (const segment of splitForbiddenSegments(command)) {
+    const raw = tokenizeLoosely(segment)
+    const split = raw.findIndex((t) => t === "-S" || t.startsWith("--split-string"))
+    if (split !== -1 && raw.slice(0, split).some((t) => commandBaseName(t) === "env")) {
+      const flag = raw[split] ?? ""
+      const inline = flag.startsWith("--split-string=") ? flag.slice("--split-string=".length) : raw.slice(split + 1).join(" ")
+      lists.push(...commandTokenLists(inline, depth + 1))
+      continue
+    }
+    const unwrapped = unwrapCommand(raw)
+    const tokens = unwrapped.ok ? [...unwrapped.tokens] : raw
+    if (tokens.length === 0) continue
+    lists.push(tokens)
+    const head = commandBaseName(tokens[0])
+    const args = tokens.slice(1)
+    const nested = nestedShellScript(tokens)
+    if (nested !== undefined) lists.push(...commandTokenLists(nested, depth + 1))
+    if (head === "eval" && args.length > 0) lists.push(...commandTokenLists(args.join(" "), depth + 1))
+    if (head === "find") {
+      const execTokens = findExecCommand(args)
+      if (execTokens && execTokens.length > 0) lists.push(...commandTokenLists(execTokens.join(" "), depth + 1))
+    }
+  }
+  return lists
+}
+
+function tokensMatchRule(tokens: readonly string[], rule: ForbiddenRule): boolean {
+  const head = commandBaseName(tokens[0] ?? "")
+  if (head !== rule.head && !head.startsWith(`${rule.head}.`)) return false
+  const flags = new Set<string>()
+  const longFlags = new Set<string>()
+  const positionals: string[] = []
+  for (const token of tokens.slice(1)) {
+    if (/^-[A-Za-z]+$/.test(token)) {
+      for (const letter of token.slice(1)) flags.add(normalizeShortFlag(rule.head, letter))
+    } else if (token.startsWith("--")) {
+      const lower = token.toLowerCase()
+      const alias = longFlagAlias(rule.head, lower)
+      if (alias) flags.add(alias)
+      longFlags.add(lower)
+    } else {
+      positionals.push(normalizePositional(token))
+    }
+  }
+  for (const flag of rule.flags) if (!flags.has(flag)) return false
+  for (const flag of rule.longFlags) if (!longFlags.has(flag)) return false
+  return rule.args.every((arg) =>
+    positionals.some((p) => p === arg || (arg.includes("=") && p.startsWith(arg))),
+  )
+}
+
+export function isForbiddenCommand(command: string, extraDenied: readonly string[] = []): string | undefined {
+  const rules = [...DEFAULT_FORBIDDEN_COMMANDS, ...extraDenied]
+    .map(compileForbiddenRule)
+    .filter((rule): rule is ForbiddenRule => rule !== undefined)
+  const squashed = command.toLowerCase().replace(/\s+/g, "")
+  const tokenLists = commandTokenLists(command)
+  for (const rule of rules) {
+    if (rule.literal !== undefined) {
+      if (squashed.includes(rule.literal)) return rule.pattern
+      continue
+    }
+    if (tokenLists.some((tokens) => tokensMatchRule(tokens, rule))) return rule.pattern
+  }
+  return undefined
+}
+
+export type StdinTarget = "StdinData" | "StdinChecked"
+
+const STDIN_DATA_SINKS = new Set([
+  "cat", "wc", "sort", "uniq", "head", "tail", "tr", "cut", "nl", "grep", "base64", "md5sum", "sha1sum",
+  "sha256sum", "sha512sum", "gzip", "gunzip", "xxd", "od", "jq",
+])
+
+const SHELL_SYNTAX = /[;&|<>`$(){}[\]*?!#~=\\\n\r]/
+
+function readsPatternFile(args: readonly string[]): boolean {
+  return args.some((a) => a === "-f" || a.startsWith("--file") || /^-[A-Za-z]*f/.test(a))
+}
+
+export function classifyStdinTarget(command: string): StdinTarget {
+  const trimmed = command.trim()
+  if (trimmed === "" || SHELL_SYNTAX.test(trimmed)) return "StdinChecked"
+  const tokens = splitShellArgs(trimmed)
+  if (tokens === null || tokens.length === 0) return "StdinChecked"
+  const [program, ...args] = tokens
+  if (program.includes("/") || !STDIN_DATA_SINKS.has(program)) return "StdinChecked"
+  if (program === "grep" && readsPatternFile(args)) return "StdinChecked"
+  return "StdinData"
+}
+
+export interface DestructiveVerdict {
+  readonly destructive: boolean
+  readonly reason?: string
+  readonly targets: readonly string[]
+}
+
+export type ShellDialect = "posix" | "powershell"
+
+const DESTRUCTIVE_BINS = new Set(["mkfs", "shred", "wipefs", "fdisk", "parted", "diskutil", "shutdown", "reboot", "halt", "poweroff"])
+
+type SegmentSplit =
+  | { readonly kind: "segments"; readonly segments: readonly string[] }
+  | { readonly kind: "opaque"; readonly reason: string }
+
+function opaque(reason: string): SegmentSplit {
+  return { kind: "opaque", reason }
+}
+
+function isWordBoundary(ch: string | undefined): boolean {
+  return ch === undefined || /[\s;|&]/.test(ch)
+}
+
+function redirectTarget(command: string, from: number): string {
+  let i = from
+  while (i < command.length && /[ \t]/.test(command[i])) i += 1
+  let word = ""
+  while (i < command.length && !/[\s;|&<>]/.test(command[i])) {
+    word += command[i]
+    i += 1
+  }
+  return word
+}
+
+function splitShellSegments(command: string): SegmentSplit {
+  const segments: string[] = []
+  let buf = ""
+  let inSingle = false
+  let inDouble = false
+  let escaped = false
+  const flush = () => {
+    if (buf.trim().length > 0) segments.push(buf.trim())
+    buf = ""
+  }
+  for (let i = 0; i < command.length; i += 1) {
+    const ch = command[i]
+    const next = command[i + 1]
+    if (escaped) {
+      buf += ch
+      escaped = false
+      continue
+    }
+    if (inSingle) {
+      buf += ch
+      if (ch === "'") inSingle = false
+      continue
+    }
+    if (ch === "\\") {
+      if (next === "\n") {
+        i += 1
+        continue
+      }
+      buf += ch
+      escaped = true
+      continue
+    }
+    if (ch === "`" || (ch === "$" && next === "(")) return opaque("command substitution requires confirmation")
+    if (inDouble) {
+      buf += ch
+      if (ch === '"') inDouble = false
+      continue
+    }
+    if (ch === "'") {
+      inSingle = true
+      buf += ch
+      continue
+    }
+    if (ch === '"') {
+      inDouble = true
+      buf += ch
+      continue
+    }
+    if (ch === "(" || ch === ")") return opaque("subshell or grouping requires confirmation")
+    if ((ch === "{" || ch === "}") && isWordBoundary(command[i - 1]) && isWordBoundary(next)) {
+      return opaque("command group requires confirmation")
+    }
+    if (ch === ";" || ch === "\n") {
+      flush()
+      continue
+    }
+    if ((ch === "&" && next === "&") || (ch === "|" && next === "|")) {
+      flush()
+      i += 1
+      continue
+    }
+    if (ch === "&") {
+      if (command[i - 1] === ">" || command[i - 1] === "<") {
+        buf += ch
+        continue
+      }
+      return opaque("background or unparsed '&' requires confirmation")
+    }
+    if (ch === "|") {
+      flush()
+      if (next === "&") i += 1
+      continue
+    }
+    if (ch === "<" && next === "(") return opaque("process substitution requires confirmation")
+    if (ch === ">") {
+      if (next === ">") {
+        buf += ">>"
+        i += 1
+        continue
+      }
+      if (next === "&") {
+        buf += ch
+        continue
+      }
+      if (next === "(" || next === "|") return opaque("process substitution or clobbering redirection requires confirmation")
+      if (redirectTarget(command, i + 1) !== "/dev/null") return opaque("output redirection overwrites a file and requires confirmation")
+    }
+    buf += ch
+  }
+  if (inSingle || inDouble || escaped) return opaque("unclosed quotes or escapes require confirmation")
+  flush()
+  return { kind: "segments", segments }
+}
+
+const WRAPPER_VALUE_FLAGS: Readonly<Record<string, ReadonlySet<string>>> = {
+  sudo: new Set(["-u", "-g", "-p", "-C", "-D", "-h", "-r", "-t", "-U", "-T", "--user", "--group", "--prompt", "--chdir"]),
+  doas: new Set(["-u", "-C"]),
+  env: new Set(["-u", "-C", "--unset", "--chdir"]),
+  nice: new Set(["-n", "--adjustment"]),
+  ionice: new Set(["-c", "-n", "-p", "--class", "--classdata"]),
+  timeout: new Set(["-s", "-k", "--signal", "--kill-after"]),
+  stdbuf: new Set(["-i", "-o", "-e"]),
+  exec: new Set(["-a"]),
+  xargs: new Set(["-I", "-L", "-n", "-P", "-s", "-d", "-E", "-a", "--max-args", "--max-procs", "--delimiter", "--arg-file"]),
+  nohup: new Set(),
+  time: new Set(),
+  command: new Set(),
+  builtin: new Set(),
+}
+
+const WRAPPER_POSITIONALS: Readonly<Record<string, number>> = { timeout: 1 }
+
+function commandBaseName(token: string): string {
+  return (token.split("/").pop() ?? "").toLowerCase()
+}
+
+function unwrapCommand(tokens: readonly string[]): { readonly ok: true; readonly tokens: readonly string[] } | { readonly ok: false; readonly reason: string } {
+  let idx = 0
+  for (;;) {
+    while (idx < tokens.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(tokens[idx])) idx += 1
+    const wrapper = commandBaseName(tokens[idx] ?? "")
+    const valueFlags = Object.hasOwn(WRAPPER_VALUE_FLAGS, wrapper) ? WRAPPER_VALUE_FLAGS[wrapper] : undefined
+    if (!valueFlags) return { ok: true, tokens: tokens.slice(idx) }
+    if (wrapper === "env" && tokens.slice(idx + 1).some((t) => t === "-S" || t.startsWith("--split-string"))) {
+      return { ok: false, reason: "env -S command strings require confirmation" }
+    }
+    if (wrapper === "command" && tokens.slice(idx + 1).some((t) => t === "-v" || t === "-V")) return { ok: true, tokens: [] }
+    idx += 1
+    while (idx < tokens.length) {
+      const token = tokens[idx]
+      if (token === "--") {
+        idx += 1
+        break
+      }
+      if (wrapper === "env" && /^[A-Za-z_][A-Za-z0-9_]*=/.test(token)) {
+        idx += 1
+        continue
+      }
+      if (!token.startsWith("-") || token === "-") break
+      idx += valueFlags.has(token) ? 2 : 1
+    }
+    idx += WRAPPER_POSITIONALS[wrapper] ?? 0
+  }
+}
+
+function gitSubcommand(args: readonly string[]): { readonly sub: string; readonly rest: readonly string[] } {
+  let idx = 0
+  while (idx < args.length && args[idx].startsWith("-")) {
+    idx += args[idx] === "-C" || args[idx] === "-c" ? 2 : 1
+  }
+  return { sub: (args[idx] ?? "").toLowerCase(), rest: args.slice(idx + 1) }
+}
+
+function classifyGit(args: readonly string[]): string | undefined {
+  const { sub, rest } = gitSubcommand(args)
+  const hasShortFlag = (flag: string) => rest.some((a) => /^-[A-Za-z]+$/.test(a) && a.includes(flag))
+  if (sub === "reset" && rest.includes("--hard")) return "git reset --hard discards uncommitted work"
+  if (sub === "clean" && (hasShortFlag("f") || rest.includes("--force"))) return "git clean removes untracked files"
+  if (sub === "push") {
+    const positional = rest.filter((a) => !a.startsWith("-"))
+    if (
+      hasShortFlag("f") || hasShortFlag("d") ||
+      rest.some((a) => a.startsWith("--force") || a === "--mirror" || a === "--delete" || a === "--prune") ||
+      positional.slice(1).some((ref) => ref.startsWith("+") || ref.startsWith(":"))
+    ) {
+      return "git push that forces, deletes, or mirrors remote refs rewrites remote history"
+    }
+  }
+  if (sub === "branch" && (hasShortFlag("D") || (rest.includes("--delete") && rest.includes("--force")))) return "git branch -D deletes an unmerged branch"
+  if (sub === "checkout" && (hasShortFlag("f") || rest.includes("--force") || rest.includes("--") || rest.includes("."))) return "git checkout discards working tree changes"
+  if (sub === "restore" && !(rest.includes("--staged") && !rest.includes("--worktree"))) return "git restore discards working tree changes"
+  if (sub === "stash" && (rest[0] === "drop" || rest[0] === "clear")) return "git stash drop/clear deletes stashed work"
+  if (sub === "worktree" && rest[0] === "remove" && (rest.includes("-f") || rest.includes("--force"))) return "git worktree remove --force deletes uncommitted work"
+  if (sub === "update-ref" && rest.includes("-d")) return "git update-ref -d deletes a ref"
+  if (sub === "filter-branch" || sub === "filter-repo") return "git history rewrite"
+  return undefined
+}
+
+function findExecCommand(args: readonly string[]): readonly string[] | undefined {
+  const start = args.findIndex((a) => a === "-exec" || a === "-execdir" || a === "-ok" || a === "-okdir")
+  if (start === -1) return undefined
+  const rest = args.slice(start + 1)
+  const end = rest.findIndex((a) => a === ";" || a === "+")
+  return end === -1 ? rest : rest.slice(0, end)
+}
+
+function classifyTokens(raw: readonly string[], segment: string, dialect: ShellDialect): DestructiveVerdict {
+  const unwrapped = unwrapCommand(raw)
+  if (!unwrapped.ok) return { destructive: true, reason: unwrapped.reason, targets: [] }
+  const tokens = unwrapped.tokens
+  if (tokens.length === 0) return { destructive: false, targets: [] }
+  if (tokens[0].startsWith("$")) return { destructive: true, reason: "command name from an expansion requires confirmation", targets: [] }
+  const head = commandBaseName(tokens[0])
+  const args = tokens.slice(1)
+  if (DESTRUCTIVE_BINS.has(head) || head.startsWith("mkfs.")) {
+    return { destructive: true, reason: `destructive binary '${head}'`, targets: args }
+  }
+  if (head === "rm") {
+    const hasRecursive = args.some((a) => a === "--recursive" || /^-[a-zA-Z]*[rR][a-zA-Z]*$/.test(a))
+    const hasForce = args.some((a) => a === "--force" || /^-[a-zA-Z]*f[a-zA-Z]*$/.test(a))
+    const targets = args.filter((a) => !a.startsWith("-"))
+    if (hasRecursive || (hasForce && targets.length > 0)) {
+      return { destructive: true, reason: "recursive or forced file deletion (rm)", targets }
+    }
+  }
+  if (head === "systemctl" && args.some((a) => ["poweroff", "reboot", "halt", "kexec"].includes(a.toLowerCase()))) {
+    return { destructive: true, reason: "systemctl power state change", targets: args }
+  }
+  if ((head === "init" || head === "telinit") && args.some((a) => a === "0" || a === "6")) {
+    return { destructive: true, reason: `${head} runlevel change`, targets: args }
+  }
+  if (head === "truncate") return { destructive: true, reason: "truncate discards file contents", targets: args.filter((a) => !a.startsWith("-")) }
+  if (head === "find") {
+    if (args.includes("-delete")) return { destructive: true, reason: "find -delete removes files", targets: args.filter((a) => !a.startsWith("-")) }
+    const execTokens = findExecCommand(args)
+    if (execTokens) {
+      const inner = classifyTokens(execTokens, segment, dialect)
+      if (inner.destructive) return inner
+    }
+  }
+  if (dialect === "powershell" && (head === "remove-item" || head === "del" || head === "ri" || head === "rd")) {
+    const hasRecurse = args.some((a) => /^-(?:r|rec|recurse)/i.test(a))
+    const hasForce = args.some((a) => /^-(?:f|fo|force)/i.test(a))
+    if (hasRecurse || hasForce) {
+      return { destructive: true, reason: "PowerShell recursive/forced Remove-Item", targets: args.filter((a) => !a.startsWith("-")) }
+    }
+  }
+  if (head === "git") {
+    const reason = classifyGit(args)
+    if (reason) return { destructive: true, reason, targets: args }
+  }
+  if (["sh", "bash", "zsh", "dash", "ksh", "su"].includes(head)) {
+    const cIdx = args.findIndex((a) => /^-[a-zA-Z]*c[a-zA-Z]*$/.test(a))
+    const nested = cIdx === -1 ? undefined : args[cIdx + 1]
+    if (typeof nested === "string") {
+      const inner = classifyDestructiveCommand(nested, "posix")
+      if (inner.destructive) return inner
+    }
+  }
+  if (head === "eval") return { destructive: true, reason: "high-risk command 'eval'", targets: args }
+  if (head === "dd" && args.some((a) => a.startsWith("of="))) {
+    return { destructive: true, reason: "dd writes to an output file or device", targets: args }
+  }
+  if ((head === "psql" || head === "mysql" || head === "sqlite3") && /\b(?:drop\s+(?:table|database)|truncate\s+table|delete\s+from\s+\S+\s*;?\s*$)/i.test(segment)) {
+    return { destructive: true, reason: "destructive SQL statement", targets: [head] }
+  }
+  return { destructive: false, targets: [] }
+}
+
+export function classifyDestructiveCommand(command: string, dialect: ShellDialect = "posix"): DestructiveVerdict {
+  const trimmed = command.trim()
+  if (trimmed.length === 0) return { destructive: false, targets: [] }
+  if (trimmed.length > 65_536) {
+    return { destructive: true, reason: "command exceeds bounded inspection limit", targets: [] }
+  }
+  const split = splitShellSegments(trimmed)
+  if (split.kind === "opaque") return { destructive: true, reason: split.reason, targets: [] }
+  for (const segment of split.segments) {
+    const tokens = splitShellArgs(segment)
+    if (tokens === null) {
+      return { destructive: true, reason: "unclosed quotes or escapes require confirmation", targets: [] }
+    }
+    const verdict = classifyTokens(tokens, segment, dialect)
+    if (verdict.destructive) return verdict
+  }
+  return { destructive: false, targets: [] }
+}
+
+const CHALLENGE_TTL_MS = 5 * 60 * 1000
+const MAX_CHALLENGES_PER_RUNTIME = 64
+
+interface ChallengeRecord {
+  readonly token: string
+  readonly commandDigest: string
+  readonly executionDirectory: string
+  readonly entityId: string
+  readonly roomId: string
+  readonly issuingMessageId: string
+  readonly expiresAt: number
+  readonly session: ShellSession
+}
+
+const runtimeChallengeMaps = new WeakMap<object, Map<string, ChallengeRecord>>()
+
+function challengeMapFor(runtime: object): Map<string, ChallengeRecord> {
+  let map = runtimeChallengeMaps.get(runtime)
+  if (!map) {
+    map = new Map()
+    runtimeChallengeMaps.set(runtime, map)
+  }
+  return map
+}
+
+export function destructiveCommandDigest(command: string): string {
+  return sha256Hex(command)
+}
+
+export function issueDestructiveChallenge(args: {
+  readonly runtime: object
+  readonly command: string
+  readonly executionDirectory: string
+  readonly message: Memory
+  readonly now?: number
+}): string | undefined {
+  if (!args.message.id || !args.message.roomId || !args.message.entityId) return undefined
+  const now = args.now ?? Date.now()
+  const entries = challengeMapFor(args.runtime)
+  for (const [token, entry] of entries) {
+    if (entry.expiresAt <= now) entries.delete(token)
+  }
+  while (entries.size >= MAX_CHALLENGES_PER_RUNTIME) {
+    const oldest = entries.keys().next().value
+    if (typeof oldest !== "string") break
+    entries.delete(oldest)
+  }
+  const digest = destructiveCommandDigest(args.command)
+  const roomId = String(args.message.roomId)
+  const entityId = String(args.message.entityId)
+  const issuer = `${roomId}:${entityId}`
+  const issuingMessageId = String(args.message.id)
+  if (!canIssueChallenge(initialShellSession, digest, args.executionDirectory, issuer, issuingMessageId)) return undefined
+  const session = issueChallenge(initialShellSession, digest, args.executionDirectory, issuer, issuingMessageId)
+  const token = randomTokenBase64Url(18)
+  entries.set(token, {
+    token,
+    commandDigest: digest,
+    executionDirectory: args.executionDirectory,
+    entityId,
+    roomId,
+    issuingMessageId,
+    expiresAt: now + CHALLENGE_TTL_MS,
+    session,
+  })
+  return token
+}
+
+export function verifyAndConsumeDestructiveChallenge(args: {
+  readonly runtime: object
+  readonly token: string
+  readonly command: string
+  readonly executionDirectory: string
+  readonly message: Memory
+  readonly now?: number
+}): { readonly ok: true } | { readonly ok: false; readonly message: string } {
+  const now = args.now ?? Date.now()
+  const entries = challengeMapFor(args.runtime)
+  const entry = entries.get(args.token)
+  if (!entry) return { ok: false, message: "invalid or already consumed confirmation challenge" }
+  if (entry.expiresAt <= now) {
+    entries.delete(args.token)
+    return { ok: false, message: "confirmation challenge expired" }
+  }
+  const digest = destructiveCommandDigest(args.command)
+  const roomId = String(args.message.roomId ?? "")
+  const entityId = String(args.message.entityId ?? "")
+  const issuer = `${roomId}:${entityId}`
+  const messageId = String(args.message.id ?? "")
+  const text = typeof args.message.content?.text === "string" ? args.message.content.text : ""
+  if (!text.includes(args.token)) {
+    return { ok: false, message: "confirmation challenge must be sent by the owner in a later message" }
+  }
+  if (!canConsumeChallenge(entry.session, digest, args.executionDirectory, issuer, messageId)) {
+    return { ok: false, message: "confirmation challenge does not match command, directory, requester, or a later owner message" }
+  }
+  consumeChallenge(entry.session, digest, args.executionDirectory, issuer, messageId)
+  entries.delete(args.token)
+  return { ok: true }
+}
+
+export async function fileEffectReceipt(params: {
+  readonly path: string
+  readonly content: string
+  readonly operation: "write" | "edit"
+  readonly acceptedBytes?: number
+}): Promise<AppliedEffectReceipt> {
+  const expected = new TextEncoder().encode(params.content)
+  const providerAccepted = params.acceptedBytes !== undefined
+  if (providerAccepted) {
+    if (params.acceptedBytes !== expected.byteLength) {
+      throw new ElizaError("Filesystem provider reported an unexpected written byte count.", {
+        code: "FILE_WRITE_UNVERIFIED",
+      })
+    }
+  } else {
+    const actual = await readFileBytesNode(params.path)
+    if (actual.byteLength !== expected.byteLength || sha256Hex(actual) !== sha256Hex(expected)) {
+      throw new ElizaError("File changed before the completed write could be verified.", {
+        code: "FILE_WRITE_UNVERIFIED",
+      })
+    }
+  }
+  const version = `sha256:${sha256Hex(expected)}`
+  const observedAt = new Date().toISOString()
+  return {
+    receiptId: `file:${newUuid()}`,
+    operation: `filesystem.${params.operation}`,
+    resource: { kind: "filesystem.file", id: params.path, version },
+    artifacts: [],
+    idempotency: { key: null, replayed: false },
+    observedAt,
+    outcome: "applied",
+    commit: {
+      kind: providerAccepted ? "provider_accepted" : "durable",
+      id: `${params.path}#${version}`,
+      committedAt: observedAt,
+    },
+  }
+}
+
+export async function fileMutationResult(params: {
+  readonly receipt: AppliedEffectReceipt
+  readonly text: string
+  readonly content: string
+  readonly data: ProviderDataRecord
+  readonly promptData?: ProviderDataRecord
+  readonly callback?: HandlerCallback
+}): Promise<ActionResult> {
+  const data: ProviderDataRecord = {
+    ...params.data,
+    finalLineEnding: finalLineEnding(params.content),
+  }
+  if (params.callback) {
+    try {
+      await params.callback({ text: params.text, source: "coding-tools" })
+    } catch {
+      return {
+        ...successActionResult(params.text, data, params.promptData),
+        effectReceipts: [params.receipt],
+      }
+    }
+  }
+  return {
+    ...successActionResult(params.text, data, params.promptData),
+    effectReceipts: [params.receipt],
+    userFacingEffectReceiptIds: [params.receipt.receiptId],
+  }
+}
+
+export interface ShellVerificationReceipt {
+  readonly kind: string
+  readonly status: "passed" | "failed" | "no_tests"
+  readonly family: string
+  readonly exitCode: number
+}
+
+export function shellVerificationReceipt(args: {
+  readonly command: string
+  readonly exitCode: number
+  readonly output: string
+}): ShellVerificationReceipt | undefined {
+  const lower = args.command.toLowerCase()
+  let kind: string | undefined
+  let family = "shell"
+  if (/\b(?:vitest|jest|pytest|cargo\s+test|go\s+test|pnpm\s+test|npm\s+test)\b/.test(lower)) {
+    kind = "test"
+    family = "test"
+  } else if (/\b(?:tsc|vibelang|typecheck|mypy|pyright)\b/.test(lower)) {
+    kind = "typecheck"
+    family = "typecheck"
+  } else if (/\b(?:eslint|biome|ruff|clippy|lint)\b/.test(lower)) {
+    kind = "lint"
+    family = "lint"
+  } else if (/\b(?:build|vite\s+build|cargo\s+build|go\s+build)\b/.test(lower)) {
+    kind = "build"
+    family = "build"
+  }
+  if (!kind) return undefined
+  const noTests = kind === "test" && /no test files found|0 tests/i.test(args.output)
+  return {
+    kind,
+    family,
+    status: noTests ? "no_tests" : args.exitCode === 0 ? "passed" : "failed",
+    exitCode: args.exitCode,
+  }
+}
+
+export function extractCompactFailureDiagnostics(output: string, maxLines = 12): string[] {
+  const lines = output.split("\n")
+  const picked: string[] = []
+  const errorLine = /(?:error\s+TS\d+|EK\d+|FAIL\s+|AssertionError|Error:|TypeError:|SyntaxError:|ReferenceError:|✕|✗)/i
+  for (const line of lines) {
+    const trimmed = line.trim()
+    if (!trimmed) continue
+    if (errorLine.test(trimmed)) {
+      picked.push(trimmed.length > 180 ? `${trimmed.slice(0, 177)}...` : trimmed)
+      if (picked.length >= maxLines) break
+    }
+  }
+  return picked
+}

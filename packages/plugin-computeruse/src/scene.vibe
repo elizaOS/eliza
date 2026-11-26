@@ -1,0 +1,705 @@
+// spec/computerUse/observation.md, "Story: Minimize vision tokens while keeping coordinates and history strictly bounded"; spec/computerUse/observation.md, "Bounded observation window enforces history and retained-image ceilings while tracking saved tokens"
+import {
+  apply as applyObservation,
+  estimateImageTokens,
+  frameChanged,
+  initial as initialObservationWindow,
+  type Event as ObservationEvent,
+  type ObservationWindow,
+} from "../gen/computerUse__observation.effect.vibe"
+import { base64ToBytes, bigIntBit, currentPlatform, inflateZlib, parseJsonSafe } from "./platform-native.ts"
+import { listDesktopWindows, listDisplays, listProcesses, type DisplayCapture } from "./platform.vibe"
+import type {
+  DisplayDescriptor,
+  ProcessInfo,
+  Scene,
+  SceneApp,
+  SceneAxNode,
+  SceneFocusedWindow,
+  SceneOcrBox,
+  SceneVlmElement,
+  WindowInfo,
+} from "./types.vibe"
+
+export const MAX_DECODE_PNG_PIXELS = 16_777_216
+export const SCREEN_STATE_HAMMING_THRESHOLD = 5
+export const SCREEN_STATE_DEFAULT_FRESHNESS_MS = 1500
+export const BRAIN_PIXELS_PER_IMAGE_TOKEN = 750
+const REDACTED_SECURE_FIELD = "[REDACTED_SECURE_FIELD]"
+
+export interface RawImage {
+  readonly width: number
+  readonly height: number
+  readonly channels: number
+  readonly data: Uint8Array
+}
+
+export interface BlockGrid {
+  readonly cols: number
+  readonly rows: number
+  readonly blockWidth: number
+  readonly blockHeight: number
+  readonly hashes: readonly bigint[]
+}
+
+export interface DirtyBlock {
+  readonly col: number
+  readonly row: number
+  readonly x: number
+  readonly y: number
+  readonly width: number
+  readonly height: number
+  readonly distance: number
+}
+
+function readU32BE(bytes: Uint8Array, offset: number): number {
+  return (((bytes[offset] ?? 0) << 24) | ((bytes[offset + 1] ?? 0) << 16) | ((bytes[offset + 2] ?? 0) << 8) | (bytes[offset + 3] ?? 0)) >>> 0
+}
+
+export function pngDimensions(bytes: Uint8Array): { readonly width: number; readonly height: number } | undefined {
+  if (bytes.length < 24) return undefined
+  if (bytes[0] !== 0x89 || bytes[1] !== 0x50 || bytes[2] !== 0x4e || bytes[3] !== 0x47) return undefined
+  const width = readU32BE(bytes, 16)
+  const height = readU32BE(bytes, 20)
+  if (width === 0 || height === 0) return undefined
+  return { width, height }
+}
+
+function paethPredictor(a: number, b: number, c: number): number {
+  const p = a + b - c
+  const pa = Math.abs(p - a)
+  const pb = Math.abs(p - b)
+  const pc = Math.abs(p - c)
+  if (pa <= pb && pa <= pc) return a
+  if (pb <= pc) return b
+  return c
+}
+
+export function decodePng(bytes: Uint8Array): RawImage | undefined {
+  const dims = pngDimensions(bytes)
+  if (!dims) return undefined
+  if (dims.width * dims.height > MAX_DECODE_PNG_PIXELS) return undefined
+  const bitDepth = bytes[24] ?? 0
+  const colorType = bytes[25] ?? 0
+  if (bitDepth !== 8) return undefined
+  const channels = colorType === 6 ? 4 : colorType === 2 ? 3 : colorType === 0 ? 1 : colorType === 4 ? 2 : 0
+  if (channels === 0) return undefined
+  const idatChunks: Uint8Array[] = []
+  let offset = 8
+  while (offset + 8 <= bytes.length) {
+    const length = readU32BE(bytes, offset)
+    const type = String.fromCharCode(bytes[offset + 4] ?? 0, bytes[offset + 5] ?? 0, bytes[offset + 6] ?? 0, bytes[offset + 7] ?? 0)
+    const dataStart = offset + 8
+    const dataEnd = dataStart + length
+    if (dataEnd > bytes.length) break
+    if (type === "IDAT") {
+      idatChunks.push(bytes.subarray(dataStart, dataEnd))
+    } else if (type === "IEND") {
+      break
+    }
+    offset = dataEnd + 4
+  }
+  if (idatChunks.length === 0) return undefined
+  const totalLen = idatChunks.reduce((acc, c) => acc + c.length, 0)
+  const combined = new Uint8Array(totalLen)
+  let pos = 0
+  for (const chunk of idatChunks) {
+    combined.set(chunk, pos)
+    pos += chunk.length
+  }
+  const inflated = inflateZlib(combined)
+  if (!inflated) return undefined
+  const stride = dims.width * channels
+  const expected = dims.height * (stride + 1)
+  if (inflated.length < expected) return undefined
+  const raw = new Uint8Array(dims.height * stride)
+  for (let y = 0; y < dims.height; y += 1) {
+    const filter = inflated[y * (stride + 1)] ?? 0
+    const rowIn = y * (stride + 1) + 1
+    const rowOut = y * stride
+    for (let x = 0; x < stride; x += 1) {
+      const val = inflated[rowIn + x] ?? 0
+      const left = x >= channels ? (raw[rowOut + x - channels] ?? 0) : 0
+      const up = y > 0 ? (raw[rowOut - stride + x] ?? 0) : 0
+      const upLeft = y > 0 && x >= channels ? (raw[rowOut - stride + x - channels] ?? 0) : 0
+      const recon = filter === 0
+        ? val
+        : filter === 1
+          ? (val + left) & 0xff
+          : filter === 2
+            ? (val + up) & 0xff
+            : filter === 3
+              ? (val + ((left + up) >> 1)) & 0xff
+              : (val + paethPredictor(left, up, upLeft)) & 0xff
+      raw[rowOut + x] = recon
+    }
+  }
+  return { width: dims.width, height: dims.height, channels, data: raw }
+}
+
+function lumaAt(img: RawImage, x: number, y: number): number {
+  const cx = Math.max(0, Math.min(img.width - 1, x))
+  const cy = Math.max(0, Math.min(img.height - 1, y))
+  const idx = (cy * img.width + cx) * img.channels
+  if (img.channels === 1 || img.channels === 2) return img.data[idx] ?? 0
+  const r = img.data[idx] ?? 0
+  const g = img.data[idx + 1] ?? 0
+  const b = img.data[idx + 2] ?? 0
+  return Math.round(0.299 * r + 0.587 * g + 0.114 * b)
+}
+
+function dhashRegion(img: RawImage, rx: number, ry: number, rw: number, rh: number): bigint {
+  let hash = 0n
+  let bit = 0n
+  for (let row = 0; row < 8; row += 1) {
+    const sy = ry + Math.floor(((row + 0.5) * rh) / 8)
+    for (let col = 0; col < 8; col += 1) {
+      const sx1 = rx + Math.floor(((col + 0.5) * rw) / 9)
+      const sx2 = rx + Math.floor(((col + 1.5) * rw) / 9)
+      if (lumaAt(img, sx1, sy) > lumaAt(img, sx2, sy)) {
+        hash |= 1n << bit
+      }
+      bit += 1n
+    }
+  }
+  return hash
+}
+
+export function frameDhash(bytes: Uint8Array): bigint {
+  const img = decodePng(bytes)
+  if (!img) {
+    let fallback = 0n
+    const step = Math.max(1, Math.floor(bytes.length / 64))
+    for (let i = 0; i < 64 && i * step < bytes.length; i += 1) {
+      const a = bytes[i * step] ?? 0
+      const b = bytes[Math.min(bytes.length - 1, i * step + 1)] ?? 0
+      if (a > b) fallback |= bigIntBit(i)
+    }
+    return fallback
+  }
+  return dhashRegion(img, 0, 0, img.width, img.height)
+}
+
+export function hamming(left: bigint, right: bigint): number {
+  let diff = left ^ right
+  let count = 0
+  while (diff !== 0n) {
+    count += Number(diff & 1n)
+    diff >>= 1n
+  }
+  return count
+}
+
+export function blockGridFromImage(img: RawImage, cols = 4, rows = 4): BlockGrid {
+  const safeCols = Math.max(1, cols)
+  const safeRows = Math.max(1, rows)
+  const blockWidth = Math.max(1, Math.floor(img.width / safeCols))
+  const blockHeight = Math.max(1, Math.floor(img.height / safeRows))
+  const hashes: bigint[] = []
+  for (let r = 0; r < safeRows; r += 1) {
+    for (let c = 0; c < safeCols; c += 1) {
+      hashes.push(dhashRegion(img, c * blockWidth, r * blockHeight, blockWidth, blockHeight))
+    }
+  }
+  return { cols: safeCols, rows: safeRows, blockWidth, blockHeight, hashes }
+}
+
+export function blockGrid(bytes: Uint8Array, cols = 4, rows = 4): BlockGrid {
+  const img = decodePng(bytes)
+  if (!img) {
+    return { cols: 1, rows: 1, blockWidth: 1, blockHeight: 1, hashes: [frameDhash(bytes)] }
+  }
+  return blockGridFromImage(img, cols, rows)
+}
+
+export function diffBlocks(prev: BlockGrid, next: BlockGrid, threshold = SCREEN_STATE_HAMMING_THRESHOLD): DirtyBlock[] {
+  const dirty: DirtyBlock[] = []
+  const count = Math.min(prev.hashes.length, next.hashes.length)
+  for (let i = 0; i < count; i += 1) {
+    const dist = hamming(prev.hashes[i] ?? 0n, next.hashes[i] ?? 0n)
+    if (frameChanged(dist, threshold)) {
+      const col = i % next.cols
+      const row = Math.floor(i / next.cols)
+      dirty.push({
+        col,
+        row,
+        x: col * next.blockWidth,
+        y: row * next.blockHeight,
+        width: next.blockWidth,
+        height: next.blockHeight,
+        distance: dist,
+      })
+    }
+  }
+  return dirty
+}
+
+export function coalesceDirtyBlocks(blocks: readonly DirtyBlock[]): { readonly x: number; readonly y: number; readonly width: number; readonly height: number } | null {
+  if (blocks.length === 0) return null
+  let minX = Number.POSITIVE_INFINITY
+  let minY = Number.POSITIVE_INFINITY
+  let maxX = Number.NEGATIVE_INFINITY
+  let maxY = Number.NEGATIVE_INFINITY
+  for (const b of blocks) {
+    minX = Math.min(minX, b.x)
+    minY = Math.min(minY, b.y)
+    maxX = Math.max(maxX, b.x + b.width)
+    maxY = Math.max(maxY, b.y + b.height)
+  }
+  return { x: minX, y: minY, width: Math.max(1, maxX - minX), height: Math.max(1, maxY - minY) }
+}
+
+export interface ScreenState {
+  readonly displayId: number
+  readonly dhash: bigint
+  readonly width: number
+  readonly height: number
+  readonly capturedAt: number
+  readonly pngBase64: string
+  readonly dirtyBlocks: readonly DirtyBlock[]
+}
+
+export interface ScreenStateChange {
+  readonly changed: boolean
+  readonly hammingDistance: number
+  readonly state: ScreenState
+  readonly tokensAvoided: number
+}
+
+export interface ScreenStateStats {
+  readonly captures: number
+  readonly deduplicated: number
+  readonly tokensSaved: number
+  readonly window: ObservationWindow
+}
+
+export interface ScreenStateStoreOptions {
+  readonly hammingThreshold?: number
+  readonly freshnessMs?: number
+  readonly maxEntries?: number
+  readonly maxImages?: number
+}
+
+export class ScreenStateStore {
+  private readonly threshold: number
+  private readonly freshnessMs: number
+  private readonly byDisplay = new Map<number, { readonly state: ScreenState; readonly grid: BlockGrid }>()
+  private windowState: ObservationWindow
+
+  constructor(options: ScreenStateStoreOptions = {}) {
+    this.threshold = options.hammingThreshold ?? SCREEN_STATE_HAMMING_THRESHOLD
+    this.freshnessMs = options.freshnessMs ?? SCREEN_STATE_DEFAULT_FRESHNESS_MS
+    const maxEntries = Math.max(1, options.maxEntries ?? initialObservationWindow.maxEntries)
+    const maxImages = Math.max(0, Math.min(maxEntries, options.maxImages ?? initialObservationWindow.maxImages))
+    this.windowState = { ...initialObservationWindow, maxEntries, maxImages }
+  }
+
+  stepObservation(event: ObservationEvent): ObservationWindow {
+    const res = Effect.runSync(Effect.result(applyObservation(this.windowState, event)))
+    if (Result.isSuccess(res)) {
+      this.windowState = res.success
+    }
+    return this.windowState
+  }
+
+  getObservationWindow(): ObservationWindow {
+    return this.windowState
+  }
+
+  ingestCapture(capture: DisplayCapture, attachImage = true): ScreenStateChange {
+    const bytes = base64ToBytes(capture.pngBase64)
+    const nextHash = frameDhash(bytes)
+    const nextGrid = blockGrid(bytes)
+    const previous = this.byDisplay.get(capture.displayId)
+    const distance = previous ? hamming(previous.state.dhash, nextHash) : 64
+    const changed = !previous || frameChanged(distance, this.threshold)
+    const estimatedTokens = estimateImageTokens(capture.width, capture.height, BRAIN_PIXELS_PER_IMAGE_TOKEN)
+    const dirtyBlocks = previous && changed ? diffBlocks(previous.grid, nextGrid, this.threshold) : []
+    if (!changed && previous) {
+      this.stepObservation({ type: "recordUnchangedFrame", tokensAvoided: estimatedTokens })
+      const refreshed: ScreenState = { ...previous.state, capturedAt: capture.capturedAt, dirtyBlocks: [] }
+      this.byDisplay.set(capture.displayId, { state: refreshed, grid: previous.grid })
+      return { changed: false, hammingDistance: distance, state: refreshed, tokensAvoided: estimatedTokens }
+    }
+    this.stepObservation({ type: "recordChangedFrame", attachImage, tokensAvoided: attachImage ? 0 : estimatedTokens })
+    const nextState: ScreenState = {
+      displayId: capture.displayId,
+      dhash: nextHash,
+      width: capture.width,
+      height: capture.height,
+      capturedAt: capture.capturedAt,
+      pngBase64: attachImage ? capture.pngBase64 : "",
+      dirtyBlocks,
+    }
+    this.byDisplay.set(capture.displayId, { state: nextState, grid: nextGrid })
+    return { changed: true, hammingDistance: distance, state: nextState, tokensAvoided: attachImage ? 0 : estimatedTokens }
+  }
+
+  getFresh(displayId: number, now = Date.now()): ScreenState | undefined {
+    const entry = this.byDisplay.get(displayId)
+    if (!entry) return undefined
+    if (now - entry.state.capturedAt > this.freshnessMs) return undefined
+    return entry.state
+  }
+
+  getLatest(displayId: number): ScreenState | undefined {
+    return this.byDisplay.get(displayId)?.state
+  }
+
+  compact(keepEntries: number): ObservationWindow {
+    return this.stepObservation({ type: "compactWindow", keepEntries })
+  }
+
+  getStats(): ScreenStateStats {
+    return {
+      captures: this.windowState.framesCaptured,
+      deduplicated: this.windowState.framesDeduplicated,
+      tokensSaved: this.windowState.tokensSaved,
+      window: this.windowState,
+    }
+  }
+}
+
+export interface AccessibilityProvider {
+  readonly name: string
+  scan(displays: readonly DisplayDescriptor[]): Promise<SceneAxNode[]>
+}
+
+export class NullAccessibilityProvider implements AccessibilityProvider {
+  readonly name = "null"
+  async scan(_displays: readonly DisplayDescriptor[]): Promise<SceneAxNode[]> {
+    return []
+  }
+}
+
+export class DarwinAccessibilityProvider implements AccessibilityProvider {
+  readonly name = "darwin-ax"
+  async scan(_displays: readonly DisplayDescriptor[]): Promise<SceneAxNode[]> {
+    return []
+  }
+}
+
+export class LinuxAccessibilityProvider implements AccessibilityProvider {
+  readonly name = "linux-atspi"
+  async scan(_displays: readonly DisplayDescriptor[]): Promise<SceneAxNode[]> {
+    return []
+  }
+}
+
+export class WindowsAccessibilityProvider implements AccessibilityProvider {
+  readonly name = "windows-uia"
+  async scan(_displays: readonly DisplayDescriptor[]): Promise<SceneAxNode[]> {
+    return []
+  }
+}
+
+let customAccessibilityProvider: AccessibilityProvider | null = null
+
+export function setAccessibilityProvider(provider: AccessibilityProvider | null): void {
+  customAccessibilityProvider = provider
+}
+
+export function resolveAccessibilityProvider(): AccessibilityProvider {
+  if (customAccessibilityProvider) return customAccessibilityProvider
+  const platform = currentPlatform()
+  if (platform === "darwin") return new DarwinAccessibilityProvider()
+  if (platform === "win32") return new WindowsAccessibilityProvider()
+  return new LinuxAccessibilityProvider()
+}
+
+export function parseHyprlandClients(jsonText: string): SceneAxNode[] {
+  const parsed = parseJsonSafe(jsonText)
+  if (!Array.isArray(parsed)) return []
+  return parsed.map((raw, idx) => {
+    const item = raw as Record<string, unknown>
+    const at = Array.isArray(item.at) ? item.at : [0, 0]
+    const size = Array.isArray(item.size) ? item.size : [0, 0]
+    return {
+      id: `a0-${idx}`,
+      role: "window",
+      label: String(item.title ?? item.class ?? ""),
+      bbox: [Number(at[0] ?? 0), Number(at[1] ?? 0), Number(size[0] ?? 0), Number(size[1] ?? 0)],
+      actions: ["focus"],
+      displayId: 0,
+    }
+  })
+}
+
+export const MAX_SWAY_TREE_DEPTH = 32
+export const MAX_SWAY_TREE_VISIT = 512
+
+export function parseSwayTree(jsonText: string): SceneAxNode[] {
+  const parsed = parseJsonSafe(jsonText)
+  if (!parsed || typeof parsed !== "object") return []
+  const out: SceneAxNode[] = []
+  const stack: Array<{ readonly node: Record<string, unknown>; readonly depth: number }> = [{ node: parsed as Record<string, unknown>, depth: 0 }]
+  let visited = 0
+  while (stack.length > 0 && visited < MAX_SWAY_TREE_VISIT) {
+    const current = stack.pop()
+    if (!current) break
+    visited += 1
+    const { node, depth } = current
+    if (depth > MAX_SWAY_TREE_DEPTH) continue
+    if (typeof node.name === "string" && node.name.trim().length > 0) {
+      const rect = (node.rect ?? {}) as Record<string, unknown>
+      out.push({
+        id: `a0-${out.length}`,
+        role: String(node.type ?? "window"),
+        label: node.name,
+        bbox: [Number(rect.x ?? 0), Number(rect.y ?? 0), Number(rect.width ?? 0), Number(rect.height ?? 0)],
+        actions: ["focus"],
+        displayId: 0,
+      })
+    }
+    const children = [...(Array.isArray(node.nodes) ? node.nodes : []), ...(Array.isArray(node.floating_nodes) ? node.floating_nodes : [])]
+    for (let i = children.length - 1; i >= 0; i -= 1) {
+      const child = children[i]
+      if (child && typeof child === "object") {
+        stack.push({ node: child as Record<string, unknown>, depth: depth + 1 })
+      }
+    }
+  }
+  return out
+}
+
+export function parseLinuxAtspiPayload(jsonText: string): SceneAxNode[] {
+  const parsed = parseJsonSafe(jsonText)
+  if (!Array.isArray(parsed)) return []
+  return parsed.map((raw, idx) => {
+    const rec = raw as Record<string, unknown>
+    const bbox = Array.isArray(rec.bbox) ? rec.bbox : [0, 0, 0, 0]
+    const actions = Array.isArray(rec.actions) ? rec.actions.filter((a): a is string => typeof a === "string") : []
+    const displayId = typeof rec.displayId === "number" ? rec.displayId : 0
+    return {
+      id: typeof rec.id === "string" ? rec.id : `a${displayId}-${idx}`,
+      role: typeof rec.role === "string" ? rec.role : "unknown",
+      label: typeof rec.label === "string" ? rec.label : "",
+      bbox: [Number(bbox[0] ?? 0), Number(bbox[1] ?? 0), Number(bbox[2] ?? 0), Number(bbox[3] ?? 0)],
+      actions,
+      displayId,
+    }
+  })
+}
+
+export function joinAppsAndWindows(processes: readonly ProcessInfo[], windows: readonly WindowInfo[]): SceneApp[] {
+  const byApp = new Map<string, { readonly name: string; readonly pid: number; readonly windows: WindowInfo[] }>()
+  for (const win of windows) {
+    const key = win.app.toLowerCase()
+    const existing = byApp.get(key)
+    if (existing) {
+      existing.windows.push(win)
+    } else {
+      const proc = processes.find((p) => p.pid === win.pid || p.name.toLowerCase() === key)
+      byApp.set(key, { name: win.app, pid: win.pid ?? proc?.pid ?? 0, windows: [win] })
+    }
+  }
+  return [...byApp.values()]
+    .sort((a, b) => b.windows.length - a.windows.length || a.name.localeCompare(b.name))
+    .map((entry) => ({
+      name: entry.name,
+      pid: entry.pid,
+      windows: entry.windows.map((w) => ({
+        id: w.id,
+        title: w.title,
+        displayId: w.displayId ?? 0,
+        ...(w.bounds ? { bounds: [w.bounds.x, w.bounds.y, w.bounds.width, w.bounds.height] as const } : {}),
+      })),
+    }))
+}
+
+export function enumerateApps(
+  deps: { readonly listProcesses?: () => ProcessInfo[]; readonly listWindows?: () => WindowInfo[] } = {},
+): SceneApp[] {
+  const procs = deps.listProcesses ? deps.listProcesses() : listProcesses()
+  const wins = deps.listWindows ? deps.listWindows() : listDesktopWindows()
+  return joinAppsAndWindows(procs, wins)
+}
+
+function isSecureAxRole(role: string): boolean {
+  const normalized = role.toLowerCase().replaceAll(/[^a-z]/g, "")
+  return normalized.includes("password") || normalized.includes("securetextfield")
+}
+
+function boxesOverlap(
+  left: readonly [number, number, number, number],
+  right: readonly [number, number, number, number],
+): boolean {
+  return left[0] < right[0] + right[2]
+    && left[0] + left[2] > right[0]
+    && left[1] < right[1] + right[3]
+    && left[1] + left[3] > right[1]
+}
+
+export interface SerializeOptions {
+  readonly compact?: boolean
+  readonly maxOcrBoxes?: number
+  readonly maxAxNodes?: number
+  readonly maxApps?: number
+}
+
+export function serializeSceneForPrompt(scene: Scene, options: SerializeOptions = {}): string {
+  const focusedDisplay = scene.focused_window?.displayId ?? scene.displays[0]?.id ?? 0
+  const focusedAx = scene.ax.filter((n) => n.displayId === focusedDisplay)
+  const remainingAx = scene.ax.filter((n) => n.displayId !== focusedDisplay)
+  const orderedAx = [...focusedAx, ...remainingAx]
+  const secureFields = orderedAx.filter((node) => isSecureAxRole(node.role))
+
+  const orderedOcr = [...scene.ocr].sort((a, b) => b.conf - a.conf || a.text.localeCompare(b.text))
+  const orderedApps = [...scene.apps].sort((a, b) => b.windows.length - a.windows.length || a.name.localeCompare(b.name))
+
+  const ocrSlice = options.maxOcrBoxes ? orderedOcr.slice(0, options.maxOcrBoxes) : orderedOcr
+  const axSlice = options.maxAxNodes ? orderedAx.slice(0, options.maxAxNodes) : orderedAx
+  const appSlice = options.maxApps ? orderedApps.slice(0, options.maxApps) : orderedApps
+
+  const payload = {
+    timestamp: scene.timestamp,
+    displays: scene.displays.map((d) => ({
+      id: d.id,
+      name: d.name,
+      bounds: d.bounds,
+      primary: d.primary,
+      scaleFactor: d.scaleFactor,
+    })),
+    focused_window: scene.focused_window,
+    apps: appSlice.map((app) => ({
+      name: app.name,
+      pid: app.pid,
+      window_count: app.windows.length,
+      windows: app.windows.map((w) => ({ id: w.id, title: w.title, displayId: w.displayId })),
+    })),
+    ocr: ocrSlice.map((b) => ({
+      id: b.id,
+      text: secureFields.some((f) => f.displayId === b.displayId && boxesOverlap(f.bbox, b.bbox))
+        ? REDACTED_SECURE_FIELD
+        : b.text,
+      bbox: b.bbox,
+      conf: Number(b.conf.toFixed(3)),
+      displayId: b.displayId,
+    })),
+    ax: axSlice.map((n) => ({
+      id: n.id,
+      role: n.role,
+      label: isSecureAxRole(n.role) ? REDACTED_SECURE_FIELD : n.label,
+      bbox: n.bbox,
+      actions: n.actions,
+      displayId: n.displayId,
+    })),
+    vlm_scene: scene.vlm_scene,
+    vlm_elements: scene.vlm_elements,
+    redactions: secureFields.map((field) => ({
+      kind: "secure_field",
+      bounds: field.bbox,
+      displayId: field.displayId,
+      reason: "Accessibility role marks this region as credential input",
+    })),
+    ...(options.compact
+      ? {
+          truncated: {
+            ocrOmitted: orderedOcr.length - ocrSlice.length,
+            axOmitted: orderedAx.length - axSlice.length,
+            appsOmitted: orderedApps.length - appSlice.length,
+          },
+        }
+      : {}),
+  }
+  return ["```json", JSON.stringify(payload, null, options.compact ? 0 : 2), "```"].join("\n")
+}
+
+export interface SceneBuilderDeps {
+  readonly listDisplays?: () => DisplayDescriptor[]
+  readonly listWindows?: () => WindowInfo[]
+  readonly listProcesses?: () => ProcessInfo[]
+  readonly accessibilityProvider?: AccessibilityProvider
+  readonly runOcr?: (displays: readonly DisplayDescriptor[]) => Promise<SceneOcrBox[]>
+  readonly now?: () => number
+}
+
+export interface SceneUpdateEvent {
+  readonly mode: "idle" | "active" | "agent-turn"
+  readonly scene: Scene
+}
+
+export class SceneBuilder {
+  private readonly deps: SceneBuilderDeps
+  private current: Scene | null = null
+  private vlmScene: string | null = null
+  private vlmElements: SceneVlmElement[] = []
+  private readonly listeners = new Set<(event: SceneUpdateEvent) => void>()
+
+  constructor(deps: SceneBuilderDeps = {}) {
+    this.deps = deps
+  }
+
+  getCurrentScene(): Scene | null {
+    return this.current
+  }
+
+  hasOcr(): boolean {
+    return this.deps.runOcr !== undefined
+  }
+
+  setVlmAnnotations(summary: string | null, elements: readonly SceneVlmElement[]): void {
+    this.vlmScene = summary
+    this.vlmElements = [...elements]
+    if (this.current) {
+      this.current = { ...this.current, vlm_scene: this.vlmScene, vlm_elements: this.vlmElements }
+    }
+  }
+
+  subscribe(listener: (event: SceneUpdateEvent) => void): () => void {
+    this.listeners.add(listener)
+    return () => {
+      this.listeners.delete(listener)
+    }
+  }
+
+  async refresh(mode: "idle" | "active" | "agent-turn" = "agent-turn"): Promise<Scene> {
+    const displays = this.deps.listDisplays ? this.deps.listDisplays() : listDisplays()
+    const windows = this.deps.listWindows ? this.deps.listWindows() : listDesktopWindows()
+    const processes = this.deps.listProcesses ? this.deps.listProcesses() : listProcesses()
+    const apps = joinAppsAndWindows(processes, windows)
+    const focused = windows.find((w) => w.focused) ?? windows[0]
+    const focusedWindow: SceneFocusedWindow | null = focused
+      ? {
+          id: focused.id,
+          app: focused.app,
+          title: focused.title,
+          displayId: focused.displayId ?? 0,
+          bounds: focused.bounds ? [focused.bounds.x, focused.bounds.y, focused.bounds.width, focused.bounds.height] : null,
+        }
+      : null
+    const a11y = this.deps.accessibilityProvider ?? resolveAccessibilityProvider()
+    const ax = await a11y.scan(displays)
+    const ocr = this.deps.runOcr ? await this.deps.runOcr(displays) : []
+    const scene: Scene = {
+      timestamp: this.deps.now ? this.deps.now() : Date.now(),
+      displays,
+      focused_window: focusedWindow,
+      apps,
+      ocr,
+      ax,
+      vlm_scene: this.vlmScene,
+      vlm_elements: this.vlmElements,
+    }
+    this.current = scene
+    for (const listener of this.listeners) {
+      listener({ mode, scene })
+    }
+    return scene
+  }
+
+  async onAgentTurn(): Promise<Scene> {
+    return this.refresh("agent-turn")
+  }
+}
+
+let defaultSceneBuilder: SceneBuilder | null = null
+
+export function getDefaultSceneBuilder(): SceneBuilder {
+  if (!defaultSceneBuilder) defaultSceneBuilder = new SceneBuilder()
+  return defaultSceneBuilder
+}
+
+export function _resetDefaultSceneBuilderForTests(): void {
+  defaultSceneBuilder = null
+}

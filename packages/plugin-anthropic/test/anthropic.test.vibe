@@ -1,0 +1,820 @@
+// spec/anthropic/index.md, "Story: Ask an Anthropic model for a complete response"; spec/anthropic/index.md, "Transport must support the request and keeps the requested output budget"; spec/anthropic/index.md, "Temperature and nucleus sampling are mutually exclusive"; spec/anthropic/index.md, "Prompt caching and strict tool budgets stay within Anthropic wire limits"; spec/anthropic/index.md, "Provider errors classify retryability and failover without retrying credit or auth failures"; spec/anthropic/index.md, "Completion follows the provider terminal reason"
+import {
+  AgentRuntime,
+  EventType,
+  MAX_WELL_FORMED_VISITS,
+  ModelType,
+  isAuthError,
+  isInsufficientCreditsError,
+  isModelProviderFallbackError,
+  isRateLimitError,
+  modelOutputIncompleteEvidence,
+  setAnthropicAccountPoolBridge,
+  type GenerateTextResult,
+  type IAgentRuntime,
+  type TextStreamResult,
+} from "@elizaos/core"
+import { assert, describe, it } from "@effect/vitest"
+import {
+  AnthropicVisionProvider,
+  clearTokenCache,
+  handleActionPlanner,
+  handleImageDescription,
+  handleTextLarge,
+  handleTextSmall,
+  plugin,
+  resolveAnthropicMaxOutputTokens,
+  shouldEnable,
+} from "../src/index.vibe"
+
+module node {
+  import { once } from "node:events"
+  import { createServer, type IncomingMessage, type ServerResponse } from "node:http"
+
+  export interface CapturedRequest {
+    readonly method: string
+    readonly url: string
+    readonly headers: Record<string, string | string[] | undefined>
+    readonly raw: Buffer
+    readonly json: Record<string, unknown> | undefined
+  }
+
+  export interface CapturedAnthropicServer {
+    readonly baseUrl: string
+    readonly requests: CapturedRequest[]
+    close(): Promise<void>
+  }
+
+  /** @throws {unknown} */
+  export async function startAnthropicServer(
+    respond: (captured: CapturedRequest, req: IncomingMessage, res: ServerResponse) => void,
+  ): Promise<CapturedAnthropicServer> {
+    const requests: CapturedRequest[] = []
+    const server = createServer((req, res) => {
+      const chunks: Buffer[] = []
+      req.on("data", (chunk: Buffer) => { chunks.push(chunk) })
+      req.on("end", () => {
+        const raw = Buffer.concat(chunks)
+        let json: Record<string, unknown> | undefined
+        if (raw.length > 0) {
+          try {
+            json = JSON.parse(raw.toString("utf8")) as Record<string, unknown>
+          } catch {
+            json = undefined
+          }
+        }
+        const entry: CapturedRequest = {
+          method: req.method ?? "GET",
+          url: req.url ?? "",
+          headers: req.headers,
+          raw,
+          json,
+        }
+        requests.push(entry)
+        respond(entry, req, res)
+      })
+    })
+    server.listen(0, "127.0.0.1")
+    await once(server, "listening")
+    const addr = server.address()
+    const port = typeof addr === "object" && addr !== null ? addr.port : 0
+    return {
+      baseUrl: `http://127.0.0.1:${port}/v1`,
+      requests,
+      close: () => new Promise<void>((resolve) => { server.close(() => resolve()) }),
+    }
+  }
+}
+import { startAnthropicServer } from node
+
+const LONE_SURROGATE_ESCAPE = /\\u[dD][89a-fA-F][0-9a-fA-F]{2}/
+
+function makeRuntime(
+  baseUrl: string,
+  extra: Record<string, string> = {},
+  events?: Array<{ type: string; payload: unknown }>,
+): IAgentRuntime {
+  const settings: Record<string, string> = {
+    ANTHROPIC_API_KEY: "test-anthropic-key",
+    ANTHROPIC_AUTH_MODE: "apikey",
+    ANTHROPIC_BASE_URL: baseUrl,
+    ...extra,
+  }
+  return {
+    character: { name: "Ada", bio: [] },
+    getSetting: (key: string) => settings[key] ?? null,
+    emitEvent: async (type: string, payload: unknown) => {
+      events?.push({ type, payload })
+    },
+    reportError: () => undefined,
+  } as unknown as IAgentRuntime
+}
+
+function makeFakeSdkSchema(schema: Record<string, unknown>, validate?: (value: unknown) => unknown) {
+  const obj: Record<string | symbol, unknown> = {
+    [Symbol.for("vercel.ai.schema")]: true,
+    _type: "jsonSchema",
+  }
+  Object.defineProperty(obj, "jsonSchema", {
+    enumerable: true,
+    configurable: true,
+    get() {
+      return schema
+    },
+  })
+  if (validate) obj.validate = validate
+  return obj
+}
+
+describe('Anthropic prompt-cache breakpoints and telemetry (spec/anthropic/index.md, "Prompt caching and strict tool budgets stay within Anthropic wire limits")', () => {
+  it('emits ephemeral cache_control on system block and final tool entry, emits MODEL_USED, and returns cache token usage (spec/anthropic/index.md, "Prompt caching and strict tool budgets stay within Anthropic wire limits"; spec/anthropic/index.md, "Reported usage carries the cache read and cache write tokens the provider reports")', async () => {
+    const events: Array<{ type: string; payload: unknown }> = []
+    const server = await startAnthropicServer((_captured, _req, res) => {
+      res.writeHead(200, { "content-type": "application/json" })
+      res.end(JSON.stringify({
+        content: [{ type: "tool_use", id: "toolu_1", name: "SHELL", input: { command: "ls" } }],
+        stop_reason: "tool_use",
+        usage: { input_tokens: 120, output_tokens: 30, cache_read_input_tokens: 1800, cache_creation_input_tokens: 200 },
+      }))
+    })
+    try {
+      const result = (await handleTextLarge(makeRuntime(server.baseUrl, {}, events), {
+        system: "You are a deterministic coding assistant.",
+        prompt: "List workspace files.",
+        tools: [
+          { name: "READ", description: "Read file.", parameters: { type: "object", properties: { path: { type: "string" } } } },
+          { name: "SHELL", description: "Run shell.", parameters: { type: "object", properties: { command: { type: "string" } } } },
+        ],
+      })) as unknown as GenerateTextResult
+      const sent = server.requests[0]?.json
+      assert.deepStrictEqual(sent?.system, [
+        { type: "text", text: "You are a deterministic coding assistant.", cache_control: { type: "ephemeral" } },
+      ])
+      assert.deepStrictEqual(sent?.tools, [
+        { name: "READ", description: "Read file.", input_schema: { type: "object", properties: { path: { type: "string" } } } },
+        { name: "SHELL", description: "Run shell.", input_schema: { type: "object", properties: { command: { type: "string" } } }, cache_control: { type: "ephemeral" } },
+      ])
+      assert.deepStrictEqual(result.usage, {
+        promptTokens: 120,
+        completionTokens: 30,
+        totalTokens: 150,
+        cacheReadInputTokens: 1800,
+        cacheCreationInputTokens: 200,
+      })
+      assert.deepStrictEqual(result.toolCalls, [{ id: "toolu_1", name: "SHELL", arguments: { command: "ls" } }])
+      await Promise.resolve()
+      assert.strictEqual(events.length, 1)
+      assert.strictEqual(events[0]?.type, EventType.MODEL_USED)
+    } finally {
+      await server.close()
+    }
+  })
+
+  it('omits empty system and tools while caching streamed system prompts, respects 1h TTL, segment budget cap, and trajectory tail breakpoint (spec/anthropic/index.md, "Prompt caching and strict tool budgets stay within Anthropic wire limits")', async () => {
+    const server = await startAnthropicServer((captured, _req, res) => {
+      if (captured.json?.stream === true) {
+        res.writeHead(200, { "content-type": "text/event-stream" })
+        res.write('event: message_start\ndata: {"type":"message_start","message":{"usage":{"input_tokens":50,"cache_read_input_tokens":600,"cache_creation_input_tokens":0}}}\n\n')
+        res.write('event: content_block_delta\ndata: {"type":"content_block_delta","delta":{"type":"text_delta","text":"cached"}}\n\n')
+        res.write('event: message_delta\ndata: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":12}}\n\n')
+        res.end('event: message_stop\ndata: {"type":"message_stop"}\n\n')
+        return
+      }
+      res.writeHead(200, { "content-type": "application/json" })
+      res.end(JSON.stringify({ content: [{ type: "text", text: "plain" }], stop_reason: "end_turn" }))
+    })
+    try {
+      const streamed = (await handleTextSmall(makeRuntime(server.baseUrl), {
+        system: "Stable prefix.",
+        prompt: "Hi",
+        stream: true,
+        tools: [],
+      })) as TextStreamResult
+      const text = await streamed.text
+      const usage = await streamed.usage
+      const plain = await handleTextSmall(makeRuntime(server.baseUrl), { system: "", prompt: "No system" })
+      await handleTextSmall(makeRuntime(server.baseUrl, { ANTHROPIC_PROMPT_CACHE_TTL: "1h" }), {
+        system: "Long TTL system.",
+        promptSegments: [
+          { content: "seg0", stable: true },
+          { content: "seg1", stable: true },
+          { content: "seg2", stable: true },
+          { content: "seg3", stable: true },
+          { content: "dynamic", stable: false },
+        ],
+        tools: [{ name: "PING", description: "Ping.", parameters: { type: "object" } }],
+      })
+      await handleTextSmall(makeRuntime(server.baseUrl), {
+        system: "Planner system.",
+        messages: [
+          { role: "user", content: "Do step 1" },
+          { role: "assistant", content: null, toolCalls: [{ id: "tc_1", name: "PING", arguments: {} }] },
+          { role: "tool", toolCallId: "tc_1", content: "pong1" },
+          { role: "tool", toolCallId: "tc_2", content: "pong2" },
+        ],
+      })
+
+      assert.strictEqual(text, "cached")
+      assert.strictEqual(plain, "plain")
+      assert.deepStrictEqual(server.requests[0]?.json?.system, [{ type: "text", text: "Stable prefix.", cache_control: { type: "ephemeral" } }])
+      assert.strictEqual("tools" in (server.requests[0]?.json ?? {}), false)
+      assert.strictEqual("system" in (server.requests[1]?.json ?? {}), false)
+      assert.deepStrictEqual(usage, {
+        promptTokens: 50,
+        completionTokens: 12,
+        totalTokens: 62,
+        cacheReadInputTokens: 600,
+        cacheCreationInputTokens: 0,
+      })
+
+      const segmentedReq = server.requests[2]?.json as {
+        system: Array<{ cache_control?: unknown }>
+        tools: Array<{ cache_control?: unknown }>
+        messages: Array<{ content: Array<{ text: string; cache_control?: unknown }> }>
+      }
+      assert.deepStrictEqual(segmentedReq.system[0]?.cache_control, { type: "ephemeral", ttl: "1h" })
+      assert.deepStrictEqual(segmentedReq.tools[0]?.cache_control, { type: "ephemeral", ttl: "1h" })
+      const stampedSegments = segmentedReq.messages[0]?.content.filter((part) => part.cache_control !== undefined) ?? []
+      assert.strictEqual(stampedSegments.length, 2)
+      assert.deepStrictEqual(stampedSegments.map((s) => s.text), ["seg2", "seg3"])
+
+      const trajectoryReq = server.requests[3]?.json as {
+        messages: Array<{ role: string; content: unknown }>
+      }
+      assert.strictEqual(trajectoryReq.messages.length, 3)
+      const toolTurn = trajectoryReq.messages[2]?.content as Array<Record<string, unknown>>
+      assert.strictEqual(toolTurn.length, 2)
+      assert.deepStrictEqual(toolTurn[1]?.cache_control, { type: "ephemeral" })
+    } finally {
+      await server.close()
+    }
+  })
+})
+
+describe('Anthropic model tiers, output caps, thinking/effort, and sampling (spec/anthropic/index.md, "Transport must support the request and keeps the requested output budget"; spec/anthropic/index.md, "Temperature and nucleus sampling are mutually exclusive")', () => {
+  it('resolves model tiers, enforces output caps, applies adaptive and CoT thinking, and enforces sampling mutual exclusion (spec/anthropic/index.md, "Transport must support the request and keeps the requested output budget"; spec/anthropic/index.md, "Temperature and nucleus sampling are mutually exclusive")', async () => {
+    const server = await startAnthropicServer((captured, _req, res) => {
+      const thinking = captured.json?.thinking as { type?: string; budget_tokens?: number } | undefined
+      const maxTokens = captured.json?.max_tokens as number
+      if (typeof thinking?.budget_tokens === "number" && !(maxTokens > thinking.budget_tokens)) {
+        res.writeHead(400, { "content-type": "application/json" })
+        res.end(JSON.stringify({ type: "error", error: { type: "invalid_request_error", message: "max_tokens must be greater than thinking.budget_tokens" } }))
+        return
+      }
+      res.writeHead(200, { "content-type": "application/json" })
+      res.end(JSON.stringify({ content: [{ type: "text", text: "ok" }], stop_reason: "end_turn", usage: { input_tokens: 10, output_tokens: 5 } }))
+    })
+    try {
+      assert.strictEqual(shouldEnable({ env: { ANTHROPIC_API_KEY: "sk-ant" } }), true)
+      assert.strictEqual(shouldEnable({ env: { CLAUDE_API_KEY: "sk-claude" } }), true)
+      assert.strictEqual(shouldEnable({ env: { ANTHROPIC_API_KEY: "   " } }), false)
+      assert.strictEqual(plugin.modelMetadata?.[ModelType.TEXT_LARGE]?.streamable, true)
+
+      const plannerModel = "claude-sonnet-4-5-20250929"
+      const expectedCap = resolveAnthropicMaxOutputTokens(makeRuntime(server.baseUrl), plannerModel)
+      assert.strictEqual(expectedCap, 64_000)
+
+      await handleActionPlanner(
+        makeRuntime(server.baseUrl, { ANTHROPIC_ACTION_PLANNER_MODEL: plannerModel, ANTHROPIC_COT_BUDGET: "10000" }),
+        { prompt: "plan", topP: 0.9, temperature: 0.3 },
+      )
+      await handleActionPlanner(
+        makeRuntime(server.baseUrl, { ANTHROPIC_ACTION_PLANNER_MODEL: "claude-fable-5", ANTHROPIC_COT_BUDGET: "10000" }),
+        { prompt: "adaptive fable" },
+      )
+      await handleActionPlanner(
+        makeRuntime(server.baseUrl, { ANTHROPIC_ACTION_PLANNER_MODEL: "claude-sonnet-4-6", ANTHROPIC_EFFORT_LARGE: "xhigh" }),
+        { prompt: "clamped effort" },
+      )
+      await handleTextSmall(
+        makeRuntime(server.baseUrl, { ANTHROPIC_SMALL_MODEL: "claude-haiku-4-5-20251001", ANTHROPIC_EFFORT_SMALL: "high" }),
+        { prompt: "haiku drops effort", topP: 0.85 },
+      )
+      await handleTextLarge(
+        makeRuntime(server.baseUrl, { ANTHROPIC_LARGE_MODEL: "claude-opus-4-8" }),
+        {
+          prompt: "caller providerOptions effort",
+          topP: 0.9,
+          providerOptions: { anthropic: { effort: "high" } },
+        },
+      )
+      await handleTextSmall(
+        makeRuntime(server.baseUrl, { ANTHROPIC_SMALL_MODEL: "claude-sonnet-4-5-20250929" }),
+        {
+          prompt: "caller providerOptions fixed thinking",
+          topP: 0.8,
+          providerOptions: { anthropic: { thinking: { type: "enabled", budgetTokens: 4096 } } },
+        },
+      )
+
+      assert.deepStrictEqual(server.requests[0]?.json?.thinking, { type: "enabled", budget_tokens: 10000 })
+      assert.strictEqual(server.requests[0]?.json?.max_tokens, 64_000)
+      assert.strictEqual(server.requests[0]?.json?.temperature, 1)
+      assert.strictEqual("top_p" in (server.requests[0]?.json ?? {}), false)
+
+      assert.deepStrictEqual(server.requests[1]?.json?.thinking, { type: "adaptive" })
+      assert.strictEqual(server.requests[1]?.json?.max_tokens, 128_000)
+
+      assert.deepStrictEqual(server.requests[2]?.json?.thinking, { type: "adaptive" })
+      assert.deepStrictEqual(server.requests[2]?.json?.output_config, { effort: "high" })
+
+      assert.strictEqual("thinking" in (server.requests[3]?.json ?? {}), false)
+      assert.strictEqual("output_config" in (server.requests[3]?.json ?? {}), false)
+      assert.strictEqual(server.requests[3]?.json?.top_p, 0.85)
+      assert.strictEqual("temperature" in (server.requests[3]?.json ?? {}), false)
+
+      assert.deepStrictEqual(server.requests[4]?.json?.thinking, { type: "adaptive" })
+      assert.deepStrictEqual(server.requests[4]?.json?.output_config, { effort: "high" })
+      assert.strictEqual(server.requests[4]?.json?.temperature, 1)
+      assert.strictEqual("top_p" in (server.requests[4]?.json ?? {}), false)
+
+      assert.deepStrictEqual(server.requests[5]?.json?.thinking, { type: "enabled", budget_tokens: 4096 })
+      assert.strictEqual(server.requests[5]?.json?.temperature, 1)
+      assert.strictEqual("top_p" in (server.requests[5]?.json ?? {}), false)
+
+      let budgetErr: unknown
+      try {
+        await handleTextSmall(makeRuntime(server.baseUrl, { ANTHROPIC_MAX_OUTPUT_TOKENS: "claude-sonnet-5:4096" }), {
+          prompt: "too big",
+          maxTokens: 5000,
+        })
+      } catch (err) {
+        budgetErr = err
+      }
+      assert.strictEqual((budgetErr as { code?: string })?.code, "ANTHROPIC_OUTPUT_BUDGET_UNSUPPORTED")
+
+      let invalidOverrideErr: unknown
+      try {
+        await handleTextSmall(makeRuntime(server.baseUrl, { ANTHROPIC_MAX_OUTPUT_TOKENS: "claude-sonnet-5:4096,other:8192junk" }), {
+          prompt: "bad override",
+        })
+      } catch (err) {
+        invalidOverrideErr = err
+      }
+      assert.strictEqual((invalidOverrideErr as { code?: string })?.code, "ANTHROPIC_MAX_OUTPUT_TOKENS_INVALID")
+
+      let invalidCotErr: unknown
+      try {
+        await handleTextSmall(makeRuntime(server.baseUrl, { ANTHROPIC_COT_BUDGET: "2048junk" }), {
+          prompt: "bad cot",
+        })
+      } catch (err) {
+        invalidCotErr = err
+      }
+      assert.strictEqual((invalidCotErr as { code?: string })?.code, "ANTHROPIC_COT_BUDGET_INVALID")
+      assert.strictEqual(server.requests.length, 6)
+    } finally {
+      await server.close()
+    }
+  })
+})
+
+describe('Anthropic credit balance, stream errors, failover, retries, and incomplete output (spec/anthropic/index.md, "Provider errors classify retryability and failover without retrying credit or auth failures"; spec/anthropic/index.md, "Completion follows the provider terminal reason")', () => {
+  it('classifies HTTP 400 credit balance exhaustion, 401/429 stream errors, mid-stream SSE failover, transient retries, truncated usage reporting, and keyless runtime priority (spec/anthropic/index.md, "Provider errors classify retryability and failover without retrying credit or auth failures"; spec/anthropic/index.md, "Completion follows the provider terminal reason")', async () => {
+    const CREDIT_BALANCE_MESSAGE =
+      "Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits."
+    type Mode =
+      | { kind: "credit-400" }
+      | { kind: "http-401" }
+      | { kind: "http-429" }
+      | { kind: "sse-rate-limit" }
+      | { kind: "sse-overloaded" }
+      | { kind: "retry-then-ok" }
+      | { kind: "truncated" }
+      | { kind: "ok" }
+    let mode: Mode = { kind: "credit-400" }
+    let attempts = 0
+    const server = await startAnthropicServer((_captured, _req, res) => {
+      attempts += 1
+      if (mode.kind === "credit-400") {
+        res.writeHead(400, { "content-type": "application/json" })
+        res.end(JSON.stringify({ type: "error", error: { type: "invalid_request_error", message: CREDIT_BALANCE_MESSAGE } }))
+        return
+      }
+      if (mode.kind === "http-401") {
+        res.writeHead(401, { "content-type": "application/json" })
+        res.end(JSON.stringify({ type: "error", error: { type: "authentication_error", message: "invalid x-api-key" } }))
+        return
+      }
+      if (mode.kind === "http-429") {
+        res.writeHead(429, { "content-type": "application/json", "retry-after": "5" })
+        res.end(JSON.stringify({ type: "error", error: { type: "rate_limit_error", message: "Rate limited" } }))
+        return
+      }
+      if (mode.kind === "sse-rate-limit" || mode.kind === "sse-overloaded") {
+        res.writeHead(200, { "content-type": "text/event-stream" })
+        res.write('event: message_start\ndata: {"type":"message_start","message":{"usage":{"input_tokens":12,"output_tokens":1}}}\n\n')
+        const payload = mode.kind === "sse-rate-limit"
+          ? { type: "error", error: { type: "rate_limit_error", message: "Rate limited mid-stream" } }
+          : { type: "error", error: { type: "overloaded_error", message: "Overloaded" } }
+        res.end(`event: error\ndata: ${JSON.stringify(payload)}\n\n`)
+        return
+      }
+      if (mode.kind === "retry-then-ok" && attempts === 1) {
+        res.writeHead(529, { "content-type": "application/json", "retry-after-ms": "1" })
+        res.end(JSON.stringify({ type: "error", error: { type: "overloaded_error", message: "Overloaded" } }))
+        return
+      }
+      if (mode.kind === "truncated") {
+        res.writeHead(200, { "content-type": "application/json" })
+        res.end(JSON.stringify({
+          content: [{ type: "text", text: "partial" }],
+          stop_reason: "max_tokens",
+          usage: { input_tokens: 40, output_tokens: 16 },
+        }))
+        return
+      }
+      res.writeHead(200, { "content-type": "application/json" })
+      res.end(JSON.stringify({ content: [{ type: "text", text: "ok" }], stop_reason: "end_turn", usage: { input_tokens: 5, output_tokens: 2 } }))
+    })
+    try {
+      const makeAgent = async (extra: Record<string, string> = {}) => {
+        const agent = new AgentRuntime({
+          character: { name: "Anthropic test", bio: [] },
+          logLevel: "fatal",
+          settings: {
+            ANTHROPIC_API_KEY: "placeholder-not-a-key",
+            ANTHROPIC_AUTH_MODE: "apikey",
+            ANTHROPIC_BASE_URL: server.baseUrl,
+            ...extra,
+          },
+        })
+        agent.registerDatabaseAdapter({ createLogs: async () => undefined } as never)
+        return agent
+      }
+
+      const creditAgent = await makeAgent()
+      creditAgent.registerModel(ModelType.TEXT_LARGE, handleTextLarge, "anthropic", 10)
+      const creditErr = await creditAgent.useModel(ModelType.TEXT_LARGE, { prompt: "Say hi" }).then(
+        () => undefined,
+        (e: unknown) => e,
+      )
+      assert.strictEqual(creditErr instanceof Error, true)
+      assert.strictEqual(
+        (creditErr as Error).message,
+        `[Anthropic] TEXT_LARGE request using claude-opus-4-8 failed: ${CREDIT_BALANCE_MESSAGE}`,
+      )
+      assert.strictEqual(isInsufficientCreditsError(creditErr), true)
+      assert.strictEqual(isModelProviderFallbackError(creditErr, ModelType.TEXT_LARGE), false)
+      assert.strictEqual(attempts, 1)
+
+      mode = { kind: "http-401" }
+      const authErr = await handleTextLarge(makeRuntime(server.baseUrl), { prompt: "hi", stream: true }).then(
+        () => undefined,
+        (e: unknown) => e,
+      )
+      assert.strictEqual(isAuthError(authErr), true)
+      assert.strictEqual(
+        (authErr as Error).message,
+        "[Anthropic] TEXT_LARGE request using claude-opus-4-8 failed: Authentication failed. Check the configured Anthropic API key.",
+      )
+
+      mode = { kind: "http-429" }
+      const rateErr = await handleTextLarge(makeRuntime(server.baseUrl), { prompt: "hi", stream: true }).then(
+        () => undefined,
+        (e: unknown) => e,
+      )
+      assert.strictEqual(isRateLimitError(rateErr), true)
+      assert.strictEqual(isModelProviderFallbackError(rateErr, ModelType.TEXT_LARGE), true)
+
+      mode = { kind: "sse-rate-limit" }
+      const sseStream = (await handleTextLarge(makeRuntime(server.baseUrl), { prompt: "hi", stream: true })) as TextStreamResult
+      let sseRateErr: unknown
+      try {
+        for await (const _chunk of sseStream.textStream) {
+          assert.fail("should not yield chunks on mid-stream error")
+        }
+      } catch (e) {
+        sseRateErr = e
+      }
+      assert.strictEqual(
+        (sseRateErr as Error).message,
+        "[Anthropic] TEXT_LARGE request using claude-opus-4-8 failed: Anthropic rate limited the request. Retry after a short delay.",
+      )
+      assert.strictEqual(isRateLimitError(sseRateErr), true)
+
+      mode = { kind: "sse-overloaded" }
+      const failoverAgent = await makeAgent()
+      failoverAgent.registerModel(ModelType.TEXT_LARGE, handleTextLarge, "anthropic", 10, { streamable: true })
+      failoverAgent.registerModel(ModelType.TEXT_LARGE, async () => "backup reply", "backup", 0)
+      const failoverOut = await failoverAgent.useModel(ModelType.TEXT_LARGE, {
+        prompt: "Say hi",
+        stream: true,
+        onStreamChunk: () => undefined,
+      })
+      assert.strictEqual(failoverOut, "backup reply")
+
+      mode = { kind: "retry-then-ok" }
+      attempts = 0
+      const retriedOut = await handleTextSmall(makeRuntime(server.baseUrl), { prompt: "retry me" })
+      assert.strictEqual(retriedOut, "ok")
+      assert.strictEqual(attempts, 2)
+
+      mode = { kind: "truncated" }
+      const truncEvents: Array<{ type: string; payload: unknown }> = []
+      const truncErr = await handleTextSmall(makeRuntime(server.baseUrl, {}, truncEvents), {
+        prompt: "cut short",
+        maxTokens: 16,
+      }).then(() => undefined, (e: unknown) => e)
+      const evidence = modelOutputIncompleteEvidence(truncErr)
+      assert.strictEqual(evidence?.finishReason, "max_tokens")
+      assert.strictEqual(evidence?.maxTokens, 16)
+      assert.strictEqual(evidence?.usage?.completionTokens, 16)
+      await Promise.resolve()
+      assert.strictEqual(truncEvents.length, 1)
+
+      mode = { kind: "ok" }
+      const listenerAgent = await makeAgent({ ANTHROPIC_SMALL_MODEL: "claude-test" })
+      listenerAgent.registerEvent(EventType.MODEL_USED, async () => {
+        throw new Error("MODEL_USED listener failed")
+      })
+      const served = await handleTextSmall(listenerAgent, { prompt: "Reply briefly." })
+      assert.strictEqual(served, "ok")
+      await runPromise(sleep("50 millis"))
+      const reported = listenerAgent.getRecentReportedErrors()
+      assert.strictEqual(
+        reported.some((entry) => entry.scope === "AnthropicModelUsage.emitEvent" && entry.message === "MODEL_USED listener failed"),
+        true,
+      )
+
+      const keylessAgent = new AgentRuntime({
+        character: { name: "Keyless", bio: [] },
+        logLevel: "fatal",
+        settings: {},
+      })
+      keylessAgent.registerDatabaseAdapter({ createLogs: async () => undefined } as never)
+      keylessAgent.registerModel(ModelType.TEXT_LARGE, handleTextLarge, "@elizaos/plugin-anthropic", 0)
+      keylessAgent.registerModel(ModelType.TEXT_LARGE, async () => "mock-not-anthropic", "deterministic-proxy", 1000)
+      const keylessOut = await keylessAgent.useModel(ModelType.TEXT_LARGE, { prompt: "hello" })
+      assert.strictEqual(keylessOut, "mock-not-anthropic")
+    } finally {
+      await server.close()
+    }
+  })
+})
+
+describe('Anthropic wire Unicode safety, descriptor-safe tools, strict budgets, multimodal/vision, and OAuth failover (spec/anthropic/index.md, "Prompt caching and strict tool budgets stay within Anthropic wire limits"; spec/anthropic/index.md, "Transport must support the request and keeps the requested output budget")', () => {
+  it('sanitizes lone surrogates, blocks hostile tool accessors and collisions, enforces strict tool and schema budgets, and preserves custom SDK validate (spec/anthropic/index.md, "Prompt caching and strict tool budgets stay within Anthropic wire limits")', async () => {
+    const server = await startAnthropicServer((captured, _req, res) => {
+      const raw = captured.raw.toString("utf8")
+      const hasStructuredOutput = raw.includes("json_schema")
+      const content: unknown[] = [{ type: "text", text: hasStructuredOutput ? JSON.stringify({ goodField: "value" }) : "ok" }]
+      if (raw.includes("force tool use")) {
+        const tools = captured.json?.tools as Array<{ name?: string }> | undefined
+        content.unshift({ type: "tool_use", id: "toolu_probe", name: tools?.[0]?.name ?? "unknown", input: { anything: true } })
+      }
+      res.writeHead(200, { "content-type": "application/json" })
+      res.end(JSON.stringify({ content, stop_reason: "tool_use", usage: { input_tokens: 1, output_tokens: 1 } }))
+    })
+    try {
+      const rt = makeRuntime(server.baseUrl, { ANTHROPIC_SMALL_MODEL: "claude-test" })
+
+      const sparseSchema = new Array(MAX_WELL_FORMED_VISITS)
+      const sparseErr = await handleTextSmall(rt, { prompt: "hi", responseSchema: sparseSchema as never }).then(() => undefined, (e: unknown) => e)
+      assert.strictEqual((sparseErr as { code?: string })?.code, "WELL_FORMED_UNBOUNDED")
+
+      const brokenPrompt = "summarize this page 🤖 please".slice(0, 21)
+      await handleTextSmall(rt, {
+        prompt: brokenPrompt,
+        stopSequences: ["clean-stop", "bad\uD83D"],
+        responseSchema: {
+          type: "object",
+          description: "schema desc \uD83D",
+          properties: { goodField: { type: "string" }, ["bad\uD83D"]: { type: "string", description: "also \uD83D" } },
+        },
+      })
+      const rawBody = server.requests[0]?.raw.toString("utf8") ?? ""
+      assert.strictEqual(LONE_SURROGATE_ESCAPE.test(rawBody), false)
+      assert.strictEqual(rawBody.includes("bad\uFFFD"), true)
+
+      const collisionErr = await handleTextSmall(rt, {
+        prompt: "collide",
+        tools: [
+          { name: "tool_a_\uD83D", description: "one", parameters: { type: "object" } },
+          { name: "tool_a_\uDFFF", description: "two", parameters: { type: "object" } },
+        ],
+      }).then(() => undefined, (e: unknown) => e)
+      assert.strictEqual((collisionErr as { code?: string })?.code, "ANTHROPIC_TOOL_NAME_COLLISION")
+
+      let getterCalls = 0
+      const hostileTools: Record<string, unknown> = { real: { name: "real", parameters: { type: "object" } } }
+      Object.defineProperty(hostileTools, "bad", {
+        enumerable: true,
+        get() {
+          getterCalls += 1
+          return { name: "bad", parameters: { type: "object" } }
+        },
+      })
+      const containerErr = await handleTextSmall(rt, { prompt: "tools", tools: hostileTools as never }).then(() => undefined, (e: unknown) => e)
+      assert.strictEqual((containerErr as { code?: string })?.code, "ANTHROPIC_UNSAFE_TOOL_CONTAINER")
+      assert.strictEqual(getterCalls, 0)
+
+      let fieldGetterCalls = 0
+      const fieldErr = await handleTextSmall(rt, {
+        prompt: "tools",
+        tools: [{ get name() { fieldGetterCalls += 1; return "x" }, parameters: { type: "object" } }] as never,
+      }).then(() => undefined, (e: unknown) => e)
+      assert.strictEqual((fieldErr as { code?: string })?.code, "ANTHROPIC_UNSAFE_TOOL_FIELD")
+      assert.strictEqual(fieldGetterCalls, 0)
+
+      let forgedGetterCalls = 0
+      const forged = {
+        get [Symbol.for("vercel.ai.schema")]() { forgedGetterCalls += 1; return true },
+        get jsonSchema() { forgedGetterCalls += 1; return { type: "object" } },
+      }
+      const forgedErr = await handleTextSmall(rt, {
+        prompt: "forged",
+        tools: { forged_tool: { inputSchema: forged, description: "clean" } } as never,
+      }).then(() => undefined, (e: unknown) => e)
+      assert.strictEqual((forgedErr as { code?: string })?.code, "WELL_FORMED_UNSAFE_VALUE")
+      assert.strictEqual(forgedGetterCalls, 0)
+
+      let validateCalls = 0
+      const wrapped = makeFakeSdkSchema(
+        { type: "object", description: "dirty \uD83D" },
+        () => {
+          validateCalls += 1
+          return { success: false, error: "probe-validate-reject" }
+        },
+      )
+      const valErr = await handleTextSmall(rt, {
+        prompt: "force tool use: sdk_custom_validate",
+        tools: { sdk_custom_validate: { inputSchema: wrapped, description: "clean" } } as never,
+      }).then(() => undefined, (e: unknown) => e)
+      assert.strictEqual(validateCalls, 1)
+      assert.strictEqual(valErr instanceof Error, true)
+      assert.strictEqual(((valErr as Error).cause as Error)?.message, "Provider returned invalid tool arguments")
+
+      const overBudgetTools = Array.from({ length: 21 }, (_, idx) => ({
+        name: `T_${idx}`,
+        strict: true,
+        parameters: { type: "object", properties: {} },
+      }))
+      await handleTextSmall(rt, { prompt: "many strict", tools: overBudgetTools })
+      const sentOver = server.requests[server.requests.length - 1]?.json?.tools as Array<{ strict?: boolean }>
+      assert.strictEqual(sentOver.every((t) => t.strict === undefined), true)
+
+      const overSchemaProps: Record<string, { type: string }> = {}
+      for (let i = 0; i < 25; i += 1) overSchemaProps[`opt_${i}`] = { type: "string" }
+      const schemaLimitErr = await handleTextSmall(rt, {
+        prompt: "too many opts",
+        responseSchema: { type: "object", properties: overSchemaProps },
+      }).then(() => undefined, (e: unknown) => e)
+      assert.strictEqual((schemaLimitErr as { code?: string })?.code, "ANTHROPIC_RESPONSE_SCHEMA_LIMIT")
+
+      const cyclicOpts: Record<string, unknown> = { a: 1 }
+      cyclicOpts.self = cyclicOpts
+      const cyclicErr = await handleTextSmall(rt, {
+        prompt: "cyclic",
+        providerOptions: cyclicOpts as never,
+      }).then(() => undefined, (e: unknown) => e)
+      assert.strictEqual((cyclicErr as { code?: string })?.code, "ANTHROPIC_PROVIDER_OPTIONS_UNBOUNDED")
+    } finally {
+      await server.close()
+    }
+  })
+
+  it('supports multimodal attachments, UTF-8 text/plain base64, image description title/description parsing, AnthropicVisionProvider error boundary, and OAuth multi- and single-account 401/429 handling (spec/anthropic/index.md, "Transport must support the request and keeps the requested output budget"; spec/anthropic/index.md, "Completion follows the provider terminal reason")', async () => {
+    const server = await startAnthropicServer((captured, _req, res) => {
+      if (captured.method === "GET" && captured.url.includes("/models/broken-meta")) {
+        res.writeHead(500, { "content-type": "text/plain" })
+        res.end("metadata backend down")
+        return
+      }
+      if (captured.method === "GET" && captured.url.includes("/models/")) {
+        res.writeHead(200, { "content-type": "application/json" })
+        res.end(JSON.stringify({ id: "claude-opus-4-7", max_tokens: 32000 }))
+        return
+      }
+      if (captured.headers.authorization === "Bearer bad-token") {
+        res.writeHead(401, { "content-type": "application/json" })
+        res.end(JSON.stringify({ type: "error", error: { type: "authentication_error", message: "expired" } }))
+        return
+      }
+      if (captured.headers.authorization === "Bearer limited-only-token") {
+        res.writeHead(429, { "content-type": "application/json", "retry-after-ms": "1" })
+        res.end(JSON.stringify({ type: "error", error: { type: "rate_limit_error", message: "single account limited" } }))
+        return
+      }
+      const messages = captured.json?.messages as Array<{ content: unknown }> | undefined
+      const firstContent = messages?.[0]?.content
+      const isImageDesc = Array.isArray(firstContent)
+        && firstContent.some((part) => typeof part === "object" && part !== null && (part as { type?: string }).type === "image")
+        && !firstContent.some((part) => typeof part === "object" && part !== null && (part as { type?: string }).type === "document")
+      res.writeHead(200, { "content-type": "application/json" })
+      res.end(JSON.stringify({
+        content: [{
+          type: "text",
+          text: isImageDesc
+            ? "Title: Golden Bridge\nDescription: A photo showing a book whose title: Sunset is visible."
+            : "attachment-ok",
+        }],
+        stop_reason: "end_turn",
+        usage: { input_tokens: 20, output_tokens: 10 },
+      }))
+    })
+    try {
+      const rt = makeRuntime(server.baseUrl)
+      const utf8TextB64 = "aMOpbGxvIPCfkLA="
+      const attachReply = await handleTextSmall(rt, {
+        prompt: "Read attached PDF, text, and image",
+        attachments: [
+          { mediaType: "application/pdf", data: "JVBERi0xLjQ=", filename: "doc.pdf" },
+          { mediaType: "image/png", data: "https://example.com/pic.png" },
+          { mediaType: "text/plain", data: `data:text/plain;base64,${utf8TextB64}`, filename: "note.txt" },
+        ],
+      })
+      assert.strictEqual(attachReply, "attachment-ok")
+      const attachContent = (server.requests[0]?.json?.messages as Array<{ content: Array<Record<string, unknown>> }>)[0]?.content
+      assert.strictEqual(attachContent?.[1]?.type, "document")
+      assert.strictEqual(attachContent?.[2]?.type, "image")
+      assert.strictEqual((attachContent?.[3]?.source as { data?: string })?.data, "héllo 🐰")
+
+      const described = await handleImageDescription(rt, { imageUrl: "https://example.com/bridge.png" })
+      assert.deepStrictEqual(described, {
+        title: "Golden Bridge",
+        description: "A photo showing a book whose title: Sunset is visible.",
+      })
+
+      const vision = new AnthropicVisionProvider({ apiKey: "vision-key", baseUrl: server.baseUrl })
+      const visionOk = await vision.analyze({ imageUrl: "https://example.com/bridge.png", maxTokens: 1024 })
+      assert.strictEqual(visionOk.success, true)
+      const visionTooHigh = await vision.analyze({ imageUrl: "https://example.com/bridge.png", maxTokens: 64000 }).then(
+        () => undefined,
+        (e: unknown) => e,
+      )
+      assert.strictEqual((visionTooHigh as { code?: string })?.code, "VISION_OUTPUT_BUDGET_UNSUPPORTED")
+
+      const brokenVision = new AnthropicVisionProvider({
+        apiKey: "vision-key",
+        model: "broken-meta",
+        baseUrl: server.baseUrl,
+      })
+      const metaFailed = await brokenVision.analyze({ imageUrl: "https://example.com/bridge.png" })
+      assert.strictEqual(metaFailed.success, false)
+      assert.strictEqual(!metaFailed.success && metaFailed.error.includes("500"), true)
+
+      clearTokenCache()
+      const markedInvalid: string[] = []
+      setAnthropicAccountPoolBridge({
+        selectAnthropicSubscription: async (opts) => {
+          const excluded = new Set(opts?.exclude ?? [])
+          if (!excluded.has("acct-1")) return { id: "acct-1", expiresAt: Date.now() + 600_000 }
+          return { id: "acct-2", expiresAt: Date.now() + 600_000 }
+        },
+        getAccessToken: async (_provider, accountId) => (accountId === "acct-1" ? "bad-token" : "good-token"),
+        markInvalid: async (accountId) => { markedInvalid.push(accountId) },
+        markRateLimited: async () => undefined,
+      })
+      try {
+        const oauthReply = await handleTextSmall(
+          makeRuntime(server.baseUrl, { ANTHROPIC_API_KEY: "", ANTHROPIC_AUTH_MODE: "oauth" }),
+          { prompt: "oauth failover" },
+        )
+        assert.strictEqual(oauthReply, "attachment-ok")
+        assert.deepStrictEqual(markedInvalid, ["acct-1"])
+        const lastHeaders = server.requests[server.requests.length - 1]?.headers
+        assert.strictEqual(lastHeaders?.authorization, "Bearer good-token")
+        assert.strictEqual(lastHeaders?.["x-api-key"], undefined)
+        assert.strictEqual(String(lastHeaders?.["anthropic-beta"] ?? "").includes("oauth-2025-04-20"), true)
+
+        clearTokenCache()
+        setAnthropicAccountPoolBridge({
+          selectAnthropicSubscription: async (opts) => {
+            const excluded = new Set(opts?.exclude ?? [])
+            return excluded.has("only-acct") ? null : { id: "only-acct", expiresAt: Date.now() + 600_000 }
+          },
+          getAccessToken: async () => "limited-only-token",
+          markInvalid: async () => undefined,
+          markRateLimited: async () => undefined,
+        })
+        const singleRateErr = await handleTextSmall(
+          makeRuntime(server.baseUrl, { ANTHROPIC_API_KEY: "", ANTHROPIC_AUTH_MODE: "oauth" }),
+          { prompt: "single oauth 429", stream: true },
+        ).then(() => undefined, (e: unknown) => e)
+        assert.strictEqual(isRateLimitError(singleRateErr), true)
+
+        clearTokenCache()
+        setAnthropicAccountPoolBridge({
+          selectAnthropicSubscription: async (opts) => {
+            const excluded = new Set(opts?.exclude ?? [])
+            return excluded.has("only-bad") ? null : { id: "only-bad", expiresAt: Date.now() + 600_000 }
+          },
+          getAccessToken: async () => "bad-token",
+          markInvalid: async () => undefined,
+          markRateLimited: async () => undefined,
+        })
+        const singleAuthErr = await handleTextSmall(
+          makeRuntime(server.baseUrl, { ANTHROPIC_API_KEY: "", ANTHROPIC_AUTH_MODE: "oauth" }),
+          { prompt: "single oauth 401", stream: true },
+        ).then(() => undefined, (e: unknown) => e)
+        assert.strictEqual(isAuthError(singleAuthErr), true)
+      } finally {
+        setAnthropicAccountPoolBridge(null)
+        clearTokenCache()
+      }
+    } finally {
+      await server.close()
+    }
+  })
+})

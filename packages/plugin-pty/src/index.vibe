@@ -1,97 +1,72 @@
-// spec/pty/index.md, "Story: Open and close an owner-bound terminal session"
-import { machineOver, initial, terminalAcceptsInput } from "../gen/pty.effect.vibe"
+// spec/pty/policy.md, "Story: Gate interactive and vendor PTY access"; spec/pty/policy.md, "Story: Enforce session capacity, confinement, and safe teardown"
+import { ptySessionAction } from "./action.vibe"
+import { ptyRoutes } from "./routes.vibe"
+import { PtyService } from "./service.vibe"
+import type { PtyPlugin } from "./types.vibe"
 
-export error TerminalUnavailable { terminalId: string }
-export error TerminalRequestRefused { terminalId: string }
-
-module node {
-  import { spawn, type IDisposable, type IPty } from "@lydell/node-pty"
-
-  export interface TerminalLaunch {
-    readonly ownerId: string
-    readonly terminalId: string
-    readonly executable: string
-    readonly arguments: readonly string[]
-    readonly directory: string
-    readonly environment: Readonly<Record<string, string>>
-  }
-
-  interface PtyConnection {
-    readonly process: IPty
-    readonly dispose: IDisposable
-    readonly exit: IDisposable
-    readonly snapshot: () => { sequence: number; output: string }
-  }
-
-  export function startPty(launch: TerminalLaunch, exited: () => void): PtyConnection {
-    const process = spawn(launch.executable, [...launch.arguments], {
-      name: "xterm-256color",
-      cols: 80,
-      rows: 24,
-      cwd: launch.directory,
-      env: { ...launch.environment },
-    })
-    let sequence = 0
-    let output = ""
-    const dispose = process.onData((data) => {
-      sequence += 1
-      output = (output + data).slice(-64 * 1024)
-    })
-    const exit = process.onExit(exited)
-    return { process, dispose, exit, snapshot: () => ({ sequence, output }) }
-  }
-}
-import { startPty, type TerminalLaunch } from node
-export { type TerminalLaunch } from node
-
-export effect function openTerminalSession(launch: TerminalLaunch) {
-  const active = try Ref.make(initial)
-  const gate = try machineOver(() => Ref.get(active), (state) => Ref.set(active, state))
-  const requested = try gate.receive({ type: "openTerminal", ownerId: launch.ownerId, terminalKey: launch.terminalId }, launch.ownerId)
-  const epoch = requested.terminalEpoch
-  const process = try Effect.try({
-    try: () => startPty(launch, () => {
-      runFork(Effect.ignore(gate.send({ type: "observeTerminalExit", terminalKey: launch.terminalId, epoch }, "pty")))
-    }),
-    catch: () => new TerminalUnavailable({ terminalId: launch.terminalId }),
-  })
-  try gate.send({ type: "acknowledgeTerminal", terminalKey: launch.terminalId, epoch, started: true }, "pty")
-  return {
-    effect read(ownerId: string) {
-      const state = try gate.get()
-      try assertTerminalOwner(ownerId, launch)
-      const snapshot = try Effect.try({ try: process.snapshot, catch: () => new TerminalUnavailable({ terminalId: launch.terminalId }) })
-      return { phase: state.terminalPhase, epoch, ...snapshot }
-    },
-    effect write(ownerId: string, input: string) {
-      try assertTerminalOwner(ownerId, launch)
-      if (!terminalAcceptsInput(try gate.get(), launch.terminalId, epoch, ownerId)) throw new TerminalRequestRefused({ terminalId: launch.terminalId })
-      try Effect.try({ try: () => process.process.write(input), catch: () => new TerminalUnavailable({ terminalId: launch.terminalId }) })
-    },
-    effect resize(ownerId: string, columns: number, rows: number) {
-      try assertTerminalOwner(ownerId, launch)
-      if (!validSize(columns, rows) || !terminalAcceptsInput(try gate.get(), launch.terminalId, epoch, ownerId)) {
-        throw new TerminalRequestRefused({ terminalId: launch.terminalId })
-      }
-      try Effect.try({ try: () => process.process.resize(columns, rows), catch: () => new TerminalUnavailable({ terminalId: launch.terminalId }) })
-    },
-    effect close(ownerId: string) {
-      try assertTerminalOwner(ownerId, launch)
-      const state = try gate.get()
-      if (state.terminalPhase === "TerminalClosed") {
-        try Effect.try({ try: () => { process.dispose.dispose(); process.exit.dispose() }, catch: () => new TerminalUnavailable({ terminalId: launch.terminalId }) })
-        return
-      }
-      if (state.terminalPhase !== "TerminalClosing") try gate.send({ type: "closeTerminal", terminalKey: launch.terminalId, epoch }, ownerId)
-      try Effect.try({ try: () => process.process.kill(), catch: () => new TerminalUnavailable({ terminalId: launch.terminalId }) })
-    },
-  }
+export const ptyPlugin: PtyPlugin = {
+  name: "pty",
+  description: "Interactive PTY terminal service — real CLI (eliza-code on cerebras) in the web terminal",
+  services: [PtyService],
+  actions: [ptySessionAction],
+  routes: ptyRoutes,
+  async dispose(runtime) {
+    await runtime.getService<PtyService>(PtyService.serviceType)?.stop()
+  },
 }
 
-effect function assertTerminalOwner(ownerId: string, launch: TerminalLaunch) {
-  if (ownerId !== launch.ownerId) throw new TerminalRequestRefused({ terminalId: launch.terminalId })
-}
+export const plugin: PtyPlugin = ptyPlugin
+export default ptyPlugin
 
-function validSize(columns: number, rows: number) {
-  return Number.isSafeInteger(columns) && Number.isSafeInteger(rows) && columns > 0 && rows > 0 && columns <= 500 && rows <= 500
-}
+export {
+  buildElizaCodeCerebrasSpec,
+  ELIZA_CLOUD_DEFAULT_BASE_URL,
+  ELIZA_CLOUD_FAST_MODEL,
+  ELIZA_CLOUD_SMART_MODEL,
+  resetDevCloudEnvAuthorityForTests,
+  resolveElizaCodeBin,
+  resolveElizaCodeCloudTuple,
+  type DevCloudEnvAuthority,
+  type ElizaCodeCerebrasOptions,
+  type ElizaCodeCloudTuple,
+} from "./eliza-code-spec.vibe"
+export {
+  buildClaudeCliSpec,
+  buildCodexCliSpec,
+  resolveClaudeCliBin,
+  resolveCodexCliBin,
+  type ClaudeCliSpecOptions,
+  type CodexCliSpecOptions,
+  type PtyVendorCliKind,
+} from "./vendor-cli-spec.vibe"
+export { bunTruePtySpawn, isBunRuntime } from "./bun-pty-spawn.vibe"
+export { PtyService, resolveIdleTimeoutMs } from "./service.vibe"
+export {
+  defaultSpawnResolver,
+  formatBoundedTail,
+  PtyConsoleBridge,
+  PtySessionStore,
+  type PtySessionStoreOptions,
+  type PtySpawnResolver,
+  type PtyTimerHandle,
+} from "./session-store.vibe"
+export { ptyRoutes } from "./routes.vibe"
+export { ptySessionAction } from "./action.vibe"
+export type {
+  BoundedOutputOptions,
+  BoundedOutputResult,
+  ConsoleBridge,
+  PtyDisposable,
+  PtyHandle,
+  PtyPlugin,
+  PtyRoute,
+  PtyRouteContext,
+  PtyRouteResult,
+  PtySessionInfo,
+  PtySpawn,
+  PtySpawnSpec,
+  SendAndWaitOptions,
+  SendAndWaitResult,
+  SessionExitEvent,
+  SessionOutputEvent,
+} from "./types.vibe"

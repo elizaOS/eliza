@@ -1,0 +1,318 @@
+// spec/computerUse/approvals.md, "Story: Gate computer-use commands by approval mode and operator decisions"; spec/computerUse/approvals.md, "Approval policy maps mode and command risk to an unambiguous verdict"
+import {
+  apply as applyApproval,
+  evaluateApprovalPolicy,
+  initial as initialApprovalQueue,
+  type ApprovalMode as SpecApprovalMode,
+  type ApprovalQueue,
+  type CommandRisk,
+  type Event as ApprovalEvent,
+} from "../gen/computerUse__approvals.effect.vibe"
+import { createDeferredPromise } from "./platform-native.ts"
+import type { ApprovalMode, ApprovalResolution, ApprovalSnapshot, PendingApproval } from "./types.vibe"
+
+const READ_ONLY_COMMANDS = new Set<string>([
+  "screenshot",
+  "get_cursor_position",
+  "detect_elements",
+  "ocr",
+  "list_apps",
+  "app_list_apps",
+  "get_app_state",
+  "app_get_state",
+  "list_windows",
+  "list",
+  "get_current_window_id",
+  "get_application_windows",
+  "get_window_size",
+  "get_window_position",
+  "browser_screenshot",
+  "browser_dom",
+  "browser_get_dom",
+  "browser_clickables",
+  "browser_get_clickables",
+  "browser_state",
+  "browser_info",
+  "browser_context",
+  "browser_get_context",
+  "browser_list_tabs",
+  "file_read",
+  "file_exists",
+  "file_directory_exists",
+  "file_list_directory",
+  "file_get_file_size",
+  "file_read_bytes",
+  "file_list_downloads",
+  "terminal_read",
+])
+
+const DESTRUCTIVE_COMMANDS = new Set<string>([
+  "kill_app",
+  "close_window",
+  "close",
+  "file_delete",
+  "file_delete_directory",
+  "terminal_execute",
+  "browser_execute",
+])
+
+export function isApprovalMode(value: unknown): value is ApprovalMode {
+  return value === "full_control" || value === "smart_approve" || value === "approve_all" || value === "off"
+}
+
+export function toSpecApprovalMode(mode: ApprovalMode): SpecApprovalMode {
+  if (mode === "full_control") return "FullControl"
+  if (mode === "approve_all") return "ApproveAll"
+  if (mode === "off") return "Off"
+  return "SmartApprove"
+}
+
+export function fromSpecApprovalMode(mode: SpecApprovalMode): ApprovalMode {
+  if (mode === "FullControl") return "full_control"
+  if (mode === "ApproveAll") return "approve_all"
+  if (mode === "Off") return "off"
+  return "smart_approve"
+}
+
+export function classifyCommandRisk(command: string): CommandRisk {
+  if (READ_ONLY_COMMANDS.has(command)) return "ReadOnly"
+  if (DESTRUCTIVE_COMMANDS.has(command)) return "Destructive"
+  return "Mutating"
+}
+
+interface PendingEntry {
+  readonly numericId: number
+  readonly id: string
+  readonly command: string
+  readonly parameters: Record<string, unknown>
+  readonly requestedAt: string
+  readonly resolve: (resolution: ApprovalResolution) => void
+  readonly signal?: AbortSignal
+  readonly onAbort?: () => void
+}
+
+export type ApprovalListener = (snapshot: ApprovalSnapshot) => void
+
+export class ComputerUseApprovalManager {
+  private queueState: ApprovalQueue
+  private readonly pending = new Map<string, PendingEntry>()
+  private readonly listeners = new Set<ApprovalListener>()
+
+  constructor(initialMode: ApprovalMode = "smart_approve") {
+    this.queueState = initialApprovalQueue
+    if (initialMode !== "smart_approve") {
+      this.stepQueue({ type: "setMode", nextMode: toSpecApprovalMode(initialMode) })
+    }
+  }
+
+  getQueueState(): ApprovalQueue {
+    return this.queueState
+  }
+
+  stepQueue(event: ApprovalEvent): { readonly accepted: boolean; readonly state: ApprovalQueue } {
+    const result = Effect.runSync(
+      Effect.result(applyApproval(this.queueState, event)),
+    )
+    if (Result.isFailure(result)) {
+      return { accepted: false, state: this.queueState }
+    }
+    this.queueState = result.success
+    return { accepted: true, state: this.queueState }
+  }
+
+  getMode(): ApprovalMode {
+    return fromSpecApprovalMode(this.queueState.mode)
+  }
+
+  private cancelEntries(entries: readonly PendingEntry[], mode: ApprovalMode, reason?: string): void {
+    const resolvedAt = new Date().toISOString()
+    for (const entry of entries) {
+      if (entry.signal && entry.onAbort) {
+        entry.signal.removeEventListener("abort", entry.onAbort)
+      }
+      entry.resolve({
+        id: entry.id,
+        command: entry.command,
+        approved: false,
+        cancelled: true,
+        mode,
+        requestedAt: entry.requestedAt,
+        resolvedAt,
+        ...(reason ? { reason } : {}),
+      })
+    }
+  }
+
+  setMode(mode: ApprovalMode): ApprovalSnapshot {
+    const specMode = toSpecApprovalMode(mode)
+    if (specMode === this.queueState.mode) {
+      return this.getSnapshot()
+    }
+    const previousPending = [...this.pending.values()]
+    this.stepQueue({ type: "setMode", nextMode: specMode })
+    if (mode === "off") {
+      this.pending.clear()
+      this.cancelEntries(previousPending, "off", "Approval mode switched to off")
+    }
+    this.emit()
+    return this.getSnapshot()
+  }
+
+  evaluateCommand(command: string): "AutoApproved" | "NeedsApproval" | "AutoDenied" {
+    return evaluateApprovalPolicy(this.queueState.mode, classifyCommandRisk(command))
+  }
+
+  requestApproval(
+    command: string,
+    parameters: Record<string, unknown> = {},
+    signal?: AbortSignal,
+  ): Promise<ApprovalResolution> {
+    const risk = classifyCommandRisk(command)
+    const verdict = evaluateApprovalPolicy(this.queueState.mode, risk)
+    const requestedAt = new Date().toISOString()
+    if (verdict === "AutoApproved") {
+      return Promise.resolve({
+        id: `auto-${this.queueState.nextId}`,
+        command,
+        approved: true,
+        cancelled: false,
+        mode: this.getMode(),
+        requestedAt,
+        resolvedAt: requestedAt,
+      })
+    }
+    if (verdict === "AutoDenied") {
+      return Promise.resolve({
+        id: `denied-${this.queueState.nextId}`,
+        command,
+        approved: false,
+        cancelled: false,
+        mode: this.getMode(),
+        requestedAt,
+        resolvedAt: requestedAt,
+        reason: "Computer-use approval mode is off",
+      })
+    }
+    if (signal?.aborted) {
+      return Promise.resolve({
+        id: `cancelled-${this.queueState.nextId}`,
+        command,
+        approved: false,
+        cancelled: true,
+        mode: this.getMode(),
+        requestedAt,
+        resolvedAt: requestedAt,
+        reason: "approval request cancelled",
+      })
+    }
+    const assignedNumericId = this.queueState.nextId
+    const stepped = this.stepQueue({ type: "enqueueApproval", risk })
+    if (!stepped.accepted) {
+      return Promise.resolve({
+        id: `refused-${assignedNumericId}`,
+        command,
+        approved: false,
+        cancelled: false,
+        mode: this.getMode(),
+        requestedAt,
+        resolvedAt: requestedAt,
+        reason: "approval queue refused enqueue",
+      })
+    }
+    const id = `appr_${assignedNumericId}`
+    const deferred = createDeferredPromise<ApprovalResolution>()
+    const cancel = () => {
+      const entry = this.pending.get(id)
+      if (!entry) return
+      this.pending.delete(id)
+      this.stepQueue({ type: "cancelApproval", approvalId: entry.numericId })
+      deferred.resolve({
+        id,
+        command,
+        approved: false,
+        cancelled: true,
+        mode: this.getMode(),
+        requestedAt,
+        resolvedAt: new Date().toISOString(),
+        reason: "approval request cancelled",
+      })
+      this.emit()
+    }
+    const record: PendingEntry = {
+      numericId: assignedNumericId,
+      id,
+      command,
+      parameters,
+      requestedAt,
+      resolve: deferred.resolve,
+      ...(signal ? { signal, onAbort: cancel } : {}),
+    }
+    this.pending.set(id, record)
+    signal?.addEventListener("abort", cancel, { once: true })
+    this.emit()
+    return deferred.promise
+  }
+
+  resolveApproval(id: string, approved: boolean, reason?: string): ApprovalResolution | null {
+    const entry = this.pending.get(id)
+    if (!entry) return null
+    const stepped = this.stepQueue({ type: "resolveApproval", approvalId: entry.numericId, approved })
+    if (!stepped.accepted) return null
+    this.pending.delete(id)
+    if (entry.signal && entry.onAbort) {
+      entry.signal.removeEventListener("abort", entry.onAbort)
+    }
+    const resolvedAt = new Date().toISOString()
+    const resolution: ApprovalResolution = {
+      id: entry.id,
+      command: entry.command,
+      approved,
+      cancelled: false,
+      mode: this.getMode(),
+      requestedAt: entry.requestedAt,
+      resolvedAt,
+      ...(reason ? { reason } : {}),
+    }
+    entry.resolve(resolution)
+    this.emit()
+    return resolution
+  }
+
+  cancelAll(reason?: string): void {
+    if (this.pending.size === 0) return
+    const entries = [...this.pending.values()]
+    this.pending.clear()
+    this.stepQueue({ type: "cancelAllApprovals" })
+    this.cancelEntries(entries, this.getMode(), reason)
+    this.emit()
+  }
+
+  getSnapshot(): ApprovalSnapshot {
+    const pendingApprovals: PendingApproval[] = [...this.pending.values()].map((entry) => ({
+      id: entry.id,
+      command: entry.command,
+      parameters: entry.parameters,
+      requestedAt: entry.requestedAt,
+    }))
+    return {
+      mode: this.getMode(),
+      pendingCount: pendingApprovals.length,
+      pendingApprovals,
+    }
+  }
+
+  subscribe(listener: ApprovalListener): () => void {
+    this.listeners.add(listener)
+    listener(this.getSnapshot())
+    return () => {
+      this.listeners.delete(listener)
+    }
+  }
+
+  private emit(): void {
+    const snapshot = this.getSnapshot()
+    for (const listener of this.listeners) {
+      listener(snapshot)
+    }
+  }
+}

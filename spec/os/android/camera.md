@@ -163,6 +163,44 @@ signed 64-bit integer. Without a usable row, or on an earlier Android version,
 the saved photo is returned with its usual fields and no library id. A photo
 outside the gallery has no such id.
 
+```quint
+type SavedPhotoRow = { inGallery: bool, androidTenOrLater: bool, rowReadable: bool, volume: str, volumeLength: int, volumeCharsValid: bool, rowId: int, rowIdFitsInt64: bool }
+type LibraryIdResult = NoLibraryId | PhotoLibraryId({ volume: str, rowId: int })
+pure val maxLibraryVolumeLength = 80
+pure def validLibraryVolume(volume: str, volumeLength: int, volumeCharsValid: bool): bool =
+  volumeCharsValid and volumeLength >= 1 and volumeLength <= maxLibraryVolumeLength and volume != "internal" and volume != "external"
+pure def savedPhotoLibraryId(photo: SavedPhotoRow): LibraryIdResult =
+  if (photo.inGallery and photo.androidTenOrLater and photo.rowReadable and validLibraryVolume(photo.volume, photo.volumeLength, photo.volumeCharsValid) and photo.rowId > 0 and photo.rowIdFitsInt64)
+    PhotoLibraryId({ volume: photo.volume, rowId: photo.rowId })
+  else NoLibraryId
+pure val photoValues = Set(
+  { inGallery: true, androidTenOrLater: true, rowReadable: true, volume: "external_primary", volumeLength: 16, volumeCharsValid: true, rowId: 42, rowIdFitsInt64: true },
+  { inGallery: true, androidTenOrLater: true, rowReadable: true, volume: "external", volumeLength: 8, volumeCharsValid: true, rowId: 42, rowIdFitsInt64: true },
+  { inGallery: true, androidTenOrLater: true, rowReadable: true, volume: "internal", volumeLength: 8, volumeCharsValid: true, rowId: 42, rowIdFitsInt64: true },
+  { inGallery: true, androidTenOrLater: true, rowReadable: true, volume: "sd_card-1", volumeLength: 81, volumeCharsValid: true, rowId: 42, rowIdFitsInt64: true },
+  { inGallery: true, androidTenOrLater: true, rowReadable: true, volume: "bad/vol", volumeLength: 7, volumeCharsValid: false, rowId: 42, rowIdFitsInt64: true },
+  { inGallery: true, androidTenOrLater: true, rowReadable: true, volume: "external_primary", volumeLength: 16, volumeCharsValid: true, rowId: 0, rowIdFitsInt64: true },
+  { inGallery: true, androidTenOrLater: true, rowReadable: true, volume: "external_primary", volumeLength: 16, volumeCharsValid: true, rowId: 42, rowIdFitsInt64: false },
+  { inGallery: true, androidTenOrLater: false, rowReadable: true, volume: "external_primary", volumeLength: 16, volumeCharsValid: true, rowId: 42, rowIdFitsInt64: true },
+  { inGallery: true, androidTenOrLater: true, rowReadable: false, volume: "external_primary", volumeLength: 16, volumeCharsValid: true, rowId: 42, rowIdFitsInt64: true },
+  { inGallery: false, androidTenOrLater: true, rowReadable: true, volume: "external_primary", volumeLength: 16, volumeCharsValid: true, rowId: 42, rowIdFitsInt64: true }
+)
+pure def lawSavedPhotoLibraryIdNamesOnlyUsableGalleryRow(photo: SavedPhotoRow): bool = {
+  val choice = savedPhotoLibraryId(photo)
+  match choice {
+    | PhotoLibraryId(entry) =>
+        photo.inGallery and photo.androidTenOrLater and photo.rowReadable and
+        entry.volume == photo.volume and entry.rowId == photo.rowId and
+        validLibraryVolume(entry.volume, photo.volumeLength, photo.volumeCharsValid) and
+        entry.rowId > 0 and photo.rowIdFitsInt64
+    | NoLibraryId =>
+        not(photo.inGallery) or not(photo.androidTenOrLater) or not(photo.rowReadable) or
+        not(validLibraryVolume(photo.volume, photo.volumeLength, photo.volumeCharsValid)) or
+        photo.rowId <= 0 or not(photo.rowIdFitsInt64)
+  }
+}
+```
+
 ### While a recording runs, only one zoom or torch change runs at a time
 
 A running recording holds the slot, so a capture, a second recording start

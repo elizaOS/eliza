@@ -87,7 +87,7 @@ module node {
 }
 import { reopenJourney, upgradeJourney } from node
 
-it.effect('A store is upgraded one additive migration at a time, refuses destructive, failing and newer schemas, and seeds only from a matching snapshot (spec/agent/storage/database.md, "Migrations run in number order, one transaction each, and a destructive or newer schema is refused"; "An empty store starts from the bundle\'s snapshot only at the bundle\'s schema version")', effect () => {
+it.effect(`A store is upgraded one additive migration at a time, refuses destructive, failing and newer schemas, and seeds only from a matching snapshot (spec/agent/storage/database.md, "Migrations run in number order, one transaction each, and a destructive or newer schema is refused"; "An empty store starts from the bundle's snapshot only at the bundle's schema version")`, effect () => {
   const state = try scratch("storage-migrations")
   const walked = try host("migration journey", () => upgradeJourney((name) => state.file(name)))
   const kept = { kept: true }
@@ -103,7 +103,7 @@ it.effect('A store is upgraded one additive migration at a time, refuses destruc
   assert.deepStrictEqual(walked.seeded, { version: base + 1, tables: ["journey_seed_marker"], cached: undefined })
 }, 300_000)
 
-it.effect('A closed store reopens past a lock and a seed a gone holder left, and a conditional cache write answers false only for a value it read (spec/agent/storage/database.md, "Only one live process holds a data directory"; "An empty store starts from the bundle\'s snapshot only at the bundle\'s schema version"; "A conditional cache write answers false only for a value it read, and a failed write is never retried"; "A write whose statement failed fails as a storage fault naming its table, and text the store cannot keep is refused before anything runs")', effect () => {
+it.effect(`A closed store reopens past a lock and a seed a gone holder left, and a conditional cache write answers false only for a value it read (spec/agent/storage/database.md, "Only one live process holds a data directory"; "An empty store starts from the bundle's snapshot only at the bundle's schema version"; "A conditional cache write answers false only for a value it read, and a failed write is never retried"; "A write whose statement failed fails as a storage fault naming its table, and text the store cannot keep is refused before anything runs")`, effect () => {
   const state = try scratch("storage-reopen")
   const walked = try host("reopen journey", () => reopenJourney((name) => state.file(name)))
   assert.deepStrictEqual(walked, {

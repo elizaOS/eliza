@@ -75,8 +75,8 @@ lemma RemoveSourceOwnerParts(s: SourceRegistry, owner: string)
 {}
 
 lemma registerSource_ensures(s: SourceRegistry, owner: string, patch: SourcePatch)
-  ensures (inv(s) ==> canRegisterSource(s, owner, patch) ==> alwaysSourceOwnersUnique(registerSource(s, owner, patch)))
   ensures (inv(s) ==> canRegisterSource(s, owner, patch) ==> alwaysSourceCachesMatchOwners(registerSource(s, owner, patch)))
+  ensures (inv(s) ==> canRegisterSource(s, owner, patch) ==> alwaysSourceOwnersUnique(registerSource(s, owner, patch)))
   ensures (inv(s) ==> canRegisterSource(s, owner, patch) ==> alwaysAliasesUnique(registerSource(s, owner, patch)))
 {
   if inv(s) && canRegisterSource(s, owner, patch) {
@@ -104,8 +104,8 @@ lemma registerSource_ensures(s: SourceRegistry, owner: string, patch: SourcePatc
 }
 
 lemma removeSourceOwner_ensures(s: SourceRegistry, owner: string)
-  ensures (inv(s) ==> canRemoveSourceOwner(s, owner) ==> alwaysSourceOwnersUnique(removeSourceOwner(s, owner)))
   ensures (inv(s) ==> canRemoveSourceOwner(s, owner) ==> alwaysSourceCachesMatchOwners(removeSourceOwner(s, owner)))
+  ensures (inv(s) ==> canRemoveSourceOwner(s, owner) ==> alwaysSourceOwnersUnique(removeSourceOwner(s, owner)))
   ensures (inv(s) ==> canRemoveSourceOwner(s, owner) ==> alwaysAliasesUnique(removeSourceOwner(s, owner)))
 {
   if inv(s) && canRemoveSourceOwner(s, owner) {

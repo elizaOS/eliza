@@ -1,0 +1,1440 @@
+// spec/computerUse/index.md, "Terminating an app names one exact process and never the agent itself"; spec/computerUse/index.md, "A window command acts on the matched window with the host's own tool, or fails"; spec/computerUse/observation.md, "Change detection, image attachment policy, pixel budgets, and coordinate bounds obey pure safety laws"; spec/computerUse/index.md, "A command is scoped to one session generation, surface and authorized operation"
+import { hostWindowActionSupported, killTargetAllowed } from "../gen/computerUse.effect.vibe"
+import type { HostWindowAction, HostWindowTool } from "../gen/computerUse.ts"
+import { clampCoord, pointInDisplayBounds } from "../gen/computerUse__observation.effect.vibe"
+import {
+  base64ToBytes,
+  bytesToBase64,
+  clearCommandExistsCache,
+  commandExists,
+  currentPlatform,
+  findLocalBrowserExecutable,
+  getProcessEnvSnapshot,
+  isHeadfulGuiAvailable,
+  isWaylandSession,
+  makeTempFilePath,
+  ownProcessNames,
+  parseJsonSafe,
+  readFileBytesAndRemove,
+  runNativeCommand,
+  runNativeCommandBuffer,
+  runNativeCommandSync,
+  spawnDetachedApp,
+} from "./platform-native.ts"
+import { escapeAppleScript, safeXdotoolKey, sanitizeChildEnv, validateKeypress } from "./security.vibe"
+import type {
+  DisplayDescriptor,
+  PermissionType,
+  PlatformCapabilities,
+  PlatformOS,
+  ProcessInfo,
+  ScreenRegion,
+  ScreenSize,
+  WindowInfo,
+} from "./types.vibe"
+
+export { clearCommandExistsCache, commandExists, currentPlatform, isHeadfulGuiAvailable, isWaylandSession }
+
+export const NORMALIZED_COORD_MAX = 1000
+
+export type DriverName = "native" | "legacy"
+export type ParityStatus = "verified" | "code-parity" | "unavailable" | "blocked"
+
+export interface ParityNote {
+  readonly status: ParityStatus
+  readonly note?: string
+}
+
+export interface CapabilityDetectionOptions {
+  readonly osName: PlatformOS
+  readonly commandExists: (command: string) => boolean
+  readonly driverName?: DriverName
+  readonly isBrowserAvailable: () => boolean
+  readonly isWaylandSession?: () => boolean
+}
+
+export const DESKTOP_PARITY: Readonly<Record<PlatformOS, Readonly<Record<keyof PlatformCapabilities, ParityNote>>>> = {
+  linux: {
+    screenshot: { status: "verified" },
+    computerUse: { status: "verified" },
+    windowList: { status: "verified" },
+    browser: { status: "verified" },
+    terminal: { status: "verified" },
+    fileSystem: { status: "verified" },
+    clipboard: { status: "verified", note: "wl-clipboard / xclip / xsel" },
+  },
+  darwin: {
+    screenshot: { status: "code-parity", note: "screencapture (built-in)" },
+    computerUse: { status: "code-parity", note: "cliclick + AppleScript fallbacks" },
+    windowList: { status: "code-parity", note: "AppleScript System Events" },
+    browser: { status: "code-parity", note: "Chrome / Edge / Brave / Arc CDP" },
+    terminal: { status: "code-parity", note: "/bin/sh via execFile" },
+    fileSystem: { status: "verified" },
+    clipboard: { status: "code-parity", note: "pbpaste / pbcopy (built-in)" },
+  },
+  win32: {
+    screenshot: { status: "code-parity", note: "PowerShell System.Drawing" },
+    computerUse: { status: "code-parity", note: "PowerShell user32.dll" },
+    windowList: { status: "code-parity", note: "PowerShell Get-Process MainWindowTitle" },
+    browser: { status: "code-parity", note: "Chrome / Edge / Brave CDP" },
+    terminal: { status: "code-parity", note: "powershell.exe -NoProfile" },
+    fileSystem: { status: "verified" },
+    clipboard: { status: "code-parity", note: "PowerShell Get-Clipboard / Set-Clipboard" },
+  },
+}
+
+export function parityFor(osName: PlatformOS, capability: keyof PlatformCapabilities): ParityNote {
+  return DESKTOP_PARITY[osName][capability]
+}
+
+export function isBrowserAvailable(): boolean {
+  return findLocalBrowserExecutable() !== undefined
+}
+
+export function detectPlatformCapabilities(options: CapabilityDetectionOptions): PlatformCapabilities {
+  const wayland = options.isWaylandSession ? options.isWaylandSession() : isWaylandSession()
+  const browserAvail = options.isBrowserAvailable()
+  if (options.osName === "darwin") {
+    return {
+      screenshot: { available: true, tool: "screencapture" },
+      computerUse: options.commandExists("cliclick")
+        ? { available: true, tool: "cliclick" }
+        : { available: true, tool: "osascript" },
+      windowList: { available: true, tool: "osascript" },
+      browser: browserAvail ? { available: true, tool: "cdp" } : { available: false, tool: "none" },
+      terminal: { available: true, tool: "/bin/sh" },
+      fileSystem: { available: true, tool: "node:fs" },
+      clipboard: { available: true, tool: "pbcopy/pbpaste" },
+    }
+  }
+  if (options.osName === "win32") {
+    return {
+      screenshot: { available: true, tool: "powershell" },
+      computerUse: { available: true, tool: "powershell" },
+      windowList: { available: true, tool: "powershell" },
+      browser: browserAvail ? { available: true, tool: "cdp" } : { available: false, tool: "none" },
+      terminal: { available: true, tool: "powershell" },
+      fileSystem: { available: true, tool: "node:fs" },
+      clipboard: { available: true, tool: "powershell" },
+    }
+  }
+  const screenshotTool = wayland && options.commandExists("grim")
+    ? "grim"
+    : options.commandExists("scrot")
+      ? "scrot"
+      : options.commandExists("import")
+        ? "import"
+        : "none"
+  const inputTool = options.commandExists("xdotool")
+    ? "xdotool"
+    : options.commandExists("ydotool")
+      ? "ydotool"
+      : "none"
+  const windowTool = options.commandExists("wmctrl")
+    ? "wmctrl"
+    : options.commandExists("xdotool")
+      ? "xdotool"
+      : "none"
+  const clipboardTool = wayland && options.commandExists("wl-copy")
+    ? "wl-clipboard"
+    : options.commandExists("xclip")
+      ? "xclip"
+      : options.commandExists("xsel")
+        ? "xsel"
+        : "none"
+  return {
+    screenshot: { available: screenshotTool !== "none", tool: screenshotTool },
+    computerUse: { available: inputTool !== "none", tool: inputTool },
+    windowList: { available: windowTool !== "none", tool: windowTool },
+    browser: browserAvail ? { available: true, tool: "cdp" } : { available: false, tool: "none" },
+    terminal: { available: true, tool: "/bin/sh" },
+    fileSystem: { available: true, tool: "node:fs" },
+    clipboard: { available: clipboardTool !== "none", tool: clipboardTool },
+  }
+}
+
+export interface LocalPoint {
+  readonly displayId: number
+  readonly x: number
+  readonly y: number
+}
+
+export interface GlobalPoint {
+  readonly x: number
+  readonly y: number
+}
+
+export interface NormalizedPoint {
+  readonly x: number
+  readonly y: number
+}
+
+export interface NormalizedBox {
+  readonly x: number
+  readonly y: number
+  readonly width: number
+  readonly height: number
+}
+
+export function clampNormalized(value: number): number {
+  if (!Number.isFinite(value)) return 0
+  if (value <= 0) return 0
+  if (value >= NORMALIZED_COORD_MAX) return NORMALIZED_COORD_MAX
+  return Math.round(value)
+}
+
+export function toNormalized(x: number, y: number, screen: ScreenSize): NormalizedPoint {
+  const nx = screen.width > 0 ? Math.round((x / screen.width) * NORMALIZED_COORD_MAX) : 0
+  const ny = screen.height > 0 ? Math.round((y / screen.height) * NORMALIZED_COORD_MAX) : 0
+  return { x: clampNormalized(nx), y: clampNormalized(ny) }
+}
+
+export function fromNormalized(point: NormalizedPoint, screen: ScreenSize): GlobalPoint {
+  const px = screen.width > 0 ? Math.round((clampNormalized(point.x) / NORMALIZED_COORD_MAX) * screen.width) : 0
+  const py = screen.height > 0 ? Math.round((clampNormalized(point.y) / NORMALIZED_COORD_MAX) * screen.height) : 0
+  return {
+    x: clampCoord(px, Math.max(1, screen.width)),
+    y: clampCoord(py, Math.max(1, screen.height)),
+  }
+}
+
+export function boxToNormalized(box: ScreenRegion, screen: ScreenSize): NormalizedBox {
+  const topLeft = toNormalized(box.x, box.y, screen)
+  const bottomRight = toNormalized(box.x + box.width, box.y + box.height, screen)
+  return {
+    x: topLeft.x,
+    y: topLeft.y,
+    width: Math.max(0, bottomRight.x - topLeft.x),
+    height: Math.max(0, bottomRight.y - topLeft.y),
+  }
+}
+
+export function boxFromNormalized(box: NormalizedBox, screen: ScreenSize): ScreenRegion {
+  const topLeft = fromNormalized({ x: box.x, y: box.y }, screen)
+  const bottomRight = fromNormalized({ x: box.x + box.width, y: box.y + box.height }, screen)
+  return {
+    x: topLeft.x,
+    y: topLeft.y,
+    width: Math.max(1, bottomRight.x - topLeft.x),
+    height: Math.max(1, bottomRight.y - topLeft.y),
+  }
+}
+
+export function normalizedBoxCenter(box: NormalizedBox): NormalizedPoint {
+  return {
+    x: clampNormalized(box.x + Math.floor(box.width / 2)),
+    y: clampNormalized(box.y + Math.floor(box.height / 2)),
+  }
+}
+
+export function clampToDisplay(point: LocalPoint, display: DisplayDescriptor): LocalPoint {
+  return {
+    displayId: display.id,
+    x: clampCoord(Math.round(point.x), Math.max(1, display.bounds.width)),
+    y: clampCoord(Math.round(point.y), Math.max(1, display.bounds.height)),
+  }
+}
+
+export function localToGlobal(point: LocalPoint, display: DisplayDescriptor): GlobalPoint {
+  const clamped = clampToDisplay(point, display)
+  return {
+    x: display.bounds.x + clamped.x,
+    y: display.bounds.y + clamped.y,
+  }
+}
+
+export function localToGlobalDefault(x: number, y: number, displays: readonly DisplayDescriptor[], displayId?: number): GlobalPoint {
+  const target = (displayId !== undefined ? displays.find((d) => d.id === displayId) : undefined)
+    ?? displays.find((d) => d.primary)
+    ?? displays[0]
+  if (!target) return { x: Math.round(x), y: Math.round(y) }
+  return localToGlobal({ displayId: target.id, x, y }, target)
+}
+
+export function globalToLocal(point: GlobalPoint, displays: readonly DisplayDescriptor[]): LocalPoint | undefined {
+  for (const display of displays) {
+    const lx = Math.round(point.x) - display.bounds.x
+    const ly = Math.round(point.y) - display.bounds.y
+    if (pointInDisplayBounds(lx, ly, display.bounds.width, display.bounds.height)) {
+      return { displayId: display.id, x: lx, y: ly }
+    }
+  }
+  return undefined
+}
+
+export error NoDisplayError { reason: string }
+export error ClipboardUnavailableError { reason: string }
+export error PermissionDeniedError { permissionType: PermissionType; reason: string }
+export error ScreenshotError { code: ScreenshotErrorCode; reason: string }
+
+export type ScreenshotErrorCode =
+  | "permission_denied"
+  | "no_display"
+  | "tool_missing"
+  | "blank_capture"
+  | "capture_failed"
+
+export function classifyPermissionDeniedError(message: string): PermissionType | undefined {
+  const lower = message.toLowerCase()
+  if (lower.includes("assistive") || lower.includes("accessibility") || lower.includes("1002")) {
+    return "accessibility"
+  }
+  if (lower.includes("screen recording") || lower.includes("could not create image from display") || lower.includes("cgwindowlistcreateimage")) {
+    return "screen_recording"
+  }
+  if (lower.includes("microphone") || lower.includes("audio input")) {
+    return "microphone"
+  }
+  if (lower.includes("camera") || lower.includes("avcapture")) {
+    return "camera"
+  }
+  return undefined
+}
+
+export function classifyScreenshotErrorCode(message: string): ScreenshotErrorCode {
+  if (classifyPermissionDeniedError(message) === "screen_recording") return "permission_denied"
+  const lower = message.toLowerCase()
+  if (lower.includes("no display") || lower.includes("cannot open display")) return "no_display"
+  if (lower.includes("enoent") || lower.includes("not found")) return "tool_missing"
+  if (lower.includes("blank")) return "blank_capture"
+  return "capture_failed"
+}
+
+export interface ScreenshotQuality {
+  readonly width: number
+  readonly height: number
+  readonly byteLength: number
+  readonly isPng: boolean
+  readonly suspiciouslySmall: boolean
+}
+
+export function analyzePngScreenshot(bytes: Uint8Array): ScreenshotQuality {
+  const isPng = bytes.length >= 24
+    && bytes[0] === 0x89
+    && bytes[1] === 0x50
+    && bytes[2] === 0x4e
+    && bytes[3] === 0x47
+  const width = isPng
+    ? (((bytes[16] ?? 0) << 24) | ((bytes[17] ?? 0) << 16) | ((bytes[18] ?? 0) << 8) | (bytes[19] ?? 0)) >>> 0
+    : 0
+  const height = isPng
+    ? (((bytes[20] ?? 0) << 24) | ((bytes[21] ?? 0) << 16) | ((bytes[22] ?? 0) << 8) | (bytes[23] ?? 0)) >>> 0
+    : 0
+  return {
+    width,
+    height,
+    byteLength: bytes.length,
+    isPng,
+    suspiciouslySmall: bytes.length < 64,
+  }
+}
+
+export function screenshotQualityIssues(quality: ScreenshotQuality): string[] {
+  const issues: string[] = []
+  if (!quality.isPng) issues.push("Payload does not have a valid PNG signature")
+  if (quality.width === 0 || quality.height === 0) issues.push("PNG header reports zero dimensions")
+  if (quality.suspiciouslySmall) issues.push(`PNG payload is suspiciously small (${quality.byteLength} bytes)`)
+  return issues
+}
+
+export effect function assertScreenshotBase64NotBlank(base64: string): ScreenshotQuality!ScreenshotError {
+  const bytes = try Effect.try({
+    try: () => base64ToBytes(base64),
+    catch: (cause) => new ScreenshotError({ code: "blank_capture", reason: String(cause) }),
+  })
+  const quality = analyzePngScreenshot(bytes)
+  const issues = screenshotQualityIssues(quality)
+  if (issues.length > 0) {
+    throw new ScreenshotError({ code: "blank_capture", reason: issues.join("; ") })
+  }
+  return quality
+}
+
+export function parseXrandrMonitors(output: string): DisplayDescriptor[] {
+  const displays: DisplayDescriptor[] = []
+  const lines = output.split("\n")
+  let id = 0
+  for (const line of lines) {
+    const match = /^\s*(\d+):\s+\+(\*?)([^\s]+)\s+(\d+)\/\d+x(\d+)\/\d+\+(-?\d+)\+(-?\d+)/.exec(line)
+    if (!match) continue
+    displays.push({
+      id,
+      name: match[3] ?? `display-${id}`,
+      bounds: {
+        x: Number(match[6] ?? 0),
+        y: Number(match[7] ?? 0),
+        width: Number(match[4] ?? 1920),
+        height: Number(match[5] ?? 1080),
+      },
+      scaleFactor: 1,
+      primary: match[2] === "*",
+    })
+    id += 1
+  }
+  return displays
+}
+
+export function parseHyprlandMonitors(jsonText: string): DisplayDescriptor[] {
+  const parsed = parseJsonSafe(jsonText)
+  if (!Array.isArray(parsed)) return []
+  const out: DisplayDescriptor[] = []
+  for (let i = 0; i < parsed.length; i += 1) {
+    const item = parsed[i] as Record<string, unknown>
+    const width = typeof item.width === "number" ? item.width : 1920
+    const height = typeof item.height === "number" ? item.height : 1080
+    out.push({
+      id: typeof item.id === "number" ? item.id : i,
+      name: typeof item.name === "string" ? item.name : `hypr-${i}`,
+      bounds: {
+        x: typeof item.x === "number" ? item.x : 0,
+        y: typeof item.y === "number" ? item.y : 0,
+        width,
+        height,
+      },
+      scaleFactor: typeof item.scale === "number" && item.scale > 0 ? item.scale : 1,
+      primary: i === 0 || item.focused === true,
+    })
+  }
+  return out
+}
+
+export function parseSwayOutputs(jsonText: string): DisplayDescriptor[] {
+  const parsed = parseJsonSafe(jsonText)
+  if (!Array.isArray(parsed)) return []
+  const out: DisplayDescriptor[] = []
+  let idx = 0
+  for (const raw of parsed) {
+    const item = raw as Record<string, unknown>
+    if (item.active === false) continue
+    const rect = (item.rect ?? {}) as Record<string, unknown>
+    out.push({
+      id: idx,
+      name: typeof item.name === "string" ? item.name : `sway-${idx}`,
+      bounds: {
+        x: typeof rect.x === "number" ? rect.x : 0,
+        y: typeof rect.y === "number" ? rect.y : 0,
+        width: typeof rect.width === "number" ? rect.width : 1920,
+        height: typeof rect.height === "number" ? rect.height : 1080,
+      },
+      scaleFactor: typeof item.scale === "number" && item.scale > 0 ? item.scale : 1,
+      primary: item.primary === true || idx === 0,
+    })
+    idx += 1
+  }
+  return out
+}
+
+export function parseDarwinDisplays(jsonText: string): DisplayDescriptor[] {
+  const raw = parseJsonSafe(jsonText)
+  const parsed = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>
+  const gpus = Array.isArray(parsed.SPDisplaysDataType) ? parsed.SPDisplaysDataType : []
+  const out: DisplayDescriptor[] = []
+  let id = 0
+  for (const gpu of gpus) {
+    const ndrvs = (gpu as Record<string, unknown>).spdisplays_ndrvs
+    if (!Array.isArray(ndrvs)) continue
+    for (const raw of ndrvs) {
+      const disp = raw as Record<string, unknown>
+      const resStr = String(disp._spdisplays_resolution ?? disp.spdisplays_resolution ?? "")
+      const match = /(\d+)\s*x\s*(\d+)/i.exec(resStr)
+      const width = match ? Number(match[1]) : 1440
+      const height = match ? Number(match[2]) : 900
+      const isRetina = resStr.toLowerCase().includes("retina")
+      out.push({
+        id,
+        name: typeof disp._name === "string" ? disp._name : `Display ${id}`,
+        bounds: { x: id * width, y: 0, width, height },
+        scaleFactor: isRetina ? 2 : 1,
+        primary: disp.spdisplays_main === "spdisplays_yes" || id === 0,
+      })
+      id += 1
+    }
+  }
+  return out
+}
+
+export function listDisplays(): DisplayDescriptor[] {
+  const platform = currentPlatform()
+  const env = sanitizeChildEnv(getProcessEnvSnapshot())
+  if (platform === "darwin") {
+    const res = runNativeCommandSync("system_profiler", ["SPDisplaysDataType", "-json"], { timeoutMs: 4000, env })
+    const parsed = res.exitCode === 0 ? parseDarwinDisplays(res.stdout) : []
+    if (parsed.length > 0) return parsed
+  } else if (platform === "linux") {
+    if (commandExists("xrandr")) {
+      const res = runNativeCommandSync("xrandr", ["--listmonitors"], { timeoutMs: 3000, env })
+      const parsed = res.exitCode === 0 ? parseXrandrMonitors(res.stdout) : []
+      if (parsed.length > 0) return parsed
+    }
+  }
+  return [{
+    id: 0,
+    name: "Primary",
+    bounds: { x: 0, y: 0, width: 1440, height: 900 },
+    scaleFactor: 1,
+    primary: true,
+  }]
+}
+
+export function getPrimaryDisplay(displays: readonly DisplayDescriptor[] = listDisplays()): DisplayDescriptor {
+  return displays.find((d) => d.primary) ?? displays[0] ?? {
+    id: 0,
+    name: "Primary",
+    bounds: { x: 0, y: 0, width: 1440, height: 900 },
+    scaleFactor: 1,
+    primary: true,
+  }
+}
+
+export function findDisplay(displayId: number, displays: readonly DisplayDescriptor[] = listDisplays()): DisplayDescriptor | undefined {
+  return displays.find((d) => d.id === displayId)
+}
+
+export function isHeadless(): boolean {
+  return !isHeadfulGuiAvailable()
+}
+
+export function parsePsOutput(output: string): ProcessInfo[] {
+  const out: ProcessInfo[] = []
+  for (const rawLine of output.split("\n")) {
+    const line = rawLine.trim()
+    if (!line || /^PID\b/i.test(line)) continue
+    const match = /^(\d+)\s+(.+)$/.exec(line)
+    if (!match) continue
+    const pid = Number(match[1])
+    if (!Number.isSafeInteger(pid) || pid <= 0) continue
+    const cmd = (match[2] ?? "").trim()
+    const name = cmd.split("/").pop()?.split(/\s+/)[0] ?? cmd
+    out.push({ pid, name, command: cmd })
+  }
+  return out
+}
+
+export function parseWindowsProcessJson(jsonText: string): ProcessInfo[] {
+  const parsed = parseJsonSafe(jsonText) ?? []
+  const items = Array.isArray(parsed) ? parsed : parsed && typeof parsed === "object" ? [parsed] : []
+  const out: ProcessInfo[] = []
+  for (const item of items) {
+    const rec = item as Record<string, unknown>
+    const pid = typeof rec.Id === "number" ? rec.Id : typeof rec.pid === "number" ? rec.pid : 0
+    const name = typeof rec.ProcessName === "string" ? rec.ProcessName : typeof rec.name === "string" ? rec.name : ""
+    if (pid > 0 && name) out.push({ pid, name })
+  }
+  return out
+}
+
+export function listProcesses(): ProcessInfo[] {
+  const env = sanitizeChildEnv(getProcessEnvSnapshot())
+  if (currentPlatform() === "win32") {
+    const res = runNativeCommandSync("powershell.exe", ["-NoProfile", "-Command", "Get-Process | Select-Object Id,ProcessName | ConvertTo-Json"], { timeoutMs: 5000, env })
+    return res.exitCode === 0 ? parseWindowsProcessJson(res.stdout) : []
+  }
+  const res = runNativeCommandSync("ps", ["-eo", "pid=,comm="], { timeoutMs: 3000, env })
+  return res.exitCode === 0 ? parsePsOutput(res.stdout) : []
+}
+
+export function parseDarwinWindowOutput(output: string): WindowInfo[] {
+  const windows: WindowInfo[] = []
+  let idx = 0
+  for (const line of output.split("\n")) {
+    const trimmed = line.trim()
+    if (!trimmed) continue
+    const parts = trimmed.split("\t")
+    if (parts.length < 2) continue
+    const app = (parts[0] ?? "").trim()
+    const title = (parts[1] ?? "").trim()
+    const id = (parts[2] ?? `win-${idx}`).trim() || `win-${idx}`
+    const pidNum = parts[3] ? Number(parts[3]) : undefined
+    windows.push({
+      id,
+      app,
+      title,
+      ...(pidNum && Number.isSafeInteger(pidNum) ? { pid: pidNum } : {}),
+      displayId: 0,
+      focused: idx === 0,
+    })
+    idx += 1
+  }
+  return windows
+}
+
+export function parseWindowsWindowList(jsonText: string): WindowInfo[] {
+  const parsed = parseJsonSafe(jsonText) ?? []
+  const items = Array.isArray(parsed) ? parsed : parsed && typeof parsed === "object" ? [parsed] : []
+  const windows: WindowInfo[] = []
+  for (let i = 0; i < items.length; i += 1) {
+    const rec = items[i] as Record<string, unknown>
+    const title = typeof rec.MainWindowTitle === "string" ? rec.MainWindowTitle.trim() : typeof rec.title === "string" ? rec.title.trim() : ""
+    const app = typeof rec.ProcessName === "string" ? rec.ProcessName.trim() : typeof rec.app === "string" ? rec.app.trim() : ""
+    if (!title && !app) continue
+    const id = String(rec.MainWindowHandle ?? rec.id ?? `win-${i}`)
+    const pid = typeof rec.Id === "number" ? rec.Id : undefined
+    windows.push({ id, title: title || app, app: app || title, ...(pid ? { pid } : {}), displayId: 0 })
+  }
+  return windows
+}
+
+export function findWindowsByQuery(
+  windows: readonly WindowInfo[],
+  query: { readonly windowId?: string; readonly windowTitle?: string; readonly appName?: string },
+): WindowInfo[] {
+  if (query.windowId) {
+    const exact = windows.filter((w) => w.id === query.windowId)
+    if (exact.length > 0) return exact
+  }
+  const titleNeedle = query.windowTitle?.trim().toLowerCase()
+  const appNeedle = query.appName?.trim().toLowerCase()
+  return windows.filter((w) => {
+    const titleMatch = !titleNeedle || w.title.toLowerCase().includes(titleNeedle) || w.app.toLowerCase().includes(titleNeedle)
+    const appMatch = !appNeedle || w.app.toLowerCase().includes(appNeedle)
+    return titleMatch && appMatch
+  })
+}
+
+export function listDesktopWindows(): WindowInfo[] {
+  const platform = currentPlatform()
+  const env = sanitizeChildEnv(getProcessEnvSnapshot())
+  if (platform === "darwin") {
+    const script = [
+      "tell application \"System Events\"",
+      "set outText to \"\"",
+      "repeat with p in (application processes whose visible is true)",
+      "  set appName to name of p",
+      "  set appPid to unix id of p",
+      "  repeat with w in windows of p",
+      "    set winName to name of w",
+      "    set outText to outText & appName & tab & winName & tab & appName & \":\" & winName & tab & appPid & linefeed",
+      "  end repeat",
+      "end repeat",
+      "return outText",
+      "end tell",
+    ].join("\n")
+    const res = runNativeCommandSync("osascript", ["-e", script], { timeoutMs: 4000, env })
+    return res.exitCode === 0 ? parseDarwinWindowOutput(res.stdout) : []
+  }
+  if (platform === "win32") {
+    const res = runNativeCommandSync(
+      "powershell.exe",
+      ["-NoProfile", "-Command", "Get-Process | Where-Object {$_.MainWindowTitle} | Select-Object Id,ProcessName,MainWindowTitle,MainWindowHandle | ConvertTo-Json"],
+      { timeoutMs: 5000, env },
+    )
+    return res.exitCode === 0 ? parseWindowsWindowList(res.stdout) : []
+  }
+  if (commandExists("wmctrl")) {
+    const res = runNativeCommandSync("wmctrl", ["-lp"], { timeoutMs: 3000, env })
+    if (res.exitCode === 0) {
+      return res.stdout.split("\n").filter((l) => l.trim().length > 0).map((line, idx) => {
+        const parts = line.trim().split(/\s+/)
+        const id = parts[0] ?? `win-${idx}`
+        const pid = Number(parts[2] ?? 0)
+        const title = parts.slice(4).join(" ")
+        return { id, app: parts[3] ?? "window", title: title || id, ...(pid > 0 ? { pid } : {}), displayId: 0 }
+      })
+    }
+  }
+  return []
+}
+
+effect function nativePlatform(): PlatformOS!! {
+  return try Effect.orDie(Effect.try({ try: () => currentPlatform(), catch: (e) => e }))
+}
+
+effect function nativeCleanEnv(): Record<string, string>!! {
+  const snapshot = try Effect.orDie(Effect.try({ try: () => getProcessEnvSnapshot(), catch: (e) => e }))
+  return sanitizeChildEnv(snapshot)
+}
+
+effect function nativeHasCommand(cmd: string): boolean!! {
+  return try Effect.orDie(Effect.try({ try: () => commandExists(cmd), catch: (e) => e }))
+}
+
+effect function nativeIsWayland(): boolean!! {
+  return try Effect.orDie(Effect.try({ try: () => isWaylandSession(), catch: (e) => e }))
+}
+
+effect function nativeTempPath(prefix: string, ext: string): string!! {
+  return try Effect.orDie(Effect.try({ try: () => makeTempFilePath(prefix, ext), catch: (e) => e }))
+}
+
+effect function nativeEncodeBase64(bytes: Uint8Array): string!! {
+  return try Effect.orDie(Effect.try({ try: () => bytesToBase64(bytes), catch: (e) => e }))
+}
+
+effect function runClipboardCommand(mode: "read" | "write", text?: string): string!ClipboardUnavailableError {
+  const platform = try nativePlatform()
+  const env = try nativeCleanEnv()
+  const isRead = mode === "read"
+  const opts = text !== undefined ? { timeoutMs: 4000, env, input: text } : { timeoutMs: 4000, env }
+  const cmd = platform === "darwin"
+    ? { bin: isRead ? "pbpaste" : "pbcopy", args: [] as string[] }
+    : platform === "win32"
+      ? { bin: "powershell.exe", args: ["-NoProfile", "-Command", isRead ? "Get-Clipboard" : "Set-Clipboard -Value ([Console]::In.ReadToEnd())"] }
+      : (try nativeHasCommand(isRead ? "wl-paste" : "wl-copy"))
+        ? { bin: isRead ? "wl-paste" : "wl-copy", args: isRead ? ["--no-newline"] : [] }
+        : (try nativeHasCommand("xclip"))
+          ? { bin: "xclip", args: isRead ? ["-selection", "clipboard", "-o"] : ["-selection", "clipboard"] }
+          : undefined
+  if (!cmd) {
+    throw new ClipboardUnavailableError({ reason: "No host clipboard tool available" })
+  }
+  const res = try promise(() => runNativeCommand(cmd.bin, cmd.args, opts))
+  if (res.exitCode !== 0) {
+    throw new ClipboardUnavailableError({ reason: res.stderr || `Clipboard ${mode} failed` })
+  }
+  return res.stdout
+}
+
+export effect function readHostClipboard(): string!ClipboardUnavailableError {
+  return try runClipboardCommand("read")
+}
+
+export effect function writeHostClipboard(text: string): void!ClipboardUnavailableError {
+  try runClipboardCommand("write", text)
+}
+
+export interface DisplayCapture {
+  readonly displayId: number
+  readonly width: number
+  readonly height: number
+  readonly scaleFactor: number
+  readonly pngBase64: string
+  readonly capturedAt: number
+}
+
+effect function captureTempPng(
+  bin: string,
+  args: readonly string[],
+  tmpPath: string,
+  env: Record<string, string>,
+): string!ScreenshotError {
+  const res = try promise(() => runNativeCommand(bin, args, { timeoutMs: 10_000, env }))
+  if (res.exitCode !== 0) {
+    throw new ScreenshotError({ code: classifyScreenshotErrorCode(res.stderr), reason: res.stderr || `${bin} failed` })
+  }
+  const bytes = try tryPromise({
+    try: () => readFileBytesAndRemove(tmpPath),
+    catch: (cause) => new ScreenshotError({ code: "capture_failed", reason: String(cause) }),
+  })
+  return try nativeEncodeBase64(bytes)
+}
+
+export effect function captureDesktopScreenshot(region?: ScreenRegion): string!ScreenshotError {
+  const platform = try nativePlatform()
+  const env = try nativeCleanEnv()
+  if (platform === "darwin") {
+    const tmpPath = try nativeTempPath("eliza-shot", ".png")
+    const args = region
+      ? ["-x", "-t", "png", "-R", `${Math.round(region.x)},${Math.round(region.y)},${Math.max(1, Math.round(region.width))},${Math.max(1, Math.round(region.height))}`, tmpPath]
+      : ["-x", "-t", "png", tmpPath]
+    return try captureTempPng("screencapture", args, tmpPath, env)
+  }
+  if (platform === "linux") {
+    if ((try nativeIsWayland()) && (try nativeHasCommand("grim"))) {
+      const args = region
+        ? ["-g", `${Math.round(region.x)},${Math.round(region.y)} ${Math.max(1, Math.round(region.width))}x${Math.max(1, Math.round(region.height))}`, "-"]
+        : ["-"]
+      const res = try promise(() => runNativeCommandBuffer("grim", args, { timeoutMs: 10_000, env }))
+      if (res.exitCode !== 0) {
+        throw new ScreenshotError({ code: classifyScreenshotErrorCode(res.stderr), reason: res.stderr || "grim failed" })
+      }
+      return try nativeEncodeBase64(res.stdout)
+    }
+    if (try nativeHasCommand("scrot")) {
+      const tmpPath = try nativeTempPath("eliza-shot", ".png")
+      return try captureTempPng("scrot", [tmpPath], tmpPath, env)
+    }
+  }
+  throw new ScreenshotError({ code: "tool_missing", reason: `Screenshot capture unavailable on ${platform}` })
+}
+
+export effect function captureDisplay(displayId: number): DisplayCapture!ScreenshotError {
+  const displays = listDisplays()
+  const display = findDisplay(displayId, displays) ?? getPrimaryDisplay(displays)
+  const pngBase64 = try captureDesktopScreenshot(display.bounds)
+  return {
+    displayId: display.id,
+    width: display.bounds.width,
+    height: display.bounds.height,
+    scaleFactor: display.scaleFactor,
+    pngBase64,
+    capturedAt: Date.now(),
+  }
+}
+
+export effect function captureAllDisplays(): DisplayCapture[]!ScreenshotError {
+  const displays = listDisplays()
+  const out: DisplayCapture[] = []
+  for (const display of displays) {
+    out.push(try captureDisplay(display.id))
+  }
+  return out
+}
+
+export type DesktopInputButton = "left" | "middle" | "right"
+
+const DARWIN_KEY_CODES: Readonly<Record<string, number>> = {
+  return: 36,
+  enter: 36,
+  tab: 48,
+  space: 49,
+  backspace: 51,
+  delete: 51,
+  forwarddelete: 117,
+  escape: 53,
+  esc: 53,
+  left: 123,
+  right: 124,
+  down: 125,
+  up: 126,
+  home: 115,
+  end: 119,
+  pageup: 116,
+  pagedown: 121,
+  f1: 122,
+  f2: 120,
+  f3: 99,
+  f4: 118,
+  f5: 96,
+  f6: 97,
+  f7: 98,
+  f8: 100,
+  f9: 101,
+  f10: 109,
+  f11: 103,
+  f12: 111,
+}
+
+const DARWIN_MODIFIER_CLAUSE: Readonly<Record<string, string>> = {
+  cmd: "command down",
+  command: "command down",
+  meta: "command down",
+  super: "command down",
+  ctrl: "control down",
+  control: "control down",
+  alt: "option down",
+  option: "option down",
+  shift: "shift down",
+}
+
+const CLICLICK_MODIFIER_NAME: Readonly<Record<string, string>> = {
+  cmd: "cmd",
+  command: "cmd",
+  meta: "cmd",
+  super: "cmd",
+  ctrl: "ctrl",
+  control: "ctrl",
+  alt: "alt",
+  option: "alt",
+  shift: "shift",
+}
+
+export function buildDarwinKeyScript(keySpec: string): string {
+  const tokens = keySpec.split("+").map((t) => t.trim()).filter((t) => t.length > 0)
+  const modifiers: string[] = []
+  let primary = ""
+  for (let i = 0; i < tokens.length; i += 1) {
+    const token = tokens[i] ?? ""
+    const lower = token.toLowerCase()
+    if (i < tokens.length - 1 && DARWIN_MODIFIER_CLAUSE[lower]) {
+      modifiers.push(DARWIN_MODIFIER_CLAUSE[lower])
+    } else {
+      primary = token
+    }
+  }
+  const usingClause = modifiers.length > 0 ? ` using {${modifiers.join(", ")}}` : ""
+  const code = DARWIN_KEY_CODES[primary.toLowerCase()]
+  if (code !== undefined) {
+    return `tell application "System Events" to key code ${code}${usingClause}`
+  }
+  return `tell application "System Events" to keystroke "${escapeAppleScript(primary)}"${usingClause}`
+}
+
+effect function runCheckedInputTool(
+  tool: string,
+  args: readonly string[],
+  opts: {
+    readonly env: Record<string, string>
+    readonly requireCmd?: boolean
+    readonly missingReason?: string
+    readonly failLabel: string
+    readonly darwinClassify?: boolean
+    readonly timeoutMs?: number
+  },
+): void!PermissionDeniedError {
+  if (opts.requireCmd && !(try nativeHasCommand(tool))) {
+    throw new PermissionDeniedError({
+      permissionType: "accessibility",
+      reason: opts.missingReason ?? `${tool} is required`,
+    })
+  }
+  const res = try promise(() => runNativeCommand(tool, args, { timeoutMs: opts.timeoutMs ?? 5000, env: opts.env }))
+  if (res.exitCode !== 0) {
+    const permissionType = opts.darwinClassify
+      ? (classifyPermissionDeniedError(res.stderr) ?? "accessibility")
+      : "accessibility"
+    throw new PermissionDeniedError({ permissionType, reason: res.stderr || `${opts.failLabel} failed` })
+  }
+}
+
+function xdotoolButtonCode(button: DesktopInputButton): string {
+  return button === "right" ? "3" : button === "middle" ? "2" : "1"
+}
+
+function winMouseFlags(button: DesktopInputButton): { readonly down: string; readonly up: string } {
+  if (button === "right") return { down: "0x0008", up: "0x0010" }
+  if (button === "middle") return { down: "0x0020", up: "0x0040" }
+  return { down: "0x0002", up: "0x0004" }
+}
+
+effect function runWinMouseEvents(
+  rx: number,
+  ry: number,
+  events: readonly { readonly flag: string; readonly data?: number }[],
+  failLabel: string,
+  env: Record<string, string>,
+): void!PermissionDeniedError {
+  const calls = events.map((e) => `[Cua.U32]::mouse_event(${e.flag},0,0,${e.data ?? 0},0)`).join("; ")
+  const ps = `Add-Type -MemberDefinition '[DllImport("user32.dll")] public static extern bool SetCursorPos(int x,int y); [DllImport("user32.dll")] public static extern void mouse_event(int f,int dx,int dy,int d,int e);' -Name U32 -Namespace Cua; [Cua.U32]::SetCursorPos(${rx},${ry})${calls ? `; ${calls}` : ""}`
+  try runCheckedInputTool("powershell.exe", ["-NoProfile", "-Command", ps], { env, failLabel, timeoutMs: 6000 })
+}
+
+effect function runWinSendKeys(payload: string, failLabel: string, env: Record<string, string>): void!PermissionDeniedError {
+  const escaped = payload.replaceAll("'", "''")
+  const ps = `Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('${escaped}')`
+  try runCheckedInputTool("powershell.exe", ["-NoProfile", "-Command", ps], { env, failLabel })
+}
+
+export effect function performDesktopClick(x: number, y: number, button: DesktopInputButton = "left"): void!PermissionDeniedError {
+  const platform = try nativePlatform()
+  const env = try nativeCleanEnv()
+  const rx = Math.round(x)
+  const ry = Math.round(y)
+  if (platform === "darwin") {
+    const verb = button === "right" ? "rc" : button === "middle" ? "mc" : "c"
+    try runCheckedInputTool("cliclick", [`${verb}:${rx},${ry}`], {
+      env,
+      requireCmd: true,
+      missingReason: "cliclick is required for macOS pointer clicks",
+      failLabel: "cliclick",
+      darwinClassify: true,
+    })
+    return
+  }
+  if (platform === "linux") {
+    try runCheckedInputTool("xdotool", ["mousemove", String(rx), String(ry), "click", xdotoolButtonCode(button)], {
+      env,
+      requireCmd: true,
+      missingReason: "xdotool is required for Linux pointer clicks",
+      failLabel: "xdotool click",
+    })
+    return
+  }
+  const flags = winMouseFlags(button)
+  try runWinMouseEvents(rx, ry, [{ flag: flags.down }, { flag: flags.up }], "PowerShell click", env)
+}
+
+export effect function performDesktopClickWithModifiers(
+  x: number,
+  y: number,
+  modifiers: readonly string[],
+): void!PermissionDeniedError {
+  const platform = try nativePlatform()
+  const env = try nativeCleanEnv()
+  const rx = Math.round(x)
+  const ry = Math.round(y)
+  if (platform === "darwin") {
+    const mapped = modifiers.map((m) => CLICLICK_MODIFIER_NAME[m.trim().toLowerCase()]).filter((m): m is string => m !== undefined)
+    const args = mapped.length > 0 ? [`kd:${mapped.join(",")}`, `c:${rx},${ry}`, `ku:${mapped.join(",")}`] : [`c:${rx},${ry}`]
+    try runCheckedInputTool("cliclick", args, {
+      env,
+      requireCmd: true,
+      missingReason: "cliclick is required for macOS modifier clicks",
+      failLabel: "cliclick modifier click",
+      darwinClassify: true,
+    })
+    return
+  }
+  if (platform === "linux") {
+    const keys = modifiers.map(safeXdotoolKey)
+    const args: string[] = ["mousemove", String(rx), String(ry)]
+    for (const k of keys) args.push("keydown", k)
+    args.push("click", "1")
+    for (const k of [...keys].reverse()) args.push("keyup", k)
+    try runCheckedInputTool("xdotool", args, {
+      env,
+      requireCmd: true,
+      missingReason: "xdotool is required for Linux modifier clicks",
+      failLabel: "xdotool modifier click",
+    })
+    return
+  }
+  try performDesktopClick(rx, ry, "left")
+}
+
+effect function performDesktopMouseButton(
+  x: number,
+  y: number,
+  edge: "down" | "up",
+  button: DesktopInputButton = "left",
+): void!PermissionDeniedError {
+  const platform = try nativePlatform()
+  const env = try nativeCleanEnv()
+  const rx = Math.round(x)
+  const ry = Math.round(y)
+  if (platform === "darwin") {
+    try runCheckedInputTool("cliclick", [`${edge === "down" ? "dd" : "du"}:${rx},${ry}`], {
+      env,
+      requireCmd: true,
+      missingReason: `cliclick is required for macOS mouse_${edge}`,
+      failLabel: `cliclick mouse_${edge}`,
+      darwinClassify: true,
+    })
+    return
+  }
+  if (platform === "linux") {
+    try runCheckedInputTool("xdotool", ["mousemove", String(rx), String(ry), `mouse${edge}`, xdotoolButtonCode(button)], {
+      env,
+      requireCmd: true,
+      missingReason: `xdotool is required for Linux mouse_${edge}`,
+      failLabel: `xdotool mouse${edge}`,
+    })
+    return
+  }
+  const flags = winMouseFlags(button)
+  try runWinMouseEvents(rx, ry, [{ flag: edge === "down" ? flags.down : flags.up }], `PowerShell mouse_${edge}`, env)
+}
+
+export effect function performDesktopMouseDown(x: number, y: number, button: DesktopInputButton = "left"): void!PermissionDeniedError {
+  try performDesktopMouseButton(x, y, "down", button)
+}
+
+export effect function performDesktopMouseUp(x: number, y: number, button: DesktopInputButton = "left"): void!PermissionDeniedError {
+  try performDesktopMouseButton(x, y, "up", button)
+}
+
+export effect function performDesktopDragPath(
+  waypoints: readonly (readonly [number, number])[],
+  button: DesktopInputButton = "left",
+): void!PermissionDeniedError {
+  if (waypoints.length < 2) {
+    throw new PermissionDeniedError({ permissionType: "accessibility", reason: "drag requires at least 2 waypoints" })
+  }
+  const platform = try nativePlatform()
+  const env = try nativeCleanEnv()
+  const first = waypoints[0]
+  const last = waypoints[waypoints.length - 1]
+  if (!first || !last) return
+  if (platform === "darwin") {
+    const args: string[] = [`dd:${Math.round(first[0])},${Math.round(first[1])}`]
+    for (let i = 1; i < waypoints.length - 1; i += 1) {
+      const pt = waypoints[i]
+      if (pt) args.push(`dm:${Math.round(pt[0])},${Math.round(pt[1])}`)
+    }
+    args.push(`du:${Math.round(last[0])},${Math.round(last[1])}`)
+    try runCheckedInputTool("cliclick", args, {
+      env,
+      requireCmd: true,
+      missingReason: "cliclick is required for macOS drag",
+      failLabel: "cliclick drag",
+      darwinClassify: true,
+      timeoutMs: 8000,
+    })
+    return
+  }
+  if (platform === "linux") {
+    const btn = xdotoolButtonCode(button)
+    const args: string[] = ["mousemove", String(Math.round(first[0])), String(Math.round(first[1])), "mousedown", btn]
+    for (let i = 1; i < waypoints.length; i += 1) {
+      const pt = waypoints[i]
+      if (pt) args.push("mousemove", String(Math.round(pt[0])), String(Math.round(pt[1])))
+    }
+    args.push("mouseup", btn)
+    try runCheckedInputTool("xdotool", args, {
+      env,
+      requireCmd: true,
+      missingReason: "xdotool is required for Linux drag",
+      failLabel: "xdotool drag",
+      timeoutMs: 8000,
+    })
+    return
+  }
+  try performDesktopMouseDown(first[0], first[1], button)
+  for (let i = 1; i < waypoints.length - 1; i += 1) {
+    const pt = waypoints[i]
+    if (pt) try performDesktopMouseMove(pt[0], pt[1])
+  }
+  try performDesktopMouseUp(last[0], last[1], button)
+}
+
+export effect function performDesktopDoubleClick(x: number, y: number): void!PermissionDeniedError {
+  const platform = try nativePlatform()
+  const env = try nativeCleanEnv()
+  const rx = Math.round(x)
+  const ry = Math.round(y)
+  if (platform === "darwin") {
+    try runCheckedInputTool("cliclick", [`dc:${rx},${ry}`], {
+      env,
+      requireCmd: true,
+      missingReason: "cliclick is required for macOS double click",
+      failLabel: "cliclick double click",
+      darwinClassify: true,
+    })
+    return
+  }
+  if (platform === "linux") {
+    try runCheckedInputTool("xdotool", ["mousemove", String(rx), String(ry), "click", "--repeat", "2", "1"], {
+      env,
+      requireCmd: true,
+      missingReason: "xdotool is required for Linux double click",
+      failLabel: "xdotool double click",
+    })
+    return
+  }
+  try performDesktopClick(rx, ry, "left")
+  try performDesktopClick(rx, ry, "left")
+}
+
+export effect function performDesktopMouseMove(x: number, y: number): void!PermissionDeniedError {
+  const platform = try nativePlatform()
+  const env = try nativeCleanEnv()
+  const rx = Math.round(x)
+  const ry = Math.round(y)
+  if (platform === "darwin") {
+    try runCheckedInputTool("cliclick", [`m:${rx},${ry}`], {
+      env,
+      requireCmd: true,
+      missingReason: "cliclick is required for macOS mouse_move",
+      failLabel: "cliclick move",
+      darwinClassify: true,
+    })
+    return
+  }
+  if (platform === "linux") {
+    try runCheckedInputTool("xdotool", ["mousemove", String(rx), String(ry)], {
+      env,
+      requireCmd: true,
+      missingReason: "xdotool is required for Linux mouse_move",
+      failLabel: "xdotool move",
+    })
+    return
+  }
+  try runWinMouseEvents(rx, ry, [], "PowerShell mouse_move", env)
+}
+
+export effect function performDesktopScroll(x: number, y: number, direction: "up" | "down" | "left" | "right", amount = 3): void!PermissionDeniedError {
+  const platform = try nativePlatform()
+  const env = try nativeCleanEnv()
+  const clicks = Math.max(1, Math.round(amount))
+  if (platform === "darwin") {
+    const dy = direction === "up" ? clicks : direction === "down" ? -clicks : 0
+    const dx = direction === "left" ? clicks : direction === "right" ? -clicks : 0
+    const jxa = `ObjC.import('CoreGraphics'); var p = $.CGPointMake(${Math.round(x)}, ${Math.round(y)}); var mv = $.CGEventCreateMouseEvent(null, $.kCGEventMouseMoved, p, $.kCGMouseButtonLeft); $.CGEventPost($.kCGHIDEventTap, mv); var ev = $.CGEventCreateScrollWheelEvent(null, $.kCGScrollEventUnitLine, 2, ${dy}, ${dx}); $.CGEventPost($.kCGHIDEventTap, ev);`
+    try runCheckedInputTool("osascript", ["-l", "JavaScript", "-e", jxa], { env, failLabel: "macOS scroll", darwinClassify: true })
+    return
+  }
+  if (platform === "linux") {
+    try performDesktopMouseMove(x, y)
+    const btn = direction === "up" ? "4" : direction === "down" ? "5" : direction === "left" ? "6" : "7"
+    try runCheckedInputTool("xdotool", ["click", "--repeat", String(clicks), btn], {
+      env,
+      requireCmd: true,
+      missingReason: "xdotool is required for Linux scroll",
+      failLabel: "xdotool scroll",
+    })
+    return
+  }
+  const flag = direction === "left" || direction === "right" ? "0x01000" : "0x0800"
+  const delta = (direction === "up" || direction === "right" ? 120 : -120) * clicks
+  try runWinMouseEvents(Math.round(x), Math.round(y), [{ flag, data: delta }], "PowerShell scroll", env)
+}
+
+export effect function performDesktopTextInput(text: string): void!PermissionDeniedError {
+  const platform = try nativePlatform()
+  const env = try nativeCleanEnv()
+  if (platform === "darwin") {
+    const script = `tell application "System Events" to keystroke "${escapeAppleScript(text)}"`
+    try runCheckedInputTool("osascript", ["-e", script], { env, failLabel: "osascript keystroke", darwinClassify: true })
+    return
+  }
+  if (platform === "linux") {
+    try runCheckedInputTool("xdotool", ["type", "--clearmodifiers", "--", text], {
+      env,
+      requireCmd: true,
+      missingReason: "xdotool is required for Linux text input",
+      failLabel: "xdotool type",
+    })
+    return
+  }
+  try runWinSendKeys(text, "PowerShell text input", env)
+}
+
+export effect function performDesktopKeypress(key: string): void!PermissionDeniedError {
+  const safe = validateKeypress(key)
+  if (!safe) {
+    throw new PermissionDeniedError({ permissionType: "accessibility", reason: "Invalid keypress specification" })
+  }
+  const platform = try nativePlatform()
+  const env = try nativeCleanEnv()
+  if (platform === "darwin") {
+    try runCheckedInputTool("osascript", ["-e", buildDarwinKeyScript(safe)], { env, failLabel: "osascript key", darwinClassify: true })
+    return
+  }
+  if (platform === "linux") {
+    const mapped = safe.split("+").map(safeXdotoolKey).join("+")
+    try runCheckedInputTool("xdotool", ["key", mapped], {
+      env,
+      requireCmd: true,
+      missingReason: "xdotool is required for Linux keypress",
+      failLabel: "xdotool key",
+    })
+    return
+  }
+  try runWinSendKeys(safe, "PowerShell keypress", env)
+}
+
+export effect function performDesktopKeyHold(key: string, direction: "down" | "up"): void!PermissionDeniedError {
+  const safe = validateKeypress(key)
+  if (!safe) {
+    throw new PermissionDeniedError({ permissionType: "accessibility", reason: "Invalid key hold specification" })
+  }
+  const platform = try nativePlatform()
+  const env = try nativeCleanEnv()
+  if (platform === "darwin") {
+    const mapped = CLICLICK_MODIFIER_NAME[safe.toLowerCase()] ?? safe.toLowerCase()
+    try runCheckedInputTool("cliclick", [`${direction === "down" ? "kd" : "ku"}:${mapped}`], {
+      env,
+      requireCmd: true,
+      missingReason: `cliclick is required for macOS key_${direction}`,
+      failLabel: `cliclick key_${direction}`,
+      darwinClassify: true,
+    })
+    return
+  }
+  if (platform === "linux") {
+    try runCheckedInputTool("xdotool", [direction === "down" ? "keydown" : "keyup", safeXdotoolKey(safe)], {
+      env,
+      requireCmd: true,
+      missingReason: `xdotool is required for Linux key_${direction}`,
+      failLabel: `xdotool key${direction}`,
+    })
+    return
+  }
+  throw new PermissionDeniedError({ permissionType: "accessibility", reason: `key_${direction} requires native driver support on ${platform}` })
+}
+
+export error WindowControlUnsupported { action: string; reason: string }
+
+type HostWindowCommand = "focus" | "switch" | "arrange" | "move" | "minimize" | "maximize" | "restore" | "close" | "set_bounds"
+
+function toHostWindowAction(action: HostWindowCommand): HostWindowAction {
+  switch (action) {
+    case "focus":
+    case "switch":
+      return "WindowFocus"
+    case "minimize":
+      return "WindowMinimize"
+    case "maximize":
+      return "WindowMaximize"
+    case "restore":
+      return "WindowRestore"
+    case "close":
+      return "WindowClose"
+    case "move":
+      return "WindowMove"
+    case "set_bounds":
+      return "WindowSetBounds"
+    case "arrange":
+      return "WindowArrange"
+  }
+}
+
+function windowPoint(params: { readonly x?: number; readonly y?: number }): { readonly x: number; readonly y: number } | undefined {
+  return typeof params.x === "number" && Number.isFinite(params.x) && typeof params.y === "number" && Number.isFinite(params.y)
+    ? { x: Math.round(params.x), y: Math.round(params.y) }
+    : undefined
+}
+
+function windowSize(params: { readonly width?: number; readonly height?: number }): { readonly width: number; readonly height: number } | undefined {
+  return typeof params.width === "number" && params.width >= 1 && typeof params.height === "number" && params.height >= 1
+    ? { width: Math.round(params.width), height: Math.round(params.height) }
+    : undefined
+}
+
+export effect function performHostWindowControl(
+  action: HostWindowCommand,
+  target: WindowInfo | undefined,
+  params: { readonly arrangement?: string; readonly x?: number; readonly y?: number; readonly width?: number; readonly height?: number },
+): boolean!(PermissionDeniedError | WindowControlUnsupported) {
+  const wanted = toHostWindowAction(action)
+  if (wanted === "WindowArrange") throw new WindowControlUnsupported({ action, reason: "Arranging windows has no host tool." })
+  if (!target) throw new WindowControlUnsupported({ action, reason: `Window ${action} needs a matched window.` })
+  const point = windowPoint(params)
+  const size = windowSize(params)
+  if ((action === "move" || action === "set_bounds") && !point) {
+    throw new WindowControlUnsupported({ action, reason: `Window ${action} needs numeric x and y.` })
+  }
+  if (action === "set_bounds" && !size) {
+    throw new WindowControlUnsupported({ action, reason: "Window set_bounds needs a width and height of at least 1." })
+  }
+  const platform = try nativePlatform()
+  const env = try nativeCleanEnv()
+  let tool: HostWindowTool = "WindowsUser32"
+  if (platform === "darwin") {
+    tool = "MacSystemEvents"
+  } else if (platform !== "win32") {
+    if (try nativeHasCommand("wmctrl")) {
+      tool = "LinuxWmctrl"
+    } else if (try nativeHasCommand("xdotool")) {
+      tool = "LinuxXdotool"
+    } else {
+      throw new PermissionDeniedError({ permissionType: "accessibility", reason: "wmctrl or xdotool is required for Linux window control" })
+    }
+  }
+  if (!hostWindowActionSupported(tool, wanted)) {
+    throw new WindowControlUnsupported({ action, reason: `Window ${action} is not supported by ${tool}.` })
+  }
+  if (tool === "MacSystemEvents") {
+    const appEsc = escapeAppleScript(target.app)
+    const win = `(first window whose name is "${escapeAppleScript(target.title)}")`
+    const inProcess = (body: string) => `tell application "System Events" to tell process "${appEsc}" to ${body}`
+    const script = action === "focus" || action === "switch"
+      ? `tell application "${appEsc}" to activate\n${inProcess(`perform action "AXRaise" of ${win}`)}`
+      : action === "minimize"
+        ? inProcess(`set value of attribute "AXMinimized" of ${win} to true`)
+        : action === "restore"
+          ? inProcess(`set value of attribute "AXMinimized" of ${win} to false`)
+          : action === "maximize"
+            ? inProcess(`click (first button of ${win} whose subrole is "AXFullScreenButton")`)
+            : action === "close"
+              ? inProcess(`click (first button of ${win} whose subrole is "AXCloseButton")`)
+              : action === "move"
+                ? inProcess(`set position of ${win} to {${point?.x}, ${point?.y}}`)
+                : inProcess(`set {position, size} of ${win} to {{${point?.x}, ${point?.y}}, {${size?.width}, ${size?.height}}}`)
+    try runCheckedInputTool("osascript", ["-e", script], { env, failLabel: `osascript window ${action}`, darwinClassify: true })
+    return true
+  }
+  if (tool === "LinuxWmctrl") {
+    const args = action === "focus" || action === "switch"
+      ? ["-ia", target.id]
+      : action === "close"
+        ? ["-ic", target.id]
+        : action === "maximize"
+          ? ["-ir", target.id, "-b", "add,maximized_vert,maximized_horz"]
+          : action === "restore"
+            ? ["-ir", target.id, "-b", "remove,maximized_vert,maximized_horz,hidden"]
+            : action === "minimize"
+              ? ["-ir", target.id, "-b", "add,hidden"]
+              : action === "move"
+                ? ["-ir", target.id, "-e", `0,${point?.x},${point?.y},-1,-1`]
+                : ["-ir", target.id, "-e", `0,${point?.x},${point?.y},${size?.width},${size?.height}`]
+    try runCheckedInputTool("wmctrl", args, { env, failLabel: `wmctrl ${action}` })
+    return true
+  }
+  if (tool === "LinuxXdotool") {
+    const commands = action === "focus" || action === "switch"
+      ? [["windowactivate", target.id]]
+      : action === "minimize"
+        ? [["windowminimize", target.id]]
+        : action === "close"
+          ? [["windowclose", target.id]]
+          : action === "move"
+            ? [["windowmove", target.id, String(point?.x), String(point?.y)]]
+            : [["windowmove", target.id, String(point?.x), String(point?.y)], ["windowsize", target.id, String(size?.width), String(size?.height)]]
+    for (const args of commands) {
+      try runCheckedInputTool("xdotool", args, { env, failLabel: `xdotool ${action}` })
+    }
+    return true
+  }
+  const handle = Number(target.id)
+  if (!Number.isSafeInteger(handle)) throw new WindowControlUnsupported({ action, reason: `Window id ${target.id} is not a Windows handle.` })
+  const user32 = (signature: string, call: string) =>
+    `Add-Type -MemberDefinition '${signature}' -Name U32W -Namespace Cua; if (-not (${call})) { exit 1 }`
+  const ps = action === "focus" || action === "switch"
+    ? user32(
+        '[DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h,int c); [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);',
+        `[void][Cua.U32W]::ShowWindow([IntPtr]${handle},5); [Cua.U32W]::SetForegroundWindow([IntPtr]${handle})`,
+      )
+    : action === "minimize" || action === "maximize" || action === "restore"
+      ? user32(
+          '[DllImport("user32.dll")] public static extern bool ShowWindowAsync(IntPtr h,int c);',
+          `[Cua.U32W]::ShowWindowAsync([IntPtr]${handle},${action === "minimize" ? 6 : action === "maximize" ? 3 : 9})`,
+        )
+      : action === "close"
+        ? user32(
+            '[DllImport("user32.dll")] public static extern bool PostMessage(IntPtr h,uint m,IntPtr w,IntPtr l);',
+            `[Cua.U32W]::PostMessage([IntPtr]${handle},0x0010,[IntPtr]::Zero,[IntPtr]::Zero)`,
+          )
+        : action === "move"
+          ? user32(
+              '[DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr h,IntPtr a,int x,int y,int w,int ht,uint f);',
+              `[Cua.U32W]::SetWindowPos([IntPtr]${handle},[IntPtr]::Zero,${point?.x},${point?.y},0,0,0x0005)`,
+            )
+          : user32(
+              '[DllImport("user32.dll")] public static extern bool MoveWindow(IntPtr h,int x,int y,int w,int ht,bool r);',
+              `[Cua.U32W]::MoveWindow([IntPtr]${handle},${point?.x},${point?.y},${size?.width},${size?.height},$true)`,
+            )
+  try runCheckedInputTool("powershell.exe", ["-NoProfile", "-Command", ps], { env, failLabel: `PowerShell window ${action}`, timeoutMs: 6000 })
+  return true
+}
+
+export function getDesktopPlatformName(): PlatformOS {
+  return currentPlatform()
+}
+
+export function detectDesktopControlCapabilities(): PlatformCapabilities {
+  return detectPlatformCapabilities({
+    osName: currentPlatform(),
+    commandExists: (cmd) => {
+      try { return commandExists(cmd) } catch { return false }
+    },
+    isBrowserAvailable,
+    isWaylandSession: () => {
+      try { return isWaylandSession() } catch { return false }
+    },
+  })
+}
+
+export function launchHostApp(app: string, appArgs: readonly string[] = []): { readonly pid: number; readonly launched: boolean } {
+  const env = sanitizeChildEnv(getProcessEnvSnapshot())
+  const platform = currentPlatform()
+  if (platform === "darwin") {
+    const pid = spawnDetachedApp("open", ["-a", app, ...(appArgs.length > 0 ? ["--args", ...appArgs] : [])], env)
+    return { pid, launched: pid > 0 }
+  }
+  const pid = spawnDetachedApp(app, appArgs, env)
+  return { pid, launched: pid > 0 }
+}
+
+export effect function openHostTarget(target: string): boolean!! {
+  const env = try nativeCleanEnv()
+  const platform = try nativePlatform()
+  const cmd = platform === "darwin" ? "open" : platform === "win32" ? "rundll32" : "xdg-open"
+  const args = platform === "win32" ? ["url.dll,FileProtocolHandler", target] : [target]
+  const res = try promise(() => runNativeCommand(cmd, args, { timeoutMs: 5000, env }))
+  return res.exitCode === 0
+}
+
+export error KillAppRefused { app: string; reason: string }
+
+export effect function killHostApp(app: string): boolean!KillAppRefused {
+  const name = app.trim()
+  const own = try Effect.orDie(Effect.try({ try: () => ownProcessNames(), catch: (e) => e }))
+  const patternLike = name.startsWith("-") || /[\\/*?[\]^$|()+{}]/u.test(name)
+  const ownProcess = own.includes(name.toLowerCase().replace(/\.exe$/u, ""))
+  if (!killTargetAllowed(name === "", patternLike, ownProcess)) {
+    throw new KillAppRefused({
+      app,
+      reason: ownProcess
+        ? `${name} is the agent's own process name; it would terminate the agent.`
+        : "kill_app takes one exact process name, not a path, pattern or option.",
+    })
+  }
+  const env = try nativeCleanEnv()
+  const platform = try nativePlatform()
+  if (platform === "win32") {
+    const res = try promise(() => runNativeCommand("taskkill", ["/IM", name, "/F"], { timeoutMs: 4000, env }))
+    return res.exitCode === 0
+  }
+  const res = try promise(() => runNativeCommand("pkill", ["-x", "--", name], { timeoutMs: 4000, env }))
+  return res.exitCode === 0
+}

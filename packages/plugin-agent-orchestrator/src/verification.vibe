@@ -1,0 +1,494 @@
+// spec/agentOrchestrator/verification.md, "Story: Verify subagent deliverables against concrete evidence and route fast evaluations cleanly"; spec/agentOrchestrator/index.md, "A task can pass its acceptance gate only with evidence for every required criterion"
+module node {
+  import { appendFile, mkdir, stat, writeFile } from "node:fs/promises"
+  import * as os from "node:os"
+  import * as path from "node:path"
+
+  export async function statPathMtime(workdir: string, candidate: string): Promise<{ readonly exists: boolean; readonly mtimeMs: number; readonly resolved: string; readonly size: number }> {
+    const full = path.isAbsolute(candidate) ? path.resolve(candidate) : path.resolve(workdir, candidate)
+    const base = path.resolve(workdir)
+    const prefix = base.endsWith(path.sep) ? base : `${base}${path.sep}`
+    if (full !== base && !full.startsWith(prefix)) {
+      return { exists: false, mtimeMs: 0, resolved: full, size: 0 }
+    }
+    try {
+      const info = await stat(full)
+      return { exists: info.isFile(), mtimeMs: info.mtimeMs, resolved: full, size: info.size }
+    } catch {
+      return { exists: false, mtimeMs: 0, resolved: full, size: 0 }
+    }
+  }
+
+  export async function writeFileIfMissing(filePath: string, content: string): Promise<boolean> {
+    try {
+      await stat(filePath)
+      return false
+    } catch {
+      await mkdir(path.dirname(filePath), { recursive: true })
+      await writeFile(filePath, content, "utf8")
+      return true
+    }
+  }
+
+  export async function appendJsonLine(filePath: string, line: string): Promise<void> {
+    await mkdir(path.dirname(filePath), { recursive: true })
+    await appendFile(filePath, `${line}\n`, "utf8")
+  }
+
+  /** @throws {never} */
+  export function defaultAuditPath(): string {
+    return path.join(os.homedir(), ".eliza", "orchestrator-audit.ndjson")
+  }
+
+  /** @throws {never} */
+  export function joinFs(base: string, ...parts: string[]): string {
+    return path.join(base, ...parts)
+  }
+}
+import {
+  appendJsonLine,
+  defaultAuditPath,
+  joinFs,
+  statPathMtime,
+  writeFileIfMissing,
+} from node
+import type { IAgentRuntime } from "@elizaos/core"
+import {
+  evaluateTask,
+  type AcceptanceDecision,
+  type Evidence,
+  type TaskEvaluation,
+} from "../gen/agentOrchestrator.effect.vibe"
+import {
+  evaluateDiffReviewGate,
+  refinedCriteriaCount,
+  sentencePathMatchesFile,
+  type PathFollower,
+} from "../gen/agentOrchestrator__verification.effect.vibe"
+import {
+  buildCacheStableOrchestratorPrefix,
+  sanitizeCompletionRelay,
+} from "./optimization.vibe"
+import { runFastCodeEval, type FastEvalFailure, type FastEvalResponse } from "./adapters.vibe"
+import {
+  type BuiltAppRecord,
+  type WorkspaceChangeSet,
+} from "./types.vibe"
+
+export type OrchestratorTaskType = "coding" | "app-build" | "view-create" | "deploy"
+
+export const DEFAULT_CRITERIA_TEMPLATES: Readonly<Record<OrchestratorTaskType, readonly string[]>> = {
+  coding: [
+    "Implement the requested changes cleanly within the target repository.",
+    "Run relevant typechecks, lint, and tests and confirm they pass.",
+    "Verify modified files exist on disk with no unintended residual changes.",
+  ],
+  "app-build": [
+    "Create and wire all required application source and entry files.",
+    "Verify the application builds and passes automated checks without errors.",
+    "Confirm the rendered output or endpoint responds as expected.",
+  ],
+  "view-create": [
+    "Implement the requested view component and state wiring.",
+    "Verify the view compiles cleanly and obeys design tokens.",
+    "Confirm interactive behaviors work end to end.",
+  ],
+  deploy: [
+    "Prepare deployment artifacts and configuration without leaking secrets.",
+    "Verify deployment command succeeds and produces a reachable URL.",
+    "Confirm health check passes after deployment.",
+  ],
+}
+
+export function detectTaskType(goal: string): OrchestratorTaskType {
+  const lower = goal.toLowerCase()
+  if (/\b(deploy|publish|release|ship to cloud)\b/u.test(lower)) return "deploy"
+  if (/\b(view|dashboard|ui panel|widget|screen)\b/u.test(lower)) return "view-create"
+  if (/\b(build an? app|create an? app|web app|scaffold app)\b/u.test(lower)) return "app-build"
+  return "coding"
+}
+
+export function isNonTrivialGoal(goal: string): boolean {
+  return goal.trim().split(/\s+/u).length >= 3
+}
+
+export function staticAcceptanceCriteria(taskType: OrchestratorTaskType): readonly string[] {
+  return [...DEFAULT_CRITERIA_TEMPLATES[taskType]]
+}
+
+export function generateDefaultAcceptanceCriteria(
+  goal: string,
+  candidates?: readonly string[],
+): readonly string[] {
+  const taskType = detectTaskType(goal)
+  const template = staticAcceptanceCriteria(taskType)
+  const unique: string[] = []
+  const seen = new Set<string>()
+  const pushUnique = (line: string) => {
+    const trimmed = line.trim()
+    if (!trimmed) return
+    if (/unnamed\s+file/iu.test(trimmed)) return
+    const key = trimmed.toLowerCase()
+    if (seen.has(key)) return
+    seen.add(key)
+    unique.push(trimmed)
+  }
+  for (const line of candidates ?? []) pushUnique(line)
+  const requiredFloor = refinedCriteriaCount(unique.length, 0, 3)
+  for (const fallback of template) {
+    if (unique.length >= requiredFloor) break
+    pushUnique(fallback)
+  }
+  return unique
+}
+
+export const COMPLETION_ENVELOPE_INSTRUCTION =
+  "End your final response with a JSON block under ```completion-envelope containing { status, summary, changedFiles, tests, criteria }."
+
+export interface EnvelopeTestResult {
+  readonly command: string
+  readonly passed: boolean
+  readonly exitCode: number
+}
+
+export interface EnvelopeCriterionStatus {
+  readonly criterion: string
+  readonly satisfied: boolean
+  readonly evidence?: string
+}
+
+export interface CompletionEnvelope {
+  readonly status: "completed" | "blocked" | "failed"
+  readonly summary: string
+  readonly changedFiles: readonly string[]
+  readonly tests: readonly EnvelopeTestResult[]
+  readonly criteria: readonly EnvelopeCriterionStatus[]
+}
+
+export function parseCompletionEnvelope(rawText: string): CompletionEnvelope | undefined {
+  const fenced = rawText.match(/```(?:completion-envelope|json)\s*\n([\s\S]*?)```/iu)
+  const body = fenced ? fenced[1] : rawText.trim()
+  if (!body.startsWith("{")) return undefined
+  try {
+    const parsed = JSON.parse(body) as Record<string, unknown>
+    if (typeof parsed.summary !== "string") return undefined
+    const status = parsed.status === "blocked" || parsed.status === "failed" ? parsed.status : "completed"
+    const changedFiles = Array.isArray(parsed.changedFiles)
+      ? parsed.changedFiles.filter((f): f is string => typeof f === "string")
+      : []
+    const tests = Array.isArray(parsed.tests)
+      ? (parsed.tests as Record<string, unknown>[]).filter((t) => typeof t?.command === "string").map((t) => ({
+          command: String(t.command),
+          passed: Boolean(t.passed),
+          exitCode: typeof t.exitCode === "number" ? t.exitCode : (t.passed ? 0 : 1),
+        }))
+      : []
+    const criteria = Array.isArray(parsed.criteria)
+      ? (parsed.criteria as Record<string, unknown>[]).filter((c) => typeof c?.criterion === "string").map((c) => ({
+          criterion: String(c.criterion),
+          satisfied: Boolean(c.satisfied),
+          evidence: typeof c.evidence === "string" ? c.evidence : undefined,
+        }))
+      : []
+    return { status, summary: parsed.summary, changedFiles, tests, criteria }
+  } catch {
+    return undefined
+  }
+}
+
+export function summarizeEnvelope(envelope: CompletionEnvelope): string {
+  const passedTests = envelope.tests.filter((t) => t.passed).length
+  const metCriteria = envelope.criteria.filter((c) => c.satisfied).length
+  return `${envelope.status}: ${envelope.summary} (files=${envelope.changedFiles.length}, tests=${passedTests}/${envelope.tests.length}, criteria=${metCriteria}/${envelope.criteria.length})`
+}
+
+export function envelopeCorrection(missingCriteria: readonly string[]): string {
+  return `Return a valid completion-envelope JSON addressing missing criteria: ${missingCriteria.join("; ")}`
+}
+
+const PATH_TOKEN_RE = /(?:^|[\s(`"'])((?:\/|\.\.?\/)?[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)+\.[A-Za-z0-9]{1,10})([.:;!?]{0,3})(?=$|[\s)\]"'`]|$)/gu
+
+function classifyFollower(after: string): PathFollower {
+  if (after === "") return "FollowEnd"
+  const ch = after[0]
+  if (ch === "\n" || ch === "\r") return "FollowNewline"
+  if (ch === " " || ch === "\t") return "FollowSpace"
+  if (ch === ")") return "FollowCloseParen"
+  if (ch === '"' || ch === "'" || ch === "`") return "FollowCloseQuote"
+  return "FollowNameChars"
+}
+
+export function mineCandidatePaths(text: string): readonly string[] {
+  const found: string[] = []
+  const seen = new Set<string>()
+  for (const match of text.matchAll(PATH_TOKEN_RE)) {
+    const rawPath = match[1] ?? ""
+    const punct = match[2] ?? ""
+    const endIndex = (match.index ?? 0) + match[0].length
+    const follower = classifyFollower(text.slice(endIndex, endIndex + 1))
+    if (!sentencePathMatchesFile(follower)) continue
+    const cleaned = punct.length > 0 ? rawPath.replace(/[.:;!?]+$/u, "") : rawPath
+    if (cleaned && !seen.has(cleaned)) {
+      seen.add(cleaned)
+      found.push(cleaned)
+    }
+  }
+  return found
+}
+
+export effect function collectFsObservedFiles(
+  workdir: string,
+  textSamples: readonly string[],
+  sessionStartedAtMs: number,
+): readonly string[]!! {
+  const candidates = new Set<string>()
+  for (const sample of textSamples) {
+    for (const p of mineCandidatePaths(sample)) candidates.add(p)
+  }
+  const verified: string[] = []
+  for (const candidate of candidates) {
+    const info = tryPromise({
+      try: () => statPathMtime(workdir, candidate),
+      catch: () => ({ exists: false, mtimeMs: 0, resolved: candidate, size: 0 }),
+    }) catch () => ({ exists: false, mtimeMs: 0, resolved: candidate, size: 0 })
+    if (info.exists && info.mtimeMs >= sessionStartedAtMs - 1_000) {
+      verified.push(candidate)
+    }
+  }
+  return verified.sort()
+}
+
+export interface DiffGateFinding {
+  readonly severity: "info" | "warning" | "critical"
+  readonly check: "secret" | "size" | "forbidden_pattern"
+  readonly message: string
+}
+
+export interface DiffGateResult {
+  readonly passed: boolean
+  readonly findings: readonly DiffGateFinding[]
+  readonly summary: string
+}
+
+const DIFF_SECRET_PATTERNS: readonly RegExp[] = [
+  /(?:sk-[A-Za-z0-9]{24,}|ghp_[A-Za-z0-9]{30,}|AKIA[0-9A-Z]{16}|-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----)/u,
+]
+
+export function reviewDiff(
+  changeSet: Pick<WorkspaceChangeSet, "changedFiles" | "diff">,
+  maxDiffBytes = 200_000,
+): DiffGateResult {
+  const findings: DiffGateFinding[] = []
+  let secretCount = 0
+  let criticalCount = 0
+  for (const pattern of DIFF_SECRET_PATTERNS) {
+    if (pattern.test(changeSet.diff)) {
+      secretCount += 1
+      criticalCount += 1
+      findings.push({ severity: "critical", check: "secret", message: "Potential secret credential detected in diff." })
+    }
+  }
+  const diffBytes = new TextEncoder().encode(changeSet.diff).byteLength
+  const overSize = diffBytes > maxDiffBytes
+  if (overSize) {
+    findings.push({ severity: "warning", check: "size", message: `Diff size ${diffBytes} B exceeds limit ${maxDiffBytes} B.` })
+  }
+  const outcome = evaluateDiffReviewGate(secretCount, criticalCount, overSize)
+  const passed = outcome === "GatePass"
+  return {
+    passed,
+    findings,
+    summary: passed ? `Diff review passed (${changeSet.changedFiles.length} files).` : findings.map((f) => f.message).join(" "),
+  }
+}
+
+export function evaluateTaskAcceptance(task: TaskEvaluation, evidence: Evidence): AcceptanceDecision {
+  return evaluateTask(task, evidence)
+}
+
+export interface IndependentVerifierVerdict {
+  readonly passed: boolean
+  readonly satisfied: readonly string[]
+  readonly missing: readonly string[]
+  readonly summary: string
+  readonly lane: FastEvalResponse["lane"]
+  readonly provider: FastEvalResponse["provider"]
+  readonly latencyMs: number
+}
+
+export function buildIndependentVerifierPrompt(args: {
+  readonly goal: string
+  readonly acceptanceCriteria: readonly string[]
+  readonly changedFiles: readonly string[]
+  readonly diffExcerpt: string
+  readonly testSummary: string
+}): string {
+  return [
+    `Goal: ${args.goal}`,
+    `Criteria:\n${args.acceptanceCriteria.map((c, i) => `${i + 1}. ${c}`).join("\n")}`,
+    `Changed files: ${[...args.changedFiles].sort().join(", ") || "(none)"}`,
+    `Test summary: ${args.testSummary}`,
+    `Diff:\n${args.diffExcerpt}`,
+    'Return strict JSON: {"passed": boolean, "summary": string, "satisfied": string[], "missing": string[]}. "satisfied" lists each criterion, copied exactly, that the evidence above proves.',
+  ].join("\n\n")
+}
+
+export error VerificationUnavailable { reason: string }
+
+export effect function parseJudgeResponse(raw: string): { readonly passed: boolean; readonly summary: string; readonly satisfied: readonly string[]; readonly missing: readonly string[] }!VerificationUnavailable {
+  const cleaned = raw.trim().replace(/^```(?:json)?\s*|\s*```$/gu, "")
+  const parsed = try Effect.try({
+    try: () => JSON.parse(cleaned) as unknown,
+    catch: () => new VerificationUnavailable({ reason: `Verifier returned a non-JSON verdict: ${sanitizeCompletionRelay(cleaned).slice(0, 200)}` }),
+  })
+  if (typeof parsed !== "object" || parsed === null || typeof (parsed as Record<string, unknown>).passed !== "boolean") {
+    throw new VerificationUnavailable({ reason: "Verifier verdict has no boolean passed field" })
+  }
+  const verdict = parsed as Record<string, unknown>
+  return {
+    passed: verdict.passed === true,
+    summary: typeof verdict.summary === "string" ? verdict.summary : "Verification evaluated.",
+    satisfied: Array.isArray(verdict.satisfied) ? verdict.satisfied.filter((m): m is string => typeof m === "string") : [],
+    missing: Array.isArray(verdict.missing) ? verdict.missing.filter((m): m is string => typeof m === "string") : [],
+  }
+}
+
+export effect function runIndependentVerification(args: {
+  readonly goal: string
+  readonly acceptanceCriteria: readonly string[]
+  readonly changedFiles: readonly string[]
+  readonly diffExcerpt: string
+  readonly testSummary: string
+  readonly runtime?: IAgentRuntime
+  readonly env?: Readonly<Record<string, string | undefined>>
+}): IndependentVerifierVerdict!(VerificationUnavailable | FastEvalFailure) {
+  const systemPrefix = `${buildCacheStableOrchestratorPrefix({ fastEvalEnabled: true })}\nRole: Read-only independent verifier. Evaluate strictly against concrete evidence.`
+  const userPayload = buildIndependentVerifierPrompt(args)
+  const evalResult = try runFastCodeEval({
+    kind: "EvalAcceptanceJudge",
+    systemPrefix,
+    userPayload,
+    maxTokens: 384,
+    runtime: args.runtime,
+    env: args.env,
+  })
+  const parsed = try parseJudgeResponse(evalResult.content)
+  return {
+    passed: parsed.passed,
+    satisfied: parsed.satisfied,
+    missing: parsed.missing,
+    summary: parsed.summary,
+    lane: evalResult.lane,
+    provider: evalResult.provider,
+    latencyMs: evalResult.latencyMs,
+  }
+}
+
+export function buildGoalPrompt(input: {
+  readonly goal: string
+  readonly acceptanceCriteria: readonly string[]
+  readonly workdir: string
+  readonly priorReflection?: string
+  readonly shiftHandoff?: string
+}): string {
+  const sections = [
+    `Workdir: ${input.workdir}`,
+    `Goal: ${input.goal}`,
+    `Acceptance Criteria:\n${input.acceptanceCriteria.map((c, i) => `${i + 1}. ${c}`).join("\n")}`,
+  ]
+  if (input.shiftHandoff) sections.push(`Prior Shift Handoff:\n${input.shiftHandoff}`)
+  if (input.priorReflection) sections.push(`Prior Attempt Feedback:\n${input.priorReflection}`)
+  sections.push(COMPLETION_ENVELOPE_INSTRUCTION)
+  return sections.join("\n\n")
+}
+
+export function buildSubAgentIdentityMd(agentLabel: string, workdir: string): string {
+  return [
+    `# Sub-Agent Operating Contract (${agentLabel})`,
+    `Workdir: ${workdir}`,
+    "- Stay scoped to your assigned files and acceptance criteria.",
+    "- Run deterministic checks before reporting completion.",
+    "- Never leak secrets or unverified file paths.",
+  ].join("\n")
+}
+
+export effect function writeWorkspaceIdentity(workdir: string, agentLabel: string): boolean!! {
+  const target = joinFs(workdir, "AGENTS.md")
+  return tryPromise({
+    try: () => writeFileIfMissing(target, buildSubAgentIdentityMd(agentLabel, workdir)),
+    catch: () => false,
+  }) catch () => false
+}
+
+export interface CuratedCodingMemoryNote {
+  readonly repoKey: string
+  readonly lesson: string
+  readonly verifiedTaskId: string
+  readonly createdAt: string
+}
+
+export function redactCodingMemoryText(text: string): string {
+  return text.replace(/(?:sk-[A-Za-z0-9]{16,}|ghp_[A-Za-z0-9]{20,}|Bearer\s+[A-Za-z0-9._-]{16,})/gu, "[REDACTED]")
+}
+
+export class CuratedCodingMemoryStore {
+  readonly notes: CuratedCodingMemoryNote[] = []
+
+  harvestVerifiedTask(repoKey: string, taskId: string, lesson: string): CuratedCodingMemoryNote {
+    const note: CuratedCodingMemoryNote = {
+      repoKey: repoKey.trim().toLowerCase(),
+      lesson: redactCodingMemoryText(lesson).slice(0, 400),
+      verifiedTaskId: taskId,
+      createdAt: new Date().toISOString(),
+    }
+    this.notes.push(note)
+    return note
+  }
+
+  retrieveRelevant(repoKey: string, limit = 5): readonly CuratedCodingMemoryNote[] {
+    const key = repoKey.trim().toLowerCase()
+    return this.notes.filter((n) => n.repoKey === key).slice(-Math.max(1, limit))
+  }
+}
+
+export interface TaskAuditPayload {
+  readonly action: string
+  readonly taskId?: string
+  readonly sessionId?: string
+  readonly actor?: string
+  readonly outcome: string
+  readonly timestamp: string
+  readonly detail?: Readonly<Record<string, unknown>>
+}
+
+export const TASK_AUDIT_EVENT = "AGENT_ORCHESTRATOR_TASK_AUDIT"
+
+export function defaultAuditLogPath(): string {
+  return defaultAuditPath()
+}
+
+export error AuditWriteFailed { filePath: string; reason: string }
+
+export effect function appendAuditLine(filePath: string, payload: TaskAuditPayload): void!AuditWriteFailed {
+  const line = JSON.stringify(payload)
+  try tryPromise({
+    try: () => appendJsonLine(filePath, line),
+    catch: (cause) => new AuditWriteFailed({ filePath, reason: cause instanceof Error ? cause.message : String(cause) }),
+  })
+}
+
+const builtAppsRegistry = new Map<string, BuiltAppRecord>()
+
+export function registerBuiltApp(record: BuiltAppRecord): BuiltAppRecord {
+  const key = `${record.target}:${record.slug}`
+  builtAppsRegistry.set(key, record)
+  return record
+}
+
+export function listBuiltApps(): readonly BuiltAppRecord[] {
+  return [...builtAppsRegistry.values()].sort((a, b) => a.slug.localeCompare(b.slug))
+}
+
+export function deleteBuiltApp(target: "custom" | "eliza-cloud", slug: string): boolean {
+  return builtAppsRegistry.delete(`${target}:${slug}`)
+}

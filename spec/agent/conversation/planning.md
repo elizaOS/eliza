@@ -337,7 +337,8 @@ screen opened or a note was saved reads the same whether a tool did it or
 not. Copying such an earlier reply, the model said a screen had changed
 without calling the tool, and nothing changed. So when a reply is stored,
 the steps of its turn (above) are stored with it, for the model only: each
-step's action, its arguments and how it ended. In the history the model
+step's action, its arguments in the order the model wrote them, and how it
+ended. In the history the model
 reads, a reply whose turn ran at least one step comes after that record,
 written as the model writes a turn's work: one assistant message calling
 each recorded step's tool with its arguments, under ids that are the
@@ -356,9 +357,16 @@ applied or was proposed and part failed; and `refused, did not run` when it
 was refused before it ran. A step that failed or never ran is never
 recorded as done. The record names at most six steps, in the order they
 ran, and the last tool message says how many more calls followed; it keeps
-at most six arguments of a step, each text value cut to 40 characters, so a
-record stays a few hundred bytes at most. A reply whose turn ran no step, a
+the first six arguments of a step, each text value cut to 40 characters, so a
+record stays a few hundred bytes at most. The model reads its own call again
+as it made it: the order of a call's arguments changes how it reads its
+earlier work, so a record never reorders them (a record stored before records
+kept that order gives them by name). A reply whose turn ran no step, a
 reply stored before replies kept a record, and a redacted reply carry none.
+Redacting a message ([conversations](./conversations.md)) puts the notice
+in place of each copy of its text in every other reply's record, in a text
+argument or in the JSON form of a number or yes/no argument, which is then
+kept as text, so no later turn sends the text to the model again.
 The record is read only from what was stored with the reply, so the
 history stays the same bytes from turn to turn. It reaches the model only:
 it is never part of the reply's text, so it is never delivered, streamed,

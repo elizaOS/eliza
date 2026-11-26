@@ -52,9 +52,9 @@ lemma EarliestIsFirst(xs: seq<BridgeDevice>)
 }
 
 lemma connectDevice_ensures(s: DeviceBridge, device: BridgeDevice)
+  ensures (inv(s) ==> canConnectDevice(s, device) ==> alwaysPendingCallsTargetADeclaredCapability(connectDevice(s, device)))
   ensures (inv(s) ==> canConnectDevice(s, device) ==> alwaysDeviceIdentitiesUnique(connectDevice(s, device)))
   ensures (inv(s) ==> canConnectDevice(s, device) ==> alwaysCallIdentitiesUnique(connectDevice(s, device)))
-  ensures (inv(s) ==> canConnectDevice(s, device) ==> alwaysPendingCallsTargetADeclaredCapability(connectDevice(s, device)))
   ensures (inv(s) ==> canConnectDevice(s, device) ==> alwaysPrimaryIsConnected(connectDevice(s, device)))
   ensures (inv(s) ==> canConnectDevice(s, device) ==> stepDisconnectFailsPendingCalls(s, "connectDevice", connectDevice(s, device)))
   ensures (inv(s) ==> canConnectDevice(s, device) ==> stepPrimaryPassesToEarliestDevice(s, connectDevice(s, device)))
@@ -77,9 +77,9 @@ lemma connectDevice_ensures(s: DeviceBridge, device: BridgeDevice)
 }
 
 lemma invoke_ensures(s: DeviceBridge, id: int, deviceId: string, capability: string)
+  ensures (inv(s) ==> canInvoke(s, id, deviceId, capability) ==> alwaysPendingCallsTargetADeclaredCapability(invoke(s, id, deviceId, capability)))
   ensures (inv(s) ==> canInvoke(s, id, deviceId, capability) ==> alwaysDeviceIdentitiesUnique(invoke(s, id, deviceId, capability)))
   ensures (inv(s) ==> canInvoke(s, id, deviceId, capability) ==> alwaysCallIdentitiesUnique(invoke(s, id, deviceId, capability)))
-  ensures (inv(s) ==> canInvoke(s, id, deviceId, capability) ==> alwaysPendingCallsTargetADeclaredCapability(invoke(s, id, deviceId, capability)))
   ensures (inv(s) ==> canInvoke(s, id, deviceId, capability) ==> alwaysPrimaryIsConnected(invoke(s, id, deviceId, capability)))
   ensures (inv(s) ==> canInvoke(s, id, deviceId, capability) ==> stepDisconnectFailsPendingCalls(s, "invoke", invoke(s, id, deviceId, capability)))
   ensures (inv(s) ==> canInvoke(s, id, deviceId, capability) ==> stepPrimaryPassesToEarliestDevice(s, invoke(s, id, deviceId, capability)))
@@ -106,9 +106,9 @@ lemma invoke_ensures(s: DeviceBridge, id: int, deviceId: string, capability: str
 }
 
 lemma disconnectDevice_ensures(s: DeviceBridge, deviceId: string)
+  ensures (inv(s) ==> canDisconnectDevice(s, deviceId) ==> alwaysPendingCallsTargetADeclaredCapability(disconnectDevice(s, deviceId)))
   ensures (inv(s) ==> canDisconnectDevice(s, deviceId) ==> alwaysDeviceIdentitiesUnique(disconnectDevice(s, deviceId)))
   ensures (inv(s) ==> canDisconnectDevice(s, deviceId) ==> alwaysCallIdentitiesUnique(disconnectDevice(s, deviceId)))
-  ensures (inv(s) ==> canDisconnectDevice(s, deviceId) ==> alwaysPendingCallsTargetADeclaredCapability(disconnectDevice(s, deviceId)))
   ensures (inv(s) ==> canDisconnectDevice(s, deviceId) ==> alwaysPrimaryIsConnected(disconnectDevice(s, deviceId)))
   ensures (inv(s) ==> canDisconnectDevice(s, deviceId) ==> stepDisconnectFailsPendingCalls(s, "disconnectDevice", disconnectDevice(s, deviceId)))
   ensures (inv(s) ==> canDisconnectDevice(s, deviceId) ==> stepPrimaryPassesToEarliestDevice(s, disconnectDevice(s, deviceId)))
@@ -167,9 +167,9 @@ lemma disconnectDevice_ensures(s: DeviceBridge, deviceId: string)
 }
 
 lemma completeCall_ensures(s: DeviceBridge, id: int, ok: bool)
+  ensures (inv(s) ==> canCompleteCall(s, id, ok) ==> alwaysPendingCallsTargetADeclaredCapability(completeCall(s, id, ok)))
   ensures (inv(s) ==> canCompleteCall(s, id, ok) ==> alwaysDeviceIdentitiesUnique(completeCall(s, id, ok)))
   ensures (inv(s) ==> canCompleteCall(s, id, ok) ==> alwaysCallIdentitiesUnique(completeCall(s, id, ok)))
-  ensures (inv(s) ==> canCompleteCall(s, id, ok) ==> alwaysPendingCallsTargetADeclaredCapability(completeCall(s, id, ok)))
   ensures (inv(s) ==> canCompleteCall(s, id, ok) ==> alwaysPrimaryIsConnected(completeCall(s, id, ok)))
   ensures (inv(s) ==> canCompleteCall(s, id, ok) ==> stepDisconnectFailsPendingCalls(s, "completeCall", completeCall(s, id, ok)))
   ensures (inv(s) ==> canCompleteCall(s, id, ok) ==> stepPrimaryPassesToEarliestDevice(s, completeCall(s, id, ok)))

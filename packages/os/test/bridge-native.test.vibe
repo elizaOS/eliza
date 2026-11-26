@@ -30,7 +30,7 @@ it.effect("A preview binds its photo stream only at an aspect ratio the device l
   try Effect.try(() => assert.strictEqual(answer, "CaptureAspectRatiosTest checks: 12"))
 }, 180_000)
 
-it.effect('An approval notice\'s title is part of its receipt, and a call that names no title means the configured one (spec/os/android/noticeRoutes.md, "An approval notice\'s title is part of its receipt, and a call that names no title means the configured one")', () => effect {
+it.effect(`An approval notice's title is part of its receipt, and a call that names no title means the configured one (spec/os/android/noticeRoutes.md, "An approval notice's title is part of its receipt, and a call that names no title means the configured one")`, () => effect {
   const answer = try tryPromise(() => hostChecks("NoticeTitlesTest"))
   try Effect.try(() => assert.strictEqual(answer, "NoticeTitlesTest checks: 24"))
 }, 180_000)

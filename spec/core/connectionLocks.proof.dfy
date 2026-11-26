@@ -777,6 +777,7 @@ lemma LockWaitingJoin(t: Reconciliations)
 }
 
 lemma admit_ensures(s: Reconciliations, id: int, adapter: string, recordKeys: seq<RecordKey>)
+  ensures (inv(s) ==> canAdmit(s, id, recordKeys) ==> alwaysWarnedTimersWereDue(admit(s, id, adapter, recordKeys)))
   ensures (inv(s) ==> canAdmit(s, id, recordKeys) ==> alwaysOneTimerPerAcquiredTicket(admit(s, id, adapter, recordKeys)))
   ensures (inv(s) ==> canAdmit(s, id, recordKeys) ==> alwaysTimersOwnTheirQueueTicket(admit(s, id, adapter, recordKeys)))
   ensures (inv(s) ==> canAdmit(s, id, recordKeys) ==> alwaysEachHeldTicketOwnsTimer(admit(s, id, adapter, recordKeys)))
@@ -788,7 +789,6 @@ lemma admit_ensures(s: Reconciliations, id: int, adapter: string, recordKeys: se
   ensures (inv(s) ==> canAdmit(s, id, recordKeys) ==> alwaysWaitingTicketIsQueued(admit(s, id, adapter, recordKeys)))
   ensures (inv(s) ==> canAdmit(s, id, recordKeys) ==> alwaysHeldTicketsAreRunning(admit(s, id, adapter, recordKeys)))
   ensures (inv(s) ==> canAdmit(s, id, recordKeys) ==> alwaysOneCallOwnsEachTicket(admit(s, id, adapter, recordKeys)))
-  ensures (inv(s) ==> canAdmit(s, id, recordKeys) ==> alwaysWarnedTimersWereDue(admit(s, id, adapter, recordKeys)))
   ensures (inv(s) ==> canAdmit(s, id, recordKeys) ==> stepWarningRetainsAllLocks(s, "admit", admit(s, id, adapter, recordKeys)))
   ensures (inv(s) ==> canAdmit(s, id, recordKeys) ==> stepCleanupRetainsOtherTails(s, "admit", admit(s, id, adapter, recordKeys)))
 {
@@ -802,6 +802,7 @@ lemma admit_ensures(s: Reconciliations, id: int, adapter: string, recordKeys: se
 }
 
 lemma warn_ensures(s: Reconciliations, ticket: int, firedAt: int)
+  ensures (inv(s) ==> canWarn(s, ticket, firedAt) ==> alwaysWarnedTimersWereDue(warn(s, ticket, firedAt)))
   ensures (inv(s) ==> canWarn(s, ticket, firedAt) ==> alwaysOneTimerPerAcquiredTicket(warn(s, ticket, firedAt)))
   ensures (inv(s) ==> canWarn(s, ticket, firedAt) ==> alwaysTimersOwnTheirQueueTicket(warn(s, ticket, firedAt)))
   ensures (inv(s) ==> canWarn(s, ticket, firedAt) ==> alwaysEachHeldTicketOwnsTimer(warn(s, ticket, firedAt)))
@@ -813,7 +814,6 @@ lemma warn_ensures(s: Reconciliations, ticket: int, firedAt: int)
   ensures (inv(s) ==> canWarn(s, ticket, firedAt) ==> alwaysWaitingTicketIsQueued(warn(s, ticket, firedAt)))
   ensures (inv(s) ==> canWarn(s, ticket, firedAt) ==> alwaysHeldTicketsAreRunning(warn(s, ticket, firedAt)))
   ensures (inv(s) ==> canWarn(s, ticket, firedAt) ==> alwaysOneCallOwnsEachTicket(warn(s, ticket, firedAt)))
-  ensures (inv(s) ==> canWarn(s, ticket, firedAt) ==> alwaysWarnedTimersWereDue(warn(s, ticket, firedAt)))
   ensures (inv(s) ==> canWarn(s, ticket, firedAt) ==> stepWarningRetainsAllLocks(s, "warn", warn(s, ticket, firedAt)))
   ensures (inv(s) ==> canWarn(s, ticket, firedAt) ==> stepCleanupRetainsOtherTails(s, "warn", warn(s, ticket, firedAt)))
 {
@@ -827,6 +827,7 @@ lemma warn_ensures(s: Reconciliations, ticket: int, firedAt: int)
 }
 
 lemma callbackReturns_ensures(s: Reconciliations, id: int, success: bool)
+  ensures (inv(s) ==> canCallbackReturns(s, id) ==> alwaysWarnedTimersWereDue(callbackReturns(s, id, success)))
   ensures (inv(s) ==> canCallbackReturns(s, id) ==> alwaysOneTimerPerAcquiredTicket(callbackReturns(s, id, success)))
   ensures (inv(s) ==> canCallbackReturns(s, id) ==> alwaysTimersOwnTheirQueueTicket(callbackReturns(s, id, success)))
   ensures (inv(s) ==> canCallbackReturns(s, id) ==> alwaysEachHeldTicketOwnsTimer(callbackReturns(s, id, success)))
@@ -838,7 +839,6 @@ lemma callbackReturns_ensures(s: Reconciliations, id: int, success: bool)
   ensures (inv(s) ==> canCallbackReturns(s, id) ==> alwaysWaitingTicketIsQueued(callbackReturns(s, id, success)))
   ensures (inv(s) ==> canCallbackReturns(s, id) ==> alwaysHeldTicketsAreRunning(callbackReturns(s, id, success)))
   ensures (inv(s) ==> canCallbackReturns(s, id) ==> alwaysOneCallOwnsEachTicket(callbackReturns(s, id, success)))
-  ensures (inv(s) ==> canCallbackReturns(s, id) ==> alwaysWarnedTimersWereDue(callbackReturns(s, id, success)))
   ensures (inv(s) ==> canCallbackReturns(s, id) ==> stepWarningRetainsAllLocks(s, "callbackReturns", callbackReturns(s, id, success)))
   ensures (inv(s) ==> canCallbackReturns(s, id) ==> stepCleanupRetainsOtherTails(s, "callbackReturns", callbackReturns(s, id, success)))
 {
@@ -851,6 +851,7 @@ lemma callbackReturns_ensures(s: Reconciliations, id: int, success: bool)
 }
 
 lemma cleanupKey_ensures(s: Reconciliations, ticket: int)
+  ensures (inv(s) ==> canCleanupKey(s, ticket) ==> alwaysWarnedTimersWereDue(cleanupKey(s, ticket)))
   ensures (inv(s) ==> canCleanupKey(s, ticket) ==> alwaysOneTimerPerAcquiredTicket(cleanupKey(s, ticket)))
   ensures (inv(s) ==> canCleanupKey(s, ticket) ==> alwaysTimersOwnTheirQueueTicket(cleanupKey(s, ticket)))
   ensures (inv(s) ==> canCleanupKey(s, ticket) ==> alwaysEachHeldTicketOwnsTimer(cleanupKey(s, ticket)))
@@ -862,7 +863,6 @@ lemma cleanupKey_ensures(s: Reconciliations, ticket: int)
   ensures (inv(s) ==> canCleanupKey(s, ticket) ==> alwaysWaitingTicketIsQueued(cleanupKey(s, ticket)))
   ensures (inv(s) ==> canCleanupKey(s, ticket) ==> alwaysHeldTicketsAreRunning(cleanupKey(s, ticket)))
   ensures (inv(s) ==> canCleanupKey(s, ticket) ==> alwaysOneCallOwnsEachTicket(cleanupKey(s, ticket)))
-  ensures (inv(s) ==> canCleanupKey(s, ticket) ==> alwaysWarnedTimersWereDue(cleanupKey(s, ticket)))
   ensures (inv(s) ==> canCleanupKey(s, ticket) ==> stepWarningRetainsAllLocks(s, "cleanupKey", cleanupKey(s, ticket)))
   ensures (inv(s) ==> canCleanupKey(s, ticket) ==> stepCleanupRetainsOtherTails(s, "cleanupKey", cleanupKey(s, ticket)))
 {
@@ -874,6 +874,7 @@ lemma cleanupKey_ensures(s: Reconciliations, ticket: int)
 }
 
 lemma enqueueKey_ensures(s: Reconciliations, id: int)
+  ensures (inv(s) ==> canEnqueueKey(s, id) ==> alwaysWarnedTimersWereDue(enqueueKey(s, id)))
   ensures (inv(s) ==> canEnqueueKey(s, id) ==> alwaysOneTimerPerAcquiredTicket(enqueueKey(s, id)))
   ensures (inv(s) ==> canEnqueueKey(s, id) ==> alwaysTimersOwnTheirQueueTicket(enqueueKey(s, id)))
   ensures (inv(s) ==> canEnqueueKey(s, id) ==> alwaysEachHeldTicketOwnsTimer(enqueueKey(s, id)))
@@ -885,7 +886,6 @@ lemma enqueueKey_ensures(s: Reconciliations, id: int)
   ensures (inv(s) ==> canEnqueueKey(s, id) ==> alwaysWaitingTicketIsQueued(enqueueKey(s, id)))
   ensures (inv(s) ==> canEnqueueKey(s, id) ==> alwaysHeldTicketsAreRunning(enqueueKey(s, id)))
   ensures (inv(s) ==> canEnqueueKey(s, id) ==> alwaysOneCallOwnsEachTicket(enqueueKey(s, id)))
-  ensures (inv(s) ==> canEnqueueKey(s, id) ==> alwaysWarnedTimersWereDue(enqueueKey(s, id)))
   ensures (inv(s) ==> canEnqueueKey(s, id) ==> stepWarningRetainsAllLocks(s, "enqueueKey", enqueueKey(s, id)))
   ensures (inv(s) ==> canEnqueueKey(s, id) ==> stepCleanupRetainsOtherTails(s, "enqueueKey", enqueueKey(s, id)))
 {
@@ -909,6 +909,7 @@ lemma enqueueKey_ensures(s: Reconciliations, id: int)
 }
 
 lemma acquireKey_ensures(s: Reconciliations, id: int, armedAt: int)
+  ensures (inv(s) ==> canAcquireKey(s, id) ==> alwaysWarnedTimersWereDue(acquireKey(s, id, armedAt)))
   ensures (inv(s) ==> canAcquireKey(s, id) ==> alwaysOneTimerPerAcquiredTicket(acquireKey(s, id, armedAt)))
   ensures (inv(s) ==> canAcquireKey(s, id) ==> alwaysTimersOwnTheirQueueTicket(acquireKey(s, id, armedAt)))
   ensures (inv(s) ==> canAcquireKey(s, id) ==> alwaysEachHeldTicketOwnsTimer(acquireKey(s, id, armedAt)))
@@ -920,7 +921,6 @@ lemma acquireKey_ensures(s: Reconciliations, id: int, armedAt: int)
   ensures (inv(s) ==> canAcquireKey(s, id) ==> alwaysWaitingTicketIsQueued(acquireKey(s, id, armedAt)))
   ensures (inv(s) ==> canAcquireKey(s, id) ==> alwaysHeldTicketsAreRunning(acquireKey(s, id, armedAt)))
   ensures (inv(s) ==> canAcquireKey(s, id) ==> alwaysOneCallOwnsEachTicket(acquireKey(s, id, armedAt)))
-  ensures (inv(s) ==> canAcquireKey(s, id) ==> alwaysWarnedTimersWereDue(acquireKey(s, id, armedAt)))
   ensures (inv(s) ==> canAcquireKey(s, id) ==> stepWarningRetainsAllLocks(s, "acquireKey", acquireKey(s, id, armedAt)))
   ensures (inv(s) ==> canAcquireKey(s, id) ==> stepCleanupRetainsOtherTails(s, "acquireKey", acquireKey(s, id, armedAt)))
 {
@@ -944,6 +944,7 @@ lemma acquireKey_ensures(s: Reconciliations, id: int, armedAt: int)
 }
 
 lemma releaseKey_ensures(s: Reconciliations, id: int)
+  ensures (inv(s) ==> canReleaseKey(s, id) ==> alwaysWarnedTimersWereDue(releaseKey(s, id)))
   ensures (inv(s) ==> canReleaseKey(s, id) ==> alwaysOneTimerPerAcquiredTicket(releaseKey(s, id)))
   ensures (inv(s) ==> canReleaseKey(s, id) ==> alwaysTimersOwnTheirQueueTicket(releaseKey(s, id)))
   ensures (inv(s) ==> canReleaseKey(s, id) ==> alwaysEachHeldTicketOwnsTimer(releaseKey(s, id)))
@@ -955,7 +956,6 @@ lemma releaseKey_ensures(s: Reconciliations, id: int)
   ensures (inv(s) ==> canReleaseKey(s, id) ==> alwaysWaitingTicketIsQueued(releaseKey(s, id)))
   ensures (inv(s) ==> canReleaseKey(s, id) ==> alwaysHeldTicketsAreRunning(releaseKey(s, id)))
   ensures (inv(s) ==> canReleaseKey(s, id) ==> alwaysOneCallOwnsEachTicket(releaseKey(s, id)))
-  ensures (inv(s) ==> canReleaseKey(s, id) ==> alwaysWarnedTimersWereDue(releaseKey(s, id)))
   ensures (inv(s) ==> canReleaseKey(s, id) ==> stepWarningRetainsAllLocks(s, "releaseKey", releaseKey(s, id)))
   ensures (inv(s) ==> canReleaseKey(s, id) ==> stepCleanupRetainsOtherTails(s, "releaseKey", releaseKey(s, id)))
 {

@@ -129,7 +129,7 @@ const onHome = { view: "home", revision: 1, sensitive: false, timeZone: "Europe/
 const target = { sourceId: "device-home", sourceRevision: "a".repeat(64), eventId: "evt-1", revision: "b".repeat(64) }
 const proposedFields = { title: "Lunch with Sam", description: "", location: "", start: "2026-11-23T11:00:00.000Z", end: "2026-11-23T12:00:00.000Z", timeZone: "Europe/Berlin" }
 
-it.effect('Propose on my phone only the Calendar request I made (spec/calendar/reviewedReads.md, "Story: Propose on my phone only the Calendar request I made"; spec/calendar/reviewedReads.md, "A phone Calendar proposal is offered only where its record may be proposed"; spec/calendar/reviewedReads.md, "A selected target, a chosen calendar and a named event are the ones the owner gave"; spec/calendar/reviewedReads.md, "A new phone event is the timed event the model read, at a clock time the owner\'s words do not contradict, on the phone\'s clock"; spec/calendar/availability.md, "An availability window is the one the model read from the owner\'s request, on the phone\'s clock"; spec/calendar/readClock.md, "A clock time the owner stated is one the owner\'s words hold")', effect () => {
+it.effect(`Propose on my phone only the Calendar request I made (spec/calendar/reviewedReads.md, "Story: Propose on my phone only the Calendar request I made"; spec/calendar/reviewedReads.md, "A phone Calendar proposal is offered only where its record may be proposed"; spec/calendar/reviewedReads.md, "A selected target, a chosen calendar and a named event are the ones the owner gave"; spec/calendar/reviewedReads.md, "A new phone event is the timed event the model read, at a clock time the owner's words do not contradict, on the phone's clock"; spec/calendar/availability.md, "An availability window is the one the model read from the owner's request, on the phone's clock"; spec/calendar/readClock.md, "A stated clock time is refused only where the owner's words give another")`, effect () => {
   const { runtime, family, asked } = phoneModel()
   const turn = (words: string, observation: DeviceTurn["observation"] = onHome, completesReads = true) => phoneTurn(runtime, words, observation, completesReads)
   const grounded = effect (operation: unknown, at: DeviceTurn) => {
@@ -209,7 +209,7 @@ it.effect('Propose on my phone only the Calendar request I made (spec/calendar/r
   assert.deepStrictEqual(asked, [])
 })
 
-it.effect('A change after a shared read is the edit the model read (spec/calendar/reviewedReads.md, "A change after a shared read is the edit the model read from the owner\'s request, keeping every other field")', effect () => {
+it.effect(`A change after a shared read is the edit the model read (spec/calendar/reviewedReads.md, "A change after a shared read is the edit the model read from the owner's request, keeping every other field")`, effect () => {
   const shared = { ...fields, title: "Standup", start: "2026-11-22T16:00:00.000Z", end: "2026-11-22T16:30:00.000Z", timeZone: "Europe/Berlin" }
   const read = { proposalId: "p1", requestMessageId: "00000000-0000-4000-8000-000000000001" as UUID, operation: { type: "calendar_read_selected", target } as const,
     result: { ...record, fields: shared }, settledAt: turnStarted }

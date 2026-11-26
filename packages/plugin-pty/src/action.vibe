@@ -1,0 +1,269 @@
+// spec/pty/policy.md, "The chat action reads, waits and resizes within fixed bounds"; spec/pty/policy.md, "Idle timeout, terminal geometry, and output slices stay within safe bounds"; spec/pty/policy.md, "Store sessions belong to the operator, not to a self-reported client"; spec/pty/policy.md, "Story: Enforce session capacity, confinement, and safe teardown"
+import type { Action, ActionResult, AppliedEffectReceipt, IAgentRuntime } from "@elizaos/core"
+import { clampOutputChars, validTerminalGeometry } from "../gen/pty__policy.effect.vibe"
+import type { PtyService } from "./service.vibe"
+
+module node {
+  import { randomUUID } from "node:crypto"
+
+  /** @throws {never} */
+  export function newReceiptId(): string {
+    return `pty:${randomUUID()}`
+  }
+}
+import { newReceiptId } from node
+
+type PtyOp = "list" | "read" | "resize" | "send_wait" | "stop"
+
+function readParams(options: unknown): Record<string, unknown> {
+  if (typeof options !== "object" || options === null) return {}
+  const record = options as Record<string, unknown>
+  if (typeof record.parameters === "object" && record.parameters !== null && !Array.isArray(record.parameters)) {
+    return record.parameters as Record<string, unknown>
+  }
+  return record
+}
+
+function readStr(params: Record<string, unknown>, key: string): string | undefined {
+  const value = params[key]
+  return typeof value === "string" && value.trim().length > 0 ? value : undefined
+}
+
+function readNum(params: Record<string, unknown>, key: string): number | undefined {
+  const value = params[key]
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined
+}
+
+function readClampedMaxChars(params: Record<string, unknown>): number | undefined {
+  const value = readNum(params, "maxChars")
+  if (value === undefined) return undefined
+  return clampOutputChars(Math.floor(value))
+}
+
+function fail(text: string): ActionResult {
+  return { success: false, text, error: text }
+}
+
+function failWith(err: unknown): ActionResult {
+  return fail(err instanceof Error ? err.message : String(err))
+}
+
+function terminalReceipt(operation: string, sessionId: string, commit: "durable" | "provider_accepted"): AppliedEffectReceipt {
+  const observedAt = new Date().toISOString()
+  const receiptId = newReceiptId()
+  return {
+    receiptId,
+    operation,
+    resource: { kind: "pty.session", id: sessionId },
+    artifacts: [],
+    idempotency: { key: null, replayed: false },
+    observedAt,
+    outcome: "applied",
+    commit: { kind: commit, id: receiptId, committedAt: observedAt },
+  }
+}
+
+function getPtyService(runtime: IAgentRuntime): PtyService | undefined {
+  const service = runtime.getService("PTY_SERVICE") as PtyService | null | undefined
+  return service ?? undefined
+}
+
+export const ptySessionAction: Action = {
+  name: "PTY_SESSION",
+  description: "Control interactive PTY sessions: list, read incremental bounded output, send input and wait in one call, resize, or stop.",
+  descriptionCompressed: "Control PTY sessions: list, read(cursor), send_wait(input), resize, stop.",
+  tags: ["resource:terminal", "capability:execute", "capability:delete"],
+  contexts: ["code", "terminal"],
+  contextGate: { anyOf: ["code", "terminal"] },
+  roleGate: { minRole: "OWNER" },
+  toolSchemaStrict: true,
+  cacheStable: true,
+  cacheScope: "agent",
+  modelClass: "TEXT_SMALL",
+  parameters: [
+    {
+      name: "cols",
+      description: "Terminal columns for resize (1-500).",
+      descriptionCompressed: "Cols.",
+      required: false,
+      schema: { type: "number" },
+    },
+    {
+      name: "cursor",
+      description: "Character offset from previous read for incremental output.",
+      descriptionCompressed: "Output cursor.",
+      required: false,
+      schema: { type: "number" },
+    },
+    {
+      name: "input",
+      description: "Keystrokes or command text to write for send_wait.",
+      descriptionCompressed: "Input text.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "maxChars",
+      description: "Maximum tail characters returned (default 16000, max 50000).",
+      descriptionCompressed: "Max output chars.",
+      required: false,
+      schema: { type: "number" },
+    },
+    {
+      name: "op",
+      description: "PTY operation to run.",
+      descriptionCompressed: "Operation.",
+      required: true,
+      schema: { type: "string", enum: ["list", "read", "resize", "send_wait", "stop"] },
+    },
+    {
+      name: "pattern",
+      description: "Optional regex pattern to wait for in send_wait.",
+      descriptionCompressed: "Wait regex.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "rows",
+      description: "Terminal rows for resize (1-500).",
+      descriptionCompressed: "Rows.",
+      required: false,
+      schema: { type: "number" },
+    },
+    {
+      name: "sessionId",
+      description: "Target PTY session identifier.",
+      descriptionCompressed: "Session ID.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "waitMs",
+      description: "Maximum wait milliseconds for send_wait (default 1500).",
+      descriptionCompressed: "Wait timeout ms.",
+      required: false,
+      schema: { type: "number" },
+    },
+  ],
+  summarize: (result, params) => {
+    const op = typeof params.op === "string" ? params.op : "unknown"
+    const sid = typeof params.sessionId === "string" ? ` ${params.sessionId.slice(0, 8)}` : ""
+    const status = result?.success ? "ok" : "err"
+    return `PTY_SESSION ${op}${sid} [${status}]`
+  },
+  validate: (runtime) => Promise.resolve(getPtyService(runtime) !== undefined),
+  handler: async (runtime, _message, _state, options): Promise<ActionResult> => {
+    const svc = getPtyService(runtime)
+    if (!svc) return fail("PTY_SERVICE is not available.")
+    const params = readParams(options)
+    const op = readStr(params, "op") as PtyOp | undefined
+    if (op === "list") {
+      const sessions = svc.listSessions().sort((a, b) => a.sessionId.localeCompare(b.sessionId))
+      const compact = sessions.map((s) => ({
+        sessionId: s.sessionId,
+        kind: s.kind ?? "unknown",
+        exited: s.exited,
+        exitCode: s.exitCode ?? null,
+      }))
+      return {
+        success: true,
+        text: compact.length === 0 ? "No active PTY sessions." : JSON.stringify(compact),
+        data: { sessions },
+        promptData: { count: compact.length, sessions: compact },
+        promptDataMode: "replace-data",
+        effectReceipts: [],
+      }
+    }
+    const sessionId = readStr(params, "sessionId")
+    if (!sessionId) return fail("Missing sessionId.")
+    if (op === "read") {
+      const result = svc.readOutput(sessionId, {
+        cursor: readNum(params, "cursor"),
+        maxChars: readClampedMaxChars(params),
+      })
+      if (!result) return fail("PTY session not found.")
+      return {
+        success: true,
+        text: result.output,
+        data: { ...result },
+        promptData: {
+          sessionId: result.sessionId,
+          cursor: result.cursor,
+          truncated: result.truncated,
+          exited: result.exited,
+          output: result.output,
+        },
+        promptDataMode: "replace-data",
+        effectReceipts: [],
+      }
+    }
+    if (op === "send_wait") {
+      const input = typeof params.input === "string" ? params.input : ""
+      let result: Awaited<ReturnType<PtyService["sendAndWait"]>>
+      try {
+        result = await svc.sendAndWait(sessionId, input, {
+          waitMs: readNum(params, "waitMs"),
+          pattern: readStr(params, "pattern"),
+          maxChars: readClampedMaxChars(params),
+        })
+      } catch (err) {
+        return failWith(err)
+      }
+      if (!result) return fail("PTY session not found.")
+      return {
+        success: true,
+        text: result.output,
+        data: { ...result },
+        effectReceipts: input.length > 0 ? [terminalReceipt("pty.input", sessionId, "provider_accepted")] : [],
+        promptData: {
+          sessionId: result.sessionId,
+          cursor: result.cursor,
+          matched: result.matched,
+          timedOut: result.timedOut,
+          truncated: result.truncated,
+          exited: result.exited,
+          output: result.output,
+        },
+        promptDataMode: "replace-data",
+      }
+    }
+    if (op === "resize") {
+      const cols = readNum(params, "cols")
+      const rows = readNum(params, "rows")
+      if (
+        cols === undefined ||
+        rows === undefined ||
+        !Number.isSafeInteger(cols) ||
+        !Number.isSafeInteger(rows) ||
+        !validTerminalGeometry(cols, rows)
+      ) {
+        return fail("Invalid terminal geometry; cols and rows must be integers from 1 to 500.")
+      }
+      try {
+        svc.resizeSession(sessionId, cols, rows)
+      } catch (err) {
+        return failWith(err)
+      }
+      return {
+        success: true,
+        text: `Resized ${sessionId} to ${cols}x${rows}.`,
+        data: { sessionId, cols, rows },
+        effectReceipts: [terminalReceipt("pty.resize", sessionId, "provider_accepted")],
+      }
+    }
+    if (op === "stop") {
+      try {
+        await svc.stopSession(sessionId)
+      } catch (err) {
+        return failWith(err)
+      }
+      return {
+        success: true,
+        text: `Stopped PTY session ${sessionId}.`,
+        data: { sessionId, stopped: true },
+        effectReceipts: [terminalReceipt("pty.stop", sessionId, "durable")],
+      }
+    }
+    return fail(`Unsupported PTY operation "${String(params.op ?? "")}".`)
+  },
+}

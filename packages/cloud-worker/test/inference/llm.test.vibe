@@ -90,10 +90,14 @@ describe("WP5 Inference: provider adapter", () => {
       try check(() => assert.deepStrictEqual(past[2], 0))
       const wait = retryAfter(at, now)
       try check(() => assert.deepStrictEqual(wait, 600_000))
+      try check(() => assert.deepStrictEqual(retryAfter("Thu Nov 26 09:10:00 2026", now), 600_000))
+      try check(() => assert.deepStrictEqual(retryAfter("Thursday, 26-Nov-26 09:10:00 GMT", now), 600_000))
+      try check(() => assert.deepStrictEqual(retryAfter("Thu, 26 Nov 2026 08:50:00 GMT", now), 0))
+      try check(() => assert.deepStrictEqual(retryAfter("tomorrow", now), undefined))
     }
   }))
 
-    it.live("Pass the provider's stream through and cancel it when the caller goes away (spec/cloud/index.md, \"A streamed answer sends complete OpenAI frames and settles the same hold\")", () => scoped(effect {
+  it.live("Pass the provider's stream through and cancel it when the caller goes away (spec/cloud/index.md, \"A streamed answer sends complete OpenAI frames and settles the same hold\")", () => scoped(effect {
     const { llm, provider, layer } = try llmAdapter()
     provide layer {
       try sync(() => llm.script({ kind: "stream" }, { kind: "hang", after: 2 }))

@@ -1,0 +1,823 @@
+// spec/agentOrchestrator/sessionAdmission.md, "Story: Admit coding agent sessions within concurrency and disk limits"; spec/agentOrchestrator/sessionAdmission.md, "A turn completes only when the agent itself ends it"; spec/agentOrchestrator/index.md, "Only the owner directs coding agents, and a message without a session id reaches only its own room's subagents"; spec/agentOrchestrator/index.md, "Story: Direct an authorized task to the intended subagent and evaluate its result"
+module node {
+  import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process"
+  import { randomUUID } from "node:crypto"
+
+  /** @throws {never} */
+  export function makeId(prefix: string): string {
+    return `${prefix}-${randomUUID().slice(0, 12)}`
+  }
+
+  export interface AcpClientHandlers {
+    readonly onUpdate: (params: Readonly<Record<string, unknown>>) => void
+    readonly onPermission: (params: Readonly<Record<string, unknown>>) => Readonly<Record<string, unknown>>
+    readonly onExit: (reason: string) => void
+  }
+
+  const STDERR_TAIL_CHARS = 4_096
+
+  export class AcpStdioClient {
+    readonly child: ChildProcessWithoutNullStreams
+    readonly pending = new Map<number, { readonly resolve: (value: unknown) => void; readonly reject: (error: Error) => void }>()
+    nextId = 1
+    buffer = ""
+    stderrTail = ""
+    exitReason: string | undefined
+
+    constructor(command: string, cwd: string, env: Record<string, string>, readonly handlers: AcpClientHandlers) {
+      const parts = command.trim().split(/\s+/u).filter(Boolean)
+      const bin = parts[0] ?? command
+      this.child = spawn(bin, parts.slice(1), { cwd, env, stdio: "pipe" })
+      this.child.stdout.setEncoding("utf8")
+      this.child.stderr.setEncoding("utf8")
+      this.child.stdout.on("data", (chunk: string) => this.consume(chunk))
+      this.child.stderr.on("data", (chunk: string) => {
+        this.stderrTail = `${this.stderrTail}${chunk}`.slice(-STDERR_TAIL_CHARS)
+      })
+      this.child.stdin.on("error", (error: Error) => this.fail(`stdin failed: ${error.message}`))
+      this.child.on("error", (error: Error) => this.fail(`could not run ${bin}: ${error.message}`))
+      this.child.on("exit", (code: number | null, signal: NodeJS.Signals | null) => {
+        this.fail(`agent process exited (code ${code ?? "none"}, signal ${signal ?? "none"})`)
+      })
+    }
+
+    get pid(): number | undefined {
+      return this.child.pid
+    }
+
+    request(method: string, params: Readonly<Record<string, unknown>>): Promise<unknown> {
+      if (this.exitReason !== undefined) return Promise.reject(new Error(this.exitReason))
+      const id = this.nextId
+      this.nextId += 1
+      return new Promise((resolve, reject) => {
+        this.pending.set(id, { resolve, reject })
+        this.write({ jsonrpc: "2.0", id, method, params })
+      })
+    }
+
+    notify(method: string, params: Readonly<Record<string, unknown>>): void {
+      if (this.exitReason === undefined) this.write({ jsonrpc: "2.0", method, params })
+    }
+
+    close(): void {
+      if (this.exitReason === undefined && this.child.exitCode === null) this.child.kill("SIGTERM")
+    }
+
+    write(message: Readonly<Record<string, unknown>>): void {
+      this.child.stdin.write(`${JSON.stringify(message)}\n`)
+    }
+
+    consume(chunk: string): void {
+      this.buffer += chunk
+      let newline = this.buffer.indexOf("\n")
+      while (newline >= 0) {
+        const line = this.buffer.slice(0, newline).trim()
+        this.buffer = this.buffer.slice(newline + 1)
+        if (line !== "") this.dispatch(line)
+        newline = this.buffer.indexOf("\n")
+      }
+    }
+
+    dispatch(line: string): void {
+      let message: Record<string, unknown>
+      try {
+        const parsed: unknown = JSON.parse(line)
+        if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) throw new Error("not an object")
+        message = parsed as Record<string, unknown>
+      } catch {
+        this.fail(`agent wrote a line that is not JSON-RPC: ${JSON.stringify(line.slice(0, 200))}${line.length > 200 ? ` (${line.length} chars; first 200 shown)` : ""}`)
+        this.close()
+        return
+      }
+      const method = typeof message.method === "string" ? message.method : undefined
+      const params = typeof message.params === "object" && message.params !== null ? message.params as Record<string, unknown> : {}
+      const id = message.id
+      if (method === undefined) {
+        const waiter = typeof id === "number" ? this.pending.get(id) : undefined
+        if (!waiter || typeof id !== "number") return
+        this.pending.delete(id)
+        const error = message.error as { readonly code?: unknown; readonly message?: unknown } | undefined
+        if (error) waiter.reject(new Error(`agent error ${String(error.code)}: ${String(error.message)}`))
+        else waiter.resolve(message.result)
+        return
+      }
+      if (id === undefined) {
+        if (method === "session/update") this.handlers.onUpdate(params)
+        return
+      }
+      if (method === "session/request_permission") {
+        this.write({ jsonrpc: "2.0", id, result: this.handlers.onPermission(params) })
+        return
+      }
+      this.write({ jsonrpc: "2.0", id, error: { code: -32601, message: `Client does not provide ${method}` } })
+    }
+
+    fail(reason: string): void {
+      if (this.exitReason !== undefined) return
+      const stderr = this.stderrTail.trim()
+      this.exitReason = stderr === "" ? reason : `${reason}; stderr (last ${STDERR_TAIL_CHARS} chars at most): ${stderr}`
+      for (const waiter of this.pending.values()) waiter.reject(new Error(this.exitReason))
+      this.pending.clear()
+      this.handlers.onExit(this.exitReason)
+    }
+  }
+
+  export function openAcpSession(client: AcpStdioClient, cwd: string): Promise<string> {
+    const ready = client.request("initialize", {
+      protocolVersion: 1,
+      clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false },
+    })
+      .then(() => client.request("session/new", { cwd, mcpServers: [] }))
+      .then((result) => {
+        const acpSessionId = (result as { readonly sessionId?: unknown } | undefined)?.sessionId
+        if (typeof acpSessionId !== "string" || acpSessionId === "") {
+          throw new Error("agent answered session/new without a sessionId")
+        }
+        return acpSessionId
+      })
+    ready.catch(() => undefined)
+    return ready
+  }
+
+  const KNOWN_STOP_REASONS = new Set(["end_turn", "max_tokens", "max_turn_requests", "refusal", "cancelled"])
+
+  export async function promptAcpSession(client: AcpStdioClient, acpSessionId: string, input: string): Promise<string> {
+    const result = await client.request("session/prompt", {
+      sessionId: acpSessionId,
+      prompt: [{ type: "text", text: input }],
+    })
+    const stopReason = (result as { readonly stopReason?: unknown } | undefined)?.stopReason
+    if (typeof stopReason !== "string" || !KNOWN_STOP_REASONS.has(stopReason)) {
+      throw new Error(`agent answered session/prompt without a known stopReason (${JSON.stringify(stopReason)})`)
+    }
+    return stopReason
+  }
+}
+import { AcpStdioClient, makeId, openAcpSession, promptAcpSession } from node
+import { Service, normalizeKeywordMatchText, textIncludesKeywordTerm, type IAgentRuntime } from "@elizaos/core"
+import {
+  evaluateTask,
+  implicitTargetReachable,
+  peerAddress,
+  routeDirective,
+  type Evidence,
+  type PeerDirective,
+  type TaskEvaluation,
+} from "../gen/agentOrchestrator.effect.vibe"
+import {
+  apply as applyAdmission,
+  effectivePriorityBand,
+  initial as initialAdmissionPool,
+  isPromptableSessionSlot,
+  isTerminalSessionSlot,
+  turnOutcome,
+  type AdmissionPool,
+  type Event as AdmissionEvent,
+} from "../gen/agentOrchestrator__sessionAdmission.effect.vibe"
+import {
+  AdmissionQueueFullError,
+  SessionCapError,
+  SubscriptionCodingAdapterError,
+  TERMINAL_SESSION_STATUSES,
+  toSpecPriority,
+  toSpecSessionSlotStatus,
+  type AcpCapacity,
+  type AcpEventCallback,
+  type AvailableAgentInfo,
+  type ChildSession,
+  ChildSessionFailure,
+  type KnownAdapterId,
+  type OrchestratorTaskPriority,
+  type PromptResult,
+  type SendOptions,
+  type SessionEventCallback,
+  type SessionEventName,
+  type SessionInfo,
+  type SessionStatus,
+  type SpawnOptions,
+  type SpawnResult,
+} from "./types.vibe"
+import {
+  assertSubscriptionCodingAdapterReady,
+  isPiProviderRouteId,
+  isSubscriptionCodingAdapter,
+  normalizeTaskAgentAdapter,
+  preparePiProviderRoute,
+  probeAvailableAdapters,
+  resolveAdapterCommand,
+  resolveCodingBackendLogged,
+  stripSubscriptionApiEnvironment,
+} from "./adapters.vibe"
+import {
+  CREDENTIAL_BRIDGE_TOKEN_ENV,
+  CREDENTIAL_BRIDGE_TOKEN_HASH_METADATA,
+  applyModelGatewayEnv,
+  buildGitIdentityEnvPatch,
+  createCredentialBridgeToken,
+  forwardableSubAgentEnv,
+  resolveModelGatewayConfig,
+} from "./security.vibe"
+import { truncateTail } from "./optimization.vibe"
+
+export const ACP_SUBPROCESS_SERVICE_TYPE = "ACP_SUBPROCESS_SERVICE"
+
+export service ChildAgentSessions {
+  list(roomId: string): ChildSession[]!ChildSessionFailure
+  send(sessionId: string, text: string): void!ChildSessionFailure
+  cancel(sessionId: string): void!ChildSessionFailure
+  evidence(taskKey: string, generation: number): Evidence!ChildSessionFailure
+}
+
+function mentionsLabel(text: string, label: string): boolean {
+  const term = normalizeKeywordMatchText(label)
+  return term !== "" && normalizeKeywordMatchText(text).split("@").slice(1)
+    .some((rest) => rest.startsWith(term) && textIncludesKeywordTerm(rest.slice(0, term.length + 1), term))
+}
+
+function resolvePeerAddress(text: string, peers: readonly ChildSession[]) {
+  const childIds = (labelled: (label: string) => boolean) =>
+    peers.filter((peer) => labelled(peer.label)).map((peer) => peer.childId)
+  return peerAddress(
+    childIds((label) => mentionsLabel(text, label)),
+    childIds((label) => textIncludesKeywordTerm(text, label)),
+    text.includes("@"),
+  )
+}
+
+export effect function sendChildDirective(roomId: string, input: {
+  readonly directive: PeerDirective
+  readonly text: string
+  readonly payload?: string
+}) {
+  const sessions = try ChildAgentSessions
+  const peers = try sessions.list(roomId)
+  const address = resolvePeerAddress(input.text, peers)
+  const touched: string[] = []
+  for (const peer of peers) {
+    const decision = routeDirective(address, input.directive, peer.childId, peers.length, peer.running)
+    if (decision === "NoPeerAction") continue
+    if (decision === "CancelTurn") try sessions.cancel(peer.sessionId)
+    else try sessions.send(peer.sessionId, input.payload ?? input.text)
+    touched.push(peer.childId)
+  }
+  return touched
+}
+
+export interface AcceptanceEvidenceSource {
+  acceptanceEvidence(taskId: string, generation: number): Evidence | undefined
+}
+
+export function acpChildAgentSessions(acp: AcpService, evidence?: AcceptanceEvidenceSource) {
+  return Layer.succeed(ChildAgentSessions, {
+    effect list(roomId: string) {
+      return acp.listSessions()
+        .filter((s) => implicitTargetReachable(s.roomId ?? "", roomId) && !isSessionTerminal(s.status))
+        .map((s) => ({ childId: s.id, sessionId: s.id, label: s.label, running: s.status === "busy" }))
+    },
+    effect send(sessionId: string, text: string) {
+      try tryPromise({
+        try: () => acp.sendToSession(sessionId, text),
+        catch: (cause) => new ChildSessionFailure({ childId: sessionId, reason: cause instanceof Error ? cause.message : String(cause) }),
+      })
+    },
+    effect cancel(sessionId: string) {
+      const cancelled = try tryPromise({
+        try: () => acp.cancelSession(sessionId),
+        catch: (cause) => new ChildSessionFailure({ childId: sessionId, reason: cause instanceof Error ? cause.message : String(cause) }),
+      })
+      if (!cancelled) throw new ChildSessionFailure({ childId: sessionId, reason: "Session is no longer active." })
+    },
+    effect evidence(taskKey: string, generation: number) {
+      const found = evidence?.acceptanceEvidence(taskKey, generation)
+      if (!found) throw new ChildSessionFailure({ childId: taskKey, reason: `No acceptance evidence is recorded for generation ${generation}.` })
+      return found
+    },
+  })
+}
+
+export effect function verifyChildTask(task: TaskEvaluation) {
+  const sessions = try ChildAgentSessions
+  return evaluateTask(task, try sessions.evidence(task.taskKey, task.taskGeneration))
+}
+
+export function isSessionPromptable(status: SessionStatus): boolean {
+  return isPromptableSessionSlot(toSpecSessionSlotStatus(status))
+}
+
+export function isSessionTerminal(status: SessionStatus): boolean {
+  return isTerminalSessionSlot(toSpecSessionSlotStatus(status))
+}
+
+export interface AdmissionQueueEntry {
+  readonly id: string
+  readonly agentType: KnownAdapterId
+  readonly taskId?: string
+  readonly priority: OrchestratorTaskPriority
+  readonly enqueuedAtMs: number
+  readonly spawnOptions: SpawnOptions
+}
+
+export function orderAdmissionQueue(
+  entries: readonly AdmissionQueueEntry[],
+  nowMs: number,
+  agingIntervalMs = 30_000,
+): readonly AdmissionQueueEntry[] {
+  return [...entries].sort((a, b) => {
+    const waitedA = Math.max(0, Math.trunc((nowMs - a.enqueuedAtMs) / Math.max(1, agingIntervalMs)))
+    const waitedB = Math.max(0, Math.trunc((nowMs - b.enqueuedAtMs) / Math.max(1, agingIntervalMs)))
+    const bandA = effectivePriorityBand(toSpecPriority(a.priority), waitedA, 1)
+    const bandB = effectivePriorityBand(toSpecPriority(b.priority), waitedB, 1)
+    if (bandA !== bandB) return bandB - bandA
+    return a.enqueuedAtMs - b.enqueuedAtMs
+  })
+}
+
+export interface SessionStore {
+  create(session: SessionInfo): void
+  get(sessionId: string): SessionInfo | undefined
+  list(): SessionInfo[]
+  update(sessionId: string, patch: Partial<SessionInfo>): SessionInfo | undefined
+  delete(sessionId: string): boolean
+}
+
+export class InMemorySessionStore implements SessionStore {
+  readonly sessions = new Map<string, SessionInfo>()
+
+  create(session: SessionInfo): void {
+    this.sessions.set(session.id, session)
+  }
+
+  get(sessionId: string): SessionInfo | undefined {
+    return this.sessions.get(sessionId)
+  }
+
+  list(): SessionInfo[] {
+    return [...this.sessions.values()].sort((a, b) => a.id.localeCompare(b.id))
+  }
+
+  update(sessionId: string, patch: Partial<SessionInfo>): SessionInfo | undefined {
+    const existing = this.sessions.get(sessionId)
+    if (!existing) return undefined
+    const next: SessionInfo = { ...existing, ...patch }
+    this.sessions.set(sessionId, next)
+    return next
+  }
+
+  delete(sessionId: string): boolean {
+    return this.sessions.delete(sessionId)
+  }
+}
+
+export interface AcpTransportAdapter {
+  readonly id: string
+  spawn(session: SessionInfo, env: Record<string, string>, command: string): { readonly ok: boolean; readonly pid?: number }
+  prompt(session: SessionInfo, input: string): Promise<{ readonly output: string; readonly stopReason: string }>
+  cancel(session: SessionInfo): Promise<void>
+  close(session: SessionInfo): Promise<void>
+  setExitListener?(listener: (sessionId: string, reason: string) => void): void
+}
+
+const AUTO_ALLOW_PRESETS: ReadonlySet<string> = new Set(["autonomous", "permissive"])
+
+export function answerAcpPermission(preset: string, params: Readonly<Record<string, unknown>>): Readonly<Record<string, unknown>> {
+  const options = Array.isArray(params.options)
+    ? params.options.filter((o): o is { readonly optionId: string; readonly kind?: unknown } =>
+        typeof o === "object" && o !== null && typeof (o as { optionId?: unknown }).optionId === "string")
+    : []
+  const wanted = AUTO_ALLOW_PRESETS.has(preset) ? "allow_once" : "reject_once"
+  const chosen = options.find((o) => o.kind === wanted)
+  return chosen ? { outcome: { outcome: "selected", optionId: chosen.optionId } } : { outcome: { outcome: "cancelled" } }
+}
+
+interface NativeAcpSession {
+  readonly client: AcpStdioClient
+  readonly ready: Promise<string>
+  chunks: string[]
+}
+
+function textOfUpdate(params: Readonly<Record<string, unknown>>): string | undefined {
+  const update = params.update as { readonly sessionUpdate?: unknown; readonly content?: { readonly type?: unknown; readonly text?: unknown } } | undefined
+  if (update?.sessionUpdate !== "agent_message_chunk") return undefined
+  return update.content?.type === "text" && typeof update.content.text === "string" ? update.content.text : undefined
+}
+
+export class NativeStdioAcpTransport implements AcpTransportAdapter {
+  readonly id = "native-stdio-acp"
+  readonly sessions = new Map<string, NativeAcpSession>()
+  exitListener: ((sessionId: string, reason: string) => void) | undefined
+
+  setExitListener(listener: (sessionId: string, reason: string) => void): void {
+    this.exitListener = listener
+  }
+
+  spawn(session: SessionInfo, env: Record<string, string>, command: string) {
+    const entry: { chunks: string[] } = { chunks: [] }
+    const client = new AcpStdioClient(command, session.workdir, env, {
+      onUpdate: (params) => {
+        const text = textOfUpdate(params)
+        if (text !== undefined) entry.chunks.push(text)
+      },
+      onPermission: (params) => answerAcpPermission(session.approvalPreset, params),
+      onExit: (reason) => {
+        if (this.sessions.delete(session.id)) this.exitListener?.(session.id, reason)
+      },
+    })
+    const ready = openAcpSession(client, session.workdir)
+    this.sessions.set(session.id, Object.assign(entry, { client, ready }))
+    return { ok: true, pid: client.pid }
+  }
+
+  async prompt(session: SessionInfo, input: string) {
+    const entry = this.sessions.get(session.id)
+    if (!entry) throw new Error(`ACP session ${session.id} has no running agent process`)
+    const acpSessionId = await entry.ready
+    entry.chunks = []
+    const stopReason = await promptAcpSession(entry.client, acpSessionId, input)
+    return { output: entry.chunks.join(""), stopReason }
+  }
+
+  async cancel(session: SessionInfo) {
+    const entry = this.sessions.get(session.id)
+    if (!entry) return
+    const acpSessionId = await entry.ready
+    entry.client.notify("session/cancel", { sessionId: acpSessionId })
+  }
+
+  async close(session: SessionInfo) {
+    const entry = this.sessions.get(session.id)
+    if (!entry) return
+    this.sessions.delete(session.id)
+    entry.client.close()
+  }
+}
+
+export class AcpService extends Service {
+  static override serviceType = ACP_SUBPROCESS_SERVICE_TYPE
+  override capabilityDescription = "Spawns and manages coding agent ACP sessions with verified admission and isolation."
+
+  readonly store: SessionStore
+  readonly transport: AcpTransportAdapter
+  readonly outputBuffers = new Map<string, string[]>()
+  readonly sessionListeners = new Set<SessionEventCallback>()
+  readonly acpListeners = new Set<AcpEventCallback>()
+  readonly admissionQueue: AdmissionQueueEntry[] = []
+  poolState: AdmissionPool = initialAdmissionPool
+
+  constructor(runtime?: IAgentRuntime, opts?: { readonly store?: SessionStore; readonly transport?: AcpTransportAdapter }) {
+    super(runtime)
+    this.store = opts?.store ?? new InMemorySessionStore()
+    this.transport = opts?.transport ?? new NativeStdioAcpTransport()
+    this.transport.setExitListener?.((sessionId, reason) => { void this.handleAgentExit(sessionId, reason) })
+  }
+
+  static override start(runtime: IAgentRuntime): Promise<Service> {
+    return Promise.resolve(new AcpService(runtime, { transport: new NativeStdioAcpTransport() }))
+  }
+
+  async handleAgentExit(sessionId: string, reason: string): Promise<void> {
+    const existing = this.store.get(sessionId)
+    if (!existing || isSessionTerminal(existing.status)) return
+    this.store.update(sessionId, { status: "errored", lastActivityAt: Date.now() })
+    this.runtime?.reportError("AcpService.agentExit", new Error(reason), { sessionId })
+    this.emitSessionEvent(sessionId, "error", { reason })
+    if (existing.slotClass === "worker") await this.releaseWorkerAndPromote()
+  }
+
+  effect admissionStep(event: AdmissionEvent): AdmissionPool!(SessionCapError | AdmissionQueueFullError) {
+    const next = applyAdmission(this.poolState, event) catch effect (rejected) => {
+      if (event.type === "enqueueWorker") {
+        throw new AdmissionQueueFullError({
+          queuedCount: rejected.state.queuedCount,
+          maxQueue: rejected.state.maxQueue,
+          reason: "Admission queue is full or disk backpressure is active.",
+        })
+      }
+      throw new SessionCapError({
+        activeWorkers: rejected.state.activeWorkers,
+        maxWorkers: rejected.state.maxWorkers,
+        reason: `Admission refused ${event.type} in current pool state.`,
+      })
+    }
+    this.poolState = next
+    return next
+  }
+
+  getAdmissionState(): AdmissionPool {
+    return this.poolState
+  }
+
+  setDiskBackpressure(blocked: boolean): AdmissionPool {
+    return runSync(effect { return this.admissionStep({ type: "setDiskBackpressure", blocked }) catch () => this.poolState })
+  }
+
+  getCapacity(): AcpCapacity {
+    return {
+      activeWorkers: this.poolState.activeWorkers,
+      maxSessions: this.poolState.maxWorkers,
+      queuedCount: this.poolState.queuedCount,
+      maxQueue: this.poolState.maxQueue,
+      diskBlocked: this.poolState.diskBlocked,
+      poolState: this.poolState,
+    }
+  }
+
+  onSessionEvent(cb: SessionEventCallback): () => void {
+    this.sessionListeners.add(cb)
+    return () => { this.sessionListeners.delete(cb) }
+  }
+
+  onAcpEvent(cb: AcpEventCallback): () => void {
+    this.acpListeners.add(cb)
+    return () => { this.acpListeners.delete(cb) }
+  }
+
+  emitSessionEvent(sessionId: string, event: SessionEventName, data: Readonly<Record<string, unknown>> = {}): void {
+    for (const listener of this.sessionListeners) {
+      listener(sessionId, event, data)
+    }
+  }
+
+  effect admitAgentType(opts: SpawnOptions, nowMs = Date.now()): KnownAdapterId!SubscriptionCodingAdapterError {
+    const resolved = resolveCodingBackendLogged({
+      runtime: this.runtime,
+      explicit: opts.agentType,
+      plannerGuess: "elizaos",
+    })
+    const agentType = normalizeTaskAgentAdapter(resolved?.agentType)
+    if (!agentType) {
+      throw new SubscriptionCodingAdapterError({
+        adapterId: opts.agentType ?? "default",
+        code: "BACKEND_NOT_ALLOWED",
+        reason: `No allowed coding backend matches ${opts.agentType ?? "the default"}; check the operator allow-list.`,
+      })
+    }
+    if (isSubscriptionCodingAdapter(agentType)) {
+      try assertSubscriptionCodingAdapterReady(agentType, opts.subscriptionExecutionMode, opts.metadata, nowMs)
+    }
+    return agentType
+  }
+
+  getAvailableAgents(): readonly AvailableAgentInfo[] {
+    return probeAvailableAdapters()
+  }
+
+  async checkAvailableAgents(): Promise<readonly AvailableAgentInfo[]> {
+    return this.getAvailableAgents()
+  }
+
+  materializeSession(opts: SpawnOptions, agentType: KnownAdapterId): SessionInfo {
+    const sessionId = makeId("sess")
+    const bridge = createCredentialBridgeToken()
+    let env = forwardableSubAgentEnv(undefined, {
+      ...buildGitIdentityEnvPatch(),
+      ...opts.env,
+      [CREDENTIAL_BRIDGE_TOKEN_ENV]: bridge.token,
+    })
+    if (agentType === "pi-agent" && isPiProviderRouteId(opts.providerRoute)) {
+      env = preparePiProviderRoute(opts.providerRoute, env, opts.model).env
+    }
+    if (isSubscriptionCodingAdapter(agentType)) {
+      env = stripSubscriptionApiEnvironment(agentType, env)
+    }
+    env = applyModelGatewayEnv(env, resolveModelGatewayConfig())
+    const nowIso = new Date().toISOString()
+    const label = opts.label?.trim() || `${agentType}-${sessionId.slice(-4)}`
+    const session: SessionInfo = {
+      id: sessionId,
+      name: label,
+      label,
+      agentType,
+      workdir: opts.workdir,
+      status: "ready",
+      createdAt: nowIso,
+      lastActivityAt: Date.now(),
+      approvalPreset: opts.approvalPreset ?? "standard",
+      model: opts.model,
+      providerRoute: opts.providerRoute,
+      taskId: opts.taskId,
+      roomId: typeof opts.metadata?.roomId === "string" ? opts.metadata.roomId : undefined,
+      ownerEntityId: typeof opts.metadata?.ownerEntityId === "string" ? opts.metadata.ownerEntityId : undefined,
+      slotClass: opts.slotClass ?? "worker",
+      metadata: {
+        ...(opts.metadata ?? {}),
+        [CREDENTIAL_BRIDGE_TOKEN_HASH_METADATA]: bridge.hash,
+        label,
+      },
+    }
+    this.store.create(session)
+    this.outputBuffers.set(sessionId, [])
+    this.transport.spawn(session, env, resolveAdapterCommand(agentType))
+    this.emitSessionEvent(sessionId, "ready", { agentType, workdir: opts.workdir, label })
+    return session
+  }
+
+  effect spawnSessionEffect(opts: SpawnOptions): SpawnResult!(SessionCapError | AdmissionQueueFullError | SubscriptionCodingAdapterError | Error) {
+    const agentType = try this.admitAgentType(opts)
+    const slotClass = opts.slotClass ?? "worker"
+    if (slotClass === "worker") {
+      if (this.poolState.activeWorkers >= this.poolState.maxWorkers) {
+        try this.admissionStep({ type: "enqueueWorker" })
+        const entry: AdmissionQueueEntry = {
+          id: makeId("q"),
+          agentType,
+          taskId: opts.taskId,
+          priority: opts.priority ?? "normal",
+          enqueuedAtMs: Date.now(),
+          spawnOptions: opts,
+        }
+        this.admissionQueue.push(entry)
+        return {
+          sessionId: entry.id,
+          agentType,
+          workdir: opts.workdir,
+          status: "blocked",
+          label: opts.label ?? agentType,
+          queued: true,
+        }
+      }
+      try this.admissionStep({ type: "spawnWorker" })
+    }
+    const session = this.materializeSession(opts, agentType)
+    const turn = opts.task ? try this.sendPromptEffect(session.id, opts.task) : undefined
+    const latest = this.store.get(session.id) ?? session
+    return {
+      sessionId: latest.id,
+      agentType: latest.agentType,
+      workdir: latest.workdir,
+      status: latest.status,
+      label: latest.label,
+      stopReason: turn?.stopReason,
+    }
+  }
+
+  effect cancelQueued(queueId: string): boolean!(SessionCapError | AdmissionQueueFullError) {
+    const idx = this.admissionQueue.findIndex((item) => item.id === queueId)
+    if (idx < 0) return false
+    try this.admissionStep({ type: "cancelQueued" })
+    this.admissionQueue.splice(idx, 1)
+    this.emitSessionEvent(queueId, "stopped", { reason: "cancelled while queued" })
+    return true
+  }
+
+  async spawnSession(opts: SpawnOptions): Promise<SpawnResult> {
+    return runPromise(this.spawnSessionEffect(opts))
+  }
+
+  effect sendPromptEffect(sessionId: string, input: string, _opts?: SendOptions): PromptResult!SessionCapError {
+    const existing = this.store.get(sessionId)
+    if (!existing || !isSessionPromptable(existing.status)) {
+      throw new SessionCapError({
+        activeWorkers: this.poolState.activeWorkers,
+        maxWorkers: this.poolState.maxWorkers,
+        reason: `Session ${sessionId} is not promptable.`,
+      })
+    }
+    const startedAt = Date.now()
+    this.store.update(sessionId, { status: "busy", lastActivityAt: startedAt })
+    const result = tryPromise({
+      try: () => this.transport.prompt(existing, input),
+      catch: (cause) => new SessionCapError({
+        activeWorkers: this.poolState.activeWorkers,
+        maxWorkers: this.poolState.maxWorkers,
+        reason: `Prompt failed for session ${sessionId}: ${cause instanceof Error ? cause.message : String(cause)}`,
+      }),
+    }) catch effect (failure) => {
+      this.store.update(sessionId, { status: "errored", lastActivityAt: Date.now() })
+      this.runtime?.reportError("AcpService.sendPrompt", failure, { sessionId })
+      this.emitSessionEvent(sessionId, "error", { reason: failure.reason })
+      if (existing.slotClass === "worker") try tryPromise({ try: () => this.releaseWorkerAndPromote(), catch: () => failure })
+      throw failure
+    }
+    this.appendOutput(sessionId, result.output)
+    this.store.update(sessionId, { status: "ready", lastActivityAt: Date.now() })
+    this.emitSessionEvent(sessionId, "message", { text: result.output })
+    if (turnOutcome(result.stopReason === "end_turn" ? "EndTurn" : "CancelledTurn") === "TurnCompleted") {
+      this.emitSessionEvent(sessionId, "task_complete", { summary: result.output, stopReason: result.stopReason })
+    } else {
+      this.emitSessionEvent(sessionId, "stopped", { reason: `turn ended with ${result.stopReason}`, stopReason: result.stopReason })
+    }
+    return {
+      sessionId,
+      status: "ready",
+      output: result.output,
+      stopReason: result.stopReason,
+      durationMs: Date.now() - startedAt,
+    }
+  }
+
+  async sendPrompt(sessionId: string, input: string, opts?: SendOptions): Promise<PromptResult> {
+    return runPromise(this.sendPromptEffect(sessionId, input, opts))
+  }
+
+  async sendToSession(sessionId: string, input: string, opts?: SendOptions): Promise<PromptResult> {
+    return this.sendPrompt(sessionId, input, opts)
+  }
+
+  async sendKeysToSession(sessionId: string, keys: string): Promise<PromptResult> {
+    return this.sendPrompt(sessionId, keys, { keys })
+  }
+
+  async releaseWorkerAndPromote(): Promise<void> {
+    if (this.poolState.activeWorkers <= 0) return
+    const prevQueued = this.poolState.queuedCount
+    const nextPool = await runPromise(effect { return this.admissionStep({ type: "releaseWorker" }) catch () => this.poolState })
+    if (prevQueued > nextPool.queuedCount && this.admissionQueue.length > 0) {
+      const ordered = orderAdmissionQueue(this.admissionQueue, Date.now())
+      const nextEntry = ordered[0]
+      if (nextEntry) {
+        const idx = this.admissionQueue.findIndex((item) => item.id === nextEntry.id)
+        if (idx >= 0) this.admissionQueue.splice(idx, 1)
+        const admitted = await runPromise(effect {
+          const agentType = this.admitAgentType({ ...nextEntry.spawnOptions, agentType: nextEntry.agentType }) catch (failure) => ({ failure })
+          return typeof agentType === "string" ? { agentType } : agentType
+        })
+        if ("failure" in admitted) {
+          await runPromise(effect { return this.admissionStep({ type: "releaseWorker" }) catch () => this.poolState })
+          this.runtime?.reportError("AcpService.promoteQueued", admitted.failure, { queueId: nextEntry.id, taskId: nextEntry.taskId })
+          this.emitSessionEvent(nextEntry.id, "error", { reason: admitted.failure.reason, code: admitted.failure.code })
+          return
+        }
+        const promoted = this.materializeSession(nextEntry.spawnOptions, admitted.agentType)
+        this.emitSessionEvent(nextEntry.id, "promoted", { sessionId: promoted.id, taskId: nextEntry.taskId })
+        if (nextEntry.spawnOptions.task) {
+          await runPromise(effect { return this.sendPromptEffect(promoted.id, nextEntry.spawnOptions.task!) catch () => undefined })
+        }
+      }
+    }
+  }
+
+  async cancelSession(sessionId: string): Promise<boolean> {
+    const existing = this.store.get(sessionId)
+    if (!existing || isSessionTerminal(existing.status)) return false
+    await this.transport.cancel(existing)
+    this.store.update(sessionId, { status: "cancelled", lastActivityAt: Date.now() })
+    if (existing.slotClass === "worker") {
+      await this.releaseWorkerAndPromote()
+    }
+    this.emitSessionEvent(sessionId, "stopped", { reason: "cancelled" })
+    return true
+  }
+
+  async stopSession(sessionId: string): Promise<boolean> {
+    const existing = this.store.get(sessionId)
+    if (!existing) return false
+    const wasActive = !TERMINAL_SESSION_STATUSES.has(existing.status)
+    await this.transport.close(existing)
+    this.store.update(sessionId, { status: "stopped", lastActivityAt: Date.now() })
+    if (wasActive && existing.slotClass === "worker") {
+      await this.releaseWorkerAndPromote()
+    }
+    this.emitSessionEvent(sessionId, "stopped", { reason: "stopped" })
+    return true
+  }
+
+  async closeSession(sessionId: string): Promise<boolean> {
+    return this.stopSession(sessionId)
+  }
+
+  deleteSession(sessionId: string): boolean {
+    this.outputBuffers.delete(sessionId)
+    return this.store.delete(sessionId)
+  }
+
+  listSessions(): SessionInfo[] {
+    return this.store.list()
+  }
+
+  getSession(sessionId: string): SessionInfo | undefined {
+    return this.store.get(sessionId)
+  }
+
+  updateSessionMetadata(sessionId: string, patch: Readonly<Record<string, unknown>>): SessionInfo | undefined {
+    const existing = this.store.get(sessionId)
+    if (!existing) return undefined
+    return this.store.update(sessionId, {
+      metadata: { ...existing.metadata, ...patch },
+      lastActivityAt: Date.now(),
+    })
+  }
+
+  appendOutput(sessionId: string, chunk: string): void {
+    const buf = this.outputBuffers.get(sessionId) ?? []
+    buf.push(chunk)
+    this.outputBuffers.set(sessionId, buf)
+  }
+
+  lastTurnOutput(sessionId: string): string {
+    return this.outputBuffers.get(sessionId)?.at(-1) ?? ""
+  }
+
+  getSessionOutput(sessionId: string, maxLines = 200): string {
+    const joined = (this.outputBuffers.get(sessionId) ?? []).join("\n")
+    return truncateTail(joined, maxLines).text
+  }
+
+  override async stop(): Promise<void> {
+    const active = this.listSessions().filter((s) => !isSessionTerminal(s.status))
+    for (const session of active) {
+      await this.stopSession(session.id)
+    }
+    this.sessionListeners.clear()
+    this.acpListeners.clear()
+  }
+}

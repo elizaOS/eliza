@@ -1,0 +1,138 @@
+// spec/pty/policy.md, "Idle timeout, terminal geometry, and output slices stay within safe bounds"; spec/pty/policy.md, "Story: Enforce session capacity, confinement, and safe teardown"
+
+module node {
+  import { ElizaError, type IAgentRuntime, logger, Service } from "@elizaos/core"
+  import { validIdleTimeoutMs } from "../gen/pty__policy.ts"
+  import {
+    PtyConsoleBridge,
+    PtySessionStore,
+    type PtySessionStoreOptions,
+    type PtySpawnResolver,
+  } from "./session-store.vibe"
+  import type {
+    BoundedOutputOptions,
+    BoundedOutputResult,
+    PtySessionInfo,
+    PtySpawnSpec,
+    SendAndWaitOptions,
+    SendAndWaitResult,
+  } from "./types.vibe"
+
+  const MAX_TIMER_DELAY_MS = 2_147_483_647
+  const PTY_IDLE_TIMEOUT_SETTING = "PTY_IDLE_TIMEOUT_MS"
+
+  function resolveAllowedRoot(runtime?: IAgentRuntime): string {
+    const fromSetting = runtime?.getSetting?.("PTY_ALLOWED_DIRECTORY")
+    return (
+      (typeof fromSetting === "string" && fromSetting.trim()) ||
+      process.env.PTY_ALLOWED_DIRECTORY?.trim() ||
+      process.cwd()
+    )
+  }
+
+  /** @throws {ElizaError} */
+  export function resolveIdleTimeoutMs(runtime?: IAgentRuntime): number | undefined {
+    const fromSetting = runtime?.getSetting?.(PTY_IDLE_TIMEOUT_SETTING)
+    const normalizedSetting = typeof fromSetting === "string" ? fromSetting.trim() : fromSetting
+    const usesRuntimeSetting = normalizedSetting != null && normalizedSetting !== ""
+    const configured = usesRuntimeSetting ? normalizedSetting : process.env[PTY_IDLE_TIMEOUT_SETTING]?.trim()
+    if (configured == null || configured === "") return undefined
+    const parsed =
+      typeof configured === "number"
+        ? configured
+        : typeof configured === "string" && /^\d+$/.test(configured)
+          ? Number(configured)
+          : Number.NaN
+    if (!Number.isSafeInteger(parsed) || !validIdleTimeoutMs(parsed)) {
+      throw new ElizaError(`${PTY_IDLE_TIMEOUT_SETTING} must be an integer from 0 to ${MAX_TIMER_DELAY_MS}`, {
+        code: "PTY_IDLE_TIMEOUT_INVALID",
+        context: {
+          setting: PTY_IDLE_TIMEOUT_SETTING,
+          source: usesRuntimeSetting ? "runtime" : "environment",
+          configured,
+          minimum: 0,
+          maximum: MAX_TIMER_DELAY_MS,
+        },
+        severity: "fatal",
+      })
+    }
+    return parsed
+  }
+
+  export class PtyService extends Service {
+    public static override serviceType = "PTY_SERVICE"
+    readonly consoleBridge: PtyConsoleBridge
+    private readonly store: PtySessionStore
+
+    /** @throws {never} */
+    constructor(
+      runtime?: IAgentRuntime,
+      spawnResolver?: PtySpawnResolver,
+      opts?: PtySessionStoreOptions,
+    ) {
+      super(runtime)
+      this.consoleBridge = new PtyConsoleBridge()
+      this.store = new PtySessionStore(this.consoleBridge, spawnResolver, opts ?? { allowedRoot: resolveAllowedRoot(runtime) })
+    }
+
+    static override async start(runtime: IAgentRuntime): Promise<PtyService> {
+      const allowedRoot = resolveAllowedRoot(runtime)
+      const idleTimeoutMs = resolveIdleTimeoutMs(runtime)
+      const instance = new PtyService(runtime, undefined, {
+        allowedRoot,
+        ...(idleTimeoutMs !== undefined ? { idleTimeoutMs } : {}),
+      })
+      logger.info(`[plugin-pty] PTY_SERVICE started (allowedRoot=${allowedRoot})`)
+      return instance
+    }
+
+    get capabilityDescription(): string {
+      return "Interactive PTY terminal sessions bridged to the web terminal (real CLI I/O)."
+    }
+
+    async startSession(spec: PtySpawnSpec): Promise<PtySessionInfo> {
+      return this.store.start(spec)
+    }
+
+    async stopSession(sessionId: string): Promise<void> {
+      return this.store.stop(sessionId)
+    }
+
+    /** @throws {ElizaError} */
+    resizeSession(sessionId: string, cols: number, rows: number): void {
+      this.store.resize(sessionId, cols, rows)
+    }
+
+    /** @throws {never} */
+    listSessions(): PtySessionInfo[] {
+      return this.store.list()
+    }
+
+    /** @throws {never} */
+    hasSession(sessionId: string): boolean {
+      return this.store.has(sessionId)
+    }
+
+    /** @throws {never} */
+    getBufferedOutput(sessionId: string): { readonly output: string; readonly bufferStartOffset: number; readonly totalChars: number } | undefined {
+      return this.store.getBufferedOutput(sessionId)
+    }
+
+    /** @throws {never} */
+    readOutput(sessionId: string, opts?: BoundedOutputOptions): BoundedOutputResult | undefined {
+      return this.store.readBoundedOutput(sessionId, opts)
+    }
+
+    async sendAndWait(sessionId: string, input: string, opts?: SendAndWaitOptions): Promise<SendAndWaitResult | undefined> {
+      return this.store.sendAndWait(sessionId, input, opts)
+    }
+
+    async stop(): Promise<void> {
+      await this.store.stopAll()
+      logger.info("[plugin-pty] PTY_SERVICE stopped; all sessions killed")
+    }
+  }
+}
+
+import { PtyService, resolveIdleTimeoutMs } from node
+export { PtyService, resolveIdleTimeoutMs }

@@ -1,0 +1,852 @@
+// spec/agentOrchestrator/taskLifecycle.md, "Story: Track an orchestrated coding task from creation through verified completion"; spec/agentOrchestrator/index.md, "A task can pass its acceptance gate only with evidence for every required criterion"; spec/agentOrchestrator/verification.md, "Story: Verify subagent deliverables against concrete evidence and route fast evaluations cleanly"
+module node {
+  import { randomUUID } from "node:crypto"
+  import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs"
+  import * as os from "node:os"
+  import * as path from "node:path"
+
+  /** @throws {never} */
+  export function makeTaskId(prefix: string): string {
+    return `${prefix}-${randomUUID().slice(0, 12)}`
+  }
+
+  /** @throws {never} */
+  export function defaultTaskStorePath(): string {
+    return path.join(os.homedir(), ".eliza", "agent-orchestrator", "tasks.json")
+  }
+
+  interface StoredDocument {
+    readonly task: { readonly id: string; readonly lastActivityAt: number }
+  }
+
+  export class JsonFileDocumentStore<D extends StoredDocument> {
+    readonly docs = new Map<string, D>()
+    onPersistFailure: (error: unknown, taskId: string) => void = () => undefined
+
+    constructor(readonly filePath: string) {
+      let text: string | undefined
+      try {
+        text = readFileSync(filePath, "utf8")
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error
+      }
+      if (text === undefined) return
+      const parsed: unknown = JSON.parse(text)
+      if (!Array.isArray(parsed)) throw new Error(`Task store ${filePath} does not hold a JSON array`)
+      for (const doc of parsed as D[]) this.docs.set(doc.task.id, doc)
+    }
+
+    /** @throws {never} */
+    saveDocument(doc: D): void {
+      const previous = this.docs.get(doc.task.id)
+      this.docs.set(doc.task.id, doc)
+      try {
+        this.persist()
+      } catch (error) {
+        if (previous) this.docs.set(doc.task.id, previous)
+        else this.docs.delete(doc.task.id)
+        this.onPersistFailure(error, doc.task.id)
+      }
+    }
+
+    /** @throws {never} */
+    getDocument(taskId: string): D | undefined {
+      return this.docs.get(taskId)
+    }
+
+    /** @throws {never} */
+    listDocuments(): D[] {
+      return [...this.docs.values()].sort((a, b) => b.task.lastActivityAt - a.task.lastActivityAt)
+    }
+
+    /** @throws {never} */
+    deleteDocument(taskId: string): boolean {
+      const previous = this.docs.get(taskId)
+      if (!previous) return false
+      this.docs.delete(taskId)
+      try {
+        this.persist()
+      } catch (error) {
+        this.docs.set(taskId, previous)
+        this.onPersistFailure(error, taskId)
+        return false
+      }
+      return true
+    }
+
+    persist(): void {
+      mkdirSync(path.dirname(this.filePath), { recursive: true })
+      const tmp = `${this.filePath}.${process.pid}.${randomUUID().slice(0, 8)}.tmp`
+      writeFileSync(tmp, JSON.stringify([...this.docs.values()], null, 2), "utf8")
+      renameSync(tmp, this.filePath)
+    }
+  }
+}
+import { JsonFileDocumentStore, defaultTaskStorePath, makeTaskId } from node
+import { Service, type IAgentRuntime } from "@elizaos/core"
+import {
+  apply as applyTaskLifecycle,
+  initial as initialTaskLifecycle,
+  isInFlightTaskStatus,
+  isTerminalTaskStatus,
+  type Event as TaskLifecycleEvent,
+  type TaskLifecycle,
+} from "../gen/agentOrchestrator__taskLifecycle.effect.vibe"
+import { evaluateTask, type Evidence } from "../gen/agentOrchestrator.effect.vibe"
+import {
+  fromSpecTaskStatus,
+  RecoveryConflictError,
+  TaskLifecycleError,
+  toSpecTaskRole,
+  toSpecTaskStatus,
+  type AttemptReflection,
+  type CreateTaskInput,
+  type OrchestratorTaskArtifact,
+  type OrchestratorTaskDecision,
+  type OrchestratorTaskDocument,
+  type OrchestratorTaskEvent,
+  type OrchestratorTaskMessage,
+  type OrchestratorTaskPlanRevision,
+  type OrchestratorTaskRecord,
+  type OrchestratorTaskSession,
+  type OrchestratorTaskStatus,
+  type OrchestratorTaskUsage,
+  type SessionInfo,
+  type TaskCompletionRole,
+  type TaskListFilter,
+  type TaskMessageDirection,
+  type TaskMessageSenderKind,
+  type UsageState,
+} from "./types.vibe"
+import {
+  detectTaskType,
+  generateDefaultAcceptanceCriteria,
+  runIndependentVerification,
+  type IndependentVerifierVerdict,
+} from "./verification.vibe"
+import { buildShiftHandoffDigest } from "./optimization.vibe"
+import type { AcpService } from "./acp.vibe"
+
+export const ORCHESTRATOR_TASK_SERVICE_TYPE = "ORCHESTRATOR_TASK_SERVICE"
+
+export interface TaskStore {
+  saveDocument(doc: OrchestratorTaskDocument): void
+  getDocument(taskId: string): OrchestratorTaskDocument | undefined
+  listDocuments(): OrchestratorTaskDocument[]
+  deleteDocument(taskId: string): boolean
+}
+
+export class InMemoryTaskStore implements TaskStore {
+  readonly docs = new Map<string, OrchestratorTaskDocument>()
+
+  saveDocument(doc: OrchestratorTaskDocument): void {
+    this.docs.set(doc.task.id, doc)
+  }
+
+  getDocument(taskId: string): OrchestratorTaskDocument | undefined {
+    return this.docs.get(taskId)
+  }
+
+  listDocuments(): OrchestratorTaskDocument[] {
+    return [...this.docs.values()].sort((a, b) => b.task.lastActivityAt - a.task.lastActivityAt)
+  }
+
+  deleteDocument(taskId: string): boolean {
+    return this.docs.delete(taskId)
+  }
+}
+
+export class FileTaskStore extends JsonFileDocumentStore<OrchestratorTaskDocument> implements TaskStore {}
+
+export interface TaskUsageSummary {
+  readonly inputTokens: number
+  readonly outputTokens: number
+  readonly cacheReadTokens: number
+  readonly cacheWriteTokens: number
+  readonly costUsd: number
+  readonly state: UsageState
+}
+
+export function summarizeUsageRows(rows: readonly OrchestratorTaskUsage[]): TaskUsageSummary {
+  if (rows.length === 0) {
+    return { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, costUsd: 0, state: "unavailable" }
+  }
+  let inputTokens = 0
+  let outputTokens = 0
+  let cacheReadTokens = 0
+  let cacheWriteTokens = 0
+  let costUsd = 0
+  let hasMeasured = false
+  for (const row of rows) {
+    inputTokens += row.inputTokens
+    outputTokens += row.outputTokens
+    cacheReadTokens += row.cacheReadTokens
+    cacheWriteTokens += row.cacheWriteTokens
+    costUsd += row.costUsd
+    if (row.state === "measured") hasMeasured = true
+  }
+  return {
+    inputTokens,
+    outputTokens,
+    cacheReadTokens,
+    cacheWriteTokens,
+    costUsd,
+    state: hasMeasured ? "measured" : "estimated",
+  }
+}
+
+export interface TaskThreadDto {
+  readonly id: string
+  readonly title: string
+  readonly goal: string
+  readonly status: OrchestratorTaskStatus
+  readonly priority: OrchestratorTaskRecord["priority"]
+  readonly activeSessionCount: number
+  readonly totalSessions: number
+  readonly archived: boolean
+  readonly paused: boolean
+  readonly usage: TaskUsageSummary
+  readonly updatedAt: string
+}
+
+export function toTaskThread(doc: OrchestratorTaskDocument): TaskThreadDto {
+  const activeSessionCount = doc.sessions.filter((s) =>
+    s.status !== "completed" && s.status !== "stopped" && s.status !== "errored" && s.status !== "cancelled",
+  ).length
+  return {
+    id: doc.task.id,
+    title: doc.task.title,
+    goal: doc.task.goal,
+    status: doc.task.status,
+    priority: doc.task.priority,
+    activeSessionCount,
+    totalSessions: doc.sessions.length,
+    archived: doc.task.archived,
+    paused: doc.task.paused,
+    usage: summarizeUsageRows(doc.usage),
+    updatedAt: doc.task.updatedAt,
+  }
+}
+
+export interface OrchestratorWidgetTask {
+  readonly id: string
+  readonly title: string
+  readonly status: OrchestratorTaskStatus
+  readonly activeSessions: number
+  readonly updatedAt: string
+}
+
+export interface OrchestratorWidgetSnapshot {
+  readonly tasks: readonly OrchestratorWidgetTask[]
+  readonly activeCount: number
+  readonly totalCount: number
+}
+
+export function buildOrchestratorWidgetSnapshot(
+  docs: readonly OrchestratorTaskDocument[],
+  limit = 20,
+): OrchestratorWidgetSnapshot {
+  const shown = docs.slice(0, Math.max(1, Math.min(limit, 100))).map((doc) => ({
+    id: doc.task.id,
+    title: doc.task.title,
+    status: doc.task.status,
+    activeSessions: doc.sessions.filter((s) =>
+      s.status !== "completed" && s.status !== "stopped" && s.status !== "errored" && s.status !== "cancelled",
+    ).length,
+    updatedAt: doc.task.updatedAt,
+  }))
+  const activeCount = docs.filter((d) => isInFlightTaskStatus(toSpecTaskStatus(d.task.status))).length
+  return { tasks: shown, activeCount, totalCount: docs.length }
+}
+
+export interface ResumeContext {
+  readonly taskId: string
+  readonly reason: "crash" | "pause" | "verify_retry" | "restart"
+  readonly summary: string
+  readonly reflections: readonly AttemptReflection[]
+}
+
+export function buildResumePreamble(ctx: ResumeContext): string {
+  const lines = [
+    `[Resume Context: task=${ctx.taskId}, reason=${ctx.reason}]`,
+    ctx.summary,
+  ]
+  for (const r of ctx.reflections.slice(-3)) {
+    lines.push(`Attempt #${r.attempt} feedback: ${r.summary} (missing: ${r.missing.join(", ") || "none"})`)
+  }
+  return lines.join("\n")
+}
+
+export interface DurableTurnExecutionResult {
+  readonly taskId: string
+  readonly sessionId: string
+  readonly phases: readonly ("provision" | "runTurn" | "requestApproval" | "submit")[]
+  readonly output: string
+  readonly status: "completed" | "failed"
+}
+
+export const TERMINAL_TASK_STATUSES: ReadonlySet<OrchestratorTaskRecord["status"]> = new Set(["done", "failed", "archived"])
+
+export class OrchestratorTaskService extends Service {
+  static override serviceType = ORCHESTRATOR_TASK_SERVICE_TYPE
+  override capabilityDescription = "Durable orchestrator task store, verified 9-status lifecycle FSM, plan revisions, and verification gates."
+
+  readonly store: TaskStore
+  readonly changeListeners = new Set<(taskId: string) => void>()
+
+  constructor(runtime?: IAgentRuntime, store?: TaskStore) {
+    super(runtime)
+    this.store = store ?? new InMemoryTaskStore()
+  }
+
+  static override start(runtime: IAgentRuntime): Promise<Service> {
+    const configured = runtime.getSetting("ORCHESTRATOR_TASK_STORE_PATH")
+    const filePath = typeof configured === "string" && configured.trim() !== "" ? configured.trim() : defaultTaskStorePath()
+    return runPromise(effect {
+      const store = try Effect.try({
+        try: () => new FileTaskStore(filePath),
+        catch: (cause) => new TaskLifecycleError({
+          taskId: "*",
+          code: "TASK_STORE_UNREADABLE",
+          reason: `Task store ${filePath} could not be opened: ${cause instanceof Error ? cause.message : String(cause)}`,
+        }),
+      })
+      store.onPersistFailure = (error, taskId) => {
+        runtime.reportError("OrchestratorTaskService.persist", error, { taskId, filePath })
+      }
+      return new OrchestratorTaskService(runtime, store)
+    })
+  }
+
+  subscribeTaskChanges(listener: (taskId: string) => void): () => void {
+    this.changeListeners.add(listener)
+    return () => { this.changeListeners.delete(listener) }
+  }
+
+  notifyChange(taskId: string): void {
+    for (const listener of this.changeListeners) listener(taskId)
+  }
+
+  createTask(input: CreateTaskInput): OrchestratorTaskDocument {
+    const id = makeTaskId("task")
+    const nowMs = Date.now()
+    const nowIso = new Date(nowMs).toISOString()
+    const goal = input.goal?.trim() || input.originalRequest?.trim() || input.title.trim()
+    const kind = input.kind?.trim() || detectTaskType(goal)
+    const criteria = generateDefaultAcceptanceCriteria(goal, input.acceptanceCriteria)
+    const task: OrchestratorTaskRecord = {
+      id,
+      title: input.title.trim(),
+      goal,
+      kind,
+      status: "open",
+      priority: input.priority ?? "normal",
+      originalRequest: input.originalRequest?.trim() || goal,
+      acceptanceCriteria: criteria,
+      currentPlan: input.currentPlan,
+      ownerUserId: input.ownerUserId,
+      worldId: input.worldId,
+      projectId: input.projectId,
+      roomId: input.roomId,
+      taskRoomId: input.taskRoomId,
+      parentTaskId: input.parentTaskId,
+      forkSource: input.forkSource,
+      boundWorkdir: input.workdir,
+      providerPolicy: input.providerPolicy,
+      paused: false,
+      archived: false,
+      lifecycle: initialTaskLifecycle,
+      createdAt: nowIso,
+      updatedAt: nowIso,
+      closedAt: null,
+      archivedAt: null,
+      lastActivityAt: nowMs,
+      metadata: { ...(input.metadata ?? {}) },
+    }
+    const createdEvent: OrchestratorTaskEvent = {
+      id: makeTaskId("evt"),
+      taskId: id,
+      type: "task_created",
+      summary: `Created task "${task.title}"`,
+      data: { kind, priority: task.priority },
+      createdAt: nowIso,
+    }
+    const doc: OrchestratorTaskDocument = {
+      task,
+      sessions: [],
+      events: [createdEvent],
+      messages: [],
+      usage: [],
+      artifacts: [],
+      decisions: [],
+      planRevisions: input.currentPlan
+        ? [{ id: makeTaskId("plan"), taskId: id, revision: 1, plan: input.currentPlan, createdBy: input.ownerUserId ?? "orchestrator", createdAt: nowIso }]
+        : [],
+    }
+    this.store.saveDocument(doc)
+    this.notifyChange(id)
+    return doc
+  }
+
+  getTask(taskId: string): OrchestratorTaskDocument | undefined {
+    return this.store.getDocument(taskId)
+  }
+
+  getTaskForSession(sessionId: string): OrchestratorTaskDocument | undefined {
+    return this.store.listDocuments().find((doc) => doc.sessions.some((s) => s.sessionId === sessionId))
+  }
+
+  listTasks(filter: TaskListFilter = {}): readonly OrchestratorTaskDocument[] {
+    const docs = this.store.listDocuments()
+    const search = filter.search?.trim().toLowerCase()
+    const filtered = docs.filter((doc) => {
+      if (!filter.includeArchived && doc.task.archived) return false
+      if (filter.taskId && doc.task.id !== filter.taskId) return false
+      if (filter.projectId && doc.task.projectId !== filter.projectId) return false
+      if (filter.sessionId && !doc.sessions.some((s) => s.sessionId === filter.sessionId)) return false
+      if (filter.statuses && filter.statuses.length > 0 && !filter.statuses.includes(doc.task.status)) return false
+      if (search) {
+        const hay = `${doc.task.title} ${doc.task.goal} ${doc.task.summary ?? ""}`.toLowerCase()
+        const tokens = search.split(/\s+/u).filter(Boolean)
+        if (!tokens.every((token) => hay.includes(token))) return false
+      }
+      return true
+    })
+    const limit = Math.max(1, Math.min(filter.limit ?? 50, 100))
+    return filtered.slice(0, limit)
+  }
+
+  effect transitionTask(taskId: string, event: TaskLifecycleEvent, summary: string, actor = "orchestrator"): OrchestratorTaskDocument!TaskLifecycleError {
+    const doc = this.store.getDocument(taskId)
+    if (!doc) {
+      throw new TaskLifecycleError({ taskId, code: "TASK_NOT_FOUND", reason: `Task ${taskId} not found.` })
+    }
+    const nextLifecycle = applyTaskLifecycle(doc.task.lifecycle, event) catch effect (rejected) => {
+      throw new TaskLifecycleError({
+        taskId,
+        code: "INVALID_LIFECYCLE_TRANSITION",
+        reason: `Transition ${rejected.event.type} refused from ${rejected.state.status}.`,
+      })
+    }
+    const nextStatus = fromSpecTaskStatus(nextLifecycle.status)
+    const nowMs = Date.now()
+    const nowIso = new Date(nowMs).toISOString()
+    const terminal = isTerminalTaskStatus(nextLifecycle.status)
+    const nextTask: OrchestratorTaskRecord = {
+      ...doc.task,
+      status: nextStatus,
+      paused: nextLifecycle.paused,
+      archived: nextLifecycle.archived,
+      lifecycle: nextLifecycle,
+      updatedAt: nowIso,
+      closedAt: terminal ? (doc.task.closedAt ?? nowIso) : null,
+      archivedAt: nextLifecycle.archived ? (doc.task.archivedAt ?? nowIso) : null,
+      lastActivityAt: nowMs,
+    }
+    const evt: OrchestratorTaskEvent = {
+      id: makeTaskId("evt"),
+      taskId,
+      type: `lifecycle:${event.type}`,
+      summary,
+      data: { from: doc.task.status, to: nextStatus, actor, generation: nextLifecycle.generation },
+      createdAt: nowIso,
+    }
+    const nextDoc: OrchestratorTaskDocument = {
+      ...doc,
+      task: nextTask,
+      events: [...doc.events, evt],
+    }
+    this.store.saveDocument(nextDoc)
+    this.notifyChange(taskId)
+    return nextDoc
+  }
+
+  getLifecycleState(taskId: string): TaskLifecycle | undefined {
+    return this.store.getDocument(taskId)?.task.lifecycle
+  }
+
+  attachSession(
+    taskId: string,
+    session: Pick<SessionInfo, "id" | "agentType" | "label" | "status" | "workdir">,
+    role?: TaskCompletionRole,
+  ): OrchestratorTaskDocument | undefined {
+    const doc = this.store.getDocument(taskId)
+    if (!doc || TERMINAL_TASK_STATUSES.has(doc.task.status)) return undefined
+    const assignedRole: TaskCompletionRole = role ?? (doc.task.completionCoordinatorSessionId ? "contributor" : "coordinator")
+    const coordinatorId = assignedRole === "coordinator" ? session.id : doc.task.completionCoordinatorSessionId
+    const nowIso = new Date().toISOString()
+    const entry: OrchestratorTaskSession = {
+      sessionId: session.id,
+      agentType: session.agentType,
+      label: session.label,
+      status: session.status,
+      role: assignedRole,
+      workdir: session.workdir,
+      attachedAt: nowIso,
+      updatedAt: nowIso,
+    }
+    const existingIdx = doc.sessions.findIndex((s) => s.sessionId === session.id)
+    const sessions = existingIdx >= 0
+      ? doc.sessions.map((s, idx) => (idx === existingIdx ? entry : s))
+      : [...doc.sessions, entry]
+    const activated = runSync(effect { return this.transitionTask(taskId, { type: "activateTask" }, `Attached ${assignedRole} session ${session.id}`) catch () => doc })
+    const refreshed: OrchestratorTaskDocument = {
+      ...activated,
+      task: {
+        ...activated.task,
+        completionCoordinatorSessionId: coordinatorId,
+        boundWorkdir: activated.task.boundWorkdir ?? session.workdir,
+      },
+      sessions,
+    }
+    this.store.saveDocument(refreshed)
+    this.notifyChange(taskId)
+    return refreshed
+  }
+
+  effect reportSessionCompletion(taskId: string, sessionId: string, summary: string): OrchestratorTaskDocument!TaskLifecycleError {
+    const doc = this.store.getDocument(taskId)
+    if (!doc) throw new TaskLifecycleError({ taskId, code: "TASK_NOT_FOUND", reason: `Task ${taskId} not found.` })
+    const session = doc.sessions.find((s) => s.sessionId === sessionId)
+    const role: TaskCompletionRole = session?.role === "coordinator" && doc.task.completionCoordinatorSessionId === sessionId
+      ? "coordinator"
+      : "contributor"
+    const updated = try this.transitionTask(
+      taskId,
+      { type: "reportCompletion", role: toSpecTaskRole(role) },
+      summary,
+      sessionId,
+    )
+    const withSummary: OrchestratorTaskDocument = {
+      ...updated,
+      task: { ...updated.task, summary },
+    }
+    this.store.saveDocument(withSummary)
+    return withSummary
+  }
+
+  effect validateTaskEffect(taskId: string, input: {
+    readonly passed: boolean
+    readonly summary?: string
+    readonly evidence?: string
+    readonly verifier?: string
+    readonly humanOverride?: boolean
+    readonly missing?: readonly string[]
+  }): OrchestratorTaskDocument!TaskLifecycleError {
+    const doc = this.store.getDocument(taskId)
+    if (!doc) throw new TaskLifecycleError({ taskId, code: "TASK_NOT_FOUND", reason: `Task ${taskId} not found.` })
+    if (input.passed && !input.humanOverride) {
+      const generation = doc.task.lifecycle.generation
+      const evidence = this.acceptanceEvidence(taskId, generation)
+      const decision = evidence
+        ? evaluateTask({ taskKey: taskId, taskGeneration: generation, requiredCriteria: [...doc.task.acceptanceCriteria] }, evidence)
+        : "EvaluationFailed"
+      if (decision !== "ReadyForReview") {
+        throw new TaskLifecycleError({
+          taskId,
+          code: "MISSING_EVIDENCE",
+          reason: `Task ${taskId} cannot pass validation: acceptance evidence for generation ${generation} is ${evidence ? decision : "not recorded"}.`,
+        })
+      }
+    }
+    const actor = input.verifier ?? "verifier"
+    const summary = input.summary ?? (input.passed ? "Validation passed." : "Validation failed.")
+    const updated = input.humanOverride
+      ? try this.transitionTask(
+          taskId,
+          { type: "humanOverrideValidation", passed: input.passed, hasEvidence: Boolean(input.evidence?.trim()) },
+          summary,
+          actor,
+        )
+      : input.passed
+        ? try this.transitionTask(taskId, { type: "passValidation" }, summary, actor)
+        : try this.transitionTask(taskId, { type: "failValidation" }, summary, actor)
+    const reflections: AttemptReflection[] = Array.isArray(updated.task.metadata.attemptReflections)
+      ? [...(updated.task.metadata.attemptReflections as AttemptReflection[])]
+      : []
+    if (!input.passed) {
+      reflections.push({
+        attempt: updated.task.lifecycle.autoVerifyAttempts,
+        missing: input.missing ?? [],
+        summary,
+      })
+    }
+    const decision: OrchestratorTaskDecision = {
+      id: makeTaskId("dec"),
+      taskId,
+      kind: input.humanOverride ? "human_override_validation" : "validation",
+      summary,
+      actor,
+      createdAt: new Date().toISOString(),
+    }
+    const nextDoc: OrchestratorTaskDocument = {
+      ...updated,
+      task: {
+        ...updated.task,
+        summary,
+        metadata: { ...updated.task.metadata, attemptReflections: reflections },
+      },
+      decisions: [...updated.decisions, decision],
+    }
+    this.store.saveDocument(nextDoc)
+    return nextDoc
+  }
+
+  effect autoValidateTaskEffect(taskId: string, input: {
+    readonly changedFiles: readonly string[]
+    readonly diffExcerpt: string
+    readonly testSummary: string
+    readonly env?: Readonly<Record<string, string | undefined>>
+  }): { readonly task: OrchestratorTaskDocument; readonly verdict: IndependentVerifierVerdict }!TaskLifecycleError {
+    const doc = this.store.getDocument(taskId)
+    if (!doc) throw new TaskLifecycleError({ taskId, code: "TASK_NOT_FOUND", reason: `Task ${taskId} not found.` })
+    if (doc.task.status !== "validating") {
+      throw new TaskLifecycleError({ taskId, code: "NOT_VALIDATING", reason: `Task ${taskId} status is ${doc.task.status}, expected validating.` })
+    }
+    const verdict = runIndependentVerification({
+      goal: doc.task.goal,
+      acceptanceCriteria: doc.task.acceptanceCriteria,
+      changedFiles: input.changedFiles,
+      diffExcerpt: input.diffExcerpt,
+      testSummary: input.testSummary,
+      runtime: this.runtime,
+      env: input.env,
+    }) catch effect (failure) => {
+      throw new TaskLifecycleError({ taskId, code: "EVALUATION_FAILED", reason: `Independent verification could not run; the task stays validating: ${failure.reason}` })
+    }
+    const generation = doc.task.lifecycle.generation
+    const required = doc.task.acceptanceCriteria
+    const evidence: Evidence = {
+      taskId,
+      evaluatedGeneration: generation,
+      provedCriteria: required.filter((criterion) => verdict.satisfied.includes(criterion)),
+      executionSucceeded: true,
+    }
+    this.recordAcceptanceEvidence(taskId, evidence)
+    const decision = evaluateTask({ taskKey: taskId, taskGeneration: generation, requiredCriteria: [...required] }, evidence)
+    const passed = verdict.passed && decision === "ReadyForReview"
+    const unproved = required.filter((criterion) => !evidence.provedCriteria.includes(criterion))
+    const updated = try this.validateTaskEffect(taskId, {
+      passed,
+      summary: passed || !verdict.passed ? verdict.summary : `${verdict.summary} Acceptance gate: ${decision}; unproved criteria: ${unproved.join("; ")}.`,
+      missing: passed ? [] : [...new Set([...verdict.missing, ...unproved])],
+      verifier: `independent-verifier:${verdict.provider}`,
+    })
+    return { task: updated, verdict }
+  }
+
+  acceptanceEvidence(taskId: string, generation: number): Evidence | undefined {
+    const recorded = this.store.getDocument(taskId)?.task.metadata.acceptanceEvidence as Evidence | undefined
+    return recorded && recorded.taskId === taskId && recorded.evaluatedGeneration === generation ? recorded : undefined
+  }
+
+  recordAcceptanceEvidence(taskId: string, evidence: Evidence): void {
+    const doc = this.store.getDocument(taskId)
+    if (!doc) return
+    this.store.saveDocument({ ...doc, task: { ...doc.task, metadata: { ...doc.task.metadata, acceptanceEvidence: evidence } } })
+  }
+
+  effect pauseTaskEffect(taskId: string): OrchestratorTaskDocument!TaskLifecycleError {
+    return try this.transitionTask(taskId, { type: "pauseTask" }, "Task paused by operator.")
+  }
+
+  effect resumeTaskEffect(taskId: string): OrchestratorTaskDocument!TaskLifecycleError {
+    return try this.transitionTask(taskId, { type: "activateTask" }, "Task resumed.")
+  }
+
+  effect archiveTaskEffect(taskId: string): OrchestratorTaskDocument!TaskLifecycleError {
+    return try this.transitionTask(taskId, { type: "archiveTask" }, "Task archived.")
+  }
+
+  effect reopenTaskEffect(taskId: string): OrchestratorTaskDocument!TaskLifecycleError {
+    return try this.transitionTask(taskId, { type: "reopenTask" }, "Task reopened.")
+  }
+
+  effect restartTaskEffect(taskId: string): OrchestratorTaskDocument!TaskLifecycleError {
+    return try this.transitionTask(taskId, { type: "restartTask" }, "Task restarted.")
+  }
+
+  effect recordCrashRetryEffect(taskId: string, reason: string): OrchestratorTaskDocument!TaskLifecycleError {
+    return try this.transitionTask(taskId, { type: "recordCrashRetry" }, `Crash retry: ${reason}`)
+  }
+
+  addMessage(taskId: string, input: {
+    readonly senderKind: TaskMessageSenderKind
+    readonly direction: TaskMessageDirection
+    readonly content: string
+    readonly sessionId?: string
+  }): OrchestratorTaskMessage | undefined {
+    const doc = this.store.getDocument(taskId)
+    if (!doc) return undefined
+    const msg: OrchestratorTaskMessage = {
+      id: makeTaskId("msg"),
+      taskId,
+      senderKind: input.senderKind,
+      direction: input.direction,
+      sessionId: input.sessionId,
+      content: input.content,
+      createdAt: new Date().toISOString(),
+    }
+    this.store.saveDocument({
+      ...doc,
+      task: { ...doc.task, lastActivityAt: Date.now(), updatedAt: msg.createdAt },
+      messages: [...doc.messages, msg],
+    })
+    this.notifyChange(taskId)
+    return msg
+  }
+
+  recordUsage(taskId: string, usage: Omit<OrchestratorTaskUsage, "id" | "taskId" | "createdAt">): OrchestratorTaskUsage | undefined {
+    const doc = this.store.getDocument(taskId)
+    if (!doc) return undefined
+    const entry: OrchestratorTaskUsage = {
+      ...usage,
+      id: makeTaskId("usg"),
+      taskId,
+      createdAt: new Date().toISOString(),
+    }
+    this.store.saveDocument({ ...doc, usage: [...doc.usage, entry] })
+    return entry
+  }
+
+  addArtifact(taskId: string, artifact: Omit<OrchestratorTaskArtifact, "id" | "taskId" | "createdAt">): OrchestratorTaskArtifact | undefined {
+    const doc = this.store.getDocument(taskId)
+    if (!doc) return undefined
+    const entry: OrchestratorTaskArtifact = {
+      ...artifact,
+      id: makeTaskId("art"),
+      taskId,
+      createdAt: new Date().toISOString(),
+    }
+    this.store.saveDocument({ ...doc, artifacts: [...doc.artifacts, entry] })
+    return entry
+  }
+
+  createPlanRevision(taskId: string, input: {
+    readonly plan: Readonly<Record<string, unknown>>
+    readonly basePlanRevisionId?: string
+    readonly editSummary?: string
+    readonly createdBy?: string
+  }): OrchestratorTaskPlanRevision | undefined {
+    const doc = this.store.getDocument(taskId)
+    if (!doc) return undefined
+    const rev: OrchestratorTaskPlanRevision = {
+      id: makeTaskId("plan"),
+      taskId,
+      revision: doc.planRevisions.length + 1,
+      basePlanRevisionId: input.basePlanRevisionId,
+      plan: input.plan,
+      editSummary: input.editSummary,
+      createdBy: input.createdBy ?? "operator",
+      createdAt: new Date().toISOString(),
+    }
+    this.store.saveDocument({
+      ...doc,
+      task: { ...doc.task, currentPlan: input.plan, updatedAt: rev.createdAt, lastActivityAt: Date.now() },
+      planRevisions: [...doc.planRevisions, rev],
+    })
+    this.notifyChange(taskId)
+    return rev
+  }
+
+  forkTask(taskId: string, overrides?: Partial<CreateTaskInput>): OrchestratorTaskDocument | undefined {
+    const source = this.store.getDocument(taskId)
+    if (!source) return undefined
+    return this.createTask({
+      title: overrides?.title ?? `${source.task.title} (fork)`,
+      goal: overrides?.goal ?? source.task.goal,
+      kind: overrides?.kind ?? source.task.kind,
+      priority: overrides?.priority ?? source.task.priority,
+      acceptanceCriteria: overrides?.acceptanceCriteria ?? source.task.acceptanceCriteria,
+      projectId: overrides?.projectId ?? source.task.projectId,
+      workdir: overrides?.workdir ?? source.task.boundWorkdir,
+      parentTaskId: taskId,
+      forkSource: taskId,
+    })
+  }
+
+  deleteTask(taskId: string): boolean {
+    const removed = this.store.deleteDocument(taskId)
+    if (removed) this.notifyChange(taskId)
+    return removed
+  }
+
+  pauseAll(): number {
+    let paused = 0
+    for (const doc of this.store.listDocuments()) {
+      const res = runSync(effect { return this.pauseTaskEffect(doc.task.id) catch () => undefined })
+      if (res) paused += 1
+    }
+    return paused
+  }
+
+  resumeAll(): number {
+    let resumed = 0
+    for (const doc of this.store.listDocuments()) {
+      if (!doc.task.paused) continue
+      const res = runSync(effect { return this.resumeTaskEffect(doc.task.id) catch () => undefined })
+      if (res) resumed += 1
+    }
+    return resumed
+  }
+
+  buildShiftHandoff(taskId: string, nextAction: string) {
+    const doc = this.store.getDocument(taskId)
+    if (!doc) return undefined
+    const rawHistory = doc.messages.map((m) => `${m.senderKind}: ${m.content}`).join("\n")
+    const verificationStatus = doc.task.status === "done" ? "passed" : doc.task.status === "failed" ? "failed" : "pending"
+    return buildShiftHandoffDigest({
+      task: doc.task,
+      changedFiles: doc.artifacts.map((a) => a.path ?? a.label),
+      verificationStatus,
+      activeArtifacts: doc.artifacts.map((a) => a.id),
+      rawHistory,
+      nextAction,
+    })
+  }
+
+  effect runDurableTurn(acp: AcpService, taskId: string, prompt: string, workdir: string): DurableTurnExecutionResult!(TaskLifecycleError | RecoveryConflictError) {
+    const doc = this.store.getDocument(taskId)
+    if (!doc) throw new TaskLifecycleError({ taskId, code: "TASK_NOT_FOUND", reason: `Task ${taskId} not found.` })
+    const spawned = acp.spawnSessionEffect({ workdir, taskId, label: doc.task.title.slice(0, 24) }) catch effect (err) => {
+      throw new RecoveryConflictError({ taskId, reason: "reason" in err ? err.reason : err.message })
+    }
+    this.attachSession(taskId, {
+      id: spawned.sessionId,
+      agentType: spawned.agentType,
+      label: spawned.label,
+      status: spawned.status,
+      workdir: spawned.workdir,
+    })
+    const result = acp.sendPromptEffect(spawned.sessionId, prompt) catch effect (err) => {
+      throw new RecoveryConflictError({ taskId, reason: err.reason })
+    }
+    this.addMessage(taskId, { senderKind: "sub_agent", direction: "stdout", content: result.output, sessionId: spawned.sessionId })
+    try this.reportSessionCompletion(taskId, spawned.sessionId, result.output)
+    return {
+      taskId,
+      sessionId: spawned.sessionId,
+      phases: ["provision", "runTurn", "requestApproval", "submit"],
+      output: result.output,
+      status: "completed",
+    }
+  }
+
+  getStatus() {
+    const docs = this.store.listDocuments()
+    const byStatus: Record<string, number> = {}
+    for (const doc of docs) {
+      byStatus[doc.task.status] = (byStatus[doc.task.status] ?? 0) + 1
+    }
+    return {
+      ready: true,
+      totalTasks: docs.length,
+      inFlightTasks: docs.filter((d) => isInFlightTaskStatus(toSpecTaskStatus(d.task.status))).length,
+      byStatus,
+    }
+  }
+
+  override async stop(): Promise<void> {
+    this.changeListeners.clear()
+  }
+}

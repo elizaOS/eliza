@@ -179,7 +179,10 @@ completedActionHandoffId, navigationPrepared: true, navigationBinding}`
 and no other key (core views parses them). The turn's completed action
 includes the validated prepared handoff in its reply's action data, so the
 renderer can claim the request using that exact binding. A refusal carries
-no prepared handoff.
+no prepared handoff. The renderer applies the navigation only after the
+reply is shown, and a screen that cannot show the view stays where it is,
+so the show action's text says the view opens once the reply is shown and
+is not open yet: the reply then never says the view already opened.
 
 ```quint
 pure def targets(h: ViewHost, target: str): List[DeclaredView] = h.views.select(d => namesOf(d).includes(target))

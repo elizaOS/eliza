@@ -1,0 +1,43 @@
+// spec/workflow/budget.md, "Story: Compact step context, batch independent DAG steps and route fast evaluations"; spec/workflow/hostedDigest.md, "Story: Acknowledge a page of digests only after it is stored"
+import { assert, it } from "@effect/vitest"
+import {
+  compactStepOutput, digestZoneNote, estimateWorkflowCostMicros, estimateWorkflowTokens, nextParallelWaveIndices, selectWorkflowModelTier,
+  type PhoneStep,
+} from "../src/index.vibe"
+
+it.effect('Compact oversized step outputs, plan parallel DAG waves without crossing barriers, and route model tiers (spec/workflow/budget.md, "Step context compaction bounds every prompt input to the configured window"; spec/workflow/budget.md, "Parallel DAG waves batch only ready non-barrier steps"; spec/workflow/budget.md, "Fast evaluations and short step drafts route to the fast model tier")', effect () => {
+  const short = compactStepOutput("hello world", 500)
+  const longText = "START:" + "a".repeat(2000) + ":END"
+  const compacted = compactStepOutput(longText, 180)
+  const steps: PhoneStep[] = [
+    { id: "r1", kind: "Read", operation: "supplied_text", text: "a" },
+    { id: "r2", kind: "Read", operation: "supplied_text", text: "b" },
+    { id: "d1", kind: "Write", operation: "model_draft", source: "r1", instruction: "go" },
+    { id: "d2", kind: "Write", operation: "model_draft", source: "r2", instruction: "go" },
+    { id: "gate", kind: "If", operation: "contains", source: "d1", text: "ok", caseSensitive: false },
+    { id: "n1", kind: "Notify", operation: "app_notification", source: "d2", title: "Done" },
+  ]
+  const wave1 = nextParallelWaveIndices(steps, 0, new Set())
+  const wave2 = nextParallelWaveIndices(steps, 2, new Set(["r1", "r2"]))
+  const wave3 = nextParallelWaveIndices(steps, 4, new Set(["r1", "r2", "d1", "d2"]))
+  const wave4 = nextParallelWaveIndices(steps, 5, new Set(["r1", "r2", "d1", "d2", "gate"]))
+  const note = digestZoneNote({
+    removed: false,
+    spec: { version: 1, template: "morning", sourceId: "s1", sourceRevision: "a".repeat(64), timeZone: "America/Los_Angeles", localTime: "07:30", enabled: true },
+  }, "UTC", Date.UTC(2026, 6, 1, 12, 0))
+  try Effect.try(() => assert.deepStrictEqual({
+    short: [short.compacted, short.text],
+    compacted: [compacted.compacted, compacted.retainedChars <= 180, compacted.text.startsWith("START:"), compacted.text.endsWith(":END")],
+    waves: [wave1, wave2, wave3, wave4],
+    tiers: [selectWorkflowModelTier("DraftWorkflowCode", 100), selectWorkflowModelTier("FastEvaluation", 10000), selectWorkflowModelTier("ModelDraftStep", 500), selectWorkflowModelTier("ModelDraftStep", 5000)],
+    tokens: [estimateWorkflowTokens(0), estimateWorkflowTokens(350), estimateWorkflowCostMicros(100, "FastEvalTier") < estimateWorkflowCostMicros(100, "LargeDraftTier")],
+    zoneNote: note.includes("America/Los_Angeles"),
+  }, {
+    short: [false, "hello world"],
+    compacted: [true, true, true, true],
+    waves: [[0, 1], [2, 3], [4], [5]],
+    tiers: ["LargeDraftTier", "FastEvalTier", "FastEvalTier", "LargeDraftTier"],
+    tokens: [0, 100, true],
+    zoneNote: true,
+  }))
+})

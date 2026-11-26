@@ -1,0 +1,336 @@
+// spec/agentOrchestrator/lanesAndRouting.md, "Output truncation and shift-handoff compaction keep context within token budgets"
+import {
+  boundedOutputBytes,
+  needsCompaction,
+  usableTokenBudget,
+} from "../gen/agentOrchestrator__lanesAndRouting.effect.vibe"
+import {
+  type OrchestratorTaskRecord,
+  type SessionInfo,
+  type ShiftHandoffDigest,
+  type TruncatedOutput,
+} from "./types.vibe"
+import { ORDERED_ADAPTER_IDS } from "./adapters.vibe"
+
+const DEFAULT_MAX_OUTPUT_LINES = 200
+const DEFAULT_MAX_OUTPUT_BYTES = 16_384
+const PI_HARD_MAX_LINES = 2_000
+const PI_HARD_MAX_BYTES = 51_200
+export const TOOL_OUTPUT_END_MARKER = "[/tool output]"
+export const SPAWN_ACK_FALLBACK = "On it."
+
+export interface StoredOutputArtifact {
+  readonly ref: string
+  readonly content: string
+  readonly totalLines: number
+  readonly totalBytes: number
+  readonly createdAt: number
+}
+
+const artifactStore = new Map<string, StoredOutputArtifact>()
+let artifactCounter = 0
+
+export function storeOutputArtifact(content: string): StoredOutputArtifact {
+  artifactCounter += 1
+  const ref = `orch-art-${artifactCounter}`
+  const lines = content.length === 0 ? 0 : content.split("\n").length
+  const totalBytes = new TextEncoder().encode(content).byteLength
+  const record: StoredOutputArtifact = {
+    ref,
+    content,
+    totalLines: lines,
+    totalBytes,
+    createdAt: Date.now(),
+  }
+  artifactStore.set(ref, record)
+  if (artifactStore.size > 256) {
+    const oldest = artifactStore.keys().next().value
+    if (oldest !== undefined) artifactStore.delete(oldest)
+  }
+  return record
+}
+
+export function readOutputArtifactSlice(
+  ref: string,
+  offsetLine = 0,
+  limitLines = DEFAULT_MAX_OUTPUT_LINES,
+): { readonly found: boolean; readonly text: string; readonly totalLines: number; readonly nextOffset: number } {
+  const artifact = artifactStore.get(ref)
+  if (!artifact) return { found: false, text: "", totalLines: 0, nextOffset: 0 }
+  const lines = artifact.content.split("\n")
+  const start = Math.max(0, Math.min(offsetLine, lines.length))
+  const end = Math.min(lines.length, start + Math.max(1, limitLines))
+  return {
+    found: true,
+    text: lines.slice(start, end).join("\n"),
+    totalLines: lines.length,
+    nextOffset: end,
+  }
+}
+
+export function estimateTokensFromChars(chars: number): number {
+  if (chars <= 0) return 0
+  return Math.ceil(chars / 3.5)
+}
+
+export function estimateTextTokens(text: string): number {
+  return estimateTokensFromChars(text.length)
+}
+
+export function truncateBounded(
+  raw: string,
+  mode: "head" | "tail",
+  maxLines = DEFAULT_MAX_OUTPUT_LINES,
+  maxBytes = DEFAULT_MAX_OUTPUT_BYTES,
+): TruncatedOutput {
+  const clampedLines = Math.max(1, Math.min(maxLines, PI_HARD_MAX_LINES))
+  const clampedBytes = Math.max(256, Math.min(maxBytes, PI_HARD_MAX_BYTES))
+  const encoder = new TextEncoder()
+  const totalBytes = encoder.encode(raw).byteLength
+  const allLines = raw.length === 0 ? [] : raw.split("\n")
+  const totalLines = allLines.length
+  const allowedBytes = boundedOutputBytes(totalBytes, clampedBytes)
+  if (totalLines <= clampedLines && totalBytes <= allowedBytes) {
+    return {
+      text: raw,
+      truncated: false,
+      totalLines,
+      shownLines: totalLines,
+      totalBytes,
+      shownBytes: totalBytes,
+      mode,
+    }
+  }
+  const artifact = storeOutputArtifact(raw)
+  const slice = mode === "head" ? allLines.slice(0, clampedLines) : allLines.slice(Math.max(0, totalLines - clampedLines))
+  let body = slice.join("\n")
+  let shownBytes = encoder.encode(body).byteLength
+  if (shownBytes > clampedBytes) {
+    const bytes = encoder.encode(body)
+    if (mode === "head") {
+      let end = clampedBytes
+      while (end > 0 && (bytes[end]! & 0xc0) === 0x80) end -= 1
+      body = new TextDecoder().decode(bytes.subarray(0, end))
+    } else {
+      let start = bytes.length - clampedBytes
+      while (start < bytes.length && (bytes[start]! & 0xc0) === 0x80) start += 1
+      body = new TextDecoder().decode(bytes.subarray(start))
+    }
+    shownBytes = encoder.encode(body).byteLength
+  }
+  const startLine = mode === "head" ? 1 : Math.max(1, totalLines - slice.length + 1)
+  const endLine = mode === "head" ? slice.length : totalLines
+  const notice = `[Showing lines ${startLine}-${endLine} of ${totalLines} (${totalBytes} B). Ref: ${artifact.ref} offset=${mode === "head" ? endLine : 0}]`
+  return {
+    text: mode === "head" ? `${body}\n${notice}` : `${notice}\n${body}`,
+    truncated: true,
+    totalLines,
+    shownLines: slice.length,
+    totalBytes,
+    shownBytes,
+    artifactRef: artifact.ref,
+    mode,
+  }
+}
+
+export function truncateHead(raw: string, maxLines = DEFAULT_MAX_OUTPUT_LINES, maxBytes = DEFAULT_MAX_OUTPUT_BYTES): TruncatedOutput {
+  return truncateBounded(raw, "head", maxLines, maxBytes)
+}
+
+export function truncateTail(raw: string, maxLines = DEFAULT_MAX_OUTPUT_LINES, maxBytes = DEFAULT_MAX_OUTPUT_BYTES): TruncatedOutput {
+  return truncateBounded(raw, "tail", maxLines, maxBytes)
+}
+
+export function buildShiftHandoffDigest(args: {
+  readonly task: OrchestratorTaskRecord
+  readonly changedFiles: readonly string[]
+  readonly verificationStatus: "pending" | "passed" | "failed"
+  readonly activeArtifacts: readonly string[]
+  readonly rawHistory: string
+  readonly nextAction: string
+  readonly maxTailBytes?: number
+}): ShiftHandoffDigest {
+  const tail = truncateTail(args.rawHistory, 40, args.maxTailBytes ?? 2_048)
+  const sortedFiles = [...new Set(args.changedFiles)].sort()
+  const sortedArtifacts = [...new Set(args.activeArtifacts)].sort()
+  const body = {
+    taskId: args.task.id,
+    goal: args.task.goal,
+    status: args.task.status,
+    changedFiles: sortedFiles,
+    verificationStatus: args.verificationStatus,
+    activeArtifacts: sortedArtifacts,
+    recentTail: tail.text,
+    nextAction: args.nextAction,
+  }
+  return {
+    ...body,
+    estimatedTokens: estimateTextTokens(JSON.stringify(body)),
+  }
+}
+
+export function compactContextWindow(args: {
+  readonly turns: readonly string[]
+  readonly windowTokens: number
+  readonly retainTailTurns?: number
+  readonly taskGoal: string
+}): { readonly compacted: boolean; readonly text: string; readonly estimatedTokens: number; readonly droppedTurns: number } {
+  const joined = args.turns.join("\n---\n")
+  const currentTokens = estimateTextTokens(joined)
+  if (!needsCompaction(currentTokens, args.windowTokens)) {
+    return { compacted: false, text: joined, estimatedTokens: currentTokens, droppedTurns: 0 }
+  }
+  const budgetTokens = usableTokenBudget(args.windowTokens)
+  const keepCount = Math.max(1, Math.min(args.retainTailTurns ?? 3, args.turns.length))
+  const dropped = args.turns.length - keepCount
+  const retained = args.turns.slice(args.turns.length - keepCount)
+  const olderSummary = dropped > 0
+    ? `[Compacted ${dropped} prior turns for goal: ${args.taskGoal.slice(0, 160)}]`
+    : ""
+  const maxBodyChars = Math.max(256, Math.floor(budgetTokens * 3.5) - olderSummary.length - 64)
+  const tailText = truncateTail(retained.join("\n---\n"), 120, maxBodyChars).text
+  const result = olderSummary ? `${olderSummary}\n${tailText}` : tailText
+  return {
+    compacted: true,
+    text: result,
+    estimatedTokens: estimateTextTokens(result),
+    droppedTurns: dropped,
+  }
+}
+
+export function buildCacheStableOrchestratorPrefix(options?: {
+  readonly enabledAdapters?: readonly string[]
+  readonly fastEvalEnabled?: boolean
+}): string {
+  const adapters = [...(options?.enabledAdapters ?? ORDERED_ADAPTER_IDS)].sort().join(",")
+  const fastEval = options?.fastEvalEnabled ? "cerebras-fast|text-small" : "text-small"
+  return [
+    "# Agent Orchestrator Policy",
+    `adapters: ${adapters}`,
+    `eval_lanes: ${fastEval}`,
+    "tools: read,write,edit,bash (Pi minimal profile) + TASKS delegation",
+    "rules:",
+    "1. Prefer TASKS_SEND when a live session already owns the target workdir.",
+    "2. Never relay raw transcripts or unverified claims; emit bounded structured digests.",
+    "3. Only elected coordinator sessions may transition a task into validating/done.",
+    "4. Respect operator allow-lists, disk budgets, spend caps, and read-only verification.",
+  ].join("\n")
+}
+
+export function buildCompactSessionDigest(session: SessionInfo): string {
+  return `[${session.label}] id=${session.id} adapter=${session.agentType} status=${session.status} dir=${session.workdir}`
+}
+
+export function buildCompactTaskDigest(task: OrchestratorTaskRecord, sessionCount: number): string {
+  return `[${task.id}] ${task.status} (${task.priority}) "${task.title}" sessions=${sessionCount} criteria=${task.acceptanceCriteria.length}`
+}
+
+export function stripAnsi(text: string): string {
+  const esc = String.fromCharCode(27)
+  const bel = String.fromCharCode(7)
+  let out = ""
+  let i = 0
+  while (i < text.length) {
+    if (text[i] === esc) {
+      const next = text[i + 1]
+      if (next === "[") {
+        i += 2
+        while (i < text.length && !/[a-zA-Z]/u.test(text[i] ?? "")) i += 1
+        i += 1
+        continue
+      }
+      if (next === "]") {
+        i += 2
+        while (i < text.length && text[i] !== bel && !(text[i] === esc && text[i + 1] === "\\")) i += 1
+        i += text[i] === bel ? 1 : 2
+        continue
+      }
+    }
+    out += text[i] ?? ""
+    i += 1
+  }
+  return out
+}
+
+export function stripToolTranscript(text: string): string {
+  const stripped = text.replace(/\[tool output:[^\]]*\][\s\S]*?\[\/tool output\]/giu, "").trim()
+  return stripped
+}
+
+export function stripEnvelopeSummaryLines(text: string): string {
+  return text
+    .split("\n")
+    .filter((line) => !/^\s*(?:COMPLETION_ENVELOPE|STRUCTURED_PROOF|VERIFICATION_RECEIPT)\s*[:=]/iu.test(line))
+    .join("\n")
+    .trim()
+}
+
+export function stripStructuredProofLines(text: string): string {
+  return text
+    .split("\n")
+    .filter((line) => !/^\s*\[(?:proof|evidence|envelope):[^\]]*\]\s*$/iu.test(line))
+    .join("\n")
+    .trim()
+}
+
+export function sanitizeCompletionRelay(text: string): string {
+  return stripStructuredProofLines(stripEnvelopeSummaryLines(stripToolTranscript(stripAnsi(text)))).trim()
+}
+
+export function cleanForChat(text: string, maxChars = 4_000): string {
+  const cleaned = sanitizeCompletionRelay(text).replace(/\n{3,}/gu, "\n\n")
+  if (cleaned.length <= maxChars) return cleaned
+  return `${cleaned.slice(0, maxChars - 3).trimEnd()}...`
+}
+
+export function extractCompletionSummary(text: string, maxChars = 400): string {
+  const cleaned = sanitizeCompletionRelay(text)
+  if (!cleaned) return ""
+  const firstParagraph = cleaned.split(/\n\s*\n/u)[0] ?? cleaned
+  return firstParagraph.length <= maxChars ? firstParagraph : `${firstParagraph.slice(0, maxChars - 3).trimEnd()}...`
+}
+
+export function sanitizePlannerText(text: string): string {
+  return text
+    .replace(/[^.!?\n]*\b(?:restart\s+acpx\s+daemon|clear\s+stale\s+sessions)\b[^.!?\n]*[.!?]?/giu, "")
+    .replace(/\s{2,}/gu, " ")
+    .trim()
+}
+
+export function compactProgressText(text: string, maxChars = 160): string {
+  const single = stripAnsi(text).replace(/\s+/gu, " ").trim()
+  if (single.length <= maxChars) return single
+  return `${single.slice(0, maxChars - 3).trimEnd()}...`
+}
+
+export function stripProgressLabelPrefix(text: string, label: string): string {
+  const prefix = `[${label}]`
+  return text.startsWith(prefix) ? text.slice(prefix.length).trim() : text
+}
+
+export effect function dispatchParallelBatch<I, O, E>(
+  items: readonly I[],
+  concurrency: number,
+  worker: (item: I, index: number) => O!E,
+): O[]!E {
+  const limit = Math.max(1, Math.trunc(concurrency))
+  return try Effect.forEach(items, (item, index) => worker(item, index), { concurrency: limit })
+}
+
+export effect function pollSessionsBatched<S, E>(
+  sessionIds: readonly string[],
+  readSession: (id: string) => S!E,
+  isDone: (state: S) => boolean,
+  maxRounds = 10,
+  intervalMs = 250,
+): readonly S[]!E {
+  let latest: S[] = []
+  for (let round = 0; round < maxRounds; round += 1) {
+    latest = try Effect.forEach(sessionIds, (id) => readSession(id), { concurrency: "unbounded" })
+    if (latest.every((item) => isDone(item))) return latest
+    if (round + 1 < maxRounds && intervalMs > 0) {
+      try sleep(Duration.millis(intervalMs))
+    }
+  }
+  return latest
+}

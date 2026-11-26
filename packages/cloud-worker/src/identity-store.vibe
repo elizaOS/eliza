@@ -1,4 +1,4 @@
-// spec/cloud/identity/sessions.md, "Story: Stay signed in"; spec/cloud/identity/sessions.md, "Story: Sign out here, or everywhere"; spec/cloud/identity/accounts.md, "A sign-in lands on the account holding its subject, else on the one holding its proven address, else on a new account, and never on an account that is not active"; spec/cloud/index.md, "A browser sign-in opens no session for a person with a confirmed second factor"
+// spec/cloud/identity/sessions.md, "Story: Stay signed in"; spec/cloud/identity/sessions.md, "Story: Sign out here, or end my other sessions"; spec/cloud/identity/accounts.md, "A sign-in lands on the account holding its subject, else on the one holding its proven address, else on a new account, and never on an account that is not active"; spec/cloud/index.md, "A browser sign-in opens no session for a person with a confirmed second factor"
 import type { Client } from "pg"
 import { foreign, toInt, type Tx } from "./store/connection.vibe"
 import { SecureRandom } from "effect/crypto"

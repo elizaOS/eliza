@@ -1,4 +1,4 @@
-// spec/core/actionPlanning.md, "Story: Plan and execute tool calls"
+// spec/core/actionPlanning.md, "Story: Plan and execute tool calls"; spec/core/actionPlanning.md, "An object parameter with no declared properties accepts any keys, and one with declared properties accepts no others unless it says so"
 import { failingAs, thrown } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
 import type { Action, ActionParameter, ActionParameterSchema } from "../types/components.vibe"
@@ -269,7 +269,7 @@ effect function actionParameterSchemaToJsonSchema(
           path: `${path}.*`,
         })
     } else {
-      jsonSchema.additionalProperties = false
+      jsonSchema.additionalProperties = Object.keys(properties).length > 0 ? false : true
     }
   }
 

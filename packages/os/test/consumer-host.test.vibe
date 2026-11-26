@@ -133,7 +133,7 @@ it.effect('Keep building my product against the paths and names I import (spec/o
   }
 })
 
-it.effect('The packaged device account keeps mail on a lease the agent never holds: it rotates the lease once for every waiting reader, presents the same refresh again after a lost reply, renews its key only past half its life, signs out completely when the lease is revoked, and keeps the lease of a native Google key on the canonical routes (spec/cloud/nativeClients/deviceKeys.md, "Story: Sign a device in and keep its key"; spec/cloud/nativeClients/deviceKeys.md, "Story: Sign a device out"; spec/cloud/identity/sessions.md, "Story: Stay signed in")', effect () => {
+it.effect('The packaged device account keeps mail on a lease the agent never holds: it rotates the lease once for every waiting reader, presents the same refresh again after a lost reply, renews its key only past half its life, signs out completely when the lease is revoked, and keeps the lease of a native Google or email sign-in on the canonical routes (spec/cloud/nativeClients/deviceKeys.md, "Story: Sign a device in and keep its key"; spec/cloud/nativeClients/deviceKeys.md, "Story: Sign a device out"; spec/cloud/identity/sessions.md, "Story: Stay signed in"; spec/os/signIn/flow.md, "Story: Sign in with a code, Google or a second factor")', effect () => {
   const seen = try tryPromise(() => walkDeviceAccount())
   try Effect.try(() => assert.deepStrictEqual(seen, {
     signedIn: true,

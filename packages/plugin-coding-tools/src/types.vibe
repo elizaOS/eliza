@@ -1,0 +1,200 @@
+// spec/codingTools/index.md, "Story: Read and edit my authorized project files"
+import { Schema } from "effect"
+import type { ActionResult, UUID } from "@elizaos/core"
+
+export const CODING_TOOLS_LOG_PREFIX = "[CodingTools]"
+
+export const FILE_STATE_SERVICE = "CODING_TOOLS_FILE_STATE"
+export const SANDBOX_SERVICE = "CODING_TOOLS_SANDBOX"
+export const SESSION_CWD_SERVICE = "CODING_TOOLS_SESSION_CWD"
+export const RIPGREP_SERVICE = "CODING_TOOLS_RIPGREP"
+export const BACKGROUND_SHELL_SERVICE = "CODING_TOOLS_BACKGROUND_SHELL"
+export const SHELL_SERVICE = "shell"
+export const EXEC_APPROVAL_SERVICE = "exec_approval"
+
+export const CODING_TOOLS_CONTEXTS = [
+  "code",
+  "terminal",
+  "automation",
+] as const
+export type CodingToolsContext = (typeof CODING_TOOLS_CONTEXTS)[number]
+
+export interface FileMeta {
+  readonly path: string
+  readonly mtimeMs: number
+  readonly size: number
+  readonly readAt: number
+  readonly revision: string
+}
+
+export type ToolFailureReason =
+  | "disabled"
+  | "missing_param"
+  | "invalid_param"
+  | "path_blocked"
+  | "stale_read"
+  | "no_match"
+  | "unchanged"
+  | "command_failed"
+  | "needs_confirmation"
+  | "timeout"
+  | "source_loss"
+  | "io_error"
+  | "internal"
+
+export interface ToolFailure {
+  readonly reason: ToolFailureReason
+  readonly message: string
+}
+
+export type ToolResult<T> =
+  | { readonly ok: true; readonly value: T }
+  | { readonly ok: false; readonly failure: ToolFailure }
+
+export interface SessionKey {
+  readonly conversationId: string
+  readonly agentId: UUID
+}
+
+export type ActionResultData = NonNullable<ActionResult["data"]>
+
+export const FAILURE_TEXT_PREFIX = "[CodingTools]"
+
+export function failure<T>(reason: ToolFailureReason, message: string): ToolResult<T> {
+  return { ok: false, failure: { reason, message } }
+}
+
+export function success<T>(value: T): ToolResult<T> {
+  return { ok: true, value }
+}
+
+export const FileOperationSchema = Schema.Struct({
+  type: Schema.Literals(["read", "write", "edit", "list", "search"]),
+  target: Schema.String,
+  size: Schema.optionalKey(Schema.Int),
+})
+
+export const CommandResultSchema = Schema.Struct({
+  command: Schema.String,
+  exitCode: Schema.Int,
+  stdout: Schema.String,
+  stderr: Schema.String,
+  executedIn: Schema.String,
+  durationMs: Schema.optionalKey(Schema.Number),
+  success: Schema.Boolean,
+})
+
+export const CapturedErrorSchema = Schema.Struct({
+  category: Schema.Literals(["compile", "runtime", "test", "lint", "other"]),
+  message: Schema.String,
+  filePath: Schema.optionalKey(Schema.String),
+  line: Schema.optionalKey(Schema.Int),
+  raw: Schema.optionalKey(Schema.String),
+})
+
+export const HumanFeedbackSchema = Schema.Struct({
+  id: Schema.String,
+  timestamp: Schema.Int,
+  text: Schema.String,
+  iterationRef: Schema.optionalKey(Schema.Int),
+  type: Schema.Literals(["correction", "guidance", "approval", "rejection"]),
+})
+
+export const CodingIterationSchema = Schema.Struct({
+  index: Schema.Int,
+  startedAt: Schema.Int,
+  completedAt: Schema.optionalKey(Schema.Int),
+  generatedCode: Schema.optionalKey(Schema.String),
+  fileOperations: Schema.Array(FileOperationSchema),
+  commandResults: Schema.Array(CommandResultSchema),
+  errors: Schema.Array(CapturedErrorSchema),
+  feedback: Schema.Array(HumanFeedbackSchema),
+  selfCorrected: Schema.Boolean,
+  summary: Schema.optionalKey(Schema.String),
+})
+
+export const ConnectorTypeSchema = Schema.Literals([
+  "local-fs",
+  "git-repo",
+  "api",
+  "browser",
+  "sandbox",
+])
+
+export const ConnectorConfigSchema = Schema.Struct({
+  type: ConnectorTypeSchema,
+  basePath: Schema.String,
+  available: Schema.Boolean,
+  metadata: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
+})
+
+export const InteractionModeSchema = Schema.Literals([
+  "fully-automated",
+  "human-in-the-loop",
+  "manual-guidance",
+])
+
+export const CodingAgentContextSchema = Schema.Struct({
+  sessionId: Schema.String,
+  taskDescription: Schema.String,
+  workingDirectory: Schema.String,
+  connector: ConnectorConfigSchema,
+  interactionMode: InteractionModeSchema,
+  maxIterations: Schema.Int,
+  active: Schema.Boolean,
+  iterations: Schema.Array(CodingIterationSchema),
+  allFeedback: Schema.Array(HumanFeedbackSchema),
+  createdAt: Schema.Int,
+  updatedAt: Schema.Int,
+})
+
+export type CodingFileOperation = typeof FileOperationSchema.Type
+export type CodingCommandResult = typeof CommandResultSchema.Type
+export type CodingCapturedError = typeof CapturedErrorSchema.Type
+export type CodingHumanFeedback = typeof HumanFeedbackSchema.Type
+export type CodingIteration = typeof CodingIterationSchema.Type
+export type ConnectorType = typeof ConnectorTypeSchema.Type
+export type ConnectorConfig = typeof ConnectorConfigSchema.Type
+export type InteractionMode = typeof InteractionModeSchema.Type
+export type CodingAgentContext = typeof CodingAgentContextSchema.Type
+
+export function createCodingAgentContext(params: {
+  readonly sessionId: string
+  readonly taskDescription: string
+  readonly workingDirectory: string
+  readonly connector?: ConnectorConfig
+  readonly interactionMode?: InteractionMode
+  readonly maxIterations?: number
+  readonly now?: number
+}): CodingAgentContext {
+  const now = params.now ?? Date.now()
+  return {
+    sessionId: params.sessionId,
+    taskDescription: params.taskDescription,
+    workingDirectory: params.workingDirectory,
+    connector: params.connector ?? { type: "local-fs", basePath: params.workingDirectory, available: true },
+    interactionMode: params.interactionMode ?? "fully-automated",
+    maxIterations: params.maxIterations ?? 10,
+    active: true,
+    iterations: [],
+    allFeedback: [],
+    createdAt: now,
+    updatedAt: now,
+  }
+}
+
+export function appendCodingIteration(context: CodingAgentContext, iteration: CodingIteration, now = Date.now()): CodingAgentContext {
+  return {
+    ...context,
+    iterations: [...context.iterations, iteration],
+    updatedAt: now,
+  }
+}
+
+export function appendCodingFeedback(context: CodingAgentContext, feedback: CodingHumanFeedback, now = Date.now()): CodingAgentContext {
+  return {
+    ...context,
+    allFeedback: [...context.allFeedback, feedback],
+    updatedAt: now,
+  }
+}

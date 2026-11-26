@@ -1,6 +1,6 @@
 lemma allocate_ensures(s: TemporaryNames, target: string, pid: int, clock: int)
-  ensures (inv(s) ==> alwaysEveryAllocationCounted(allocate(s, target, pid, clock)))
   ensures (inv(s) ==> alwaysOrdinalUnique(allocate(s, target, pid, clock)))
+  ensures (inv(s) ==> alwaysEveryAllocationCounted(allocate(s, target, pid, clock)))
   ensures (inv(s) ==> stepCounterAdvancesExactlyOnce(s, allocate(s, target, pid, clock)))
 {
   if inv(s) {

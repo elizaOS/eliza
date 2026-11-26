@@ -68,11 +68,11 @@ lemma SweepAllRemoved(s: Sweep)
 }
 
 lemma collectSources_ensures(s: Sweep)
+  ensures (inv(s) ==> canCollectSources(s) ==> alwaysRetainedRowsComeFromInput(collectSources(s)))
+  ensures (inv(s) ==> canCollectSources(s) ==> alwaysClassifiedIdsCoverInput(collectSources(s)))
   ensures (inv(s) ==> canCollectSources(s) ==> alwaysSourceCollectionComplete(collectSources(s)))
   ensures (inv(s) ==> canCollectSources(s) ==> alwaysSourceMediaRetained(collectSources(s)))
   ensures (inv(s) ==> canCollectSources(s) ==> alwaysWipeRemovesEveryRow(collectSources(s)))
-  ensures (inv(s) ==> canCollectSources(s) ==> alwaysRetainedRowsComeFromInput(collectSources(s)))
-  ensures (inv(s) ==> canCollectSources(s) ==> alwaysClassifiedIdsCoverInput(collectSources(s)))
   ensures (inv(s) ==> canCollectSources(s) ==> alwaysSourcePhaseFollowsOrdinaryScan(collectSources(s)))
 {
   if inv(s) && canCollectSources(s) {
@@ -101,11 +101,11 @@ lemma collectSources_ensures(s: Sweep)
 }
 
 lemma wipe_ensures(s: Sweep)
+  ensures (inv(s) ==> canWipe(s) ==> alwaysRetainedRowsComeFromInput(wipe(s)))
+  ensures (inv(s) ==> canWipe(s) ==> alwaysClassifiedIdsCoverInput(wipe(s)))
   ensures (inv(s) ==> canWipe(s) ==> alwaysSourceCollectionComplete(wipe(s)))
   ensures (inv(s) ==> canWipe(s) ==> alwaysSourceMediaRetained(wipe(s)))
   ensures (inv(s) ==> canWipe(s) ==> alwaysWipeRemovesEveryRow(wipe(s)))
-  ensures (inv(s) ==> canWipe(s) ==> alwaysRetainedRowsComeFromInput(wipe(s)))
-  ensures (inv(s) ==> canWipe(s) ==> alwaysClassifiedIdsCoverInput(wipe(s)))
   ensures (inv(s) ==> canWipe(s) ==> alwaysSourcePhaseFollowsOrdinaryScan(wipe(s)))
 {
   if inv(s) && canWipe(s) { SweepAllRemoved(s); }
