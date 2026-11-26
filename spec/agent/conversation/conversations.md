@@ -50,8 +50,10 @@ pure def alwaysOneRecordPerConversation(s: Conversations): bool = s.conversation
 
 ### Messages and model-call log rows arrive only in a published conversation
 
-A turn stores a nonempty message, no earlier than the last one, which
-marks its conversation updated, and model-call log rows holding its text.
+A turn stores a message with a subject (typed text, images, or an accepted
+reviewed email or voice-note transcript context; [turn context](./turnContext.md)),
+no earlier than the last one, which marks its conversation updated, and
+model-call log rows holding its text.
 
 ```quint
 pure def isPublished(s: Conversations, conversationId: int): bool = s.conversations.some(c => c.id == conversationId and c.publication == Published)

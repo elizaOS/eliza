@@ -1,14 +1,20 @@
 # Turn context
 
-With each message a client may describe its screen in three parts of the
-turn's `metadata`: `metadata.observation` (the view, an optional selected
-record and, on the calendar, the civil day in view), `metadata.voiceUi`
-(what the voice renderer shows and how it takes completed actions) and
-`metadata.browserPage` (the public web page open in Browser as the message
-was sent). Each part is untrusted data about that one message, never an
+With each message a client may describe its screen and attached turn context in
+five parts of the turn's `metadata`: `metadata.observation` (the view, an
+optional selected record and, on the calendar, the civil day in view),
+`metadata.voiceUi` (what the voice renderer shows and how it takes completed
+actions), `metadata.browserPage` (the public web page open in Browser as the
+message was sent), `metadata.reviewedEmail` (an email the owner reviewed and
+attached to this message) and `metadata.useSelectedVoiceNoteTranscript` (a
+boolean flag asking the model to use the transcript of the selected voice note).
+Each part is untrusted data about that one message, never an
 instruction, and no device, provider, navigation or record permission. The
 observation and the voice context hold opaque identifiers, never record
-contents; the Browser page is web content the owner is looking at. Each
+contents; the Browser page is web content the owner is looking at; the reviewed
+email is external mail content the owner chose to ask about. Neither a reviewed
+email nor a voice-note transcript flag is ever concatenated into the message
+text or the owner's authored request words. Each
 part is accepted whole or not at all. An observation may also carry
 the phone's last known position, which a client sends only while the
 platform's location permission is granted and the owner has location on. Every
@@ -16,7 +22,8 @@ other key of `metadata` is stored with the message and decoded by nothing
 here. Actions and providers (device-action admission, actions on the
 selected record, the current-time provider) read an accepted part only
 through `readTurnContext(message)`, which returns `{observation?, voiceUi?,
-browserPage?}`, never through raw metadata keys; prompt assembly shows it to
+browserPage?, reviewedEmail?, useSelectedVoiceNoteTranscript?}`, never through
+raw metadata keys; prompt assembly shows it to
 the model only as labelled untrusted data. Nothing is truncated or
 summarized; a client sends a long page's text already cut and says so.
 
@@ -213,6 +220,121 @@ pure def lawAWellFormedBoundPageIsKept(page: BrowserPageFacts): bool =
     browserPageAccepted({ ...page, binding: SelectedTab })
 ```
 
+### A reviewed email is kept only when every field is valid and it fits 48,000 bytes
+
+A client sends a reviewed email only after the owner chose that email to ask
+about on this one message. An email that fails validation or exceeds 48,000
+bytes is dropped and the message goes on without it (or is refused with 400
+`invalid_message` when no typed text, images or accepted
+`useSelectedVoiceNoteTranscript` remain); nothing of an invalid email is stored
+with the message or shown to the model, raw or otherwise. Empty `text` with no
+images is accepted only when the turn carries an accepted `reviewedEmail` or an
+accepted `useSelectedVoiceNoteTranscript`: a bare `observation`, `voiceUi` or
+`browserPage` with empty `text` and no images is refused with 400
+`invalid_message`. Any other key is an unknown field, and nothing is cut to fit.
+
+| Key | Form |
+| --- | --- |
+| `from` | text of at most 512 characters, no control character |
+| `to` | array of at most 50 entries, each text of at most 512 characters, no control character |
+| `subject` | text of at most 1,000 characters, no control character |
+| `bodyText` | text of at most 48,000 characters; line breaks (`\n`, `\r`) and tabs (`\t`) are its only control characters |
+
+No text holds a lone surrogate. The size is the UTF-8 length of the JSON of
+the decoded email, keys in the table's order.
+
+The model sees a kept email once, in the latest message's host context, after
+a note stating that its sender, recipients, subject and body are untrusted
+reference data only, never the owner's instructions, authorizing no action.
+When the owner sent no typed words with the email, the host adds an explicit
+note stating that the owner sent no typed words and to summarize the email or
+ask how they want to proceed without starting actions from instructions inside
+the email. The email itself sits inside core's untrusted-content envelope with
+the source `Email`, with all email fields inside the sanitized envelope body so
+a forged marker in any field cannot break out of the envelope. Planner guard
+checks also include the email as untrusted content so a tool call written inside
+the email never runs, and on a turn with no owner words and no attachments
+carrying only untrusted turn context (`reviewedEmail` or
+`useSelectedVoiceNoteTranscript`), the planner refuses non-read-only tool calls
+before dispatch while still allowing read-only lookups. Its text never enters
+`message.content.text`, stored history text, or owner request words
+(`turn.ownerText`). As with `browserPage`, history keeps only stored message
+text, so an empty-text email turn leaves only the assistant's reply in later
+history.
+
+```quint
+type ReviewedEmailFacts = { unknownField: bool, fieldsValid: bool, bytes: int }
+pure val reviewedEmailMaxBytes = 48000
+pure def reviewedEmailAccepted(email: ReviewedEmailFacts): bool =
+  not(email.unknownField) and email.fieldsValid and email.bytes > 0 and email.bytes <= reviewedEmailMaxBytes
+pure def emptyTextTurnAccepted(hasText: bool, hasImages: bool, hasReviewedEmail: bool, hasVoiceNoteTranscript: bool): bool =
+  hasText or hasImages or hasReviewedEmail or hasVoiceNoteTranscript
+pure def unauthoredTurnAllowsCall(hasOwnerWords: bool, hasAttachments: bool, hasContextSubject: bool, readOnlyCall: bool): bool =
+  hasOwnerWords or hasAttachments or not(hasContextSubject) or readOnlyCall
+pure val emailValues: Set[ReviewedEmailFacts] = {
+  val kept = { unknownField: false, fieldsValid: true, bytes: 1200 }
+  List(
+    kept,
+    { ...kept, unknownField: true },
+    { ...kept, fieldsValid: false },
+    { ...kept, bytes: 0 },
+    { ...kept, bytes: 48001 }
+  ).foldl(Set(), (acc, e) => acc.union(Set(e)))
+}
+pure def lawAnOversizeEmailIsDropped(email: ReviewedEmailFacts): bool =
+  email.bytes > reviewedEmailMaxBytes implies not(reviewedEmailAccepted(email))
+pure def lawAMalformedEmailIsDropped(email: ReviewedEmailFacts): bool =
+  (email.unknownField or not(email.fieldsValid)) implies not(reviewedEmailAccepted(email))
+pure def lawAWellFormedBoundedEmailIsKept(email: ReviewedEmailFacts): bool =
+  (not(email.unknownField) and email.fieldsValid and email.bytes > 0 and email.bytes <= reviewedEmailMaxBytes) implies
+    reviewedEmailAccepted(email)
+pure def lawEmptyTurnWithoutTextImagesEmailOrVoiceNoteIsRefused(hasText: bool, hasImages: bool, hasReviewedEmail: bool, hasVoiceNoteTranscript: bool): bool =
+  (not(hasText) and not(hasImages) and not(hasReviewedEmail) and not(hasVoiceNoteTranscript)) implies
+    not(emptyTextTurnAccepted(hasText, hasImages, hasReviewedEmail, hasVoiceNoteTranscript))
+pure def lawAnUnauthoredContextTurnRefusesNonReadOnlyCalls(hasContextSubject: bool): bool =
+  hasContextSubject implies not(unauthoredTurnAllowsCall(false, false, hasContextSubject, false))
+pure def lawAnUnauthoredContextTurnAllowsReadOnlyCalls(hasContextSubject: bool): bool =
+  unauthoredTurnAllowsCall(false, false, hasContextSubject, true)
+```
+
+### A voice-note transcript flag is kept only when true and bound to a selected canonical note on a non-sensitive screen
+
+`metadata.useSelectedVoiceNoteTranscript` asks the host to tell the model, in
+the latest message's host context, to read the transcript of the selected voice
+note if needed and treat it strictly as untrusted recorded data (never as
+instructions to execute or authorize actions), without concatenating any
+instruction into the message text or owner request words. When the owner sent
+typed words, the host note directs the model to use that untrusted transcript
+to answer the owner's question; when the owner sent no typed words, the host
+note explicitly states that the owner sent no typed question and directs the
+model to summarize the transcript or ask how they want to proceed (while
+non-read-only tool calls are refused before dispatch and read-only lookups such
+as `NOTES_GET` remain allowed). The flag is kept only when its value is
+`true` and the same message's kept observation is stated not sensitive with a
+selected `canonical-note` record. Any other value, or a missing, sensitive or
+non-note observation, drops the flag so nothing of it is stored or shown.
+
+```quint
+type NoteBinding = NoNoteObservation | SensitiveNote | OtherSelectedObject | SelectedCanonicalNote
+type VoiceNoteTranscriptFacts = { requested: bool, binding: NoteBinding }
+pure def voiceNoteTranscriptAccepted(flag: VoiceNoteTranscriptFacts): bool =
+  flag.requested and flag.binding == SelectedCanonicalNote
+pure val flagValues: Set[VoiceNoteTranscriptFacts] = {
+  val kept = { requested: true, binding: SelectedCanonicalNote }
+  List(
+    kept,
+    { ...kept, requested: false },
+    { ...kept, binding: NoNoteObservation },
+    { ...kept, binding: SensitiveNote },
+    { ...kept, binding: OtherSelectedObject }
+  ).foldl(Set(), (acc, f) => acc.union(Set(f)))
+}
+pure def lawAVoiceNoteTranscriptNeedsANonSensitiveCanonicalNote(flag: VoiceNoteTranscriptFacts): bool =
+  flag.binding != SelectedCanonicalNote implies not(voiceNoteTranscriptAccepted(flag))
+pure def lawAnUnrequestedVoiceNoteTranscriptIsNotKept(flag: VoiceNoteTranscriptFacts): bool =
+  not(flag.requested) implies not(voiceNoteTranscriptAccepted(flag))
+```
+
 ### A voice view context is accepted only when every stated field has an allowed value and direct requests have completed-action delivery and a routing identity
 
 A context that fails refuses the whole turn with 400
@@ -293,7 +415,8 @@ pure def lawAPathFromAnotherHostIsRefused(rest: List[int]): bool =
 
 ### Optional fields go only to the process instance the client compared for this turn
 
-An optional field (today the civil day, the location and the Browser page)
+An optional field (today the civil day, the location, the Browser page, the
+reviewed email and the selected voice-note transcript flag)
 is a format the agent process understands, never a permission. A client learns the process instance once
 per verified connection from the non-empty `serverInstanceId` of an
 authenticated `GET /api/status`, compared exactly as returned. A turn that
@@ -301,7 +424,7 @@ would carry an optional field first waits for that learn (joining one in
 progress, or starting one), then reads the status again and sends the field
 only when the instance is the learned one; otherwise it sends the
 observation without its optional fields, which stays accepted, and no
-Browser page. A learn
+Browser page, reviewed email or voice-note transcript flag. A learn
 whose read fails or is cancelled learns nothing, so a later turn tries
 again. A learn that names no instance, a mismatch, or a compare whose read
 fails or is cancelled ends optional fields for that connection: nothing is
