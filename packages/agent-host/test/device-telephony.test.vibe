@@ -4,6 +4,7 @@ import { assert, it } from "@effect/vitest"
 import type { DeviceOperation } from "@elizaos/agent"
 import { phoneDialNumber, withDialNumber, writtenPhoneNumbers } from "../src/device-actions/proposal/telephony/dial-number.vibe"
 import { groundTelephonyTarget } from "../src/device-actions/proposal/telephony/grounding.vibe"
+import { telephonyFamily } from "../src/device-actions/proposal/families/telephony.vibe"
 import { deviceJourney } from "./support/device-agent.vibe"
 
 module node {
@@ -607,6 +608,15 @@ it.effect(`A text keeps the recipient's name when the words to send are inside i
     requests.map(([query, body, request]): readonly [string, unknown] => [request, groundTelephonyTarget(named(query, body), request, [], false)]),
     requests.map(([query, body, request]): readonly [string, unknown] => [request, { kind: "grounded", operation: named(query, body) }]),
   ))
+})
+
+it(`The text tool tells the model that a draft the owner asks to see here is its own reply, never a proposal (${telephony}, "A draft is the model's to ask for, to the recipient it proposed or to the sender the agent just read")`, () => {
+  const composeForms = telephonyFamily.forms.filter(({ types }) => types.includes("sms_compose"))
+  const draftable = (schema: unknown) => JSON.stringify(schema).includes("\"draft\"")
+  assert.deepStrictEqual(composeForms.map(({ schema, guidance }) => ({
+    draftable: draftable(schema),
+    chatDraft: (guidance ?? []).some((line) => line.includes("to see the draft here in chat, write it in your reply and propose nothing")),
+  })), [{ draftable: false, chatDraft: false }, { draftable: true, chatDraft: true }])
 })
 
 it.effect(`A drafted text's recipient the model proposed is kept when a clause of what to say follows it (${telephony}, "A draft is the model's to ask for, to the recipient it proposed or to the sender the agent just read"; ${telephony}, "A proposed contact name is one the owner wrote as whole words, outside the text to send")`, effect () => {
