@@ -1,4 +1,4 @@
-// spec/agentOrchestrator/sessionAdmission.md, "Disk budget and subscription attendance fail closed"; spec/agentOrchestrator/verification.md, "Claimed edits, completion residuals, and diff secrets enforce fail-closed verification"
+// spec/agentOrchestrator/sessionAdmission.md, "Disk budget and subscription attendance fail closed"; spec/agentOrchestrator/verification.md, "Diff secrets, critical findings and oversized diffs block a commit, and refined criteria keep a floor"
 module node {
   import { execFile } from "node:child_process"
   import { randomUUID } from "node:crypto"

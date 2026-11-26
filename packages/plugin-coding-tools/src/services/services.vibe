@@ -53,10 +53,12 @@ import {
   pathDirname,
   pathRelative,
   pathResolve,
+  classifyStdinTarget,
   redactShellText,
   resolveRealPathNode,
   splitShellArgs,
   traversesBlockedPath,
+  type StdinTarget,
 } from "../lib/security.vibe"
 import {
   BACKGROUND_SHELL_SERVICE,
@@ -1098,6 +1100,15 @@ export class BackgroundShellService extends Service {
     const found = this.lookupSession(args.conversationId, args.handle)
     if (!found.ok) return found
     return { ok: true, snapshot: this.toSnapshot(found.session) }
+  }
+
+  stdinTarget(args: {
+    readonly conversationId: string
+    readonly handle: string
+  }): { readonly ok: true; readonly target: StdinTarget } | { readonly ok: false; readonly message: string } {
+    const found = this.lookupSession(args.conversationId, args.handle)
+    if (!found.ok) return found
+    return { ok: true, target: classifyStdinTarget(found.session.command) }
   }
 
   write(args: {

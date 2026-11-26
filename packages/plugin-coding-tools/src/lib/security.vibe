@@ -551,69 +551,28 @@ export function isForbiddenCommand(command: string, extraDenied: readonly string
   return undefined
 }
 
-export type StdinTarget = "StdinData" | "StdinShell" | "StdinInterpreter"
+export type StdinTarget = "StdinData" | "StdinChecked"
 
-const STDIN_INTERPRETERS = new Set([
-  "irb", "ghci", "sbcl", "erl", "iex", "expect", "wish", "gdb", "lldb", "psql", "mysql", "mariadb", "sqlite3",
-  "redis-cli", "mongo", "mongosh", "ssh", "telnet", "nc", "ncat", "netcat", "socat", "docker", "podman",
-  "kubectl", "screen", "tmux", "script", "nsenter", "chroot", "xargs", "parallel", "busybox", "pwsh",
-  "powershell", "cmd", "osascript", "csh", "tcsh", "dc", "ed", "ex", "vi", "vim", "nvim", "emacs", "eval",
-  "source", ".",
+const STDIN_DATA_SINKS = new Set([
+  "cat", "wc", "sort", "uniq", "head", "tail", "tr", "cut", "nl", "grep", "base64", "md5sum", "sha1sum",
+  "sha256sum", "sha512sum", "gzip", "gunzip", "xxd", "od", "jq",
 ])
 
-const SCRIPTED_INTERPRETERS = new Set([
-  "node", "nodejs", "deno", "bun", "perl", "ruby", "php", "lua", "luajit", "tclsh", "r", "rscript", "julia",
-  "scala", "guile", "racket", "ocaml", "elixir",
-])
+const SHELL_SYNTAX = /[;&|<>`$(){}[\]*?!#~=\\\n\r]/
 
-const INLINE_CODE_FLAGS = new Set(["-e", "-E", "-c", "-m", "-p", "-r", "--eval", "--print", "--command"])
-
-function runsAsRepl(args: readonly string[]): boolean {
-  if (args.some((a) => a === "-" || a === "-i" || a === "--interactive" || a === "--repl")) return true
-  const hasProgram = args.some((a) => !a.startsWith("-")) || args.some((a) => INLINE_CODE_FLAGS.has(a) || a.startsWith("--eval="))
-  return !hasProgram
+function readsPatternFile(args: readonly string[]): boolean {
+  return args.some((a) => a === "-f" || a.startsWith("--file") || /^-[A-Za-z]*f/.test(a))
 }
 
-function stdinTargetOfTokens(raw: readonly string[]): StdinTarget {
-  const wrapperHead = commandBaseName(raw.find((t) => !/^[A-Za-z_][A-Za-z0-9_]*=/.test(t)) ?? "")
-  const escalates = wrapperHead === "sudo" || wrapperHead === "doas"
-  if (escalates && raw.some((t) => t === "-s" || t === "-i" || t === "--shell" || t === "--login")) return "StdinShell"
-  if (raw.some((t) => commandBaseName(t) === "xargs")) return "StdinInterpreter"
-  const unwrapped = unwrapCommand(raw)
-  if (!unwrapped.ok) return "StdinInterpreter"
-  const tokens = unwrapped.tokens
-  if (tokens.length === 0) return escalates ? "StdinShell" : "StdinData"
-  if (tokens[0].startsWith("$")) return "StdinInterpreter"
-  const head = commandBaseName(tokens[0])
-  if (STDIN_INTERPRETERS.has(head)) return "StdinInterpreter"
-  if (SCRIPTED_INTERPRETERS.has(head) || /^python[0-9.]*$/.test(head)) return runsAsRepl(tokens.slice(1)) ? "StdinInterpreter" : "StdinData"
-  if (head === "su") return nestedShellScript(tokens) === undefined ? "StdinShell" : "StdinData"
-  if (NESTED_SHELLS.has(head)) {
-    const args = tokens.slice(1)
-    const readsStdin = args.some((a) => a === "-" || /^-[a-zA-Z]*[si][a-zA-Z]*$/.test(a))
-    const hasScript = nestedShellScript(tokens) !== undefined || args.some((a) => !a.startsWith("-"))
-    return readsStdin || !hasScript ? "StdinShell" : "StdinData"
-  }
+export function classifyStdinTarget(command: string): StdinTarget {
+  const trimmed = command.trim()
+  if (trimmed === "" || SHELL_SYNTAX.test(trimmed)) return "StdinChecked"
+  const tokens = splitShellArgs(trimmed)
+  if (tokens === null || tokens.length === 0) return "StdinChecked"
+  const [program, ...args] = tokens
+  if (program.includes("/") || !STDIN_DATA_SINKS.has(program)) return "StdinChecked"
+  if (program === "grep" && readsPatternFile(args)) return "StdinChecked"
   return "StdinData"
-}
-
-export function classifyStdinTarget(command: string, depth = 0): StdinTarget {
-  if (depth > 8) return "StdinInterpreter"
-  let target: StdinTarget = "StdinData"
-  for (const segment of splitForbiddenSegments(command)) {
-    const raw = tokenizeLoosely(segment)
-    const segmentTarget = stdinTargetOfTokens(raw)
-    if (segmentTarget === "StdinInterpreter") return "StdinInterpreter"
-    if (segmentTarget === "StdinShell") target = "StdinShell"
-    const unwrapped = unwrapCommand(raw)
-    const nested = nestedShellScript(unwrapped.ok ? unwrapped.tokens : raw)
-    if (nested !== undefined) {
-      const nestedTarget = classifyStdinTarget(nested, depth + 1)
-      if (nestedTarget === "StdinInterpreter") return "StdinInterpreter"
-      if (nestedTarget === "StdinShell") target = "StdinShell"
-    }
-  }
-  return target
 }
 
 export interface DestructiveVerdict {

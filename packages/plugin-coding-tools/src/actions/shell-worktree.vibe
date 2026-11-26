@@ -33,7 +33,6 @@ import {
 } from "../lib/format.vibe"
 import {
   classifyDestructiveCommand,
-  classifyStdinTarget,
   destructiveCommandDigest,
   extractCompactFailureDiagnostics,
   isForbiddenCommand,
@@ -41,6 +40,7 @@ import {
   redactShellText,
   shellVerificationReceipt,
   verifyAndConsumeDestructiveChallenge,
+  type StdinTarget,
 } from "../lib/security.vibe"
 import {
   platformShellDialect,
@@ -223,31 +223,15 @@ async function gateBackgroundStdin(params: {
   readonly options: unknown
   readonly callback: HandlerCallback | undefined
   readonly snapshot: BackgroundShellSessionSnapshot
+  readonly target: StdinTarget
   readonly stdin: string
 }): Promise<{ readonly ok: true } | { readonly ok: false; readonly result: ActionResult }> {
-  const target = classifyStdinTarget(params.snapshot.command)
-  const completeLines = params.stdin.length === 0 || params.stdin.endsWith("\n")
-  const forbidden = target === "StdinShell" ? isForbiddenCommand(params.stdin, extraDeniedCommands(params.runtime)) : undefined
-  const verdict = target === "StdinShell" ? classifyDestructiveCommand(params.stdin, "posix") : { destructive: false, targets: [] }
-  if (mayWriteBackgroundStdin(target, completeLines, forbidden !== undefined, verdict.destructive, false)) return { ok: true }
-  if (target === "StdinInterpreter") {
-    return {
-      ok: false,
-      result: failureToActionResult({
-        reason: "path_blocked",
-        message: `stdin refused: ${params.snapshot.handle} runs a program that executes what it reads, and that input cannot be checked against the command policy`,
-      }),
-    }
-  }
-  if (!completeLines) {
-    return {
-      ok: false,
-      result: failureToActionResult({ reason: "invalid_param", message: "stdin to a background shell must be whole command lines ending in a newline" }),
-    }
-  }
+  if (params.target === "StdinData") return { ok: true }
+  const forbidden = isForbiddenCommand(params.stdin, extraDeniedCommands(params.runtime))
   if (forbidden !== undefined) {
     return { ok: false, result: failureToActionResult({ reason: "path_blocked", message: `stdin denied by policy: ${forbidden}` }) }
   }
+  const verdict = classifyDestructiveCommand(params.stdin, "posix")
   const confirmation = await requireOwnerConfirmation({
     runtime: params.runtime,
     message: params.message,
@@ -255,12 +239,12 @@ async function gateBackgroundStdin(params: {
     callback: params.callback,
     command: params.stdin,
     cwd: params.snapshot.cwd,
-    reason: verdict.reason ?? "high risk",
+    reason: verdict.reason ?? `${params.snapshot.handle} may run what it reads`,
   })
   if (!confirmation.ok) return confirmation
-  return mayWriteBackgroundStdin(target, completeLines, false, verdict.destructive, true)
+  return mayWriteBackgroundStdin(params.target, false, true)
     ? { ok: true }
-    : { ok: false, result: failureToActionResult({ reason: "path_blocked", message: "stdin is not authorized for this background session" }) }
+    : { ok: false, result: failureToActionResult({ reason: "path_blocked", message: "stdin refused by the command policy" }) }
 }
 
 export const shellAction: Action = {
@@ -407,7 +391,9 @@ export const shellAction: Action = {
       if (stdin === undefined) return failureToActionResult({ reason: "missing_param", message: "stdin is required" })
       const described = bgSvc.describe({ conversationId, handle })
       if (!described.ok) return failureToActionResult({ reason: "invalid_param", message: described.message })
-      const gate = await gateBackgroundStdin({ runtime, message, options, callback, snapshot: described.snapshot, stdin })
+      const target = bgSvc.stdinTarget({ conversationId, handle })
+      if (!target.ok) return failureToActionResult({ reason: "invalid_param", message: target.message })
+      const gate = await gateBackgroundStdin({ runtime, message, options, callback, snapshot: described.snapshot, target: target.target, stdin })
       if (!gate.ok) return gate.result
       const written = bgSvc.write({ conversationId, handle, stdin })
       if (!written.ok) return failureToActionResult({ reason: "invalid_param", message: written.message })

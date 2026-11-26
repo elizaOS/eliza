@@ -464,7 +464,7 @@ it.effect('SHELL destructive confirmation challenge, redaction, artifact spill &
 
       const bgStart = try tryPromise(() => shellAction.handler(env.runtime, msg, emptyState, {
         action: "start_background",
-        command: "node -e \"console.log('bg-ready'); process.stdin.on('data', d => { console.log('echo:' + d.toString().trim()); process.exit(0); })\"",
+        command: "head -n 1",
       }))
       const bgHandle = String((bgStart.data as Record<string, unknown>).handle)
       try tryPromise(() => waitBriefly(150))
@@ -525,7 +525,7 @@ it.effect('SHELL destructive confirmation challenge, redaction, artifact spill &
         assert.equal(bgStart.success, true)
         assert.equal(bgWrite.success, true)
         assert.equal(bgPoll.success, true)
-        assert.match(bgPoll.text ?? "", /bg-ready/)
+        assert.match(bgPoll.text ?? "", /ping/)
         assert.equal(floodFirstData.truncated, true)
         assert.match(floodFirst.text ?? "", /bg-line-1\n/)
         assert.equal((floodFirst.text ?? "").includes("bg-line-450"), false)
@@ -869,24 +869,22 @@ it.effect('The forbidden-command list matches tokens through quoting, operators,
     for (const command of ["shutdown -h now", "reboot", "halt", "poweroff", "systemctl reboot", "sudo shutdown -r now"]) {
       assert.equal(classifyDestructiveCommand(command).destructive, true, command)
     }
-    assert.equal(classifyStdinTarget("sh"), "StdinShell")
-    assert.equal(classifyStdinTarget("bash -i"), "StdinShell")
-    assert.equal(classifyStdinTarget("cat | sh"), "StdinShell")
-    assert.equal(classifyStdinTarget("sudo -s"), "StdinShell")
-    assert.equal(classifyStdinTarget("env X=1 exec bash"), "StdinShell")
-    assert.equal(classifyStdinTarget("python3"), "StdinInterpreter")
-    assert.equal(classifyStdinTarget("node"), "StdinInterpreter")
-    assert.equal(classifyStdinTarget("python3 -"), "StdinInterpreter")
-    assert.equal(classifyStdinTarget("sh -c 'cat | python3'"), "StdinInterpreter")
-    assert.equal(classifyStdinTarget("xargs rm"), "StdinInterpreter")
-    assert.equal(classifyStdinTarget("sqlite3 app.db"), "StdinInterpreter")
-    assert.equal(classifyStdinTarget("node -e \"process.stdin.pipe(process.stdout)\""), "StdinData")
-    assert.equal(classifyStdinTarget("npm run dev"), "StdinData")
-    assert.equal(classifyStdinTarget("bash ./serve.sh"), "StdinData")
+    for (const command of ["cat", "head -n 1", "wc -l", "sort -u", "grep -i needle", "jq .items", "base64 -d", "gzip -c"]) {
+      assert.equal(classifyStdinTarget(command), "StdinData", command)
+    }
+    for (const command of [
+      "sh", "bash -i", "bash 2>&1", "sh 2>/dev/null", "bash >/tmp/log 2>&1", "sh /dev/stdin", "bash /proc/self/fd/0",
+      "cat | sh", "sudo -s", "env X=1 exec bash", "X=1 cat", "/bin/cat", "./cat", "busybox cat", "env cat", "nohup cat",
+      "python3", "python3 -", "node", "node -e \"process.stdin.pipe(process.stdout)\"", "npm run dev", "bash ./serve.sh",
+      "sqlite3 app.db", "xargs rm", "tee out.txt", "grep -f patterns", "grep -rf patterns", "cat $(ls)", "cat *", "cat `x`",
+      "if true; then cat; fi", "coproc cat", "cat\nsh", "",
+    ]) {
+      assert.equal(classifyStdinTarget(command), "StdinChecked", command)
+    }
   })
 })
 
-it.effect('SHELL write_background sends shell stdin only through the command policy and owner confirmation, and refuses unchecked interpreters (spec/codingTools/shellSession.md, "Background stdin reaches a command interpreter only through the command policy")', effect () => {
+it.effect('SHELL write_background sends stdin to anything but a known data sink only after the command policy and the owner confirm that exact text (spec/codingTools/shellSession.md, "Background stdin reaches a command interpreter only through the command policy")', effect () => {
   const root = try tryPromise(() => makeTempWorkspace("ct-stdin-"))
   const env = try tryPromise(() => createTestRuntime({ CODING_TOOLS_WORKSPACE_ROOTS: root, ELIZA_ADMIN_ENTITY_ID: "owner-1" }))
   const msg = makeMessage("room-stdin", "owner-1", "msg-stdin-1")
@@ -898,11 +896,10 @@ it.effect('SHELL write_background sends shell stdin only through the command pol
       const owner = ownerChannel()
       const shellStart = try tryPromise(() => shellAction.handler(env.runtime, msg, emptyState, { action: "start_background", command: "sh" }))
       const handle = String((shellStart.data as Record<string, unknown>).handle)
-      const destructive = try tryPromise(() => shellAction.handler(env.runtime, msg, emptyState, { action: "write_background", handle, stdin: `rm -rf "${victim}"\n` }, owner.callback))
-      const challenge = challengeFrom(owner.sent[0])
       const forbidden = try tryPromise(() => shellAction.handler(env.runtime, msg, emptyState, { action: "write_background", handle, stdin: "echo ok && shutdown -h now\n" }, owner.callback))
-      const partial = try tryPromise(() => shellAction.handler(env.runtime, msg, emptyState, { action: "write_background", handle, stdin: "rm -r" }, owner.callback))
       const benign = try tryPromise(() => shellAction.handler(env.runtime, msg, emptyState, { action: "write_background", handle, stdin: `printf ok >> "${marker}"\n` }, owner.callback))
+      const destructive = try tryPromise(() => shellAction.handler(env.runtime, msg, emptyState, { action: "write_background", handle, stdin: `rm -rf "${victim}"\n` }, owner.callback))
+      const challenge = challengeFrom(owner.sent[owner.sent.length - 1])
       try tryPromise(() => waitBriefly(300))
       const victimSurvives = try tryPromise(() => pathExists(victim))
       const markerWritten = try tryPromise(() => pathExists(marker))
@@ -923,20 +920,19 @@ it.effect('SHELL write_background sends shell stdin only through the command pol
       try tryPromise(() => shellAction.handler(env.runtime, msg, emptyState, { action: "kill_background", handle: pythonHandle }))
       try check(() => {
         assert.equal(shellStart.success, true)
+        assert.equal(forbidden.success, false)
+        assert.match(forbidden.text ?? "", /denied by policy: shutdown/)
+        assert.equal(benign.success, false)
+        assert.match(benign.text ?? "", /needs_confirmation/)
+        assert.equal(markerWritten, false)
         assert.equal(destructive.success, false)
         assert.match(destructive.text ?? "", /needs_confirmation/)
         assert.ok(challenge.length > 10)
-        assert.equal(forbidden.success, false)
-        assert.match(forbidden.text ?? "", /denied by policy: shutdown/)
-        assert.equal(partial.success, false)
-        assert.match(partial.text ?? "", /ending in a newline/)
-        assert.equal(benign.success, true)
-        assert.equal(markerWritten, true)
         assert.equal(victimSurvives, true)
         assert.equal(confirmed.success, true)
         assert.equal(victimAfter, false)
         assert.equal(pythonWrite.success, false)
-        assert.match(pythonWrite.text ?? "", /executes what it reads/)
+        assert.match(pythonWrite.text ?? "", /needs_confirmation/)
       })
     },
     Effect.ignore(effect {
