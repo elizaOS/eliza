@@ -114,6 +114,7 @@ export function withoutOfferedCalls(said: string, offered: ReadonlySet<string>):
 }
 
 export const hostNoteMark = "Note from the agent host"
+const harnessMark = "[System:"
 
 const hostTextGap = /[\s\p{Pd}_]/u
 
@@ -142,7 +143,7 @@ function folded(text: string): Folded {
 }
 
 function hostTexts(notes: readonly string[]): string[] {
-  return [hostNoteMark, ...notes.map((note) => (note.trim().split("\n", 1)[0] ?? "").replace(/[\s.:]+$/u, ""))]
+  return [hostNoteMark, harnessMark, ...notes.map((note) => (note.trim().split("\n", 1)[0] ?? "").replace(/[\s.:]+$/u, ""))]
     .map((host) => folded(host).text.trim()).filter((host) => host !== "")
 }
 
