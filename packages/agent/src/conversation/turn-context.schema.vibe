@@ -1,4 +1,4 @@
-// spec/agent/conversation/turnContext.md, "Story: Tell the agent what my screen shows, and nothing more"; spec/agent/conversation/turnContext.md, "A Browser page is kept only when every field is valid, it is the Browser tab the kept observation selects at that revision on a screen not sensitive, and it fits 16,384 bytes"; spec/agent/conversation/turnContext.md, "A reviewed email is kept only when every field is valid and it fits 48,000 bytes"; spec/agent/conversation/turnContext.md, "A voice-note transcript flag is kept only when true and bound to a selected canonical note on a non-sensitive screen"; spec/agent/conversation/turnContext.md, "An observation is kept only when every field is valid, a sensitive screen names no record, a civil day is on the calendar stated not sensitive in its own zone, and it fits 2,048 bytes"; spec/agent/conversation/turnContext.md, "A voice view context is accepted only when every stated field has an allowed value and direct requests have completed-action delivery and a routing identity"; spec/agent/conversation/turnContext.md, "Optional fields go only to the process instance the client compared for this turn"; spec/agent/conversation/turnContext.md, "A location is kept on any screen only when each coordinate, its accuracy and its time are in range, and it counts within the 2,048 bytes"
+// spec/agent/conversation/turnContext.md, "Story: Tell the agent what my screen shows, and nothing more"; spec/agent/conversation/turnContext.md, "A Browser page is kept only when every field is valid, it is the Browser tab the kept observation selects at that revision on a screen not sensitive, and it fits 16,384 bytes"; spec/agent/conversation/turnContext.md, "A reviewed email is kept only when every field is valid and it fits 48,000 bytes"; spec/agent/conversation/turnContext.md, "A voice-note transcript flag is kept only when true and bound to a selected canonical note on a non-sensitive screen"; spec/agent/conversation/turnContext.md, "An observation is kept only when every field is valid, a sensitive screen names no record, a civil day is on the calendar stated not sensitive in its own zone, and it fits 2,048 bytes"; spec/agent/conversation/turnContext.md, "A voice view context is accepted only when every stated field has an allowed value and direct requests have completed-action delivery and a routing identity"; spec/agent/conversation/turnContext.md, "Optional fields go only to the process instance the client compared for this turn"; spec/agent/conversation/turnContext.md, "A location is kept on any screen only when each coordinate, its accuracy and its time are in range, and it counts within the 2,048 bytes"; spec/agent/conversation/turnContext.md, "A chat height is kept on any screen only when it names a valid overlay height, and it counts within the 2,048 bytes"
 import type { Content } from "@elizaos/core"
 import { parseViewInteractionClientId } from "@elizaos/core"
 import {
@@ -32,6 +32,8 @@ const Location = Schema.Struct({
   capturedAt: Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: maxSafeInteger })),
 })
 
+const ChatHeightSchema = Schema.Literals(["hidden", "bar", "typing", "sheet", "full"])
+
 export const Observation = Schema.Struct({
   view: Name,
   revision: Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: maxSafeInteger })),
@@ -40,6 +42,7 @@ export const Observation = Schema.Struct({
   selectedObject: Schema.optionalKey(SelectedObject),
   calendarDay: Schema.optionalKey(CalendarDay),
   location: Schema.optionalKey(Location),
+  chatHeight: Schema.optionalKey(ChatHeightSchema),
 })
 
 const plainLine = (value: string) => value.isWellFormed() && !/[\p{Cc}\u2028\u2029]/u.test(value)
@@ -99,6 +102,7 @@ export const VoiceUiContext = Schema.Struct({
 export type Observation = typeof Observation.Type
 export type VoiceUiContext = typeof VoiceUiContext.Type
 export type LocationObservation = typeof Location.Type
+export type ChatHeight = typeof ChatHeightSchema.Type
 type SelectedObject = typeof SelectedObject.Type
 
 export interface TurnContext {
@@ -117,11 +121,12 @@ export error VoiceUiContextInvalid { facts: VoiceUiFacts | undefined }
 
 type Decided<A, F> = { readonly kind: "carried"; readonly value: A } | { readonly kind: "refused"; readonly facts: F | undefined }
 
-const observationKeys: ReadonlySet<string> = new Set(["view", "revision", "sensitive", "timeZone", "selectedObject", "calendarDay", "location"])
+const observationKeys: ReadonlySet<string> = new Set(["view", "revision", "sensitive", "timeZone", "selectedObject", "calendarDay", "location", "chatHeight"])
 const strict = { onExcessProperty: "error" } as const
 const selectedObjectOf = Schema.decodeUnknownOption(SelectedObject, strict)
 const calendarDayOf = Schema.decodeUnknownOption(CalendarDay, strict)
 const locationOf = Schema.decodeUnknownOption(Location, strict)
+const chatHeightOf = Schema.decodeUnknownOption(ChatHeightSchema)
 const browserPageOf = Schema.decodeUnknownOption(BrowserPage, strict)
 const reviewedEmailOf = Schema.decodeUnknownOption(ReviewedEmail, strict)
 const browserPageKeys: ReadonlySet<string> = new Set(["tabId", "revision", "url", "title", "capturedAt", "withheld", "text", "truncated", "selection", "links"])
@@ -171,6 +176,7 @@ function canonical(observation: Observation): Observation {
     ...(observation.selectedObject === undefined ? {} : { selectedObject: canonicalSelection(observation.selectedObject) }),
     ...(observation.calendarDay === undefined ? {} : { calendarDay: { date: observation.calendarDay.date, timeZone: observation.calendarDay.timeZone } }),
     ...(observation.location === undefined ? {} : { location: canonicalLocation(observation.location) }),
+    ...(observation.chatHeight === undefined ? {} : { chatHeight: observation.chatHeight }),
   }
 }
 
@@ -183,7 +189,7 @@ function canonicalLocation(location: LocationObservation): LocationObservation {
   }
 }
 
-function withoutOptionalFields({ calendarDay: _day, location: _location, ...observation }: Observation): Observation {
+function withoutOptionalFields({ calendarDay: _day, location: _location, chatHeight: _chatHeight, ...observation }: Observation): Observation {
   return observation
 }
 
@@ -194,13 +200,14 @@ function utf8Bytes(observation: Observation) {
 function decideObservation(input: unknown): Decided<Observation, ObservationFacts> {
   const fields = table(input)
   if (fields === undefined) return { kind: "refused", facts: undefined }
-  const { view, revision, sensitive, timeZone, selectedObject, calendarDay, location } = fields
+  const { view, revision, sensitive, timeZone, selectedObject, calendarDay, location, chatHeight } = fields
   const sensitivity: Sensitivity | undefined = sensitive === undefined ? "SensitivityUnstated" : sensitive === true ? "Sensitive" : sensitive === false ? "NotSensitive" : undefined
   const counted = typeof revision === "number" && Number.isInteger(revision) ? revision : undefined
   const selection = selectedObject === undefined ? undefined : Option.getOrUndefined(selectedObjectOf(selectedObject))
   const stated = calendarDay === undefined ? undefined : Option.getOrUndefined(calendarDayOf(calendarDay))
   const day = stated !== undefined && civilDate(stated.date) && knownZone(stated.timeZone) ? stated : undefined
   const position = location === undefined ? undefined : Option.getOrUndefined(locationOf(location))
+  const height = chatHeight === undefined ? undefined : Option.getOrUndefined(chatHeightOf(chatHeight))
   const core = canonical({
     view: isName(view) ? view : "",
     revision: counted ?? 0,
@@ -209,7 +216,8 @@ function decideObservation(input: unknown): Decided<Observation, ObservationFact
     ...(selection === undefined ? {} : { selectedObject: selection }),
   })
   const withDay = day === undefined ? core : canonical({ ...core, calendarDay: day })
-  const observation = position === undefined ? withDay : canonical({ ...withDay, location: position })
+  const withLocation = position === undefined ? withDay : canonical({ ...withDay, location: position })
+  const observation = height === undefined ? withLocation : canonical({ ...withLocation, chatHeight: height })
   const facts: ObservationFacts = {
     unknownField: Object.keys(fields).some((key) => !observationKeys.has(key)) || sensitivity === undefined || counted === undefined,
     view: isName(view) ? { tag: "View", viewName: view } : { tag: "MalformedView" },
@@ -222,7 +230,10 @@ function decideObservation(input: unknown): Decided<Observation, ObservationFact
       : { tag: "Day", dayZone: day.timeZone, dayBytes: utf8Bytes(withDay) - utf8Bytes(core) },
     location: location === undefined ? { tag: "NoLocation" }
       : position === undefined ? { tag: "MalformedLocation" }
-      : { tag: "Located", locationBytes: utf8Bytes(observation) - utf8Bytes(withDay) },
+      : { tag: "Located", locationBytes: utf8Bytes(withLocation) - utf8Bytes(withDay) },
+    chatHeight: chatHeight === undefined ? { tag: "NoChatHeight" }
+      : height === undefined ? { tag: "MalformedChatHeight" }
+      : { tag: "ChatHeight", chatHeightBytes: utf8Bytes(observation) - utf8Bytes(withLocation) },
     coreBytes: utf8Bytes(core),
   }
   switch (observationOutcome(facts)) {
