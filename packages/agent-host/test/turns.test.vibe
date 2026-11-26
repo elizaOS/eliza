@@ -1127,7 +1127,7 @@ it.live(`An answer keeps JSON that only shares a name with an offered tool and l
   }))
 }, 120_000)
 
-it.live(`A failure on one recipient or event stays reported beside a success on another, in either order, the model is asked once to report it, its answer reports it in the model's words alone with no fixed line after them, each failure needs its own quote of whole sentences (a sentence's opening clause or another failure's quote reports nothing, and an unreported failure is told in its action's words beside the model's quoted report of the other), a rendered card or an open proposal's own copy beside a failure stays, the words its action wrote for the owner follow a reply that lacks them only when the model gives no answer, a retry of the same operation that succeeds closes it, words an action wrote to the model never reach the owner under any reply, and a checklist with no title is a question the model asks, not a failure (${planning}, "A failure or proposal the turn made stays reported unless a later success of the same operation supersedes it"; ${planning}, "A reply that leaves a failure unreported is written again once, and the delivered reply still reports open failures and attachment omissions"; ${planning}, "A failure with no receipt that a later step may have answered is the model's to report, and its own words follow the reply unless the model stands by a reply without them"; ${planning}, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"; spec/notes/records.md, "A Notes change answers with a receipt of the note and the revision it committed, and a refusal says what it waits on")`, effect () => {
+it.live(`A failure on one recipient or event stays reported beside a success on another, in either order, the model is asked once to report it, its answer reports it in the model's words alone with no fixed line after them, each failure needs its own quote of one whole sentence (a sentence's opening clause, a quote spanning two sentences, a sentence another failure already quoted or another failure's quote reports nothing, and an unreported failure is told in its action's words, or in its own failure text's first sentence when its action wrote none, beside the model's quoted report of the other), a rendered card or an open proposal's own copy beside a failure stays, the words its action wrote for the owner follow a reply that lacks them only when the model gives no answer, a retry of the same operation that succeeds closes it, words an action wrote to the model never reach the owner under any reply, and a checklist with no title is a question the model asks, not a failure (${planning}, "A failure or proposal the turn made stays reported unless a later success of the same operation supersedes it"; ${planning}, "A reply that leaves a failure unreported is written again once, and the delivered reply still reports open failures and attachment omissions"; ${planning}, "A failure with no receipt that a later step may have answered is the model's to report, and its own words follow the reply unless the model stands by a reply without them"; ${planning}, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"; spec/notes/records.md, "A Notes change answers with a receipt of the note and the revision it committed, and a refusal says what it waits on")`, effect () => {
   const cloud = try cloudFake(deviceKey)
   const agent = try startInProcess({
     launch: {
@@ -1177,6 +1177,18 @@ it.live(`A failure on one recipient or event stays reported beside a success on 
   const unnumberedOfTwo = try turn(bothAsked)
   try Effect.sync(() => { failNext("Alice", "standup"); cloud.script(textAndStandup(), text("Both done."), text(`[answer] The text to Alice didn't send. Your standup didn't change either.\n[reported 1: "The text to Alice didn't send."]\n[reported 2: "Your standup didn't change either."]`)) })
   const bothQuoted = try turn(bothAsked)
+  try Effect.sync(() => { failNext("Alice", "standup"); cloud.script(textAndStandup(), text("Both done."), text(`[answer] The text to Alice didn't send. Your standup didn't change either.\n(reported 1: "The text to Alice didn't send.")\n**[reported 2]:** "Your standup didn't change either."`)) })
+  const bothQuotedOddly = try turn(bothAsked)
+  try Effect.sync(() => { failNext("Alice", "standup"); cloud.script(textAndStandup(), text("Both done."), text(`[answer] Neither went through.\n[reported 1: "Neither went through."]\n[reported 2: "Neither went through."]`)) })
+  const sameQuoteTwice = try turn(bothAsked)
+  try Effect.sync(() => { failNext("Alice", "standup"); cloud.script(textAndStandup(), text("Both done."), text(`[answer] The text to Alice didn't send. Your standup moved to Friday.\n[reported 1: "The text to Alice didn't send. Your standup moved to Friday."]`)) })
+  const spanningQuote = try turn(bothAsked)
+  const textAndTime = () => toolCalls("", textTo("Alice"), { name: "SCHEDULE_EVENT", arguments: { startAt: "2030-03-02T25:70" } })
+  const textAndTimeAsked = "Text Alice that I'm running late and put the dentist on my calendar tomorrow at 25:70."
+  try Effect.sync(() => { failNext("Alice"); cloud.script(textAndTime(), text("Both done."), text("Both done.")) })
+  const unwordedUnreported = try turn(textAndTimeAsked)
+  try Effect.sync(() => { failNext("Alice"); cloud.script(textAndTime(), text("Both done."), text(`[answer] Alice has your text. 25:70 isn't a real time, so nothing was added.\n[reported 2: "25:70 isn't a real time, so nothing was added."]`)) })
+  const unwordedQuoted = try turn(textAndTimeAsked)
   try Effect.sync(() => { failNext("Alice"); cloud.script(toolCalls("", textTo("Alice"), { name: "SHOW_RESULT", arguments: { which: "cafes" } }), text("Alice has your text, and here are the cafes."), text("Alice has your text, and here are the cafes.")) })
   const besideACard = try turn("Text Alice that I'm running late and show me cafes nearby.")
   try Effect.sync(() => { failNext("Alice"); cloud.script(toolCalls("", textTo("Alice"), { name: "PROPOSE_TEXT", arguments: { to: "Bob" } }), text("Both texts are on their way."), text("Both texts are on their way.")) })
@@ -1205,7 +1217,7 @@ it.live(`A failure on one recipient or event stays reported beside a success on 
   const ownerHeard = [untitled, timeAskedTwice, timeBlankAgain, timeFaultAgain, timeCut, timeTold].map(({ text: said }) => modelWords.filter((words) => said.includes(words)))
 
   try Effect.try(() => assert.deepStrictEqual({
-    bobFirst, aliceFirst, retried, events, told, unanswered, bothClaimed, sentClaimed, prefixQuoted, oneOfTwoQuoted, unnumberedOfTwo, bothQuoted, besideACard, besideAProposal, sentThenCue, unshownNoted, afterWorkNote: sentThenCueNote.includes("The tool results above are what this turn did."),
+    bobFirst, aliceFirst, retried, events, told, unanswered, bothClaimed, sentClaimed, prefixQuoted, oneOfTwoQuoted, unnumberedOfTwo, bothQuoted, bothQuotedOddly, sameQuoteTwice, spanningQuote, unwordedUnreported, unwordedQuoted, besideACard, besideAProposal, sentThenCue, unshownNoted, afterWorkNote: sentThenCueNote.includes("The tool results above are what this turn did."),
     untitled, timeAskedTwice, timeBlankAgain, timeFaultAgain, timeCut: timeCut.text === cutOffReply, timeTold, ownerHeard,
   }, {
     bobFirst: { text: onlyBob, calls: 3, laterRunNote: false },
@@ -1220,6 +1232,11 @@ it.live(`A failure on one recipient or event stays reported beside a success on 
     oneOfTwoQuoted: { text: "The text to Alice didn't send.\n\nThe standup event did not change.", calls: 3, laterRunNote: false },
     unnumberedOfTwo: { text: "The text to Alice did not send.\n\nThe standup event did not change.", calls: 3, laterRunNote: false },
     bothQuoted: { text: "The text to Alice didn't send. Your standup didn't change either.", calls: 3, laterRunNote: false },
+    bothQuotedOddly: { text: "The text to Alice didn't send. Your standup didn't change either.", calls: 3, laterRunNote: false },
+    sameQuoteTwice: { text: "Neither went through.\n\nThe standup event did not change.", calls: 3, laterRunNote: false },
+    spanningQuote: { text: "The text to Alice did not send.\n\nThe standup event did not change.", calls: 3, laterRunNote: false },
+    unwordedUnreported: { text: "The text to Alice did not send.\n\nOne of those times is not a real date and clock time.", calls: 3, laterRunNote: false },
+    unwordedQuoted: { text: "The text to Alice did not send.\n\n25:70 isn't a real time, so nothing was added.", calls: 3, laterRunNote: false },
     besideACard: { text: `${nearestCafes}\n\nThe text to Alice did not send.`, calls: 3, laterRunNote: false },
     besideAProposal: { text: `${reviewText("Bob")}\n\nThe text to Alice did not send.`, calls: 3, laterRunNote: false },
     unshownNoted: true,
@@ -2037,7 +2054,7 @@ it.live(`A calendar move refused without a receipt and then made by the model's 
   const quoted = try turn(["Misread"], () => [toolCalls("", misread), toolCalls("", move), text(`${right} ${unsaidMove}`)])
   const sameResponse = try turn(["Misread"], () => [toolCalls("", misread, move), text(right), text(right)])
   const notTaken = "I couldn't move your dentist: the calendar didn't take it."
-  const neverMoved = try turn(["Misread", "Refused"], () => [toolCalls("", misread), toolCalls("", move), text(notTaken), text(`[answer] ${notTaken}\n[reported 1: "${notTaken}"]\n[reported 2: "${notTaken}"]`)])
+  const neverMoved = try turn(["Misread", "Refused"], () => [toolCalls("", misread), toolCalls("", move), text(notTaken), text(`[answer] ${notTaken} My first try misread the time.\n[reported 1: "My first try misread the time."]\n[reported 2: "${notTaken}"]`)])
   const providerRefused = try turn(["Refused"], () => [toolCalls("", move), text("Done!"), requestFault("invalid_request")])
   const unavailable = JSON.stringify(unavailableNotice)
   const otherActionFirst = try turn([], () => [toolCalls("", showCalendar), toolCalls("", move), text(right), text(right)], [unavailable, "(a VIEWS call)"])
@@ -2059,7 +2076,7 @@ it.live(`A calendar move refused without a receipt and then made by the model's 
     mistimedTwice: { reply: movedDentist, calls: 4, laterRunNote: true },
     quoted: { reply: `${right} ${unsaidMove}`, calls: 3, laterRunNote: false },
     sameResponse: { reply: right, calls: 3, laterRunNote: false },
-    neverMoved: { reply: notTaken, calls: 4, laterRunNote: false },
+    neverMoved: { reply: `${notTaken} My first try misread the time.`, calls: 4, laterRunNote: false },
     providerRefused: { reply: notMoved, calls: 3, laterRunNote: false },
     otherActionFirst: { reply: right, calls: 4, laterRunNote: true },
     otherActionAlone: { reply: "I couldn't show your calendar, so nothing changed.", calls: 3, laterRunNote: false },

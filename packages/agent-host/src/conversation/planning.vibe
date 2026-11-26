@@ -89,15 +89,17 @@ export function failureNote({ words, verified, answerableLater, failedActions, l
     : `A step of this turn did not happen as asked. The reply must tell the person so truthfully, never claiming it happened. ${report}`
 }
 
-export const reportNote = `For each numbered point above that your answer tells the person, end your answer with a line of its own, [reported N: "…"], where N is that point's number and the quote is the whole sentence of your answer that tells it, copied exactly. Leave out the line of any point your answer does not tell.`
+export const reportNote = `For each numbered point above that your answer tells the person, end your answer with a line of its own, [reported N: "…"], where N is that point's number and the quote is the one sentence of your answer that tells it, copied exactly. Quote a different sentence for each point. Leave out the line of any point your answer does not tell.`
 
-const reportTag = /\[[ \t]*reported[ \t]*(\d*)[ \t]*:[ \t]*(“[^”\n]*”|"[^"\n]*"|[^\]\n]*)[ \t]*\]/giu
+const reportTag = /[[(][ \t]*reported[ \t]*(\d*)[ \t]*:[ \t]*(“[^”\n]*”|"[^"\n]*"|[^\])\n]*)[ \t]*[\])]/giu
+const reportLabel = /^[ \t]*[*_]*[ \t]*[[(][ \t]*reported[ \t]*(\d*)[ \t]*[\])][ \t]*[*_]*[ \t]*:[ \t]*([^\n]*)$/gimu
 const reportBare = /^[ \t]*[*_]*[ \t]*reported[ \t]*(\d*)[ \t]*[*_]*[ \t]*:[ \t]*[*_]*[ \t]*(["“][^\n]*["”])[ \t]*[*_]*[ \t]*$/gimu
-const quoteMarks = /^[\s"“”'‘’]+|[\s"“”'‘’]+$/gu
+const quoteMarks = /^[\s"“”'‘’*_]+|[\s"“”'‘’*_]+$/gu
 
 function reportsOf(said: string, points: number): { readonly said: string; readonly quotes: ReadonlyMap<number, readonly string[]> } {
-  const untagged = said.replace(reportTag, "")
-  const found = [...said.matchAll(reportTag), ...untagged.matchAll(reportBare)]
+  const labelled = said.replace(reportLabel, "")
+  const untagged = labelled.replace(reportTag, "")
+  const found = [...said.matchAll(reportLabel), ...labelled.matchAll(reportTag), ...untagged.matchAll(reportBare)]
   const quotes = new Map<number, string[]>()
   for (const [, point, quote] of found) {
     const at = point === "" ? (points === 1 ? 1 : 0) : Number(point)
@@ -115,15 +117,35 @@ const asWritten = (word: string) => [...word].map((char) =>
 
 export interface Report {
   readonly span: QuoteSpan
-  readonly sentences: string
+  readonly sentence: string
+}
+
+const insideASentence = /[.!?…]["'”’)\]]*\s/u
+
+export function failureSentence(words: string): string {
+  const first = words.trim().split(/(?<=[.!?…])\s+/u)[0] ?? ""
+  return first.length > 300 ? `${first.slice(0, 300).trimEnd()}…` : first
+}
+
+export function reportsEach(quotes: ReadonlyMap<number, readonly Report[]>): ReadonlyMap<number, Report> {
+  const told = new Set<string>()
+  return new Map([...quotes].toSorted(([a], [b]) => a - b).map(([point, read]): [number, Report] => {
+    const own = read.find(({ span, sentence }) => span === "OneSentence" && !told.has(sentence))
+    if (own !== undefined) {
+      told.add(own.sentence)
+      return [point, own]
+    }
+    return [point, read.some(({ span }) => span === "OneSentence") ? { span: "Reused", sentence: "" } : read[0] ?? { span: "NoQuote", sentence: "" }]
+  }))
 }
 
 export function reportIn(prose: string, quote: string): Report {
   const said = quote.replace(/[\s.!?…*_"”]+$/u, "").trim()
-  if (said === "") return { span: "NoQuote", sentences: "" }
+  if (said === "") return { span: "NoQuote", sentence: "" }
+  if (insideASentence.test(said)) return { span: "Fragment", sentence: "" }
   const words = said.split(/\s+/u).map(asWritten).join("\\s+")
   const whole = new RegExp(`${opensASentence}${words}${closesASentence}`, "u").exec(prose)
-  return whole === null ? { span: "Fragment", sentences: "" } : { span: "WholeSentences", sentences: whole[0].trim() }
+  return whole === null ? { span: "Fragment", sentence: "" } : { span: "OneSentence", sentence: whole[0].trim() }
 }
 
 export interface PlannedTurn {
@@ -866,10 +888,7 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
       return {
         revised: spoken && answeredAgain(draft, sameAsFirst) ? revised : undefined,
         stoodBy: spoken && standsBy(draft, sameAsFirst),
-        reports: new Map([...quotes].map(([point, said]) => {
-          const read = said.map((quote) => reportIn(prose, quote))
-          return [point, read.find(({ span }) => span === "WholeSentences") ?? read[0] ?? { span: "NoQuote", sentences: "" }]
-        })),
+        reports: reportsEach(new Map([...quotes].map(([point, said]) => [point, said.map((quote) => reportIn(prose, quote))]))),
       }
     } catch (error: unknown) {
       if (signal.aborted) throw error

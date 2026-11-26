@@ -14,7 +14,7 @@ import { bodyOf, storedText } from "./history.vibe"
 import { ModelRefusal } from "../models/chat.vibe"
 import { emptyTextTurnAccepted, readTurnContext, type BrowserPage, type ReviewedEmail } from "@elizaos/agent"
 import { plannerTemperature, warmUpOutputCap } from "../../gen/agent__conversation__planning.ts"
-import { actionNotes, agentCache, failureNote, offeredActions, plannerTools, planTurn, reportNote, type FailureNotice, type PlannedTurn, type Report } from "./planning.vibe"
+import { actionNotes, agentCache, failureNote, failureSentence, offeredActions, plannerTools, planTurn, reportNote, type FailureNotice, type PlannedTurn, type Report } from "./planning.vibe"
 import { cueRule, hostNoteMark } from "./reply-text.vibe"
 import { runTurnEvaluators } from "./turn-evaluators.vibe"
 import { recordedTurn, toolRecordOf } from "./tool-record.vibe"
@@ -357,12 +357,13 @@ async function settledReply(planned: PlannedTurn, omitted: boolean, misgrounded:
   if (!replacesTheReply(modelsReply, asked.some((notice) => !answered(notice) && notice.owner !== undefined))) return withWords(said, [...ownersWords, ...attachmentWords])
   const inPlace = asked.flatMap((notice) => {
     switch (partInPlace(reportedAt(pointOf(notice)), answered(notice), notice.owner !== undefined)) {
-      case "ModelsReport": return [reports.get(pointOf(notice))?.sentences ?? ""]
+      case "ModelsReport": return [reports.get(pointOf(notice))?.sentence ?? ""]
       case "ActionsWords": return [notice.owner ?? ""]
+      case "FailureText": return [failureSentence(notice.words)]
       case "NoPart": return []
     }
   })
-  const omissionInPlace = omissionReported ? [reports.get(omissionPoint)?.sentences ?? ""] : []
+  const omissionInPlace = omissionReported ? [reports.get(omissionPoint)?.sentence ?? ""] : []
   return withWords(planned.compose([...new Set([...inPlace, ...omissionInPlace])].join("\n\n")), [...ownersWords, ...attachmentWords])
 }
 

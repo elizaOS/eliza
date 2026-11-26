@@ -687,18 +687,19 @@ take its place when it stated a time they did not observe. The note numbers
 each failure and omission it names, one point each, and asks the model to
 end its answer, for each point its answer tells the person, with a line of
 its own, `[reported N: "…"]`, where N is that point's number and the quote is
-the whole sentence of its answer that tells it, and to leave out the line of
+the one sentence of its answer that tells it, and to leave out the line of
 any point its answer does not tell; with one point, the line may leave out
 its number. The host takes every such line out of the answer, in any of the
 forms a model writes it, and reads it as the model's own judgment, never
 matching the person's words. A point is reported when the model's second
 answer is kept, or when it gives its first reply again word for word (it
-stands by it), and that point's own quote is whole sentences of the model's
-prose in that answer: it starts where a sentence starts and ends where a
-sentence ends. A quote that is blank, names no point or another point's
-number, or is a fragment (it starts or ends inside a sentence, such as a
-sentence's opening clause before a comma, or words from its middle) reports
-nothing, and one point's quote never reports another. A failure or omission
+stands by it), and that point's own quote is one whole sentence of the
+model's prose in that answer: it starts where a sentence starts and ends
+where that sentence ends. A quote that is blank, names no point or another
+point's number, is a fragment (it starts or ends inside a sentence, such as a
+sentence's opening clause before a comma, or words from its middle), spans
+more than one sentence, or is a sentence an earlier point already quoted
+reports nothing, and one point's quote never reports another. A failure or omission
 the model reports so is told in the model's words alone: no fixed line
 follows them, written or spoken. A failure the model was asked about and
 did not report, under a reply that is the model's (its first or kept
@@ -707,8 +708,12 @@ place), whose action wrote words for the owner, never lets that reply
 stand, whether the model repeated it, kept a second answer that still
 leaves the failure out or claims it happened, or gave no answer: the
 model's prose gives way, and in its place each point put to the model, in
-order, is told by the sentences the model quoted for it when it reported
-it, or else by the words its action wrote for the owner, verbatim, while
+order, is told by the sentence the model quoted for it when it reported
+it, or else by the words its action wrote for the owner, verbatim, or, for a
+failure whose action wrote none, by the first sentence of its own failure
+text (the text the model was given for it: its error, its result text,
+`unavailableNotice`, or the host's sentence that the call did not start or
+did not complete), so no failure loses its only telling with the prose, while
 the turn's verified tool copy, an open proposal's own copy and review card,
 and a rendered card stay where composition puts them. So the person hears
 neither a success the step did not have nor a stock sentence after one,
@@ -721,11 +726,12 @@ action wrote words for the owner follows in those words, if the reply does
 not already contain them. When the turn was cut off, or the clock's or the
 change's words take the reply's place, each remaining open failure whose
 action wrote words for the owner follows those words in its own, and so
-does each attachment omission. Under any reply, a failure's error, its
-result text that no action marked for the owner, `unavailableNotice` and the
-host's own sentence that a call did not start or did not complete reach the
-model only, and the owner hears such a failure in the model's words alone:
-nothing written to the model is ever added to the owner's reply.
+does each attachment omission. Otherwise, a failure's error, its result text
+that no action marked for the owner, `unavailableNotice` and the host's own
+sentence that a call did not start or did not complete reach the model only,
+and the owner hears such a failure in the model's words alone: nothing
+written to the model is added to the owner's reply except that first
+sentence, in place of the model's prose given way.
 A reply with nothing unreported and no
 unobserved time makes no further call, a turn cut off at the model's output
 limit is never asked again, and no turn is asked more than once.
@@ -746,11 +752,11 @@ pure def replySource(unreported: bool, ungrounded: bool, cutOff: bool, answered:
 pure def putToTheModel(held: bool, safetyCopy: bool): bool = not(held) and not(safetyCopy)
 pure def reachesTheOwner(ownCopy: bool, follows: bool): bool = ownCopy and follows
 pure def answeredAgain(draft: Draft, sameAsFirst: bool): bool = gaveAnAnswer(draft) and not(sameAsFirst)
-type QuoteSpan = NoQuote | Fragment | WholeSentences
-pure def quoteReports(span: QuoteSpan): bool = span == WholeSentences
-type PartInPlace = ModelsReport | ActionsWords | NoPart
+type QuoteSpan = NoQuote | Fragment | Reused | OneSentence
+pure def quoteReports(span: QuoteSpan): bool = span == OneSentence
+type PartInPlace = ModelsReport | ActionsWords | FailureText | NoPart
 pure def partInPlace(reported: bool, answered: bool, ownerWords: bool): PartInPlace =
-  if (reported) ModelsReport else if (not(answered) and ownerWords) ActionsWords else NoPart
+  if (reported) ModelsReport else if (answered) NoPart else if (ownerWords) ActionsWords else FailureText
 pure def lawAGroundedReplyMakesNoFurtherCall(cutOff: bool): bool = not(asksAgain(false, false, cutOff))
 pure def lawAGroundedReplyIsTheModels(cutOff: bool, answered: bool, grounded: bool): bool = replySource(false, false, cutOff, answered, grounded) == ModelReply
 pure def lawASecondAnswerThatHoldsIsKept(unreported: bool, ungrounded: bool): bool =
@@ -765,9 +771,9 @@ pure def lawWordsTheReplyHoldsAreNotAskedFor(safetyCopy: bool): bool = not(putTo
 pure def lawACueIsNoSecondAnswer(sameAsFirst: bool): bool = not(answeredAgain(Cue, sameAsFirst)) and not(answeredAgain(Silent, sameAsFirst))
 pure def lawTheFirstReplyAgainIsNoSecondAnswer(draft: Draft): bool = not(answeredAgain(draft, true))
 pure def lawANewAnswerIsASecondAnswer(sameAsFirst: bool): bool = answeredAgain(Answer, sameAsFirst) == not(sameAsFirst)
-pure def lawAFragmentIsNoReport(span: QuoteSpan): bool = quoteReports(span) implies (span != Fragment and span != NoQuote)
 pure def lawAReportedPointKeepsTheModelsOwnSentences(answered: bool, ownerWords: bool): bool = partInPlace(true, answered, ownerWords) == ModelsReport
-pure def lawAnUnreportedFailureIsToldInItsActionsWords(ownerWords: bool): bool = (partInPlace(false, false, ownerWords) == ActionsWords) == ownerWords
+pure def lawAnUnreportedFailureIsNeverDroppedInPlace(ownerWords: bool): bool =
+  partInPlace(false, false, ownerWords) == (if (ownerWords) ActionsWords else FailureText)
 pure def lawAStepALaterCallAnsweredAddsNothingInPlace(ownerWords: bool): bool = partInPlace(false, true, ownerWords) == NoPart
 ```
 
@@ -801,8 +807,8 @@ answered: its own words neither follow nor replace it. A failure with a
 receipt, a failure in the same planner response as the later call, a failure
 no later call may have answered, and every failure when the model does not
 stand by its reply are reported as any failure is (above): in the model's
-words alone when its answer quotes that failure's own report as whole
-sentences, and otherwise in the words
+words alone when its answer quotes that failure's own report as one whole
+sentence, and otherwise in the words
 its action wrote for the owner, in place of a reply that is the model's or
 after the clock's or the change's words or a turn cut off. Safety copy is
 reported as above.
@@ -823,8 +829,8 @@ pure def replacesTheReply(modelsReply: bool, unanswered: bool): bool = modelsRep
 pure def lawACueOrSilenceGivesNoAnswer(sameAsFirst: bool): bool =
   not(gaveAnAnswer(Cue)) and not(gaveAnAnswer(Silent)) and not(standsBy(Cue, sameAsFirst)) and not(standsBy(Silent, sameAsFirst))
 pure def lawAnotherAnswerIsNoStandingBy(draft: Draft): bool = not(standsBy(draft, false))
-pure def lawAnAnswerThatQuotesNoWholeSentenceReportsNothing(kept: bool, stoodBy: bool): bool =
-  not(reportsIt(kept, stoodBy, NoQuote)) and not(reportsIt(kept, stoodBy, Fragment))
+pure def lawAnAnswerThatQuotesNoSentenceOfItsOwnReportsNothing(kept: bool, stoodBy: bool): bool =
+  not(reportsIt(kept, stoodBy, NoQuote)) and not(reportsIt(kept, stoodBy, Fragment)) and not(reportsIt(kept, stoodBy, Reused))
 pure def lawOnlyTheModelsOwnAnswerReports(span: QuoteSpan): bool = not(reportsIt(false, false, span))
 pure def lawAReportedFailureIsTheModelsWordsAlone(answerable: bool, stoodBy: bool, safetyCopy: bool): bool =
   followsTheReply(failureAnswered(true, true, answerable, stoodBy), true, safetyCopy) == safetyCopy
