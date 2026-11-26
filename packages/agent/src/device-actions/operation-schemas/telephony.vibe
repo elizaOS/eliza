@@ -16,7 +16,11 @@ const count = integer(0, Number.MAX_SAFE_INTEGER)
 const safeText = (value: string) => value.isWellFormed() && !/[\p{Cc}\u202a-\u202e\u2066-\u2069]/u.test(value)
 const safeBody = (value: string) => safeText(value.replace(/[\t\n\r]/g, " "))
 const BodyText = (maximum: number) => Schema.String.check(Schema.isMaxLength(maximum), Schema.makeFilter(safeBody))
-const Query = Schema.Trimmed.check(Schema.isMinLength(1), Schema.isMaxLength(128), Schema.makeFilter(safeText))
+const Query = Schema.String.check(
+  Schema.isMaxLength(128), Schema.makeFilter((value: string) => safeText(value) && value.trim() !== ""),
+).pipe(Schema.decodeTo(Schema.Trimmed.check(Schema.isMinLength(1), Schema.isMaxLength(128), Schema.makeFilter(safeText)),
+  SchemaTransformation.transform({ decode: (value: string) => value.trim(), encode: (value: string) => value }),
+))
 const Label = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(128), Schema.makeFilter(safeText))
 const PhoneNumber = Schema.String.check(Schema.isPattern(/^\+?[0-9]{2,20}$/))
 const Recipient = Schema.Union([
