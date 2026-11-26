@@ -1096,6 +1096,7 @@ export default async function (ctx: WorkflowContext) {
 
   const paramNames = (workflowAction.parameters ?? []).map((p) => p.name)
   const paramsSorted = paramNames.every((name, i) => i === 0 || paramNames[i - 1]! < name)
+  const inputOpenObject = workflowAction.parameters?.find((p) => p.name === "input")?.schema.additionalProperties === true
   try check(() => assert.deepStrictEqual({
     dagStatus: dagDone.status,
     dagModelCalls: dagStored.budget?.modelCallsUsed,
@@ -1108,7 +1109,7 @@ export default async function (ctx: WorkflowContext) {
     genDone: [genDone.status, genDone.output?.includes('"packedLen":120')],
     staticPrefixesMatch: prefixA === prefixB && prefixA.length > 400,
     compactedHelper: [compactedCheck.compacted, compactedCheck.retainedChars <= 200],
-    actionOpt: [workflowAction.toolSchemaStrict, workflowAction.cacheStable, paramsSorted, (workflowAction.descriptionCompressed?.length ?? 999) < 350, listResult.promptDataMode, summaryLine],
+    actionOpt: [workflowAction.toolSchemaStrict, workflowAction.cacheStable, paramsSorted, inputOpenObject, (workflowAction.descriptionCompressed?.length ?? 999) < 350, listResult.promptDataMode, summaryLine],
     providerOpt: [workflowStatusProvider.cacheStable, workflowStatusProvider.dynamic, Boolean(statusRes.discoveryText)],
   }, {
     dagStatus: "finished",
@@ -1122,7 +1123,7 @@ export default async function (ctx: WorkflowContext) {
     genDone: ["finished", true],
     staticPrefixesMatch: true,
     compactedHelper: [true, true],
-    actionOpt: [true, true, true, true, "replace-data", "WORKFLOW list [ok]"],
+    actionOpt: [true, true, true, true, true, "replace-data", "WORKFLOW list [ok]"],
     providerOpt: [false, true, true],
   }))
 })

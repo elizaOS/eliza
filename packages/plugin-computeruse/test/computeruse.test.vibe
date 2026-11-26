@@ -1,6 +1,6 @@
 // spec/computerUse/index.md, "Story: Control an authorized computer session"; spec/computerUse/sessions.md, "Story: Manage leased computer-use sessions with fresh observations"; spec/computerUse/approvals.md, "Story: Gate computer-use commands by approval mode and operator decisions"; spec/computerUse/observation.md, "Story: Minimize vision tokens while keeping coordinates and history strictly bounded"; spec/computerUse/batching.md, "Story: Execute a bounded sequence of desktop actions in a single LLM turn"
 import { assert, describe, it } from "@effect/vitest"
-import type { IAgentRuntime, Memory, State } from "@elizaos/core"
+import { validateToolArgs, type IAgentRuntime, type Memory, type State } from "@elizaos/core"
 import { base64ToBytes, makeTempFilePath, makeTestPngBase64 } from "./support/png.ts"
 import {
   AppControlCoordinator,
@@ -326,20 +326,22 @@ describe("plugin-computeruse journeys", () => {
       })
       const runtime = makeFakeRuntime(service)
 
+      const batchSteps: Array<Record<string, string | number[]>> = [
+        { action: "click", coordinate: [50, 60] },
+        { action: "type", text: "vibestack" },
+        { action: "key", key: "Enter" },
+      ]
+      const batchParams = { action: "batch", stopOnError: true, steps: batchSteps }
+      const schemaCheckOk = try Effect.try(() => validateToolArgs(useComputerAction, batchParams))
+      const schemaCheckBad = try Effect.try(() => validateToolArgs(useComputerAction, { action: "batch", steps: [{ x: 10 }] }))
       const batchActionRes = try promise(() =>
         useComputerAction.handler(runtime, makeMessage("run batch"), {} as State, {
-          parameters: {
-            action: "batch",
-            stopOnError: true,
-            steps: [
-              { action: "click", coordinate: [50, 60] },
-              { action: "type", text: "vibestack" },
-              { action: "key", key: "Enter" },
-            ],
-          },
+          parameters: batchParams,
         }),
       )
       try Effect.try(() => {
+        assert.strictEqual(schemaCheckOk.valid, true)
+        assert.strictEqual(schemaCheckBad.valid, false)
         assert.strictEqual(batchActionRes.success, true)
         assert.strictEqual(batchActionRes.promptDataMode, "replace-data")
         assert.strictEqual(batchActionRes.promptData?.stepsExecuted, 3)

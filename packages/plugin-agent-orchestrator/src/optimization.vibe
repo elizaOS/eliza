@@ -201,7 +201,7 @@ export function buildCacheStableOrchestratorPrefix(options?: {
     `eval_lanes: ${fastEval}`,
     "tools: read,write,edit,bash (Pi minimal profile) + TASKS delegation",
     "rules:",
-    "1. Prefer TASKS_SEND_TO_AGENT when a live session already owns the target workdir.",
+    "1. Prefer TASKS_SEND when a live session already owns the target workdir.",
     "2. Never relay raw transcripts or unverified claims; emit bounded structured digests.",
     "3. Only elected coordinator sessions may transition a task into validating/done.",
     "4. Respect operator allow-lists, disk budgets, spend caps, and read-only verification.",

@@ -149,10 +149,30 @@ effect function streamAnswer(response: Response, model: Machine.Shape, attempt: 
 }
 
 const chatResponse = Schema.Struct({
-  choices: Schema.NonEmptyArray(Schema.Struct({ message: Schema.Struct({ content: Schema.NullOr(Schema.String), tool_calls: Schema.optionalKey(Schema.Array(Schema.Unknown)) }), finish_reason: Schema.String })),
+  choices: Schema.NonEmptyArray(Schema.Struct({ message: Schema.Struct({ content: Schema.optionalKey(Schema.NullOr(Schema.String)), tool_calls: Schema.optionalKey(Schema.Array(Schema.Unknown)) }), finish_reason: Schema.String })),
   usage: Schema.optionalKey(usageSchema),
 })
 const decodeChat = Schema.decodeUnknownEffect(chatResponse)
+
+function isWireStrictSchema(schema: unknown): boolean {
+  if (typeof schema !== "object" || schema === null) return false
+  const record = schema as Record<string, unknown>
+  if (record.type === "object" || record.properties !== undefined) {
+    if (record.additionalProperties !== false) return false
+    const props = record.properties
+    if (typeof props === "object" && props !== null) {
+      const required = new Set(Array.isArray(record.required) ? record.required.filter((item): item is string => typeof item === "string") : [])
+      for (const [key, value] of Object.entries(props)) {
+        if (!required.has(key) || !isWireStrictSchema(value)) return false
+      }
+    }
+    return true
+  }
+  if (record.type === "array") {
+    return record.items === undefined || isWireStrictSchema(record.items)
+  }
+  return true
+}
 
 function modelEndpoint(runtime: IAgentRuntime, modelId: string) {
   return { address: setting(runtime, "OPENAI_BASE_URL") || "https://api.openai.com/v1", modelId, acceptsOperation: true, acceptsSchema: true, confidential: setting(runtime, "OPENAI_CONFIDENTIAL") === "true" }
@@ -178,7 +198,15 @@ effect function textRequest(runtime: IAgentRuntime, params: GenerateTextParams, 
         const payload = {
           model: endpoint.modelId, messages, stream: wantsEvents, temperature: params.temperature, top_p: params.topP,
           max_completion_tokens: params.omitMaxTokens ? undefined : params.maxTokens, stop: params.stopSequences,
-          tools: params.tools?.map((tool) => ({ type: "function", function: { name: tool.name, description: tool.description, parameters: tool.parameters, strict: tool.strict } })),
+          tools: params.tools?.map((tool) => ({
+            type: "function",
+            function: {
+              name: tool.name,
+              description: tool.description,
+              parameters: tool.parameters,
+              ...(tool.strict === true && isWireStrictSchema(tool.parameters) ? { strict: true } : {}),
+            },
+          })),
           tool_choice: params.toolChoice, seed: params.seed,
           response_format: params.responseSchema === undefined ? params.responseFormat : { type: "json_schema", json_schema: { name: "response", strict: true, schema: params.responseSchema } },
         }
@@ -196,7 +224,9 @@ effect function textRequest(runtime: IAgentRuntime, params: GenerateTextParams, 
         const choice = complete.choices[0]
         const valid = choice.finish_reason === "stop" || choice.finish_reason === "tool_calls"
         if (!valid) throw new OpenAiFailure({ reason: "OpenAI did not complete its response.", retryable: false })
-        try model.send({ type: "acceptOpenAi", attempt: run.attempt, terminal: valid, shapeMatches: choice.message.content !== null })
+        const hasContent = choice.message.content !== null && choice.message.content !== undefined
+        const hasToolCalls = choice.finish_reason === "tool_calls" && (choice.message.tool_calls?.length ?? 0) > 0
+        try model.send({ type: "acceptOpenAi", attempt: run.attempt, terminal: valid, shapeMatches: hasContent || hasToolCalls })
         const text = choice.message.content ?? ""
         const reported = complete.usage
         if (!params.stream && choice.message.tool_calls === undefined) return text
@@ -230,7 +260,7 @@ function describe(runtime: IAgentRuntime, input: ImageDescriptionParams | string
     }, setting(runtime, "OPENAI_IMAGE_DESCRIPTION_BASE_URL") || undefined)
     const parsed = try Schema.decodeUnknownEffect(chatResponse)(raw)
     const description = parsed.choices[0].message.content
-    if (description === null) throw new OpenAiFailure({ reason: "OpenAI returned no image description.", retryable: false })
+    if (description == null) throw new OpenAiFailure({ reason: "OpenAI returned no image description.", retryable: false })
     return { title: "", description }
   }, { signal: "signal" in params ? params.signal : undefined })
 }

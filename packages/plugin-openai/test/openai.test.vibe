@@ -8,17 +8,20 @@ module node {
 
   export interface OpenAiTestServer {
     readonly endpoint: string
+    readonly requests: Record<string, unknown>[]
     stop(): Promise<void>
   }
 
   export async function startOpenAiTestServer(
     onRequest: (body: Record<string, unknown>, res: ServerResponse) => void,
   ): Promise<OpenAiTestServer> {
+    const requests: Record<string, unknown>[] = []
     const srv = createServer((req, res) => {
       const chunks: Buffer[] = []
       req.on("data", (chunk: Buffer) => { chunks.push(chunk) })
       req.on("end", () => {
         const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<string, unknown>
+        requests.push(body)
         onRequest(body, res)
       })
     })
@@ -27,6 +30,7 @@ module node {
     const port = typeof bound === "object" && bound !== null ? bound.port : 0
     return {
       endpoint: `http://127.0.0.1:${port}/v1`,
+      requests,
       stop: () => new Promise<void>((resolve) => { srv.close(() => resolve()) }),
     }
   }
@@ -40,72 +44,98 @@ function openaiRuntime(endpoint: string): IAgentRuntime {
   } as unknown as IAgentRuntime
 }
 
-it('OpenAI & Cerebras prompt-cache usage telemetry maps usage.prompt_tokens_details.cached_tokens to cacheReadInputTokens on complete and streamed calls (spec/openai/index.md, "Story: Use an OpenAI-compatible model for the requested capability")', async () => {
-    let callIndex = 0
-    const srv = await startOpenAiTestServer((body, res) => {
-      callIndex += 1
-      if (body.stream === true) {
-        res.writeHead(200, { "content-type": "text/event-stream" })
-        res.write('data: {"choices":[{"delta":{"content":"cerebras-hit"},"finish_reason":null}]}\n\n')
-        res.write('data: {"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":1024,"completion_tokens":40,"total_tokens":1064,"prompt_tokens_details":{"cached_tokens":896}}}\n\n')
-        res.end("data: [DONE]\n\n")
-        return
-      }
-      res.writeHead(200, { "content-type": "application/json" })
-      if (callIndex === 1) {
-        res.end(JSON.stringify({
-          choices: [{ message: { content: null, tool_calls: [{ id: "call_1", type: "function", function: { name: "READ", arguments: "{}" } }] }, finish_reason: "tool_calls" }],
-          usage: { prompt_tokens: 2048, completion_tokens: 64, total_tokens: 2112, prompt_tokens_details: { cached_tokens: 1920, audio_tokens: 0 } },
-        }))
-        return
-      }
-      if (callIndex === 2) {
-        res.end(JSON.stringify({
-          choices: [{ message: { content: null, tool_calls: [] }, finish_reason: "stop" }],
-          usage: { prompt_tokens: 256, completion_tokens: 16, total_tokens: 272, prompt_tokens_details: { cached_tokens: 0 } },
-        }))
-        return
-      }
+it('OpenAI & Cerebras prompt-cache usage, omitted content on tool_calls, and wire strict gating work end to end (spec/openai/index.md, "Story: Use an OpenAI-compatible model for the requested capability")', async () => {
+  let callIndex = 0
+  const srv = await startOpenAiTestServer((body, res) => {
+    callIndex += 1
+    if (body.stream === true) {
+      res.writeHead(200, { "content-type": "text/event-stream" })
+      res.write('data: {"choices":[{"delta":{"content":"cerebras-hit"},"finish_reason":null}]}\n\n')
+      res.write('data: {"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":1024,"completion_tokens":40,"total_tokens":1064,"prompt_tokens_details":{"cached_tokens":896}}}\n\n')
+      res.end("data: [DONE]\n\n")
+      return
+    }
+    res.writeHead(200, { "content-type": "application/json" })
+    if (callIndex === 1) {
+      res.end(JSON.stringify({
+        choices: [{ message: { tool_calls: [{ id: "call_1", type: "function", function: { name: "READ", arguments: "{\"path\":\"a.ts\"}" } }] }, finish_reason: "tool_calls" }],
+        usage: { prompt_tokens: 2048, completion_tokens: 64, total_tokens: 2112, prompt_tokens_details: { cached_tokens: 1920, audio_tokens: 0 } },
+      }))
+      return
+    }
+    if (callIndex === 2) {
       res.end(JSON.stringify({
         choices: [{ message: { content: null, tool_calls: [] }, finish_reason: "stop" }],
-        usage: { prompt_tokens: 100, completion_tokens: 10, total_tokens: 110 },
+        usage: { prompt_tokens: 256, completion_tokens: 16, total_tokens: 272, prompt_tokens_details: { cached_tokens: 0 } },
       }))
-    })
-    try {
-      const handler = plugin.models?.[ModelType.TEXT_SMALL] as (runtime: IAgentRuntime, params: unknown) => Promise<TextStreamResult>
-      const runtime = openaiRuntime(srv.endpoint)
-      const toolReply = await handler(runtime, {
-        prompt: "Read file",
-        tools: [{ name: "READ", description: "Read", parameters: { type: "object" } }],
-      })
-      const zeroCached = await handler(runtime, { prompt: "Cold turn" })
-      const withoutDetails = await handler(runtime, { prompt: "Legacy provider" })
-      const streamed = await handler(runtime, { prompt: "Stream cached", stream: true })
-      assert.deepStrictEqual(await toolReply.usage, {
-        promptTokens: 2048,
-        completionTokens: 64,
-        totalTokens: 2112,
-        cacheReadInputTokens: 1920,
-      })
-      assert.deepStrictEqual(await zeroCached.usage, {
-        promptTokens: 256,
-        completionTokens: 16,
-        totalTokens: 272,
-        cacheReadInputTokens: 0,
-      })
-      assert.deepStrictEqual(await withoutDetails.usage, {
-        promptTokens: 100,
-        completionTokens: 10,
-        totalTokens: 110,
-      })
-      assert.strictEqual(await streamed.text, "cerebras-hit")
-      assert.deepStrictEqual(await streamed.usage, {
-        promptTokens: 1024,
-        completionTokens: 40,
-        totalTokens: 1064,
-        cacheReadInputTokens: 896,
-      })
-    } finally {
-      await srv.stop()
+      return
     }
+    res.end(JSON.stringify({
+      choices: [{ message: { content: null, tool_calls: [] }, finish_reason: "stop" }],
+      usage: { prompt_tokens: 100, completion_tokens: 10, total_tokens: 110 },
+    }))
   })
+  try {
+    const handler = plugin.models?.[ModelType.TEXT_SMALL] as (runtime: IAgentRuntime, params: unknown) => Promise<TextStreamResult>
+    const runtime = openaiRuntime(srv.endpoint)
+    const toolReply = await handler(runtime, {
+      prompt: "Read file",
+      tools: [
+        {
+          name: "READ",
+          description: "Read",
+          strict: true,
+          parameters: { type: "object", additionalProperties: false, properties: { path: { type: "string" } }, required: ["path"] },
+        },
+        {
+          name: "EDIT",
+          description: "Edit",
+          strict: true,
+          parameters: { type: "object", additionalProperties: false, properties: { edits: { type: "array", items: { type: "object" } }, path: { type: "string" } }, required: ["path"] },
+        },
+        {
+          name: "WORKFLOW",
+          description: "Workflow",
+          strict: true,
+          parameters: { type: "object", additionalProperties: false, properties: { input: { type: "object", additionalProperties: true } }, required: ["input"] },
+        },
+      ],
+    })
+    const zeroCached = await handler(runtime, { prompt: "Cold turn" })
+    const withoutDetails = await handler(runtime, { prompt: "Legacy provider" })
+    const streamed = await handler(runtime, { prompt: "Stream cached", stream: true })
+    const sentTools = srv.requests[0]?.tools as Array<{ function: { name: string; strict?: boolean } }>
+    assert.deepStrictEqual(
+      sentTools.map((tool) => [tool.function.name, "strict" in tool.function ? tool.function.strict : undefined]),
+      [["READ", true], ["EDIT", undefined], ["WORKFLOW", undefined]],
+    )
+    assert.deepStrictEqual(toolReply.toolCalls, [{ id: "call_1", type: "function", function: { name: "READ", arguments: "{\"path\":\"a.ts\"}" } }])
+    assert.strictEqual(await toolReply.text, "")
+    assert.deepStrictEqual(await toolReply.usage, {
+      promptTokens: 2048,
+      completionTokens: 64,
+      totalTokens: 2112,
+      cacheReadInputTokens: 1920,
+    })
+    assert.deepStrictEqual(await zeroCached.usage, {
+      promptTokens: 256,
+      completionTokens: 16,
+      totalTokens: 272,
+      cacheReadInputTokens: 0,
+    })
+    assert.deepStrictEqual(await withoutDetails.usage, {
+      promptTokens: 100,
+      completionTokens: 10,
+      totalTokens: 110,
+    })
+    assert.strictEqual(await streamed.text, "cerebras-hit")
+    assert.deepStrictEqual(await streamed.usage, {
+      promptTokens: 1024,
+      completionTokens: 40,
+      totalTokens: 1064,
+      cacheReadInputTokens: 896,
+    })
+  } finally {
+    await srv.stop()
+  }
+})

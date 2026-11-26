@@ -857,6 +857,16 @@ export const writeAction: Action = {
   handler: writeFileHandler,
 }
 
+const HUNK_EDIT_ITEM_SCHEMA = {
+  type: "object",
+  properties: {
+    new_string: { type: "string" },
+    old_string: { type: "string" },
+    replace_all: { type: "boolean" },
+  },
+  required: ["new_string", "old_string"],
+}
+
 export const editAction: Action = {
   name: "EDIT",
   ...DIRECT_FILE_GATE,
@@ -864,7 +874,7 @@ export const editAction: Action = {
   descriptionCompressed: "Surgical single or multi-hunk edits[] on read file.",
   parameters: [
     { name: "allow_literal_escapes", description: "Allow literal \\n or \\r text.", descriptionCompressed: "Allow literal \\n", required: false, schema: { type: "boolean" } },
-    { name: "edits", description: "Ordered [{old_string,new_string,replace_all?}] hunks.", descriptionCompressed: "Batch hunks", required: false, schema: { type: "array", items: { type: "object" } } },
+    { name: "edits", description: "Ordered [{old_string,new_string,replace_all?}] hunks.", descriptionCompressed: "Batch hunks", required: false, schema: { type: "array", items: HUNK_EDIT_ITEM_SCHEMA } },
     { name: "file_path", description: "Target file path.", descriptionCompressed: "File path", required: true, schema: { type: "string" } },
     { name: "new_string", description: "Replacement text.", descriptionCompressed: "New text", required: false, schema: { type: "string" } },
     { name: "old_string", description: "Exact existing text.", descriptionCompressed: "Old text", required: false, schema: { type: "string" } },
@@ -899,7 +909,7 @@ export const fileAction: Action = {
     { name: "action", description: "Operation: read|write|edit|grep|glob|ls.", descriptionCompressed: "Op", required: true, schema: { type: "string", enum: ["edit", "glob", "grep", "ls", "read", "write"] } },
     { name: "case_insensitive", description: "Grep case-insensitive.", descriptionCompressed: "Ignore case", required: false, schema: { type: "boolean" } },
     { name: "content", description: "Write content.", descriptionCompressed: "Content", required: false, schema: { type: "string" } },
-    { name: "edits", description: "Multi-hunk edits[].", descriptionCompressed: "Edits[]", required: false, schema: { type: "array", items: { type: "object" } } },
+    { name: "edits", description: "Multi-hunk edits[].", descriptionCompressed: "Edits[]", required: false, schema: { type: "array", items: HUNK_EDIT_ITEM_SCHEMA } },
     { name: "encoding", description: "Device encoding: utf8|base64.", descriptionCompressed: "Encoding", required: false, schema: { type: "string", enum: ["base64", "utf8"] } },
     { name: "expectedRevision", description: "Continuation read revision.", descriptionCompressed: "Expected rev", required: false, schema: { type: "string" } },
     { name: "file_path", description: "File path.", descriptionCompressed: "File path", required: false, schema: { type: "string" } },

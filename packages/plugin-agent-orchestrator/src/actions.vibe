@@ -803,7 +803,7 @@ const COMPACT_PARAMETERS: ActionParameter[] = [
   { name: "body", description: "Issue or comment body.", descriptionCompressed: "Body.", required: false, subactions: ["manage_issues"], schema: { type: "string" } },
   { name: "commitMessage", description: "Commit message.", descriptionCompressed: "Commit msg.", required: false, subactions: ["submit_workspace"], schema: { type: "string" } },
   { name: "controlAction", description: "Lifecycle transition.", descriptionCompressed: "Control op.", required: false, subactions: ["control"], schema: { type: "string", enum: ["archive", "continue", "pause", "reopen", "resume", "stop"] } },
-  { name: "dependencies", description: "Lane DAG dependency map.", descriptionCompressed: "Lane deps.", required: false, subactions: ["create"], schema: { type: "object" } },
+  { name: "dependencies", description: "Lane DAG dependency map.", descriptionCompressed: "Lane deps.", required: false, subactions: ["create"], schema: { type: "object", additionalProperties: true } },
   { name: "draft", description: "Open pull request as draft.", descriptionCompressed: "Draft PR.", required: false, subactions: ["submit_workspace"], schema: { type: "boolean" } },
   { name: "includeArchived", description: "Include archived tasks.", descriptionCompressed: "Archived.", required: false, subactions: ["history"], schema: { type: "boolean" } },
   { name: "input", description: "Message text for active session.", descriptionCompressed: "Message.", required: false, subactions: ["send"], schema: { type: "string" } },

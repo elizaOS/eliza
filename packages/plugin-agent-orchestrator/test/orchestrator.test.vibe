@@ -643,6 +643,8 @@ it.effect('Backend routing, Pi credential isolation, multi-lane waves, real git 
     assert.strictEqual(promotedList?.modelClass, "TEXT_SMALL")
     assert.strictEqual(promotedList?.asyncHandoff, false)
     assert.strictEqual(promotedCreate?.modelClass, "TEXT_LARGE")
+    assert.strictEqual(promotedCreate?.parameters?.find((p) => p.name === "dependencies")?.schema?.additionalProperties, true)
+    assert.ok(stablePrefix1.includes("TASKS_SEND") && !stablePrefix1.includes("TASKS_SEND_TO_AGENT"))
     assert.deepStrictEqual(codingSessionChangesProvider.contexts, ["code", "tasks", "agent_internal"])
     assert.deepStrictEqual(codingSessionChangesProvider.contextGate, { anyOf: ["code", "tasks", "agent_internal"] })
     assert.strictEqual(agentOrchestratorPlugin.services?.length, 8)

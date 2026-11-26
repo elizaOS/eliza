@@ -1,7 +1,7 @@
 // spec/codingTools/index.md, "Story: Read and edit my authorized project files"; spec/codingTools/index.md, "Story: Enforce sandbox confinement and bounded tool outputs"; spec/codingTools/fileSession.md, "Story: Protect workspace files against stale edits, accidental overwrites, and secret leaks"; spec/codingTools/shellSession.md, "Story: Gate destructive shell commands, manage background jobs, and page spilled output artifacts"; spec/codingTools/worktree.md, "Story: Enter and exit git worktrees without losing the previous working directory"; spec/codingTools/webGuard.md, "Story: Fetch and search the public web without leaking secrets or touching private networks"
 import { assert, it } from "@effect/vitest"
 import * as NodeServices from "@effect/platform-node/NodeServices"
-import type { IAgentRuntime, Memory, Service, State, UUID } from "@elizaos/core"
+import { actionToTool, type IAgentRuntime, type Memory, type Service, type State, type UUID } from "@elizaos/core"
 import {
   BACKGROUND_SHELL_SERVICE,
   BackgroundShellService,
@@ -590,8 +590,16 @@ it.effect('WEB_FETCH / WEB_SEARCH enforce HTTPS-only SSRF rules, HTML readabilit
       })
       const autoEnableOn = try tryPromise(async () => codingToolsPlugin.autoEnable?.shouldEnable?.({}, { features: { codingTools: true } }))
       const autoEnableOff = try tryPromise(async () => codingToolsPlugin.autoEnable?.shouldEnable?.({ ELIZA_BUILD_VARIANT: "store" }, { features: { codingTools: true } }))
+      const editTool = try Effect.try(() => actionToTool(editAction))
+      const fileTool = try Effect.try(() => actionToTool(fileAction))
+      const editItems = (editTool.function.parameters.properties as Record<string, { items?: { properties?: Record<string, unknown>; required?: readonly string[] } }> | undefined)?.edits?.items
+      const fileEditItems = (fileTool.function.parameters.properties as Record<string, { items?: { properties?: Record<string, unknown>; required?: readonly string[] } }> | undefined)?.edits?.items
 
       try check(() => {
+        assert.deepEqual(Object.keys(editItems?.properties ?? {}).sort(), ["new_string", "old_string", "replace_all"])
+        assert.deepEqual([...(editItems?.required ?? [])].sort(), ["new_string", "old_string"])
+        assert.deepEqual(Object.keys(fileEditItems?.properties ?? {}).sort(), ["new_string", "old_string", "replace_all"])
+        assert.deepEqual([...(fileEditItems?.required ?? [])].sort(), ["new_string", "old_string"])
         assert.equal(summaryRedacted.includes("sk-proj-supersecretvalue1234567890"), false)
         assert.match(summaryRedacted, /REDACTED/)
         assert.deepEqual(sseParsed, { kind: "ok", text: "alpha result" })
