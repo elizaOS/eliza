@@ -49,6 +49,13 @@ module indexed {
     ): Promise<NotesAudioMetadata>;
     discardPendingAudio(audioId: string, ownerDigest: string): Promise<void>;
     audioRecord(audioId: string, connection: string): Promise<NotesAudioRow>;
+    purgeCommittedAudio(input: {
+      readonly audioId: string;
+      readonly connection: string;
+      readonly noteId: string;
+      readonly operationId: string;
+      readonly deletedAt: number;
+    }): Promise<void>;
   }
 
   const StoredAudio = Schema.Struct({
@@ -295,6 +302,29 @@ module indexed {
           if (discardPending(pendingOf(save.phase), true).phase !== "PendingDiscarded")
             throw refused("claimed");
           store.delete(audioId);
+        });
+      },
+      async purgeCommittedAudio({ audioId, connection, noteId, operationId, deletedAt }) {
+        identity(noteId);
+        identity(operationId);
+        if (!Number.isSafeInteger(deletedAt) || deletedAt <= 0) throw refused("binding");
+        await withRow(audioId, "readwrite", (row, store) => {
+          const { row: original, save } = ownSave(row, connection);
+          if (original.noteId !== noteId || save.phase !== "committed") throw refused("anotherNote");
+          if (original.expired) {
+            if (original.activeDeletionOperation === operationId && original.deletedAt === deletedAt &&
+                original.deletionOperations?.[operationId] === "purged") return;
+            throw refused("unavailable");
+          }
+          if (original.deletedAt !== undefined && (original.deletedAt !== deletedAt || original.activeDeletionOperation !== operationId)) {
+            throw refused("binding");
+          }
+          // Keep only the identity necessary to confirm a retried deletion across a reload.
+          store.put({
+            audioId, noteId, durationMs: original.durationMs, createdAt: original.createdAt,
+            bytes: new ArrayBuffer(0), expired: true, deletedAt, recordingSave: save,
+            activeDeletionOperation: operationId, deletionOperations: { [operationId]: "purged" },
+          });
         });
       },
       audioRecord(audioId, connection) {
