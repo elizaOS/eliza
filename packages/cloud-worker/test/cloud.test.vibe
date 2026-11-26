@@ -1205,6 +1205,8 @@ describe("WP3 Checkout (spec/cloud/billing/checkout.md, \"Story: Subscribe once,
 })
 
 describe("WP3 Checkout and provider events (spec/cloud/billing/checkout.md, \"Story: Subscribe once, whichever screen or payer finishes it\")", () => {
+  schema EmbeddedCheckoutOpened { status: "open"; uiMode: "embedded"; sessionId: string; clientSecret: string }
+
   effect function checkoutCaller(cloud: TestCloud, name: string) {
     try seeded(cloud)
     const caller = try signedCaller(cloud, name)
@@ -1273,6 +1275,22 @@ describe("WP3 Checkout and provider events (spec/cloud/billing/checkout.md, \"St
         subscriptions: [{ status: "active", plan_key: "plus_monthly", provider_subscription_id: completed.subscription.id }], pinned: 1, settled: [{ status: "completed", session: "set", readBacks: settled[0]?.readBacks }]
       }
     ))
+    const embeddedCaller = try signedCaller(cloud, "embedded-subscriber")
+    const embedded = try cloud.call("/api/v1/subscriptions/checkout", { json: { ...body, presentation: "embedded" }, headers: embeddedCaller.headers })
+    try check(() => assert.equal(embedded.status, 200, JSON.stringify(embedded.body)))
+    const opened = try Schema.decodeUnknownEffect(EmbeddedCheckoutOpened)(embedded.body)
+    const embeddedSession = try sync(() => stripe.object(opened.sessionId))
+    try check(() => {
+      if (embeddedSession.object !== "checkout.session") assert.fail("Expected an embedded Checkout Session")
+      const checkoutRequests = cloud.fakes.seen.filter((request) => request.method === "POST" && request.path === "/stripe/v1/checkout/sessions")
+      assert.deepStrictEqual(
+        {
+          embedded: [opened.clientSecret, embeddedSession.ui_mode, embeddedSession.redirect_on_completion, embeddedSession.return_url, embeddedSession.payment_method_types],
+          requests: checkoutRequests.map((request) => [request.headers["stripe-version"], new URLSearchParams(request.body).get("allowed_payment_method_types[0]")])
+        },
+        { embedded: [`${opened.sessionId}_secret_fake`, "embedded_page", "never", null, ["card"]], requests: [["2026-10-28.endive", "card"], ["2026-10-28.endive", "card"]] }
+      )
+    })
   }), 60_000)
 })
 describe("WP3 Provider events (spec/cloud/billing/providerEvents.md, \"Story: Apply each payment event once, whatever the delivery order\")", () => {
