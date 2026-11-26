@@ -1,7 +1,7 @@
 // spec/agent/views.md, "The agent prepares a navigation only for the renderer bound to its turn and one view its name resolves to"; spec/agent/views.md, "A specific saved Notes editor is prepared only after a matching current lookup on a supported renderer"; spec/agent/deviceActions/surfaces.md, "An app view opens with VIEWS where views arrive as completed actions, else with open_view as the installation's profile enables it"; spec/agent/conversation/planning.md, "An action may narrow its tool to the turn, never beyond its registered form"; spec/agent/conversation/planning.md, "Every call of a turn is one the model chose, and a call this message serves in another place is refused before it runs and is no step of the turn"
 import type { Action, ActionResult, HandlerOptions, IAgentRuntime, Memory } from "@elizaos/core"
 import { viewsShowsOnDevice } from "../../gen/agent__deviceActions__surfaces.ts"
-import { declaredAt, namesOf, savedNotePreparationAllowed, type DeclaredView } from "../../gen/agent__views.effect.vibe"
+import { declaredAt, namesOf, savedNotePreparationAllowed, screenCanShow, type DeclaredView } from "../../gen/agent__views.effect.vibe"
 import { turnElsewhere, turnNotes } from "../conversation/planning.vibe"
 import { readTurnContext } from "@elizaos/agent"
 import { completedActionRenderer, deviceTurnFor } from "../device-actions/proposal/turn.vibe"
@@ -25,6 +25,19 @@ function offersEditor(message: Memory, clientId: string, noteNamed: boolean, loo
   const kind = observation?.selectedObject?.kind ?? ""
   return savedNotePreparationAllowed(noteNamed, voiceUi?.uiClientId === clientId,
     voiceUi?.uiNotesEditor === "saved-note-v1", !/^(?:note|legacy-app-notes-)/u.test(kind), observation?.sensitive === true, lookupConfirmed)
+}
+
+/** The one declared view `target` names (the Notes view for a saved Notes editor), if any. */
+function viewNamed(declared: readonly DeclaredView[], target: string): DeclaredView | undefined {
+  const named = declared.filter((view) => target === savedNoteEditor ? view.viewId === "notes" : namesOf(view).includes(target))
+  return named.length === 1 ? named[0] : undefined
+}
+
+// spec/agent/views.md, "The agent prepares a navigation only for the renderer bound to its turn and one view its name resolves to"
+/** Whether this turn's screen can show `view`: every declared view unless its renderer said which it can show now. */
+function screenShows(message: Memory, view: DeclaredView): boolean {
+  const stated = readTurnContext(message).voiceUi?.uiViews
+  return screenCanShow(stated !== undefined, [...stated ?? []], view.viewId)
 }
 
 function resolvedNote(options: HandlerOptions | undefined): string | undefined {
@@ -86,6 +99,11 @@ effect function show(views: ViewHost.Shape, labels: ReadonlyMap<string, string>,
   const target = targetOf(options)
   if (target === undefined) return refused("Name the view to show by its id, label or alias.")
   const exact = target === savedNoteEditor
+  const named = viewNamed((try views.current()).views, target)
+  if (named !== undefined && !screenShows(message, named)) {
+    const label = labels.get(named.viewId) ?? named.label
+    return refused(`The owner's screen here has no ${label}, so it was not opened and will not open on this screen.`)
+  }
   const query = exact ? parameterOf(options, "note") : undefined
   if (exact && !offersEditor(message, clientId, true, true)) return refused("This turn cannot open a saved Notes editor.")
   if (exact && query === undefined) return coached("Name the saved note to open with note: the content argument given to NOTES_GET, or the title of the note this turn created with NOTES_CREATE.")
