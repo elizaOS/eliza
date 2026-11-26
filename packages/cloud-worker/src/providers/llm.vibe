@@ -29,8 +29,13 @@ const readFlatFault = Schema.decodeUnknownOption(Schema.fromJsonString(FaultFiel
 
 type LlmContext = Deployment | HttpClient.HttpClient
 
-export function retryAfter(header: string | undefined): Millis | undefined {
-  return header !== undefined && /^\d{1,9}$/.test(header) ? Number(header) * 1000 : undefined
+export function retryAfter(header: string | undefined, now = Date.now()): Millis | undefined {
+  if (header === undefined) return undefined
+    const value = header.trim()
+    if (value.length === 0) return undefined
+    if (/^\d{1,9}$/.test(value)) return Number(value) * 1000
+    const at = Date.parse(value)
+    return Number.isFinite(at) ? Math.max(0, at - now) : undefined
 }
 
 export function readLlmObject(text: string): ChatBody | undefined {
