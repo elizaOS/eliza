@@ -232,7 +232,8 @@ type Fields = Readonly<Record<string, unknown>>
 export interface WrittenCall {
   readonly naming: ObjectNaming
   readonly fits: boolean
-  readonly copiesHost: boolean
+  readonly copied: boolean
+  readonly hostData: boolean
   readonly call: { readonly name: string; readonly arguments: Exclude<ToolCall["arguments"], string> } | undefined
   readonly misfit: string
 }
@@ -334,22 +335,40 @@ function copies(object: Fields, host: Fields): boolean {
   return keys.length > 0 && keys.every((key) => Object.hasOwn(host, key)) && keys.length >= Math.min(2, Object.keys(host).length)
 }
 
-export function writtenCallOf(said: string, tools: readonly ToolDefinition[], host: readonly Fields[]): WrittenCall | undefined {
+function stringsWithin(value: unknown): string[] {
+  if (typeof value === "string") return [value]
+  if (Array.isArray(value)) return value.flatMap(stringsWithin)
+  return isFields(value) ? Object.values(value).flatMap(stringsWithin) : []
+}
+
+function givenTexts(sources: readonly string[]): string[] {
+  const inner = (text: string) => objectsOut(text, () => false).found.flatMap((body) => stringsWithin(fieldsOf(body)))
+  return sources.flatMap((source) => {
+    const strings = inner(source)
+    return [source, ...strings, ...strings.flatMap(inner)]
+  })
+}
+
+export interface GivenText {
+  readonly anywhere: readonly string[]
+  readonly host: readonly Fields[]
+}
+
+export function writtenCallOf(said: string, tools: readonly ToolDefinition[], given: () => GivenText): WrittenCall | undefined {
   const text = said.trim()
   const named = namedTool(text, tools)
   const object = text.startsWith("{") ? fieldsOf(text) : undefined
   if (named === undefined && object === undefined) return undefined
   const misfit = named === undefined ? [] : misfitOf(named)
+  const { anywhere, host } = given()
+  const hostData = object !== undefined && host.some((written) => copies(object, written))
+  const flat = compact(text)
   return {
     naming: named?.naming ?? "NamesNoTool", fits: named !== undefined && misfit.length === 0,
-    copiesHost: object !== undefined && host.some((written) => copies(object, written)),
+    copied: hostData || givenTexts(anywhere).some((source) => compact(source).includes(flat)), hostData,
     call: named === undefined ? undefined : { name: named.tool.name, arguments: { ...named.args } as Exclude<ToolCall["arguments"], string> },
     misfit: misfit.join("; "),
   }
-}
-
-export function wroteStructure(text: string): boolean {
-  return text.search(codeSpan) >= 0 || objectsOut(text, () => false).found.some(isJsonObject)
 }
 
 const writtenCallMarker = /<\s*\/?\s*tool_call\b|<\s*function(?:=|_call\b)/iu
