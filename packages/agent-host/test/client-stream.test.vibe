@@ -671,7 +671,7 @@ it.effect(`Only an object's keys are compared with the host's objects, so one ke
     loneKey: copies('{"text": "milk"}', [], ['{"text": "milk", "id": 1}']),
     otherValues: copies('{"text": "bread", "id": 2}', [], ['{"text": "milk", "id": 1}']),
   }, { observationOnly: true, besideVoice: false, wholeVoice: true, loneKey: false, otherValues: true }))
-  const held = ["VIEWS", "VIEWS ca", "VIEWS call", "VIEWS call:", 'VIEWS call: view "ho', "VIEWS call: view 1, act", "VIEWS call: view tr", "X call: a 1", "I", "[answer] VIEWS call: view 1."]
+  const held = ["VIEWS", "VIEWS ca", "VIEWS call", "VIEWS call:", 'VIEWS call: view "ho', "VIEWS call: view 1, act", "VIEWS call: view tr", "X call: a 1", "I", "[answer] VIEWS call: view 1.", 'VIEWS call: view "a\\', 'VIEWS call: view "caf\\u00', 'VIEWS call: view "caf\\u']
   const shown = ["VIEWS switches", "VIEWS call: it switches", "VIEWS call: view 1\nthen more", "I'm here", "VIEWS call: view 1 2"]
   try Effect.try(() => assert.deepStrictEqual({ held: held.map(streamable), shown: shown.map(streamable) }, { held: held.map(() => ""), shown }))
 })

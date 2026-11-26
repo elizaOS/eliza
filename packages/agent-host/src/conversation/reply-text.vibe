@@ -257,7 +257,7 @@ function fieldsOf(value: unknown): Fields | undefined {
 const toolNameInCaps = "[A-Z][A-Z0-9_]*"
 const callLine = new RegExp(`^(${toolNameInCaps}) call:[ \\t]*([^\\n]*?)[ \\t]*\\.?$`, "u")
 const callLineNaming = new RegExp(`^${toolNameInCaps}(?: (?:c(?:a(?:l(?:l)?)?)?)?)?$`, "u")
-const argumentEndings = ["", "0", " 0", "a 0", 'x"', "rue", "ue", "e", "alse", "lse", "se"]
+const argumentEndings = ["", "0", " 0", "a 0", 'x"', 'n"', '0"', '00"', '000"', '0000"', "rue", "ue", "e", "alse", "lse", "se"]
 const callLineValue = /^[ \t]*([A-Za-z_]\w*)(?:[ \t]*[:=])?[ \t]*("(?:[^"\\\n]|\\.)*"|-?\d+(?:\.\d+)?|true|false)[ \t]*(?:,|$)/u
 
 function callLineArguments(written: string): Fields | undefined {
