@@ -591,6 +591,47 @@ export class FileStateService extends Service {
     return { ok: true, exists: true, currentRevision, readRevision: entry.meta.revision }
   }
 
+  private deviceKey(devicePath: string): string {
+    return `device:${devicePath}`
+  }
+
+  recordDeviceRead(conversationId: string, devicePath: string, revision: string, size: number): FileMeta {
+    const key = this.deviceKey(devicePath)
+    const map = this.convMap(conversationId)
+    const prev = map.get(key)
+    let nextSession = prev ? prev.session : initialFileSession
+    if (!nextSession.fileExists) {
+      nextSession = canCreateNewFile(nextSession, false) ? createNewFile(nextSession, false) : initialFileSession
+    }
+    if (prev && prev.meta.revision !== revision && nextSession.fileExists) {
+      nextSession = externalModify(nextSession)
+    }
+    if (canReadFile(nextSession)) {
+      nextSession = stepReadFile(nextSession)
+    }
+    return this.saveEntry(map, key, { exists: true, isFile: true, isDirectory: false, ino: 0, size, mtimeMs: 0 }, revision, nextSession)
+  }
+
+  deviceReadMatches(conversationId: string, devicePath: string, currentRevision: string): boolean {
+    const entry = this.sessions.get(conversationId)?.get(this.deviceKey(devicePath))
+    return entry !== undefined && entry.session.hasRead && entry.meta.revision === currentRevision
+  }
+
+  recordDeviceWrite(conversationId: string, devicePath: string, revision: string, size: number, existed: boolean): FileMeta {
+    const key = this.deviceKey(devicePath)
+    const map = this.convMap(conversationId)
+    const prev = map.get(key)
+    let nextSession = prev ? prev.session : existed ? initialFileSession : deleteExternally(initialFileSession)
+    if (existed && canWriteExistingFile(nextSession, true, false)) {
+      nextSession = writeExistingFile(nextSession, true, false)
+    } else if (!existed && canCreateNewFile(nextSession, false)) {
+      nextSession = createNewFile(nextSession, false)
+    } else {
+      nextSession = stepReadFile(initialFileSession)
+    }
+    return this.saveEntry(map, key, { exists: true, isFile: true, isDirectory: false, ino: 0, size, mtimeMs: 0 }, revision, nextSession)
+  }
+
   invalidate(conversationId: string, absPath: string): void {
     this.sessions.get(conversationId)?.delete(absPath)
     invalidateFileReadReferences(conversationId, absPath)

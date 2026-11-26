@@ -114,6 +114,26 @@ pure val matchCountValues = Set(0, 1, 2)
 pure val expectedRevValues = Set(0, 1, 2, 3)
 ```
 
+### A device file follows the same read-before-overwrite rule, by content
+
+A file on the paired device's filesystem has no inode or modification time, so
+its revision is the hash of its content. Creating a device file needs no prior
+read; overwriting one needs `overwrite = true` and a read in this conversation
+whose revision is still the file's current content. A write is done only once
+reading the file back returns the written content, and it returns an effect
+receipt. A read returns at most one output window of the file, says where it
+stopped and the offset to continue from, and never cuts base64 content mid
+quantum. A device bridge failure is a typed failure, never an empty result.
+
+```quint
+pure def deviceWriteAllowed(fileThere: bool, overwrite: bool, readMatchesCurrent: bool, hasSecret: bool): bool =
+  not(hasSecret) and (not(fileThere) or (overwrite and readMatchesCurrent))
+pure def lawDeviceOverwriteNeedsFreshRead(overwrite: bool, hasSecret: bool): bool =
+  not(deviceWriteAllowed(true, overwrite, false, hasSecret))
+pure def lawDeviceOverwriteNeedsFlag(readMatchesCurrent: bool, hasSecret: bool): bool =
+  not(deviceWriteAllowed(true, false, readMatchesCurrent, hasSecret))
+```
+
 ### File session invariants and reachability
 
 Revisions stay positive and monotone, the last read revision never exceeds the current revision, bound read references always correspond to an existing read file, and every mutation advances the revision and clears stale references.

@@ -68,6 +68,7 @@ import {
   type ComputerUseHostDriver,
   type SandboxBackend,
 } from "../src/index.vibe"
+import { killHostApp, performHostWindowControl } from "../src/platform.vibe"
 
 function makeFakeDriver(pngBase64: string, log: string[]): ComputerUseHostDriver {
   let clip = "initial-clipboard"
@@ -582,8 +583,28 @@ describe("plugin-computeruse journeys", () => {
     },
   )
 
-  it.effect("Security guards, real file/terminal ops, AppControl, MCP, routes, sandbox, mobile, providers, and parity matrix", () =>
+  it.effect("Security guards, real file/terminal ops, AppControl, MCP, routes, sandbox, mobile, providers, and parity matrix (spec/computerUse/index.md, \"Terminating an app names one exact process and never the agent itself\"; spec/computerUse/index.md, \"A window command acts on the matched window with the host's own tool, or fails\")", () =>
     effect {
+      const killSelf = try Effect.flip(killHostApp("node"))
+      const killPattern = try Effect.flip(killHostApp(".*"))
+      const killOption = try Effect.flip(killHostApp("-9"))
+      try Effect.try(() => {
+        assert.strictEqual(killSelf._tag, "KillAppRefused")
+        assert.ok(killSelf.reason.includes("own process"))
+        assert.strictEqual(killPattern._tag, "KillAppRefused")
+        assert.strictEqual(killOption._tag, "KillAppRefused")
+      })
+      const someWindow = { id: "0x01", title: "Editor", app: "editor" }
+      const arrangeRefused = try Effect.flip(performHostWindowControl("arrange", someWindow, {}))
+      const moveWithoutPoint = try Effect.flip(performHostWindowControl("move", someWindow, {}))
+      const boundsWithoutSize = try Effect.flip(performHostWindowControl("set_bounds", someWindow, { x: 1, y: 2 }))
+      const closeWithoutWindow = try Effect.flip(performHostWindowControl("close", undefined, {}))
+      try Effect.try(() => {
+        for (const refused of [arrangeRefused, moveWithoutPoint, boundsWithoutSize, closeWithoutWindow]) {
+          assert.strictEqual(refused._tag, "WindowControlUnsupported")
+        }
+        assert.ok(moveWithoutPoint._tag === "WindowControlUnsupported" && moveWithoutPoint.reason.includes("x and y"))
+      })
       const log: string[] = []
       const png = try Effect.orDie(Effect.try({ try: () => makeTestPngBase64(32, 32, "gradient"), catch: (e) => e }))
       const cdpLog: string[] = []

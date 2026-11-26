@@ -59,3 +59,40 @@ pure val sessionValues = Set({ sessionId: "desk-1", ownerId: "owner", sessionEpo
 pure val commandValues = Set({ callerId: "owner", forSession: "desk-1", expectedEpoch: 2, forSurface: LocalDesktop, operation: ReadScreen }, { callerId: "other", forSession: "desk-1", expectedEpoch: 1, forSurface: RemoteDesktop, operation: ClipboardRead })
 pure val observationValues = Set({ observedSession: "desk-1", observedEpoch: 2, operationId: "capture-1" }, { observedSession: "desk-1", observedEpoch: 1, operationId: "old" })
 ```
+
+### Terminating an app names one exact process and never the agent itself
+
+`kill_app` takes one exact process name. A name that is empty, starts with an
+option dash, or carries a path separator or pattern character is refused, and
+so is a name the agent's own process answers to; the host then matches the
+name exactly, never as a pattern over command lines.
+
+```quint
+pure def killTargetAllowed(empty: bool, patternLike: bool, ownProcess: bool): bool =
+  not(empty) and not(patternLike) and not(ownProcess)
+pure def lawOwnProcessNeverKilled(empty: bool, patternLike: bool): bool =
+  not(killTargetAllowed(empty, patternLike, true))
+pure def lawPatternNeverKilled(empty: bool, ownProcess: bool): bool =
+  not(killTargetAllowed(empty, true, ownProcess))
+```
+
+### A window command acts on the matched window with the host's own tool, or fails
+
+Each window command maps to one host operation on the matched window, addressed
+by its identifier (or, on macOS, by its title within its application). The host
+reports a command as done only after that tool ran it; a command the tool cannot
+perform, or a move or resize without its coordinates or size, fails as
+unsupported, never as a different command or a no-op. Arranging windows has no
+host tool. `xdotool` cannot maximize or restore, and closing on Windows posts
+the window a close message.
+
+```quint
+type HostWindowAction = WindowFocus | WindowMinimize | WindowMaximize | WindowRestore | WindowClose | WindowMove | WindowSetBounds | WindowArrange
+type HostWindowTool = MacSystemEvents | LinuxWmctrl | LinuxXdotool | WindowsUser32
+pure def hostWindowActionSupported(tool: HostWindowTool, windowAction: HostWindowAction): bool =
+  if (windowAction == WindowArrange) false
+  else if (tool == LinuxXdotool) not(windowAction == WindowMaximize or windowAction == WindowRestore)
+  else true
+pure def lawArrangeIsNeverReportedDone(tool: HostWindowTool): bool =
+  not(hostWindowActionSupported(tool, WindowArrange))
+```

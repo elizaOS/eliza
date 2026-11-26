@@ -48,7 +48,10 @@ pure def lawOnlyTheOwnerDrivesFromChat(caller: PtyCaller): bool =
 
 ### Interactive and vendor CLI spawning fail closed
 
-Store builds reject all interactive and vendor CLI spawns. The interactive flag
+Store builds reject all interactive and vendor CLI spawns; the build variant is
+read only from the launch environment, never from runtime settings. A runtime
+setting can only narrow the launch environment's flags: an explicit non-truthy
+value from either one disables the flag. The interactive flag
 defaults on when unset, allows explicit truthy values, and fails closed on any
 other explicit value. Vendor CLI sessions (`claude` and `codex`) require both
 interactive spawning and an explicit truthy vendor flag. Unsupported session
@@ -101,8 +104,10 @@ pure def lawBlockedAuthorityDisablesCloud(authority: CloudAuthority): bool =
 ### Idle timeout and terminal geometry stay within safe bounds
 
 An idle timeout is either 0 (disabled) or a positive integer up to 2147483647
-milliseconds. Terminal resize geometry requires positive finite columns and rows
-within bounds.
+milliseconds. Terminal geometry requires whole columns and rows from 1 to 500,
+whether it comes from the agent action, a spawn request, or a console resize; the
+store refuses anything else and the spawn route answers it with bad-request
+status.
 
 ```quint
 pure def validIdleTimeoutMs(ms: int): bool = ms >= 0 and ms <= 2147483647
@@ -113,6 +118,50 @@ pure def boundedOutputSlice(totalChars: int, maxChars: int): int =
   else maxChars
 pure def lawBoundedOutputNeverExceedsCap(totalChars: int, maxChars: int): bool =
   maxChars >= 0 implies boundedOutputSlice(totalChars, maxChars) <= maxChars and boundedOutputSlice(totalChars, maxChars) >= 0
+```
+
+### The chat action reads, waits and resizes within fixed bounds
+
+`PTY_SESSION` lists the store's sessions and reads, sends to, resizes or stops
+one named session. A read returns the output after the caller's cursor, ending
+with a cursor for the next read; `maxChars` is clamped to 1..50,000 characters
+of the newest output and defaults to 16,000. `send_wait` writes its input,
+then waits until its regular expression matches the new output, the output
+goes quiet, or the wait ends; the wait is clamped to 10..30,000 milliseconds
+and defaults to 1,500. An invalid pattern, a failed write, or input for an
+exited session is a failure, never a match.
+
+```quint
+pure def clampOutputChars(requested: int): int =
+  if (requested < 1) 1 else if (requested > 50000) 50000 else requested
+pure def clampWaitMs(requested: int): int =
+  if (requested < 10) 10 else if (requested > 30000) 30000 else requested
+pure def lawActionOutputWithinCap(requested: int): bool =
+  clampOutputChars(requested) >= 1 and clampOutputChars(requested) <= 50000
+pure def lawWaitNeverExceedsThirtySeconds(requested: int): bool =
+  clampWaitMs(requested) >= 10 and clampWaitMs(requested) <= 30000
+```
+
+### Scrollback and default limits are fixed, and lost scrollback is reported
+
+A store holds at most 24 sessions unless configured otherwise, reaps an exited
+session 15 seconds after it exits, and stops a session idle for 15 minutes. A
+session keeps the most recent 200,000 characters of output as scrollback. A
+read from a cursor older than the scrollback counts the characters that left it
+as omitted and says so, and the buffered-output route reports where its
+scrollback starts.
+
+```quint
+pure val defaultMaxSessions: int = 24
+pure val defaultExitedSessionTtlMs: int = 15000
+pure val defaultIdleTimeoutMs: int = 900000
+pure val scrollbackChars: int = 200000
+pure def charsLostFromScrollback(cursor: int, scrollbackStart: int): int =
+  if (scrollbackStart > cursor) scrollbackStart - cursor else 0
+pure def lawDefaultIdleTimeoutIsValid(ms: int): bool =
+  ms == defaultIdleTimeoutMs implies validIdleTimeoutMs(ms)
+pure def lawLostScrollbackIsCounted(cursor: int, scrollbackStart: int): bool =
+  (cursor >= 0 and scrollbackStart > cursor) implies charsLostFromScrollback(cursor, scrollbackStart) > 0
 ```
 
 ## Story: Enforce session capacity, confinement, and safe teardown

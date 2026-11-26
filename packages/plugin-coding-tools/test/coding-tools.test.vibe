@@ -1,4 +1,4 @@
-// spec/codingTools/index.md, "Story: Read and edit my authorized project files"; spec/codingTools/index.md, "Story: Enforce sandbox confinement and bounded tool outputs"; spec/codingTools/fileSession.md, "Story: Protect workspace files against stale edits, accidental overwrites, and secret leaks"; spec/codingTools/shellSession.md, "Story: Gate destructive shell commands, manage background jobs, and page spilled output artifacts"; spec/codingTools/worktree.md, "Story: Enter and exit git worktrees without losing the previous working directory"; spec/codingTools/webGuard.md, "Story: Fetch and search the public web without leaking secrets or touching private networks"
+// spec/codingTools/index.md, "Story: Read and edit my authorized project files"; spec/codingTools/index.md, "Story: Enforce sandbox confinement and bounded tool outputs"; spec/codingTools/fileSession.md, "Story: Protect workspace files against stale edits, accidental overwrites, and secret leaks"; spec/codingTools/fileSession.md, "A device file follows the same read-before-overwrite rule, by content"; spec/codingTools/shellSession.md, "Story: Gate destructive shell commands, manage background jobs, and page spilled output artifacts"; spec/codingTools/worktree.md, "Story: Enter and exit git worktrees without losing the previous working directory"; spec/codingTools/webGuard.md, "Story: Fetch and search the public web without leaking secrets or touching private networks"
 import { assert, it } from "@effect/vitest"
 import { actionToTool, type Content, type IAgentRuntime, type Memory, type Service, type State, type UUID } from "@elizaos/core"
 import {
@@ -302,6 +302,18 @@ it.effect('READ, WRITE, EDIT, FILE grep/glob/ls, batch reads, multi-hunk edits, 
         action: "ls",
         path: joinFs(root, "src"),
       }))
+      try tryPromise(() => Promise.all(Array.from({ length: 5001 }, (_, i) => writeDiskFile(joinFs(root, "many", `m-${i}.txt`), ""))))
+      const cappedGlob = try tryPromise(() => fileAction.handler(env.runtime, msg, emptyState, {
+        action: "glob",
+        pattern: "many/*.txt",
+        path: root,
+      }))
+      const longA = joinFs(root, "long", "a.txt")
+      const longB = joinFs(root, "long", "b.txt")
+      const longText = Array.from({ length: 300 }, (_, i) => `line ${i}`).join("\n")
+      try tryPromise(() => writeDiskFile(longA, longText))
+      try tryPromise(() => writeDiskFile(longB, longText))
+      const longBatch = try tryPromise(() => readAction.handler(env.runtime, msg, emptyState, { paths: [longA, longB] }))
 
       const gammaDisk = try tryPromise(() => readDiskFile(newFile))
 
@@ -358,6 +370,12 @@ it.effect('READ, WRITE, EDIT, FILE grep/glob/ls, batch reads, multi-hunk edits, 
         assert.match(globRes.text ?? "", /gamma\.ts/)
         assert.equal(lsRes.success, true)
         assert.match(lsRes.text ?? "", /alpha\.ts/)
+        const cappedData = cappedGlob.data as Record<string, unknown>
+        assert.equal(cappedData.walkCapped, true)
+        assert.equal(cappedData.complete, false)
+        assert.match(cappedGlob.text ?? "", /Walk stopped after 5000 files/)
+        assert.equal((longBatch.data as Record<string, unknown>).truncated, true)
+        assert.match(longBatch.text ?? "", /Batch output truncated/)
       })
     },
     Effect.ignore(effect {
@@ -683,16 +701,40 @@ it.effect('WEB_FETCH / WEB_SEARCH enforce HTTPS-only SSRF rules, HTML readabilit
         offset: 0,
         limit: 999_999,
       }))
+      const deviceFiles = new Map<string, string>(Array.from({ length: 400 }, (_, i) => [`f-${i}.txt`, `content ${i}`]))
+      deviceFiles.set("big.b64", "QUJD".repeat(10_000))
+      let deviceFailing = false
       const deviceRuntime = {
         ...byteEnv.runtime,
         getService: (type: string) => type === "device_filesystem"
           ? {
-              read: async () => "ok",
-              write: async () => undefined,
-              list: async () => Array.from({ length: 400 }, (_, i) => ({ name: `f-${i}.txt`, type: "file" as const })),
+              read: async (filePath: string) => {
+                const found = deviceFiles.get(filePath)
+                if (deviceFailing || found === undefined) throw new Error(`ENOENT: ${filePath}`)
+                return found
+              },
+              write: async (filePath: string, content: string) => {
+                deviceFiles.set(filePath, content)
+              },
+              list: async () => [...deviceFiles.keys()].map((name) => ({ name, type: "file" as const })),
             }
           : byteEnv.runtime.getService(type),
       } as unknown as IAgentRuntime
+      const deviceFile = (params: Record<string, unknown>) => tryPromise(() => fileAction.handler(deviceRuntime, msg, emptyState, { target: "device", ...params }))
+      const deviceCreated = try deviceFile({ action: "write", file_path: "notes.txt", content: "first" })
+      const deviceBlindOverwrite = try deviceFile({ action: "write", file_path: "f-1.txt", content: "clobber", overwrite: true })
+      const deviceNoFlag = try deviceFile({ action: "write", file_path: "f-2.txt", content: "clobber" })
+      const afterBlindWrites = [deviceFiles.get("f-1.txt"), deviceFiles.get("f-2.txt")]
+      const deviceRead = try deviceFile({ action: "read", file_path: "f-1.txt" })
+      deviceFiles.set("f-3.txt", "before")
+      try deviceFile({ action: "read", file_path: "f-3.txt" })
+      deviceFiles.set("f-3.txt", "changed elsewhere")
+      const deviceStale = try deviceFile({ action: "write", file_path: "f-3.txt", content: "mine", overwrite: true })
+      const deviceReplaced = try deviceFile({ action: "write", file_path: "f-1.txt", content: "replaced", overwrite: true })
+      const deviceBig = try deviceFile({ action: "read", file_path: "big.b64", encoding: "base64", offset: 6 })
+      deviceFailing = true
+      const deviceBridgeError = try deviceFile({ action: "read", file_path: "f-1.txt" })
+      deviceFailing = false
       const deviceSecretRefused = try tryPromise(() => fileAction.handler(deviceRuntime, msg, emptyState, {
         action: "write",
         target: "device",
@@ -733,6 +775,26 @@ it.effect('WEB_FETCH / WEB_SEARCH enforce HTTPS-only SSRF rules, HTML readabilit
         assert.equal((byteRead.data as Record<string, unknown>).end, 50_000)
         assert.match(byteRead.text ?? "", /\[Showing bytes 0-50000 of 60000\./)
         assert.equal(deviceSecretRefused.success, false)
+        assert.equal(deviceCreated.success, true)
+        assert.equal(deviceCreated.effectReceipts?.length, 1)
+        assert.equal(deviceFiles.get("notes.txt"), "first")
+        assert.equal(deviceBlindOverwrite.success, false)
+        assert.equal(deviceNoFlag.success, false)
+        assert.deepEqual(afterBlindWrites, ["content 1", "content 2"])
+        assert.equal(deviceRead.success, true)
+        assert.equal(deviceStale.success, false)
+        assert.equal(deviceFiles.get("f-3.txt"), "changed elsewhere")
+        assert.equal(deviceReplaced.success, true)
+        assert.equal(deviceReplaced.effectReceipts?.[0]?.operation, "filesystem.write")
+        assert.equal(deviceFiles.get("f-1.txt"), "replaced")
+        const bigData = deviceBig.data as Record<string, unknown>
+        assert.equal(bigData.truncated, true)
+        assert.equal(bigData.start, 4)
+        assert.equal((bigData.end as number) % 4, 0)
+        assert.equal(bigData.nextOffset, bigData.end)
+        assert.match(deviceBig.text ?? "", /Continue with offset=/)
+        assert.equal(deviceBridgeError.success, false)
+        assert.match(deviceBridgeError.text ?? "", /device read failed/)
         assert.equal(deviceLsBounded.success, true)
         assert.equal((deviceLsBounded.data as Record<string, unknown>).truncated, true)
         assert.equal(allParamsSorted, true)

@@ -239,6 +239,11 @@ interface ManagedTerminalSession {
   closed: boolean
 }
 
+function failureText(err: unknown): string {
+  const reason = typeof err === "object" && err !== null ? (err as { readonly reason?: unknown }).reason : undefined
+  return typeof reason === "string" ? reason : err instanceof Error ? err.message : String(err)
+}
+
 export class ComputerUseService extends Service {
   static override serviceType = COMPUTERUSE_SERVICE_TYPE
   override capabilityDescription =
@@ -833,7 +838,7 @@ export class ComputerUseService extends Service {
           return { success: false, error: `Unsupported desktop action: ${String(params.action)}` }
       }
     } catch (err) {
-      const error = err instanceof Error ? err.message : String(err)
+      const error = failureText(err)
       this.recordHistory(params.action, false, error, error)
       return { success: false, error }
     }
@@ -886,7 +891,7 @@ export class ComputerUseService extends Service {
         return { success: false, error: err }
       }
     } catch (cause) {
-      const err = cause instanceof Error ? cause.message : String(cause)
+      const err = failureText(cause)
       this.recordHistory(`window:${params.action}`, false, err, err)
       return { success: false, error: err }
     }

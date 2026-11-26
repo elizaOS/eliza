@@ -1,4 +1,4 @@
-// spec/pty/policy.md, "HTTP routes enforce terminal token or trusted local access"; spec/pty/policy.md, "Store sessions belong to the operator, not to a self-reported client"; spec/pty/policy.md, "Interactive and vendor CLI spawning fail closed"; spec/pty/policy.md, "Launcher Cloud authority owns or disables the Cloud tuple"
+// spec/pty/policy.md, "HTTP routes enforce terminal token or trusted local access"; spec/pty/policy.md, "Scrollback and default limits are fixed, and lost scrollback is reported"; spec/pty/policy.md, "Idle timeout and terminal geometry stay within safe bounds"; spec/pty/policy.md, "Store sessions belong to the operator, not to a self-reported client"; spec/pty/policy.md, "Interactive and vendor CLI spawning fail closed"; spec/pty/policy.md, "Launcher Cloud authority owns or disables the Cloud tuple"
 
 module node {
   import { timingSafeEqual } from "node:crypto"
@@ -8,6 +8,7 @@ module node {
     evaluateSpawnGate,
     type FlagState,
     type SpawnKind,
+    validTerminalGeometry,
   } from "../gen/pty__policy.ts"
   import {
     buildElizaCodeCerebrasSpec,
@@ -137,15 +138,23 @@ module node {
     return json(401, { error: "Invalid terminal token." })
   }
 
-  function readFlagState(runtime: IAgentRuntime, key: string): FlagState {
-    const raw = getStr(runtime, key)?.trim().toLowerCase()
-    if (raw === undefined || raw === "") return "FlagUnset"
-    if (raw === "true" || raw === "1" || raw === "on" || raw === "yes") return "FlagTrue"
+  function flagOf(raw: unknown): FlagState {
+    const value = typeof raw === "string" ? raw.trim().toLowerCase() : ""
+    if (value === "") return "FlagUnset"
+    if (value === "true" || value === "1" || value === "on" || value === "yes") return "FlagTrue"
     return "FlagOther"
   }
 
-  function isStoreBuild(runtime: IAgentRuntime): boolean {
-    return (getStr(runtime, "ELIZA_BUILD_VARIANT") ?? "").toLowerCase() === "store"
+  function readFlagState(runtime: IAgentRuntime, key: string): FlagState {
+    const fromEnv = flagOf(process.env[key])
+    const fromSetting = flagOf(runtime.getSetting?.(key))
+    if (fromEnv === "FlagOther" || fromSetting === "FlagOther") return "FlagOther"
+    if (fromEnv === "FlagTrue" || fromSetting === "FlagTrue") return "FlagTrue"
+    return "FlagUnset"
+  }
+
+  function isStoreBuild(): boolean {
+    return (process.env.ELIZA_BUILD_VARIANT ?? "").trim().toLowerCase() === "store"
   }
 
   function toModelKind(kind: string): SpawnKind {
@@ -210,7 +219,7 @@ module node {
     if (rejection) return rejection
     const kind = str(body.kind) ?? "eliza-code"
     const gate = evaluateSpawnGate(
-      isStoreBuild(runtime),
+      isStoreBuild(),
       readFlagState(runtime, "PTY_INTERACTIVE_ENABLED"),
       readFlagState(runtime, "PTY_VENDOR_CLI_ENABLED"),
       toModelKind(kind),
@@ -262,10 +271,16 @@ module node {
       } else {
         spec = vendorCliSpecFromRequest(runtime, kind as PtyVendorCliKind, cwd)
       }
-      const cols = num(body.cols)
-      const rows = num(body.rows)
-      if (cols) spec.cols = cols
-      if (rows) spec.rows = rows
+      if (body.cols !== undefined) {
+        const cols = num(body.cols)
+        if (cols === undefined || !Number.isSafeInteger(cols) || !validTerminalGeometry(cols, 1)) return json(400, { error: "cols must be a whole number from 1 to 500." })
+        spec.cols = cols
+      }
+      if (body.rows !== undefined) {
+        const rows = num(body.rows)
+        if (rows === undefined || !Number.isSafeInteger(rows) || !validTerminalGeometry(1, rows)) return json(400, { error: "rows must be a whole number from 1 to 500." })
+        spec.rows = rows
+      }
       const session = await svc.startSession(spec)
       logger.info(`[plugin-pty] spawned interactive session ${session.sessionId} kind=${kind} label=${spec.label} cwd=${cwd}`)
       return json(200, { session })
@@ -291,9 +306,9 @@ module node {
     if (!svc) return json(503, { error: "PTY_SERVICE is not available." })
     const id = ctx.params?.id
     if (!id) return json(400, { error: "Missing session id." })
-    const output = svc.getBufferedOutput(id)
-    if (output === undefined) return json(404, { error: "PTY session not found." })
-    return json(200, { output })
+    const buffered = svc.getBufferedOutput(id)
+    if (buffered === undefined) return json(404, { error: "PTY session not found." })
+    return json(200, { output: buffered.output, bufferStartOffset: buffered.bufferStartOffset, totalChars: buffered.totalChars, truncated: buffered.bufferStartOffset > 0 })
   }
 
   async function stopHandler(ctx: PtyRouteContext): Promise<PtyRouteResult> {

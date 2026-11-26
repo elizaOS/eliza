@@ -1,6 +1,6 @@
-// spec/pty/policy.md, "Idle timeout and terminal geometry stay within safe bounds"; spec/pty/policy.md, "Store sessions belong to the operator, not to a self-reported client"; spec/pty/policy.md, "Story: Enforce session capacity, confinement, and safe teardown"
+// spec/pty/policy.md, "The chat action reads, waits and resizes within fixed bounds"; spec/pty/policy.md, "Idle timeout and terminal geometry stay within safe bounds"; spec/pty/policy.md, "Store sessions belong to the operator, not to a self-reported client"; spec/pty/policy.md, "Story: Enforce session capacity, confinement, and safe teardown"
 import type { Action, ActionResult, AppliedEffectReceipt, IAgentRuntime } from "@elizaos/core"
-import { validTerminalGeometry } from "../gen/pty__policy.effect.vibe"
+import { clampOutputChars, validTerminalGeometry } from "../gen/pty__policy.effect.vibe"
 import type { PtyService } from "./service.vibe"
 
 module node {
@@ -37,7 +37,7 @@ function readNum(params: Record<string, unknown>, key: string): number | undefin
 function readClampedMaxChars(params: Record<string, unknown>): number | undefined {
   const value = readNum(params, "maxChars")
   if (value === undefined) return undefined
-  return Math.max(1, Math.min(50_000, Math.floor(value)))
+  return clampOutputChars(Math.floor(value))
 }
 
 function fail(text: string): ActionResult {
