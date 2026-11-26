@@ -71,8 +71,14 @@ pure def lawASegmentClosesOnlyAfterItsHangover(g: VadGate, milli: int, startWind
 With the owner's agent as its route, a capture's frames go only to that
 agent's voice session (a 36-character session id and a room of at most
 128 characters) and the host receives the VAD edges and level with no
-frames. Batches go out in the order they were taken. A batch is at most
-32 frames and 128 KiB, and at most about 4 s of frames (125) and 1 MiB
+frames. The microphone opens while that session warms: what the capture
+takes meanwhile waits within the bounds below, and no audio is sent before
+the session is ready, even after a stop that keeps the tail; only a
+cancelled route skips the warm-up and drops what waits. A session not
+ready within 10 s ends the route as `TRANSPORT`, reported once; the
+deadline never ends a session that became ready, or a route already
+cancelled or finished. Batches go out in the order they were taken. A
+batch is at most 32 frames and 128 KiB, and at most about 4 s of frames (125) and 1 MiB
 wait; a batch over either bound ends the route as `BACKPRESSURE`, never
 dropping frames silently. Nothing taken after the stop's cutoff is sent,
 and a discarding stop also drops what still waits.
@@ -88,6 +94,10 @@ pure def offerVerdict(closing: bool, frames: int, chars: int, queuedFrames: int,
   else if (frames <= maxBatchFrames and chars <= maxBatchChars and queuedFrames + frames <= maxQueuedFrames and queuedChars + chars <= maxQueuedChars) BatchQueued
   else Backpressure
 pure def hostFrames(routed: bool, frames: int): int = if (routed) 0 else frames
+pure val pipeReadyMs = 10000
+pure def audioSent(ready: bool, cancelled: bool): bool = ready and not(cancelled)
+pure def warmupExpires(ready: bool, ended: bool, elapsedMs: int): bool =
+  elapsedMs >= pipeReadyMs and not(ready) and not(ended)
 pure def sentAfterStop(takenAtMs: int, cutoffMs: int, discard: bool, waiting: bool): bool =
   takenAtMs <= cutoffMs and not(discard and waiting)
 pure val framesValues = Set(0, 1, 32, 33)
@@ -96,10 +106,51 @@ pure val queuedFramesValues = Set(0, 93, 124, 125)
 pure val queuedCharsValues = Set(0, 917504, 1048576)
 pure val takenAtMsValues = Set(0, 1, 2)
 pure val cutoffMsValues = Set(0, 1)
+pure val elapsedMsValues = Set(0, 9999, 10000, 10001)
 pure def lawAQueuedBatchStaysWithinEveryBound(closing: bool, frames: int, chars: int, queuedFrames: int, queuedChars: int): bool =
   offerVerdict(closing, frames, chars, queuedFrames, queuedChars) == BatchQueued implies
     (not(closing) and frames <= maxBatchFrames and chars <= maxBatchChars and queuedFrames + frames <= maxQueuedFrames and queuedChars + chars <= maxQueuedChars)
 pure def lawTheRendererGetsNoRoutedAudio(frames: int): bool = hostFrames(true, frames) == 0
+pure def lawNoAudioIsSentBeforeTheSessionIsReady(ready: bool, cancelled: bool): bool =
+  audioSent(ready, cancelled) implies ready
+pure def lawTheDeadlineNeverEndsAReadySession(ready: bool, ended: bool, elapsedMs: int): bool =
+  ready implies not(warmupExpires(ready, ended, elapsedMs))
 pure def lawNothingTakenAfterTheCutoffIsSent(takenAtMs: int, cutoffMs: int, discard: bool, waiting: bool): bool =
   takenAtMs > cutoffMs implies not(sentAfterStop(takenAtMs, cutoffMs, discard, waiting))
+```
+
+### An availability probe keeps at most one idle detector, which the next capture takes
+
+Asking whether VAD is usable opens its context and at most one idle
+detector the first time, and answers later probes from that without
+opening more. The next capture takes that idle detector instead of opening
+another. Trimming memory or closing the session frees the idle detector,
+and once the context is freed the next probe checks again.
+
+```quint
+type VadProbe = { contextOpen: bool, idle: int, detectors: int, verified: bool }
+pure def probeVad(p: VadProbe): VadProbe =
+  if (p.verified) p
+  else { contextOpen: true, idle: if (p.detectors == 0) 1 else p.idle, detectors: p.detectors, verified: true }
+pure def detectorOpensNatively(p: VadProbe): bool = p.idle == 0
+pure def openDetector(p: VadProbe): VadProbe = { contextOpen: true, idle: 0, detectors: p.detectors + 1, verified: true }
+pure def trimVad(p: VadProbe): VadProbe = {
+  val kept = p.contextOpen and p.detectors > 0
+  { contextOpen: kept, idle: 0, detectors: p.detectors, verified: p.verified and kept }
+}
+pure val vadValues = Set(
+  { contextOpen: false, idle: 0, detectors: 0, verified: false }, { contextOpen: true, idle: 1, detectors: 0, verified: true },
+  { contextOpen: true, idle: 0, detectors: 1, verified: true }, { contextOpen: true, idle: 0, detectors: 2, verified: false })
+pure def lawAProbeKeepsAtMostOneIdleDetector(vad: VadProbe): bool =
+  vad.idle <= 1 implies probeVad(vad).idle <= 1
+pure def lawARepeatedProbeOpensNothingMore(vad: VadProbe): bool =
+  probeVad(probeVad(vad)).idle == probeVad(vad).idle and probeVad(probeVad(vad)).contextOpen == probeVad(vad).contextOpen
+pure def lawTheNextCaptureTakesTheIdleDetector(vad: VadProbe): bool = {
+  val probed = probeVad(vad)
+  probed.idle == 1 implies (not(detectorOpensNatively(probed)) and openDetector(probed).idle == 0)
+}
+pure def lawATrimFreesTheIdleDetectorAndForgetsAFreedContext(vad: VadProbe): bool = {
+  val trimmed = trimVad(vad)
+  trimmed.idle == 0 and (not(trimmed.contextOpen) implies not(trimmed.verified))
+}
 ```

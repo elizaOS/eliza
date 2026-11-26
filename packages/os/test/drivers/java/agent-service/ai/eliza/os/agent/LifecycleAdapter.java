@@ -230,6 +230,7 @@ public final class LifecycleAdapter {
       case "signedOut" -> new AgentPolicy.SignedOut();
       case "credentialExpired" -> new AgentPolicy.CredentialExpired();
       case "accountChanged" -> new AgentPolicy.AccountChanged(text(event.get("account")));
+      case "brokerReplaced" -> new AgentPolicy.BrokerReplaced();
       case "reviewRecovery" -> new AgentPolicy.ReviewRecovery(flag(event.get("focused")), event.containsKey("nonce") ? text(event.get("nonce")) : "review");
       case "archiveRecovery" -> new AgentPolicy.ArchiveRecovery(readToken(event.get("token")));
       case "archiveFinished" -> new AgentPolicy.ArchiveFinished(readToken(event.get("token")), flag(event.get("archiveSucceeded")));

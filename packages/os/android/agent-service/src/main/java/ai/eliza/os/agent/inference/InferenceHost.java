@@ -27,6 +27,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
+import java.util.function.LongSupplier;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -34,21 +36,21 @@ import org.json.JSONObject;
 /**
  * Serves the resident agent's on-device inference engine from the app process over an abstract local
  * socket: one length-prefixed UTF-8 JSON frame in, one out. Speech and the end-of-turn score share one
- * resident native context and embeddings have their own session; one pass runs at a time, and logs carry
- * sizes only, never text, transcripts or vectors.
+ * resident native context and embeddings have their own independent session and lock so embedding
+ * passes never stall voice ASR or synthesis; logs carry sizes only, never text, transcripts or vectors.
  */
 public final class InferenceHost {
   private static final String TAG = "ElizaInferenceHost";
   private static final long IDLE_TICK_MS = 30_000L;
 
-  private enum Pass { NONE, SPEECH, EMBEDDING, END_OF_TURN }
+  private enum ResidentPass { NONE, SPEECH, END_OF_TURN }
 
   private static final class Refusal extends Exception {
     final String code;
     Refusal(String code, String message) { super(message); this.code = code; }
   }
 
-  private static final class SpeechRequest {
+  static final class SpeechRequest {
     boolean disconnected;
   }
 
@@ -58,12 +60,16 @@ public final class InferenceHost {
   private final InferenceNative engine;
   private final long idleUnloadMs;
   private final int ownUid;
+  private final LongSupplier clock;
+  private final Consumer<String> infoLog;
   private final AtomicBoolean running = new AtomicBoolean(false);
-  private final Object passLock = new Object();
+  private final Object residentLock = new Object();
+  private final Object embeddingLock = new Object();
   private final Object cancelLock = new Object();
   private volatile LocalServerSocket server;
   private volatile ScheduledExecutorService idle;
-  private volatile long lastPassAt = android.os.SystemClock.elapsedRealtime();
+  private volatile long lastResidentPassAt;
+  private volatile long lastEmbeddingPassAt;
 
   private long resident;
   private String residentBundle;
@@ -73,7 +79,7 @@ public final class InferenceHost {
   private String verifiedDigest;
   private long verifiedLength;
   private long verifiedModified;
-  private Pass pass = Pass.NONE;
+  private ResidentPass residentPass = ResidentPass.NONE;
   private SpeechRequest activeSpeech;
   private boolean cancelAsked;
 
@@ -82,12 +88,29 @@ public final class InferenceHost {
    * the contexts until {@link #release} or {@link #stop}.
    */
   public InferenceHost(String socketName, String speechBundle, File modelRoot, InferenceNative engine, long idleUnloadMs) {
+    this(socketName, speechBundle, modelRoot, engine, idleUnloadMs, android.os.Process.myUid(),
+        android.os.SystemClock::elapsedRealtime, message -> Log.i(TAG, message), false);
+  }
+
+  InferenceHost(String socketName, String speechBundle, File modelRoot, InferenceNative engine, long idleUnloadMs,
+      int ownUid, LongSupplier clock) {
+    this(socketName, speechBundle, modelRoot, engine, idleUnloadMs, ownUid, clock, message -> {}, true);
+  }
+
+  private InferenceHost(String socketName, String speechBundle, File modelRoot, InferenceNative engine, long idleUnloadMs,
+      int ownUid, LongSupplier clock, Consumer<String> infoLog, boolean startDirect) {
     this.socketName = socketName;
     this.speechBundle = speechBundle;
     this.modelRoot = modelRoot;
     this.engine = engine;
     this.idleUnloadMs = idleUnloadMs;
-    this.ownUid = android.os.Process.myUid();
+    this.ownUid = ownUid;
+    this.clock = clock;
+    this.infoLog = infoLog;
+    long now = clock.getAsLong();
+    this.lastResidentPassAt = now;
+    this.lastEmbeddingPassAt = now;
+    if (startDirect) this.running.set(true);
   }
 
   /** Loads the native library and binds the socket; throws when either fails, so nothing is advertised. Idempotent. */
@@ -138,18 +161,28 @@ public final class InferenceHost {
     release("stopped");
   }
 
-  /** Frees both contexts after any running pass, as an idle or memory-pressure release does. */
+  /** Frees both contexts after any running pass on each, as an idle or memory-pressure release does. */
   public void release(String reason) {
-    synchronized (passLock) {
-      unloadLocked();
+    synchronized (residentLock) {
+      closeResidentLocked();
     }
-    Log.i(TAG, "released the inference contexts: " + reason);
+    synchronized (embeddingLock) {
+      closeEmbeddingLocked();
+    }
+    infoLog.accept("released the inference contexts: " + reason);
   }
 
   private void idleTick() {
-    if (android.os.SystemClock.elapsedRealtime() - lastPassAt < idleUnloadMs) return;
-    synchronized (passLock) {
-      if ((resident != 0L || embedding != 0L) && android.os.SystemClock.elapsedRealtime() - lastPassAt >= idleUnloadMs) unloadLocked();
+    long now = clock.getAsLong();
+    if (now - lastResidentPassAt >= idleUnloadMs) {
+      synchronized (residentLock) {
+        if (resident != 0L && clock.getAsLong() - lastResidentPassAt >= idleUnloadMs) closeResidentLocked();
+      }
+    }
+    if (now - lastEmbeddingPassAt >= idleUnloadMs) {
+      synchronized (embeddingLock) {
+        if (embedding != 0L && clock.getAsLong() - lastEmbeddingPassAt >= idleUnloadMs) closeEmbeddingLocked();
+      }
     }
   }
 
@@ -243,7 +276,7 @@ public final class InferenceHost {
     return paths;
   }
 
-  private String answer(InferencePolicy.Op op, JSONObject request, SpeechRequest speech) {
+  String answer(InferencePolicy.Op op, JSONObject request, SpeechRequest speech) {
     try {
       switch (op) {
         case CAPABILITIES: return ok().put("synthesis", engine.synthesisReady(speechBundle)).put("transcription", engine.transcriptionReady(speechBundle)).toString();
@@ -265,28 +298,32 @@ public final class InferenceHost {
   }
 
   private String load(String bundleDir) throws JSONException, Refusal {
-    synchronized (passLock) {
+    synchronized (residentLock) {
       if (resident != 0L && bundleDir.equals(residentBundle)) return ok().toString();
       closeResidentLocked();
       long opened = engine.openContext(bundleDir);
       if (opened == 0L) throw new Refusal("FAILED", "the model could not be loaded");
       resident = opened;
       residentBundle = bundleDir;
-      lastPassAt = android.os.SystemClock.elapsedRealtime();
+      lastResidentPassAt = clock.getAsLong();
       return ok().toString();
     }
   }
 
   private String unload() throws JSONException {
-    synchronized (passLock) {
-      unloadLocked();
+    synchronized (residentLock) {
+      closeResidentLocked();
+    }
+    synchronized (embeddingLock) {
+      closeEmbeddingLocked();
     }
     return ok().toString();
   }
 
   private String warm(JSONObject request) throws JSONException, Refusal {
-    synchronized (passLock) {
+    synchronized (embeddingLock) {
       openEmbeddingLocked(request.getString("file"), request.optString("sha256", ""));
+      lastEmbeddingPassAt = clock.getAsLong();
       return ok().toString();
     }
   }
@@ -297,24 +334,23 @@ public final class InferenceHost {
     int pooling = request.optInt("pooling", 0);
     byte[] utf8 = wellFormed(request.getString("text"));
     if (pooling < 1 || pooling > 3) throw new Refusal("FAILED", "the pooling is not one the library knows");
-    synchronized (passLock) {
+    synchronized (embeddingLock) {
       openEmbeddingLocked(file, request.optString("sha256", ""));
-      beginLocked(Pass.EMBEDDING);
       try {
         float[] vector = engine.embed(embedding, utf8, pooling);
         InferencePolicy.EmbeddingVerdict verdict = InferencePolicy.embeddingVerdict(true, dimensions, vector);
         if (verdict != InferencePolicy.EmbeddingVerdict.VECTOR_SERVED) throw new Refusal("FAILED", "the model returned no valid vector of its dimensions");
         JSONArray values = new JSONArray();
         for (double value : InferencePolicy.unit(vector)) values.put(value);
-        Log.i(TAG, "embedded " + utf8.length + " bytes into " + vector.length + " dimensions");
+        infoLog.accept("embedded " + utf8.length + " bytes into " + vector.length + " dimensions");
         return ok().put("embedding", values).toString();
       } catch (IllegalArgumentException rejected) {
         throw new Refusal("FAILED", "the model rejected the text");
       } catch (RuntimeException | LinkageError failure) {
-        failLocked(Pass.EMBEDDING);
+        closeEmbeddingLocked();
         throw new Refusal("UNAVAILABLE", "the embedding engine failed");
       } finally {
-        endLocked();
+        lastEmbeddingPassAt = clock.getAsLong();
       }
     }
   }
@@ -322,7 +358,7 @@ public final class InferenceHost {
   private String synthesize(String text, SpeechRequest speech) throws JSONException, Refusal {
     byte[] utf8 = wellFormed(text);
     if (text.trim().isEmpty()) throw new Refusal("FAILED", "there is no text to speak");
-    synchronized (passLock) {
+    synchronized (residentLock) {
       if (!engine.synthesisReady(speechBundle)) throw new Refusal("UNAVAILABLE", "on-device speech synthesis is not ready");
       ensureResidentLocked();
       beginSpeechLocked(speech);
@@ -333,17 +369,17 @@ public final class InferenceHost {
         if (rate <= 0) throw new IllegalStateException("no synthesis sample rate");
         ByteBuffer bytes = ByteBuffer.allocate(pcm.length * 4).order(ByteOrder.LITTLE_ENDIAN);
         for (float sample : pcm) bytes.putFloat(sample);
-        Log.i(TAG, "synthesized " + utf8.length + " bytes into " + pcm.length + " samples at " + rate + " Hz");
+        infoLog.accept("synthesized " + utf8.length + " bytes into " + pcm.length + " samples at " + rate + " Hz");
         return ok().put("sampleRate", rate).put("pcmBase64", Base64.getEncoder().encodeToString(bytes.array())).toString();
       } catch (CancellationException cancelled) {
         throw new Refusal("CANCELLED", "synthesis was cancelled");
       } catch (IllegalArgumentException rejected) {
         throw new Refusal("FAILED", "the speech engine rejected the text");
       } catch (RuntimeException | LinkageError failure) {
-        failLocked(Pass.SPEECH);
+        closeResidentLocked();
         throw new Refusal("FAILED", "the speech engine failed");
       } finally {
-        endLocked();
+        endResidentLocked();
       }
     }
   }
@@ -359,33 +395,33 @@ public final class InferenceHost {
     if (raw.length < 4 || raw.length % 4 != 0) throw new Refusal("FAILED", "the audio is not float PCM");
     float[] pcm = new float[raw.length / 4];
     ByteBuffer.wrap(raw).order(ByteOrder.LITTLE_ENDIAN).asFloatBuffer().get(pcm);
-    synchronized (passLock) {
+    synchronized (residentLock) {
       if (!engine.transcriptionReady(speechBundle)) throw new Refusal("UNAVAILABLE", "on-device transcription is not ready");
       ensureResidentLocked();
       beginSpeechLocked(speech);
       try {
         String text = engine.transcribe(resident, pcm, sampleRate);
-        Log.i(TAG, "transcribed " + pcm.length + " samples at " + sampleRate + " Hz into " + (text == null ? 0 : text.length()) + " characters");
+        infoLog.accept("transcribed " + pcm.length + " samples at " + sampleRate + " Hz into " + (text == null ? 0 : text.length()) + " characters");
         return ok().put("text", text == null ? "" : text).toString();
       } catch (CancellationException cancelled) {
         throw new Refusal("CANCELLED", "transcription was cancelled");
       } catch (IllegalArgumentException rejected) {
         throw new Refusal("FAILED", "the speech engine rejected the audio");
       } catch (RuntimeException | LinkageError failure) {
-        failLocked(Pass.SPEECH);
+        closeResidentLocked();
         throw new Refusal("FAILED", "the speech engine failed");
       } finally {
-        endLocked();
+        endResidentLocked();
       }
     }
   }
 
   private String endOfTurn(String transcript) throws JSONException, Refusal {
     byte[] utf8 = wellFormed(transcript);
-    synchronized (passLock) {
+    synchronized (residentLock) {
       if (resident == 0L) return ok().put("available", false).put("reason", "no model is loaded").toString();
       if (!engine.endOfTurnReady(resident)) return ok().put("available", false).put("reason", "the loaded model cannot score the end of a turn").toString();
-      beginLocked(Pass.END_OF_TURN);
+      beginResidentLocked(ResidentPass.END_OF_TURN);
       try {
         int milli = InferencePolicy.endOfTurnMilli(engine.endOfTurn(resident, utf8));
         if (milli < 0) return ok().put("available", false).put("reason", "the model returned no probability").toString();
@@ -393,10 +429,10 @@ public final class InferenceHost {
       } catch (IllegalArgumentException rejected) {
         return ok().put("available", false).put("reason", "the model rejected the transcript").toString();
       } catch (RuntimeException | LinkageError failure) {
-        failLocked(Pass.END_OF_TURN);
+        closeResidentLocked();
         return ok().put("available", false).put("reason", "the model failed to score").toString();
       } finally {
-        endLocked();
+        endResidentLocked();
       }
     }
   }
@@ -445,9 +481,9 @@ public final class InferenceHost {
     residentBundle = speechBundle;
   }
 
-  private void beginLocked(Pass kind) {
+  private void beginResidentLocked(ResidentPass kind) {
     synchronized (cancelLock) {
-      pass = kind;
+      residentPass = kind;
       cancelAsked = false;
     }
   }
@@ -455,23 +491,18 @@ public final class InferenceHost {
   private void beginSpeechLocked(SpeechRequest speech) throws Refusal {
     synchronized (cancelLock) {
       if (speech.disconnected || !running.get()) throw new Refusal("CANCELLED", "the speech request ended before its pass");
-      beginLocked(Pass.SPEECH);
+      beginResidentLocked(ResidentPass.SPEECH);
       activeSpeech = speech;
     }
   }
 
-  private void endLocked() {
+  private void endResidentLocked() {
     synchronized (cancelLock) {
-      pass = Pass.NONE;
+      residentPass = ResidentPass.NONE;
       activeSpeech = null;
       cancelAsked = false;
     }
-    lastPassAt = android.os.SystemClock.elapsedRealtime();
-  }
-
-  private void failLocked(Pass kind) {
-    if (kind == Pass.EMBEDDING) closeEmbeddingLocked();
-    else closeResidentLocked();
+    lastResidentPassAt = clock.getAsLong();
   }
 
   private boolean signalCancel(SpeechRequest speech) {
@@ -480,16 +511,11 @@ public final class InferenceHost {
         speech.disconnected = true;
         if (activeSpeech != speech) return false;
       }
-      if (pass != Pass.SPEECH || cancelAsked || resident == 0L) return false;
+      if (residentPass != ResidentPass.SPEECH || cancelAsked || resident == 0L) return false;
       cancelAsked = true;
       engine.cancelSpeech(resident);
       return true;
     }
-  }
-
-  private void unloadLocked() {
-    closeResidentLocked();
-    closeEmbeddingLocked();
   }
 
   private void closeResidentLocked() {

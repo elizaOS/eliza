@@ -79,6 +79,9 @@ pure def runtimeLayoutValid(targets: List[Abi], runtimes: List[RuntimeCandidate]
 under `assets/agent/`, the consumer's extra asset trees
 (`extraAssets: [{dir, name}]`) and native libraries per ABI, and the
 workflow worker. A consumer addition is admitted only through this list.
+Android packaging keeps the listed path and bytes for compressed archives,
+including the vector extension archive. An asset that conflicts with a
+staged archive is a build failure.
 
 ```quint
 type FileKind = NodeRuntime | BundleFile | NodeAddon | ModelFile | InferenceLibrary | ConsumerAsset | ConsumerLibrary | WorkerFile

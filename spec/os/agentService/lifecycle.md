@@ -418,6 +418,24 @@ pure def accountChanged(s: AgentService, version: int, account: C::Account): Ser
 pure def sometimesRestartingForAnotherAccount(s: AgentService): bool = s.phase == Stopping({ onExit: ToStart }) and keyAccount(s.key) != s.launched
 ```
 
+### A replaced mail broker restarts a starting or running agent, and leaves a stopping agent's exit to decide what follows
+
+When the consumer registers another mail broker while a launch holds the
+old one ([config](./config.md)), a starting or running child is killed and
+a new launch follows its exit, so that launch is handed the new broker;
+this is not counted as a crash. A stopping child is left alone: a stop, a
+start, a restart or a credential failure pending on its exit still
+decides what follows, and any launch after it is handed the new broker.
+
+```quint
+pure def canBrokerReplaced(s: AgentService): bool = childPhase(s.phase) and not(isStopping(s.phase))
+pure def brokerReplaced(s: AgentService): ServiceStep = emit(List(KillChild), enter(Stopping({ onExit: ToStart }), s))
+pure def stepBrokerReplacementRestartsOnlyALiveLaunch(before: AgentService, via: str, after: AgentService, out: List[ServiceEffect]): bool =
+  via == "brokerReplaced" implies
+    (childPhase(before.phase) and not(isStopping(before.phase)) and out == List(KillChild)
+      and after == enter(Stopping({ onExit: ToStart }), before))
+```
+
 ## Story: Hand a new device key of the same account to the running agent
 
 > As a device owner who signs in again on the same account, I want my
