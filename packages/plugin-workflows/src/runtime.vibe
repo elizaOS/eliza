@@ -8,7 +8,7 @@ import type { ManagedGoogleReads } from "./service/google.vibe"
 import type { ParentMessage, WorkerMessage } from "./worker/protocol.vibe"
 import {
   WorkflowDeviceFailed, WorkflowModelFailed, WorkflowScheduleUnavailable, WorkflowWorkerUnavailable,
-  type WorkflowDeviceEnrollment, type WorkflowHost, type WorkflowNotice, type WorkflowWorkerConnection, type WorkflowWorkerPort,
+  type WorkflowDeviceEnrollment, type WorkflowDevicePort, type WorkflowHost, type WorkflowNativeDigests, type WorkflowNotice, type WorkflowWorkerConnection, type WorkflowWorkerPort,
 } from "./service/host.vibe"
 
 export const WORKFLOW_WORKER_SERVICE = "workflow-worker"
@@ -162,9 +162,25 @@ function taskKey(task: Task): string | undefined {
   return typeof key === "string" ? key : undefined
 }
 
-export function runtimeWorkflowHost(runtime: IAgentRuntime): WorkflowHost {
+function devicePort(runtime: IAgentRuntime): WorkflowDevicePort | undefined {
   const device = serviceWith<WorkflowDeviceService>(runtime, WORKFLOW_DEVICE_SERVICE, ["enrollment", "perform"])
+  if (device === undefined) return undefined
+  return {
+    enrollment: Effect.orElseSucceed(tryPromise(() => device.enrollment()), () => undefined),
+    perform: (binding, target, operation) => tryPromise({ try: () => device.perform(binding, target, operation), catch: (cause) => new WorkflowDeviceFailed({ code: "DEVICE_STEP_FAILED", message: String(cause) }) }),
+  }
+}
+
+function nativeDigestPort(runtime: IAgentRuntime): WorkflowNativeDigests | undefined {
   const native = serviceWith<WorkflowNativeDigestService>(runtime, WORKFLOW_NATIVE_DIGEST_SERVICE, ["grant", "read"])
+  if (native === undefined) return undefined
+  return {
+    grant: (selection, expiresAt) => tryPromise({ try: () => native.grant(selection, expiresAt), catch: (cause) => new WorkflowDeviceFailed({ code: "NATIVE_SOURCE_UNAVAILABLE", message: String(cause) }) }),
+    read: (selection, at, window) => tryPromise({ try: () => native.read(selection, at, window), catch: (cause) => new WorkflowDeviceFailed({ code: "NATIVE_SOURCE_UNAVAILABLE", message: String(cause) }) }),
+  }
+}
+
+export function runtimeWorkflowHost(runtime: IAgentRuntime): WorkflowHost {
   const unavailable = (cause: unknown) => new WorkflowScheduleUnavailable({ cause })
   const tasks = <A>(call: () => Promise<A>) => tryPromise({ try: call, catch: unavailable })
   const scheduled = () => tasks(() => runtime.getTasks({ tags: [scheduleTag], agentIds: [runtime.agentId] }))
@@ -173,11 +189,8 @@ export function runtimeWorkflowHost(runtime: IAgentRuntime): WorkflowHost {
     owner: String(runtime.agentId),
     agentId: String(runtime.agentId),
     origin: "agent:local",
-    worker: workerPort(runtime),
-    device: device === undefined ? undefined : {
-      enrollment: Effect.orElseSucceed(tryPromise(() => device.enrollment()), () => undefined),
-      perform: (binding, target, operation) => tryPromise({ try: () => device.perform(binding, target, operation), catch: (cause) => new WorkflowDeviceFailed({ code: "DEVICE_STEP_FAILED", message: String(cause) }) }),
-    },
+    get worker() { return workerPort(runtime) },
+    get device() { return devicePort(runtime) },
     draft: (prompt, options) => tryPromise({
       try: async () => {
         const primary = options?.modelClass === "TEXT_SMALL" ? ModelType.TEXT_SMALL : ModelType.TEXT_LARGE
@@ -194,11 +207,8 @@ export function runtimeWorkflowHost(runtime: IAgentRuntime): WorkflowHost {
       },
       catch: (cause) => new WorkflowModelFailed({ message: String(cause) }),
     }),
-    google: managedGoogle(runtime),
-    nativeDigests: native === undefined ? undefined : {
-      grant: (selection, expiresAt) => tryPromise({ try: () => native.grant(selection, expiresAt), catch: (cause) => new WorkflowDeviceFailed({ code: "NATIVE_SOURCE_UNAVAILABLE", message: String(cause) }) }),
-      read: (selection, at, window) => tryPromise({ try: () => native.read(selection, at, window), catch: (cause) => new WorkflowDeviceFailed({ code: "NATIVE_SOURCE_UNAVAILABLE", message: String(cause) }) }),
-    },
+    get google() { return managedGoogle(runtime) },
+    get nativeDigests() { return nativeDigestPort(runtime) },
     effect notify(notice: WorkflowNotice) {
       const found = runtime.getService(NotificationService.serviceType)
       if (!(found instanceof NotificationService)) return
