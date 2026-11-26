@@ -12,13 +12,13 @@ import {
   buildPlannerToolsFromActions, DISCOVER_ACTIONS_NAME, executePlannedToolCall, isDiscoveryActionName, isModelOutputLimitFinishReason, ModelType, modelAttemptCapture, modelOutputIncompleteEvidence, resolveActionContexts, sha256Hex, sleepWithAbort, stableStringify, tagsMayProduceEffects, wrapExternalContent,
 } from "@elizaos/core"
 import {
-  actionNoteSent, askedAgainAt, answerableLater, answeredAgain, callAdmission, callRunOf, cueDelivered, standsBy, cutOffReply, failedOpen, isTurnStep, maxPlanSteps, mayAnswer, nextMove, offered, openOutcomes, plannerOnlyCoaching, plansOn, resendWait, spokenCue, toolActivity,
+  actionNoteSent, askedAgainAt, answerableLater, answeredAgain, callAdmission, callRunOf, cueDelivered, standsBy, cutOffReply, failedOpen, isTurnStep, maxPlanSteps, mayAnswer, nextMove, offered, openOutcomes, plannerOnlyCoaching, plansOn, resendWait, spokenFrom, toolActivity,
   admitsPlannerWork, contextRestoreOf, loneObjectMove, maxRestoredHistoryBytes, nothingRan, offersContextRestore, plannerTemperature, terminalAnswerOf, toolDispatch, turnNarrowed, unavailableNotice, writtenMarkupOf, type CallFailure, type PlanStep, type QuoteSpan, type StepOutcome, type ToolSettlement,
 } from "../../gen/agent__conversation__planning.ts"
 import { originAfterResend } from "../../gen/agent__conversation__turns.ts"
 import { readTurnContext, unauthoredTurnAllowsCall } from "@elizaos/agent"
 import { ModelRefusal } from "../models/chat.vibe"
-import { actionNameKey, asksSomething, composeReply, declaredOf, draftOf, holdsHostText, hostObjects, shownUpTo, streamable, withoutOfferedCalls, withoutWrittenCalls, writtenCallFree, writtenCallOf } from "./reply-text.vibe"
+import { actionNameKey, asksSomething, composeReply, cueOf, declaredOf, draftOf, holdsHostText, hostObjects, shownUpTo, streamable, withCue, withoutOfferedCalls, withoutWrittenCalls, writtenCallFree, writtenCallOf } from "./reply-text.vibe"
 
 module node {
   import { randomUUID } from "node:crypto"
@@ -63,6 +63,7 @@ const messageServiceActions = new Set(["REPLY", "IGNORE", "NONE", restoreContext
 
 export interface PlannedStep {
   readonly action: string
+  readonly cue: string
   readonly params: Record<string, unknown>
   readonly result: ActionResult
   readonly shown: readonly string[]
@@ -501,6 +502,7 @@ function settleReply(steps: readonly PlannedStep[]): SettledReply {
 
 export function plannerTools(runtime: AgentRuntime, message: Memory, actions: readonly Action[]): ToolDefinition[] {
   const tools: ToolDefinition[] = actions.length === 0 ? [] : buildPlannerToolsFromActions(actions.toSorted(byName).map((action) => forTurn(runtime, message, action)))
+    .map((tool) => messageServiceActions.has(tool.name) ? tool : withCue(tool))
   if (offersContextRestore(tools.length)) {
     const afterDiscovery = tools.findLastIndex(({ name }) => isDiscoveryActionName(name)) + 1
     tools.splice(afterDiscovery, 0, restoreContext)
@@ -555,7 +557,7 @@ function isReadOnlyForUnauthoredTurn(callName: string, action: Action | undefine
   return isDiscoveryActionName(callName) || isSafeParallelReadCall(action, params)
 }
 
-function plannedToolRunner(input: PlanInput, named: ReadonlyMap<string, Action>, steps: PlannedStep[], conversation: ChatMessage[]) {
+function plannedToolRunner(input: PlanInput, named: ReadonlyMap<string, Action>, steps: PlannedStep[], conversation: ChatMessage[], cues: ReadonlyMap<string, string>) {
   const { runtime, message, state, roles, signal } = input
   const turnContext = readTurnContext(message)
   const hasOwnerWords = Boolean(message.content.text?.trim())
@@ -608,7 +610,7 @@ function plannedToolRunner(input: PlanInput, named: ReadonlyMap<string, Action>,
       settlements.set(item.identity, toolSettlement(result, named.get(item.call.name)))
       if (!plannerOnlyCoaching(result.transcriptVisibility === "internal", result.data?.coachingFailure === true, result.success, (result.effectReceipts?.length ?? 0) > 0)) {
         await input.onStepResult?.(result)
-        steps.push({ action: item.call.name, params: item.params, result, shown: shownBy(result, captured), outcomes: planStepsOf(item.call.name, item.params, result), response })
+        steps.push({ action: item.call.name, cue: cues.get(item.call.id) ?? "", params: item.params, result, shown: shownBy(result, captured), outcomes: planStepsOf(item.call.name, item.params, result), response })
       }
     }
     conversation.push({ role: "tool", toolCallId: item.call.id, name: item.call.name, content: toolMessage(result) })
@@ -654,7 +656,12 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
   let askedBeforeWork = false
   let askedAfterWork = false
   let askingPromise: string | undefined
-  const runTools = plannedToolRunner(input, named, steps, conversation)
+  const cueByCall = new Map<string, string>()
+  const runTools = plannedToolRunner(input, named, steps, conversation, cueByCall)
+  const heardCue = (written: string, calls: number) => {
+    const { declared, text } = declaredOf(written)
+    return { declared, draft: draftOf(text, calls, offeredNames, false, declared, input.hostNotes), cue: withoutWrittenCalls(text.trim()) }
+  }
   plan: while (true) {
     signal.throwIfAborted()
     const restartFirst = displayed
@@ -669,13 +676,10 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
         const dispositions = calls.filter(({ name }) => messageServiceActions.has(name)).length
         const work = calls.length - restores - dispositions
         if (earlyAck !== undefined || work === 0 || !admitsPlannerWork(restores) || terminalAnswerOf(dispositions, terminalCorrectionSent, taken + 1 < maxPlanSteps) !== "AdmitTerminalAnswer") return
-        const unwritten = writtenCallFree(wholeText)
-        const { declared, text: earlyWords } = declaredOf(unwritten.prose)
-        const earlyDraft = draftOf(earlyWords, work, offeredNames, false, declared, input.hostNotes)
-        const earlyCue = withoutWrittenCalls(earlyWords.trim())
-        if (!spokenCue(earlyDraft, work, steps.length, declared)) return
-        const delivered = cueDelivered(earlyDraft, work, steps.length, (await input.onPlanningAcknowledgment?.(earlyCue)) === true)
-        earlyAck = { cue: earlyCue, delivered }
+        const early = heardCue(cueOf(calls.filter(({ name }) => !messageServiceActions.has(name))).cue, work)
+        if (!spokenFrom("CueField", early.draft, work, steps.length, early.declared)) return
+        const delivered = cueDelivered(early.draft, work, steps.length, (await input.onPlanningAcknowledgment?.(early.cue)) === true)
+        earlyAck = { cue: early.cue, delivered }
         if (streamed.length > 0) {
           input.onReplyRestart?.("")
           displayed = false
@@ -783,7 +787,8 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
       continue plan
     }
     const reply = dispositions.find(({ name }) => name === "REPLY")
-    const work = answered.toolCalls.filter(({ name }) => !messageServiceActions.has(name))
+    const { cue: writtenCue, calls: work, cues: writtenCues } = cueOf(answered.toolCalls.filter(({ name }) => !messageServiceActions.has(name)))
+    work.forEach(({ id }, index) => cueByCall.set(id, writtenCues[index] ?? ""))
     const unwritten = writtenCallFree(answered.text)
     if (writtenMarkupOf(unwritten.markup, answered.toolCalls.length, markupAsked, maxPlanSteps - taken) === "AskForTheCall") {
       markupAsked = true
@@ -797,11 +802,12 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
     if (work.length === 0 && declared === "DeclaredPromise" && draft === "MaybeAnswer" && asksSomething(words)) askingPromise = words
     let cutOff = false
     if (work.length > 0) {
-      const cue = earlyAck !== undefined ? earlyAck.cue : withoutWrittenCalls(words.trim())
-      const spoken = earlyAck === undefined && spokenCue(draft, work.length, steps.length, declared)
+      const written = heardCue(writtenCue, work.length)
+      const cue = earlyAck !== undefined ? earlyAck.cue : written.cue
+      const spoken = earlyAck === undefined && spokenFrom("CueField", written.draft, work.length, steps.length, written.declared)
       const delivered = earlyAck !== undefined
         ? earlyAck.delivered
-        : cueDelivered(draft, work.length, steps.length, spoken && (await input.onPlanningAcknowledgment?.(cue)) === true)
+        : cueDelivered(written.draft, work.length, steps.length, spoken && (await input.onPlanningAcknowledgment?.(cue)) === true)
       if (displayed) {
         input.onReplyRestart?.("")
         displayed = false
