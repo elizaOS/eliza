@@ -1,0 +1,258 @@
+// spec/os/android/noticeRoutes.md, "Story: Keep my notices to the account I am signed in to"; spec/os/android/noticeRoutes.md, "The owner fence is published once for each change of the signed-in account"; spec/os/android/noticeRoutes.md, "A failed fence publication of the current generation is retried, and a superseded one is forgotten"; spec/os/android/noticeRoutes.md, "A tap opens only its exact route, in the account it belongs to, and only with the current tap token"; spec/os/android/noticeRoutes.md, "An approval notice has one identity per approval, bound to its exact run route"; spec/os/android/noticeRoutes.md, "An approval notice is offered or kept only while its approval is pending"; spec/os/android/notificationMirror.md, "Story: Mirror only the notifications I allowed"; spec/os/android/notificationMirror.md, "Story: Act on exactly the notice I see"; spec/os/android/noticeRoutes.md, "The host answers presentation protocol 2, and a renderer presents only through a host that answers it"
+import type { Approval, ApprovalPhase } from "../../gen/core__approvals.ts"
+import { initial as approvalInitial } from "../../gen/core__approvals.effect.vibe"
+import type { Account, DeviceCredential } from "../../gen/os__signIn__credential.ts"
+import { accountOf } from "../../gen/os__signIn__credential.effect.vibe"
+import type { NoticeDecision, NoticeFence, NoticeReads, SuspendedNotice, TapResolution } from "../../gen/os__android__noticeRoutes.ts"
+import { approvalOffered, fenceFailed, freshFence, presentsWorkflowNotices, resolveTap, revalidateNotice, updateFence } from "../../gen/os__android__noticeRoutes.effect.vibe"
+import { nativeReply, settled } from "./bridge.vibe"
+import {
+  PENDING_WORKFLOW_TAP_EVENT,
+  bindingLive,
+  noticeRouteOf,
+  pendingTapModel,
+  tapCheckpoint,
+  tapSignature,
+  validProposalId,
+  type ApprovalNoticeDecision,
+  type ApprovalNoticeIdentity,
+  type NoticeFenceOperations,
+  type NoticeFenceUpdater,
+  type NoticeTapBinding,
+  type NoticeTapResolution,
+  type NoticesClient,
+  type NoticesClientOptions,
+  type PendingNoticeTap,
+  type SuspendedApprovalNotice,
+  type WorkflowApprovalNoticeReads,
+  type WorkflowNoticeRoute,
+} from "./definitions/notices.ts"
+
+export type * from "./definitions/notices.ts"
+export { noticeOwnerOf } from "./definitions/notices.ts"
+
+module capacitor {
+  import { registerPlugin } from "@capacitor/core"
+  import type { NotificationsNativePlugin } from "./definitions/notices.ts"
+
+  /** @throws {never} */
+  export function notificationsPlugin(name = "ElizaNotifications"): NotificationsNativePlugin {
+    return registerPlugin<NotificationsNativePlugin>(name)
+  }
+}
+import { notificationsPlugin } from capacitor
+export { notificationsPlugin }
+
+module digest {
+  import { approvalNoticeTexts, type WorkflowNoticeRoute } from "./definitions/notices.ts"
+
+  /** @throws {never} */
+  async function sha256(text: string): Promise<string> {
+    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text))
+    return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("")
+  }
+
+  /** @throws {never} */
+  export async function approvalIdentityOf(route: WorkflowNoticeRoute, proposalId: string): Promise<{ id: string; bindingHash: string }> {
+    const texts = approvalNoticeTexts(route, proposalId)
+    return { id: `approval-${await sha256(texts.id)}`, bindingHash: await sha256(texts.binding) }
+  }
+}
+import { approvalIdentityOf } from digest
+
+const PLUGIN = "ElizaNotifications"
+
+export error InvalidApprovalNotice { proposalId: string }
+export error NoticeTapAborted { reason: unknown }
+export error NoticeTapReadFailed { cause: unknown }
+export error ApprovalNoticeReadFailed { cause: unknown }
+
+effect function approvalNoticeIdentity(route: WorkflowNoticeRoute, proposalId: string): ApprovalNoticeIdentity!InvalidApprovalNotice {
+  if (!validProposalId(proposalId)) throw new InvalidApprovalNotice({ proposalId })
+  return try promise(() => approvalIdentityOf(route, proposalId))
+}
+
+export function workflowApprovalNoticeIdentity(route: WorkflowNoticeRoute, proposalId: string): Promise<ApprovalNoticeIdentity> {
+  return settled(approvalNoticeIdentity(route, proposalId))
+}
+
+export function noticeOwnerFence<T>(operations: NoticeFenceOperations<T>): NoticeFenceUpdater {
+  let fence: NoticeFence = freshFence
+  const current = () => fence
+  return {
+    update: (credential: DeviceCredential, credentialRead: boolean) => {
+      const next = updateFence(fence, credential, credentialRead)
+      fence = next.fence
+      if (!next.publish) return
+      const generation = next.fence.generation
+      const account = accountOf(credential)
+      const transition = runPromiseExit(tryPromise(() => operations.transition(account)))
+      const valid = () => current().generation === generation && operations.available(account)
+      const retry = () => { fence = fenceFailed(fence, generation) }
+      operations.enqueue(() => runPromise(publishFence(operations, account, generation, current, transition, valid, retry)))
+    },
+  }
+}
+
+effect function publishFence<T>(operations: NoticeFenceOperations<T>, account: Account, generation: number, current: () => NoticeFence, transition: Promise<Exit.Exit<T, Cause.UnknownError>>, valid: () => boolean, retry: () => void): void!! {
+  const done = try promise(() => transition)
+  if (Exit.isFailure(done)) return retry()
+  if (generation !== current().generation || account.userId === "") return
+  if (!valid()) return retry()
+  const restored = try exit(tryPromise(() => operations.restore(done.value, account, valid)))
+  if (Exit.isFailure(restored) || !valid()) retry()
+}
+
+const RESOLVED: Readonly<Record<Exclude<TapResolution, "TapReady">, "lookup-unavailable" | "none" | "other-account" | "unavailable">> = {
+  LookupUnavailable: "lookup-unavailable",
+  NoTap: "none",
+  OtherAccount: "other-account",
+  TapUnavailable: "unavailable",
+}
+
+effect function unaborted(signal: AbortSignal): void!NoticeTapAborted {
+  if (signal.aborted) throw new NoticeTapAborted({ reason: signal.reason })
+}
+
+export effect function resolveTapRead<Target>(input: {
+  pending: () => Promise<Partial<PendingNoticeTap>>
+  binding: NoticeTapBinding | null
+  identifiers: readonly string[]
+  load: (tap: PendingNoticeTap, signal: AbortSignal, checkpoint: () => void) => Promise<Target | null>
+  signal: AbortSignal
+}): NoticeTapResolution<Target>!(NoticeTapAborted | NoticeTapReadFailed) {
+  const { binding, identifiers, signal } = input
+  const read = try exit(tryPromise(() => input.pending()))
+  try unaborted(signal)
+  const tap = Exit.isSuccess(read) ? read.value : {}
+  const bound = noticeRouteOf(binding ?? {})
+  const model = pendingTapModel(tap, identifiers, 1)
+  const first = resolveTap(Exit.isSuccess(read), model, bound, bindingLive(binding), true, model, true)
+  if (first !== "TapReady" || binding === null) return { kind: RESOLVED[first === "TapReady" ? "OtherAccount" : first] }
+  const loaded = try exit(tryPromise(() => input.load(tap as PendingNoticeTap, signal, tapCheckpoint(signal, binding))))
+  try unaborted(signal)
+  if (Exit.isFailure(loaded) && bindingLive(binding)) throw new NoticeTapReadFailed({ cause: Cause.squash(loaded.cause) })
+  const latest = try mapError(tryPromise(() => input.pending()), (cause) => new NoticeTapReadFailed({ cause }))
+  try unaborted(signal)
+  const target = Exit.isSuccess(loaded) ? loaded.value : null
+  const revision = tapSignature(latest, identifiers) === tapSignature(tap, identifiers) ? 1 : 2
+  const decided = resolveTap(true, model, bound, true, target !== null, pendingTapModel(latest, identifiers, revision), bindingLive(binding))
+  if (decided !== "TapReady" || target === null) return { kind: RESOLVED[decided === "TapReady" ? "TapUnavailable" : decided] }
+  return { kind: "ready", token: model.token, target, question: tap.question === true, ...(tap.notice ? { notice: tap.notice } : {}) }
+}
+
+export function resolveNoticeTap<Target>(input: Parameters<typeof resolveTapRead<Target>>[0]): Promise<NoticeTapResolution<Target>> {
+  return settled(resolveTapRead(input))
+}
+
+const DECISION: Readonly<Record<NoticeDecision, ApprovalNoticeDecision>> = { ResumeNotice: "resume", WithdrawNotice: "withdraw", StaleNotice: "stale" }
+
+function pendingApproval(phase: ApprovalPhase): Approval {
+  return { ...approvalInitial, phase }
+}
+
+effect function agentRead<A>(read: () => Promise<A>): A!ApprovalNoticeReadFailed {
+  return try mapError(tryPromise(() => read()), (cause) => new ApprovalNoticeReadFailed({ cause }))
+}
+
+effect function revalidateApprovalNotice<Run, Review>(notice: SuspendedApprovalNotice, reads: WorkflowApprovalNoticeReads<Run, Review>, valid: () => boolean, signal: AbortSignal, now: () => number = () => Date.now()): ApprovalNoticeDecision!(ApprovalNoticeReadFailed | InvalidApprovalNotice) {
+  const route = notice.route
+  const suspended: SuspendedNotice = { suspendedVersion: route.versionId, expiresAt: notice.expiresAt }
+  const assumed = pendingApproval("Pending")
+  const open: NoticeReads = { sessionValid: valid(), workflowRemoved: false, workflowVersion: route.versionId, runVersion: route.versionId, runFinished: false, reviewFinished: false, cancellationRequested: false, sameBindingAndExpiry: true, now: now() }
+  const decide = (seen: NoticeReads, approval: Approval) => revalidateNotice(suspended, seen, approval)
+  if (decide(open, assumed) !== "ResumeNotice") return DECISION[decide(open, assumed)]
+  const detail = try agentRead(() => reads.detail(route.workflowId, signal))
+  const described = { ...open, sessionValid: valid(), workflowRemoved: detail.removed === true, workflowVersion: detail.versionId, now: now() }
+  if (decide(described, assumed) !== "ResumeNotice") return DECISION[decide(described, assumed)]
+  const run = try agentRead(() => reads.receipt(route.runId, route.workflowId, signal))
+  const ran = { ...described, sessionValid: valid(), runVersion: run.versionId, runFinished: run.finished }
+  if (decide(ran, assumed) !== "ResumeNotice") return DECISION[decide(ran, assumed)]
+  const review = try agentRead(() => reads.phoneReview(run, signal))
+  const reviewed = { ...ran, sessionValid: valid(), reviewFinished: review.finished, cancellationRequested: Boolean(review.cancellationRequestedAt) }
+  if (decide(reviewed, assumed) !== "ResumeNotice") return DECISION[decide(reviewed, assumed)]
+  const approvals = try agentRead(() => reads.approvals(review, signal))
+  let approval = pendingApproval("Terminal")
+  let sameBindingAndExpiry = false
+  for (const candidate of approvals) {
+    const bound = try approvalNoticeIdentity(route, candidate.id)
+    if (bound.id !== notice.id) continue
+    approval = pendingApproval(candidate.phase)
+    sameBindingAndExpiry = bound.bindingHash === notice.bindingHash && candidate.expiresAt === notice.expiresAt
+  }
+  return DECISION[decide({ ...reviewed, sessionValid: valid(), sameBindingAndExpiry, now: now() }, approval)]
+}
+
+export function revalidateWorkflowApprovalNotice<Run, Review>(notice: SuspendedApprovalNotice, reads: WorkflowApprovalNoticeReads<Run, Review>, valid: () => boolean, signal: AbortSignal, now?: () => number): Promise<ApprovalNoticeDecision> {
+  return settled(revalidateApprovalNotice(notice, reads, valid, signal, now))
+}
+
+schema Status { status: string }
+schema Presentation { protocol: number }
+schema Route { scope: string; origin: string; ownerId: string; agentId: string; workflowId: string; runId: string; versionId: string }
+schema Suspended { id: string; bindingHash: string; expiresAt: number; route: Route }
+schema OwnerFence { withdrawn: number; suspended: Suspended[] }
+const Tap = Schema.Record(Schema.String, Schema.Unknown)
+schema Channel { id: string; name: string; importance: number; blocked: boolean; groupBlocked: boolean }
+schema Delivery { appEnabled: boolean; permissionGranted: boolean; interruption: "all" | "priority" | "alarms" | "none" | "unknown"; channels: Channel[]; scope: string }
+schema MirrorApp { packageName: string; label: string; preview: boolean; available: boolean }
+schema Mirror { revision: string; enabled: boolean; accessGranted: boolean; connected: boolean; paused: boolean; history: boolean; historyUnavailable: boolean; apps: MirrorApp[] }
+schema Choice { packageName: string; label: string }
+schema Choices { apps: Choice[] }
+schema HistoryRow { id: string; appLabel: string; at: number; state: string }
+schema History { items: HistoryRow[] }
+schema Row { id: string; revision: string; source: "own" | "external"; kind?: string; appLabel: string; title: string; text: string; at: number; clearable: boolean; canOpen: boolean; redacted?: boolean }
+schema Rows { items: Row[]; scope: string }
+schema Outcome { id: string; status: "requested" | "unavailable" }
+schema Outcomes { outcomes: Outcome[] }
+const Done = Schema.Unknown
+
+export function noticesClient(options: NoticesClientOptions = {}): NoticesClient {
+  const { name = PLUGIN, plugin = notificationsPlugin(name) } = options
+  const call = <A>(method: string, shape: Schema.Codec<A>, run: () => Promise<unknown>) => nativeReply(name, method, shape, run)
+  const status = (method: string, run: () => Promise<unknown>) => settled(call(method, Status, run)).then((reply) => reply.status as never)
+  const done = (method: string, run: () => Promise<unknown>) => settled(call(method, Done, run)).then(() => undefined)
+  return {
+    presentsWorkflow: () => settled(call("workflowPresentationCapabilities", Presentation, () => plugin.workflowPresentationCapabilities())).then((reply) => presentsWorkflowNotices(reply.protocol)),
+    pendingTap: () => settled(call("pendingWorkflowTap", Tap, () => plugin.pendingWorkflowTap())) as Promise<Partial<PendingNoticeTap>>,
+    consumeTap: (input) => done("consumeWorkflowTap", () => plugin.consumeWorkflowTap(input)),
+    postWorkflow: (input) => status("postWorkflow", () => plugin.postWorkflow(input)),
+    workflowReceipt: (input) => status("workflowReceipt", () => plugin.workflowReceipt(input)),
+    publishOwner: (owner) => settled(call("noticeOwner", OwnerFence, () => plugin.noticeOwner({ owner }))),
+    postApproval: (input) => settled(effect {
+      if (!approvalOffered(pendingApproval(input.phase))) return "not-pending" as const
+      const identity = try approvalNoticeIdentity(input.route, input.proposalId)
+      const reply = try call("postWorkflowApproval", Status, () => plugin.postWorkflowApproval({ ...identity, route: input.route, expiresAt: input.expiresAt }))
+      return reply.status as never
+    }),
+    resumeApproval: (notice) => status("resumeWorkflowApproval", () => plugin.resumeWorkflowApproval(notice)),
+    withdrawApproval: (id) => done("withdrawWorkflowApproval", () => plugin.withdrawWorkflowApproval({ id })),
+    delivery: () => settled(call("status", Delivery, () => plugin.status())),
+    openChannelSettings: (id) => done("openChannelSettings", () => plugin.openChannelSettings({ id })),
+    mirrorStatus: () => settled(call("crossAppStatus", Mirror, () => plugin.crossAppStatus())),
+    mirrorChoices: () => settled(call("notificationApps", Choices, () => plugin.notificationApps())).then((reply) => reply.apps),
+    setMirrorPolicy: (change) => settled(call("setNotificationPolicy", Mirror, () => plugin.setNotificationPolicy(change))),
+    resumeMirror: (expectedRevision) => settled(call("resumeCrossApp", Mirror, () => plugin.resumeCrossApp({ expectedRevision }))),
+    openNotificationAccess: () => done("openNotificationAccess", () => plugin.openNotificationAccess()),
+    mirrorHistory: () => settled(call("notificationHistory", History, () => plugin.notificationHistory())).then((reply) => reply.items),
+    clearMirrorHistory: (expectedRevision) => done("clearNotificationHistory", () => plugin.clearNotificationHistory({ expectedRevision })),
+    list: () => settled(call("list", Rows, () => plugin.list())),
+    open: (row) => done("open", () => plugin.open(row)),
+    dismiss: (row) => done("dismiss", () => plugin.dismiss(row)),
+    clear: (rows) => settled(call("clear", Outcomes, () => plugin.clear({ items: rows }))).then((reply) => reply.outcomes),
+    onPendingTap: (listener) => plugin.addListener(PENDING_WORKFLOW_TAP_EVENT, listener),
+  }
+}
+
+effect function restoreApprovals<Run, Review>(client: NoticesClient, notices: readonly SuspendedApprovalNotice[], reads: WorkflowApprovalNoticeReads<Run, Review>, valid: () => boolean, signal: AbortSignal, now?: () => number) {
+  for (const notice of notices) {
+    const decision = try revalidateApprovalNotice(notice, reads, valid, signal, now)
+    if (decision === "stale") return
+    if (decision === "resume") try tryPromise(() => client.resumeApproval(notice))
+    else try tryPromise(() => client.withdrawApproval(notice.id))
+  }
+}
+
+export function restoreSuspendedApprovals<Run, Review>(client: NoticesClient, notices: readonly SuspendedApprovalNotice[], reads: WorkflowApprovalNoticeReads<Run, Review>, valid: () => boolean, signal: AbortSignal, now?: () => number): Promise<void> {
+  return settled(restoreApprovals(client, notices, reads, valid, signal, now))
+}

@@ -8,30 +8,25 @@
   "scripts": {
     "build": "vibelang -p tsconfig.build.json",
     "test": "vitest run",
-    "test:browser": "vitest run --project browser",
     "typecheck": "vibelang --noEmit -p ."
   },
   "dependencies": {
     "@elizaos/agent": "workspace:*",
+    "@elizaos/agent-host": "workspace:*",
     "@elizaos/core": "workspace:*",
-    "@elizaos/os": "workspace:*",
+    "@elizaos/core-node": "workspace:*",
+    "@elizaos/plugin-files-client": "workspace:*",
     "effect": "4.1.1",
-    "pdf-lib": "1.17.1",
     "vibelang-runtime": "0.0.13"
   },
-  "peerDependencies": {
-    "@capacitor/core": "^8.5.2"
-  },
   "devDependencies": {
-    "@capacitor/core": "8.5.2",
     "@effect/platform-node": "4.1.1",
     "@effect/vitest": "4.1.1",
+    "@elizaos/os-bridges": "workspace:*",
     "@types/node": "catalog:",
     "typescript": "catalog:",
     "vibelang": "0.0.13",
-    "vibelang-vite": "0.0.13",
     "vibestack": "workspace:*",
-    "vite": "catalog:",
     "vitest": "catalog:"
   },
   "main": "./dist/src/index.js",
@@ -45,31 +40,6 @@
       "types": "./dist/src/index.d.ts",
       "import": "./dist/src/index.js",
       "default": "./dist/src/index.js"
-    },
-    "./client": {
-      "eliza-source": "./src/client.vibe",
-      "types": "./dist/src/client.d.ts",
-      "import": "./dist/src/client.js",
-      "default": "./dist/src/client.js"
-    },
-    "./contract": {
-      "eliza-source": "./src/contract.vibe",
-      "types": "./dist/src/contract.d.ts",
-      "import": "./dist/src/contract.js",
-      "default": "./dist/src/contract.js"
-    },
-    "./local-volume": {
-      "eliza-source": "./src/storage/local-volume.vibe",
-      "types": "./dist/src/storage/local-volume.d.ts",
-      "import": "./dist/src/storage/local-volume.js",
-      "default": "./dist/src/storage/local-volume.js"
-    },
-    "./documents/*": {
-      "eliza-source": "./src/documents/*.vibe",
-      "types": "./dist/src/documents/*.d.ts",
-      "import": "./dist/src/documents/*.js",
-      "default": "./dist/src/documents/*.js"
-    },
-    "./package.json": "./package.json"
+    }
   }
 }

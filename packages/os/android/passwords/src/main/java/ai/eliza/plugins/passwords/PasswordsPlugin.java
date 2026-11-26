@@ -110,7 +110,7 @@ public class PasswordsPlugin extends Plugin {
     if (activity == null) { call.reject("Saved passwords are unavailable", "unavailable"); return; }
     activity.runOnUiThread(() -> PasswordUnlock.prompt(activity, new PasswordUnlock.Result() {
       @Override public void unlocked(long ticket) { unlockTicket = ticket; JSObject result = new JSObject(); result.put("unlocked", true); result.put("unlockRemainingMs", access.deviceUnlockedCustody() ? JSObject.NULL : access.remainingMillis()); call.resolve(result); }
-      @Override public void failed(String code) { call.reject("cancelled".equals(code) ? "Unlock was cancelled" : "no-screen-lock".equals(code) ? "Set a screen lock to use saved passwords" : "migration-unavailable".equals(code) ? "Your old saved passwords need their original Android authorization" : "Unlock is unavailable", code); }
+      @Override public void failed(String code) { call.reject("cancelled".equals(code) ? "Unlock was cancelled" : "no-screen-lock".equals(code) ? "Set a screen lock to use saved passwords" : "legacy-authorization-required".equals(code) ? "Your old saved passwords need their original Android authorization" : "legacy-key-unavailable".equals(code) ? "Your old saved passwords can no longer be read on this device" : "Unlock is unavailable", code); }
     }));
   }
 
@@ -130,6 +130,14 @@ public class PasswordsPlugin extends Plugin {
       JSArray out = new JSArray();
       for (int i = 0; i < entries.length(); i++) out.put(summary(entries.getJSONObject(i)));
       JSObject result = new JSObject(); result.put("entries", out); call.resolve(result);
+    } catch (Exception failure) { fail(call, failure); }
+  }
+
+  @PluginMethod public void anySaved(PluginCall call) {
+    PasswordVaultAccess access = vault(call); if (access == null) return;
+    try {
+      boolean saved = access.use(store -> store.entries().length() > 0);
+      JSObject result = new JSObject(); result.put("saved", saved); call.resolve(result);
     } catch (Exception failure) { fail(call, failure); }
   }
 

@@ -1,0 +1,167 @@
+// spec/agent/notifications.md, "Story: Read my notices and mark them read from my own client"
+import { assert, it } from "@effect/vitest"
+import { AgentEventService, NotificationService, type AgentNotification, type NotificationInput } from "@elizaos/core"
+import { workflowHttpError, workflowNoticeOffers, type WorkflowRequest } from "@elizaos/plugin-workflow-client"
+import { ask, call, events, host, startInProcess, type InProcess } from "./support/kernel.vibe"
+
+const loaded = { launch: { load: ["@elizaos/agent/notifications"] } }
+const absentId = "0b7c3a52-7e1f-4c55-9a4e-2f0d8b6c1e93"
+const otherEpoch = "9d1e6f0a-3b2c-4d5e-8f70-1a2b3c4d5e6f"
+
+effect function inbox(agent: InProcess) {
+  try host("inbox start", () => agent.agent.runtime.getServiceLoadPromise(NotificationService.serviceType))
+  const found = agent.agent.runtime.getService(NotificationService.serviceType)
+  return try Effect.try(() => {
+    assert.instanceOf(found, NotificationService)
+    return found as NotificationService
+  })
+}
+
+effect function notifyAll(service: NotificationService, inputs: readonly NotificationInput[]) {
+  const made: AgentNotification[] = []
+  for (const input of inputs) made.push(try host(`notify ${input.title}`, () => service.notify(input)))
+  return made
+}
+
+const list = (agent: InProcess, query: string) => ask(agent, { method: "GET", path: `/api/notifications${query}` })
+const markRead = (agent: InProcess, id: string) => ask(agent, { method: "POST", path: `/api/notifications/${id}/read` })
+
+interface NativePage {
+  readonly notifications: readonly { readonly id: string; readonly nativeSequence: number; readonly data?: unknown }[]
+  readonly nativeEpoch: string
+  readonly throughSequence: number
+  readonly nextSequence: number
+  readonly complete: boolean
+}
+
+it.effect('Notify, page natively, refuse every other list and mark read twice (spec/agent/notifications.md, "A list query asks for the native page, with each parameter given once and well formed"; spec/agent/notifications.md, "Marking a notice read answers ok only when this call durably marked an unread notice")', effect () => {
+  const agent = try startInProcess(loaded)
+  const service = try inbox(agent)
+  const [first, second, quiet] = try notifyAll(service, [
+    { title: "Take the bins out", category: "reminder" },
+    { title: "Sam wrote back", category: "message" },
+    { title: "Water the plants", category: "reminder", priority: "low" },
+  ])
+
+  const refusals = try Effect.forEach(
+    ["", "?nativeTransport=false", "?nativeTransport=1", "?nativeTransport=true&limit=1e1", "?nativeTransport=true&nativeEpoch=epoch", "?afterSequence=2"],
+    (query) => list(agent, query))
+  const byCore = try Effect.forEach(["?nativeTransport=true&limit=129", "?nativeTransport=true&limit=0", "?nativeTransport=true&afterSequence=1"], (query) => list(agent, query))
+  const undeclared = try Effect.forEach(["?category=reminder", "?unreadOnly=true", "?page=2"], (query) => list(agent, query))
+  try Effect.try(() => {
+    assert.deepStrictEqual(refusals, refusals.map(() => ({ status: 400, body: { error: "invalid_notification_query" } })))
+    assert.deepStrictEqual(byCore.map(({ status, body }) => [status, (body as { code?: string }).code]), byCore.map(() => [400, "INVALID_NATIVE_NOTIFICATION_CURSOR"]))
+    assert.deepStrictEqual(undeclared.map(({ status }) => status), [404, 404, 404])
+  })
+
+  const opening = try list(agent, "?nativeTransport=true&limit=2")
+  const page = opening.body as NativePage
+  const rest = try list(agent, `?nativeTransport=true&nativeEpoch=${page.nativeEpoch}&afterSequence=${page.nextSequence}&throughSequence=${page.throughSequence}&limit=128`)
+  const changed = try list(agent, `?nativeTransport=true&nativeEpoch=${otherEpoch}&afterSequence=${page.nextSequence}`)
+  try Effect.try(() => {
+    assert.deepStrictEqual([opening.status, page.notifications.map(({ id }) => id), page.complete], [200, [first.id, second.id], false])
+    assert.deepStrictEqual([rest.status, (rest.body as NativePage).notifications.map(({ id }) => id), (rest.body as NativePage).complete], [200, [quiet.id], true])
+    assert.deepStrictEqual([changed.status, (changed.body as { code?: string }).code], [409, "NATIVE_NOTIFICATION_EPOCH_CHANGED"])
+  })
+
+  const marked = try markRead(agent, first.id)
+  const again = try markRead(agent, first.id)
+  const absent = try markRead(agent, absentId)
+  const malformed = try markRead(agent, "not-a-uuid")
+  try Effect.try(() => {
+    assert.deepStrictEqual([marked, again, absent], [
+      { status: 200, body: { ok: true } }, { status: 200, body: { ok: false } }, { status: 200, body: { ok: false } },
+    ])
+    assert.include([400, 404], malformed.status)
+    assert.deepStrictEqual(service.listIncludingExpired().filter((notice) => notice.readAt != null).map(({ id }) => id), [first.id])
+  })
+}, 120_000)
+
+it.effect('Read every workflow approval and result the native pages name, and nothing else (spec/core/notifications/index.md, "A native record carries only closed presentation data, and a workflow notice its exact run route"; spec/workflow/notices.md, "A pending approval is offered again only while its run is unchanged and unsettled"; spec/workflow/notices.md, "A finished result is offered only for its own run, while its owner is current, under one identity per scope, run and version")', effect () => {
+  const agent = try startInProcess(loaded)
+  const service = try inbox(agent)
+  const route = { workflowId: "w1", runId: "r1", versionId: "v1" }
+  const expiresAt = Date.now() + 3_600_000
+  const opened = "Open the run to see what it did."
+  const [result] = try notifyAll(service, [
+    { title: "Morning note finished", body: opened, category: "workflow", source: "workflow", groupKey: "workflow-run:r1", data: { kind: "result", ...route, note: "producer only" } },
+    { title: "Send the summary", body: "Review this workflow step.", category: "workflow", source: "workflow", groupKey: "workflow-approval:r2:tell:0",
+      data: { kind: "approval", workflowId: "w1", runId: "r2", versionId: "v1", proposalId: "tell:0", expiresAt }, expiresAt },
+    { title: "Half a route", body: opened, category: "workflow", data: { kind: "result", workflowId: "w1", versionId: "v1" } },
+    { title: "Approval without expiry", category: "workflow", data: { kind: "approval", ...route, proposalId: "tell:1" } },
+    { title: "Unknown kind", body: opened, category: "workflow", data: { kind: "receipt", ...route } },
+    { title: "Not a workflow", body: opened, category: "reminder", data: { kind: "result", ...route } },
+    ...Array.from({ length: 125 }, (_, index) => ({ title: `Message ${index}`, category: "message" as const })),
+    { title: "Evening note stopped with an error", body: opened, category: "workflow", source: "workflow", data: { kind: "result", workflowId: "w2", runId: "r9", versionId: "v4" } },
+  ])
+  const firstPage = (try list(agent, "?nativeTransport=true")).body as NativePage
+  const asked: string[] = []
+  const request: WorkflowRequest = effect (path) => {
+    asked.push(path)
+    const answer = try orDie(ask(agent, { method: "GET", path }))
+    if (answer.status !== 200) throw workflowHttpError(answer.status, answer.body)
+    return answer.body
+  }
+  const offers = try workflowNoticeOffers(request)
+  try Effect.try(() => {
+    assert.deepStrictEqual([firstPage.complete, firstPage.notifications.find(({ id }) => id === result.id)?.data], [false, { kind: "result", ...route }])
+    assert.deepStrictEqual(offers, {
+      approvals: [{ kind: "approval", workflowId: "w1", runId: "r2", versionId: "v1", proposalId: "tell:0", expiresAt }],
+      results: [
+        { ...route, title: "Morning note finished", body: opened },
+        { workflowId: "w2", runId: "r9", versionId: "v4", title: "Evening note stopped with an error", body: opened },
+      ],
+    })
+    assert.deepStrictEqual(asked, [
+      "/api/notifications?nativeTransport=true",
+      `/api/notifications?nativeTransport=true&nativeEpoch=${firstPage.nativeEpoch}&afterSequence=${firstPage.nextSequence}&throughSequence=${firstPage.throughSequence}`,
+    ])
+  })
+}, 120_000)
+
+it.effect('A stopped inbox answers 503 with Retry-After, never an empty list or ok false (spec/agent/notifications.md, "An inbox that is not durably available answers 503, never an empty list")', effect () => {
+  const agent = try startInProcess(loaded)
+  const service = try inbox(agent)
+  const [notice] = try notifyAll(service, [{ title: "Call the dentist", category: "reminder" }])
+  try host("inbox stop", () => service.stop())
+  const asked = try call(agent, { method: "GET", path: "/api/notifications?nativeTransport=true" })
+  const marked = try markRead(agent, notice.id)
+  const malformed = try list(agent, "?nativeTransport=true&limit=1e1")
+  try Effect.try(() => {
+    assert.ok("status" in asked)
+    if (!("status" in asked)) return
+    assert.strictEqual(asked.status, 503)
+    assert.match(asked.headers["retry-after"] ?? "", /^[1-9][0-9]*$/)
+    assert.deepStrictEqual([marked.status, malformed.status], [503, 400])
+  })
+}, 120_000)
+
+schema NoticeFrame {
+  readonly type: "event"
+  readonly event: {
+    readonly type: "agent_event"
+    readonly stream: "notification"
+    readonly runId: string
+    readonly seq: Schema.Int
+    readonly payload: { readonly id: string }
+  }
+}
+
+it.effect('A committed notice and its read mark arrive on the notification stream (spec/agent/notifications.md, "Story: Read my notices and mark them read from my own client")', effect () => {
+  const agent = try startInProcess(loaded)
+  const service = try inbox(agent)
+  const feed = try events(agent, ["notification"])
+  const subscribed = try host("notification subscription", () => feed.next())
+  assert.include(JSON.stringify(subscribed), '"subscribed"')
+  const runtime = agent.agent.runtime
+  const bus = runtime.getService<AgentEventService>(AgentEventService.serviceType)
+  if (bus === null) return try die("The Agent event service was not started")
+  bus.emit({ runId: absentId, stream: "notification", data: { type: "notification", notification: { id: absentId } }, agentId: runtime.agentId })
+  const [notice] = try notifyAll(service, [{ title: "Parcel delivered", category: "system" }])
+  const decodeFrame = Schema.decodeUnknownEffect(NoticeFrame, { onExcessProperty: "error" })
+  const created = try decodeFrame(try host("committed notification frame", () => feed.next()))
+  assert.deepStrictEqual(created.event, { type: "agent_event", stream: "notification", runId: notice.id, seq: 1, payload: { id: notice.id } })
+  const marked = try markRead(agent, notice.id)
+  const updated = try decodeFrame(try host("committed notification read frame", () => feed.next()))
+  assert.deepStrictEqual([marked, updated.event], [{ status: 200, body: { ok: true } }, { ...created.event, seq: 2 }])
+}, 120_000)

@@ -1,0 +1,386 @@
+// spec/agent/plugins/bundle.md, "Story: Ship one agent bundle whose contents and actions are known"; spec/agent/plugins/bundle.md, "A build is refused unless every input that emitted bytes comes from a named package inside the source root, at least one did, and the entry imports nothing but Node built-ins"; spec/agent/plugins/bundle.md, "An excluded package never ships"; spec/agent/plugins/bundle.md, "A build pins the workflow worker's digest exactly when it carries the workflow plugin"; spec/agent/plugins/bundle.md, "A manifest is read only for its own bundle bytes and only when it is one a build could write"; spec/agent/plugins/bundle.md, "Profile groups name only bundled plugins, each in one group"; spec/agent/plugins/bundle.md, "A variant's load list is its core, view and, on an AOSP image, AOSP-only plugins in group order, then the optional plugins the product chose"
+module node {
+  import { spawn } from "node:child_process"
+  import { createHash, randomUUID } from "node:crypto"
+  import { once } from "node:events"
+  import { existsSync } from "node:fs"
+  import { copyFile, mkdir, mkdtemp, readFile, realpath, rename, rm, writeFile } from "node:fs/promises"
+  import { createRequire, isBuiltin } from "node:module"
+  import { tmpdir } from "node:os"
+  import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path"
+  import { Schema } from "effect"
+  import { build, parseAst, type Plugin } from "vite"
+  import {
+    buildVerdict, excludedPackages, inputDisposition, localInferencePlugin, manifestReadable, packageRows, pluginsWellFormed, profilesWellFormed,
+    workflowPlugin, type Build, type BuildVerdict, type BundleInput, type BundleManifest as ManifestFacts, type ExternalImport,
+    type ListedAction, type LoadSmoke, type PayloadFile, type WorkerDigest,
+  } from "../../gen/agent__plugins__bundle.ts"
+  import type { ProductPlugin } from "../../gen/agent__host__launch.ts"
+  import { createDeviceStorageSnapshot } from "../storage/index.vibe"
+  import { migrations } from "../storage/schema.vibe"
+  import { agentCliModule, bundleEntrySource } from "./entry.vibe"
+  import { groupLists, readManifest, type BundleManifest, type ProfileGroups } from "./manifest.schema.vibe"
+  import { admitPayload, BundleManifestUnreadable, BundleRefused } from "./payload.vibe"
+
+  export interface BuildAgentBundle {
+    readonly plugins: readonly string[]
+    readonly productPlugin?: string
+    readonly profiles?: ProfileGroups
+    readonly outDir: string
+    readonly sourceCommit: string
+    readonly sourceRoot?: string
+    readonly entry?: string
+  }
+
+  interface SourceInput {
+    readonly input: BundleInput
+    readonly directory?: string
+  }
+
+  const PackageSource = Schema.Struct({
+    name: Schema.Trimmed.check(Schema.isMinLength(1)),
+    version: Schema.Trimmed.check(Schema.isMinLength(1)),
+  })
+  const decodePackage = Schema.decodeUnknownOption(Schema.fromJsonString(PackageSource))
+  const decodeSmoke = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Struct({
+    loaded: Schema.Array(Schema.String),
+    registered: Schema.Array(Schema.Struct({ name: Schema.String, umbrella: Schema.optionalKey(Schema.String) })),
+  })))
+  const Sha256 = Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/))
+  const decodeWorker = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Struct({
+    executable: Schema.Trimmed.check(Schema.isMinLength(1)), sha256: Sha256,
+  })))
+  const assets = ["pglite.wasm", "initdb.wasm", "pglite.data"]
+  const vectorExtension = "vector.tar.gz"
+  const entryId = "\0eliza-agent-bundle-entry"
+  const excludedPrefix = "\0eliza-excluded:"
+  const builderToolPrefix = "\0eliza-builder-tool:"
+  const builderTools: Readonly<Record<string, readonly string[]>> = { vite: ["build", "parseAst"] }
+  const rolldownRuntime = "\0rolldown/runtime.js"
+  const compiledModule = /^(.+\.vibex?)\.[^./\\]+\.jsx?$/
+  const noWorker: WorkerDigest = { tag: "NoWorker" }
+  const didNotBoot: LoadSmoke = { tag: "DidNotBoot" }
+  const digest = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex")
+  const missing = (error: unknown) => typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT"
+
+  function manifestFacts(manifest: BundleManifest): ManifestFacts {
+    return {
+      ...manifest,
+      packages: [...manifest.packages],
+      plugins: [...manifest.plugins],
+      productPlugin: manifest.productPlugin === undefined ? { tag: "NoProductPlugin" } : { tag: "NamedProductPlugin", name: manifest.productPlugin },
+      workflowWorker: manifest.workflowWorkerSha256 === undefined ? noWorker : { tag: "WorkerSha256", sha256: manifest.workflowWorkerSha256 },
+      actions: manifest.actions.map(({ name, umbrella }): ListedAction =>
+        ({ name, origin: umbrella === undefined ? { tag: "TopLevel" } : { tag: "PromotedFrom", umbrella } })),
+    }
+  }
+
+  export async function readBundleManifest(dir: string): Promise<BundleManifest> {
+    try {
+      const manifest = readManifest(await readFile(join(dir, "manifest.json"), "utf8"))
+      if (manifestReadable(manifestFacts(manifest), digest(await readFile(join(dir, "agent.mjs"))))) return manifest
+    } catch (error) {
+      if (!missing(error) && !Schema.isSchemaError(error)) throw error
+    }
+    throw new BundleManifestUnreadable({ directory: dir })
+  }
+
+  function inside(root: string, file: string): boolean {
+    const path = relative(root, file)
+    return !isAbsolute(path) && path !== ".." && !path.startsWith("../")
+  }
+
+  async function sourcePackage(root: string, file: string, emittedBytes: number): Promise<SourceInput> {
+    const source = await realpath(file)
+    if (!inside(root, source)) return { input: { emittedBytes, insideSource: false, identity: { tag: "Unreadable" } } }
+    for (let directory = dirname(source); inside(root, directory); directory = dirname(directory)) {
+      try {
+        const bytes = await readFile(join(directory, "package.json"))
+        const metadata = decodePackage(bytes.toString("utf8"))
+        if (metadata._tag === "Some") {
+          const identity = { tag: "Identified" as const, ...metadata.value, manifestSha256: digest(bytes) }
+          return { input: { emittedBytes, insideSource: true, identity }, directory }
+        }
+      } catch (error) {
+        if (!missing(error)) throw error
+      }
+      if (directory === root || directory === dirname(directory)) break
+    }
+    return { input: { emittedBytes, insideSource: true, identity: { tag: "Unreadable" } } }
+  }
+
+  function inputFile(id: string, requireFromVite: NodeJS.Require): string | undefined {
+    if (id === rolldownRuntime) return requireFromVite.resolve("rolldown/package.json")
+    const file = id.split("?")[0] ?? id
+    if (file.startsWith("\0")) return undefined
+    return existsSync(file) ? file : compiledModule.exec(file)?.[1]
+  }
+
+  function packagePath(root: string, file: string): string {
+    for (let directory = dirname(file); inside(root, directory) && directory !== dirname(directory); directory = dirname(directory)) {
+      if (existsSync(join(directory, "package.json"))) return relative(directory, file)
+    }
+    return basename(file)
+  }
+
+  function builderToolModule(name: string): string {
+    return [
+      `const refuse = () => { throw new Error(${JSON.stringify(`${name} builds the device bundle and is not part of it`)}) }`,
+      ...(builderTools[name] ?? []).map((imported) => `export const ${imported} = refuse`),
+      "export default refuse",
+      "",
+    ].join("\n")
+  }
+
+  function excludedModule(name: string): string {
+    return [
+      `const refuse = () => { throw new Error(${JSON.stringify(`${name} is not part of the device bundle`)}) }`,
+      "export default new Proxy(refuse, { get: refuse, apply: refuse, construct: refuse })",
+      "",
+    ].join("\n")
+  }
+
+  function emittedImports(code: string): string[] {
+    const specifiers: string[] = []
+    const pending: unknown[] = [parseAst(code)]
+    while (pending.length > 0) {
+      const node = pending.pop()
+      if (typeof node !== "object" || node === null) continue
+      if ("type" in node && "source" in node &&
+          (node.type === "ImportDeclaration" || node.type === "ImportExpression" ||
+           node.type === "ExportAllDeclaration" || node.type === "ExportNamedDeclaration")) {
+        const source = node.source
+        if (typeof source === "object" && source !== null) {
+          if ("value" in source && typeof source.value === "string") specifiers.push(source.value)
+          if ("type" in source && source.type === "TemplateLiteral" &&
+              "quasis" in source && Array.isArray(source.quasis) && source.quasis.length === 1) {
+            const quasi: unknown = source.quasis[0]
+            if (typeof quasi === "object" && quasi !== null && "value" in quasi &&
+                typeof quasi.value === "object" && quasi.value !== null &&
+                "cooked" in quasi.value && typeof quasi.value.cooked === "string") specifiers.push(quasi.value.cooked)
+          }
+        }
+      }
+      for (const child of Object.values(node)) if (typeof child === "object" && child !== null) pending.push(child)
+    }
+    return specifiers
+  }
+
+  async function workflowWorker(directory: string | undefined): Promise<WorkerDigest> {
+    if (directory === undefined) return noWorker
+    const output = join(directory, "dist")
+    try {
+      const worker = decodeWorker(await readFile(join(output, "workflow-worker.json"), "utf8"))
+      if (worker._tag === "None") return noWorker
+      const executable = resolve(output, worker.value.executable)
+      if (!inside(output, executable) || digest(await readFile(executable)) !== worker.value.sha256) return noWorker
+      return { tag: "WorkerSha256", sha256: worker.value.sha256 }
+    } catch (error) {
+      if (missing(error)) return noWorker
+      throw error
+    }
+  }
+
+  async function loadSmoke(executable: string): Promise<LoadSmoke> {
+    const state = await mkdtemp(join(tmpdir(), "agent-smoke-"))
+    try {
+      const child = spawn(process.execPath, [executable, "smoke", "--state", state], {
+        cwd: dirname(executable), stdio: ["ignore", "pipe", "inherit"], timeout: 180_000,
+      })
+      let stdout = ""
+      child.stdout.setEncoding("utf8").on("data", (data: string) => { stdout += data })
+      const [code] = await once(child, "close") as [number | null]
+      const lines = stdout.split("\n").filter((line) => line !== "")
+      const report = lines.length === 1 ? decodeSmoke(lines[0]) : undefined
+      if (code !== 0 || report?._tag !== "Some") return didNotBoot
+      return {
+        tag: "Booted",
+        loaded: [...report.value.loaded],
+        registered: report.value.registered.map(({ name, umbrella }): ListedAction =>
+          ({ name, origin: umbrella === undefined ? { tag: "TopLevel" } : { tag: "PromotedFrom", umbrella } })),
+      }
+    } finally { await rm(state, { recursive: true, force: true }) }
+  }
+
+  function refuse(verdict: BuildVerdict, facts: Build, refusedInputs: readonly string[], refusedFiles: readonly PayloadFile[]): void {
+    if (verdict === "Built") return
+    throw new BundleRefused({ verdict, detail: JSON.stringify({
+      refusedInputs,
+      unbundled: facts.externals.filter((external) => external.tag !== "NodeBuiltin"),
+      packages: packageRows(facts).map(({ name }) => name),
+      refusedFiles,
+      smoke: facts.smoke,
+    }) })
+  }
+
+  async function publish(staging: string, outDir: string): Promise<void> {
+    const backup = join(dirname(outDir), `.agent-bundle-old-${randomUUID()}`)
+    let moved = false
+    try {
+      await rename(outDir, backup)
+      moved = true
+    } catch (error) {
+      if (!missing(error)) throw error
+    }
+    try { await rename(staging, outDir) }
+    catch (error) {
+      if (moved) await rename(backup, outDir)
+      throw error
+    }
+    if (moved) await rm(backup, { recursive: true, force: true })
+  }
+
+  export async function buildFrom(options: BuildAgentBundle, moduleUrl: string): Promise<BundleManifest> {
+    const { plugins, productPlugin, profiles, sourceCommit } = options
+    const product: ProductPlugin = productPlugin === undefined ? { tag: "NoProductPlugin" } : { tag: "NamedProductPlugin", name: productPlugin }
+    if (!pluginsWellFormed([...plugins], product) || (profiles !== undefined && !profilesWellFormed(groupLists(profiles), [...plugins]))) {
+      throw new BundleRefused({ verdict: "InputsMalformed", detail: JSON.stringify({ plugins, productPlugin, profiles }) })
+    }
+    if (!/^[a-f0-9]{40}$/.test(sourceCommit)) throw new Error("The bundle requires a pinned source commit")
+    const sourceRoot = await realpath(options.sourceRoot ?? process.cwd())
+    const outDir = resolve(options.outDir)
+    const parent = dirname(outDir)
+    await mkdir(parent, { recursive: true })
+    const staging = await mkdtemp(join(parent, ".agent-bundle-"))
+    const emitted = new Map<string, number>()
+    const externals: ExternalImport[] = []
+    const fromSource = agentCliModule.endsWith(".vibe")
+    const entry = bundleEntrySource({ plugins, productPlugin })
+    const consumerEntry = options.entry === undefined ? undefined : await realpath(resolve(sourceRoot, options.entry))
+    const shell: Plugin = {
+      name: "eliza-agent-bundle",
+      enforce: "pre",
+      resolveId(id) {
+        if (id === entryId) return consumerEntry ?? entryId
+        if (Object.hasOwn(builderTools, id)) return `${builderToolPrefix}${id}`
+        const excluded = excludedPackages.find((name) => id === name || id.startsWith(`${name}/`))
+        return excluded === undefined ? null : `${excludedPrefix}${excluded}`
+      },
+      load(id) {
+        if (id === entryId) return entry
+        if (id.startsWith(builderToolPrefix)) return builderToolModule(id.slice(builderToolPrefix.length))
+        return id.startsWith(excludedPrefix) ? excludedModule(id.slice(excludedPrefix.length)) : null
+      },
+      generateBundle(_options, bundle) {
+        const chunks = Object.values(bundle).filter((output) => output.type === "chunk")
+        if (chunks.length !== 1 || chunks[0]?.fileName !== "agent.mjs") throw new Error("The device runtime did not emit one ESM entry")
+        const chunk = chunks[0]
+        for (const [id, module] of Object.entries(chunk.modules)) {
+          if (module.renderedLength > 0 && id !== entryId && !id.startsWith(excludedPrefix) && !id.startsWith(builderToolPrefix)) emitted.set(id, module.renderedLength)
+        }
+        const hasAmbiguousDynamicEdge = chunk.dynamicImports.includes(chunk.fileName)
+        const dynamicImports = chunk.dynamicImports.filter((id) => id !== chunk.fileName)
+        const outputImports = hasAmbiguousDynamicEdge ? emittedImports(chunk.code) : []
+        for (const id of new Set([...chunk.imports, ...dynamicImports, ...outputImports])) {
+          externals.push(isBuiltin(id) ? { tag: "NodeBuiltin" } : { tag: "Unbundled", specifier: id })
+        }
+      },
+    }
+    const vibelang = fromSource ? [(await import("vibelang-vite")).default()] : []
+    try {
+      await build({
+        configFile: false,
+        root: sourceRoot,
+        publicDir: false,
+        logLevel: "warn",
+        ssr: { noExternal: true, ...(fromSource ? { resolve: { conditions: ["eliza-source", "node", "module", "development|production"] } } : {}) },
+        plugins: [shell, ...vibelang],
+        build: {
+          ssr: true,
+          ssrEmitAssets: true,
+          outDir: staging,
+          emptyOutDir: false,
+          target: "node26",
+          minify: false,
+          reportCompressedSize: false,
+          rollupOptions: {
+            input: { agent: entryId },
+            external: (id) => isBuiltin(id),
+            output: {
+              inlineDynamicImports: true,
+              entryFileNames: "agent.mjs",
+              assetFileNames: (asset) => {
+                const original = asset.originalFileNames[0]
+                return original === undefined ? "[name][extname]" : packagePath(sourceRoot, resolve(sourceRoot, original))
+              },
+            },
+          },
+        },
+      })
+      const requireFromAgent = createRequire(moduleUrl)
+      const requireFromVite = createRequire(requireFromAgent.resolve("vite/package.json"))
+      const inputs: BundleInput[] = []
+      const refusedInputs: string[] = []
+      const directories = new Map<string, string>()
+      for (const [id, emittedBytes] of emitted) {
+        const file = inputFile(id, requireFromVite)
+        const source = file === undefined
+          ? { input: { emittedBytes, insideSource: false, identity: { tag: "Unreadable" as const } } }
+          : await sourcePackage(sourceRoot, file, emittedBytes)
+        inputs.push(source.input)
+        if (inputDisposition(source.input) === "RefusesBuild") refusedInputs.push(id)
+        if (source.directory !== undefined && source.input.identity.tag === "Identified") {
+          directories.set(source.input.identity.name, source.directory)
+        }
+      }
+      const localInference = plugins.includes(localInferencePlugin)
+      const pglite = dirname(requireFromAgent.resolve("@electric-sql/pglite"))
+      for (const asset of localInference ? [...assets, vectorExtension] : assets) await copyFile(join(pglite, asset), join(staging, asset))
+      const snapshot = await createDeviceStorageSnapshot()
+      await writeFile(join(staging, "pglite-migrated.bin"), snapshot.bytes, { mode: 0o644 })
+      const payload = await admitPayload(staging, localInference)
+      const measured: Build = {
+        plugins: [...plugins], productPlugin: product, inputs, externals, files: [...payload.files], smoke: didNotBoot,
+        workflowWorker: noWorker, schemaVersion: migrations.length, snapshotSchemaVersion: snapshot.schemaVersion,
+      }
+      const beforeSmoke = buildVerdict(measured)
+      if (beforeSmoke !== "SmokeFailed") refuse(beforeSmoke, measured, refusedInputs, payload.refused)
+      const executable = join(staging, "agent.mjs")
+      const facts: Build = {
+        ...measured,
+        smoke: await loadSmoke(executable),
+        workflowWorker: plugins.includes(workflowPlugin) ? await workflowWorker(directories.get(workflowPlugin)) : noWorker,
+      }
+      refuse(buildVerdict(facts), facts, refusedInputs, payload.refused)
+      const actions = facts.smoke.tag === "Booted" ? facts.smoke.registered : []
+      const manifest: BundleManifest = {
+        schema: 1,
+        bundleSha256: digest(await readFile(executable)),
+        sourceCommit,
+        node: "26",
+        schemaVersion: facts.schemaVersion,
+        packages: packageRows(facts).sort((a, b) => a.name.localeCompare(b.name)
+          || a.version.localeCompare(b.version) || a.sha256.localeCompare(b.sha256)),
+        plugins: [...plugins],
+        ...(productPlugin === undefined ? {} : { productPlugin }),
+        localInference,
+        ...(facts.workflowWorker.tag === "WorkerSha256" ? { workflowWorkerSha256: facts.workflowWorker.sha256 } : {}),
+        actions: actions.map(({ name, origin }) => origin.tag === "PromotedFrom" ? { name, umbrella: origin.umbrella } : { name }),
+        ...(profiles === undefined ? {} : { profiles: groupLists(profiles) }),
+      }
+      await writeFile(join(staging, "manifest.json"), JSON.stringify(manifest, null, 2) + "\n")
+      const written = await readBundleManifest(staging)
+      await publish(staging, outDir)
+      return written
+    } finally { await rm(staging, { recursive: true, force: true }) }
+  }
+}
+import { buildFrom, type BuildAgentBundle } from node
+import { variantLoadList, type DeviceVariant } from "../../gen/agent__plugins__bundle.ts"
+import { groupLists, type BundleManifest } from "./manifest.schema.vibe"
+export { readBundleManifest, type BuildAgentBundle } from node
+export { ProfileGroups, type BundleManifest } from "./manifest.schema.vibe"
+export type { DeviceVariant } from "../../gen/agent__plugins__bundle.ts"
+export {
+  admitPayload, BundleManifestUnreadable, BundleRefused, excludedPackages, fileAdmitted, fileExtension, modelWeightExtensions,
+  payloadFile, type BuildVerdict, type PayloadAdmission, type PayloadFile,
+} from "./payload.vibe"
+
+export function buildAgentBundle(options: BuildAgentBundle) {
+  return buildFrom(options, import.meta.url)
+}
+
+export function residentLoadList(manifest: BundleManifest, variant: DeviceVariant, chosen: readonly string[] = []): string[] {
+  if (manifest.profiles === undefined) return []
+  return variantLoadList(groupLists(manifest.profiles), variant, [...new Set(chosen)])
+}

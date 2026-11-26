@@ -123,19 +123,19 @@ import {
 } from "./trajectory-provider-attribution.vibe"
 
 module node {
-  import { performance } from "node:perf_hooks"
+  import { isBuffer } from "../utils/buffer.vibe"
 
   /** @throws {never} */
   export function monotonicNow(): number {
-    return performance.now()
+    return globalThis.performance.now()
   }
 
   /** @throws {never} */
   export function binaryInputSize(value: unknown): string {
-    if (Buffer.isBuffer(value)) return `${value.length} bytes`
+    if (isBuffer(value)) return `${value.length} bytes`
     if (typeof Blob !== "undefined" && value instanceof Blob) return `${value.size} bytes`
     if (typeof value === "object" && value !== null && "audio" in value) {
-      if (Buffer.isBuffer(value.audio)) return `${value.audio.length} bytes`
+      if (isBuffer(value.audio)) return `${value.audio.length} bytes`
       if (typeof Blob !== "undefined" && value.audio instanceof Blob) return `${value.audio.size} bytes`
     }
     return "unknown size"
@@ -2402,6 +2402,7 @@ export effect function recordFailedModelTrajectory(core: DispatchCore, args: Fai
 
 module edge {
   import { runDetached, runDetachedSync } from "../edge.vibe"
+  import type { ElizaError } from "../errors.vibe"
   import { isModelProviderFallbackError } from "../security/model-failure.vibe"
   import type { ModelParamsMap, ModelRegistrationInfo, ModelRegistrationMetadata, ModelResultMap, ModelTypeName } from "../types/model.vibe"
   import type { IAgentRuntime } from "../types/runtime.vibe"

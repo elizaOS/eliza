@@ -1,0 +1,364 @@
+// spec/cloud/services/google/mailOperations.md, "Story: Change or send from my mailbox once, as I reviewed it"
+import { refused } from "../../http/refusal.vibe"
+import { googleJson } from "../../providers/google.vibe"
+import { composeAddress, composeMailboxAddress } from "../../google-read.vibe"
+import { rfc822Id } from "./mail-operations.vibe"
+
+module node {
+  import { createHash } from "node:crypto"
+
+  /** @throws {never} */
+  export function base64Text(text: string): string {
+    return Buffer.from(text, "utf8").toString("base64")
+  }
+
+  /** @throws {never} */
+  export function base64urlText(text: string): string {
+    return Buffer.from(text, "utf8").toString("base64url")
+  }
+
+  /** @throws {never} */
+  export function utf8Length(text: string): number {
+    return Buffer.byteLength(text, "utf8")
+  }
+
+  /** @throws {never} */
+  export function inspectBase64(data: string): { canonical: boolean; size: number; sha256: string; content: string | undefined } {
+    const bytes = Buffer.from(data, "base64")
+    const starts = (signature: ReadonlyArray<number>, at = 0) => signature.every((byte, index) => bytes[at + index] === byte)
+    const text = (() => {
+      try {
+        return !new TextDecoder("utf-8", { fatal: true }).decode(bytes).includes("\0")
+      } catch {
+        return false
+      }
+    })()
+    const content = starts([0x25, 0x50, 0x44, 0x46, 0x2d]) ? "application/pdf"
+      : starts([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]) ? "image/png"
+      : starts([0xff, 0xd8, 0xff]) ? "image/jpeg"
+      : starts([0x52, 0x49, 0x46, 0x46]) && starts([0x57, 0x45, 0x42, 0x50], 8) ? "image/webp"
+      : text ? "text/plain"
+      : undefined
+    return { canonical: bytes.toString("base64") === data, size: bytes.length, sha256: createHash("sha256").update(bytes).digest("hex"), content }
+  }
+}
+import { base64Text, base64urlText, inspectBase64, utf8Length } from node
+
+export interface ForwardedPart {
+  readonly partId: string
+  readonly name: string
+  readonly mimeType: string
+  readonly dataBase64: string
+  readonly sha256: string
+}
+
+export interface Forwarded {
+  readonly messageId: string
+  readonly historyId: string
+  readonly parts: ReadonlyArray<ForwardedPart>
+}
+
+export interface ComposeContext {
+  readonly from: string
+  readonly requestId: string
+  readonly grant: { readonly accessToken: string }
+  readonly forwarded: Forwarded | undefined
+}
+
+interface AttachmentReview {
+  readonly name: string
+  readonly mimeType: string
+  readonly size: number
+  readonly sha256: string
+}
+
+interface ForwardedReview extends AttachmentReview {
+  readonly partId: string
+}
+
+type MailReview = {
+  readonly from: string
+  readonly to: ReadonlyArray<string>
+  readonly cc: ReadonlyArray<string>
+  readonly bcc: ReadonlyArray<string>
+  readonly subject: string
+  readonly bodyText: string
+  readonly attachments: ReadonlyArray<AttachmentReview>
+  readonly forwardedAttachments: ReadonlyArray<ForwardedReview>
+}
+
+interface Composed {
+  readonly raw: string
+  readonly threadId?: string
+  readonly review: MailReview
+  readonly digestInput: unknown
+}
+
+interface File extends AttachmentReview {
+  readonly dataBase64: string
+}
+
+interface ReplyBinding {
+  readonly threadId: string
+  readonly inReplyTo: string
+  readonly references: string
+  readonly target: string
+  readonly allRecipients: ReadonlyArray<string>
+}
+
+const maxMessageBytes = 8 * 1024 * 1024
+const maxAttachments = 10
+const maxRecipients = 50
+const gmail = "/gmail/v1/users/me"
+const providerId = /^[A-Za-z0-9_-]{1,256}$/
+const rfcMessageId = /^<[^<>\s]+@[^<>\s]+>$/
+const referenceChain = /^(?:<[^<>\s]+@[^<>\s]+>\s*)+$/
+const headerUnsafe = /[\r\n\0]/
+const mimeToken = /^[a-z0-9][a-z0-9!#$&^_.+-]{0,63}\/[a-z0-9][a-z0-9!#$&^_.+-]{0,63}$/i
+const fileName = /^[\x20-\x2e\x30-\x5b\x5d-\x7e\x80-\uffff]{1,120}$/
+const replyHeaders = ["From", "Reply-To", "To", "Cc", "Subject", "Message-ID", "References"]
+const sendable: Readonly<Record<string, RegExp>> = {
+  "text/plain": /\.txt$/i,
+  "application/pdf": /\.pdf$/i,
+  "image/png": /\.png$/i,
+  "image/jpeg": /\.jpe?g$/i,
+  "image/webp": /\.webp$/i
+}
+
+const Address = Schema.String.check(Schema.isMaxLength(254), Schema.isPattern(composeAddress))
+const Proposal = Schema.Struct({
+  kind: Schema.Literals(["send", "draft-create", "draft-replace"]),
+  mode: Schema.Literals(["compose", "reply", "reply-all", "forward"]),
+  to: Schema.optionalKey(Schema.Array(Address)),
+  cc: Schema.optionalKey(Schema.Array(Address)),
+  bcc: Schema.optionalKey(Schema.Array(Address)),
+  subject: Schema.String.check(Schema.isMaxLength(500)),
+  bodyText: Schema.String.check(Schema.isMaxLength(64000)),
+  replyMessageId: Schema.optionalKey(Schema.String.check(Schema.isPattern(providerId))),
+  draftId: Schema.optionalKey(Schema.String),
+  expectedDigest: Schema.optionalKey(Schema.String),
+  attachments: Schema.optionalKey(Schema.Array(Schema.Struct({ name: Schema.String, mimeType: Schema.String, dataBase64: Schema.String }))),
+  forwardAttachments: Schema.optionalKey(Schema.Struct({ messageId: Schema.String, historyId: Schema.String, partIds: Schema.Array(Schema.String) }))
+})
+const RepliedMessage = Schema.Struct({
+  id: Schema.String,
+  threadId: Schema.String,
+  labelIds: Schema.optionalKey(Schema.Array(Schema.String)),
+  payload: Schema.Struct({ headers: Schema.optionalKey(Schema.Array(Schema.Struct({ name: Schema.String, value: Schema.String }))) })
+})
+
+type Replied = typeof RepliedMessage.Type
+
+function headerValues(message: Replied, name: string): ReadonlyArray<string> {
+  return (message.payload.headers ?? []).filter((header) => header.name.toLowerCase() === name.toLowerCase()).map((header) => header.value.trim())
+}
+
+function splitList(value: string): ReadonlyArray<string> {
+  const entries: string[] = []
+  let current = ""
+  let quoted = false
+  let angled = false
+  for (let index = 0; index < value.length; index += 1) {
+    const character = value[index] ?? ""
+    if (quoted && character === "\\") {
+      current += character + (value[index + 1] ?? "")
+      index += 1
+      continue
+    }
+    if (character === "\"" && !angled) quoted = !quoted
+    if (character === "<" && !quoted) angled = true
+    if (character === ">" && !quoted) angled = false
+    if (character === "," && !quoted && !angled) {
+      entries.push(current.trim())
+      current = ""
+      continue
+    }
+    current += character
+  }
+  entries.push(current.trim())
+  return entries.filter((entry) => entry !== "")
+}
+
+function sameAddress(left: string, right: string): boolean {
+  return left.toLowerCase() === right.toLowerCase()
+}
+
+function distinct(addresses: ReadonlyArray<string>, without: ReadonlyArray<string>): ReadonlyArray<string> {
+  const kept: string[] = []
+  for (const address of addresses) {
+    if (![...without, ...kept].some((other) => sameAddress(other, address))) kept.push(address)
+  }
+  return kept
+}
+
+function replySubject(parent: string | undefined): ReadonlyArray<string> {
+  if (parent === undefined || parent.trim() === "") return ["Re:", "Re: (no subject)"]
+  return [/^re:/i.test(parent) ? parent : `Re: ${parent}`]
+}
+
+effect function replyBinding(context: ComposeContext, messageId: string, subject: string) {
+  const query = replyHeaders.map((name) => `metadataHeaders=${name}`).join("&")
+  const answer = googleJson(context.grant.accessToken, "GET", `${gmail}/messages/${messageId}?format=metadata&${query}`, {}) catch effect (failure) => {
+    throw failure._tag === "NotFound" ? refused("NotFound") : failure._tag === "InvalidGrant" ? refused("GoogleReauthRequired") : refused("ProviderUnavailable")
+  }
+  const decoded = Schema.decodeUnknownOption(RepliedMessage)(answer)
+  if (Option.isNone(decoded) || decoded.value.id !== messageId || !providerId.test(decoded.value.threadId)) throw refused("ProviderInvalidResponse")
+  const message = decoded.value
+  if ((message.labelIds ?? []).includes("TRASH")) throw refused("PreconditionFailed")
+  const replyTo = headerValues(message, "Reply-To")
+  const destination = replyTo.length > 0 ? replyTo : headerValues(message, "From")
+  const ids = headerValues(message, "Message-ID")
+  const subjects = headerValues(message, "Subject")
+  const chains = headerValues(message, "References")
+  const target = destination.length === 1 ? composeMailboxAddress(destination[0] ?? "") : undefined
+  const parentId = ids[0] ?? ""
+  if (target === undefined || ids.length !== 1 || parentId.length > 254 || !rfcMessageId.test(parentId) || subjects.length > 1 || chains.length > 1) throw refused("PreconditionFailed")
+  const chain = chains[0]
+  if (chain !== undefined && (!referenceChain.test(chain) || chain.split(/\s+/).some((identity) => identity.length > 254))) throw refused("PreconditionFailed")
+  const allowed = replySubject(subjects[0])
+  if (!allowed.includes(allowed.length > 1 ? subject.trim() : subject)) throw refused("InvalidRequest")
+  const listed = [...headerValues(message, "To"), ...headerValues(message, "Cc")].flatMap(splitList).map(composeMailboxAddress)
+  if (listed.some((address) => address === undefined)) throw refused("PreconditionFailed")
+  return {
+    threadId: message.threadId,
+    inReplyTo: parentId,
+    references: chain === undefined ? parentId : `${chain} ${parentId}`,
+    target,
+    allRecipients: listed.filter((address): address is string => address !== undefined)
+  } satisfies ReplyBinding
+}
+
+effect function localFile(file: { readonly name: string; readonly mimeType: string; readonly dataBase64: string }) {
+  if (!fileName.test(file.name) || file.name.trim() === "" || !(sendable[file.mimeType]?.test(file.name) ?? false)) throw refused("InvalidRequest")
+  const facts = inspectBase64(file.dataBase64)
+  if (!facts.canonical || facts.size === 0 || facts.content !== file.mimeType) throw refused("InvalidRequest")
+  return { name: file.name, mimeType: file.mimeType, size: facts.size, sha256: facts.sha256, dataBase64: file.dataBase64 } satisfies File
+}
+
+effect function forwardedFile(part: ForwardedPart) {
+  const facts = inspectBase64(part.dataBase64)
+  if (!facts.canonical || facts.sha256 !== part.sha256) throw refused("ProviderInvalidResponse")
+  const name = fileName.test(part.name) && part.name.trim() !== "" && part.name !== "." && part.name !== ".." ? part.name : "attachment"
+  const mimeType = mimeToken.test(part.mimeType) ? part.mimeType.toLowerCase() : "application/octet-stream"
+  return { partId: part.partId, name, mimeType, size: facts.size, sha256: facts.sha256, dataBase64: part.dataBase64 } satisfies File & ForwardedReview
+}
+
+function encodedSubject(subject: string): string {
+  if (subject === "") return ""
+  const chunks: string[] = []
+  let current = ""
+  for (const point of subject) {
+    if (current !== "" && utf8Length(current + point) > 42) {
+      chunks.push(current)
+      current = ""
+    }
+    current += point
+  }
+  chunks.push(current)
+  return chunks.map((chunk) => `=?UTF-8?B?${base64Text(chunk)}?=`).join("\r\n ")
+}
+
+function folded(base64: string): string {
+  return base64.match(/.{1,76}/g)?.join("\r\n") ?? ""
+}
+
+function recipientHeader(name: string, addresses: ReadonlyArray<string>): ReadonlyArray<string> {
+  return addresses.length === 0 ? [] : [`${name}: ${addresses.join(",\r\n ")}`]
+}
+
+function dispositionName(name: string): string {
+  return encodeURIComponent(name).replace(/['()*]/g, (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`)
+}
+
+function mimeText(review: MailReview, requestId: string, binding: ReplyBinding | undefined, files: ReadonlyArray<File>): string {
+  const body = folded(base64Text(review.bodyText.replace(/\r?\n/g, "\r\n")))
+  const headers = [
+    `From: ${review.from}`,
+    ...recipientHeader("To", review.to),
+    ...recipientHeader("Cc", review.cc),
+    ...recipientHeader("Bcc", review.bcc),
+    `Subject: ${encodedSubject(review.subject)}`,
+    `Message-ID: <${rfc822Id(requestId)}>`,
+    ...(binding === undefined ? [] : [`In-Reply-To: ${binding.inReplyTo}`, `References: ${binding.references.split(/\s+/).join("\r\n ")}`]),
+    "MIME-Version: 1.0"
+  ]
+  const plain = ["Content-Type: text/plain; charset=UTF-8", "Content-Transfer-Encoding: base64", "", body]
+  if (files.length === 0) return [...headers, ...plain].join("\r\n")
+  const boundary = `eliza-${requestId.toLowerCase()}`
+  return [
+    ...headers,
+    `Content-Type: multipart/mixed;\r\n boundary="${boundary}"`,
+    "",
+    `--${boundary}`,
+    ...plain,
+    ...files.flatMap((file) => [
+      `--${boundary}`,
+      `Content-Type: ${file.mimeType}`,
+      `Content-Disposition: attachment; filename*=UTF-8''${dispositionName(file.name)}`,
+      "Content-Transfer-Encoding: base64",
+      "",
+      folded(file.dataBase64)
+    ]),
+    `--${boundary}--`
+  ].join("\r\n")
+}
+
+function attachmentReview(file: File): AttachmentReview {
+  return { name: file.name, mimeType: file.mimeType, size: file.size, sha256: file.sha256 }
+}
+
+export effect function composeMessage(raw: unknown, context: ComposeContext) {
+  const decoded = Schema.decodeUnknownOption(Proposal, { onExcessProperty: "error" })(raw)
+  if (Option.isNone(decoded)) throw refused("InvalidRequest")
+  const proposal = decoded.value
+  const replying = proposal.mode === "reply" || proposal.mode === "reply-all"
+  if (headerUnsafe.test(proposal.subject) || replying !== (proposal.replyMessageId !== undefined)) throw refused("InvalidRequest")
+  const source = proposal.forwardAttachments
+  const held = context.forwarded
+  if ((source === undefined) !== (held === undefined) || (source !== undefined && proposal.mode !== "forward")) throw refused("InvalidRequest")
+  if (source !== undefined && held !== undefined && (source.messageId !== held.messageId || source.historyId !== held.historyId || source.partIds.join("\n") !== held.parts.map((part) => part.partId).join("\n"))) throw refused("InvalidRequest")
+  const binding = replying ? try replyBinding(context, proposal.replyMessageId ?? "", proposal.subject) : undefined
+  const to = binding === undefined ? proposal.to ?? [] : proposal.to ?? [binding.target]
+  const cc = binding !== undefined && proposal.mode === "reply-all" && proposal.cc === undefined
+    ? distinct(binding.allRecipients, [context.from, ...to])
+    : proposal.cc ?? []
+  const bcc = proposal.bcc ?? []
+  const count = to.length + cc.length + bcc.length
+  if (count > maxRecipients || (proposal.kind === "send" && count === 0)) throw refused("InvalidRequest")
+  if (binding !== undefined && !to.some((address) => sameAddress(address, binding.target))) throw refused("InvalidRequest")
+  const local: File[] = []
+  for (const file of proposal.attachments ?? []) local.push(try localFile(file))
+  const forwarded: Array<File & ForwardedReview> = []
+  for (const part of context.forwarded?.parts ?? []) forwarded.push(try forwardedFile(part))
+  const files: ReadonlyArray<File> = [...local, ...forwarded]
+  if (files.length > maxAttachments || new Set(files.map((file) => file.name.toLowerCase())).size !== files.length) throw refused("InvalidRequest")
+  const review: MailReview = {
+    from: context.from,
+    to,
+    cc,
+    bcc,
+    subject: proposal.subject,
+    bodyText: proposal.bodyText,
+    attachments: local.map(attachmentReview),
+    forwardedAttachments: forwarded.map((file) => ({ partId: file.partId, ...attachmentReview(file) }))
+  }
+  const mime = mimeText(review, context.requestId, binding, files)
+  if (utf8Length(mime) > maxMessageBytes) throw refused("ContentTooLarge")
+  const encoded = base64urlText(mime)
+  return {
+    raw: encoded,
+    ...(binding === undefined ? {} : { threadId: binding.threadId }),
+    review,
+    digestInput: {
+      kind: proposal.kind,
+      mode: proposal.mode,
+      draftId: proposal.draftId,
+      expectedDigest: proposal.expectedDigest,
+      replyMessageId: proposal.replyMessageId,
+      threadId: binding?.threadId,
+      forwardSource: context.forwarded === undefined ? undefined : { messageId: context.forwarded.messageId, historyId: context.forwarded.historyId },
+      review,
+      raw: encoded
+    }
+  } satisfies Composed
+}

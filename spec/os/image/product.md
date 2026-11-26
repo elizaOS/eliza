@@ -5,7 +5,7 @@ the two device profiles the os package pins: a Pixel 10a (`stallion`) kept
 on its stock factory vendor partition, or the Cuttlefish x86_64 phone
 (`cf_x86_64_phone`). The os package names no product and ships no default
 identity. The writer is `composeProduct` and `enrollUpdater` in
-`src/image/compose-product.vibe`, exported from `@elizaos/os/image`; the
+`src/image/compose-product.vibe`, exported from `@elizaos/os`; the
 sources are develop's `pixel10a-product.ts`, `pixel10a-brand-assets.mjs`,
 `cuttlefish-product.mjs`, `system-updater-staging.mjs`,
 `build-bootanimation.ts` and the brand-config schema.
@@ -16,9 +16,11 @@ and module names, model, brand and manufacturer text, release configuration,
 Pixel config MIME type), counts its unset or placeholder values, lowercases
 the brand into the token the [source lock](./sourceLock.md) admits, reads
 which outputs already exist, and reads the product makefiles and the boot
-animation archive. It builds on a source verdict that admitted this product,
-a launcher staged by [launcher staging](./staging.md), and the clock
-requirement of [image provisioning](./provisioning.md). Composition is
+animation archive. It verifies the checkout the request names against the
+profile it names, reads whether the output lies inside that checkout, and
+builds on that fresh verdict once it admitted this product, a launcher staged by
+[launcher staging](./staging.md), and the clock requirement of
+[image provisioning](./provisioning.md). Composition is
 staging output: only a boot of the built image shows what the device does.
 
 ## Story: Compose my product from a pinned device profile
@@ -32,9 +34,12 @@ staging output: only a boot of the built image shows what the device does.
 
 The device profile is a variant, so Pixel-only fields (the hardware config
 identity) and Cuttlefish-only fields (host packages and platform
-certificate) cannot be mixed. The source verdict must have admitted this
-brand token, the profile's lock target and the build purpose; the source
-lock refuses a brand mismatch and a development-only lock for production.
+certificate) cannot be mixed. The source verdict must come from the
+profile pinned for the descriptor, a physical device's lock for a Pixel and
+a virtual one for Cuttlefish, over the checkout that holds the output, and
+must have admitted this brand token, the profile's lock target and the build
+purpose; the source lock refuses a brand mismatch and a development-only
+lock for production.
 
 ```quint
 import apk.* from "./apk"
@@ -57,14 +62,16 @@ pure def pinnedSourceProfile(d: ProductDescriptor): str = if (isPixel(d)) "pixel
 pure def lockTarget(d: ProductDescriptor): str = if (isPixel(d)) "stallion" else "cf_x86_64_phone"
 pure def deviceName(d: ProductDescriptor): str = if (isPixel(d)) "stallion" else "vsoc_x86_64_only"
 pure def refuseWhen(found: bool, problem: CompositionProblem): Set[CompositionProblem] = if (found) Set(problem) else Set()
-pure def sourceAdmits(c: CompositionCall): bool = c.source.verdict == V::Match and
+pure def sourceAdmits(c: CompositionCall): bool = c.source.verdict == V::Match and c.outputInCheckout and
+  c.source.lock.name == pinnedSourceProfile(c.descriptor) and (isPixel(c.descriptor) iff (c.source.lock.device != V::VirtualDevice)) and
   c.source.admitted.includes({ brand: c.brandToken, product: { brand: c.brandToken, target: lockTarget(c.descriptor) }, purpose: c.purpose })
 pure def sourceProblems(c: CompositionCall): Set[CompositionProblem] =
   refuseWhen(c.descriptor.schemaVersion != 1 or not(c.descriptor.syntaxValid), DescriptorInvalid)
     .union(refuseWhen(c.descriptor.sourceProfile != pinnedSourceProfile(c.descriptor), SourceProfileNotPinned))
     .union(refuseWhen(not(sourceAdmits(c)), SourceNotAdmitted))
 pure def lawOnlyAnAdmittedPinnedSourceComposes(c: CompositionCall): bool = compositionAdmitted(c) implies
-  (c.descriptor.sourceProfile == pinnedSourceProfile(c.descriptor) and c.source.verdict == V::Match and c.source.admitted.some(a => a.product.target == lockTarget(c.descriptor)))
+  (c.descriptor.sourceProfile == pinnedSourceProfile(c.descriptor) and c.source.lock.name == pinnedSourceProfile(c.descriptor) and c.outputInCheckout and
+    (isPixel(c.descriptor) iff (c.source.lock.device != V::VirtualDevice)) and c.source.verdict == V::Match and c.source.admitted.some(a => a.product.target == lockTarget(c.descriptor)))
 pure def lawProductionNeedsAReleaseLock(c: CompositionCall): bool =
   (compositionAdmitted(c) and c.purpose == V::Production and V::alwaysProductionNeedsAReleaseLock(c.source)) implies not(c.source.lock.developmentOnly)
 ```
@@ -169,7 +176,7 @@ pure def lawPlaceholderNeverReachesProduction(c: CompositionCall): bool = (c.pur
 
 ```quint
 type CompositionCall = { descriptor: ProductDescriptor, purpose: V::BuildPurpose, brandToken: str, source: V::SourceVerdict, launcher: St::LauncherDescriptor,
-  existing: List[CompositionOutput], settings: BuildSettings, bootArchive: BootArchive, clockLines: int, updater: UpdaterSource }
+  existing: List[CompositionOutput], settings: BuildSettings, bootArchive: BootArchive, clockLines: int, updater: UpdaterSource, outputInCheckout: bool }
 pure def compositionProblems(c: CompositionCall): Set[CompositionProblem] =
   sourceProblems(c).union(launcherProblems(c)).union(settingsProblems(c)).union(productionProblems(c))
     .union(refuseWhen(outputsOf(c.descriptor).some(o => c.existing.includes(o)), OutputExists))
@@ -182,21 +189,27 @@ pure val acmePixel: ProductDescriptor = { schemaVersion: 1, syntaxValid: true, p
   launcherModule: "AcmeHome", launcherPackage: "com.acme.home", listener: NoListener, systemUpdater: true, firstRun: true, bootAnimation: StockBootAnimation }
 pure val acmeCuttlefish: ProductDescriptor = { ...acmePixel, sourceProfile: "cuttlefish", productName: "acme_cf_x86_64_phone", systemUpdater: false, firstRun: false,
   device: CuttlefishProfile({ hostPackages: List({ name: "cuttlefish-base", version: "1.0", sha256: Sha256({ hex: "h1" }) }), platformCertificate: Sha256({ hex: "p1" }) }) }
-pure val acmeSource: V::SourceVerdict = { ...V::initial, verified: 1, verdict: V::Match, lock: { ...V::noLock, digest: "lockA", developmentOnly: false, targets: List("stallion", "cf_x86_64_phone") },
-  admitted: List({ brand: "acme", product: { brand: "acme", target: "stallion" }, purpose: V::Production }, { brand: "acme", product: { brand: "acme", target: "cf_x86_64_phone" }, purpose: V::Production }) }
+pure val acmeSource: V::SourceVerdict = { ...V::initial, verified: 1, verdict: V::Match,
+  lock: { ...V::noLock, name: "pixel10a", digest: "lockA", device: V::PhysicalDevice({ archive: "z1", archiveSize: 9, vendorApiLevel: 202604 }), developmentOnly: false, targets: List("stallion") },
+  admitted: List({ brand: "acme", product: { brand: "acme", target: "stallion" }, purpose: V::Production }) }
+pure val acmeCuttlefishSource: V::SourceVerdict = { ...acmeSource, lock: { ...V::noLock, name: "cuttlefish", digest: "lockV", developmentOnly: false, targets: List("cf_x86_64_phone") },
+  admitted: List({ brand: "acme", product: { brand: "acme", target: "cf_x86_64_phone" }, purpose: V::Production }) }
 pure val acmeLauncher: St::LauncherDescriptor = { ...St::noCall.descriptor, schemaVersion: 1, brandValid: true, moduleNameValid: true, moduleName: "AcmeHome",
   packageName: "com.acme.home", apkSha256: Sha256({ hex: "a1" }), certificate: Sha256({ hex: "c1" }) }
 pure val pixelCall: CompositionCall = { descriptor: acmePixel, purpose: V::Production, brandToken: "acme", source: acmeSource, launcher: acmeLauncher,
-  existing: List(), settings: requiredSettings, bootArchive: NoBootArchive, clockLines: 1, updater: ReviewedDisabledUpdater }
-pure val cValues = Set(pixelCall, { ...pixelCall, descriptor: acmeCuttlefish }, { ...pixelCall, purpose: V::Development },
+  existing: List(), settings: requiredSettings, bootArchive: NoBootArchive, clockLines: 1, updater: ReviewedDisabledUpdater, outputInCheckout: true }
+pure val cuttlefishCall: CompositionCall = { ...pixelCall, descriptor: acmeCuttlefish, source: acmeCuttlefishSource }
+pure val cValues = Set(pixelCall, cuttlefishCall, { ...pixelCall, purpose: V::Development },
+  { ...pixelCall, outputInCheckout: false }, { ...pixelCall, source: acmeCuttlefishSource }, { ...cuttlefishCall, source: acmeSource },
+  { ...pixelCall, source: { ...acmeSource, lock: { ...acmeSource.lock, device: V::VirtualDevice } } },
   { ...pixelCall, descriptor: { ...acmePixel, placeholderFields: 1 } }, { ...pixelCall, descriptor: { ...acmeCuttlefish, sourceProfile: "pixel10a" } },
   { ...pixelCall, brandToken: "other" }, { ...pixelCall, source: { ...acmeSource, verdict: V::Mismatch } }, { ...pixelCall, launcher: { ...acmeLauncher, partition: St::SystemPartition } },
-  { ...pixelCall, existing: List(ProductMakefile) }, { ...pixelCall, descriptor: acmeCuttlefish, existing: List(DeviceTemplates) },
+  { ...pixelCall, existing: List(ProductMakefile) }, { ...cuttlefishCall, existing: List(DeviceTemplates) },
   { ...pixelCall, settings: { ...requiredSettings, selinux: SelinuxPermissive } }, { ...pixelCall, clockLines: 2 }, { ...pixelCall, updater: EnabledUpdater },
   { ...pixelCall, descriptor: { ...acmePixel, bootAnimation: PinnedBootAnimation({ sha256: Sha256({ hex: "b1" }) }) },
     bootArchive: BootArchiveRead({ sha256: Sha256({ hex: "b1" }), storedOnly: true, descAtRoot: true, framesInEveryPart: true }) },
   { ...pixelCall, bootArchive: BootArchiveRead({ sha256: Sha256({ hex: "b1" }), storedOnly: true, descAtRoot: true, framesInEveryPart: true }) },
-  { ...pixelCall, descriptor: { ...acmeCuttlefish, device: CuttlefishProfile({ hostPackages: List(), platformCertificate: NotADigest }) } })
+  { ...cuttlefishCall, descriptor: { ...acmeCuttlefish, device: CuttlefishProfile({ hostPackages: List(), platformCertificate: NotADigest }) } })
 ```
 
 ### The composition record binds every staged artifact to the descriptor digest and claims staging only

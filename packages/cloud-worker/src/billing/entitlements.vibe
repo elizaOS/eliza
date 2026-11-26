@@ -1,0 +1,143 @@
+// spec/cloud/billing/entitlements.md, "Story: Read my plan without substituting another account or source"; spec/cloud/deployment.md, "A route of a capability the environment does not enable is refused as 404 capability_unavailable"
+import { termsOf } from "../../gen/cloud__billing__plans.effect.vibe"
+import { issueEntitlement, type ClaimedStatus } from "../../gen/cloud__billing__entitlements.effect.vibe"
+import { json, owner, type Route } from "../http/routes.vibe"
+import { refused } from "../http/refusal.vibe"
+import { capabilityOf, Deployment, type SecretMissing, type Capability } from "@elizaos/cloud"
+import { newId } from "../shared/sealing.vibe"
+import type { RowCorrupt } from "../store/rows.vibe"
+import { Store, type StoreFailure, type Tx } from "../store/connection.vibe"
+import { readLatestPeriod, readPolicy, type PolicyUnreadable } from "./policy.vibe"
+import { wirePlanKey } from "./plans.vibe"
+
+module node {
+  import { createPrivateKey, createPublicKey, sign } from "node:crypto"
+
+  /** @throws {never} */
+  export function base64url(value: unknown): string {
+    return Buffer.from(JSON.stringify(value), "utf8").toString("base64url")
+  }
+
+  /** @throws {unknown} */
+  export function publicPoint(pkcs8: string): { x: string; y: string } {
+    const jwk = createPublicKey(createPrivateKey({ key: Buffer.from(pkcs8, "base64"), format: "der", type: "pkcs8" })).export({ format: "jwk" })
+    if (jwk.kty !== "EC" || jwk.crv !== "P-256" || typeof jwk.x !== "string" || typeof jwk.y !== "string") throw new RangeError("the entitlement key is not EC P-256")
+    return { x: jwk.x, y: jwk.y }
+  }
+
+  /** @throws {unknown} */
+  export function signEs256(pkcs8: string, input: string): string {
+    const key = createPrivateKey({ key: Buffer.from(pkcs8, "base64"), format: "der", type: "pkcs8" })
+    return sign("sha256", Buffer.from(input, "utf8"), { key, dsaEncoding: "ieee-p1363" }).toString("base64url")
+  }
+}
+import { base64url, publicPoint, signEs256 } from node
+
+error EntitlementUnavailable { problem: string }
+
+const entitlementType = "eliza-entitlement+jwt"
+const entitlementKeysMaxAgeSeconds = 60
+
+type PlanStatus = "active" | "past_due" | "canceled" | "none"
+type EntitledService = Extract<Capability, "inference" | "speech" | "maps">
+
+interface PlanAllowanceClaim {
+  readonly unit: "usd_micros"
+  readonly granted: number
+  readonly remaining: number
+  readonly periodStart: number
+  readonly resetsAt: number
+}
+
+interface EntitlementClaims {
+  readonly iss: string
+  readonly aud: string
+  readonly sub: string
+  readonly org: string
+  readonly jti: string
+  readonly iat: number
+  readonly exp: number
+  readonly ver: number
+  readonly plan: { readonly id: string; readonly name: string; readonly status: PlanStatus }
+  readonly plan_ends_at: number | null
+  readonly services: ReadonlyArray<EntitledService>
+  readonly plan_allowance: PlanAllowanceClaim | null
+}
+
+interface EntitlementPublicKey {
+  readonly kid: string
+  readonly kty: "EC"
+  readonly crv: "P-256"
+  readonly x: string
+  readonly y: string
+  readonly alg: "ES256"
+  readonly use: "sig"
+}
+
+const entitledServices: ReadonlyArray<EntitledService> = ["inference", "speech", "maps"]
+
+const planStatuses: Readonly<Record<ClaimedStatus, PlanStatus>> = { ClaimActive: "active", ClaimPastDue: "past_due", ClaimCanceled: "canceled", ClaimNone: "none" }
+
+function publishedKeys(keys: ReadonlyArray<{ readonly kid: string; readonly x: string; readonly y: string }>): ReadonlyArray<EntitlementPublicKey> {
+  return keys.map((key) => ({ kid: key.kid, kty: "EC", crv: "P-256", x: key.x, y: key.y, alg: "ES256", use: "sig" }))
+}
+
+effect function signEntitlement(tx: Tx, caller: { readonly userId: string; readonly organizationId: string }, now: number): string!(StoreFailure | RowCorrupt | PolicyUnreadable | SecretMissing | EntitlementUnavailable)!Deployment {
+  const deployment = try Deployment
+  const { entitlement, capabilities } = deployment.settings
+  const pkcs8 = try deployment.secret(entitlement.signingKeyEnv)
+  const point = try Effect.try({ try: () => publicPoint(pkcs8), catch: () => new EntitlementUnavailable({ problem: "the signing key is not a base64 PKCS#8 P-256 key" }) })
+  if (!entitlement.publicKeys.some((key) => key.kid === entitlement.keyId && key.x === point.x && key.y === point.y)) {
+    throw new EntitlementUnavailable({ problem: `the signing key is not the published key ${entitlement.keyId}` })
+  }
+  const policy = try readPolicy(tx, caller.organizationId, now)
+  const period = try readLatestPeriod(tx, caller.organizationId, now)
+  const issued = issueEntitlement(policy, period, capabilities.map((capability) => capabilityOf[capability]), now)
+  const allowance = issued.allowance
+  const claims: EntitlementClaims = {
+    iss: deployment.settings.api,
+    aud: deployment.settings.entitlementAudience,
+    sub: caller.userId,
+    org: caller.organizationId,
+    jti: newId(),
+    iat: issued.issuedAt,
+    exp: issued.expiresAt,
+    ver: issued.ver,
+    plan: { id: wirePlanKey(issued.planKey), name: termsOf(issued.planKey).name, status: planStatuses[issued.status] },
+    plan_ends_at: issued.planEndsAt.tag === "AtSecond" ? issued.planEndsAt.second : null,
+    services: entitledServices.filter((service) => issued.services.includes(capabilityOf[service])),
+    plan_allowance: allowance.tag === "ClaimsAllowance"
+      ? { unit: "usd_micros", granted: allowance.granted, remaining: allowance.remaining, periodStart: allowance.periodStartSec, resetsAt: allowance.resetsAtSec }
+      : null
+  }
+  const input = `${base64url({ alg: "ES256", typ: entitlementType, kid: entitlement.keyId })}.${base64url(claims)}`
+  const signature = try Effect.try({ try: () => signEs256(pkcs8, input), catch: () => new EntitlementUnavailable({ problem: "signing failed" }) })
+  return `${input}.${signature}`
+}
+
+export const routes: ReadonlyArray<Route> = [
+  {
+    method: "GET",
+    path: "/api/v1/subscription/entitlement",
+    auth: "ServiceAccess",
+    area: "EntitlementRoutes",
+    rateClass: "StandardRequests",
+    handler: (context) => effect {
+      const signed = owner(context.caller)
+      if (signed === undefined) throw refused("AuthenticationRequired", "CredentialUnknown")
+      const store = try Store
+      const entitlement = try store.transaction((tx) => signEntitlement(tx, signed, context.now))
+      return json({ entitlement })
+    }
+  },
+  {
+    method: "GET",
+    path: "/api/v1/subscription/entitlement-keys",
+    auth: "Public",
+    area: "EntitlementRoutes",
+    handler: () => effect {
+      const deployment = try Deployment
+      return json({ keys: publishedKeys(deployment.settings.entitlement.publicKeys) }, { headers: { "cache-control": `public, max-age=${entitlementKeysMaxAgeSeconds}` } })
+    }
+  }
+]

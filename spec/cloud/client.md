@@ -1,6 +1,6 @@
 # Cloud client
 
-What `@elizaos/cloud/client` speaks: the device side of the cloud. The agent,
+What the `@elizaos/cloud` root speaks: the device side of the cloud. The agent,
 os and the apps around them call the cloud through one client created from
 the API origin and a credential getter. The client never stores or clears a
 credential: custody belongs to os (`spec/os/signIn/credential.md`). Sources
@@ -55,7 +55,7 @@ that os replaced is sent on the next call by the same client.
 ```quint
 type HttpMethod = Get | Post | Patch | Delete
 type Segment = Literal({ text: str }) | Param({ name: str })
-type AuthClass = Public | KeyOrSession | Session | SessionFamily | FreshSession | StepUp
+type AuthClass = Public | KeyOrSession | Mail | Session | SessionFamily | FreshSession | StepUp
 type DeviceRoute = { method: HttpMethod, path: List[Segment], auth: AuthClass, headers: Set[str] }
 type DeviceCall = { route: DeviceRoute, bearer: str }
 pure def callOf(route: DeviceRoute, credentialNow: str): DeviceCall = { route: route, bearer: credentialNow }
@@ -102,7 +102,10 @@ and confirmation use a signed session. Their handlers apply the
 [second-factor policy](./identity/secondFactor.md) for a fresh first setup
 or a recent step-up for later changes. A sign-in
 route marked `Public` carries its proof in the body (code, verifier,
-challenge or refresh token). `SessionFamily` is logout: the handler checks
+challenge or refresh token, or a device lease's refresh as its bearer).
+`Mail` is Google mail and calendar: it admits a session or the tablet's
+device lease and refuses the device key, so the native shell sends it with
+the lease's access token. `SessionFamily` is logout: the handler checks
 the presented access or refresh digest for the family it will end. The
 speech socket carries the session token in its `hello`. Routes the cloud
 calls itself, provider callbacks, the payment
@@ -118,6 +121,7 @@ pure def api(names: List[str]): List[Segment] = List(Literal({ text: "api" }), L
 pure def apiWith(names: List[str], rest: List[Segment]): List[Segment] = api(names).concat(rest)
 pure def route(method: HttpMethod, path: List[Segment], auth: AuthClass): DeviceRoute = { method: method, path: path, auth: auth, headers: Set() }
 pure def keyed(method: HttpMethod, path: List[Segment], headers: Set[str]): DeviceRoute = { method: method, path: path, auth: KeyOrSession, headers: headers }
+pure def sessionHeaders(method: HttpMethod, path: List[Segment], headers: Set[str]): DeviceRoute = { method: method, path: path, auth: Session, headers: headers }
 pure def google(names: List[str]): List[Segment] = api(List("eliza", "google").concat(names))
 pure val signInRoutes: List[DeviceRoute] = List(
   route(Get, lits(List("api", "public", "service")), Public),
@@ -154,8 +158,10 @@ pure val signInRoutes: List[DeviceRoute] = List(
   route(Post, api(List("app-auth", "mobile", "token")), Public),
   route(Post, api(List("app-auth", "mobile", "ack")), Public),
   route(Post, api(List("app-auth", "mobile", "google")), Public),
-  route(Post, api(List("app-auth", "mobile", "renew")), KeyOrSession),
-  keyed(Delete, api(List("api-keys", "current")), Set(renewedCredential)))
+  route(Post, api(List("app-auth", "mobile", "lease")), Public),
+  route(Delete, api(List("app-auth", "mobile", "lease")), Public),
+  route(Post, api(List("app-auth", "mobile", "renew")), Public),
+  route(Delete, api(List("api-keys", "current")), KeyOrSession))
 pure val billingRoutes: List[DeviceRoute] = List(
   route(Get, api(List("subscriptions", "plans")), Public),
   route(Get, api(List("subscription", "entitlement-keys")), Public),
@@ -182,6 +188,7 @@ pure val billingRoutes: List[DeviceRoute] = List(
   route(Get, apiWith(List("billing", "invoices"), List(Param({ name: "invoiceId" }))), KeyOrSession))
 pure val serviceRoutes: List[DeviceRoute] = List(
   route(Get, api(List("models")), KeyOrSession),
+  route(Post, api(List("decisions")), KeyOrSession),
   keyed(Post, api(List("chat", "completions")), Set(idempotencyKey)),
   route(Post, api(List("voice", "tts")), KeyOrSession),
   route(Post, api(List("voice", "stt")), KeyOrSession),
@@ -198,29 +205,30 @@ pure val serviceRoutes: List[DeviceRoute] = List(
   route(Post, api(List("maps", "tiles", "viewport")), KeyOrSession),
   keyed(Get, apiWith(List("maps", "tiles"), List(Param({ name: "z" }), Param({ name: "x" }), Param({ name: "y" }))), Set("Idempotency-Key")))
 pure val googleRoutes: List[DeviceRoute] = List(
-  route(Get, google(List("status")), KeyOrSession),
-  route(Get, google(List("accounts")), KeyOrSession),
-  route(Post, google(List("connect", "initiate")), KeyOrSession),
+  route(Get, google(List("status")), Mail),
+  route(Get, google(List("accounts")), Mail),
+  route(Post, google(List("connect", "initiate")), Session),
   route(Post, google(List("connect", "native")), KeyOrSession),
-  route(Post, google(List("disconnect")), KeyOrSession),
-  route(Get, google(List("gmail", "triage")), KeyOrSession),
-  route(Get, google(List("gmail", "search")), KeyOrSession),
-  route(Get, google(List("gmail", "read")), KeyOrSession),
+  route(Post, google(List("disconnect")), Session),
+  route(Get, google(List("gmail", "triage")), Mail),
+  route(Get, google(List("gmail", "search")), Mail),
+  route(Get, google(List("gmail", "read")), Mail),
   route(Get, google(List("gmail", "inbox-v1", "arrival")), KeyOrSession),
-  route(Get, google(List("gmail", "inbox-v1", "capabilities")), KeyOrSession),
-  route(Get, google(List("gmail", "inbox-v1", "thread")), KeyOrSession),
-  route(Get, google(List("gmail", "inbox-v1", "attachment")), KeyOrSession),
-  route(Get, google(List("gmail", "inbox-v1", "drafts")), KeyOrSession),
-  route(Get, google(List("gmail", "inbox-v1", "draft")), KeyOrSession),
-  route(Post, google(List("gmail", "inbox-v1", "operations")), KeyOrSession),
-  route(Post, google(List("gmail", "inbox-v1", "operations")).concat(List(Param({ name: "requestId" }), Literal({ text: "dispatch" }))), KeyOrSession),
-  route(Get, google(List("gmail", "inbox-v1", "operations")).concat(List(Param({ name: "requestId" }))), KeyOrSession),
-  route(Get, google(List("calendar", "calendars")), KeyOrSession),
-  route(Get, google(List("calendar", "feed")), KeyOrSession),
-  route(Get, google(List("calendar", "events")).concat(List(Param({ name: "eventId" }))), KeyOrSession),
-  keyed(Post, google(List("calendar", "events")), Set("Idempotency-Key")),
-  keyed(Patch, google(List("calendar", "events")).concat(List(Param({ name: "eventId" }))), Set("If-Match")),
-  keyed(Delete, google(List("calendar", "events")).concat(List(Param({ name: "eventId" }))), Set("If-Match")))
+  route(Get, google(List("gmail", "inbox-v1", "capabilities")), Mail),
+  route(Get, google(List("gmail", "inbox-v1", "history")), Mail),
+  route(Get, google(List("gmail", "inbox-v1", "thread")), Mail),
+  route(Get, google(List("gmail", "inbox-v1", "attachment")), Mail),
+  route(Get, google(List("gmail", "inbox-v1", "drafts")), Mail),
+  route(Get, google(List("gmail", "inbox-v1", "draft")), Mail),
+  route(Post, google(List("gmail", "inbox-v1", "operations")), Session),
+  route(Post, google(List("gmail", "inbox-v1", "operations")).concat(List(Param({ name: "requestId" }), Literal({ text: "dispatch" }))), Session),
+  route(Get, google(List("gmail", "inbox-v1", "operations")).concat(List(Param({ name: "requestId" }))), Session),
+  route(Get, google(List("calendar", "calendars")), Mail),
+  route(Get, google(List("calendar", "feed")), Mail),
+  route(Get, google(List("calendar", "events")).concat(List(Param({ name: "eventId" }))), Mail),
+  sessionHeaders(Post, google(List("calendar", "events")), Set("Idempotency-Key")),
+  sessionHeaders(Patch, google(List("calendar", "events")).concat(List(Param({ name: "eventId" }))), Set("If-Match")),
+  sessionHeaders(Delete, google(List("calendar", "events")).concat(List(Param({ name: "eventId" }))), Set("If-Match")))
 pure def joinRouteGroups(earlier: List[DeviceRoute], later: List[DeviceRoute]): List[DeviceRoute] = earlier.concat(later)
 pure val deviceRoutes: List[DeviceRoute] = joinRouteGroups(joinRouteGroups(signInRoutes, billingRoutes), joinRouteGroups(serviceRoutes, googleRoutes))
 pure def admitsHeader(r: DeviceRoute, header: str): bool = baseHeaders.contains(header) or r.headers.contains(header)
@@ -279,7 +287,7 @@ retryAt?, resetsAt?, reason?}`) and passes its code, reason and times
 (epoch milliseconds, `0` when absent; a `Retry-After` header gives `retryAt`
 when the body has none). A body that is not a refusal body is read as the
 default code of its status. A failure before any answer is
-`CloudNetwork`. The variants are those of the agent's model binding, plus
+`CloudNetwork`, carrying what the fetch rejected with. The variants are those of the agent's model binding, plus
 the credential reason and `CloudRefused` for a refusal that needs the
 request or the person to change. Every `401` is `CloudCredentialInvalid`
 with its credential reason; reading an error never stores or clears a
@@ -388,4 +396,36 @@ pure def lawOnlyAnActiveAccountIsUsable(s: SnapshotView): bool = accountUsable(s
 pure def lawNoPlanAndNoCreditsNeedsAPlan(s: SnapshotView): bool =
   (s.source == FromFree and s.balance <= 0) implies planAdmission(planFromSnapshot(s)) == NeedsPlan
 pure def lawUnknownAdmitsNothing(v: PlanView): bool = (v == PlanChecking or v == PlanUnavailable) implies planAdmission(v) == AdmissionUnknown
+```
+
+### A balance shows only from a snapshot under five minutes old, and a grant has ended once revoked or past its end
+
+The device shows the snapshot's balance only when the snapshot was observed
+at most five minutes before now and at most one minute after it; otherwise
+the balance is unavailable. A shown balance above zero is funded, else zero.
+A grant in a snapshot has ended when it is revoked or its end is at or
+before the later of the snapshot's time and now. A redeem answer whose grant has ended at the time it is read
+is an ended grant, not a redemption.
+
+```quint
+type CreditView = CreditFunded({ usdMicros: Micros }) | CreditZero | CreditUnavailable
+type GrantTerm = { revoked: bool, bounded: bool, until: Millis }
+pure val creditMaxAge: Millis = 5 * millisPerMinute
+pure val snapshotSkew: Millis = millisPerMinute
+pure def creditOf(balance: Micros, observedAt: Millis, now: Millis): CreditView =
+  if (observedAt > now + snapshotSkew or now - observedAt > creditMaxAge) CreditUnavailable
+  else if (balance > 0) CreditFunded({ usdMicros: balance })
+  else CreditZero
+pure def grantEndedAt(g: GrantTerm, at: Millis): bool = g.revoked or (g.bounded and g.until <= at)
+pure def grantEndedInSnapshot(g: GrantTerm, observedAt: Millis, now: Millis): bool = grantEndedAt(g, if (observedAt > now) observedAt else now)
+pure val balanceValues = Set(-1, 0, 7)
+pure val observedAtValues = Set(0, 299999, 300001, 360001)
+pure val nowValues = Set(0, 300000, 300002, 600002)
+pure val gValues = Set({ revoked: true, bounded: false, until: 0 }, { revoked: false, bounded: false, until: 0 }, { revoked: false, bounded: true, until: 300000 })
+pure def lawAStaleBalanceIsUnavailable(balance: Micros, observedAt: Millis, now: Millis): bool =
+  now - observedAt > creditMaxAge implies creditOf(balance, observedAt, now) == CreditUnavailable
+pure def lawARecentBalanceIsShown(balance: Micros, observedAt: Millis, now: Millis): bool =
+  (observedAt <= now and now - observedAt <= creditMaxAge) implies creditOf(balance, observedAt, now) != CreditUnavailable
+pure def lawAGrantEndedNowHasEndedInTheSnapshot(g: GrantTerm, observedAt: Millis, now: Millis): bool =
+  grantEndedAt(g, now) implies grantEndedInSnapshot(g, observedAt, now)
 ```

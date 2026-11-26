@@ -1,0 +1,80 @@
+// spec/inbox/reads.md, "Pages keep their first read's identity and expose mailbox shifts"; spec/inbox/drafts.md, "Recovery reads the recorded request and cannot resend it"
+const Text = Schema.String
+const Texts = Schema.Array(Schema.String)
+const Kind = Schema.Literals(["send", "draft-create", "draft-replace", "draft-delete", "archive", "unarchive", "trash", "untrash", "mark-read", "mark-unread", "star", "unstar"])
+
+export const ConnectionWire = Schema.Struct({
+  configured: Schema.Boolean,
+  connected: Schema.Boolean,
+  reason: Text,
+  identity: Schema.NullOr(Schema.Struct({ email: Text, name: Schema.optionalKey(Schema.NullOr(Text)) })),
+  grantedCapabilities: Texts,
+  connectionId: Schema.NullOr(Text),
+})
+
+export const AccountsWire = Schema.Array(ConnectionWire)
+
+export const MailCardWire = Schema.Struct({
+  id: Text, threadId: Text, subject: Text, from: Text, to: Texts, cc: Texts, snippet: Text, receivedAt: Text,
+  replyTo: Schema.optionalKey(Schema.NullOr(Text)),
+  hasAttachments: Schema.optionalKey(Schema.Boolean),
+  labels: Texts, isUnread: Schema.Boolean, metadata: Schema.Struct({ historyId: Schema.NullOr(Text) }),
+})
+
+export const SearchWire = Schema.Struct({
+  messages: Schema.Array(MailCardWire), nextPageToken: Schema.NullOr(Text), syncedAt: Text, mailboxHistoryId: Text, supportsSpamTrash: Schema.Boolean,
+})
+
+export const AttachmentDescriptorWire = Schema.Struct({ partId: Text, name: Text, mimeType: Text, size: Schema.Number, supported: Schema.Boolean })
+
+const messageFields = {
+  message: MailCardWire,
+  bodyText: Text,
+  bodyHtml: Schema.NullOr(Text),
+  bodyHtmlStatus: Schema.Literals(["available", "none", "too_large"]),
+  attachments: Schema.Array(AttachmentDescriptorWire),
+  authenticationResults: Schema.optionalKey(Schema.NullOr(Text)),
+}
+
+export const MessageWire = Schema.Struct(messageFields)
+
+export const ThreadWire = Schema.Struct({
+  version: Schema.Literal(1), threadId: Text, historyId: Text, total: Schema.Number, offset: Schema.Number, nextOffset: Schema.NullOr(Schema.Number),
+  messages: Schema.Array(Schema.Struct({ ...messageFields, historyId: Schema.NullOr(Text) })),
+})
+
+export const CapabilitiesWire = Schema.Struct({
+  version: Schema.Literal(1), from: Text, kinds: Schema.Array(Kind),
+  attachmentPolicy: Schema.Struct({ mimeTypes: Texts, maxBytes: Schema.Number }),
+})
+
+export const AttachmentWire = Schema.Struct({
+  version: Schema.Literal(1), messageId: Text, partId: Text, historyId: Text, name: Text, mimeType: Text,
+  size: Schema.Number, dataBase64: Text, sha256: Text, supported: Schema.Boolean,
+})
+
+export const DraftsWire = Schema.Struct({
+  version: Schema.Literal(1),
+  drafts: Schema.Array(Schema.Struct({ draftId: Text, messageId: Text, subject: Text, to: Texts, snippet: Text, updatedAt: Schema.NullOr(Text) })),
+  nextPageToken: Schema.NullOr(Text),
+})
+
+export const DraftWire = Schema.Struct({
+  version: Schema.Literal(1), id: Text, messageId: Text, providerDigest: Text,
+  content: Schema.Struct({ to: Texts, cc: Texts, bcc: Texts, subject: Text, bodyText: Text, plainText: Schema.Boolean, threaded: Schema.Boolean, attachmentCount: Schema.Number }),
+})
+
+export const ReceiptWire = Schema.Struct({
+  requestId: Text, kind: Kind, reviewDigest: Text,
+  state: Schema.Literals(["prepared", "dispatched", "succeeded", "rejected", "outcome-unknown"]),
+  providerResult: Schema.NullOr(Schema.Record(Schema.String, Schema.Unknown)),
+  rejectionCode: Schema.NullOr(Text),
+})
+
+export const OperationWire = Schema.Struct({
+  version: Schema.Literal(1), receipt: ReceiptWire, review: Schema.optionalKey(Schema.Record(Schema.String, Schema.Unknown)), providerExactlyOnce: Schema.Literal(false),
+})
+
+export const ConnectWire = Schema.Struct({ authUrl: Text })
+
+export const DisconnectWire = Schema.Struct({ ok: Schema.Literal(true) })

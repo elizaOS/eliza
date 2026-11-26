@@ -1,0 +1,98 @@
+// spec/agent/conversation/conversations.md, "Story: Remove private text I sent by mistake"; spec/agent/conversation/conversations.md, "Redacting replaces the message and every exact copy of its text in its conversation with a fixed notice"; spec/agent/conversation/conversations.md, "No message is ever removed, and only redaction changes one"; spec/agent/conversation/planning.md, "An earlier reply reaches the model with the host's record of the tools its turn ran and how each ended"
+module node {
+  import { Schema } from "effect"
+  import type { AgentRuntime, Content, IDatabaseAdapter, Log, LogBody, UUID } from "@elizaos/core"
+  import { privateNotice, redact, redactAnswer } from "../../gen/agent__conversation__conversations.ts"
+  import type { LocalRoute } from "@elizaos/agent"
+  import type { ConversationRecord, ConversationStore } from "./conversations.vibe"
+  import { conversationModel, modelIdOf, placedMessages } from "./fork.vibe"
+  import { messageView, textSegmentIds } from "./history.vibe"
+  import { scrubToolRecord, toolRecordHolds } from "./tool-record.vibe"
+
+  export type RedactResult =
+    | { readonly kind: "unknown" }
+    | { readonly kind: "textChanged" }
+    | { readonly kind: "unchanged" }
+    | { readonly kind: "redacted"; readonly messages: number; readonly logs: number }
+
+  const Request = Schema.Struct({ expectedText: Schema.String.check(Schema.isMinLength(1)) })
+  const requestBody = Schema.decodeUnknownOption(Request, { onExcessProperty: "error" })
+  const failure = (status: number, error: string) => ({ status, body: { error } })
+  const noticeOnly = ({ messageTextSource: _source, toolRecord: _record, ...content }: Content): Content => ({ ...content, text: privateNotice })
+
+  function scrubbed(value: unknown, text: string): unknown {
+    if (typeof value === "string") return value.replaceAll(text, privateNotice)
+    if (Array.isArray(value)) return value.map((item) => scrubbed(item, text))
+    if (value !== null && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, scrubbed(item, text)]))
+    return value
+  }
+
+  const holds = (value: unknown, text: string): boolean =>
+    typeof value === "string" ? value.includes(text)
+      : Array.isArray(value) ? value.some((item) => holds(item, text))
+      : value !== null && typeof value === "object" ? Object.values(value).some((item) => holds(item, text))
+      : false
+
+  async function scrubLogs(adapter: IDatabaseAdapter, record: ConversationRecord, text: string): Promise<number> {
+    const held = (await adapter.getLogs({ roomId: record.roomId })).filter((row): row is Log & { id: UUID } =>
+      row.id !== undefined && row.type.startsWith("useModel:") && holds(row.body, text))
+    if (held.length === 0) return 0
+    await adapter.createLogs(held.map(({ type, entityId, createdAt, body }) => ({ type, entityId, roomId: record.roomId, createdAt, body: scrubbed(body, text) as LogBody })))
+    await adapter.deleteLogs(held.map(({ id }) => id))
+    return held.length
+  }
+
+  export function redactService(runtime: AgentRuntime, ownerId: UUID) {
+    const run = (record: ConversationRecord, messageId: string, expectedText: string): Promise<RedactResult> => runtime.adapter.transaction(async (adapter) => {
+      const placed = await placedMessages(adapter, ownerId, record)
+      const model = conversationModel(record, placed)
+      const asked = modelIdOf(placed, messageId)
+      const answer = redactAnswer(model, 1, asked, expectedText)
+      switch (answer) {
+        case "RedactUnknown": return { kind: "unknown" }
+        case "RedactTextChanged": return { kind: "textChanged" }
+        case "RedactUnchanged": return { kind: "unchanged" }
+        case "RedactNow": {
+          const after = redact(model, 1, asked, expectedText).messages
+          const changed = placed.filter(({ message }, index) => message.body.tag !== after[index].body.tag)
+          const recorded = placed.filter(({ memory }) => !changed.some((entry) => entry.memory.id === memory.id) && toolRecordHolds(memory.content.toolRecord, expectedText))
+          const logs = await scrubLogs(adapter, record, expectedText)
+          await adapter.updateMemories([
+            ...changed.map(({ memory }) => ({ id: memory.id, content: noticeOnly(memory.content), embedding: undefined })),
+            ...recorded.map(({ memory }) => ({ id: memory.id, content: { ...memory.content, toolRecord: scrubToolRecord(memory.content.toolRecord, expectedText, privateNotice) } })),
+          ])
+          const segments = changed.flatMap(({ memory }) => textSegmentIds(memory))
+          if (segments.length > 0) await adapter.deleteMemories(segments)
+          return { kind: "redacted", messages: changed.length, logs }
+        }
+      }
+    })
+    return (record: ConversationRecord, messageId: string, expectedText: string, signal?: AbortSignal) =>
+      runtime.roomHandlerQueue.withLease(record.roomId, () => run(record, messageId, expectedText), signal === undefined ? undefined : { signal })
+  }
+
+  export function redactRoutes(runtime: AgentRuntime, store: ConversationStore, ownerId: UUID): LocalRoute[] {
+    const redactMessage = redactService(runtime, ownerId)
+    return [{
+      method: "POST", path: "/api/conversations/{id}/messages/{messageId}/redact",
+      handler: async ({ parameters, body, signal }) => {
+        const record = await store.find(parameters.get("id") ?? "")
+        if (record === undefined) return failure(404, "unknown_conversation")
+        const request = requestBody(body)
+        if (request._tag !== "Some") return failure(400, "invalid_redaction")
+        const messageId = parameters.get("messageId") ?? ""
+        const result = await redactMessage(record, messageId, request.value.expectedText, signal)
+        switch (result.kind) {
+          case "unknown": return failure(404, "unknown_message")
+          case "textChanged": return failure(409, "message_changed")
+          case "unchanged": return { status: 200, body: { result: "unchanged" } }
+          case "redacted": {
+            const [stored] = await runtime.adapter.getMemoriesByIds([messageId as UUID], "messages")
+            return { status: 200, body: { result: "redacted", messages: result.messages, logs: result.logs, ...(stored === undefined ? {} : { message: await messageView(runtime, stored) }) } }
+          }
+        }
+      },
+    }]
+  }
+}
+export { redactRoutes } from node

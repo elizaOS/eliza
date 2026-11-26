@@ -1,0 +1,305 @@
+// spec/cloud/identity/codeChallenges.md, "Story: Sign in with a code sent to my email or phone"; spec/cloud/identity/codeChallenges.md, "Story: Stop guessing at my code"; spec/cloud/shared/rateLimit.md, "Story: Refuse excess requests with a usable retry time"
+import {
+  apply, canExpire, codeLength, decodeState, initial, isConsumed, provesPhoneFor, sendAllowed, sendLimits, sendPerDestination, smsBudgetRefusal, smsSendBudget, verifyPerDestination, verifyPerIp, verifyRefusal,
+  Rejected, type Challenge, type ChallengeEffect, type ChallengePhase, type ChallengeStep, type CodePurpose, type Event, type NotAState
+} from "../../gen/cloud__identity__codeChallenges.effect.vibe"
+import type { FirstFactorOutcome } from "../../gen/cloud__identity__secondFactor.effect.vibe"
+import { refused, Refused, type Refusal } from "../http/refusal.vibe"
+import { json, jsonBody, type Route, type RouteContext, type Sweep } from "../http/routes.vibe"
+import { Deployment } from "@elizaos/cloud"
+import { deliverMail } from "../providers/mail.vibe"
+import { deliverSms } from "../providers/sms.vibe"
+import { s256 } from "../shared/credential-crypto.vibe"
+import { admitAll, admitCheck, perWindow, type LimitCheck } from "../shared/rate-limit.vibe"
+import { keyedDigest, newId, sameText } from "../shared/sealing.vibe"
+import { loadRow, stepRow, type Columns, type MachineRows } from "../store/rows.vibe"
+import { Store, toText, type Tx } from "../store/connection.vibe"
+import { landAccount } from "./accounts.vibe"
+import { afterFirstFactor } from "./second-factor.vibe"
+
+module node {
+  import { randomInt } from "node:crypto"
+
+  /** @throws {never} */
+  export function newCode(): string {
+    return String(randomInt(0, 1_000_000)).padStart(6, "0")
+  }
+}
+import { newCode } from node
+
+type CodeMethod = "EmailSignIn" | "PhoneSignIn"
+
+interface CodeRequest {
+  readonly method: CodeMethod
+  readonly purpose: CodePurpose
+  readonly destination: string
+  readonly clientId: string
+  readonly address: string
+  readonly now: number
+}
+
+interface SendRequest extends CodeRequest {
+  readonly codeChallenge: string
+}
+
+interface VerifyRequest extends CodeRequest {
+  readonly code: string
+  readonly codeVerifier: string
+}
+
+export interface Timed {
+  readonly event: Event
+  readonly now: number
+}
+
+interface Finished<A> {
+  readonly value: A
+  readonly factorOutcome: FirstFactorOutcome
+}
+
+type Outcome<A> = { readonly kind: "done"; readonly value: A } | { readonly kind: "refused"; readonly refusal: Refusal }
+
+const Email = Schema.String.check(Schema.isMaxLength(254), Schema.isPattern(/^[^\s@]+@[^\s@]+\.[^\s@]+$/))
+const Phone = Schema.String.check(Schema.isPattern(/^\+[1-9]\d{7,14}$/))
+const ClientId = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(200))
+const Challenged = { clientId: ClientId, codeChallenge: Schema.String.check(Schema.isPattern(/^[A-Za-z0-9_-]{43}$/)), codeChallengeMethod: Schema.Literal("S256") }
+const Proved = { code: Schema.String.check(Schema.isPattern(/^\d{6}$/)), clientId: ClientId, codeVerifier: Schema.String.check(Schema.isPattern(/^[A-Za-z0-9._~-]{43,128}$/)) }
+const EmailSend = Schema.Struct({ email: Email, ...Challenged })
+const EmailVerify = Schema.Struct({ email: Email, ...Proved })
+const PhoneSend = Schema.Struct({ phone: Phone, ...Challenged })
+const PhoneVerify = Schema.Struct({ phone: Phone, ...Proved })
+const LinkSend = Schema.Struct({ phone: Phone, clientId: ClientId, codeChallenge: Challenged.codeChallenge })
+const LinkVerify = Schema.Struct({ phone: Phone, ...Proved })
+
+const signInCode: CodePurpose = { tag: "SignInCode" }
+const methodColumn = { EmailSignIn: "email", PhoneSignIn: "sms" } as const satisfies Record<CodeMethod, string>
+const phaseColumn: Readonly<Record<ChallengePhase["tag"], string>> = {
+  Unsent: "unsent", Open: "open", Locked: "locked", Consumed: "consumed", Superseded: "superseded", Expired: "expired"
+}
+const keptFor = 24 * 60 * 60_000
+
+effect function applyAt(challenge: Challenge, timed: Timed): ChallengeStep!Rejected {
+  const current = timed.now > challenge.now ? (try apply(challenge, { type: "elapse", elapsed: timed.now - challenge.now })).state : challenge
+  return try apply(current, timed.event)
+}
+
+export const challengeRows: MachineRows<Challenge, Timed, ChallengeStep, Rejected, NotAState> = { table: "code_challenges", initial, decodeState, apply: applyAt, next: (stepped) => stepped.state }
+
+export function clientAddress(context: RouteContext): string {
+  return Option.getOrElse(context.request.remoteAddress, () => "unknown")
+}
+
+function purposeKey(purpose: CodePurpose): string {
+  return purpose.tag === "SignInCode" ? "sign-in" : `link:${purpose.userId}`
+}
+
+function refusedBy(refusal: Refusal): Outcome<never> {
+  return { kind: "refused", refusal }
+}
+
+function phaseOf(state: Challenge): Columns {
+  return { phase: phaseColumn[state.phase.tag] }
+}
+
+effect function valid<A>(schema: Schema.Codec<A>, input: unknown): A!Refused {
+  return Schema.decodeUnknownEffect(schema)(input) catch effect () => { throw refused("InvalidRequest") }
+}
+
+effect function step(tx: Tx, key: string, event: Event, now: number, columns: (state: Challenge) => Columns = phaseOf) {
+  return try stepRow(tx, challengeRows, key, { event, now }, columns)
+}
+
+effect function lockDestination(tx: Tx, request: CodeRequest, digest: string) {
+  try tx.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [`code:${methodColumn[request.method]}:${purposeKey(request.purpose)}:${digest}`])
+}
+
+effect function challengesOf(tx: Tx, request: CodeRequest, digest: string) {
+  try lockDestination(tx, request, digest)
+  return try tx.query(
+    "SELECT key, code_digest, code_challenge, phase FROM code_challenges WHERE method = $1 AND purpose_key = $2 AND destination_digest = $3 ORDER BY sent_at DESC, key FOR UPDATE",
+    [methodColumn[request.method], purposeKey(request.purpose), digest]
+  )
+}
+
+function sendChecks(request: SendRequest, digest: string): ReadonlyArray<LimitCheck> {
+  return sendLimits(request.method).map((rule) => ({ subject: rule.name === sendPerDestination.name ? digest : request.address, rule }))
+}
+
+effect function admitSmsBudget(hourlyBudget: number): void!Refused!Store {
+  admitCheck({ subject: "deployment", rule: perWindow(smsSendBudget.name, hourlyBudget, smsSendBudget.windowMs) }) catch effect (failure) => {
+    const wait = failure.refusal.wait
+    throw failure.refusal.code === "RateLimited" && wait.tag === "RetryAt" ? new Refused({ refusal: smsBudgetRefusal(wait.retryAtMs) }) : failure
+  }
+}
+
+effect function deliverCode(destination: string, code: string, due: ChallengeEffect, now: number) {
+  if (due.tag !== "DeliverCode") return
+  const text = `Your code is ${code}. It expires in ${Math.round((due.expiresAt - now) / 60_000)} minutes. Do not share it.`
+  if (due.method === "PhoneSignIn") try deliverSms({ to: destination, text })
+  else try deliverMail({ to: destination, subject: "Your sign-in code", text })
+}
+
+effect function sendCode(request: SendRequest) {
+  const deployment = try Deployment
+  const { smsCountries, smsHourlyBudget } = deployment.settings.signIn
+  const countryAllowed = smsCountries.some((prefix) => request.destination.startsWith(prefix))
+  if (!sendAllowed(request.method, request.purpose, countryAllowed)) throw refused("InvalidRequest")
+  const digest = try keyedDigest(request.destination)
+  try admitAll(sendChecks(request, digest))
+  if (request.method === "PhoneSignIn") try admitSmsBudget(smsHourlyBudget)
+  const key = newId()
+  const code = newCode()
+  const codeDigest = try keyedDigest(`${key}:${code}`)
+  const store = try Store
+  const sent = store.transaction(effect (tx: Tx) => {
+    for (const open of (try challengesOf(tx, request, digest)).filter((row) => row.phase === "open")) {
+      try step(tx, toText(open.key) ?? "", { type: "supersede" }, request.now)
+    }
+    return try step(tx, key, { type: "send", method: request.method, purpose: request.purpose, clientId: request.clientId, countryAllowed }, request.now, (state) => ({
+      ...phaseOf(state),
+      method: methodColumn[request.method],
+      purpose_key: purposeKey(request.purpose),
+      user_id: request.purpose.tag === "LinkPhoneCode" ? request.purpose.userId : null,
+      client_id: request.clientId,
+      destination_digest: digest,
+      code_digest: codeDigest,
+      code_challenge: request.codeChallenge,
+      sent_at: state.sentAt,
+      expires_at: state.expiresAt
+    }))
+  }) catch effect (failure) => match (failure) {
+    when Rejected: throw refused("InvalidRequest");
+    default: throw failure;
+  }
+  for (const due of sent.out.out) try deliverCode(request.destination, code, due, request.now)
+  return { expiresAt: sent.state.expiresAt, codeLength }
+}
+
+effect function attempt<A, E, R>(tx: Tx, request: VerifyRequest, digest: string, finish: (tx: Tx, consumed: Challenge) => Finished<A>!E!R) {
+  const rows = try challengesOf(tx, request, digest)
+  const digests = new Map<string, string>()
+  for (const row of rows) {
+    const key = toText(row.key) ?? ""
+    digests.set(key, try keyedDigest(`${key}:${request.code}`))
+  }
+  const matched = rows.find((row) => sameText(toText(row.code_digest) ?? "", digests.get(toText(row.key) ?? "") ?? ""))
+  const target = matched ?? rows.find((row) => row.phase === "open") ?? rows[0]
+  if (target === undefined) return refusedBy(verifyRefusal(initial))
+  const key = toText(target.key) ?? ""
+  const verifying = (factorOutcome: FirstFactorOutcome): Event => ({
+    type: "verify",
+    clientId: request.clientId,
+    codeMatches: target === matched,
+    verifierMatches: sameText(s256(request.codeVerifier), toText(target.code_challenge) ?? ""),
+    factorOutcome
+  })
+  const loaded = try loadRow(tx, challengeRows, key)
+  const probe = applyAt(loaded.state, { event: verifying("SessionStarts"), now: request.now }) catch effect (failure) => match (failure) {
+    when Rejected: failure;
+    default: throw failure;
+  }
+  if (probe instanceof Rejected) {
+    if (canExpire(probe.state)) try step(tx, key, { type: "expire" }, request.now)
+    return refusedBy(verifyRefusal(probe.state))
+  }
+  if (!isConsumed(probe.state.phase)) {
+    const failed = try step(tx, key, verifying("SessionStarts"), request.now)
+    return refusedBy(verifyRefusal(failed.state))
+  }
+  const finished = finish(tx, probe.state) catch effect (failure) => match (failure) {
+    when Refused: failure;
+    default: throw failure;
+  }
+  if (finished instanceof Refused) {
+    try step(tx, key, verifying("SessionStarts"), request.now)
+    return refusedBy(finished.refusal)
+  }
+  try step(tx, key, verifying(finished.factorOutcome), request.now)
+  return { kind: "done", value: finished.value } as const
+}
+
+effect function verifyCode<A, E, R>(request: VerifyRequest, finish: (tx: Tx, consumed: Challenge) => Finished<A>!E!R) {
+  const digest = try keyedDigest(request.destination)
+  try admitAll([{ subject: request.address, rule: verifyPerIp }, { subject: digest, rule: verifyPerDestination }])
+  const store = try Store
+  const outcome = try store.transaction((tx: Tx) => attempt(tx, request, digest, finish))
+  if (outcome.kind === "refused") throw new Refused({ refusal: outcome.refusal })
+  return outcome.value
+}
+
+effect function signIn(request: VerifyRequest) {
+  return try verifyCode(request, effect (tx: Tx) => {
+    const verifiedEmail = request.method === "EmailSignIn" ? request.destination : undefined
+    const landed = try landAccount(tx, { method: request.method, subject: request.destination }, verifiedEmail, request.now)
+    const answer = try afterFirstFactor(tx, landed, request.clientId, request.now)
+    const factorOutcome: FirstFactorOutcome = answer.status === "mfa_required" ? "SecondFactorRequired" : "SessionStarts"
+    return { value: answer, factorOutcome }
+  })
+}
+
+export effect function sendLinkCode(input: { readonly userId: string; readonly phone: string; readonly clientId: string; readonly codeChallenge: string; readonly address: string; readonly now: number }) {
+  const body = try valid(LinkSend, input)
+  return try sendCode({ method: "PhoneSignIn", purpose: { tag: "LinkPhoneCode", userId: input.userId }, destination: body.phone, clientId: body.clientId, codeChallenge: body.codeChallenge, address: input.address, now: input.now })
+}
+
+export effect function verifyLinkCode(input: { readonly userId: string; readonly phone: string; readonly code: string; readonly clientId: string; readonly codeVerifier: string; readonly address: string; readonly now: number }) {
+  const body = try valid(LinkVerify, input)
+  const request: VerifyRequest = { method: "PhoneSignIn", purpose: { tag: "LinkPhoneCode", userId: input.userId }, destination: body.phone, code: body.code, clientId: body.clientId, codeVerifier: body.codeVerifier, address: input.address, now: input.now }
+  return try verifyCode(request, effect (_tx: Tx, consumed: Challenge) => {
+    if (!provesPhoneFor(consumed, input.userId)) throw new Refused({ refusal: verifyRefusal(initial) })
+    return { value: { phone: body.phone }, factorOutcome: "SessionStarts" as FirstFactorOutcome }
+  })
+}
+
+effect function sweepChallenges(): void!!Store {
+  const now = try Clock.currentTimeMillis
+  const store = try Store
+  store.transaction((tx) => tx.query("DELETE FROM code_challenges WHERE expires_at < $1", [now - keptFor])) catch effect (failure) => {
+    try annotateLogs(logWarning("code challenge sweep failed"), { cause: failure._tag })
+  }
+}
+
+export const routes: ReadonlyArray<Route> = [
+  {
+    method: "POST",
+    path: "/api/v1/auth/email/code/send",
+    auth: "Public",
+    maxBodyBytes: 4096,
+    handler: (context) => effect {
+      const body = try jsonBody(context, EmailSend)
+      return json(try sendCode({ method: "EmailSignIn", purpose: signInCode, destination: body.email.toLowerCase(), clientId: body.clientId, codeChallenge: body.codeChallenge, address: clientAddress(context), now: context.now }))
+    }
+  },
+  {
+    method: "POST",
+    path: "/api/v1/auth/email/code/verify",
+    auth: "Public",
+    maxBodyBytes: 4096,
+    handler: (context) => effect {
+      const body = try jsonBody(context, EmailVerify)
+      return json(try signIn({ method: "EmailSignIn", purpose: signInCode, destination: body.email.toLowerCase(), code: body.code, clientId: body.clientId, codeVerifier: body.codeVerifier, address: clientAddress(context), now: context.now }))
+    }
+  },
+  {
+    method: "POST",
+    path: "/api/v1/auth/sms/code/send",
+    auth: "Public",
+    maxBodyBytes: 4096,
+    handler: (context) => effect {
+      const body = try jsonBody(context, PhoneSend)
+      return json(try sendCode({ method: "PhoneSignIn", purpose: signInCode, destination: body.phone, clientId: body.clientId, codeChallenge: body.codeChallenge, address: clientAddress(context), now: context.now }))
+    }
+  },
+  {
+    method: "POST",
+    path: "/api/v1/auth/sms/code/verify",
+    auth: "Public",
+    maxBodyBytes: 4096,
+    handler: (context) => effect {
+      const body = try jsonBody(context, PhoneVerify)
+      return json(try signIn({ method: "PhoneSignIn", purpose: signInCode, destination: body.phone, code: body.code, clientId: body.clientId, codeVerifier: body.codeVerifier, address: clientAddress(context), now: context.now }))
+    }
+  }
+]
+
+export const sweeps: ReadonlyArray<Sweep> = [{ name: "ended code challenges", everyMs: 60 * 60_000, run: sweepChallenges() }]

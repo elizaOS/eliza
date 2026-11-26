@@ -1,0 +1,604 @@
+// spec/agent/models/binding.md, "No text handler is ever served by a model on the device"; spec/agent/models/binding.md, "Only a network failure, an outage or a provider issue is retried, and a rate limit ends the call for its turn to re-send once"; spec/agent/models/binding.md, "Each refusal is one account state, and the last failure records its kind and time without text"; spec/agent/models/binding.md, "A tool call, a structured answer and the token use reach the caller as one result"; spec/agent/models/binding.md, "A key is held only in the slot of the backend it was given for, and only as a bearer credential that slot accepts"; spec/agent/models/binding.md, "A rate limit holds the account for the provider's whole retry time, and for at most 4 s on a Cerebras own-key endpoint"; spec/agent/models/binding.md, "A tool call the provider could not parse, or a streamed answer silent for a minute, ends the call without a retry"; spec/agent/models/binding.md, "A call sends an output cap only when its caller names one, and a thinking hint sets the reasoning effort only on a model that documents it"; spec/agent/models/binding.md, "A Qwen call on a Cerebras route sends the prompt cache key its caller names, and no call invents one"; spec/agent/conversation/planning.md, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history"
+import { assert, it } from "@effect/vitest"
+import { FetchHttpClient } from "effect/http"
+import { AgentRuntime, ModelType, type GenerateTextParams, type GenerateTextResult, type JSONSchema } from "@elizaos/core"
+import { allowanceExhausted, answerJson, cachedText, dropped, echoImages, gateway, insufficientCredits, providerUnavailable, rateLimited, refusal, requestFault, text, textWithoutEof, toolCalls, unavailable, type CloudFake } from "./support/cloud-fake.ts"
+import { parseLaunch } from "../src/host/launch.vibe"
+import { bindModels } from "../src/models/binding.vibe"
+import { ModelRefusal } from "../src/models/chat.vibe"
+import { registerCloudModels } from "../src/models/cloud-provider.vibe"
+import { probeOwnKey, registerOwnKeyModels } from "../src/models/own-key-provider.vibe"
+import { agentCache, sentAtMostTwice } from "../src/conversation/planning.vibe"
+import { openDeviceStorage } from "../src/storage/index.vibe"
+import { cloudFake, deviceKey, host, scratch } from "./support/kernel.vibe"
+import { launchDocument, launchFrame, type Backend } from "./support/scratch.ts"
+
+module node {
+  import { createHash } from "node:crypto"
+
+  /** @throws {never} */
+  export function digest(text: string): string {
+    return createHash("sha256").update(text).digest("hex")
+  }
+
+  export const cerebrasBaseUrl = "https://api.cerebras.ai/v1"
+  const routes = new Map<string, string>()
+  const sent = globalThis.fetch
+  globalThis.fetch = (input, init) => {
+    const url = input instanceof Request ? input.url : String(input)
+    const route = [...routes].find(([from]) => url.startsWith(from))
+    return sent(route === undefined ? input : route[1] + url.slice(route[0].length), init)
+  }
+
+  /** @throws {never} */
+  export function routedToFake(from: string, to: string): () => void {
+    routes.set(from, to)
+    return () => { routes.delete(from) }
+  }
+}
+import { cerebrasBaseUrl, digest, routedToFake } from node
+
+effect function modelRuntime(agentId?: AgentRuntime["agentId"]) {
+  return try Effect.try(() => new AgentRuntime({ agentId, character: { name: "Eliza", bio: [] } }))
+}
+
+effect function bound(backend: Backend, key: string, { environment, runtime }: { environment?: Readonly<Record<string, string>>; runtime?: AgentRuntime } = {}) {
+  const parsed = try parseLaunch(JSON.stringify(launchDocument({ backend, ...(environment === undefined ? {} : { environment }) })), JSON.stringify(launchFrame({ credential: { version: 1, value: key } })))
+  const binding = try bindModels(parsed.launch, parsed.authority)
+  if (runtime !== undefined) return { binding, runtime }
+  const state = try scratch("model-providers")
+  const store = try acquireRelease(host("device storage", () => openDeviceStorage({ stateDirectory: state.path, persistMemory: false, account: null, embeddingDimensions: 0 })),
+    (opened) => orDie(host("device storage close", () => opened.adapter.close())))
+  const stored = try modelRuntime(store.agentId)
+  try Effect.try(() => stored.registerDatabaseAdapter(store.adapter))
+  return { binding, runtime: stored }
+}
+
+effect function cloudAgent(cloud: CloudFake, { large = "large", runtime }: { large?: string; runtime?: AgentRuntime } = {}) {
+  const made = try bound({ kind: "cloud", origin: cloud.origin, imageModel: "vision" }, deviceKey, { runtime })
+  registerCloudModels(made.runtime, made.binding, { baseUrl: cloud.origin, small: "small", large, image: "vision" })
+  return made
+}
+
+effect function refusedCloudAgent(cloud: CloudFake) {
+  const runtime = try modelRuntime()
+  return try cloudAgent(cloud, { runtime })
+}
+
+function completions(cloud: CloudFake): number {
+  return cloud.calls.filter((call) => call.method === "POST" && call.path.endsWith("/chat/completions")).length
+}
+
+function refusalOf(runtime: AgentRuntime, params: GenerateTextParams) {
+  return host("refused model call", () => runtime.useModel(ModelType.TEXT_SMALL, params).then(() => undefined, (failure: unknown) => failure as { code?: unknown; status?: unknown; name?: unknown; retryAfterMs?: unknown; cloudCode?: unknown; limitOrigin?: unknown }))
+}
+
+it.effect('A cloud text call keeps its image parts and streams, and an image description uses the image model (spec/agent/models/binding.md, "No text handler is ever served by a model on the device")', effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const { runtime, binding } = try cloudAgent(cloud)
+  try Effect.sync(() => cloud.script(echoImages(), text("Title: A cat", "\nA cat on a mat.")))
+  const chunks: string[] = []
+  const said = try host("text with an image part", () => runtime.useModel(ModelType.TEXT_SMALL, {
+    messages: [{ role: "user", content: [{ type: "text", text: "What is this?" }, { type: "image", image: "https://example.test/cat.png" }] }],
+    stream: true, onStreamChunk: (chunk: string) => { chunks.push(chunk) },
+  }))
+  const described = try host("image description", () => runtime.useModel(ModelType.IMAGE_DESCRIPTION, { imageUrl: "https://example.test/cat.png", prompt: "Describe it." }))
+  assert.strictEqual(said, "images:https://example.test/cat.png")
+  assert.deepStrictEqual(chunks, ["images:https://example.test/cat.png"])
+  assert.deepStrictEqual(described, { title: "A cat", description: "Title: A cat\nA cat on a mat." })
+  assert.deepStrictEqual(cloud.calls.map((call) => {
+    const body = call.body
+    assert.ok(body !== null && typeof body === "object" && "model" in body)
+    return [call.path, body.model, call.authorization, "max_tokens" in body ? body.max_tokens : undefined]
+  }), [
+    ["/api/v1/chat/completions", "small", `Bearer ${deviceKey}`, undefined],
+    ["/api/v1/chat/completions", "vision", `Bearer ${deviceKey}`, undefined],
+  ])
+  assert.strictEqual((try binding.read()).accountState, "usable")
+})
+
+it.live('A completed provider stream returns while the HTTP connection is still open (spec/agent/models/binding.md, "A tool call the provider could not parse, or a streamed answer silent for a minute, ends the call without a retry")', effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const { runtime } = try cloudAgent(cloud)
+  try Effect.sync(() => cloud.script(textWithoutEof("Complete.")))
+  const arrived = try Effect.timeout(host("receive the terminal stream marker", () => runtime.useModel(ModelType.TEXT_LARGE, { prompt: "Reply once.", stream: true })), "15 seconds")
+  assert.strictEqual(arrived, "Complete.")
+  assert.strictEqual(completions(cloud), 1)
+}, 45_000)
+
+it.live('A planner resend uses the remaining send and only keeps the origin of its own rate limit (spec/agent/conversation/planning.md, "A model call is sent again at most once, after a temporary rate limit or a tool call the provider could not parse"; spec/agent/conversation/turns.md, "A re-send the binding refuses for the limit its turn met keeps who set that limit")', effect () => {
+  const failedOver = try cloudFake(deviceKey)
+  const retried = try cloudFake(deviceKey)
+  const first = try cloudAgent(failedOver)
+  const second = try cloudAgent(retried)
+  try Effect.sync(() => {
+    failedOver.script(unavailable(1), rateLimited(Date.now() + 300), text("Unexpected third request."))
+    retried.script(rateLimited(Date.now() + 300), text("The second request answered."))
+  })
+  const send = (runtime: AgentRuntime, beforeResend?: () => Promise<void>) => {
+    const signal = new AbortController().signal
+    let sendingAgain = false
+    return sentAtMostTwice(async (bind) => {
+      if (sendingAgain) await beforeResend?.()
+      sendingAgain = true
+      return runtime.useModel(ModelType.TEXT_LARGE, bind({ prompt: "Reply once.", signal }))
+    }, signal)
+  }
+  const refused = try host("a failed dispatch that already sent twice", () => send(first.runtime).then(() => undefined, (failure: unknown) => failure))
+  const answered = try host("one admitted resend after a temporary limit", () => send(second.runtime))
+  assert.strictEqual(refused instanceof ModelRefusal ? refused.status : undefined, 429)
+  assert.strictEqual(answered, "The second request answered.")
+  assert.deepStrictEqual([completions(failedOver), completions(retried)], [2, 2])
+
+  const fresh = try refusedCloudAgent(retried)
+  try Effect.sync(() => retried.script(
+    refusal(429, "rate_limited", { retryable: true, retryAt: Date.now() - 1, reason: "provider_rate_limited" }),
+    rateLimited(Date.now() + 60_000),
+  ))
+  const freshRefusal = try host("a fresh rate limit with no reason", () => send(fresh.runtime).then(() => undefined, (failure: unknown) => failure))
+  assert.deepStrictEqual(freshRefusal instanceof ModelRefusal ? [freshRefusal.status, freshRefusal.limitOrigin, completions(retried)] : undefined, [429, undefined, 4])
+
+  const replaced = try refusedCloudAgent(retried)
+  const pending = try replaced.binding.startCall("TextSmall", Date.now())
+  assert.strictEqual(typeof pending, "number")
+  const pendingId = typeof pending === "number" ? pending : -1
+  try Effect.sync(() => retried.script(refusal(429, "rate_limited", { retryable: true, retryAt: Date.now() - 1, reason: "provider_rate_limited" })))
+  const heldRefusal = try host("the hold from a different in-flight call", () => send(replaced.runtime, () => {
+    const now = Date.now()
+    return Effect.runPromise(replaced.binding.refuseCall(pendingId, now, { tag: "CloudRateLimited", retryAt: now + 60_000 }))
+  }).then(() => undefined, (failure: unknown) => failure))
+  assert.deepStrictEqual(heldRefusal instanceof ModelRefusal ? [heldRefusal.status, heldRefusal.limitOrigin, heldRefusal.limitCallId, completions(retried)] : undefined, [429, undefined, pendingId, 5])
+}, 45_000)
+
+it.effect('The cloud\'s own provider_unavailable refusal is retried on the next registration under a fresh idempotency key; a call takes at most one fresh key; a dropped connection, a bare gateway 502 or 504 and any other 503 keep the key; and the answer clears the account state (spec/agent/models/binding.md, "Only a network failure, an outage or a provider issue is retried, and a rate limit ends the call for its turn to re-send once")', effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const { runtime, binding } = try cloudAgent(cloud)
+  try Effect.sync(() => cloud.script(
+    providerUnavailable(1), text("after outage"), dropped(), text("after drop"), gateway(502), text("after 502"), gateway(504), text("after 504"),
+    providerUnavailable(1), providerUnavailable(1), providerUnavailable(1), providerUnavailable(1),
+    unavailable(1), unavailable(1), unavailable(1), unavailable(1),
+  ))
+  const first = try host("outage then answer", () => runtime.useModel(ModelType.TEXT_LARGE, { prompt: "One." }))
+  const second = try host("drop then answer", () => runtime.useModel(ModelType.TEXT_LARGE, { prompt: "Two." }))
+  const third = try host("502 then answer", () => runtime.useModel(ModelType.TEXT_LARGE, { prompt: "Three." }))
+  const fourth = try host("504 then answer", () => runtime.useModel(ModelType.TEXT_LARGE, { prompt: "Four." }))
+  const fifth = try refusalOf(runtime, { prompt: "Five." })
+  const sixth = try refusalOf(runtime, { prompt: "Six." })
+  assert.deepStrictEqual([first, second, third, fourth], ["after outage", "after drop", "after 502", "after 504"])
+  assert.deepStrictEqual([fifth?.status, sixth?.status], [503, 503])
+  assert.strictEqual(completions(cloud), 16)
+  const keys = cloud.calls.map((call) => call.idempotencyKey ?? "")
+  assert.deepStrictEqual([keys.every((key) => /^[\da-f-]{36}$/.test(key)), keys.map((key) => [...new Set(keys)].indexOf(key))], [true, [0, 1, 2, 2, 3, 3, 4, 4, 5, 6, 6, 6, 7, 7, 7, 7]])
+  const view = try binding.read()
+  assert.strictEqual(view.accountState, "provider_issue")
+  assert.strictEqual(view.lastCloudFailure?.kind, "provider_issue")
+})
+
+it.effect('A rate limit ends the call, blocks the next one without reaching the cloud, and funding is not retried, carrying Cloud\'s own code only when its 402 names one (spec/agent/models/binding.md, "Each refusal is one account state, and the last failure records its kind and time without text"; spec/agent/models/binding.md, "A cloud refusal that names spent credits or a spent allowance carries Cloud\'s own code, and no other refusal carries one"; spec/agent/models/binding.md, "A rate limit names whether the model provider or Cloud set it, and no other refusal names one")', effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const limited = try refusedCloudAgent(cloud)
+  const retryAt = Date.now() + 60_000
+  try Effect.sync(() => cloud.script(refusal(429, "rate_limited", { retryable: true, retryAt, reason: "cloud_gate_rate_limited" })))
+  const ended = try refusalOf(limited.runtime, { prompt: "Limited." })
+  const blocked = try refusalOf(limited.runtime, { prompt: "Still limited." })
+  assert.deepStrictEqual([ended?.code, ended?.cloudCode, ended?.limitOrigin], ["MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED", undefined, "CloudSetLimit"])
+  assert.deepStrictEqual([blocked?.code, blocked?.cloudCode, blocked?.limitOrigin], ["MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED", undefined, undefined])
+  assert.strictEqual(completions(cloud), 1)
+  const view = try limited.binding.read()
+  assert.deepStrictEqual([view.accountState, view.blocked, view.lastCloudFailure?.retryAt], ["limit_reached", true, retryAt])
+  const upstream = try refusedCloudAgent(cloud)
+  try Effect.sync(() => cloud.script(refusal(429, "rate_limited", { retryable: true, retryAt, reason: "provider_rate_limited" })))
+  const passedOn = try refusalOf(upstream.runtime, { prompt: "Provider limited." })
+  assert.deepStrictEqual([passedOn?.code, passedOn?.limitOrigin], ["MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED", "ProviderSetLimit"])
+  const unmarked = try refusedCloudAgent(cloud)
+  const mismatched = try refusedCloudAgent(cloud)
+  try Effect.sync(() => cloud.script(
+    rateLimited(retryAt),
+    refusal(429, "service_unavailable", { retryAt, reason: "provider_rate_limited" }),
+  ))
+  const unknown = try refusalOf(unmarked.runtime, { prompt: "Rate limit with no reason." })
+  const unrelatedReason = try refusalOf(mismatched.runtime, { prompt: "Rate limit with a mismatched reason." })
+  assert.deepStrictEqual([unknown, unrelatedReason].map((answer) => [answer?.code, answer?.limitOrigin]), [
+    ["MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED", undefined], ["MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED", undefined],
+  ])
+  const unfunded = try refusedCloudAgent(cloud)
+  try Effect.sync(() => cloud.script(insufficientCredits()))
+  const denied = try refusalOf(unfunded.runtime, { prompt: "Unfunded." })
+  assert.deepStrictEqual([denied?.code, denied?.status, denied?.cloudCode, denied?.limitOrigin], ["MODEL_FUNDING_AUTHORITY_FAILED", 402, "insufficient_credits", undefined])
+  assert.strictEqual(completions(cloud), 5)
+  assert.strictEqual((try unfunded.binding.read()).accountState, "insufficient_credits")
+  const spent = try refusedCloudAgent(cloud)
+  try Effect.sync(() => cloud.script(allowanceExhausted(Date.now() + 86_400_000)))
+  const exhausted = try refusalOf(spent.runtime, { prompt: "Allowance spent." })
+  assert.deepStrictEqual([exhausted?.code, exhausted?.status, exhausted?.cloudCode], ["MODEL_FUNDING_AUTHORITY_FAILED", 402, "allowance_exhausted"])
+  assert.strictEqual(completions(cloud), 6)
+  assert.strictEqual((try spent.binding.read()).accountState, "insufficient_credits")
+  const uncoded = try refusedCloudAgent(cloud)
+  try Effect.sync(() => cloud.script(refusal(402, "payment_required")))
+  const unnamed = try refusalOf(uncoded.runtime, { prompt: "Payment required." })
+  assert.deepStrictEqual([unnamed?.code, unnamed?.status, unnamed?.cloudCode], ["MODEL_FUNDING_AUTHORITY_FAILED", 402, undefined])
+  assert.strictEqual((try uncoded.binding.read()).accountState, "insufficient_credits")
+  const replaced = try refusedCloudAgent(cloud)
+  try Effect.sync(() => cloud.acceptKey("rotated-device-key"))
+  const invalid = try refusalOf(replaced.runtime, { prompt: "Old key." })
+  assert.strictEqual(invalid?.status, 401)
+  assert.strictEqual(completions(cloud), 8)
+  assert.strictEqual((try replaced.binding.read()).accountState, "credential_invalid")
+})
+
+it.live('A caller abort ends the call without an account failure (spec/agent/models/binding.md, "Only a network failure, an outage or a provider issue is retried, and a rate limit ends the call for its turn to re-send once")', effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const { runtime, binding } = try cloudAgent(cloud)
+  try Effect.sync(() => cloud.script({ kind: "hang" }))
+  const controller = new AbortController()
+  const pending = try Effect.try(() => runtime.useModel(ModelType.TEXT_SMALL, { prompt: "Wait.", signal: controller.signal }))
+  while (completions(cloud) === 0) try sleep("10 millis")
+  controller.abort()
+  const aborted = try host("aborted call", () => pending.then(() => undefined, (failure: unknown) => failure as { name?: unknown }))
+  assert.strictEqual(aborted?.name, "AbortError")
+  try host("server saw the abort", () => cloud.calls[0]!.aborted)
+  assert.strictEqual(completions(cloud), 1)
+  const view = try binding.read()
+  assert.deepStrictEqual([view.accountState, view.lastCloudFailure], ["usable", undefined])
+})
+
+it.effect('The own-key backend answers text and image description, classifies its refusals into the same states with no Cloud code, probes its key and holds only a key its slot accepts (spec/agent/models/binding.md, "No text handler is ever served by a model on the device"; spec/agent/models/binding.md, "A key is held only in the slot of the backend it was given for, and only as a bearer credential that slot accepts"; spec/agent/models/binding.md, "A cloud refusal that names spent credits or a spent allowance carries Cloud\'s own code, and no other refusal carries one"; spec/agent/models/binding.md, "A rate limit names whether the model provider or Cloud set it, and no other refusal names one")', effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const own = { baseUrl: cloud.ownKeyBaseUrl, small: "small", large: "large" }
+  const good = try bound({ kind: "ownKey", baseUrl: own.baseUrl, smallModel: "small", largeModel: "large" }, cloud.ownKey)
+  registerOwnKeyModels(good.runtime, good.binding, own)
+  try Effect.sync(() => cloud.script(unavailable(1), text("own answer"), rateLimited(Date.now() + 60_000)))
+  const answered = try host("own-key text", () => good.runtime.useModel(ModelType.TEXT_LARGE, { prompt: "Hi." }))
+  const limited = try refusalOf(good.runtime, { prompt: "Again." })
+  assert.strictEqual(answered, "own answer")
+  assert.deepStrictEqual([limited?.code, limited?.limitOrigin], ["MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED", "ProviderSetLimit"])
+  assert.notStrictEqual(good.runtime.getModel(ModelType.IMAGE_DESCRIPTION), undefined)
+  assert.strictEqual((try good.binding.read()).accountState, "limit_reached")
+  provide FetchHttpClient.layer {
+    const listed = try probeOwnKey(own, Redacted.make(cloud.ownKey))
+    assert.deepStrictEqual(listed, ["small", "large"])
+  }
+  const wrong = try bound({ kind: "ownKey", baseUrl: own.baseUrl, smallModel: "small", largeModel: "large" }, "wrong-key")
+  registerOwnKeyModels(wrong.runtime, wrong.binding, own)
+  const refused = try refusalOf(wrong.runtime, { prompt: "Bad key." })
+  assert.strictEqual(refused?.status, 401)
+  assert.strictEqual((try wrong.binding.read()).accountState, "credential_invalid")
+  assert.deepStrictEqual(cloud.calls.map((call) => call.path), [
+    "/own-key/v1/chat/completions", "/own-key/v1/chat/completions", "/own-key/v1/chat/completions", "/own-key/v1/models", "/own-key/v1/chat/completions",
+  ])
+  const quota = try bound({ kind: "ownKey", baseUrl: own.baseUrl, smallModel: "small", largeModel: "large" }, cloud.ownKey)
+  registerOwnKeyModels(quota.runtime, quota.binding, own)
+  try Effect.sync(() => cloud.script(refusal(429, "insufficient_quota")))
+  const spent = try refusalOf(quota.runtime, { prompt: "Quota spent." })
+  assert.deepStrictEqual([spent?.code, spent?.status, spent?.cloudCode, (try quota.binding.read()).accountState], ["MODEL_FUNDING_AUTHORITY_FAILED", 402, undefined, "insufficient_credits"])
+  const busy = try bound({ kind: "ownKey", baseUrl: own.baseUrl, smallModel: "small", largeModel: "large" }, cloud.ownKey)
+  registerOwnKeyModels(busy.runtime, busy.binding, own)
+  try Effect.sync(() => cloud.script(...Array.from({ length: 4 }, () => refusal(529, "overloaded_error"))))
+  const overloaded = try refusalOf(busy.runtime, { prompt: "Overloaded." })
+  assert.deepStrictEqual([overloaded?.limitOrigin, (try busy.binding.read()).accountState], [undefined, "provider_issue"])
+  const keyed = (backend: Backend, key: string) => parseLaunch(JSON.stringify(launchDocument({ backend })), JSON.stringify(launchFrame({ credential: { version: 1, value: key } })))
+  const oversized = try Effect.flip(keyed({ kind: "ownKey", baseUrl: own.baseUrl, smallModel: "small", largeModel: "large" }, "k".repeat(1025)))
+  const unbound = try keyed({ kind: "none" }, cloud.ownKey)
+  const dropped = try bindModels(unbound.launch, unbound.authority)
+  const lineBreak = try Effect.flip(keyed({ kind: "ownKey", baseUrl: own.baseUrl, smallModel: "small", largeModel: "large" }, "own-key\r\nX-Injected: 1"))
+  assert.deepStrictEqual(oversized._tag === "LaunchCredentialMissing" ? { tag: oversized._tag, oversized: oversized.oversized } : { tag: oversized._tag }, { tag: "LaunchCredentialMissing", oversized: true })
+  assert.strictEqual(Redacted.value(dropped.credential()), "")
+  assert.strictEqual(lineBreak._tag, "LaunchFrameRejected")
+})
+
+it.effect('A tool call and its token use reach the caller as one result, a streamed call asks for its token use and records the cached prompt tokens of its last chunk, each tool result follows the call that asked for it, and a thinking hint sets the reasoning effort only on a model that documents it (spec/agent/models/binding.md, "A tool call, a structured answer and the token use reach the caller as one result"; spec/agent/models/binding.md, "A call sends an output cap only when its caller names one, and a thinking hint sets the reasoning effort only on a model that documents it")', effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const { runtime, binding } = try cloudAgent(cloud, { large: "cerebras/qwen-3.8-27b" })
+  try Effect.sync(() => cloud.route("POST", "/api/v1/chat/completions", answerJson({
+    choices: [{ message: { role: "assistant", content: null, tool_calls: [{ id: "call-1", type: "function", function: { name: "CALCULATE", arguments: "{\"expression\":\"2+2\"}" } }] }, finish_reason: "tool_calls" }],
+    usage: { prompt_tokens: 12, completion_tokens: 5, total_tokens: 17, prompt_tokens_details: { cached_tokens: 4 }, completion_tokens_details: { reasoning_tokens: 0 } },
+  })))
+  const parameters = { type: "object", properties: { expression: { type: "string" } }, required: ["expression"] }
+  const result = try host("tool call", () => runtime.useModel<typeof ModelType.TEXT_LARGE, string | GenerateTextResult>(ModelType.TEXT_LARGE, {
+    tools: [{ name: "CALCULATE", description: "Arithmetic.", parameters }],
+    toolChoice: "auto",
+    reasoning: "off",
+    messages: [
+      { role: "user", content: "What is 2+2?" },
+      { role: "tool", toolCallId: "orphan", content: "stale" },
+      { role: "assistant", content: "", toolCalls: [{ id: "call-0", name: "CALCULATE", arguments: { expression: "1+1" } }] },
+      { role: "user", content: "And now?" },
+      { role: "tool", toolCallId: "call-0", content: "2" },
+    ],
+  }))
+  assert.deepStrictEqual<unknown>(result, {
+    text: "", toolCalls: [{ id: "call-1", name: "CALCULATE", arguments: { expression: "2+2" } }], finishReason: "tool_calls",
+    usage: { promptTokens: 12, completionTokens: 5, totalTokens: 17, cacheReadInputTokens: 4, reasoningTokens: 0 },
+  })
+  const sent = cloud.calls.at(-1)?.body as { messages: Array<{ role: string } & Record<string, unknown>>; tools: unknown; tool_choice: unknown; reasoning_effort: unknown }
+  assert.deepStrictEqual(sent.messages.filter((message) => message.role !== "system"), [
+    { role: "user", content: "What is 2+2?" },
+    { role: "user", content: "[tool result]\nstale" },
+    { role: "assistant", content: null, tool_calls: [{ id: "call-0", type: "function", function: { name: "CALCULATE", arguments: "{\"expression\":\"1+1\"}" } }] },
+    { role: "tool", tool_call_id: "call-0", content: "2" },
+    { role: "user", content: "And now?" },
+  ])
+  assert.deepStrictEqual([sent.tools, sent.tool_choice, sent.reasoning_effort], [[{ type: "function", function: { name: "CALCULATE", description: "Arithmetic.", parameters } }], "auto", "none"])
+  assert.strictEqual((try binding.read()).accountState, "usable")
+
+  const scripted = try cloudFake(deviceKey)
+  const streaming = try cloudAgent(scripted)
+  try Effect.sync(() => scripted.script(text("Whole."), cachedText(48, "Four."), cachedText(0, "No cache.")))
+  try host("whole call", () => streaming.runtime.useModel(ModelType.TEXT_LARGE, { prompt: "Hi." }))
+  const chunks: string[] = []
+  const streamed = try host("streamed tool offer", () => streaming.runtime.useModel(ModelType.TEXT_LARGE, {
+    tools: [{ name: "CALCULATE", description: "Arithmetic.", parameters }], toolChoice: "auto",
+    messages: [{ role: "user", content: "What is 2+2?" }], stream: true, onStreamChunk: (chunk: string) => { chunks.push(chunk) },
+  }))
+  const zero = try host("streamed usage without a cache hit", () => streaming.runtime.useModel(ModelType.TEXT_LARGE, {
+    tools: [{ name: "CALCULATE", description: "Arithmetic.", parameters }], toolChoice: "auto", prompt: "Hi.", stream: true,
+  }))
+  assert.deepStrictEqual<unknown>(zero, {
+    text: "No cache.", toolCalls: [], finishReason: "stop",
+    usage: { promptTokens: 1, completionTokens: 3, totalTokens: 4, cacheReadInputTokens: 0 },
+  })
+  const [whole, asked] = scripted.calls.map((call) => call.body as Record<string, unknown>)
+  let logged: unknown
+  for (let read = 0; logged === undefined && read < 100; read++) {
+    const rows = try host("model-call records", () => streaming.runtime.getLogs({ entityId: streaming.runtime.agentId }))
+    logged = rows.map((log) => (log.body as { usage?: { cacheReadInputTokens?: unknown } }).usage).find((usage) => usage?.cacheReadInputTokens === 48)
+  }
+  assert.deepStrictEqual<unknown>({ streamed, chunks, options: [asked?.stream_options, whole !== undefined && "stream_options" in whole], logged }, {
+    streamed: { text: "Four.", toolCalls: [], finishReason: "stop", usage: { promptTokens: 49, completionTokens: 2, totalTokens: 51, cacheReadInputTokens: 48 } },
+    chunks: ["Four."],
+    options: [{ include_usage: true }, false],
+    logged: { promptTokens: 49, completionTokens: 2, cacheReadInputTokens: 48 },
+  })
+
+  const long = "A long answer.".repeat(4_000)
+  const longArgument = "7".repeat(70_000)
+  try Effect.sync(() => scripted.script(text(long, long), text(long), toolCalls("", { name: "CALCULATE", arguments: { expression: longArgument } })))
+  const longStreamed = try host("long streamed answer", () => streaming.runtime.useModel(ModelType.TEXT_LARGE, { prompt: "At length.", stream: true, onStreamChunk: () => undefined }))
+  const longWhole = try host("long whole answer", () => streaming.runtime.useModel(ModelType.TEXT_LARGE, { prompt: "At length again." }))
+  const longCall = try host("long streamed tool call", () => streaming.runtime.useModel<typeof ModelType.TEXT_LARGE, string | GenerateTextResult>(ModelType.TEXT_LARGE, {
+    tools: [{ name: "CALCULATE", description: "Arithmetic.", parameters }], toolChoice: "auto",
+    messages: [{ role: "user", content: "Count." }], stream: true, onStreamChunk: () => undefined,
+  }))
+  assert.deepStrictEqual<unknown>(
+    [longStreamed === long + long, longWhole === long, typeof longCall === "string" ? longCall : longCall.toolCalls?.map((made) => made.arguments)],
+    [true, true, [{ expression: longArgument }]])
+})
+
+it.effect('A Qwen call on a Cerebras route reads a tool call written as text as that call only when every block names an offered tool, and every other call keeps the text (spec/agent/models/binding.md, "A Qwen call on a Cerebras route reads a tool call the model wrote as text as that call, when it names an offered tool")', effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const qwen = try cloudAgent(cloud, { large: "cerebras/qwen-3.8-27b" })
+  const plain = try cloudAgent(cloud)
+  const tools: NonNullable<GenerateTextParams["tools"]> = [
+    { name: "MAPS_SEARCH", description: "Places.", parameters: { type: "object", properties: { query: { type: "string" }, limit: { type: "integer" }, open: { type: "boolean" } }, required: ["query"] } },
+    { name: "CALCULATE", description: "Arithmetic.", parameters: { type: "object", properties: { expression: { type: "string" } }, required: ["expression"] } },
+  ]
+  const xml = "Let me check.\n<tool_call>\n<function=MAPS_SEARCH>\n<parameter=query>\ncoffee near me\n</parameter>\n<parameter=limit>\n5\n</parameter>\n<parameter=open>\ntrue\n</parameter>\n</function>\n</tool_call>"
+  const json = "<tool_call>\n{\"name\": \"CALCULATE\", \"arguments\": {\"expression\": \"2 + 2\"}}\n</tool_call>\n<tool_call>\n<function=CALCULATE>\n<parameter=expression>\n3 * 3\n</parameter>\n</function>\n</tool_call>"
+  const unoffered = "Sure, one sec.\n<tool_call>\n<function=phone_agent_tool_12() {}\n</function>\n</tool_call>"
+  const mixed = `${json}\n<tool_call>\n<function=SEND_TEXT>\n</function>\n</tool_call>`
+  const unclosed = "Let me open Maps.\n\n<tool_call>\n<function=MAPS_SEARCH>"
+  const ask = (agent: { runtime: AgentRuntime }, content: string, toolChoice: "auto" | "none" = "auto") => effect {
+    try Effect.sync(() => cloud.script(text(content)))
+    const answer = try host("written tool call", () => agent.runtime.useModel<typeof ModelType.TEXT_LARGE, string | GenerateTextResult>(ModelType.TEXT_LARGE, {
+      tools, toolChoice, messages: [{ role: "user", content: "Coffee near me?" }],
+    }))
+    return typeof answer === "string" ? { text: answer, calls: [] } : {
+      text: answer.text,
+      calls: (answer.toolCalls ?? []).map((call) => ({ fresh: call.id.startsWith("call_"), name: call.name, arguments: call.arguments })),
+    }
+  }
+  const results = {
+    xml: try ask(qwen, xml),
+    json: try ask(qwen, json),
+    unoffered: try ask(qwen, unoffered),
+    mixed: try ask(qwen, mixed),
+    unclosed: try ask(qwen, unclosed),
+    noFreeChoice: try ask(qwen, xml, "none"),
+    otherModel: try ask(plain, xml),
+  }
+  assert.deepStrictEqual(results, {
+    xml: { text: "Let me check.", calls: [{ fresh: true, name: "MAPS_SEARCH", arguments: { query: "coffee near me", limit: 5, open: true } }] },
+    json: { text: "", calls: [{ fresh: true, name: "CALCULATE", arguments: { expression: "2 + 2" } }, { fresh: true, name: "CALCULATE", arguments: { expression: "3 * 3" } }] },
+    unoffered: { text: unoffered, calls: [] },
+    mixed: { text: mixed, calls: [] },
+    unclosed: { text: unclosed, calls: [] },
+    noFreeChoice: { text: xml, calls: [] },
+    otherModel: { text: xml, calls: [] },
+  })
+})
+
+it.effect('A tool is offered without its pattern constraints, meta-schema, redundant non-strict defaults, or excess whitespace, while strict tools keep required arrays and data keywords stay verbatim (spec/agent/models/binding.md, "A tool call, a structured answer and the token use reach the caller as one result")', effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const { runtime } = try cloudAgent(cloud, { large: "cerebras/qwen-3.8-27b" })
+  try Effect.sync(() => cloud.route("POST", "/api/v1/chat/completions", answerJson({
+    choices: [{ message: { role: "assistant", content: "Done." }, finish_reason: "stop" }],
+    usage: { prompt_tokens: 12, completion_tokens: 2, total_tokens: 14 },
+  })))
+  const handle = "^maps_[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$"
+  const placeId = { type: "string", description: "  A   selection\t handle.  ", pattern: handle }
+  const parameters: JSONSchema = {
+    $schema: "https://json-schema.org/draft/2020-12/schema",
+    type: "object", additionalProperties: false, required: [],
+    properties: {
+      placeId,
+      pattern: { type: "string", description: "A property named pattern.", enum: ["a", "b"] },
+      required: { type: "boolean", description: "" },
+      open: { type: "object", additionalProperties: true, properties: {} },
+      codes: { type: "array", items: { type: "string", pattern: "^[0-9]+$" } },
+      either: { anyOf: [{ type: "string", pattern: "^x" }, { type: "number" }] },
+      example: { type: "string", default: "x", examples: [{ pattern: "kept as data", $schema: "kept", required: [] }] },
+    },
+  }
+  try host("tool offer with patterns", () => runtime.useModel(ModelType.TEXT_LARGE, {
+    tools: [{ name: "MAPS_PLACE", description: "  Places.  ", parameters }], toolChoice: "auto",
+    messages: [{ role: "user", content: "Coffee near me?" }],
+  }))
+  const sent = cloud.calls.at(-1)?.body as { tools: Array<{ function: { description?: string; parameters: unknown } }> }
+  assert.strictEqual(sent.tools[0]?.function.description, "Places.")
+  assert.deepStrictEqual(sent.tools[0]?.function.parameters, {
+    type: "object", additionalProperties: false,
+    properties: {
+      placeId: { type: "string", description: "A selection handle." },
+      pattern: { type: "string", description: "A property named pattern.", enum: ["a", "b"] },
+      required: { type: "boolean" },
+      open: { type: "object", properties: {} },
+      codes: { type: "array", items: { type: "string" } },
+      either: { anyOf: [{ type: "string" }, { type: "number" }] },
+      example: { type: "string", default: "x", examples: [{ pattern: "kept as data", $schema: "kept", required: [] }] },
+    },
+  })
+  assert.strictEqual(placeId.pattern, handle)
+  try host("strict tool keeps empty required", () => runtime.useModel(ModelType.TEXT_LARGE, {
+    tools: [{ name: "EMPTY_STRICT", description: "No args.", strict: true, parameters: { type: "object", additionalProperties: false, required: [], properties: {} } }],
+    toolChoice: "auto",
+    messages: [{ role: "user", content: "Ping." }],
+  }))
+  const strictSent = cloud.calls.at(-1)?.body as { tools: Array<{ function: { strict?: boolean; parameters: unknown } }> }
+  assert.strictEqual(strictSent.tools[0]?.function.strict, true)
+  assert.deepStrictEqual(strictSent.tools[0]?.function.parameters, { type: "object", additionalProperties: false, required: [], properties: {} })
+})
+
+it.effect('A Cerebras own-key call, or a Cloud call for a model Cloud serves on Cerebras, sends its tools strict only when every tool is, and any other call sends each tool as declared (spec/agent/models/binding.md, "A tool call, a structured answer and the token use reach the caller as one result")', effect () => {
+  const cloud = try cloudFake(deviceKey)
+  try acquireRelease(Effect.sync(() => routedToFake(cerebrasBaseUrl, cloud.ownKeyBaseUrl)), (restore) => Effect.sync(restore))
+  const calculate = { name: "CALCULATE", description: "Arithmetic.", parameters: { type: "object", properties: { expression: { type: "string" } }, required: ["expression"], additionalProperties: false }, strict: true }
+  const restore = { name: "RESTORE_CONTEXT", description: "Restore context.", parameters: { type: "object", properties: { reason: { type: "string" } }, required: ["reason"], additionalProperties: false } }
+  const offered = effect (runtime: AgentRuntime, tools: readonly (typeof calculate | typeof restore)[]) => {
+    try host("tool offer", () => runtime.useModel(ModelType.TEXT_LARGE, { tools: [...tools], toolChoice: "auto", messages: [{ role: "user", content: "What is 17 * 24?" }] }))
+    return (cloud.calls.at(-1)?.body as { tools: { function: { strict?: boolean } }[] }).tools.map((tool) => tool.function.strict)
+  }
+  const cerebras = { baseUrl: cerebrasBaseUrl, small: "gpt-oss-120b", large: "gpt-oss-120b" }
+  const onCerebras = try bound({ kind: "ownKey", baseUrl: cerebras.baseUrl, smallModel: cerebras.small, largeModel: cerebras.large }, cloud.ownKey)
+  registerOwnKeyModels(onCerebras.runtime, onCerebras.binding, cerebras)
+  const elsewhere = { baseUrl: cloud.ownKeyBaseUrl, small: "small", large: "large" }
+  const offCerebras = try bound({ kind: "ownKey", baseUrl: elsewhere.baseUrl, smallModel: elsewhere.small, largeModel: elsewhere.large }, cloud.ownKey)
+  registerOwnKeyModels(offCerebras.runtime, offCerebras.binding, elsewhere)
+  const cloudQwen = try cloudAgent(cloud, { large: "qwen-3.8-27b" })
+  const cloudGptOss = try cloudAgent(cloud, { large: "cerebras/gpt-oss-120b" })
+  const cloudOther = try cloudAgent(cloud, { large: "anthropic/claude-sonnet-4.6" })
+  const sent = [
+    try offered(onCerebras.runtime, [restore, calculate]),
+    try offered(onCerebras.runtime, [calculate, { ...restore, strict: true }]),
+    try offered(offCerebras.runtime, [restore, calculate]),
+    try offered(cloudQwen.runtime, [restore, calculate]),
+    try offered(cloudQwen.runtime, [calculate, { ...restore, strict: true }]),
+    try offered(cloudGptOss.runtime, [restore, calculate]),
+    try offered(cloudOther.runtime, [restore, calculate]),
+  ]
+  assert.deepStrictEqual(sent, [[undefined, undefined], [true, true], [undefined, true], [undefined, undefined], [true, true], [undefined, undefined], [undefined, true]])
+})
+
+it.effect('An own-key overload or timeout is a provider issue and is retried, and a validation refusal ends the call (spec/agent/models/binding.md, "Only a network failure, an outage or a provider issue is retried, and a rate limit ends the call for its turn to re-send once")', effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const own = { baseUrl: cloud.ownKeyBaseUrl, small: "small", large: "large" }
+  const made = try bound({ kind: "ownKey", baseUrl: own.baseUrl, smallModel: "small", largeModel: "large" }, cloud.ownKey)
+  registerOwnKeyModels(made.runtime, made.binding, own)
+  try Effect.sync(() => cloud.script(refusal(400, "server_error"), text("after overload"), refusal(408, "timeout"), text("after timeout"), refusal(400, "invalid_request_error")))
+  const first = try host("overload then answer", () => made.runtime.useModel(ModelType.TEXT_SMALL, { prompt: "One.", temperature: 0.2, stopSequences: ["\n\n"] }))
+  const second = try host("timeout then answer", () => made.runtime.useModel(ModelType.TEXT_SMALL, { prompt: "Two.", maxTokens: 256 }))
+  const third = try refusalOf(made.runtime, { prompt: "Three." })
+  assert.deepStrictEqual([first, second, third?.status], ["after overload", "after timeout", 400])
+  const bodies = cloud.calls.filter((call) => call.path.endsWith("/chat/completions")).map((call) => call.body as Record<string, unknown>)
+  assert.strictEqual(bodies.length, 5)
+  assert.deepStrictEqual([bodies[0]?.temperature, bodies[0]?.stop, "max_tokens" in (bodies[0] ?? {}), "max_completion_tokens" in (bodies[0] ?? {}), bodies[2]?.max_completion_tokens], [0.2, ["\n\n"], false, false, 256])
+})
+
+it.effect('A model that takes a temperature gets the one its caller names, and an OpenAI reasoning model gets none and answers, on an own-key endpoint and on the cloud (spec/agent/models/binding.md, "A call sends its caller\'s temperature only to a model that takes one")', effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const own = { baseUrl: cloud.ownKeyBaseUrl, small: "gpt-5-chat-latest", large: "o4-mini" }
+  const made = try bound({ kind: "ownKey", baseUrl: own.baseUrl, smallModel: own.small, largeModel: own.large }, cloud.ownKey)
+  registerOwnKeyModels(made.runtime, made.binding, own)
+  const reasoning = try bound({ kind: "ownKey", baseUrl: own.baseUrl, smallModel: "gpt-5-mini", largeModel: "openai/gpt-5.5:high" }, cloud.ownKey)
+  registerOwnKeyModels(reasoning.runtime, reasoning.binding, { baseUrl: own.baseUrl, small: "gpt-5-mini", large: "openai/gpt-5.5:high" })
+  const viaCloud = try cloudAgent(cloud, { large: "openai/o3-mini" })
+  try Effect.sync(() => cloud.script(text("chat"), text("reasoned"), text("small reasoned"), text("large reasoned"), text("cloud reasoned"), text("unnamed")))
+  const answers = [
+    try host("chat model at zero", () => made.runtime.useModel(ModelType.TEXT_SMALL, { prompt: "One.", temperature: 0 })),
+    try host("o4-mini at zero", () => made.runtime.useModel(ModelType.TEXT_LARGE, { prompt: "Two.", temperature: 0 })),
+    try host("gpt-5-mini at zero", () => reasoning.runtime.useModel(ModelType.TEXT_SMALL, { prompt: "Three.", temperature: 0 })),
+    try host("prefixed gpt-5.5 at zero", () => reasoning.runtime.useModel(ModelType.TEXT_LARGE, { prompt: "Four.", temperature: 0.4 })),
+    try host("cloud o3-mini at zero", () => viaCloud.runtime.useModel(ModelType.TEXT_LARGE, { prompt: "Five.", temperature: 0 })),
+    try host("chat model unnamed", () => made.runtime.useModel(ModelType.TEXT_SMALL, { prompt: "Six." })),
+  ]
+  const bodies = cloud.calls.filter((call) => call.path.endsWith("/chat/completions")).map((call) => call.body as Record<string, unknown>)
+  assert.deepStrictEqual(answers, ["chat", "reasoned", "small reasoned", "large reasoned", "cloud reasoned", "unnamed"])
+  assert.deepStrictEqual(bodies.map((body) => [body.model, "temperature" in body, body.temperature]), [
+    ["gpt-5-chat-latest", true, 0], ["o4-mini", false, undefined], ["gpt-5-mini", false, undefined], ["openai/gpt-5.5:high", false, undefined], ["openai/o3-mini", false, undefined], ["gpt-5-chat-latest", false, undefined],
+  ])
+  assert.strictEqual((try made.binding.read()).accountState, "usable")
+})
+
+it.effect('An own-key launch\'s declaration decides whether a model takes a temperature, over what its id says (spec/agent/models/binding.md, "A call sends its caller\'s temperature only to a model that takes one")', effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const sampling = { small: "takes-temperature", large: "default-temperature-only" } as const
+  const own = { baseUrl: cloud.ownKeyBaseUrl, small: "gpt-5-tuned", large: "my-o3", sampling }
+  const declared = try bound({ kind: "ownKey", baseUrl: own.baseUrl, smallModel: own.small, largeModel: own.large, sampling }, cloud.ownKey)
+  registerOwnKeyModels(declared.runtime, declared.binding, own)
+  try Effect.sync(() => cloud.script(text("declared takes"), text("declared default")))
+  const answers = [
+    try host("gpt-5-tuned declared to take one", () => declared.runtime.useModel(ModelType.TEXT_SMALL, { prompt: "One.", temperature: 0 })),
+    try host("my-o3 declared default only", () => declared.runtime.useModel(ModelType.TEXT_LARGE, { prompt: "Two.", temperature: 0 })),
+  ]
+  const bodies = cloud.calls.filter((call) => call.path.endsWith("/chat/completions")).map((call) => call.body as Record<string, unknown>)
+  assert.deepStrictEqual(answers, ["declared takes", "declared default"])
+  assert.deepStrictEqual(bodies.map((body) => [body.model, "temperature" in body, body.temperature]), [["gpt-5-tuned", true, 0], ["my-o3", false, undefined]])
+  assert.strictEqual((try declared.binding.read()).accountState, "usable")
+})
+
+it.effect('A rate limit holds a cloud account for the provider\'s whole retry time and a Cerebras own-key account for at most 4 s, a refusal carries the provider\'s time left, a parse failure is not retried, as the provider or as the cloud names it, a thinking hint reaches only a model that documents it, and only a Qwen call on a Cerebras route sends the conversation cache key (spec/agent/models/binding.md, "A Qwen call on a Cerebras route sends the prompt cache key its caller names, and no call invents one"; spec/agent/models/binding.md, "A rate limit holds the account for the provider\'s whole retry time, and for at most 4 s on a Cerebras own-key endpoint"; spec/agent/models/binding.md, "A tool call the provider could not parse, or a streamed answer silent for a minute, ends the call without a retry"; spec/agent/models/binding.md, "A call sends an output cap only when its caller names one, and a thinking hint sets the reasoning effort only on a model that documents it")', effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const held = try bound({ kind: "cloud", origin: cloud.origin, imageModel: "vision" }, deviceKey)
+  registerCloudModels(held.runtime, held.binding, { baseUrl: cloud.origin, small: "small", large: "cerebras/qwen-3.8-27b", image: "vision" })
+  const before = Date.now()
+  try Effect.sync(() => cloud.script(rateLimited(before + 60_000)))
+  const limited = try refusalOf(held.runtime, { prompt: "Limited." })
+  const blocked = try refusalOf(held.runtime, { prompt: "Still limited." })
+  const view = try held.binding.read()
+  const cloudPastFour = try held.binding.startCall("TextSmall", before + 4_001)
+  assert.deepStrictEqual([limited?.code, blocked?.code, completions(cloud), view.lastCloudFailure?.retryAt, cloudPastFour], ["MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED", "MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED", 1, before + 60_000, { limitedUntil: before + 60_000, limitedByCallId: 0 }])
+  const left = limited?.retryAfterMs
+  const still = blocked?.retryAfterMs
+  assert.ok(typeof left === "number" && left > 4_000 && left <= 60_000 && typeof still === "number" && still <= left)
+
+  const cerebras = try bound({ kind: "ownKey", baseUrl: "https://api.cerebras.ai/v1", smallModel: "small", largeModel: "large" }, cloud.ownKey)
+  const at = Date.now()
+  const first = try cerebras.binding.startCall("TextSmall", at)
+  try cerebras.binding.refuseCall(typeof first === "number" ? first : -1, at, { tag: "CloudRateLimited", retryAt: at + 60_000 })
+  const cerebrasView = try cerebras.binding.read()
+  const duringHold = try cerebras.binding.startCall("TextSmall", at + 3_999)
+  const afterHold = try cerebras.binding.startCall("TextSmall", at + 4_000)
+  assert.deepStrictEqual([cerebrasView.lastCloudFailure?.retryAt, duringHold, typeof afterHold], [at + 4_000, { limitedUntil: at + 60_000, limitedByCallId: first }, "number"])
+
+  const hinted = try bound({ kind: "cloud", origin: cloud.origin, imageModel: "vision" }, deviceKey)
+  registerCloudModels(hinted.runtime, hinted.binding, { baseUrl: cloud.origin, small: "small", large: "cerebras/qwen-3.8-27b", image: "vision" })
+  const planner = agentCache(hinted.runtime, "planner")
+  try Effect.sync(() => cloud.script(text("off"), text("low"), text("other"), text("keyed"), text("unkeyed")))
+  try host("thinking off on qwen", () => hinted.runtime.useModel(ModelType.TEXT_LARGE, { prompt: "Draft.", providerOptions: { eliza: { thinking: "off" } } }))
+  try host("thinking low on qwen", () => hinted.runtime.useModel(ModelType.TEXT_LARGE, { prompt: "Plan.", providerOptions: { eliza: { thinking: "low" } } }))
+  try host("thinking low elsewhere", () => hinted.runtime.useModel(ModelType.TEXT_SMALL, { prompt: "Plan.", providerOptions: { eliza: { thinking: "low" } } }))
+  try host("planner key on qwen", () => hinted.runtime.useModel(ModelType.TEXT_LARGE, { prompt: "Plan.", providerOptions: planner }))
+  try host("planner key elsewhere", () => hinted.runtime.useModel(ModelType.TEXT_SMALL, { prompt: "Plan.", providerOptions: planner }))
+  const sent = cloud.calls.slice(-5).map((call) => call.body as Record<string, unknown>)
+  const plannerKey = try Effect.try(() => `eliza-workflow-v1:${digest(`${JSON.stringify([hinted.runtime.agentId])}:planner`)}`)
+  assert.deepStrictEqual(sent.map((body) => [body.reasoning_effort, "max_tokens" in body, JSON.stringify(body).includes("thinking"), body.prompt_cache_key]),
+    [["none", false, false, undefined], ["low", false, false, undefined], [undefined, false, false, undefined],
+      [undefined, false, false, plannerKey], [undefined, false, false, undefined]])
+
+  try Effect.sync(() => cloud.script(requestFault("parser_error")))
+  const beforeFault = completions(cloud)
+  const faulted = try refusalOf(hinted.runtime, { prompt: "Call a tool." })
+  assert.deepStrictEqual([faulted?.code, faulted?.status, completions(cloud) - beforeFault], ["PROVIDER_TOOL_CALL_PARSE_FAILED", 400, 1])
+
+  const own = { baseUrl: cloud.ownKeyBaseUrl, small: "qwen-3.8-27b", large: "large" }
+  const ownKey = try bound({ kind: "ownKey", baseUrl: own.baseUrl, smallModel: own.small, largeModel: own.large }, cloud.ownKey)
+  registerOwnKeyModels(ownKey.runtime, ownKey.binding, own)
+  try Effect.sync(() => cloud.script(refusal(400, "generation_error", { reason: "parser_error" }), text("not on cerebras")))
+  const calls = completions(cloud)
+  const unparsed = try refusalOf(ownKey.runtime, { prompt: "Call a tool." })
+  const afterParse = [completions(cloud) - calls, (try ownKey.binding.read()).accountState]
+  try host("own key off cerebras", () => ownKey.runtime.useModel(ModelType.TEXT_SMALL, { prompt: "Plan.", providerOptions: { eliza: { thinking: "low" } } }))
+  assert.deepStrictEqual([unparsed?.code, unparsed?.status, ...afterParse], ["PROVIDER_TOOL_CALL_PARSE_FAILED", 400, 1, "provider_issue"])
+  try Effect.sync(() => cloud.script(text("not on cerebras either")))
+  try host("own key qwen off cerebras", () => ownKey.runtime.useModel(ModelType.TEXT_SMALL, { prompt: "Plan.", providerOptions: planner }))
+  assert.deepStrictEqual(cloud.calls.slice(-2).map((call) => [(call.body as Record<string, unknown>).reasoning_effort, (call.body as Record<string, unknown>).prompt_cache_key]), [[undefined, undefined], [undefined, undefined]])
+})

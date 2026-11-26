@@ -1,0 +1,329 @@
+// spec/cloud/services/maps.md, "A request reaches the provider only under the standing that admitted it, for at most 10 seconds and 2 MiB"; spec/cloud/services/maps.md, "A dispatched request is charged what the provider billed, or its quote when the reply was lost, and one never dispatched is charged nothing"
+import { FetchHttpClient, HttpClient, HttpClientRequest, type HttpClientResponse } from "effect/http"
+import { billingOf, unclearAnswerIsInvalid, upstreamBodyCap, upstreamTimeout } from "../../gen/cloud__services__maps.effect.vibe"
+import type {
+  MapsSettings, Coordinate, Maneuver, MapsPlace, MapsPlaceResponse, MapsRoute, MapsPlacesResponse, MapsRoutesResponse, PlaceDetailsRequest, ReverseRequest, RoutesRequest, TextSearchRequest,
+} from "@elizaos/cloud"
+import type { MapsProvider, MapsReply, ProviderRefusal } from "./maps.vibe"
+
+export type OsmSettings = Extract<typeof MapsSettings.Type, { readonly provider: "osm" }>
+
+type Candidate = Pick<MapsPlace, "id" | "name" | "coordinate" | "address" | "phone" | "website" | "openingHours">
+
+type RouteCandidate = {
+  readonly geometry: ReadonlyArray<Coordinate>
+  readonly distanceMeters: number
+  readonly durationSeconds: number
+  readonly steps: ReadonlyArray<{ readonly instruction: string; readonly coordinate: Coordinate; readonly distanceMeters: number; readonly maneuver?: Maneuver }>
+}
+
+type Call =
+  | { readonly kind: "answered"; readonly status: number; readonly json: unknown }
+  | { readonly kind: "rejected" }
+  | { readonly kind: "unclear"; readonly status: number; readonly text: string }
+  | { readonly kind: "lost"; readonly cause: string }
+
+type Parsed<A> = { readonly kind: "value"; readonly value: A } | { readonly kind: "invalid" }
+
+export const osmAttribution = "© OpenStreetMap contributors (ODbL). Search: Nominatim. Routing: GraphHopper."
+
+const userAgent = "elizaOS-Cloud-Maps/1"
+const osmId = /^[NWR][1-9][0-9]{0,18}$/
+const graphHopperProfiles: Readonly<Record<Exclude<RoutesRequest["mode"], "transit">, string>> = { drive: "car", walk: "foot", bicycle: "bike" }
+const graphHopperSigns: Readonly<Record<number, Maneuver>> = {
+  [-98]: "u-turn", [-8]: "u-turn", 8: "u-turn", [-7]: "keep-left", 7: "keep-right", [-3]: "sharp-left", [-2]: "left", [-1]: "slight-left",
+  0: "continue", 1: "slight-right", 2: "right", 3: "sharp-right", 4: "arrive", 5: "continue", 6: "roundabout", [-6]: "continue",
+}
+
+error BodyTooLarge
+error Unreachable { cause: string }
+
+function boundedText(value: unknown, max: number): string | undefined {
+  if (typeof value !== "string") return undefined
+  const text = value.trim()
+  return text.length > 0 && text.length <= max && !/[^\x20-\uffff]/.test(text) ? text : undefined
+}
+
+function finiteNumber(value: unknown): number | undefined {
+  if (typeof value === "string" && value.trim() === "") return undefined
+  const number = typeof value === "string" ? Number(value) : value
+  return typeof number === "number" && Number.isFinite(number) ? number : undefined
+}
+
+function coordinateOf(latitude: unknown, longitude: unknown): Coordinate | undefined {
+  const lat = finiteNumber(latitude)
+  const lon = finiteNumber(longitude)
+  return lat === undefined || lon === undefined || Math.abs(lat) > 90 || Math.abs(lon) > 180 ? undefined : { latitude: lat, longitude: lon }
+}
+
+function record(value: unknown): Readonly<Record<string, unknown>> | undefined {
+  return typeof value === "object" && value !== null && !Array.isArray(value) ? value as Readonly<Record<string, unknown>> : undefined
+}
+
+function parseJson(text: string): Parsed<unknown> {
+  try {
+    return { kind: "value", value: JSON.parse(text) as unknown }
+  } catch {
+    return { kind: "invalid" }
+  }
+}
+
+function websiteOf(value: unknown): string | undefined {
+  const website = boundedText(String(value ?? "").split(";")[0], 2048)
+  if (website === undefined || !URL.canParse(website)) return undefined
+  const url = new URL(website)
+  return (url.protocol === "http:" || url.protocol === "https:") && url.username === "" && url.password === "" ? website : undefined
+}
+
+function extrasOf(tags: unknown): Pick<Candidate, "phone" | "website" | "openingHours"> {
+  const fields = record(tags)
+  if (fields === undefined) return {}
+  const phone = boundedText(String(fields.phone ?? "").split(";")[0], 80)
+  const website = websiteOf(fields.website)
+  const openingHours = boundedText(fields.opening_hours, 255)
+  return {
+    ...(phone !== undefined && /^[+0-9() .-]{3,80}$/.test(phone) ? { phone } : {}),
+    ...(website === undefined ? {} : { website }),
+    ...(openingHours === undefined ? {} : { openingHours }),
+  }
+}
+
+function addressName(address: unknown, displayName: string | undefined): string | undefined {
+  const fields = record(address)
+  const houseNumber = boundedText(fields?.house_number, 300)
+  const road = boundedText(fields?.road, 300)
+  return (houseNumber !== undefined && road !== undefined ? boundedText(`${houseNumber} ${road}`, 300) : undefined) ?? boundedText(displayName?.split(",")[0], 300)
+}
+
+function candidateOf(value: unknown, detail: boolean): Parsed<Candidate | undefined> {
+  const entry = record(value)
+  if (entry === undefined) return { kind: "invalid" }
+  const prefix = entry.osm_type === "node" ? "N" : entry.osm_type === "way" ? "W" : entry.osm_type === "relation" ? "R" : undefined
+  const id = finiteNumber(entry.osm_id)
+  const coordinate = coordinateOf(entry.lat, entry.lon)
+  if (prefix === undefined || id === undefined || !Number.isSafeInteger(id) || id <= 0 || coordinate === undefined) return { kind: "value", value: undefined }
+  const displayName = boundedText(entry.display_name, 1000)
+  const name = boundedText(entry.name, 300) ?? addressName(entry.address, displayName)
+  if (name === undefined) return { kind: "value", value: undefined }
+  return {
+    kind: "value",
+    value: { id: `${prefix}${id}`, name, coordinate, ...(displayName === undefined ? {} : { address: displayName }), ...(detail ? extrasOf(entry.extratags) : {}) },
+  }
+}
+
+function candidatesOf(json: unknown, detail: boolean): Parsed<ReadonlyArray<Candidate>> {
+  if (!Array.isArray(json)) return { kind: "invalid" }
+  const found: Candidate[] = []
+  for (const entry of json) {
+    const parsed = candidateOf(entry, detail)
+    if (parsed.kind === "invalid") return parsed
+    if (parsed.value !== undefined) found.push(parsed.value)
+  }
+  return { kind: "value", value: found }
+}
+
+function reverseOf(json: unknown): Parsed<Candidate | undefined> {
+  const entry = record(json)
+  if (entry !== undefined && "error" in entry) return entry.error === "Unable to geocode" ? { kind: "value", value: undefined } : { kind: "invalid" }
+  return candidateOf(json, true)
+}
+
+function stepsOf(instructions: ReadonlyArray<unknown>, geometry: ReadonlyArray<Coordinate>): Parsed<RouteCandidate["steps"]> {
+  const steps: Array<RouteCandidate["steps"][number]> = []
+  for (const [index, value] of instructions.entries()) {
+    const step = record(value)
+    const instruction = boundedText(step?.text, 500)
+    const distanceMeters = finiteNumber(step?.distance)
+    const interval = step?.interval
+    const start = Array.isArray(interval) ? interval[0] : undefined
+    const coordinate = typeof start === "number" ? geometry[start] : undefined
+    if (instruction === undefined || distanceMeters === undefined || distanceMeters < 0 || coordinate === undefined) return { kind: "invalid" }
+    const sign = typeof step?.sign === "number" ? step.sign : undefined
+    const maneuver = index === 0 && sign === 0 ? "depart" : sign === undefined ? undefined : graphHopperSigns[sign]
+    steps.push({ instruction, coordinate, distanceMeters, ...(maneuver === undefined ? {} : { maneuver }) })
+  }
+  return { kind: "value", value: steps }
+}
+
+function routeOf(value: unknown): Parsed<RouteCandidate> {
+  const path = record(value)
+  const distance = finiteNumber(path?.distance)
+  const time = finiteNumber(path?.time)
+  const raw = record(path?.points)?.coordinates
+  if (distance === undefined || distance < 0 || time === undefined || time < 0 || !Array.isArray(raw) || !Array.isArray(path?.instructions)) return { kind: "invalid" }
+  const geometry: Coordinate[] = []
+  for (const pair of raw) {
+    const point = Array.isArray(pair) ? coordinateOf(pair[1], pair[0]) : undefined
+    if (point === undefined) return { kind: "invalid" }
+    geometry.push(point)
+  }
+  if (geometry.length < 2) return { kind: "invalid" }
+  const steps = stepsOf(path.instructions as ReadonlyArray<unknown>, geometry)
+  return steps.kind === "invalid" ? steps : { kind: "value", value: { geometry, distanceMeters: distance, durationSeconds: time / 1000, steps: steps.value } }
+}
+
+function routesOf(json: unknown, count: number): Parsed<ReadonlyArray<RouteCandidate>> {
+  const paths = record(json)?.paths
+  if (!Array.isArray(paths)) return { kind: "invalid" }
+  const routes: RouteCandidate[] = []
+  for (const path of paths.slice(0, count)) {
+    const route = routeOf(path)
+    if (route.kind === "invalid") return route
+    routes.push(route.value)
+  }
+  return { kind: "value", value: routes }
+}
+
+function unroutableOf(text: string): "NoRoute" | "UnsupportedRegion" | undefined {
+  const parsed = parseJson(text)
+  const message = String((parsed.kind === "value" ? record(parsed.value)?.message : undefined) ?? "").toLowerCase()
+  if (message.includes("out of bounds")) return "UnsupportedRegion"
+  if (message.includes("cannot find point") || message.includes("connection between locations not found")) return "NoRoute"
+  return undefined
+}
+
+export function routeId(parts: string): string {
+  let low = 0x811c9dc5
+  let high = 0x01000193
+  for (let index = 0; index < parts.length; index += 1) {
+    low = Math.imul(low ^ parts.charCodeAt(index), 0x01000193) >>> 0
+    high = Math.imul(high ^ parts.charCodeAt(parts.length - 1 - index), 0x01000193) >>> 0
+  }
+  return `route_${low.toString(16).padStart(8, "0")}${high.toString(16).padStart(8, "0")}`
+}
+
+effect function bodyOf(response: HttpClientResponse.HttpClientResponse): string!(BodyTooLarge | Unreachable) {
+  const chunks: Uint8Array[] = []
+  let size = 0
+  for try (const chunk of Stream.mapError(response.stream, () => new Unreachable({ cause: "network" }))) {
+    size += chunk.length
+    if (size > upstreamBodyCap) break
+    chunks.push(chunk)
+  }
+  if (size > upstreamBodyCap) throw new BodyTooLarge()
+  const bytes = new Uint8Array(size)
+  let offset = 0
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset)
+    offset += chunk.length
+  }
+  return new TextDecoder().decode(bytes)
+}
+
+effect function call(request: HttpClientRequest.HttpClientRequest): Call!!HttpClient.HttpClient {
+  const exchange = effect {
+    const sent = HttpClientRequest.setHeaders(request, { accept: "application/json", "user-agent": userAgent })
+    const response = Effect.provideService(HttpClient.execute(sent), FetchHttpClient.RequestInit, { redirect: "manual" }) catch effect () => { throw new Unreachable({ cause: "network" }) }
+    const billing = billingOf(response.status)
+    if (billing === "CallNotBilled") {
+      Stream.runHead(response.stream) catch () => undefined
+      return { kind: "rejected" } satisfies Call
+    }
+    const text = try bodyOf(response)
+    if (billing === "CallUnclear") return { kind: "unclear", status: response.status, text } satisfies Call
+    const parsed = parseJson(text)
+    return parsed.kind === "invalid" ? { kind: "answered", status: response.status, json: undefined } satisfies Call : { kind: "answered", status: response.status, json: parsed.value } satisfies Call
+  }
+  const bounded = timeoutOrElse(exchange, { duration: upstreamTimeout, orElse: () => fail(new Unreachable({ cause: "timeout" })) })
+  return bounded catch (failure): Call => match (failure) {
+    when BodyTooLarge: { kind: "rejected" };
+    when Unreachable: { kind: "lost", cause: failure.cause };
+  }
+}
+
+function reply<A, B>(outcome: Call, read: (json: unknown, status: number) => Parsed<B>, answer: (value: B) => A): MapsReply<A> {
+  switch (outcome.kind) {
+    case "answered": {
+      const parsed = read(outcome.json, outcome.status)
+      return parsed.kind === "value" ? { kind: "answered", value: answer(parsed.value), observedMicros: 0 } : { kind: "refused", code: "ProviderInvalidResponse", observedMicros: 0 }
+    }
+    case "rejected":
+      return { kind: "refused", code: "ProviderUnavailable", observedMicros: 0 }
+    case "unclear":
+      return { kind: "unknown", cause: `status ${outcome.status}`, code: unclearAnswerIsInvalid(outcome.status) ? "ProviderInvalidResponse" : "ProviderUnavailable" }
+    case "lost":
+      return { kind: "unknown", cause: outcome.cause, code: "ProviderUnavailable" }
+  }
+}
+
+export function osmMapsProvider(settings: OsmSettings): MapsProvider {
+  const base = settings.baseUrl.replace(/\/+$/, "")
+  const nominatim = (path: "search" | "reverse" | "lookup", params: Readonly<Record<string, string>>) =>
+    HttpClientRequest.get(`${base}/nominatim/${path}`, { urlParams: { format: "jsonv2", extratags: "1", addressdetails: "1", ...params } })
+  const refused = (code: ProviderRefusal): MapsReply<never> => ({ kind: "refused", code, observedMicros: 0 })
+
+  effect function stamped(candidates: ReadonlyArray<Candidate>): ReadonlyArray<MapsPlace>!! {
+    const fetchedAt = try Clock.currentTimeMillis
+    return candidates.map((candidate) => ({ providerId: settings.provider, ...candidate, attribution: osmAttribution, fetchedAt }))
+  }
+
+  effect function places(request: TextSearchRequest, addressesOnly: boolean): MapsReply<MapsPlacesResponse>!!HttpClient.HttpClient {
+    const near = request.near
+    const outcome = try call(nominatim("search", {
+      q: request.query,
+      limit: String(request.limit ?? 10),
+      ...(addressesOnly ? { layer: "address" } : {}),
+      ...(near === undefined ? {} : { viewbox: [near.longitude - 0.1, near.latitude + 0.1, near.longitude + 0.1, near.latitude - 0.1].join(",") }),
+    }))
+    const found = reply(outcome, (json) => candidatesOf(json, false), (candidates) => candidates)
+    if (found.kind !== "answered") return found
+    return { ...found, value: { providerId: settings.provider, attribution: osmAttribution, places: try stamped(found.value) } }
+  }
+
+  effect function single(outcome: Call, read: (json: unknown) => Parsed<Candidate | undefined>): MapsReply<MapsPlaceResponse>!! {
+    const found = reply(outcome, read, (candidate) => candidate)
+    if (found.kind !== "answered") return found
+    const [place] = try stamped(found.value === undefined ? [] : [found.value])
+    return { ...found, value: { providerId: settings.provider, attribution: osmAttribution, place: place ?? null } }
+  }
+
+  effect function reverse(request: ReverseRequest): MapsReply<MapsPlaceResponse>!!HttpClient.HttpClient {
+    const outcome = try call(nominatim("reverse", { lat: String(request.coordinate.latitude), lon: String(request.coordinate.longitude), zoom: "18" }))
+    return try single(outcome, reverseOf)
+  }
+
+  effect function details(request: PlaceDetailsRequest): MapsReply<MapsPlaceResponse>!!HttpClient.HttpClient {
+    if (!osmId.test(request.id)) return { kind: "answered", value: { providerId: settings.provider, attribution: osmAttribution, place: null }, observedMicros: 0 }
+    const outcome = try call(nominatim("lookup", { osm_ids: request.id }))
+    return try single(outcome, (json) => {
+      const found = candidatesOf(json, true)
+      return found.kind === "invalid" ? found : { kind: "value", value: found.value[0] }
+    })
+  }
+
+  effect function routes(request: RoutesRequest): MapsReply<MapsRoutesResponse>!!HttpClient.HttpClient {
+    if (request.mode === "transit") return refused("UnsupportedMode")
+    const profile = graphHopperProfiles[request.mode]
+    const count = request.alternatives === true ? 3 : 1
+    const payload = {
+      points: [[request.from.longitude, request.from.latitude], [request.to.longitude, request.to.latitude]],
+      profile,
+      points_encoded: false,
+      instructions: true,
+      locale: "en",
+      ...(count > 1 ? { algorithm: "alternative_route", "alternative_route.max_paths": count } : {}),
+    }
+    const outcome = try call(HttpClientRequest.bodyText(HttpClientRequest.post(`${base}/graphhopper/route`), JSON.stringify(payload), "application/json"))
+    const unroutable = outcome.kind === "unclear" && outcome.status === 400 ? unroutableOf(outcome.text) : undefined
+    if (unroutable !== undefined) return refused(unroutable)
+    const found = reply(outcome, (json) => routesOf(json, count), (candidates) => candidates)
+    if (found.kind !== "answered") return found
+    const [first, ...rest] = found.value
+    if (first === undefined) return refused("NoRoute")
+    const fetchedAt = try Clock.currentTimeMillis
+    const route = (candidate: RouteCandidate, index: number): MapsRoute => ({
+      providerId: settings.provider,
+      id: routeId(JSON.stringify({ revision: settings.datasetRevision, profile, index, from: request.from, to: request.to, candidate })),
+      from: request.from,
+      to: request.to,
+      mode: request.mode,
+      ...candidate,
+      attribution: osmAttribution,
+      fetchedAt,
+      traffic: "none",
+    })
+    return { ...found, value: { providerId: settings.provider, attribution: osmAttribution, routes: [route(first, 0), ...rest.map((candidate, index) => route(candidate, index + 1))] } }
+  }
+
+  return { geocode: (request) => places(request, true), search: (request) => places(request, false), reverse, details, routes }
+}

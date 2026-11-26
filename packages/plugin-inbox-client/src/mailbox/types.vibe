@@ -1,0 +1,131 @@
+// spec/inbox/reads.md, "Story: Read my mailbox without mixing account pages or endlessly reusing a cursor"; spec/inbox/grants.md, "Story: Grant Gmail access one step at a time"
+
+export interface GoogleConnection {
+  readonly configured: boolean
+  readonly connected: boolean
+  readonly reason: string
+  readonly connectionId: string | null
+  readonly grantedCapabilities: readonly string[]
+}
+
+export interface GmailAccount extends GoogleConnection {
+  readonly label: string
+}
+
+export type GmailInboxOperationKind =
+  | "send" | "draft-create" | "draft-replace" | "draft-delete" | "archive" | "unarchive"
+  | "trash" | "untrash" | "mark-read" | "mark-unread" | "star" | "unstar"
+
+export type GmailMailboxAction = GmailInboxOperationKind
+
+export type GmailInboxReceiptState = "prepared" | "dispatched" | "succeeded" | "rejected" | "outcome-unknown"
+
+export interface GmailInboxCapabilities {
+  readonly version: 1
+  readonly from: string
+  readonly kinds: readonly GmailInboxOperationKind[]
+  readonly threads: boolean
+  readonly send: boolean
+  readonly providerDrafts: boolean
+  readonly mailboxMutations: boolean
+  readonly attachments: boolean
+  readonly providerExactlyOnce: false
+  readonly atomicDraftReplacement: false
+  readonly readState: boolean
+  readonly stars: boolean
+  readonly draftsList: boolean
+  readonly forwardAttachments: boolean
+  readonly searchTrash: boolean
+  readonly opaqueAttachments: boolean
+  readonly attachmentPolicy: { readonly maximumOutgoing: number; readonly maximumBytes: number; readonly maximumTotalBytes: number; readonly mimeTypes: readonly string[] }
+}
+
+export interface GmailLink {
+  readonly href: string
+  readonly text: string
+}
+
+export interface GmailDraftSummary {
+  readonly draftId: string
+  readonly messageId: string
+  readonly subject: string
+  readonly to: readonly string[]
+  readonly snippet: string
+  readonly updatedAt: string | null
+}
+
+export interface GmailDraftContent {
+  readonly draftId: string
+  readonly messageId: string
+  readonly providerDigest: string
+  readonly to: readonly string[]
+  readonly cc: readonly string[]
+  readonly bcc: readonly string[]
+  readonly subject: string
+  readonly bodyText: string
+  readonly threaded: boolean
+  readonly attachmentCount: number
+  readonly plainText: boolean
+}
+
+export interface GmailInboxReceipt {
+  readonly requestId: string
+  readonly kind: GmailInboxOperationKind
+  readonly reviewDigest: string
+  readonly state: GmailInboxReceiptState
+  readonly providerResult: Readonly<Record<string, unknown>> | null
+  readonly rejectionCode: string | null
+}
+
+export interface GmailMessage {
+  readonly hasAttachments?: boolean
+  readonly id: string
+  readonly threadId: string
+  readonly subject: string
+  readonly from: string
+  readonly replyTo?: string | null
+  readonly fromEmail: string | null
+  readonly to: readonly string[]
+  readonly cc: readonly string[]
+  readonly snippet: string
+  readonly receivedAt: string
+  readonly unread: boolean
+  readonly starred: boolean
+  readonly historyId: string | null
+}
+
+export interface GmailMessageAttachment {
+  readonly partId: string
+  readonly name: string
+  readonly mimeType: string
+  readonly size: number
+  readonly supported: boolean
+}
+
+export interface GmailReadResult {
+  readonly message: GmailMessage
+  readonly bodyText: string
+  readonly bodyHtml?: string
+  readonly bodyHtmlOmitted?: true
+  readonly links: readonly GmailLink[]
+  readonly omittedLinks?: number
+  readonly historyId: string | null
+  readonly attachments: readonly GmailMessageAttachment[]
+  readonly authenticationResults: string | null
+}
+
+export interface GmailSearchPage {
+  readonly messages: readonly GmailMessage[]
+  readonly syncedAt: string
+  readonly nextPageToken: string | null
+  readonly mailboxHistoryId: string
+  readonly supportsSpamTrash: boolean
+}
+
+export interface GmailThreadPage {
+  readonly messages: readonly GmailReadResult[]
+  readonly total: number
+  readonly offset: number
+  readonly historyId: string
+  readonly nextOffset: number | null
+}

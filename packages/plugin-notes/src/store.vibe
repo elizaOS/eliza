@@ -1,11 +1,11 @@
-// spec/notes/records.md, "The earlier document is imported once, exactly, and never over the collection"; spec/notes/trash.md, "An erase that may or may not have committed never reports success"; spec/notes/trash.md, "Canonical Trash restores the exact deleted ID against the current revision"; spec/notes/records.md, "Every commit advances the revision once, and a replacement needs the revision it was read at"
-import { sameJson } from "./json-equality.vibe"
+// spec/notes/records.md, "The earlier document is imported once, exactly, and never over the collection"; spec/notes/trash.md, "An erase that may or may not have committed never reports success"; spec/notes/trash.md, "Canonical Trash restores the exact deleted ID against the current revision"; spec/notes/records.md, "Every commit advances the revision once, and a replacement needs the revision it was read at"; spec/notes/trash.md, "A pending cleanup reserves the note and recording until its exact receipt is acknowledged"
+import { sameJson } from "@elizaos/plugin-notes-client"
 import { canonicalDocument, eraseOutcome, notesSchemaVersion, type EraseCommit } from "../gen/notes__trash.effect.vibe"
 import { committedRevision, importSettled, importStep } from "../gen/notes__records.effect.vibe"
-import { emptyNotesDocument, NotesRefused, snapshotOf, type Change, type NotesDocument } from "./collection.vibe"
+import { emptyNotesDocument, NotesRefused, recordingReservationsAdmit, snapshotOf, type Change, type NotesDocument } from "./collection.vibe"
 import { importPriorDocument, type PriorDocumentText } from "./prior.vibe"
-import { noteLimits, StoredDocument } from "./records.schema.vibe"
-import type { NotesSnapshot } from "./types.vibe"
+import { noteLimits, StoredDocument } from "@elizaos/plugin-notes-client"
+import type { NotesSnapshot } from "@elizaos/plugin-notes-client"
 
 module edge {
   /** @throws {never} */
@@ -114,6 +114,9 @@ export function notesStore(storage: NotesStorage, prior?: PriorImport): NotesSto
     const change = try work(before)
     if (change.next === undefined) return { value: change.value, snapshot: snapshotOf(before), changed: false, mutation: change.mutation }
     const next: NotesDocument = { ...change.next, revision: committedRevision(before.revision, true) }
+    if (!recordingReservationsAdmit(before, next)) {
+      throw new NotesRefused({ code: "NOTES_TRASH_RECORDING_UNAVAILABLE", message: "This recording is pending cleanup; nothing was saved." })
+    }
     if (next.trash.length > noteLimits.trash) throw new NotesUnavailable({ code: "NOTES_STORE_UNAVAILABLE", reason: "Notes Trash is full; erase entries before deleting more." })
     const encoded = plain(next)
     if (Option.isNone(decodeStored(encoded))) {

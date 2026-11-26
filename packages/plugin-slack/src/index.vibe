@@ -1,7 +1,8 @@
-// spec/slack/index.md, "Slack events need the installed team and compatible enterprise identity"; spec/slack/index.md, "A public or private mention takes the app-mention lane and replies to the captured thread"; spec/slack/index.md, "Complete, partial and unconfirmed Slack sends follow distinct part receipts"
-import { App } from "@slack/bolt"
-import { ChannelType, Service, checkPairingAllowed, createUniqueUuid, fetchRemoteMedia, type Content, type IAgentRuntime, type Memory, type Plugin, type SendHandlerOutcome, type TargetInfo, requireConfirmedSendHandlerDelivery } from "@elizaos/core"
-import { enabled, initial, machineOver, slackReplyTarget, slackSendOutcome, type SlackAdmission, type SlackConversation, type SlackInbound, type SlackPartReceipt } from "../gen/slack.effect.vibe"
+// spec/slack/index.md, "Slack events need the installed team and compatible enterprise identity"; spec/slack/index.md, "A public or private mention takes the app-mention lane and replies to the captured thread"; spec/slack/index.md, "Complete, partial and unconfirmed Slack sends follow distinct part receipts"; spec/slack/index.md, "The agent reads the &, < and > a Slack member typed"; spec/slack/index.md, "A Slack post is sent again only after a rate limit, never after a lost answer"
+import { App, webApi } from "@slack/bolt"
+import { ChannelType, Service, checkPairingAllowed, createUniqueUuid, type Content, type IAgentRuntime, type Memory, type Plugin, type SendHandlerOutcome, type TargetInfo, requireConfirmedSendHandlerDelivery } from "@elizaos/core"
+import { fetchRemoteMedia } from "@elizaos/core-node"
+import { enabled, initial, machineOver, slackEntityText, slackReplyTarget, slackRetries, slackSendOutcome, type SlackAdmission, type SlackCallFailure, type SlackConversation, type SlackInbound, type SlackPartReceipt } from "../gen/slack.effect.vibe"
 
 const envelope = Schema.Struct({ team_id: Schema.optionalKey(Schema.String), enterprise_id: Schema.optionalKey(Schema.String) })
 const slackEvent = Schema.Struct({ type: Schema.Literals(["message", "app_mention"]), channel: Schema.String, ts: Schema.String, user: Schema.optionalKey(Schema.String), bot_id: Schema.optionalKey(Schema.String), text: Schema.optionalKey(Schema.String), thread_ts: Schema.optionalKey(Schema.String), channel_type: Schema.optionalKey(Schema.String), subtype: Schema.optionalKey(Schema.String) })
@@ -29,6 +30,21 @@ export interface SlackConnection {
   readonly requireMention: boolean
 }
 
+export function decodeSlackText(text: string): string {
+  return text.replace(/&(amp|lt|gt);/g, (_entity, name: string) => slackEntityText(name))
+}
+
+function slackCallFailure(error: Error): SlackCallFailure {
+  if ("code" in error && error.code === webApi.ErrorCode.HTTPError) return "SlackServerAnswer"
+  const cause = "original" in error && error.original instanceof Error ? error.original : error
+  return cause.message.startsWith("A rate limit was exceeded") ? "SlackRateLimited" : "SlackRequestLost"
+}
+
+export const slackWriteRetries = {
+  ...webApi.retryPolicies.tenRetriesInAboutThirtyMinutes,
+  onFailedAttempt: (error: Error): Promise<void> => slackRetries("SlackWrite", slackCallFailure(error)) ? Promise.resolve() : Promise.reject(error),
+}
+
 function kindOf(channelType: string | undefined): SlackConversation {
   if (channelType === "im") return "SlackDirect"
   if (channelType === "mpim") return "SlackGroupDirect"
@@ -39,6 +55,7 @@ function kindOf(channelType: string | undefined): SlackConversation {
 
 export effect function connectSlackAccount(runtime: IAgentRuntime, config: SlackConnection) {
   const app = try Effect.try({ try: () => new App({ token: Redacted.value(config.botToken), appToken: Redacted.value(config.appToken), socketMode: true }), catch: () => new SlackRequestFailed({ stage: "client" }) })
+  const writer = try Effect.try({ try: () => new webApi.WebClient(Redacted.value(config.botToken), { retryConfig: slackWriteRetries }), catch: () => new SlackRequestFailed({ stage: "client" }) })
   const identity = try tryPromise({ try: () => app.client.auth.test(), catch: () => new SlackRequestFailed({ stage: "auth" }) })
   if (identity.team_id === undefined || identity.user_id === undefined) throw new SlackRequestFailed({ stage: "identity" })
   const installation = { accountId: config.accountId, teamId: identity.team_id, enterpriseId: identity.enterprise_id ?? "", botUserId: identity.user_id, epoch: 1 }
@@ -64,7 +81,7 @@ export effect function connectSlackAccount(runtime: IAgentRuntime, config: Slack
     const ids: string[] = []
     for (const part of parts) {
       if (!(try Ref.get(active))) break
-      const response = tryPromise(() => app.client.chat.postMessage({ channel: channelId, text: part, unfurl_links: false, unfurl_media: false, ...(target.threadId ? { thread_ts: target.threadId } : {}) })) catch () => undefined
+      const response = tryPromise(() => writer.chat.postMessage({ channel: channelId, text: part, unfurl_links: false, unfurl_media: false, ...(target.threadId ? { thread_ts: target.threadId } : {}) })) catch () => undefined
       if (response === undefined || typeof response.ts !== "string" || response.ts === "") { observed.push({ tag: "SlackPartUnknown" }); break }
       ids.push(response.ts)
       observed.push({ tag: "SlackPartAccepted", receiptId: response.ts })
@@ -76,8 +93,8 @@ export effect function connectSlackAccount(runtime: IAgentRuntime, config: Slack
       const upload = { channel_id: channelId, file: media.buffer, filename: media.fileName ?? attachment.filename ?? "attachment" }
       const threadId = target.threadId
       const uploaded = tryPromise(() => threadId
-        ? app.client.files.uploadV2({ ...upload, thread_ts: threadId })
-        : app.client.files.uploadV2(upload)) catch () => undefined
+        ? writer.files.uploadV2({ ...upload, thread_ts: threadId })
+        : writer.files.uploadV2(upload)) catch () => undefined
       const receipt = Schema.decodeUnknownEffect(UploadedSlackFiles)(uploaded) catch () => undefined
       const receiptId = receipt?.files[0]?.files[0]?.id
       if (!receiptId) { observed.push({ tag: "SlackPartUnknown" }); continue }
@@ -121,7 +138,7 @@ export effect function connectSlackAccount(runtime: IAgentRuntime, config: Slack
     const channelType = conversation === "SlackDirect" || conversation === "SlackHome" ? ChannelType.DM : ChannelType.GROUP
     try tryPromise(() => runtime.ensureConnection({ entityId, roomId, worldId, source: "slack", channelId: raw.channel, serverId: installation.teamId, type: channelType, metadata: { accountId: config.accountId } }))
     const claimToken = try Effect.try(() => nextSlackClaim())
-    const memory: Memory = { id, entityId, roomId, worldId, agentId: runtime.agentId, createdAt: Math.trunc(Number(raw.ts) * 1000), content: { text, source: "slack", channelType }, metadata: { type: "message", slackClaimToken: claimToken } }
+    const memory: Memory = { id, entityId, roomId, worldId, agentId: runtime.agentId, createdAt: Math.trunc(Number(raw.ts) * 1000), content: { text: decodeSlackText(text), source: "slack", channelType }, metadata: { type: "message", slackClaimToken: claimToken } }
     try tryPromise(() => runtime.createMemory(memory, "messages"))
     const kept = try tryPromise(() => runtime.getMemoryById(id))
     if (kept?.metadata === undefined || !("slackClaimToken" in kept.metadata) || kept.metadata.slackClaimToken !== claimToken || !(try Ref.get(active))) return

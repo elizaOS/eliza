@@ -1,0 +1,757 @@
+// spec/cloud/services/google/calendar.md, "Story: Read my calendar for a window"; spec/cloud/services/google/calendar.md, "Story: Change an event only at the revision I read"; spec/cloud/shared/dispatchOnce.md, "Story: Send a change once and recover its outcome without sending it again"
+import { type Rejected, type NotAState, apply, decodeState, initial, isUnknown, canElapse, canReceiveReply, canResolve, connectorOf, receiptStatus, type Event, type LookupResult, type ProviderReply, type Receipt } from "../../../gen/cloud__shared__dispatchOnce.effect.vibe"
+import { calendarStaleAfter, feedByteLimit, requestFit, rowAccess, writeLifetime, type CalendarRole, type RecurrenceFit, type RevisionHeader, type WriteOp } from "../../../gen/cloud__services__google__calendar.effect.vibe"
+import { millisPerSecond, statusOf, type Refusal, type RefusalCode } from "../../../gen/cloud__shared__types.effect.vibe"
+import type { SessionOwner } from "../../../gen/core__sessions.ts"
+import { refusalBody, refused, Refused } from "../../http/refusal.vibe"
+import { json, owner as ownerOf, type CloudContext, type Route, type RouteContext, type Sweep } from "../../http/routes.vibe"
+import { requestDigest } from "../../shared/dispatch-once.vibe"
+import { sha256Hex } from "../../shared/sealing.vibe"
+import { loadRow, machineRows, stepRow, type Columns } from "../../store/rows.vibe"
+import { Store, toText, type Row, type Tx } from "../../store/connection.vibe"
+import { googleJson } from "../../providers/google.vibe"
+import { knownScopes, useGrant } from "./grant-access.vibe"
+
+type WriteKind = "create" | "change" | "delete"
+type WritePhase = "prepared" | "dispatched" | "succeeded" | "rejected" | "outcome-unknown"
+type Outcome = "not_accepted" | "unknown"
+
+interface Owner {
+  readonly organizationId: string
+  readonly userId: string
+}
+
+interface Grant {
+  readonly connectionId: string
+  readonly accessToken: string
+  readonly subject: string
+  readonly email: string
+}
+
+interface EventTime {
+  readonly date?: string
+  readonly dateTime?: string
+  readonly timeZone?: string
+}
+
+interface AttendeeInput {
+  readonly email: string
+  readonly displayName?: string
+  readonly optional?: boolean
+}
+
+interface EventBody {
+  readonly id?: string
+  readonly summary?: string
+  readonly description?: string
+  readonly location?: string
+  readonly start?: EventTime
+  readonly end?: EventTime
+  readonly attendees?: ReadonlyArray<AttendeeInput>
+  readonly recurrence?: readonly string[]
+  readonly visibility?: "private"
+  readonly reminders?: { readonly useDefault: false }
+}
+
+interface Planned {
+  readonly kind: WriteKind
+  readonly key: string
+  readonly idempotencyKey: string
+  readonly calendarId: string
+  readonly eventId: string
+  readonly ifMatch: string | null
+  readonly body: EventBody | null
+}
+
+interface Write {
+  readonly receipt: Receipt
+  readonly owner: Owner
+  readonly grantId: string
+  readonly planned: Planned
+  readonly etag: string | null
+  readonly rejection: RefusalCode | null
+}
+
+type Card = NonNullable<ReturnType<typeof eventCard>>
+
+interface Sent {
+  readonly reply: ProviderReply
+  readonly event: Card | null
+  readonly rejection: RefusalCode | null
+}
+
+interface Seen {
+  readonly lookup: LookupResult
+  readonly event: Card | null
+}
+
+const sweepBatch = 100
+const calendarApi = "/calendar/v3"
+const keyPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/
+const eventIdPattern = /^[A-Za-z0-9_-]{1,1024}$/
+const isoDateTime = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/
+const isoDate = /^\d{4}-\d{2}-\d{2}$/
+const reviewedRule = /^RRULE:FREQ=(?:DAILY|WEEKLY(?:;BYDAY=MO,TU,WE,TH,FR)?)(?:;UNTIL=(\d{8}(?:T\d{6}Z)?))?$/
+const reviewedException = /^EXDATE(;VALUE=DATE)?:(\d{8}(?:T\d{6}Z)?)$/
+const mailAddress = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)+$/
+const calendarRoles = { freeBusyReader: "FreeBusyReader", reader: "Reader", writer: "Writer", owner: "Owner" } as const satisfies Readonly<Record<string, CalendarRole>>
+const unclear: Sent = { reply: { tag: "Unclear" }, event: null, rejection: null }
+const unknownRefusal: Refusal = refused("ProviderUnavailable").refusal
+
+const TimeSchema = Schema.Struct({ dateTime: Schema.optionalKey(Schema.String), date: Schema.optionalKey(Schema.String), timeZone: Schema.optionalKey(Schema.String) })
+const GoogleEventSchema = Schema.Struct({
+  id: Schema.String,
+  etag: Schema.optionalKey(Schema.String),
+  status: Schema.optionalKey(Schema.String),
+  summary: Schema.optionalKey(Schema.String),
+  description: Schema.optionalKey(Schema.String),
+  location: Schema.optionalKey(Schema.String),
+  htmlLink: Schema.optionalKey(Schema.String),
+  hangoutLink: Schema.optionalKey(Schema.String),
+  iCalUID: Schema.optionalKey(Schema.String),
+  recurringEventId: Schema.optionalKey(Schema.String),
+  recurrence: Schema.optionalKey(Schema.Array(Schema.String)),
+  visibility: Schema.optionalKey(Schema.String),
+  reminders: Schema.optionalKey(Schema.Struct({ useDefault: Schema.Boolean })),
+  originalStartTime: Schema.optionalKey(TimeSchema),
+  created: Schema.optionalKey(Schema.String),
+  updated: Schema.optionalKey(Schema.String),
+  start: Schema.optionalKey(TimeSchema),
+  end: Schema.optionalKey(TimeSchema),
+  organizer: Schema.optionalKey(Schema.Struct({ email: Schema.optionalKey(Schema.String), displayName: Schema.optionalKey(Schema.String), self: Schema.optionalKey(Schema.Boolean) })),
+  attendees: Schema.optionalKey(Schema.Array(Schema.Struct({
+    email: Schema.optionalKey(Schema.String),
+    displayName: Schema.optionalKey(Schema.String),
+    responseStatus: Schema.optionalKey(Schema.String),
+    self: Schema.optionalKey(Schema.Boolean),
+    organizer: Schema.optionalKey(Schema.Boolean),
+    optional: Schema.optionalKey(Schema.Boolean)
+  }))),
+  conferenceData: Schema.optionalKey(Schema.Struct({ entryPoints: Schema.optionalKey(Schema.Array(Schema.Struct({ uri: Schema.optionalKey(Schema.String) }))) }))
+})
+type GoogleEvent = typeof GoogleEventSchema.Type
+const Page = Schema.Struct({ items: Schema.optionalKey(Schema.Array(Schema.Unknown)), nextPageToken: Schema.optionalKey(Schema.String), timeZone: Schema.optionalKey(Schema.String) })
+const CalendarEntry = Schema.Struct({
+  id: Schema.String,
+  summary: Schema.optionalKey(Schema.String),
+  summaryOverride: Schema.optionalKey(Schema.String),
+  accessRole: Schema.optionalKey(Schema.Literals(["freeBusyReader", "reader", "writer", "owner"])),
+  deleted: Schema.optionalKey(Schema.Boolean),
+  hidden: Schema.optionalKey(Schema.Boolean)
+})
+const AttendeeSchema = Schema.Struct({ email: Schema.String, displayName: Schema.optionalKey(Schema.String), optional: Schema.optionalKey(Schema.Boolean) })
+const Side = Schema.optionalKey(Schema.Literal("owner"))
+const CreateBody = Schema.Struct({
+  side: Side,
+  grantId: Schema.optionalKey(Schema.String),
+  expectedAccountId: Schema.optionalKey(Schema.String),
+  calendarId: Schema.optionalKey(Schema.String),
+  title: Schema.String,
+  description: Schema.optionalKey(Schema.String),
+  location: Schema.optionalKey(Schema.String),
+  startAt: Schema.String,
+  endAt: Schema.String,
+  timeZone: Schema.optionalKey(Schema.String),
+  allDay: Schema.optionalKey(Schema.Boolean),
+  attendees: Schema.optionalKey(Schema.Array(AttendeeSchema)),
+  recurrence: Schema.optionalKey(Schema.Array(Schema.String)),
+  privateCreate: Schema.optionalKey(Schema.Literal(true))
+})
+const ChangeBody = Schema.Struct({
+  side: Side,
+  grantId: Schema.optionalKey(Schema.String),
+  expectedAccountId: Schema.optionalKey(Schema.String),
+  calendarId: Schema.optionalKey(Schema.String),
+  title: Schema.optionalKey(Schema.String),
+  description: Schema.optionalKey(Schema.String),
+  location: Schema.optionalKey(Schema.String),
+  startAt: Schema.optionalKey(Schema.String),
+  endAt: Schema.optionalKey(Schema.String),
+  timeZone: Schema.optionalKey(Schema.String),
+  allDay: Schema.optionalKey(Schema.Boolean),
+  attendees: Schema.optionalKey(Schema.Array(AttendeeSchema)),
+  recurrence: Schema.optionalKey(Schema.Unknown)
+})
+type Fields = Omit<typeof ChangeBody.Type, "side" | "grantId" | "expectedAccountId" | "calendarId" | "recurrence">
+
+function decoded<A>(schema: Schema.Codec<A>, raw: unknown): A | undefined {
+  return Option.getOrUndefined(Schema.decodeUnknownOption(schema)(raw))
+}
+
+function canonicalZone(name: string | undefined): string | undefined {
+  if (name === undefined) return undefined
+  try {
+    return new Intl.DateTimeFormat("en-US", { timeZone: name }).resolvedOptions().timeZone
+  } catch {
+    return undefined
+  }
+}
+
+function senderOf(owner: Owner): SessionOwner {
+  return { agentId: owner.organizationId, actorId: owner.userId, connector: connectorOf("CalendarEvent") }
+}
+
+function writeRows(by: SessionOwner) {
+  return machineRows<Receipt, Event, Rejected, NotAState>("calendar_writes", { initial, decodeState, apply: (state, event) => apply(state, event, by) })
+}
+
+function rowKey(kind: WriteKind, owner: Owner, id: string): string {
+  return [kind, owner.organizationId, owner.userId, id].map(encodeURIComponent).join("/")
+}
+
+function phaseOf(receipt: Receipt): WritePhase {
+  const status = receiptStatus(receipt)
+  switch (status) {
+    case "StatusAbsent":
+    case "StatusPrepared": return "prepared"
+    case "StatusDispatched": return "dispatched"
+    case "StatusUnknown": return "outcome-unknown"
+    case "StatusSucceeded": return "succeeded"
+    case "StatusRejected": return "rejected"
+    default: {
+      const _exhaustive: never = status
+      return _exhaustive
+    }
+  }
+}
+
+function at(receipt: Receipt, now: number): Event | undefined {
+  const elapsed = now - receipt.session.now
+  return elapsed > 0 && canElapse(receipt, elapsed) ? { type: "elapse", elapsed } : undefined
+}
+
+function eventCard(calendarId: string, event: GoogleEvent, timeZone: string | null) {
+  const allDay = event.start?.date !== undefined && event.end?.date !== undefined
+  const start = allDay ? event.start?.date : event.start?.dateTime
+  const end = allDay ? event.end?.date : event.end?.dateTime
+  const originalStartTime = event.originalStartTime?.date ?? event.originalStartTime?.dateTime
+  const pattern = allDay ? isoDate : isoDateTime
+  if (start === undefined || end === undefined || !pattern.test(start) || !pattern.test(end) || !(Date.parse(start) <= Date.parse(end))) return null
+  return {
+    externalId: event.id,
+    calendarId,
+    title: event.summary ?? "",
+    description: event.description ?? "",
+    location: event.location ?? "",
+    status: event.status ?? "confirmed",
+    startAt: start,
+    endAt: end,
+    isAllDay: allDay,
+    timezone: event.start?.timeZone ?? timeZone,
+    htmlLink: event.htmlLink ?? null,
+    conferenceLink: event.hangoutLink ?? event.conferenceData?.entryPoints?.find((entry) => entry.uri !== undefined)?.uri ?? null,
+    etag: event.etag ?? null,
+    seriesId: event.recurringEventId ?? null,
+    ...(event.recurrence === undefined ? {} : { recurrence: event.recurrence }),
+    organizer: event.organizer === undefined ? null : { email: event.organizer.email ?? null, displayName: event.organizer.displayName ?? null, self: event.organizer.self ?? false },
+    attendees: (event.attendees ?? []).map((who) => ({
+      email: who.email ?? null,
+      displayName: who.displayName ?? null,
+      responseStatus: who.responseStatus ?? null,
+      self: who.self ?? false,
+      organizer: who.organizer ?? false,
+      optional: who.optional ?? false
+    })),
+    metadata: { iCalUID: event.iCalUID ?? null, createdAt: event.created ?? null, updatedAt: event.updated ?? null,
+      ...(originalStartTime === undefined ? {} : { originalStartTime }) }
+  }
+}
+
+function sameTime(wanted: EventTime | undefined, seen: EventTime | undefined): boolean {
+  if (wanted === undefined) return true
+  if (wanted.date !== undefined) return seen?.date === wanted.date
+  return seen?.dateTime !== undefined && Date.parse(seen.dateTime) === Date.parse(wanted.dateTime ?? "")
+}
+
+function sameRecurrence(wanted: readonly string[], seen: readonly string[] | undefined): boolean {
+  const actual = [...new Set(seen)].sort()
+  return actual.length === wanted.length && [...wanted].sort().every((line, index) => actual[index] === line)
+}
+
+function matches(wanted: EventBody, seen: GoogleEvent): boolean {
+  const repeatingZone = wanted.recurrence !== undefined && wanted.start?.dateTime !== undefined
+    ? canonicalZone(wanted.start.timeZone) : undefined
+  return (wanted.summary === undefined || seen.summary === wanted.summary)
+    && (wanted.description === undefined || (seen.description ?? "") === wanted.description)
+    && (wanted.location === undefined || (seen.location ?? "") === wanted.location)
+    && sameTime(wanted.start, seen.start)
+    && sameTime(wanted.end, seen.end)
+    && (wanted.recurrence === undefined || sameRecurrence(wanted.recurrence, seen.recurrence))
+    && (repeatingZone === undefined || canonicalZone(seen.start?.timeZone) === repeatingZone)
+    && (wanted.visibility === undefined || seen.visibility === wanted.visibility)
+    && (wanted.reminders === undefined || seen.reminders?.useDefault === wanted.reminders.useDefault)
+}
+
+function readRefusal(failure: { readonly _tag: string }): Refused {
+  switch (failure._tag) {
+    case "NotFound": return refused("NotFound")
+    case "InvalidGrant": return refused("GoogleReauthRequired")
+    case "ContentTooLarge": return refused("ContentTooLarge")
+    case "InvalidResponse": return refused("ProviderInvalidResponse")
+    default: return refused("ProviderUnavailable")
+  }
+}
+
+function google(grant: Grant, method: "GET" | "POST" | "PATCH" | "DELETE", path: string, options: { readonly body?: unknown; readonly ifMatch?: string } = {}) {
+  return googleJson(grant.accessToken, method, `${calendarApi}${path}`, options)
+}
+
+function eventsPath(calendarId: string): string {
+  return `/calendars/${encodeURIComponent(calendarId)}/events`
+}
+
+function eventPath(calendarId: string, eventId: string): string {
+  return `${eventsPath(calendarId)}/${encodeURIComponent(eventId)}`
+}
+
+effect function ownerFrom(context: RouteContext): Owner!Refused {
+  const found = ownerOf(context.caller)
+  if (found === undefined) throw refused("AuthenticationRequired")
+  return found
+}
+
+effect function queryOf(context: RouteContext) {
+  const side = context.query.get("side")
+  if (side !== null && side !== "owner") throw refused("InvalidRequest")
+  const calendarId = context.query.get("calendarId") ?? "primary"
+  if (calendarId.length === 0 || calendarId.length > 1024) throw refused("InvalidRequest")
+  return { grantId: context.query.get("grantId") ?? undefined, expectedAccountId: context.query.get("expectedAccountId") ?? undefined, calendarId }
+}
+
+effect function calendarOf(given: string | undefined): string!Refused {
+  const calendarId = given ?? "primary"
+  if (calendarId.length === 0 || calendarId.length > 1024) throw refused("InvalidRequest")
+  return calendarId
+}
+
+effect function eventIdOf(context: RouteContext): string!Refused {
+  const eventId = context.params.eventId ?? ""
+  if (!eventIdPattern.test(eventId)) throw refused("InvalidRequest")
+  return eventId
+}
+
+function revisionOf(context: RouteContext): RevisionHeader {
+  const given = context.request.headers["if-match"]?.trim()
+  if (given === undefined) return { tag: "NoIfMatch" }
+  return given === "" || given === "*" || given.includes(",") || given.length > 1024 || !/^[\x20-\x7e]+$/.test(given) ? { tag: "MalformedIfMatch" } : { tag: "ExactRevision", readEtag: given }
+}
+
+effect function admitted(request: { readonly op: WriteOp; readonly keyed: boolean; readonly revision: RevisionHeader; readonly recurrence: RecurrenceFit; readonly bodyBytes: number }) {
+  const fit = requestFit(request)
+  if (fit.tag === "RequestRefused") throw new Refused({ refusal: fit.refusal })
+  return request.revision.tag === "ExactRevision" ? request.revision.readEtag : null
+}
+
+effect function writeBody<A>(context: RouteContext, schema: Schema.Codec<A>) {
+  if (!(context.request.headers["content-type"] ?? "").startsWith("application/json")) throw refused("InvalidRequest")
+  const raw = context.request.text catch effect () => { throw refused("InvalidRequest") }
+  const body = Schema.decodeUnknownEffect(Schema.fromJsonString(schema), { onExcessProperty: "error" })(raw) catch effect () => { throw refused("InvalidRequest") }
+  return { body, bytes: new TextEncoder().encode(raw).length }
+}
+
+effect function calendarAccess(grant: Grant & { readonly scopes: ReadonlyArray<string> }, calendarId: string) {
+  const entry = decoded(CalendarEntry, google(grant, "GET", `/users/me/calendarList/${encodeURIComponent(calendarId)}`) catch effect (failure) => { throw readRefusal(failure) })
+  if (entry === undefined) throw refused("ProviderInvalidResponse")
+  return rowAccess(knownScopes(grant.scopes), calendarRoles[entry.accessRole ?? "reader"])
+}
+
+effect function eventBody(fields: Fields): EventBody!Refused {
+  const allDay = fields.allDay === true
+  const timed = fields.startAt !== undefined && fields.endAt !== undefined
+  if ((fields.startAt === undefined) !== (fields.endAt === undefined) || (fields.allDay !== undefined && !timed)) throw refused("InvalidRequest")
+  if (fields.title !== undefined && fields.title.trim() === "") throw refused("InvalidRequest")
+  if (fields.timeZone !== undefined && (allDay || !timed || canonicalZone(fields.timeZone) === undefined)) throw refused("InvalidRequest")
+  if (timed) {
+    const pattern = allDay ? isoDate : isoDateTime
+    if (!pattern.test(fields.startAt ?? "") || !pattern.test(fields.endAt ?? "") || !(Date.parse(fields.startAt ?? "") < Date.parse(fields.endAt ?? ""))) throw refused("InvalidRequest")
+  }
+  if ((fields.attendees ?? []).some((who) => !mailAddress.test(who.email))) throw refused("InvalidRequest")
+  const timeOf = (value: string): EventTime => allDay ? { date: value } : { dateTime: value, ...(fields.timeZone === undefined ? {} : { timeZone: fields.timeZone }) }
+  const body: EventBody = {
+    ...(fields.title === undefined ? {} : { summary: fields.title }),
+    ...(fields.description === undefined ? {} : { description: fields.description }),
+    ...(fields.location === undefined ? {} : { location: fields.location }),
+    ...(fields.startAt === undefined ? {} : { start: timeOf(fields.startAt) }),
+    ...(fields.endAt === undefined ? {} : { end: timeOf(fields.endAt) }),
+    ...(fields.attendees === undefined ? {} : { attendees: fields.attendees })
+  }
+  if (Object.keys(body).length === 0) throw refused("InvalidRequest")
+  return body
+}
+
+function recurrenceLines(body: typeof CreateBody.Type): readonly string[] | null | undefined {
+  if (body.recurrence === undefined) return undefined
+  const [rule, ...exceptions] = body.recurrence
+  const parts = rule === undefined ? null : reviewedRule.exec(rule)
+  const allDay = body.allDay === true
+  const calendarStamp = allDay ? /^\d{8}$/ : /^\d{8}T\d{6}Z$/
+  if (rule === undefined || parts === null || (parts[1] !== undefined && !calendarStamp.test(parts[1])) ||
+    (!allDay && body.timeZone === undefined) || exceptions.some((line) => {
+      const match = reviewedException.exec(line)
+      return match === null || (match[1] !== undefined) !== allDay || !calendarStamp.test(match[2] ?? "")
+    })) return null
+  return [rule, ...[...new Set(exceptions)].sort()]
+}
+
+function recurrenceFit(lines: readonly string[] | null | undefined): RecurrenceFit {
+  return lines === undefined ? "NoRecurrence" : lines === null ? "InvalidRecurrence" : "ReviewedRecurrence"
+}
+
+effect function createEventBody(body: typeof CreateBody.Type, recurrence: readonly string[] | undefined): EventBody!Refused {
+  const fields = try eventBody(body)
+  const event: EventBody = body.privateCreate === true
+    ? { ...fields, visibility: "private", reminders: { useDefault: false } }
+    : fields
+  return recurrence === undefined ? event : { ...event, recurrence }
+}
+
+effect function readPages(grant: Grant, path: string, query: Readonly<Record<string, string>>, keep: (items: ReadonlyArray<unknown>, timeZone: string | null) => void!Refused) {
+  const tokens = new Set<string>()
+  let token: string | undefined = undefined
+  do {
+    const params = new URLSearchParams(query)
+    if (token !== undefined) params.set("pageToken", token)
+    const page = decoded(Page, google(grant, "GET", `${path}?${params}`) catch effect (failure) => { throw readRefusal(failure) })
+    if (page === undefined) throw refused("ProviderInvalidResponse")
+    try keep(page.items ?? [], page.timeZone ?? null)
+    token = page.nextPageToken
+    if (token !== undefined && tokens.has(token)) throw refused("ProviderInvalidResponse")
+    if (token !== undefined) tokens.add(token)
+  } while (token !== undefined)
+}
+
+effect function calendarsRoute(context: RouteContext) {
+  const owner = try ownerFrom(context)
+  const query = try queryOf(context)
+  const grant = try useGrant(owner, query.grantId, "google.calendar.read", query.expectedAccountId)
+  const scopes = knownScopes(grant.scopes)
+  const rows: Array<unknown> = []
+  try readPages(grant, "/users/me/calendarList", { minAccessRole: "reader", showHidden: "false", maxResults: "250" }, effect (items) => {
+    for (const item of items) {
+      const entry = decoded(CalendarEntry, item)
+      if (entry === undefined) throw refused("ProviderInvalidResponse")
+      if (entry.deleted === true || entry.hidden === true) continue
+      const accessRole = entry.accessRole ?? "reader"
+      const access = rowAccess(scopes, calendarRoles[accessRole])
+      rows.push({
+        calendarId: entry.id,
+        accountId: grant.subject,
+        accountEmail: grant.email,
+        label: entry.summaryOverride ?? entry.summary ?? entry.id,
+        accessRole,
+        ...access,
+        ...(access.write ? { recurrenceLines: true, privateCreate: true } : {})
+      })
+    }
+  })
+  return json(rows)
+}
+
+effect function feedRoute(context: RouteContext) {
+  const owner = try ownerFrom(context)
+  const query = try queryOf(context)
+  const timeMin = context.query.get("timeMin") ?? ""
+  const timeMax = context.query.get("timeMax") ?? ""
+  const timeZone = context.query.get("timeZone") ?? "UTC"
+  if (!isoDateTime.test(timeMin) || !isoDateTime.test(timeMax) || !(Date.parse(timeMin) < Date.parse(timeMax)) || canonicalZone(timeZone) === undefined) throw refused("InvalidRequest")
+  const grant = try useGrant(owner, query.grantId, "google.calendar.read", query.expectedAccountId)
+  if (!(try calendarAccess(grant, query.calendarId)).read) throw refused("AccessDenied")
+  const events: Array<Card> = []
+  const encoder = new TextEncoder()
+  let bytes = 0
+  try readPages(grant, eventsPath(query.calendarId), { timeMin, timeMax, timeZone, singleEvents: "true", orderBy: "startTime", showDeleted: "false", maxResults: "2500" }, effect (items, zone) => {
+    for (const item of items) {
+      const event = decoded(GoogleEventSchema, item)
+      const card = event === undefined ? null : eventCard(query.calendarId, event, zone ?? timeZone)
+      if (card === null) continue
+      bytes += encoder.encode(JSON.stringify(card)).length + 1
+      if (bytes > feedByteLimit) throw refused("ContentTooLarge")
+      events.push(card)
+    }
+  })
+  const answer = { accountId: owner.userId, calendarId: query.calendarId, events, syncedAt: new Date(context.now).toISOString(), nextPageToken: null }
+  if (encoder.encode(JSON.stringify(answer)).length > feedByteLimit) throw refused("ContentTooLarge")
+  return json(answer)
+}
+
+effect function readEvent(grant: Grant, calendarId: string, eventId: string) {
+  const event = decoded(GoogleEventSchema, google(grant, "GET", eventPath(calendarId, eventId)) catch effect (failure) => { throw readRefusal(failure) })
+  const card = event === undefined || event.id !== eventId ? null : eventCard(calendarId, event, null)
+  if (card === null) throw refused("ProviderInvalidResponse")
+  return card
+}
+
+effect function eventRoute(context: RouteContext) {
+  const owner = try ownerFrom(context)
+  const query = try queryOf(context)
+  const eventId = try eventIdOf(context)
+  const grant = try useGrant(owner, query.grantId, "google.calendar.read", query.expectedAccountId)
+  return json({ event: try readEvent(grant, query.calendarId, eventId) })
+}
+
+effect function lookupWrite(grant: Grant, planned: Planned): (Seen | undefined)!!CloudContext {
+  const read = Effect.map(google(grant, "GET", eventPath(planned.calendarId, planned.eventId)), (raw) => ({ kind: "found" as const, event: decoded(GoogleEventSchema, raw) }))
+    catch (failure) => failure._tag === "NotFound" ? { kind: "gone" as const } : { kind: "failed" as const }
+  if (read.kind === "failed") return undefined
+  const event = read.kind === "found" && read.event?.id === planned.eventId ? read.event : undefined
+  if (read.kind === "found" && event === undefined) return undefined
+  const live = event !== undefined && event.status !== "cancelled"
+  const card = event === undefined ? null : eventCard(planned.calendarId, event, null)
+  const nothing: Seen = { lookup: { tag: "NothingSeen" }, event: null }
+  switch (planned.kind) {
+    case "create": {
+      if (planned.body !== null && (planned.body.recurrence !== undefined || planned.body.visibility !== undefined)
+        && (event === undefined || !live || !matches(planned.body, event))) return event === undefined ? nothing : undefined
+      return live ? { lookup: { tag: "EffectSeen" }, event: card } : event === undefined ? nothing : { lookup: { tag: "EffectSeen" }, event: null }
+    }
+    case "change": return event !== undefined && live && event.etag !== planned.ifMatch && planned.body !== null && matches(planned.body, event) ? { lookup: { tag: "EffectSeen" }, event: card } : nothing
+    case "delete": return live ? nothing : { lookup: { tag: "EffectSeen" }, event: null }
+    default: {
+      const _exhaustive: never = planned.kind
+      return _exhaustive
+    }
+  }
+}
+
+function refusedBy(failure: { readonly _tag: string }): Sent {
+  switch (failure._tag) {
+    case "NotFound": return { reply: { tag: "DefiniteRefusal", cause: "NotFoundAtProvider" }, event: null, rejection: "NotFound" }
+    case "InvalidGrant": return { reply: { tag: "DefiniteRefusal", cause: "AuthorizationLost" }, event: null, rejection: "GoogleReauthRequired" }
+    case "PreconditionFailed": return { reply: { tag: "DefiniteRefusal", cause: "OtherRefusal" }, event: null, rejection: "PreconditionFailed" }
+    case "Rejected": return { reply: { tag: "DefiniteRefusal", cause: "OtherRefusal" }, event: null, rejection: "status" in failure && failure.status === 403 ? "AccessDenied" : "InvalidRequest" }
+    case "Duplicate": return { reply: { tag: "DefiniteRefusal", cause: "OtherRefusal" }, event: null, rejection: "IdempotencyConflict" }
+    default: return unclear
+  }
+}
+
+effect function sendWrite(grant: Grant, planned: Planned): Sent!!CloudContext {
+  const judged = (raw: unknown): Sent => {
+    const event = decoded(GoogleEventSchema, raw)
+    const card = event === undefined ? null : eventCard(planned.calendarId, event, null)
+    if (event === undefined || card === null || event.id !== planned.eventId || planned.body === null || !matches(planned.body, event)) return unclear
+    if (planned.kind === "change" && (event.etag === undefined || event.etag === planned.ifMatch)) return unclear
+    return { reply: { tag: "ShowsEffect" }, event: card, rejection: null }
+  }
+  switch (planned.kind) {
+    case "create": {
+      const sent = Effect.map(google(grant, "POST", `${eventsPath(planned.calendarId)}?sendUpdates=none`, { body: planned.body }), judged) catch (failure) => failure._tag === "Duplicate" ? undefined : refusedBy(failure)
+      if (sent !== undefined) return sent
+      const seen = try lookupWrite(grant, planned)
+      return seen?.lookup.tag === "EffectSeen" && seen.event !== null ? { reply: { tag: "ShowsEffect" }, event: seen.event, rejection: null } : seen === undefined ? unclear : refusedBy({ _tag: "Duplicate" })
+    }
+    case "change": return Effect.map(google(grant, "PATCH", `${eventPath(planned.calendarId, planned.eventId)}?sendUpdates=none`, { body: planned.body, ifMatch: planned.ifMatch ?? undefined }), judged) catch (failure) => refusedBy(failure)
+    case "delete": return Effect.as(google(grant, "DELETE", `${eventPath(planned.calendarId, planned.eventId)}?sendUpdates=none`, { ifMatch: planned.ifMatch ?? undefined }), { reply: { tag: "ShowsEffect" }, event: null, rejection: null } satisfies Sent) catch (failure) => refusedBy(failure)
+    default: {
+      const _exhaustive: never = planned.kind
+      return _exhaustive
+    }
+  }
+}
+
+function columns(write: Omit<Write, "receipt">, now: number) {
+  return (receipt: Receipt): Columns => ({
+    organization_id: write.owner.organizationId,
+    user_id: write.owner.userId,
+    grant_id: write.grantId,
+    idempotency_key: write.planned.idempotencyKey,
+    request_digest: receipt.digest,
+    kind: write.planned.kind,
+    calendar_id: write.planned.calendarId,
+    event_id: write.planned.eventId,
+    if_match: write.planned.ifMatch,
+    request: write.planned.body === null ? null : JSON.stringify(write.planned.body),
+    etag: write.etag,
+    rejection: write.rejection,
+    phase: phaseOf(receipt),
+    stale_after: receipt.claimedAt > 0 && receipt.settlement === "Unsettled" ? Math.max(now, receipt.claimedAt) + receipt.staleAfter : null,
+    updated_at: now
+  })
+}
+
+effect function storedBody(stored: unknown) {
+  if (stored === null || stored === undefined) return null
+  if (typeof stored !== "string") return stored as EventBody
+  return Effect.try(() => JSON.parse(stored) as EventBody) catch () => null
+}
+
+effect function readWrite(tx: Tx, key: string) {
+  const row: Row | undefined = (try tx.query("SELECT organization_id, user_id, grant_id, idempotency_key, kind, calendar_id, event_id, if_match, request, etag, rejection FROM calendar_writes WHERE key = $1 FOR UPDATE", [key]))[0]
+  if (row === undefined) return undefined
+  const owner: Owner = { organizationId: toText(row.organization_id) ?? "", userId: toText(row.user_id) ?? "" }
+  const loaded = try loadRow(tx, writeRows(senderOf(owner)), key)
+  const kind = toText(row.kind) as WriteKind
+  const planned: Planned = { kind, key, idempotencyKey: toText(row.idempotency_key) ?? "", calendarId: toText(row.calendar_id) ?? "", eventId: toText(row.event_id) ?? "", ifMatch: toText(row.if_match) ?? null, body: try storedBody(row.request) }
+  return { receipt: loaded.state, owner, grantId: toText(row.grant_id) ?? "", planned, etag: toText(row.etag) ?? null, rejection: (toText(row.rejection) ?? null) as RefusalCode | null } satisfies Write
+}
+
+effect function advance(tx: Tx, write: Omit<Write, "receipt">, events: ReadonlyArray<(receipt: Receipt) => Event | undefined>, now: number) {
+  const rows = writeRows(senderOf(write.owner))
+  let receipt = (try loadRow(tx, rows, write.planned.key)).state
+  for (const next of events) {
+    const event = next(receipt)
+    if (event !== undefined) receipt = (try stepRow(tx, rows, write.planned.key, event, columns(write, now))).state
+  }
+  return { ...write, receipt } satisfies Write
+}
+
+function resolving(seen: Seen | undefined) {
+  return (receipt: Receipt): Event | undefined => seen !== undefined && canResolve(receipt, seen.lookup) ? { type: "resolve", lookup: seen.lookup } : undefined
+}
+
+function writeRefusal(refusal: Refusal, outcome: Outcome) {
+  return json({ ...refusalBody(refusal), outcome }, { status: statusOf(refusal.code) })
+}
+
+effect function answer(grant: Grant, write: Write, event: Card | null) {
+  const phase = phaseOf(write.receipt)
+  switch (phase) {
+    case "succeeded": {
+      if (write.planned.kind === "delete") return json({ ok: true })
+      const held = write.planned.body
+      const reviewed = write.planned.kind === "create" && (held?.recurrence !== undefined || held?.visibility !== undefined)
+      const reread = event === null && reviewed ? try lookupWrite(grant, write.planned) : undefined
+      if (event === null && reviewed && (reread?.lookup.tag !== "EffectSeen" || reread.event === null)) return writeRefusal(unknownRefusal, "unknown")
+      const shown = event ?? reread?.event ?? (try readEvent(grant, write.planned.calendarId, write.planned.eventId))
+      return json({ event: shown }, { status: write.planned.kind === "create" ? 201 : 200, ...(shown.etag === null ? {} : { headers: { etag: shown.etag } }) })
+    }
+    case "rejected": throw refused(write.rejection ?? "ProviderUnavailable")
+    case "prepared":
+    case "dispatched":
+    case "outcome-unknown": return writeRefusal(unknownRefusal, "unknown")
+    default: {
+      const _exhaustive: never = phase
+      return _exhaustive
+    }
+  }
+}
+
+effect function replay(grant: Grant, write: Write) {
+  const now = try Clock.currentTimeMillis
+  const event = at(write.receipt, now)
+  const viewed = event === undefined ? write.receipt : try apply(write.receipt, event, senderOf(write.owner))
+  if (!isUnknown(viewed)) return try answer(grant, write, null)
+  const seen = try lookupWrite(grant, write.planned)
+  const store = try Store
+  const settled = try store.transaction((tx) => advance(tx, { ...write, etag: seen?.event?.etag ?? write.etag }, [(receipt) => at(receipt, now), resolving(seen)], now))
+  return try answer(grant, settled, seen?.event ?? null)
+}
+
+effect function performWrite(owner: Owner, grant: Grant & { readonly scopes: ReadonlyArray<string> }, planned: Planned, digest: string) {
+  const store = try Store
+  const known = try store.transaction((tx) => readWrite(tx, planned.key))
+  if (known === undefined && !(try calendarAccess(grant, planned.calendarId)).write) throw refused("AccessDenied")
+  const claimedAt = try Clock.currentTimeMillis
+  const fresh: Omit<Write, "receipt"> = { owner, grantId: grant.connectionId, planned, etag: planned.ifMatch, rejection: null }
+  const claimed = try store.transaction(effect (tx: Tx) => {
+    const current = try readWrite(tx, planned.key)
+    if (current !== undefined) {
+      if (current.receipt.digest !== digest || current.planned.kind !== planned.kind) throw refused("IdempotencyConflict")
+      return { won: false, write: current }
+    }
+    const providerId = planned.kind === "create" ? `${planned.calendarId}/${planned.eventId}` : `${planned.calendarId}/${planned.eventId}/${planned.key}`
+    const write = try advance(tx, fresh, [
+      (receipt) => at(receipt, claimedAt),
+      () => ({ type: "prepare", digest, providerKey: { providerKind: "CalendarEvent", providerId }, staleAfter: calendarStaleAfter, expiresAt: claimedAt + writeLifetime }),
+      () => ({ type: "claim" }),
+      (receipt) => ({ type: "send", claimToken: receipt.session.currentClaim })
+    ], claimedAt)
+    return { won: true, write }
+  })
+  if (!claimed.won) return try replay(grant, claimed.write)
+  const sent = try sendWrite(grant, planned)
+  const seen = sent.reply.tag === "Unclear" ? try lookupWrite(grant, planned) : undefined
+  const event = sent.event ?? seen?.event ?? null
+  const settledAt = try Clock.currentTimeMillis
+  const settled = try store.transaction((tx) => advance(tx, { ...fresh, etag: planned.kind === "delete" ? null : event?.etag ?? fresh.etag, rejection: sent.rejection }, [
+    (receipt) => at(receipt, settledAt),
+    (receipt) => canReceiveReply(receipt, sent.reply) ? { type: "receiveReply", reply: sent.reply } : undefined,
+    resolving(seen)
+  ], settledAt))
+  if (phaseOf(settled.receipt) === "outcome-unknown") try annotateLogs(logWarning("a calendar write has an unknown outcome until it is looked up"), { kind: planned.kind, eventId: planned.eventId })
+  return try answer(grant, settled, event)
+}
+
+effect function refusingWrite(write: HttpServerResponse.HttpServerResponse!{ readonly _tag: string }!CloudContext) {
+  return write catch effect (failure) => {
+    if (failure instanceof Refused) return writeRefusal(failure.refusal, "not_accepted")
+    throw failure
+  }
+}
+
+effect function createRoute(context: RouteContext) {
+  const owner = try ownerFrom(context)
+  const key = context.request.headers["idempotency-key"] ?? ""
+  const { body, bytes } = try writeBody(context, CreateBody)
+  const recurrence = recurrenceLines(body)
+  try admitted({ op: "CreateEvent", keyed: keyPattern.test(key), revision: revisionOf(context), recurrence: recurrenceFit(recurrence), bodyBytes: bytes })
+  const calendarId = try calendarOf(body.calendarId)
+  const event = try createEventBody(body, recurrence ?? undefined)
+  const grant = try useGrant(owner, body.grantId, "google.calendar.write", body.expectedAccountId)
+  const eventId = sha256Hex(`${owner.organizationId}/${owner.userId}/${key}`)
+  const planned: Planned = { kind: "create", key: rowKey("create", owner, key), idempotencyKey: key, calendarId, eventId, ifMatch: null, body: { id: eventId, ...event } }
+  return try performWrite(owner, grant, planned, requestDigest({ kind: "create", grant: grant.connectionId, calendarId, event }))
+}
+
+effect function changeRoute(context: RouteContext) {
+  const owner = try ownerFrom(context)
+  const eventId = try eventIdOf(context)
+  const { body, bytes } = try writeBody(context, ChangeBody)
+  const ifMatch = try admitted({ op: "ChangeEvent", keyed: false, revision: revisionOf(context), recurrence: body.recurrence === undefined ? "NoRecurrence" : "InvalidRecurrence", bodyBytes: bytes })
+  const calendarId = try calendarOf(body.calendarId)
+  const event = try eventBody(body)
+  const grant = try useGrant(owner, body.grantId, "google.calendar.write", body.expectedAccountId)
+  const planned: Planned = { kind: "change", key: rowKey("change", owner, context.requestId), idempotencyKey: `change:${context.requestId}`, calendarId, eventId, ifMatch, body: event }
+  return try performWrite(owner, grant, planned, requestDigest({ kind: "change", grant: grant.connectionId, calendarId, eventId, ifMatch, event }))
+}
+
+effect function deleteRoute(context: RouteContext) {
+  const owner = try ownerFrom(context)
+  const eventId = try eventIdOf(context)
+  const ifMatch = try admitted({ op: "RemoveEvent", keyed: false, revision: revisionOf(context), recurrence: "NoRecurrence", bodyBytes: 0 })
+  const query = try queryOf(context)
+  const grant = try useGrant(owner, query.grantId, "google.calendar.write", query.expectedAccountId)
+  const planned: Planned = { kind: "delete", key: rowKey("delete", owner, context.requestId), idempotencyKey: `delete:${context.requestId}`, calendarId: query.calendarId, eventId, ifMatch, body: null }
+  return try performWrite(owner, grant, planned, requestDigest({ kind: "delete", grant: grant.connectionId, calendarId: query.calendarId, eventId, ifMatch }))
+}
+
+effect function settleStale(key: string, now: number): boolean!!CloudContext {
+  const store = try Store
+  const write = store.transaction((tx) => readWrite(tx, key)) catch () => undefined
+  if (write === undefined) return false
+  const grant = useGrant(write.owner, write.grantId, "google.calendar.write") catch () => undefined
+  const seen = grant === undefined ? undefined : try lookupWrite(grant, write.planned)
+  const settled = store.transaction((tx) => advance(tx, { ...write, etag: write.planned.kind === "delete" ? null : seen?.event?.etag ?? write.etag }, [(receipt) => at(receipt, now), resolving(seen)], now)) catch effect (failure) => {
+    try annotateLogs(logError("a calendar write sweep could not settle a stale write"), { eventId: write.planned.eventId, failure: failure._tag })
+    return undefined
+  }
+  return settled !== undefined && phaseOf(settled.receipt) !== phaseOf(write.receipt)
+}
+
+effect function sweepStaleWrites(): number!!CloudContext {
+  const store = try Store
+  const now = try Clock.currentTimeMillis
+  const stale = store.transaction((tx) => tx.query(
+    "SELECT key FROM calendar_writes WHERE phase IN ('dispatched', 'outcome-unknown') AND stale_after <= $1 AND user_id IS NOT NULL AND kind IS NOT NULL AND calendar_id IS NOT NULL ORDER BY stale_after LIMIT $2",
+    [now, sweepBatch]
+  )) catch () => []
+  let settled = 0
+  for (const row of stale) {
+    if (try settleStale(toText(row.key) ?? "", now)) settled += 1
+  }
+  return settled
+}
+
+const calendar = "/api/v1/eliza/google/calendar"
+
+export const calendarRoutes: ReadonlyArray<Route> = [
+  { method: "GET", path: `${calendar}/calendars`, auth: "MailAccess", area: "GoogleRoutes", handler: calendarsRoute },
+  { method: "GET", path: `${calendar}/feed`, auth: "MailAccess", area: "GoogleRoutes", handler: feedRoute },
+  { method: "GET", path: `${calendar}/events/:eventId`, auth: "MailAccess", area: "GoogleRoutes", handler: eventRoute },
+  { method: "POST", path: `${calendar}/events`, auth: "SignedSession", area: "GoogleRoutes", handler: (context) => refusingWrite(createRoute(context)) },
+  { method: "PATCH", path: `${calendar}/events/:eventId`, auth: "SignedSession", area: "GoogleRoutes", handler: (context) => refusingWrite(changeRoute(context)) },
+  { method: "DELETE", path: `${calendar}/events/:eventId`, auth: "SignedSession", area: "GoogleRoutes", handler: (context) => refusingWrite(deleteRoute(context)) }
+]
+
+export const calendarSweeps: ReadonlyArray<Sweep> = [
+  { name: "calendar writes past their stale time", everyMs: 60 * millisPerSecond, run: sweepStaleWrites() }
+]

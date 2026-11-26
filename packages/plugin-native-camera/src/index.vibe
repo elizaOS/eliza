@@ -1,5 +1,0 @@
-// spec/nativeCamera/index.md, "Story: Take a picture or record a clip through the current camera view"
-import { cameraPlugin } from "@elizaos/os/bridges/camera"
-export { cameraAccessDenied, cameraClient, cameraRegistered, captureOperationId, createCameraSession, keepCapture, SCAN_LIMITS } from "@elizaos/os/bridges/camera"
-export type * from "@elizaos/os/bridges/definitions/camera"
-export const Camera = cameraPlugin()

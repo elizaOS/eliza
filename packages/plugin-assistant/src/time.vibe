@@ -22,13 +22,17 @@ module node {
     }
   }
 
-  /** @throws {never} */
-  export function wallText(instant: number, zone: string): string {
+  function formatted(instant: number, zone: string, options: Intl.DateTimeFormatOptions): string {
     try {
-      return new Intl.DateTimeFormat("en-US", { timeZone: zone, weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(instant))
+      return new Intl.DateTimeFormat("en-US", { timeZone: zone, ...options }).format(new Date(instant))
     } catch {
       return new Date(instant).toISOString()
     }
+  }
+
+  /** @throws {never} */
+  export function wallText(instant: number, zone: string): string {
+    return formatted(instant, zone, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })
   }
 
   /** @throws {never} */
@@ -53,12 +57,8 @@ module node {
 
   /** @throws {never} */
   export function fireTimeText(instant: number, zone: string, now: number): string {
-    try {
-      const sameDay = civilDate(instant, zone) === civilDate(now, zone)
-      return new Intl.DateTimeFormat("en-US", { timeZone: zone, ...(sameDay ? {} : { month: "short", day: "numeric" }), hour: "numeric", minute: "2-digit" }).format(new Date(instant))
-    } catch {
-      return new Date(instant).toISOString()
-    }
+    const sameDay = civilDate(instant, zone) === civilDate(now, zone)
+    return formatted(instant, zone, { ...(sameDay ? {} : { month: "short", day: "numeric" }), hour: "numeric", minute: "2-digit" })
   }
 
   /** @throws {never} */

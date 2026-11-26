@@ -1,13 +1,9 @@
 // spec/files/pdfInterpretation.md, "The private artifact must match the task bundle pin, Canvas version, and bytes"; spec/files/pdfInterpretation.md, "The PDF service reads a copied byte array and checks every rendered page"; spec/files/pdfInterpretation.md, "The interpreter receives the same full checked document"; spec/files/pdfInterpretation.md, "Partial or stale page work cannot produce a mapped value"; spec/files/pdfInterpretation.md, "A run holds a document only from start until it fails"
+import { sha256Hex } from "@elizaos/core"
+
 module node {
-  import { createHash } from "node:crypto"
   import { isAbsolute } from "node:path"
   import { pathToFileURL } from "node:url"
-
-  /** @throws {never} */
-  export function sha256Hex(bytes: Uint8Array): string {
-    return createHash("sha256").update(bytes).digest("hex")
-  }
 
   /** @throws {never} */
   export function absolute(path: string): boolean {
@@ -28,7 +24,7 @@ import {
   artifactImportAllowed, artifactUsable, documentAccepted, initial, machineOver, pageMethod, pdfInputAccepted, scopeCurrent, validDeclaredPages,
   type DocumentEnvelope, type Event, type PageMethod, type PageText, type PdfFailure, type PdfRun, type ScopeCheck,
 } from "../../gen/files__pdfInterpretation.effect.vibe"
-import { absolute, base64Bytes, importFile, sha256Hex } from node
+import { absolute, base64Bytes, importFile } from node
 
 export const DOCUMENT_RUNTIME_EXPORTS = ["pdfService", "imageDescription", "resolveAuthority", "nativeSlot", "callerAttribution"] as const
 

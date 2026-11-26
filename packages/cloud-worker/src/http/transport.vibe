@@ -1,0 +1,107 @@
+// spec/cloud/deployment.md, "Story: Answer only the deployment's own callers"; spec/cloud/identity/sessions.md, "Story: Admit a request only for a live credential of an active account"; spec/cloud/identity/requestAuth.md, "A device key is limited to 120 requests a minute before it is looked up"; spec/cloud/identity/requestAuth.md, "A failed credential or revocation lookup is an outage, never a credential refusal"; spec/cloud/shared/types.md, "Story: Speak one refusal language"
+import { allowedMethods, allowedRequestHeaders, exposedResponseHeaders, gateOf, routeOpen } from "../../gen/cloud__deployment.effect.vibe"
+import { lookupRetryMs } from "../../gen/cloud__identity__requestAuth.effect.vibe"
+import { planRpm } from "../billing/plans.vibe"
+import { readPolicy } from "../billing/policy.vibe"
+import { capabilityOf, corsForOrigin, Deployment, type EnvironmentProfile } from "@elizaos/cloud"
+import { admit, minute } from "../shared/rate-limit.vibe"
+import { newId } from "../shared/sealing.vibe"
+import { Store } from "../store/connection.vibe"
+import { refusalResponse, refused, Refused } from "./refusal.vibe"
+import { authenticate, type Caller } from "./request-auth.vibe"
+import { defaultMaxBodyBytes, matchRoute, type CloudContext, type Route } from "./routes.vibe"
+
+const requestIdPattern = /^[A-Za-z0-9._:-]{8,128}$/
+type Compatibility = (route: Route) => (HttpServerResponse.HttpServerResponse | undefined)!Refused
+
+function corsHeaders(origin: string | undefined, settings: EnvironmentProfile): Readonly<Record<string, string>> {
+  if (origin === undefined) return {}
+  if (!corsForOrigin(settings, origin)) return { vary: "Origin" }
+  return {
+    vary: "Origin",
+    "access-control-allow-origin": origin,
+    "access-control-allow-credentials": "true",
+    "access-control-expose-headers": exposedResponseHeaders.join(", ")
+  }
+}
+
+function preflightHeaders(origin: string | undefined, settings: EnvironmentProfile): Readonly<Record<string, string>> {
+  const cors = corsHeaders(origin, settings)
+  if (cors["access-control-allow-origin"] === undefined) return cors
+  return { ...cors, "access-control-allow-methods": allowedMethods.join(", "), "access-control-allow-headers": allowedRequestHeaders.join(", "), "access-control-max-age": "600" }
+}
+
+function routeOffered(settings: EnvironmentProfile, route: Route): boolean {
+  return route.area === undefined || routeOpen(settings.capabilities.map((offered) => capabilityOf[offered]), gateOf(route.area))
+}
+
+function isRefused(failure: { readonly _tag: string }): failure is Refused {
+  return failure instanceof Refused
+}
+
+effect function admitPlanRate(route: Route, caller: Caller, now: number): void!Refused!Store {
+  if (route.rateClass === undefined || caller.kind === "anonymous") return
+  const store = try Store
+  const policy = store.transaction((tx) => readPolicy(tx, caller.organizationId, now)) catch () => undefined
+  if (policy === undefined) throw refused("ServiceUnavailable", "NoReason", now + 5000)
+  try admit({ subject: caller.organizationId, scope: `plan-${route.rateClass}`, limit: planRpm(policy.planKey, route.rateClass), widthMs: minute })
+}
+
+effect function dispatch(routes: ReadonlyArray<Route>, fallback: Route | undefined, requestId: string, now: number, compatibility?: Compatibility): HttpServerResponse.HttpServerResponse!Refused!(HttpServerRequest.HttpServerRequest | CloudContext) {
+  const request = try HttpServerRequest.HttpServerRequest
+  const deployment = try Deployment
+  const url = new URL(request.url, deployment.settings.api)
+  const found = matchRoute(routes, request.method, url.pathname)
+  const matched = found.kind === "none" && fallback !== undefined && (request.method === "GET" || request.method === "HEAD") ? { kind: "route" as const, route: fallback, params: {} } : found
+  if (matched.kind !== "route") throw refused("NotFound")
+  const { route, params } = matched
+  if (route.ingressPerMinute !== undefined) try admit({ subject: Option.getOrElse(request.remoteAddress, () => "unknown"), scope: `ingress-${route.path}`, limit: route.ingressPerMinute, widthMs: minute })
+  const offered = routeOffered(deployment.settings, route)
+  const limit = route.maxBodyBytes ?? defaultMaxBodyBytes
+  const declared = Number(request.headers["content-length"] ?? "0")
+  if (offered && (!Number.isSafeInteger(declared) || declared > limit)) throw refused("ContentTooLarge")
+  const authorization = request.headers.authorization
+  const compatibleResponse = effect {
+    if (offered && compatibility !== undefined) return try compatibility(route)
+  }
+  if (authorization === undefined) {
+    const compatible = try compatibleResponse
+    if (compatible !== undefined) return compatible
+  }
+  const caller = authenticate(authorization, route.auth) catch effect (failure) => match (failure) {
+    when Refused: throw failure;
+    default: throw refused("ServiceUnavailable", "NoReason", now + lookupRetryMs);
+  }
+  if (!offered) throw refused("CapabilityUnavailable")
+  try admitPlanRate(route, caller, now)
+  if (authorization !== undefined) {
+    const compatible = try compatibleResponse
+    if (compatible !== undefined) return compatible
+  }
+  const response = provideService(
+    route.handler({ request, params, query: url.searchParams, caller, requestId, now }),
+    HttpServerRequest.MaxBodySize,
+    ByteSize.bytes(limit)
+  ) catch effect (failure) => {
+    if (isRefused(failure)) throw failure
+    try annotateLogs(logError("a route failed"), { requestId, path: route.path, failure: failure._tag })
+    throw refused("ServiceUnavailable", "NoReason", now + 5000)
+  }
+  return response
+}
+
+export effect function respond(routes: ReadonlyArray<Route>, fallback?: Route, compatibility?: Compatibility): HttpServerResponse.HttpServerResponse!!(HttpServerRequest.HttpServerRequest | CloudContext) {
+  const request = try HttpServerRequest.HttpServerRequest
+  const deployment = try Deployment
+  const now = try Clock.currentTimeMillis
+  const given = request.headers["x-request-id"]
+  const requestId = given !== undefined && requestIdPattern.test(given) ? given : newId()
+  const origin = request.headers.origin
+  const response = request.method === "OPTIONS" && request.headers["access-control-request-method"] !== undefined
+    ? HttpServerResponse.empty({ status: 204, headers: preflightHeaders(origin, deployment.settings) })
+    : HttpServerResponse.setHeaders(
+        dispatch(routes, fallback, requestId, now, compatibility) catch effect (failure) => refusalResponse(failure.refusal, try Clock.currentTimeMillis),
+        corsHeaders(origin, deployment.settings)
+      )
+  return HttpServerResponse.setHeader(response, "x-request-id", requestId)
+}

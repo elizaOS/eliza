@@ -1,0 +1,154 @@
+// spec/os/android/deferredDeletion.md, "Story: Keep one winner between Undo and the provider"; spec/os/android/deferredDeletion.md, "An uncertain outcome is dismissed only by its owner and stays on record"; spec/os/android/deletionWindow.md, "The notice offers Undo only while Undo can still win, and never for an uncertain outcome"; spec/os/android/deletionWindow.md, "A record waiting in its window is hidden from its list until Undo or the provider settles it"
+import { nativeCall, nativeReply, settled } from "./bridge.vibe"
+import { DELETION_NOTICE_TEXT, UNDO_TOO_LATE, parseDeletionsPending, receiptPhase, recordKindOf, undoConfirmed } from "./deletion-window.vibe"
+import type {
+  ActionJournalClient,
+  ActionJournalEntry,
+  ActionJournalPlugin,
+  ActionJournalTarget,
+  DeferredDeletionKey,
+  DeferredDeletionsClient,
+  DismissOutcome,
+  JournalNextStep,
+  JournalScope,
+  OperationHash,
+  OperationId,
+  ProposalId,
+  UndoOutcome,
+} from "./definitions/action-journal.ts"
+
+export type * from "./definitions/action-journal.ts"
+
+module capacitor {
+  import { registerPlugin } from "@capacitor/core"
+  import type { ActionJournalPlugin } from "./definitions/action-journal.ts"
+
+  /** @throws {never} */
+  export function actionJournalPlugin(name = "ElizaActionJournal"): ActionJournalPlugin {
+    return registerPlugin<ActionJournalPlugin>(name)
+  }
+}
+import { actionJournalPlugin } from capacitor
+export { actionJournalPlugin }
+
+const PLUGIN = "ElizaActionJournal"
+const HEX = /^[a-f0-9]{64}$/
+const ID = /^[A-Za-z0-9_-]{1,128}$/
+
+export function isJournalScope(value: unknown): value is JournalScope {
+  return typeof value === "string" && HEX.test(value)
+}
+
+export function isOperationHash(value: unknown): value is OperationHash {
+  return typeof value === "string" && HEX.test(value)
+}
+
+export function isProposalId(value: unknown): value is ProposalId {
+  return typeof value === "string" && ID.test(value)
+}
+
+export function isOperationId(value: unknown): value is OperationId {
+  return typeof value === "string" && ID.test(value)
+}
+
+export type JournalRequestProblem = "invalid-scope" | "invalid-proposal" | "invalid-operation" | "invalid-hash" | "invalid-deletion"
+
+export error InvalidJournalRequest { problem: JournalRequestProblem }
+
+const Fields = Schema.Record(Schema.String, Schema.Unknown)
+const base = {
+  scope: Schema.String.pipe(Schema.refine(isJournalScope)),
+  proposalId: Schema.String.pipe(Schema.refine(isProposalId)),
+  operationId: Schema.String.pipe(Schema.refine(isOperationId)),
+  operationHash: Schema.String.pipe(Schema.refine(isOperationHash)),
+  record: Fields,
+  createdAt: Schema.Number,
+}
+const Entry = Schema.Union([
+  Schema.Struct({ ...base, phase: Schema.Literal("reserved") }),
+  Schema.Struct({ ...base, phase: Schema.Literal("applying"), attemptId: Schema.String, applyingAt: Schema.optionalKey(Schema.Number) }),
+  Schema.Struct({
+    ...base,
+    phase: Schema.Literal("terminal"),
+    status: Schema.Literals(["succeeded", "failed", "unknown", "cancelled"]),
+    summary: Schema.String,
+    attemptId: Schema.optionalKey(Schema.String),
+    applyingAt: Schema.optionalKey(Schema.Number),
+    finishedAt: Schema.optionalKey(Schema.Number),
+    result: Schema.optionalKey(Fields),
+  }).check(Schema.makeFilter((entry) => entry.status !== "succeeded" || entry.attemptId !== undefined)),
+])
+schema Reserved { created: boolean; entry: Entry }
+schema Stored { entry: Entry }
+const Found = Schema.Struct({ entry: Schema.NullOr(Entry) })
+schema Listed { entries: Entry[] }
+schema Acknowledged { status: "acknowledged" }
+
+export function nextStep(entry: ActionJournalEntry): JournalNextStep {
+  if (entry.phase === "reserved") return { kind: "dispatch" }
+  if (entry.phase === "applying") return { kind: "reconcile", since: entry.applyingAt ?? null }
+  return entry.status === "unknown" ? { kind: "reconcile", since: entry.finishedAt ?? null } : { kind: "settled", entry }
+}
+
+effect function checkTarget(target: ActionJournalTarget) {
+  if (!isJournalScope(target.scope)) throw new InvalidJournalRequest({ problem: "invalid-scope" })
+  if (!isProposalId(target.proposalId)) throw new InvalidJournalRequest({ problem: "invalid-proposal" })
+}
+
+export function createActionJournalClient(plugin: ActionJournalPlugin = actionJournalPlugin()): ActionJournalClient {
+  return {
+    reserve: (input) => settled(effect {
+      try checkTarget(input)
+      if (!isOperationId(input.operationId)) throw new InvalidJournalRequest({ problem: "invalid-operation" })
+      if (!isOperationHash(input.operationHash)) throw new InvalidJournalRequest({ problem: "invalid-hash" })
+      return try nativeReply(PLUGIN, "reserve", Reserved, () => plugin.reserve(input))
+    }),
+    markApplying: (input) => settled(effect {
+      try checkTarget(input)
+      return (try nativeReply(PLUGIN, "markApplying", Stored, () => plugin.markApplying(input))).entry
+    }),
+    finish: (input) => settled(effect {
+      try checkTarget(input)
+      return (try nativeReply(PLUGIN, "finish", Stored, () => plugin.finish(input))).entry
+    }),
+    get: (input) => settled(effect {
+      try checkTarget(input)
+      return (try nativeReply(PLUGIN, "get", Found, () => plugin.get(input))).entry
+    }),
+    list: (scope) => settled(effect {
+      if (!isJournalScope(scope)) throw new InvalidJournalRequest({ problem: "invalid-scope" })
+      return (try nativeReply(PLUGIN, "list", Listed, () => plugin.list({ scope }))).entries
+    }),
+  }
+}
+
+effect function deletionCall(plugin: ActionJournalPlugin, method: "undo" | "dismiss", key: DeferredDeletionKey): unknown!InvalidJournalRequest {
+  if (!ID.test(key.id)) throw new InvalidJournalRequest({ problem: "invalid-deletion" })
+  const input = { kind: recordKindOf(key.kind), id: key.id }
+  return nativeCall(PLUGIN, method, () => plugin[method](input)) catch () => undefined
+}
+
+effect function undo(plugin: ActionJournalPlugin, key: DeferredDeletionKey): UndoOutcome!InvalidJournalRequest {
+  const phase = receiptPhase("undo", try deletionCall(plugin, "undo", key)) catch () => undefined
+  if (phase !== undefined && undoConfirmed(phase)) return { kind: "Kept" }
+  return { kind: "NotKept", message: phase === "Deleted" || phase === "DeletionConflict" ? UNDO_TOO_LATE : DELETION_NOTICE_TEXT.undoUnconfirmed }
+}
+
+effect function dismiss(plugin: ActionJournalPlugin, key: DeferredDeletionKey): DismissOutcome!InvalidJournalRequest {
+  const receipt = try deletionCall(plugin, "dismiss", key)
+  return (try isSuccess(Schema.decodeUnknownEffect(Acknowledged)(receipt)))
+    ? { kind: "Dismissed", message: DELETION_NOTICE_TEXT.dismissed }
+    : { kind: "NotDismissed", message: DELETION_NOTICE_TEXT.dismissFailed }
+}
+
+export effect function queuedDeletions(plugin: ActionJournalPlugin) {
+  return (try parseDeletionsPending(try nativeCall(PLUGIN, "pending", () => plugin.pending()))).deletions
+}
+
+export function createDeferredDeletions(plugin: ActionJournalPlugin = actionJournalPlugin()): DeferredDeletionsClient {
+  return {
+    pending: () => settled(effect { return try parseDeletionsPending(try nativeCall(PLUGIN, "pending", () => plugin.pending())) }),
+    undo: (key) => settled(undo(plugin, key)),
+    dismiss: (key) => settled(dismiss(plugin, key)),
+  }
+}

@@ -1,0 +1,116 @@
+// spec/cloud/shared/rateLimit.md, "Story: Refuse excess requests with a usable retry time"; spec/cloud/shared/rateLimit.md, "Story: Refuse rather than guess when the limiter cannot count"
+import { assert, describe, it } from "@effect/vitest"
+import { refusalBody, refusalResponse, type Refusal } from "../src/http/refusal.vibe"
+import { admit, admitAll, minute, perWindow, readWindow, windowEndOf } from "../src/shared/rate-limit.vibe"
+import { Store, StoreFailure, type Tx } from "../src/store/store.vibe"
+import { manualClock, type ManualClock } from "./support/clock.ts"
+import { check, testCloud } from "./support/cloud.vibe"
+
+effect function clockAt(at: number) {
+  const time = try Effect.orDie(Effect.try(() => manualClock()))
+  try setClock(time, at)
+  return time
+}
+
+effect function setClock(time: ManualClock, at: number) {
+  try Effect.orDie(Effect.try(() => time.set(at)))
+}
+
+function answered(refusal: Refusal | void, now: number) {
+  if (refusal === undefined) return "admitted"
+  const response = refusalResponse(refusal, now)
+  return { status: response.status, retryAfter: response.headers["retry-after"], body: refusalBody(refusal) }
+}
+
+const brokenStore: Store.Shape = {
+  location: { kind: "pglite", file: undefined },
+  transaction: <A, E, R>(_body: (tx: Tx) => A!E!R): A!(E | StoreFailure)!R => Effect.fail(new StoreFailure({ operation: "connect", cause: "store down" }))
+}
+
+describe("WP0 Foundation: rate limits", () => {
+  it.live("Refuse excess requests with a usable retry time (spec/cloud/shared/rateLimit.md, \"Story: Refuse excess requests with a usable retry time\")", () => scoped(effect {
+    const cloud = try testCloud()
+    const hour = 60 * minute
+    const start = 1_000 * 2 * hour + 1_000
+    const clock = try clockAt(start)
+    const end = windowEndOf(start, hour)
+    provide Store = cloud.store, Clock.Clock = clock.clock {
+      const limit = { subject: "203.0.113.7", scope: "journeyPerIp", limit: 2, widthMs: hour }
+      const first = admit(limit) catch (failure) => failure.refusal
+      const second = admit(limit) catch (failure) => failure.refusal
+      const refusedAt = start + 30 * minute
+      try setClock(clock, refusedAt)
+      const third = admit(limit) catch (failure) => failure.refusal
+      const held = try readWindow({ subject: limit.subject, rule: perWindow(limit.scope, limit.limit, limit.widthMs) })
+      try setClock(clock, end)
+      const retried = admit(limit) catch (failure) => failure.refusal
+      const opened = try readWindow({ subject: limit.subject, rule: perWindow(limit.scope, limit.limit, limit.widthMs) })
+      try check(() => assert.deepStrictEqual(
+        {
+          answers: [answered(first, start), answered(second, start), answered(third, refusedAt), answered(retried, end)],
+          held: [held.count, held.end, held.last],
+          opened: [opened.count, opened.start, opened.end, opened.last.tag]
+        },
+        {
+          answers: ["admitted", "admitted", {
+            status: 429,
+            retryAfter: String(Math.ceil((end - refusedAt) / 1000)),
+            body: { error: "rate_limited", errorDescription: "Rate limited (cloud gate rate limited).", retryable: true, retryAt: end, reason: "cloud_gate_rate_limited" }
+          }, "admitted"],
+          held: [2, end, { tag: "Refused", limit: 2, retryAt: end }],
+          opened: [1, end, end + hour, "Admitted"]
+        }
+      ))
+
+      const perIp = { subject: "198.51.100.9", rule: perWindow("journeyCodePerIp", 3, hour) }
+      const perAddress = { subject: "digest-of-ada", rule: perWindow("journeyCodePerAddress", 1, 2 * hour) }
+      const otherAddress = { subject: "digest-of-bob", rule: perWindow("journeyCodePerAddress", 1, 2 * hour) }
+      const both = admitAll([perIp, perAddress]) catch (failure) => failure.refusal
+      const groupAt = try Clock.currentTimeMillis
+      const full = admitAll([perIp, perAddress]) catch (failure) => failure.refusal
+      const ipAfterRefusal = try readWindow(perIp)
+      const other = admitAll([perIp, otherAddress]) catch (failure) => failure.refusal
+      const counts = [(try readWindow(perIp)).count, (try readWindow(perAddress)).count, (try readWindow(otherAddress)).count]
+
+      const sharedRule = perWindow("journeySharedScope", 3, minute)
+      const jane = { subject: "jane", rule: sharedRule }
+      const joe = { subject: "joe", rule: sharedRule }
+      const sharedScope = admitAll([jane, joe, { ...jane, rule: { ...sharedRule } }]) catch (failure) => failure.refusal
+      const conflicting = admitAll([jane, { ...joe, rule: { ...sharedRule, limit: 1 } }, joe]) catch (failure) => failure.refusal
+      const sharedCounts = [(try readWindow(jane)).count, (try readWindow(joe)).count]
+      try check(() => assert.deepStrictEqual(
+        {
+          answers: [answered(both, groupAt), answered(full, groupAt), answered(other, groupAt)],
+          ipAfterRefusal: [ipAfterRefusal.count, ipAfterRefusal.last.tag],
+          counts,
+          sharedScope: [answered(sharedScope, groupAt), answered(conflicting, groupAt), sharedCounts]
+        },
+        {
+          answers: ["admitted", {
+            status: 429,
+            retryAfter: String(Math.ceil((windowEndOf(groupAt, 2 * hour) - groupAt) / 1000)),
+            body: { error: "rate_limited", errorDescription: "Rate limited (cloud gate rate limited).", retryable: true, retryAt: windowEndOf(groupAt, 2 * hour), reason: "cloud_gate_rate_limited" }
+          }, "admitted"],
+          ipAfterRefusal: [1, "Admitted"],
+          counts: [2, 1, 1],
+          sharedScope: ["admitted", {
+            status: 503,
+            retryAfter: "1",
+            body: { error: "rate_limit_unavailable", errorDescription: "Rate limit unavailable.", retryable: true, retryAt: groupAt + 1000 }
+          }, [1, 1]]
+        }
+      ))
+    }
+  }))
+
+  it.live("Refuse rather than guess when the limiter cannot count (spec/cloud/shared/rateLimit.md, \"Story: Refuse rather than guess when the limiter cannot count\")", () => effect {
+    const now = 1_000 * 2 * minute + 500
+    const clock = try clockAt(now)
+    provide Store = brokenStore, Clock.Clock = clock.clock {
+      const single = admit({ subject: "203.0.113.7", scope: "journeyPerIp", limit: 2, widthMs: minute }) catch (failure) => failure.refusal
+      const group = admitAll([{ subject: "203.0.113.7", rule: perWindow("journeyCodePerIp", 3, minute) }]) catch (failure) => failure.refusal
+      const unavailable = { status: 503, retryAfter: "1", body: { error: "rate_limit_unavailable", errorDescription: "Rate limit unavailable.", retryable: true, retryAt: now + 1000 } }
+      try check(() => assert.deepStrictEqual([answered(single, now), answered(group, now)], [unavailable, unavailable]))
+    }
+  })
+})

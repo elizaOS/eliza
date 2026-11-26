@@ -10,7 +10,7 @@
     "typecheck": "vibelang --noEmit -p ."
   },
   "dependencies": {
-    "@elizaos/os": "workspace:*",
+    "@elizaos/os-bridges": "workspace:*",
     "effect": "4.1.1",
     "vibelang-runtime": "0.0.13"
   },
@@ -26,16 +26,5 @@
       "import": "./dist/src/index.js",
       "default": "./dist/src/index.js"
     }
-  },
-  "capacitor": {
-    "ios": {
-      "src": "ios",
-      "podName": "ElizaosCapacitorLocation"
-    }
-  },
-  "files": [
-    "dist",
-    "ios/Sources",
-    "*.podspec"
-  ]
+  }
 }

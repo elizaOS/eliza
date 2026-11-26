@@ -1,0 +1,605 @@
+// spec/os/android/phone.md, "Story: Hand an approved number to my phone"; spec/os/android/phone.md, "Story: Read my recent calls"; spec/os/android/voicemail.md, "Story: See my voicemail only when my carrier offers it"; spec/os/android/voicemail.md, "Story: Hear a voicemail"; spec/os/android/voicemail.md, "Story: Change a voicemail only as the provider confirms it"; spec/os/android/deferredDeletion.md, "Story: Undo a deleted message, conversation, voicemail or contact"; spec/os/android/phone.md, "Story: See my SIM lines without guesses"
+import { assert, it } from "@effect/vitest"
+import { createDeferredDeletions } from "../../src/bridges/action-journal.vibe"
+import { MalformedReply, rejectionCode } from "../../src/bridges/bridge.vibe"
+import {
+  PhoneRequestRefused,
+  RecentCallsRefused,
+  VoicemailPcmRefused,
+  VoicemailRefused,
+  phoneClient,
+  type VoicemailId,
+  type VoicemailListing,
+} from "../../src/bridges/phone.vibe"
+import { detectTelephonyProfile } from "../../src/bridges/definitions/phone.ts"
+
+module android {
+  import { Buffer } from "node:buffer"
+  import { CapacitorException } from "@capacitor/core"
+  import type { PhoneNativePlugin, TelephonyPermissionState } from "../../src/bridges/definitions/phone.ts"
+  import type { ActionJournalPlugin } from "../../src/bridges/definitions/action-journal.ts"
+
+  interface Call { id: number; number: string; date: number; type: string }
+  interface Voicemail { id: number; number: string; date: number; read: boolean; hasAudio: boolean; deleted: boolean; samples: number; source: boolean }
+  interface Staged { id: string; kind: string; target: Record<string, unknown>; phase: string; deadline: { expiresAt: number } }
+
+  export interface Device {
+    voiceCapable: boolean
+    unlocked: boolean
+    callLogDeclared: boolean
+    callLog: TelephonyPermissionState
+    dialer: "present" | "missing" | "chooser"
+    roleHeld: boolean
+    callGrant: boolean
+    inCall: boolean
+    placed: string[]
+    dialed: string[]
+    calls: Call[]
+    callReply: unknown
+    infoReply: unknown
+    voicemailGrant: boolean
+    sources: "ready" | "unconfigured" | "unsupported"
+    voicemails: Voicemail[]
+    fetches: number[]
+    writeReply: "applied" | "unconfirmed" | "lost"
+    staged: Staged[]
+    listeners: ((data: unknown) => void)[]
+    observing: boolean
+  }
+
+  /** @throws {never} */
+  export function device(changes: Partial<Device> = {}): Device {
+    return {
+      voiceCapable: true,
+      unlocked: true,
+      callLogDeclared: true,
+      callLog: "granted",
+      dialer: "present",
+      roleHeld: true,
+      callGrant: true,
+      inCall: false,
+      placed: [],
+      dialed: [],
+      calls: [
+        { id: 5, number: "+15550100105", date: 5000, type: "incoming" },
+        { id: 4, number: "+15550100104", date: 4000, type: "missed" },
+        { id: 7, number: "+15550100104", date: 3000, type: "outgoing" },
+        { id: 3, number: "+15550100103", date: 3000, type: "outgoing" },
+        { id: 1, number: "+15550100101", date: 1000, type: "voicemail" },
+      ],
+      callReply: undefined,
+      infoReply: undefined,
+      voicemailGrant: false,
+      sources: "unsupported",
+      voicemails: [
+        { id: 11, number: "+15550100111", date: 9000, read: false, hasAudio: true, deleted: false, samples: 16000, source: true },
+        { id: 12, number: "+15550100112", date: 8000, read: false, hasAudio: false, deleted: false, samples: 0, source: true },
+        { id: 13, number: "+15550100113", date: 7000, read: true, hasAudio: false, deleted: false, samples: 0, source: false },
+        { id: 14, number: "+15550100114", date: 6000, read: false, hasAudio: true, deleted: false, samples: 16000 * 300 + 1, source: true },
+      ],
+      fetches: [],
+      writeReply: "applied",
+      staged: [],
+      listeners: [],
+      observing: false,
+      ...changes,
+    }
+  }
+
+  /** @throws {never} */
+  export function wav(samples: number): string {
+    return Buffer.alloc(44 + samples * 2).toString("base64")
+  }
+
+  /** @throws {never} */
+  export function androidJournal(phone: Device): ActionJournalPlugin {
+    const unused = async (): Promise<never> => { throw new Error("Not a deletion call") }
+    return {
+      reserve: unused,
+      markApplying: unused,
+      finish: unused,
+      get: unused,
+      list: unused,
+      dismiss: unused,
+      pending: async () => ({ pending: phone.staged.map((row) => ({ ...row, window: "open" })) }),
+      undo: async ({ kind, id }) => {
+        const row = phone.staged.find((one) => one.kind === kind && one.id === id)
+        if (row !== undefined && row.phase === "queued") row.phase = "undone"
+        return { phase: row?.phase ?? "unknown" }
+      },
+    }
+  }
+
+  /** @throws {never} */
+  export function androidTelephony(phone: Device): PhoneNativePlugin {
+    const rejection = (message: string, code: string) => Object.assign(new CapacitorException(message), { code })
+    const front = () => {
+      if (!phone.unlocked) throw rejection("Unlock the phone and open this app", "unavailable")
+    }
+    const voicemailReadable = () => phone.voiceCapable && phone.voicemailGrant
+    const voicemail = (id: string) => {
+      if (!voicemailReadable()) throw rejection("Voicemail access is not granted", "permission-required")
+      const row = phone.voicemails.find((one) => String(one.id) === id && !one.deleted)
+      if (row === undefined) throw rejection("Voicemail not found", "not-found")
+      return row
+    }
+    const written = (status: "marked", change: () => void) => {
+      if (phone.writeReply === "lost") throw rejection("Voicemail could not be read. Check access and refresh.", "unavailable")
+      change()
+      return { status: phone.writeReply === "applied" ? status : "unconfirmed" }
+    }
+    const status = () => ({
+      version: 2,
+      voiceCapable: phone.voiceCapable,
+      smsCapable: true,
+      permissions: { contacts: "granted", phoneState: "granted", sms: "denied", sendSms: "denied", ...(phone.callLogDeclared ? { callLog: phone.callLog } : {}) },
+      sendMode: "handoff",
+      mmsSend: false,
+      roles: { dialer: { available: true, held: phone.roleHeld, eligible: true }, sms: { available: true, held: false, eligible: true } },
+      defaultDialer: phone.roleHeld ? "ai.eliza.app" : "com.android.dialer",
+      defaultSms: null,
+      subscriptions: null,
+      defaultSmsSubscriptionId: null,
+    })
+    return {
+      imageCapability: async () => ({ version: 1, image: true, feature: "android.hardware.telephony" }),
+      status: async () => status(),
+      requestAccess: async () => {
+        phone.callLog = "granted"
+        return status()
+      },
+      requestRole: async () => {
+        phone.roleHeld = true
+        return status()
+      },
+      listRecentCalls: async ({ limit, number, beforeDate, beforeId }) => {
+        front()
+        if (!phone.callLogDeclared) throw rejection("Recent calls are not available in this install.", "unavailable")
+        if (phone.callLog !== "granted") throw rejection("Call-log access is not granted", "permission-required")
+        if (phone.callReply !== undefined) return phone.callReply
+        const after = (call: Call) => beforeDate === undefined || beforeId === undefined || call.date < beforeDate || (call.date === beforeDate && call.id < beforeId)
+        const rows = phone.calls
+          .filter((call) => after(call) && (number === undefined || call.number === number))
+          .sort((x, y) => y.date - x.date || y.id - x.id)
+          .slice(0, limit + 1)
+        return { calls: rows.map((call) => ({ id: String(call.id), number: call.number, cachedName: null, date: call.date, durationSeconds: 30, type: call.type, isNew: false })) }
+      },
+      dial: async ({ number }) => {
+        front()
+        if (phone.dialer === "missing") return { status: "unavailable", target: "dialer", handler: null, message: "No app on this phone handles this." }
+        phone.dialed.push(number)
+        return { status: "handed-off", target: "dialer", handler: phone.dialer === "chooser" ? null : "com.android.dialer", message: "Your phone app is open with the number." }
+      },
+      placeCall: async ({ number }) => {
+        front()
+        if (number === "911") {
+          phone.dialed.push(number)
+          return { status: "emergency-handoff", message: "The dial screen is open with this number. Place the call there." }
+        }
+        if (!phone.voiceCapable) return { status: "unavailable", message: "This phone cannot place calls." }
+        if (!phone.roleHeld) throw rejection("Make this app your phone app to place calls here.", "role-required")
+        if (!phone.callGrant) throw rejection("Phone-call access is not granted", "permission-required")
+        if (phone.inCall) return { status: "busy", message: "A call is already in progress. Nothing was dialed." }
+        phone.placed.push(number)
+        return { status: "placed", message: "Android accepted the call request. This does not show whether the call connects." }
+      },
+      phoneInfo: async () => phone.infoReply ?? {
+        access: { phoneState: true, phoneNumbers: false, deviceIdentifiers: false },
+        lines: [{ subscriptionId: 1, slot: 0, displayName: "Line 1", carrierName: "Carrier", number: null, countryIso: "us", networkType: "5g", roaming: false, signalLevel: 3, embedded: false, iccid: null, imei: null }],
+      },
+      voicemailStatus: async () => ({ access: voicemailReadable(), state: voicemailReadable() ? phone.sources : null }),
+      listVoicemail: async ({ limit }) => {
+        if (!voicemailReadable()) throw rejection("Voicemail access is not granted", "permission-required")
+        const rows = phone.sources === "unsupported" ? [] : phone.voicemails.filter((one) => !one.deleted).sort((x, y) => y.date - x.date).slice(0, limit)
+        return {
+          state: phone.sources,
+          voicemails: rows.map((one) => ({
+            id: String(one.id), number: one.number, cachedName: null, date: one.date, durationSeconds: 20, isNew: !one.read, hasAudio: one.hasAudio, carrierTranscript: null,
+          })),
+        }
+      },
+      fetchVoicemailAudio: async ({ id }) => {
+        const row = voicemail(id)
+        if (row.hasAudio) return { status: "ready" }
+        phone.fetches.push(row.id)
+        return { status: row.source ? "fetching" : "failed" }
+      },
+      voicemailAudio: async ({ id }) => {
+        const row = voicemail(id)
+        if (!row.hasAudio) throw rejection("This voicemail's audio is not on the phone", "not-found")
+        return { id, mimeType: "audio/amr", size: 96, data: Buffer.alloc(96, 7).toString("base64") }
+      },
+      voicemailPcm: async ({ id }) => {
+        const row = voicemail(id)
+        if (row.samples > 16000 * 300) throw rejection("This voicemail is too long to transcribe here", "too-long")
+        return { mimeType: "audio/wav", sampleRateHz: 16000, durationSeconds: row.samples / 16000, data: wav(row.samples) }
+      },
+      markVoicemailHeard: async ({ id }) => {
+        const row = phone.voicemails.find((one) => String(one.id) === id && !one.deleted)
+        if (row === undefined) return { status: "not-found" }
+        return written("marked", () => {
+          row.read = true
+        })
+      },
+      deleteVoicemail: async ({ id }) => {
+        const row = phone.voicemails.find((one) => String(one.id) === id && !one.deleted)
+        if (row === undefined) return { status: "not-found" }
+        const staged = { id: `staged-${phone.staged.length + 1}`, kind: "voicemail", target: { id }, phase: "queued", deadline: { expiresAt: 1700000010000 } }
+        phone.staged.push(staged)
+        return { status: "queued", deletion: staged }
+      },
+      observeVoicemail: async ({ enabled }) => {
+        if (enabled && !voicemailReadable()) throw rejection("Voicemail access is not granted", "permission-required")
+        phone.observing = enabled
+      },
+      addListener: async (_event, listener) => {
+        phone.listeners.push(listener)
+        return {
+          remove: async () => {
+            phone.listeners = phone.listeners.filter((one) => one !== listener)
+          },
+        }
+      },
+    }
+  }
+}
+import { androidJournal, androidTelephony, device, wav } from android
+
+effect function refusal(call: () => Promise<unknown>) {
+  const { cause } = try flip(tryPromise(() => call()))
+  if (cause instanceof PhoneRequestRefused) return `request refused ${cause.problem}`
+  if (cause instanceof RecentCallsRefused) return `calls refused ${cause.refusal.tag}${cause.refusal.tag === "CallLogNotAdmitted" ? ` ${cause.refusal.admission}` : ""}`
+  if (cause instanceof VoicemailRefused) return `voicemail refused ${cause.reason} ${cause.gate}`
+  if (cause instanceof VoicemailPcmRefused) return `pcm refused ${cause.reason}`
+  if (cause instanceof MalformedReply) return `malformed ${cause.method}`
+  return `rejected ${rejectionCode(cause)}`
+}
+
+function rows(listing: VoicemailListing) {
+  return listing.voicemails.map((row) => `${row.id} ${row.heard ? "heard" : "new"} ${row.audio}`)
+}
+
+const preview = { receiptKind: "Preview", durable: false, providerAccepted: false, hasKey: false, replayed: false, reverted: false }
+const failed = { ...preview, receiptKind: "Failed" }
+const applied = { ...preview, receiptKind: "Applied", providerAccepted: true }
+const pending = { ...preview, receiptKind: "Pending" }
+
+it.live("Open the dial screen with an approved number, and place a call only when Telecom accepts it (spec/os/android/phone.md, \"Story: Hand an approved number to my phone\"; spec/os/android/phone.md, \"A dial opens the system dial screen only on an unlocked phone with telephony, and never commits\"; spec/os/android/phone.md, \"A call is placed only for an ordinary number, with the dialer role, the call grant and a free line, and only Telecom's acceptance commits\")", () => effect {
+  const phone = device()
+  const client = phoneClient(androidTelephony(phone), androidJournal(phone))
+  const profile = {
+    android: detectTelephonyProfile("android", [{ name: "ElizaTelephony", methods: [{ name: "imageCapability" }] }], "ElizaTelephony"),
+    web: detectTelephonyProfile("web", [{ name: "ElizaTelephony", methods: [{ name: "imageCapability" }] }], "ElizaTelephony"),
+    capability: try promise(() => client.imageCapability()),
+  }
+  const opened = try promise(() => client.dial("+1 (555) 010-0105"))
+  for (const number of ["+44 (0)20 7946 0958", "+41 (0)44 668 18 00", "+39 (0)55 123 4567", "+378 (0)549 882 123", "+225 (0)7 12 34 56 78"]) {
+    try promise(() => client.dial(number))
+  }
+  phone.dialer = "chooser"
+  const chosen = try promise(() => client.dial("555 0100"))
+  phone.dialer = "missing"
+  const missing = try promise(() => client.dial("+15550100105"))
+  phone.dialer = "present"
+  const words = try promise(() => client.dial("call my sister"))
+  phone.unlocked = false
+  const locked = try promise(() => client.dial("+15550100105"))
+  phone.unlocked = true
+  phone.voiceCapable = false
+  const noTelephony = try promise(() => client.dial("+15550100105"))
+  const unableToPlace = try promise(() => client.placeCall("+15550100105"))
+  phone.voiceCapable = true
+
+  const placed = try promise(() => client.placeCall("+49 (0)30 1234 5678"))
+  const emergency = try promise(() => client.placeCall("911"))
+  phone.inCall = true
+  const busy = try promise(() => client.placeCall("+15550100105"))
+  phone.inCall = false
+  phone.callGrant = false
+  const ungranted = try promise(() => client.placeCall("+15550100105"))
+  phone.roleHeld = false
+  const roleless = try promise(() => client.placeCall("+15550100105"))
+  const info = try promise(() => client.phoneInfo())
+
+  try Effect.try(() => assert.deepStrictEqual(
+    { profile, opened, chosen, missing, words, locked, noTelephony, unableToPlace, placed, emergency, busy, ungranted, roleless, lines: info.lines.length, dialed: phone.dialed, placedLog: phone.placed },
+    {
+      profile: { android: true, web: false, capability: { version: 1, image: true, feature: "android.hardware.telephony" } },
+      opened: { dialStatus: "DialHandedOff", handler: "com.android.dialer", receipt: preview },
+      chosen: { dialStatus: "DialHandedOff", handler: null, receipt: preview },
+      missing: { dialStatus: "DialUnavailable", handler: null, receipt: failed },
+      words: { dialStatus: "DialRefused", handler: null, receipt: failed },
+      locked: { dialStatus: "DialRefused", handler: null, receipt: failed },
+      noTelephony: { dialStatus: "DialRefused", handler: null, receipt: failed },
+      unableToPlace: { placeStatus: "CallRefused", receipt: failed },
+      placed: { placeStatus: "CallPlaced", receipt: applied },
+      emergency: { placeStatus: "CallEmergencyHandoff", receipt: preview },
+      busy: { placeStatus: "CallBusy", receipt: failed },
+      ungranted: { placeStatus: "CallPermissionRequired", receipt: failed },
+      roleless: { placeStatus: "CallRoleRequired", receipt: failed },
+      lines: 1,
+      dialed: ["+15550100105", "+442079460958", "+41446681800", "+390551234567", "+3780549882123", "+2250712345678", "5550100", "911"],
+      placedLog: ["+493012345678"],
+    },
+  ))
+})
+
+it.live("Show a SIM line's number and identifiers only when Android let the app read them (spec/os/android/phone.md, \"Story: See my SIM lines without guesses\"; spec/os/android/phone.md, \"A SIM line shows a field only when Android let this app read it\")", () => effect {
+  const phone = device()
+  const client = phoneClient(androidTelephony(phone), androidJournal(phone))
+  const line = { subscriptionId: 1, slot: 0, displayName: "Line 1", carrierName: "Carrier", number: null, countryIso: "us", networkType: "unknown", roaming: null, signalLevel: null, embedded: false, iccid: null, imei: null }
+  const unread = { phoneState: true, phoneNumbers: false, deviceIdentifiers: false }
+  const shown = (info: { lines: readonly { number: string | null; iccid: string | null; imei: string | null }[] }) => info.lines.map((one) => [one.number, one.iccid, one.imei])
+
+  const refusedFields = shown(try promise(() => client.phoneInfo()))
+  phone.infoReply = { access: unread, lines: [{ ...line, number: "+15550100101" }] }
+  const guessedNumber = try refusal(() => client.phoneInfo())
+  phone.infoReply = { access: unread, lines: [{ ...line, imei: "356938035643809" }] }
+  const guessedIdentifier = try refusal(() => client.phoneInfo())
+  phone.infoReply = { access: { ...unread, phoneState: false }, lines: [line] }
+  const lineWithoutPhoneState = try refusal(() => client.phoneInfo())
+  phone.infoReply = { access: { ...unread, phoneState: false }, lines: [] }
+  const simListUnread = try promise(() => client.phoneInfo())
+  phone.infoReply = { access: { phoneState: true, phoneNumbers: true, deviceIdentifiers: true }, lines: [{ ...line, number: "+15550100101", iccid: "8901260123456789012", imei: "356938035643809" }] }
+  const allowed = shown(try promise(() => client.phoneInfo()))
+  phone.infoReply = { access: unread, lines: [0, 1, 2, 3, 4].map((slot) => ({ ...line, subscriptionId: slot + 1, slot })) }
+  const tooManyLines = try refusal(() => client.phoneInfo())
+
+  try Effect.try(() => assert.deepStrictEqual(
+    { refusedFields, guessedNumber, guessedIdentifier, lineWithoutPhoneState, simListUnread, allowed, tooManyLines },
+    {
+      refusedFields: [[null, null, null]],
+      guessedNumber: "malformed phoneInfo",
+      guessedIdentifier: "malformed phoneInfo",
+      lineWithoutPhoneState: "malformed phoneInfo",
+      simListUnread: { access: { phoneState: false, phoneNumbers: false, deviceIdentifiers: false }, lines: [] },
+      allowed: [["+15550100101", "8901260123456789012", "356938035643809"]],
+      tooManyLines: "malformed phoneInfo",
+    },
+  ))
+})
+
+it.live("Read my recent calls newest first, a page at a time, without repeats or gaps (spec/os/android/phone.md, \"Story: Read my recent calls\"; spec/os/android/phone.md, \"A call-log page is published only to a host that declares the call log, on an unlocked phone with the grant, and only if access still holds at publication\"; spec/os/android/phone.md, \"Calls are read newest first and a row out of order or repeated fails the whole read\"; spec/os/android/paging.md, \"Story: Page my records without repeats or gaps\")", () => effect {
+  const phone = device({ callLog: "prompt" })
+  const client = phoneClient(androidTelephony(phone), androidJournal(phone))
+  const ungranted = try refusal(() => client.recentCalls())
+  try promise(() => client.requestAccess("callLog"))
+  const first = try promise(() => client.recentCalls({ limit: 2 }))
+  const second = try promise(() => client.recentCalls({ limit: 2, after: first.next ?? undefined }))
+  const third = try promise(() => client.recentCalls({ limit: 2, after: second.next ?? undefined }))
+  const filtered = try promise(() => client.recentCalls({ number: "+1 555-010-0104" }))
+  const otherQuery = try refusal(() => client.recentCalls({ limit: 2, number: "+15550100104", after: first.next ?? undefined }))
+  const forged = try refusal(() => client.recentCalls({ after: { query: "", last: { major: 5, minor: 1, rowId: 9 } } }))
+  const unbounded = try refusal(() => client.recentCalls({ limit: 51 }))
+  const badNumber = try refusal(() => client.recentCalls({ number: "my sister" }))
+  phone.callReply = { calls: [
+    { id: "3", number: "+15550100103", cachedName: null, date: 3000, durationSeconds: 30, type: "outgoing", isNew: false },
+    { id: "5", number: "+15550100105", cachedName: null, date: 5000, durationSeconds: 30, type: "incoming", isNew: false },
+  ] }
+  const outOfOrder = try refusal(() => client.recentCalls())
+  phone.callReply = undefined
+  phone.unlocked = false
+  const locked = try refusal(() => client.recentCalls())
+  phone.unlocked = true
+  phone.callLogDeclared = false
+  const undeclared = try refusal(() => client.recentCalls())
+
+  const ids = (page: { calls: { id: string }[] }) => page.calls.map((call) => call.id)
+  try Effect.try(() => assert.deepStrictEqual(
+    {
+      ungranted, first: ids(first), firstNext: first.next, second: ids(second), third: ids(third), thirdNext: third.next,
+      filtered: ids(filtered), otherQuery, forged, unbounded, badNumber, outOfOrder, locked, undeclared,
+    },
+    {
+      ungranted: "calls refused CallLogNotAdmitted PermissionRequired",
+      first: ["5", "4"],
+      firstNext: { query: "", last: { major: -4000, minor: -4, rowId: 4 } },
+      second: ["7", "3"],
+      third: ["1"],
+      thirdNext: null,
+      filtered: ["4", "7"],
+      otherQuery: "calls refused CallLogCursorRefused",
+      forged: "request refused invalid-cursor",
+      unbounded: "calls refused CallLogLimitRefused",
+      badNumber: "request refused not-dialable",
+      outOfOrder: "malformed listRecentCalls",
+      locked: "rejected unavailable",
+      undeclared: "calls refused CallLogUnavailable",
+    },
+  ))
+})
+
+it.live("See and hear my voicemail only when my carrier offers it, with each audio asked once and PCM whole (spec/os/android/voicemail.md, \"Story: See my voicemail only when my carrier offers it\"; spec/os/android/voicemail.md, \"Every voicemail operation needs telephony and the voicemail grant at the time of the call\"; spec/os/android/voicemail.md, \"A refresh shows exactly the provider's rows, keyed by provider ID, and none for an unsupported carrier\"; spec/os/android/voicemail.md, \"Story: Hear a voicemail\"; spec/os/android/voicemail.md, \"A voicemail's audio is asked of its source at most once\"; spec/os/android/voicemail.md, \"Speech-ready PCM is returned whole within five minutes of 16 kHz mono, or refused\")", () => effect {
+  const phone = device()
+  const client = phoneClient(androidTelephony(phone), androidJournal(phone))
+  const before = try promise(() => client.voicemail())
+  const ungranted = try refusal(() => client.refreshVoicemail())
+  phone.voicemailGrant = true
+  const unsupported = try promise(() => client.refreshVoicemail())
+  phone.sources = "unconfigured"
+  const unconfigured = try promise(() => client.refreshVoicemail())
+  phone.sources = "ready"
+  const ready = try promise(() => client.refreshVoicemail())
+
+  const asked = try promise(() => client.fetchVoicemailAudio("12" as VoicemailId))
+  const askedAgain = try refusal(() => client.fetchVoicemailAudio("12" as VoicemailId))
+  const onPhone = try refusal(() => client.fetchVoicemailAudio("11" as VoicemailId))
+  const noSource = try promise(() => client.fetchVoicemailAudio("13" as VoicemailId))
+  const afterAsk = rows(try promise(() => client.voicemail()))
+  const unknown = try refusal(() => client.fetchVoicemailAudio("99" as VoicemailId))
+  const invalid = try refusal(() => client.fetchVoicemailAudio("0x1" as VoicemailId))
+
+  const audio = try promise(() => client.voicemailAudio("11" as VoicemailId))
+  const pcm = try promise(() => client.voicemailPcm("11" as VoicemailId))
+  const tooLong = try refusal(() => client.voicemailPcm("14" as VoicemailId))
+  const notOnPhone = try refusal(() => client.voicemailPcm("12" as VoicemailId))
+  phone.voicemails = phone.voicemails.map((one) => one.id === 12 ? { ...one, hasAudio: true, samples: 8000 } : one)
+  const arrived = rows(try promise(() => client.refreshVoicemail()))
+  phone.voiceCapable = false
+  const noTelephony = try refusal(() => client.voicemailAudio("11" as VoicemailId))
+
+  try Effect.try(() => assert.deepStrictEqual(
+    {
+      before, ungranted, unsupported, unconfigured: { carrier: unconfigured.carrier, rows: rows(unconfigured) }, ready: rows(ready),
+      asked, askedAgain, onPhone, noSource, afterAsk, unknown, invalid, fetches: phone.fetches,
+      audio: { id: audio.id, mimeType: audio.mimeType, size: audio.size }, pcm, tooLong, notOnPhone, arrived, noTelephony,
+    },
+    {
+      before: { carrier: "CarrierUnread", gate: "WriteIdle", voicemails: [] },
+      ungranted: "voicemail refused not-admitted WriteIdle",
+      unsupported: { carrier: "CarrierUnsupported", gate: "WriteIdle", voicemails: [] },
+      unconfigured: { carrier: "CarrierUnconfigured", rows: ["11 new AudioOnPhone", "12 new AudioNotAsked", "13 heard AudioNotAsked", "14 new AudioOnPhone"] },
+      ready: ["11 new AudioOnPhone", "12 new AudioNotAsked", "13 heard AudioNotAsked", "14 new AudioOnPhone"],
+      asked: "fetching",
+      askedAgain: "voicemail refused audio-already-asked WriteIdle",
+      onPhone: "voicemail refused audio-not-on-phone WriteIdle",
+      noSource: "failed",
+      afterAsk: ["11 new AudioOnPhone", "12 new AudioAsked", "13 heard AudioNotAsked", "14 new AudioOnPhone"],
+      unknown: "voicemail refused unknown-voicemail WriteIdle",
+      invalid: "request refused invalid-voicemail",
+      fetches: [12, 13],
+      audio: { id: "11", mimeType: "audio/amr", size: 96 },
+      pcm: { mimeType: "audio/wav", sampleRateHz: 16000, durationSeconds: 1, data: wav(16000) },
+      tooLong: "pcm refused PcmTooLong",
+      notOnPhone: "voicemail refused audio-not-on-phone WriteIdle",
+      arrived: ["11 new AudioOnPhone", "12 new AudioOnPhone", "13 heard AudioNotAsked", "14 new AudioOnPhone"],
+      noTelephony: "voicemail refused not-admitted WriteIdle",
+    },
+  ))
+})
+
+it.live("Mark a voicemail heard only as the provider confirms it, hold the next write after an uncertain one until an explicit refresh, and delete one only after its Undo window (spec/os/android/voicemail.md, \"Story: Change a voicemail only as the provider confirms it\"; spec/os/android/voicemail.md, \"Heard changes the list only when the provider applied it, and only a refresh removes a row\"; spec/os/android/voicemail.md, \"An uncertain write blocks the next write until an explicit refresh that began after it\"; spec/os/android/voicemail.md, \"A delete waits in the deletion window, and its row is hidden only while it is queued\")", () => effect {
+  const phone = device({ voicemailGrant: true, sources: "ready" })
+  const journal = androidJournal(phone)
+  const client = phoneClient(androidTelephony(phone), journal)
+  const deletions = createDeferredDeletions(journal)
+  const changed: Promise<VoicemailListing>[] = []
+  const stop = try promise(() => client.observeVoicemail((refreshed) => changed.push(refreshed)))
+  try promise(() => client.refreshVoicemail())
+
+  const heard = try promise(() => client.markVoicemailHeard("11" as VoicemailId))
+  const queued = try promise(() => client.deleteVoicemail("13" as VoicemailId))
+  phone.writeReply = "unconfirmed"
+  const unconfirmed = try promise(() => client.markVoicemailHeard("12" as VoicemailId))
+  phone.writeReply = "applied"
+  const blocked = try refusal(() => client.markVoicemailHeard("14" as VoicemailId))
+  const blockedDelete = try refusal(() => client.deleteVoicemail("14" as VoicemailId))
+  for (const listener of phone.listeners) try Effect.try(() => listener({ sequence: 1 }))
+  const automatic = try promise(() => changed[0] ?? Promise.reject(new Error("No change was delivered")))
+  const stillBlocked = try refusal(() => client.markVoicemailHeard("14" as VoicemailId))
+  const explicit = try promise(() => client.refreshVoicemail())
+  const kept = try promise(() => deletions.undo({ kind: "VoicemailRecord", id: "staged-1" }))
+  const afterUndo = try promise(() => client.refreshVoicemail())
+  const reopened = try promise(() => client.markVoicemailHeard("14" as VoicemailId))
+  phone.writeReply = "lost"
+  const lost = try promise(() => client.markVoicemailHeard("11" as VoicemailId))
+  phone.writeReply = "applied"
+  try promise(() => client.refreshVoicemail("ExplicitRead"))
+  phone.voicemails = phone.voicemails.map((one) => one.id === 14 ? { ...one, deleted: true } : one)
+  const goneElsewhere = try promise(() => client.deleteVoicemail("14" as VoicemailId))
+  try promise(() => stop())
+
+  const summary = (report: { written: string; receipt: unknown; listing: VoicemailListing }) => ({ written: report.written, receipt: report.receipt, gate: report.listing.gate, rows: rows(report.listing) })
+  const staged = (report: { status: string; listing: VoicemailListing; deletion?: unknown }) => ({ status: report.status, deletion: report.deletion ?? null, rows: rows(report.listing) })
+  try Effect.try(() => assert.deepStrictEqual(
+    {
+      heard: summary(heard), queued: staged(queued), unconfirmed: summary(unconfirmed), blocked, blockedDelete, automatic: { gate: automatic.gate, rows: rows(automatic) }, stillBlocked,
+      explicit: { gate: explicit.gate, rows: rows(explicit) }, kept, afterUndo: rows(afterUndo), reopened: summary(reopened), lost: summary(lost), goneElsewhere: staged(goneElsewhere),
+      deletedOnPhone: phone.voicemails.filter((one) => one.deleted).map((one) => one.id), observing: phone.observing, listeners: phone.listeners.length,
+    },
+    {
+      heard: { written: "Applied", receipt: applied, gate: "WriteIdle", rows: ["11 heard AudioOnPhone", "12 new AudioNotAsked", "13 heard AudioNotAsked", "14 new AudioOnPhone"] },
+      queued: { status: "queued", deletion: { kind: "VoicemailRecord", id: "staged-1", expiresAt: 1700000010000 }, rows: ["11 heard AudioOnPhone", "12 new AudioNotAsked", "14 new AudioOnPhone"] },
+      unconfirmed: { written: "Uncertain", receipt: pending, gate: "WriteUnsettled", rows: ["11 heard AudioOnPhone", "12 new AudioNotAsked", "14 new AudioOnPhone"] },
+      blocked: "voicemail refused write-blocked WriteUnsettled",
+      blockedDelete: "voicemail refused write-blocked WriteUnsettled",
+      automatic: { gate: "WriteUnsettled", rows: ["11 heard AudioOnPhone", "12 heard AudioNotAsked", "14 new AudioOnPhone"] },
+      stillBlocked: "voicemail refused write-blocked WriteUnsettled",
+      explicit: { gate: "WriteIdle", rows: ["11 heard AudioOnPhone", "12 heard AudioNotAsked", "14 new AudioOnPhone"] },
+      kept: { kind: "Kept" },
+      afterUndo: ["11 heard AudioOnPhone", "12 heard AudioNotAsked", "13 heard AudioNotAsked", "14 new AudioOnPhone"],
+      reopened: { written: "Applied", receipt: applied, gate: "WriteIdle", rows: ["11 heard AudioOnPhone", "12 heard AudioNotAsked", "13 heard AudioNotAsked", "14 heard AudioOnPhone"] },
+      lost: { written: "Uncertain", receipt: pending, gate: "WriteUnsettled", rows: ["11 heard AudioOnPhone", "12 heard AudioNotAsked", "13 heard AudioNotAsked", "14 heard AudioOnPhone"] },
+      goneElsewhere: { status: "not-found", deletion: null, rows: ["11 heard AudioOnPhone", "12 heard AudioNotAsked", "13 heard AudioNotAsked", "14 heard AudioOnPhone"] },
+      deletedOnPhone: [14],
+      observing: false,
+      listeners: 0,
+    },
+  ))
+})
+
+// spec/os/android/voicemail.md, "A retired observer admits no refresh and a replacement waits for acknowledged cleanup"
+it.effect("retired voicemail callbacks stay inert while a replacement waits for Android", () => effect {
+  const phone = device({ voicemailGrant: true, sources: "ready" })
+  const native = androidTelephony(phone)
+  const switches: boolean[] = []
+  let disableRefused = true
+  let reads = 0
+  const client = phoneClient({
+    ...native,
+    observeVoicemail: async ({ enabled }) => {
+      switches.push(enabled)
+      if (!enabled && disableRefused) throw new Error("Voicemail disable was not confirmed")
+      return native.observeVoicemail({ enabled })
+    },
+    listVoicemail: async (options) => {
+      reads += 1
+      return native.listVoicemail(options)
+    },
+  }, androidJournal(phone))
+  const changes: Promise<VoicemailListing>[] = []
+  const receive = (listing: Promise<VoicemailListing>) => { changes.push(listing) }
+  const stop = try promise(() => client.observeVoicemail(receive))
+  const retired = phone.listeners[0]
+  try refusal(stop)
+  try Effect.try(() => retired?.({ sequence: 1 }))
+  try refusal(() => client.observeVoicemail(receive))
+  try Effect.try(() => assert.deepStrictEqual({ switches, reads, listened: phone.listeners.length }, {
+    switches: [true, false, false], reads: 0, listened: 0,
+  }))
+
+  disableRefused = false
+  const close = try promise(() => client.observeVoicemail(receive))
+  try promise(stop)
+  try Effect.try(() => retired?.({ sequence: 2 }))
+  try Effect.try(() => phone.listeners[0]?.({ sequence: 3 }))
+  try promise(() => changes[0] ?? Promise.reject(new Error("No current voicemail notice")))
+  try promise(close)
+  try Effect.try(() => assert.deepStrictEqual({ switches, reads, published: changes.length, observing: phone.observing }, {
+    switches: [true, false, false, false, true, false], reads: 1, published: 1, observing: false,
+  }))
+})
+
+// spec/os/android/voicemail.md, "A delete waits in the deletion window, and its row is hidden only while it is queued"
+it.effect("carries an exact listed voicemail witness and preserves a definitive stale result", () => effect {
+  const phone = device({ voicemailGrant: true, sources: "ready" })
+  const native = androidTelephony(phone)
+  const witness = `v1:${"a".repeat(64)}`
+  const offered: unknown[] = []
+  let publishesWitness = true
+  const client = phoneClient({
+    ...native,
+    listVoicemail: async ({ withDeletionWitness }) => ({
+      state: "ready", voicemails: [{ id: "11", number: "+15555550100", cachedName: null, date: 1700000000000,
+        durationSeconds: 20, isNew: false, hasAudio: true, carrierTranscript: null,
+        ...(withDeletionWitness && publishesWitness ? { deletionWitness: witness } : {}) }],
+    }),
+    deleteVoicemail: async (request) => {
+      offered.push(request)
+      if (request.witness !== undefined) return { status: "stale" }
+      return native.deleteVoicemail(request)
+    },
+  }, androidJournal(phone))
+
+  const listing = try promise(() => client.refreshVoicemail())
+  const row = listing.voicemails[0]
+  if (row === undefined || row.deletionWitness === undefined) return try Effect.try(() => assert.fail("missing listed voicemail witness"))
+  const stale = try promise(() => client.deleteVoicemail(row.id, row.deletionWitness))
+  publishesWitness = false
+  try promise(() => client.refreshVoicemail())
+  const refused = try promise(() => client.deleteVoicemail(row.id, row.deletionWitness))
+  const manual = try promise(() => client.deleteVoicemail(row.id))
+  try Effect.try(() => assert.deepStrictEqual({ offered, stale: stale.status, visible: stale.listing.voicemails.length, refused: refused.status, manual: manual.status }, {
+    offered: [{ id: "11", witness }, { id: "11" }], stale: "stale", visible: 1, refused: "stale", manual: "queued",
+  }))
+})

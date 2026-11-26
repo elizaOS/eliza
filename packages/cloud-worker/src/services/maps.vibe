@@ -1,0 +1,355 @@
+// spec/cloud/services/maps.md, "Story: Answer a maps request once and pay for it once"; spec/cloud/services/maps.md, "Story: Keep maps requests within the provider's terms"; spec/cloud/services/maps.md, "A search ranked by distance needs a point to measure from"; spec/cloud/services/maps.md, "A search ranked by distance reads the provider's largest page and answers its nearest places first"
+import { answerKeptFor, closestFirst, courseOf, entryOf, keepsAnswer, limitOf, mapsHoldKey, mayDispatch, providerQuote, searchLimitDefault, searchPageSize, searchRankAccepted, settlementOf, stillKept, type MapsOperation, type MapsOutcome, type MapsSettlement, type SearchRank, type TravelMode as SpecMode } from "../../gen/cloud__services__maps.effect.vibe"
+import { planRpm } from "../billing/plans.vibe"
+import { laneFor, readPolicy } from "../billing/policy.vibe"
+import { refused, type Refused } from "../http/refusal.vibe"
+import { recheckAccess, signed, type Signed } from "../http/request-auth.vibe"
+import { json, jsonBody, type CloudContext, type Route, type RouteContext, type Sweep } from "../http/routes.vibe"
+import {
+  Deployment, IdempotencyKey, PlaceDetailsRequest, PlacesSearchRequest, ReverseRequest, RoutesRequest, TextSearchRequest, ViewportRequest, tileAddressOf, type Coordinate, type MapsPlacesResponse,
+} from "@elizaos/cloud"
+import { describeMaps, mapsProvider, providerKindOf, specModeOf, type MapsContext, type MapsProvider, type MapsReply, type MapsTile, type LostReplyRefusal, type ProviderRefusal } from "../providers/maps.vibe"
+import { requestDigest } from "../shared/dispatch-once.vibe"
+import { markDispatched, reserveIn, settle, type HoldTicket, type MeteringFailure, type Settlement } from "../shared/metering.vibe"
+import { admitCheck, admitAll, minute, perWindow } from "../shared/rate-limit.vibe"
+import { Store, toInt, toText, type Tx } from "../store/connection.vibe"
+
+type Metered = Exclude<MapsOperation, "Capabilities" | "Viewport">
+
+type Answer =
+  | { readonly kind: "json"; readonly body: unknown }
+  | { readonly kind: "tile"; readonly tile: MapsTile }
+
+interface Entered {
+  readonly enteredAt: number
+  readonly caller: Signed
+  readonly credential: string
+  readonly provider: MapsProvider
+  readonly kind: (typeof providerKindOf)[keyof typeof providerKindOf]
+  readonly key: string | undefined
+}
+
+interface Call {
+  readonly op: Metered
+  readonly request: unknown
+  readonly preferPlace: boolean
+  readonly mode: SpecMode
+  readonly run: MapsReply<Answer>!!MapsContext
+}
+
+const KeptAnswerSchema = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("answered"), body: Schema.Unknown }),
+  Schema.Struct({ kind: Schema.Literal("refused"), code: Schema.Literals(["NoRoute", "UnsupportedMode", "UnsupportedRegion", "ProviderInvalidResponse", "ProviderUnavailable"]) })
+])
+type KeptAnswer = typeof KeptAnswerSchema.Type
+
+interface Phase {
+  readonly name: "maps_auth" | "maps_admission" | "maps_provider"
+  readonly ms: number
+}
+
+interface Timed {
+  readonly answer: Answer
+  readonly phases: ReadonlyArray<Phase>
+}
+
+error KeptAnswerCorrupt { holdKey: string }
+
+const wireOperation: Readonly<Record<Metered, string>> = { Geocode: "geocode", Reverse: "reverse", PlacesSearch: "places_search", PlaceDetails: "place_details", Routes: "routes", Tile: "tile" }
+const providerPause = 5_000
+const decodeKey = Schema.decodeUnknownOption(IdempotencyKey)
+
+function credentialOf(caller: Signed): string {
+  switch (caller.kind) {
+    case "deviceKey": return `key:${caller.credentialScope}`
+    case "session": return `session:${caller.sessionKey}`
+    case "lease": return `lease:${caller.sessionKey}`
+    default: {
+      const _exhaustive: never = caller
+      return _exhaustive
+    }
+  }
+}
+
+function outcomeOf(reply: MapsReply<Answer>): MapsOutcome {
+  switch (reply.kind) {
+    case "answered": return { tag: "MapsAnswered" }
+    case "refused": return { tag: "MapsRefused", code: reply.code }
+    case "unknown": return { tag: "ReplyLost" }
+    default: {
+      const _exhaustive: never = reply
+      return _exhaustive
+    }
+  }
+}
+
+function meteringOf(settlement: MapsSettlement): Settlement {
+  switch (settlement.tag) {
+    case "ChargeObserved": return { kind: "known", actual: settlement.actual }
+    case "ChargeQuote": return { kind: "unknown" }
+    case "ReleaseUncharged": return { kind: "release" }
+    default: {
+      const _exhaustive: never = settlement
+      return _exhaustive
+    }
+  }
+}
+
+function statusOf(outcome: MapsOutcome): string {
+  switch (outcome.tag) {
+    case "MapsAnswered": return "answered"
+    case "MapsRefused": return "refused"
+    case "ReplyLost": return "lost"
+    default: {
+      const _exhaustive: never = outcome
+      return _exhaustive
+    }
+  }
+}
+
+function providerRefusal(code: ProviderRefusal | LostReplyRefusal, now: number): Refused {
+  return code === "ProviderUnavailable" ? refused("ProviderUnavailable", "NoReason", now + providerPause) : refused(code)
+}
+
+function serverTiming(phases: ReadonlyArray<Phase>): Readonly<Record<string, string>> {
+  return phases.length === 0 ? {} : { "server-timing": phases.map((phase) => `${phase.name};dur=${Math.max(0, phase.ms)}`).join(", ") }
+}
+
+function respondWith({ answer, phases }: Timed): HttpServerResponse.HttpServerResponse {
+  switch (answer.kind) {
+    case "json": return json(answer.body, { headers: serverTiming(phases) })
+    case "tile": return HttpServerResponse.uint8Array(answer.tile.bytes, { status: 200, contentType: answer.tile.contentType, headers: { "cache-control": "no-store", ...serverTiming(phases) } })
+    default: {
+      const _exhaustive: never = answer
+      return _exhaustive
+    }
+  }
+}
+
+effect function answerOf(reply: MapsReply<Answer>, now: number): Answer!Refused {
+  switch (reply.kind) {
+    case "answered": return reply.value
+    case "refused": throw providerRefusal(reply.code, now)
+    case "unknown": throw providerRefusal(reply.code, now)
+    default: {
+      const _exhaustive: never = reply
+      return _exhaustive
+    }
+  }
+}
+
+function asJson<A>(reply: MapsReply<A>!!MapsContext): MapsReply<Answer>!!MapsContext {
+  return Effect.map(reply, (got): MapsReply<Answer> => got.kind === "answered" ? { kind: "answered", value: { kind: "json", body: got.value }, observedMicros: got.observedMicros } : got)
+}
+
+effect function admitLimits(caller: Signed, credential: string, op: MapsOperation): void!Refused!Store {
+  const operation = { subject: credential, rule: limitOf(op) }
+  if (op === "Tile") return try admitCheck(operation)
+  const store = try Store
+  const now = try Clock.currentTimeMillis
+  const policy = store.transaction((tx) => readPolicy(tx, caller.organizationId, now)) catch () => undefined
+  if (policy === undefined) throw refused("ServiceUnavailable", "NoReason", now + providerPause)
+  const plan = { subject: caller.organizationId, rule: perWindow("plan-StandardRequests", planRpm(policy.planKey, "StandardRequests"), minute) }
+  try admitAll([plan, operation])
+}
+
+effect function enter(context: RouteContext, op: MapsOperation): Entered!Refused!(Store | Deployment) {
+  const enteredAt = try Clock.currentTimeMillis
+  const caller = signed(context.caller)
+  if (caller === undefined) throw refused("AuthenticationRequired", "CredentialUnknown")
+  const maps = (try Deployment).settings.maps
+  const kind = providerKindOf[maps?.provider ?? "none"]
+  const given = context.request.headers["idempotency-key"]
+  const key = given === undefined ? undefined : Option.getOrUndefined(decodeKey(given))
+  const entry = entryOf(kind, op, key !== undefined)
+  if (entry.tag === "RefuseEntry") throw refused(entry.code)
+  const provider = mapsProvider(maps)
+  if (provider === undefined) throw refused("CapabilityUnavailable")
+  const credential = credentialOf(caller)
+  try admitLimits(caller, credential, op)
+  return { enteredAt, caller, credential, provider, kind, key }
+}
+
+type OpenRequest =
+  | { readonly kind: "fresh"; readonly ticket: Extract<HoldTicket, { replayed: false }> }
+  | { readonly kind: "prior"; readonly digest: string | undefined; readonly answer: unknown; readonly key: string }
+
+effect function openRequest(tx: Tx, entered: Entered, id: string, call: Call, quote: number, digest: string, now: number): OpenRequest!MeteringFailure {
+  const caller = entered.caller
+  const ticket = try reserveIn(tx, caller, mapsHoldKey(entered.credential, id), quote, now, digest)
+  if (!ticket.replayed) {
+    try tx.query(
+      "INSERT INTO maps_requests (hold_key, operation, request_digest, status, created_at) VALUES ($1, $2, $3, 'running', $4)",
+      [ticket.key, wireOperation[call.op], digest, now]
+    )
+    return { kind: "fresh", ticket }
+  }
+  const row = (try tx.query("SELECT request_digest, result, kept_at FROM maps_requests WHERE hold_key = $1", [ticket.key]))[0]
+  const answer = row?.result === undefined || row.result === null || !stillKept(toInt(row.kept_at), now) ? undefined : row.result
+  return { kind: "prior", key: ticket.key, digest: toText(row?.request_digest), answer }
+}
+
+effect function repeatKept(holdKey: string, stored: unknown, now: number): Answer!(Refused | KeptAnswerCorrupt) {
+  const answer: KeptAnswer = Schema.decodeUnknownEffect(KeptAnswerSchema)(stored) catch effect () => { throw new KeptAnswerCorrupt({ holdKey }) }
+  if (answer.kind === "refused") throw providerRefusal(answer.code, now)
+  return { kind: "json", body: answer.body }
+}
+
+effect function keepStanding(context: RouteContext, caller: Signed, ticket: Extract<HoldTicket, { replayed: false }>) {
+  try recheckAccess(context.request.headers.authorization, caller, "ServiceAccess")
+  const store = try Store
+  const now = try Clock.currentTimeMillis
+  const lane = try store.transaction((tx) => laneFor(tx, caller.organizationId, "MeteredMaps", now))
+  const laneUnchanged = lane === ticket.lane
+  if (!mayDispatch(true, true, laneUnchanged)) throw refused("BillingStateConflict")
+}
+
+effect function record(holdKey: string, status: string, answer: KeptAnswer | undefined, now: number) {
+  const store = try Store
+  try store.transaction((tx) => tx.query(
+    "UPDATE maps_requests SET status = $2, result = $3::jsonb, kept_at = $4 WHERE hold_key = $1",
+    [holdKey, status, answer === undefined ? null : JSON.stringify(answer), answer === undefined ? null : now]
+  ))
+}
+
+effect function metered(context: RouteContext, entered: Entered, call: Call): Timed!{ readonly _tag: string }!CloudContext {
+  const key = entered.key
+  if (key === undefined) throw refused("InvalidRequest")
+  const quote = providerQuote(entered.kind, call.op, call.preferPlace, call.mode)
+  const digest = requestDigest({ operation: call.op, request: call.request })
+  const store = try Store
+  const reservedAt = try Clock.currentTimeMillis
+  const opened = try store.transaction((tx) => openRequest(tx, entered, key, call, quote, digest, reservedAt))
+  const admitted = (at: number): ReadonlyArray<Phase> => [{ name: "maps_auth", ms: entered.enteredAt - context.now }, { name: "maps_admission", ms: at - entered.enteredAt }]
+  if (opened.kind === "prior") {
+    if (courseOf(true, opened.digest === digest, opened.answer !== undefined) === "RepeatKept") {
+      const answer = try repeatKept(opened.key, opened.answer, reservedAt)
+      return { answer, phases: admitted(try Clock.currentTimeMillis) }
+    }
+    throw refused("IdempotencyConflict")
+  }
+  const ticket = opened.ticket
+  keepStanding(context, entered.caller, ticket) catch effect (failure) => {
+    try settle(ticket.key, meteringOf(settlementOf(false, { tag: "ReplyLost" }, quote, 0)))
+    try record(ticket.key, "released", undefined, context.now)
+    throw failure
+  }
+  try markDispatched(ticket.key)
+  const dispatchedAt = try Clock.currentTimeMillis
+  const reply = try call.run
+  const now = try Clock.currentTimeMillis
+  const outcome = outcomeOf(reply)
+  const observed = reply.kind === "unknown" ? 0 : reply.observedMicros
+  if (observed > quote) {
+    try annotateLogs(logError("a maps provider observed more than its quote"), { holdKey: ticket.key, operation: call.op, observed, quote })
+  }
+  try settle(ticket.key, meteringOf(settlementOf(true, outcome, quote, observed)))
+  const keep: KeptAnswer | undefined = !keepsAnswer(call.op, outcome) ? undefined
+    : reply.kind === "refused" ? { kind: "refused", code: reply.code }
+    : reply.kind === "answered" && reply.value.kind === "json" ? { kind: "answered", body: reply.value.body }
+    : undefined
+  try record(ticket.key, statusOf(outcome), keep, now)
+  return { answer: try answerOf(reply, now), phases: [...admitted(dispatchedAt), { name: "maps_provider", ms: now - dispatchedAt }] }
+}
+
+effect function capabilities(context: RouteContext): HttpServerResponse.HttpServerResponse!Refused!(Store | Deployment) {
+  const caller = signed(context.caller)
+  if (caller === undefined) throw refused("AuthenticationRequired", "CredentialUnknown")
+  try admitLimits(caller, credentialOf(caller), "Capabilities")
+  const settings = (try Deployment).settings
+  return json(describeMaps(settings.maps, settings.name))
+}
+
+effect function geocode(context: RouteContext) {
+  const entered = try enter(context, "Geocode")
+  const body = try jsonBody(context, TextSearchRequest)
+  return respondWith(try metered(context, entered, { op: "Geocode", request: body, preferPlace: false, mode: "Drive", run: asJson(entered.provider.geocode(body)) }))
+}
+
+effect function reverse(context: RouteContext) {
+  const entered = try enter(context, "Reverse")
+  const body = try jsonBody(context, ReverseRequest)
+  return respondWith(try metered(context, entered, { op: "Reverse", request: body, preferPlace: body.preferPlace === true, mode: "Drive", run: asJson(entered.provider.reverse(body)) }))
+}
+
+function metersBetween(a: Coordinate, b: Coordinate): number {
+  const radians = Math.PI / 180
+  const h = Math.sin((b.latitude - a.latitude) * radians / 2) ** 2 + Math.cos(a.latitude * radians) * Math.cos(b.latitude * radians) * Math.sin((b.longitude - a.longitude) * radians / 2) ** 2
+  return 2 * 6_371_000 * Math.asin(Math.min(1, Math.sqrt(h)))
+}
+
+function nearestFirst(found: MapsPlacesResponse, near: Coordinate, limit: number): MapsPlacesResponse {
+  const meters = found.places.map((place) => Math.round(metersBetween(near, place.coordinate)))
+  return { ...found, places: closestFirst(meters, limit).flatMap((index) => found.places.slice(index, index + 1)) }
+}
+
+function rankedSearch(provider: MapsProvider, body: PlacesSearchRequest, rank: SearchRank): MapsReply<MapsPlacesResponse>!!MapsContext {
+  const limit = body.limit ?? searchLimitDefault
+  const near = body.near
+  const asked = { query: body.query, limit: searchPageSize(rank, limit) }
+  if (rank === "RankByRelevance" || near === undefined) return provider.search({ ...asked, rank: "RankByRelevance", ...(near === undefined ? {} : { near }) })
+  return Effect.map(provider.search({ ...asked, rank, near }), (reply): MapsReply<MapsPlacesResponse> => reply.kind === "answered" ? { ...reply, value: nearestFirst(reply.value, near, limit) } : reply)
+}
+
+effect function search(context: RouteContext) {
+  const entered = try enter(context, "PlacesSearch")
+  const body = try jsonBody(context, PlacesSearchRequest)
+  const rank: SearchRank = body.rank === "distance" ? "RankByDistance" : "RankByRelevance"
+  if (!searchRankAccepted(entered.kind, rank, body.near !== undefined)) throw refused("InvalidRequest")
+  return respondWith(try metered(context, entered, { op: "PlacesSearch", request: body, preferPlace: false, mode: "Drive", run: asJson(rankedSearch(entered.provider, body, rank)) }))
+}
+
+effect function details(context: RouteContext) {
+  const entered = try enter(context, "PlaceDetails")
+  const body = try jsonBody(context, PlaceDetailsRequest)
+  return respondWith(try metered(context, entered, { op: "PlaceDetails", request: body, preferPlace: false, mode: "Drive", run: asJson(entered.provider.details(body)) }))
+}
+
+effect function routes(context: RouteContext) {
+  const entered = try enter(context, "Routes")
+  const body = try jsonBody(context, RoutesRequest)
+  return respondWith(try metered(context, entered, { op: "Routes", request: body, preferPlace: false, mode: specModeOf[body.mode], run: asJson(entered.provider.routes(body)) }))
+}
+
+effect function tile(context: RouteContext) {
+  const entered = try enter(context, "Tile")
+  const address = try Effect.try({ try: () => tileAddressOf(context.params), catch: () => refused("InvalidRequest") })
+  if (address === undefined) throw refused("InvalidRequest")
+  const fetch = entered.provider.tile
+  if (fetch === undefined) throw refused("CapabilityUnavailable")
+  const prepare = entered.provider.prepareTiles
+  const prepared = prepare === undefined ? Effect.void : try prepare()
+  const run = Effect.map(fetch(address), (got): MapsReply<Answer> => got.kind === "answered" ? { kind: "answered", value: { kind: "tile", tile: got.value }, observedMicros: got.observedMicros } : got)
+  return respondWith(try ensuring(metered(context, entered, { op: "Tile", request: address, preferPlace: false, mode: "Drive", run }), prepared))
+}
+
+effect function viewport(context: RouteContext) {
+  const entered = try enter(context, "Viewport")
+  const body = try jsonBody(context, ViewportRequest)
+  const copyright = entered.provider.viewport
+  if (copyright === undefined) throw refused("CapabilityUnavailable")
+  return respondWith({ answer: try answerOf(try asJson(copyright(body)), try Clock.currentTimeMillis), phases: [] })
+}
+
+effect function forgetKept() {
+  const store = try Store
+  const now = try Clock.currentTimeMillis
+  store.transaction((tx) => tx.query("UPDATE maps_requests SET result = NULL, kept_at = NULL WHERE result IS NOT NULL AND kept_at <= $1", [now - answerKeptFor])) catch effect (failure) => {
+    try annotateLogs(logWarning("kept maps answers could not be deleted"), { cause: failure._tag })
+  }
+}
+
+const operation = (path: `/${string}`, handler: Route["handler"]): Route => ({ method: "POST", path, auth: "ServiceAccess", area: "MapsOperationRoutes", handler })
+
+export const mapsRoutes: ReadonlyArray<Route> = [
+  { method: "GET", path: "/api/v1/maps/capabilities", auth: "ServiceAccess", area: "MapsCapabilityRoute", handler: capabilities },
+  operation("/api/v1/maps/geocode", geocode),
+  operation("/api/v1/maps/reverse", reverse),
+  operation("/api/v1/maps/places/search", search),
+  operation("/api/v1/maps/places/details", details),
+  operation("/api/v1/maps/routes", routes),
+  operation("/api/v1/maps/tiles/viewport", viewport),
+  { method: "GET", path: "/api/v1/maps/tiles/:z/:x/:y", auth: "ServiceAccess", area: "MapsOperationRoutes", handler: tile }
+]
+
+export const mapsSweeps: ReadonlyArray<Sweep> = [{ name: "maps kept answers", everyMs: minute, run: forgetKept() }]

@@ -1,0 +1,125 @@
+// spec/cloud/identity/sessions.md, "Story: Stay signed in"; spec/cloud/identity/accounts.md, "Story: Attribute a referral without paying for it"
+import { assert, describe, it } from "@effect/vitest"
+import { check, sql, testCloud } from "../support/cloud.vibe"
+import { signedIn } from "../support/identity-fixture.ts"
+
+function bearer(token: string) {
+  return { authorization: `Bearer ${token}` }
+}
+
+function failure(body: unknown): unknown {
+  const refusal = body as { error?: string; reason?: string }
+  return [refusal.error, refusal.reason]
+}
+
+describe("WP1 Identity: sessions and accounts", () => {
+  it.live("Rotate on refresh, then take a spent refresh token as theft and end every session of the person (spec/cloud/identity/sessions.md, \"Story: Stay signed in\"; spec/cloud/identity/sessions.md, \"Story: Sign out here, or end my other sessions\")", () => scoped(effect {
+    const cloud = try testCloud()
+    const first = try signedIn(cloud, "Ada@Example.com")
+    const second = try signedIn(cloud, "ada@example.com")
+    const devicesBefore = try sql(cloud, "SELECT devices_revoked_before FROM accounts WHERE key = $1", [first.user.id])
+
+    const me = try cloud.call("/api/v1/user", { headers: bearer(first.accessToken) })
+    const rotated = try cloud.call("/api/v1/auth/refresh", { json: { refreshToken: first.refreshToken } })
+    const pair = rotated.body as { accessToken: string; refreshToken: string; accessExpiresAt: number; refreshExpiresAt: number; stepUpAt: unknown; mfaAt: unknown }
+    const oldAccess = try cloud.call("/api/v1/user", { headers: bearer(first.accessToken) })
+    const newAccess = try cloud.call("/api/v1/user", { headers: bearer(pair.accessToken) })
+    const theft = try cloud.call("/api/v1/auth/refresh", { json: { refreshToken: first.refreshToken } })
+    const afterTheft = try cloud.call("/api/v1/user", { headers: bearer(pair.accessToken) })
+    const otherSession = try cloud.call("/api/v1/user", { headers: bearer(second.accessToken) })
+    const theftAgain = try cloud.call("/api/v1/auth/refresh", { json: { refreshToken: pair.refreshToken } })
+    const devicesAfter = try sql(cloud, "SELECT devices_revoked_before, sessions_revoked_before FROM accounts WHERE key = $1", [first.user.id])
+
+    try check(() => assert.deepStrictEqual(
+      {
+        landed: [first.accountCreated, second.accountCreated, second.user.id === first.user.id, first.user.email, first.status],
+        me: [me.status, me.body],
+        rotated: [rotated.status, pair.refreshExpiresAt === first.refreshExpiresAt, pair.accessToken !== first.accessToken, pair.stepUpAt, pair.mfaAt],
+        oldAccess: [oldAccess.status, ...(failure(oldAccess.body) as Array<unknown>)],
+        newAccess: newAccess.status,
+        theft: [theft.status, ...(failure(theft.body) as Array<unknown>)],
+        afterTheft: [afterTheft.status, ...(failure(afterTheft.body) as Array<unknown>)],
+        otherSession: [otherSession.status, ...(failure(otherSession.body) as Array<unknown>)],
+        theftAgain: [theftAgain.status, ...(failure(theftAgain.body) as Array<unknown>)],
+        devices: [Number(devicesBefore[0]?.devices_revoked_before), Number(devicesAfter[0]?.devices_revoked_before), Number(devicesAfter[0]?.sessions_revoked_before)]
+      },
+      {
+        landed: [true, false, true, "ada@example.com", "signed_in"],
+        me: [200, {
+          success: true,
+          data: { id: first.user.id, email: "ada@example.com", name: "ada", organization_id: first.organizationId, organization: { id: first.organizationId, name: "ada" } }
+        }],
+        rotated: [200, true, true, null, null],
+        oldAccess: [401, "authentication_required", "credential_unknown"],
+        newAccess: 200,
+        theft: [401, "authentication_required", "credential_revoked"],
+        afterTheft: [401, "authentication_required", "credential_revoked"],
+        otherSession: [401, "authentication_required", "credential_revoked"],
+        theftAgain: [401, "authentication_required", "credential_revoked"],
+        devices: [0, 0, 1]
+      }
+    ))
+  }))
+
+  it.live("Sign out here only, and a second sign-out changes nothing (spec/cloud/identity/sessions.md, \"Story: Sign out here, or end my other sessions\")", () => scoped(effect {
+    const cloud = try testCloud()
+    const here = try signedIn(cloud, "ada@example.com")
+    const there = try signedIn(cloud, "ada@example.com")
+    const rotated = try cloud.call("/api/v1/auth/refresh", { json: { refreshToken: here.refreshToken } })
+    const pair = try Schema.decodeUnknownEffect(Schema.Struct({ accessToken: Schema.String, refreshToken: Schema.String }))(rotated.body)
+    const oldAccess = try cloud.call("/api/v1/user", { headers: bearer(here.accessToken) })
+    const first = try cloud.call("/api/v1/auth/logout", { method: "POST", headers: bearer(here.accessToken) })
+    const ended = try sql(cloud, "SELECT state, revision FROM sessions WHERE user_id = $1 ORDER BY key", [here.user.id])
+    const again = try cloud.call("/api/v1/auth/logout", { json: { refreshToken: here.refreshToken } })
+    const endedAgain = try sql(cloud, "SELECT state, revision FROM sessions WHERE user_id = $1 ORDER BY key", [here.user.id])
+    const hereAfter = try cloud.call("/api/v1/user", { headers: bearer(pair.accessToken) })
+    const thereAfter = try cloud.call("/api/v1/user", { headers: bearer(there.accessToken) })
+    const refreshAfter = try cloud.call("/api/v1/auth/refresh", { json: { refreshToken: pair.refreshToken } })
+    const unknown = try cloud.call("/api/v1/auth/logout", { method: "POST", headers: bearer(`eliza_session_${"x".repeat(43)}`) })
+    const epoch = try sql(cloud, "SELECT sessions_revoked_before FROM accounts WHERE key = $1", [here.user.id])
+    try check(() => assert.deepStrictEqual(
+      [oldAccess.status, failure(oldAccess.body), first.status, again.status, endedAgain, hereAfter.status, failure(hereAfter.body), thereAfter.status, refreshAfter.status, failure(refreshAfter.body), unknown.status, failure(unknown.body), Number(epoch[0]?.sessions_revoked_before)],
+      [401, ["authentication_required", "credential_unknown"], 204, 204, ended, 401, ["authentication_required", "credential_revoked"], 200, 401, ["authentication_required", "credential_revoked"], 401, ["authentication_required", "credential_unknown"], 0]
+    ))
+  }))
+
+  it.live("Apply a referral code once, never one's own and never an unknown one (spec/cloud/identity/accounts.md, \"Story: Attribute a referral without paying for it\"; spec/cloud/identity/accounts.md, \"Story: Read my account\")", () => scoped(effect {
+    const cloud = try testCloud()
+    const ada = try signedIn(cloud, "ada@example.com")
+    const bob = try signedIn(cloud, "bob@example.com")
+    const carol = try signedIn(cloud, "carol@example.com")
+    const adaCode = ((try cloud.call("/api/v1/referrals", { headers: bearer(ada.accessToken) })).body as { code: string }).code
+    const bobCode = ((try cloud.call("/api/v1/referrals", { headers: bearer(bob.accessToken) })).body as { code: string }).code
+    const carolCode = ((try cloud.call("/api/v1/referrals", { headers: bearer(carol.accessToken) })).body as { code: string }).code
+    const apply = (token: string, code: string) => cloud.call("/api/v1/referrals/apply", { headers: bearer(token), json: { code } })
+    const unknown = try apply(bob.accessToken, "  NOPE-0000 ")
+    const own = try apply(bob.accessToken, bobCode)
+    const applied = try apply(bob.accessToken, `  ${adaCode.toLowerCase()} `)
+    const same = try apply(bob.accessToken, adaCode)
+    const second = try apply(bob.accessToken, carolCode)
+    const adaAfter = try cloud.call("/api/v1/referrals", { headers: bearer(ada.accessToken) })
+    const balances = try sql(cloud, "SELECT credit_balance FROM organizations WHERE id = ANY($1) ORDER BY id", [[ada.organizationId, bob.organizationId]])
+    try check(() => assert.deepStrictEqual(
+      {
+        codes: [/^[0-9A-F]{10}$/.test(adaCode), adaCode !== bobCode],
+        unknown: [unknown.status, failure(unknown.body)],
+        own: [own.status, failure(own.body)],
+        applied: [applied.status, applied.body],
+        same: [same.status, same.body],
+        second: [second.status, failure(second.body)],
+        ada: [adaAfter.status, adaAfter.body],
+        balances: balances.map((row) => Number(row.credit_balance))
+      },
+      {
+        codes: [true, true],
+        unknown: [404, ["not_found", undefined]],
+        own: [409, ["referral_already_applied", undefined]],
+        applied: [200, { success: true }],
+        same: [200, { success: true }],
+        second: [409, ["referral_already_applied", undefined]],
+        ada: [200, { code: adaCode, total_referrals: 1, is_active: true }],
+        balances: [0, 0]
+      }
+    ))
+  }))
+})

@@ -1,0 +1,254 @@
+// spec/agent/deviceActions/surfaces.md, "Story: Propose a photo, a view, a Maps read or a Photos change only as my words and my screen name them"; spec/agent/deviceActions/surfaces.md, "A surface operation is bound to the owner's message only on a direct-request turn and as the owner asked"; spec/agent/deviceActions/surfaces.md, "A photo runs without its card only when the owner's own message asks for one now"; spec/agent/deviceActions/surfaces.md, "An app view opens with VIEWS where views arrive as completed actions, else with open_view as the installation's profile enables it"; spec/agent/deviceActions/surfaces.md, "A new note is proposed only while the owner's Notes screen selects the phone's own Notes"; spec/agent/deviceActions/surfaces.md, "A new note runs without its card only when its title and body are the owner's own words"; spec/agent/deviceActions/surfaces.md, "A Maps read names exactly the place or route selected on the owner's Maps screen"; spec/agent/deviceActions/operations.md, "Each operation has one capability need, which a clock-only device meets only for the Clock handoff"; spec/agent/deviceActions/index.md, "The proposal tool states each rule once, names no capability, and shares a branch only between forms that accept the same calls"
+import type { ActionParameterSchema } from "@elizaos/core"
+import { meets, negotiatedHas, revisionOf } from "../../../../gen/agent__deviceActions__capabilities.effect.vibe"
+import { operationNeed, type OperationType } from "../../../../gen/agent__deviceActions__operations.effect.vibe"
+import { captureLensVerdict, mapsVerdict, noteAvailable, noteVerdict, openViewAvailable, openViewVerdict, surfaceBound, viewsShowsOnDevice, type CameraChoice, type SurfaceVerdict } from "../../../../gen/agent__deviceActions__surfaces.effect.vibe"
+import {
+  type Observation, openViewAllowed, supportedViews, viewProfileWire, CalendarSource, type MapsReadSelected, readOperation, type CheckedOperation, type DeviceOperation, type DeviceOperationType,
+} from "@elizaos/agent"
+import { photosDecision, photosViewGuidance, returnedIdsGuidance } from "../../photos-view.vibe"
+import { viewProfile, type DeviceStoreUnavailable } from "../../store.vibe"
+import { directRequests, type DeviceProposalFamily, type DeviceTurn, type Grounding, type MessageAvailability, type NegotiatedDevice, type ProposalForm } from "../family.vibe"
+import { cameraWords } from "../surfaces/camera-request.ts"
+
+type Refusal = Extract<Grounding, { readonly kind: "Refused" }>
+type CameraCapture = Extract<DeviceOperation, { readonly type: "camera_capture_photo" }>
+
+const text = (description: string): ActionParameterSchema => ({ type: "string", description })
+const libraryIds = (maximum: number): ActionParameterSchema => ({
+  type: "array", items: { type: "string" }, description: `1-${maximum} distinct phone-returned library ids`,
+})
+const openItem: ActionParameterSchema = { type: "boolean", enum: [true], description: "true = open item in Photos viewer" }
+const epoch = (description: string): ActionParameterSchema => ({ type: "integer", description })
+
+function branch(type: DeviceOperationType, required: readonly string[], properties: Readonly<Record<string, ActionParameterSchema>>): ActionParameterSchema {
+  return { type: "object", additionalProperties: false, required: ["type", ...required], properties: { type: { type: "string", enum: [type] }, ...properties } }
+}
+
+const cameraGuidance = "camera_capture_photo takes one still image and saves it to Photos (how picture/photo/selfie requests are done; VIEWS Camera never shoots, never ask owner to press shutter). Phone opens Camera itself if needed—no VIEWS step needed (if using VIEWS Camera too, propose capture last). No pixels sent; saved-photo receipt proves capture."
+const libraryIdGuidance = "saved-photo receipt includes libraryId; use it with offered Photos ops for that photo."
+const libraryGuidance = [
+  "photo_library_search lists readable items (id, revision, kind, dates, pixels, video length only—no names/places/pixels/text search; filter by date/kind/favorite). photo_library_inspect returns one item. photo_library_select selects in Photos (direct only if asked). photo_library_review opens phone+Android review (review_opened proves no change/share).",
+  returnedIdsGuidance,
+]
+const mapsGuidance = "maps_read_selected requires exact current observation selectedObject {kind, id, revision}; never infer coords from id."
+const noteGuidance = "create_note writes to phone Notes only when Notes screen selects phone Notes; on any other message a request to make or save a note uses the canonical NOTES service."
+const canonicalNoteGuidance = "Phone offers no local notes: use canonical NOTES service to make/save notes."
+const viewsLead = "Open app views with VIEWS (mode show) on this message."
+const viewsUnavailable = "VIEWS cannot show a view on this message."
+
+function needed(opType: OperationType, versionTwo = false): (device: NegotiatedDevice) => boolean {
+  return (device) => meets(device.negotiation, operationNeed(opType, versionTwo))
+}
+
+const recordSource = Schema.is(CalendarSource)
+
+function phoneNotesSelected(observation: Observation): boolean {
+  const selected = observation.selectedObject
+  if (selected?.kind === "note-source") return recordSource({ sourceId: selected.id, sourceRevision: selected.revision })
+  if (selected?.kind !== "note") return false
+  const target = { sourceId: selected.accountId, sourceRevision: selected.sourceRevision, noteId: selected.id, revision: selected.revision }
+  return readOperation({ type: "notes_read_selected", target }) !== undefined
+}
+
+function notesSelected(turn: DeviceTurn): boolean {
+  const observation = turn.observation
+  return observation !== undefined && noteAvailable(observation.view === "notes", observation.sensitive, phoneNotesSelected(observation))
+}
+
+const noteNow: MessageAvailability = {
+  unavailable: "the owner's Notes screen does not select the phone's own Notes",
+  servedBy: "a request to make or save a note uses the canonical NOTES service",
+  available: notesSelected,
+}
+const openViewNow: MessageAvailability = {
+  unavailable: "views open with VIEWS on this message",
+  available: (turn) => openViewAvailable(turn.completedActionNavigation),
+}
+
+const captureForm: ProposalForm = {
+  types: ["camera_capture_photo"],
+  schema: branch("camera_capture_photo", [], {}), guidance: [cameraGuidance], offered: needed("CameraCapturePhoto"),
+}
+
+function offersLens(device: NegotiatedDevice): boolean {
+  return captureForm.offered(device) && negotiatedHas(device.negotiation, "CameraCaptureLensV1")
+}
+
+function namedCapture(choice: "FrontCamera" | "BackCamera"): ProposalForm {
+  const lens = choice === "FrontCamera" ? "front" : "back"
+  return {
+    types: ["camera_capture_photo"],
+    schema: branch("camera_capture_photo", ["lens"], { lens: { type: "string", enum: [lens] } }),
+    guidance: ["Set lens=front for selfie/front camera, lens=back for back/rear/main; omit lens if unspecified (uses current). If both requested, ask which one."],
+    offered: offersLens,
+    now: {
+      unavailable: "a named camera is captured only in the owner's own chat",
+      servedBy: "explain that this conversation cannot choose a camera lens",
+      available: canNameCamera,
+    },
+  }
+}
+
+const namedCaptures = { FrontCamera: namedCapture("FrontCamera"), BackCamera: namedCapture("BackCamera") }
+
+function ownerChat(turn: DeviceTurn): boolean {
+  const channel = turn.message.content.channelType
+  return channel === undefined || channel === "DM" || channel === "VOICE_DM"
+}
+
+function canNameCamera(turn: DeviceTurn): boolean {
+  return ownerChat(turn) && offersLens(turn)
+}
+
+function cameraVerdict(turn: DeviceTurn, lens: CameraChoice): SurfaceVerdict {
+  return captureLensVerdict(cameraWords(turn.ownerText, turn.assistantName), canNameCamera(turn), lens)
+}
+
+function normalWords(text: string): string {
+  return text.toLowerCase().replace(/\s+/g, " ").trim().replace(/[.!?]+$/, "")
+}
+
+function noteSaidByOwner(ownerText: string, note: { readonly title: string; readonly body: string }): boolean {
+  const said = normalWords(ownerText)
+  return said.includes(normalWords(note.title)) && said.includes(normalWords(note.body))
+}
+
+const forms: readonly ProposalForm[] = [
+  captureForm,
+  namedCaptures.FrontCamera,
+  namedCaptures.BackCamera,
+  {
+    types: ["photo_library_search"], guidance: libraryGuidance, offered: needed("PhotoLibrarySearch"),
+    schema: branch("photo_library_search", [], {
+      kind: { type: "string", enum: ["image", "video", "all"] }, from: epoch("Taken from (epoch ms)"), to: epoch("Taken until (epoch ms)"),
+      favorites: { type: "boolean" }, limit: { type: "integer", minimum: 1, maximum: 50 },
+    }),
+  },
+  { types: ["photo_library_inspect"], guidance: libraryGuidance, offered: needed("PhotoLibraryInspect"), schema: branch("photo_library_inspect", ["id"], { id: text("Phone-returned library id") }) },
+  { types: ["photo_library_select"], guidance: libraryGuidance, offered: needed("PhotoLibrarySelect"), schema: branch("photo_library_select", ["ids"], { ids: libraryIds(20) }) },
+  {
+    types: ["photo_library_review"], guidance: libraryGuidance, offered: needed("PhotoLibraryReview"),
+    schema: branch("photo_library_review", ["action", "items"], {
+      action: { type: "string", enum: ["trash", "share", "favorite", "unfavorite"] },
+      items: {
+        type: "array", description: "1-20 phone-returned {id, revision} items",
+        items: { type: "object", additionalProperties: false, required: ["id", "revision"], properties: { id: { type: "string" }, revision: { type: "string" } } },
+      },
+    }),
+  },
+  {
+    types: ["photos_filter"], offered: needed("PhotosFilter"),
+    schema: branch("photos_filter", [], {
+      from: epoch("Start (epoch ms)"), to: epoch("End (epoch ms)"), kind: { type: "string", enum: ["image", "video"] },
+      favorite: { type: "boolean" }, album: text("favorites|videos|camera|screenshots|custom:<id>"), text: text("<=80 chars"),
+    }),
+  },
+  { types: ["photos_open"], offered: needed("PhotosOpen"), schema: branch("photos_open", ["id"], { id: text("Library id") }) },
+  {
+    types: ["photos_album_create"], offered: needed("PhotosAlbumCreate"),
+    schema: branch("photos_album_create", ["name", "ids"], { name: text("Album name (1-80 chars)"), ids: libraryIds(200) }),
+  },
+  {
+    types: ["photos_album_create"], offered: needed("PhotosAlbumCreate", true),
+    schema: branch("photos_album_create", ["name", "selected"], { name: text("Album name (1-80 chars)"), selected: openItem }),
+  },
+  { types: ["photos_share"], offered: needed("PhotosShare"), schema: branch("photos_share", ["ids"], { ids: libraryIds(100) }) },
+  { types: ["photos_share"], offered: needed("PhotosShare", true), schema: branch("photos_share", ["selected"], { selected: openItem }) },
+  {
+    types: ["create_note"], guidance: [noteGuidance], offered: needed("CreateNote"), now: noteNow,
+    schema: branch("create_note", ["title", "body"], { title: text("Title (1-256 chars)"), body: text("Body (<=32000 chars)") }),
+  },
+  { types: ["open_view"], offered: needed("OpenView"), now: openViewNow, schema: branch("open_view", ["view"], { view: { type: "string", enum: [...supportedViews] } }) },
+  {
+    types: ["maps_read_selected"], guidance: [mapsGuidance], offered: needed("MapsReadSelected"),
+    schema: branch("maps_read_selected", ["target"], {
+      target: {
+        type: "object", additionalProperties: false, required: ["kind", "id", "revision"],
+        properties: { kind: { type: "string", enum: ["map-place", "map-route"] }, id: { type: "string" }, revision: { type: "string" } },
+      },
+    }),
+  },
+]
+
+const viewDisabled: Refusal = {
+  kind: "Refused", code: "DEVICE_VIEW_UNAVAILABLE",
+  forModel: "This view is not enabled on the owner's phone. No device proposal was created. Do not propose it again unless the owner enables it.",
+  forOwner: "That view isn't turned on for your phone.",
+}
+const selectionUnseen: Refusal = {
+  kind: "Refused", code: "MAPS_SELECTION_UNAVAILABLE",
+  forModel: "Maps observation unavailable or changed: maps_read_selected must name exactly the place or route selected on the owner's Maps screen this turn. No device proposal was created.",
+  forOwner: "Select the place or route in Maps, then ask me again.",
+}
+
+function grounded(turn: DeviceTurn, verdict: SurfaceVerdict, operation: DeviceOperation): Grounding {
+  return { kind: "Grounded", operation, grounding: surfaceBound(directRequests(turn, "surfaces"), verdict) ? "GroundedAsAsked" : "GroundedForReview" }
+}
+
+function decided(turn: DeviceTurn, verdict: SurfaceVerdict, operation: DeviceOperation, refusal: Refusal): Grounding {
+  return verdict === "SurfaceRefused" ? refusal : grounded(turn, verdict, operation)
+}
+
+function cameraGrounding(turn: DeviceTurn, operation: CameraCapture): Grounding {
+  const choice = operation.lens === "front" ? "FrontCamera" : operation.lens === "back" ? "BackCamera" : "ShowingCamera"
+  return decided(turn, cameraVerdict(turn, choice), operation, {
+    kind: "Refused", code: "DEVICE_CAMERA_LENS_UNAVAILABLE",
+    forOwner: "I can't use that camera lens for this request.",
+    forModel: "Naming a camera lens is not available here: the owner's phone does not offer a lens choice, or this is not the owner's own chat. No photo proposal was created.",
+  })
+}
+
+function mapsGrounding(operation: MapsReadSelected, turn: DeviceTurn): Grounding {
+  const observation = turn.observation
+  const selected = observation?.selectedObject
+  const extraFields = selected !== undefined &&
+    (selected.accountId !== undefined || selected.sourceRevision !== undefined || selected.occurrenceId !== undefined || selected.timingVersion !== undefined)
+  const sameTarget = selected !== undefined &&
+    selected.kind === operation.target.kind && selected.id === operation.target.id && selected.revision === operation.target.revision
+  return decided(turn, mapsVerdict(observation?.view === "maps", observation?.sensitive !== false, extraFields, sameTarget), operation, selectionUnseen)
+}
+
+effect function openViewGrounding(view: string, operation: DeviceOperation, turn: DeviceTurn): Grounding!DeviceStoreUnavailable {
+  const profile = try viewProfile(turn.runtime.adapter)
+  return decided(turn, openViewVerdict(openViewAllowed(profile, revisionOf(profile), view)), operation, viewDisabled)
+}
+
+function profileGuidance(device: NegotiatedDevice): readonly string[] {
+  const wire = device.viewProfile === undefined ? null : viewProfileWire(device.viewProfile)
+  if (wire === null || !needed("OpenView")(device)) return []
+  return [`Enabled views allows open_view only for [${wire.views.map((view) => `"${view}"`).join(",")}]; propose no other view (not execution approval).`]
+}
+
+const types: readonly DeviceOperationType[] = [...new Set(forms.flatMap((form) => form.types))]
+
+export const surfacesFamily: DeviceProposalFamily = {
+  name: "surfaces",
+  types,
+  forms,
+  guidance: (device) => [
+    ...(negotiatedHas(device.negotiation, "CameraCapturePhotoV1") && negotiatedHas(device.negotiation, "CameraLibraryIdV1") ? [libraryIdGuidance] : []),
+    ...photosViewGuidance(device.negotiation),
+    ...(needed("CreateNote")(device) ? [] : [canonicalNoteGuidance]),
+    ...profileGuidance(device),
+  ],
+  now: (turn) => viewsShowsOnDevice(turn.completedActionNavigation) ? viewsLead : viewsUnavailable,
+  effect ground(proposed: CheckedOperation, turn: DeviceTurn) {
+    const operation = proposed.operation
+    switch (operation.type) {
+      case "camera_capture_photo": return cameraGrounding(turn, operation)
+      case "open_view": return try openViewGrounding(operation.view, operation, turn)
+      case "maps_read_selected": return mapsGrounding(operation, turn)
+      case "create_note": return grounded(turn, noteVerdict(noteSaidByOwner(turn.ownerText, operation)), operation)
+      default: {
+        const photos = try photosDecision(proposed, turn)
+        return decided(turn, photos.verdict, operation, photos.refusal)
+      }
+    }
+  },
+  proposedText: (operation, { direct }) => operation.type === "camera_capture_photo" && direct ? {
+    forOwner: "Opening Camera to take the photo.",
+    forModel: "The requesting phone takes this requested photo right after this reply once Camera is showing, with no review. No photo has been taken yet; do not claim that one was taken or saved.",
+  } : undefined,
+  settledText: () => undefined,
+}

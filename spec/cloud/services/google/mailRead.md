@@ -70,7 +70,11 @@ pure def lawAnAcceptedCountIsWithinItsBound(list: MailList, requested: Requested
 
 ### Triage scores each inbox message by fixed signal weights, and a message likely needing a reply outranks all automated mail
 
-Triage lists the newest inbox messages that are not in Trash, each
+Triage uses Inbox by default. The owner's Inbox, Sent, Drafts or Trash may be
+selected with a search and provider continuation. The response names the
+authorized Cloud account, selected folder and trimmed search. Every message
+retains its provider ID, including the ID used by Grace to reopen it. The
+default triage lists the newest Inbox messages that are not in Trash, each
 `{id, threadId, subject, from, to, cc, snippet, receivedAt, labels, isUnread,
 isImportant, likelyReplyNeeded, triageScore, triageReason, metadata:
 {historyId}}`, ordered by score, then newest first. Unread adds 30, the
@@ -106,6 +110,20 @@ pure def lawAReplyNeededOutranksAutomatedMail(signals: TriageSignals, other: Tri
   (needsReply(signals) and other.automated) implies triageScore(signals) > triageScore(other)
 pure def lawAScoreIsWithinItsRange(signals: TriageSignals): bool =
   triageScore(signals) >= 0 and triageScore(signals) <= 110 and (triageReasons(signals) == List() implies triageScore(signals) == 0)
+```
+
+### A message row hints at attachments from the outer MIME part
+
+A message row carries `hasAttachments` when the outer Gmail part is
+`multipart/mixed` or names a file. The MIME type comes from the part
+or, if absent, its already requested `Content-Type` metadata header.
+Listing continues to read metadata only. The row hint is approximate.
+Opening the message reads its exact attachment descriptors.
+
+```quint
+pure def attachmentHint(mixedOuter: bool, namedFile: bool): bool = mixedOuter or namedFile
+pure def lawNoOuterHintHasNoPaperclip(mixedOuter: bool, namedFile: bool): bool =
+  (not(mixedOuter) and not(namedFile)) implies not(attachmentHint(mixedOuter, namedFile))
 ```
 
 ### A search page names the mailbox revision read before it was listed and never continues at the token it was asked with
@@ -175,6 +193,24 @@ pure def lawAServedMessageIsWhole(got: MessageFetch): bool = { val result = read
   | MessageServed(m) => got.sameMessage and got.grantUnchanged and got.textBytes <= mailMaxBytes and (m.html == HtmlAvailable implies (got.htmlBytes > 0 and got.htmlBytes <= htmlMaxBytes))
   | ReadRefused(r) => wellFormed(r.refusal) and not(retryableOf(r.refusal))
 } }
+```
+
+### Reading a message reports the Reply-To mailbox when one was set
+
+The reply address is separate from the sender displayed on the message.
+The full message and its thread page omit the address when there is no
+Reply-To header, return the single address when the composer accepts it,
+and return null when the header cannot be used to reply.
+
+```quint
+type ReplyAddress = NoReplyOverride | ReplyOverrideUnavailable | ReplyOverride
+pure def replyAddressOf(headerCount: int, usableMailbox: bool): ReplyAddress =
+  if (headerCount <= 0) NoReplyOverride
+  else if (headerCount == 1 and usableMailbox) ReplyOverride
+  else ReplyOverrideUnavailable
+pure val headerCountValues = Set(0, 1, 2)
+pure def lawAnOverrideIsOneUsableMailbox(headerCount: int, usableMailbox: bool): bool =
+  (replyAddressOf(headerCount, usableMailbox) == ReplyOverride) iff (headerCount == 1 and usableMailbox)
 ```
 
 ### A thread page is served only at the revision of its first page and covers the thread without a gap
@@ -400,8 +436,9 @@ pure def lawNoAnswerAfterAuthorityEnds(watch: InboxWatch, nowAt: int, grantCurre
 
 ### A background history read names one grant and a count within its bound, and continues only from the start it began at
 
-`GET …/gmail/history` (develop `api/v1/eliza/google/gmail/history`, read by
-the phone's background mail check) takes `grantId`, which it requires,
+`GET …/gmail/inbox-v1/history` admits an account session or a device mail
+lease. Existing background checks use `GET …/gmail/history` with their
+original device credential. Both reads take `grantId`, which they require,
 `startHistoryId` (1 to 20 digits, no leading zero), `pageToken` (1 to 4,096
 characters, only beside the start it continues), `maxResults` (1 to 100,
 50 when omitted) and `side`, only `owner`. Any other parameter, or one given

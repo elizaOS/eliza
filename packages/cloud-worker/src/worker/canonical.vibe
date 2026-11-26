@@ -1,0 +1,247 @@
+// spec/cloud/deployment.md, "Story: Serve the deployment from a Worker"; spec/cloud/services/speechRelay.md, "Story: Speak the relay protocol on one socket"; spec/cloud/deployment.md, "A Worker serves only after the server's own start checks pass and its bindings agree with its profile"; spec/cloud/deployment.md, "A scheduled tick runs each sweep whose period ends within the tick"
+import { HttpEffect } from "effect/http"
+import { Socket } from "effect/socket"
+import { workerStart, type CatalogObservation, type IdentityRead } from "../../gen/cloud__deployment.effect.vibe"
+import { observeCatalog } from "../billing/plans.vibe"
+import { refusalBody, refusalResponse, refused } from "../http/refusal.vibe"
+import { respond } from "../http/transport.vibe"
+import { returnPageRoute } from "../native-clients/return-routes.vibe"
+import { readRegistry } from "../native-clients/registry.vibe"
+import { legacyRegistrations, registrationText, type NativeRegistryEnv } from "../native-registry.vibe"
+import { PageTemplates } from "../pages/templates.vibe"
+import { renderedTemplate } from "../pages/rendered.ts"
+import { ProviderSockets, realtimeOpenBudget } from "../providers/speech.vibe"
+import { capabilityEnabled, deploymentLayer, parseEnvironment, parseProfile, requireSecrets, specProfile, type CloudEnvironment, type CloudProfile } from "@elizaos/cloud"
+import { Store } from "../store/connection.vibe"
+import { observeIdentity } from "../store/identity.vibe"
+import { WorkerRequest, WorkerResponse, type WorkerLifetime } from "../worker-platform.ts"
+import { clientStore, closeCloudDatabase, openCloudDatabase, type WorkerDatabase } from "../worker-store.vibe"
+import { legacyGmailResponse, type LegacyBindings } from "./legacy.vibe"
+import { sweepDeviceOffers } from "../identity.vibe"
+import { dueSweeps, relayRoutes, workerRoutes } from "./routes.vibe"
+import { dialSocket, socketPair } from "./sockets.ts"
+import type { Registration } from "../../gen/cloud__nativeClients__registry.effect.vibe"
+
+export type ProfileBindings = WorkerDatabase & NativeRegistryEnv & {
+  readonly CLOUD_PROFILE: string
+  readonly ASSETS?: { fetch(request: Request): Promise<Response> }
+}
+
+error WorkerUnready { problem: string }
+
+interface Prepared {
+  readonly profile: CloudProfile
+  readonly environment: CloudEnvironment
+}
+
+const prepared = new WeakMap<object, Prepared>()
+const started = new WeakSet<object>()
+
+effect function preparedFor(env: ProfileBindings): Prepared!WorkerUnready {
+  const known = prepared.get(env)
+  if (known !== undefined) return known
+  const raw = try Effect.try({ try: () => JSON.parse(env.CLOUD_PROFILE) as unknown, catch: () => new WorkerUnready({ problem: "CLOUD_PROFILE is not the profile's JSON" }) })
+  const profile = parseProfile(raw) catch effect (invalid) => { throw new WorkerUnready({ problem: invalid.problem }) }
+  const environment = parseEnvironment(env.CLOUD_ENVIRONMENT) catch effect (invalid) => { throw new WorkerUnready({ problem: invalid.problem }) }
+  const ready: Prepared = { profile, environment }
+  prepared.set(env, ready)
+  return ready
+}
+
+function textBindings(env: object): Record<string, string> {
+  return Object.fromEntries(Object.entries(env).filter((entry): entry is [string, string] => typeof entry[1] === "string"))
+}
+
+function socketOpenFailed(kind: "Unknown" | "Timeout", cause: unknown) {
+  return new Socket.SocketError({ reason: new Socket.SocketOpenError({ kind, cause }) })
+}
+
+effect function closeSocket(socket: { readonly close: (code?: number) => void }) {
+  try Effect.ignore(Effect.try(() => socket.close(1000)))
+}
+
+const workerSockets: ProviderSockets.Shape = {
+  open: (url, headers) => Socket.fromWebSocket(acquireRelease(
+    timeoutOrElse(tryPromise({ try: (signal) => dialSocket(url, headers, signal), catch: (cause) => socketOpenFailed("Unknown", cause) }), {
+      duration: realtimeOpenBudget,
+      orElse: () => fail(socketOpenFailed("Timeout", "the provider socket did not open in time"))
+    }),
+    closeSocket
+  ))
+}
+
+async function assetTemplate(env: ProfileBindings, file: string): Promise<string | undefined> {
+  if (env.ASSETS === undefined) return renderedTemplate(file)
+  const asset = await env.ASSETS.fetch(new WorkerRequest(new URL(file, "https://assets.invalid/")))
+  return asset.ok ? await asset.text() : undefined
+}
+
+function platformLayer(env: ProfileBindings, ready: Prepared, store: Store.Shape) {
+  return Layer.mergeAll(
+    Layer.succeed(Store, store),
+    Layer.succeed(ProviderSockets, workerSockets),
+    Layer.succeed(PageTemplates, { read: (file: string) => assetTemplate(env, file) }),
+    deploymentLayer(ready.profile, ready.environment, env).pipe(Layer.provide(ConfigProvider.layer(ConfigProvider.fromEnvRecord(textBindings(env))))),
+    FetchHttpClient.layer
+  )
+}
+
+function bindingsAgree(env: ProfileBindings, ready: Prepared): boolean {
+  const settings = ready.profile.environments[ready.environment]
+  return env.PUBLIC_API_ORIGIN === settings.api && env.WEB_ORIGIN === settings.web && env.CLOUD_IDENTITY_DIGEST === settings.databaseIdentity
+}
+
+function registryText(registrations: ReadonlyArray<Registration>): string {
+  return registrations.map(registrationText).sort().join("\n\n")
+}
+
+effect function registryAgrees(env: ProfileBindings) {
+  const bound = legacyRegistrations(env)
+  if (bound === undefined) return true
+  if (bound === null) return false
+  const stored = (try Store).transaction((tx) => readRegistry(tx)) catch () => undefined
+  return stored !== undefined && registryText(stored) === registryText(bound)
+}
+
+effect function start(env: ProfileBindings, ready: Prepared) {
+  if (started.has(env)) return
+  const identity = try observeIdentity()
+  const read: IdentityRead = identity.kind === "identified" ? { tag: "ReadDigest", digest: identity.digest } : { tag: "UnreadableIdentity" }
+  const agrees = bindingsAgree(env, ready) && (try registryAgrees(env))
+  const verdictWith = (catalog: CatalogObservation) => workerStart(specProfile(ready.profile), ready.environment === "production" ? "Production" : "Staging", read, agrees, catalog)
+  const unobserved = verdictWith({ tag: "NoCatalog" })
+  const catalogPending = unobserved.tag === "WorkerRefused" && unobserved.problem.tag === "CatalogMissing"
+  if (unobserved.tag === "WorkerBindingsDisagree") throw new WorkerUnready({ problem: "a Worker binding disagrees with the profile or with the database's registrations" })
+  if (unobserved.tag === "WorkerRefused" && !catalogPending) throw new WorkerUnready({ problem: unobserved.problem.tag })
+  requireSecrets() catch effect (missing) => { throw new WorkerUnready({ problem: `the secret ${missing.name} is not bound` }) }
+  if (catalogPending) {
+    const catalog = observeCatalog() catch effect (failure) => { throw new WorkerUnready({ problem: `the payment catalog could not be read (${failure._tag})` }) }
+    const verdict = verdictWith(catalog)
+    if (verdict.tag !== "WorkerServes") throw new WorkerUnready({ problem: verdict.tag === "WorkerRefused" ? verdict.problem.tag : verdict.tag })
+  }
+  started.add(env)
+}
+
+effect function connected(env: ProfileBindings) {
+  const opened = tryPromise({ try: () => openCloudDatabase(env, "safe"), catch: () => new WorkerUnready({ problem: "the database is unreachable or is not this environment's" }) })
+  const db = try acquireRelease(opened, (held) => promise(() => closeCloudDatabase(held)))
+  return { db, store: try clientStore(db) }
+}
+
+function clientAddress(request: HttpServerRequest.HttpServerRequest): Option.Option<string> {
+  const forwarded = request.headers["cf-connecting-ip"]
+  return forwarded === undefined || forwarded === "" ? request.remoteAddress : Option.some(forwarded)
+}
+
+effect function served(source: Request, env: ProfileBindings & LegacyBindings, providerFetch: typeof fetch, lifetime?: WorkerLifetime): HttpServerResponse.HttpServerResponse!!(HttpServerRequest.HttpServerRequest | Scope.Scope) {
+  if (lifetime !== undefined) {
+    const scope = try Scope.Scope
+    const completed = try Deferred.make<void>()
+    try Scope.addFinalizer(scope, Deferred.succeed(completed, undefined))
+    try sync(() => lifetime.waitUntil(runPromise(Deferred.await(completed))))
+  }
+  const now = try Clock.currentTimeMillis
+  const answered = effect {
+    const ready = try preparedFor(env)
+    const { db, store } = try connected(env)
+    const request = try HttpServerRequest.HttpServerRequest
+    const seen = request.modify({ remoteAddress: clientAddress(request) })
+    provide platformLayer(env, ready, store) {
+      try start(env, ready)
+      return try Effect.interruptible(provideService(respond(workerRoutes, returnPageRoute, (route) => tryPromise({
+        try: () => legacyGmailResponse(source, route.path, env, db, providerFetch),
+        catch: () => refused("ServiceUnavailable", "NoReason", now + 5000),
+      })), HttpServerRequest.HttpServerRequest, seen))
+    }
+  }
+  return answered catch effect (unready) => {
+    try annotateLogs(logError("the Worker is not ready to serve"), { problem: unready.problem })
+    return refusalResponse(refused("ServiceUnavailable", "NoReason", now + 5000).refusal, now)
+  }
+}
+
+function unreadyAnswer(now: number): Response {
+  return WorkerResponse.json(refusalBody(refused("ServiceUnavailable", "NoReason", now + 5000).refusal), { status: 503, headers: { "cache-control": "no-store", "retry-after": "5" } })
+}
+
+effect function relayed(request: Request, env: ProfileBindings, answer: Deferred.Deferred<Response>) {
+  const relaying = scoped(effect {
+    const ready = try preparedFor(env)
+    const { store } = try connected(env)
+    provide platformLayer(env, ready, store) {
+      try start(env, ready)
+      const pair = socketPair()
+      const socket = try Socket.fromWebSocket(acquireRelease(sync(pair.accept), closeSocket))
+      const base = HttpServerRequest.fromWeb(request)
+      const seen = base.modify({ remoteAddress: clientAddress(base) })
+      const upgradable: HttpServerRequest.HttpServerRequest = Object.create(seen, {
+        upgrade: { value: effect { try Deferred.succeed(answer, pair.answer); return socket } }
+      })
+      const response = try provideService(respond(relayRoutes), HttpServerRequest.HttpServerRequest, upgradable)
+      try Deferred.succeed(answer, HttpServerResponse.toWeb(response))
+    }
+  })
+  relaying catch effect (unready) => {
+    const now = try Clock.currentTimeMillis
+    try annotateLogs(logError("the Worker is not ready to relay speech"), { problem: unready.problem })
+    try Deferred.succeed(answer, unreadyAnswer(now))
+  }
+}
+
+export async function relayFromTable(request: Request, env: ProfileBindings, keepAlive: (work: Promise<unknown>) => void): Promise<Response> {
+  const answer = await runPromise(Deferred.make<Response>())
+  keepAlive(runPromise(relayed(request, env, answer)))
+  return runPromise(Deferred.await(answer))
+}
+
+export function workerReady(env: ProfileBindings): Promise<Response | undefined> {
+  if (started.has(env)) return Promise.resolve(undefined)
+  const checked = scoped(effect {
+    const ready = try preparedFor(env)
+    const { store } = try connected(env)
+    provide platformLayer(env, ready, store) {
+      try start(env, ready)
+    }
+    return undefined
+  })
+  return runPromise(effect {
+    return checked catch effect (unready) => {
+      const now = try Clock.currentTimeMillis
+      try annotateLogs(logError("the Worker is not ready to serve"), { problem: unready.problem })
+      return unreadyAnswer(now)
+    }
+  })
+}
+
+export function workerManagedGoogle(env: ProfileBindings): boolean {
+  const ready = prepared.get(env)
+  return ready !== undefined && capabilityEnabled(ready.profile.environments[ready.environment], "managedGoogle")
+}
+
+export function serveFromTable(request: Request, env: ProfileBindings & LegacyBindings, providerFetch: typeof fetch, lifetime?: WorkerLifetime): Promise<Response> {
+  return HttpEffect.toWebHandler(served(request, env, providerFetch, lifetime))(request)
+}
+
+export function sweepTable(env: ProfileBindings, scheduledAt: number): Promise<void> {
+  const due = dueSweeps(scheduledAt)
+  const ticked = scoped(effect {
+    if (due.length === 0) return
+    const ready = try preparedFor(env)
+    const { db, store } = try connected(env)
+    provide platformLayer(env, ready, store) {
+      try start(env, ready)
+      tryPromise({ try: () => sweepDeviceOffers(db), catch: (error) => error }) catch effect () => {
+        try annotateLogs(logError("a sweep failed"), { sweep: "device offers" })
+      }
+      for (const sweep of due) {
+        const outcome = try exit(sweep.run)
+        if (Exit.isFailure(outcome)) try annotateLogs(logError("a sweep failed"), { sweep: sweep.name })
+      }
+    }
+  })
+  return runPromise(effect {
+    ticked catch effect (unready) => {
+      try annotateLogs(logError("the Worker skipped its sweeps"), { problem: unready.problem })
+    }
+  })
+}

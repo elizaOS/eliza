@@ -1,0 +1,266 @@
+// spec/notes/read.md, "Wire and authored content have different boundaries"
+import { formatBounds } from "../gen/notes__read.effect.vibe"
+import type { NoteFormat, NoteJson, StickyNote } from "./types.vibe"
+
+module edge {
+  /** @throws {never} */
+  export function encodedUnits(value: unknown): number {
+    try {
+      return JSON.stringify(value).length
+    } catch {
+      return Number.POSITIVE_INFINITY
+    }
+  }
+
+  /** @throws {never} */
+  export function json(value: unknown): string {
+    try {
+      return JSON.stringify(value) ?? "null"
+    } catch {
+      return "null"
+    }
+  }
+}
+import { encodedUnits, json } from edge
+
+export { json }
+
+export error NoteFormatRefused { field: string; reason: string }
+
+export error AuthoredEditRefused { reason: string }
+
+export type AuthoredNotePart = { index: number; text: string; done?: boolean }
+
+export type AuthoredNoteContent = {
+  items?: AuthoredNotePart[]
+  lines?: AuthoredNotePart[]
+  summary?: string[]
+  actions?: AuthoredNotePart[]
+  clips?: string[]
+}
+
+export type AuthoredNoteEdit =
+  | {
+    action?: "replace"
+    field: "checklist" | "voice-line" | "voice-summary" | "voice-action" | "link-clip"
+    index: number
+    expectedText: string
+    text?: string
+    done?: boolean
+  }
+  | { field: "checklist"; action: "append"; text: string }
+  | { field: "checklist"; action: "remove"; index: number; expectedText: string }
+
+export interface NoteShareText {
+  title: string
+  text: string
+}
+
+const kinds: ReadonlySet<string> = new Set(["text", "list", "voice", "link"])
+const unsafeKeys: ReadonlySet<string> = new Set(["__proto__", "constructor", "prototype"])
+const nodeLimit = 10_000
+const depthLimit = 24
+
+interface Walk {
+  nodes: number
+  depth: number
+  safe: boolean
+}
+
+type JsonObject = { [key: string]: NoteJson }
+
+function plainObject(value: object): boolean {
+  const prototype: unknown = Object.getPrototypeOf(value)
+  return prototype === Object.prototype || prototype === null
+}
+
+function isJsonObject(value: NoteJson | undefined): value is JsonObject {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+
+function copyJson(value: unknown, walk: Walk, depth: number): NoteJson {
+  walk.nodes++
+  walk.depth = Math.max(walk.depth, depth)
+  if (walk.nodes > nodeLimit || depth > depthLimit) return null
+  if (value === null || typeof value === "boolean" || typeof value === "string") return value
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) walk.safe = false
+    return value
+  }
+  if (Array.isArray(value)) return value.map((item: unknown) => copyJson(item, walk, depth + 1))
+  if (typeof value === "object" && value !== null && plainObject(value)) {
+    const out: JsonObject = {}
+    for (const [key, item] of Object.entries(value)) {
+      if (unsafeKeys.has(key)) walk.safe = false
+      else out[key] = copyJson(item, walk, depth + 1)
+    }
+    return out
+  }
+  walk.safe = false
+  return null
+}
+
+type FormatCheck = { readonly format: NoteFormat } | { readonly field: string; readonly reason: string }
+
+function checkFormat(value: unknown): FormatCheck {
+  if (typeof value !== "object" || value === null || Array.isArray(value) || !plainObject(value)) return { field: "format", reason: "Must be a JSON object." }
+  if (Object.keys(value).some((key) => key !== "kind" && key !== "data")) return { field: "format", reason: "Unsupported field." }
+  const kind: unknown = "kind" in value ? value.kind : undefined
+  if (kind !== "text" && kind !== "list" && kind !== "voice" && kind !== "link") return { field: "format.kind", reason: "Unknown note format." }
+  const raw: unknown = "data" in value ? value.data : undefined
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw) || !plainObject(raw)) return { field: "format.data", reason: "Must be a JSON object." }
+  const walk: Walk = { nodes: 0, depth: 0, safe: true }
+  const data = copyJson(raw, walk, 0)
+  if (!isJsonObject(data) || !formatBounds(walk.nodes, walk.depth, encodedUnits(data), walk.safe)) {
+    return { field: "format.data", reason: "Note metadata must be bounded plain JSON." }
+  }
+  return { format: { kind, data } }
+}
+
+export function parseNoteFormat(value: unknown): NoteFormat | undefined {
+  const checked = checkFormat(value)
+  return "format" in checked ? checked.format : undefined
+}
+
+export effect function decodeNoteFormat(value: unknown): NoteFormat!NoteFormatRefused {
+  const checked = checkFormat(value)
+  if ("format" in checked) return checked.format
+  throw new NoteFormatRefused({ field: checked.field, reason: checked.reason })
+}
+
+export function isNoteKind(value: unknown): value is NoteFormat["kind"] {
+  return typeof value === "string" && kinds.has(value)
+}
+
+function parts(data: JsonObject, field: string, check: boolean): AuthoredNotePart[] | undefined {
+  const rows = data[field]
+  if (!Array.isArray(rows)) return undefined
+  return rows.flatMap((item, index) => isJsonObject(item) && typeof item.t === "string"
+    ? [{ index, text: item.t, ...(check && typeof item.done === "boolean" ? { done: item.done } : {}) }]
+    : [])
+}
+
+function strings(data: JsonObject, field: string): string[] | undefined {
+  const rows = data[field]
+  return Array.isArray(rows) ? rows.filter((item): item is string => typeof item === "string") : undefined
+}
+
+export function projectAuthoredNoteContent(format: NoteFormat | undefined): AuthoredNoteContent | undefined {
+  if (format === undefined) return undefined
+  const data = format.data
+  switch (format.kind) {
+    case "list": {
+      const items = parts(data, "items", true)
+      return items ? { items } : undefined
+    }
+    case "voice": {
+      const lines = parts(data, "lines", false)
+      const summary = strings(data, "summary")
+      const actions = parts(data, "actions", true)
+      return { ...(lines ? { lines } : {}), ...(summary ? { summary } : {}), ...(actions ? { actions } : {}) }
+    }
+    case "link": {
+      const clips = strings(data, "clips")
+      return clips ? { clips } : undefined
+    }
+    case "text":
+      return undefined
+  }
+}
+
+export function authoredNoteText(format: NoteFormat | undefined): string {
+  const value = projectAuthoredNoteContent(format)
+  if (value === undefined) return ""
+  return [
+    ...(value.items ?? []).map((item) => item.text),
+    ...(value.lines ?? []).map((item) => item.text),
+    ...(value.summary ?? []),
+    ...(value.actions ?? []).map((item) => item.text),
+    ...(value.clips ?? []),
+  ].join("\n")
+}
+
+const editTargets = {
+  checklist: { kind: "list", key: "items", check: true },
+  "voice-line": { kind: "voice", key: "lines", check: false },
+  "voice-summary": { kind: "voice", key: "summary", check: false },
+  "voice-action": { kind: "voice", key: "actions", check: true },
+  "link-clip": { kind: "link", key: "clips", check: false },
+} as const
+
+export effect function editAuthoredNoteFormat(format: NoteFormat | undefined, edit: AuthoredNoteEdit): NoteFormat!AuthoredEditRefused {
+  if (edit.action === "append") {
+    if (format === undefined || format.kind !== "list" || !Array.isArray(format.data.items)) {
+      throw new AuthoredEditRefused({ reason: "Checklist append requires the current list format." })
+    }
+    if (edit.text.trim() === "") throw new AuthoredEditRefused({ reason: "Checklist append requires nonblank authored text." })
+    const next = structuredClone(format)
+    const items = next.data.items
+    if (Array.isArray(items)) items.push({ t: edit.text, done: false })
+    return next
+  }
+  if (edit.action === "remove") {
+    if (format === undefined || format.kind !== "list" || !Array.isArray(format.data.items)) {
+      throw new AuthoredEditRefused({ reason: "Checklist removal requires the current list format." })
+    }
+    const next = structuredClone(format)
+    const items = next.data.items
+    if (!Array.isArray(items) || !Number.isSafeInteger(edit.index) || edit.index < 0 || edit.index >= items.length) {
+      throw new AuthoredEditRefused({ reason: "Checklist changed; re-read before removing an item." })
+    }
+    const item = items[edit.index]
+    const text = typeof item === "string" ? item : isJsonObject(item) ? item.t : undefined
+    if (typeof text !== "string" || text !== edit.expectedText) throw new AuthoredEditRefused({ reason: "Checklist item text changed; nothing was removed." })
+    items.splice(edit.index, 1)
+    return next
+  }
+  const target = editTargets[edit.field]
+  if (format === undefined || format.kind !== target.kind) throw new AuthoredEditRefused({ reason: "Rich note format changed; re-read before editing." })
+  const next = structuredClone(format)
+  const rows = next.data[target.key]
+  if (!Array.isArray(rows) || !Number.isSafeInteger(edit.index) || edit.index < 0 || edit.index >= rows.length) {
+    throw new AuthoredEditRefused({ reason: "Authored note field changed; re-read before editing." })
+  }
+  const item = rows[edit.index]
+  const text = typeof item === "string" ? item : isJsonObject(item) ? item.t : undefined
+  if (typeof text !== "string" || text !== edit.expectedText) throw new AuthoredEditRefused({ reason: "Authored note text changed; nothing was edited." })
+  if (edit.done !== undefined && !target.check) throw new AuthoredEditRefused({ reason: "This authored field has no checklist state." })
+  if (typeof item === "string") {
+    if (edit.text !== undefined) rows[edit.index] = edit.text
+  } else if (isJsonObject(item)) {
+    if (edit.text !== undefined) item.t = edit.text
+    if (edit.done !== undefined) item.done = edit.done
+  }
+  return next
+}
+
+function checklist(rows: readonly AuthoredNotePart[]): string {
+  return rows.map((item) => `[${item.done === true ? "x" : " "}] ${item.text}`).join("\n")
+}
+
+function stringField(data: JsonObject, key: string): string {
+  const value = data[key]
+  return typeof value === "string" ? value : ""
+}
+
+export function noteShareText(note: StickyNote): NoteShareText {
+  const title = note.title.trim() === "" ? "Note" : note.title
+  const data = note.format?.data ?? {}
+  const authored = projectAuthoredNoteContent(note.format)
+  const body = note.body.startsWith("\n") ? note.body.slice(1) : note.body
+  const kind = note.format?.kind ?? "text"
+  const audio = data.audio
+  const transcript = body.trim() !== "" ? body : isJsonObject(audio) ? stringField(audio, "transcript") : ""
+  const text = kind === "text" ? body
+    : kind === "list" ? checklist(authored?.items ?? [])
+    : kind === "link" ? [stringField(data, "url"), ...(authored?.clips ?? [])].filter((part) => part !== "").join("\n\n")
+    : [
+      "Voice note text (audio not included)",
+      transcript !== "" ? `Transcript\n${transcript}`
+        : (authored?.lines ?? []).length > 0 ? `Transcript\n${(authored?.lines ?? []).map((line) => line.text).join("\n")}`
+        : "No transcript saved.",
+      (authored?.summary ?? []).length > 0 ? `Summary\n${(authored?.summary ?? []).join("\n")}` : "",
+      (authored?.actions ?? []).length > 0 ? `Action items\n${checklist(authored?.actions ?? [])}` : "",
+    ].filter((part) => part !== "").join("\n\n")
+  return { title, text: [title, text].filter((part) => part !== "").join("\n\n") }
+}

@@ -1,0 +1,127 @@
+// spec/files/scan/review.md, "Story: Assemble a document and retain a reviewable draft"; spec/files/scan/review.md, "Story: Save only the reviewed scan and see whether the save completed"; spec/files/scan/drafts.md, "Story: Restore the same scan and edits after reopening the app"; spec/files/scan/correction.md, "Story: Preview a perspective correction and decide whether to replace my page"; spec/files/scan/drafts.md, "Story: Save or delete a specific revision and know whether storage committed"; spec/files/scan/searchablePdf.md, "Story: Save the reviewed text beside the image of its own page"
+module browser {
+  import { PDFArray, PDFDocument, PDFRawStream, decodePDFRawStream } from "pdf-lib"
+  export async function pdfPages(bytes: Uint8Array) {
+    const document = await PDFDocument.load(bytes)
+    const decoder = new TextDecoder()
+    return document.getPages().map((page) => {
+      const contents = page.node.Contents()
+      const parts = contents instanceof PDFArray ? contents.asArray().map((entry) => document.context.lookup(entry)) : [contents]
+      const commands = parts.map((part) => {
+        if (!(part instanceof PDFRawStream)) throw new Error("Expected a PDF page content stream")
+        return decoder.decode(decodePDFRawStream(part).decode())
+      }).join("\n")
+      return { ...page.getSize(), commands }
+    })
+  }
+
+  export function unreadablePage(): Blob {
+    return new Blob(["not an image"], { type: "image/png" })
+  }
+}
+import { assert, it } from "@effect/vitest"
+import { encoded, rasterOf, readBytes } from "../src/documents/images.vibe"
+import { correctionReview, validateScanCorners } from "../src/documents/scan-correction.vibe"
+import { createScanDocument } from "../src/documents/scan-document.vibe"
+import { createScanDraftStore } from "../src/documents/scan-draft.vibe"
+import { createScanPdf } from "../src/documents/scan-pdf.vibe"
+import { cancelledPdf, workerPdf } from "./scanPdf.browser.ts"
+import { pdfPages, unreadablePage } from browser
+
+effect function page(width: number, height: number) {
+  return try orDie(encoded(try orDie(rasterOf(undefined, width, height)), "image/png"))
+}
+
+const reason = <A, E extends { readonly reason: string }>(plan: A!E) => map(Effect.flip(plan), (error) => error.reason)
+const line = { text: "Total 12", x: 0.1, y: 0.1, width: 0.5, height: 0.1 }
+
+it.effect('Assemble a document, keep its draft and restore it after reopening (spec/files/scan/review.md, "Story: Assemble a document and retain a reviewable draft")', effect () => {
+  const store = createScanDraftStore(`scan-journey-${Date.now()}`)
+  const first = try page(40, 30), second = try page(30, 40)
+  const document = try createScanDocument({ drafts: store, autosave: true })
+  try document.put(first)
+  try document.put(second)
+  try document.setTextLayers([[line], null])
+  try document.settled()
+  const automatic = try store.readScanDraft()
+  assert.equal(automatic?.pages.length, 2)
+  assert.deepEqual(automatic?.textLayers, [[line], null])
+  assert.equal((try document.snapshot()).state.draftKind, "AutomaticDraft")
+  assert.equal(try reason(store.saveScanDraft([first], undefined)), "conflict")
+  assert.equal(try reason(store.deleteScanDraft("another-revision")), "changed")
+  assert.equal(try document.saveDraft(), true)
+  assert.equal((try document.snapshot()).state.draftKind, "ExplicitDraft")
+  try document.move(0, 1)
+  try document.settled()
+  assert.deepEqual((try store.readScanDraft())?.textLayers, [null, [line]])
+  const reopened = try createScanDocument({ drafts: store })
+  assert.equal(try reopened.loadDraft(effect () => false), "loaded")
+  assert.deepEqual((try reopened.snapshot()).pages.map((item) => item.textLayer), [null, [line]])
+  assert.equal(try reopened.deleteDraft(effect () => true), true)
+  assert.equal(try store.readScanDraft(), undefined)
+  assert.equal(try reason(document.put(try Effect.try(unreadablePage))), "page")
+  assert.equal((try document.close()).length, 2)
+  assert.equal((try document.snapshot()).state.closed, true)
+})
+
+it.effect('Save only the reviewed scan and see whether the save completed (spec/files/scan/review.md, "Story: Save only the reviewed scan and see whether the save completed")', effect () => {
+  const image = try page(60, 40)
+  const document = try createScanDocument({ first: image })
+  const exported: Uint8Array[] = []
+  const cancelled = try document.exportPages(effect (images, layers) => ({ status: "cancelled", message: `${images.length}/${layers.length}` }))
+  assert.equal(cancelled.status, "cancelled")
+  assert.equal((try document.snapshot()).controls.export, true)
+  const saved = try document.exportPages(effect (images) => {
+    exported.push(try orDie(createScanPdf({ title: "Scan", creator: "Files" }, images, [[line]])))
+    return { status: "exported", message: "Saved" }
+  })
+  assert.equal(saved.status, "exported")
+  assert.equal(new TextDecoder().decode(exported[0].subarray(0, 5)), "%PDF-")
+  assert.equal((try document.snapshot()).state.exportResult, "ExportConfirmed")
+  assert.equal(try reason(document.put(image)), "busy")
+  assert.equal(try reason(createScanPdf({ title: "Scan", creator: "Files" }, [image], [[{ ...line, text: "漢字" }]])), "unsupported-text")
+  assert.equal(try reason(createScanPdf({ title: "Scan", creator: "Files" }, [image, image], [[line]])), "page-mismatch")
+  const unknown = try createScanDocument({ first: image })
+  assert.equal((try unknown.exportPages(effect () => ({ status: "requested", message: "Sent" }))).status, "requested")
+  assert.equal((try unknown.snapshot()).controls.export, false)
+})
+
+it.effect('Save the same reviewed text and page geometry in a worker (spec/files/scan/searchablePdf.md, "Story: Save the reviewed text beside the image of its own page")', effect () => {
+  const images = [try page(80, 50), try page(50, 80)]
+  const layers = [[{ ...line, text: "Café 12" }], []]
+  const onPage = try orDie(createScanPdf({ title: "Scan", creator: "Files" }, images, layers))
+  const offPage = try orDie(tryPromise((signal) => workerPdf(images, layers, signal)))
+  const expected = try orDie(tryPromise(() => pdfPages(onPage)))
+  const actual = try orDie(tryPromise(() => pdfPages(offPage)))
+  assert.deepEqual(actual, expected)
+  assert.equal(actual.length, 2)
+  assert.isTrue(actual[0].width > actual[0].height)
+  assert.isTrue(actual[1].height > actual[1].width)
+  assert.include(actual[0].commands, "3 Tr")
+  assert.include(actual[0].commands.toUpperCase(), "<436166E9203132> TJ")
+  assert.notInclude(actual[1].commands, " Tj")
+  assert.isTrue(try orDie(tryPromise(() => cancelledPdf(images, layers))))
+})
+
+it.effect('Preview a perspective correction and replace my page only by adoption (spec/files/scan/correction.md, "Story: Preview a perspective correction and decide whether to replace my page")', effect () => {
+  const original = try page(200, 120)
+  const replaced: Blob[] = []
+  const parent = { current: () => true, documentBytesWith: (next: Blob) => next.size, replace: effect (next: Blob) => { replaced.push(next); return true } }
+  const review = try correctionReview(original, true, parent)
+  try review.move([{ x: 0.1, y: 0.1 }, { x: 0.9, y: 0.05 }, { x: 0.95, y: 0.9 }, { x: 0.05, y: 0.95 }])
+  const preview = try review.generate()
+  assert.equal(preview?.type, "image/jpeg")
+  assert.equal((try review.state()).phase, "PreviewReady")
+  assert.equal(try review.adopt(), true)
+  const adopted = try review.state()
+  assert.deepEqual([adopted.phase, adopted.hasText, adopted.sourceUrl, adopted.previewUrl, adopted.pageRevision], ["Closed", false, false, false, 2])
+  assert.equal(replaced.length, 1)
+  assert.equal((try readBytes(replaced[0])).length, replaced[0].size)
+  const folded = map(Effect.flip(validateScanCorners([{ x: 0, y: 0 }, { x: 1, y: 1 }, { x: 1, y: 0 }, { x: 0, y: 1 }])), (error) => error.reason)
+  assert.equal(try folded, "folded")
+  const stale = try correctionReview(original, true, { ...parent, current: () => false })
+  try stale.generate()
+  assert.equal(try stale.adopt(), false)
+  assert.equal((try stale.state()).hasText, true)
+  assert.equal(replaced.length, 1)
+})

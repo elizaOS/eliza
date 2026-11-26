@@ -1,0 +1,365 @@
+// spec/inbox/reads.md, "Pages keep their first read's identity and expose mailbox shifts"; spec/inbox/reads.md, "Cached reads are keyed by session, credential and account, and dropped on a switch or revocation"; spec/inbox/reads.md, "A restore or save is fenced by its cache epoch and restores only the selected account's checked payload"; spec/inbox/reads.md, "The saved document belongs to one owner, and its writes stop once their cache epoch retires"; spec/inbox/reads.md, "The caches are bounded and evict their oldest entries first"
+import {
+  bodySkipsRead, canAcceptPage, canBegin, canDisconnect, casRetry, clearProvesDeletion, documentAvailable, droppedRead, freshSaved,
+  initial, listRememberAllowed, liveReadKey, machineOver, needsDiscovery, rememberBodyItems, rememberListItems, restoreAllowed,
+  restoreCompatible, saveAllowed, type CacheItem, type Event, type GrantRead, type MailboxFeed as FeedState, type MailboxQuery, type RestoreFence,
+} from "../../gen/inbox__reads.effect.vibe"
+import { sha256Hex, utf8Length } from "./digest.vibe"
+import { gmailReadable } from "./grants.vibe"
+import type { GmailAccount, GmailMessage, GmailReadResult, GmailSearchPage } from "./types.vibe"
+
+export type MailboxFolder = "inbox" | "sent" | "drafts" | "archive" | "trash" | "starred" | "all" | "spam"
+
+export const MAILBOX_FOLDER_QUERY: Readonly<Record<MailboxFolder, string>> = {
+  inbox: "in:inbox", sent: "in:sent", drafts: "in:drafts", archive: "in:archive",
+  trash: "in:trash", starred: "is:starred", all: "-in:spam -in:trash", spam: "in:spam",
+}
+
+export interface MailboxListRequest {
+  readonly connectionId: string
+  readonly folder: MailboxFolder
+  readonly search: string
+}
+
+export interface MailboxReadReceipt {
+  readonly request: MailboxListRequest
+  readonly load: number
+}
+
+export interface MailboxListView {
+  readonly request: MailboxListRequest | null
+  readonly messages: readonly GmailMessage[]
+  readonly nextPageToken: string | null
+  readonly firstPageRevision: string | null
+  readonly shifted: boolean
+}
+
+export interface MailboxFeed {
+  begin(request: MailboxListRequest): (MailboxReadReceipt | null)!!
+  accept(receipt: MailboxReadReceipt, pageToken: string | null, page: GmailSearchPage): boolean!!
+  disconnect(): boolean!!
+  view(): MailboxListView!!
+  state(): FeedState!!
+}
+
+export effect function mailboxFeed(): MailboxFeed!! {
+  const kept = try Ref.make(initial)
+  const feed = try machineOver(() => Ref.get(kept), (next) => Ref.set(kept, next))
+  const rows = new Map<string, GmailMessage>()
+  const connections = new Map<string, number>()
+  let current: MailboxListRequest | null = null
+
+  function queryOf(request: MailboxListRequest): MailboxQuery {
+    const known = connections.get(request.connectionId) ?? connections.size + 1
+    connections.set(request.connectionId, known)
+    return { connection: request.connectionId === "" ? 0 : known, folder: request.folder, query: request.search }
+  }
+
+  return {
+    effect begin(request) {
+      const query = queryOf(request)
+      if (!canBegin(try feed.get(), query)) return null
+      const started = try orDie(feed.send({ type: "begin", query }))
+      rows.clear()
+      current = request
+      return { request, load: started.load }
+    },
+    effect accept(receipt, pageToken, page) {
+      const query = queryOf(receipt.request)
+      const event: Event = {
+        type: "acceptPage", query, receiptLoad: receipt.load, pageToken: pageToken ?? "",
+        page: { messages: page.messages.map((message) => message.id), providerHistory: page.mailboxHistoryId, nextCursor: page.nextPageToken ?? "" },
+      }
+      if (!canAcceptPage(try feed.get(), query, receipt.load, pageToken ?? "")) return false
+      if (pageToken === null) rows.clear()
+      for (const message of page.messages) if (!rows.has(message.id)) rows.set(message.id, message)
+      try orDie(feed.send(event))
+      return true
+    },
+    effect disconnect() {
+      const connected = canDisconnect(try feed.get())
+      if (connected) try orDie(feed.send({ type: "disconnect" }))
+      rows.clear()
+      current = null
+      return connected
+    },
+    state: () => feed.get(),
+    effect view() {
+      const state = try feed.get()
+      return {
+        request: state.key.connection > 0 ? current : null,
+        messages: state.messages.flatMap((id) => rows.get(id) ?? []),
+        nextPageToken: state.cursor === "" ? null : state.cursor,
+        firstPageRevision: state.history === "" ? null : state.history,
+        shifted: state.shifted,
+      }
+    },
+  }
+}
+
+export interface MailReadGrant {
+  readonly session: string
+  readonly credential: string
+  readonly account: GmailAccount | null | undefined
+}
+
+function grantReadOf(grant: MailReadGrant): GrantRead {
+  return { session: grant.session, account: grant.account?.connectionId ?? "", readable: gmailReadable(grant.account) }
+}
+
+export function mailReadKey(grant: MailReadGrant, keyPart: string): string | null {
+  const read = grantReadOf(grant)
+  return liveReadKey(read) ? JSON.stringify([read.session, grant.credential, read.account, keyPart]) : null
+}
+
+export function mailCacheDropped(prior: MailReadGrant, next: MailReadGrant, previousSelection: string, nextSelection: string): boolean {
+  return droppedRead(grantReadOf(prior), grantReadOf(next), previousSelection, nextSelection) || prior.credential !== next.credential
+}
+
+export interface MailboxListSnapshot {
+  readonly key: string
+  readonly account: string
+  readonly at: number
+  readonly firstPageRevision: string | null
+  readonly messages: readonly GmailMessage[]
+  readonly query: string
+  readonly cursor: string | null
+  readonly cursors: readonly string[]
+  readonly shifted: boolean
+}
+
+export interface MailBodyEntry {
+  readonly key: string
+  readonly account: string
+  readonly at: number
+  readonly body: GmailReadResult
+}
+
+export interface MailCaches {
+  rememberList(row: MailboxListSnapshot): boolean!!
+  list(key: string, now: number): (MailboxListSnapshot | undefined)!!
+  rememberBody(entry: MailBodyEntry): void!!
+  body(key: string, now: number): ({ readonly entry: MailBodyEntry; readonly skipsRead: boolean } | undefined)!!
+  restore(lists: readonly MailboxListSnapshot[], bodies: readonly MailBodyEntry[], now: number): void!!
+  contents(): { readonly lists: readonly MailboxListSnapshot[]; readonly bodies: readonly MailBodyEntry[] }!!
+  clear(): void!!
+}
+
+export effect function mailCaches(): MailCaches!! {
+  const lists = new Map<string, MailboxListSnapshot>()
+  const bodies = new Map<string, MailBodyEntry>()
+  const listOrder = try Ref.make<readonly CacheItem[]>([])
+  const bodyOrder = try Ref.make<readonly CacheItem[]>([])
+
+  effect function keepLists(row: MailboxListSnapshot): void!! {
+    const budget = rememberListItems([...(try Ref.get(listOrder))], { key: row.key, bytes: 0 })
+    const keys = new Set(budget.kept.map((item) => item.key))
+    lists.set(row.key, row)
+    for (const key of lists.keys()) if (!keys.has(key)) lists.delete(key)
+    try Ref.set(listOrder, budget.kept)
+  }
+
+  effect function keepBody(entry: MailBodyEntry): void!! {
+    const budget = rememberBodyItems([...(try Ref.get(bodyOrder))], { key: entry.key, bytes: utf8Length(JSON.stringify(entry.body)) })
+    const keys = new Set(budget.kept.map((item) => item.key))
+    bodies.set(entry.key, entry)
+    for (const key of bodies.keys()) if (!keys.has(key)) bodies.delete(key)
+    try Ref.set(bodyOrder, budget.kept)
+  }
+
+  return {
+    effect rememberList(row) {
+      if (!listRememberAllowed(row.query, row.messages.length)) return false
+      try keepLists({ ...row, messages: [...row.messages], cursors: [...row.cursors] })
+      return true
+    },
+    effect list(key, now) {
+      const row = lists.get(key)
+      if (row === undefined) return undefined
+      if (freshSaved(row.at, now)) return row
+      lists.delete(key)
+      try Ref.update(listOrder, (order) => order.filter((item) => item.key !== key))
+      return undefined
+    },
+    effect rememberBody(entry) {
+      try keepBody(entry)
+    },
+    effect body(key, now) {
+      const entry = bodies.get(key)
+      if (entry === undefined || !freshSaved(entry.at, now)) return undefined
+      return { entry, skipsRead: bodySkipsRead(entry.at, now) }
+    },
+    effect restore(restoredLists, restoredBodies, now) {
+      for (const row of restoredLists.toSorted((left, right) => left.at - right.at)) {
+        if (freshSaved(row.at, now) && listRememberAllowed(row.query, row.messages.length)) try keepLists(row)
+      }
+      for (const entry of restoredBodies.toSorted((left, right) => left.at - right.at)) {
+        if (freshSaved(entry.at, now)) try keepBody(entry)
+      }
+    },
+    effect contents() {
+      const listKeys = (try Ref.get(listOrder)).map((item) => item.key)
+      const bodyKeys = (try Ref.get(bodyOrder)).map((item) => item.key)
+      return { lists: listKeys.flatMap((key) => lists.get(key) ?? []), bodies: bodyKeys.flatMap((key) => bodies.get(key) ?? []) }
+    },
+    effect clear() {
+      lists.clear()
+      bodies.clear()
+      try Ref.set(listOrder, [])
+      try Ref.set(bodyOrder, [])
+    },
+  }
+}
+
+export interface SavedMailbox {
+  readonly version: 1
+  readonly owner: string
+  readonly accounts: readonly GmailAccount[]
+  readonly selected: string
+  readonly spamTrashSearch: boolean
+  readonly lists: readonly MailboxListSnapshot[]
+  readonly bodies: readonly MailBodyEntry[]
+}
+
+const Text = Schema.String
+const Account = Schema.Struct({
+  configured: Schema.Boolean, connected: Schema.Boolean, reason: Text, connectionId: Schema.NullOr(Text),
+  grantedCapabilities: Schema.Array(Text), label: Text,
+})
+const Message = Schema.Struct({
+  id: Text.check(Schema.isMinLength(1)), threadId: Text, subject: Text, from: Text, fromEmail: Schema.NullOr(Text), to: Schema.Array(Text),
+  cc: Schema.Array(Text), hasAttachments: Schema.optionalKey(Schema.Boolean), snippet: Text, receivedAt: Text, unread: Schema.Boolean, starred: Schema.Boolean, historyId: Schema.NullOr(Text),
+})
+const Link = Schema.Struct({ href: Text, text: Text })
+const Attachment = Schema.Struct({ partId: Text, name: Text, mimeType: Text, size: Schema.Number, supported: Schema.Boolean })
+const Body = Schema.Struct({
+  message: Message, bodyText: Text, bodyHtml: Schema.optionalKey(Text), bodyHtmlOmitted: Schema.optionalKey(Schema.Literal(true)),
+  links: Schema.Array(Link), omittedLinks: Schema.optionalKey(Schema.Number), historyId: Schema.NullOr(Text),
+  attachments: Schema.Array(Attachment), authenticationResults: Schema.NullOr(Text),
+})
+const ListRow = Schema.Struct({
+  key: Text, account: Text, at: Schema.Number, firstPageRevision: Schema.NullOr(Text), messages: Schema.Array(Message),
+  query: Text, cursor: Schema.NullOr(Text), cursors: Schema.Array(Text), shifted: Schema.Boolean,
+})
+const BodyRow = Schema.Struct({ key: Text, account: Text, at: Schema.Number, body: Body })
+const Saved = Schema.Struct({
+  version: Schema.Literal(1), owner: Text, accounts: Schema.Array(Account), selected: Text, spamTrashSearch: Schema.Boolean,
+  lists: Schema.Array(Schema.Unknown), bodies: Schema.Array(Schema.Unknown),
+})
+const decodeSaved = Schema.decodeUnknownOption(Schema.fromJsonString(Saved))
+const decodeList = Schema.decodeUnknownOption(ListRow)
+const decodeBody = Schema.decodeUnknownOption(BodyRow)
+
+export type MailRestoreFence = RestoreFence
+
+export interface RestoredMailbox {
+  readonly accounts: readonly GmailAccount[]
+  readonly selected: string
+  readonly chosen: GmailAccount
+  readonly spamTrashSearch: boolean
+  readonly lists: readonly MailboxListSnapshot[]
+  readonly bodies: readonly MailBodyEntry[]
+}
+
+export function readSavedMailbox(raw: string, owner: string, hint: string | null, readKeyMatches: (row: { readonly key: string }) => boolean): RestoredMailbox | null {
+  const decoded = decodeSaved(raw)
+  if (Option.isNone(decoded)) return null
+  const saved = decoded.value
+  const entries = saved.lists.length + saved.bodies.length
+  if (!documentAvailable({ expectedOwner: saved.owner === owner, versionOne: true, entryCount: entries, documentBytes: utf8Length(raw) })) return null
+  if (hint !== null && hint !== saved.selected) return null
+  const chosen = saved.accounts.find((account) => account.connectionId === saved.selected && gmailReadable(account))
+  if (chosen === undefined) return null
+  const compatible = (row: { readonly key: string; readonly account: string }) => restoreCompatible(saved.selected, row.account, readKeyMatches(row))
+  return {
+    accounts: saved.accounts,
+    selected: saved.selected,
+    chosen,
+    spamTrashSearch: saved.spamTrashSearch,
+    lists: saved.lists.flatMap((row) => Option.toArray(decodeList(row))).filter(compatible),
+    bodies: saved.bodies.flatMap((row) => Option.toArray(decodeBody(row))).filter(compatible),
+  }
+}
+
+export type InboxSummaryMessage = Pick<GmailMessage, "id" | "subject" | "from" | "unread">
+
+export function readSavedInboxSummary(raw: string, owner: string, hint: string | null, now: number) {
+  const restored = readSavedMailbox(raw, owner, hint, () => true)
+  if (restored === null) return null
+  const row = restored.lists
+    .filter((list) => list.query === MAILBOX_FOLDER_QUERY.inbox && freshSaved(list.at, now) && list.messages.length <= 100)
+    .toSorted((left, right) => right.at - left.at)[0]
+  if (row === undefined) return null
+  return {
+    account: restored.chosen,
+    messages: row.messages.map(({ id, subject, from, unread }): InboxSummaryMessage => ({ id, subject, from, unread })),
+    more: row.cursor !== null,
+    readAt: row.at,
+  }
+}
+
+export function mailRestoreAllowed(captured: MailRestoreFence, active: MailRestoreFence, viewActive: boolean, revoked: boolean): boolean {
+  return restoreAllowed(captured, active, viewActive, revoked)
+}
+
+export interface MailSaveFacts {
+  readonly selected: string
+  readonly failedRead: boolean
+  readonly capturedEpoch: number
+  readonly activeEpoch: number
+  readonly capturedSelection: string
+  readonly listAccount: string
+}
+
+export function mailSaveAllowed(facts: MailSaveFacts): boolean {
+  return saveAllowed(facts.selected, facts.failedRead, facts.capturedEpoch, facts.activeEpoch, facts.capturedSelection, facts.listAccount)
+}
+
+export function accountsNeedDiscovery(accountsFromDisk: boolean, accountListAgeMs: number): boolean {
+  return needsDiscovery(accountsFromDisk, accountListAgeMs)
+}
+
+export error MailStoreFailed { cause: unknown }
+
+export interface SavedMailboxStore {
+  read(name: string): (string | undefined)!MailStoreFailed
+  compareExchange(name: string, expected: string | undefined, next: string | undefined): ("saved" | "conflict")!MailStoreFailed
+}
+
+export effect function savedMailboxName(owner: string, organization: string, credential: string): string!! {
+  return `inbox-mailbox:v1:${try sha256Hex(JSON.stringify([owner, organization, credential]))}`
+}
+
+effect function exchange(store: SavedMailboxStore, name: string, next: string | undefined, launchEpoch: number, currentEpoch: () => number): boolean!MailStoreFailed {
+  let attempt = 1
+  for (;;) {
+    if (currentEpoch() !== launchEpoch) return false
+    const expected = try store.read(name)
+    const result = try store.compareExchange(name, expected, next)
+    if (result === "saved") return true
+    if (!casRetry(attempt, true, launchEpoch, currentEpoch())) return false
+    attempt += 1
+  }
+}
+
+export effect function saveMailbox(store: SavedMailboxStore, name: string, saved: SavedMailbox, launchEpoch: number, currentEpoch: () => number): boolean!MailStoreFailed {
+  if (saved.lists.length + saved.bodies.length > 24) return false
+  return try exchange(store, name, JSON.stringify(saved), launchEpoch, currentEpoch)
+}
+
+export effect function clearMailbox(store: SavedMailboxStore, name: string, launchEpoch: number, currentEpoch: () => number): boolean!MailStoreFailed {
+  const written = try exchange(store, name, undefined, launchEpoch, currentEpoch)
+  return clearProvesDeletion(written ? 1 : 0, written)
+}
+
+export interface InboxAttention {
+  readonly state: "not-connected" | "loading" | "ready" | "error" | "stale"
+  readonly unread: number | undefined
+  readonly unreadMore: boolean
+  readonly source: string | null
+  readonly updatedAt: string | null
+}
+
+export function inboxAttentionFor(messages: readonly Pick<GmailMessage, "unread">[], more: boolean, source: string | null, updatedAt: string, state: "ready" | "stale" = "ready"): InboxAttention {
+  return { state, unread: messages.filter((message) => message.unread).length, unreadMore: more, source, updatedAt }
+}

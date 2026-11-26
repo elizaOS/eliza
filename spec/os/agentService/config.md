@@ -5,25 +5,30 @@ The host profile's `agent` entry (`spec/os/build/androidHost.md`) names three
 consumer files, which the build copies to `assets/agent/host.json`,
 `assets/agent/character.json` and `assets/agent/policy.json` and declares the
 consumer's service subclass with `foregroundServiceType="specialUse"` and
-`FOREGROUND_SERVICE_SPECIAL_USE`. At each start the service reads the three
-files, decides here whether they are admitted, and writes the agent's launch
-document (`spec/agent/host/launch.md`, imported as `Launch`), which owns every
-launch field and its meaning; os adds only its service fields.
+`FOREGROUND_SERVICE_SPECIAL_USE`; the build refuses files this spec does not
+admit, so none ships that the service would refuse. At each start the service
+reads the three files, decides here whether they are admitted, and writes the
+agent's launch document (`spec/agent/host/launch.md`, imported as `Launch`),
+which owns every launch field and its meaning; os adds only its service
+fields.
 
 The host file holds os's own fields, `service` (the subclass's class name),
-`notification {channel, title, text}` and `routes` (the renderer's route list,
-`spec/agent/access/routes.md`), and the launch objects `Launch` types: `model`
+`notification {channel, title, text, failure {channel, title, text}}` and
+`routes` (the renderer's route list, `spec/agent/access/routes.md`), and the launch objects `Launch` types: `model`
 (backend, `cloudBaseUrl`, `smallModel`, `largeModel`, `imageModel`, own-key
 fields), `embeddings` and `embeddingDimensions`, `persistMemory`,
-`callerRole`, `views`, `timeZone`, `privacy`, `google`, `retention` and
-`environment`. There is no separate `cloud {…}` record. The character file is
+`callerRole`, `views`, `timeZone`, `hostContextRevision`, `privacy`,
+`google`, `retention` and `environment`. The service forwards
+`hostContextRevision` as a positive safe integer when the host file
+provides it. A host file without `timeZone` launches with the device's zone
+at that start. There is no separate `cloud {…}` record. The character file is
 `Launch`'s character and the policy file its `policy` (`actions.allowed`,
 `plugins.load`, optional `plugins.product`); a deny list or a refused-action
 list is not part of it. Reading the assets, JSON decoding, the class-name and
 URL patterns, trimming and digests stay in the shell: a file that is missing
 or does not decode under its schema is a configuration error before this
-spec sees it. The subclass may override `runtimeNotification()` and the
-channel hook; the words below are what it shows when it does not. Sources:
+spec sees it. The subclass may override `runtimeNotification()`,
+`runtimeFailureNotification()` and the channel hooks; the words below are what it shows when it does not. Sources:
 the pinned `EmbeddedAgentConfig.java` (asset limit, notification words,
 service class, environment and character checks) and the launch settings of
 the device hosts it replaces.
@@ -45,7 +50,8 @@ import credential as C from "../signIn/credential"
 import runtimePayload as RP from "../build/runtimePayload"
 type ServiceClass = QualifiedClass({ className: str }) | MalformedClass
 type Words = { words: str, units: int }
-type Notification = { channel: Words, title: Words, text: Words }
+type NoticeWords = { channel: Words, title: Words, text: Words }
+type Notification = { channel: Words, title: Words, text: Words, failure: NoticeWords }
 type HostLaunch = { backend: Launch::Backend, embeddings: Launch::Embeddings, persistMemory: bool, callerRole: Launch::CallerRole, google: Launch::GoogleConsent, retention: Launch::Retention, environment: List[Launch::EnvEntry] }
 type HostFile = { schema: int, service: ServiceClass, notification: Notification, routes: Routes::RouteList, launch: HostLaunch }
 type PolicyFile = { schema: int, policy: Launch::LaunchPolicy }
@@ -55,15 +61,23 @@ pure def filesFit(d: AgentData): bool =
   d.hostBytes <= maxFileBytes and d.characterBytes <= maxFileBytes and d.policyBytes <= maxFileBytes and d.host.schema == 1 and d.policy.schema == 1
 ```
 
-### The host file names a qualified service class and notification words of 1 to 200 characters
+### The host file names a qualified service class, and status and failure notification words of 1 to 200 characters on two differently named channels
 
-The channel name, title and text are each counted after trimming. The class
-must be a qualified Java name (`a.b.C`), decided by the shell's pattern.
+The status words (`channel`, `title`, `text`) are shown while the agent
+starts, runs or stops; the failure words (`failure.channel`, `failure.title`,
+`failure.text`) are shown while it has failed, on their own alerts channel, so
+an owner who silences the status channel still sees a failure. Each channel
+name, title and text is counted after trimming, and the two channel names
+differ after trimming, so the owner can tell the channels apart in the
+system settings. The class must be a qualified Java name (`a.b.C`), decided
+by the shell's pattern.
 
 ```quint
 pure val maxWordUnits: int = 200
 pure def wordsAdmitted(w: Words): bool = w.units >= 1 and w.units <= maxWordUnits
-pure def notificationAdmitted(n: Notification): bool = wordsAdmitted(n.channel) and wordsAdmitted(n.title) and wordsAdmitted(n.text)
+pure def noticeWordsAdmitted(n: NoticeWords): bool = wordsAdmitted(n.channel) and wordsAdmitted(n.title) and wordsAdmitted(n.text)
+pure def notificationAdmitted(n: Notification): bool =
+  noticeWordsAdmitted({ channel: n.channel, title: n.title, text: n.text }) and noticeWordsAdmitted(n.failure) and n.failure.channel.words != n.channel.words
 pure def serviceNamed(s: ServiceClass): bool = match s { | QualifiedClass(q) => q.className != "" | MalformedClass => false }
 ```
 
@@ -220,6 +234,41 @@ pure def lawOwnKeyLaunchIsFramedWithTheProviderKeyOrNone(d: AgentData, cred: C::
 pure val providerVersionValues = Set(0, 1, 2)
 ```
 
+### Only a cloud launch is handed the mail broker, by its address and a bearer for that launch, never a credential
+
+When the consumer has registered the device's mail broker
+([cloud requests](../signIn/cloudRequests.md)) and it opens for the launch's
+account, a cloud launch's process environment names the broker's loopback
+endpoint as `ELIZA_MANAGED_GMAIL_READ_BROKER` and a bearer made for this
+launch as `ELIZA_MANAGED_GMAIL_READ_BROKER_TOKEN`. The launch document never
+names either. An own-key or keyless launch, or a broker that is not
+registered or could not open, is handed none, and the agent then reads mail
+as it would without a device; no earlier launch's bearer is admitted from
+then on. The broker opens for a launch only once the live service goes on
+to spawn it, and that launch's bearer is refused if the spawn fails, once
+its agent exits, and when the service stops. A launch is named only a
+broker that the consumer has registered and that has not been closed: a
+closed broker opens for no launch. When the consumer registers another
+broker, one that no launch holds is closed at once; one a launch holds
+keeps serving that launch until its bearer is refused and is closed then,
+so the agent never names a port that its broker no longer serves. A
+starting or running agent is then restarted so that its next launch is
+handed the new broker, and a stopping agent's exit decides what follows
+as before ([lifecycle](./lifecycle.md)). The bearer admits only the
+broker's reads for that account; the device key, the account session and
+the lease stay in the app. Source: the old line's
+`native-managed-google-host.ts`, which published the broker the same way.
+
+```quint
+type BrokerHandoff = BrokerNamed | NoBroker
+pure def brokerHandoff(d: AgentData, brokerOpen: bool): BrokerHandoff =
+  if (needsAccount(d.host.launch.backend) and brokerOpen) BrokerNamed else NoBroker
+pure val brokerOpenValues = Set(true, false)
+pure def lawOnlyACloudLaunchIsHandedTheBroker(d: AgentData, brokerOpen: bool): bool =
+  (brokerHandoff(d, brokerOpen) == BrokerNamed) implies needsAccount(d.host.launch.backend)
+pure def lawABrokerThatDidNotOpenIsHandedToNoLaunch(d: AgentData): bool = brokerHandoff(d, false) == NoBroker
+```
+
 ### A ready launch is admitted unless its backend needs a fitting credential and the frame lacks one
 
 The service refuses an oversized own-key provider key as invalid launch
@@ -273,11 +322,12 @@ pure val credValues = {
 pure val otherCredValues = credValues
 pure val dValues = {
   val words: Words = { words: "Agent", units: 5 }
+  val failure: NoticeWords = { channel: { words: "Agent alerts", units: 12 }, title: words, text: words }
   val status: Routes::Route = { method: Routes::Get, delivery: Routes::Buffered, path: List(Routes::Literal({ text: "api" }), Routes::Literal({ text: "status" })), query: List(), limit: Routes::AnySize }
   val cloud = Launch::CloudBackend({ baseUrl: "https://cloud.example", baseUrlShape: Launch::HttpsOrigin, smallModel: "", largeModel: "", imageModel: "" })
   val launch: HostLaunch = { backend: cloud, embeddings: Launch::NoEmbeddings, persistMemory: false, callerRole: Launch::ChatAsUser,
     google: { gmailChanges: false, calendarEdits: false }, retention: Launch::KeepLogs, environment: List() }
-  val host: HostFile = { schema: 1, service: QualifiedClass({ className: "app.example.AgentService" }), notification: { channel: words, title: words, text: words },
+  val host: HostFile = { schema: 1, service: QualifiedClass({ className: "app.example.AgentService" }), notification: { channel: words, title: words, text: words, failure: failure },
     routes: List({ prefixes: List(List()), id: Routes::flatParam, routes: List(status) }), launch: launch }
   val good: AgentData = { hostBytes: 900, characterBytes: 400, policyBytes: 300, host: host,
     character: { name: "Agent", nameUnits: 5, systemBlank: false },
@@ -287,7 +337,9 @@ pure val dValues = {
     { ...good, host: { ...host, launch: { ...launch, backend: Launch::OwnKeyBackend({ baseUrl: "https://own.example/v1", baseUrlShape: Launch::HttpsWithPath, smallModel: "small", largeModel: "large" }) } } },
     { ...good, host: { ...host, launch: { ...launch, backend: Launch::CloudBackend({ baseUrl: "https://cloud.example/api/v1", baseUrlShape: Launch::HttpsWithPath, smallModel: "", largeModel: "", imageModel: "" }) } } },
     { ...good, hostBytes: maxFileBytes + 1 },
-    { ...good, host: { ...host, notification: { channel: words, title: words, text: { words: "", units: 0 } } } },
+    { ...good, host: { ...host, notification: { channel: words, title: words, text: { words: "", units: 0 }, failure: failure } } },
+    { ...good, host: { ...host, notification: { channel: words, title: words, text: words, failure: { ...failure, text: { words: "", units: 0 } } } } },
+    { ...good, host: { ...host, notification: { channel: words, title: words, text: words, failure: { ...failure, channel: words } } } },
     { ...good, host: { ...host, service: MalformedClass } },
     { ...good, host: { ...host, routes: List() } },
     { ...good, policy: { ...good.policy, schema: 2 } },

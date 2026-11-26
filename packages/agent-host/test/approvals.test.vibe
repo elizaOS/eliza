@@ -1,0 +1,152 @@
+// spec/agent/approvals.md, "Story: Resolve what I reviewed, only on the screen"; spec/agent/approvals.md, "Story: See the requests waiting for me"
+import { assert, it } from "@effect/vitest"
+import { Service, type IAgentRuntime } from "@elizaos/core"
+import type { AgentPlugin } from "../src/host/module.vibe"
+import {
+  calendarApprovalExecutorServiceType, OwnerApprovalsService, ownerApprovalsServiceType,
+  type ApprovalRecord, type CalendarApprovalExecutor, type LedgerOutcome, type NewApproval,
+} from "../src/approvals/queue.vibe"
+import { ask, host, startInProcess, type InProcess } from "./support/kernel.vibe"
+
+const executed: string[] = []
+
+class FixtureCalendarExecutor extends Service implements CalendarApprovalExecutor {
+  static override serviceType = calendarApprovalExecutorServiceType
+  override capabilityDescription = "Runs an approved calendar change in the test"
+
+  static override start(runtime: IAgentRuntime): Promise<Service> {
+    return Promise.resolve(new FixtureCalendarExecutor(runtime))
+  }
+
+  execute(request: ApprovalRecord): Promise<LedgerOutcome> {
+    executed.push(request.id)
+    return Promise.resolve({ result: "ChangeSucceeded", text: "Calendar change made." })
+  }
+
+  override stop(): Promise<void> {
+    return Promise.resolve()
+  }
+}
+
+const executorPlugin = {
+  name: "calendar-executor-fixture",
+  description: "Registers the calendar approval executor for the approvals journey.",
+  services: [FixtureCalendarExecutor],
+} satisfies AgentPlugin
+
+const withExecutor = {
+  launch: { load: ["@elizaos/agent/approvals", executorPlugin.name] },
+  bundled: new Map<string, AgentPlugin>([[executorPlugin.name, executorPlugin]]),
+}
+const withoutExecutor = { launch: { load: ["@elizaos/agent/approvals"] } }
+
+interface WireApproval {
+  readonly id: string
+  readonly state: string
+  readonly revision: string
+  readonly [field: string]: unknown
+}
+
+effect function queue(agent: InProcess) {
+  try host("approvals start", () => agent.agent.runtime.getServiceLoadPromise(ownerApprovalsServiceType))
+  const found = agent.agent.runtime.getService(ownerApprovalsServiceType)
+  return try Effect.try(() => {
+    assert.instanceOf(found, OwnerApprovalsService)
+    return found as OwnerApprovalsService
+  })
+}
+
+effect function enqueue(service: OwnerApprovalsService, rows: readonly NewApproval[]) {
+  const made: ApprovalRecord[] = []
+  for (const row of rows) made.push(try host(`request ${row.id}`, () => service.request(row)))
+  return made
+}
+
+const calendarRequest = (id: string, expiresAt: string, action = "schedule_event"): NewApproval => ({
+  id, subjectUserId: "owner-1", requestedBy: "calendar-fixture", action,
+  payload: { title: `Event ${id}`, start: "2026-12-01T10:00:00.000Z" }, reason: "The assistant proposed it", expiresAt,
+})
+const later = "2099-01-01T00:00:00.000Z"
+const past = "2000-01-01T00:00:00.000Z"
+
+const list = (agent: InProcess, query = "") => ask(agent, { method: "GET", path: `/api/approvals${query}` })
+const resolve = (agent: InProcess, id: string, decision: "approve" | "reject", revision: string) =>
+  ask(agent, { method: "POST", path: `/api/approvals/${id}/resolve`, body: { decision, revision } })
+const rowsOf = (body: unknown): WireApproval[] => (body as { approvals: WireApproval[] }).approvals
+const rowOf = (body: unknown, id: string): WireApproval | undefined => rowsOf(body).find((row) => row.id === id)
+
+it.effect('An enqueued request is listed and resolved once with its listed revision (spec/agent/approvals.md, "The list shows at most 500 requests of the asked phase, newest first, and changes nothing"; spec/agent/approvals.md, "Every decision changes the revision, so one review decides at most once"; spec/agent/approvals.md, "Declining never runs the change, and approving never declines")', effect () => {
+  executed.length = 0
+  const agent = try startInProcess(withExecutor)
+  const service = try queue(agent)
+  try host("executor start", () => agent.agent.runtime.getServiceLoadPromise(calendarApprovalExecutorServiceType))
+  try enqueue(service, [calendarRequest("lunch", later), calendarRequest("dentist", later)])
+
+  const pending = try list(agent)
+  const refused = try Effect.forEach(["?state=open", "?limit=0", "?limit=1.5", "?limit=-3"], (query) => list(agent, query))
+  const capped = try list(agent, "?state=all&limit=900")
+  try Effect.try(() => {
+    assert.strictEqual(pending.status, 200)
+    assert.deepStrictEqual(rowsOf(pending.body).map(({ id, state }) => [id, state]), [["dentist", "pending"], ["lunch", "pending"]])
+    assert.match(String((pending.body as { ownerEntityId?: unknown }).ownerEntityId), /^[0-9a-f-]{36}$/)
+    assert.deepStrictEqual(Object.keys(rowsOf(pending.body)[0] ?? {}).sort(),
+      ["action", "createdAt", "expiresAt", "id", "payload", "reason", "revision", "state", "subjectUserId", "updatedAt"])
+    assert.deepStrictEqual(refused.map(({ status }) => status), [400, 400, 400, 400])
+    assert.deepStrictEqual([capped.status, rowsOf(capped.body).length], [200, 2])
+  })
+
+  const lunch = rowOf(pending.body, "lunch")
+  const dentist = rowOf(pending.body, "dentist")
+  const approved = try resolve(agent, "lunch", "approve", lunch?.revision ?? "")
+  const again = try resolve(agent, "lunch", "approve", lunch?.revision ?? "")
+  const declined = try resolve(agent, "dentist", "reject", dentist?.revision ?? "")
+  const everything = try list(agent, "?state=all")
+  const done = try list(agent, "?state=done")
+  try Effect.try(() => {
+    assert.deepStrictEqual(approved, { status: 200, body: { requestId: "lunch", decision: "approve", kind: "succeeded", text: "Calendar change made." } })
+    assert.strictEqual(again.status, 409)
+    assert.deepStrictEqual([declined.status, (declined.body as { kind: string }).kind], [200, "rejected"])
+    assert.deepStrictEqual(executed, ["lunch"])
+    assert.deepStrictEqual(rowsOf(everything.body).map(({ id, state }) => [id, state]), [["dentist", "rejected"], ["lunch", "done"]])
+    assert.notStrictEqual(rowOf(everything.body, "lunch")?.revision, lunch?.revision)
+    assert.deepStrictEqual(rowsOf(done.body).map(({ id }) => id), ["lunch"])
+  })
+}, 120_000)
+
+it.effect('An expired request is stale and then listed as expired; another kind is not found (spec/agent/approvals.md, "A decision applies only to an open calendar request whose revision is the one reviewed"; spec/agent/approvals.md, "A passed expiry changes no phase and no revision until a decision meets it")', effect () => {
+  executed.length = 0
+  const agent = try startInProcess(withExecutor)
+  const service = try queue(agent)
+  try enqueue(service, [calendarRequest("lapsed", past), calendarRequest("message", later, "send_message")])
+
+  const pending = try list(agent)
+  const lapsed = rowOf(pending.body, "lapsed")
+  const stale = try resolve(agent, "lapsed", "reject", lapsed?.revision ?? "")
+  const expired = try list(agent, "?state=expired")
+  const other = try resolve(agent, "message", "approve", rowOf(pending.body, "message")?.revision ?? "")
+  const unknown = try resolve(agent, "nowhere", "reject", "[]")
+  try Effect.try(() => {
+    assert.strictEqual(lapsed?.state, "pending")
+    assert.strictEqual(stale.status, 409)
+    assert.deepStrictEqual(rowsOf(expired.body).map(({ id, state }) => [id, state]), [["lapsed", "expired"]])
+    assert.deepStrictEqual([other.status, unknown.status], [404, 404])
+    assert.deepStrictEqual(executed, [])
+  })
+}, 120_000)
+
+it.effect('Approving without the calendar executor answers 503 and changes nothing; declining still works (spec/agent/approvals.md, "Without the calendar executor an approval changes nothing"; spec/agent/approvals.md, "Declining never runs the change, and approving never declines")', effect () => {
+  const agent = try startInProcess(withoutExecutor)
+  const service = try queue(agent)
+  try enqueue(service, [calendarRequest("standup", later)])
+
+  const before = try list(agent)
+  const standup = rowOf(before.body, "standup")
+  const unavailable = try resolve(agent, "standup", "approve", standup?.revision ?? "")
+  const after = try list(agent)
+  const declined = try resolve(agent, "standup", "reject", standup?.revision ?? "")
+  try Effect.try(() => {
+    assert.strictEqual(unavailable.status, 503)
+    assert.deepStrictEqual(rowOf(after.body, "standup"), standup)
+    assert.deepStrictEqual([declined.status, (declined.body as { kind: string }).kind], [200, "rejected"])
+  })
+}, 120_000)

@@ -1,0 +1,186 @@
+// spec/files/scan/drafts.md, "A stored draft decodes to complete, ordered pages"; spec/files/scan/drafts.md, "A save snapshots bytes before the transaction and compares the latest stored revision"; spec/files/scan/drafts.md, "Mutations acknowledge only the committed transaction"
+module browser {
+  import type { DraftMutation, DraftWriteFacts } from "../../gen/files__scan__drafts.effect.vibe"
+
+  export type TxOutcome = "committed" | "refused" | "aborted" | "failed"
+  export interface TxAnswer { readonly facts?: DraftWriteFacts; readonly row?: unknown; readonly outcome: TxOutcome }
+
+  function open(name: string): Promise<IDBDatabase> {
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open(name, 1)
+      request.onupgradeneeded = () => request.result.createObjectStore("drafts", { keyPath: "id" })
+      request.onsuccess = () => resolve(request.result)
+      request.onerror = () => reject(request.error)
+      request.onblocked = () => reject(new Error("blocked"))
+    })
+  }
+
+  export async function readRow(name: string): Promise<unknown> {
+    const db = await open(name)
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction("drafts", "readonly")
+      const request = tx.objectStore("drafts").get("document")
+      tx.oncomplete = () => { db.close(); resolve(request.result) }
+      tx.onabort = tx.onerror = () => { db.close(); reject(tx.error) }
+    })
+  }
+
+  export async function mutateRow(name: string, kind: DraftMutation, decide: (raw: unknown) => { readonly facts: DraftWriteFacts; readonly put?: unknown; readonly admitted: boolean },
+    signal: AbortSignal): Promise<TxAnswer> {
+    signal.throwIfAborted()
+    const db = await open(name)
+    return new Promise((resolve) => {
+      const tx = db.transaction("drafts", "readwrite")
+      let answer: TxAnswer = { outcome: "failed" }
+      const settle = (outcome: TxOutcome) => {
+        signal.removeEventListener("abort", abort)
+        db.close()
+        resolve({ ...answer, outcome })
+      }
+      const abort = () => { answer = { ...answer, outcome: "aborted" }; tx.abort() }
+      signal.addEventListener("abort", abort, { once: true })
+      tx.oncomplete = () => settle(answer.outcome === "refused" ? "refused" : "committed")
+      tx.onabort = tx.onerror = () => settle(answer.outcome === "refused" ? "refused" : answer.outcome === "aborted" ? "aborted" : "failed")
+      const store = tx.objectStore("drafts")
+      const request = store.get("document")
+      request.onsuccess = () => {
+        const decision = decide(request.result)
+        answer = { facts: decision.facts, row: decision.put, outcome: decision.admitted ? "committed" : "refused" }
+        if (!decision.admitted) tx.abort()
+        else if (kind === "DeleteDraftRow") store.delete("document")
+        else store.put(decision.put)
+      }
+    })
+  }
+
+  /** @throws {never} */
+  export function freshRevision(): string {
+    return crypto.randomUUID()
+  }
+}
+
+import { admitsDraftWrite, initial, machineOver, scanReadOutcome, type DraftMutation, type DraftTx, type DraftWriteFacts } from "../../gen/files__scan__drafts.effect.vibe"
+import { blobOf, pageSetAdmitted, readBytes, type ImageRefused } from "./images.vibe"
+import { admittedTextLayer, copyScanTextLayers, type TextLayerRefused, type ScanTextLine } from "./scan-text-layer.vibe"
+import { field } from "./record-field.vibe"
+import { freshRevision, mutateRow, readRow, type TxOutcome } from browser
+
+
+export interface ScanDraft {
+  readonly id: "document"
+  readonly revision: string
+  readonly pages: readonly Blob[]
+  readonly textLayers?: readonly (ScanTextLine[] | null)[]
+  readonly updated: number
+}
+
+export type DraftRefusal = "unreadable" | "pages" | "incomplete-page" | "conflict" | "changed" | "cancelled" | "storage"
+
+const draftText: Readonly<Record<DraftRefusal, string>> = {
+  unreadable: "Saved draft could not be read.",
+  pages: "Choose 1 to 20 images, up to 64 MB total.",
+  "incomplete-page": "Could not read the complete page.",
+  conflict: "A saved draft already exists or changed. Load the saved draft before replacing it.",
+  changed: "Saved draft changed. Load it before deleting.",
+  cancelled: "Draft storage was cancelled.",
+  storage: "Draft storage interrupted.",
+}
+
+export error DraftRefused { reason: DraftRefusal; message: string }
+
+const refused = (reason: DraftRefusal) => new DraftRefused({ reason, message: draftText[reason] })
+
+type StoredPage = { readonly bytes: ArrayBuffer; readonly type: string }
+type Decoded = { readonly draft?: ScanDraft; readonly decodable: boolean; readonly present: boolean; readonly revision?: string }
+
+function decodeRow(raw: unknown): Decoded {
+  if (raw === undefined) return { present: false, decodable: false }
+  const revision = field(raw, "revision"), updated = field(raw, "updated"), stored = field(raw, "pages"), layers = field(raw, "textLayers")
+  const envelopeValid = field(raw, "id") === "document" && typeof revision === "string" && revision !== "" && typeof updated === "number"
+    && Number.isFinite(updated) && field(raw, "format") === 2 && Array.isArray(stored)
+  const items: readonly unknown[] = Array.isArray(stored) ? stored : []
+  const representationMatches = items.every((page) => field(page, "bytes") instanceof ArrayBuffer && typeof field(page, "type") === "string")
+  const pages = representationMatches ? (items as readonly StoredPage[]).map((page) => blobOf([page.bytes], page.type)) : []
+  const copied = Array.isArray(layers) ? (layers as readonly unknown[]).map((lines) => (lines === null ? null : admittedTextLayer(lines))) : undefined
+  const outcome = scanReadOutcome({
+    exists: true, envelopeValid, representationMatches, pageCount: pages.length, totalBytes: pages.reduce((total, page) => total + page.size, 0),
+    pagesAdmitted: pageSetAdmitted(pages), layersPresent: layers !== undefined, layerCount: copied?.length ?? 0,
+    layersAdmitted: copied !== undefined && copied.every((lines) => lines !== undefined),
+  })
+  const known = typeof revision === "string" ? { revision } : {}
+  if (outcome !== "DraftRestored") return { present: true, decodable: false, ...known }
+  return {
+    present: true, decodable: true, ...known,
+    draft: { id: "document", revision: revision as string, pages, updated: updated as number,
+      ...(copied === undefined ? {} : { textLayers: copied as (ScanTextLine[] | null)[] }) },
+  }
+}
+
+export function createScanDraftStore(databaseName: string) {
+  effect function readScanDraft(): (ScanDraft | undefined)!DraftRefused {
+    const raw = try tryPromise({ try: () => readRow(databaseName), catch: () => refused("storage") })
+    const decoded = decodeRow(raw)
+    if (!decoded.present) return undefined
+    if (decoded.draft === undefined) throw refused("unreadable")
+    return decoded.draft
+  }
+
+  effect function mutate(kind: DraftMutation, decide: (raw: unknown) => { readonly facts: DraftWriteFacts; readonly put?: unknown }) {
+    const state = try Ref.make<DraftTx>(initial)
+    const tx = try machineOver(() => Ref.get(state), (next) => Ref.set(state, next))
+    const answer = tryPromise({
+      try: (signal) => mutateRow(databaseName, kind, (raw) => {
+        const decision = decide(raw)
+        return { ...decision, admitted: admitsDraftWrite(kind, decision.facts) }
+      }, signal),
+      catch: () => refused("storage"),
+    }) catch effect (error) => {
+      try orDie(tx.send({ type: "rejectDraftTx" }))
+      throw error
+    }
+    const queued = answer.facts !== undefined && answer.outcome !== "refused"
+      ? (tx.send({ type: "queueMutation", kind, writeFacts: answer.facts }) catch () => undefined)
+      : undefined
+    if (queued !== undefined && answer.outcome === "committed") {
+      try orDie(tx.send({ type: "observeDraftCommit", completed: true }))
+      return answer
+    }
+    try orDie(tx.send({ type: "rejectDraftTx" }))
+    const reasons: Readonly<Record<TxOutcome, DraftRefusal>> = { committed: "storage", refused: kind === "SaveDraftRow" ? "conflict" : "changed", aborted: "cancelled", failed: "storage" }
+    throw refused(reasons[answer.outcome])
+  }
+
+  effect function saveScanDraft(input: readonly Blob[], expected: string | undefined, textLayers?: readonly (readonly ScanTextLine[] | null)[]): ScanDraft!(DraftRefused | ImageRefused | TextLayerRefused) {
+    const pages = [...input]
+    if (!pageSetAdmitted(pages)) throw refused("pages")
+    const layers = try copyScanTextLayers(textLayers, pages.length)
+    const stored: StoredPage[] = []
+    for (const page of pages) {
+      const bytes = try readBytes(page)
+      if (bytes.byteLength !== page.size) throw refused("incomplete-page")
+      stored.push({ bytes: bytes.buffer, type: page.type })
+    }
+    const draft: ScanDraft = { id: "document", revision: freshRevision(), pages, updated: Date.now(), ...(layers === undefined ? {} : { textLayers: layers }) }
+    try mutate("SaveDraftRow", (raw) => {
+      const old = decodeRow(raw)
+      return {
+        facts: { snapshotAdmitted: true, bytesComplete: true, signalAborted: false, rowPresent: old.present, rowDecodable: old.decodable,
+          expectsAbsence: expected === undefined, revisionMatches: old.revision !== undefined && old.revision === expected },
+        put: { id: draft.id, revision: draft.revision, updated: draft.updated, format: 2, pages: stored, ...(layers === undefined ? {} : { textLayers: layers }) },
+      }
+    })
+    return draft
+  }
+
+  effect function deleteScanDraft(expected: string): void!DraftRefused {
+    try mutate("DeleteDraftRow", (raw) => {
+      const revision = field(raw, "revision")
+      return {
+        facts: { snapshotAdmitted: true, bytesComplete: true, signalAborted: false, rowPresent: raw !== undefined, rowDecodable: true,
+          expectsAbsence: false, revisionMatches: typeof revision === "string" && revision === expected },
+      }
+    })
+  }
+
+  return { readScanDraft, saveScanDraft, deleteScanDraft }
+}

@@ -1,6 +1,6 @@
 // spec/agent/conversation/turnContext.md, "Story: Tell the agent what my screen shows, and nothing more"; spec/agent/conversation/turnContext.md, "A Browser page is kept only when every field is valid, it is the Browser tab the kept observation selects at that revision on a screen not sensitive, and it fits 16,384 bytes"; spec/agent/conversation/turnContext.md, "An observation is kept only when every field is valid, a sensitive screen names no record, a civil day is on the calendar stated not sensitive in its own zone, and it fits 2,048 bytes"; spec/agent/conversation/turnContext.md, "A voice view context is accepted only when every stated field has an allowed value and direct requests have completed-action delivery and a routing identity"; spec/agent/conversation/turnContext.md, "Optional fields go only to the process instance the client compared for this turn"; spec/agent/conversation/turnContext.md, "A location is kept on any screen only when each coordinate, its accuracy and its time are in range, and it counts within the 2,048 bytes"
 import type { Content } from "@elizaos/core"
-import { parseViewInteractionClientId } from "@elizaos/core/view-interaction"
+import { parseViewInteractionClientId } from "@elizaos/core"
 import {
   browserPageAccepted, comparePeer, learnPeer, maxSafeInteger, observationOutcome, sendsOptionalFields, voiceUiOutcome,
   type BrowserPageFacts, type ObservationFacts, type PageBinding, type PageContent, type PeerSupport, type Sensitivity, type StatusRead, type TextField, type VoiceUiFacts,
@@ -82,7 +82,7 @@ export const VoiceUiContext = Schema.Struct({
   uiBrowserSurface: Schema.optionalKey(Schema.Literal("native")),
   viewDelivery: Schema.optionalKey(Schema.Literal("completed-action")),
   uiClientId: Schema.optionalKey(Schema.String),
-  agentActionMode: Schema.optionalKey(Schema.Literal("direct-request-v1")),
+  agentActionMode: Schema.optionalKey(Schema.Literals(["direct-request-v1", "direct-files-v1", "direct-files-only-v1"])),
   uiNotesEditor: Schema.optionalKey(Schema.Literal("saved-note-v1")),
 })
 
@@ -274,7 +274,7 @@ function decideVoiceUi(input: unknown, clientId: string | undefined): Decided<Vo
     surface: stated(uiBrowserSurface, "native", "NoSurface", "NativeSurface", "OtherSurface"),
     delivery: stated(viewDelivery, "completed-action", "NoDelivery", "CompletedAction", "OtherDelivery"),
     routingId: uiClientId === undefined ? "NoRouting" : routing !== undefined && (clientId === undefined || routing === clientId) ? "Routing" : "MalformedRouting",
-    actionMode: stated(agentActionMode, "direct-request-v1", "NoActionMode", "DirectRequest", "OtherActionMode"),
+    actionMode: agentActionMode === "direct-files-v1" ? "DirectFilesRequest" : agentActionMode === "direct-files-only-v1" ? "DirectFilesOnlyRequest" : stated(agentActionMode, "direct-request-v1", "NoActionMode", "DirectRequest", "OtherActionMode"),
     noteEditor: stated(uiNotesEditor, "saved-note-v1", "NoNoteEditor", "SavedNoteEditor", "OtherNoteEditor"),
   }
   switch (voiceUiOutcome(facts)) {
@@ -285,7 +285,7 @@ function decideVoiceUi(input: unknown, clientId: string | undefined): Decided<Vo
       ...(uiBrowserSurface === "native" ? { uiBrowserSurface } : {}),
       ...(viewDelivery === "completed-action" ? { viewDelivery } : {}),
       ...(routing === undefined ? {} : { uiClientId: routing }),
-      ...(agentActionMode === "direct-request-v1" ? { agentActionMode } : {}),
+      ...(agentActionMode === "direct-request-v1" || agentActionMode === "direct-files-v1" || agentActionMode === "direct-files-only-v1" ? { agentActionMode } : {}),
       ...(uiNotesEditor === "saved-note-v1" ? { uiNotesEditor } : {}),
     } }
     case "ContextDropped":

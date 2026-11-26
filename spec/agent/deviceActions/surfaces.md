@@ -94,17 +94,19 @@ pure val wordsValues = Set(
 
 ### A named camera is captured only as the owner requested and the phone supports
 
-A whole-message command for a selfie or the front camera names the front
-lens. A command for the back, rear or main camera names the back lens. A
-photo of the owner without a named camera uses the camera that is showing.
-A named capture needs the owner's chat command and the negotiated
-`camera.capture-lens.v1` capability. Without the capability, the tool asks
-the model to explain the limitation and offers no capture. Conflicting
-names and a proposal for a different or unrequested lens offer no capture.
-An unnamed proposal cannot substitute for the lens the owner's command
-named. A named capture without the direct-request preference keeps its
-review card, which names the requested camera lens. Other messages can
-still get the unnamed capture's review card under the previous rule.
+Which lens a photo uses is the model's to read from the owner's request:
+lens front for a selfie or the front camera, lens back for the back, rear
+or main camera, and no lens for the camera that is showing. A named
+capture needs the owner's own chat and the negotiated
+`camera.capture-lens.v1` capability. Without them, the tool asks the model
+to explain the limitation and offers no capture. A capture skips its card
+only when the owner's whole-message command above names that same camera:
+the front lens for a selfie or the front camera, the back lens for the
+back, rear or main camera, and no lens when it names none. Every other
+capture, a lens the command did not name, an unnamed capture after a
+command that named one, or a lens chosen where the owner asked for both,
+keeps its review card, which names the lens it will use, so a lens the
+command words miss is never refused for them.
 
 ```quint
 type CameraChoice = ShowingCamera | FrontCamera | BackCamera | ConflictingCameras
@@ -115,13 +117,18 @@ pure def requestedCamera(words: CameraWords): CameraChoice =
   else ShowingCamera
 pure val chosenCameraValues = Set(ShowingCamera, FrontCamera, BackCamera, ConflictingCameras)
 pure def captureLensVerdict(words: CameraWords, namedLensAvailable: bool, chosenCamera: CameraChoice): SurfaceVerdict =
-  if (requestedCamera(words) != chosenCamera or chosenCamera == ConflictingCameras or (chosenCamera != ShowingCamera and not(namedLensAvailable))) SurfaceRefused
-  else captureVerdict(words)
-pure def lawANamedCaptureUsesOnlyTheRequestedAvailableLens(words: CameraWords, namedLensAvailable: bool, chosenCamera: CameraChoice): bool =
-  (chosenCamera != ShowingCamera and captureLensVerdict(words, namedLensAvailable, chosenCamera) != SurfaceRefused)
-    implies (namedLensAvailable and asksForPhotoNow(words) and requestedCamera(words) == chosenCamera)
-pure def lawAnUnnamedCaptureDoesNotSubstituteForAnotherLens(words: CameraWords, namedLensAvailable: bool): bool =
-  (requestedCamera(words) != ShowingCamera) implies captureLensVerdict(words, namedLensAvailable, ShowingCamera) == SurfaceRefused
+  if (chosenCamera == ConflictingCameras or (chosenCamera != ShowingCamera and not(namedLensAvailable))) SurfaceRefused
+  else if (requestedCamera(words) == chosenCamera) captureVerdict(words)
+  else SurfaceReviewed
+pure def lawANamedCaptureNeedsTheLensCapability(words: CameraWords, chosenCamera: CameraChoice): bool =
+  chosenCamera != ShowingCamera implies captureLensVerdict(words, false, chosenCamera) == SurfaceRefused
+pure def lawOnlyTheCommandedCameraSkipsItsCard(words: CameraWords, namedLensAvailable: bool, chosenCamera: CameraChoice): bool =
+  captureLensVerdict(words, namedLensAvailable, chosenCamera) == SurfaceGrounded
+    implies (asksForPhotoNow(words) and requestedCamera(words) == chosenCamera)
+pure def lawAnUnnamedCaptureDoesNotSubstituteForAnotherLensWithoutItsCard(words: CameraWords, namedLensAvailable: bool): bool =
+  (requestedCamera(words) != ShowingCamera) implies captureLensVerdict(words, namedLensAvailable, ShowingCamera) == SurfaceReviewed
+pure def lawTheOwnersWordsNeverRefuseALensThePhoneOffers(words: CameraWords, chosenCamera: CameraChoice): bool =
+  chosenCamera != ConflictingCameras implies captureLensVerdict(words, true, chosenCamera) != SurfaceRefused
 ```
 
 ### An app view opens with VIEWS where views arrive as completed actions, else with open_view as the installation's profile enables it
@@ -130,9 +137,12 @@ How views are delivered is stated anew with each message: the phone leaves
 it out while its screen is sensitive. So a device conversation's tools keep
 both homes of a view, `VIEWS` and, where the device negotiated it, the
 `open_view` form, and each message opens a view in one of them. When the
-message's voice view context says views arrive as completed actions, the
-model opens a view with `VIEWS` directly, and `open_view`, which would ask
-the phone for a review it does not need, is refused before dispatch.
+message names its renderer for views that arrive as completed actions
+(`viewDelivery: "completed-action"` with `viewClientId`, read as
+[views](../views.md) reads them) and the product allows `VIEWS`, the model
+opens a view with `VIEWS` directly, and `open_view`, which would ask
+the phone for a review it does not need, is refused before dispatch. A
+product that does not allow `VIEWS` keeps `open_view` on every message.
 Otherwise a `VIEWS` call is refused before it runs, and a view is proposed
 with `open_view` only when the installation's
 [enabled-view profile](./capabilities.md) as it is now enables it, and
@@ -148,12 +158,14 @@ model is told which views it enables.
 ```quint
 type ViewHome = ViewsShows | OpenViewProposes
 pure def viewHome(completedNavigation: bool): ViewHome = if (completedNavigation) ViewsShows else OpenViewProposes
+pure def navigationCompletes(rendererNamed: bool, viewsAllowed: bool): bool = rendererNamed and viewsAllowed
 pure def openViewAvailable(completedNavigation: bool): bool = viewHome(completedNavigation) == OpenViewProposes
 pure def viewsShowsOnDevice(completedNavigation: bool): bool = viewHome(completedNavigation) == ViewsShows
 pure def openViewVerdict(profileEnables: bool): SurfaceVerdict = if (profileEnables) SurfaceGrounded else SurfaceRefused
 pure def lawCompletedNavigationProposesNoView(completedNavigation: bool): bool = completedNavigation implies not(openViewAvailable(completedNavigation))
 pure def lawAMessageOpensAViewInOnePlace(completedNavigation: bool): bool =
   viewsShowsOnDevice(completedNavigation) != openViewAvailable(completedNavigation)
+pure def lawWithoutViewsAViewIsProposed(rendererNamed: bool): bool = openViewAvailable(navigationCompletes(rendererNamed, false))
 pure def lawADisabledViewIsNeverProposed(profileEnables: bool): bool = not(profileEnables) implies openViewVerdict(profileEnables) == SurfaceRefused
 ```
 

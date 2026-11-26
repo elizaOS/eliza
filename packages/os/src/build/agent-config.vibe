@@ -1,4 +1,4 @@
-// spec/os/agentService/config.md, "Story: Start my agent with my character, policy and model"; spec/agent/host/launch.md, "The launch document is accepted whole or refused whole"; spec/agent/access/routes.md, "A list is loaded whole or not at all"
+// spec/os/agentService/config.md, "Story: Start my agent with my character, policy and model"; spec/os/agentService/config.md, "The host file names a qualified service class, and status and failure notification words of 1 to 200 characters on two differently named channels"; spec/agent/host/launch.md, "The launch document is accepted whole or refused whole"; spec/agent/access/routes.md, "A list is loaded whole or not at all"
 import {
   filesAdmitted,
   filesFit,
@@ -11,7 +11,8 @@ import {
   type HostLaunch,
 } from "../../gen/os__agentService__config.effect.vibe"
 import { characterAdmitted, policyAdmitted, type Backend, type EnvEntry, type UrlShape } from "../../gen/agent__host__launch.effect.vibe"
-import { flatParam, validList, type Accept, type Group, type Piece, type Route as ModelRoute, type RouteList as ModelRouteList } from "../../gen/agent__access__routes.effect.vibe"
+import { validList, type RouteList as ModelRouteList } from "../../gen/agent__access__routes.effect.vibe"
+import { RouteList, modelList } from "@elizaos/agent"
 
 export const AGENT_ASSETS = { host: "agent/host.json", character: "agent/character.json", policy: "agent/policy.json" } as const
 export type AgentFile = keyof typeof AGENT_ASSETS
@@ -26,40 +27,11 @@ const HTTPS_URL = /^https:\/\/[^\s?#@]+$/
 const CLASS_NAME = /^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)+$/
 const ENVIRONMENT_NAME = /^[A-Z][A-Z0-9_]*$/
 const RESERVED_ENVIRONMENT = /^(?:(?:ELIZA_AGENT_|ELIZA_CLOUD_|ELIZA_OWN_|LD_|NODE_).*|PATH|HOME|TMPDIR)$/
-const LITERAL = /^[A-Za-z0-9._-]+$/
-const PLACEHOLDER = /^\{[a-z][A-Za-z]*\}$/
-const isLiteral = (text: string) => LITERAL.test(text) && !/^\.+$/.test(text)
-
-function compiles(pattern: string): boolean {
-  try { new RegExp(`^(?:${pattern})$`, "u"); return pattern !== "" }
-  catch { return false }
-}
 
 function namedZone(zone: string): boolean {
   try { new Intl.DateTimeFormat("en", { timeZone: zone }); return zone === "UTC" || zone.includes("/") }
   catch { return false }
 }
-
-const Pattern = Schema.String.check(Schema.makeFilter(compiles))
-const Path = Schema.String.check(Schema.makeFilter((path) => path.startsWith("/") && path.slice(1).split("/").every((piece) => isLiteral(piece) || PLACEHOLDER.test(piece))))
-const Prefix = Schema.String.check(Schema.makeFilter((path) => path === "" || (path.startsWith("/") && path.slice(1).split("/").every(isLiteral))))
-const Query = Schema.Struct({
-  key: Schema.String,
-  accepts: Schema.Union([
-    Schema.Struct({ kind: Schema.Literal("any") }),
-    Schema.Struct({ kind: Schema.Literal("pattern"), pattern: Pattern }),
-    Schema.Struct({ kind: Schema.Literal("pinned"), value: Schema.String }),
-  ]),
-})
-const Route = Schema.Struct({
-  method: Schema.Literals(["GET", "POST", "PUT", "PATCH", "DELETE"]),
-  path: Path,
-  stream: Schema.optionalKey(Schema.Boolean),
-  query: Schema.optionalKey(Schema.Array(Query)),
-  maxBodyBytes: Schema.optionalKey(PositiveInteger),
-})
-const RouteGroup = Schema.Struct({ prefixes: Schema.Array(Prefix), id: Schema.optionalKey(Pattern), routes: Schema.Array(Route) })
-const RouteList = Schema.Union([Schema.Array(Route), Schema.Array(RouteGroup)])
 
 const Model = Schema.Union([
   Schema.Struct({ backend: Schema.Literal("cloud"), cloudBaseUrl: Schema.String, smallModel: Schema.String, largeModel: Schema.String, imageModel: Schema.String }),
@@ -83,10 +55,12 @@ const Views = Schema.Array(View).check(
 )
 const Switches =<A extends string, B extends string>(first: A, second: B) => Schema.Struct({ [first]: Schema.Boolean, [second]: Schema.Boolean } as { [K in A | B]: typeof Schema.Boolean })
 
+const NoticeWords = Schema.Struct({ channel: Schema.String, title: Schema.String, text: Schema.String })
+
 const HostFileCodec = Schema.Struct({
   schema: Schema.Number,
   service: Schema.String,
-  notification: Schema.Struct({ channel: Schema.String, title: Schema.String, text: Schema.String }),
+  notification: Schema.Struct({ ...NoticeWords.fields, failure: NoticeWords }),
   routes: RouteList,
   nativeRoutes: Schema.optionalKey(RouteList),
   model: Schema.optionalKey(Model),
@@ -97,6 +71,7 @@ const HostFileCodec = Schema.Struct({
   callerRole: Schema.optionalKey(Schema.Literals(["owner", "user"])),
   views: Schema.optionalKey(Views),
   timeZone: Schema.optionalKey(Schema.String.check(Schema.makeFilter(namedZone))),
+  hostContextRevision: Schema.optionalKey(PositiveInteger),
   privacy: Schema.optionalKey(Switches("secretSwap", "piiSwap")),
   google: Schema.optionalKey(Switches("gmailChanges", "calendarEdits")),
   retention: Schema.optionalKey(Schema.Struct({ days: Schema.Number, maxRowsPerRoom: Schema.Int, intervalMinutes: Schema.Int })),
@@ -132,9 +107,15 @@ const PolicyFileCodec = Schema.Struct({
 type HostFile = typeof HostFileCodec.Type
 type PolicyFile = typeof PolicyFileCodec.Type
 
+interface AdmittedNoticeWords {
+  readonly channel: string
+  readonly title: string
+  readonly text: string
+}
+
 interface AdmittedAgentData {
   readonly service: string
-  readonly notification: { readonly channel: string; readonly title: string; readonly text: string }
+  readonly notification: AdmittedNoticeWords & { readonly failure: AdmittedNoticeWords }
   readonly needsAccount: boolean
 }
 
@@ -144,6 +125,14 @@ function words(text: string) {
   while (start < end && text.charCodeAt(start) <= 0x20) start += 1
   while (end > start && text.charCodeAt(end - 1) <= 0x20) end -= 1
   return { words: text.slice(start, end), units: end - start }
+}
+
+function noticeWords(notice: typeof NoticeWords.Type) {
+  return { channel: words(notice.channel), title: words(notice.title), text: words(notice.text) }
+}
+
+function shownWords(notice: ReturnType<typeof noticeWords>): AdmittedNoticeWords {
+  return { channel: notice.channel.words, title: notice.title.words, text: notice.text.words }
 }
 
 function urlShape(url: string): UrlShape {
@@ -187,38 +176,6 @@ function hostLaunch(host: HostFile): HostLaunch {
   }
 }
 
-function pieces(path: string): Piece[] {
-  return path.slice(1).split("/").map((text) => PLACEHOLDER.test(text) ? { tag: "Param" } : { tag: "Literal", text })
-}
-
-function accept(accepts: typeof Query.Type["accepts"]): Accept {
-  switch (accepts.kind) {
-    case "any": return { tag: "AnyValue" }
-    case "pattern": return { tag: "Matching", pattern: accepts.pattern }
-    case "pinned": return { tag: "Pinned", value: accepts.value }
-  }
-}
-
-const modelRoute = (route: typeof Route.Type): ModelRoute => ({
-  method: ({ GET: "Get", POST: "Post", PUT: "Put", PATCH: "Patch", DELETE: "Delete" } as const)[route.method],
-  delivery: route.stream ? "Streamed" : "Buffered",
-  path: pieces(route.path),
-  query: (route.query ?? []).map((rule) => ({ key: rule.key, accepts: accept(rule.accepts) })),
-  limit: route.maxBodyBytes === undefined ? { tag: "AnySize" } : { tag: "AtMost", bytes: route.maxBodyBytes },
-})
-
-const modelGroup = (group: typeof RouteGroup.Type): Group => ({
-  prefixes: group.prefixes.map((prefix) => prefix === "" ? [] : prefix.slice(1).split("/")),
-  id: group.id ?? "",
-  routes: group.routes.map(modelRoute),
-})
-
-function routeList(routes: typeof RouteList.Type): ModelRouteList {
-  const flat = routes.flatMap((entry) => "method" in entry ? [entry] : [])
-  if (flat.length > 0) return [modelGroup({ prefixes: [""], id: flatParam, routes: flat })]
-  return routes.flatMap((entry) => "routes" in entry ? [modelGroup(entry)] : [])
-}
-
 function allowed(policy: PolicyFile): string[] {
   const names = policy.actions.allowed
   return Array.isArray(names) ? [...names] : Object.keys(names).sort()
@@ -232,8 +189,8 @@ function agentData(bytes: Readonly<Record<AgentFile, number>>, host: HostFile, c
     host: {
       schema: host.schema,
       service: CLASS_NAME.test(host.service) ? { tag: "QualifiedClass", className: host.service } : { tag: "MalformedClass" },
-      notification: { channel: words(host.notification.channel), title: words(host.notification.title), text: words(host.notification.text) },
-      routes: routeList(host.routes),
+      notification: { ...noticeWords(host.notification), failure: noticeWords(host.notification.failure) },
+      routes: modelList(host.routes),
       launch: hostLaunch(host),
     },
     character: { name: character.name, nameUnits: character.name.length, systemBlank: !/\S/.test(character.system) },
@@ -247,7 +204,7 @@ function agentData(bytes: Readonly<Record<AgentFile, number>>, host: HostFile, c
 function broken(d: AgentData, native: ModelRouteList | undefined): string | undefined {
   if (!filesFit(d)) return "Each agent data file is at most 256 KiB, and the host and policy files are schema 1"
   if (!serviceNamed(d.host.service)) return "The agent service is not a qualified class name"
-  if (!notificationAdmitted(d.host.notification)) return "The agent notification channel, title and text are each 1 to 200 characters"
+  if (!notificationAdmitted(d.host.notification)) return "The agent notification's status and failure channel, title and text are each 1 to 200 characters, on two differently named channels"
   if (!routesAdmitted(d)) return "The renderer's route list is not one the route gate admits"
   if (native !== undefined && !validList(native)) return "The native route list is not one the route gate admits"
   if (!characterAdmitted(d.character)) return "The agent character needs a name of 1 to 50 characters and a system prompt"
@@ -261,7 +218,7 @@ const decodeCharacter = Schema.decodeUnknownEffect(Schema.fromJsonString(Charact
 const decodePolicy = Schema.decodeUnknownEffect(Schema.fromJsonString(PolicyFileCodec), { onExcessProperty: "error" })
 
 effect function text(name: AgentFile, bytes: Uint8Array) {
-  return try Effect.try({ try: () => new TextDecoder("utf-8", { fatal: true }).decode(bytes), catch: () => new AgentConfigRefused({ detail: `The agent ${name} file is not UTF-8` }) })
+  return try Effect.try({ try: () => new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes), catch: () => new AgentConfigRefused({ detail: `The agent ${name} file is not UTF-8` }) })
 }
 
 export effect function admitAgentBytes(files: Readonly<Record<AgentFile, Uint8Array>>) {
@@ -273,12 +230,12 @@ export effect function admitAgentBytes(files: Readonly<Record<AgentFile, Uint8Ar
     if (allowed(policy).includes(name)) throw new AgentConfigRefused({ detail: `Action ${name} is both allowed and refused` })
   if (host.embeddingDimensions !== undefined && host.embeddingDimensions <= 0) throw new AgentConfigRefused({ detail: "The agent embeddingDimensions is a positive whole number" })
   const data = agentData({ host: files.host.byteLength, character: files.character.byteLength, policy: files.policy.byteLength }, host, character, policy)
-  const detail = broken(data, host.nativeRoutes === undefined ? undefined : routeList(host.nativeRoutes))
+  const detail = broken(data, host.nativeRoutes === undefined ? undefined : modelList(host.nativeRoutes))
   if (detail !== undefined) throw new AgentConfigRefused({ detail })
   const notification = data.host.notification
   return {
     service: host.service,
-    notification: { channel: notification.channel.words, title: notification.title.words, text: notification.text.words },
+    notification: { ...shownWords(notification), failure: shownWords(notification.failure) },
     needsAccount: needsAccount(data.host.launch.backend),
   } satisfies AdmittedAgentData
 }

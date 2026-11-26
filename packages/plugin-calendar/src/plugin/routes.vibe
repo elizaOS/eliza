@@ -1,9 +1,7 @@
 // spec/calendar/actions.md, "Story: Ask the agent about my calendar and get my active account's events"; spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/seriesScope.md, "A write names its scope: this event, this and following, or all"; spec/calendar/actions.md, "A repeating create carries its reviewed recurrence and reads back with it"; spec/calendar/actions.md, "Only an invitee answers an invitation, and an invitee's delete is a decline"; spec/calendar/actions.md, "Attendees hear of a change only when the owner asked and the calendar can tell them"; spec/calendar/actions.md, "The managed Google calendar is read and changed as one of the active account's calendars"; spec/calendar/actions.md, "Declining an invitation never deletes the event"
 import { cancellationRoute, clientNoticeRefused } from "../../gen/calendar__actions.effect.vibe"
-import type { CalendarEvent } from "../model.vibe"
+import { type CalendarEvent, FieldsRecord, RecurrenceRecord, WriteScopeRecord } from "@elizaos/plugin-calendar-client"
 import { fieldsSpanValid } from "../mutations/provider-port.vibe"
-import { FieldsRecord } from "../mutations/records.schema.vibe"
-import { RecurrenceRecord, WriteScopeRecord } from "../series/rows.schema.vibe"
 import { eventVersion } from "./providers.vibe"
 import type { CalendarChangeResult, CalendarFound, CalendarHost, CalendarRefusal } from "./host.vibe"
 
@@ -121,6 +119,12 @@ export function calendarRoutes(host: () => Promise<CalendarHost | undefined>): r
     return found
   }
 
+  async function changeTarget(calendar: CalendarHost, input: CalendarRouteInput, calendarId: string | undefined, expected: string, notify: boolean) {
+    const found = await target(calendar, input, calendarId, expected)
+    if (!("event" in found)) return found
+    return (await unannounced(calendar, found, notify)) ?? found
+  }
+
   return [
     { method: "GET", path: `${base}/feed`, query: anyOf("mode", "side", "grantId", "calendarId", "includeHiddenCalendars", "timeMin", "timeMax", "timeZone", "forceSync"),
       handler: (input) => feed(input, 7 * 86_400_000) },
@@ -165,10 +169,8 @@ export function calendarRoutes(host: () => Promise<CalendarHost | undefined>): r
         const body = decodeUpdate(input.body)
         if (Option.isNone(body)) return refused(400, "CALENDAR_REQUEST_INVALID", "An update needs expectedProviderVersion and an idempotency key.")
         const request = body.value
-        const found = await target(calendar, input, request.calendarId, request.expectedProviderVersion)
+        const found = await changeTarget(calendar, input, request.calendarId, request.expectedProviderVersion, request.notifyAttendees === true)
         if (!("event" in found)) return found
-        const silent = await unannounced(calendar, found, request.notifyAttendees === true)
-        if (silent !== undefined) return silent
         const event = found.event
         const fields = decodeFields({
           title: request.title ?? event.title, description: request.notes ?? event.description, location: request.location ?? event.location,
@@ -187,10 +189,8 @@ export function calendarRoutes(host: () => Promise<CalendarHost | undefined>): r
           return refused(400, "CALENDAR_REQUEST_INVALID", "An answer needs responseStatus accepted, tentative or declined, a scope of instance or series, expectedProviderVersion and an idempotency key.")
         }
         const request = body.value
-        const found = await target(calendar, input, request.calendarId, request.expectedProviderVersion)
+        const found = await changeTarget(calendar, input, request.calendarId, request.expectedProviderVersion, request.notifyAttendees === true)
         if (!("event" in found)) return found
-        const silent = await unannounced(calendar, found, request.notifyAttendees === true)
-        if (silent !== undefined) return silent
         return changed(await runPromise(Effect.option(calendar.change({ kind: "respond", target: found, scope: request.recurrenceScope ?? "instance", response: request.responseStatus,
           notifyAttendees: request.notifyAttendees === true, askedBy: "owner", askId: request.idempotencyKey }))))
       }) },
@@ -206,10 +206,8 @@ export function calendarRoutes(host: () => Promise<CalendarHost | undefined>): r
         if (Option.isNone(scope)) return refused(400, "CALENDAR_SCOPE_INVALID", "The recurrence scope is instance, this_and_following or series.")
         const declines = cancellationRoute(cancellationModes[mode.value]) === "AnswerDeclined"
         if (declines && scope.value === "this_and_following") return refused(400, "CALENDAR_ANSWER_SCOPE", "An answer covers this event or the whole series, so the event was kept.")
-        const found = await target(calendar, input, input.query.get("calendarId"), expected)
+        const found = await changeTarget(calendar, input, input.query.get("calendarId"), expected, input.query.get("notifyAttendees") === "true")
         if (!("event" in found)) return found
-        const silent = await unannounced(calendar, found, input.query.get("notifyAttendees") === "true")
-        if (silent !== undefined) return silent
         if (declines) {
           return changed(await runPromise(Effect.option(calendar.change({ kind: "respond", target: found, scope: scope.value === "series" ? "series" : "instance", response: "declined",
             notifyAttendees: input.query.get("notifyAttendees") === "true", askedBy: "owner", askId: key }))))

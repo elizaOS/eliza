@@ -2,13 +2,10 @@
   "name": "@elizaos/agent",
   "version": "4.0.0-alpha.0",
   "type": "module",
-  "description": "The on-device agent host for one owner, with launch, storage, model binding, plugins, conversations and a local API.",
+  "description": "Browser-safe client, voice, device-action operations, launch schemas, route gate and turn context contracts for the on-device agent.",
   "license": "MIT",
   "engines": {
     "node": ">=26"
-  },
-  "bin": {
-    "eliza-agent": "./dist/src/bin.js"
   },
   "main": "./dist/src/index.js",
   "types": "./dist/src/index.d.ts",
@@ -21,76 +18,17 @@
       "types": "./dist/src/index.d.ts",
       "import": "./dist/src/index.js",
       "default": "./dist/src/index.js"
-    },
-    "./client": {
-      "eliza-source": "./src/client/index.vibe",
-      "types": "./dist/src/client/index.d.ts",
-      "import": "./dist/src/client/index.js",
-      "default": "./dist/src/client/index.js"
-    },
-    "./operations": {
-      "eliza-source": "./src/device-actions/operations.vibe",
-      "types": "./dist/src/device-actions/operations.d.ts",
-      "import": "./dist/src/device-actions/operations.js",
-      "default": "./dist/src/device-actions/operations.js"
-    },
-    "./device-actions": {
-      "eliza-source": "./src/device-actions/index.vibe",
-      "types": "./dist/src/device-actions/index.d.ts",
-      "import": "./dist/src/device-actions/index.js",
-      "default": "./dist/src/device-actions/index.js"
-    },
-    "./launch": {
-      "eliza-source": "./src/host/launch.schema.vibe",
-      "types": "./dist/src/host/launch.schema.d.ts",
-      "import": "./dist/src/host/launch.schema.js",
-      "default": "./dist/src/host/launch.schema.js"
-    },
-    "./routes": {
-      "eliza-source": "./src/access/routes.vibe",
-      "types": "./dist/src/access/routes.d.ts",
-      "import": "./dist/src/access/routes.js",
-      "default": "./dist/src/access/routes.js"
-    },
-    "./bundle": {
-      "eliza-source": "./src/bundle/build.vibe",
-      "types": "./dist/src/bundle/build.d.ts",
-      "import": "./dist/src/bundle/build.js",
-      "default": "./dist/src/bundle/build.js"
-    },
-    "./tasks": {
-      "eliza-source": "./src/tasks/module.vibe",
-      "types": "./dist/src/tasks/module.d.ts",
-      "import": "./dist/src/tasks/module.js",
-      "default": "./dist/src/tasks/module.js"
-    },
-    "./voice": {
-      "eliza-source": "./src/voice/index.vibe",
-      "types": "./dist/src/voice/index.d.ts",
-      "import": "./dist/src/voice/index.js",
-      "default": "./dist/src/voice/index.js"
-    },
-    "./cli": {
-      "eliza-source": "./src/cli.vibe",
-      "types": "./dist/src/cli.d.ts",
-      "import": "./dist/src/cli.js",
-      "default": "./dist/src/cli.js"
     }
   },
   "scripts": {
-    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && vibelang -p tsconfig.build.json && node -e \"const fs=require('node:fs');const path=require('node:path');const source=JSON.parse(fs.readFileSync('package.json','utf8'));const target=value=>value.startsWith('./dist/')?'./'+value.slice(7):value;for(const file of fs.globSync(['src/**/*.sql','src/**/*.worklet.mjs'])){fs.mkdirSync(path.dirname('dist/'+file),{recursive:true});fs.copyFileSync(file,'dist/'+file);}const publishedExports=Object.fromEntries(Object.entries(source.exports).map(([name,conditions])=>[name,Object.fromEntries(Object.entries(conditions).map(([condition,value])=>[condition,target(condition==='eliza-source'?(conditions.import??conditions.default):value)]))]));const publication={...source,main:target(source.main),types:target(source.types),bin:Object.fromEntries(Object.entries(source.bin).map(([name,value])=>[name,target(value)])),files:['src','gen'],exports:publishedExports};delete publication.scripts;delete publication.publishConfig;fs.writeFileSync('dist/package.json',JSON.stringify(publication,null,2)+'\\n');\"",
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && vibelang -p tsconfig.build.json && node -e \"const fs=require('node:fs');const path=require('node:path');const source=JSON.parse(fs.readFileSync('package.json','utf8'));const target=value=>value.startsWith('./dist/')?'./'+value.slice(7):value;for(const file of fs.globSync(['src/**/*.worklet.mjs'])){fs.mkdirSync(path.dirname('dist/'+file),{recursive:true});fs.copyFileSync(file,'dist/'+file);}const publishedExports=Object.fromEntries(Object.entries(source.exports).map(([name,conditions])=>[name,Object.fromEntries(Object.entries(conditions).map(([condition,value])=>[condition,target(condition==='eliza-source'?(conditions.import??conditions.default):value)]))]));const publication={...source,main:target(source.main),types:target(source.types),files:['src','gen'],exports:publishedExports};delete publication.scripts;delete publication.publishConfig;fs.writeFileSync('dist/package.json',JSON.stringify(publication,null,2)+'\\n');\"",
     "typecheck": "vibelang --noEmit -p .",
     "test": "vitest run"
   },
   "dependencies": {
-    "@effect/platform-node": "4.1.1",
-    "@effect/platform-node-shared": "4.1.1",
-    "@electric-sql/pglite": "catalog:",
-    "@elizaos/cloud": "workspace:*",
     "@elizaos/core": "workspace:*",
     "effect": "4.1.1",
-    "vibelang-runtime": "0.0.13",
-    "vite": "catalog:"
+    "vibelang-runtime": "0.0.13"
   },
   "devDependencies": {
     "@effect/vitest": "4.1.1",
@@ -99,6 +37,7 @@
     "vibelang": "0.0.13",
     "vibelang-vite": "0.0.13",
     "vibestack": "workspace:*",
+    "vite": "catalog:",
     "vitest": "catalog:"
   },
   "publishConfig": {

@@ -1,12 +1,10 @@
 // spec/agent/plugins/profile.md, "The worker never receives the credential, the launch token or the storage key"; spec/workflow/execution.md, "A wakeup reserves the earliest due attempt for a persisted run"; spec/core/occurrenceWindow.md, "An occurrence more than thirty minutes past its scheduled instant is missed, and stays missed"; spec/workflow/execution.md, "A worker that overruns its run, its check or its line is stopped"
 import { agentProcessStartedAtMs, computeNextCronRunAtMs, ModelType, NotificationService, type IAgentRuntime, type Task, type UUID } from "@elizaos/core"
-import { cloudServiceType, type CloudLinkService } from "@elizaos/agent"
-import { createCloudClient } from "@elizaos/cloud/client"
+import { cloudServiceType, type CloudLinkService } from "@elizaos/agent-host"
+import { createCloudClient } from "@elizaos/cloud"
 import { workerLineLimitBytes } from "../gen/workflow__execution.effect.vibe"
-import type { DigestTemplate, HostedNativeSelection } from "./contract/digest.vibe"
+import type { DigestTemplate, HostedNativeSelection, PhoneDeviceTarget, WorkflowDeviceBinding, WorkflowDeviceOperation } from "@elizaos/plugin-workflow-client"
 import type { ManagedGoogleReads } from "./service/google.vibe"
-import type { PhoneDeviceTarget } from "./contract/phone.vibe"
-import type { WorkflowDeviceBinding, WorkflowDeviceOperation } from "./contract/device.vibe"
 import type { ParentMessage, WorkerMessage } from "./worker/protocol.vibe"
 import {
   WorkflowDeviceFailed, WorkflowModelFailed, WorkflowScheduleUnavailable, WorkflowWorkerUnavailable,
@@ -23,6 +21,7 @@ module node {
   import type { ChildProcessWithoutNullStreams } from "node:child_process"
   import { createInterface } from "node:readline"
   import type { IDatabaseAdapter } from "@elizaos/core"
+  import type { CloudLinkRequest as LinkRequest } from "@elizaos/agent-host"
   import type { WorkflowQuery, WorkflowSql } from "./service/store.vibe"
 
   export interface WorkerHostService {
@@ -86,14 +85,6 @@ module node {
     return { transaction: (work) => adapter.transaction(async (tx) => await work(connection(await tx.getConnection()))) }
   }
 
-  export interface LinkRequest {
-    readonly method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE"
-    readonly path: string
-    readonly body?: unknown
-    readonly idempotencyKey?: string
-    readonly ifMatch?: string
-    readonly signal?: AbortSignal
-  }
   export type LinkReply = { readonly kind: "answered" | "refused"; readonly status: number; readonly body: unknown } | { readonly kind: "changes-off" }
 
   const methods = new Set(["GET", "POST", "PUT", "PATCH", "DELETE"])

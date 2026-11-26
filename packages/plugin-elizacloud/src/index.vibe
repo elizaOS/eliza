@@ -1,6 +1,6 @@
 // spec/elizaCloud/index.md, "Story: Read account state and use Cloud under my current connection"; spec/elizaCloud/index.md, "Story: See which configured Cloud models can answer my request"
-import { cloudServiceType, type CloudLinkRequest, type CloudLinkService } from "@elizaos/agent"
-import { creditFromSnapshot, snapshotFromResponse } from "@elizaos/cloud/client"
+import { cloudServiceType, type CloudLinkRequest, type CloudLinkService } from "@elizaos/agent-host"
+import { creditFromSnapshot, snapshotFromResponse } from "@elizaos/cloud"
 import { resolveCanonicalOwnerId, validateUuid, type Action, type IAgentRuntime, type Memory, type Plugin, type Provider } from "@elizaos/core"
 import { Schema } from "effect"
 import { Machine, cloudTextReadiness, effectiveCloudModel, machine } from "../gen/elizaCloud.effect.vibe"
@@ -9,7 +9,7 @@ export error CloudAccountUnavailable { reason: string }
 
 const profileSchema = Schema.Struct({
   success: Schema.Literal(true),
-  data: Schema.Struct({ id: Schema.String, name: Schema.NullOr(Schema.String) }),
+  data: Schema.Struct({ id: Schema.String }),
 })
 const modelSchema = Schema.Struct({
   object: Schema.Literal("list"),

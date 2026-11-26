@@ -2,7 +2,7 @@
 import { type ChildProcessWithoutNullStreams, execFileSync, spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { once } from "node:events";
-import { accessSync, constants, copyFileSync, existsSync, globSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { accessSync, constants, existsSync, globSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 import readline from "node:readline";
@@ -15,6 +15,7 @@ const PACKAGE = path.resolve(import.meta.dirname, "../..");
 const SOURCE_TREES = ["android", "aosp", "test/drivers/java"] as const;
 const ADAPTERS = "test/drivers/java";
 const CACHE = path.join(PACKAGE, ".cache", "jvm");
+const ARRANGED = path.join(CACHE, "sources");
 
 const JSON_JAVA_SHA256 = "3ea61b2a06e31edf1c91134fe9106b0ebb16628be169f3db75bc7a2b06b45796";
 const JSON_JAVA_URL = "https://repo.maven.apache.org/maven2/org/json/json/20250517/json-20250517.jar";
@@ -87,38 +88,68 @@ const javaFiles = (directory: string): string[] => existsSync(directory)
     .map((entry) => path.join(entry.parentPath, entry.name))
   : [];
 
-function sourceRoot(file: string, text: string): string {
+function sourceRoot(file: string, text: string) {
   const declared = /^\s*package\s+([\w.]+)\s*;/m.exec(text)?.[1];
   const directory = path.dirname(file);
-  if (declared === undefined) return directory;
+  if (declared === undefined) return { root: directory };
   const suffix = path.join(...declared.split("."));
-  if (directory.endsWith(`${path.sep}${suffix}`)) return directory.slice(0, -suffix.length - 1);
-  const placed = path.join(CACHE, "sources", path.relative(PACKAGE, directory).split(path.sep).join("_"));
-  mkdirSync(path.join(placed, suffix), { recursive: true });
-  copyFileSync(file, path.join(placed, suffix, path.basename(file)));
-  return placed;
+  if (directory.endsWith(`${path.sep}${suffix}`)) return { root: directory.slice(0, -suffix.length - 1) };
+  const root = path.join(ARRANGED, path.relative(PACKAGE, directory), "source-root");
+  return { root, placed: path.join(root, suffix, path.basename(file)) };
 }
 
 interface Sources {
   readonly digest: string;
   readonly roots: readonly string[];
+  readonly arranged: ReadonlyMap<string, Buffer>;
   readonly adapters: ReadonlyMap<string, string>;
 }
 
-function sources(): Sources {
-  const files = SOURCE_TREES.flatMap((tree) => javaFiles(path.join(PACKAGE, tree))).sort();
+function sources(trees: readonly string[] = SOURCE_TREES, adapterTrees: readonly string[] = [ADAPTERS]): Sources {
+  const files = trees.flatMap((tree) => javaFiles(path.join(PACKAGE, tree))).sort();
   const digest = createHash("sha256");
   const roots = new Set<string>();
+  const arranged = new Map<string, Buffer>();
   const adapters = new Map<string, string>();
   for (const file of files) {
-    const text = readFileSync(file, "utf8");
-    digest.update(`${path.relative(PACKAGE, file)}\0${text}\0`);
-    const root = sourceRoot(file, text);
+    const bytes = readFileSync(file);
+    const text = bytes.toString("utf8");
+    digest.update(`${path.relative(PACKAGE, file)}\0${bytes.length}\0`).update(bytes);
+    const { root, placed } = sourceRoot(file, text);
     roots.add(root);
-    if (file.startsWith(path.join(PACKAGE, ADAPTERS) + path.sep) && /\bpublic\s+static\s+void\s+main\s*\(/.test(text))
-      adapters.set(path.relative(root, file).slice(0, -".java".length).split(path.sep).join("."), file);
+    if (placed !== undefined) arranged.set(placed, bytes);
+    if (adapterTrees.some((tree) => file.startsWith(path.join(PACKAGE, tree) + path.sep)) && /\bpublic\s+static\s+void\s+main\s*\(/.test(text))
+      adapters.set(path.relative(root, placed ?? file).slice(0, -".java".length).split(path.sep).join("."), file);
   }
-  return { digest: digest.digest("hex").slice(0, 24), roots: [...roots], adapters };
+  return { digest: digest.digest("hex").slice(0, 24), roots: [...roots], arranged, adapters };
+}
+
+function arrangedTree(found: Sources) {
+  let staged: { readonly directory: string; readonly roots: readonly string[] } | undefined;
+  return {
+    open: () => {
+      if (found.arranged.size === 0) return found.roots;
+      if (staged !== undefined) return staged.roots;
+      const directory = mkdtempSync(path.join(CACHE, ".sources-"));
+      try {
+        for (const [placed, bytes] of found.arranged) {
+          const destination = path.join(directory, path.relative(ARRANGED, placed));
+          mkdirSync(path.dirname(destination), { recursive: true });
+          writeFileSync(destination, bytes);
+        }
+        const roots = found.roots.map((root) =>
+          root.startsWith(ARRANGED + path.sep) ? path.join(directory, path.relative(ARRANGED, root)) : root);
+        staged = { directory, roots };
+        return roots;
+      } catch (error) {
+        rmSync(directory, { recursive: true, force: true });
+        throw error;
+      }
+    },
+    close() {
+      if (staged !== undefined) rmSync(staged.directory, { recursive: true, force: true });
+    },
+  };
 }
 
 interface FileStamp {
@@ -207,6 +238,15 @@ function compiledClasses(directory: string): string | undefined {
 }
 
 export function compileAdapter(main: string, found: Sources = sources(), dependencies: readonly string[] = []): string {
+  const tree = arrangedTree(found);
+  try {
+    return compile(main, found, dependencies, tree.open);
+  } finally {
+    tree.close();
+  }
+}
+
+function compile(main: string, found: Sources, dependencies: readonly string[], roots: () => readonly string[]): string {
   const adapter = found.adapters.get(main);
   if (adapter === undefined) throw new Error(`no JVM adapter ${main} under ${ADAPTERS}`);
   const tools = androidTools();
@@ -220,7 +260,7 @@ export function compileAdapter(main: string, found: Sources = sources(), depende
   const key = [compiler.inputs.map((input) => input.stamp), jars.map((jar) => jar.digest), ...options];
   const dependencyKey = createHash("sha256").update(JSON.stringify(key)).digest("hex");
   const classes = !external && compiler.stockLauncher && jars.every((jar) => jar.selfContained)
-    ? path.join(CACHE, `${found.digest}-${main}-${dependencyKey}`) : undefined;
+    ? path.join(CACHE, `arranged-sources-v1-${found.digest}-${main}-${dependencyKey}`) : undefined;
   if (classes && existsSync(classes)) {
     assertInputs(inputs);
     return classes;
@@ -232,7 +272,7 @@ export function compileAdapter(main: string, found: Sources = sources(), depende
     execFileSync(compiler.command, [
       "--release", "21", "-encoding", "UTF-8", "-nowarn", "-implicit:class", "-d", staging,
       "-classpath", classpath.length ? classpath.join(path.delimiter) : staging,
-      "-sourcepath", found.roots.join(path.delimiter), adapter,
+      "-sourcepath", roots().join(path.delimiter), adapter,
     ], { stdio: ["ignore", "ignore", "pipe"] });
     assertInputs(inputs);
     published = classes ?? compiledClasses(staging);
@@ -248,24 +288,29 @@ export function compileAdapter(main: string, found: Sources = sources(), depende
   }
 }
 
-export async function orgJsonAdapterClasspath(main: string): Promise<string> {
+export async function orgJsonAdapterClasspath(main: string, trees?: readonly string[]): Promise<string> {
   const jar = await jsonJavaArtifact();
-  return [compileAdapter(main, undefined, [jar]), jar].join(path.delimiter);
+  return [compileAdapter(main, trees === undefined ? undefined : sources(trees, trees), [jar]), jar].join(path.delimiter);
 }
 
 const needsOrgJson = (main: string) =>
-  main.startsWith("ai.eliza.plugins.media.") || main.startsWith("ai.eliza.plugins.actionjournal.") || main === "ai.eliza.plugins.signin.ReadinessJourney" || main === "ai.eliza.plugins.browsersurface.SessionRecordJourney" || main === "ai.eliza.systemupdater.JournalReplay";
+  main.startsWith("ai.eliza.plugins.media.") || main.startsWith("ai.eliza.plugins.actionjournal.") || main.startsWith("ai.eliza.plugins.notifications.") || main === "ai.eliza.plugins.signin.ReadinessJourney" || main === "ai.eliza.plugins.browsersurface.SessionRecordJourney" || main === "ai.eliza.systemupdater.JournalReplay" || main === "ai.eliza.files.StorageBrowsingCheck";
 
 export async function compileAdapters(): Promise<{ readonly compiled: readonly string[]; readonly failed: readonly string[] }> {
   const found = sources();
+  const tree = arrangedTree(found);
   const compiled: string[] = [];
   const failed: string[] = [];
-  for (const main of found.adapters.keys()) {
-    try {
-      compiled.push(compileAdapter(main, found, needsOrgJson(main) ? [await jsonJavaArtifact()] : []));
-    } catch (error) {
-      failed.push(error instanceof Error ? error.message : String(error));
+  try {
+    for (const main of found.adapters.keys()) {
+      try {
+        compiled.push(compile(main, found, needsOrgJson(main) ? [await jsonJavaArtifact()] : [], tree.open));
+      } catch (error) {
+        failed.push(error instanceof Error ? error.message : String(error));
+      }
     }
+  } finally {
+    tree.close();
   }
   return { compiled, failed };
 }
@@ -405,4 +450,30 @@ if (import.meta.main && process.argv.includes("--compile")) {
   process.stdout.write(`${JSON.stringify({ compiled: compiled.map((classes) => path.relative(PACKAGE, classes)), failed: failed.length }, null, 2)}\n`);
   for (const failure of failed) process.stderr.write(`${failure}\n`);
   process.exitCode = failed.length ? 1 : 0;
+}
+
+interface LineDriver<E> {
+  reset(): unknown;
+  dispatch(key: string, event: E): unknown;
+  observe(key: string): unknown;
+  [Symbol.asyncDispose](): PromiseLike<void>;
+}
+
+export async function answerDriverLines<E>(driver: LineDriver<E>, key: string, output: (key: string) => unknown, withOutcome = false): Promise<void> {
+  const answer = async (line: string) => {
+    const request: unknown = JSON.parse(line);
+    if (typeof request !== "object" || request === null || Array.isArray(request)) throw new Error(`not a driver request: ${line}`);
+    const event = (request as { event?: E }).event;
+    let outcome: unknown;
+    if (event === undefined) await driver.reset();
+    else outcome = await driver.dispatch(key, event);
+    const state = await driver.observe(key);
+    const out = event === undefined ? [] : await output(key);
+    return withOutcome && event !== undefined ? { outcome, state, out } : { state, out };
+  };
+  for await (const line of readline.createInterface({ input: process.stdin })) {
+    if (line.trim() === "") continue;
+    process.stdout.write(`${JSON.stringify(await answer(line))}\n`);
+  }
+  await driver[Symbol.asyncDispose]();
 }

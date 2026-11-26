@@ -264,17 +264,31 @@ pure def sometimesUnverifiedReplyLeftUnknown(o: Operation): bool =
 pure def sometimesRejectedByGoogle(o: Operation): bool = o.receipt.settlement == D::Refused
 ```
 
-### An unknown outcome stays unknown unless Google was never asked
+### An unknown outcome settles only when the effect is found or Google was never asked
 
 Gmail cannot be asked by key whether a change was made, so a sent change
-whose reply was lost or unclear is never settled by a guess; a claim whose
-sender was lost before asking settles `not applied`.
+whose reply was lost or unclear is never settled by a guess. A draft
+creation looks for the draft with the request's Message-ID. A replacement
+reads the named draft. Either save is found only when Gmail holds the
+exact prepared bytes, and returns the draft ID and digest of those bytes
+without sending the operation again. A claim whose sender was lost before
+asking settles `not applied`.
 
 ```quint
-pure def canResolve(o: Operation): bool = o.slot != NoKind and D::canResolve(o.receipt, D::NothingSeen)
-pure def resolve(o: Operation): Operation = { ...o, receipt: D::resolve(o.receipt, D::NothingSeen) }
+pure def draftBytesMatch(prepared: str, seen: str): bool = prepared != "" and seen == prepared
+pure def observedMail(kind: MailOperationKind, reply: MailReply): MailResult =
+  if (replyFits(kind, reply)) resultOf(kind, reply) else NoResult
+pure def lookupOfMail(kind: MailOperationKind, reply: MailReply): D::LookupResult =
+  if (observedMail(kind, reply) == NoResult) D::NothingSeen else D::EffectSeen
+pure def canResolve(o: Operation, reply: MailReply): bool =
+  o.slot != NoKind and D::canResolve(o.receipt, lookupOfMail(slotKind(o), reply))
+pure def resolve(o: Operation, reply: MailReply): Operation =
+  { ...o, receipt: D::resolve(o.receipt, lookupOfMail(slotKind(o), reply)), result: observedMail(slotKind(o), reply) }
 pure def alwaysASentChangeIsNeverSettledNotApplied(o: Operation): bool = o.receipt.settlement == D::NotApplied implies o.receipt.session.effects == 0
 pure def sometimesClaimedButNeverSentSettled(o: Operation): bool = o.receipt.settlement == D::NotApplied and o.receipt.session.phase == S::Committed
+pure def lawADraftLookupRequiresItsPreparedBytes(prepared: str, seen: str): bool =
+  lookupOfMail(DraftCreateKind, DraftStored({ sameBytes: draftBytesMatch(prepared, seen) })) == D::EffectSeen
+    iff (prepared != "" and seen == prepared)
 ```
 
 ### Every answer carries the receipt as it stands, and says Google does not apply a change exactly once

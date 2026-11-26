@@ -15,8 +15,10 @@ conversation is 404; `before`, `limit` and `offset` are core
 ### Creating a conversation gives it a fresh id and room, and a default title when blank
 
 `POST /api/conversations {title?}` answers `{conversation: {id, roomId,
-title, createdAt, updatedAt}}`. The trimmed title has at most 200 UTF-16
-units (else 400); a blank one becomes `New Chat`. Ids are never reused.
+title, createdAt, updatedAt}}`, its times ISO-8601 strings in UTC, as every
+conversation route answers a conversation. The trimmed title has at most
+200 UTF-16 units (else 400); a blank one becomes `New Chat`. Ids are never
+reused.
 
 ```quint
 import numbers.* from "../../core/numbers"
@@ -105,27 +107,38 @@ pure val nValues = Set(0, 1, 2, 50)
 pure def lawPageIsTheNewest(rows: List[Row], n: int): bool = rows.every(r => newest(rows, n).includes(r) or newest(rows, n).every(q => precedes(r, q)))
 ```
 
-### A history row carries its send key only on the owner's message, and a failure kind only on the agent's reply
+### A history row carries its send key only on the owner's message, and a failure kind, what ended its turn and Cloud's funds code only on the agent's reply
 
 Every row is `{id, role, text, timestamp}`, `timestamp` in epoch
 milliseconds. The owner's message sent under a `clientMessageId` also
 carries that key, so a client finds the row of a turn it stopped
 ([client turns](../client/turns.md)). An agent reply stored with a failure
 kind ([turns](./turns.md)) carries `failureKind`, so a reopened conversation
-marks a failed or stopped reply instead of showing it as an answer. A row
-never carries the other side's field, and carries neither when its message
-has none.
+marks a failed or stopped reply instead of showing it as an answer; one
+stored with what ended its turn also carries `abortCause`, and `stopReason`
+when it has one. A reply stored with Cloud's own funds code (`cloudCode`,
+[turns](./turns.md)) carries it too, and only beside a failure kind, so a
+reopened conversation shows an account out of plan allowance and credits
+the same way the live reply did. A row never carries the other side's
+fields, and carries none when its message has none.
 
 ```quint
-type RowMarks = { sendKey: str, failed: str }
-pure def rowMarks(author: Author, sendKey: str, failed: str): RowMarks =
-  if (author == User) { sendKey: sendKey, failed: "" } else { sendKey: "", failed: failed }
+type RowMarks = { sendKey: str, failed: str, cause: str, cloudCode: str }
+pure def rowMarks(author: Author, sendKey: str, failed: str, cause: str, cloudCode: str): RowMarks =
+  if (author == User) { sendKey: sendKey, failed: "", cause: "", cloudCode: "" }
+  else { sendKey: "", failed: failed, cause: cause, cloudCode: if (failed == "") "" else cloudCode }
 pure val sendKeyValues = Set("", "m-1")
-pure val failedValues = Set("", "aborted")
-pure def lawOnlyTheOwnersRowCarriesASendKey(sendKey: str, failed: str): bool =
-  rowMarks(Agent, sendKey, failed).sendKey == "" and rowMarks(User, sendKey, failed).sendKey == sendKey
-pure def lawOnlyTheAgentsRowCarriesAFailureKind(sendKey: str, failed: str): bool =
-  rowMarks(User, sendKey, failed).failed == "" and rowMarks(Agent, sendKey, failed).failed == failed
+pure val failedValues = Set("", "aborted", "insufficient_credits")
+pure val causeValues = Set("", "client_left")
+pure val cloudCodeValues = Set("", "insufficient_credits", "allowance_exhausted")
+pure def lawOnlyTheOwnersRowCarriesASendKey(sendKey: str, failed: str, cause: str, cloudCode: str): bool =
+  rowMarks(Agent, sendKey, failed, cause, cloudCode).sendKey == "" and rowMarks(User, sendKey, failed, cause, cloudCode).sendKey == sendKey
+pure def lawOnlyTheAgentsRowCarriesAFailureKind(sendKey: str, failed: str, cause: str, cloudCode: str): bool =
+  rowMarks(User, sendKey, failed, cause, cloudCode).failed == "" and rowMarks(Agent, sendKey, failed, cause, cloudCode).failed == failed
+    and rowMarks(User, sendKey, failed, cause, cloudCode).cause == "" and rowMarks(Agent, sendKey, failed, cause, cloudCode).cause == cause
+pure def lawAFundsCodeRidesOnlyWithTheAgentsFailure(sendKey: str, failed: str, cause: str, cloudCode: str): bool =
+  rowMarks(User, sendKey, failed, cause, cloudCode).cloudCode == ""
+    and rowMarks(Agent, sendKey, failed, cause, cloudCode).cloudCode == (if (failed == "") "" else cloudCode)
 ```
 
 ### An older page holds only messages before its cursor, and hasMore says whether any are left
@@ -311,7 +324,11 @@ message of another conversation, or none, is 404; a stored text other than
 Otherwise the message and every message and model-call log row of that
 conversation with exactly its text show `[Private information removed]`.
 The whole stored text is compared, and a long text's stored segments are
-removed with it.
+removed with it. A redacted reply keeps no record of its turn's tools
+([planning](./planning.md)), and in any other reply of that conversation
+the record's copies of the text show the notice in their place, as in a
+log row, a copy the record cut short (the text's first characters and
+`…`) included.
 
 ```quint
 type RedactAnswer = RedactUnknown | RedactTextChanged | RedactUnchanged | RedactNow

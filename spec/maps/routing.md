@@ -22,6 +22,10 @@ model's choice: nothing routes a request before the model has seen it, and
 no action is refused for the words of a request. The `VIEWS` description
 says that showing a view acts on nothing in it, so showing Maps finds no
 place and plans no route, and a request for one is a Maps action's.
+A Maps result tells the model what Maps found, planned or did, and the
+model words the reply from it: the owner sees the result's card as it is,
+and its sentences only as the model put them. Only the question Maps asks
+before it shares a place is shown in its own words, with its choices.
 
 ### A place named with its locality is taken only from that locality, and otherwise Maps asks which one
 
@@ -62,48 +66,56 @@ pure def aroundTheStart(meters: int): bool = meters >= 0 and meters <= startArea
 pure def lawAFarNamesakeIsNotAroundTheStart(meters: int): bool = meters > startAreaMeters implies not(aroundTheStart(meters))
 ```
 
-### Only the owner's next turn answers an open question, by its position or the place's name, within ten minutes
+### Only the owner's next turn answers an open question, with a listed place's id the model passes, within ten minutes
 
 When Maps asks "which one did you mean?", the question is open for the
 owner who was asked, in that conversation, and only their next turn can
 answer it. A turn after that closes it, as do ten minutes, so "the second
-one" said later about another list is never taken as this answer. The
-next turn answers by a position among the options offered ("the second
-one", "2", "the last one"), or by naming exactly one option: its name
-with its address as listed, or its name alone when no other option
-shares it. The answer continues the operation that asked. While the
-question is open, the owner's next message reaches the model with a note
-on the action that asked, listing the options it offered, so the model
-may call that action again; the place is then taken from the owner's
-answer as above, never from the model's arguments. Any other reply leaves
-the question to the planner.
+one" said later about another list is never taken as this answer. While
+the question is open, the owner's next message reaches the model with a
+note on the action that asked, numbering the options it offered with each
+one's place id and naming the argument that takes the answer. Which
+option the owner's words pick ("the second one", "the one on Valencia",
+the place's name) is the model's to read: it calls that action again with
+the chosen option's place id. That id continues the operation that asked
+only when it is one of the listed options. An id that is not one of them
+is never looked up as the answer: when the call also names a place, that
+name is searched as a new request; otherwise the model is told, out of
+the owner's sight, which ids the question listed, and nothing is looked
+up. A call without an id leaves the question to the planner.
 
 ```quint
 pure val choiceLifetime = 600000
 type ChoiceTurn = AskingTurn | NextOwnerTurn | LaterTurn
 type ChoiceAnswer = { open: bool, sameConversation: bool, turn: ChoiceTurn, age: int, position: int, options: int }
 pure def choiceOpenAt(turn: ChoiceTurn, age: int): bool = turn != LaterTurn and age >= 0 and age <= choiceLifetime
-pure def choiceBinds(a: ChoiceAnswer): bool =
-  a.open and a.sameConversation and a.turn == NextOwnerTurn and choiceOpenAt(a.turn, a.age) and a.position >= 1 and a.position <= a.options
-type NamedOption = ByListedLabel | ByNameAlone | NoOptionNamed
-pure def namedOption(labelMatches: int, nameMatches: int): NamedOption =
-  if (labelMatches == 1) ByListedLabel else if (nameMatches == 1) ByNameAlone else NoOptionNamed
+pure def answersTheQuestion(a: ChoiceAnswer): bool =
+  a.open and a.sameConversation and a.turn == NextOwnerTurn and choiceOpenAt(a.turn, a.age) and a.options >= 1
+pure def choiceBinds(a: ChoiceAnswer): bool = answersTheQuestion(a) and a.position >= 1 and a.position <= a.options
+type ChoiceCourse = ContinueTheAskedRequest | SendBackToPick | SearchTheNamedPlace | PlanAsANewRequest
+pure def choiceCourse(a: ChoiceAnswer, idGiven: bool, placeNamed: bool): ChoiceCourse =
+  if (idGiven and choiceBinds(a)) ContinueTheAskedRequest
+  else if (idGiven and answersTheQuestion(a) and placeNamed) SearchTheNamedPlace
+  else if (idGiven and answersTheQuestion(a)) SendBackToPick
+  else PlanAsANewRequest
 pure val aValues = Set({ open: true, sameConversation: true, turn: NextOwnerTurn, age: 0, position: 2, options: 3 },
   { open: true, sameConversation: false, turn: NextOwnerTurn, age: 0, position: 1, options: 3 },
   { open: true, sameConversation: true, turn: NextOwnerTurn, age: 600001, position: 1, options: 3 },
   { open: true, sameConversation: true, turn: NextOwnerTurn, age: 10, position: 4, options: 3 },
+  { open: true, sameConversation: true, turn: NextOwnerTurn, age: 10, position: 0, options: 3 },
   { open: false, sameConversation: true, turn: NextOwnerTurn, age: 10, position: 1, options: 3 },
   { open: true, sameConversation: true, turn: LaterTurn, age: 10, position: 1, options: 3 },
   { open: true, sameConversation: true, turn: AskingTurn, age: 10, position: 1, options: 3 })
-pure val labelMatchesValues = Set(0, 1, 2)
-pure val nameMatchesValues = Set(0, 1, 2)
 pure def lawExpiredChoiceNeverBinds(a: ChoiceAnswer): bool = a.age > choiceLifetime implies not(choiceBinds(a))
 pure def lawChoiceStaysInItsConversation(a: ChoiceAnswer): bool = not(a.sameConversation) implies not(choiceBinds(a))
 pure def lawPositionIsAmongTheOptions(a: ChoiceAnswer): bool = choiceBinds(a) implies a.position <= a.options
 pure def lawOnlyTheNextTurnAnswers(a: ChoiceAnswer): bool = a.turn != NextOwnerTurn implies not(choiceBinds(a))
 pure def lawALaterTurnClosesTheQuestion(age: int): bool = not(choiceOpenAt(LaterTurn, age))
-pure def lawOptionsSharingANameAreNotNamedByIt(labelMatches: int, nameMatches: int): bool =
-  (labelMatches != 1 and nameMatches != 1) implies namedOption(labelMatches, nameMatches) == NoOptionNamed
+pure def lawOnlyAListedIdContinues(a: ChoiceAnswer, idGiven: bool, placeNamed: bool): bool =
+  choiceCourse(a, idGiven, placeNamed) == ContinueTheAskedRequest implies (idGiven and a.position >= 1 and a.position <= a.options and a.turn == NextOwnerTurn)
+pure def lawAnUnlistedIdIsNeverLookedUpAsTheAnswer(a: ChoiceAnswer, placeNamed: bool): bool =
+  (answersTheQuestion(a) and not(choiceBinds(a))) implies choiceCourse(a, true, placeNamed) == (if (placeNamed) SearchTheNamedPlace else SendBackToPick)
+pure def lawWithoutAnIdTheQuestionIsThePlannersToLeave(a: ChoiceAnswer, placeNamed: bool): bool = choiceCourse(a, false, placeNamed) == PlanAsANewRequest
 ```
 
 ### Same-named areas close together are one place, and same-named street addresses still ask
@@ -228,6 +240,32 @@ the phone, and without it say the phone isn't connected for navigation.
 type StartCourse = StartOnPhone | HandOffLink
 pure def startCourse(phoneOffered: bool, phoneReady: bool): StartCourse = if (phoneOffered and phoneReady) StartOnPhone else HandOffLink
 pure def lawWithoutAReadyPhoneDirectionsAreALink(phoneOffered: bool): bool = startCourse(phoneOffered, false) == HandOffLink
+```
+
+### Only a kind of place near a named place is searched around that place
+
+"Pharmacy near Union Square" and "gas station near US 101" name a kind of
+place and the place to search around: the planner passes the kind as the
+search and the named place as the place to search near, or a place saved
+with the assistant ("coffee near my office") by its saved id. Which words
+name that place is the model's reading of the owner's request, not a
+phrase list. The owner's own position ("near me", "near us right now")
+is no place to search near: the planner asks for a search near the owner,
+around the phone. A time ("around midnight"), a price ("around 500
+dollars") or something about a place ("the weather near Austin") is no
+place to search near either. A search with no place to search near is
+searched just as it would be with none named, around the phone for a
+search near the owner and around nothing otherwise.
+
+```quint
+import phonePosition as Pos from "./phonePosition"
+type NearSearch = AroundTheNamedPlace | NoNamedPlaceSearch
+pure def nearSearch(placeToSearchNear: bool): NearSearch =
+  if (placeToSearchNear) AroundTheNamedPlace else NoNamedPlaceSearch
+pure def lawAPlaceToSearchNearIsSearchedAround(nearMe: bool, p: Pos::PhonePosition): bool =
+  Pos::searchAround(nearSearch(true) == AroundTheNamedPlace, nearMe, p) == Pos::AroundNamedPlace
+pure def lawWithoutAPlaceToSearchNearTheSearchDoesNotMove(nearMe: bool, p: Pos::PhonePosition): bool =
+  Pos::searchAround(nearSearch(false) == AroundTheNamedPlace, nearMe, p) == Pos::searchAround(false, nearMe, p)
 ```
 
 ## Story: Ask for directions to the place on my phone's map

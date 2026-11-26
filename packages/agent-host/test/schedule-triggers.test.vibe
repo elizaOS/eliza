@@ -1,0 +1,412 @@
+// spec/agent/schedule/triggers.md, "Story: Run a trigger now or on schedule without losing my edits"; spec/agent/schedule/triggers.md, "Story: Deliver a prompt only to the conversation I chose"; spec/agent/schedule/triggers.md, "A run's prompt is told to the model as the trigger that fired, and the history never shows it as the owner's message"; spec/agent/access/routes.md, "A request matches a route by method, delivery, every segment and every query key"
+import { assert, it } from "@effect/vitest"
+import { parseLaunch } from "../src/host/launch.vibe"
+import { startAgent } from "../src/host/process.vibe"
+import { triggersModuleName } from "../src/schedule/trigger-routes.vibe"
+import { cloudFake, deviceKey, host, scratch } from "./support/kernel.vibe"
+import { launchDocument, launchFrame, type Scratch } from "./support/scratch.ts"
+import type { CloudFake } from "./support/cloud-fake.ts"
+
+module node {
+  import { setTimeout as delay } from "node:timers/promises"
+  import { Effect } from "effect"
+  import { vi } from "vitest"
+  import { EventType, MISSED_SCHEDULED_OCCURRENCE_TEXT, stringToUuid, validateUuid, type UUID } from "@elizaos/core"
+  import type { RunningAgent } from "../src/host/process.vibe"
+  import { getTrigger, triggerKeeping } from "../src/schedule/store.vibe"
+  import { held, text, type CloudFake } from "./support/cloud-fake.ts"
+  import { account, type LaunchFrame } from "./support/scratch.ts"
+  import { request, type LocalRequest } from "./support/socket-client.ts"
+
+  export interface Bench {
+    readonly running: RunningAgent
+    readonly cloud: CloudFake
+    readonly socket: string
+    readonly frame: LaunchFrame
+  }
+
+  interface WireTrigger {
+    readonly id: string
+    readonly instructions: string
+    readonly triggerType: string
+    readonly enabled: boolean
+    readonly revision: number
+    readonly scheduledAtIso?: string
+  }
+
+  interface WireRun {
+    readonly status: string
+    readonly source: string
+    readonly error?: string
+    readonly missedOccurrenceAt?: number
+  }
+
+  interface Replies {
+    readonly trigger: { readonly trigger: WireTrigger; readonly deliveryConversationId?: string; readonly error?: string }
+    readonly triggers: { readonly triggers: readonly WireTrigger[] }
+    readonly runs: { readonly runs: readonly WireRun[] }
+    readonly execute: { readonly ok: true; readonly result: { readonly status: string; readonly error?: string } }
+    readonly conversation: { readonly conversation: { readonly id: string } }
+    readonly any: { readonly error?: string; readonly ok?: boolean }
+  }
+
+  /** @throws {never} */
+  export function ownerOf(agentId: UUID) {
+    return { user: validateUuid(account.userId) ?? stringToUuid(`account:${account.userId}`), world: stringToUuid(`device:${agentId}`) }
+  }
+
+  export function fakeClock(at: number) {
+    vi.useFakeTimers({ toFake: ["Date"], shouldAdvanceTime: true })
+    vi.setSystemTime(at)
+  }
+
+  export function realClock() {
+    vi.useRealTimers()
+  }
+
+  async function ask<T>(bench: Bench, method: LocalRequest["method"], path: string, body?: unknown) {
+    const answer = await request(bench.socket, { method, path, token: bench.frame.token, ...(body === undefined ? {} : { body }) })
+    if ("refused" in answer) throw new Error(`${method} ${path} was refused: ${answer.refused}`)
+    return { status: answer.status, body: answer.json as T }
+  }
+
+  const inferences = (cloud: CloudFake) => cloud.calls.filter((call) => call.path.endsWith("/chat/completions")).length
+
+  async function settle<T>(what: string, read: () => Promise<T>, done: (value: T) => boolean): Promise<T> {
+    const until = performance.now() + 30_000
+    for (;;) {
+      const value = await read()
+      if (done(value)) return value
+      if (performance.now() > until) throw new Error(`Timed out waiting for ${what}`)
+      await delay(100)
+    }
+  }
+
+  const prompt = (more: Record<string, unknown>) => ({
+    kind: "prompt", displayName: "Water", instructions: "Remind me to drink water", timezone: "UTC", wakeMode: "inject_now", enabled: false, ...more,
+  })
+  const everyMinute = { triggerType: "cron", cronExpression: "* * * * *" }
+
+  async function roomOf(running: RunningAgent, conversationId: string): Promise<UUID> {
+    const rooms = await running.runtime.getRooms(ownerOf(running.runtime.agentId).world)
+    const room = rooms.find((candidate) => (candidate.metadata?.deviceConversation as { id?: string } | undefined)?.id === conversationId)
+    if (room === undefined) throw new Error("The conversation has no room")
+    return room.id
+  }
+
+  const runsOf = (bench: Bench, id: string) => ask<Replies["runs"]>(bench, "GET", `/api/triggers/${id}/runs`)
+  const shape = (runs: readonly WireRun[]) => runs.map(({ status, source, error }) => ({ status, source, ...(error === undefined ? {} : { error }) }))
+
+  async function refusals(bench: Bench, at: number) {
+    const sent = [
+      prompt({ ...everyMinute, enabled: true }),
+      prompt({ ...everyMinute, kind: "workflow" }),
+      prompt({ triggerType: "interval", intervalMs: 60_000 }),
+      prompt({ ...everyMinute, wakeMode: "next_autonomy_cycle" }),
+      prompt({ ...everyMinute, timezone: "Mars/Olympus_Mons" }),
+      prompt({ triggerType: "cron", cronExpression: "every minute" }),
+      prompt({ triggerType: "once", scheduledAtIso: new Date(at - 60_000).toISOString() }),
+      prompt({ triggerType: "event", eventKind: "ENTITY_JOINED" }),
+      prompt({ ...everyMinute, deliveryConversationId: "no-such-conversation" }),
+    ]
+    const answers = []
+    for (const body of sent) {
+      const answer = await ask<Replies["any"]>(bench, "POST", "/api/triggers", body)
+      answers.push(`${answer.status} ${answer.body.error ?? ""}`)
+    }
+    return answers
+  }
+
+  async function cronFiresOnceAndEditsStand(bench: Bench, start: number) {
+    const created = await ask<Replies["trigger"]>(bench, "POST", "/api/triggers", prompt(everyMinute))
+    const id = created.body.trigger.id
+    const listed = await ask<Replies["triggers"]>(bench, "GET", "/api/triggers")
+    const enabled = await ask<Replies["trigger"]>(bench, "PUT", `/api/triggers/${id}`, { enabled: true, expectedRevision: 1 })
+    const staleEnable = await ask<Replies["any"]>(bench, "PUT", `/api/triggers/${id}`, { enabled: false, expectedRevision: 1 })
+    let release = () => {}
+    const gate = new Promise<void>((resolve) => { release = resolve })
+    bench.cloud.script(held(gate, text("Time for water.")))
+    const before = inferences(bench.cloud)
+    const due = Math.ceil(start / 60_000) * 60_000
+    vi.setSystemTime(due + 1_000)
+    await settle("the scheduled run to reach the model", async () => inferences(bench.cloud), (count) => count > before)
+    const edit = { kind: "prompt", displayName: "Water", instructions: "Remind me to drink tea", timezone: "UTC", ...everyMinute, expectedRevision: 2 }
+    const edited = await ask<Replies["trigger"]>(bench, "PUT", `/api/triggers/${id}`, edit)
+    const staleEdit = await ask<Replies["any"]>(bench, "PUT", `/api/triggers/${id}`, edit)
+    release()
+    await settle("the scheduled run to finish", () => runsOf(bench, id), (answer) => answer.body.runs.length > 0)
+    await delay(2_500)
+    const runs = await runsOf(bench, id)
+    const after = await ask<Replies["trigger"]>(bench, "GET", `/api/triggers/${id}`)
+    return {
+      id,
+      observed: {
+        created: { status: created.status, enabled: created.body.trigger.enabled, revision: created.body.trigger.revision, triggerType: created.body.trigger.triggerType, conversation: typeof created.body.deliveryConversationId },
+        listed: listed.body.triggers.map((trigger) => trigger.id === id),
+        enabled: { status: enabled.status, enabled: enabled.body.trigger.enabled, revision: enabled.body.trigger.revision },
+        staleEnable: `${staleEnable.status} ${staleEnable.body.error ?? ""}`,
+        edited: { status: edited.status, revision: edited.body.trigger.revision },
+        staleEdit: `${staleEdit.status} ${staleEdit.body.error ?? ""}`,
+        fired: shape(runs.body.runs), inferences: inferences(bench.cloud) - before,
+        kept: { instructions: after.body.trigger.instructions, revision: after.body.trigger.revision, enabled: after.body.trigger.enabled },
+      },
+    }
+  }
+
+  async function runNowWhileDisabled(bench: Bench, id: string) {
+    const disabled = await ask<Replies["trigger"]>(bench, "PUT", `/api/triggers/${id}`, { enabled: false, expectedRevision: 3 })
+    bench.cloud.script(text("Water, right now."))
+    const executed = await ask<Replies["execute"]>(bench, "POST", `/api/triggers/${id}/execute`, {})
+    const keyed = await ask<Replies["any"]>(bench, "POST", `/api/triggers/${id}/execute`, { idempotencyKey: "k1" })
+    const unknown = await ask<Replies["any"]>(bench, "POST", "/api/triggers/no-such-trigger/execute", {})
+    const runs = await runsOf(bench, id)
+    return {
+      disabled: { enabled: disabled.body.trigger.enabled, revision: disabled.body.trigger.revision },
+      executed: { status: executed.status, body: executed.body }, keyed: keyed.status, unknown: unknown.status,
+      runs: shape(runs.body.runs),
+    }
+  }
+
+  async function eventRunsOnce(bench: Bench) {
+    const { runtime } = bench.running
+    const created = await ask<Replies["trigger"]>(bench, "POST", "/api/triggers", prompt({ displayName: "Echo", instructions: "Say you heard it", triggerType: "event", eventKind: "MESSAGE_RECEIVED" }))
+    const id = created.body.trigger.id
+    await ask<Replies["trigger"]>(bench, "PUT", `/api/triggers/${id}`, { enabled: true })
+    bench.cloud.script(text("Hello."), text("Heard you."))
+    const before = inferences(bench.cloud)
+    const said = await ask<{ readonly userMessageId: UUID }>(bench, "POST", `/api/conversations/${created.body.deliveryConversationId}/messages`, { text: "hello" })
+    await settle("the event run", () => runsOf(bench, id), (answer) => answer.body.runs.length > 0)
+    const message = await runtime.getMemoryById(said.body.userMessageId)
+    if (message?.id === undefined) throw new Error("The owner's message was not stored")
+    await runtime.emitEvent(EventType.MESSAGE_RECEIVED, { runtime, source: "test", message })
+    await delay(1_500)
+    const runs = await runsOf(bench, id)
+    const stored = await Effect.runPromise(getTrigger(runtime.adapter, id))
+    await ask<Replies["trigger"]>(bench, "PUT", `/api/triggers/${id}`, { enabled: false })
+    return { said: said.status, runs: shape(runs.body.runs), inferences: inferences(bench.cloud) - before, ranFor: stored?.state.seenEvents, message: message.id }
+  }
+
+  async function goneConversationAndCappedHistory(bench: Bench) {
+    const conversation = await ask<Replies["conversation"]>(bench, "POST", "/api/conversations", { title: "Plants" })
+    const chosen = conversation.body.conversation.id
+    const created = await ask<Replies["trigger"]>(bench, "POST", "/api/triggers", prompt({ displayName: "Plants", instructions: "Water the plants", triggerType: "event", eventKind: "MESSAGE_SENT", deliveryConversationId: chosen }))
+    const id = created.body.trigger.id
+    bench.cloud.script(text("Plants watered."))
+    const first = await ask<Replies["execute"]>(bench, "POST", `/api/triggers/${id}/execute`, {})
+    const roomId = await roomOf(bench.running, chosen)
+    const { runtime } = bench.running
+    const messages = await runtime.getMemories({ tableName: "messages", roomId, count: 10 })
+    const firedText = 'Scheduled trigger "Plants" fired. Do this now: Water the plants'
+    const fired = messages.find((message) => message.content.text === firedText)
+    const toldFired = bench.cloud.calls.some((call) => call.path.endsWith("/chat/completions") && JSON.stringify(call.body ?? null).includes(JSON.stringify(firedText).slice(1, -1)))
+    const history = await ask<{ readonly messages: readonly { readonly role: string; readonly text: string }[] }>(bench, "GET", `/api/conversations/${chosen}/messages`)
+    const found = await ask<{ readonly count: number }>(bench, "GET", `/api/conversations/messages/search?q=${encodeURIComponent("Do this now")}`)
+    await runtime.deleteRoom(roomId)
+    const before = inferences(bench.cloud)
+    const gone = await ask<Replies["execute"]>(bench, "POST", `/api/triggers/${id}/execute`, {})
+    for (let run = 1; run < 100; run++) await ask<Replies["execute"]>(bench, "POST", `/api/triggers/${id}/execute`, {})
+    const edited = await ask<Replies["trigger"]>(bench, "PUT", `/api/triggers/${id}`, {
+      kind: "prompt", displayName: "Plants", instructions: "Water the plants twice", timezone: "UTC", triggerType: "event", eventKind: "MESSAGE_SENT",
+    })
+    const runs = (await runsOf(bench, id)).body.runs
+    const conversations = await bench.running.runtime.getRooms(ownerOf(bench.running.runtime.agentId).world)
+    return {
+      chosen: created.body.deliveryConversationId === chosen, authoredByCaller: fired?.entityId === ownerOf(runtime.agentId).user,
+      firedSource: fired?.content.source, modelToldFired: toldFired,
+      shown: history.body.messages.map(({ role, text }) => ({ role, text })), searchedPrompt: found.body.count,
+      first: first.body.result, gone: gone.body.result,
+      editedAfterGone: { status: edited.status, revision: edited.body.trigger?.revision, conversation: edited.body.deliveryConversationId === chosen },
+      kept: runs.length, statuses: [...new Set(runs.map((run) => run.status))], inferences: inferences(bench.cloud) - before,
+      fellBackTo: conversations.filter((room) => (room.metadata?.deviceConversation as { id?: string } | undefined)?.id === chosen).length,
+    }
+  }
+
+  async function activeLimit(bench: Bench) {
+    const answers: number[] = []
+    for (let n = 0; n < 101; n++) {
+      const created = await ask<Replies["trigger"]>(bench, "POST", "/api/triggers", prompt({ displayName: `Joined ${n}`, triggerType: "event", eventKind: "MESSAGE_SENT" }))
+      answers.push((await ask<Replies["any"]>(bench, "PUT", `/api/triggers/${created.body.trigger.id}`, { enabled: true })).status)
+    }
+    const last = await ask<Replies["triggers"]>(bench, "GET", "/api/triggers")
+    return { accepted: answers.filter((status) => status === 200).length, refused: answers.slice(100), listed: last.body.triggers.length }
+  }
+
+  async function removal(bench: Bench, id: string) {
+    const malformed = await ask<Replies["any"]>(bench, "DELETE", `/api/triggers/${id}?expectedRevision=first`)
+    const stale = await ask<Replies["any"]>(bench, "DELETE", `/api/triggers/${id}?expectedRevision=1`)
+    const removed = await ask<Replies["any"]>(bench, "DELETE", `/api/triggers/${id}?expectedRevision=4`)
+    const read = await ask<Replies["any"]>(bench, "GET", `/api/triggers/${id}`)
+    const runs = await ask<Replies["any"]>(bench, "GET", `/api/triggers/${id}/runs`)
+    return { malformed: malformed.status, stale: `${stale.status} ${stale.body.error ?? ""}`, removed: removed.body, read: read.status, runs: runs.status }
+  }
+
+  export async function triggerJourney(bench: Bench) {
+    const start = Math.ceil(Date.now() / 60_000) * 60_000 + 5_000
+    fakeClock(start)
+    try {
+      const refused = await refusals(bench, start)
+      const unknown = (await ask<Replies["any"]>(bench, "GET", "/api/triggers/no-such-trigger")).status
+      const cron = await cronFiresOnceAndEditsStand(bench, start)
+      const runNow = await runNowWhileDisabled(bench, cron.id)
+      const event = await eventRunsOnce(bench)
+      const gone = await goneConversationAndCappedHistory(bench)
+      const limit = await activeLimit(bench)
+      const removed = await removal(bench, cron.id)
+      return { refused, unknown, cron: cron.observed, runNow, event, gone, limit, removed }
+    } finally {
+      realClock()
+    }
+  }
+
+  export async function seedLegacyEvent(bench: Bench) {
+    const current = { triggerType: "event", eventKind: "MESSAGE_RECEIVED" }
+    const created = await ask<Replies["trigger"]>(bench, "POST", "/api/triggers", prompt(current))
+    const { id } = created.body.trigger
+    const enabled = await ask<Replies["trigger"]>(bench, "PUT", `/api/triggers/${id}`, { enabled: true })
+    const adapter = bench.running.runtime.adapter
+    const row = await Effect.runPromise(getTrigger(adapter, id))
+    if (row === undefined || enabled.status !== 200) throw new Error("The enabled trigger was not stored")
+    const eventKind = "ENTITY_JOINED"
+    const keeping = triggerKeeping(adapter, id, { details: { ...row.details, eventKind } })
+    await Effect.runPromise(Effect.gen(function* () {
+      const stored = yield* keeping.load()
+      yield* keeping.keep({ ...stored, eventKind })
+    }))
+    return id
+  }
+
+  export async function observeLegacyEvent(bench: Bench, id: string) {
+    const path = `/api/triggers/${id}`
+    const listed = (await ask<Replies["trigger"]>(bench, "GET", path)).body.trigger
+    const refused = await ask<Replies["any"]>(bench, "PUT", path, { enabled: true, expectedRevision: 3 })
+    const edited = await ask<Replies["trigger"]>(bench, "PUT", path, {
+      kind: "prompt", displayName: "Water", instructions: "Remind me to drink water", timezone: "UTC",
+      triggerType: "event", eventKind: "MESSAGE_SENT", expectedRevision: 3,
+    })
+    const enabled = await ask<Replies["trigger"]>(bench, "PUT", path, { enabled: true, expectedRevision: 4 })
+    return {
+      listed: { enabled: listed.enabled, revision: listed.revision, instructions: listed.instructions },
+      refused: { status: refused.status, error: refused.body.error },
+      edited: { status: edited.status, revision: edited.body.trigger?.revision },
+      enabled: { status: enabled.status, enabled: enabled.body.trigger?.enabled },
+    }
+  }
+
+  export async function planMissed(bench: Bench) {
+    const at = Date.now() + 60_000
+    const created = await ask<Replies["trigger"]>(bench, "POST", "/api/triggers", prompt({ triggerType: "once", scheduledAtIso: new Date(at).toISOString() }))
+    const enabled = await ask<Replies["trigger"]>(bench, "PUT", `/api/triggers/${created.body.trigger.id}`, { enabled: true })
+    return { id: created.body.trigger.id, at, enabled: enabled.body.trigger.enabled }
+  }
+
+  export async function missedAfterRestart(bench: Bench, id: string, at: number) {
+    const before = inferences(bench.cloud)
+    await settle("the missed occurrence", () => runsOf(bench, id), (answer) => answer.body.runs.length > 0)
+    await delay(2_500)
+    const runs = (await runsOf(bench, id)).body.runs
+    const listed = await ask<Replies["triggers"]>(bench, "GET", "/api/triggers")
+    const missedInferences = inferences(bench.cloud) - before
+    bench.cloud.script(text("Late, but here is your reminder."))
+    const runNow = await ask<Replies["execute"]>(bench, "POST", `/api/triggers/${id}/execute`, {})
+    return {
+      runs: runs.map(({ status, source, error, missedOccurrenceAt }) => ({ status, source, error, missedOccurrenceAt })),
+      listed: listed.body.triggers.map((trigger) => ({ id: trigger.id, enabled: trigger.enabled })),
+      missedInferences, runNow: runNow.body.result,
+      expected: { error: MISSED_SCHEDULED_OCCURRENCE_TEXT, at },
+    }
+  }
+}
+
+import { fakeClock, missedAfterRestart, observeLegacyEvent, planMissed, realClock, seedLegacyEvent, triggerJourney, type Bench } from node
+
+effect function agent(state: Scratch, cloud: CloudFake, socket: string, callerRole: "owner" | "user" = "owner") {
+  const frame = launchFrame({ credential: { version: 1, value: deviceKey } })
+  const config = try Effect.try(() => launchDocument({
+    callerRole, persistMemory: true, load: [triggersModuleName], backend: { kind: "cloud", origin: cloud.origin },
+  }))
+  const parsed = try parseLaunch(JSON.stringify(config), JSON.stringify(frame))
+  const running = try acquireRelease(
+    startAgent({ ...parsed, stateDirectory: state.path, binding: { kind: "socket", path: state.file(socket) } }),
+    (started) => orDie(host("retire agent", () => started.stop())),
+  )
+  return { running, cloud, socket: state.file(socket), frame } satisfies Bench
+}
+
+const unavailable = "Prompt automation delivery conversation is unavailable"
+
+it.effect('A trigger is saved disabled, fires once on schedule, keeps edits made during its run, runs now while disabled, runs once per event, fails without its conversation and keeps 100 records (spec/agent/schedule/triggers.md, "Story: Run a trigger now or on schedule without losing my edits")', effect () => {
+  const state = try scratch("schedule-triggers")
+  const cloud = try cloudFake(deviceKey)
+  const bench = try agent(state, cloud, "agent.sock", "user")
+  const observed = try host("trigger journey", () => triggerJourney(bench))
+  try Effect.try(() => assert.deepStrictEqual(observed, {
+    refused: [
+      "400 invalid_trigger", "400 invalid_trigger", "400 invalid_trigger", "400 invalid_trigger",
+      "400 invalid_trigger", "400 invalid_trigger", "400 invalid_trigger", "400 invalid_trigger", "409 conversation_missing",
+    ],
+    unknown: 404,
+    cron: {
+      created: { status: 201, enabled: false, revision: 1, triggerType: "cron", conversation: "string" },
+      listed: [true],
+      enabled: { status: 200, enabled: true, revision: 2 },
+      staleEnable: "409 stale_revision",
+      edited: { status: 200, revision: 3 },
+      staleEdit: "409 stale_revision",
+      fired: [{ status: "success", source: "scheduler" }],
+      inferences: 1,
+      kept: { instructions: "Remind me to drink tea", revision: 3, enabled: true },
+    },
+    runNow: {
+      disabled: { enabled: false, revision: 4 },
+      executed: { status: 200, body: { ok: true, result: { status: "success" } } },
+      keyed: 400, unknown: 404,
+      runs: [{ status: "success", source: "scheduler" }, { status: "success", source: "manual" }],
+    },
+    event: { said: 200, runs: [{ status: "success", source: "event" }], inferences: 2, ranFor: [observed.event.message], message: observed.event.message },
+    gone: {
+      chosen: true, authoredByCaller: true, firedSource: "trigger-prompt", modelToldFired: true,
+      shown: [{ role: "assistant", text: "Plants watered." }], searchedPrompt: 0,
+      first: { status: "success" }, gone: { status: "error", error: unavailable },
+      editedAfterGone: { status: 200, revision: 2, conversation: true },
+      kept: 100, statuses: ["error"], inferences: 0, fellBackTo: 0,
+    },
+    limit: { accepted: 100, refused: [429], listed: 104 },
+    removed: { malformed: 400, stale: "409 stale_revision", removed: { ok: true }, read: 404, runs: 404 },
+  }))
+}, 300_000)
+
+it.effect('A one-time occurrence that fell due while the agent was stopped is recorded once as skipped, never run, and stays listed disabled for Run now (spec/agent/schedule/triggers.md, "An occurrence fires once, and one missed while the agent was not running is recorded and never run")', effect () => {
+  const state = try scratch("missed-trigger")
+  const cloud = try cloudFake(deviceKey)
+  try acquireRelease(Effect.sync(() => fakeClock(Date.now() - 2 * 3_600_000)), () => Effect.sync(() => realClock()))
+  const first = try agent(state, cloud, "agent-1.sock")
+  const planned = try host("plan a one-time trigger", () => planMissed(first))
+  try host("stop the first agent", () => first.running.stop())
+  try Effect.sync(() => realClock())
+  const second = try agent(state, cloud, "agent-2.sock")
+  const observed = try host("restart past the occurrence", () => missedAfterRestart(second, planned.id, planned.at))
+  try Effect.try(() => assert.deepStrictEqual({ enabled: planned.enabled, ...observed }, {
+    enabled: true,
+    runs: [{ status: "skipped", source: "scheduler", error: observed.expected.error, missedOccurrenceAt: planned.at }],
+    listed: [{ id: planned.id, enabled: false }],
+    missedInferences: 0,
+    runNow: { status: "success" },
+    expected: observed.expected,
+  }))
+}, 300_000)
+
+it.effect('An old unsupported event trigger is disabled at boot and can be edited to an event the agent raises (spec/agent/schedule/triggers.md, "Enabling is refused past 100 active triggers, for a passed one-time trigger, and for an unsupported event")', effect () => {
+  const state = try scratch("legacy-event-trigger")
+  const cloud = try cloudFake(deviceKey)
+  const first = try agent(state, cloud, "legacy-1.sock")
+  const id = try host("seed an older event trigger", () => seedLegacyEvent(first))
+  try host("stop the first agent", () => first.running.stop())
+  const second = try agent(state, cloud, "legacy-2.sock")
+  const observed = try host("read and repair the disabled trigger", () => observeLegacyEvent(second, id))
+  try Effect.try(() => assert.deepStrictEqual(observed, {
+    listed: { enabled: false, revision: 3, instructions: "Remind me to drink water" },
+    refused: { status: 400, error: "unsupported_event" },
+    edited: { status: 200, revision: 4 },
+    enabled: { status: 200, enabled: true },
+  }))
+}, 120_000)

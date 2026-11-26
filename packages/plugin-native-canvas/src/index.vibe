@@ -13,7 +13,7 @@ import { native } from capacitor
 
 export const Canvas = native
 
-import { nativeCall, nativeReply } from "@elizaos/os/bridges/bridge"
+import { nativeCall, nativeReply } from "@elizaos/os-bridges"
 import { mayUseCanvas, type CanvasFrame } from "../gen/nativeCanvas.effect.vibe"
 import type { CanvasDrawBatchCommand } from "./native-contract.vibe"
 

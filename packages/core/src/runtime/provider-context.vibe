@@ -159,7 +159,7 @@ effect function projectProviderEvent(projection: DeferralReview, event: ContextE
   return { ...event, text: event.discoveryText }
 }
 
-export effect function projectDeferredProviders(context: ContextObject) {
+effect function projectDeferredProviders(context: ContextObject) {
   const available: string[] = []
   if (context.metadata?.providerDiscoveryEnabled !== true) {
     return { context, available }

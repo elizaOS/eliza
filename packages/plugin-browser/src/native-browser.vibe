@@ -1,16 +1,22 @@
 // spec/browser/control.md, "Story: Tell me a Browser command was sent, never that the page finished"; spec/browser/control.md, "A history receipt proves dispatch only, and any other answer is a typed refusal or uncertain"; spec/browser/remoteControl.md, "A history command carries the observed tab and revision, and the renderer refuses a changed page"; spec/browser/control.md, "A history move has one home: the Browser control where my phone negotiated it, or else the BROWSER command"; spec/browser/control.md, "A reload of a page my phone withheld runs only after my review on the phone, or as the BROWSER command only when the model says I asked for it"
 import { readTurnContext } from "@elizaos/agent"
-import { deviceTurnFor } from "@elizaos/agent/device-actions"
-import { readViewInteractionClientId, type Action, type ActionResult, type ContextDefinition, type HandlerOptions, type IAgentRuntime, type Memory } from "@elizaos/core"
+import { deviceTurnFor } from "@elizaos/agent-host"
+import { readViewInteractionClientId, type Action, type ActionResult, type ContextDefinition, type HandlerOptions, type IAgentRuntime, type Memory, type ViewDeclaration } from "@elizaos/core"
 import { historyReport, type HistoryReceipt, type HistoryReport } from "../gen/browser__control.effect.vibe"
-import { BROWSER_RELOAD_WITHHELD_REFUSAL, browserCommandReloadRuns, browserHistoryHome } from "./contract.vibe"
-import { NATIVE_HISTORY_SUBACTIONS, isNativeHistorySubaction, observedNativeHistorySelection, type NativeHistorySelection, type NativeHistorySubaction } from "./native-command.vibe"
+import { BROWSER_RELOAD_WITHHELD_REFUSAL, browserCommandReloadRuns, browserHistoryHome, NATIVE_HISTORY_SUBACTIONS, field, isNativeHistorySubaction, observedNativeHistorySelection, record, type NativeHistorySelection, type NativeHistorySubaction } from "@elizaos/plugin-browser-client"
 
 export const BROWSER_VIEW = { viewId: "browser", capability: "browser-command" } as const
 
 export const browserContext: ContextDefinition = {
   id: "browser", label: "Browser", description: "The page showing in the phone's own browser.", descriptionCompressed: "The phone's browser.",
   sensitivity: "personal", cacheScope: "agent",
+}
+
+export const browserView: ViewDeclaration = {
+  id: BROWSER_VIEW.viewId, label: "Browser", path: "/browser", modalities: ["gui"], roleGate: { minRole: "OWNER" },
+  description: "The page showing in the owner's own device browser.",
+  relatedActions: ["BROWSER"],
+  capabilities: [{ id: BROWSER_VIEW.capability, description: "Go back, forward or reload the tab the turn observed." }],
 }
 
 export const TYPED_REFUSAL_CODES = ["UNAVAILABLE", "UNSUPPORTED", "STALE_REF", "SESSION_GONE", "AUTH_REQUIRED", "POLICY_BLOCKED"] as const
@@ -65,14 +71,6 @@ const browserCommandGrant: BrowserViewGrant = { roleAllowed: true, standard: fal
 const viewHostServiceType = "agent_view_host"
 const uncertainMessage = "The browser command may have run; read the same browser before retrying."
 
-function record(value: unknown): object | undefined {
-  return typeof value === "object" && value !== null && !Array.isArray(value) ? value : undefined
-}
-
-function field(value: object, key: string): unknown {
-  return Object.getOwnPropertyDescriptor(value, key)?.value
-}
-
 function typedRefusal(code: unknown): code is (typeof TYPED_REFUSAL_CODES)[number] {
   return TYPED_REFUSAL_CODES.some((known) => known === code)
 }
@@ -117,8 +115,8 @@ export function viewNativeBrowser(views: BrowserViewAsker) {
       const asked = try views.ask({
         clientId: request.clientId,
         ...BROWSER_VIEW,
-        params: { command: { subaction: request.subaction }, ...(request.selection === undefined ? {} : { selection: request.selection }) },
         grant: browserCommandGrant,
+        params: { command: { subaction: request.subaction }, ...(request.selection === undefined ? {} : { selection: request.selection }) },
       })
       if (asked.kind === "unavailable") return outcomeOf({ receipt: undelivered, code: "UNAVAILABLE", message: "The requesting native Browser client is not connected." }, request.subaction)
       if (asked.kind === "refused") return outcomeOf({ receipt: undelivered, code: "UNSUPPORTED", message: "The requesting Browser view does not take agent commands." }, request.subaction)
@@ -138,10 +136,10 @@ export function browserViewAsker(runtime: IAgentRuntime): BrowserViewAsker | und
   return isViewAsker(views) ? views : undefined
 }
 
-const dispatchedSentence: Readonly<Record<NativeHistorySubaction, string>> = {
-  back: "I asked the browser to go back. The previous page may still be loading.",
-  forward: "I asked the browser to go forward. The next page may still be loading.",
-  reload: "I asked the browser to reload the page. It may still be loading.",
+const dispatchedFact: Readonly<Record<NativeHistorySubaction, string>> = {
+  back: "The phone's browser was asked to go back, and the previous page may still be loading. Say only that you asked it to go back: never that it went back, arrived or what it shows.",
+  forward: "The phone's browser was asked to go forward, and the next page may still be loading. Say only that you asked it to go forward: never that it went forward, arrived or what it shows.",
+  reload: "The phone's browser was asked to reload the page, and it may still be loading. Say only that you asked it to reload: never that it reloaded or what it shows.",
 }
 
 function parametersOf(options: unknown): object | undefined {
@@ -162,9 +160,7 @@ export function historyActionResult(outcome: HistoryOutcome): ActionResult {
   const result = { targetId: "native-client", mode: "web", subaction: outcome.subaction, value: { dispatched: true, completed: false, requiresReadback: false } }
   return {
     success: true,
-    text: JSON.stringify(result),
-    userFacingText: dispatchedSentence[outcome.subaction],
-    verifiedUserFacing: true,
+    text: `${dispatchedFact[outcome.subaction]} ${JSON.stringify(result)}`,
     turnComplete: true,
     data: { actionName: "BROWSER", executionStatus: "dispatched", result },
   }
@@ -193,7 +189,7 @@ export function historyAsCommand(runtime: IAgentRuntime, message: Memory): boole
 
 export const browserAction: Action = {
   name: "BROWSER",
-  description: `Control the page that is showing in the requesting device's own browser. Only these commands are available: ${NATIVE_HISTORY_SUBACTIONS.join(", ")}. Do not offer any other browser command through this tool. Accepted dispatch does not prove website completion.`,
+  description: `Device browser history only (${NATIVE_HISTORY_SUBACTIONS.join(", ")}; no other commands). Never opens/shows Browser (use VIEWS). Dispatch does not prove completion.`,
   similes: [],
   examples: [],
   roleGate: { minRole: "OWNER" },
@@ -201,12 +197,13 @@ export const browserAction: Action = {
   parameters: [{
     name: "action",
     required: true,
-    description: "Native browser command",
+    description: "History command.",
     schema: { type: "string", enum: [...NATIVE_HISTORY_SUBACTIONS] },
   }, {
     name: "ownerAskedReload",
     required: false,
-    description: "For reload only: true when the owner's current message itself asks to reload, refresh or reopen this page now. Leave it out for a mention, a question about reloading, a reload the owner says they will do themselves, a request they took back, or a bare yes.",
+    subactions: ["reload"],
+    description: "Reload only: true if message asks to reload/refresh/reopen now. Omit for mentions, questions, self-reloads, retractions, bare yes.",
     schema: { type: "boolean" },
   }],
   handler: (runtime, message, _state, options) => runHistory(runtime, message, options),

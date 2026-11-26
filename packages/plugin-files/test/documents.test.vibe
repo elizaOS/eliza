@@ -1,16 +1,11 @@
 // spec/files/sourceReferences.md, "Story: Keep a source link and reopen the exact document I reviewed"; spec/files/scan/event.md, "Story: Turn a scanned poster into a Calendar draft I review"; spec/files/scan/links.md, "Story: Review links in my scanned text and open the one I choose"; spec/files/archive.md, "Story: Download exactly the files I selected"; spec/files/pdfInterpretation.md, "Story: Interpret the complete attachment only while it is still authorized"
 import { assert, it } from "@effect/vitest"
 import * as NodeServices from "@effect/platform-node/NodeServices"
-import { fileArchive, mediaDownloads, type SelectedMedia } from "../src/documents/archive.vibe"
-import { blobOf, readBytes } from "../src/documents/images.vibe"
-import { interpretPdf, loadDocumentRuntime, PdfInterpretationFailed, type ParsedPage, type PdfPorts } from "../src/documents/pdf-interpretation.vibe"
-import { reviewScanAllDayEvent, reviewScanEvent, suggestScanEvent, suggestScanEventDetails } from "../src/documents/scan-event.vibe"
-import { scanLinkReview, scannedLinks } from "../src/documents/scan-links.vibe"
-import { copyScanTextLayers, scanTextLayer } from "../src/documents/scan-text-layer.vibe"
 import {
-  admitSourceReopen, documentSourceOf, recordingRevision, recordingSourceOf, retainedSourceReferences, reviewMailAttachment, sourceKeepSet,
-  sourceProvesPast, summarySourceOf, webSourceOf,
-} from "../src/documents/source-links.vibe"
+  fileArchive, mediaDownloads, type SelectedMedia, blobOf, readBytes, scanLinkReview, scannedLinks, copyScanTextLayers, scanTextLayer, admitSourceReopen, documentSourceOf, recordingRevision, recordingSourceOf, retainedSourceReferences, reviewMailAttachment, sourceKeepSet, sourceProvesPast, summarySourceOf, webSourceOf,
+  reviewScanAllDayEvent, reviewScanEvent, suggestScanEvent, suggestScanEventDetails,
+} from "@elizaos/plugin-files-client"
+import { interpretPdf, loadDocumentRuntime, PdfInterpretationFailed, type ParsedPage, type PdfPorts } from "../src/documents/pdf-interpretation.vibe"
 
 const pdfBytes = new TextEncoder().encode("%PDF-1.7\n1 0 obj<<>>endobj\n%%EOF\n")
 const base64 = (bytes: Uint8Array) => btoa(String.fromCharCode(...bytes))

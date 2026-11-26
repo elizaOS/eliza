@@ -155,4 +155,49 @@ public final class CloudSpeechWireTest {
     require(warmups.admit("https://cloud.example", now + 60_000), "a minute later");
     require(!warmups.admit("https://cloud.example", now + 60_001), "counted from the last warm-up");
   }
+
+  @Test public void aLongSessionsUtteranceRowsNeverEvictHowItStarted() {
+    CloudSpeechWire.TimingRows<String> rows = new CloudSpeechWire.TimingRows<>(4, 3);
+    for (String stage : List.of("start", "consent", "mint", "ready")) rows.add(1, stage, stage);
+    for (int i = 1; i <= 100; i++) rows.add(1, "tts-request", "tts-request-" + i);
+    require(rows.rows().equals(List.of("start", "consent", "mint", "ready", "tts-request-98", "tts-request-99", "tts-request-100")),
+        "startup through ready kept, only the newest later rows: " + rows.rows());
+    rows.add(2, "start", "start-2");
+    rows.add(1, "asr-final", "asr-final-1");
+    rows.add(2, "ready", "ready-2");
+    rows.add(2, "tts-request", "tts-request-2");
+    require(rows.rows().equals(List.of("start", "consent", "mint", "ready", "tts-request-100", "start-2", "asr-final-1", "ready-2", "tts-request-2")),
+        "each session's rows go to its own buffers, each buffer evicts only its own oldest rows, and the order of marking holds: " + rows.rows());
+    require(new CloudSpeechWire.TimingRows<String>(1, 1).rows().isEmpty(), "nothing marked");
+    require(refused(() -> new CloudSpeechWire.TimingRows<String>(0, 100)), "a startup bound of at least one row");
+    require(refused(() -> new CloudSpeechWire.TimingRows<String>(1, 1).add(0, "start", "start")), "sessions are numbered from 1");
+  }
+
+  @Test public void laterWarmStartsNeverEvictTheColdStart() {
+    CloudSpeechWire.TimingRows<String> rows = new CloudSpeechWire.TimingRows<>(8, 100);
+    List<String> stages = List.of("start", "consent", "mint", "relay-start", "ws-open", "ready");
+    for (String stage : stages) rows.add(1, stage, "cold-" + stage);
+    rows.add(1, "stop", "cold-stop");
+    for (long session = 2; session <= 12; session++) {
+      for (String stage : stages) rows.add(session, stage, "warm" + session + "-" + stage);
+      rows.add(session, "stop", "warm" + session + "-stop");
+    }
+    List<String> kept = rows.rows();
+    for (String stage : stages) require(kept.contains("cold-" + stage), "the cold start survives eleven warm starts: " + kept);
+    require(kept.contains("cold-stop") && kept.contains("warm12-stop"), "rows after ready are later rows");
+    for (String stage : stages) require(kept.contains("warm12-" + stage), "the newest warm start is kept: " + kept);
+    require(!kept.contains("warm11-mint") && !kept.contains("warm2-start"), "older warm starts give way within their own bound: " + kept);
+    require(kept.indexOf("cold-ready") < kept.indexOf("warm12-start"), "marking order holds");
+  }
+
+  @Test public void aSessionThatNeverStartsKeepsItsRowsWithItsStartupAndALateRowIsALaterRow() {
+    CloudSpeechWire.TimingRows<String> rows = new CloudSpeechWire.TimingRows<>(4, 2);
+    for (String stage : List.of("start", "consent", "consent-retry", "error")) rows.add(1, stage, "1-" + stage);
+    require(rows.rows().equals(List.of("1-start", "1-consent", "1-consent-retry", "1-error")),
+        "a session without ready keeps its rows with its startup: " + rows.rows());
+    for (long session = 2; session <= 10; session++) rows.add(session, "start", session + "-start");
+    rows.add(1, "stop", "1-stop");
+    require(rows.rows().equals(List.of("1-start", "1-consent", "1-consent-retry", "1-error", "7-start", "8-start", "9-start", "10-start", "1-stop")),
+        "a row from a session no longer tracked is a later row and evicts no startup: " + rows.rows());
+  }
 }

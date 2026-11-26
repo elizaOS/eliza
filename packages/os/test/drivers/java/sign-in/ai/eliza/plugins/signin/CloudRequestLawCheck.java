@@ -1,4 +1,4 @@
-// spec/os/signIn/cloudRequests.md, "A cloud table is loaded only when every route is a device route the page may use"; spec/os/signIn/cloudRequests.md, "A session-only route is sent only with a live account session, never with the device key"; spec/os/signIn/cloudRequests.md, "A request is sent only to the deployment origin, admitted by the gate, with headers its route admits"; spec/os/signIn/cloudRequests.md, "A 401 goes to the credential with its reason and is not retried"; spec/os/signIn/cloudRequests.md, "A reply body up to 8 MiB returns inline, up to 64 MiB through a one-use cache grant, and a larger one is refused"; spec/os/signIn/cloudRequests.md, "Only an HTTPS page on the web host or a listed payment or consent host opens, in the system browser"
+// spec/os/signIn/cloudRequests.md, "A cloud table is loaded only when every route is a device route the page may use"; spec/os/signIn/cloudRequests.md, "A session-only route is sent only with a live account session, never with the device key"; spec/os/signIn/cloudRequests.md, "A mail or calendar route is sent only with the lease, never with the device key"; spec/os/signIn/cloudRequests.md, "A request is sent only to the deployment origin, admitted by the gate, with headers its route admits"; spec/os/signIn/cloudRequests.md, "A 401 goes to the credential with its reason and is not retried"; spec/os/signIn/cloudRequests.md, "A reply body up to 8 MiB returns inline, up to 64 MiB through a one-use cache grant, and a larger one is refused"; spec/os/signIn/cloudRequests.md, "Only an HTTPS page on the web host or a listed payment or consent host opens, in the system browser"; spec/os/signIn/cloudRequests.md, "The agent reaches the broker only by a bodiless GET on the loopback host, without an origin, with the current launch's bearer"; spec/os/signIn/cloudRequests.md, "The broker forwards only the owner's Gmail account list and search, with the lease, while the launch's owner holds it"; spec/os/signIn/cloudRequests.md, "The agent gets the cloud's status and body, or a refusal naming why nothing was read, and never the credential that read it"
 package ai.eliza.plugins.signin;
 
 import ai.eliza.os.agent.RouteGate;
@@ -16,18 +16,20 @@ import java.util.stream.Collectors;
 public final class CloudRequestLawCheck {
   private CloudRequestLawCheck() {}
 
-  private static final List<Holding> HOLDINGS = List.of(new Holding(0, false, false), new Holding(1, false, false),
-    new Holding(2, true, false), new Holding(2, true, true), new Holding(0, true, true));
+  private static final List<Holding> HOLDINGS = List.of(new Holding(0, false, false, false, false), new Holding(1, false, false, false, false),
+    new Holding(2, true, false, true, false), new Holding(2, true, true, true, true), new Holding(0, true, true, false, false),
+    new Holding(3, false, false, true, true), new Holding(3, false, false, true, false));
   private static final List<Origin> ORIGINS = List.of(new Origin(Scheme.HTTPS, false, false, false), new Origin(Scheme.HTTPS, false, true, false),
     new Origin(Scheme.HTTP, true, false, false), new Origin(Scheme.HTTP, false, false, false), new Origin(Scheme.OTHER_SCHEME, false, false, true));
   private static final List<List<String>> HEADER_LISTS = List.of(List.of(), List.of("Idempotency-Key"), List.of("If-Match"), List.of("Authorization"),
     List.of("Accept", "If-None-Match"), List.of("Cookie"), List.of("Content-Type", "X-Request-ID"));
   private static final List<String> HEADERS = List.of("Authorization", "Content-Type", "X-Request-ID", "Traceparent", "Tracestate", "Accept",
     "If-None-Match", "If-Match", "Idempotency-Key", "Cookie", "ETag");
-  private static final List<Attach> ATTACHES = List.of(new Bare(), new WithKey(1), new WithSession(1), new WithKey(3));
+  private static final List<Attach> ATTACHES = List.of(new Bare(), new WithKey(1), new WithSession(1), new WithKey(3), new WithLease(1));
   private static final List<Long> BYTES = List.of(0L, 8_388_608L, 8_388_609L, 67_108_864L, 67_108_865L);
   private static final List<String> WEB_HOSTS = List.of("web.cloud.test");
   private static final List<ExternalLink> LINKS = List.of(new ExternalLink(true, "billing.stripe.com", true, false),
+    new ExternalLink(true, "invoice.stripe.com", true, false),
     new ExternalLink(true, "billing.stripe.com.evil.test", true, false), new ExternalLink(false, "web.cloud.test", true, false),
     new ExternalLink(true, "web.cloud.test", true, false), new ExternalLink(true, "accounts.google.com", false, false),
     new ExternalLink(true, "checkout.stripe.com", true, true));
@@ -51,6 +53,10 @@ public final class CloudRequestLawCheck {
     new String[] {"POST", "/api/v1/subscriptions/cancel", "{\"reason\":\"" + "x".repeat(80) + "\"}"},
     new String[] {"GET", "/api/v1/models", null}, new String[] {"GET", "/api/v1/../user", null},
     new String[] {"GET", "/api/v1/user#f", null}, new String[] {"GET", "/api/v1/eliza/google/calendar/events/e%2F1", null});
+  private static final List<List<String>> READ_PATHS = List.of(List.of(), List.of("status"), List.of("accounts"), List.of("gmail", "inbox-v1", "history"),
+    List.of("gmail", "history"), List.of("gmail", "search"), List.of("gmail", "operations"), List.of("calendar", "feed"));
+  private static final List<List<String>> READ_FIELDS = List.of(List.of(), List.of("side"), List.of("grantId", "startHistoryId", "pageToken", "maxResults", "side"),
+    List.of("messageId", "grantId"), List.of("timeMin", "q"));
   private static final List<Map<String, String>> WIRE_HEADERS = List.of(Map.of(), Map.of("if-match", "\"7\""),
     Map.of("authorization", "Bearer page"), Map.of("accept", "application/json", "If-None-Match", "\"e\""), Map.of("Idempotency-Key", "k1"),
     Map.of("Cookie", "a=b"));
@@ -108,12 +114,18 @@ public final class CloudRequestLawCheck {
       + ",\"flaws\":" + texts(r.flaws().stream().map(f -> camel(f.name())).toList()) + ",\"body\":" + body + "}";
   }
 
-  private static String deviceRoute(DeviceRoute d) {
-    List<String> path = d.path().stream().map(s -> s.startsWith(":") ? "{\"tag\":\"Param\",\"name\":" + q(s.substring(1)) + "}" : "{\"tag\":\"Literal\",\"text\":" + q(s) + "}").toList();
-    return "{\"method\":" + method(d.method()) + ",\"path\":" + list(path) + ",\"auth\":" + q(camel(d.auth().name())) + ",\"headers\":" + texts(d.headers()) + "}";
+  private static String segments(List<String> path) {
+    return list(path.stream().map(s -> s.startsWith(":") ? "{\"tag\":\"Param\",\"name\":" + q(s.substring(1)) + "}" : "{\"tag\":\"Literal\",\"text\":" + q(s) + "}").toList());
   }
 
-  private static String holding(Holding h) { return "{\"key\":" + h.key() + ",\"sessionHeld\":" + h.sessionHeld() + ",\"sessionLive\":" + h.sessionLive() + "}"; }
+  private static String deviceRoute(DeviceRoute d) {
+    return "{\"method\":" + method(d.method()) + ",\"path\":" + segments(d.path()) + ",\"auth\":" + q(camel(d.auth().name())) + ",\"headers\":" + texts(d.headers()) + "}";
+  }
+
+  private static String holding(Holding h) {
+    return "{\"key\":" + h.key() + ",\"sessionHeld\":" + h.sessionHeld() + ",\"sessionLive\":" + h.sessionLive()
+      + ",\"leaseHeld\":" + h.leaseHeld() + ",\"leaseLive\":" + h.leaseLive() + "}";
+  }
 
   private static String origin(Origin u) {
     return "{\"scheme\":" + q(camel(u.scheme().name())) + ",\"loopback\":" + u.loopback() + ",\"hasPath\":" + u.hasPath() + ",\"hasQueryOrFragment\":" + u.hasQueryOrFragment() + "}";
@@ -124,6 +136,7 @@ public final class CloudRequestLawCheck {
       case Bare b -> tag("Bare");
       case WithKey k -> "{\"tag\":\"WithKey\",\"version\":" + k.version() + "}";
       case WithSession s -> "{\"tag\":\"WithSession\",\"version\":" + s.version() + "}";
+      case WithLease l -> "{\"tag\":\"WithLease\",\"version\":" + l.version() + "}";
     };
   }
 
@@ -131,6 +144,7 @@ public final class CloudRequestLawCheck {
     return switch (p) {
       case Send s -> "{\"tag\":\"Send\",\"attach\":" + attach(s.attach()) + "}";
       case RefreshSessionFirst r -> tag("RefreshSessionFirst");
+      case RefreshLeaseFirst r -> tag("RefreshLeaseFirst");
       case Refuse r -> "{\"tag\":\"Refuse\",\"why\":" + q(camel(r.why().name())) + "}";
     };
   }
@@ -139,6 +153,7 @@ public final class CloudRequestLawCheck {
     return switch (r) {
       case NoReport n -> tag("NoReport");
       case KeyRejected k -> "{\"tag\":\"KeyRejected\",\"version\":" + k.version() + ",\"reason\":" + q(k.reason().tag) + ",\"on\":" + q(camel(k.on().name())) + "}";
+      case LeaseRejected l -> "{\"tag\":\"LeaseRejected\",\"version\":" + l.version() + ",\"reason\":" + q(l.reason().tag) + "}";
       case SessionRejected s -> tag("SessionRejected");
     };
   }
@@ -196,22 +211,31 @@ public final class CloudRequestLawCheck {
 
   private static int sentKey(CallPlan p) { return p instanceof Send s && s.attach() instanceof WithKey k ? k.version() : 0; }
 
+  private static int sentLease(CallPlan p) { return p instanceof Send s && s.attach() instanceof WithLease l ? l.version() : 0; }
+
   private static void specCases() {
     emit("deviceRoutes", list(CloudRequestPolicy.DEVICE_ROUTES.stream().map(CloudRequestLawCheck::deviceRoute).toList()));
+    List<DeviceRoute> attachRoutes = new ArrayList<>(CloudRequestPolicy.DEVICE_ROUTES);
+    attachRoutes.add(CloudRequestPolicy.NO_DEVICE_ROUTE);
     for (Holding h : HOLDINGS)
-      for (Auth auth : Auth.values()) {
-        String a = q(camel(auth.name()));
-        CallPlan p = CloudRequestPolicy.attachFor(h, auth);
-        emit("attachFor", plan(p), holding(h), a);
-        emit("lawASessionRouteNeverCarriesTheKey", String.valueOf(!CloudRequestPolicy.sessionOnly(auth) || sentKey(p) == 0), holding(h), a);
-        emit("lawAKeyRouteWithoutAKeyIsNotSent", String.valueOf(!(auth == Auth.KEY_OR_SESSION && h.key() < 1) || p.equals(new Refuse(Refusal.SIGN_IN_REQUIRED))), holding(h), a);
+      for (DeviceRoute d : attachRoutes) {
+        String[] args = {holding(h), deviceRoute(d)};
+        CallPlan p = CloudRequestPolicy.attachFor(h, d);
+        boolean mail = CloudRequestPolicy.mailRoute(d);
+        emit("attachFor", plan(p), args);
+        emit("lawASessionRouteNeverCarriesTheKey", String.valueOf(!CloudRequestPolicy.sessionOnly(d.auth()) || sentKey(p) == 0), args);
+        emit("lawAKeyRouteWithoutAKeyIsNotSent", String.valueOf(!(d.auth() == Auth.KEY_OR_SESSION && h.key() < 1) || p.equals(new Refuse(Refusal.SIGN_IN_REQUIRED))), args);
+        emit("lawAMailRouteNeverCarriesTheKey", String.valueOf(!mail || sentKey(p) == 0), args);
+        emit("lawTheLeaseGoesOnlyToAMailRoute", String.valueOf(sentLease(p) < 1 || mail), args);
       }
     for (DeviceRoute d : CloudRequestPolicy.DEVICE_ROUTES) {
+      emit("mailRoute", String.valueOf(CloudRequestPolicy.mailRoute(d)), deviceRoute(d));
       emit("signInOwned", String.valueOf(CloudRequestPolicy.signInOwned(d)), deviceRoute(d));
       emit("isAccountRead", String.valueOf(CloudRequestPolicy.isAccountRead(d)), deviceRoute(d));
       for (String header : HEADERS) emit("headerAllowed", String.valueOf(CloudRequestPolicy.headerAllowed(d, header)), deviceRoute(d), q(header));
     }
     List<DeviceRoute> reportRoutes = List.of(CloudRequestPolicy.NO_DEVICE_ROUTE, new DeviceRoute(Method.GET, List.of("api", "v1", "user"), Auth.KEY_OR_SESSION, List.of()),
+      new DeviceRoute(Method.GET, List.of("api", "v1", "eliza", "google", "calendar", "feed"), Auth.MAIL, List.of()),
       new DeviceRoute(Method.GET, List.of("api", "v1", "models"), Auth.KEY_OR_SESSION, List.of()));
     for (Attach a : ATTACHES)
       for (DeviceRoute d : reportRoutes)
@@ -285,8 +309,93 @@ public final class CloudRequestLawCheck {
     System.out.println("{\"fn\":\"originOf\",\"accepted\":{" + origins.entrySet().stream().map(e -> q(e.getKey()) + ":" + e.getValue()).collect(Collectors.joining(",")) + "}}");
   }
 
+  private static String brokerAsk(GoogleBrokerPolicy.Ask a) {
+    return "{\"get\":" + a.get() + ",\"bodiless\":" + a.bodiless() + ",\"loopbackHost\":" + a.loopbackHost() + ",\"origin\":" + a.origin()
+      + ",\"bearer\":" + a.bearer() + "}";
+  }
+
+  private static String brokerCall(GoogleBrokerPolicy.Call c) {
+    return "{\"read\":" + q(camel(c.read().name())) + ",\"fields\":" + texts(c.fields()) + ",\"ownerHolds\":" + c.ownerHolds() + "}";
+  }
+
+  private static String brokerOutcome(GoogleBrokerPolicy.Outcome o) {
+    return switch (o) {
+      case GoogleBrokerPolicy.CloudAnswered a -> "{\"tag\":\"CloudAnswered\",\"status\":" + a.status() + "}";
+      case GoogleBrokerPolicy.CallRefused r -> "{\"tag\":\"CallRefused\",\"why\":" + q(camel(r.why().name())) + "}";
+      case GoogleBrokerPolicy.CloudUnreachable u -> tag("CloudUnreachable");
+      case GoogleBrokerPolicy.ReplyOversize r -> tag("ReplyOversize");
+    };
+  }
+
+  private static String brokerReply(GoogleBrokerPolicy.Reply r) {
+    return switch (r) {
+      case GoogleBrokerPolicy.Answer a -> "{\"tag\":\"BrokerAnswer\",\"status\":" + a.status() + "}";
+      case GoogleBrokerPolicy.Refused f -> "{\"tag\":\"BrokerRefused\",\"status\":" + f.status() + ",\"reason\":" + q(camel(f.reason().name())) + "}";
+    };
+  }
+
+  private static void brokerCases() {
+    for (int bits = 0; bits < 32; bits++) {
+      GoogleBrokerPolicy.Ask a = new GoogleBrokerPolicy.Ask((bits & 1) != 0, (bits & 2) != 0, (bits & 4) != 0, (bits & 8) != 0, (bits & 16) != 0);
+      GoogleBrokerPolicy.AskVerdict v = GoogleBrokerPolicy.askVerdict(a);
+      emit("brokerAskVerdict", q(camel(v.name())), brokerAsk(a));
+      emit("lawOnlyAPrivateAuthorizedAskIsAdmitted", String.valueOf((v == GoogleBrokerPolicy.AskVerdict.ASK_ADMITTED)
+        == (a.get() && a.bodiless() && a.loopbackHost() && !a.origin() && a.bearer())), brokerAsk(a));
+      emit("lawAForeignAskIsNeverTreatedAsTheAgent", String.valueOf(!(a.origin() || !a.loopbackHost()) || v == GoogleBrokerPolicy.AskVerdict.NOT_PRIVATE), brokerAsk(a));
+    }
+    List<List<String>> fieldLists = List.of(List.of(), List.of("side"), List.of("side", "grantId", "query", "maxResults", "pageToken"), List.of("side", "messageId"),
+      List.of("grantId"), List.of(""));
+    for (GoogleBrokerPolicy.Read read : GoogleBrokerPolicy.Read.values())
+      for (List<String> fields : fieldLists)
+        for (boolean owner : List.of(true, false)) {
+          GoogleBrokerPolicy.Call c = new GoogleBrokerPolicy.Call(read, fields, owner);
+          emit("brokered", String.valueOf(GoogleBrokerPolicy.brokered(c)), brokerCall(c));
+          for (Holding h : HOLDINGS) {
+            CallPlan p = GoogleBrokerPolicy.brokerPlan(h, c);
+            String[] args = {holding(h), brokerCall(c)};
+            emit("brokerPlan", plan(p), args);
+            emit("lawABrokerReadCarriesOnlyTheLease", String.valueOf(!(p instanceof Send s) || s.attach() instanceof WithLease), args);
+            emit("lawABrokerReadIsSentOnlyForTheLaunchOwnerAndAListedRead", String.valueOf(!(p instanceof Send) || owner && GoogleBrokerPolicy.brokered(c)), args);
+          }
+        }
+    List<GoogleBrokerPolicy.Outcome> outcomes = new ArrayList<>(List.of(new GoogleBrokerPolicy.CloudAnswered(200), new GoogleBrokerPolicy.CloudAnswered(401),
+      new GoogleBrokerPolicy.CloudAnswered(403), new GoogleBrokerPolicy.CloudUnreachable(), new GoogleBrokerPolicy.ReplyOversize()));
+    for (Refusal why : Refusal.values()) outcomes.add(new GoogleBrokerPolicy.CallRefused(why));
+    for (GoogleBrokerPolicy.Outcome o : outcomes) {
+      GoogleBrokerPolicy.Reply r = GoogleBrokerPolicy.replyOf(o);
+      emit("brokerReply", brokerReply(r), brokerOutcome(o));
+      boolean answered = o instanceof GoogleBrokerPolicy.CloudAnswered;
+      emit("lawOnlyACloudAnswerReachesTheAgentAsAnAnswer", String.valueOf(r instanceof GoogleBrokerPolicy.Answer a
+        ? answered && ((GoogleBrokerPolicy.CloudAnswered) o).status() == a.status()
+        : !answered && ((GoogleBrokerPolicy.Refused) r).status() >= 400), brokerOutcome(o));
+    }
+  }
+
+  /** The host's read-only mail request, planned by the policy it is sent through, with a live lease held. */
+  private static void hostMailReadCases() {
+    CloudRequestPolicy reads = CloudRequestPolicy.forMailReads();
+    Origin https = CloudRequestPolicy.originOf("https://api.cloud.test");
+    Holding leased = new Holding(2, true, true, true, true);
+    for (List<String> readPath : READ_PATHS)
+      for (List<String> readFields : READ_FIELDS) {
+        StringBuilder target = new StringBuilder("/api/v1/eliza/google");
+        for (String part : readPath) target.append('/').append(part);
+        for (int i = 0; i < readFields.size(); i++) target.append(i == 0 ? '?' : '&').append(readFields.get(i)).append("=v");
+        CallPlan p = reads.plan(leased, https, "GET", target.toString(), Map.of(), null).plan();
+        boolean admitted = p instanceof Send;
+        List<String> path = new ArrayList<>(List.of("api", "v1", "eliza", "google"));
+        path.addAll(readPath);
+        boolean mailRead = CloudRequestPolicy.DEVICE_ROUTES.stream().anyMatch(d -> d.method() == Method.GET && CloudRequestPolicy.mailRoute(d) && d.path().equals(path));
+        String[] args = {texts(readPath), texts(readFields)};
+        emit("hostMailReadAdmitted", String.valueOf(admitted), args);
+        emit("lawAHostMailReadIsAMailRouteRead", String.valueOf(!admitted || mailRead && sentLease(p) >= 1), args);
+      }
+  }
+
   public static void main(String[] args) {
     specCases();
+    brokerCases();
     wireCases();
+    hostMailReadCases();
   }
 }

@@ -1,23 +1,17 @@
 // spec/notes/records.md, "Story: Keep my notes as one collection the agent edits only as I asked"; spec/notes/records.md, "Story: Keep the notes I saved before this version"; spec/notes/read.md, "Story: Search private notes and share only what I select"; spec/notes/trash.md, "Story: Recover a deleted note"; spec/notes/trash.md, "Story: Let deleted notes expire after three days when I choose that"; spec/notes/organize.md, "Story: Organize my notes only where I can see it"; spec/notes/client.md, "Story: Read and save a note under the current connection"; spec/notes/read.md, "Story: Ask about or change a phone note in my own words"; spec/notes/trash.md, "Story: Delete the phone note I asked to delete"
 import { assert, it } from "@effect/vitest"
 import * as NodeServices from "@effect/platform-node/NodeServices"
-import { negotiation, validate, type DeviceOperation, type DeviceTurn, type EarlierRequest } from "@elizaos/agent/device-actions"
-import type { LocalRoute } from "@elizaos/agent/routes"
-import { bindIncomingMessagePersistence, satisfiesContextGate, stringToUuid, type Content, type IAgentRuntime, type Memory } from "@elizaos/core"
+import { negotiation, validate, type DeviceOperation, type LocalRoute } from "@elizaos/agent"
+import type { DeviceTurn, EarlierRequest } from "@elizaos/agent-host"
+import { bindIncomingMessagePersistence, satisfiesContextGate, stringToUuid, validateToolArgs, type Content, type IAgentRuntime, type Memory } from "@elizaos/core"
 import { noteChangeResult, notesPlugin, notesRefusalResult, notesRoutes } from "../src/agent.vibe"
 import { notesDeviceFamily } from "../src/device-proposals.vibe"
-import { createNotesClient, noteScheduleText, recordNoteOriginFor } from "../src/client.vibe"
-import { authoredNoteText, noteShareText, parseNoteFormat } from "../src/format.vibe"
-import { ownerRequestText } from "../src/lookup.vibe"
 import {
-  decodeNotesOrganizeOperation, findNoteFolder, isNotesOrganizeType, notesOrganizeContextAllowed, notesOrganizeOffered, notesOrganizeRunsDirectly, readNoteFolders,
-  type NotesOrganizeType,
-} from "../src/organize.vibe"
-import { NotesReadRefused, selectedNotes, type NotesAuthority, type NotesClaim, type NotesOwner, type NotesReadOperation,
-  type NotesReadPorts, type NotesTarget } from "../src/selected-read.vibe"
-import { notesCollection, type NotesFailure, type NotesHost, type VerifyRecordingCleanup } from "../src/service.vibe"
+  createNotesClient, noteScheduleText, recordNoteOriginFor, authoredNoteText, noteShareText, parseNoteFormat, decodeNotesOrganizeOperation, findNoteFolder, isNotesOrganizeType, notesOrganizeContextAllowed, notesOrganizeOffered, notesOrganizeRunsDirectly, readNoteFolders, noteLimits, type NotesOrganizeType, NotesReadRefused, selectedNotes, StoredDocument, type NotesAuthority, type NotesClaim, type NotesOwner, type NotesReadOperation, type NotesReadPorts, type NotesTarget, type StickyNote,
+} from "@elizaos/plugin-notes-client"
+import { ownerRequestText } from "../src/lookup.vibe"
+import { notesCollection, notesServiceClass, type NotesFailure, type NotesHost, type VerifyRecordingCleanup } from "../src/service.vibe"
 import type { NotesStorage } from "../src/store.vibe"
-import type { StickyNote } from "../src/types.vibe"
 
 const day = 86_400_000
 const start = Date.parse("2026-11-20T10:00:00.000Z")
@@ -114,7 +108,7 @@ function action(plugin: ReturnType<typeof notesPlugin>, name: string, runtime?: 
 
 const voice = (id: string, audioId: string) => ({ kind: "voice", data: { recordingId: audioId, audio: { audioId }, lines: [{ s: "speaker-1", t: `Said in ${id}` }] } })
 
-it.effect('Keep notes as one collection edited only on the owner\'s words (spec/notes/records.md, "Story: Keep my notes as one collection the agent edits only as I asked"; spec/notes/records.md, "A Notes write runs when the model calls a write action, and a read action never writes"; spec/notes/records.md, "A calendar draft made from a note is admitted only while that exact note is unchanged"; spec/notes/records.md, "A move by name takes the identical copies of the note along"; spec/notes/records.md, "A delete or an edit by name leaves no identical copy behind"; spec/notes/records.md, "A Notes change answers with a receipt of the note and the revision it committed, and a refusal says what it waits on"; spec/notes/records.md, "A read tells a note\'s times in the owner\'s zone when the turn knows it"; spec/notes/records.md, "The agent reads and changes Notes only for the owner, and changes the note the model picked"; spec/notes/records.md, "A note\'s title and body are saved as well-formed text")', effect () => {
+it.effect('Keep notes as one collection edited only on the owner\'s words (spec/notes/records.md, "Story: Keep my notes as one collection the agent edits only as I asked"; spec/notes/records.md, "A checklist the owner asks for is a new note holding the owner\'s items"; spec/notes/records.md, "A read by a title no saved note has reads nothing and offers the one note whose title holds it"; spec/notes/records.md, "A Notes write runs when the model calls a write action, and a read action never writes"; spec/notes/records.md, "A calendar draft made from a note is admitted only while that exact note is unchanged"; spec/notes/records.md, "A move by name takes the identical copies of the note along"; spec/notes/records.md, "A delete or an edit by name leaves no identical copy behind"; spec/notes/records.md, "A Notes change answers with a receipt of the note and the revision it committed, and a refusal says what it waits on"; spec/notes/records.md, "A read tells a note\'s times in the owner\'s zone when the turn knows it"; spec/notes/records.md, "The agent reads and changes Notes only for the owner, and changes the note the model picked"; spec/notes/records.md, "A note\'s title and body are saved as well-formed text")', effect () => {
   const f = fixture()
   const notes = notesOver(f)
   const first = try notes.create({ content: "Groceries\n- milk", creationId: "step-1" })
@@ -228,7 +222,7 @@ it.effect('Keep notes as one collection edited only on the owner\'s words (spec/
   assert.equal(availability.data?.namedNoteMatchAvailable, true)
   const saved = (plugin.providers ?? []).find((provider) => provider.name === "SAVED_NOTES")
   const savedText = (try promise(() => saved!.get(undefined as never, message("what is in my trip note"), undefined as never))).text ?? ""
-  assert.include(savedText, "If no row has the note title the owner asked for, ask which note to use before citing another note.")
+  assert.include(savedText, "If no row has the note title the owner asked for, read by that title with NOTES_GET instead of citing another note.")
   const groceries = (try notes.snapshot()).notes.find((note) => note.id === "note-1")!
   const reference = notes.sourceReference(groceries)
   try notes.assertSourceReference(reference)
@@ -238,11 +232,114 @@ it.effect('Keep notes as one collection edited only on the owner\'s words (spec/
   assert.deepEqual(f.published, ["note:created", "note:created", "note:updated", "note:updated", "note:deleted", "note:created", "note:deleted", "note:created", "note:created", "note:deleted", "note:created", "note:created", "note:updated", "note:deleted", "note:created", "note:created", "note:updated", "note:created", "note:created", "note:updated", "note:updated", "note:updated", "note:moved", "note:created", "note:created", "note:moved", "note:updated"])
   const asked = try action(plugin, "NOTES_CREATE")(message("add a note: call the plumber Tuesday"), { content: "Call the plumber Tuesday" })
   assert.deepEqual([asked.success, asked.data?.op, (try notes.snapshot()).notes.some((note) => note.title === "Call the plumber Tuesday")], [true, "create", true])
+  const creating = action(plugin, "NOTES_CREATE")
+  const trek = try creating(message("start a trek checklist: tent, stove"), { content: "Trek", checklist: ["tent", "stove"] })
+  const trekAgain = try creating(message("make me a new trek checklist with tent and stove"), { content: "Trek", checklist: ["tent", "stove"] })
+  const fullItems = Array.from({ length: noteLimits.checklistItems }, (_, index) => `${index}`.padEnd(noteLimits.checklistItem, "x"))
+  const full = try creating(message("make a supplies checklist with all of these"), { content: "Supplies", checklist: fullItems })
+  const beforeRefused = (try notes.snapshot()).revision
+  const untitled = [
+    try creating(message("make me a checklist: tent, stove"), { checklist: ["tent", "stove"] }),
+    try creating(message("make me a checklist: tent, stove"), { content: "  ", checklist: ["tent", "stove"] }),
+    try creating(message("make a checklist"), { checklist: [] }),
+  ]
+  const refusedLists = [
+    try creating(message("make an empty checklist"), { content: "Empty", checklist: [] }),
+    try creating(message("make a checklist with tent and a blank line"), { content: "Blank", checklist: ["tent", " "] }),
+    try creating(message("make a trek checklist with tent and a note to bring snacks"), { content: "Trek\nbring snacks", checklist: ["tent"] }),
+    try creating(message("make a long checklist"), { content: "Long", checklist: [...fullItems, "one more"] }),
+    try creating(message("make a checklist with one very long item"), { content: "Long", checklist: ["x".repeat(noteLimits.checklistItem + 1)] }),
+  ]
+  const trekList = { kind: "list", data: { items: [{ t: "tent", done: false }, { t: "stove", done: false }] } }
+  const afterRefused = try notes.snapshot()
+  const packed = afterRefused.notes.find((note) => note.id === full.data?.noteId)
+  assert.deepEqual([
+    [trek.success, trek.data?.op, trekAgain.success, trekAgain.data?.op, trekAgain.data?.noteId === trek.data?.noteId],
+    afterRefused.notes.filter((note) => note.title === "Trek").map((note) => [note.body, note.format]),
+    [full.success, packed?.title, packed?.format?.kind === "list" && Array.isArray(packed.format.data.items) ? packed.format.data.items.length : 0],
+    refusedLists.map((result) => [result.success, result.data?.code]),
+    untitled.map((result) => [result.success, result.text, result.data]),
+    afterRefused.revision === beforeRefused,
+    afterRefused.notes.some((note) => note.title.trim() === "" && note.format?.kind === "list"),
+  ], [
+    [true, "create", true, "create", false],
+    [["", trekList], ["", trekList]],
+    [true, "Supplies", noteLimits.checklistItems],
+    refusedLists.map(() => [false, "NOTES_VALIDATION_FAILED"]),
+    untitled.map(() => [true, "Nothing was saved: the owner gave this checklist no title. Ask the owner what to call it.",
+      { code: "NOTES_CHECKLIST_UNTITLED", readOnlyOperation: true, awaitingUserInput: true, requiresInput: true }]),
+    true,
+    false,
+  ])
+  const described = (name: string) => (plugin.actions ?? []).find((candidate) => candidate.name === name)
+  assert.deepEqual([
+    described("NOTES_CREATE")?.description.includes("A new checklist the owner asks for is a creation, never items added to a checklist already saved: put the title the owner gave it alone in content and the owner's items, in their order, in checklist"),
+    described("NOTES_CREATE")?.description.includes(`at most ${noteLimits.checklistItems} items of at most ${noteLimits.checklistItem} characters each. When the owner gave the checklist no title, ask what to call it instead of creating it.`),
+    described("NOTES_CREATE")?.parameters?.some((parameter) => parameter.name === "checklist" && parameter.schema.items?.maxLength === noteLimits.checklistItem),
+    described("NOTES_UPDATE")?.description.includes("adds one list item in the note's own form, to a note the owner named, never as a new checklist the owner asked for (that is NOTES_CREATE with checklist)"),
+    described("NOTES_GET")?.description.includes("A title no saved note has reads nothing and never cites another note in its place: when one saved note's title holds those words, it names that note's noteId, which you read to answer about, show or open the note when it is plainly the note meant; before changing or deleting it, or when it may not be the one, ask the owner which note they mean."),
+  ], [true, true, true, true, true])
+  const getting = action(plugin, "NOTES_GET")
+  const weekend = try notes.create({ content: "Weekend\nbring the gear bag" })
+  const absentTitle = try getting(message("what's in my gear note"), { title: "gear" })
+  const weekendRead = try getting(message("what's in my weekend note"), { title: "weekend" })
+  const sharedTitle = try getting(message("what's on my trek checklist"), { title: "trek" })
+  const both = try getting(message("what's in my gear note"), { title: "gear", content: "gear" })
+  const plan = try notes.create({ content: "Taco Night Plan\nTortillas, carnitas, salsa verde" })
+  const nearTitle = try getting(message("open the note about taco night"), { title: "taco  night" })
+  const byNearId = try getting(message("open the note about taco night"), { noteId: plan.value.note.id })
+  const shopping = try notes.create({ content: "Taco Night Shopping\nCilantro, onions" })
+  const twoNear = try getting(message("open the note about taco night"), { title: "Taco Night" })
+  const editor = (try promise(() => notesServiceClass(notes).start(undefined as never))) as unknown as { matchesSavedEditor(noteId: string, query: string): Promise<boolean> }
+  const opensBy = (query: string) => promise(() => editor.matchesSavedEditor(plan.value.note.id, query))
+  const editorMatches = [try opensBy(plan.value.note.id), try opensBy("Taco Night Plan"), try opensBy("Taco Night"), try opensBy(shopping.value.note.id)]
+  const trekIds = [trek.data?.noteId, trekAgain.data?.noteId]
+  const offered: unknown = sharedTitle.data?.candidateIds
+  const shown: unknown = sharedTitle.data?.candidates
+  assert.deepEqual([
+    [absentTitle.success, absentTitle.data?.code, absentTitle.data?.awaitingUserInput, absentTitle.data?.requiresInput, absentTitle.data?.candidateIds, absentTitle.data?.candidates, absentTitle.text?.includes("bring the gear bag")],
+    [weekendRead.success, weekendRead.data?.noteId],
+    [sharedTitle.success, sharedTitle.data?.code, sharedTitle.data?.awaitingUserInput, sharedTitle.data?.requiresInput, sharedTitle.data?.note, sharedTitle.data?.noteId],
+    [Array.isArray(offered) && offered.length === 2 && trekIds.every((id) => offered.includes(id)), Array.isArray(shown) ? shown.length : 0],
+    [both.success, both.text?.includes("noteId, title or content")],
+    [nearTitle.success, nearTitle.data?.code, nearTitle.data?.readOnlyOperation, nearTitle.data?.noteId, nearTitle.data?.awaitingUserInput, nearTitle.data?.candidateIds, nearTitle.text?.includes(`(noteId ${plan.value.note.id})`), nearTitle.text?.includes("Before changing, adding to, moving or deleting it"), nearTitle.text?.includes("carnitas")],
+    [byNearId.success, byNearId.data?.noteId],
+    [twoNear.success, twoNear.data?.code, twoNear.data?.awaitingUserInput, Array.isArray(twoNear.data?.candidateIds) ? [...twoNear.data.candidateIds].sort() : undefined],
+    editorMatches,
+  ], [
+    [true, "NOTES_TITLE_NOT_FOUND", true, true, [weekend.value.note.id], [{ id: weekend.value.note.id, title: "Weekend" }], false],
+    [true, weekend.value.note.id],
+    [true, "NOTES_AMBIGUOUS_NOTE", true, true, undefined, undefined],
+    [true, 2],
+    [false, true],
+    [true, "NOTES_NEAR_TITLE", true, undefined, undefined, [plan.value.note.id], true, true, false],
+    [true, plan.value.note.id],
+    [true, "NOTES_TITLE_NOT_FOUND", true, [plan.value.note.id, shopping.value.note.id].sort()],
+    [true, true, false, false],
+  ])
 
   const camp = try notes.create({ content: "Camp", format: { kind: "list", data: { items: [{ t: "tent", done: false }] } } })
   const oversized = { field: "checklist", index: 0, expectedText: "tent", text: "x".repeat(262_145) } as const
   assert.equal(try code(notes.update({ id: camp.value.note.id }, { authoredEdit: oversized }, camp.snapshot.revision)), "NOTES_VALIDATION_FAILED")
   assert.equal((try notes.snapshot()).revision, camp.snapshot.revision)
+
+  const shoppingList = try notes.create({ content: "Shopping List", format: { kind: "list", data: { items: [{ t: "eggs", done: false }, { t: "milk", done: false }, { t: "bread", done: true }] } } })
+  const listId = shoppingList.value.note.id
+  const removed = try notes.update({ id: listId }, { authoredEdit: { field: "checklist", action: "remove", index: 1, expectedText: "milk" } }, shoppingList.snapshot.revision)
+  const changedItem = try code(notes.update({ id: listId }, { authoredEdit: { field: "checklist", action: "remove", index: 1, expectedText: "milk" } }, removed.snapshot.revision))
+  const outside = try code(notes.update({ id: listId }, { authoredEdit: { field: "checklist", action: "remove", index: 5, expectedText: "eggs" } }, removed.snapshot.revision))
+  const firstOff = try notes.update({ id: listId }, { authoredEdit: { field: "checklist", action: "remove", index: 0, expectedText: "eggs" } }, removed.snapshot.revision)
+  const lastOff = try notes.update({ id: listId }, { authoredEdit: { field: "checklist", action: "remove", index: 0, expectedText: "bread" } }, firstOff.snapshot.revision)
+  const listAfter = (try notes.snapshot()).notes.find((note) => note.id === listId)
+  const plainList = try notes.create({ content: "Groceries\neggs\nmilk\nbread" })
+  const plainRemoved = try notes.update({ id: plainList.value.note.id }, { textEdit: { field: "body", oldText: "milk\n", newText: "" } })
+  assert.deepEqual([
+    removed.value.format?.data.items, removed.value.title, changedItem, outside, firstOff.value.format?.data.items, lastOff.value.format?.data.items, listAfter?.title, listAfter?.format?.kind,
+    plainRemoved.value.title, plainRemoved.value.body,
+  ], [
+    [{ t: "eggs", done: false }, { t: "bread", done: true }], "Shopping List", "NOTES_EDIT_CONFLICT", "NOTES_EDIT_CONFLICT", [{ t: "bread", done: true }], [], "Shopping List", "list",
+    "Groceries", "\neggs\nbread",
+  ])
 
   const lone = try notes.create({ content: "Trip \uD83C\nTent \uDC00 poles 🏕" })
   const retitled = try notes.update({ id: lone.value.note.id }, { title: "Camp \uDFD5 trip" }, lone.snapshot.revision)
@@ -251,6 +348,27 @@ it.effect('Keep notes as one collection edited only on the owner\'s words (spec/
   assert.deepEqual(
     [lone.value.note.title, lone.value.note.body, retitled.value.title, literalLone.value.body, titled.value.note.title, (try notes.create({ title: "Hike \uDC00", body: "boots" })).value.note.id],
     ["Trip �", "\nTent � poles 🏕", "Camp � trip", "\nTent � pegs � 🏕", "Hike �", titled.value.note.id])
+})
+
+it.effect('The edit forms the Notes actions describe pass their own parameter schemas, so an item can be added and removed (spec/notes/records.md, "Removing one item from a list is an edit of that note, never a delete")', effect () => {
+  const actions = notesPlugin(notesOver(fixture())).actions ?? []
+  const errorsOf = (action: string, name: string, value: unknown) => {
+    const found = actions.find((entry) => entry.name === action)
+    if (found === undefined) return [`no ${action}`]
+    const target = action === "NOTES_UPDATE" ? { noteId: "note-1", expectedRevision: 1 } : {}
+    return validateToolArgs(found, { ...target, [name]: value }).errors
+  }
+  assert.deepEqual([
+    errorsOf("NOTES_UPDATE", "textEdit", { action: "append", field: "item", text: "milk" }),
+    errorsOf("NOTES_UPDATE", "textEdit", { field: "body", oldText: "milk\n", newText: "" }),
+    errorsOf("NOTES_UPDATE", "authoredEdit", { field: "checklist", action: "append", text: "milk" }),
+    errorsOf("NOTES_UPDATE", "authoredEdit", { field: "checklist", action: "remove", index: 2, expectedText: "milk" }),
+    errorsOf("NOTES_UPDATE", "authoredEdit", { field: "checklist", index: 0, expectedText: "eggs", done: true }),
+    errorsOf("NOTES_LIST", "dateRange", { field: "updatedAt", start: "2026-11-01T00:00:00Z" }),
+    errorsOf("NOTES_UPDATE", "authoredEdit", JSON.stringify({ field: "checklist", action: "remove", index: 2, expectedText: "milk" })),
+    errorsOf("NOTES_UPDATE", "authoredEdit", { field: "checklist", action: "erase", index: 0, expectedText: "eggs" }).length > 0,
+    errorsOf("NOTES_UPDATE", "authoredEdit", { field: "checklist", action: "remove", index: 0, expectedText: "eggs", extra: true }).length > 0,
+  ], [[], [], [], [], [], [], [], true, true])
 })
 
 it.effect('Restore a deleted note exactly, at the revision the owner saw (spec/notes/trash.md, "Story: Recover a deleted note")', effect () => {
@@ -304,6 +422,12 @@ it.effect('Import the earlier notes once, exactly, and never over the collection
   const broken = fixture()
   broken.prior.raw = JSON.stringify({ ...earlier, notes: [saved, saved] })
   assert.equal(try code(notesOver(broken, { prior: true }).snapshot()), "NOTES_STORE_UNAVAILABLE")
+  broken.prior.raw = JSON.stringify({
+    ...earlier,
+    notes: [{ ...saved, format: { kind: "voice", data: { audioId: "audio-retained", durationMs: 1000 } } }],
+    trashRecordingCleanup: [{ operationId: turnId(1), noteId: "erased-voice", audioId: "audio-retained", deletedAt: earlier.persistedAt }],
+  })
+  assert.equal(try code(notesOver(broken, { prior: true }).snapshot()), "NOTES_STORE_UNAVAILABLE")
   broken.prior.raw = "{"
   assert.equal(try code(notesOver(broken, { prior: true }).snapshot()), "NOTES_STORE_UNAVAILABLE")
   assert.isUndefined(broken.kept.value)
@@ -311,21 +435,27 @@ it.effect('Import the earlier notes once, exactly, and never over the collection
   assert.deepEqual(try notesOver(absent, { prior: true }).snapshot(), { notes: [], revision: 0, trash: [] })
 })
 
-it.effect('Erase only a reviewed, unshared deletion, sweep after three days and retire a recording only on the device\'s literal proof (spec/notes/trash.md, "Story: Let deleted notes expire after three days when I choose that"; spec/notes/trash.md, "Story: Erase or recover only the recording of my reviewed note"; spec/notes/trash.md, "The proof of erase comes from the service\'s own verifier, else the host\'s verifier found when the cleanup is acknowledged, and only a literal true is proof")', effect () => {
+it.effect('Erase only a reviewed, unshared deletion, sweep after three days and retire a recording only on the device\'s literal proof (spec/notes/trash.md, "Story: Let deleted notes expire after three days when I choose that"; spec/notes/trash.md, "Story: Erase or recover only the recording of my reviewed note"; spec/notes/trash.md, "The proof of erase comes from the service\'s own verifier, else the host\'s verifier found when the cleanup is acknowledged, and only a literal true is proof"; spec/notes/trash.md, "A pending cleanup reserves the note and recording until its exact receipt is acknowledged")', effect () => {
   const f = fixture()
   const notes = notesOver(f, { threeDayTrash: true })
-  const memo = try notes.create({ content: "", format: voice("memo", "audio-memo") })
+  const flatMemo = { kind: "voice", data: { audioId: "audio-memo", durationMs: 1000 } } satisfies NonNullable<StickyNote["format"]>
+  const memo = try notes.create({ content: "Stopped recording", format: flatMemo })
   const shared = try notes.create({ content: "", format: voice("copy", "audio-shared") })
-  try notes.create({ content: "", format: voice("live", "audio-shared") })
+  const live = try notes.create({ content: "Saved copy", format: { kind: "voice", data: { audioId: "audio-shared", durationMs: 1000 } } })
+  const unclearFormat = voice("unclear", "audio-nested")
+  const unclear = try notes.create({ content: "", format: { ...unclearFormat, data: { ...unclearFormat.data, audioId: "audio-flat" } } })
   const plain = try notes.create({ content: "Old list" })
   try notes.delete({ id: memo.value.note.id })
   try notes.delete({ id: shared.value.note.id })
+  try notes.delete({ id: unclear.value.note.id })
   const trashed = try notes.delete({ id: plain.value.note.id })
   const rows = trashed.snapshot.trash ?? []
   const memoRow = rows.find((row) => row.note.id === memo.value.note.id)!
   const sharedRow = rows.find((row) => row.note.id === shared.value.note.id)!
+  const unclearRow = rows.find((row) => row.note.id === unclear.value.note.id)!
   assert.equal(try code(notes.eraseTrash({ scope: "entry", expectedRevision: trashed.snapshot.revision - 1, id: memoRow.note.id, deletedAt: memoRow.deletedAt })), "NOTES_EDIT_CONFLICT")
   assert.equal(try code(notes.eraseTrash({ scope: "entry", expectedRevision: trashed.snapshot.revision, id: sharedRow.note.id, deletedAt: sharedRow.deletedAt })), "NOTES_TRASH_RECORDING_UNAVAILABLE")
+  assert.equal(try code(notes.eraseTrash({ scope: "entry", expectedRevision: trashed.snapshot.revision, id: unclearRow.note.id, deletedAt: unclearRow.deletedAt })), "NOTES_TRASH_RECORDING_UNAVAILABLE")
 
   f.kept.loseNext = true
   assert.equal(try code(notes.eraseTrash({ scope: "entry", expectedRevision: trashed.snapshot.revision, id: memoRow.note.id, deletedAt: memoRow.deletedAt })), "NOTES_COMMIT_UNCONFIRMED")
@@ -334,7 +464,43 @@ it.effect('Erase only a reviewed, unshared deletion, sweep after three days and 
   const pending = try notes.readTrashRecordingCleanup()
   assert.deepEqual(pending.map((row) => [row.noteId, row.audioId]), [[memo.value.note.id, "audio-memo"]])
   const receipt = pending[0]!
+  const beforeReuse = try notes.snapshot()
+  const alias = { ...unclearFormat, data: { ...unclearFormat.data, audioId: receipt.audioId } }
+  assert.deepEqual([
+    try code(notes.create({ content: "Reuse recording", format: flatMemo })),
+    try code(notes.update({ id: live.value.note.id }, { format: alias }, beforeReuse.revision)),
+  ], ["NOTES_TRASH_RECORDING_UNAVAILABLE", "NOTES_TRASH_RECORDING_UNAVAILABLE"])
+  assert.deepEqual(try notes.snapshot(), beforeReuse)
 
+  const kept = try Schema.decodeUnknownEffect(StoredDocument)(try promise(() => f.storage.get()))
+  const earlier = fixture()
+  const copy = { ...live.value.note, id: "retained-copy", format: flatMemo }
+  earlier.kept.value = { ...kept, trash: [...kept.trash, { note: copy, deletedAt: receipt.deletedAt }] }
+  const recovery = notesOver(earlier, { threeDayTrash: true, verify: async () => true })
+  const retained = try recovery.snapshot()
+  assert.equal(retained.trash?.at(-1)?.note.id, copy.id)
+  assert.deepEqual([
+    try code(recovery.restore({ id: copy.id, expectedRevision: retained.revision, deletedAt: receipt.deletedAt })),
+    try code(recovery.canVerifyRecordingCleanup(receipt)),
+    try code(recovery.acknowledgeTrashRecordingCleanup(receipt)),
+  ], ["NOTES_TRASH_RECORDING_UNAVAILABLE", "NOTES_TRASH_RECORDING_UNAVAILABLE", "NOTES_TRASH_RECORDING_UNAVAILABLE"])
+  assert.deepEqual(try recovery.readTrashRecordingCleanup(), [receipt])
+
+  const cancelled = new AbortController()
+  const another = { ...receipt, operationId: turnId(9) }
+  assert.deepEqual([
+    try notes.canVerifyRecordingCleanup(receipt),
+    try notes.canVerifyRecordingCleanup(another),
+  ], [true, false])
+  f.hostVerifier.verify = async () => {
+    cancelled.abort()
+    return true
+  }
+  assert.isFalse(try notes.acknowledgeTrashRecordingCleanup(receipt, cancelled.signal))
+  assert.isFalse(try notes.canVerifyRecordingCleanup(receipt, cancelled.signal))
+  assert.deepEqual(try notes.readTrashRecordingCleanup(), [receipt])
+
+  f.hostVerifier.verify = undefined
   assert.equal(try code(notes.acknowledgeTrashRecordingCleanup(receipt)), "NOTES_TRASH_RECORDING_UNAVAILABLE")
   f.hostVerifier.verify = async () => "true"
   assert.equal(try code(notes.acknowledgeTrashRecordingCleanup(receipt)), "NOTES_TRASH_RECORDING_UNAVAILABLE")
@@ -353,10 +519,10 @@ it.effect('Erase only a reviewed, unshared deletion, sweep after three days and 
   assert.deepEqual(try notes.readTrashRecordingCleanup(), [])
 
   f.clock.ms = start + 3 * day - 1
-  assert.deepEqual((try notes.snapshot()).trash?.map((row) => row.note.id), [shared.value.note.id, plain.value.note.id])
+  assert.deepEqual((try notes.snapshot()).trash?.map((row) => row.note.id), [shared.value.note.id, unclear.value.note.id, plain.value.note.id])
   f.clock.ms = start + 3 * day
   assert.equal(try code(notes.restore({ id: plain.value.note.id, expectedRevision: (try notes.snapshot()).revision })), "NOTES_NOT_FOUND")
-  assert.deepEqual((try notes.snapshot()).trash?.map((row) => row.note.id), [shared.value.note.id])
+  assert.deepEqual((try notes.snapshot()).trash?.map((row) => row.note.id), [shared.value.note.id, unclear.value.note.id])
   assert.isTrue(f.published.includes("trash:expired"))
 })
 
@@ -421,7 +587,7 @@ it.effect('Read and save through the owner\'s client, adopting only the committe
   const notes = notesOver(f, { threeDayTrash: true })
   const client = createNotesClient(routed(notesRoutes(notes)))
   const empty = try promise(() => client.readState())
-  assert.deepEqual(empty, { notes: [], revision: 0, trash: [] })
+  assert.deepEqual(empty, { notes: [], revision: 0, trash: [], deleteAtRevision: true })
   const format = { kind: "list", data: { items: [{ t: "tent", done: true }, { t: "stove" }], recordingHandle: "local-only" } }
   const created = try promise(() => client.interact("create-note", { content: "Camping", format, forceNew: true }))
   const note: StickyNote = created.note!
@@ -435,8 +601,13 @@ it.effect('Read and save through the owner\'s client, adopting only the committe
   assert.isTrue(Exit.isFailure(stale))
   const updated = try promise(() => client.interact("update-note", { id: note.id, authoredEdit: { field: "checklist", index: 1, expectedText: "stove", done: true }, expectedRevision: 1 }))
   assert.equal(noteScheduleText(updated.note!), "")
-  try promise(() => client.interact("delete-note", { id: note.id }))
+  const staleDelete = try exit(promise(() => client.interact("delete-note", { id: note.id, expectedRevision: created.state.revision })))
+  const searchedDelete = try exit(promise(() => client.interact("delete-note", { title: note.title, expectedRevision: updated.state.revision })))
+  assert.deepEqual([Exit.isFailure(staleDelete), Exit.isFailure(searchedDelete), try promise(() => client.readState())], [true, true, { ...updated.state, deleteAtRevision: true }])
+  const deleted = try promise(() => client.interact("delete-note", { id: note.id, expectedRevision: updated.state.revision }))
   const state = try promise(() => client.readState())
+  assert.deepEqual(deleted.target, { id: note.id, revision: updated.state.revision + 1 })
+  assert.deepEqual(state, { ...deleted.state, deleteAtRevision: true })
   const row = state.trash![0]!
   const erased = try promise(() => client.eraseTrash({ scope: "entry", expectedRevision: state.revision, id: row.note.id, deletedAt: row.deletedAt }))
   assert.deepEqual([erased.erased, erased.recordingCleanup, erased.state.trash], [1, [], []])

@@ -60,6 +60,7 @@ public final class BrowserExternalHandoffTest {
   }
   private static final class Host extends BrowserTabHostPlugin {
     final androidx.appcompat.app.AppCompatActivity activity = org.robolectric.Robolectric.buildActivity(androidx.appcompat.app.AppCompatActivity.class).get();
+    final java.util.List<String> notices = new java.util.ArrayList<>();
     @Override public android.content.Context getContext() { return activity; }
     @Override public androidx.appcompat.app.AppCompatActivity getActivity() { return activity; }
     final BrowserTabHostConfig config;
@@ -68,7 +69,12 @@ public final class BrowserExternalHandoffTest {
     @Override protected BrowserTabHostConfig tabHostConfig() { return config; }
     @Override protected BrowserBookmarkStore openBookmarkStore(android.content.Context context) { throw new AssertionError("Handoff opens no bookmark store"); }
     @Override protected BrowserSessionStore openSessionStore(android.content.Context context) { throw new AssertionError("Handoff opens no session store"); }
-    @Override protected void notifyListeners(String event, com.getcapacitor.JSObject value) { /* Controlled event port; no bridge is installed. */ }
+    @Override protected void notifyListeners(String event, com.getcapacitor.JSObject value) {
+      if ("notice".equals(event) && value != null) {
+        String message = value.getString("message");
+        if (message != null && !message.isEmpty()) notices.add(message);
+      }
+    }
   }
   private static Object tab(Host host) throws Exception {
     Class<?> type = Class.forName(BrowserTabHostPlugin.class.getName() + "$Tab");
@@ -158,6 +164,30 @@ public final class BrowserExternalHandoffTest {
           assertNotNull(opened); assertEquals(Intent.ACTION_VIEW, opened.getAction()); assertEquals(raw, opened.getDataString());
           assertNull(opened.getComponent()); assertNull(opened.getPackage()); assertEquals(0, opened.getFlags());
         } else assertNull(route, opened);
+      } finally { ((android.webkit.WebView) org.robolectric.util.ReflectionHelpers.getField(tab, "web")).destroy(); }
+    }
+  }
+  @Test public void untappedAppLinkStaysSilentOnLivePageWhileSystemOrBlankStillNotifies() throws Exception {
+    String blocked = "Blocked a link to another app that opened without a tap.";
+    String appLink = "whatsapp://send?text=Review";
+    for (String mode : new String[] {"committed-app", "started-app", "blank-app", "errored-app", "committed-sms", "committed-intent"}) {
+      Host host = new Host(APP_HOST); Object tab = tab(host);
+      try {
+        if (mode.startsWith("committed-") || mode.equals("errored-app"))
+          org.robolectric.util.ReflectionHelpers.setField(tab, "committed", true);
+        if (mode.equals("started-app"))
+          org.robolectric.util.ReflectionHelpers.setField(tab, "documentStarted", true);
+        if (mode.equals("errored-app"))
+          org.robolectric.util.ReflectionHelpers.setField(tab, "error", "Page could not load.");
+        String uri = mode.equals("committed-sms") ? "smsto:+15555550100"
+            : mode.equals("committed-intent") ? "intent://review/#Intent;scheme=https;end" : appLink;
+        handoff(host, tab, uri, false);
+        assertNull(mode, org.robolectric.Shadows.shadowOf(host.activity).getNextStartedActivity());
+        if (mode.equals("committed-app") || mode.equals("started-app")) {
+          assertEquals(mode, java.util.List.of(), host.notices);
+        } else {
+          assertEquals(mode, java.util.List.of(blocked), host.notices);
+        }
       } finally { ((android.webkit.WebView) org.robolectric.util.ReflectionHelpers.getField(tab, "web")).destroy(); }
     }
   }

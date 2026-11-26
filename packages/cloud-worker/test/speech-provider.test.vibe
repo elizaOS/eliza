@@ -1,0 +1,81 @@
+// spec/cloud/services/speechRelay.md, "Story: Speak the relay protocol on one socket"; spec/cloud/index.md, "Story: Transcribe a recording"
+import { assert, describe, it } from "@effect/vitest"
+import { openStt, openTts, prepareTranscription, synthesize, synthesizeTimed } from "../src/providers/speech.vibe"
+import { FetchHttpClient } from "effect/http"
+import { Deployment, deploymentLayer, parseProfile } from "@elizaos/cloud"
+import { startFakeServer } from "./support/fakes.ts"
+import { pcmChunkBytes, speechFake, spokenTranscript, synthesizedAudio } from "./support/fake-speech.ts"
+import { secrets, testProfile } from "./support/profile.ts"
+import { outcomeTag as failureTag } from "./support/cloud.vibe"
+
+describe("WP6 Speech provider (spec/cloud/services/speechRelay.md)", () => {
+  it.live("Speak, time, transcribe and stream turns through the provider, and type every refusal (spec/cloud/services/speechRelay.md, \"Story: Speak the relay protocol on one socket\"; spec/cloud/index.md, \"Story: Transcribe a recording\")", () => scoped(effect {
+    const fake = try sync(() => speechFake())
+    const fakes = try acquireRelease(promise(() => startFakeServer()), (server) => promise(() => server.close()))
+    try sync(() => fake.install(fakes))
+    const profile = try parseProfile(try Effect.try(() => testProfile(fakes.url)))
+    const layer = Layer.mergeAll(deploymentLayer(profile, "staging"), FetchHttpClient.layer).pipe(Layer.provide(ConfigProvider.layer(ConfigProvider.fromEnvRecord({ ...secrets }))))
+    const result = try Effect.provide(scoped(effect {
+      const settings = (try Deployment).settings.speech
+      if (settings === undefined) return undefined
+      const synthesis = { text: "Hello there", voiceId: "voice-1", modelId: "model-1", format: "mp3" as const, speed: 1, applyTextNormalization: "auto" as const }
+      const audio = try synthesize(settings, synthesis)
+      const timed = try synthesizeTimed(settings, { ...synthesis, previousText: "Before" })
+      const heard = try Effect.flatten(prepareTranscription(settings, { audio: new Uint8Array([1, 2, 3, 4]), mimeType: "audio/wav", languageCode: "en-US" }))
+      try sync(() => fake.script({ kind: "refuse", status: 429, retryAfterSeconds: 3 }, { kind: "refuse", status: 503 }, { kind: "garbled" }))
+      const refused = try failureTag(synthesize(settings, synthesis))
+      const outage = try failureTag(synthesize(settings, synthesis))
+      const garbled = try failureTag(Effect.flatten(prepareTranscription(settings, { audio: new Uint8Array([1, 2]), mimeType: "audio/wav" })))
+      const stt = try openStt()
+      try stt.send(new Uint8Array(640))
+      const edges = Array.from(try Stream.runCollect(Stream.take(stt.edges, 4)))
+      const drained = try stt.drain()
+      const tts = try openTts()
+      try tts.speak("u1", "Hi", true)
+      try tts.finish("u1")
+      const spoken = Array.from(try Stream.runCollect(Stream.take(tts.edges, 3)))
+      try sync(() => fake.scriptRealtime({ kind: "refuse", status: 401 }))
+      const badOpen = try failureTag(openStt())
+      return {
+        audio: Array.from(audio.audio),
+        timed: timed.map((frame) => frame.alignment?.characters.join("")),
+        heard,
+        refusals: [refused, outage, garbled, badOpen],
+        edges: edges.map((edge) => [edge.kind, edge.transcript]),
+        drained,
+        spoken: spoken.map((edge) => edge.kind === "audio" ? `audio:${edge.pcm.byteLength}` : edge.kind)
+      }
+    }), layer)
+    try Effect.try(() => assert.deepStrictEqual(
+      {
+        result,
+        transcribed: fake.transcribed.map((each) => [each.mimeType, each.model, each.language, each.audio.byteLength]),
+        connections: fake.connections.map((each) => [each.path, each.query.get("model"), each.query.get("sample_rate"), each.headers["x-api-key"]]),
+        sttPcmBytes: fake.sttPcmBytes,
+        drained: fake.drained,
+        ttsMessages: fake.ttsMessages.map((each) => [each.context_id, each.transcript, each.continue, each.flush])
+      },
+      {
+        result: {
+          audio: Array.from(synthesizedAudio),
+          timed: ["Hello ", "there"],
+          heard: { transcript: spokenTranscript, durationMs: 2_500, words: spokenTranscript.split(" ").map((word, index) => ({ text: word, startMs: index * 400, endMs: index * 400 + 300 })) },
+          refusals: ["ProviderRefused", "ProviderRefused", "ProviderInvalidResponse", "ProviderUnreachable"],
+          edges: [["SttConnected", ""], ["StartOfTurn", ""], ["TranscriptUpdate", spokenTranscript.slice(0, 7)], ["EndOfTurn", spokenTranscript]],
+          drained: true,
+          spoken: [`audio:${pcmChunkBytes}`, "flushed", "completed"]
+        },
+        transcribed: [["audio/wav", "ink-whisper", "en", 4], ["audio/wav", "ink-whisper", null, 2]],
+        connections: [
+          ["/stt/turns/websocket", "ink-2", "16000", secrets.SPEECH_API_KEY],
+          ["/tts/websocket", null, null, secrets.SPEECH_API_KEY],
+          ["/stt/turns/websocket", "ink-2", "16000", secrets.SPEECH_API_KEY],
+          ["/stt/turns/websocket", "ink-2", "16000", secrets.SPEECH_API_KEY]
+        ],
+        sttPcmBytes: 640,
+        drained: 1,
+        ttsMessages: [["u1", "Hi", true, true], ["u1", "", false, false]]
+      }
+    ))
+  }), 60_000)
+})

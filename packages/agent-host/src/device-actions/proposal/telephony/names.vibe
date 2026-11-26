@@ -1,0 +1,20 @@
+// spec/agent/deviceActions/telephony.md, "A proposed contact name is one the owner wrote as whole words, outside the text to send"
+const notAName: ReadonlySet<string> = new Set((
+  "a an the this that these those it its me my mine myself i you your yours he him his she her hers we us our ours they them their " +
+  "someone somebody anyone anybody everyone everybody nobody no one back up now please thanks thank and or to for of at on in with " +
+  "from about call ring phone dial text sms message send tell ask say saying number cell mobile contact"
+).split(" "))
+
+function normalizedWords(text: string): string {
+  return text.normalize("NFKC").toLowerCase()
+    .replace(/[’‘]/g, "'").replace(/'s(?![\p{L}\p{N}])/giu, "").replace(/[^\p{L}\p{N}']+/gu, " ").trim()
+}
+
+function namesSomeone(name: string): boolean {
+  const words = normalizedWords(name)
+  return words !== "" && !/^[\d\s+]+$/.test(words) && !words.split(" ").every((word) => notAName.has(word))
+}
+
+export function writesContactName(text: string, name: string): boolean {
+  return namesSomeone(name) && ` ${normalizedWords(text)} `.includes(` ${normalizedWords(name)} `)
+}

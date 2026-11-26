@@ -1,8 +1,8 @@
 // spec/maps/guidanceRecovery.md, "Story: Move on to the next step only when I have really passed the turn"
 import type { Driver, Options } from "../../gen/maps__guidanceRecovery.conformance.ts";
 import type { GuidanceProgress } from "../../gen/maps__guidanceRecovery.ts";
-import { advanceStep, type StepHold } from "../../src/client/guidance.vibe";
-import { routeProgress } from "../../src/client/route-distance.vibe";
+import { advanceStep, type StepHold } from "@elizaos/plugin-maps-client";
+import { routeProgress } from "@elizaos/plugin-maps-client";
 
 type View = Pick<GuidanceProgress, "step" | "cleared">;
 

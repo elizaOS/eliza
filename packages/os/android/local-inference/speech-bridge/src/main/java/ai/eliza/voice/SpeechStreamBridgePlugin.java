@@ -32,7 +32,6 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -136,7 +135,7 @@ public abstract class SpeechStreamBridgePlugin extends Plugin {
   private static final long HTTP_STARTUP_MS = 12_000, RELAY_STARTUP_MS = 8_000, PROGRESS_MS = 100, JOIN_MS = 1500, SILENCE_MS = 32, WARMUP_MS = 5_000;
   private static final long LEVEL_NS = 50_000_000L, FEED_BYTES = 8 * 1024 * 1024;
   private static final int FEED_TASKS = 1024, MAX_BODY = 32768, MAX_REFUSAL = 16384, MIC_FRAME = 1024, SILENCE_FRAMES = 30;
-  private static final int MAX_QUEUE = 64000, TIMINGS = 100, PLAYBACK_CAPACITY = RATE * 5, CHUNK = 1600;
+  private static final int MAX_QUEUE = 64000, TIMINGS = 100, STARTUP_TIMINGS = 64, PLAYBACK_CAPACITY = RATE * 5, CHUNK = 1600;
   private static final float AUDIBLE = 0.005f;
   private static final String AUDIO_FOCUS_LOST = "audio-focus-lost";
 
@@ -153,7 +152,7 @@ public abstract class SpeechStreamBridgePlugin extends Plugin {
       .retryOnConnectionFailure(false)
       .build();
   private final SpeechOutputGate gate = new SpeechOutputGate();
-  private final ArrayDeque<JSObject> timings = new ArrayDeque<>();
+  private final CloudSpeechWire.TimingRows<JSObject> timings = new CloudSpeechWire.TimingRows<>(STARTUP_TIMINGS, TIMINGS);
   private final CloudSpeechWire.Warmups warmups = new CloudSpeechWire.Warmups();
   private SpeechAudioFocus focus;
   private Utterance focusHolder;
@@ -196,7 +195,7 @@ public abstract class SpeechStreamBridgePlugin extends Plugin {
   @PluginMethod
   public synchronized void cloudStreamTiming(PluginCall call) {
     JSArray rows = new JSArray();
-    for (JSObject row : timings) rows.put(row);
+    for (JSObject row : timings.rows()) rows.put(row);
     call.resolve(new JSObject().put("format", diagnosticFormat()).put("records", rows));
   }
 
@@ -1655,8 +1654,7 @@ public abstract class SpeechStreamBridgePlugin extends Plugin {
     row.put("receivedFrames", own.receivedFrames);
     row.put("receivedBytes", own.receivedBytes);
     if (own.httpStatus != 0) row.put("httpStatus", own.httpStatus);
-    timings.addLast(row);
-    while (timings.size() > TIMINGS) timings.removeFirst();
+    timings.add(own.diagnosticId, stage, row);
   }
 
   private static void submit(Executor executor, Runnable action, Runnable rejected) {

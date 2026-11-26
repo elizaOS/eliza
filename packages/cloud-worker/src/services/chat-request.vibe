@@ -1,0 +1,91 @@
+// spec/cloud/index.md, "Story: Use inference on my subscription or funded pilot account"; spec/cloud/services/models.md, "A side has at most 2,000,000 tokens, so every side's price arithmetic stays a safe integer"
+import { acceptedFields, heldOutput, ingressLimit, outputLimit, quoteCounts, wireOutputCap, type TokenAsk } from "../../gen/cloud__services__inference.effect.vibe"
+import { callCost, countsInBound, type Model, type TokenCounts } from "../../gen/cloud__services__models.effect.vibe"
+import { refused, type Refused } from "../http/refusal.vibe"
+import type { RouteContext } from "../http/routes.vibe"
+import { ChatRequest, type ChatMessage, type ContentPart, type ResponseFormat } from "@elizaos/cloud"
+
+export type { ChatRequest }
+
+export interface Quote {
+  readonly counts: TokenCounts
+  readonly outputCap: number
+  readonly wireCap: number | undefined
+  readonly micros: number
+}
+
+export const chatIngressPerMinute = ingressLimit.limit
+
+function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+
+effect function parseChat(raw: unknown): ChatRequest!Refused {
+  if (isRecord(raw) && Object.keys(raw).some((field) => !acceptedFields.includes(field))) throw refused("InvalidRequest", "UnsupportedField")
+  const body = Schema.decodeUnknownEffect(ChatRequest, { onExcessProperty: "error" })(raw) catch effect () => { throw refused("InvalidRequest") }
+  if (!formatServable(body.response_format)) throw refused("InvalidRequest")
+  return body
+}
+
+export effect function chatBody(context: RouteContext): ChatRequest!Refused {
+  if (!(context.request.headers["content-type"] ?? "").startsWith("application/json")) throw refused("InvalidRequest")
+  const raw = context.request.json catch effect (failure) => {
+    throw refused(failure.reason._tag === "RequestParseError" && failure.reason.reason === "BodyTooLarge" ? "ContentTooLarge" : "InvalidRequest")
+  }
+  return try parseChat(raw)
+}
+
+function partsOf(message: ChatMessage): ReadonlyArray<ContentPart> {
+  return message.content === undefined || message.content === null || typeof message.content === "string" ? [] : message.content
+}
+
+export function hasImage(body: ChatRequest): boolean {
+  return body.messages.some((message) => partsOf(message).some((part) => part.type === "image_url"))
+}
+
+function closedSchema(node: unknown): boolean {
+  if (!isRecord(node)) return true
+  const properties = isRecord(node.properties) ? node.properties : undefined
+  if (node.type === "object" || properties !== undefined) {
+    const required = Array.isArray(node.required) ? node.required : []
+    if (node.additionalProperties !== false || !Object.keys(properties ?? {}).every((key) => required.includes(key))) return false
+  }
+  const nested = [
+    ...Object.values(properties ?? {}),
+    ...(isRecord(node.$defs) ? Object.values(node.$defs) : []),
+    ...(isRecord(node.definitions) ? Object.values(node.definitions) : []),
+    ...(Array.isArray(node.anyOf) ? node.anyOf : []),
+    node.items
+  ]
+  return nested.every(closedSchema)
+}
+
+function formatServable(format: ResponseFormat | undefined): boolean {
+  if (format?.type !== "json_schema" || format.json_schema.strict !== true) return true
+  return format.json_schema.schema !== undefined && closedSchema(format.json_schema.schema)
+}
+
+function textChars(message: ChatMessage): number {
+  const calls = message.role === "assistant" ? message.tool_calls ?? [] : []
+  const said = typeof message.content === "string" ? message.content.length
+    : partsOf(message).reduce((sum, part) => sum + (part.type === "text" ? part.text.length : 0), 0)
+  return calls.reduce((sum, call) => sum + call.function.name.length + call.function.arguments.length, said)
+}
+
+function asked(tokens: number | undefined): TokenAsk {
+  return tokens === undefined ? { tag: "NoAsk" } : { tag: "AskFor", tokens }
+}
+
+export effect function quote(body: ChatRequest, model: Model): Quote!Refused {
+  const limit = outputLimit(asked(body.max_completion_tokens), asked(body.max_tokens), model.defaultMaxTokens)
+  if (limit.tag === "NoAsk") {
+    try annotateLogs(logError("configure defaultMaxTokens for unbounded model requests"), { model: model.id, provider: model.provider, upstreamModel: model.upstreamModel })
+    throw refused("ModelUnavailable")
+  }
+  const chars = body.messages.reduce((sum, message) => sum + textChars(message), 0)
+  const capped = body.max_completion_tokens !== undefined || body.max_tokens !== undefined
+  const counts = quoteCounts(chars, heldOutput(capped, limit.tokens))
+  if (!countsInBound(counts) || !countsInBound(quoteCounts(0, limit.tokens))) throw refused("InvalidRequest")
+  const forwarded = wireOutputCap(capped, limit.tokens)
+  return { counts, outputCap: limit.tokens, wireCap: forwarded.tag === "AskFor" ? forwarded.tokens : undefined, micros: callCost(model, counts) }
+}

@@ -1,0 +1,89 @@
+// spec/agent/deviceActions/index.md, "A proposal's identity is its request message and its operation, so a repeat returns the same request"; spec/agent/deviceActions/index.md, "A proposal carries the owner's message only for a live turn that asked for it directly, so otherwise the phone shows its card"; spec/agent/deviceActions/index.md, "An offer goes only to the enrolled device, for a capability it declared"; spec/agent/deviceActions/index.md, "A proposal is offered only on an owner turn of the enrolled device, as its family grounded it, and re-admitted under the turn's negotiation"; spec/agent/deviceActions/capabilities.md, "An open-view proposal runs only on the profile revision it bound and a view the profile enables"
+module node {
+  import { Effect, Result } from "effect"
+  import { hashStableJson, stringToUuid, type UUID } from "@elizaos/core"
+  import { carriesRequestMessage, type ProposalGrounding } from "../../../gen/agent__deviceActions.ts"
+  import { capabilityName, negotiatedHas, revisionOf, type Negotiation, type RevisionRead } from "../../../gen/agent__deviceActions__capabilities.ts"
+  import { enrollmentId } from "../enrollment.vibe"
+  import { bindingHash, type CheckedOperation, type DeviceOperation } from "@elizaos/agent"
+  import { devicePayload, type CalendarAgendaSource } from "../proposal-review.vibe"
+  import { enrollment, offerRequest, openRequest, viewProfile, type DeviceRequestRecord, type DeviceStoreUnavailable } from "../store.vibe"
+  import { directRequests, type DeviceTurn, type FamilyName } from "./family.vibe"
+  import { turnLive } from "./turn.vibe"
+
+  export type OfferTurn = Pick<DeviceTurn, "runtime" | "by" | "negotiation" | "message" | "conversationId" | "requestId">
+
+  export interface OfferTerms {
+    readonly readBack: boolean
+    readonly agenda?: CalendarAgendaSource
+    readonly grounding?: ProposalGrounding
+    readonly family?: FamilyName
+  }
+
+  export type ProposalOffer =
+    | { readonly kind: "offered" | "kept"; readonly record: DeviceRequestRecord; readonly digest: string }
+    | { readonly kind: "refused" | "ended" }
+
+  const offeredFor = 600_000
+
+  export function proposalId(messageId: UUID, operation: DeviceOperation): UUID {
+    return stringToUuid(JSON.stringify(["device-proposal", messageId, bindingHash(operation)]))
+  }
+
+  export function carriesMessage(current: DeviceTurn | undefined, grounding: ProposalGrounding | undefined, family?: FamilyName): boolean {
+    return current !== undefined && carriesRequestMessage(grounding ?? "GroundedAsAsked", family !== undefined && directRequests(current, family), turnLive(current))
+  }
+
+  function capabilityOf(checked: CheckedOperation, negotiation: Negotiation, agenda: boolean): string | undefined {
+    const chosen = agenda && negotiatedHas(negotiation, "CalendarAgendaReadV1") ? "CalendarAgendaReadV1"
+      : checked.need.required[0] ?? checked.need.oneOf.find((capability) => negotiatedHas(negotiation, capability))
+    return chosen === undefined ? undefined : capabilityName(chosen)
+  }
+
+  function kept(record: DeviceRequestRecord): Effect.Effect<ProposalOffer, DeviceStoreUnavailable> {
+    return Effect.map(record.machine.get(), (state): ProposalOffer => ({ kind: "kept", record, digest: state.digest }))
+  }
+
+  export function offerProposal(
+    turn: OfferTurn, checked: CheckedOperation, { readBack, agenda, grounding, family }: OfferTerms, current?: DeviceTurn,
+  ): Effect.Effect<ProposalOffer, DeviceStoreUnavailable> {
+    return Effect.gen(function* () {
+      const adapter = turn.runtime.adapter
+      const id = proposalId(turn.message.id, checked.operation)
+      const existing = yield* openRequest(adapter, id)
+      if (existing !== undefined) return yield* kept(existing)
+      const capability = capabilityOf(checked, turn.negotiation, agenda !== undefined)
+      if (capability === undefined) return { kind: "refused" } satisfies ProposalOffer
+      const boundProfile: RevisionRead = checked.operation.type === "open_view" ? revisionOf(yield* viewProfile(adapter)) : { tag: "NoRevisionRead" }
+      const enrolled = yield* enrollment(adapter)
+      if (current !== undefined && !turnLive(current)) return { kind: "ended" } satisfies ProposalOffer
+      const reviewed = !carriesMessage(current, grounding, family)
+      const expiresAt = Date.now() + offeredFor
+      const payload = devicePayload({
+        operation: checked.operation,
+        ...(agenda === undefined ? {} : { calendarAgendaSource: agenda }),
+        ...(boundProfile.tag === "ReadAt" ? { viewProfileRevision: boundProfile.revision } : {}),
+        reviewed,
+      }, turn.by, enrollmentId(enrolled), turn.message.id)
+      const digest = hashStableJson({ id, subjectUserId: turn.by.actorId, payload, expiresAt: new Date(expiresAt).toISOString() })
+      const offered = yield* Effect.result(offerRequest(adapter, {
+        type: "offer", proposalId: id, digest, capability, expiresAt, readBack,
+        origin: { requestId: turn.requestId, conversationId: turn.conversationId, inReplyTo: turn.message.id },
+      }, turn.by, {
+        operation: checked.operation, binding: agenda === undefined ? "NoBinding" : { kind: "AgendaBinding", ...agenda },
+        boundProfile, need: checked.need, reviewed,
+      }))
+      if (Result.isSuccess(offered)) return { kind: "offered", record: offered.success, digest } satisfies ProposalOffer
+      switch (offered.failure._tag) {
+        case "Rejected": return { kind: "refused" } satisfies ProposalOffer
+        case "ProposalIdTaken": {
+          const taken = yield* openRequest(adapter, id)
+          return taken === undefined ? { kind: "refused" } satisfies ProposalOffer : yield* kept(taken)
+        }
+        case "DeviceStoreUnavailable": return yield* Effect.fail(offered.failure)
+      }
+    })
+  }
+}
+
+export { carriesMessage, offerProposal, proposalId, type OfferTerms, type OfferTurn, type ProposalOffer } from node

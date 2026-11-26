@@ -1,8 +1,9 @@
-// spec/assistant/reminders.md, "Story: Create the reminder I asked for, and only that"; spec/assistant/reminderEscalation.md, "Story: Nudge me again about a reminder I did not answer, never in my quiet hours"; spec/assistant/reminders.md, "Story: Take back the reminder I just saved"; spec/assistant/reminderPresentation.md, "Story: Carry an exact saved reminder to its delivery"; spec/assistant/replies.md, "Story: Hear what this turn proves about my request"; spec/assistant/replies.md, "Story: Hear a brief acknowledgment while my request is pending, and the whole answer after"; spec/assistant/goals.md, "Story: Keep my goals and check in on them when I asked"; spec/assistant/goals.md, "Story: Save the goal I asked for, once"; spec/assistant/todos.md, "Story: Keep my to-do list as I asked, once"; spec/assistant/timezone.md, "Story: Run my day on my own clock"; spec/assistant/travel.md, "Story: Keep my trip to the day I said I am back"; spec/assistant/routines.md, "Story: Create, change and delete a routine from my own client"; spec/assistant/routines.md, "Story: Keep my habits from the conversation"; spec/assistant/checkin.md, "Story: Summarize my day only from a real answer"; spec/assistant/followups.md, "Story: Remind me about approvals I left open, and stop once I answered"; spec/assistant/scheduledDossiers.md, "Story: Prepare my day once, after I am up"; spec/assistant/evaluatorRunner.md, "Story: Apply output in priority order under the original custody"; spec/assistant/evaluatorProgress.md, "Story: Resume validated output without redoing its inference"; spec/assistant/evaluatorEvidencePages.md, "Story: Request an earlier complete page without applying the current response"; spec/assistant/checkin.md, "Story: Mention only calendar events that changed recently"; spec/assistant/reminders.md, "Story: Propose a reminder or alarm on my phone only as I asked"; spec/assistant/reminders.md, "Story: Hear and rename the reminders I keep"; spec/assistant/reminderEscalation.md, "Story: Chase me about my reminders only as hard as I asked"; spec/assistant/checkin.md, "Story: Brief me on my morning, evening or week when I ask"; spec/assistant/goals.md, "Story: Review how my goals are going"; spec/assistant/reminders.md, "Story: Answer the question a reminder I asked for drew"; spec/assistant/reminders.md, "Story: Answer or put off a reminder I keep"; spec/assistant/names.md, "Story: Name what I keep without repeating its whole title"
+// spec/assistant/reminders.md, "Story: Create the reminder I asked for, and only that"; spec/assistant/reminderEscalation.md, "Story: Nudge me again about a reminder I did not answer, never in my quiet hours"; spec/assistant/reminders.md, "Story: Take back the reminder I just saved"; spec/assistant/reminderPresentation.md, "Story: Carry an exact saved reminder to its delivery"; spec/assistant/replies.md, "Story: Hear what this turn proves about my request"; spec/assistant/goals.md, "Story: Keep my goals and check in on them when I asked"; spec/assistant/goals.md, "Story: Save the goal I asked for, once"; spec/assistant/todos.md, "Story: Keep my to-do list as I asked, once"; spec/assistant/timezone.md, "Story: Run my day on my own clock"; spec/assistant/travel.md, "Story: Keep my trip to the day I said I am back"; spec/assistant/routines.md, "Story: Create, change and delete a routine from my own client"; spec/assistant/routines.md, "Story: Keep my habits from the conversation"; spec/assistant/checkin.md, "Story: Summarize my day only from a real answer"; spec/assistant/followups.md, "Story: Remind me about approvals I left open, and stop once I answered"; spec/assistant/scheduledDossiers.md, "Story: Prepare my day once, after I am up"; spec/assistant/evaluatorRunner.md, "Story: Apply output in priority order under the original custody"; spec/assistant/evaluatorProgress.md, "Story: Resume validated output without redoing its inference"; spec/assistant/evaluatorEvidencePages.md, "Story: Request an earlier complete page without applying the current response"; spec/assistant/checkin.md, "Story: Mention only calendar events that changed recently"; spec/assistant/reminders.md, "Story: Propose a reminder or alarm on my phone only as I asked"; spec/assistant/reminders.md, "Story: Hear and rename the reminders I keep"; spec/assistant/reminderEscalation.md, "Story: Chase me about my reminders only as hard as I asked"; spec/assistant/checkin.md, "Story: Brief me on my morning, evening or week when I ask"; spec/assistant/goals.md, "Story: Review how my goals are going"; spec/assistant/reminders.md, "Story: Answer the question a reminder I asked for drew"; spec/assistant/reminders.md, "Story: Answer or put off a reminder I keep"; spec/assistant/names.md, "Story: Name what I keep without repeating its whole title"
 import { assert, it } from "@effect/vitest"
-import { negotiation, readOperation, validate, type CheckedOperation, type DeviceTurn } from "@elizaos/agent/device-actions"
+import { negotiatedOwnerTurn, type DeviceTurn, activityLabel } from "@elizaos/agent-host"
+import { readOperation, type CheckedOperation, admitRoute } from "@elizaos/agent"
 import { reminderProposalFamily } from "../src/device-proposals.vibe"
-import { canActionRun, ContextRegistry, readReminderPresentation, resolveActionContexts, type ActionResult, type IAgentRuntime, type Memory, type RegisteredEvaluator, type UUID } from "@elizaos/core"
+import { canActionRun, ContextRegistry, readReminderPresentation, resolveActionContexts, validateToolArgs, type ActionResult, type IAgentRuntime, type Memory, type RegisteredEvaluator, type UUID } from "@elizaos/core"
 import { composeBrief, recalibrateBrief } from "../src/brief.vibe"
 import { checkinKind, checkinSchedules, collectFacts, followOwnerClock, reconcileCheckins, runCheckin, checkinReport, setCheckinTimes } from "../src/checkin.vibe"
 import { ownerActivity, setDossier } from "../src/dossier.vibe"
@@ -10,16 +11,15 @@ import { restoreEarlier } from "../src/evaluators/pages.vibe"
 import { commitEvaluatorProgress, evidenceOf, sourceOf, stageEvaluatorOutput, stagedOutput } from "../src/evaluators/progress.vibe"
 import { runEvaluators } from "../src/evaluators/runner.vibe"
 import { followupIndex, followupTick } from "../src/followups.vibe"
-import { activityLabel, admitRoute } from "@elizaos/agent"
 import { changeGoal, goalCheckinKind, listGoals, deliverGoalCheckin } from "../src/goals.vibe"
-import { heardReply, replyKind } from "../src/replies.vibe"
 import { answerReminder, checkOriginalMessage, createReminder, deliverReminder, escalateReminder, listReminders, moveReminder, ownerRemindersAction, reminderKind, reminderReply, remindersContext, renameReminder, retractRecentSave, setReminderIntensity } from "../src/reminders.vibe"
-import { onAgent } from "../src/host.vibe"
+import { Model, onAgent } from "../src/host.vibe"
 import { deliverEscalation, escalationKind } from "../src/escalation.vibe"
 import { changeRoutine, createRoutine, deleteRoutine, deliverRoutine, routineKind, routineNudgeKind, routineRoutes, updateRoutine } from "../src/routines.vibe"
 import { ownerCalendarZone, ownerClockAt, ownerFacts, recordTravel, stateOwnerZone } from "../src/timezone.vibe"
 import { changeTodos, currentTodos } from "../src/todos.vibe"
 import { stateTravel } from "../src/travel.vibe"
+import { personalAssistantPlugin } from "../src/index.vibe"
 import { ports, portsLayer, rowsOf } from "./support/ports.vibe"
 
 const check = (answer: object) => JSON.stringify({ requested: true, clock: "utc", destination: null, alert: "alert", important: false, ...answer })
@@ -29,34 +29,45 @@ const outcomeOf = (result: ActionResult) => ({ success: result.success, text: re
 const equal = <A>(actual: A, expected: A) => Effect.try(() => assert.deepStrictEqual(actual, expected))
 const heard = (id: string, text: string) => ({ id: id as UUID, entityId: "owner-1" as UUID, roomId: "room-1" as UUID, content: { text } }) satisfies Memory
 
-it.effect('Create each reminder I asked for, once, at the planned time with the delivery the message chose, and with an alert when nobody stated one (spec/assistant/reminders.md, "Story: Create the reminder I asked for, and only that"; spec/assistant/reminders.md, "A known delivery choice is kept, and only an unknown one is taken from the message"; spec/assistant/reminders.md, "An alert nobody stated is an alert")', effect () => {
+it.effect('Create each reminder I asked for, once, at the planned time with the delivery the message chose, and with an alert when nobody stated one, from a plan in the shape the model is told (spec/assistant/reminders.md, "Story: Create the reminder I asked for, and only that"; spec/assistant/reminders.md, "A reminder intent is proposed with a plan and what the original message asked"; spec/assistant/reminders.md, "A known delivery choice is kept, and only an unknown one is taken from the message"; spec/assistant/reminders.md, "An alert nobody stated is an alert")', effect () => {
   const seen = ports()
-  seen.answers.push(check({ destination: "device", clock: "owner_local" }), check({ destination: "device" }), check({ alert: null }))
+  seen.answers.push(check({ destination: "device", clock: "owner_local" }), check({ destination: "device" }), check({ alert: null }), check({}))
   provide portsLayer(seen) {
     const first = try createReminder(asked("m1"))
     const again = try createReminder(asked("m1"))
     const second = reminderReply(try createReminder({ ...asked("m1"), plan: { ...plan, title: "Take out the trash", due: { kind: "in", minutes: 40 } } }))
-    try equal([second.success, second.userFacingText?.startsWith('I\'ll remind you: "Take out the trash" in 40 minutes')], [true, true])
+    try equal([second.success, second.text?.startsWith('I\'ll remind you: "Take out the trash" in 40 minutes'), second.userFacingText, second.verifiedUserFacing], [true, true, undefined, undefined])
     const reply = reminderReply(first)
-    try equal({ success: reply.success, heardInFull: reply.userFacingText?.startsWith('I\'ll remind you: "Call the dentist" in 20 minutes, at Sun, Nov 22, 10:20'), phase: first.kind === "settled" ? first.intent.reminderPhase : first.kind }, {
+    try equal({ success: reply.success, heardInFull: reply.text?.startsWith('I\'ll remind you: "Call the dentist" in 20 minutes, at Sun, Nov 22, 10:20'), phase: first.kind === "settled" ? first.intent.reminderPhase : first.kind }, {
       success: true, heardInFull: true, phase: "ReminderSaved",
     })
     try equal(reminderReply(again).success, true)
+    const told = (args: object) => validateToolArgs(ownerRemindersAction, args)
+    const stretch = try Effect.try(() => told({ op: "create", plan: { title: "Stretch", due: { kind: "in", minutes: 10 } } }))
+    const stretched = reminderReply(try createReminder({ ...asked("m2"), plan: stretch.args?.plan, text: "remind me in 10 minutes to stretch" }))
+    const dues = [{ kind: "at", instant: "2026-11-22T16:00:00Z" }, { kind: "local", date: "2026-11-23", time: "09:00" }, { kind: "day", date: "2026-11-25" }, { kind: "repeat", time: "07:30" }, { kind: "repeat", time: "07:30", days: ["mon", "fri"] }, { kind: "every", minutes: 30 }]
+    const refused = try Effect.try(() => dues.flatMap((due) => [
+      ...told({ op: "create", plan: { title: "Stretch", body: "Neck and back", due, destination: "chat", alert: null } }).errors,
+      ...told({ op: "move", target: "that", due }).errors,
+    ]))
+    try equal({ errors: stretch.errors, saved: [stretched.success, stretched.text?.startsWith('I\'ll remind you: "Stretch" in 10 minutes')], refused }, { errors: [], saved: [true, true], refused: [] })
     const rows = rowsOf(seen, reminderKind)
     try equal(rows.map((row) => ({ trigger: row.trigger, destination: row.metadata.destination, alert: row.metadata.alert, clock: row.metadata.clock })), [
       { trigger: { kind: "once", atIso: new Date(seen.now + 20 * 60_000).toISOString() }, destination: "device", alert: "alert", clock: "UtcClock" },
       { trigger: { kind: "once", atIso: new Date(seen.now + 40 * 60_000).toISOString() }, destination: "chat", alert: "alert", clock: "UtcClock" },
+      { trigger: { kind: "once", atIso: new Date(seen.now + 10 * 60_000).toISOString() }, destination: "chat", alert: "alert", clock: "UtcClock" },
     ])
   }
 })
 
-it.effect('Show Reminders while a reminder I asked for in chat is saved, without changing which calls of it run (spec/agent/conversation/planning.md, "A tool\'s progress names its app only when one labelled app applies, and never its arguments or results")', effect () => {
+it.effect('Show Reminders while a reminder I asked for in chat is saved, and save it from any owner chat but never for another role (spec/agent/conversation/planning.md, "A tool\'s progress names its app only when one labelled app applies, and never its arguments or results"; spec/assistant/reminders.md, "A reminder intent is proposed with a plan and what the original message asked")', effect () => {
   const runtime = { contexts: try Effect.try(() => new ContextRegistry()) } as unknown as IAgentRuntime
   try Effect.try(() => runtime.contexts.tryRegister(remindersContext))
   const registered = { ...ownerRemindersAction, contexts: try Effect.try(() => resolveActionContexts(ownerRemindersAction)) }
   const runsOnTurn = try Effect.try(() => canActionRun(registered, { userRoles: ["OWNER"], activeContexts: ["general"] }))
-  try equal({ label: activityLabel(runtime, ownerRemindersAction), declared: ownerRemindersAction.contexts, registered: registered.contexts, runsOnTurn, familyApp: reminderProposalFamily.app },
-    { label: "Using Reminders", declared: undefined, registered: ["tasks", "automation"], runsOnTurn: false, familyApp: undefined })
+  const runsForUser = try Effect.try(() => canActionRun(registered, { userRoles: ["USER"], activeContexts: ["general"] }))
+  try equal({ label: activityLabel(runtime, ownerRemindersAction), declared: ownerRemindersAction.contexts, registered: registered.contexts, runsOnTurn, runsForUser, familyApp: reminderProposalFamily.app },
+    { label: "Using Reminders", declared: undefined, registered: ["tasks", "automation", "general"], runsOnTurn: true, runsForUser: false, familyApp: undefined })
 })
 
 it.effect('A plan alone never saves a reminder: a message that did not ask, or a check that cannot run, writes nothing (spec/assistant/reminders.md, "The original message is checked before a reminder is written"; spec/assistant/reminders.md, "A reminder is written at most once, and a refusal writes nothing")', effect () => {
@@ -92,7 +103,7 @@ it.effect('An answer to "when should I remind you?" finishes the reminder that d
     seen.now += 6 * 60_000
     replies.push(reminderReply(try createReminder(said("q6", "in ten minutes", { kind: "in", minutes: 10 }))))
     try equal({
-      replies: replies.map((reply) => reply.success ? reply.userFacingText?.startsWith('I\'ll remind you: "Call the dentist" in 30 minutes') : reply.data?.outcome),
+      replies: replies.map((reply) => reply.success ? reply.text?.startsWith('I\'ll remind you: "Call the dentist" in 30 minutes') : reply.data?.outcome),
       unasked: seen.answers.length,
       rows: rowsOf(seen, reminderKind).map((row) => [row.promptInstructions, row.metadata.alert, row.metadata.priority, row.metadata.requestMessageId]),
     }, {
@@ -103,11 +114,12 @@ it.effect('An answer to "when should I remind you?" finishes the reminder that d
   }
 })
 
-it.effect('The owner\'s message is checked again with no output limit on the model (spec/assistant/reminders.md, "The original message is checked before a reminder is written")', effect () => {
-  const asked: object[] = []
-  const runtime = { agentId: "agent-1", useModel: async (_model: unknown, params: object) => { asked.push(params); return check({}) } } as unknown as IAgentRuntime
+it.effect('The owner\'s message is checked again with no output limit on the model and with low reasoning (spec/assistant/reminders.md, "The original message is checked before a reminder is written")', effect () => {
+  const asked: Array<{ readonly providerOptions?: unknown }> = []
+  const runtime = { agentId: "agent-1", useModel: async (_model: unknown, params: { readonly providerOptions?: unknown }) => { asked.push(params); return check({}) } } as unknown as IAgentRuntime
   const checked = try tryPromise(() => onAgent(runtime, checkOriginalMessage("remind me in 20 minutes to call the dentist")))
-  try equal([checked?.requested, asked.map((params) => Object.keys(params).sort())], [true, [["prompt", "system"]]])
+  try tryPromise(() => onAgent(runtime, effect { return try (try Model).complete("Write the owner's day.", "No events.") }))
+  try equal([checked?.requested, asked.map((params) => Object.keys(params).sort()), asked.map((params) => params.providerOptions)], [true, [["prompt", "providerOptions", "system"], ["prompt", "system"]], [{ eliza: { thinking: "low" } }, undefined]])
 })
 
 it.effect('A save that failed and then succeeded is reported saved, and one that never proved itself is not (spec/assistant/replies.md, "A claim that something was not done needs a cited result that failed and was not superseded"; spec/assistant/replies.md, "A claim that something was done needs a result that applied it to that record")', effect () => {
@@ -119,7 +131,7 @@ it.effect('A save that failed and then succeeded is reported saved, and one that
     seen.schedulerFailures = 2
     const lost = reminderReply(try createReminder(asked("m6")))
     try equal([recovered.success, lost.success, lost.text], [true, false, "I couldn't confirm the reminder was saved. Check your reminders before relying on it."])
-    try equal(recovered.userFacingEffectReceiptIds?.length, 1)
+    try equal([recovered.userFacingText, recovered.text?.startsWith("I'll remind you:"), recovered.effectReceipts?.filter((receipt) => receipt.outcome === "applied").length], [undefined, true, 1])
   }
 })
 
@@ -149,26 +161,33 @@ it.effect('A fired reminder reaches the owner once as the exact presentation iss
   }
 })
 
-it.effect('A later message saying "actually, don\'t save that one" takes back only the reminder just saved, within five minutes (spec/assistant/reminders.md, "Story: Take back the reminder I just saved"; spec/assistant/reminders.md, "A retraction takes back only the reminder this conversation just saved, from a later message within five minutes")', effect () => {
+it.effect('The model\'s retract on a later message takes back only the reminder just saved, within five minutes, in any words, and a retract on the saving message, naming another reminder or after five minutes takes back nothing (spec/assistant/reminders.md, "Story: Take back the reminder I just saved"; spec/assistant/reminders.md, "A retraction takes back only the reminder this conversation just saved, from a later message within five minutes")', effect () => {
   const seen = ports()
-  seen.answers.push(check({}), check({}))
+  seen.answers.push(check({}), check({}), check({}), check({}))
   const roomId = "room-2" as UUID
   const said = (messageId: string, text: string) => ({ messageId, text, roomId })
+  const outcome = (result: { readonly success: boolean; readonly data?: unknown }) => [result.success, (result.data as { readonly outcome?: string } | undefined)?.outcome]
   provide portsLayer(seen) {
     try createReminder({ ...asked("r1"), roomId })
     const ignored = [
       try retractRecentSave(said("r1", "actually don't save that one"), undefined),
       try retractRecentSave(said("r2", "Actually don’t save that one"), "water the plants"),
-      try retractRecentSave(said("r3", "don't forget to set it for 9"), undefined),
-    ]
+    ].map(outcome)
     const retracted = try retractRecentSave(said("r4", "Actually don’t save that one"), "that one")
     const [first] = rowsOf(seen, reminderKind)
+    const nothingLeft = outcome(try retractRecentSave(said("r4b", "never mind"), undefined))
     try createReminder({ ...asked("r5"), plan: { ...plan, title: "Water the plants" }, roomId })
     seen.now += 6 * 60_000
-    const stale = try retractRecentSave(said("r6", "never mind"), undefined)
-    try equal({ ignored, retracted: [retracted?.success, retracted?.text], first: first?.status, stale, live: rowsOf(seen, reminderKind).map((row) => row.status) }, {
-      ignored: [undefined, undefined, undefined], retracted: [true, 'Okay — I removed "Call the dentist". Nothing is saved for it now.'],
-      first: "Dismissed", stale: undefined, live: ["Dismissed", "Scheduled"],
+    const stale = outcome(try retractRecentSave(said("r6", "never mind"), undefined))
+    try equal({ ignored, retracted: [retracted.success, retracted.text], first: first?.status, nothingLeft, stale, live: rowsOf(seen, reminderKind).map((row) => row.status) }, {
+      ignored: [[false, "not_found"], [false, "not_found"]], retracted: [true, 'Okay — I removed "Call the dentist". Nothing is saved for it now.'],
+      first: "Dismissed", nothingLeft: [false, "not_found"], stale: [false, "not_found"], live: ["Dismissed", "Scheduled"],
+    })
+    try createReminder({ ...asked("r7"), plan: { ...plan, title: "Stretch" }, roomId })
+    const spanish = try retractRecentSave(said("r8", "olvídalo, no lo guardes"), undefined)
+    try createReminder({ ...asked("r9"), plan: { ...plan, title: "Call Sam" }, roomId })
+    try equal({ spanish: [spanish.success, spanish.text], live: rowsOf(seen, reminderKind).map((row) => row.status) }, {
+      spanish: [true, 'Okay — I removed "Stretch". Nothing is saved for it now.'], live: ["Dismissed", "Scheduled", "Dismissed", "Scheduled"],
     })
   }
 })
@@ -499,16 +518,54 @@ it.effect('To-dos change once per request, by their text whatever its case or pu
   }
 })
 
+it.effect('A request recorded as a no-op still refuses a different change under its key, and a re-start or re-cancel retried after the to-do moved on stays a no-op (spec/assistant/todos.md, "Story: Keep my to-do list as I asked, once"; spec/assistant/todos.md, "A mutation is applied once per idempotency key"; spec/assistant/todos.md, "A change by text applies only when exactly one item matches")', effect () => {
+  const seen = ports()
+  const receiptOf = (result: ActionResult) => [result.success, result.effectReceipts?.[0]?.outcome, result.data?.outcome ?? null]
+  const failureCode = (result: ActionResult) => {
+    const receipt = result.effectReceipts?.[0]
+    return receipt?.outcome === "failed" ? receipt.failure.code : undefined
+  }
+  provide portsLayer(seen) {
+    try changeTodos({ op: "create", content: "Buy oat milk" }, heard("k0", "add buy oat milk"))
+    const sameName = try changeTodos({ op: "rename", target: "Buy oat milk", content: "Buy oat milk" }, heard("k1", "call it buy oat milk"))
+    const otherName = try changeTodos({ op: "rename", target: "Buy oat milk", content: "Buy almond milk" }, heard("k1", "call it buy oat milk"))
+    try equal({ sameName: receiptOf(sameName), otherName: [otherName.success, otherName.effectReceipts?.[0]?.outcome, failureCode(otherName), otherName.text], kept: (try currentTodos()).todos.map(({ content }) => content) }, {
+      sameName: [true, "noop", "unchanged"],
+      otherName: [false, "failed", "TODO_IDEMPOTENCY_CONFLICT", "That request was already used for a different change, so nothing was changed."],
+      kept: ["Buy oat milk"],
+    })
+    try changeTodos({ op: "create", content: "Ship the feature" }, heard("s0", "add ship the feature"))
+    const started = try changeTodos({ op: "start", target: "Ship the feature" }, heard("s1", "start it"))
+    const restarted = try changeTodos({ op: "start", target: "Ship the feature" }, heard("s2", "start it again"))
+    try changeTodos({ op: "reopen", target: "Ship the feature" }, heard("s3", "back to pending"))
+    const restartRetried = try changeTodos({ op: "start", target: "Ship the feature" }, heard("s2", "start it again"))
+    try changeTodos({ op: "create", content: "Old task" }, heard("x0", "add old task"))
+    const cancelled = try changeTodos({ op: "cancel", target: "Old task" }, heard("x1", "drop it"))
+    const recancelled = try changeTodos({ op: "cancel", target: "Old task" }, heard("x2", "drop it again"))
+    try changeTodos({ op: "reopen", target: "Old task" }, heard("x3", "bring it back"))
+    const recancelRetried = try changeTodos({ op: "cancel", target: "Old task" }, heard("x2", "drop it again"))
+    const listed = (try currentTodos()).todos
+    const statusOf = (content: string) => listed.find((todo) => todo.content === content)?.todoStatus
+    try equal({
+      start: [started, restarted, restartRetried].map(receiptOf), startStatus: statusOf("Ship the feature"),
+      cancel: [cancelled, recancelled, recancelRetried].map(receiptOf), cancelStatus: statusOf("Old task"),
+    }, {
+      start: [[true, "applied", null], [true, "noop", "unchanged"], [true, "noop", "replayed"]], startStatus: "TodoPending",
+      cancel: [[true, "applied", null], [true, "noop", "unchanged"], [true, "noop", "replayed"]], cancelStatus: "TodoPending",
+    })
+  }
+})
+
 it.effect('The owner\'s stated zone runs their clock, a trip overrides it only during the trip, and a statement naming no zone changes nothing (spec/assistant/timezone.md, "Story: Run my day on my own clock")', effect () => {
   const seen = ports()
   const zones = () => rowsOf(seen, goalCheckinKind).map(({ trigger }) => trigger.kind === "cron" ? trigger.tz : trigger.kind)
   provide portsLayer(seen) {
     try changeGoal({ op: "create", title: "Read more", cadence: "weekly" }, "z1")
     const atStart = zones()
-    const stated = try stateOwnerZone("my timezone is pacific time")
+    const stated = try stateOwnerZone("pacific time")
     try followOwnerClock("z2")
     const afterStating = zones()
-    const ignored = try stateOwnerZone("my time zone is whatever the laptop says")
+    const ignored = try stateOwnerZone("whatever the laptop says")
     try recordTravel(seen.now - 1, seen.now + 86_400_000, "Europe/Berlin")
     try followOwnerClock("z3")
     const onTrip = zones()
@@ -527,12 +584,12 @@ it.effect('A trip told in conversation lasts until the day I named, a return nam
   const thirtyDays = seen.now + 30 * 86_400_000
   provide portsLayer(seen) {
     const said: Array<readonly [number | undefined, boolean | undefined, string]> = []
-    for (const text of ["I'm traveling until November 21st.", "I’m on vacation through 2026-12-03", "I'm traveling until November 14th.", "I'm traveling until November 10.", "I'm away until November 31st", "I'm out of the office"]) {
-      const kept = try stateTravel(text)
+    for (const until of ["11-21", "2026-12-03", "11-14", "11-10", "11-31", undefined]) {
+      const kept = try stateTravel({ signal: "SaysAway", until })
       said.push([kept?.trip.endAt, kept?.travelling, try ownerClockAt(seen.now)])
     }
-    const back = try stateTravel("I'm back home now")
-    const unrelated = try stateTravel("my brother is traveling until Friday")
+    const back = try stateTravel({ signal: "SaysBack", until: undefined })
+    const unrelated = try stateTravel({ signal: "SaysNothing", until: "2026-11-20" })
     try equal({ said, back: [back?.signal, back?.travelling], unrelated, kept: (try ownerFacts()).travel }, {
       said: [
         [Date.UTC(2026, 10, 21, 5, 0), true, "America/New_York"], [Date.UTC(2026, 11, 3, 5, 0), true, "America/New_York"],
@@ -540,6 +597,64 @@ it.effect('A trip told in conversation lasts until the day I named, a return nam
         [thirtyDays, true, "America/New_York"], [thirtyDays, true, "America/New_York"],
       ],
       back: ["SaysBack", false], unrelated: undefined, kept: { startAt: 0, endAt: 0, zone: "" },
+    })
+  }
+})
+
+interface OwnerTurnRuntime {
+  readonly runtime: IAgentRuntime
+  readonly prompts: string[]
+  readonly answers: unknown[]
+}
+
+function ownerTurnRuntime(): OwnerTurnRuntime {
+  const cache = new Map<string, unknown>()
+  const prompts: string[] = []
+  const answers: unknown[] = []
+  const runtime = {
+    agentId: "agent-1",
+    getCache: async (key: string) => cache.get(key),
+    setCache: async (key: string, value: unknown) => { cache.set(key, value); return true },
+    deleteCache: async (key: string) => cache.delete(key),
+    getSetting: (name: string) => name === "TIMEZONE" ? "America/New_York" : undefined,
+    getService: () => null,
+    useModel: async (_model: unknown, params: { readonly prompt: string }) => { prompts.push(params.prompt); return JSON.stringify(answers.shift() ?? {}) },
+  } as unknown as IAgentRuntime
+  return { runtime, prompts, answers }
+}
+
+const isoDay = (at: number) => new Date(at).toLocaleDateString("en-CA", { timeZone: "America/New_York" })
+
+it.effect('The model reads a trip, a return and the owner\'s own zone from the message, and its fields are validated before anything is kept (spec/assistant/travel.md, "Story: Keep my trip to the day I said I am back"; spec/assistant/timezone.md, "Story: Run my day on my own clock"; spec/assistant/timezone.md, "A stated zone replaces the stored zone only when the resolver knows it")', effect () => {
+  const owner = ownerTurnRuntime()
+  const seen = ports()
+  const evaluators = personalAssistantPlugin.evaluators
+  const state = { values: {}, data: {}, text: "" }
+  const said = (id: string, text: string, travel: unknown, zone: unknown) => effect {
+    owner.answers.push({ PERSONAL_ASSISTANT_OWNER_TRAVEL: travel, PERSONAL_ASSISTANT_OWNER_TIMEZONE: zone })
+    const run = try runEvaluators({ runtime: owner.runtime, message: heard(id, text), state, options: {}, evaluators, postTurn: false })
+    const facts = try tryPromise(() => onAgent(owner.runtime, ownerFacts()))
+    return { invalid: run.errors.filter(({ error }) => error.includes("missing or invalid")).map(({ evaluatorName }) => evaluatorName), facts }
+  }
+  const today = isoDay(Date.now())
+  const inThreeDays = isoDay(Date.now() + 3 * 86_400_000)
+  provide portsLayer(seen) {
+    const away = try said("t1", "I'm traveling until Friday", { signal: "away", until: inThreeDays }, { zone: "" })
+    const asked = owner.prompts.at(-1) ?? ""
+    const someoneElse = try said("t2", "my brother is traveling until Friday", { signal: "none", until: "" }, { zone: "" })
+    const unread = try said("t3", "I'm out for a while", { signal: "maybe", until: "" }, { zone: 5 })
+    const zone = try said("t4", "my timezone is pacific time", { signal: "none", until: "" }, { zone: "America/Los_Angeles" })
+    const unknownZone = try said("t5", "my time zone is whatever the laptop says", { signal: "none", until: "" }, { zone: "whatever the laptop says" })
+    const back = try said("t6", "I'm back home now", { signal: "back", until: "" }, { zone: "" })
+    const tripDay = (facts: typeof away.facts) => facts.travel === undefined || facts.travel.endAt === 0 ? undefined : isoDay(facts.travel.endAt)
+    try equal({
+      prompt: [asked.includes(JSON.stringify("I'm traveling until Friday")), asked.includes(`${today} (today)`), asked.includes(`is ${inThreeDays};`), asked.includes("someone else's trip")],
+      away: tripDay(away.facts), someoneElse: tripDay(someoneElse.facts), unread: [unread.invalid, tripDay(unread.facts), unread.facts.zone],
+      zone: zone.facts.zone, unknownZone: unknownZone.facts.zone, back: [tripDay(back.facts), back.facts.travel?.endAt],
+    }, {
+      prompt: [true, true, true, true],
+      away: inThreeDays, someoneElse: inThreeDays, unread: [["PERSONAL_ASSISTANT_OWNER_TIMEZONE", "PERSONAL_ASSISTANT_OWNER_TRAVEL"].sort(), inThreeDays, ""],
+      zone: "America/Los_Angeles", unknownZone: "America/Los_Angeles", back: [undefined, 0],
     })
   }
 })
@@ -636,6 +751,7 @@ it.effect('Check-ins come at the times I chose: the morning one at eight until I
     seen.refusals = 1
     const refused = try setCheckinTimes({ night: "23:00" }, "s9")
     const cron = (expression: string, tz = "America/New_York") => ({ kind: "cron" as const, expression, tz })
+    try equal(replies.filter((reply) => reply.success).map((reply) => [reply.userFacingText, reply.verifiedUserFacing, (reply.effectReceipts ?? []).length]), [[undefined, undefined, 1], [undefined, undefined, 1], [undefined, undefined, 1], [undefined, undefined, 1]])
     try equal({
       first, replies: replies.map(outcomeOf).map(({ success, text, outcome }) => [success, success ? text : outcome]),
       afterDismissal, refused: [refused.success, refused.text, try checkinSchedules()],
@@ -652,13 +768,13 @@ it.effect('Check-ins come at the times I chose: the morning one at eight until I
       refused: [false, "Your check-in times were not changed.", { morning: "06:45", night: "22:00" }],
       rows: [["morning", cron("30 7 * * *"), "Dismissed"], ["night", cron("45 21 * * *"), "Dismissed"], ["night", cron("0 22 * * *"), "Scheduled"], ["morning", cron("45 6 * * *"), "Scheduled"]],
     })
-    try stateOwnerZone("my timezone is pacific")
+    try stateOwnerZone("pacific")
     try followOwnerClock("s10")
     try equal(rowsOf(seen, checkinKind).filter((row) => row.status === "Scheduled").map((row) => row.trigger), [cron("0 22 * * *", "America/Los_Angeles"), cron("45 6 * * *", "America/Los_Angeles")])
   }
 })
 
-it.effect('Brief me on my morning, evening or week: the kind and days come from my words, an unnamed brief follows my clock, a weekly one covers seven days, every source is told or said unchecked, and only the evening one recaps what I finished today (spec/assistant/checkin.md, "Story: Brief me on my morning, evening or week when I ask"; spec/assistant/checkin.md, "A brief is the kind the owner named, else the morning one before five in the evening and the evening one from then"; spec/assistant/todos.md, "An item\'s completion time is set exactly while it is completed")', effect () => {
+it.effect('Brief me on my morning, evening or week: the kind and days are the planner\'s reading of my words, a choice outside the lists counts as none, an unnamed brief follows my clock, a weekly one covers seven days, every source is told or said unchecked, and only the evening one recaps what I finished today (spec/assistant/checkin.md, "Story: Brief me on my morning, evening or week when I ask"; spec/assistant/checkin.md, "A brief is the kind the owner named, else the morning one before five in the evening and the evening one from then"; spec/assistant/todos.md, "An item\'s completion time is set exactly while it is completed")', effect () => {
   const seen = ports()
   seen.answers.push(check({}))
   const event = (title: string, startAt: number, more: object = {}) => ({ title, startAt, synced: false, metadataValid: true, providerEditedAt: undefined, providerCreatedAt: undefined, copyUpdatedAt: seen.now, ...more })
@@ -677,32 +793,34 @@ it.effect('Brief me on my morning, evening or week: the kind and days come from 
     try changeRoutine({ op: "create", title: "Stretch", windows: ["afternoon"] }, "b4")
     const told = effect (action: unknown, period: unknown, text: string) => {
       seen.answers.push(`Your brief: ${text}`)
-      const brief: ActionResult = try composeBrief(action, period, text)
+      const brief: ActionResult = try composeBrief(action, period)
       const prompt = seen.prompts.at(-1) ?? ""
       return [brief.data?.kind, brief.data?.period, brief.userFacingText === `Your brief: ${text}` && brief.verifiedUserFacing === true, facts.filter((fact) => prompt.includes(fact))]
     }
     const briefs = [
       try told(undefined, undefined, "brief me"),
       try told("compose_weekly", undefined, "how does my week look"),
-      try told("compose_weekly", undefined, "give me my evening brief, this week has been rough"),
+      try told("compose_evening", undefined, "give me my evening brief, this week has been rough"),
+      try told("compose_monthly", "next_month", "brief me on next month"),
     ]
     try changeTodos({ op: "complete", target: "buy milk" }, heard("b5", "bought the milk"))
     try deliverRoutine(rowsOf(seen, routineKind)[0])
     try changeRoutine({ op: "complete", target: "stretch" }, "b6")
     try answerReminder({ op: "complete", target: "call the dentist" }, "b7")
     seen.now = Date.UTC(2026, 10, 22, 23, 0)
-    briefs.push(try told(undefined, undefined, "brief me"), try told("compose_morning", "tomorrow", "what does my morning look like tomorrow"))
+    briefs.push(try told(undefined, undefined, "brief me"), try told("compose_morning", "tomorrow", "what is on before lunch tomorrow"))
     seen.listingFails = true
     briefs.push(try told(undefined, undefined, "brief me"))
     seen.listingFails = false
     try recalibrateBrief("recalibrate", "goals")
     briefs.push(try told("compose_evening", undefined, "my evening brief please"))
-    const unwritten: ActionResult = try composeBrief(undefined, undefined, "brief me")
+    const unwritten: ActionResult = try composeBrief(undefined, undefined)
     try equal({ briefs, unwritten: [unwritten.success, unwritten.data?.outcome] }, {
       briefs: [
         ["morning", "today", true, ["Dentist", "Offsite, Sat, Nov 21", "at Porto", "buy milk", "Run a 10k: no check-in answered yet", "Call the dentist", "Stretch, afternoon (15:00) every day"]],
         ["weekly", "this week", true, ["Dentist", "Offsite, Sat, Nov 21", "at Porto", "Flight to Lisbon", "buy milk", "Run a 10k: no check-in answered yet", "Call the dentist", "Stretch, afternoon (15:00) every day"]],
         ["evening", "today", true, ["Dentist", "Offsite, Sat, Nov 21", "at Porto", "buy milk", "Run a 10k: no check-in answered yet", "Call the dentist", "Stretch, afternoon (15:00) every day", "# Done today"]],
+        ["morning", "today", true, ["Dentist", "Offsite, Sat, Nov 21", "at Porto", "buy milk", "Run a 10k: no check-in answered yet", "Call the dentist", "Stretch, afternoon (15:00) every day"]],
         ["evening", "today", true, ["Dentist", "Offsite, Sat, Nov 21", "at Porto", "buy milk", "Run a 10k: no check-in answered yet", "Call the dentist", "Stretch, afternoon (15:00) every day", "# Done today", "To-do done: buy milk", "Routine done: Stretch", "Reminder done: Call the dentist"]],
         ["morning", "tomorrow", true, ["Run a 10k: no check-in answered yet", "Stretch, afternoon (15:00) every day"]],
         ["evening", "today", true, ["Dentist", "Offsite, Sat, Nov 21", "at Porto", "buy milk", "Run a 10k: no check-in answered yet", "Call the dentist", "Stretch, afternoon (15:00) every day", "# Done today", "To-do done: buy milk", "Routine done: Stretch", "Reminder done: Call the dentist", "# Reminders\nThis could not be read"]],
@@ -711,13 +829,6 @@ it.effect('Brief me on my morning, evening or week: the kind and days come from 
       unwritten: [false, "BRIEF_MODEL_UNAVAILABLE"],
     })
   }
-})
-
-it.effect('A brief cue is heard only while work is pending, and an answer about a duration is heard whole (spec/assistant/replies.md, "Story: Hear a brief acknowledgment while my request is pending, and the whole answer after")', effect () => {
-  const cues = ["On it.", "One sec.", "One sec — let me check your calendar.", "On it. Let me check your reminders.", "One moment. One sec."]
-  const answers = ["One second is 1,000 milliseconds.", "Just a second ago the timer finished.", "On it — the alarm is set for seven tomorrow.", "One moment after sunrise is enough."]
-  try equal({ cues: cues.map(replyKind), answers: answers.map(replyKind) }, { cues: cues.map(() => "CueReply"), answers: answers.map(() => "AnswerReply") })
-  try equal([heardReply("WorkPending", "On it."), heardReply("WorkSettled", "On it."), heardReply("WorkPending", answers[0]), heardReply("WorkSettled", answers[0])], ["On it.", undefined, undefined, answers[0]])
 })
 
 const hour = 3_600_000
@@ -836,15 +947,13 @@ const phoneReminder = { kind: "reminder", id: "rem-1", accountId: "phone", sourc
 const reminderTarget = { sourceId: "phone", sourceRevision: "a".repeat(64), reminderId: "rem-1", occurrenceId: "occ-1", revision: "b".repeat(64) }
 
 function reminderTurn(ownerText: string, selectedObject: object | undefined, observed: object = {}, startedAt = Date.now() - 1_000): DeviceTurn {
-  const negotiated = negotiation(true, phoneCapabilities.join(","))
   const observation = { view: "reminders", revision: 1, sensitive: false, timeZone: "Europe/Berlin", ...observed, ...(selectedObject === undefined ? {} : { selectedObject }) } as DeviceTurn["observation"]
-  return {
-    runtime: { actions: [{ name: "OWNER_REMINDERS" }] } as unknown as IAgentRuntime, by: {} as DeviceTurn["by"], negotiation: negotiated, capabilities: phoneCapabilities,
+  return negotiatedOwnerTurn(phoneCapabilities, {
+    runtime: { actions: [{ name: "OWNER_REMINDERS" }] } as unknown as IAgentRuntime, by: {} as DeviceTurn["by"],
     message: { id: "00000000-0000-4000-8000-000000000002" as UUID, content: { text: ownerText } } as DeviceTurn["message"],
-    ownerText, observation, completedActionNavigation: false, completesReads: false, conversationId: "c1", requestId: "r1", assistantName: "Eliza", swapped: [],
-    startedAt, timeZone: "Europe/Berlin", signal: new AbortController().signal,
-    admit: (operation) => validate(operation, negotiated, "NoBinding"), earlier: () => succeed([]),
-  }
+    ownerText, observation, completedActionNavigation: false, completesReads: false, conversationId: "c1", requestId: "r1",
+    startedAt, timeZone: "Europe/Berlin",
+  })
 }
 
 effect function groundedReminder(operation: unknown, turn: DeviceTurn) {
@@ -852,7 +961,7 @@ effect function groundedReminder(operation: unknown, turn: DeviceTurn) {
   return result.kind === "Grounded" ? result.operation : result.code
 }
 
-it.effect('Propose a reminder or alarm on my phone only as I asked (spec/assistant/reminders.md, "Story: Propose a reminder or alarm on my phone only as I asked"; spec/assistant/reminders.md, "A phone reminder is proposed only when the assistant keeps no reminders here or the phone\'s reminder is selected"; spec/assistant/reminders.md, "A selected or named phone reminder is the one the owner gave, and a change to it needs the owner\'s own ask"; spec/assistant/reminders.md, "A new phone reminder is due when the owner\'s words say, counted from the turn\'s start for a relative time"; spec/assistant/timezone.md, "A phone reminder or Clock alarm uses the zone the phone reported for this turn")', effect () => {
+it.effect('Propose a reminder or alarm on my phone only as I asked (spec/assistant/reminders.md, "Story: Propose a reminder or alarm on my phone only as I asked"; spec/assistant/reminders.md, "A phone reminder is proposed only when the assistant keeps no reminders here or the phone\'s reminder is selected"; spec/assistant/reminders.md, "A selected or named phone reminder is the one the owner gave, and a change to it is only proposed for the owner\'s review"; spec/assistant/reminders.md, "A new phone reminder is due when the owner\'s words say, counted from the turn\'s start for a relative time"; spec/assistant/timezone.md, "A phone reminder or Clock alarm uses the zone the phone reported for this turn")', effect () => {
   const offered = (turn: DeviceTurn) => reminderProposalFamily.forms.filter((form) => form.offered(turn) && (form.now?.available(turn) ?? true)).map(({ schema }) => `${schema.properties?.type?.enum?.[0]}:${schema.properties?.action?.enum?.[0] ?? ""}`)
   const create = (schedule: object, title = "Call mom", body = "") => ({ type: "reminder_create", fields: { title, body, schedule } })
   const guessed = { at: 2_000_000_000_000, recurrence: null, dueAt: 2_000_000_000_000, alertMinutes: 0 }
@@ -883,8 +992,12 @@ it.effect('Propose a reminder or alarm on my phone only as I asked (spec/assista
   const on = (operation: object, words: string) => groundedReminder(operation, reminderTurn(words, phoneReminder))
   try equal<unknown>([try on(cancel, "Cancel this reminder"), try on(cancel, "Cancel it, no need to keep it"), try on(snooze, "Snooze this"), try on(named, "Move my dentist reminder to Friday")],
     [cancel, cancel, snooze, named])
-  try equal<unknown>([try on(cancel, "No, keep it"), try on(snooze, "No, don't snooze it"), try on(snooze, "What is this reminder?"), try on(named, "What's my dentist reminder?")],
-    ["REMINDER_CHANGE_NOT_REQUESTED", "REMINDER_CHANGE_NOT_REQUESTED", "REMINDER_CHANGE_NOT_REQUESTED", "REMINDER_CHANGE_NOT_REQUESTED"])
+  const complete = { type: "reminder_complete", target: reminderTarget }
+  try equal<unknown>([try on(cancel, "Get it off my list"), try on(complete, "That one's taken care of"), try on(snooze, "Push it back a bit"), try on(named, "Can we do the dentist one on Friday instead")],
+    [cancel, complete, snooze, named])
+  const cancelling = readOperation(cancel)
+  try equal<unknown>(cancelling === undefined ? undefined : reminderProposalFamily.proposedText(cancelling.operation, { direct: false, timeZone: "Europe/Berlin", ownerText: "No, keep it" })?.forOwner,
+    "Review cancelling the selected reminder on your phone. Cancelling stops all its repeats.")
   try equal<unknown>(try on({ ...cancel, target: { ...reminderTarget, reminderId: "rem-2" } }, "Cancel this reminder"), "DEVICE_REMINDER_TARGET_NOT_SELECTED")
   try equal<unknown>(try on({ type: "reminder_named", action: "cancel", name: "pills" }, "Cancel my passport reminder"), "REMINDER_NAMED_NOT_REQUESTED")
 

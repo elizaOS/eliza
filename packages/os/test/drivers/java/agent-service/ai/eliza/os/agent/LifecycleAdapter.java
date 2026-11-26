@@ -1,4 +1,4 @@
-// spec/os/agentService/lifecycle.md, "A hold is taken only with no child, blocks every start and is released only for its target or an ended attempt"; spec/os/agentService/health.md, "A probe is Ok only for a ready answer of the current launch"; spec/os/agentService/health.md, "The delay before restart attempt n is 1, 2, 4, 8, 16, 32 s and then 60 s"; spec/agent/host/launch.md, "Each boot failure has one exit code, and every code outside the table is a crash"
+// spec/os/agentService/lifecycle.md, "A hold is taken only with no child, blocks every start and is released only for its target or an ended attempt"; spec/os/agentService/lifecycle.md, "A failed agent's notice is on the alerts channel with the failure words, and a starting, running or stopping agent's on the status channel"; spec/os/agentService/health.md, "A probe is Ok only for a ready answer of the current launch"; spec/os/agentService/health.md, "The delay before restart attempt n is 1, 2, 4, 8, 16, 32 s and then 60 s"; spec/agent/host/launch.md, "Each boot failure has one exit code, and every code outside the table is a crash"
 package ai.eliza.os.agent;
 
 import java.io.BufferedReader;
@@ -230,6 +230,7 @@ public final class LifecycleAdapter {
       case "signedOut" -> new AgentPolicy.SignedOut();
       case "credentialExpired" -> new AgentPolicy.CredentialExpired();
       case "accountChanged" -> new AgentPolicy.AccountChanged(text(event.get("account")));
+      case "brokerReplaced" -> new AgentPolicy.BrokerReplaced();
       case "reviewRecovery" -> new AgentPolicy.ReviewRecovery(flag(event.get("focused")), event.containsKey("nonce") ? text(event.get("nonce")) : "review");
       case "archiveRecovery" -> new AgentPolicy.ArchiveRecovery(readToken(event.get("token")));
       case "archiveFinished" -> new AgentPolicy.ArchiveFinished(readToken(event.get("token")), flag(event.get("archiveSucceeded")));
@@ -306,7 +307,12 @@ public final class LifecycleAdapter {
       : "{\"tag\":" + quote(tag(s.afterExit())) + "}";
     String recovery = s.recovery() == null ? "{\"tag\":\"NoReview\"}"
       : "{\"tag\":\"" + (s.recovery().archiving() ? "Archiving" : "Reviewing") + "\",\"token\":" + token(s.recovery().token()) + "}";
-    return "{\"phase\":" + phase + ",\"epoch\":" + s.epoch() + ",\"attempt\":" + s.attempt() + ",\"child\":" + s.child()
+    String notice = switch (s.notice()) {
+      case NONE -> "NoNotice";
+      case STATUS -> "StatusChannel";
+      case ALERTS -> "AlertsChannel";
+    };
+    return "{\"phase\":" + phase + ",\"notice\":" + quote(notice) + ",\"epoch\":" + s.epoch() + ",\"attempt\":" + s.attempt() + ",\"child\":" + s.child()
       + ",\"reaped\":" + s.reaped() + ",\"hookRan\":" + s.hookRan() + ",\"credentialHeld\":" + s.credentialHeld()
       + ",\"credentialVersion\":" + s.credentialVersion() + ",\"delivered\":" + s.delivered() + ",\"account\":" + quote(s.account())
       + ",\"afterExit\":" + afterExit + ",\"hold\":" + hold(s.hold()) + ",\"recovery\":" + recovery + "}";

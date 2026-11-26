@@ -1,0 +1,107 @@
+// spec/agent/deviceActions/telephony.md, "A proposed number is the owner's own, written or spoken in this message and not only inside the text to send"
+const units: ReadonlyMap<string, string> = new Map([
+  ["zero", "0"], ["oh", "0"], ["o", "0"], ["one", "1"], ["two", "2"], ["three", "3"], ["four", "4"],
+  ["five", "5"], ["six", "6"], ["seven", "7"], ["eight", "8"], ["nine", "9"],
+])
+const teens: ReadonlyMap<string, string> = new Map([
+  ["ten", "10"], ["eleven", "11"], ["twelve", "12"], ["thirteen", "13"], ["fourteen", "14"],
+  ["fifteen", "15"], ["sixteen", "16"], ["seventeen", "17"], ["eighteen", "18"], ["nineteen", "19"],
+])
+const tensWords: ReadonlyMap<string, string> = new Map([
+  ["twenty", "2"], ["thirty", "3"], ["forty", "4"], ["fifty", "5"], ["sixty", "6"], ["seventy", "7"], ["eighty", "8"], ["ninety", "9"],
+])
+const repeats: ReadonlyMap<string, number> = new Map([["double", 2], ["triple", 3]])
+const homophones: ReadonlyMap<string, string> = new Map([["for", "4"], ["to", "2"], ["too", "2"]])
+const pauses: ReadonlySet<string> = new Set([",", ".", "-", "(", ")"])
+const fewestDigits = 3
+const mostDigits = 15
+
+interface Fragment {
+  digits: string
+  readonly homophone: boolean
+}
+
+function unitDigit(token: string | undefined): string | undefined {
+  if (token === undefined) return undefined
+  return /^\d$/.test(token) ? token : units.get(token)
+}
+
+function tokensOf(text: string): string[] {
+  return text.normalize("NFKC").toLowerCase().replace(/[’‘]/g, "'").match(/[\p{L}\p{N}']+|\S/gu) ?? []
+}
+
+function besideDigits(fragments: readonly Fragment[]): Fragment[][] {
+  let part: Fragment[] = []
+  const split = [part]
+  for (const [index, fragment] of fragments.entries()) {
+    const beside = !fragment.homophone || [fragments[index - 1], fragments[index + 1]].some((neighbor) => neighbor !== undefined && !neighbor.homophone)
+    if (beside) part.push(fragment)
+    else {
+      part = []
+      split.push(part)
+    }
+  }
+  return split.filter((kept) => kept.length > 0)
+}
+
+function spokenRuns(text: string): Fragment[][] {
+  const tokens = tokensOf(text)
+  const runs: Fragment[][] = []
+  let run: Fragment[] = []
+  let open = false
+  const end = () => {
+    if (run.length > 0) runs.push(run)
+    run = []
+    open = false
+  }
+  const add = (digits: string, homophone: boolean) => {
+    const last = run.at(-1)
+    if (open && last !== undefined && !last.homophone && !homophone) last.digits += digits
+    else run.push({ digits, homophone })
+    open = !homophone
+  }
+  for (let index = 0; index < tokens.length; index++) {
+    const token = tokens[index] ?? ""
+    const digit = units.get(token), teen = teens.get(token), tens = tensWords.get(token)
+    const repeated = repeats.get(token), homophone = homophones.get(token)
+    if (/^\d+$/.test(token)) add(token, false)
+    else if (digit !== undefined) add(digit, false)
+    else if (teen !== undefined) add(teen, false)
+    else if (tens !== undefined) {
+      const hyphen = tokens[index + 1] === "-" ? 1 : 0
+      const nextWord = tokens[index + 1 + hyphen]
+      const unit = unitDigit(nextWord)
+      if (unit !== undefined && unit !== "0" && nextWord !== undefined && /^\p{L}+$/u.test(nextWord)) {
+        add(tens + unit, false)
+        index += 1 + hyphen
+      } else add(`${tens}0`, false)
+    } else if (repeated !== undefined) {
+      const unit = unitDigit(tokens[index + 1])
+      if (unit === undefined) {
+        end()
+        continue
+      }
+      add(unit.repeat(repeated), false)
+      index += 1
+    } else if (homophone !== undefined) add(homophone, true)
+    else if (pauses.has(token)) open = false
+    else end()
+  }
+  end()
+  return runs.flatMap((fragments) => besideDigits(fragments))
+}
+
+export function spokenPhoneNumbers(text: string): string[] {
+  const numbers = new Set<string>()
+  for (const run of spokenRuns(text)) {
+    for (let start = 0; start < run.length; start++) {
+      let digits = ""
+      for (const fragment of run.slice(start)) {
+        digits += fragment.digits
+        if (digits.length > mostDigits) break
+        if (digits.length >= fewestDigits) numbers.add(digits)
+      }
+    }
+  }
+  return [...numbers]
+}

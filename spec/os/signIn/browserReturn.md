@@ -220,7 +220,7 @@ pure val gValues = fValues
 pure val hostValues = Set("login.example", "other.example")
 pure val pathValues = Set("/callback", "/other")
 pure def lawAnExtraHostOrPathNeverAdmits(f: CallbackFilter, host: str, path: str): bool =
-  (f.hosts.exclude(Set(host)).size() > 0 or f.paths.exclude(Set(path)).size() > 0) implies not(callbackFilterAdmits(f, host, path))
+  (f.hosts.exists(other => other != host) or f.paths.exists(other => other != path)) implies not(callbackFilterAdmits(f, host, path))
 pure def lawFactsOfTwoFiltersNeverCombine(f: CallbackFilter, g: CallbackFilter, host: str, path: str): bool =
   (not(sameValues(f.hosts, Set(host))) and not(g.autoVerify)) implies not(manifestHasCallback(List(f, g), host, path))
 ```
@@ -250,4 +250,97 @@ pure def stepSignInLinksNeverReachTheRenderer(before: BrowserReturns, via: str, 
   and (via == "failureReturned" implies (after.record == before.record and after.credential.generation == before.credential.generation
     and after.credential.custody == before.credential.custody))
 pure def sometimesLinkCapturedBesideWaitingSignIn(s: BrowserReturns): bool = isWaiting(s.attempt) and s.links.pending > 0
+```
+
+## Story: Reconnect a signed-in device for mail and calendar
+
+> As a device owner signed in before mail leases existed, I want to sign in
+> again for mail and calendar without losing my current device account.
+
+`CloudDeviceAccount` exposes the upgrade state to its consumer host. The host
+shows the prompt on its existing account surfaces and starts the normal browser
+sign-in when the owner chooses to continue. The existing native registration
+configuration must advertise the mail lease before a new attempt starts or a
+returned proof is exchanged. Without that capability the owner can continue to
+open hosted mail and calendar in the browser. The state contains no token.
+
+### Only the current owner can complete the upgrade, and cancellation keeps the current device account
+
+The native shell keeps the existing credential and binds the browser attempt
+to it. An already open attempt is reused. The return follows the existing
+App Link, state, and PKCE checks. The native shell accepts a replacement
+only for the same account and organization and with a mail lease. A
+cancellation affects only its own pending browser attempt. A stale callback,
+a different owner, or a response without a lease leaves the old credential
+in place.
+
+```quint
+type UpgradeKey = { owner: C::Account, version: int }
+type StandaloneUpgrade = StandaloneSignedOut | LegacyDeviceKey(UpgradeKey)
+  | UpgradeBrowser({ prior: UpgradeKey, attempt: int })
+  | UpgradeAcknowledging({ prior: UpgradeKey, replacement: UpgradeKey })
+  | UpgradedDeviceKey({ active: UpgradeKey, retired: UpgradeKey })
+type UpgradeExchange = NoLeaseReply | LeaseReply(UpgradeKey)
+type UpgradePrompt = NoUpgradePrompt | UpgradeRequired | UpgradeSignInPending | UpgradeAcknowledgmentPending
+pure val priorValues: Set[UpgradeKey] = Set(
+  { owner: { userId: "first", organizationId: "home" }, version: 1 },
+  { owner: { userId: "first", organizationId: "home" }, version: 2 },
+  { owner: { userId: "first", organizationId: "other" }, version: 2 },
+  { owner: { userId: "second", organizationId: "home" }, version: 2 })
+pure val replacementValues = priorValues
+pure val keyValues = priorValues
+pure def legacyDeviceKey(key: UpgradeKey): StandaloneUpgrade =
+  LegacyDeviceKey({ owner: key.owner, version: key.version })
+pure def upgradePrompt(s: StandaloneUpgrade): UpgradePrompt = match s {
+  | LegacyDeviceKey(_) => UpgradeRequired
+  | UpgradeBrowser(_) => UpgradeSignInPending
+  | UpgradeAcknowledging(_) => UpgradeAcknowledgmentPending
+  | _ => NoUpgradePrompt
+}
+pure def beginStandaloneUpgrade(s: StandaloneUpgrade, attempt: int): StandaloneUpgrade = match s {
+  | LegacyDeviceKey(k) => UpgradeBrowser({ prior: { owner: k.owner, version: k.version }, attempt: attempt })
+  | _ => s
+}
+pure def cancelStandaloneUpgrade(s: StandaloneUpgrade, attempt: int): StandaloneUpgrade = match s {
+  | UpgradeBrowser(p) => if (p.attempt == attempt) legacyDeviceKey(p.prior) else s
+  | _ => s
+}
+pure def stageStandaloneUpgrade(s: StandaloneUpgrade, attempt: int, response: UpgradeExchange): StandaloneUpgrade = match s {
+  | UpgradeBrowser(p) => if (p.attempt != attempt) s else match response {
+      | NoLeaseReply => legacyDeviceKey(p.prior)
+      | LeaseReply(k) => if (k.owner == p.prior.owner and k.version != p.prior.version)
+          UpgradeAcknowledging({ prior: p.prior, replacement: { owner: k.owner, version: k.version } }) else legacyDeviceKey(p.prior)
+    }
+  | _ => s
+}
+pure def lawCancelingAnUpgradeKeepsTheCurrentKey(prior: UpgradeKey, attempt: int): bool =
+  cancelStandaloneUpgrade(beginStandaloneUpgrade(legacyDeviceKey(prior), attempt), attempt) == legacyDeviceKey(prior)
+pure def lawAnUpgradeRequiresAReplacementKeyForTheSameOwner(prior: UpgradeKey, replacement: UpgradeKey, attempt: int): bool =
+  (upgradePrompt(stageStandaloneUpgrade(UpgradeBrowser({ prior: prior, attempt: attempt }), attempt,
+    LeaseReply({ owner: replacement.owner, version: replacement.version })))
+    == UpgradeAcknowledgmentPending) iff (replacement.owner == prior.owner and replacement.version != prior.version)
+```
+
+### The old key retires after the replacement is acknowledged and saved
+
+A lease-bearing key is staged in the native acknowledgment record. A
+refusal leaves the old key in place. If the reply is lost or the replacement
+write cannot be confirmed, the shell keeps enough information to resume.
+After the replacement is saved, the shell records its duty to revoke the
+old key before it clears the acknowledgment record. Recovering after that
+save only completes the retirement duty.
+
+```quint
+type UpgradeAck = UpgradeAckPending | UpgradeAckRefused | UpgradeAckSaved
+pure def finishStandaloneUpgrade(s: StandaloneUpgrade, ackResult: UpgradeAck): StandaloneUpgrade = match s {
+  | UpgradeAcknowledging(p) => match ackResult {
+      | UpgradeAckPending => s
+      | UpgradeAckRefused => legacyDeviceKey(p.prior)
+      | UpgradeAckSaved => UpgradedDeviceKey({ active: p.replacement, retired: p.prior })
+    }
+  | _ => s
+}
+pure def lawStandaloneUpgradeRetiresTheOldKeyOnlyAfterSaving(prior: UpgradeKey, replacement: UpgradeKey, ackResult: UpgradeAck): bool =
+  (finishStandaloneUpgrade(UpgradeAcknowledging({ prior: prior, replacement: replacement }), ackResult)
+    == UpgradedDeviceKey({ active: replacement, retired: prior })) iff (ackResult == UpgradeAckSaved)
 ```

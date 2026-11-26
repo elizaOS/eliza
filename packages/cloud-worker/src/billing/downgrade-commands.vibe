@@ -1,0 +1,369 @@
+// spec/cloud/billing/subscriptionCommands.md, "Story: Change or cancel my plan without paying twice"; spec/cloud/billing/subscriptionCommands.md, "Downgrade configuration needs the verified schedule and its own claim"; spec/cloud/billing/subscriptionCommands.md, "A downgrade is scheduled once, for the quoted plan, before the command frees the slot"
+import {
+  apply, attachmentReceipt, attaching, canClaimConfiguration, canConfirm, canExpireConfiguration, canFinish,
+  canReceiveAttachmentReply, canReceiveReply, canResolve, canResolveAttachment, canVerifySchedule, isFinished,
+  waitingForConfiguration, type Command
+} from "../../gen/cloud__billing__subscriptionCommands.effect.vibe"
+import { canScheduleDowngrade, holdsCommand } from "../../gen/cloud__billing__subscriptions.effect.vibe"
+import { refused } from "../http/refusal.vibe"
+import { json, jsonBody, type Route, type Sweep } from "../http/routes.vibe"
+import { Deployment } from "@elizaos/cloud"
+import {
+  bindPlanChange, configuredSchedule, dispatchScheduleChange, failureReply, previewPlanChange, readScheduleToConfigure,
+  recoverScheduleChange, verifySchedulePreview, type StripeDowngradeTerms, type StripeScheduleBinding,
+  type StripeScheduleEffect, type StripeScheduleOrigin
+} from "../providers/stripe.vibe"
+import { dispatchOnce, receiptOwner, renderProviderKey, replyOf, requestDigest, type ProviderReply } from "../shared/dispatch-once.vibe"
+import { Store, type Tx } from "../store/connection.vibe"
+import { commandIdOf, idempotencyKeyPattern, readRetainedCommand, refuseRetainedCommandConflict } from "./commands.vibe"
+import { commandAt, insertPlanCommand, lockOrganization, planCommandActor, planCommandView, readPlanCommand, savePlanCommand, type PlanCommandRecord } from "./plan-command-state.vibe"
+import { consumeReviewedPlanQuote, freshOwner, PlanConfirmation, PlanReviewBody, readReviewedPlanQuote, readSubscriptionForConfirmation, reviewPlanChange, type ReviewedPlanQuote } from "./plan-quotes.vibe"
+import { wirePlanKey } from "./plans.vibe"
+import { claimLiveCommand, readSubscription, releaseLiveCommand, scheduleDowngrade } from "./subscriptions.vibe"
+
+const providerRead = { timeout: 8_000 }
+const commandIdPattern = /^cmd_[0-9a-f]{32}$/
+const effectSeen = { tag: "EffectSeen" } as const
+
+function termsOf(row: ReviewedPlanQuote): StripeDowngradeTerms {
+  return {
+    subscriptionId: row.command.subscriptionId, binding: row.binding, periodStart: row.command.quote.periodStart,
+    periodEnd: row.command.quote.periodEnd, recurringCents: row.command.quote.recurringCents
+  }
+}
+
+function stageReceipt(command: Command, stage: StripeScheduleEffect) {
+  return stage === "attach" ? attachmentReceipt(command) : command.receipt
+}
+
+function configurationDigest(row: ReviewedPlanQuote, schedule: StripeScheduleBinding) {
+  return requestDigest({ action: "ConfigureDowngrade", terms: termsOf(row), schedule })
+}
+
+effect function commandFor(tx: Tx, organizationId: string, commandId: string, lock: boolean) {
+  const row = try readPlanCommand(tx, commandId, lock)
+  if (row === undefined || row.organizationId !== organizationId || row.command.kind !== "DowngradeCommand") throw refused("NotFound")
+  return row
+}
+
+effect function withCommand<A, E, R>(store: Store.Shape, row: PlanCommandRecord, update: (tx: Tx, current: PlanCommandRecord) => A!E!R) {
+  return try store.transaction(effect (tx: Tx) => {
+    try lockOrganization(tx, row.organizationId)
+    try tx.query("SELECT key FROM subscriptions WHERE key=$1 FOR UPDATE", [row.organizationId])
+    return try update(tx, try commandFor(tx, row.organizationId, row.command.commandId, true))
+  })
+}
+
+effect function ownPlanBinding(row: ReviewedPlanQuote) {
+  const source = wirePlanKey(row.command.quote.sourcePlanKey)
+  const target = wirePlanKey(row.command.quote.targetPlanKey)
+  const billing = (try Deployment).settings.billing
+  if (billing === undefined || source === "free" || target === "free") throw refused("CapabilityUnavailable")
+  if (billing.plans[source]?.priceId !== row.binding.sourcePriceId || billing.plans[target]?.priceId !== row.binding.targetPriceId)
+    throw refused("BillingStateConflict")
+  const terms = termsOf(row)
+  const current = try bindPlanChange({ ...row.binding, ...terms }, providerRead)
+  if (current.subscriptionItemId !== row.binding.subscriptionItemId || current.scheduleId === undefined)
+    throw refused("BillingStateConflict")
+  return current
+}
+
+effect function validateConfiguration(row: ReviewedPlanQuote, binding: StripeScheduleBinding) {
+  const terms = termsOf(row)
+  const observed = try readScheduleToConfigure(terms, binding.scheduleId, providerRead)
+  if (observed.phaseDigest !== binding.phaseDigest) throw refused("BillingStateConflict")
+  try verifySchedulePreview(terms, binding, providerRead)
+}
+
+effect function recheckDowngrade(quote: ReviewedPlanQuote) {
+  const current = try ownPlanBinding(quote)
+  const reviewed = quote.command.schedule
+  if (reviewed.tag === "ReviewedUnscheduled" && current.scheduleId === null) {
+    try previewPlanChange(quote.command.subscriptionId, quote.binding, { kind: "recurring", expectedCents: quote.command.quote.recurringCents }, providerRead)
+  } else if (reviewed.tag === "ReviewedExisting" && current.scheduleId === reviewed.scheduleId &&
+      quote.schedule !== undefined && quote.schedule.scheduleId === reviewed.scheduleId) {
+    try validateConfiguration(quote, quote.schedule)
+  } else throw refused("BillingStateConflict")
+}
+
+effect function existingDowngrade(tx: Tx, commandId: string, digest: string, organizationId: string, userId: string, lock: boolean) {
+  try refuseRetainedCommandConflict(tx, organizationId, commandId)
+  const row = try readPlanCommand(tx, commandId, lock)
+  if (row !== undefined) {
+    if (row.organizationId !== organizationId || row.command.kind !== "DowngradeCommand" || planCommandActor(row.command).actorId !== userId ||
+        row.confirmationDigest !== digest) throw refused("IdempotencyConflict")
+    return row
+  }
+  if ((try tx.query("SELECT key FROM subscription_commands WHERE key=$1", [commandId]))[0] !== undefined)
+    throw refused("IdempotencyConflict")
+  return undefined
+}
+
+effect function sendSchedule(row: PlanCommandRecord, stage: StripeScheduleEffect, operationKey: string) {
+  return effect {
+    const origin = try dispatchScheduleChange(termsOf(row), stage, row.schedule, { idempotencyKey: operationKey, timeout: 30_000 })
+    return { kind: "applied", value: origin } as const
+  } catch (failure) => failureReply(failure)
+}
+
+effect function dispatchStage(store: Store.Shape, row: PlanCommandRecord, stage: StripeScheduleEffect) {
+  const operationKey = renderProviderKey(stageReceipt(row.command, stage).providerKey)
+  try dispatchOnce({
+    claim: Effect.void,
+    send: sendSchedule(row, stage, operationKey),
+    record: (answer: ProviderReply<StripeScheduleOrigin>, at: number) => recordAnswer(store, row, stage, operationKey, answer, at)
+  })
+}
+
+effect function recordAnswer(store: Store.Shape, row: PlanCommandRecord, stage: StripeScheduleEffect, operationKey: string, answer: ProviderReply<StripeScheduleOrigin>, at: number) {
+  try withCommand(store, row, effect (tx, current) => {
+    const command = commandAt(current.command, at)
+    const receipt = stageReceipt(command, stage)
+    if (renderProviderKey(receipt.providerKey) !== operationKey) return current
+    const reply = replyOf(answer)
+    if (stage === "attach" && canReceiveAttachmentReply(command, reply)) {
+      const next = (try apply(command, { type: "receiveAttachmentReply", reply }, receipt.session.owner)).state
+      const saved = { ...current, command: next, ...(answer.kind === "applied" ? { attachOrigin: answer.value } : {}) }
+      try savePlanCommand(tx, saved, at)
+      return saved
+    }
+    if (stage === "configure" && canReceiveReply(command, reply)) {
+      const next = (try apply(command, { type: "receiveReply", reply }, receipt.session.owner)).state
+      const saved = { ...current, command: next, ...(answer.kind === "applied" ? { configureOrigin: answer.value } : {}) }
+      try savePlanCommand(tx, saved, at)
+      return saved
+    }
+    return current
+  })
+}
+
+effect function verifyAttachment(row: PlanCommandRecord, schedule: StripeScheduleBinding, origin: StripeScheduleOrigin | undefined, at: number) {
+  const store = try Store
+  return try withCommand(store, row, effect (tx, current) => {
+    let command = commandAt(current.command, at)
+    if (!attaching(command)) return current
+    if (current.attachOrigin !== undefined && (origin === undefined || current.attachOrigin.scheduleId !== origin.scheduleId ||
+        current.attachOrigin.requestId !== origin.requestId)) return current
+    const by = attachmentReceipt(command).session.owner
+    if (origin !== undefined && canResolveAttachment(command, effectSeen))
+      command = (try apply(command, { type: "resolveAttachment", lookup: effectSeen }, by)).state
+    const evidence = origin === undefined ? "CompatibleSchedule" : "OriginalAttachment"
+    if (!canVerifySchedule(command, schedule.scheduleId, evidence)) return current
+    const next = (try apply(command, { type: "verifySchedule", scheduleId: schedule.scheduleId, evidence }, by)).state
+    const saved = { ...current, command: next, schedule, ...(origin !== undefined ? { attachOrigin: origin } : {}) }
+    try savePlanCommand(tx, saved, at)
+    return saved
+  })
+}
+
+effect function settleDowngrade(row: PlanCommandRecord, origin: StripeScheduleOrigin | undefined, at: number) {
+  const store = try Store
+  return try withCommand(store, row, effect (tx, current) => {
+    let command = commandAt(current.command, at)
+    if (isFinished(command)) return current
+    const by = planCommandActor(command)
+    if (origin !== undefined) {
+      if (current.schedule?.scheduleId !== origin.scheduleId ||
+          (current.configureOrigin !== undefined && current.configureOrigin.requestId !== origin.requestId)) return current
+      if (canResolve(command, effectSeen)) command = (try apply(command, { type: "resolve", lookup: effectSeen }, by)).state
+      if (command.receipt.settlement !== "Succeeded") return current
+    }
+    const subscription = try readSubscription(tx, row.organizationId)
+    if (!holdsCommand(subscription, "DowngradeCommand", command.commandId)) throw refused("BillingStateConflict")
+    if (origin === undefined && canExpireConfiguration(command)) {
+      const expired = try apply(command, { type: "expireConfiguration" }, by)
+      for (const out of expired.out) {
+        if (out.tag !== "ReleaseSlot") throw refused("BillingStateConflict")
+        try releaseLiveCommand(tx, row.organizationId, out.commandId, at)
+      }
+      const saved = { ...current, command: expired.state }
+      try savePlanCommand(tx, saved, at)
+      return saved
+    }
+    if (origin === undefined && command.receipt.settlement === "Succeeded") return current
+    const scheduled = origin !== undefined
+    if (scheduled && !canScheduleDowngrade(subscription, command.commandId, command.quote.targetPlanKey)) return current
+    const revision = scheduled ? subscription.revision + 1 : 0
+    if (!canFinish(command, "NoUpgradeInvoice", revision)) return current
+    const finished = try apply(command, { type: "finish", invoice: "NoUpgradeInvoice", resultRevision: revision }, by)
+    for (const out of finished.out) {
+      if (out.tag === "ScheduleDowngrade") try scheduleDowngrade(tx, row.organizationId, out.commandId, out.planKey, at)
+      else if (out.tag === "ReleaseSlot") try releaseLiveCommand(tx, row.organizationId, out.commandId, at)
+      else throw refused("BillingStateConflict")
+    }
+    const saved = { ...current, command: finished.state, ...(origin !== undefined ? { configureOrigin: origin } : {}) }
+    try savePlanCommand(tx, saved, at)
+    return saved
+  })
+}
+
+effect function recoverOrigin(row: PlanCommandRecord, stage: StripeScheduleEffect, command: Command) {
+  const receipt = stageReceipt(command, stage)
+  const direct = stage === "attach" ? row.attachOrigin : row.configureOrigin
+  if (direct !== undefined || receipt.session.effects !== 1 || receipt.settlement !== "Unsettled") return direct
+  return recoverScheduleChange(termsOf(row), stage, renderProviderKey(receipt.providerKey), receipt.sentAt, providerRead) catch () => undefined
+}
+
+effect function observeDowngrade(row: PlanCommandRecord) {
+  const at = try Clock.currentTimeMillis
+  const command = commandAt(row.command, at)
+  if (isFinished(command)) return row
+  if (attaching(command)) {
+    const receipt = attachmentReceipt(command)
+    if (receipt.settlement === "Refused" || receipt.settlement === "NotApplied") return try settleDowngrade(row, undefined, at)
+    if (receipt.session.effects !== 1) return row
+    const origin = try recoverOrigin(row, "attach", command)
+    const owned = ownPlanBinding(row) catch () => undefined
+    if (typeof owned?.scheduleId !== "string" || (origin !== undefined && origin.scheduleId !== owned.scheduleId)) return row
+    const schedule = readScheduleToConfigure(termsOf(row), owned.scheduleId, providerRead) catch () => undefined
+    if (schedule === undefined) return row
+    return try verifyAttachment(row, schedule, origin, try Clock.currentTimeMillis)
+  }
+  if (command.receipt.settlement === "Refused" || command.receipt.settlement === "NotApplied" || canExpireConfiguration(command))
+    return try settleDowngrade(row, undefined, at)
+  if (row.schedule === undefined || command.receipt.session.effects !== 1) return row
+  const origin = try recoverOrigin(row, "configure", command)
+  if (origin === undefined || origin.scheduleId !== row.schedule.scheduleId) return row
+  const readback = configuredSchedule(termsOf(row), row.schedule, providerRead) catch () => false
+  return readback ? try settleDowngrade(row, origin, try Clock.currentTimeMillis) : row
+}
+
+effect function prepareConfiguration(store: Store.Shape, row: PlanCommandRecord) {
+  const binding = row.schedule
+  if (binding === undefined || !waitingForConfiguration(row.command)) return undefined
+  const valid = effect {
+    const current = try ownPlanBinding(row)
+    if (current.scheduleId !== binding.scheduleId) return false
+    try validateConfiguration(row, binding)
+    return true
+  } catch () => false
+  if (!valid) return undefined
+  return try withCommand(store, row, effect (tx, current) => {
+    const now = try Clock.currentTimeMillis
+    const command = commandAt(current.command, now)
+    const by = planCommandActor(command)
+    const subscription = try readSubscription(tx, row.organizationId)
+    const digest = configurationDigest(current, binding)
+    if (!holdsCommand(subscription, "DowngradeCommand", command.commandId) || current.schedule?.phaseDigest !== binding.phaseDigest ||
+        current.schedule.scheduleId !== binding.scheduleId || subscription.status !== "Active" ||
+        subscription.subscriptionId !== command.subscriptionId || subscription.periodStart !== command.quote.periodStart ||
+        subscription.periodEnd !== command.quote.periodEnd || subscription.planKey !== command.quote.sourcePlanKey ||
+        !canClaimConfiguration(command, by, digest)) return undefined
+    const claimed = (try apply(command, { type: "claimConfiguration", digest }, by)).state
+    const sent = (try apply(claimed, { type: "send", claimToken: claimed.receipt.session.currentClaim }, by)).state
+    const saved = { ...current, command: sent }
+    try savePlanCommand(tx, saved, now)
+    return saved
+  })
+}
+
+effect function continueDowngrade(store: Store.Shape, row: PlanCommandRecord) {
+  const observed = try observeDowngrade(row)
+  const configured = try prepareConfiguration(store, observed)
+  if (configured === undefined) return observed
+  try dispatchStage(store, configured, "configure")
+  const latest = try store.transaction((tx) => commandFor(tx, row.organizationId, row.command.commandId, false))
+  return try observeDowngrade(latest)
+}
+
+effect function confirmDowngrade(authorization: string | undefined, input: PlanConfirmation) {
+  if (!idempotencyKeyPattern.test(input.idempotencyKey) || input.quoteId === "" ||
+      (input.expectedSubscriptionRevision !== undefined && (!Number.isSafeInteger(input.expectedSubscriptionRevision) || input.expectedSubscriptionRevision < 1)))
+    throw refused("InvalidRequest")
+  const own = try freshOwner(authorization)
+  const store = try Store
+  const commandId = commandIdOf(own.organizationId, own.userId, input.idempotencyKey)
+  const digest = requestDigest({ kind: "DowngradeCommand", quoteId: input.quoteId, expectedRevision: input.expectedSubscriptionRevision ?? null })
+  const existing = try store.transaction((tx) => existingDowngrade(tx, commandId, digest, own.organizationId, own.userId, false))
+  if (existing !== undefined) return planCommandView(try observeDowngrade(existing), try Clock.currentTimeMillis)
+  const quote = try store.transaction(effect (tx: Tx) => {
+    const quoted = try readReviewedPlanQuote(tx, own, input.quoteId)
+    try readSubscriptionForConfirmation(tx, own.organizationId, quoted, "DowngradeCommand", input.expectedSubscriptionRevision, try Clock.currentTimeMillis)
+    return quoted
+  })
+  recheckDowngrade(quote) catch effect (failure) => {
+    if (failure._tag === "Refused") throw failure
+    throw refused("ProviderUnavailable", "NoReason", (try Clock.currentTimeMillis) + 5_000)
+  }
+  const fresh = try freshOwner(authorization)
+  if (fresh.sessionKey !== own.sessionKey || fresh.userId !== own.userId || fresh.organizationId !== own.organizationId)
+    throw refused("AuthenticationRequired")
+  const by = receiptOwner(own.organizationId, own.userId, "SubscriptionSchedule")
+  const admitted = try store.transaction(effect (tx: Tx) => {
+    try lockOrganization(tx, own.organizationId)
+    try tx.query("SELECT key FROM subscriptions WHERE key=$1 FOR UPDATE", [own.organizationId])
+    const prior = try existingDowngrade(tx, commandId, digest, own.organizationId, own.userId, true)
+    if (prior !== undefined) return { row: prior, stage: undefined }
+    const now = try Clock.currentTimeMillis
+    const retained = try consumeReviewedPlanQuote(tx, own, input.quoteId)
+    const subscription = try readSubscriptionForConfirmation(tx, own.organizationId, retained, "DowngradeCommand", input.expectedSubscriptionRevision, now)
+    const quoted = commandAt(retained.command, now)
+    const expectedRevision = quoted.expectedRevision
+    const attachmentProviderId = quoted.schedule.tag === "ReviewedUnscheduled" ? `${commandId}:attach` : ""
+    const providerDigest = retained.schedule !== undefined ? configurationDigest(retained, retained.schedule)
+      : requestDigest({ action: "AttachDowngradeSchedule", terms: termsOf(retained) })
+    if (!canConfirm(quoted, by, subscription, "DowngradeCommand", commandId, input.quoteId, expectedRevision, attachmentProviderId, providerDigest, true))
+      throw refused("BillingStateConflict")
+    const started = try apply(quoted, {
+      type: "confirm", sub: subscription, kind: "DowngradeCommand", commandId, quoteId: input.quoteId,
+      expectedRevision, attachmentProviderId, digest: providerDigest, freshOwner: true
+    }, by)
+    for (const action of started.out) {
+      if (action.tag !== "ClaimSlot") throw refused("BillingStateConflict")
+      try claimLiveCommand(tx, own.organizationId, action.kind, action.commandId, action.expectedRevision, now)
+    }
+    const stage: StripeScheduleEffect = attachmentProviderId === "" ? "configure" : "attach"
+    const claimToken = stageReceipt(started.state, stage).session.currentClaim
+    const sent = (try apply(started.state, stage === "attach" ? { type: "sendAttachment", claimToken } : { type: "send", claimToken }, by)).state
+    const row = {
+      organizationId: own.organizationId, command: sent, binding: retained.binding, schedule: retained.schedule, confirmationDigest: digest
+    } satisfies PlanCommandRecord
+    try insertPlanCommand(tx, row, now)
+    return { row, stage }
+  })
+  if (admitted.stage === undefined) return planCommandView(try observeDowngrade(admitted.row), try Clock.currentTimeMillis)
+  try dispatchStage(store, admitted.row, admitted.stage)
+  const latest = try store.transaction((tx) => commandFor(tx, own.organizationId, commandId, false))
+  return planCommandView(try continueDowngrade(store, latest), try Clock.currentTimeMillis)
+}
+
+export const routes: ReadonlyArray<Route> = [
+  { method: "POST", path: "/api/v1/subscriptions/downgrade/review", auth: "FreshSession", area: "SubscriptionRoutes", rateClass: "StandardRequests",
+    handler: (context) => effect {
+      const request = try jsonBody(context, PlanReviewBody)
+      return json(try reviewPlanChange(context.request.headers.authorization, { ...request, kind: "DowngradeCommand" }))
+    } },
+  { method: "POST", path: "/api/v1/subscriptions/downgrade/confirm", auth: "FreshSession", area: "SubscriptionRoutes", rateClass: "StandardRequests",
+    handler: (context) => effect {
+      return json(try confirmDowngrade(context.request.headers.authorization, try jsonBody(context, PlanConfirmation)))
+    } },
+  { method: "GET", path: "/api/v1/subscriptions/downgrade/:commandId", auth: "FreshSession", area: "SubscriptionRoutes", rateClass: "StandardRequests",
+    handler: (context) => effect {
+      const own = try freshOwner(context.request.headers.authorization)
+      const commandId = context.params.commandId ?? ""
+      if (!commandIdPattern.test(commandId)) throw refused("NotFound")
+      const retained = try readRetainedCommand(own.organizationId, commandId, "downgrade")
+      if (retained !== undefined) return json(retained)
+      const store = try Store
+      const row = try store.transaction((tx) => commandFor(tx, own.organizationId, commandId, false))
+      return json(planCommandView(try observeDowngrade(row), try Clock.currentTimeMillis))
+    } }
+]
+
+export const sweeps: ReadonlyArray<Sweep> = [{ name: "subscription downgrades", everyMs: 60_000, run: effect {
+  const store = try Store
+  const pending = store.transaction((tx) => tx.query(
+    "SELECT key FROM subscription_commands WHERE kind='downgrade' AND stripe_plan_binding IS NOT NULL AND status IN ('prepared','dispatched','unknown') ORDER BY updated_at,key LIMIT 100", []
+  )) catch () => []
+  for (const found of pending) {
+    const commandId = found.key
+    if (typeof commandId !== "string") continue
+    const refreshed = effect {
+      const row = try store.transaction((tx) => readPlanCommand(tx, commandId, false))
+      if (row?.command.kind === "DowngradeCommand") try continueDowngrade(store, row)
+    }
+    refreshed catch effect (failure) => {
+      try annotateLogs(logWarning("a reviewed downgrade could not be settled"), { commandId, failure: failure._tag })
+    }
+  }
+} }]

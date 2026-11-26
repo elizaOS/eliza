@@ -1,0 +1,41 @@
+// spec/cloud/deployment.md, "Story: Serve the deployment from a Worker"; spec/cloud/deployment.md, "A Worker routes the declared Grace Google mount, then the server table, then Worker-only paths"
+import { workerFetch, type WorkerLifetime } from "./worker-platform.ts"
+import { relayFromTable, serveFromTable, sweepTable, workerManagedGoogle, workerReady, type ProfileBindings } from "./worker/canonical.vibe"
+import { graceGoogleRoute, ownsWorkerOnly, workerOnlyRequest, type DeploymentExtension, type LegacyBindings, type WorkerPorts } from "./worker/legacy.vibe"
+import { answerOf, opensRelay } from "./worker/routes.vibe"
+
+export { nativeAssetLinks } from "./native-registry.vibe"
+export type { DeploymentExtension }
+
+export type WorkerExecution = WorkerLifetime
+
+export type CloudBindings = LegacyBindings & ProfileBindings
+
+export function cloudWorker<E extends CloudBindings>(extension?: DeploymentExtension<E>, providerFetch: typeof fetch = workerFetch) {
+  return workerWithRoutes("Cloud", extension, providerFetch)
+}
+
+export function graceCloudWorker<E extends CloudBindings>(extension?: DeploymentExtension<E>, providerFetch: typeof fetch = workerFetch) {
+  return workerWithRoutes("Grace", extension, providerFetch)
+}
+
+function workerWithRoutes<E extends CloudBindings>(product: "Cloud" | "Grace", extension: DeploymentExtension<E> | undefined, providerFetch: typeof fetch) {
+  const ports: WorkerPorts<E> = { extension, providerFetch }
+  return {
+    scheduled(event: { readonly scheduledTime: number }, env: E): Promise<void> {
+      return sweepTable(env, event.scheduledTime)
+    },
+    async fetch(request: Request, env: E, execution?: WorkerExecution): Promise<Response> {
+      const path = new URL(request.url).pathname
+      if (opensRelay(request.method, path)) {
+        return relayFromTable(request, env, (work) => execution === undefined ? void work.then(() => undefined, () => undefined) : execution.waitUntil(work))
+      }
+      const google = product === "Grace" ? graceGoogleRoute(request.method, path) : undefined
+      const answer = answerOf(request.method, path, ownsWorkerOnly(path, ports), google !== undefined)
+      if (answer !== "FromWorkerOnly" && answer !== "FromGraceGoogle") return serveFromTable(request, env, providerFetch, execution)
+      const unready = await workerReady(env)
+      if (unready !== undefined) return unready
+      return workerOnlyRequest(request, env, ports, google === undefined ? undefined : { access: google, enabled: workerManagedGoogle(env) })
+    }
+  }
+}

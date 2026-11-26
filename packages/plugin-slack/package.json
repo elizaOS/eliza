@@ -7,18 +7,23 @@
   "license": "MIT",
   "scripts": {
     "build": "vibelang -p tsconfig.build.json",
-    "typecheck": "vibelang --noEmit -p ."
+    "typecheck": "vibelang --noEmit -p .",
+    "test": "vitest run"
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
+    "@elizaos/core-node": "workspace:*",
+    "@slack/bolt": "^5.0.0",
     "effect": "4.1.1",
-    "vibelang-runtime": "0.0.13",
-    "@slack/bolt": "^5.0.0"
+    "vibelang-runtime": "0.0.13"
   },
   "devDependencies": {
     "@types/node": "catalog:",
     "typescript": "catalog:",
-    "vibelang": "0.0.13"
+    "vibelang": "0.0.13",
+    "@effect/vitest": "4.1.1",
+    "vibestack": "workspace:*",
+    "vitest": "catalog:"
   },
   "exports": {
     ".": {

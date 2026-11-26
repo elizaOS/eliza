@@ -1,0 +1,29 @@
+// spec/cloud/deployment.md, "An instance starts only for an accepted profile, on its environment's own readable database, seeded only in staging, with loopback delivery only on PGlite"; spec/cloud/deployment.md, "A Worker serves only after the server's own start checks pass and its bindings agree with its profile"
+import { Store, toText, type StoreFailure, type Tx } from "./connection.vibe"
+
+export error DatabaseIdentityMismatch { expected: string; found: string }
+export error DatabaseUnreadable { problem: string }
+
+export type DatabaseIdentity =
+  | { readonly kind: "fresh" }
+  | { readonly kind: "identified"; readonly digest: string; readonly environment: string }
+  | { readonly kind: "unreadable"; readonly problem: string }
+
+export effect function readIdentity(tx: Tx): DatabaseIdentity!StoreFailure {
+  const table = try tx.query("SELECT to_regclass('cloud_identity') IS NOT NULL AS present")
+  if (table[0]?.present !== true) {
+    const objects = try tx.query("SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'public' AND c.relkind IN ('r','p','v','m','f','S') LIMIT 1")
+    return objects.length ? { kind: "unreadable", problem: "the database holds objects but no cloud identity" } : { kind: "fresh" }
+  }
+  const rows = try tx.query("SELECT digest, environment FROM cloud_identity")
+  const digest = toText(rows[0]?.digest)
+  const environment = toText(rows[0]?.environment)
+  if (rows.length !== 1 || digest === undefined || environment === undefined) return { kind: "unreadable", problem: "the cloud identity row is missing or malformed" }
+  return { kind: "identified", digest, environment }
+}
+
+export effect function observeIdentity(): DatabaseIdentity!!Store {
+  return (try Store).transaction(readIdentity) catch effect (failure) => {
+    return { kind: "unreadable", problem: `the database could not be read (${failure.operation})` } satisfies DatabaseIdentity
+  }
+}

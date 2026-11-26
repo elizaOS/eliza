@@ -1,0 +1,533 @@
+// spec/wallet/custody.md, "Story: Hold my own keys on my device"; spec/wallet/requests.md, "Story: Let the agent ask, and decide myself"; spec/wallet/index.md, "Story: Preview an exact wallet operation before executing it"; spec/wallet/index.md, "Story: Recover the real outcome of an on-chain operation"; spec/wallet/index.md, "Story: Inspect wallet holdings and venue quotes before making changes"
+import * as KeyValueStore from "effect/persistence/KeyValueStore"
+import {
+  atomicOf, shownUnits,
+  type WalletAccount, type WalletDecided, type WalletDecision, type WalletFamilyName, type WalletHolding, type WalletHoldings, type WalletOperation,
+  type WalletQuote, type WalletRequestRow, type WalletReview, type WalletStatus,
+} from "@elizaos/plugin-wallet-client"
+import { Machine as CustodyMachine, stored as storedCustody, walletServes, type Custody } from "../gen/wallet__custody.effect.vibe"
+import { Machine as DeskMachine, stored as storedDesk, type Asker, type TransferRequest } from "../gen/wallet__requests.effect.vibe"
+import { Machine, atMostAtomic, machine, parseState, validAtomicAmount, walletObservationMatches, type WalletFamily, type WalletIntent, type WalletRun } from "../gen/wallet.effect.vibe"
+import { assetId, type AssetTransfer, type ChainAccount, type ChainSigner, type TransferQuote, type WalletAsset } from "./chain.vibe"
+import { evmAccountOf, evmSigns, newEvmKey, openEvmAccount, openEvmSigner } from "./evm.vibe"
+import { OperationOutcome, OperationTerms, claimDispatch, listJournal, openJournal, readJournalRow, reserveWalletSigning, walletDigest, walletJournalDirectory, writeJournalRow, type JournalRows } from "./journal.vibe"
+import { newSolanaSeed, openKeystore } from "./keystore.vibe"
+import { allowedRecipients, familyNames, networkPlan, type NetworkPlan, type Setting } from "./networks.vibe"
+import { openSolanaAccount, openSolanaSigner, solanaAccountOf } from "./solana.vibe"
+
+
+export error WalletRefused { reason: string }
+export error WalletUnreachable { cause: unknown }
+
+export interface WalletHost {
+  readonly agentId: string
+  readonly ownerId: string
+  readonly stateDirectory: string
+  readonly storageKey: Uint8Array | undefined
+  readonly setting: Setting
+  readonly ownerPresent: () => Promise<boolean>
+}
+
+export interface WalletTransferInput {
+  readonly family: WalletFamily
+  readonly token: string
+  readonly recipient: string
+  readonly amount: string
+}
+
+export interface WalletContext {
+  readonly status: WalletStatus
+  readonly holdings: WalletHoldings | undefined
+  readonly requests: readonly WalletRequestRow[]
+  readonly operations: readonly WalletOperation[]
+}
+
+interface AssetFacts {
+  readonly asset: WalletAsset
+  readonly symbol: string
+  readonly decimals: number
+}
+
+interface Terms {
+  readonly facts: AssetFacts
+  readonly transfer: AssetTransfer
+  readonly amount: string
+}
+
+interface OpenReview {
+  readonly net: NetworkPlan
+  readonly terms: Terms
+  readonly quoted: TransferQuote
+  readonly run: WalletRun
+}
+
+const reviewTtlMs = 60000
+const holdingsTtlMs = 30000
+const families: readonly WalletFamily[] = ["EvmWallet", "SolanaWallet"]
+const largest: Record<WalletFamily, string> = {
+  EvmWallet: "115792089237316195423570985008687907853269984665640564039457584007913129639935",
+  SolanaWallet: "18446744073709551615",
+}
+const closedReview = "This decision no longer matches an open review for the authenticated owner."
+const walletOff = "The wallet is off."
+
+function digits(amount: string): number[] {
+  return [...amount].map((digit) => digit.charCodeAt(0) - 48)
+}
+
+function accountOf(state: Custody, family: WalletFamily): string {
+  return family === "EvmWallet" ? state.evmAccount : state.solanaAccount
+}
+
+function rowOf(request: TransferRequest): WalletRequestRow {
+  return {
+    id: request.id, family: familyNames[request.family], asset: request.assetId, symbol: request.symbol,
+    recipient: request.recipient, amount: request.amount, asker: request.asker === "OwnerAsks" ? "owner" : "agent",
+  }
+}
+
+function validSubmission(operationRef: string): boolean {
+  return /^0x[a-fA-F0-9]{64}$/.test(operationRef) || /^[1-9A-HJ-NP-Za-km-z]{63,100}$/.test(operationRef)
+}
+
+function operationOf(rows: JournalRows, state: Custody): WalletOperation[] {
+  const reserved = parseState(rows.reservation)
+  const terms = Option.getOrUndefined(Schema.decodeUnknownOption(OperationTerms)(rows.terms))
+  if (reserved === undefined || terms === undefined || terms.intentId !== reserved.intent.intentId) return []
+  if (reserved.intent.account !== accountOf(state, reserved.intent.family)) return []
+  const submitted = parseState(rows.submission)
+  const sent = submitted !== undefined && submitted.intent.intentId === terms.intentId && validSubmission(submitted.operationRef)
+  const outcome = Option.getOrUndefined(Schema.decodeUnknownOption(OperationOutcome)(rows.outcome))
+  const settled = sent && outcome !== undefined && outcome.intentId === terms.intentId
+  return [{
+    intentId: terms.intentId, family: familyNames[reserved.intent.family], chainId: reserved.intent.chainId,
+    asset: terms.asset, symbol: terms.symbol, decimals: terms.decimals, atomicUnits: terms.atomicUnits,
+    recipient: terms.recipient, maximumFee: terms.maximumFee, reservedAt: terms.reservedAt,
+    status: settled ? outcome.receipt : sent ? "pending" : "notSent",
+    operationRef: sent ? submitted.operationRef : "",
+  }]
+}
+
+effect function reach<A>(run: () => Promise<A>): A!WalletUnreachable {
+  return try tryPromise({ try: run, catch: (cause) => new WalletUnreachable({ cause }) })
+}
+
+effect function checked<A>(run: () => A, reason: string): A!WalletRefused {
+  return try Effect.try({ try: run, catch: () => new WalletRefused({ reason }) })
+}
+
+effect function allowed<A, E>(sent: A!E, reason: string): A!WalletRefused {
+  return sent catch effect () => { throw new WalletRefused({ reason }) }
+}
+
+effect function machinesAt(directory: string) {
+  provide Layer.provide(Layer.mergeAll(storedCustody("custody"), storedDesk("requests")), KeyValueStore.layerFileSystem(directory)) {
+    return { custody: try CustodyMachine, desk: try DeskMachine }
+  }
+}
+
+effect function walletCustody(host: WalletHost) {
+  const directory = `${host.stateDirectory}/wallet`
+  const journal = try checked(() => walletJournalDirectory(host.stateDirectory, host.agentId), "The wallet journal has no place on this device.")
+  const keystore = try checked(() => openKeystore(directory, host.storageKey, host.agentId), "The wallet keystore has no place on this device.")
+  const { custody, desk } = try machinesAt(`${directory}/state`)
+  const turn = (try Semaphore.make(1)).withPermits(1)
+  const reviews = new Map<number, OpenReview>()
+  const read = { at: 0, holdings: undefined as WalletHoldings | undefined }
+
+  effect function present() {
+    if (!(try reach(host.ownerPresent))) throw new WalletRefused({ reason: "The wallet answers only its authenticated owner." })
+  }
+
+  effect function serving() {
+    const state = try custody.get()
+    if (!walletServes(state)) throw new WalletRefused({ reason: walletOff })
+    return state
+  }
+
+  function statusOf(state: Custody): WalletStatus {
+    const accounts = !state.held ? [] : families.map((family): WalletAccount => {
+      const net = networkPlan(host.setting, family)
+      const evm = family === "EvmWallet"
+      return {
+        family: familyNames[family], address: accountOf(state, family), connected: net !== undefined,
+        chainId: net?.chainId ?? "", network: net?.label ?? "", nativeSymbol: evm ? "ETH" : "SOL", nativeDecimals: evm ? 18 : 9,
+        canSend: net !== undefined && state.on && keystore.seals && (!evm || evmSigns(net.chainId, net.rpc)),
+      }
+    })
+    return { custody: !state.held ? "none" : !keystore.seals ? "unavailable" : state.on ? "ready" : "off", canHold: keystore.seals, accounts }
+  }
+
+  effect function status() {
+    return statusOf(try custody.get())
+  }
+
+  effect function create() {
+    return try turn(effect {
+      try present()
+      const state = try custody.get()
+      if (state.held) return statusOf(state)
+      if (!keystore.seals) throw new WalletRefused({ reason: "This device gave no storage key to seal a wallet under." })
+      const keys = try reach(async () => (await keystore.read()) ?? keystore.keep({ evmKey: newEvmKey(), solanaSeed: newSolanaSeed() }))
+      const evmAccount = try checked(() => evmAccountOf(keys.evmKey), "The sealed wallet keys are not readable.")
+      const solanaAccount = try reach(() => solanaAccountOf(keys.solanaSeed))
+      return statusOf(try allowed(custody.send({ type: "adopt", evmAccount, solanaAccount, sealed: true }, "Owner"), "This wallet was already made."))
+    })
+  }
+
+  effect function switchTo(wanted: boolean) {
+    return try turn(effect {
+      try present()
+      const state = try custody.get()
+      if (!state.held) throw new WalletRefused({ reason: "There is no wallet on this device yet." })
+      if (state.on === wanted) return statusOf(state)
+      reviews.clear()
+      read.holdings = undefined
+      return statusOf(try allowed(custody.send({ type: "switchWallet", wanted }, "Owner"), "Only the owner switches the wallet."))
+    })
+  }
+
+  effect function planOf(family: WalletFamily) {
+    const net = networkPlan(host.setting, family)
+    if (net === undefined) throw new WalletRefused({ reason: "This wallet has no network configured for that chain." })
+    return net
+  }
+
+  effect function reader(net: NetworkPlan, state: Custody): ChainAccount!WalletUnreachable {
+    const address = accountOf(state, net.family)
+    return try reach(() => net.family === "EvmWallet" ? openEvmAccount(net, address) : openSolanaAccount(net, address))
+  }
+
+  effect function signer(net: NetworkPlan): ChainSigner!(WalletRefused | WalletUnreachable) {
+    const keys = try tryPromise({ try: () => keystore.read(), catch: () => new WalletRefused({ reason: "The wallet's sealed keys cannot be opened on this launch." }) })
+    if (keys === undefined) throw new WalletRefused({ reason: "The wallet's keys are not on this device." })
+    return try reach(() => net.family === "EvmWallet" ? openEvmSigner(net, keys.evmKey) : openSolanaSigner(net, keys.solanaSeed))
+  }
+
+  return { host, journal, keystore, custody, desk, turn, reviews, read, present, serving, statusOf, status, create, switchTo, planOf, reader, signer }
+}
+
+type WalletCustody = Effect.Success<ReturnType<typeof walletCustody>>
+
+function walletTerms(host: WalletHost) {
+  effect function assetOf(net: NetworkPlan, chain: ChainAccount, token: string): AssetFacts!(WalletRefused | WalletUnreachable) {
+    if (token === "" || token === "native") return { asset: { kind: "native" }, symbol: net.nativeSymbol, decimals: net.nativeDecimals }
+    const address = try checked(() => chain.token(token), "That is not a token address on this chain.")
+    const facts = try reach(() => chain.tokenFacts(address))
+    return { asset: { kind: "token", address: facts.address }, symbol: facts.symbol, decimals: facts.decimals }
+  }
+
+  effect function termsOf(net: NetworkPlan, chain: ChainAccount, token: string, to: string, amount: string): Terms!(WalletRefused | WalletUnreachable) {
+    const facts = try assetOf(net, chain, token)
+    const recipient = try checked(() => chain.recipient(to), "That is not an address on this chain.")
+    if (!/^[0-9]+(\.[0-9]+)?$/.test(amount)) throw new WalletRefused({ reason: "Write the amount as a plain decimal number." })
+    const atomicUnits = atomicOf(amount, facts.decimals)
+    if (atomicUnits === undefined) throw new WalletRefused({ reason: `${facts.symbol} has at most ${facts.decimals} decimal places.` })
+    const exact = digits(atomicUnits)
+    if (!validAtomicAmount(exact) || atomicUnits === "0" || !atMostAtomic(exact, digits(largest[net.family]))) {
+      throw new WalletRefused({ reason: "The amount must be more than zero and fit the chain exactly." })
+    }
+    return { facts, transfer: { asset: facts.asset, recipient, atomicUnits }, amount: shownUnits(atomicUnits, facts.decimals) }
+  }
+
+  function policyAllows(net: NetworkPlan, transfer: AssetTransfer, quoted: TransferQuote): boolean {
+    const recipients = allowedRecipients(host.setting)
+    return atMostAtomic(digits(quoted.maximumFee), digits(net.feeCap)) && (recipients.length === 0 || recipients.includes(transfer.recipient))
+  }
+
+  function quoteOf(net: NetworkPlan, account: string, terms: Terms, quoted: TransferQuote): WalletQuote {
+    return {
+      family: net.name, chainId: net.chainId, network: net.label, account, recipient: terms.transfer.recipient,
+      asset: assetId(terms.facts.asset), symbol: terms.facts.symbol, decimals: terms.facts.decimals, atomicUnits: terms.transfer.atomicUnits,
+      maximumFee: quoted.maximumFee, feeSymbol: net.nativeSymbol, feeDecimals: net.nativeDecimals,
+    }
+  }
+
+  effect function covered(held: string, needed: readonly string[]) {
+    return try Effect.try({
+      try: () => BigInt(held) >= needed.reduce((sum, part) => sum + BigInt(part), 0n),
+      catch: () => new WalletRefused({ reason: "A balance could not be read exactly." }),
+    })
+  }
+
+  effect function priced(net: NetworkPlan, chain: ChainAccount, terms: Terms) {
+    const { asset, atomicUnits } = terms.transfer
+    const token = asset.kind === "token" ? asset.address : undefined
+    if (token !== undefined) {
+      const held = (try reach(() => chain.tokenHoldings([token]))).find((holding) => holding.address === token)?.atomicUnits ?? "0"
+      if (!(try covered(held, [atomicUnits]))) throw new WalletRefused({ reason: `This wallet holds less ${terms.facts.symbol} than the transfer sends.` })
+    }
+    const quoted = try reach(() => chain.quote(terms.transfer))
+    if (!policyAllows(net, terms.transfer, quoted)) throw new WalletRefused({ reason: "The recipient or the network fee is outside this wallet's limits." })
+    const spent = token === undefined ? [atomicUnits, quoted.maximumFee] : [quoted.maximumFee]
+    if (!(try covered(try reach(() => chain.nativeBalance()), spent))) {
+      throw new WalletRefused({ reason: `This wallet holds too little ${net.nativeSymbol} for the transfer and its network fee.` })
+    }
+    return quoted
+  }
+
+  return { termsOf, policyAllows, quoteOf, priced }
+}
+
+function walletDesk(base: WalletCustody, { termsOf, policyAllows, quoteOf, priced }: ReturnType<typeof walletTerms>) {
+  const { host, journal, desk, turn, reviews, read, present, serving, planOf, reader, signer } = base
+
+  effect function quote(input: WalletTransferInput) {
+    const state = try serving()
+    const net = try planOf(input.family)
+    const chain = try reader(net, state)
+    return try ensuring(effect {
+      const terms = try termsOf(net, chain, input.token, input.recipient, input.amount)
+      return quoteOf(net, chain.account, terms, try priced(net, chain, terms))
+    }, sync(() => chain.close()))
+  }
+
+  effect function ask(input: WalletTransferInput, asker: Asker) {
+    const state = try serving()
+    const net = try planOf(input.family)
+    const chain = try reader(net, state)
+    const terms = try ensuring(termsOf(net, chain, input.token, input.recipient, input.amount), sync(() => chain.close()))
+    const after = try allowed(desk.send({
+      type: "ask", family: net.family, assetId: assetId(terms.facts.asset), symbol: terms.facts.symbol,
+      recipient: terms.transfer.recipient, amount: terms.amount, asker,
+    }), "The desk is full: decide the requests that wait first.")
+    return rowOf(after.waiting[after.waiting.length - 1] ?? { id: after.issued, family: net.family, assetId: "", symbol: "", recipient: "", amount: "", asker })
+  }
+
+  effect function intentOf(request: TransferRequest) {
+    return try checked(() => walletDigest([host.agentId, host.ownerId, String(request.id), request.family, request.assetId, request.recipient, request.amount]), "The request has no identity.")
+  }
+
+  effect function reserved(intentId: string) {
+    return (try reach(() => readJournalRow(journal, intentId, "reservation"))) !== undefined
+  }
+
+  effect function leave(id: number) {
+    try allowed(desk.send({ type: "decideRequest", id, ownerDecided: true }), "That request is no longer waiting.")
+  }
+
+  effect function waiting(id: number) {
+    const request = (try desk.get()).waiting.find((held) => held.id === id)
+    if (request === undefined) throw new WalletRefused({ reason: "That request is no longer waiting." })
+    return request
+  }
+
+  effect function requests() {
+    try serving()
+    return (try desk.get()).waiting.map(rowOf)
+  }
+
+  effect function review(id: number) {
+    return try turn(effect {
+      try present()
+      try serving()
+      const request = try waiting(id)
+      const intentId = try intentOf(request)
+      if (try reserved(intentId)) {
+        try leave(id)
+        throw new WalletRefused({ reason: "That request was already decided." })
+      }
+      const net = try planOf(request.family)
+      const chain = try signer(net)
+      return try ensuring(effect {
+        if (!chain.supportsSigning) throw new WalletRefused({ reason: "This network has no supported fee policy for sending." })
+        const terms = try termsOf(net, chain, request.assetId, request.recipient, request.amount)
+        const quoted = try priced(net, chain, terms)
+        const commitment = try checked(() => walletDigest([
+          net.family, net.chainId, chain.account, assetId(terms.facts.asset), terms.transfer.recipient, terms.transfer.atomicUnits,
+          quoted.maximumFee, quoted.evm?.gasLimit ?? "", quoted.evm?.maxFeePerGas ?? "", quoted.evm?.maxPriorityFeePerGas ?? "",
+        ]), "The review could not be bound to its terms.")
+        const intent: WalletIntent = {
+          intentId, commitment, account: chain.account, chainId: net.chainId, family: net.family,
+          backend: "LocalSigner", operation: "AssetTransfer", intentMode: "WalletExecution",
+        }
+        const expiresAt = (try Clock.currentTimeMillis) + reviewTtlMs
+        provide machine() {
+          const run = try allowed((try Machine).send({ type: "prepareWallet", intent, quoteUntil: expiresAt }), "The review could not be opened.")
+          reviews.set(id, { net, terms, quoted, run })
+        }
+        return { ...quoteOf(net, chain.account, terms, quoted), requestId: id, intentId, commitment, expiresAt } satisfies WalletReview
+      }, sync(() => chain.close()))
+    })
+  }
+
+  effect function journalEntry(intentId: string) {
+    const loaded = try reach(() => readJournalRow(journal, intentId, "submission"))
+    if (loaded === undefined) return undefined
+    const record = parseState(loaded)
+    if (record === undefined || record.intent.intentId !== intentId || record.phase !== "WalletInFlight" || !validSubmission(record.operationRef)) {
+      throw new WalletRefused({ reason: "The recorded operation cannot be matched to this wallet." })
+    }
+    return record
+  }
+
+  effect function submit(open: OpenReview, chain: ChainSigner): WalletDecided!(WalletRefused | WalletUnreachable) {
+    const intent = open.run.intent
+    const transfer = open.terms.transfer
+    const authorized = effect () => (try reach(host.ownerPresent)) && policyAllows(open.net, transfer, open.quoted) && (try Clock.currentTimeMillis) <= open.run.quoteUntil
+    provide machine(open.run) {
+      const operation = try Machine
+      try allowed(operation.send({
+        type: "approveWallet", intentId: intent.intentId, commitment: intent.commitment, wallTime: try Clock.currentTimeMillis, ownerConfirmed: true,
+      }), "This wallet review expired.")
+      if (chain.account !== intent.account || chain.chainId !== intent.chainId) throw new WalletRefused({ reason: "The signing wallet differs from the reviewed one." })
+      const existing = try journalEntry(intent.intentId)
+      if (existing !== undefined) return { status: "unresolved", operationRef: existing.operationRef }
+      if (!(try authorized())) throw new WalletRefused({ reason: "The transfer authority changed before signing." })
+      try reach(() => openJournal(journal))
+      const reservedAt = try Clock.currentTimeMillis
+      try reach(() => writeJournalRow(journal, intent.intentId, "terms", {
+        intentId: intent.intentId, asset: assetId(open.terms.facts.asset), symbol: open.terms.facts.symbol, decimals: open.terms.facts.decimals,
+        atomicUnits: transfer.atomicUnits, recipient: transfer.recipient, maximumFee: open.quoted.maximumFee, reservedAt,
+      } satisfies OperationTerms))
+      const reservation = try allowed(operation.send({
+        type: "reserveWalletSigning", intentId: intent.intentId, commitment: intent.commitment, wallTime: try Clock.currentTimeMillis,
+      }), "This wallet review expired.")
+      if (!(try reach(() => reserveWalletSigning(journal, reservation)))) {
+        const previous = try journalEntry(intent.intentId)
+        if (previous !== undefined) return { status: "unresolved", operationRef: previous.operationRef }
+        throw new WalletRefused({ reason: "Another attempt already reserved this wallet operation." })
+      }
+      if (!(try authorized())) throw new WalletRefused({ reason: "The transfer authority changed before signing." })
+      const signed = try reach(() => chain.sign(transfer, open.quoted))
+      const dispatch = try allowed(operation.send({
+        type: "dispatchWallet", intentId: intent.intentId, commitment: intent.commitment, operationRef: signed.operationRef,
+        wallTime: try Clock.currentTimeMillis, policyAllows: policyAllows(open.net, transfer, open.quoted),
+      }), "This wallet review expired.")
+      if (!(try reach(() => claimDispatch(journal, dispatch)))) {
+        const durable = try journalEntry(intent.intentId)
+        if (durable === undefined) throw new WalletRefused({ reason: "The wallet submission claim disappeared." })
+        return { status: "unresolved", operationRef: durable.operationRef }
+      }
+      if (!(try authorized())) {
+        try allowed(operation.send({ type: "markWalletUncertain", operationRef: signed.operationRef }), closedReview)
+        throw new WalletRefused({ reason: "The transfer authority changed before broadcast." })
+      }
+      const broadcast = effect {
+        try reach(() => signed.broadcast())
+        return true
+      } catch () => false
+      if (!broadcast) try allowed(operation.send({ type: "markWalletUncertain", operationRef: signed.operationRef }), closedReview)
+      return { status: broadcast ? "submitted" : "unresolved", operationRef: signed.operationRef }
+    }
+  }
+
+  effect function decide(id: number, input: WalletDecision) {
+    return try turn(effect {
+      try present()
+      try serving()
+      const open = reviews.get(id)
+      if (input.decision === "decline") {
+        try waiting(id)
+        reviews.delete(id)
+        try leave(id)
+        return { status: "declined" } satisfies WalletDecided
+      }
+      if (open === undefined || input.intentId !== open.run.intent.intentId || input.commitment !== open.run.intent.commitment) {
+        throw new WalletRefused({ reason: closedReview })
+      }
+      reviews.delete(id)
+      const chain = try signer(open.net)
+      read.holdings = undefined
+      const leaveOnceReserved = ignore(effect { if (try reserved(open.run.intent.intentId)) try leave(id) })
+      return try ensuring(ensuring(submit(open, chain), sync(() => chain.close())), leaveOnceReserved)
+    })
+  }
+
+  return { quote, ask, requests, review, decide, journalEntry }
+}
+
+function walletJournal(base: WalletCustody, journalEntry: ReturnType<typeof walletDesk>["journalEntry"]) {
+  const { host, journal, custody, desk, serving, statusOf, reader, read } = base
+
+  effect function settle(operation: WalletOperation, state: Custody) {
+    const family = families.find((candidate) => familyNames[candidate] === operation.family)
+    const net = family === undefined ? undefined : networkPlan(host.setting, family)
+    const entry = try journalEntry(operation.intentId)
+    if (net === undefined || entry === undefined || net.chainId !== operation.chainId) return operation
+    const chain = try reader(net, state)
+    const receipt = try ensuring(reach(() => chain.receipt(entry.operationRef)), sync(() => chain.close()))
+    if (receipt === "unresolved") return operation
+    provide machine(entry) {
+      try allowed((try Machine).send({
+        type: "settleWallet", operationRef: entry.operationRef, chainId: net.chainId, commitment: entry.intent.commitment, receiptFinal: true,
+      }), "The receipt does not belong to this operation.")
+    }
+    try reach(() => writeJournalRow(journal, operation.intentId, "outcome", { intentId: operation.intentId, receipt } satisfies OperationOutcome))
+    return { ...operation, status: receipt } satisfies WalletOperation
+  }
+
+  effect function journaled(state: Custody) {
+    const rows = try reach(() => listJournal(journal))
+    return rows.flatMap((row) => operationOf(row, state)).sort((a, b) => b.reservedAt - a.reservedAt)
+  }
+
+  effect function activity() {
+    const state = try serving()
+    const operations = try journaled(state)
+    return try Effect.forEach(operations, effect (operation, index) => {
+      if (operation.status !== "pending" || index >= 12) return operation
+      return settle(operation, state) catch () => operation
+    })
+  }
+
+  effect function reconcile(intentId: string) {
+    const state = try serving()
+    const operation = (try journaled(state)).find((held) => held.intentId === intentId)
+    if (operation === undefined) throw new WalletRefused({ reason: "There is no matching operation in this wallet's journal." })
+    return operation.status === "pending" ? try settle(operation, state) : operation
+  }
+
+  effect function familyHoldings(net: NetworkPlan, state: Custody) {
+    const chain = try reader(net, state)
+    return try ensuring(effect {
+      const scope = { ownerAccount: accountOf(state, net.family), chains: [net.chainId], readKind: "ReadBalances" as const }
+      const native: WalletHolding = {
+        family: net.name, chainId: chain.chainId, asset: "native", symbol: net.nativeSymbol, decimals: net.nativeDecimals,
+        atomicUnits: try reach(() => chain.nativeBalance()),
+      }
+      const tokens = (try reach(() => chain.tokenHoldings(net.tokens))).map((token): WalletHolding =>
+        ({ family: net.name, chainId: chain.chainId, asset: token.address, symbol: token.symbol, decimals: token.decimals, atomicUnits: token.atomicUnits }))
+      return [native, ...tokens].filter((holding) =>
+        walletObservationMatches(scope, { sourceAccount: chain.account, onChain: holding.chainId, observedKind: "ReadBalances", assetId: holding.asset }))
+    }, sync(() => chain.close()))
+  }
+
+  effect function holdings() {
+    const state = try serving()
+    const now = try Clock.currentTimeMillis
+    if (read.holdings !== undefined && now - read.at < holdingsTtlMs) return read.holdings
+    const each = try Effect.forEach(families, effect (family) => {
+      const net = networkPlan(host.setting, family)
+      const unread: WalletFamilyName[] = []
+      if (net === undefined) return { rows: [] as WalletHolding[], unread }
+      const rows = familyHoldings(net, state) catch () => undefined
+      return rows === undefined ? { rows: [], unread: [net.name] } : { rows, unread }
+    }, { concurrency: 2 })
+    const found: WalletHoldings = { holdings: each.flatMap((family) => family.rows), unread: each.flatMap((family) => family.unread) }
+    read.at = now
+    read.holdings = found
+    return found
+  }
+
+  effect function context() {
+    const state = try custody.get()
+    if (!walletServes(state)) return undefined
+    return {
+      status: statusOf(state),
+      holdings: holdings() catch (): WalletHoldings | undefined => undefined,
+      requests: (try desk.get()).waiting.map(rowOf),
+      operations: (journaled(state) catch (): WalletOperation[] => []).slice(0, 5),
+    } satisfies WalletContext
+  }
+
+  return { activity, reconcile, holdings, context }
+}
+
+export effect function openWallet(host: WalletHost) {
+  const base = try walletCustody(host)
+  const { journalEntry, ...asking } = walletDesk(base, walletTerms(host))
+  return { status: base.status, create: base.create, switchTo: base.switchTo, ...asking, ...walletJournal(base, journalEntry) }
+}
+
+export type Wallet = Effect.Success<ReturnType<typeof openWallet>>

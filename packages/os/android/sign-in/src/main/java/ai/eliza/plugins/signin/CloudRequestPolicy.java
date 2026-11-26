@@ -1,8 +1,9 @@
-// spec/os/signIn/cloudRequests.md, "A cloud table is loaded only when every route is a device route the page may use"; spec/os/signIn/cloudRequests.md, "A session-only route is sent only with a live account session, never with the device key"; spec/os/signIn/cloudRequests.md, "A request is sent only to the deployment origin, admitted by the gate, with headers its route admits"; spec/os/signIn/cloudRequests.md, "A 401 goes to the credential with its reason and is not retried"; spec/os/signIn/cloudRequests.md, "A reply body up to 8 MiB returns inline, up to 64 MiB through a one-use cache grant, and a larger one is refused"; spec/os/signIn/cloudRequests.md, "Only an HTTPS page on the web host or a listed payment or consent host opens, in the system browser"
+// spec/os/signIn/cloudRequests.md, "A cloud table is loaded only when every route is a device route the page may use"; spec/os/signIn/cloudRequests.md, "A session-only route is sent only with a live account session, never with the device key"; spec/os/signIn/cloudRequests.md, "A mail or calendar route is sent only with the lease, never with the device key"; spec/os/signIn/cloudRequests.md, "A request is sent only to the deployment origin, admitted by the gate, with headers its route admits"; spec/os/signIn/cloudRequests.md, "A 401 goes to the credential with its reason and is not retried"; spec/os/signIn/cloudRequests.md, "A reply body up to 8 MiB returns inline, up to 64 MiB through a one-use cache grant, and a larger one is refused"; spec/os/signIn/cloudRequests.md, "Only an HTTPS page on the web host or a listed payment or consent host opens, in the system browser"
 package ai.eliza.plugins.signin;
 
 import ai.eliza.os.agent.RouteGate;
 import ai.eliza.os.agent.RouteGate.Method;
+import ai.eliza.plugins.securestore.nativeonly.MailReadRoutes;
 import ai.eliza.plugins.signin.CredentialPolicy.Reason;
 import ai.eliza.plugins.signin.CredentialPolicy.RejectedOn;
 import java.net.URI;
@@ -12,17 +13,18 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.function.Function;
 import java.util.regex.Pattern;
 
 public final class CloudRequestPolicy {
   public static final long INLINE_LIMIT = 8_388_608L;
   public static final long REPLY_LIMIT = 67_108_864L;
-  public static final List<String> PROVIDER_HOSTS = List.of("checkout.stripe.com", "billing.stripe.com", "accounts.google.com");
+  public static final List<String> PROVIDER_HOSTS = List.of("checkout.stripe.com", "billing.stripe.com", "invoice.stripe.com", "accounts.google.com");
   public static final String IDEMPOTENCY_KEY = "Idempotency-Key", IF_MATCH = "If-Match", IF_NONE_MATCH = "If-None-Match", ACCEPT = "Accept", AUTHORIZATION = "Authorization";
   public static final List<String> BASE_HEADERS = List.of(AUTHORIZATION, "Content-Type", "X-Request-ID", "Traceparent", "Tracestate");
 
-  public enum Auth { PUBLIC, KEY_OR_SESSION, SESSION, SESSION_FAMILY, FRESH_SESSION, STEP_UP }
-  public enum Refusal { NO_ORIGIN, NOT_LISTED, BODY_TOO_LARGE, HEADER_REFUSED, SIGN_IN_REQUIRED, REAUTH_REQUIRED }
+  public enum Auth { PUBLIC, KEY_OR_SESSION, MAIL, SESSION, SESSION_FAMILY, FRESH_SESSION, STEP_UP }
+  public enum Refusal { NO_ORIGIN, NOT_LISTED, BODY_TOO_LARGE, HEADER_REFUSED, SIGN_IN_REQUIRED, MAIL_LEASE_UPGRADE_REQUIRED, REAUTH_REQUIRED }
   public enum Handoff { INLINE_BODY, CACHED_BODY, REPLY_TOO_LARGE }
   public enum Scheme { HTTPS, HTTP, OTHER_SCHEME }
 
@@ -30,21 +32,24 @@ public final class CloudRequestPolicy {
     public DeviceRoute { path = List.copyOf(path); headers = List.copyOf(headers); }
   }
 
-  public record Holding(int key, boolean sessionHeld, boolean sessionLive) {}
+  public record Holding(int key, boolean sessionHeld, boolean sessionLive, boolean leaseHeld, boolean leaseLive) {}
 
-  public sealed interface Attach permits Bare, WithKey, WithSession {}
+  public sealed interface Attach permits Bare, WithKey, WithSession, WithLease {}
   public record Bare() implements Attach {}
   public record WithKey(int version) implements Attach {}
   public record WithSession(int version) implements Attach {}
+  public record WithLease(int version) implements Attach {}
 
-  public sealed interface CallPlan permits Send, RefreshSessionFirst, Refuse {}
+  public sealed interface CallPlan permits Send, RefreshSessionFirst, RefreshLeaseFirst, Refuse {}
   public record Send(Attach attach) implements CallPlan {}
   public record RefreshSessionFirst() implements CallPlan {}
+  public record RefreshLeaseFirst() implements CallPlan {}
   public record Refuse(Refusal why) implements CallPlan {}
 
-  public sealed interface Report permits NoReport, KeyRejected, SessionRejected {}
+  public sealed interface Report permits NoReport, KeyRejected, LeaseRejected, SessionRejected {}
   public record NoReport() implements Report {}
   public record KeyRejected(int version, Reason reason, RejectedOn on) implements Report {}
+  public record LeaseRejected(int version, Reason reason) implements Report {}
   public record SessionRejected() implements Report {}
 
   public record Origin(Scheme scheme, boolean loopback, boolean hasPath, boolean hasQueryOrFragment) {}
@@ -65,6 +70,24 @@ public final class CloudRequestPolicy {
     RouteGate parsed = new RouteGate();
     boolean accepted = consumerTable != null && parsed.loadWire(consumerTable) && cloudTableAccepted(parsed.served());
     gate.load(accepted ? parsed.served() : List.of());
+  }
+
+  private CloudRequestPolicy(List<RouteGate.Group> routes) {
+    gate.load(cloudTableAccepted(routes) ? routes : List.of());
+  }
+
+  static CloudRequestPolicy forMailReads() { return forMailReads(MailReadRoutes::queriesFor); }
+
+  static CloudRequestPolicy forMailReads(Function<String, List<String>> queriesFor) {
+    List<RouteGate.Route> reads = new ArrayList<>();
+    for (DeviceRoute route : DEVICE_ROUTES) {
+      List<String> keys = queriesFor.apply("/" + String.join("/", route.path()));
+      if (route.method() != Method.GET || !mailRoute(route) || keys == null) continue;
+      reads.add(new RouteGate.Route(Method.GET, RouteGate.Delivery.BUFFERED,
+        route.path().stream().map(RouteGate.Piece::new).toList(),
+        keys.stream().map(key -> new RouteGate.QueryRule(key, RouteGate.Accept.ANY)).toList(), null));
+    }
+    return new CloudRequestPolicy(List.of(new RouteGate.Group(List.of(google()), "", reads)));
   }
 
   public boolean loaded() { return gate.table() == RouteGate.Table.LOADED; }
@@ -128,9 +151,17 @@ public final class CloudRequestPolicy {
     return auth == Auth.SESSION || auth == Auth.SESSION_FAMILY || auth == Auth.FRESH_SESSION || auth == Auth.STEP_UP;
   }
 
-  public static CallPlan attachFor(Holding h, Auth auth) {
+  public static boolean mailRoute(DeviceRoute d) { return d.auth() == Auth.MAIL; }
+
+  public static CallPlan attachFor(Holding h, DeviceRoute d) {
+    Auth auth = d.auth();
     if (auth == Auth.PUBLIC) return new Send(new Bare());
     if (sessionOnly(auth)) return h.sessionLive() ? new Send(new WithSession(h.key())) : h.sessionHeld() ? new RefreshSessionFirst() : new Refuse(Refusal.REAUTH_REQUIRED);
+    if (mailRoute(d)) {
+      if (h.leaseLive()) return new Send(new WithLease(h.key()));
+      if (h.leaseHeld()) return new RefreshLeaseFirst();
+      return new Refuse(h.key() >= 1 ? Refusal.MAIL_LEASE_UPGRADE_REQUIRED : Refusal.SIGN_IN_REQUIRED);
+    }
     return h.key() >= 1 ? new Send(new WithKey(h.key())) : new Refuse(Refusal.SIGN_IN_REQUIRED);
   }
 
@@ -164,7 +195,7 @@ public final class CloudRequestPolicy {
     if (a.verdict() == RouteGate.Verdict.TOO_LARGE) return new Refuse(Refusal.BODY_TOO_LARGE);
     if (a.verdict() != RouteGate.Verdict.ADMITTED || found.size() != 1) return new Refuse(Refusal.NOT_LISTED);
     for (String header : headers) if (!headerAllowed(d, header)) return new Refuse(Refusal.HEADER_REFUSED);
-    return attachFor(h, d.auth());
+    return attachFor(h, d);
   }
 
   public static boolean isAccountRead(DeviceRoute d) { return d.method() == Method.GET && d.path().equals(List.of("api", "v1", "user")); }
@@ -176,6 +207,7 @@ public final class CloudRequestPolicy {
     return switch (attach) {
       case WithKey k -> new KeyRejected(k.version(), credentialReasonOf(reason), isAccountRead(d) ? RejectedOn.ACCOUNT_READ : RejectedOn.OTHER_REQUEST);
       case WithSession s -> new SessionRejected();
+      case WithLease l -> new LeaseRejected(l.version(), credentialReasonOf(reason));
       case Bare b -> new NoReport();
     };
   }
@@ -230,9 +262,11 @@ public final class CloudRequestPolicy {
 
   private static DeviceRoute keyed(Method method, List<String> path, String header) { return new DeviceRoute(method, path, Auth.KEY_OR_SESSION, List.of(header)); }
 
+  private static DeviceRoute sessionHeaders(Method method, List<String> path, String header) { return new DeviceRoute(method, path, Auth.SESSION, List.of(header)); }
+
   private static List<DeviceRoute> deviceRoutes() {
     Method get = Method.GET, post = Method.POST, patch = Method.PATCH, delete = Method.DELETE;
-    Auth pub = Auth.PUBLIC, key = Auth.KEY_OR_SESSION, session = Auth.SESSION, fresh = Auth.FRESH_SESSION, stepUp = Auth.STEP_UP;
+    Auth pub = Auth.PUBLIC, key = Auth.KEY_OR_SESSION, mail = Auth.MAIL, session = Auth.SESSION, fresh = Auth.FRESH_SESSION, stepUp = Auth.STEP_UP;
     return List.of(
       route(get, List.of("api", "public", "service"), pub),
       route(get, api("auth", "methods"), pub),
@@ -268,8 +302,10 @@ public final class CloudRequestPolicy {
       route(post, api("app-auth", "mobile", "token"), pub),
       route(post, api("app-auth", "mobile", "ack"), pub),
       route(post, api("app-auth", "mobile", "google"), pub),
-      route(post, api("app-auth", "mobile", "renew"), key),
-      keyed(delete, api("api-keys", "current"), DeviceKeyClient.RENEWED_CREDENTIAL),
+      route(post, api("app-auth", "mobile", "lease"), pub),
+      route(delete, api("app-auth", "mobile", "lease"), pub),
+      route(post, api("app-auth", "mobile", "renew"), pub),
+      route(delete, api("api-keys", "current"), key),
       route(get, api("subscriptions", "plans"), pub),
       route(get, api("subscription", "entitlement-keys"), pub),
       route(get, api("billing", "limits"), key),
@@ -294,6 +330,7 @@ public final class CloudRequestPolicy {
       route(get, api("billing", "invoices"), key),
       route(get, api("billing", "invoices", ":invoiceId"), key),
       route(get, api("models"), key),
+      route(post, api("decisions"), key),
       keyed(post, api("chat", "completions"), IDEMPOTENCY_KEY),
       route(post, api("voice", "tts"), key),
       route(post, api("voice", "stt"), key),
@@ -309,28 +346,29 @@ public final class CloudRequestPolicy {
       keyed(post, api("maps", "routes"), IDEMPOTENCY_KEY),
       route(post, api("maps", "tiles", "viewport"), key),
       keyed(get, api("maps", "tiles", ":z", ":x", ":y"), IDEMPOTENCY_KEY),
-      route(get, google("status"), key),
-      route(get, google("accounts"), key),
-      route(post, google("connect", "initiate"), key),
+      route(get, google("status"), mail),
+      route(get, google("accounts"), mail),
+      route(post, google("connect", "initiate"), session),
       route(post, google("connect", "native"), key),
-      route(post, google("disconnect"), key),
-      route(get, google("gmail", "triage"), key),
-      route(get, google("gmail", "search"), key),
-      route(get, google("gmail", "read"), key),
+      route(post, google("disconnect"), session),
+      route(get, google("gmail", "triage"), mail),
+      route(get, google("gmail", "search"), mail),
+      route(get, google("gmail", "read"), mail),
       route(get, google("gmail", "inbox-v1", "arrival"), key),
-      route(get, google("gmail", "inbox-v1", "capabilities"), key),
-      route(get, google("gmail", "inbox-v1", "thread"), key),
-      route(get, google("gmail", "inbox-v1", "attachment"), key),
-      route(get, google("gmail", "inbox-v1", "drafts"), key),
-      route(get, google("gmail", "inbox-v1", "draft"), key),
-      route(post, google("gmail", "inbox-v1", "operations"), key),
-      route(post, google("gmail", "inbox-v1", "operations", ":requestId", "dispatch"), key),
-      route(get, google("gmail", "inbox-v1", "operations", ":requestId"), key),
-      route(get, google("calendar", "calendars"), key),
-      route(get, google("calendar", "feed"), key),
-      route(get, google("calendar", "events", ":eventId"), key),
-      keyed(post, google("calendar", "events"), IDEMPOTENCY_KEY),
-      keyed(patch, google("calendar", "events", ":eventId"), IF_MATCH),
-      keyed(delete, google("calendar", "events", ":eventId"), IF_MATCH));
+      route(get, google("gmail", "inbox-v1", "capabilities"), mail),
+      route(get, google("gmail", "inbox-v1", "history"), mail),
+      route(get, google("gmail", "inbox-v1", "thread"), mail),
+      route(get, google("gmail", "inbox-v1", "attachment"), mail),
+      route(get, google("gmail", "inbox-v1", "drafts"), mail),
+      route(get, google("gmail", "inbox-v1", "draft"), mail),
+      route(post, google("gmail", "inbox-v1", "operations"), session),
+      route(post, google("gmail", "inbox-v1", "operations", ":requestId", "dispatch"), session),
+      route(get, google("gmail", "inbox-v1", "operations", ":requestId"), session),
+      route(get, google("calendar", "calendars"), mail),
+      route(get, google("calendar", "feed"), mail),
+      route(get, google("calendar", "events", ":eventId"), mail),
+      sessionHeaders(post, google("calendar", "events"), IDEMPOTENCY_KEY),
+      sessionHeaders(patch, google("calendar", "events", ":eventId"), IF_MATCH),
+      sessionHeaders(delete, google("calendar", "events", ":eventId"), IF_MATCH));
   }
 }

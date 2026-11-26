@@ -100,7 +100,11 @@ and the socket reuse it: at most once a minute for each origin, never while
 voice is closed, in the background, in a session or on a sensitive
 surface, bounded by 5 s and silent when it fails. The shell's content-free
 startup timings mark each consent and mint request's start, headers, body
-or failure, and a consent sent again.
+or failure, and a consent sent again. A session's marks up to and including
+`ready` are kept apart from its later per-utterance marks, and the first
+session's start is kept apart from later sessions' starts, each with its own
+bound, so neither a long session's utterances nor later warm starts evict how
+a session started.
 
 ```quint
 type CloudAnswer = Answered | Misdirected | Unreachable | Refused({ refusal: Refusal })
@@ -238,8 +242,11 @@ safely: the device stops the session, waits until the stop is confirmed,
 and starts a fresh session under the same key, muted from the start and
 with the speaker mute it had. The unfinished turn ends with nothing heard
 for the capture it began in, anything the old session reports afterwards
-is dropped. A capture requested during replacement waits for the fresh
-muted session before it unmutes it. A reply still
+is dropped. Closing a capture settles once the old session's stop is
+confirmed and the fresh session has started opening, without waiting for
+that open to finish; a capture, reply, or speaker mute requested while it
+opens waits for the fresh muted session first, and a cancelled reply stops
+waiting. A reply still
 playing cannot move to another session, so a mute that would replace the
 session then is refused as `capture-unsettled`. Stopping voice while the
 old session closes joins that stop and opens nothing.

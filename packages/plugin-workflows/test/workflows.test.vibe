@@ -2,23 +2,19 @@
 import { assert, it } from "@effect/vitest"
 import * as KeyValueStore from "effect/persistence/KeyValueStore"
 import { TestClock } from "effect/testing"
-import { activityLabel } from "@elizaos/agent"
+import { activityLabel } from "@elizaos/agent-host"
 import { computeNextCronRunAtMs, ContextRegistry, type ActionResult, type Content, type IAgentRuntime, type JsonObject, type Memory, type Provider } from "@elizaos/core"
 import { activeWorkflowsProvider, workflowAction, workflowInstances, workflowsContext } from "../src/agent.vibe"
 import {
-  keyValueIntentBackend, openWorkflowNotice, parseWorkflowRunDeepLink, resolvePhoneCalendarRange, workflowClient, workflowIntentKey,
-  workflowIntentOwnerPrefix, workflowIntentStore, validatePhoneWorkflowSpec, workflowRecovery, workflowSha, WorkflowLifecycleRejected,
-  type PhoneWorkflowSpec, type WorkflowClient, type WorkflowRequest, type WorkflowRun,
-} from "../src/client/index.vibe"
-import { digestInbox, hostedDigestProtocol, missedRunNowOffers, DIGEST_MISSED_TEXT } from "../src/digests/index.vibe"
-import { checkWorkflowScope as scopeEntry } from "../src/scope.vibe"
-import { importWorkflowSource, publishWorkflowSource, verifyWorkerArtifact, workerArtifactClosure, workerProvenance, SourceRefused, WorkerArtifactRefused } from "../src/worker/index.vibe"
+  keyValueIntentBackend, openWorkflowNotice, parseWorkflowRunDeepLink, revalidateWorkflowApprovalNotice, revalidateWorkflowResultNotice, workflowApprovalNoticeIdentity, workflowResultNoticeIdentity, workflowApprovalProposalId, workflowNoticeReads, resolvePhoneCalendarRange, workflowClient, workflowIntentKey, workflowIntentOwnerPrefix, workflowIntentStore, validatePhoneWorkflowSpec, workflowRecovery, workflowSha, WorkflowLifecycleRejected, type PhoneWorkflowSpec, type WorkflowClient, type WorkflowRequest, type WorkflowRun, digestInbox, hostedDigestProtocol, missedRunNowOffers, DIGEST_MISSED_TEXT, workflowHttpError,
+} from "@elizaos/plugin-workflow-client"
+import { importWorkflowSource, publishWorkflowSource, SourceRefused } from "../src/worker/source.vibe"
+import { verifyWorkerArtifact, workerArtifactClosure, workerProvenance, WorkerArtifactRefused } from "@elizaos/plugin-workflow-worker"
 import { generatedWorkflows, hostedDigests, openWorkflows, type WorkflowDevicePort, type WorkflowHost, type WorkflowNativeDigests, type WorkflowNotice, type WorkflowSql } from "../src/index.vibe"
 import { inProcessWorkerPort, type WorkflowWorkerPort } from "../src/service/host.vibe"
 import { runtimeWorkflowHost } from "../src/runtime.vibe"
 import { EARLIER_RUN_STOPPED_TEXT } from "../src/service/prior.vibe"
 import { workflowRoutes } from "../src/routes.vibe"
-import { workflowHttpError } from "../src/client/workflow-client.vibe"
 import type { ManagedGoogleReads } from "../src/service/google.vibe"
 
 module node {
@@ -27,7 +23,7 @@ module node {
   import { mkdtemp, mkdir, readdir, realpath, rm, writeFile, chmod } from "node:fs/promises"
   import { tmpdir } from "node:os"
   import { join } from "node:path"
-  import type { LocalRoute } from "@elizaos/agent/routes"
+  import type { LocalRoute } from "@elizaos/agent-host"
   import type { WorkflowSql } from "../src/index.vibe"
 
   export async function plant(sql: WorkflowSql, statements: readonly string[]): Promise<void> {
@@ -229,10 +225,26 @@ it.effect('Show Workflows while a workflow call runs, without changing which cal
   assert.deepStrictEqual([label, workflowAction.contexts], ["Using Workflows", ["general", "automation", "tasks", "agent_internal"]])
 })
 
-it.live('Recover one reviewed run across an interrupted reply (spec/workflow/index.md, "Story: Recover one reviewed run across an interrupted reply"; spec/workflow/intents.md, "Story: Preserve the owner’s pending action across transport uncertainty"; spec/workflow/authoring.md, "Story: Review the exact typed workflow that my agent will save")', effect () => {
+it.live('Every workflow request reaches the drafting model, which refuses what the typed steps cannot do and drafts the rest (spec/workflow/authoring.md, "A draft uses the advertised operation catalog and only earlier step outputs")', effect () => {
+  provide KeyValueStore.layerMemory {
+    const asked: string[] = []
+    const answer = (prompt: string) => prompt.includes("call Maya")
+      ? JSON.stringify({ unsupported: "Workflows here cannot place phone calls." })
+      : JSON.stringify({ version: 1, name: "Greeting", description: "", steps: [{ id: "text", kind: "Read", operation: "supplied_text", text: "good morning" }] })
+    const rig = try harness({ draft: (prompt) => { asked.push(prompt); return answer(prompt) } })
+    const catalog = try rig.client.phoneCatalog()
+    const refused = try Effect.flip(rig.client.generatePhone("call Maya at noon", catalog, ["supplied_text"]))
+    const drafted = try rig.client.generatePhone("give me a good morning line", catalog, ["supplied_text"])
+    try check(() => assert.deepStrictEqual(
+      [asked.length, refused._tag, JSON.stringify(refused).includes("cannot place phone calls"), drafted.name, drafted.steps.map((step) => step.operation)],
+      [2, "WorkflowResponseInvalid", true, "Greeting", ["supplied_text"]],
+    ))
+  }
+})
+
+it.live('Recover one reviewed run across an interrupted reply (spec/workflow/index.md, "Story: Recover one reviewed run across an interrupted reply"; spec/workflow/intents.md, "Story: Preserve the owner’s pending action across transport uncertainty"; spec/workflow/authoring.md, "Story: Review the exact typed workflow that my agent will save"; spec/workflow/notices.md, "A finished result is offered only for its own run, while its owner is current, under one identity per scope, run and version")', effect () => {
   provide KeyValueStore.layerMemory {
     const rig = try harness()
-    try check(() => assert.deepStrictEqual([scopeEntry("call Maya at noon", ["supplied_text"]).refused, scopeEntry("summarize the notes on the website redesign", []).refused], [true, false]))
     const { catalog, receipt, mutationId, specDigest } = try saved(rig, greeting)
     const replay = try rig.client.savePhone(greeting, catalog, { mutationId, specDigest, compilerRevision: catalog.compilerRevision })
     try check(() => assert.deepStrictEqual(replay, receipt))
@@ -277,8 +289,22 @@ it.live('Recover one reviewed run across an interrupted reply (spec/workflow/ind
     const notice = rig.notices.find((posted) => posted.kind === "result" && posted.route.runId === run.id)
     const route = notice === undefined ? undefined : parseWorkflowRunDeepLink(notice.deepLink)
     try check(() => assert.deepStrictEqual(route, { runId: run.id, workflowId: receipt.workflowId, versionId: receipt.versionId }))
-    const reopened = try openWorkflowNotice(rig.client, { scope: "s", origin: "agent:test", ownerId: owner, agentId: "agent", ...route ?? { runId: "", workflowId: "", versionId: "" } })
+    const scoped = { scope: "s", origin: "agent:test", ownerId: owner, agentId: "agent", ...route ?? { runId: "", workflowId: "", versionId: "" } }
+    const reopened = try openWorkflowNotice(rig.client, scoped)
     try check(() => assert.deepStrictEqual(reopened.kind === "run" ? reopened.run.id : reopened.reason, run.id))
+    const identity = try workflowResultNoticeIdentity(scoped)
+    const again = try workflowResultNoticeIdentity(scoped)
+    const otherOrigin = try workflowResultNoticeIdentity({ ...scoped, origin: "agent:cloud" })
+    const otherVersion = try workflowResultNoticeIdentity({ ...scoped, versionId: renamed.versionId })
+    const reads = workflowNoticeReads(rig.client)
+    const decisions = [
+      try revalidateWorkflowResultNotice(scoped, reads, () => true),
+      try revalidateWorkflowResultNotice({ ...scoped, versionId: renamed.versionId }, reads, () => true),
+      try revalidateWorkflowResultNotice(scoped, reads, () => false),
+    ]
+    try check(() => assert.deepStrictEqual(
+      [identity, identity.id === otherOrigin.id, identity.bindingHash === otherOrigin.bindingHash, identity.id === otherVersion.id, decisions],
+      [again, true, false, false, ["offer", "withdraw", "stale"]]))
   }
 })
 
@@ -421,6 +447,20 @@ it.live('Change the workflow I named in my own words (spec/workflow/lifecycle.md
       ["WORKFLOW_NOT_FOUND", { kind: "handler_error", boundary: "handler", code: "WORKFLOW_NOT_FOUND", retryable: true }],
     ],
     names: ["Backup workflow", "Fresh one", "Garden digest", "Mom’s birthday", "Morning brief", "Parents' Day", "Reading list", "Twin", "Twin"],
+  }))
+  const shown = (result: ActionResult) => [result.userFacingText, result.verifiedUserFacing]
+  const askedToBeReminded = try say("create a workflow called Plant check that reminds me to water the plants", { action: "create", name: "Plant check" })
+  const noteOf = (result: ActionResult) => [result.text?.slice(result.text.indexOf(" It cannot notify")), result.userFacingText]
+  try check(() => assert.deepStrictEqual({
+    sameNoteEitherWay: noteOf(askedToBeReminded),
+    ran: [/^\[WORKFLOW\]\n\{.*\}\n\[\/WORKFLOW\]$/u.test(ran.userFacingText ?? ""), ran.verifiedUserFacing, ran.userFacingEffectReceiptIds?.length, ran.text?.startsWith("Started Garden digest.")],
+    told: [renamed, created, listed, found].map(shown),
+    created: created.text?.includes("It cannot notify, message or remind the owner"),
+  }, {
+    ran: [true, true, 1, true],
+    told: [[undefined, undefined], [undefined, undefined], [undefined, undefined], [undefined, undefined]],
+    created: true,
+    sameNoteEitherWay: noteOf(created),
   }))
 })
 
@@ -655,7 +695,7 @@ export default async function (ctx: WorkflowContext) {
 }
 `
 
-it.live('Turn on generated code only after review and resume it without repeating an effect (spec/workflow/generated.md, "Story: Turn on generated code only after I review exactly what it does"; spec/workflow/generated.md, "Story: Resume generated code after a wait without repeating what it already did"; spec/workflow/generated.md, "A draft the check refuses is repaired once before it is refused"; spec/workflow/lifecycle.md, "A retained mutation has the same receipt after later definition changes")', effect () => {
+it.live('Turn on generated code only after review and resume it without repeating an effect (spec/workflow/generated.md, "Story: Turn on generated code only after I review exactly what it does"; spec/workflow/generated.md, "Story: Resume generated code after a wait without repeating what it already did"; spec/workflow/generated.md, "A draft the check refuses is repaired once before it is refused"; spec/workflow/lifecycle.md, "A retained mutation has the same receipt after later definition changes"; spec/workflow/notices.md, "A pending approval is offered again only while its run is unchanged and unsettled"; spec/workflow/notices.md, "A finished result is offered only for its own run, while its owner is current, under one identity per scope, run and version")', effect () => {
   const asked: string[] = []
   const leaky = `import { readFileSync } from "node:fs"\n${generatedSource}`
   const repairing = try harness({ draft: (prompt) => { asked.push(prompt); return JSON.stringify({ name: "Summary", description: "", source: asked.length === 1 ? leaky : generatedSource }) } })
@@ -685,8 +725,20 @@ it.live('Turn on generated code only after review and resume it without repeatin
   const run = try rig.client.run(receipt.workflowId, on.versionId, () => succeed(undefined))
   const asking = try settled(rig.client, run, (found) => found.status === "waiting-approval")
   const approval = (try rig.client.approvals(asking))?.approvals[0]
-  if (approval === undefined) return try die(new Error("The generated approval was not requested"))
+  if (approval?.expiresAt === undefined) return try die(new Error("The generated approval was not requested"))
+  const route = { scope: "alpha-phone", origin: "agent:local", ownerId: "organization:owner", agentId: "agent",
+    workflowId: asking.workflowId, runId: asking.id, versionId: asking.versionId }
+  const binding = try workflowApprovalNoticeIdentity(route, workflowApprovalProposalId(approval))
+  const notice = { ...binding, route, expiresAt: approval.expiresAt }
+  const noticeReads = workflowNoticeReads(rig.client)
+  const pending = try revalidateWorkflowApprovalNotice(notice, noticeReads, () => true)
+  const changed = try revalidateWorkflowApprovalNotice({ ...notice, expiresAt: notice.expiresAt + 1 }, noticeReads, () => true)
+  const staleOwner = try revalidateWorkflowApprovalNotice(notice, noticeReads, () => false)
+  const unfinishedResult = try revalidateWorkflowResultNotice(route, noticeReads, () => true)
+  try check(() => assert.deepStrictEqual([pending, changed, staleOwner, unfinishedResult], ["resume", "withdraw", "stale", "withdraw"]))
   try rig.client.decideApproval(asking, approval, true)
+  const decided = try revalidateWorkflowApprovalNotice(notice, noticeReads, () => true)
+  try check(() => assert.strictEqual(decided, "withdraw"))
   const waiting = try settled(rig.client, asking, (found) => found.status === "waiting-event")
   const early = try Effect.flip(rig.request(`/api/workflow/executions/${waiting.id}/signals/other`, { payload: null }))
   try check(() => assert.equal(early._tag === "WorkflowHttpError" ? early.status : 0, 409))

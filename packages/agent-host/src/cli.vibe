@@ -1,0 +1,156 @@
+// spec/agent/plugins/bundle.md, "A bundle is built only when its load smoke registered each action once under a non-empty name, each promoted action under a listed top-level umbrella"; spec/agent/host/process.md, "The exit code is the boot failure's code, else 0 after a clean release and 1 after a failed one"; spec/agent/host/process.md, "The first signal stops the runtime at once, and a repeated signal joins that stop"; spec/agent/host/launch.md, "Each boot failure has one exit code, and every code outside the table is a crash"; spec/agent/plugins/profile.md, "Host runtime services register with storage before every listed plugin, never under an agent service's name, and a pinned worker is the workflow-worker service"
+import * as NodeRuntime from "@effect/platform-node/NodeRuntime"
+import * as NodeServices from "@effect/platform-node/NodeServices"
+import { installNodeRuntimeAdapters } from "@elizaos/core-node"
+import { Stdio } from "effect/Stdio"
+installNodeRuntimeAdapters()
+import { AGENT_EXIT_CODES, exitCode, readLaunch, LaunchCredentialMissing } from "./host/launch.vibe"
+import { LaunchDocumentRejected } from "@elizaos/agent"
+import { startAgent, AgentBootFailed, AgentStoppedInBoot } from "./host/process.vibe"
+import { configureMobileDns } from "./host/mobile-dns.vibe"
+import { bundledPluginMap, BundleEntryRefused, type BundledEntry } from "./plugins/profile.vibe"
+import type { ModuleContext, ModuleFactory } from "./host/module.vibe"
+import type { ServiceClass } from "@elizaos/core"
+import { smokeBoot, SmokeNotReleased } from "./bundle/smoke.vibe"
+
+const crashed = 2
+
+module node {
+  import { lstat, readFile } from "node:fs/promises"
+  import { logger } from "@elizaos/core"
+  import { readManifest } from "./bundle/manifest.schema.vibe"
+  import type { DeviceStorageSnapshot } from "./storage/index.vibe"
+
+  export async function bundledSnapshot(runtimeUrl: string): Promise<DeviceStorageSnapshot | undefined> {
+    const file = new URL("./pglite-migrated.bin", runtimeUrl)
+    try {
+      const entry = await lstat(file)
+      if (!entry.isFile() || entry.size > 64 * 1024 * 1024) throw new Error("Invalid agent bundle snapshot")
+    } catch (error) {
+      if (typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT") return undefined
+      throw error
+    }
+    const manifest = readManifest(await readFile(new URL("./manifest.json", runtimeUrl), "utf8"))
+    const bytes = await readFile(file)
+    return { schemaVersion: manifest.schemaVersion, bytes }
+  }
+
+  export function publishBundleActions(actions: readonly { name: string }[]): void {
+    process.send?.({ kind: "bundleActionRegistry", actions: actions.map(({ name }) => name).sort() })
+  }
+
+  export function reserveStdout(): (line: string) => Promise<void> {
+    const write = process.stdout.write.bind(process.stdout)
+    process.stdout.write = process.stderr.write.bind(process.stderr)
+    return (line) => new Promise((done, fail) => write(`${line}\n`, (error) => error ? fail(error) : done()))
+  }
+
+  export function exitOnUncaught(code: number): void {
+    for (const event of ["uncaughtException", "unhandledRejection"] as const) {
+      process.on(event, (error: unknown) => {
+        logger.error({ src: "agent", event, error: String(error) }, "The agent crashed")
+        process.exit(code)
+      })
+    }
+  }
+}
+import { bundledSnapshot, exitOnUncaught, publishBundleActions, reserveStdout } from node
+
+type PlatformServices = Layer.Success<typeof NodeServices.layer>
+
+export interface ResidentHost {
+  readonly stateDirectory: string
+  readonly environment: Readonly<Record<string, string>>
+}
+
+interface AgentCliEntries {
+  readonly bundled: readonly BundledEntry[]
+  readonly productPlugin?: string | undefined
+  readonly runtimeServices?: (host: ResidentHost) => readonly ServiceClass[]
+}
+
+export type AgentCli<R = never> = AgentCliEntries & (
+  | { readonly hostModules?: ReadonlyMap<string, ModuleFactory<PlatformServices>>; readonly hostServices?: undefined }
+  | { readonly hostModules: ReadonlyMap<string, ModuleFactory<R | PlatformServices>>; readonly hostServices: (host: ResidentHost) => Layer.Layer<R, never, PlatformServices> }
+)
+
+function hostedNames<R>(cli: AgentCli<R>): ReadonlySet<string> {
+  return new Set(cli.hostModules?.keys() ?? [])
+}
+
+function residentModules<R>(cli: AgentCli<R>, host: ResidentHost): ReadonlyMap<string, ModuleFactory<never>> | undefined {
+  if (cli.hostModules === undefined) return undefined
+  if (cli.hostServices === undefined) {
+    return new Map([...cli.hostModules].map(([name, factory]): [string, ModuleFactory<never>] =>
+      [name, (context: ModuleContext) => Effect.provide(factory(context), NodeServices.layer)]))
+  }
+  const services = Layer.provide(cli.hostServices(host), NodeServices.layer)
+  return new Map([...cli.hostModules].map(([name, factory]): [string, ModuleFactory<never>] =>
+    [name, (context: ModuleContext) => Effect.provide(Effect.provide(factory(context), services), NodeServices.layer)]))
+}
+
+let released: number | undefined
+
+effect function serve<R>(cli: AgentCli<R>) {
+  configureMobileDns() catch effect () => { throw new AgentBootFailed({ phase: "Config" }) }
+  const input = try readLaunch()
+  const resident: ResidentHost = { stateDirectory: input.stateDirectory, environment: input.launch.environment ?? {} }
+  const hostModules = residentModules(cli, resident)
+  const runtimeServices = cli.runtimeServices?.(resident)
+  const bundled = try bundledPluginMap(cli.bundled, hostedNames(cli))
+  const snapshot = try tryPromise({
+    try: () => bundledSnapshot(import.meta.url),
+    catch: () => new AgentBootFailed({ phase: "Storage" }),
+  })
+  const agent = try acquireRelease(
+    startAgent({ ...input, bundled, ...(hostModules === undefined ? {} : { hostModules }), ...(runtimeServices === undefined ? {} : { runtimeServices }), ...(snapshot === undefined ? {} : { snapshot }) }),
+    (agent) => map(promise(() => agent.stop()), (code) => { released = code }),
+    { interruptible: true },
+  )
+  try sync(() => publishBundleActions(agent.runtime.actions))
+  try never
+}
+
+effect function smoke<R>(cli: AgentCli<R>, arguments_: readonly string[]) {
+  const [, stateFlag, stateDirectory] = arguments_
+  if (arguments_.length !== 3 || stateFlag !== "--state" || !stateDirectory) throw new LaunchDocumentRejected()
+  const writeLine = try sync(reserveStdout)
+  const bundled = try bundledPluginMap(cli.bundled, hostedNames(cli))
+  const resident: ResidentHost = { stateDirectory, environment: {} }
+  const hostModules = residentModules(cli, resident)
+  const runtimeServices = cli.runtimeServices?.(resident)
+  const report = try smokeBoot({
+    bundled, stateDirectory, productPlugin: cli.productPlugin,
+    ...(hostModules === undefined ? {} : { hostModules }),
+    ...(runtimeServices === undefined ? {} : { runtimeServices }),
+    plugins: [...bundled.keys()].filter((name) => name !== cli.productPlugin),
+  })
+  try promise(() => writeLine(JSON.stringify(report)))
+}
+
+effect function main<R>(cli: AgentCli<R>) {
+  const io = try Stdio
+  const arguments_ = try io.args
+  if (arguments_[0] === "smoke") return try smoke(cli, arguments_)
+  return try serve(cli)
+}
+
+function exitWith(gone: Exit.Exit<unknown, unknown>): number {
+  if (Exit.isSuccess(gone) || Cause.hasInterruptsOnly(gone.cause)) return released ?? AGENT_EXIT_CODES.clean
+  const error = Cause.squash(gone.cause)
+  if (error instanceof LaunchCredentialMissing) return AGENT_EXIT_CODES.credential
+  if (error instanceof AgentBootFailed) return exitCode(error.phase)
+  if (error instanceof SmokeNotReleased || error instanceof AgentStoppedInBoot) return error.code
+  if (error instanceof BundleEntryRefused) return AGENT_EXIT_CODES.config
+  if (typeof error === "object" && error !== null && "_tag" in error
+      && (error._tag === "LaunchDocumentRejected" || error._tag === "LaunchFrameRejected")) return AGENT_EXIT_CODES.config
+  return crashed
+}
+
+export function runAgentCli<R = never>(cli: AgentCli<R>): void {
+  exitOnUncaught(crashed)
+  NodeRuntime.runMain(Effect.provide(Effect.scoped(main(cli)), NodeServices.layer), {
+    disableErrorReporting: true,
+    teardown: (result, settle) => settle(exitWith(result)),
+  })
+}

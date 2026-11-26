@@ -6,7 +6,7 @@ Everything is built on [the stack](AGENTS.md#the-stack): Node 26, pnpm, VibeLang
 
 ## Pull requests
 
-The default branch is the primary branch and the base for every pull request.
+The default branch is `develop`. Open contribution pull requests against `develop`.
 
 - Verify through the application's normal entry points that the top-level
   stories, rules, and Quint models are fully implemented and integrated.
@@ -119,7 +119,10 @@ the UI stories and the design theme before analysis reads their outputs.
 
 Eliza's vendored toolchain incorporates upstream changes through [Vibestack `b7f1827`](https://github.com/lalalune/vibestack/commit/b7f1827be748d4a97aee094d9961371d553012a7), with later [page exploration](https://github.com/lalalune/vibestack/pull/271), [witness verification](https://github.com/lalalune/vibestack/pull/270), [model generation](https://github.com/lalalune/vibestack/pull/272) and [incremental story generation](https://github.com/lalalune/vibestack/pull/269) updates.
 Eliza also carries its product-specific proof rendering, positive guard probes, check phase reporting,
-and workspace and CI integration.
+and workspace and CI integration, and spec companions: `specCompanions` in the root `package.json`,
+read by `specCompanionPaths`, `areaDirs` and `codeDirs` (`vibestack/util.ts`), `mirrorGen`'s owner
+directories (`vibestack/units.ts`) and the companion counting in `vibestack/testing/check.ts`
+(SPEC.md, "One spec tree"). These are not upstream yet; a sync from Vibestack keeps them.
 
 | File | Role |
 |---|---|
@@ -462,7 +465,9 @@ ESLint enforces workspace barrel exports (`barrel/exports` on workspace
 `package.json` manifests, including `publishConfig.exports`, and
 `barrel/no-subpath-imports` on code files, via `withWorkspaceBarrels` in
 `vibestack/eslint.ts` with `allowExports` / `allowImports` ratchets for
-adopting repositories) and the stack boundaries, and in `packages/` the code rules of AGENTS.md, "Writing code": no comment but a spec
+adopting repositories; here the one ratchet keeps `@elizaos/os`'s wildcard
+exports of the Android, AOSP and browser file trees, which downstream Android
+packaging resolves) and the stack boundaries, and in `packages/` the code rules of AGENTS.md, "Writing code": no comment but a spec
 citation or tool directive, no effect hook, timer or `console`, and no inline
 config but a reasoned `eslint-disable` of another rule. `commented` and
 `scheduled` in `eslint.config.js` give each file that still breaks them the
@@ -480,7 +485,7 @@ configured scopes are in `knip.config.js`, `.madgerc`, `.jscpd.json` and
 
 | When | Runs |
 |---|---|
-| Pull request or push to `vibestack`, `develop` or `main` | The tasks of `pnpm verify`, with up to four concurrent Turbo tasks on the hosted runner and `--continue=dependencies-successful`, over eight jobs, beside the Android Node lock check: `simulate-1` to `simulate-4` each simulate the specs assigned by file hash, starting from the spec cache `verify` saved. A shard fills missing receipts from an earlier run of its layout and lockfile. When native simulation starts on a pull request, waiting models can also reuse the validated archive from the push to its exact base commit. An unavailable archive leaves the ordinary computation running. When it creates simulation aggregates, it saves its certified typechecks and simulation results for later runs, including reproducible failures. A visible immutable cache with the same content fingerprint avoids a duplicate save after a late transfer. It transfers the available receipts to verification and reports failures. When the shards finish, `verify` keeps its restored receipts, imports missing keys on which the shards agree, computes the rest, and runs build, types, tests, browser tests, all checks, ESLint, Stylelint, Knip, Madge, jscpd and the selftest of the documents and the examples; beside them all, `selftest-a`, `selftest-b` and `selftest-rest` each run one `selftest:tools` task |
+| Pull request or push to `develop`, `staging` or `main` | The tasks of `pnpm verify`, with up to four concurrent Turbo tasks on the hosted runner and `--continue=dependencies-successful`, over eight jobs, beside the Android Node lock check: `simulate-1` to `simulate-4` each simulate the specs assigned by file hash, starting from the spec cache `verify` saved. A shard fills missing receipts from an earlier run of its layout and lockfile. When native simulation starts on a pull request, waiting models can also reuse the validated archive from the push to its exact base commit. An unavailable archive leaves the ordinary computation running. When it creates simulation aggregates, it saves its certified typechecks and simulation results for later runs, including reproducible failures. A visible immutable cache with the same content fingerprint avoids a duplicate save after a late transfer. It transfers the available receipts to verification and reports failures. When the shards finish, `verify` keeps its restored receipts, imports missing keys on which the shards agree, computes the rest, and runs build, types, tests, browser tests, all checks, ESLint, Stylelint, Knip, Madge, jscpd and the selftest of the documents and the examples; beside them all, `selftest-a`, `selftest-b` and `selftest-rest` each run one `selftest:tools` task |
 | Nightly | Every check fresh under the fixed nightly profile; saved counterexamples become a pull request into the branch the run checked, or the default branch for a tag run. Beside it, the three `selftest:tools` tasks without the selftest's shared tool runs |
 | A `vibestack-v*` tag (`release.yml`) | Build, `pnpm pack`, the prerequisites and `pnpm selftest --only --concurrency=1`, and the tarball attached to a GitHub release |
 

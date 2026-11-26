@@ -238,7 +238,9 @@ it does for the root's own `src/` and `test/`:
 - **`gen/`.** The modules of the owner's specs, and of every spec they
   import, are also written to `<owner>/gen/` under the names they have in the
   root's: `spec/agent/index.md` is `packages/agent/gen/agent.ts`, with
-  `agent.effect.vibe` and `agent.conformance.ts` (its driver's types); `spec/agent/cart.md` is
+  `agent.effect.vibe`; a state machine among its children, such as
+  `spec/agent/approvals.md`, also gets `agent__approvals.conformance.ts`
+  (its driver's types); `spec/agent/cart.md` is
   `agent__cart.ts`; a library `spec/shared/money.md` it imports is
   `shared__money.ts`. A package imports only from its own `gen/`. `pnpm gen`
   and `pnpm install` write it too.
@@ -255,6 +257,17 @@ When its directory differs from the spec area, the root `package.json` maps
 that area to its workspace directory, for example
 `"specOwners": { "workflow": "packages/plugin-workflows" }`. Each directory
 can own one area. The `--owner` argument is the spec area name.
+
+An area's code may span more than one package, for example a browser-safe
+client beside the Node host it was split from. The owner's *companions*
+are listed in the root `package.json`, for example
+`"specCompanions": { "workflow": ["packages/plugin-workflow-client"] }`.
+A companion is checked as its owner is: it gets the same `gen/`, with its
+Effect adapters under its own package name, so a companion's `Machine`
+services are never its owner's; its stages run in its own directory, and
+its tests and drivers count for its owner's specs. A directory is the
+companion of one area and owns none. `pnpm gen --owner <name>` writes the
+companions' `gen/` too.
 
 For an independent owner build, `pnpm gen --owner <name>` reads every spec
 in `spec/<name>/` and follows its imports and links to check references.

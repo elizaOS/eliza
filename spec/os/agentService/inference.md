@@ -9,7 +9,7 @@ keeps one resident native context for speech and the end-of-turn score
 and one session for embeddings. The consumer supplies the native library
 behind the host, under its own identity, and the model storage directory
 the host confines every path to. The resident's engine reaches the host
-through `@elizaos/os/inference`. Text is never generated on the device
+through `@elizaos/os`. Text is never generated on the device
 ([model binding](../../agent/models/binding.md)): the host offers no
 generation operation.
 
@@ -56,49 +56,64 @@ pure def lawAServedRequestFitsItsFrameAndStorage(sameUid: bool, op: HostOp, byte
 Synthesis and transcription run on the resident context, opened on the
 consumer's speech bundle when no model is loaded, and the end-of-turn
 score needs a loaded model. Embeddings run on their own session, opened
-when it is warmed or first used. A pass holds the host until it ends, so
-loading, unloading and the idle or memory-pressure release wait for it.
-A caller hanging up cancels only its own speech pass. A queued speech
-request whose disconnect is observed before admission never starts. An
-explicit cancel request can target the active synthesis or transcription.
-A cancelled pass ends as `CANCELLED`. A pass the native library rejected for
-its input leaves its context; any other failure drops it, so the next
-pass opens it again.
+when it is warmed or first used. A pass holds its own context until it
+ends, so a speech or end-of-turn pass and an embedding pass may run at
+once, while loading, unloading and the idle or memory-pressure release
+free each context only after the pass on it. A caller hanging up cancels
+only its own speech pass. A queued speech request whose disconnect is
+observed before admission never starts. An explicit cancel request can
+target the active synthesis or transcription. A cancelled pass ends as
+`CANCELLED`. A pass the native library rejected for its input leaves its
+context; any other failure drops that context alone, so the next pass on
+it opens it again.
 
 ```quint
 type PassKind = NoPass | SpeechPass | EmbeddingPass | EndOfTurnPass
-type InferenceHost = { resident: bool, embedding: bool, pass: PassKind, cancelAsked: bool }
-pure val initial: InferenceHost = { resident: false, embedding: false, pass: NoPass, cancelAsked: false }
-pure def canLoad(s: InferenceHost): bool = s.pass == NoPass
+type InferenceHost = { resident: bool, embedding: bool, residentPass: PassKind, embeddingPass: bool, cancelAsked: bool }
+pure val initial: InferenceHost = { resident: false, embedding: false, residentPass: NoPass, embeddingPass: false, cancelAsked: false }
+pure def canLoad(s: InferenceHost): bool = s.residentPass == NoPass
 pure def load(s: InferenceHost): InferenceHost = { ...s, resident: true }
-pure def canUnload(s: InferenceHost): bool = s.pass == NoPass
-pure def unload(s: InferenceHost): InferenceHost = { ...s, resident: false, embedding: false }
-pure def canWarmEmbedding(s: InferenceHost, verified: bool): bool = s.pass == NoPass and verified
+pure def canReleaseResident(s: InferenceHost): bool = s.residentPass == NoPass
+pure def releaseResident(s: InferenceHost): InferenceHost = { ...s, resident: false }
+pure def canReleaseEmbedding(s: InferenceHost): bool = not(s.embeddingPass)
+pure def releaseEmbedding(s: InferenceHost): InferenceHost = { ...s, embedding: false }
+pure def canWarmEmbedding(s: InferenceHost, verified: bool): bool = not(s.embeddingPass) and verified
 pure def warmEmbedding(s: InferenceHost, verified: bool): InferenceHost = { ...s, embedding: true }
 pure def canStartPass(s: InferenceHost, kind: PassKind): bool =
-  s.pass == NoPass and kind != NoPass and (kind == EndOfTurnPass implies s.resident)
+  if (kind == EmbeddingPass) not(s.embeddingPass)
+  else kind != NoPass and s.residentPass == NoPass and (kind == EndOfTurnPass implies s.resident)
 pure def startPass(s: InferenceHost, kind: PassKind): InferenceHost =
-  { ...s, pass: kind, resident: s.resident or kind == SpeechPass, embedding: s.embedding or kind == EmbeddingPass }
-pure def canAskCancel(s: InferenceHost): bool = s.pass == SpeechPass and not(s.cancelAsked)
+  if (kind == EmbeddingPass) { ...s, embeddingPass: true, embedding: true }
+  else { ...s, residentPass: kind, resident: s.resident or kind == SpeechPass }
+pure def canAskCancel(s: InferenceHost): bool = s.residentPass == SpeechPass and not(s.cancelAsked)
 pure def cancelsSpeechPass(s: InferenceHost, callerOwnsPass: bool, explicit: bool): bool =
   canAskCancel(s) and (callerOwnsPass or explicit)
 pure def lawAnotherCallerHangingUpCannotCancel(s: InferenceHost): bool = not(cancelsSpeechPass(s, false, false))
 pure def askCancel(s: InferenceHost): InferenceHost = { ...s, cancelAsked: true }
-pure def canFinishPass(s: InferenceHost): bool = s.pass != NoPass
-pure def finishPass(s: InferenceHost): InferenceHost = { ...s, pass: NoPass, cancelAsked: false }
-pure def canFailPass(s: InferenceHost): bool = s.pass != NoPass
-pure def failPass(s: InferenceHost): InferenceHost =
-  { ...s, pass: NoPass, cancelAsked: false,
-    resident: s.resident and s.pass == EmbeddingPass, embedding: s.embedding and s.pass != EmbeddingPass }
+pure def passRuns(s: InferenceHost, kind: PassKind): bool =
+  if (kind == EmbeddingPass) s.embeddingPass else kind != NoPass and s.residentPass == kind
+pure def canFinishPass(s: InferenceHost, kind: PassKind): bool = passRuns(s, kind)
+pure def finishPass(s: InferenceHost, kind: PassKind): InferenceHost =
+  if (kind == EmbeddingPass) { ...s, embeddingPass: false } else { ...s, residentPass: NoPass, cancelAsked: false }
+pure def canFailPass(s: InferenceHost, kind: PassKind): bool = passRuns(s, kind)
+pure def failPass(s: InferenceHost, kind: PassKind): InferenceHost =
+  if (kind == EmbeddingPass) { ...s, embeddingPass: false, embedding: false }
+  else { ...s, residentPass: NoPass, cancelAsked: false, resident: false }
 pure def alwaysAPassHasItsContext(s: InferenceHost): bool =
-  ((s.pass == SpeechPass or s.pass == EndOfTurnPass) implies s.resident) and (s.pass == EmbeddingPass implies s.embedding)
-pure def alwaysACancelIsForARunningSpeechPass(s: InferenceHost): bool = s.cancelAsked implies s.pass == SpeechPass
+  (s.residentPass != NoPass implies s.resident) and (s.embeddingPass implies s.embedding)
+pure def alwaysTheResidentRunsNoEmbedding(s: InferenceHost): bool = s.residentPass != EmbeddingPass
+pure def alwaysACancelIsForARunningSpeechPass(s: InferenceHost): bool = s.cancelAsked implies s.residentPass == SpeechPass
 pure def stepNothingIsFreedDuringAPass(before: InferenceHost, after: InferenceHost): bool =
-  (before.pass != NoPass and after.pass != NoPass) implies (after.resident == before.resident and after.embedding == before.embedding)
+  ((before.residentPass != NoPass and after.residentPass != NoPass) implies after.resident == before.resident)
+    and ((before.embeddingPass and after.embeddingPass) implies after.embedding == before.embedding)
 pure def stepAFailedPassDropsTheContextItUsed(before: InferenceHost, via: str, after: InferenceHost): bool =
-  via == "failPass" implies (after.pass == NoPass and (if (before.pass == EmbeddingPass) not(after.embedding) else not(after.resident)))
+  via == "failPass" implies (
+    (before.embeddingPass and not(after.embeddingPass) and not(after.embedding)
+      and after.residentPass == before.residentPass and after.resident == before.resident)
+    or (before.residentPass != NoPass and after.residentPass == NoPass and not(after.resident)
+      and after.embeddingPass == before.embeddingPass and after.embedding == before.embedding))
 pure def sometimesASpeechPassIsCancelled(s: InferenceHost): bool = s.cancelAsked
-pure def sometimesAnEmbeddingRuns(s: InferenceHost): bool = s.pass == EmbeddingPass
+pure def sometimesAnEmbeddingRunsBesideASpeechPass(s: InferenceHost): bool = s.embeddingPass and s.residentPass == SpeechPass
 ```
 
 ### An embedding is answered only by the verified model assigned to embeddings, as a finite vector of its dimensions

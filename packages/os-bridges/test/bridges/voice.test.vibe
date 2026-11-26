@@ -1,0 +1,671 @@
+// spec/os/voice/cloudSpeech.md, "Story: Talk to the agent through the cloud speech relay"; spec/os/voice/cloudSpeech.md, "A provider speech edge belongs to the capture live when it began, and a retired capture owns none"; spec/os/voice/cloudSpeech.md, "A reply settles once: completed when all its audio has played, or cancelled"; spec/os/voice/cloudSpeech.md, "Every end of a session releases the microphone, settles the reply, revokes the session and reports a failure once"; spec/os/voice/cloudSpeech.md, "An open session and every waiting batch request run under the current key, and a key change ends them"; spec/os/voice/cloudSpeech.md, "A confirmed mute whose turn has not ended in 2.5 seconds replaces the session with a fresh muted one, and the old session's late text is dropped"
+import { assert, it } from "@effect/vitest"
+import { vi } from "vitest"
+import { CloudSpeechCleanupUnconfirmed, CloudSpeechInterrupted, CloudSpeechRefused, CloudSpeechUnavailable, createCloudStreamingSpeech, createNativeSpeechRequests } from "../../src/bridges/voice.vibe"
+import type { CredentialId, EnvironmentName } from "../../src/bridges/definitions/voice.ts"
+
+module android {
+  import { vi } from "vitest"
+  import type { AssistantListenHandlers, CloudStreamEvent, ElizaCloudSpeechPlugin, NativeSpeechRequestBinding, NativeSpeechRequestId } from "../../src/bridges/definitions/voice.ts"
+
+  export interface Phone {
+    calls: string[]
+    utterances: string[]
+    sessionId: string | undefined
+    listener: ((event: CloudStreamEvent) => void) | undefined
+    cancelFails: boolean
+    muteHangs: boolean
+    stopped: Promise<void>
+    started: Promise<void>
+    startError: unknown
+  }
+
+  /** @throws {never} */
+  export function device(): Phone {
+    return { calls: [], utterances: [], sessionId: undefined, listener: undefined, cancelFails: false, muteHangs: false, stopped: Promise.resolve(), started: Promise.resolve(), startError: undefined }
+  }
+
+  /** @throws {never} */
+  export function emit(phone: Phone, event: Record<string, unknown>): void {
+    phone.listener?.({ sessionId: phone.sessionId, ...event })
+  }
+
+  /** @throws {never} */
+  export function cloudSpeech(phone: Phone): ElizaCloudSpeechPlugin {
+    return {
+      startCloudSpeech: async (input) => {
+        phone.calls.push(`start${input.muted ? " muted" : ""} ${input.environment} ${input.credentialId}`)
+        await phone.started
+        if (phone.startError !== undefined) throw phone.startError
+        phone.sessionId = input.sessionId
+        return { sessionId: input.sessionId, sampleRate: 16000, echoCancelled: true }
+      },
+      stopCloudSpeech: async () => {
+        phone.calls.push("stop")
+        await phone.stopped
+      },
+      setCloudSpeechMuted: async (input) => {
+        phone.calls.push(input.muted ? "mute" : "unmute")
+        if (input.muted && phone.muteHangs) await never<void>()
+      },
+      setCloudSpeechOutputMuted: async (input) => { phone.calls.push(input.muted ? "speaker off" : "speaker on") },
+      speakCloudSpeech: async (input) => {
+        phone.calls.push(`speak ${input.text}`)
+        phone.utterances.push(input.utteranceId)
+      },
+      cancelCloudSpeech: async () => {
+        phone.calls.push("cancel")
+        if (phone.cancelFails) throw new Error("bridge gone")
+      },
+      addListener: async (_event, callback) => {
+        phone.listener = callback
+        return { remove: async () => { phone.listener = undefined; phone.calls.push("removed") } }
+      },
+    }
+  }
+
+  export interface Heard {
+    events: string[]
+    ends: unknown[]
+    handlers: AssistantListenHandlers
+  }
+
+  /** @throws {never} */
+  export function heard(signal: AbortSignal): Heard {
+    const events: string[] = []
+    const ends: unknown[] = []
+    return {
+      events,
+      ends,
+      handlers: {
+        signal,
+        onSpeechStart: () => { events.push("speech-start") },
+        onSpeechEnd: () => { events.push("speech-end") },
+        onSegment: (text) => { events.push(`segment ${text}`) },
+        onLevel: (peak) => { events.push(`level ${peak}`) },
+        onEnd: (error) => { ends.push(error) },
+      },
+    }
+  }
+
+  export interface Owner {
+    cancelled: string[]
+    selected: string
+    current: string
+    listeners: Set<() => void>
+    binding: NativeSpeechRequestBinding
+  }
+
+  /** @throws {never} */
+  export function owner(): Owner {
+    const listeners = new Set<() => void>()
+    const cancelled: string[] = []
+    const held: Owner = {
+      cancelled,
+      selected: "a",
+      current: "a",
+      listeners,
+      binding: {
+        check() {
+          if (held.selected !== held.current) throw new DOMException("Voice selection changed", "AbortError")
+        },
+        watch(onChange) {
+          listeners.add(onChange)
+          return () => { listeners.delete(onChange) }
+        },
+        cancel(requestId) {
+          cancelled.push(requestId)
+          return Promise.reject(new Error("bridge gone"))
+        },
+        newRequestId: () => "req-1" as NativeSpeechRequestId,
+      },
+    }
+    return held
+  }
+
+  /** @throws {never} */
+  export function changeOwner(held: Owner, next: string): void {
+    held.current = next
+    for (const listener of [...held.listeners]) listener()
+  }
+
+  /** @throws {never} */
+  export function selectOwner(held: Owner): void {
+    held.selected = held.current
+  }
+
+  /** @throws {never} */
+  export function credentialChanged(): Error {
+    return new DOMException("Credential changed", "AbortError")
+  }
+
+  /** @throws {never} */
+  export function keyedTo(current: () => boolean, changed: Error): () => void {
+    return () => {
+      if (!current()) throw changed
+    }
+  }
+
+  export interface Pending<T> {
+    readonly settled: Promise<T>
+  }
+
+  /** @throws {never} */
+  export function begin<T>(run: () => Promise<T>): Pending<T> {
+    const settled = run()
+    void settled.catch(() => undefined)
+    return { settled }
+  }
+
+  /** @throws {never} */
+  export function never<T>(): Promise<T> {
+    return new Promise<T>(() => {})
+  }
+
+  export interface Gate {
+    readonly passed: Promise<void>
+    open(): void
+  }
+
+  /** @throws {never} */
+  export function gate(): Gate {
+    let open = () => {}
+    const passed = new Promise<void>((resolve) => { open = resolve })
+    return { passed, open: () => open() }
+  }
+
+  /** @throws {never} */
+  export async function onFakeTimers(run: () => Promise<void>): Promise<void> {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] })
+    try {
+      await run()
+    } finally {
+      vi.useRealTimers()
+    }
+  }
+
+  /** @throws {never} */
+  export async function refusal(pending: Promise<unknown>): Promise<unknown> {
+    return pending.then(() => undefined, (error: unknown) => error)
+  }
+}
+import { begin, changeOwner, cloudSpeech, credentialChanged, device, emit, gate, heard, keyedTo, never, onFakeTimers, owner, refusal, selectOwner } from android
+
+const KEY = { environment: "production" as EnvironmentName, credentialId: "key-1" as CredentialId }
+
+effect function failure(call: () => Promise<unknown>) {
+  const { cause } = try flip(tryPromise(() => call()))
+  return cause
+}
+
+it.live("Talk to the agent through the cloud speech relay (spec/os/voice/cloudSpeech.md, \"Story: Talk to the agent through the cloud speech relay\"; spec/os/voice/cloudSpeech.md, \"The speaker is muted for the whole session without ending voice, and only an open session whose bridge can mute it applies the mute\")", () => effect {
+  const phone = device()
+  const interim: string[] = []
+  const speech = createCloudStreamingSpeech({ ...KEY, assertCurrent: () => {}, onInterim: (text) => { interim.push(text) } }, cloudSpeech(phone))
+  const early = try failure(() => speech.setOutputMuted(true))
+  assert.instanceOf(early, CloudSpeechRefused)
+  assert.strictEqual((early as CloudSpeechRefused).reason, "output-mute-unavailable")
+  const person = heard(new AbortController().signal)
+  const capture = try promise(() => speech.listen(person.handlers))
+  assert.isTrue(capture.fullDuplex)
+  assert.deepStrictEqual(phone.calls, ["start production key-1", "unmute"])
+
+  emit(phone, { type: "speech-start" })
+  emit(phone, { type: "level", peak: 1.5 })
+  emit(phone, { type: "transcript", text: "hel" })
+  emit(phone, { type: "speech-end", text: " hello " })
+  emit(phone, { type: "speech-end", text: "x".repeat(16385) })
+  emit(phone, { sessionId: "another", type: "speech-start" })
+  assert.deepStrictEqual(person.events, ["speech-start", "level 1", "speech-end", "segment hello"])
+  assert.deepStrictEqual(interim, ["hel"])
+
+  try promise(() => capture.close())
+  try promise(() => speech.setOutputMuted(true))
+  let started = 0
+  const reply = begin(() => speech.speak("  Hi there  ", new AbortController().signal, () => { started += 1 }))
+  try sleep("5 millis")
+  emit(phone, { type: "audio-start", utteranceId: phone.utterances[0] })
+  emit(phone, { type: "audio-end", utteranceId: phone.utterances[0] })
+  try promise(() => reply.settled)
+  assert.strictEqual(started, 1)
+  assert.deepStrictEqual(person.ends, [])
+  try promise(() => speech.stop())
+  assert.deepStrictEqual(phone.calls, ["start production key-1", "unmute", "mute", "speaker off", "speak Hi there", "stop", "removed"])
+})
+
+it.live("A reply completes when its audio played and otherwise settles cancelled (spec/os/voice/cloudSpeech.md, \"A reply settles once: completed when all its audio has played, or cancelled\"; spec/os/voice/cloudSpeech.md, \"A transient focus loss pauses listening and speaking until focus returns\")", () => effect {
+  const phone = device()
+  const speech = createCloudStreamingSpeech({ ...KEY, assertCurrent: () => {} }, cloudSpeech(phone))
+  try promise(() => speech.listen(heard(new AbortController().signal).handlers))
+
+  let started = 0
+  const played = begin(() => speech.speak("One", new AbortController().signal, () => { started += 1 }))
+  try sleep("5 millis")
+  emit(phone, { type: "audio-start", utteranceId: phone.utterances[0] })
+  emit(phone, { type: "audio-start", utteranceId: phone.utterances[0] })
+  emit(phone, { type: "audio-end", utteranceId: "someone-else" })
+  emit(phone, { type: "audio-end", utteranceId: phone.utterances[0] })
+  try promise(() => played.settled)
+  assert.strictEqual(started, 1)
+
+  const silent = begin(() => speech.speak("Two", new AbortController().signal, () => {}))
+  try sleep("5 millis")
+  emit(phone, { type: "audio-end", utteranceId: phone.utterances[1] })
+  const empty = try failure(() => silent.settled)
+  assert.instanceOf(empty, CloudSpeechRefused)
+  assert.strictEqual((empty as CloudSpeechRefused).reason, "ended-without-audio")
+
+  const paused = begin(() => speech.speak("Paused", new AbortController().signal, () => {}))
+  try sleep("5 millis")
+  emit(phone, { type: "audio-start", utteranceId: phone.utterances[2] })
+  emit(phone, { type: "focus-paused" })
+  emit(phone, { type: "audio-end", utteranceId: phone.utterances[2], interrupted: "audio-focus-lost" })
+  const interrupted = try failure(() => paused.settled)
+  assert.instanceOf(interrupted, CloudSpeechInterrupted)
+  assert.strictEqual((interrupted as CloudSpeechInterrupted).code, "audio-focus-lost")
+  emit(phone, { type: "focus-resumed" })
+  const resumed = begin(() => speech.speak("Resumed", new AbortController().signal, () => {}))
+  try sleep("5 millis")
+  emit(phone, { type: "audio-start", utteranceId: phone.utterances[3] })
+  emit(phone, { type: "audio-end", utteranceId: phone.utterances[3] })
+  try promise(() => resumed.settled)
+
+  const controller = new AbortController()
+  const cancelled = begin(() => speech.speak("Three", controller.signal, () => {}))
+  try sleep("5 millis")
+  controller.abort()
+  controller.abort()
+  const aborted = try failure(() => cancelled.settled)
+  assert.strictEqual((aborted as Error).name, "AbortError")
+  assert.strictEqual(phone.calls.filter((call) => call === "cancel").length, 1)
+
+  phone.cancelFails = true
+  const stuck = new AbortController()
+  const unconfirmed = begin(() => speech.speak("Four", stuck.signal, () => {}))
+  try sleep("5 millis")
+  stuck.abort()
+  const cleanup = try failure(() => unconfirmed.settled)
+  assert.instanceOf(cleanup, CloudSpeechCleanupUnconfirmed)
+  assert.strictEqual((cleanup as CloudSpeechCleanupUnconfirmed).code, "speech-cleanup-unconfirmed")
+
+  const long = try failure(() => speech.speak("x".repeat(4097), new AbortController().signal, () => {}))
+  assert.strictEqual((long as CloudSpeechRefused).reason, "phrase-too-long")
+  try promise(() => speech.stop())
+})
+
+it.live("A turn heard while muted never becomes the next capture's turn (spec/os/voice/cloudSpeech.md, \"A provider speech edge belongs to the capture live when it began, and a retired capture owns none\")", () => effect {
+  const phone = device()
+  const speech = createCloudStreamingSpeech({ ...KEY, assertCurrent: () => {} }, cloudSpeech(phone))
+  const signal = new AbortController().signal
+  const first = heard(signal)
+  const capture = try promise(() => speech.listen(first.handlers))
+  try promise(() => capture.close())
+  emit(phone, { type: "speech-start" })
+  emit(phone, { type: "transcript", text: "old" })
+
+  const second = heard(signal)
+  const reopening = begin(() => speech.listen(second.handlers))
+  try sleep("5 millis")
+  emit(phone, { type: "speech-end", text: "old turn" })
+  try promise(() => reopening.settled)
+  assert.deepStrictEqual(first.events, [])
+  assert.deepStrictEqual(second.events, [])
+
+  emit(phone, { type: "speech-start" })
+  emit(phone, { type: "speech-end", text: "new turn" })
+  assert.deepStrictEqual(second.events, ["speech-start", "speech-end", "segment new turn"])
+
+  const stranger = try failure(() => speech.listen(heard(new AbortController().signal).handlers))
+  assert.strictEqual((stranger as CloudSpeechRefused).reason, "owner-changed")
+})
+
+it.live("A muted turn that never ends moves Talk to a fresh muted session (spec/os/voice/cloudSpeech.md, \"A confirmed mute whose turn has not ended in 2.5 seconds replaces the session with a fresh muted one, and the old session's late text is dropped\")", () => effect {
+  try promise(() => onFakeTimers(async () => {
+    const phone = device()
+    const speech = createCloudStreamingSpeech({ ...KEY, assertCurrent: () => {} }, cloudSpeech(phone))
+    const signal = new AbortController().signal
+    const person = heard(signal)
+    const capture = await speech.listen(person.handlers)
+    await speech.setOutputMuted(true)
+    const old = phone.sessionId
+    emit(phone, { type: "speech-start" })
+    const pausing = capture.close()
+    await vi.advanceTimersByTimeAsync(2500)
+    await pausing
+    assert.notStrictEqual(phone.sessionId, old)
+    assert.deepStrictEqual(phone.calls, ["start production key-1", "unmute", "speaker off", "mute", "stop", "start muted production key-1", "speaker off"])
+    assert.deepStrictEqual(person.events, ["speech-start", "speech-end", "segment null"])
+
+    emit(phone, { sessionId: old, type: "speech-end", text: "stale" })
+    const next = heard(signal)
+    const listening = await speech.listen(next.handlers)
+    assert.strictEqual(phone.calls.at(-1), "unmute")
+    emit(phone, { type: "speech-start" })
+    emit(phone, { type: "speech-end", text: "fresh" })
+    assert.deepStrictEqual(next.events, ["speech-start", "speech-end", "segment fresh"])
+    const reply = speech.speak("Fresh reply", new AbortController().signal, () => {})
+    await vi.advanceTimersByTimeAsync(0)
+    emit(phone, { type: "audio-start", utteranceId: phone.utterances[0] })
+    emit(phone, { type: "audio-end", utteranceId: phone.utterances[0] })
+    await reply
+
+    await listening.close()
+    const replaced = phone.sessionId
+    emit(phone, { type: "speech-start" })
+    const third = heard(signal)
+    const rearming = speech.listen(third.handlers)
+    await vi.advanceTimersByTimeAsync(2500)
+    await rearming
+    assert.notStrictEqual(phone.sessionId, replaced)
+    assert.deepStrictEqual(phone.calls.slice(-5), ["mute", "stop", "start muted production key-1", "speaker off", "unmute"])
+    emit(phone, { sessionId: replaced, type: "speech-end", text: "heard while replying" })
+    emit(phone, { type: "speech-start" })
+    emit(phone, { type: "speech-end", text: "next request" })
+    assert.deepStrictEqual(third.events, ["speech-start", "speech-end", "segment next request"])
+    assert.deepStrictEqual([person.events.length, next.events.length, person.ends, next.ends, third.ends], [3, 3, [], [], []])
+    await speech.stop()
+
+    const playing = device()
+    const replying = createCloudStreamingSpeech({ ...KEY, assertCurrent: () => {} }, cloudSpeech(playing))
+    const talking = await replying.listen(heard(new AbortController().signal).handlers)
+    const held = replying.speak("Still talking", new AbortController().signal, () => {})
+    await vi.advanceTimersByTimeAsync(0)
+    emit(playing, { type: "speech-start" })
+    const unsettled = refusal(talking.close())
+    await vi.advanceTimersByTimeAsync(2500)
+    assert.strictEqual(((await unsettled) as CloudSpeechRefused).reason, "capture-unsettled")
+    emit(playing, { type: "audio-start", utteranceId: playing.utterances[0] })
+    emit(playing, { type: "audio-end", utteranceId: playing.utterances[0] })
+    await held
+    assert.deepStrictEqual(playing.calls.filter((call) => call.startsWith("start")), ["start production key-1"])
+    await replying.stop()
+
+    const deaf = device()
+    deaf.muteHangs = true
+    const unheard = createCloudStreamingSpeech({ ...KEY, assertCurrent: () => {} }, cloudSpeech(deaf))
+    const open = await unheard.listen(heard(new AbortController().signal).handlers)
+    const unconfirmed = refusal(open.close())
+    await vi.advanceTimersByTimeAsync(2500)
+    assert.strictEqual(((await unconfirmed) as CloudSpeechRefused).reason, "mute-unconfirmed")
+    assert.deepStrictEqual(deaf.calls, ["start production key-1", "unmute", "mute"])
+    await unheard.stop()
+
+    const slow = device()
+    const confirmed = gate()
+    slow.stopped = confirmed.passed
+    const ending = createCloudStreamingSpeech({ ...KEY, assertCurrent: () => {} }, cloudSpeech(slow))
+    const last = await ending.listen(heard(new AbortController().signal).handlers)
+    emit(slow, { type: "speech-start" })
+    const abandoned = refusal(last.close())
+    await vi.advanceTimersByTimeAsync(2500)
+    const stopping = ending.stop()
+    confirmed.open()
+    await stopping
+    assert.strictEqual(((await abandoned) as Error).name, "AbortError")
+    assert.deepStrictEqual(slow.calls, ["start production key-1", "unmute", "mute", "stop", "removed"])
+  }))
+})
+
+it.live("A replacement drops text the old session sends while it closes and touches nothing after a key change (spec/os/voice/cloudSpeech.md, \"A confirmed mute whose turn has not ended in 2.5 seconds replaces the session with a fresh muted one, and the old session's late text is dropped\")", () => effect {
+  try promise(() => onFakeTimers(async () => {
+    const lagging = device()
+    const closed = gate()
+    lagging.stopped = closed.passed
+    const interim: string[] = []
+    const swapping = createCloudStreamingSpeech({ ...KEY, assertCurrent: () => {}, onInterim: (text) => { interim.push(text) } }, cloudSpeech(lagging))
+    const signal = new AbortController().signal
+    const person = heard(signal)
+    const capture = await swapping.listen(person.handlers)
+    emit(lagging, { type: "speech-start" })
+    const pausing = capture.close()
+    await vi.advanceTimersByTimeAsync(2500)
+    assert.strictEqual(lagging.calls.at(-1), "stop")
+    emit(lagging, { type: "speech-start" })
+    emit(lagging, { type: "transcript", text: "late" })
+    emit(lagging, { type: "speech-end", text: "late" })
+    closed.open()
+    await pausing
+    assert.deepStrictEqual(person.events, ["speech-start", "speech-end", "segment null"])
+    assert.deepStrictEqual(interim, [])
+    assert.deepStrictEqual(lagging.calls, ["start production key-1", "unmute", "mute", "stop", "start muted production key-1"])
+    const next = heard(signal)
+    await swapping.listen(next.handlers)
+    emit(lagging, { type: "speech-start" })
+    emit(lagging, { type: "speech-end", text: "fresh" })
+    assert.deepStrictEqual(next.events, ["speech-start", "speech-end", "segment fresh"])
+    await swapping.stop()
+
+    const moved = device()
+    let current = true
+    const changed = credentialChanged()
+    const keyed = createCloudStreamingSpeech({ ...KEY, assertCurrent: keyedTo(() => current, changed) }, cloudSpeech(moved))
+    const speaker = heard(new AbortController().signal)
+    const open = await keyed.listen(speaker.handlers)
+    emit(moved, { type: "speech-start" })
+    const closing = refusal(open.close())
+    current = false
+    await vi.advanceTimersByTimeAsync(2500)
+    assert.strictEqual(await closing, changed)
+    assert.deepStrictEqual(speaker.events, ["speech-start"])
+    await keyed.stop()
+    assert.deepStrictEqual(moved.calls, ["start production key-1", "unmute", "mute", "stop", "removed"])
+
+    const rekeyed = device()
+    let valid = true
+    const rearmed = createCloudStreamingSpeech({ ...KEY, assertCurrent: keyedTo(() => valid, changed) }, cloudSpeech(rekeyed))
+    const owned = new AbortController().signal
+    const first = await rearmed.listen(heard(owned).handlers)
+    await first.close()
+    emit(rekeyed, { type: "speech-start" })
+    const later = heard(owned)
+    const relistening = refusal(rearmed.listen(later.handlers))
+    valid = false
+    await vi.advanceTimersByTimeAsync(2500)
+    assert.strictEqual(await relistening, changed)
+    assert.deepStrictEqual(later.events, [])
+    assert.deepStrictEqual(rekeyed.calls, ["start production key-1", "unmute", "mute", "mute", "stop", "removed"])
+  }))
+})
+
+it.live("Listening during replacement waits for the fresh muted session (spec/os/voice/cloudSpeech.md, \"A confirmed mute whose turn has not ended in 2.5 seconds replaces the session with a fresh muted one, and the old session's late text is dropped\")", () => effect {
+  try promise(() => onFakeTimers(async () => {
+    const phone = device()
+    const closing = gate()
+    phone.stopped = closing.passed
+    const streaming = createCloudStreamingSpeech({ ...KEY, assertCurrent: () => {} }, cloudSpeech(phone))
+    const signal = new AbortController().signal
+    const first = await streaming.listen(heard(signal).handlers)
+    const old = phone.sessionId
+    emit(phone, { type: "speech-start" })
+    const paused = first.close()
+    await vi.advanceTimersByTimeAsync(2500)
+    const renewed = streaming.listen(heard(signal).handlers)
+    await vi.advanceTimersByTimeAsync(0)
+    const callsWhileClosing = [...phone.calls]
+    closing.open()
+    await paused
+    await renewed
+    assert.deepStrictEqual(callsWhileClosing, ["start production key-1", "unmute", "mute", "stop"])
+    assert.notStrictEqual(phone.sessionId, old)
+    assert.deepStrictEqual(phone.calls.slice(-2), ["start muted production key-1", "unmute"])
+    await streaming.stop()
+  }))
+})
+
+it.live("Closing a capture does not wait for the replacement session to open, while a reply, speaker mute or next listen waits for it (spec/os/voice/cloudSpeech.md, \"A confirmed mute whose turn has not ended in 2.5 seconds replaces the session with a fresh muted one, and the old session's late text is dropped\")", () => effect {
+  try promise(() => onFakeTimers(async () => {
+    const phone = device()
+    const streaming = createCloudStreamingSpeech({ ...KEY, assertCurrent: () => {} }, cloudSpeech(phone))
+    const signal = new AbortController().signal
+    const first = await streaming.listen(heard(signal).handlers)
+    const old = phone.sessionId
+    const reopen = gate()
+    phone.started = reopen.passed
+    emit(phone, { type: "speech-start" })
+    const paused = first.close()
+    await vi.advanceTimersByTimeAsync(2500)
+    await paused
+    assert.strictEqual(phone.sessionId, old)
+    assert.deepStrictEqual(phone.calls, ["start production key-1", "unmute", "mute", "stop", "start muted production key-1"])
+
+    const cancelled = new AbortController()
+    const dropped = refusal(streaming.speak("Too early", cancelled.signal, () => {}))
+    cancelled.abort()
+    assert.strictEqual(((await dropped) as Error).name, "AbortError")
+    assert.strictEqual(phone.utterances.length, 0)
+
+    let started = 0
+    const reply = streaming.speak("Fast reply", new AbortController().signal, () => { started += 1 })
+    const muting = streaming.setOutputMuted(true)
+    await vi.advanceTimersByTimeAsync(0)
+    assert.strictEqual(phone.utterances.length, 0)
+    reopen.open()
+    await muting
+    await vi.advanceTimersByTimeAsync(0)
+    assert.notStrictEqual(phone.sessionId, old)
+    assert.strictEqual(phone.utterances.length, 1)
+    emit(phone, { type: "audio-start", utteranceId: phone.utterances[0] })
+    emit(phone, { type: "audio-end", utteranceId: phone.utterances[0] })
+    await reply
+    assert.strictEqual(started, 1)
+    assert.isTrue(phone.calls.includes("speaker off"))
+    await streaming.stop()
+
+    const failing = device()
+    const broken = createCloudStreamingSpeech({ ...KEY, assertCurrent: () => {} }, cloudSpeech(failing))
+    const owned = new AbortController().signal
+    const open = await broken.listen(heard(owned).handlers)
+    const blocked = gate()
+    const boom = new CloudSpeechUnavailable({ code: "mint-failed", data: undefined })
+    failing.started = blocked.passed
+    failing.startError = boom
+    emit(failing, { type: "speech-start" })
+    const closing = open.close()
+    await vi.advanceTimersByTimeAsync(2500)
+    await closing
+    blocked.open()
+    await vi.advanceTimersByTimeAsync(0)
+    const failed = await refusal(broken.listen(heard(owned).handlers))
+    assert.strictEqual(failed, boom)
+    const after = await refusal(broken.speak("After failure", new AbortController().signal, () => {}))
+    assert.strictEqual((after as Error).name, "AbortError")
+
+    const stopping = device()
+    const held = createCloudStreamingSpeech({ ...KEY, assertCurrent: () => {} }, cloudSpeech(stopping))
+    const active = await held.listen(heard(new AbortController().signal).handlers)
+    const slowReopen = gate()
+    stopping.started = slowReopen.passed
+    emit(stopping, { type: "speech-start" })
+    const ended = active.close()
+    await vi.advanceTimersByTimeAsync(2500)
+    await ended
+    await held.stop()
+    slowReopen.open()
+    await vi.advanceTimersByTimeAsync(0)
+    assert.strictEqual(stopping.calls.at(-1), "removed")
+  }))
+})
+
+it.live("A failure ends the session once and an owner's abort stops it (spec/os/voice/cloudSpeech.md, \"Every end of a session releases the microphone, settles the reply, revokes the session and reports a failure once\")", () => effect {
+  const phone = device()
+  const speech = createCloudStreamingSpeech({ ...KEY, assertCurrent: () => {} }, cloudSpeech(phone))
+  const person = heard(new AbortController().signal)
+  try promise(() => speech.listen(person.handlers))
+  const reply = begin(() => speech.speak("Hello", new AbortController().signal, () => {}))
+  try sleep("5 millis")
+  emit(phone, { type: "error", code: "relay-closed", data: { status: 1011 } })
+  emit(phone, { type: "error", code: "again" })
+  emit(phone, { type: "speech-start" })
+  try sleep("5 millis")
+  assert.strictEqual(person.ends.length, 1)
+  const ended = person.ends[0] as CloudSpeechUnavailable
+  assert.instanceOf(ended, CloudSpeechUnavailable)
+  assert.deepStrictEqual({ code: ended.code, data: ended.data }, { code: "relay-closed", data: { status: 1011 } })
+  const settled = try failure(() => reply.settled)
+  assert.instanceOf(settled, CloudSpeechUnavailable)
+  assert.deepStrictEqual(person.events, [])
+  assert.deepStrictEqual(phone.calls.slice(-2), ["stop", "removed"])
+  const after = try failure(() => speech.speak("Again", new AbortController().signal, () => {}))
+  assert.strictEqual((after as Error).name, "AbortError")
+
+  const other = device()
+  const owned = new AbortController()
+  const next = createCloudStreamingSpeech({ ...KEY, assertCurrent: () => {} }, cloudSpeech(other))
+  try promise(() => next.listen(heard(owned.signal).handlers))
+  owned.abort()
+  try sleep("5 millis")
+  assert.deepStrictEqual(other.calls, ["start production key-1", "unmute", "stop", "removed"])
+})
+
+it.live("A key change ends the open session (spec/os/voice/cloudSpeech.md, \"An open session and every waiting batch request run under the current key, and a key change ends them\")", () => effect {
+  const phone = device()
+  let current = true
+  const changed = credentialChanged()
+  const speech = createCloudStreamingSpeech({ ...KEY, assertCurrent: keyedTo(() => current, changed) }, cloudSpeech(phone))
+  const person = heard(new AbortController().signal)
+  try promise(() => speech.listen(person.handlers))
+  current = false
+  emit(phone, { type: "speech-start" })
+  try sleep("5 millis")
+  assert.deepStrictEqual(person.ends, [changed])
+  assert.deepStrictEqual(person.events, [])
+  assert.deepStrictEqual(phone.calls.slice(-2), ["stop", "removed"])
+
+  const stale = device()
+  const refusing = createCloudStreamingSpeech({ ...KEY, assertCurrent: keyedTo(() => false, changed) }, cloudSpeech(stale))
+  const refused = try failure(() => refusing.listen(heard(new AbortController().signal).handlers))
+  assert.strictEqual(refused, changed)
+  assert.isFalse(stale.calls.includes("start production key-1"))
+})
+
+it.live("A native speech request returns only under its binding (spec/os/voice/cloudSpeech.md, \"An open session and every waiting batch request run under the current key, and a key change ends them\")", () => effect {
+  const unchanged = owner()
+  const run = createNativeSpeechRequests(unchanged.binding)
+  const result = try promise(() => run(new AbortController().signal, async (id) => id))
+  assert.strictEqual(result, "req-1")
+  assert.strictEqual(unchanged.listeners.size, 0)
+  assert.deepStrictEqual(unchanged.cancelled, [])
+
+  const switching = owner()
+  let ownedSignal: AbortSignal | undefined
+  const pending = begin(() => createNativeSpeechRequests(switching.binding)(new AbortController().signal, async (_id, interrupted, owned) => {
+    ownedSignal = owned
+    return Promise.race([never<string>(), interrupted])
+  }))
+  try sleep("1 millis")
+  changeOwner(switching, "b")
+  const switched = try failure(() => pending.settled)
+  assert.strictEqual((switched as Error).name, "AbortError")
+  assert.deepStrictEqual(switching.cancelled, ["req-1"])
+  assert.isTrue(ownedSignal?.aborted)
+  assert.strictEqual(switching.listeners.size, 0)
+
+  const caller = owner()
+  const controller = new AbortController()
+  const playing = begin(() => createNativeSpeechRequests({ ...caller.binding, cancelledMessage: "Playback cancelled" })(controller.signal, async (_id, interrupted) => Promise.race([never<never>(), interrupted])))
+  controller.abort()
+  controller.abort()
+  const stopped = try failure(() => playing.settled)
+  assert.strictEqual((stopped as Error).message, "Playback cancelled")
+  assert.deepStrictEqual(caller.cancelled, ["req-1"])
+
+  const late = owner()
+  const lateRun = createNativeSpeechRequests({ ...late.binding, watch: () => () => {} })
+  const lateFailure = try failure(() => lateRun(new AbortController().signal, async () => {
+    changeOwner(late, "b")
+    return "late"
+  }))
+  assert.strictEqual((lateFailure as Error).name, "AbortError")
+
+  const stale = owner()
+  const staleRun = createNativeSpeechRequests(stale.binding)
+  changeOwner(stale, "b")
+  const staleFailure = try failure(() => staleRun(new AbortController().signal, async () => "never"))
+  assert.strictEqual((staleFailure as Error).name, "AbortError")
+  selectOwner(stale)
+  const aborted = new AbortController()
+  aborted.abort()
+  const abortedFailure = try failure(() => staleRun(aborted.signal, async () => "never"))
+  assert.strictEqual((abortedFailure as Error).name, "AbortError")
+  assert.deepStrictEqual(stale.cancelled, [])
+})

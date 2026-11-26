@@ -1,0 +1,339 @@
+name: Eliza Cloud Worker
+run-name: Eliza Cloud Worker on ${{ github.ref_name }} at ${{ github.sha }}
+
+on:
+  push:
+    branches: [staging, main]
+
+defaults:
+  run:
+    shell: bash
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: eliza-cloud-worker-rollout
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    environment: eliza-cloud-v4-${{ github.ref_name == 'staging' && 'staging' || 'production' }}
+    env:
+      CLOUD_ENVIRONMENT: ${{ github.ref_name == 'staging' && 'staging' || 'production' }}
+      WRANGLER_SEND_METRICS: "false"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Verify staging deployed the production tree
+        id: staging
+        if: github.ref_name == 'main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          staging=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/staging" --jq '.object.sha')
+          staging_tree=$(gh api "repos/$GITHUB_REPOSITORY/git/commits/$staging" --jq '.tree.sha')
+          test "$staging_tree" = "$(git rev-parse 'HEAD^{tree}')" || {
+            echo "::error::Promote the exact tree already deployed by the staging branch"
+            exit 1
+          }
+          run=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/eliza-cloud-worker.yml/runs" \
+            --method GET -f branch=staging -f event=push -f head_sha="$staging" -f per_page=1 \
+            --jq '.workflow_runs[0] | select(.conclusion == "success") | .id')
+          [[ $run =~ ^[0-9]+$ ]] || {
+            echo "::error::The exact staging branch head lacks a successful Cloud Worker deployment"
+            exit 1
+          }
+          printf 'run=%s\nsha=%s\n' "$run" "$staging" >> "$GITHUB_OUTPUT"
+      - name: Download the successful staging deployment record
+        if: github.ref_name == 'main'
+        uses: actions/download-artifact@v8
+        with:
+          name: eliza-cloud-worker-staging
+          path: ${{ runner.temp }}/eliza-cloud-worker-staging
+          github-token: ${{ github.token }}
+          run-id: ${{ steps.staging.outputs.run }}
+      - uses: ./.github/actions/setup
+        with:
+          job: ""
+          verification: "false"
+      - name: Build the Worker and renderer
+        run: pnpm all '@elizaos/cloud-worker#build'
+      - name: Verify the staged Cloud Worker journeys
+        if: github.ref_name == 'staging'
+        run: pnpm --filter @elizaos/cloud-worker test
+      - name: Verify the identified database has the release schema
+        working-directory: packages/cloud-worker
+        env:
+          DATABASE_URL: ${{ secrets.ELIZA_CLOUD_V4_DATABASE_URL }}
+          DATABASE_CA: ${{ secrets.ELIZA_CLOUD_V4_DATABASE_CA }}
+          DATABASE_IDENTITY: ${{ vars.ELIZA_CLOUD_V4_DATABASE_IDENTITY }}
+        run: |
+          node --input-type=module <<'JS'
+          import { readdir } from "node:fs/promises"
+          import pg from "pg"
+
+          const { CLOUD_ENVIRONMENT, DATABASE_CA, DATABASE_IDENTITY, DATABASE_URL } = process.env
+          if (!DATABASE_URL || !DATABASE_CA || !/^[a-f0-9]{64}$/.test(DATABASE_IDENTITY ?? "")) {
+            console.error("::error::Configure the identified v4 database and its private root CA")
+            process.exit(1)
+          }
+          let db
+          try {
+            const url = new URL(DATABASE_URL)
+            if (!["postgresql:", "postgres:"].includes(url.protocol) || !url.hostname) throw new Error("Invalid PostgreSQL URI")
+            for (const option of ["host", "ssl", "sslmode", "sslrootcert", "sslcert", "sslkey", "uselibpqcompat"]) url.searchParams.delete(option)
+            db = new pg.Client({
+              connectionString: url.href,
+              ssl: { ca: DATABASE_CA, rejectUnauthorized: true, checkServerIdentity: () => undefined },
+              connectionTimeoutMillis: 5000,
+              statement_timeout: 10000
+            })
+            await db.connect()
+            await db.query("BEGIN READ ONLY")
+            const identity = await db.query("SELECT 1 FROM public.cloud_identity WHERE singleton AND digest = $1 AND environment = $2", [DATABASE_IDENTITY, CLOUD_ENVIRONMENT])
+            if (identity.rowCount !== 1) throw new Error("Wrong database identity")
+            const seen = await db.query("SELECT name FROM public.schema_migrations")
+            const applied = new Set(seen.rows.map(({ name }) => name))
+            const migrations = await readdir("src/store/migrations")
+            const pending = migrations.filter((name) => /^\d{4}_[a-z0-9_]+\.sql$/.test(name) && !applied.has(name))
+            if (pending.length) {
+              console.error("::error::Apply and verify these release migrations before deploying: " + pending.join(", "))
+              process.exitCode = 1
+            }
+            await db.query("ROLLBACK")
+          } catch {
+            console.error("::error::Could not verify the v4 database identity and migration ledger")
+            process.exitCode = 1
+          } finally {
+            await db?.end()
+          }
+          JS
+      - name: Upload and activate the Worker on its existing API route
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          API_ORIGIN: ${{ github.ref_name == 'staging' && 'https://api-staging.eliza.app' || 'https://api.eliza.app' }}
+          WORKER: ${{ github.ref_name == 'staging' && 'eliza-cloud-api-staging' || 'eliza-cloud-api-prod' }}
+          WORKER_CONFIG: ${{ vars.ELIZA_CLOUD_V4_WRANGLER_CONFIG }}
+          CLOUD_PROFILE: ${{ vars.ELIZA_CLOUD_V4_PROFILE }}
+          BOOTSTRAP_SECRETS: ${{ secrets.ELIZA_CLOUD_V4_BOOTSTRAP_SECRETS }}
+          DATABASE_IDENTITY: ${{ vars.ELIZA_CLOUD_V4_DATABASE_IDENTITY }}
+          STAGING_SHA: ${{ steps.staging.outputs.sha }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          umask 077
+          [[ $CLOUDFLARE_ACCOUNT_ID =~ ^[a-f0-9]{32}$ && -n $CLOUDFLARE_API_TOKEN ]] || {
+            echo "::error::Configure Cloudflare account credentials"
+            exit 1
+          }
+          worker_dir="$PWD/packages/cloud-worker"
+          entry="$worker_dir/dist/src/cloudflare-entry.mjs"
+          config="$RUNNER_TEMP/eliza-cloud-worker.json"
+          jq -e --arg environment "$CLOUD_ENVIRONMENT" --arg origin "$API_ORIGIN" --arg digest "$DATABASE_IDENTITY" '
+            select(.environments[$environment].api == $origin and .environments[$environment].databaseIdentity == $digest)
+          ' <<< "$CLOUD_PROFILE" > "$worker_dir/dist/src/cloudflare-profile.json" || {
+            echo "::error::Supply the reviewed v4 profile for the canonical API origin and database"
+            exit 1
+          }
+          cat > "$entry" <<'JS'
+          import profile from "./cloudflare-profile.json" with { type: "json" }
+          import { cloudWorker } from "./worker.js"
+
+          const upstream = cloudWorker()
+          const profileJson = JSON.stringify(profile)
+          const cachedBindings = new WeakMap()
+
+          function withProfile(env) {
+            const existing = cachedBindings.get(env)
+            if (existing) return existing
+            const bindings = { ...env, CLOUD_PROFILE: profileJson }
+            cachedBindings.set(env, bindings)
+            return bindings
+          }
+
+          class RetiredDurableObject {
+            async fetch() { return new Response(null, { status: 410 }) }
+            async alarm() {}
+          }
+
+          export {
+            RetiredDurableObject as A2ATaskState,
+            RetiredDurableObject as AnonymousChatGate,
+            RetiredDurableObject as AuthenticationState,
+            RetiredDurableObject as DoorDashCheckoutGate,
+            RetiredDurableObject as HfEgressState,
+            RetiredDurableObject as InferenceRateLimitV2RollbackFloor,
+            RetiredDurableObject as OnboardingSessionCoordinator,
+            RetiredDurableObject as PersonalDeliveryProjection,
+            RetiredDurableObject as PersonalTelegramDelivery,
+            RetiredDurableObject as RateLimitState,
+            RetiredDurableObject as SharedRuntimeConversation,
+            RetiredDurableObject as SpeechRelayCoordinator,
+            RetiredDurableObject as TwitterOAuthRefreshCoordinator,
+            RetiredDurableObject as VoiceUsageState
+          }
+
+          export default {
+            fetch(request, env, ctx) {
+              return upstream.fetch(request, withProfile(env), ctx)
+            },
+            scheduled(event, env, ctx) {
+              return upstream.scheduled(event, withProfile(env), ctx)
+            }
+          }
+          JS
+          if [[ $CLOUD_ENVIRONMENT == production ]]; then
+            printf '\n%s\n' 'export { RetiredDurableObject as InferenceAdmissionGate }' >> "$entry"
+          fi
+          jq -e --arg account "$CLOUDFLARE_ACCOUNT_ID" --arg worker "$WORKER" --arg environment "$CLOUD_ENVIRONMENT" \
+            --arg entry "$entry" --arg pages "$worker_dir/dist/pages" '
+            def durable_exports:
+              [
+                "A2ATaskState", "AnonymousChatGate", "AuthenticationState", "DoorDashCheckoutGate",
+                "HfEgressState", "InferenceAdmissionGate", "InferenceRateLimitV2RollbackFloor",
+                "OnboardingSessionCoordinator", "PersonalDeliveryProjection", "PersonalTelegramDelivery",
+                "RateLimitState", "SharedRuntimeConversation", "SpeechRelayCoordinator",
+                "TwitterOAuthRefreshCoordinator", "VoiceUsageState"
+              ]
+              | map(select($environment == "production" or . != "InferenceAdmissionGate"))
+              | map({key: ., value: {type: "durable-object", storage: "sqlite"}})
+              | from_entries;
+            select(type == "object" and ((.name // $worker) == $worker))
+            | select((has("env") or has("route") or has("routes") or has("triggers") or has("migrations") or ((.vars // {}) | has("CLOUD_PROFILE"))) | not)
+            | . + {account_id: $account, name: $worker, main: $entry, keep_vars: false, exports: durable_exports,
+                   assets: {directory: $pages, binding: "ASSETS", run_worker_first: true}}
+          ' <<< "$WORKER_CONFIG" > "$config" || {
+            echo "::error::Provide v4 Worker bindings without route or Durable Object migration changes. Use the bundled profile input for CLOUD_PROFILE"
+            exit 1
+          }
+          cf() {
+            curl --fail --silent --show-error --max-time 20 --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "https://api.cloudflare.com/client/v4/$1"
+          }
+          cf_workers() { cf "accounts/$CLOUDFLARE_ACCOUNT_ID/workers/$1"; }
+          zone=$(cf "zones?name=eliza.app&account.id=$CLOUDFLARE_ACCOUNT_ID" | jq -er --arg account "$CLOUDFLARE_ACCOUNT_ID" '
+            select(.success) | [.result[] | select(.name == "eliza.app" and .account.id == $account)]
+            | select(length == 1) | .[0].id
+          ')
+          route_matches() {
+            local hostname=${1#https://}
+            cf "zones/$zone/workers/routes" | jq -e --arg pattern "$hostname/*" --arg worker "$2" '
+              .success and any(.result[]; .pattern == $pattern and .script == $worker)
+            ' >/dev/null
+          }
+          route_matches "$API_ORIGIN" "$WORKER" || {
+            echo "::error::The canonical API route is not owned by its expected Eliza Worker"
+            exit 1
+          }
+          active() {
+            cf_workers "scripts/$1/deployments" | jq -er '
+              select(.success) | .result.deployments | max_by(.created_on) | .versions
+              | select(length == 1 and .[0].percentage == 100) | .[0].version_id
+            '
+          }
+          secret_bindings() {
+            cf_workers "scripts/$WORKER/versions/$1" | jq -ce '
+              select(.success) | .result.resources.bindings
+              | map(select(type == "object" and (.type | contains("secret"))) | [.name, .type])
+              | sort | unique
+            '
+          }
+          smoke() {
+            curl -fsS --max-time 20 "$1/api/health" | jq -e '.status == "ok"' >/dev/null &&
+              curl -fsS --max-time 20 "$1/api/public/service" | jq -e '.success == true and .version == 1' >/dev/null &&
+              curl -fsS --max-time 20 "$1/api/v1/auth/methods" | jq -e '
+                all(.email, .sms, .google; type == "boolean") and (.email or .sms or .google)
+              ' >/dev/null
+          }
+          active_staging() {
+            local staged_version current_stage
+            current_stage=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/staging" --jq '.object.sha') || return 1
+            [[ $current_stage == "$STAGING_SHA" ]] || return 1
+            staged_version=$(jq -er --arg sha "$STAGING_SHA" --arg tree "$tree" '
+              select(.sha == $sha and .tree == $tree and .worker == "eliza-cloud-api-staging" and .origin == "https://api-staging.eliza.app")
+              | .version | select(test("^[a-f0-9-]{36}$"))
+            ' "$RUNNER_TEMP/eliza-cloud-worker-staging/deployment.json") || return 1
+            route_matches "https://api-staging.eliza.app" "eliza-cloud-api-staging" &&
+              [[ $(active "eliza-cloud-api-staging") == "$staged_version" ]] &&
+              smoke "https://api-staging.eliza.app"
+          }
+          tree=$(git rev-parse 'HEAD^{tree}')
+          prior=$(active "$WORKER")
+          before=$(secret_bindings "$prior")
+          required='["CLOUD_DIGEST_KEY","CLOUD_ENTITLEMENT_PRIVATE_KEY","CLOUD_SEALING_KEY"]'
+          encrypted_names=$(jq -c 'map(.[0])' <<< "$before")
+          jq -e --argjson names "$encrypted_names" --argjson required "$required" '
+            all((.vars // {} | keys[]); . as $name | all(($names + $required)[]; . != $name))
+          ' "$config" >/dev/null || {
+            echo "::error::A public v4 variable would collide with an existing encrypted binding"
+            exit 1
+          }
+          missing=$(jq -cn --argjson names "$encrypted_names" --argjson required "$required" '$required - $names')
+          bootstrap_file="$RUNNER_TEMP/eliza-cloud-v4-bootstrap.json"
+          upload_args=()
+          if [[ $missing == "$required" ]]; then
+            trap 'rm -f "$bootstrap_file"' EXIT
+            jq -e --argjson required "$required" '
+              select(type == "object" and keys == $required and all(.[]; type == "string" and length > 0))
+            ' <<< "$BOOTSTRAP_SECRETS" > "$bootstrap_file" || {
+              echo "::error::Supply exactly the three missing v4 secrets through the private bootstrap input"
+              exit 1
+            }
+            upload_args+=(--secrets-file "$bootstrap_file")
+          elif [[ $missing != "[]" ]]; then
+            echo "::error::The Worker has only some of its v4 signing secrets. Reconcile the missing bindings without replacing existing ones"
+            exit 1
+          fi
+          unset BOOTSTRAP_SECRETS
+          wrangler() { pnpm dlx wrangler@4.164.0 "$@" --config "$config"; }
+          wrangler versions upload --dry-run --outdir "$RUNNER_TEMP/eliza-cloud-worker-bundle" >/dev/null
+          message="Eliza Cloud ${GITHUB_SHA} ${GITHUB_RUN_ID}/${GITHUB_RUN_ATTEMPT}"
+          wrangler versions upload --message "$message" "${upload_args[@]}" > "$RUNNER_TEMP/eliza-cloud-worker-upload"
+          rm -f "$bootstrap_file"
+          version=$(sed -nE 's/^Worker Version ID: ([a-f0-9-]+)[[:space:]]*$/\1/p' "$RUNNER_TEMP/eliza-cloud-worker-upload")
+          [[ $version =~ ^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$ ]]
+          after=$(secret_bindings "$version")
+          jq -e -n --argjson before "$before" --argjson after "$after" --argjson required "$required" '
+            ($before - $after) == [] and ($required - ($after | map(.[0]))) == []
+          ' >/dev/null || {
+            echo "::error::The uploaded version would change an existing encrypted binding or lacks required v4 signing keys"
+            exit 1
+          }
+          head=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$GITHUB_REF_NAME" --jq '.object.sha')
+          [[ $head == "$GITHUB_SHA" && $(active "$WORKER") == "$prior" ]] || {
+            echo "::error::The branch or active deployment changed during preparation"
+            exit 1
+          }
+          if [[ $CLOUD_ENVIRONMENT == production ]] && ! active_staging; then
+            echo "::error::Staging no longer serves the recorded deployment of this source tree"
+            exit 1
+          fi
+          if wrangler versions deploy "${version}@100" --yes --message "$message"; then
+            for attempt in {1..6}; do
+              if [[ $(active "$WORKER") == "$version" ]] && smoke "$API_ORIGIN"; then
+                printf 'Worker %s serves version %s on %s (tree %s).\n' "$WORKER" "$version" "$API_ORIGIN" "$tree"
+                jq -n --arg sha "$GITHUB_SHA" --arg tree "$tree" --arg worker "$WORKER" --arg origin "$API_ORIGIN" \
+                  --arg version "$version" '{sha: $sha, tree: $tree, worker: $worker, origin: $origin, version: $version}' \
+                  > "$RUNNER_TEMP/deployment.json"
+                exit 0
+              fi
+              [[ $attempt == 6 ]] || sleep 5
+            done
+          fi
+          if [[ $(active "$WORKER") == "$version" ]]; then
+            wrangler versions deploy "${prior}@100" --yes --message "Restore previous deployment after failed readiness"
+          fi
+          echo "::error::The candidate did not pass live readiness and sign-in method discovery"
+          exit 1
+      - name: Record the staged source tree and serving Worker version
+        if: github.ref_name == 'staging'
+        uses: actions/upload-artifact@v7
+        with:
+          name: eliza-cloud-worker-staging
+          path: ${{ runner.temp }}/deployment.json
+          if-no-files-found: error
+          overwrite: true

@@ -47,9 +47,9 @@ type AccountState = Usable | Failing({ failure: AccountFailure })
 type LastCloudFailure = NoCloudFailure | CloudFailedAt({ failure: AccountFailure, at: int })
 type Call = { id: int, credentialVersion: int }
 type ModelBinding = { phase: BindPhase, backend: Backend, account: OwnerAccount, embeddings: Embeddings, google: GoogleConsent,
-  credentialVersion: int, cerebrasRoute: bool, accountState: AccountState, providerRetryAt: int, lastCloudFailure: LastCloudFailure, calls: List[Call], nextCall: int, clock: int }
+  credentialVersion: int, cerebrasRoute: bool, accountState: AccountState, providerRetryAt: int, rateLimitCallId: int, lastCloudFailure: LastCloudFailure, calls: List[Call], nextCall: int, clock: int }
 pure val initial: ModelBinding = { phase: Unbound, backend: NoBackend, account: NoAccount, embeddings: NoEmbeddings,
-  google: { gmailChanges: false, calendarEdits: false }, credentialVersion: 0, cerebrasRoute: false, accountState: Usable, providerRetryAt: 0, lastCloudFailure: NoCloudFailure, calls: List(), nextCall: 0, clock: 0 }
+  google: { gmailChanges: false, calendarEdits: false }, credentialVersion: 0, cerebrasRoute: false, accountState: Usable, providerRetryAt: 0, rateLimitCallId: -1, lastCloudFailure: NoCloudFailure, calls: List(), nextCall: 0, clock: 0 }
 pure val viewValues = Set({ epoch: 1, credentialVersion: 1 }, { epoch: 1, credentialVersion: 0 }, { epoch: 2, credentialVersion: 2 })
 pure def canBind(s: ModelBinding, doc: LaunchDocument, view: FrameView, cerebrasRoute: bool): bool =
   s.phase == Unbound and documentAdmitted(doc) and view.epoch >= 1 and view.credentialVersion >= 0 and (needsCredential(doc.backend) implies view.credentialVersion >= 1)
@@ -125,10 +125,26 @@ handler classifies its HTTP failures into the same variants. Core retries
 `RefusedConnection` and `RetryEnvelope` on the second registration. A rate
 limit is core's exhausted budget, which removes the provider's remaining
 registration; a refused request is a bad request; every other refusal ends
-the call. Both attempts of one call carry the same `Idempotency-Key`, fresh
-for each call, so a connection lost after the cloud dispatched the first
-attempt is answered `409 already_dispatched` instead of running and charging
-the generation again; for a rate limit, the transport never re-sends it;
+the call. Each call starts with a fresh `Idempotency-Key`, and every later
+attempt of the call (core sends it again on the second registration and on
+its fallback model) carries the key of the attempt before it, with one
+exception: when the cloud itself answered that attempt `503
+provider_unavailable` and the call has not taken a fresh key yet, the next
+attempt takes one. That 503 is the cloud's own refusal for a provider call
+that failed or was refused: the cloud closed that attempt's hold and
+delivered no generation, though it usually charges a provider failure its
+full quote. Under the same key the cloud could only refuse the retry `409
+already_dispatched`, and the outage the retry is there for would end the
+turn as a provider issue. A call takes at most one fresh key, so an outage
+costs it at most two charged attempts, as pressing Retry once would: every
+later attempt keeps that key, and the cloud answers it `409
+already_dispatched` without a provider call or a charge. Every other attempt
+keeps its key: a lost connection, and a 5xx without the cloud's refusal body
+(a gateway or proxy in front of the cloud may answer while the cloud still
+runs and charges the generation), are answered `409 already_dispatched`
+instead of running and charging the generation again. An own-key provider's
+refusal keeps its key too. For a rate limit, the transport
+never re-sends it;
 the refusal carries the time left until the provider's retry time, and the turn
 that made the call waits for that, at most five seconds, and sends it once more
 ([planning](../conversation/planning.md)).
@@ -150,6 +166,18 @@ pure def transient(e: C::CloudError): bool = match e { | CloudNetwork => true | 
 pure def rateLimited(e: C::CloudError): bool = match e { | CloudRateLimited(_) => true | _ => false }
 pure def lawOnlyTransientRefusalsAreRetried(e: C::CloudError): bool = (M::retryable(outcomeOf(e)) and outcomeOf(e) != M::ExhaustedBudget) iff transient(e)
 pure def lawRateLimitExhaustsTheProvider(e: C::CloudError): bool = rateLimited(e) iff outcomeOf(e) == M::ExhaustedBudget
+type RetryKey = SameKey | FreshKey
+pure def cloudClosedAttempt(cloudRoute: bool, refusalStatus: int, bodyCode: str): bool =
+  cloudRoute and refusalStatus == 503 and bodyCode == "provider_unavailable"
+pure def retryKey(cloudRoute: bool, refusalStatus: int, bodyCode: str, freshKeyTaken: bool): RetryKey =
+  if (cloudClosedAttempt(cloudRoute, refusalStatus, bodyCode) and not(freshKeyTaken)) FreshKey else SameKey
+pure def lawOnlyTheCloudsOwnOutageRefusalTakesAFreshKey(cloudRoute: bool, refusalStatus: int, bodyCode: str, freshKeyTaken: bool): bool =
+  (retryKey(cloudRoute, refusalStatus, bodyCode, freshKeyTaken) == FreshKey)
+    iff (cloudRoute and refusalStatus == 503 and bodyCode == "provider_unavailable" and not(freshKeyTaken))
+pure def lawACallTakesAtMostOneFreshKey(cloudRoute: bool, refusalStatus: int, bodyCode: str): bool =
+  retryKey(cloudRoute, refusalStatus, bodyCode, true) == SameKey
+pure def lawABare5xxKeepsItsKey(refusalStatus: int, freshKeyTaken: bool): bool = retryKey(true, refusalStatus, "", freshKeyTaken) == SameKey
+pure def lawAnOwnKeyRefusalKeepsItsKey(refusalStatus: int, bodyCode: str, freshKeyTaken: bool): bool = retryKey(false, refusalStatus, bodyCode, freshKeyTaken) == SameKey
 ```
 
 ### A tool call the provider could not parse, or a streamed answer silent for a minute, ends the call without a retry
@@ -260,9 +288,45 @@ pure def lawNoCapUnlessTheCallerNamesOne(omit: bool): bool = capSent(NoCapAsked,
 pure def lawOmittingDropsTheCap(asked: CapAsk): bool = capSent(asked, true) == NoCapAsked
 ```
 
-### A Qwen call on a Cerebras route sends the conversation cache key its caller names, and no call invents one
+### A call sends its caller's temperature only to a model that takes one
 
-A caller names its conversation's prompt cache key in
+OpenAI's reasoning models refuse every temperature but their own default,
+so a call to one sends no `temperature` and the model samples at its
+default. An own-key launch may declare, for its small and its large model,
+whether the model takes a temperature (`ownKeySampling`,
+[launch](../host/launch.md)), and a declaration decides for that model: an
+owner whose deployment or gateway alias hides a reasoning model declares it
+`default-temperature-only`, and one whose model the id rule misreads
+declares it `takes-temperature`. An undeclared model is read by its id:
+the ids `o` followed by a digit (`o1`, `o3-mini`, `o4-mini`) and the
+`gpt-5` family other than its `-chat` models, read as the hint rule reads
+the id, on the cloud and on any own-key endpoint, take only their default.
+Every other model gets the temperature its caller names, from the call or
+from the launch's sampling settings ([models](../../core/models.md)), and a
+call that names none sends none. The declaration or the id decides before
+the call is sent; a provider's refusal of a temperature is never retried
+without one.
+
+```quint
+type SamplingControl = TakesTemperature | DefaultTemperatureOnly
+type SamplingDeclaration = SamplingDeclared({ control: SamplingControl }) | SamplingUndeclared
+pure def samplingControl(declared: SamplingDeclaration, byId: SamplingControl): SamplingControl = match declared {
+  | SamplingDeclared(d) => d.control
+  | SamplingUndeclared => byId
+}
+pure def temperatureSent(control: SamplingControl, named: bool): bool = named and control == TakesTemperature
+pure val controlValues = Set(TakesTemperature, DefaultTemperatureOnly)
+pure val byIdValues = Set(TakesTemperature, DefaultTemperatureOnly)
+pure def lawNoTemperatureIsInvented(control: SamplingControl): bool = not(temperatureSent(control, false))
+pure def lawADefaultOnlyModelGetsNoTemperature(named: bool): bool = not(temperatureSent(DefaultTemperatureOnly, named))
+pure def lawAModelThatTakesOneGetsTheNamedTemperature(named: bool): bool = temperatureSent(TakesTemperature, named) == named
+pure def lawTheOwnersDeclarationDecides(control: SamplingControl, byId: SamplingControl): bool = samplingControl(SamplingDeclared({ control: control }), byId) == control
+pure def lawAnUndeclaredModelIsReadByItsId(byId: SamplingControl): bool = samplingControl(SamplingUndeclared, byId) == byId
+```
+
+### A Qwen call on a Cerebras route sends the prompt cache key its caller names, and no call invents one
+
+A caller names its prompt cache key (the planner's is its agent's) in
 `providerOptions.cerebras.promptCacheKey`. It is sent as
 `prompt_cache_key` only on the routes that take reasoning hints (the cloud,
 and an own-key endpoint whose host is `cerebras.ai` or under it) and only
@@ -277,6 +341,38 @@ pure def cacheKeySent(family: ReasoningFamily, cerebrasRoute: bool, named: bool)
 pure def lawNoKeyIsInvented(family: ReasoningFamily, cerebrasRoute: bool): bool = not(cacheKeySent(family, cerebrasRoute, false))
 pure def lawOnlyQwenOnACerebrasRouteSendsTheKey(family: ReasoningFamily, cerebrasRoute: bool): bool =
   cacheKeySent(family, cerebrasRoute, true) iff (cerebrasRoute and family == QwenReasoning)
+```
+
+### A Qwen call on a Cerebras route reads a tool call the model wrote as text as that call, when it names an offered tool
+
+`qwen-3.8-27b` sometimes writes its tool call into the text in its own
+template instead of the structured field: a `<tool_call>` block holding a
+`<function=NAME>` with a `<parameter=KEY>` value for each argument, or one
+JSON object with `name` and `arguments`. On the routes that take reasoning
+hints, a call that offers tools and leaves the model free to use them (its
+tool choice is not `none`) and gets an answer with no structured tool call
+reads each such block as a tool call when every block parses and names a
+tool the call offered: the answer carries those calls, with fresh ids, and
+its text without the blocks. A value is read as JSON when the tool's schema
+gives that parameter a type other than string and it parses, and as the
+written text otherwise. A block that does not parse or names a tool the
+call did not offer leaves the whole text as it was, for the turn to refuse
+([planning](../conversation/planning.md)). Any other model, route or call,
+and an answer that already has a structured tool call, reads its text as
+text.
+
+```quint
+pure def writtenCallsRead(family: ReasoningFamily, cerebrasRoute: bool, freeToolChoice: bool, structuredCalls: int, writtenAllOffered: bool): bool =
+  family == QwenReasoning and cerebrasRoute and freeToolChoice and structuredCalls == 0 and writtenAllOffered
+pure val structuredCallsValues = Set(0, 1, 2)
+pure def lawOnlyQwenOnACerebrasRouteReadsWrittenCalls(family: ReasoningFamily, cerebrasRoute: bool, freeToolChoice: bool, structuredCalls: int, writtenAllOffered: bool): bool =
+  writtenCallsRead(family, cerebrasRoute, freeToolChoice, structuredCalls, writtenAllOffered) implies (family == QwenReasoning and cerebrasRoute)
+pure def lawAWrittenCallNamingAnUnofferedToolIsNeverRead(family: ReasoningFamily, cerebrasRoute: bool, freeToolChoice: bool, structuredCalls: int): bool =
+  not(writtenCallsRead(family, cerebrasRoute, freeToolChoice, structuredCalls, false))
+pure def lawAStructuredCallKeepsTheTextAsText(family: ReasoningFamily, cerebrasRoute: bool, freeToolChoice: bool, writtenAllOffered: bool): bool =
+  not(writtenCallsRead(family, cerebrasRoute, freeToolChoice, 1, writtenAllOffered))
+pure def lawACallOfferingNoFreeChoiceReadsNoWrittenCall(family: ReasoningFamily, cerebrasRoute: bool, structuredCalls: int, writtenAllOffered: bool): bool =
+  not(writtenCallsRead(family, cerebrasRoute, false, structuredCalls, writtenAllOffered))
 ```
 
 ## Story: Keep the account state honest
@@ -313,9 +409,11 @@ pure def refuseCall(s: ModelBinding, id: int, now: int, e: C::CloudError): Model
   val provider = failureOf(e, callVersion(s.calls, id))
   val failure = heldFailure(provider, t, s.cerebrasRoute)
   val ignored = staleRefusal(failure, s.credentialVersion)
+  val limitCallId = match provider { | LimitReached(_) => id | _ => s.rateLimitCallId }
   { ...s, calls: s.calls.select(c => c.id != id), clock: t,
     accountState: if (ignored) s.accountState else afterFailure(s.accountState, failure, t),
     providerRetryAt: if (ignored or retryAtOf(provider) <= s.providerRetryAt) s.providerRetryAt else retryAtOf(provider),
+    rateLimitCallId: limitCallId,
     lastCloudFailure: if (ignored) s.lastCloudFailure else CloudFailedAt({ failure: failure, at: t }) }
 }
 pure def alwaysFailingAccountHasALastFailure(s: ModelBinding): bool = s.accountState != Usable implies s.lastCloudFailure != NoCloudFailure
@@ -345,8 +443,8 @@ pure def fundsCodeOf(cloudRoute: bool, refusalStatus: int, bodyCode: str): Funds
   else if (bodyCode == "allowance_exhausted") AllowanceSpent
   else NoFundsCode
 pure def fundsCodeName(code: FundsCode): str = match code { | NoFundsCode => "" | CreditsSpent => "insufficient_credits" | AllowanceSpent => "allowance_exhausted" }
-pure val refusalStatusValues = Set(400, 401, 402, 429, 503)
-pure val bodyCodeValues = Set("", "insufficient_credits", "allowance_exhausted", "payment_required", "rate_limited")
+pure val refusalStatusValues = Set(400, 401, 402, 429, 502, 503, 504)
+pure val bodyCodeValues = Set("", "insufficient_credits", "allowance_exhausted", "payment_required", "rate_limited", "provider_unavailable")
 pure def lawOnlyACloud402NamingFundsCarriesACode(cloudRoute: bool, refusalStatus: int, bodyCode: str): bool =
   fundsCodeOf(cloudRoute, refusalStatus, bodyCode) != NoFundsCode implies (cloudRoute and refusalStatus == 402)
 pure def lawTheCodeIsTheOneCloudNamed(cloudRoute: bool, refusalStatus: int, bodyCode: str): bool =
@@ -354,9 +452,41 @@ pure def lawTheCodeIsTheOneCloudNamed(cloudRoute: bool, refusalStatus: int, body
 pure def lawAnOwnKeyRefusalCarriesNoCode(refusalStatus: int, bodyCode: str): bool = fundsCodeOf(false, refusalStatus, bodyCode) == NoFundsCode
 ```
 
+### A rate limit names whether the model provider or Cloud set it, and no other refusal names one
+
+A rate limit on an own-key endpoint names the provider. The cloud route
+names `provider` when Cloud sends `provider_rate_limited` and `cloud`
+when it sends `cloud_gate_rate_limited`. If the reason is missing or
+unrecognized, the origin is unknown. Other refusals and refusals from the
+binding itself leave the origin unset.
+
+```quint
+type LimitOrigin = NoLimitOrigin | ProviderSetLimit | CloudSetLimit
+pure def limitOriginOf(cloudRoute: bool, limited: bool, bodyReason: str): LimitOrigin =
+  if (not(limited)) NoLimitOrigin
+  else if (not(cloudRoute) or bodyReason == "provider_rate_limited") ProviderSetLimit
+  else if (bodyReason == "cloud_gate_rate_limited") CloudSetLimit
+  else NoLimitOrigin
+pure def limitOriginName(origin: LimitOrigin): str = match origin { | NoLimitOrigin => "" | ProviderSetLimit => "provider" | CloudSetLimit => "cloud" }
+pure val limitedValues = Set(true, false)
+pure val bodyReasonValues = Set("", "provider_rate_limited", "cloud_gate_rate_limited", "google_not_configured")
+pure def lawOnlyARateLimitNamesAnOrigin(cloudRoute: bool, limited: bool, bodyReason: str): bool =
+  (limitOriginOf(cloudRoute, limited, bodyReason) != NoLimitOrigin) implies limited
+pure def lawAnOwnKeyLimitIsTheProviders(bodyReason: str): bool = limitOriginOf(false, true, bodyReason) == ProviderSetLimit
+pure def lawCloudsOwnLimitNamesCloud(bodyReason: str): bool =
+  (limitOriginOf(true, true, bodyReason) == CloudSetLimit) iff (bodyReason == "cloud_gate_rate_limited")
+pure def lawAnUnmarkedCloudLimitHasNoOrigin(bodyReason: str): bool =
+  (limitOriginOf(true, true, bodyReason) == NoLimitOrigin)
+    iff not(Set("provider_rate_limited", "cloud_gate_rate_limited").contains(bodyReason))
+```
+
 ### No call starts before a rate limit's retry time, and a provider issue does not lift a limit still in force
 
 A refused credential, spent credits or a newer limit replace a limit.
+The binding keeps the call number of the last rate limit it received.
+When an active hold refuses another call, the refusal carries that
+number internally. A re-send can use it to identify the limit its own
+call met, even if another call received a limit with the same retry time.
 
 ```quint
 pure def limitedBy(f: AccountFailure, t: int): bool = match f { | LimitReached(x) => t < x.retryAt | _ => false }
@@ -364,6 +494,11 @@ pure def limitedAt(st: AccountState, t: int): bool = match st { | Failing(x) => 
 pure def afterFailure(st: AccountState, failure: AccountFailure, t: int): AccountState =
   if (failure == ProviderIssue and limitedAt(st, t)) st else Failing({ failure: failure })
 pure def stepNoCallBeforeRetryAt(before: ModelBinding, via: str, after: ModelBinding): bool = via == "startCall" implies not(limitedAt(before.accountState, after.clock))
+pure def alwaysActiveLimitNamesASettledCall(s: ModelBinding): bool = limitedAt(s.accountState, s.clock) implies
+  (s.rateLimitCallId >= 0 and s.rateLimitCallId < s.nextCall and not(s.calls.some(c => c.id == s.rateLimitCallId)))
+pure def stepChangedLimitNamesTheNewlyRefusedCall(before: ModelBinding, via: str, after: ModelBinding): bool =
+  after.rateLimitCallId != before.rateLimitCallId implies
+    (via == "refuseCall" and lastFailureKind(after.lastCloudFailure) == "limit_reached" and before.calls.some(c => c.id == after.rateLimitCallId) and not(after.calls.some(c => c.id == after.rateLimitCallId)))
 pure def sometimesLimitReached(s: ModelBinding): bool = limitedAt(s.accountState, s.clock)
 pure def sometimesProviderIssueKeepsTheLimit(s: ModelBinding): bool =
   limitedAt(s.accountState, s.clock) and lastFailureKind(s.lastCloudFailure) == "provider_issue"
@@ -482,6 +617,23 @@ pure val stValues = Set(Usable, Failing({ failure: CredentialInvalid({ version: 
 pure val tValues = Set(0, 5, 10)
 pure def lawWarmReadyOnlyWhenATextCallWouldStart(backend: Backend, st: AccountState, t: int): bool =
   warmAnswer(backend, st, t) == WarmReady implies (servedByBackend(backend, TextSmall) and not(limitedAt(st, t)))
+```
+
+### A planner warm-up is sent only while the account is not blocked, and neither its answer nor its refusal changes the account state
+
+A planner warm-up ([planning](../conversation/planning.md)) names
+`providerOptions.eliza.warmUp`. Unlike the advisory warm answer above, it
+does reach the model, but only while the account is not blocked, so it
+never spends a refused key, spent credits or a limit's wait. It is no
+call of the account: its answer, a blank one-token answer the provider cut
+off included, and its refusal leave the account state, the last failure
+and the provider's retry time as they were, so a warm-up the owner never
+asked for never shows them a failure or holds their first turn.
+
+```quint
+pure def warmUpSent(st: AccountState, t: int): bool = not(blocked(st, t))
+pure def lawABlockedAccountSendsNoWarmUp(st: AccountState, t: int): bool = blocked(st, t) implies not(warmUpSent(st, t))
+pure def lawAWarmUpNeverWaitsOutALimit(st: AccountState, t: int): bool = warmUpSent(st, t) implies not(limitedAt(st, t))
 ```
 
 ## Story: Hold only the key the host admitted for this backend

@@ -1,7 +1,5 @@
 // spec/os/build/runtimePayload.md, "Story: Ship the agent with a pinned Node runtime"; spec/os/build/runtimePayload.md, "Story: Ship only the files my build listed"
 import { HttpClient } from "effect/http"
-import { ChildProcess } from "effect/process"
-import { ChildProcessSpawner } from "effect/process/ChildProcessSpawner"
 import {
   allAbis,
   contentAllowed,
@@ -31,9 +29,9 @@ import { BundleFacts, NodeLockFile, NodeRuntimeBuild, type AndroidAbi } from "./
 
 module node {
   import { createHash } from "node:crypto"
+  import { existsSync } from "node:fs"
   import { lstat, readdir } from "node:fs/promises"
-  import { availableParallelism } from "node:os"
-  import { join } from "node:path"
+  import { dirname, join } from "node:path"
   import { fileURLToPath } from "node:url"
   import { inflateRawSync } from "node:zlib"
 
@@ -50,13 +48,16 @@ module node {
     return createHash("sha256").update(bytes).digest("hex")
   }
 
-  /** @throws {never} */
-  export function cpuCount(): number {
-    return availableParallelism()
-  }
-
-  export function filePath(url: string): string {
-    return fileURLToPath(url)
+  export function defaultNodeLockPath(moduleUrl: string): string {
+    let dir = dirname(fileURLToPath(moduleUrl))
+    for (let depth = 0; depth < 6; depth += 1) {
+      const candidate = join(dir, "aosp", "runtime", "node.lock.json")
+      if (existsSync(candidate)) return candidate
+      const parent = dirname(dir)
+      if (parent === dir) break
+      dir = parent
+    }
+    throw new Error("The packaged Node lock cannot be found")
   }
 
   export async function listRegularFiles(root: string): Promise<Listing> {
@@ -131,7 +132,7 @@ module node {
     return false
   }
 }
-import { cpuCount, filePath, isAndroidExecutable, isElfFor, listRegularFiles, sha256Hex, zipEntry, type Listing } from node
+import { defaultNodeLockPath, isAndroidExecutable, isElfFor, listRegularFiles, sha256Hex, zipEntry, type Listing } from node
 
 export type { AndroidAbi }
 
@@ -178,39 +179,21 @@ interface StagedRuntimePayload {
   readonly workflowWorker: WorkflowWorker | undefined
 }
 
-export interface BuildNodeRuntime {
-  readonly source: string
-  readonly ndk: string
-  readonly abi: AndroidAbi
-  readonly output: string
-  readonly jobs?: number
-  readonly lock?: string
-}
-
-interface BuiltNodeRuntime {
-  readonly dir: string
-  readonly abi: AndroidAbi
-  readonly version: string
-  readonly sha256: string
-  readonly size: number
-}
-
 error PayloadInputInvalid { reason: string }
 export error PayloadRefused { reason: PayloadRefusal; subject: string }
 error RuntimeFetchFailed { url: string; message: string }
 error RuntimeNotAndroidExecutable { abi: AndroidAbi; path: string }
 error PayloadOutputExists { output: string }
-error NodeBuildRefused { reason: string }
-error NodeBuildFailed { command: string; code: number; output: string }
 
 export const INVENTORY_ASSET = "assets/agent/inventory.json"
 const WORKER_RUNTIME_DIR = "agent/workflow-worker"
+const NODE_NOTICE_DIR = "notices/node"
+const NODE_NOTICE_NAME = "LICENSE"
 
 const ANDROID_MAIN = "android/app/src/main"
 export const INFERENCE_LIBRARY = /^(?:lib(?:llama|llama-common|ggml|mtmd|eliza-llama|elizainference)[^/]*\.so(?:\.\d[^/]*)?|llama-server|llama-omnivoice-server)$/
 const LIBRARY_NAME = /^lib[A-Za-z0-9_.+-]+\.so$/
 const ASSET_NAME = /^[A-Za-z0-9][A-Za-z0-9_.-]*$/
-const CONFIGURE_ARCH: Readonly<Record<AndroidAbi, string>> = { "arm64-v8a": "arm64", x86_64: "x86_64" }
 
 interface Staged {
   readonly file: StagedFile
@@ -222,6 +205,7 @@ interface Runtime {
   readonly candidate: RuntimeCandidate
   readonly abi: AndroidAbi
   readonly bytes: Uint8Array
+  readonly notice?: Uint8Array
 }
 
 const specAbi = (abi: AndroidAbi): Abi => abi === "arm64-v8a" ? "Arm64" : "X86_64"
@@ -272,7 +256,7 @@ effect function regularFiles(root: string) {
 }
 
 effect function readLock(file: string | undefined) {
-  const path = file ?? (try Effect.try({ try: () => filePath(import.meta.resolve("@elizaos/os/aosp/runtime/node.lock.json")), catch: (cause) => new PayloadInputInvalid({ reason: `The packaged Node lock cannot be found: ${String(cause)}` }) }))
+  const path = file ?? (try Effect.try({ try: () => defaultNodeLockPath(import.meta.url), catch: (cause) => new PayloadInputInvalid({ reason: `The packaged Node lock cannot be found: ${String(cause)}` }) }))
   return try decodeJson(NodeLockFile, path)
 }
 
@@ -296,13 +280,20 @@ effect function builtRuntime(dir: string) {
   return runtime
 }
 
-effect function fetchedRuntime(lock: NodeLock, abi: AndroidAbi, url: string) {
-  const bytes = zipEntry(try download(url), nodeLibraryName)
-  if (bytes === undefined) throw new RuntimeFetchFailed({ url, message: `The release archive carries no readable ${nodeLibraryName}` })
+effect function fetchedRuntime(lock: typeof NodeLockFile.Type, abi: AndroidAbi, url?: string) {
+  const entry = lock.entries.find((candidate) => candidate.abi === abi && (url === undefined || candidate.url === url))
+  if (entry === undefined) throw new PayloadRefused({ reason: "RuntimeNotPinned", subject: abi })
+  const archive = try download(entry.url)
+  if (sha256Hex(archive) !== entry.archiveSha256) throw new PayloadRefused({ reason: "RuntimeNotPinned", subject: abi })
+  const bytes = zipEntry(archive, nodeLibraryName)
+  if (bytes === undefined) throw new RuntimeFetchFailed({ url: entry.url, message: `The release archive carries no readable ${nodeLibraryName}` })
+  const notice = zipEntry(archive, NODE_NOTICE_NAME)
+  if (notice === undefined || notice.byteLength === 0) throw new RuntimeFetchFailed({ url: entry.url, message: `The release archive carries no readable, nonempty ${NODE_NOTICE_NAME}` })
   const runtime: Runtime = {
     abi,
     bytes,
-    candidate: { abi: specAbi(abi), version: lock.version, ndk: lock.ndk, apiLevel: lock.apiLevel, sha256: sha256Hex(bytes), source: { tag: "Fetched", url } },
+    notice,
+    candidate: { abi: specAbi(abi), version: lock.version, ndk: lock.ndk, apiLevel: lock.apiLevel, sha256: sha256Hex(bytes), source: { tag: "Fetched", url: entry.url } },
   }
   return runtime
 }
@@ -311,12 +302,10 @@ effect function runtimesFor(options: StageRuntimePayload, lock: typeof NodeLockF
   const nodeLock: NodeLock = { version: lock.version, ndk: lock.ndk, apiLevel: lock.apiLevel, entries: lock.entries.map((entry) => ({ abi: specAbi(entry.abi), sha256: entry.sha256, url: entry.url })) }
   const runtimes: Runtime[] = []
   for (const input of options.runtimes ?? []) {
-    runtimes.push(input.kind === "built" ? try builtRuntime(input.dir) : try fetchedRuntime(nodeLock, input.abi, input.url))
+    runtimes.push(input.kind === "built" ? try builtRuntime(input.dir) : try fetchedRuntime(lock, input.abi, input.url))
   }
   for (const abi of options.abi.filter((target) => !runtimes.some((runtime) => runtime.abi === target))) {
-    const entry = lock.entries.find((candidate) => candidate.abi === abi)
-    if (entry === undefined) throw new PayloadRefused({ reason: "RuntimeNotPinned", subject: `${abi} has no entry in the Node lock` })
-    runtimes.push(try fetchedRuntime(nodeLock, abi, entry.url))
+    runtimes.push(try fetchedRuntime(lock, abi))
   }
   return { nodeLock, runtimes }
 }
@@ -328,7 +317,7 @@ effect function bundleFiles(bundleDir: string) {
   for (const required of ["agent.mjs", "manifest.json"]) {
     if (!names.includes(required)) throw new PayloadInputInvalid({ reason: `The agent bundle has no ${required}` })
   }
-  const reserved = names.find((name) => name === "inventory.json" || name.startsWith("workflow-worker/"))
+  const reserved = names.find((name) => name === "inventory.json" || name.startsWith("workflow-worker/") || name === "notices" || name === NODE_NOTICE_DIR || name.startsWith(`${NODE_NOTICE_DIR}/`))
   if (reserved !== undefined) throw new PayloadInputInvalid({ reason: `The agent bundle carries ${reserved}, a path the payload reserves` })
   const facts = try decodeJson(BundleFacts, path.join(bundleDir, "manifest.json"))
   const out: Staged[] = []
@@ -432,8 +421,12 @@ export effect function stageRuntimePayload(options: StageRuntimePayload) {
   const libraries = try consumerLibraries(options.nativeLibraries ?? [], options.abi)
   const worker = try workerFiles(options.workflowWorker)
   const allRuntimes = [...runtimes, ...libraries.runtimes]
+  const notices = runtimes.flatMap(({ notice }) => notice === undefined ? [] : [{ bytes: notice, sha256: sha256Hex(notice) }])
+  const [notice] = notices
+  if (notice !== undefined && notices.some((entry) => entry.sha256 !== notice.sha256)) throw new PayloadInputInvalid({ reason: "The pinned Node release archives carry different LICENSE files" })
   const payload: Staged[] = [
     ...runtimes.map((runtime) => staged(`lib/${runtime.abi}/${nodeLibraryName}`, "NodeRuntime", runtime.bytes, runtime.candidate.sha256)),
+    ...(notice === undefined ? [] : [staged(`assets/agent/${NODE_NOTICE_DIR}/${NODE_NOTICE_NAME}`, "BundleFile", notice.bytes, notice.sha256)]),
     ...bundle.files,
     ...assets.files,
     ...libraries.files,
@@ -467,43 +460,4 @@ export effect function stageRuntimePayload(options: StageRuntimePayload) {
     workflowWorker: named.tag === "NamedWorker" ? { runtimeDir: named.runtimeDir, executable: named.executable, sha256: named.sha256 } : undefined,
   }
   return result
-}
-
-effect function run(command: string, args: readonly string[], cwd: string) {
-  const spawner = try ChildProcessSpawner
-  return try scoped(effect {
-    const child = try spawner.spawn(ChildProcess.make(command, [...args], { cwd, extendEnv: true, stdin: "ignore" }))
-    const [stdout, stderr] = try.all [Stream.mkString(Stream.decodeText(child.stdout)), Stream.mkString(Stream.decodeText(child.stderr))]
-    const code: number = try child.exitCode
-    if (code !== 0) throw new NodeBuildFailed({ command: [command, ...args].join(" "), code, output: `${stdout}${stderr}`.slice(-4000) })
-  })
-}
-
-export effect function buildNodeRuntime(options: BuildNodeRuntime) {
-  const files = try FileSystem.FileSystem
-  const path = try Path.Path
-  const lock = try readLock(options.lock)
-  const header = try files.readFileString(path.join(options.source, "src", "node_version.h"))
-  const part = (name: string) => new RegExp(`#define NODE_${name}_VERSION (\\d+)`).exec(header)?.[1]
-  const version = `${part("MAJOR")}.${part("MINOR")}.${part("PATCH")}`
-  if (version !== lock.version) throw new NodeBuildRefused({ reason: `The Node source is ${version}; the lock pins ${lock.version}` })
-  const revision = /^Pkg\.Revision\s*=\s*(\S+)\s*$/m.exec(try files.readFileString(path.join(options.ndk, "source.properties")))?.[1]
-  if (revision !== lock.ndk) throw new NodeBuildRefused({ reason: `The NDK is ${revision ?? "unknown"}; the lock pins ${lock.ndk}` })
-  const destination = path.resolve(options.output)
-  if (try files.exists(destination)) throw new PayloadOutputExists({ output: destination })
-  try run("./android-configure", [options.ndk, String(lock.apiLevel), CONFIGURE_ARCH[options.abi]], options.source)
-  try run("make", [`-j${options.jobs ?? cpuCount()}`], options.source)
-  const bytes = try files.readFile(path.join(options.source, "out", "Release", "node"))
-  if (!isAndroidExecutable(bytes, options.abi)) throw new RuntimeNotAndroidExecutable({ abi: options.abi, path: path.join(options.source, "out", "Release", "node") })
-  const sha256 = sha256Hex(bytes)
-  try files.makeDirectory(path.dirname(destination), { recursive: true })
-  const scratch = try files.makeTempDirectory({ directory: path.dirname(destination), prefix: `${path.basename(destination)}.staging-` })
-  try ensuring(effect {
-    try files.writeFile(path.join(scratch, nodeLibraryName), bytes, { flag: "wx" })
-    try files.chmod(path.join(scratch, nodeLibraryName), 0o755)
-    try files.writeFileString(path.join(scratch, "node-runtime.json"), `${JSON.stringify({ schema: 1, abi: options.abi, version: lock.version, ndk: lock.ndk, apiLevel: lock.apiLevel, sha256 }, null, 2)}\n`, { flag: "wx" })
-    try files.rename(scratch, destination)
-  }, Effect.ignore(files.remove(scratch, { recursive: true, force: true })))
-  const built: BuiltNodeRuntime = { dir: destination, abi: options.abi, version: lock.version, sha256, size: bytes.byteLength }
-  return built
 }

@@ -1,0 +1,29 @@
+// spec/agent/conversation/replyStream.md, "Story: See a reply as it is written"
+import type { UUID } from "@elizaos/core"
+import type { CloudFake, ScriptedReply } from "./cloud-fake.ts"
+import { call, cloudFake, deviceKey, startInProcess, type InProcess } from "./kernel.vibe"
+
+export interface Conversation { readonly id: string; readonly roomId: UUID; readonly title: string; readonly createdAt: unknown; readonly updatedAt: unknown }
+export interface Message { readonly id: string; readonly role: string; readonly text: string; readonly timestamp: number }
+
+schema Created { conversation: { id: string; roomId: string } }
+const created = Schema.decodeUnknownOption(Created)
+
+export effect function conversation(agent: InProcess) {
+  const answer = try call(agent, { method: "POST", path: "/api/conversations", body: {} })
+  const decoded = "json" in answer ? created(answer.json) : Option.none()
+  if (decoded._tag !== "Some") return try Effect.die(new Error(`The conversation was not created: ${JSON.stringify(answer)}`))
+  return decoded.value.conversation
+}
+
+effect function cloudAgent(cloud: CloudFake, http: boolean) {
+  return try startInProcess({ http, launch: { backend: { kind: "cloud", origin: cloud.origin } }, frame: { credential: { version: 1, value: deviceKey } } })
+}
+
+export effect function streamingConversation(transport: "socket" | "http", script?: ScriptedReply) {
+  const cloud = try cloudFake(deviceKey)
+  const agent = try cloudAgent(cloud, transport === "http")
+  const { id } = try conversation(agent)
+  if (script !== undefined) try Effect.sync(() => cloud.script(script()))
+  return { cloud, agent, id }
+}

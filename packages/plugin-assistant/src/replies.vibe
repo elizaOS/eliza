@@ -1,26 +1,8 @@
-// spec/assistant/replies.md, "Story: Hear a brief acknowledgment while my request is pending, and the whole answer after"; spec/assistant/replies.md, "A cue is heard only while the work is pending, and never in place of an answer"; spec/assistant/replies.md, "Story: Hear what this turn proves about my request"; spec/assistant/replies.md, "A claim that something was done needs a result that applied it to that record"; spec/assistant/replies.md, "A claim that something was not done needs a cited result that failed and was not superseded"
+// spec/assistant/replies.md, "Story: Hear what this turn proves about my request"; spec/assistant/replies.md, "A claim that something was done needs a result that applied it to that record"; spec/assistant/replies.md, "A claim that something was not done needs a cited result that failed and was not superseded"
 import { revertedEffectReceiptIds, type ActionResult, type EffectReceipt, type ProviderDataRecord } from "@elizaos/core"
-import { claimSupported, heardWhile, type ReplyKind, type ResultEnd, type TurnResult, type WorkPhase } from "../gen/assistant__replies.effect.vibe"
+import { claimSupported, type ResultEnd, type TurnResult } from "../gen/assistant__replies.effect.vibe"
 
-export type { ReplyKind, TurnResult, WorkPhase }
-
-const waitCue = /^(?:on it|(?:one|just a) (?:sec|second|moment))$/iu
-const progressLead = /^(?:let me (?:check|look|open|pull up|take a look|have a look)|checking|looking|searching|reading)\b/iu
-const statedFact = /\b(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|twenty|thirty|forty|fifty|sixty|hundred|thousand|million|half|quarter|dozen|minutes?|seconds?|hours?|days?|weeks?|months?|years?|ms|milliseconds?|ago|after|before|until|tomorrow|today|tonight|noon|midnight|am|pm|set|saved|done|created|sent|deleted)\b/iu
-
-export function replyKind(text: string): ReplyKind {
-  const reply = text.trim()
-  if (reply === "") return "EmptyReply"
-  if (reply.length > 120 || /[?\d]/u.test(reply)) return "AnswerReply"
-  const pieces = reply.split(/\s*(?:[.!…]+|[,;:]|\s[—–-]\s)\s*/u).filter((piece) => piece !== "")
-  const cue = (piece: string) => waitCue.test(piece)
-  const progress = (piece: string) => progressLead.test(piece) && !statedFact.test(piece)
-  return pieces.length > 0 && pieces.length <= 3 && pieces.every((piece) => cue(piece) || progress(piece)) ? "CueReply" : "AnswerReply"
-}
-
-export function heardReply(phase: WorkPhase, text: string): string | undefined {
-  return heardWhile(phase, replyKind(text)) === "EmptyReply" ? undefined : text
-}
+export type { TurnResult }
 
 export interface Attempt {
   readonly actionName: string
@@ -52,17 +34,13 @@ export function turnResults(attempts: readonly Attempt[]): TurnResult[] {
 }
 
 export type Proven =
-  | { readonly kind: "done"; readonly receiptIds: readonly string[] }
+  | { readonly kind: "done" }
   | { readonly kind: "notDone"; readonly cited: number }
   | { readonly kind: "unproven" }
 
 export function proven(attempts: readonly Attempt[], target: string): Proven {
   const results = turnResults(attempts)
-  if (claimSupported(results, "ClaimedDone", target, 0)) {
-    const receipts = attempts.flatMap((attempt) => attempt.receipts)
-    const reverted = revertedEffectReceiptIds(receipts)
-    return { kind: "done", receiptIds: receipts.filter((receipt) => receiptTarget(receipt) === target && ended(receipt, reverted) === "EndApplied").map((receipt) => receipt.receiptId) }
-  }
+  if (claimSupported(results, "ClaimedDone", target, 0)) return { kind: "done" }
   const cited = results.findIndex((_, index) => claimSupported(results, "ClaimedNotDone", target, index) && results[index]?.target === target)
   return cited >= 0 ? { kind: "notDone", cited } : { kind: "unproven" }
 }
@@ -73,16 +51,17 @@ export interface Telling {
   readonly unproven: string
 }
 
+export function forTheOwner(text: string): Pick<ActionResult, "userFacingText" | "verifiedUserFacing"> {
+  return text.trim() === "" ? {} : { userFacingText: text, verifiedUserFacing: true }
+}
+
 export function attributed(attempts: readonly Attempt[], target: string, telling: Telling, data: ProviderDataRecord = {}): ActionResult {
   const effectReceipts = attempts.flatMap((attempt) => attempt.receipts)
   const proof = proven(attempts, target)
   switch (proof.kind) {
-    case "done": return {
-      success: true, text: telling.done, userFacingText: telling.done, verifiedUserFacing: true,
-      effectReceipts, userFacingEffectReceiptIds: proof.receiptIds, data,
-    }
-    case "notDone": return { success: false, text: telling.notDone, effectReceipts, data: { ...data, failedResult: proof.cited + 1 } }
-    case "unproven": return { success: false, text: telling.unproven, effectReceipts, data }
+    case "done": return { success: true, text: telling.done, effectReceipts, data }
+    case "notDone": return { success: false, text: telling.notDone, ...forTheOwner(telling.notDone), effectReceipts, data: { ...data, failedResult: proof.cited + 1 } }
+    case "unproven": return { success: false, text: telling.unproven, ...forTheOwner(telling.unproven), effectReceipts, data }
   }
 }
 

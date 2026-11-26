@@ -1,0 +1,176 @@
+// spec/agent/schedule/triggers.md, "Story: Deliver a prompt only to the conversation I chose"; spec/agent/schedule/triggers.md, "An event trigger runs once for each event of its name a conversation turn raises, never for a trigger run's events"; spec/agent/schedule/triggers.md, "A run's prompt is told to the model as the trigger that fired, and the history never shows it as the owner's message"
+import { assert, it } from "@effect/vitest"
+import { parseLaunch } from "../src/host/launch.vibe"
+import { startAgent } from "../src/host/process.vibe"
+import { cloudFake, deviceKey, host, scratch } from "./support/kernel.vibe"
+import { launchDocument, launchFrame } from "./support/scratch.ts"
+
+module node {
+  import { Effect, Result } from "effect"
+  import { EventType, stringToUuid, validateUuid, type Memory, type UUID } from "@elizaos/core"
+  import { apply, initial, type Event, type Trigger } from "../gen/agent__schedule__triggers.effect.vibe"
+  import type { RunningAgent } from "../src/host/process.vibe"
+  import { runError, triggerDelivery, type Delivery } from "../src/schedule/trigger-delivery.vibe"
+  import { conversationStore } from "../src/conversation/conversations.vibe"
+  import { processTurn } from "../src/conversation/turns.vibe"
+  import { startTriggerEvents } from "../src/schedule/trigger-events.vibe"
+  import { refusal, text, type CloudFake } from "./support/cloud-fake.ts"
+  import { account } from "./support/scratch.ts"
+
+  function ownerOf(running: RunningAgent) {
+    const agentId = running.status.agentId
+    return {
+      user: validateUuid(account.userId) ?? stringToUuid(`account:${account.userId}`),
+      world: stringToUuid(`device:${agentId}`),
+    }
+  }
+
+  async function messages(running: RunningAgent, roomId: UUID): Promise<Memory[]> {
+    return running.runtime.getMemories({ tableName: "messages", roomId, count: 50 })
+  }
+
+  async function roomOf(running: RunningAgent, conversationId: string): Promise<UUID> {
+    const rooms = await running.runtime.getRooms(ownerOf(running).world)
+    const room = rooms.find((candidate) => (candidate.metadata?.deviceConversation as { id?: string } | undefined)?.id === conversationId)
+    if (room === undefined) throw new Error("The conversation has no room")
+    return room.id
+  }
+
+  type Heard = { readonly type?: string; readonly conversationId?: string; readonly message?: { readonly role?: string; readonly text?: string; readonly failureKind?: string } }
+
+  export async function deliverToChosen(running: RunningAgent, cloud: CloudFake) {
+    const heard: Heard[] = []
+    const hear = (payload: unknown): void => { heard.push(payload as Heard) }
+    const delivery = triggerDelivery(running.runtime, ownerOf(running), { updated: hear, proactive: hear })
+    const signal = new AbortController().signal
+    const created = await delivery.resolveRoom(undefined)
+    if (created.kind !== "Resolved") throw new Error("No default conversation was resolved")
+    const pending = await conversationStore(running.runtime, ownerOf(running)).createPending("Plans · edit")
+    const again = await delivery.resolveRoom(undefined)
+    const pendingChosen = await delivery.resolveRoom(pending.id)
+    const chosen = await delivery.resolveRoom(created.conversationId)
+    const missing = await delivery.resolveRoom("no-such-conversation")
+    cloud.script(text("Water is good for you."))
+    const completed = await delivery.deliver(created.conversationId, { displayName: "Water", instructions: "Remind me to drink water" }, "trigger-1", signal)
+    const roomId = await roomOf(running, created.conversationId)
+    const stored = (await messages(running, roomId)).map((memory) => ({
+      text: memory.content.text, fromAgent: memory.entityId === running.runtime.agentId,
+      triggerId: (memory.metadata as { triggerId?: string } | undefined)?.triggerId,
+    })).sort((a, b) => Number(a.fromAgent) - Number(b.fromAgent))
+    cloud.script(refusal(400, "bad_request"))
+    const failed = await delivery.deliver(created.conversationId, { displayName: "Water", instructions: "Remind me to stretch" }, "trigger-1", signal)
+    await running.runtime.deleteRoom(roomId)
+    const before = cloud.calls.length
+    const gone = await delivery.deliver(created.conversationId, { displayName: "Water", instructions: "Remind me to sleep" }, "trigger-1", signal)
+    const told = heard.map(({ type, conversationId, message }) => ({
+      type, own: conversationId === created.conversationId,
+      ...(message === undefined ? {} : { role: message.role, text: message.text, failed: message.failureKind !== undefined }),
+    }))
+    const fallback = await delivery.resolveRoom(undefined)
+    const fallbackRoom = fallback.kind === "Resolved" ? await roomOf(running, fallback.conversationId) : undefined
+    return {
+      sameDefault: again.kind === "Resolved" && again.conversationId === created.conversationId,
+      chosen: chosen.kind, missing: missing.kind, pendingChosen: pendingChosen.kind,
+      completed, completedError: runError(completed), stored,
+      failed: failed.kind === "Turn" ? failed.turn : failed.kind, failedError: runError(failed),
+      gone, goneError: runError(gone), missedError: runError({ kind: "Missed" }), told,
+      inferencesAfterGone: cloud.calls.length - before,
+      fallbackIsNew: fallback.kind === "Resolved" && fallback.conversationId !== created.conversationId,
+      fallbackEmpty: fallbackRoom === undefined ? false : (await messages(running, fallbackRoom)).length === 0,
+    }
+  }
+
+  export async function runOnEvents(running: RunningAgent, cloud: CloudFake) {
+    const runtime = running.runtime
+    const owner = ownerOf(running)
+    const delivery = triggerDelivery(runtime, owner, { updated: () => undefined, proactive: () => undefined })
+    const resolved = await delivery.resolveRoom(undefined)
+    if (resolved.kind !== "Resolved") throw new Error("No conversation was resolved")
+    const kept = new Map<string, Trigger>()
+    const send = async (id: string, event: Event) => {
+      const next = await Effect.runPromise(Effect.result(apply(kept.get(id) ?? initial, event)))
+      if (Result.isSuccess(next)) kept.set(id, next.success)
+      return Result.isSuccess(next)
+    }
+    for (const [id, eventKind] of [["on-received", "MESSAGE_RECEIVED"], ["on-sent", "MESSAGE_SENT"]] as const) {
+      await send(id, { type: "create", schedule: "OnRuntimeEvent", requested: resolved.conversationId, defaultRoom: "", eventKind, at: 0, roomExists: true })
+      await send(id, { type: "setEnabled", on: true, at: 0, activeOthers: 0, expected: { tag: "AnyRevision" } })
+    }
+    const runs: { trigger: string; eventId: string; delivery: Delivery }[] = []
+    const events = startTriggerEvents(runtime, {
+      eventTriggers: async (name) => [...kept].filter(([, t]) => t.enabled && t.eventKind === name).map(([id]) => id),
+      receiveEvent: async (triggerId, eventId, name, byTrigger) => {
+        if (!await send(triggerId, { type: "receiveEvent", eventId, name, byTrigger })) return
+        const done = await delivery.deliver(resolved.conversationId, { displayName: "Echo", instructions: `Event ${eventId} arrived` }, triggerId, new AbortController().signal)
+        runs.push({ trigger: triggerId, eventId, delivery: done })
+        await send(triggerId, { type: "finishRun", roomExists: done.kind === "Turn", turn: done.kind === "Turn" ? done.turn : "Failed" })
+      },
+    })
+    const conversation = await conversationStore(runtime, owner).find(resolved.conversationId)
+    if (conversation === undefined) throw new Error("The conversation was not stored")
+    cloud.script(text("Hello to you."), text("Seen your message."), text("Seen my reply."))
+    const turn = await processTurn(runtime, owner, conversation, "hello", new AbortController().signal)
+    await events.idle()
+    const [reply] = turn.responseMessages
+    const said = await runtime.getMemoryById(turn.userMessageId)
+    if (said?.id === undefined || reply?.id === undefined) throw new Error("The owner's turn stored no message or reply")
+    await runtime.emitEvent(EventType.MESSAGE_RECEIVED, { runtime, source: "test", message: said })
+    await runtime.emitEvent(EventType.MESSAGE_RECEIVED, { runtime, source: "test", message: { ...said, id: undefined } })
+    await events.stop()
+    await runtime.emitEvent(EventType.MESSAGE_SENT, { runtime, source: "test", message: { ...reply, id: stringToUuid("event-after-stop") } })
+    return {
+      runs: runs.map(({ trigger, eventId, delivery }) => ({ trigger, eventId, turn: delivery.kind === "Turn" ? delivery.turn : delivery.kind }))
+        .sort((a, b) => a.trigger.localeCompare(b.trigger)),
+      said: said.id, reply: reply.id,
+      seen: Object.fromEntries([...kept].map(([id, t]) => [id, t.seenEvents])),
+    }
+  }
+}
+
+import { deliverToChosen, runOnEvents } from node
+
+effect function owned() {
+  const state = try scratch("trigger-delivery")
+  const cloud = try cloudFake(deviceKey)
+  const frame = launchFrame({ credential: { version: 1, value: deviceKey } })
+  const config = try Effect.try(() => launchDocument({ callerRole: "owner", backend: { kind: "cloud", origin: cloud.origin } }))
+  const parsed = try parseLaunch(JSON.stringify(config), JSON.stringify(frame))
+  const running = try acquireRelease(
+    startAgent({ ...parsed, stateDirectory: state.path, binding: { kind: "socket", path: state.file("agent.sock") } }),
+    (agent) => orDie(host("retire agent", () => agent.stop())),
+  )
+  return { running, cloud }
+}
+
+it.effect('A trigger prompt reaches only its own conversation, tells the feed each reply it stored, and fails when the conversation is gone or the turn fails (spec/agent/schedule/triggers.md, "A run delivers only to the room it started with and succeeds only when its turn completed"; spec/agent/schedule/triggers.md, "A delivered run tells the open screen its conversation changed and sends each reply it stored, and a run without its room tells nothing"; spec/agent/conversation/conversations.md, "Messages and model-call log rows arrive only in a published conversation")', effect () => {
+  const { running, cloud } = try owned()
+  const observed = try host("deliver journey", () => deliverToChosen(running, cloud))
+  try Effect.try(() => assert.deepStrictEqual(observed, {
+    sameDefault: true, chosen: "Resolved", missing: "Missing", pendingChosen: "Missing",
+    completed: { kind: "Turn", turn: "Completed" }, completedError: undefined,
+    stored: [
+      { text: 'Scheduled trigger "Water" fired. Do this now: Remind me to drink water', fromAgent: false, triggerId: "trigger-1" },
+      { text: "Water is good for you.", fromAgent: true, triggerId: "trigger-1" },
+    ],
+    failed: "Failed", failedError: "Prompt automation failed: The reply could not be generated",
+    gone: { kind: "RoomGone" }, goneError: "Prompt automation delivery conversation is unavailable",
+    told: [
+      { type: "conversation-updated", own: true },
+      { type: "proactive-message", own: true, role: "assistant", text: "Water is good for you.", failed: false },
+      { type: "conversation-updated", own: true },
+      { type: "proactive-message", own: true, role: "assistant", text: "", failed: true },
+    ],
+    missedError: "The scheduled time passed while the agent was not running. This occurrence did not run, and no backlog is executed.",
+    inferencesAfterGone: 0, fallbackIsNew: true, fallbackEmpty: true,
+  }))
+}, 180_000)
+
+it.effect('An owner turn runs each event trigger once, and no trigger run starts another (spec/agent/schedule/triggers.md, "An event trigger runs once for each event of its name a conversation turn raises, never for a trigger run\'s events")', effect () => {
+  const { running, cloud } = try owned()
+  const observed = try host("event journey", () => runOnEvents(running, cloud))
+  try Effect.try(() => assert.deepStrictEqual(observed.runs, [
+    { trigger: "on-received", eventId: observed.said, turn: "Completed" },
+    { trigger: "on-sent", eventId: observed.reply, turn: "Completed" },
+  ]))
+  try Effect.try(() => assert.deepStrictEqual(observed.seen, { "on-received": [observed.said], "on-sent": [observed.reply] }))
+}, 180_000)

@@ -1,0 +1,19 @@
+// spec/agent/deviceActions/telephony.md, "An emergency request is never refused for its recipient, and the owner dials it themselves on the keypad"
+export type PhoneTarget = { readonly kind: "number"; readonly number: string } | { readonly kind: "contact"; readonly query: string }
+
+const emergencyService = String.raw`(?:(?:an?|the|my\s+local|local)\s+)?(?:ambulances?|paramedics?|police|cops|fire\s+(?:department|brigade|service|truck)s?|fire\s*fighters?|emergency(?:\s+(?:services?|number|line))?(?!\s+contacts?)|9-?1-?1|1-?1-?2|9-?9-?9|nine[\s-]+one[\s-]+one|one[\s-]+one[\s-]+two|nine[\s-]+nine[\s-]+nine)(?![\p{L}\p{N}])`
+const emergencyEnd = String.raw`(?:\s+(?:now|right\s+now|right\s+away|immediately|please|asap|quick(?:ly)?|here|over\s+here|for\s+(?:me|us|him|her|them)|(?:to|at)\s+[^.!?;]+))*\s*(?:[,.!?;:]|$)`
+const emergencyRequest = new RegExp(
+  String.raw`(?:(?:^|[,.!?;:]\s*|\b(?:please|quick|quickly|someone|somebody|and)\s+)(?:(?:can|could|would|will)\s+you\s+(?:please\s+)?)?(?:(?:call|ring|phone|dial|get|send|contact)(?:\s+(?:me|us))?(?:\s+for)?\s+${emergencyService}|call\s+for\s+help(?![\p{L}\p{N}]))|(?<!\b(?:don['’]?t|do\s+not|doesn['’]?t|does\s+not|didn['’]?t|did\s+not|won['’]?t|no|never)\s+)\bneed\s+(?:an?\s+|the\s+)?(?:ambulance|paramedics|police|fire\s+department)(?![\p{L}\p{N}]))${emergencyEnd}`,
+  "iu",
+)
+const emergencyQuery = new RegExp(String.raw`^(?:for\s+)?(?:${emergencyService}|help)[.!?]*$`, "iu")
+
+export function emergencyServicesRequest(text: string): boolean {
+  const request = text.trim()
+  return request.length <= 400 && emergencyRequest.test(request)
+}
+
+export function namesEmergencyService(query: string): boolean {
+  return emergencyQuery.test(query.trim())
+}

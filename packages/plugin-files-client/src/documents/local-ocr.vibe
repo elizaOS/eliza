@@ -1,0 +1,206 @@
+// spec/files/localOcr.md, "Image admission is bounded before recognition and every decoded bitmap closes"; spec/files/localOcr.md, "One exact worker reply advances the next local OCR action"; spec/files/localOcr.md, "Completed OCR uses validated text and positions and stays scoped to its review"
+module browser {
+  export type WorkerEvent = { readonly kind: "message"; readonly data: unknown } | { readonly kind: "error" } | { readonly kind: "messageerror" }
+  export interface WorkerPort {
+    readonly id: string
+    /** @throws {never} */
+    post(message: unknown): boolean
+    /** @throws {never} */
+    next(): Promise<WorkerEvent>
+    /** @throws {never} */
+    close(): void
+  }
+
+  export function openWorker(script: string): WorkerPort {
+    const worker = new Worker(new URL(script, location.href))
+    const queued: WorkerEvent[] = []
+    let waiting: ((event: WorkerEvent) => void) | undefined
+    let closed = false
+    const deliver = (event: WorkerEvent) => {
+      if (closed) return
+      if (waiting === undefined) queued.push(event)
+      else {
+        const resume = waiting
+        waiting = undefined
+        resume(event)
+      }
+    }
+    worker.onmessage = (event) => deliver({ kind: "message", data: event.data })
+    worker.onerror = () => deliver({ kind: "error" })
+    worker.onmessageerror = () => deliver({ kind: "messageerror" })
+    return {
+      id: crypto.randomUUID(),
+      post(message) {
+        try {
+          worker.postMessage(message)
+          return true
+        } catch {
+          return false
+        }
+      },
+      next: () => new Promise((resolve) => {
+        const event = queued.shift()
+        if (event !== undefined) resolve(event)
+        else waiting = resolve
+      }),
+      close() {
+        if (closed) return
+        closed = true
+        worker.onmessage = worker.onerror = worker.onmessageerror = null
+        worker.terminate()
+      },
+    }
+  }
+
+  /** @throws {never} */
+  export function localUrl(path: string): string {
+    return new URL(path, location.href).href
+  }
+}
+
+import {
+  admitsOcrBitmap, admitsOcrBlob, admittedOcrResult, canEndOcrWorker, canSettleOcrReply, exposesOcrProgress, exposesReviewedOcr, initial, machineOver,
+  type OcrImageType, type OcrJob, type OcrReply, type OcrReplyKind, type OcrStep,
+} from "../../gen/files__localOcr.effect.vibe"
+import { decodedImage, encoded, fittedSize, imageRefused, rasterOf, readBytes, type ImageRefused } from "./images.vibe"
+import { scanTextLayer, type ScanTextLine } from "./scan-text-layer.vibe"
+import { field } from "./record-field.vibe"
+import { localUrl, openWorker, type WorkerPort } from browser
+
+export interface OcrConfig {
+  readonly workerUrl: string
+  readonly assetsUrl: string
+  readonly language: string
+}
+
+export interface OcrResult {
+  readonly text: string
+  readonly confidence: number
+  readonly lines?: ScanTextLine[]
+}
+
+export interface OcrProgress {
+  readonly status: string
+  readonly progress: number
+}
+
+export type OcrRefusal = "engine-start" | "unreadable-data" | "unreadable-image" | "request-failed" | "invalid-result" | "no-positions" | "invalid-position" | "not-current"
+
+const ocrText: Readonly<Record<OcrRefusal, string>> = {
+  "engine-start": "The local scan engine could not start.",
+  "unreadable-data": "The local scan engine returned unreadable data.",
+  "unreadable-image": "The image could not be read by the local scan engine.",
+  "request-failed": "The scan request could not start.",
+  "invalid-result": "The scan result is invalid or too large.",
+  "no-positions": "The scan engine did not return text positions.",
+  "invalid-position": "Invalid scanned text position.",
+  "not-current": "This scan review is no longer current.",
+}
+
+export error OcrRefused { reason: OcrRefusal; message: string }
+
+const refused = (reason: OcrRefusal) => new OcrRefused({ reason, message: ocrText[reason] })
+
+const imageTypes: Readonly<Record<string, OcrImageType>> = { "image/jpeg": "OcrJpeg", "image/png": "OcrPng", "image/webp": "OcrWebp" }
+const actions: Readonly<Partial<Record<OcrStep, string>>> = {
+  LoadOcrEngine: "load", LoadOcrLanguage: "loadLanguage", InitializeOcr: "initialize", RecognizeOcr: "recognize",
+}
+const kinds: Readonly<Record<string, OcrReplyKind>> = { progress: "OcrProgressReply", resolve: "OcrResolveReply", reject: "OcrRejectReply" }
+
+function replyOf(port: WorkerPort, data: unknown): OcrReply {
+  const job = field(data, "jobId"), action = field(data, "action"), progress = field(data, "data")
+  const step = (Object.keys(actions) as OcrStep[]).find((name) => actions[name] === action) ?? "EndedOcr"
+  return {
+    sameWorker: field(data, "workerId") === port.id,
+    jobNumber: typeof job === "string" && /^[1-9]\d{0,8}$/.test(job) ? Number(job) : -1,
+    actionName: step,
+    kind: kinds[String(field(data, "status"))] ?? "OtherOcrReply",
+    hasProgressStatus: typeof field(progress, "status") === "string",
+    progressFinite: Number.isFinite(field(progress, "progress")),
+  }
+}
+
+type Box = { readonly x0: number; readonly y0: number; readonly x1: number; readonly y1: number }
+
+effect function layoutLines(blocks: unknown, width: number, height: number): ScanTextLine[]!OcrRefused {
+  if (blocks !== null && !Array.isArray(blocks)) throw refused("no-positions")
+  const lines: ScanTextLine[] = []
+  for (const block of (blocks ?? []) as readonly unknown[]) {
+    for (const paragraph of (field(block, "paragraphs") ?? []) as readonly unknown[]) {
+      for (const line of (field(paragraph, "lines") ?? []) as readonly unknown[]) {
+        const text = field(line, "text"), box = field(line, "bbox") as Box | undefined
+        if (typeof text !== "string" || typeof box !== "object" || box === null) throw refused("invalid-position")
+        lines.push({ text: text.trim(), x: box.x0 / width, y: box.y0 / height, width: (box.x1 - box.x0) / width, height: (box.y1 - box.y0) / height })
+        if (lines.length > 2000) throw refused("invalid-position")
+      }
+    }
+  }
+  return try mapError(scanTextLayer(lines), (failure) => refused(failure.reason === "invalid-line" ? "invalid-position" : "invalid-result"))
+}
+
+export effect function recognizeLocalText(config: OcrConfig, image: Blob, onProgress: (value: OcrProgress) => void = () => {},
+  layout = false, reviewCurrent: () => boolean = () => true): OcrResult!(OcrRefused | ImageRefused) {
+  if (!admitsOcrBlob(imageTypes[image.type] ?? "OtherOcrImage", image.size, false)) throw imageRefused("unsupported")
+  const page = try scoped(effect {
+    const bitmap = try decodedImage(image)
+    if (!admitsOcrBitmap(bitmap.width > 0, bitmap.height > 0, bitmap.width, bitmap.height)) throw imageRefused("too-many-pixels")
+    const size = fittedSize(bitmap.width, bitmap.height)
+    const raster = try rasterOf(bitmap, size.width, size.height)
+    return { ...size, bytes: try readBytes(try encoded(raster, "image/png")) }
+  })
+  return try scoped(effect {
+    const state = try Ref.make<OcrJob>(initial)
+    const job = try machineOver(() => Ref.get(state), (next) => Ref.set(state, next))
+    try orDie(job.send({ type: "prepareOcrImage", ready: true }))
+    const port = try acquireRelease(
+      Effect.try({ try: () => openWorker(config.workerUrl), catch: () => refused("engine-start") }),
+      (open) => effect {
+        open.close()
+        if (canEndOcrWorker(try job.get())) try orDie(job.send({ type: "endOcrWorker" }))
+      },
+    )
+
+    effect function fail(reason: OcrRefusal): never!OcrRefused {
+      port.close()
+      if (canEndOcrWorker(try job.get())) try orDie(job.send({ type: "endOcrWorker" }))
+      throw refused(reason)
+    }
+
+    effect function request(payload: unknown): unknown!OcrRefused {
+      const pending = try job.get()
+      const action = actions[pending.phase]
+      if (action === undefined || !port.post({ workerId: port.id, jobId: String(pending.jobNumber), action, payload })) return try fail("request-failed")
+      for (;;) {
+        const event = try promise(() => port.next())
+        if (event.kind !== "message") return try fail(event.kind === "error" ? "engine-start" : "unreadable-data")
+        const reply = replyOf(port, event.data)
+        const current = try job.get()
+        if (exposesOcrProgress(current, reply)) {
+          const report = field(event.data, "data")
+          onProgress({ status: field(report, "status") as string, progress: Math.max(0, Math.min(1, field(report, "progress") as number)) })
+          continue
+        }
+        if (!canSettleOcrReply(current, reply)) continue
+        const next = try orDie(job.send({ type: "settleOcrReply", reply }))
+        if (next.phase === "EndedOcr") return try fail("unreadable-image")
+        return field(event.data, "data")
+      }
+    }
+
+    const assets = localUrl(config.assetsUrl)
+    try request({ options: { lstmOnly: true, corePath: assets, logging: false } })
+    try request({ langs: [config.language], options: { langPath: assets, cacheMethod: "none", gzip: true, lstmOnly: true } })
+    try request({ langs: config.language, oem: 1, config: {} })
+    const result = try request({ image: page.bytes, options: {}, output: { text: true, blocks: layout } })
+    const text = field(result, "text"), confidence = field(result, "confidence")
+    const lines = layout ? try layoutLines(field(result, "blocks"), page.width, page.height) : undefined
+    const facts = {
+      exactMessage: true, textString: typeof text === "string", textUnits: typeof text === "string" ? text.length : -1,
+      confidenceFinite: Number.isFinite(confidence), hasLayout: layout, blocksAdmitted: true, lineLayerAdmitted: true,
+      reviewCurrent: reviewCurrent(), reviewAborted: false,
+    }
+    if (!admittedOcrResult(facts)) throw refused("invalid-result")
+    if (!exposesReviewedOcr(facts)) throw refused("not-current")
+    return { text: (text as string).trim(), confidence: confidence as number, ...(lines === undefined ? {} : { lines }) }
+  })
+}

@@ -1,0 +1,107 @@
+// spec/cloud/deployment.md, "Story: Configure a deployment from one reviewed profile"
+import { cloudLayer, prepare } from "../../src/index.vibe"
+import { listening, respond } from "../../src/http/server.vibe"
+import type { Route } from "../../src/http/routes.vibe"
+import { deploymentLayer, parseProfile, CloudError } from "@elizaos/cloud"
+import { Store } from "../../src/store/store.vibe"
+import type { CloudContext } from "../../src/http/routes.vibe"
+import { serveDatabase, type DatabaseSetup } from "./database.ts"
+import { startFakeServer, stripeCatalog, type CatalogPrice, type FakeServer } from "./fakes.ts"
+import { callCloud, type Answer, type CallInit } from "./http.ts"
+import { catalogPrices, secrets, testProfile } from "./profile.ts"
+import type { StripeFake } from "./fakes/stripe.ts"
+
+export type { Answer, FakeServer, StripeFake }
+
+export interface TestCloud {
+  readonly url: string
+  readonly fakes: FakeServer
+  readonly store: typeof Store.Service
+  call(path: string, init?: CallInit): Answer!!
+  inside<A, E>(body: A!E!CloudContext): A!E
+}
+
+export type StoreChoice =
+  | { readonly kind: "pglite" }
+  | { readonly kind: "pg"; readonly setup?: DatabaseSetup }
+
+export type ProfileEdit = (profile: ReturnType<typeof testProfile>) => unknown
+
+export interface TestCloudOptions {
+  readonly edit?: ProfileEdit
+  readonly prices?: ReadonlyArray<CatalogPrice>
+  readonly stripe?: StripeFake
+  readonly mount?: (fakes: FakeServer) => void
+  readonly environment?: "production" | "staging"
+  readonly host?: string
+  readonly store?: StoreChoice
+  readonly seed?: string
+}
+
+export effect function fakeServer() {
+  return try acquireRelease(promise(() => startFakeServer()), (fakes) => promise(() => fakes.close()))
+}
+
+export effect function testCloud(options: TestCloudOptions = {}) {
+  const fakes = try fakeServer()
+  const profile = try sync(() => {
+    fakes.mount("/stripe/", options.stripe?.handler ?? stripeCatalog(options.prices ?? catalogPrices))
+    options.mount?.(fakes)
+    const base = testProfile(fakes.url)
+    return options.edit === undefined ? base : options.edit(base)
+  })
+  const choice = options.store ?? { kind: "pglite" }
+  const store = choice.kind === "pg"
+    ? (try acquireRelease(promise(() => serveDatabase(choice.setup)), (database) => promise(() => database.close()))).url
+    : "pglite"
+  const prepared = try prepare({ profile, environment: options.environment ?? "staging", store, seed: options.seed, port: 0, host: options.host ?? "127.0.0.1" })
+  const built = try Layer.build(cloudLayer(prepared).pipe(Layer.provide(ConfigProvider.layer(ConfigProvider.fromEnvRecord({ ...secrets })))))
+  const { address } = Context.get(built, HttpServer.HttpServer)
+  const url = "port" in address ? `http://127.0.0.1:${address.port}` : ""
+  return {
+    url,
+    fakes,
+    store: Context.get(built, Store),
+    call: (path: string, init?: CallInit) => promise(() => callCloud(url, path, init)),
+    inside: <A, E>(body: A!E!CloudContext) => Effect.provideContext(body, built)
+  } satisfies TestCloud
+}
+
+export effect function organization(cloud: TestCloud, id: string) {
+  const now = try Clock.currentTimeMillis
+  try cloud.store.transaction((tx) => tx.query("INSERT INTO organizations (id, name, created_at) VALUES ($1, $2, $3)", [id, id, now]))
+}
+
+export effect function check(run: () => void) {
+  try Effect.try(run)
+}
+
+export effect function sql(cloud: TestCloud, text: string, params: ReadonlyArray<unknown>) {
+  return try cloud.store.transaction((tx) => tx.query(text, params))
+}
+
+export effect function serveOnStore(cloud: TestCloud, routes: ReadonlyArray<Route>, edit?: ProfileEdit) {
+  const raw = try sync(() => {
+    const profile = testProfile(cloud.fakes.url)
+    return edit === undefined ? profile : edit(profile)
+  })
+  const profile = try parseProfile(raw)
+  const built = try Layer.build(HttpServer.serve(respond(routes)).pipe(
+    Layer.provideMerge(listening(0, "127.0.0.1")),
+    Layer.provide(Layer.mergeAll(deploymentLayer(profile, "staging"), Layer.succeed(Store, cloud.store), FetchHttpClient.layer)),
+    Layer.provide(ConfigProvider.layer(ConfigProvider.fromEnvRecord({ ...secrets })))
+  ))
+  const { address } = Context.get(built, HttpServer.HttpServer)
+  return "port" in address ? `http://127.0.0.1:${address.port}` : ""
+}
+
+export effect function outcomeTag<A, E extends { readonly _tag: string }, R>(program: A!E!R, succeeded: (value: A) => string = () => "ok"): string!!R {
+  return match (try exit(program)) {
+    when Exit.Success(let value): succeeded(value);
+    when Exit.Failure(let cause): Cause.findErrorOption(cause).pipe(Option.map((error) => error._tag), Option.getOrElse(() => "defect"));
+  }
+}
+
+export effect function clientFailure(run: () => Promise<unknown>) {
+  return try promise(() => run().then(() => "succeeded", (error: unknown) => error instanceof CloudError ? error.failure : `threw ${String(error)}`))
+}

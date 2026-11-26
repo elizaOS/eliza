@@ -148,6 +148,34 @@ pure def lawWholeDaysAreBounded(dateSent: bool, endDateSent: bool, datesReal: bo
 pure val dayCountValues = Set(0, 1, 370, 371)
 ```
 
+### A read with no connected calendar account says that none is connected, never only that the calendar is empty
+
+The agent's own resident calendar is always listed; a connected account
+(the managed Google calendar, another provider, the phone's own calendar)
+lists calendars beside it. When the active account lists no calendar but
+the resident one and no provider failed to list its calendars, a read,
+lookup, trip question or free-time question, and the next-24-hours
+calendar context the agent is given, answer with
+`connection: "none"` in their data, and their text says that no calendar
+account is connected and only the agent's own calendar was read, beside
+whatever that calendar holds. So the model tells the owner that Calendar
+isn't connected, in its own words, rather than that nothing is on it or
+that they are free. Any other read answers with `connection: "connected"`.
+
+```quint
+type CalendarConnection = AccountConnected | NoAccountConnected
+pure def calendarConnection(otherListed: int, unlisted: int): CalendarConnection =
+  if (otherListed == 0 and unlisted == 0) NoAccountConnected else AccountConnected
+pure val otherListedValues = Set(0, 1, 2)
+pure val unlistedValues = Set(0, 1)
+pure def lawAListedAccountIsConnected(otherListed: int, unlisted: int): bool =
+  otherListed > 0 implies calendarConnection(otherListed, unlisted) == AccountConnected
+pure def lawAnUnlistedProviderIsNeverCalledDisconnected(otherListed: int, unlisted: int): bool =
+  unlisted > 0 implies calendarConnection(otherListed, unlisted) == AccountConnected
+pure def lawOnlyTheResidentCalendarIsNotConnected(otherListed: int, unlisted: int): bool =
+  calendarConnection(otherListed, unlisted) == NoAccountConnected iff (otherListed == 0 and unlisted == 0)
+```
+
 ## Story: Ask when I am free and get openings from my real calendar
 
 > As the owner, I want the agent to tell me whether a whole period is
@@ -203,6 +231,74 @@ pure def lawMorningReadStaysInMorning(endsAfterNoon: bool): bool =
   morningAdmission(true, endsAfterNoon) == ReadMorning implies not(endsAfterNoon)
 pure def lawWiderRequestIsRead(endsAfterNoon: bool): bool =
   morningAdmission(false, endsAfterNoon) == ReadMorning
+```
+
+### A free-time question refuses only as before the window notes, and a note never changes the window read
+
+A free-time question refuses only for the reasons it always had: a
+window or a length it cannot read, a morning-only window that runs past
+noon, and a read that is incomplete (sections above). It never refuses
+for anything the owner's words seem to say about the window: their clock
+times, a range they state, a start already past, or an afternoon the
+model said was asked. It reads the window exactly as sent, and its
+answer may carry one short note, as text after the answer and as a
+typed `windowNote` with a kind, the words it adds to the answer, and for
+a range the windows the words fit (readClock.md, "The owner's words are
+read for a free-time window only to note one they seem to give
+otherwise"):
+
+- the owner's words seem to give another window, when a side of the
+  window sent is off (readClock.md): the note names the windows a range
+  about the window fits that day, or else the start or end the words
+  state;
+- the window starts before the current minute: the note says the model
+  can start the rest of a period under way at now, and that
+  search_events lists what was on earlier;
+- the model said the owner asked only about an afternoon, and the window
+  starts before noon or ends after 5 PM at a clock the owner's words do
+  not hold ("tomorrow afternoon until 5:30" holds its end).
+
+Only one note is given, in that order. Words the reader cannot read with
+confidence, or that name a zone other than the request's, carry no note
+at all. The model may mention the note to the owner, ask which window
+was meant, or ask again with another window; the answer itself stands.
+
+```quint
+type WindowNote = NoNote | WordsGiveAnotherWindow | StartsBeforeNow | AfternoonAsked
+pure def windowNote(wordsRead: bool, otherZoneNamed: bool, sidesOff: bool, startPassed: bool, afternoonLeft: bool): WindowNote =
+  if (not(wordsRead) or otherZoneNamed) NoNote
+  else if (sidesOff) WordsGiveAnotherWindow
+  else if (startPassed) StartsBeforeNow
+  else if (afternoonLeft) AfternoonAsked
+  else NoNote
+type FreeTimeOutcome = FreeTimeRefusesWindow | FreeTimeRefusesOutsideMorning | FreeTimeUnknown | FreeTimeAnswered
+type FreeTimeAnswer = { outcome: FreeTimeOutcome, readStart: int, readEnd: int, note: WindowNote }
+pure def freeTimeAnswer(windowValid: bool, durationValid: bool, morning: MorningAdmission, readComplete: bool, sentStart: int, sentEnd: int, note: WindowNote): FreeTimeAnswer = {
+  outcome: if (freeTimeRead(windowValid, durationValid, true) == RefuseWindow) FreeTimeRefusesWindow
+    else if (morning == RefuseOutsideMorning) FreeTimeRefusesOutsideMorning
+    else if (freeTimeRead(windowValid, durationValid, readComplete) != AvailabilityKnown) FreeTimeUnknown
+    else FreeTimeAnswered,
+  readStart: sentStart,
+  readEnd: sentEnd,
+  note: note
+}
+pure def lawFreeTimeNeverRefusesOnWords(windowValid: bool, durationValid: bool, morning: MorningAdmission, readComplete: bool, wordsRead: bool, otherZoneNamed: bool, sidesOff: bool, startPassed: bool, afternoonLeft: bool): bool =
+  freeTimeAnswer(windowValid, durationValid, morning, readComplete, 0, 60000, windowNote(wordsRead, otherZoneNamed, sidesOff, startPassed, afternoonLeft)).outcome
+    == freeTimeAnswer(windowValid, durationValid, morning, readComplete, 0, 60000, NoNote).outcome
+pure def lawFreeTimeRefusesOnlyAsBefore(windowValid: bool, durationValid: bool, morning: MorningAdmission, readComplete: bool, note: WindowNote): bool =
+  (freeTimeAnswer(windowValid, durationValid, morning, readComplete, 0, 60000, note).outcome != FreeTimeAnswered)
+    iff (not(windowValid and durationValid) or morning == RefuseOutsideMorning or not(readComplete))
+pure def lawANoteNeverChangesTheWindowRead(sentStart: int, sentEnd: int, note: WindowNote): bool =
+  freeTimeAnswer(true, true, ReadMorning, true, sentStart, sentEnd, note).readStart == sentStart
+    and freeTimeAnswer(true, true, ReadMorning, true, sentStart, sentEnd, note).readEnd == sentEnd
+pure def lawUnreadWordsCarryNoNote(otherZoneNamed: bool, sidesOff: bool, startPassed: bool, afternoonLeft: bool): bool =
+  windowNote(false, otherZoneNamed, sidesOff, startPassed, afternoonLeft) == NoNote
+pure def lawAnotherZoneCarriesNoNote(wordsRead: bool, sidesOff: bool, startPassed: bool, afternoonLeft: bool): bool =
+  windowNote(wordsRead, true, sidesOff, startPassed, afternoonLeft) == NoNote
+pure def lawANoteHasItsReason(wordsRead: bool, otherZoneNamed: bool, sidesOff: bool, startPassed: bool, afternoonLeft: bool): bool =
+  windowNote(wordsRead, otherZoneNamed, sidesOff, startPassed, afternoonLeft) != NoNote implies (sidesOff or startPassed or afternoonLeft)
+pure val sentStartValues = Set(0, 60000)
+pure val sentEndValues = Set(60000, 3600000)
 ```
 
 ### A period is free only when no blocking event overlaps it
@@ -265,7 +361,11 @@ pure val atValues = Set(-1, 0, 1, 900000, 1350000)
 The upcoming-events context and the Calendar action are disclosed only
 when the owner asks and the turn's attested audience is the owner alone.
 In a room anyone else can read, or with no attested audience, the owner's
-events stay out of the prompt and the action does not run.
+events stay out of the prompt and the action does not run. Within that,
+core's catalog gives the Calendar action the general context every owner
+turn is planned in, beside its calendar and automation contexts, so the owner can ask about
+or change their calendar from any chat, as on the phone before VibeStack;
+its owner role gate and this audience gate are unchanged.
 
 ```quint
 pure def calendarDisclosed(isOwner: bool, ownerAlone: bool): bool = isOwner and ownerAlone

@@ -1,0 +1,128 @@
+// spec/cloud/identity/codeChallenges.md, "Story: Sign in with a code sent to my email or phone"; spec/cloud/identity/codeChallenges.md, "Story: Stop guessing at my code"
+import { assert, describe, it } from "@effect/vitest"
+import { s256, secretText } from "../../src/shared/credential-crypto.vibe"
+import { check, testCloud, type Answer, type TestCloud } from "../support/cloud.vibe"
+import { latestCode } from "../support/inbox.ts"
+
+const clientId = "app.test"
+
+function refusal(answer: Answer): string {
+  const body = answer.body as { readonly error?: string; readonly reason?: string }
+  return `${answer.status} ${body.error}${body.reason === undefined ? "" : ` ${body.reason}`}`
+}
+
+function pkce() {
+  const verifier = secretText("", 32, "base64url")
+  return { verifier, challenge: s256(verifier) }
+}
+
+effect function send(cloud: TestCloud, kind: "email" | "sms", destination: Record<string, string>, codeChallenge: string) {
+  return try cloud.call(`/api/v1/auth/${kind}/code/send`, { json: { ...destination, clientId, codeChallenge, codeChallengeMethod: "S256" } })
+}
+
+effect function verify(cloud: TestCloud, kind: "email" | "sms", destination: Record<string, string>, code: string, codeVerifier: string) {
+  return try cloud.call(`/api/v1/auth/${kind}/code/verify`, { json: { ...destination, code, clientId, codeVerifier } })
+}
+
+describe("WP1 Identity: code challenges", () => {
+  it.live("An email code read from the inbox gives a session, and a superseded code is refused (spec/cloud/identity/codeChallenges.md, \"Story: Sign in with a code sent to my email or phone\")", () => scoped(effect {
+    const cloud = try testCloud()
+    const email = { email: "grace@example.com" }
+    const first = pkce()
+    const second = pkce()
+    const startedAt = try Clock.currentTimeMillis
+    const malformed = try send(cloud, "email", { email: "not-an-address" }, first.challenge)
+    const sentFirst = try send(cloud, "email", { email: "Grace@Example.com" }, first.challenge)
+    const firstCode = try latestCode(cloud, email.email)
+    const sentSecond = try send(cloud, "email", email, second.challenge)
+    const secondCode = try latestCode(cloud, email.email)
+    const superseded = try verify(cloud, "email", email, firstCode, first.verifier)
+    const wrongVerifier = try verify(cloud, "email", email, secondCode, first.verifier)
+    const signed = try verify(cloud, "email", email, secondCode, second.verifier)
+    const replayed = try verify(cloud, "email", email, secondCode, second.verifier)
+    const session = signed.body as { status: string; accountCreated: boolean; user: { email: string }; accessToken: string }
+    const user = try cloud.call("/api/v1/user", { headers: { authorization: `Bearer ${session.accessToken}` } })
+    const sent = sentFirst.body as { expiresAt: number; codeLength: number }
+    try check(() => assert.deepStrictEqual(
+      {
+        malformed: refusal(malformed),
+        sent: [sentFirst.status, sentSecond.status, sent.codeLength, sent.expiresAt >= startedAt + 10 * 60_000 && sent.expiresAt <= Date.now() + 10 * 60_000],
+        superseded: refusal(superseded),
+        wrongVerifier: refusal(wrongVerifier),
+        signed: [signed.status, session.status, session.accountCreated, session.user.email],
+        replayed: refusal(replayed),
+        user: [user.status, (user.body as { data: { email: string } }).data.email]
+      },
+      {
+        malformed: "400 invalid_request",
+        sent: [200, 200, 6, true],
+        superseded: "401 authentication_required credential_unknown",
+        wrongVerifier: "401 credential_proof_invalid",
+        signed: [200, "signed_in", true, "grace@example.com"],
+        replayed: "401 authentication_required credential_unknown",
+        user: [200, "grace@example.com"]
+      }
+    ))
+  }))
+
+  it.live("A code refused for a closed account stays spent (spec/cloud/identity/codeChallenges.md, \"A sign-in code yields a session, or a second-factor challenge for a person who has a factor, never both\")", () => scoped(effect {
+    const cloud = try testCloud()
+    const email = { email: "hopper@example.com" }
+    const opening = pkce()
+    try send(cloud, "email", email, opening.challenge)
+    const opened = try verify(cloud, "email", email, try latestCode(cloud, email.email), opening.verifier)
+    const closing = pkce()
+    try send(cloud, "email", email, closing.challenge)
+    const code = try latestCode(cloud, email.email)
+    try cloud.store.transaction((tx) => tx.query("UPDATE accounts SET status = 'deleting' WHERE email = $1", [email.email]))
+    const closed = try verify(cloud, "email", email, code, closing.verifier)
+    const again = try verify(cloud, "email", email, code, closing.verifier)
+    try check(() => assert.deepStrictEqual(
+      [opened.status, refusal(closed), refusal(again)],
+      [200, "403 access_denied account_inactive", "401 authentication_required credential_unknown"]
+    ))
+  }))
+
+  it.live("Five wrong SMS codes lock the challenge and the right code is still refused (spec/cloud/identity/codeChallenges.md, \"Story: Stop guessing at my code\"; spec/cloud/identity/codeChallenges.md, \"Story: Sign in with a code sent to my email or phone\")", () => scoped(effect {
+    const cloud = try testCloud()
+    const phone = { phone: "+15555550123" }
+    const proof = pkce()
+    const foreign = try send(cloud, "sms", { phone: "+447700900123" }, proof.challenge)
+    const foreignInbox = try cloud.call(`/api/test/inbox/${encodeURIComponent("+447700900123")}`)
+    const startedAt = try Clock.currentTimeMillis
+    const sent = try send(cloud, "sms", phone, proof.challenge)
+    const code = try latestCode(cloud, phone.phone)
+    const wrong = code === "000000" ? "111111" : "000000"
+    const attempts: Array<string> = []
+    for (let attempt = 0; attempt < 5; attempt += 1) attempts.push(refusal(try verify(cloud, "sms", phone, wrong, proof.verifier)))
+    try cloud.store.transaction((tx) => tx.query("DELETE FROM rate_windows WHERE key LIKE 'codeVerifyPerDestination|%'"))
+    const rightButLocked = try verify(cloud, "sms", phone, code, proof.verifier)
+    const expiresAt = (sent.body as { expiresAt: number }).expiresAt
+    try check(() => assert.deepStrictEqual(
+      {
+        foreign: [refusal(foreign), foreignInbox.status],
+        sent: [sent.status, expiresAt >= startedAt + 5 * 60_000 && expiresAt <= Date.now() + 5 * 60_000],
+        attempts: [...attempts, refusal(rightButLocked)]
+      },
+      {
+        foreign: ["400 invalid_request", 404],
+        sent: [200, true],
+        attempts: [...Array(4).fill("401 credential_proof_invalid"), "403 access_denied challenge_locked", "403 access_denied challenge_locked"]
+      }
+    ))
+  }))
+
+  it.live("A spent SMS budget answers service_unavailable with its window end and sends nothing (spec/cloud/identity/codeChallenges.md, \"Story: Sign in with a code sent to my email or phone\")", () => scoped(effect {
+    const cloud = try testCloud({ edit: (profile) => ({ ...profile, environments: { ...profile.environments, staging: { ...profile.environments.staging, signIn: { ...profile.environments.staging.signIn, smsHourlyBudget: 1 } } } }) })
+    const proof = pkce()
+    const startedAt = try Clock.currentTimeMillis
+    const first = try send(cloud, "sms", { phone: "+15555550124" }, proof.challenge)
+    const spent = try send(cloud, "sms", { phone: "+15555550125" }, proof.challenge)
+    const inbox = try cloud.call(`/api/test/inbox/${encodeURIComponent("+15555550125")}`)
+    const body = spent.body as { error: string; retryable: boolean; retryAt: number }
+    try check(() => assert.deepStrictEqual(
+      { first: first.status, spent: [spent.status, body.error, body.retryable, body.retryAt > startedAt && body.retryAt <= Date.now() + 60 * 60_000], inbox: inbox.status },
+      { first: 200, spent: [503, "service_unavailable", true, true], inbox: 404 }
+    ))
+  }))
+})

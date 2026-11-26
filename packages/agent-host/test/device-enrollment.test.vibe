@@ -1,0 +1,146 @@
+// spec/agent/deviceActions/index.md, "Story: Enroll my device and revoke it"; spec/agent/deviceActions/capabilities.md, "Story: Offer the agent only what my device advertised"
+import { assert, it } from "@effect/vitest"
+import { allCapabilities, capabilityName } from "../gen/agent__deviceActions__capabilities.effect.vibe"
+import { call, host, scratch, startInProcess, type Reachable } from "./support/kernel.vibe"
+import type { Scratch } from "./support/scratch.ts"
+import type { LocalRequest } from "./support/socket-client.ts"
+
+module node {
+  import { createHash } from "node:crypto"
+
+  export function priorScope(identity: { readonly agentId: string; readonly enrollmentId: string; readonly installationId: string; readonly subjectUserId: string }): string {
+    return createHash("sha256").update(JSON.stringify(identity)).digest("hex")
+  }
+}
+
+import { priorScope } from node
+
+const key = "a".repeat(64)
+const otherKey = "b".repeat(64)
+const vocabulary = allCapabilities.map(capabilityName)
+
+type Asked = Omit<LocalRequest, "headers">
+
+effect function booted(persistMemory: boolean, state?: Scratch) {
+  return try startInProcess({ launch: { callerRole: "owner", persistMemory }, ...(state === undefined ? {} : { state }) })
+}
+
+effect function device(reachable: Reachable, agentId: string, asked: Asked, deviceKey: string | null = key, deviceId: string = agentId, capabilities?: string) {
+  const headers: Record<string, string> = {
+    ...(deviceKey === null ? {} : { "x-eliza-device-id": deviceId, "x-eliza-device-key": deviceKey }),
+    ...(capabilities === undefined ? {} : { "x-eliza-device-capabilities": capabilities }),
+  }
+  const found = try call(reachable, { ...asked, headers })
+  return "status" in found ? { status: found.status, json: found.json as Record<string, unknown> } : try die(new Error(found.refused))
+}
+
+const register = (workflowProtocol: number): Asked => ({ method: "POST", path: "/api/client-devices/register", body: { workflowProtocol } })
+const context: Asked = { method: "GET", path: "/api/client-devices/context" }
+const revoke: Asked = { method: "POST", path: "/api/client-devices/revoke", body: {} }
+
+it.live('Enroll my device under its own key, read its context, revoke it and enroll again under a new key, across a restart (spec/agent/deviceActions/index.md, "Story: Enroll my device and revoke it")', effect () => {
+  const state = try scratch("device-enrollment")
+  const first = try booted(true, state)
+  const agentId = first.agent.status.agentId
+  const unenrolledContext = try device(first, agentId, context)
+  const noKey = try device(first, agentId, register(1), null)
+  const strangerId = try device(first, agentId, register(1), key, "another-installation")
+  const shortKey = try device(first, agentId, register(1), "abc")
+  const tooNew = try device(first, agentId, register(6))
+  const unknownCapability = try device(first, agentId, { method: "POST", path: "/api/client-devices/register", body: { capabilities: ["gmail.request-policy.v1"] } })
+  const extraField = try device(first, agentId, { method: "POST", path: "/api/client-devices/register", body: { workflowProtocol: 1, installationId: "mine" } })
+  assert.deepStrictEqual(
+    [unenrolledContext.status, noKey.status, strangerId.status, shortKey.status, tooNew.status, unknownCapability.status, extraField.status],
+    [401, 401, 401, 401, 409, 400, 400],
+  )
+
+  const registered = try device(first, agentId, { method: "POST", path: "/api/client-devices/register", body: { label: "Phone", workflowProtocol: 1 } })
+  const enrollmentId = try Schema.decodeUnknownEffect(Schema.String)(registered.json.enrollmentId)
+  assert.strictEqual(registered.status, 200)
+  assert.deepStrictEqual(registered.json, { installationId: agentId, enrollmentId, capabilities: vocabulary, viewProfileVersion: 1 })
+  assert.match(String(enrollmentId), /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/)
+  const again = try device(first, agentId, register(3))
+  const anotherKeyContext = try device(first, agentId, context, otherKey)
+  assert.deepStrictEqual([again.status, again.json.enrollmentId, anotherKeyContext.status], [200, enrollmentId, 401])
+
+  const served = try device(first, agentId, context)
+  const subjectUserId = try Schema.decodeUnknownEffect(Schema.String)(served.json.subjectUserId)
+  const { scope } = served.json
+  assert.deepStrictEqual([served.status, served.json], [200, { agentId, installationId: agentId, enrollmentId, subjectUserId, scope }])
+  assert.isTrue(typeof subjectUserId === "string" && subjectUserId !== "")
+  const pinnedScope = try Effect.try(() => priorScope({ agentId, enrollmentId, installationId: agentId, subjectUserId }))
+  assert.strictEqual(scope, pinnedScope)
+  try host("first agent stop", () => first.agent.stop())
+
+  const second = try booted(true, state)
+  const restored = try device(second, agentId, context)
+  assert.deepStrictEqual([second.agent.status.agentId, restored.status, restored.json], [agentId, 200, served.json])
+  const wrongRevoke = try device(second, agentId, revoke, otherKey)
+  const revoked = try device(second, agentId, revoke)
+  const revokedContext = try device(second, agentId, context)
+  const revokedAgain = try device(second, agentId, revoke)
+  assert.deepStrictEqual(
+    [wrongRevoke.status, revoked.status, revoked.json, revokedContext.status, revokedAgain.status],
+    [401, 200, { revoked: true }, 401, 401],
+  )
+
+  const reEnrolled = try device(second, agentId, register(1))
+  const reEnrolledContext = try device(second, agentId, context)
+  const replaced = try device(second, agentId, register(1), otherKey)
+  const replacedContext = try device(second, agentId, context)
+  const replacedRevoke = try device(second, agentId, revoke)
+  const refusedReplacement = try device(second, agentId, register(6))
+  const current = try device(second, agentId, context, otherKey)
+  assert.deepStrictEqual(
+    [reEnrolled.status, reEnrolledContext.status, replaced.status, replacedContext.status, replacedRevoke.status, refusedReplacement.status, current.status, current.json.enrollmentId],
+    [200, 200, 200, 401, 401, 409, 200, replaced.json.enrollmentId],
+  )
+  assert.notStrictEqual(replaced.json.enrollmentId, enrollmentId)
+}, 180_000)
+
+it.live('The agent offers its whole vocabulary and changes the view profile only against the revision the device read (spec/agent/deviceActions/index.md, "Before it enrolls, a device reads the agent\'s identity and whole vocabulary, which changes nothing"; spec/agent/deviceActions/capabilities.md, "The enabled-view profile changes only against the revision the device read"; spec/agent/deviceActions/capabilities.md, "Phone, Messages and Contacts are offered and enabled only on a request that negotiated the telephony views")', effect () => {
+  const running = try booted(false)
+  const agentId = running.agent.status.agentId
+  const profileChange = (expectedRevision: string | null, views: readonly string[]): Asked => ({
+    method: "POST", path: "/api/client-devices/view-profile", body: { version: 1, expectedRevision, views },
+  })
+  const readProfile: Asked = { method: "GET", path: "/api/client-devices/view-profile" }
+  const offer = try device(running, agentId, { method: "GET", path: "/api/client-devices/capabilities" })
+  const offerByPost = try device(running, agentId, { method: "POST", path: "/api/client-devices/capabilities", body: {} })
+  assert.deepStrictEqual(offer.json.deviceActions, { protocol: 1, capabilities: vocabulary })
+  assert.deepStrictEqual([offer.json.protocol, offer.json.agentId], [1, agentId])
+  assert.deepStrictEqual(offerByPost.json, offer.json)
+  const unenrolled = try device(running, agentId, readProfile)
+  assert.strictEqual(unenrolled.status, 401)
+  const offered = try device(running, agentId, register(1))
+  assert.deepStrictEqual(offered.json.capabilities, vocabulary)
+  assert.strictEqual(new Set(vocabulary).size, vocabulary.length)
+  assert.isTrue(vocabulary.every((name) => /\.v[0-9]+$/.test(name)))
+  const empty = try device(running, agentId, readProfile)
+  assert.deepStrictEqual([empty.status, empty.json.profile, (empty.json.supportedViews as string[]).includes("notes")], [200, null, true])
+  const unknownView = try device(running, agentId, profileChange(null, ["gmail"]))
+  const stranger = try device(running, agentId, profileChange(null, ["home"]), otherKey)
+  assert.deepStrictEqual([unknownView.status, stranger.status], [400, 401])
+  const made = try device(running, agentId, profileChange(null, ["notes", "home"]))
+  const profile = made.json.profile as { revision: string; views: string[] }
+  assert.deepStrictEqual([made.status, profile.views], [200, ["home", "notes"]])
+  const stale = try device(running, agentId, profileChange(null, ["home"]))
+  const same = try device(running, agentId, profileChange(profile.revision, ["home", "notes"]))
+  const changed = try device(running, agentId, profileChange(profile.revision, ["home"]))
+  const read = try device(running, agentId, readProfile)
+  assert.deepStrictEqual([stale.status, stale.json, same.status, same.json.profile], [409, { error: "view_profile_changed" }, 200, profile])
+  const next = changed.json.profile as { revision: string; views: string[] }
+  assert.deepStrictEqual([changed.status, next.views, read.json.profile], [200, ["home"], next])
+  assert.notStrictEqual(next.revision, profile.revision)
+
+  const telephony = "views.telephony.v1"
+  const phoneViews = ["phone", "messages", "contacts"]
+  const offeredTo = (json: Record<string, unknown>) => phoneViews.filter((view) => (json.supportedViews as string[]).includes(view))
+  const withoutViews = try device(running, agentId, profileChange(next.revision, ["home", "phone"]))
+  const plainRead = try device(running, agentId, readProfile)
+  const phoneRead = try device(running, agentId, readProfile, key, agentId, telephony)
+  const enabled = try device(running, agentId, profileChange(next.revision, ["home", "phone", "messages"]), key, agentId, telephony)
+  assert.deepStrictEqual(
+    [withoutViews.status, offeredTo(plainRead.json), offeredTo(phoneRead.json), enabled.status, (enabled.json.profile as { views: string[] }).views],
+    [400, [], phoneViews, 200, ["home", "messages", "phone"]])
+}, 180_000)

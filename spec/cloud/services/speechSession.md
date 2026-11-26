@@ -11,7 +11,7 @@ The routes are `POST /api/v1/voice/speech/consent`, `POST
 /api/v1/voice/speech/session`, `GET /api/v1/voice/speech/ws?sessionId=`
 and `POST /api/v1/voice/speech/session/:id/revoke`. JSON, the token, its
 digest, the socket, the provider calls and the database stay in
-`src/services/speech-session.vibe`. One session is one row of
+`packages/cloud-worker/src/services/speech-session.vibe`. One session is one row of
 `speech_sessions`; the shell loads it, steps it with the generated adapter
 and writes it back by compare-and-set, in the same transaction as the
 window's holds and the day's usage.
@@ -74,7 +74,8 @@ pure val nowValues = Set(0, 50000, 55000, 60000, 110000, 170000, 400000)
 
 Minting spends the consent and answers `{version: 1, sessionId, token,
 expiresAt, wsUrl}` with the header `X-Eliza-Speech-Extend: 1`. The token is
-at most `Rl::maxHelloTokenChars` characters and only its digest is kept;
+32 random bytes as 43 unpadded base64url characters with no prefix, which
+devices check before they open the socket, and only its digest is kept;
 `wsUrl` is `wss://<api host>/api/v1/voice/speech/ws?sessionId=<id>`. The
 deadline is one minute away, or the credential's expiry (the `expiresAt` of
 `requestAuth`'s `Caller`) if that is sooner. A missing, foreign, spent or

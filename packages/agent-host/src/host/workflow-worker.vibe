@@ -1,0 +1,139 @@
+// spec/agent/plugins/profile.md, "The worker is installed only after its executable digest matches the launch"; spec/agent/plugins/profile.md, "The worker never receives the credential, the launch token or the storage key"; spec/agent/plugins/profile.md, "Host runtime services register with storage before every listed plugin, never under an agent service's name, and a pinned worker is the workflow-worker service"
+module node {
+  import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process"
+  import { createHash } from "node:crypto"
+  import { lstat, open, realpath } from "node:fs/promises"
+  import { isAbsolute, relative, resolve, sep } from "node:path"
+  import { Redacted } from "effect"
+  import { workflowWorkerService as workflowWorkerServiceType, type ProcessValue } from "../../gen/agent__plugins__profile.ts"
+  import type { LaunchDocument, LaunchFrame } from "@elizaos/agent"
+  import { Service, type IAgentRuntime, type ServiceClass } from "@elizaos/core"
+
+  export type WorkflowWorkerLaunch = NonNullable<LaunchDocument["workflowWorker"]>
+
+  export interface PinnedWorker {
+    readonly runtimeDir: string
+    readonly executable: string
+    readonly expected: string
+    readonly measured: string
+  }
+
+  export type WorkerMeasure =
+    | { readonly kind: "measured"; readonly worker: PinnedWorker }
+    | { readonly kind: "refused"; readonly reason: string }
+
+  export interface WorkerSpawnOptions {
+    readonly env?: Readonly<Record<string, string>>
+    readonly signal?: AbortSignal
+  }
+
+  export interface WorkflowWorkerHost {
+    readonly runtimeDir: string
+    readonly executable: string
+    spawnWorker(args: readonly string[], options?: WorkerSpawnOptions): Promise<ChildProcessWithoutNullStreams>
+  }
+
+  export interface WorkerSecrets {
+    readonly token: LaunchFrame["token"]
+    readonly credential: NonNullable<LaunchFrame["credential"]>["value"] | undefined
+    readonly storageKey: LaunchFrame["storageKey"]
+  }
+
+  const refused = (reason: string): WorkerMeasure => ({ kind: "refused", reason })
+
+  function within(directory: string, file: string): boolean {
+    const path = relative(directory, file)
+    return path !== "" && path !== ".." && !path.startsWith(`..${sep}`) && !isAbsolute(path)
+  }
+
+  export async function measureWorker(launch: WorkflowWorkerLaunch): Promise<WorkerMeasure> {
+    const directory = launch.runtimeDir
+    if (!isAbsolute(directory)) return refused("The worker directory is not absolute")
+    try {
+      if (await realpath(directory) !== directory || !(await lstat(directory)).isDirectory()) {
+        return refused("The worker directory is not a real directory")
+      }
+      const executable = resolve(directory, launch.executable)
+      if (!within(directory, executable)) return refused("The worker executable is outside its directory")
+      const entry = await lstat(executable)
+      if (!entry.isFile() || entry.nlink !== 1 || await realpath(executable) !== executable) {
+        return refused("The worker executable is not one regular file")
+      }
+      const handle = await open(executable, "r")
+      try {
+        const opened = await handle.stat()
+        if (opened.ino !== entry.ino || opened.dev !== entry.dev) return refused("The worker executable changed while it was read")
+        const hash = createHash("sha256")
+        for await (const chunk of handle.createReadStream({ autoClose: false })) hash.update(chunk)
+        return { kind: "measured", worker: { runtimeDir: directory, executable, expected: launch.sha256, measured: hash.digest("hex") } }
+      } finally {
+        await handle.close()
+      }
+    } catch {
+      return refused("The worker files are unreadable")
+    }
+  }
+
+  function valueClass(value: string, secrets: WorkerSecrets): ProcessValue {
+    if (value.includes(Redacted.value(secrets.token))) return "LaunchToken"
+    if (secrets.credential !== undefined && value.includes(Redacted.value(secrets.credential))) return "DeviceCredential"
+    if (secrets.storageKey !== undefined && value.includes(Redacted.value(secrets.storageKey))) return "SealingKey"
+    return "PlainSetting"
+  }
+
+  export function workflowWorkerService(installed: () => WorkflowWorkerHost | undefined): ServiceClass {
+    return class WorkflowWorker extends Service {
+      static override serviceType = workflowWorkerServiceType
+      override capabilityDescription = "The workflow worker whose executable matched the launch's pinned digest"
+
+      static override start(runtime: IAgentRuntime): Promise<Service> {
+        return Promise.resolve(new WorkflowWorker(runtime))
+      }
+
+      spawnWorker(args: readonly string[], options?: WorkerSpawnOptions): Promise<ChildProcessWithoutNullStreams> {
+        const host = installed()
+        return host === undefined ? Promise.reject(new Error("The workflow worker is installed once the agent is ready")) : host.spawnWorker(args, options)
+      }
+
+      override stop(): Promise<void> {
+        return Promise.resolve()
+      }
+    }
+  }
+
+  export function workerHost(
+    launch: WorkflowWorkerLaunch,
+    pinned: PinnedWorker,
+    settings: Readonly<Record<string, string>>,
+    secrets: WorkerSecrets,
+    permit: (offered: readonly ProcessValue[]) => Promise<readonly ProcessValue[]>,
+  ): WorkflowWorkerHost {
+    const temporaryDirectory = process.env.TMPDIR
+    return {
+      runtimeDir: pinned.runtimeDir,
+      executable: pinned.executable,
+      async spawnWorker(args, options = {}) {
+        const workerSettings = { ...settings, ...options.env }
+        if (temporaryDirectory === undefined) delete workerSettings.TMPDIR
+        else workerSettings.TMPDIR = temporaryDirectory
+        const offered = Object.entries(workerSettings)
+        const classes = offered.map(([, value]) => valueClass(value, secrets))
+        const allowed = new Set(await permit([...new Set(classes)]))
+        const env = Object.fromEntries(offered.filter((_entry, index) => allowed.has(classes[index])))
+        const current = await measureWorker(launch)
+        if (current.kind !== "measured" || current.worker.executable !== pinned.executable || current.worker.measured !== pinned.measured) {
+          throw new Error("The workflow worker no longer matches its verified digest")
+        }
+        const [command, ...argv] = /\.[cm]?js$/i.test(pinned.executable)
+          ? [process.execPath, pinned.executable, ...args]
+          : [pinned.executable, ...args]
+        return spawn(command, argv, {
+          cwd: pinned.runtimeDir, env, shell: false, stdio: "pipe",
+          ...(options.signal === undefined ? {} : { signal: options.signal }),
+        })
+      },
+    }
+  }
+}
+
+export { measureWorker, workerHost, workflowWorkerService, type PinnedWorker, type WorkflowWorkerLaunch, type WorkerMeasure, type WorkerSecrets, type WorkerSpawnOptions, type WorkflowWorkerHost } from node

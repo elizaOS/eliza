@@ -1,0 +1,39 @@
+// spec/agent/models/binding.md, "No text handler is ever served by a model on the device"; spec/agent/models/binding.md, "Only a network failure, an outage or a provider issue is retried, and a rate limit ends the call for its turn to re-send once"; spec/agent/models/binding.md, "A tool call, a structured answer and the token use reach the caller as one result"; spec/agent/models/binding.md, "A call sends an output cap only when its caller names one, and a thinking hint sets the reasoning effort only on a model that documents it"; spec/agent/models/binding.md, "A call sends its caller's temperature only to a model that takes one"
+import { ModelType, type IAgentRuntime } from "@elizaos/core"
+import type { HttpClient } from "effect/http"
+import { onCerebras } from "./binding.vibe"
+import type { SamplingControl, SamplingDeclaration } from "../../gen/agent__models__binding.effect.vibe"
+import { Refused, describeImage, generateText, listModels, registerTwice, type Binding, type ShellRefused } from "./chat.vibe"
+
+export type OwnKeySampling = "takes-temperature" | "default-temperature-only"
+
+export interface OwnKeyModels {
+  readonly baseUrl: string
+  readonly small: string
+  readonly large: string
+  readonly sampling?: { readonly small?: OwnKeySampling; readonly large?: OwnKeySampling }
+}
+
+const samplingControls = { "takes-temperature": "TakesTemperature", "default-temperature-only": "DefaultTemperatureOnly" } as const satisfies Record<OwnKeySampling, SamplingControl>
+
+function declaredOf(declared: OwnKeySampling | undefined): SamplingDeclaration {
+  return declared === undefined ? { tag: "SamplingUndeclared" } : { tag: "SamplingDeclared", control: samplingControls[declared] }
+}
+
+export function registerOwnKeyModels(runtime: IAgentRuntime, binding: Binding, own: OwnKeyModels): void {
+  const cerebras = onCerebras(own.baseUrl)
+  const endpoint = { url: own.baseUrl + "/chat/completions", models: { TextSmall: own.small, TextLarge: own.large, ImageDescription: own.large }, sampling: { TextSmall: declaredOf(own.sampling?.small), TextLarge: declaredOf(own.sampling?.large), ImageDescription: declaredOf(own.sampling?.large) }, maxTokensField: "max_completion_tokens", reasoningHints: cerebras, uniformToolStrictness: cerebras, cloudRoute: false } as const
+  registerTwice(runtime, "@elizaos/agent/own-key", {
+    [ModelType.TEXT_SMALL]: generateText(binding, endpoint, "TextSmall"),
+    [ModelType.TEXT_LARGE]: generateText(binding, endpoint, "TextLarge"),
+    [ModelType.IMAGE_DESCRIPTION]: describeImage(binding, endpoint),
+  }, { streamable: true })
+}
+
+type ProbeFailure = Refused | ShellRefused
+
+export effect function probeOwnKey(own: OwnKeyModels, key: Redacted.Redacted<string>): string[]!ProbeFailure!HttpClient.HttpClient {
+  const listed = try listModels(own.baseUrl, key)
+  if (!listed.includes(own.small) || !listed.includes(own.large)) throw new Refused({ cloud: { tag: "CloudProviderIssue" } })
+  return listed
+}

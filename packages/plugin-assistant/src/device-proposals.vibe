@@ -1,8 +1,9 @@
-// spec/assistant/reminders.md, "Story: Propose a reminder or alarm on my phone only as I asked"; spec/assistant/reminders.md, "A phone reminder is proposed only when the assistant keeps no reminders here or the phone's reminder is selected"; spec/assistant/reminders.md, "A selected or named phone reminder is the one the owner gave, and a change to it needs the owner's own ask"; spec/assistant/reminders.md, "A new phone reminder is due when the owner's words say, counted from the turn's start for a relative time"; spec/assistant/timezone.md, "A phone reminder or Clock alarm uses the zone the phone reported for this turn"
+// spec/assistant/reminders.md, "Story: Propose a reminder or alarm on my phone only as I asked"; spec/assistant/reminders.md, "A phone reminder is proposed only when the assistant keeps no reminders here or the phone's reminder is selected"; spec/assistant/reminders.md, "A selected or named phone reminder is the one the owner gave, and a change to it is only proposed for the owner's review"; spec/assistant/reminders.md, "A new phone reminder is due when the owner's words say, counted from the turn's start for a relative time"; spec/assistant/timezone.md, "A phone reminder or Clock alarm uses the zone the phone reported for this turn"
 import type { ActionParameterSchema } from "@elizaos/core"
-import { readResult, type DeviceOperation, type DeviceProposalFamily, type DeviceTurn, type Grounding, type NegotiatedDevice, type PendingRequest, type ProposalForm, type ProposalText } from "@elizaos/agent/device-actions"
-import { declinesInWords, namedInWords, parseExplicitLocalDate, parseStatedClockTimes, wordsInWords } from "@elizaos/plugin-calendar/request-time"
-import { alertAt, newReminderStated, phoneReminderProposed, relativeDueAt, reminderChangeAsked, reminderLead, reminderTargetGrounded, reminderTimeAdmitted, reminderWordsKept } from "../gen/assistant__reminders.effect.vibe"
+import { readResult, type DeviceOperation } from "@elizaos/agent"
+import type { DeviceProposalFamily, DeviceTurn, Grounding, NegotiatedDevice, PendingRequest, ProposalForm, ProposalText } from "@elizaos/agent-host"
+import { namedInWords, parseExplicitLocalDate, parseStatedClockTimes, wordsInWords } from "@elizaos/plugin-calendar"
+import { alertAt, newReminderStated, phoneReminderProposed, relativeDueAt, reminderLead, reminderTargetGrounded, reminderTimeAdmitted, reminderWordsKept } from "../gen/assistant__reminders.effect.vibe"
 import { localDueGrounded, phoneZoneGrounded, reminderShownZone } from "../gen/assistant__timezone.effect.vibe"
 import { clockCapability, clockHandoffDispatch, clockRepeatCapability, describeClockHandoff, normalizeClockTimeZone } from "./clock.vibe"
 import { ownerRemindersAction } from "./reminders.vibe"
@@ -22,13 +23,6 @@ const selectedTypes: readonly SelectedType[] = ["reminder_read_selected", "remin
 const identifier = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/
 const reminderId = /^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$/
 const revision = /^[a-f0-9]{64}$/
-const cancelWords = /\b(?:cancel|delete|remove|stop|clear|drop|get\s+rid\s+of|turn\s+off)\b/i
-const updateWords = /\b(?:change|edit|update|move|reschedule|push|shift|postpone|delay|rename|retitle|set|make)\b/i
-const completeWords = /\b(?:complete|completed|done|finish(?:ed)?|check(?:ed)?\s+(?:it\s+)?off|mark(?:ed)?)\b/i
-const snoozeWords = /\b(?:snooze|remind\s+me\s+(?:again\s+)?later)\b/i
-const askedBy: Readonly<Partial<Record<DeviceOperation["type"], RegExp>>> = {
-  reminder_update: updateWords, reminder_complete: completeWords, reminder_snooze: snoozeWords, reminder_cancel: cancelWords,
-}
 const counts: Readonly<Record<string, number>> = {
   a: 1, an: 1, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, fifteen: 15, twenty: 20, thirty: 30, forty: 40, "forty-five": 45, fifty: 50, ninety: 90,
 }
@@ -44,24 +38,24 @@ function object(properties: Record<string, ActionParameterSchema>, required: rea
 
 const targetSchema = object({
   sourceId: string, sourceRevision: string, reminderId: string, occurrenceId: string, revision: string,
-  timingVersion: { ...typed(2), description: "Copy the selected reminder timing version exactly when present." },
+  timingVersion: { ...typed(2), description: "Copy selected timingVersion if present." },
 }, ["sourceId", "sourceRevision", "reminderId", "occurrenceId", "revision"])
 const alertMinutes: ActionParameterSchema = {
-  description: "Minutes before dueAt to alert; null saves without a notification.",
+  description: "Min before dueAt to alert; null=no notification.",
   anyOf: [{ type: "integer", minimum: 0, maximum: 10_080 }, { type: "null" }],
 }
 const recurrence: ActionParameterSchema = {
   anyOf: [{ type: "null" }, object({ rule: { type: "string", enum: ["daily", "weekdays", "weekly"] }, zone: string, date: string, time: string, leadMinutes: { type: "integer" } })],
 }
-const at = { type: "number", description: "UTC epoch milliseconds of the alert, or of the due instant when no alert is chosen." } satisfies ActionParameterSchema
-const dueAt = { type: "number", description: "The due instant in UTC epoch milliseconds; supply it together with alertMinutes." } satisfies ActionParameterSchema
+const at = { type: "number", description: "Alert UTC epoch ms (or dueAt if no alert)." } satisfies ActionParameterSchema
+const dueAt = { type: "number", description: "Due UTC epoch ms; send with alertMinutes." } satisfies ActionParameterSchema
 const updateFields = object({ title: string, body: string, schedule: object({ at, recurrence, dueAt, alertMinutes }, ["at", "recurrence"]) }, ["title", "body"])
 const createFields = object({
-  title: { type: "string", description: "The reminder title in the owner's own words." },
-  body: { type: "string", description: "Only a note the owner stated; otherwise empty." },
+  title: { type: "string", description: "Title in owner's words." },
+  body: { type: "string", description: "Note if stated, else empty." },
   schedule: object({ at, recurrence, dueAt, alertMinutes }),
 })
-const recordName = { type: "string", description: "The reminder name exactly as the owner said it. Never an ID or revision." } satisfies ActionParameterSchema
+const recordName = { type: "string", description: "Exact spoken reminder name; never an ID/revision." } satisfies ActionParameterSchema
 
 const has = (device: NegotiatedDevice, name: string) => device.capabilities.includes(name)
 const keepsRecords = (device: NegotiatedDevice) => has(device, recordV1) || has(device, recordV2)
@@ -106,13 +100,13 @@ const reminderForms: readonly ProposalForm[] = [
   ...selectedTypes.map((type): ProposalForm => ({
     types: [type],
     schema: object({ type: typed(type), target: targetSchema, ...(type === "reminder_update" ? { fields: updateFields } : {}) }),
-    guidance: ["Selected reminder read, update, complete, snooze and cancel need the exact selected target. Supply dueAt and alertMinutes together; alertMinutes null means no notification, at equals dueAt, and any recurrence leadMinutes is zero. Numeric alerts need at = dueAt - alertMinutes * 60000 and the same recurrence leadMinutes. A no-alert reminder cannot be snoozed; only a reviewed schedule edit gives it an alert. Cancel stops all future repeats; snooze is ten minutes."],
+    guidance: ["Selected reminder read/update/complete/snooze/cancel: copy exact target; propose only requested changes (never declined; questions=read). Send dueAt+alertMinutes together: null=no alert (at=dueAt, leadMinutes=0, cannot snooze); numeric needs at=dueAt-alertMinutes*60000 matching leadMinutes. Cancel stops all repeats; snooze=10m."],
     offered: keepsRecords, now: selectedNow,
   })),
   {
     types: ["reminder_named"],
     schema: object({ type: typed("reminder_named"), action: typed("update"), name: recordName, fields: updateFields }),
-    guidance: ["To change or cancel a phone reminder by its name, use reminder_named with action, the spoken name and, for an update, its declared fields."],
+    guidance: ["reminder_named (action, spoken name, +fields for update): change/cancel by name only as requested, never declined."],
     offered: (device) => has(device, namedTarget) && keepsRecords(device), now: recordsNow,
   },
   {
@@ -123,23 +117,23 @@ const reminderForms: readonly ProposalForm[] = [
   {
     types: ["reminder_create"],
     schema: object({ type: typed("reminder_create"), fields: createFields }),
-    guidance: ["Create reviewed phone reminders with reminder_create: alertMinutes null means no alert, recurrence is null or an exact repeat, at = dueAt - (alertMinutes ?? 0) * 60000 and the recurrence leadMinutes matches. For a relative time (\"in 20 minutes\") or a stated day and time the host sets dueAt from the owner's words and the phone's clock; a relative reminder alerts when due, or not at all. The title uses the owner's words and the body stays empty unless the owner gave a note. A reminder without an alert is pending, not delivered. Use a returned reminderTiming dueAtDisplay and alertAtDisplay verbatim when present; they already use the phone's time zone. Otherwise keep its UTC instants explicit, without inventing a local time zone."],
+    guidance: ["reminder_create: alertMinutes=null (no alert, pending not delivered), recurrence=null|repeat, at=dueAt-(alertMinutes??0)*60000 matching leadMinutes. Host computes dueAt for relative/stated times on phone clock; relative alerts when due or not at all. Title in owner's words, body empty unless stated. Use returned reminderTiming dueAtDisplay/alertAtDisplay verbatim; else keep UTC explicit."],
     offered: (device) => has(device, createCapability), now: recordsNow,
   },
   {
     types: ["create_reminder"],
-    schema: object({ type: typed("create_reminder"), title: string, dueAt: { type: "string", description: "Absolute UTC ISO timestamp." } }),
-    guidance: ["The older create_reminder takes only a title and dueAt and always alerts; never drop requested timing: a no-alert, lead or repeating reminder needs reminder_create."],
+    schema: object({ type: typed("create_reminder"), title: string, dueAt: { type: "string", description: "UTC ISO timestamp." } }),
+    guidance: ["Legacy create_reminder (title+dueAt, always alerts): never drop timing; no-alert/lead/repeat requires reminder_create."],
     offered: (device) => device.capabilities.some((name) => !name.startsWith("clock.")), now: recordsNow,
   },
 ]
 
-const clockGuidance = "Clock handoffs use clock_handoff. Set takes the phone's current time zone. Keep requested repeat days exactly; never silently drop a repeat or replace an alarm with a reminder. Only show is navigation. After the owner approves, set, dismiss and snooze may change alarms at once: dismiss can turn off the active one-off alarm or skip a repeating one, and snooze can affect every ringing alarm; Clock may use its own snooze length or ask. Clock alarms are not readable here: asked which alarms exist, say Clock keeps the list and offer show. Never promise a second confirmation in Clock, target one alarm, or say an opened receipt proves an alarm was set, dismissed, snoozed or rang. A request to be woken at a time is an alarm set, not a reminder."
+const clockGuidance = "clock_handoff: set needs phone timeZone; keep exact repeat days (never drop repeats or substitute reminder; 'wake me' is alarm set). Only show is navigation. After approval, set/dismiss/snooze act at once (dismiss may disable one-off or skip repeat; snooze hits all ringing). Alarms aren't readable: offer show if asked. Never promise a 2nd confirm, target 1 alarm, or claim opened receipt proves alarm state."
 const clocked = (device: NegotiatedDevice) => has(device, clockCapability) || has(device, clockRepeatCapability)
 const setSchema = (withDays: boolean) => object({
   type: typed("clock_handoff"), action: typed("set"), hour: { type: "integer", minimum: 0, maximum: 23 }, minute: { type: "integer", minimum: 0, maximum: 59 },
   label: { type: "string", maxLength: 200 }, timeZone: { type: "string", maxLength: 100 },
-  ...(withDays ? { days: { type: "array", items: { type: "integer", enum: [1, 2, 3, 4, 5, 6, 7] }, description: "Exact unique days, Sunday 1 through Saturday 7: [] is one-off, [1,2,3,4,5,6,7] daily, [2,3,4,5,6] weekdays. Never omit requested repeat days." } } : {}),
+  ...(withDays ? { days: { type: "array", items: { type: "integer", enum: [1, 2, 3, 4, 5, 6, 7] }, description: "Unique days 1=Sun..7=Sat: []=one-off, [1..7]=daily, [2..6]=weekdays. Never drop requested days." } } : {}),
 })
 
 const clockForms: readonly ProposalForm[] = [
@@ -162,8 +156,6 @@ const notSelected = refused("DEVICE_REMINDER_TARGET_NOT_SELECTED", "The proposed
   "Select that reminder on your phone, then ask again.")
 const unnamed = refused("REMINDER_NAMED_NOT_REQUESTED", "The reminder name is not in the owner's words. Use the name exactly as the owner said it. No device proposal was created.",
   "Which reminder do you mean?")
-const notAsked = refused("REMINDER_CHANGE_NOT_REQUESTED", "The owner did not ask for this change to the reminder, or turned it down. Nothing was proposed; do not propose it again unless the owner asks.",
-  "I left that reminder as it is.")
 const untitled = refused("REMINDER_TITLE_NOT_STATED", "The reminder title is not in the owner's words. Use the title as the owner said it. No device proposal was created.",
   "What should I call that reminder?")
 const passed = refused("REMINDER_TIME_PASSED", "The reminder's due time or its alert has passed; ask for a new time. No device proposal was created.", "That time has already passed. When should I remind you?")
@@ -234,11 +226,6 @@ function groundedSchedule(schedule: CreateSchedule, turn: DeviceTurn, now: numbe
 
 const isSchedule = (value: CreateSchedule | Grounding): value is CreateSchedule => !("kind" in value)
 
-function changeGrounded(type: DeviceOperation["type"], text: string): boolean {
-  const verbs = askedBy[type]
-  return verbs === undefined || reminderChangeAsked(verbs.test(text), declinesInWords(text, verbs))
-}
-
 function groundReminder(operation: DeviceOperation, turn: DeviceTurn, now: number): Grounding {
   if (operation.type === "clock_handoff") {
     const handoff = clockHandoffDispatch(operation)
@@ -257,11 +244,10 @@ function groundReminder(operation: DeviceOperation, turn: DeviceTurn, now: numbe
     case "reminder_cancel": {
       const selected = screenSelection(turn).reminder
       if (!reminderTargetGrounded(selected !== undefined, selected !== undefined && sameTarget(selected, operation.target))) return notSelected
-      return changeGrounded(operation.type, text) ? { kind: "Grounded", operation } : notAsked
+      return { kind: "Grounded", operation }
     }
     case "reminder_named":
-      if (!namedInWords(operation.name, text)) return unnamed
-      return changeGrounded(operation.action === "cancel" ? "reminder_cancel" : "reminder_update", text) ? { kind: "Grounded", operation } : notAsked
+      return namedInWords(operation.name, text) ? { kind: "Grounded", operation } : unnamed
     case "reminder_create": {
       const { title, body } = operation.fields
       const schedule = groundedSchedule(operation.fields.schedule, turn, now)

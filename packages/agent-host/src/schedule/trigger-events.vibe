@@ -1,0 +1,65 @@
+// spec/agent/schedule/triggers.md, "An event trigger runs once for each event of its name a conversation turn raises, never for a trigger run's events"
+module node {
+  import { Option, Schema } from "effect"
+  import type { AgentRuntime, EventPayload } from "@elizaos/core"
+  import { triggerEventNames } from "../../gen/agent__schedule__triggers.ts"
+
+  export interface TriggerEventTarget {
+    eventTriggers(name: string): Promise<readonly string[]>
+    receiveEvent(triggerId: string, eventId: string, name: string, byTrigger: boolean): Promise<void>
+  }
+
+  export interface TriggerEvents {
+    idle(): Promise<void>
+    stop(): Promise<void>
+  }
+
+  const Id = Schema.String.check(Schema.isMinLength(1))
+  const messageEvent = Schema.decodeUnknownOption(Schema.Struct({ message: Schema.Struct({ id: Id, metadata: Schema.optional(Schema.Unknown) }) }))
+  const raisedByTrigger = Schema.decodeUnknownOption(Schema.Struct({ triggerId: Id }))
+
+  function emitted(payload: unknown): { readonly eventId: string; readonly byTrigger: boolean } | undefined {
+    const message = Option.getOrUndefined(messageEvent(payload))?.message
+    return message === undefined ? undefined : { eventId: message.id, byTrigger: Option.isSome(raisedByTrigger(message.metadata)) }
+  }
+
+  export function startTriggerEvents(runtime: AgentRuntime, target: TriggerEventTarget): TriggerEvents {
+    const queues = new Map<string, Promise<void>>()
+    let stopped = false
+
+    function enqueue(triggerId: string, receive: () => Promise<void>) {
+      const next = (queues.get(triggerId) ?? Promise.resolve())
+        .then(() => stopped ? undefined : receive())
+        .catch((cause: unknown) => runtime.reportError("triggers.events", cause, { triggerId }))
+      queues.set(triggerId, next)
+      void next.then(() => { if (queues.get(triggerId) === next) queues.delete(triggerId) })
+    }
+
+    const handlers = triggerEventNames.map((name) => {
+      const handler = async (payload: EventPayload) => {
+        const event = stopped ? undefined : emitted(payload)
+        if (event === undefined) return
+        try {
+          for (const triggerId of await target.eventTriggers(name))
+            enqueue(triggerId, () => target.receiveEvent(triggerId, event.eventId, name, event.byTrigger))
+        } catch (cause) {
+          runtime.reportError("triggers.events", cause, { name })
+        }
+      }
+      runtime.registerEvent(name, handler)
+      return { name, handler }
+    })
+
+    const idle = async () => { while (queues.size > 0) await Promise.all(queues.values()) }
+
+    return {
+      idle,
+      async stop() {
+        stopped = true
+        for (const { name, handler } of handlers) runtime.unregisterEvent(name, handler)
+        await idle()
+      },
+    }
+  }
+}
+export { startTriggerEvents, type TriggerEventTarget, type TriggerEvents } from node

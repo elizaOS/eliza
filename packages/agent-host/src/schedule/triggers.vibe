@@ -1,0 +1,434 @@
+// spec/agent/schedule/triggers.md, "A new trigger is saved disabled, for a conversation that can take it, with a future first instant or an event name"; spec/agent/schedule/triggers.md, "An edit, enable or removal is refused only when it names a revision that has moved on"; spec/agent/schedule/triggers.md, "Enabling is refused past 100 active triggers, for a passed one-time trigger, and for an unsupported event"; spec/agent/schedule/triggers.md, "Run now starts one run of the saved trigger, even a disabled one, after any run in progress"; spec/agent/schedule/triggers.md, "An occurrence fires once, and one missed while the agent was not running is recorded and never run"; spec/agent/schedule/triggers.md, "The run history keeps the last 100 records"; spec/agent/schedule/triggers.md, "A run delivers only to the room it started with and succeeds only when its turn completed"; spec/core/scheduling.md, "Pausing affects later selections while admitted work retains its outcome"; spec/core/taskServiceOwners.md, "Exclusive tasks observe every active invocation of the same task"
+import { agentProcessStartedAtMs, computeNextCronRunAtMs, type AgentRuntime, type IDatabaseAdapter, type Task, type TaskWorker, type UUID } from "@elizaos/core"
+import {
+  enabled, eventSupported, finishRun as finished, machineOver, maxActiveTriggers, revisionMatches, runningScheduledOnce, runStatus, step,
+  type Event, type RevisionCheck, type RunRecord, type Trigger, type TriggerType,
+} from "../../gen/agent__schedule__triggers.effect.vibe"
+import type { ConversationOwner } from "../conversation/conversations.vibe"
+import type { ConversationNews } from "../host/module.vibe"
+import {
+  countEnabledTriggers, getTrigger, listTriggerRuns, listTriggers, triggerKeeping,
+  type StoredTrigger, type TriggerDetails, type TriggerRun as StoredRun,
+} from "./store.vibe"
+import { finishFacts, runError, triggerDelivery, type Delivery, type FiredPrompt, type ResolvedRoom, type TriggerDelivery } from "./trigger-delivery.vibe"
+import { startTriggerEvents, type TriggerEventTarget, type TriggerEvents } from "./trigger-events.vibe"
+import type {
+  SavedTrigger, TriggerDraft, TriggerPort, TriggerRefusal, TriggerRemoval, TriggerRun, TriggerRunNow, TriggerService, TriggerTiming, TriggerWrite,
+} from "./trigger-routes.vibe"
+
+module node {
+  import { randomUUID } from "node:crypto"
+  /** @throws {never} */
+  export function newTriggerId(): string { return randomUUID() }
+}
+import { newTriggerId } from node
+
+export interface ScheduleFacts {
+  readonly processStartedAt: number
+  nextInstant(expression: string, timezone: string, after: number): number | undefined
+}
+
+const scheduleFacts: ScheduleFacts = {
+  processStartedAt: agentProcessStartedAtMs(),
+  nextInstant: (expression, timezone, after) => computeNextCronRunAtMs(expression, after, timezone) ?? undefined,
+}
+
+export interface TriggerHost {
+  readonly adapter: IDatabaseAdapter
+  getTasks(params: { tags: string[] }): Promise<Task[]>
+  createTasks(tasks: Task[]): Promise<UUID[]>
+  updateTasks(updates: Array<{ id: UUID; task: Partial<Task> }>): Promise<void>
+  deleteTasks(ids: UUID[]): Promise<void>
+  registerTaskWorker(worker: TaskWorker): void
+  unregisterTaskWorker(name: string): boolean
+}
+
+export interface TriggerDeps {
+  readonly host: TriggerHost
+  readonly delivery: TriggerDelivery
+  readonly listen: (target: TriggerEventTarget) => TriggerEvents
+  readonly facts: ScheduleFacts
+}
+
+export type Fired = "started" | "missed" | "busy" | "refused" | "gone"
+export type RunRequest = Extract<Event, { readonly type: "runNow" | "receiveEvent" }>
+
+export interface PromptTriggers extends TriggerService {
+  readonly target: TriggerEventTarget
+  fire(id: string): Fired!!
+  startRun(id: string, request: RunRequest): Fired!!
+  idle(): void!!
+  start(): void!!
+  stop(): void!!
+}
+
+const triggerTask = "AGENT_PROMPT_TRIGGER"
+const triggerTag = "prompt-trigger"
+const interrupted: Delivery = { kind: "Turn", turn: "Cancelled", reason: "the agent stopped before the run finished" }
+
+interface Run {
+  readonly controller: AbortController
+  readonly fiber: Fiber.Fiber<TriggerRun>
+}
+
+type Begun =
+  | { readonly kind: "started"; readonly run: Run }
+  | { readonly kind: "busy"; readonly run: Run | undefined }
+  | { readonly kind: "missed" | "refused" | "gone" }
+
+interface Moved {
+  readonly before: Trigger
+  readonly after: Trigger | undefined
+}
+
+const scheduleOf = { once: "OnceAt", cron: "CronSchedule", event: "OnRuntimeEvent" } as const satisfies Record<TriggerTiming["kind"], TriggerType>
+
+function timingOf(state: Trigger, details: TriggerDetails): TriggerTiming {
+  switch (state.schedule) {
+    case "OnceAt": return { kind: "once", at: state.nextAt }
+    case "CronSchedule": return { kind: "cron", expression: details.cronExpression ?? "" }
+    case "OnRuntimeEvent": return { kind: "event", eventKind: state.eventKind }
+  }
+}
+
+function savedOf(id: string, state: Trigger, details: TriggerDetails): SavedTrigger {
+  return {
+    id, displayName: details.displayName, instructions: details.instructions, timezone: details.timezone,
+    timing: timingOf(state, details), enabled: state.enabled, revision: state.revision, deliveryConversationId: state.room,
+  }
+}
+
+function detailsOf(draft: TriggerDraft): TriggerDetails {
+  const timing = draft.timing
+  const own = { displayName: draft.displayName, instructions: draft.instructions, timezone: draft.timezone }
+  switch (timing.kind) {
+    case "once": return { ...own, triggerType: "once", scheduledAtIso: new Date(timing.at).toISOString() }
+    case "cron": return { ...own, triggerType: "cron", cronExpression: timing.expression }
+    case "event": return { ...own, triggerType: "event", eventKind: timing.eventKind }
+  }
+}
+
+const lastRecord = (state: Trigger): RunRecord => state.history[state.history.length - 1]
+
+function storedRun(record: RunRecord, startedAt: number, finishedAt: number, error: string | undefined): StoredRun {
+  return {
+    startedAt, finishedAt, status: runStatus(record), source: record.tag === "Ran" ? record.source : "Scheduled",
+    ...(error === undefined ? {} : { error }),
+    ...(record.tag === "Missed" ? { missedOccurrenceAt: record.scheduledAt } : {}),
+  }
+}
+
+function runOf(stored: StoredRun): TriggerRun {
+  const record: RunRecord = stored.status === "RunSkipped"
+    ? { tag: "Missed", scheduledAt: stored.missedOccurrenceAt ?? stored.startedAt }
+    : { tag: "Ran", source: stored.source, turn: stored.status === "RunSuccess" ? "Completed" : "Failed" }
+  return { startedAt: stored.startedAt, finishedAt: stored.finishedAt, record, error: stored.error }
+}
+
+const refusal = (reason: TriggerRefusal): TriggerWrite => ({ kind: "refused", reason })
+
+function roomRefusal(resolved: ResolvedRoom): TriggerWrite {
+  switch (resolved.kind) {
+    case "Missing": return refusal("ConversationMissing")
+    case "Unavailable": return refusal("RoomUnavailable")
+    case "Resolved": return refusal("Invalid")
+  }
+}
+
+effect function armTrigger(host: TriggerHost, id: string, state: Trigger | undefined) {
+  const wanted = state !== undefined && state.life === "Saved" && state.enabled && state.schedule !== "OnRuntimeEvent" && !runningScheduledOnce(state)
+  const held = (try promise(() => host.getTasks({ tags: [triggerTag] })))
+    .flatMap((task) => task.id !== undefined && task.metadata?.triggerId === id ? [{ id: task.id, dueAt: task.dueAt }] : [])
+  const [kept, ...surplus] = held
+  const dropped = wanted ? surplus : held
+  if (dropped.length > 0) try promise(() => host.deleteTasks(dropped.map((task) => task.id)))
+  if (!wanted) return
+  if (kept === undefined) {
+    try promise(() => host.createTasks([{
+      name: triggerTask, description: "Fire the next occurrence of a prompt trigger", tags: ["queue", triggerTag], dueAt: state.nextAt, metadata: { triggerId: id },
+    }]))
+  } else if (Number(kept.dueAt) !== state.nextAt) {
+    try promise(() => host.updateTasks([{ id: kept.id, task: { dueAt: state.nextAt } }]))
+  }
+}
+
+export function promptTriggers(deps: TriggerDeps): PromptTriggers {
+  const { host, delivery, facts } = deps
+  const lock = Semaphore.makeUnsafe(1)
+  const running = new Map<string, Run>()
+  let events: TriggerEvents | undefined
+  let stopping = false
+
+  function serial<A>(work: A!!): A!! {
+    return lock.withPermits(1)(work)
+  }
+
+  effect function transition(id: string, event: Event, details?: TriggerDetails, record?: (before: Trigger, after: Trigger) => StoredRun | undefined): Moved!! {
+    const write: { details?: TriggerDetails; run?: StoredRun } = details === undefined ? {} : { details }
+    const keeping = triggerKeeping(host.adapter, id, write)
+    const machine = try orDie(machineOver(effect () => ({ ...(try keeping.load()), now: try Clock.currentTimeMillis }), keeping.keep))
+    const before = try machine.get()
+    const predicted = enabled(before, event) ? step(before, event) : undefined
+    if (predicted !== undefined && record !== undefined) write.run = record(before, predicted)
+    const after = machine.send(event) catch () => undefined
+    return { before, after }
+  }
+
+  effect function finish(id: string, delivered: Delivery, startedAt: number, controller: AbortController): TriggerRun!! {
+    return try serial(effect {
+      const facts = finishFacts(delivered)
+      const finishedAt = try Clock.currentTimeMillis
+      const error = runError(delivered)
+      const moved = try transition(id, { type: "finishRun", ...facts }, undefined,
+        (before, after) => before.life === "Saved" ? storedRun(lastRecord(after), startedAt, finishedAt, error) : undefined)
+      if (running.get(id)?.controller === controller) running.delete(id)
+      try armTrigger(host, id, moved.after ?? moved.before)
+      const record = lastRecord(finished({ ...moved.before, life: "Saved" }, facts.roomExists, facts.turn))
+      return { startedAt, finishedAt, record, error }
+    })
+  }
+
+  effect function perform(id: string, room: string, prompt: FiredPrompt, startedAt: number, controller: AbortController): TriggerRun!! {
+    if (controller.signal.aborted) return try finish(id, interrupted, startedAt, controller)
+    const outcome = try exit(promise(() => delivery.deliver(room, prompt, id, controller.signal)))
+    const delivered: Delivery = Exit.isSuccess(outcome) ? outcome.value
+      : { kind: "Turn", turn: controller.signal.aborted ? "Cancelled" : "Failed", reason: String(Cause.squash(outcome.cause)) }
+    return try finish(id, delivered, startedAt, controller)
+  }
+
+  effect function begin(id: string, event: Event): Begun!! {
+    return try serial(effect {
+      if (stopping) return { kind: "refused" } satisfies Begun
+      const ongoing = running.get(id)
+      if (ongoing !== undefined) return { kind: "busy", run: ongoing } satisfies Begun
+      const row = try orDie(getTrigger(host.adapter, id))
+      if (row === undefined) {
+        try armTrigger(host, id, undefined)
+        return { kind: "gone" } satisfies Begun
+      }
+      const startedAt = try Clock.currentTimeMillis
+      const moved = try transition(id, event, undefined,
+        (_, after) => after.activity.tag === "Idle" ? storedRun(lastRecord(after), startedAt, startedAt, runError({ kind: "Missed" })) : undefined)
+      if (moved.before.activity.tag === "Running") return { kind: "busy", run: undefined } satisfies Begun
+      try armTrigger(host, id, moved.after ?? moved.before)
+      const after = moved.after
+      if (after === undefined) return { kind: "refused" } satisfies Begun
+      const activity = after.activity
+      if (activity.tag === "Idle") return { kind: "missed" } satisfies Begun
+      const controller = new AbortController()
+      const fiber = fork.detached perform(id, activity.room, row.details, startedAt, controller)
+      const run: Run = { controller, fiber }
+      running.set(id, run)
+      return { kind: "started", run } satisfies Begun
+    })
+  }
+
+  effect function whenIdle(id: string, event: Event): Begun!! {
+    while (true) {
+      const begun = try begin(id, event)
+      if (begun.kind !== "busy" || begun.run === undefined) return begun
+      try Fiber.await(begun.run.fiber)
+    }
+  }
+
+  effect function fire(id: string): Fired!! {
+    const row = try orDie(getTrigger(host.adapter, id))
+    const now = try Clock.currentTimeMillis
+    const expression = row?.details.cronExpression
+    const nextInstant = row?.state.schedule === "CronSchedule" && expression !== undefined
+      ? facts.nextInstant(expression, row.details.timezone, now) ?? 0 : 0
+    return (try begin(id, { type: "fire", nextInstant, processStartedAt: facts.processStartedAt })).kind
+  }
+
+  effect function startRun(id: string, request: RunRequest): Fired!! {
+    return (try begin(id, request)).kind
+  }
+
+  effect function idle() {
+    for (const run of [...running.values()]) try Fiber.await(run.fiber)
+  }
+
+  function atOf(timing: TriggerTiming, timezone: string, now: number): number {
+    switch (timing.kind) {
+      case "once": return timing.at
+      case "cron": return facts.nextInstant(timing.expression, timezone, now) ?? 0
+      case "event": return 0
+    }
+  }
+
+  effect function create(draft: TriggerDraft): TriggerWrite!! {
+    return try serial(effect {
+      const resolved = try promise(() => delivery.resolveRoom(draft.deliveryConversationId))
+      const now = try Clock.currentTimeMillis
+      const id = newTriggerId()
+      const details = detailsOf(draft)
+      const moved = try transition(id, {
+        type: "create", schedule: scheduleOf[draft.timing.kind], requested: draft.deliveryConversationId ?? "",
+        defaultRoom: resolved.kind === "Resolved" && draft.deliveryConversationId === undefined ? resolved.conversationId : "",
+        eventKind: draft.timing.kind === "event" ? draft.timing.eventKind : "", at: atOf(draft.timing, draft.timezone, now),
+        roomExists: resolved.kind === "Resolved",
+      }, details)
+      if (moved.after !== undefined) return { kind: "saved", trigger: savedOf(id, moved.after, details) } satisfies TriggerWrite
+      return roomRefusal(resolved)
+    })
+  }
+
+  effect function edit(id: string, draft: TriggerDraft, expected: RevisionCheck): TriggerWrite!! {
+    return try serial(effect {
+      const row = try orDie(getTrigger(host.adapter, id))
+      if (row === undefined) return { kind: "notFound" } satisfies TriggerWrite
+      const requested = draft.deliveryConversationId
+      const resolved = requested === undefined ? undefined : try promise(() => delivery.resolveRoom(requested))
+      const now = try Clock.currentTimeMillis
+      const details = detailsOf(draft)
+      const moved = try transition(id, {
+        type: "edit", schedule: scheduleOf[draft.timing.kind], requested: requested ?? "",
+        eventKind: draft.timing.kind === "event" ? draft.timing.eventKind : "", at: atOf(draft.timing, draft.timezone, now),
+        roomExists: resolved?.kind === "Resolved", expected,
+      }, details)
+      const after = moved.after
+      if (after !== undefined) {
+        try armTrigger(host, id, after)
+        return { kind: "saved", trigger: savedOf(id, after, details) } satisfies TriggerWrite
+      }
+      if (moved.before.life !== "Saved") return { kind: "notFound" } satisfies TriggerWrite
+      if (!revisionMatches(expected, moved.before.revision)) return refusal("StaleRevision")
+      return resolved === undefined ? refusal("Invalid") : roomRefusal(resolved)
+    })
+  }
+
+  effect function setEnabled(id: string, on: boolean, expected: RevisionCheck): TriggerWrite!! {
+    return try serial(effect {
+      const row = try orDie(getTrigger(host.adapter, id))
+      if (row === undefined) return { kind: "notFound" } satisfies TriggerWrite
+      const activeOthers = try orDie(countEnabledTriggers(host.adapter, id))
+      const now = try Clock.currentTimeMillis
+      const at = atOf(timingOf(row.state, row.details), row.details.timezone, now)
+      const moved = try transition(id, { type: "setEnabled", on, at, activeOthers, expected })
+      const after = moved.after
+      if (after !== undefined) {
+        try armTrigger(host, id, after)
+        return { kind: "saved", trigger: savedOf(id, after, row.details) } satisfies TriggerWrite
+      }
+      if (moved.before.life !== "Saved") return { kind: "notFound" } satisfies TriggerWrite
+      if (!revisionMatches(expected, moved.before.revision)) return refusal("StaleRevision")
+      if (on && !eventSupported(moved.before)) return refusal("UnsupportedEvent")
+      return refusal(on && !moved.before.enabled && activeOthers >= maxActiveTriggers ? "ActiveLimit" : "Invalid")
+    })
+  }
+
+  effect function remove(id: string, expected: RevisionCheck): TriggerRemoval!! {
+    return try serial(effect {
+      const moved = try transition(id, { type: "remove", expected })
+      if (moved.before.life !== "Saved") return { kind: "notFound" } satisfies TriggerRemoval
+      if (moved.after === undefined) return { kind: "refused", reason: "StaleRevision" } satisfies TriggerRemoval
+      try armTrigger(host, id, moved.after)
+      return { kind: "removed" } satisfies TriggerRemoval
+    })
+  }
+
+  effect function runNow(id: string): TriggerRunNow!! {
+    const begun = try whenIdle(id, { type: "runNow" })
+    if (begun.kind !== "started") return { kind: "notFound" } satisfies TriggerRunNow
+    return { kind: "ran", run: try join begun.run.fiber } satisfies TriggerRunNow
+  }
+
+  effect function saved(): StoredTrigger[]!! {
+    return try orDie(listTriggers(host.adapter))
+  }
+
+  const port: TriggerPort = {
+    list: effect () => (try saved()).map((row) => savedOf(row.id, row.state, row.details)),
+    effect get(id) {
+      const row = try orDie(getTrigger(host.adapter, id))
+      return row === undefined ? undefined : savedOf(row.id, row.state, row.details)
+    },
+    create,
+    edit,
+    setEnabled,
+    remove,
+    effect runs(id) {
+      const row = try orDie(getTrigger(host.adapter, id))
+      return row === undefined ? undefined : (try orDie(listTriggerRuns(host.adapter, id))).map(runOf)
+    },
+    runNow,
+  }
+
+  const target: TriggerEventTarget = {
+    eventTriggers: (name) => runPromise(effect {
+      return (try saved()).flatMap((row) =>
+        row.state.enabled && row.state.schedule === "OnRuntimeEvent" && row.state.eventKind === name ? [row.id] : [])
+    }),
+    receiveEvent: (triggerId, eventId, name, byTrigger) => runPromise(effect {
+      try whenIdle(triggerId, { type: "receiveEvent", eventId, name, byTrigger })
+    }),
+  }
+
+  const worker: TaskWorker = {
+    name: triggerTask,
+    execute: (_runtime, _options, task) => runPromise(effect {
+      const id = task.metadata?.triggerId
+      if (typeof id === "string") try fire(id)
+      return { preserveTask: true }
+    }),
+  }
+
+  effect function reconcile() {
+    const rows = try saved()
+    for (const row of rows) {
+      const unsupported = row.state.enabled && !eventSupported(row.state)
+      const moved = unsupported ? try transition(row.id, { type: "setEnabled", on: false, at: 0, activeOthers: 0, expected: { tag: "AtRevision" as const, revision: row.state.revision } }) : undefined
+      try armTrigger(host, row.id, moved === undefined ? row.state : moved.after ?? moved.before)
+    }
+    const known = new Set(rows.map((row) => row.id))
+    const orphans = (try promise(() => host.getTasks({ tags: [triggerTag] })))
+      .flatMap((task) => task.id !== undefined && !known.has(String(task.metadata?.triggerId)) ? [task.id] : [])
+    if (orphans.length > 0) try promise(() => host.deleteTasks(orphans))
+  }
+
+  effect function start() {
+    stopping = false
+    for (const row of try saved()) {
+      if (row.state.activity.tag === "Running" && !running.has(row.id)) {
+        try finish(row.id, interrupted, try Clock.currentTimeMillis, new AbortController())
+      }
+    }
+    try serial(reconcile())
+    try sync(() => host.registerTaskWorker(worker))
+    events = deps.listen(target)
+  }
+
+  effect function stop() {
+    stopping = true
+    const runs = [...running.values()]
+    for (const run of runs) run.controller.abort()
+    for (const run of runs) try Fiber.await(run.fiber)
+    const listening = events
+    events = undefined
+    if (listening !== undefined) try promise(() => listening.stop())
+    try sync(() => host.unregisterTaskWorker(triggerTask))
+  }
+
+  return {
+    port,
+    target,
+    fire,
+    startRun,
+    idle,
+    start,
+    stop,
+    plugin: {
+      init: () => runPromise(start()),
+      dispose: () => runPromise(stop()),
+    },
+  }
+}
+
+export function openPromptTriggers(runtime: AgentRuntime, owner: ConversationOwner, news: ConversationNews): PromptTriggers {
+  return promptTriggers({
+    host: runtime,
+    delivery: triggerDelivery(runtime, owner, news),
+    listen: (target) => startTriggerEvents(runtime, target),
+    facts: scheduleFacts,
+  })
+}

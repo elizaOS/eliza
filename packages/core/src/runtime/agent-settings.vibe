@@ -16,8 +16,21 @@ import type { Service } from "../types/service.vibe"
 import type { RuntimeSettings } from "../types/settings.vibe"
 import { parseBooleanValue } from "../utils/boolean.vibe"
 import { getNumberEnv, processEnv, rawEnv } from "../utils/environment.vibe"
-import { getOptimizationRootDir } from "../utils/state-dir.vibe"
 import { isPlainObject } from "../utils/type-guards.vibe"
+
+export type OptimizationRootDirResolver = (explicit?: string | null) => string
+
+let resolveOptimizationRootDir: OptimizationRootDirResolver = (explicit) => {
+  const fromArg = explicit?.trim()
+  if (fromArg) return fromArg
+  const fromEnv = rawEnv("ELIZA_OPTIMIZATION_DIR")?.trim()
+  if (fromEnv) return fromEnv
+  return ".eliza/optimization"
+}
+
+export function registerOptimizationRootDirResolver(resolver: OptimizationRootDirResolver): void {
+  resolveOptimizationRootDir = resolver
+}
 import { Host, type AgentRuntimeOptions } from "./host.vibe"
 import type { Lifecycle } from "./lifecycle.vibe"
 import type { RuntimeKernel } from "./kernel.vibe"
@@ -209,7 +222,7 @@ export effect function isCheckShouldRespondEnabled(): boolean!SettingsFailure!Ru
 
 export effect function getOptimizationDir(): string!SettingsFailure!RuntimeKernel {
   const setting = try instanceSetting("OPTIMIZATION_DIR")
-  return getOptimizationRootDir(typeof setting === "string" ? setting : null)
+  return resolveOptimizationRootDir(typeof setting === "string" ? setting : null)
 }
 
 export effect function redactSecrets(text: string): string!!RuntimeKernel {

@@ -1,0 +1,71 @@
+// spec/cloud/billing/entitlements.md, "Story: Read my plan without substituting another account or source"; spec/cloud/billing/subscriptions.md, "Story: Keep my plan as the provider says it is"
+import { effectivePolicy, fundingLane, type HeldGrant, type PlanSource as SpecPlanSource, type Policy, type PolicyRead } from "../../gen/cloud__billing__entitlements.effect.vibe"
+import { initial as unopenedPeriod, type Period } from "../../gen/cloud__billing__allowance.effect.vibe"
+import type { FundingLane } from "../../gen/cloud__shared__metering.effect.vibe"
+import type { MeteredService } from "../../gen/cloud__shared__types.ts"
+import { periodRows } from "../shared/metering.vibe"
+import { loadRow, RowCorrupt } from "../store/rows.vibe"
+import { type StoreFailure, toInt, toText, type Tx } from "../store/connection.vibe"
+import { parsePlanKey, wirePlanKey } from "./plans.vibe"
+import { readSubscription } from "./subscriptions.vibe"
+
+export type { FundingLane, MeteredService, Policy }
+
+export type PlanSource = "subscription" | "grant" | "free"
+
+export error PolicyUnreadable { organizationId: string; problem: string }
+
+const planSources: Readonly<Record<SpecPlanSource, PlanSource>> = { FromSubscription: "subscription", FromGrant: "grant", FromFree: "free" }
+
+export function planSummary(policy: Policy) {
+  return { key: wirePlanKey(policy.planKey), source: planSources[policy.source], effectiveUntil: policy.ends.tag === "PlanEndsAt" ? policy.ends.endsAtMs : null }
+}
+
+effect function heldGrants(tx: Tx, organizationId: string): (HeldGrant[] | undefined)!StoreFailure {
+  const rows = try tx.query(
+    "SELECT id, idempotency_key, plan_key, effective_from, effective_until FROM grants WHERE organization_id = $1 AND NOT revoked ORDER BY effective_until IS NULL DESC, effective_until DESC, id",
+    [organizationId]
+  )
+  const grants: HeldGrant[] = []
+  for (const row of rows) {
+    const planKey = parsePlanKey(row.plan_key)
+    const grantId = toText(row.id)
+    if (planKey === undefined || grantId === undefined) return undefined
+    grants.push({
+      planKey,
+      grant: {
+        grantId, organizationId, idempotencyKey: toText(row.idempotency_key) ?? "", startsAt: toInt(row.effective_from),
+        ends: row.effective_until === null ? { tag: "NeverEnds" } : { tag: "EndsAt", endsAtMs: toInt(row.effective_until) },
+        standing: { tag: "InForce" }
+      }
+    })
+  }
+  return grants
+}
+
+export effect function readPolicyRead(tx: Tx, organizationId: string): PolicyRead!StoreFailure {
+  const subscription = readSubscription(tx, organizationId) catch effect (failure) => match (failure) {
+    when RowCorrupt: undefined;
+    default: throw failure;
+  }
+  const grants = try heldGrants(tx, organizationId)
+  return subscription === undefined || grants === undefined ? { tag: "PolicyUnreadable" } : { tag: "PolicyReadable", subscription, grants }
+}
+
+export effect function readPolicy(tx: Tx, organizationId: string, now: number): Policy!(StoreFailure | PolicyUnreadable) {
+  const answer = effectivePolicy(try readPolicyRead(tx, organizationId), now)
+  if (answer.tag === "PolicyUnavailable") throw new PolicyUnreadable({ organizationId, problem: "subscription or grant row" })
+  return answer.policy
+}
+
+export effect function laneFor(tx: Tx, organizationId: string, _service: MeteredService, now: number): FundingLane!StoreFailure {
+  return fundingLane(effectivePolicy(try readPolicyRead(tx, organizationId), now))
+}
+
+export effect function readLatestPeriod(tx: Tx, organizationId: string, now: number): Period!(StoreFailure | RowCorrupt) {
+  const key = toText((try tx.query(
+    "SELECT key FROM allowance_periods WHERE organization_id = $1 ORDER BY (status = 'open' AND period_start <= $2 AND $2 < period_end) DESC, period_end DESC, key LIMIT 1",
+    [organizationId, now]
+  ))[0]?.key)
+  return key === undefined ? unopenedPeriod : (try loadRow(tx, periodRows, key, false)).state
+}

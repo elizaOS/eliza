@@ -1,0 +1,316 @@
+// spec/agent/approvals.md, "Story: Resolve what I reviewed, only on the screen"; spec/agent/approvals.md, "Only the resolve route moves a request out of an open phase"; spec/agent/approvals.md, "A passed expiry changes no phase and no revision until a decision meets it"; spec/agent/approvals.md, "The list shows at most 500 requests of the asked phase, newest first, and changes nothing"
+import { Service, type IAgentRuntime } from "@elizaos/core"
+import { runSquashed } from "../models/run-squashed.vibe"
+import {
+  canLapse, decodeState, initial, machineOver, rowAt, verdict,
+  type ApprovalKind, type Decision, type PageQuery, type Phase, type Queue, type Refusal, type Reply, type ResolveKind,
+} from "../../gen/agent__approvals.effect.vibe"
+
+export const ownerApprovalsServiceType = "owner_approvals"
+export const calendarApprovalExecutorServiceType = "calendar_approval_executor"
+
+export type ApprovalState = "pending" | "approved" | "retryable" | "reconciliation_required" | "done" | "rejected" | "expired"
+export type ApprovalDecision = "approve" | "reject"
+export type ResolvedKind = "succeeded" | "rejected" | "invalidated" | "retryable" | "blocked"
+
+export const approvalStates = {
+  Pending: "pending", Approved: "approved", Retryable: "retryable", ReconciliationRequired: "reconciliation_required",
+  Done: "done", Declined: "rejected", Expired: "expired",
+} as const satisfies Record<Phase, ApprovalState>
+
+const resolvedKinds = {
+  KindSucceeded: "succeeded", KindRejected: "rejected", KindInvalidated: "invalidated", KindRetryable: "retryable", KindBlocked: "blocked",
+} as const satisfies Record<ResolveKind, ResolvedKind>
+
+const decisions = { approve: "Approve", reject: "Reject" } as const satisfies Record<ApprovalDecision, Decision>
+
+const calendarActions: ReadonlySet<string> = new Set(["schedule_event", "modify_event", "cancel_event"])
+
+const requestFields = {
+  id: Schema.String,
+  subjectUserId: Schema.String,
+  requestedBy: Schema.String,
+  action: Schema.String,
+  payload: Schema.Record(Schema.String, Schema.Unknown),
+  reason: Schema.String,
+  expiresAt: Schema.String,
+}
+const NewApproval = Schema.Struct(requestFields)
+const Details = Schema.Struct({ ...requestFields, createdAt: Schema.String, updatedAt: Schema.String })
+const Kept = Schema.Struct({ queue: Schema.Unknown, details: Schema.Array(Details) })
+const ResolveFailure = Schema.Struct({ code: Schema.String, retryable: Schema.Boolean, acceptance: Schema.Literals(["not_accepted", "unknown"]) })
+const LedgerOutcome = Schema.Struct({
+  result: Schema.Literals(["ChangeSucceeded", "ChangeInvalidated", "ChangeRetryable", "ChangeUnconfirmed"]),
+  text: Schema.String,
+  failure: Schema.optionalKey(ResolveFailure),
+})
+const decodeNewApproval = Schema.decodeUnknownOption(NewApproval, { onExcessProperty: "error" })
+const decodeKept = Schema.decodeUnknownOption(Kept, { onExcessProperty: "error" })
+const decodeOutcome = Schema.decodeUnknownOption(LedgerOutcome, { onExcessProperty: "error" })
+
+export type NewApproval = typeof NewApproval.Type
+type Details = typeof Details.Type
+export type ResolveFailure = typeof ResolveFailure.Type
+export type LedgerOutcome = typeof LedgerOutcome.Type
+
+export type ApprovalRecord = Details & { readonly state: ApprovalState; readonly revision: string }
+
+export interface CalendarApprovalExecutor {
+  execute(request: ApprovalRecord): Promise<LedgerOutcome>
+}
+
+export interface ResolveReply {
+  readonly requestId: string
+  readonly decision: ApprovalDecision
+  readonly kind: ResolvedKind
+  readonly text: string
+  readonly failure?: ResolveFailure
+}
+
+export type ApprovalResolution =
+  | { readonly kind: "resolved"; readonly reply: ResolveReply }
+  | { readonly kind: "refused"; readonly requestId: string; readonly refusal: Refusal }
+
+export error ApprovalsUnavailable { reason: string; cause?: unknown }
+export error RequestRefused { id: string; reason: "invalid" | "duplicate" }
+export error PageRefused { limit: number }
+
+export interface ApprovalsHost {
+  getCache<T>(key: string): Promise<T | undefined>
+  setCache<T>(key: string, value: T): Promise<boolean>
+  executor(): CalendarApprovalExecutor | undefined
+  readonly logger: Pick<IAgentRuntime["logger"], "error">
+  readonly now: number!!
+}
+
+export interface ApprovalQueue {
+  request(row: NewApproval): ApprovalRecord!(ApprovalsUnavailable | RequestRefused)
+  list(query: PageQuery): ApprovalRecord[]!(ApprovalsUnavailable | PageRefused)
+  resolve(id: string, decision: ApprovalDecision, revision: string): ApprovalResolution!ApprovalsUnavailable
+  lapseIfDue(id: string): boolean!ApprovalsUnavailable
+}
+
+export interface OwnerApprovals {
+  request(row: NewApproval): Promise<ApprovalRecord>
+  list(query: PageQuery): Promise<ApprovalRecord[]>
+  resolve(id: string, decision: ApprovalDecision, revision: string): Promise<ApprovalResolution>
+}
+
+interface Stored {
+  readonly queue: Queue
+  readonly details: ReadonlyMap<string, Details>
+}
+
+module edge {
+  /** @throws {never} */
+  export function revisionOf(row: { id: string; subjectUserId: string; state: string; action: string; payload: unknown; reason: string; expiresAt: string; updatedAt: string }): string {
+    return JSON.stringify([row.id, row.subjectUserId, row.state, row.action, row.payload, row.reason, row.expiresAt, row.updatedAt])
+  }
+
+  /** @throws {never} */
+  export function instant(ms: number): string | undefined {
+    const at = new Date(ms)
+    return Number.isNaN(at.getTime()) ? undefined : at.toISOString()
+  }
+
+  /** @throws {never} */
+  export function plainJson(value: unknown): unknown {
+    try {
+      return JSON.parse(JSON.stringify(value))
+    } catch {
+      return undefined
+    }
+  }
+}
+import { instant, plainJson, revisionOf } from edge
+
+const cacheKey = "owner-approvals"
+const declined = { text: "Calendar change declined. Nothing was changed." }
+const lapsedChange = {
+  text: "Calendar change was not made. The review expired.",
+  failure: { code: "CALENDAR_APPROVAL_EXPIRED", retryable: false, acceptance: "not_accepted" },
+} as const satisfies Omit<LedgerOutcome, "result">
+const unconfirmed = {
+  result: "ChangeUnconfirmed",
+  text: "Calendar change is not confirmed. Review its saved status before trying again.",
+  failure: { code: "CALENDAR_REVIEW_UNCONFIRMED", retryable: false, acceptance: "unknown" },
+} as const satisfies LedgerOutcome
+
+function recordOf(details: Details, phase: Phase): ApprovalRecord {
+  const state = approvalStates[phase]
+  return { ...details, state, revision: revisionOf({ ...details, state }) }
+}
+
+function kindOfAction(action: string): ApprovalKind {
+  return calendarActions.has(action) ? "CalendarChange" : "OtherChange"
+}
+
+function isExecutor(value: unknown): value is CalendarApprovalExecutor {
+  return typeof value === "object" && value !== null && "execute" in value && typeof value.execute === "function"
+}
+
+effect function foreign<A>(reason: string, call: () => Promise<A>): A!ApprovalsUnavailable {
+  return try tryPromise({ try: () => call(), catch: (cause) => new ApprovalsUnavailable({ reason, cause }) })
+}
+
+effect function stamp(ms: number): string!ApprovalsUnavailable {
+  const at = instant(ms)
+  if (at === undefined) throw new ApprovalsUnavailable({ reason: "the clock is out of range" })
+  return at
+}
+
+effect function read(host: ApprovalsHost): Stored!ApprovalsUnavailable {
+  const raw = try foreign("read the approval queue", () => host.getCache<unknown>(cacheKey))
+  if (raw === undefined) return { queue: initial, details: new Map() }
+  const kept = decodeKept(raw)
+  if (Option.isNone(kept)) throw new ApprovalsUnavailable({ reason: "the stored approval queue is malformed" })
+  const queue = decodeState(kept.value.queue) catch effect (cause) => { throw new ApprovalsUnavailable({ reason: "the stored approval queue breaks its rules", cause }) }
+  const details = new Map(kept.value.details.map((row) => [row.id, row] as const))
+  const matched = details.size === kept.value.details.length && details.size === queue.newestFirst.length && queue.newestFirst.every((id) => details.has(id))
+  if (!matched) throw new ApprovalsUnavailable({ reason: "the stored approval details do not match the queue" })
+  return { queue, details }
+}
+
+effect function write(host: ApprovalsHost, next: Queue, adding: Details | undefined): void!ApprovalsUnavailable {
+  const before = try read(host)
+  const now = try host.now
+  const rows: Details[] = []
+  for (const id of next.newestFirst) {
+    const held = before.details.get(id) ?? (adding?.id === id ? adding : undefined)
+    if (held === undefined) throw new ApprovalsUnavailable({ reason: `the approval ${id} has no details` })
+    const moved = rowAt(next, id).revision !== rowAt(before.queue, id).revision
+    rows.push(moved ? { ...held, updatedAt: try stamp(Math.max(now, Date.parse(held.updatedAt) + 1)) } : held)
+  }
+  const kept = try foreign("keep the approval queue", () => host.setCache(cacheKey, { queue: next, details: rows }))
+  if (!kept) throw new ApprovalsUnavailable({ reason: "the store did not keep the approval queue" })
+}
+
+effect function machineFor(host: ApprovalsHost, adding?: Details) {
+  return try machineOver(effect () => (try read(host)).queue, (next) => orDie(write(host, next, adding)))
+}
+
+effect function execute(host: ApprovalsHost, executor: CalendarApprovalExecutor, record: ApprovalRecord): LedgerOutcome!! {
+  const raw = tryPromise(() => executor.execute(record)) catch effect (cause) => {
+    try sync(() => host.logger.error({ src: "approvals", requestId: record.id, cause: cause instanceof Error ? cause.message : String(cause) }, "The calendar executor failed"))
+    return unconfirmed
+  }
+  const outcome = decodeOutcome(raw)
+  if (Option.isSome(outcome)) return outcome.value
+  try sync(() => host.logger.error({ src: "approvals", requestId: record.id }, "The calendar executor answered an unknown outcome"))
+  return unconfirmed
+}
+
+effect function answer(id: string, decision: ApprovalDecision, reply: Reply | undefined, outcome: LedgerOutcome | undefined): ApprovalResolution!! {
+  if (reply?.tag === "Refused") return { kind: "refused", requestId: id, refusal: reply.refusal }
+  if (reply?.tag !== "Resolved") return try die(new ApprovalsUnavailable({ reason: "the queue answered a decision with no reply" }))
+  const told = reply.kind === "KindRejected" ? declined : outcome ?? lapsedChange
+  return {
+    kind: "resolved",
+    reply: { requestId: id, decision, kind: resolvedKinds[reply.kind], text: told.text, ...("failure" in told && told.failure !== undefined ? { failure: told.failure } : {}) },
+  }
+}
+
+export function approvalQueue(host: ApprovalsHost): ApprovalQueue {
+  const lock = Semaphore.makeUnsafe(1)
+
+  function serial<A, E>(work: A!E): A!E {
+    return lock.withPermits(1)(work)
+  }
+
+  effect function lapseDue(id: string): boolean!ApprovalsUnavailable {
+    const machine = try machineFor(host)
+    const before = try read(host)
+    const held = before.details.get(id)
+    const due = held !== undefined && Date.parse(held.expiresAt) <= (try host.now)
+    if (!due || !canLapse(before.queue, id)) return false
+    try orDie(machine.send({ type: "lapse", id }))
+    return true
+  }
+
+  effect function request(row: NewApproval): ApprovalRecord!(ApprovalsUnavailable | RequestRefused) {
+    const parsed = decodeNewApproval(plainJson(row))
+    const expiresAt = Option.isSome(parsed) ? instant(Date.parse(parsed.value.expiresAt)) : undefined
+    if (Option.isNone(parsed) || expiresAt === undefined) throw new RequestRefused({ id: row.id, reason: "invalid" })
+    const at = try stamp(try host.now)
+    const details: Details = { ...parsed.value, expiresAt, createdAt: at, updatedAt: at }
+    const machine = try machineFor(host, details)
+    machine.send({ type: "request", id: details.id, kind: kindOfAction(details.action) }) catch effect () => {
+      throw new RequestRefused({ id: details.id, reason: "duplicate" })
+    }
+    return recordOf(details, "Pending")
+  }
+
+  effect function list(query: PageQuery): ApprovalRecord[]!(ApprovalsUnavailable | PageRefused) {
+    const machine = try machineFor(host)
+    const step = machine.send({ type: "list", query }) catch effect () => { throw new PageRefused({ limit: query.limit }) }
+    const { queue, details } = try read(host)
+    return step.out.flatMap((reply) => reply.tag === "Listed" ? reply.ids : []).flatMap((id) => {
+      const held = details.get(id)
+      return held === undefined ? [] : [recordOf(held, rowAt(queue, id).phase)]
+    })
+  }
+
+  effect function resolve(id: string, decision: ApprovalDecision, revision: string): ApprovalResolution!ApprovalsUnavailable {
+    try lapseDue(id)
+    const machine = try machineFor(host)
+    const { queue, details } = try read(host)
+    const row = rowAt(queue, id)
+    const held = details.get(id)
+    const reviewed = held !== undefined && recordOf(held, row.phase).revision === revision ? row.revision : -1
+    const executor = host.executor()
+    const ready = executor !== undefined
+    const ledgerDecides = verdict(id, row, decisions[decision], reviewed, ready, "ChangeSucceeded").phase
+      !== verdict(id, row, decisions[decision], reviewed, ready, "ChangeRetryable").phase
+    const outcome = ledgerDecides && held !== undefined && executor !== undefined ? try execute(host, executor, recordOf(held, row.phase)) : undefined
+    const step = try orDie(machine.send({
+      type: "resolve", id, decision: decisions[decision], reviewed, executorReady: ready, result: outcome?.result ?? "ChangeSucceeded",
+    }))
+    return try answer(id, decision, step.out[0], outcome)
+  }
+
+  return {
+    request: (row) => serial(request(row)),
+    list: (query) => serial(list(query)),
+    resolve: (id, decision, revision) => serial(resolve(id, decision, revision)),
+    lapseIfDue: (id) => serial(lapseDue(id)),
+  }
+}
+
+function runtimeApprovalsHost(runtime: IAgentRuntime): ApprovalsHost {
+  return {
+    getCache: (key) => runtime.getCache(key),
+    setCache: (key, value) => runtime.setCache(key, value),
+    executor: () => {
+      const found: unknown = runtime.getService(calendarApprovalExecutorServiceType)
+      return isExecutor(found) ? found : undefined
+    },
+    logger: runtime.logger,
+    now: Clock.currentTimeMillis,
+  }
+}
+
+export class OwnerApprovalsService extends Service implements OwnerApprovals {
+  static override serviceType = ownerApprovalsServiceType
+  override capabilityDescription = "The owner's approval queue, decided only by the owner's resolve route"
+  readonly queue: ApprovalQueue = approvalQueue(runtimeApprovalsHost(this.runtime))
+
+  static override start(runtime: IAgentRuntime): Promise<Service> {
+    return Promise.resolve(new OwnerApprovalsService(runtime))
+  }
+
+  request(row: NewApproval): Promise<ApprovalRecord> {
+    return runSquashed(this.queue.request(row))
+  }
+
+  list(query: PageQuery): Promise<ApprovalRecord[]> {
+    return runSquashed(this.queue.list(query))
+  }
+
+  resolve(id: string, decision: ApprovalDecision, revision: string): Promise<ApprovalResolution> {
+    return runSquashed(this.queue.resolve(id, decision, revision))
+  }
+
+  override stop(): Promise<void> {
+    return Promise.resolve()
+  }
+}

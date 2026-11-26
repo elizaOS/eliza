@@ -1,0 +1,381 @@
+// spec/agent/host/process.md, "Story: Boot from a launch and serve only when ready"; spec/agent/host/process.md, "Story: Tell the host whether the agent can answer"; spec/agent/host/process.md, "Story: Stop on a signal and exit with an honest code"; spec/agent/host/launch.md, "Story: Start the agent from one launch document"; spec/agent/host/launch.md, "Local embeddings boot only when the device serves them: no operator endpoint or chosen hosted service takes precedence, and the local inference plugin is listed"; spec/agent/plugins/profile.md, "A load list names only plugins the bundle carries or the agent's own modules"; spec/agent/plugins/profile.md, "Host runtime services register with storage before every listed plugin, never under an agent service's name, and a pinned worker is the workflow-worker service"
+// spec/agent/deviceActions/index.md, "A proposal is offered only on an owner turn of the enrolled device, as its family grounded it, and re-admitted under the turn's negotiation"; spec/agent/deviceActions/index.md, "Only a confirmed review settles an uncertain request"
+// spec/agent/conversation/events.md, "Story: Hear about my conversations while my screen is open"; spec/agent/conversation/events.md, "Story: Learn when something keeps going wrong"
+
+module node {
+  import { deviceEmbeddingsPlugin, embeddingServer, localEmbeddingsBoot, type BootFailure, type LaunchFrame as FrameModel } from "../../gen/agent__host__launch.ts"
+  import type { AgentProcess, Event as ProcessEvent } from "../../gen/agent__host__process.ts"
+  import { backendOf, launchModel, type Endpoint, type LaunchDocument, type LaunchFrame } from "./launch.vibe"
+  import type { AgentPlugin, ModuleFactory } from "./module.vibe"
+  import { measureWorker, workerHost, workflowWorkerService, type WorkflowWorkerHost } from "./workflow-worker.vibe"
+
+  export interface AgentStatus {
+    readonly agentId: string
+    readonly serverInstanceId: string
+    readonly epoch: number
+    readonly credentialVersion: number
+    readonly ready: true
+    readonly actions: readonly string[]
+  }
+
+  export interface RunningAgent {
+    readonly runtime: AgentRuntime
+    readonly status: AgentStatus
+    readonly workflowWorker?: WorkflowWorkerHost
+    phase(): AgentProcess
+    stop(): Promise<number>
+  }
+
+  export interface StartAgentInput {
+    readonly launch: LaunchDocument
+    readonly authority: LaunchFrame
+    readonly binding: Endpoint
+    readonly stateDirectory: string
+    readonly bundled?: ReadonlyMap<string, AgentPlugin>
+    readonly modules?: ReadonlyMap<string, ModuleFactory<never>>
+    readonly hostModules?: ReadonlyMap<string, ModuleFactory<never>>
+    readonly runtimeServices?: readonly ServiceClass[]
+    readonly snapshot?: DeviceStorageSnapshot
+  }
+
+  export interface Lifecycle {
+    send(event: ProcessEvent): AgentProcess
+    get(): AgentProcess
+  }
+
+  import { randomUUID } from "node:crypto"
+  import { Effect, Redacted, Result } from "effect"
+  import { AgentEventService, AgentRuntime, EventType, NotificationService, QUIET_ERROR_CODES, TaskService, createCharacter, logger, privacyPlugin, stringToUuid, systemNoticeText, validateUuid, type ErrorReportedPayload, type ServiceClass } from "@elizaos/core"
+  import { canRequestStop, exitedCode, healthReply, healthStatus } from "../../gen/agent__host__process.ts"
+  import { builtinModules, hostServicesAdmitted, storagePlugin } from "../../gen/agent__plugins__profile.effect.vibe"
+  import { hostModulesAdmitted } from "../../gen/agent__plugins__bundle.effect.vibe"
+  import { runStateOf, statusRoutes } from "./status.vibe"
+  import { authRoutes } from "../access/auth.vibe"
+  import { createRouter } from "../access/router.vibe"
+  import { listenOnSocket } from "../access/socket.vibe"
+  import { feedsOver } from "../access/event-feeds.vibe"
+  import { listenOnHttp } from "../access/http.vibe"
+  import { conversationRoutes } from "../conversation/routes.vibe"
+  import { conversationStore } from "../conversation/conversations.vibe"
+  import { createEventHub } from "../conversation/events.vibe"
+  import { accountFailureOf, ownerMessageService } from "../conversation/message-service.vibe"
+  import { deviceEnrollment } from "../device-actions/enrollment.vibe"
+  import { agendaOffer } from "../device-actions/agenda.vibe"
+  import { deviceTurnPort } from "../device-actions/proposal/turn.vibe"
+  import { viewsActionName } from "../views/show-action.vibe"
+  import { proposalReviewRoutes } from "../device-actions/proposal-review.vibe"
+  import { retireAbandonedAgenda } from "../device-actions/store.vibe"
+  import { readCompletionRoutes } from "../device-actions/read-completion.vibe"
+  import { openDeviceStorage, type DeviceStorageSnapshot } from "../storage/index.vibe"
+  import { StoreFailed } from "../storage/fault.vibe"
+  import { logSweeps, scheduleSweeps } from "../storage/retention.vibe"
+  import { RuntimeFailed, bootFailureOf, composeAgent, type Privacy } from "./compose.vibe"
+  import { reservedHostPrefixes } from "../plugins/product.vibe"
+  import { builtinModuleFactories } from "../plugins/profile.vibe"
+  import { bindModels } from "../models/binding.vibe"
+  import { modelPlugin } from "../models/plugin.vibe"
+
+  function frameModel(frame: LaunchFrame): FrameModel {
+    return {
+      version: frame.version, token: String(frame.token), epoch: frame.epoch,
+      credential: frame.credential === undefined ? { tag: "NoCredential" } : { tag: "Keyed", version: frame.credential.version, value: String(frame.credential.value), units: Redacted.value(frame.credential.value).length },
+      storageKey: frame.storageKey === undefined ? { tag: "NoStorageKey" } : { tag: "StorageKey", key: String(frame.storageKey) },
+    }
+  }
+
+  function healthAnswer(state: AgentProcess) {
+    const reply = healthReply(state)
+    return {
+      status: healthStatus(reply),
+      body: reply.tag === "HealthReady" ? { ready: true, runtime: "ok", agentState: "running", epoch: reply.epoch } : { ready: false, phase: reply.phase },
+    }
+  }
+
+  function settingOn(value: string | undefined): boolean {
+    return value !== undefined && ["1", "true", "yes"].includes(value.trim().toLowerCase())
+  }
+
+  function localEmbeddingsAdmitted(launch: LaunchDocument): boolean {
+    const environment = launch.environment ?? {}
+    const provider = (environment.EMBEDDING_PROVIDER ?? "").trim().toLowerCase()
+    const operatorEndpoint = (environment.EMBEDDING_BASE_URL ?? "").trim() !== "" || !["", "local"].includes(provider)
+    const server = embeddingServer(operatorEndpoint, launch.model.backend === "cloud", settingOn(environment.ELIZAOS_CLOUD_USE_EMBEDDINGS))
+    return localEmbeddingsBoot(launch.embeddings === "local", server, launch.policy.plugins.load.includes(deviceEmbeddingsPlugin))
+  }
+
+  function privacyOf({ privacy }: LaunchDocument): Privacy {
+    return privacy?.secretSwap || privacy?.piiSwap ? { kind: "on", plugin: privacyPlugin(privacy) } : { kind: "off" }
+  }
+
+  function hostedSources(input: StartAgentInput): { bundled: ReadonlyMap<string, AgentPlugin>; modules: ReadonlyMap<string, ModuleFactory<never>> } | undefined {
+    const bundled = input.bundled ?? new Map<string, AgentPlugin>()
+    const hosted = input.hostModules ?? new Map<string, ModuleFactory<never>>()
+    if (!hostModulesAdmitted([...hosted.keys()], [...bundled.keys()], builtinModules)) return undefined
+    return { bundled, modules: new Map([...(input.modules ?? builtinModuleFactories), ...hosted]) }
+  }
+
+  function causeOf(state: AgentProcess): BootFailure {
+    return state.failure.tag === "FailedWith" ? state.failure.cause : "Agent"
+  }
+
+  async function boot(input: StartAgentInput, lifecycle: Lifecycle, signal: AbortSignal): Promise<Result.Result<RunningAgent, BootFailure>> {
+    const { launch, authority, binding, stateDirectory } = input
+    const sources = hostedSources(input)
+    if (sources === undefined || !localEmbeddingsAdmitted(launch)) return Result.fail("Config")
+    const pinned = launch.workflowWorker === undefined ? undefined : await measureWorker(launch.workflowWorker)
+    if (pinned?.kind === "refused") return Result.fail("Config")
+    let installedWorker: WorkflowWorkerHost | undefined
+    const runtimeServices = input.runtimeServices ?? []
+    const agentServices: ServiceClass[] = [TaskService, AgentEventService, ...(pinned === undefined ? [] : [workflowWorkerService(() => installedWorker)])]
+    if (!hostServicesAdmitted(runtimeServices.map(({ serviceType }) => serviceType), pinned !== undefined)) return Result.fail("Config")
+    const sweeps = await Effect.runPromise(Effect.result(logSweeps(launch.retention)))
+    if (Result.isFailure(sweeps)) return Result.fail("Config")
+
+    const releases = new Map<string, () => Promise<void>>()
+    let coreStop: Promise<void> | undefined
+    let startCoreStop = () => {}
+    let exiting: Promise<AgentProcess> | undefined
+
+    async function release(name: string): Promise<boolean> {
+      try {
+        const operation = releases.get(name)
+        if (operation === undefined) throw new Error("No release was registered")
+        await operation()
+        return true
+      } catch (error) {
+        logger.error({ src: "agent", resource: name, error: String(error) }, "A resource could not be released")
+        return false
+      }
+    }
+
+    async function releaseAll(): Promise<AgentProcess> {
+      await coreStop?.catch(() => undefined)
+      let state = lifecycle.send({ type: "finishStop" })
+      while (state.resources.phase === "Closing") {
+        const name = state.resources.pending[0]
+        const ok = await release(name)
+        state = lifecycle.send(name === "store" ? { type: "closeAdapter", ok } : { type: "releaseNext", ok })
+      }
+      return lifecycle.send({ type: "exitProcess" })
+    }
+
+    async function stop(): Promise<number> {
+      if (canRequestStop(lifecycle.get(), true)) {
+        lifecycle.send({ type: "requestStop", fast: true })
+        startCoreStop()
+      }
+      exiting ??= releaseAll()
+      return exitedCode((await exiting).outcome)
+    }
+
+    async function failed(): Promise<Result.Result<RunningAgent, BootFailure>> {
+      await stop()
+      return Result.fail(causeOf(lifecycle.get()))
+    }
+
+    if (signal.aborted || lifecycle.send({ type: "readLaunch", doc: launchModel(launch), f: frameModel(authority) }).failure.tag !== "NoFailure") return failed()
+    const models = await Effect.runPromise(bindModels(launch, authority))
+
+    const opened = await openDeviceStorage({
+      stateDirectory, persistMemory: launch.persistMemory ?? false,
+      account: launch.account ?? null, embeddingDimensions: launch.embeddingDimensions ?? 0,
+      ...(input.snapshot === undefined ? {} : { snapshot: input.snapshot }),
+    }).then((store) => ({ kind: "opened" as const, ...store }), (error: unknown) => ({ kind: "refused" as const, error }))
+    if (opened.kind === "refused") {
+      if (opened.error instanceof StoreFailed) logger.error({ src: "agent", phase: "Storage", fault: opened.error.fault }, "The device store could not be opened")
+      lifecycle.send({ type: "openStore", ok: false })
+      return failed()
+    }
+    const { agentId, adapter } = opened
+    let closeStore = () => adapter.close()
+    releases.set("store", () => closeStore())
+    lifecycle.send({ type: "openStore", ok: true })
+    lifecycle.send({ type: "migrate", ok: true })
+    if (signal.aborted) return failed()
+
+    const persona = launch.character
+    const examples = (persona.messageExamples ?? []).map((group) => ({
+      examples: ("examples" in group ? group.examples : group).map(({ name, content }) => ({
+        name, content: {
+          ...(content.text === undefined ? {} : { text: content.text }),
+          ...(content.actions === undefined ? {} : { actions: [...content.actions] }),
+        },
+      })),
+    }))
+    const character = createCharacter({
+      name: persona.name, system: persona.system, adjectives: [...(persona.adjectives ?? [])],
+      bio: typeof persona.bio === "string" ? persona.bio : [...(persona.bio ?? [])],
+      style: { all: [...(persona.style?.all ?? [])], chat: [...(persona.style?.chat ?? [])], post: [...(persona.style?.post ?? [])] },
+      messageExamples: examples,
+    })
+    const role = launch.callerRole === "owner" ? "OWNER" : "USER"
+    const permissions = new Set(launch.policy.actions.allowed)
+    const user = launch.account ? (validateUuid(launch.account.userId) ?? stringToUuid(`account:${launch.account.userId}`)) : stringToUuid(`device-owner:${agentId}`)
+    const ownerId = role === "OWNER" ? user : agentId
+    const conversationOwner = { user, world: stringToUuid(`device:${agentId}`) }
+    const events = createEventHub()
+    let detachReports = () => {}
+    let detachInbox = () => {}
+    const formed = await Effect.runPromise(Effect.result(composeAgent({
+      agentId, character, settings: { ...launch.environment }, bundled: sources.bundled, modules: sources.modules, hostRoutes: reservedHostPrefixes,
+      context: { launch, stateDirectory, timeZone: launch.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone, epoch: authority.epoch, ...(authority.storageKey === undefined ? {} : { storageKey: authority.storageKey }),
+        ownerEntityId: ownerId, conversationOwner, binding: () => Effect.runSync(models.state()), publishEvent: events.publishFromModule, viewFeeds: events.viewFeeds,
+        conversationNews: { updated: events.conversationUpdated, proactive: events.proactiveMessage } },
+      storage: { name: storagePlugin, description: "Own the device database", services: [...agentServices, events.PublishEventService, ...runtimeServices], init: async (_config, runtime) => {
+        if (!(runtime instanceof AgentRuntime)) throw new Error("The storage plugin requires the device Core runtime")
+        runtime.registerDatabaseAdapter(adapter)
+        const sweeper = await Effect.runPromise(scheduleSweeps(adapter, sweeps.success))
+        if (sweeper !== undefined) runtime.registerTaskWorker(sweeper)
+      } },
+      cloudLink: modelPlugin(launch, models), privacy: privacyOf(launch), worker: pinned === undefined ? { kind: "none" } : { kind: "pinned", expected: pinned.worker.expected, measured: pinned.worker.measured },
+      messageService: (runtime, actionGate) => ownerMessageService(runtime, [role], actionGate, accountFailureOf(() => Effect.runSync(models.read())), launch.timeZone),
+      policy: {
+        actionsAllowed: [...permissions], pluginsLoad: [...launch.policy.plugins.load],
+        productPlugin: launch.policy.plugins.product === undefined ? { tag: "NoProductPlugin" }
+          : { tag: "NamedProductPlugin", name: launch.policy.plugins.product },
+      },
+    })), { signal }).catch((error: unknown) => {
+      if (signal.aborted) return undefined
+      logger.error({ src: "agent", phase: "LoadPlugins", error: String(error) }, "A listed plugin failed while loading")
+      return Result.fail(new RuntimeFailed({ cause: error }))
+    })
+    if (formed === undefined) return failed()
+    if (Result.isFailure(formed)) {
+      logger.error({ src: "agent", phase: "LoadPlugins", failure: formed.failure._tag }, "The agent could not be composed")
+      if (bootFailureOf(formed.failure) === "Config") {
+        lifecycle.send({ type: "loadPlugins", ok: false })
+        return failed()
+      }
+      releases.set("runtime", () => Promise.resolve())
+      lifecycle.send({ type: "loadPlugins", ok: true })
+      lifecycle.send({ type: "beginInitialization" })
+      lifecycle.send({ type: "completeInitialization", ok: false })
+      return failed()
+    }
+    lifecycle.send({ type: "loadPlugins", ok: true })
+
+    const composed = formed.success
+    const { runtime } = composed
+    closeStore = () => runtime.close()
+    startCoreStop = () => {
+      detachReports()
+      detachInbox()
+      coreStop ??= events.stop().then(() => runtime.stop({ fast: true }))
+    }
+    releases.set("runtime", () => coreStop ?? Promise.resolve())
+    releases.set("plugins", () => Promise.resolve())
+    lifecycle.send({ type: "beginInitialization" })
+    const initialized = await runtime.initialize({ skipMigrations: true }).then(() => true, (error: unknown) => {
+      logger.error({ src: "agent", agentId, phase: "InitializeRuntime", error: String(error) }, "The runtime could not be initialized")
+      return false
+    })
+    lifecycle.send({ type: "completeInitialization", ok: initialized })
+    if (!initialized || signal.aborted) return failed()
+
+    const status: AgentStatus = {
+      agentId, serverInstanceId: randomUUID(), epoch: authority.epoch, credentialVersion: authority.credential?.version ?? 0,
+      ready: true, actions: [...composed.allowed].sort(),
+    }
+    const bound = await (async () => {
+      const { world } = conversationOwner
+      await runtime.ensureWorldExists({
+        id: world, agentId, name: "Device",
+        metadata: { ownership: { ownerId }, roles: { [user]: role === "OWNER" ? "OWNER" : "MEMBER" } },
+      })
+      const eventSource = runtime.getService<AgentEventService>(AgentEventService.serviceType)
+      if (eventSource === null) throw new Error("The Agent event service did not start")
+      events.attach(eventSource, status.serverInstanceId)
+      detachInbox = NotificationService.observeCommitted(runtime, events.inboxChanged)
+      const conversations = conversationStore(runtime, conversationOwner)
+      const onError = async (reported: ErrorReportedPayload) => {
+        const { code, context } = reported
+        const cause = typeof context?.reason === "string" ? context.reason : ""
+        await events.report(code, cause, context?.diagnosticOnly === true || QUIET_ERROR_CODES.has(code), async (kind) => {
+          const room = (await conversations.list())[0] ?? await conversations.create("")
+          const createdAt = Date.now()
+          await runtime.createMessageMemory({
+            id: randomUUID(), roomId: room.roomId, worldId: world, agentId, entityId: agentId, createdAt,
+            content: { text: systemNoticeText(kind), systemNotice: kind, source: "device" },
+          })
+          await conversations.touch(room.roomId, createdAt)
+        })
+      }
+      runtime.registerEvent(EventType.ERROR_REPORTED, onError)
+      detachReports = () => runtime.unregisterEvent(EventType.ERROR_REPORTED, onError)
+      const enrollment = deviceEnrollment({ runtime, launch, ownerEntityId: ownerId })
+      const completesReads = launch.hostContextRevision !== undefined
+      const agenda = launch.callerRole === "owner" && completesReads ? agendaOffer(runtime) : undefined
+      if (agenda !== undefined) await Effect.runPromise(retireAbandonedAgenda(adapter))
+      const device = launch.callerRole === "owner"
+        ? deviceTurnPort(runtime, enrollment.deviceSender, { completesReads, viewsAllowed: composed.allowed.has(viewsActionName), ...(agenda === undefined ? {} : { agenda }) }) : undefined
+      const router = createRouter({
+        token: authority.token, epoch: authority.epoch, instanceId: status.serverInstanceId,
+        health: () => healthAnswer(lifecycle.get()),
+        routes: [
+          ...statusRoutes({ agentId, name: launch.character.name, serverInstanceId: status.serverInstanceId, backend: backendOf(launch.model), embeddings: launch.embeddings, state: () => runStateOf(lifecycle.get()), binding: () => Effect.runSync(models.state()), now: Date.now }),
+          ...authRoutes(agentId),
+          ...conversationRoutes(runtime, conversationOwner, launch.character.name, events.conversationUpdated, device),
+          ...enrollment.routes,
+          ...(launch.callerRole === "owner" ? proposalReviewRoutes(adapter, enrollment.deviceSender, agenda === undefined ? "workflow" : "agenda-and-workflow") : []),
+          ...readCompletionRoutes({ runtime, owner: conversationOwner, sender: enrollment.deviceSender }),
+          ...composed.routes,
+        ],
+      })
+      const feeds = { token: authority.token, events: feedsOver(events.hub) }
+      return binding.kind === "socket"
+        ? listenOnSocket(binding.path, router, feeds)
+        : listenOnHttp(binding.port, router, feeds)
+    })().then((close) => ({ kind: "bound" as const, close }), (error: unknown) => ({ kind: "refused" as const, error }))
+    if (bound.kind === "refused") {
+      logger.error({ src: "agent", agentId, phase: "BindTransport", error: String(bound.error) }, "The transport could not be bound")
+      lifecycle.send({ type: "bindTransport", ok: false })
+      return failed()
+    }
+    releases.set("transport", bound.close)
+    lifecycle.send({ type: "bindTransport", ok: true })
+    if (signal.aborted) return failed()
+
+    const workflowWorker = launch.workflowWorker === undefined || pinned === undefined ? undefined
+      : workerHost(launch.workflowWorker, pinned.worker, launch.environment ?? {},
+        { token: authority.token, credential: authority.credential?.value, storageKey: authority.storageKey },
+        (offered) => Effect.runPromise(composed.workerEnvironment(offered)))
+    installedWorker = workflowWorker
+    return Result.succeed({ runtime, status, phase: () => lifecycle.get(), stop, ...(workflowWorker === undefined ? {} : { workflowWorker }) })
+  }
+  export { boot }
+}
+
+import type { BootFailure } from "../../gen/agent__host__launch.ts"
+import { exitedCode } from "../../gen/agent__host__process.ts"
+import { Machine, machine } from "../../gen/agent__host__process.effect.vibe"
+import { boot, type Lifecycle, type RunningAgent, type StartAgentInput } from node
+export { type AgentStatus, type RunningAgent, type StartAgentInput } from node
+export type { AgentProcess as ProcessPhase } from "../../gen/agent__host__process.ts"
+
+export error AgentBootFailed { phase: BootFailure }
+export error AgentStoppedInBoot { code: number }
+
+effect function processMachine() {
+  provide machine() {
+    return try Machine
+  }
+}
+
+export effect function startAgent(input: StartAgentInput) {
+  const lifecycle = try processMachine()
+  const port: Lifecycle = {
+    send: (event) => Effect.runSync(Effect.orDie(lifecycle.send(event))),
+    get: () => Effect.runSync(lifecycle.get()),
+  }
+  return try Effect.callback<RunningAgent, AgentBootFailed>((resume, signal) => {
+    const booting = boot(input, port, signal)
+    booting.then(
+      (opened) => resume(Result.isFailure(opened) ? Effect.fail(new AgentBootFailed({ phase: opened.failure })) : Effect.succeed(opened.success)),
+      () => resume(Effect.fail(new AgentBootFailed({ phase: "Agent" }))),
+    )
+    return Effect.flatMap(Effect.promise(() => booting.catch(() => undefined)), () => {
+      const code = exitedCode(port.get().outcome)
+      return code === 0 ? Effect.void : Effect.die(new AgentStoppedInBoot({ code }))
+    })
+  })
+}

@@ -1,0 +1,43 @@
+// spec/agent/host/launch.md, "Story: Start the agent from one launch document"; spec/agent/plugins/profile.md, "Story: Register my product's own actions and routes"; spec/agent/plugins/bundle.md, "Story: Ship one agent bundle whose contents and actions are known"; spec/agent/deviceActions/index.md, "An offer goes only to the enrolled device, for a capability it declared"; spec/agent/deviceActions/index.md, "A proposal is offered only on an owner turn of the enrolled device, as its family grounded it, and re-admitted under the turn's negotiation"; spec/agent/deviceActions/operations.md, "A turn targets the photo open on the owner's screen only from the Photos view, never on a sensitive screen, and names its library ID only under the library capability"; spec/agent/deviceActions/index.md, "Story: Propose what I asked for on my phone, in my own words"
+import { installNodeRuntimeAdapters } from "@elizaos/core-node"
+installNodeRuntimeAdapters()
+
+export { startAgent, type AgentStatus, type RunningAgent } from "./host/process.vibe"
+export { AGENT_EXIT_CODES, exitClass, exitCode, parseLaunch, type ExitClass, type LaunchDocument } from "./host/launch.vibe"
+export { ModuleRefused, routePrefix, type AgentModule, type AgentPlugin, type ModuleContext, type ModuleFactory, type PublishEvent, type ViewFeeds } from "./host/module.vibe"
+export { admitRoute, defineRoutes, readTurnContext, type LocalRoute, type Route, type RouteGroup, type RouteInput, type RouteList, type TurnContext } from "@elizaos/agent"
+export { type ActionResultFrame, type ReplyFrame } from "./conversation/stream.vibe"
+export { publishEventServiceType, type PublishEventService } from "./conversation/events.vibe"
+export { recordOf as deviceConversation } from "./conversation/conversations.vibe"
+export { type TurnReply } from "./conversation/turns.vibe"
+export { activityLabel, offeredActions, offeredOnlyWhere, showsApp, turnNotes } from "./conversation/planning.vibe"
+export { cloudServiceType, type CloudLinkReply, type CloudLinkRequest, type CloudLinkService, type GoogleAdmission, type GoogleChange } from "./models/cloud-link.vibe"
+export { scheduledTasksServiceType, type FireResult, type ScheduledTasksApi, type VerbRequest, type VerbResult } from "./schedule/scheduled-task-routes.vibe"
+export { type Created, type DeliveryPort, type NewTask, type ScheduledTaskView } from "./schedule/scheduled-tasks.vibe"
+export {
+  createScheduledTask, getScheduledTask, listScheduledTasks, NoScheduledTask, scheduledTaskByKey, scheduledTaskKeeping, ScheduleStoreUnavailable, StaleRevision, TaskIdTaken,
+  type NewScheduledTask, type ScheduledTaskDetails, type StoredTask,
+} from "./schedule/store.vibe"
+export {
+  workflowDeviceOffer, WorkflowStepRefused,
+  type WorkflowDeviceOffer, type WorkflowOfferTiming, type WorkflowStep, type WorkflowStepDevice, type WorkflowStepTarget,
+} from "./device-actions/workflow-offer.vibe"
+export {
+  directRequests, FamilyConflict, registerDeviceProposalFamily, showsReviewCards, unoffered, untrustedReturnGuidance,
+  type DeviceProposalFamily, type DeviceTurn, type EarlierRequest, type FamilyName, type Grounding, type NegotiatedDevice, type PendingRequest, type ProposalForm,
+  type ProposalGrounding, type ProposalText, type ReadContinuation, type SwappedValue,
+} from "./device-actions/proposal/registry.vibe"
+export { deviceTurnFor, deviceTurnPort } from "./device-actions/proposal/turn.vibe"
+export { photosViewGuidance, shownPhoto, type ShownPhoto } from "./device-actions/photos-view.vibe"
+export { negotiatedOwnerTurn, type OwnerTurnFields } from "./device-actions/test-turn.vibe"
+export {
+  admitPayload, buildAgentBundle, BundleManifestUnreadable, BundleRefused, excludedPackages, fileAdmitted, fileExtension, modelWeightExtensions,
+  payloadFile, ProfileGroups, readBundleManifest, residentLoadList,
+  type BuildAgentBundle, type BuildVerdict, type BundleManifest, type DeviceVariant, type PayloadAdmission, type PayloadFile,
+} from "./bundle/build.vibe"
+export {
+  tasksModule, tasksModuleName,
+  type AuthorizedTaskGoal, type TaskActuator, type TaskCleanupReason, type TaskDispatchContext, type TaskGoalAuthorizer,
+  type TaskModulePorts, type TaskPresentation, type TaskPresentationPorts,
+} from "./tasks/module.vibe"
+export { runAgentCli, type AgentCli, type ResidentHost } from "./cli.vibe"

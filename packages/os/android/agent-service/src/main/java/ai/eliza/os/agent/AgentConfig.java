@@ -1,4 +1,4 @@
-// spec/os/agentService/config.md, "Story: Start my agent with my character, policy and model"; spec/agent/host/launch.md, "The launch document is accepted whole or refused whole"; spec/agent/access/routes.md, "A list is loaded whole or not at all"; spec/os/agentService/config.md, "Only a cloud launch is framed with the device key, and an own-key launch with the owner's provider key or none"
+// spec/os/agentService/config.md, "Story: Start my agent with my character, policy and model"; spec/os/agentService/config.md, "The host file names a qualified service class, and status and failure notification words of 1 to 200 characters on two differently named channels"; spec/agent/host/launch.md, "The launch document is accepted whole or refused whole"; spec/agent/access/routes.md, "A list is loaded whole or not at all"; spec/os/agentService/config.md, "Only a cloud launch is framed with the device key, and an own-key launch with the owner's provider key or none"
 package ai.eliza.os.agent;
 
 import java.math.BigDecimal;
@@ -25,7 +25,7 @@ public final class AgentConfig {
 
   private static final Pattern CLASS_NAME = Pattern.compile("[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)+");
   private static final Pattern ORIGIN = Pattern.compile("https://([a-zA-Z0-9-]+\\.)*[a-zA-Z0-9-]+(:([0-9]{1,5}))?");
-  private static final Pattern HTTPS_URL = Pattern.compile("https://[^\\s\\ufeff?#@]+", Pattern.UNICODE_CHARACTER_CLASS);
+  private static final Pattern HTTPS_URL = Pattern.compile("https://[^\\p{IsWhite_Space}\\ufeff?#@]+");
   private static final Pattern ENVIRONMENT_NAME = Pattern.compile("[A-Z][A-Z0-9_]*");
   private static final Pattern RESERVED_ENVIRONMENT = Pattern.compile("(ELIZA_AGENT_|ELIZA_CLOUD_|ELIZA_OWN_|LD_|NODE_).*|PATH|HOME|TMPDIR");
   private static final Pattern SHA256 = Pattern.compile("[a-f0-9]{64}");
@@ -36,14 +36,16 @@ public final class AgentConfig {
   private static final int OWN_KEY_MAX_UNITS = 1024;
   private static final BigDecimal SAFE_INTEGER = BigDecimal.valueOf(9007199254740991L);
   private static final Set<String> HOST_KEYS = Set.of("schema", "service", "notification", "routes", "nativeRoutes", "cloud", "model", "embeddings",
-    "embeddingDimensions", "persistMemory", "callerRole", "views", "timeZone", "privacy", "google", "retention", "environment");
+    "embeddingDimensions", "persistMemory", "callerRole", "views", "timeZone", "hostContextRevision", "privacy", "google", "retention", "environment");
   private static final Set<String> CHARACTER_KEYS = Set.of("name", "system", "bio", "adjectives", "style", "messageExamples");
 
   public static final class Refused extends Exception {
     Refused(String message) { super(message); }
   }
 
-  public record Notification(String channel, String title, String text) {}
+  public record Words(String channel, String title, String text) {}
+
+  public record Notification(Words status, Words failure) {}
 
   /** What the owner allowed the agent to change in Google, as the service subclass keeps it for the next launch. */
   public record GoogleConsent(boolean gmailChanges, boolean calendarEdits) {}
@@ -68,8 +70,11 @@ public final class AgentConfig {
     schemaOne(policy, "policy");
     if (!(host.get("service") instanceof String named) || !CLASS_NAME.matcher(named).matches()) throw new Refused("The agent service is not a class name");
     service = named;
-    Map<String, Object> words = exact(host.get("notification"), Set.of("channel", "title", "text"), "notification");
-    notification = new Notification(words(words, "channel"), words(words, "title"), words(words, "text"));
+    Map<String, Object> words = exact(host.get("notification"), Set.of("channel", "title", "text", "failure"), "notification");
+    Words status = words(words, "notification");
+    Words failure = words(exact(words.get("failure"), Set.of("channel", "title", "text"), "notification failure"), "notification failure");
+    if (failure.channel().equals(status.channel())) throw new Refused("The agent notification failure channel needs a name other than the status channel's");
+    notification = new Notification(status, failure);
     rendererRoutes = routes(host.get("routes"), "routes");
     nativeRoutes = host.containsKey("nativeRoutes") ? routes(host.get("nativeRoutes"), "nativeRoutes") : List.of();
     this.character = character(character);
@@ -113,6 +118,8 @@ public final class AgentConfig {
     document.put("model", launch.get("model"));
     if (account != null) document.put("account", ordered("userId", account.userId(), "organizationId", account.organizationId()));
     for (Map.Entry<String, Object> entry : launch.entrySet()) if (!entry.getKey().equals("model")) document.put(entry.getKey(), entry.getValue());
+    String deviceZone = ZoneId.systemDefault().getId();
+    if (!launch.containsKey("timeZone") && namedZone(deviceZone)) document.put("timeZone", deviceZone);
     if (consent != null) document.put("google", ordered("gmailChanges", consent.gmailChanges(), "calendarEdits", consent.calendarEdits()));
     if (workflowWorker != null)
       document.put("workflowWorker", ordered("runtimeDir", workflowWorker.runtimeDir(), "executable", workflowWorker.executable(), "sha256", workflowWorker.sha256()));
@@ -138,10 +145,14 @@ public final class AgentConfig {
     if (!(file.get("schema") instanceof BigDecimal schema) || schema.compareTo(BigDecimal.ONE) != 0) throw new Refused("The agent " + name + " file is not schema 1");
   }
 
-  private static String words(Map<String, Object> words, String key) throws Refused {
-    if (!(words.get(key) instanceof String value)) throw new Refused("The agent notification needs a " + key);
+  private static Words words(Map<String, Object> words, String name) throws Refused {
+    return new Words(words(words, "channel", name), words(words, "title", name), words(words, "text", name));
+  }
+
+  private static String words(Map<String, Object> words, String key, String name) throws Refused {
+    if (!(words.get(key) instanceof String value)) throw new Refused("The agent " + name + " needs a " + key);
     String trimmed = value.trim();
-    if (trimmed.isEmpty() || trimmed.length() > NOTIFICATION_TEXT_LIMIT) throw new Refused("The agent notification " + key + " is not 1 to 200 characters");
+    if (trimmed.isEmpty() || trimmed.length() > NOTIFICATION_TEXT_LIMIT) throw new Refused("The agent " + name + " " + key + " is not 1 to 200 characters");
     return trimmed;
   }
 
@@ -221,15 +232,19 @@ public final class AgentConfig {
     launch.put("callerRole", role);
     if (host.containsKey("views")) launch.put("views", views(host.get("views")));
     if (host.containsKey("timeZone")) {
-      if (!(host.get("timeZone") instanceof String zone) || !(zone.equals("UTC") || (zone.contains("/") && ZoneId.getAvailableZoneIds().contains(zone))))
-        throw new Refused("The agent time zone is a named zone");
+      if (!(host.get("timeZone") instanceof String zone) || !namedZone(zone)) throw new Refused("The agent time zone is a named zone");
       launch.put("timeZone", zone);
     }
+    if (host.containsKey("hostContextRevision")) launch.put("hostContextRevision", positiveInteger(host.get("hostContextRevision"), "hostContextRevision"));
     if (host.containsKey("privacy")) launch.put("privacy", switches(host.get("privacy"), "secretSwap", "piiSwap"));
     if (host.containsKey("google")) launch.put("google", switches(host.get("google"), "gmailChanges", "calendarEdits"));
     if (host.containsKey("retention")) launch.put("retention", retention(host.get("retention")));
     if (host.containsKey("environment")) launch.put("environment", environment(host.get("environment")));
     return launch;
+  }
+
+  private static boolean namedZone(String zone) {
+    return zone.equals("UTC") || (zone.contains("/") && ZoneId.getAvailableZoneIds().contains(zone));
   }
 
   private static Map<String, Object> model(Object value) throws Refused {

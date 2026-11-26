@@ -1,20 +1,11 @@
 // spec/calendar/linkedSync.md, "Story: Link my resident calendar to a verified provider destination"; spec/calendar/linkedSync.md, "Story: Keep a link local or move it to the selected destination only while sync is drained"
 import { assert, it } from "@effect/vitest"
-import type { CalendarEvent, CalendarSummary } from "../src/model.vibe"
+import type { CalendarEvent, CalendarSummary } from "@elizaos/plugin-calendar-client"
 import { calendarHost } from "../src/plugin/host.vibe"
 import { linkedCalendarRoutes } from "../src/plugin/linked-routes.vibe"
 import type { CalendarAccount, CalendarProviderPort } from "../src/plugin/providers.vibe"
 import type { CalendarRouteInput } from "../src/plugin/routes.vibe"
-import type { CalendarCache } from "../src/plugin/runtime-store.vibe"
-
-function memoryCache(): CalendarCache {
-  const rows = new Map<string, unknown>()
-  return {
-    async getCache<T>(key: string) { return rows.get(key) as T | undefined },
-    async setCache<T>(key: string, value: T) { rows.set(key, value); return true },
-    async deleteCache(key: string) { return rows.delete(key) },
-  }
-}
+import { memoryCache } from "./support/memory-cache.ts"
 
 const owner: CalendarAccount = { agentId: "agent", ownerId: "owner", accountId: "google-account" }
 const summary = (provider: "eliza" | "google", calendarId: string, accessRole: string, primary: boolean): CalendarSummary => ({

@@ -1,0 +1,177 @@
+// spec/files/library.md, "Story: Let a workflow save and read my browser files without repeating or half-reading anything"; spec/files/library.md, "A workflow attachment and its receipt commit together, and a replay returns the receipt without saving again"; spec/files/library.md, "A workflow reads its Files source whole and unchanged, or not at all"; spec/files/library.md, "An imported folder arrives whole under a name not yet used, or not at all"
+module browser {
+  /** @throws {never} */
+  export function receiptOf(bytes: Uint8Array | undefined): { fingerprint: string; result: { id: string; name: string; sha256: string } } | undefined {
+    if (bytes === undefined) return undefined
+    try {
+      const value: unknown = JSON.parse(new TextDecoder().decode(bytes))
+      if (typeof value !== "object" || value === null || !("fingerprint" in value) || !("result" in value)) return undefined
+      const result = value.result
+      return typeof value.fingerprint === "string" && typeof result === "object" && result !== null && "id" in result && "name" in result && "sha256" in result
+        && typeof result.id === "string" && typeof result.name === "string" && typeof result.sha256 === "string"
+        ? { fingerprint: value.fingerprint, result: { id: result.id, name: result.name, sha256: result.sha256 } } : undefined
+    } catch {
+      return undefined
+    }
+  }
+}
+import { receiptOf } from browser
+import { attachmentAnswer, folderImported, recentFilesLimit, sourceAdmitted, sourceFilesLimit, sourceTextLimit } from "../../gen/files__library.effect.vibe"
+import { decodeBase64, reviewMailAttachment, type MailAttachment } from "../documents/source-links.vibe"
+import { freeName, validName } from "./model.vibe"
+import { allocateLibraryId, allocateLibraryRevision, childrenOf, LibraryStore, LIBRARY_ROOT, newId, newRevision, type LibraryRow } from "./library.vibe"
+import { VolumeRefused } from "./volume.vibe"
+
+const RECEIPTS = "Receipts"
+const RECEIPT_STORE = ".Workflow-receipts"
+const TEXT_TYPES = ["application/json", "application/xml", "application/javascript"]
+
+const refused = (status: VolumeRefused["status"], message: string) => new VolumeRefused({ status, message })
+const unavailable = (failure: { readonly message: string }) => refused("unavailable", failure.message)
+
+export type WorkflowSaved = { readonly id: string; readonly name: string; readonly sha256: string }
+
+export type WorkflowFile = {
+  readonly id: string
+  readonly parentId: string
+  readonly name: string
+  readonly mimeType: string
+  readonly size: number
+  readonly revision: string
+  readonly createdAt: number
+  readonly modifiedAt: number
+  readonly contentStatus: "text" | "binary"
+  readonly text?: string
+}
+
+function folderRow(parentId: string, name: string, now: number): LibraryRow {
+  return { id: newId(), parentId, name, mimeType: "", directory: true, size: 0, revision: newRevision(), createdAt: now, modifiedAt: now }
+}
+
+function receiptRowOf(rows: readonly LibraryRow[], operationId: string): LibraryRow | undefined {
+  const store = childrenOf(rows, LIBRARY_ROOT).find((row) => row.name === RECEIPT_STORE && row.directory)
+  return store === undefined ? undefined : childrenOf(rows, store.id).find((row) => row.name === `${operationId}.json`)
+}
+
+function hidden(rows: readonly LibraryRow[], row: LibraryRow): boolean {
+  let current: LibraryRow | undefined = row
+  for (let depth = 0; current !== undefined && depth <= rows.length; depth++) {
+    if (current.name.startsWith(".")) return true
+    const parent: string = current.parentId
+    current = rows.find((candidate) => candidate.id === parent)
+  }
+  return false
+}
+
+export effect function saveWorkflowAttachment(input: MailAttachment & { readonly operationId: string }): WorkflowSaved!VolumeRefused!LibraryStore {
+  if (!/^[a-zA-Z0-9_-]{1,120}$/.test(input.operationId)) throw refused("invalid", "Invalid workflow operation.")
+  const name = validName(input.name)
+  const reviewed = try mapError(reviewMailAttachment(input), (failure) => refused("invalid", failure.message))
+  const bytes = decodeBase64(input.dataBase64)
+  if (name === undefined || bytes === undefined) throw refused("invalid", "Choose a valid file name.")
+  const fingerprint = JSON.stringify([name, input.mimeType, reviewed.sha256])
+  const library = try LibraryStore
+  const now = try Clock.currentTimeMillis
+  const saved: WorkflowSaved = { id: try mapError(allocateLibraryId, unavailable), name, sha256: reviewed.sha256 }
+  let answered: WorkflowSaved = saved
+  const outcome = (map(library.commit((rows) => {
+    const kept = receiptRowOf(rows, input.operationId)
+    const receipts = childrenOf(rows, LIBRARY_ROOT).find((row) => row.name === RECEIPTS)
+    const answer = attachmentAnswer({ receiptKept: kept !== undefined, fingerprintMatches: receiptOf(kept?.bytes)?.fingerprint === fingerprint,
+      receiptsIsFolder: receipts === undefined || receipts.directory })
+    if (answer !== "SavedNew") return answer
+    const folder = receipts ?? folderRow(LIBRARY_ROOT, RECEIPTS, now)
+    const store = childrenOf(rows, LIBRARY_ROOT).find((row) => row.name === RECEIPT_STORE && row.directory) ?? folderRow(LIBRARY_ROOT, RECEIPT_STORE, now)
+    const free = freeName(name, childrenOf(rows, folder.id).map((row) => row.name)) ?? `${saved.id}-${name}`
+    answered = { ...saved, name: free }
+    const receipt = new TextEncoder().encode(JSON.stringify({ fingerprint, result: answered }))
+    return {
+      put: [
+        ...(receipts === undefined ? [folder] : []),
+        ...(rows.some((row) => row.id === store.id) ? [] : [store]),
+        { id: saved.id, parentId: folder.id, name: free, mimeType: input.mimeType, directory: false, size: reviewed.size, revision: newRevision(), createdAt: now, modifiedAt: now, bytes },
+        { id: newId(), parentId: store.id, name: `${input.operationId}.json`, mimeType: "application/json", directory: false, size: receipt.byteLength, revision: newRevision(), createdAt: now, modifiedAt: now, bytes: receipt },
+      ],
+      remove: [],
+    }
+  }), () => undefined) catch (failure) => failure)
+  if (outcome === undefined) return answered
+  if (outcome._tag === "LibraryFailed") throw unavailable(outcome)
+  if (outcome.answer === "ReturnedReceipt") {
+    const kept = receiptOf(receiptRowOf(try mapError(library.rows(), unavailable), input.operationId)?.bytes)
+    if (kept !== undefined) return kept.result
+  }
+  throw refused(outcome.answer === "ReceiptsBlocked" ? "exists" : "changed", outcome.message)
+}
+
+effect function sourceRows(recent: boolean) {
+  const library = try LibraryStore
+  const rows = try mapError(library.rows(), unavailable)
+  const files = rows.filter((row) => !row.directory && !hidden(rows, row))
+  const chosen = [...files].sort((a, b) => b.modifiedAt - a.modifiedAt || a.id.localeCompare(b.id)).slice(0, recent ? recentFilesLimit : sourceFilesLimit)
+  return { count: files.length, chosen }
+}
+
+export effect function workflowFiles(recent: boolean) {
+  const before = try sourceRows(recent)
+  const read = (textOverLimit: boolean, changedDuringRead: boolean) => sourceAdmitted({ recent, files: before.count, textOverLimit, changedDuringRead })
+  if (!read(false, false)) throw refused("invalid", "Choose a smaller Files source.")
+  const files: WorkflowFile[] = []
+  for (const row of before.chosen) {
+    const textual = row.mimeType.startsWith("text/") || TEXT_TYPES.includes(row.mimeType)
+    if (textual && !read(row.size > sourceTextLimit, false)) throw refused("invalid", "A selected Files text source exceeds the 16,000-byte read limit. No partial source was returned.")
+    const decoded = textual && row.bytes !== undefined ? (Effect.try(() => new TextDecoder("utf-8", { fatal: true }).decode(row.bytes)) catch () => undefined) : undefined
+    const text = decoded !== undefined && !decoded.includes("\0") ? decoded : undefined
+    files.push({ id: row.id, parentId: row.parentId, name: row.name, mimeType: row.mimeType, size: row.size, revision: row.revision, createdAt: row.createdAt,
+      modifiedAt: row.modifiedAt, contentStatus: text === undefined ? "binary" : "text", ...(text === undefined ? {} : { text }) })
+  }
+  const after = try sourceRows(recent)
+  const same = JSON.stringify(after.chosen.map((row) => [row.id, row.revision])) === JSON.stringify(before.chosen.map((row) => [row.id, row.revision]))
+  if (!sourceAdmitted({ recent, files: after.count, textOverLimit: false, changedDuringRead: !same })) throw refused("changed", "Files changed during the read. Run the step again.")
+  return { scope: recent ? "20 most recently imported or changed files" : "All managed files", files }
+}
+
+export type ImportedFile = { readonly path: string; readonly mimeType: string; readonly bytes: Uint8Array<ArrayBuffer> }
+
+export effect function importLibraryFolder(folderName: string, files: readonly ImportedFile[]): string!VolumeRefused!LibraryStore {
+  const library = try LibraryStore
+  const now = try Clock.currentTimeMillis
+  const name = validName(folderName)
+  const top = folderRow(LIBRARY_ROOT, name ?? "", now)
+  const rows: LibraryRow[] = [top]
+  const folders = new Map<string, string>([["", top.id]])
+  const places = new Set<string>()
+  let namesValid = name !== undefined
+  let duplicateEntry = false
+  for (const file of files) {
+    const parts = file.path.split("/").map((part) => validName(part))
+    if (parts.some((part) => part === undefined)) {
+      namesValid = false
+      continue
+    }
+    const names = parts as string[]
+    let parentId = top.id
+    let path = ""
+    for (const part of names.slice(0, -1)) {
+      path = path === "" ? part : `${path}/${part}`
+      const known = folders.get(path)
+      if (known === undefined && places.has(`${parentId}/${part}`)) duplicateEntry = true
+      if (known === undefined) {
+        const created = folderRow(parentId, part, now)
+        folders.set(path, created.id)
+        rows.push(created)
+        parentId = created.id
+      } else parentId = known
+    }
+    const leaf = names[names.length - 1]
+    const place = `${parentId}/${leaf}`
+    if (places.has(place) || folders.has(names.join("/"))) duplicateEntry = true
+    places.add(place)
+    rows.push({ id: try mapError(allocateLibraryId, unavailable), parentId, name: leaf, mimeType: file.mimeType || "application/octet-stream", directory: false, size: file.bytes.byteLength,
+      revision: try mapError(allocateLibraryRevision, unavailable), createdAt: now, modifiedAt: now, bytes: file.bytes })
+  }
+  try mapError(library.commit((all) => folderImported({ nameTaken: childrenOf(all, LIBRARY_ROOT).some((row) => row.name === top.name), duplicateEntry, namesValid })
+    ? { put: rows, remove: [] } : "FolderImportRefused"), (failure) => failure._tag === "LibraryRefused"
+    ? refused(namesValid && !duplicateEntry ? "exists" : "invalid", namesValid && !duplicateEntry ? failure.message : "Choose valid, distinct file names.") : unavailable(failure))
+  return top.name
+}

@@ -4,6 +4,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices"
 import { FetchHttpClient } from "effect/http"
 import { buildAndroid, generateAndroidHost, stageRuntimePayload } from "../src/build/index.vibe"
 import { aaptManifestTree, listAndroidArtifactEntries, manifestFacts, parseXmlTree, readApkSignerDigest } from "../src/image/apk.vibe"
+import { archiveDigest } from "../src/image/signing-archive.vibe"
 import { androidTools, testSigner } from "./support/android-tools.ts"
 import { commitTree, fixture, git, writeTree } from "./support/scratch.vibe"
 
@@ -81,7 +82,7 @@ module node {
     readonly flavor: string
     readonly name: string
     readonly sha256: string
-    readonly signer: string
+    readonly signer: string | null
   }
 
   /** @throws {never} */
@@ -120,7 +121,7 @@ effect function stageRuntime(consumer: string) {
   return staged.output
 }
 
-it.effect.skipIf(skipped !== null)(`Generate the fixture host, refuse a partial signing set before Gradle, and replace the published APKs only with a verified set${skipped === null ? "" : ` (skipped: ${skipped})`} (spec/os/build/androidHost.md, "Story: Generate my app's Android host from data"; spec/os/build/androidHost.md, "Version override and release signing each name all of their distinct environment variables or none"; spec/os/build/androidHost.md, "The agent entry, its notification and its launch hook need the agent service module and extracted 16 KiB aligned native libraries"; spec/os/build/androidHost.md, "An os module adds no permission or exported component the profile did not request"; spec/os/build/androidHost.md, "A release is published signed only when every signing variable is set and the output is signed, and unsigned only when none is set and the output is unsigned"; spec/os/build/androidHost.md, "A host without local inference carries no model, inference library, model server or model directory"; spec/os/build/androidHost.md, "The APK manifest lists each flavor's fresh APK of this build once, with its digest and one shared signer"; spec/os/build/androidBuild.md, "Story: Replace published APKs only with this run's verified set"; spec/os/build/androidBuild.md, "A request is admitted only when well formed, built from the pinned source and an identified payload"; spec/os/build/androidBuild.md, "The private set is verified against the pin, the payload and a fresh APK manifest before it can be published"; spec/os/build/androidBuild.md, "Only a verified set replaces the published APKs, in one rename, with an honest receipt")`, effect () => {
+it.effect.skipIf(skipped !== null)(`Generate the fixture host, refuse a partial signing set before Gradle, and replace the published APKs only with a verified set${skipped === null ? "" : ` (skipped: ${skipped})`} (spec/os/build/androidHost.md, "Story: Generate my app's Android host from data"; spec/os/build/androidHost.md, "Version override and release signing each name all of their distinct environment variables or none"; spec/os/build/androidHost.md, "The agent entry, its notification and its launch hook need the agent service module and extracted 16 KiB aligned native libraries"; spec/os/build/androidHost.md, "An os module adds no permission or exported component the profile did not request"; spec/os/build/androidHost.md, "A release is published signed only when every signing variable is set and the output is signed, and unsigned only when none is set and the output is unsigned"; spec/os/build/androidHost.md, "A host without local inference carries no model, inference library, model server or model directory"; spec/os/build/androidHost.md, "The APK manifest lists each flavor's own published APK of this build once, fresh, with its digest and one shared signer unless the release is unsigned"; spec/os/build/androidBuild.md, "Story: Replace published APKs only with this run's verified set"; spec/os/build/androidBuild.md, "A request is admitted only when well formed, built from the pinned source and an identified payload"; spec/os/build/androidBuild.md, "The private set is verified against the pin, the payload and a fresh APK manifest before it can be published"; spec/os/build/androidBuild.md, "Only a verified set replaces the published APKs, in one rename, with an honest receipt")`, effect () => {
   if (tools.kind === "missing" || javaHome === null) return
   provide NodeServices.layer, FetchHttpClient.layer {
     const files = try FileSystem.FileSystem
@@ -162,6 +163,9 @@ it.effect.skipIf(skipped !== null)(`Generate the fixture host, refuse a partial 
       const entries = try listAndroidArtifactEntries(apk)
       assert.include(entries, "lib/x86_64/libeliza_node.so")
       assert.deepStrictEqual(entries.filter((entry) => INFERENCE.test(entry)), [])
+      for (const name of ["host.json", "character.json", "policy.json"]) {
+        assert.strictEqual((try archiveDigest(apk, `assets/agent/${name}`)).sha256, sha256(try files.readFile(path.join(consumer, "agent", name))))
+      }
 
       const tree = try aaptManifestTree(apk, { aapt: tools.aapt })
       const facts = manifestFacts(tree)
@@ -193,7 +197,6 @@ it.effect.skipIf(skipped !== null)(`Generate the fixture host, refuse a partial 
     assert.deepStrictEqual(Object.keys(second).filter((name) => name.includes("-release")).sort(), FLAVORS.map((flavor) => releaseName(flavor, false)).sort())
     const unsignedText = try files.readFileString(path.join(output, "apk-manifest.json"))
     const unsignedRows: readonly ManifestRow[] = try Effect.try(() => JSON.parse(unsignedText))
-    assert.deepStrictEqual(unsignedRows.map((row) => [row.flavor, row.name, row.sha256]), FLAVORS.map((flavor) => [flavor, `${flavor}-debug.apk`, second[`${flavor}-debug.apk`]]))
-    assert.strictEqual(new Set(unsignedRows.map((row) => row.signer)).size, 1, "an unsigned release build lists each flavor's debug APK under one shared signer")
+    assert.deepStrictEqual(unsignedRows, FLAVORS.map((flavor) => ({ flavor, name: releaseName(flavor, false), sha256: second[releaseName(flavor, false)], signer: null })), "an unsigned release build lists each flavor's unsigned release APK with no signer")
   }
 }, 1_800_000)

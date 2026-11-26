@@ -32,8 +32,8 @@ differ only where a spec says so.
 > My account shows the subscription the billing provider currently recognizes.
 
 Both hosts answer it with the server's chat route, as `services/inference`
-and `services/models` specify it (`src/services/chat.vibe`,
-`src/services/models.vibe`), metered through `shared/metering`.
+and `services/models` specify it (`packages/cloud-worker/src/services/chat.vibe`,
+`packages/cloud-worker/src/services/models.vibe`), metered through `shared/metering`.
 
 ### A request needs an active account and sufficient funding for its quote
 
@@ -128,17 +128,31 @@ pure def cloudSessionAllows(sessionEndsAt: int, nowAt: int, sessionPresent: bool
   sessionPresent and nowAt < sessionEndsAt
 ```
 
+### A browser sign-in opens no session for a person with a confirmed second factor
+
+The browser routes have no step that finishes a
+[second factor](./identity/secondFactor.md). When a proof lands on an account
+whose factors hold a confirmed one, the browser gets `403
+second_factor_required` and no session, so a stolen email or phone code alone
+never signs anyone in.
+
+```quint
+import secondFactor as Sf from "./identity/secondFactor"
+pure def opensBrowserSession(f: Sf::Factors): bool = Sf::afterFirstFactor(f) == Sf::SessionStarts
+```
+
 ### A registered device grant authorizes device services
 
 The person approves a short-lived grant for the registered Android client
 and its verified return address while signed in. A browser that names the
 account shown for approval receives a grant only while signed in to that
 account. Only the device proving possession of the grant’s verifier can redeem it, once. The device
-acknowledges receipt before it can use the key. Signing out stops activation
+acknowledges receipt before it can use the key. The same exchange offers
+the device's mail lease (`identity/sessions`), which the acknowledgement makes
+live; only the native shell holds it. Signing out stops activation
 of an unfinished grant. An active key continues to authorize inference and
-consented speech until its deadline or its own revocation. Before that deadline the
-key can obtain its successor without the browser for six months after the
-sign-in ([device keys](./nativeClients/deviceKeys.md)).
+consented speech until its deadline or its own revocation; the lease alone
+renews it, and signing out ends both.
 
 ```quint
 pure def mayIssueAccountBoundDeviceGrant(shownAccount: str, signedInAccount: str): bool =
@@ -173,11 +187,18 @@ pure def canConnectCloudGoogle(explicitConsent: bool, providerApproved: bool, id
 
 ### An approved connection grants the owner only the selected reads
 
-A read requires an active browser session for the account that consented.
+A read requires an active browser session or the device's live mail lease
+for the account that consented. The device lease is read-only. Only an
+authorized browser session may use the provider's write capabilities.
 The service keeps the refresh credential encrypted for that deployment,
 account and approved scopes. Disconnecting removes the local credential and any
 pending consent authorizations. Browser and native inference credentials
-have separate permissions. The owner can search Inbox, Sent, Drafts or Trash.
+have separate permissions: every mail and calendar route refuses the device
+key with `403 device_key_not_allowed`, even beside a browser session, except
+the four the device itself calls with its key: inbox arrival notices,
+attachment handoff redemption, its reminder schedule and native connect. A
+request that carries an `Authorization` header is authenticated by that
+header alone, never by a cookie. The owner can search Inbox, Sent, Drafts or Trash.
 Counts show the provider’s unread Inbox messages and total draft messages across
 the mailbox, including messages beyond the displayed page. A Gmail message read returns named attachment
 descriptors without attachment bytes. Fetching a supported part requires the
@@ -193,15 +214,16 @@ original until it expires.
 ```quint
 pure def currentAttachmentTransfer(issuedAt: int, now: int): bool = issuedAt >= 0 and now >= issuedAt and now - issuedAt < 300000
 
-pure def canReadCloudGoogle(ownerSessionActive: bool, connectionPresent: bool, grantOwnerMatches: bool, selected: Set[CloudGoogleReadScope], requested: CloudGoogleReadScope): bool =
-  ownerSessionActive and connectionPresent and grantOwnerMatches and selected.contains(requested)
+pure def canReadCloudGoogle(ownerSessionOrLeaseActive: bool, connectionPresent: bool, grantOwnerMatches: bool, selected: Set[CloudGoogleReadScope], requested: CloudGoogleReadScope): bool =
+  ownerSessionOrLeaseActive and connectionPresent and grantOwnerMatches and selected.contains(requested)
 ```
 
 ### Managed mail dispatch requires separate consent and explicit approval
 
-The owner may separately grant permission to send email. A browser request
-dispatches one reviewed plain-text draft to one exact address through the
-current Gmail connection. A reply is threaded only after Cloud re-reads the
+The owner may separately grant permission to send email. A request from the
+owner's browser session or the device's mail lease dispatches one reviewed
+plain-text draft to one exact address through the current Gmail connection.
+A reply is threaded only after Cloud re-reads the
 selected message and matches the reviewed recipient and subject. Cloud builds
 the thread headers from that verified message. The device inference key cannot dispatch a draft.
 Cloud reserves the operation ID before calling Gmail and records provider
@@ -209,14 +231,14 @@ acceptance by message ID. An unknown outcome cannot cause the operation to be
 dispatched again.
 
 ```quint
-pure def canSendCloudGoogle(ownerSessionActive: bool, grantMatches: bool, sendConsent: bool, confirmedDraft: bool, reserved: bool): bool =
-  ownerSessionActive and grantMatches and sendConsent and confirmedDraft and not(reserved)
+pure def canSendCloudGoogle(ownerSessionOrLeaseActive: bool, grantMatches: bool, sendConsent: bool, confirmedDraft: bool, reserved: bool): bool =
+  ownerSessionOrLeaseActive and grantMatches and sendConsent and confirmedDraft and not(reserved)
 ```
 
 ### Trash and calendar changes require their own permissions
 
 Moving a message to Trash and undoing that change requires Gmail modify
-permission. Google requires Gmail modify scope for Trash. Undo names the successful Trash receipt and checks the current
+permission and the owner's browser session or the device's mail lease. Google requires Gmail modify scope for Trash. Undo names the successful Trash receipt and checks the current
 provider revision. Cloud offers no permanent deletion here.
 
 Creating, changing or removing an appointment requires Calendar event
@@ -230,8 +252,8 @@ reviewed event version, and Google must accept that version. Cloud reports
 success only after provider evidence matches the selected event.
 
 ```quint
-pure def canChangeCloudGoogle(ownerSessionActive: bool, grantMatches: bool, allowed: bool, reviewedTarget: bool, versionMatches: bool): bool =
-  ownerSessionActive and grantMatches and allowed and reviewedTarget and versionMatches
+pure def canChangeCloudGoogle(ownerSessionOrLeaseActive: bool, grantMatches: bool, allowed: bool, reviewedTarget: bool, versionMatches: bool): bool =
+  ownerSessionOrLeaseActive and grantMatches and allowed and reviewedTarget and versionMatches
 ```
 
 ### A device reminder follows the reviewed event occurrence
@@ -260,7 +282,7 @@ pure def canReadCloudCalendarReminder(activeDevice: bool, ownerMatches: bool, gr
 
 Both hosts answer it with the server's speech session and relay routes, as
 `services/speechSession` and `services/speechRelay` specify them
-(`src/services/speech-session.vibe`, `src/services/speech-relay.vibe`); a
+(`packages/cloud-worker/src/services/speech-session.vibe`, `packages/cloud-worker/src/services/speech-relay.vibe`); a
 Worker runs the relay on a socket pair (`deployment`, "Story: Serve the
 deployment from a Worker").
 
@@ -305,8 +327,8 @@ The service parses the upload and prepares the provider's multipart body
 before entering the funded-call path. A preparation failure returns a typed
 unavailable answer without reserving funding or contacting a provider. A
 prepared call still needs the current authenticated account, a fresh hold
-and a committed dispatch. The 120-second provider execution budget starts
-after preparation; upload parsing and local preparation precede it.
+and a committed dispatch. The [provider deadline](./services/speech.md#story-transcribe-a-recording)
+starts when the service runs the prepared provider request.
 
 Discovered during boundary review: building the multipart body after marking
 the hold dispatched would treat a local preparation failure as an unknown
@@ -345,6 +367,12 @@ account or registration is no longer eligible. An inference credential
 never authorizes backup access. The native client encrypts the snapshot
 before sending it and holds the recovery key. The owner must have that key
 to restore. The cloud receives only the encrypted snapshot.
+Readiness tells a registered client which approval contract the deployment
+serves: once backup storage is ready, browser approval answers `204` with
+`X-Password-Backup-Version: 2` and native Google approval answers `204` with
+version `3`. Either approval names the owner and organization it covers, and a
+client that binds its vault to the organization checks both against its
+signed-in account.
 
 ```quint
 type BackupAccess = BackupDeviceGrant | BackupInferenceCredential
@@ -372,7 +400,10 @@ pure def lawBackupApprovalCannotBeReplayed(approved: PasswordBackupPurpose, requ
 ### Shared native approval authorizes only the enrolled owner’s requested backup operation
 
 Shared Cloud requires consent in the native flow and a fresh Google proof for
-the subject already linked to the current owner. The active device enrollment
+the subject already linked to the current owner. That link is read after
+Google's signing keys are fetched, and again when the granted operation is
+used, so a subject unlinked in between is refused and nothing is granted or
+changed. The active device enrollment
 must name that account and organization and match the exact registered app,
 environment and callback. The unspent proof must match the requested purpose,
 state and PKCE verifier. A refusal grants nothing. Owner verification returns

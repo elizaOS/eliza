@@ -483,6 +483,7 @@ export effect function pollReader(reader: ReaderRuntime, ticket: number): void!F
 
 module edge {
   import { asLegacy, runDetached, runDetachedSync } from "../edge.vibe"
+  import type { ElizaError } from "../errors.vibe"
   import {
     createReader,
     refreshReader,

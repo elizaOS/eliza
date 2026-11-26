@@ -1,45 +1,43 @@
 // spec/files/reviewedOperations.md, "Story: Act only on the file revision I reviewed"; spec/files/reviewedOperations.md, "Story: Keep every batch outcome, including the ones I cannot be sure of"; spec/files/requests.md, "Story: Open the file I asked for, and only from what I was shown"; spec/files/requests.md, "Story: Claim an empty or complete folder only when the listing knows"; spec/files/shownTargets.md, "Story: Name what Files shows without leaking or guessing a file"; spec/files/workspace.md, "Story: Keep the agent's working files inside its workspace"
 import { assert, it } from "@effect/vitest"
 import * as NodeServices from "@effect/platform-node/NodeServices"
-import type { ElizaFilesPlugin } from "@elizaos/os/bridges/files"
-import { FilesVolume, filesReviews, filesView, nativeVolume, runBatch, undoBatch, type OpenPorts } from "../src/client.vibe"
-import { FILES_CAPABILITY, FILES_SHOWN_TARGET_CAPABILITY, FILES_SHOWN_TARGET_GUIDANCE, FilesOperationRefused, filesContextAllowed, filesContextNotice, filesOperationAdmitted, filesToolSurface, type FilesAgentRunner } from "../src/contract.vibe"
+import type { ElizaFilesPlugin } from "@elizaos/os-bridges"
+import {
+  FilesVolume, filesReviews, filesView, nativeVolume, runBatch, undoBatch, type OpenPorts, FILES_CAPABILITY, FILES_SHOWN_TARGET_CAPABILITY, FILES_SHOWN_TARGET_GUIDANCE, FilesOperationRefused, filesContextAllowed, filesContextNotice, filesOperationAdmitted, filesToolSurface, type FilesAgentRunner,
+} from "@elizaos/plugin-files-client"
 import { localVolume } from "../src/storage/local-volume.vibe"
 import { workspace } from "../src/workspace.vibe"
 import { plugin } from "../src/index.vibe"
-import { registerDeviceProposalFamily } from "@elizaos/agent/device-actions"
+import { registerDeviceProposalFamily } from "@elizaos/agent-host"
 import { filesProposalFamily } from "../src/device-proposals.vibe"
 
 module node {
   import { Effect } from "effect"
   import { AgentRuntime, stringToUuid } from "@elizaos/core"
-  import { negotiation, readOperation, validate, type DeviceTurn, type Grounding } from "@elizaos/agent/device-actions"
+  import { negotiatedOwnerTurn, type DeviceTurn, type Grounding } from "@elizaos/agent-host"
+  import { readOperation } from "@elizaos/agent"
   import { filesProposalFamily } from "../src/device-proposals.vibe"
 
   const asked = "Trash the first two files"
-  const directRequest = { voiceUi: { viewDelivery: "completed-action", uiClientId: "renderer-1", agentActionMode: "direct-request-v1" } }
 
   export interface Screen {
     readonly observation?: DeviceTurn["observation"]
-    readonly direct?: boolean
+    readonly direct?: "direct-request-v1" | "direct-files-v1" | "direct-files-only-v1"
   }
 
   export const onFiles: Screen = { observation: { view: "files", revision: 1, sensitive: false } }
   export const onHome: Screen = { observation: { view: "home", revision: 1, sensitive: false } }
 
   function chatTurn(runtime: AgentRuntime, capabilities: readonly string[], screen: Screen): DeviceTurn {
-    const negotiated = negotiation(true, capabilities.join(","))
     const id = stringToUuid(`files-chat:${capabilities.join(",")}`)
-    return {
-      runtime, by: { agentId: runtime.agentId, actorId: "owner", connector: runtime.agentId }, negotiation: negotiated, capabilities,
-      message: { id, entityId: id, roomId: id, content: { text: asked, ...(screen.direct === true ? { metadata: directRequest } : {}) } }, ownerText: asked,
-      observation: screen.observation, completedActionNavigation: screen.direct === true, completesReads: false,
-      conversationId: "files-chat", requestId: "files-chat-1", assistantName: "Eliza", swapped: [], startedAt: 0, timeZone: undefined,
-      signal: new AbortController().signal,
-      admit: (operation) => validate(operation, negotiated, "NoBinding"),
-      earlier: () => Effect.succeed([]),
-    }
+    return negotiatedOwnerTurn(capabilities, {
+      runtime, by: { agentId: runtime.agentId, actorId: "owner", connector: runtime.agentId },
+      message: { id, entityId: id, roomId: id, content: { text: asked, ...(screen.direct === undefined ? {} : { metadata: { voiceUi: { viewDelivery: "completed-action", uiClientId: "renderer-1", agentActionMode: screen.direct } } }) } }, ownerText: asked,
+      observation: screen.observation, completedActionNavigation: screen.direct !== undefined, completesReads: false,
+      conversationId: "files-chat", requestId: "files-chat-1", startedAt: 0, timeZone: undefined,
+    })
   }
+
 
   export async function proposeFiles(runtime: AgentRuntime, capabilities: readonly string[], operation: unknown, screen: Screen = onFiles): Promise<Grounding | undefined> {
     const checked = readOperation(operation)
@@ -60,7 +58,7 @@ module node {
   }
 }
 
-import { chatRuntime, guidanceFor, offeredForms, onHome, proposeFiles, type Screen } from node
+import { chatRuntime, guidanceFor, offeredForms, onFiles, onHome, proposeFiles, type Screen } from node
 
 const check = (assertion: () => void) => Effect.try(assertion)
 const both = [FILES_CAPABILITY, FILES_SHOWN_TARGET_CAPABILITY]
@@ -117,7 +115,7 @@ it.effect('Act only on the file revision I reviewed (spec/files/reviewedOperatio
           assert.deepEqual(moved, [{ path: "Download/keep.txt", status: "unchanged", to: "Download/keep.txt" }, { path: "Archive/lease.pdf", status: "moved", to: "Download/lease.pdf" }])
           assert.deepEqual(copied, [{ path: "Archive/lease.pdf", status: "missing" }])
           assert.deepEqual(intoItself, [{ path: "Archive", status: "invalid" }])
-          assert.deepEqual(listed.map(({ name, origin }) => ({ name, origin })), [{ name: "lease.pdf", origin: "Download/lease.pdf" }])
+          assert.deepEqual(listed.flatMap((item) => item.unreadable === true ? [] : [{ name: item.name, origin: item.origin }]), [{ name: "lease.pdf", origin: "Download/lease.pdf" }])
           assert.deepEqual(restored, [{ path: listed[0].id, status: "restored", to: "Download/lease (1).pdf" }])
           assert.equal(unconfirmed.status, "confirmation-required")
         })
@@ -129,6 +127,62 @@ it.effect('Act only on the file revision I reviewed (spec/files/reviewedOperatio
           assert.deepEqual(expired, [])
         })
         assert.equal(try fs.exists(at(`.Trash-files/info/${again[0].to}.json`)), false)
+      }
+    })
+  }
+})
+
+it.effect('A torn trash record is listed as unreadable, refuses only its own restore, and can be emptied, even when its data is already gone (spec/files/reviewedOperations.md, "A trash record that cannot be read is listed as unreadable, refuses only its own restore, and can be emptied")', effect () => {
+  provide NodeServices.layer {
+    try scoped(effect {
+      const { root, fs, at } = try storage({ "Download/lease.pdf": "lease", "Download/memo.txt": "memo", "Download/note.txt": "note", "Download/old.txt": "old" })
+      provide localVolume(root) {
+        const volume = try FilesVolume
+        const empty = try volume.trashList()
+        const [lease, memo, note, old] = try volume.trash({ paths: ["Download/lease.pdf", "Download/memo.txt", "Download/note.txt", "Download/old.txt"] })
+        const torn = lease.to ?? ""
+        const gone = note.to ?? ""
+        const stale = old.to ?? ""
+        const info = (id: string) => at(`.Trash-files/info/${id}.json`)
+        const data = (id: string) => at(`.Trash-files/files/${id}`)
+        const stray = "metadata"
+        try fs.writeFileString(info(stray), "{}")
+        try fs.writeFileString(info(torn), "{not json")
+        try fs.writeFileString(info(gone), "{not json")
+        try fs.remove(data(gone))
+        const listed = try volume.trashList()
+        const restored = try volume.restore([torn, gone, memo.to ?? "", "not-a-trash-id"])
+        const survived = [try fs.readFileString(info(torn)), try fs.readFileString(data(torn)), try fs.readFileString(info(gone))]
+        const stillListed = try volume.trashList()
+        try fs.remove(data(stale))
+        const erased = try volume.emptyTrash([torn, gone, stale, stray], true)
+        const strayRecordKept = try fs.exists(info(stray))
+        const staleRecordKept = try fs.exists(info(stale))
+        const remaining = try volume.trashList()
+        const leftBehind = [try fs.exists(info(torn)), try fs.exists(data(torn)), try fs.exists(info(gone)), try fs.exists(info(stale))]
+        const byId = <T extends { readonly id: string }>(items: readonly T[]): T[] => [...items].sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
+        try check(() => {
+          assert.deepEqual(empty, [])
+          assert.deepEqual([lease.status, memo.status, note.status, old.status], ["trashed", "trashed", "trashed", "trashed"])
+          assert.deepEqual(listed.flatMap((item) => item.unreadable === true ? [] : [{ name: item.name, origin: item.origin }]).sort((a, b) => a.name < b.name ? -1 : 1), [
+            { name: "memo.txt", origin: "Download/memo.txt" },
+            { name: "old.txt", origin: "Download/old.txt" },
+          ])
+          assert.deepEqual(listed.map((item) => item.unreadable === true), [false, false, true, true])
+          assert.deepEqual(byId(listed.filter((item) => item.unreadable === true)), byId([{ id: torn, name: torn, unreadable: true }, { id: gone, name: gone, unreadable: true }]))
+          assert.deepEqual(restored, [
+            { path: torn, status: "failed" },
+            { path: gone, status: "failed" },
+            { path: memo.to ?? "", status: "restored", to: "Download/memo.txt" },
+            { path: "not-a-trash-id", status: "missing" },
+          ])
+          assert.deepEqual(survived, ["{not json", "lease", "{not json"])
+          assert.deepEqual(byId(stillListed.map(({ id, unreadable }) => ({ id, unreadable }))), byId([{ id: torn, unreadable: true }, { id: gone, unreadable: true }, { id: stale, unreadable: undefined }]))
+          assert.equal(erased, 2)
+          assert.deepEqual([staleRecordKept, strayRecordKept], [true, true])
+          assert.deepEqual(remaining, [])
+          assert.deepEqual(leftBehind, [false, false, false, false])
+        })
       }
     })
   }
@@ -218,7 +272,7 @@ it.effect('Open the file I asked for, and only from what I was shown (spec/files
   })
 })
 
-it.effect('Name what Files shows without leaking or guessing a file (spec/files/shownTargets.md, "Story: Name what Files shows without leaking or guessing a file"; spec/files/shownTargets.md, "A Files operation the owner asks for in chat is proposed within the Files bounds as the peer negotiated it, wherever the owner is"; spec/files/shownTargets.md, "A Files card is reviewed, and a direct filter or open runs, only on the unlocked phone, and a change only with Files on screen"; spec/files/shownTargets.md, "A card for shown positions exists only when every position resolved to one path, and it executes those paths"; spec/files/shownTargets.md, "A move or trash binds the identity of each reviewed file, and a share binds none")', effect () => {
+it.effect('Name what Files shows without leaking or guessing a file (spec/files/shownTargets.md, "Story: Name what Files shows without leaking or guessing a file"; spec/files/shownTargets.md, "A Files operation the owner asks for in chat is proposed within the Files bounds as the peer negotiated it, wherever the owner is"; spec/files/shownTargets.md, "A Files card is reviewed, and a direct filter or open runs, only on the unlocked phone, and a change only with Files on screen"; spec/files/shownTargets.md, "A card for shown positions exists only when every position resolved to one path, and it executes those paths"; spec/files/shownTargets.md, "A move or trash binds the identity of each reviewed file, and a share binds none"); spec/files/shownTargets.md, "A client that shows no review card is proposed only a filter or an open, which it runs directly"', effect () => {
   provide NodeServices.layer {
     try scoped(effect {
       const { root } = try storage({ "Download/lease.pdf": "lease", "Download/lease notes.txt": "notes" })
@@ -245,7 +299,13 @@ it.effect('Name what Files shows without leaking or guessing a file (spec/files/
         const filterFromHome = try chat(both, { type: "files_filter", text: "lease" }, onHome)
         const lockedScreen = try chat(both, { type: "files_filter", text: "lease" }, { observation: { view: "files", revision: 2, sensitive: true } })
         const unseenScreen = try chat(both, { type: "files_open", path: "Download/lease.pdf" }, {})
-        const directOpen = try chat(both, { type: "files_open", path: "Download/lease.pdf" }, { ...onHome, direct: true })
+        const directOpen = try chat(both, { type: "files_open", path: "Download/lease.pdf" }, { ...onHome, direct: "direct-request-v1" })
+        const filesOnlyOpen = try chat(both, { type: "files_open", path: "Download/lease.pdf" }, { ...onHome, direct: "direct-files-v1" })
+        const cardlessFilter = try chat(both, { type: "files_filter", text: "lease" }, { ...onHome, direct: "direct-files-only-v1" })
+        const cardlessChanges = try Effect.forEach([
+          { type: "files_trash", paths: ["Download/lease.pdf"] }, { type: "files_move", paths: ["Download/lease.pdf"], dest: "Documents" },
+          { type: "files_share", paths: ["Download/lease.pdf"] }, { type: "files_folder_create", parent: "Download", name: "Taxes" },
+        ], (operation) => chat(both, operation, { ...onFiles, direct: "direct-files-only-v1" }))
         const refusal = (grounding: typeof asked) => grounding?.kind === "Refused" ? { code: grounding.code, forOwner: grounding.forOwner } : grounding
         const reviews = try filesReviews(runner, both)
         const trash = try reviews.review("p1", "d1", asked?.kind === "Grounded" ? asked.operation : undefined)
@@ -277,7 +337,8 @@ it.effect('Name what Files shows without leaking or guessing a file (spec/files/
             rival: rival._tag, asked, unnegotiated: refusal(unnegotiatedAsk), chosenIdentity,
             hiddenFolder: hiddenFolder?.kind === "Refused" && hiddenFolder.code === "FILES_OPERATION_INVALID" &&
               hiddenFolder.forModel.startsWith("Invalid Files operation: ") && hiddenFolder.forModel.endsWith('Use paths on Internal storage such as "Download/lease.pdf".'),
-            trashFromHome, filterFromHome, lockedScreen, unseenScreen, directOpen,
+            trashFromHome, filterFromHome, lockedScreen, unseenScreen, directOpen, filesOnlyOpen, cardlessFilter,
+            cardlessChanges: cardlessChanges.map(refusal),
             cards: [
               filesContextNotice({ type: "files_trash", paths: ["Download/lease.pdf"] }, { view: "home", sensitive: false }),
               filesContextNotice({ type: "files_filter", text: "lease" }, { view: "files", sensitive: true }),
@@ -296,6 +357,9 @@ it.effect('Name what Files shows without leaking or guessing a file (spec/files/
             lockedScreen: { kind: "Grounded", operation: { type: "files_filter", text: "lease" }, grounding: "GroundedForReview" },
             unseenScreen: { kind: "Grounded", operation: { type: "files_open", path: "Download/lease.pdf" }, grounding: "GroundedForReview" },
             directOpen: { kind: "Grounded", operation: { type: "files_open", path: "Download/lease.pdf" }, grounding: "GroundedAsAsked" },
+            filesOnlyOpen: { kind: "Grounded", operation: { type: "files_open", path: "Download/lease.pdf" }, grounding: "GroundedAsAsked" },
+            cardlessFilter: { kind: "Grounded", operation: { type: "files_filter", text: "lease" }, grounding: "GroundedAsAsked" },
+            cardlessChanges: Array.from({ length: 4 }, () => ({ code: "FILES_REVIEW_UNAVAILABLE", forOwner: "Ask me in the chat, so you can review that on your phone." })),
             cards: ["Open Files to review this action.", "Unlock the phone to review this action.", undefined, undefined],
             allowed: [false, true],
             forms: [0, 6, 9], guided: true,

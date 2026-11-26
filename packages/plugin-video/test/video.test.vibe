@@ -1,0 +1,29 @@
+// spec/video/index.md, "Story: Read metadata and captions from a video"; spec/video/index.md, "Manual English captions outrank automatic English captions and audio"
+import { assert, describe, it } from "@effect/vitest"
+import { pinVideoCaption } from "../src/index.vibe"
+
+const timedText = (language: string, ext: string) => ({ ext, url: `https://www.youtube.com/api/timedtext?lang=${language}&fmt=${ext}` })
+const asrUrl = "https://www.youtube.com/api/timedtext?kind=asr&lang=en&fmt=json3"
+const englishAsr = { en: [{ ext: "json3", url: asrUrl }] }
+const video = (subtitles: Record<string, readonly { ext: string; url: string }[]>, automatic: Record<string, readonly { ext: string; url: string }[]> = {}) => ({ id: "abc", title: "Regional manual subs", subtitles, automatic_captions: automatic })
+
+describe("Read metadata and captions from a video (spec/video/index.md, \"Story: Read metadata and captions from a video\")", () => {
+  it("An uploader's en-US or en-GB track is read as manual English, en first, then each listed track until one is usable (spec/video/index.md, \"Manual English captions outrank automatic English captions and audio\")", () => {
+    const pinned = [
+      pinVideoCaption(video({ "en-GB": [timedText("en-GB", "srt")] }, englishAsr)),
+      pinVideoCaption(video({ "en-US": [timedText("en-US", "srt")] })),
+      pinVideoCaption(video({ "en-US": [timedText("en-US", "srt")], en: [timedText("en", "vtt")] })),
+      pinVideoCaption(video({ en: [], "en-US": [{ ext: "srt", url: "" }], "en-GB": [timedText("en-GB", "srt")] }, englishAsr)),
+      pinVideoCaption(video({ fr: [timedText("fr", "srt")], english: [timedText("english", "srt")] }, englishAsr)),
+      pinVideoCaption(video({ fr: [timedText("fr", "srt")] })),
+    ]
+    assert.deepStrictEqual(pinned, [
+      { sourceUrl: timedText("en-GB", "srt").url, formatKind: "Srt" },
+      { sourceUrl: timedText("en-US", "srt").url, formatKind: "Srt" },
+      { sourceUrl: timedText("en", "vtt").url, formatKind: "WebVtt" },
+      { sourceUrl: timedText("en-GB", "srt").url, formatKind: "Srt" },
+      { sourceUrl: asrUrl, formatKind: "JsonCaptions" },
+      { sourceUrl: "", formatKind: "ExtractAudio" },
+    ])
+  })
+})

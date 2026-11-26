@@ -1,16 +1,30 @@
 // spec/inbox/grants.md, "Story: Grant Gmail access one step at a time"; spec/inbox/reads.md, "Story: Read my mailbox without mixing account pages or endlessly reusing a cursor"; spec/inbox/drafts.md, "Story: Keep drafts recoverable across account switches and provider failures"; spec/inbox/readState.md, "Story: Change a message's read state once, and never repeat a change I did not ask for"; spec/inbox/backgroundNotices.md, "Story: Open the Inbox or ask about the exact notification I tapped"; spec/inbox/managedRead.md, "Story: Read my managed inbox fresh, and only for me"; spec/inbox/handoff.md, "Story: Put the agent's words into an email draft without sending it"; spec/inbox/failures.md, "Story: Know what happened when Gmail fails"; spec/inbox/outgoing.md, "Story: Attach files and send exactly the email I reviewed"
 import { assert, it } from "@effect/vitest"
-import { activityLabel } from "@elizaos/agent"
+import { activityLabel, type CloudLinkService } from "@elizaos/agent-host"
 import { ContextRegistry, type IAgentRuntime, type Memory } from "@elizaos/core"
-import { managedGmailClient, type ManagedGmailTransport } from "../src/client/index.vibe"
-import { emailDraftAnswer, inboxPlugin, managedInboxRead } from "../src/index.vibe"
 import {
-  AttachmentRefused, MailProtocolFailed, MailUnreachable, checkOutgoingAttachments, classifyGmailFailure, createMailBackground, disconnectGmailAccount,
-  encodeInboxUnsaved, gmailActionGrant, gmailConsentCapabilities, gmailGrantChange, gmailReadCacheKey, gmailReadable, inboxOperation,
-  inboxOperationKey, mailCaches, mailReadKey, mailReadStateGuard, mailboxFeed, openNoticeTap, openProviderDraft, readInboxUnsaved, readSavedMailbox,
-  reviewOpaqueAttachment, saveMailbox, clearMailbox, sha256Hex, type GmailAccount, type InboxOperationStore, type MailBackgroundNative,
-  type MailNoticeTap, type NoticeTapPorts, type ProviderDraftPorts, type SavedLocalDraft, type SavedMailboxStore,
-} from "../src/mailbox/index.vibe"
+  managedGmailClient, type ManagedGmailTransport, AttachmentRefused, MailProtocolFailed, MailUnreachable, checkOutgoingAttachments, classifyGmailFailure, createMailBackground, disconnectGmailAccount, encodeInboxUnsaved, gmailActionGrant, gmailConsentCapabilities, gmailGrantChange, gmailReadCacheKey, gmailReadable, inboxOperation, inboxOperationKey, mailCaches, mailReadKey, mailReadStateGuard, mailboxFeed, openNoticeTap, openProviderDraft, readInboxUnsaved, readSavedMailbox, reviewOpaqueAttachment, saveMailbox, clearMailbox, sha256Hex, type GmailAccount, type InboxOperationStore, type MailBackgroundNative, type MailNoticeTap, type NoticeTapPorts, type ProviderDraftPorts, type SavedLocalDraft, type SavedMailboxStore,
+} from "@elizaos/plugin-inbox-client"
+import { brokerTransport, emailDraftAnswer, gmailTransportOf, inboxPlugin, managedInboxRead } from "../src/index.vibe"
+
+module node {
+  import { Effect, Layer } from "effect"
+  import { HttpClient, HttpClientResponse } from "effect/http"
+
+  export interface BrokerSent { readonly method: string; readonly url: string; readonly authorization: string | undefined }
+
+  /** @throws {never} */
+  export function brokerHttp(answer: (target: string) => Effect.Effect<{ readonly status: number; readonly body: string }>) {
+    const sent: BrokerSent[] = []
+    const client = HttpClient.make((request, url) => {
+      sent.push({ method: request.method, url: url.href, authorization: request.headers.authorization })
+      return Effect.map(answer(url.pathname.replace("/__owner-gmail", "") + url.search),
+        (reply) => HttpClientResponse.fromWeb(request, new Response(reply.body, { status: reply.status, headers: { "content-type": "application/json" } })))
+    })
+    return { sent, layer: Layer.succeed(HttpClient.HttpClient, client) }
+  }
+}
+import { brokerHttp } from node
 
 const story = {
   grants: 'spec/inbox/grants.md, "Story: Grant Gmail access one step at a time"',
@@ -21,6 +35,8 @@ const story = {
   readState: 'spec/inbox/readState.md, "Story: Change a message\'s read state once, and never repeat a change I did not ask for"',
   notices: 'spec/inbox/backgroundNotices.md, "Story: Open the Inbox or ask about the exact notification I tapped"',
   managed: 'spec/inbox/managedRead.md, "Story: Read my managed inbox fresh, and only for me"',
+  broker: 'spec/inbox/managedRead.md, "The agent reads managed mail through the device\'s broker when the host names one, and otherwise through its cloud link"',
+  brokerRefusals: 'spec/inbox/managedRead.md, "The agent tells a broker refusal as the cloud refusal of the same cause"',
   handoff: 'spec/inbox/handoff.md, "Story: Put the agent\'s words into an email draft without sending it"',
   failures: 'spec/inbox/failures.md, "Story: Know what happened when Gmail fails"',
   progress: 'spec/agent/conversation/planning.md, "A tool\'s progress names its app only when one labelled app applies, and never its arguments or results"',
@@ -29,7 +45,7 @@ const story = {
 const readOnly = ["google.basic_identity", "google.gmail.triage"]
 const modify = [...readOnly, "google.gmail.send", "google.gmail.drafts", "google.gmail.mailbox"]
 
-type Card = { readonly id: string; readonly threadId: string; readonly subject: string; readonly from: string; readonly snippet: string; readonly unread: boolean }
+type Card = { readonly id: string; readonly threadId: string; readonly subject: string; readonly from: string; readonly snippet: string; readonly unread: boolean; readonly hasAttachments?: boolean }
 type Operation = { kind: string; digest: string; state: string; proposal: Readonly<Record<string, unknown>>; review: Readonly<Record<string, unknown>>; result: Readonly<Record<string, unknown>> | null }
 
 const card = (id: string, subject = `Subject ${id}`): Card => ({ id, threadId: `t-${id}`, subject, from: "Bo <bo@example.com>", snippet: `About ${id}`, unread: true })
@@ -37,6 +53,7 @@ const card = (id: string, subject = `Subject ${id}`): Card => ({ id, threadId: `
 function wireCard(message: Card) {
   return {
     id: message.id, threadId: message.threadId, subject: message.subject, from: message.from, to: ["ana@example.com"], cc: [], snippet: message.snippet,
+    ...(message.hasAttachments === undefined ? {} : { hasAttachments: message.hasAttachments }),
     receivedAt: "2026-11-20T10:00:00.000Z", labels: message.unread ? ["INBOX", "UNREAD"] : ["INBOX"], isUnread: message.unread,
     isImportant: false, likelyReplyNeeded: false, triageScore: 0, triageReason: "recent inbox message", metadata: { historyId: "41" },
   }
@@ -49,7 +66,7 @@ function fakeCloud() {
       { id: "grant-b", email: "ana@work.example", connected: true, capabilities: [...readOnly] },
     ],
     pages: new Map<string, { readonly messages: readonly Card[]; readonly next: string | null; readonly history: string }>([
-      ["", { messages: [card("m1"), card("m2")], next: "p1", history: "41" }],
+      ["", { messages: [{ ...card("m1"), hasAttachments: true }, { ...card("m2"), hasAttachments: false }], next: "p1", history: "41" }],
       ["p1", { messages: [card("m2"), card("m3")], next: "p2", history: "42" }],
       ["p2", { messages: [card("m4")], next: "p1", history: "42" }],
     ]),
@@ -240,6 +257,7 @@ it.effect(`Page a folder once per message, notice a changed mailbox, and keep ca
   assert.isTrue(try feed.accept(receipt, "p1", try cloud.client.gmailSearch("grant-a", "in:inbox", 25, "p1")))
   const second = try feed.view()
   assert.deepEqual([second.messages.map((message) => message.id), second.nextPageToken, second.shifted], [["m1", "m2", "m3"], "p2", true])
+  assert.deepEqual(second.messages.map((message) => message.hasAttachments), [true, false, undefined])
   assert.isTrue(try feed.accept(receipt, "p2", try cloud.client.gmailSearch("grant-a", "in:inbox", 25, "p2")))
   assert.isNull((try feed.view()).nextPageToken)
   const newer = try feed.begin({ ...request, folder: "sent", search: "in:sent" })
@@ -276,7 +294,7 @@ it.effect(`Page a folder once per message, notice a changed mailbox, and keep ca
   assert.isTrue(try saveMailbox(store, "mailbox", document, 1, () => 1))
   assert.isFalse(try saveMailbox(store, "mailbox", document, 1, () => 2))
   const raw = saved.get("mailbox") ?? ""
-  assert.deepEqual(readSavedMailbox(raw, "ana", null, () => true)?.lists.map((list) => list.key), [listKey])
+  assert.deepEqual(readSavedMailbox(raw, "ana", null, () => true)?.lists.map((list) => [list.key, list.messages.map((message) => message.hasAttachments)]), [[listKey, [true, false, undefined]]])
   assert.isNull(readSavedMailbox(raw, "bo", null, () => true))
   assert.deepEqual(readSavedMailbox(raw, "ana", null, (entry) => entry.key !== listKey)?.lists, [])
   assert.isTrue(try clearMailbox(store, "mailbox", 3, () => 3))
@@ -477,10 +495,77 @@ it.effect(`Read the managed inbox fresh for the current account, and hand a new 
   } as Memory
   const handed = emailDraftAnswer(request, { parameters: { to: ["bo@example.com"], subject: "Lunch", body: "Noon?" } })
   assert.deepEqual(handed?.values?.emailDraft, { version: 1, requestMessageId: request.id, to: ["bo@example.com"], subject: "Lunch", body: "Noon?" })
+  assert.deepEqual([handed?.success, handed?.userFacingText, handed?.verifiedUserFacing], [true, undefined, undefined])
+  assert.match(handed?.text ?? "", /Inbox composer for the owner to review, change and send\. Nothing was sent/u)
   assert.equal(emailDraftAnswer(request, { parameters: { to: ["bo@example.com"], body: "Noon?", cc: ["cy@example.com"] } })?.data?.handoff, "inbox")
   assert.isUndefined(emailDraftAnswer({ ...request, content: { text: "Email Bo", source: "discord" } }, { parameters: { to: ["bo@example.com"], body: "Noon?" } }))
   assert.equal(cloud.state.dispatches, 0)
   const runtime = { contexts: try Effect.try(() => new ContextRegistry()) } as unknown as IAgentRuntime
   try promise(() => Promise.resolve(inboxPlugin.init?.({}, runtime)))
   assert.deepEqual(inboxPlugin.actions?.map((action) => activityLabel(runtime, action)), ["Using Inbox", "Using Inbox"])
+})
+
+it.effect(`Read managed mail through the device's broker when the host names one, and through the cloud link otherwise (${story.managed}; ${story.broker}; ${story.brokerRefusals})`, effect () => {
+  const cloud = fakeCloud()
+  const bearer = "t".repeat(64)
+  const endpoint = "http://127.0.0.1:40123/__owner-gmail"
+  const accounts = "/api/v1/eliza/google/accounts?side=owner"
+  const broker: { refusal: { readonly status: number; readonly body: string } | undefined } = { refusal: undefined }
+  const fake = brokerHttp((target) => effect {
+    if (broker.refusal !== undefined) return broker.refusal
+    return { status: 200, body: JSON.stringify(try orDie(cloud.transport.request(target, {}))) }
+  })
+  const linked: string[] = []
+  const link = { request: async (request: { readonly path: string }) => { linked.push(request.path); return { kind: "answered", status: 200, body: [] } } } as unknown as CloudLinkService
+
+  effect function readerOf(endpointNamed: string, bearerNamed: string, cloudLink: CloudLinkService | undefined) {
+    const transport = gmailTransportOf(endpointNamed, bearerNamed, fake.layer, cloudLink)
+    if (transport === undefined) return "not offered"
+    const before = [fake.sent.length, linked.length]
+    try orDie(transport.request(accounts, {}))
+    return fake.sent.length > (before[0] ?? 0) ? "broker" : linked.length > (before[1] ?? 0) ? "cloud link" : "not offered"
+  }
+  assert.strictEqual(try readerOf("", bearer, link), "cloud link", `${story.broker}: with no broker named the cloud link reads`)
+  assert.strictEqual(try readerOf("", bearer, undefined), "not offered", `${story.broker}: no broker and no cloud link offer no read`)
+  assert.strictEqual(try readerOf(endpoint, bearer, link), "broker", `${story.broker}: a named broker is the only reader`)
+  for (const [named, presented] of [["http://localhost:40123/__owner-gmail", bearer], ["https://127.0.0.1:40123/__owner-gmail", bearer],
+    ["http://127.0.0.1:40123/other", bearer], ["http://127.0.0.1/__owner-gmail", bearer], [`${endpoint}?x=1`, bearer], [`${endpoint}/`, bearer],
+    ["http://user@127.0.0.1:40123/__owner-gmail", bearer], [endpoint, "short"], [endpoint, ""], [endpoint, `${"t".repeat(63)}!`]] as const) {
+    assert.strictEqual(try readerOf(named, presented, link), "not offered", `${story.broker}: ${named} with that bearer reads nothing and does not fall back`)
+  }
+  assert.deepEqual(linked, [accounts])
+
+  fake.sent.splice(0)
+  cloud.state.connections = [{ id: "grant-a", email: "ana@example.com", connected: true, capabilities: [...readOnly] }]
+  const client = managedGmailClient(brokerTransport(endpoint, bearer, fake.layer))
+  const mail = try managedInboxRead(client, { limit: 1 })
+  assert.deepEqual(mail.kind === "mail" && mail.messages.map((message) => message.id), ["m1"])
+  const search = "/api/v1/eliza/google/gmail/search?side=owner&grantId=grant-a&query=in%3Ainbox&maxResults=10"
+  assert.deepEqual(fake.sent.map((sent) => [sent.method, sent.url, sent.authorization]),
+    [accounts, search, accounts].map((target) => ["GET", `${endpoint}${target}`, `Bearer ${bearer}`]))
+  const asked = fake.sent.length
+  const change = brokerTransport(endpoint, bearer, fake.layer).request("/api/v1/eliza/google/disconnect", { body: { connectionId: "grant-a" } }) catch (error) => error
+  assert.deepEqual(change, new MailProtocolFailed({ code: "http", status: 403, reason: "changes_off" }))
+  assert.strictEqual(fake.sent.length, asked, `${story.broker}: a change is refused without a call`)
+
+  const failureOf = effect (status: number, body: unknown) => {
+    broker.refusal = { status, body: typeof body === "string" ? body : JSON.stringify(body) }
+    const answer = try managedInboxRead(client, { limit: 5 })
+    return answer.kind === "failed" ? answer.failure : answer.kind
+  }
+  const told: Record<string, string> = {}
+  for (const [status, reason] of [[403, "not-private"], [431, "request-too-large"], [404, "not-brokered"], [401, "not-authorized"], [403, "sign-in-required"],
+    [403, "mail-lease-upgrade-required"], [502, "reply-too-large"], [503, "cloud-unreachable"]] as const) {
+    told[reason] = try failureOf(status, { reason })
+  }
+  assert.deepEqual(told, {
+    "not-private": "rejected", "request-too-large": "rejected", "not-brokered": "rejected", "not-authorized": "unavailable", "sign-in-required": "unavailable",
+    "mail-lease-upgrade-required": "revoked", "reply-too-large": "unavailable", "cloud-unreachable": "offline",
+  }, `${story.brokerRefusals}: each broker refusal is told as the cloud refusal of the same cause`)
+  assert.strictEqual(try failureOf(403, { error: "access_denied", reason: "device_key_not_allowed" }), "revoked", `${story.brokerRefusals}: the cloud's own refusal keeps its code`)
+  assert.strictEqual(try failureOf(409, { error: "google_reauth_required", reason: "sign-in-required" }), "revoked", `${story.brokerRefusals}: a cloud code is never read as a broker reason`)
+  assert.strictEqual(try failureOf(503, { error: "temporarily_unavailable" }), "unavailable")
+  assert.strictEqual(try failureOf(200, "not json"), "unavailable")
+  assert.strictEqual(try failureOf(200, JSON.stringify({ padding: "x".repeat(8_388_608) })), "unavailable")
+  assert.isFalse(fake.sent.some((sent) => sent.url.includes(bearer)), "the bearer never travels in a URL")
 })

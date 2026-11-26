@@ -8,7 +8,8 @@ deployment's API origin with the credential `./credential.md` holds. The
 page names a path and a query, never a host. Which routes exist, their auth
 classes and the headers each admits are `spec/cloud/client.md`'s
 `deviceRoutes`; this spec decides only what the device may forward and with
-which credential. Sockets, URL parsing, hashing, files and HTTP stay in the
+which credential. The same requests serve the on-device agent's mail broker,
+the last story here. Sockets, URL parsing, hashing, files and HTTP stay in the
 Java shell; sources are develop's `CloudConnectionPolicy.java` and
 `NativeAppRequestPolicy.java`, which this replaces.
 
@@ -18,6 +19,23 @@ Java shell; sources are develop's `CloudConnectionPolicy.java` and
 > through the device, with my credential attached by the device and never
 > shown to my page, so that a compromised page cannot take the key or reach
 > any route my product did not list.
+
+### A call tied to a device credential cannot use a different credential
+
+The page can name the device credential identifier it obtained from the
+current sign-in. The identifier is public to the page. A bound call uses
+the credential the native shell actually captured, and only while its
+identifier and version still match the active credential immediately
+before dispatch. It cannot attach an account session, a mail lease or no
+credential. A mismatch is refused before a request leaves the device.
+
+```quint
+pure def namedCredentialAllows(expected: str, captured: str, active: str, versionMatches: bool, keyAttached: bool): bool =
+  expected == "" or (expected == captured and expected == active and versionMatches and keyAttached)
+pure def lawNamedCredentialCannotCrossOwners(expected: str, captured: str, active: str, versionMatches: bool, keyAttached: bool): bool =
+  expected != "" and namedCredentialAllows(expected, captured, active, versionMatches, keyAttached) implies
+    expected == captured and expected == active and versionMatches and keyAttached
+```
 
 ### A cloud table is loaded only when every route is a device route the page may use
 
@@ -63,36 +81,104 @@ pure def lawOneForeignRouteRefusesTheTable(routes: Routes::RouteList): bool =
 
 ### A session-only route is sent only with a live account session, never with the device key
 
-The credential follows the device route's auth class, never the page: a
-`Public` route is sent bare. `Session`, `SessionFamily`, `FreshSession` and
-`StepUp` use only the account session from reauthentication (at most an hour old,
+The credential follows the device route, never the page: a `Public` route
+is sent bare. `Session`, `SessionFamily`, `FreshSession` and `StepUp` use
+only the account session from reauthentication (at most an hour old,
 `./credential.md`), after one shared refresh when its access token has
-expired, and otherwise fails with `ReauthRequired`; every other route
-carries the active device key, or fails with `SignInRequired` when there is
-none. The key and the session token are attached natively and never reach
-the page.
+expired, and otherwise fail with `ReauthRequired`; a mail or calendar route
+uses the lease (the next rule); every other route carries the active device
+key, or fails with `SignInRequired` when there is none. The key, the lease
+and the session token are attached natively and never reach the page.
+
+A reviewed billing request may name the installed credential. It uses only
+a route whose policy requires a fresh account session. If the installed
+credential changed, the native bridge refuses before sending or drops the
+unread reply. A refusal for an old session cannot discard a newer session.
 
 ```quint
-type Holding = { key: int, sessionHeld: bool, sessionLive: bool }
-type Attach = Bare | WithKey({ version: int }) | WithSession({ version: int })
-type CallRefusal = NoOrigin | NotListed | BodyTooLarge | HeaderRefused | SignInRequired | ReauthRequired
-type CallPlan = Send({ attach: Attach }) | RefreshSessionFirst | Refuse({ why: CallRefusal })
+type Holding = { key: int, sessionHeld: bool, sessionLive: bool, leaseHeld: bool, leaseLive: bool }
+type Attach = Bare | WithKey({ version: int }) | WithSession({ version: int }) | WithLease({ version: int })
+type CallRefusal = NoOrigin | NotListed | BodyTooLarge | HeaderRefused | SignInRequired | MailLeaseUpgradeRequired | ReauthRequired
+type CallPlan = Send({ attach: Attach }) | RefreshSessionFirst | RefreshLeaseFirst | Refuse({ why: CallRefusal })
 pure def holdingOf(c: C::DeviceCredential): Holding =
-  { key: C::activeVersion(c), sessionHeld: c.session != C::NoSession, sessionLive: C::sessionUsable(c) }
+  { key: C::activeVersion(c), sessionHeld: c.session != C::NoSession, sessionLive: C::sessionUsable(c), leaseHeld: c.lease != C::NoLease, leaseLive: C::leaseUsable(c) }
 pure def sessionOnly(auth: AuthClass): bool = auth == Session or auth == SessionFamily or auth == FreshSession or auth == StepUp
-pure def attachFor(h: Holding, auth: AuthClass): CallPlan =
-  if (auth == Public) Send({ attach: Bare })
-  else if (sessionOnly(auth)) (if (h.sessionLive) Send({ attach: WithSession({ version: h.key }) }) else if (h.sessionHeld) RefreshSessionFirst else Refuse({ why: ReauthRequired }))
+pure def attachFor(h: Holding, d: DeviceRoute): CallPlan =
+  if (d.auth == Public) Send({ attach: Bare })
+  else if (sessionOnly(d.auth)) (if (h.sessionLive) Send({ attach: WithSession({ version: h.key }) }) else if (h.sessionHeld) RefreshSessionFirst else Refuse({ why: ReauthRequired }))
+  else if (mailRoute(d)) (if (h.leaseLive) Send({ attach: WithLease({ version: h.key }) }) else if (h.leaseHeld) RefreshLeaseFirst else Refuse({ why: if (h.key >= 1) MailLeaseUpgradeRequired else SignInRequired }))
   else if (h.key >= 1) Send({ attach: WithKey({ version: h.key }) })
   else Refuse({ why: SignInRequired })
-pure val hValues = Set({ key: 0, sessionHeld: false, sessionLive: false }, { key: 1, sessionHeld: false, sessionLive: false },
-  { key: 2, sessionHeld: true, sessionLive: false }, { key: 2, sessionHeld: true, sessionLive: true })
-pure val authValues = Set(Public, KeyOrSession, Session, SessionFamily, FreshSession, StepUp)
+pure val hValues = Set({ key: 0, sessionHeld: false, sessionLive: false, leaseHeld: false, leaseLive: false },
+  { key: 1, sessionHeld: false, sessionLive: false, leaseHeld: false, leaseLive: false },
+  { key: 2, sessionHeld: true, sessionLive: false, leaseHeld: true, leaseLive: false }, { key: 2, sessionHeld: true, sessionLive: true, leaseHeld: true, leaseLive: true })
 pure def keyOf(a: Attach): int = match a { | WithKey(k) => k.version | _ => 0 }
 pure def sentKey(p: CallPlan): int = match p { | Send(s) => keyOf(s.attach) | _ => 0 }
-pure def lawASessionRouteNeverCarriesTheKey(h: Holding, auth: AuthClass): bool = sessionOnly(auth) implies sentKey(attachFor(h, auth)) == 0
-pure def lawAKeyRouteWithoutAKeyIsNotSent(h: Holding, auth: AuthClass): bool =
-  (auth == KeyOrSession and h.key < 1) implies attachFor(h, auth) == Refuse({ why: SignInRequired })
+pure def lawASessionRouteNeverCarriesTheKey(h: Holding, d: DeviceRoute): bool = sessionOnly(d.auth) implies sentKey(attachFor(h, d)) == 0
+pure def lawAKeyRouteWithoutAKeyIsNotSent(h: Holding, d: DeviceRoute): bool =
+  (d.auth == KeyOrSession and h.key < 1) implies attachFor(h, d) == Refuse({ why: SignInRequired })
+```
+
+### A mail or calendar route is sent only with the lease, never with the device key
+
+The agent holds the device key and reads untrusted mail, so the cloud
+refuses that key on its mail routes (`spec/cloud/identity/requestAuth.md`,
+`MailRoute`), and the device never sends it there. The mail routes are the
+device routes the cloud's client lists as `Mail` (`spec/cloud/client.md`):
+Google status, accounts, connect, disconnect, Gmail triage, search, read,
+history, thread, capabilities, drafts, draft, attachment and operations, and
+the calendar list, feed, event reads and event writes. They carry the lease's
+access token after one shared refresh when necessary (`./credential.md`).
+A device with an active key and no lease gets `MailLeaseUpgradeRequired`.
+The native bridge returns `mail-lease-upgrade-required` before it sends the
+request. The host can offer the user a one-time sign-in to the same account.
+
+For a host reading Google connection status, the owner's Google accounts,
+an inbox page, a message, the inbox's change history or a calendar window,
+the native package offers a read-only `GET` bound to the owner and current
+credential identity. It admits only the reads of `hostMailReads`, each a
+`Mail` device route under `/api/v1/eliza/google/`, with at most the query
+fields listed for it: `status` with none; `accounts` with `side`;
+`gmail/triage` with `maxResults`, `folder`, `q`, `counts`, `pageToken` and
+`grantId`; `gmail/read` with `messageId` and `grantId`;
+`gmail/inbox-v1/history` with `grantId`, `startHistoryId`, `pageToken`,
+`maxResults` and `side`; and `calendar/feed` with `timeMin`, `timeMax`,
+`pageToken` and `grantId`. Any other path or query field is refused before a
+request leaves the device, and the reply is dropped if that identity changes.
+The host receives the reply and a non-secret scope, while lease credentials
+stay native.
+The existing key stays available for its usual routes while the user decides
+or cancels. The page sends a new request after the sign-in. A device without
+a live key or lease gets `SignInRequired`. If a refresh ends the lease, the
+native shell uses the current key and lease state to choose the refusal.
+The native one-tap connect and inbox arrival keep the device key. Only mail
+routes carry the lease.
+
+```quint
+pure def mailRoute(d: DeviceRoute): bool = d.auth == Mail
+pure def leaseOf(a: Attach): int = match a { | WithLease(l) => l.version | _ => 0 }
+pure def sentLease(p: CallPlan): int = match p { | Send(s) => leaseOf(s.attach) | _ => 0 }
+pure def lawAMailRouteNeverCarriesTheKey(h: Holding, d: DeviceRoute): bool = mailRoute(d) implies sentKey(attachFor(h, d)) == 0
+pure def lawTheLeaseGoesOnlyToAMailRoute(h: Holding, d: DeviceRoute): bool = sentLease(attachFor(h, d)) >= 1 implies mailRoute(d)
+pure def lawOnlyAMailRouteOnAnExistingKeyWithoutALeaseNeedsTheUpgrade(h: Holding, d: DeviceRoute): bool =
+  (attachFor(h, d) == Refuse({ why: MailLeaseUpgradeRequired })) iff
+    (mailRoute(d) and h.key >= 1 and not(h.leaseHeld or h.leaseLive))
+type HostMailRead = { under: List[str], fields: Set[str] }
+pure val hostMailReads: List[HostMailRead] = List(
+  { under: List("status"), fields: Set() },
+  { under: List("accounts"), fields: Set("side") },
+  { under: List("gmail", "triage"), fields: Set("maxResults", "folder", "q", "counts", "pageToken", "grantId") },
+  { under: List("gmail", "read"), fields: Set("messageId", "grantId") },
+  { under: List("gmail", "inbox-v1", "history"), fields: Set("grantId", "startHistoryId", "pageToken", "maxResults", "side") },
+  { under: List("calendar", "feed"), fields: Set("timeMin", "timeMax", "pageToken", "grantId") })
+pure def hostMailReadAdmitted(readPath: List[str], readFields: List[str]): bool =
+  hostMailReads.some(r => r.under == readPath and readFields.every(f => r.fields.contains(f)))
+pure val readPathValues = Set(List(), List("status"), List("accounts"), List("gmail", "inbox-v1", "history"), List("gmail", "history"),
+  List("gmail", "search"), List("gmail", "operations"), List("calendar", "feed"))
+pure val readFieldsValues = Set(List(), List("side"), List("grantId", "startHistoryId", "pageToken", "maxResults", "side"),
+  List("messageId", "grantId"), List("timeMin", "q"))
+pure def lawAHostMailReadIsAMailRouteRead(readPath: List[str], readFields: List[str]): bool =
+  hostMailReadAdmitted(readPath, readFields) implies deviceRoutes.some(d => d.method == Get and mailRoute(d) and d.path == google(readPath))
 ```
 
 ### A request is sent only to the deployment origin, admitted by the gate, with headers its route admits
@@ -118,7 +204,7 @@ pure def planRequest(routes: Routes::RouteList, h: Holding, origin: BaseUrl, req
   else if (a == Routes::TooLarge) Refuse({ why: BodyTooLarge })
   else if (Routes::admittedRoute(a).length() != 1 or found.length() != 1) Refuse({ why: NotListed })
   else if (not(headers.every(x => headerAllowed(d, x)))) Refuse({ why: HeaderRefused })
-  else attachFor(h, d.auth)
+  else attachFor(h, d)
 }
 pure def refused(p: CallPlan): bool = match p { | Refuse(r) => true | _ => false }
 pure def lawASentRequestIsAdmittedOnTheOrigin(routes: Routes::RouteList, h: Holding, origin: BaseUrl, request: Routes::Request, headers: List[str]): bool =
@@ -126,7 +212,8 @@ pure def lawASentRequestIsAdmittedOnTheOrigin(routes: Routes::RouteList, h: Hold
     (originAccepted(origin) and Routes::admittedRoute(Routes::admission(routes, request)).length() == 1 and not(headers.includes("Authorization")))
 pure val originValues = Set({ scheme: Https, loopback: false, hasPath: false, hasQueryOrFragment: false }, { scheme: Https, loopback: false, hasPath: true, hasQueryOrFragment: false })
 pure val headersValues = Set(List(), List("Idempotency-Key"), List("If-Match"), List("Authorization"), List("Accept", "If-None-Match"))
-pure def at(names: List[str]): List[Routes::Piece] = List("api", "v1").concat(names).listMap(n => Routes::Literal({ text: n }))
+pure def at(names: List[str]): List[Routes::Piece] =
+  List(Routes::Literal({ text: "api" }), Routes::Literal({ text: "v1" })).concat(names.listMap(n => Routes::Literal({ text: n })))
 pure def seg(text: str): Routes::Segment = { text: text, fits: List() }
 pure val routesValues = {
   val read = { method: Routes::Get, delivery: Routes::Buffered, path: at(List("user")), query: List(), limit: Routes::AnySize }
@@ -155,28 +242,42 @@ The page gets the refusal as the cloud gave it; the request is never sent
 again with another credential. A `401` on a request sent with the device key
 is reported to `./credential.md` as `rejected` for that key's version, as an
 account read when the route was `GET /api/v1/user`, which alone may sign
-out. A `401` on a request sent with the account session drops that session
-only.
+out. A `401` on a request sent with the lease is reported as `leaseRejected`
+for its access token, which only discards that token. A `401` on a request
+sent with the account session drops that session only. A device-key request is
+attached only with a positive credential version. Its attachment kind
+determines where the refusal is reported.
 
 ```quint
-type CredentialReport = NoReport | KeyRejected({ version: int, reason: RefusalReason, on: C::RejectedOn }) | SessionRejected
+type CredentialReport = NoReport | KeyRejected({ version: int, reason: RefusalReason, on: C::RejectedOn }) | LeaseRejected({ version: int, reason: RefusalReason }) | SessionRejected
 pure def isAccountRead(d: DeviceRoute): bool = d.method == Get and d.path == api(List("user"))
 pure def reportOf(attach: Attach, d: DeviceRoute, status: int, reason: RefusalReason): CredentialReport =
   if (status != 401) NoReport
   else match attach {
     | WithKey(k) => KeyRejected({ version: k.version, reason: credentialReasonOf(reason), on: if (isAccountRead(d)) C::AccountRead else C::OtherRequest })
     | WithSession(x) => SessionRejected
+    | WithLease(l) => LeaseRejected({ version: l.version, reason: credentialReasonOf(reason) })
     | Bare => NoReport
   }
 pure def isKeyReport(r: CredentialReport): bool = match r { | KeyRejected(k) => true | _ => false }
-pure def carriesKey(a: Attach): bool = match a { | WithKey(k) => true | _ => false }
-pure val attachValues = Set(Bare, WithKey({ version: 1 }), WithSession({ version: 1 }))
-pure val dValues = Set(noDeviceRoute, { method: Get, path: api(List("user")), auth: KeyOrSession, headers: Set() })
+pure val attachValues = Set(Bare, WithKey({ version: 1 }), WithSession({ version: 1 }), WithLease({ version: 1 }))
+pure val dValues = Set(noDeviceRoute, { method: Get, path: api(List("user")), auth: KeyOrSession, headers: Set() },
+  { method: Get, path: google(List("calendar", "feed")), auth: Mail, headers: Set() },
+  { method: Post, path: google(List("connect", "native")), auth: KeyOrSession, headers: Set() },
+  { method: Get, path: api(List("auth", "mfa")), auth: Session, headers: Set() })
 pure val reasonValues = Set(CredentialExpired, CredentialRevoked, CredentialUnknown, NoReason)
 pure def lawOnlyA401WithACredentialIsReported(attach: Attach, d: DeviceRoute, status: int, reason: RefusalReason): bool =
   (reportOf(attach, d, status, reason) != NoReport) iff (status == 401 and attach != Bare)
+pure def usesDeviceKey(attach: Attach): bool = match attach { | WithKey(k) => true | _ => false }
 pure def lawASession401NeverReachesTheKey(attach: Attach, d: DeviceRoute, status: int, reason: RefusalReason): bool =
-  isKeyReport(reportOf(attach, d, status, reason)) iff (status == 401 and carriesKey(attach))
+  isKeyReport(reportOf(attach, d, status, reason)) iff (status == 401 and usesDeviceKey(attach))
+pure def lawARequestCarriesOnlyAPositiveKeyVersion(h: Holding, d: DeviceRoute): bool = {
+  val plan = attachFor(h, d)
+  match plan {
+    | Send(s) => usesDeviceKey(s.attach) implies keyOf(s.attach) >= 1
+    | _ => true
+  }
+}
 ```
 
 ### A cancel disconnects only the page's own call still in flight, which then settles once as cancelled
@@ -239,12 +340,157 @@ host equal to the deployment's web host or one of the fixed provider hosts.
 
 ```quint
 type ExternalLink = { https: bool, host: str, defaultPort: bool, userInfo: bool }
-pure val providerHosts: Set[str] = Set("checkout.stripe.com", "billing.stripe.com", "accounts.google.com")
+pure val providerHosts: Set[str] = Set("checkout.stripe.com", "billing.stripe.com", "invoice.stripe.com", "accounts.google.com")
 pure def opensExternally(webHost: str, link: ExternalLink): bool =
   link.https and link.defaultPort and not(link.userInfo) and (link.host == webHost or providerHosts.contains(link.host))
 pure val webHostValues = Set("web.cloud.test")
 pure val linkValues = Set({ https: true, host: "billing.stripe.com", defaultPort: true, userInfo: false },
+  { https: true, host: "invoice.stripe.com", defaultPort: true, userInfo: false },
   { https: true, host: "billing.stripe.com.evil.test", defaultPort: true, userInfo: false }, { https: false, host: "web.cloud.test", defaultPort: true, userInfo: false })
 pure def lawALinkOpensOnlyOnAListedHost(webHost: str, link: ExternalLink): bool =
   opensExternally(webHost, link) implies (link.host == webHost or providerHosts.contains(link.host))
+```
+
+## Story: Let my agent read my mail without holding a mail credential
+
+> As the owner, I want my on-device agent, which reads untrusted email, to
+> read my Gmail only through a narrow broker in the app that attaches the
+> mail lease itself, so that the agent never holds the lease, never reaches
+> mail with the device key, cannot change mail, and reads only my account.
+
+The broker is the native host's endpoint `http://127.0.0.1:<port>/__owner-gmail`,
+handed only to a cloud launch ([agent data files](../agentService/config.md)).
+The agent names a read as a path and a query after that prefix. The broker
+sends each read as the read-only request bound to the owner and current
+credential identity that the mail rule above describes, so it carries the
+lease and never the key, and it hands the agent only the reply. Sockets,
+HTTP and the bearer stay in the Java shell; the source is the old line's
+`managed-google-agent-broker.ts`, whose sends, mailbox changes and calendar
+reads this does not keep.
+
+### The agent reaches the broker only by a bodiless GET on the loopback host, without an origin, with the current launch's bearer
+
+A request with another method, a body, a `Host` other than `127.0.0.1` with
+the broker's port, or any `Origin` header is not private; one without the
+bearer handed to the current launch, compared in constant time, is not
+authorized. Each is refused, as `403 not-private` or `401 not-authorized`,
+before anything is forwarded. A request head over 8 KiB is refused `431
+request-too-large` before any of it is checked, so a request too long to
+read is never taken for a foreign one. Every launch gets a new bearer, and the
+previous launch's bearer is refused from then on; so is every bearer once a
+launch is handed none, and a launch's own once its agent exits or the agent
+service stops. A request is checked against the launch that is current
+once its head has arrived. The broker serves four requests at once and holds four more
+waiting, closes any connection beyond those, or whose request head has not
+arrived within five seconds of being served, unanswered, and after a reply
+reads what is left of the request for at most five seconds more before it
+closes. These bound only what any connection costs the device: the places
+are taken before a bearer is seen, so another process on the device that
+holds them leaves the agent's reads unanswered, and the agent reports its
+mail unreachable. A failure to accept a connection, other than the broker
+closing, is reported in the app's log once until a connection is accepted
+again, and the broker keeps accepting on the same port.
+
+```quint
+type BrokerAsk = { get: bool, bodiless: bool, loopbackHost: bool, origin: bool, bearer: bool }
+type BrokerAskVerdict = AskAdmitted | NotPrivate | NotAuthorized
+pure def brokerAskVerdict(ask: BrokerAsk): BrokerAskVerdict =
+  if (not(ask.get) or not(ask.bodiless) or not(ask.loopbackHost) or ask.origin) NotPrivate
+  else if (not(ask.bearer)) NotAuthorized
+  else AskAdmitted
+pure val askValues: Set[BrokerAsk] = {
+  val good = { get: true, bodiless: true, loopbackHost: true, origin: false, bearer: true }
+  Set(good, { ...good, get: false }, { ...good, bodiless: false }, { ...good, loopbackHost: false }, { ...good, origin: true },
+    { ...good, bearer: false }, { ...good, origin: true, bearer: false })
+}
+pure def lawOnlyAPrivateAuthorizedAskIsAdmitted(ask: BrokerAsk): bool =
+  (brokerAskVerdict(ask) == AskAdmitted) iff (ask.get and ask.bodiless and ask.loopbackHost and not(ask.origin) and ask.bearer)
+pure def lawAForeignAskIsNeverTreatedAsTheAgent(ask: BrokerAsk): bool =
+  (ask.origin or not(ask.loopbackHost)) implies brokerAskVerdict(ask) == NotPrivate
+```
+
+### The broker forwards only the owner's Gmail account list and search, with the lease, while the launch's owner holds it
+
+The broker forwards `GET /api/v1/eliza/google/accounts` with at most `side`,
+and `GET /api/v1/eliza/google/gmail/search` with at most `side`, `grantId`,
+`query`, `maxResults` and `pageToken`; any other path or query field reads
+nothing. A read is bound to the account the launch was started for: the
+owner holds it while the device's active key belongs to that account, and
+it is sent only while the device's mail authority, the lease of that key,
+belongs to it too, and its reply is dropped if that authority changes
+before the reply arrives. The broker plans each read with `brokerPlan`,
+from one reading of the device's credentials, before it takes the lease:
+the route's own call, so it carries the lease and never the device key or
+a session; a device signed in to that owner without a lease of its active
+key reads nothing, for want of the lease.
+
+```quint
+type BrokerRead = AccountList | MailSearch | NotBrokered
+type BrokerCall = { read: BrokerRead, fields: List[str], ownerHolds: bool }
+pure def brokerParts(read: BrokerRead): List[str] = match read {
+  | AccountList => List("api", "v1", "eliza", "google", "accounts")
+  | MailSearch => List("api", "v1", "eliza", "google", "gmail", "search")
+  | NotBrokered => List()
+}
+pure def brokerFields(read: BrokerRead): Set[str] = match read {
+  | AccountList => Set("side")
+  | MailSearch => Set("side", "grantId", "query", "maxResults", "pageToken")
+  | NotBrokered => Set()
+}
+pure def brokered(call: BrokerCall): bool = call.read != NotBrokered and call.fields.every(f => brokerFields(call.read).contains(f))
+pure def brokerPlan(h: Holding, call: BrokerCall): CallPlan = {
+  val found = routeFor(Get, brokerParts(call.read))
+  if (not(brokered(call))) Refuse({ why: NotListed })
+  else if (not(call.ownerHolds)) Refuse({ why: SignInRequired })
+  else match found { | Listed(x) => attachFor(h, x.route) | Unlisted => Refuse({ why: NotListed }) }
+}
+pure def isLease(a: Attach): bool = match a { | WithLease(l) => true | _ => false }
+pure def sendsLeaseOnly(p: CallPlan): bool = match p { | Send(s) => isLease(s.attach) | _ => true }
+pure def isSend(p: CallPlan): bool = match p { | Send(s) => true | _ => false }
+pure val callValues: Set[BrokerCall] = Set({ read: AccountList, fields: List("side"), ownerHolds: true },
+  { read: MailSearch, fields: List("side", "grantId", "query", "maxResults"), ownerHolds: true },
+  { read: MailSearch, fields: List("side", "grantId", "query", "maxResults"), ownerHolds: false },
+  { read: MailSearch, fields: List("side", "messageId"), ownerHolds: true }, { read: AccountList, fields: List("grantId"), ownerHolds: true },
+  { read: NotBrokered, fields: List(), ownerHolds: true })
+pure def lawABrokerReadCarriesOnlyTheLease(h: Holding, call: BrokerCall): bool = sendsLeaseOnly(brokerPlan(h, call))
+pure def lawABrokerReadIsSentOnlyForTheLaunchOwnerAndAListedRead(h: Holding, call: BrokerCall): bool =
+  isSend(brokerPlan(h, call)) implies (call.ownerHolds and brokered(call))
+```
+
+### The agent gets the cloud's status and body, or a refusal naming why nothing was read, and never the credential that read it
+
+An answer from the cloud reaches the agent as its status and body, whatever
+the status, within the inline limit above; a larger one is refused whole as
+`502 reply-too-large`. A read the broker does not forward is `404
+not-brokered`; one refused for want of a sign-in for the launch's owner is
+`403 sign-in-required`, and for want of the lease `403
+mail-lease-upgrade-required`; one the device could not send, including one
+its credential store failed to plan, or that got no answer within 45
+seconds of being forwarded, is `503 cloud-unreachable`, and the broker
+abandons that call. A failure on the device is also reported in the
+app's log. A refusal carries only that reason. No key, lease or session
+reaches the agent.
+
+```quint
+type BrokerOutcome = CloudAnswered({ status: int }) | CallRefused({ why: CallRefusal }) | CloudUnreachable | ReplyOversize
+type BrokerRefusal = BrokerNotForwarded | BrokerSignInRequired | BrokerLeaseUpgradeRequired | BrokerUnreachable | BrokerReplyTooLarge
+type BrokerReply = BrokerAnswer({ status: int }) | BrokerRefused({ status: int, reason: BrokerRefusal })
+pure def brokerReply(brokerOutcome: BrokerOutcome): BrokerReply = match brokerOutcome {
+  | CloudAnswered(a) => BrokerAnswer({ status: a.status })
+  | CallRefused(r) =>
+    if (r.why == NotListed) BrokerRefused({ status: 404, reason: BrokerNotForwarded })
+    else if (r.why == SignInRequired) BrokerRefused({ status: 403, reason: BrokerSignInRequired })
+    else if (r.why == MailLeaseUpgradeRequired) BrokerRefused({ status: 403, reason: BrokerLeaseUpgradeRequired })
+    else BrokerRefused({ status: 503, reason: BrokerUnreachable })
+  | CloudUnreachable => BrokerRefused({ status: 503, reason: BrokerUnreachable })
+  | ReplyOversize => BrokerRefused({ status: 502, reason: BrokerReplyTooLarge })
+}
+pure val brokerOutcomeValues: Set[BrokerOutcome] = Set(CloudAnswered({ status: 200 }), CloudAnswered({ status: 401 }), CloudAnswered({ status: 403 }),
+  CallRefused({ why: NotListed }), CallRefused({ why: SignInRequired }), CallRefused({ why: MailLeaseUpgradeRequired }), CallRefused({ why: NoOrigin }),
+  CloudUnreachable, ReplyOversize)
+pure def answeredStatus(brokerOutcome: BrokerOutcome): int = match brokerOutcome { | CloudAnswered(c) => c.status | _ => -1 }
+pure def lawOnlyACloudAnswerReachesTheAgentAsAnAnswer(brokerOutcome: BrokerOutcome): bool = {
+  val reply = brokerReply(brokerOutcome)
+  match reply { | BrokerAnswer(a) => a.status == answeredStatus(brokerOutcome) | BrokerRefused(r) => r.status >= 400 and answeredStatus(brokerOutcome) == -1 }
+}
 ```

@@ -4,11 +4,13 @@ import {
   type Attempt, type ClientCall, type ClientStep, type Event, type StopReceipt, type StreamEnd, type TurnClient,
 } from "../../gen/agent__client__turns.effect.vibe"
 import type { RuntimeRequestHeaders, RuntimeStream } from "./index.vibe"
-import type { TaskPresentation } from "../tasks/chat-task.vibe"
+import type { Presentation } from "../../gen/agent__tasks.ts"
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- the schema declarations below read these schemas as values
 import { ActionResultFrame, CloudFundsCode, PlanAction, ProviderWait } from "./reply-frame.schema.vibe"
-import { readReplyStream, type ReplyOutcome, type ReplyStreamHooks, type StreamedReply } from "./stream-reader.vibe"
+import { readReplyStream, RefusedRequest, type ReplyOutcome, type ReplyStreamHooks, type StreamedReply } from "./stream-reader.vibe"
 import { newClientMessageId, type ClientMessageId } from "./stopped-turn.vibe"
+
+export type TaskPresentation = Omit<Extract<Presentation, { tag: "Presented" }>, "tag">
 
 export schema ConversationRecord { readonly id: Schema.NonEmptyString; readonly roomId: Schema.NonEmptyString }
 schema Created { readonly conversation: ConversationRecord }
@@ -26,7 +28,6 @@ schema BufferedReply {
   readonly cutOffEffect?: "applied"
 }
 schema StopAnswer { readonly aborted: boolean; readonly roomId: string; readonly reason: string; readonly outcome: "stopped" | "nothingRunning" | "uncertain" }
-schema RefusedRequest { readonly name: "RuntimeRequestError"; readonly status: Schema.Int; readonly message: string; readonly code?: string }
 
 export error InvalidConversation { input: unknown }
 
@@ -84,6 +85,7 @@ export type TurnSession = Session
 
 const idle: StopResult = { kind: "Idle" }
 const replyProtocol = "REPLY_PROTOCOL"
+const refusedStream = "Runtime refused the request"
 const unsent = new Set(["NoRoute", "InvalidPath", "InvalidHeaders", "StartupFailed", "RefreshFailed"])
 const stopOutcome = { stopped: "StopConfirmed", nothingRunning: "NothingRunning", uncertain: "StopUncertain" } as const
 const decodeRecord = Schema.decodeUnknownOption(ConversationRecord)
@@ -193,14 +195,14 @@ function buffered(data: unknown): Posted {
   return Option.isSome(reply) ? answered(reply.value) : { ending: "FailureFrame", code: replyProtocol, message: "A reply does not match the reply protocol" }
 }
 
+function refusal(status: number, code: string, message: string): Posted {
+  if (status === 404 || code === "CONVERSATION_NOT_OWNED") return { ending: "ConversationGone" }
+  return status < 500 ? { ending: "Refusal", status, code, message } : { ending: "FailureFrame", code, message }
+}
+
 function failed(error: unknown): Posted {
   const refused = decodeRefused(error)
-  if (Option.isSome(refused)) {
-    const { status, message, code } = refused.value
-    const named = code ?? message
-    if (status === 404 || named === "CONVERSATION_NOT_OWNED") return { ending: "ConversationGone" }
-    return status < 500 ? { ending: "Refusal", status, code: named, message } : { ending: "FailureFrame", code: named, message }
-  }
+  if (Option.isSome(refused)) return refusal(refused.value.status, refused.value.code ?? refused.value.message, refused.value.message)
   const why = error instanceof Error ? error.message : ""
   return why === "AccountChanged" ? { ending: "ConversationGone" } : unsent.has(why) ? { ending: "NotDispatched" } : { ending: "Dropped" }
 }
@@ -210,6 +212,7 @@ async function post(session: Session, record: ConversationRecord, body: object, 
   try {
     if (attempt !== "Streamed") return buffered(await session.transport.request(path, body, options.headers))
     const opened = await session.transport.stream(`${path}/stream`, body, signal, options.headers)
+    if (opened.status < 200 || opened.status > 299) return refusal(opened.status, refusedStream, refusedStream)
     return streamed(await readReplyStream(opened.body, guarded(options.stream ?? {}, signal), signal))
   } catch (error) {
     return failed(error)

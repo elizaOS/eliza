@@ -1,6 +1,6 @@
-// spec/inbox/managedRead.md, "Story: Read my managed inbox fresh, and only for me"; spec/inbox/grants.md, "An approved change is prepared only under the capability it needs, and otherwise offers the upgrade"; spec/inbox/grants.md, "Read is asked for first, changes are one consent, and a reconnect keeps what the account holds"
+// spec/inbox/managedRead.md, "Story: Read my managed inbox fresh, and only for me"; spec/inbox/grants.md, "An approved change is prepared only under the capability it needs, and otherwise offers the upgrade"; spec/inbox/grants.md, "Read is asked for first, changes are one consent, and a reconnect keeps what the account holds"; spec/inbox/managedRead.md, "The agent reads managed mail through the device's broker when the host names one, and otherwise through its cloud link"
 import { OWNER_EXCLUSIVE_DISCLOSURE_GATE, type IAgentRuntime, type Provider, type ProviderResult } from "@elizaos/core"
-import type { GmailGrantTier } from "../mailbox/grants.vibe"
+import type { GmailGrantTier } from "@elizaos/plugin-inbox-client"
 import { agentGmailClient, observeManagedReadGrant } from "./cloud.vibe"
 
 export const inboxAccessProviderName = "INBOX_ACCESS"
@@ -12,7 +12,7 @@ const tierText = {
 } as const satisfies Record<GmailGrantTier, string>
 
 export effect function inboxAccess(runtime: IAgentRuntime): ProviderResult!! {
-  const client = agentGmailClient(runtime)
+  const client = try agentGmailClient(runtime)
   if (client === undefined) return { text: "Gmail is available only when this agent uses the cloud.", values: { gmailTier: "none" } }
   const access = observeManagedReadGrant(client) catch () => null
   if (access === null) return { text: "Gmail access could not be checked right now.", values: { gmailTier: "unknown" } }

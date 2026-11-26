@@ -260,6 +260,32 @@ pure def alwaysStatusTellsTheTruth(s: AgentService): bool = ((statusOf(s).failur
   and (statusOf(s).bridgeState == "running" implies (s.readyEpoch == s.epoch and childOwned(s.child)))
 ```
 
+## Story: See a failed agent even when I silence its status
+
+> As a device owner, I want a failed agent to tell me on an alerts channel of
+> its own, so that I can silence the routine starting, running and stopping
+> notice without missing a failure.
+
+### A failed agent's notice is on the alerts channel with the failure words, and a starting, running or stopping agent's on the status channel
+
+The service keeps one notice for the agent and moves it between two
+channels as the phase changes, with the host file's status or failure words
+(`./config.md`). A planned stop, and the stop before a credential failure,
+stay on the status channel; only the failure itself alerts. A stopped agent
+shows no notice.
+
+```quint
+type NoticeChannel = NoNotice | StatusChannel | AlertsChannel
+pure def noticeChannel(s: AgentService): NoticeChannel = {
+  val p = s.phase
+  match p { | Stopped => NoNotice | Failed(_) => AlertsChannel | _ => StatusChannel }
+}
+pure def alwaysOnlyAFailureAlerts(s: AgentService): bool =
+  ((noticeChannel(s) == AlertsChannel) iff isFailed(s.phase)) and ((noticeChannel(s) != NoNotice) iff statusOf(s).notice)
+pure def sometimesAFailedAgentAlerts(s: AgentService): bool = noticeChannel(s) == AlertsChannel
+pure def sometimesAStopIsOnTheStatusChannel(s: AgentService): bool = isStopping(s.phase) and noticeChannel(s) == StatusChannel
+```
+
 ## Story: Restart a crashed or unhealthy agent until it stays up
 
 > As a device owner, I want an agent that crashes or stops answering
@@ -390,6 +416,24 @@ pure def accountChanged(s: AgentService, version: int, account: C::Account): Ser
   else emit(List(), keyed)
 }
 pure def sometimesRestartingForAnotherAccount(s: AgentService): bool = s.phase == Stopping({ onExit: ToStart }) and keyAccount(s.key) != s.launched
+```
+
+### A replaced mail broker restarts a starting or running agent, and leaves a stopping agent's exit to decide what follows
+
+When the consumer registers another mail broker while a launch holds the
+old one ([config](./config.md)), a starting or running child is killed and
+a new launch follows its exit, so that launch is handed the new broker;
+this is not counted as a crash. A stopping child is left alone: a stop, a
+start, a restart or a credential failure pending on its exit still
+decides what follows, and any launch after it is handed the new broker.
+
+```quint
+pure def canBrokerReplaced(s: AgentService): bool = childPhase(s.phase) and not(isStopping(s.phase))
+pure def brokerReplaced(s: AgentService): ServiceStep = emit(List(KillChild), enter(Stopping({ onExit: ToStart }), s))
+pure def stepBrokerReplacementRestartsOnlyALiveLaunch(before: AgentService, via: str, after: AgentService, out: List[ServiceEffect]): bool =
+  via == "brokerReplaced" implies
+    (childPhase(before.phase) and not(isStopping(before.phase)) and out == List(KillChild)
+      and after == enter(Stopping({ onExit: ToStart }), before))
 ```
 
 ## Story: Hand a new device key of the same account to the running agent

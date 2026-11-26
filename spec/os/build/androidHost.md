@@ -1,7 +1,7 @@
 # Android host profile
 
 A consumer generates its Android host project from an identity and a
-schema-2 profile (`generateAndroidHost`, from `@elizaos/os/build`) that
+schema-2 profile (`generateAndroidHost`, from `@elizaos/os`) that
 names everything the Gradle project is made of. The
 [runtime payload](./runtimePayload.md) is what an agent host ships; the
 [Android build](./androidBuild.md) builds and publishes the project.
@@ -380,11 +380,21 @@ type PayloadEntry = OrdinaryEntry | ModelEntry | InferenceLibraryEntry | ModelSe
 pure def hostPayloadAdmitted(localInference: bool, payload: Set[PayloadEntry]): bool = localInference or payload.forall(e => e == OrdinaryEntry)
 ```
 
-### The APK manifest lists each flavor's fresh APK of this build once, with its digest and one shared signer
+### The APK manifest lists each flavor's own published APK of this build once, fresh, with its digest and one shared signer unless the release is unsigned
+
+A row names the APK this run publishes for its own flavor: the release APK
+in a release build, the debug APK otherwise. A row is fresh when the APK's
+bytes and signer are the ones it states. An unsigned release has no signer,
+so each of its rows states none.
 
 ```quint
-type PublishedApk = { flavor: str, apk: A::Digest, signer: A::Digest, fresh: bool }
-pure def publishedManifestAdmitted(flavors: List[str], rows: List[PublishedApk]): bool =
+type ApkBuild = DebugApk | ReleaseApk
+type PublishedSet = DebugSet | SignedReleaseSet | UnsignedReleaseSet
+type PublishedApk = { flavor: str, fileFlavor: str, build: ApkBuild, apk: A::Digest, signer: A::Digest, fresh: bool }
+pure def publishedBuild(kind: PublishedSet): ApkBuild = if (kind == DebugSet) DebugApk else ReleaseApk
+pure def rowSigned(kind: PublishedSet, rows: List[PublishedApk], r: PublishedApk): bool =
+  if (kind == UnsignedReleaseSet) r.signer == A::NotADigest else (A::isDigest(r.signer) and rows.every(q => A::digestsMatch(q.signer, r.signer)))
+pure def publishedManifestAdmitted(flavors: List[str], kind: PublishedSet, rows: List[PublishedApk]): bool =
   flavors.length() > 0 and rows.length() == flavors.length() and flavors.every(f => rows.select(r => r.flavor == f).length() == 1) and
-  rows.every(r => A::isDigest(r.apk) and r.fresh and A::isDigest(r.signer) and rows.every(q => A::digestsMatch(q.signer, r.signer)))
+  rows.every(r => r.fileFlavor == r.flavor and r.build == publishedBuild(kind) and A::isDigest(r.apk) and r.fresh and rowSigned(kind, rows, r))
 ```

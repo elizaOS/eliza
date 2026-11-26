@@ -1,12 +1,10 @@
 // spec/calendar/reviewedReads.md, "Story: Share only the exact current Calendar information I reviewed"; spec/calendar/reviewedReads.md, "Story: Propose on my phone only the Calendar request I made"; spec/calendar/readClock.md, "Story: See and create times in the zone I am asking about"
 import { assert, it } from "@effect/vitest"
 import type { IAgentRuntime, UUID } from "@elizaos/core"
-import { negotiation, readOperation, validate, type DeviceTurn } from "@elizaos/agent/device-actions"
+import { negotiation, readOperation, validate } from "@elizaos/agent"
+import type { DeviceTurn } from "@elizaos/agent-host"
 import { calendarProposalFamily } from "../src/plugin/device-proposals.vibe"
-import { createNeedsConfirmation, createTimeZone, createYear, createdUtcInstant, displayDay, displayWallTime, buildUtcDateFromLocalParts,
-  requestTimeZone, startOfCivilDay } from "../src/clock.vibe"
-import { CALENDAR_CAPABILITY, CALENDAR_NAMED_READ_CAPABILITY, NamedReadRefused, executeNamedCalendarRead, namedReadWindow,
-  reviewedReadsMachine, type NamedCalendarReadContext, type NamedCalendarReadProvider } from "../src/client/index.vibe"
+import { createNeedsConfirmation, createTimeZone, createYear, createdUtcInstant, displayDay, displayWallTime, buildUtcDateFromLocalParts, requestTimeZone, startOfCivilDay, CALENDAR_CAPABILITY, CALENDAR_NAMED_READ_CAPABILITY, NamedReadRefused, executeNamedCalendarRead, namedReadWindow, reviewedReadsMachine, type NamedCalendarReadContext, type NamedCalendarReadProvider } from "@elizaos/plugin-calendar-client"
 
 const selected = { kind: "calendar-event", accountId: "device-home", sourceRevision: "a".repeat(64), id: "evt-1", revision: "b".repeat(64) }
 const context: NamedCalendarReadContext = { view: "calendar", owner: "alice", selectedObject: selected }
@@ -131,7 +129,7 @@ const onHome = { view: "home", revision: 1, sensitive: false, timeZone: "Europe/
 const target = { sourceId: "device-home", sourceRevision: "a".repeat(64), eventId: "evt-1", revision: "b".repeat(64) }
 const proposedFields = { title: "Lunch with Sam", description: "", location: "", start: "2026-11-23T11:00:00.000Z", end: "2026-11-23T12:00:00.000Z", timeZone: "Europe/Berlin" }
 
-it.effect('Propose on my phone only the Calendar request I made (spec/calendar/reviewedReads.md, "Story: Propose on my phone only the Calendar request I made"; spec/calendar/reviewedReads.md, "A phone Calendar proposal is offered only where its record may be proposed"; spec/calendar/reviewedReads.md, "A selected target, a chosen calendar and a named event are the ones the owner gave"; spec/calendar/reviewedReads.md, "A new phone event is the timed event the model read, at a clock time the owner said, on the phone\'s clock"; spec/calendar/availability.md, "An availability window is the one the model read from the owner\'s request, on the phone\'s clock"; spec/calendar/readClock.md, "A clock time the owner stated is one the owner\'s words hold")', effect () => {
+it.effect('Propose on my phone only the Calendar request I made (spec/calendar/reviewedReads.md, "Story: Propose on my phone only the Calendar request I made"; spec/calendar/reviewedReads.md, "A phone Calendar proposal is offered only where its record may be proposed"; spec/calendar/reviewedReads.md, "A selected target, a chosen calendar and a named event are the ones the owner gave"; spec/calendar/reviewedReads.md, "A new phone event is the timed event the model read, at a clock time the owner\'s words do not contradict, on the phone\'s clock"; spec/calendar/availability.md, "An availability window is the one the model read from the owner\'s request, on the phone\'s clock"; spec/calendar/readClock.md, "A clock time the owner stated is one the owner\'s words hold")', effect () => {
   const { runtime, family, asked } = phoneModel()
   const turn = (words: string, observation: DeviceTurn["observation"] = onHome, completesReads = true) => phoneTurn(runtime, words, observation, completesReads)
   const grounded = effect (operation: unknown, at: DeviceTurn) => {
@@ -183,13 +181,16 @@ it.effect('Propose on my phone only the Calendar request I made (spec/calendar/r
   const ana = { title: "Lunch with Ana", start: "2026-11-27T11:00:00.000Z", end: "2026-11-27T12:00:00.000Z" }
   assert.deepStrictEqual([try create("put lunch with Ana on my phone calendar Friday at noon", ana), try create("Add lunch with Sam at 6pm", { start: "2026-11-22T17:00:00.000Z", end: "2026-11-22T18:00:00.000Z" }),
     try create("Add lunch with Sam 2027年3/5 at 3pm", { start: "2027-03-05T14:00:00.000Z", end: "2027-03-05T15:00:00.000Z" }),
-    try create("Add lunch with Sam tomorrow from one ten PM to one thirty PM", { start: "2026-11-23T12:10:00.000Z", end: "2026-11-23T12:30:00.000Z" })], [
+    try create("Add lunch with Sam tomorrow from one ten PM to one thirty PM", { start: "2026-11-23T12:10:00.000Z", end: "2026-11-23T12:30:00.000Z" }),
+    try create("Add lunch with Sam tomorrow at ten past 4", { start: "2026-11-23T15:10:00.000Z", end: "2026-11-23T16:10:00.000Z" }), try create("Add lunch with Sam soon")], [
     { type: "calendar_create_local", fields: { ...proposedFields, ...ana } },
     { type: "calendar_create_local", fields: { ...proposedFields, start: "2026-11-22T17:00:00.000Z", end: "2026-11-22T18:00:00.000Z" } },
     { type: "calendar_create_local", fields: { ...proposedFields, start: "2027-03-05T14:00:00.000Z", end: "2027-03-05T15:00:00.000Z" } },
     { type: "calendar_create_local", fields: { ...proposedFields, start: "2026-11-23T12:10:00.000Z", end: "2026-11-23T12:30:00.000Z" } },
+    { type: "calendar_create_local", fields: { ...proposedFields, start: "2026-11-23T15:10:00.000Z", end: "2026-11-23T16:10:00.000Z" } },
+    { type: "calendar_create_local", fields: proposedFields },
   ])
-  assert.deepStrictEqual([try create("Add lunch with Sam soon"), try create("Add lunch with Sam tomorrow from one ten PM to one thirty PM", { start: "2026-11-23T21:10:00.000Z", end: "2026-11-23T21:30:00.000Z" }),
+  assert.deepStrictEqual([try create("Add lunch with Sam tomorrow at 3", { start: "2026-11-23T15:00:00.000Z", end: "2026-11-23T16:00:00.000Z" }), try create("Add lunch with Sam tomorrow from one ten PM to one thirty PM", { start: "2026-11-23T21:10:00.000Z", end: "2026-11-23T21:30:00.000Z" }),
     try create("Add lunch with Sam tomorrow at 3pm Tokyo time", { start: "2026-11-23T06:00:00.000Z", end: "2026-11-23T07:00:00.000Z", timeZone: "Asia/Tokyo" }),
     try create("Add lunch with Sam tomorrow at 3pm Tokyo time", { start: "2026-11-23T06:00:00.000Z", end: "2026-11-23T07:00:00.000Z" }),
     try create("Add lunch tomorrow at noon", { title: "Lunch with the board" }), try create("Add lunch with Sam at noon", { start: "2026-11-22T11:00:00.000Z", end: "2026-11-22T12:00:00.000Z" })],

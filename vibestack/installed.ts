@@ -158,3 +158,138 @@ export function installedEvaluator(root: string): Evaluator | undefined {
     return readEvaluator(root, current) === id && current.length === observed.length && current.every((value, i) => value === observed[i]);
   } } : undefined;
 }
+
+/**
+ * The pinned Android build tools and platform the OS tests run against, as selected by
+ * packages/os/test/support/android-tools.ts. The SDK is the first existing candidate among
+ * ANDROID_HOME, ANDROID_SDK_ROOT and the usual home directories; the build tools and platform
+ * below are the versions those tests pin.
+ */
+export const ANDROID_BUILD_TOOLS = "36.0.0";
+export const ANDROID_PLATFORM = "android-36";
+
+/** The executable named `name` that the PATH finds first, as the stock apksigner launcher finds java. */
+function pathExecutable(name: string): string | undefined {
+  const extensions = process.platform === "win32" ? [".exe", ".cmd", ""] : [""];
+  for (const dir of (process.env.PATH ?? "").split(path.delimiter)) {
+    // A relative entry can choose a different program from a package's working directory.
+    if (!path.isAbsolute(dir)) return undefined;
+    for (const extension of extensions) {
+      const file = path.join(dir, name + extension);
+      try {
+        fs.accessSync(file, fs.constants.X_OK);
+        if (fs.statSync(file).isFile()) return file;
+      } catch {
+        // Not an executable on this PATH entry; keep looking.
+      }
+    }
+  }
+  return undefined;
+}
+
+function jdkFor(executable: string): string | undefined {
+  fs.accessSync(executable, fs.constants.X_OK);
+  const bin = path.dirname(fs.realpathSync(executable));
+  const home = path.dirname(bin);
+  return path.basename(bin) === "bin" && fs.statSync(path.join(home, "release"), { throwIfNoEntry: false })?.isFile()
+    ? home : undefined;
+}
+
+/** The files of one directory tree, in a stable order, with the label each is hashed under. */
+function androidTreeFiles(root: string, label: string): { file: string; label: string }[] {
+  const found: { file: string; label: string }[] = [];
+  const seen = new Set<string>();
+  const walk = (dir: string, prefix: string) => {
+    const real = fs.realpathSync(dir);
+    if (seen.has(real)) return;
+    seen.add(real);
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const file = path.join(dir, entry.name);
+      const next = prefix ? `${prefix}/${entry.name}` : entry.name;
+      const stats = fs.statSync(file);
+      if (stats.isDirectory()) walk(file, next);
+      else if (stats.isFile()) found.push({ file, label: next });
+    }
+  };
+  walk(root, label);
+  return found.sort((a, b) => (a.label < b.label ? -1 : a.label > b.label ? 1 : 0));
+}
+
+/**
+ * The Android toolchain the OS tests actually ran against, as one digest over the bytes of the
+ * pinned build tools and platform of the selected SDK, the configured JDK, the JDK of the java the
+ * stock apksigner launcher resolves through PATH, and the selected Java compiler and keytool. The digest
+ * covers bytes, not directories, so installing the same toolchain at another path, or restoring a
+ * replaced file's bytes, records the same toolchain again, while any changed file records a
+ * different one. Nothing is returned when the SDK is absent or incomplete, so a run without the
+ * toolchain never records a result a run with it could reuse.
+ */
+function readAndroidToolchain(): string | undefined {
+  try {
+    const sdk = [
+      process.env.ANDROID_HOME,
+      process.env.ANDROID_SDK_ROOT,
+      path.join(os.homedir(), "Library", "Android", "sdk"),
+      path.join(os.homedir(), "Android", "Sdk"),
+    ].find((candidate) => candidate !== undefined && candidate !== "" && fs.existsSync(candidate));
+    if (!sdk) return undefined;
+    const tools = path.join(sdk, "build-tools", ANDROID_BUILD_TOOLS);
+    const platform = path.join(sdk, "platforms", ANDROID_PLATFORM);
+    const androidJar = path.join(platform, "android.jar");
+    for (const file of [
+      path.join(tools, "aapt"),
+      path.join(tools, "aapt2"),
+      path.join(tools, "apksigner"),
+      path.join(tools, "zipalign"),
+      androidJar,
+    ]) {
+      if (!fs.existsSync(file)) return undefined;
+    }
+    const javaHome = process.env.JAVA_HOME;
+    const pathJava = pathExecutable("java");
+    if (!pathJava) return undefined;
+    const java = javaHome ? path.join(javaHome, "bin", "java") : pathJava;
+    const javac = javaHome ? path.join(javaHome, "bin", "javac") : pathExecutable("javac");
+    const keytool =
+      javaHome && fs.existsSync(path.join(javaHome, "bin", "keytool"))
+        ? path.join(javaHome, "bin", "keytool")
+        : pathExecutable("keytool");
+    if (!javac || !keytool) return undefined;
+    const executables = { java, javac, keytool, "apksigner-java": pathJava };
+    const jdks = new Map<string, string>();
+    for (const [name, executable] of Object.entries(executables)) {
+      const home = jdkFor(executable);
+      if (!home) return undefined;
+      if (!jdks.has(home)) jdks.set(home, name);
+    }
+    const files = [
+      ...androidTreeFiles(tools, "build-tools"),
+      ...androidTreeFiles(platform, "platform"),
+      ...[...jdks].flatMap(([home, name]) => androidTreeFiles(home, `jdk/${name}`)),
+    ];
+    const digests: string[] = [];
+    const seen = new Set<string>();
+    const add = (label: string, file: string): boolean => {
+      const real = fs.realpathSync(file);
+      if (seen.has(real)) return true;
+      seen.add(real);
+      const digest = digestFile(file);
+      if (!digest) return false;
+      digests.push(`${label} ${digest}`);
+      return true;
+    };
+    for (const { file, label } of files) {
+      if (!add(label, file)) return undefined;
+    }
+    for (const [name, executable] of Object.entries(executables))
+      digests.push(`${name} ${digestFile(executable)}`);
+    return createHash("sha256").update(JSON.stringify(["android-toolchain-v2", ...digests])).digest("hex");
+  } catch {
+    return undefined;
+  }
+}
+
+/** The digest of the Android toolchain the OS tests would run against, if that toolchain is complete. */
+export function androidToolchainIdentity(): string | undefined {
+  return readAndroidToolchain();
+}

@@ -1,0 +1,609 @@
+// spec/cloud/services/google/mailOperations.md, "Story: Change or send from my mailbox once, as I reviewed it"; spec/cloud/shared/dispatchOnce.md, "Story: Send a change once and recover its outcome without sending it again"
+import { type Rejected, type NotAState, apply, decodeState, elapse, initial, isUnknown, canReceiveReply, canResolve, receiptStatus, type Event, type LookupResult, type ProviderReply, type Receipt, type RefusalCause } from "../../../gen/cloud__shared__dispatchOnce.effect.vibe"
+import { millisPerDay, millisPerSecond } from "../../../gen/cloud__shared__types.effect.vibe"
+import { draftBytesMatch } from "../../../gen/cloud__services__google__mailOperations.effect.vibe"
+import type { SessionOwner } from "../../../gen/core__sessions.ts"
+import { refused, type Refused } from "../../http/refusal.vibe"
+import { json, jsonBody, owner as ownerOf, type CloudContext, type Route, type RouteContext, type Sweep } from "../../http/routes.vibe"
+import { requestDigest } from "../../shared/dispatch-once.vibe"
+import { sha256Hex } from "../../shared/sealing.vibe"
+import { loadRow, machineRows, stepRow, type Columns } from "../../store/rows.vibe"
+import { Store, toText, type Row, type Tx } from "../../store/connection.vibe"
+import { failureReply, googleJson, type GoogleFailure } from "../../providers/google.vibe"
+import { useGrant, type GoogleCapability } from "./grant-access.vibe"
+import { attachmentBytes, googleRefused, readAtHistory } from "./mail-read.vibe"
+import { composeMessage } from "./mail-compose.vibe"
+
+export type LabelKind = "archive" | "unarchive" | "trash" | "untrash" | "mark-read" | "mark-unread" | "star" | "unstar"
+export type ComposeKind = "send" | "draft-create" | "draft-replace"
+export type OperationKind = ComposeKind | "draft-delete" | LabelKind
+type WireState = "prepared" | "dispatched" | "succeeded" | "rejected" | "outcome-unknown"
+
+interface Owner {
+  readonly organizationId: string
+  readonly userId: string
+}
+
+interface Scope {
+  readonly owner: Owner
+  readonly grantId: string
+  readonly requestId: string
+}
+
+type ProviderResult = Readonly<Record<string, unknown>>
+
+interface Operation {
+  readonly receipt: Receipt
+  readonly kind: OperationKind
+  readonly reviewDigest: string
+  readonly providerResult: ProviderResult | null
+}
+
+type Target = { readonly id: string; readonly contentDigest?: string } & (
+  | { readonly kind: "message" }
+  | { readonly kind: "draft" }
+  | { readonly kind: "rfc822" }
+)
+
+interface Outcome {
+  readonly reply: ProviderReply
+  readonly result: ProviderResult | null
+}
+
+interface Seen {
+  readonly lookup: LookupResult
+  readonly result: ProviderResult | null
+}
+
+interface Grant {
+  readonly connectionId: string
+  readonly accessToken: string
+  readonly email: string
+}
+
+interface Reviewed {
+  readonly kind: OperationKind
+  readonly digest: string
+  readonly review: unknown
+  readonly target: Target
+  readonly perform: Outcome!!CloudContext
+}
+
+interface GmailMessage {
+  readonly id: string
+  readonly threadId?: string
+  readonly labelIds?: ReadonlyArray<string>
+  readonly historyId?: string
+}
+
+const staleAfter = 90 * millisPerSecond
+const preparedFor = millisPerDay
+const maxProposalBytes = 12 * 1024 * 1024
+const gmail = "/gmail/v1/users/me"
+const providerId = /^[A-Za-z0-9_-]{1,256}$/
+const historyId = /^\d{1,32}$/
+const digestPattern = /^[0-9a-f]{64}$/
+const requestIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+const partIdPattern = /^[0-9.]{1,32}$/
+const unclear: Outcome = { reply: { tag: "Unclear" }, result: null }
+const nothingSeen: Seen = { lookup: { tag: "NothingSeen" }, result: null }
+const effectSeen = (result: ProviderResult): Seen => ({ lookup: { tag: "EffectSeen" }, result })
+
+const capabilityOf: Readonly<Record<OperationKind, GoogleCapability>> = {
+  send: "google.gmail.send",
+  "draft-create": "google.gmail.drafts",
+  "draft-replace": "google.gmail.drafts",
+  "draft-delete": "google.gmail.drafts",
+  archive: "google.gmail.manage",
+  unarchive: "google.gmail.manage",
+  trash: "google.gmail.manage",
+  untrash: "google.gmail.manage",
+  "mark-read": "google.gmail.manage",
+  "mark-unread": "google.gmail.manage",
+  star: "google.gmail.manage",
+  unstar: "google.gmail.manage"
+}
+
+const labelChanges: Readonly<Record<LabelKind, { readonly path: "modify" | "trash" | "untrash"; readonly label: string; readonly present: boolean }>> = {
+  archive: { path: "modify", label: "INBOX", present: false },
+  unarchive: { path: "modify", label: "INBOX", present: true },
+  trash: { path: "trash", label: "TRASH", present: true },
+  untrash: { path: "untrash", label: "TRASH", present: false },
+  "mark-read": { path: "modify", label: "UNREAD", present: false },
+  "mark-unread": { path: "modify", label: "UNREAD", present: true },
+  star: { path: "modify", label: "STARRED", present: true },
+  unstar: { path: "modify", label: "STARRED", present: false }
+}
+
+const rejectionCodes: Readonly<Record<RefusalCause, string>> = { NoRefusal: "refused", NotFoundAtProvider: "not_found", AuthorizationLost: "reauth_required", OtherRefusal: "refused" }
+
+schema LabelProposal { kind: "archive" | "unarchive" | "trash" | "untrash" | "mark-read" | "mark-unread" | "star" | "unstar"; messageId: string; expectedHistoryId: string }
+schema DraftDeleteProposal { kind: "draft-delete"; draftId: string; expectedDigest: string; confirmPermanentDelete: true }
+const ComposeExtras = Schema.Struct({
+  draftId: Schema.optionalKey(Schema.String),
+  expectedDigest: Schema.optionalKey(Schema.String),
+  forwardAttachments: Schema.optionalKey(Schema.Struct({ messageId: Schema.String, historyId: Schema.String, partIds: Schema.Array(Schema.String) }))
+})
+schema PrepareBody { grantId: string; requestId: string; proposal: Schema.Unknown }
+schema DispatchBody { grantId: string; reviewDigest: string; proposal: Schema.Unknown }
+const MessageReply = Schema.Struct({ id: Schema.String, threadId: Schema.optionalKey(Schema.String), labelIds: Schema.optionalKey(Schema.Array(Schema.String)), historyId: Schema.optionalKey(Schema.String) })
+const MessageList = Schema.Struct({ messages: Schema.optionalKey(Schema.Array(Schema.Struct({ id: Schema.String }))) })
+const DraftReply = Schema.Struct({ id: Schema.String, message: Schema.optionalKey(Schema.Struct({ id: Schema.optionalKey(Schema.String), raw: Schema.optionalKey(Schema.String) })) })
+const DraftMatches = Schema.Struct({ drafts: Schema.optionalKey(Schema.Array(DraftReply)), nextPageToken: Schema.optionalKey(Schema.String) })
+
+function decoded<A>(schema: Schema.Codec<A>, raw: unknown): A | undefined {
+  return Option.getOrUndefined(Schema.decodeUnknownOption(schema)(raw))
+}
+
+function senderOf(owner: Owner): SessionOwner {
+  return { agentId: owner.organizationId, actorId: owner.userId, connector: "gmail_operation" }
+}
+
+function operationRows(by: SessionOwner) {
+  return machineRows<Receipt, Event, Rejected, NotAState>("mail_operations", { initial, decodeState, apply: (state, event) => apply(state, event, by) })
+}
+
+function rowsFor(owner: Owner) {
+  return operationRows(senderOf(owner))
+}
+
+function rowKey(scope: Scope): string {
+  return [scope.owner.organizationId, scope.owner.userId, scope.grantId, scope.requestId].map(encodeURIComponent).join("/")
+}
+
+function targetKey(scope: Scope, target: Target): string {
+  return [scope.requestId, target.kind, target.id, ...(target.contentDigest === undefined ? [] : [target.contentDigest])].join("/")
+}
+
+function targetOf(receipt: Receipt): Target | undefined {
+  const [, kind, id, digest, ...extra] = receipt.providerKey.providerId.split("/")
+  if (id === undefined) return undefined
+  if (extra.length > 0 || (digest !== undefined && !digestPattern.test(digest))) return undefined
+  return kind === "message" || kind === "draft" || kind === "rfc822"
+    ? { kind, id, ...(digest === undefined ? {} : { contentDigest: digest }) } : undefined
+}
+
+function at(receipt: Receipt, now: number): Receipt {
+  return now > receipt.session.now ? elapse(receipt, now - receipt.session.now) : receipt
+}
+
+const toNow = (now: number) => (receipt: Receipt): Event | undefined => now > receipt.session.now ? { type: "elapse", elapsed: now - receipt.session.now } : undefined
+
+function wireState(receipt: Receipt): WireState {
+  const status = receiptStatus(receipt)
+  switch (status) {
+    case "StatusAbsent":
+    case "StatusPrepared": return "prepared"
+    case "StatusDispatched": return "dispatched"
+    case "StatusUnknown": return "outcome-unknown"
+    case "StatusSucceeded": return "succeeded"
+    case "StatusRejected": return "rejected"
+    default: {
+      const _exhaustive: never = status
+      return _exhaustive
+    }
+  }
+}
+
+function rejectionCode(receipt: Receipt): string | null {
+  if (receipt.settlement === "NotApplied") return "not_applied"
+  return receipt.settlement === "Refused" ? rejectionCodes[receipt.refusal] : null
+}
+
+function iso(millis: number): string | null {
+  return millis > 0 ? new Date(millis).toISOString() : null
+}
+
+function wireReceipt(scope: Scope, operation: Operation, now: number) {
+  const receipt = at(operation.receipt, now)
+  const state = wireState(receipt)
+  return {
+    requestId: scope.requestId,
+    kind: operation.kind,
+    reviewDigest: operation.reviewDigest,
+    state,
+    providerResult: state === "succeeded" ? operation.providerResult ?? {} : null,
+    rejectionCode: rejectionCode(receipt),
+    createdAt: iso(receipt.preparedAt) ?? "",
+    dispatchedAt: iso(receipt.claimedAt),
+    finishedAt: iso(receipt.settledAt)
+  }
+}
+
+function operationColumns(scope: Scope, kind: OperationKind, now: number, result: ProviderResult | null) {
+  return (receipt: Receipt): Columns => ({
+    organization_id: scope.owner.organizationId,
+    user_id: scope.owner.userId,
+    grant_id: scope.grantId,
+    request_id: scope.requestId,
+    kind,
+    review_digest: receipt.digest,
+    phase: wireState(receipt),
+    dispatched_at: receipt.claimedAt > 0 ? receipt.claimedAt : null,
+    updated_at: now,
+    ...(result === null || receipt.settlement !== "Succeeded" ? {} : { provider_result: JSON.stringify(result) })
+  })
+}
+
+effect function storedResult(stored: unknown) {
+  if (typeof stored !== "string") return stored !== null && typeof stored === "object" ? stored as ProviderResult : null
+  return Effect.try(() => JSON.parse(stored) as ProviderResult | null) catch () => null
+}
+
+effect function readOperation(tx: Tx, scope: Scope) {
+  const loaded = try loadRow(tx, rowsFor(scope.owner), rowKey(scope))
+  if (!loaded.found) return undefined
+  const row: Row | undefined = (try tx.query("SELECT kind, provider_result FROM mail_operations WHERE key = $1", [rowKey(scope)]))[0]
+  const kind = toText(row?.kind) as OperationKind | undefined
+  if (kind === undefined || !(kind in capabilityOf)) return undefined
+  return { receipt: loaded.state, kind, reviewDigest: loaded.state.digest, providerResult: try storedResult(row?.provider_result) } satisfies Operation
+}
+
+effect function advance(tx: Tx, scope: Scope, kind: OperationKind, events: ReadonlyArray<(receipt: Receipt) => Event | undefined>, now: number, result: ProviderResult | null = null) {
+  const rows = rowsFor(scope.owner)
+  let receipt = (try loadRow(tx, rows, rowKey(scope))).state
+  for (const next of events) {
+    const event = next(receipt)
+    if (event !== undefined) receipt = (try stepRow(tx, rows, rowKey(scope), event, operationColumns(scope, kind, now, result))).state
+  }
+  return { receipt, kind, reviewDigest: receipt.digest, providerResult: receipt.settlement === "Succeeded" ? result : null } satisfies Operation
+}
+
+effect function strict<A>(schema: Schema.Codec<A>, raw: unknown): A!Refused {
+  const value = Schema.decodeUnknownOption(schema, { onExcessProperty: "error" })(raw)
+  if (Option.isNone(value)) throw refused("InvalidRequest")
+  return value.value
+}
+
+function google(grant: Grant, method: "GET" | "POST" | "PUT" | "DELETE", path: string, body?: unknown) {
+  return googleJson(grant.accessToken, method, `${gmail}${path}`, body === undefined ? {} : { body })
+}
+
+function failedReply(failure: GoogleFailure): Outcome {
+  return { reply: failureReply(failure), result: null }
+}
+
+function messageResult(message: GmailMessage, readState: boolean) {
+  const labelIds = [...(message.labelIds ?? [])]
+  return {
+    messageId: message.id,
+    ...(message.threadId === undefined ? {} : { threadId: message.threadId }),
+    labelIds,
+    historyId: message.historyId ?? null,
+    ...(readState ? { unread: labelIds.includes("UNREAD") } : {})
+  }
+}
+
+effect function message(grant: Grant, id: string) {
+  const found = decoded(MessageReply, google(grant, "GET", `/messages/${id}?format=minimal`) catch () => undefined)
+  return found?.id === id ? found : undefined
+}
+
+effect function draftCopy(grant: Grant, draftId: string) {
+  const answer = google(grant, "GET", `/drafts/${draftId}?format=raw`) catch effect (failure) => { throw googleRefused(failure) }
+  const draft = decoded(DraftReply, answer)
+  if (draft === undefined || draft.id !== draftId || draft.message?.raw === undefined) throw refused("ProviderInvalidResponse")
+  return { id: draft.id, messageId: draft.message.id, raw: draft.message.raw }
+}
+
+effect function draftAt(grant: Grant, draftId: string | undefined, expectedDigest: string | undefined, fresh: boolean) {
+  if (draftId === undefined || expectedDigest === undefined || !providerId.test(draftId) || !digestPattern.test(expectedDigest)) throw refused("InvalidRequest")
+  if (fresh && sha256Hex((try draftCopy(grant, draftId)).raw) !== expectedDigest) throw refused("StaleRevision")
+  return draftId
+}
+
+effect function labelOperation(grant: Grant, raw: unknown, fresh: boolean) {
+  const proposal = try strict(LabelProposal, raw)
+  if (!providerId.test(proposal.messageId) || !historyId.test(proposal.expectedHistoryId)) throw refused("InvalidRequest")
+  if (fresh) try readAtHistory(grant, proposal.messageId, proposal.expectedHistoryId)
+  const change = labelChanges[proposal.kind]
+  const readState = change.label === "UNREAD"
+  const review = { kind: proposal.kind, messageId: proposal.messageId, expectedHistoryId: proposal.expectedHistoryId, from: grant.email }
+  const body = change.path !== "modify" ? undefined : change.present ? { addLabelIds: [change.label] } : { removeLabelIds: [change.label] }
+  const judged = (answer: unknown): Outcome => {
+    const changed = decoded(MessageReply, answer)
+    if (changed === undefined || changed.id !== proposal.messageId || (changed.labelIds ?? []).includes(change.label) !== change.present) return unclear
+    return { reply: { tag: "ShowsEffect" }, result: messageResult(changed, readState) }
+  }
+  return {
+    kind: proposal.kind,
+    digest: requestDigest(review),
+    review,
+    target: { kind: "message", id: proposal.messageId },
+    perform: effect {
+      return Effect.map(google(grant, "POST", `/messages/${proposal.messageId}/${change.path}`, body), judged) catch (failure) => failedReply(failure)
+    }
+  } satisfies Reviewed
+}
+
+effect function draftGone(grant: Grant, draftId: string) {
+  return Effect.as(google(grant, "GET", `/drafts/${draftId}?format=minimal`), false) catch (failure) => failure._tag === "NotFound"
+}
+
+effect function deleteDraftOperation(grant: Grant, raw: unknown, fresh: boolean) {
+  const proposal = try strict(DraftDeleteProposal, raw)
+  const draftId = try draftAt(grant, proposal.draftId, proposal.expectedDigest, fresh)
+  const review = { kind: "draft-delete", draftId, expectedDigest: proposal.expectedDigest, from: grant.email, permanent: true }
+  const deleted: Outcome = { reply: { tag: "ShowsEffect" }, result: { draftId, deleted: true } }
+  return {
+    kind: "draft-delete",
+    digest: requestDigest(review),
+    review,
+    target: { kind: "draft", id: draftId },
+    perform: effect {
+      const refusal = Effect.as(google(grant, "DELETE", `/drafts/${draftId}`), undefined) catch (failure) => failure._tag === "InvalidResponse" ? undefined : failedReply(failure)
+      if (refusal !== undefined) return refusal
+      return (try draftGone(grant, draftId)) ? deleted : unclear
+    }
+  } satisfies Reviewed
+}
+
+effect function forwardedParts(grant: Grant, raw: unknown) {
+  const source = decoded(ComposeExtras, raw)?.forwardAttachments
+  if (source === undefined) return undefined
+  if (!providerId.test(source.messageId) || !historyId.test(source.historyId) || source.partIds.length === 0 || new Set(source.partIds).size !== source.partIds.length || !source.partIds.every((part) => partIdPattern.test(part))) {
+    throw refused("InvalidRequest")
+  }
+  try readAtHistory(grant, source.messageId, source.historyId)
+  const parts = []
+  for (const partId of source.partIds) parts.push({ partId, ...(try attachmentBytes(grant, source.messageId, partId, source.historyId)) })
+  return { messageId: source.messageId, historyId: source.historyId, parts }
+}
+
+export function rfc822Id(requestId: string): string {
+  return `eliza-${requestId.toLowerCase()}@message.invalid`
+}
+
+effect function composeOperation(grant: Grant, kind: ComposeKind, raw: unknown, requestId: string, fresh: boolean) {
+  const extras = decoded(ComposeExtras, raw)
+  if (kind !== "draft-replace" && (extras?.draftId !== undefined || extras?.expectedDigest !== undefined)) throw refused("InvalidRequest")
+  const replacing = kind === "draft-replace" ? try draftAt(grant, extras?.draftId, extras?.expectedDigest, fresh) : undefined
+  const forwarded = try forwardedParts(grant, raw)
+  const composed = try composeMessage(raw, { from: grant.email, requestId, grant, forwarded })
+  const mime = { raw: composed.raw, ...(composed.threadId === undefined ? {} : { threadId: composed.threadId }) }
+  const sentJudged = (answer: unknown): Outcome => {
+    const sent = decoded(MessageReply, answer)
+    if (sent === undefined || !providerId.test(sent.id) || !(sent.labelIds ?? []).includes("SENT")) return unclear
+    return { reply: { tag: "ShowsEffect" }, result: messageResult(sent, false) }
+  }
+  const draftJudged = effect (answer: unknown) => {
+    const draft = decoded(DraftReply, answer)
+    if (draft === undefined || !providerId.test(draft.id) || (replacing !== undefined && draft.id !== replacing)) return unclear
+    const stored = draftCopy(grant, draft.id) catch () => undefined
+    if (stored === undefined || stored.raw !== composed.raw) return unclear
+    return { reply: { tag: "ShowsEffect" }, result: { draftId: draft.id, messageId: stored.messageId ?? draft.message?.id ?? null, providerDigest: sha256Hex(stored.raw) } } satisfies Outcome
+  }
+  const perform = effect {
+    const delivery = kind === "send"
+      ? Effect.map(google(grant, "POST", "/messages/send", mime), sentJudged)
+      : Effect.flatMap(kind === "draft-create" ? google(grant, "POST", "/drafts", { message: mime }) : google(grant, "PUT", `/drafts/${replacing}`, { id: replacing, message: mime }), draftJudged)
+    return delivery catch (failure) => failedReply(failure)
+  }
+  return {
+    kind,
+    digest: requestDigest(composed.digestInput),
+    review: composed.review,
+    target: kind === "send" ? { kind: "rfc822", id: rfc822Id(requestId) }
+      : { kind: replacing === undefined ? "rfc822" : "draft", id: replacing ?? rfc822Id(requestId), contentDigest: sha256Hex(composed.raw) },
+    perform
+  } satisfies Reviewed
+}
+
+function kindOf(raw: unknown): OperationKind | undefined {
+  const kind = raw !== null && typeof raw === "object" && "kind" in raw ? raw.kind : undefined
+  return typeof kind === "string" && kind in capabilityOf ? kind as OperationKind : undefined
+}
+
+effect function reviewProposal(owner: Owner, grantId: string, raw: unknown, requestId: string, fresh: boolean) {
+  const kind = kindOf(raw)
+  if (kind === undefined) throw refused("InvalidRequest")
+  const grant: Grant = try useGrant(owner, grantId, capabilityOf[kind])
+  switch (kind) {
+    case "send":
+    case "draft-create":
+    case "draft-replace": return try composeOperation(grant, kind, raw, requestId, fresh)
+    case "draft-delete": return try deleteDraftOperation(grant, raw, fresh)
+    case "archive":
+    case "unarchive":
+    case "trash":
+    case "untrash":
+    case "mark-read":
+    case "mark-unread":
+    case "star":
+    case "unstar": return try labelOperation(grant, raw, fresh)
+    default: {
+      const _exhaustive: never = kind
+      return _exhaustive
+    }
+  }
+}
+
+effect function lookupDraftCopy(grant: Grant, target: Target) {
+  if (target.contentDigest === undefined) return nothingSeen
+  let draftId = target.id
+  let indicatedMessage: string | undefined
+  if (target.kind === "rfc822") {
+    const query = new URLSearchParams({ q: `rfc822msgid:${target.id}`, maxResults: "2" })
+    const matches = decoded(DraftMatches, google(grant, "GET", `/drafts?${query}`) catch () => undefined)
+    const only = matches?.drafts?.[0]
+    if (matches?.drafts?.length !== 1 || matches.nextPageToken !== undefined || only?.message?.id === undefined) return nothingSeen
+    draftId = only.id
+    indicatedMessage = only.message.id
+  }
+  if (!providerId.test(draftId)) return nothingSeen
+  const found = draftCopy(grant, draftId) catch () => undefined
+  if (found?.messageId === undefined || !providerId.test(found.messageId) || (indicatedMessage !== undefined && found.messageId !== indicatedMessage)) return nothingSeen
+  const providerDigest = sha256Hex(found.raw)
+  return draftBytesMatch(target.contentDigest, providerDigest) ? effectSeen({ draftId, messageId: found.messageId, providerDigest }) : nothingSeen
+}
+
+effect function lookupSeen(scope: Scope, kind: OperationKind, target: Target) {
+  const grant: Grant | undefined = useGrant(scope.owner, scope.grantId, capabilityOf[kind]) catch () => undefined
+  if (grant === undefined) return nothingSeen
+  switch (target.kind) {
+    case "message": {
+      const change = kind in labelChanges ? labelChanges[kind as LabelKind] : undefined
+      const found = try message(grant, target.id)
+      if (change === undefined || found === undefined || (found.labelIds ?? []).includes(change.label) !== change.present) return nothingSeen
+      return effectSeen(messageResult(found, change.label === "UNREAD"))
+    }
+    case "draft": {
+      if (kind === "draft-replace") return try lookupDraftCopy(grant, target)
+      if (kind !== "draft-delete") return nothingSeen
+      return (try draftGone(grant, target.id)) ? effectSeen({ draftId: target.id, deleted: true }) : nothingSeen
+    }
+    case "rfc822": {
+      if (kind === "draft-create") return try lookupDraftCopy(grant, target)
+      if (kind !== "send") return nothingSeen
+      const query = new URLSearchParams({ q: `rfc822msgid:${target.id}`, includeSpamTrash: "true" })
+      const list = decoded(MessageList, google(grant, "GET", `/messages?${query}`) catch () => undefined)
+      for (const { id } of list?.messages ?? []) {
+        const found = try message(grant, id)
+        if (found !== undefined && (found.labelIds ?? []).includes("SENT")) return effectSeen(messageResult(found, false))
+      }
+      return nothingSeen
+    }
+    default: {
+      const _exhaustive: never = target
+      return _exhaustive
+    }
+  }
+}
+
+effect function scopeOf(context: RouteContext, grantId: string, requestId: string): Scope!Refused {
+  const owner = ownerOf(context.caller)
+  if (owner === undefined) throw refused("AuthenticationRequired")
+  if (!requestIdPattern.test(requestId) || grantId.length === 0 || grantId.length > 128) throw refused("InvalidRequest")
+  return { owner, grantId, requestId: requestId.toLowerCase() }
+}
+
+function answer(scope: Scope, operation: Operation, now: number, review?: unknown) {
+  return json({ version: 1, receipt: wireReceipt(scope, operation, now), ...(review === undefined ? {} : { review }), providerExactlyOnce: false })
+}
+
+effect function prepareRoute(context: RouteContext) {
+  const body = try jsonBody(context, PrepareBody)
+  const scope = try scopeOf(context, body.grantId, body.requestId)
+  const store = try Store
+  const earlier = try store.transaction((tx) => readOperation(tx, scope))
+  const reviewed = try reviewProposal(scope.owner, scope.grantId, body.proposal, scope.requestId, earlier === undefined)
+  const now = try Clock.currentTimeMillis
+  const operation = try store.transaction(effect (tx: Tx) => {
+    const current = try readOperation(tx, scope)
+    if (current !== undefined) {
+      if (current.kind !== reviewed.kind || current.reviewDigest !== reviewed.digest) throw refused("IdempotencyConflict")
+      return current
+    }
+    const prepare = (): Event => ({ type: "prepare", digest: reviewed.digest, providerKey: { providerKind: "GmailOperation", providerId: targetKey(scope, reviewed.target) }, staleAfter, expiresAt: now + preparedFor })
+    return try advance(tx, scope, reviewed.kind, [toNow(now), prepare], now)
+  })
+  return answer(scope, operation, now, reviewed.review)
+}
+
+function lateLookup(reply: ProviderReply): LookupResult | undefined {
+  switch (reply.tag) {
+    case "ShowsEffect": return { tag: "EffectSeen" }
+    case "DefiniteRefusal": return { tag: "RefusalSeen", cause: reply.cause }
+    case "Unclear": return undefined
+    default: {
+      const _exhaustive: never = reply
+      return _exhaustive
+    }
+  }
+}
+
+effect function dispatchRoute(context: RouteContext) {
+  const body = try jsonBody(context, DispatchBody)
+  const scope = try scopeOf(context, body.grantId, context.params.requestId ?? "")
+  if (!digestPattern.test(body.reviewDigest)) throw refused("InvalidRequest")
+  const store = try Store
+  const existing = try store.transaction((tx) => readOperation(tx, scope))
+  if (existing === undefined) throw refused("NotFound")
+  if (existing.reviewDigest !== body.reviewDigest) throw refused("StaleRevision")
+  if (wireState(at(existing.receipt, context.now)) !== "prepared") return answer(scope, existing, context.now)
+  const reviewed: Reviewed = try reviewProposal(scope.owner, scope.grantId, body.proposal, scope.requestId, true)
+  const preparedBytes = targetOf(existing.receipt)?.contentDigest
+  if (reviewed.digest !== body.reviewDigest || reviewed.kind !== existing.kind ||
+    (preparedBytes !== undefined && preparedBytes !== reviewed.target.contentDigest)) throw refused("StaleRevision")
+  const claimedAt = try Clock.currentTimeMillis
+  const claimed = try store.transaction(effect (tx: Tx) => {
+    const current = try readOperation(tx, scope)
+    if (current === undefined || wireState(at(current.receipt, claimedAt)) !== "prepared") return { won: false, operation: current ?? existing }
+    const operation = try advance(tx, scope, current.kind, [toNow(claimedAt), () => ({ type: "claim" }), (receipt) => ({ type: "send", claimToken: receipt.session.currentClaim })], claimedAt)
+    return { won: true, operation }
+  })
+  if (!claimed.won) return answer(scope, claimed.operation, claimedAt)
+  const outcome = try reviewed.perform
+  const settledAt = try Clock.currentTimeMillis
+  const operation = try store.transaction((tx) => advance(tx, scope, existing.kind, [
+    toNow(settledAt),
+    (receipt) => canReceiveReply(receipt, outcome.reply) ? { type: "receiveReply", reply: outcome.reply } : undefined,
+    (receipt) => {
+      const lookup = lateLookup(outcome.reply)
+      return lookup !== undefined && canResolve(receipt, lookup) ? { type: "resolve", lookup } : undefined
+    }
+  ], settledAt, outcome.result))
+  if (operation.receipt.settlement === "Unsettled") try annotateLogs(logWarning("a Gmail change has an unknown outcome until it is looked up"), { requestId: scope.requestId, kind: existing.kind })
+  return answer(scope, operation, settledAt)
+}
+
+effect function lookupOperation(scope: Scope, now: number) {
+  const store = try Store
+  const existing = try store.transaction((tx) => readOperation(tx, scope))
+  if (existing === undefined) throw refused("NotFound")
+  const viewed = at(existing.receipt, now)
+  const target = targetOf(viewed)
+  if (!isUnknown(viewed) || viewed.session.effects !== 1 || target === undefined) {
+    if (wireState(viewed) === wireState(existing.receipt)) return existing
+    return try store.transaction((tx) => advance(tx, scope, existing.kind, [toNow(now)], now, existing.providerResult))
+  }
+  const seen = try lookupSeen(scope, existing.kind, target)
+  return try store.transaction((tx) => advance(tx, scope, existing.kind, [
+    toNow(now),
+    (receipt) => canResolve(receipt, seen.lookup) ? { type: "resolve", lookup: seen.lookup } : undefined
+  ], now, seen.result))
+}
+
+effect function lookupRoute(context: RouteContext) {
+  const scope = try scopeOf(context, context.query.get("grantId") ?? "", context.params.requestId ?? "")
+  return answer(scope, try lookupOperation(scope, context.now), context.now)
+}
+
+const sweepBatch = 100
+
+effect function sweepStaleOperations(): number!!Store {
+  const store = try Store
+  const now = try Clock.currentTimeMillis
+  const stale = store.transaction((tx) => tx.query(
+    "SELECT organization_id, user_id, grant_id, request_id FROM mail_operations WHERE phase = 'dispatched' AND dispatched_at <= $1 ORDER BY dispatched_at LIMIT $2",
+    [now - staleAfter, sweepBatch]
+  )) catch () => []
+  let swept = 0
+  for (const row of stale) {
+    const scope: Scope = { owner: { organizationId: toText(row.organization_id) ?? "", userId: toText(row.user_id) ?? "" }, grantId: toText(row.grant_id) ?? "", requestId: toText(row.request_id) ?? "" }
+    const done = store.transaction(effect (tx: Tx) => {
+      const claimed = try tx.query("SELECT key FROM mail_operations WHERE key = $1 AND phase = 'dispatched' FOR UPDATE SKIP LOCKED", [rowKey(scope)])
+      const current = claimed.length === 0 ? undefined : try readOperation(tx, scope)
+      if (current === undefined) return false
+      try advance(tx, scope, current.kind, [toNow(now)], now, current.providerResult)
+      return true
+    }) catch effect (failure) => {
+      try annotateLogs(logError("a mail operation sweep could not mark a stale dispatch"), { requestId: scope.requestId, failure: failure._tag })
+      return false
+    }
+    if (done) swept += 1
+  }
+  return swept
+}
+
+const operations = "/api/v1/eliza/google/gmail/inbox-v1/operations"
+
+export const mailOperationRoutes: ReadonlyArray<Route> = [
+  { method: "POST", path: operations, auth: "SignedSession", area: "GoogleRoutes", maxBodyBytes: maxProposalBytes, handler: prepareRoute },
+  { method: "POST", path: `${operations}/:requestId/dispatch`, auth: "SignedSession", area: "GoogleRoutes", maxBodyBytes: maxProposalBytes, handler: dispatchRoute },
+  { method: "GET", path: `${operations}/:requestId`, auth: "SignedSession", area: "GoogleRoutes", handler: lookupRoute }
+]
+
+export const mailOperationSweeps: ReadonlyArray<Sweep> = [
+  { name: "mail operations past their stale time", everyMs: 60 * millisPerSecond, run: sweepStaleOperations() }
+]

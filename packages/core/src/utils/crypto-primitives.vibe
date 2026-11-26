@@ -1,0 +1,138 @@
+// spec/core/settingsKeys.md, "Story: Keep persisted settings decryptable under the selected key"; spec/core/settingsKeys.md, "Recognized ciphertext fails explicitly when authentication or decryption fails"; spec/core/protocols.md, "Story: Share canonical values across hosts and plugins"
+export interface SecretCipher {
+  encryptAes256Gcm(key: Uint8Array, iv: Uint8Array, plaintext: Uint8Array, aad: Uint8Array): { ciphertext: Uint8Array; tag: Uint8Array }
+  decryptAes256Gcm(key: Uint8Array, iv: Uint8Array, ciphertext: Uint8Array, tag: Uint8Array, aad: Uint8Array): Uint8Array
+  decryptAes256Cbc(key: Uint8Array, iv: Uint8Array, ciphertext: Uint8Array): Uint8Array
+}
+
+module platform {
+  import { sha1 } from "@noble/hashes/legacy.js"
+  import { sha256 } from "@noble/hashes/sha2.js"
+  import type { SecretCipher } from "./crypto-primitives.vibe"
+
+  interface NodeCipherModule {
+    createCipheriv(algorithm: string, key: Uint8Array, iv: Uint8Array, options?: { authTagLength: number }): {
+      setAAD(aad: Uint8Array): unknown
+      update(data: Uint8Array): Uint8Array
+      final(): Uint8Array
+      getAuthTag(): Uint8Array
+    }
+    createDecipheriv(algorithm: string, key: Uint8Array, iv: Uint8Array, options?: { authTagLength: number }): {
+      setAAD(aad: Uint8Array): unknown
+      setAuthTag(tag: Uint8Array): unknown
+      update(data: Uint8Array): Uint8Array
+      final(): Uint8Array
+    }
+  }
+
+  export class SecretCipherUnavailableError extends Error {
+    constructor() {
+      super("No AES cipher is installed on this host, so secret settings and the pseudonym map cannot be encrypted or decrypted: run on Node, import @elizaos/core-node, or register one with registerSecretCipher")
+      this.name = "SecretCipherUnavailableError"
+    }
+  }
+
+  const utf8 = new TextEncoder()
+
+  /** @throws {never} */
+  function bytesOf(input: string | Uint8Array): Uint8Array {
+    return typeof input === "string" ? utf8.encode(input) : input
+  }
+
+  /** @throws {never} */
+  function joined(head: Uint8Array, tail: Uint8Array): Uint8Array {
+    const out = new Uint8Array(head.length + tail.length)
+    out.set(head, 0)
+    out.set(tail, head.length)
+    return out
+  }
+
+  /** @throws {never} */
+  export function sha1Digest(input: string | Uint8Array): Uint8Array {
+    return sha1(bytesOf(input))
+  }
+
+  /** @throws {never} */
+  export function sha256Digest(input: string | Uint8Array): Uint8Array {
+    return sha256(bytesOf(input))
+  }
+
+  /** @throws {never} */
+  export function sha256HexDigest(input: string | Uint8Array): string {
+    let hex = ""
+    for (const byte of sha256(bytesOf(input))) hex += byte.toString(16).padStart(2, "0")
+    return hex
+  }
+
+  const AES_256_KEY_BYTES = 32
+  const GCM_IV_BYTES = 12
+  const GCM_TAG_BYTES = 16
+  const CBC_IV_BYTES = 16
+
+  /** @throws {RangeError} */
+  function requireLength(label: string, bytes: Uint8Array, expected: number): void {
+    if (bytes.length !== expected) throw new RangeError(`Invalid ${label} length: ${bytes.length} bytes. Expected ${expected} bytes.`)
+  }
+
+  /** @throws {never} */
+  export function nodeSecretCipher(source: unknown): SecretCipher | undefined {
+    const candidate = source as Partial<NodeCipherModule> | null | undefined
+    if (typeof candidate?.createCipheriv !== "function" || typeof candidate.createDecipheriv !== "function") return undefined
+    const nodeCrypto = candidate as NodeCipherModule
+    return {
+      /** @throws {Error} */
+      encryptAes256Gcm(key: Uint8Array, iv: Uint8Array, plaintext: Uint8Array, aad: Uint8Array) {
+        requireLength("AES-256 key", key, AES_256_KEY_BYTES)
+        requireLength("AES-GCM IV", iv, GCM_IV_BYTES)
+        const cipher = nodeCrypto.createCipheriv("aes-256-gcm", key, iv, { authTagLength: GCM_TAG_BYTES })
+        cipher.setAAD(aad)
+        const ciphertext = joined(cipher.update(plaintext), cipher.final())
+        return { ciphertext, tag: Uint8Array.from(cipher.getAuthTag()) }
+      },
+      /** @throws {Error} */
+      decryptAes256Gcm(key: Uint8Array, iv: Uint8Array, ciphertext: Uint8Array, tag: Uint8Array, aad: Uint8Array) {
+        requireLength("AES-256 key", key, AES_256_KEY_BYTES)
+        requireLength("AES-GCM IV", iv, GCM_IV_BYTES)
+        requireLength("AES-GCM tag", tag, GCM_TAG_BYTES)
+        const decipher = nodeCrypto.createDecipheriv("aes-256-gcm", key, iv, { authTagLength: GCM_TAG_BYTES })
+        decipher.setAAD(aad)
+        decipher.setAuthTag(tag)
+        return joined(decipher.update(ciphertext), decipher.final())
+      },
+      /** @throws {Error} */
+      decryptAes256Cbc(key: Uint8Array, iv: Uint8Array, ciphertext: Uint8Array) {
+        requireLength("AES-256 key", key, AES_256_KEY_BYTES)
+        requireLength("AES-CBC IV", iv, CBC_IV_BYTES)
+        const decipher = nodeCrypto.createDecipheriv("aes-256-cbc", key, iv)
+        return joined(decipher.update(ciphertext), decipher.final())
+      },
+    }
+  }
+
+  /** @throws {never} */
+  function secretCipherFor(host: unknown): SecretCipher | undefined {
+    const runtime = (host as { process?: { getBuiltinModule?: (id: string) => unknown } } | null | undefined)?.process
+    let builtin: unknown
+    try {
+      builtin = typeof runtime?.getBuiltinModule === "function" ? runtime.getBuiltinModule("node:crypto") : undefined
+    } catch {
+      builtin = undefined
+    }
+    return nodeSecretCipher(builtin)
+  }
+
+  let activeCipher: SecretCipher | undefined = secretCipherFor(globalThis)
+
+  /** @throws {never} */
+  export function registerSecretCipher(cipher: SecretCipher | undefined): void {
+    activeCipher = cipher
+  }
+
+  /** @throws {SecretCipherUnavailableError} */
+  export function installedSecretCipher(): SecretCipher {
+    if (activeCipher === undefined) throw new SecretCipherUnavailableError()
+    return activeCipher
+  }
+}
+import { installedSecretCipher, nodeSecretCipher, registerSecretCipher, SecretCipherUnavailableError, sha1Digest, sha256Digest, sha256HexDigest } from platform
+export { installedSecretCipher, nodeSecretCipher, registerSecretCipher, SecretCipherUnavailableError, sha1Digest, sha256Digest, sha256HexDigest }

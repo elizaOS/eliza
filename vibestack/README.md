@@ -222,7 +222,7 @@ it separately ([`shell` skill](../.agents/skills/shell/SKILL.md)).
 | HTTP, storage and other I/O | `src/*.vibe` | the [`shell` skill](../.agents/skills/shell/SKILL.md) |
 | The interface: components that read the state and send events through hooks over `Machine` | `src/*.tsx`, on `@repo/ui` and the design tokens | the [`design` skill](../.agents/skills/design/SKILL.md) |
 | Logic Quint cannot express, such as a loop | `src/*.ts` with `//@` contracts | the [`prove` skill](../.agents/skills/prove/SKILL.md) |
-| Whole-journey tests | `test/*.test.{vibe,tsx}` | [AGENTS.md, "Tests"](../AGENTS.md#tests) |
+| Whole-journey tests | `test/**/*.test.{ts,tsx,vibe}` | [AGENTS.md, "Tests"](../AGENTS.md#tests) |
 | A driver, when the shell keeps the machine's state itself, through which `check` compares the application with the spec | `test/drivers/<name>.ts` | [SPEC.md, "Conformance"](../SPEC.md#conformance) |
 
 Keep pure logic in the spec wherever Quint can express it. When the spec
@@ -319,7 +319,7 @@ current one. Installed as a package, use `pnpm exec spec <command> [<dir>]`.
 | `pnpm new [<path>]` | Fills an empty root index or creates a child [starter spec](../SPEC.md#writing-a-spec) |
 | `node vibestack/spec.ts init [<dir>]` | Sets up an existing project ([above](#using-it-from-another-package)) |
 | `pnpm demo` | Runs the order example's scripted checkout session |
-| `pnpm selftest` | Breaks the pipeline one way at a time and checks each break is caught, checks what the documents name, and installs and checks every example, as three cached tasks |
+| `pnpm selftest` | Breaks the pipeline one way at a time and checks each break is caught, checks what the documents name, and installs and checks every example, as five cached tasks |
 | `pnpm build` | Compiles the tools into `dist/`, the packaged `spec` command |
 
 | Exit code | Means |

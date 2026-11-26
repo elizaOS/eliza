@@ -1,10 +1,9 @@
 // spec/core/asyncContext.md, "Story: Keep concurrent turn context isolated"; spec/core/asyncContext.md, "A continuation owns its current context and restoration stack"; spec/core/asyncContext.md, "Scope restoration and peer isolation are exact for every context value"
-
-module node {
-  import { AsyncLocalStorage } from "node:async_hooks"
+module platform {
+  import { createAsyncContextStorage, type AsyncContextStorage } from "./async-context-storage.vibe"
 
   export class AsyncContextManager<TContext> {
-    private readonly storage = new AsyncLocalStorage<TContext>()
+    private readonly storage: AsyncContextStorage<TContext> = createAsyncContextStorage<TContext>()
     /** @throws {never} */
     run<T>(context: TContext, fn: () => T): T {
       return this.storage.run(context, fn)
@@ -15,5 +14,5 @@ module node {
     }
   }
 }
-import { AsyncContextManager } from node
+import { AsyncContextManager } from platform
 export { AsyncContextManager }

@@ -1,0 +1,224 @@
+// spec/cloud/identity/deletion.md, "Each provider call of a step is one receipt of that step's kind, owned by the account, under a provider key never used before"; spec/cloud/identity/deletion.md, "A step is finished when its call took effect, the provider no longer holds the thing, or nothing was left to do"
+import { providerTimeout as stripeTimeout } from "../billing/commands.vibe"
+import { openLegacyRefreshToken, type LegacyGoogleCustody } from "../google.vibe"
+import { Deployment } from "@elizaos/cloud"
+import { openTokens, refreshAccess, refreshWith, revokeToken, type GoogleContext, type GoogleFailure } from "../providers/google.vibe"
+import { cancelSubscriptionNow, listSubscriptions, providerReply, retrieveSubscription, StripeInvalidResponse, type StripeContext, type StripeFailure, type StripeRead, type StripeSubscription } from "../providers/stripe.vibe"
+import type { LookupResult, ProviderReply } from "../shared/dispatch-once.vibe"
+import { toText, type StoreFailure, type Tx } from "../store/connection.vibe"
+import { RowCorrupt } from "../store/rows.vibe"
+
+const StripeCustomerId = Schema.String.check(Schema.isPattern(/^cus_[A-Za-z0-9_]+$/))
+const StripeSubscriptionId = Schema.String.check(Schema.isPattern(/^sub_[A-Za-z0-9_]+$/))
+const ConnectionKey = Schema.String.check(Schema.isMinLength(1))
+
+const BillingTargetSchema = Schema.Struct({
+  kind: Schema.Literal("stripe"), customerId: StripeCustomerId, subscriptionId: StripeSubscriptionId
+})
+export type BillingTarget = typeof BillingTargetSchema.Type
+
+const LayeredTarget = Schema.Struct({ kind: Schema.Literal("google-layered"), key: ConnectionKey })
+const LegacyTarget = Schema.Struct({ kind: Schema.Literal("google-worker"), key: ConnectionKey })
+const GoogleTargetSchema = Schema.Union([LayeredTarget, LegacyTarget])
+export type GoogleTarget = typeof GoogleTargetSchema.Type
+
+export const ProviderTargetSchema = Schema.Union([BillingTargetSchema, GoogleTargetSchema])
+export type ProviderTarget = typeof ProviderTargetSchema.Type
+
+const LegacyCustody = Schema.Struct({
+  account_id: ConnectionKey, subject: ConnectionKey, refresh_cipher: ConnectionKey,
+  mail: Schema.Boolean, calendar: Schema.Boolean, send_mail: Schema.Boolean, trash_mail: Schema.Boolean, write_calendar: Schema.Boolean
+})
+
+export interface BillingSource {
+  readonly customerId: string
+  readonly subscriptionId: string | null
+  readonly workerSessionId?: string
+}
+
+type GoogleConnection =
+  | { readonly kind: "layered"; readonly sealed: string }
+  | { readonly kind: "worker"; readonly custody: LegacyGoogleCustody }
+
+const notFound: ProviderReply<LookupResult> = { kind: "applied", value: { tag: "RefusalSeen", cause: "NotFoundAtProvider" } }
+const missingGoogle: ProviderReply<never> = { kind: "unknown", cause: "the recorded Google connection is unavailable" }
+
+export effect function billingAuthority(tx: Tx, userId: string, organizationId: string) {
+  try tx.query("SELECT id FROM organizations WHERE id = $1 FOR UPDATE", [organizationId])
+  const row = (try tx.query("SELECT status FROM accounts WHERE key = $1 AND organization_id = $2", [userId, organizationId]))[0]
+  if (row?.status !== "deleting") throw new RowCorrupt({ table: "deletion_requests", key: userId, cause: "billing needs the deleting account's organization" })
+}
+
+export effect function billingSourceOf(tx: Tx, organizationId: string) {
+  const row = (try tx.query(`SELECT s.provider_subscription_id, s.customer_id AS subscription_customer, c.customer_id AS checkout_customer, c.checkout_id
+    FROM organizations o LEFT JOIN subscriptions s ON s.key = o.id LEFT JOIN cloud_checkout_customers c ON c.organization_id = o.id WHERE o.id = $1`, [organizationId]))[0]
+  const subscriptionId = toText(row?.provider_subscription_id)
+  const subscribedCustomer = toText(row?.subscription_customer)
+  const checkoutCustomer = toText(row?.checkout_customer)
+  const customerId = subscribedCustomer ?? checkoutCustomer
+  if (customerId === undefined && subscriptionId === undefined) return undefined
+  if (customerId === undefined || (subscribedCustomer !== undefined && checkoutCustomer !== undefined && subscribedCustomer !== checkoutCustomer))
+    throw new RowCorrupt({ table: "subscriptions", key: organizationId, cause: "the Stripe customer binding is missing or inconsistent" })
+  const customer = Schema.decodeUnknownOption(StripeCustomerId)(customerId)
+  if (Option.isNone(customer) || (subscriptionId !== undefined && Option.isNone(Schema.decodeUnknownOption(StripeSubscriptionId)(subscriptionId))))
+    throw new RowCorrupt({ table: "subscriptions", key: organizationId, cause: "the Stripe billing identifiers are invalid" })
+  return { customerId, subscriptionId: subscriptionId ?? null, workerSessionId: toText(row?.checkout_id) } satisfies BillingSource
+}
+
+function stillLive(subscription: StripeSubscription): boolean {
+  return subscription.status !== "canceled" && subscription.status !== "incomplete_expired"
+}
+
+effect function matchesStripe(subscription: StripeSubscription, customerId: string, subscriptionId: string) {
+  const liveMode = (try Deployment).environment === "production"
+  if (Option.isNone(Schema.decodeUnknownOption(StripeSubscriptionId)(subscriptionId)) ||
+    subscription.id !== subscriptionId || subscription.customer !== customerId || subscription.livemode !== liveMode)
+    throw new StripeInvalidResponse({ path: "/v1/subscriptions", status: 200 })
+}
+
+export effect function identifyBilling(source: BillingSource): (BillingTarget | undefined)!StripeFailure!StripeContext {
+  const read: StripeRead = { timeout: stripeTimeout }
+  if (source.subscriptionId !== null) {
+    const subscription = retrieveSubscription(source.subscriptionId, read) catch effect (failure) => {
+      if (failure._tag === "StripeRefused" && (failure.status === 404 || failure.code === "resource_missing")) return undefined
+      throw failure
+    }
+    if (subscription === undefined) return undefined
+    try matchesStripe(subscription, source.customerId, source.subscriptionId)
+    return stillLive(subscription) ? { kind: "stripe", customerId: source.customerId, subscriptionId: source.subscriptionId } : undefined
+  }
+  const matches = try listSubscriptions(source.customerId, read)
+  for (const match of matches) try matchesStripe(match, source.customerId, match.id)
+  const live = matches.filter(stillLive)
+  if (live.length > 1) throw new StripeInvalidResponse({ path: "/v1/subscriptions", status: 200 })
+  return live[0] === undefined ? undefined : { kind: "stripe", customerId: source.customerId, subscriptionId: live[0].id }
+}
+
+export effect function checkoutBilling(source: BillingSource | undefined, subscriptionIds: ReadonlyArray<string>) {
+  if (source === undefined) return undefined
+  let active: BillingTarget | undefined
+  for (const subscriptionId of subscriptionIds) {
+    const found = try identifyBilling({ ...source, subscriptionId })
+    if (found === undefined) continue
+    if (active !== undefined) throw new StripeInvalidResponse({ path: "/v1/subscriptions", status: 200 })
+    active = found
+  }
+  return active
+}
+
+export effect function cancelBilling(target: BillingTarget, deadline: number) {
+  const now = try Clock.currentTimeMillis
+  return try providerReply(effect {
+    const read = { timeout: Math.max(1, deadline - now) }
+    const current = try retrieveSubscription(target.subscriptionId, read)
+    try matchesStripe(current, target.customerId, target.subscriptionId)
+    if (stillLive(current)) {
+      const canceled = try cancelSubscriptionNow(target.subscriptionId, read)
+      try matchesStripe(canceled, target.customerId, target.subscriptionId)
+      if (stillLive(canceled)) throw new StripeInvalidResponse({ path: "/v1/subscriptions", status: 200 })
+    }
+  })
+}
+
+export effect function lookUpBilling(target: BillingTarget): ProviderReply<LookupResult>!!StripeContext {
+  const reply = try providerReply<LookupResult, StripeContext>(effect {
+    const subscription = try retrieveSubscription(target.subscriptionId, { timeout: stripeTimeout })
+    try matchesStripe(subscription, target.customerId, target.subscriptionId)
+    return stillLive(subscription) ? { tag: "NothingSeen" } : { tag: "EffectSeen" }
+  })
+  if (reply.kind !== "refused") return reply
+  return reply.code === "NotFoundAtProvider" ? notFound : { kind: "unknown", cause: reply.code }
+}
+
+export effect function googleTargetOf(tx: Tx, organizationId: string, userId: string) {
+  const layered = toText((try tx.query("SELECT key FROM google_connections WHERE organization_id = $1 AND user_id = $2 AND tokens IS NOT NULL ORDER BY key LIMIT 1", [organizationId, userId]))[0]?.key)
+  if (layered !== undefined) return { kind: "google-layered", key: layered } satisfies GoogleTarget
+  const worker = toText((try tx.query(
+    "SELECT g.id::text AS key FROM cloud_google_connections g JOIN accounts a ON a.key=g.account_id WHERE g.account_id=$1 AND a.organization_id=$2",
+    [userId, organizationId]
+  ))[0]?.key)
+  return worker === undefined ? undefined : { kind: "google-worker", key: worker } satisfies GoogleTarget
+}
+
+export effect function removeGoogle(tx: Tx, organizationId: string, userId: string, target: GoogleTarget) {
+  if (target.kind === "google-layered") {
+    try tx.query("DELETE FROM google_connections WHERE key = $1 AND user_id = $2 AND organization_id = $3", [target.key, userId, organizationId])
+  } else {
+    try tx.query("DELETE FROM cloud_google_connections g USING accounts a WHERE g.id::text=$1 AND g.account_id=$2 AND a.key=g.account_id AND a.organization_id=$3", [target.key, userId, organizationId])
+  }
+}
+
+export effect function heldGoogle(tx: Tx, organizationId: string, userId: string, target: GoogleTarget): (GoogleConnection | undefined)!(StoreFailure | RowCorrupt) {
+  if (target.kind === "google-layered") {
+    const sealed = toText((try tx.query("SELECT tokens FROM google_connections WHERE key = $1 AND user_id = $2 AND organization_id = $3", [target.key, userId, organizationId]))[0]?.tokens)
+    return sealed === undefined ? undefined : { kind: "layered", sealed }
+  }
+  const row = (try tx.query(`SELECT g.account_id, g.subject, g.refresh_cipher, g.mail, g.calendar, g.send_mail, g.trash_mail, g.write_calendar
+    FROM cloud_google_connections g JOIN accounts a ON a.key = g.account_id
+    WHERE g.id::text = $1 AND g.account_id = $2 AND a.organization_id = $3`, [target.key, userId, organizationId]))[0]
+  if (row === undefined) return undefined
+  const data = Schema.decodeUnknownOption(LegacyCustody)(row)
+  if (Option.isNone(data)) throw new RowCorrupt({ table: "cloud_google_connections", key: target.key, cause: "invalid Worker token custody" })
+  return { kind: "worker", custody: data.value }
+}
+
+effect function legacySecret(name: string) {
+  return (try Deployment).secret(name) catch () => undefined
+}
+
+effect function openWorkerRefresh(custody: LegacyGoogleCustody) {
+  const deployment = try Deployment
+  const origin = (try legacySecret("PUBLIC_API_ORIGIN")) ?? deployment.settings.api
+  return try openLegacyRefreshToken(origin, try legacySecret("GOOGLE_CONNECT_TOKEN_KEY"), custody)
+}
+
+effect function workerGrantStillHeld(custody: LegacyGoogleCustody) {
+  const refresh = try openWorkerRefresh(custody)
+  const connector = try legacySecret("GOOGLE_CONNECT_CLIENT_ID")
+  const connectorSecret = try legacySecret("GOOGLE_CONNECT_CLIENT_SECRET")
+  const configured = connector !== undefined || connectorSecret !== undefined
+  const id = configured ? connector : try legacySecret("GOOGLE_CLIENT_ID")
+  const secret = configured ? connectorSecret : try legacySecret("GOOGLE_CLIENT_SECRET")
+  if (!id || !secret) throw new RowCorrupt({ table: "cloud_google_connections", key: custody.account_id, cause: "the legacy OAuth client is unavailable" })
+  return try refreshWith(refresh, id, secret)
+}
+
+function googleReply(failure: GoogleFailure): ProviderReply<never> {
+  switch (failure._tag) {
+    case "NotFound": return { kind: "refused", code: "NotFoundAtProvider" }
+    case "InvalidGrant": return { kind: "refused", code: "AuthorizationLost" }
+    case "PreconditionFailed":
+    case "Duplicate":
+    case "Rejected": return { kind: "refused", code: failure._tag }
+    case "ContentTooLarge":
+    case "Unavailable":
+    case "InvalidResponse": return { kind: "unknown", cause: `Google's revoke answer was ${failure._tag}` }
+    default: {
+      const _exhaustive: never = failure
+      return _exhaustive
+    }
+  }
+}
+
+export effect function revokeGoogle(connection: GoogleConnection | undefined): ProviderReply<void>!!GoogleContext {
+  if (connection === undefined) return missingGoogle
+  const open = effect () => connection.kind === "layered" ? (try openTokens(connection.sealed)).refreshToken : try openWorkerRefresh(connection.custody)
+  const token = open() catch () => undefined
+  if (token === undefined || token === "") return { kind: "refused", code: "SealingFailed" }
+  return try Effect.match(revokeToken(token), {
+    onFailure: (failure): ProviderReply<void> => googleReply(failure),
+    onSuccess: (): ProviderReply<void> => ({ kind: "applied", value: undefined })
+  })
+}
+
+export effect function lookUpGoogle(connection: GoogleConnection | undefined): ProviderReply<LookupResult>!!GoogleContext {
+  if (connection === undefined) return missingGoogle
+  const lookup = effect {
+    if (connection.kind === "layered") try refreshAccess(connection.sealed)
+    else try workerGrantStillHeld(connection.custody)
+  }
+  return try Effect.match(lookup, {
+    onFailure: (failure): ProviderReply<LookupResult> => failure._tag === "InvalidGrant" ? { kind: "applied", value: { tag: "EffectSeen" } } : { kind: "unknown", cause: `Google's token answer was ${failure._tag}` },
+    onSuccess: (): ProviderReply<LookupResult> => ({ kind: "applied", value: { tag: "NothingSeen" } })
+  })
+}

@@ -1,0 +1,178 @@
+// spec/cloud/identity/signInMethods.md, "Story: Review, link and remove my sign-in methods"
+import { assert, describe, it } from "@effect/vitest"
+import { s256, secretText } from "../../src/shared/credential-crypto.vibe"
+import { authenticatorCode } from "../support/authenticator.ts"
+import { check, testCloud, type Answer, type TestCloud } from "../support/cloud.vibe"
+import { signedIn } from "../support/identity-fixture.ts"
+import { latestCode } from "../support/inbox.ts"
+
+const clientId = "app.test"
+
+interface Listed {
+  readonly reviewId: string
+  readonly expiresAt: number
+  readonly methods: ReadonlyArray<{ readonly id: string; readonly label: string; readonly removable: boolean }>
+  readonly stepUpAt: number | null
+  readonly mfaAt: number | null
+}
+
+function refusal(answer: Answer): string {
+  const body = answer.body as { readonly error?: string; readonly reason?: string }
+  return `${answer.status} ${body.error}${body.reason === undefined ? "" : ` ${body.reason}`}`
+}
+
+function listed(answer: Answer): Listed {
+  return answer.body as Listed
+}
+
+function shown(list: Listed): ReadonlyArray<string> {
+  return list.methods.map((method) => `${method.id} ${method.label} ${method.removable ? "removable" : "kept"}`)
+}
+
+effect function asOwner(cloud: TestCloud, token: string, path: string, json?: unknown, method?: string) {
+  return try cloud.call(path, { method, headers: { authorization: `Bearer ${token}` }, json })
+}
+
+effect function review(cloud: TestCloud, token: string) {
+  return listed(try asOwner(cloud, token, "/api/v1/user/methods"))
+}
+
+effect function sendPhoneCode(cloud: TestCloud, token: string, phone: string) {
+  const verifier = secretText("", 32, "base64url")
+  const sent = try asOwner(cloud, token, "/api/v1/user/methods/phone/code/send", { phone, clientId, codeChallenge: s256(verifier), codeChallengeMethod: "S256" })
+  return { sent, verifier, code: try latestCode(cloud, phone) }
+}
+
+effect function verifyPhone(cloud: TestCloud, token: string, reviewId: string, phone: string, code: string, codeVerifier: string) {
+  return try asOwner(cloud, token, "/api/v1/user/methods/phone/code/verify", { reviewId, phone, code, clientId, codeVerifier })
+}
+
+effect function linkPhone(cloud: TestCloud, token: string, phone: string) {
+  const { reviewId } = try review(cloud, token)
+  const { code, verifier } = try sendPhoneCode(cloud, token, phone)
+  return try verifyPhone(cloud, token, reviewId, phone, code, verifier)
+}
+
+effect function stepUp(cloud: TestCloud, token: string) {
+  const enrolled = (try asOwner(cloud, token, "/api/v1/auth/mfa/totp/enroll", {})).body as { readonly secret: string }
+  const now = try Clock.currentTimeMillis
+  try asOwner(cloud, token, "/api/v1/auth/mfa/totp/confirm", { code: try sync(() => authenticatorCode(enrolled.secret, now)) })
+  return try asOwner(cloud, token, "/api/v1/auth/mfa/step-up", { method: "totp", code: try sync(() => authenticatorCode(enrolled.secret, now, 1)) })
+}
+
+effect function remove(cloud: TestCloud, token: string, methodId: string, reviewId: string) {
+  return try asOwner(cloud, token, `/api/v1/user/methods/${methodId}?reviewId=${encodeURIComponent(reviewId)}`, undefined, "DELETE")
+}
+
+describe("WP1 Identity: sign-in methods", () => {
+  it.live("Link a phone with the code from the inbox, and one review admits one attempt (spec/cloud/identity/signInMethods.md, \"Story: Review, link and remove my sign-in methods\")", () => scoped(effect {
+    const cloud = try testCloud()
+    const ada = try signedIn(cloud, "ada@example.com")
+    const phone = "+15555550123"
+    const before = try review(cloud, ada.accessToken)
+    const first = try sendPhoneCode(cloud, ada.accessToken, phone)
+    const wrong = first.code === "000000" ? "111111" : "000000"
+    const refusedProof = try verifyPhone(cloud, ada.accessToken, before.reviewId, phone, wrong, first.verifier)
+    const usedUp = try verifyPhone(cloud, ada.accessToken, before.reviewId, phone, first.code, first.verifier)
+    const fresh = try review(cloud, ada.accessToken)
+    const linked = try verifyPhone(cloud, ada.accessToken, fresh.reviewId, phone, first.code, first.verifier)
+    const replayed = try verifyPhone(cloud, ada.accessToken, fresh.reviewId, phone, first.code, first.verifier)
+    const unknownReview = try verifyPhone(cloud, ada.accessToken, "not-a-review", phone, first.code, first.verifier)
+    const after = try review(cloud, ada.accessToken)
+    const again = try linkPhone(cloud, ada.accessToken, phone)
+    try check(() => assert.deepStrictEqual(
+      {
+        before: [shown(before), before.stepUpAt, before.mfaAt, before.expiresAt - Date.now() <= 60_000],
+        refusedProof: refusal(refusedProof),
+        usedUp: refusal(usedUp),
+        linked: [linked.status, linked.body],
+        replayed: refusal(replayed),
+        unknownReview: refusal(unknownReview),
+        after: [shown(after), after.reviewId !== fresh.reviewId],
+        again: [again.status, again.body]
+      },
+      {
+        before: [["email ada@example.com kept"], null, null, true],
+        refusedProof: "401 credential_proof_invalid",
+        usedUp: "409 stale_revision",
+        linked: [200, { status: "linked", method: "phone" }],
+        replayed: "409 stale_revision",
+        unknownReview: "409 stale_revision",
+        after: [["email ada@example.com removable", "phone •••0123 removable"], true],
+        again: [200, { status: "already_linked", method: "phone" }]
+      }
+    ))
+  }))
+
+  it.live("Linking a phone another account holds answers identity in use (spec/cloud/identity/signInMethods.md, \"Story: Review, link and remove my sign-in methods\")", () => scoped(effect {
+    const cloud = try testCloud()
+    const ada = try signedIn(cloud, "ada@example.com")
+    const grace = try signedIn(cloud, "grace@example.com")
+    const phone = "+15555550199"
+    const graceLinked = try linkPhone(cloud, grace.accessToken, phone)
+    const taken = try linkPhone(cloud, ada.accessToken, phone)
+    const secondPhone = try linkPhone(cloud, grace.accessToken, "+15555550142")
+    const adaAfter = try review(cloud, ada.accessToken)
+    const graceAfter = try review(cloud, grace.accessToken)
+    try check(() => assert.deepStrictEqual(
+      {
+        graceLinked: graceLinked.status,
+        taken: refusal(taken),
+        secondPhone: refusal(secondPhone),
+        ada: shown(adaAfter),
+        grace: shown(graceAfter)
+      },
+      {
+        graceLinked: 200,
+        taken: "409 identity_in_use",
+        secondPhone: "409 identity_in_use",
+        ada: ["email ada@example.com kept"],
+        grace: ["email grace@example.com removable", "phone •••0199 removable"]
+      }
+    ))
+  }))
+
+  it.live("Remove a method only after a fresh step-up and while another remains, ending every other session (spec/cloud/identity/signInMethods.md, \"Story: Review, link and remove my sign-in methods\"; spec/cloud/identity/sessions.md, \"Story: Confirm it is me before a sensitive change\")", () => scoped(effect {
+    const cloud = try testCloud()
+    const ada = try signedIn(cloud, "ada@example.com")
+    const other = try signedIn(cloud, "ada@example.com")
+    const token = ada.accessToken
+    const unstepped = try remove(cloud, token, "email", (try review(cloud, token)).reviewId)
+    const stepped = try stepUp(cloud, token)
+    const lastMethod = try remove(cloud, token, "email", (try review(cloud, token)).reviewId)
+    const absent = try remove(cloud, token, "google", (try review(cloud, token)).reviewId)
+    const linked = try linkPhone(cloud, token, "+15555550177")
+    const removalReview = try review(cloud, token)
+    const removed = try remove(cloud, token, "phone", removalReview.reviewId)
+    const secondRemoval = try remove(cloud, token, "email", removalReview.reviewId)
+    const still = try asOwner(cloud, token, "/api/v1/user")
+    const ended = try asOwner(cloud, other.accessToken, "/api/v1/user")
+    const after = try review(cloud, token)
+    try check(() => assert.deepStrictEqual(
+      {
+        unstepped: refusal(unstepped),
+        stepped: stepped.status,
+        lastMethod: refusal(lastMethod),
+        absent: refusal(absent),
+        linked: linked.status,
+        removable: shown(removalReview),
+        removed: [removed.status, removed.body],
+        secondRemoval: refusal(secondRemoval),
+        sessions: [still.status, ended.status],
+        after: [shown(after), typeof after.stepUpAt === "number", typeof after.mfaAt === "number"]
+      },
+      {
+        unstepped: "428 fresh_session_required",
+        stepped: 200,
+        lastMethod: "409 last_method",
+        absent: "404 not_found",
+        linked: 200,
+        removable: ["email ada@example.com removable", "phone •••0177 removable"],
+        removed: [200, { status: "removed", method: "phone" }],
+        secondRemoval: "409 stale_revision",
+        sessions: [200, 401],
+        after: [["email ada@example.com kept"], true, true]
+      }
+    ))
+  }))
+})

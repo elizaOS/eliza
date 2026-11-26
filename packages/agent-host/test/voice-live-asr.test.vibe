@@ -1,0 +1,95 @@
+// spec/agent/voice/clientAudio.md, "Story: Have my words recognised on this device while I speak"
+import { assert, it } from "@effect/vitest"
+import { Base64 } from "effect/encoding"
+import { ModelType, type IAgentRuntime } from "@elizaos/core"
+import type { AgentPlugin } from "../src/host/module.vibe"
+import { liveAsrPath, liveAsrStatusPath } from "../src/voice/live-asr.vibe"
+import { answerOf, call, startInProcess, type InProcess } from "./support/kernel.vibe"
+
+const rule = 'spec/agent/voice/clientAudio.md, "A live session recognises each segment once, from its speech start through the speech end or close that ends it, and at most four sessions are open"'
+
+function recognizerPlugin(beforeRecognise: () => Promise<void>, heard: Uint8Array[]): AgentPlugin {
+  return {
+    name: "local-recognizer-fixture",
+    description: "Stands in for the device's local transcription model, which needs the phone's engine.",
+    init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
+      runtime.registerModel(ModelType.TRANSCRIPTION, async (_agent, params) => {
+        await beforeRecognise()
+        const audio = (params as { audio?: unknown }).audio
+        if (audio instanceof Uint8Array) heard.push(audio.slice(44))
+        return audio instanceof Uint8Array ? `heard ${audio.length} bytes` : "no audio"
+      }, "local-recognizer-fixture", 10, { local: true })
+    },
+  }
+}
+
+effect function post(agent: InProcess, body: object) {
+  return answerOf(try call(agent, { method: "POST", path: liveAsrPath, body }))
+}
+
+const silence = (samples: number, sampleRate = 16_000) =>
+  ({ pcm16: Base64.encode(new Uint8Array(samples * 2)), sampleRate, channels: 1, samples, timestamp: 0 })
+
+const extremes = new Uint8Array(Int16Array.from({ length: 1600 }, (_, index) => [32_767, -32_768, 12_345, -1][index % 4]).buffer)
+
+it.live(`A segment is recognised once with its speech end, audio outside it never is, and a fifth session or a wrong rate is refused (${rule})`, effect () => {
+  const bare = try startInProcess({})
+  const unavailable = try post(bare, { sessionId: "s-0", frames: [silence(160)] })
+
+  const recognising = try Deferred.make<void>()
+  const resume = try Deferred.make<void>()
+  let calls = 0
+  const heard: Uint8Array[] = []
+  const plugin = recognizerPlugin(async () => {
+    calls += 1
+    if (calls !== 2) return
+    await runPromise(Deferred.succeed(recognising, undefined))
+    await runPromise(Deferred.await(resume))
+  }, heard)
+  const agent = try startInProcess({ launch: { load: [plugin.name] }, bundled: new Map<string, AgentPlugin>([[plugin.name, plugin]]) })
+  const status = answerOf(try call(agent, { method: "GET", path: liveAsrStatusPath }))
+  const utterance = try post(agent, { sessionId: "s-1", vad: [{ type: "speech-start" }, { type: "speech-end" }], frames: [{ pcm16: Base64.encode(extremes), sampleRate: 16_000, channels: 1, samples: 1600, timestamp: 0 }] })
+  const outside = try post(agent, { sessionId: "s-1", frames: [silence(1600)], close: true })
+  const wrongRate = try post(agent, { sessionId: "s-2", frames: [silence(1600, 48_000)] })
+  for (const sessionId of ["s-3", "s-4", "s-5"]) try post(agent, { sessionId, frames: [] })
+  try post(agent, { sessionId: "s-6", vad: [{ type: "speech-start" }], frames: [silence(160)] })
+  const closing = fork post(agent, { sessionId: "s-6", close: true })
+  const laterAudio = try Effect.ensuring(effect {
+    try Effect.timeout(Deferred.await(recognising), "10 seconds")
+    return try Effect.timeoutOption(post(agent, { sessionId: "s-6", frames: [silence(160)] }), "3 seconds")
+  }, Deferred.succeed(resume, undefined))
+  const closed = try join closing
+  const afterClose = try post(agent, { sessionId: "s-6", close: true })
+  const reopened = try post(agent, { sessionId: "s-6", frames: [] })
+  const fifth = try post(agent, { sessionId: "s-7", frames: [] })
+
+  const final = (utterance.body as { final?: { text?: string; mode?: string } }).final
+  const closingAnswer = Option.getOrUndefined(laterAudio)
+  try Effect.try(() => assert.deepStrictEqual({
+    unavailable: [unavailable.status, (unavailable.body as { code?: string }).code],
+    status: [status.status, (status.body as { ready?: boolean }).ready, (status.body as { maxSessions?: number }).maxSessions],
+    utterance: [utterance.status, final?.text, final?.mode, (utterance.body as { framesReceived?: number }).framesReceived],
+    heardAsSent: heard[0]?.length === extremes.length && heard[0].every((byte, index) => byte === extremes[index]),
+    outside: [outside.status, "final" in (outside.body as object), (outside.body as { closed?: boolean }).closed],
+    wrongRate: wrongRate.status,
+    closing: [closingAnswer?.status, (closingAnswer?.body as { code?: string } | undefined)?.code],
+    closed: [closed.status, (closed.body as { closed?: boolean }).closed, (closed.body as { final?: { text?: string } }).final?.text],
+    afterClose,
+    reopened: [reopened.status, (reopened.body as { framesReceived?: number }).framesReceived],
+    calls,
+    fifth: [fifth.status, (fifth.body as { code?: string }).code],
+  }, {
+    unavailable: [503, "LIVE_ASR_UNAVAILABLE"],
+    status: [200, true, 4],
+    utterance: [200, "heard 3244 bytes", "batch", 1],
+    heardAsSent: true,
+    outside: [200, false, true],
+    wrongRate: 400,
+    closing: [409, "LIVE_ASR_SESSION_CLOSING"],
+    closed: [200, true, "heard 364 bytes"],
+    afterClose: { status: 200, body: { ok: true, sessionId: "s-6", closed: true } },
+    reopened: [200, 0],
+    calls: 2,
+    fifth: [429, "LIVE_ASR_SESSIONS_FULL"],
+  }))
+}, 120_000)

@@ -1,0 +1,53 @@
+// spec/os/android/networkPolicy.md, "Story: Download a large file only on a link I do not pay for"
+import { assert, it } from "@effect/vitest"
+import { networkPolicyClient, networkPolicyPlugin } from "../src/bridges/network-policy.vibe"
+
+module android {
+  import { CapacitorException } from "@capacitor/core"
+  import type { MeteredHint, NetworkPolicyPlugin } from "../src/bridges/definitions/network-policy.ts"
+
+  export interface Link {
+    bridge: boolean
+    reply: unknown
+  }
+
+  /** @throws {never} */
+  export function androidNetworkPolicy(link: Link): NetworkPolicyPlugin {
+    const rejection = (message: string, code: string) => Object.assign(new CapacitorException(message), { code })
+    return {
+      getMeteredHint: async () => {
+        if (!link.bridge) throw rejection("Network policy is turned off in this app", "DISABLED")
+        return link.reply as MeteredHint
+      },
+    }
+  }
+}
+import { androidNetworkPolicy } from android
+
+it.live("Read the active link's cost only as Android answered it, and read everything else as unknown (spec/os/android/networkPolicy.md, \"Story: Download a large file only on a link I do not pay for\"; spec/os/android/networkPolicy.md, \"A metered hint is Android's own flag for the active network, and anything Android did not answer is unknown\")", () => effect {
+  const link = { bridge: true, reply: { metered: false, source: "android-os" } as unknown }
+  const policy = networkPolicyClient(androidNetworkPolicy(link))
+  const unmetered = try promise(() => policy.getMeteredHint())
+  link.reply = { metered: true, source: "android-os" }
+  const metered = try promise(() => policy.getMeteredHint())
+  link.reply = { metered: null, source: "android-os" }
+  const noNetwork = try promise(() => policy.getMeteredHint())
+  link.reply = { metered: "no", source: "android-os" }
+  const outOfShape = try promise(() => policy.getMeteredHint())
+  link.bridge = false
+  const turnedOff = try promise(() => policy.getMeteredHint())
+  const absent = try promise(() => networkPolicyClient(networkPolicyPlugin("DeviceNetworkPolicy"), "DeviceNetworkPolicy").getMeteredHint())
+
+  const unknown = { metered: null, source: "android-os" }
+  try Effect.try(() => assert.deepStrictEqual(
+    { unmetered, metered, noNetwork, outOfShape, turnedOff, absent },
+    {
+      unmetered: { metered: false, source: "android-os" },
+      metered: { metered: true, source: "android-os" },
+      noNetwork: unknown,
+      outOfShape: unknown,
+      turnedOff: unknown,
+      absent: unknown,
+    },
+  ))
+})

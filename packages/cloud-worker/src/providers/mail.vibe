@@ -1,0 +1,34 @@
+// spec/cloud/identity/codeChallenges.md, "A challenge sends one code, only to an email address or to a phone in a country the deployment allows"; spec/cloud/deployment.md, "A sign-in method is offered only when its adapter is configured"
+import { HttpClientRequest } from "effect/http"
+import { refused, type Refused } from "../http/refusal.vibe"
+import { Deployment } from "@elizaos/cloud"
+import { handed, keepLoopback, posted, type DeliveryContext } from "./delivery.vibe"
+
+export interface Mail {
+  readonly to: string
+  readonly subject: string
+  readonly text: string
+}
+
+export effect function deliverMail(mail: Mail): void!Refused!DeliveryContext {
+  const deployment = try Deployment
+  const adapter = deployment.settings.mail
+  switch (adapter.kind) {
+    case "loopback":
+      return try keepLoopback(mail.to, `${mail.subject}\n\n${mail.text}`)
+    case "binding": {
+      const binding = deployment.mailBinding(adapter.binding) catch effect () => { throw refused("ProviderUnavailable") }
+      const message = { from: deployment.settings.mailSender, to: mail.to, subject: mail.subject, text: mail.text }
+      try handed(tryPromise(() => binding.send(message)))
+      return
+    }
+    case "https": {
+      const key = deployment.secret(adapter.apiKeyEnv) catch effect () => { throw refused("ProviderUnavailable") }
+      const body = { from: deployment.settings.mailSender, to: [mail.to], subject: mail.subject, text: mail.text }
+      return try posted(HttpClientRequest.post(adapter.url).pipe(
+        HttpClientRequest.bearerToken(key),
+        HttpClientRequest.bodyText(JSON.stringify(body), "application/json")
+      ))
+    }
+  }
+}
