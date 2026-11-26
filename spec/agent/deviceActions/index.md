@@ -537,7 +537,11 @@ only for a step on the open selection, or for an operation grounded as
 asked on a turn whose message is a direct request for its family
 (`voiceUi.agentActionMode` is `direct-request-v1` for every family, or
 `direct-files-v1` or `direct-files-only-v1` for the Files family alone, so a phone that runs only
-Files directly keeps every other family's card). Any other proposal carries none, so the phone
+Files directly keeps every other family's card). A Browser open (`browser_navigate`)
+grounded as asked carries it too on a request that negotiated
+`browser.open-direct.v1`, the phone that opens an address the owner's whole
+message asked for at once ([Browser](../../browser/control.md)); that
+capability binds no other operation. Any other proposal carries none, so the phone
 never runs it without its card, whatever the operation and the owner's
 [direct-request preference](./execution.md); its origin is still the
 owner's message, so its identity, its read completion and the outcomes a
@@ -551,7 +555,7 @@ card only for that message, so a later message that asks again, such as
 The reply follows the choice. A pending request that carries the message
 tells the model that it is a handoff that has not run yet, so the model
 never claims what it found or shows; where the family gives the owner a
-sentence for it ("example.com is ready to open."), the model gets that sentence as
+sentence for it ("Opening example.com."), the model gets that sentence as
 what the phone shows and words the reply itself, so the owner never hears
 the family's sentence beside the model's. One kept for review asks the
 owner to review it on the phone, in the family's words and in the turn's
@@ -564,6 +568,13 @@ type ProposalGrounding = GroundedAsAsked | GroundedForReview | GroundedOnScreen
 type DirectScope = NoDirectRequest | DirectForEveryFamily | DirectForFiles
 pure def directRequestFor(scope: DirectScope, filesFamily: bool): bool =
   scope == DirectForEveryFamily or (scope == DirectForFiles and filesFamily)
+pure def directOpenFor(browserOpen: bool, opensDirectly: bool): bool = browserOpen and opensDirectly
+pure def directRequestOf(scope: DirectScope, filesFamily: bool, browserOpen: bool, opensDirectly: bool): bool =
+  directRequestFor(scope, filesFamily) or directOpenFor(browserOpen, opensDirectly)
+pure def lawADirectOpenBindsNoOtherFamily(scope: DirectScope, filesFamily: bool): bool =
+  directRequestOf(scope, filesFamily, false, true) == directRequestFor(scope, filesFamily)
+pure def lawADirectOpenBindsABrowserOpenAsAsked(scope: DirectScope, turnLive: bool): bool =
+  carriesRequestMessage(GroundedAsAsked, directRequestOf(scope, false, true, true), turnLive) == turnLive
 pure def carriesRequestMessage(grounding: ProposalGrounding, directRequest: bool, turnLive: bool): bool =
   turnLive and (grounding == GroundedOnScreen or (directRequest and grounding == GroundedAsAsked))
 pure def lawAFilesOnlyDirectRequestBindsNoOtherFamily(turnLive: bool): bool =
