@@ -13,7 +13,8 @@ its current position; it never starts or replaces a session itself.
 ### Only the owner's Start begins a session, and a reroute keeps its route until the same session's new route arrives
 
 A session begins only from the owner's Start on the screen, for a route the
-screen shows, and holds that route. The agent's reroute needs the session to
+screen shows, and holds that route. The session counter is never negative, so
+each started session has a positive identifier. The agent's reroute needs the session to
 be guiding and a fresh precise fix by the planning rules of navigation; while
 the replan is pending the session keeps its current route. Only the reply to
 the latest reroute settles it, and the new route replaces the old one only
@@ -41,7 +42,7 @@ pure val ticketValues = Set(1, 2, 3, 4)
 pure val weight_startSessionReroute = 4
 pure val weight_sessionRerouteSettles = 4
 pure def alwaysSessionHoldsItsRoute(s: GuidedSession): bool =
-  (s.phase != NoSession implies s.route > 0 and s.session > 0) and (s.phase == NoSession implies s.route == 0)
+  s.session >= 0 and (s.phase != NoSession implies s.route > 0 and s.session > 0) and (s.phase == NoSession implies s.route == 0)
 pure def stepOnlyOwnerStartBeginsSession(before: GuidedSession, via: str, after: GuidedSession): bool =
   (before.phase == NoSession and after.phase != NoSession) implies via == "ownerStarts"
 pure def stepPendingRerouteKeepsRoute(before: GuidedSession, via: str, after: GuidedSession): bool =

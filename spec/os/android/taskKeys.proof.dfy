@@ -1,5 +1,3 @@
-// What the fold over the stored keys finds for an account: where none is the account's, what it started from;
-// otherwise the key of one that is.
 lemma TkFold(account: os__signIn__credential_Account, init: int, xs: seq<TaskKey>)
   ensures var r := Std.Collections.Seq.FoldLeft((found: int, t: TaskKey) => (if (t.account == account) then t.key else found), init, xs);
     (r == init && forall t :: t in xs ==> t.account != account) || (exists t :: t in xs && t.account == account && t.key == r)
@@ -15,18 +13,13 @@ lemma TkFold(account: os__signIn__credential_Account, init: int, xs: seq<TaskKey
   }
 }
 
-// A key stored last for an account is the one the fold finds for it.
 lemma TkAppend(account: os__signIn__credential_Account, xs: seq<TaskKey>, k: int)
   ensures Std.Collections.Seq.FoldLeft((found: int, t: TaskKey) => (if (t.account == account) then t.key else found), 0, xs + [TaskKey(account, k)]) == k
 {
-  forall f: (int, TaskKey) -> int, init: int, last: TaskKey
-    ensures Std.Collections.Seq.FoldLeft(f, init, xs + [last]) == f(Std.Collections.Seq.FoldLeft(f, init, xs), last)
-  {
-    ProofLib.FoldLeftAppend(f, init, xs, last);
-  }
+  var f := (found: int, t: TaskKey) => (if (t.account == account) then t.key else found);
+  ProofLib.FoldLeftAppend(f, 0, xs, TaskKey(account, k));
 }
 
-// A first key is numbered after every stored key and no stored key is the account's; a known key is the one stored.
 lemma release_ensures(s: TaskKeyCustody, account: os__signIn__credential_Account, epoch: int, observed: os__android__secureStore_SlotRead)
   ensures (inv(s) ==> canRelease(s, account, epoch) ==> alwaysCountersAreNatural(release(s, account, epoch, observed).state))
   ensures (inv(s) ==> canRelease(s, account, epoch) ==> alwaysOneKeyPerAccount(release(s, account, epoch, observed).state))
@@ -59,7 +52,6 @@ lemma release_ensures(s: TaskKeyCustody, account: os__signIn__credential_Account
   }
 }
 
-// The account's one stored key is what the fold finds, and an absent slot then refuses.
 lemma lawALostKnownKeyIsNeverCreatedAgain_ensures(account: os__signIn__credential_Account, epoch: int)
   ensures (lawALostKnownKeyIsNeverCreatedAgain(account, epoch) == true)
 {

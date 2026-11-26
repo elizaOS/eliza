@@ -116,7 +116,8 @@ pure def releaseHold(b: BrowserBinding, holdId: HoldId): BrowserBinding = {
   { ...b, openHolds: remaining, waiting: b.waiting.select(id => id != holdId), idlePending: not(b.pinned) and remaining.size() == 0 }
 }
 pure def alwaysCallbackCustody(b: BrowserBinding): bool =
-  b.waiting.every(id => b.openHolds.contains(id) and not(b.fired.contains(id)) and b.waiting.select(other => other == id).length() == 1)
+  b.nextHold >= 1
+    and b.waiting.every(id => b.openHolds.contains(id) and not(b.fired.contains(id)) and b.waiting.select(other => other == id).length() == 1)
     and b.openHolds.forall(id => id >= 1 and id < b.nextHold) and b.fired.forall(id => id >= 1 and id < b.nextHold)
 pure def alwaysReadyHasNoWaiters(b: BrowserBinding): bool = b.link == Ready implies b.waiting.length() == 0
 pure def stepReadyCallbackFiresOnce(before: BrowserBinding, via: str, after: BrowserBinding, out: List[HoldId]): bool =

@@ -39,13 +39,23 @@ lemma SignInRoutes28To35(d: DeviceRoute)
   ensures (|d.path| > 0 && d.path[0] == Literal("api") && ((d.method_.Get? || d.method_.Post?) ==> ifMatch !in d.headers))
 {}
 
+lemma SignInRoutes35To38(d: DeviceRoute)
+  requires d in signInRoutes[35..38]
+  ensures (|d.path| > 0 && d.path[0] == Literal("api") && ((d.method_.Get? || d.method_.Post?) ==> ifMatch !in d.headers))
+{}
+
+lemma SignInRoutesLength()
+  ensures |signInRoutes| == 38
+{}
+
 lemma SignInRouteShape(d: DeviceRoute)
   requires d in signInRoutes
   ensures |d.path| > 0 && d.path[0] == Literal("api")
   ensures d.method_.Get? || d.method_.Post? ==> ifMatch !in d.headers
 {
+  hide *;
+  SignInRoutesLength();
   var i :| 0 <= i < |signInRoutes| && signInRoutes[i] == d;
-  assert |signInRoutes| == 35;
   if i < 7 {
     assert d == signInRoutes[0..7][i - 0];
     SignInRoutes0To7(d);
@@ -61,9 +71,12 @@ lemma SignInRouteShape(d: DeviceRoute)
   } else if i < 28 {
     assert d == signInRoutes[21..28][i - 21];
     SignInRoutes21To28(d);
-  } else {
+  } else if i < 35 {
     assert d == signInRoutes[28..35][i - 28];
     SignInRoutes28To35(d);
+  } else {
+    assert d == signInRoutes[35..38][i - 35];
+    SignInRoutes35To38(d);
   }
 }
 
@@ -382,7 +395,21 @@ lemma GroupedNamespacesAreDisjoint()
     var prefix :| prefix in earlier * later;
     assert prefix in earlier && prefix in later;
     assert prefix == Literal("service") || prefix == Literal("auth") || prefix == Literal("user") || prefix == Literal("referrals") || prefix == Literal("app-auth") || prefix == Literal("api-keys") || prefix == Literal("subscriptions") || prefix == Literal("subscription") || prefix == Literal("billing");
-    assert prefix == Literal("models") || prefix == Literal("chat") || prefix == Literal("voice") || prefix == Literal("maps") || prefix == Literal("eliza");
+    assert prefix == Literal("models") || prefix == Literal("decisions") || prefix == Literal("chat") || prefix == Literal("voice") || prefix == Literal("maps") || prefix == Literal("eliza");
+    assert false;
+  }
+}
+
+lemma CapabilityNamespacesAreDisjoint()
+  ensures {Literal("models"), Literal("decisions"), Literal("chat"), Literal("voice"), Literal("maps")} * {Literal("eliza")} == {}
+{
+  var earlier := {Literal("models"), Literal("decisions"), Literal("chat"), Literal("voice"), Literal("maps")};
+  var later := {Literal("eliza")};
+  if earlier * later != {} {
+    var prefix :| prefix in earlier * later;
+    assert prefix in earlier && prefix in later;
+    assert prefix == Literal("models") || prefix == Literal("decisions") || prefix == Literal("chat") || prefix == Literal("voice") || prefix == Literal("maps");
+    assert prefix == Literal("eliza");
     assert false;
   }
 }
@@ -403,9 +430,11 @@ lemma CapabilityRouteKeyFacts()
   ensures ProofLib.DistinctBy(joinRouteGroups(serviceRoutes, googleRoutes), (d: DeviceRoute) => (d.method_, d.path))
   ensures forall d :: d in joinRouteGroups(serviceRoutes, googleRoutes) ==> |d.path| > 2 && d.path[2] in {Literal("models"), Literal("decisions"), Literal("chat"), Literal("voice"), Literal("maps")} + {Literal("eliza")}
 {
+  hide *;
+  reveal joinRouteGroups();
   ServiceRouteKeyFacts();
   GoogleRouteKeyFacts();
-  assert {Literal("models"), Literal("decisions"), Literal("chat"), Literal("voice"), Literal("maps")} * {Literal("eliza")} == {};
+  CapabilityNamespacesAreDisjoint();
   AppendDisjointRouteGroups(serviceRoutes, googleRoutes, {Literal("models"), Literal("decisions"), Literal("chat"), Literal("voice"), Literal("maps")}, {Literal("eliza")});
 }
 

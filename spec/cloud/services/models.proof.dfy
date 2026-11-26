@@ -1,6 +1,3 @@
-// Proofs for spec/cloud/services/models.md.
-
-// The generated filters, restated over ProofLib.Filter.
 lemma ModelsPricesOfFilter(prices: seq<PriceRow>, id: string)
   ensures pricesOf(prices, id) == ProofLib.Filter((r: PriceRow) => (r.modelId == id), prices)
 {
@@ -122,5 +119,17 @@ lemma CostQuotientMonotone(smaller: int, larger: int, divisor: int)
   if q1 > q2 {
     assert divisor * q1 >= divisor * (q2 + 1);
     assert false;
+  }
+}
+
+lemma lawInputArithmeticIsSafe_ensures(tokens: int, cachedTokens: int, per1K: int, cachedPer1K: int)
+  ensures (lawInputArithmeticIsSafe(tokens, cachedTokens, per1K, cachedPer1K) == true)
+{
+  if sideInBound(tokens) && sideInBound(cachedTokens) && isValidPrice(per1K) && isCachedPrice(cachedPer1K, per1K) {
+    assert quotient_cloud__services__models(costDivisor, 2) == 50000 by { reveal JSFloorDiv, MathAbs; }
+    MulLeft(tokens, maxTokensPerSide, per1K);
+    MulLeft(per1K, maxPer1K, maxTokensPerSide);
+    MulLeft(cachedTokens, maxTokensPerSide, cachedPer1K);
+    MulLeft(cachedPer1K, maxPer1K, maxTokensPerSide);
   }
 }

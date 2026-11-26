@@ -1,4 +1,3 @@
-// A list with a first element names some capability.
 lemma OpsNamesFirst(s: seq<agent__deviceActions__capabilities_Capability>)
   requires |s| > 0
   ensures agent__deviceActions__capabilities_namesSome(s)
@@ -6,7 +5,6 @@ lemma OpsNamesFirst(s: seq<agent__deviceActions__capabilities_Capability>)
   assert s[0] in s;
 }
 
-// needAll(a, b) requires exactly a and b, and offers no alternatives.
 lemma OpsNeedAll(a: agent__deviceActions__capabilities_Capability, b: agent__deviceActions__capabilities_Capability)
   ensures needAll(a, b).oneOf == []
   ensures a in needAll(a, b).required && b in needAll(a, b).required
@@ -20,7 +18,6 @@ lemma OpsNeedAll(a: agent__deviceActions__capabilities_Capability, b: agent__dev
   }
 }
 
-// What a device that negotiated every required capability, with no alternatives to choose from, meets.
 lemma OpsMeetsRequired(n: agent__deviceActions__capabilities_Negotiation, need: agent__deviceActions__capabilities_Need)
   requires n.Negotiated? && |need.required| > 0 && need.oneOf == []
   requires forall x :: x in need.required ==> x in n.capabilities
@@ -29,7 +26,6 @@ lemma OpsMeetsRequired(n: agent__deviceActions__capabilities_Negotiation, need: 
   OpsNamesFirst(need.required);
 }
 
-// The opened-photo form of an album or a share requires the library, the view and the selected view.
 lemma OpsOpenPhotoNeed(t: OperationType)
   requires t.PhotosAlbumCreate? || t.PhotosShare?
   ensures agent__deviceActions__capabilities_Capability.PhotosLibraryV1 in operationNeed(t, true).required
@@ -116,6 +112,18 @@ lemma lawClosingEveryTabNeedsItsOwnCapability_ensures(neg: agent__deviceActions_
   }
 }
 
+lemma lawTheTabListNeedsOnlyItsCapability_ensures(versionTwo: bool, neg: agent__deviceActions__capabilities_Negotiation)
+  ensures (lawTheTabListNeedsOnlyItsCapability(versionTwo, neg) == true)
+{
+  var t := OperationType.BrowserTabsShow;
+  var cap := agent__deviceActions__capabilities_Capability.BrowserTabsShowV1;
+  assert family(t) == Family.BrowserFamily;
+  assert operationNeed(t, versionTwo) == agent__deviceActions__capabilities_needOne(cap);
+  if agent__deviceActions__capabilities_negotiatedHas(neg, cap) {
+    OpsMeetsRequired(neg, operationNeed(t, versionTwo));
+  }
+}
+
 lemma lawARecordingIsValidUnderEitherForm_ensures(prop: Proposal, neg: agent__deviceActions__capabilities_Negotiation)
   ensures (lawARecordingIsValidUnderEitherForm(prop, neg) == true)
 {
@@ -134,6 +142,20 @@ lemma lawARecordingIsValidUnderEitherForm_ensures(prop: Proposal, neg: agent__de
   }
 }
 
+lemma lawACaptureWithoutALensNeedsNoLens_ensures(neg: agent__deviceActions__capabilities_Negotiation)
+  ensures (lawACaptureWithoutALensNeedsNoLens(neg) == true)
+{
+  var prop := Proposal(OperationType.CameraCapturePhoto, false, ReadBinding.NoBinding, true);
+  var cap := agent__deviceActions__capabilities_Capability.CameraCapturePhotoV1;
+  if agent__deviceActions__capabilities_negotiatedHas(neg, cap) {
+    assert family(prop.opType) == Family.CameraFamily;
+    assert operationNeed(prop.opType, proposalVersion(prop, neg)) == agent__deviceActions__capabilities_needOne(cap);
+    OpsMeetsRequired(neg, operationNeed(prop.opType, proposalVersion(prop, neg)));
+    assert bindingAdmitted(prop, neg);
+    assert lensAdmitted(prop, neg);
+  }
+}
+
 lemma lawTheDraftFollowUpNeedsTheNewerRead_ensures(n: agent__deviceActions__capabilities_Negotiation)
   ensures (lawTheDraftFollowUpNeedsTheNewerRead(n) == true)
 {
@@ -142,37 +164,34 @@ lemma lawTheDraftFollowUpNeedsTheNewerRead_ensures(n: agent__deviceActions__capa
   }
 }
 
-// A member of a filtered list is a member of the list the filter keeps, for every filter and list.
-lemma OpsFilterMembers<T>()
-  ensures forall p: T -> bool, xs: seq<T>, x: T {:trigger x in Std.Collections.Seq.Filter(p, xs)} ::
-    x in Std.Collections.Seq.Filter(p, xs) <==> x in xs && p(x)
+lemma OpsAnyButClockFilter()
+  ensures anyButClock.oneOf == ProofLib.Filter((set_x: agent__deviceActions__capabilities_Capability) => !((set_x in [typed1_agent__deviceActions__operations(agent__deviceActions__capabilities_Capability.ClockHandoffV1), typed1_agent__deviceActions__operations(agent__deviceActions__capabilities_Capability.ClockHandoffV2)])), typed0_agent__deviceActions__operations(agent__deviceActions__capabilities_allCapabilities))
 {
-  forall p: T -> bool, xs: seq<T>, x: T
-    ensures x in Std.Collections.Seq.Filter(p, xs) <==> x in xs && p(x)
-  {
-    ProofLib.FilterMember(p, xs, x);
-  }
 }
 
-// The base and workflow operations' need requires nothing, offers the first listed capability, and offers no Clock
-// handoff.
 lemma OpsAnyButClock()
   ensures anyButClock.required == []
   ensures agent__deviceActions__capabilities_Capability.CalendarLocalEventV1 in anyButClock.oneOf
   ensures forall c :: c in anyButClock.oneOf ==> !c.ClockHandoffV1? && !c.ClockHandoffV2?
 {
-  OpsFilterMembers<agent__deviceActions__capabilities_Capability>();
-  assert agent__deviceActions__capabilities_Capability.CalendarLocalEventV1 in agent__deviceActions__capabilities_allCapabilities;
+  var p := (set_x: agent__deviceActions__capabilities_Capability) => !((set_x in [typed1_agent__deviceActions__operations(agent__deviceActions__capabilities_Capability.ClockHandoffV1), typed1_agent__deviceActions__operations(agent__deviceActions__capabilities_Capability.ClockHandoffV2)]));
+  var xs := typed0_agent__deviceActions__operations(agent__deviceActions__capabilities_allCapabilities);
+  OpsAnyButClockFilter();
+  agent__deviceActions__capabilities_lawTheVocabularyListsEveryCapability_ensures(agent__deviceActions__capabilities_Capability.CalendarLocalEventV1);
+  assert agent__deviceActions__capabilities_Capability.CalendarLocalEventV1 in xs;
+  ProofLib.FilterMember(p, xs, agent__deviceActions__capabilities_Capability.CalendarLocalEventV1);
+  forall c | c in anyButClock.oneOf
+    ensures !c.ClockHandoffV1? && !c.ClockHandoffV2?
+  {
+    ProofLib.FilterMember(p, xs, c);
+  }
 }
 
-// Only the Clock handoff is in the Clock family.
 lemma OpsClockFamily(t: OperationType)
   ensures family(t).ClockFamily? ==> t.ClockHandoff?
 {
 }
 
-// Outside the Clock family a need's first required capability is not the Clock handoff, or it requires nothing and
-// offers some alternatives, none of them the Clock handoff.
 lemma OpsFamilyNeed(f: Family, t: OperationType, versionTwo: bool)
   requires !f.ClockFamily?
   ensures var n := familyNeed(f, t, versionTwo);
@@ -186,7 +205,6 @@ lemma OpsFamilyNeed(f: Family, t: OperationType, versionTwo: bool)
   }
 }
 
-// Every need names a capability: the Clock family's by its own, the rest as OpsFamilyNeed shows.
 lemma lawEveryOperationNamesANeed_ensures(t: OperationType, versionTwo: bool)
   ensures (lawEveryOperationNamesANeed(t, versionTwo) == true)
 {
@@ -199,7 +217,6 @@ lemma lawEveryOperationNamesANeed_ensures(t: OperationType, versionTwo: bool)
   }
 }
 
-// A clock-only device has no listed capability other than the Clock handoff, and every other operation needs one.
 lemma lawAClockOnlyDeviceReceivesOnlyClockHandoffs_ensures(t: OperationType, versionTwo: bool, neg: agent__deviceActions__capabilities_Negotiation)
   ensures (lawAClockOnlyDeviceReceivesOnlyClockHandoffs(t, versionTwo, neg) == true)
 {

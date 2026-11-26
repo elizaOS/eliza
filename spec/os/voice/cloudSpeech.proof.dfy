@@ -54,6 +54,16 @@ lemma consentDismissed_ensures(s: CloudSpeech)
   ensures (inv(s) ==> canConsentDismissed(s) ==> stepAnEndReleasesRevokesAndReportsOnce(s, "consentDismissed", consentDismissed(s).state, consentDismissed(s).out))
   ensures (inv(s) ==> canConsentDismissed(s) ==> stepABatchRequestSettlesOnce(s, "consentDismissed", consentDismissed(s).state, consentDismissed(s).out))
 {
+  hide *;
+  reveal inv, canConsentDismissed, consentDismissed, isOpen, asksOf, waitedOf, turnOwner, hasEnded, speechStep, noticeIf;
+  reveal alwaysConsentIsAskedAtMostTwiceWithinItsDeadline, alwaysOpenWorkUsesTheCurrentKey;
+  reveal alwaysOnlyALiveSessionCaptures, alwaysAReplyNeverPlaysAheadOfItsAudio;
+  reveal alwaysAnEndingSaysWhetherAudioStarted, alwaysADeviceEndIsAFailure, alwaysBatchRequestsAreDistinct;
+  reveal stepARefusedKeyIsReportedOnceAndEndsItsRequest, keyReportVersion;
+  reveal stepTheSessionOpensInOrder, openingRank;
+  reveal stepOnlyTheCaptureATurnBeganInPublishesIt, heardCapture;
+  reveal isReplySettled, failedBefore, settledId, closing, revokeOwed, mintedPhase, endingOf, failureOfEnding, failedAfterAudio, failedBeforeAudio;
+  reveal consentDeadline, cloud__shared__types_millisPerSecond;
   if inv(s) && canConsentDismissed(s) {
     var actual := consentDismissed(s);
     assert !revokeOwed(s.phase) && s.capture.Muted?;
@@ -84,6 +94,15 @@ lemma unmute_ensures(s: CloudSpeech, recordAudio: bool)
   ensures (inv(s) ==> canUnmute(s, recordAudio) ==> stepAnEndReleasesRevokesAndReportsOnce(s, "unmute", unmute(s, recordAudio).state, unmute(s, recordAudio).out))
   ensures (inv(s) ==> canUnmute(s, recordAudio) ==> stepABatchRequestSettlesOnce(s, "unmute", unmute(s, recordAudio).state, unmute(s, recordAudio).out))
 {
+  hide *;
+  reveal inv, canUnmute, unmute, isOpen, asksOf, waitedOf, turnOwner, hasEnded, speechStep;
+  reveal alwaysConsentIsAskedAtMostTwiceWithinItsDeadline, alwaysOpenWorkUsesTheCurrentKey;
+  reveal alwaysOnlyALiveSessionCaptures, alwaysAReplyNeverPlaysAheadOfItsAudio;
+  reveal alwaysAnEndingSaysWhetherAudioStarted, alwaysADeviceEndIsAFailure, alwaysBatchRequestsAreDistinct;
+  reveal stepARefusedKeyIsReportedOnceAndEndsItsRequest, keyReportVersion;
+  reveal stepTheSessionOpensInOrder, openingRank;
+  reveal stepOnlyTheCaptureATurnBeganInPublishesIt, heardCapture;
+  reveal isReplySettled, failedBefore, settledId, closing, endingOf, failedAfterAudio, failedBeforeAudio;
   if inv(s) && canUnmute(s, recordAudio) {
     var actual := unmute(s, recordAudio);
     assert actual.out == [SpeechNotice.ReserveLiveCapture];
@@ -113,6 +132,15 @@ lemma mute_ensures(s: CloudSpeech)
   ensures (inv(s) ==> canMute(s) ==> stepAnEndReleasesRevokesAndReportsOnce(s, "mute", mute(s).state, mute(s).out))
   ensures (inv(s) ==> canMute(s) ==> stepABatchRequestSettlesOnce(s, "mute", mute(s).state, mute(s).out))
 {
+  hide *;
+  reveal inv, canMute, mute, isOpen, asksOf, waitedOf, turnOwner, hasEnded, speechStep, noticeIf;
+  reveal alwaysConsentIsAskedAtMostTwiceWithinItsDeadline, alwaysOpenWorkUsesTheCurrentKey;
+  reveal alwaysOnlyALiveSessionCaptures, alwaysAReplyNeverPlaysAheadOfItsAudio;
+  reveal alwaysAnEndingSaysWhetherAudioStarted, alwaysADeviceEndIsAFailure, alwaysBatchRequestsAreDistinct;
+  reveal stepARefusedKeyIsReportedOnceAndEndsItsRequest, keyReportVersion;
+  reveal stepTheSessionOpensInOrder, openingRank;
+  reveal stepOnlyTheCaptureATurnBeganInPublishesIt, heardCapture;
+  reveal isReplySettled, failedBefore, settledId, closing, endingOf, failedAfterAudio, failedBeforeAudio;
   if inv(s) && canMute(s) {
     var actual := mute(s);
     assert actual.out == [] || actual.out == [SpeechNotice.ReleaseLiveCapture];
@@ -181,6 +209,14 @@ lemma stop_ensures(s: CloudSpeech)
   ensures (inv(s) ==> canStop(s) ==> stepAnEndReleasesRevokesAndReportsOnce(s, "stop", stop(s).state, stop(s).out))
   ensures (inv(s) ==> canStop(s) ==> stepABatchRequestSettlesOnce(s, "stop", stop(s).state, stop(s).out))
 {
+  hide *;
+  reveal inv, canStop, stop, closeWith, isOpen, asksOf, waitedOf, turnOwner, hasEnded, speechStep, noticeIf;
+  reveal alwaysConsentIsAskedAtMostTwiceWithinItsDeadline, alwaysOpenWorkUsesTheCurrentKey;
+  reveal alwaysOnlyALiveSessionCaptures, alwaysAReplyNeverPlaysAheadOfItsAudio;
+  reveal alwaysAnEndingSaysWhetherAudioStarted, alwaysADeviceEndIsAFailure, alwaysBatchRequestsAreDistinct;
+  reveal stepTheSessionOpensInOrder, openingRank;
+  reveal stepOnlyTheCaptureATurnBeganInPublishesIt, heardCapture;
+  reveal endingOf, failureOfEnding, failedAfterAudio, failedBeforeAudio, revokeOwed, replyId;
   if inv(s) && canStop(s) {
     CloseSpeechReceipts(s, Ending.Stopped, "stop");
   }
@@ -201,6 +237,14 @@ lemma relayLost_ensures(s: CloudSpeech)
   ensures (inv(s) ==> canRelayLost(s) ==> stepAnEndReleasesRevokesAndReportsOnce(s, "relayLost", relayLost(s).state, relayLost(s).out))
   ensures (inv(s) ==> canRelayLost(s) ==> stepABatchRequestSettlesOnce(s, "relayLost", relayLost(s).state, relayLost(s).out))
 {
+  hide *;
+  reveal inv, canRelayLost, relayLost, mintedPhase, failRelay, failWith, closeWith, isOpen, asksOf, waitedOf, turnOwner, hasEnded, speechStep, noticeIf;
+  reveal alwaysConsentIsAskedAtMostTwiceWithinItsDeadline, alwaysOpenWorkUsesTheCurrentKey;
+  reveal alwaysOnlyALiveSessionCaptures, alwaysAReplyNeverPlaysAheadOfItsAudio;
+  reveal alwaysAnEndingSaysWhetherAudioStarted, alwaysADeviceEndIsAFailure, alwaysBatchRequestsAreDistinct;
+  reveal stepTheSessionOpensInOrder, openingRank;
+  reveal stepOnlyTheCaptureATurnBeganInPublishesIt, heardCapture;
+  reveal endingOf, failureOfEnding, failedAfterAudio, failedBeforeAudio, revokeOwed, replyId;
   if inv(s) && canRelayLost(s) {
     var failure := core__capabilityRouting_Failure.RemoteUnreachable;
     var ending := if s.audioStarted then FailedAfterAudio(failure) else FailedBeforeAudio(failure);
@@ -344,6 +388,15 @@ lemma batchCancelled_ensures(s: CloudSpeech, requestId: int)
   ensures (inv(s) ==> canBatchCancelled(s, requestId) ==> stepAnEndReleasesRevokesAndReportsOnce(s, "batchCancelled", batchCancelled(s, requestId).state, batchCancelled(s, requestId).out))
   ensures (inv(s) ==> canBatchCancelled(s, requestId) ==> stepABatchRequestSettlesOnce(s, "batchCancelled", batchCancelled(s, requestId).state, batchCancelled(s, requestId).out))
 {
+  hide *;
+  reveal inv, canBatchCancelled, batchCancelled, settleBatch, pending, isOpen, asksOf, waitedOf, turnOwner, hasEnded, speechStep;
+  reveal alwaysConsentIsAskedAtMostTwiceWithinItsDeadline, alwaysOpenWorkUsesTheCurrentKey;
+  reveal alwaysOnlyALiveSessionCaptures, alwaysAReplyNeverPlaysAheadOfItsAudio;
+  reveal alwaysAnEndingSaysWhetherAudioStarted, alwaysADeviceEndIsAFailure;
+  reveal stepARefusedKeyIsReportedOnceAndEndsItsRequest, keyReportVersion;
+  reveal stepTheSessionOpensInOrder, openingRank;
+  reveal stepOnlyTheCaptureATurnBeganInPublishesIt, heardCapture;
+  reveal isReplySettled, failedBefore, settledId, closing, endingOf, failedAfterAudio, failedBeforeAudio;
   if inv(s) && canBatchCancelled(s, requestId) {
     var cancelled := batchCancelled(s, requestId);
     assert cancelled.out == [BatchSettled(requestId, BatchVerdict.BatchCancelled)];
@@ -369,6 +422,16 @@ lemma batchAnswered_ensures(s: CloudSpeech, requestId: int, answer: CloudAnswer)
   ensures (inv(s) ==> canBatchAnswered(s, requestId) ==> stepAnEndReleasesRevokesAndReportsOnce(s, "batchAnswered", batchAnswered(s, requestId, answer).state, batchAnswered(s, requestId, answer).out))
   ensures (inv(s) ==> canBatchAnswered(s, requestId) ==> stepABatchRequestSettlesOnce(s, "batchAnswered", batchAnswered(s, requestId, answer).state, batchAnswered(s, requestId, answer).out))
 {
+  hide *;
+  reveal inv, canBatchAnswered, batchAnswered, settleBatch, pending, keyReport, verdictOf, refusalFailure, failureOf, waitOf;
+  reveal isOpen, asksOf, waitedOf, turnOwner, hasEnded, speechStep, noticeIf, ProofLib.Filter;
+  reveal alwaysConsentIsAskedAtMostTwiceWithinItsDeadline, alwaysOpenWorkUsesTheCurrentKey;
+  reveal alwaysOnlyALiveSessionCaptures, alwaysAReplyNeverPlaysAheadOfItsAudio;
+  reveal alwaysAnEndingSaysWhetherAudioStarted, alwaysADeviceEndIsAFailure;
+  reveal stepARefusedKeyIsReportedOnceAndEndsItsRequest, keyReportVersion;
+  reveal stepTheSessionOpensInOrder, openingRank;
+  reveal stepOnlyTheCaptureATurnBeganInPublishesIt, heardCapture;
+  reveal isReplySettled, failedBefore, settledId, closing, endingOf, failedAfterAudio, failedBeforeAudio;
   if inv(s) && canBatchAnswered(s, requestId) {
     var answered := batchAnswered(s, requestId, answer);
     var keyNotices := keyReport(answer, s.credential);
@@ -484,6 +547,15 @@ lemma frameArrived_ensures(s: CloudSpeech, frame: cloud__services__speechRelay_S
   ensures (inv(s) ==> canFrameArrived(s) ==> stepAnEndReleasesRevokesAndReportsOnce(s, "frameArrived", frameArrived(s, frame).state, frameArrived(s, frame).out))
   ensures (inv(s) ==> canFrameArrived(s) ==> stepABatchRequestSettlesOnce(s, "frameArrived", frameArrived(s, frame).state, frameArrived(s, frame).out))
 {
+  hide *;
+  reveal inv, canFrameArrived, frameArrived, mintedPhase, relayFailure, failRelay, failWith, closeWith, ownedTurn, onTurn, settleReply, onComplete;
+  reveal isOpen, asksOf, waitedOf, turnOwner, hasEnded, speechStep, noticeIf;
+  reveal alwaysConsentIsAskedAtMostTwiceWithinItsDeadline, alwaysOpenWorkUsesTheCurrentKey;
+  reveal alwaysOnlyALiveSessionCaptures, alwaysAReplyNeverPlaysAheadOfItsAudio;
+  reveal alwaysAnEndingSaysWhetherAudioStarted, alwaysADeviceEndIsAFailure, alwaysBatchRequestsAreDistinct;
+  reveal stepTheSessionOpensInOrder, openingRank;
+  reveal stepOnlyTheCaptureATurnBeganInPublishesIt, heardCapture;
+  reveal keyReportVersion, isReplySettled, failedBefore, settledId, closing, endingOf, failureOfEnding, failedAfterAudio, failedBeforeAudio, revokeOwed, replyId;
   if inv(s) && canFrameArrived(s) {
     var actual := frameArrived(s, frame);
     RelayCallbackReceipts(s, "frameArrived", actual);
@@ -505,6 +577,15 @@ lemma audioArrived_ensures(s: CloudSpeech, utteranceId: string, audioMs: int)
   ensures (inv(s) ==> canAudioArrived(s, utteranceId, audioMs) ==> stepAnEndReleasesRevokesAndReportsOnce(s, "audioArrived", audioArrived(s, utteranceId, audioMs).state, audioArrived(s, utteranceId, audioMs).out))
   ensures (inv(s) ==> canAudioArrived(s, utteranceId, audioMs) ==> stepABatchRequestSettlesOnce(s, "audioArrived", audioArrived(s, utteranceId, audioMs).state, audioArrived(s, utteranceId, audioMs).out))
 {
+  hide *;
+  reveal inv, canAudioArrived, audioArrived, settleReply, onComplete, failRelay, failWith, closeWith;
+  reveal isOpen, asksOf, waitedOf, turnOwner, hasEnded, speechStep, noticeIf;
+  reveal alwaysConsentIsAskedAtMostTwiceWithinItsDeadline, alwaysOpenWorkUsesTheCurrentKey;
+  reveal alwaysOnlyALiveSessionCaptures, alwaysAReplyNeverPlaysAheadOfItsAudio;
+  reveal alwaysAnEndingSaysWhetherAudioStarted, alwaysADeviceEndIsAFailure, alwaysBatchRequestsAreDistinct;
+  reveal stepTheSessionOpensInOrder, openingRank;
+  reveal stepOnlyTheCaptureATurnBeganInPublishesIt, heardCapture;
+  reveal keyReportVersion, isReplySettled, failedBefore, settledId, closing, endingOf, failureOfEnding, failedAfterAudio, failedBeforeAudio, revokeOwed, replyId;
   if inv(s) && canAudioArrived(s, utteranceId, audioMs) {
     var actual := audioArrived(s, utteranceId, audioMs);
     RelayCallbackReceipts(s, "audioArrived", actual);
@@ -526,6 +607,15 @@ lemma played_ensures(s: CloudSpeech, playedMs: int)
   ensures (inv(s) ==> canPlayed(s, playedMs) ==> stepAnEndReleasesRevokesAndReportsOnce(s, "played", played(s, playedMs).state, played(s, playedMs).out))
   ensures (inv(s) ==> canPlayed(s, playedMs) ==> stepABatchRequestSettlesOnce(s, "played", played(s, playedMs).state, played(s, playedMs).out))
 {
+  hide *;
+  reveal inv, canPlayed, played, settleReply, onComplete, failRelay, failWith, closeWith;
+  reveal isOpen, asksOf, waitedOf, turnOwner, hasEnded, speechStep, noticeIf;
+  reveal alwaysConsentIsAskedAtMostTwiceWithinItsDeadline, alwaysOpenWorkUsesTheCurrentKey;
+  reveal alwaysOnlyALiveSessionCaptures, alwaysAReplyNeverPlaysAheadOfItsAudio;
+  reveal alwaysAnEndingSaysWhetherAudioStarted, alwaysADeviceEndIsAFailure, alwaysBatchRequestsAreDistinct;
+  reveal stepTheSessionOpensInOrder, openingRank;
+  reveal stepOnlyTheCaptureATurnBeganInPublishesIt, heardCapture;
+  reveal keyReportVersion, isReplySettled, failedBefore, settledId, closing, endingOf, failureOfEnding, failedAfterAudio, failedBeforeAudio, revokeOwed, replyId;
   if inv(s) && canPlayed(s, playedMs) {
     var actual := played(s, playedMs);
     RelayCallbackReceipts(s, "played", actual);
@@ -580,6 +670,15 @@ lemma cancelReply_ensures(s: CloudSpeech)
   ensures (inv(s) ==> canCancelReply(s) ==> stepAnEndReleasesRevokesAndReportsOnce(s, "cancelReply", cancelReply(s).state, cancelReply(s).out))
   ensures (inv(s) ==> canCancelReply(s) ==> stepABatchRequestSettlesOnce(s, "cancelReply", cancelReply(s).state, cancelReply(s).out))
 {
+  hide *;
+  reveal inv, canCancelReply, cancelReply, settleReply, closeWith, failWith;
+  reveal isOpen, asksOf, waitedOf, turnOwner, hasEnded, speechStep, noticeIf;
+  reveal alwaysConsentIsAskedAtMostTwiceWithinItsDeadline, alwaysOpenWorkUsesTheCurrentKey;
+  reveal alwaysOnlyALiveSessionCaptures, alwaysAReplyNeverPlaysAheadOfItsAudio;
+  reveal alwaysAnEndingSaysWhetherAudioStarted, alwaysADeviceEndIsAFailure, alwaysBatchRequestsAreDistinct;
+  reveal stepTheSessionOpensInOrder, openingRank;
+  reveal stepOnlyTheCaptureATurnBeganInPublishesIt, heardCapture;
+  reveal keyReportVersion, isReplySettled, failedBefore, settledId, closing, endingOf, failureOfEnding, failedAfterAudio, failedBeforeAudio, revokeOwed, replyId;
   if inv(s) && canCancelReply(s) {
     RelayCallbackReceipts(s, "cancelReply", cancelReply(s));
   }
@@ -600,6 +699,15 @@ lemma outputNotice_ensures(s: CloudSpeech, notice: os__voice__speechOutput_Outpu
   ensures (inv(s) ==> canOutputNotice(s, notice) ==> stepAnEndReleasesRevokesAndReportsOnce(s, "outputNotice", outputNotice(s, notice).state, outputNotice(s, notice).out))
   ensures (inv(s) ==> canOutputNotice(s, notice) ==> stepABatchRequestSettlesOnce(s, "outputNotice", outputNotice(s, notice).state, outputNotice(s, notice).out))
 {
+  hide *;
+  reveal inv, canOutputNotice, outputNotice, cancelReply, settleReply, failRelay, failWith, closeWith;
+  reveal isOpen, asksOf, waitedOf, turnOwner, hasEnded, speechStep, noticeIf;
+  reveal alwaysConsentIsAskedAtMostTwiceWithinItsDeadline, alwaysOpenWorkUsesTheCurrentKey;
+  reveal alwaysOnlyALiveSessionCaptures, alwaysAReplyNeverPlaysAheadOfItsAudio;
+  reveal alwaysAnEndingSaysWhetherAudioStarted, alwaysADeviceEndIsAFailure, alwaysBatchRequestsAreDistinct;
+  reveal stepTheSessionOpensInOrder, openingRank;
+  reveal stepOnlyTheCaptureATurnBeganInPublishesIt, heardCapture;
+  reveal keyReportVersion, isReplySettled, failedBefore, settledId, closing, endingOf, failureOfEnding, failedAfterAudio, failedBeforeAudio, revokeOwed, replyId;
   if inv(s) && canOutputNotice(s, notice) {
     RelayCallbackReceipts(s, "outputNotice", outputNotice(s, notice));
   }
@@ -620,6 +728,16 @@ lemma captureAnswered_ensures(s: CloudSpeech, slot: os__voice__microphone_Refusa
   ensures (inv(s) ==> canCaptureAnswered(s) ==> stepAnEndReleasesRevokesAndReportsOnce(s, "captureAnswered", captureAnswered(s, slot).state, captureAnswered(s, slot).out))
   ensures (inv(s) ==> canCaptureAnswered(s) ==> stepABatchRequestSettlesOnce(s, "captureAnswered", captureAnswered(s, slot).state, captureAnswered(s, slot).out))
 {
+  hide *;
+  reveal inv, canCaptureAnswered, captureAnswered, failRelay, failWith, closeWith;
+  reveal isOpen, asksOf, waitedOf, turnOwner, hasEnded, speechStep, noticeIf;
+  reveal alwaysConsentIsAskedAtMostTwiceWithinItsDeadline, alwaysOpenWorkUsesTheCurrentKey;
+  reveal alwaysOnlyALiveSessionCaptures, alwaysAReplyNeverPlaysAheadOfItsAudio;
+  reveal alwaysAnEndingSaysWhetherAudioStarted, alwaysADeviceEndIsAFailure, alwaysBatchRequestsAreDistinct;
+  reveal stepTheSessionOpensInOrder, openingRank;
+  reveal stepOnlyTheCaptureATurnBeganInPublishesIt, heardCapture;
+  reveal stepARefusedKeyIsReportedOnceAndEndsItsRequest, stepAReplySettlesOnce, stepAnEndReleasesRevokesAndReportsOnce, stepABatchRequestSettlesOnce;
+  reveal keyReportVersion, isReplySettled, failedBefore, settledId, closing, endingOf, failureOfEnding, failedAfterAudio, failedBeforeAudio, revokeOwed, replyId, pending;
   if inv(s) && canCaptureAnswered(s) {
     var actual := captureAnswered(s, slot);
     if slot.NoRefusal? {
@@ -651,6 +769,16 @@ lemma minted_ensures(s: CloudSpeech, answer: CloudAnswer)
   ensures (inv(s) ==> canMinted(s) ==> stepAnEndReleasesRevokesAndReportsOnce(s, "minted", minted(s, answer).state, minted(s, answer).out))
   ensures (inv(s) ==> canMinted(s) ==> stepABatchRequestSettlesOnce(s, "minted", minted(s, answer).state, minted(s, answer).out))
 {
+  hide *;
+  reveal inv, canMinted, minted, mintedPhase, keyReport, failureOf, waitOf, refusalFailure, failWith, closeWith, ProofLib.Filter;
+  reveal isOpen, asksOf, waitedOf, turnOwner, hasEnded, speechStep, noticeIf;
+  reveal alwaysConsentIsAskedAtMostTwiceWithinItsDeadline, alwaysOpenWorkUsesTheCurrentKey;
+  reveal alwaysOnlyALiveSessionCaptures, alwaysAReplyNeverPlaysAheadOfItsAudio;
+  reveal alwaysAnEndingSaysWhetherAudioStarted, alwaysADeviceEndIsAFailure, alwaysBatchRequestsAreDistinct;
+  reveal stepARefusedKeyIsReportedOnceAndEndsItsRequest, stepTheSessionOpensInOrder, openingRank;
+  reveal stepOnlyTheCaptureATurnBeganInPublishesIt, heardCapture;
+  reveal stepAReplySettlesOnce, stepAnEndReleasesRevokesAndReportsOnce, typed2_os__voice__cloudSpeech;
+  reveal keyReportVersion, isReplySettled, failedBefore, settledId, closing, endingOf, failureOfEnding, failedAfterAudio, failedBeforeAudio, revokeOwed, replyId;
   if inv(s) && canMinted(s) {
     var actual := minted(s, answer);
     if answer.Answered? {
@@ -751,11 +879,23 @@ lemma credentialChanged_ensures(s: CloudSpeech, version: int)
     assert forall i :: 0 <= i < |receipts| ==> settledId(receipts[i]) == waiting[i].requestId by { reveal settledId; }
     assert forall n :: n in suffix ==> settledId(n) == 0 && heardCapture(n) == -1;
     KeyChangeSettlesWaitingBatches(s, actual.state, waiting, receipts, suffix);
-    assert inv(actual.state) by {
-      reveal closeWith, asksOf, waitedOf, endingOf, hasEnded, failedAfterAudio, failedBeforeAudio, failureOfEnding, turnOwner;
-      reveal alwaysConsentIsAskedAtMostTwiceWithinItsDeadline, alwaysOpenWorkUsesTheCurrentKey;
-      reveal alwaysOnlyALiveSessionCaptures, alwaysAReplyNeverPlaysAheadOfItsAudio, alwaysAnEndingSaysWhetherAudioStarted;
-      reveal alwaysADeviceEndIsAFailure;
+    assert alwaysConsentIsAskedAtMostTwiceWithinItsDeadline(actual.state) by {
+      reveal closeWith, asksOf, waitedOf, alwaysConsentIsAskedAtMostTwiceWithinItsDeadline;
+    }
+    assert alwaysOpenWorkUsesTheCurrentKey(actual.state) by {
+      reveal closeWith, alwaysOpenWorkUsesTheCurrentKey;
+    }
+    assert alwaysOnlyALiveSessionCaptures(actual.state) by {
+      reveal closeWith, turnOwner, alwaysOnlyALiveSessionCaptures;
+    }
+    assert alwaysAReplyNeverPlaysAheadOfItsAudio(actual.state) by {
+      reveal closeWith, alwaysAReplyNeverPlaysAheadOfItsAudio;
+    }
+    assert alwaysAnEndingSaysWhetherAudioStarted(actual.state) by {
+      reveal closeWith, endingOf, hasEnded, failedAfterAudio, failedBeforeAudio, alwaysAnEndingSaysWhetherAudioStarted;
+    }
+    assert alwaysADeviceEndIsAFailure(actual.state) by {
+      reveal closeWith, endingOf, failureOfEnding, alwaysADeviceEndIsAFailure;
     }
     assert stepTheSessionOpensInOrder(s, actual.state) by {
       reveal closeWith, stepTheSessionOpensInOrder, openingRank;
@@ -890,7 +1030,6 @@ lemma KeyChangeSettlesWaitingBatches(before: CloudSpeech, after: CloudSpeech, wa
   }
 }
 
-// A device end fails the open session as any failure closes it, and records its cause.
 lemma deviceEnded_ensures(s: CloudSpeech, cause: DeviceCause)
   ensures (inv(s) ==> canDeviceEnded(s, cause) ==> alwaysConsentIsAskedAtMostTwiceWithinItsDeadline(deviceEnded(s, cause).state))
   ensures (inv(s) ==> canDeviceEnded(s, cause) ==> alwaysOpenWorkUsesTheCurrentKey(deviceEnded(s, cause).state))
@@ -906,6 +1045,15 @@ lemma deviceEnded_ensures(s: CloudSpeech, cause: DeviceCause)
   ensures (inv(s) ==> canDeviceEnded(s, cause) ==> stepAnEndReleasesRevokesAndReportsOnce(s, "deviceEnded", deviceEnded(s, cause).state, deviceEnded(s, cause).out))
   ensures (inv(s) ==> canDeviceEnded(s, cause) ==> stepABatchRequestSettlesOnce(s, "deviceEnded", deviceEnded(s, cause).state, deviceEnded(s, cause).out))
 {
+  hide *;
+  reveal inv, canDeviceEnded, deviceEnded, deviceFailure, failWith, closeWith, isOpen, asksOf, waitedOf, turnOwner, hasEnded, speechStep, noticeIf;
+  reveal alwaysConsentIsAskedAtMostTwiceWithinItsDeadline, alwaysOpenWorkUsesTheCurrentKey;
+  reveal alwaysOnlyALiveSessionCaptures, alwaysAReplyNeverPlaysAheadOfItsAudio;
+  reveal alwaysAnEndingSaysWhetherAudioStarted, alwaysADeviceEndIsAFailure, alwaysBatchRequestsAreDistinct;
+  reveal stepARefusedKeyIsReportedOnceAndEndsItsRequest, stepTheSessionOpensInOrder, openingRank;
+  reveal stepOnlyTheCaptureATurnBeganInPublishesIt, heardCapture;
+  reveal stepAReplySettlesOnce, stepAnEndReleasesRevokesAndReportsOnce, typed2_os__voice__cloudSpeech;
+  reveal keyReportVersion, isReplySettled, failedBefore, settledId, closing, endingOf, failureOfEnding, failedAfterAudio, failedBeforeAudio, revokeOwed, replyId;
   if inv(s) && canDeviceEnded(s, cause) {
     var failure := deviceFailure(cause);
     var ending := if s.audioStarted then FailedAfterAudio(failure) else FailedBeforeAudio(failure);
@@ -917,7 +1065,6 @@ lemma deviceEnded_ensures(s: CloudSpeech, cause: DeviceCause)
   }
 }
 
-// Recording a device cause on a closed session keeps what the close settled of its batch requests.
 lemma DeviceEndKeepsBatchSettlements(before: CloudSpeech, closed: SpeechStep, after: CloudSpeech, via: string)
   requires after == closed.state.(endedBy := after.endedBy)
   requires stepABatchRequestSettlesOnce(before, via, closed.state, closed.out)

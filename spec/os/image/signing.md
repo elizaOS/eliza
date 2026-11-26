@@ -177,7 +177,7 @@ pure def bootChainAdmitted(algorithm: str, chained: Set[str]): bool =
 pure val algorithmValues = Set("SHA256_RSA4096", "SHA256_RSA8192", "")
 pure val chainedValues = Set(Set(), Set("vbmeta_system", "vbmeta_vendor"), Set("vbmeta_system"), Set("vbmeta_system", "vbmeta_vendor", "boot"))
 pure def lawMissingOrExtraChainIsRefused(algorithm: str, chained: Set[str]): bool =
-  bootChainAdmitted(algorithm, chained) implies (chained.contains("vbmeta_system") and chained.contains("vbmeta_vendor") and chained.size() == 2)
+  bootChainAdmitted(algorithm, chained) implies (chained.contains("vbmeta_system") and chained.contains("vbmeta_vendor") and chained.subseteq(Set("vbmeta_system", "vbmeta_vendor")))
 ```
 
 ### The update package is built only after every re-signed APK and APEX verifies with a release certificate
@@ -354,8 +354,8 @@ pure def gateProblems(gateRecord: GateRecord): List[GateProblem] =
     .concat(gateIssueIf(gateRecord.gates.listMap(g => g.gate) != gateOrder, GatesNotExact))
     .concat(gateIssueIf(gateRecord.gates.some(g => g.status == GateStatusUnknown), GateStatusInvalid))
     .concat(gateIssueIf(gateRecord.gates.some(g => g.unreadEvidence > 0), GateEvidenceUnread))
-    .concat(gateIssueIf(gateRecord.gates.some(g => g.status != GateNotRun and g.status != GateStatusUnknown and g.evidence == 0), GateClaimWithoutEvidence))
-    .concat(gateIssueIf(gateRecord.gates.some(g => g.status == GatePassed and g.releaseEvidence == 0), GatePassedOnDevelopment))
+    .concat(gateIssueIf(gateRecord.gates.some(g => g.status != GateNotRun and g.status != GateStatusUnknown and g.evidence <= 0), GateClaimWithoutEvidence))
+    .concat(gateIssueIf(gateRecord.gates.some(g => g.status == GatePassed and g.releaseEvidence <= 0), GatePassedOnDevelopment))
     .concat(gateIssueIf(gatePassed(gateRecord, SourceAdmission) and not(gateRecord.lockProductionPinned and gateRecord.lockEvidenceMatches), SourceAdmissionUnproved))
     .concat(gateIssueIf(gatePassed(gateRecord, SignedUpdateRecovery) and not(gateRecord.channelReady), RecoveryUndistributable))
     .concat(gateIssueIf(gatePassed(gateRecord, UserAcceptance) and not(gateOrder.every(n => n == UserAcceptance or gatePassed(gateRecord, n))), AcceptanceBeforeGates))

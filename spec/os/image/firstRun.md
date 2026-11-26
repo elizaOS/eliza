@@ -83,7 +83,7 @@ pure val readingValues = Set(nothingRead, { ...nothingRead, product: Set(P::Home
   { ...nothingRead, owner: Set(P::DialerRole) }, { ...nothingRead, product: Set(P::HomeRole), unavailable: Set(P::DialerRole, P::SmsRole) })
 pure def lawOnlyARoleReadEmptyOrStockIsAssigned(required: Set[P::DefaultRole], confirmed: Set[P::DefaultRole], reading: Reading): bool = {
   val assigning = attempted(required, confirmed, reading).assigning
-  assigning.subseteq(required) and assigning.intersect(reading.unavailable.union(reading.product).union(reading.owner).union(confirmed)).size() == 0
+  assigning.subseteq(required) and assigning.forall(r => not(reading.unavailable.contains(r)) and not(reading.product.contains(r)) and not(reading.owner.contains(r)) and not(confirmed.contains(r)))
 }
 pure def alwaysAssignsOnlyRequiredRolesItNeverConfirmed(s: FirstRun): bool =
   s.assigning.subseteq(s.required) and s.assigning.intersect(s.confirmed).size() == 0 and (s.phase == Assigning iff s.assigning.size() > 0)

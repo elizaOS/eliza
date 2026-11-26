@@ -207,13 +207,13 @@ pure def familyAdmission(route: RouteClass, family: S::Family, generation: int, 
   if (reason != NoReason) deniedFor(reason)
   else if (not(isActiveAccount(standing))) deniedFor(CredentialRevoked)
   else if (not(hasAssurance(route, f))) Denied({ refusal: refuse(FreshSessionRequired) })
-  else Caller({ kind: SessionCredential, expiresAt: f.accessExpiresAt })
+  else Caller({ kind: SessionCredential, expiresAt: S::accessEnd(f, generation) })
 }
 pure def lawSessionRoutesAdmitOnlyAssuredSessions(route: RouteClass, family: S::Family, generation: int, standing: Standing, now: Millis): bool = {
   val a = admit(route, SessionBearer({ familyLookup: FamilyRow({ family: family, generation: generation }) }), standing, now)
   val live = liveFamily(family, generation, standing, now) and isActiveAccount(standing)
   val assured = hasAssurance(route, { ...family, now: now })
-  (needsSession(route) and live and not(S::isLease(family))) implies (a == (if (assured) Caller({ kind: SessionCredential, expiresAt: family.accessExpiresAt }) else Denied({ refusal: refuse(FreshSessionRequired) })))
+  (needsSession(route) and live and not(S::isLease(family))) implies (a == (if (assured) Caller({ kind: SessionCredential, expiresAt: S::accessEnd({ ...family, now: now }, generation) }) else Denied({ refusal: refuse(FreshSessionRequired) })))
 }
 pure def lawADeviceKeyNeverPassesASessionRoute(route: RouteClass, presented: Presented, standing: Standing, now: Millis): bool = {
   val a = admit(route, presented, standing, now)

@@ -87,6 +87,7 @@ another with the same id.
 
 ```quint
 pure def alwaysIssuedOnce(s: ProfilePurge): bool =
+  s.lastProfile >= 0 and s.lastSurface >= 0 and
   s.profiles.every(p => p.name >= 1 and p.name <= s.lastProfile and s.profiles.select(q => q.name == p.name).length() == 1) and
   s.surfaces.every(a => a.id >= 1 and a.id <= s.lastSurface and s.surfaces.select(b => b.id == a.id).length() == 1)
 pure def alwaysSurfacesUseLiveProfiles(s: ProfilePurge): bool =

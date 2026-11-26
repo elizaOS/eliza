@@ -92,7 +92,7 @@ pure val reviewedValues = Set(Set("androidx.test.runner.AndroidJUnitRunner"), Se
 pure val appValues = Set("ai.example.app")
 pure val extraValues = Set(junitRunner, { ...junitRunner, name: "ai.example.app.Unreviewed" })
 pure def lawAdmittedRunnersTargetTheApp(declared: List[RunnerDeclaration], reviewed: Set[str], app: str): bool =
-  runnersAdmitted(declared, reviewed, app) implies (declared.length() == reviewed.size() and declared.every(d => d.targetPackage == app))
+  runnersAdmitted(declared, reviewed, app) implies (declared.every(d => d.targetPackage == app and reviewed.contains(d.name) and declared.select(e => e.name == d.name).length() == 1) and reviewed.forall(n => declared.some(d => d.name == n)))
 pure def lawAnUnreviewedRunnerRefuses(declared: List[RunnerDeclaration], reviewed: Set[str], app: str, extra: RunnerDeclaration): bool =
   not(reviewed.contains(extra.name)) implies not(runnersAdmitted(declared.append(extra), reviewed, app))
 ```
