@@ -3,7 +3,7 @@ import { assert, it } from "@effect/vitest"
 import * as NodeServices from "@effect/platform-node/NodeServices"
 import { negotiation, validate, type DeviceOperation, type LocalRoute } from "@elizaos/agent"
 import type { DeviceTurn, EarlierRequest } from "@elizaos/agent-host"
-import { bindIncomingMessagePersistence, satisfiesContextGate, stringToUuid, type Content, type IAgentRuntime, type Memory } from "@elizaos/core"
+import { bindIncomingMessagePersistence, satisfiesContextGate, stringToUuid, validateToolArgs, type Content, type IAgentRuntime, type Memory } from "@elizaos/core"
 import { noteChangeResult, notesPlugin, notesRefusalResult, notesRoutes } from "../src/agent.vibe"
 import { notesDeviceFamily } from "../src/device-proposals.vibe"
 import {
@@ -323,6 +323,24 @@ it.effect('Keep notes as one collection edited only on the owner\'s words (spec/
   assert.equal(try code(notes.update({ id: camp.value.note.id }, { authoredEdit: oversized }, camp.snapshot.revision)), "NOTES_VALIDATION_FAILED")
   assert.equal((try notes.snapshot()).revision, camp.snapshot.revision)
 
+  const shoppingList = try notes.create({ content: "Shopping List", format: { kind: "list", data: { items: [{ t: "eggs", done: false }, { t: "milk", done: false }, { t: "bread", done: true }] } } })
+  const listId = shoppingList.value.note.id
+  const removed = try notes.update({ id: listId }, { authoredEdit: { field: "checklist", action: "remove", index: 1, expectedText: "milk" } }, shoppingList.snapshot.revision)
+  const changedItem = try code(notes.update({ id: listId }, { authoredEdit: { field: "checklist", action: "remove", index: 1, expectedText: "milk" } }, removed.snapshot.revision))
+  const outside = try code(notes.update({ id: listId }, { authoredEdit: { field: "checklist", action: "remove", index: 5, expectedText: "eggs" } }, removed.snapshot.revision))
+  const firstOff = try notes.update({ id: listId }, { authoredEdit: { field: "checklist", action: "remove", index: 0, expectedText: "eggs" } }, removed.snapshot.revision)
+  const lastOff = try notes.update({ id: listId }, { authoredEdit: { field: "checklist", action: "remove", index: 0, expectedText: "bread" } }, firstOff.snapshot.revision)
+  const listAfter = (try notes.snapshot()).notes.find((note) => note.id === listId)
+  const plainList = try notes.create({ content: "Groceries\neggs\nmilk\nbread" })
+  const plainRemoved = try notes.update({ id: plainList.value.note.id }, { textEdit: { field: "body", oldText: "milk\n", newText: "" } })
+  assert.deepEqual([
+    removed.value.format?.data.items, removed.value.title, changedItem, outside, firstOff.value.format?.data.items, lastOff.value.format?.data.items, listAfter?.title, listAfter?.format?.kind,
+    plainRemoved.value.title, plainRemoved.value.body,
+  ], [
+    [{ t: "eggs", done: false }, { t: "bread", done: true }], "Shopping List", "NOTES_EDIT_CONFLICT", "NOTES_EDIT_CONFLICT", [{ t: "bread", done: true }], [], "Shopping List", "list",
+    "Groceries", "\neggs\nbread",
+  ])
+
   const lone = try notes.create({ content: "Trip \uD83C\nTent \uDC00 poles 🏕" })
   const retitled = try notes.update({ id: lone.value.note.id }, { title: "Camp \uDFD5 trip" }, lone.snapshot.revision)
   const literalLone = try notes.update({ id: lone.value.note.id }, { textEdit: { field: "body", oldText: "poles", newText: "pegs \uD800" } })
@@ -330,6 +348,27 @@ it.effect('Keep notes as one collection edited only on the owner\'s words (spec/
   assert.deepEqual(
     [lone.value.note.title, lone.value.note.body, retitled.value.title, literalLone.value.body, titled.value.note.title, (try notes.create({ title: "Hike \uDC00", body: "boots" })).value.note.id],
     ["Trip �", "\nTent � poles 🏕", "Camp � trip", "\nTent � pegs � 🏕", "Hike �", titled.value.note.id])
+})
+
+it.effect('The edit forms the Notes actions describe pass their own parameter schemas, so an item can be added and removed (spec/notes/records.md, "Removing one item from a list is an edit of that note, never a delete")', effect () => {
+  const actions = notesPlugin(notesOver(fixture())).actions ?? []
+  const errorsOf = (action: string, name: string, value: unknown) => {
+    const found = actions.find((entry) => entry.name === action)
+    if (found === undefined) return [`no ${action}`]
+    const target = action === "NOTES_UPDATE" ? { noteId: "note-1", expectedRevision: 1 } : {}
+    return validateToolArgs(found, { ...target, [name]: value }).errors
+  }
+  assert.deepEqual([
+    errorsOf("NOTES_UPDATE", "textEdit", { action: "append", field: "item", text: "milk" }),
+    errorsOf("NOTES_UPDATE", "textEdit", { field: "body", oldText: "milk\n", newText: "" }),
+    errorsOf("NOTES_UPDATE", "authoredEdit", { field: "checklist", action: "append", text: "milk" }),
+    errorsOf("NOTES_UPDATE", "authoredEdit", { field: "checklist", action: "remove", index: 2, expectedText: "milk" }),
+    errorsOf("NOTES_UPDATE", "authoredEdit", { field: "checklist", index: 0, expectedText: "eggs", done: true }),
+    errorsOf("NOTES_LIST", "dateRange", { field: "updatedAt", start: "2026-11-01T00:00:00Z" }),
+    errorsOf("NOTES_UPDATE", "authoredEdit", JSON.stringify({ field: "checklist", action: "remove", index: 2, expectedText: "milk" })),
+    errorsOf("NOTES_UPDATE", "authoredEdit", { field: "checklist", action: "erase", index: 0, expectedText: "eggs" }).length > 0,
+    errorsOf("NOTES_UPDATE", "authoredEdit", { field: "checklist", action: "remove", index: 0, expectedText: "eggs", extra: true }).length > 0,
+  ], [[], [], [], [], [], [], [], true, true])
 })
 
 it.effect('Restore a deleted note exactly, at the revision the owner saw (spec/notes/trash.md, "Story: Recover a deleted note")', effect () => {

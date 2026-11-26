@@ -264,7 +264,7 @@ effect function inference(runtime: IAgentRuntime, params: GenerateTextParams, ti
       ?? [{ role: "user", content: params.prompt ?? "" }]
     const systemBlocks = system === ""
       ? undefined
-      : [{ type: "text", text: system, cache_control: EPHEMERAL_CACHE_CONTROL }]
+      : [{ type: "text" as const, text: system, cache_control: EPHEMERAL_CACHE_CONTROL }]
     const tools = params.tools && params.tools.length > 0
       ? params.tools.map((tool, index, all) => ({
           name: tool.name,

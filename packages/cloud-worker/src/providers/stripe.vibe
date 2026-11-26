@@ -244,7 +244,7 @@ export interface CheckoutTerms {
 function returnParams(returns: CheckoutReturns): Params {
   switch (returns.kind) {
     case "hosted": return [["success_url", returns.successUrl], ["cancel_url", returns.cancelUrl]]
-    case "embedded": return [["ui_mode", "embedded"], ["redirect_on_completion", "never"]]
+    case "embedded": return [["ui_mode", "embedded_page"], ["redirect_on_completion", "never"]]
     default: {
       const _exhaustive: never = returns
       return _exhaustive
@@ -261,7 +261,7 @@ function checkoutParams(terms: CheckoutTerms): Params {
     ["currency", "usd"],
     ["line_items[0][price]", terms.priceId],
     ["line_items[0][quantity]", "1"],
-    ["payment_method_types[0]", "card"],
+    ["allowed_payment_method_types[0]", "card"],
     ["allow_promotion_codes", "false"],
     ["automatic_tax[enabled]", "false"],
     ...identity.map(([name, value]) => [`metadata[${name}]`, value] as const),
@@ -280,7 +280,7 @@ function sessionFits(session: StripeCheckoutSession, terms: CheckoutTerms, live:
 
 export effect function createCheckoutSession(terms: CheckoutTerms, mutation: StripeMutation): StripeCheckoutSession!StripeFailure!StripeContext {
   const path = "/v1/checkout/sessions"
-  const session = try read(StripeCheckoutSession, { method: "POST", path, ...mutation, params: checkoutParams(terms) })
+  const session = try read(StripeCheckoutSession, { method: "POST", path, ...mutation, apiVersion: "2026-10-28.endive", params: checkoutParams(terms) })
   if (!sessionFits(session, terms, try livemode())) throw new StripeInvalidResponse({ path, status: 200 })
   return session
 }

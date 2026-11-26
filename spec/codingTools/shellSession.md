@@ -82,7 +82,7 @@ pure def advanceClock(s: ShellSession, delta: int): ShellSession = {
 
 ### Background shell sessions enforce concurrency caps and monotone incremental output polling
 
-Starting a background session requires available capacity under the per-conversation cap of 16 sessions. Output bytes accumulate while running, polling advances the cursor without skipping past total bytes, and exiting or killing releases the active session slot.
+This state machine models a single tracked background session slot (`bgActiveCount` in `{0, 1}`) under the per-conversation cap of 16 sessions. Starting requires the slot to be free and under the cap, output bytes accumulate while running, polling advances the cursor without skipping past total bytes, and exiting or killing releases the active session slot.
 
 ```quint
 pure def canStartBackground(s: ShellSession): bool =
@@ -156,7 +156,7 @@ pure val limitValues = Set(50, 1000)
 
 ### Shell session invariants and reachability
 
-Active background counts stay within bounds, output cursors never exceed produced bytes, challenges are consumed on use and never by the message that issued them, and each workflow is reachable.
+For the single tracked background session slot, `bgActiveCount` stays within `[0, 16]` and equals `1` when running and `0` otherwise; output cursors never exceed produced bytes, challenges are consumed on use and never by the message that issued them, and each workflow is reachable.
 
 ```quint
 pure def alwaysShellSessionValid(s: ShellSession): bool =

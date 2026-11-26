@@ -98,7 +98,7 @@ pure def lawVanishedAgentErrors(end: TurnEnd): bool = (end == AgentGone) implies
 ```
 ### Disk budget, spend allowance, and subscription attendance fail closed
 
-Workspace provisioning is admitted only when projected usage stays within the disk cap and free space remains above the minimum threshold. Spend actions that exceed the session spend cap require explicit approval or fail closed. Subscription-only adapters require an unexpired user-attended authorization window matching the fixed TTL.
+Workspace provisioning is admitted only when projected usage stays within the disk cap and free space remains at or above the minimum threshold. Spend actions that exceed the session spend cap always fail closed (`SpendDenyCap`), even if user-approved, while high-risk actions within the cap require explicit user approval (`SpendRequireApproval`) before admission. Subscription-only adapters require an unexpired user-attended authorization window matching the fixed TTL.
 
 ```quint
 type BudgetVerdict = BudgetAllowed | BudgetDenied

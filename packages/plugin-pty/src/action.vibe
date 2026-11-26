@@ -1,4 +1,4 @@
-// spec/pty/policy.md, "The chat action reads, waits and resizes within fixed bounds"; spec/pty/policy.md, "Idle timeout and terminal geometry stay within safe bounds"; spec/pty/policy.md, "Store sessions belong to the operator, not to a self-reported client"; spec/pty/policy.md, "Story: Enforce session capacity, confinement, and safe teardown"
+// spec/pty/policy.md, "The chat action reads, waits and resizes within fixed bounds"; spec/pty/policy.md, "Idle timeout, terminal geometry, and output slices stay within safe bounds"; spec/pty/policy.md, "Store sessions belong to the operator, not to a self-reported client"; spec/pty/policy.md, "Story: Enforce session capacity, confinement, and safe teardown"
 import type { Action, ActionResult, AppliedEffectReceipt, IAgentRuntime } from "@elizaos/core"
 import { clampOutputChars, validTerminalGeometry } from "../gen/pty__policy.effect.vibe"
 import type { PtyService } from "./service.vibe"

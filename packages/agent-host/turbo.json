@@ -1,0 +1,13 @@
+{
+  "extends": ["//"],
+  "tasks": {
+    "test": {
+      "dependsOn": [
+        "gen", "//#gen", "^build",
+        "@elizaos/plugin-personal-assistant#build", "@elizaos/plugin-browser#build", "@elizaos/plugin-calendar#build", "@elizaos/plugin-github#build",
+        "@elizaos/plugin-inbox#build", "@elizaos/plugin-maps#build", "@elizaos/plugin-notes#build", "@elizaos/plugin-vision#build",
+        "@elizaos/plugin-wallet#build", "@elizaos/plugin-web-search#build", "@elizaos/plugin-workflow#build"
+      ]
+    }
+  }
+}

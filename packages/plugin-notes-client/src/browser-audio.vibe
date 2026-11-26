@@ -319,7 +319,6 @@ module indexed {
           if (original.deletedAt !== undefined && (original.deletedAt !== deletedAt || original.activeDeletionOperation !== operationId)) {
             throw refused("binding");
           }
-          // Keep only the identity necessary to confirm a retried deletion across a reload.
           store.put({
             audioId, noteId, durationMs: original.durationMs, createdAt: original.createdAt,
             bytes: new ArrayBuffer(0), expired: true, deletedAt, recordingSave: save,
