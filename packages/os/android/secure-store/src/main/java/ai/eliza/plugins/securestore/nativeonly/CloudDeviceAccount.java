@@ -1,3 +1,4 @@
+// spec/os/signIn/flow.md, "Standalone email sign-in exchanges a session only after an accepted code and retires an attempt that needs an additional factor"
 package ai.eliza.plugins.securestore.nativeonly;
 
 import android.content.Context;

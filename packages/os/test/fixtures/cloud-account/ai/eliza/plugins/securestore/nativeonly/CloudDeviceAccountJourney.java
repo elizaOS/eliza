@@ -1,4 +1,5 @@
 // spec/cloud/nativeClients/deviceKeys.md, "Story: Sign a device in and keep its key"; spec/cloud/nativeClients/deviceKeys.md, "Story: Sign a device out"; spec/cloud/identity/sessions.md, "Story: Stay signed in"; spec/os/signIn/browserReturn.md, "Story: Reconnect a signed-in device for mail and calendar"
+// spec/os/signIn/flow.md, "Standalone email sign-in exchanges a session only after an accepted code and retires an attempt that needs an additional factor"
 package ai.eliza.plugins.securestore.nativeonly;
 
 import android.content.Context;
@@ -138,7 +139,7 @@ public final class CloudDeviceAccountJourney {
     Object advertisedMailLease = true;
     String emailVerifierChallenge, emailAddress, connectVerifierChallenge, connectState;
     String sessionAccess, sessionRefresh;
-    boolean requireSecondFactor, emailOffer = true;
+    boolean requireSecondFactor, logoutUnavailable, emailOffer = true;
 
     synchronized Reply answer(String method, String path, String query, String bearer, String body, Map<String, String> headers) throws Exception {
       long now = System.currentTimeMillis();
@@ -199,6 +200,7 @@ public final class CloudDeviceAccountJourney {
         case "/api/v1/auth/logout" -> {
           if (bearer != null || !sessionRefresh.equals(new JSONObject(body).getString("refreshToken")))
             throw new AssertionError("The transient session was not closed through its own refresh proof");
+          if (logoutUnavailable) return Reply.json(503, new JSONObject().put("error", "service_unavailable"));
           sessionAccess = sessionRefresh = null;
           return new Reply(204, "", null, false);
         }
@@ -546,6 +548,8 @@ public final class CloudDeviceAccountJourney {
   private static void signInWithEmail(CloudDeviceAccount account, Cloud cloud) throws Exception {
     String destination = "member@example.test";
     String verify = "POST /api/v1/auth/email/code/verify";
+    String connect = "POST /api/v1/app-auth/connect";
+    String logout = "POST /api/v1/auth/logout";
     cloud.keySeconds = 60;
     cloud.emailOffer = false;
     try {
@@ -562,9 +566,14 @@ public final class CloudDeviceAccountJourney {
         || submitted != Collections.frequency(cloud.paths, verify)) throw new AssertionError("Canceled email proof was exchanged");
     cloud.requireSecondFactor = true;
     account.sendEmailSignInCode(CLIENT_ID, "staging", destination);
+    int exchanges = Collections.frequency(cloud.paths, connect);
     if (account.verifyEmailSignInCode(destination, "123456") != CloudDeviceAccount.EmailSignIn.ADDITIONAL_VERIFICATION
         || account.session() != null || cloud.sessionAccess != null) throw new AssertionError("Email sign-in bypassed second factor");
     cloud.requireSecondFactor = false;
+    submitted = Collections.frequency(cloud.paths, verify);
+    if (account.verifyEmailSignInCode(destination, "123456") != CloudDeviceAccount.EmailSignIn.REFUSED
+        || submitted != Collections.frequency(cloud.paths, verify) || exchanges != Collections.frequency(cloud.paths, connect))
+      throw new AssertionError("An email code that needed a second factor remained pending");
     cloud.exchangeOrganization = ACCOUNT;
     account.sendEmailSignInCode(CLIENT_ID, "staging", destination);
     if (account.verifyEmailSignInCode(destination, "123456") != CloudDeviceAccount.EmailSignIn.REFUSED
@@ -582,6 +591,15 @@ public final class CloudDeviceAccountJourney {
       throw new AssertionError("Email sign-in did not save only the acknowledged device credential");
     if (account.verifyEmailSignInCode(destination, "123456") != CloudDeviceAccount.EmailSignIn.REFUSED)
       throw new AssertionError("A completed code was used twice");
+    account.clear();
+    account.retryRevocation();
+    cloud.logoutUnavailable = true;
+    account.sendEmailSignInCode(CLIENT_ID, "staging", destination);
+    int logoutRequests = Collections.frequency(cloud.paths, logout);
+    if (account.verifyEmailSignInCode(destination, "123456") != CloudDeviceAccount.EmailSignIn.SIGNED_IN
+        || Collections.frequency(cloud.paths, logout) != logoutRequests + 1 || cloud.sessionAccess == null
+        || !ACCOUNT.equals(account.session().accountId()) || !cloud.latest().grant.acknowledged)
+      throw new AssertionError("A temporary-session logout outage interrupted acknowledged sign-in");
     account.clear();
     account.retryRevocation();
   }

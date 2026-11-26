@@ -1,6 +1,6 @@
 # Sign-in flow
 
-The device half of sign-in: the plugin's one native sign-in slot and the
+The device half of sign-in: the shared plugin's one native sign-in slot and the
 renderer requests it answers. A person signs in with an email code, an SMS
 code or Google (the account picker, or the browser when the host selects
 it), finishes a second factor when the cloud asks, and the device key is
@@ -20,10 +20,7 @@ call with its `Settled` receipt.
 The standalone Android account custodian offers email codes when its exact
 native client registration advertises email sign-in. It keeps the pending
 address and verifier in the existing native credential store and abandons it
-on cancellation or replacement. It exchanges the temporary session for the
-same account's device key, acknowledges the key before publishing sign-in,
-and ends the temporary session. A host that lacks a second-factor screen
-reports that additional verification is required and ends its local attempt.
+on cancellation or replacement.
 
 ## Story: Sign in with a code, Google or a second factor
 
@@ -203,6 +200,34 @@ pure val replyValues = Set(Delivered, FactorRequired, Unanswered,
   Refused({ code: T::ServiceUnavailable, reason: T::NoReason }), Refused({ code: T::ProviderUnavailable, reason: T::NoReason }))
 pure val weight_cloudAnswered = 5
 pure def sometimesSecondFactorAsked(s: SignIn): bool = s.phase == SecondFactor
+```
+
+### Standalone email sign-in exchanges a session only after an accepted code and retires an attempt that needs an additional factor
+
+The standalone email screen has no second-factor input. If the cloud asks
+for a factor, the custodian retires that local attempt and reports that
+additional verification is required. It starts no credential exchange.
+An unaccepted answer does not exchange a session. On receipt of a usable
+temporary session, the custodian exchanges it for the same user and
+organization's device key and acknowledges the key before publishing
+sign-in. It requests logout with the temporary session's refresh token
+when the exchange ends, including on refusal. If that request fails, the
+custodian discards the local session and keeps any key it has acknowledged.
+The shared plugin's second-factor flow can continue when the cloud asks.
+
+```quint
+type StandaloneEmailAnswer = EmailCodeUnaccepted | EmailFactorRequired | EmailSessionIssued
+type StandaloneEmailPlan = KeepEmailAttempt | EndForAdditionalVerification | ExchangeAndRequestLogout
+pure def standaloneEmailPlan(standaloneEmailAnswer: StandaloneEmailAnswer): StandaloneEmailPlan = match standaloneEmailAnswer {
+  | EmailCodeUnaccepted => KeepEmailAttempt
+  | EmailFactorRequired => EndForAdditionalVerification
+  | EmailSessionIssued => ExchangeAndRequestLogout }
+pure val standaloneEmailAnswerValues = Set(EmailCodeUnaccepted, EmailFactorRequired, EmailSessionIssued)
+pure def lawStandaloneEmailExchangeRequiresASession(standaloneEmailAnswer: StandaloneEmailAnswer): bool = {
+  val plan = standaloneEmailPlan(standaloneEmailAnswer)
+  (plan == ExchangeAndRequestLogout iff standaloneEmailAnswer == EmailSessionIssued)
+    and (plan == EndForAdditionalVerification iff standaloneEmailAnswer == EmailFactorRequired)
+}
 ```
 
 ### The person is signed in only when the credential has the new key acknowledged
