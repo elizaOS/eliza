@@ -10,13 +10,13 @@ module node {
 
   export interface Sent { readonly method: string; readonly url: string; readonly body: string }
 
-  export function githubApi(answers: Readonly<Record<string, unknown>>) {
+  export function githubApi(answers: Readonly<Record<string, unknown>>, successStatus = 200) {
     const sent: Sent[] = []
     const client = HttpClient.make((request, url) => {
       const body = request.body._tag === "Uint8Array" ? new TextDecoder().decode(request.body.body) : ""
       sent.push({ method: request.method, url: url.href, body })
       const answer = answers[`${request.method} ${url.pathname}`]
-      return Effect.succeed(HttpClientResponse.fromWeb(request, new Response(JSON.stringify(answer ?? { message: "Not Found" }), { status: answer === undefined ? 404 : 200 })))
+      return Effect.succeed(HttpClientResponse.fromWeb(request, new Response(JSON.stringify(answer ?? { message: "Not Found" }), { status: answer === undefined ? 404 : successStatus })))
     })
     return { sent, layer: Layer.succeed(HttpClient.HttpClient, client) }
   }
@@ -67,6 +67,22 @@ describe("Review the exact GitHub operation before it changes a repository (spec
       previewed: true,
       applied: { success: true, text: "GitHub confirmed the operation. https://github.com/octo/projects/pull/42#pullrequestreview-9001" },
       sent: [{ method: "POST", url: "https://api.github.com/repos/octo/projects/pulls/42/reviews", body: { event: "REQUEST_CHANGES", body: "Please add tests." } }],
+    }))
+  })
+
+  it.effect("An assignment reports the requested assignees missing from GitHub's receipt (spec/github/index.md, \"A GitHub completion applies only to the dispatched request and uses the provider's receipt\")", () => effect {
+    const assignees = ["ALICE", "Bob"]
+    const api = try Effect.try(() => githubApi({
+      "POST /repos/octo/projects/issues/42/assignees": { id: 9002, number: 42, assignees: [{ login: "alice" }, { login: "existing" }] },
+    }, 201))
+    const runtime = ownerRuntime()
+    const assignment = { parameters: { action: "issue_assign", repo: "octo/projects", number: 42, assignees } }
+    const preview = try run(runtime, turn("00000000-0000-4000-8000-000000000030", "assign Alice and Bob to issue 42"), assignment, api.layer)
+    const result = try run(runtime, turn("00000000-0000-4000-8000-000000000031", "yes"), assignment, api.layer)
+    try Effect.try(() => assert.deepStrictEqual({ preview: preview.data, result: { ...outcome(result), data: result.data }, sent: api.sent.map(entry => ({ method: entry.method, url: entry.url, body: JSON.parse(entry.body) })) }, {
+      preview: { status: "pending" },
+      result: { success: false, text: "GitHub did not assign Bob to #42.", data: { receiptId: 9002, notApplied: { assignees: ["Bob"] } } },
+      sent: [{ method: "POST", url: "https://api.github.com/repos/octo/projects/issues/42/assignees", body: { assignees } }],
     }))
   })
 })
