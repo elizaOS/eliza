@@ -99,7 +99,6 @@ it('A proposal outside its owning bounds has no valid shape (spec/agent/deviceAc
     { type: "reminder_create", fields: { title: "Call mom", body: "", schedule: { at: 0, recurrence: null, dueAt: 600_000, alertMinutes: 5 } } },
     { type: "notes_filter" },
     { type: "notes_folder_create", name: "a".repeat(41) },
-  { type: "notes_folder_create", name: "a" + " ".repeat(50) + "b" },
     { type: "notes_search", query: { kind: "titles", limit: 51 } },
     { type: "clock_handoff", action: "set", hour: 7, minute: 0, label: "", timeZone: "UTC", days: [2, 2] },
     { type: "clock_handoff", action: "snooze", snoozeMinutes: 61 },
@@ -132,7 +131,8 @@ it('Each calendar, reminder, Clock and notes filter field is admitted up to its 
     [set({ label: "w".repeat(200) }), set({ label: "w".repeat(201) })],
     [{ type: "clock_handoff", action: "snooze", snoozeMinutes: 60 }, { type: "clock_handoff", action: "snooze", snoozeMinutes: 0 }],
     [{ type: "notes_list_filter", text: "g".repeat(200) }, { type: "notes_list_filter", text: "g".repeat(200) + " " }],
-  [{ type: "notes_folder_create", name: "a".repeat(40) }, { type: "notes_folder_create", name: "a".repeat(40) + " " },]
+  [{ type: "notes_folder_create", name: "a".repeat(40) + " " }, { type: "notes_folder_create", name: "a".repeat(41) + " " }], 
+[{ type: "notes_folder_create", name: "a" + " ".repeat(50) + "b" }, { type: "notes_folder_create", name: "a".repeat(41) }],
   ]
   for (const [within, beyond] of bounded) {
     assert.isDefined(classified(within), JSON.stringify(within).slice(0, 120))
