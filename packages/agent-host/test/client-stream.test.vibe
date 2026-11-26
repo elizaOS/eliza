@@ -905,11 +905,12 @@ it.live(`In one long chat, an earlier reply reaches the model with what its tool
     }
   }
   const show = (view: string) => ({ name: "VIEWS", arguments: { action: "show", view } })
+  const address = "example.com/account/private-path?session=abc123"
 
   try Effect.sync(() => cloud.script(toolCalls("", show("Browser")), text("Browser is open.")))
   const opened = try turn({ text: "Open the browser.", metadata: on("home") })
-  try Effect.sync(() => cloud.script(toolCalls("", { name: "BROWSER_OPEN", arguments: { url: "example.com" } }), text("I can't open that page from here.")))
-  const refused = try turn({ text: "example.com", metadata: on("browser") })
+  try Effect.sync(() => cloud.script(toolCalls("", { name: "BROWSER_OPEN", arguments: { url: address } }), text("I can't open that page from here.")))
+  const refused = try turn({ text: address, metadata: on("browser") })
   try Effect.sync(() => cloud.script(toolCalls("", show("Home")), text("Home.")))
   const home = try turn({ text: "Go home.", metadata: on("notes") })
   const homeAsked = asked(home.firstCall)
@@ -922,9 +923,9 @@ it.live(`In one long chat, an earlier reply reaches the model with what its tool
     return (listed.body as { messages: readonly { id: string; role: string; text: string }[] }).messages
   }
   const beforeRedaction = try messages()
-  const typed = beforeRedaction.find(({ role, text: said }) => role === "user" && said === "example.com")
+  const typed = beforeRedaction.find(({ role, text: said }) => role === "user" && said === address)
   const outcomeWord = beforeRedaction.find(({ role, text: said }) => role === "user" && said === "Done")
-  const redacted = answerOf(try call(agent, { method: "POST", path: `/api/conversations/${id}/messages/${typed?.id ?? ""}/redact`, body: { expectedText: "example.com" } }))
+  const redacted = answerOf(try call(agent, { method: "POST", path: `/api/conversations/${id}/messages/${typed?.id ?? ""}/redact`, body: { expectedText: address } }))
   const redactedWord = answerOf(try call(agent, { method: "POST", path: `/api/conversations/${id}/messages/${outcomeWord?.id ?? ""}/redact`, body: { expectedText: "Done" } }))
   try Effect.sync(() => cloud.script(text("[answer] You're welcome.")))
   const thanks = try turn({ text: "Thanks.", metadata: on("home") })
@@ -942,7 +943,7 @@ it.live(`In one long chat, an earlier reply reaches the model with what its tool
     replies: repliesOf(afterRedaction),
     redacted: [redacted.status, redactedWord.status],
     afterRedaction: recordsIn(afterRedaction),
-    addressGone: !JSON.stringify(afterRedaction).includes("example.com"),
+    addressGone: !JSON.stringify(afterRedaction).includes(address.slice(0, 20)),
     storedReplies: stored.filter(({ role }) => role === "assistant").map(({ text: said }) => said),
     storeHoldsNoRecord: !storedJson.includes("history_") && !storedJson.includes("toolRecord") && !storedJson.includes("did not run"),
   }, {
@@ -952,7 +953,7 @@ it.live(`In one long chat, an earlier reply reaches the model with what its tool
       { done: { kind: "Done", text: "Home.", failureKind: undefined, keyed: true }, tools: ["VIEWS"], leaked: false },
     ],
     talk: { done: { kind: "Done", text: "I haven't changed the screen.", failureKind: undefined, keyed: true }, tools: [], leaked: false },
-    homeRecords: ['VIEWS({"action":"show","view":"Browser"})', "-> done", 'BROWSER_OPEN({"url":"example.com"})', "-> refused, did not run"],
+    homeRecords: ['VIEWS({"action":"show","view":"Browser"})', "-> done", `BROWSER_OPEN(${JSON.stringify({ url: `${address.slice(0, 39)}…` })})`, "-> refused, did not run"],
     replies: ["Browser is open.", "I can't open that page from here.", "Home.", "I haven't changed the screen.", "Noted."],
     redacted: [200, 200],
     afterRedaction: [

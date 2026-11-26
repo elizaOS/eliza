@@ -327,7 +327,8 @@ The whole stored text is compared, and a long text's stored segments are
 removed with it. A redacted reply keeps no record of its turn's tools
 ([planning](./planning.md)), and in any other reply of that conversation
 the record's copies of the text show the notice in their place, as in a
-log row.
+log row, a copy the record cut short (the text's first characters and
+`…`) included.
 
 ```quint
 type RedactAnswer = RedactUnknown | RedactTextChanged | RedactUnchanged | RedactNow

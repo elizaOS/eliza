@@ -34,7 +34,7 @@ const decodeRecord = Schema.decodeUnknownOption(StoredToolRecord)
 const outcomeWords: Readonly<Record<RecordedOutcome, string>> = {
   RecordedDone: "done",
   RecordedUnchanged: "no change",
-  RecordedProposed: "proposed, waiting for the person",
+  RecordedProposed: "proposed to the person (not applied by this call)",
   RecordedFailed: "failed",
   RecordedPartly: "partly failed",
   RecordedRefused: "refused, did not run",
@@ -42,12 +42,16 @@ const outcomeWords: Readonly<Record<RecordedOutcome, string>> = {
 
 const byKey = ([a]: readonly [string, unknown], [b]: readonly [string, unknown]) => a < b ? -1 : a > b ? 1 : 0
 const cut = (text: string) => text.length > maxRecordedValueChars ? `${text.slice(0, maxRecordedValueChars - 1)}…` : text
+const plainOf = (text: string) => text.replace(/\s+/gu, " ").trim()
+const cutCopy = (value: string, said: string) => value.length === maxRecordedValueChars && value.endsWith("…") && said.startsWith(value.slice(0, -1))
+const copies = (value: string, text: string) => plainOf(text) !== "" && (value.includes(plainOf(text)) || cutCopy(value, plainOf(text)))
+const withoutCopies = (value: string, text: string, notice: string) => cutCopy(value, plainOf(text)) ? notice : value.replaceAll(plainOf(text), notice)
 
 function valueOf(value: unknown): RecordedValue | undefined {
   if (typeof value === "boolean") return value
   if (typeof value === "number") return Number.isFinite(value) ? value : undefined
   const written = typeof value === "string" ? value : value === undefined || value === null ? "" : JSON.stringify(value) ?? ""
-  const plain = written.replace(/\s+/gu, " ").trim()
+  const plain = plainOf(written)
   return plain === "" ? undefined : cut(plain)
 }
 
@@ -86,7 +90,7 @@ function storedRecord(value: unknown): ToolRecord | undefined {
 export function toolRecordHolds(stored: unknown, text: string): boolean {
   const decoded = decodeRecord(stored)
   if (decoded._tag !== "Some") return false
-  return decoded.value.steps.some(({ args }) => !Array.isArray(args) && Object.values(args).some((value) => typeof value === "string" && value.includes(text)))
+  return decoded.value.steps.some(({ args }) => !Array.isArray(args) && Object.values(args).some((value) => typeof value === "string" && copies(value, text)))
 }
 
 export function scrubToolRecord(stored: unknown, text: string, notice: string): ToolRecord | undefined {
@@ -98,7 +102,7 @@ export function scrubToolRecord(stored: unknown, text: string, notice: string): 
       args: Array.isArray(args) ? {} : Object.fromEntries(Object.entries(args)
         .filter((entry): entry is [string, RecordedValue] => isValue(entry[1]))
         .sort(byKey)
-        .map(([key, value]) => [key, typeof value === "string" ? value.replaceAll(text, notice) : value])),
+        .map(([key, value]) => [key, typeof value === "string" ? withoutCopies(value, text, notice) : value])),
       outcome,
     })),
     more: decoded.value.more,

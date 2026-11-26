@@ -339,8 +339,9 @@ record for words of a reply: a text mark before or after a reply was
 written again by the model, with no tool called, as if it were part of its
 answer. A tool message says `done` when the step applied a change, or
 succeeded with no receipt; `no change` when each of its receipts changed
-nothing; `proposed, waiting for the person` when it left a change for the
-person to confirm; `failed` when it failed; `partly failed` when part of it
+nothing; `proposed to the person (not applied by this call)` when it
+left a change for the person to confirm, which the record never updates,
+so it never says the person agreed; `failed` when it failed; `partly failed` when part of it
 applied or was proposed and part failed; and `refused, did not run` when it
 was refused before it ran. A step that failed or never ran is never
 recorded as done. The record names at most six steps, in the order they
