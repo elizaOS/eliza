@@ -77,4 +77,27 @@ describe("Browser Notes custody", () => {
       transcript: saved.transcript, audio: await bytes(saved.blob) })
       .toEqual({ parts: undefined, pending: [], note: "note-1", transcript: "A short recording", audio: [4, 8] })
   })
+
+  it("Permanently erases only the exact owner's committed recording and keeps a byte-free receipt", async () => {
+    const owner = "a".repeat(64)
+    const foreign = "b".repeat(64)
+    const audioId = unique()
+    const options = { databaseName: "purge-" + audioId }
+    const store = createNotesAudioStore(options)
+    await store.retainPendingAudio(audioId, { ownerDigest: owner, folderId: null },
+      { blob: fragment([1, 2, 3]), durationMs: 1000 }, "private transcript")
+    await store.claimPendingAudio(audioId, owner)
+    await store.commitPendingAudio(audioId, owner, "saved-note", "private transcript")
+    const erase = { audioId, connection: owner, noteId: "saved-note", operationId: unique(), deletedAt: 10 }
+    await expect(store.purgeCommittedAudio({ ...erase, connection: foreign })).rejects.toMatchObject({ reason: "anotherConnection" })
+    await expect(store.purgeCommittedAudio({ ...erase, noteId: "different-note" })).rejects.toMatchObject({ reason: "anotherNote" })
+    expect(await bytes((await store.audioRecord(audioId, owner)).blob)).toEqual([1, 2, 3])
+    await store.purgeCommittedAudio(erase)
+    const reopened = createNotesAudioStore(options)
+    await expect(reopened.audioRecord(audioId, owner)).rejects.toMatchObject({ reason: "unavailable" })
+    await expect(reopened.purgeCommittedAudio(erase)).resolves.toBeUndefined()
+    await expect(reopened.purgeCommittedAudio({ ...erase, operationId: unique() })).rejects.toMatchObject({ reason: "unavailable" })
+    await expect(reopened.retainPendingAudio(audioId, { ownerDigest: owner, folderId: null },
+      { blob: fragment([1, 2, 3]), durationMs: 1000 }, "")).rejects.toMatchObject({ reason: "binding" })
+  })
 })

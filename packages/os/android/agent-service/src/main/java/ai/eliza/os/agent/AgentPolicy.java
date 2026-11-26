@@ -1,4 +1,4 @@
-// spec/os/agentService/lifecycle.md, "The agent runs only once it answers ready for this launch, and a launch that never does is restarted after the health delay"; spec/os/agentService/lifecycle.md, "A failed agent's notice is on the alerts channel with the failure words, and a starting, running or stopping agent's on the status channel"; spec/os/agentService/health.md, "The delay before restart attempt n is 1, 2, 4, 8, 16, 32 s and then 60 s"; spec/agent/host/launch.md, "Each boot failure has one exit code, and every code outside the table is a crash"
+// spec/os/agentService/lifecycle.md, "The agent runs only once it answers ready for this launch, and a launch that never does is restarted after the health delay"; spec/os/agentService/lifecycle.md, "A failed agent's notice is on the alerts channel with the failure words, and a starting, running or stopping agent's on the status channel"; spec/os/agentService/health.md, "The delay before restart attempt n is 1, 2, 4, 8, 16, 32 s and then 60 s"; spec/agent/host/launch.md, "Each boot failure has one exit code, and every code outside the table is a crash"; spec/os/agentService/lifecycle.md, "A replaced mail broker restarts a starting or running agent, and leaves a stopping agent's exit to decide what follows"
 package ai.eliza.os.agent;
 
 import java.io.IOException;
@@ -32,7 +32,7 @@ public final class AgentPolicy {
 
   public sealed interface Event permits Start, Stop, ReapStale, StaleChildReaped, LaunchHook, Refuse, Spawned, SpawnFailed, ObserveReady, ReadyTimeout,
     ObserveExit, FailUnclassified, RestartUnhealthy, StableReset, CredentialArrived, CredentialReplaced, SignedOut, CredentialExpired,
-    AccountChanged, ReviewRecovery, ArchiveRecovery, ArchiveFinished, HoldForUpdate, ReleaseUpdate {}
+    AccountChanged, BrokerReplaced, ReviewRecovery, ArchiveRecovery, ArchiveFinished, HoldForUpdate, ReleaseUpdate {}
   public record Start() implements Event {}
   public record Stop() implements Event {}
   public record ReapStale() implements Event {}
@@ -52,6 +52,7 @@ public final class AgentPolicy {
   public record SignedOut() implements Event {}
   public record CredentialExpired() implements Event {}
   public record AccountChanged(String account) implements Event {}
+  public record BrokerReplaced() implements Event {}
   public record ReviewRecovery(boolean focused, String nonce) implements Event {}
   public record ArchiveRecovery(RecoveryToken token) implements Event {}
   public record ArchiveFinished(RecoveryToken token, boolean archiveSucceeded) implements Event {}
@@ -148,6 +149,7 @@ public final class AgentPolicy {
     if (event instanceof CredentialReplaced replaced) return credentialReplaced(replaced.version());
     if (event instanceof SignedOut || event instanceof CredentialExpired) return credentialLost();
     if (event instanceof AccountChanged changed) return accountChanged(changed.account());
+    if (event instanceof BrokerReplaced) return (phase == Phase.SPAWNED || phase == Phase.RUNNING) && kill(AfterExit.START, null, null);
     if (event instanceof ReviewRecovery review) return reviewRecovery(review.focused(), review.nonce());
     if (event instanceof ArchiveRecovery archive) return archiveRecovery(archive.token());
     if (event instanceof ArchiveFinished finished) return archiveFinished(finished.token(), finished.archiveSucceeded());
