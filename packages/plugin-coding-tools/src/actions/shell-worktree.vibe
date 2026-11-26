@@ -1,4 +1,4 @@
-// spec/codingTools/shellSession.md, "Story: Gate destructive shell commands, manage background jobs, and page spilled output artifacts"; spec/codingTools/worktree.md, "Story: Enter and exit git worktrees without losing the previous working directory"
+// spec/codingTools/shellSession.md, "Story: Gate destructive shell commands, manage background jobs, and page spilled output artifacts"; spec/codingTools/worktree.md, "Story: Enter and exit git worktrees without losing the previous working directory"; spec/codingTools/shellSession.md, "Background stdin reaches a command interpreter only through the command policy"
 import {
   hasOwnerAccess,
   type Action,
@@ -10,6 +10,7 @@ import {
   type State,
 } from "@elizaos/core"
 import { mayRunCommand } from "../../gen/codingTools.effect.vibe"
+import { mayWriteBackgroundStdin } from "../../gen/codingTools__shellSession.effect.vibe"
 import {
   beginLocalWorkspaceDeltaObservation,
   finishLocalWorkspaceDeltaObservation,
@@ -32,6 +33,7 @@ import {
 } from "../lib/format.vibe"
 import {
   classifyDestructiveCommand,
+  classifyStdinTarget,
   destructiveCommandDigest,
   extractCompactFailureDiagnostics,
   isForbiddenCommand,
@@ -47,6 +49,7 @@ import {
   runShellProcessNode,
   workspaceAccess,
   type BackgroundShellService,
+  type BackgroundShellSessionSnapshot,
   type SandboxService,
   type SessionCwdService,
   type ShellService,
@@ -207,6 +210,59 @@ async function requireOwnerConfirmation(params: {
   return verified.ok ? { ok: true } : { ok: false, result: failureToActionResult({ reason: "needs_confirmation", message: verified.message }) }
 }
 
+function extraDeniedCommands(runtime: IAgentRuntime): string[] {
+  return (readStringSetting(runtime, "CODING_TOOLS_DENY_COMMANDS") ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0)
+}
+
+async function gateBackgroundStdin(params: {
+  readonly runtime: IAgentRuntime
+  readonly message: Memory
+  readonly options: unknown
+  readonly callback: HandlerCallback | undefined
+  readonly snapshot: BackgroundShellSessionSnapshot
+  readonly stdin: string
+}): Promise<{ readonly ok: true } | { readonly ok: false; readonly result: ActionResult }> {
+  const target = classifyStdinTarget(params.snapshot.command)
+  const completeLines = params.stdin.length === 0 || params.stdin.endsWith("\n")
+  const forbidden = target === "StdinShell" ? isForbiddenCommand(params.stdin, extraDeniedCommands(params.runtime)) : undefined
+  const verdict = target === "StdinShell" ? classifyDestructiveCommand(params.stdin, "posix") : { destructive: false, targets: [] }
+  if (mayWriteBackgroundStdin(target, completeLines, forbidden !== undefined, verdict.destructive, false)) return { ok: true }
+  if (target === "StdinInterpreter") {
+    return {
+      ok: false,
+      result: failureToActionResult({
+        reason: "path_blocked",
+        message: `stdin refused: ${params.snapshot.handle} runs a program that executes what it reads, and that input cannot be checked against the command policy`,
+      }),
+    }
+  }
+  if (!completeLines) {
+    return {
+      ok: false,
+      result: failureToActionResult({ reason: "invalid_param", message: "stdin to a background shell must be whole command lines ending in a newline" }),
+    }
+  }
+  if (forbidden !== undefined) {
+    return { ok: false, result: failureToActionResult({ reason: "path_blocked", message: `stdin denied by policy: ${forbidden}` }) }
+  }
+  const confirmation = await requireOwnerConfirmation({
+    runtime: params.runtime,
+    message: params.message,
+    options: params.options,
+    callback: params.callback,
+    command: params.stdin,
+    cwd: params.snapshot.cwd,
+    reason: verdict.reason ?? "high risk",
+  })
+  if (!confirmation.ok) return confirmation
+  return mayWriteBackgroundStdin(target, completeLines, false, verdict.destructive, true)
+    ? { ok: true }
+    : { ok: false, result: failureToActionResult({ reason: "path_blocked", message: "stdin is not authorized for this background session" }) }
+}
+
 export const shellAction: Action = {
   name: "SHELL",
   contexts: [...CODING_TOOLS_CONTEXTS],
@@ -349,6 +405,10 @@ export const shellAction: Action = {
       const stdin = readStringParam(options, "stdin")
       if (!handle) return failureToActionResult({ reason: "missing_param", message: "handle is required" })
       if (stdin === undefined) return failureToActionResult({ reason: "missing_param", message: "stdin is required" })
+      const described = bgSvc.describe({ conversationId, handle })
+      if (!described.ok) return failureToActionResult({ reason: "invalid_param", message: described.message })
+      const gate = await gateBackgroundStdin({ runtime, message, options, callback, snapshot: described.snapshot, stdin })
+      if (!gate.ok) return gate.result
       const written = bgSvc.write({ conversationId, handle, stdin })
       if (!written.ok) return failureToActionResult({ reason: "invalid_param", message: written.message })
       return successActionResult(`Wrote ${written.bytesWritten} bytes to ${handle}`, { handle, bytes_written: written.bytesWritten })
@@ -368,11 +428,7 @@ export const shellAction: Action = {
       return failureToActionResult({ reason: "missing_param", message: "command is required" })
     }
 
-    const extraDeny = (readStringSetting(runtime, "CODING_TOOLS_DENY_COMMANDS") ?? "")
-      .split(",")
-      .map((s) => s.trim())
-      .filter((s) => s.length > 0)
-    const deniedPattern = isForbiddenCommand(command, extraDeny)
+    const deniedPattern = isForbiddenCommand(command, extraDeniedCommands(runtime))
     if (deniedPattern) {
       return failureToActionResult({ reason: "path_blocked", message: `command denied by policy: ${deniedPattern}` })
     }

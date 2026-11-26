@@ -771,6 +771,54 @@ export type RipgrepResult =
   | { readonly ok: true; readonly exitCode: 0 | 1; readonly stdout: string; readonly engine: "rg" | "fallback" }
   | { readonly ok: false; readonly reason: "timeout" | "invalid_param" | "io_error"; readonly message: string }
 
+const PROTECTED_SEARCH_GLOBS: readonly string[] = [".git", ".ssh", ".env", ".env.*"]
+
+async function admitRipgrepOutput(
+  stdout: string,
+  mode: RipgrepMode,
+  showLineNumbers: boolean,
+  admit: (filePath: string) => Promise<boolean>,
+): Promise<string> {
+  const verdicts = new Map<string, boolean>()
+  const admitted = async (filePath: string): Promise<boolean> => {
+    const known = verdicts.get(filePath)
+    if (known !== undefined) return known
+    const verdict = filePath.length > 0 && (await admit(filePath))
+    verdicts.set(filePath, verdict)
+    return verdict
+  }
+  if (mode === "files_with_matches") {
+    const kept: string[] = []
+    for (const filePath of stdout.split("\0")) {
+      const trimmed = filePath.replace(/^\n+|\n+$/g, "")
+      if (trimmed && (await admitted(trimmed))) kept.push(trimmed)
+    }
+    return kept.length > 0 ? `${kept.join("\n")}\n` : ""
+  }
+  const lines: string[] = []
+  for (const line of stdout.split("\n")) {
+    const nul = line.indexOf("\0")
+    if (nul === -1) {
+      if (line === "--" && lines.length > 0 && lines[lines.length - 1] !== "--") lines.push("--")
+      continue
+    }
+    const filePath = line.slice(0, nul)
+    if (!(await admitted(filePath))) continue
+    const rest = line.slice(nul + 1)
+    if (mode === "count") {
+      lines.push(`${filePath}:${rest}`)
+      continue
+    }
+    const numbered = /^(\d+)([:-])/.exec(rest)
+    if (!numbered) continue
+    const separator = numbered[2]!
+    const text = rest.slice(numbered[0].length)
+    lines.push(showLineNumbers ? `${filePath}${separator}${numbered[1]}${separator}${text}` : `${filePath}${separator}${text}`)
+  }
+  while (lines.length > 0 && lines[lines.length - 1] === "--") lines.pop()
+  return lines.length > 0 ? `${lines.join("\n")}\n` : ""
+}
+
 export class RipgrepService extends Service {
   static override serviceType = RIPGREP_SERVICE
   override capabilityDescription = "Fast content search over workspace files via ripgrep, with a sandboxed pure-Node walk only where ripgrep is not installed."
@@ -786,12 +834,11 @@ export class RipgrepService extends Service {
     mode: RipgrepMode,
     sandbox: { readonly blockedPaths: readonly string[]; readonly admit: (filePath: string) => Promise<boolean> },
   ): Promise<RipgrepResult> {
-    const args: string[] = ["--color=never", "--no-heading"]
+    const args: string[] = ["--color=never", "--no-heading", "--null"]
     if (mode === "files_with_matches") args.push("--files-with-matches")
-    else if (mode === "count") args.push("--count")
+    else if (mode === "count") args.push("--count", "--with-filename")
     else {
-      args.push("--with-filename")
-      if (options.showLineNumbers !== false) args.push("--line-number")
+      args.push("--with-filename", "--line-number")
       if (options.contextAround !== undefined && options.contextAround > 0) args.push("-C", String(options.contextAround))
       else {
         if (options.contextBefore !== undefined && options.contextBefore > 0) args.push("-B", String(options.contextBefore))
@@ -802,7 +849,8 @@ export class RipgrepService extends Service {
     if (options.multiline) args.push("-U", "--multiline-dotall")
     if (options.glob) args.push("--glob", options.glob)
     if (options.type) args.push("--type", options.type)
-    args.push("--glob", "!node_modules/**", "--glob", "!.git/**", "--glob", "!dist/**", "--glob", "!.turbo/**")
+    args.push("--glob", "!node_modules/**", "--glob", "!dist/**", "--glob", "!.turbo/**")
+    for (const name of PROTECTED_SEARCH_GLOBS) args.push("--glob", `!${name}`)
     for (const blocked of sandbox.blockedPaths) {
       if (blocked !== options.path && isWithin(options.path, blocked)) {
         args.push("--glob", `!/${pathRelative(options.path, blocked).replace(/\\/g, "/")}/**`)
@@ -812,7 +860,8 @@ export class RipgrepService extends Service {
 
     const rgOut = await execFileNode("rg", args, { cwd: pathDirname(options.path), timeoutMs: 20_000 })
     if (rgOut.outcome === "exited" && (rgOut.exitCode === 0 || rgOut.exitCode === 1)) {
-      return { ok: true, exitCode: rgOut.exitCode, stdout: rgOut.stdout, engine: "rg" }
+      const admitted = await admitRipgrepOutput(rgOut.stdout, mode, options.showLineNumbers !== false, sandbox.admit)
+      return { ok: true, exitCode: admitted.length > 0 ? 0 : 1, stdout: admitted, engine: "rg" }
     }
     if (rgOut.outcome === "timed_out") return { ok: false, reason: "timeout", message: "ripgrep timed out after 20000ms; narrow path or glob" }
     if (rgOut.outcome === "output_overflow") return { ok: false, reason: "io_error", message: "ripgrep output exceeded the 8 MiB buffer; narrow path, glob or pattern" }
@@ -1040,6 +1089,15 @@ export class BackgroundShellService extends Service {
       session.specState = pollBackground(session.specState, specOffset)
     }
     return { ok: true, result: { snapshot: this.toSnapshot(session), stdout, stderr } }
+  }
+
+  describe(args: {
+    readonly conversationId: string
+    readonly handle: string
+  }): { readonly ok: true; readonly snapshot: BackgroundShellSessionSnapshot } | { readonly ok: false; readonly message: string } {
+    const found = this.lookupSession(args.conversationId, args.handle)
+    if (!found.ok) return found
+    return { ok: true, snapshot: this.toSnapshot(found.session) }
   }
 
   write(args: {

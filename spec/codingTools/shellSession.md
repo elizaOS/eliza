@@ -122,6 +122,30 @@ pure def killBackground(s: ShellSession): ShellSession = {
 }
 ```
 
+### Background stdin reaches a command interpreter only through the command policy
+
+Text written to a background session's stdin runs as code when the session's command reads its commands from stdin, so it passes the same checks as a submitted command. The shell classifies the session's command, looking inside pipelines, subshells, command substitutions, `sh -c` scripts and `env`, `exec`, `sudo`, `nohup` and similar wrappers. When any part is a shell that reads commands from stdin (`sh`, `bash -i`, `sudo -s`, `su`, `cat | sh`), each write must be whole lines ending in a newline, no line may match the forbidden-command list, and a write containing a destructive line runs only after the owner confirms that exact text through a one-time challenge in the session's directory. When any part executes what it reads in a language the command policy cannot check (an interpreter started without a program to run, such as a Python or Node REPL or `python -`, a database or remote shell client, a terminal multiplexer, an editor, `xargs`, PowerShell and the like), every stdin write is refused. Other sessions take stdin as data.
+
+The forbidden-command list matches commands by tokens, not by prefix: quoting, escapes and line continuations are removed, every command of a `;`, `&&`, `||`, `|`, `&`, newline, subshell, group or substitution list is checked, wrappers such as `env`, `exec`, `sudo`, `nice`, `timeout` and `xargs` are unwrapped, and the scripts of `sh -c`, `eval`, `env -S` and `find -exec` are checked as commands. A rule matches when the command names the same program and carries every flag and argument the rule names. `shutdown`, `reboot`, `halt` and `poweroff` are also destructive commands.
+
+```quint
+type StdinTarget = StdinData | StdinShell | StdinInterpreter
+pure def mayWriteBackgroundStdin(target: StdinTarget, completeLines: bool, forbidden: bool, destructive: bool, ownerConfirmed: bool): bool =
+  match target {
+    | StdinData => true
+    | StdinInterpreter => false
+    | StdinShell => completeLines and not(forbidden) and (not(destructive) or ownerConfirmed)
+  }
+pure def lawInterpreterStdinIsRefused(completeLines: bool, forbidden: bool, destructive: bool, ownerConfirmed: bool): bool =
+  not(mayWriteBackgroundStdin(StdinInterpreter, completeLines, forbidden, destructive, ownerConfirmed))
+pure def lawForbiddenShellStdinIsRefused(completeLines: bool, destructive: bool, ownerConfirmed: bool): bool =
+  not(mayWriteBackgroundStdin(StdinShell, completeLines, true, destructive, ownerConfirmed))
+pure def lawDestructiveShellStdinNeedsTheOwner(completeLines: bool): bool =
+  not(mayWriteBackgroundStdin(StdinShell, completeLines, false, true, false))
+pure def lawPartialShellLineIsRefused(forbidden: bool, destructive: bool, ownerConfirmed: bool): bool =
+  not(mayWriteBackgroundStdin(StdinShell, false, forbidden, destructive, ownerConfirmed))
+```
+
 ### Leased output artifacts allow bounded paging until lease expiration
 
 Spilling large foreground command output registers an immutable byte artifact with a lease expiration. Paging reads are allowed only while the lease is unexpired, the offset lies within the artifact size, and the page limit is within the 20,000-character ceiling.

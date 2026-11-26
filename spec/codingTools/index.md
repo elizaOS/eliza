@@ -52,7 +52,7 @@ pure val requestValues = Set({ inWorkspace: "/work", commandKey: "reviewed", nee
 
 ### Sandbox path policy blocks sensitive locations, pseudo-descriptors, and escapes outside configured roots
 
-A path is admitted only when it is non-empty, contains no NUL byte, is not a UNC path, does not target or traverse a blocked path or pseudo-descriptor (`/dev/fd`, `/proc/*/fd`), and lies within a configured workspace root. With no workspace root configured, every path is refused. Every file action (read, write, edit, search, list, and the working directory of a command) is then checked against the authorized-root rules of the story above, so a protected file such as `.env`, `.git` or `.ssh` is refused whatever action names it.
+A path is admitted only when it is non-empty, contains no NUL byte, is not a UNC path, does not target or traverse a blocked path or pseudo-descriptor (`/dev/fd`, `/proc/*/fd`), and lies within a configured workspace root. With no workspace root configured, every path is refused. Every file action (read, write, edit, search, list, and the working directory of a command) is then checked against the authorized-root rules of the story above, so a protected file such as `.env`, `.git` or `.ssh` is refused whatever action names it. A content search admits every file it reports through the same check, whichever search engine found it, so a search glob such as `*` or `.env*` never brings a protected or blocked file into the results, at any depth.
 
 ```quint
 type PathCheck = {

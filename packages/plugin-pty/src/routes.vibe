@@ -6,6 +6,7 @@ module node {
   import {
     evaluateRouteAccess,
     evaluateSpawnGate,
+    narrowFlag,
     type FlagState,
     type SpawnKind,
     validTerminalGeometry,
@@ -146,11 +147,7 @@ module node {
   }
 
   function readFlagState(runtime: IAgentRuntime, key: string): FlagState {
-    const fromEnv = flagOf(process.env[key])
-    const fromSetting = flagOf(runtime.getSetting?.(key))
-    if (fromEnv === "FlagOther" || fromSetting === "FlagOther") return "FlagOther"
-    if (fromEnv === "FlagTrue" || fromSetting === "FlagTrue") return "FlagTrue"
-    return "FlagUnset"
+    return narrowFlag(flagOf(process.env[key]), flagOf(runtime.getSetting?.(key)))
   }
 
   function isStoreBuild(): boolean {

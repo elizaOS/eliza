@@ -8,7 +8,7 @@ Tracks per-conversation optimistic concurrency for a workspace file: initial and
 
 ### Reading a file records its current revision and binds a resumable reference
 
-A file session tracks the current file revision, whether the conversation has read the file, the last read revision, whether the file exists, and whether an opaque read reference is bound to a revision.
+A file session tracks the current file revision, whether the conversation has read the file, the last read revision, whether the file exists, and whether an opaque read reference is bound to a revision. A file counts as read only when some of its content reached the model. A batch read shares one output limit across its files: each file's header names the range actually shown, a file cut short says the line or byte where it stopped with a reference to resume from there, and a file whose content did not fit at all is listed as not shown and is not recorded as read.
 
 ```quint
 type FileSession = {

@@ -41,6 +41,7 @@ import {
   fileRevision,
   resolveInputPath,
   statPathNode,
+  type FileStatInfo,
   type FileStateService,
   type RipgrepMode,
   type RipgrepService,
@@ -229,6 +230,9 @@ function hasUnexpectedLiteralEscapes(oldStr: string, newStr: string): boolean {
 interface SingleReadResult {
   readonly path: string
   readonly content: string
+  readonly body: string
+  readonly notice: string
+  readonly stat: FileStatInfo
   readonly revision: string
   readonly reference: string
   readonly start: number
@@ -251,6 +255,7 @@ async function performSingleRead(params: {
   readonly limit?: number
   readonly unit: "line" | "byte"
   readonly lineNumbers: boolean
+  readonly recordRead?: boolean
 }): Promise<{ readonly ok: true; readonly value: SingleReadResult } | { readonly ok: false; readonly result: ActionResult }> {
   let targetPath: string
   if (params.reference) {
@@ -306,7 +311,9 @@ async function performSingleRead(params: {
   if (fileRevision(afterRead) !== statRevision) {
     return { ok: false, result: failureToActionResult({ reason: "stale_read", message: `file changed while it was being read; read ${resolved} again` }, { path: resolved }) }
   }
-  const meta = await params.fileState.recordRead(params.conversationId, resolved, stat)
+  const meta = params.recordRead === false
+    ? { revision: statRevision }
+    : await params.fileState.recordRead(params.conversationId, resolved, stat)
 
   const reference = publishFileReadReference({ conversationId: params.conversationId, filePath: resolved, revision: meta.revision })
 
@@ -332,6 +339,9 @@ async function performSingleRead(params: {
       value: {
         path: resolved,
         content: decodedSlice + notice,
+        body: decodedSlice,
+        notice,
+        stat,
         revision: meta.revision,
         reference,
         start: offset,
@@ -368,6 +378,9 @@ async function performSingleRead(params: {
     value: {
       path: resolved,
       content: body + notice,
+      body,
+      notice,
+      stat,
       revision: meta.revision,
       reference,
       start: offset,
@@ -483,6 +496,80 @@ async function readDirSafely<T>(loader: () => Promise<T>): Promise<{ readonly ok
   }
 }
 
+interface BatchBudget {
+  lines: number
+  bytes: number
+}
+
+const BATCH_STOP_NOTICE_RESERVE_BYTES = 256
+
+function utf8Length(text: string): number {
+  return new TextEncoder().encode(text).byteLength
+}
+
+function lineCount(text: string): number {
+  return text.length === 0 ? 0 : text.split("\n").length
+}
+
+function spendBatchBudget(budget: BatchBudget, chunk: string, separated: boolean): boolean {
+  const lines = lineCount(chunk) + (separated ? 1 : 0)
+  const bytes = utf8Length(chunk) + (separated ? 2 : 0)
+  if (lines > budget.lines || bytes > budget.bytes) return false
+  budget.lines -= lines
+  budget.bytes -= bytes
+  return true
+}
+
+function batchHeader(val: SingleReadResult, end: number): string {
+  const first = val.unit === "line" ? val.start + 1 : val.start
+  return `=== ${val.path} [${first}..${end}/${val.total}${val.unit === "byte" ? " bytes" : ""} rev=${val.revision}] ===`
+}
+
+function fitBatchChunk(
+  budget: BatchBudget,
+  val: SingleReadResult,
+  separated: boolean,
+): { readonly chunk: string; readonly end: number; readonly cut: boolean } | undefined {
+  const whole = `${batchHeader(val, val.end)}\n${val.body}${val.notice}`
+  if (spendBatchBudget(budget, whole, separated)) return { chunk: whole, end: val.end, cut: false }
+  const headerLines = 1 + (separated ? 1 : 0) + 1
+  const headerBytes = utf8Length(batchHeader(val, val.end)) + 1 + (separated ? 2 : 0) + BATCH_STOP_NOTICE_RESERVE_BYTES
+  let linesLeft = budget.lines - headerLines
+  let bytesLeft = budget.bytes - headerBytes
+  if (linesLeft <= 0 || bytesLeft <= 0) return undefined
+  const kept: string[] = []
+  let keptBytes = 0
+  for (const line of val.body.split("\n")) {
+    const cost = utf8Length(line) + (kept.length > 0 ? 1 : 0)
+    if (linesLeft < 1 || cost > bytesLeft) break
+    kept.push(line)
+    keptBytes += cost
+    linesLeft -= 1
+    bytesLeft -= cost
+  }
+  let end: number
+  let shown = kept.join("\n")
+  if (val.unit === "line") {
+    if (kept.length === 0) return undefined
+    end = val.start + kept.length
+  } else {
+    if (kept.length === 0) {
+      const bytes = new TextEncoder().encode(val.body)
+      let cutAt = Math.min(bytes.length, Math.max(0, bytesLeft))
+      while (cutAt > 0 && cutAt < bytes.length && (bytes[cutAt]! & 0xc0) === 0x80) cutAt -= 1
+      if (cutAt === 0) return undefined
+      shown = new TextDecoder().decode(bytes.subarray(0, cutAt))
+      keptBytes = cutAt
+    }
+    end = val.start + keptBytes
+  }
+  const unitName = val.unit === "line" ? "line" : "byte"
+  const notice = `[Stopped at ${unitName} ${end} of ${val.total} because the batch output limit was reached. Ref: ${val.reference} rev=${val.revision} offset=${end}]`
+  const chunk = `${batchHeader(val, end)}\n${shown}\n${notice}`
+  if (!spendBatchBudget(budget, chunk, separated)) return undefined
+  return { chunk, end, cut: true }
+}
+
 export async function readFileHandler(runtime: IAgentRuntime, message: Memory, _state?: State, options?: unknown): Promise<ActionResult> {
   const core = requireFileCore(runtime, message)
   if (!core.ok) return core.result
@@ -496,8 +583,10 @@ export async function readFileHandler(runtime: IAgentRuntime, message: Memory, _
   if (batchPaths && batchPaths.length > 0) {
     const limitPerFile = readNumberParam(options, "limit") ?? Math.max(40, Math.floor(DEFAULT_OUTPUT_MAX_LINES / batchPaths.length))
     const offset = readNumberParam(options, "offset")
+    const budget: BatchBudget = { lines: DEFAULT_OUTPUT_MAX_LINES, bytes: DEFAULT_OUTPUT_MAX_BYTES }
     const entries: ProviderDataRecord[] = []
     const chunks: string[] = []
+    const notShown: string[] = []
     for (const itemPath of batchPaths) {
       const single = await performSingleRead({
         runtime,
@@ -509,32 +598,47 @@ export async function readFileHandler(runtime: IAgentRuntime, message: Memory, _
         limit: limitPerFile,
         unit,
         lineNumbers,
+        recordRead: false,
       })
       if (!single.ok) {
-        chunks.push(`=== ${itemPath} [ERROR] ===\n${single.result.text ?? "read failed"}`)
-        entries.push({ path: itemPath, ok: false, error: single.result.text ?? "read failed" })
-      } else {
-        chunks.push(`=== ${single.value.path} [${single.value.start + 1}..${single.value.end}/${single.value.total} rev=${single.value.revision}] ===\n${single.value.content}`)
-        entries.push({
-          path: single.value.path,
-          ok: true,
-          revision: single.value.revision,
-          reference: single.value.reference,
-          start: single.value.start,
-          end: single.value.end,
-          total: single.value.total,
-          hasMore: single.value.hasMore,
-        })
+        const errorText = single.result.text ?? "read failed"
+        const chunk = `=== ${itemPath} [ERROR] ===\n${errorText}`
+        if (spendBatchBudget(budget, chunk, chunks.length > 0)) chunks.push(chunk)
+        else notShown.push(itemPath)
+        entries.push({ path: itemPath, ok: false, error: errorText })
+        continue
       }
+      const val = single.value
+      const fitted = fitBatchChunk(budget, val, chunks.length > 0)
+      if (!fitted) {
+        notShown.push(val.path)
+        entries.push({ path: val.path, ok: true, shown: false, revision: val.revision, reference: val.reference, total: val.total, unit: val.unit })
+        continue
+      }
+      await fileState.recordRead(conversationId, val.path, val.stat)
+      chunks.push(fitted.chunk)
+      entries.push({
+        path: val.path,
+        ok: true,
+        shown: true,
+        revision: val.revision,
+        reference: val.reference,
+        start: val.start,
+        end: fitted.end,
+        total: val.total,
+        unit: val.unit,
+        hasMore: fitted.end < val.total,
+        ...(fitted.cut ? { stoppedAt: fitted.end } : {}),
+      })
     }
-    const combined = truncateHead(chunks.join("\n\n"), DEFAULT_OUTPUT_MAX_LINES, DEFAULT_OUTPUT_MAX_BYTES)
-    const text = combined.truncated
-      ? `${combined.text}\n[Batch output truncated: ${combined.shownLines}/${combined.totalLines} lines, ${combined.shownBytes}/${combined.totalBytes} bytes shown. The ranges listed per file were read but not all are shown; read fewer paths or use reference+expectedRevision per file.]`
-      : combined.text
+    const cutShort = notShown.length > 0 || entries.some((entry) => entry.stoppedAt !== undefined)
+    const text = notShown.length > 0
+      ? `${chunks.join("\n\n")}\n\n[Not shown, and not recorded as read, because the batch output limit was reached: ${notShown.join(", ")}. Read them separately.]`
+      : chunks.join("\n\n")
     return successActionResult(
       text,
-      { files: entries, truncated: combined.truncated },
-      { count: entries.length, files: entries, truncated: combined.truncated },
+      { files: entries, truncated: cutShort },
+      { count: entries.length, files: entries, truncated: cutShort },
     )
   }
 

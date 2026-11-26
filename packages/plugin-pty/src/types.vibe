@@ -1,4 +1,4 @@
-// spec/pty/index.md, "Story: Open and close an owner-bound terminal session"; spec/pty/policy.md, "Story: Enforce session capacity, confinement, and safe teardown"
+// spec/pty/policy.md, "Story: Enforce session capacity, confinement, and safe teardown"
 import type { IAgentRuntime, Plugin } from "@elizaos/core"
 
 export interface PtyDisposable {
@@ -95,15 +95,6 @@ export interface PtyRoute {
 
 export interface PtyPlugin extends Plugin {
   readonly routes: readonly PtyRoute[]
-}
-
-export interface TerminalLaunch {
-  readonly ownerId: string
-  readonly terminalId: string
-  readonly executable: string
-  readonly arguments: readonly string[]
-  readonly directory: string
-  readonly environment: Readonly<Record<string, string>>
 }
 
 export interface BoundedOutputOptions {

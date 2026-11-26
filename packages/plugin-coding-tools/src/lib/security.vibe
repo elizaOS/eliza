@@ -1,4 +1,4 @@
-// spec/codingTools/index.md, "Sandbox path policy blocks sensitive locations, pseudo-descriptors, and escapes outside configured roots"; spec/codingTools/shellSession.md, "Destructive commands require a bound, unexpired, single-use confirmation challenge"
+// spec/codingTools/index.md, "Sandbox path policy blocks sensitive locations, pseudo-descriptors, and escapes outside configured roots"; spec/codingTools/shellSession.md, "Destructive commands require a bound, unexpired, single-use confirmation challenge"; spec/codingTools/shellSession.md, "Background stdin reaches a command interpreter only through the command policy"
 import type { ActionResult, AppliedEffectReceipt, HandlerCallback, IAgentRuntime, Memory, ProviderDataRecord } from "@elizaos/core"
 import { ElizaError } from "@elizaos/core"
 import { canConsumeChallenge, canIssueChallenge, consumeChallenge, initial as initialShellSession, issueChallenge, type ShellSession } from "../../gen/codingTools__shellSession.effect.vibe"
@@ -294,6 +294,10 @@ export function splitShellArgs(raw: string): string[] | null {
       escaped = false
       continue
     }
+    if (!inSingle && ch === "\\" && raw[i + 1] === "\n") {
+      i += 1
+      continue
+    }
     if (!inSingle && !inDouble && ch === "\\") {
       escaped = true
       continue
@@ -340,18 +344,276 @@ export const DEFAULT_FORBIDDEN_COMMANDS: readonly string[] = [
   "poweroff",
 ]
 
-export function isForbiddenCommand(command: string, extraDenied: readonly string[] = []): string | undefined {
-  const normalized = command.trim().replace(/\s+/g, " ")
-  const lower = normalized.toLowerCase()
-  const all = [...DEFAULT_FORBIDDEN_COMMANDS, ...extraDenied]
-  for (const pattern of all) {
-    const cleaned = pattern.trim().toLowerCase()
-    if (!cleaned) continue
-    if (lower === cleaned || lower.startsWith(`${cleaned} `) || lower.includes(`&& ${cleaned}`) || lower.includes(`; ${cleaned}`)) {
-      return pattern
+interface ForbiddenRule {
+  readonly pattern: string
+  readonly literal?: string
+  readonly head: string
+  readonly flags: ReadonlySet<string>
+  readonly longFlags: readonly string[]
+  readonly args: readonly string[]
+}
+
+const LONG_FLAG_ALIASES: Readonly<Record<string, Readonly<Record<string, string>>>> = {
+  rm: { "--recursive": "r", "--force": "f" },
+  chmod: { "--recursive": "R" },
+  chown: { "--recursive": "R" },
+}
+
+const NESTED_SHELLS = new Set(["sh", "bash", "zsh", "dash", "ksh", "ash", "mksh", "fish", "su"])
+
+function longFlagAlias(head: string, flag: string): string | undefined {
+  const table = Object.hasOwn(LONG_FLAG_ALIASES, head) ? LONG_FLAG_ALIASES[head] : undefined
+  return table && Object.hasOwn(table, flag) ? table[flag] : undefined
+}
+
+function normalizeShortFlag(head: string, letter: string): string {
+  return head === "rm" && letter === "R" ? "r" : letter
+}
+
+function normalizePositional(arg: string): string {
+  const lower = arg.toLowerCase()
+  if (/^\/+(?:\.|\*)?\/*$/.test(lower)) return "/"
+  return lower.replace(/\/{2,}/g, "/")
+}
+
+function compileForbiddenRule(pattern: string): ForbiddenRule | undefined {
+  const cleaned = pattern.trim()
+  if (cleaned.length === 0) return undefined
+  const tokens = splitShellArgs(cleaned)
+  const headToken = tokens?.[0]
+  if (!tokens || headToken === undefined || !/^[A-Za-z0-9._+-]+$/.test(headToken)) {
+    return { pattern, literal: cleaned.toLowerCase().replace(/\s+/g, ""), head: "", flags: new Set(), longFlags: [], args: [] }
+  }
+  const head = headToken.toLowerCase()
+  const flags = new Set<string>()
+  const longFlags: string[] = []
+  const args: string[] = []
+  for (const token of tokens.slice(1)) {
+    if (/^-[A-Za-z]+$/.test(token)) {
+      for (const letter of token.slice(1)) flags.add(normalizeShortFlag(head, letter))
+    } else if (token.startsWith("--")) {
+      const alias = longFlagAlias(head, token.toLowerCase())
+      if (alias) flags.add(alias)
+      else longFlags.push(token.toLowerCase())
+    } else {
+      args.push(normalizePositional(token))
     }
   }
+  return { pattern, head, flags, longFlags, args }
+}
+
+function splitForbiddenSegments(command: string): string[] {
+  const segments: string[] = []
+  let buf = ""
+  let inSingle = false
+  let inDouble = false
+  const flush = () => {
+    if (buf.trim().length > 0) segments.push(buf.trim())
+    buf = ""
+  }
+  for (let i = 0; i < command.length; i += 1) {
+    const ch = command[i]
+    const next = command[i + 1]
+    if (inSingle) {
+      if (ch === "'") inSingle = false
+      buf += ch
+      continue
+    }
+    if (ch === "\\") {
+      if (next === "\n") {
+        i += 1
+        continue
+      }
+      buf += ch
+      if (next !== undefined) {
+        buf += next
+        i += 1
+      }
+      continue
+    }
+    if (ch === "`" || (ch === "$" && next === "(")) {
+      flush()
+      if (ch === "$") i += 1
+      continue
+    }
+    if (inDouble) {
+      if (ch === '"') inDouble = false
+      if (ch === ")") {
+        flush()
+        continue
+      }
+      buf += ch
+      continue
+    }
+    if (ch === "'") {
+      inSingle = true
+      buf += ch
+      continue
+    }
+    if (ch === '"') {
+      inDouble = true
+      buf += ch
+      continue
+    }
+    if (";&|()\n".includes(ch) || ((ch === "{" || ch === "}") && isWordBoundary(command[i - 1]) && isWordBoundary(next))) {
+      flush()
+      continue
+    }
+    if ((ch === "<" || ch === ">") && next === "(") {
+      flush()
+      i += 1
+      continue
+    }
+    buf += ch
+  }
+  flush()
+  return segments
+}
+
+function tokenizeLoosely(segment: string): string[] {
+  return splitShellArgs(segment) ?? segment.split(/\s+/).map((t) => t.replace(/["'\\]/g, "")).filter((t) => t.length > 0)
+}
+
+function nestedShellScript(tokens: readonly string[]): string | undefined {
+  if (!NESTED_SHELLS.has(commandBaseName(tokens[0] ?? ""))) return undefined
+  const args = tokens.slice(1)
+  const cIdx = args.findIndex((a) => /^-[a-zA-Z]*c[a-zA-Z]*$/.test(a))
+  return cIdx === -1 ? undefined : args[cIdx + 1]
+}
+
+function commandTokenLists(command: string, depth = 0): string[][] {
+  if (depth > 8) return []
+  const lists: string[][] = []
+  for (const segment of splitForbiddenSegments(command)) {
+    const raw = tokenizeLoosely(segment)
+    const split = raw.findIndex((t) => t === "-S" || t.startsWith("--split-string"))
+    if (split !== -1 && raw.slice(0, split).some((t) => commandBaseName(t) === "env")) {
+      const flag = raw[split] ?? ""
+      const inline = flag.startsWith("--split-string=") ? flag.slice("--split-string=".length) : raw.slice(split + 1).join(" ")
+      lists.push(...commandTokenLists(inline, depth + 1))
+      continue
+    }
+    const unwrapped = unwrapCommand(raw)
+    const tokens = unwrapped.ok ? [...unwrapped.tokens] : raw
+    if (tokens.length === 0) continue
+    lists.push(tokens)
+    const head = commandBaseName(tokens[0])
+    const args = tokens.slice(1)
+    const nested = nestedShellScript(tokens)
+    if (nested !== undefined) lists.push(...commandTokenLists(nested, depth + 1))
+    if (head === "eval" && args.length > 0) lists.push(...commandTokenLists(args.join(" "), depth + 1))
+    if (head === "find") {
+      const execTokens = findExecCommand(args)
+      if (execTokens && execTokens.length > 0) lists.push(...commandTokenLists(execTokens.join(" "), depth + 1))
+    }
+  }
+  return lists
+}
+
+function tokensMatchRule(tokens: readonly string[], rule: ForbiddenRule): boolean {
+  const head = commandBaseName(tokens[0] ?? "")
+  if (head !== rule.head && !head.startsWith(`${rule.head}.`)) return false
+  const flags = new Set<string>()
+  const longFlags = new Set<string>()
+  const positionals: string[] = []
+  for (const token of tokens.slice(1)) {
+    if (/^-[A-Za-z]+$/.test(token)) {
+      for (const letter of token.slice(1)) flags.add(normalizeShortFlag(rule.head, letter))
+    } else if (token.startsWith("--")) {
+      const lower = token.toLowerCase()
+      const alias = longFlagAlias(rule.head, lower)
+      if (alias) flags.add(alias)
+      longFlags.add(lower)
+    } else {
+      positionals.push(normalizePositional(token))
+    }
+  }
+  for (const flag of rule.flags) if (!flags.has(flag)) return false
+  for (const flag of rule.longFlags) if (!longFlags.has(flag)) return false
+  return rule.args.every((arg) =>
+    positionals.some((p) => p === arg || (arg.includes("=") && p.startsWith(arg))),
+  )
+}
+
+export function isForbiddenCommand(command: string, extraDenied: readonly string[] = []): string | undefined {
+  const rules = [...DEFAULT_FORBIDDEN_COMMANDS, ...extraDenied]
+    .map(compileForbiddenRule)
+    .filter((rule): rule is ForbiddenRule => rule !== undefined)
+  const squashed = command.toLowerCase().replace(/\s+/g, "")
+  const tokenLists = commandTokenLists(command)
+  for (const rule of rules) {
+    if (rule.literal !== undefined) {
+      if (squashed.includes(rule.literal)) return rule.pattern
+      continue
+    }
+    if (tokenLists.some((tokens) => tokensMatchRule(tokens, rule))) return rule.pattern
+  }
   return undefined
+}
+
+export type StdinTarget = "StdinData" | "StdinShell" | "StdinInterpreter"
+
+const STDIN_INTERPRETERS = new Set([
+  "irb", "ghci", "sbcl", "erl", "iex", "expect", "wish", "gdb", "lldb", "psql", "mysql", "mariadb", "sqlite3",
+  "redis-cli", "mongo", "mongosh", "ssh", "telnet", "nc", "ncat", "netcat", "socat", "docker", "podman",
+  "kubectl", "screen", "tmux", "script", "nsenter", "chroot", "xargs", "parallel", "busybox", "pwsh",
+  "powershell", "cmd", "osascript", "csh", "tcsh", "dc", "ed", "ex", "vi", "vim", "nvim", "emacs", "eval",
+  "source", ".",
+])
+
+const SCRIPTED_INTERPRETERS = new Set([
+  "node", "nodejs", "deno", "bun", "perl", "ruby", "php", "lua", "luajit", "tclsh", "r", "rscript", "julia",
+  "scala", "guile", "racket", "ocaml", "elixir",
+])
+
+const INLINE_CODE_FLAGS = new Set(["-e", "-E", "-c", "-m", "-p", "-r", "--eval", "--print", "--command"])
+
+function runsAsRepl(args: readonly string[]): boolean {
+  if (args.some((a) => a === "-" || a === "-i" || a === "--interactive" || a === "--repl")) return true
+  const hasProgram = args.some((a) => !a.startsWith("-")) || args.some((a) => INLINE_CODE_FLAGS.has(a) || a.startsWith("--eval="))
+  return !hasProgram
+}
+
+function stdinTargetOfTokens(raw: readonly string[]): StdinTarget {
+  const wrapperHead = commandBaseName(raw.find((t) => !/^[A-Za-z_][A-Za-z0-9_]*=/.test(t)) ?? "")
+  const escalates = wrapperHead === "sudo" || wrapperHead === "doas"
+  if (escalates && raw.some((t) => t === "-s" || t === "-i" || t === "--shell" || t === "--login")) return "StdinShell"
+  if (raw.some((t) => commandBaseName(t) === "xargs")) return "StdinInterpreter"
+  const unwrapped = unwrapCommand(raw)
+  if (!unwrapped.ok) return "StdinInterpreter"
+  const tokens = unwrapped.tokens
+  if (tokens.length === 0) return escalates ? "StdinShell" : "StdinData"
+  if (tokens[0].startsWith("$")) return "StdinInterpreter"
+  const head = commandBaseName(tokens[0])
+  if (STDIN_INTERPRETERS.has(head)) return "StdinInterpreter"
+  if (SCRIPTED_INTERPRETERS.has(head) || /^python[0-9.]*$/.test(head)) return runsAsRepl(tokens.slice(1)) ? "StdinInterpreter" : "StdinData"
+  if (head === "su") return nestedShellScript(tokens) === undefined ? "StdinShell" : "StdinData"
+  if (NESTED_SHELLS.has(head)) {
+    const args = tokens.slice(1)
+    const readsStdin = args.some((a) => a === "-" || /^-[a-zA-Z]*[si][a-zA-Z]*$/.test(a))
+    const hasScript = nestedShellScript(tokens) !== undefined || args.some((a) => !a.startsWith("-"))
+    return readsStdin || !hasScript ? "StdinShell" : "StdinData"
+  }
+  return "StdinData"
+}
+
+export function classifyStdinTarget(command: string, depth = 0): StdinTarget {
+  if (depth > 8) return "StdinInterpreter"
+  let target: StdinTarget = "StdinData"
+  for (const segment of splitForbiddenSegments(command)) {
+    const raw = tokenizeLoosely(segment)
+    const segmentTarget = stdinTargetOfTokens(raw)
+    if (segmentTarget === "StdinInterpreter") return "StdinInterpreter"
+    if (segmentTarget === "StdinShell") target = "StdinShell"
+    const unwrapped = unwrapCommand(raw)
+    const nested = nestedShellScript(unwrapped.ok ? unwrapped.tokens : raw)
+    if (nested !== undefined) {
+      const nestedTarget = classifyStdinTarget(nested, depth + 1)
+      if (nestedTarget === "StdinInterpreter") return "StdinInterpreter"
+      if (nestedTarget === "StdinShell") target = "StdinShell"
+    }
+  }
+  return target
 }
 
 export interface DestructiveVerdict {
@@ -362,7 +624,7 @@ export interface DestructiveVerdict {
 
 export type ShellDialect = "posix" | "powershell"
 
-const DESTRUCTIVE_BINS = new Set(["mkfs", "shred", "wipefs", "fdisk", "parted", "diskutil"])
+const DESTRUCTIVE_BINS = new Set(["mkfs", "shred", "wipefs", "fdisk", "parted", "diskutil", "shutdown", "reboot", "halt", "poweroff"])
 
 type SegmentSplit =
   | { readonly kind: "segments"; readonly segments: readonly string[] }
@@ -411,6 +673,10 @@ function splitShellSegments(command: string): SegmentSplit {
       continue
     }
     if (ch === "\\") {
+      if (next === "\n") {
+        i += 1
+        continue
+      }
       buf += ch
       escaped = true
       continue
@@ -587,6 +853,12 @@ function classifyTokens(raw: readonly string[], segment: string, dialect: ShellD
     if (hasRecursive || (hasForce && targets.length > 0)) {
       return { destructive: true, reason: "recursive or forced file deletion (rm)", targets }
     }
+  }
+  if (head === "systemctl" && args.some((a) => ["poweroff", "reboot", "halt", "kexec"].includes(a.toLowerCase()))) {
+    return { destructive: true, reason: "systemctl power state change", targets: args }
+  }
+  if ((head === "init" || head === "telinit") && args.some((a) => a === "0" || a === "6")) {
+    return { destructive: true, reason: `${head} runlevel change`, targets: args }
   }
   if (head === "truncate") return { destructive: true, reason: "truncate discards file contents", targets: args.filter((a) => !a.startsWith("-")) }
   if (head === "find") {

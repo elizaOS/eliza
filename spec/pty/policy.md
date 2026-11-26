@@ -51,7 +51,9 @@ pure def lawOnlyTheOwnerDrivesFromChat(caller: PtyCaller): bool =
 Store builds reject all interactive and vendor CLI spawns; the build variant is
 read only from the launch environment, never from runtime settings. A runtime
 setting can only narrow the launch environment's flags: an explicit non-truthy
-value from either one disables the flag. The interactive flag
+value from either one disables the flag, and otherwise the launch environment's
+value stands, so a truthy setting never enables a flag the launch environment
+left unset. The interactive flag
 defaults on when unset, allows explicit truthy values, and fails closed on any
 other explicit value. Vendor CLI sessions (`claude` and `codex`) require both
 interactive spawning and an explicit truthy vendor flag. Unsupported session
@@ -75,6 +77,12 @@ pure def evaluateSpawnGate(isStoreBuild: bool, interactiveFlag: FlagState, vendo
   }
 pure def lawStoreBuildBlocksAllSpawns(interactiveFlag: FlagState, vendorFlag: FlagState, kind: SpawnKind): bool =
   evaluateSpawnGate(true, interactiveFlag, vendorFlag, kind) == SpawnDisabled
+pure def narrowFlag(launch: FlagState, setting: FlagState): FlagState =
+  if (launch == FlagOther or setting == FlagOther) FlagOther else launch
+pure def lawSettingNeverWidensLaunchFlag(launch: FlagState, setting: FlagState): bool =
+  narrowFlag(launch, setting) == FlagTrue implies launch == FlagTrue
+pure def lawSettingAloneNeverEnablesVendor(setting: FlagState): bool =
+  not(vendorAllowed(false, narrowFlag(FlagUnset, setting)))
 pure def lawVendorDefaultsClosed(interactiveFlag: FlagState): bool =
   evaluateSpawnGate(false, interactiveFlag, FlagUnset, KindClaude) != SpawnAdmitted and
   evaluateSpawnGate(false, interactiveFlag, FlagUnset, KindCodex) != SpawnAdmitted

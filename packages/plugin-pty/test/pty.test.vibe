@@ -1,4 +1,4 @@
-// spec/pty/index.md, "Story: Open and close an owner-bound terminal session"; spec/pty/policy.md, "Story: Gate interactive and vendor PTY access"; spec/pty/policy.md, "Story: Enforce session capacity, confinement, and safe teardown"
+// spec/pty/policy.md, "Story: Gate interactive and vendor PTY access"; spec/pty/policy.md, "Story: Enforce session capacity, confinement, and safe teardown"
 import { assert, afterEach, beforeEach, describe, expect, it } from "@effect/vitest"
 import type { ElizaError, IAgentRuntime, Memory } from "@elizaos/core"
 import {
@@ -9,7 +9,6 @@ import {
   defaultSpawnResolver,
   formatBoundedTail,
   isBunRuntime,
-  openTerminalSession,
   ptyPlugin,
   ptyRoutes,
   ptySessionAction,
@@ -616,6 +615,13 @@ describe("PtyService idle-timeout configuration and routes", () => {
 
     const vendorOff = makeHarness({ settings: {} })
     expect((await routeByName("pty-spawn-session")(makeCtx(vendorOff.runtime, { kind: "claude", cwd: fsTools.cwd() }))).status).toBe(403)
+    const settingOnly = makeHarness({ settings: { PTY_VENDOR_CLI_ENABLED: "true", CLAUDE_CODE_OAUTH_TOKEN: "sk-ant-oat-test" } })
+    expect((await routeByName("pty-spawn-session")(makeCtx(settingOnly.runtime, { kind: "claude", cwd: fsTools.cwd() }))).status).toBe(403)
+    expect(settingOnly.calls).toHaveLength(0)
+    fsTools.setEnv("PTY_VENDOR_CLI_ENABLED", "true")
+    const settingNarrows = makeHarness({ settings: { PTY_VENDOR_CLI_ENABLED: "false", CLAUDE_CODE_OAUTH_TOKEN: "sk-ant-oat-test" } })
+    expect((await routeByName("pty-spawn-session")(makeCtx(settingNarrows.runtime, { kind: "claude", cwd: fsTools.cwd() }))).status).toBe(403)
+    expect(settingNarrows.calls).toHaveLength(0)
     const vendorOn = makeHarness({
       settings: { PTY_VENDOR_CLI_ENABLED: " YES ", CLAUDE_CODE_OAUTH_TOKEN: "sk-ant-oat-test", CODEX_HOME: "/accounts/c1" },
     })
@@ -752,7 +758,7 @@ describe("Optimized PTY incremental reads, send_wait batching, and real OS PTY",
     await h.svc!.stop()
   })
 
-  it.live("runs a real OS PTY end-to-end and enforces owner-bound terminal session lifecycle", effect () => {
+  it.live("runs a real OS PTY end-to-end through the session store", effect () => {
     const bridge = new PtyConsoleBridge()
     const store = new PtySessionStore(bridge, defaultSpawnResolver, { allowedRoot: fsTools.cwd(), idleTimeoutMs: 0 })
     const probe = try tryPromise(() => runRealPtyProbe(bridge, store))
@@ -762,20 +768,6 @@ describe("Optimized PTY incremental reads, send_wait batching, and real OS PTY",
       assert.equal(probe.code, 0)
       assert.equal(probe.stubbornStopped, true)
       assert.equal(typeof isBunRuntime(), "boolean")
-    })
-    const isWin = fsTools.platform() === "win32"
-    const session = try openTerminalSession({
-      ownerId: "owner",
-      terminalId: "term-real",
-      executable: isWin ? "cmd" : "sh",
-      arguments: isWin ? ["/c", "echo OWNEROK"] : ["-c", "printf OWNEROK"],
-      directory: fsTools.cwd(),
-      environment: { PATH: fsTools.getEnv("PATH") ?? "" },
-    })
-    const refused = try Effect.flip(session.write("other", "x"))
-    try session.close("owner")
-    try Effect.try(() => {
-      assert.equal(refused._tag, "TerminalRequestRefused")
     })
   })
 })
