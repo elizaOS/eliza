@@ -4356,8 +4356,11 @@ module node {
   import { signInWithProof } from "../src/identity-store.vibe"
   import { cloudWorker, graceCloudWorker, type CloudBindings } from "../src/worker.vibe"
   import { googleRequest } from "../src/google.vibe"
+  import { startFakeServer } from "./support/fakes.ts"
   import { htmlAtLimit, htmlOverLimit, htmlReadSummary, mimeBoundaryPayload, mimeReadSummary } from "./support/fakes/google-gmail.ts"
+  import { googleIdentityFake } from "./support/google-identity-fake.ts"
   import { openBackupDatabase } from "./support/password-backup.ts"
+  import { secrets } from "./support/profile.ts"
   import { registerClients, workerBindings } from "./support/worker.ts"
   import { clefWorker } from "./support/clef.ts"
 
@@ -4449,19 +4452,22 @@ module node {
   }
   export async function openGraceGoogleConnector() {
     const fixture = await openBackupDatabase()
+    const fakes = await startFakeServer().catch(async (failure) => { await fixture.close(); throw failure })
     try {
       const digest = "a".repeat(64)
       const api = "https://api.example.test"
       const web = "https://app.example.test"
       const email = "grace-owner@example.test"
       const subject = "grace-google-owner"
+      const google = googleIdentityFake(secrets.GOOGLE_CLIENT_SECRET ?? "")
+      fakes.mount("/google/", google.handler)
       const client = { clientId: "com.example.grace", androidPackage: "com.example.grace", displayName: "Grace", environment: "staging",
-        signInReturn: web + "/android/auth/callback", billingReturn: web + "/billing", certFingerprints: [Array(32).fill("AB").join(":")], enabled: true }
+        signInReturn: web + "/android/auth/callback", billingReturn: web + "/billing", certFingerprints: [Array(32).fill("AB").join(":")], nativeGoogle: true, enabled: true }
       await registerClients(fixture.db, [client])
       await fixture.db.query("INSERT INTO cloud_identity (digest, environment, created_at) VALUES ($1, 'staging', 1)", [digest])
       const owner = await Effect.runPromise(Effect.provide(signInWithProof(fixture.db, { provider: "email", subject: email, email }), SecureRandom.layerWebCrypto))
       const env = {
-        ...workerBindings({ api, web, digest }), DATABASE_URL: fixture.databaseUrl,
+        ...workerBindings({ api, web, digest, fakeUrl: fakes.url }), DATABASE_URL: fixture.databaseUrl,
         AI: { run: async () => { throw new Error("Unexpected inference") } },
         NATIVE_CLIENT_ID: client.clientId, NATIVE_AUTH_CALLBACK: client.signInReturn, NATIVE_CLIENT_REGISTRY: JSON.stringify([client]),
         GOOGLE_CLIENT_ID: "fixture-client", GOOGLE_CLIENT_SECRET: "fixture-secret", GOOGLE_CONNECT_TOKEN_KEY: "11".repeat(32),
@@ -4492,7 +4498,8 @@ module node {
           version += 1
         }
         if (address === selectedMessage || address === selectedMessage + "/trash" || address === selectedMessage + "/untrash") {
-          return Response.json({ id: "selected-mail", historyId: String(version), labelIds: [folder] })
+          return Response.json({ id: "selected-mail", threadId: "selected-thread", internalDate: "1764061200000",
+            historyId: String(version), labelIds: [folder], snippet: "Mail for this Grace account" })
         }
         return Response.json({ error: "unexpected fixture request" }, { status: 500 })
       }
@@ -4549,8 +4556,25 @@ module node {
         signInWithProof(fixture.db, { provider: "google", subject, email }), SecureRandom.layerWebCrypto))
       const verified = await signInGoogle(subject, email)
       const other = await signInGoogle("different-google-owner", "other@example.test")
-      const device = await recordedGoogleDevice(fixture.db, verified.account.id, client.clientId)
       const otherDevice = await recordedGoogleDevice(fixture.db, other.account.id, client.clientId)
+      const post = (path: string, body: object, headers: Record<string, string> = {}) => grace.fetch(new Request(api + path, {
+        method: "POST", headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify(body),
+      }), env)
+      const bearer = (token: string) => ({ authorization: "Bearer " + token })
+      const app = { clientId: client.clientId, environment: client.environment, redirectUri: client.signInReturn }
+      const verifier = "v".repeat(43)
+      const challenge = await post("/api/v1/auth/google/native/challenge", {
+        ...app, codeChallenge: createHash("sha256").update(verifier).digest("base64url"), codeChallengeMethod: "S256",
+      })
+      const { challengeId, nonce } = Schema.decodeUnknownSync(Schema.Struct({ challengeId: Schema.String, nonce: Schema.String }))(await challenge.json())
+      const idToken = await google.idToken({ email, subject, emailVerified: true }, { audience: "google-server-client", nonce })
+      const signed = await post("/api/v1/app-auth/mobile/google", {
+        ...app, state: "s".repeat(43), codeVerifier: verifier, identity: { challengeId, idToken, codeVerifier: verifier },
+      })
+      const key = Schema.decodeUnknownSync(Schema.Struct({ accountCreated: Schema.Boolean, credentialId: Schema.String, secret: Schema.String,
+        user: Schema.Struct({ id: Schema.String }), lease: Schema.Struct({ refresh: Schema.String }) }))(await signed.json())
+      const acknowledged = await post("/api/v1/app-auth/mobile/ack", { credentialId: key.credentialId, secret: key.secret })
+      const device = bearer(key.secret)
       const selection = { serverAuthCode: "native-oauth-code", mail: true, calendar: false, sendMail: false, trashMail: false, writeCalendar: false }
       const connectNative = (headers: Record<string, string>, body = selection) => grace.fetch(new Request(root + "connect/native", {
         method: "POST", headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify(body),
@@ -4562,6 +4586,12 @@ module node {
       verifiedSubject = subject
       const nativeResponse = await connectNative(device)
       const nativeLinked = await status()
+      const lease = await post("/api/v1/app-auth/mobile/lease", {}, bearer(key.lease.refresh))
+      const { access } = Schema.decodeUnknownSync(Schema.Struct({ access: Schema.String }))(await lease.json())
+      const read = await grace.fetch(new Request(root + "gmail/read?" + new URLSearchParams({
+        messageId: "selected-mail", grantId: nativeLinked.connectionId ?? "",
+      }), { headers: bearer(access) }), env)
+      const message = Schema.decodeUnknownSync(Schema.Struct({ accountId: Schema.String, bodyText: Schema.String }))(await read.json())
       const unrelatedDisconnect = await disconnect(otherDevice)
       const stillLinked = await status()
       const nativeDisconnect = await disconnect(device)
@@ -4579,13 +4609,16 @@ module node {
         trash: [trash.status, undo.status, folder, version],
         disconnected: [disconnected.status, disconnectedInBrowser],
         native: {
+          signedIn: [challenge.status, signed.status, key.accountCreated, key.user.id === owner.account.id, acknowledged.status],
           refused: [browserCannotConnectNative.status, invalidSelection.status, wrongGoogle.status, expiredDuringConsent.status],
           connected: [nativeResponse.status, nativeLinked.connected, nativeLinked.accountId === verified.account.id, nativeLinked.identity?.email, nativeLinked.grantedScopes],
+          mail: [lease.status, read.status, message.accountId === owner.account.id, message.bodyText],
           disconnected: [unrelatedDisconnect.status, stillLinked.connectionId === nativeLinked.connectionId, nativeDisconnect.status, (await status()).connected],
         },
       }
     } finally {
-      await fixture.close()
+      try { await fakes.close() }
+      finally { await fixture.close() }
     }
   }
   export async function readSelectedAttachment() {
@@ -5154,7 +5187,7 @@ it.live('A reviewed link decision stays within the current account and candidate
 }, 30_000)
 
 
-it.live('Use Grace Google consent on the web and tablet, send once, then disconnect (spec/cloud/deployment.md, "A Worker routes the declared Grace Google mount, then the server table, then Worker-only paths"; spec/cloud/identity/federatedSignIn.md, "Story: Connect mail and calendar from the same Google sheet")', () => effect {
+it.live('Use Grace Google consent on the web and tablet, send once, then disconnect (spec/cloud/deployment.md, "A Worker routes the declared Grace Google mount, then the server table, then Worker-only paths"; spec/cloud/identity/accounts.md, "A sign-in lands on the account holding its subject, else on the one holding its proven address, else on a new account, and never on an account that is not active"; spec/cloud/identity/federatedSignIn.md, "Story: Connect mail and calendar from the same Google sheet")', () => effect {
   const got = try tryPromise(() => openGraceGoogleConnector())
   try check(() => assert.deepStrictEqual(got, {
     refusals: [403, 403, 401, 401, 404, 404],
@@ -5166,8 +5199,10 @@ it.live('Use Grace Google consent on the web and tablet, send once, then disconn
     sent: ["sent-from-grace", "sent-from-grace", "sent-from-grace"], calls: 1,
     trash: [200, 200, "INBOX", 791], disconnected: [200, false],
     native: {
+      signedIn: [200, 200, false, true, 200],
       refused: [401, 400, 409, 401],
       connected: [200, true, true, "grace-owner@example.test", ["openid", "email", "https://www.googleapis.com/auth/gmail.readonly"]],
+      mail: [200, 200, true, "Mail for this Grace account"],
       disconnected: [200, true, 200, false],
     },
   }))
