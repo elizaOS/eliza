@@ -596,7 +596,8 @@ later call to the same action can be for another request. An unlinked
 refusal stays open as a call that did not start, even if the action later
 runs. An open proposal is reported as awaiting the owner in the action's own
 copy, whatever the model's prose claims. An open failure is reported as that
-action's failure in the action's own words, except a failure with no
+action's failure: in the model's own words when the model answers for it
+(below), and otherwise in the action's own words, except a failure with no
 receipt that a later step may have answered under the rule below.
 
 ```quint
@@ -668,13 +669,24 @@ never replaced by a cue), it is not the first reply again, and the clock
 rules hold of it.
 Otherwise, or when the call fails, the first
 reply is kept, or the clock's or the calendar change's own words (below)
-take its place when it stated a time they did not observe. Under the
-model's reply, first or kept second, each remaining open failure whose words
-its action wrote for the owner, and each attachment omission, is reported in
-those words if the reply does not already contain them. Under fixed words,
-the last resort, each remaining open failure whose action wrote words for
-the owner follows in those words, as the rule below allows, if the reply
-does not already contain them. Under any reply, a failure's error, its
+take its place when it stated a time they did not observe. The note also
+says that when the reply already tells the person truthfully, the model
+gives it exactly as it was, word for word. The model answers for a failure
+or omission it was asked about when its second answer is kept, or when it
+gives its first reply again, word for word, and that reply is delivered (it
+stands by it): such a failure or omission is reported in the model's words
+alone. Its own words never follow that reply as a fixed line, written or
+spoken, so the person never hears a stock sentence after a reply that
+already told them, in its own words, what did not happen. Under the model's
+reply, first or kept second, each remaining open failure the model was not
+asked about whose words its action wrote for the owner is reported in those
+words if the reply does not already contain them. Under fixed words, the
+last resort, when the model did not answer for them (the call failed, a
+blank or a cue, another answer that is not kept, a turn cut off, or the
+clock's or the change's words in the reply's place), each remaining open
+failure whose action wrote words for the owner, and each attachment
+omission, follows in those words if the reply does not already contain
+them. Under any reply, a failure's error, its
 result text that no action marked for the owner, `unavailableNotice` and the
 host's own sentence that a call did not start or did not complete reach the
 model only, and the owner hears such a failure in the model's words alone:
@@ -698,6 +710,8 @@ pure def replySource(unreported: bool, ungrounded: bool, cutOff: bool, answered:
   else FixedWords
 pure def putToTheModel(held: bool, safetyCopy: bool): bool = not(held) and not(safetyCopy)
 pure def reachesTheOwner(ownCopy: bool, follows: bool): bool = ownCopy and follows
+pure def answersForIt(kept: bool, stoodBy: bool, hostWords: bool): bool = not(hostWords) and (kept or stoodBy)
+pure def omissionFollows(answered: bool): bool = not(answered)
 pure def answeredAgain(draft: Draft, sameAsFirst: bool): bool = gaveAnAnswer(draft) and not(sameAsFirst)
 pure def lawAGroundedReplyMakesNoFurtherCall(cutOff: bool): bool = not(asksAgain(false, false, cutOff))
 pure def lawAGroundedReplyIsTheModels(cutOff: bool, answered: bool, grounded: bool): bool = replySource(false, false, cutOff, answered, grounded) == ModelReply
@@ -710,6 +724,9 @@ pure def lawSafetyCopyIsNeverRewritten(held: bool): bool = not(putToTheModel(hel
 pure def lawWordsWrittenToTheModelNeverReachTheOwner(follows: bool): bool = not(reachesTheOwner(false, follows))
 pure def lawAnActionsOwnWordsForTheOwnerFollowWhereTheyMay(follows: bool): bool = reachesTheOwner(true, follows) == follows
 pure def lawWordsTheReplyHoldsAreNotAskedFor(safetyCopy: bool): bool = not(putToTheModel(true, safetyCopy))
+pure def lawTheHostsWordsAreNoAnswerOfTheModel(kept: bool, stoodBy: bool): bool = not(answersForIt(kept, stoodBy, true))
+pure def lawAKeptOrStoodByReplyAnswers(kept: bool, stoodBy: bool): bool = answersForIt(kept, stoodBy, false) == (kept or stoodBy)
+pure def lawAnAnsweredOmissionAddsNoWords(answered: bool): bool = omissionFollows(answered) == not(answered)
 pure def lawACueIsNoSecondAnswer(sameAsFirst: bool): bool = not(answeredAgain(Cue, sameAsFirst)) and not(answeredAgain(Silent, sameAsFirst))
 pure def lawTheFirstReplyAgainIsNoSecondAnswer(draft: Draft): bool = not(answeredAgain(draft, true))
 pure def lawANewAnswerIsASecondAnswer(sameAsFirst: bool): bool = answeredAgain(Answer, sameAsFirst) == not(sameAsFirst)
@@ -729,8 +746,8 @@ did not start, or a Files filter proposed to the phone after a call that did
 not start. A later call of another action that had no effect answers
 nothing, and nor does any later call of another action answer a failure
 whose action wrote words for the owner, such as a phone that cannot send a
-text or open its keypad from chat: those words reach the owner beside a
-reminder the turn set, whatever the reply claims. A later call may also
+text or open its keypad from chat: such a failure stays put to the model
+beside a reminder the turn set. A later call may also
 have been for another request, such as a second recipient. A later call can answer a failure only
 when the model saw that failure first, in an earlier planner response. Such
 a failure stays open (above), and only the model can tell whether the later
@@ -741,14 +758,16 @@ the failed step was for the model gives its reply exactly as it was, word
 for word, and that otherwise the reply must say the failed step did not
 happen. When the model answers that note with its first reply again, word for word, it stands by
 that reply, and when that reply is delivered, the failure's own words do not
-follow it. Otherwise the failure is reported as any failure is (above): a
-kept second answer reports it in the model's words, followed only by words
-its action wrote for the owner, and those words for the owner, when its
-action wrote any, follow the reply when the call fails, when the model answers with a blank (read as below), when it gives another answer that is not kept, when the failure
-was never put to the model, or when the clock's or the change's words take
-the reply's place. A failure
-with a receipt, a failure in the same planner response as the later call,
-and safety copy are reported as above.
+follow it. This holds for every failure put to the model, whether or not a
+later call may have answered it, with a receipt or without, and in the same
+planner response or not: the model's answer is the report. Otherwise the
+failure is reported as any failure is (above): a kept second answer reports
+it in the model's words alone, and the words its action wrote for the owner,
+when it wrote any, follow the reply when the call fails, when the model
+answers with a blank (read as below), when it gives another answer that is
+not kept, when the failure was never put to the model, or when the clock's
+or the change's words take the reply's place. Safety copy is reported as
+above.
 
 ```quint
 pure def answerableLater(receiptless: bool, seenFirst: bool, ranLater: bool): bool = receiptless and seenFirst and ranLater
@@ -757,23 +776,19 @@ pure def mayAnswer(sameAction: bool, ownerWords: bool, laterOutcome: StepOutcome
   else not(ownerWords) and (laterOutcome == Applied or laterOutcome == Proposed)
 pure def gaveAnAnswer(draft: Draft): bool = draft == Answer
 pure def standsBy(draft: Draft, sameAsFirst: bool): bool = gaveAnAnswer(draft) and sameAsFirst
-pure def followsTheReply(answerable: bool, asked: bool, stoodBy: bool, modelsReply: bool, safetyCopy: bool): bool =
-  safetyCopy or not(answerable and asked and stoodBy and modelsReply)
+pure def followsTheReply(answered: bool, asked: bool, safetyCopy: bool): bool =
+  safetyCopy or not(asked and answered)
 pure def lawACueOrSilenceGivesNoAnswer(sameAsFirst: bool): bool =
   not(gaveAnAnswer(Cue)) and not(gaveAnAnswer(Silent)) and not(standsBy(Cue, sameAsFirst)) and not(standsBy(Silent, sameAsFirst))
 pure def lawAnotherAnswerIsNoStandingBy(draft: Draft): bool = not(standsBy(draft, false))
-pure def lawAFailureALaterRunMayHaveAnsweredDoesNotFollowAReplyTheModelStandsBy(safetyCopy: bool): bool =
-  followsTheReply(true, true, true, true, safetyCopy) == safetyCopy
-pure def lawUnlessTheModelStandsByItsReplyTheFailureStillFollows(answerable: bool, asked: bool, modelsReply: bool, safetyCopy: bool): bool =
-  followsTheReply(answerable, asked, false, modelsReply, safetyCopy)
-pure def lawAFailureNeverPutToTheModelStillFollows(answerable: bool, stoodBy: bool, modelsReply: bool): bool =
-  followsTheReply(answerable, false, stoodBy, modelsReply, false)
-pure def lawUnderTheHostsWordsTheFailureStillFollows(answerable: bool, asked: bool, stoodBy: bool): bool =
-  followsTheReply(answerable, asked, stoodBy, false, false)
-pure def lawAFailureWithAReceiptStillFollows(seenFirst: bool, ranLater: bool, asked: bool, stoodBy: bool, modelsReply: bool): bool =
-  followsTheReply(answerableLater(false, seenFirst, ranLater), asked, stoodBy, modelsReply, false)
-pure def lawAFailureInTheSameResponseStillFollows(receiptless: bool, ranLater: bool, asked: bool, stoodBy: bool, modelsReply: bool): bool =
-  followsTheReply(answerableLater(receiptless, false, ranLater), asked, stoodBy, modelsReply, false)
+pure def lawAFailureTheModelAnswersForIsReportedInItsWordsAlone(safetyCopy: bool): bool =
+  followsTheReply(true, true, safetyCopy) == safetyCopy
+pure def lawUnlessTheModelAnswersForItTheFailureStillFollows(asked: bool, safetyCopy: bool): bool =
+  followsTheReply(false, asked, safetyCopy)
+pure def lawAFailureNeverPutToTheModelStillFollows(answered: bool): bool =
+  followsTheReply(answered, false, false)
+pure def lawUnderTheHostsWordsTheFailureStillFollows(kept: bool, stoodBy: bool, asked: bool, safetyCopy: bool): bool =
+  followsTheReply(answersForIt(kept, stoodBy, true), asked, safetyCopy)
 pure def lawALaterRunOfTheSameActionMayAnswer(ownerWords: bool): bool =
   mayAnswer(true, ownerWords, Applied) and mayAnswer(true, ownerWords, Proposed) and mayAnswer(true, ownerWords, NoEffect)
 pure def lawAnotherActionsAppliedOrProposedCallMayAnswerAFailureWithoutWordsForTheOwner(laterOutcome: StepOutcome): bool =
@@ -781,8 +796,6 @@ pure def lawAnotherActionsAppliedOrProposedCallMayAnswerAFailureWithoutWordsForT
 pure def lawAnotherActionsCallNeverAnswersAFailureWithWordsForTheOwner(laterOutcome: StepOutcome): bool = not(mayAnswer(false, true, laterOutcome))
 pure def lawAFailedOrRefusedCallAnswersNothing(sameAction: bool, ownerWords: bool): bool =
   not(mayAnswer(sameAction, ownerWords, Failed)) and not(mayAnswer(sameAction, ownerWords, Rejected))
-pure def lawWithNoLaterCallThatMayAnswerTheFailureStillFollows(receiptless: bool, seenFirst: bool, asked: bool, stoodBy: bool, modelsReply: bool): bool =
-  followsTheReply(answerableLater(receiptless, seenFirst, false), asked, stoodBy, modelsReply, false)
 ```
 
 ### A coaching response stays in the planner transcript

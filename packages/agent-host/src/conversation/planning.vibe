@@ -85,7 +85,7 @@ export function failureNote({ words, verified, answerableLater, failedActions, l
   const report = `The step's own report: ${verified ? JSON.stringify(cut) : wrapExternalContent(cut, { source: "unknown" })}`
   return answerableLater
     ? `A step of this turn did not happen as asked (a ${failedActions.join(" or ")} call), and a later call of this turn did run (${laterActions.join(", ")}). If that later call did what this step was for, leave this step out and give your reply exactly as it was, word for word: the person needs only what happened. If it did not, the reply must tell the person truthfully that this step did not happen. ${report}`
-    : `A step of this turn did not happen as asked. The reply must tell the person so truthfully, never claiming it happened. ${report}`
+    : `A step of this turn did not happen as asked. The reply must tell the person so truthfully, never claiming it happened. If your reply already does, give it exactly as it was, word for word. ${report}`
 }
 
 export interface PlannedTurn {

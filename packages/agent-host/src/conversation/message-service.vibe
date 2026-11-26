@@ -5,7 +5,7 @@
 import {
   type Action, type ActionResult, type AgentRuntime, type GenerateTextParams, type HandlerCallback, type IMessageService, type Media, type Memory, type MessageProcessingOptions, type MessageProcessingResult, type RoleGateRole, type RoomHandlerLease, type State, executePlannedToolCall, ModelType, getTrajectoryContext, historyWindowNotice, readSystemNotice, runWithTrajectoryContext, RunTerminalOwner, ServiceType, stampedMessage, stampYear, toElizaError, trackPostDeliveryTask, windowHistory, withActionGatePolicy, withRoomDeliverySettlement, wrapExternalContent, revertedEffectReceiptIds, utf8ByteLength, type EffectReceipt,
 } from "@elizaos/core"
-import { asksAgain, attachedDocumentBytes, attachedRead, documentTextFits, followsTheReply, hostNoteLabels, markedUnanswered, offersContextRestore, putToTheModel, reachesTheOwner, replySource, stampedForTheModel, type AttachedKind } from "../../gen/agent__conversation__planning.ts"
+import { answersForIt, asksAgain, attachedDocumentBytes, attachedRead, documentTextFits, followsTheReply, hostNoteLabels, markedUnanswered, offersContextRestore, omissionFollows, putToTheModel, reachesTheOwner, replySource, stampedForTheModel, type AttachedKind } from "../../gen/agent__conversation__planning.ts"
 import { carriesCutOffEffect, failureEndsTheRun, limitOriginOn, replyQuoteChars, storedFailureName } from "../../gen/agent__conversation__turns.ts"
 import type { BindingView, LastCloudFailure } from "../models/binding.vibe"
 import { turnClock, ungroundedEventReply, ungroundedTimeReply, type Ungrounded } from "./clock.vibe"
@@ -14,7 +14,7 @@ import { bodyOf, storedText } from "./history.vibe"
 import { ModelRefusal } from "../models/chat.vibe"
 import { emptyTextTurnAccepted, readTurnContext, type BrowserPage, type ReviewedEmail } from "@elizaos/agent"
 import { plannerTemperature, warmUpOutputCap } from "../../gen/agent__conversation__planning.ts"
-import { actionNotes, agentCache, failureNote, offeredActions, plannerTools, planTurn, type FailureNotice, type PlannedTurn } from "./planning.vibe"
+import { actionNotes, agentCache, failureNote, offeredActions, plannerTools, planTurn, type PlannedTurn } from "./planning.vibe"
 import { cueRule, hostNoteMark } from "./reply-text.vibe"
 import { runTurnEvaluators } from "./turn-evaluators.vibe"
 import { recordedTurn, toolRecordOf } from "./tool-record.vibe"
@@ -342,16 +342,16 @@ async function settledReply(planned: PlannedTurn, omitted: boolean, misgrounded:
   const { revised, stoodBy } = asksAgain(unreported.length > 0, wrong !== undefined, planned.cutOff)
     ? await planned.reask([...unreported, ...(wrong === undefined ? [] : [wrong.note])])
     : { revised: undefined, stoodBy: false }
-  const ownersWords = (follows: (notice: FailureNotice) => boolean) =>
-    planned.notices.filter((notice) => reachesTheOwner(notice.owner !== undefined, follows(notice))).flatMap(({ owner }) => owner ?? [])
-  const attachmentWords = omitted ? [omittedDocuments] : []
-  switch (replySource(unreported.length > 0, wrong !== undefined, planned.cutOff, revised !== undefined, revised !== undefined && misgrounded(revised) === undefined)) {
-    case "ModelReply": return withWords(planned.reply, ownersWords(() => true))
-    case "RevisedReply": return withWords(revised ?? "", [...ownersWords(() => true), ...attachmentWords])
-    case "FixedWords": return withWords(wrong?.fixed ?? planned.reply, [
-      ...ownersWords((notice) => followsTheReply(notice.answerableLater, asked.includes(notice), stoodBy, wrong === undefined, notice.safetyCopy)),
-      ...attachmentWords,
-    ])
+  const source = replySource(unreported.length > 0, wrong !== undefined, planned.cutOff, revised !== undefined, revised !== undefined && misgrounded(revised) === undefined)
+  const answered = answersForIt(source === "RevisedReply", stoodBy, wrong !== undefined)
+  const ownersWords = planned.notices
+    .filter((notice) => reachesTheOwner(notice.owner !== undefined, followsTheReply(answered, asked.includes(notice), notice.safetyCopy)))
+    .flatMap(({ owner }) => owner ?? [])
+  const attachmentWords = omitted && omissionFollows(answered) ? [omittedDocuments] : []
+  switch (source) {
+    case "ModelReply": return withWords(planned.reply, ownersWords)
+    case "RevisedReply": return withWords(revised ?? "", [...ownersWords, ...attachmentWords])
+    case "FixedWords": return withWords(wrong?.fixed ?? planned.reply, [...ownersWords, ...attachmentWords])
   }
 }
 
