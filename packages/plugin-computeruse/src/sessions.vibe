@@ -1,7 +1,8 @@
-// spec/computerUse/sessions.md, "Story: Manage leased computer-use sessions with fresh observations"; spec/computerUse/index.md, "A command is scoped to one session generation, surface and authorized operation"
+// spec/computerUse/sessions.md, "Story: Manage leased computer-use sessions with fresh observations"; spec/computerUse/index.md, "A command is scoped to one session generation, surface and authorized operation"; spec/computerUse/index.md, "A session grants only the operations its bound target can carry out, and each command is its own operation"; spec/computerUse/index.md, "A pending operation accepts only the observation for its own identifier and session generation"
 import {
   acceptsComputerObservation,
   computerCommandAllowed,
+  grantedOperations,
   type ComputerOperation,
   type ComputerSession,
   type ComputerSurface,
@@ -111,6 +112,8 @@ export interface CreateComputerUseSessionInput {
   readonly leaseTtlMs?: number
 }
 
+export const LOCAL_HOST_PRINCIPAL = "owner"
+
 export interface ComputerUseSessionAction {
   readonly actionId: string
   readonly expectedSequence: number
@@ -118,6 +121,9 @@ export interface ComputerUseSessionAction {
   readonly parameters?: Record<string, unknown>
   readonly observationId?: string
   readonly observationSequence?: number
+  readonly callerId: string
+  readonly expectedEpoch: number
+  readonly surface: ComputerSurface
 }
 
 export interface ComputerUseSessionActionResult {
@@ -188,6 +194,7 @@ export type ComputerUseSessionErrorCode =
   | "lease_expired"
   | "unauthorized_command"
   | "invalid_input"
+  | "unsupported_target"
 
 export error ComputerUseSessionError {
   code: ComputerUseSessionErrorCode
@@ -215,7 +222,7 @@ function toSpecTargetKind(kind: ComputerUseSessionTargetKind): SpecSessionTarget
   return "HostTarget"
 }
 
-function toSurface(kind: ComputerUseSessionTargetKind): ComputerSurface {
+export function toSurface(kind: ComputerUseSessionTargetKind): ComputerSurface {
   if (kind === "browser") return "BrowserSurface"
   if (kind === "remote_guest") return "RemoteDesktop"
   return "LocalDesktop"
@@ -229,8 +236,23 @@ function fromSpecStatus(status: SpecSessionStatus): ComputerUseSessionStatus {
   return "closed"
 }
 
+const FILE_READ_COMMANDS = new Set<string>([
+  "file_read",
+  "file_exists",
+  "file_directory_exists",
+  "file_list_directory",
+  "file_get_file_size",
+  "file_read_bytes",
+  "file_list_downloads",
+])
+
 function commandToOperation(command: string): ComputerOperation {
   if (NON_CONSEQUENTIAL_COMMANDS.has(command)) return "ReadScreen"
+  if (FILE_READ_COMMANDS.has(command)) return "FileRead"
+  if (command.startsWith("file_")) return "FileWrite"
+  if (command.startsWith("terminal_")) return "TerminalExecute"
+  if (command.startsWith("browser_")) return "BrowserControl"
+  if (command.startsWith("app_")) return "AppControl"
   if (command === "clipboard_read") return "ClipboardRead"
   if (command === "clipboard_write") return "ClipboardWrite"
   if (command.includes("window") || command === "focus" || command === "minimize" || command === "maximize") {
@@ -242,17 +264,9 @@ function commandToOperation(command: string): ComputerOperation {
   return "ClickTarget"
 }
 
-const ALL_OPERATIONS: readonly ComputerOperation[] = [
-  "ReadScreen",
-  "ClickTarget",
-  "TypeText",
-  "WindowControl",
-  "ClipboardRead",
-  "ClipboardWrite",
-]
-
 interface ManagedSessionRecord {
   machine: SessionMachine
+  readonly operations: readonly ComputerOperation[]
   readonly id: string
   readonly ownerId: string
   readonly adapterId: string
@@ -295,23 +309,23 @@ export function toCanonicalInteractionSession(snapshot: ComputerUseSessionSnapsh
   }
 }
 
-export function authorizeCompatibilitySessionAction(
-  snapshot: ComputerUseSessionSnapshot,
-  action: ComputerUseSessionAction,
-): boolean {
-  const session: ComputerSession = {
-    sessionId: snapshot.id,
-    ownerId: snapshot.ownerId,
-    sessionEpoch: snapshot.generation,
-    surface: toSurface(snapshot.target.kind),
-    operations: [...ALL_OPERATIONS],
-    open: snapshot.status !== "closed",
+function coreSessionOf(rec: ManagedSessionRecord): ComputerSession {
+  return {
+    sessionId: rec.id,
+    ownerId: rec.ownerId,
+    sessionEpoch: rec.machine.epoch,
+    surface: toSurface(rec.target.kind),
+    operations: [...rec.operations],
+    open: rec.machine.status !== "Closed",
   }
-  return computerCommandAllowed(session, {
-    callerId: snapshot.ownerId,
-    forSession: snapshot.id,
-    expectedEpoch: snapshot.generation,
-    forSurface: toSurface(snapshot.target.kind),
+}
+
+function authorizeSessionAction(rec: ManagedSessionRecord, action: ComputerUseSessionAction): boolean {
+  return computerCommandAllowed(coreSessionOf(rec), {
+    callerId: action.callerId,
+    forSession: rec.id,
+    expectedEpoch: action.expectedEpoch,
+    forSurface: action.surface,
     operation: commandToOperation(action.command),
   })
 }
@@ -341,8 +355,9 @@ export class ComputerUseSessionManager {
       const ts = new Date(this.now()).toISOString()
       record = {
         machine: initialSessionMachine,
+        operations: grantedOperations(true, false),
         id: sessionId,
-        ownerId: "owner",
+        ownerId: LOCAL_HOST_PRINCIPAL,
         adapterId: "computeruse-host",
         label: sessionId,
         target: { kind: "host" },
@@ -360,9 +375,9 @@ export class ComputerUseSessionManager {
     return { accepted: true, state: record.machine }
   }
 
-  create(input: CreateComputerUseSessionInput): ComputerUseSessionSnapshot {
+  create(input: CreateComputerUseSessionInput, targetBound = false): ComputerUseSessionSnapshot {
     const id = nextUniqueId("cus")
-    const ownerId = (input.ownerId ?? "owner").trim() || "owner"
+    const ownerId = (input.ownerId ?? LOCAL_HOST_PRINCIPAL).trim() || LOCAL_HOST_PRINCIPAL
     const nowMs = this.now()
     const ts = new Date(nowMs).toISOString()
     const clampedTtl = Math.max(5_000, Math.min(3_600_000, input.leaseTtlMs ?? this.defaultLeaseTtlMs))
@@ -372,6 +387,7 @@ export class ComputerUseSessionManager {
     const opened = Result.isSuccess(openedRes) ? openedRes.success : initialSessionMachine
     const record: ManagedSessionRecord = {
       machine: opened,
+      operations: grantedOperations(input.target.kind === "host", targetBound),
       id,
       ownerId,
       adapterId: `computeruse-${input.target.kind}`,
@@ -463,13 +479,22 @@ export class ComputerUseSessionManager {
       throw new ComputerUseSessionError({ code: "session_not_found", message: `Session ${sessionId} not found` })
     }
     this.syncLeaseExpiry(rec)
+    const pendingObservation = nextUniqueId("obs")
+    const epochAtStart = rec.machine.epoch
     const raw = await provider(rec.target, signal)
+    if (!acceptsComputerObservation(coreSessionOf(rec), pendingObservation, {
+      observedSession: rec.id,
+      observedEpoch: epochAtStart,
+      operationId: pendingObservation,
+    })) {
+      throw new ComputerUseSessionError({ code: "invalid_transition", message: "Frame belongs to a closed or replaced session generation" })
+    }
     const stepped = this.stepMachine(sessionId, { type: "recordObservation" })
     if (!stepped.accepted) {
       throw new ComputerUseSessionError({ code: "invalid_transition", message: `Cannot capture frame in status ${rec.machine.status}` })
     }
     const capturedAt = new Date(this.now()).toISOString()
-    const observationId = nextUniqueId("obs")
+    const observationId = pendingObservation
     const provenance: ComputerUseObservationProvenance = {
       observationId,
       sequence: stepped.state.observationSeq,
@@ -479,21 +504,6 @@ export class ComputerUseSessionManager {
       ...(raw.width !== undefined ? { width: raw.width } : {}),
       ...(raw.height !== undefined ? { height: raw.height } : {}),
       source: rec.target.kind,
-    }
-    const coreSession: ComputerSession = {
-      sessionId: rec.id,
-      ownerId: rec.ownerId,
-      sessionEpoch: rec.machine.epoch,
-      surface: toSurface(rec.target.kind),
-      operations: [...ALL_OPERATIONS],
-      open: rec.machine.status !== "Closed",
-    }
-    if (!acceptsComputerObservation(coreSession, observationId, {
-      observedSession: rec.id,
-      observedEpoch: rec.machine.epoch,
-      operationId: observationId,
-    })) {
-      throw new ComputerUseSessionError({ code: "invalid_transition", message: "Observation rejected by session epoch" })
     }
     rec.lastObservation = provenance
     const snapshot = this.toSnapshot(rec)
@@ -512,8 +522,7 @@ export class ComputerUseSessionManager {
       throw new ComputerUseSessionError({ code: "session_not_found", message: `Session ${sessionId} not found` })
     }
     this.syncLeaseExpiry(rec)
-    const preSnapshot = this.toSnapshot(rec)
-    if (!authorizeCompatibilitySessionAction(preSnapshot, action)) {
+    if (!authorizeSessionAction(rec, action)) {
       throw new ComputerUseSessionError({ code: "unauthorized_command", message: `Command ${action.command} not authorized for session ${sessionId}` })
     }
     const requiresObservation = !NON_CONSEQUENTIAL_COMMANDS.has(action.command)

@@ -35,6 +35,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
+import org.json.JSONObject;
 
 public final class DeviceKeyJourney {
   private static final String SESSION = "eliza_session_journey";
@@ -79,6 +80,7 @@ public final class DeviceKeyJourney {
     final List<String> mailBearers = new CopyOnWriteArrayList<>(), modelBearers = new CopyOnWriteArrayList<>(), brokerBearers = new CopyOnWriteArrayList<>();
     volatile boolean offline, leases, dropNextRotation;
     volatile Account tokenOwner = ACCOUNT;
+    volatile Account nativeGoogleOwner = ACCOUNT;
     volatile int dropAcks;
     final HttpServer server;
 
@@ -165,6 +167,16 @@ public final class DeviceKeyJourney {
           String code = "emac_" + issued.incrementAndGet();
           codes.put(code, new Grant1(CredentialJson.text(body, "codeChallenge"), CredentialJson.text(body, "state")));
           answer(x, 200, "{\"code\":\"" + code + "\",\"expiresAt\":\"" + iso(now + 300_000) + "\"}");
+        }
+        case "POST /api/v1/app-auth/mobile/google" -> {
+          String code = "emac_" + issued.incrementAndGet();
+          String state = CredentialJson.text(body, "state"), verifier = CredentialJson.text(body, "codeVerifier");
+          codes.put(code, new Grant1(SignInPolicy.s256(verifier), state));
+          Account owner = nativeGoogleOwner;
+          JSONObject signedIn = new JSONObject().put("status", "signed_in").put("code", code).put("expiresAt", iso(now + 30 * DAY_MS))
+            .put("user", new JSONObject().put("id", owner.userId()));
+          if (!owner.organizationId().isEmpty()) signedIn.put("organizationId", owner.organizationId());
+          answer(x, 200, signedIn.toString());
         }
         case "POST " + DeviceKeyClient.TOKEN -> {
           tokenAsks.incrementAndGet();
@@ -466,7 +478,21 @@ public final class DeviceKeyJourney {
       custody = new CloudRequests.Custody(store, new AccountSession(store, client), lease);
       seen.add(take("restartRetiredPendingUpgrade", store.pending() == null && store.owed().size() == 3 && oldKey.equals(store.current().credentialId())));
       seen.add(take("failedUpgradeAcknowledgements", cloud.ackAsks.get() - priorAcks));
-      seen.add(take("leasedSignIn", client.exchange(store.beginMailLeaseUpgrade(expected), BINDING, proof()).name()));
+      cloud.nativeGoogleOwner = new Account(ACCOUNT.userId(), "another-organization");
+      var wrongGoogleOrganization = nativeGoogleResult();
+      cloud.nativeGoogleOwner = new Account("another-user", ACCOUNT.organizationId());
+      var wrongGoogleUser = nativeGoogleResult();
+      cloud.nativeGoogleOwner = new Account(ACCOUNT.userId(), "");
+      var unnamedGoogleOrganization = nativeGoogleResult();
+      cloud.nativeGoogleOwner = ACCOUNT;
+      var google = nativeGoogleResult();
+      seen.add(take("nativeGoogleUpgradeBoundToOwner", wrongGoogleOrganization instanceof CodeSignIn.Checked.KeyMinted otherOrganization
+        && !otherOrganization.belongsTo(expected.account()) && wrongGoogleUser instanceof CodeSignIn.Checked.KeyMinted otherUser
+        && !otherUser.belongsTo(expected.account()) && unnamedGoogleOrganization instanceof CodeSignIn.Checked.NotChecked
+        && google instanceof CodeSignIn.Checked.KeyMinted same && same.belongsTo(expected.account()) && oldKey.equals(store.current().credentialId())));
+      if (!(google instanceof CodeSignIn.Checked.KeyMinted signedIn)) throw new IllegalStateException("No native Google proof was returned");
+      seen.add(take("leasedSignIn", client.exchange(store.beginMailLeaseUpgrade(expected), BINDING,
+        new Proof(signedIn.proof().code(), signedIn.proof().state(), signedIn.proof().verifier())).name()));
       seen.add(take("upgradeStayedWithOwner", ACCOUNT.equals(store.current().account()) && store.beginMailLeaseUpgrade(expected) == 0));
       cloud.dropNextRotation = true;
       seen.add(take("mailAfterLostRotation", outcome(requests.send(origin, custody, "GET", feed, Map.of(), null))));
@@ -561,6 +587,13 @@ public final class DeviceKeyJourney {
   private String signIn() {
     int attempt = store.beginSignIn();
     return client.exchange(attempt, BINDING, proof()).name();
+  }
+
+  private CodeSignIn.Checked nativeGoogleResult() throws IOException {
+    String state = SignInPolicy.newState(), verifier = SignInPolicy.newVerifier();
+    var response = CodeSignIn.CONNECTION.post(cloud.origin() + "/api/v1/app-auth/mobile/google",
+      new JSONObject().put("state", state).put("codeVerifier", verifier), null);
+    return CodeSignIn.checkedGoogle(response, state, verifier, clock.get());
   }
 
   private Proof proof() {

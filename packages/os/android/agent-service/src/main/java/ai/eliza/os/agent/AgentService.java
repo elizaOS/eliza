@@ -1,4 +1,4 @@
-// spec/os/agentService/lifecycle.md, "Story: Start the agent after checking its payload"; spec/os/agentService/lifecycle.md, "Story: Start the agent when I sign in and stop it when I sign out"; spec/os/agentService/lifecycle.md, "Story: Restart a crashed or unhealthy agent until it stays up"; spec/os/agentService/lifecycle.md, "Story: Recover my agent's records after a storage failure"; spec/os/agentService/lifecycle.md, "Story: Hold the agent for an app update"; spec/os/agentService/lifecycle.md, "Story: Hand a new device key of the same account to the running agent"; spec/os/agentService/health.md, "Story: Tell a busy agent from an absent one"; spec/os/agentService/lifecycle.md, "Story: See a failed agent even when I silence its status"; spec/os/agentService/lifecycle.md, "A failed agent's notice is on the alerts channel with the failure words, and a starting, running or stopping agent's on the status channel"; spec/os/agentService/config.md, "Story: Start my agent with my character, policy and model"; spec/os/agentService/config.md, "Only a cloud launch is framed with the device key, and an own-key launch with the owner's provider key or none"; spec/os/agentService/channel.md, "Only the device headers and client id the runtime client carries cross the channel"; spec/os/agentService/config.md, "Only a cloud launch is handed the mail broker, by its address and a bearer for that launch, never a credential"
+// spec/os/agentService/lifecycle.md, "Story: Start the agent after checking its payload"; spec/os/agentService/lifecycle.md, "Story: Start the agent when I sign in and stop it when I sign out"; spec/os/agentService/lifecycle.md, "Story: Restart a crashed or unhealthy agent until it stays up"; spec/os/agentService/lifecycle.md, "Story: Recover my agent's records after a storage failure"; spec/os/agentService/lifecycle.md, "Story: Hold the agent for an app update"; spec/os/agentService/lifecycle.md, "Story: Hand a new device key of the same account to the running agent"; spec/os/agentService/health.md, "Story: Tell a busy agent from an absent one"; spec/os/agentService/lifecycle.md, "Story: See a failed agent even when I silence its status"; spec/os/agentService/lifecycle.md, "A failed agent's notice is on the alerts channel with the failure words, and a starting, running or stopping agent's on the status channel"; spec/os/agentService/config.md, "Story: Start my agent with my character, policy and model"; spec/os/agentService/config.md, "Only a cloud launch is framed with the device key, and an own-key launch with the owner's provider key or none"; spec/os/agentService/channel.md, "Only the device headers and client id the runtime client carries cross the channel"; spec/os/agentService/config.md, "Only a cloud launch is handed the mail broker, by its address and a bearer for that launch, never a credential"; spec/os/android/taskKeys.md, "The current account's key is released only as the storage key of a launch newer than every earlier one"
 package ai.eliza.os.agent;
 
 import ai.eliza.os.agent.AgentPolicy.Effect;
@@ -596,17 +596,24 @@ public class AgentService extends Service {
       later(() -> settled(() -> launchChecked(epoch, config, prepared)));
       return;
     }
-    String storageKey;
     LaunchFrame.Credential framed;
+    AgentCredentials.StorageKey storageKey;
     try {
-      storageKey = active == null ? null : credentialSource.storageKey(active.account());
       framed = config.ownKey()
         ? credentialSource.providerKey()
         : config.needsAccount() ? LaunchFrame.Credential.of(active) : null;
+      storageKey = active == null ? null : credentialSource.storageKey(active.account(), epoch);
     } catch (Exception unreadable) {
       step(new AgentPolicy.FailUnclassified("The device credential could not be read: " + unreadable.getMessage()));
       return;
     }
+    try (storageKey) {
+      launchFramed(epoch, config, prepared, active, framed, storageKey == null ? null : storageKey.value());
+    }
+  }
+
+  private void launchFramed(long epoch, AgentConfig config, PayloadCheck.PreparedPayload prepared, AgentCredentials.Active active,
+      LaunchFrame.Credential framed, String storageKey) {
     Map<String, String> variables = new LinkedHashMap<>();
     String document = null;
     String refusal = null;

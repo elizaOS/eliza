@@ -110,7 +110,7 @@ effect function show(views: ViewHost.Shape, labels: ReadonlyMap<string, string>,
   }
   return {
     success: true,
-    text: `Prepared the switch to ${label}.`,
+    text: `The screen opens ${label} once this reply is shown. It is not open yet, and a screen that cannot show ${label} stays where it is.`,
     values: {
       mode: "show", viewId: view.viewId, viewPath: view.path, viewType: "gui", label,
       ...(noteId === undefined ? {} : { subview: "saved-note-v1" }),

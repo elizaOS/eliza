@@ -61,18 +61,15 @@ import {
 } from "../gen/agentOrchestrator.effect.vibe"
 import {
   evaluateDiffReviewGate,
-  evaluateResidualsGate,
   refinedCriteriaCount,
   sentencePathMatchesFile,
-  verifyClaimedWrite,
   type PathFollower,
 } from "../gen/agentOrchestrator__verification.effect.vibe"
 import {
   buildCacheStableOrchestratorPrefix,
   sanitizeCompletionRelay,
-  truncateTail,
 } from "./optimization.vibe"
-import { runFastCodeEval, type FastEvalResponse } from "./adapters.vibe"
+import { runFastCodeEval, type FastEvalFailure, type FastEvalResponse } from "./adapters.vibe"
 import {
   type BuiltAppRecord,
   type WorkspaceChangeSet,
@@ -261,56 +258,6 @@ export effect function collectFsObservedFiles(
   return verified.sort()
 }
 
-export interface ClaimedFileVerdict {
-  readonly passed: boolean
-  readonly claimed: readonly string[]
-  readonly verified: readonly string[]
-  readonly unverified: readonly string[]
-}
-
-export function verifyClaimedFiles(
-  claimedFiles: readonly string[],
-  observedLedgerFiles: readonly string[],
-): ClaimedFileVerdict {
-  const observed = new Set(observedLedgerFiles.map((f) => f.replace(/^\.\//u, "")))
-  const claimed = [...new Set(claimedFiles.map((f) => f.replace(/^\.\//u, "")))].sort()
-  const verified = claimed.filter((f) => observed.has(f))
-  const unverified = claimed.filter((f) => !observed.has(f))
-  const outcome = verifyClaimedWrite(claimed.length, verified.length)
-  return {
-    passed: outcome === "GatePass" && unverified.length === 0,
-    claimed,
-    verified,
-    unverified,
-  }
-}
-
-export interface CompletionResidualsInput {
-  readonly uncommittedFiles: readonly string[]
-  readonly failedChecks: readonly string[]
-  readonly ownedArtifacts?: readonly string[]
-  readonly gateEnabled?: boolean
-}
-
-export interface CompletionResidualsResult {
-  readonly passed: boolean
-  readonly remainingUncommitted: readonly string[]
-  readonly failedChecks: readonly string[]
-  readonly summary: string
-}
-
-export function collectCompletionResiduals(input: CompletionResidualsInput): CompletionResidualsResult {
-  const owned = new Set(input.ownedArtifacts ?? [])
-  const remainingUncommitted = input.uncommittedFiles.filter((file) => !owned.has(file)).sort()
-  const gateEnabled = input.gateEnabled !== false
-  const outcome = evaluateResidualsGate(remainingUncommitted.length, input.failedChecks.length, gateEnabled)
-  const passed = outcome === "GatePass"
-  const summary = passed
-    ? "No blocking completion residuals."
-    : `Blocked by ${remainingUncommitted.length} uncommitted files and ${input.failedChecks.length} failed checks.`
-  return { passed, remainingUncommitted, failedChecks: input.failedChecks, summary }
-}
-
 export interface DiffGateFinding {
   readonly severity: "info" | "warning" | "critical"
   readonly check: "secret" | "size" | "forbidden_pattern"
@@ -361,6 +308,7 @@ export function evaluateTaskAcceptance(task: TaskEvaluation, evidence: Evidence)
 
 export interface IndependentVerifierVerdict {
   readonly passed: boolean
+  readonly satisfied: readonly string[]
   readonly missing: readonly string[]
   readonly summary: string
   readonly lane: FastEvalResponse["lane"]
@@ -375,30 +323,33 @@ export function buildIndependentVerifierPrompt(args: {
   readonly diffExcerpt: string
   readonly testSummary: string
 }): string {
-  const boundedDiff = truncateTail(args.diffExcerpt, 120, 8_192).text
   return [
     `Goal: ${args.goal}`,
     `Criteria:\n${args.acceptanceCriteria.map((c, i) => `${i + 1}. ${c}`).join("\n")}`,
     `Changed files: ${[...args.changedFiles].sort().join(", ") || "(none)"}`,
     `Test summary: ${args.testSummary}`,
-    `Diff excerpt:\n${boundedDiff}`,
-    'Return strict JSON: {"passed": boolean, "summary": string, "missing": string[]}.',
+    `Diff:\n${args.diffExcerpt}`,
+    'Return strict JSON: {"passed": boolean, "summary": string, "satisfied": string[], "missing": string[]}. "satisfied" lists each criterion, copied exactly, that the evidence above proves.',
   ].join("\n\n")
 }
 
-export function parseJudgeResponse(raw: string): { readonly passed: boolean; readonly summary: string; readonly missing: readonly string[] } {
+export error VerificationUnavailable { reason: string }
+
+export effect function parseJudgeResponse(raw: string): { readonly passed: boolean; readonly summary: string; readonly satisfied: readonly string[]; readonly missing: readonly string[] }!VerificationUnavailable {
   const cleaned = raw.trim().replace(/^```(?:json)?\s*|\s*```$/gu, "")
-  try {
-    const parsed = JSON.parse(cleaned) as Record<string, unknown>
-    return {
-      passed: Boolean(parsed.passed),
-      summary: typeof parsed.summary === "string" ? parsed.summary : "Verification evaluated.",
-      missing: Array.isArray(parsed.missing) ? parsed.missing.filter((m): m is string => typeof m === "string") : [],
-    }
-  } catch {
-    const lower = cleaned.toLowerCase()
-    const passed = lower.includes("pass") && !lower.includes("fail")
-    return { passed, summary: sanitizeCompletionRelay(cleaned).slice(0, 200), missing: passed ? [] : ["unparseable_verdict"] }
+  const parsed = try Effect.try({
+    try: () => JSON.parse(cleaned) as unknown,
+    catch: () => new VerificationUnavailable({ reason: `Verifier returned a non-JSON verdict: ${sanitizeCompletionRelay(cleaned).slice(0, 200)}` }),
+  })
+  if (typeof parsed !== "object" || parsed === null || typeof (parsed as Record<string, unknown>).passed !== "boolean") {
+    throw new VerificationUnavailable({ reason: "Verifier verdict has no boolean passed field" })
+  }
+  const verdict = parsed as Record<string, unknown>
+  return {
+    passed: verdict.passed === true,
+    summary: typeof verdict.summary === "string" ? verdict.summary : "Verification evaluated.",
+    satisfied: Array.isArray(verdict.satisfied) ? verdict.satisfied.filter((m): m is string => typeof m === "string") : [],
+    missing: Array.isArray(verdict.missing) ? verdict.missing.filter((m): m is string => typeof m === "string") : [],
   }
 }
 
@@ -410,31 +361,21 @@ export effect function runIndependentVerification(args: {
   readonly testSummary: string
   readonly runtime?: IAgentRuntime
   readonly env?: Readonly<Record<string, string | undefined>>
-}): IndependentVerifierVerdict!! {
+}): IndependentVerifierVerdict!(VerificationUnavailable | FastEvalFailure) {
   const systemPrefix = `${buildCacheStableOrchestratorPrefix({ fastEvalEnabled: true })}\nRole: Read-only independent verifier. Evaluate strictly against concrete evidence.`
   const userPayload = buildIndependentVerifierPrompt(args)
-  const evalResult = runFastCodeEval({
+  const evalResult = try runFastCodeEval({
     kind: "EvalAcceptanceJudge",
     systemPrefix,
     userPayload,
     maxTokens: 384,
     runtime: args.runtime,
     env: args.env,
-  }) catch () => ({
-    lane: "LaneTextSmall" as const,
-    provider: "runtime_text_small" as const,
-    model: "deterministic",
-    content: JSON.stringify({
-      passed: args.changedFiles.length > 0 || args.acceptanceCriteria.length === 0,
-      summary: "Deterministic verification fallback",
-      missing: args.changedFiles.length > 0 ? [] : ["no_observed_file_changes"],
-    }),
-    latencyMs: 0,
-    cachedPromptTokens: 0,
   })
-  const parsed = parseJudgeResponse(evalResult.content)
+  const parsed = try parseJudgeResponse(evalResult.content)
   return {
     passed: parsed.passed,
+    satisfied: parsed.satisfied,
     missing: parsed.missing,
     summary: parsed.summary,
     lane: evalResult.lane,
@@ -526,12 +467,14 @@ export function defaultAuditLogPath(): string {
   return defaultAuditPath()
 }
 
-export effect function appendAuditLine(filePath: string, payload: TaskAuditPayload): void!! {
+export error AuditWriteFailed { filePath: string; reason: string }
+
+export effect function appendAuditLine(filePath: string, payload: TaskAuditPayload): void!AuditWriteFailed {
   const line = JSON.stringify(payload)
-  tryPromise({
+  try tryPromise({
     try: () => appendJsonLine(filePath, line),
-    catch: () => undefined,
-  }) catch () => undefined
+    catch: (cause) => new AuditWriteFailed({ filePath, reason: cause instanceof Error ? cause.message : String(cause) }),
+  })
 }
 
 const builtAppsRegistry = new Map<string, BuiltAppRecord>()

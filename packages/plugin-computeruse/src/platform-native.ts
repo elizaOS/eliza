@@ -33,6 +33,13 @@ export function getEnvValue(name: string): string | undefined {
   return process.env[name]
 }
 
+/** @throws {never} */
+export function ownProcessNames(): readonly string[] {
+  const strip = (name: string) => name.toLowerCase().replace(/\.exe$/u, "")
+  const base = (value: string | undefined) => (value ? strip(value.split(/[\\/]/u).pop() ?? value) : "")
+  return [base(process.execPath), base(process.argv0), strip(process.title)].filter((name) => name !== "")
+}
+
 export function getProcessEnvSnapshot(): Record<string, string | undefined> {
   return { ...process.env }
 }

@@ -1,4 +1,4 @@
-// spec/openai/index.md, "Story: Use an OpenAI-compatible model for the requested capability"
+// spec/openai/index.md, "Story: Use an OpenAI-compatible model for the requested capability"; spec/openai/index.md, "Tools are sent strict only when every tool in the request is strict"; spec/openai/index.md, "Reported usage carries the cached prompt tokens the provider reports"
 import {
   EventType,
   logger,

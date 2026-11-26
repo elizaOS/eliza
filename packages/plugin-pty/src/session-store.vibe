@@ -1,4 +1,4 @@
-// spec/pty/policy.md, "Story: Enforce session capacity, confinement, and safe teardown"; spec/pty/policy.md, "Sessions respect capacity, unique ids, and safe stop semantics"; spec/pty/policy.md, "Idle timeout, terminal geometry, and output slices stay within safe bounds"
+// spec/pty/policy.md, "Story: Enforce session capacity, confinement, and safe teardown"; spec/pty/policy.md, "Sessions respect capacity, unique ids, and safe stop semantics"; spec/pty/policy.md, "Idle timeout, terminal geometry, and output slices stay within safe bounds"; spec/pty/policy.md, "Scrollback and default limits are fixed, and lost scrollback is reported"; spec/pty/policy.md, "The chat action reads, waits and resizes within fixed bounds"
 import { boundedOutputSlice } from "../gen/pty__policy.effect.vibe"
 import type { PtySpawn } from "./types.vibe"
 
@@ -9,7 +9,7 @@ export interface PtyTimerHandle {
 }
 
 export interface PtySessionStoreOptions {
-  allowedRoot?: string
+  allowedRoot: string
   maxSessions?: number
   idleTimeoutMs?: number
   exitedSessionTtlMs?: number
@@ -50,6 +50,15 @@ export function formatBoundedTail(
 }
 
 module node {
+  import {
+    charsLostFromScrollback,
+    clampWaitMs,
+    defaultExitedSessionTtlMs,
+    defaultIdleTimeoutMs,
+    defaultMaxSessions,
+    scrollbackChars,
+    validTerminalGeometry,
+  } from "../gen/pty__policy.ts"
   import { randomUUID } from "node:crypto"
   import { EventEmitter } from "node:events"
   import { promises as fs } from "node:fs"
@@ -86,10 +95,29 @@ module node {
 
   const DEFAULT_COLS = 120
   const DEFAULT_ROWS = 30
-  const DEFAULT_MAX_SESSIONS = 24
-  const DEFAULT_OUTPUT_BUFFER_CHARS = 200_000
-  const DEFAULT_EXITED_SESSION_TTL_MS = 15_000
-  const DEFAULT_IDLE_TIMEOUT_MS = 15 * 60_000
+  const DEFAULT_MAX_SESSIONS = defaultMaxSessions
+  const DEFAULT_OUTPUT_BUFFER_CHARS = scrollbackChars
+  const DEFAULT_EXITED_SESSION_TTL_MS = defaultExitedSessionTtlMs
+  const DEFAULT_IDLE_TIMEOUT_MS = defaultIdleTimeoutMs
+  const STOP_GRACE_MS = 2_000
+  const STOP_FORCE_WAIT_MS = 2_000
+
+  function sessionNotFound(sessionId: string): ElizaError {
+    return new ElizaError(`PTY session ${sessionId} not found.`, { code: "PTY_SESSION_NOT_FOUND", context: { sessionId } })
+  }
+
+  function sessionExited(sessionId: string): ElizaError {
+    return new ElizaError(`PTY session ${sessionId} has exited.`, { code: "PTY_SESSION_EXITED", context: { sessionId } })
+  }
+
+  function stopFailed(sessionId: string, pid: number | undefined, cause?: unknown): ElizaError {
+    return new ElizaError(`Unable to stop PTY session ${sessionId}; the process may still be running.`, {
+      code: "PTY_SESSION_STOP_FAILED",
+      ...(cause === undefined ? {} : { cause }),
+      context: { sessionId, pid },
+      severity: "ephemeral",
+    })
+  }
 
   const SAFE_INHERITED_ENV_KEYS = new Set([
     "PATH",
@@ -181,6 +209,7 @@ module node {
     reapTimer?: PtyTimerHandle
     idleTimer?: PtyTimerHandle
     lastActivityAt: number
+    exitWaiters: Array<() => void>
   }
 
   export const defaultSpawnResolver: PtySpawnResolver = async () => {
@@ -224,12 +253,20 @@ module node {
 
     /** @throws {never} */
     writeRaw(sessionId: string, data: string): void {
-      this.store?.write(sessionId, data)
+      try {
+        this.store?.write(sessionId, data)
+      } catch (error) {
+        logger.warn({ error, sessionId }, "[plugin-pty] console write refused")
+      }
     }
 
     /** @throws {never} */
     resize(sessionId: string, cols: number, rows: number): void {
-      this.store?.resize(sessionId, cols, rows)
+      try {
+        this.store?.resize(sessionId, cols, rows)
+      } catch (error) {
+        logger.warn({ error, sessionId }, "[plugin-pty] console resize refused")
+      }
     }
 
     /** @throws {never} */
@@ -255,7 +292,7 @@ module node {
     constructor(
       readonly bridge: PtyConsoleBridge,
       private readonly resolveSpawn: PtySpawnResolver = defaultSpawnResolver,
-      private readonly opts: PtySessionStoreOptions = {},
+      private readonly opts: PtySessionStoreOptions,
       scheduleTimer: (delayMs: number, run: () => void) => PtyTimerHandle = scheduleEffectTimer,
     ) {
       this.scheduleTimer = scheduleTimer
@@ -284,19 +321,20 @@ module node {
       return this.poolState
     }
 
-    private async confineCwd(cwd: string): Promise<string> {
+    /** @throws {ElizaError} */
+    private async placeCwd(cwd: string): Promise<{ readonly cwd: string; readonly confined: boolean }> {
       const resolved = path.resolve(cwd)
-      const root = this.opts.allowedRoot ? path.resolve(this.opts.allowedRoot) : null
-      if (!root) return resolved
       const realCwd = await resolveExistingDirectory(resolved, "cwd")
-      const realRoot = await resolveExistingDirectory(root, "allowed root")
+      const realRoot = await resolveExistingDirectory(path.resolve(this.opts.allowedRoot), "allowed root")
       const rel = path.relative(realRoot, realCwd)
-      if (rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel))) {
-        return realCwd
-      }
-      throw new ElizaError(`PTY cwd "${resolved}" is outside the allowed root "${root}".`, {
+      return { cwd: realCwd, confined: rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel)) }
+    }
+
+    /** @throws {ElizaError} */
+    private outsideRoot(cwd: string): ElizaError {
+      return new ElizaError(`PTY cwd "${path.resolve(cwd)}" is outside the allowed root "${path.resolve(this.opts.allowedRoot)}".`, {
         code: "PTY_CWD_OUTSIDE_ALLOWED_ROOT",
-        context: { cwd: resolved, allowedRoot: root },
+        context: { cwd: path.resolve(cwd), allowedRoot: path.resolve(this.opts.allowedRoot) },
       })
     }
 
@@ -306,18 +344,32 @@ module node {
       }
     }
 
+    /** @throws {ElizaError} */
+    private assertGeometry(cols: number, rows: number, context: Record<string, unknown>): void {
+      if (!Number.isSafeInteger(cols) || !Number.isSafeInteger(rows) || !validTerminalGeometry(cols, rows)) {
+        throw new ElizaError(`Invalid PTY geometry ${cols}x${rows}: columns and rows must be whole numbers from 1 to 500.`, {
+          code: "PTY_INVALID_GEOMETRY",
+          context: { ...context, cols, rows },
+        })
+      }
+    }
+
     async start(spec: PtySpawnSpec): Promise<PtySessionInfo> {
+      this.assertGeometry(spec.cols ?? DEFAULT_COLS, spec.rows ?? DEFAULT_ROWS, { command: spec.command })
       this.assertCapacity()
-      let cwd = await this.confineCwd(spec.cwd)
+      let placement = await this.placeCwd(spec.cwd)
+      if (!placement.confined) throw this.outsideRoot(spec.cwd)
       if (!this.resolvedSpawn) {
         this.resolvedSpawn = await this.resolveSpawn()
-        cwd = await this.confineCwd(spec.cwd)
+        placement = await this.placeCwd(spec.cwd)
       }
+      const cwd = placement.cwd
       const spawn = this.resolvedSpawn
       const env = buildPtyEnv(spec.env, cwd)
       this.assertCapacity()
       const sessionId = randomUUID()
-      if (!canStartPoolSession(this.poolState, sessionId, true)) {
+      if (!canStartPoolSession(this.poolState, sessionId, placement.confined)) {
+        if (!placement.confined) throw this.outsideRoot(spec.cwd)
         throw new Error(`PTY session limit reached (${this.maxSessions}); stop a session before starting another.`)
       }
       const pty = spawn(spec.command, spec.args, {
@@ -327,7 +379,7 @@ module node {
         cols: spec.cols ?? DEFAULT_COLS,
         rows: spec.rows ?? DEFAULT_ROWS,
       })
-      this.poolState = startPoolSession(this.poolState, sessionId, true)
+      this.poolState = startPoolSession(this.poolState, sessionId, placement.confined)
       const info: PtySessionInfo = {
         sessionId,
         command: spec.command,
@@ -335,7 +387,6 @@ module node {
         cwd,
         label: spec.label,
         kind: spec.kind,
-        ownerClientId: spec.ownerClientId,
         pid: pty.pid,
         createdAt: Date.now(),
         exited: false,
@@ -350,6 +401,7 @@ module node {
         bufferStartOffset: 0,
         totalOutputChars: 0,
         lastActivityAt: Date.now(),
+        exitWaiters: [],
       })
       this.scheduleIdleReap(sessionId)
       const onData = pty.onData((data) => {
@@ -366,49 +418,77 @@ module node {
       return { ...info }
     }
 
-    /** @throws {never} */
-    write(sessionId: string, data: string): void {
+    /** @throws {ElizaError} */
+    private liveSession(sessionId: string): LiveSession {
       const session = this.sessions.get(sessionId)
-      if (!session || session.info.exited) return
+      if (!session) throw sessionNotFound(sessionId)
+      if (session.info.exited) throw sessionExited(sessionId)
+      return session
+    }
+
+    /** @throws {ElizaError} */
+    write(sessionId: string, data: string): void {
+      const session = this.liveSession(sessionId)
       this.touch(sessionId)
       try {
         session.pty.write(data)
-      } catch (err) {
-        logger.warn(`[plugin-pty] write to session ${sessionId} failed: ${String(err)}`)
+      } catch (cause) {
+        throw new ElizaError(`Writing to PTY session ${sessionId} failed.`, { code: "PTY_WRITE_FAILED", cause, context: { sessionId } })
       }
     }
 
-    /** @throws {never} */
+    /** @throws {ElizaError} */
     resize(sessionId: string, cols: number, rows: number): void {
-      const session = this.sessions.get(sessionId)
-      if (!session || session.info.exited) return
-      if (!Number.isFinite(cols) || !Number.isFinite(rows) || cols < 1 || rows < 1) {
-        return
-      }
+      const session = this.liveSession(sessionId)
+      this.assertGeometry(cols, rows, { sessionId })
+      this.touch(sessionId)
       try {
-        this.touch(sessionId)
-        session.pty.resize(Math.floor(cols), Math.floor(rows))
-      } catch (err) {
-        logger.warn(`[plugin-pty] resize of session ${sessionId} failed: ${String(err)}`)
+        session.pty.resize(cols, rows)
+      } catch (cause) {
+        throw new ElizaError(`Resizing PTY session ${sessionId} failed.`, { code: "PTY_RESIZE_FAILED", cause, context: { sessionId } })
       }
+    }
+
+    private waitForExit(session: LiveSession, delayMs: number): Promise<boolean> {
+      if (session.info.exited) return Promise.resolve(true)
+      return new Promise((resolve) => {
+        let settled = false
+        let timer: PtyTimerHandle | undefined
+        const finish = (exited: boolean) => {
+          if (settled) return
+          settled = true
+          timer?.cancel()
+          resolve(exited)
+        }
+        session.exitWaiters.push(() => finish(true))
+        timer = this.scheduleTimer(delayMs, () => finish(session.info.exited))
+      })
+    }
+
+    private async terminate(sessionId: string, session: LiveSession): Promise<boolean> {
+      try {
+        session.pty.kill()
+      } catch (cause) {
+        throw stopFailed(sessionId, session.info.pid, cause)
+      }
+      if (await this.waitForExit(session, STOP_GRACE_MS)) return true
+      logger.warn({ sessionId, pid: session.info.pid }, "[plugin-pty] session ignored termination; forcing kill")
+      try {
+        session.pty.kill(process.platform === "win32" ? undefined : "SIGKILL")
+      } catch (cause) {
+        throw stopFailed(sessionId, session.info.pid, cause)
+      }
+      return this.waitForExit(session, STOP_FORCE_WAIT_MS)
     }
 
     async stop(sessionId: string): Promise<void> {
       const session = this.sessions.get(sessionId)
-      if (!session) return
-      try {
-        if (!session.info.exited) session.pty.kill()
-      } catch (cause) {
-        throw new ElizaError(`Unable to stop PTY session ${sessionId}; the process may still be running.`, {
-          code: "PTY_SESSION_STOP_FAILED",
-          cause,
-          context: { sessionId, pid: session.info.pid },
-          severity: "ephemeral",
-        })
+      if (!session) throw sessionNotFound(sessionId)
+      const killSucceeded = session.info.exited || (await this.terminate(sessionId, session))
+      if (!canStopPoolSession(this.poolState, sessionId, killSucceeded)) {
+        throw stopFailed(sessionId, session.info.pid)
       }
-      if (canStopPoolSession(this.poolState, sessionId, true)) {
-        this.poolState = stopPoolSession(this.poolState, sessionId, true)
-      }
+      this.poolState = stopPoolSession(this.poolState, sessionId, killSucceeded)
       session.reapTimer?.cancel()
       session.idleTimer?.cancel()
       for (const disposer of session.disposers) {
@@ -438,8 +518,9 @@ module node {
     }
 
     /** @throws {never} */
-    getBufferedOutput(sessionId: string): string | undefined {
-      return this.sessions.get(sessionId)?.outputBuffer
+    getBufferedOutput(sessionId: string): { readonly output: string; readonly bufferStartOffset: number; readonly totalChars: number } | undefined {
+      const session = this.sessions.get(sessionId)
+      return session && { output: session.outputBuffer, bufferStartOffset: session.bufferStartOffset, totalChars: session.totalOutputChars }
     }
 
     /** @throws {never} */
@@ -451,13 +532,16 @@ module node {
       const sliceIndex = Math.max(0, clampedCursor - session.bufferStartOffset)
       const delta = session.outputBuffer.slice(sliceIndex)
       const bounded = formatBoundedTail(delta, opts.maxChars ?? 16_000, opts.maxLines ?? 250)
+      const droppedFromScrollback = charsLostFromScrollback(clampedCursor, session.bufferStartOffset)
+      const omittedChars = bounded.omittedChars + droppedFromScrollback
+      const body = bounded.truncated ? bounded.text.slice(bounded.text.indexOf("\n") + 1) : bounded.text
       return {
         sessionId,
-        output: bounded.text,
+        output: omittedChars > 0 ? `[Truncated ${omittedChars} earlier chars]\n${body}` : body,
         cursor: session.totalOutputChars,
         totalChars: session.totalOutputChars,
-        truncated: bounded.truncated,
-        omittedChars: bounded.omittedChars,
+        truncated: omittedChars > 0,
+        omittedChars,
         exited: session.info.exited,
         exitCode: session.info.exitCode,
       }
@@ -479,10 +563,10 @@ module node {
         }
       }
       const startCursor = session.totalOutputChars
-      if (input.length > 0 && !session.info.exited) {
+      if (input.length > 0) {
         this.write(sessionId, input)
       }
-      const waitMs = Math.max(10, Math.min(30_000, opts.waitMs ?? 1_500))
+      const waitMs = clampWaitMs(Math.floor(opts.waitMs ?? 1_500))
       const idleMs = Math.max(10, Math.min(waitMs, opts.idleMs ?? 200))
       if (session.info.exited) {
         const current = this.readBoundedOutput(sessionId, { cursor: startCursor, maxChars: opts.maxChars, maxLines: opts.maxLines })
@@ -570,6 +654,7 @@ module node {
       if (canExitPoolSession(this.poolState, sessionId)) {
         this.poolState = exitPoolSession(this.poolState, sessionId)
       }
+      for (const waiter of session.exitWaiters.splice(0)) waiter()
       this.bridge.emitExit(sessionId, exitCode)
       logger.info(`[plugin-pty] session ${sessionId} exited (code=${exitCode ?? "null"})`)
       session.reapTimer = this.scheduleTimer(this.exitedSessionTtlMs, () => {

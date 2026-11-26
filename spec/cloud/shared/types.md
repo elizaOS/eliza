@@ -156,7 +156,8 @@ pure def lawEveryCodeHasAClassStatus(code: RefusalCode): bool = statusOf(code) !
 malformed bearer is `credential_unknown`. `account_inactive` answers an action
 on an account that is not Active (the operator adding credits, a redeem).
 `device_key_not_allowed` answers a device key on a mail or calendar route,
-which only a session or a device lease may call. A `rate_limited` reason
+which only a session or a device lease may call, except the few the device
+itself calls with its key (`cloud`). A `rate_limited` reason
 identifies the limit's source. `provider_rate_limited` names the model
 provider, and `cloud_gate_rate_limited` names Cloud's own request gate.
 

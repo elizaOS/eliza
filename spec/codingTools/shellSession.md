@@ -8,7 +8,7 @@ Models destructive shell command one-time confirmation challenges, background sh
 
 ### Destructive commands require a bound, unexpired, single-use confirmation challenge
 
-Issuing a challenge binds a command digest, canonical working directory, requester identity, and expiration time. Executing the destructive command requires a matching unexpired challenge and consumes it immediately so it cannot be replayed.
+Issuing a challenge binds a command digest, canonical working directory, requester identity, the message that asked for the command, and expiration time. The challenge token goes to the owner through a user-facing channel and never into model-visible results. Executing the destructive command requires a matching unexpired challenge redeemed by a later owner message, never the message that issued it, and consumes it immediately so it cannot be replayed.
 
 ```quint
 type BgStatus = BgNone | BgRunning | BgExited | BgKilled
@@ -18,6 +18,7 @@ type ShellSession = {
   challengeDigest: str,
   challengeCwd: str,
   challengeIssuer: str,
+  challengeMessage: str,
   challengeExpiresAt: int,
   destructiveRuns: int,
   bgStatus: BgStatus,
@@ -35,6 +36,7 @@ pure val initial: ShellSession = {
   challengeDigest: "",
   challengeCwd: "",
   challengeIssuer: "",
+  challengeMessage: "",
   challengeExpiresAt: 0,
   destructiveRuns: 0,
   bgStatus: BgNone,
@@ -46,25 +48,28 @@ pure val initial: ShellSession = {
   artifactExpiresAt: 0,
   artifactReads: 0
 }
-pure def canIssueChallenge(s: ShellSession, digest: str, cwd: str, issuer: str): bool =
-  digest != "" and cwd != "" and issuer != ""
-pure def issueChallenge(s: ShellSession, digest: str, cwd: str, issuer: str): ShellSession = {
+pure def canIssueChallenge(s: ShellSession, digest: str, cwd: str, issuer: str, messageId: str): bool =
+  digest != "" and cwd != "" and issuer != "" and messageId != ""
+pure def issueChallenge(s: ShellSession, digest: str, cwd: str, issuer: str, messageId: str): ShellSession = {
   ...s,
   challengeActive: true,
   challengeDigest: digest,
   challengeCwd: cwd,
   challengeIssuer: issuer,
+  challengeMessage: messageId,
   challengeExpiresAt: s.clock + 5
 }
-pure def canConsumeChallenge(s: ShellSession, digest: str, cwd: str, issuer: str): bool =
+pure def canConsumeChallenge(s: ShellSession, digest: str, cwd: str, issuer: str, messageId: str): bool =
   s.challengeActive and s.clock < s.challengeExpiresAt and
-  digest == s.challengeDigest and cwd == s.challengeCwd and issuer == s.challengeIssuer
-pure def consumeChallenge(s: ShellSession, digest: str, cwd: str, issuer: str): ShellSession = {
+  digest == s.challengeDigest and cwd == s.challengeCwd and issuer == s.challengeIssuer and
+  messageId != "" and messageId != s.challengeMessage
+pure def consumeChallenge(s: ShellSession, digest: str, cwd: str, issuer: str, messageId: str): ShellSession = {
   ...s,
   challengeActive: false,
   challengeDigest: "",
   challengeCwd: "",
   challengeIssuer: "",
+  challengeMessage: "",
   challengeExpiresAt: 0,
   destructiveRuns: s.destructiveRuns + 1
 }
@@ -117,6 +122,27 @@ pure def killBackground(s: ShellSession): ShellSession = {
 }
 ```
 
+### Background stdin reaches a command interpreter only through the command policy
+
+Text written to a background session's stdin can run as code, and no reading of the session's command can tell every program that executes its input from one that does not, so stdin is checked unless the session's command is known to take it only as data. A session takes stdin as data only when its command, as it was started and before any redaction, is one simple command with no pipe, list, redirection, substitution, glob, variable, assignment, wrapper or path, whose program is one of `cat`, `wc`, `sort`, `uniq`, `head`, `tail`, `tr`, `cut`, `nl`, `grep` (without `-f`), `base64`, `md5sum`, `sha1sum`, `sha256sum`, `sha512sum`, `gzip`, `gunzip`, `xxd`, `od` or `jq`. Every other session's stdin is checked: a write that matches the forbidden-command list is refused, and any other write runs only after the owner confirms that exact text through a one-time challenge in the session's directory. A program that is not on that list, a shell, an interpreter, a wrapper such as `sudo`, `env` or `busybox`, and a program named by a path are all checked, whatever their arguments say.
+
+The forbidden-command list matches commands by tokens, not by prefix: quoting, escapes and line continuations are removed, every command of a `;`, `&&`, `||`, `|`, `&`, newline, subshell, group or substitution list is checked, wrappers such as `env`, `exec`, `sudo`, `nice`, `timeout` and `xargs` are unwrapped, and the scripts of `sh -c`, `eval`, `env -S` and `find -exec` are checked as commands. A rule matches when the command names the same program and carries every flag and argument the rule names. `shutdown`, `reboot`, `halt` and `poweroff` are also destructive commands.
+
+```quint
+type StdinTarget = StdinData | StdinChecked
+pure def mayWriteBackgroundStdin(target: StdinTarget, forbidden: bool, ownerConfirmed: bool): bool =
+  match target {
+    | StdinData => true
+    | StdinChecked => not(forbidden) and ownerConfirmed
+  }
+pure def lawCheckedStdinNeedsTheOwner(forbidden: bool): bool =
+  not(mayWriteBackgroundStdin(StdinChecked, forbidden, false))
+pure def lawForbiddenCheckedStdinIsRefused(ownerConfirmed: bool): bool =
+  not(mayWriteBackgroundStdin(StdinChecked, true, ownerConfirmed))
+pure def lawConfirmedCheckedStdinIsWritten(forbidden: bool): bool =
+  not(forbidden) implies mayWriteBackgroundStdin(StdinChecked, forbidden, true)
+```
+
 ### Leased output artifacts allow bounded paging until lease expiration
 
 Spilling large foreground command output registers an immutable byte artifact with a lease expiration. Paging reads are allowed only while the lease is unexpired, the offset lies within the artifact size, and the page limit is within the 20,000-character ceiling.
@@ -141,6 +167,7 @@ pure def readArtifactPage(s: ShellSession, offset: int, limit: int): ShellSessio
 pure val digestValues = Set("d1", "d2", "")
 pure val cwdValues = Set("/work", "/other")
 pure val issuerValues = Set("owner", "guest")
+pure val messageIdValues = Set("m1", "m2", "")
 pure val deltaValues = Set(0, 1, 6)
 pure val bytesValues = Set(10, 50)
 pure val offsetValues = Set(0, 10, 50)
@@ -150,7 +177,7 @@ pure val limitValues = Set(50, 1000)
 
 ### Shell session invariants and reachability
 
-For the single tracked background session slot, `bgActiveCount` stays within `[0, 16]` and equals `1` when running and `0` otherwise; output cursors never exceed produced bytes, challenges are consumed on use, and each workflow is reachable.
+For the single tracked background session slot, `bgActiveCount` stays within `[0, 16]` and equals `1` when running and `0` otherwise; output cursors never exceed produced bytes, challenges are consumed on use and never by the message that issued them, and each workflow is reachable.
 
 ```quint
 pure def alwaysShellSessionValid(s: ShellSession): bool =
@@ -165,6 +192,8 @@ pure def stepChallengeConsumedOnce(before: ShellSession, via: str, after: ShellS
   via == "consumeChallenge" implies (
     before.challengeActive and not(after.challengeActive) and after.destructiveRuns == before.destructiveRuns + 1
   )
+pure def lawIssuingMessageCannotConfirm(s: ShellSession, digest: str, cwd: str, issuer: str, messageId: str): bool =
+  messageId == s.challengeMessage implies not(canConsumeChallenge(s, digest, cwd, issuer, messageId))
 pure def stepBgCursorMonotone(before: ShellSession, via: str, after: ShellSession): bool =
   via == "pollBackground" implies after.bgStdoutCursor >= before.bgStdoutCursor
 pure def sometimesDestructiveConfirmed(s: ShellSession): bool = s.destructiveRuns > 0

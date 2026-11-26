@@ -165,3 +165,31 @@ pure def lawOpenAiTerminalClassesNeverRetry(status: int, transientMessage: bool)
     not(openAiErrorRetryable(status, false, false, true, false, transientMessage)) and
     not(openAiErrorRetryable(status, false, false, false, true, transientMessage))
 ```
+
+### Tools are sent strict only when every tool in the request is strict
+
+OpenAI applies strict structured outputs per request, so a tool is sent with
+`strict: true` only when every tool in that request is strict and wire-strict
+(every object closed, every property required); otherwise no tool carries
+`strict`.
+
+```quint
+pure def sendStrict(toolCount: int, strictCount: int): bool = toolCount > 0 and strictCount == toolCount
+pure def lawMixedBatchSendsNoStrict(toolCount: int, strictCount: int): bool =
+  strictCount < toolCount implies not(sendStrict(toolCount, strictCount))
+pure val toolCountValues = Set(0, 1, 3)
+pure val strictCountValues = Set(0, 1, 3)
+```
+
+### Reported usage carries the cached prompt tokens the provider reports
+
+A response's usage reports prompt, completion and total tokens, and, when the
+provider reports `prompt_tokens_details.cached_tokens`, the cached prompt
+tokens as cache reads; a provider that reports no details adds no cache field.
+
+```quint
+pure def reportedCacheRead(reported: bool, cached: int): int = if (reported) cached else -1
+pure def lawUnreportedCacheIsAbsent(cached: int): bool = reportedCacheRead(false, cached) == -1
+pure def lawReportedCacheIsKept(cached: int): bool = cached >= 0 implies reportedCacheRead(true, cached) == cached
+pure val cachedValues = Set(0, 896, 1920)
+```

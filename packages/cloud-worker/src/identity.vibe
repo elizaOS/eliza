@@ -170,23 +170,30 @@ export function leaseAccount(request: Request, db: Client): Promise<string | nul
   }, Layer.merge(cryptoServices, Layer.effect(Store, clientStore(db)))))
 }
 
-type DeviceAuthority = "any" | "recorded"
+type DeviceAuthority = "any" | "recorded" | { readonly grantKey: string; readonly lock: boolean }
 
 effect function accountForInference(request: Request, db: Client, env: NativeRegistryEnv | undefined, authority: DeviceAuthority) {
-  if (!request.headers.has("authorization")) return authority === "recorded" ? null : (try browserAccount(request, db))?.id ?? null
+  if (!request.headers.has("authorization")) return authority === "any" ? (try browserAccount(request, db))?.id ?? null : null
   const registration = env ? browserNativeRegistration(env) : null
   const hash = try deviceDigest(request)
   if (hash === null || !registration) return null
   const now = try Clock.currentTimeMillis
+  const witness = typeof authority === "string" ? undefined : authority
   const { rows } = try query(db, `
     SELECT d.user_id, d.state, d.phase, d.key_expires_at, d.device_epoch AS grant_epoch, a.device_epoch AS account_epoch
     FROM device_grants d JOIN accounts a ON a.key = d.user_id
-    WHERE d.secret_digest = $1 AND a.status = 'active' AND d.client_id = $2
-  `, [hash, registration.clientId])
+    WHERE d.secret_digest = $1 AND a.status = 'active' AND d.client_id = $2 AND ($3::text IS NULL OR d.key = $3)
+    ${witness?.lock ? "FOR UPDATE OF d" : ""}
+  `, [hash, registration.clientId, witness?.grantKey ?? null])
   const row = rows[0]
-  if (row === undefined) return null
+  if (row === undefined || typeof row.user_id !== "string") return null
   const key = inspectKey(row, now) catch effect () => { throw new StorageUnavailable() }
-  return key.reason === "NoReason" && (authority === "any" || key.authority.tag === "RecordedAuthority") && typeof row.user_id === "string" ? row.user_id : null
+  if (key.reason !== "NoReason") return null
+  if (authority === "any" || key.authority.tag === "RecordedAuthority") return row.user_id
+  if (authority === "recorded") return null
+  const client = key.authority.grant.client
+  return client.tag === "BoundClient" && client.clientId === registration.clientId && client.environment === registration.environment &&
+    client.signInReturn.origin === registration.signInReturn.origin && client.signInReturn.path === registration.signInReturn.path ? row.user_id : null
 }
 
 export function inferenceAccount(request: Request, db: Client, env?: NativeRegistryEnv, authority: DeviceAuthority = "any"): Promise<string | null> {
@@ -241,10 +248,10 @@ effect function googleStart(env: IdentityEnv, purpose: BrowserGooglePurpose) {
     include_granted_scopes: "false",
     state,
     code_challenge: challenge,
-    code_challenge_method: "S256"
+    code_challenge_method: "S256",
+    prompt: "select_account"
   })
   const backup = purpose === "GooglePasswordBackup"
-  if (backup) params.set("prompt", "select_account")
   const flow = state + "." + verifier + (backup ? "." + backupFlowMarker : "")
   return redirect("https://accounts.google.com/o/oauth2/v2/auth?" + params, [cookieValue(flowCookie, flow, codeSeconds)])
 }

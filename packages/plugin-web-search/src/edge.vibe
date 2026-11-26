@@ -341,7 +341,23 @@ module node {
     }
     options.signal?.throwIfAborted()
     if (!result) {
-      return await fail("Web search returned no results.", undefined, normalizedQuery)
+      return {
+        success: true,
+        text: "No results.",
+        data: {
+          actionName: "WEB_SEARCH",
+          query: normalizedQuery,
+          observedAt,
+          resultCount: 0,
+          sourceUrls: [],
+          sources: [],
+          evidenceOverflowed: false,
+          truncated: false,
+          value: "",
+        },
+        promptData: { actionName: "WEB_SEARCH", query: normalizedQuery, count: 0, totalUrls: 0, truncated: false, results: [] },
+        promptDataMode: "replace-data",
+      }
     }
     const evidence = webSearchSourceEvidence(result.text)
     const digest = compactWebSearchDigest(normalizedQuery, result.provider, result.text, evidence)
