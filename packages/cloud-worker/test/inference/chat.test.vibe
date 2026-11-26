@@ -465,6 +465,7 @@ it.live('Worker streams complete frames and settles the original hold, and a Wor
     ], holds: [
       ["00000000-0000-4000-8000-000000000010", "settled", true, "known", 31],
       ["00000000-0000-4000-8000-000000000011", "settled", true, "known", 31],
+      ["00000000-0000-4000-8000-000000000012", "settled", true, "known", 31],
     ] },
   }))
 }, 60_000)

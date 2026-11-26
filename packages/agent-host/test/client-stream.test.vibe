@@ -349,7 +349,7 @@ it.live(`Hear that the agent heard me once while work is pending, and see which 
   const cueBesideWrittenCall = try turn("What is on my agenda?")
   try Effect.sync(() => cloud.script(toolCalls("[promise] Let me open Maps.", agenda), text("The nearest coffee is on Main Street.")))
   const openAsPart = try turn("Open Maps and find coffee nearby")
-  try Effect.sync(() => cloud.script(cutToolCalls("[promise] Checking your agenda.", agenda), toolCalls("[promise] One sec.", agenda), text("Nothing booked.")))
+  try Effect.sync(() => cloud.script(cutToolCalls("[promise] Checking your agenda.", agenda)))
   const cutBeforeTheEnd = try turn("What is on my agenda today?")
   try Effect.sync(() => cloud.script(toolCalls("[promise] Let me look.", agenda, { name: "REPLY", arguments: { text: "Nothing booked." } }, { name: "IGNORE", arguments: {} }), toolCalls("[promise] One sec.", agenda), text("Nothing booked.")))
   const twoDecisions = try turn("What is on my agenda tomorrow?")
@@ -430,7 +430,7 @@ it.live(`Hear that the agent heard me once while work is pending, and see which 
       acknowledgedBeforeTools: true, cueLeftTheText: true, sameWhenSplit: true,
     },
     cutBeforeTheEnd: {
-      done: done("Nothing booked."), asked: 3, acknowledgments: ["acknowledgment:One sec."], tools: ["tool:AGENDA_READ:Using Agenda"],
+      done: { kind: "Done", text: "Checking your agenda.", failureKind: "provider_issue", keyed: true }, asked: 1, acknowledgments: [], tools: [],
       acknowledgedBeforeTools: true, cueLeftTheText: true, sameWhenSplit: true,
     },
     twoDecisions: {

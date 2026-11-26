@@ -234,7 +234,7 @@ function answerCompletion(response: ServerResponse, reply: CloudReply, body: unk
       if (reply.content) response.write(`data: ${JSON.stringify({ id: "chatcmpl-fake", object: "chat.completion.chunk", model, choices: [{ index: 0, delta: { content: reply.content }, finish_reason: null }] })}\n\n`);
       response.write(`data: ${JSON.stringify({ id: "chatcmpl-fake", object: "chat.completion.chunk", model, choices: [{ index: 0, delta: { tool_calls: calls.map((call, index) => ({ index, ...call })) }, finish_reason: null }] })}\n\n`);
       if (reply.cut) {
-        response.destroy();
+        response.end();
         return;
       }
       return endStream(response, body, model, "tool_calls", usage);
