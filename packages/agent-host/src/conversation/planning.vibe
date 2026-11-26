@@ -85,8 +85,18 @@ export function failureNote({ words, verified, answerableLater, failedActions, l
   const report = `The step's own report: ${verified ? JSON.stringify(cut) : wrapExternalContent(cut, { source: "unknown" })}`
   return answerableLater
     ? `A step of this turn did not happen as asked (a ${failedActions.join(" or ")} call), and a later call of this turn did run (${laterActions.join(", ")}). If that later call did what this step was for, leave this step out and give your reply exactly as it was, word for word: the person needs only what happened. If it did not, the reply must tell the person truthfully that this step did not happen. ${report}`
-    : `A step of this turn did not happen as asked. The reply must tell the person so truthfully, never claiming it happened. If your reply already does, give it exactly as it was, word for word. ${report}`
+    : `A step of this turn did not happen as asked. The reply must tell the person so truthfully, never claiming it happened. ${report}`
 }
+
+export const reportNote = `End your answer with one last line of its own, [reported: "…"], quoting word for word the sentence of your answer that tells the person what did not happen. Leave that line out if no sentence of your answer tells them.`
+const reportLine = /\[reported:\s*["“]?([^\]]*?)["”]?\s*\]/gi
+
+function reportOf(said: string): { readonly said: string; readonly quote: string } {
+  const quotes = [...said.matchAll(reportLine)].map(([, quote]) => quote.trim())
+  return { said: said.replace(reportLine, "").trim(), quote: quotes.at(-1) ?? "" }
+}
+
+const spaced = (text: string) => text.replace(/\s+/g, " ").trim()
 
 export interface PlannedTurn {
   readonly reply: string
@@ -100,6 +110,7 @@ export interface PlannedTurn {
 export interface Reasked {
   readonly revised: string | undefined
   readonly stoodBy: boolean
+  readonly quoted: boolean
 }
 
 export interface PlanInput {
@@ -811,15 +822,20 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
         messages: [...conversation, ...(reply.trim() ? [{ role: "assistant" as const, content: reply }] : []), { role: "user" as const, content: [answerAgain, ...notes].join("\n") }],
         ...(tools.length === 0 ? {} : { tools, toolChoice: "none" as const }),
       })), signal)
-      const { declared, text: answer } = declaredOf(writtenCallFree(answerOf(said).text).prose)
+      const { said: told, quote } = reportOf(answerOf(said).text)
+      const { declared, text: answer } = declaredOf(writtenCallFree(told).prose)
       const revised = settled.compose(withoutOfferedCalls(answer, offeredNames))
       const draft = draftOf(answer, 0, offeredNames, true, declared, [...input.hostNotes, ...notes])
       const sameAsFirst = revised.trim() === reply.trim()
       const spoken = revised !== settled.compose(undefined)
-      return { revised: spoken && answeredAgain(draft, sameAsFirst) ? revised : undefined, stoodBy: spoken && standsBy(draft, sameAsFirst) }
+      return {
+        revised: spoken && answeredAgain(draft, sameAsFirst) ? revised : undefined,
+        stoodBy: spoken && standsBy(draft, sameAsFirst),
+        quoted: quote !== "" && spaced(revised).includes(spaced(quote)),
+      }
     } catch (error: unknown) {
       if (signal.aborted) throw error
-      return { revised: undefined, stoodBy: false }
+      return { revised: undefined, stoodBy: false, quoted: false }
     }
   }
   return { reply, notices: settled.notices, cutOff: stoppedShort, steps, streamed, reask }
