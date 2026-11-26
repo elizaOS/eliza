@@ -175,7 +175,7 @@ describe("Let my agent read my mail without holding a mail credential", () => {
       forwarded: [
         "/api/v1/eliza/google/accounts?side=owner as owner",
         "/api/v1/eliza/google/gmail/search?side=owner&grantId=g1&query=in%3Ainbox&maxResults=25 as owner",
-        ...Array.from({ length: 10 }, () => "/api/v1/eliza/google/accounts?side=owner as owner"),
+        ...Array.from({ length: 14 }, () => "/api/v1/eliza/google/accounts?side=owner as owner"),
       ].join(","),
     });
   });
