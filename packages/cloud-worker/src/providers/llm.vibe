@@ -29,8 +29,17 @@ const readFlatFault = Schema.decodeUnknownOption(Schema.fromJsonString(FaultFiel
 
 type LlmContext = Deployment | HttpClient.HttpClient
 
-export function retryAfter(header: string | undefined): Millis | undefined {
-  return header !== undefined && /^\d{1,9}$/.test(header) ? Number(header) * 1000 : undefined
+const imfFixdate = /^(Mon|Tue|Wed|Thu|Fri|Sat|Sun), \d{2} (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) \d{4} \d{2}:\d{2}:\d{2} GMT$/
+const rfc850Date = /^(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday), \d{2}-(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)-\d{2} \d{2}:\d{2}:\d{2} GMT$/
+const asctimeDate = /^(Mon|Tue|Wed|Thu|Fri|Sat|Sun) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) ( \d|\d{2}) \d{2}:\d{2}:\d{2} \d{4}$/
+
+export function retryAfter(header: string | undefined, now = Date.now()): Millis | undefined {
+  if (header === undefined) return undefined
+  const value = header.trim()
+  if (value.length === 0) return undefined
+  if (/^\d{1,9}$/.test(value)) return Number(value) * 1000
+  const at = imfFixdate.test(value) || rfc850Date.test(value) ? Date.parse(value) : asctimeDate.test(value) ? Date.parse(`${value} GMT`) : Number.NaN
+  return Number.isFinite(at) ? Math.max(0, at - now) : undefined
 }
 
 export function readLlmObject(text: string): ChatBody | undefined {

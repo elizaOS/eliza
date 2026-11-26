@@ -5,7 +5,7 @@ import { addCredits } from "../../src/billing/funds.vibe"
 import { issueSession } from "../../src/identity/sessions.vibe"
 import { setModelPrice } from "../../src/services/models.vibe"
 import { Store } from "../../src/store/connection.vibe"
-import { complete, stream, type LlmFailure } from "../../src/providers/llm.vibe"
+import { complete, retryAfter, stream, type LlmFailure } from "../../src/providers/llm.vibe"
 import { contentFrames, doneFrame, llmFake, replyText, streamText, upstreamModel, usage, wholeAnswer } from "../support/llm-fake.ts"
 import { secrets } from "../support/profile.ts"
 import { check, testCloud, type TestCloud } from "../support/cloud.vibe"
@@ -53,6 +53,25 @@ describe("WP5 Inference: provider adapter", () => {
           authorization: Array.from({ length: 4 }, () => [`Bearer ${secrets.LLM_API_KEY}`, undefined])
         }
       ))
+    }
+  }))
+
+  it.live("Keep a provider Retry-After HTTP-date as the refusal wait (spec/cloud/services/inference.md, \"A call never dispatched releases its hold, and a provider rejection before any output is charged nothing and answered with a well-formed refusal\")", () => scoped(effect {
+    const { llm, provider, layer } = try llmAdapter()
+    provide layer {
+      const now = Date.parse("2026-11-26T09:00:00Z")
+      const at = new Date(now + 600_000).toUTCString()
+      try sync(() => llm.script({ kind: "refuse", retryAfterHeader: at }))
+      const refused = try outcome(complete(provider, request)) as readonly unknown[]
+      try check(() => assert.deepStrictEqual(refused[0], "ProviderRefused"))
+      try check(() => assert.deepStrictEqual(refused[1], 429))
+      try check(() => assert.isNumber(refused[2]))
+      const wait = retryAfter(at, now)
+      try check(() => assert.deepStrictEqual(wait, 600_000))
+      try check(() => assert.deepStrictEqual(retryAfter("Thu Nov 26 09:10:00 2026", now), 600_000))
+      try check(() => assert.deepStrictEqual(retryAfter("Thursday, 26-Nov-26 09:10:00 GMT", now), 600_000))
+      try check(() => assert.deepStrictEqual(retryAfter("Thu, 26 Nov 2026 08:50:00 GMT", now), 0))
+      try check(() => assert.deepStrictEqual(retryAfter("tomorrow", now), undefined))
     }
   }))
 
