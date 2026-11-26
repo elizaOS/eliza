@@ -174,6 +174,30 @@ pure def lawOneWarmUpRunsAtATime(lastStartedAt: int, now: int): bool = not(warmU
 pure def lawTheFirstWarmUpStarts(now: int): bool = warmUpStarts(false, -1, now)
 ```
 
+### Every planner call asks the model at temperature zero, unless the model takes only its default
+
+A planning step, the reply asked for again and the warm-up each ask the
+model at temperature 0 instead of the provider's default. Which tool the
+model calls for a message should not be a draw: at the default, the same
+message on the same tools sometimes ran its action and sometimes asked a
+question or claimed a result with no call. A call's own temperature is not
+overridden by the launch's sampling settings
+([models](../../core/models.md)). Other model calls (evaluators,
+extractors, reply drafts and reads) keep their own. The exception is a
+model that takes no temperature but its default, such as an OpenAI
+reasoning model on an own-key endpoint, known by its id or declared so by
+the owner's launch: the binding sends that model no temperature, and the
+planner runs at the model's default instead of failing
+([binding](../models/binding.md)).
+
+```quint
+type PlannerCall = PlanningStep | AnswerAgain | WarmUpCall
+pure val plannerTemperature = 0
+pure def plannerCallTemperature(call: PlannerCall): int = plannerTemperature
+pure val callValues = Set(PlanningStep, AnswerAgain, WarmUpCall)
+pure def lawEveryPlannerCallAsksAtTemperatureZero(call: PlannerCall): bool = plannerCallTemperature(call) == 0
+```
+
 ### An action may narrow its tool to the turn, never beyond its registered form
 
 An action may give the turn its own description and, for parameters it

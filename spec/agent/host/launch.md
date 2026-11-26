@@ -10,7 +10,7 @@ The document is JSON, schema 1, decoded whole by `launch.schema.vibe`, which
 holds the full field list: `character` (`name`, `system`; optional `bio`,
 `adjectives`, `style`, `messageExamples`), `policy`, `model` (`backend`,
 `cloudBaseUrl`, `smallModel`, `largeModel`, `imageModel`, `ownKeyBaseUrl`,
-`ownKeySmall`, `ownKeyLarge`), `account`, `embeddings` and
+`ownKeySmall`, `ownKeyLarge`, `ownKeySampling`), `account`, `embeddings` and
 `embeddingDimensions`, `persistMemory` (default false: the store is in
 memory), `callerRole`, `views`, `timeZone`, `privacy {secretSwap, piiSwap}`,
 `google {gmailChanges, calendarEdits}` (default false),
@@ -107,7 +107,9 @@ There is no local text backend. `cloudBaseUrl` is an HTTPS origin with no
 path, query or fragment (the cloud client builds the `/api/v1/...` paths),
 and a cloud launch names the signed-in `account`, whose store it opens;
 empty cloud model names leave the choice to cloud. An own key needs an HTTPS
-base URL, which may have a path, and both model names. Local embeddings need
+base URL, which may have a path, and both model names; it may declare, for
+either model, whether it takes a temperature
+([binding](../models/binding.md)). Local embeddings need
 a positive dimension.
 
 ```quint
