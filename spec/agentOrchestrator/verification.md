@@ -1,10 +1,10 @@
 # Completion verification, evidence gates, and fast-eval routing
 
-This specification defines pure verification rules for acceptance-criteria refinement, sentence-end file path mining, claimed-file ledger verification, completion residuals, pre-PR diff review gates, and multi-model fast-eval routing (including Cerebras).
+This specification defines pure verification rules for acceptance-criteria refinement, sentence-end file path mining, pre-commit diff review gates, and multi-model fast-eval routing (including Cerebras).
 
 ## Story: Verify subagent deliverables against concrete evidence and route fast evaluations cleanly
 
-> As an owner, I want completion gates to reject unverified file claims, dirty residuals, and leaked secrets, preserve paths mentioned at the end of sentences, and route bounded verification checks to fast low-latency evaluators.
+> As an owner, I want the commit gate to reject leaked secrets and oversized diffs, preserve paths mentioned at the end of sentences, and route bounded verification checks to fast low-latency evaluators.
 
 ### Sentence-end punctuation keeps named files while longer names are never truncated
 
@@ -20,24 +20,16 @@ pure def lawLongerFileNameNotMatched(follower: PathFollower): bool =
   (follower == FollowNameChars) implies not(sentencePathMatchesFile(follower))
 ```
 
-### Claimed edits, completion residuals, and diff secrets enforce fail-closed verification
+### Diff secrets, critical findings and oversized diffs block a commit, and refined criteria keep a floor
 
-Every claimed file modification must be backed by the session's observed write ledger or filesystem verification. Unresolved completion residuals block completion when the gate is enabled, and any secret-leak finding, critical diff finding, or oversized diff (`overSizeLimit`) blocks PR submission. Refined acceptance criteria drop invented unnamed-file checks and maintain a floor of at least three concrete criteria.
+Before a workspace commit, any secret-leak finding, critical diff finding, or oversized diff (`overSizeLimit`) in the staged diff blocks the commit, so nothing reaches a push or pull request. Refined acceptance criteria drop invented unnamed-file checks and maintain a floor of at least three concrete criteria.
 
 ```quint
 type GateOutcome = GatePass | GateBlock
-pure def verifyClaimedWrite(claimedCount: int, verifiedCount: int): GateOutcome =
-  if (claimedCount < 0 or verifiedCount < 0 or verifiedCount < claimedCount) GateBlock else GatePass
-pure def evaluateResidualsGate(uncommittedCount: int, failedChecksCount: int, gateEnabled: bool): GateOutcome =
-  if (not(gateEnabled)) GatePass
-  else if (uncommittedCount > 0 or failedChecksCount > 0) GateBlock
-  else GatePass
 pure def evaluateDiffReviewGate(secretFindings: int, criticalFindings: int, overSizeLimit: bool): GateOutcome =
   if (secretFindings > 0 or criticalFindings > 0 or overSizeLimit) GateBlock else GatePass
 pure def refinedCriteriaCount(keptTemplate: int, goalChecks: int, fallbackFloor: int): int =
   if (keptTemplate + goalChecks >= fallbackFloor) keptTemplate + goalChecks else fallbackFloor
-pure def lawUnverifiedClaimedFileBlocked(claimedCount: int, verifiedCount: int): bool =
-  (claimedCount > verifiedCount) implies verifyClaimedWrite(claimedCount, verifiedCount) == GateBlock
 pure def lawDiffSecretAlwaysBlocks(secretFindings: int, criticalFindings: int, overSizeLimit: bool): bool =
   (secretFindings > 0) implies evaluateDiffReviewGate(secretFindings, criticalFindings, overSizeLimit) == GateBlock
 pure def lawRefinedCriteriaMeetsFloor(keptTemplate: int, goalChecks: int): bool =

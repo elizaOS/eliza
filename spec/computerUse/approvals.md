@@ -6,7 +6,7 @@
 
 ### Approval policy maps mode and command risk to an unambiguous verdict
 
-`off` denies all commands; `full_control` auto-approves all commands; `smart_approve` auto-approves only read-only commands and queues mutating or destructive commands; `approve_all` queues every command.
+`off` denies all commands; `full_control` auto-approves all commands; `smart_approve` auto-approves only read-only commands and queues mutating or destructive commands; `approve_all` queues every command. The scene context offered to vision prompts (open applications, the focused window and its title, process names) is an observation of the screen: it is given only while a screenshot would be auto-approved, and otherwise carries none of them, not even from a scene captured earlier.
 
 ```quint
 type ApprovalMode = FullControl | SmartApprove | ApproveAll | Off

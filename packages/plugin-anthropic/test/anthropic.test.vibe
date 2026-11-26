@@ -127,7 +127,7 @@ function makeFakeSdkSchema(schema: Record<string, unknown>, validate?: (value: u
 }
 
 describe('Anthropic prompt-cache breakpoints and telemetry (spec/anthropic/index.md, "Prompt caching and strict tool budgets stay within Anthropic wire limits")', () => {
-  it('emits ephemeral cache_control on system block and final tool entry, emits MODEL_USED, and returns cache token usage (spec/anthropic/index.md, "Prompt caching and strict tool budgets stay within Anthropic wire limits")', async () => {
+  it('emits ephemeral cache_control on system block and final tool entry, emits MODEL_USED, and returns cache token usage (spec/anthropic/index.md, "Prompt caching and strict tool budgets stay within Anthropic wire limits"; spec/anthropic/index.md, "Reported usage carries the cache read and cache write tokens the provider reports")', async () => {
     const events: Array<{ type: string; payload: unknown }> = []
     const server = await startAnthropicServer((_captured, _req, res) => {
       res.writeHead(200, { "content-type": "application/json" })

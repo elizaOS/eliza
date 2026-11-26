@@ -11,7 +11,7 @@ import {
 import { importWorkflowSource, publishWorkflowSource, SourceRefused } from "../src/worker/source.vibe"
 import { WORKFLOW_MODEL_DRAFT_STATIC_PREFIX } from "../src/worker/protocol.vibe"
 import { verifyWorkerArtifact, workerArtifactClosure, workerProvenance, WorkerArtifactRefused } from "@elizaos/plugin-workflow-worker"
-import { createWorkflowDispatchService, generatedDraftPrompt, generatedWorkflows, hostedDigests, openWorkflows, registerWorkflowDispatchService, unregisterWorkflowDispatchService, WORKFLOW_DISPATCH_SERVICE_TYPE, type WorkflowDevicePort, type WorkflowDraftOptions, type WorkflowHost, type WorkflowNativeDigests, type WorkflowNotice, type WorkflowSql } from "../src/index.vibe"
+import { generatedDraftPrompt, generatedWorkflows, hostedDigests, openWorkflows, type WorkflowDevicePort, type WorkflowDraftOptions, type WorkflowHost, type WorkflowNativeDigests, type WorkflowNotice, type WorkflowSql } from "../src/index.vibe"
 import { inProcessWorkerPort, type WorkflowWorkerPort } from "../src/service/host.vibe"
 import { runtimeWorkflowHost } from "../src/runtime.vibe"
 import { EARLIER_RUN_STOPPED_TEXT } from "../src/service/prior.vibe"
@@ -998,7 +998,7 @@ it.live('Keep the workflows I saved before this version (spec/workflow/earlierSt
   try check(() => assert.deepStrictEqual([(again.status() as { readonly earlierImport?: unknown }).earlierImport, ids.includes("wf-late"), ids.length], [imported, false, 3]))
 })
 
-it.live('Dispatch workflows idempotently, serve revision/evaluation routes, and format digest zone notes (spec/workflow/admission.md, "One owner, workflow, submission, version and input survive a retry"; spec/workflow/hostedDigest.md, "Story: Acknowledge a page of digests only after it is stored")', effect () => {
+it.live('Serve revision and evaluation routes and format digest zone notes (spec/workflow/hostedDigest.md, "Story: Acknowledge a page of digests only after it is stored")', effect () => {
   const rig = try harness({
     draft: (prompt, opts) => opts?.purpose === "fast_eval"
       ? JSON.stringify({ passed: true, score: 0.95, reason: "Clear greeting output" })
@@ -1014,18 +1014,9 @@ it.live('Dispatch workflows idempotently, serve revision/evaluation routes, and 
   })
   const revList = try rig.client.revisions(receipt.workflowId)
   const restored = try rig.client.restoreRevision(receipt.workflowId, receipt.versionId)
-
-  const servicesMap = new Map<string, unknown[]>()
-  const fakeRuntime = { services: servicesMap } as unknown as IAgentRuntime
-  registerWorkflowDispatchService(fakeRuntime, () => rig.service)
-  const dispatch = createWorkflowDispatchService(() => rig.service)
-  const firstDispatch = try promise(() => dispatch.execute(receipt.workflowId, { source: "trigger" }, { idempotencyKey: "k-1" }))
-  const dupDispatch = try promise(() => dispatch.execute(receipt.workflowId, { source: "trigger" }, { idempotencyKey: "k-1" }))
-  const missingDispatch = try promise(() => dispatch.execute("nonexistent-wf", {}, { idempotencyKey: "k-2" }))
-  if (firstDispatch.executionId !== undefined) try settled(rig.client, { id: firstDispatch.executionId, workflowId: receipt.workflowId })
+  const run = try rig.client.run(receipt.workflowId, restored.versionId, () => succeed(undefined))
+  try settled(rig.client, run)
   const suite = try rig.client.evaluationSamples(receipt.workflowId)
-  const fastEval = firstDispatch.executionId === undefined ? undefined : try rig.service.evaluateRunFast(firstDispatch.executionId, "Must contain greeting")
-  unregisterWorkflowDispatchService(fakeRuntime)
 
   const protocol = hostedDigestProtocol(rig.request)
   const digestAvailable = try protocol.available()
@@ -1034,33 +1025,23 @@ it.live('Dispatch workflows idempotently, serve revision/evaluation routes, and 
   try check(() => assert.deepStrictEqual({
     revisions: revList.revisions.length >= 2,
     restoredVersionChanged: restored.versionId !== revList.currentVersionId,
-    registered: !servicesMap.has(WORKFLOW_DISPATCH_SERVICE_TYPE),
-    dispatchOk: firstDispatch.ok && firstDispatch.dedup !== true,
-    dispatchDedup: dupDispatch.ok && dupDispatch.dedup === true && dupDispatch.executionId === firstDispatch.executionId,
-    dispatchMissing: missingDispatch.ok === false && missingDispatch.code === "workflow_not_found",
     suiteCount: suite.sampleCount >= 1 && suite.summary?.passRate === 1,
-    fastEval: [fastEval?.passed, fastEval?.modelTier, fastEval?.score],
     digestAvailable,
     zoneNote: [zoneNote.includes("America/New_York"), sameZoneNote],
   }, {
     revisions: true,
     restoredVersionChanged: true,
-    registered: true,
-    dispatchOk: true,
-    dispatchDedup: true,
-    dispatchMissing: true,
     suiteCount: true,
-    fastEval: [true, "FastEvalTier", 0.95],
     digestAvailable: true,
     zoneNote: [true, ""],
   }))
 })
 
-it.live('Bound workflow budgets, compact oversized context, execute parallel DAG waves and keep prompt prefixes cache-stable (spec/workflow/budget.md, "Story: Bound workflow tokens, model calls and cost across multi-step runs"; spec/workflow/budget.md, "Story: Compact step context, batch independent DAG steps and route fast evaluations"; spec/workflow/budget.md, "Step context compaction bounds every prompt input to the configured window"; spec/workflow/budget.md, "Parallel DAG waves batch only ready non-barrier steps"; spec/workflow/budget.md, "Fast evaluations and short step drafts route to the fast model tier")', effect () => {
-  const seenCalls: { readonly prompt: string; readonly modelClass: string | undefined; readonly purpose: string | undefined }[] = []
+it.live('Bound workflow budgets, compact oversized context, execute parallel DAG waves and keep prompt prefixes cache-stable (spec/workflow/budget.md, "Story: Bound workflow tokens, model calls and cost across multi-step runs"; spec/workflow/budget.md, "Every model call is admitted only within remaining run and step ceilings"; spec/workflow/budget.md, "Story: Compact step context, batch independent DAG steps and route fast evaluations"; spec/workflow/budget.md, "Step context compaction bounds every prompt input to the configured window"; spec/workflow/budget.md, "Parallel DAG waves batch only ready non-barrier steps"; spec/workflow/budget.md, "Fast evaluations and short step drafts route to the fast model tier")', effect () => {
+  const seenCalls: { readonly prompt: string; readonly modelClass: string | undefined; readonly purpose: string | undefined; readonly maxTokens: number | undefined }[] = []
   const rig = try harness({
     draft: (prompt, opts) => {
-      seenCalls.push({ prompt, modelClass: opts?.modelClass, purpose: opts?.purpose })
+      seenCalls.push({ prompt, modelClass: opts?.modelClass, purpose: opts?.purpose, maxTokens: opts?.maxTokens })
       return `ok:${seenCalls.length}`
     },
   })
@@ -1126,6 +1107,7 @@ export default async function (ctx: WorkflowContext) {
   try check(() => assert.deepStrictEqual({
     dagStatus: dagDone.status,
     dagModelCalls: dagStored.budget?.modelCallsUsed,
+    draftsBounded: seenCalls.filter((call) => call.purpose === "step_draft").every((call) => call.maxTokens !== undefined && call.maxTokens >= 1 && call.maxTokens <= 4096),
     dagAllFastTier: shortDraftCalls.every((call) => call.modelClass === "TEXT_SMALL" && call.prompt.startsWith(WORKFLOW_MODEL_DRAFT_STATIC_PREFIX)),
     compactStatus: compactDone.status,
     compactCount: compactStored.compactedSteps,
@@ -1140,6 +1122,7 @@ export default async function (ctx: WorkflowContext) {
   }, {
     dagStatus: "finished",
     dagModelCalls: 3,
+    draftsBounded: true,
     dagAllFastTier: true,
     compactStatus: "finished",
     compactCount: 1,

@@ -106,7 +106,16 @@ export function truncateBounded(
   let body = slice.join("\n")
   let shownBytes = encoder.encode(body).byteLength
   if (shownBytes > clampedBytes) {
-    body = mode === "head" ? body.slice(0, clampedBytes) : body.slice(Math.max(0, body.length - clampedBytes))
+    const bytes = encoder.encode(body)
+    if (mode === "head") {
+      let end = clampedBytes
+      while (end > 0 && (bytes[end]! & 0xc0) === 0x80) end -= 1
+      body = new TextDecoder().decode(bytes.subarray(0, end))
+    } else {
+      let start = bytes.length - clampedBytes
+      while (start < bytes.length && (bytes[start]! & 0xc0) === 0x80) start += 1
+      body = new TextDecoder().decode(bytes.subarray(start))
+    }
     shownBytes = encoder.encode(body).byteLength
   }
   const startLine = mode === "head" ? 1 : Math.max(1, totalLines - slice.length + 1)

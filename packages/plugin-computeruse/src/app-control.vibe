@@ -202,6 +202,7 @@ export error AppControlError {
 }
 
 export interface AppControlBackend {
+  readiness(): { readonly accessibility: boolean; readonly screenRecording: boolean }
   listApps(): Promise<AppDescriptor[]>
   captureElements(app: AppDescriptor): Promise<{ readonly elements: readonly AppElement[]; readonly axText: string }>
   performAction(app: AppDescriptor, request: AppActionRequest, target?: AppElement): Promise<{ readonly executionMode: AppControlRouteId; readonly physicalPointerMoved: boolean }>
@@ -248,15 +249,19 @@ export class AppControlCoordinator {
         ...(app.bundleId ? { bundleId: app.bundleId } : {}),
         windowCount: app.windows.length,
       })),
-      captureElements: async () => ({ elements: [], axText: "" }),
-      performAction: async () => ({ executionMode: "semantic_ax", physicalPointerMoved: false }),
+      readiness: () => ({ accessibility: false, screenRecording: false }),
+      captureElements: async () => {
+        throw new AppControlError({ code: "unsupported", message: "No app-control backend can read application elements on this host" })
+      },
+      performAction: async () => {
+        throw new AppControlError({ code: "unsupported", message: "No app-control backend can act on applications on this host" })
+      },
     }
   }
 
   getReadiness(options?: AppControlRoutePolicyOptions): AppControlPermissionState {
     return {
-      accessibility: true,
-      screenRecording: true,
+      ...this.backend.readiness(),
       routes: getAppControlRouteMatrix(options),
     }
   }

@@ -1,4 +1,4 @@
-// spec/agentOrchestrator/index.md, "Story: Direct an authorized task to the intended subagent and evaluate its result"; spec/agentOrchestrator/taskLifecycle.md, "Story: Track an orchestrated coding task from creation through verified completion"; spec/agentOrchestrator/sessionAdmission.md, "Story: Admit coding agent sessions within concurrency, disk, and spend limits"
+// spec/agentOrchestrator/index.md, "Story: Direct an authorized task to the intended subagent and evaluate its result"; spec/agentOrchestrator/taskLifecycle.md, "Story: Track an orchestrated coding task from creation through verified completion"; spec/agentOrchestrator/sessionAdmission.md, "Story: Admit coding agent sessions within concurrency and disk limits"
 import { type TaskLifecycle, type TaskRole, type TaskStatus } from "../gen/agentOrchestrator__taskLifecycle.effect.vibe"
 import { type AdmissionPool, type PriorityLevel, type SessionSlotStatus } from "../gen/agentOrchestrator__sessionAdmission.effect.vibe"
 import { type BackendId } from "../gen/agentOrchestrator__lanesAndRouting.effect.vibe"
@@ -51,6 +51,7 @@ export type SessionEventName =
   | "reconnected"
   | "account_switched"
   | "parent_agent_failure"
+  | "promoted"
 
 export const TERMINAL_SESSION_STATUSES: ReadonlySet<SessionStatus> = new Set([
   "completed",
@@ -113,6 +114,7 @@ export interface SpawnResult {
   readonly status: SessionStatus
   readonly label: string
   readonly queued?: boolean
+  readonly stopReason?: string
 }
 
 export interface SendOptions {
@@ -161,6 +163,7 @@ export interface SessionInfo {
   readonly providerRoute?: string
   readonly taskId?: string
   readonly roomId?: string
+  readonly ownerEntityId?: string
   readonly slotClass: SessionSlotClass
   readonly metadata: Record<string, unknown>
 }

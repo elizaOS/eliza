@@ -72,7 +72,7 @@ module node {
     ) {
       super(runtime)
       this.consoleBridge = new PtyConsoleBridge()
-      this.store = new PtySessionStore(this.consoleBridge, spawnResolver, opts)
+      this.store = new PtySessionStore(this.consoleBridge, spawnResolver, opts ?? { allowedRoot: resolveAllowedRoot(runtime) })
     }
 
     static override async start(runtime: IAgentRuntime): Promise<PtyService> {
@@ -98,6 +98,11 @@ module node {
       return this.store.stop(sessionId)
     }
 
+    /** @throws {ElizaError} */
+    resizeSession(sessionId: string, cols: number, rows: number): void {
+      this.store.resize(sessionId, cols, rows)
+    }
+
     /** @throws {never} */
     listSessions(): PtySessionInfo[] {
       return this.store.list()
@@ -109,7 +114,7 @@ module node {
     }
 
     /** @throws {never} */
-    getBufferedOutput(sessionId: string): string | undefined {
+    getBufferedOutput(sessionId: string): { readonly output: string; readonly bufferStartOffset: number; readonly totalChars: number } | undefined {
       return this.store.getBufferedOutput(sessionId)
     }
 
