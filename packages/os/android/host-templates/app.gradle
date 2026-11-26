@@ -179,3 +179,55 @@ if (profile.nativeLibraries == 'extract-16k') androidComponents.onVariants(andro
  }
 }
 profile.appScripts.each { script -> apply from: script }
+
+abstract class PreserveElizaRuntimeArchives extends DefaultTask {
+ @InputDirectory @PathSensitive(PathSensitivity.RELATIVE) abstract DirectoryProperty getMergedAssets()
+ @InputDirectory @PathSensitive(PathSensitivity.RELATIVE) abstract DirectoryProperty getRuntimeAssets()
+ @Input abstract ListProperty<String> getArchivePaths()
+ @OutputDirectory abstract DirectoryProperty getPackagedAssets()
+ @javax.inject.Inject abstract FileSystemOperations getFileOperations()
+
+ private static String digest(InputStream bytes) {
+  def hash = java.security.MessageDigest.getInstance('SHA-256')
+  new java.security.DigestInputStream(bytes, hash).withCloseable { stream ->
+   stream.transferTo(OutputStream.nullOutputStream())
+  }
+  hash.digest().encodeHex().toString()
+ }
+
+ @TaskAction void preserve() {
+  File runtime = runtimeAssets.get().asFile
+  File merged = mergedAssets.get().asFile
+  def archives = archivePaths.get()
+  def expanded = archives.collect { name -> name.substring(0, name.length() - 3) }
+  archives.eachWithIndex { name, index ->
+   def shadow = expanded[index]
+   def original = new File(runtime, name)
+   def inflated = new File(merged, shadow)
+   if (new File(runtime, shadow).exists() || new File(merged, name).exists() || !inflated.isFile()
+     || original.withInputStream { input -> PreserveElizaRuntimeArchives.digest(new java.util.zip.GZIPInputStream(input)) } != PreserveElizaRuntimeArchives.digest(inflated.newInputStream())) {
+    throw new GradleException("Cannot preserve the staged runtime archive ${name}: merged asset collision or unexpected bytes")
+   }
+  }
+  fileOperations.sync {
+   into packagedAssets
+   from(merged) { exclude expanded }
+   from(runtime) { include archives }
+  }
+ }
+}
+
+if (profile.runtimeMain) {
+ def runtimeAssets = new File(profile.runtimeMain, 'assets')
+ def archives = fileTree(runtimeAssets).files.findAll { archive -> archive.name.toLowerCase(Locale.ROOT).endsWith('.gz') }
+ def archivePaths = archives.collect { archive -> runtimeAssets.toPath().relativize(archive.toPath()).join('/') }.sort()
+ if (archivePaths) androidComponents.onVariants(androidComponents.selector().all()) { variant ->
+  def preserve = tasks.register("preserve${variant.name.capitalize()}ElizaRuntimeArchives", PreserveElizaRuntimeArchives) {
+   it.runtimeAssets.set(runtimeAssets)
+   it.archivePaths.set(archivePaths)
+  }
+  variant.artifacts.use(preserve).wiredWithDirectories(
+   { task -> task.mergedAssets }, { task -> task.packagedAssets }
+  ).toTransform(com.android.build.api.artifact.SingleArtifact.ASSETS.INSTANCE)
+ }
+}

@@ -8,7 +8,7 @@ import { signed, type Signed } from "../http/request-auth.vibe"
 import { json, jsonBody, type Route, type RouteContext, type Sweep } from "../http/routes.vibe"
 import type { RelaySession, SessionEnd, WindowAdmission, WindowUsage } from "./speech-relay.vibe"
 import { Deployment } from "@elizaos/cloud"
-import { holdRows, markDispatched, reserveIn, settle, type HoldOwner, type MeteringFailure, type Settlement } from "../shared/metering.vibe"
+import { holdRows, markDispatchedIn, reserveIn, settle, type HoldOwner, type MeteringFailure, type Settlement } from "../shared/metering.vibe"
 import { newId, sameText, secretText, tokenDigest } from "../shared/sealing.vibe"
 import { loadRow, machineRows, stepRow, type RowConflict, type RowCorrupt } from "../store/rows.vibe"
 import { Store, type StoreFailure, toInt, toText, type Tx } from "../store/connection.vibe"
@@ -262,13 +262,16 @@ export effect function admitWindow(id: string, window: number): WindowAdmission!
 
 effect function dispatchWindow(id: string, window: number, only?: SpeechDirection): void!SessionFailure!Store {
   const store = try Store
-  const holds = try store.transaction((tx) => windowHolds(tx, id, window))
-  if (holds === undefined || holds.settled) throw refused("SessionClosed")
-  for (const direction of only === undefined ? directions : [only]) {
-    const key = holdOf(holds, direction)
-    const hold = (try store.transaction((tx) => loadRow(tx, holdRows, key, false))).state
-    if (hold.phase === "Reserved") try markDispatched(key)
-  }
+  const now = try Clock.currentTimeMillis
+  try store.transaction(effect (tx: Tx) => {
+    const holds = try windowHolds(tx, id, window)
+    if (holds === undefined || holds.settled) throw refused("SessionClosed")
+    for (const direction of only === undefined ? directions : [only]) {
+      const key = holdOf(holds, direction)
+      const hold = (try loadRow(tx, holdRows, key, false)).state
+      if (hold.phase === "Reserved") try markDispatchedIn(tx, key, now)
+    }
+  })
 }
 
 export effect function settleWindow(id: string, window: number, usage: WindowUsage): Session!SessionFailure!(Store | Deployment) {

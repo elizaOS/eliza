@@ -1,5 +1,5 @@
-// spec/agent/conversation/planning.md, "A warm-up sends the planner's tools and system prompt once with a one-token cap, at most once every four minutes, and stores and shows nothing"
-// spec/agent/conversation/conversations.md, "Messages and model-call log rows arrive only in a published conversation"; spec/agent/plugins/profile.md, "The agent is ready only when every allowed action is registered"; spec/agent/conversation/turns.md, "Every turn ends once, storing its reply with its kind, or answering that no reply exists"; spec/agent/conversation/turns.md, "The heard part and the unheard remainder together are the whole reply"; spec/agent/conversation/turnContext.md, "Story: Tell the agent what my screen shows, and nothing more"; spec/agent/conversation/turnContext.md, "A location is kept on any screen only when each coordinate, its accuracy and its time are in range, and it counts within the 2,048 bytes"; spec/agent/conversation/turnContext.md, "A Browser page is kept only when every field is valid, it is the Browser tab the kept observation selects at that revision on a screen not sensitive, and it fits 16,384 bytes"; spec/agent/deviceActions/index.md, "A later turn of the same conversation learns at most six outcomes of its own requests: what changed, and what ended without running"; spec/agent/conversation/planning.md, "Story: Ask the agent to do something and hear what happened"; spec/agent/conversation/planning.md, "Story: Ask what time it is and hear my own clock"; spec/agent/conversation/planning.md, "Story: Let my plugins learn from a finished turn"; spec/agent/conversation/planning.md, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history"; spec/agent/conversation/planning.md, "Every call of a turn is one the model chose, and a call this message serves in another place is refused before it runs and is no step of the turn"; spec/agent/conversation/planning.md, "The model reads what was said in the conversation, in a window taken once for the whole turn"; spec/agent/conversation/planning.md, "A message of the person that got no reply reaches the model marked unanswered, so each turn answers its own message"; spec/agent/conversation/planning.md, "What the person said earlier reaches the model with the minute it was said, on the turn's clock"; spec/core/context.md, "A host with no reviewer defers old history by position, in fixed steps from a user message"; spec/core/secretSession.md, "A conversation with stable references gives a value the same reference in every turn, and restores only references its session wrote"; spec/agent/conversation/turns.md, "A failed reply names the owner's fix, and only a live rate limit carries its wait"; spec/agent/conversation/turns.md, "A turn that failed before any reply, for no cause the binding named, is stored as a provider issue"; spec/agent/conversation/planning.md, "Attached documents share a bounded text allowance and images stay images"; spec/agent/conversation/turns.md, "A reply that spent credits on a refusal naming Cloud's own code carries that code, and every other reply carries none"; spec/agent/conversation/turns.md, "A rate-limited reply stores who set the limit, and every other reply stores none"
+// spec/agent/conversation/planning.md, "A warm-up sends the planner's tools and system prompt once with a one-token cap, at most once every four minutes, and stores and shows nothing"; spec/agent/conversation/planning.md, "Every planner call asks the model at temperature zero, unless the model takes only its default"
+// spec/agent/conversation/conversations.md, "Messages and model-call log rows arrive only in a published conversation"; spec/agent/plugins/profile.md, "The agent is ready only when every allowed action is registered"; spec/agent/conversation/turns.md, "Every turn ends once, storing its reply with its kind, or answering that no reply exists"; spec/agent/conversation/turns.md, "The heard part and the unheard remainder together are the whole reply"; spec/agent/conversation/turnContext.md, "Story: Tell the agent what my screen shows, and nothing more"; spec/agent/conversation/turnContext.md, "A location is kept on any screen only when each coordinate, its accuracy and its time are in range, and it counts within the 2,048 bytes"; spec/agent/conversation/turnContext.md, "A Browser page is kept only when every field is valid, it is the Browser tab the kept observation selects at that revision on a screen not sensitive, and it fits 16,384 bytes"; spec/agent/deviceActions/index.md, "A later turn of the same conversation learns at most six outcomes of its own requests: what changed, and what ended without running"; spec/agent/conversation/planning.md, "Story: Ask the agent to do something and hear what happened"; spec/agent/conversation/planning.md, "Story: Ask what time it is and hear my own clock"; spec/agent/conversation/planning.md, "Story: Let my plugins learn from a finished turn"; spec/agent/conversation/planning.md, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history"; spec/agent/conversation/planning.md, "Every call of a turn is one the model chose, and a call this message serves in another place is refused before it runs and is no step of the turn"; spec/agent/conversation/planning.md, "The model reads what was said in the conversation, in a window taken once for the whole turn"; spec/agent/conversation/planning.md, "A message of the person that got no reply reaches the model marked unanswered, so each turn answers its own message"; spec/agent/conversation/planning.md, "What the person said earlier reaches the model with the minute it was said, on the turn's clock"; spec/core/context.md, "A host with no reviewer defers old history by position, in fixed steps from a user message"; spec/core/secretSession.md, "A conversation with stable references gives a value the same reference in every turn, and restores only references its session wrote"; spec/agent/conversation/turns.md, "A failed reply names the owner's fix, and only a live rate limit carries its wait"; spec/agent/conversation/turns.md, "A turn that failed before any reply, for no cause the binding named, is stored as a provider issue"; spec/agent/conversation/planning.md, "Attached documents share a bounded text allowance and images stay images"; spec/agent/conversation/turns.md, "A reply that spent credits on a refusal naming Cloud's own code carries that code, and every other reply carries none"; spec/agent/conversation/turns.md, "A rate-limited reply stores who set the limit, and every other reply stores none"; spec/agent/conversation/planning.md, "An earlier reply reaches the model with the host's record of the tools its turn ran and how each ended"
 // spec/agent/conversation/turns.md, "An interrupted reply keeps proof of an applied effect"
 // spec/agent/conversation/planning.md, "A reply that leaves a failure unreported is written again once, and the delivered reply still reports open failures and attachment omissions"; spec/agent/conversation/planning.md, "A failure with no receipt that a later step may have answered is the model's to report, and its own words follow the reply unless the model stands by a reply without them"; spec/agent/conversation/planning.md, "A standalone answer to a current-time question that names a date, weekday or clock the clock did not observe is asked for again, and the clock's own reading is the last resort"; spec/agent/conversation/planning.md, "A reply that gives a just-changed calendar event a time range other than the one it got is asked for again, and the change's own words are the last resort"
 import {
@@ -10,13 +10,14 @@ import { carriesCutOffEffect, failureEndsTheRun, limitOriginOn, replyQuoteChars,
 import type { BindingView, LastCloudFailure } from "../models/binding.vibe"
 import { turnClock, ungroundedEventReply, ungroundedTimeReply, type Ungrounded } from "./clock.vibe"
 import { textForTurn, unheardMark } from "./heard.vibe"
-import { storedText } from "./history.vibe"
+import { bodyOf, storedText } from "./history.vibe"
 import { ModelRefusal } from "../models/chat.vibe"
 import { readTurnContext, type BrowserPage } from "@elizaos/agent"
-import { warmUpOutputCap } from "../../gen/agent__conversation__planning.ts"
+import { plannerTemperature, warmUpOutputCap } from "../../gen/agent__conversation__planning.ts"
 import { actionNotes, agentCache, failureNote, offeredActions, plannerTools, planTurn, type FailureNotice, type PlannedTurn } from "./planning.vibe"
 import { cueRule, hostNoteMark } from "./reply-text.vibe"
 import { runTurnEvaluators } from "./turn-evaluators.vibe"
+import { recordedTurn, toolRecordOf } from "./tool-record.vibe"
 
 type ChatMessage = NonNullable<GenerateTextParams["messages"]>[number]
 type ContentPart = Exclude<NonNullable<ChatMessage["content"]>, string>[number]
@@ -101,7 +102,7 @@ export function ownerMessageService(
   plannerWarmUps.set(runtime, (message, signal) => {
     const tools = plannerTools(runtime, message, offeredActions(runtime, message, actionGate))
     return runtime.useModel(ModelType.TEXT_LARGE, {
-      system: plannerSystem(runtime.character), messages: [{ role: "user", content: "." }], reasoning: "off", maxTokens: warmUpOutputCap, signal,
+      system: plannerSystem(runtime.character), messages: [{ role: "user", content: "." }], reasoning: "off", temperature: plannerTemperature, maxTokens: warmUpOutputCap, signal,
       providerOptions: { ...agentCache(runtime, "planner"), eliza: { warmUp: true } }, ...(tools.length === 0 ? {} : { tools, toolChoice: "auto" as const }),
     })
   })
@@ -346,13 +347,15 @@ async function respond(
           const content = previous.id === message.id ? "" : await spoken(runtime, previous)
           return content ? [{ id: previous.id ?? "", fromUser: previous.entityId !== runtime.agentId, text: content, position, storedAt: storedAtOf(previous) }] : []
         }))).flat()
+        const records = new Map(recent.map(({ id, content }) => [String(id), recordedTurn(content.toolRecord, bodyOf(typeof content.text === "string" ? content.text : "").tag === "Redacted", String(id))] as const))
         const earlier = recent.length < historyReadCount ? 0 : Math.max(0, await runtime.countMemories(message.roomId, false, "messages") - recent.length)
         const window = windowHistory(sources, asked, { earlier, readCount: recent.length, positions: sources.map(({ position }) => position) })
         const clockYear = stampYear(clock.instant, clock.zone)
         const unanswered = new Set(sources.flatMap(({ id, fromUser }, index) => markedUnanswered(fromUser, sources[index + 1]?.fromUser === false) ? [id] : []))
-        const history: ChatMessage[] = window.shown.map(({ id, fromUser, text, storedAt }) => {
+        const history: ChatMessage[] = window.shown.flatMap(({ id, fromUser, text, storedAt }): ChatMessage[] => {
+          if (!fromUser) return [...records.get(id) ?? [], { role: "assistant", content: text }]
           const read = unanswered.has(id) ? `${unansweredMark} ${text}` : text
-          return { role: fromUser ? "user" : "assistant", content: stampedForTheModel(fromUser, storedAt) ? stampedMessage(read, storedAt, clock.zone, clockYear) : read }
+          return [{ role: "user", content: stampedForTheModel(fromUser, storedAt) ? stampedMessage(read, storedAt, clock.zone, clockYear) : read }]
         })
         const actions = offeredActions(runtime, message, actionGate)
         const attachments = attachmentParts(await Promise.all((message.content.attachments ?? []).map((media) => readAttachment(runtime, media))))
@@ -392,11 +395,12 @@ async function respond(
         if (onStreamChunk !== undefined && replyText !== written) options?.onReplyRestart?.(replyText)
         written = replyText
         const ran = planned.steps.map(({ action, result: step }): ActionResult => ({ ...step, data: { ...step.data, actionName: action } }))
+        const toolRecord = toolRecordOf(planned.steps)
         const result = await withRoomDeliverySettlement(runtime, message.roomId, lease, async () => {
           const delivered = await executePlannedToolCall(runtime, {
             message, state, activeContexts: ["general"], userRoles: roles, previousResults: planned.steps.map(({ result }) => result),
             callback: async (content, actionName) => {
-              const stored = await callback?.(content, actionName) ?? []
+              const stored = await callback?.(toolRecord === undefined ? content : { ...content, toolRecord }, actionName) ?? []
               responseMessages.push(...stored)
               return stored
             },

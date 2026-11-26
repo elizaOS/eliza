@@ -300,9 +300,8 @@ effect function openProviders(shell: Shell, ports: RelayPorts, sessionId: string
   shell.current = 1
   try ports.session.dispatchWindow(sessionId, 1)
   window.dispatched = true
-  const stt = try ports.links.openStt()
+  const [stt, tts] = try Effect.all([ports.links.openStt(), ports.links.openTts()], { concurrency: "unbounded" })
   shell.stt = stt
-  const tts = try ports.links.openTts()
   shell.tts = tts
   fork.scoped pump(stt.edges, arrivals, (edge) => ({ kind: "stt", edge }))
   fork.scoped pump(tts.edges, arrivals, (edge) => ({ kind: "tts", edge }))

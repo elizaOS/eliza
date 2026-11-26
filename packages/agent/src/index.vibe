@@ -43,7 +43,7 @@ export {
   planCloudSpeechChunks, speakCloudSpeechChunks, type CloudSpeechOptions, type SpeakCloudPiece,
   createLiveVoiceSession, parseVoiceTranscriptEnvelope, VOICE_TRANSCRIPT_STREAM,
   type AgentEventSubscribe, type LiveTranscriptEvent, type LiveVoiceSession, type LiveVoiceSessionOptions,
-  encodeMonoPcm16WavChunks, startCumulativeMicrophoneCapture,
+  encodeMonoPcm16BytesWav, encodeMonoPcm16WavChunks, startCumulativeMicrophoneCapture,
   browserCaptureAudio,
   attachProgressiveSpeech, SegmentedSpeechPlayback,
   type ProgressiveSpeechAttachment, type ProgressiveSpeechOptions, type ProgressiveSpeechSource, type SegmentAttach, type SegmentedSpeechOptions,

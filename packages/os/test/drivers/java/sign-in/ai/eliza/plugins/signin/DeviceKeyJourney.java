@@ -1,6 +1,7 @@
-// spec/os/signIn/credential.md, "Story: Keep me signed in without a second copy of my key"; spec/os/signIn/credential.md, "Story: Sign out or reset cleanly"; spec/os/signIn/credential.md, "Story: Confirm it is me before a billing change"; spec/os/signIn/browserReturn.md, "Story: Complete a browser sign-in only for the client that started it"
+// spec/os/signIn/credential.md, "Story: Keep me signed in without a second copy of my key"; spec/os/signIn/credential.md, "Story: Sign out or reset cleanly"; spec/os/signIn/credential.md, "Story: Confirm it is me before a billing change"; spec/os/signIn/browserReturn.md, "Story: Complete a browser sign-in only for the client that started it"; spec/os/signIn/cloudRequests.md, "The broker forwards only the owner's Gmail account list and search, with the lease, while the launch's owner holds it"
 package ai.eliza.plugins.signin;
 
+import ai.eliza.os.agent.AgentCredentials;
 import ai.eliza.plugins.signin.CredentialPolicy.Account;
 import ai.eliza.plugins.signin.CredentialPolicy.Notice;
 import ai.eliza.plugins.signin.DeviceKeyClient.Answer;
@@ -70,10 +71,12 @@ public final class DeviceKeyJourney {
     final AtomicInteger ackAsks = new AtomicInteger();
     final AtomicInteger rotations = new AtomicInteger(), reused = new AtomicInteger(), secrets = new AtomicInteger();
     final AtomicReference<Runnable> beforeMailReply = new AtomicReference<>();
+    final AtomicReference<Runnable> beforeBillingReply = new AtomicReference<>();
+    final List<String> billingBearers = new CopyOnWriteArrayList<>();
     final AtomicReference<Runnable> beforeLeaseReply = new AtomicReference<>();
     final List<Family> families = new CopyOnWriteArrayList<>();
     final Map<String, Renewal> renewals = new ConcurrentHashMap<>();
-    final List<String> mailBearers = new CopyOnWriteArrayList<>(), modelBearers = new CopyOnWriteArrayList<>();
+    final List<String> mailBearers = new CopyOnWriteArrayList<>(), modelBearers = new CopyOnWriteArrayList<>(), brokerBearers = new CopyOnWriteArrayList<>();
     volatile boolean offline, leases, dropNextRotation;
     volatile Account tokenOwner = ACCOUNT;
     volatile int dropAcks;
@@ -151,6 +154,12 @@ public final class DeviceKeyJourney {
         ? CredentialJson.object(CredentialJson.parse(new String(x.getRequestBody().readAllBytes(), StandardCharsets.UTF_8)), "body") : Map.of();
       long now = clock.get();
       switch (route) {
+        case "POST /api/v1/subscriptions/upgrade/review" -> {
+          billingBearers.add(bearer(x));
+          Runnable beforeReply = beforeBillingReply.getAndSet(null);
+          if (beforeReply != null) beforeReply.run();
+          answer(x, "billing-access-stale".equals(bearer(x)) ? 401 : 200, "{}");
+        }
         case "POST " + DeviceKeyClient.CONNECT -> {
           if (!SESSION.equals(bearer(x))) { answer(x, 401, "{\"error\":\"authentication_required\"}"); return; }
           String code = "emac_" + issued.incrementAndGet();
@@ -238,6 +247,13 @@ public final class DeviceKeyJourney {
           Runnable before = beforeMailReply.getAndSet(null);
           if (before != null) before.run();
           answer(x, 200, "{\"events\":[]}");
+        }
+        case "GET /api/v1/eliza/google/accounts" -> {
+          String bearer = bearer(x);
+          if (live.containsKey(bearer)) { brokerBearers.add("key"); answer(x, 403, "{\"error\":\"forbidden\",\"reason\":\"device_key_not_allowed\"}"); return; }
+          if (!leaseAccess(bearer, now)) { answer(x, 401, "{\"error\":\"authentication_required\",\"reason\":\"credential_unknown\"}"); return; }
+          brokerBearers.add("lease");
+          answer(x, 200, "{\"accounts\":[]}");
         }
         case "GET /api/v1/models" -> {
           if (!live.containsKey(bearer(x))) { answer(x, 401, "{\"error\":\"authentication_required\",\"reason\":\"credential_unknown\"}"); return; }
@@ -358,6 +374,48 @@ public final class DeviceKeyJourney {
     };
   }
 
+  private String billingJourney() throws IOException {
+    Path cache = Files.createTempDirectory("device-billing-requests-");
+    try {
+      String review = "/api/v1/subscriptions/upgrade/review";
+      String models = "/api/v1/models";
+      String table = "[{\"prefixes\":[\"/api/v1\"],\"routes\":[{\"method\":\"POST\",\"path\":\"" + review
+        + "\"},{\"method\":\"GET\",\"path\":\"" + models + "\"}]}]";
+      CloudRequests requests = new CloudRequests(new CloudRequestPolicy(table), new LargeBodyGrant(cache.toFile()));
+      AccountSession session = new AccountSession(store, client);
+      CloudRequests.Custody custody = new CloudRequests.Custody(store, session, lease);
+      String origin = cloud.origin().toString();
+      if (!"SIGNED_IN".equals(signIn())) throw new IllegalStateException("The billing account did not sign in");
+      String credential = store.current().credentialId();
+      List<String> seen = new ArrayList<>();
+      byte[] body = "{}".getBytes(StandardCharsets.UTF_8);
+      seen.add(take("billingWithoutSession", outcome(requests.send(null, origin, custody, "POST", review, Map.of(), body, credential, true))));
+      if (!session.grant(ACCOUNT, "billing-access-stale", "billing-refresh-stale", clock.get() + 60_000)) {
+        throw new IllegalStateException("The billing session was refused");
+      }
+      seen.add(take("billingWithStaleCredential", outcome(requests.send(null, origin, custody, "POST", review, Map.of(), body, "another-credential", true))));
+      seen.add(take("billingDoesNotUseKeyRoute", outcome(requests.send(null, origin, custody, "GET", models, Map.of(), null, credential, true))));
+      seen.add(take("keyDoesNotUseBillingRoute", outcome(requests.send(null, origin, custody, "POST", review, Map.of(), body, credential))));
+      cloud.beforeBillingReply.set(() -> {
+        if (!session.grant(ACCOUNT, "billing-access", "billing-refresh", clock.get() + 60_000)) {
+          throw new IllegalStateException("The next billing session was refused");
+        }
+      });
+      seen.add(take("oldSessionRefusal", outcome(requests.send(null, origin, custody, "POST", review, Map.of(), body, credential, true))));
+      seen.add(take("newSessionSurvives", "billing-access".equals(session.accessToken())));
+      seen.add(take("billingWithExactSession", outcome(requests.send(null, origin, custody, "POST", review, Map.of(), body, credential, true))));
+      cloud.beforeBillingReply.set(() -> { store.signOut(); });
+      seen.add(take("replyAfterSignOut", outcome(requests.send(null, origin, custody, "POST", review, Map.of(), body, credential, true))));
+      seen.add(take("onlySessionsSent", cloud.billingBearers.equals(List.of("billing-access-stale", "billing-access", "billing-access"))));
+      return "{" + String.join(",", seen) + "}";
+    } finally {
+      cloud.server.stop(0);
+      try (var files = Files.walk(cache)) {
+        for (Path file : files.sorted(java.util.Comparator.reverseOrder()).toList()) Files.delete(file);
+      }
+    }
+  }
+
   private String cloudJourney() throws Exception {
     Path cache = Files.createTempDirectory("device-cloud-requests-");
     try {
@@ -377,6 +435,11 @@ public final class DeviceKeyJourney {
       start();
       custody = new CloudRequests.Custody(store, new AccountSession(store, client), lease);
       seen.add(take("mailWithoutLease", outcome(requests.send("upgrade", origin, custody, "GET", feed, Map.of(), null))));
+      CloudRequests.Custody keyOnly = custody;
+      try (GoogleBrokerHost broker = GoogleBrokerHost.overDevice(origin, () -> keyOnly, cache.toFile(), failure -> { throw failure; })) {
+        seen.add(take("brokerReadWithoutLease", GoogleBrokerJourney.read(broker.open(new AgentCredentials.Account(ACCOUNT.userId(), ACCOUNT.organizationId())),
+          "/api/v1/eliza/google/accounts?side=owner")));
+      }
       seen.add(take("settledRequestCancelled", requests.cancel("upgrade")));
       var expected = CredentialPolicy.mailLeaseUpgrade(store.state());
       int cancelled = store.beginMailLeaseUpgrade(expected);
@@ -414,6 +477,13 @@ public final class DeviceKeyJourney {
       seen.add(take("mailWithUnknownQuery", outcome(managed.readMail(origin, custody, mailAuthority, feed + "?unexpected=1", Map.of()))));
       seen.add(take("mailWithLease", outcome(managed.readMail(origin, custody, mailAuthority, feed + "?grantId=synthetic&timeMin=2026-11-23", Map.of()))));
       seen.add(take("inferenceWithKey", outcome(requests.send(origin, custody, "GET", models, Map.of(), null))));
+      CloudRequests.Custody leased = custody;
+      try (GoogleBrokerHost broker = GoogleBrokerHost.overDevice(origin, () -> leased, cache.toFile(), failure -> { throw failure; })) {
+        String accounts = "/api/v1/eliza/google/accounts?side=owner";
+        seen.add(take("brokerReadForOwner", GoogleBrokerJourney.read(broker.open(new AgentCredentials.Account(ACCOUNT.userId(), ACCOUNT.organizationId())), accounts)));
+        seen.add(take("brokerReadForAnotherOwner", GoogleBrokerJourney.read(broker.open(new AgentCredentials.Account("user-2", ACCOUNT.organizationId())), accounts)));
+      }
+      seen.add(take("brokerBearers", String.join(",", cloud.brokerBearers)));
       cloud.families.get(cloud.families.size() - 1).ended = true;
       clock.addAndGet(16 * 60_000L);
       seen.add(take("mailAfterRevokedLease", outcome(requests.send(origin, custody, "GET", feed, Map.of(), null))));
@@ -701,6 +771,7 @@ public final class DeviceKeyJourney {
   public static void main(String[] args) throws Exception {
     if (args.length == 1 && args[0].equals("browser")) System.out.println(browserReturn());
     else if (args.length == 1 && args[0].equals("cloud")) System.out.println(new DeviceKeyJourney().cloudJourney());
+    else if (args.length == 1 && args[0].equals("billing")) System.out.println(new DeviceKeyJourney().billingJourney());
     else System.out.println(new DeviceKeyJourney().run());
     System.exit(0);
   }

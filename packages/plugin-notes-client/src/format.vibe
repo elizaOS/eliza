@@ -49,6 +49,7 @@ export type AuthoredNoteEdit =
     done?: boolean
   }
   | { field: "checklist"; action: "append"; text: string }
+  | { field: "checklist"; action: "remove"; index: number; expectedText: string }
 
 export interface NoteShareText {
   title: string
@@ -196,6 +197,21 @@ export effect function editAuthoredNoteFormat(format: NoteFormat | undefined, ed
     const next = structuredClone(format)
     const items = next.data.items
     if (Array.isArray(items)) items.push({ t: edit.text, done: false })
+    return next
+  }
+  if (edit.action === "remove") {
+    if (format === undefined || format.kind !== "list" || !Array.isArray(format.data.items)) {
+      throw new AuthoredEditRefused({ reason: "Checklist removal requires the current list format." })
+    }
+    const next = structuredClone(format)
+    const items = next.data.items
+    if (!Array.isArray(items) || !Number.isSafeInteger(edit.index) || edit.index < 0 || edit.index >= items.length) {
+      throw new AuthoredEditRefused({ reason: "Checklist changed; re-read before removing an item." })
+    }
+    const item = items[edit.index]
+    const text = typeof item === "string" ? item : isJsonObject(item) ? item.t : undefined
+    if (typeof text !== "string" || text !== edit.expectedText) throw new AuthoredEditRefused({ reason: "Checklist item text changed; nothing was removed." })
+    items.splice(edit.index, 1)
     return next
   }
   const target = editTargets[edit.field]

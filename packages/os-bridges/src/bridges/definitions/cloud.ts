@@ -40,6 +40,7 @@ export interface CloudRequest {
   readonly environment?: EnvironmentName;
   readonly signal?: AbortSignal;
   readonly expectedCredentialId?: CredentialId;
+  readonly expectedSessionCredentialId?: CredentialId;
 }
 
 export interface CloudReply {
@@ -63,6 +64,7 @@ export interface NativeCloudRequest {
   readonly environment?: EnvironmentName;
   readonly id?: string;
   readonly expectedCredentialId?: CredentialId;
+  readonly expectedSessionCredentialId?: CredentialId;
 }
 
 export interface ElizaCloudPlugin {

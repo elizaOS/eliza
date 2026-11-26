@@ -166,10 +166,16 @@ const AuthoredAppend = Schema.Struct({
   field: Schema.Literal("checklist"),
   text: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(noteLimits.body)),
 })
+const AuthoredRemove = Schema.Struct({
+  action: Schema.Literal("remove"),
+  field: Schema.Literal("checklist"),
+  index: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+  expectedText: Schema.String,
+})
 
 export const UpdateRequest = Schema.Struct({
   textEdit: Schema.optionalKey(Schema.Union([TextReplace, TextAppend])),
-  authoredEdit: Schema.optionalKey(Schema.Union([AuthoredReplace, AuthoredAppend])),
+  authoredEdit: Schema.optionalKey(Schema.Union([AuthoredReplace, AuthoredAppend, AuthoredRemove])),
   ...NoteDraftFields,
 })
 

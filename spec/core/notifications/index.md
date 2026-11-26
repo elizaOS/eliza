@@ -296,3 +296,51 @@ pure def lawExplicitPriorityWins(category: str, explicitPriority: str): bool =
 pure def lawCategorySetsDefaultPriority(category: str): bool =
   notificationPriority("approval", "") == "high" and notificationPriority("system", "") == "low" and ((category != "approval" and category != "system") implies notificationPriority(category, "") == "normal")
 ```
+
+## Story: Hand my device only the notice data it can act on
+
+> As the owner, I want my device's copy of a notice to carry only what it
+> needs to present and route it, so that producer data never reaches the
+> device and a workflow notice still names the exact run it was posted for.
+
+### A native record carries only closed presentation data, and a workflow notice its exact run route
+
+The native record, paged and broadcast to the device, carries a closed
+`data`. A row of category `workflow` whose producer gave a complete run
+route carries exactly that route: the kind, `result` or `approval`, the
+workflow, run and version, and for an approval its proposal. A route ID is
+a non-empty string of at most 128 characters, a proposal of at most 256,
+neither with a control character. A workflow row with any route field
+missing or malformed, or with another kind, carries no route, and no other
+row carries one. An approval's expiry is the record's own `expiresAt`. Any
+other row carries only a reminder's owner type and a conversation and
+message UUID; no other producer data crosses.
+
+```quint
+type RouteText = RouteId({ value: str }) | NotRouteId
+type RouteKindText = KindResult | KindApproval | KindOther
+type ProducedRoute = { category: str, kind: RouteKindText, workflowId: RouteText, runId: RouteText, versionId: RouteText, proposalId: RouteText }
+type NativeRoute = NoRoute | ResultRoute({ workflowId: str, runId: str, versionId: str }) | ApprovalRoute({ workflowId: str, runId: str, versionId: str, proposalId: str })
+pure def routeIdGiven(text: RouteText): bool = match text { | RouteId(given) => true | NotRouteId => false }
+pure def routeIdOf(text: RouteText): str = match text { | RouteId(given) => given.value | NotRouteId => "" }
+pure def nativeRoute(produced: ProducedRoute): NativeRoute =
+  if (produced.category != "workflow" or not(routeIdGiven(produced.workflowId) and routeIdGiven(produced.runId) and routeIdGiven(produced.versionId))) NoRoute
+  else if (produced.kind == KindResult) ResultRoute({ workflowId: routeIdOf(produced.workflowId), runId: routeIdOf(produced.runId), versionId: routeIdOf(produced.versionId) })
+  else if (produced.kind == KindApproval and routeIdGiven(produced.proposalId)) ApprovalRoute({ workflowId: routeIdOf(produced.workflowId), runId: routeIdOf(produced.runId), versionId: routeIdOf(produced.versionId), proposalId: routeIdOf(produced.proposalId) })
+  else NoRoute
+pure val completeResult: ProducedRoute = { category: "workflow", kind: KindResult, workflowId: RouteId({ value: "w1" }), runId: RouteId({ value: "r1" }), versionId: RouteId({ value: "v1" }), proposalId: NotRouteId }
+pure val producedValues = Set(
+  completeResult, { ...completeResult, category: "reminder" }, { ...completeResult, runId: NotRouteId }, { ...completeResult, kind: KindOther },
+  { ...completeResult, kind: KindApproval }, { ...completeResult, kind: KindApproval, proposalId: RouteId({ value: "step:0" }) })
+pure def lawOnlyAWorkflowRowCarriesARoute(produced: ProducedRoute): bool =
+  produced.category != "workflow" implies nativeRoute(produced) == NoRoute
+pure def lawACarriedRouteIsTheProducersOwn(produced: ProducedRoute): bool =
+  val carried = nativeRoute(produced)
+  match carried {
+    | NoRoute => true
+    | ResultRoute(route) => produced.kind == KindResult and route.workflowId == routeIdOf(produced.workflowId) and route.runId == routeIdOf(produced.runId) and route.versionId == routeIdOf(produced.versionId)
+    | ApprovalRoute(route) => produced.kind == KindApproval and route.workflowId == routeIdOf(produced.workflowId) and route.runId == routeIdOf(produced.runId) and route.versionId == routeIdOf(produced.versionId) and route.proposalId == routeIdOf(produced.proposalId)
+  }
+pure def lawAnIncompleteRouteIsNotCarried(produced: ProducedRoute): bool =
+  not(routeIdGiven(produced.runId)) implies nativeRoute(produced) == NoRoute
+```

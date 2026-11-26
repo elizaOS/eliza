@@ -253,7 +253,7 @@ function readAction(notes: NotesCollection): Action[] {
         contentParameter("Title/topic filter."),
         idParameter(),
         { name: "latestBy", description: "Newest+ties; no default—match owner wording & state which.", required: false, schema: { type: "string", enum: ["createdAt", "updatedAt"] } },
-        { name: "dateRange", description: "{field:createdAt|updatedAt,start?,end?} [start,end) offset instants.", required: false, schema: { type: "object" } },
+        { name: "dateRange", description: "{field:createdAt|updatedAt,start?,end?} [start,end) offset instants.", required: false, schema: { type: "object", properties: { field: { type: "string", enum: ["createdAt", "updatedAt"] }, start: { type: "string" }, end: { type: "string" } }, required: ["field"] } },
       ],
       run: effect (params, message) => {
         const range = params.dateRange
@@ -370,12 +370,12 @@ function writeActions(notes: NotesCollection): Action[] {
       name: "NOTES_UPDATE",
       writes: true,
       similes: ["NOTES_PATCH", "NOTES_APPEND", "NOTES_EDIT"],
-      description: "Edit one note (noteId or content, not both). Pass exact noteId; if ambiguous, read via NOTES_GET/NOTES_LIST & ask—never guess noteId for shared titles, even on retry. One edit form; all except literal textEdit need fresh expectedRevision. textEdit {action:append,field:item,text} adds one list item in the note's own form, to a note the owner named, never as a new checklist the owner asked for (that is NOTES_CREATE with checklist). Prefer literal textEdit for word/phrase edits; never answer edits with a read.",
+      description: "Edit one note (noteId or content, not both). Pass exact noteId; if ambiguous, read via NOTES_GET/NOTES_LIST & ask—never guess noteId for shared titles, even on retry. One edit form; all except literal textEdit need fresh expectedRevision. textEdit {action:append,field:item,text} adds one list item in the note's own form, to a note the owner named, never as a new checklist the owner asked for (that is NOTES_CREATE with checklist). To take one item off a note, edit it: authoredEdit {field:checklist,action:remove,index,expectedText} for a checklist item (index and text from a read), or literal textEdit replacing that line with empty text in a plain note; never NOTES_DELETE. Prefer literal textEdit for word/phrase edits; never answer edits with a read.",
       parameters: [
         idParameter(),
         contentParameter("Title/unique text to locate note."),
-        { name: "textEdit", description: "{field,oldText,newText} (unique match, no revision) or {action:append,field:body|item,text} (exact append).", required: false, schema: { type: "object" } },
-        { name: "authoredEdit", description: "Indexed checklist/transcript/summary/action/clip edit or checklist append.", required: false, schema: { type: "object" } },
+        { name: "textEdit", description: "{field,oldText,newText} (unique match, no revision) or {action:append,field:body|item,text} (exact append).", required: false, schema: { type: "object", properties: { action: { type: "string", enum: ["replace", "append"] }, field: { type: "string", enum: ["title", "body", "item"] }, oldText: { type: "string" }, newText: { type: "string" }, text: { type: "string" } } } },
+        { name: "authoredEdit", description: "Indexed checklist/transcript/summary/action/clip edit, checklist append, or checklist item remove {field:checklist,action:remove,index,expectedText}.", required: false, schema: { type: "object", properties: { action: { type: "string", enum: ["replace", "append", "remove"] }, field: { type: "string", enum: ["checklist", "voice-line", "voice-summary", "voice-action", "link-clip"] }, index: { type: "integer" }, expectedText: { type: "string" }, text: { type: "string" }, done: { type: "boolean" } }, required: ["field"] } },
         { name: "replacementContent", description: "Full replacement text from read.", required: false, schema: { type: "string" } },
         { name: "title", description: "New first-line title.", required: false, schema: { type: "string" } },
         { name: "body", description: "New body (keeps title, no leading newline).", required: false, schema: { type: "string" } },
@@ -396,7 +396,7 @@ function writeActions(notes: NotesCollection): Action[] {
     notesAction(notes, {
       name: "NOTES_DELETE",
       writes: true,
-      description: "Move one note to Recently deleted (noteId or content, not both). Pass exact noteId; if ambiguous, read via NOTES_GET/NOTES_LIST & ask (guessed IDs for shared titles fail). content deletes only exact title matches; else returns candidates.",
+      description: "Delete a whole note, moving it to Recently deleted, only when the owner asks to delete the note itself; taking an item or line off a note is NOTES_UPDATE, never this (noteId or content, not both). Pass exact noteId; if ambiguous, read via NOTES_GET/NOTES_LIST & ask (guessed IDs for shared titles fail). content deletes only exact title matches; else returns candidates.",
       parameters: [idParameter(), contentParameter("Exact title or text.")],
       run: effect (params, _message, pick) => {
         const target = targetOf(params, "noteId", "content")
@@ -572,7 +572,7 @@ export const NOTES_CAPABILITIES: ViewCapability[] = [
     ...noteTargetParameters({ title: "Exact first-line label of the note to update.", query: "Unique existing text of the note to update." }),
     content: { type: "string", maxLength: 20_241, description: "Replacement complete note content." },
     format: { type: "object", description: "Replacement rich format; omitted keeps it." },
-    authoredEdit: { type: "object", description: "One authored edit or checklist append." },
+    authoredEdit: { type: "object", description: "One authored edit, checklist append, or checklist item removal {field:checklist,action:remove,index,expectedText}." },
     color: { type: "string", enum: ["yellow", "green", "rose", "slate"], description: "Replacement color." },
     expectedRevision: { type: "integer", required: true, minimum: 0, description: "Revision of the snapshot this edit was prepared from." },
   } },

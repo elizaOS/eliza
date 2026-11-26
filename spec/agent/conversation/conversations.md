@@ -324,7 +324,11 @@ message of another conversation, or none, is 404; a stored text other than
 Otherwise the message and every message and model-call log row of that
 conversation with exactly its text show `[Private information removed]`.
 The whole stored text is compared, and a long text's stored segments are
-removed with it.
+removed with it. A redacted reply keeps no record of its turn's tools
+([planning](./planning.md)), and in any other reply of that conversation
+the record's copies of the text show the notice in their place, as in a
+log row, a copy the record cut short (the text's first characters and
+`…`) included.
 
 ```quint
 type RedactAnswer = RedactUnknown | RedactTextChanged | RedactUnchanged | RedactNow
