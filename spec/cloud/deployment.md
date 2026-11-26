@@ -395,6 +395,10 @@ GET callback may arrive without an Origin and still requires that session
 and the matching OAuth flow. Enrolled tablets use a live mail lease for
 managed reads and a recorded device credential for the new-mail hint, both
 subject to the cloud's device request limit.
+The recorded credential also connects or disconnects the tablet owner's
+Google connection. The write rechecks the credential and owner. A native
+connection stores only the selected permissions Google granted for the
+signed-in account's verified Google identity.
 Other Workers and other paths use the server table and Worker-only routes
 in their usual order.
 

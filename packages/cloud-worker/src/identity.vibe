@@ -170,10 +170,10 @@ export function leaseAccount(request: Request, db: Client): Promise<string | nul
   }, Layer.merge(cryptoServices, Layer.effect(Store, clientStore(db)))))
 }
 
-type DeviceAuthority = "any" | "recorded"
+type DeviceAuthority = "any" | "recorded" | "recordedForUpdate"
 
 effect function accountForInference(request: Request, db: Client, env: NativeRegistryEnv | undefined, authority: DeviceAuthority) {
-  if (!request.headers.has("authorization")) return authority === "recorded" ? null : (try browserAccount(request, db))?.id ?? null
+  if (!request.headers.has("authorization")) return authority === "any" ? (try browserAccount(request, db))?.id ?? null : null
   const registration = env ? browserNativeRegistration(env) : null
   const hash = try deviceDigest(request)
   if (hash === null || !registration) return null
@@ -182,6 +182,7 @@ effect function accountForInference(request: Request, db: Client, env: NativeReg
     SELECT d.user_id, d.state, d.phase, d.key_expires_at, d.device_epoch AS grant_epoch, a.device_epoch AS account_epoch
     FROM device_grants d JOIN accounts a ON a.key = d.user_id
     WHERE d.secret_digest = $1 AND a.status = 'active' AND d.client_id = $2
+    ${authority === "recordedForUpdate" ? "FOR UPDATE OF d" : ""}
   `, [hash, registration.clientId])
   const row = rows[0]
   if (row === undefined) return null
