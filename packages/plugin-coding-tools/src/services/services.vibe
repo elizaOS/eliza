@@ -140,7 +140,14 @@ module node {
           }
           const killed = Boolean((error as { killed?: boolean }).killed)
           const signal = (error as { signal?: string | null }).signal ?? null
-          const code = typeof (error as { code?: unknown }).code === "number" ? Number((error as { code?: number }).code) : 1
+          const rawCode = (error as { code?: unknown }).code
+          const code = typeof rawCode === "number"
+            ? Number(rawCode)
+            : rawCode === "ENOENT"
+              ? 127
+              : rawCode === "EACCES"
+                ? 126
+                : 1
           resolve({
             exitCode: code,
             stdout: String(stdout),

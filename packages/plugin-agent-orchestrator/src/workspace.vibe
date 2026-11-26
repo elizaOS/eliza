@@ -29,6 +29,16 @@ module node {
     return { stdout: out.stdout, stderr: out.stderr }
   }
 
+  export async function commitGitNode(cwd: string, message: string): Promise<{ readonly stdout: string; readonly stderr: string }> {
+    const hasName = await execFileAsync("git", ["config", "--get", "user.name"], { cwd }).then((r) => r.stdout.trim().length > 0, () => false)
+    const hasEmail = await execFileAsync("git", ["config", "--get", "user.email"], { cwd }).then((r) => r.stdout.trim().length > 0, () => false)
+    const args: string[] = []
+    if (!hasName) args.push("-c", "user.name=Eliza Agent")
+    if (!hasEmail) args.push("-c", "user.email=agent@elizaos.ai")
+    args.push("commit", "-m", message)
+    return execGit(args, cwd)
+  }
+
   export async function measureDirBytesNode(dir: string): Promise<number> {
     let total = 0
     const walk = async (current: string): Promise<void> => {
@@ -61,6 +71,7 @@ module node {
   }
 }
 import {
+  commitGitNode,
   defaultWorkspacesDir,
   ensureDirNode,
   execGit,
@@ -379,7 +390,7 @@ export class CodingWorkspaceService extends Service {
       catch: (cause) => new WorkspaceOperationError({ workspaceId, code: "GIT_ADD_FAILED", reason: cause instanceof Error ? cause.message : "git add failed" }),
     })
     try tryPromise({
-      try: () => execGit(["commit", "-m", message], ws.path),
+      try: () => commitGitNode(ws.path, message),
       catch: (cause) => new WorkspaceOperationError({ workspaceId, code: "GIT_COMMIT_FAILED", reason: cause instanceof Error ? cause.message : "git commit failed" }),
     })
     const sha = tryPromise({
