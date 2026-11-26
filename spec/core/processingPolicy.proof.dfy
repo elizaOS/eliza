@@ -179,9 +179,9 @@ lemma ProcessingAdmissionMapped(s: ProcessingPolicies, after: ProcessingPolicies
 }
 
 lemma registerPolicyRuntime_ensures(s: ProcessingPolicies, by_: PolicyCaller, runtimeId: int)
+  ensures (inv(s) ==> canRegisterPolicyRuntime(s, by_, runtimeId) ==> alwaysWrapperKeepsPolicy(registerPolicyRuntime(s, by_, runtimeId)))
   ensures (inv(s) ==> canRegisterPolicyRuntime(s, by_, runtimeId) ==> alwaysRuntimeIdentitiesAreUnique(registerPolicyRuntime(s, by_, runtimeId)))
   ensures (inv(s) ==> canRegisterPolicyRuntime(s, by_, runtimeId) ==> alwaysWrapperIdentitiesAreUnique(registerPolicyRuntime(s, by_, runtimeId)))
-  ensures (inv(s) ==> canRegisterPolicyRuntime(s, by_, runtimeId) ==> alwaysWrapperKeepsPolicy(registerPolicyRuntime(s, by_, runtimeId)))
   ensures (inv(s) ==> canRegisterPolicyRuntime(s, by_, runtimeId) ==> alwaysPolicyAdmissionHasReceipt(registerPolicyRuntime(s, by_, runtimeId)))
   ensures (inv(s) ==> canRegisterPolicyRuntime(s, by_, runtimeId) ==> alwaysAdmissionIdsAreUnique(registerPolicyRuntime(s, by_, runtimeId)))
   ensures (inv(s) ==> canRegisterPolicyRuntime(s, by_, runtimeId) ==> alwaysPendingDecisionWasRequested(registerPolicyRuntime(s, by_, runtimeId)))
@@ -202,9 +202,9 @@ lemma registerPolicyRuntime_ensures(s: ProcessingPolicies, by_: PolicyCaller, ru
 }
 
 lemma registerRuntimeWrapper_ensures(s: ProcessingPolicies, by_: PolicyCaller, wrapperId: int, runtimeId: int)
+  ensures (inv(s) ==> canRegisterRuntimeWrapper(s, by_, wrapperId, runtimeId) ==> alwaysWrapperKeepsPolicy(registerRuntimeWrapper(s, by_, wrapperId, runtimeId)))
   ensures (inv(s) ==> canRegisterRuntimeWrapper(s, by_, wrapperId, runtimeId) ==> alwaysRuntimeIdentitiesAreUnique(registerRuntimeWrapper(s, by_, wrapperId, runtimeId)))
   ensures (inv(s) ==> canRegisterRuntimeWrapper(s, by_, wrapperId, runtimeId) ==> alwaysWrapperIdentitiesAreUnique(registerRuntimeWrapper(s, by_, wrapperId, runtimeId)))
-  ensures (inv(s) ==> canRegisterRuntimeWrapper(s, by_, wrapperId, runtimeId) ==> alwaysWrapperKeepsPolicy(registerRuntimeWrapper(s, by_, wrapperId, runtimeId)))
   ensures (inv(s) ==> canRegisterRuntimeWrapper(s, by_, wrapperId, runtimeId) ==> alwaysPolicyAdmissionHasReceipt(registerRuntimeWrapper(s, by_, wrapperId, runtimeId)))
   ensures (inv(s) ==> canRegisterRuntimeWrapper(s, by_, wrapperId, runtimeId) ==> alwaysAdmissionIdsAreUnique(registerRuntimeWrapper(s, by_, wrapperId, runtimeId)))
   ensures (inv(s) ==> canRegisterRuntimeWrapper(s, by_, wrapperId, runtimeId) ==> alwaysPendingDecisionWasRequested(registerRuntimeWrapper(s, by_, wrapperId, runtimeId)))
@@ -225,9 +225,9 @@ lemma registerRuntimeWrapper_ensures(s: ProcessingPolicies, by_: PolicyCaller, w
 }
 
 lemma bindPolicy_ensures(s: ProcessingPolicies, by_: PolicyCaller, runtimeId: int, policyId: int)
+  ensures (inv(s) ==> canBindPolicy(s, by_, runtimeId, policyId) ==> alwaysWrapperKeepsPolicy(bindPolicy(s, by_, runtimeId, policyId)))
   ensures (inv(s) ==> canBindPolicy(s, by_, runtimeId, policyId) ==> alwaysRuntimeIdentitiesAreUnique(bindPolicy(s, by_, runtimeId, policyId)))
   ensures (inv(s) ==> canBindPolicy(s, by_, runtimeId, policyId) ==> alwaysWrapperIdentitiesAreUnique(bindPolicy(s, by_, runtimeId, policyId)))
-  ensures (inv(s) ==> canBindPolicy(s, by_, runtimeId, policyId) ==> alwaysWrapperKeepsPolicy(bindPolicy(s, by_, runtimeId, policyId)))
   ensures (inv(s) ==> canBindPolicy(s, by_, runtimeId, policyId) ==> alwaysPolicyAdmissionHasReceipt(bindPolicy(s, by_, runtimeId, policyId)))
   ensures (inv(s) ==> canBindPolicy(s, by_, runtimeId, policyId) ==> alwaysAdmissionIdsAreUnique(bindPolicy(s, by_, runtimeId, policyId)))
   ensures (inv(s) ==> canBindPolicy(s, by_, runtimeId, policyId) ==> alwaysPendingDecisionWasRequested(bindPolicy(s, by_, runtimeId, policyId)))
@@ -273,9 +273,9 @@ lemma bindPolicy_ensures(s: ProcessingPolicies, by_: PolicyCaller, runtimeId: in
 }
 
 lemma beginAdmission_ensures(s: ProcessingPolicies, by_: PolicyCaller, admissionId: int, runtimeId: int, input: ProcessingInput)
+  ensures (inv(s) ==> canBeginAdmission(s, by_, admissionId, runtimeId, input) ==> alwaysWrapperKeepsPolicy(beginAdmission(s, by_, admissionId, runtimeId, input)))
   ensures (inv(s) ==> canBeginAdmission(s, by_, admissionId, runtimeId, input) ==> alwaysRuntimeIdentitiesAreUnique(beginAdmission(s, by_, admissionId, runtimeId, input)))
   ensures (inv(s) ==> canBeginAdmission(s, by_, admissionId, runtimeId, input) ==> alwaysWrapperIdentitiesAreUnique(beginAdmission(s, by_, admissionId, runtimeId, input)))
-  ensures (inv(s) ==> canBeginAdmission(s, by_, admissionId, runtimeId, input) ==> alwaysWrapperKeepsPolicy(beginAdmission(s, by_, admissionId, runtimeId, input)))
   ensures (inv(s) ==> canBeginAdmission(s, by_, admissionId, runtimeId, input) ==> alwaysPolicyAdmissionHasReceipt(beginAdmission(s, by_, admissionId, runtimeId, input)))
   ensures (inv(s) ==> canBeginAdmission(s, by_, admissionId, runtimeId, input) ==> alwaysAdmissionIdsAreUnique(beginAdmission(s, by_, admissionId, runtimeId, input)))
   ensures (inv(s) ==> canBeginAdmission(s, by_, admissionId, runtimeId, input) ==> alwaysPendingDecisionWasRequested(beginAdmission(s, by_, admissionId, runtimeId, input)))
@@ -303,9 +303,9 @@ lemma beginAdmission_ensures(s: ProcessingPolicies, by_: PolicyCaller, admission
 }
 
 lemma decideAdmission_ensures(s: ProcessingPolicies, by_: PolicyCaller, admissionId: int, output: PolicyOutput)
+  ensures (inv(s) ==> canDecideAdmission(s, by_, admissionId, output) ==> alwaysWrapperKeepsPolicy(decideAdmission(s, by_, admissionId, output)))
   ensures (inv(s) ==> canDecideAdmission(s, by_, admissionId, output) ==> alwaysRuntimeIdentitiesAreUnique(decideAdmission(s, by_, admissionId, output)))
   ensures (inv(s) ==> canDecideAdmission(s, by_, admissionId, output) ==> alwaysWrapperIdentitiesAreUnique(decideAdmission(s, by_, admissionId, output)))
-  ensures (inv(s) ==> canDecideAdmission(s, by_, admissionId, output) ==> alwaysWrapperKeepsPolicy(decideAdmission(s, by_, admissionId, output)))
   ensures (inv(s) ==> canDecideAdmission(s, by_, admissionId, output) ==> alwaysPolicyAdmissionHasReceipt(decideAdmission(s, by_, admissionId, output)))
   ensures (inv(s) ==> canDecideAdmission(s, by_, admissionId, output) ==> alwaysAdmissionIdsAreUnique(decideAdmission(s, by_, admissionId, output)))
   ensures (inv(s) ==> canDecideAdmission(s, by_, admissionId, output) ==> alwaysPendingDecisionWasRequested(decideAdmission(s, by_, admissionId, output)))
@@ -332,9 +332,9 @@ lemma decideAdmission_ensures(s: ProcessingPolicies, by_: PolicyCaller, admissio
 }
 
 lemma preparePayload_ensures(s: ProcessingPolicies, by_: PolicyCaller, admissionId: int, aborted: bool)
+  ensures (inv(s) ==> canPreparePayload(s, by_, admissionId, aborted) ==> alwaysWrapperKeepsPolicy(preparePayload(s, by_, admissionId, aborted)))
   ensures (inv(s) ==> canPreparePayload(s, by_, admissionId, aborted) ==> alwaysRuntimeIdentitiesAreUnique(preparePayload(s, by_, admissionId, aborted)))
   ensures (inv(s) ==> canPreparePayload(s, by_, admissionId, aborted) ==> alwaysWrapperIdentitiesAreUnique(preparePayload(s, by_, admissionId, aborted)))
-  ensures (inv(s) ==> canPreparePayload(s, by_, admissionId, aborted) ==> alwaysWrapperKeepsPolicy(preparePayload(s, by_, admissionId, aborted)))
   ensures (inv(s) ==> canPreparePayload(s, by_, admissionId, aborted) ==> alwaysPolicyAdmissionHasReceipt(preparePayload(s, by_, admissionId, aborted)))
   ensures (inv(s) ==> canPreparePayload(s, by_, admissionId, aborted) ==> alwaysAdmissionIdsAreUnique(preparePayload(s, by_, admissionId, aborted)))
   ensures (inv(s) ==> canPreparePayload(s, by_, admissionId, aborted) ==> alwaysPendingDecisionWasRequested(preparePayload(s, by_, admissionId, aborted)))

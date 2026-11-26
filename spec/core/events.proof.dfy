@@ -178,8 +178,8 @@ lemma EventMonotonicFilter(rows: seq<Subscription>, keep: Subscription -> bool)
 }
 
 lemma registerRun_ensures(s: EventState, runId: string, context: RunContext)
-  ensures (inv(s) ==> canRegisterRun(s, runId, context) ==> alwaysSessionUsesCallerOrRun(registerRun(s, runId, context)))
   ensures (inv(s) ==> canRegisterRun(s, runId, context) ==> alwaysRunSequencesNonnegative(registerRun(s, runId, context)))
+  ensures (inv(s) ==> canRegisterRun(s, runId, context) ==> alwaysSessionUsesCallerOrRun(registerRun(s, runId, context)))
   ensures (inv(s) ==> canRegisterRun(s, runId, context) ==> alwaysOneCurrentRegistration(registerRun(s, runId, context)))
   ensures (inv(s) ==> canRegisterRun(s, runId, context) ==> alwaysListenerOrderIsMonotonic(registerRun(s, runId, context)))
   ensures (inv(s) ==> canRegisterRun(s, runId, context) ==> alwaysListenerCursorIsValid(registerRun(s, runId, context)))
@@ -208,8 +208,8 @@ lemma registerRun_ensures(s: EventState, runId: string, context: RunContext)
 }
 
 lemma clearRun_ensures(s: EventState, runId: string)
-  ensures (inv(s) ==> alwaysSessionUsesCallerOrRun(clearRun(s, runId)))
   ensures (inv(s) ==> alwaysRunSequencesNonnegative(clearRun(s, runId)))
+  ensures (inv(s) ==> alwaysSessionUsesCallerOrRun(clearRun(s, runId)))
   ensures (inv(s) ==> alwaysOneCurrentRegistration(clearRun(s, runId)))
   ensures (inv(s) ==> alwaysListenerOrderIsMonotonic(clearRun(s, runId)))
   ensures (inv(s) ==> alwaysListenerCursorIsValid(clearRun(s, runId)))
@@ -238,8 +238,8 @@ lemma clearRun_ensures(s: EventState, runId: string)
 }
 
 lemma admitEvent_ensures(s: EventState, input: EventInput)
-  ensures (inv(s) ==> canAdmitEvent(s) ==> alwaysSessionUsesCallerOrRun(admitEvent(s, input)))
   ensures (inv(s) ==> canAdmitEvent(s) ==> alwaysRunSequencesNonnegative(admitEvent(s, input)))
+  ensures (inv(s) ==> canAdmitEvent(s) ==> alwaysSessionUsesCallerOrRun(admitEvent(s, input)))
   ensures (inv(s) ==> canAdmitEvent(s) ==> alwaysOneCurrentRegistration(admitEvent(s, input)))
   ensures (inv(s) ==> canAdmitEvent(s) ==> alwaysListenerOrderIsMonotonic(admitEvent(s, input)))
   ensures (inv(s) ==> canAdmitEvent(s) ==> alwaysListenerCursorIsValid(admitEvent(s, input)))
@@ -257,8 +257,8 @@ lemma admitEvent_ensures(s: EventState, input: EventInput)
 }
 
 lemma subscribe_ensures(s: EventState, callback: int, channel: ListenerChannel)
-  ensures (inv(s) ==> canSubscribe(s, callback, channel) ==> alwaysSessionUsesCallerOrRun(subscribe(s, callback, channel)))
   ensures (inv(s) ==> canSubscribe(s, callback, channel) ==> alwaysRunSequencesNonnegative(subscribe(s, callback, channel)))
+  ensures (inv(s) ==> canSubscribe(s, callback, channel) ==> alwaysSessionUsesCallerOrRun(subscribe(s, callback, channel)))
   ensures (inv(s) ==> canSubscribe(s, callback, channel) ==> alwaysOneCurrentRegistration(subscribe(s, callback, channel)))
   ensures (inv(s) ==> canSubscribe(s, callback, channel) ==> alwaysListenerOrderIsMonotonic(subscribe(s, callback, channel)))
   ensures (inv(s) ==> canSubscribe(s, callback, channel) ==> alwaysListenerCursorIsValid(subscribe(s, callback, channel)))
@@ -303,8 +303,8 @@ lemma subscribe_ensures(s: EventState, callback: int, channel: ListenerChannel)
 }
 
 lemma detach_ensures(s: EventState, callback: int, channel: ListenerChannel, generation: int)
-  ensures (inv(s) ==> canDetach(s, callback, channel, generation) ==> alwaysSessionUsesCallerOrRun(detach(s, callback, channel, generation)))
   ensures (inv(s) ==> canDetach(s, callback, channel, generation) ==> alwaysRunSequencesNonnegative(detach(s, callback, channel, generation)))
+  ensures (inv(s) ==> canDetach(s, callback, channel, generation) ==> alwaysSessionUsesCallerOrRun(detach(s, callback, channel, generation)))
   ensures (inv(s) ==> canDetach(s, callback, channel, generation) ==> alwaysOneCurrentRegistration(detach(s, callback, channel, generation)))
   ensures (inv(s) ==> canDetach(s, callback, channel, generation) ==> alwaysListenerOrderIsMonotonic(detach(s, callback, channel, generation)))
   ensures (inv(s) ==> canDetach(s, callback, channel, generation) ==> alwaysListenerCursorIsValid(detach(s, callback, channel, generation)))
@@ -363,8 +363,8 @@ lemma lawStaleHandleKeepsRegistrations_ensures(s: EventState, callback: int, cha
 }
 
 lemma beginListener_ensures(s: EventState)
-  ensures (inv(s) ==> canBeginListener(s) ==> alwaysSessionUsesCallerOrRun(beginListener(s)))
   ensures (inv(s) ==> canBeginListener(s) ==> alwaysRunSequencesNonnegative(beginListener(s)))
+  ensures (inv(s) ==> canBeginListener(s) ==> alwaysSessionUsesCallerOrRun(beginListener(s)))
   ensures (inv(s) ==> canBeginListener(s) ==> alwaysOneCurrentRegistration(beginListener(s)))
   ensures (inv(s) ==> canBeginListener(s) ==> alwaysListenerOrderIsMonotonic(beginListener(s)))
   ensures (inv(s) ==> canBeginListener(s) ==> alwaysListenerCursorIsValid(beginListener(s)))
@@ -390,8 +390,8 @@ lemma beginListener_ensures(s: EventState)
 }
 
 lemma finishOriginal_ensures(s: EventState)
-  ensures (inv(s) ==> canFinishOriginal(s) ==> alwaysSessionUsesCallerOrRun(finishOriginal(s)))
   ensures (inv(s) ==> canFinishOriginal(s) ==> alwaysRunSequencesNonnegative(finishOriginal(s)))
+  ensures (inv(s) ==> canFinishOriginal(s) ==> alwaysSessionUsesCallerOrRun(finishOriginal(s)))
   ensures (inv(s) ==> canFinishOriginal(s) ==> alwaysOneCurrentRegistration(finishOriginal(s)))
   ensures (inv(s) ==> canFinishOriginal(s) ==> alwaysListenerOrderIsMonotonic(finishOriginal(s)))
   ensures (inv(s) ==> canFinishOriginal(s) ==> alwaysListenerCursorIsValid(finishOriginal(s)))
@@ -430,8 +430,8 @@ lemma finishOriginal_ensures(s: EventState)
 }
 
 lemma emitListenerWarning_ensures(s: EventState, timestamp: int)
-  ensures (inv(s) ==> canEmitListenerWarning(s) ==> alwaysSessionUsesCallerOrRun(emitListenerWarning(s, timestamp)))
   ensures (inv(s) ==> canEmitListenerWarning(s) ==> alwaysRunSequencesNonnegative(emitListenerWarning(s, timestamp)))
+  ensures (inv(s) ==> canEmitListenerWarning(s) ==> alwaysSessionUsesCallerOrRun(emitListenerWarning(s, timestamp)))
   ensures (inv(s) ==> canEmitListenerWarning(s) ==> alwaysOneCurrentRegistration(emitListenerWarning(s, timestamp)))
   ensures (inv(s) ==> canEmitListenerWarning(s) ==> alwaysListenerOrderIsMonotonic(emitListenerWarning(s, timestamp)))
   ensures (inv(s) ==> canEmitListenerWarning(s) ==> alwaysListenerCursorIsValid(emitListenerWarning(s, timestamp)))
@@ -452,8 +452,8 @@ lemma emitListenerWarning_ensures(s: EventState, timestamp: int)
 }
 
 lemma reportListenerError_ensures(s: EventState, timestamp: int, canForward: bool)
-  ensures (inv(s) ==> canReportListenerError(s) ==> alwaysSessionUsesCallerOrRun(reportListenerError(s, timestamp, canForward)))
   ensures (inv(s) ==> canReportListenerError(s) ==> alwaysRunSequencesNonnegative(reportListenerError(s, timestamp, canForward)))
+  ensures (inv(s) ==> canReportListenerError(s) ==> alwaysSessionUsesCallerOrRun(reportListenerError(s, timestamp, canForward)))
   ensures (inv(s) ==> canReportListenerError(s) ==> alwaysOneCurrentRegistration(reportListenerError(s, timestamp, canForward)))
   ensures (inv(s) ==> canReportListenerError(s) ==> alwaysListenerOrderIsMonotonic(reportListenerError(s, timestamp, canForward)))
   ensures (inv(s) ==> canReportListenerError(s) ==> alwaysListenerCursorIsValid(reportListenerError(s, timestamp, canForward)))

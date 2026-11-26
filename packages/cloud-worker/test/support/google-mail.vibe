@@ -1,4 +1,4 @@
-// spec/cloud/services/google/mailOperations.md, "Story: Change or send from my mailbox once"; spec/cloud/services/google/mailRead.md, "Story: Read my mail through the cloud"
+// spec/cloud/services/google/mailOperations.md, "Story: Change or send from my mailbox once, as I reviewed it"; spec/cloud/services/google/mailRead.md, "Story: Read my mail through the grant I chose"
 import { scopeFor, storeGrant, type Owner } from "../../src/services/google/grant-access.vibe"
 import { googleFakeState, mountGoogleToken, seedGrant } from "./fakes/google.ts"
 import { gmailReads, readableMailbox } from "./fakes/google-gmail.ts"

@@ -52,22 +52,22 @@ effect function refusal(test: Case) {
 }
 
 const refusals: ReadonlyArray<readonly [string, string, Case]> = [
-  ["An unknown plugin stops boot", "A load list names only plugins the bundle carries or the agent's own modules",
+  ["An unknown plugin stops boot", `spec/agent/plugins/profile.md, "A load list names only plugins the bundle carries or the agent's own modules"`,
     { launch: { load: ["@elizaos/plugin-wallet"] } }],
-  ["A listed storage plugin stops boot", "Storage, the cloud link and the privacy service always load and cannot be listed",
+  ["A listed storage plugin stops boot", `spec/agent/plugins/profile.md, "Storage, the cloud link and the privacy service always load and cannot be listed"`,
     { launch: { load: ["@elizaos/agent/storage"] } }],
-  ["A product plugin named like an agent module stops boot", "Storage, the cloud link and the privacy service always load and cannot be listed",
+  ["A product plugin named like an agent module stops boot", `spec/agent/plugins/profile.md, "Storage, the cloud link and the privacy service always load and cannot be listed"`,
     { launch: { productPlugin: tasksModule } }],
-  ["A product plugin missing from the bundle stops boot", "The product plugin must be in the bundle",
+  ["A product plugin missing from the bundle stops boot", `spec/agent/plugins/profile.md, "The product plugin must be in the bundle"`,
     { launch: { productPlugin: productPlugin.name, allowed: ["REPLY", "IGNORE", "NONE", productActionName] } }],
-  ["A product route under a host prefix stops boot", "A product route never claims a route prefix an agent module owns",
+  ["A product route under a host prefix stops boot", `spec/agent/plugins/profile.md, "A product route never claims a route prefix an agent module owns"`,
     { launch: { productPlugin: hostClaimingPlugin.name, allowed: ["REPLY", "IGNORE", "NONE", productActionName] }, bundled: [hostClaimingPlugin] }],
-  ["A stale allowlist stops boot", "The agent is ready only when every allowed action is registered",
+  ["A stale allowlist stops boot", `spec/agent/plugins/profile.md, "The agent is ready only when every allowed action is registered"`,
     { launch: { allowed: ["REPLY", "IGNORE", "NONE", "RENAMED"] } }],
 ]
 
-for (const [title, rule, test] of refusals) {
-  it.effect(`${title} with Config (spec/agent/plugins/profile.md, "${rule}")`, effect () => {
+for (const [title, citation, test] of refusals) {
+  it.effect(`${title} with Config (${citation})`, effect () => {
     const phase = try refusal(test)
     try Effect.try(() => assert.strictEqual(phase, "Config"))
   }, 60_000)
@@ -81,7 +81,7 @@ it.effect.skipIf(!builtinModuleFactories.has(tasksModule))(`A product route unde
   try Effect.try(() => assert.strictEqual(phase, "Config"))
 }, 120_000)
 
-it.effect('A bundled package whose plugin has another name is refused, and one that exports no plugin is carried only as a hosted module (spec/agent/plugins/profile.md, "The product plugin must be in the bundle"; spec/agent/plugins/profile.md, "A load list names only plugins the bundle carries or the agent\'s own modules")', effect () => {
+it.effect(`A bundled package whose plugin has another name is refused, and one that exports no plugin is carried only as a hosted module (spec/agent/plugins/profile.md, "The product plugin must be in the bundle"; spec/agent/plugins/profile.md, "A load list names only plugins the bundle carries or the agent's own modules")`, effect () => {
   const failed = try Effect.flip(bundledPluginMap([{ packageName: "@product/plugin", plugin: productPlugin }]))
   const hostedName = "@elizaos/plugin-local-inference"
   const unexported = try Effect.flip(bundledPluginMap([{ packageName: hostedName, plugin: undefined }]))
@@ -92,7 +92,7 @@ it.effect('A bundled package whose plugin has another name is refused, and one t
   ))
 })
 
-it.effect('A malformed product route refuses the whole list, then a corrected launch serves its action and route (spec/agent/plugins/profile.md, "Story: Register my product\'s own actions and routes"; spec/agent/access/routes.md, "A list is loaded whole or not at all")', effect () => {
+it.effect(`A malformed product route refuses the whole list, then a corrected launch serves its action and route (spec/agent/plugins/profile.md, "Story: Register my product's own actions and routes"; spec/agent/access/routes.md, "A list is loaded whole or not at all")`, effect () => {
   const state = try scratch("plan-state")
   const launch = { persistMemory: true, productPlugin: productPlugin.name, allowed: ["REPLY", "IGNORE", "NONE", productActionName] }
   const invalid = try launched(state, {
@@ -120,9 +120,9 @@ it.effect('A malformed product route refuses the whole list, then a corrected la
 }, 120_000)
 
 const childRefusals: ReadonlyArray<readonly [string, string, LaunchOptions]> = [
-  ["An unknown plugin name", "A load list names only plugins the bundle carries or the agent's own modules", { load: ["@elizaos/plugin-wallet"] }],
-  ["A load list naming storage", "Storage, the cloud link and the privacy service always load and cannot be listed", { load: ["@elizaos/agent/storage"] }],
-  ["A named product that is not in the bundle", "The product plugin must be in the bundle", { productPlugin: "product-fixture", allowed: ["REPLY", "IGNORE", "NONE", productActionName] }],
+  ["An unknown plugin name", `spec/agent/plugins/profile.md, "A load list names only plugins the bundle carries or the agent's own modules"`, { load: ["@elizaos/plugin-wallet"] }],
+  ["A load list naming storage", `spec/agent/plugins/profile.md, "Storage, the cloud link and the privacy service always load and cannot be listed"`, { load: ["@elizaos/agent/storage"] }],
+  ["A named product that is not in the bundle", `spec/agent/plugins/profile.md, "The product plugin must be in the bundle"`, { productPlugin: "product-fixture", allowed: ["REPLY", "IGNORE", "NONE", productActionName] }],
 ]
 
 it.effect.skipIf(unbuiltModule === undefined)(`A listed built-in module without a factory exits 78 (spec/agent/plugins/profile.md, "A load list names only plugins the bundle carries or the agent's own modules")${unbuiltModule === undefined ? ": skipped, every built-in module has a factory" : `: ${unbuiltModule}`}`, effect () => {
@@ -131,8 +131,8 @@ it.effect.skipIf(unbuiltModule === undefined)(`A listed built-in module without 
   try Effect.try(() => assert.strictEqual(exited.code, 78))
 }, 120_000)
 
-for (const [title, rule, launch] of childRefusals) {
-  it.effect(`${title} exits 78 (spec/agent/plugins/profile.md, "${rule}")`, effect () => {
+for (const [title, citation, launch] of childRefusals) {
+  it.effect(`${title} exits 78 (${citation})`, effect () => {
     const booted = try boot({ launch })
     const exited = try host("exit", () => booted.child.exited)
     try Effect.try(() => assert.strictEqual(exited.code, 78))
@@ -152,7 +152,7 @@ it.effect('An agent with a cloud backend and no plugins is ready and registers s
   try Effect.try(() => assert.strictEqual(registered.length, 2))
 }, 180_000)
 
-it.effect('Plugins register as storage, the cloud link, the privacy service in the launch\'s mode, the listed plugins and the product last (spec/agent/plugins/profile.md, "Storage loads first, then the cloud link, the privacy service, the listed plugins in order and the product plugin last")', effect () => {
+it.effect(`Plugins register as storage, the cloud link, the privacy service in the launch's mode, the listed plugins and the product last (spec/agent/plugins/profile.md, "Storage loads first, then the cloud link, the privacy service, the listed plugins in order and the product plugin last")`, effect () => {
   const order = [storagePlugin, cloudLinkPlugin, privacyPlugin, listedPlugin.name, productPlugin.name]
   const registered: string[] = []
   const listen = (entry: LogEntry) => {

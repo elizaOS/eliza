@@ -150,7 +150,7 @@ it.live('A planner resend uses the remaining send and only keeps the origin of i
   assert.deepStrictEqual(heldRefusal instanceof ModelRefusal ? [heldRefusal.status, heldRefusal.limitOrigin, heldRefusal.limitCallId, completions(retried)] : undefined, [429, undefined, pendingId, 5])
 }, 45_000)
 
-it.effect('The cloud\'s own provider_unavailable refusal is retried on the next registration under a fresh idempotency key; a call takes at most one fresh key; a dropped connection, a bare gateway 502 or 504 and any other 503 keep the key; and the answer clears the account state (spec/agent/models/binding.md, "Only a network failure, an outage or a provider issue is retried, and a rate limit ends the call for its turn to re-send once")', effect () => {
+it.effect(`The cloud's own provider_unavailable refusal is retried on the next registration under a fresh idempotency key; a call takes at most one fresh key; a dropped connection, a bare gateway 502 or 504 and any other 503 keep the key; and the answer clears the account state (spec/agent/models/binding.md, "Only a network failure, an outage or a provider issue is retried, and a rate limit ends the call for its turn to re-send once")`, effect () => {
   const cloud = try cloudFake(deviceKey)
   const { runtime, binding } = try cloudAgent(cloud)
   try Effect.sync(() => cloud.script(
@@ -174,7 +174,7 @@ it.effect('The cloud\'s own provider_unavailable refusal is retried on the next 
   assert.strictEqual(view.lastCloudFailure?.kind, "provider_issue")
 })
 
-it.effect('A rate limit ends the call, blocks the next one without reaching the cloud, and funding is not retried, carrying Cloud\'s own code only when its 402 names one (spec/agent/models/binding.md, "Each refusal is one account state, and the last failure records its kind and time without text"; spec/agent/models/binding.md, "A cloud refusal that names spent credits or a spent allowance carries Cloud\'s own code, and no other refusal carries one"; spec/agent/models/binding.md, "A rate limit names whether the model provider or Cloud set it, and no other refusal names one")', effect () => {
+it.effect(`A rate limit ends the call, blocks the next one without reaching the cloud, and funding is not retried, carrying Cloud's own code only when its 402 names one (spec/agent/models/binding.md, "Each refusal is one account state, and the last failure records its kind and time without text"; spec/agent/models/binding.md, "A cloud refusal that names spent credits or a spent allowance carries Cloud's own code, and no other refusal carries one"; spec/agent/models/binding.md, "A rate limit names whether the model provider or Cloud set it, and no other refusal names one")`, effect () => {
   const cloud = try cloudFake(deviceKey)
   const limited = try refusedCloudAgent(cloud)
   const retryAt = Date.now() + 60_000
@@ -242,7 +242,7 @@ it.live('A caller abort ends the call without an account failure (spec/agent/mod
   assert.deepStrictEqual([view.accountState, view.lastCloudFailure], ["usable", undefined])
 })
 
-it.effect('The own-key backend answers text and image description, classifies its refusals into the same states with no Cloud code, probes its key and holds only a key its slot accepts (spec/agent/models/binding.md, "No text handler is ever served by a model on the device"; spec/agent/models/binding.md, "A key is held only in the slot of the backend it was given for, and only as a bearer credential that slot accepts"; spec/agent/models/binding.md, "A cloud refusal that names spent credits or a spent allowance carries Cloud\'s own code, and no other refusal carries one"; spec/agent/models/binding.md, "A rate limit names whether the model provider or Cloud set it, and no other refusal names one")', effect () => {
+it.effect(`The own-key backend answers text and image description, classifies its refusals into the same states with no Cloud code, probes its key and holds only a key its slot accepts (spec/agent/models/binding.md, "No text handler is ever served by a model on the device"; spec/agent/models/binding.md, "A key is held only in the slot of the backend it was given for, and only as a bearer credential that slot accepts"; spec/agent/models/binding.md, "A cloud refusal that names spent credits or a spent allowance carries Cloud's own code, and no other refusal carries one"; spec/agent/models/binding.md, "A rate limit names whether the model provider or Cloud set it, and no other refusal names one")`, effect () => {
   const cloud = try cloudFake(deviceKey)
   const own = { baseUrl: cloud.ownKeyBaseUrl, small: "small", large: "large" }
   const good = try bound({ kind: "ownKey", baseUrl: own.baseUrl, smallModel: "small", largeModel: "large" }, cloud.ownKey)
@@ -503,7 +503,7 @@ it.effect('An own-key overload or timeout is a provider issue and is retried, an
   assert.deepStrictEqual([bodies[0]?.temperature, bodies[0]?.stop, "max_tokens" in (bodies[0] ?? {}), "max_completion_tokens" in (bodies[0] ?? {}), bodies[2]?.max_completion_tokens], [0.2, ["\n\n"], false, false, 256])
 })
 
-it.effect('A model that takes a temperature gets the one its caller names, and an OpenAI reasoning model gets none and answers, on an own-key endpoint and on the cloud (spec/agent/models/binding.md, "A call sends its caller\'s temperature only to a model that takes one")', effect () => {
+it.effect(`A model that takes a temperature gets the one its caller names, and an OpenAI reasoning model gets none and answers, on an own-key endpoint and on the cloud (spec/agent/models/binding.md, "A call sends its caller's temperature only to a model that takes one")`, effect () => {
   const cloud = try cloudFake(deviceKey)
   const own = { baseUrl: cloud.ownKeyBaseUrl, small: "gpt-5-chat-latest", large: "o4-mini" }
   const made = try bound({ kind: "ownKey", baseUrl: own.baseUrl, smallModel: own.small, largeModel: own.large }, cloud.ownKey)
@@ -528,7 +528,7 @@ it.effect('A model that takes a temperature gets the one its caller names, and a
   assert.strictEqual((try made.binding.read()).accountState, "usable")
 })
 
-it.effect('An own-key launch\'s declaration decides whether a model takes a temperature, over what its id says (spec/agent/models/binding.md, "A call sends its caller\'s temperature only to a model that takes one")', effect () => {
+it.effect(`An own-key launch's declaration decides whether a model takes a temperature, over what its id says (spec/agent/models/binding.md, "A call sends its caller's temperature only to a model that takes one")`, effect () => {
   const cloud = try cloudFake(deviceKey)
   const sampling = { small: "takes-temperature", large: "default-temperature-only" } as const
   const own = { baseUrl: cloud.ownKeyBaseUrl, small: "gpt-5-tuned", large: "my-o3", sampling }
@@ -545,7 +545,7 @@ it.effect('An own-key launch\'s declaration decides whether a model takes a temp
   assert.strictEqual((try declared.binding.read()).accountState, "usable")
 })
 
-it.effect('A rate limit holds a cloud account for the provider\'s whole retry time and a Cerebras own-key account for at most 4 s, a refusal carries the provider\'s time left, a parse failure is not retried, as the provider or as the cloud names it, a thinking hint reaches only a model that documents it, and only a Qwen call on a Cerebras route sends the conversation cache key (spec/agent/models/binding.md, "A Qwen call on a Cerebras route sends the prompt cache key its caller names, and no call invents one"; spec/agent/models/binding.md, "A rate limit holds the account for the provider\'s whole retry time, and for at most 4 s on a Cerebras own-key endpoint"; spec/agent/models/binding.md, "A tool call the provider could not parse, or a streamed answer silent for a minute, ends the call without a retry"; spec/agent/models/binding.md, "A call sends an output cap only when its caller names one, and a thinking hint sets the reasoning effort only on a model that documents it")', effect () => {
+it.effect(`A rate limit holds a cloud account for the provider's whole retry time and a Cerebras own-key account for at most 4 s, a refusal carries the provider's time left, a parse failure is not retried, as the provider or as the cloud names it, a thinking hint reaches only a model that documents it, and only a Qwen call on a Cerebras route sends the conversation cache key (spec/agent/models/binding.md, "A Qwen call on a Cerebras route sends the prompt cache key its caller names, and no call invents one"; spec/agent/models/binding.md, "A rate limit holds the account for the provider's whole retry time, and for at most 4 s on a Cerebras own-key endpoint"; spec/agent/models/binding.md, "A tool call the provider could not parse, or a streamed answer silent for a minute, ends the call without a retry"; spec/agent/models/binding.md, "A call sends an output cap only when its caller names one, and a thinking hint sets the reasoning effort only on a model that documents it")`, effect () => {
   const cloud = try cloudFake(deviceKey)
   const held = try bound({ kind: "cloud", origin: cloud.origin, imageModel: "vision" }, deviceKey)
   registerCloudModels(held.runtime, held.binding, { baseUrl: cloud.origin, small: "small", large: "cerebras/qwen-3.8-27b", image: "vision" })

@@ -242,11 +242,10 @@ lemma AudienceMapGraph(s: AudienceLease, after: AudienceLease)
 }
 
 lemma endTurn_ensures(s: AudienceLease, by_: AudienceCaller, lease: int)
+  ensures (inv(s) ==> canEndTurn(s, by_, lease) ==> alwaysAllowedEvidenceIsFresh(endTurn(s, by_, lease)))
   ensures (inv(s) ==> canEndTurn(s, by_, lease) ==> alwaysLeaseCountersAreValid(endTurn(s, by_, lease)))
   ensures (inv(s) ==> canEndTurn(s, by_, lease) ==> alwaysCapturedObjectsRetained(endTurn(s, by_, lease)))
   ensures (inv(s) ==> canEndTurn(s, by_, lease) ==> alwaysDerivedTimeIsCaptured(endTurn(s, by_, lease)))
-  ensures (inv(s) ==> canEndTurn(s, by_, lease) ==> alwaysAllowedEvidenceIsFresh(endTurn(s, by_, lease)))
-
 {
   if inv(s) && canEndTurn(s, by_, lease) {
     var after := endTurn(s, by_, lease);
@@ -256,11 +255,10 @@ lemma endTurn_ensures(s: AudienceLease, by_: AudienceCaller, lease: int)
 }
 
 lemma markSensitiveUsed_ensures(s: AudienceLease, by_: AudienceCaller)
+  ensures (inv(s) ==> canMarkSensitiveUsed(s, by_) ==> alwaysAllowedEvidenceIsFresh(markSensitiveUsed(s, by_)))
   ensures (inv(s) ==> canMarkSensitiveUsed(s, by_) ==> alwaysLeaseCountersAreValid(markSensitiveUsed(s, by_)))
   ensures (inv(s) ==> canMarkSensitiveUsed(s, by_) ==> alwaysCapturedObjectsRetained(markSensitiveUsed(s, by_)))
   ensures (inv(s) ==> canMarkSensitiveUsed(s, by_) ==> alwaysDerivedTimeIsCaptured(markSensitiveUsed(s, by_)))
-  ensures (inv(s) ==> canMarkSensitiveUsed(s, by_) ==> alwaysAllowedEvidenceIsFresh(markSensitiveUsed(s, by_)))
-
 {
   if inv(s) && canMarkSensitiveUsed(s, by_) {
     var after := markSensitiveUsed(s, by_);
@@ -271,11 +269,10 @@ lemma markSensitiveUsed_ensures(s: AudienceLease, by_: AudienceCaller)
 }
 
 lemma observeRenewalAuthority_ensures(s: AudienceLease, by_: AudienceCaller, renewalId: int, authority: AuthorityObservation, sequence: int)
+  ensures (inv(s) ==> canObserveRenewalAuthority(s, by_, renewalId, authority, sequence) ==> alwaysAllowedEvidenceIsFresh(observeRenewalAuthority(s, by_, renewalId, authority, sequence)))
   ensures (inv(s) ==> canObserveRenewalAuthority(s, by_, renewalId, authority, sequence) ==> alwaysLeaseCountersAreValid(observeRenewalAuthority(s, by_, renewalId, authority, sequence)))
   ensures (inv(s) ==> canObserveRenewalAuthority(s, by_, renewalId, authority, sequence) ==> alwaysCapturedObjectsRetained(observeRenewalAuthority(s, by_, renewalId, authority, sequence)))
   ensures (inv(s) ==> canObserveRenewalAuthority(s, by_, renewalId, authority, sequence) ==> alwaysDerivedTimeIsCaptured(observeRenewalAuthority(s, by_, renewalId, authority, sequence)))
-  ensures (inv(s) ==> canObserveRenewalAuthority(s, by_, renewalId, authority, sequence) ==> alwaysAllowedEvidenceIsFresh(observeRenewalAuthority(s, by_, renewalId, authority, sequence)))
-
 {
   if inv(s) && canObserveRenewalAuthority(s, by_, renewalId, authority, sequence) {
     var after := observeRenewalAuthority(s, by_, renewalId, authority, sequence);
@@ -286,11 +283,10 @@ lemma observeRenewalAuthority_ensures(s: AudienceLease, by_: AudienceCaller, ren
 }
 
 lemma finishRenewal_ensures(s: AudienceLease, by_: AudienceCaller, renewalId: int, signalAborted: bool)
+  ensures (inv(s) ==> canFinishRenewal(s, by_, renewalId) ==> alwaysAllowedEvidenceIsFresh(finishRenewal(s, by_, renewalId, signalAborted)))
   ensures (inv(s) ==> canFinishRenewal(s, by_, renewalId) ==> alwaysLeaseCountersAreValid(finishRenewal(s, by_, renewalId, signalAborted)))
   ensures (inv(s) ==> canFinishRenewal(s, by_, renewalId) ==> alwaysCapturedObjectsRetained(finishRenewal(s, by_, renewalId, signalAborted)))
   ensures (inv(s) ==> canFinishRenewal(s, by_, renewalId) ==> alwaysDerivedTimeIsCaptured(finishRenewal(s, by_, renewalId, signalAborted)))
-  ensures (inv(s) ==> canFinishRenewal(s, by_, renewalId) ==> alwaysAllowedEvidenceIsFresh(finishRenewal(s, by_, renewalId, signalAborted)))
-
 {
   if inv(s) && canFinishRenewal(s, by_, renewalId) {
     var call := renewalAt(s, renewalId);
@@ -315,11 +311,10 @@ lemma finishRenewal_ensures(s: AudienceLease, by_: AudienceCaller, renewalId: in
 }
 
 lemma attest_ensures(s: AudienceLease, by_: AudienceCaller, audience: Audience, lifetime: int, sequence: int)
+  ensures (inv(s) ==> canAttest(s, by_, audience, lifetime, sequence) ==> alwaysAllowedEvidenceIsFresh(attest(s, by_, audience, lifetime, sequence)))
   ensures (inv(s) ==> canAttest(s, by_, audience, lifetime, sequence) ==> alwaysLeaseCountersAreValid(attest(s, by_, audience, lifetime, sequence)))
   ensures (inv(s) ==> canAttest(s, by_, audience, lifetime, sequence) ==> alwaysCapturedObjectsRetained(attest(s, by_, audience, lifetime, sequence)))
   ensures (inv(s) ==> canAttest(s, by_, audience, lifetime, sequence) ==> alwaysDerivedTimeIsCaptured(attest(s, by_, audience, lifetime, sequence)))
-  ensures (inv(s) ==> canAttest(s, by_, audience, lifetime, sequence) ==> alwaysAllowedEvidenceIsFresh(attest(s, by_, audience, lifetime, sequence)))
-
 {
   if inv(s) && canAttest(s, by_, audience, lifetime, sequence) {
     var after := attest(s, by_, audience, lifetime, sequence);
@@ -342,11 +337,10 @@ lemma attest_ensures(s: AudienceLease, by_: AudienceCaller, audience: Audience, 
 }
 
 lemma beginRenewal_ensures(s: AudienceLease, by_: AudienceCaller, runtimeId: string, identityMatches: bool, signalAborted: bool)
+  ensures (inv(s) ==> canBeginRenewal(s, by_, runtimeId, identityMatches, signalAborted) ==> alwaysAllowedEvidenceIsFresh(beginRenewal(s, by_, runtimeId, identityMatches, signalAborted)))
   ensures (inv(s) ==> canBeginRenewal(s, by_, runtimeId, identityMatches, signalAborted) ==> alwaysLeaseCountersAreValid(beginRenewal(s, by_, runtimeId, identityMatches, signalAborted)))
   ensures (inv(s) ==> canBeginRenewal(s, by_, runtimeId, identityMatches, signalAborted) ==> alwaysCapturedObjectsRetained(beginRenewal(s, by_, runtimeId, identityMatches, signalAborted)))
   ensures (inv(s) ==> canBeginRenewal(s, by_, runtimeId, identityMatches, signalAborted) ==> alwaysDerivedTimeIsCaptured(beginRenewal(s, by_, runtimeId, identityMatches, signalAborted)))
-  ensures (inv(s) ==> canBeginRenewal(s, by_, runtimeId, identityMatches, signalAborted) ==> alwaysAllowedEvidenceIsFresh(beginRenewal(s, by_, runtimeId, identityMatches, signalAborted)))
-
 {
   if inv(s) && canBeginRenewal(s, by_, runtimeId, identityMatches, signalAborted) {
     var after := beginRenewal(s, by_, runtimeId, identityMatches, signalAborted);
@@ -363,11 +357,10 @@ lemma beginRenewal_ensures(s: AudienceLease, by_: AudienceCaller, runtimeId: str
 }
 
 lemma beginTurn_ensures(s: AudienceLease, by_: AudienceCaller, runtimeId: string, signal: int)
+  ensures (inv(s) ==> canBeginTurn(s, by_, runtimeId, signal) ==> alwaysAllowedEvidenceIsFresh(beginTurn(s, by_, runtimeId, signal)))
   ensures (inv(s) ==> canBeginTurn(s, by_, runtimeId, signal) ==> alwaysLeaseCountersAreValid(beginTurn(s, by_, runtimeId, signal)))
   ensures (inv(s) ==> canBeginTurn(s, by_, runtimeId, signal) ==> alwaysCapturedObjectsRetained(beginTurn(s, by_, runtimeId, signal)))
   ensures (inv(s) ==> canBeginTurn(s, by_, runtimeId, signal) ==> alwaysDerivedTimeIsCaptured(beginTurn(s, by_, runtimeId, signal)))
-  ensures (inv(s) ==> canBeginTurn(s, by_, runtimeId, signal) ==> alwaysAllowedEvidenceIsFresh(beginTurn(s, by_, runtimeId, signal)))
-
 {
   if inv(s) && canBeginTurn(s, by_, runtimeId, signal) {
     AudienceBeginTurnCounters(s, by_, runtimeId, signal);

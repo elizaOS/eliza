@@ -253,7 +253,7 @@ pure val stagedImage: ImageExpectation = { fingerprint: "vendor/product:16/BP1A/
   defaultPermissions: List("android.permission.RECORD_AUDIO"), privilegedPermissions: List(), listener: false, boot: BootAtLeast({ minimum: Yellow }) }
 pure val phoneStatePermission = "android.permission.READ_PRIVILEGED_PHONE_STATE"
 pure val stagedListener: ListenerReading = ListenerRead({ privilegedSystemPackage: true, indicatorKept: true, domain: L::listenerSelinuxDomain,
-  granted: L::listenerPrivilegedPermissions.concat(List("android.permission.RECORD_AUDIO")) })
+  granted: L::joinPermissions(L::listenerPrivilegedPermissions, List("android.permission.RECORD_AUDIO")) })
 pure val bootedAsStaged: ImageObservation = { fingerprint: FingerprintRead({ fingerprint: stagedImage.fingerprint }), launcher: SystemApk({ sha256: stagedApk }),
   home: Read({ holds: true }), stockHome: Read({ holds: true }), clock: ClockRead({ clockEnabled: true, handledActions: clockAlarmActions }),
   webView: Read({ holds: true }), grants: GrantsRead({ granted: List(audioGrant) }), sameBoot: Read({ holds: true }), selinux: Enforcing,
@@ -273,6 +273,8 @@ pure val observationValues = Set(bootedAsStaged, { ...bootedAsStaged, selinux: P
   { ...bootedAsStaged, camera: CameraRead({ cameraEnabled: true, systemHandles: secureCaptureActions, launcherHandles: List(),
     gestureEnabled: true, gesturePackage: Pv::secureCameraPackage, gestureNotDisabled: false, cameraHardware: true }) }, { ...bootedAsStaged, privilege: PrivilegeRead({ privilegedApp: false, granted: List() }) },
   { ...bootedAsStaged, home: Unread })
-pure def lawTheStagedImagePasses(expectation: ImageExpectation): bool =
-  (expectation.boot != BootAtLeast({ minimum: Green })) implies imageVerdict(expectation, bootedAsStaged) == Pass
+pure def lawTheStagedImagePasses(withListener: bool, lockedTarget: bool, withPrivileges: bool): bool =
+  imageVerdict({ ...stagedImage, listener: withListener,
+    boot: if (lockedTarget) BootAtLeast({ minimum: Yellow }) else BootUnchecked,
+    privilegedPermissions: if (withPrivileges) List(phoneStatePermission) else List() }, bootedAsStaged) == Pass
 ```

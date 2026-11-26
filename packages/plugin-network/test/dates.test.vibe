@@ -10,7 +10,7 @@ const stated = (text: string, today: string) => {
 }
 const equal = <A>(actual: A, expected: A) => Effect.try(() => assert.deepStrictEqual(actual, expected))
 
-it.effect('A weekday placed in next week, in any of its wordings or letter cases, ends on that weekday of the next calendar week, and a bare weekday on its next occurrence (spec/network/index.md, "A stated weekday or day of the month is read on the member\'s own calendar")', effect () => {
+it.effect(`A weekday placed in next week, in any of its wordings or letter cases, ends on that weekday of the next calendar week, and a bare weekday on its next occurrence (spec/network/index.md, "A stated weekday or day of the month is read on the member's own calendar")`, effect () => {
   const wednesday = "2026-10-14"
   const texts = [
     "I'm in Lisbon until Friday next week", "I'm in Lisbon until Friday of next week", "I'm in Lisbon until Friday Next Week", "I'm in Lisbon until next week Friday",
@@ -29,7 +29,7 @@ it.effect('A weekday placed in next week, in any of its wordings or letter cases
   ])
 })
 
-it.effect('A range starts in next week when the member says next week, and an end that does not come after its start is read again from the start (spec/network/index.md, "A stated weekday or day of the month is read on the member\'s own calendar")', effect () => {
+it.effect(`A range starts in next week when the member says next week, and an end that does not come after its start is read again from the start (spec/network/index.md, "A stated weekday or day of the month is read on the member's own calendar")`, effect () => {
   const monday = "2026-10-12"
   const texts = ["I'm away from next week Tuesday until Friday", "I'm away next week from Tuesday until Friday", "I'm away from Tuesday until Friday next week", "I'm away from Tuesday until Friday"]
   try equal(texts.map((text) => stated(text, monday)), [
@@ -39,7 +39,7 @@ it.effect('A range starts in next week when the member says next week, and an en
   try equal(stated("I'm away from next week Tuesday until Friday", "2026-10-14"), ["I'm away from next week Tuesday until Friday", "2026-10-20", "2026-10-23"])
 })
 
-it.effect('A day of the month that falls today keeps today, a passed one moves to its next month, and a range starting on it starts today (spec/network/index.md, "A stated weekday or day of the month is read on the member\'s own calendar"; spec/network/index.md, "Availability uses the member\'s own evidence and calendar window")', effect () => {
+it.effect(`A day of the month that falls today keeps today, a passed one moves to its next month, and a range starting on it starts today (spec/network/index.md, "A stated weekday or day of the month is read on the member's own calendar"; spec/network/index.md, "Availability uses the member's own evidence and calendar window")`, effect () => {
   const wednesday = "2026-10-14"
   const texts = ["I'm in Lisbon until the 14th", "I'm in Lisbon until 14th", "I'm in Lisbon until the 14", "I'm in Lisbon until the 13th", "I'm in Lisbon until the 31st", "I'm in Lisbon from the 14th until the 20th", "I'm in Lisbon until 2026-10-20", "I'm in Lisbon until 14", "I'm in Lisbon until next week"]
   try equal(texts.map((text) => stated(text, wednesday)), [

@@ -27,6 +27,25 @@ model words the reply from it: the owner sees the result's card as it is,
 and its sentences only as the model put them. Only the question Maps asks
 before it shares a place is shown in its own words, with its choices.
 
+```quint
+type MapsRecognition = ModelRecognized | PreModelRouted
+type MapsDispatch = RunMapsAction | RejectPreModelRoute
+type MapsHandler = MapsActionHandler | MapsViewHandler
+type MapsReplyKind = MapsResultReply | MapsShareQuestion
+type MapsReplyWording = ModelWordedReply | MapsOwnWordsReply
+pure def mapsDispatch(recognition: MapsRecognition): MapsDispatch =
+  if (recognition == ModelRecognized) RunMapsAction else RejectPreModelRoute
+pure def answersMapsRequest(handler: MapsHandler): bool = handler == MapsActionHandler
+pure def mapsReplyWording(kind: MapsReplyKind): MapsReplyWording =
+  if (kind == MapsShareQuestion) MapsOwnWordsReply else ModelWordedReply
+pure def lawPreModelMapsRoutingIsNeverAdmitted(recognition: MapsRecognition): bool =
+  mapsDispatch(recognition) == RunMapsAction iff recognition == ModelRecognized
+pure def lawOpeningMapsViewNeverAnswersAMapsRequest(handler: MapsHandler): bool =
+  answersMapsRequest(handler) iff handler == MapsActionHandler
+pure def lawOnlyShareQuestionUsesMapsOwnWords(kind: MapsReplyKind): bool =
+  mapsReplyWording(kind) == MapsOwnWordsReply iff kind == MapsShareQuestion
+```
+
 ### A place named with its locality is taken only from that locality, and otherwise Maps asks which one
 
 A typed place is looked up and taken when exactly one result fits it, or

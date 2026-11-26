@@ -1,102 +1,86 @@
 // spec/embeddings/index.md, "Story: Embed every input in the configured vector space"
-import { ModelType, toWellFormedUnicode, VECTOR_DIMS, type IAgentRuntime, type Plugin } from "@elizaos/core"
-import { Machine, embeddingAdmission, machine, type EmbeddingAttempt } from "../gen/embeddings.effect.vibe"
-import { Cause, Schema } from "effect"
+import { logger, ModelType, type IAgentRuntime, type Plugin } from "@elizaos/core"
+import {
+  DEFAULT_EMBEDDING_MODEL,
+  getEmbeddingBaseURL,
+  getEmbeddingDimensions,
+  hasEmbeddingConfig,
+  logResolvedConfig,
+  readInitialPluginConfig,
+  shouldEnable,
+  validateEmbeddingDimension,
+} from "./config.vibe"
+import { handleBatchTextEmbedding, handleTextEmbedding } from "./embedding.vibe"
 
-module node {
-  import { fetchWithConfidentialInference } from "@elizaos/core"
-
-  export function requestEmbedding(address: string, model: string, key: string, texts: readonly string[], width: number | undefined, signal: AbortSignal) {
-    return fetchWithConfidentialInference(address.replace(/\/+$/, "") + "/embeddings", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...(key === "" ? {} : { Authorization: `Bearer ${key}` }) },
-      body: JSON.stringify({ model, input: texts, ...(width === undefined ? {} : { dimensions: width }) }),
-      redirect: "error",
-      signal: AbortSignal.any([signal, AbortSignal.timeout(30000)]),
-    }, globalThis.fetch)
-  }
-}
-import { requestEmbedding } from node
-
-export error EmbeddingProviderFailed { reason: string }
-
-const reply = Schema.Struct({
-  data: Schema.Array(Schema.Struct({ index: Schema.Int, embedding: Schema.Array(Schema.Number) })),
-})
-const decodeReply = Schema.decodeUnknownEffect(reply)
-
-function getSetting(runtime: IAgentRuntime, key: string): string {
-  const found = runtime.getSetting(key)
-  return typeof found === "string" ? found.trim() : typeof found === "number" ? String(found) : ""
-}
-
-effect function ask(runtime: IAgentRuntime, texts: readonly string[], width: number, explicitWidth: boolean, attempt: EmbeddingAttempt) {
-  const prefix = attempt === "PrimaryAttempt" ? "EMBEDDING_" : "EMBEDDING_FALLBACK_"
-  const baseUrl = getSetting(runtime, prefix + "BASE_URL")
-  const model = getSetting(runtime, prefix + "MODEL") || getSetting(runtime, "EMBEDDING_MODEL") || "text-embedding-3-small"
-  const key = getSetting(runtime, prefix + "API_KEY")
-  const response = try tryPromise({
-    try: (signal) => requestEmbedding(baseUrl, model, key, texts, explicitWidth ? width : undefined, signal),
-    catch: () => new EmbeddingProviderFailed({ reason: "The embedding endpoint could not be reached." }),
-  })
-  if (!response.ok) throw new EmbeddingProviderFailed({ reason: `Embedding endpoint returned HTTP ${response.status}.` })
-  const body: unknown = try tryPromise({ try: () => response.json(), catch: () => new EmbeddingProviderFailed({ reason: "The embedding reply was not JSON." }) })
-  const decoded = decodeReply(body) catch effect () => { throw new EmbeddingProviderFailed({ reason: "The embedding reply had invalid vectors." }) }
-  return [...decoded.data].sort((a, b) => a.index - b.index)
-}
-
-effect function embed(runtime: IAgentRuntime, texts: readonly string[]) {
-  const requested = getSetting(runtime, "EMBEDDING_DIMENSIONS")
-  const width = requested === "" ? VECTOR_DIMS.XXL : Number(requested)
-  const inputs = texts.map((text) => toWellFormedUnicode(text.trim()))
-  if (inputs.length === 0) return []
-  if (!Object.values<number>(VECTOR_DIMS).includes(width) || inputs.some((text) => text === "")) {
-    throw new EmbeddingProviderFailed({ reason: "Embedding text or configured vector width is invalid." })
-  }
-  const admitted = embeddingAdmission("EmbedBatch", inputs.length, getSetting(runtime, "EMBEDDING_BASE_URL"), width, requested !== "")
-  if (admitted.tag !== "RequestVectors") throw new EmbeddingProviderFailed({ reason: "No primary embedding endpoint is configured." })
-  provide machine() {
-    const run = try Machine
-    let snapshot = try run.send({ type: "beginEmbedding", inputCount: admitted.count, width: admitted.expectedWidth, hasFallback: getSetting(runtime, "EMBEDDING_FALLBACK_BASE_URL") !== "" })
-    while (snapshot.phase === "Awaiting") {
-      const result = try Effect.exit(effect {
-        const rows = try ask(runtime, inputs, admitted.expectedWidth, admitted.sendWidth, snapshot.attempt)
-        const observations = rows.map((row) => ({ inputIndex: row.index, vectorWidth: row.embedding.length, finiteCoordinates: row.embedding.every(Number.isFinite) }))
-        try run.send({ type: "finishEmbedding", attempt: snapshot.attempt, rows: observations })
-        return rows.map((row) => [...row.embedding])
-      })
-      if (result._tag === "Success") return result.value
-      if (Cause.hasInterruptsOnly(result.cause)) return try Effect.failCause(result.cause)
-      snapshot = try run.send({ type: "failEmbedding", attempt: snapshot.attempt })
-      if (snapshot.phase === "EmbeddingExhausted") return try Effect.failCause(result.cause)
-    }
-    throw new EmbeddingProviderFailed({ reason: "The embedding request did not complete." })
-  }
-}
-
-function probe(runtime: IAgentRuntime): Promise<number[]> {
-  const requested = getSetting(runtime, "EMBEDDING_DIMENSIONS")
-  const width = requested === "" ? VECTOR_DIMS.XXL : Number(requested)
-  const admitted = embeddingAdmission("ProbeWidth", 0, getSetting(runtime, "EMBEDDING_BASE_URL"), width, requested !== "")
-  if (admitted.tag !== "ReturnWidth" || !Object.values<number>(VECTOR_DIMS).includes(admitted.width)) {
-    return Promise.reject(new EmbeddingProviderFailed({ reason: "No usable embedding shape is configured." }))
-  }
-  return Promise.resolve(Array.from({ length: admitted.width }, (_item, index) => index === 0 ? 0.1 : 0))
-}
-
-export const plugin: Plugin = {
+export const embeddingsPlugin: Plugin = {
   name: "@elizaos/plugin-embeddings",
-  description: "Configured OpenAI-compatible embedding endpoint with ordered, exact-width batches and bounded failover.",
-  models: {
-    [ModelType.TEXT_EMBEDDING]: async (runtime, params) => {
-      if (params === null) return await probe(runtime)
-      const input = typeof params === "string" ? params : params.text
-      const [vector] = await runPromise(embed(runtime, [input]), typeof params === "object" ? { signal: params.signal } : undefined)
-      if (vector === undefined) throw new EmbeddingProviderFailed({ reason: "The provider did not return an embedding." })
-      return vector
+  description:
+    "Configured OpenAI-compatible embedding endpoint with ordered, exact-width batches and bounded failover.",
+  autoEnable: {
+    envKeys: ["EMBEDDING_BASE_URL", "EMBEDDING_API_KEY"],
+    shouldEnable: (env) => shouldEnable({ env, config: {}, isNativePlatform: false }),
+  },
+  priority: 1,
+  config: readInitialPluginConfig(),
+  async init(_config, runtime: IAgentRuntime) {
+    if (!hasEmbeddingConfig(runtime)) {
+      logger.warn(
+        "[Embeddings] Neither EMBEDDING_BASE_URL nor EMBEDDING_API_KEY is set — embedding calls will throw until one is configured.",
+      )
+      return
+    }
+    validateEmbeddingDimension(getEmbeddingDimensions(runtime))
+    if (!getEmbeddingBaseURL(runtime)) {
+      logger.warn(
+        "[Embeddings] EMBEDDING_API_KEY is set but EMBEDDING_BASE_URL is not — set the endpoint URL for embedding calls to succeed.",
+      )
+    }
+    logResolvedConfig(runtime)
+    if (getEmbeddingBaseURL(runtime)) {
+      void handleTextEmbedding(runtime, "warmup")
+        .then(() => logger.debug("[Embeddings] Endpoint warm"))
+        .catch(() => undefined)
+    }
+  },
+  modelMetadata: {
+    [ModelType.TEXT_EMBEDDING]: {
+      displayModelSetting: "EMBEDDING_MODEL",
+      displayModelDefault: DEFAULT_EMBEDDING_MODEL,
     },
-    [ModelType.TEXT_EMBEDDING_BATCH]: (runtime, params) => runPromise(embed(runtime, params.texts)),
+  },
+  models: {
+    [ModelType.TEXT_EMBEDDING]: handleTextEmbedding,
+    [ModelType.TEXT_EMBEDDING_BATCH]: (runtime, params) =>
+      handleBatchTextEmbedding(runtime, params.texts),
   },
 }
 
-export default plugin
+export const plugin = embeddingsPlugin
+export default embeddingsPlugin
+
+export {
+  DEFAULT_EMBEDDING_DIMENSIONS,
+  DEFAULT_EMBEDDING_MODEL,
+  getAuthHeader,
+  getBooleanSetting,
+  getEmbeddingApiKey,
+  getEmbeddingBaseURL,
+  getEmbeddingDimensions,
+  getEmbeddingFallbackApiKey,
+  getEmbeddingFallbackBaseURL,
+  getEmbeddingFallbackModel,
+  getEmbeddingModel,
+  getEndpointAuthHeader,
+  getNumericSetting,
+  getSetting,
+  hasEmbeddingConfig,
+  hasExplicitDimensions,
+  logResolvedConfig,
+  shouldEnable,
+  validateEmbeddingDimension,
+  type VectorDimension,
+} from "./config.vibe"
+export { handleBatchTextEmbedding, handleTextEmbedding } from "./embedding.vibe"
+export { EmbeddingProviderFailed } from "./errors.vibe"
+export { emitModelUsageEvent, type EmbeddingUsage } from "./events.vibe"
+export type { EmbeddingResponse, TokenUsage } from "./types.vibe"

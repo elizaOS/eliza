@@ -40,9 +40,9 @@ lemma registerConnector_ensures(s: ConnectorState, source: string, account: stri
   ensures (inv(s) ==> canRegisterConnector(s, source, account, handler) ==> alwaysUsesCapturedHandler(registerConnector(s, source, account, handler)))
   ensures (inv(s) ==> canRegisterConnector(s, source, account, handler) ==> alwaysAwaitBeforeInvocation(registerConnector(s, source, account, handler)))
   ensures (inv(s) ==> canRegisterConnector(s, source, account, handler) ==> alwaysSuccessRequiresSettlement(registerConnector(s, source, account, handler)))
-  ensures (inv(s) ==> canRegisterConnector(s, source, account, handler) ==> alwaysHandlerHasInvoked(registerConnector(s, source, account, handler)))
   ensures (inv(s) ==> canRegisterConnector(s, source, account, handler) ==> alwaysSelectableHandlersAreValid(registerConnector(s, source, account, handler)))
   ensures (inv(s) ==> canRegisterConnector(s, source, account, handler) ==> alwaysAwaitedCallbackWasSelected(registerConnector(s, source, account, handler)))
+  ensures (inv(s) ==> canRegisterConnector(s, source, account, handler) ==> alwaysHandlerHasInvoked(registerConnector(s, source, account, handler)))
   ensures (inv(s) ==> canRegisterConnector(s, source, account, handler) ==> stepCapturedOwnerStable(s, "registerConnector", registerConnector(s, source, account, handler)))
 {
   if inv(s) && canRegisterConnector(s, source, account, handler) {
@@ -74,9 +74,9 @@ lemma registerTransport_ensures(s: ConnectorState, source: string, account: stri
   ensures (inv(s) ==> canRegisterTransport(s, source, account, handler) ==> alwaysUsesCapturedHandler(registerTransport(s, source, account, handler)))
   ensures (inv(s) ==> canRegisterTransport(s, source, account, handler) ==> alwaysAwaitBeforeInvocation(registerTransport(s, source, account, handler)))
   ensures (inv(s) ==> canRegisterTransport(s, source, account, handler) ==> alwaysSuccessRequiresSettlement(registerTransport(s, source, account, handler)))
-  ensures (inv(s) ==> canRegisterTransport(s, source, account, handler) ==> alwaysHandlerHasInvoked(registerTransport(s, source, account, handler)))
   ensures (inv(s) ==> canRegisterTransport(s, source, account, handler) ==> alwaysSelectableHandlersAreValid(registerTransport(s, source, account, handler)))
   ensures (inv(s) ==> canRegisterTransport(s, source, account, handler) ==> alwaysAwaitedCallbackWasSelected(registerTransport(s, source, account, handler)))
+  ensures (inv(s) ==> canRegisterTransport(s, source, account, handler) ==> alwaysHandlerHasInvoked(registerTransport(s, source, account, handler)))
   ensures (inv(s) ==> canRegisterTransport(s, source, account, handler) ==> stepCapturedOwnerStable(s, "registerTransport", registerTransport(s, source, account, handler)))
 {
   if inv(s) && canRegisterTransport(s, source, account, handler) {
@@ -99,9 +99,9 @@ lemma dispatchConnector_ensures(s: ConnectorState)
   ensures (inv(s) ==> canDispatchConnector(s) ==> alwaysUsesCapturedHandler(dispatchConnector(s)))
   ensures (inv(s) ==> canDispatchConnector(s) ==> alwaysAwaitBeforeInvocation(dispatchConnector(s)))
   ensures (inv(s) ==> canDispatchConnector(s) ==> alwaysSuccessRequiresSettlement(dispatchConnector(s)))
-  ensures (inv(s) ==> canDispatchConnector(s) ==> alwaysHandlerHasInvoked(dispatchConnector(s)))
   ensures (inv(s) ==> canDispatchConnector(s) ==> alwaysSelectableHandlersAreValid(dispatchConnector(s)))
   ensures (inv(s) ==> canDispatchConnector(s) ==> alwaysAwaitedCallbackWasSelected(dispatchConnector(s)))
+  ensures (inv(s) ==> canDispatchConnector(s) ==> alwaysHandlerHasInvoked(dispatchConnector(s)))
   ensures (inv(s) ==> canDispatchConnector(s) ==> stepCapturedOwnerStable(s, "dispatchConnector", dispatchConnector(s)))
 {
   if inv(s) && canDispatchConnector(s) {
@@ -114,9 +114,9 @@ lemma removeConnector_ensures(s: ConnectorState, source: string, account: string
   ensures (inv(s) ==> canRemoveConnector(s, source, account) ==> alwaysUsesCapturedHandler(removeConnector(s, source, account)))
   ensures (inv(s) ==> canRemoveConnector(s, source, account) ==> alwaysAwaitBeforeInvocation(removeConnector(s, source, account)))
   ensures (inv(s) ==> canRemoveConnector(s, source, account) ==> alwaysSuccessRequiresSettlement(removeConnector(s, source, account)))
-  ensures (inv(s) ==> canRemoveConnector(s, source, account) ==> alwaysHandlerHasInvoked(removeConnector(s, source, account)))
   ensures (inv(s) ==> canRemoveConnector(s, source, account) ==> alwaysSelectableHandlersAreValid(removeConnector(s, source, account)))
   ensures (inv(s) ==> canRemoveConnector(s, source, account) ==> alwaysAwaitedCallbackWasSelected(removeConnector(s, source, account)))
+  ensures (inv(s) ==> canRemoveConnector(s, source, account) ==> alwaysHandlerHasInvoked(removeConnector(s, source, account)))
   ensures (inv(s) ==> canRemoveConnector(s, source, account) ==> stepCapturedOwnerStable(s, "removeConnector", removeConnector(s, source, account)))
 {
   if inv(s) && canRemoveConnector(s, source, account) {
@@ -139,9 +139,9 @@ lemma removeSource_ensures(s: ConnectorState, source: string)
   ensures (inv(s) ==> canRemoveSource(s, source) ==> alwaysUsesCapturedHandler(removeSource(s, source)))
   ensures (inv(s) ==> canRemoveSource(s, source) ==> alwaysAwaitBeforeInvocation(removeSource(s, source)))
   ensures (inv(s) ==> canRemoveSource(s, source) ==> alwaysSuccessRequiresSettlement(removeSource(s, source)))
-  ensures (inv(s) ==> canRemoveSource(s, source) ==> alwaysHandlerHasInvoked(removeSource(s, source)))
   ensures (inv(s) ==> canRemoveSource(s, source) ==> alwaysSelectableHandlersAreValid(removeSource(s, source)))
   ensures (inv(s) ==> canRemoveSource(s, source) ==> alwaysAwaitedCallbackWasSelected(removeSource(s, source)))
+  ensures (inv(s) ==> canRemoveSource(s, source) ==> alwaysHandlerHasInvoked(removeSource(s, source)))
   ensures (inv(s) ==> canRemoveSource(s, source) ==> stepCapturedOwnerStable(s, "removeSource", removeSource(s, source)))
 {
   if inv(s) && canRemoveSource(s, source) {

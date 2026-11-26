@@ -211,8 +211,9 @@ pure val reviewedInputs: QualifiedInputs = { packageName: { parent: "com.example
   sepolicy: Sha256({ hex: "s1" }), patches: List({ name: "ops", manifestSha256: "p2" }, { name: "chip", manifestSha256: "p1" }) }
 pure val reviewedGates: List[GateRow] = listenerGates.listMap(g => { gate: g, result: GatePassed({ evidence: Sha256({ hex: "v1" }) }) })
 pure val reviewedSigner: Digest = Sha256({ hex: "c1" })
+pure def joinPermissions(a: List[str], b: List[str]): List[str] = a.concat(b)
 pure val reviewedListener: ListenerApk = { packageName: { parent: "com.example", leaf: "sense" }, sha256: Sha256({ hex: "l1" }), signer: OneSigner({ certificate: reviewedSigner }),
-  buildType: ReleaseBuild, requested: listenerPrivilegedPermissions.concat(listenerRequiredPermissions), layout: ZipAligned, speech: SpeechPinned }
+  buildType: ReleaseBuild, requested: joinPermissions(listenerPrivilegedPermissions, listenerRequiredPermissions), layout: ZipAligned, speech: SpeechPinned }
 pure val reviewedRequest: ListenerRequest = { launcherPackage: "com.example", launcherSigner: reviewedSigner, launcherApk: Sha256({ hex: "a1" }), launcherDescriptor: Sha256({ hex: "d1" }),
   listener: reviewedListener, descriptor: ListenerReviewed({ bytes: Sha256({ hex: "d2" }), packageName: reviewedListener.packageName, apk: Sha256({ hex: "l1" }), certificate: reviewedSigner }),
   wakeNames: List(WakeWord({ word: "hey" })), overlay: { roles: indicatorExemptRoles.listMap(r => { role: r, value: RoleCleared }), microphoneToggle: true, powerAssistant: true,

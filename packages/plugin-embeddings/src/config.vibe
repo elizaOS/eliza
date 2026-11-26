@@ -1,0 +1,190 @@
+// spec/embeddings/index.md, "An endpoint attempt uses the configured representation and count"
+import {
+  logger,
+  rawEnv,
+  resolveSetting,
+  VECTOR_DIMS,
+  type IAgentRuntime,
+  type PluginAutoEnableContext,
+} from "@elizaos/core"
+import { autoEnableEmbedding, isValidVectorWidth } from "../gen/embeddings.effect.vibe"
+import { providerFailure, type EmbeddingProviderFailed } from "./errors.vibe"
+
+export type VectorDimension = (typeof VECTOR_DIMS)[keyof typeof VECTOR_DIMS]
+
+export const DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small"
+export const DEFAULT_EMBEDDING_DIMENSIONS = VECTOR_DIMS.XXL
+const VALID_DIMENSIONS: readonly number[] = Object.values(VECTOR_DIMS)
+const DECIMAL_INTEGER_PATTERN = /^\d+$/
+
+export function getSetting(
+  runtime: IAgentRuntime,
+  key: string,
+  defaultValue?: string,
+): string | undefined {
+  return defaultValue === undefined
+    ? resolveSetting(runtime, key)
+    : resolveSetting(runtime, key, { defaultValue })
+}
+
+export effect function readPositiveIntegerSetting(
+  runtime: IAgentRuntime,
+  key: string,
+  defaultValue: number,
+): number!EmbeddingProviderFailed {
+  const value = getSetting(runtime, key)
+  const trimmed = value?.trim()
+  if (trimmed === undefined || trimmed === "") {
+    return defaultValue
+  }
+  if (!DECIMAL_INTEGER_PATTERN.test(trimmed)) {
+    throw providerFailure({ reason: `Setting '${key}' must be a valid integer, got: ${value}` })
+  }
+  const parsed = Number.parseInt(trimmed, 10)
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
+    throw providerFailure({ reason: `Setting '${key}' must be a valid integer, got: ${value}` })
+  }
+  return parsed
+}
+
+export effect function checkEmbeddingDimension(dimension: number): VectorDimension!EmbeddingProviderFailed {
+  if (!Number.isSafeInteger(dimension) || !isValidVectorWidth(dimension)) {
+    throw providerFailure({
+      reason: `Invalid embedding dimension: ${dimension}. Must be one of: ${VALID_DIMENSIONS.join(", ")}`,
+    })
+  }
+  return dimension as VectorDimension
+}
+
+module configEdge {
+  import { Effect } from "effect"
+  import type { IAgentRuntime } from "@elizaos/core"
+  import {
+    checkEmbeddingDimension,
+    DEFAULT_EMBEDDING_DIMENSIONS,
+    readPositiveIntegerSetting,
+    type VectorDimension,
+  } from "./config.vibe"
+
+  /** @throws {Error} */
+  export function getNumericSetting(
+    runtime: IAgentRuntime,
+    key: string,
+    defaultValue: number,
+  ): number {
+    return Effect.runSync(readPositiveIntegerSetting(runtime, key, defaultValue))
+  }
+
+  /** @throws {Error} */
+  export function getEmbeddingDimensions(runtime: IAgentRuntime): number {
+    return Effect.runSync(
+      readPositiveIntegerSetting(runtime, "EMBEDDING_DIMENSIONS", DEFAULT_EMBEDDING_DIMENSIONS),
+    )
+  }
+
+  /** @throws {Error} */
+  export function validateEmbeddingDimension(dimension: number): VectorDimension {
+    return Effect.runSync(checkEmbeddingDimension(dimension))
+  }
+}
+import { getEmbeddingDimensions, getNumericSetting, validateEmbeddingDimension } from configEdge
+export { getEmbeddingDimensions, getNumericSetting, validateEmbeddingDimension }
+
+export function getBooleanSetting(
+  runtime: IAgentRuntime,
+  key: string,
+  defaultValue: boolean,
+): boolean {
+  const value = getSetting(runtime, key)
+  if (value === undefined) return defaultValue
+  const normalized = value.trim().toLowerCase()
+  return normalized === "true" || normalized === "1" || normalized === "yes"
+}
+
+function nonEmptySetting(runtime: IAgentRuntime, key: string): string | undefined {
+  const value = getSetting(runtime, key)?.trim()
+  return value && value.length > 0 ? value : undefined
+}
+
+export function getEmbeddingBaseURL(runtime: IAgentRuntime): string | undefined {
+  return nonEmptySetting(runtime, "EMBEDDING_BASE_URL")
+}
+
+export function getEmbeddingApiKey(runtime: IAgentRuntime): string | undefined {
+  return nonEmptySetting(runtime, "EMBEDDING_API_KEY")
+}
+
+export function getEmbeddingModel(runtime: IAgentRuntime): string {
+  return nonEmptySetting(runtime, "EMBEDDING_MODEL") ?? DEFAULT_EMBEDDING_MODEL
+}
+
+export function getEmbeddingFallbackBaseURL(runtime: IAgentRuntime): string | undefined {
+  return nonEmptySetting(runtime, "EMBEDDING_FALLBACK_BASE_URL")
+}
+
+export function getEmbeddingFallbackApiKey(runtime: IAgentRuntime): string | undefined {
+  return nonEmptySetting(runtime, "EMBEDDING_FALLBACK_API_KEY")
+}
+
+export function getEmbeddingFallbackModel(runtime: IAgentRuntime): string {
+  return nonEmptySetting(runtime, "EMBEDDING_FALLBACK_MODEL") ?? getEmbeddingModel(runtime)
+}
+
+export function hasExplicitDimensions(runtime: IAgentRuntime): boolean {
+  const value = getSetting(runtime, "EMBEDDING_DIMENSIONS")
+  return typeof value === "string" && value.trim().length > 0
+}
+
+export effect function resolveEmbeddingDimension(runtime: IAgentRuntime): VectorDimension!EmbeddingProviderFailed {
+  const dimension = try readPositiveIntegerSetting(
+    runtime,
+    "EMBEDDING_DIMENSIONS",
+    DEFAULT_EMBEDDING_DIMENSIONS,
+  )
+  return try checkEmbeddingDimension(dimension)
+}
+
+export function getEndpointAuthHeader(apiKey: string | undefined): Record<string, string> {
+  return apiKey ? { Authorization: `Bearer ${apiKey}` } : {}
+}
+
+export function getAuthHeader(runtime: IAgentRuntime): Record<string, string> {
+  return getEndpointAuthHeader(getEmbeddingApiKey(runtime))
+}
+
+export function shouldEnable(ctx: PluginAutoEnableContext): boolean {
+  const hasBaseUrl = typeof ctx.env.EMBEDDING_BASE_URL === "string"
+    && ctx.env.EMBEDDING_BASE_URL.trim() !== ""
+  const hasApiKey = typeof ctx.env.EMBEDDING_API_KEY === "string"
+    && ctx.env.EMBEDDING_API_KEY.trim() !== ""
+  return autoEnableEmbedding(hasBaseUrl, hasApiKey)
+}
+
+export function hasEmbeddingConfig(runtime: IAgentRuntime): boolean {
+  return autoEnableEmbedding(
+    getEmbeddingBaseURL(runtime) !== undefined,
+    getEmbeddingApiKey(runtime) !== undefined,
+  )
+}
+
+export function readInitialPluginConfig(): Record<string, string | null> {
+  return {
+    EMBEDDING_BASE_URL: rawEnv("EMBEDDING_BASE_URL") ?? null,
+    EMBEDDING_API_KEY: rawEnv("EMBEDDING_API_KEY") ?? null,
+    EMBEDDING_MODEL: rawEnv("EMBEDDING_MODEL") ?? null,
+    EMBEDDING_FALLBACK_BASE_URL: rawEnv("EMBEDDING_FALLBACK_BASE_URL") ?? null,
+    EMBEDDING_FALLBACK_API_KEY: rawEnv("EMBEDDING_FALLBACK_API_KEY") ?? null,
+    EMBEDDING_FALLBACK_MODEL: rawEnv("EMBEDDING_FALLBACK_MODEL") ?? null,
+    EMBEDDING_DIMENSIONS: rawEnv("EMBEDDING_DIMENSIONS") ?? null,
+  }
+}
+
+export function logResolvedConfig(runtime: IAgentRuntime): void {
+  const baseURL = getEmbeddingBaseURL(runtime)
+  const fallbackBaseURL = getEmbeddingFallbackBaseURL(runtime)
+  const model = getEmbeddingModel(runtime)
+  const dimensions = getSetting(runtime, "EMBEDDING_DIMENSIONS")?.trim() || String(DEFAULT_EMBEDDING_DIMENSIONS)
+  logger.info(
+    `[Embeddings] model=${model} dimensions=${dimensions} endpoint=${baseURL ?? "(unset)"} fallback=${fallbackBaseURL ?? "(unset)"}`,
+  )
+}

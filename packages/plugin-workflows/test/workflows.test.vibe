@@ -220,7 +220,7 @@ effect function saved(rig: Harness, draft: PhoneWorkflowSpec, copy = "") {
   return { catalog, receipt, mutationId, specDigest: validated.specDigest }
 }
 
-it.effect('Show Workflows while a workflow call runs, without changing which calls of it run (spec/agent/conversation/planning.md, "A tool\'s progress names its app only when one labelled app applies, and never its arguments or results")', effect () => {
+it.effect(`Show Workflows while a workflow call runs, without changing which calls of it run (spec/agent/conversation/planning.md, "A tool's progress names its app only when one labelled app applies, and never its arguments or results")`, effect () => {
   const runtime = { contexts: try Effect.try(() => new ContextRegistry([workflowsContext])) } as unknown as IAgentRuntime
   const label = try Effect.try(() => activityLabel(runtime, workflowAction))
   assert.deepStrictEqual([label, workflowAction.contexts], ["Using Workflows", ["general", "automation", "tasks", "agent_internal"]])
@@ -372,7 +372,7 @@ it.live('Remove a workflow only when its runs are settled and restore it safely 
   try check(() => assert.deepStrictEqual(phone.performed, []))
 })
 
-it.live('Change the workflow I named in my own words (spec/workflow/lifecycle.md, "Story: Change the workflow I named in my own words"; spec/workflow/lifecycle.md, "A workflow change runs as the planner proposed it, which is the model\'s reading of the owner\'s request"; spec/workflow/lifecycle.md, "A workflow reference resolves to the one workflow the owner named, and a remove or rename never acts on part of a name"; spec/workflow/lifecycle.md, "A workflow the owner names never shares its name"; spec/workflow/lifecycle.md, "Story: Hear from chat what my workflows are and what happened to them"; spec/workflow/lifecycle.md, "A search ranks workflows by how many of its words their name or description holds"; spec/workflow/lifecycle.md, "Only a change refused before it wrote says nothing changed, and an unread list is never an empty one"; spec/workflow/hostedDigest.md, "A chat dossier reads only the one current reviewed phone source the owner chose")', effect () => {
+it.live(`Change the workflow I named in my own words (spec/workflow/lifecycle.md, "Story: Change the workflow I named in my own words"; spec/workflow/lifecycle.md, "A workflow change runs as the planner proposed it, which is the model's reading of the owner's request"; spec/workflow/lifecycle.md, "A workflow reference resolves to the one workflow the owner named, and a remove or rename never acts on part of a name"; spec/workflow/lifecycle.md, "A workflow the owner names never shares its name"; spec/workflow/lifecycle.md, "Story: Hear from chat what my workflows are and what happened to them"; spec/workflow/lifecycle.md, "A search ranks workflows by how many of its words their name or description holds"; spec/workflow/lifecycle.md, "Only a change refused before it wrote says nothing changed, and an unread list is never an empty one"; spec/workflow/hostedDigest.md, "A chat dossier reads only the one current reviewed phone source the owner chose")`, effect () => {
   const rig = try harness({ draft: () => JSON.stringify({ name: "Drafted", description: "Drafts a summary", source: generatedSource }) })
   const morning = (try saved(rig, greeting)).receipt
   const garden = (try saved(rig, manual("Garden digest", greeting.steps))).receipt
@@ -465,7 +465,7 @@ it.live('Change the workflow I named in my own words (spec/workflow/lifecycle.md
   }))
 })
 
-it.live('Change only the workflow the planner\'s name and ID agree on (spec/workflow/lifecycle.md, "A workflow change runs as the planner proposed it, which is the model\'s reading of the owner\'s request"; spec/workflow/lifecycle.md, "A workflow reference resolves to the one workflow the owner named, and a remove or rename never acts on part of a name")', effect () => {
+it.live(`Change only the workflow the planner's name and ID agree on (spec/workflow/lifecycle.md, "A workflow change runs as the planner proposed it, which is the model's reading of the owner's request"; spec/workflow/lifecycle.md, "A workflow reference resolves to the one workflow the owner named, and a remove or rename never acts on part of a name")`, effect () => {
   const rig = try harness()
   const named = (try saved(rig, manual("Lunch and Learn", greeting.steps))).receipt.workflowId
   const other = (try saved(rig, manual("Evening digest", greeting.steps))).receipt.workflowId
@@ -481,7 +481,7 @@ it.live('Change only the workflow the planner\'s name and ID agree on (spec/work
     ["WORKFLOW_REF_MISMATCH", true, "Talk and Learn: Q4", "Evening digest", false]))
 })
 
-it.live('Decide one reviewed approval once and run its device step only as reviewed (spec/workflow/approvals.md, "Story: Decide one reviewed approval once and run its device step only as reviewed"; spec/workflow/runScope.md, "Story: A reviewed calendar read stays inside its run\'s scope")', effect () => {
+it.live(`Decide one reviewed approval once and run its device step only as reviewed (spec/workflow/approvals.md, "Story: Decide one reviewed approval once and run its device step only as reviewed"; spec/workflow/runScope.md, "Story: A reviewed calendar read stays inside its run's scope")`, effect () => {
   const phone: Phone = { performed: [], notes: [{ id: "n1", title: "Plan", text: "Ship it" }] }
   const rig = try harness({ phone })
   const revision = try workflowSha(["Plan", "Ship it"])
@@ -606,7 +606,7 @@ it.live('Acknowledge a page of digests only after it is stored (spec/workflow/ho
   }
 })
 
-it.live('Run a digest over a live Google source read through managed Google (spec/workflow/hostedDigest.md, "Story: Acknowledge a page of digests only after it is stored"; spec/workflow/hostedDigest.md, "Source freshness and newer results determine whether a retry offer is visible"; spec/workflow/hostedDigest.md, "Story: Read my evening brief over the evening\'s window")', effect () => {
+it.live(`Run a digest over a live Google source read through managed Google (spec/workflow/hostedDigest.md, "Story: Acknowledge a page of digests only after it is stored"; spec/workflow/hostedDigest.md, "Source freshness and newer results determine whether a retry offer is visible"; spec/workflow/hostedDigest.md, "Story: Read my evening brief over the evening's window")`, effect () => {
   provide KeyValueStore.layerMemory {
     const prompts: string[] = []
     const google = {
@@ -804,7 +804,7 @@ export default async function (ctx: WorkflowContext) {
 }
 `
 
-it.live('Recover a parked workflow without creating a second execution, past rows it cannot read, and keep each run storable and bounded (spec/workflow/execution.md, "Story: Recover a parked workflow without creating a second execution"; spec/workflow/execution.md, "One unreadable run or schedule does not stop the recovery of the others"; spec/workflow/execution.md, "A run\'s stored record leaves out U+0000, which the store cannot hold"; spec/workflow/execution.md, "A stored run keeps its newest 200 progress events and every timer and approval event, and counts the ones it dropped")', effect () => {
+it.live(`Recover a parked workflow without creating a second execution, past rows it cannot read, and keep each run storable and bounded (spec/workflow/execution.md, "Story: Recover a parked workflow without creating a second execution"; spec/workflow/execution.md, "One unreadable run or schedule does not stop the recovery of the others"; spec/workflow/execution.md, "A run's stored record leaves out U+0000, which the store cannot hold"; spec/workflow/execution.md, "A stored run keeps its newest 200 progress events and every timer and approval event, and counts the ones it dropped")`, effect () => {
   const nul = String.fromCharCode(0)
   const rig = try harness({ draft: () => `Invoice 42${nul} paid` })
   const invoice = (try saved(rig, manual("Invoice summary", [

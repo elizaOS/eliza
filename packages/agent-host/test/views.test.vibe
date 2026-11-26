@@ -39,7 +39,7 @@ const result = (agent: InProcess, binding: unknown, claimId: string, switched: b
 const bindingOf = (body: unknown): ViewBinding => (body as { navigationBinding: ViewBinding }).navigationBinding
 const claimIdOf = (body: unknown): string => (body as { claimId: string }).claimId
 
-it.effect('Prepare, claim and confirm a switch through the routes (spec/agent/views.md, "A navigation is prepared only for a declared view and a request id not seen before"; spec/agent/views.md, "A claim names its request\'s exact binding and succeeds once"; spec/agent/views.md, "A result is accepted once, with its claim id, and a navigation result says whether it switched")', effect () => {
+it.effect(`Prepare, claim and confirm a switch through the routes (spec/agent/views.md, "A navigation is prepared only for a declared view and a request id not seen before"; spec/agent/views.md, "A claim names its request's exact binding and succeeds once"; spec/agent/views.md, "A result is accepted once, with its claim id, and a navigation result says whether it switched")`, effect () => {
   const agent = try startInProcess(loaded)
   try viewHost(agent)
 
@@ -278,7 +278,7 @@ it.live('A completed turn prepares the saved editor for the note the model named
   })
 }, 120_000)
 
-it.effect('A second prepare supersedes an unclaimed navigation, waits for a claimed one and is refused only if it stays claimed, and a lost claim or wait is unknown (spec/agent/views.md, "Preparing again supersedes the client\'s unclaimed navigation and is refused while one is claimed"; spec/agent/views.md, "A request whose renderer left, whose delivery failed or whose wait ran out ends unknown and never changes again")', effect () => {
+it.effect(`A second prepare supersedes an unclaimed navigation, waits for a claimed one and is refused only if it stays claimed, and a lost claim or wait is unknown (spec/agent/views.md, "Preparing again supersedes the client's unclaimed navigation and is refused while one is claimed"; spec/agent/views.md, "A request whose renderer left, whose delivery failed or whose wait ran out ends unknown and never changes again")`, effect () => {
   const agent = try startInProcess(loaded)
   const { views } = try viewHost(agent)
 
@@ -394,7 +394,7 @@ effect function show(agent: InProcess, message: Memory, view: string) {
   })
 }
 
-it.effect('The VIEWS show action prepares a navigation for the turn\'s renderer by alias, and the renderer confirms it (spec/agent/views.md, "The agent prepares a navigation only for the renderer bound to its turn and one view its name resolves to"; spec/agent/views.md, "The model is told every declared view by its names, and on a bound turn the view the owner\'s screen showed"; spec/agent/views.md, "A result is accepted once, with its claim id, and a navigation result says whether it switched")', effect () => {
+it.effect(`The VIEWS show action prepares a navigation for the turn's renderer by alias, and the renderer confirms it (spec/agent/views.md, "The agent prepares a navigation only for the renderer bound to its turn and one view its name resolves to"; spec/agent/views.md, "The model is told every declared view by its names, and on a bound turn the view the owner's screen showed"; spec/agent/views.md, "A result is accepted once, with its claim id, and a navigation result says whether it switched")`, effect () => {
   const agent = try startInProcess(loaded)
   try viewHost(agent)
   const renderer = turn({ viewClientId: "c2", viewDelivery: "completed-action" })
