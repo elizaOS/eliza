@@ -13,12 +13,13 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.function.Function;
 import java.util.regex.Pattern;
 
 public final class CloudRequestPolicy {
   public static final long INLINE_LIMIT = 8_388_608L;
   public static final long REPLY_LIMIT = 67_108_864L;
-  public static final List<String> PROVIDER_HOSTS = List.of("checkout.stripe.com", "billing.stripe.com", "accounts.google.com");
+  public static final List<String> PROVIDER_HOSTS = List.of("checkout.stripe.com", "billing.stripe.com", "invoice.stripe.com", "accounts.google.com");
   public static final String IDEMPOTENCY_KEY = "Idempotency-Key", IF_MATCH = "If-Match", IF_NONE_MATCH = "If-None-Match", ACCEPT = "Accept", AUTHORIZATION = "Authorization";
   public static final List<String> BASE_HEADERS = List.of(AUTHORIZATION, "Content-Type", "X-Request-ID", "Traceparent", "Tracestate");
 
@@ -75,10 +76,12 @@ public final class CloudRequestPolicy {
     gate.load(cloudTableAccepted(routes) ? routes : List.of());
   }
 
-  static CloudRequestPolicy forMailReads() {
+  static CloudRequestPolicy forMailReads() { return forMailReads(MailReadRoutes::queriesFor); }
+
+  static CloudRequestPolicy forMailReads(Function<String, List<String>> queriesFor) {
     List<RouteGate.Route> reads = new ArrayList<>();
     for (DeviceRoute route : DEVICE_ROUTES) {
-      List<String> keys = MailReadRoutes.queriesFor("/" + String.join("/", route.path()));
+      List<String> keys = queriesFor.apply("/" + String.join("/", route.path()));
       if (route.method() != Method.GET || !mailRoute(route) || keys == null) continue;
       reads.add(new RouteGate.Route(Method.GET, RouteGate.Delivery.BUFFERED,
         route.path().stream().map(RouteGate.Piece::new).toList(),
@@ -353,6 +356,7 @@ public final class CloudRequestPolicy {
       route(get, google("gmail", "read"), mail),
       route(get, google("gmail", "inbox-v1", "arrival"), key),
       route(get, google("gmail", "inbox-v1", "capabilities"), mail),
+      route(get, google("gmail", "inbox-v1", "history"), mail),
       route(get, google("gmail", "inbox-v1", "thread"), mail),
       route(get, google("gmail", "inbox-v1", "attachment"), mail),
       route(get, google("gmail", "inbox-v1", "drafts"), mail),

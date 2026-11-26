@@ -36,6 +36,8 @@ it.effect('A document with any bad part is refused whole (spec/agent/host/launch
     launchDocument({ backend: { kind: "cloud", origin: "https://cloud.example/api/v1" } }),
     launchDocument({ backend: { kind: "cloud", origin: "http://cloud.example" } }),
     mutate({ backend: ownKeyBackend }, (d) => ({ ...d, model: { backend: "own-key", ownKeyBaseUrl: "https://own.example/v1" } })),
+    launchDocument({ backend: { ...ownKeyBackend, sampling: { large: "no-temperature" as "default-temperature-only" } } }),
+    mutate({ backend: ownKeyBackend }, (d) => ({ ...d, model: { ...(d.model as object), ownKeySampling: { large: "default-temperature-only", image: "takes-temperature" } } })),
     mutate({}, (d) => ({ ...d, embeddings: "local" })),
     mutate({}, (d) => ({ ...d, embeddings: "local", embeddingDimensions: 0 })),
     launchDocument({ environment: { NODE_OPTIONS: "--x" } }),
@@ -59,10 +61,11 @@ it.effect('Admitted documents include a path-less cloud origin, own key and loca
   const accepted = try Effect.forEach([
     launchDocument({ backend: cloudBackend }),
     launchDocument({ backend: ownKeyBackend }),
+    launchDocument({ backend: { ...ownKeyBackend, sampling: { small: "takes-temperature", large: "default-temperature-only" } } }),
     mutate({}, (d) => ({ ...d, embeddings: "local", embeddingDimensions: 384 })),
     launchDocument({ retention: { days: 0.25, maxRowsPerRoom: 200, intervalMinutes: 30 } }),
   ], (document) => parseLaunch(JSON.stringify(document), frame))
-  try Effect.try(() => assert.strictEqual(accepted.length, 4))
+  try Effect.try(() => assert.strictEqual(accepted.length, 5))
 })
 
 it.effect('A retention under a thousandth of a day still has a positive age and boots (spec/agent/host/launch.md, "Plugin settings never set a reserved key, and log retention bounds are positive")', effect () => {

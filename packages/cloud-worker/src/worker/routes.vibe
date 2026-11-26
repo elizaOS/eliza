@@ -1,4 +1,4 @@
-// spec/cloud/deployment.md, "A Worker answers a path from the server's route table first, and its Worker-only routes only for a path the table does not serve"; spec/cloud/deployment.md, "A scheduled tick runs each sweep whose period ends within the tick"
+// spec/cloud/deployment.md, "A Worker routes the declared Grace Google mount, then the server table, then Worker-only paths"; spec/cloud/deployment.md, "A scheduled tick runs each sweep whose period ends within the tick"
 import { sweepDue, workerAnswer, type WorkerAnswer } from "../../gen/cloud__deployment.effect.vibe"
 import { matchRoute, type Area, type Route, type Sweep } from "../http/routes.vibe"
 import { area as billing } from "../http/routes/billing.vibe"
@@ -26,8 +26,8 @@ export function opensRelay(method: string, pathname: string): boolean {
 
 const workerSweeps: ReadonlyArray<Sweep> = workerAreas.flatMap((each) => each.sweeps)
 
-export function answerOf(method: string, pathname: string, workerOnly: (pathname: string) => boolean): WorkerAnswer {
-  return workerAnswer(matchRoute(workerRoutes, method, pathname).kind !== "none", workerOnly(pathname))
+export function answerOf(method: string, pathname: string, workerOnly: boolean, graceGoogle: boolean): WorkerAnswer {
+  return workerAnswer(matchRoute(workerRoutes, method, pathname).kind !== "none", workerOnly, graceGoogle)
 }
 
 export function dueSweeps(scheduledAt: number): ReadonlyArray<Sweep> {

@@ -4,6 +4,7 @@ import android.Manifest;
 import android.app.Activity;
 import android.app.Notification;
 import android.app.NotificationChannel;
+import android.app.NotificationChannelGroup;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.Context;
@@ -50,7 +51,13 @@ public final class MailNoticePoster implements MailBackgroundDelivery.Notices {
   if(!question&&!uri.startsWith(config.openPrefix))return null;
   return new Tap(uri.substring((question?config.askPrefix:config.openPrefix).length()),question);
  }
- @Override public boolean allowed(){NotificationChannel c=manager.getNotificationChannel(config.channel);return (Build.VERSION.SDK_INT<33||context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)==PackageManager.PERMISSION_GRANTED)&&manager.areNotificationsEnabled()&&c!=null&&c.getImportance()!=NotificationManager.IMPORTANCE_NONE;}
+ @Override public boolean allowed(){
+  NotificationChannel channel=manager.getNotificationChannel(config.channel);
+  if((Build.VERSION.SDK_INT>=33&&context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED)
+   ||!manager.areNotificationsEnabled()||channel==null||channel.getImportance()==NotificationManager.IMPORTANCE_NONE)return false;
+  NotificationChannelGroup group=channel.getGroup()==null?null:manager.getNotificationChannelGroup(channel.getGroup());
+  return group==null||!group.isBlocked();
+ }
  @Override public boolean active(String key){for(StatusBarNotification n:manager.getActiveNotifications())if((config.tagPrefix+key).equals(n.getTag()))return true;return false;}
  private Intent intent(String key,boolean question){
   Intent launch=config.activity!=null?new Intent(context,config.activity):context.getPackageManager().getLaunchIntentForPackage(context.getPackageName());

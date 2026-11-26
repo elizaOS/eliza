@@ -6,7 +6,7 @@ import { capabilitiesHeader, type DeviceOperation } from "@elizaos/agent"
 import { BROWSER_CONTROL_DIRECT_TYPES, BROWSER_FIND_CAPABILITY, BROWSER_RELOAD_WITHHELD_REFUSAL, BROWSER_NO_TABS_TO_CLOSE_NOTICE, BROWSER_OPEN_NEW_TAB_CAPABILITY, BROWSER_TABS_CAPABILITY, BROWSER_TABS_CLOSE_ALL_CAPABILITY, BROWSER_TABS_UNLISTED_NOTICE, browserCloseAllApprovable, browserCloseAllNotice, browserControlCapabilityAvailable, BROWSER_TABS_SHOW_CAPABILITY, browserControlFormAvailable, browserControlRefusal, browserControlReviewNotice, browserControlRunsUnreviewed, browserNavigationAvailable, describeBrowserControl, parseBrowserControl, parseBrowserNavigate, browserDestinationMatches, browserSearchQueryMatches, directBrowserDestination, directBrowserSearchQuery, groundBrowserDestination, groundBrowserSearchQuery, spokenBrowserDestination, typedBrowserWords, observedTabCurrent, parseNativeHistoryCommand } from "@elizaos/plugin-browser-client"
 import { browserAction, browserOpenAction, browserPlugin, opensOnScreen } from "../src/index.vibe"
 import { browserProposalFamily } from "../src/proposal.vibe"
-import type { BrowserViewAsked, BrowserViewAsker, BrowserViewWait } from "../src/native-browser.vibe"
+import { BROWSER_VIEW, type BrowserViewAsked, type BrowserViewAsker, type BrowserViewWait } from "../src/native-browser.vibe"
 
 it.effect('Open only a destination the owner wrote in this message, spelled as written, or an exact link of its page (spec/browser/requestGrounding.md, "Story: Open a destination stated in this message"; spec/browser/requestGrounding.md, "A negated destination cannot be authorized by a proposal"; spec/browser/requestGrounding.md, "A page link opens only as an exact link of the page my message carried, and only after my review"; spec/browser/requestGrounding.md, "A closing mark that could belong to the address leaves the open for my review")', effect () => {
   const grounded = [
@@ -211,6 +211,8 @@ it.effect('Go back on the tab the turn observed and say only that the browser wa
     assert.deepStrictEqual(
       [completed, refusedFirst, unknownCode, lost, notOffered, noFeed, noClient].map((result) => [result.success, failureKind(result)]),
       [[false, "UNCERTAIN_OUTCOME"], [false, "UNAVAILABLE"], [false, "UNCERTAIN_OUTCOME"], [false, "UNCERTAIN_OUTCOME"], [false, "UNSUPPORTED"], [false, "UNAVAILABLE"], [false, "UNAVAILABLE"]])
+    assert.deepStrictEqual(browserPlugin.views?.map(({ id, path, modalities, capabilities }) => [id, path, modalities, capabilities?.map((offered) => offered.id)]),
+      [[BROWSER_VIEW.viewId, "/browser", ["gui"], [BROWSER_VIEW.capability]]])
     assert.deepStrictEqual(command, { ok: true, command: { subaction: "back", selection: { id: "tab-a", revision: "r1" } } })
     assert.isFalse(parseNativeHistoryCommand({ subaction: "click" }).ok)
     assert.isFalse(parseNativeHistoryCommand({ subaction: "back" }, { id: "tab-a" }).ok)
@@ -396,7 +398,7 @@ it.effect(`Ground a Browser proposal in the owner's own words or an exact page l
       direct({ type: "browser_history", action: "back" }), direct(tabList), direct(tabList), direct(tabList), direct(tabList),
     ])
     assert.strictEqual(told[0], "wikipedia.org is ready to open.")
-    assert.match(String(told[1] ?? ""), /shows this exact requested address in its Browser for the owner to open\. It has not opened/)
+    assert.match(String(told[1] ?? ""), /shows this exact requested address in its Browser for the owner to open\. It has not opened.*Which screen shows later is what each later message's screen context says/)
     assert.notMatch(`${told[0]} ${told[1]}`, /Opening|no review/)
     assert.deepStrictEqual(told.slice(2), [undefined, undefined])
     assert.strictEqual(toldShown?.forOwner, "Doing that in Browser.")
@@ -552,7 +554,7 @@ it.effect('Show an address on the screen the owner asked from for the owner to o
   ]
   const opened = (url: string) => ({ actionName: "BROWSER_OPEN", mode: "open", operation: { type: "browser_navigate", url }, clientId: "client-1" })
   const owner = { agentId: "00000000-0000-4000-8000-000000000003", actorId: "00000000-0000-4000-8000-000000000001", connector: "device" }
-  const phone = try Effect.try(() => deviceTurnPort(runtime as AgentRuntime, () => Effect.succeed(owner), { completesReads: true }))
+  const phone = try Effect.try(() => deviceTurnPort(runtime as AgentRuntime, () => Effect.succeed(owner), { completesReads: true, viewsAllowed: true }))
   const fromPhone = (capabilities: readonly string[]) => promise(async () => {
     const message = asked("open example.com")
     const session = await phone.begin({
@@ -576,9 +578,10 @@ it.effect('Show an address on the screen the owner asked from for the owner to o
       { code: "DEVICE_BROWSER_NOT_REQUESTED", userFacingText: "I didn't open that address." },
       { code: "DEVICE_BROWSER_NOT_REQUESTED", userFacingText: "Tell me the address, like example.com." },
     ])
-    assert.match(results[0]?.text ?? "", /^Showing example\.com for the owner to open\. .*opens only if they choose Open there\. It has not opened/)
+    assert.match(results[0]?.text ?? "", /^Showing example\.com for the owner to open\. .*opens only if they choose Open there\. It has not opened.*Which screen shows later is what each later message's screen context says/)
     assert.match(results[1]?.text ?? "", /^Showing en\.wikipedia\.org for the owner to open\./)
     assert.notMatch(results.map((result) => result.text ?? "").join(" "), /Opening|with no review/)
     assert.isTrue(browserPlugin.actions?.includes(browserOpenAction))
+    assert.match(browserOpenAction.description ?? "", /To show Browser itself, with no address to open, use VIEWS\./)
   })
 })

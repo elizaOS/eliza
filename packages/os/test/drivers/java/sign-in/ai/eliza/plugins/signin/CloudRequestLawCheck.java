@@ -1,4 +1,4 @@
-// spec/os/signIn/cloudRequests.md, "A cloud table is loaded only when every route is a device route the page may use"; spec/os/signIn/cloudRequests.md, "A session-only route is sent only with a live account session, never with the device key"; spec/os/signIn/cloudRequests.md, "A request is sent only to the deployment origin, admitted by the gate, with headers its route admits"; spec/os/signIn/cloudRequests.md, "A 401 goes to the credential with its reason and is not retried"; spec/os/signIn/cloudRequests.md, "A reply body up to 8 MiB returns inline, up to 64 MiB through a one-use cache grant, and a larger one is refused"; spec/os/signIn/cloudRequests.md, "Only an HTTPS page on the web host or a listed payment or consent host opens, in the system browser"
+// spec/os/signIn/cloudRequests.md, "A cloud table is loaded only when every route is a device route the page may use"; spec/os/signIn/cloudRequests.md, "A session-only route is sent only with a live account session, never with the device key"; spec/os/signIn/cloudRequests.md, "A mail or calendar route is sent only with the lease, never with the device key"; spec/os/signIn/cloudRequests.md, "A request is sent only to the deployment origin, admitted by the gate, with headers its route admits"; spec/os/signIn/cloudRequests.md, "A 401 goes to the credential with its reason and is not retried"; spec/os/signIn/cloudRequests.md, "A reply body up to 8 MiB returns inline, up to 64 MiB through a one-use cache grant, and a larger one is refused"; spec/os/signIn/cloudRequests.md, "Only an HTTPS page on the web host or a listed payment or consent host opens, in the system browser"; spec/os/signIn/cloudRequests.md, "The agent reaches the broker only by a bodiless GET on the loopback host, without an origin, with the current launch's bearer"; spec/os/signIn/cloudRequests.md, "The broker forwards only the owner's Gmail account list and search, with the lease, while the launch's owner holds it"; spec/os/signIn/cloudRequests.md, "The agent gets the cloud's status and body, or a refusal naming why nothing was read, and never the credential that read it"
 package ai.eliza.plugins.signin;
 
 import ai.eliza.os.agent.RouteGate;
@@ -29,6 +29,7 @@ public final class CloudRequestLawCheck {
   private static final List<Long> BYTES = List.of(0L, 8_388_608L, 8_388_609L, 67_108_864L, 67_108_865L);
   private static final List<String> WEB_HOSTS = List.of("web.cloud.test");
   private static final List<ExternalLink> LINKS = List.of(new ExternalLink(true, "billing.stripe.com", true, false),
+    new ExternalLink(true, "invoice.stripe.com", true, false),
     new ExternalLink(true, "billing.stripe.com.evil.test", true, false), new ExternalLink(false, "web.cloud.test", true, false),
     new ExternalLink(true, "web.cloud.test", true, false), new ExternalLink(true, "accounts.google.com", false, false),
     new ExternalLink(true, "checkout.stripe.com", true, true));
@@ -52,6 +53,10 @@ public final class CloudRequestLawCheck {
     new String[] {"POST", "/api/v1/subscriptions/cancel", "{\"reason\":\"" + "x".repeat(80) + "\"}"},
     new String[] {"GET", "/api/v1/models", null}, new String[] {"GET", "/api/v1/../user", null},
     new String[] {"GET", "/api/v1/user#f", null}, new String[] {"GET", "/api/v1/eliza/google/calendar/events/e%2F1", null});
+  private static final List<List<String>> READ_PATHS = List.of(List.of(), List.of("status"), List.of("accounts"), List.of("gmail", "inbox-v1", "history"),
+    List.of("gmail", "history"), List.of("gmail", "search"), List.of("gmail", "operations"), List.of("calendar", "feed"));
+  private static final List<List<String>> READ_FIELDS = List.of(List.of(), List.of("side"), List.of("grantId", "startHistoryId", "pageToken", "maxResults", "side"),
+    List.of("messageId", "grantId"), List.of("timeMin", "q"));
   private static final List<Map<String, String>> WIRE_HEADERS = List.of(Map.of(), Map.of("if-match", "\"7\""),
     Map.of("authorization", "Bearer page"), Map.of("accept", "application/json", "If-None-Match", "\"e\""), Map.of("Idempotency-Key", "k1"),
     Map.of("Cookie", "a=b"));
@@ -304,8 +309,93 @@ public final class CloudRequestLawCheck {
     System.out.println("{\"fn\":\"originOf\",\"accepted\":{" + origins.entrySet().stream().map(e -> q(e.getKey()) + ":" + e.getValue()).collect(Collectors.joining(",")) + "}}");
   }
 
+  private static String brokerAsk(GoogleBrokerPolicy.Ask a) {
+    return "{\"get\":" + a.get() + ",\"bodiless\":" + a.bodiless() + ",\"loopbackHost\":" + a.loopbackHost() + ",\"origin\":" + a.origin()
+      + ",\"bearer\":" + a.bearer() + "}";
+  }
+
+  private static String brokerCall(GoogleBrokerPolicy.Call c) {
+    return "{\"read\":" + q(camel(c.read().name())) + ",\"fields\":" + texts(c.fields()) + ",\"ownerHolds\":" + c.ownerHolds() + "}";
+  }
+
+  private static String brokerOutcome(GoogleBrokerPolicy.Outcome o) {
+    return switch (o) {
+      case GoogleBrokerPolicy.CloudAnswered a -> "{\"tag\":\"CloudAnswered\",\"status\":" + a.status() + "}";
+      case GoogleBrokerPolicy.CallRefused r -> "{\"tag\":\"CallRefused\",\"why\":" + q(camel(r.why().name())) + "}";
+      case GoogleBrokerPolicy.CloudUnreachable u -> tag("CloudUnreachable");
+      case GoogleBrokerPolicy.ReplyOversize r -> tag("ReplyOversize");
+    };
+  }
+
+  private static String brokerReply(GoogleBrokerPolicy.Reply r) {
+    return switch (r) {
+      case GoogleBrokerPolicy.Answer a -> "{\"tag\":\"BrokerAnswer\",\"status\":" + a.status() + "}";
+      case GoogleBrokerPolicy.Refused f -> "{\"tag\":\"BrokerRefused\",\"status\":" + f.status() + ",\"reason\":" + q(camel(f.reason().name())) + "}";
+    };
+  }
+
+  private static void brokerCases() {
+    for (int bits = 0; bits < 32; bits++) {
+      GoogleBrokerPolicy.Ask a = new GoogleBrokerPolicy.Ask((bits & 1) != 0, (bits & 2) != 0, (bits & 4) != 0, (bits & 8) != 0, (bits & 16) != 0);
+      GoogleBrokerPolicy.AskVerdict v = GoogleBrokerPolicy.askVerdict(a);
+      emit("brokerAskVerdict", q(camel(v.name())), brokerAsk(a));
+      emit("lawOnlyAPrivateAuthorizedAskIsAdmitted", String.valueOf((v == GoogleBrokerPolicy.AskVerdict.ASK_ADMITTED)
+        == (a.get() && a.bodiless() && a.loopbackHost() && !a.origin() && a.bearer())), brokerAsk(a));
+      emit("lawAForeignAskIsNeverTreatedAsTheAgent", String.valueOf(!(a.origin() || !a.loopbackHost()) || v == GoogleBrokerPolicy.AskVerdict.NOT_PRIVATE), brokerAsk(a));
+    }
+    List<List<String>> fieldLists = List.of(List.of(), List.of("side"), List.of("side", "grantId", "query", "maxResults", "pageToken"), List.of("side", "messageId"),
+      List.of("grantId"), List.of(""));
+    for (GoogleBrokerPolicy.Read read : GoogleBrokerPolicy.Read.values())
+      for (List<String> fields : fieldLists)
+        for (boolean owner : List.of(true, false)) {
+          GoogleBrokerPolicy.Call c = new GoogleBrokerPolicy.Call(read, fields, owner);
+          emit("brokered", String.valueOf(GoogleBrokerPolicy.brokered(c)), brokerCall(c));
+          for (Holding h : HOLDINGS) {
+            CallPlan p = GoogleBrokerPolicy.brokerPlan(h, c);
+            String[] args = {holding(h), brokerCall(c)};
+            emit("brokerPlan", plan(p), args);
+            emit("lawABrokerReadCarriesOnlyTheLease", String.valueOf(!(p instanceof Send s) || s.attach() instanceof WithLease), args);
+            emit("lawABrokerReadIsSentOnlyForTheLaunchOwnerAndAListedRead", String.valueOf(!(p instanceof Send) || owner && GoogleBrokerPolicy.brokered(c)), args);
+          }
+        }
+    List<GoogleBrokerPolicy.Outcome> outcomes = new ArrayList<>(List.of(new GoogleBrokerPolicy.CloudAnswered(200), new GoogleBrokerPolicy.CloudAnswered(401),
+      new GoogleBrokerPolicy.CloudAnswered(403), new GoogleBrokerPolicy.CloudUnreachable(), new GoogleBrokerPolicy.ReplyOversize()));
+    for (Refusal why : Refusal.values()) outcomes.add(new GoogleBrokerPolicy.CallRefused(why));
+    for (GoogleBrokerPolicy.Outcome o : outcomes) {
+      GoogleBrokerPolicy.Reply r = GoogleBrokerPolicy.replyOf(o);
+      emit("brokerReply", brokerReply(r), brokerOutcome(o));
+      boolean answered = o instanceof GoogleBrokerPolicy.CloudAnswered;
+      emit("lawOnlyACloudAnswerReachesTheAgentAsAnAnswer", String.valueOf(r instanceof GoogleBrokerPolicy.Answer a
+        ? answered && ((GoogleBrokerPolicy.CloudAnswered) o).status() == a.status()
+        : !answered && ((GoogleBrokerPolicy.Refused) r).status() >= 400), brokerOutcome(o));
+    }
+  }
+
+  /** The host's read-only mail request, planned by the policy it is sent through, with a live lease held. */
+  private static void hostMailReadCases() {
+    CloudRequestPolicy reads = CloudRequestPolicy.forMailReads();
+    Origin https = CloudRequestPolicy.originOf("https://api.cloud.test");
+    Holding leased = new Holding(2, true, true, true, true);
+    for (List<String> readPath : READ_PATHS)
+      for (List<String> readFields : READ_FIELDS) {
+        StringBuilder target = new StringBuilder("/api/v1/eliza/google");
+        for (String part : readPath) target.append('/').append(part);
+        for (int i = 0; i < readFields.size(); i++) target.append(i == 0 ? '?' : '&').append(readFields.get(i)).append("=v");
+        CallPlan p = reads.plan(leased, https, "GET", target.toString(), Map.of(), null).plan();
+        boolean admitted = p instanceof Send;
+        List<String> path = new ArrayList<>(List.of("api", "v1", "eliza", "google"));
+        path.addAll(readPath);
+        boolean mailRead = CloudRequestPolicy.DEVICE_ROUTES.stream().anyMatch(d -> d.method() == Method.GET && CloudRequestPolicy.mailRoute(d) && d.path().equals(path));
+        String[] args = {texts(readPath), texts(readFields)};
+        emit("hostMailReadAdmitted", String.valueOf(admitted), args);
+        emit("lawAHostMailReadIsAMailRouteRead", String.valueOf(!admitted || mailRead && sentLease(p) >= 1), args);
+      }
+  }
+
   public static void main(String[] args) {
     specCases();
+    brokerCases();
     wireCases();
+    hostMailReadCases();
   }
 }

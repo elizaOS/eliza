@@ -33,6 +33,7 @@ const mailCardSchema = Schema.Struct({
   threadId: Schema.String,
   subject: Schema.String,
   from: Schema.String,
+  replyTo: Schema.optionalKey(Schema.NullOr(Schema.String)),
   to: Schema.Array(Schema.String),
   cc: Schema.Array(Schema.String),
   snippet: Schema.String,

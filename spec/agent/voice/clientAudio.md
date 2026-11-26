@@ -295,7 +295,7 @@ its speech-end edges, so a request that carries an utterance's last audio
 and its speech end recognises that audio. Audio outside a segment is
 dropped, and a segment keeps at most 120 seconds of samples. A segment is
 recognised once, by the device's local transcription model, as one mono
-PCM16 WAV; the answer is `{ok, sessionId, mode: "batch", framesReceived,
+PCM16 WAV that holds the received samples byte for byte; the answer is `{ok, sessionId, mode: "batch", framesReceived,
 final?, closed?}` with `final = {turnId, text, mode,
 asrFinalFromSpeechEndMs}` when the request ended a segment. The session
 publishes `speech-start`, `speech-end`, `final` and, on a failed

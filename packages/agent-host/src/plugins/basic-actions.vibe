@@ -47,6 +47,20 @@ function skip(cursor: Cursor): string | undefined {
   return cursor.src[cursor.pos]
 }
 
+function unanswerable(refusal: Refusal): string | undefined {
+  switch (refusal.kind) {
+    case "DivisionByZero": return "That calculation has no answer: it divides by zero."
+    case "NotFinite": return "That calculation has no finite answer."
+    case "TooManyDigits":
+    case "ExponentTooLarge": return "That answer is too large to work out exactly."
+    case "TooLong":
+    case "TooDeep":
+    case "ExpectedNumber":
+    case "UnexpectedCharacter":
+    case "MissingParenthesis": return undefined
+  }
+}
+
 function refusalText(refusal: Refusal): string {
   switch (refusal.kind) {
     case "TooLong": return `the expression is longer than ${refusal.limit} characters`
@@ -171,9 +185,11 @@ async function evaluate(options: unknown): Promise<ActionResult> {
   const calculated = await runPromise(Effect.result(calculate(expression)))
   if (Result.isFailure(calculated)) {
     const { refusal } = calculated.failure
+    const owner = unanswerable(refusal)
     return {
       success: false,
       text: `${calculateDecl.name} could not evaluate "${expression}": ${refusalText(refusal)}. Supported: numbers with + - * / % ^ and parentheses.`,
+      ...(owner === undefined ? {} : { userFacingText: owner, verifiedUserFacing: true }),
       data: { expression, refusal: refusal.kind },
     }
   }

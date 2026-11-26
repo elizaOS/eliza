@@ -2,7 +2,7 @@
 import { createReminderPresentation, stringToUuid, type Action, type ActionResult, type Provider, type UUID } from "@elizaos/core"
 import { Machine, answerFresh, answeredRecently, canFireCheckin, cadenceSlots, checkinLogLimit, duplicatesGoal, goalListed, renameGoalAdmitted, reviewGroup, stored, type Cadence, type Goal, type GoalStatus, type ReviewGroup, type ReviewState } from "../gen/assistant__goals.effect.vibe"
 import { Facts, Scheduler, SchedulerUnavailable, onAgent, presentOnce, readRecord, requestOf, writeRecord, type DeliveryAnswer, type TaskRow } from "./host.vibe"
-import { appliedReceipt, attributed, failedReceipt, unchangedReceipt, type Attempt } from "./replies.vibe"
+import { appliedReceipt, attributed, failedReceipt, forTheOwner, unchangedReceipt, type Attempt } from "./replies.vibe"
 import { noteOwnerAnswer } from "./escalation.vibe"
 import { liveReminders, namedAmong, reminderWhen } from "./reminders.vibe"
 import { GoalRequest } from "./requests.schema.vibe"
@@ -278,18 +278,18 @@ export effect function deliverGoalCheckin(task: TaskRow) {
 
 export const ownerGoalsAction: Action = {
   name: goalsAction,
-  description: "Create, update, rename, pause, archive, delete, check in on, list or review the owner's goals. A message that asks for several goals creates each. A daily goal checks in morning and evening, a weekly goal once a week; a dismissed check-in never comes back. List every goal with its status (op list), paused and archived ones too. Review one goal by its target, or every active goal this week with no target.",
+  description: "Owner's goals (create each if multiple). Daily=morning+evening check-ins, weekly=1/wk; dismissed stays off. list=all statuses; review omits target for all active.",
   similes: ["GOALS", "SET_GOAL", "UPDATE_GOAL", "REVIEW_GOALS", "GOAL_CHECKIN"],
   parameters: [
-    { name: "op", required: true, description: "create, update, rename, delete, dismiss_checkin, checkin, list or review.", schema: { type: "string", enum: ["create", "update", "rename", "delete", "dismiss_checkin", "checkin", "list", "review"] } },
-    { name: "title", required: false, description: "For create: the goal. For rename: its new title.", schema: { type: "string" } },
-    { name: "description", required: false, description: "For create: what the goal means.", schema: { type: "string" } },
-    { name: "cadence", required: false, description: "none, daily or weekly check-ins.", schema: { type: "string", enum: ["none", "daily", "weekly"] } },
-    { name: "target", required: false, description: "The goal's title, words from it, or its id; leave it out of review for the weekly review of every active goal.", schema: { type: "string" } },
-    { name: "status", required: false, description: "For update: active, paused, archived or satisfied.", schema: { type: "string", enum: ["active", "paused", "archived", "satisfied"] } },
-    { name: "slot", required: false, description: "For dismiss_checkin: morning, evening or weekly.", schema: { type: "string", enum: ["morning", "evening", "weekly"] } },
-    { name: "progress", required: false, description: "For checkin: on_track, at_risk or needs_attention.", schema: { type: "string", enum: ["on_track", "at_risk", "needs_attention"] } },
-    { name: "note", required: false, description: "For checkin: what the owner said.", schema: { type: "string" } },
+    { name: "op", required: true, description: "Op.", schema: { type: "string", enum: ["create", "update", "rename", "delete", "dismiss_checkin", "checkin", "list", "review"] } },
+    { name: "title", required: false, description: "create/rename title.", schema: { type: "string" } },
+    { name: "description", required: false, description: "create: details.", schema: { type: "string" } },
+    { name: "cadence", required: false, description: "Check-ins.", schema: { type: "string", enum: ["none", "daily", "weekly"] } },
+    { name: "target", required: false, description: "Title, words, or id (omit on review for all).", schema: { type: "string" } },
+    { name: "status", required: false, description: "update.", schema: { type: "string", enum: ["active", "paused", "archived", "satisfied"] } },
+    { name: "slot", required: false, description: "dismiss_checkin.", schema: { type: "string", enum: ["morning", "evening", "weekly"] } },
+    { name: "progress", required: false, description: "checkin.", schema: { type: "string", enum: ["on_track", "at_risk", "needs_attention"] } },
+    { name: "note", required: false, description: "checkin note.", schema: { type: "string" } },
   ],
   tags: ["domain:goals", "capability:write", "effect:receipt-required"],
   roleGate: { minRole: "OWNER" },
@@ -297,7 +297,7 @@ export const ownerGoalsAction: Action = {
   handler: async (runtime, message, _state, options) => {
     const given = typeof options === "object" && options !== null && "parameters" in options && typeof options.parameters === "object" && options.parameters !== null ? options.parameters : {}
     const input = Object.fromEntries(Object.entries(given).filter(([, value]) => value !== undefined && value !== null))
-    return onAgent(runtime, Effect.catch(changeGoal(input, requestOf(message).messageId), (failed) => Effect.succeed({ success: false, text: "The goal could not be changed.", data: { outcome: failed._tag } } satisfies ActionResult)))
+    return onAgent(runtime, Effect.catch(changeGoal(input, requestOf(message).messageId), (failed) => Effect.succeed({ success: false, text: "The goal could not be changed.", ...forTheOwner("Your goals couldn't be reached just now."), data: { outcome: failed._tag } } satisfies ActionResult)))
   },
 }
 

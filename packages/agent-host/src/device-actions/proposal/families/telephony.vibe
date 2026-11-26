@@ -28,9 +28,9 @@ const targetTypes: ReadonlySet<DeviceOperationType> = new Set(["phone_call", "ph
 
 const phoneNumber: ActionParameterSchema = {
   type: "string",
-  description: "A number the owner wrote in this message. When it appears as a __ELIZA_CONTACT_ reference, copy that whole reference exactly; never write digits you were not given. Otherwise 2 to 20 digits with an optional leading +, for example +14155550100 or 5550100.",
+  description: "Owner-written number: copy __ELIZA_CONTACT_ ref verbatim, or optional + and 2-20 digits.",
 }
-const contactQuery: ActionParameterSchema = { type: "string", description: "The contact's name as search text, exactly as the owner said it. Never an ID or a number." }
+const contactQuery: ActionParameterSchema = { type: "string", description: "Contact name as owner said it; never an ID or number." }
 const body: ActionParameterSchema = { type: "string" }
 const phoneTarget = (kinds: readonly ("number" | "contact")[]): ActionParameterSchema => ({
   type: "object", additionalProperties: false, required: ["kind"],
@@ -39,22 +39,22 @@ const phoneTarget = (kinds: readonly ("number" | "contact")[]): ActionParameterS
 const anyTarget = phoneTarget(["number", "contact"])
 const recipientKind: ActionParameterSchema = {
   type: "string", enum: ["named", "number", "previous-sender"],
-  description: "previous-sender: the sender you just read.",
+  description: "previous-sender = sender just read.",
 }
-const reviewRequested: ActionParameterSchema = { type: "boolean", description: "false unless the owner asked to review first." }
+const reviewRequested: ActionParameterSchema = { type: "boolean", description: "false unless owner asked to review." }
 const disclosure: ActionParameterSchema = {
   type: "string", enum: ["address", "last-four", "unclear"],
-  description: "address: who sent it; last-four: last four digits; unclear: other parts.",
+  description: "address=full; last-four=last 4 digits; unclear=other.",
 }
 const contactNumbers: ActionParameterSchema = { type: "array", items: phoneNumber }
 const contactEmails: ActionParameterSchema = { type: "array", items: { type: "string" } }
 const contactSet: ActionParameterSchema = {
   type: "object", additionalProperties: false,
-  description: "At least one field. Each field given replaces that field whole; a field left out is unchanged.",
+  description: ">=1 field; each given field replaces whole, omitted kept.",
   properties: { displayName: { type: "string" }, phoneNumbers: contactNumbers, emailAddresses: contactEmails },
 }
 const contactValues = (description: string): ActionParameterSchema => ({
-  type: "object", additionalProperties: false, description: `${description} At least one field, each with at least one value.`,
+  type: "object", additionalProperties: false, description: `${description} >=1 non-empty field.`,
   properties: { phoneNumbers: contactNumbers, emailAddresses: contactEmails },
 })
 
@@ -70,19 +70,19 @@ const offeredWith = (...capabilities: readonly Capability[]) => (device: Negotia
 const offeredWithAll = (capabilities: readonly Capability[], unless?: Capability) => (device: NegotiatedDevice) =>
   capabilities.every((capability) => has(device, capability)) && (unless === undefined || !has(device, unless))
 
-const referenceGuidance = "Phone numbers in the owner's message appear to you as contact references (__ELIZA_CONTACT_…__), never as digits. To call, dial or text that number, copy its whole reference verbatim as the number, every character and underscore; a country code such as +1 before it is allowed. Never write digits for a number you only saw as a reference: they are invented, and the proposal is refused."
-const targetGuidance = "A target is {kind: number, number} or {kind: contact, query: the contact name as the owner said it}; the phone resolves a contact locally and its number is never returned. A proposal has one recipient: when the owner gives alternatives (this person or that one), ask which one in your own words before proposing or looking anyone up."
-const emergencyGuidance = "When the owner asks for emergency services in words (an ambulance, the police, the fire department, help) and writes no number, propose nothing: this phone has no keypad to open for chat, so tell the owner to dial their local emergency number on the phone's own dialer."
-const reviewedDialText = "This phone has no keypad to open for chat: a request to open the dialer or keypad with a number filled in is a reviewed phone_dial of that number, and an empty keypad is not a phone proposal."
-const routeGuidance = "A request to call, text or open the dialer with a number is that phone operation, not a view change; a plain request to open or show the Phone, Messages or Contacts app, including show my contacts with no name, is navigation to that view. The phone operations offered here are current for this turn: an earlier reply in this conversation saying calls, texts or contacts were unavailable is outdated and is never a reason to refuse now."
-const contactGuidance = "Address-book changes use contact_create, contact_update or contact_delete. A name with a phone number or an email address is complete; never ask for a handle, username or platform. The phone finds the contact, shows the owner the before and after, and writes only after approval. You receive only the outcome and never the address book or any contact detail; never use these to look a contact up. The phone looks up a change's or deletion's name before it offers the review, and when no contact matches it tells the owner instead; so never say the contact exists or that its change is ready, only that the phone will show the matching contact to approve. not-found and stale mean nothing was changed."
-const noneSelectedGuidance = "none-selected means the item is not open on the phone: ask the owner to open it."
+const referenceGuidance = "Phone numbers in owner messages appear as __ELIZA_CONTACT_…__ refs, not digits. To call/dial/text one, copy its whole reference verbatim as the number (optional country code like +1 allowed). Never invent digits for a ref."
+const targetGuidance = "A target is {kind: number, number} or {kind: contact, query: owner-spoken name}; phone resolves contacts locally without returning numbers. A proposal has one recipient: when the owner gives alternatives, ask which one before proposing."
+const emergencyGuidance = "For emergency services in words (ambulance/police/fire/help) with no number, propose nothing: tell owner to dial their local emergency number directly."
+const reviewedDialText = "No keypad available: opening dialer with a number is reviewed phone_dial; an empty keypad is not a proposal."
+const routeGuidance = "Call/text/dial-with-number uses a phone op, not a view change; plain open Phone/Messages/Contacts (or 'show my contacts' with no name) is navigation. Offered phone ops are current: ignore older replies saying calls/texts/contacts were unavailable."
+const contactGuidance = "Address-book changes use contact_create/update/delete. Name + phone or email is complete (never ask for handle/platform). Phone resolves contact, previews diff, writes only after approval; you never see contact details (never use to look up). For update/delete, phone checks matches before review—never say contact exists or change is ready, only that phone will show matches to approve. not-found/stale = unchanged."
+const noneSelectedGuidance = "none-selected means item is not open: ask owner to open it."
 const openItemGuidance = [noneSelectedGuidance, untrustedReturnGuidance]
-const readGuidance = "messages_read_selected and voicemail_read_selected return only what the owner has open in front on the unlocked phone, after the owner approves sharing it: the visible tail of one message thread (at most 20 messages, no phone numbers), or one voicemail with its transcript when one is ready. They never list threads or voicemail; never use them to enumerate, search or page through messages or voicemail, and never repeat them to collect more."
-const dialGuidance = "A reviewed dial uses phone_dial. After the owner's approval the phone opens its dial screen with the number; the owner places the call there. handed-off proves only that the dial screen opened, never a placed, connected or completed call."
-const composeGuidance = "drafted proves only that the draft is there. submitted proves submission only; sent is not delivery; only delivered establishes delivery."
+const readGuidance = "messages_read_selected/voicemail_read_selected return only the currently open thread tail (<=20 msgs, no numbers) or open voicemail+transcript after approval. Never list, search, page, or repeat to collect more."
+const dialGuidance = "phone_dial opens the dial screen with the number after approval for owner to call; handed-off proves screen opened, never a placed/connected call."
+const composeGuidance = "drafted = draft only; submitted = submitted only; sent != delivered; only delivered proves delivery."
 
-const roleQuery = "when the owner names them by a role or relation. Use that word alone as the contact query, such as brother for my brother or dentist for the dentist. The phone resolves the contact and lets the owner choose among multiple matches."
+const personQuery = "at once for a person the owner names, without first asking who they are: you never see the address book. The query is the name as said or, when the owner names them by a role or relation, that word alone (brother for my brother, dentist for the dentist); the phone looks it up and lets the owner pick among matches."
 const roleGuidance: Readonly<Record<RoleRule, { readonly operation: string; readonly request: string } | undefined>> = {
   CallOrTextByRole: { operation: "phone_call or sms_compose", request: "a call or text" },
   CallByRole: { operation: "phone_call", request: "a call" },
@@ -94,23 +94,23 @@ const forms: readonly ProposalForm[] = [
   {
     types: ["phone_call"], schema: form("phone_call", { target: anyTarget }), offered: offeredWith("PhoneCallV1"),
     guidance: [
-      "phone_call places a call only after the owner approves the exact name and number on the unlocked phone. placed proves only that the phone started the call; never report a connected, answered or completed call. An emergency number is never called for you: the phone hands it to the system dialer (emergency-handoff) and the owner places that call there.",
+      "phone_call calls after owner approves exact name+number on unlocked phone; placed proves call started, never answered/completed. Emergency numbers hand off to system dialer (emergency-handoff) for owner to dial.",
       targetGuidance, referenceGuidance,
     ],
   },
   {
     types: ["phone_dial"], schema: form("phone_dial", { target: phoneTarget(["number"]) }), offered: offeredWithAll(["PhoneDialV1"], "ContactsLookupV1"),
-    guidance: [dialGuidance, "On this phone phone_dial takes a number target only.", referenceGuidance],
+    guidance: [dialGuidance, "phone_dial takes a number target only.", referenceGuidance],
   },
   {
     types: ["phone_dial"], schema: form("phone_dial", { target: anyTarget }), offered: offeredWithAll(["PhoneDialV1", "ContactsLookupV1"]),
-    guidance: [dialGuidance, "For a phone_dial contact target the owner picks the number.", targetGuidance, referenceGuidance],
+    guidance: [dialGuidance, "For contact phone_dial, owner picks number.", targetGuidance, referenceGuidance],
   },
   {
     types: ["phone_keypad"], offered: offeredWith("PhoneKeypadV1"),
-    schema: form("phone_keypad", {}, { number: { ...phoneNumber, description: "Optional number to fill in. 2 to 20 digits with an optional leading +. Leave out for an empty keypad." } }),
+    schema: form("phone_keypad", {}, { number: { ...phoneNumber, description: "Optional number (ref or +?2-20 digits); omit for empty." } }),
     guidance: [
-      "phone_keypad opens the Phone keypad on the phone, with number filled in when the owner gave one. Use it for open the dialer, open the keypad, or open the dialer with a number. It never dials or calls: the owner taps Call there. opened proves only that the keypad is showing; never report a call. To call for the owner use phone_call instead, which the owner reviews. When the owner asks for emergency services in words (an ambulance, the police, the fire department, help) and writes no number, use phone_keypad with no number: the owner dials their local emergency number there.",
+      "phone_keypad opens keypad (with optional number) for open dialer/keypad requests. Never dials; owner taps Call. opened proves keypad shown, never a call (use phone_call to call). For emergency services in words with no number, open empty phone_keypad so owner dials locally.",
       referenceGuidance,
     ],
   },
@@ -118,28 +118,28 @@ const forms: readonly ProposalForm[] = [
     types: ["sms_send"], offered: offeredWith("SmsSendV1"),
     schema: form("sms_send", { recipients: { type: "array", items: phoneNumber }, body, subscriptionId: { type: "integer" } }),
     guidance: [
-      "Reviewed SIM SMS (sms_send) requires exact canonical recipients, body and the active subscriptionId shown by the phone. Never substitute an external compose intent. submitted proves submission only; sent proves all sent callbacks; delivered requires all matching delivery reports.",
+      "sms_send (reviewed SIM SMS) needs exact canonical recipients, body, and phone's active subscriptionId (never external compose). submitted != sent != delivered.",
       referenceGuidance,
     ],
   },
   {
     types: ["sms_compose"], schema: form("sms_compose", { query: contactQuery, body }), offered: offeredWithAll(["SmsComposeV1"], "SmsComposeV2"),
-    guidance: ["sms_compose is a reviewed SMS to one contact named by text; the phone resolves the name. Use sms_send instead when the exact number is known.", composeGuidance],
+    guidance: ["sms_compose sends reviewed SMS to one named contact; prefer sms_send when number known.", composeGuidance],
   },
   {
     types: ["sms_compose"], offered: offeredWithAll(["SmsComposeV1", "SmsComposeV2"]),
     schema: form("sms_compose", { target: anyTarget, body }, {
-      draft: { type: "boolean", description: "true when the owner asks only to draft or write it: it waits in the text field, unsent." },
+      draft: { type: "boolean", description: "true: opens unsent in Messages to edit/send; omit to approve sending on phone." },
       recipientKind, reviewRequested,
     }),
     guidance: [
-      "sms_compose is a reviewed SMS to one recipient; it works from any view and the phone chooses the SIM, so prefer it over sms_send.",
+      "sms_compose sends reviewed SMS to one recipient from any view (phone picks SIM); prefer over sms_send. Set draft: true when owner asks to draft, write or prepare a text rather than send it.",
       composeGuidance, targetGuidance, referenceGuidance,
     ],
   },
   {
     types: ["sms_reply_selected"], schema: form("sms_reply_selected", { body }), offered: offeredWith("SmsComposeV1"),
-    guidance: ["sms_reply_selected puts body into the text field of the conversation the owner has open in Messages, as a draft the owner edits and sends. Use it for reply for me or draft a reply requests, and prefer it over sms_compose whenever the owner is talking about the open conversation; it names no recipient, so it also works for an unknown number or a group. Typically call messages_read_selected first to read the conversation. It never sends: drafted proves only that the draft is in the text field, never a sent message. occupied means the owner is writing their own message and nothing was changed.", ...openItemGuidance],
+    guidance: ["sms_reply_selected drafts body into the open Messages conversation (prefer over sms_compose for open thread, including unknown numbers/groups; typically call messages_read_selected first). Never sends: drafted = in field only; occupied = owner typing, unchanged.", ...openItemGuidance],
   },
   {
     types: ["contact_create"], offered: offeredWith("ContactsWriteV1"), guidance: [contactGuidance],
@@ -151,29 +151,29 @@ const forms: readonly ProposalForm[] = [
   {
     types: ["contact_update"], offered: offeredWithAll(["ContactsWriteV1"], "ContactsWriteV2"),
     schema: form("contact_update", { query: contactQuery, set: contactSet }),
-    guidance: [contactGuidance, "This phone cannot add one number or email address to a contact and keep the others: set replaces them all. When the owner asks to add one, say so and ask before you replace."],
+    guidance: [contactGuidance, "set replaces all numbers/emails; when owner asks to add one, warn and ask before replacing."],
   },
   {
     types: ["contact_update"], offered: offeredWithAll(["ContactsWriteV1", "ContactsWriteV2"]),
     schema: form("contact_update", { query: contactQuery }, {
       set: contactSet,
-      add: contactValues("Numbers or email addresses to add. The contact keeps every value it has."),
-      remove: contactValues("Exact numbers or email addresses to take away. Every other value stays."),
+      add: contactValues("Values to add (keeps existing);"),
+      remove: contactValues("Exact values to remove (others stay);"),
     }),
     guidance: [
       contactGuidance,
-      "contact_update takes at least one of set, add and remove. Use add when the owner asks to add a number or an email address. Use remove to take one away. Use set for a number or email only when the owner asks to replace them all, because you cannot see the values the contact has. A field in set cannot also be in add or remove.",
+      "contact_update needs >=1 of set, add, remove (disjoint fields): use add to append, remove to delete specific values, set only to replace whole field.",
     ],
   },
   { types: ["contact_delete"], schema: form("contact_delete", { query: contactQuery }), offered: offeredWith("ContactsWriteV1"), guidance: [contactGuidance] },
   {
     types: ["contact_show"], schema: form("contact_show", { query: contactQuery }), offered: offeredWith("ContactsShowV1"),
-    guidance: ["contact_show opens Contacts on the phone filtered by the contact's name as the owner said it. Use it when the owner asks for a contact's number, email or details, or asks to find or show a named contact; the query is never empty, and “show my contacts” with no name is the Contacts view, not contact_show. The phone shows the matches to the owner and you receive only shown or not-found, never a name, number or count. Tell the owner the contact is on the screen; never state a contact detail you were not given."],
+    guidance: ["contact_show opens Contacts filtered by owner-spoken name (non-empty; 'show my contacts' with no name = Contacts view). Use for finding/showing a contact's details. Returns only shown/not-found, never details or count; never invent contact details."],
   },
   {
     types: ["contact_read_selected"], schema: form("contact_read_selected"), offered: offeredWith("ContactsReadV1"),
     guidance: [
-      "contact_read_selected returns only the one contact the owner has open in Contacts on the unlocked phone, after the owner approves sharing it: its name, numbers and email addresses. Use it only when the owner asks you to use or read out the open contact. It never searches or lists contacts; never repeat it to collect more.",
+      "contact_read_selected returns only the open contact's name/numbers/emails after approval, when owner asks to use/read it. Never searches, lists, or repeats.",
       ...openItemGuidance,
     ],
   },
@@ -181,7 +181,7 @@ const forms: readonly ProposalForm[] = [
   { types: ["voicemail_read_selected"], schema: form("voicemail_read_selected"), offered: offeredWith("VoicemailReadV1"), guidance: [readGuidance, ...openItemGuidance] },
   {
     types: ["voicemail_delete_selected"], schema: form("voicemail_delete_selected"), offered: offeredWith("VoicemailDeleteV1"),
-    guidance: ["voicemail_delete_selected deletes only the voicemail the owner has open, after the owner confirms on the unlocked phone.", noneSelectedGuidance],
+    guidance: ["voicemail_delete_selected deletes only the open voicemail after owner confirms.", noneSelectedGuidance],
   },
   { types: ["sms_latest_sender"], schema: form("sms_latest_sender", {}, { disclosure }), offered: offeredWithAll(["SmsLatestSenderV1"], "SmsLatestSenderV2") },
   { types: ["sms_latest_sender"], schema: form("sms_latest_sender", {}, { disclosure, reviewRequested }), offered: offeredWith("SmsLatestSenderV2") },
@@ -407,7 +407,7 @@ function familyGuidance(device: NegotiatedDevice): readonly string[] {
   const guidance = roleGuidance[role]
   return [
     ...(guidance === undefined ? [] : [
-      `Propose ${guidance.operation} with a contact target ${roleQuery}`,
+      `Propose ${guidance.operation} with a contact target ${personQuery}`,
       ...(searchFirstRefused(role, searchOffered) ? [`Do not propose contact_show first for ${guidance.request}.`] : []),
     ]),
     routeGuidance,

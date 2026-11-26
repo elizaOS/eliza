@@ -21,21 +21,26 @@ module browser {
     return createImageBitmap(image)
   }
 
-  function rasterOf(canvas: HTMLCanvasElement, context: CanvasRenderingContext2D): Raster {
+  function rasterOf(canvas: HTMLCanvasElement | OffscreenCanvas,
+    context: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D): Raster {
     return {
       width: canvas.width,
       height: canvas.height,
       pixels: () => context.getImageData(0, 0, canvas.width, canvas.height).data,
       put: (data) => context.putImageData(new ImageData(new Uint8ClampedArray(data), canvas.width, canvas.height), 0, 0),
       blank: () => new Uint8ClampedArray(canvas.width * canvas.height * 4),
-      encode: (type, quality) => new Promise((resolve) => canvas.toBlob(resolve, type, quality)),
+      encode: async (type, quality) => "convertToBlob" in canvas
+        ? canvas.convertToBlob({ type, quality })
+        : new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, type, quality)),
     }
   }
 
   export function paint(bitmap: Bitmap | undefined, width: number, height: number): Raster | undefined {
-    const canvas = document.createElement("canvas")
-    canvas.width = width
-    canvas.height = height
+    const canvas = typeof document === "undefined" ? new OffscreenCanvas(width, height) : document.createElement("canvas")
+    if ("toBlob" in canvas) {
+      canvas.width = width
+      canvas.height = height
+    }
     const context = canvas.getContext("2d", { willReadFrequently: true })
     if (context === null) return undefined
     context.fillStyle = "white"

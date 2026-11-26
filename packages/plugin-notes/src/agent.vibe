@@ -64,6 +64,11 @@ const refusals: Readonly<Partial<Record<string, NotesRefusal>>> = {
   NOTES_CHECKLIST_UNTITLED: "UntitledChecklist",
 }
 
+const unreachable = {
+  NOTES_STORE_UNAVAILABLE: "Notes couldn't be reached just now, so nothing changed.",
+  NOTES_COMMIT_UNCONFIRMED: "Notes didn't confirm that change, so check the note before trying again.",
+} as const
+
 export effect function notesRefusalResult(notes: NotesCollection, error: NotesFailure): ActionResult!! {
   const message = error._tag === "NotesRefused" ? error.message : error.reason
   const candidateIds = error._tag === "NotesRefused" ? error.candidateIds : undefined
@@ -71,10 +76,12 @@ export effect function notesRefusalResult(notes: NotesCollection, error: NotesFa
   if (kind === "RefusalAsksTheOwner") return { success: true, text: message, data: { code: error.code, readOnlyOperation: true, awaitingUserInput: true, requiresInput: true } }
   const waits = kind === "RefusalWaitsOnOwner"
   const pool: readonly StickyNote[] = waits && candidateIds !== undefined ? (map(notes.snapshot(), (snapshot) => snapshot.notes) catch () => []) : []
+  const owner = error._tag === "NotesRefused" ? undefined : unreachable[error.code]
   return {
     success: false,
     text: message,
     error: message,
+    ...(owner === undefined ? {} : { userFacingText: owner, verifiedUserFacing: true }),
     ...(kind === "RefusalCoachesPlanner" ? { transcriptVisibility: "internal" as const } : {}),
     data: {
       code: error.code,
@@ -223,9 +230,9 @@ function notesAction(notes: NotesCollection, spec: NotesActionSpec): Action {
   }
 }
 
-const idParameter = (description: string) => ({ name: "noteId", description, required: false, schema: { type: "string" as const, pattern: noteIdPattern.source } })
+const idParameter = (description = "") => ({ name: "noteId", description, required: false, schema: { type: "string" as const, pattern: noteIdPattern.source } })
 const contentParameter = (description: string) => ({ name: "content", description, required: false, schema: { type: "string" as const, maxLength: 20_241 } })
-const revisionParameter = { name: "expectedRevision", description: "notesRevision of the complete read this edit was prepared from.", required: false, schema: { type: "integer" as const, minimum: 0 } }
+const revisionParameter = { name: "expectedRevision", description: "notesRevision from latest read.", required: false, schema: { type: "integer" as const, minimum: 0 } }
 
 const ownerChoice = (code: "NOTES_AMBIGUOUS_NOTE" | "NOTES_TITLE_NOT_FOUND", offered: readonly StickyNote[], candidates: readonly object[]) => ({
   actionName: "NOTES_GET", code, readOnlyOperation: true, awaitingUserInput: true, requiresInput: true, candidateIds: offered.map((note) => note.id), candidates: [...candidates],
@@ -241,12 +248,12 @@ function readAction(notes: NotesCollection): Action[] {
     notesAction(notes, {
       name: "NOTES_LIST",
       similes: ["NOTES_SEARCH", "LIST_NOTES"],
-      description: "Read current saved notes with their IDs, exact text and timestamps. Saved notes live only in this store: memory, documents and files do not search it. content filters by title or topic, noteId by exact ID, dateRange bounds createdAt or updatedAt (start inclusive, end exclusive, instants with offsets), and latestBy keeps only the newest by that timestamp with all ties. Pass a requested date window in this read instead of listing every note and filtering in the reply; dates are not text-search terms. latestBy has no default: take createdAt or updatedAt from the owner's wording and say which. The saved-notes context carries no timestamps, so it cannot answer a date question. Timestamps are UTC instants; when a row also gives the owner's local times, name dates from those. Changes nothing, opens no view, and is never the answer to a requested edit or deletion.",
+      description: "Read saved notes (IDs, exact text, timestamps); sole store (not memory/files; context lacks timestamps). Filter dates via dateRange, never text search. Report local dates when given. Read-only; opens no view; never answers edits/deletes.",
       parameters: [
-        contentParameter("Optional title or topic text filter."),
-        idParameter("Optional exact note ID."),
-        { name: "latestBy", description: "createdAt or updatedAt, only when the owner asked for the latest note by that time.", required: false, schema: { type: "string", enum: ["createdAt", "updatedAt"] } },
-        { name: "dateRange", description: "{ field: createdAt|updatedAt, start?, end? } with offset-bearing instants.", required: false, schema: { type: "object" } },
+        contentParameter("Title/topic filter."),
+        idParameter(),
+        { name: "latestBy", description: "Newest+ties; no default—match owner wording & state which.", required: false, schema: { type: "string", enum: ["createdAt", "updatedAt"] } },
+        { name: "dateRange", description: "{field:createdAt|updatedAt,start?,end?} [start,end) offset instants.", required: false, schema: { type: "object", properties: { field: { type: "string", enum: ["createdAt", "updatedAt"] }, start: { type: "string" }, end: { type: "string" } }, required: ["field"] } },
       ],
       run: effect (params, message) => {
         const range = params.dateRange
@@ -290,11 +297,11 @@ function readAction(notes: NotesCollection): Action[] {
     notesAction(notes, {
       name: "NOTES_GET",
       similes: ["NOTES_GET_NOTE"],
-      description: "Read one current note by exact noteId, by the title the owner named it by, or by text it contains; give exactly one. A title no saved note has reads nothing and never cites another note in its place: when one saved note's title holds those words, it names that note's noteId, which you read to answer about, show or open the note when it is plainly the note meant; before changing or deleting it, or when it may not be the one, ask the owner which note they mean. Several distinct matches return candidates for the owner's choice.",
+      description: "Read one note by exactly one of noteId, title, or content. A title no saved note has reads nothing and never cites another note in its place: when one saved note's title holds those words, it names that note's noteId, which you read to answer about, show or open the note when it is plainly the note meant; before changing or deleting it, or when it may not be the one, ask the owner which note they mean. Multiple matches return candidates.",
       parameters: [
-        idParameter("Exact note ID."),
-        { name: "title", description: "The title the owner named the note by, as they said it.", required: false, schema: { type: "string", maxLength: 240 } },
-        contentParameter("Unique text the note contains, when the owner did not name its title."),
+        idParameter(),
+        { name: "title", description: "Owner-named title.", required: false, schema: { type: "string", maxLength: 240 } },
+        contentParameter("Unique text (when untitled)."),
       ],
       run: effect (params, message) => {
         const title = text(params, "title")
@@ -339,13 +346,13 @@ function writeActions(notes: NotesCollection): Action[] {
     notesAction(notes, {
       name: "NOTES_CREATE",
       writes: true,
-      description: `Create the note the owner asked to save, copying the supplied text exactly: its punctuation, whitespace and line breaks. Supplied text is literal content, not a suggestion to expand, so never add a checklist, task, summary, heading or inferred action item the owner did not ask for; actionable prose stays prose. A new checklist the owner asks for is a creation, never items added to a checklist already saved: put the title the owner gave it alone in content and the owner's items, in their order, in checklist, at most ${noteLimits.checklistItems} items of at most ${noteLimits.checklistItem} characters each. When the owner gave the checklist no title, ask what to call it instead of creating it. Quotation marks that only delimit a supplied title or body are not part of it; quotes inside the content stay. If an unquoted trailing phrase could be note content or an instruction about the app, ask which before writing. Compose or reformat only when asked. A separately supplied title goes in content and the body in body. Creating a note does not open Notes.`,
+      description: `Save a note verbatim (punctuation/whitespace/newlines); never expand, reformat, or turn prose into checklists/tasks/headings unless asked. Strip outer delimiting quotes only; ask if an unquoted trailing phrase could be an app instruction. A new checklist the owner asks for is a creation, never items added to a checklist already saved: put the title the owner gave it alone in content and the owner's items, in their order, in checklist, at most ${noteLimits.checklistItems} items of at most ${noteLimits.checklistItem} characters each. When the owner gave the checklist no title, ask what to call it instead of creating it. Does not open Notes.`,
       parameters: [
-        { name: "content", description: "The exact content to save; the first line is its label.", required: true, schema: { type: "string", maxLength: 20_241 } },
-        { name: "body", description: "Optional exact body when the owner supplied a separate title in content.", required: false, schema: { type: "string" } },
-        { name: "checklist", description: `Only for a new checklist the owner asked for: each item as the owner said it, in order, at most ${noteLimits.checklistItems} items. content is then the title the owner gave the checklist, alone, with no body.`, required: false, schema: { type: "array", items: { type: "string", maxLength: noteLimits.checklistItem } } },
-        { name: "color", description: "Optional color: yellow, green, rose or slate.", required: false, schema: { type: "string", enum: ["yellow", "green", "rose", "slate"] } },
-        { name: "creationId", description: "A client's own ID for this one creation; a repeat returns the note it made.", required: false, schema: { type: "string", maxLength: 200 } },
+        { name: "content", description: "Exact text (line 1=title) or checklist title alone.", required: true, schema: { type: "string", maxLength: 20_241 } },
+        { name: "body", description: "Exact body when content is title only.", required: false, schema: { type: "string" } },
+        { name: "checklist", description: "New checklist items in order (no body).", required: false, schema: { type: "array", items: { type: "string", maxLength: noteLimits.checklistItem } } },
+        { name: "color", description: "", required: false, schema: { type: "string", enum: ["yellow", "green", "rose", "slate"] } },
+        { name: "creationId", description: "Idempotency ID; repeat returns same note.", required: false, schema: { type: "string", maxLength: 200 } },
       ],
       run: effect (params) => {
         const body = typeof params.body === "string" ? params.body : undefined
@@ -363,16 +370,16 @@ function writeActions(notes: NotesCollection): Action[] {
       name: "NOTES_UPDATE",
       writes: true,
       similes: ["NOTES_PATCH", "NOTES_APPEND", "NOTES_EDIT"],
-      description: "Change one note named by noteId or content, never both, with one edit form: textEdit {field,oldText,newText} replaces one unique current match and needs no revision; textEdit {action:append,field:body,text} appends that exact suffix; textEdit {action:append,field:item,text} adds one list item in the note's own form, to a note the owner named, never as a new checklist the owner asked for (that is NOTES_CREATE with checklist); authoredEdit edits a checklist, transcript, summary, action or clip entry; replacementContent, title, body or color replace fields. Every form but the literal replacement needs expectedRevision from the complete read it was prepared from, never a guessed one, and any Notes change since needs a fresh read. Pick the note the owner means from the saved notes, whatever words they used for it, and pass its exact noteId. When more than one note could be meant, read them with NOTES_GET or NOTES_LIST and ask which one instead: a guessed ID for a title other notes share changes nothing until the owner has chosen, and a repaired call never replaces an ambiguous title with a guessed ID. An append keeps every existing character; a replaced body leaves the title as it is. Prefer the literal replacement for a word or phrase substitution. Never answer a requested edit with a read.",
+      description: "Edit one note (noteId or content, not both). Pass exact noteId; if ambiguous, read via NOTES_GET/NOTES_LIST & ask—never guess noteId for shared titles, even on retry. One edit form; all except literal textEdit need fresh expectedRevision. textEdit {action:append,field:item,text} adds one list item in the note's own form, to a note the owner named, never as a new checklist the owner asked for (that is NOTES_CREATE with checklist). To take one item off a note, edit it: authoredEdit {field:checklist,action:remove,index,expectedText} for a checklist item (index and text from a read), or literal textEdit replacing that line with empty text in a plain note; never NOTES_DELETE. Prefer literal textEdit for word/phrase edits; never answer edits with a read.",
       parameters: [
-        idParameter("Exact note ID."),
-        contentParameter("The existing note's title or unique text, to find it."),
-        { name: "textEdit", description: "A literal replacement or an exact append.", required: false, schema: { type: "object" } },
-        { name: "authoredEdit", description: "An indexed authored edit or a checklist append.", required: false, schema: { type: "object" } },
-        { name: "replacementContent", description: "The complete replacement note text from a complete read.", required: false, schema: { type: "string" } },
-        { name: "title", description: "A replacement first-line label.", required: false, schema: { type: "string" } },
-        { name: "body", description: "A replacement body, without the framing newline.", required: false, schema: { type: "string" } },
-        { name: "color", description: "A replacement color.", required: false, schema: { type: "string", enum: ["yellow", "green", "rose", "slate"] } },
+        idParameter(),
+        contentParameter("Title/unique text to locate note."),
+        { name: "textEdit", description: "{field,oldText,newText} (unique match, no revision) or {action:append,field:body|item,text} (exact append).", required: false, schema: { type: "object", properties: { action: { type: "string", enum: ["replace", "append"] }, field: { type: "string", enum: ["title", "body", "item"] }, oldText: { type: "string" }, newText: { type: "string" }, text: { type: "string" } } } },
+        { name: "authoredEdit", description: "Indexed checklist/transcript/summary/action/clip edit, checklist append, or checklist item remove {field:checklist,action:remove,index,expectedText}.", required: false, schema: { type: "object", properties: { action: { type: "string", enum: ["replace", "append", "remove"] }, field: { type: "string", enum: ["checklist", "voice-line", "voice-summary", "voice-action", "link-clip"] }, index: { type: "integer" }, expectedText: { type: "string" }, text: { type: "string" }, done: { type: "boolean" } }, required: ["field"] } },
+        { name: "replacementContent", description: "Full replacement text from read.", required: false, schema: { type: "string" } },
+        { name: "title", description: "New first-line title.", required: false, schema: { type: "string" } },
+        { name: "body", description: "New body (keeps title, no leading newline).", required: false, schema: { type: "string" } },
+        { name: "color", description: "", required: false, schema: { type: "string", enum: ["yellow", "green", "rose", "slate"] } },
         revisionParameter,
       ],
       run: effect (params, _message, pick) => {
@@ -389,8 +396,8 @@ function writeActions(notes: NotesCollection): Action[] {
     notesAction(notes, {
       name: "NOTES_DELETE",
       writes: true,
-      description: "Move one note to Recently deleted. Pick the note the owner means from the saved notes, whatever words they used for it, and pass its exact noteId. When more than one note could be meant, read them with NOTES_GET or NOTES_LIST and ask which one instead: a guessed ID for a title other notes share deletes nothing until the owner has chosen. content deletes only the note whose exact title it gives; any other match comes back as a candidate for the owner to confirm and nothing is deleted.",
-      parameters: [idParameter("Exact note ID from a current record."), contentParameter("The note's title or text.")],
+      description: "Delete a whole note, moving it to Recently deleted, only when the owner asks to delete the note itself; taking an item or line off a note is NOTES_UPDATE, never this (noteId or content, not both). Pass exact noteId; if ambiguous, read via NOTES_GET/NOTES_LIST & ask (guessed IDs for shared titles fail). content deletes only exact title matches; else returns candidates.",
+      parameters: [idParameter(), contentParameter("Exact title or text.")],
       run: effect (params, _message, pick) => {
         const target = targetOf(params, "noteId", "content")
         if (typeof target === "string") return missingTarget(target)
@@ -401,8 +408,8 @@ function writeActions(notes: NotesCollection): Action[] {
     notesAction(notes, {
       name: "NOTES_RESTORE",
       writes: true,
-      description: "Bring one note back from Recently deleted with its content unchanged, by noteId or by its title or text among deleted notes only.",
-      parameters: [idParameter("Exact deleted note ID."), contentParameter("The deleted note's title or text.")],
+      description: "Restore one deleted note unchanged from Recently deleted (noteId or content, not both).",
+      parameters: [idParameter(), contentParameter("Deleted note title/text.")],
       run: effect (params) => {
         const target = targetOf(params, "noteId", "content")
         if (typeof target === "string") return missingTarget(target)
@@ -420,11 +427,11 @@ function writeActions(notes: NotesCollection): Action[] {
     notesAction(notes, {
       name: "NOTES_MOVE",
       writes: true,
-      description: "Put one note in a folder by the exact folder name the device sent, or take it out with folder null. Folders are created on the device, not in chat. The note's text is unchanged.",
+      description: "Move one note to a device folder or remove (folder=null); folders are device-created only; text unchanged.",
       parameters: [
-        idParameter("Exact note ID."),
-        contentParameter("The note's title or text."),
-        { name: "folder", description: "The exact folder name, or null for no folder.", required: true, schema: { anyOf: [{ type: "string" }, { type: "null" }] } },
+        idParameter(),
+        contentParameter("Note title/text."),
+        { name: "folder", description: "Exact device folder name or null.", required: true, schema: { anyOf: [{ type: "string" }, { type: "null" }] } },
       ],
       run: effect (params, message) => {
         const target = targetOf(params, "noteId", "content")
@@ -565,7 +572,7 @@ export const NOTES_CAPABILITIES: ViewCapability[] = [
     ...noteTargetParameters({ title: "Exact first-line label of the note to update.", query: "Unique existing text of the note to update." }),
     content: { type: "string", maxLength: 20_241, description: "Replacement complete note content." },
     format: { type: "object", description: "Replacement rich format; omitted keeps it." },
-    authoredEdit: { type: "object", description: "One authored edit or checklist append." },
+    authoredEdit: { type: "object", description: "One authored edit, checklist append, or checklist item removal {field:checklist,action:remove,index,expectedText}." },
     color: { type: "string", enum: ["yellow", "green", "rose", "slate"], description: "Replacement color." },
     expectedRevision: { type: "integer", required: true, minimum: 0, description: "Revision of the snapshot this edit was prepared from." },
   } },

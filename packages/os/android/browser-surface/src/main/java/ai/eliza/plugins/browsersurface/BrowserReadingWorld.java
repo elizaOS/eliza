@@ -57,6 +57,40 @@ public final class BrowserReadingWorld {
   private boolean started;
   private long generation;
   private boolean closed;
+  /** Test seam for isolated-world document-end script registration; production uses WebViewCompat. */
+  java.util.function.Function<String, ScriptHandler> documentEndRegistrar;
+
+  private ScriptHandler registerDocumentEnd(String js) {
+    if (documentEndRegistrar != null)
+      return documentEndRegistrar.apply(js);
+    return WebViewCompat.addJavaScriptOnEvent(
+        web, js, WebViewCompat.INJECTION_EVENT_DOCUMENT_END, Set.of("*"), world);
+  }
+
+  private void clearPreparation() {
+    nonce = null;
+    expectedUrl = null;
+    started = false;
+    if (script != null) {
+      try {
+        script.remove();
+      } catch (RuntimeException ignored) {
+      }
+      script = null;
+    }
+  }
+
+  private void armPreparedNonce(String url) {
+    nonce = UUID.randomUUID().toString();
+    expectedUrl = url;
+    try {
+      script = registerDocumentEnd(
+          "if(window===window.top&&location.protocol==='https:'){" + CHANNEL + ".postMessage('" + nonce
+              + "|'+" + DOCUMENT_ID + ");}");
+    } catch (RuntimeException unavailable) {
+      invalidate();
+    }
+  }
 
   /** Registers the world's listener; without the capability nothing is created. */
   public BrowserReadingWorld(WebView web) {
@@ -138,23 +172,27 @@ public final class BrowserReadingWorld {
     invalidate();
     if (closed || world == null || origin(url) == null)
       return;
-    nonce = UUID.randomUUID().toString();
-    expectedUrl = url;
-    try {
-      script = WebViewCompat.addJavaScriptOnEvent(web,
-          "if(window===window.top&&location.protocol==='https:'){" + CHANNEL + ".postMessage('" + nonce
-              + "|'+" + DOCUMENT_ID + ");}",
-          WebViewCompat.INJECTION_EVENT_DOCUMENT_END, Set.of("*"), world);
-    } catch (RuntimeException unavailable) {
-      invalidate();
-    }
+    armPreparedNonce(url);
   }
 
-  /** {@link #prepare} for the history entry {@code offset} steps from the current one. */
+  /**
+   * {@link #prepare} for the history entry {@code offset} steps from the current one. When that
+   * entry stays on the currently ready document's HTTPS origin, the adopted proxy stays ready in
+   * case the navigation is same-document (no {@code onPageStarted} or {@code DOCUMENT_END}); a
+   * cross-document load still clears it in {@link #pageStarted} and adopts only the prepared nonce.
+   */
   public void prepareHistory(int offset) {
     WebBackForwardList history = web.copyBackForwardList();
-    int index = history.getCurrentIndex() + offset;
-    prepare(index >= 0 && index < history.getSize() ? history.getItemAtIndex(index).getUrl() : null);
+    int index = history != null ? history.getCurrentIndex() + offset : -1;
+    String target = history != null && index >= 0 && index < history.getSize()
+        ? history.getItemAtIndex(index).getUrl() : null;
+    String targetOrigin = origin(target);
+    if (ready() && targetOrigin != null && targetOrigin.equals(origin)) {
+      clearPreparation();
+      armPreparedNonce(target);
+      return;
+    }
+    prepare(target);
   }
 
   /**
@@ -181,17 +219,8 @@ public final class BrowserReadingWorld {
     proxy = null;
     origin = null;
     documentId = null;
-    nonce = null;
-    expectedUrl = null;
     expectedOrigin = null;
-    started = false;
-    if (script != null) {
-      try {
-        script.remove();
-      } catch (RuntimeException ignored) {
-      }
-      script = null;
-    }
+    clearPreparation();
   }
 
   /** The current document announced itself from the committed HTTPS origin the tab still shows. */

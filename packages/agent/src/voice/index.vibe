@@ -21,7 +21,7 @@ export {
   type AgentEventSubscribe, type LiveTranscriptEvent, type LiveVoiceSession, type LiveVoiceSessionOptions,
 } from "./live-session.vibe"
 export {
-  encodeMonoPcm16WavChunks, startCumulativeMicrophoneCapture,
+  encodeMonoPcm16BytesWav, encodeMonoPcm16WavChunks, startCumulativeMicrophoneCapture,
 } from "./capture.vibe"
 export { browserCaptureAudio } from "./capture-browser.ts"
 export {
@@ -32,5 +32,4 @@ export {
 export {
   voiceNetworkPorts, VoiceRouteRefused, type JsonAnswer, type JsonRequest, type VoiceNetworkPorts,
 } from "./agent-ports.vibe"
-export { parseVoiceUiContext, type VoiceUiContext } from "../conversation/turn-context.schema.vibe"
 export { defaultVoiceProfile, type StopReport, type VoiceProfile } from "../../gen/agent__voice__session.effect.vibe"

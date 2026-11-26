@@ -468,7 +468,12 @@ export const MapsResult = Schema.Struct({
 export type MapsReadSelected = typeof MapsReadSelected.Type
 export type MapsResult = typeof MapsResult.Type
 
-const FilterText = Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(200), Schema.makeFilter((text: string) => !text.includes("\0")))
+const filterTextAllowed = (text: string) => !text.includes("\0")
+const FilterText = Schema.String.check(
+  Schema.isMaxLength(200), Schema.makeFilter((text: string) => filterTextAllowed(text) && text.trim() !== ""),
+).pipe(Schema.decodeTo(Schema.Trimmed.check(Schema.isMinLength(1), Schema.isMaxLength(200), Schema.makeFilter(filterTextAllowed)),
+  SchemaTransformation.transform({ decode: (text) => text.trim(), encode: (text) => text }),
+))
 const collapsed = (name: string) => name.replace(/\s+/g, " ").trim()
 const FolderName = Schema.String.pipe(Schema.decodeTo(
   Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(40), Schema.makeFilter((name: string) => !name.includes("\0") && name === collapsed(name))),

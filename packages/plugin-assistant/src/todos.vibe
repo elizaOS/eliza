@@ -2,7 +2,7 @@
 import { isAffirmativeConfirmationReply, type Action, type ActionResult, type Memory, type Provider } from "@elizaos/core"
 import { Machine, Rejected, matching, nearMiss, stored, type Event, type Todo, type TodoStatus, type Todos } from "../gen/assistant__todos.effect.vibe"
 import { Facts, onAgent, parametersOf, readRecord, requestOf, writeRecord } from "./host.vibe"
-import { appliedReceipt, attributed, failedReceipt, previewReceipt, unchangedReceipt } from "./replies.vibe"
+import { appliedReceipt, attributed, failedReceipt, forTheOwner, previewReceipt, unchangedReceipt } from "./replies.vibe"
 import { TodoRequest } from "./requests.schema.vibe"
 
 const listKey = "todos"
@@ -139,18 +139,18 @@ export effect function changeTodos(input: unknown, message: Memory) {
 
 export const todosAction: Action = {
   name: todoActionName,
-  description: "The owner's to-do list: create, start, complete, cancel, reopen, rename, delete, list or clear. A change names the item by its text, case and punctuation aside, or its t-N reference and applies only when exactly one item matches; clearing asks first.",
+  description: "Owner's to-do list. Changes match one item by text (case/punctuation-insensitive) or t-N ref; clear asks first.",
   similes: ["TODOS", "CREATE_TODO", "ADD_TODO", "COMPLETE_TODO", "FINISH_TODO", "CANCEL_TODO", "RENAME_TODO", "UPDATE_TODO", "DELETE_TODO", "LIST_TODOS", "CLEAR_TODOS"],
   parameters: [
-    { name: "op", required: true, description: "create, start, complete, cancel, reopen, rename, delete, list or clear.", schema: { type: "string", enum: ["create", "start", "complete", "cancel", "reopen", "rename", "delete", "list", "clear"] } },
-    { name: "content", required: false, description: "For create: the to-do's text. For rename: its new text.", schema: { type: "string" } },
-    { name: "target", required: false, description: "For a change: the to-do's text or its t-N reference.", schema: { type: "string" } },
+    { name: "op", required: true, description: "Op.", schema: { type: "string", enum: ["create", "start", "complete", "cancel", "reopen", "rename", "delete", "list", "clear"] } },
+    { name: "content", required: false, description: "create/rename text.", schema: { type: "string" } },
+    { name: "target", required: false, description: "Item text or t-N ref.", schema: { type: "string" } },
   ],
   tags: ["domain:todos", "capability:write", "effect:receipt-required"],
   roleGate: { minRole: "OWNER" },
   validate: async () => true,
   handler: async (runtime, message, _state, options) => {
-    return onAgent(runtime, Effect.catch(changeTodos(parametersOf(options), message), (failed) => Effect.succeed({ success: false, text: "The to-do list could not be changed.", data: { outcome: failed._tag } } satisfies ActionResult)))
+    return onAgent(runtime, Effect.catch(changeTodos(parametersOf(options), message), (failed) => Effect.succeed({ success: false, text: "The to-do list could not be changed.", ...forTheOwner("Your to-do list couldn't be reached just now."), data: { outcome: failed._tag } } satisfies ActionResult)))
   },
 }
 

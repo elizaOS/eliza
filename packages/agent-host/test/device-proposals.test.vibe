@@ -388,7 +388,7 @@ it.live(`The device tool an Alpha phone is sent states each rule once, names no 
       differing: [],
       compared: { inForms: true, outsideForms: true },
     })
-    assert.isAtMost(size, 19_500)
+    assert.isAtMost(size, 19_650)
   })
 }, 120_000)
 

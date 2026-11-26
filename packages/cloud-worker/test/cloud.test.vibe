@@ -1019,8 +1019,8 @@ describe("WP2 Native clients and pages: native Google (spec/cloud/nativeClients/
     try sync(() => clock.set(start))
     provide Clock.Clock = clock.clock {
       const registration = { ...native, connectReturn: `${web}/apps/native/google` }
-      const { cloud, google } = try nativeCloud(undefined, registration)
-      const owner = try signedCaller(cloud, "google-browser")
+      const { cloud, google } = try nativeCloud(undefined, registration, clock.clock)
+      const owner = try signedCaller(cloud, "native")
       const session = try cloud.store.transaction((tx) => issueSession(tx, { ...owner, assurance: "SingleFactor", accountCreated: false, now: start }))
       const caller = { ...owner, headers: { authorization: "Bearer " + session.accessToken } }
       const callback = "/api/v1/oauth/google/callback"
@@ -1037,13 +1037,14 @@ describe("WP2 Native clients and pages: native Google (spec/cloud/nativeClients/
         return `${cloud.url}${page.pathname}${page.search}`
       }
       const fragment = (location: string) => Object.fromEntries(new URLSearchParams(location.split("#")[1] ?? ""))
-      const [anonymous, side, empty, stale, duplicate] = try all([
+      const [anonymous, side, empty, stale, duplicate, wrongAddress] = try all([
         initialize(requested, {}), initialize({ ...requested, side: "agent" }), initialize({ ...requested, capabilities: [] }),
-        initialize({ ...requested, redirectUrl: `${web}/apps/missing?state=${appState}` }), initialize({ ...requested, redirectUrl: `${redirectUrl}&state=${appState}` })
+        initialize({ ...requested, redirectUrl: `${web}/apps/missing?state=${appState}` }), initialize({ ...requested, redirectUrl: `${redirectUrl}&state=${appState}` }),
+        initialize({ ...requested, emailBinding: { address: "other@example.com" } })
       ], { concurrency: "unbounded" })
       const none = try sql(cloud, "SELECT state_digest FROM google_connect_states", [])
       try sync(() => { google.signInAs(person); google.managedScopes(granted) })
-      const begun = try initialize(requested)
+      const begun = try initialize({ ...requested, emailBinding: {} })
       const auth = try sync(() => new URL(issued(begun).authUrl))
       const signed = auth.searchParams.get("state") ?? ""
       const pending = (try sql(cloud, "SELECT c.key, c.status, c.state #>> '{flow,phase}' AS phase, s.organization_id, s.user_id, s.state_digest, s.verifier, s.consumed_at FROM google_connections c CROSS JOIN google_connect_states s", []))[0]
@@ -1062,6 +1063,11 @@ describe("WP2 Native clients and pages: native Google (spec/cloud/nativeClients/
       const live = try cloud.call(`/api/v1/eliza/google/status?grantId=${grantId}`, { headers: caller.headers })
       const status = live.body as { readonly connected: boolean; readonly grantedCapabilities: ReadonlyArray<string>; readonly grantedScopes: ReadonlyArray<string> }
 
+      try sync(() => google.signInAs({ ...person, subject: "wrong-mailbox", email: "other@example.com" }))
+      const wrongMailbox = try initialize({ ...requested, emailBinding: {} })
+      const wrongReturn = try visitLocal(issued(wrongMailbox).authUrl)
+      const refusedMailbox = try visitLocal(try sync(() => returnToCloud(wrongReturn.location)))
+      try sync(() => google.signInAs(person))
       const noReturn = try initialize({ capabilities: requested.capabilities })
       const returned = try visitLocal(issued(noReturn).authUrl)
       const webPage = try visitLocal(try sync(() => returnToCloud(returned.location)))
@@ -1086,25 +1092,38 @@ describe("WP2 Native clients and pages: native Google (spec/cloud/nativeClients/
       const states = (try sql(cloud, "SELECT COUNT(*) AS total, COUNT(*) FILTER (WHERE consumed_at IS NOT NULL AND verifier = '') AS retired FROM google_connect_states", []))[0]
       const forms = google.tokenRequests.map((form) => [form.get("client_id"), form.get("redirect_uri"), form.has("code_verifier")])
       try check(() => assert.deepStrictEqual({
-        rejected: [refusal(anonymous), refusal(side), refusal(empty), refusal(stale), refusal(duplicate)], none,
+        rejected: [refusal(anonymous), refusal(side), refusal(empty), refusal(stale), refusal(duplicate), refusal(wrongAddress)], none,
         opened: [begun.status, issued(begun).appReturn, auth.searchParams.get("scope")?.split(" "), auth.searchParams.get("code_challenge_method"), auth.searchParams.get("include_granted_scopes")],
         pending: [pending?.status, pending?.phase, pending?.organization_id, pending?.user_id, pending?.state_digest !== signed, String(pending?.verifier).startsWith("v1."), pending?.consumed_at],
         tampered: [tampered.status, tampered.location], accepted: [accepted.status, accepted.location.split("#")[0], fragment(accepted.location), grantId === pending?.key],
         replay: [replay.status, replay.location], live: [live.status, status.connected, status.grantedCapabilities, status.grantedScopes],
+        wrongMailbox: [refusedMailbox.status, fragment(refusedMailbox.location)],
         web: [issued(noReturn).appReturn, webPage.status, webPage.location], denied: [denied.status, fragment(denied.location)],
         failed: [failed.status, fragment(failed.location), refusedReplay.status], expired: [expired.status, expired.location], withdrawn: [withdrawn.status, withdrawn.location],
         rows: rows.map((row) => [row.key, row.status, row.user_id, row.organization_id, row.subject, row.granted_scopes, row.sealed]),
         closed: [Number(states?.total), Number(states?.retired)], forms, pkce: s256(google.tokenRequests[0]?.get("code_verifier") ?? "") === auth.searchParams.get("code_challenge")
       }, {
-        rejected: ["401 authentication_required credential_unknown", "400 invalid_request", "400 invalid_request", "400 redirect_mismatch", "400 invalid_request"], none: [],
+        rejected: ["401 authentication_required credential_unknown", "400 invalid_request", "400 invalid_request", "400 redirect_mismatch", "400 invalid_request", "400 invalid_request"], none: [],
         opened: [200, 2, offered, "S256", "false"], pending: ["Pending", "AwaitingCallback", caller.organizationId, caller.userId, true, true, null],
         tampered: [400, ""], accepted: [302, registration.connectReturn, { state: appState, result: "connected", connectionId: grantId }, true],
         replay: [400, ""], live: [200, true, ["google.basic_identity", "google.gmail.triage"], granted],
+        wrongMailbox: [302, { state: appState, result: "failed" }],
         web: [undefined, 200, ""], denied: [302, { state: appState, result: "denied" }],
         failed: [302, { state: appState, result: "failed" }, 400], expired: [400, ""], withdrawn: [400, ""],
         rows: [[grantId, "Active", caller.userId, caller.organizationId, person.subject, granted, true]],
-        closed: [6, 6], forms: Array.from({ length: 3 }, () => ["google-web-client", `https://api.staging.example.com${callback}`, true]), pkce: true
+        closed: [7, 7], forms: Array.from({ length: 4 }, () => ["google-web-client", `https://api.staging.example.com${callback}`, true]), pkce: true
       }))
+      const phoneOwner = try signedCaller(cloud, "managed-google-phone")
+      try sql(cloud, "UPDATE accounts SET email = NULL, phone = '+15555550117' WHERE key = $1", [phoneOwner.userId])
+      const phoneSession = try cloud.store.transaction((tx) => issueSession(tx, { ...phoneOwner, assurance: "SingleFactor", accountCreated: false, now: start + 600_000 }))
+      const phoneHeaders = { authorization: `Bearer ${phoneSession.accessToken}` }
+      const phoneConnect = { capabilities: requested.capabilities, emailBinding: {} }
+      const missingMailbox = try initialize(phoneConnect, phoneHeaders)
+      const namedMailbox = try initialize({ ...phoneConnect, emailBinding: { address: "NATIVE@example.com" } }, phoneHeaders)
+      const namedReturn = try visitLocal(issued(namedMailbox).authUrl)
+      const namedPage = try visitLocal(try sync(() => returnToCloud(namedReturn.location)))
+      const held = try cloud.call("/api/v1/eliza/google/status", { headers: phoneHeaders })
+      try check(() => assert.deepStrictEqual([refusal(missingMailbox), namedPage.status, held.status, (held.body as { readonly identity: { readonly email: string } | null }).identity?.email], ["400 invalid_request", 200, 200, person.email]))
     }
   }), 120_000)
 
@@ -1143,14 +1162,25 @@ describe("WP2 Native clients and pages: native Google (spec/cloud/nativeClients/
 
 describe("WP3 Checkout (spec/cloud/billing/checkout.md, \"Story: Subscribe once, whichever screen or payer finishes it\")", () => {
   schema CheckoutOpened { status: "open"; commandId: string; sessionId: string; checkoutUrl: string }
-  it.live("Pay once through a shared link and confirm only as the account that started it", () => scoped(effect {
-    const stripe = try sync(() => createStripeFake())
-    const cloud = try testCloud({ stripe })
+  it.live("Offer Plus only, then pay once through a shared link and confirm as its owner (spec/cloud/billing/plans.md, \"Story: Offer the paid plans as the provider sells them\")", () => scoped(effect {
+    const stripe = try sync(() => createStripeFake({ prices: [catalogPrices[0]] }))
+    const cloud = try testCloud({ stripe, edit: (profile) => {
+      const staging = profile.environments.staging
+      return { ...profile, environments: { ...profile.environments, staging: {
+        ...staging, billing: { ...staging.billing, plans: { plus_monthly: staging.billing.plans.plus_monthly } }
+      } } }
+    } })
     const owner = try signedCaller(cloud, "checkout-owner")
     const other = try signedCaller(cloud, "checkout-other")
     const checkout = "/api/v1/subscriptions/checkout"
     const idempotencyKey = "shared-checkout-first"
     const body = { planKey: "plus_monthly", idempotencyKey, presentation: "shared" }
+    const listed = try cloud.call("/api/v1/subscriptions/plans")
+    const providerRequests = cloud.fakes.seen.length
+    const unavailable = try cloud.call(checkout, { json: { ...body, planKey: "pro_monthly" }, headers: owner.headers })
+    try check(() => assert.deepStrictEqual([listed.status, listed.body, unavailable.status, unavailable.body, cloud.fakes.seen.length], [200, {
+      plans: [{ key: "plus_monthly", name: "Plus", amountCents: 3000, currency: "usd", interval: "month", allowance: { amountUsd: "25.000000" } }]
+    }, 404, { error: "capability_unavailable", errorDescription: "Capability unavailable.", retryable: false }, providerRequests]))
     const open = try cloud.call(checkout, { json: body, headers: { ...owner.headers, "idempotency-key": idempotencyKey } })
     try check(() => assert.equal(open.status, 200, JSON.stringify(open.body)))
     const started = try Schema.decodeUnknownEffect(CheckoutOpened)(open.body)
@@ -2284,6 +2314,16 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
     const second = try history("&maxResults=50&startHistoryId=1000&pageToken=more")
     const expired = try history("&startHistoryId=900&side=owner")
     const asked = cloud.fakes.seen.filter((request) => request.path.endsWith("/history")).map(({ query }) => [query.get("startHistoryId"), query.get("maxResults"), query.get("pageToken")])
+    const lease = try leasedCaller(cloud, "mail-history-lease")
+    const leaseGrant = "1b63c8a7-2e45-48d1-8f37-b7214f5d309e"
+    const leaseRefresh = try sync(() => seedGrant(google, { subject: `subject-${leaseGrant}`, email: `${leaseGrant}@example.com`, scopes }))
+    try cloud.inside(linkedGrant(cloud, lease, leaseGrant, leaseRefresh, scopes, now - 1000))
+    const leasePath = `/api/v1/eliza/google/gmail/inbox-v1/history?grantId=${leaseGrant}`
+    const leased = try cloud.call(leasePath, { headers: lease.headers })
+    const wrongKey = try cloud.call(leasePath, { headers: { authorization: `Bearer ${lease.deviceKey}` } })
+    try check(() => assert.deepStrictEqual([leased.status, leased.body, wrongKey.status, (wrongKey.body as { readonly reason?: string }).reason], [
+      200, { ...baseline.body as object, grantId: leaseGrant }, 403, "device_key_not_allowed",
+    ]))
     provider = "reordered"
     const beforeReordered = cloud.fakes.seen.length
     const reordered = try history("&startHistoryId=1000")
@@ -2351,7 +2391,7 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
           { name: "Received-SPF", value: "pass (google.com: domain of ada@example.org designates 192.0.2.10 as permitted sender)" },
           { name: "Authentication-Results", value: "mx.google.com; dkim=pass header.i=@example.org; dmarc=pass header.from=example.org" }
         ],
-        headers: { From: "Ada <ada@example.org>", To: "conn-mail@example.com", Subject: "Quarterly plan", "Authentication-Results": "mx.google.com; dkim=pass header.d=bank.example" }, snippet: "Can you review", bodyText: "Please review the plan.",
+        headers: { From: "Ada <ada@example.org>", "Reply-To": "Board <board@example.org>", To: "conn-mail@example.com", Subject: "Quarterly plan", "Authentication-Results": "mx.google.com; dkim=pass header.d=bank.example" }, snippet: "Can you review", bodyText: "Please review the plan.",
         attachments: [{ partId: "1", filename: "plan.pdf", mimeType: "application/pdf", bytes: new TextEncoder().encode("%PDF-plan") }]
       },
       {
@@ -2365,7 +2405,7 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
           { name: "Received", value: "from mail.bank.example (mail.bank.example. [192.0.2.30]) by mx.google.com with ESMTPS id forged for <conn-mail@example.com>; Tue, 1 Dec 2026 08:59:00 -0800" },
           { name: "Authentication-Results", value: "mx.google.com; dkim=pass header.d=bank.example; dmarc=pass header.from=bank.example" }
         ],
-        headers: { From: "ada@example.org", Subject: "Old plan" }, snippet: "plan"
+        headers: { From: "ada@example.org", "Reply-To": "Board <board@example.org>, Ada <ada@example.org>", Subject: "Old plan" }, snippet: "plan"
       },
       { id: "msg-oversized", threadId: "thr-oversized", labelIds: ["TRASH"], internalDate: now, bodyText: wholeText + "x" }
     ]))
@@ -2427,6 +2467,7 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
     }
     const decoded = try promise(() => readMailThroughClient(cloud.url, token, "msg-direct"))
     const client = try sync(() => createCloudClient({ baseUrl: cloud.url, credential: () => token }))
+    const reply = try promise(() => client.gmailRead({ messageId: "msg-direct" }))
     const whole = try promise(() => client.gmailRead({ messageId: "msg-digest" }))
     const snippet = try promise(() => client.gmailRead({ messageId: "msg-trashed" }))
     const oversized = try gmail("/read?messageId=msg-oversized")
@@ -2551,6 +2592,7 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
         read: [read.status, readBody.message.id, readBody.message.to, readBody.bodyText, readBody.bodyHtml, readBody.bodyHtmlStatus, readBody.attachments, readBody.authenticationResults],
         fetched: [fetched.status, (fetched.body as { readonly authenticationResults: string | null }).authenticationResults],
         client: decoded,
+        replyTo: [reply.message.replyTo, whole.message.replyTo, snippet.message.replyTo],
         text: [whole.message.id, whole.bodyText === wholeText, snippet.bodyText],
         html,
         mime: [mime, mimeAttachment.status, (mimeAttachment.body as { readonly dataBase64?: string }).dataBase64, mimeMalformed.status],
@@ -2585,6 +2627,7 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
           "mx.google.com; dkim=pass header.i=@example.org; dmarc=pass header.from=example.org"],
         fetched: [200, null],
         client: ["mx.google.com; dkim=pass header.i=@example.org; dmarc=pass header.from=example.org", undefined],
+        replyTo: ["board@example.org", undefined, null],
         text: ["msg-digest", true, "plan"],
         html: expectedHtmlReads,
         mime: [expectedMimeReads, 200, btoa("last.txt"), 502],
@@ -2645,6 +2688,50 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
         mailbox: [["UNREAD", "TRASH"], 1]
       }
     ))
+  }))
+
+  it.live("Recover a lost draft save only for the exact bytes, without sending it again (spec/cloud/services/google/mailOperations.md, \"Story: Change or send from my mailbox once, as I reviewed it\"; spec/cloud/shared/dispatchOnce.md, \"Story: Send a change once and recover its outcome without sending it again\")", () => scoped(effect {
+    const { mailbox, switches, operation, grantId } = try mailOperationSetup("ops-draft", sessionMailCaller("ops-draft"))
+    const createId = "52a38be9-67ab-4b26-9c42-1af35977c174"
+    const replaceId = "b8106493-a719-46ed-b03b-6ee42e82af64"
+    const lookup = (requestId: string) => operation(`/${requestId}?grantId=${grantId}`)
+    const send = (requestId: string, proposal: unknown) => effect {
+      const prepared = try operation("", { grantId, requestId, proposal })
+      const reviewDigest = (prepared.body as OperationAnswer).receipt.reviewDigest
+      switches.dropNextReply = true
+      return try operation(`/${requestId}/dispatch`, { grantId, reviewDigest, proposal })
+    }
+    const create = { kind: "draft-create", mode: "compose", to: ["ada@example.org"], subject: "Plan", bodyText: "Initial draft" }
+    const lostCreate = try send(createId, create)
+    const created = [...mailbox.drafts.values()][0]
+    if (!created) throw new Error("Gmail did not create the draft")
+    const createDigest = sha256Hex(created.raw)
+    const foundCreate = try lookup(createId)
+    const replace = { ...create, kind: "draft-replace", draftId: created.id, expectedDigest: createDigest, bodyText: "Reviewed replacement" }
+    const lostReplace = try send(replaceId, replace)
+    const replaced = mailbox.drafts.get(created.id)
+    if (!replaced) throw new Error("Gmail did not replace the specified draft")
+    mailbox.drafts.set(replaced.id, { ...replaced, raw: created.raw })
+    const changed = try lookup(replaceId)
+    mailbox.drafts.set(replaced.id, replaced)
+    const foundReplace = try lookup(replaceId)
+    const inspected = (answer: typeof foundCreate) => (answer.body as OperationAnswer).receipt.providerResult
+    try check(() => assert.deepStrictEqual({
+      lost: [receiptOf(lostCreate), receiptOf(lostReplace)],
+      changed: receiptOf(changed),
+      recovered: [receiptOf(foundCreate), receiptOf(foundReplace)],
+      copies: [inspected(foundCreate), inspected(foundReplace)],
+      providerWrites: switches.calls,
+    }, {
+      lost: [["draft-create", "outcome-unknown", null, true, false], ["draft-replace", "outcome-unknown", null, true, false]],
+      changed: ["draft-replace", "outcome-unknown", null, true, false],
+      recovered: [["draft-create", "succeeded", null, true, true], ["draft-replace", "succeeded", null, true, true]],
+      copies: [
+        { draftId: created.id, messageId: created.messageId, providerDigest: createDigest },
+        { draftId: replaced.id, messageId: replaced.messageId, providerDigest: sha256Hex(replaced.raw) },
+      ],
+      providerWrites: [{ method: "POST", path: "/drafts" }, { method: "PUT", path: `/drafts/${created.id}` }],
+    }))
   }))
 
   it.live("Send a message with an attachment once though the dispatch is replayed, and refuse a forward at a stale history id (spec/cloud/services/google/mailOperations.md, \"Story: Change or send from my mailbox once, as I reviewed it\"; spec/cloud/services/google/mailRead.md, \"Story: Read my mail through the grant I chose\")", () => scoped(effect {
@@ -4249,7 +4336,7 @@ module node {
   import { exportJWK, generateKeyPair, SignJWT } from "jose"
   import { CLEF_DECISIONS_PATH, createClefDecisionsClient, type ClefDecisionRequest, CloudError, createCloudClient } from "@elizaos/cloud"
   import { signInWithProof } from "../src/identity-store.vibe"
-  import { cloudWorker, type CloudBindings } from "../src/worker.vibe"
+  import { cloudWorker, graceCloudWorker, type CloudBindings } from "../src/worker.vibe"
   import { googleRequest } from "../src/google.vibe"
   import { htmlAtLimit, htmlOverLimit, htmlReadSummary, mimeBoundaryPayload, mimeReadSummary } from "./support/fakes/google-gmail.ts"
   import { openBackupDatabase } from "./support/password-backup.ts"
@@ -4332,6 +4419,110 @@ module node {
         withheld: providerInputs.every((input) => !input.includes("token=private") && !input.includes("https://example.test")),
       }
     } finally { await fixture.close() }
+  }
+  export async function openGraceGoogleConnector() {
+    const fixture = await openBackupDatabase()
+    try {
+      const digest = "a".repeat(64)
+      const api = "https://api.example.test"
+      const web = "https://app.example.test"
+      const email = "grace-owner@example.test"
+      await fixture.db.query("INSERT INTO cloud_identity (digest, environment, created_at) VALUES ($1, 'staging', 1)", [digest])
+      const owner = await Effect.runPromise(Effect.provide(signInWithProof(fixture.db, { provider: "email", subject: email, email }), SecureRandom.layerWebCrypto))
+      const env = {
+        ...workerBindings({ api, web, digest }), DATABASE_URL: fixture.databaseUrl,
+        AI: { run: async () => { throw new Error("Unexpected inference") } },
+        GOOGLE_CLIENT_ID: "fixture-client", GOOGLE_CLIENT_SECRET: "fixture-secret", GOOGLE_CONNECT_TOKEN_KEY: "11".repeat(32),
+      } satisfies CloudBindings
+      const scopes = ["openid", "email", "gmail.readonly", "gmail.send", "gmail.modify", "calendar.events.readonly", "calendar.events.owned"]
+        .map((scope) => scope.includes(".") ? "https://www.googleapis.com/auth/" + scope : scope)
+      const calls: string[] = []
+      let version = 789
+      let folder = "INBOX"
+      const selectedMessage = "https://gmail.googleapis.com/gmail/v1/users/me/messages/selected-mail"
+      const providerFetch: typeof fetch = async (input, init) => {
+        const request = new Request(input, init)
+        const url = new URL(request.url)
+        calls.push(`${request.method} ${url.origin}${url.pathname}`)
+        if (url.href === "https://oauth2.googleapis.com/token") {
+          return Response.json({ access_token: "fixture-access", refresh_token: "fixture-refresh", scope: scopes.join(" ") })
+        }
+        if (url.href === "https://openidconnect.googleapis.com/v1/userinfo") {
+          return Response.json({ sub: "grace-google-owner", email, email_verified: true })
+        }
+        if (url.href === "https://gmail.googleapis.com/gmail/v1/users/me/messages/send") return Response.json({ id: "sent-from-grace" })
+        const address = url.origin + url.pathname
+        if (request.method === "POST" && (address === selectedMessage + "/trash" || address === selectedMessage + "/untrash")) {
+          folder = address.endsWith("/untrash") ? "INBOX" : "TRASH"
+          version += 1
+        }
+        if (address === selectedMessage || address === selectedMessage + "/trash" || address === selectedMessage + "/untrash") {
+          return Response.json({ id: "selected-mail", historyId: String(version), labelIds: [folder] })
+        }
+        return Response.json({ error: "unexpected fixture request" }, { status: 500 })
+      }
+      const grace = graceCloudWorker(undefined, providerFetch)
+      const plain = cloudWorker(undefined, providerFetch)
+      const root = api + "/api/v1/eliza/google/"
+      const cookie = "__Host-eliza-session=" + owner.access
+      const browser = { origin: web, cookie }
+      const start = (headers: Record<string, string>) => new Request(root + "connect/initiate", {
+        method: "POST", headers: { ...headers, "content-type": "application/json" },
+        body: JSON.stringify({ mail: true, calendar: true, sendMail: true, trashMail: true, writeCalendar: true, expectedEmail: email }),
+      })
+      const refusals = [
+        await grace.fetch(start({ ...browser, origin: "https://unrelated.example.test" }), env),
+        await grace.fetch(start({ cookie }), env),
+        await grace.fetch(start({ origin: web }), env),
+        await plain.fetch(start(browser), env),
+        await grace.fetch(new Request(root + "gmail/send/suffix", { method: "POST", headers: browser }), env),
+        await grace.fetch(new Request(web + "/api/v1/eliza/google/status", { headers: browser }), env),
+      ].map((response) => response.status)
+      const preflight = await grace.fetch(new Request(root + "connect/initiate", { method: "OPTIONS", headers: { origin: web, "access-control-request-method": "POST" } }), env)
+      const opened = await grace.fetch(start(browser), env)
+      const { authorizeUrl } = Schema.decodeUnknownSync(Schema.Struct({ authorizeUrl: Schema.String }))(await opened.json())
+      const authorization = new URL(authorizeUrl)
+      const callback = new URL(authorization.searchParams.get("redirect_uri") ?? "")
+      const flow = opened.headers.get("set-cookie")?.split(";", 1)[0]
+      if (!flow) throw new Error("The Google consent flow cookie is absent")
+      const callbackCookie = { cookie: cookie + "; " + flow }
+      const denied = await grace.fetch(new Request(callback + "?code=fixture-code&state=wrong", { headers: callbackCookie }), env)
+      const beforeConsent = calls.length
+      callback.search = new URLSearchParams({ code: "fixture-code", state: authorization.searchParams.get("state") ?? "" }).toString()
+      const complete = await grace.fetch(new Request(callback, { headers: callbackCookie }), env)
+      const status = async () => {
+        const response = await grace.fetch(new Request(root + "status", { headers: browser }), env)
+        return Schema.decodeUnknownSync(Schema.Struct({ accountId: Schema.String, connected: Schema.Boolean, connectionId: Schema.NullOr(Schema.String),
+          identity: Schema.NullOr(Schema.Struct({ email: Schema.String })), grantedScopes: Schema.Array(Schema.String) }))(await response.json())
+      }
+      const linked = await status()
+      const operationId = "b31b2735-90aa-46cd-8b32-51a6a5bd53fd"
+      const change = (path: string, body: object) => grace.fetch(new Request(root + path, {
+        method: "POST", headers: { ...browser, "content-type": "application/json" },
+        body: JSON.stringify({ accountId: owner.account.id, grantId: linked.connectionId, ...body }),
+      }), env)
+      const send = () => change("gmail/send", { operationId, recipient: "recipient@example.test", subject: "Hello", text: "I can send my reviewed message" })
+      const receipts = await Promise.all([(await send()).json(), (await send()).json()])
+      const receipt = await grace.fetch(new Request(root + "gmail/send/status?" + new URLSearchParams({ grantId: linked.connectionId ?? "", operationId }), { headers: browser }), env)
+      const trashId = "d00b7b70-fabd-4fb6-a93e-d65759b38ea1"
+      const trash = await change("gmail/trash", { operationId: trashId, messageId: "selected-mail", version: "789" })
+      const undo = await change("gmail/trash", { operationId: "bcd5b8c0-99f5-4b9d-883e-1a905f1ffd40", messageId: "selected-mail", version: "790", undoOf: trashId })
+      const disconnected = await grace.fetch(new Request(root + "disconnect", { method: "POST", headers: browser }), env)
+      return {
+        refusals, preflight: [preflight.status, preflight.headers.get("access-control-allow-origin"), preflight.headers.get("access-control-allow-credentials")],
+        start: [opened.status, opened.headers.get("access-control-allow-origin"), authorization.origin, authorization.pathname, callback.origin, callback.pathname],
+        denied: [denied.status, denied.headers.get("location"), beforeConsent],
+        complete: [complete.status, complete.headers.get("location")],
+        linked: [linked.connected, linked.accountId === owner.account.id, linked.identity?.email, [...linked.grantedScopes].sort().join(" ") === [...scopes].sort().join(" "),
+          authorization.searchParams.get("scope")?.split(" ").sort().join(" ") === [...scopes].sort().join(" ")],
+        sent: [...receipts, await receipt.json()].map((body) => Schema.decodeUnknownSync(Schema.Struct({ messageId: Schema.String }))(body).messageId),
+        calls: calls.filter((line) => line.endsWith("/messages/send")).length,
+        trash: [trash.status, undo.status, folder, version],
+        disconnected: [disconnected.status, (await status()).connected],
+      }
+    } finally {
+      await fixture.close()
+    }
   }
   export async function readSelectedAttachment() {
     const fixture = await openBackupDatabase()
@@ -4807,10 +4998,26 @@ module node {
       const mailPath = "gmail/read?" + query
       const calendarPath = "calendar/feed?timeMin=2026-12-01T00:00:00Z&timeMax=2026-12-02T00:00:00Z&grantId=" + grant
       const tabletMessage = await readTablet(mailPath, tabletHeaders)
-      const messageBody = Schema.decodeUnknownSync(Schema.Struct({ accountId: Schema.String, bodyText: Schema.String }))(await tabletMessage.json())
+      const mailBodyOf = Schema.decodeUnknownSync(Schema.Struct({ accountId: Schema.String, bodyText: Schema.String }))
+      const messageBody = mailBodyOf(await tabletMessage.json())
       const tabletCalendar = await readTablet(calendarPath, tabletHeaders)
-      const calendarBody = Schema.decodeUnknownSync(Schema.Struct({ accountId: Schema.String,
-        events: Schema.Array(Schema.Struct({ externalId: Schema.String, title: Schema.String })) }))(await tabletCalendar.json())
+      const calendarBodyOf = Schema.decodeUnknownSync(Schema.Struct({ accountId: Schema.String,
+        events: Schema.Array(Schema.Struct({ externalId: Schema.String, title: Schema.String })) }))
+      const calendarBody = calendarBodyOf(await tabletCalendar.json())
+      const grace = graceCloudWorker(undefined, providerFetch)
+      const mounted = (path: string, headers: Record<string, string>) => grace.fetch(new Request(api + "/api/v1/eliza/google/" + path, { headers }), env)
+      const mountedMail = await mounted(mailPath, tabletHeaders)
+      const mountedCalendar = await mounted(calendarPath, tabletHeaders)
+      const mountedDeviceRefusal = await mounted(mailPath, { ...webHeaders, ...bearerHeaders(tablet.token) })
+      const limitKey = "device-key|" + createHash("sha256").update(pair.access).digest("hex")
+      await fixture.db.query(`UPDATE rate_windows SET state = jsonb_set(jsonb_set(state, '{count}', '119'), '{end}', to_jsonb($2::bigint)),
+        window_end = $2 WHERE key = $1`, [limitKey, Date.now() + 60_000])
+      const lastRead = await mounted("status", tabletHeaders)
+      const rateRefusal = await mounted("status", tabletHeaders)
+      await fixture.db.query("DELETE FROM rate_windows WHERE key = $1", [limitKey])
+      await fixture.db.query("ALTER TABLE rate_windows RENAME TO temporarily_unavailable_rate_windows")
+      const rateUnavailable = await mounted("status", tabletHeaders)
+      await fixture.db.query("ALTER TABLE temporarily_unavailable_rate_windows RENAME TO rate_windows")
       const deviceAndCookie = await readTablet(mailPath, { ...webHeaders, ...bearerHeaders(tablet.token) })
       const forbiddenWrite = await worker.fetch(new Request(api + "/api/v1/eliza/google/gmail/inbox-v1/operations", {
         method: "POST", headers: { ...webHeaders, ...tabletHeaders, "content-type": "application/json" }, body: "{}",
@@ -4840,6 +5047,9 @@ module node {
       const officialClosed = await mobile("mobile/lease", "DELETE", {}, bearerHeaders(officialPair.refresh))
       const officialAfter = await readTablet(mailPath, bearerHeaders(officialPair.access))
       const tabletReads = {
+        grace: [mountedMail.status, mailBodyOf(await mountedMail.json()).bodyText, mountedCalendar.status,
+          calendarBodyOf(await mountedCalendar.json()).events, mountedDeviceRefusal.status, lastRead.status,
+          rateRefusal.status, rateRefusal.headers.has("retry-after"), rateUnavailable.status],
         canonical: [begin.status, mint.status, officialAcknowledged.status, officialRefresh.status, officialRead.status, officialClosed.status, officialAfter.status],
         enrollment: [granted.status, exchanged.status, replayedExchange.status, tablet.token === repeatedTablet.token,
           tablet.lease.refresh === repeatedTablet.lease.refresh, beforeAcknowledgement.status, acknowledged.status, lease.status],
@@ -4877,7 +5087,7 @@ module node {
   }
 
 }
-import { decideForSignedInAccount, forwardedHref, nativeGoogleFixture, readMailThroughClient, readSelectedAttachment } from node
+import { decideForSignedInAccount, forwardedHref, nativeGoogleFixture, openGraceGoogleConnector, readMailThroughClient, readSelectedAttachment } from node
 
 it.live('A reviewed link decision stays within the current account and candidates (spec/cloud/index.md, "Story: Ask for a bounded decision about a browser page")', () => effect {
   const result = try tryPromise(() => decideForSignedInAccount())
@@ -4888,6 +5098,20 @@ it.live('A reviewed link decision stays within the current account and candidate
   }))
 }, 30_000)
 
+
+it.live('Use the Grace Google consent, send once, then disconnect (spec/cloud/deployment.md, "A Worker routes the declared Grace Google mount, then the server table, then Worker-only paths")', () => effect {
+  const got = try tryPromise(() => openGraceGoogleConnector())
+  try check(() => assert.deepStrictEqual(got, {
+    refusals: [403, 403, 401, 401, 404, 404],
+    preflight: [204, "https://app.example.test", "true"],
+    start: [200, "https://app.example.test", "https://accounts.google.com", "/o/oauth2/v2/auth", "https://api.example.test", "/api/v1/eliza/google/connect/callback"],
+    denied: [303, "https://app.example.test/?googleConnectionError=authorization_failed#account", 0],
+    complete: [303, "https://app.example.test/#account"],
+    linked: [true, true, "grace-owner@example.test", true, true],
+    sent: ["sent-from-grace", "sent-from-grace", "sent-from-grace"], calls: 1,
+    trash: [200, 200, "INBOX", 791], disconnected: [200, false],
+  }))
+}, 120_000)
 
 it.live('Read complete mail text, open the selected named attachment, watch for new mail and read the connected calendar from a signed-in tablet (spec/cloud/identity/sessions.md, "Story: Keep a tablet signed in to mail and calendar"; spec/cloud/services/google/mailRead.md, "Story: Read my mail through the grant I chose"; "Story: Notice new mail while I sign in privately"; spec/cloud/identity/requestAuth.md, "A device key is limited to 120 requests a minute before it is looked up"; spec/cloud/index.md, "A device reminder follows the reviewed event occurrence")', () => effect {
   const got = try tryPromise(() => readSelectedAttachment())
@@ -4934,6 +5158,7 @@ it.live('Read complete mail text, open the selected named attachment, watch for 
         ],
       },
       tablet: {
+        grace: [200, "hello", 200, [{ externalId: "fixture-appointment", title: "Library visit" }], 403, 200, 429, true, 503],
         canonical: [200, 200, 200, 200, 200, 204, 401],
         enrollment: [200, 200, 200, true, true, 401, 204, 200],
         renewal: [200, 200, true, true, 204],

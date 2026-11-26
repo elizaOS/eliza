@@ -44,6 +44,10 @@ public final class AccountSession {
     store.dropSession();
   }
 
+  public synchronized void dropIfCurrent(String rejected) {
+    if (rejected != null && rejected.equals(bound())) drop();
+  }
+
   public String accessToken() {
     CompletableFuture<Void> mine = null, theirs = null;
     Tokens refreshing = null;

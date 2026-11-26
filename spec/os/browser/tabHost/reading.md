@@ -22,7 +22,11 @@ are timers the shell fires as `endReading`.
 
 ### Only an announcement from the shown HTTPS main-frame document makes the page readable
 
-Each page start begins a new document. A start at a non-secure web
+Each page start begins a new document. A history navigation whose target
+stays on the ready document's HTTPS origin keeps that document's reading
+ready until a new page actually starts, so a same-document Back or Forward
+stays readable while a cross-document load still clears it on page start
+and adopts only its prepared nonce. A start at a non-secure web
 address is never readable. The one load the host prepared answers only
 with its own nonce; any other start (a link, a redirect, a reload the page
 began) answers only with the shared readiness message. Either needs a

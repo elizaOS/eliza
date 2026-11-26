@@ -230,8 +230,7 @@ module node {
     }
   }
 
-  /** @throws {never} */
-  export async function navigationHomes(runtime: AgentRuntime, socket: string, token: string, cloud: CloudFake) {
+  async function navigator(runtime: AgentRuntime, socket: string, token: string, cloud: CloudFake) {
     const client = deviceClient(socket, token, runtime.agentId, negotiated.join(","))
     await client.call("POST", "/api/client-devices/register", { capabilities: negotiated, workflowProtocol: 1 })
     const { conversation } = (await client.host("POST", "/api/conversations", {})).json as { conversation: { id: string } }
@@ -250,13 +249,29 @@ module node {
         reply: turn.text,
       }
     }
+    return say
+  }
+
+  const openView = propose({ type: "open_view", view: "files" })
+  const rendererBound = { viewDelivery: "completed-action", viewClientId: "renderer-1" }
+
+  /** @throws {never} */
+  export async function navigationHomes(runtime: AgentRuntime, socket: string, token: string, cloud: CloudFake) {
+    const say = await navigator(runtime, socket, token, cloud)
     const views = { name: "VIEWS", arguments: { action: "show", view: "files" } }
-    const openView = propose({ type: "open_view", view: "files" })
     const { tools: typedTools, ...typed } = await say([views])
     const { tools: deliveredTools, ...delivered } = await say([openView], direct)
+    const { tools: rendererTools, ...rendererOnly } = await say([views], rendererBound)
     const { tools: againTools, ...typedAgain } = await say([openView])
     const { tools: bothTools, ...wrongHomeFirst } = await say([{ name: "VIEWS", arguments: { action: "show", view: "photos" } }, propose({ type: "open_view", view: "photos" })])
-    return { sameTools: new Set([typedTools, deliveredTools, againTools, bothTools]).size === 1, typed, delivered, typedAgain, wrongHomeFirst }
+    return { sameTools: new Set([typedTools, deliveredTools, rendererTools, againTools, bothTools]).size === 1, typed, delivered, rendererOnly, typedAgain, wrongHomeFirst }
+  }
+
+  /** @throws {never} */
+  export async function navigationWithoutViews(runtime: AgentRuntime, socket: string, token: string, cloud: CloudFake) {
+    const say = await navigator(runtime, socket, token, cloud)
+    const { tools: _tools, ...rendererBoundOnly } = await say([openView], rendererBound)
+    return rendererBoundOnly
   }
 
   /** @throws {never} */
@@ -365,7 +380,7 @@ module node {
   }
 }
 
-import { navigationHomes, oneConversation, proposeSurfaces, proposeTool, reviewText, unofferedDeviceTool } from node
+import { navigationHomes, navigationWithoutViews, oneConversation, proposeSurfaces, proposeTool, reviewText, unofferedDeviceTool } from node
 
 it.live(`Take a photo, open a view, read a Maps place, find and share photos and write a phone note only as the owner's words and screen name them (spec/agent/conversation/planning.md, "A recognized card is delivered unfenced, other multi-line tool output is fenced, and grounded prose follows unless one already holds the other"; spec/agent/conversation/planning.md, "A reply that leaves a failure unreported is written again once, and the delivered reply still reports open failures and attachment omissions"; spec/agent/deviceActions/surfaces.md, "Story: Propose a photo, a view, a Maps read or a Photos change only as my words and my screen name them"; spec/agent/deviceActions/surfaces.md, "A surface operation is bound to the owner's message only on a direct-request turn and as the owner asked"; spec/agent/deviceActions/surfaces.md, "A photo runs without its card only when the owner's own message asks for one now"; spec/agent/deviceActions/surfaces.md, "An app view opens with VIEWS where views arrive as completed actions, else with open_view as the installation's profile enables it"; spec/agent/conversation/planning.md, "Every call of a turn is one the model chose, and a call this message serves in another place is refused before it runs and is no step of the turn"; spec/agent/deviceActions/surfaces.md, "A new note is proposed only while the owner's Notes screen selects the phone's own Notes"; spec/agent/deviceActions/surfaces.md, "A new note runs without its card only when its title and body are the owner's own words"; spec/agent/deviceActions/surfaces.md, "A Maps read names exactly the place or route selected on the owner's Maps screen"; spec/agent/deviceActions/surfaces.md, "A Photos proposal names only the item open in the viewer or library IDs the phone returned"; spec/agent/deviceActions/operations.md, "A turn targets the photo open on the owner's screen only from the Photos view, never on a sensitive screen, and names its library ID only under the library capability"; spec/agent/deviceActions/index.md, "A proposal's identity is its request message and its operation, so a repeat returns the same request"; spec/agent/deviceActions/index.md, "A proposal carries the owner's message only for a live turn that asked for it directly, so otherwise the phone shows its card"; spec/agent/deviceActions/index.md, "A later turn of the same conversation learns at most six outcomes of its own requests: what changed, and what ended without running"; spec/agent/deviceActions/operations.md, "A captured photo's library ID reaches the agent only when the request negotiated it")`, effect () => {
   const observed = try deviceJourney({ load: [deviceActionsModuleName, viewsModuleName], allowed: ["REPLY", "IGNORE", "NONE", proposeTool, "VIEWS"] }, "propose device surfaces", proposeSurfaces)
@@ -414,9 +429,12 @@ it.live(`A device message opens a view in one place under the same tools: VIEWS 
     sameTools: true,
     typed: { viewsHere: false, viewsNotHere: true, proposed: 0, refused: ["VIEWS"], reply: "Which view?" },
     delivered: { viewsHere: true, viewsNotHere: false, proposed: 0, refused: ["open_view"], reply: "Which view?" },
+    rendererOnly: { viewsHere: true, viewsNotHere: false, proposed: 0, refused: [], reply: "Which view?" },
     typedAgain: { viewsHere: false, viewsNotHere: true, proposed: 1, refused: [], reply: reviewText },
     wrongHomeFirst: { viewsHere: false, viewsNotHere: true, proposed: 1, refused: ["VIEWS"], reply: reviewText },
   }))
+  const withoutViews = try deviceJourney({ allowed: ["REPLY", "IGNORE", "NONE", proposeTool] }, "offer device navigation without VIEWS", navigationWithoutViews)
+  try Effect.try(() => assert.deepStrictEqual(withoutViews, { viewsHere: false, viewsNotHere: true, proposed: 1, refused: [], reply: reviewText }))
 }, 120_000)
 
 it.live(`One device conversation sends the same tools on every message, whatever its screen or words, names what applies to each message after it, and refuses before dispatch what a message does not allow (spec/agent/conversation/planning.md, "A recognized card is delivered unfenced, other multi-line tool output is fenced, and grounded prose follows unless one already holds the other"; spec/agent/conversation/planning.md, "A reply that leaves a failure unreported is written again once, and the delivered reply still reports open failures and attachment omissions"; spec/agent/conversation/planning.md, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history"; spec/agent/deviceActions/index.md, "A proposal is offered only on an owner turn of the enrolled device, as its family grounded it, and re-admitted under the turn's negotiation"; spec/agent/deviceActions/index.md, "A grounding refusal offers nothing and is a refusal before dispatch"; spec/agent/conversation/planning.md, "Every call of a turn is one the model chose, and a call this message serves in another place is refused before it runs and is no step of the turn"; spec/agent/deviceActions/surfaces.md, "A new note is proposed only while the owner's Notes screen selects the phone's own Notes"; spec/agent/deviceActions/surfaces.md, "A Maps read names exactly the place or route selected on the owner's Maps screen"; spec/agent/deviceActions/surfaces.md, "A Photos proposal names only the item open in the viewer or library IDs the phone returned")`, effect () => {

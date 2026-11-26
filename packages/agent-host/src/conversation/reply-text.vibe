@@ -1,14 +1,14 @@
-// spec/agent/conversation/planning.md, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"; spec/agent/conversation/planning.md, "A turn acknowledges at most once, with a cue that comes with its first tool calls"; spec/agent/conversation/planning.md, "A recognized card is delivered unfenced, other multi-line tool output is fenced, and grounded prose follows unless one already holds the other"; spec/agent/conversation/planning.md, "A voice turn that ran an action answers with that action's label: its kind and whether the reply is a validated card"; spec/agent/conversation/planning.md, "A tool call the model wrote as text never reaches the owner, and its step is asked again once"; spec/agent/conversation/planning.md, "Text that repeats the agent host's notes is never delivered or streamed, and is asked again once as a blank"
-import { looksLikeActionEnvelopeJson, looksLikeEvaluatorEnvelopeJson, parseInteractionBlocks, sanitizeUserVisibleModelOutput } from "@elizaos/core"
-import { actionLabel, compose, readDraft, type ActionLabel, type Composition, type Declared, type Draft, type DraftShape, type VoiceAction } from "../../gen/agent__conversation__planning.ts"
+// spec/agent/conversation/planning.md, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"; spec/agent/conversation/planning.md, "A turn acknowledges at most once, with a cue that comes with its first tool calls"; spec/agent/conversation/planning.md, "A recognized card is delivered unfenced, other multi-line tool output is fenced, and grounded prose follows unless one already holds the other"; spec/agent/conversation/planning.md, "A voice turn that ran an action answers with that action's label: its kind and whether the reply is a validated card"; spec/agent/conversation/planning.md, "A tool call the model wrote as text never reaches the owner, and its step is asked again once"; spec/agent/conversation/planning.md, "Text that repeats the agent host's notes is never delivered or streamed, and is asked again once as a blank"; spec/agent/conversation/planning.md, "A response that is only a written call of an offered tool runs as that call, and one copying the host's own data is asked again once"
+import { looksLikeActionEnvelopeJson, looksLikeEvaluatorEnvelopeJson, parseInteractionBlocks, sanitizeUserVisibleModelOutput, validateSchema, type JsonSchema, type ToolCall, type ToolDefinition } from "@elizaos/core"
+import { actionLabel, compose, heardAs, readDraft, type ActionLabel, type Composition, type Declared, type Draft, type DraftShape, type ObjectNaming, type VoiceAction } from "../../gen/agent__conversation__planning.ts"
 
 const maxCueLength = 120
-const bracketCall = /\[[a-z][a-z0-9]*(?:_[a-z0-9]+)+(?:\s+[a-z_]+=(?:"[^"\n]*"|[^\s\]]+))+\s*\]/gu
+const bracketCall = /\[[a-z][a-z0-9]*(?:_[a-z0-9]+)+(?:\s+[a-z_]+=(?:"[^"\n]*"|[^\s\]"][^\s\]]*))+\s*\]/gu
 const callName = /^[a-z]+(?:_[a-z0-9]+)+$/u
 const emptyWrapper = /```[\w-]*\s*```|<([\w-]+)>\s*<\/\1>/gu
 const dataToken = /\p{N}|\b[ap]\.m\.|\b(?:pm|noon|midnight|o['’]clock|zero|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|(?:hundred|thousand|dozen)s?|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth|\p{L}+(?:teenth|tieth)|few|couple|handful|several|single|only|(?:half|quarter) (?:past|to|after|till?))\b|\b(?:at|by|until|till|before|after|around) one\b|\bone [ap]m\b/iu
 
-export const cueRule = "When you call tools, write with your first tool calls only a brief cue, in the person's own language, that you heard the request; the real reply comes after the work. A cue is a few natural words that you are looking or about to do it, in your own words rather than a stock phrase: it never names the people, items, places, times, numbers or outcome, never asks anything, never says the work is done or under way, and never repeats the request. Never open a cue with assent such as Sure or Yeah after a question; it sounds like the answer. When one message asks for several lookups, or about several named people or items, keep the cue general and name no source; name a source only for one simple lookup. Write a cue only with a tool call in the same response: when no offered tool can do what was asked, write no cue and tell the person plainly, in your own words, that you can't. Any question or lookup gets its cue, even one about what is on the screen. A request only to open one app, with nothing to read, find or change there, still calls the tool that opens it, with no cue: write nothing with that call, and the reply after it confirms the destination. Your text after the last tool result is the reply itself, never another cue, and a response with no tool call is always your reply, so never write a cue without calling a tool. If the person asked for silence or no acknowledgment, write nothing and still do the work. Write no text with later tool calls. Say that something was saved, sent, opened or changed only when a tool result in this turn shows it. Begin every response that calls no tool with one tag the person never sees: [answer] when your text is your complete reply, or [promise] when it only says you will do something."
+export const cueRule = "When you call tools, write with your first tool calls only a brief cue tagged [promise], in the person's own language, that you heard the request; the real reply comes after the work. A cue is a few natural words that you are looking or about to do it, in your own words rather than a stock phrase: it never names the people, items, places, times, numbers or outcome, never asks anything, never says the work is done or under way, and never repeats the request. Never open a cue with assent such as Sure or Yeah after a question; it sounds like the answer. When one message asks for several lookups, or about several named people or items, keep the cue general and name no source; name a source only for one simple lookup. Write a cue only with a tool call in the same response: when no offered tool can do what was asked, write no cue and tell the person plainly, in your own words, that you can't. Any question or lookup gets its cue, even one about what is on the screen. A request only to open one app, with nothing to read, find or change there, still calls the tool that opens it, with no cue: write nothing with that call, and the reply after it confirms the destination. Your text after the last tool result is the reply itself, never another cue, and a response with no tool call is always your reply, so never write a cue without calling a tool. If the person asked for silence or no acknowledgment, write nothing and still do the work. Write no text with later tool calls. Say that something was saved, sent, opened or changed only when a tool result in this turn shows it. Begin all text you write with one tag the person never sees: [promise] when it only says that you heard the request or will do something, as every cue does, or [answer] when it is your complete reply. Text written with tool calls is said only when it is a cue tagged [promise]. Use only these two tags, spelled exactly so."
 
 const callKeys = new Set(["action", "tool", "type", "name"])
 const argumentKeys = new Set(["arguments", "args", "parameters", "params", "input", "tool_input"])
@@ -55,12 +55,12 @@ interface Objects {
   readonly found: readonly string[]
 }
 
-function objectsOut(said: string, strip: (body: string, before: string) => boolean): Objects {
+function objectsOut(said: string, strip: (body: string, before: string, after: string) => boolean): Objects {
   const found: string[] = []
   let changed = false
   const text = said.replace(bracketCall, (call: string, at: number) => {
     found.push(call)
-    const gone = strip(call, said.slice(0, at))
+    const gone = strip(call, said.slice(0, at), said.slice(at + call.length))
     changed ||= gone
     return gone ? " " : call
   })
@@ -82,7 +82,7 @@ function objectsOut(said: string, strip: (body: string, before: string) => boole
     const body = text.slice(start ?? index, index + 1)
     if (start === undefined || open.length > 0 || !isJsonObject(body)) continue
     found.push(body)
-    if (!strip(body, text.slice(0, start))) continue
+    if (!strip(body, text.slice(0, start), text.slice(index + 1))) continue
     changed = true
     rest += `${text.slice(kept, start).replace(/[ \t]+$/u, "")} `
     kept = index + 1
@@ -104,16 +104,17 @@ function afterSentence(before: string): boolean {
   return !lead || /[.!…]$/u.test(lead)
 }
 
-function afterCue(said: string, body: string, before: string): boolean {
+function afterCue(before: string, after: string): boolean {
   const sentence = before.split(/\n|(?<=[.!?…])\s+/u).at(-1) ?? ""
-  return /[.!…]$/u.test(before) && cueShaped(withoutWrittenCalls(sentence)) && said.slice(said.indexOf(body) + body.length).trim().length > 0
+  return /[.!…]$/u.test(before) && cueShaped(withoutWrittenCalls(sentence)) && after.trim().length > 0
 }
 
 export function withoutOfferedCalls(said: string, offered: ReadonlySet<string>): string {
-  return objectsOut(said, (body, before) => callsOffered(body, offered) || afterCue(said, body, before)).text
+  return objectsOut(said, (body, before, after) => callsOffered(body, offered) || afterCue(before, after)).text
 }
 
 export const hostNoteMark = "Note from the agent host"
+const harnessMark = "[System:"
 
 const hostTextGap = /[\s\p{Pd}_]/u
 
@@ -142,16 +143,60 @@ function folded(text: string): Folded {
 }
 
 function hostTexts(notes: readonly string[]): string[] {
-  return [hostNoteMark, ...notes.map((note) => (note.trim().split("\n", 1)[0] ?? "").replace(/[\s.:]+$/u, ""))]
+  return [hostNoteMark, harnessMark, ...notes.map((note) => (note.trim().split("\n", 1)[0] ?? "").replace(/[\s.:]+$/u, ""))]
     .map((host) => folded(host).text.trim()).filter((host) => host !== "")
+}
+
+const compact = (text: string) => text.replace(/\s+/gu, "").toLowerCase()
+
+const openingsOf = new WeakMap<readonly string[], readonly string[]>()
+
+function dataOpenings(notes: readonly string[]): readonly string[] {
+  const known = openingsOf.get(notes)
+  if (known !== undefined) return known
+  const openings = notes.flatMap((note) => {
+    const lines = note.split("\n").slice(1)
+    const outside = lines.findIndex((line) => /external_untrusted_content|security notice/iu.test(line))
+    return (outside < 0 ? lines : lines.slice(0, outside)).map((line) => line.trim())
+      .filter((line) => line.length >= 32 && line.startsWith("{") && isJsonObject(line)).map((line) => compact(line).slice(0, 32))
+  })
+  openingsOf.set(notes, openings)
+  return openings
+}
+
+function compactHead(text: string, from: number, size: number): string {
+  let head = ""
+  for (let at = from; at < text.length && head.length < size; at += 1) {
+    const unit = text[at] ?? ""
+    if (!/\s/u.test(unit)) head += unit.toLowerCase()
+  }
+  return head
 }
 
 export function holdsHostText(text: string, notes: readonly string[]): boolean {
   const said = folded(text).text
-  return hostTexts(notes).some((host) => said.includes(host))
+  const packed = compact(text)
+  return hostTexts(notes).some((host) => said.includes(host)) || dataOpenings(notes).some((opening) => packed.includes(opening))
 }
 
-export function shownUpTo(text: string, notes: readonly string[]): number {
+function echoAt(text: string, notes: readonly string[], from: number): number {
+  const openings = dataOpenings(notes)
+  if (openings.length === 0) return text.length
+  for (let at = text.indexOf("{", from); at >= 0; at = text.indexOf("{", at + 1)) {
+    const head = compactHead(text, at, 32)
+    if (openings.some((opening) => opening.startsWith(head) || head.startsWith(opening))) return at
+  }
+  return text.length
+}
+
+export function shownUpTo(text: string, notes: readonly string[], shown = 0): number {
+  const from = Math.max(0, shown - hostLookBack)
+  return Math.min(from + hostTextAt(text.slice(from), notes), echoAt(text, notes, shown))
+}
+
+const hostLookBack = 256
+
+function hostTextAt(text: string, notes: readonly string[]): number {
   const { text: said, at } = folded(text)
   const upTo = hostTexts(notes).reduce((upTo, host) => {
     const whole = said.indexOf(host)
@@ -179,39 +224,221 @@ function shapeOf(reply: string, offered: ReadonlySet<string>, notes: readonly st
 }
 
 export function draftOf(text: string, calls: number, offered: ReadonlySet<string>, toolsWaiting: boolean, declared: Declared, notes: readonly string[]): Draft {
-  return readDraft(shapeOf(text, offered, notes), calls, toolsWaiting, declared)
+  return heardAs(readDraft(shapeOf(text, offered, notes), calls, toolsWaiting, declared), declared, asksSomething(text), calls)
+}
+
+type Fields = Readonly<Record<string, unknown>>
+
+export interface WrittenCall {
+  readonly naming: ObjectNaming
+  readonly fits: boolean
+  readonly copied: boolean
+  readonly hostData: boolean
+  readonly untrusted: boolean
+  readonly call: { readonly name: string; readonly arguments: Exclude<ToolCall["arguments"], string> } | undefined
+  readonly misfit: string
+}
+
+interface CalledTool {
+  readonly naming: ObjectNaming
+  readonly tool: ToolDefinition
+  readonly args: Fields | undefined
+}
+
+const isFields = (value: unknown): value is Fields => typeof value === "object" && value !== null && !Array.isArray(value)
+
+function fieldsOf(value: unknown): Fields | undefined {
+  if (typeof value !== "string") return isFields(value) ? value : undefined
+  try {
+    const parsed: unknown = JSON.parse(value)
+    return isFields(parsed) ? parsed : undefined
+  } catch {
+    return undefined
+  }
+}
+
+const toolNameInCaps = "[A-Z][A-Z0-9_]*"
+const callLineHead = new RegExp(`^(${toolNameInCaps}) call:([^\\n]*)$`, "u")
+const callLineNaming = new RegExp(`^${toolNameInCaps}(?: (?:c(?:a(?:l(?:l)?)?)?)?)?$`, "u")
+const argumentEndings = ["", "0", " 0", "a 0", 'x"', 'n"', '0"', '00"', '000"', '0000"', "rue", "ue", "e", "alse", "lse", "se"]
+const callLineValue = /^[ \t]*([A-Za-z_]\w*)(?:[ \t]*[:=])?[ \t]*("(?:[^"\\\n]|\\.)*"|-?\d+(?:\.\d+)?|true|false)[ \t]*(?:,|$)/u
+
+function callLineArguments(written: string): Fields | undefined {
+  const args: Record<string, unknown> = {}
+  let rest = written
+  while (rest.trim() !== "") {
+    const pair = callLineValue.exec(rest)
+    if (pair === null) return undefined
+    try {
+      args[pair[1] ?? ""] = JSON.parse(pair[2] ?? "null")
+    } catch {
+      return undefined
+    }
+    rest = rest.slice(pair[0].length)
+  }
+  return args
+}
+
+function callLineOf(text: string): { readonly name: string; readonly written: string } | undefined {
+  const line = callLineHead.exec(text)
+  if (line === null) return undefined
+  const written = (line[2] ?? "").trim()
+  return { name: line[1] ?? "", written: written.endsWith(".") ? written.slice(0, -1).trimEnd() : written }
+}
+
+function mayBeCallLine(text: string): boolean {
+  if (callLineNaming.test(text)) return true
+  return [text, text.trimEnd()].some((start) => argumentEndings.some((ending) => {
+    const line = callLineOf(start + ending)
+    return line !== undefined && callLineArguments(line.written) !== undefined
+  }))
+}
+
+function namedTool(said: string, tools: readonly ToolDefinition[]): CalledTool | undefined {
+  const byKey = new Map(tools.map((tool) => [actionNameKey(tool.name), tool]))
+  const line = callLineOf(said)
+  if (line !== undefined) {
+    const tool = tools.find(({ name }) => name === line.name)
+    const args = callLineArguments(line.written)
+    return tool === undefined || args === undefined ? undefined : { naming: "NamesByCallField", tool, args }
+  }
+  const object = fieldsOf(said)
+  if (object === undefined) return undefined
+  const fields = Object.entries(object)
+  const given = fields.find(([key]) => argumentKeys.has(key))
+  for (const [key, value] of fields) {
+    const tool = callKeys.has(key) && typeof value === "string" ? byKey.get(actionNameKey(value)) : undefined
+    if (tool === undefined || ((key === "name" || key === "type") && given === undefined)) continue
+    return { naming: "NamesByCallField", tool, args: given === undefined ? Object.fromEntries(fields.filter(([other]) => other !== key)) : fieldsOf(given[1]) }
+  }
+  const [only] = fields
+  const tool = fields.length === 1 && only !== undefined && isFields(only[1]) ? byKey.get(actionNameKey(only[0])) : undefined
+  return tool === undefined ? undefined : { naming: "NamesByOnlyKey", tool, args: fieldsOf(only?.[1]) }
+}
+
+function misfitOf({ tool, args }: CalledTool): string[] {
+  if (args === undefined) return ["its arguments are not an object"]
+  const errors: string[] = []
+  validateSchema((tool.parameters ?? { type: "object" }) as JsonSchema, args, "", errors)
+  return errors
+}
+
+function objectsWithin(value: unknown): Fields[] {
+  if (Array.isArray(value)) return value.flatMap(objectsWithin)
+  return isFields(value) ? [value, ...Object.values(value).flatMap(objectsWithin)] : []
+}
+
+export function hostObjects(notes: readonly string[], results: readonly string[]): Fields[] {
+  return [
+    ...notes.flatMap((note) => objectsOut(note, () => false).found.flatMap((body) => objectsWithin(fieldsOf(body)))),
+    ...results.flatMap((result) => {
+      const written = fieldsOf(result)
+      return written === undefined ? [] : [written]
+    }),
+  ]
+}
+
+function copies(object: Fields, host: Fields): boolean {
+  const keys = Object.keys(object)
+  return keys.length > 0 && keys.every((key) => Object.hasOwn(host, key)) && keys.length >= Math.min(2, Object.keys(host).length)
+}
+
+function stringsWithin(value: unknown): string[] {
+  if (typeof value === "string") return [value]
+  if (Array.isArray(value)) return value.flatMap(stringsWithin)
+  return isFields(value) ? Object.values(value).flatMap(stringsWithin) : []
+}
+
+function givenTexts(sources: readonly string[]): string[] {
+  const inner = (text: string) => objectsOut(text, () => false).found.flatMap((body) => stringsWithin(fieldsOf(body)))
+  return sources.flatMap((source) => {
+    const strings = inner(source)
+    return [source, ...strings, ...strings.flatMap(inner)]
+  })
+}
+
+function quotesACall(name: string, given: readonly string[]): boolean {
+  const tool = compact(name)
+  const forms = [`"action":"${tool}"`, `"tool":"${tool}"`, `"name":"${tool}"`, `"type":"${tool}"`, `"functions.${tool}"`, `{"${tool}":`, `${tool}call:`]
+  return given.some((source) => {
+    const flat = compact(source)
+    return forms.some((form) => flat.includes(form))
+  })
+}
+
+export interface GivenText {
+  readonly anywhere: readonly string[]
+  readonly untrusted: readonly string[]
+  readonly host: readonly Fields[]
+}
+
+function namesTool(name: string, given: readonly string[]): boolean {
+  const tool = actionNameKey(name)
+  return given.some((source) => source.split(/[^A-Za-z0-9_.]+/u).some((word) => word !== "" && actionNameKey(word) === tool))
+}
+
+export function writtenCallOf(said: string, tools: readonly ToolDefinition[], given: () => GivenText): WrittenCall | undefined {
+  const text = said.trim()
+  const named = namedTool(text, tools)
+  const object = text.startsWith("{") ? fieldsOf(text) : undefined
+  if (named === undefined && object === undefined) return undefined
+  const misfit = named === undefined ? [] : misfitOf(named)
+  const { anywhere, untrusted, host } = given()
+  const hostData = object !== undefined && host.some((written) => copies(object, written))
+  const flat = compact(text)
+  const quoted = (sources: readonly string[]) => {
+    const texts = givenTexts(sources)
+    return texts.some((source) => compact(source).includes(flat)) || (named !== undefined && quotesACall(named.tool.name, texts))
+  }
+  const fromUntrusted = quoted(untrusted) || (named !== undefined && namesTool(named.tool.name, givenTexts(untrusted)))
+  return {
+    naming: named?.naming ?? "NamesNoTool", fits: named !== undefined && misfit.length === 0,
+    copied: hostData || fromUntrusted || quoted(anywhere), hostData, untrusted: fromUntrusted,
+    call: named === undefined ? undefined : { name: named.tool.name, arguments: { ...named.args } as Exclude<ToolCall["arguments"], string> },
+    misfit: misfit.join("; "),
+  }
 }
 
 const writtenCallMarker = /<\s*\/?\s*tool_call\b|<\s*function(?:=|_call\b)/iu
 const writtenCallHeads = ["<tool_call", "</tool_call", "<function=", "<function_call"]
+
+export function asksSomething(said: string): boolean {
+  const plain = said.replace(/```[\s\S]*?(?:```|$)|`[^`\n]*`|"[^"\n]*"|“[^”\n]*”/gu, "").replace(/\S+:\/\/\S+?([?？؟]?)(?=\s|$)/gu, "$1").trim()
+  const lines = plain.split("\n").map((line) => line.trim()).filter((line) => line !== "")
+  while (lines.length > 1 && /^(?:[-*•]|\d+[.)])\s/u.test(lines.at(-1) ?? "")) lines.pop()
+  const sentences = lines.join(" ").split(/(?<=[.!?？؟…])\s+/u).filter((sentence) => /[\p{L}\p{N}]/u.test(sentence))
+  return /[?？؟][^\p{L}\p{N}]*$/u.test((sentences.at(-1) ?? "").trim())
+}
 
 export function writtenCallFree(text: string): { readonly prose: string; readonly markup: boolean } {
   const at = text.search(writtenCallMarker)
   return at < 0 ? { prose: text, markup: false } : { prose: text.slice(0, at).trimEnd(), markup: true }
 }
 
-const declaredTag = /(?:\[(answer|promise)\](?![([])|<(answer|promise)>)\s*/iu
+const declaredTag = /(?:\[(answer|promise|question)\](?!\(|\s*[[<]\/?(?:answer|promise|question)[\]>])|<(answer|promise)>)\s*/iu
 const modelTag = /[ \t]*(?:\[(?:answer|promise)\](?![([])|<\/?(?:answer|promise)>)[ \t]*(\n?)/gu
 const codeSpan = /(`{3,}|~{3,})[\s\S]*?(?:\1|$)|(?<!`)(`+)(?!`)[^\n]*?(?<!`)\2(?!`)/gu
 const trailingTag = /\[(?:answer|promise)\]$/u
-const tagHeads = ["[answer]", "[promise]", "<answer>", "<promise>", "</answer>", "</promise>"]
+const tagHeads = ["[answer]", "[promise]", "[question]", "<answer>", "<promise>", "</answer>", "</promise>"]
 
-function tagsOut(said: string, from: number, to: number): string {
-  return said.slice(from, to).replace(modelTag, (tag, newline: string, at: number) => {
+const anyCaseClosing = /[ \t]*<\/(?:answer|promise)>[ \t]*(\n?)/giu
+
+function tagsOut(said: string, from: number, to: number, tags: RegExp): string {
+  return said.slice(from, to).replace(tags, (tag, newline: string, at: number) => {
     const lineStart = from + at === 0 || said[from + at - 1] === "\n"
     if (newline !== "") return lineStart ? "" : "\n"
     return lineStart || from + at + tag.length === said.length ? "" : " "
   })
 }
 
-export function withoutTags(said: string): string {
+function withoutTags(said: string, tags: RegExp = modelTag): string {
   let out = ""
   let kept = 0
   for (const code of said.matchAll(codeSpan)) {
-    out += tagsOut(said, kept, code.index) + code[0]
+    out += tagsOut(said, kept, code.index, tags) + code[0]
     kept = code.index + code[0].length
   }
-  return out + tagsOut(said, kept, said.length)
+  return out + tagsOut(said, kept, said.length, tags)
 }
 
 function openCodeAt(said: string): number {
@@ -226,17 +453,23 @@ function openCodeAt(said: string): number {
   return said.indexOf("`", Math.max(kept, line))
 }
 
+const leadingTags = /^\s*(?:(?:\[(?:answer|promise|question)\]|<\/?(?:answer|promise)>)\s*){2,}/iu
+
 export function declaredOf(said: string): { readonly declared: Declared; readonly text: string } {
+  const run = leadingTags.exec(said)
+  if (run !== null) return { declared: "Undeclared", text: withoutTags(said.slice(run[0].length)) }
   const tag = declaredTag.exec(said)
   const leading = tag !== null && withoutWrittenCalls(said.slice(0, tag.index)).trim() === ""
   if (tag === null || !leading) return { declared: "Undeclared", text: withoutTags(said) }
-  return { declared: (tag[1] ?? tag[2]).toLowerCase() === "promise" ? "DeclaredPromise" : "DeclaredAnswer", text: withoutTags(said.slice(tag.index + tag[0].length)) }
+  const rest = withoutTags(said.slice(tag.index + tag[0].length))
+  const word = (tag[1] ?? tag[2]).toLowerCase()
+  return { declared: word === "question" ? "Undeclared" : word === "promise" ? "DeclaredPromise" : "DeclaredAnswer", text: tag[2] === undefined ? rest : withoutTags(rest, anyCaseClosing) }
 }
 
 function partialTagAt(text: string): number {
   const open = Math.max(text.lastIndexOf("["), text.lastIndexOf("<"))
   if (open < 0) return -1
-  const tail = text.slice(open)
+  const tail = text.slice(open).toLowerCase()
   return !tail.includes("]") && !tail.includes(">") && tagHeads.some((head) => head.startsWith(tail)) ? open : -1
 }
 
@@ -247,7 +480,8 @@ export function streamable(written: string): string {
   const lead = said.trimStart()
   if (lead !== "" && tagHeads.some((head) => head.startsWith(lead.toLowerCase()))) return ""
   const { declared, text: whole } = declaredOf(said)
-  if (declared === "Undeclared" && lead.startsWith("{")) return ""
+  const head = declared === "Undeclared" ? lead : whole.trimStart()
+  if (head.startsWith("{") || mayBeCallLine(head)) return ""
   const partial = partialTagAt(whole)
   const text = (partial < 0 ? whole : whole.slice(0, partial)).trimEnd()
   const at = text.search(writtenCallMarker)

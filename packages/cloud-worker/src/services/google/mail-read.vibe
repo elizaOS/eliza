@@ -1,6 +1,6 @@
 // spec/cloud/services/google/mailRead.md, "Story: Read my mail through the grant I chose"
 // spec/cloud/services/google/mailRead.md, "Story: Notice new mail while I sign in privately"
-import { htmlMaxBytes, inboxWatchCanAnswer, mailMaxBytes, mebibyte, offeredReads, threadMaxMessages, threadOutcome, threadPageMax, type MailSurface, type ThreadAsk } from "../../../gen/cloud__services__google__mailRead.effect.vibe"
+import { htmlMaxBytes, inboxWatchCanAnswer, mailMaxBytes, mebibyte, offeredReads, replyAddressOf, threadMaxMessages, threadOutcome, threadPageMax, type MailSurface, type ThreadAsk } from "../../../gen/cloud__services__google__mailRead.effect.vibe"
 import { refused, Refused } from "../../http/refusal.vibe"
 import { json, owner as ownerOf, type Route, type RouteContext } from "../../http/routes.vibe"
 import { bearerToken, recheckAccess, signed } from "../../http/request-auth.vibe"
@@ -205,8 +205,14 @@ effect function messageView(grant: ReadGrant, message: MailMessage, selfEmail: s
   const text = plain ?? (typeof html === "string" ? GoogleRead.htmlText(html) : message.snippet)
   const bodyText = text ?? ""
   if (utf8Length(bodyText) > mailMaxBytes) throw refused("ContentTooLarge")
+  const replyHeaders = headerValues(message.payload, "reply-to")
+  const address = GoogleRead.composeMailboxAddress((replyHeaders[0] ?? "").trim())
+  const replyAddress = replyAddressOf(replyHeaders.length, address !== undefined)
   return {
-    message: try mailCard(message, selfEmail),
+    message: {
+      ...(try mailCard(message, selfEmail)),
+      ...(replyAddress === "NoReplyOverride" ? {} : { replyTo: replyAddress === "ReplyOverride" ? address ?? null : null }),
+    },
     bodyText,
     bodyTextAvailable: text !== undefined,
     ...GoogleRead.mailHtmlView(html, parts.partsWithinLimit),

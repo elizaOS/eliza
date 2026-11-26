@@ -225,7 +225,7 @@ effect function inference(runtime: IAgentRuntime, params: GenerateTextParams, ti
     hasSchema: params.responseSchema !== undefined, wantsStream: params.stream === true, streamingAllowed: setting(runtime, "ELIZA_ANTHROPIC_DISABLE_STREAM") !== "true",
   }
   const model = params.model || setting(runtime, "ANTHROPIC_" + tier + "_MODEL") || setting(runtime, "ANTHROPIC_MODEL") || "claude-sonnet-4-6"
-  const capacity = Number(setting(runtime, "ANTHROPIC_MAX_OUTPUT_TOKENS") || 8192)
+  const capacity = Number(setting(runtime, "ANTHROPIC_MAX_OUTPUT_TOKENS") || 64000)
   const cap: AnthropicOutputCap = params.maxTokens === undefined || params.omitMaxTokens ? { tag: "AutoCap" } : { tag: "AskedCap", tokens: params.maxTokens }
   const maxTokens = anthropicOutputBudget(capacity, cap)
   const transport = anthropicTransport(auth, input)
@@ -264,7 +264,7 @@ effect function inference(runtime: IAgentRuntime, params: GenerateTextParams, ti
       ?? [{ role: "user", content: params.prompt ?? "" }]
     const systemBlocks = system === ""
       ? undefined
-      : [{ type: "text", text: system, cache_control: EPHEMERAL_CACHE_CONTROL }]
+      : [{ type: "text" as const, text: system, cache_control: EPHEMERAL_CACHE_CONTROL }]
     const tools = params.tools && params.tools.length > 0
       ? params.tools.map((tool, index, all) => ({
           name: tool.name,
@@ -335,7 +335,7 @@ function describe(runtime: IAgentRuntime, input: ImageDescriptionParams | string
     const candidate = /^data:(image\/(?:png|jpeg|gif|webp));base64,(.+)$/.exec(params.imageUrl)
     const source = candidate === null ? { type: "url", url: params.imageUrl } : { type: "base64", media_type: candidate[1], data: candidate[2] }
     const answer = try sdkAnswer(runtime, secret, {
-      model: setting(runtime, "ANTHROPIC_IMAGE_MODEL") || "claude-sonnet-4-6", max_tokens: 4096,
+      model: setting(runtime, "ANTHROPIC_IMAGE_MODEL") || "claude-sonnet-4-6", max_tokens: 16384,
       messages: [{ role: "user", content: [{ type: "image", source }, { type: "text", text: params.prompt ?? "Describe this image." }] }],
     })
     if (!["end_turn", "stop_sequence"].includes(answer.stop_reason ?? "")) throw new AnthropicFailed({ reason: "Anthropic image description did not complete." })

@@ -40,9 +40,13 @@ const Character = Schema.Struct({
   messageExamples: Schema.optionalKey(Schema.Array(Schema.Union([Schema.Struct({ examples: Examples }), Examples]))),
 })
 
+const Sampling = Schema.Literals(["takes-temperature", "default-temperature-only"])
 const Model = Schema.Union([
   Schema.Struct({ backend: Schema.Literal("cloud"), cloudBaseUrl: Origin, smallModel: Schema.String, largeModel: Schema.String, imageModel: Schema.String }),
-  Schema.Struct({ backend: Schema.Literal("own-key"), ownKeyBaseUrl: HttpsUrl, ownKeySmall: Nonblank, ownKeyLarge: Nonblank }),
+  Schema.Struct({
+    backend: Schema.Literal("own-key"), ownKeyBaseUrl: HttpsUrl, ownKeySmall: Nonblank, ownKeyLarge: Nonblank,
+    ownKeySampling: Schema.optionalKey(Schema.Struct({ small: Schema.optionalKey(Sampling), large: Schema.optionalKey(Sampling) })),
+  }),
   Schema.Struct({ backend: Schema.Literal("none") }),
 ])
 const Policy = Schema.Struct({
