@@ -14,6 +14,7 @@ import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -213,7 +214,7 @@ public final class CloudDeviceAccount {
    if (!opaque(nonce) || due <= now || due > now + 120_000L || !serverClientId.equals(response.getString("serverClientId")))
     throw new IOException("Invalid Google challenge");
    long expiry = Math.min(pending.getLong("expiresAt"), due);
-   return new NativeGoogleAttempt(clientId, environment, serverClientId, List.copyOf(scopes), challengeId, nonce, state, expiry);
+   return new NativeGoogleAttempt(clientId, environment, serverClientId, Collections.unmodifiableList(scopes), challengeId, nonce, state, expiry);
   } catch (Exception failure) {
    clearNativeGoogle(state);
    throw failure;
