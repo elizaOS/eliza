@@ -215,6 +215,7 @@ pure val googleRoutes: List[DeviceRoute] = List(
   route(Get, google(List("gmail", "read")), Mail),
   route(Get, google(List("gmail", "inbox-v1", "arrival")), KeyOrSession),
   route(Get, google(List("gmail", "inbox-v1", "capabilities")), Mail),
+  route(Get, google(List("gmail", "inbox-v1", "history")), Mail),
   route(Get, google(List("gmail", "inbox-v1", "thread")), Mail),
   route(Get, google(List("gmail", "inbox-v1", "attachment")), Mail),
   route(Get, google(List("gmail", "inbox-v1", "drafts")), Mail),

@@ -37,6 +37,7 @@ public final class CloudRequests {
 
   public record Custody(DeviceCredentialStore credentials, AccountSession session, DeviceLease lease) {
     public MailAuthority mailAuthority() { return authorityOf(credentials.state()); }
+    public Object mailCommitLock() { return credentials.mailCommitLock(); }
   }
 
   static MailAuthority authorityOf(CredentialPolicy.State state) {
@@ -114,10 +115,16 @@ public final class CloudRequests {
 
   public Outcome send(String name, String apiOrigin, Custody custody, String method, String target, Map<String, String> headers, byte[] body,
       String expectedCredentialId) {
+    return send(name, apiOrigin, custody, method, target, headers, body, expectedCredentialId, false);
+  }
+
+  public Outcome send(String name, String apiOrigin, Custody custody, String method, String target, Map<String, String> headers, byte[] body,
+      String expectedCredentialId, boolean billingSession) {
+    if (billingSession && expectedCredentialId == null) return new Failed(Failure.SIGN_IN_REQUIRED);
     Call call = new Call();
     if (name != null && calls.putIfAbsent(name, call) != null) return new Failed(Failure.NAME_IN_USE);
     try {
-      Outcome outcome = sent(call, apiOrigin, custody, method, target, headers, body, null, expectedCredentialId);
+      Outcome outcome = sent(call, apiOrigin, custody, method, target, headers, body, null, expectedCredentialId, billingSession);
       return call.cancelled ? new Failed(Failure.CANCELLED) : outcome;
     } finally {
       if (name != null) calls.remove(name, call);
@@ -129,7 +136,7 @@ public final class CloudRequests {
     Call call = new Call();
     ScheduledFuture<?> deadline = DEADLINES.schedule(() -> stop(call), MAIL_READ_DEADLINE_MS, TimeUnit.MILLISECONDS);
     try {
-      Outcome outcome = sent(call, apiOrigin, custody, "GET", target, headers, null, expected, null);
+      Outcome outcome = sent(call, apiOrigin, custody, "GET", target, headers, null, expected, null, false);
       return call.cancelled ? new Failed(Failure.NETWORK) : outcome;
     } finally {
       deadline.cancel(false);
@@ -142,7 +149,7 @@ public final class CloudRequests {
   }
 
   private Outcome sent(Call call, String apiOrigin, Custody custody, String method, String target, Map<String, String> headers, byte[] body,
-      MailAuthority expected, String expectedCredentialId) {
+      MailAuthority expected, String expectedCredentialId, boolean billingSession) {
     DeviceCredentialStore store = custody.credentials();
     CredentialReader.Credential key = store.current();
     CredentialPolicy.State snapshot = store.state();
@@ -153,7 +160,8 @@ public final class CloudRequests {
     CloudRequestPolicy.Origin origin = CloudRequestPolicy.originOf(apiOrigin);
     boolean leaseHeld = CredentialPolicy.leaseVersionOf(snapshot.lease()) >= 1;
     Planned planned = policy.plan(new Holding(version, false, false, leaseHeld, false), origin, method, target, headers, body);
-    if (expected != null && planned.route().auth() != CloudRequestPolicy.Auth.MAIL) return new Failed(Failure.NOT_LISTED);
+    if ((expected != null && planned.route().auth() != CloudRequestPolicy.Auth.MAIL)
+        || (billingSession && planned.route().auth() != CloudRequestPolicy.Auth.FRESH_SESSION)) return new Failed(Failure.NOT_LISTED);
     String session = null;
     DeviceLease.Held lease = null;
     if (planned.plan() instanceof Refuse refuse && refuse.why() == Refusal.REAUTH_REQUIRED) {
@@ -174,7 +182,9 @@ public final class CloudRequests {
       case RefreshLeaseFirst refresh -> { return new Failed(Failure.NETWORK); }
       case Send send -> attach = send.attach();
     }
-    if (expectedCredentialId != null && !(attach instanceof WithKey)) return new Failed(Failure.SIGN_IN_REQUIRED);
+    if (expectedCredentialId != null && (billingSession ? !(attach instanceof WithSession) : !(attach instanceof WithKey))) {
+      return new Failed(Failure.SIGN_IN_REQUIRED);
+    }
     String bearer = switch (attach) {
       case WithKey k -> key.value();
       case WithSession s -> session;
@@ -203,14 +213,16 @@ public final class CloudRequests {
       }
       int status = connection.getResponseCode();
       if (expected != null && !expected.equals(custody.mailAuthority())) return new Failed(Failure.SIGN_IN_REQUIRED);
-      Answered answered = answer(connection, status, expected == null);
+      if (billingSession && !keepsCredential(key, store.state(), expectedCredentialId)) return new Failed(Failure.SIGN_IN_REQUIRED);
+      Answered answered = answer(connection, status, expected == null && !billingSession);
       if (expected != null && !expected.equals(custody.mailAuthority())) return new Failed(Failure.SIGN_IN_REQUIRED);
+      if (billingSession && !keepsCredential(key, store.state(), expectedCredentialId)) return new Failed(Failure.SIGN_IN_REQUIRED);
       if (status == UNAUTHORIZED) {
         String text = answered.body() == null ? null : new String(answered.body(), StandardCharsets.UTF_8);
         switch (CloudRequestPolicy.reportOf(attach, planned.route(), status, CloudRequestPolicy.reasonOf(text))) {
           case KeyRejected rejected -> store.rejected(rejected.version(), rejected.reason(), rejected.on());
           case LeaseRejected rejected -> store.leaseRejected(rejected.version(), rejected.reason(), LeaseUse.ACCESS_USE);
-          case SessionRejected rejected -> custody.session().drop();
+          case SessionRejected rejected -> custody.session().dropIfCurrent(session);
           case CloudRequestPolicy.NoReport none -> { }
         }
       }

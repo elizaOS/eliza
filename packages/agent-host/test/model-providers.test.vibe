@@ -503,6 +503,48 @@ it.effect('An own-key overload or timeout is a provider issue and is retried, an
   assert.deepStrictEqual([bodies[0]?.temperature, bodies[0]?.stop, "max_tokens" in (bodies[0] ?? {}), "max_completion_tokens" in (bodies[0] ?? {}), bodies[2]?.max_completion_tokens], [0.2, ["\n\n"], false, false, 256])
 })
 
+it.effect('A model that takes a temperature gets the one its caller names, and an OpenAI reasoning model gets none and answers, on an own-key endpoint and on the cloud (spec/agent/models/binding.md, "A call sends its caller\'s temperature only to a model that takes one")', effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const own = { baseUrl: cloud.ownKeyBaseUrl, small: "gpt-5-chat-latest", large: "o4-mini" }
+  const made = try bound({ kind: "ownKey", baseUrl: own.baseUrl, smallModel: own.small, largeModel: own.large }, cloud.ownKey)
+  registerOwnKeyModels(made.runtime, made.binding, own)
+  const reasoning = try bound({ kind: "ownKey", baseUrl: own.baseUrl, smallModel: "gpt-5-mini", largeModel: "openai/gpt-5.5:high" }, cloud.ownKey)
+  registerOwnKeyModels(reasoning.runtime, reasoning.binding, { baseUrl: own.baseUrl, small: "gpt-5-mini", large: "openai/gpt-5.5:high" })
+  const viaCloud = try cloudAgent(cloud, { large: "openai/o3-mini" })
+  try Effect.sync(() => cloud.script(text("chat"), text("reasoned"), text("small reasoned"), text("large reasoned"), text("cloud reasoned"), text("unnamed")))
+  const answers = [
+    try host("chat model at zero", () => made.runtime.useModel(ModelType.TEXT_SMALL, { prompt: "One.", temperature: 0 })),
+    try host("o4-mini at zero", () => made.runtime.useModel(ModelType.TEXT_LARGE, { prompt: "Two.", temperature: 0 })),
+    try host("gpt-5-mini at zero", () => reasoning.runtime.useModel(ModelType.TEXT_SMALL, { prompt: "Three.", temperature: 0 })),
+    try host("prefixed gpt-5.5 at zero", () => reasoning.runtime.useModel(ModelType.TEXT_LARGE, { prompt: "Four.", temperature: 0.4 })),
+    try host("cloud o3-mini at zero", () => viaCloud.runtime.useModel(ModelType.TEXT_LARGE, { prompt: "Five.", temperature: 0 })),
+    try host("chat model unnamed", () => made.runtime.useModel(ModelType.TEXT_SMALL, { prompt: "Six." })),
+  ]
+  const bodies = cloud.calls.filter((call) => call.path.endsWith("/chat/completions")).map((call) => call.body as Record<string, unknown>)
+  assert.deepStrictEqual(answers, ["chat", "reasoned", "small reasoned", "large reasoned", "cloud reasoned", "unnamed"])
+  assert.deepStrictEqual(bodies.map((body) => [body.model, "temperature" in body, body.temperature]), [
+    ["gpt-5-chat-latest", true, 0], ["o4-mini", false, undefined], ["gpt-5-mini", false, undefined], ["openai/gpt-5.5:high", false, undefined], ["openai/o3-mini", false, undefined], ["gpt-5-chat-latest", false, undefined],
+  ])
+  assert.strictEqual((try made.binding.read()).accountState, "usable")
+})
+
+it.effect('An own-key launch\'s declaration decides whether a model takes a temperature, over what its id says (spec/agent/models/binding.md, "A call sends its caller\'s temperature only to a model that takes one")', effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const sampling = { small: "takes-temperature", large: "default-temperature-only" } as const
+  const own = { baseUrl: cloud.ownKeyBaseUrl, small: "gpt-5-tuned", large: "my-o3", sampling }
+  const declared = try bound({ kind: "ownKey", baseUrl: own.baseUrl, smallModel: own.small, largeModel: own.large, sampling }, cloud.ownKey)
+  registerOwnKeyModels(declared.runtime, declared.binding, own)
+  try Effect.sync(() => cloud.script(text("declared takes"), text("declared default")))
+  const answers = [
+    try host("gpt-5-tuned declared to take one", () => declared.runtime.useModel(ModelType.TEXT_SMALL, { prompt: "One.", temperature: 0 })),
+    try host("my-o3 declared default only", () => declared.runtime.useModel(ModelType.TEXT_LARGE, { prompt: "Two.", temperature: 0 })),
+  ]
+  const bodies = cloud.calls.filter((call) => call.path.endsWith("/chat/completions")).map((call) => call.body as Record<string, unknown>)
+  assert.deepStrictEqual(answers, ["declared takes", "declared default"])
+  assert.deepStrictEqual(bodies.map((body) => [body.model, "temperature" in body, body.temperature]), [["gpt-5-tuned", true, 0], ["my-o3", false, undefined]])
+  assert.strictEqual((try declared.binding.read()).accountState, "usable")
+})
+
 it.effect('A rate limit holds a cloud account for the provider\'s whole retry time and a Cerebras own-key account for at most 4 s, a refusal carries the provider\'s time left, a parse failure is not retried, as the provider or as the cloud names it, a thinking hint reaches only a model that documents it, and only a Qwen call on a Cerebras route sends the conversation cache key (spec/agent/models/binding.md, "A Qwen call on a Cerebras route sends the prompt cache key its caller names, and no call invents one"; spec/agent/models/binding.md, "A rate limit holds the account for the provider\'s whole retry time, and for at most 4 s on a Cerebras own-key endpoint"; spec/agent/models/binding.md, "A tool call the provider could not parse, or a streamed answer silent for a minute, ends the call without a retry"; spec/agent/models/binding.md, "A call sends an output cap only when its caller names one, and a thinking hint sets the reasoning effort only on a model that documents it")', effect () => {
   const cloud = try cloudFake(deviceKey)
   const held = try bound({ kind: "cloud", origin: cloud.origin, imageModel: "vision" }, deviceKey)

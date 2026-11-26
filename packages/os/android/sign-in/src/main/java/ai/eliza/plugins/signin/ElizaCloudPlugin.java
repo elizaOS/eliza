@@ -72,17 +72,21 @@ public class ElizaCloudPlugin extends Plugin {
     Object body = call.getData().opt("body");
     String name = call.getString("id");
     Object credential = call.getData().opt("expectedCredentialId");
-    String expectedCredentialId = credential instanceof String value ? value : null;
+    Object billingCredential = call.getData().opt("expectedSessionCredentialId");
+    boolean billingSession = billingCredential != null;
+    Object binding = billingSession ? billingCredential : credential;
+    String expectedCredentialId = binding instanceof String value ? value : null;
     if (environment == null) { call.reject(UNKNOWN_ENVIRONMENT, UNKNOWN_ENVIRONMENT); return; }
     if (method == null || target == null || headers == null || body != null && body != JSONObject.NULL && !(body instanceof String)
         || name != null && !name.matches(CALL_NAME)
-        || credential != null && (expectedCredentialId == null || expectedCredentialId.isBlank() || expectedCredentialId.length() > 256)) {
+        || billingSession && credential != null
+        || binding != null && (expectedCredentialId == null || expectedCredentialId.isBlank() || expectedCredentialId.length() > 256)) {
       call.reject(INVALID_REQUEST, INVALID_REQUEST);
       return;
     }
     byte[] bytes = body instanceof String text ? text.getBytes(StandardCharsets.UTF_8) : null;
     run(call, () -> {
-      switch (requests.send(name, environment.apiOrigin, custody(getContext(), environment), method.toUpperCase(Locale.ROOT), target, headers, bytes, expectedCredentialId)) {
+      switch (requests.send(name, environment.apiOrigin, custody(getContext(), environment), method.toUpperCase(Locale.ROOT), target, headers, bytes, expectedCredentialId, billingSession)) {
         case CloudRequests.Answered answered -> call.resolve(answered(answered));
         case CloudRequests.Failed failed -> call.reject(wire(failed.failure()), wire(failed.failure()));
       }

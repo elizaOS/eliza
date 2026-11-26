@@ -87,6 +87,22 @@ describe("Reach my account's cloud services without holding my key", () => {
     });
   });
 
+  it("uses only the named credential’s billing session and ignores an old rejection", () => {
+    const main = "ai.eliza.plugins.signin.DeviceKeyJourney";
+    const seen = JSON.parse(execFileSync(javaTool("java"), ["-cp", compileAdapter(main), main, "billing"], { encoding: "utf8", timeout: 120_000 })) as unknown;
+    expect(seen).toEqual({
+      billingWithoutSession: "REAUTH_REQUIRED",
+      billingWithStaleCredential: "SIGN_IN_REQUIRED",
+      billingDoesNotUseKeyRoute: "NOT_LISTED",
+      keyDoesNotUseBillingRoute: "SIGN_IN_REQUIRED",
+      oldSessionRefusal: "401",
+      newSessionSurvives: true,
+      billingWithExactSession: "200",
+      replyAfterSignOut: "SIGN_IN_REQUIRED",
+      onlySessionsSent: true,
+    });
+  });
+
   it("sends only to an https origin, or http on loopback, with no path, user, query or fragment", () => {
     expect(origins.accepted).toEqual({
       "https://api.cloud.test": true,

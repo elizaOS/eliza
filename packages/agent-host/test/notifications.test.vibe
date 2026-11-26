@@ -1,6 +1,7 @@
 // spec/agent/notifications.md, "Story: Read my notices and mark them read from my own client"
 import { assert, it } from "@effect/vitest"
 import { AgentEventService, NotificationService, type AgentNotification, type NotificationInput } from "@elizaos/core"
+import { workflowHttpError, workflowNoticeOffers, type WorkflowRequest } from "@elizaos/plugin-workflow-client"
 import { ask, call, events, host, startInProcess, type InProcess } from "./support/kernel.vibe"
 
 const loaded = { launch: { load: ["@elizaos/agent/notifications"] } }
@@ -26,7 +27,7 @@ const list = (agent: InProcess, query: string) => ask(agent, { method: "GET", pa
 const markRead = (agent: InProcess, id: string) => ask(agent, { method: "POST", path: `/api/notifications/${id}/read` })
 
 interface NativePage {
-  readonly notifications: readonly { readonly id: string; readonly nativeSequence: number }[]
+  readonly notifications: readonly { readonly id: string; readonly nativeSequence: number; readonly data?: unknown }[]
   readonly nativeEpoch: string
   readonly throughSequence: number
   readonly nextSequence: number
@@ -73,6 +74,48 @@ it.effect('Notify, page natively, refuse every other list and mark read twice (s
     ])
     assert.include([400, 404], malformed.status)
     assert.deepStrictEqual(service.listIncludingExpired().filter((notice) => notice.readAt != null).map(({ id }) => id), [first.id])
+  })
+}, 120_000)
+
+it.effect('Read every workflow approval and result the native pages name, and nothing else (spec/core/notifications/index.md, "A native record carries only closed presentation data, and a workflow notice its exact run route"; spec/workflow/notices.md, "A pending approval is offered again only while its run is unchanged and unsettled"; spec/workflow/notices.md, "A finished result is offered only for its own run, while its owner is current, under one identity per scope, run and version")', effect () => {
+  const agent = try startInProcess(loaded)
+  const service = try inbox(agent)
+  const route = { workflowId: "w1", runId: "r1", versionId: "v1" }
+  const expiresAt = Date.now() + 3_600_000
+  const opened = "Open the run to see what it did."
+  const [result] = try notifyAll(service, [
+    { title: "Morning note finished", body: opened, category: "workflow", source: "workflow", groupKey: "workflow-run:r1", data: { kind: "result", ...route, note: "producer only" } },
+    { title: "Send the summary", body: "Review this workflow step.", category: "workflow", source: "workflow", groupKey: "workflow-approval:r2:tell:0",
+      data: { kind: "approval", workflowId: "w1", runId: "r2", versionId: "v1", proposalId: "tell:0", expiresAt }, expiresAt },
+    { title: "Half a route", body: opened, category: "workflow", data: { kind: "result", workflowId: "w1", versionId: "v1" } },
+    { title: "Approval without expiry", category: "workflow", data: { kind: "approval", ...route, proposalId: "tell:1" } },
+    { title: "Unknown kind", body: opened, category: "workflow", data: { kind: "receipt", ...route } },
+    { title: "Not a workflow", body: opened, category: "reminder", data: { kind: "result", ...route } },
+    ...Array.from({ length: 125 }, (_, index) => ({ title: `Message ${index}`, category: "message" as const })),
+    { title: "Evening note stopped with an error", body: opened, category: "workflow", source: "workflow", data: { kind: "result", workflowId: "w2", runId: "r9", versionId: "v4" } },
+  ])
+  const firstPage = (try list(agent, "?nativeTransport=true")).body as NativePage
+  const asked: string[] = []
+  const request: WorkflowRequest = effect (path) => {
+    asked.push(path)
+    const answer = try orDie(ask(agent, { method: "GET", path }))
+    if (answer.status !== 200) throw workflowHttpError(answer.status, answer.body)
+    return answer.body
+  }
+  const offers = try workflowNoticeOffers(request)
+  try Effect.try(() => {
+    assert.deepStrictEqual([firstPage.complete, firstPage.notifications.find(({ id }) => id === result.id)?.data], [false, { kind: "result", ...route }])
+    assert.deepStrictEqual(offers, {
+      approvals: [{ kind: "approval", workflowId: "w1", runId: "r2", versionId: "v1", proposalId: "tell:0", expiresAt }],
+      results: [
+        { ...route, title: "Morning note finished", body: opened },
+        { workflowId: "w2", runId: "r9", versionId: "v4", title: "Evening note stopped with an error", body: opened },
+      ],
+    })
+    assert.deepStrictEqual(asked, [
+      "/api/notifications?nativeTransport=true",
+      `/api/notifications?nativeTransport=true&nativeEpoch=${firstPage.nativeEpoch}&afterSequence=${firstPage.nextSequence}&throughSequence=${firstPage.throughSequence}`,
+    ])
   })
 }, 120_000)
 

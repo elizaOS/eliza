@@ -71,6 +71,8 @@ public final class DeviceKeyJourney {
     final AtomicInteger ackAsks = new AtomicInteger();
     final AtomicInteger rotations = new AtomicInteger(), reused = new AtomicInteger(), secrets = new AtomicInteger();
     final AtomicReference<Runnable> beforeMailReply = new AtomicReference<>();
+    final AtomicReference<Runnable> beforeBillingReply = new AtomicReference<>();
+    final List<String> billingBearers = new CopyOnWriteArrayList<>();
     final AtomicReference<Runnable> beforeLeaseReply = new AtomicReference<>();
     final List<Family> families = new CopyOnWriteArrayList<>();
     final Map<String, Renewal> renewals = new ConcurrentHashMap<>();
@@ -152,6 +154,12 @@ public final class DeviceKeyJourney {
         ? CredentialJson.object(CredentialJson.parse(new String(x.getRequestBody().readAllBytes(), StandardCharsets.UTF_8)), "body") : Map.of();
       long now = clock.get();
       switch (route) {
+        case "POST /api/v1/subscriptions/upgrade/review" -> {
+          billingBearers.add(bearer(x));
+          Runnable beforeReply = beforeBillingReply.getAndSet(null);
+          if (beforeReply != null) beforeReply.run();
+          answer(x, "billing-access-stale".equals(bearer(x)) ? 401 : 200, "{}");
+        }
         case "POST " + DeviceKeyClient.CONNECT -> {
           if (!SESSION.equals(bearer(x))) { answer(x, 401, "{\"error\":\"authentication_required\"}"); return; }
           String code = "emac_" + issued.incrementAndGet();
@@ -364,6 +372,48 @@ public final class DeviceKeyJourney {
       case CloudRequests.Answered answered -> String.valueOf(answered.status());
       case CloudRequests.Failed failed -> failed.failure().name();
     };
+  }
+
+  private String billingJourney() throws IOException {
+    Path cache = Files.createTempDirectory("device-billing-requests-");
+    try {
+      String review = "/api/v1/subscriptions/upgrade/review";
+      String models = "/api/v1/models";
+      String table = "[{\"prefixes\":[\"/api/v1\"],\"routes\":[{\"method\":\"POST\",\"path\":\"" + review
+        + "\"},{\"method\":\"GET\",\"path\":\"" + models + "\"}]}]";
+      CloudRequests requests = new CloudRequests(new CloudRequestPolicy(table), new LargeBodyGrant(cache.toFile()));
+      AccountSession session = new AccountSession(store, client);
+      CloudRequests.Custody custody = new CloudRequests.Custody(store, session, lease);
+      String origin = cloud.origin().toString();
+      if (!"SIGNED_IN".equals(signIn())) throw new IllegalStateException("The billing account did not sign in");
+      String credential = store.current().credentialId();
+      List<String> seen = new ArrayList<>();
+      byte[] body = "{}".getBytes(StandardCharsets.UTF_8);
+      seen.add(take("billingWithoutSession", outcome(requests.send(null, origin, custody, "POST", review, Map.of(), body, credential, true))));
+      if (!session.grant(ACCOUNT, "billing-access-stale", "billing-refresh-stale", clock.get() + 60_000)) {
+        throw new IllegalStateException("The billing session was refused");
+      }
+      seen.add(take("billingWithStaleCredential", outcome(requests.send(null, origin, custody, "POST", review, Map.of(), body, "another-credential", true))));
+      seen.add(take("billingDoesNotUseKeyRoute", outcome(requests.send(null, origin, custody, "GET", models, Map.of(), null, credential, true))));
+      seen.add(take("keyDoesNotUseBillingRoute", outcome(requests.send(null, origin, custody, "POST", review, Map.of(), body, credential))));
+      cloud.beforeBillingReply.set(() -> {
+        if (!session.grant(ACCOUNT, "billing-access", "billing-refresh", clock.get() + 60_000)) {
+          throw new IllegalStateException("The next billing session was refused");
+        }
+      });
+      seen.add(take("oldSessionRefusal", outcome(requests.send(null, origin, custody, "POST", review, Map.of(), body, credential, true))));
+      seen.add(take("newSessionSurvives", "billing-access".equals(session.accessToken())));
+      seen.add(take("billingWithExactSession", outcome(requests.send(null, origin, custody, "POST", review, Map.of(), body, credential, true))));
+      cloud.beforeBillingReply.set(() -> { store.signOut(); });
+      seen.add(take("replyAfterSignOut", outcome(requests.send(null, origin, custody, "POST", review, Map.of(), body, credential, true))));
+      seen.add(take("onlySessionsSent", cloud.billingBearers.equals(List.of("billing-access-stale", "billing-access", "billing-access"))));
+      return "{" + String.join(",", seen) + "}";
+    } finally {
+      cloud.server.stop(0);
+      try (var files = Files.walk(cache)) {
+        for (Path file : files.sorted(java.util.Comparator.reverseOrder()).toList()) Files.delete(file);
+      }
+    }
   }
 
   private String cloudJourney() throws Exception {
@@ -721,6 +771,7 @@ public final class DeviceKeyJourney {
   public static void main(String[] args) throws Exception {
     if (args.length == 1 && args[0].equals("browser")) System.out.println(browserReturn());
     else if (args.length == 1 && args[0].equals("cloud")) System.out.println(new DeviceKeyJourney().cloudJourney());
+    else if (args.length == 1 && args[0].equals("billing")) System.out.println(new DeviceKeyJourney().billingJourney());
     else System.out.println(new DeviceKeyJourney().run());
     System.exit(0);
   }
