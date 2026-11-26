@@ -23,6 +23,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InterruptedIOException;
 import java.io.OutputStream;
 import java.io.UncheckedIOException;
 import java.net.InetAddress;
@@ -58,7 +59,7 @@ public final class GoogleBrokerHost implements GoogleBroker {
 
   private record Exchange(int status, byte[] body) {}
 
-  private record Listening(ServerSocket server, ExecutorService workers, Semaphore admitted) {}
+  private record Listening(ServerSocket server, ExecutorService workers, Thread accepting) {}
 
   private record Admitted(GoogleBrokerHost host, Socket socket, Semaphore places) implements Runnable {
     @Override public void run() {
@@ -71,7 +72,7 @@ public final class GoogleBrokerHost implements GoogleBroker {
     HeadTooLarge() { super("The request head is over the broker's limit"); }
   }
 
-  private static final int WORKERS = 4, WAITING = 4, BACKLOG = 8, DEADLINE_MS = 5_000, ACCEPT_RETRY_MS = 250, HEAD_LIMIT = 8192, DRAIN_LIMIT = 65_536;
+  private static final int WORKERS = 4, WAITING = 4, BACKLOG = 8, DEADLINE_MS = 5_000, CLOSE_WAIT_MS = 5_000, ACCEPT_RETRY_MS = 250, HEAD_LIMIT = 8192, DRAIN_LIMIT = 65_536;
   private static final byte[] LOOPBACK = {127, 0, 0, 1};
   private static final SecureRandom RANDOM = new SecureRandom();
 
@@ -104,14 +105,15 @@ public final class GoogleBrokerHost implements GoogleBroker {
     if (closed) throw new Closed();
     if (listening == null) {
       ServerSocket bound = new ServerSocket(0, BACKLOG, InetAddress.getByAddress(LOOPBACK));
-      listening = new Listening(bound, Executors.newFixedThreadPool(WORKERS, task -> {
+      ExecutorService workers = Executors.newFixedThreadPool(WORKERS, task -> {
         Thread thread = new Thread(task, "ElizaOwnerGmailBroker");
         thread.setDaemon(true);
         return thread;
-      }), new Semaphore(WORKERS + WAITING));
-      Listening serving = listening;
-      Thread accepting = new Thread(() -> accept(serving), "ElizaOwnerGmailBrokerAccept");
+      });
+      Semaphore places = new Semaphore(WORKERS + WAITING);
+      Thread accepting = new Thread(() -> accept(bound, workers, places), "ElizaOwnerGmailBrokerAccept");
       accepting.setDaemon(true);
+      listening = new Listening(bound, workers, accepting);
       accepting.start();
     }
     byte[] secret = new byte[48];
@@ -135,15 +137,22 @@ public final class GoogleBrokerHost implements GoogleBroker {
     listening = null;
     for (Runnable queued : closing.workers().shutdownNow()) if (queued instanceof Admitted admitted) quietly(admitted.socket());
     closing.server().close();
+    closing.accepting().interrupt();
+    try { closing.accepting().join(CLOSE_WAIT_MS); }
+    catch (InterruptedException stopped) {
+      Thread.currentThread().interrupt();
+      throw new InterruptedIOException("The mail broker was interrupted before its port stopped accepting");
+    }
+    if (closing.accepting().isAlive()) throw new IOException("The mail broker's port did not stop accepting within " + CLOSE_WAIT_MS + " ms");
   }
 
-  private void accept(Listening serving) {
+  private void accept(ServerSocket server, ExecutorService workers, Semaphore places) {
     boolean failing = false;
-    while (!serving.server().isClosed()) {
+    while (!server.isClosed()) {
       Socket socket;
-      try { socket = serving.server().accept(); }
+      try { socket = server.accept(); }
       catch (IOException refused) {
-        if (serving.server().isClosed()) return;
+        if (server.isClosed()) return;
         if (!failing) failed.accept(new UncheckedIOException("The mail broker could not accept a connection", refused));
         failing = true;
         try { Thread.sleep(ACCEPT_RETRY_MS); }
@@ -154,14 +163,14 @@ public final class GoogleBrokerHost implements GoogleBroker {
         continue;
       }
       failing = false;
-      if (!serving.admitted().tryAcquire()) {
+      if (!places.tryAcquire()) {
         quietly(socket);
         continue;
       }
       try {
-        serving.workers().execute(new Admitted(this, socket, serving.admitted()));
+        workers.execute(new Admitted(this, socket, places));
       } catch (RejectedExecutionException closed) {
-        serving.admitted().release();
+        places.release();
         quietly(socket);
       }
     }
